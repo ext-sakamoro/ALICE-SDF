@@ -1,0 +1,394 @@
+// =============================================================================
+// SDF Compute Shader - Abstract Scene
+// =============================================================================
+// Gyroid + Metaballs + Rotating Torus + Morphing Shapes
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#pragma kernel CSMain
+#pragma kernel CSInit
+
+// =============================================================================
+// Data Structures
+// =============================================================================
+
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float life;
+    float _pad;
+};
+
+// =============================================================================
+// Buffers & Uniforms
+// =============================================================================
+
+RWStructuredBuffer<Particle> _Particles;
+
+uint _ParticleCount;
+float _DeltaTime;
+float _Time;
+float _FlowSpeed;
+float _SurfaceAttraction;
+float _NoiseStrength;
+float _MaxDistance;
+float _SpawnRadius;
+
+// Time Slicing
+uint _SliceIndex;
+uint _SliceCount;
+
+// Abstract Parameters
+float _GyroidScale;
+float _GyroidThickness;
+float _MetaballRadius;
+float _MorphAmount;
+
+// =============================================================================
+// Math Helpers
+// =============================================================================
+
+float3x3 rotateX(float a)
+{
+    float c = cos(a), s = sin(a);
+    return float3x3(1, 0, 0, 0, c, -s, 0, s, c);
+}
+
+float3x3 rotateY(float a)
+{
+    float c = cos(a), s = sin(a);
+    return float3x3(c, 0, s, 0, 1, 0, -s, 0, c);
+}
+
+float3x3 rotateZ(float a)
+{
+    float c = cos(a), s = sin(a);
+    return float3x3(c, -s, 0, s, c, 0, 0, 0, 1);
+}
+
+// =============================================================================
+// SDF Primitives
+// =============================================================================
+
+float sdSphere(float3 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdTorus(float3 p, float2 t)
+{
+    float2 q = float2(length(p.xz) - t.x, p.y);
+    return length(q) - t.y;
+}
+
+float sdBox(float3 p, float3 b)
+{
+    float3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float sdOctahedron(float3 p, float s)
+{
+    p = abs(p);
+    return (p.x + p.y + p.z - s) * 0.57735027;
+}
+
+// Gyroid - Infinite periodic minimal surface
+float sdGyroid(float3 p, float scale, float thickness)
+{
+    p *= scale;
+    float g = dot(sin(p), cos(p.yzx));
+    return abs(g) / scale - thickness;
+}
+
+// Schwarz P - Another minimal surface
+float sdSchwarzP(float3 p, float scale, float thickness)
+{
+    p *= scale;
+    float s = cos(p.x) + cos(p.y) + cos(p.z);
+    return abs(s) / scale - thickness;
+}
+
+// =============================================================================
+// SDF Operations
+// =============================================================================
+
+float opSmoothUnion(float d1, float d2, float k)
+{
+    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return lerp(d2, d1, h) - k * h * (1.0 - h);
+}
+
+float opSmoothIntersection(float d1, float d2, float k)
+{
+    float h = clamp(0.5 - 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return lerp(d2, d1, h) + k * h * (1.0 - h);
+}
+
+float opSmoothSubtraction(float d1, float d2, float k)
+{
+    float h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
+    return lerp(d2, -d1, h) + k * h * (1.0 - h);
+}
+
+// =============================================================================
+// Scene SDF (Abstract)
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+    // === CENTRAL GYROID (Bounded by sphere) ===
+    float gyroidSphere = sdSphere(p, 8.0);
+    float gyroid = sdGyroid(p, _GyroidScale, _GyroidThickness);
+    float boundedGyroid = max(gyroid, gyroidSphere);
+
+    // === MORPHING METABALLS ===
+    float metaballs = 1e10;
+    for (int i = 0; i < 6; i++)
+    {
+        float phase = float(i) * 1.047198 + _Time * (0.5 + float(i) * 0.1);
+        float radius = 12.0 + sin(_Time * 0.3 + float(i)) * 3.0;
+
+        float3 ballPos = float3(
+            cos(phase) * radius,
+            sin(phase * 1.5 + _Time * 0.7) * 5.0,
+            sin(phase) * radius
+        );
+
+        // Morphing between sphere and octahedron
+        float morphT = sin(_Time * 0.5 + float(i)) * 0.5 + 0.5;
+        float sphere = sdSphere(p - ballPos, _MetaballRadius);
+        float octa = sdOctahedron(p - ballPos, _MetaballRadius * 1.2);
+        float ball = lerp(sphere, octa, morphT * _MorphAmount);
+
+        metaballs = opSmoothUnion(metaballs, ball, 2.0);
+    }
+
+    // === ROTATING TORUS RINGS ===
+    float rings = 1e10;
+    for (int j = 0; j < 3; j++)
+    {
+        float angle = _Time * (0.3 + float(j) * 0.15);
+        float3x3 rot = mul(rotateY(angle), rotateX(float(j) * 1.047198 + angle * 0.5));
+
+        float3 rp = mul(rot, p);
+        float ring = sdTorus(rp, float2(10.0 + float(j) * 2.0, 0.3 + float(j) * 0.1));
+        rings = min(rings, ring);
+    }
+
+    // === SCHWARZ P CORNERS ===
+    float corners = 1e10;
+    float3 cornerPositions[4] = {
+        float3(15, 15, 15),
+        float3(-15, 15, -15),
+        float3(15, -15, -15),
+        float3(-15, -15, 15)
+    };
+
+    for (int k = 0; k < 4; k++)
+    {
+        float3 cp = p - cornerPositions[k];
+        float boundSphere = sdSphere(cp, 5.0);
+        float schwarzP = sdSchwarzP(cp, 0.8, 0.15);
+        float corner = max(schwarzP, boundSphere);
+        corners = min(corners, corner);
+    }
+
+    // === FLOATING CUBES (Rotating) ===
+    float cubes = 1e10;
+    for (int m = 0; m < 8; m++)
+    {
+        float t = float(m) * 0.785398 + _Time * 0.4;
+        float3 cubePos = float3(
+            cos(t) * 18.0,
+            sin(t * 2.0) * 8.0,
+            sin(t) * 18.0
+        );
+
+        float3 cp = p - cubePos;
+
+        // Rotating cube
+        float rotAngle = _Time * (0.5 + float(m) * 0.1);
+        cp = mul(rotateY(rotAngle), mul(rotateX(rotAngle * 0.7), cp));
+
+        float cube = sdBox(cp, float3(1.0, 1.0, 1.0) * (0.5 + float(m % 3) * 0.3));
+        cubes = min(cubes, cube);
+    }
+
+    // === COMBINE ALL ===
+    float d = boundedGyroid;
+    d = opSmoothUnion(d, metaballs, 1.5);
+    d = opSmoothUnion(d, rings, 0.8);
+    d = opSmoothUnion(d, corners, 1.0);
+    d = opSmoothUnion(d, cubes, 0.5);
+
+    return d;
+}
+
+// =============================================================================
+// Gradient (Normal) Calculation
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+    const float eps = 0.01;
+    float3 n;
+    n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+    n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+    n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+    return normalize(n);
+}
+
+// =============================================================================
+// Noise & Random
+// =============================================================================
+
+float hash(float3 p)
+{
+    p = frac(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(float3 p)
+{
+    float3 i = floor(p);
+    float3 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    return lerp(
+        lerp(lerp(hash(i + float3(0,0,0)), hash(i + float3(1,0,0)), f.x),
+             lerp(hash(i + float3(0,1,0)), hash(i + float3(1,1,0)), f.x), f.y),
+        lerp(lerp(hash(i + float3(0,0,1)), hash(i + float3(1,0,1)), f.x),
+             lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y),
+        f.z
+    );
+}
+
+uint pcg(uint v)
+{
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float randomFloat(uint seed)
+{
+    return float(pcg(seed)) / 4294967295.0;
+}
+
+float3 randomDirection(uint seed)
+{
+    float theta = randomFloat(seed) * 6.28318;
+    float phi = acos(2.0 * randomFloat(seed + 1u) - 1.0);
+    return float3(
+        sin(phi) * cos(theta),
+        sin(phi) * sin(theta),
+        cos(phi)
+    );
+}
+
+// =============================================================================
+// Initialize Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSInit(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    uint seed = id.x * 1337u + 12345u;
+
+    Particle p;
+    p.position = randomDirection(seed) * randomFloat(seed + 2u) * _SpawnRadius;
+    p.velocity = randomDirection(seed + 3u) * 0.5;
+    p.life = randomFloat(seed + 4u);
+    p._pad = 0;
+
+    _Particles[id.x] = p;
+}
+
+// =============================================================================
+// Main Update Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    // Time slicing: skip particles not in current slice
+    if (_SliceCount > 1 && (id.x % _SliceCount) != _SliceIndex) return;
+
+    Particle particle = _Particles[id.x];
+
+    float3 pos = particle.position;
+    float3 vel = particle.velocity;
+
+    // === SDF Evaluation ===
+    float dist = sceneSDF(pos);
+    float3 normal = calcNormal(pos);
+
+    // === Physics ===
+
+    // 1. Project velocity onto surface tangent
+    float vDotN = dot(vel, normal);
+    vel -= vDotN * normal;
+
+    // 2. Add swirling flow
+    float3 tangent = cross(normal, float3(0, 1, 0));
+    if (length(tangent) < 0.01)
+    {
+        tangent = cross(normal, float3(1, 0, 0));
+    }
+    tangent = normalize(tangent);
+
+    // Spiral flow pattern
+    float spiral = sin(_Time * 0.5 + length(pos) * 0.2);
+    vel += tangent * _FlowSpeed * (0.5 + spiral * 0.3);
+
+    // 3. Surface attraction
+    vel -= normal * dist * _SurfaceAttraction;
+
+    // 4. Add turbulent noise
+    if (_NoiseStrength > 0)
+    {
+        float3 noiseOffset = float3(
+            noise(pos * 0.15 + float3(_Time * 0.4, 0, 0)) - 0.5,
+            noise(pos * 0.15 + float3(0, _Time * 0.4, 0)) - 0.5,
+            noise(pos * 0.15 + float3(0, 0, _Time * 0.4)) - 0.5
+        );
+        vel += noiseOffset * _NoiseStrength * 3.0;
+    }
+
+    // 5. Clamp velocity
+    float velLen = length(vel);
+    if (velLen > _FlowSpeed * 2.5)
+    {
+        vel = vel / velLen * _FlowSpeed * 2.5;
+    }
+
+    // 6. Integrate
+    pos += vel * _DeltaTime;
+
+    // 7. Respawn if out of bounds
+    float distFromOrigin = length(pos);
+    if (distFromOrigin > _MaxDistance || isnan(pos.x))
+    {
+        uint seed = id.x + asuint(_Time * 1000.0);
+        pos = randomDirection(seed) * randomFloat(seed + 1u) * _SpawnRadius;
+        vel = randomDirection(seed + 2u) * 0.5;
+    }
+
+    // Update lifetime (faster cycling for abstract effect)
+    particle.life += _DeltaTime * 0.1;
+    if (particle.life > 1.0) particle.life -= 1.0;
+
+    // Write back
+    particle.position = pos;
+    particle.velocity = vel;
+
+    _Particles[id.x] = particle;
+}

@@ -1,0 +1,44 @@
+# Build artifacts
+/target/
+*.pyc
+__pycache__/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Unity
+unity-sdf-universe/Library/
+unity-sdf-universe/Temp/
+unity-sdf-universe/Obj/
+unity-sdf-universe/Build/
+unity-sdf-universe/Builds/
+unity-sdf-universe/Logs/
+unity-sdf-universe/UserSettings/
+unity-sdf-universe/*.csproj
+unity-sdf-universe/*.unityproj
+unity-sdf-universe/*.sln
+unity-sdf-universe/*.suo
+unity-sdf-universe/*.tmp
+unity-sdf-universe/*.user
+unity-sdf-universe/*.userprefs
+unity-sdf-universe/*.pidb
+unity-sdf-universe/*.booproj
+unity-sdf-universe/*.svd
+unity-sdf-universe/*.pdb
+unity-sdf-universe/*.mdb
+unity-sdf-universe/*.opendb
+unity-sdf-universe/*.VC.db
+unity-sdf-universe/Assets/Plugins/*.dll
+unity-sdf-universe/Assets/Plugins/*.dylib
+unity-sdf-universe/Assets/Plugins/*.so
+unity-sdf-universe/Assets/Plugins/*.meta
+
+# Rust
+Cargo.lock

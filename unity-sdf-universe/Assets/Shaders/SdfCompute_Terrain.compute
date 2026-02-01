@@ -1,0 +1,354 @@
+// =============================================================================
+// SDF Compute Shader - Terrain Scene
+// =============================================================================
+// FBM Noise Terrain + Water + Rocks
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#pragma kernel CSMain
+#pragma kernel CSInit
+
+// =============================================================================
+// Data Structures
+// =============================================================================
+
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float life;
+    float _pad;
+};
+
+// =============================================================================
+// Buffers & Uniforms
+// =============================================================================
+
+RWStructuredBuffer<Particle> _Particles;
+
+uint _ParticleCount;
+float _DeltaTime;
+float _Time;
+float _FlowSpeed;
+float _SurfaceAttraction;
+float _NoiseStrength;
+float _MaxDistance;
+float _SpawnRadius;
+
+// Time Slicing
+uint _SliceIndex;
+uint _SliceCount;
+
+// Terrain Parameters
+float _TerrainHeight;
+float _TerrainScale;
+float _WaterLevel;
+float _RockSize;
+
+// =============================================================================
+// Noise Functions
+// =============================================================================
+
+float hash(float3 p)
+{
+    p = frac(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(float3 p)
+{
+    float3 i = floor(p);
+    float3 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    return lerp(
+        lerp(lerp(hash(i + float3(0,0,0)), hash(i + float3(1,0,0)), f.x),
+             lerp(hash(i + float3(0,1,0)), hash(i + float3(1,1,0)), f.x), f.y),
+        lerp(lerp(hash(i + float3(0,0,1)), hash(i + float3(1,0,1)), f.x),
+             lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y),
+        f.z
+    );
+}
+
+// Fractional Brownian Motion
+float fbm(float3 p, int octaves)
+{
+    float value = 0.0;
+    float amplitude = 0.5;
+    float frequency = 1.0;
+
+    for (int i = 0; i < octaves; i++)
+    {
+        value += amplitude * noise(p * frequency);
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+
+    return value;
+}
+
+// =============================================================================
+// SDF Primitives
+// =============================================================================
+
+float sdPlane(float3 p, float3 n, float h)
+{
+    return dot(p, n) + h;
+}
+
+float sdSphere(float3 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdBox(float3 p, float3 b)
+{
+    float3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+// =============================================================================
+// SDF Operations
+// =============================================================================
+
+float opSmoothUnion(float d1, float d2, float k)
+{
+    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return lerp(d2, d1, h) - k * h * (1.0 - h);
+}
+
+float opSmoothSubtraction(float d1, float d2, float k)
+{
+    float h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
+    return lerp(d2, -d1, h) + k * h * (1.0 - h);
+}
+
+// =============================================================================
+// Scene SDF (Terrain)
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+    // === TERRAIN (FBM Height Field) ===
+    float2 terrainUV = p.xz * _TerrainScale * 0.02;
+    float height = fbm(float3(terrainUV.x, 0, terrainUV.y), 6) * _TerrainHeight;
+
+    // Add time-based animation for subtle movement
+    height += sin(p.x * 0.1 + _Time * 0.5) * 0.5;
+    height += cos(p.z * 0.15 + _Time * 0.3) * 0.3;
+
+    float terrain = p.y - height + _TerrainHeight * 0.5;
+
+    // === WATER (Animated plane) ===
+    float waterHeight = _WaterLevel + sin(_Time * 2.0 + p.x * 0.3) * 0.1
+                                    + sin(_Time * 1.5 + p.z * 0.2) * 0.08;
+    float water = p.y - waterHeight;
+
+    // === ROCKS (Scattered spheres) ===
+    float rocks = 1e10;
+    for (int i = 0; i < 5; i++)
+    {
+        float angle = float(i) * 1.256637; // 2*PI/5
+        float radius = 8.0 + float(i) * 3.0;
+        float3 rockPos = float3(
+            cos(angle + _Time * 0.1) * radius,
+            height + _RockSize * 0.5,
+            sin(angle + _Time * 0.08) * radius
+        );
+
+        // Deformed sphere for rock
+        float3 rp = p - rockPos;
+        float rock = sdSphere(rp, _RockSize * (0.8 + 0.4 * noise(rp * 2.0)));
+        rocks = min(rocks, rock);
+    }
+
+    // === FLOATING ISLANDS ===
+    float islands = 1e10;
+    for (int j = 0; j < 3; j++)
+    {
+        float t = _Time * 0.2 + float(j) * 2.094395; // 2*PI/3
+        float3 islandPos = float3(
+            cos(t) * 15.0,
+            10.0 + sin(_Time * 0.5 + float(j)) * 2.0,
+            sin(t) * 15.0
+        );
+
+        // Flattened sphere
+        float3 ip = p - islandPos;
+        ip.y *= 3.0; // Flatten
+        float island = sdSphere(ip, 3.0);
+
+        // Add noise detail
+        island += fbm(p * 0.5, 3) * 0.5;
+
+        islands = min(islands, island);
+    }
+
+    // === COMBINE ===
+    float d = terrain;
+    d = min(d, water);
+    d = opSmoothUnion(d, rocks, 0.5);
+    d = opSmoothUnion(d, islands, 1.0);
+
+    return d;
+}
+
+// =============================================================================
+// Gradient (Normal) Calculation
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+    const float eps = 0.01;
+    float3 n;
+    n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+    n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+    n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+    return normalize(n);
+}
+
+// =============================================================================
+// Random
+// =============================================================================
+
+uint pcg(uint v)
+{
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float randomFloat(uint seed)
+{
+    return float(pcg(seed)) / 4294967295.0;
+}
+
+float3 randomDirection(uint seed)
+{
+    float theta = randomFloat(seed) * 6.28318;
+    float phi = acos(2.0 * randomFloat(seed + 1u) - 1.0);
+    return float3(
+        sin(phi) * cos(theta),
+        sin(phi) * sin(theta),
+        cos(phi)
+    );
+}
+
+// =============================================================================
+// Initialize Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSInit(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    uint seed = id.x * 1337u + 12345u;
+
+    Particle p;
+
+    // Spawn above terrain
+    float3 spawnPos = randomDirection(seed) * randomFloat(seed + 2u) * _SpawnRadius;
+    spawnPos.y = abs(spawnPos.y) * 0.5 + 5.0; // Keep above ground
+
+    p.position = spawnPos;
+    p.velocity = randomDirection(seed + 3u) * 0.5;
+    p.life = randomFloat(seed + 4u);
+    p._pad = 0;
+
+    _Particles[id.x] = p;
+}
+
+// =============================================================================
+// Main Update Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    // Time slicing: skip particles not in current slice
+    if (_SliceCount > 1 && (id.x % _SliceCount) != _SliceIndex) return;
+
+    Particle particle = _Particles[id.x];
+
+    float3 pos = particle.position;
+    float3 vel = particle.velocity;
+
+    // === SDF Evaluation ===
+    float dist = sceneSDF(pos);
+    float3 normal = calcNormal(pos);
+
+    // === Physics ===
+
+    // 1. Project velocity onto surface tangent
+    float vDotN = dot(vel, normal);
+    vel -= vDotN * normal;
+
+    // 2. Add flow (wind effect)
+    float3 wind = float3(
+        sin(_Time * 0.5 + pos.z * 0.1) * 0.5,
+        0,
+        cos(_Time * 0.3 + pos.x * 0.1) * 0.5
+    );
+    vel += wind * _FlowSpeed * 0.3;
+
+    // 3. Add rotational flow on surfaces
+    float3 tangent = cross(normal, float3(0, 1, 0));
+    if (length(tangent) < 0.01)
+    {
+        tangent = cross(normal, float3(1, 0, 0));
+    }
+    tangent = normalize(tangent);
+    vel += tangent * _FlowSpeed * 0.3;
+
+    // 4. Surface attraction
+    vel -= normal * dist * _SurfaceAttraction;
+
+    // 5. Gravity (gentle pull down)
+    vel.y -= 0.5 * _DeltaTime;
+
+    // 6. Add noise turbulence
+    if (_NoiseStrength > 0)
+    {
+        float3 noiseOffset = float3(
+            noise(pos * 0.2 + float3(_Time * 0.5, 0, 0)) - 0.5,
+            noise(pos * 0.2 + float3(0, _Time * 0.5, 0)) - 0.5,
+            noise(pos * 0.2 + float3(0, 0, _Time * 0.5)) - 0.5
+        );
+        vel += noiseOffset * _NoiseStrength * 2.0;
+    }
+
+    // 7. Clamp velocity
+    float velLen = length(vel);
+    if (velLen > _FlowSpeed * 2.0)
+    {
+        vel = vel / velLen * _FlowSpeed * 2.0;
+    }
+
+    // 8. Integrate
+    pos += vel * _DeltaTime;
+
+    // 9. Respawn if out of bounds or below terrain
+    float distFromOrigin = length(pos);
+    if (distFromOrigin > _MaxDistance || pos.y < -10.0 || isnan(pos.x))
+    {
+        uint seed = id.x + asuint(_Time * 1000.0);
+        pos = randomDirection(seed) * randomFloat(seed + 1u) * _SpawnRadius;
+        pos.y = abs(pos.y) * 0.5 + 8.0;
+        vel = randomDirection(seed + 2u) * 0.5;
+    }
+
+    // Update lifetime
+    particle.life += _DeltaTime * 0.05;
+    if (particle.life > 1.0) particle.life -= 1.0;
+
+    // Write back
+    particle.position = pos;
+    particle.velocity = vel;
+
+    _Particles[id.x] = particle;
+}

@@ -1,0 +1,99 @@
+[package]
+name = "alice-sdf"
+version = "0.1.0"
+edition = "2021"
+authors = ["Moroya Sakamoto"]
+description = "ALICE-SDF: 3D/Spatial Data Specialist - Store laws, not polygons"
+license = "MIT"
+repository = "https://github.com/ext-sakamoro/ALICE-SDF"
+keywords = ["sdf", "signed-distance-function", "3d", "procedural", "csg"]
+categories = ["graphics", "game-development", "mathematics"]
+rust-version = "1.75"
+
+[lib]
+name = "alice_sdf"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "alice-sdf"
+path = "src/bin/main.rs"
+
+[features]
+default = ["cli"]
+cli = ["clap"]
+python = ["pyo3", "numpy"]
+jit = ["cranelift-codegen", "cranelift-frontend", "cranelift-jit", "cranelift-module", "cranelift-native"]
+gpu = ["wgpu", "pollster", "bytemuck", "futures-channel"]
+hlsl = []  # HLSL transpiler for UE5/DirectX
+glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
+ffi = ["lazy_static"]  # C/C++/C# FFI bindings
+all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
+unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
+unreal = ["ffi", "hlsl"]  # Unreal Engine integration (FFI + HLSL)
+
+[dependencies]
+# SIMD math
+glam = { version = "0.29", features = ["serde"] }
+wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
+
+# Parallel processing
+rayon = "1.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+log = "0.4"
+
+# CLI (optional)
+clap = { version = "4.5", features = ["derive"], optional = true }
+
+# Python bindings (optional)
+pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
+numpy = { version = "0.23", optional = true }
+
+# CRC for file integrity
+crc32fast = "1.4"
+
+# FFI support (optional)
+lazy_static = { version = "1.5", optional = true }
+
+# JIT compilation (optional)
+cranelift-codegen = { version = "0.113", optional = true }
+cranelift-frontend = { version = "0.113", optional = true }
+cranelift-jit = { version = "0.113", optional = true }
+cranelift-module = { version = "0.113", optional = true }
+cranelift-native = { version = "0.113", optional = true }
+
+# GPU compute (optional)
+wgpu = { version = "23", optional = true }
+pollster = { version = "0.4", optional = true }
+bytemuck = { version = "1.21", features = ["derive"], optional = true }
+futures-channel = { version = "0.3", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "sdf_eval"
+harness = false
+
+[[bench]]
+name = "gpu_vs_cpu"
+harness = false
+required-features = []
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.bench]
+opt-level = 3
+lto = "thin"

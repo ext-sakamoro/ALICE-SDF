@@ -1,0 +1,77 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# MemoryCaptures
+[Mm]emoryCaptures/
+
+# Recordings
+[Rr]ecordings/
+
+# Asset meta data
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Unity3D generated
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity3D generated file on crash reports
+sysinfo.txt
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crashlytics generated
+crashlytics-build.properties
+
+# Packed Addressables
+[Aa]ddressables*
+
+# TextMeshPro
+[Aa]ssets/TextMesh*Pro/Resources/Fonts*Materials/*.mat
+
+# Plastic SCM (Ignore if not using)
+ignore.conf
+*.private.0
+*.private
+
+# Visual Studio cache
+.vs/
+
+# Rider
+.idea/
+*.DotSettings.user
+
+# macOS
+.DS_Store
+*.swp
+*~.nib
+Thumbs.db
+
+# JetBrains
+*.sln.iml
+
+# Rust target (if building in Unity folder)
+target/

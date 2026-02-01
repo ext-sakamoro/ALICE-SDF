@@ -1,0 +1,127 @@
+================================================================================
+ALICE COMMUNITY LICENSE
+Version 1.0, February 2025
+================================================================================
+
+Copyright (c) 2025 Moroya Sakamoto
+
+This license applies to:
+  - unity-sdf-universe/    (Unity Integration)
+  - Future Unreal Plugin
+  - ALICE Editor Tools
+  - ALICE Streaming Components
+
+================================================================================
+1. DEFINITIONS
+================================================================================
+
+"Software" means the ALICE-SDF Unity/Unreal plugins, editor tools, and
+streaming components covered by this license.
+
+"Game" means an interactive entertainment application distributed to end users,
+where the Software is used as a component for rendering or content creation.
+
+"Infrastructure Service" means any service that:
+  (a) Provides the Software's functionality to third parties as a service
+      (SaaS, PaaS, IaaS), or
+  (b) Uses the Software to operate a multi-user platform with more than
+      10,000 monthly active users, or
+  (c) Generates more than $1,000,000 USD annual revenue from services
+      that incorporate the Software.
+
+================================================================================
+2. GRANT OF RIGHTS - FREE USE
+================================================================================
+
+You are granted a free, perpetual, worldwide, non-exclusive license to use,
+copy, modify, and distribute the Software for the following purposes:
+
+  (a) PERSONAL USE - Learning, experimentation, and non-commercial projects.
+
+  (b) INDIE GAME DEVELOPMENT - Creating and selling games, regardless of
+      revenue, provided the game is sold as a standalone product.
+
+  (c) GAME STUDIO USE - Commercial game development and publishing,
+      including AAA studios, for games distributed to end users.
+
+  (d) EDUCATIONAL USE - Teaching, research, and academic projects.
+
+  (e) OPEN SOURCE PROJECTS - Incorporating into open source projects,
+      provided this license is included.
+
+================================================================================
+3. COMMERCIAL LICENSE REQUIRED
+================================================================================
+
+A separate commercial license is REQUIRED for:
+
+  (a) INFRASTRUCTURE SERVICES - Operating the Software as part of a
+      cloud service, metaverse platform, or streaming infrastructure
+      that serves third parties.
+
+  (b) COMPETING PRODUCTS - Creating a product or service that directly
+      competes with ALICE-SDF's core functionality.
+
+  (c) WHITE-LABEL SERVICES - Reselling or rebranding the Software as
+      part of a commercial platform offering.
+
+To obtain a commercial license, contact: https://extoria.co.jp/en
+
+================================================================================
+4. CONTENT OWNERSHIP
+================================================================================
+
+All content created using the Software (.asdf files, procedural worlds,
+game assets) is owned entirely by the creator. No royalties or attribution
+are required for content created with the free license.
+
+================================================================================
+5. ATTRIBUTION
+================================================================================
+
+Attribution is appreciated but not required for games and applications.
+If you wish to credit the project:
+
+  "Powered by ALICE-SDF"
+
+================================================================================
+6. NO WARRANTY
+================================================================================
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+7. TERMINATION
+================================================================================
+
+This license terminates automatically if you violate its terms. Upon
+termination, you must cease all use and distribution of the Software.
+
+================================================================================
+SUMMARY (Not legally binding)
+================================================================================
+
+  +---------------------------+------------------+
+  | Use Case                  | License Required |
+  +---------------------------+------------------+
+  | Personal projects         | FREE             |
+  | Indie games               | FREE             |
+  | AAA game studios          | FREE             |
+  | Educational/Research      | FREE             |
+  | Open source projects      | FREE             |
+  +---------------------------+------------------+
+  | Metaverse platforms       | COMMERCIAL       |
+  | Cloud streaming services  | COMMERCIAL       |
+  | SaaS/PaaS offerings       | COMMERCIAL       |
+  | Competing products        | COMMERCIAL       |
+  +---------------------------+------------------+
+
+"Open Core: Free for creators, licensed for infrastructure."
+
+================================================================================

@@ -1,0 +1,411 @@
+// =============================================================================
+// SDF Compute Shader - Fractal Scene (Surface Adherence Mode)
+// =============================================================================
+// Menger Sponge-like fractal structure with surface-adhering particles.
+// Particles stick to the mathematical surface, visualizing infinite resolution.
+//
+// Unlike flow mode, particles are snapped to surface position each frame,
+// creating a static high-density point cloud that reveals the SDF surface.
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#pragma kernel CSMain
+#pragma kernel CSInit
+
+// =============================================================================
+// Data Structures
+// =============================================================================
+
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float life;
+    float _pad;
+};
+
+// =============================================================================
+// Buffers & Uniforms
+// =============================================================================
+
+RWStructuredBuffer<Particle> _Particles;
+
+uint _ParticleCount;
+float _DeltaTime;
+float _Time;
+float _FlowSpeed;
+float _SurfaceAttraction;
+float _NoiseStrength;
+float _MaxDistance;
+float _SpawnRadius;
+
+// Time Slicing
+uint _SliceIndex;
+uint _SliceCount;
+
+// Fractal Parameters
+float _BoxSize;
+float _HoleSize;
+float _RepeatScale;
+float _TwistAmount;
+int _FractalIterations;
+
+// === MICROSCOPE MODE (View-Dependent Density) ===
+// All particles concentrate in camera's view for infinite resolution
+float3 _CamPos;
+float3 _CamForward;
+float3 _CamRight;
+float3 _CamUp;
+float _ZoomLevel;  // 1.0 -> 0.000001 (smaller = more zoomed in)
+
+// =============================================================================
+// Math Helpers
+// =============================================================================
+
+float3x3 rotateY(float a)
+{
+    float c = cos(a), s = sin(a);
+    return float3x3(c, 0, s, 0, 1, 0, -s, 0, c);
+}
+
+float3x3 rotateX(float a)
+{
+    float c = cos(a), s = sin(a);
+    return float3x3(1, 0, 0, 0, c, -s, 0, s, c);
+}
+
+// =============================================================================
+// SDF Primitives
+// =============================================================================
+
+float sdBox(float3 p, float3 b)
+{
+    float3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float sdSphere(float3 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdCross(float3 p, float size)
+{
+    float inf = 1000.0;
+    float da = sdBox(p, float3(inf, size, size));
+    float db = sdBox(p, float3(size, inf, size));
+    float dc = sdBox(p, float3(size, size, inf));
+    return min(da, min(db, dc));
+}
+
+// =============================================================================
+// SDF Operations
+// =============================================================================
+
+float opSubtraction(float d1, float d2)
+{
+    return max(-d1, d2);
+}
+
+float opUnion(float d1, float d2)
+{
+    return min(d1, d2);
+}
+
+float opSmoothSubtraction(float d1, float d2, float k)
+{
+    float h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
+    return lerp(d2, -d1, h) + k * h * (1.0 - h);
+}
+
+// Infinite repetition
+float3 opRepeat(float3 p, float3 c)
+{
+    return fmod(p + c * 0.5, c) - c * 0.5;
+}
+
+// =============================================================================
+// Menger Sponge SDF
+// =============================================================================
+
+float sdMengerSponge(float3 p, float size, int iterations)
+{
+    float d = sdBox(p, float3(size, size, size));
+
+    float s = 1.0;
+    for (int i = 0; i < iterations && i < 5; i++)
+    {
+        float3 a = fmod(p * s, 2.0) - 1.0;
+        s *= 3.0;
+        float3 r = abs(1.0 - 3.0 * abs(a));
+
+        float da = max(r.x, r.y);
+        float db = max(r.y, r.z);
+        float dc = max(r.z, r.x);
+        float c = (min(da, min(db, dc)) - 1.0) / s;
+
+        d = max(d, c);
+    }
+
+    return d;
+}
+
+// =============================================================================
+// Scene SDF (Fractal) - THE 5MB MIRACLE
+// =============================================================================
+// Formula: Subtract(Box, Repeat(Cross))
+// This is ONE SDF object that creates INFINITE complexity!
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+    // Optional twist for organic feel
+    if (_TwistAmount > 0.001)
+    {
+        float angle = p.y * _TwistAmount;
+        float c = cos(angle);
+        float s = sin(angle);
+        float2 xz = float2(c * p.x - s * p.z, s * p.x + c * p.z);
+        p.x = xz.x;
+        p.z = xz.y;
+    }
+
+    // === STEP 1: ONE BIG BOX ===
+    // This is the ONLY base object
+    float box = sdBox(p, float3(_BoxSize, _BoxSize, _BoxSize));
+
+    // === STEP 2: INFINITE CROSS via REPEAT ===
+    // position % spacing = space folding magic
+    // ONE cross formula becomes INFINITE crosses!
+    float3 rp = opRepeat(p, float3(_RepeatScale, _RepeatScale, _RepeatScale));
+    float cross = sdCross(rp, _HoleSize);
+
+    // === STEP 3: SUBTRACT ===
+    // Subtract(Box, Repeat(Cross)) = 1 formula, infinite holes
+    float d = opSubtraction(cross, box);
+
+    return d;
+}
+
+// =============================================================================
+// Gradient (Normal) Calculation
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+    const float eps = 0.001;
+    float3 n;
+    n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+    n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+    n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+    return normalize(n);
+}
+
+// =============================================================================
+// Noise & Random
+// =============================================================================
+
+float hash(float3 p)
+{
+    p = frac(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(float3 p)
+{
+    float3 i = floor(p);
+    float3 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    return lerp(
+        lerp(lerp(hash(i + float3(0,0,0)), hash(i + float3(1,0,0)), f.x),
+             lerp(hash(i + float3(0,1,0)), hash(i + float3(1,1,0)), f.x), f.y),
+        lerp(lerp(hash(i + float3(0,0,1)), hash(i + float3(1,0,1)), f.x),
+             lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y),
+        f.z
+    );
+}
+
+uint pcg(uint v)
+{
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float randomFloat(uint seed)
+{
+    return float(pcg(seed)) / 4294967295.0;
+}
+
+float3 randomDirection(uint seed)
+{
+    float theta = randomFloat(seed) * 6.28318;
+    float phi = acos(2.0 * randomFloat(seed + 1u) - 1.0);
+    return float3(
+        sin(phi) * cos(theta),
+        sin(phi) * sin(theta),
+        cos(phi)
+    );
+}
+
+// 3D hash for view-dependent density
+float3 hash33(uint seed)
+{
+    return float3(
+        randomFloat(seed),
+        randomFloat(seed + 7919u),
+        randomFloat(seed + 104729u)
+    );
+}
+
+// =============================================================================
+// Initialize Kernel - MICROSCOPE MODE
+// =============================================================================
+// Initial spawn uses view-dependent density too
+
+[numthreads(256, 1, 1)]
+void CSInit(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    uint seed = id.x * 1337u + 54321u;
+
+    Particle p;
+
+    // Generate random position in [-1, 1] box
+    float3 randomBox = hash33(seed) * 2.0 - 1.0;
+
+    // Scale by zoom level for view-dependent density
+    float spawnRange = max(_ZoomLevel * 50.0, 0.0001);
+    float3 localPos = randomBox * spawnRange;
+
+    // Position in front of camera
+    float viewDistance = max(_ZoomLevel * 100.0, 0.001);
+    float3 worldPos = _CamPos
+                    + _CamForward * viewDistance
+                    + _CamRight * localPos.x
+                    + _CamUp * localPos.y
+                    + _CamForward * localPos.z * 0.5;
+
+    // Newton-Raphson to snap to surface
+    for (int i = 0; i < 8; i++)
+    {
+        float d = sceneSDF(worldPos);
+        if (abs(d) < 0.0001) break;
+        float3 n = calcNormal(worldPos);
+        worldPos -= n * d;
+    }
+
+    p.position = worldPos;
+    p.velocity = float3(0, 0, 0);
+    p.life = randomFloat(seed + 4u);
+    p._pad = 0;
+
+    _Particles[id.x] = p;
+}
+
+// =============================================================================
+// Main Update Kernel - MICROSCOPE MODE (View-Dependent Density)
+// =============================================================================
+// All 10 million particles concentrate in camera's view frustum.
+// Zoom in → spawn area shrinks → density EXPLODES → infinite resolution!
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    // Time slicing: skip particles not in current slice
+    if (_SliceCount > 1 && (id.x % _SliceCount) != _SliceIndex) return;
+
+    Particle particle = _Particles[id.x];
+
+    // ==========================================================================
+    // STEP 1: Generate random position in [-1, 1] box
+    // ==========================================================================
+    uint seed = id.x * 1337u + 54321u;
+    float3 randomBox = hash33(seed) * 2.0 - 1.0;
+
+    // ==========================================================================
+    // STEP 2: Scale by zoom level - THE MAGIC!
+    // ==========================================================================
+    // _ZoomLevel: 1.0 (far) → 0.000001 (microscope level)
+    // Smaller zoom = smaller spawn area = HIGHER DENSITY
+    //
+    // Zoom x1:      10m cube with 10M particles
+    // Zoom x1000:   1cm cube with 10M particles
+    // Zoom x1M:     10μm cube with 10M particles → SOLID SURFACE
+    // ==========================================================================
+    float spawnRange = max(_ZoomLevel * 50.0, 0.0001); // Minimum to prevent collapse
+    float3 localPos = randomBox * spawnRange;
+
+    // ==========================================================================
+    // STEP 3: Position in front of camera
+    // ==========================================================================
+    float viewDistance = max(_ZoomLevel * 100.0, 0.001);
+    float3 worldPos = _CamPos
+                    + _CamForward * viewDistance
+                    + _CamRight * localPos.x
+                    + _CamUp * localPos.y
+                    + _CamForward * localPos.z * 0.5;
+
+    // ==========================================================================
+    // STEP 4: Newton-Raphson iteration - SNAP TO SDF SURFACE
+    // ==========================================================================
+    // This is where the magic happens:
+    // Random points → Mathematical surface
+    // The particles become "probes" scanning the infinite formula
+    // ==========================================================================
+    for (int i = 0; i < 8; i++)
+    {
+        float d = sceneSDF(worldPos);
+
+        // Early exit if close enough to surface
+        if (abs(d) < 0.0001) break;
+
+        float3 n = calcNormal(worldPos);
+        worldPos -= n * d; // Move toward surface
+    }
+
+    // ==========================================================================
+    // STEP 5: Final surface refinement
+    // ==========================================================================
+    float finalDist = sceneSDF(worldPos);
+    if (abs(finalDist) > 0.001)
+    {
+        // Raymarching fallback for stubborn cases
+        float3 rayDir = -sign(finalDist) * calcNormal(worldPos);
+        float t = 0.0;
+        for (int j = 0; j < 16; j++)
+        {
+            float3 rp = worldPos + rayDir * t;
+            float d = sceneSDF(rp);
+            if (abs(d) < 0.0001)
+            {
+                worldPos = rp;
+                break;
+            }
+            t += abs(d) * 0.8;
+            if (t > spawnRange * 2.0) break;
+        }
+    }
+
+    // ==========================================================================
+    // STEP 6: Depth-based coloring for visual feedback
+    // ==========================================================================
+    // Particles closer to camera = brighter (helps see density)
+    float distToCam = length(worldPos - _CamPos);
+    particle.life = saturate(1.0 - distToCam / (viewDistance * 2.0));
+
+    // ==========================================================================
+    // Write back - particles now form a SOLID SURFACE at any zoom level
+    // ==========================================================================
+    particle.position = worldPos;
+    particle.velocity = float3(0, 0, 0);
+
+    _Particles[id.x] = particle;
+}

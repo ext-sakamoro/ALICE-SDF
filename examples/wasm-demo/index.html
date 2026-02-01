@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALICE-SDF WebAssembly Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00d4ff;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .container {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .panel h2 {
+            color: #00d4ff;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        canvas {
+            border: 2px solid #00d4ff;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 250px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        select:hover, input[type="range"]:hover {
+            border-color: #00d4ff;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 8px;
+            padding: 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #00d4ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value-display {
+            text-align: right;
+            font-family: monospace;
+            color: #00d4ff;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .stats {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+        }
+
+        .stats div {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+        }
+
+        .stats .value {
+            color: #00d4ff;
+        }
+
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 212, 255, 0.3);
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .feature-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background: rgba(0, 212, 255, 0.2);
+            border: 1px solid #00d4ff;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 10px;
+        }
+
+        .feature-badge.webgpu {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: #00ff88;
+            color: #00ff88;
+        }
+
+        .feature-badge.canvas2d {
+            background: rgba(255, 170, 0, 0.2);
+            border-color: #ffaa00;
+            color: #ffaa00;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="loader"></div>
+    </div>
+
+    <h1>ALICE-SDF
+        <span class="feature-badge" id="backend-badge">Loading...</span>
+    </h1>
+    <p class="subtitle">Adaptive Lightweight Implicit Compression Engine - WebAssembly Demo</p>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Raymarched Preview</h2>
+            <canvas id="canvas" width="512" height="512"></canvas>
+            <div class="stats" id="stats">
+                <div><span>Render time:</span><span class="value" id="render-time">-</span></div>
+                <div><span>FPS:</span><span class="value" id="fps">-</span></div>
+                <div><span>Backend:</span><span class="value" id="backend">-</span></div>
+            </div>
+        </div>
+
+        <div class="panel controls">
+            <h2>Shape Controls</h2>
+
+            <div class="control-group">
+                <label>Shape Type</label>
+                <select id="shape-type">
+                    <option value="sphere">Sphere</option>
+                    <option value="box">Box</option>
+                    <option value="cylinder">Cylinder</option>
+                    <option value="torus">Torus</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Size / Radius</label>
+                <input type="range" id="param1" min="0.1" max="2.0" step="0.05" value="1.0">
+                <div class="value-display" id="param1-value">1.00</div>
+            </div>
+
+            <div class="control-group">
+                <label>Secondary Parameter</label>
+                <input type="range" id="param2" min="0.1" max="2.0" step="0.05" value="0.5">
+                <div class="value-display" id="param2-value">0.50</div>
+            </div>
+
+            <div class="control-group">
+                <label>Camera Distance</label>
+                <input type="range" id="camera-dist" min="2" max="10" step="0.1" value="5">
+                <div class="value-display" id="camera-dist-value">5.0</div>
+            </div>
+
+            <div class="control-group">
+                <label>Camera Angle</label>
+                <input type="range" id="camera-angle" min="0" max="360" step="1" value="0">
+                <div class="value-display" id="camera-angle-value">0°</div>
+            </div>
+
+            <button id="render-btn">Render</button>
+            <button id="benchmark-btn">Run Benchmark</button>
+
+            <div class="stats" id="benchmark-results" style="display: none;">
+                <h3 style="margin-bottom: 10px; color: #00d4ff;">Benchmark Results</h3>
+                <div><span>1K evals:</span><span class="value" id="bench-1k">-</span></div>
+                <div><span>10K evals:</span><span class="value" id="bench-10k">-</span></div>
+                <div><span>100K evals:</span><span class="value" id="bench-100k">-</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { SdfEvaluator, SdfType, Raymarcher, benchmark_eval } from './pkg/alice_sdf_wasm.js';
+
+        let sdf = null;
+        let raymarcher = null;
+        let animationId = null;
+
+        // Check WebGPU support
+        async function checkWebGPU() {
+            if (navigator.gpu) {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        return true;
+                    }
+                } catch (e) {
+                    console.log('WebGPU not available:', e);
+                }
+            }
+            return false;
+        }
+
+        async function main() {
+            // Initialize WASM
+            await init();
+
+            const hasWebGPU = await checkWebGPU();
+            const badge = document.getElementById('backend-badge');
+            const backendDisplay = document.getElementById('backend');
+
+            if (hasWebGPU) {
+                badge.textContent = 'WebGPU';
+                badge.className = 'feature-badge webgpu';
+                backendDisplay.textContent = 'WebGPU';
+            } else {
+                badge.textContent = 'Canvas2D';
+                badge.className = 'feature-badge canvas2d';
+                backendDisplay.textContent = 'Canvas2D (fallback)';
+            }
+
+            // Create SDF evaluator and raymarcher
+            sdf = new SdfEvaluator(SdfType.Sphere);
+            raymarcher = new Raymarcher(512, 512);
+
+            // Setup controls
+            setupControls();
+
+            // Initial render
+            render();
+
+            // Hide loading
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        function setupControls() {
+            const shapeType = document.getElementById('shape-type');
+            const param1 = document.getElementById('param1');
+            const param2 = document.getElementById('param2');
+            const cameraDist = document.getElementById('camera-dist');
+            const cameraAngle = document.getElementById('camera-angle');
+            const renderBtn = document.getElementById('render-btn');
+            const benchmarkBtn = document.getElementById('benchmark-btn');
+
+            // Update value displays
+            param1.addEventListener('input', () => {
+                document.getElementById('param1-value').textContent = parseFloat(param1.value).toFixed(2);
+            });
+            param2.addEventListener('input', () => {
+                document.getElementById('param2-value').textContent = parseFloat(param2.value).toFixed(2);
+            });
+            cameraDist.addEventListener('input', () => {
+                document.getElementById('camera-dist-value').textContent = parseFloat(cameraDist.value).toFixed(1);
+            });
+            cameraAngle.addEventListener('input', () => {
+                document.getElementById('camera-angle-value').textContent = cameraAngle.value + '°';
+            });
+
+            // Shape type change
+            shapeType.addEventListener('change', updateShape);
+            param1.addEventListener('change', updateShape);
+            param2.addEventListener('change', updateShape);
+
+            // Camera controls
+            cameraDist.addEventListener('input', updateCamera);
+            cameraAngle.addEventListener('input', updateCamera);
+
+            // Buttons
+            renderBtn.addEventListener('click', render);
+            benchmarkBtn.addEventListener('click', runBenchmark);
+        }
+
+        function updateShape() {
+            const shapeType = document.getElementById('shape-type').value;
+            const p1 = parseFloat(document.getElementById('param1').value);
+            const p2 = parseFloat(document.getElementById('param2').value);
+
+            const typeMap = {
+                'sphere': SdfType.Sphere,
+                'box': SdfType.Box,
+                'cylinder': SdfType.Cylinder,
+                'torus': SdfType.Torus,
+            };
+
+            sdf = new SdfEvaluator(typeMap[shapeType]);
+            sdf.set_params(p1, p2, p1, 0);
+            render();
+        }
+
+        function updateCamera() {
+            const dist = parseFloat(document.getElementById('camera-dist').value);
+            const angle = parseFloat(document.getElementById('camera-angle').value) * Math.PI / 180;
+
+            const x = Math.sin(angle) * dist;
+            const z = -Math.cos(angle) * dist;
+            raymarcher.set_camera(x, 0, z);
+            render();
+        }
+
+        function render() {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const startTime = performance.now();
+
+            // Get rendered pixel data from WASM
+            const pixels = raymarcher.render(sdf);
+            const imageData = new ImageData(new Uint8ClampedArray(pixels), 512, 512);
+            ctx.putImageData(imageData, 0, 0);
+
+            const endTime = performance.now();
+            const renderTime = (endTime - startTime).toFixed(2);
+            const fps = (1000 / (endTime - startTime)).toFixed(1);
+
+            document.getElementById('render-time').textContent = renderTime + ' ms';
+            document.getElementById('fps').textContent = fps;
+        }
+
+        function runBenchmark() {
+            const results = document.getElementById('benchmark-results');
+            results.style.display = 'block';
+
+            // Run benchmarks
+            const time1k = benchmark_eval(1000);
+            document.getElementById('bench-1k').textContent = time1k.toFixed(2) + ' ms';
+
+            const time10k = benchmark_eval(10000);
+            document.getElementById('bench-10k').textContent = time10k.toFixed(2) + ' ms';
+
+            const time100k = benchmark_eval(100000);
+            document.getElementById('bench-100k').textContent = time100k.toFixed(2) + ' ms';
+        }
+
+        main().catch(console.error);
+    </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "alice-sdf"
+version = "0.1.0"
+description = "ALICE-SDF: 3D/Spatial Data Specialist - Store laws, not polygons"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Moroya Sakamoto" }]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+keywords = ["sdf", "signed-distance-function", "3d", "procedural", "csg"]
+
+[project.urls]
+Repository = "https://github.com/ext-sakamoro/ALICE-SDF"
+
+[tool.maturin]
+features = ["python"]
+module-name = "alice_sdf"
+python-source = "python"

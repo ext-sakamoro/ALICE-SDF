@@ -1,0 +1,335 @@
+// =============================================================================
+// SDF Compute Shader - Full GPU Particle Simulation
+// =============================================================================
+// Everything runs on GPU - Zero CPU involvement
+// SDF Evaluation + Physics + Position Update in ONE dispatch
+//
+// Performance: 10M+ particles at 60 FPS
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#pragma kernel CSMain
+#pragma kernel CSInit
+
+// =============================================================================
+// Data Structures
+// =============================================================================
+
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float life;
+    float _pad;  // Alignment to 32 bytes
+};
+
+// =============================================================================
+// Buffers
+// =============================================================================
+
+RWStructuredBuffer<Particle> _Particles;
+
+// =============================================================================
+// Uniforms
+// =============================================================================
+
+uint _ParticleCount;
+float _DeltaTime;
+float _Time;
+float _FlowSpeed;
+float _SurfaceAttraction;
+float _NoiseStrength;
+float _MaxDistance;
+float _SpawnRadius;
+
+// Time Slicing
+uint _SliceIndex;
+uint _SliceCount;
+
+// SDF Scene Parameters
+float _SunRadius;
+float _PlanetRadius;
+float _PlanetDistance;
+float _Smoothness;
+float _RingMajorRadius;
+float _RingMinorRadius;
+
+// =============================================================================
+// SDF Primitives (GPU Implementation)
+// =============================================================================
+
+float sdSphere(float3 p, float r)
+{
+    return length(p) - r;
+}
+
+float sdTorus(float3 p, float2 t)
+{
+    float2 q = float2(length(p.xz) - t.x, p.y);
+    return length(q) - t.y;
+}
+
+float sdBox(float3 p, float3 b)
+{
+    float3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+// =============================================================================
+// SDF Operations
+// =============================================================================
+
+float opSmoothUnion(float d1, float d2, float k)
+{
+    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    return lerp(d2, d1, h) - k * h * (1.0 - h);
+}
+
+float3 opRotateY(float3 p, float angle)
+{
+    float c = cos(angle);
+    float s = sin(angle);
+    return float3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
+}
+
+float3 opRotateX(float3 p, float angle)
+{
+    float c = cos(angle);
+    float s = sin(angle);
+    return float3(p.x, c * p.y - s * p.z, s * p.y + c * p.z);
+}
+
+// =============================================================================
+// Scene SDF (Cosmic Demo)
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+    // === SUN (Center) ===
+    float sun = sdSphere(p, _SunRadius);
+
+    // === PLANET (Orbiting) ===
+    float orbitAngle = _Time * 0.15;
+    float3 planetPos = float3(
+        cos(orbitAngle) * _PlanetDistance,
+        0,
+        sin(orbitAngle) * _PlanetDistance
+    );
+    float planet = sdSphere(p - planetPos, _PlanetRadius);
+
+    // === RING (Around Planet) ===
+    float3 ringP = p - planetPos;
+    ringP = opRotateX(ringP, 0.26); // ~15 degrees tilt
+    float ring = sdTorus(ringP, float2(_RingMajorRadius, _RingMinorRadius));
+
+    // === MOON ===
+    float moonOrbit = _Time * 0.4;
+    float3 moonPos = planetPos + float3(
+        cos(moonOrbit) * 4.0,
+        sin(moonOrbit) * 1.5,
+        sin(moonOrbit) * 4.0
+    );
+    float moon = sdSphere(p - moonPos, 0.6);
+
+    // === PLANET 2 (Distant) ===
+    float orbit2 = _Time * 0.25;
+    float3 planet2Pos = float3(
+        cos(orbit2) * _PlanetDistance * 0.6,
+        3.0,
+        sin(orbit2) * _PlanetDistance * 0.4
+    );
+    float planet2 = sdSphere(p - planet2Pos, _PlanetRadius * 0.5);
+
+    // === ASTEROIDS ===
+    float asteroids = 1e10;
+    float beltRadius = _PlanetDistance * 0.75;
+    for (int i = 0; i < 6; i++)
+    {
+        float angle = (float)i * 3.14159 * 2.0 / 6.0 + _Time * (0.1 + (float)i * 0.02);
+        float3 astPos = float3(
+            cos(angle) * beltRadius,
+            (i % 2 == 0 ? 0.5 : -0.5),
+            sin(angle) * beltRadius
+        );
+        float ast = sdSphere(p - astPos, 0.3 + (float)i * 0.1);
+        asteroids = min(asteroids, ast);
+    }
+
+    // === COMBINE ALL ===
+    float d = sun;
+    d = opSmoothUnion(d, planet, _Smoothness);
+    d = opSmoothUnion(d, ring, _Smoothness * 0.5);
+    d = opSmoothUnion(d, moon, _Smoothness);
+    d = opSmoothUnion(d, planet2, _Smoothness);
+    d = opSmoothUnion(d, asteroids, _Smoothness * 0.3);
+
+    return d;
+}
+
+// =============================================================================
+// Gradient (Normal) Calculation
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+    const float eps = 0.01;
+    float3 n;
+    n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+    n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+    n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+    return normalize(n);
+}
+
+// =============================================================================
+// Noise (Simple GPU-friendly)
+// =============================================================================
+
+float hash(float3 p)
+{
+    p = frac(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(float3 p)
+{
+    float3 i = floor(p);
+    float3 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    return lerp(
+        lerp(lerp(hash(i + float3(0,0,0)), hash(i + float3(1,0,0)), f.x),
+             lerp(hash(i + float3(0,1,0)), hash(i + float3(1,1,0)), f.x), f.y),
+        lerp(lerp(hash(i + float3(0,0,1)), hash(i + float3(1,0,1)), f.x),
+             lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y),
+        f.z
+    );
+}
+
+// =============================================================================
+// Random (PCG)
+// =============================================================================
+
+uint pcg(uint v)
+{
+    uint state = v * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+float randomFloat(uint seed)
+{
+    return float(pcg(seed)) / 4294967295.0;
+}
+
+float3 randomDirection(uint seed)
+{
+    float theta = randomFloat(seed) * 6.28318;
+    float phi = acos(2.0 * randomFloat(seed + 1u) - 1.0);
+    return float3(
+        sin(phi) * cos(theta),
+        sin(phi) * sin(theta),
+        cos(phi)
+    );
+}
+
+// =============================================================================
+// Initialize Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSInit(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    uint seed = id.x * 1337u + 12345u;
+
+    Particle p;
+    p.position = randomDirection(seed) * randomFloat(seed + 2u) * _SpawnRadius;
+    p.velocity = randomDirection(seed + 3u) * 0.5;
+    p.life = randomFloat(seed + 4u);
+    p._pad = 0;
+
+    _Particles[id.x] = p;
+}
+
+// =============================================================================
+// Main Update Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ParticleCount) return;
+
+    // Time slicing: skip particles not in current slice
+    if (_SliceCount > 1 && (id.x % _SliceCount) != _SliceIndex) return;
+
+    Particle particle = _Particles[id.x];
+
+    float3 pos = particle.position;
+    float3 vel = particle.velocity;
+
+    // === SDF Evaluation ===
+    float dist = sceneSDF(pos);
+    float3 normal = calcNormal(pos);
+
+    // === Physics ===
+
+    // 1. Project velocity onto surface tangent
+    float vDotN = dot(vel, normal);
+    vel -= vDotN * normal;
+
+    // 2. Add rotational flow
+    float3 tangent = cross(normal, float3(0, 1, 0));
+    if (length(tangent) < 0.01)
+    {
+        tangent = cross(normal, float3(1, 0, 0));
+    }
+    tangent = normalize(tangent);
+    vel += tangent * _FlowSpeed * 0.5;
+
+    // 3. Surface attraction
+    vel -= normal * dist * _SurfaceAttraction;
+
+    // 4. Add noise
+    if (_NoiseStrength > 0)
+    {
+        float3 noiseOffset = float3(
+            noise(pos * 0.1 + float3(_Time * 0.3, 0, 0)) - 0.5,
+            noise(pos * 0.1 + float3(0, _Time * 0.3, 0)) - 0.5,
+            noise(pos * 0.1 + float3(0, 0, _Time * 0.3)) - 0.5
+        );
+        vel += noiseOffset * _NoiseStrength;
+    }
+
+    // 5. Clamp velocity
+    float velLen = length(vel);
+    if (velLen > _FlowSpeed * 2.0)
+    {
+        vel = vel / velLen * _FlowSpeed * 2.0;
+    }
+
+    // 6. Integrate
+    pos += vel * _DeltaTime;
+
+    // 7. Respawn if out of bounds
+    float distFromOrigin = length(pos);
+    if (distFromOrigin > _MaxDistance || isnan(pos.x))
+    {
+        uint seed = id.x + asuint(_Time * 1000.0);
+        pos = randomDirection(seed) * randomFloat(seed + 1u) * _SpawnRadius;
+        vel = randomDirection(seed + 2u) * 0.5;
+    }
+
+    // Update lifetime
+    particle.life += _DeltaTime * 0.05;
+    if (particle.life > 1.0) particle.life -= 1.0;
+
+    // Write back
+    particle.position = pos;
+    particle.velocity = vel;
+
+    _Particles[id.x] = particle;
+}
