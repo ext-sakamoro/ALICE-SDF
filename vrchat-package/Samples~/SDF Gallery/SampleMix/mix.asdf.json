@@ -1,0 +1,69 @@
+{
+    "type": "SmoothUnion",
+    "smoothness": 0.8,
+    "children": [
+        {
+            "type": "Intersection",
+            "children": [
+                {
+                    "type": "Sphere",
+                    "radius": 6.0
+                },
+                {
+                    "type": "Subtraction",
+                    "children": [
+                        {
+                            "type": "Box",
+                            "size": [1000, 1000, 1000]
+                        },
+                        {
+                            "type": "RepeatInfinite",
+                            "spacing": [5, 5, 5],
+                            "child": {
+                                "type": "Union",
+                                "children": [
+                                    {
+                                        "type": "Box",
+                                        "size": [1000, 0.8, 0.8]
+                                    },
+                                    {
+                                        "type": "Box",
+                                        "size": [0.8, 1000, 0.8]
+                                    },
+                                    {
+                                        "type": "Box",
+                                        "size": [0.8, 0.8, 1000]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "SmoothUnion",
+            "smoothness": 0.8,
+            "children": [
+                {
+                    "type": "Torus",
+                    "majorRadius": 10.0,
+                    "minorRadius": 0.3
+                },
+                {
+                    "type": "Translate",
+                    "offset": [16, 0, 0],
+                    "child": {
+                        "type": "Onion",
+                        "layers": 3,
+                        "thickness": 0.15,
+                        "child": {
+                            "type": "Sphere",
+                            "radius": 3.0
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

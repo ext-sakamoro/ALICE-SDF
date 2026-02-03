@@ -40,5 +40,21 @@ unity-sdf-universe/Assets/Plugins/*.dylib
 unity-sdf-universe/Assets/Plugins/*.so
 unity-sdf-universe/Assets/Plugins/*.meta
 
+# VRChat package (Unity cache)
+vrchat-package/Library/
+vrchat-package/Temp/
+vrchat-package/Obj/
+vrchat-package/Build/
+vrchat-package/Builds/
+vrchat-package/Logs/
+vrchat-package/UserSettings/
+vrchat-package/*.csproj
+vrchat-package/*.unityproj
+vrchat-package/*.sln
+vrchat-package/*.suo
+vrchat-package/*.tmp
+vrchat-package/*.user
+vrchat-package/*.userprefs
+
 # Rust
 Cargo.lock

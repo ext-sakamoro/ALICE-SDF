@@ -1,0 +1,41 @@
+{
+  "name": "com.alice.sdf",
+  "version": "0.2.0",
+  "displayName": "ALICE-SDF for VRChat",
+  "description": "Stand on math. SDF raymarching + UdonSharp collision for VRChat worlds. Deep Fried optimized.",
+  "unity": "2022.3",
+  "author": {
+    "name": "Moroya Sakamoto",
+    "url": "https://github.com/sakamoro"
+  },
+  "keywords": [
+    "sdf",
+    "raymarching",
+    "vrchat",
+    "udon",
+    "shader"
+  ],
+  "license": "SEE LICENSE IN LICENSE.md",
+  "samples": [
+    {
+      "displayName": "SDF Gallery - Basic",
+      "description": "Ground plane + sphere. The simplest SDF world.",
+      "path": "Samples~/SDF Gallery/SampleBasic"
+    },
+    {
+      "displayName": "SDF Gallery - Cosmic",
+      "description": "Sun + orbiting planet + ring + moon. Animated solar system.",
+      "path": "Samples~/SDF Gallery/SampleCosmic"
+    },
+    {
+      "displayName": "SDF Gallery - Fractal",
+      "description": "Menger Sponge labyrinth with twist. Walk inside infinite fractals.",
+      "path": "Samples~/SDF Gallery/SampleFractal"
+    },
+    {
+      "displayName": "SDF Gallery - Mix",
+      "description": "Fractal planet + torus ring + onion shell. Cosmic × Fractal fusion.",
+      "path": "Samples~/SDF Gallery/SampleMix"
+    }
+  ]
+}

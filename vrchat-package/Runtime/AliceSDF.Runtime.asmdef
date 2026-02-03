@@ -1,0 +1,20 @@
+{
+  "name": "AliceSDF.Runtime",
+  "rootNamespace": "AliceSDF",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [
+    {
+      "name": "com.vrchat.worlds",
+      "expression": "",
+      "define": "UDONSHARP"
+    }
+  ],
+  "noEngineReferences": false
+}

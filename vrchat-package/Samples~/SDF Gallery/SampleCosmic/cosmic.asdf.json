@@ -1,0 +1,43 @@
+{
+    "type": "SmoothUnion",
+    "smoothness": 1.5,
+    "children": [
+        {
+            "type": "Sphere",
+            "radius": 8.0
+        },
+        {
+            "type": "SmoothUnion",
+            "smoothness": 1.5,
+            "children": [
+                {
+                    "type": "Translate",
+                    "offset": [18, 0, 0],
+                    "child": {
+                        "type": "SmoothUnion",
+                        "smoothness": 0.75,
+                        "children": [
+                            {
+                                "type": "Sphere",
+                                "radius": 2.5
+                            },
+                            {
+                                "type": "Torus",
+                                "majorRadius": 4.5,
+                                "minorRadius": 0.12
+                            }
+                        ]
+                    }
+                },
+                {
+                    "type": "Translate",
+                    "offset": [22, 1.5, 0],
+                    "child": {
+                        "type": "Sphere",
+                        "radius": 0.6
+                    }
+                }
+            ]
+        }
+    ]
+}

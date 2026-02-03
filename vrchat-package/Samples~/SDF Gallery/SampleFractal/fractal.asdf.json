@@ -1,0 +1,39 @@
+{
+    "type": "Twist",
+    "strength": 0.02,
+    "child": {
+        "type": "Subtraction",
+        "children": [
+            {
+                "type": "Box",
+                "size": [50, 50, 50]
+            },
+            {
+                "type": "RepeatInfinite",
+                "spacing": [15, 15, 15],
+                "child": {
+                    "type": "Union",
+                    "children": [
+                        {
+                            "type": "Box",
+                            "size": [1000, 2, 2]
+                        },
+                        {
+                            "type": "Union",
+                            "children": [
+                                {
+                                    "type": "Box",
+                                    "size": [2, 1000, 2]
+                                },
+                                {
+                                    "type": "Box",
+                                    "size": [2, 2, 1000]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}

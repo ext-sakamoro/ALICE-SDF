@@ -1,0 +1,18 @@
+{
+    "type": "Union",
+    "children": [
+        {
+            "type": "Plane",
+            "normal": [0, 1, 0],
+            "distance": 0
+        },
+        {
+            "type": "Translate",
+            "offset": [0, 1.5, 0],
+            "child": {
+                "type": "Sphere",
+                "radius": 1.5
+            }
+        }
+    ]
+}
