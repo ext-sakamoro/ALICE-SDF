@@ -682,8 +682,9 @@ namespace SdfUniverse
                         + Mathf.Min(Mathf.Max(d.x, Mathf.Max(d.y, d.z)), 0);
 
             // Fractal cross (approximate)
-            Vector3 rp = p - new Vector3(repeatScale, repeatScale, repeatScale)
-                * new Vector3(Mathf.Round(p.x / repeatScale), Mathf.Round(p.y / repeatScale), Mathf.Round(p.z / repeatScale));
+            Vector3 rp = p - Vector3.Scale(
+                new Vector3(repeatScale, repeatScale, repeatScale),
+                new Vector3(Mathf.Round(p.x / repeatScale), Mathf.Round(p.y / repeatScale), Mathf.Round(p.z / repeatScale)));
             float hs = holeSize * 0.5f;
             float barX = Mathf.Max(Mathf.Abs(rp.y) - hs, Mathf.Abs(rp.z) - hs);
             float barY = Mathf.Max(Mathf.Abs(rp.x) - hs, Mathf.Abs(rp.z) - hs);
