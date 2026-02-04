@@ -160,18 +160,23 @@ com.alice.sdf/
 └── Prefabs~/                        # Hidden from Unity import
 ```
 
-## Supported Primitives
+## Supported Primitives (11)
 
 | Primitive | HLSL | C# | Formula |
 |-----------|------|----|---------|
-| Sphere    | `sdSphere`   | `Sdf.Sphere`   | `length(p) - r` |
-| Box       | `sdBox`      | `Sdf.Box`      | Branchless min/max |
-| Cylinder  | `sdCylinder` | `Sdf.Cylinder` | Capped vertical |
-| Torus     | `sdTorus`    | `Sdf.Torus`    | XZ ring |
-| Plane     | `sdPlane`    | `Sdf.Plane`    | `dot(p,n) + d` |
-| Capsule   | `sdCapsule`  | `Sdf.Capsule`  | Line segment + r |
+| Sphere    | `sdSphere`     | `Sdf.Sphere`     | `length(p) - r` |
+| Box       | `sdBox`        | `Sdf.Box`        | Branchless min/max |
+| Cylinder  | `sdCylinder`   | `Sdf.Cylinder`   | Capped vertical |
+| Torus     | `sdTorus`      | `Sdf.Torus`      | XZ ring |
+| Plane     | `sdPlane`      | `Sdf.Plane`      | `dot(p,n) + d` |
+| Capsule   | `sdCapsule`    | `Sdf.Capsule`    | Line segment + r |
+| Cone      | `sdCone`       | `Sdf.Cone`       | Capped Y-axis cone |
+| Ellipsoid | `sdEllipsoid`  | `Sdf.Ellipsoid`  | Bound-corrected approx |
+| HexPrism  | `sdHexPrism`   | `Sdf.HexPrism`   | Hexagonal prism (Z-axis) |
+| Triangle  | `sdTriangle`   | `Sdf.Triangle`   | Exact 3D triangle |
+| Bezier    | `sdBezier`     | `Sdf.Bezier`     | Quadratic curve + radius |
 
-## Supported Operations
+## Supported Operations (16)
 
 | Operation | HLSL | C# | Effect |
 |-----------|------|----|--------|
@@ -181,10 +186,17 @@ com.alice.sdf/
 | Smooth Union       | `opSmoothUnion`               | `Sdf.SmoothUnion` (inlined by Baker) | Smooth blend |
 | Smooth Intersection| `opSmoothIntersection`        | `Sdf.SmoothIntersection` (inlined) | Smooth intersect |
 | Smooth Subtraction | `opSmoothSubtraction`         | `Sdf.SmoothSubtraction` (inlined) | Smooth carve |
-| Repeat             | `opRepeatInfinite`            | `Sdf.RepeatInfinite`          | Infinite tiling |
-| Twist              | inline sincos                 | `Sdf.Twist`                   | Y-axis twist |
-| Round              | `d - r`                       | `d - r` (inlined)             | Round edges |
-| Onion              | `abs(d) - t`                  | `Mathf.Abs(d) - t` (inlined) | Hollow shell |
+| Repeat Infinite    | `opRepeatInfinite`            | `Sdf.RepeatInfinite`          | Infinite tiling |
+| Repeat Finite      | `opRepeatFinite`              | `Sdf.RepeatFinite`            | Bounded tiling |
+| Polar Repeat       | `opPolarRepeat`               | `Sdf.PolarRepeat`             | Circular array (Y-axis) |
+| Twist              | `opTwist`                     | `Sdf.Twist`                   | Y-axis twist |
+| Bend               | `opBend`                      | `Sdf.Bend`                    | X-axis bend |
+| Round              | `opRound`                     | `Sdf.Round`                   | Round edges |
+| Onion              | `opOnion`                     | `Sdf.Onion`                   | Hollow shell |
+| Taper              | `opTaper`                     | `Sdf.Taper`                   | Y-axis taper |
+| Displacement       | `opDisplacement`              | `Sdf.Displacement`            | Noise surface |
+| Symmetry           | `opSymmetry`                  | `Sdf.Symmetry`                | Axis mirroring |
+| Elongate           | `opElongate`                  | `Sdf.Elongate`                | Stretch along axes |
 
 ## VRChat Compatibility
 

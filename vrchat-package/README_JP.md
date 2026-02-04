@@ -202,7 +202,7 @@ com.alice.sdf/
 └── Prefabs~/                        # Unity Importから隠蔽
 ```
 
-## 対応プリミティブ
+## 対応プリミティブ (11種)
 
 | プリミティブ | HLSL | C# | 数式 |
 |-------------|------|----|------|
@@ -212,8 +212,13 @@ com.alice.sdf/
 | Torus (トーラス) | `sdTorus` | `Sdf.Torus` | XZ ring |
 | Plane (平面) | `sdPlane` | `Sdf.Plane` | `dot(p,n) + d` |
 | Capsule (カプセル) | `sdCapsule` | `Sdf.Capsule` | Line segment + r |
+| Cone (円錐) | `sdCone` | `Sdf.Cone` | Y軸キャップ付き円錐 |
+| Ellipsoid (楕円体) | `sdEllipsoid` | `Sdf.Ellipsoid` | バウンド補正近似 |
+| HexPrism (六角柱) | `sdHexPrism` | `Sdf.HexPrism` | Z軸六角柱 |
+| Triangle (三角形) | `sdTriangle` | `Sdf.Triangle` | 3D三角形（厳密解） |
+| Bezier (ベジエ曲線) | `sdBezier` | `Sdf.Bezier` | 二次ベジエ + 半径 |
 
-## 対応演算
+## 対応演算 (16種)
 
 | 演算 | HLSL | C# (Baker生成後) | 効果 |
 |------|------|-------------------|------|
@@ -224,9 +229,16 @@ com.alice.sdf/
 | 滑らか交差 | `opSmoothIntersection` | インライン展開 | 滑らかに交差 |
 | 滑らかくり抜き | `opSmoothSubtraction` | インライン展開 | 滑らかに削る |
 | 無限繰り返し | `opRepeatInfinite` | `Sdf.RepeatInfinite` | 空間タイリング |
-| ねじり | inline sincos | `Sdf.Twist` | Y軸ねじり |
-| 角丸 | `d - r` | `d - r` (インライン) | 角を丸める |
-| 中空 | `abs(d) - t` | `Mathf.Abs(d) - t` (インライン) | 中空シェル |
+| 有限繰り返し | `opRepeatFinite` | `Sdf.RepeatFinite` | 有限タイリング |
+| 極座標繰り返し | `opPolarRepeat` | `Sdf.PolarRepeat` | Y軸円形配列 |
+| ねじり | `opTwist` | `Sdf.Twist` | Y軸ねじり |
+| 曲げ | `opBend` | `Sdf.Bend` | X軸曲げ |
+| 角丸 | `opRound` | `Sdf.Round` | 角を丸める |
+| 中空 | `opOnion` | `Sdf.Onion` | 中空シェル |
+| テーパー | `opTaper` | `Sdf.Taper` | Y軸先細り |
+| ディスプレイスメント | `opDisplacement` | `Sdf.Displacement` | ノイズ表面 |
+| 対称 | `opSymmetry` | `Sdf.Symmetry` | 軸ミラー |
+| 伸長 | `opElongate` | `Sdf.Elongate` | 軸方向伸長 |
 
 ---
 

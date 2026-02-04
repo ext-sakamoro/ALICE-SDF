@@ -120,5 +120,49 @@ namespace AliceSDF
         {
             return Mathf.Max(v.x, Mathf.Max(v.y, v.z));
         }
+
+        /// <summary>
+        /// Component-wise min of Vector3 and scalar.
+        /// </summary>
+        public static Vector3 Min(Vector3 v, float s)
+        {
+            return new Vector3(
+                Mathf.Min(v.x, s),
+                Mathf.Min(v.y, s),
+                Mathf.Min(v.z, s)
+            );
+        }
+
+        /// <summary>
+        /// Component-wise min of two Vector3s.
+        /// </summary>
+        public static Vector3 Min(Vector3 a, Vector3 b)
+        {
+            return new Vector3(
+                Mathf.Min(a.x, b.x),
+                Mathf.Min(a.y, b.y),
+                Mathf.Min(a.z, b.z)
+            );
+        }
+
+        /// <summary>
+        /// Min component of Vector3.
+        /// </summary>
+        public static float MinComponent(Vector3 v)
+        {
+            return Mathf.Min(v.x, Mathf.Min(v.y, v.z));
+        }
+
+        /// <summary>
+        /// Component-wise sign of Vector3.
+        /// </summary>
+        public static Vector3 Sign(Vector3 v)
+        {
+            return new Vector3(
+                Mathf.Sign(v.x),
+                Mathf.Sign(v.y),
+                Mathf.Sign(v.z)
+            );
+        }
     }
 }
