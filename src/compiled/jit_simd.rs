@@ -1622,24 +1622,25 @@ impl JitSimd {
                         let k_v = builder.ins().splat(simd_type, k_s);
 
                         // Lane 0: angle = k * x, rotate XY
+                        // x' = cos*x - sin*y, y' = sin*x + cos*y
                         let angle0 = builder.ins().fmul(k_v, curr_x.0);
                         let (cos0, sin0) = simd_sincos_approx_js(&mut builder, angle0, simd_type);
-                        let cy0 = builder.ins().fmul(cos0, curr_y.0);
-                        let sx0 = builder.ins().fmul(sin0, curr_x.0);
-                        let ny0 = builder.ins().fsub(cy0, sx0);
+                        let cx0 = builder.ins().fmul(cos0, curr_x.0);
                         let sy0 = builder.ins().fmul(sin0, curr_y.0);
-                        let cxx0 = builder.ins().fmul(cos0, curr_x.0);
-                        let nx0 = builder.ins().fadd(sy0, cxx0);
+                        let nx0 = builder.ins().fsub(cx0, sy0);
+                        let sx0 = builder.ins().fmul(sin0, curr_x.0);
+                        let cy0 = builder.ins().fmul(cos0, curr_y.0);
+                        let ny0 = builder.ins().fadd(sx0, cy0);
 
                         // Lane 1
                         let angle1 = builder.ins().fmul(k_v, curr_x.1);
                         let (cos1, sin1) = simd_sincos_approx_js(&mut builder, angle1, simd_type);
-                        let cy1 = builder.ins().fmul(cos1, curr_y.1);
-                        let sx1 = builder.ins().fmul(sin1, curr_x.1);
-                        let ny1 = builder.ins().fsub(cy1, sx1);
+                        let cx1 = builder.ins().fmul(cos1, curr_x.1);
                         let sy1 = builder.ins().fmul(sin1, curr_y.1);
-                        let cxx1 = builder.ins().fmul(cos1, curr_x.1);
-                        let nx1 = builder.ins().fadd(sy1, cxx1);
+                        let nx1 = builder.ins().fsub(cx1, sy1);
+                        let sx1 = builder.ins().fmul(sin1, curr_x.1);
+                        let cy1 = builder.ins().fmul(cos1, curr_y.1);
+                        let ny1 = builder.ins().fadd(sx1, cy1);
 
                         curr_x = (nx0, nx1);
                         curr_y = (ny0, ny1);
