@@ -119,6 +119,49 @@ fn simd_length3(builder: &mut FunctionBuilder, x: Value, y: Value, z: Value) -> 
     builder.ins().sqrt(sum)
 }
 
+/// SIMD sin/cos Taylor-series approximation
+///
+/// sin(x) ≈ x - x³/6 + x⁵/120
+/// cos(x) ≈ 1 - x²/2 + x⁴/24
+///
+/// Returns (cos, sin)
+#[cfg(feature = "jit")]
+fn simd_sincos_approx_js(
+    builder: &mut FunctionBuilder,
+    angle: Value,
+    simd_type: types::Type,
+) -> (Value, Value) {
+    let one_s = builder.ins().f32const(1.0);
+    let half_s = builder.ins().f32const(0.5);
+    let sixth_s = builder.ins().f32const(1.0 / 6.0);
+    let tf_s = builder.ins().f32const(1.0 / 24.0);
+    let ot_s = builder.ins().f32const(1.0 / 120.0);
+    let one_v = builder.ins().splat(simd_type, one_s);
+    let half_v = builder.ins().splat(simd_type, half_s);
+    let sixth_v = builder.ins().splat(simd_type, sixth_s);
+    let tf_v = builder.ins().splat(simd_type, tf_s);
+    let ot_v = builder.ins().splat(simd_type, ot_s);
+
+    let x2 = builder.ins().fmul(angle, angle);
+    let x3 = builder.ins().fmul(x2, angle);
+    let x4 = builder.ins().fmul(x2, x2);
+    let x5 = builder.ins().fmul(x4, angle);
+
+    // sin(x) = x - x³/6 + x⁵/120
+    let st1 = builder.ins().fmul(x3, sixth_v);
+    let st2 = builder.ins().fmul(x5, ot_v);
+    let sin_r = builder.ins().fsub(angle, st1);
+    let sin_r = builder.ins().fadd(sin_r, st2);
+
+    // cos(x) = 1 - x²/2 + x⁴/24
+    let ct1 = builder.ins().fmul(x2, half_v);
+    let ct2 = builder.ins().fmul(x4, tf_v);
+    let cos_r = builder.ins().fsub(one_v, ct1);
+    let cos_r = builder.ins().fadd(cos_r, ct2);
+
+    (cos_r, sin_r)
+}
+
 #[cfg(feature = "jit")]
 impl JitSimd {
     /// Compile the SDF bytecode into a native SIMD function.
@@ -1314,6 +1357,8 @@ impl JitSimd {
                     }
 
                     OpCode::Scale => {
+                        // params[0] = 1/factor (precomputed inverse)
+                        // params[1] = factor (original)
                         coord_stack.push(CoordState {
                             x: curr_x,
                             y: curr_y,
@@ -1323,24 +1368,26 @@ impl JitSimd {
                             params: inst.params,
                         });
 
-                        let s_s = builder.ins().f32const(inst.params[0]);
-                        let s = builder.ins().splat(simd_type, s_s);
+                        let inv_s = builder.ins().f32const(inst.params[0]);
+                        let inv_v = builder.ins().splat(simd_type, inv_s);
+                        let f_s = builder.ins().f32const(inst.params[1]);
+                        let f_v = builder.ins().splat(simd_type, f_s);
 
-                        // p = p / s
-                        let new_x0 = builder.ins().fdiv(curr_x.0, s);
-                        let new_x1 = builder.ins().fdiv(curr_x.1, s);
-                        let new_y0 = builder.ins().fdiv(curr_y.0, s);
-                        let new_y1 = builder.ins().fdiv(curr_y.1, s);
-                        let new_z0 = builder.ins().fdiv(curr_z.0, s);
-                        let new_z1 = builder.ins().fdiv(curr_z.1, s);
+                        // Division Exorcism: p *= inv_factor (no division)
+                        let new_x0 = builder.ins().fmul(curr_x.0, inv_v);
+                        let new_x1 = builder.ins().fmul(curr_x.1, inv_v);
+                        let new_y0 = builder.ins().fmul(curr_y.0, inv_v);
+                        let new_y1 = builder.ins().fmul(curr_y.1, inv_v);
+                        let new_z0 = builder.ins().fmul(curr_z.0, inv_v);
+                        let new_z1 = builder.ins().fmul(curr_z.1, inv_v);
 
                         curr_x = (new_x0, new_x1);
                         curr_y = (new_y0, new_y1);
                         curr_z = (new_z0, new_z1);
 
-                        // scale *= s
-                        let new_scale0 = builder.ins().fmul(curr_scale.0, s);
-                        let new_scale1 = builder.ins().fmul(curr_scale.1, s);
+                        // scale_correction *= factor
+                        let new_scale0 = builder.ins().fmul(curr_scale.0, f_v);
+                        let new_scale1 = builder.ins().fmul(curr_scale.1, f_v);
                         curr_scale = (new_scale0, new_scale1);
                     }
 
@@ -1432,6 +1479,363 @@ impl JitSimd {
 
                         // Evaluate child at (x, y, 0)
                         curr_z = (zero, zero);
+                    }
+
+                    OpCode::Rotate => {
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::Rotate, params: inst.params,
+                        });
+
+                        // Quaternion → rotation matrix (compile-time)
+                        let qx = inst.params[0];
+                        let qy = inst.params[1];
+                        let qz = inst.params[2];
+                        let qw = inst.params[3];
+                        // Inverse quaternion: negate xyz
+                        let qx = -qx; let qy = -qy; let qz = -qz;
+                        let m00 = 1.0 - 2.0 * (qy * qy + qz * qz);
+                        let m01 = 2.0 * (qx * qy - qz * qw);
+                        let m02 = 2.0 * (qx * qz + qy * qw);
+                        let m10 = 2.0 * (qx * qy + qz * qw);
+                        let m11 = 1.0 - 2.0 * (qx * qx + qz * qz);
+                        let m12 = 2.0 * (qy * qz - qx * qw);
+                        let m20 = 2.0 * (qx * qz - qy * qw);
+                        let m21 = 2.0 * (qy * qz + qx * qw);
+                        let m22 = 1.0 - 2.0 * (qx * qx + qy * qy);
+
+                        let m00_s = builder.ins().f32const(m00);
+                        let m00v = builder.ins().splat(simd_type, m00_s);
+                        let m01_s = builder.ins().f32const(m01);
+                        let m01v = builder.ins().splat(simd_type, m01_s);
+                        let m02_s = builder.ins().f32const(m02);
+                        let m02v = builder.ins().splat(simd_type, m02_s);
+                        let m10_s = builder.ins().f32const(m10);
+                        let m10v = builder.ins().splat(simd_type, m10_s);
+                        let m11_s = builder.ins().f32const(m11);
+                        let m11v = builder.ins().splat(simd_type, m11_s);
+                        let m12_s = builder.ins().f32const(m12);
+                        let m12v = builder.ins().splat(simd_type, m12_s);
+                        let m20_s = builder.ins().f32const(m20);
+                        let m20v = builder.ins().splat(simd_type, m20_s);
+                        let m21_s = builder.ins().f32const(m21);
+                        let m21v = builder.ins().splat(simd_type, m21_s);
+                        let m22_s = builder.ins().f32const(m22);
+                        let m22v = builder.ins().splat(simd_type, m22_s);
+
+                        // Lane 0: p' = M * p (FMA chain)
+                        let t0 = builder.ins().fmul(m02v, curr_z.0);
+                        let t0 = builder.ins().fma(m01v, curr_y.0, t0);
+                        let nx0 = builder.ins().fma(m00v, curr_x.0, t0);
+                        let t0 = builder.ins().fmul(m12v, curr_z.0);
+                        let t0 = builder.ins().fma(m11v, curr_y.0, t0);
+                        let ny0 = builder.ins().fma(m10v, curr_x.0, t0);
+                        let t0 = builder.ins().fmul(m22v, curr_z.0);
+                        let t0 = builder.ins().fma(m21v, curr_y.0, t0);
+                        let nz0 = builder.ins().fma(m20v, curr_x.0, t0);
+
+                        // Lane 1
+                        let t1 = builder.ins().fmul(m02v, curr_z.1);
+                        let t1 = builder.ins().fma(m01v, curr_y.1, t1);
+                        let nx1 = builder.ins().fma(m00v, curr_x.1, t1);
+                        let t1 = builder.ins().fmul(m12v, curr_z.1);
+                        let t1 = builder.ins().fma(m11v, curr_y.1, t1);
+                        let ny1 = builder.ins().fma(m10v, curr_x.1, t1);
+                        let t1 = builder.ins().fmul(m22v, curr_z.1);
+                        let t1 = builder.ins().fma(m21v, curr_y.1, t1);
+                        let nz1 = builder.ins().fma(m20v, curr_x.1, t1);
+
+                        curr_x = (nx0, nx1);
+                        curr_y = (ny0, ny1);
+                        curr_z = (nz0, nz1);
+                    }
+
+                    OpCode::ScaleNonUniform => {
+                        // params[0..2] = precomputed 1/sx, 1/sy, 1/sz
+                        // params[3] = min(sx, sy, sz) for scale correction
+                        let inv_sx = inst.params[0];
+                        let inv_sy = inst.params[1];
+                        let inv_sz = inst.params[2];
+                        let min_factor = inst.params[3];
+
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::ScaleNonUniform, params: inst.params,
+                        });
+
+                        let isx_s = builder.ins().f32const(inv_sx);
+                        let isx = builder.ins().splat(simd_type, isx_s);
+                        let isy_s = builder.ins().f32const(inv_sy);
+                        let isy = builder.ins().splat(simd_type, isy_s);
+                        let isz_s = builder.ins().f32const(inv_sz);
+                        let isz = builder.ins().splat(simd_type, isz_s);
+                        let mf_s = builder.ins().f32const(min_factor);
+                        let mf = builder.ins().splat(simd_type, mf_s);
+
+                        curr_x = (builder.ins().fmul(curr_x.0, isx), builder.ins().fmul(curr_x.1, isx));
+                        curr_y = (builder.ins().fmul(curr_y.0, isy), builder.ins().fmul(curr_y.1, isy));
+                        curr_z = (builder.ins().fmul(curr_z.0, isz), builder.ins().fmul(curr_z.1, isz));
+                        curr_scale = (builder.ins().fmul(curr_scale.0, mf), builder.ins().fmul(curr_scale.1, mf));
+                    }
+
+                    OpCode::Twist => {
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::Twist, params: inst.params,
+                        });
+
+                        let k_s = builder.ins().f32const(inst.params[0]);
+                        let k_v = builder.ins().splat(simd_type, k_s);
+
+                        // Lane 0: angle = y * k, rotate XZ
+                        let angle0 = builder.ins().fmul(curr_y.0, k_v);
+                        let (cos0, sin0) = simd_sincos_approx_js(&mut builder, angle0, simd_type);
+                        let cx0 = builder.ins().fmul(cos0, curr_x.0);
+                        let sz0 = builder.ins().fmul(sin0, curr_z.0);
+                        let nx0 = builder.ins().fsub(cx0, sz0);
+                        let sx0 = builder.ins().fmul(sin0, curr_x.0);
+                        let cz0 = builder.ins().fmul(cos0, curr_z.0);
+                        let nz0 = builder.ins().fadd(sx0, cz0);
+
+                        // Lane 1
+                        let angle1 = builder.ins().fmul(curr_y.1, k_v);
+                        let (cos1, sin1) = simd_sincos_approx_js(&mut builder, angle1, simd_type);
+                        let cx1 = builder.ins().fmul(cos1, curr_x.1);
+                        let sz1 = builder.ins().fmul(sin1, curr_z.1);
+                        let nx1 = builder.ins().fsub(cx1, sz1);
+                        let sx1 = builder.ins().fmul(sin1, curr_x.1);
+                        let cz1 = builder.ins().fmul(cos1, curr_z.1);
+                        let nz1 = builder.ins().fadd(sx1, cz1);
+
+                        curr_x = (nx0, nx1);
+                        // curr_y unchanged
+                        curr_z = (nz0, nz1);
+                    }
+
+                    OpCode::Bend => {
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::Bend, params: inst.params,
+                        });
+
+                        let k_s = builder.ins().f32const(inst.params[0]);
+                        let k_v = builder.ins().splat(simd_type, k_s);
+
+                        // Lane 0: angle = k * x, rotate XY
+                        let angle0 = builder.ins().fmul(k_v, curr_x.0);
+                        let (cos0, sin0) = simd_sincos_approx_js(&mut builder, angle0, simd_type);
+                        let cy0 = builder.ins().fmul(cos0, curr_y.0);
+                        let sx0 = builder.ins().fmul(sin0, curr_x.0);
+                        let ny0 = builder.ins().fsub(cy0, sx0);
+                        let sy0 = builder.ins().fmul(sin0, curr_y.0);
+                        let cxx0 = builder.ins().fmul(cos0, curr_x.0);
+                        let nx0 = builder.ins().fadd(sy0, cxx0);
+
+                        // Lane 1
+                        let angle1 = builder.ins().fmul(k_v, curr_x.1);
+                        let (cos1, sin1) = simd_sincos_approx_js(&mut builder, angle1, simd_type);
+                        let cy1 = builder.ins().fmul(cos1, curr_y.1);
+                        let sx1 = builder.ins().fmul(sin1, curr_x.1);
+                        let ny1 = builder.ins().fsub(cy1, sx1);
+                        let sy1 = builder.ins().fmul(sin1, curr_y.1);
+                        let cxx1 = builder.ins().fmul(cos1, curr_x.1);
+                        let nx1 = builder.ins().fadd(sy1, cxx1);
+
+                        curr_x = (nx0, nx1);
+                        curr_y = (ny0, ny1);
+                        // curr_z unchanged
+                    }
+
+                    OpCode::RepeatInfinite => {
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::RepeatInfinite, params: inst.params,
+                        });
+
+                        // Division Exorcism: pre-compute reciprocals at compile time
+                        let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
+                        let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
+                        let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
+                        let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+
+                        let sx_s = builder.ins().f32const(sx);
+                        let sx_v = builder.ins().splat(simd_type, sx_s);
+                        let sy_s = builder.ins().f32const(sy);
+                        let sy_v = builder.ins().splat(simd_type, sy_s);
+                        let sz_s = builder.ins().f32const(sz);
+                        let sz_v = builder.ins().splat(simd_type, sz_s);
+                        let isx_s = builder.ins().f32const(isx);
+                        let isx_v = builder.ins().splat(simd_type, isx_s);
+                        let isy_s = builder.ins().f32const(isy);
+                        let isy_v = builder.ins().splat(simd_type, isy_s);
+                        let isz_s = builder.ins().f32const(isz);
+                        let isz_v = builder.ins().splat(simd_type, isz_s);
+
+                        // Lane 0: p - s * round(p * inv_s)
+                        let rx0 = builder.ins().fmul(curr_x.0, isx_v);
+                        let ry0 = builder.ins().fmul(curr_y.0, isy_v);
+                        let rz0 = builder.ins().fmul(curr_z.0, isz_v);
+                        let rx0 = builder.ins().nearest(rx0);
+                        let ry0 = builder.ins().nearest(ry0);
+                        let rz0 = builder.ins().nearest(rz0);
+                        let ox0 = builder.ins().fmul(sx_v, rx0);
+                        let oy0 = builder.ins().fmul(sy_v, ry0);
+                        let oz0 = builder.ins().fmul(sz_v, rz0);
+                        let nx0 = builder.ins().fsub(curr_x.0, ox0);
+                        let ny0 = builder.ins().fsub(curr_y.0, oy0);
+                        let nz0 = builder.ins().fsub(curr_z.0, oz0);
+
+                        // Lane 1
+                        let rx1 = builder.ins().fmul(curr_x.1, isx_v);
+                        let ry1 = builder.ins().fmul(curr_y.1, isy_v);
+                        let rz1 = builder.ins().fmul(curr_z.1, isz_v);
+                        let rx1 = builder.ins().nearest(rx1);
+                        let ry1 = builder.ins().nearest(ry1);
+                        let rz1 = builder.ins().nearest(rz1);
+                        let ox1 = builder.ins().fmul(sx_v, rx1);
+                        let oy1 = builder.ins().fmul(sy_v, ry1);
+                        let oz1 = builder.ins().fmul(sz_v, rz1);
+                        let nx1 = builder.ins().fsub(curr_x.1, ox1);
+                        let ny1 = builder.ins().fsub(curr_y.1, oy1);
+                        let nz1 = builder.ins().fsub(curr_z.1, oz1);
+
+                        curr_x = (nx0, nx1);
+                        curr_y = (ny0, ny1);
+                        curr_z = (nz0, nz1);
+                    }
+
+                    OpCode::RepeatFinite => {
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::RepeatFinite, params: inst.params,
+                        });
+
+                        let cx = inst.params[0]; // count_x
+                        let cy = inst.params[1]; // count_y
+                        let cz = inst.params[2]; // count_z
+                        let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
+                        let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
+                        let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
+                        let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+                        let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
+
+                        let sx_s = builder.ins().f32const(sx);
+                        let sx_v = builder.ins().splat(simd_type, sx_s);
+                        let sy_s = builder.ins().f32const(sy);
+                        let sy_v = builder.ins().splat(simd_type, sy_s);
+                        let sz_s = builder.ins().f32const(sz);
+                        let sz_v = builder.ins().splat(simd_type, sz_s);
+                        let isx_s = builder.ins().f32const(isx);
+                        let isx_v = builder.ins().splat(simd_type, isx_s);
+                        let isy_s = builder.ins().f32const(isy);
+                        let isy_v = builder.ins().splat(simd_type, isy_s);
+                        let isz_s = builder.ins().f32const(isz);
+                        let isz_v = builder.ins().splat(simd_type, isz_s);
+                        let lx_s = builder.ins().f32const(lx);
+                        let lx_v = builder.ins().splat(simd_type, lx_s);
+                        let ly_s = builder.ins().f32const(ly);
+                        let ly_v = builder.ins().splat(simd_type, ly_s);
+                        let lz_s = builder.ins().f32const(lz);
+                        let lz_v = builder.ins().splat(simd_type, lz_s);
+                        let nlx_v = builder.ins().fneg(lx_v);
+                        let nly_v = builder.ins().fneg(ly_v);
+                        let nlz_v = builder.ins().fneg(lz_v);
+
+                        // Lane 0: clamp(round(p * inv_s), -limit, limit), then p - cell * s
+                        let pix0 = builder.ins().fmul(curr_x.0, isx_v);
+                        let rx0 = builder.ins().nearest(pix0);
+                        let piy0 = builder.ins().fmul(curr_y.0, isy_v);
+                        let ry0 = builder.ins().nearest(piy0);
+                        let piz0 = builder.ins().fmul(curr_z.0, isz_v);
+                        let rz0 = builder.ins().nearest(piz0);
+                        let cx0 = builder.ins().fmin(rx0, lx_v);
+                        let rx0 = builder.ins().fmax(nlx_v, cx0);
+                        let cy0 = builder.ins().fmin(ry0, ly_v);
+                        let ry0 = builder.ins().fmax(nly_v, cy0);
+                        let cz0 = builder.ins().fmin(rz0, lz_v);
+                        let rz0 = builder.ins().fmax(nlz_v, cz0);
+                        let ofx0 = builder.ins().fmul(rx0, sx_v);
+                        let nx0 = builder.ins().fsub(curr_x.0, ofx0);
+                        let ofy0 = builder.ins().fmul(ry0, sy_v);
+                        let ny0 = builder.ins().fsub(curr_y.0, ofy0);
+                        let ofz0 = builder.ins().fmul(rz0, sz_v);
+                        let nz0 = builder.ins().fsub(curr_z.0, ofz0);
+
+                        // Lane 1
+                        let pix1 = builder.ins().fmul(curr_x.1, isx_v);
+                        let rx1 = builder.ins().nearest(pix1);
+                        let piy1 = builder.ins().fmul(curr_y.1, isy_v);
+                        let ry1 = builder.ins().nearest(piy1);
+                        let piz1 = builder.ins().fmul(curr_z.1, isz_v);
+                        let rz1 = builder.ins().nearest(piz1);
+                        let cx1 = builder.ins().fmin(rx1, lx_v);
+                        let rx1 = builder.ins().fmax(nlx_v, cx1);
+                        let cy1 = builder.ins().fmin(ry1, ly_v);
+                        let ry1 = builder.ins().fmax(nly_v, cy1);
+                        let cz1 = builder.ins().fmin(rz1, lz_v);
+                        let rz1 = builder.ins().fmax(nlz_v, cz1);
+                        let ofx1 = builder.ins().fmul(rx1, sx_v);
+                        let nx1 = builder.ins().fsub(curr_x.1, ofx1);
+                        let ofy1 = builder.ins().fmul(ry1, sy_v);
+                        let ny1 = builder.ins().fsub(curr_y.1, ofy1);
+                        let ofz1 = builder.ins().fmul(rz1, sz_v);
+                        let nz1 = builder.ins().fsub(curr_z.1, ofz1);
+
+                        curr_x = (nx0, nx1);
+                        curr_y = (ny0, ny1);
+                        curr_z = (nz0, nz1);
+                    }
+
+                    OpCode::Elongate => {
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::Elongate, params: inst.params,
+                        });
+
+                        let hx_s = builder.ins().f32const(inst.params[0]);
+                        let hx = builder.ins().splat(simd_type, hx_s);
+                        let hy_s = builder.ins().f32const(inst.params[1]);
+                        let hy = builder.ins().splat(simd_type, hy_s);
+                        let hz_s = builder.ins().f32const(inst.params[2]);
+                        let hz = builder.ins().splat(simd_type, hz_s);
+                        let nhx = builder.ins().fneg(hx);
+                        let nhy = builder.ins().fneg(hy);
+                        let nhz = builder.ins().fneg(hz);
+
+                        // Lane 0: p - clamp(p, -h, h)
+                        let cx0 = builder.ins().fmin(curr_x.0, hx);
+                        let cx0 = builder.ins().fmax(nhx, cx0);
+                        let cy0 = builder.ins().fmin(curr_y.0, hy);
+                        let cy0 = builder.ins().fmax(nhy, cy0);
+                        let cz0 = builder.ins().fmin(curr_z.0, hz);
+                        let cz0 = builder.ins().fmax(nhz, cz0);
+                        let nx0 = builder.ins().fsub(curr_x.0, cx0);
+                        let ny0 = builder.ins().fsub(curr_y.0, cy0);
+                        let nz0 = builder.ins().fsub(curr_z.0, cz0);
+
+                        // Lane 1
+                        let cx1 = builder.ins().fmin(curr_x.1, hx);
+                        let cx1 = builder.ins().fmax(nhx, cx1);
+                        let cy1 = builder.ins().fmin(curr_y.1, hy);
+                        let cy1 = builder.ins().fmax(nhy, cy1);
+                        let cz1 = builder.ins().fmin(curr_z.1, hz);
+                        let cz1 = builder.ins().fmax(nhz, cz1);
+                        let nx1 = builder.ins().fsub(curr_x.1, cx1);
+                        let ny1 = builder.ins().fsub(curr_y.1, cy1);
+                        let nz1 = builder.ins().fsub(curr_z.1, cz1);
+
+                        curr_x = (nx0, nx1);
+                        curr_y = (ny0, ny1);
+                        curr_z = (nz0, nz1);
+                    }
+
+                    OpCode::Noise => {
+                        // Noise cannot be evaluated in JIT (perlin_noise_3d not available)
+                        // Treat as nop — just save state for PopTransform to restore
+                        coord_stack.push(CoordState {
+                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                            opcode: OpCode::Noise, params: inst.params,
+                        });
                     }
 
                     OpCode::PopTransform => {
