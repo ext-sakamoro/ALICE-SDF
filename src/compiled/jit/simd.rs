@@ -1309,27 +1309,28 @@ impl JitSimdSdf {
                         let _ts9 = builder.ins().f32const(m22);
                         let m22v = builder.ins().splat(vec_type, _ts9);
 
-                        // Lane 0: p' = M * p (FMA chain)
-                        let t0 = builder.ins().fmul(m02v, curr_z.0);
+                        // Lane 0: p' = M * p (standard order FMA chain)
+                        // x' = m00*x + m01*y + m02*z
+                        let t0 = builder.ins().fmul(m00v, curr_x.0);
                         let t0 = builder.ins().fma(m01v, curr_y.0, t0);
-                        let nx0 = builder.ins().fma(m00v, curr_x.0, t0);
-                        let t0 = builder.ins().fmul(m12v, curr_z.0);
+                        let nx0 = builder.ins().fma(m02v, curr_z.0, t0);
+                        let t0 = builder.ins().fmul(m10v, curr_x.0);
                         let t0 = builder.ins().fma(m11v, curr_y.0, t0);
-                        let ny0 = builder.ins().fma(m10v, curr_x.0, t0);
-                        let t0 = builder.ins().fmul(m22v, curr_z.0);
+                        let ny0 = builder.ins().fma(m12v, curr_z.0, t0);
+                        let t0 = builder.ins().fmul(m20v, curr_x.0);
                         let t0 = builder.ins().fma(m21v, curr_y.0, t0);
-                        let nz0 = builder.ins().fma(m20v, curr_x.0, t0);
+                        let nz0 = builder.ins().fma(m22v, curr_z.0, t0);
 
                         // Lane 1
-                        let t1 = builder.ins().fmul(m02v, curr_z.1);
+                        let t1 = builder.ins().fmul(m00v, curr_x.1);
                         let t1 = builder.ins().fma(m01v, curr_y.1, t1);
-                        let nx1 = builder.ins().fma(m00v, curr_x.1, t1);
-                        let t1 = builder.ins().fmul(m12v, curr_z.1);
+                        let nx1 = builder.ins().fma(m02v, curr_z.1, t1);
+                        let t1 = builder.ins().fmul(m10v, curr_x.1);
                         let t1 = builder.ins().fma(m11v, curr_y.1, t1);
-                        let ny1 = builder.ins().fma(m10v, curr_x.1, t1);
-                        let t1 = builder.ins().fmul(m22v, curr_z.1);
+                        let ny1 = builder.ins().fma(m12v, curr_z.1, t1);
+                        let t1 = builder.ins().fmul(m20v, curr_x.1);
                         let t1 = builder.ins().fma(m21v, curr_y.1, t1);
-                        let nz1 = builder.ins().fma(m20v, curr_x.1, t1);
+                        let nz1 = builder.ins().fma(m22v, curr_z.1, t1);
 
                         curr_x = (nx0, nx1);
                         curr_y = (ny0, ny1);
@@ -1365,12 +1366,21 @@ impl JitSimdSdf {
                     }
 
                     OpCode::Twist => {
+                        let k = inst.params[0];
+                        if k.abs() < FOLD_EPSILON {
+                            coord_stack.push(SimdCoordState {
+                                x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                                opcode: OpCode::Twist, params: [0.0; 4], folded: true,
+                            });
+                            continue;
+                        }
+
                         coord_stack.push(SimdCoordState {
                             x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
                             opcode: OpCode::Twist, params: [0.0; 4], folded: false,
                         });
 
-                        let k_s = builder.ins().f32const(inst.params[0]);
+                        let k_s = builder.ins().f32const(k);
                         let k_v = builder.ins().splat(vec_type, k_s);
 
                         // Lane 0: angle = y * k, (cos, sin) = approx(angle)
@@ -1399,12 +1409,21 @@ impl JitSimdSdf {
                     }
 
                     OpCode::Bend => {
+                        let k = inst.params[0];
+                        if k.abs() < FOLD_EPSILON {
+                            coord_stack.push(SimdCoordState {
+                                x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
+                                opcode: OpCode::Bend, params: [0.0; 4], folded: true,
+                            });
+                            continue;
+                        }
+
                         coord_stack.push(SimdCoordState {
                             x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
                             opcode: OpCode::Bend, params: [0.0; 4], folded: false,
                         });
 
-                        let k_s = builder.ins().f32const(inst.params[0]);
+                        let k_s = builder.ins().f32const(k);
                         let k_v = builder.ins().splat(vec_type, k_s);
 
                         // Lane 0: angle = k * x, rotate XY
@@ -1441,9 +1460,9 @@ impl JitSimdSdf {
 
                         // Division Exorcism: pre-compute reciprocals at compile time
                         let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
-                        let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
-                        let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
-                        let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+                        let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
+                        let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
+                        let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
 
                         let _ts14 = builder.ins().f32const(sx);
                         let sx_v = builder.ins().splat(vec_type, _ts14);
@@ -1501,9 +1520,9 @@ impl JitSimdSdf {
                         let cy = inst.params[1] as f32;
                         let cz = inst.params[2] as f32;
                         let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
-                        let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
-                        let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
-                        let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+                        let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
+                        let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
+                        let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
                         let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
 
                         let _ts20 = builder.ins().f32const(sx);
@@ -1524,9 +1543,12 @@ impl JitSimdSdf {
                         let ly_v = builder.ins().splat(vec_type, _ts27);
                         let _ts28 = builder.ins().f32const(lz);
                         let lz_v = builder.ins().splat(vec_type, _ts28);
-                        let nlx_v = builder.ins().fneg(lx_v);
-                        let nly_v = builder.ins().fneg(ly_v);
-                        let nlz_v = builder.ins().fneg(lz_v);
+                        let nlx_s = builder.ins().f32const(-lx);
+                        let nlx_v = builder.ins().splat(vec_type, nlx_s);
+                        let nly_s = builder.ins().f32const(-ly);
+                        let nly_v = builder.ins().splat(vec_type, nly_s);
+                        let nlz_s = builder.ins().f32const(-lz);
+                        let nlz_v = builder.ins().splat(vec_type, nlz_s);
 
                         // Lane 0: clamp(round(p * inv_s), -limit, limit), then p - cell * s
                         let _tm29 = builder.ins().fmul(curr_x.0, isx_v);
@@ -2943,27 +2965,27 @@ impl JitSimdSdfDynamic {
                         let m21v = emitter.emit_splat(&mut builder, m21);
                         let m22v = emitter.emit_splat(&mut builder, m22);
 
-                        // Lane 0
-                        let t0 = builder.ins().fmul(m02v, curr_z.0);
+                        // Lane 0: standard order FMA chain
+                        let t0 = builder.ins().fmul(m00v, curr_x.0);
                         let t0 = builder.ins().fma(m01v, curr_y.0, t0);
-                        let nx0 = builder.ins().fma(m00v, curr_x.0, t0);
-                        let t0 = builder.ins().fmul(m12v, curr_z.0);
+                        let nx0 = builder.ins().fma(m02v, curr_z.0, t0);
+                        let t0 = builder.ins().fmul(m10v, curr_x.0);
                         let t0 = builder.ins().fma(m11v, curr_y.0, t0);
-                        let ny0 = builder.ins().fma(m10v, curr_x.0, t0);
-                        let t0 = builder.ins().fmul(m22v, curr_z.0);
+                        let ny0 = builder.ins().fma(m12v, curr_z.0, t0);
+                        let t0 = builder.ins().fmul(m20v, curr_x.0);
                         let t0 = builder.ins().fma(m21v, curr_y.0, t0);
-                        let nz0 = builder.ins().fma(m20v, curr_x.0, t0);
+                        let nz0 = builder.ins().fma(m22v, curr_z.0, t0);
 
                         // Lane 1
-                        let t1 = builder.ins().fmul(m02v, curr_z.1);
+                        let t1 = builder.ins().fmul(m00v, curr_x.1);
                         let t1 = builder.ins().fma(m01v, curr_y.1, t1);
-                        let nx1 = builder.ins().fma(m00v, curr_x.1, t1);
-                        let t1 = builder.ins().fmul(m12v, curr_z.1);
+                        let nx1 = builder.ins().fma(m02v, curr_z.1, t1);
+                        let t1 = builder.ins().fmul(m10v, curr_x.1);
                         let t1 = builder.ins().fma(m11v, curr_y.1, t1);
-                        let ny1 = builder.ins().fma(m10v, curr_x.1, t1);
-                        let t1 = builder.ins().fmul(m22v, curr_z.1);
+                        let ny1 = builder.ins().fma(m12v, curr_z.1, t1);
+                        let t1 = builder.ins().fmul(m20v, curr_x.1);
                         let t1 = builder.ins().fma(m21v, curr_y.1, t1);
-                        let nz1 = builder.ins().fma(m20v, curr_x.1, t1);
+                        let nz1 = builder.ins().fma(m22v, curr_z.1, t1);
 
                         curr_x = (nx0, nx1);
                         curr_y = (ny0, ny1);
@@ -3058,9 +3080,9 @@ impl JitSimdSdfDynamic {
                         });
 
                         let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
-                        let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
-                        let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
-                        let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+                        let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
+                        let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
+                        let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
 
                         let sx_v = emitter.emit_splat(&mut builder, sx);
                         let sy_v = emitter.emit_splat(&mut builder, sy);
@@ -3110,9 +3132,9 @@ impl JitSimdSdfDynamic {
 
                         let cx = inst.params[0]; let cy = inst.params[1]; let cz = inst.params[2];
                         let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
-                        let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
-                        let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
-                        let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+                        let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
+                        let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
+                        let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
                         let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
 
                         let sx_v = emitter.emit_splat(&mut builder, sx);
@@ -3124,9 +3146,9 @@ impl JitSimdSdfDynamic {
                         let lx_v = emitter.emit_splat(&mut builder, lx);
                         let ly_v = emitter.emit_splat(&mut builder, ly);
                         let lz_v = emitter.emit_splat(&mut builder, lz);
-                        let nlx_v = builder.ins().fneg(lx_v);
-                        let nly_v = builder.ins().fneg(ly_v);
-                        let nlz_v = builder.ins().fneg(lz_v);
+                        let nlx_v = emitter.emit_splat(&mut builder, -lx);
+                        let nly_v = emitter.emit_splat(&mut builder, -ly);
+                        let nlz_v = emitter.emit_splat(&mut builder, -lz);
 
                         // Lane 0
                         let _tm77 = builder.ins().fmul(curr_x.0, isx_v);
@@ -3601,18 +3623,18 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
             }
             OpCode::RepeatInfinite => {
                 let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
-                let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
-                let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
-                let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+                let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
+                let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
+                let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
                 params.push(sx); params.push(sy); params.push(sz);
                 params.push(isx); params.push(isy); params.push(isz);
             }
             OpCode::RepeatFinite => {
                 let cx = inst.params[0]; let cy = inst.params[1]; let cz = inst.params[2];
                 let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
-                let isx = if sx.abs() < 1e-10 { 0.0 } else { 1.0 / sx };
-                let isy = if sy.abs() < 1e-10 { 0.0 } else { 1.0 / sy };
-                let isz = if sz.abs() < 1e-10 { 0.0 } else { 1.0 / sz };
+                let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
+                let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
+                let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
                 let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
                 params.push(sx); params.push(sy); params.push(sz);
                 params.push(isx); params.push(isy); params.push(isz);
