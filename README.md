@@ -449,7 +449,7 @@ cargo build --features "all-shaders,jit"  # Everything
 
 ## Testing
 
-425 tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC, JIT scalar, JIT SIMD).
+383+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC). With `--features jit`, 425 tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
