@@ -12,6 +12,18 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Infinite resolution** - shapes are mathematically perfect at any scale
 - **CSG operations** - boolean operations on shapes without mesh overhead
 - **Real-time raymarching** - GPU-accelerated rendering
+- **PBR materials** - metallic-roughness workflow compatible with UE5/Unity/Godot
+- **Keyframe animation** - parametric deformation with timeline tracks
+- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX export
+- **Manifold mesh guarantee** - validation, repair, and quality metrics
+- **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters
+- **V-HACD convex decomposition** - automatic convex hull decomposition for physics
+- **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
+- **Decimation-based LOD** - progressive LOD chain from high-res base mesh
+- **13 primitives, 7 modifiers** - rich shape vocabulary
+- **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
+- **3 shader targets** - GLSL, WGSL, HLSL transpilation
+- **Engine integrations** - Unity, Unreal Engine 5, VRChat, Godot, WebAssembly
 
 ## Core Concepts
 
@@ -26,10 +38,12 @@ An SDF returns the shortest distance from any point to the surface:
 
 ```
 SdfNode
-  ├─ Primitive: Sphere(r), Box(w,h,d), Cylinder(r,h), Torus(R,r), Plane(n,d), Capsule(a,b,r)
-  ├─ Operation: Union, Intersection, Subtraction, SmoothUnion, SmoothIntersection, SmoothSubtraction
-  ├─ Transform: Translate, Rotate, Scale
-  └─ Modifier:  Twist, Bend, Repeat, Noise
+  |-- Primitive (13): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link
+  |-- Operation: Union, Intersection, Subtraction, SmoothUnion, SmoothIntersection, SmoothSubtraction
+  |-- Transform: Translate, Rotate, Scale
+  |-- Modifier (7): Twist, Bend, Repeat, Noise, Extrude, Revolution, Mirror
+  +-- WithMaterial: PBR material assignment (transparent to distance evaluation)
 ```
 
 ## Installation
@@ -53,27 +67,22 @@ pip install alice-sdf
 ```rust
 use alice_sdf::prelude::*;
 
-// Create a sphere
+// Create a sphere with radius 1
 let sphere = SdfNode::sphere(1.0);
 
-// Create a box
-let box3d = SdfNode::box3d(2.0, 1.0, 1.0);
+// Subtract a box from it
+let result = sphere.subtract(SdfNode::box3d(1.5, 1.5, 1.5));
 
-// Subtract box from sphere
-let result = sphere.subtract(box3d);
+// Evaluate distance at a point
+let distance = eval(&result, glam::Vec3::ZERO);
 
-// Translate the result
-let translated = result.translate(1.0, 0.0, 0.0);
-
-// Evaluate SDF at a point
-let distance = translated.eval(glam::Vec3::new(0.5, 0.0, 0.0));
-
-// Convert to mesh (marching cubes)
-let mesh = sdf_to_mesh(&translated, 0.1, (-2.0, 2.0));
-
-// Save to file
-save_asdf(&translated, "model.asdf")?;
-save_asdf_json(&translated, "model.asdf.json")?;
+// Convert to mesh
+let mesh = sdf_to_mesh(
+    &result,
+    glam::Vec3::splat(-2.0),
+    glam::Vec3::splat(2.0),
+    &MarchingCubesConfig::default()
+);
 ```
 
 ### Python
@@ -82,14 +91,14 @@ save_asdf_json(&translated, "model.asdf.json")?;
 import alice_sdf as sdf
 
 # Create primitives
-sphere = sdf.sphere(1.0)
-box3d = sdf.box3d(2.0, 1.0, 1.0)
+sphere = sdf.SdfNode.sphere(1.0)
+box3d = sdf.SdfNode.box3d(2.0, 1.0, 1.0)
 
 # CSG operations
-result = sdf.subtract(sphere, box3d)
+result = sphere.subtract(box3d)
 
 # Transform
-translated = sdf.translate(result, 1.0, 0.0, 0.0)
+translated = result.translate(1.0, 0.0, 0.0)
 
 # Evaluate at points (NumPy array)
 import numpy as np
@@ -97,12 +106,109 @@ points = np.array([[0.5, 0.0, 0.0], [1.0, 1.0, 1.0]], dtype=np.float32)
 distances = sdf.eval_batch(translated, points)
 
 # Convert to mesh
-vertices, indices = sdf.to_mesh(translated, resolution=0.1, bounds=(-2.0, 2.0))
-
-# Save/Load
-sdf.save("model.asdf", translated)
-loaded = sdf.load("model.asdf")
+vertices, indices = sdf.to_mesh(translated, (-2.0, -2.0, -2.0), (2.0, 2.0, 2.0))
 ```
+
+## Material System
+
+PBR metallic-roughness material system compatible with glTF 2.0, UE5, Unity HDRP, and Godot.
+
+### Material Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `base_color` | `[f32; 4]` | RGBA base color (linear space) |
+| `metallic` | `f32` | 0.0 = dielectric, 1.0 = metal |
+| `roughness` | `f32` | 0.0 = mirror, 1.0 = diffuse |
+| `emission` | `[f32; 3]` | Emissive color (RGB) |
+| `emission_strength` | `f32` | Emissive intensity multiplier |
+| `opacity` | `f32` | 0.0 = transparent, 1.0 = opaque |
+| `ior` | `f32` | Index of refraction (glass=1.5, water=1.33) |
+| `normal_scale` | `f32` | Normal map strength |
+
+### Usage
+
+```rust
+use alice_sdf::prelude::*;
+
+// Create materials
+let gold = Material::metal("Gold", 1.0, 0.766, 0.336, 0.3);
+let glass = Material::glass("Glass", 1.5);
+let glow = Material::emissive("Neon", 0.0, 1.0, 0.0, 10.0);
+
+// Material library
+let mut lib = MaterialLibrary::new();
+let gold_id = lib.add(gold);
+
+// Assign material to shape
+let sphere = SdfNode::sphere(1.0).with_material(gold_id);
+
+// Generate mesh with AAA vertex format (UV, tangent, color, material_id)
+let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig::aaa(64));
+```
+
+### Vertex Format
+
+The mesh vertex includes all attributes needed for AAA rendering:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `position` | `Vec3` | 3D position |
+| `normal` | `Vec3` | Surface normal |
+| `uv` | `Vec2` | Triplanar-projected texture coordinates |
+| `tangent` | `Vec4` | Tangent (xyz=direction, w=handedness) |
+| `color` | `[f32; 4]` | Vertex color (RGBA linear) |
+| `material_id` | `u32` | Material library index |
+
+## Animation System
+
+Keyframe-based animation of SDF parameters for real-time deformation, morphing, and cinematic sequences.
+
+### Features
+
+- **Interpolation modes**: Linear, Cubic Bezier (Hermite), Step
+- **Loop modes**: Once, Loop, PingPong
+- **Timeline**: Multiple tracks with named parameters
+- **AnimatedSdf**: Time-varying SDF evaluation
+- **Morph**: Smooth blending between two SDF shapes
+
+### Usage
+
+```rust
+use alice_sdf::prelude::*;
+
+// Create a bouncing sphere animation
+let sphere = SdfNode::sphere(1.0);
+
+let mut timeline = Timeline::new("bounce");
+
+let mut ty = Track::new("translate.y").with_loop(LoopMode::PingPong);
+ty.add_keyframe(Keyframe::new(0.0, 0.0));
+ty.add_keyframe(Keyframe::cubic(0.5, 3.0, 0.0, 0.0));
+ty.add_keyframe(Keyframe::new(1.0, 0.0));
+timeline.add_track(ty);
+
+let animated = AnimatedSdf::new(sphere, timeline);
+
+// Evaluate at time t=0.25
+let node_at_t = animated.evaluate_at(0.25);
+let distance = eval(&node_at_t, Vec3::ZERO);
+
+// Morph between two shapes
+let sphere = SdfNode::sphere(1.0);
+let cube = SdfNode::box3d(1.0, 1.0, 1.0);
+let morphed = morph(&sphere, &cube, 0.5); // 50% blend
+```
+
+### Supported Track Names
+
+| Track | Description |
+|-------|-------------|
+| `translate.x/y/z` | Translation offset |
+| `rotate.x/y/z` | Euler rotation (radians) |
+| `scale` | Uniform scale factor |
+| `twist` | Twist strength |
+| `bend` | Bend curvature |
 
 ## File Formats
 
@@ -139,36 +245,214 @@ Human-readable JSON format for debugging and interoperability.
 }
 ```
 
-## Core Functions
+### .obj (Wavefront OBJ)
+
+Standard mesh format with material (.mtl) support.
+
+```rust
+use alice_sdf::prelude::*;
+
+let mesh = sdf_to_mesh(&shape, min, max, &MarchingCubesConfig::aaa(64));
+export_obj(&mesh, "model.obj", &ObjConfig::default(), Some(&mat_lib))?;
+```
+
+### .glb (glTF 2.0 Binary)
+
+Industry-standard 3D format with PBR materials. Compatible with UE5, Unity, Blender, Godot, and web viewers.
+
+```rust
+use alice_sdf::prelude::*;
+
+let mesh = sdf_to_mesh(&shape, min, max, &MarchingCubesConfig::aaa(64));
+export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
+```
+
+### Asset Pipeline Summary
+
+| Format | Import | Export | Materials | Description |
+|--------|--------|--------|-----------|-------------|
+| `.asdf` | yes | yes | - | Native SDF binary (CRC32) |
+| `.asdf.json` | yes | yes | - | Native SDF JSON |
+| `.obj` | yes | yes | .mtl | Wavefront OBJ (universal DCC) |
+| `.glb` | - | yes | PBR | glTF 2.0 binary (game engines) |
+| `.fbx` | - | yes | PBR | FBX 7.4 ASCII/Binary (DCC tools) |
+
+## Architecture
+
+ALICE-SDF uses a 13-layer architecture. Each SDF feature is implemented across all layers:
+
+```
+Layer 1:  types.rs          -- SdfNode enum (AST definition)
+Layer 2:  primitives/       -- Mathematical SDF formulas (Inigo Quilez)
+Layer 3:  eval/             -- Recursive interpreter
+Layer 4:  compiled/opcode   -- OpCode enum for VM
+Layer 5:  compiled/instr    -- Instruction encoding (32-byte aligned)
+Layer 6:  compiled/compiler -- AST -> instruction compilation
+Layer 7:  compiled/eval     -- Stack-based VM evaluator
+Layer 8:  compiled/eval_simd-- SIMD 8-wide evaluator (AVX2/NEON)
+Layer 9:  compiled/eval_bvh -- BVH-accelerated evaluator (AABB pruning)
+Layer 10: compiled/glsl     -- GLSL transpiler (Unity/OpenGL/Vulkan)
+Layer 11: compiled/wgsl     -- WGSL transpiler (WebGPU)
+Layer 12: compiled/hlsl     -- HLSL transpiler (DirectX/Unreal)
+Layer 13: compiled/jit      -- JIT native code (Cranelift)
+```
+
+### Evaluation Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Interpreted** | Recursive tree walk | Debugging, prototyping |
+| **Compiled VM** | Stack-based bytecode | General purpose |
+| **SIMD 8-wide** | 8 points in parallel (Vec3x8) | Batch evaluation |
+| **BVH-accelerated** | AABB spatial pruning | Complex scenes |
+| **SoA Batch** | Structure-of-Arrays memory layout | Cache-optimal SIMD batches |
+| **JIT Native** | Cranelift machine code | Maximum throughput |
+| **GPU Compute** | WGSL compute shaders | Massive batches |
+
+### Shader Transpilers
+
+| Target | Output | Use Case |
+|--------|--------|----------|
+| **GLSL** | OpenGL/Vulkan shaders | Unity, custom engines |
+| **WGSL** | WebGPU shaders | Browser, wgpu |
+| **HLSL** | DirectX shaders | Unreal Engine, DirectX |
+
+## Mesh Module
+
+### Conversion
 
 | Function | Description |
 |----------|-------------|
-| `mesh_to_sdf()` | Convert polygon mesh to SDF tree |
-| `sdf_to_mesh()` | Convert SDF to mesh via marching cubes |
-| `sdf_eval()` | Evaluate distance at a point |
-| `sdf_raycast()` | Raymarching for real-time rendering |
+| `sdf_to_mesh()` | SDF to mesh via parallel marching cubes (Z-slab parallelization) |
+| `mesh_to_sdf()` | Mesh to SDF via capsule approximation (edge-based) |
+| `mesh_to_sdf_exact()` | Mesh to SDF via BVH exact distance (O(log n) queries) |
 
-## Integration
+### Advanced Features
 
-### ALICE-View
+| Feature | Module | Description |
+|---------|--------|-------------|
+| **Hermite Data** | `mesh/hermite` | Position + normal extraction for Dual Contouring |
+| **Primitive Fitting** | `mesh/primitive_fitting` | Detect sphere/box/cylinder in mesh data for CSG reconstruction |
+| **Nanite Clusters** | `mesh/nanite` | UE5 Nanite-compatible hierarchical cluster generation |
+| **LOD Generation** | `mesh/lod` | Level-of-detail chain generation for efficient rendering |
+| **Decimation LOD** | `mesh/lod` | Progressive decimation-based LOD from high-res base mesh |
+| **Adaptive MC** | `mesh/sdf_to_mesh` | Octree-based marching cubes with surface-adaptive subdivision |
+| **Mesh Decimation** | `mesh/decimate` | QEM decimation with UV/tangent/material boundary preservation |
+| **Convex Decomposition** | `mesh/collision` | V-HACD volumetric convex decomposition for physics |
+| **Collision Primitives** | `mesh/collision` | AABB, bounding sphere, convex hull, simplified collision |
+| **Lightmap UVs** | `mesh/lightmap` | Automatic lightmap UV generation (UV channel 1) |
+| **Vertex Optimization** | `mesh/optimize` | Vertex cache optimization and deduplication |
+| **Mesh BVH** | `mesh/bvh` | Bounding volume hierarchy for exact signed distance queries |
+| **Manifold Validation** | `mesh/manifold` | Topology validation, repair, and quality metrics |
 
-ALICE-SDF integrates with ALICE-View for GPU-accelerated raymarching:
+### Manifold Mesh Guarantee
+
+Ensures watertight, manifold meshes suitable for physics, rendering, and 3D printing.
 
 ```rust
-use alice_view::decode_asdf;
+use alice_sdf::prelude::*;
 
-let content = decode_asdf("model.asdf")?;
-viewer.render(content);
+let mesh = sdf_to_mesh(&shape, min, max, &MarchingCubesConfig::default());
+
+// Validate
+let report = validate_mesh(&mesh);
+println!("{}", report); // Prints full validation report
+
+// Repair
+let repaired = MeshRepair::repair_all(&mesh, 1e-6);
+
+// Quality metrics
+let quality = compute_quality(&repaired);
+println!("Avg aspect ratio: {}", quality.avg_aspect_ratio);
 ```
 
-### ALICE-Zip
+| Function | Description |
+|----------|-------------|
+| `validate_mesh()` | Non-manifold edge detection, boundary edges, degenerate triangles, duplicate vertices, normal consistency |
+| `MeshRepair::remove_degenerate_triangles()` | Remove zero-area triangles |
+| `MeshRepair::merge_duplicate_vertices()` | Spatial-hash based vertex welding |
+| `MeshRepair::fix_normals()` | Fix inconsistent winding order |
+| `MeshRepair::repair_all()` | Run all repairs in sequence |
+| `compute_quality()` | Aspect ratio and area statistics |
 
-Use Perlin noise from ALICE-Zip for procedural deformation:
+## Raymarching
 
-```rust
-use alice_sdf::modifiers::NoiseModifier;
+Sphere tracing for ray-SDF intersection with specialized optimizations:
 
-let noisy = sphere.modify(NoiseModifier::perlin(0.1, 42));
+| Function | Description |
+|----------|-------------|
+| `raymarch()` | Single ray intersection with sphere tracing |
+| `raymarch_batch()` | Batch ray evaluation |
+| `raymarch_batch_parallel()` | Parallel batch via Rayon |
+| `render_depth()` | Depth buffer rendering |
+| `render_normals()` | Normal map rendering |
+
+Features: dedicated Shadow/AO loops (skip normal computation), early exit for hard shadows, configurable iteration limits via `RaymarchConfig`.
+
+## FFI & Language Bindings
+
+### C/C++ (`include/alice_sdf.h`)
+
+```c
+#include "alice_sdf.h"
+
+AliceSdfHandle sdf = alice_sdf_sphere(1.0);
+float dist = alice_sdf_eval(sdf, 0.5, 0.0, 0.0);
+```
+
+### C# / Unity (`bindings/AliceSdf.cs`)
+
+```csharp
+using AliceSdf;
+
+var sdf = AliceSdf.Sphere(1.0f);
+float dist = sdf.Eval(new Vector3(0.5f, 0f, 0f));
+```
+
+### Python (PyO3)
+
+```bash
+pip install alice-sdf  # or: maturin develop --features python
+```
+
+### FFI Performance Hierarchy
+
+| Function | Speed | Use Case |
+|----------|-------|----------|
+| `alice_sdf_eval_soa` | Fastest | Physics, particles, tracing |
+| `alice_sdf_eval_compiled_batch` | Fast | General batch evaluation |
+| `alice_sdf_eval_batch` | Medium | Convenience (auto-compile) |
+| `alice_sdf_eval` | Slow | Debugging only |
+
+## Feature Flags
+
+| Feature | Description | Dependencies |
+|---------|-------------|--------------|
+| `cli` (default) | Command-line interface | clap |
+| `python` | Python bindings | pyo3, numpy |
+| `jit` | JIT native code compilation | cranelift |
+| `gpu` | WebGPU compute shaders | wgpu, pollster, bytemuck |
+| `glsl` | GLSL shader transpiler | - |
+| `hlsl` | HLSL shader transpiler | - |
+| `ffi` | C/C++/C# FFI bindings | lazy_static |
+| `unity` | Unity integration | ffi + glsl |
+| `unreal` | Unreal Engine integration | ffi + hlsl |
+| `all-shaders` | All shader transpilers | gpu + hlsl + glsl |
+
+```bash
+# Examples
+cargo build --features "jit,gpu"          # JIT + GPU
+cargo build --features unity              # Unity (FFI + GLSL)
+cargo build --features unreal             # Unreal (FFI + HLSL)
+cargo build --features "all-shaders,jit"  # Everything
+```
+
+## Testing
+
+425 tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC, JIT scalar, JIT SIMD).
+
+```bash
+cargo test
 ```
 
 ## Performance
@@ -203,7 +487,12 @@ Benchmarked on Apple M3 Max, Rust 1.75+, `--release` build.
 
 ### JIT Compilation
 
-The JIT compiler generates native SIMD machine code using Cranelift, achieving the highest throughput.
+The JIT compiler generates native SIMD machine code using Cranelift, achieving the highest throughput. All 13 primitives are fully supported in both JIT scalar and JIT SIMD (8-wide) backends.
+
+**Deep Fried v2 optimizations:**
+- **Division Exorcism** - all runtime divisions pre-computed as reciprocal multiplications at compile time
+- **Branchless SIMD selection** - sign-bit extraction via `bitcast`/`sshr`/`bitselect` (zero-overhead on SSE/AVX/NEON)
+- **FMA fusion** - fused multiply-add for reduced latency in complex primitives (Cone, RoundedCone, Pyramid)
 
 ```bash
 # Run CLI benchmark
@@ -222,13 +511,13 @@ cargo run --features "cli,jit" --release -- bench --points 1000000
 | Scalar | 563 ns | 1.0x |
 | SIMD | 143 ns | 3.9x |
 
-### Marching Cubes (Sphere, bounds ±2.0)
+### Marching Cubes (Sphere, bounds +/-2.0)
 
 | Resolution | Time |
 |------------|------|
-| 16³ | 140 µs |
-| 32³ | 390 µs |
-| 64³ | 1.64 ms |
+| 16^3 | 140 us |
+| 32^3 | 390 us |
+| 64^3 | 1.64 ms |
 
 ### Raymarching
 
@@ -239,7 +528,7 @@ cargo run --features "cli,jit" --release -- bench --points 1000000
 
 ### GPU Compute (WebGPU)
 
-The GPU module provides WebGPU compute shaders. Due to data transfer overhead, GPU is most effective for very large batches or when the CPU is busy with other tasks.
+The GPU module provides WebGPU compute shaders with persistent buffer pooling for repeated evaluations.
 
 **When to use GPU vs CPU:**
 
@@ -253,27 +542,30 @@ Note: GPU performance varies significantly by hardware. On discrete GPUs, crosso
 
 ```rust
 use alice_sdf::prelude::*;
-use alice_sdf::compiled::{GpuEvaluator, WgslShader};
+use alice_sdf::compiled::{GpuEvaluator, WgslShader, GpuBufferPool};
 
 let shape = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
 
 // Create GPU evaluator (compiles SDF to WGSL)
 let gpu = GpuEvaluator::new(&shape).unwrap();
 
-// Evaluate batch of points on GPU
+// Single-shot batch evaluation
 let points: Vec<Vec3> = (0..100000)
     .map(|i| Vec3::new(i as f32 * 0.01, 0.0, 0.0))
     .collect();
 let distances = gpu.eval_batch(&points).unwrap();
 
-// Or get WGSL source for custom use
-let shader = WgslShader::transpile(&shape);
-println!("{}", shader.source);
+// Persistent buffer pool for repeated evaluations (2-5x faster)
+let mut pool = gpu.create_buffer_pool(100000);
+for frame in 0..60 {
+    let distances = gpu.eval_batch_pooled(&points, &mut pool).unwrap();
+}
+
+// Auto-tuned batch (splits large batches into optimal chunks)
+let distances = gpu.eval_batch_auto(&points, &mut pool).unwrap();
 ```
 
 Enable with: `cargo build --features gpu`
-
-Run GPU example: `cargo run --example gpu_eval --features gpu`
 
 | Mode | Throughput (1M pts) |
 |------|---------------------|
@@ -304,11 +596,11 @@ python3 -m http.server 8080
 
 | Browser | WebGPU | Canvas2D |
 |---------|--------|----------|
-| Chrome 113+ | ✅ | ✅ |
-| Edge 113+ | ✅ | ✅ |
-| Firefox Nightly | ✅ (flag) | ✅ |
-| Safari 18+ | ✅ | ✅ |
-| Older browsers | ❌ | ✅ |
+| Chrome 113+ | yes | yes |
+| Edge 113+ | yes | yes |
+| Firefox Nightly | yes (flag) | yes |
+| Safari 18+ | yes | yes |
+| Older browsers | no | yes |
 
 ## Benchmarking
 
@@ -336,12 +628,6 @@ open target/criterion/report/index.html
 The `unity-sdf-universe/` directory contains a full Unity demo showcasing ALICE-SDF capabilities:
 
 **"5MB Procedural Universe"** - An entire procedural universe using only 5MB of code.
-
-![Cosmic Demo](docs/images/cosmic_demo.jpg)
-*10M+ Particles simulated on GPU at 60 FPS*
-
-![Fractal Dive](docs/images/fractal_dive.png)
-*Infinite Resolution Fractal Zoom - No polygons, just mathematics*
 
 ### Features
 
@@ -376,6 +662,56 @@ Demonstrates TRUE infinite resolution via raymarching:
 - **[R] key**: Toggle between Raymarching and Particles mode
 
 See `unity-sdf-universe/README.md` for full documentation.
+
+## VRChat Integration
+
+The `vrchat-package/` directory provides a VRChat SDK package for SDF-based worlds and avatars.
+
+- **ALICE-Shader** - HLSL raymarching kernel with dynamic LOD
+- **ALICE-Udon** - UdonSharp SDF collider with pure C# math
+- **ALICE-Baker v0.2** - Editor tool to generate optimized shader + Udon from `.asdf.json`
+- **7 Sample Worlds** - Basic, Cosmic, Fractal, Mix, DeformableWall, Mochi, TerrainSculpt
+
+See `vrchat-package/README.md` for full documentation.
+
+## Unreal Engine 5 Integration
+
+ALICE-SDF provides full UE5 support via HLSL transpiler and C FFI bindings.
+
+```bash
+# Build the plugin DLL
+cargo build --release --features unreal
+```
+
+- **HLSL Transpiler** - Generate Custom Material Expression nodes
+- **C++ FFI** - Native plugin with `alice_sdf.h` header
+- **Blueprint-ready** - UFunction wrappers for visual scripting
+
+See `docs/UNREAL_ENGINE.md` for detailed setup instructions.
+
+## Godot Integration
+
+ALICE-SDF works with Godot via glTF 2.0 import and GDExtension FFI.
+
+- **glTF Pipeline** - Export `.glb` and import directly into Godot
+- **GDNative/GDExtension** - Link `libalice_sdf` via C FFI
+- **Visual Shader** - Use GLSL transpiler output in shader nodes
+
+See `docs/GODOT_GUIDE.md` for integration guide.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [QUICKSTART](docs/QUICKSTART.md) | 5-minute getting started guide for all platforms |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | 13-layer architecture deep dive |
+| [API Reference](docs/API_REFERENCE.md) | Complete API reference |
+| [Unreal Engine](docs/UNREAL_ENGINE.md) | UE5 setup and integration guide |
+| [Python Guide](docs/PYTHON_GUIDE.md) | Python and Blender integration |
+| [WASM Guide](docs/WASM_GUIDE.md) | WebAssembly deployment guide |
+| [Godot Guide](docs/GODOT_GUIDE.md) | Godot integration guide |
+| [Unity Setup](unity-sdf-universe/SETUP_GUIDE.md) | Unity project setup |
+| [VRChat Package](vrchat-package/README.md) | VRChat SDK integration |
 
 ## License
 
