@@ -39,6 +39,7 @@ use super::registry::{
 use super::types::*;
 use crate::prelude::*;
 use crate::compiled::{CompiledSdf, eval_compiled, eval_compiled_batch_parallel};
+use crate::animation::AnimationParams;
 use std::ffi::{c_char, CString};
 use std::ptr;
 use std::slice;
@@ -580,24 +581,59 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
     // Threshold for parallelization
     const PARALLEL_THRESHOLD: usize = 1024;
 
+    // Use true SIMD path: eval_compiled_batch_soa_raw processes 8 points
+    // at a time with direct f32x8 loads from SoA arrays
+    let aligned_count = (count_usize + 7) & !7;
+
+    // Ensure we have enough padding for SIMD (read up to aligned_count)
+    // The raw function handles the 8-wide alignment internally
     if count_usize >= PARALLEL_THRESHOLD {
-        // Parallel chunked evaluation using par_chunks_mut for safe mutable access
+        // Parallel: split into chunks, each chunk uses SIMD internally
         const CHUNK_SIZE: usize = 4096;
 
         dist_slice.par_chunks_mut(CHUNK_SIZE).enumerate().for_each(|(chunk_idx, chunk)| {
             let start = chunk_idx * CHUNK_SIZE;
-            for (local_i, dist) in chunk.iter_mut().enumerate() {
+            let chunk_len = chunk.len();
+            let simd_count = (chunk_len + 7) & !7;
+
+            // Use SIMD for full 8-wide groups
+            let simd_iters = chunk_len / 8;
+            for s in 0..simd_iters {
+                let base = start + s * 8;
+                let local_base = s * 8;
+
+                let vx = wide::f32x8::from([
+                    x_slice[base], x_slice[base + 1], x_slice[base + 2], x_slice[base + 3],
+                    x_slice[base + 4], x_slice[base + 5], x_slice[base + 6], x_slice[base + 7],
+                ]);
+                let vy = wide::f32x8::from([
+                    y_slice[base], y_slice[base + 1], y_slice[base + 2], y_slice[base + 3],
+                    y_slice[base + 4], y_slice[base + 5], y_slice[base + 6], y_slice[base + 7],
+                ]);
+                let vz = wide::f32x8::from([
+                    z_slice[base], z_slice[base + 1], z_slice[base + 2], z_slice[base + 3],
+                    z_slice[base + 4], z_slice[base + 5], z_slice[base + 6], z_slice[base + 7],
+                ]);
+
+                let p = crate::compiled::Vec3x8 { x: vx, y: vy, z: vz };
+                let distances = crate::compiled::eval_compiled_simd(&comp, p);
+                let arr: [f32; 8] = distances.into();
+                chunk[local_base..local_base + 8].copy_from_slice(&arr);
+            }
+
+            // Handle remainder scalar
+            let remainder_start = simd_iters * 8;
+            for local_i in remainder_start..chunk_len {
                 let i = start + local_i;
                 let p = glam::Vec3::new(x_slice[i], y_slice[i], z_slice[i]);
-                *dist = eval_compiled(&comp, p);
+                chunk[local_i] = eval_compiled(&comp, p);
             }
         });
     } else {
-        // Sequential for small batches
-        for i in 0..count_usize {
-            let p = glam::Vec3::new(x_slice[i], y_slice[i], z_slice[i]);
-            dist_slice[i] = eval_compiled(&comp, p);
-        }
+        // Sequential: use raw SIMD path for full groups, scalar for remainder
+        crate::compiled::eval_compiled_batch_soa_raw(
+            &comp, x, y, z, distances, count_usize,
+        );
     }
 
     BatchResult { count, result: SdfResult::Ok }
@@ -780,6 +816,138 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
 }
 
 // ============================================================================
+// Animated Compiled Evaluation (Zero-Copy)
+// ============================================================================
+
+/// Evaluate compiled SDF with animation transform (zero-allocation per frame)
+///
+/// Instead of rebuilding the SDF tree every frame, this applies the inverse
+/// transform to the query point and evaluates against the pre-compiled base shape.
+///
+/// # Parameters
+/// - `compiled`: Pre-compiled base shape
+/// - `params`: Pointer to AnimationParams struct (36 bytes)
+/// - `x`, `y`, `z`: Query point coordinates
+///
+/// # Returns
+/// Signed distance at the query point
+#[no_mangle]
+pub unsafe extern "C" fn alice_sdf_eval_animated_compiled(
+    compiled: CompiledHandle,
+    params: *const AnimationParams,
+    x: f32,
+    y: f32,
+    z: f32,
+) -> f32 {
+    if params.is_null() {
+        return f32::MAX;
+    }
+
+    let comp = match get_compiled(compiled) {
+        Some(c) => c,
+        None => return f32::MAX,
+    };
+
+    let params_ref = &*params;
+    crate::animation::eval_animated_compiled(&comp, params_ref, glam::Vec3::new(x, y, z))
+}
+
+/// Batch evaluate compiled SDF with animation transform using SoA layout
+///
+/// Combines zero-copy animation with SIMD SoA evaluation for maximum
+/// throughput on animated particle systems.
+///
+/// # Parameters
+/// - `compiled`: Pre-compiled base shape
+/// - `params`: Pointer to AnimationParams struct (shared for all points)
+/// - `x`, `y`, `z`: Input position arrays (SoA layout)
+/// - `distances`: Output array (caller-allocated)
+/// - `count`: Number of points
+#[no_mangle]
+pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
+    compiled: CompiledHandle,
+    params: *const AnimationParams,
+    x: *const f32,
+    y: *const f32,
+    z: *const f32,
+    distances: *mut f32,
+    count: u32,
+) -> BatchResult {
+    if params.is_null() || x.is_null() || y.is_null() || z.is_null() || distances.is_null() {
+        return BatchResult { count: 0, result: SdfResult::NullPointer };
+    }
+
+    let comp = match get_compiled(compiled) {
+        Some(c) => c,
+        None => return BatchResult { count: 0, result: SdfResult::InvalidHandle },
+    };
+
+    let params_ref = &*params;
+    let count_usize = count as usize;
+    let x_slice = slice::from_raw_parts(x, count_usize);
+    let y_slice = slice::from_raw_parts(y, count_usize);
+    let z_slice = slice::from_raw_parts(z, count_usize);
+    let dist_slice = slice::from_raw_parts_mut(distances, count_usize);
+
+    // Apply inverse animation transform to each point, then evaluate via SIMD
+    let has_transform = params_ref.has_translation()
+        || params_ref.has_rotation()
+        || params_ref.has_scale();
+
+    if !has_transform {
+        // No animation transform: use direct SIMD SoA path
+        crate::compiled::eval_compiled_batch_soa_raw(
+            &comp, x, y, z, distances, count_usize,
+        );
+    } else {
+        // Transform points then evaluate
+        // For SIMD efficiency, we transform in 8-wide batches
+        let simd_iters = count_usize / 8;
+
+        for s in 0..simd_iters {
+            let base = s * 8;
+
+            // Load 8 points
+            let mut px = [0.0f32; 8];
+            let mut py = [0.0f32; 8];
+            let mut pz = [0.0f32; 8];
+            let mut scale_corrections = [1.0f32; 8];
+
+            for i in 0..8 {
+                let point = glam::Vec3::new(x_slice[base + i], y_slice[base + i], z_slice[base + i]);
+                let (tp, sc) = params_ref.transform_point(point);
+                px[i] = tp.x;
+                py[i] = tp.y;
+                pz[i] = tp.z;
+                scale_corrections[i] = sc;
+            }
+
+            // Evaluate transformed points via SIMD
+            let vx = wide::f32x8::from(px);
+            let vy = wide::f32x8::from(py);
+            let vz = wide::f32x8::from(pz);
+            let p = crate::compiled::Vec3x8 { x: vx, y: vy, z: vz };
+            let raw_distances = crate::compiled::eval_compiled_simd(&comp, p);
+            let raw_arr: [f32; 8] = raw_distances.into();
+
+            // Apply scale correction
+            for i in 0..8 {
+                dist_slice[base + i] = raw_arr[i] * scale_corrections[i];
+            }
+        }
+
+        // Handle remainder
+        let remainder_start = simd_iters * 8;
+        for i in remainder_start..count_usize {
+            let point = glam::Vec3::new(x_slice[i], y_slice[i], z_slice[i]);
+            dist_slice[i] = crate::animation::eval_animated_compiled(&comp, params_ref, point);
+        }
+    }
+
+    BatchResult { count, result: SdfResult::Ok }
+}
+
+// ============================================================================
 // Shader Generation
 // ============================================================================
 
@@ -792,7 +960,7 @@ pub extern "C" fn alice_sdf_to_wgsl(node: SdfHandle) -> StringResult {
         None => return StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::InvalidHandle },
     };
 
-    let shader = crate::compiled::WgslShader::transpile(&sdf_node);
+    let shader = crate::compiled::WgslShader::transpile(&sdf_node, crate::compiled::TranspileMode::Hardcoded);
     match CString::new(shader.source.clone()) {
         Ok(s) => {
             let len = shader.source.len() as u32;
@@ -811,7 +979,7 @@ pub extern "C" fn alice_sdf_to_hlsl(node: SdfHandle) -> StringResult {
         None => return StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::InvalidHandle },
     };
 
-    let shader = crate::compiled::HlslShader::transpile(&sdf_node);
+    let shader = crate::compiled::HlslShader::transpile(&sdf_node, crate::compiled::HlslTranspileMode::Hardcoded);
     match CString::new(shader.source.clone()) {
         Ok(s) => {
             let len = shader.source.len() as u32;
@@ -830,7 +998,7 @@ pub extern "C" fn alice_sdf_to_glsl(node: SdfHandle) -> StringResult {
         None => return StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::InvalidHandle },
     };
 
-    let shader = crate::compiled::GlslShader::transpile(&sdf_node);
+    let shader = crate::compiled::GlslShader::transpile(&sdf_node, crate::compiled::GlslTranspileMode::Hardcoded);
     match CString::new(shader.source.clone()) {
         Ok(s) => {
             let len = shader.source.len() as u32;
@@ -1002,6 +1170,74 @@ mod tests {
         assert!((distances[0] + 1.0).abs() < 0.001); // inside
         assert!(distances[1].abs() < 0.001);          // surface
         assert!((distances[2] - 1.0).abs() < 0.001); // outside
+
+        alice_sdf_free_compiled(compiled);
+        alice_sdf_free(sphere);
+    }
+
+    #[test]
+    fn test_animated_compiled_eval() {
+        let sphere = alice_sdf_sphere(1.0);
+        let compiled = alice_sdf_compile(sphere);
+
+        // No animation: origin should be inside sphere
+        let params = AnimationParams {
+            scale: 1.0,
+            ..Default::default()
+        };
+        unsafe {
+            let d = alice_sdf_eval_animated_compiled(compiled, &params, 0.0, 0.0, 0.0);
+            assert!((d + 1.0).abs() < 0.01);
+        }
+
+        // Translated by 5 on X: origin should be outside
+        let params = AnimationParams {
+            translate_x: 5.0,
+            scale: 1.0,
+            ..Default::default()
+        };
+        unsafe {
+            let d = alice_sdf_eval_animated_compiled(compiled, &params, 0.0, 0.0, 0.0);
+            assert!(d > 0.0);
+        }
+
+        alice_sdf_free_compiled(compiled);
+        alice_sdf_free(sphere);
+    }
+
+    #[test]
+    fn test_animated_batch_soa() {
+        let sphere = alice_sdf_sphere(1.0);
+        let compiled = alice_sdf_compile(sphere);
+
+        let params = AnimationParams {
+            translate_x: 5.0,
+            scale: 1.0,
+            ..Default::default()
+        };
+
+        let x: [f32; 4] = [0.0, 5.0, 10.0, 5.0];
+        let y: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+        let z: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
+        let mut distances: [f32; 4] = [0.0; 4];
+
+        unsafe {
+            let result = alice_sdf_eval_animated_batch_soa(
+                compiled,
+                &params,
+                x.as_ptr(),
+                y.as_ptr(),
+                z.as_ptr(),
+                distances.as_mut_ptr(),
+                4,
+            );
+            assert_eq!(result.result, SdfResult::Ok);
+        }
+
+        // x=0 with translate_x=5 → sphere center at 5, query at 0 → distance ~4
+        assert!(distances[0] > 3.0);
+        // x=5 with translate_x=5 → sphere center at 5, query at 5 → inside (-1)
+        assert!((distances[1] + 1.0).abs() < 0.01);
 
         alice_sdf_free_compiled(compiled);
         alice_sdf_free(sphere);

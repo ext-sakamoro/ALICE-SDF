@@ -163,6 +163,8 @@ mod eval_simd;
 mod aabb;
 mod eval_bvh;
 mod eval_soa;
+/// Instanced SDF rendering (1 shape × N transforms)
+pub mod instanced;
 
 #[cfg(feature = "jit")]
 pub mod jit;
@@ -182,16 +184,18 @@ pub mod glsl;
 #[cfg(feature = "gpu")]
 pub use wgsl::{
     WgslShader,
+    TranspileMode,
     GpuEvaluator,
     GpuError,
     GpuEvalFuture,
+    GpuBufferPool,
 };
 
 #[cfg(feature = "hlsl")]
-pub use hlsl::HlslShader;
+pub use hlsl::{HlslShader, HlslTranspileMode};
 
 #[cfg(feature = "glsl")]
-pub use glsl::GlslShader;
+pub use glsl::{GlslShader, GlslTranspileMode};
 
 pub use opcode::OpCode;
 pub use instruction::Instruction;
@@ -222,3 +226,4 @@ pub use eval_soa::{
     eval_compiled_batch_soa_into,
     eval_compiled_batch_soa_raw,
 };
+pub use instanced::InstancedSdf;

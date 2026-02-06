@@ -23,6 +23,20 @@ pub enum OpCode {
     Plane = 4,
     /// Capsule: params[0..3] = point_a, params[3..6] = point_b (radius in params via separate field)
     Capsule = 5,
+    /// Cone: params[0] = radius, params[1] = half_height
+    Cone = 6,
+    /// Ellipsoid: params[0..3] = radii (x, y, z)
+    Ellipsoid = 7,
+    /// RoundedCone: params[0] = r1, params[1] = r2, params[2] = half_height
+    RoundedCone = 8,
+    /// Pyramid: params[0] = half_height
+    Pyramid = 9,
+    /// Octahedron: params[0] = size
+    Octahedron = 10,
+    /// HexPrism: params[0] = hex_radius, params[1] = half_height
+    HexPrism = 11,
+    /// Link: params[0] = half_length, params[1] = r1, params[2] = r2
+    Link = 12,
 
     // === Binary Operations (pop 2, push 1) ===
     /// Union: min(a, b)
@@ -66,6 +80,12 @@ pub enum OpCode {
     /// Noise: params[0] = amplitude, params[1] = frequency, params[2] = seed
     /// Post-processes distance: d += noise(p * frequency) * amplitude
     Noise = 55,
+    /// Mirror: params[0..3] = axes (non-zero = mirror that axis)
+    Mirror = 56,
+    /// Revolution: params[0] = offset from Y-axis
+    Revolution = 57,
+    /// Extrude: params[0] = half_height
+    Extrude = 58,
 
     // === Control ===
     /// Pop transform from coordinate stack
@@ -108,14 +128,15 @@ impl OpCode {
         self.is_transform() || matches!(
             self,
             OpCode::Twist | OpCode::Bend | OpCode::RepeatInfinite |
-            OpCode::RepeatFinite | OpCode::Elongate
+            OpCode::RepeatFinite | OpCode::Elongate | OpCode::Mirror |
+            OpCode::Revolution | OpCode::Extrude
         )
     }
 
     /// Returns true if this opcode post-processes the distance value
     #[inline]
     pub fn is_post_process(self) -> bool {
-        matches!(self, OpCode::Round | OpCode::Onion | OpCode::Scale | OpCode::Noise)
+        matches!(self, OpCode::Round | OpCode::Onion | OpCode::Scale | OpCode::Noise | OpCode::Extrude)
     }
 }
 

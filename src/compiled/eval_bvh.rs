@@ -15,52 +15,7 @@ use crate::modifiers::*;
 use crate::types::SdfNode;
 use glam::{Quat, Vec3};
 
-/// Hash-based 3D noise for compiled SDF evaluation
-#[inline]
-fn hash_noise_3d(p: Vec3, seed: u32) -> f32 {
-    let ix = (p.x.floor() as i32) as u32;
-    let iy = (p.y.floor() as i32) as u32;
-    let iz = (p.z.floor() as i32) as u32;
-
-    let fx = p.x.fract();
-    let fy = p.y.fract();
-    let fz = p.z.fract();
-
-    let ux = fx * fx * (3.0 - 2.0 * fx);
-    let uy = fy * fy * (3.0 - 2.0 * fy);
-    let uz = fz * fz * (3.0 - 2.0 * fz);
-
-    let hash = |x: u32, y: u32, z: u32| -> f32 {
-        let mut h = x.wrapping_mul(374761393)
-            .wrapping_add(y.wrapping_mul(668265263))
-            .wrapping_add(z.wrapping_mul(1274126177))
-            .wrapping_add(seed);
-        h = (h ^ (h >> 13)).wrapping_mul(1274126177);
-        h = h ^ (h >> 16);
-        (h as f32 / u32::MAX as f32) * 2.0 - 1.0
-    };
-
-    let c000 = hash(ix, iy, iz);
-    let c100 = hash(ix.wrapping_add(1), iy, iz);
-    let c010 = hash(ix, iy.wrapping_add(1), iz);
-    let c110 = hash(ix.wrapping_add(1), iy.wrapping_add(1), iz);
-    let c001 = hash(ix, iy, iz.wrapping_add(1));
-    let c101 = hash(ix.wrapping_add(1), iy, iz.wrapping_add(1));
-    let c011 = hash(ix, iy.wrapping_add(1), iz.wrapping_add(1));
-    let c111 = hash(ix.wrapping_add(1), iy.wrapping_add(1), iz.wrapping_add(1));
-
-    let lerp = |a: f32, b: f32, t: f32| a + t * (b - a);
-
-    let c00 = lerp(c000, c100, ux);
-    let c10 = lerp(c010, c110, ux);
-    let c01 = lerp(c001, c101, ux);
-    let c11 = lerp(c011, c111, ux);
-
-    let c0 = lerp(c00, c10, uy);
-    let c1 = lerp(c01, c11, uy);
-
-    lerp(c0, c1, uz)
-}
+use crate::modifiers::perlin_noise_3d;
 
 /// Compiled SDF with BVH acceleration data
 ///
@@ -75,13 +30,15 @@ pub struct CompiledSdfBvh {
     pub aabbs: Vec<AabbPacked>,
     /// Original node count
     pub node_count: usize,
+    /// AABB encompassing the entire scene
+    pub scene_aabb: AabbPacked,
 }
 
 impl CompiledSdfBvh {
     /// Compile an SdfNode tree with BVH data
     pub fn compile(node: &SdfNode) -> Self {
         let mut compiler = BvhCompiler::new();
-        compiler.compile_node(node);
+        let scene_aabb = compiler.compile_node(node);
         compiler.instructions.push(Instruction::end());
         compiler.aabbs.push(AabbPacked::infinite()); // End instruction has infinite AABB
 
@@ -89,6 +46,7 @@ impl CompiledSdfBvh {
             instructions: compiler.instructions,
             aabbs: compiler.aabbs,
             node_count: compiler.node_count,
+            scene_aabb,
         }
     }
 
@@ -178,6 +136,76 @@ impl BvhCompiler {
                 );
                 inst.skip_offset = radius.to_bits();
                 self.instructions.push(inst);
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::Cone { radius, half_height } => {
+                let aabb = AabbPacked::new(
+                    Vec3::new(-*radius, -*half_height, -*radius),
+                    Vec3::new(*radius, *half_height, *radius),
+                );
+                self.instructions.push(Instruction::cone(*radius, *half_height));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::Ellipsoid { radii } => {
+                let aabb = AabbPacked::new(-*radii, *radii);
+                self.instructions.push(Instruction::ellipsoid(radii.x, radii.y, radii.z));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::RoundedCone { r1, r2, half_height } => {
+                let max_r = r1.max(*r2);
+                let aabb = AabbPacked::new(
+                    Vec3::new(-max_r, -*half_height, -max_r),
+                    Vec3::new(max_r, *half_height, max_r),
+                );
+                self.instructions.push(Instruction::rounded_cone(*r1, *r2, *half_height));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::Pyramid { half_height } => {
+                // Base is unit square (side=1), so half_extent = 0.5
+                let aabb = AabbPacked::new(
+                    Vec3::new(-0.5, -*half_height, -0.5),
+                    Vec3::new(0.5, *half_height, 0.5),
+                );
+                self.instructions.push(Instruction::pyramid(*half_height));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::Octahedron { size } => {
+                let aabb = AabbPacked::new(
+                    Vec3::new(-*size, -*size, -*size),
+                    Vec3::new(*size, *size, *size),
+                );
+                self.instructions.push(Instruction::octahedron(*size));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::HexPrism { hex_radius, half_height } => {
+                let aabb = AabbPacked::new(
+                    Vec3::new(-*hex_radius, -*hex_radius, -*half_height),
+                    Vec3::new(*hex_radius, *hex_radius, *half_height),
+                );
+                self.instructions.push(Instruction::hex_prism(*hex_radius, *half_height));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::Link { half_length, r1, r2 } => {
+                let extent = r1 + r2;
+                let aabb = AabbPacked::new(
+                    Vec3::new(-extent, -(*half_length + extent), -*r2),
+                    Vec3::new(extent, *half_length + extent, *r2),
+                );
+                self.instructions.push(Instruction::link(*half_length, *r1, *r2));
                 self.aabbs.push(aabb);
                 aabb
             }
@@ -386,11 +414,21 @@ impl BvhCompiler {
                 aabb
             }
 
-            SdfNode::Noise { child, amplitude, frequency: _, seed: _ } => {
-                // Noise just compiles the child (no AABB change needed, noise is local)
+            SdfNode::Noise { child, amplitude, frequency, seed } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::noise(*amplitude, *frequency, *seed));
+                self.aabbs.push(AabbPacked::empty());
+
                 let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
                 // Expand AABB by noise amplitude
-                child_aabb.expand(*amplitude)
+                let aabb = child_aabb.expand(*amplitude);
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
             }
 
             SdfNode::Round { child, radius } => {
@@ -446,6 +484,85 @@ impl BvhCompiler {
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
                 aabb
             }
+
+            SdfNode::Mirror { child, axes } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::mirror(axes.x, axes.y, axes.z));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // Mirror makes the AABB symmetric along mirrored axes
+                let cmin = child_aabb.min();
+                let cmax = child_aabb.max();
+                let extent_x = cmax.x.abs().max(cmin.x.abs());
+                let extent_y = cmax.y.abs().max(cmin.y.abs());
+                let extent_z = cmax.z.abs().max(cmin.z.abs());
+                let aabb = AabbPacked::new(
+                    Vec3::new(
+                        if axes.x != 0.0 { -extent_x } else { cmin.x },
+                        if axes.y != 0.0 { -extent_y } else { cmin.y },
+                        if axes.z != 0.0 { -extent_z } else { cmin.z },
+                    ),
+                    Vec3::new(
+                        if axes.x != 0.0 { extent_x } else { cmax.x },
+                        if axes.y != 0.0 { extent_y } else { cmax.y },
+                        if axes.z != 0.0 { extent_z } else { cmax.z },
+                    ),
+                );
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            SdfNode::Revolution { child, offset } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::revolution(*offset));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // Revolution creates a radially symmetric shape around Y
+                let max_r = child_aabb.max().x.abs().max(child_aabb.min().x.abs()) + offset.abs();
+                let aabb = AabbPacked::new(
+                    Vec3::new(-max_r, child_aabb.min().y, -max_r),
+                    Vec3::new(max_r, child_aabb.max().y, max_r),
+                );
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            SdfNode::Extrude { child, half_height } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::extrude(*half_height));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // Extrude extends the XY shape along Z
+                let aabb = AabbPacked::new(
+                    Vec3::new(child_aabb.min().x, child_aabb.min().y, -*half_height),
+                    Vec3::new(child_aabb.max().x, child_aabb.max().y, *half_height),
+                );
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            // WithMaterial is transparent for distance evaluation
+            SdfNode::WithMaterial { child, .. } => {
+                self.compile_node(child)
+            }
         }
     }
 }
@@ -489,7 +606,7 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
         // BVH pruning: check if we can skip this subtree
         // Only skip for transform/modifier opcodes that have skip_offset set
         if inst.opcode.is_transform() || inst.opcode.is_modifier() {
-            let aabb_dist = aabb.distance_to_point_fast(point);
+            let _aabb_dist = aabb.distance_to_point_fast(point);
             // If point is far from AABB and we have a valid skip offset,
             // we could potentially skip. However, for correctness we need
             // to be careful - we only skip if aabb_dist is larger than
@@ -535,8 +652,51 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
             OpCode::Capsule => {
                 let point_a = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
                 let point_b = Vec3::new(inst.params[3], inst.params[4], inst.params[5]);
-                let radius = f32::from_bits(inst.skip_offset);
+                let radius = inst.get_capsule_radius();
                 let d = sdf_capsule(p, point_a, point_b, radius);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Cone => {
+                let d = sdf_cone(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Ellipsoid => {
+                let radii = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let d = sdf_ellipsoid(p, radii);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RoundedCone => {
+                let d = sdf_rounded_cone(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Pyramid => {
+                let d = sdf_pyramid(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Octahedron => {
+                let d = sdf_octahedron(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::HexPrism => {
+                let d = sdf_hex_prism(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Link => {
+                let d = sdf_link(p, inst.params[0], inst.params[1], inst.params[2]);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -617,7 +777,8 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
             }
 
             OpCode::Scale => {
-                let factor = inst.params[0];
+                let inv_factor = inst.params[0]; // precomputed 1.0/factor
+                let factor = inst.params[1];     // original factor
                 coord_stack[csp] = CoordFrame {
                     point: p,
                     scale_correction,
@@ -626,13 +787,14 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 };
                 csp += 1;
 
-                p = p / factor;
+                // Multiply by precomputed inverse (no division)
+                p = p * inv_factor;
                 scale_correction *= factor;
             }
 
             OpCode::ScaleNonUniform => {
-                let factors = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-                let min_factor = factors.x.min(factors.y).min(factors.z);
+                let inv_factors = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let min_factor = inst.params[3]; // precomputed min(sx,sy,sz)
 
                 coord_stack[csp] = CoordFrame {
                     point: p,
@@ -642,7 +804,8 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 };
                 csp += 1;
 
-                p = p / factors;
+                // Multiply by precomputed inverses (no division)
+                p = p * inv_factors;
                 scale_correction *= min_factor;
             }
 
@@ -746,6 +909,43 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 // Noise doesn't modify point, only post-processes distance
             }
 
+            OpCode::Mirror => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Mirror,
+                    params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
+                };
+                csp += 1;
+
+                let axes = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                p = modifier_mirror(p, axes);
+            }
+
+            OpCode::Revolution => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Revolution,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                p = modifier_revolution(p, inst.params[0]);
+            }
+
+            OpCode::Extrude => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Extrude,
+                    params: [inst.params[0], 0.0, 0.0, 0.0],
+                };
+                csp += 1;
+
+                p = Vec3::new(p.x, p.y, 0.0);
+            }
+
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
@@ -762,8 +962,17 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                         let amplitude = frame.params[0];
                         let frequency = frame.params[1];
                         let seed = frame.params[2] as u32;
-                        let noise_val = hash_noise_3d(frame.point * frequency, seed);
+                        let p = frame.point * frequency;
+                        let noise_val = perlin_noise_3d(p.x, p.y, p.z, seed);
                         value_stack[vsp - 1] += noise_val * amplitude;
+                    }
+                    OpCode::Extrude => {
+                        let half_height = frame.params[0];
+                        let child_dist = value_stack[vsp - 1];
+                        let w_y = frame.point.z.abs() - half_height;
+                        let outside = glam::Vec2::new(child_dist.max(0.0), w_y.max(0.0)).length();
+                        let inside = child_dist.max(w_y).min(0.0);
+                        value_stack[vsp - 1] = outside + inside;
                     }
                     _ => {}
                 }
@@ -789,23 +998,10 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
 
 /// Get the AABB for the entire compiled SDF
 ///
-/// For post-order compilation, the root node's AABB is the last
-/// non-End, non-PopTransform instruction.
+/// Returns the scene AABB computed during compilation, which
+/// correctly handles all node types including transforms and modifiers as root.
 pub fn get_scene_aabb(sdf: &CompiledSdfBvh) -> AabbPacked {
-    if sdf.aabbs.is_empty() {
-        return AabbPacked::empty();
-    }
-
-    // Find the last meaningful instruction (not End or PopTransform)
-    // This is the root of the SDF tree
-    for i in (0..sdf.instructions.len()).rev() {
-        let opcode = sdf.instructions[i].opcode;
-        if opcode != OpCode::End && opcode != OpCode::PopTransform {
-            return sdf.aabbs[i];
-        }
-    }
-
-    sdf.aabbs[0]
+    sdf.scene_aabb
 }
 
 #[cfg(test)]
@@ -887,5 +1083,218 @@ mod tests {
         assert!(aabb.max_x >= 6.0);
         assert!(aabb.min_y <= -1.0);
         assert!(aabb.max_y >= 1.0);
+    }
+
+    /// Helper: compare BVH evaluation against interpreted evaluation
+    fn assert_bvh_matches_interp(node: &SdfNode, test_points: &[Vec3], tolerance: f32) {
+        let compiled = CompiledSdfBvh::compile(node);
+        for &p in test_points {
+            let d_interp = eval(node, p);
+            let d_bvh = eval_compiled_bvh(&compiled, p);
+            assert!(
+                (d_interp - d_bvh).abs() < tolerance,
+                "Mismatch at {:?}: interp={}, bvh={} (diff={})",
+                p, d_interp, d_bvh, (d_interp - d_bvh).abs()
+            );
+        }
+    }
+
+    const STANDARD_TEST_POINTS: [Vec3; 8] = [
+        Vec3::ZERO,
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::new(0.5, 0.5, 0.5),
+        Vec3::new(-1.0, -1.0, -1.0),
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(0.3, -0.7, 1.2),
+    ];
+
+    #[test]
+    fn test_eval_bvh_cone() {
+        let node = SdfNode::cone(1.0, 1.5);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.001);
+    }
+
+    #[test]
+    fn test_eval_bvh_cone_translated() {
+        let node = SdfNode::cone(0.8, 1.0).translate(1.0, 0.5, 0.0);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.001);
+    }
+
+    #[test]
+    fn test_eval_bvh_cone_aabb() {
+        // cone(radius, height) → half_height = height * 0.5
+        let node = SdfNode::cone(1.0, 4.0); // half_height = 2.0
+        let compiled = CompiledSdfBvh::compile(&node);
+        let aabb = &compiled.aabbs[0];
+        assert!((aabb.min_x - (-1.0)).abs() < 0.001);
+        assert!((aabb.max_x - 1.0).abs() < 0.001);
+        assert!((aabb.min_y - (-2.0)).abs() < 0.001);
+        assert!((aabb.max_y - 2.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eval_bvh_ellipsoid() {
+        let node = SdfNode::ellipsoid(1.0, 0.5, 0.75);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.01);
+    }
+
+    #[test]
+    fn test_eval_bvh_ellipsoid_union() {
+        let node = SdfNode::ellipsoid(1.0, 0.5, 0.75)
+            .union(SdfNode::sphere(0.5).translate(2.0, 0.0, 0.0));
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.01);
+    }
+
+    #[test]
+    fn test_eval_bvh_ellipsoid_aabb() {
+        let node = SdfNode::ellipsoid(2.0, 1.0, 1.5);
+        let compiled = CompiledSdfBvh::compile(&node);
+        let aabb = &compiled.aabbs[0];
+        assert!((aabb.min_x - (-2.0)).abs() < 0.001);
+        assert!((aabb.max_x - 2.0).abs() < 0.001);
+        assert!((aabb.min_y - (-1.0)).abs() < 0.001);
+        assert!((aabb.max_y - 1.0).abs() < 0.001);
+        assert!((aabb.min_z - (-1.5)).abs() < 0.001);
+        assert!((aabb.max_z - 1.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eval_bvh_mirror() {
+        let node = SdfNode::box3d(1.0, 0.5, 0.5)
+            .translate(1.0, 0.0, 0.0)
+            .mirror(true, false, false);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.001);
+    }
+
+    #[test]
+    fn test_eval_bvh_mirror_xyz() {
+        let node = SdfNode::sphere(0.5)
+            .translate(1.0, 1.0, 1.0)
+            .mirror(true, true, true);
+        let extra_points = [
+            Vec3::new(1.0, 1.0, 1.0),
+            Vec3::new(-1.0, 1.0, 1.0),
+            Vec3::new(1.0, -1.0, -1.0),
+            Vec3::new(-1.0, -1.0, -1.0),
+        ];
+        assert_bvh_matches_interp(&node, &extra_points, 0.001);
+    }
+
+    #[test]
+    fn test_eval_bvh_revolution() {
+        let node = SdfNode::sphere(0.3).revolution(1.0);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.01);
+    }
+
+    #[test]
+    fn test_eval_bvh_revolution_aabb() {
+        // sphere(0.5).revolution(2.0)
+        // Instructions: revolution, sphere, pop_transform, end
+        // Revolution AABB is at index 0
+        let node = SdfNode::sphere(0.5).revolution(2.0);
+        let compiled = CompiledSdfBvh::compile(&node);
+        let aabb = &compiled.aabbs[0]; // Revolution instruction's AABB
+        // Child sphere AABB x: [-0.5, 0.5], max abs = 0.5
+        // Revolution radial extent = 0.5 + |offset| = 2.5
+        assert!(aabb.min_x <= -2.5, "min_x={}", aabb.min_x);
+        assert!(aabb.max_x >= 2.5, "max_x={}", aabb.max_x);
+        assert!(aabb.min_z <= -2.5, "min_z={}", aabb.min_z);
+        assert!(aabb.max_z >= 2.5, "max_z={}", aabb.max_z);
+    }
+
+    #[test]
+    fn test_eval_bvh_extrude() {
+        let node = SdfNode::sphere(1.0).extrude(0.5);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.01);
+    }
+
+    #[test]
+    fn test_eval_bvh_extrude_box() {
+        let node = SdfNode::box3d(1.0, 0.5, 0.0).extrude(2.0);
+        let test_points = [
+            Vec3::ZERO,
+            Vec3::new(0.5, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 0.0, 3.0),
+            Vec3::new(1.5, 0.0, 0.5),
+        ];
+        assert_bvh_matches_interp(&node, &test_points, 0.01);
+    }
+
+    #[test]
+    fn test_eval_bvh_noise() {
+        // Interpreted eval uses Perlin noise, BVH uses hash noise (different algorithms)
+        // So we compare BVH compiled eval vs BVH eval (same noise function)
+        let node = SdfNode::sphere(1.0).noise(0.1, 2.0, 42);
+        let compiled_bvh = CompiledSdfBvh::compile(&node);
+        let compiled_flat = crate::compiled::CompiledSdf::compile(&node);
+        for &p in &STANDARD_TEST_POINTS {
+            let d_bvh = eval_compiled_bvh(&compiled_bvh, p);
+            let d_flat = crate::compiled::eval::eval_compiled(&compiled_flat, p);
+            assert!(
+                (d_bvh - d_flat).abs() < 0.001,
+                "Noise mismatch at {:?}: bvh={}, flat={} (diff={})",
+                p, d_bvh, d_flat, (d_bvh - d_flat).abs()
+            );
+        }
+    }
+
+    #[test]
+    fn test_eval_bvh_noise_on_union() {
+        // Compare BVH vs flat compiled (both use hash noise)
+        let node = SdfNode::sphere(1.0)
+            .union(SdfNode::box3d(0.5, 0.5, 0.5).translate(1.5, 0.0, 0.0))
+            .noise(0.05, 3.0, 7);
+        let compiled_bvh = CompiledSdfBvh::compile(&node);
+        let compiled_flat = crate::compiled::CompiledSdf::compile(&node);
+        for &p in &STANDARD_TEST_POINTS {
+            let d_bvh = eval_compiled_bvh(&compiled_bvh, p);
+            let d_flat = crate::compiled::eval::eval_compiled(&compiled_flat, p);
+            assert!(
+                (d_bvh - d_flat).abs() < 0.001,
+                "Noise mismatch at {:?}: bvh={}, flat={} (diff={})",
+                p, d_bvh, d_flat, (d_bvh - d_flat).abs()
+            );
+        }
+    }
+
+    #[test]
+    fn test_eval_bvh_combined_new_features() {
+        // Cone + Mirror (no noise — compare against interpreted)
+        let node = SdfNode::cone(0.5, 1.0)
+            .mirror(true, false, true);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.001);
+    }
+
+    #[test]
+    fn test_scene_aabb_transform_root() {
+        // Bug fix: get_scene_aabb should return correct AABB when root is a transform
+        let node = SdfNode::sphere(1.0).translate(5.0, 3.0, 0.0);
+        let compiled = CompiledSdfBvh::compile(&node);
+        let aabb = get_scene_aabb(&compiled);
+        assert!((aabb.min_x - 4.0).abs() < 0.001, "min_x={}", aabb.min_x);
+        assert!((aabb.max_x - 6.0).abs() < 0.001, "max_x={}", aabb.max_x);
+        assert!((aabb.min_y - 2.0).abs() < 0.001, "min_y={}", aabb.min_y);
+        assert!((aabb.max_y - 4.0).abs() < 0.001, "max_y={}", aabb.max_y);
+    }
+
+    #[test]
+    fn test_scene_aabb_modifier_root() {
+        // get_scene_aabb should work when root is a modifier (e.g. noise)
+        let node = SdfNode::sphere(1.0).noise(0.1, 2.0, 42);
+        let compiled = CompiledSdfBvh::compile(&node);
+        let aabb = get_scene_aabb(&compiled);
+        // Sphere AABB is [-1,1]^3, expanded by amplitude=0.1
+        assert!(aabb.min_x <= -1.0);
+        assert!(aabb.max_x >= 1.0);
+    }
+
+    #[test]
+    fn test_noise_interpreted_vs_compiled() {
+        // Bug fix: all paths now use perlin_noise_3d
+        let node = SdfNode::sphere(1.0).noise(0.1, 2.0, 42);
+        assert_bvh_matches_interp(&node, &STANDARD_TEST_POINTS, 0.001);
     }
 }

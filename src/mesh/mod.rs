@@ -30,9 +30,14 @@
 //! Author: Moroya Sakamoto
 
 pub mod bvh;
+pub mod collision;
+pub mod decimate;
 pub mod hermite;
+pub mod lightmap;
 pub mod lod;
+pub mod manifold;
 pub mod nanite;
+pub mod optimize;
 pub mod primitive_fitting;
 mod mesh_to_sdf;
 mod sdf_to_mesh;
@@ -45,6 +50,7 @@ pub use hermite::{
 pub use lod::{
     LodMesh, LodChain, LodConfig, LodSelector, ContinuousLod,
     generate_lod_chain,
+    DecimationLodConfig, generate_lod_chain_decimated,
 };
 pub use mesh_to_sdf::{
     mesh_to_sdf, mesh_to_sdf_exact,
@@ -59,21 +65,71 @@ pub use primitive_fitting::{
     fit_sphere, fit_box, fit_cylinder, fit_plane,
     detect_primitive, primitives_to_csg,
 };
-pub use sdf_to_mesh::{sdf_to_mesh, marching_cubes, MarchingCubesConfig, Mesh};
+pub use manifold::{
+    MeshValidation, MeshRepair, MeshQuality,
+    validate_mesh, compute_quality,
+};
+pub use decimate::{decimate, DecimateConfig};
+pub use lightmap::{generate_lightmap_uvs, generate_lightmap_uvs_fast};
+pub use optimize::{optimize_vertex_cache, compute_acmr, deduplicate_vertices};
+pub use collision::{
+    CollisionAabb, BoundingSphere, ConvexHull, CollisionMesh,
+    compute_aabb, compute_bounding_sphere, compute_convex_hull,
+    convex_hull_from_points, simplify_collision,
+    VhacdConfig, ConvexDecomposition, convex_decomposition,
+};
+pub use sdf_to_mesh::{
+    sdf_to_mesh, marching_cubes, MarchingCubesConfig, Mesh,
+    adaptive_marching_cubes, AdaptiveConfig,
+};
 
-/// Vertex with position and normal
+/// Vertex with position, normal, UV, tangent, color, and material ID
+///
+/// Compatible with standard game engine vertex formats (UE5, Unity, Godot).
+/// Includes UV2 for lightmap coordinates.
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex {
     /// Position in 3D space
     pub position: glam::Vec3,
-    /// Surface normal
+    /// Surface normal (normalized)
     pub normal: glam::Vec3,
+    /// Texture coordinates (triplanar projected)
+    pub uv: glam::Vec2,
+    /// Lightmap UV coordinates (UV channel 1)
+    pub uv2: glam::Vec2,
+    /// Tangent vector (xyz = direction, w = handedness sign)
+    pub tangent: glam::Vec4,
+    /// Vertex color (RGBA, linear space)
+    pub color: [f32; 4],
+    /// Material ID (indexes into MaterialLibrary)
+    pub material_id: u32,
 }
 
 impl Vertex {
-    /// Create a new vertex
+    /// Create a new vertex with position and normal (UV/tangent/color default)
     pub fn new(position: glam::Vec3, normal: glam::Vec3) -> Self {
-        Vertex { position, normal }
+        Vertex {
+            position,
+            normal,
+            uv: glam::Vec2::ZERO,
+            uv2: glam::Vec2::ZERO,
+            tangent: glam::Vec4::new(1.0, 0.0, 0.0, 1.0),
+            color: [1.0, 1.0, 1.0, 1.0],
+            material_id: 0,
+        }
+    }
+
+    /// Create a vertex with all fields specified
+    pub fn with_all(
+        position: glam::Vec3,
+        normal: glam::Vec3,
+        uv: glam::Vec2,
+        uv2: glam::Vec2,
+        tangent: glam::Vec4,
+        color: [f32; 4],
+        material_id: u32,
+    ) -> Self {
+        Vertex { position, normal, uv, uv2, tangent, color, material_id }
     }
 }
 

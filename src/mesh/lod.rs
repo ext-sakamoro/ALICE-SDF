@@ -205,6 +205,167 @@ impl LodConfig {
     }
 }
 
+/// Configuration for decimation-based LOD generation
+#[derive(Debug, Clone)]
+pub struct DecimationLodConfig {
+    /// Number of LOD levels to generate
+    pub num_levels: u32,
+    /// Base resolution for LOD 0 mesh generation
+    pub base_resolution: u32,
+    /// Decimation ratio per level (0.5 = halve triangle count each level)
+    pub decimation_ratio: f32,
+    /// Distance multiplier per LOD level
+    pub distance_multiplier: f32,
+    /// Base distance for LOD 0
+    pub base_distance: f32,
+    /// Compute vertex normals
+    pub compute_normals: bool,
+    /// Preserve material boundaries during decimation
+    pub preserve_materials: bool,
+}
+
+impl Default for DecimationLodConfig {
+    fn default() -> Self {
+        DecimationLodConfig {
+            num_levels: 5,
+            base_resolution: 64,
+            decimation_ratio: 0.5,
+            distance_multiplier: 2.0,
+            base_distance: 1.0,
+            compute_normals: true,
+            preserve_materials: true,
+        }
+    }
+}
+
+impl DecimationLodConfig {
+    /// High quality decimation LOD
+    pub fn high_quality() -> Self {
+        DecimationLodConfig {
+            num_levels: 6,
+            base_resolution: 128,
+            decimation_ratio: 0.5,
+            distance_multiplier: 2.0,
+            base_distance: 0.5,
+            compute_normals: true,
+            preserve_materials: true,
+        }
+    }
+
+    /// Fast decimation LOD
+    pub fn fast() -> Self {
+        DecimationLodConfig {
+            num_levels: 3,
+            base_resolution: 32,
+            decimation_ratio: 0.4,
+            distance_multiplier: 3.0,
+            base_distance: 2.0,
+            compute_normals: true,
+            preserve_materials: false,
+        }
+    }
+
+    /// Get distance range for a specific LOD level
+    pub fn distance_range(&self, level: u32) -> (f32, f32) {
+        let min = if level == 0 {
+            0.0
+        } else {
+            self.base_distance * self.distance_multiplier.powi(level as i32)
+        };
+        let max = if level < self.num_levels - 1 {
+            self.base_distance * self.distance_multiplier.powi((level + 1) as i32)
+        } else {
+            f32::INFINITY
+        };
+        (min, max)
+    }
+}
+
+/// Generate LOD chain using QEM decimation from a high-res base mesh
+///
+/// Unlike `generate_lod_chain` which re-runs marching cubes at lower resolutions,
+/// this function generates LOD 0 once and progressively decimates it.
+/// This produces higher-quality lower LODs because the decimation preserves
+/// the original surface topology and attributes (UVs, normals, tangents).
+pub fn generate_lod_chain_decimated(
+    sdf: &SdfNode,
+    min_bounds: Vec3,
+    max_bounds: Vec3,
+    config: &DecimationLodConfig,
+) -> LodChain {
+    use crate::mesh::decimate::{decimate, DecimateConfig};
+
+    let bounds_radius = (max_bounds - min_bounds).length() * 0.5;
+
+    // Generate high-res base mesh (LOD 0)
+    let mc_config = MarchingCubesConfig {
+        resolution: config.base_resolution as usize,
+        iso_level: 0.0,
+        compute_normals: config.compute_normals,
+        ..Default::default()
+    };
+
+    let base_mesh = sdf_to_mesh(sdf, min_bounds, max_bounds, &mc_config);
+    let base_resolution = config.base_resolution;
+
+    let mut levels = Vec::with_capacity(config.num_levels as usize);
+
+    // LOD 0: full resolution
+    let (min_dist, max_dist) = config.distance_range(0);
+    let max_error = compute_lod_error(&base_mesh, base_resolution, bounds_radius);
+
+    levels.push(LodMesh {
+        level: 0,
+        resolution: base_resolution,
+        mesh: base_mesh.clone(),
+        max_error,
+        screen_threshold: max_error / min_dist.max(0.001),
+        min_distance: 0.0,
+        max_distance: max_dist,
+    });
+
+    // LOD 1..N: progressive decimation
+    let mut current_mesh = base_mesh;
+
+    for level in 1..config.num_levels {
+        let (min_dist, max_dist) = config.distance_range(level);
+
+        let dec_config = DecimateConfig {
+            target_ratio: config.decimation_ratio,
+            max_error: f32::MAX,
+            preserve_boundary: true,
+            preserve_materials: config.preserve_materials,
+            locked_materials: Vec::new(),
+        };
+
+        let mut lod_mesh = current_mesh.clone();
+        decimate(&mut lod_mesh, &dec_config);
+
+        let effective_res = (base_resolution as f32
+            * config.decimation_ratio.powi(level as i32)) as u32;
+        let max_error = compute_lod_error(&lod_mesh, effective_res.max(4), bounds_radius);
+
+        levels.push(LodMesh {
+            level,
+            resolution: effective_res.max(4),
+            mesh: lod_mesh.clone(),
+            max_error,
+            screen_threshold: max_error / min_dist.max(0.001),
+            min_distance: if level == 0 { 0.0 } else { min_dist },
+            max_distance: max_dist,
+        });
+
+        current_mesh = lod_mesh;
+    }
+
+    LodChain {
+        levels,
+        bounds_min: min_bounds,
+        bounds_max: max_bounds,
+        bounding_radius: bounds_radius,
+    }
+}
+
 /// Generate LOD chain from SDF
 pub fn generate_lod_chain(
     sdf: &SdfNode,
@@ -214,7 +375,7 @@ pub fn generate_lod_chain(
 ) -> LodChain {
     let mut levels = Vec::with_capacity(config.num_levels as usize);
 
-    let center = (min_bounds + max_bounds) * 0.5;
+    let _center = (min_bounds + max_bounds) * 0.5;
     let bounds_radius = (max_bounds - min_bounds).length() * 0.5;
 
     for level in 0..config.num_levels {
@@ -225,6 +386,7 @@ pub fn generate_lod_chain(
             resolution: resolution as usize,
             iso_level: 0.0,
             compute_normals: config.compute_normals,
+            ..Default::default()
         };
 
         let mesh = sdf_to_mesh(sdf, min_bounds, max_bounds, &mc_config);
@@ -251,7 +413,7 @@ pub fn generate_lod_chain(
 }
 
 /// Compute geometric error for a LOD level
-fn compute_lod_error(mesh: &Mesh, resolution: u32, bounds_radius: f32) -> f32 {
+fn compute_lod_error(_mesh: &Mesh, resolution: u32, bounds_radius: f32) -> f32 {
     // Error is proportional to cell size
     let cell_size = (bounds_radius * 2.0) / resolution as f32;
     cell_size * 0.5 // Half cell size as max error estimate
@@ -381,7 +543,7 @@ mod tests {
         assert_eq!(config.resolution_at_level(2), 16);
 
         let (min0, max0) = config.distance_range(0);
-        let (min1, max1) = config.distance_range(1);
+        let (min1, _max1) = config.distance_range(1);
 
         assert_eq!(min0, 0.0); // LOD 0 starts at 0
         assert_eq!(min1, max0); // LOD 1 starts where LOD 0 ends
@@ -445,6 +607,66 @@ mod tests {
         // Closer distance should give larger screen error
         let close_error = selector.screen_error(0.1, 1.0);
         assert!(close_error > error);
+    }
+
+    #[test]
+    fn test_decimation_lod_chain() {
+        let sphere = SdfNode::sphere(1.0);
+        let config = DecimationLodConfig::fast();
+
+        let chain = generate_lod_chain_decimated(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &config,
+        );
+
+        assert_eq!(chain.levels.len(), config.num_levels as usize);
+
+        // Higher LOD levels should have fewer triangles (progressive decimation)
+        for i in 1..chain.levels.len() {
+            let prev = chain.levels[i - 1].mesh.triangle_count();
+            let curr = chain.levels[i].mesh.triangle_count();
+            assert!(
+                curr <= prev,
+                "LOD {} ({} tris) should have <= LOD {} ({} tris)",
+                i, curr, i - 1, prev
+            );
+        }
+
+        // LOD 0 should have the most triangles
+        let lod0_tris = chain.levels[0].mesh.triangle_count();
+        let last_lod_tris = chain.levels.last().unwrap().mesh.triangle_count();
+        assert!(
+            last_lod_tris < lod0_tris,
+            "Last LOD ({} tris) should be less than LOD 0 ({} tris)",
+            last_lod_tris, lod0_tris
+        );
+    }
+
+    #[test]
+    fn test_decimation_lod_vs_resolution_lod() {
+        let sphere = SdfNode::sphere(1.0);
+
+        // Resolution-based LOD
+        let res_config = LodConfig::fast();
+        let res_chain = generate_lod_chain(
+            &sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &res_config
+        );
+
+        // Decimation-based LOD
+        let dec_config = DecimationLodConfig::fast();
+        let dec_chain = generate_lod_chain_decimated(
+            &sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &dec_config
+        );
+
+        // Both should produce valid LOD chains
+        assert!(!res_chain.levels.is_empty());
+        assert!(!dec_chain.levels.is_empty());
+
+        // Both LOD 0 should have meshes
+        assert!(res_chain.levels[0].mesh.triangle_count() > 0);
+        assert!(dec_chain.levels[0].mesh.triangle_count() > 0);
     }
 
     #[test]

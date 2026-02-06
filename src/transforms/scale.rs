@@ -66,6 +66,7 @@ pub fn transform_scale_nonuniform(point: Vec3, factors: Vec3) -> (Vec3, f32) {
 ///
 /// This provides a more accurate distance estimate for non-uniform scaling
 /// by considering the gradient direction.
+#[allow(dead_code)]
 #[inline(always)]
 pub fn correct_distance_nonuniform(distance: f32, factors: Vec3, gradient: Vec3) -> f32 {
     // Deep Fried: vector multiplication instead of component-wise scalar

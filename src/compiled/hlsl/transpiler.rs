@@ -8,6 +8,7 @@
 //! - **Division Exorcism**: Replaces `/k` with `* inv_k` in smooth ops
 //! - **Inline Smooth Ops**: Pre-computes reciprocals at transpile time
 //! - **FMA-friendly**: Structures operations for GPU FMA units
+//! - **Dynamic Parameters**: Constants read from cbuffer for zero-latency updates
 //!
 //! # Usage in Unreal Engine 5
 //!
@@ -23,6 +24,15 @@ use std::fmt::Write;
 /// Epsilon for constant folding (skip operations that are no-ops)
 const FOLD_EPSILON: f32 = 1e-6;
 
+/// Transpilation mode for HLSL
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HlslTranspileMode {
+    /// Constants are baked into the shader (Fastest execution, requires recompile on change)
+    Hardcoded,
+    /// Constants are read from a constant buffer (Fast update via cbuffer, good execution)
+    Dynamic,
+}
+
 /// Generated HLSL shader code
 #[derive(Debug, Clone)]
 pub struct HlslShader {
@@ -30,12 +40,16 @@ pub struct HlslShader {
     pub source: String,
     /// Number of helper functions generated
     pub helper_count: usize,
+    /// Initial parameter values (empty for Hardcoded mode)
+    pub param_layout: Vec<f32>,
+    /// Transpilation mode used
+    pub mode: HlslTranspileMode,
 }
 
 impl HlslShader {
-    /// Transpile an SDF node tree to HLSL
-    pub fn transpile(node: &SdfNode) -> Self {
-        let mut transpiler = HlslTranspiler::new();
+    /// Transpile an SDF node tree to HLSL with the specified mode
+    pub fn transpile(node: &SdfNode, mode: HlslTranspileMode) -> Self {
+        let mut transpiler = HlslTranspiler::new(mode);
         let body = transpiler.transpile_node(node, "p");
 
         let source = transpiler.generate_shader(&body);
@@ -43,30 +57,54 @@ impl HlslShader {
         HlslShader {
             source,
             helper_count: transpiler.helper_functions.len(),
+            param_layout: transpiler.params,
+            mode,
         }
+    }
+
+    /// Extract parameter values from an SDF node tree
+    ///
+    /// Returns the same parameter layout as produced by `transpile()` in Dynamic mode.
+    /// Use this to update the constant buffer without recompiling the shader.
+    pub fn extract_params(node: &SdfNode) -> Vec<f32> {
+        let mut transpiler = HlslTranspiler::new(HlslTranspileMode::Dynamic);
+        let _ = transpiler.transpile_node(node, "p");
+        transpiler.params
     }
 
     /// Generate HLSL for UE5 Custom Material Expression
     ///
     /// Returns code suitable for pasting into a Custom node in UE5's Material Editor.
     pub fn to_ue5_custom_node(&self) -> String {
+        let dynamic_note = if self.mode == HlslTranspileMode::Dynamic {
+            "// NOTE: Dynamic mode - parameters are read from cbuffer SdfParams.\n// Set up a Material Parameter Collection or custom cbuffer to update params at runtime.\n"
+        } else {
+            ""
+        };
+
         format!(
             r#"// ALICE-SDF Generated HLSL for UE5 Custom Node
 // Input: float3 p (World Position)
 // Output: float (SDF Distance)
-
-{}
+{dynamic_note}
+{source}
 return sdf_eval(p);
 "#,
-            self.source
+            dynamic_note = dynamic_note,
+            source = self.source
         )
     }
 
     /// Generate a complete HLSL compute shader for batch evaluation
     pub fn to_compute_shader(&self) -> String {
+        let params_decl = if self.mode == HlslTranspileMode::Dynamic {
+            "\ncbuffer SdfParams : register(b1) {\n    float4 params[1024]; // 4096 scalar floats\n};\n"
+        } else {
+            ""
+        };
+
         format!(
-            r#"// ALICE-SDF Generated HLSL Compute Shader
-// Evaluates SDF at multiple points in parallel
+            r#"// ALICE-SDF Generated HLSL Compute Shader ({mode:?} Mode)
 
 struct InputPoint {{
     float x, y, z, _pad;
@@ -81,8 +119,8 @@ RWStructuredBuffer<OutputDistance> output_distances : register(u0);
 cbuffer Constants : register(b0) {{
     uint point_count;
 }};
-
-{}
+{params_decl}
+{source}
 
 [numthreads(256, 1, 1)]
 void main(uint3 id : SV_DispatchThreadID) {{
@@ -93,7 +131,9 @@ void main(uint3 id : SV_DispatchThreadID) {{
     output_distances[id.x].distance = sdf_eval(p);
 }}
 "#,
-            self.source
+            mode = self.mode,
+            params_decl = params_decl,
+            source = self.source
         )
     }
 
@@ -109,13 +149,19 @@ struct HlslTranspiler {
     var_counter: usize,
     /// Helper functions that need to be included
     helper_functions: Vec<&'static str>,
+    /// Transpilation mode
+    mode: HlslTranspileMode,
+    /// Collected parameter values (Dynamic mode)
+    params: Vec<f32>,
 }
 
 impl HlslTranspiler {
-    fn new() -> Self {
+    fn new(mode: HlslTranspileMode) -> Self {
         HlslTranspiler {
             var_counter: 0,
             helper_functions: Vec::new(),
+            mode,
+            params: Vec::new(),
         }
     }
 
@@ -131,6 +177,28 @@ impl HlslTranspiler {
         }
     }
 
+    /// Register a float parameter and return its HLSL expression string.
+    ///
+    /// - Hardcoded: returns a literal like `"1.000000"`
+    /// - Dynamic: pushes to param buffer and returns `"params[i].comp"`
+    fn param(&mut self, value: f32) -> String {
+        match self.mode {
+            HlslTranspileMode::Hardcoded => format!("{:.6}", value),
+            HlslTranspileMode::Dynamic => {
+                let idx = self.params.len();
+                self.params.push(value);
+                let vec_idx = idx / 4;
+                let comp = match idx % 4 {
+                    0 => "x",
+                    1 => "y",
+                    2 => "z",
+                    _ => "w",
+                };
+                format!("params[{}].{}", vec_idx, comp)
+            }
+        }
+    }
+
     fn generate_shader(&self, body: &str) -> String {
         let mut shader = String::new();
 
@@ -139,6 +207,30 @@ impl HlslTranspiler {
             match *helper {
                 "quat_rotate" => {
                     shader.push_str(HELPER_QUAT_ROTATE);
+                    shader.push('\n');
+                }
+                "hash_noise" => {
+                    shader.push_str(HELPER_HASH_NOISE);
+                    shader.push('\n');
+                }
+                "sdf_rounded_cone" => {
+                    shader.push_str(HELPER_SDF_ROUNDED_CONE);
+                    shader.push('\n');
+                }
+                "sdf_pyramid" => {
+                    shader.push_str(HELPER_SDF_PYRAMID);
+                    shader.push('\n');
+                }
+                "sdf_octahedron" => {
+                    shader.push_str(HELPER_SDF_OCTAHEDRON);
+                    shader.push('\n');
+                }
+                "sdf_hex_prism" => {
+                    shader.push_str(HELPER_SDF_HEX_PRISM);
+                    shader.push('\n');
+                }
+                "sdf_link" => {
+                    shader.push_str(HELPER_SDF_LINK);
                     shader.push('\n');
                 }
                 _ => {}
@@ -170,23 +262,22 @@ impl HlslTranspiler {
             // ============ Primitives ============
 
             SdfNode::Sphere { radius } => {
+                let r_s = self.param(*radius);
                 let var = self.next_var();
-                writeln!(
-                    code,
-                    "    float {} = length({}) - {:.6};",
-                    var, point_var, radius
-                )
-                .unwrap();
+                writeln!(code, "    float {} = length({}) - {};", var, point_var, r_s).unwrap();
                 var
             }
 
             SdfNode::Box3d { half_extents } => {
+                let hx = self.param(half_extents.x);
+                let hy = self.param(half_extents.y);
+                let hz = self.param(half_extents.z);
                 let q_var = self.next_var();
                 let var = self.next_var();
                 writeln!(
                     code,
-                    "    float3 {} = abs({}) - float3({:.6}, {:.6}, {:.6});",
-                    q_var, point_var, half_extents.x, half_extents.y, half_extents.z
+                    "    float3 {} = abs({}) - float3({}, {}, {});",
+                    q_var, point_var, hx, hy, hz
                 )
                 .unwrap();
                 writeln!(
@@ -199,12 +290,14 @@ impl HlslTranspiler {
             }
 
             SdfNode::Cylinder { radius, half_height } => {
+                let r_s = self.param(*radius);
+                let h_s = self.param(*half_height);
                 let d_var = self.next_var();
                 let var = self.next_var();
                 writeln!(
                     code,
-                    "    float2 {} = float2(length({}.xz) - {:.6}, abs({}.y) - {:.6});",
-                    d_var, point_var, radius, point_var, half_height
+                    "    float2 {} = float2(length({}.xz) - {}, abs({}.y) - {});",
+                    d_var, point_var, r_s, point_var, h_s
                 )
                 .unwrap();
                 writeln!(
@@ -220,24 +313,30 @@ impl HlslTranspiler {
                 major_radius,
                 minor_radius,
             } => {
+                let maj_s = self.param(*major_radius);
+                let min_s = self.param(*minor_radius);
                 let q_var = self.next_var();
                 let var = self.next_var();
                 writeln!(
                     code,
-                    "    float2 {} = float2(length({}.xz) - {:.6}, {}.y);",
-                    q_var, point_var, major_radius, point_var
+                    "    float2 {} = float2(length({}.xz) - {}, {}.y);",
+                    q_var, point_var, maj_s, point_var
                 )
                 .unwrap();
-                writeln!(code, "    float {} = length({}) - {:.6};", var, q_var, minor_radius).unwrap();
+                writeln!(code, "    float {} = length({}) - {};", var, q_var, min_s).unwrap();
                 var
             }
 
             SdfNode::Plane { normal, distance } => {
+                let nx = self.param(normal.x);
+                let ny = self.param(normal.y);
+                let nz = self.param(normal.z);
+                let dist = self.param(*distance);
                 let var = self.next_var();
                 writeln!(
                     code,
-                    "    float {} = dot({}, float3({:.6}, {:.6}, {:.6})) + {:.6};",
-                    var, point_var, normal.x, normal.y, normal.z, distance
+                    "    float {} = dot({}, float3({}, {}, {})) + {};",
+                    var, point_var, nx, ny, nz, dist
                 )
                 .unwrap();
                 var
@@ -248,6 +347,18 @@ impl HlslTranspiler {
                 point_b,
                 radius,
             } => {
+                let pax = self.param(point_a.x);
+                let pay = self.param(point_a.y);
+                let paz = self.param(point_a.z);
+                let pbx = self.param(point_b.x);
+                let pby = self.param(point_b.y);
+                let pbz = self.param(point_b.z);
+                // ba = point_b - point_a (re-emit point_a for subtraction)
+                let pax2 = self.param(point_a.x);
+                let pay2 = self.param(point_a.y);
+                let paz2 = self.param(point_a.z);
+                let r_s = self.param(*radius);
+
                 let pa_var = self.next_var();
                 let ba_var = self.next_var();
                 let h_var = self.next_var();
@@ -255,16 +366,14 @@ impl HlslTranspiler {
 
                 writeln!(
                     code,
-                    "    float3 {} = {} - float3({:.6}, {:.6}, {:.6});",
-                    pa_var, point_var, point_a.x, point_a.y, point_a.z
+                    "    float3 {} = {} - float3({}, {}, {});",
+                    pa_var, point_var, pax, pay, paz
                 )
                 .unwrap();
                 writeln!(
                     code,
-                    "    float3 {} = float3({:.6}, {:.6}, {:.6}) - float3({:.6}, {:.6}, {:.6});",
-                    ba_var,
-                    point_b.x, point_b.y, point_b.z,
-                    point_a.x, point_a.y, point_a.z
+                    "    float3 {} = float3({}, {}, {}) - float3({}, {}, {});",
+                    ba_var, pbx, pby, pbz, pax2, pay2, paz2
                 )
                 .unwrap();
                 writeln!(
@@ -275,10 +384,144 @@ impl HlslTranspiler {
                 .unwrap();
                 writeln!(
                     code,
-                    "    float {} = length({} - {} * {}) - {:.6};",
-                    var, pa_var, ba_var, h_var, radius
+                    "    float {} = length({} - {} * {}) - {};",
+                    var, pa_var, ba_var, h_var, r_s
                 )
                 .unwrap();
+                var
+            }
+
+            SdfNode::Cone { radius, half_height } => {
+                let k2x = -radius;
+                let k2y = 2.0 * half_height;
+                let denom = k2x * k2x + k2y * k2y;
+
+                let r_s = self.param(*radius);
+                let hh_s = self.param(*half_height);
+                let k2x_s = self.param(k2x);
+                let k2y_s = self.param(k2y);
+                let denom_s = self.param(denom);
+
+                let qx_var = self.next_var();
+                let h_var = self.next_var();
+                let ca_var = self.next_var();
+                let t_var = self.next_var();
+                let cb_var = self.next_var();
+                let s_var = self.next_var();
+                let d2_var = self.next_var();
+                let var = self.next_var();
+
+                writeln!(code, "    float {} = length({}.xz);", qx_var, point_var).unwrap();
+                writeln!(code, "    float {} = {};", h_var, hh_s).unwrap();
+                writeln!(code,
+                    "    float2 {} = float2({} - min({}, ({}.y < 0.0) ? {} : 0.0), abs({}.y) - {});",
+                    ca_var, qx_var, qx_var, point_var, r_s, point_var, h_var
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = clamp((-{} * {} + ({} - {}.y) * {}) / {}, 0.0, 1.0);",
+                    t_var, qx_var, k2x_s, h_var, point_var, k2y_s, denom_s
+                ).unwrap();
+                writeln!(code,
+                    "    float2 {} = float2({} + {} * {}, {}.y - {} + {} * {});",
+                    cb_var, qx_var, k2x_s, t_var, point_var, h_var, k2y_s, t_var
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = ({}.x < 0.0 && {}.y < 0.0) ? -1.0 : 1.0;",
+                    s_var, cb_var, ca_var
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = min(dot({}, {}), dot({}, {}));",
+                    d2_var, ca_var, ca_var, cb_var, cb_var
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = {} * sqrt({});",
+                    var, s_var, d2_var
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Ellipsoid { radii } => {
+                let rx = self.param(radii.x);
+                let ry = self.param(radii.y);
+                let rz = self.param(radii.z);
+                let rx2 = self.param(radii.x * radii.x);
+                let ry2 = self.param(radii.y * radii.y);
+                let rz2 = self.param(radii.z * radii.z);
+                let var = self.next_var();
+                let k0_var = self.next_var();
+                let k1_var = self.next_var();
+                writeln!(code,
+                    "    float {} = length({} / float3({}, {}, {}));",
+                    k0_var, point_var, rx, ry, rz
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = length({} / float3({}, {}, {}));",
+                    k1_var, point_var, rx2, ry2, rz2
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = {} * ({} - 1.0) / max({}, 1e-10);",
+                    var, k0_var, k0_var, k1_var
+                ).unwrap();
+                var
+            }
+
+            SdfNode::RoundedCone { r1, r2, half_height } => {
+                self.ensure_helper("sdf_rounded_cone");
+                let r1_s = self.param(*r1);
+                let r2_s = self.param(*r2);
+                let hh_s = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = sdf_rounded_cone({}, {}, {}, {});",
+                    var, point_var, r1_s, r2_s, hh_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Pyramid { half_height } => {
+                self.ensure_helper("sdf_pyramid");
+                let hh_s = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = sdf_pyramid({}, {});",
+                    var, point_var, hh_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Octahedron { size } => {
+                self.ensure_helper("sdf_octahedron");
+                let s_s = self.param(*size);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = sdf_octahedron({}, {});",
+                    var, point_var, s_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::HexPrism { hex_radius, half_height } => {
+                self.ensure_helper("sdf_hex_prism");
+                let hr_s = self.param(*hex_radius);
+                let hh_s = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = sdf_hex_prism({}, {}, {});",
+                    var, point_var, hr_s, hh_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Link { half_length, r1, r2 } => {
+                self.ensure_helper("sdf_link");
+                let hl_s = self.param(*half_length);
+                let r1_s = self.param(*r1);
+                let r2_s = self.param(*r2);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = sdf_link({}, {}, {}, {});",
+                    var, point_var, hl_s, r1_s, r2_s
+                ).unwrap();
                 var
             }
 
@@ -314,23 +557,26 @@ impl HlslTranspiler {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
 
-                if k.abs() < FOLD_EPSILON {
+                // Constant folding only in Hardcoded mode
+                if self.mode == HlslTranspileMode::Hardcoded && k.abs() < FOLD_EPSILON {
                     writeln!(code, "    float {} = min({}, {});", var, d_a, d_b).unwrap();
                     return var;
                 }
 
-                let inv_k = 1.0 / k;
+                let inv_k = if k.abs() < 1e-10 { 1.0 } else { 1.0 / k };
+                let k_s = self.param(*k);
+                let inv_k_s = self.param(inv_k);
                 let h_var = self.next_var();
 
                 writeln!(
                     code,
-                    "    float {} = max({:.6} - abs({} - {}), 0.0) * {:.6};",
-                    h_var, k, d_a, d_b, inv_k
+                    "    float {} = max({} - abs({} - {}), 0.0) * {};",
+                    h_var, k_s, d_a, d_b, inv_k_s
                 ).unwrap();
                 writeln!(
                     code,
-                    "    float {} = min({}, {}) - {} * {} * {:.6} * 0.25;",
-                    var, d_a, d_b, h_var, h_var, k
+                    "    float {} = min({}, {}) - {} * {} * {} * 0.25;",
+                    var, d_a, d_b, h_var, h_var, k_s
                 ).unwrap();
                 var
             }
@@ -341,23 +587,25 @@ impl HlslTranspiler {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
 
-                if k.abs() < FOLD_EPSILON {
+                if self.mode == HlslTranspileMode::Hardcoded && k.abs() < FOLD_EPSILON {
                     writeln!(code, "    float {} = max({}, {});", var, d_a, d_b).unwrap();
                     return var;
                 }
 
-                let inv_k = 1.0 / k;
+                let inv_k = if k.abs() < 1e-10 { 1.0 } else { 1.0 / k };
+                let k_s = self.param(*k);
+                let inv_k_s = self.param(inv_k);
                 let h_var = self.next_var();
 
                 writeln!(
                     code,
-                    "    float {} = max({:.6} - abs({} - {}), 0.0) * {:.6};",
-                    h_var, k, d_a, d_b, inv_k
+                    "    float {} = max({} - abs({} - {}), 0.0) * {};",
+                    h_var, k_s, d_a, d_b, inv_k_s
                 ).unwrap();
                 writeln!(
                     code,
-                    "    float {} = max({}, {}) + {} * {} * {:.6} * 0.25;",
-                    var, d_a, d_b, h_var, h_var, k
+                    "    float {} = max({}, {}) + {} * {} * {} * 0.25;",
+                    var, d_a, d_b, h_var, h_var, k_s
                 ).unwrap();
                 var
             }
@@ -368,25 +616,27 @@ impl HlslTranspiler {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
 
-                if k.abs() < FOLD_EPSILON {
+                if self.mode == HlslTranspileMode::Hardcoded && k.abs() < FOLD_EPSILON {
                     writeln!(code, "    float {} = max({}, -{});", var, d_a, d_b).unwrap();
                     return var;
                 }
 
-                let inv_k = 1.0 / k;
+                let inv_k = if k.abs() < 1e-10 { 1.0 } else { 1.0 / k };
+                let k_s = self.param(*k);
+                let inv_k_s = self.param(inv_k);
                 let h_var = self.next_var();
                 let neg_b = self.next_var();
 
                 writeln!(code, "    float {} = -{};", neg_b, d_b).unwrap();
                 writeln!(
                     code,
-                    "    float {} = max({:.6} - abs({} - {}), 0.0) * {:.6};",
-                    h_var, k, d_a, neg_b, inv_k
+                    "    float {} = max({} - abs({} - {}), 0.0) * {};",
+                    h_var, k_s, d_a, neg_b, inv_k_s
                 ).unwrap();
                 writeln!(
                     code,
-                    "    float {} = max({}, {}) + {} * {} * {:.6} * 0.25;",
-                    var, d_a, neg_b, h_var, h_var, k
+                    "    float {} = max({}, {}) + {} * {} * {} * 0.25;",
+                    var, d_a, neg_b, h_var, h_var, k_s
                 ).unwrap();
                 var
             }
@@ -394,11 +644,14 @@ impl HlslTranspiler {
             // ============ Transforms ============
 
             SdfNode::Translate { child, offset } => {
+                let ox = self.param(offset.x);
+                let oy = self.param(offset.y);
+                let oz = self.param(offset.z);
                 let new_p = self.next_var();
                 writeln!(
                     code,
-                    "    float3 {} = {} - float3({:.6}, {:.6}, {:.6});",
-                    new_p, point_var, offset.x, offset.y, offset.z
+                    "    float3 {} = {} - float3({}, {}, {});",
+                    new_p, point_var, ox, oy, oz
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
@@ -407,53 +660,65 @@ impl HlslTranspiler {
             SdfNode::Rotate { child, rotation } => {
                 self.ensure_helper("quat_rotate");
                 let inv_rot = rotation.inverse();
+                let qx = self.param(inv_rot.x);
+                let qy = self.param(inv_rot.y);
+                let qz = self.param(inv_rot.z);
+                let qw = self.param(inv_rot.w);
                 let new_p = self.next_var();
                 writeln!(
                     code,
-                    "    float3 {} = quat_rotate({}, float4({:.6}, {:.6}, {:.6}, {:.6}));",
-                    new_p, point_var, inv_rot.x, inv_rot.y, inv_rot.z, inv_rot.w
+                    "    float3 {} = quat_rotate({}, float4({}, {}, {}, {}));",
+                    new_p, point_var, qx, qy, qz, qw
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
             }
 
+            // ★ Deep Fried: Division Exorcism for Scale
             SdfNode::Scale { child, factor } => {
+                let inv_factor = if factor.abs() < 1e-10 { 1.0 } else { 1.0 / factor };
+                let inv_f_s = self.param(inv_factor);
+                let f_s = self.param(*factor);
                 let new_p = self.next_var();
-                let inv_factor = 1.0 / factor;
                 writeln!(
                     code,
-                    "    float3 {} = {} * {:.6};",
-                    new_p, point_var, inv_factor
+                    "    float3 {} = {} * {};",
+                    new_p, point_var, inv_f_s
                 )
                 .unwrap();
                 let d = self.transpile_node_inner(child, &new_p, code);
                 let var = self.next_var();
-                writeln!(code, "    float {} = {} * {:.6};", var, d, factor).unwrap();
+                writeln!(code, "    float {} = {} * {};", var, d, f_s).unwrap();
                 var
             }
 
             // ★ Deep Fried: Division Exorcism for ScaleNonUniform
             SdfNode::ScaleNonUniform { child, factors } => {
+                let inv_x = if factors.x.abs() < 1e-10 { 1.0 } else { 1.0 / factors.x };
+                let inv_y = if factors.y.abs() < 1e-10 { 1.0 } else { 1.0 / factors.y };
+                let inv_z = if factors.z.abs() < 1e-10 { 1.0 } else { 1.0 / factors.z };
+                let inv_x_s = self.param(inv_x);
+                let inv_y_s = self.param(inv_y);
+                let inv_z_s = self.param(inv_z);
+                let min_scale = factors.x.min(factors.y).min(factors.z);
+                let ms_s = self.param(min_scale);
                 let new_p = self.next_var();
-                let inv_x = 1.0 / factors.x;
-                let inv_y = 1.0 / factors.y;
-                let inv_z = 1.0 / factors.z;
                 writeln!(
                     code,
-                    "    float3 {} = {} * float3({:.6}, {:.6}, {:.6});",
-                    new_p, point_var, inv_x, inv_y, inv_z
+                    "    float3 {} = {} * float3({}, {}, {});",
+                    new_p, point_var, inv_x_s, inv_y_s, inv_z_s
                 )
                 .unwrap();
                 let d = self.transpile_node_inner(child, &new_p, code);
-                let min_scale = factors.x.min(factors.y).min(factors.z);
                 let var = self.next_var();
-                writeln!(code, "    float {} = {} * {:.6};", var, d, min_scale).unwrap();
+                writeln!(code, "    float {} = {} * {};", var, d, ms_s).unwrap();
                 var
             }
 
             // ============ Modifiers ============
 
             SdfNode::Twist { child, strength } => {
+                let str_s = self.param(*strength);
                 let angle_var = self.next_var();
                 let c_var = self.next_var();
                 let s_var = self.next_var();
@@ -461,8 +726,8 @@ impl HlslTranspiler {
 
                 writeln!(
                     code,
-                    "    float {} = {:.6} * {}.y;",
-                    angle_var, strength, point_var
+                    "    float {} = {} * {}.y;",
+                    angle_var, str_s, point_var
                 )
                 .unwrap();
                 writeln!(code, "    float {} = cos({});", c_var, angle_var).unwrap();
@@ -477,6 +742,7 @@ impl HlslTranspiler {
             }
 
             SdfNode::Bend { child, curvature } => {
+                let curv_s = self.param(*curvature);
                 let angle_var = self.next_var();
                 let c_var = self.next_var();
                 let s_var = self.next_var();
@@ -484,8 +750,8 @@ impl HlslTranspiler {
 
                 writeln!(
                     code,
-                    "    float {} = {:.6} * {}.x;",
-                    angle_var, curvature, point_var
+                    "    float {} = {} * {}.x;",
+                    angle_var, curv_s, point_var
                 )
                 .unwrap();
                 writeln!(code, "    float {} = cos({});", c_var, angle_var).unwrap();
@@ -501,40 +767,46 @@ impl HlslTranspiler {
 
             SdfNode::Round { child, radius } => {
                 let d = self.transpile_node_inner(child, point_var, code);
+                let r_s = self.param(*radius);
                 let var = self.next_var();
-                writeln!(code, "    float {} = {} - {:.6};", var, d, radius).unwrap();
+                writeln!(code, "    float {} = {} - {};", var, d, r_s).unwrap();
                 var
             }
 
             SdfNode::Onion { child, thickness } => {
                 let d = self.transpile_node_inner(child, point_var, code);
+                let t_s = self.param(*thickness);
                 let var = self.next_var();
-                writeln!(code, "    float {} = abs({}) - {:.6};", var, d, thickness).unwrap();
+                writeln!(code, "    float {} = abs({}) - {};", var, d, t_s).unwrap();
                 var
             }
 
             SdfNode::Elongate { child, amount } => {
+                let ax = self.param(amount.x);
+                let ay = self.param(amount.y);
+                let az = self.param(amount.z);
+                let nax = self.param(-amount.x);
+                let nay = self.param(-amount.y);
+                let naz = self.param(-amount.z);
                 let q_var = self.next_var();
                 writeln!(
                     code,
-                    "    float3 {} = {} - clamp({}, float3({:.6}, {:.6}, {:.6}), float3({:.6}, {:.6}, {:.6}));",
-                    q_var, point_var, point_var,
-                    -amount.x, -amount.y, -amount.z,
-                    amount.x, amount.y, amount.z
+                    "    float3 {} = {} - clamp({}, float3({}, {}, {}), float3({}, {}, {}));",
+                    q_var, point_var, point_var, nax, nay, naz, ax, ay, az
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &q_var, code)
             }
 
             SdfNode::RepeatInfinite { child, spacing } => {
+                let sx = self.param(spacing.x);
+                let sy = self.param(spacing.y);
+                let sz = self.param(spacing.z);
                 let q_var = self.next_var();
                 writeln!(
                     code,
-                    "    float3 {} = fmod({} + float3({:.6}, {:.6}, {:.6}) * 0.5, float3({:.6}, {:.6}, {:.6})) - float3({:.6}, {:.6}, {:.6}) * 0.5;",
-                    q_var, point_var,
-                    spacing.x, spacing.y, spacing.z,
-                    spacing.x, spacing.y, spacing.z,
-                    spacing.x, spacing.y, spacing.z
+                    "    float3 {} = fmod({} + float3({}, {}, {}) * 0.5, float3({}, {}, {})) - float3({}, {}, {}) * 0.5;",
+                    q_var, point_var, sx, sy, sz, sx, sy, sz, sx, sy, sz
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &q_var, code)
@@ -545,28 +817,102 @@ impl HlslTranspiler {
                 count,
                 spacing,
             } => {
+                let sx = self.param(spacing.x);
+                let sy = self.param(spacing.y);
+                let sz = self.param(spacing.z);
+                let ncx = self.param(-(count[0] as f32));
+                let ncy = self.param(-(count[1] as f32));
+                let ncz = self.param(-(count[2] as f32));
+                let pcx = self.param(count[0] as f32);
+                let pcy = self.param(count[1] as f32);
+                let pcz = self.param(count[2] as f32);
                 let r_var = self.next_var();
                 let q_var = self.next_var();
                 writeln!(
                     code,
-                    "    float3 {} = clamp(round({} / float3({:.6}, {:.6}, {:.6})), float3({:.6}, {:.6}, {:.6}), float3({:.6}, {:.6}, {:.6}));",
-                    r_var, point_var,
-                    spacing.x, spacing.y, spacing.z,
-                    -(count[0] as f32), -(count[1] as f32), -(count[2] as f32),
-                    count[0] as f32, count[1] as f32, count[2] as f32
+                    "    float3 {} = clamp(round({} / float3({}, {}, {})), float3({}, {}, {}), float3({}, {}, {}));",
+                    r_var, point_var, sx, sy, sz, ncx, ncy, ncz, pcx, pcy, pcz
                 )
                 .unwrap();
                 writeln!(
                     code,
-                    "    float3 {} = {} - float3({:.6}, {:.6}, {:.6}) * {};",
-                    q_var, point_var, spacing.x, spacing.y, spacing.z, r_var
+                    "    float3 {} = {} - float3({}, {}, {}) * {};",
+                    q_var, point_var, sx, sy, sz, r_var
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &q_var, code)
             }
 
-            SdfNode::Noise { child, .. } => {
-                // Noise is not supported in HLSL transpiler
+            SdfNode::Noise { child, amplitude, frequency, seed } => {
+                self.ensure_helper("hash_noise");
+                let d = self.transpile_node_inner(child, point_var, code);
+                let freq_s = self.param(*frequency);
+                let amp_s = self.param(*amplitude);
+                let seed_s = self.param(*seed as f32);
+                let n_var = self.next_var();
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = hash_noise_3d({} * {}, (uint){});",
+                    n_var, point_var, freq_s, seed_s
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = {} + {} * {};",
+                    var, d, n_var, amp_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Mirror { child, axes } => {
+                // Mirror axes are structural (which axes to mirror), not parameterizable
+                let new_p = self.next_var();
+                writeln!(code,
+                    "    float3 {} = float3({}, {}, {});",
+                    new_p,
+                    if axes.x != 0.0 { format!("abs({}.x)", point_var) } else { format!("{}.x", point_var) },
+                    if axes.y != 0.0 { format!("abs({}.y)", point_var) } else { format!("{}.y", point_var) },
+                    if axes.z != 0.0 { format!("abs({}.z)", point_var) } else { format!("{}.z", point_var) },
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::Revolution { child, offset } => {
+                let off_s = self.param(*offset);
+                let q_var = self.next_var();
+                let new_p = self.next_var();
+                writeln!(code,
+                    "    float {} = length({}.xz) - {};",
+                    q_var, point_var, off_s
+                ).unwrap();
+                writeln!(code,
+                    "    float3 {} = float3({}, {}.y, 0.0);",
+                    new_p, q_var, point_var
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::Extrude { child, half_height } => {
+                let hh_s = self.param(*half_height);
+                let flat_p = self.next_var();
+                writeln!(code,
+                    "    float3 {} = float3({}.x, {}.y, 0.0);",
+                    flat_p, point_var, point_var
+                ).unwrap();
+                let d = self.transpile_node_inner(child, &flat_p, code);
+                let w_var = self.next_var();
+                let var = self.next_var();
+                writeln!(code,
+                    "    float2 {} = float2({}, abs({}.z) - {});",
+                    w_var, d, point_var, hh_s
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = min(max({}.x, {}.y), 0.0) + length(max({}, float2(0.0, 0.0)));",
+                    var, w_var, w_var, w_var
+                ).unwrap();
+                var
+            }
+
+            // WithMaterial is transparent for shader evaluation
+            SdfNode::WithMaterial { child, .. } => {
                 self.transpile_node_inner(child, point_var, code)
             }
         }
@@ -574,10 +920,108 @@ impl HlslTranspiler {
 }
 
 // Helper function definitions for HLSL
+const HELPER_HASH_NOISE: &str = r#"float hash_noise_3d(float3 p, uint seed) {
+    float3 f = frac(p);
+    float3 i = floor(p);
+    float3 u = f * f * (3.0 - 2.0 * f);
+    float s = (float)seed;
+    float n000 = frac(sin(dot(i, float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float n100 = frac(sin(dot(i + float3(1,0,0), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float n010 = frac(sin(dot(i + float3(0,1,0), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float n110 = frac(sin(dot(i + float3(1,1,0), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float n001 = frac(sin(dot(i + float3(0,0,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float n101 = frac(sin(dot(i + float3(1,0,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float n011 = frac(sin(dot(i + float3(0,1,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float n111 = frac(sin(dot(i + float3(1,1,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    float c00 = lerp(n000, n100, u.x);
+    float c10 = lerp(n010, n110, u.x);
+    float c01 = lerp(n001, n101, u.x);
+    float c11 = lerp(n011, n111, u.x);
+    float c0 = lerp(c00, c10, u.y);
+    float c1 = lerp(c01, c11, u.y);
+    return lerp(c0, c1, u.z) * 2.0 - 1.0;
+}"#;
+
 const HELPER_QUAT_ROTATE: &str = r#"float3 quat_rotate(float3 v, float4 q) {
     float3 t = 2.0 * cross(q.xyz, v);
     return v + q.w * t + cross(q.xyz, t);
 }"#;
+
+const HELPER_SDF_ROUNDED_CONE: &str = r#"float sdf_rounded_cone(float3 p, float r1, float r2, float h) {
+    float qx = length(p.xz);
+    float qy = p.y + h;
+    float ht = h * 2.0;
+    float b = (r1 - r2) / ht;
+    float a = sqrt(1.0 - b * b);
+    float k = qx * (-b) + qy * a;
+    if (k < 0.0) return length(float2(qx, qy)) - r1;
+    if (k > a * ht) return length(float2(qx, qy - ht)) - r2;
+    return qx * a + qy * b - r1;
+}
+"#;
+
+const HELPER_SDF_PYRAMID: &str = r#"float sdf_pyramid(float3 p, float h) {
+    float ht = h * 2.0;
+    float m2 = ht * ht + 0.25;
+    float py = p.y + h;
+    float px = abs(p.x);
+    float pz = abs(p.z);
+    if (pz > px) { float tmp = px; px = pz; pz = tmp; }
+    px -= 0.5;
+    pz -= 0.5;
+    float qx = pz;
+    float qy = ht * py - 0.5 * px;
+    float qz = ht * px + 0.5 * py;
+    float s = max(-qx, 0.0);
+    float t = clamp((qy - 0.5 * pz) / (m2 + 0.25), 0.0, 1.0);
+    float a = m2 * (qx + s) * (qx + s) + qy * qy;
+    float b = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
+    float d2 = (min(-qx * m2 - qy * 0.5, qy) > 0.0) ? 0.0 : min(a, b);
+    return sqrt((d2 + qz * qz) / m2) * sign(max(qz, -py));
+}
+"#;
+
+const HELPER_SDF_OCTAHEDRON: &str = r#"float sdf_octahedron(float3 p, float s) {
+    float3 ap = abs(p);
+    float m = ap.x + ap.y + ap.z - s;
+    float3 q;
+    if (3.0 * ap.x < m) q = ap;
+    else if (3.0 * ap.y < m) q = float3(ap.y, ap.z, ap.x);
+    else if (3.0 * ap.z < m) q = float3(ap.z, ap.x, ap.y);
+    else return m * 0.57735027;
+    float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
+    return length(float3(q.x, q.y - s + k, q.z - k));
+}
+"#;
+
+const HELPER_SDF_HEX_PRISM: &str = r#"float sdf_hex_prism(float3 p, float hex_r, float h) {
+    float kx = -0.8660254;
+    float ky = 0.5;
+    float kz = 0.57735027;
+    float px = abs(p.x);
+    float py = abs(p.y);
+    float pz = abs(p.z);
+    float dot_kxy = kx * px + ky * py;
+    float refl = 2.0 * min(dot_kxy, 0.0);
+    px -= refl * kx;
+    py -= refl * ky;
+    float clamped_x = clamp(px, -kz * hex_r, kz * hex_r);
+    float dx = px - clamped_x;
+    float dy = py - hex_r;
+    float d_xy = sqrt(dx * dx + dy * dy) * sign(dy);
+    float d_z = pz - h;
+    return min(max(d_xy, d_z), 0.0) + length(max(float2(d_xy, d_z), float2(0.0, 0.0)));
+}
+"#;
+
+const HELPER_SDF_LINK: &str = r#"float sdf_link(float3 p, float le, float r1, float r2) {
+    float qx = p.x;
+    float qy = max(abs(p.y) - le, 0.0);
+    float qz = p.z;
+    float xy_len = sqrt(qx * qx + qy * qy) - r1;
+    return sqrt(xy_len * xy_len + qz * qz) - r2;
+}
+"#;
 
 #[cfg(test)]
 mod tests {
@@ -587,11 +1031,12 @@ mod tests {
     #[test]
     fn test_transpile_sphere() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
-        let shader = HlslShader::transpile(&sphere);
+        let shader = HlslShader::transpile(&sphere, HlslTranspileMode::Hardcoded);
 
         assert!(shader.source.contains("float sdf_eval(float3 p)"));
         assert!(shader.source.contains("length(p)"));
         assert!(shader.source.contains("1.0"));
+        assert!(shader.param_layout.is_empty());
     }
 
     #[test]
@@ -599,7 +1044,7 @@ mod tests {
         let box3d = SdfNode::Box3d {
             half_extents: Vec3::new(1.0, 0.5, 0.5),
         };
-        let shader = HlslShader::transpile(&box3d);
+        let shader = HlslShader::transpile(&box3d, HlslTranspileMode::Hardcoded);
 
         assert!(shader.source.contains("float sdf_eval(float3 p)"));
         assert!(shader.source.contains("abs(p)"));
@@ -609,7 +1054,7 @@ mod tests {
     #[test]
     fn test_ue5_custom_node() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
-        let shader = HlslShader::transpile(&sphere);
+        let shader = HlslShader::transpile(&sphere, HlslTranspileMode::Hardcoded);
         let ue5_code = shader.to_ue5_custom_node();
 
         assert!(ue5_code.contains("UE5 Custom Node"));
@@ -619,11 +1064,75 @@ mod tests {
     #[test]
     fn test_compute_shader() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
-        let shader = HlslShader::transpile(&sphere);
+        let shader = HlslShader::transpile(&sphere, HlslTranspileMode::Hardcoded);
         let compute = shader.to_compute_shader();
 
         assert!(compute.contains("[numthreads(256, 1, 1)]"));
         assert!(compute.contains("StructuredBuffer"));
         assert!(compute.contains("RWStructuredBuffer"));
+    }
+
+    // ============ Dynamic Mode Tests ============
+
+    #[test]
+    fn test_dynamic_sphere() {
+        let sphere = SdfNode::Sphere { radius: 1.5 };
+        let shader = HlslShader::transpile(&sphere, HlslTranspileMode::Dynamic);
+
+        assert!(shader.source.contains("params["));
+        assert_eq!(shader.param_layout.len(), 1);
+        assert!((shader.param_layout[0] - 1.5).abs() < 1e-6);
+        assert_eq!(shader.mode, HlslTranspileMode::Dynamic);
+    }
+
+    #[test]
+    fn test_dynamic_smooth_union() {
+        let shape = SdfNode::sphere(1.0)
+            .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.3);
+        let shader = HlslShader::transpile(&shape, HlslTranspileMode::Dynamic);
+
+        // Should contain cbuffer references
+        assert!(shader.source.contains("params["));
+        // Smooth union emits k and inv_k (Division Exorcism)
+        let k_idx = shader.param_layout.iter().position(|&v| (v - 0.3).abs() < 1e-6);
+        assert!(k_idx.is_some(), "k=0.3 should be in param_layout");
+    }
+
+    #[test]
+    fn test_dynamic_extract_params() {
+        let shape = SdfNode::sphere(1.5).translate(2.0, 3.0, 4.0);
+
+        let shader = HlslShader::transpile(&shape, HlslTranspileMode::Dynamic);
+        let extracted = HlslShader::extract_params(&shape);
+
+        assert_eq!(shader.param_layout, extracted);
+    }
+
+    #[test]
+    fn test_dynamic_compute_shader_has_cbuffer() {
+        let sphere = SdfNode::Sphere { radius: 1.0 };
+        let shader = HlslShader::transpile(&sphere, HlslTranspileMode::Dynamic);
+        let compute = shader.to_compute_shader();
+
+        assert!(compute.contains("cbuffer SdfParams"));
+        assert!(compute.contains("float4 params[1024]"));
+    }
+
+    #[test]
+    fn test_hardcoded_no_params() {
+        let shape = SdfNode::sphere(1.0).translate(1.0, 2.0, 3.0);
+        let shader = HlslShader::transpile(&shape, HlslTranspileMode::Hardcoded);
+
+        assert!(!shader.source.contains("params["));
+        assert!(shader.param_layout.is_empty());
+    }
+
+    #[test]
+    fn test_dynamic_ue5_has_note() {
+        let sphere = SdfNode::Sphere { radius: 1.0 };
+        let shader = HlslShader::transpile(&sphere, HlslTranspileMode::Dynamic);
+        let ue5_code = shader.to_ue5_custom_node();
+
+        assert!(ue5_code.contains("Dynamic mode"));
     }
 }

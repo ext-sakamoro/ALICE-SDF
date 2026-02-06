@@ -74,5 +74,5 @@
 mod transpiler;
 mod gpu_eval;
 
-pub use transpiler::WgslShader;
-pub use gpu_eval::{GpuEvaluator, GpuError, GpuEvalFuture};
+pub use transpiler::{WgslShader, TranspileMode};
+pub use gpu_eval::{GpuEvaluator, GpuError, GpuEvalFuture, GpuBufferPool};

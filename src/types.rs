@@ -19,88 +19,295 @@ use std::sync::Arc;
 pub enum SdfNode {
     // === Primitives ===
     /// Sphere with radius
-    Sphere { radius: f32 },
+    Sphere {
+        /// Sphere radius
+        radius: f32,
+    },
 
     /// Axis-aligned box with half-extents
-    Box3d { half_extents: Vec3 },
+    Box3d {
+        /// Half-extents along each axis
+        half_extents: Vec3,
+    },
 
     /// Cylinder along Y-axis with radius and half-height
-    Cylinder { radius: f32, half_height: f32 },
+    Cylinder {
+        /// Cylinder radius
+        radius: f32,
+        /// Half the cylinder height
+        half_height: f32,
+    },
 
     /// Torus in XZ plane with major and minor radius
-    Torus { major_radius: f32, minor_radius: f32 },
+    Torus {
+        /// Distance from center to tube center
+        major_radius: f32,
+        /// Tube radius
+        minor_radius: f32,
+    },
 
     /// Infinite plane with normal and distance from origin
-    Plane { normal: Vec3, distance: f32 },
+    Plane {
+        /// Plane normal direction
+        normal: Vec3,
+        /// Signed distance from origin along normal
+        distance: f32,
+    },
 
     /// Capsule between two points with radius
-    Capsule { point_a: Vec3, point_b: Vec3, radius: f32 },
+    Capsule {
+        /// First endpoint
+        point_a: Vec3,
+        /// Second endpoint
+        point_b: Vec3,
+        /// Capsule radius
+        radius: f32,
+    },
+
+    /// Cone along Y-axis with base radius and half-height
+    Cone {
+        /// Base radius
+        radius: f32,
+        /// Half the cone height
+        half_height: f32,
+    },
+
+    /// Ellipsoid with semi-axis radii
+    Ellipsoid {
+        /// Semi-axis radii (x, y, z)
+        radii: Vec3,
+    },
+
+    /// Rounded cone along Y-axis with bottom radius r1, top radius r2
+    RoundedCone {
+        /// Bottom sphere radius
+        r1: f32,
+        /// Top sphere radius
+        r2: f32,
+        /// Half the cone height
+        half_height: f32,
+    },
+
+    /// 4-sided pyramid with square base (side=1) centered at origin
+    Pyramid {
+        /// Half the pyramid height
+        half_height: f32,
+    },
+
+    /// Regular octahedron centered at origin
+    Octahedron {
+        /// Distance from center to vertex
+        size: f32,
+    },
+
+    /// Hexagonal prism centered at origin
+    HexPrism {
+        /// Hexagon circumradius
+        hex_radius: f32,
+        /// Half the prism height
+        half_height: f32,
+    },
+
+    /// Chain link shape centered at origin
+    Link {
+        /// Half the straight section length
+        half_length: f32,
+        /// Major radius (center to tube center)
+        r1: f32,
+        /// Minor radius (tube thickness)
+        r2: f32,
+    },
 
     // === Operations ===
     /// Union of two shapes (min distance)
-    Union { a: Arc<SdfNode>, b: Arc<SdfNode> },
+    Union {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+    },
 
     /// Intersection of two shapes (max distance)
-    Intersection { a: Arc<SdfNode>, b: Arc<SdfNode> },
+    Intersection {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+    },
 
     /// Subtraction: a minus b (max of a and -b)
-    Subtraction { a: Arc<SdfNode>, b: Arc<SdfNode> },
+    Subtraction {
+        /// Shape to subtract from
+        a: Arc<SdfNode>,
+        /// Shape to subtract
+        b: Arc<SdfNode>,
+    },
 
     /// Smooth union with blending factor k
-    SmoothUnion { a: Arc<SdfNode>, b: Arc<SdfNode>, k: f32 },
+    SmoothUnion {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+        /// Blending radius
+        k: f32,
+    },
 
     /// Smooth intersection with blending factor k
-    SmoothIntersection { a: Arc<SdfNode>, b: Arc<SdfNode>, k: f32 },
+    SmoothIntersection {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+        /// Blending radius
+        k: f32,
+    },
 
     /// Smooth subtraction with blending factor k
-    SmoothSubtraction { a: Arc<SdfNode>, b: Arc<SdfNode>, k: f32 },
+    SmoothSubtraction {
+        /// Shape to subtract from
+        a: Arc<SdfNode>,
+        /// Shape to subtract
+        b: Arc<SdfNode>,
+        /// Blending radius
+        k: f32,
+    },
 
     // === Transforms ===
     /// Translation
-    Translate { child: Arc<SdfNode>, offset: Vec3 },
+    Translate {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Translation offset
+        offset: Vec3,
+    },
 
     /// Rotation (quaternion)
-    Rotate { child: Arc<SdfNode>, rotation: Quat },
+    Rotate {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Rotation quaternion
+        rotation: Quat,
+    },
 
     /// Uniform scale
-    Scale { child: Arc<SdfNode>, factor: f32 },
+    Scale {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Scale factor
+        factor: f32,
+    },
 
     /// Non-uniform scale (stretches the shape)
-    ScaleNonUniform { child: Arc<SdfNode>, factors: Vec3 },
+    ScaleNonUniform {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Scale factors per axis
+        factors: Vec3,
+    },
 
     // === Modifiers ===
     /// Twist around Y-axis (radians per unit height)
-    Twist { child: Arc<SdfNode>, strength: f32 },
+    Twist {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Twist strength (radians per unit)
+        strength: f32,
+    },
 
     /// Bend around Y-axis
-    Bend { child: Arc<SdfNode>, curvature: f32 },
+    Bend {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Bend curvature
+        curvature: f32,
+    },
 
     /// Infinite repetition with spacing
-    RepeatInfinite { child: Arc<SdfNode>, spacing: Vec3 },
+    RepeatInfinite {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Spacing between repetitions
+        spacing: Vec3,
+    },
 
     /// Finite repetition with count and spacing
     RepeatFinite {
+        /// Child node
         child: Arc<SdfNode>,
+        /// Repeat count per axis
         count: [u32; 3],
+        /// Spacing between repetitions
         spacing: Vec3,
     },
 
     /// Perlin noise displacement
     Noise {
+        /// Child node
         child: Arc<SdfNode>,
+        /// Noise amplitude
         amplitude: f32,
+        /// Noise frequency
         frequency: f32,
+        /// Random seed
         seed: u32,
     },
 
     /// Round edges by subtracting radius
-    Round { child: Arc<SdfNode>, radius: f32 },
+    Round {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Rounding radius
+        radius: f32,
+    },
 
     /// Onion: creates a shell with thickness
-    Onion { child: Arc<SdfNode>, thickness: f32 },
+    Onion {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Shell thickness
+        thickness: f32,
+    },
 
     /// Elongate along an axis
-    Elongate { child: Arc<SdfNode>, amount: Vec3 },
+    Elongate {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Elongation amount per axis
+        amount: Vec3,
+    },
+
+    /// Mirror along specified axes (takes absolute value of coordinates)
+    Mirror {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Mirror axes (nonzero = mirrored)
+        axes: Vec3,
+    },
+
+    /// Revolution around Y-axis (creates rotational symmetry)
+    Revolution {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Radial offset
+        offset: f32,
+    },
+
+    /// Extrude along Z-axis (creates 3D from XY cross-section)
+    Extrude {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Half the extrusion height
+        half_height: f32,
+    },
+
+    /// Assign a material ID to a subtree (transparent for distance evaluation)
+    WithMaterial {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Material ID (indexes into MaterialLibrary)
+        material_id: u32,
+    },
 }
 
 impl SdfNode {
@@ -154,6 +361,66 @@ impl SdfNode {
             point_a: a,
             point_b: b,
             radius,
+        }
+    }
+
+    /// Create a cone along Y-axis
+    #[inline]
+    pub fn cone(radius: f32, height: f32) -> Self {
+        SdfNode::Cone {
+            radius,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create an ellipsoid with given semi-axis radii
+    #[inline]
+    pub fn ellipsoid(rx: f32, ry: f32, rz: f32) -> Self {
+        SdfNode::Ellipsoid {
+            radii: Vec3::new(rx, ry, rz),
+        }
+    }
+
+    /// Create a rounded cone along Y-axis
+    #[inline]
+    pub fn rounded_cone(r1: f32, r2: f32, height: f32) -> Self {
+        SdfNode::RoundedCone {
+            r1,
+            r2,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a 4-sided pyramid
+    #[inline]
+    pub fn pyramid(height: f32) -> Self {
+        SdfNode::Pyramid {
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a regular octahedron
+    #[inline]
+    pub fn octahedron(size: f32) -> Self {
+        SdfNode::Octahedron { size }
+    }
+
+    /// Create a hexagonal prism
+    #[inline]
+    pub fn hex_prism(hex_radius: f32, height: f32) -> Self {
+        SdfNode::HexPrism {
+            hex_radius,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a chain link shape
+    #[inline]
+    pub fn link(length: f32, r1: f32, r2: f32) -> Self {
+        SdfNode::Link {
+            half_length: length * 0.5,
+            r1,
+            r2,
         }
     }
 
@@ -349,6 +616,46 @@ impl SdfNode {
         }
     }
 
+    /// Mirror along specified axes
+    #[inline]
+    pub fn mirror(self, x: bool, y: bool, z: bool) -> Self {
+        SdfNode::Mirror {
+            child: Arc::new(self),
+            axes: Vec3::new(
+                if x { 1.0 } else { 0.0 },
+                if y { 1.0 } else { 0.0 },
+                if z { 1.0 } else { 0.0 },
+            ),
+        }
+    }
+
+    /// Revolution around Y-axis
+    #[inline]
+    pub fn revolution(self, offset: f32) -> Self {
+        SdfNode::Revolution {
+            child: Arc::new(self),
+            offset,
+        }
+    }
+
+    /// Extrude along Z-axis
+    #[inline]
+    pub fn extrude(self, height: f32) -> Self {
+        SdfNode::Extrude {
+            child: Arc::new(self),
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Assign a material ID to this subtree
+    #[inline]
+    pub fn with_material(self, material_id: u32) -> Self {
+        SdfNode::WithMaterial {
+            child: Arc::new(self),
+            material_id,
+        }
+    }
+
     /// Count total nodes in the tree
     pub fn node_count(&self) -> u32 {
         match self {
@@ -358,7 +665,14 @@ impl SdfNode {
             | SdfNode::Cylinder { .. }
             | SdfNode::Torus { .. }
             | SdfNode::Plane { .. }
-            | SdfNode::Capsule { .. } => 1,
+            | SdfNode::Capsule { .. }
+            | SdfNode::Cone { .. }
+            | SdfNode::Ellipsoid { .. }
+            | SdfNode::RoundedCone { .. }
+            | SdfNode::Pyramid { .. }
+            | SdfNode::Octahedron { .. }
+            | SdfNode::HexPrism { .. }
+            | SdfNode::Link { .. } => 1,
 
             // Operations: 1 + children
             SdfNode::Union { a, b }
@@ -380,7 +694,11 @@ impl SdfNode {
             | SdfNode::Noise { child, .. }
             | SdfNode::Round { child, .. }
             | SdfNode::Onion { child, .. }
-            | SdfNode::Elongate { child, .. } => 1 + child.node_count(),
+            | SdfNode::Elongate { child, .. }
+            | SdfNode::Mirror { child, .. }
+            | SdfNode::Revolution { child, .. }
+            | SdfNode::Extrude { child, .. }
+            | SdfNode::WithMaterial { child, .. } => 1 + child.node_count(),
         }
     }
 }
@@ -451,7 +769,9 @@ impl Default for SdfMetadata {
 /// Axis-aligned bounding box
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Aabb {
+    /// Minimum corner
     pub min: Vec3,
+    /// Maximum corner
     pub max: Vec3,
 }
 
@@ -506,7 +826,9 @@ impl Aabb {
 /// Ray for raycasting
 #[derive(Debug, Clone, Copy)]
 pub struct Ray {
+    /// Ray origin point
     pub origin: Vec3,
+    /// Ray direction (normalized)
     pub direction: Vec3,
 }
 

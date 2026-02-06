@@ -12,60 +12,7 @@ use crate::operations::*;
 use crate::modifiers::*;
 use glam::{Quat, Vec3};
 
-/// Simple hash-based 3D noise for compiled SDF evaluation
-///
-/// Uses a hash function to generate pseudo-random values based on position.
-/// Returns values in range [-1, 1].
-#[inline]
-fn hash_noise_3d(p: Vec3, seed: u32) -> f32 {
-    // Hash function based on integer coordinates
-    let ix = (p.x.floor() as i32) as u32;
-    let iy = (p.y.floor() as i32) as u32;
-    let iz = (p.z.floor() as i32) as u32;
-
-    // Fractional parts for interpolation
-    let fx = p.x.fract();
-    let fy = p.y.fract();
-    let fz = p.z.fract();
-
-    // Smooth interpolation curves
-    let ux = fx * fx * (3.0 - 2.0 * fx);
-    let uy = fy * fy * (3.0 - 2.0 * fy);
-    let uz = fz * fz * (3.0 - 2.0 * fz);
-
-    // Hash at 8 corners
-    let hash = |x: u32, y: u32, z: u32| -> f32 {
-        let mut h = x.wrapping_mul(374761393)
-            .wrapping_add(y.wrapping_mul(668265263))
-            .wrapping_add(z.wrapping_mul(1274126177))
-            .wrapping_add(seed);
-        h = (h ^ (h >> 13)).wrapping_mul(1274126177);
-        h = h ^ (h >> 16);
-        (h as f32 / u32::MAX as f32) * 2.0 - 1.0
-    };
-
-    let c000 = hash(ix, iy, iz);
-    let c100 = hash(ix.wrapping_add(1), iy, iz);
-    let c010 = hash(ix, iy.wrapping_add(1), iz);
-    let c110 = hash(ix.wrapping_add(1), iy.wrapping_add(1), iz);
-    let c001 = hash(ix, iy, iz.wrapping_add(1));
-    let c101 = hash(ix.wrapping_add(1), iy, iz.wrapping_add(1));
-    let c011 = hash(ix, iy.wrapping_add(1), iz.wrapping_add(1));
-    let c111 = hash(ix.wrapping_add(1), iy.wrapping_add(1), iz.wrapping_add(1));
-
-    // Trilinear interpolation
-    let lerp = |a: f32, b: f32, t: f32| a + t * (b - a);
-
-    let c00 = lerp(c000, c100, ux);
-    let c10 = lerp(c010, c110, ux);
-    let c01 = lerp(c001, c101, ux);
-    let c11 = lerp(c011, c111, ux);
-
-    let c0 = lerp(c00, c10, uy);
-    let c1 = lerp(c01, c11, uy);
-
-    lerp(c0, c1, uz)
-}
+use crate::modifiers::perlin_noise_3d;
 
 /// Maximum stack depth for value stack
 const MAX_VALUE_STACK: usize = 64;
@@ -80,6 +27,7 @@ struct CoordFrame {
     /// Scale correction factor (for uniform scale)
     scale_correction: f32,
     /// Instruction index that pushed this frame
+    #[allow(dead_code)]
     inst_idx: usize,
     /// OpCode that pushed this frame (for post-processing)
     opcode: OpCode,
@@ -156,9 +104,51 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             OpCode::Capsule => {
                 let point_a = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
                 let point_b = Vec3::new(inst.params[3], inst.params[4], inst.params[5]);
-                // Radius is stored in skip_offset as f32 bits
-                let radius = f32::from_bits(inst.skip_offset);
+                let radius = inst.get_capsule_radius();
                 let d = sdf_capsule(p, point_a, point_b, radius);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Cone => {
+                let d = sdf_cone(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Ellipsoid => {
+                let radii = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let d = sdf_ellipsoid(p, radii);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RoundedCone => {
+                let d = sdf_rounded_cone(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Pyramid => {
+                let d = sdf_pyramid(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Octahedron => {
+                let d = sdf_octahedron(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::HexPrism => {
+                let d = sdf_hex_prism(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Link => {
+                let d = sdf_link(p, inst.params[0], inst.params[1], inst.params[2]);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -245,8 +235,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             }
 
             OpCode::Scale => {
-                let factor = inst.params[0];
-                // Push current state with post-process info
+                let inv_factor = inst.params[0]; // precomputed 1.0/factor
+                let factor = inst.params[1];     // original factor
                 coord_stack[csp] = CoordFrame {
                     point: p,
                     scale_correction,
@@ -256,14 +246,14 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 };
                 csp += 1;
 
-                // Apply inverse transform (divide by scale)
-                p = p / factor;
+                // Multiply by precomputed inverse (no division)
+                p = p * inv_factor;
                 scale_correction *= factor;
             }
 
             OpCode::ScaleNonUniform => {
-                let factors = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-                let min_factor = factors.x.min(factors.y).min(factors.z);
+                let inv_factors = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let min_factor = inst.params[3]; // precomputed min(sx,sy,sz)
 
                 coord_stack[csp] = CoordFrame {
                     point: p,
@@ -274,7 +264,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 };
                 csp += 1;
 
-                p = p / factors;
+                // Multiply by precomputed inverses (no division)
+                p = p * inv_factors;
                 scale_correction *= min_factor;
             }
 
@@ -388,6 +379,47 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 // Noise doesn't modify point, only post-processes distance
             }
 
+            OpCode::Mirror => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::Mirror,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let axes = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                p = modifier_mirror(p, axes);
+            }
+
+            OpCode::Revolution => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::Revolution,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                p = modifier_revolution(p, inst.params[0]);
+            }
+
+            OpCode::Extrude => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::Extrude,
+                    params: [inst.params[0], p.z, 0.0, 0.0], // store half_height and original z
+                };
+                csp += 1;
+
+                // Evaluate child in XY plane
+                p = modifier_extrude_point(p);
+            }
+
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
@@ -408,8 +440,15 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                         let amplitude = frame.params[0];
                         let frequency = frame.params[1];
                         let seed = frame.params[2] as u32;
-                        let noise_val = hash_noise_3d(frame.point * frequency, seed);
+                        let p = frame.point * frequency;
+                        let noise_val = perlin_noise_3d(p.x, p.y, p.z, seed);
                         value_stack[vsp - 1] += noise_val * amplitude;
+                    }
+                    OpCode::Extrude => {
+                        let half_height = frame.params[0];
+                        let original_z = frame.params[1];
+                        let d = value_stack[vsp - 1];
+                        value_stack[vsp - 1] = modifier_extrude(d, original_z, half_height);
                     }
                     _ => {}
                 }
@@ -435,14 +474,18 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
 /// Evaluate compiled SDF and compute normal using finite differences
 #[inline]
 pub fn eval_compiled_normal(sdf: &CompiledSdf, point: Vec3, epsilon: f32) -> Vec3 {
-    let dx = Vec3::new(epsilon, 0.0, 0.0);
-    let dy = Vec3::new(0.0, epsilon, 0.0);
-    let dz = Vec3::new(0.0, 0.0, epsilon);
+    let e = epsilon;
+
+    // Tetrahedral method: 4 evaluations instead of 6
+    let v0 = eval_compiled(sdf, point + Vec3::new( e, -e, -e)); // (+,-,-)
+    let v1 = eval_compiled(sdf, point + Vec3::new(-e, -e,  e)); // (-,-,+)
+    let v2 = eval_compiled(sdf, point + Vec3::new(-e,  e, -e)); // (-,+,-)
+    let v3 = eval_compiled(sdf, point + Vec3::new( e,  e,  e)); // (+,+,+)
 
     Vec3::new(
-        eval_compiled(sdf, point + dx) - eval_compiled(sdf, point - dx),
-        eval_compiled(sdf, point + dy) - eval_compiled(sdf, point - dy),
-        eval_compiled(sdf, point + dz) - eval_compiled(sdf, point - dz),
+        v0 - v1 - v2 + v3,
+        -v0 - v1 + v2 + v3,
+        -v0 + v1 - v2 + v3,
     )
     .normalize()
 }

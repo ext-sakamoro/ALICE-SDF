@@ -15,8 +15,11 @@ use wide::f32x8;
 /// - z: [z0, z1, z2, z3, z4, z5, z6, z7]
 #[derive(Clone, Copy, Debug)]
 pub struct Vec3x8 {
+    /// X components (8-wide)
     pub x: f32x8,
+    /// Y components (8-wide)
     pub y: f32x8,
+    /// Z components (8-wide)
     pub z: f32x8,
 }
 
@@ -219,9 +222,13 @@ impl std::ops::Neg for Vec3x8 {
 /// Quaternion for 8-wide rotation
 #[derive(Clone, Copy, Debug)]
 pub struct Quatx8 {
+    /// X components (8-wide)
     pub x: f32x8,
+    /// Y components (8-wide)
     pub y: f32x8,
+    /// Z components (8-wide)
     pub z: f32x8,
+    /// W components (8-wide)
     pub w: f32x8,
 }
 

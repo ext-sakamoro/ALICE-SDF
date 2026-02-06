@@ -13,6 +13,13 @@ mod cylinder;
 mod torus;
 mod plane;
 mod capsule;
+mod cone;
+mod ellipsoid;
+mod rounded_cone;
+mod pyramid;
+mod octahedron;
+mod hex_prism;
+mod link;
 
 pub use sphere::{sdf_sphere, sdf_sphere_at};
 pub use box3d::{sdf_box3d, sdf_box3d_at, sdf_rounded_box3d};
@@ -20,6 +27,13 @@ pub use cylinder::{sdf_cylinder, sdf_cylinder_capped, sdf_cylinder_infinite};
 pub use torus::{sdf_torus, sdf_torus_capped};
 pub use plane::{sdf_plane, sdf_plane_xy, sdf_plane_xz, sdf_plane_yz, sdf_plane_from_points};
 pub use capsule::{sdf_capsule, sdf_capsule_vertical, sdf_capsule_horizontal};
+pub use cone::sdf_cone;
+pub use ellipsoid::sdf_ellipsoid;
+pub use rounded_cone::sdf_rounded_cone;
+pub use pyramid::sdf_pyramid;
+pub use octahedron::sdf_octahedron;
+pub use hex_prism::sdf_hex_prism;
+pub use link::sdf_link;
 
 use glam::Vec3;
 
@@ -29,12 +43,32 @@ use glam::Vec3;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum PrimitiveType {
+    /// Sphere
     Sphere,
+    /// Axis-aligned box
     Box3d,
+    /// Cylinder along Y-axis
     Cylinder,
+    /// Torus in XZ plane
     Torus,
+    /// Infinite plane
     Plane,
+    /// Capsule between two points
     Capsule,
+    /// Cone along Y-axis
+    Cone,
+    /// Ellipsoid
+    Ellipsoid,
+    /// Rounded cone along Y-axis
+    RoundedCone,
+    /// Square-base pyramid
+    Pyramid,
+    /// Regular octahedron
+    Octahedron,
+    /// Hexagonal prism
+    HexPrism,
+    /// Chain link
+    Link,
 }
 
 /// Evaluate a primitive SDF using fast Enum dispatch (Safe version)
@@ -93,6 +127,55 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
                 None
             }
         }
+        PrimitiveType::Cone => {
+            if params.len() >= 2 {
+                Some(sdf_cone(point, params[0], params[1]))
+            } else {
+                None
+            }
+        }
+        PrimitiveType::Ellipsoid => {
+            if params.len() >= 3 {
+                Some(sdf_ellipsoid(point, Vec3::new(params[0], params[1], params[2])))
+            } else {
+                None
+            }
+        }
+        PrimitiveType::RoundedCone => {
+            if params.len() >= 3 {
+                Some(sdf_rounded_cone(point, params[0], params[1], params[2]))
+            } else {
+                None
+            }
+        }
+        PrimitiveType::Pyramid => {
+            if params.len() >= 1 {
+                Some(sdf_pyramid(point, params[0]))
+            } else {
+                None
+            }
+        }
+        PrimitiveType::Octahedron => {
+            if params.len() >= 1 {
+                Some(sdf_octahedron(point, params[0]))
+            } else {
+                None
+            }
+        }
+        PrimitiveType::HexPrism => {
+            if params.len() >= 2 {
+                Some(sdf_hex_prism(point, params[0], params[1]))
+            } else {
+                None
+            }
+        }
+        PrimitiveType::Link => {
+            if params.len() >= 3 {
+                Some(sdf_link(point, params[0], params[1], params[2]))
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -134,6 +217,34 @@ pub unsafe fn eval_primitive_unchecked(prim: PrimitiveType, point: Vec3, params:
             Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2)),
             Vec3::new(*params.get_unchecked(3), *params.get_unchecked(4), *params.get_unchecked(5)),
             *params.get_unchecked(6)
+        ),
+        PrimitiveType::Cone => sdf_cone(
+            point,
+            *params.get_unchecked(0),
+            *params.get_unchecked(1)
+        ),
+        PrimitiveType::Ellipsoid => sdf_ellipsoid(
+            point,
+            Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2))
+        ),
+        PrimitiveType::RoundedCone => sdf_rounded_cone(
+            point,
+            *params.get_unchecked(0),
+            *params.get_unchecked(1),
+            *params.get_unchecked(2)
+        ),
+        PrimitiveType::Pyramid => sdf_pyramid(point, *params.get_unchecked(0)),
+        PrimitiveType::Octahedron => sdf_octahedron(point, *params.get_unchecked(0)),
+        PrimitiveType::HexPrism => sdf_hex_prism(
+            point,
+            *params.get_unchecked(0),
+            *params.get_unchecked(1)
+        ),
+        PrimitiveType::Link => sdf_link(
+            point,
+            *params.get_unchecked(0),
+            *params.get_unchecked(1),
+            *params.get_unchecked(2)
         ),
     }
 }

@@ -114,7 +114,7 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 
 ## サンプル (SDF Gallery)
 
-4種類のサンプルワールドを同梱しています。**Package Manager > Samples** タブからインポートしてください。
+7種類のサンプルワールドを同梱しています。**Package Manager > Samples** タブからインポートしてください。
 
 | サンプル | 概要 | SDF式 |
 |---------|------|-------|
@@ -122,11 +122,136 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 | **Cosmic** | アニメーション付き太陽系 — 太陽、軌道惑星、傾斜リング、月、小惑星帯。 | `SmoothUnion(sun, planet, ring, moon, asteroids)` |
 | **Fractal** | メンガーのスポンジ迷宮の内部を歩けます。ねじり変形付き。 | `Subtract(Box, Repeat(Cross))` — 1つの式で無限の複雑さ |
 | **Mix** | Cosmic × Fractal 融合 — フラクタル惑星 + トーラスリング + 玉ねぎシェル。 | `SmoothUnion(Intersect(Sphere, Menger), Torus, Onion(Sphere))` |
+| **DeformableWall** | 壁を触ると凹む。時間経過で回復。VRハンドインタラクション。 | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
+| **Mochi** | ぷにぷに餅ブロブ。掴む・合体・分裂・巨大化。SmoothUnion軟体物理。 | `SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k))` |
+| **TerrainSculpt** | VRの手で地形を掘る・盛る。掘った穴に本当に落ちる。**SDFでしか不可能。** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
 
 各サンプルには以下が含まれます：
 - `*_Raymarcher.shader` — SV_Depth / LOD / AO / フォグ対応レイマーチングシェーダー
 - `*_Collider.cs` — UdonSharpコライダー（`#if UDONSHARP` ガード付き）
 - `*.asdf.json` — Baker用の定義ファイル
+
+### インタラクティブサンプル (VR)
+
+**DeformableWall**、**Mochi**、**TerrainSculpt** は、VRハンドトラッキングによるリアルタイムSDF変形を実演するサンプルです。上記の静的サンプルとは異なり、毎フレーム UdonSharp から `Material.SetVectorArray` でシェーダーに動的データを送信します。
+
+#### DeformableWall — 触って凹む壁
+
+地面の上に立つ平面の壁。VRプレイヤーの手が壁の表面に触れると、接触点に凹みが発生し、時間の経過とともに徐々に回復します。
+
+**仕組み:**
+1. UdonSharp が `SdfBox()` による距離チェックで手の壁面への近接を検出
+2. 接触時、衝撃位置とタイムスタンプを記録（循環バッファ、最大16個）
+3. 毎フレーム、配列を `Material.SetVectorArray("_ImpactPoints", ...)` でシェーダーに送信
+4. シェーダーが `opSmoothSubtraction(wall, sphere)` で各凹みを刻む。球の半径は指数関数的に減衰: `r = DentRadius * exp(-age * DecaySpeed)`
+5. 完全に減衰した凹み（半径 < 0.005）は自動的にリサイクル
+
+**VR操作:**
+- 壁の表面に手を近づける → 凹みが出現
+- 何度も叩く → 最大16個の凹みが同時に存在
+- 待つ → 凹みが滑らかに元の平面に回復
+- 壁に歩いて突っ込む → プレイヤーコリジョンが押し戻す
+
+**Inspectorパラメータ:**
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| Impact Distance | 0.08 | 凹みが発生する手と壁面の距離 |
+| Impact Cooldown | 0.15秒 | 同じ手からの連続衝撃の最小間隔 |
+| Dent Radius | 0.35 | 各凹みのサイズ |
+| Decay Speed | 0.5 | 回復速度（大きいほど速く回復） |
+| Dent Smoothness | 0.08 | SmoothSubtractionのブレンド係数 |
+
+#### Mochi — 掴む・合体・分裂・巨大化
+
+地面の上に置かれた柔らかい餅（もち）ブロブ。VRで掴んで引っ張って分裂させたり、押し合わせて合体させたり、どんどん大きくしたりできます。
+
+**仕組み:**
+1. 最大16個の餅球を `(位置, 半径)` のペアで管理
+2. すべての餅を `opSmoothUnion` でブレンド — 近くの餅同士は自然に一体化して見える
+3. 地面との接触には別の `opSmoothUnion`（低い `k` 値）を使用 — 「床にぷにっと座っている」感触
+4. UdonSharp が毎フレーム `Material.SetVectorArray("_MochiData", ...)` でシェーダーに送信
+
+**VR操作:**
+
+| 操作 | やり方 | 結果 |
+|------|--------|------|
+| **掴む** | 手を餅の中に0.08秒置く | 餅が手にくっつく |
+| **移動** | 掴んだまま手を動かす | 餅が手に追従する |
+| **分裂** | 掴んだ位置から手を遠くに引っ張る（半径の2.5倍） | 餅が2つに分裂（体積保存: `r_new = r * cbrt(0.5)`） |
+| **リリース** | さらに遠くに引っ張る（半径の4倍） | 餅が落下して地面に着地 |
+| **合体** | 自由な餅同士を近づける | 1つの大きな餅に合体（`r = cbrt(r1^3 + r2^3)`） |
+| **巨大化** | 合体を繰り返す | 餅がどんどん大きくなる |
+
+**Inspectorパラメータ:**
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| Blend K | 0.5 | 餅同士のSmoothUnion係数（大きいほど粘着） |
+| Ground K | 0.15 | 地面とのSmoothUnion係数（ぷにぷに接地感） |
+| Min Radius | 0.1 | 最小餅サイズ（これ以下には分裂しない） |
+| Grab Threshold | 0.8 | 掴むために手が半径の何割以内に入る必要があるか |
+| Grab Dwell Time | 0.08秒 | 掴み発動までの滞在時間（誤掴み防止） |
+| Split Distance | 2.5 | 分裂を発動する引っ張り距離（半径の倍率） |
+| Merge Threshold | 0.7 | 自動合体が発生する距離（合計半径の割合） |
+
+#### TerrainSculpt — 掘れる・積める地形
+
+**VRChat史上初、掘った穴に本当に落ちる体験。**
+
+Y=0の平面地形をVRの手でリアルタイムにスカルプトできます。左手で土を盛り、右手で穴を掘る。描画もコリジョンも全く同じSDF数式で評価されるため、**掘った穴に実際に落ち、積んだ丘に実際に登れます**。
+
+従来のVRChatでは、MeshColliderはランタイムに再計算できないため、これは原理的に不可能でした。ALICE-SDFは描画と物理の両方で同じ数式を評価するため、見た目=当たり判定が常に成立します。
+
+**仕組み:**
+1. ベース地形はY=0の地面（平面）
+2. 左手が地表付近 → `opSmoothUnion(terrain, sphere)` — 手の位置に丘を追加
+3. 右手が地表付近 → `opSmoothSubtraction(terrain, sphere)` — 手の位置に穴を掘削
+4. 操作は循環バッファに記録（最大48個）。満杯になると最古の操作を上書き
+5. UdonSharp が毎フレーム操作配列をシェーダーに送信
+6. プレイヤーコリジョンも同じ数式を評価 — 穴に落ちる、丘に登れる
+
+**VR操作:**
+
+| 操作 | 手 | 結果 |
+|------|------|------|
+| **掘る** | 右手を地面に近づける | 半球状の穴が掘れる。落ちる |
+| **盛る** | 左手を地面に近づける | 丘/盛り土が出現。登れる |
+| **深く掘る** | 右手を穴の中に保持 | 操作ごとにさらに深く掘削 |
+| **高く積む** | 左手を丘の上に保持 | さらに地形を積み上げ |
+
+**視覚フィードバック:**
+- 左手付近: 青い光（盛りモード）
+- 右手付近: 赤い光（掘削モード）
+- 光は手が地表面に近い時のみ表示
+
+**地形の色分け:**
+- 平面: 緑の草地
+- 急斜面: 茶色の土
+- 深く掘った地下: 灰色の岩石
+
+**Inspectorパラメータ:**
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| Sculpt Radius | 0.3 | スカルプトブラシのサイズ |
+| Sculpt Distance | 0.15 | スカルプト発動に必要な手と地表面の距離 |
+| Sculpt Cooldown | 0.12秒 | 操作間の最小間隔（バッファ溢れ防止） |
+| Add Smooth | 0.25 | 丘のSmoothUnionブレンド係数（大きいほど滑らか） |
+| Sub Smooth | 0.15 | 穴のSmoothSubtractionブレンド係数（大きいほど滑らかな縁） |
+
+#### セットアップ（全インタラクティブサンプル共通）
+
+1. シーンに **Cube** を配置（レイマーチングの描画範囲となるバウンディングボリューム）
+2. Cubeを十分な大きさにスケール（例: DeformableWallなら `(12, 8, 12)`、TerrainSculptなら `(20, 10, 20)`）
+3. `AliceSDF/Samples/DeformableWall`、`AliceSDF/Samples/Mochi`、または `AliceSDF/Samples/TerrainSculpt` から **マテリアル** を作成
+4. CubeのMeshRendererにマテリアルを割り当て
+5. 同じGameObjectに対応する `*_Collider.cs` スクリプトをアタッチ
+6. VRChatで **Build & Test** — VRの手でインタラクション
+
+**デスクトップモード:** インタラクティブ機能はVRハンドトラッキングが必要です。デスクトップモードでもSDF描画とプレイヤーコリジョンは機能しますが、スカルプト・凹み・餅操作はできません。
+
+**マルチプレイヤー:** 全インタラクティブサンプルはローカル専用モードで動作します（各プレイヤーが独自の状態を持つ）。プレイヤー間で同期するには、データ配列に `[UdonSynced]` を付与し、状態変更時に `RequestSerialization()` を呼び出してください。
 
 ### サンプルシーンの自動生成
 
@@ -198,7 +323,10 @@ com.alice.sdf/
 │       ├── SampleBasic/             # 地面 + 球体
 │       ├── SampleCosmic/            # 太陽系
 │       ├── SampleFractal/           # メンガーのスポンジ迷宮
-│       └── SampleMix/              # Cosmic × Fractal 融合
+│       ├── SampleMix/              # Cosmic × Fractal 融合
+│       ├── SampleDeformableWall/    # インタラクティブ: 壁を触る→凹む→回復
+│       ├── SampleMochi/            # インタラクティブ: 掴む・合体・分裂・巨大化
+│       └── SampleTerrainSculpt/   # インタラクティブ: 掘る・積む・穴に落ちる
 └── Prefabs~/                        # Unity Importから隠蔽
 ```
 

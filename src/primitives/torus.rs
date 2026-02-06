@@ -26,6 +26,7 @@ pub fn sdf_torus(point: Vec3, major_radius: f32, minor_radius: f32) -> f32 {
 /// Signed distance to a torus with arbitrary orientation
 ///
 /// The torus is rotated so its axis aligns with `axis`
+#[allow(dead_code)]
 #[inline(always)]
 pub fn sdf_torus_oriented(point: Vec3, axis: Vec3, major_radius: f32, minor_radius: f32) -> f32 {
     let axis = axis.normalize();

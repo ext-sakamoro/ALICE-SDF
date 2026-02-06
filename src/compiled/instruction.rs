@@ -97,6 +97,10 @@ impl Instruction {
     }
 
     /// Create a capsule instruction
+    ///
+    /// Capsule needs 7 parameters but only 6 fit in `params[]`.
+    /// The radius is stored in `skip_offset` as `f32::to_bits()`.
+    /// Use `get_capsule_radius()` to read it back safely.
     #[inline]
     pub fn capsule(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, radius: f32) -> Self {
         let mut inst = Self::new(OpCode::Capsule);
@@ -106,9 +110,105 @@ impl Instruction {
         inst.params[3] = bx;
         inst.params[4] = by;
         inst.params[5] = bz;
-        // Store radius in flags as f32 bits (we'll use a separate method)
-        // Actually, we need 7 params for capsule. Let's store radius differently.
-        // For now, we'll handle this in the compiler by using a special encoding.
+        inst.skip_offset = radius.to_bits();
+        inst
+    }
+
+    /// Get the capsule radius stored in `skip_offset`
+    ///
+    /// Capsule stores its 7th parameter (radius) as `f32::to_bits()` in `skip_offset`
+    /// because `params[6]` is fully used for the two 3D endpoints.
+    #[inline]
+    pub fn get_capsule_radius(&self) -> f32 {
+        debug_assert_eq!(self.opcode, OpCode::Capsule, "get_capsule_radius() called on non-Capsule instruction");
+        f32::from_bits(self.skip_offset)
+    }
+
+    /// Returns true if this instruction is a leaf node (primitive or binary op)
+    ///
+    /// Leaf nodes don't have subtrees and always advance by 1 instruction.
+    #[inline]
+    pub fn is_leaf(&self) -> bool {
+        self.opcode.is_primitive() || self.opcode.is_binary_op()
+    }
+
+    /// Get the index of the next instruction to execute after this subtree
+    ///
+    /// - For leaf nodes (primitives, binary ops): `current_index + 1`
+    /// - For transforms/modifiers: `skip_offset` (points past the PopTransform)
+    /// - For PopTransform/End: `current_index + 1`
+    #[inline]
+    pub fn next_instruction_index(&self, current_index: usize) -> usize {
+        if self.is_leaf() || self.opcode == OpCode::PopTransform || self.opcode == OpCode::End {
+            current_index + 1
+        } else {
+            // For transforms/modifiers, skip_offset stores the subtree end index
+            // Exception: Capsule is a primitive (is_leaf() = true), so it won't reach here
+            self.skip_offset as usize
+        }
+    }
+
+    /// Create a cone instruction
+    #[inline]
+    pub fn cone(radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Cone);
+        inst.params[0] = radius;
+        inst.params[1] = half_height;
+        inst
+    }
+
+    /// Create an ellipsoid instruction
+    #[inline]
+    pub fn ellipsoid(rx: f32, ry: f32, rz: f32) -> Self {
+        let mut inst = Self::new(OpCode::Ellipsoid);
+        inst.params[0] = rx;
+        inst.params[1] = ry;
+        inst.params[2] = rz;
+        inst
+    }
+
+    /// Create a rounded cone instruction
+    #[inline]
+    pub fn rounded_cone(r1: f32, r2: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::RoundedCone);
+        inst.params[0] = r1;
+        inst.params[1] = r2;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    /// Create a pyramid instruction
+    #[inline]
+    pub fn pyramid(half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Pyramid);
+        inst.params[0] = half_height;
+        inst
+    }
+
+    /// Create an octahedron instruction
+    #[inline]
+    pub fn octahedron(size: f32) -> Self {
+        let mut inst = Self::new(OpCode::Octahedron);
+        inst.params[0] = size;
+        inst
+    }
+
+    /// Create a hex prism instruction
+    #[inline]
+    pub fn hex_prism(hex_radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::HexPrism);
+        inst.params[0] = hex_radius;
+        inst.params[1] = half_height;
+        inst
+    }
+
+    /// Create a link instruction
+    #[inline]
+    pub fn link(half_length: f32, r1: f32, r2: f32) -> Self {
+        let mut inst = Self::new(OpCode::Link);
+        inst.params[0] = half_length;
+        inst.params[1] = r1;
+        inst.params[2] = r2;
         inst
     }
 
@@ -178,22 +278,32 @@ impl Instruction {
     }
 
     /// Create a scale instruction
+    ///
+    /// Precomputes `1.0/factor` to eliminate per-pixel division:
+    /// - `params[0]` = `1.0 / factor` (inverse, for multiplication)
+    /// - `params[1]` = `factor` (for scale correction)
     #[inline]
     pub fn scale(factor: f32) -> Self {
         let mut inst = Self::new(OpCode::Scale);
-        inst.params[0] = factor;
+        inst.params[0] = 1.0 / factor; // precomputed inverse
+        inst.params[1] = factor;        // original factor
         inst.flags = 1; // has_scale_correction
         inst.child_count = 1;
         inst
     }
 
     /// Create a non-uniform scale instruction
+    ///
+    /// Precomputes inverse factors to eliminate per-pixel division:
+    /// - `params[0..3]` = `1.0/sx, 1.0/sy, 1.0/sz` (inverse, for multiplication)
+    /// - `params[3]` = `min(sx, sy, sz)` (precomputed scale correction)
     #[inline]
     pub fn scale_non_uniform(sx: f32, sy: f32, sz: f32) -> Self {
         let mut inst = Self::new(OpCode::ScaleNonUniform);
-        inst.params[0] = sx;
-        inst.params[1] = sy;
-        inst.params[2] = sz;
+        inst.params[0] = 1.0 / sx; // precomputed inverse
+        inst.params[1] = 1.0 / sy;
+        inst.params[2] = 1.0 / sz;
+        inst.params[3] = sx.min(sy).min(sz); // precomputed min factor
         inst.flags = 1; // has_scale_correction
         inst.child_count = 1;
         inst
@@ -282,6 +392,35 @@ impl Instruction {
         inst
     }
 
+    /// Create a mirror instruction
+    #[inline]
+    pub fn mirror(ax: f32, ay: f32, az: f32) -> Self {
+        let mut inst = Self::new(OpCode::Mirror);
+        inst.params[0] = ax;
+        inst.params[1] = ay;
+        inst.params[2] = az;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create a revolution instruction
+    #[inline]
+    pub fn revolution(offset: f32) -> Self {
+        let mut inst = Self::new(OpCode::Revolution);
+        inst.params[0] = offset;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create an extrude instruction
+    #[inline]
+    pub fn extrude(half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Extrude);
+        inst.params[0] = half_height;
+        inst.child_count = 1;
+        inst
+    }
+
     /// Create a pop transform instruction
     #[inline]
     pub fn pop_transform() -> Self {
@@ -333,5 +472,41 @@ mod tests {
         let inst = Instruction::translate(1.0, 2.0, 3.0);
         assert_eq!(inst.opcode, OpCode::Translate);
         assert_eq!(inst.child_count, 1);
+    }
+
+    #[test]
+    fn test_capsule_stores_radius() {
+        let inst = Instruction::capsule(0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.5);
+        assert_eq!(inst.opcode, OpCode::Capsule);
+        assert!((inst.get_capsule_radius() - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_is_leaf() {
+        assert!(Instruction::sphere(1.0).is_leaf());
+        assert!(Instruction::box3d(1.0, 1.0, 1.0).is_leaf());
+        assert!(Instruction::capsule(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.3).is_leaf());
+        assert!(Instruction::union().is_leaf());
+        assert!(Instruction::smooth_union(0.1).is_leaf());
+        assert!(!Instruction::translate(1.0, 0.0, 0.0).is_leaf());
+        assert!(!Instruction::scale(2.0).is_leaf());
+        assert!(!Instruction::twist(0.5).is_leaf());
+    }
+
+    #[test]
+    fn test_next_instruction_index() {
+        // Leaf: always current + 1
+        let sphere = Instruction::sphere(1.0);
+        assert_eq!(sphere.next_instruction_index(0), 1);
+        assert_eq!(sphere.next_instruction_index(5), 6);
+
+        // Transform: uses skip_offset
+        let mut translate = Instruction::translate(1.0, 0.0, 0.0);
+        translate.skip_offset = 10;
+        assert_eq!(translate.next_instruction_index(0), 10);
+
+        // PopTransform/End: always current + 1
+        assert_eq!(Instruction::pop_transform().next_instruction_index(7), 8);
+        assert_eq!(Instruction::end().next_instruction_index(3), 4);
     }
 }

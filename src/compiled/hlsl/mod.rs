@@ -32,4 +32,4 @@
 
 mod transpiler;
 
-pub use transpiler::HlslShader;
+pub use transpiler::{HlslShader, HlslTranspileMode};

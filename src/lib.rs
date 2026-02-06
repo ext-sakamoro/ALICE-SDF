@@ -45,6 +45,8 @@
 #![warn(missing_docs)]
 
 pub mod types;
+pub mod material;
+pub mod animation;
 pub mod primitives;
 pub mod operations;
 pub mod transforms;
@@ -68,7 +70,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Prelude - commonly used types and functions
 pub mod prelude {
     pub use crate::types::{SdfNode, SdfTree, SdfMetadata, Aabb, Ray, Hit};
-    pub use crate::eval::{eval, normal, gradient, eval_batch, eval_batch_parallel, eval_grid};
+    pub use crate::material::{Material, MaterialLibrary, TextureSlot};
+    pub use crate::animation::{Keyframe, Track, Timeline, AnimatedSdf, Interpolation, LoopMode, morph};
+    pub use crate::eval::{eval, eval_material, normal, gradient, eval_batch, eval_batch_parallel, eval_grid};
     pub use crate::raycast::{
         raycast, raycast_batch, raymarch, raymarch_with_config,
         RaymarchConfig, RaymarchResult, ambient_occlusion, soft_shadow,
@@ -77,6 +81,8 @@ pub mod prelude {
         sdf_to_mesh, mesh_to_sdf, mesh_to_sdf_exact, marching_cubes,
         MarchingCubesConfig, MeshToSdfConfig, MeshToSdfStrategy, MeshSdf,
         Mesh, Vertex, Triangle, MeshBvh,
+        // Adaptive marching cubes
+        adaptive_marching_cubes, AdaptiveConfig,
         // Hermite data extraction
         HermitePoint, HermiteConfig, extract_hermite,
         // Primitive fitting
@@ -85,8 +91,27 @@ pub mod prelude {
         NaniteCluster, NaniteMesh, NaniteConfig, generate_nanite_mesh,
         // LOD generation
         LodChain, LodConfig, LodSelector, generate_lod_chain,
+        DecimationLodConfig, generate_lod_chain_decimated,
+        // Manifold mesh validation & repair
+        MeshValidation, MeshRepair, MeshQuality, validate_mesh, compute_quality,
+        // Mesh decimation
+        decimate, DecimateConfig,
+        // Lightmap UV generation
+        generate_lightmap_uvs, generate_lightmap_uvs_fast,
+        // Vertex cache optimization
+        optimize_vertex_cache, compute_acmr, deduplicate_vertices,
+        // Physics collision primitives
+        CollisionAabb, BoundingSphere, ConvexHull, CollisionMesh,
+        compute_aabb, compute_bounding_sphere, compute_convex_hull, simplify_collision,
+        // Convex decomposition (V-HACD)
+        VhacdConfig, ConvexDecomposition, convex_decomposition,
     };
-    pub use crate::io::{save, load, save_asdf, load_asdf, save_asdf_json, load_asdf_json, get_info};
+    pub use crate::io::{
+        save, load, save_asdf, load_asdf, save_asdf_json, load_asdf_json, get_info,
+        export_obj, import_obj, ObjConfig,
+        export_glb, export_gltf_json, GltfConfig,
+        export_fbx, FbxConfig, FbxFormat, FbxUpAxis,
+    };
     pub use crate::compiled::{
         CompiledSdf, eval_compiled, eval_compiled_normal,
         eval_compiled_simd, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
@@ -152,6 +177,7 @@ mod tests {
             resolution: 8,
             iso_level: 0.0,
             compute_normals: true,
+            ..Default::default()
         };
 
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
@@ -169,6 +195,99 @@ mod tests {
 
         let hit = hit.unwrap();
         assert!((hit.distance - 4.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_production_stress_high_res() {
+        // High-resolution mesh generation (production scale)
+        let shape = SdfNode::sphere(1.0)
+            .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+        let config = MarchingCubesConfig {
+            resolution: 64,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        // Should produce a substantial mesh
+        assert!(mesh.vertex_count() > 1000, "Expected >1000 vertices, got {}", mesh.vertex_count());
+        assert!(mesh.triangle_count() > 500, "Expected >500 triangles, got {}", mesh.triangle_count());
+    }
+
+    #[test]
+    fn test_production_multi_material_pipeline() {
+        // Full pipeline: SDF → mesh → optimize → glTF with multi-material
+        let shape = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 16,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mut mesh = sdf_to_mesh(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        // Assign materials to half the triangles
+        let half = mesh.vertices.len() / 2;
+        for v in mesh.vertices[half..].iter_mut() {
+            v.material_id = 1;
+        }
+
+        // Optimize vertex cache
+        let acmr_before = compute_acmr(&mesh, 32);
+        optimize_vertex_cache(&mut mesh);
+        let acmr_after = compute_acmr(&mesh, 32);
+        assert!(acmr_after <= acmr_before + 0.01);
+
+        // Create materials
+        let mut mat_lib = MaterialLibrary::new();
+        mat_lib.add(
+            Material::metal("Chrome", 0.9, 0.9, 0.9, 0.2)
+                .with_albedo_map("textures/chrome_albedo.png")
+                .with_normal_map("textures/chrome_normal.png")
+        );
+
+        // Export glTF with multi-material
+        let path = std::env::temp_dir().join("alice_stress_multi_mat.glb");
+        export_glb(&mesh, &path, &GltfConfig::aaa(), Some(&mat_lib)).unwrap();
+
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(bytes.len() > 100);
+        // Verify it's valid GLB
+        assert_eq!(&bytes[0..4], &0x46546C67u32.to_le_bytes());
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_production_collision_pipeline() {
+        // Full pipeline: SDF → mesh → collision primitives
+        let shape = SdfNode::sphere(1.0)
+            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let config = MarchingCubesConfig {
+            resolution: 16,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        // AABB
+        let aabb = compute_aabb(&mesh);
+        assert!(aabb.contains(Vec3::new(0.5, 0.0, 0.0)));
+
+        // Bounding sphere
+        let bs = compute_bounding_sphere(&mesh);
+        assert!(bs.radius > 0.5);
+
+        // Convex hull
+        let hull = compute_convex_hull(&mesh);
+        assert!(hull.vertices.len() >= 4);
+        assert!(hull.indices.len() >= 12);
+
+        // Simplified collision
+        let simplified = simplify_collision(&mesh, 8);
+        assert!(simplified.vertices.len() < mesh.vertices.len());
     }
 
     #[test]

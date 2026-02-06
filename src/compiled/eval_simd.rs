@@ -9,54 +9,9 @@ use super::compiler::CompiledSdf;
 use super::opcode::OpCode;
 use super::simd::{Quatx8, Vec3x8};
 use glam::Vec3;
-use wide::f32x8;
+use wide::{f32x8, CmpLt, CmpGt};
 
-/// Scalar hash-based 3D noise for SIMD lane processing
-#[inline]
-fn hash_noise_3d_scalar(p: Vec3, seed: u32) -> f32 {
-    let ix = (p.x.floor() as i32) as u32;
-    let iy = (p.y.floor() as i32) as u32;
-    let iz = (p.z.floor() as i32) as u32;
-
-    let fx = p.x.fract();
-    let fy = p.y.fract();
-    let fz = p.z.fract();
-
-    let ux = fx * fx * (3.0 - 2.0 * fx);
-    let uy = fy * fy * (3.0 - 2.0 * fy);
-    let uz = fz * fz * (3.0 - 2.0 * fz);
-
-    let hash = |x: u32, y: u32, z: u32| -> f32 {
-        let mut h = x.wrapping_mul(374761393)
-            .wrapping_add(y.wrapping_mul(668265263))
-            .wrapping_add(z.wrapping_mul(1274126177))
-            .wrapping_add(seed);
-        h = (h ^ (h >> 13)).wrapping_mul(1274126177);
-        h = h ^ (h >> 16);
-        (h as f32 / u32::MAX as f32) * 2.0 - 1.0
-    };
-
-    let c000 = hash(ix, iy, iz);
-    let c100 = hash(ix.wrapping_add(1), iy, iz);
-    let c010 = hash(ix, iy.wrapping_add(1), iz);
-    let c110 = hash(ix.wrapping_add(1), iy.wrapping_add(1), iz);
-    let c001 = hash(ix, iy, iz.wrapping_add(1));
-    let c101 = hash(ix.wrapping_add(1), iy, iz.wrapping_add(1));
-    let c011 = hash(ix, iy.wrapping_add(1), iz.wrapping_add(1));
-    let c111 = hash(ix.wrapping_add(1), iy.wrapping_add(1), iz.wrapping_add(1));
-
-    let lerp = |a: f32, b: f32, t: f32| a + t * (b - a);
-
-    let c00 = lerp(c000, c100, ux);
-    let c10 = lerp(c010, c110, ux);
-    let c01 = lerp(c001, c101, ux);
-    let c11 = lerp(c011, c111, ux);
-
-    let c0 = lerp(c00, c10, uy);
-    let c1 = lerp(c01, c11, uy);
-
-    lerp(c0, c1, uz)
-}
+use crate::modifiers::perlin_noise_3d;
 
 /// Maximum stack depth for value stack (SIMD)
 const MAX_VALUE_STACK: usize = 64;
@@ -188,7 +143,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let bx = f32x8::splat(inst.params[3]);
                 let by = f32x8::splat(inst.params[4]);
                 let bz = f32x8::splat(inst.params[5]);
-                let radius = f32x8::splat(f32::from_bits(inst.skip_offset));
+                let radius = f32x8::splat(inst.get_capsule_radius());
 
                 // pa = p - a, ba = b - a
                 let pax = p.x - ax;
@@ -208,6 +163,239 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let dy = pay - bay * h;
                 let dz = paz - baz * h;
                 let d = (dx * dx + dy * dy + dz * dz).sqrt() - radius;
+
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Cone => {
+                let radius = f32x8::splat(inst.params[0]);
+                let h = f32x8::splat(inst.params[1]);
+
+                let q_x = (p.x * p.x + p.z * p.z).sqrt();
+                let q_y = p.y;
+
+                let k2x = -radius;
+                let k2y = h + h;
+
+                // ca_r = q_y < 0 ? radius : 0
+                let neg_mask = q_y.cmp_lt(f32x8::ZERO);
+                let ca_r = neg_mask.blend(radius, f32x8::ZERO);
+
+                let ca_x = q_x - q_x.min(ca_r);
+                let ca_y = q_y.abs() - h;
+
+                let diff_x = -q_x;
+                let diff_y = h - q_y;
+                let k2_dot = k2x * k2x + k2y * k2y;
+                let t = ((diff_x * k2x + diff_y * k2y) / k2_dot)
+                    .max(f32x8::ZERO)
+                    .min(f32x8::ONE);
+
+                let cb_x = q_x + k2x * t;
+                let cb_y = q_y - h + k2y * t;
+
+                // s = (cb_x < 0 && ca_y < 0) ? -1 : 1
+                let both_neg = cb_x.cmp_lt(f32x8::ZERO) & ca_y.cmp_lt(f32x8::ZERO);
+                let s = both_neg.blend(f32x8::splat(-1.0), f32x8::ONE);
+
+                let d2 = (ca_x * ca_x + ca_y * ca_y).min(cb_x * cb_x + cb_y * cb_y);
+                let d = s * d2.sqrt();
+
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Ellipsoid => {
+                // Division Exorcism: pre-compute reciprocals at compile time
+                let inv_rx = f32x8::splat(1.0 / inst.params[0]);
+                let inv_ry = f32x8::splat(1.0 / inst.params[1]);
+                let inv_rz = f32x8::splat(1.0 / inst.params[2]);
+                let inv_rx2 = f32x8::splat(1.0 / (inst.params[0] * inst.params[0]));
+                let inv_ry2 = f32x8::splat(1.0 / (inst.params[1] * inst.params[1]));
+                let inv_rz2 = f32x8::splat(1.0 / (inst.params[2] * inst.params[2]));
+
+                // k0 = length(p * inv_radii)
+                let px_r = p.x * inv_rx;
+                let py_r = p.y * inv_ry;
+                let pz_r = p.z * inv_rz;
+                let k0 = (px_r * px_r + py_r * py_r + pz_r * pz_r).sqrt();
+
+                // k1 = length(p * inv_radii²)
+                let px_rr = p.x * inv_rx2;
+                let py_rr = p.y * inv_ry2;
+                let pz_rr = p.z * inv_rz2;
+                let k1 = (px_rr * px_rr + py_rr * py_rr + pz_rr * pz_rr).sqrt();
+
+                let d = k0 * (k0 - f32x8::ONE) / k1.max(f32x8::splat(1e-10));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RoundedCone => {
+                let r1 = f32x8::splat(inst.params[0]);
+                let r2 = f32x8::splat(inst.params[1]);
+                let half_height = f32x8::splat(inst.params[2]);
+
+                let h = half_height + half_height;
+                let q_x = (p.x * p.x + p.z * p.z).sqrt();
+                let q_y = p.y + half_height;
+
+                let b_val = (r1 - r2) / h;
+                let a_val = (f32x8::ONE - b_val * b_val).sqrt();
+                let k = q_x * (-b_val) + q_y * a_val;
+
+                // Case 1: k < 0 → bottom sphere
+                let d_bottom = (q_x * q_x + q_y * q_y).sqrt() - r1;
+                // Case 2: k > a*h → top sphere
+                let dy_top = q_y - h;
+                let d_top = (q_x * q_x + dy_top * dy_top).sqrt() - r2;
+                // Case 3: mantle
+                let d_mantle = q_x * a_val + q_y * b_val - r1;
+
+                let mask_bottom = k.cmp_lt(f32x8::ZERO);
+                let mask_top = k.cmp_gt(a_val * h);
+                let d = mask_bottom.blend(d_bottom, mask_top.blend(d_top, d_mantle));
+
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Pyramid => {
+                let half_height = f32x8::splat(inst.params[0]);
+                let h = half_height + half_height;
+                let m2 = h * h + f32x8::splat(0.25);
+                let half = f32x8::splat(0.5);
+
+                let py = p.y + half_height;
+                let abs_px = p.x.abs();
+                let abs_pz = p.z.abs();
+
+                // if pz > px { swap(px, pz) }
+                let swap_mask = abs_pz.cmp_gt(abs_px);
+                let px = swap_mask.blend(abs_pz, abs_px) - half;
+                let pz = swap_mask.blend(abs_px, abs_pz) - half;
+
+                let qx = pz;
+                let qy = h * py - half * px;
+                let qz = h * px + half * py;
+
+                let s = (-qx).max(f32x8::ZERO);
+                let t = ((qy - half * pz) / (m2 + f32x8::splat(0.25)))
+                    .max(f32x8::ZERO)
+                    .min(f32x8::ONE);
+
+                let a = m2 * (qx + s) * (qx + s) + qy * qy;
+                let half_t = half * t;
+                let b = m2 * (qx + half_t) * (qx + half_t) + (qy - m2 * t) * (qy - m2 * t);
+
+                // d2 = if qy.min(-qx * m2 - qy * 0.5) > 0 { 0 } else { min(a, b) }
+                let inner = (-qx * m2 - qy * half).min(qy);
+                let zero_mask = inner.cmp_gt(f32x8::ZERO);
+                let d2 = zero_mask.blend(f32x8::ZERO, a.min(b));
+
+                // sign = signum(max(qz, -py))
+                let sign_input = qz.max(-py);
+                let pos = sign_input.cmp_gt(f32x8::ZERO);
+                let neg = sign_input.cmp_lt(f32x8::ZERO);
+                let sign_val = pos.blend(f32x8::ONE, neg.blend(f32x8::splat(-1.0), f32x8::ZERO));
+
+                let d = ((d2 + qz * qz) / m2).sqrt() * sign_val;
+
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Octahedron => {
+                let s = f32x8::splat(inst.params[0]);
+                let three = f32x8::splat(3.0);
+                let inv_sqrt3 = f32x8::splat(0.57735027);
+                let half = f32x8::splat(0.5);
+
+                let ax = p.x.abs();
+                let ay = p.y.abs();
+                let az = p.z.abs();
+                let m = ax + ay + az - s;
+
+                // d_flat: the "else" branch = m * inv_sqrt3
+                let d_flat = m * inv_sqrt3;
+
+                // Exclusive masks for the 3 permutation cases
+                let mask1 = (three * ax).cmp_lt(m);
+                let mask2 = (three * ay).cmp_lt(m) & !mask1;
+                let mask3 = (three * az).cmp_lt(m) & !mask1 & !mask2;
+                let mask_any = mask1 | mask2 | mask3;
+
+                // Select q permutation based on which case
+                let qx = mask1.blend(ax, mask2.blend(ay, mask3.blend(az, f32x8::ZERO)));
+                let qy = mask1.blend(ay, mask2.blend(az, mask3.blend(ax, f32x8::ZERO)));
+                let qz = mask1.blend(az, mask2.blend(ax, mask3.blend(ay, f32x8::ZERO)));
+
+                let k = (half * (qz - qy + s)).max(f32x8::ZERO).min(s);
+                let vx = qx;
+                let vy = qy - s + k;
+                let vz = qz - k;
+                let d_edge = (vx * vx + vy * vy + vz * vz).sqrt();
+
+                let d = mask_any.blend(d_edge, d_flat);
+
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::HexPrism => {
+                let hex_radius = f32x8::splat(inst.params[0]);
+                let half_height = f32x8::splat(inst.params[1]);
+
+                let kx = f32x8::splat(-0.8660254_f32);
+                let ky = f32x8::splat(0.5_f32);
+                let kz_c = f32x8::splat(0.57735027_f32);
+                let two = f32x8::splat(2.0);
+
+                let mut px = p.x.abs();
+                let mut py = p.y.abs();
+                let pz = p.z.abs();
+
+                // Reflect across hex symmetry
+                let dot_kxy = kx * px + ky * py;
+                let reflect = two * dot_kxy.min(f32x8::ZERO);
+                px = px - reflect * kx;
+                py = py - reflect * ky;
+
+                // Clamp and compute XY distance
+                let clamped_x = px.max(-kz_c * hex_radius).min(kz_c * hex_radius);
+                let dx = px - clamped_x;
+                let dy = py - hex_radius;
+                let d_xy_len = (dx * dx + dy * dy).sqrt();
+
+                // signum(dy)
+                let pos = dy.cmp_gt(f32x8::ZERO);
+                let neg = dy.cmp_lt(f32x8::ZERO);
+                let dy_sign = pos.blend(f32x8::ONE, neg.blend(f32x8::splat(-1.0), f32x8::ZERO));
+                let d_xy = d_xy_len * dy_sign;
+
+                let d_z = pz - half_height;
+
+                // max(d_xy, d_z).min(0) + sqrt(max(d_xy,0)^2 + max(d_z,0)^2)
+                let d_xy_pos = d_xy.max(f32x8::ZERO);
+                let d_z_pos = d_z.max(f32x8::ZERO);
+                let d = d_xy.max(d_z).min(f32x8::ZERO) + (d_xy_pos * d_xy_pos + d_z_pos * d_z_pos).sqrt();
+
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Link => {
+                let half_length = f32x8::splat(inst.params[0]);
+                let r1 = f32x8::splat(inst.params[1]);
+                let r2 = f32x8::splat(inst.params[2]);
+
+                let qx = p.x;
+                let qy = (p.y.abs() - half_length).max(f32x8::ZERO);
+                let qz = p.z;
+
+                let xy_len = (qx * qx + qy * qy).sqrt() - r1;
+                let d = (xy_len * xy_len + qz * qz).sqrt() - r2;
 
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -294,7 +482,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::Scale => {
-                let factor = inst.params[0];
+                let inv_factor = inst.params[0]; // precomputed 1.0/factor
+                let factor = inst.params[1];     // original factor
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
@@ -303,16 +492,16 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 };
                 csp += 1;
 
-                let inv_factor = f32x8::splat(1.0 / factor);
-                p = p * inv_factor;
+                // Multiply by precomputed inverse (no division)
+                p = p * f32x8::splat(inv_factor);
                 scale_correction = scale_correction * f32x8::splat(factor);
             }
 
             OpCode::ScaleNonUniform => {
-                let sx = inst.params[0];
-                let sy = inst.params[1];
-                let sz = inst.params[2];
-                let min_factor = sx.min(sy).min(sz);
+                let inv_sx = inst.params[0]; // precomputed 1.0/sx
+                let inv_sy = inst.params[1]; // precomputed 1.0/sy
+                let inv_sz = inst.params[2]; // precomputed 1.0/sz
+                let min_factor = inst.params[3]; // precomputed min(sx,sy,sz)
 
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
@@ -322,10 +511,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 };
                 csp += 1;
 
+                // Multiply by precomputed inverses (no division)
                 p = Vec3x8 {
-                    x: p.x / f32x8::splat(sx),
-                    y: p.y / f32x8::splat(sy),
-                    z: p.z / f32x8::splat(sz),
+                    x: p.x * f32x8::splat(inv_sx),
+                    y: p.y * f32x8::splat(inv_sy),
+                    z: p.z * f32x8::splat(inv_sz),
                 };
                 scale_correction = scale_correction * f32x8::splat(min_factor);
             }
@@ -412,7 +602,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let sx = f32x8::splat(inst.params[3]);
                 let sy = f32x8::splat(inst.params[4]);
                 let sz = f32x8::splat(inst.params[5]);
-                let half = f32x8::splat(0.5);
+                let _half = f32x8::splat(0.5);
 
                 // clamp(round(p / spacing), -count, count) * spacing
                 let ix = ((p.x / sx).round()).max(-cx).min(cx);
@@ -478,6 +668,48 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // Noise doesn't modify point, only post-processes distance
             }
 
+            OpCode::Mirror => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Mirror,
+                    params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
+                };
+                csp += 1;
+
+                p = Vec3x8 {
+                    x: if inst.params[0] != 0.0 { p.x.abs() } else { p.x },
+                    y: if inst.params[1] != 0.0 { p.y.abs() } else { p.y },
+                    z: if inst.params[2] != 0.0 { p.z.abs() } else { p.z },
+                };
+            }
+
+            OpCode::Revolution => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Revolution,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let offset = f32x8::splat(inst.params[0]);
+                let q = (p.x * p.x + p.z * p.z).sqrt() - offset;
+                p = Vec3x8 { x: q, y: p.y, z: f32x8::ZERO };
+            }
+
+            OpCode::Extrude => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Extrude,
+                    params: [inst.params[0], 0.0, 0.0, 0.0],
+                };
+                csp += 1;
+
+                p = Vec3x8 { x: p.x, y: p.y, z: f32x8::ZERO };
+            }
+
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
@@ -504,9 +736,19 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                                 frame.point.y.as_array_ref()[i] * frequency,
                                 frame.point.z.as_array_ref()[i] * frequency,
                             );
-                            noise_vals[i] = hash_noise_3d_scalar(pt, seed) * amplitude;
+                            noise_vals[i] = perlin_noise_3d(pt.x, pt.y, pt.z, seed) * amplitude;
                         }
                         value_stack[vsp - 1] = value_stack[vsp - 1] + f32x8::new(noise_vals);
+                    }
+                    OpCode::Extrude => {
+                        let half_height = f32x8::splat(frame.params[0]);
+                        let child_dist = value_stack[vsp - 1];
+                        let w_y = frame.point.z.abs() - half_height;
+                        let w_x_pos = child_dist.max(f32x8::ZERO);
+                        let w_y_pos = w_y.max(f32x8::ZERO);
+                        let outside = (w_x_pos * w_x_pos + w_y_pos * w_y_pos).sqrt();
+                        let inside = child_dist.max(w_y).min(f32x8::ZERO);
+                        value_stack[vsp - 1] = outside + inside;
                     }
                     _ => {}
                 }
@@ -667,26 +909,18 @@ pub fn eval_compiled_batch_simd_parallel(sdf: &CompiledSdf, points: &[Vec3]) -> 
 /// - For 100K points: ~0.6ms on modern CPU
 #[inline]
 pub fn eval_gradient_simd(sdf: &CompiledSdf, p: Vec3x8, epsilon: f32) -> (f32x8, f32x8, f32x8) {
-    let eps = f32x8::splat(epsilon);
-    let zero = f32x8::ZERO;
+    let e = f32x8::splat(epsilon);
+    let ne = f32x8::splat(-epsilon);
 
-    // Offset vectors for central differences
-    let dx = Vec3x8 { x: eps, y: zero, z: zero };
-    let dy = Vec3x8 { x: zero, y: eps, z: zero };
-    let dz = Vec3x8 { x: zero, y: zero, z: eps };
+    // Tetrahedral method: 4 evaluations instead of 6
+    let v0 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + ne, z: p.z + ne }); // (+,-,-)
+    let v1 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + ne, z: p.z + e  }); // (-,-,+)
+    let v2 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + e,  z: p.z + ne }); // (-,+,-)
+    let v3 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + e,  z: p.z + e  }); // (+,+,+)
 
-    // 6 SDF evaluations using SIMD
-    let d_x_pos = eval_compiled_simd(sdf, p + dx);
-    let d_x_neg = eval_compiled_simd(sdf, p - dx);
-    let d_y_pos = eval_compiled_simd(sdf, p + dy);
-    let d_y_neg = eval_compiled_simd(sdf, p - dy);
-    let d_z_pos = eval_compiled_simd(sdf, p + dz);
-    let d_z_neg = eval_compiled_simd(sdf, p - dz);
-
-    // Central difference gradient
-    let gx = d_x_pos - d_x_neg;
-    let gy = d_y_pos - d_y_neg;
-    let gz = d_z_pos - d_z_neg;
+    let gx = v0 - v1 - v2 + v3;
+    let gy = -v0 - v1 + v2 + v3;
+    let gz = -v0 + v1 - v2 + v3;
 
     (gx, gy, gz)
 }
@@ -700,26 +934,21 @@ pub fn eval_distance_and_gradient_simd(
     p: Vec3x8,
     epsilon: f32,
 ) -> (f32x8, f32x8, f32x8, f32x8) {
-    let eps = f32x8::splat(epsilon);
-    let zero = f32x8::ZERO;
-
     // Center distance
     let d_center = eval_compiled_simd(sdf, p);
 
-    // Offset vectors
-    let dx = Vec3x8 { x: eps, y: zero, z: zero };
-    let dy = Vec3x8 { x: zero, y: eps, z: zero };
-    let dz = Vec3x8 { x: zero, y: zero, z: eps };
+    // Tetrahedral method: 4 evaluations for gradient
+    let e = f32x8::splat(epsilon);
+    let ne = f32x8::splat(-epsilon);
 
-    // Forward differences (3 evaluations instead of 6)
-    let d_x_pos = eval_compiled_simd(sdf, p + dx);
-    let d_y_pos = eval_compiled_simd(sdf, p + dy);
-    let d_z_pos = eval_compiled_simd(sdf, p + dz);
+    let v0 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + ne, z: p.z + ne }); // (+,-,-)
+    let v1 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + ne, z: p.z + e  }); // (-,-,+)
+    let v2 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + e,  z: p.z + ne }); // (-,+,-)
+    let v3 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + e,  z: p.z + e  }); // (+,+,+)
 
-    // Forward difference gradient (less accurate but faster)
-    let gx = d_x_pos - d_center;
-    let gy = d_y_pos - d_center;
-    let gz = d_z_pos - d_center;
+    let gx = v0 - v1 - v2 + v3;
+    let gy = -v0 - v1 + v2 + v3;
+    let gz = -v0 + v1 - v2 + v3;
 
     (d_center, gx, gy, gz)
 }

@@ -52,6 +52,16 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             point_b,
             radius,
         } => sdf_capsule(point, *point_a, *point_b, *radius),
+        SdfNode::Cone {
+            radius,
+            half_height,
+        } => sdf_cone(point, *radius, *half_height),
+        SdfNode::Ellipsoid { radii } => sdf_ellipsoid(point, *radii),
+        SdfNode::RoundedCone { r1, r2, half_height } => sdf_rounded_cone(point, *r1, *r2, *half_height),
+        SdfNode::Pyramid { half_height } => sdf_pyramid(point, *half_height),
+        SdfNode::Octahedron { size } => sdf_octahedron(point, *size),
+        SdfNode::HexPrism { hex_radius, half_height } => sdf_hex_prism(point, *hex_radius, *half_height),
+        SdfNode::Link { half_length, r1, r2 } => sdf_link(point, *half_length, *r1, *r2),
 
         // === Operations ===
         // Recurse first, then combine. Compiler can reorder these instruction streams.
@@ -144,6 +154,83 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let q = point - point.clamp(-*amount, *amount);
             eval(child, q)
         }
+        SdfNode::Mirror { child, axes } => {
+            let p = modifier_mirror(point, *axes);
+            eval(child, p)
+        }
+        SdfNode::Revolution { child, offset } => {
+            let p = modifier_revolution(point, *offset);
+            eval(child, p)
+        }
+        SdfNode::Extrude { child, half_height } => {
+            let p_flat = modifier_extrude_point(point);
+            let d = eval(child, p_flat);
+            modifier_extrude(d, point.z, *half_height)
+        }
+
+        // Material assignment is transparent for distance evaluation
+        SdfNode::WithMaterial { child, .. } => eval(child, point),
+    }
+}
+
+/// Evaluate which material ID applies at a given point
+///
+/// Walks the SDF tree and returns the material_id of the closest
+/// surface node that has a material assigned. Returns 0 (default) if
+/// no material is assigned.
+#[inline]
+pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
+    match node {
+        SdfNode::WithMaterial { child, material_id } => {
+            // This subtree has a material; return it
+            // (nested WithMaterial: inner wins if closer)
+            let inner = eval_material(child, point);
+            if inner != 0 { inner } else { *material_id }
+        }
+
+        // Operations: return material of the closer child
+        SdfNode::Union { a, b }
+        | SdfNode::SmoothUnion { a, b, .. } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            if da <= db { eval_material(a, point) } else { eval_material(b, point) }
+        }
+        SdfNode::Intersection { a, b }
+        | SdfNode::SmoothIntersection { a, b, .. } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            if da >= db { eval_material(a, point) } else { eval_material(b, point) }
+        }
+        SdfNode::Subtraction { a, b }
+        | SdfNode::SmoothSubtraction { a, b, .. } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            if da >= -db { eval_material(a, point) } else { eval_material(b, point) }
+        }
+
+        // Transforms: transform point, recurse
+        SdfNode::Translate { child, offset } => eval_material(child, point - *offset),
+        SdfNode::Rotate { child, rotation } => eval_material(child, rotation.conjugate() * point),
+        SdfNode::Scale { child, factor } => eval_material(child, point / *factor),
+        SdfNode::ScaleNonUniform { child, factors } => {
+            let p = point / *factors;
+            eval_material(child, p)
+        }
+
+        // Modifiers: transform point, recurse
+        SdfNode::Twist { child, strength } => eval_material(child, modifier_twist(point, *strength)),
+        SdfNode::Bend { child, curvature } => eval_material(child, modifier_bend(point, *curvature)),
+        SdfNode::RepeatInfinite { child, spacing } => eval_material(child, modifier_repeat_infinite(point, *spacing)),
+        SdfNode::RepeatFinite { child, count, spacing } => eval_material(child, modifier_repeat_finite(point, *count, *spacing)),
+        SdfNode::Noise { child, .. } => eval_material(child, point),
+        SdfNode::Round { child, .. } | SdfNode::Onion { child, .. } => eval_material(child, point),
+        SdfNode::Elongate { child, amount } => eval_material(child, point - point.clamp(-*amount, *amount)),
+        SdfNode::Mirror { child, axes } => eval_material(child, modifier_mirror(point, *axes)),
+        SdfNode::Revolution { child, offset } => eval_material(child, modifier_revolution(point, *offset)),
+        SdfNode::Extrude { child, .. } => eval_material(child, modifier_extrude_point(point)),
+
+        // Primitives: no material assigned
+        _ => 0,
     }
 }
 

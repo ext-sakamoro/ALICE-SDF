@@ -14,6 +14,7 @@ use clap::{Parser, Subcommand};
 #[cfg(all(feature = "cli", feature = "jit"))]
 use alice_sdf::compiled::jit::JitSimdSdf;
 #[cfg(feature = "cli")]
+#[allow(unused_imports)]
 use rayon::prelude::*;
 
 #[cfg(feature = "cli")]
@@ -143,6 +144,7 @@ fn cmd_to_mesh(input: PathBuf, output: PathBuf, resolution: usize, bounds: f32) 
         resolution,
         iso_level: 0.0,
         compute_normals: true,
+        ..Default::default()
     };
 
     let min = Vec3::splat(-bounds);
@@ -362,6 +364,7 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 }
 
 #[cfg(feature = "cli")]
+#[allow(dead_code)]
 fn print_result(mode: &str, elapsed: std::time::Duration, points: usize) {
     let seconds = elapsed.as_secs_f64();
     let throughput = points as f64 / seconds / 1_000_000.0;

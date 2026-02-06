@@ -98,17 +98,39 @@ impl Compiler {
             }
 
             SdfNode::Capsule { point_a, point_b, radius } => {
-                // For capsule, we need 7 parameters. We'll use a special encoding:
-                // params[0..3] = point_a, params[3..5] = point_b.xy, skip_offset stores bz as bits
-                // Actually, let's just use params[0..6] for the points and store radius separately
-                let mut inst = Instruction::capsule(
+                self.instructions.push(Instruction::capsule(
                     point_a.x, point_a.y, point_a.z,
                     point_b.x, point_b.y, point_b.z,
                     *radius,
-                );
-                // Store radius in skip_offset as f32 bits (will be decoded in eval)
-                inst.skip_offset = radius.to_bits();
-                self.instructions.push(inst);
+                ));
+            }
+
+            SdfNode::Cone { radius, half_height } => {
+                self.instructions.push(Instruction::cone(*radius, *half_height));
+            }
+
+            SdfNode::Ellipsoid { radii } => {
+                self.instructions.push(Instruction::ellipsoid(radii.x, radii.y, radii.z));
+            }
+
+            SdfNode::RoundedCone { r1, r2, half_height } => {
+                self.instructions.push(Instruction::rounded_cone(*r1, *r2, *half_height));
+            }
+
+            SdfNode::Pyramid { half_height } => {
+                self.instructions.push(Instruction::pyramid(*half_height));
+            }
+
+            SdfNode::Octahedron { size } => {
+                self.instructions.push(Instruction::octahedron(*size));
+            }
+
+            SdfNode::HexPrism { hex_radius, half_height } => {
+                self.instructions.push(Instruction::hex_prism(*hex_radius, *half_height));
+            }
+
+            SdfNode::Link { half_length, r1, r2 } => {
+                self.instructions.push(Instruction::link(*half_length, *r1, *r2));
             }
 
             // === Binary Operations ===
@@ -257,6 +279,35 @@ impl Compiler {
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::Mirror { child, axes } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::mirror(axes.x, axes.y, axes.z));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::Revolution { child, offset } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::revolution(*offset));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::Extrude { child, half_height } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::extrude(*half_height));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            // WithMaterial is transparent for distance evaluation
+            SdfNode::WithMaterial { child, .. } => {
+                self.compile_node(child);
             }
         }
     }

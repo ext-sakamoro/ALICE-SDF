@@ -56,12 +56,14 @@ pub fn transform_rotate_euler(point: Vec3, x: f32, y: f32, z: f32) -> Vec3 {
 }
 
 /// Create a rotation quaternion around an arbitrary axis
+#[allow(dead_code)]
 #[inline(always)]
 pub fn rotation_axis_angle(axis: Vec3, angle: f32) -> Quat {
     Quat::from_axis_angle(axis.normalize(), angle)
 }
 
 /// Create a rotation quaternion from a "look at" direction
+#[allow(dead_code)]
 #[inline(always)]
 pub fn rotation_look_at(direction: Vec3, up: Vec3) -> Quat {
     let forward = direction.normalize();

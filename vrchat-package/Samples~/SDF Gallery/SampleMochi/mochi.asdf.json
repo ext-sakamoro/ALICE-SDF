@@ -1,0 +1,42 @@
+{
+    "type": "SmoothUnion",
+    "k": 0.15,
+    "children": [
+        {
+            "type": "Plane",
+            "normal": [0, 1, 0],
+            "distance": 0
+        },
+        {
+            "type": "SmoothUnion",
+            "k": 0.5,
+            "children": [
+                {
+                    "type": "Translate",
+                    "offset": [-0.6, 0.35, 0.5],
+                    "child": { "type": "Sphere", "radius": 0.35 }
+                },
+                {
+                    "type": "Translate",
+                    "offset": [0.5, 0.3, 0.3],
+                    "child": { "type": "Sphere", "radius": 0.3 }
+                },
+                {
+                    "type": "Translate",
+                    "offset": [0.0, 0.28, -0.4],
+                    "child": { "type": "Sphere", "radius": 0.28 }
+                },
+                {
+                    "type": "Translate",
+                    "offset": [-0.9, 0.4, -0.2],
+                    "child": { "type": "Sphere", "radius": 0.4 }
+                },
+                {
+                    "type": "Translate",
+                    "offset": [0.4, 0.25, -0.8],
+                    "child": { "type": "Sphere", "radius": 0.25 }
+                }
+            ]
+        }
+    ]
+}

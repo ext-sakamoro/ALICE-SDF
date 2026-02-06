@@ -36,30 +36,43 @@ pub enum PrimitiveType {
 pub enum FittedPrimitive {
     /// Sphere with center and radius
     Sphere {
+        /// Sphere center
         center: Vec3,
+        /// Sphere radius
         radius: f32,
     },
     /// Box with center and half-extents
     Box {
+        /// Box center
         center: Vec3,
+        /// Half-extents along each axis
         half_extents: Vec3,
     },
     /// Cylinder with center, axis, radius, and half-height
     Cylinder {
+        /// Cylinder center
         center: Vec3,
+        /// Cylinder axis direction
         axis: Vec3,
+        /// Cylinder radius
         radius: f32,
+        /// Half the cylinder height
         half_height: f32,
     },
     /// Capsule with endpoints and radius
     Capsule {
+        /// First endpoint
         point_a: Vec3,
+        /// Second endpoint
         point_b: Vec3,
+        /// Capsule radius
         radius: f32,
     },
     /// Plane with normal and distance from origin
     Plane {
+        /// Plane normal direction
         normal: Vec3,
+        /// Signed distance from origin
         distance: f32,
     },
 }

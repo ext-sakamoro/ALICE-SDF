@@ -325,7 +325,7 @@ pub fn generate_nanite_mesh(
     let mut cluster_id = 0u32;
     let mut group_id = 0u32;
 
-    let bounds_size = max_bounds - min_bounds;
+    let _bounds_size = max_bounds - min_bounds;
     let bounds_center = (min_bounds + max_bounds) * 0.5;
 
     // Generate each LOD level
@@ -337,6 +337,7 @@ pub fn generate_nanite_mesh(
             resolution: resolution as usize,
             iso_level: 0.0,
             compute_normals: config.compute_normals,
+            ..Default::default()
         };
 
         let mesh = sdf_to_mesh(sdf, min_bounds, max_bounds, &mc_config);

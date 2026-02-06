@@ -13,10 +13,16 @@
 //! Author: Moroya Sakamoto
 
 mod asdf;
+pub mod fbx;
+pub mod gltf;
 mod json;
+pub mod obj;
 
 pub use asdf::{save_asdf, load_asdf, AsdfHeader, ASDF_MAGIC};
+pub use fbx::{export_fbx, FbxConfig, FbxFormat, FbxUpAxis};
+pub use gltf::{export_glb, export_gltf_json, GltfConfig};
 pub use json::{save_asdf_json, load_asdf_json};
+pub use obj::{export_obj, import_obj, ObjConfig};
 
 use crate::types::SdfTree;
 use std::path::Path;
@@ -25,18 +31,28 @@ use thiserror::Error;
 /// File I/O errors
 #[derive(Error, Debug)]
 pub enum IoError {
+    /// I/O error
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    /// Invalid file format
     #[error("Invalid file format: {0}")]
     InvalidFormat(String),
 
+    /// CRC checksum mismatch
     #[error("CRC mismatch: expected {expected}, got {actual}")]
-    CrcMismatch { expected: u32, actual: u32 },
+    CrcMismatch {
+        /// Expected CRC value
+        expected: u32,
+        /// Actual CRC value
+        actual: u32,
+    },
 
+    /// Serialization error
     #[error("Serialization error: {0}")]
     Serialization(String),
 
+    /// Unsupported file version
     #[error("Unsupported version: {0}")]
     UnsupportedVersion(u16),
 }

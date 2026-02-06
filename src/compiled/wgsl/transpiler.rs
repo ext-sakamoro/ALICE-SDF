@@ -1,7 +1,9 @@
-//! WGSL Transpiler: SDF to WebGPU Shading Language (Deep Fried Edition)
+//! WGSL Transpiler: SDF to WebGPU Shading Language (Dynamic Edition)
 //!
-//! This module converts SDF node trees to WGSL code that can be executed
-//! on the GPU for massively parallel evaluation.
+//! Supports "Hardcoded" (max speed) and "Dynamic" (animation) modes.
+//!
+//! - **Hardcoded**: Constants baked into shader (fastest execution, requires recompile on change)
+//! - **Dynamic**: Constants read from uniform buffer (fast update via `write_buffer`, good execution)
 //!
 //! # Deep Fried Optimizations
 //!
@@ -17,34 +19,63 @@ use std::fmt::Write;
 /// Epsilon for constant folding (skip operations that are no-ops)
 const FOLD_EPSILON: f32 = 1e-6;
 
-/// Generated WGSL shader code
+/// Transpilation mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TranspileMode {
+    /// Constants are baked into the shader (Faster execution, slow update)
+    Hardcoded,
+    /// Constants are read from uniform buffer (Fast update, good execution)
+    Dynamic,
+}
+
+/// Generated WGSL shader code with metadata
 #[derive(Debug, Clone)]
 pub struct WgslShader {
-    /// The generated WGSL source code
+    /// The generated WGSL source code (sdf_eval function + helpers)
     pub source: String,
     /// Number of helper functions generated
     pub helper_count: usize,
+    /// Initial parameter values (empty for Hardcoded mode)
+    pub param_layout: Vec<f32>,
+    /// Transpilation mode used
+    pub mode: TranspileMode,
 }
 
 impl WgslShader {
-    /// Transpile an SDF node tree to WGSL
-    pub fn transpile(node: &SdfNode) -> Self {
-        let mut transpiler = WgslTranspiler::new();
+    /// Transpile an SDF node tree to WGSL with the specified mode
+    pub fn transpile(node: &SdfNode, mode: TranspileMode) -> Self {
+        let mut transpiler = WgslTranspiler::new(mode);
         let body = transpiler.transpile_node(node, "p");
-
         let source = transpiler.generate_shader(&body);
 
         WgslShader {
             source,
             helper_count: transpiler.helper_functions.len(),
+            param_layout: transpiler.params,
+            mode,
         }
     }
 
-    /// Generate a complete compute shader for batch evaluation
+    /// Extract parameter values from an SDF node tree
+    ///
+    /// Returns the same parameter layout as produced by `transpile()` in Dynamic mode.
+    /// Use this with `GpuEvaluator::update_params()` for zero-latency parameter updates.
+    pub fn extract_params(node: &SdfNode) -> Vec<f32> {
+        let mut transpiler = WgslTranspiler::new(TranspileMode::Dynamic);
+        let _ = transpiler.transpile_node(node, "p");
+        transpiler.params
+    }
+
+    /// Generate a complete compute shader for batch distance evaluation
     pub fn to_compute_shader(&self) -> String {
+        let params_decl = if self.mode == TranspileMode::Dynamic {
+            "\nstruct Params {\n    data: array<vec4<f32>, 1024>,\n}\n\n@group(0) @binding(3) var<uniform> sdf_params: Params;\n"
+        } else {
+            ""
+        };
+
         format!(
-            r#"// ALICE-SDF Generated Compute Shader
-// Evaluates SDF at multiple points in parallel
+            r#"// ALICE-SDF Generated Compute Shader ({mode:?} Mode)
 
 struct InputPoint {{
     x: f32,
@@ -63,8 +94,8 @@ struct OutputDistance {{
 @group(0) @binding(0) var<storage, read> input_points: array<InputPoint>;
 @group(0) @binding(1) var<storage, read_write> output_distances: array<OutputDistance>;
 @group(0) @binding(2) var<uniform> point_count: u32;
-
-{}
+{params_decl}
+{sdf_func}
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
@@ -79,7 +110,81 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     output_distances[idx].distance = distance;
 }}
 "#,
-            self.source
+            mode = self.mode,
+            params_decl = params_decl,
+            sdf_func = self.source,
+        )
+    }
+
+    /// Generate a compute shader that outputs both distances and normals
+    ///
+    /// Uses the Tetrahedral Method (4 SDF evaluations) for GPU-side normal estimation.
+    /// Output is packed as `(dist, nx, ny, nz)` per point.
+    pub fn to_compute_shader_with_normals(&self) -> String {
+        let params_decl = if self.mode == TranspileMode::Dynamic {
+            "\nstruct Params {\n    data: array<vec4<f32>, 1024>,\n}\n\n@group(0) @binding(3) var<uniform> sdf_params: Params;\n"
+        } else {
+            ""
+        };
+
+        format!(
+            r#"// ALICE-SDF Generated Compute Shader - Distance + Normals ({mode:?} Mode)
+
+struct InputPoint {{
+    x: f32,
+    y: f32,
+    z: f32,
+    _pad: f32,
+}}
+
+struct Output {{
+    dist: f32,
+    nx: f32,
+    ny: f32,
+    nz: f32,
+}}
+
+@group(0) @binding(0) var<storage, read> input_points: array<InputPoint>;
+@group(0) @binding(1) var<storage, read_write> output: array<Output>;
+@group(0) @binding(2) var<uniform> point_count: u32;
+{params_decl}
+{sdf_func}
+
+fn estimate_normal(p: vec3<f32>) -> vec3<f32> {{
+    let e = 0.001;
+    let k0 = vec3<f32>(1.0, -1.0, -1.0);
+    let k1 = vec3<f32>(-1.0, -1.0, 1.0);
+    let k2 = vec3<f32>(-1.0, 1.0, -1.0);
+    let k3 = vec3<f32>(1.0, 1.0, 1.0);
+
+    let d0 = sdf_eval(p + k0 * e);
+    let d1 = sdf_eval(p + k1 * e);
+    let d2 = sdf_eval(p + k2 * e);
+    let d3 = sdf_eval(p + k3 * e);
+
+    return normalize(k0 * d0 + k1 * d1 + k2 * d2 + k3 * d3);
+}}
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let idx = gid.x;
+    if (idx >= point_count) {{ return; }}
+
+    let pt = input_points[idx];
+    let p = vec3<f32>(pt.x, pt.y, pt.z);
+
+    let d = sdf_eval(p);
+    let n = estimate_normal(p);
+
+    output[idx].dist = d;
+    output[idx].nx = n.x;
+    output[idx].ny = n.y;
+    output[idx].nz = n.z;
+}}
+"#,
+            mode = self.mode,
+            params_decl = params_decl,
+            sdf_func = self.source,
         )
     }
 
@@ -95,13 +200,19 @@ struct WgslTranspiler {
     var_counter: usize,
     /// Helper functions that need to be included
     helper_functions: Vec<&'static str>,
+    /// Transpilation mode
+    mode: TranspileMode,
+    /// Collected parameter values (Dynamic mode)
+    params: Vec<f32>,
 }
 
 impl WgslTranspiler {
-    fn new() -> Self {
+    fn new(mode: TranspileMode) -> Self {
         WgslTranspiler {
             var_counter: 0,
             helper_functions: Vec::new(),
+            mode,
+            params: Vec::new(),
         }
     }
 
@@ -114,6 +225,28 @@ impl WgslTranspiler {
     fn ensure_helper(&mut self, name: &'static str) {
         if !self.helper_functions.contains(&name) {
             self.helper_functions.push(name);
+        }
+    }
+
+    /// Register a float parameter and return its WGSL expression string.
+    ///
+    /// - Hardcoded: returns a literal like `"1.000000"`
+    /// - Dynamic: pushes to param buffer and returns `"sdf_params.data[i].comp"`
+    fn param(&mut self, value: f32) -> String {
+        match self.mode {
+            TranspileMode::Hardcoded => format!("{:.6}", value),
+            TranspileMode::Dynamic => {
+                let idx = self.params.len();
+                self.params.push(value);
+                let vec_idx = idx / 4;
+                let comp = match idx % 4 {
+                    0 => "x",
+                    1 => "y",
+                    2 => "z",
+                    _ => "w",
+                };
+                format!("sdf_params.data[{}].{}", vec_idx, comp)
+            }
         }
     }
 
@@ -133,6 +266,30 @@ impl WgslTranspiler {
                 }
                 "quat_rotate" => {
                     shader.push_str(HELPER_QUAT_ROTATE);
+                    shader.push('\n');
+                }
+                "hash_noise" => {
+                    shader.push_str(HELPER_HASH_NOISE);
+                    shader.push('\n');
+                }
+                "sdf_rounded_cone" => {
+                    shader.push_str(HELPER_SDF_ROUNDED_CONE);
+                    shader.push('\n');
+                }
+                "sdf_pyramid" => {
+                    shader.push_str(HELPER_SDF_PYRAMID);
+                    shader.push('\n');
+                }
+                "sdf_octahedron" => {
+                    shader.push_str(HELPER_SDF_OCTAHEDRON);
+                    shader.push('\n');
+                }
+                "sdf_hex_prism" => {
+                    shader.push_str(HELPER_SDF_HEX_PRISM);
+                    shader.push('\n');
+                }
+                "sdf_link" => {
+                    shader.push_str(HELPER_SDF_LINK);
                     shader.push('\n');
                 }
                 _ => {}
@@ -165,22 +322,21 @@ impl WgslTranspiler {
 
             SdfNode::Sphere { radius } => {
                 let var = self.next_var();
-                writeln!(
-                    code,
-                    "    let {} = length({}) - {:.6};",
-                    var, point_var, radius
-                )
-                .unwrap();
+                let r = self.param(*radius);
+                writeln!(code, "    let {} = length({}) - {};", var, point_var, r).unwrap();
                 var
             }
 
             SdfNode::Box3d { half_extents } => {
                 let q_var = self.next_var();
                 let var = self.next_var();
+                let hx = self.param(half_extents.x);
+                let hy = self.param(half_extents.y);
+                let hz = self.param(half_extents.z);
                 writeln!(
                     code,
-                    "    let {} = abs({}) - vec3<f32>({:.6}, {:.6}, {:.6});",
-                    q_var, point_var, half_extents.x, half_extents.y, half_extents.z
+                    "    let {} = abs({}) - vec3<f32>({}, {}, {});",
+                    q_var, point_var, hx, hy, hz
                 )
                 .unwrap();
                 writeln!(
@@ -195,10 +351,12 @@ impl WgslTranspiler {
             SdfNode::Cylinder { radius, half_height } => {
                 let d_var = self.next_var();
                 let var = self.next_var();
+                let r = self.param(*radius);
+                let hh = self.param(*half_height);
                 writeln!(
                     code,
-                    "    let {} = vec2<f32>(length({}.xz) - {:.6}, abs({}.y) - {:.6});",
-                    d_var, point_var, radius, point_var, half_height
+                    "    let {} = vec2<f32>(length({}.xz) - {}, abs({}.y) - {});",
+                    d_var, point_var, r, point_var, hh
                 )
                 .unwrap();
                 writeln!(
@@ -216,22 +374,28 @@ impl WgslTranspiler {
             } => {
                 let q_var = self.next_var();
                 let var = self.next_var();
+                let mr = self.param(*major_radius);
+                let mnr = self.param(*minor_radius);
                 writeln!(
                     code,
-                    "    let {} = vec2<f32>(length({}.xz) - {:.6}, {}.y);",
-                    q_var, point_var, major_radius, point_var
+                    "    let {} = vec2<f32>(length({}.xz) - {}, {}.y);",
+                    q_var, point_var, mr, point_var
                 )
                 .unwrap();
-                writeln!(code, "    let {} = length({}) - {:.6};", var, q_var, minor_radius).unwrap();
+                writeln!(code, "    let {} = length({}) - {};", var, q_var, mnr).unwrap();
                 var
             }
 
             SdfNode::Plane { normal, distance } => {
                 let var = self.next_var();
+                let nx = self.param(normal.x);
+                let ny = self.param(normal.y);
+                let nz = self.param(normal.z);
+                let d = self.param(*distance);
                 writeln!(
                     code,
-                    "    let {} = dot({}, vec3<f32>({:.6}, {:.6}, {:.6})) + {:.6};",
-                    var, point_var, normal.x, normal.y, normal.z, distance
+                    "    let {} = dot({}, vec3<f32>({}, {}, {})) + {};",
+                    var, point_var, nx, ny, nz, d
                 )
                 .unwrap();
                 var
@@ -247,18 +411,24 @@ impl WgslTranspiler {
                 let h_var = self.next_var();
                 let var = self.next_var();
 
+                let pax = self.param(point_a.x);
+                let pay = self.param(point_a.y);
+                let paz = self.param(point_a.z);
+                let pbx = self.param(point_b.x);
+                let pby = self.param(point_b.y);
+                let pbz = self.param(point_b.z);
+                let r = self.param(*radius);
+
                 writeln!(
                     code,
-                    "    let {} = {} - vec3<f32>({:.6}, {:.6}, {:.6});",
-                    pa_var, point_var, point_a.x, point_a.y, point_a.z
+                    "    let {} = {} - vec3<f32>({}, {}, {});",
+                    pa_var, point_var, pax, pay, paz
                 )
                 .unwrap();
                 writeln!(
                     code,
-                    "    let {} = vec3<f32>({:.6}, {:.6}, {:.6}) - vec3<f32>({:.6}, {:.6}, {:.6});",
-                    ba_var,
-                    point_b.x, point_b.y, point_b.z,
-                    point_a.x, point_a.y, point_a.z
+                    "    let {} = vec3<f32>({}, {}, {}) - vec3<f32>({}, {}, {});",
+                    ba_var, pbx, pby, pbz, pax, pay, paz
                 )
                 .unwrap();
                 writeln!(
@@ -269,10 +439,142 @@ impl WgslTranspiler {
                 .unwrap();
                 writeln!(
                     code,
-                    "    let {} = length({} - {} * {}) - {:.6};",
-                    var, pa_var, ba_var, h_var, radius
+                    "    let {} = length({} - {} * {}) - {};",
+                    var, pa_var, ba_var, h_var, r
                 )
                 .unwrap();
+                var
+            }
+
+            SdfNode::Cone { radius, half_height } => {
+                let qx_var = self.next_var();
+                let h_var = self.next_var();
+                let k2x = -radius;
+                let k2y = 2.0 * half_height;
+                let ca_var = self.next_var();
+                let t_var = self.next_var();
+                let cb_var = self.next_var();
+                let s_var = self.next_var();
+                let d2_var = self.next_var();
+                let var = self.next_var();
+
+                let p_hh = self.param(*half_height);
+                let p_r = self.param(*radius);
+                let p_k2x = self.param(k2x);
+                let p_k2y = self.param(k2y);
+                let p_k2sq = self.param(k2x * k2x + k2y * k2y);
+
+                writeln!(code, "    let {} = length({}.xz);", qx_var, point_var).unwrap();
+                writeln!(code, "    let {} = {};", h_var, p_hh).unwrap();
+                writeln!(code,
+                    "    let {} = vec2<f32>({} - min({}, select(0.0, {}, {}.y < 0.0)), abs({}.y) - {});",
+                    ca_var, qx_var, qx_var, p_r, point_var, point_var, h_var
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = clamp((-{} * {} + ({} - {}.y) * {}) / {}, 0.0, 1.0);",
+                    t_var, qx_var, p_k2x, h_var, point_var, p_k2y, p_k2sq
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = vec2<f32>({} + {} * {}, {}.y - {} + {} * {});",
+                    cb_var, qx_var, p_k2x, t_var, point_var, h_var, p_k2y, t_var
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = select(1.0, -1.0, {}.x < 0.0 && {}.y < 0.0);",
+                    s_var, cb_var, ca_var
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = min(dot({}, {}), dot({}, {}));",
+                    d2_var, ca_var, ca_var, cb_var, cb_var
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = {} * sqrt({});",
+                    var, s_var, d2_var
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Ellipsoid { radii } => {
+                let var = self.next_var();
+                let k0_var = self.next_var();
+                let k1_var = self.next_var();
+                let rx = self.param(radii.x);
+                let ry = self.param(radii.y);
+                let rz = self.param(radii.z);
+                let rx2 = self.param(radii.x * radii.x);
+                let ry2 = self.param(radii.y * radii.y);
+                let rz2 = self.param(radii.z * radii.z);
+                writeln!(code,
+                    "    let {} = length({} / vec3<f32>({}, {}, {}));",
+                    k0_var, point_var, rx, ry, rz
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = length({} / vec3<f32>({}, {}, {}));",
+                    k1_var, point_var, rx2, ry2, rz2
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = {} * ({} - 1.0) / max({}, 1e-10);",
+                    var, k0_var, k0_var, k1_var
+                ).unwrap();
+                var
+            }
+
+            SdfNode::RoundedCone { r1, r2, half_height } => {
+                self.ensure_helper("sdf_rounded_cone");
+                let var = self.next_var();
+                let p_r1 = self.param(*r1);
+                let p_r2 = self.param(*r2);
+                let p_hh = self.param(*half_height);
+                writeln!(code,
+                    "    let {} = sdf_rounded_cone({}, {}, {}, {});",
+                    var, point_var, p_r1, p_r2, p_hh
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Pyramid { half_height } => {
+                self.ensure_helper("sdf_pyramid");
+                let var = self.next_var();
+                let p_hh = self.param(*half_height);
+                writeln!(code,
+                    "    let {} = sdf_pyramid({}, {});",
+                    var, point_var, p_hh
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Octahedron { size } => {
+                self.ensure_helper("sdf_octahedron");
+                let var = self.next_var();
+                let p_s = self.param(*size);
+                writeln!(code,
+                    "    let {} = sdf_octahedron({}, {});",
+                    var, point_var, p_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::HexPrism { hex_radius, half_height } => {
+                self.ensure_helper("sdf_hex_prism");
+                let var = self.next_var();
+                let p_hr = self.param(*hex_radius);
+                let p_hh = self.param(*half_height);
+                writeln!(code,
+                    "    let {} = sdf_hex_prism({}, {}, {});",
+                    var, point_var, p_hr, p_hh
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Link { half_length, r1, r2 } => {
+                self.ensure_helper("sdf_link");
+                let var = self.next_var();
+                let p_hl = self.param(*half_length);
+                let p_r1 = self.param(*r1);
+                let p_r2 = self.param(*r2);
+                writeln!(code,
+                    "    let {} = sdf_link({}, {}, {}, {});",
+                    var, point_var, p_hl, p_r1, p_r2
+                ).unwrap();
                 var
             }
 
@@ -303,34 +605,31 @@ impl WgslTranspiler {
             }
 
             // ★ Deep Fried: Division Exorcism for SmoothUnion
-            // Pre-compute inv_k at transpile time, use * inv_k instead of / k
+            // In Dynamic mode, never constant-fold (k might change at runtime)
             SdfNode::SmoothUnion { a, b, k } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
 
-                // Constant folding: if k ≈ 0, just use min()
-                if k.abs() < FOLD_EPSILON {
+                // Constant folding: only in Hardcoded mode
+                if self.mode == TranspileMode::Hardcoded && k.abs() < FOLD_EPSILON {
                     writeln!(code, "    let {} = min({}, {});", var, d_a, d_b).unwrap();
                     return var;
                 }
 
-                // Division Exorcism: compute 1/k at Rust compile time
-                let inv_k = 1.0 / k;
+                let k_str = self.param(*k);
+                let inv_k_str = self.param(1.0 / k);
                 let h_var = self.next_var();
 
-                // Inline smooth_min with multiplication:
-                // h = max(k - abs(a - b), 0.0) * inv_k  (MUL instead of DIV!)
-                // result = min(a, b) - h * h * k * 0.25
                 writeln!(
                     code,
-                    "    let {} = max({:.6} - abs({} - {}), 0.0) * {:.6};",
-                    h_var, k, d_a, d_b, inv_k
+                    "    let {} = max({} - abs({} - {}), 0.0) * {};",
+                    h_var, k_str, d_a, d_b, inv_k_str
                 ).unwrap();
                 writeln!(
                     code,
-                    "    let {} = min({}, {}) - {} * {} * {:.6} * 0.25;",
-                    var, d_a, d_b, h_var, h_var, k
+                    "    let {} = min({}, {}) - {} * {} * {} * 0.25;",
+                    var, d_a, d_b, h_var, h_var, k_str
                 ).unwrap();
                 var
             }
@@ -341,25 +640,24 @@ impl WgslTranspiler {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
 
-                if k.abs() < FOLD_EPSILON {
+                if self.mode == TranspileMode::Hardcoded && k.abs() < FOLD_EPSILON {
                     writeln!(code, "    let {} = max({}, {});", var, d_a, d_b).unwrap();
                     return var;
                 }
 
-                let inv_k = 1.0 / k;
+                let k_str = self.param(*k);
+                let inv_k_str = self.param(1.0 / k);
                 let h_var = self.next_var();
 
-                // smooth_max(a, b, k) = -smooth_min(-a, -b, k)
-                // Inline with division exorcism:
                 writeln!(
                     code,
-                    "    let {} = max({:.6} - abs({} - {}), 0.0) * {:.6};",
-                    h_var, k, d_a, d_b, inv_k
+                    "    let {} = max({} - abs({} - {}), 0.0) * {};",
+                    h_var, k_str, d_a, d_b, inv_k_str
                 ).unwrap();
                 writeln!(
                     code,
-                    "    let {} = max({}, {}) + {} * {} * {:.6} * 0.25;",
-                    var, d_a, d_b, h_var, h_var, k
+                    "    let {} = max({}, {}) + {} * {} * {} * 0.25;",
+                    var, d_a, d_b, h_var, h_var, k_str
                 ).unwrap();
                 var
             }
@@ -370,26 +668,26 @@ impl WgslTranspiler {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
 
-                if k.abs() < FOLD_EPSILON {
+                if self.mode == TranspileMode::Hardcoded && k.abs() < FOLD_EPSILON {
                     writeln!(code, "    let {} = max({}, -{});", var, d_a, d_b).unwrap();
                     return var;
                 }
 
-                let inv_k = 1.0 / k;
+                let k_str = self.param(*k);
+                let inv_k_str = self.param(1.0 / k);
                 let h_var = self.next_var();
                 let neg_b = self.next_var();
 
-                // smooth_max(a, -b, k) with division exorcism:
                 writeln!(code, "    let {} = -{};", neg_b, d_b).unwrap();
                 writeln!(
                     code,
-                    "    let {} = max({:.6} - abs({} - {}), 0.0) * {:.6};",
-                    h_var, k, d_a, neg_b, inv_k
+                    "    let {} = max({} - abs({} - {}), 0.0) * {};",
+                    h_var, k_str, d_a, neg_b, inv_k_str
                 ).unwrap();
                 writeln!(
                     code,
-                    "    let {} = max({}, {}) + {} * {} * {:.6} * 0.25;",
-                    var, d_a, neg_b, h_var, h_var, k
+                    "    let {} = max({}, {}) + {} * {} * {} * 0.25;",
+                    var, d_a, neg_b, h_var, h_var, k_str
                 ).unwrap();
                 var
             }
@@ -398,10 +696,13 @@ impl WgslTranspiler {
 
             SdfNode::Translate { child, offset } => {
                 let new_p = self.next_var();
+                let ox = self.param(offset.x);
+                let oy = self.param(offset.y);
+                let oz = self.param(offset.z);
                 writeln!(
                     code,
-                    "    let {} = {} - vec3<f32>({:.6}, {:.6}, {:.6});",
-                    new_p, point_var, offset.x, offset.y, offset.z
+                    "    let {} = {} - vec3<f32>({}, {}, {});",
+                    new_p, point_var, ox, oy, oz
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
@@ -411,10 +712,14 @@ impl WgslTranspiler {
                 self.ensure_helper("quat_rotate");
                 let inv_rot = rotation.inverse();
                 let new_p = self.next_var();
+                let qx = self.param(inv_rot.x);
+                let qy = self.param(inv_rot.y);
+                let qz = self.param(inv_rot.z);
+                let qw = self.param(inv_rot.w);
                 writeln!(
                     code,
-                    "    let {} = quat_rotate({}, vec4<f32>({:.6}, {:.6}, {:.6}, {:.6}));",
-                    new_p, point_var, inv_rot.x, inv_rot.y, inv_rot.z, inv_rot.w
+                    "    let {} = quat_rotate({}, vec4<f32>({}, {}, {}, {}));",
+                    new_p, point_var, qx, qy, qz, qw
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
@@ -423,35 +728,37 @@ impl WgslTranspiler {
             SdfNode::Scale { child, factor } => {
                 let new_p = self.next_var();
                 let inv_factor = 1.0 / factor;
+                let p_inv = self.param(inv_factor);
+                let p_factor = self.param(*factor);
                 writeln!(
                     code,
-                    "    let {} = {} * {:.6};",
-                    new_p, point_var, inv_factor
+                    "    let {} = {} * {};",
+                    new_p, point_var, p_inv
                 )
                 .unwrap();
                 let d = self.transpile_node_inner(child, &new_p, code);
                 let var = self.next_var();
-                writeln!(code, "    let {} = {} * {:.6};", var, d, factor).unwrap();
+                writeln!(code, "    let {} = {} * {};", var, d, p_factor).unwrap();
                 var
             }
 
             // ★ Deep Fried: Division Exorcism for ScaleNonUniform
             SdfNode::ScaleNonUniform { child, factors } => {
                 let new_p = self.next_var();
-                // Pre-compute reciprocals at transpile time
-                let inv_x = 1.0 / factors.x;
-                let inv_y = 1.0 / factors.y;
-                let inv_z = 1.0 / factors.z;
+                let inv_x = self.param(1.0 / factors.x);
+                let inv_y = self.param(1.0 / factors.y);
+                let inv_z = self.param(1.0 / factors.z);
+                let min_scale = factors.x.min(factors.y).min(factors.z);
+                let p_min = self.param(min_scale);
                 writeln!(
                     code,
-                    "    let {} = {} * vec3<f32>({:.6}, {:.6}, {:.6});",
+                    "    let {} = {} * vec3<f32>({}, {}, {});",
                     new_p, point_var, inv_x, inv_y, inv_z
                 )
                 .unwrap();
                 let d = self.transpile_node_inner(child, &new_p, code);
-                let min_scale = factors.x.min(factors.y).min(factors.z);
                 let var = self.next_var();
-                writeln!(code, "    let {} = {} * {:.6};", var, d, min_scale).unwrap();
+                writeln!(code, "    let {} = {} * {};", var, d, p_min).unwrap();
                 var
             }
 
@@ -462,11 +769,12 @@ impl WgslTranspiler {
                 let c_var = self.next_var();
                 let s_var = self.next_var();
                 let new_p = self.next_var();
+                let str_val = self.param(*strength);
 
                 writeln!(
                     code,
-                    "    let {} = {:.6} * {}.y;",
-                    angle_var, strength, point_var
+                    "    let {} = {} * {}.y;",
+                    angle_var, str_val, point_var
                 )
                 .unwrap();
                 writeln!(code, "    let {} = cos({});", c_var, angle_var).unwrap();
@@ -485,11 +793,12 @@ impl WgslTranspiler {
                 let c_var = self.next_var();
                 let s_var = self.next_var();
                 let new_p = self.next_var();
+                let curv = self.param(*curvature);
 
                 writeln!(
                     code,
-                    "    let {} = {:.6} * {}.x;",
-                    angle_var, curvature, point_var
+                    "    let {} = {} * {}.x;",
+                    angle_var, curv, point_var
                 )
                 .unwrap();
                 writeln!(code, "    let {} = cos({});", c_var, angle_var).unwrap();
@@ -506,25 +815,33 @@ impl WgslTranspiler {
             SdfNode::Round { child, radius } => {
                 let d = self.transpile_node_inner(child, point_var, code);
                 let var = self.next_var();
-                writeln!(code, "    let {} = {} - {:.6};", var, d, radius).unwrap();
+                let r = self.param(*radius);
+                writeln!(code, "    let {} = {} - {};", var, d, r).unwrap();
                 var
             }
 
             SdfNode::Onion { child, thickness } => {
                 let d = self.transpile_node_inner(child, point_var, code);
                 let var = self.next_var();
-                writeln!(code, "    let {} = abs({}) - {:.6};", var, d, thickness).unwrap();
+                let t = self.param(*thickness);
+                writeln!(code, "    let {} = abs({}) - {};", var, d, t).unwrap();
                 var
             }
 
             SdfNode::Elongate { child, amount } => {
                 let q_var = self.next_var();
+                let neg_ax = self.param(-amount.x);
+                let neg_ay = self.param(-amount.y);
+                let neg_az = self.param(-amount.z);
+                let ax = self.param(amount.x);
+                let ay = self.param(amount.y);
+                let az = self.param(amount.z);
                 writeln!(
                     code,
-                    "    let {} = {} - clamp({}, vec3<f32>({:.6}, {:.6}, {:.6}), vec3<f32>({:.6}, {:.6}, {:.6}));",
+                    "    let {} = {} - clamp({}, vec3<f32>({}, {}, {}), vec3<f32>({}, {}, {}));",
                     q_var, point_var, point_var,
-                    -amount.x, -amount.y, -amount.z,
-                    amount.x, amount.y, amount.z
+                    neg_ax, neg_ay, neg_az,
+                    ax, ay, az
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &q_var, code)
@@ -532,13 +849,16 @@ impl WgslTranspiler {
 
             SdfNode::RepeatInfinite { child, spacing } => {
                 let q_var = self.next_var();
+                let sx = self.param(spacing.x);
+                let sy = self.param(spacing.y);
+                let sz = self.param(spacing.z);
                 writeln!(
                     code,
-                    "    let {} = ({} + vec3<f32>({:.6}, {:.6}, {:.6}) * 0.5) % vec3<f32>({:.6}, {:.6}, {:.6}) - vec3<f32>({:.6}, {:.6}, {:.6}) * 0.5;",
+                    "    let {} = ({} + vec3<f32>({}, {}, {}) * 0.5) % vec3<f32>({}, {}, {}) - vec3<f32>({}, {}, {}) * 0.5;",
                     q_var, point_var,
-                    spacing.x, spacing.y, spacing.z,
-                    spacing.x, spacing.y, spacing.z,
-                    spacing.x, spacing.y, spacing.z
+                    sx, sy, sz,
+                    sx, sy, sz,
+                    sx, sy, sz
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &q_var, code)
@@ -551,27 +871,101 @@ impl WgslTranspiler {
             } => {
                 let r_var = self.next_var();
                 let q_var = self.next_var();
+                let sx = self.param(spacing.x);
+                let sy = self.param(spacing.y);
+                let sz = self.param(spacing.z);
+                let neg_cx = self.param(-(count[0] as f32));
+                let neg_cy = self.param(-(count[1] as f32));
+                let neg_cz = self.param(-(count[2] as f32));
+                let cx = self.param(count[0] as f32);
+                let cy = self.param(count[1] as f32);
+                let cz = self.param(count[2] as f32);
                 writeln!(
                     code,
-                    "    let {} = clamp(round({} / vec3<f32>({:.6}, {:.6}, {:.6})), vec3<f32>({:.6}, {:.6}, {:.6}), vec3<f32>({:.6}, {:.6}, {:.6}));",
+                    "    let {} = clamp(round({} / vec3<f32>({}, {}, {})), vec3<f32>({}, {}, {}), vec3<f32>({}, {}, {}));",
                     r_var, point_var,
-                    spacing.x, spacing.y, spacing.z,
-                    -(count[0] as f32), -(count[1] as f32), -(count[2] as f32),
-                    count[0] as f32, count[1] as f32, count[2] as f32
+                    sx, sy, sz,
+                    neg_cx, neg_cy, neg_cz,
+                    cx, cy, cz
                 )
                 .unwrap();
                 writeln!(
                     code,
-                    "    let {} = {} - vec3<f32>({:.6}, {:.6}, {:.6}) * {};",
-                    q_var, point_var, spacing.x, spacing.y, spacing.z, r_var
+                    "    let {} = {} - vec3<f32>({}, {}, {}) * {};",
+                    q_var, point_var, sx, sy, sz, r_var
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &q_var, code)
             }
 
-            SdfNode::Noise { child, .. } => {
-                // Noise is not supported in WGSL transpiler (would require texture sampling)
-                // Fall back to evaluating just the child
+            SdfNode::Noise { child, amplitude, frequency, seed } => {
+                self.ensure_helper("hash_noise");
+                let d = self.transpile_node_inner(child, point_var, code);
+                let n_var = self.next_var();
+                let var = self.next_var();
+                let freq = self.param(*frequency);
+                let amp = self.param(*amplitude);
+                writeln!(code,
+                    "    let {} = hash_noise_3d({} * {}, {}u);",
+                    n_var, point_var, freq, seed
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = {} + {} * {};",
+                    var, d, n_var, amp
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Mirror { child, axes } => {
+                let new_p = self.next_var();
+                writeln!(code,
+                    "    let {} = vec3<f32>({}, {}, {});",
+                    new_p,
+                    if axes.x != 0.0 { format!("abs({}.x)", point_var) } else { format!("{}.x", point_var) },
+                    if axes.y != 0.0 { format!("abs({}.y)", point_var) } else { format!("{}.y", point_var) },
+                    if axes.z != 0.0 { format!("abs({}.z)", point_var) } else { format!("{}.z", point_var) },
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::Revolution { child, offset } => {
+                let q_var = self.next_var();
+                let new_p = self.next_var();
+                let off = self.param(*offset);
+                writeln!(code,
+                    "    let {} = length({}.xz) - {};",
+                    q_var, point_var, off
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = vec3<f32>({}, {}.y, 0.0);",
+                    new_p, q_var, point_var
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::Extrude { child, half_height } => {
+                let flat_p = self.next_var();
+                writeln!(code,
+                    "    let {} = vec3<f32>({}.x, {}.y, 0.0);",
+                    flat_p, point_var, point_var
+                ).unwrap();
+                let d = self.transpile_node_inner(child, &flat_p, code);
+                let w_var = self.next_var();
+                let var = self.next_var();
+                let hh = self.param(*half_height);
+                writeln!(code,
+                    "    let {} = vec2<f32>({}, abs({}.z) - {});",
+                    w_var, d, point_var, hh
+                ).unwrap();
+                writeln!(code,
+                    "    let {} = min(max({}.x, {}.y), 0.0) + length(max({}, vec2<f32>(0.0)));",
+                    var, w_var, w_var, w_var
+                ).unwrap();
+                var
+            }
+
+            // WithMaterial is transparent for shader evaluation
+            SdfNode::WithMaterial { child, .. } => {
                 self.transpile_node_inner(child, point_var, code)
             }
         }
@@ -579,10 +973,6 @@ impl WgslTranspiler {
 }
 
 // Helper function definitions
-// Note: These are kept for backwards compatibility but the transpiler now
-// inlines smooth operations with pre-computed reciprocals for better performance.
-// If you need a helper function, use smooth_min_fast which accepts inv_k directly.
-
 const HELPER_SMOOTH_MIN: &str = r#"// Deep Fried Edition: Division-free smooth_min
 // inv_k should be pre-computed as 1.0/k
 fn smooth_min_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
@@ -605,10 +995,109 @@ fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
     return smooth_max_fast(a, b, k, 1.0 / k);
 }"#;
 
+const HELPER_HASH_NOISE: &str = r#"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
+    let f = fract(p);
+    let i = floor(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let s = f32(seed);
+    let n000 = fract(sin(dot(i, vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let n100 = fract(sin(dot(i + vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let n010 = fract(sin(dot(i + vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let n110 = fract(sin(dot(i + vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let n001 = fract(sin(dot(i + vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let n101 = fract(sin(dot(i + vec3<f32>(1.0, 0.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let n011 = fract(sin(dot(i + vec3<f32>(0.0, 1.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let n111 = fract(sin(dot(i + vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
+    let c00 = mix(n000, n100, u.x);
+    let c10 = mix(n010, n110, u.x);
+    let c01 = mix(n001, n101, u.x);
+    let c11 = mix(n011, n111, u.x);
+    let c0 = mix(c00, c10, u.y);
+    let c1 = mix(c01, c11, u.y);
+    return mix(c0, c1, u.z) * 2.0 - 1.0;
+}"#;
+
 const HELPER_QUAT_ROTATE: &str = r#"fn quat_rotate(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
     let t = 2.0 * cross(q.xyz, v);
     return v + q.w * t + cross(q.xyz, t);
 }"#;
+
+const HELPER_SDF_ROUNDED_CONE: &str = r#"fn sdf_rounded_cone(p: vec3<f32>, r1: f32, r2: f32, h: f32) -> f32 {
+    let qx = length(p.xz);
+    let qy = p.y + h;
+    let ht = h * 2.0;
+    let b = (r1 - r2) / ht;
+    let a = sqrt(1.0 - b * b);
+    let k = qx * (-b) + qy * a;
+    if (k < 0.0) { return length(vec2<f32>(qx, qy)) - r1; }
+    if (k > a * ht) { return length(vec2<f32>(qx, qy - ht)) - r2; }
+    return qx * a + qy * b - r1;
+}
+"#;
+
+const HELPER_SDF_PYRAMID: &str = r#"fn sdf_pyramid(p: vec3<f32>, h: f32) -> f32 {
+    let ht = h * 2.0;
+    let m2 = ht * ht + 0.25;
+    let py = p.y + h;
+    var px = abs(p.x);
+    var pz = abs(p.z);
+    if (pz > px) { let tmp = px; px = pz; pz = tmp; }
+    px -= 0.5;
+    pz -= 0.5;
+    let qx = pz;
+    let qy = ht * py - 0.5 * px;
+    let qz = ht * px + 0.5 * py;
+    let s = max(-qx, 0.0);
+    let t = clamp((qy - 0.5 * pz) / (m2 + 0.25), 0.0, 1.0);
+    let a = m2 * (qx + s) * (qx + s) + qy * qy;
+    let b = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
+    var d2: f32;
+    if (min(-qx * m2 - qy * 0.5, qy) > 0.0) { d2 = 0.0; } else { d2 = min(a, b); }
+    return sqrt((d2 + qz * qz) / m2) * sign(max(qz, -py));
+}
+"#;
+
+const HELPER_SDF_OCTAHEDRON: &str = r#"fn sdf_octahedron(p: vec3<f32>, s: f32) -> f32 {
+    let ap = abs(p);
+    let m = ap.x + ap.y + ap.z - s;
+    var q: vec3<f32>;
+    if (3.0 * ap.x < m) { q = ap; }
+    else if (3.0 * ap.y < m) { q = vec3<f32>(ap.y, ap.z, ap.x); }
+    else if (3.0 * ap.z < m) { q = vec3<f32>(ap.z, ap.x, ap.y); }
+    else { return m * 0.57735027; }
+    let k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
+    return length(vec3<f32>(q.x, q.y - s + k, q.z - k));
+}
+"#;
+
+const HELPER_SDF_HEX_PRISM: &str = r#"fn sdf_hex_prism(p: vec3<f32>, hex_r: f32, h: f32) -> f32 {
+    let kx: f32 = -0.8660254;
+    let ky: f32 = 0.5;
+    let kz: f32 = 0.57735027;
+    var px = abs(p.x);
+    var py = abs(p.y);
+    let pz = abs(p.z);
+    let dot_kxy = kx * px + ky * py;
+    let refl = 2.0 * min(dot_kxy, 0.0);
+    px -= refl * kx;
+    py -= refl * ky;
+    let clamped_x = clamp(px, -kz * hex_r, kz * hex_r);
+    let dx = px - clamped_x;
+    let dy = py - hex_r;
+    let d_xy = sqrt(dx * dx + dy * dy) * sign(dy);
+    let d_z = pz - h;
+    return min(max(d_xy, d_z), 0.0) + length(max(vec2<f32>(d_xy, d_z), vec2<f32>(0.0)));
+}
+"#;
+
+const HELPER_SDF_LINK: &str = r#"fn sdf_link(p: vec3<f32>, le: f32, r1: f32, r2: f32) -> f32 {
+    let qx = p.x;
+    let qy = max(abs(p.y) - le, 0.0);
+    let qz = p.z;
+    let xy_len = sqrt(qx * qx + qy * qy) - r1;
+    return sqrt(xy_len * xy_len + qz * qz) - r2;
+}
+"#;
 
 #[cfg(test)]
 mod tests {
@@ -618,11 +1107,23 @@ mod tests {
     #[test]
     fn test_transpile_sphere() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
-        let shader = WgslShader::transpile(&sphere);
+        let shader = WgslShader::transpile(&sphere, TranspileMode::Hardcoded);
 
         assert!(shader.source.contains("fn sdf_eval"));
         assert!(shader.source.contains("length(p)"));
         assert!(shader.source.contains("1.0"));
+        assert!(shader.param_layout.is_empty());
+    }
+
+    #[test]
+    fn test_transpile_sphere_dynamic() {
+        let sphere = SdfNode::Sphere { radius: 1.5 };
+        let shader = WgslShader::transpile(&sphere, TranspileMode::Dynamic);
+
+        assert!(shader.source.contains("fn sdf_eval"));
+        assert!(shader.source.contains("sdf_params.data[0].x"));
+        assert_eq!(shader.param_layout, vec![1.5]);
+        assert_eq!(shader.mode, TranspileMode::Dynamic);
     }
 
     #[test]
@@ -630,10 +1131,23 @@ mod tests {
         let box3d = SdfNode::Box3d {
             half_extents: Vec3::new(1.0, 0.5, 0.5),
         };
-        let shader = WgslShader::transpile(&box3d);
+        let shader = WgslShader::transpile(&box3d, TranspileMode::Hardcoded);
 
         assert!(shader.source.contains("fn sdf_eval"));
         assert!(shader.source.contains("abs(p)"));
+    }
+
+    #[test]
+    fn test_transpile_box_dynamic() {
+        let box3d = SdfNode::Box3d {
+            half_extents: Vec3::new(1.0, 2.0, 3.0),
+        };
+        let shader = WgslShader::transpile(&box3d, TranspileMode::Dynamic);
+
+        assert!(shader.source.contains("sdf_params.data[0].x")); // 1.0
+        assert!(shader.source.contains("sdf_params.data[0].y")); // 2.0
+        assert!(shader.source.contains("sdf_params.data[0].z")); // 3.0
+        assert_eq!(shader.param_layout, vec![1.0, 2.0, 3.0]);
     }
 
     #[test]
@@ -644,7 +1158,7 @@ mod tests {
             }
             .translate(2.0, 0.0, 0.0),
         );
-        let shader = WgslShader::transpile(&shape);
+        let shader = WgslShader::transpile(&shape, TranspileMode::Hardcoded);
 
         assert!(shader.source.contains("fn sdf_eval"));
         assert!(shader.source.contains("min("));
@@ -659,22 +1173,35 @@ mod tests {
             },
             0.2,
         );
-        let shader = WgslShader::transpile(&shape);
+        let shader = WgslShader::transpile(&shape, TranspileMode::Hardcoded);
 
-        // Deep Fried Edition: smooth ops are now inlined with division exorcism
-        // Check for the inline pattern: max(k - abs(a - b), 0.0) * inv_k
         assert!(shader.source.contains("fn sdf_eval"));
         assert!(shader.source.contains("* 5.0")); // inv_k = 1/0.2 = 5.0
-        assert!(shader.source.contains("* 0.25")); // The 0.25 constant
-        // No helper function needed anymore
+        assert!(shader.source.contains("* 0.25"));
         assert_eq!(shader.helper_count, 0);
+    }
+
+    #[test]
+    fn test_transpile_smooth_union_dynamic() {
+        let shape = SdfNode::Sphere { radius: 1.0 }.smooth_union(
+            SdfNode::Cylinder {
+                radius: 0.5,
+                half_height: 1.0,
+            },
+            0.2,
+        );
+        let shader = WgslShader::transpile(&shape, TranspileMode::Dynamic);
+
+        assert!(shader.source.contains("sdf_params.data["));
+        // Should have params: sphere_radius, cylinder_radius, cylinder_half_height, k, inv_k
+        assert!(shader.param_layout.len() >= 5);
     }
 
     #[test]
     fn test_transpile_rotate() {
         let shape = SdfNode::Sphere { radius: 1.0 }
             .rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0);
-        let shader = WgslShader::transpile(&shape);
+        let shader = WgslShader::transpile(&shape, TranspileMode::Hardcoded);
 
         assert!(shader.source.contains("fn quat_rotate"));
         assert!(shader.source.contains("quat_rotate("));
@@ -683,13 +1210,69 @@ mod tests {
     #[test]
     fn test_compute_shader_generation() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
-        let shader = WgslShader::transpile(&sphere);
+        let shader = WgslShader::transpile(&sphere, TranspileMode::Hardcoded);
         let compute = shader.to_compute_shader();
 
         assert!(compute.contains("@compute"));
         assert!(compute.contains("@workgroup_size(256)"));
         assert!(compute.contains("input_points"));
         assert!(compute.contains("output_distances"));
+        // Hardcoded mode: no sdf_params
+        assert!(!compute.contains("sdf_params"));
+    }
+
+    #[test]
+    fn test_compute_shader_dynamic() {
+        let sphere = SdfNode::Sphere { radius: 1.0 };
+        let shader = WgslShader::transpile(&sphere, TranspileMode::Dynamic);
+        let compute = shader.to_compute_shader();
+
+        assert!(compute.contains("@compute"));
+        assert!(compute.contains("sdf_params"));
+        assert!(compute.contains("@group(0) @binding(3)"));
+        assert!(compute.contains("array<vec4<f32>, 1024>"));
+    }
+
+    #[test]
+    fn test_compute_shader_with_normals() {
+        let sphere = SdfNode::Sphere { radius: 1.0 };
+        let shader = WgslShader::transpile(&sphere, TranspileMode::Dynamic);
+        let compute = shader.to_compute_shader_with_normals();
+
+        assert!(compute.contains("estimate_normal"));
+        assert!(compute.contains("output[idx].dist"));
+        assert!(compute.contains("output[idx].nx"));
+        assert!(compute.contains("sdf_params"));
+    }
+
+    #[test]
+    fn test_extract_params() {
+        let shape = SdfNode::Sphere { radius: 1.5 }
+            .translate(1.0, 2.0, 3.0);
+
+        let params = WgslShader::extract_params(&shape);
+        // Translate: 3 params (offset.x, y, z), then Sphere: 1 param (radius)
+        // Translate is outer, processes first in transpile_node_inner
+        assert_eq!(params.len(), 4);
+        assert_eq!(params[0], 1.0);  // offset.x
+        assert_eq!(params[1], 2.0);  // offset.y
+        assert_eq!(params[2], 3.0);  // offset.z
+        assert_eq!(params[3], 1.5);  // radius
+    }
+
+    #[test]
+    fn test_extract_params_matches_transpile() {
+        let shape = SdfNode::Sphere { radius: 1.0 }.smooth_union(
+            SdfNode::Box3d {
+                half_extents: Vec3::new(0.5, 0.5, 0.5),
+            },
+            0.3,
+        );
+
+        let shader = WgslShader::transpile(&shape, TranspileMode::Dynamic);
+        let extracted = WgslShader::extract_params(&shape);
+
+        assert_eq!(shader.param_layout, extracted);
     }
 
     #[test]
@@ -708,17 +1291,33 @@ mod tests {
             })
             .translate(0.5, 0.0, 0.0);
 
-        let shader = WgslShader::transpile(&shape);
+        let shader = WgslShader::transpile(&shape, TranspileMode::Hardcoded);
 
-        // Deep Fried Edition: smooth ops are inlined, only quat_rotate helper remains
         assert!(shader.source.contains("fn quat_rotate"));
         assert!(shader.source.contains("quat_rotate("));
-        // Smooth ops are inlined with division exorcism (no helper function)
         assert!(shader.source.contains("* 5.0")); // inv_k = 1/0.2 = 5.0
         assert_eq!(shader.helper_count, 1); // Only quat_rotate helper
 
-        // Should compile to valid WGSL (basic syntax check)
         assert!(shader.source.contains("fn sdf_eval"));
         assert!(shader.source.contains("return"));
+    }
+
+    #[test]
+    fn test_dynamic_no_constant_fold() {
+        // In Dynamic mode, smooth ops should NOT constant-fold even when k ≈ 0
+        let shape = SdfNode::Sphere { radius: 1.0 }.smooth_union(
+            SdfNode::Sphere { radius: 0.5 },
+            0.0, // k = 0, would fold to min() in Hardcoded
+        );
+
+        // Hardcoded: should fold to min()
+        let hardcoded = WgslShader::transpile(&shape, TranspileMode::Hardcoded);
+        assert!(hardcoded.source.contains("min("));
+        assert!(!hardcoded.source.contains("0.25")); // no smooth op
+
+        // Dynamic: should NOT fold (k might change later)
+        let dynamic = WgslShader::transpile(&shape, TranspileMode::Dynamic);
+        assert!(dynamic.source.contains("0.25")); // smooth op present
+        assert!(dynamic.source.contains("sdf_params.data["));
     }
 }

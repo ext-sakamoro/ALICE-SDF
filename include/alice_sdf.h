@@ -1,6 +1,6 @@
 /**
  * @file alice_sdf.h
- * @brief ALICE-SDF C/C++ API Header
+ * @brief ALICE-SDF C/C++ API Header (Deep Fried Edition)
  * @author Moroya Sakamoto
  * @version 0.1.0
  *
@@ -9,6 +9,13 @@
  *
  * This header provides C-compatible bindings for the ALICE-SDF library.
  * Compatible with C, C++, C# (P/Invoke), and other FFI systems.
+ *
+ * ## Performance Hierarchy (fastest to slowest)
+ *
+ *  1. alice_sdf_eval_soa          - SoA layout + compiled (1B+ ops/sec)
+ *  2. alice_sdf_eval_compiled_batch - AoS layout + compiled
+ *  3. alice_sdf_eval_batch        - AoS layout + auto-compile
+ *  4. alice_sdf_eval              - Single point (debugging only)
  *
  * ## Usage (C/C++)
  *
@@ -20,15 +27,19 @@
  *     SdfHandle box = alice_sdf_box(0.5f, 0.5f, 0.5f);
  *     SdfHandle shape = alice_sdf_smooth_union(sphere, box, 0.2f);
  *
- *     float distance = alice_sdf_eval(shape, 0.5f, 0.0f, 0.0f);
+ *     // Compile for fast eval
+ *     CompiledHandle compiled = alice_sdf_compile(shape);
+ *     float distance = alice_sdf_eval_compiled(compiled, 0.5f, 0.0f, 0.0f);
  *     printf("Distance: %f\n", distance);
  *
+ *     // Generate HLSL
  *     StringResult hlsl = alice_sdf_to_hlsl(shape);
  *     if (hlsl.result == SdfResult_Ok) {
  *         printf("HLSL:\n%s\n", hlsl.data);
  *         alice_sdf_free_string(hlsl.data);
  *     }
  *
+ *     alice_sdf_free_compiled(compiled);
  *     alice_sdf_free(shape);
  *     alice_sdf_free(box);
  *     alice_sdf_free(sphere);
@@ -59,9 +70,22 @@ extern "C" {
 typedef void* SdfHandle;
 
 /**
+ * @brief Opaque handle to a pre-compiled SDF (bytecode)
+ *
+ * Compiled handles evaluate ~10x faster than raw SdfHandle.
+ * Create once with alice_sdf_compile(), reuse every frame.
+ */
+typedef void* CompiledHandle;
+
+/**
  * @brief Null handle constant
  */
 #define SDF_HANDLE_NULL ((SdfHandle)0)
+
+/**
+ * @brief Null compiled handle constant
+ */
+#define COMPILED_HANDLE_NULL ((CompiledHandle)0)
 
 /**
  * @brief Result codes for FFI operations
@@ -73,6 +97,7 @@ typedef enum {
     SdfResult_InvalidParameter = 3,
     SdfResult_OutOfMemory = 4,
     SdfResult_IoError = 5,
+    SdfResult_CompileError = 6,
     SdfResult_Unknown = 99
 } SdfResult;
 
@@ -188,19 +213,13 @@ SdfHandle alice_sdf_plane(float nx, float ny, float nz, float distance);
  * Boolean Operations
  * ============================================================================ */
 
-/**
- * @brief Union of two SDFs (A ∪ B)
- */
+/** @brief Union of two SDFs (A | B) */
 SdfHandle alice_sdf_union(SdfHandle a, SdfHandle b);
 
-/**
- * @brief Intersection of two SDFs (A ∩ B)
- */
+/** @brief Intersection of two SDFs (A & B) */
 SdfHandle alice_sdf_intersection(SdfHandle a, SdfHandle b);
 
-/**
- * @brief Subtraction of SDFs (A - B)
- */
+/** @brief Subtraction of SDFs (A - B) */
 SdfHandle alice_sdf_subtract(SdfHandle a, SdfHandle b);
 
 /**
@@ -225,29 +244,19 @@ SdfHandle alice_sdf_smooth_subtract(SdfHandle a, SdfHandle b, float k);
  * Transforms
  * ============================================================================ */
 
-/**
- * @brief Translate an SDF
- */
+/** @brief Translate an SDF */
 SdfHandle alice_sdf_translate(SdfHandle node, float x, float y, float z);
 
-/**
- * @brief Rotate an SDF using quaternion (x, y, z, w)
- */
+/** @brief Rotate an SDF using quaternion (x, y, z, w) */
 SdfHandle alice_sdf_rotate(SdfHandle node, float qx, float qy, float qz, float qw);
 
-/**
- * @brief Rotate an SDF using Euler angles (radians)
- */
+/** @brief Rotate an SDF using Euler angles (radians) */
 SdfHandle alice_sdf_rotate_euler(SdfHandle node, float x, float y, float z);
 
-/**
- * @brief Uniform scale an SDF
- */
+/** @brief Uniform scale an SDF */
 SdfHandle alice_sdf_scale(SdfHandle node, float factor);
 
-/**
- * @brief Non-uniform scale an SDF
- */
+/** @brief Non-uniform scale an SDF */
 SdfHandle alice_sdf_scale_xyz(SdfHandle node, float x, float y, float z);
 
 /* ============================================================================
@@ -285,6 +294,36 @@ SdfHandle alice_sdf_bend(SdfHandle node, float curvature);
 SdfHandle alice_sdf_repeat(SdfHandle node, float sx, float sy, float sz);
 
 /* ============================================================================
+ * Compilation (Deep Fried)
+ * ============================================================================ */
+
+/**
+ * @brief Compile an SDF to bytecode for fast evaluation
+ *
+ * Compilation is expensive (~0.1ms), but the resulting CompiledHandle
+ * evaluates ~10x faster. Compile once at setup time, reuse every frame.
+ *
+ * @param node SDF handle to compile
+ * @return Compiled handle (or COMPILED_HANDLE_NULL on failure)
+ */
+CompiledHandle alice_sdf_compile(SdfHandle node);
+
+/**
+ * @brief Free a compiled SDF handle
+ */
+void alice_sdf_free_compiled(CompiledHandle compiled);
+
+/**
+ * @brief Get instruction count of a compiled SDF (for profiling)
+ */
+uint32_t alice_sdf_compiled_instruction_count(CompiledHandle compiled);
+
+/**
+ * @brief Check if a compiled handle is valid
+ */
+bool alice_sdf_is_compiled_valid(CompiledHandle compiled);
+
+/* ============================================================================
  * Evaluation
  * ============================================================================ */
 
@@ -295,15 +334,129 @@ SdfHandle alice_sdf_repeat(SdfHandle node, float sx, float sy, float sz);
 float alice_sdf_eval(SdfHandle node, float x, float y, float z);
 
 /**
- * @brief Evaluate SDF at multiple points (parallel)
+ * @brief Evaluate compiled SDF at a single point
+ */
+float alice_sdf_eval_compiled(CompiledHandle compiled, float x, float y, float z);
+
+/**
+ * @brief Evaluate SDF at multiple points (parallel, auto-compiles internally)
+ * @param node SDF handle
  * @param points Array of floats [x0, y0, z0, x1, y1, z1, ...]
- * @param distances Output array (must be pre-allocated)
+ * @param distances Output array (must be pre-allocated with count elements)
  * @param count Number of points
  */
 BatchResult alice_sdf_eval_batch(SdfHandle node,
                                   const float* points,
                                   float* distances,
                                   uint32_t count);
+
+/**
+ * @brief Evaluate compiled SDF at multiple points (fastest AoS path)
+ * @param compiled Pre-compiled SDF handle
+ * @param points Array of floats [x0, y0, z0, x1, y1, z1, ...]
+ * @param distances Output array (must be pre-allocated with count elements)
+ * @param count Number of points
+ */
+BatchResult alice_sdf_eval_compiled_batch(CompiledHandle compiled,
+                                           const float* points,
+                                           float* distances,
+                                           uint32_t count);
+
+/**
+ * @brief Evaluate using SoA (Structure of Arrays) layout - THE FASTEST PATH
+ *
+ * SoA layout enables SIMD vectorization. X, Y, Z coordinates are stored
+ * in separate contiguous arrays. Use for physics, particles, raymarching.
+ *
+ * @param compiled Pre-compiled SDF handle
+ * @param x Pointer to X coordinates array
+ * @param y Pointer to Y coordinates array
+ * @param z Pointer to Z coordinates array
+ * @param distances Output array (caller-allocated)
+ * @param count Number of points
+ */
+BatchResult alice_sdf_eval_soa(CompiledHandle compiled,
+                                const float* x,
+                                const float* y,
+                                const float* z,
+                                float* distances,
+                                uint32_t count);
+
+/**
+ * @brief Evaluate distance AND gradient (normal) using SoA layout
+ *
+ * Computes both distance and surface normal direction for all points.
+ * ~4x slower than distance-only but avoids separate gradient pass.
+ *
+ * @param compiled Compiled SDF handle
+ * @param x,y,z Input position arrays (SoA layout)
+ * @param nx,ny,nz Output gradient/normal arrays (SoA layout, normalized)
+ * @param dist Output distance array (optional, can be NULL)
+ * @param count Number of points
+ */
+BatchResult alice_sdf_eval_gradient_soa(CompiledHandle compiled,
+                                         const float* x,
+                                         const float* y,
+                                         const float* z,
+                                         float* nx,
+                                         float* ny,
+                                         float* nz,
+                                         float* dist,
+                                         uint32_t count);
+
+/* ============================================================================
+ * Animated Compiled Evaluation (Zero-Copy)
+ * ============================================================================ */
+
+/**
+ * @brief Animation parameters for zero-allocation per-frame evaluation (36 bytes)
+ *
+ * Instead of rebuilding the SDF tree each frame, extract transform parameters
+ * and apply them during compiled evaluation. Stack-allocated, no heap alloc.
+ */
+typedef struct {
+    float translate_x;
+    float translate_y;
+    float translate_z;
+    float rotate_x;       /**< Euler rotation X (radians) */
+    float rotate_y;       /**< Euler rotation Y (radians) */
+    float rotate_z;       /**< Euler rotation Z (radians) */
+    float scale;          /**< Uniform scale (1.0 = no scale) */
+    float twist;          /**< Twist strength (radians per unit) */
+    float bend;           /**< Bend curvature */
+} AnimationParams;
+
+/**
+ * @brief Evaluate compiled SDF with animation transform (zero-alloc per frame)
+ *
+ * @param compiled Pre-compiled base shape
+ * @param params Pointer to AnimationParams struct
+ * @param x,y,z Query point coordinates
+ * @return Signed distance at the query point
+ */
+float alice_sdf_eval_animated_compiled(CompiledHandle compiled,
+                                        const AnimationParams* params,
+                                        float x, float y, float z);
+
+/**
+ * @brief Batch evaluate animated SDF using SoA layout
+ *
+ * Combines zero-copy animation with SIMD SoA evaluation.
+ * Use for animated particle systems at maximum throughput.
+ *
+ * @param compiled Pre-compiled base shape
+ * @param params Animation parameters (shared for all points)
+ * @param x,y,z Input position arrays (SoA layout)
+ * @param distances Output array (caller-allocated)
+ * @param count Number of points
+ */
+BatchResult alice_sdf_eval_animated_batch_soa(CompiledHandle compiled,
+                                               const AnimationParams* params,
+                                               const float* x,
+                                               const float* y,
+                                               const float* z,
+                                               float* distances,
+                                               uint32_t count);
 
 /* ============================================================================
  * Shader Generation
@@ -348,33 +501,23 @@ SdfHandle alice_sdf_load(const char* path);
  * Memory Management
  * ============================================================================ */
 
-/**
- * @brief Free an SDF handle
- */
+/** @brief Free an SDF handle */
 void alice_sdf_free(SdfHandle node);
 
-/**
- * @brief Free a string returned by shader generation
- */
+/** @brief Free a string returned by shader generation */
 void alice_sdf_free_string(char* str);
 
-/**
- * @brief Clone an SDF handle
- */
+/** @brief Clone an SDF handle */
 SdfHandle alice_sdf_clone(SdfHandle node);
 
 /* ============================================================================
  * Utilities
  * ============================================================================ */
 
-/**
- * @brief Get node count in an SDF tree
- */
+/** @brief Get node count in an SDF tree */
 uint32_t alice_sdf_node_count(SdfHandle node);
 
-/**
- * @brief Check if a handle is valid
- */
+/** @brief Check if a handle is valid */
 bool alice_sdf_is_valid(SdfHandle node);
 
 #ifdef __cplusplus

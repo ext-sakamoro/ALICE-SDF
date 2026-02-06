@@ -14,7 +14,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[allow(unused_imports)]
 use alice_sdf::prelude::*;
+#[allow(unused_imports)]
 use std::time::Instant;
 
 #[cfg(feature = "gpu")]

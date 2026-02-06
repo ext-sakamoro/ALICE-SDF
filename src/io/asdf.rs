@@ -32,10 +32,15 @@ pub const ASDF_VERSION: u16 = 1;
 /// ASDF file header
 #[derive(Debug, Clone, Copy)]
 pub struct AsdfHeader {
+    /// Magic number identifying ASDF format
     pub magic: [u8; 4],
+    /// File format version
     pub version: u16,
+    /// Feature flags
     pub flags: u16,
+    /// Number of SDF nodes
     pub node_count: u32,
+    /// CRC32 checksum
     pub crc32: u32,
 }
 
@@ -129,11 +134,13 @@ impl<W: Write> Write for CrcWriter<W> {
 }
 
 /// Reader wrapper that calculates CRC32 on the fly (Deep Fried)
+#[allow(dead_code)]
 struct CrcReader<R: Read> {
     inner: R,
     hasher: crc32fast::Hasher,
 }
 
+#[allow(dead_code)]
 impl<R: Read> CrcReader<R> {
     #[inline(always)]
     fn new(inner: R) -> Self {

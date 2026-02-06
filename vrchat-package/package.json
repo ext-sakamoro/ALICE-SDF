@@ -36,6 +36,21 @@
       "displayName": "SDF Gallery - Mix",
       "description": "Fractal planet + torus ring + onion shell. Cosmic × Fractal fusion.",
       "path": "Samples~/SDF Gallery/SampleMix"
+    },
+    {
+      "displayName": "SDF Gallery - DeformableWall",
+      "description": "Touch/hit the wall and it dents. Dents recover over time. VR hand interaction.",
+      "path": "Samples~/SDF Gallery/SampleDeformableWall"
+    },
+    {
+      "displayName": "SDF Gallery - Mochi",
+      "description": "Squishy mochi blobs. Grab, merge, split, and grow. SmoothUnion soft-body physics.",
+      "path": "Samples~/SDF Gallery/SampleMochi"
+    },
+    {
+      "displayName": "SDF Gallery - TerrainSculpt",
+      "description": "Dig holes and build hills with VR hands. You ACTUALLY fall into holes you dig. Impossible without SDF.",
+      "path": "Samples~/SDF Gallery/SampleTerrainSculpt"
     }
   ]
 }

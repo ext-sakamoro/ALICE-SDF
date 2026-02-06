@@ -36,8 +36,9 @@ pub struct EdgeCrossing {
     pub intersection: Vec3,
     /// Surface normal at intersection
     pub normal: Vec3,
-    /// Distance values at start and end
+    /// Distance value at edge start
     pub start_dist: f32,
+    /// Distance value at edge end
     pub end_dist: f32,
 }
 

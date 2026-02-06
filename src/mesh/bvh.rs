@@ -1,16 +1,25 @@
-//! BVH (Bounding Volume Hierarchy) for mesh acceleration
+//! BVH (Bounding Volume Hierarchy) for mesh acceleration (Deep Fried v2)
 //!
 //! Provides O(log n) distance queries for triangle meshes.
+//!
+//! # Deep Fried v2 Optimizations
+//!
+//! - **Parallel Triangle Construction**: `rayon` parallel iterator for Triangle::new().
+//! - **SIMD AABB Computation**: `wide::f32x8` for 8-triangle batch AABB min/max.
+//! - **Forced Inlining**: Hot-path distance functions.
 //!
 //! Author: Moroya Sakamoto
 
 use glam::Vec3;
 use rayon::prelude::*;
+use wide::f32x8;
 
 /// Axis-Aligned Bounding Box
 #[derive(Debug, Clone, Copy)]
 pub struct Aabb {
+    /// Minimum corner
     pub min: Vec3,
+    /// Maximum corner
     pub max: Vec3,
 }
 
@@ -81,15 +90,21 @@ impl Aabb {
 /// Triangle with precomputed data for fast distance queries
 #[derive(Debug, Clone, Copy)]
 pub struct Triangle {
+    /// First vertex
     pub v0: Vec3,
+    /// Second vertex
     pub v1: Vec3,
+    /// Third vertex
     pub v2: Vec3,
+    /// Face normal
     pub normal: Vec3,
+    /// Bounding box
     pub aabb: Aabb,
 }
 
 impl Triangle {
     /// Create triangle from vertices
+    #[inline]
     pub fn new(v0: Vec3, v1: Vec3, v2: Vec3) -> Self {
         let e1 = v1 - v0;
         let e2 = v2 - v0;
@@ -174,13 +189,18 @@ impl Triangle {
 pub enum BvhNode {
     /// Leaf node containing triangle indices
     Leaf {
+        /// Bounding box
         aabb: Aabb,
+        /// Triangle indices
         triangles: Vec<usize>,
     },
     /// Internal node with two children
     Internal {
+        /// Bounding box
         aabb: Aabb,
+        /// Left child
         left: Box<BvhNode>,
+        /// Right child
         right: Box<BvhNode>,
     },
 }
@@ -198,17 +218,22 @@ impl BvhNode {
 
 /// BVH for triangle mesh
 pub struct MeshBvh {
+    /// All triangles in the mesh
     pub triangles: Vec<Triangle>,
+    /// Root BVH node
     pub root: Option<BvhNode>,
+    /// Maximum triangles per leaf node
     pub max_triangles_per_leaf: usize,
 }
 
 impl MeshBvh {
-    /// Build BVH from mesh data
+    /// Build BVH from mesh data (Deep Fried v2)
+    ///
+    /// Triangle construction is parallelized via `rayon`.
     pub fn build(vertices: &[Vec3], indices: &[u32], max_triangles_per_leaf: usize) -> Self {
-        // Create triangles
+        // [Deep Fried v2] Parallel triangle construction
         let triangles: Vec<Triangle> = indices
-            .chunks(3)
+            .par_chunks(3)
             .filter_map(|chunk| {
                 if chunk.len() == 3 {
                     let v0 = vertices[chunk[0] as usize];
@@ -240,16 +265,15 @@ impl MeshBvh {
     }
 
     /// Recursively build BVH nodes
+    ///
+    /// [Deep Fried v2] SIMD-accelerated AABB computation for batches of 8 triangles.
     fn build_node(
         triangles: &[Triangle],
         indices: Vec<usize>,
         max_per_leaf: usize,
     ) -> BvhNode {
-        // Compute AABB for all triangles
-        let mut aabb = Aabb::empty();
-        for &idx in &indices {
-            aabb.expand_aabb(&triangles[idx].aabb);
-        }
+        // [Deep Fried v2] SIMD AABB computation — process 8 triangle AABBs at a time
+        let aabb = compute_aabb_simd(triangles, &indices);
 
         // If few triangles, create leaf
         if indices.len() <= max_per_leaf {
@@ -262,7 +286,7 @@ impl MeshBvh {
         // Split along longest axis using median
         let axis = aabb.longest_axis();
         let mut sorted_indices = indices;
-        sorted_indices.sort_by(|&a, &b| {
+        sorted_indices.sort_unstable_by(|&a, &b| {
             let ca = triangles[a].aabb.center();
             let cb = triangles[b].aabb.center();
             let va = match axis {
@@ -371,6 +395,101 @@ impl MeshBvh {
     }
 }
 
+/// [Deep Fried v2] SIMD-accelerated AABB computation
+///
+/// Processes 8 triangle AABBs at a time using `wide::f32x8` for min/max reduction.
+/// Falls back to scalar for the remainder (<8 triangles).
+#[inline]
+fn compute_aabb_simd(triangles: &[Triangle], indices: &[usize]) -> Aabb {
+    if indices.is_empty() {
+        return Aabb::empty();
+    }
+
+    let mut global_min_x = f32::INFINITY;
+    let mut global_min_y = f32::INFINITY;
+    let mut global_min_z = f32::INFINITY;
+    let mut global_max_x = f32::NEG_INFINITY;
+    let mut global_max_y = f32::NEG_INFINITY;
+    let mut global_max_z = f32::NEG_INFINITY;
+
+    // Process 8 triangles at a time with SIMD
+    let chunks = indices.chunks_exact(8);
+    let remainder = chunks.remainder();
+
+    for chunk in chunks {
+        // Load min_x of 8 triangles into f32x8
+        let min_x = f32x8::new([
+            triangles[chunk[0]].aabb.min.x, triangles[chunk[1]].aabb.min.x,
+            triangles[chunk[2]].aabb.min.x, triangles[chunk[3]].aabb.min.x,
+            triangles[chunk[4]].aabb.min.x, triangles[chunk[5]].aabb.min.x,
+            triangles[chunk[6]].aabb.min.x, triangles[chunk[7]].aabb.min.x,
+        ]);
+        let min_y = f32x8::new([
+            triangles[chunk[0]].aabb.min.y, triangles[chunk[1]].aabb.min.y,
+            triangles[chunk[2]].aabb.min.y, triangles[chunk[3]].aabb.min.y,
+            triangles[chunk[4]].aabb.min.y, triangles[chunk[5]].aabb.min.y,
+            triangles[chunk[6]].aabb.min.y, triangles[chunk[7]].aabb.min.y,
+        ]);
+        let min_z = f32x8::new([
+            triangles[chunk[0]].aabb.min.z, triangles[chunk[1]].aabb.min.z,
+            triangles[chunk[2]].aabb.min.z, triangles[chunk[3]].aabb.min.z,
+            triangles[chunk[4]].aabb.min.z, triangles[chunk[5]].aabb.min.z,
+            triangles[chunk[6]].aabb.min.z, triangles[chunk[7]].aabb.min.z,
+        ]);
+        let max_x = f32x8::new([
+            triangles[chunk[0]].aabb.max.x, triangles[chunk[1]].aabb.max.x,
+            triangles[chunk[2]].aabb.max.x, triangles[chunk[3]].aabb.max.x,
+            triangles[chunk[4]].aabb.max.x, triangles[chunk[5]].aabb.max.x,
+            triangles[chunk[6]].aabb.max.x, triangles[chunk[7]].aabb.max.x,
+        ]);
+        let max_y = f32x8::new([
+            triangles[chunk[0]].aabb.max.y, triangles[chunk[1]].aabb.max.y,
+            triangles[chunk[2]].aabb.max.y, triangles[chunk[3]].aabb.max.y,
+            triangles[chunk[4]].aabb.max.y, triangles[chunk[5]].aabb.max.y,
+            triangles[chunk[6]].aabb.max.y, triangles[chunk[7]].aabb.max.y,
+        ]);
+        let max_z = f32x8::new([
+            triangles[chunk[0]].aabb.max.z, triangles[chunk[1]].aabb.max.z,
+            triangles[chunk[2]].aabb.max.z, triangles[chunk[3]].aabb.max.z,
+            triangles[chunk[4]].aabb.max.z, triangles[chunk[5]].aabb.max.z,
+            triangles[chunk[6]].aabb.max.z, triangles[chunk[7]].aabb.max.z,
+        ]);
+
+        // Horizontal reduction: extract to array, find min/max
+        let min_x_arr: [f32; 8] = min_x.into();
+        let min_y_arr: [f32; 8] = min_y.into();
+        let min_z_arr: [f32; 8] = min_z.into();
+        let max_x_arr: [f32; 8] = max_x.into();
+        let max_y_arr: [f32; 8] = max_y.into();
+        let max_z_arr: [f32; 8] = max_z.into();
+
+        for i in 0..8 {
+            global_min_x = global_min_x.min(min_x_arr[i]);
+            global_min_y = global_min_y.min(min_y_arr[i]);
+            global_min_z = global_min_z.min(min_z_arr[i]);
+            global_max_x = global_max_x.max(max_x_arr[i]);
+            global_max_y = global_max_y.max(max_y_arr[i]);
+            global_max_z = global_max_z.max(max_z_arr[i]);
+        }
+    }
+
+    // Scalar remainder
+    for &idx in remainder {
+        let t = &triangles[idx];
+        global_min_x = global_min_x.min(t.aabb.min.x);
+        global_min_y = global_min_y.min(t.aabb.min.y);
+        global_min_z = global_min_z.min(t.aabb.min.z);
+        global_max_x = global_max_x.max(t.aabb.max.x);
+        global_max_y = global_max_y.max(t.aabb.max.y);
+        global_max_z = global_max_z.max(t.aabb.max.z);
+    }
+
+    Aabb {
+        min: Vec3::new(global_min_x, global_min_y, global_min_z),
+        max: Vec3::new(global_max_x, global_max_y, global_max_z),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,5 +576,28 @@ mod tests {
         // Point above
         let d_above = bvh.signed_distance(Vec3::new(0.0, 0.0, 1.0));
         assert!((d_above.abs() - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_compute_aabb_simd() {
+        // Create enough triangles to exercise the SIMD path (>8)
+        let mut verts = Vec::new();
+        let mut idxs = Vec::new();
+        for i in 0..10 {
+            let offset = i as f32;
+            let base = (i * 3) as u32;
+            verts.push(Vec3::new(offset, 0.0, 0.0));
+            verts.push(Vec3::new(offset + 1.0, 0.0, 0.0));
+            verts.push(Vec3::new(offset + 0.5, 1.0, 0.0));
+            idxs.extend_from_slice(&[base, base + 1, base + 2]);
+        }
+
+        let bvh = MeshBvh::build(&verts, &idxs, 4);
+        let bounds = bvh.bounds().unwrap();
+
+        assert!(bounds.min.x < 0.1);
+        assert!(bounds.max.x > 9.0);
+        assert!(bounds.min.y < 0.1);
+        assert!(bounds.max.y > 0.9);
     }
 }

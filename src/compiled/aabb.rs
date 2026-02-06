@@ -14,15 +14,19 @@ use glam::{Quat, Vec3};
 #[derive(Clone, Copy, Debug)]
 #[repr(C, align(32))]
 pub struct AabbPacked {
-    /// Minimum corner (x, y, z)
+    /// Minimum X coordinate
     pub min_x: f32,
+    /// Minimum Y coordinate
     pub min_y: f32,
+    /// Minimum Z coordinate
     pub min_z: f32,
     /// Padding for alignment
     pub _pad1: f32,
-    /// Maximum corner (x, y, z)
+    /// Maximum X coordinate
     pub max_x: f32,
+    /// Maximum Y coordinate
     pub max_y: f32,
+    /// Maximum Z coordinate
     pub max_z: f32,
     /// Padding for alignment
     pub _pad2: f32,
@@ -323,6 +327,55 @@ pub mod primitives {
         let min = point_a.min(point_b) - Vec3::splat(radius);
         let max = point_a.max(point_b) + Vec3::splat(radius);
         AabbPacked::new(min, max)
+    }
+
+    /// AABB for a rounded cone along Y axis
+    #[allow(dead_code)]
+    #[inline]
+    pub fn rounded_cone_aabb(r1: f32, r2: f32, half_height: f32) -> AabbPacked {
+        let max_r = r1.max(r2);
+        AabbPacked::new(
+            Vec3::new(-max_r, -half_height - r1, -max_r),
+            Vec3::new(max_r, half_height + r2, max_r),
+        )
+    }
+
+    /// AABB for a 4-sided pyramid along Y axis
+    #[allow(dead_code)]
+    #[inline]
+    pub fn pyramid_aabb(half_height: f32) -> AabbPacked {
+        AabbPacked::new(
+            Vec3::new(-0.5, -half_height, -0.5),
+            Vec3::new(0.5, half_height, 0.5),
+        )
+    }
+
+    /// AABB for a regular octahedron
+    #[allow(dead_code)]
+    #[inline]
+    pub fn octahedron_aabb(size: f32) -> AabbPacked {
+        AabbPacked::new(Vec3::splat(-size), Vec3::splat(size))
+    }
+
+    /// AABB for a hexagonal prism (hex in XY, extruded along Z)
+    #[allow(dead_code)]
+    #[inline]
+    pub fn hex_prism_aabb(hex_radius: f32, half_height: f32) -> AabbPacked {
+        AabbPacked::new(
+            Vec3::new(-hex_radius, -hex_radius, -half_height),
+            Vec3::new(hex_radius, hex_radius, half_height),
+        )
+    }
+
+    /// AABB for a chain link shape
+    #[allow(dead_code)]
+    #[inline]
+    pub fn link_aabb(half_length: f32, r1: f32, r2: f32) -> AabbPacked {
+        let r = r1 + r2;
+        AabbPacked::new(
+            Vec3::new(-r, -(half_length + r2), -r2),
+            Vec3::new(r, half_length + r2, r2),
+        )
     }
 }
 

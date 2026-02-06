@@ -37,4 +37,4 @@
 
 mod transpiler;
 
-pub use transpiler::GlslShader;
+pub use transpiler::{GlslShader, GlslTranspileMode};

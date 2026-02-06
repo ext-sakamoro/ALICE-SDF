@@ -89,7 +89,7 @@ Paste `.asdf.json` and auto-generate optimized Shader + Udon + Prefab.
 
 ## Samples (SDF Gallery)
 
-Four ready-to-play samples are included. Import via **Package Manager > Samples** tab.
+Seven ready-to-play samples are included. Import via **Package Manager > Samples** tab.
 
 | Sample | Description | SDF Formula |
 |--------|-------------|-------------|
@@ -97,11 +97,136 @@ Four ready-to-play samples are included. Import via **Package Manager > Samples*
 | **Cosmic** | Animated solar system — Sun, orbiting planet, tilted ring, moon, asteroid belt. | `SmoothUnion(sun, planet, ring, moon, asteroids)` |
 | **Fractal** | Walk inside a Menger Sponge labyrinth with twist deformation. | `Subtract(Box, Repeat(Cross))` — one formula, infinite complexity |
 | **Mix** | Cosmic x Fractal fusion — fractal planet + torus ring + onion shell. | `SmoothUnion(Intersect(Sphere, Menger), Torus, Onion(Sphere))` |
+| **DeformableWall** | Touch/hit the wall and it dents. Dents recover over time. VR hand interaction. | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
+| **Mochi** | Squishy mochi blobs. Grab, merge, split, and grow. SmoothUnion soft-body physics. | `SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k))` |
+| **TerrainSculpt** | Dig holes & build hills with VR hands. You fall into holes you dig. **Only possible with SDF.** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
 
 Each sample includes:
 - `*_Raymarcher.shader` — Raymarching shader with SV_Depth, LOD, AO, fog
 - `*_Collider.cs` — UdonSharp collider (with `#if UDONSHARP` guard)
 - `*.asdf.json` — Source definition for the Baker
+
+### Interactive Samples (VR)
+
+The **DeformableWall**, **Mochi**, and **TerrainSculpt** samples demonstrate real-time SDF deformation driven by VR hand tracking. Unlike the static samples above, these send dynamic data from UdonSharp to the shader every frame via `Material.SetVectorArray`.
+
+#### DeformableWall — Touch & Dent
+
+A flat wall standing on a ground plane. When a VR player's hand touches the wall surface, a dent appears at the contact point and gradually recovers over time.
+
+**How it works:**
+1. UdonSharp detects hand proximity to the wall via `SdfBox()` distance check
+2. On contact, the impact position and timestamp are recorded (circular buffer, max 16)
+3. Each frame, the array is sent to the shader via `Material.SetVectorArray("_ImpactPoints", ...)`
+4. The shader carves each dent using `opSmoothSubtraction(wall, sphere)`, where the sphere radius decays exponentially: `r = DentRadius * exp(-age * DecaySpeed)`
+5. Fully decayed dents (radius < 0.005) are automatically recycled
+
+**VR Interaction:**
+- Move your hand close to the wall surface — a dent appears
+- Hit the wall repeatedly — up to 16 dents at once
+- Wait — dents smoothly recover back to the flat wall
+- Walk into the wall — player collision pushes you back
+
+**Inspector Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Impact Distance | 0.08 | How close the hand must be to register a dent |
+| Impact Cooldown | 0.15s | Minimum time between impacts from the same hand |
+| Dent Radius | 0.35 | Size of each dent |
+| Decay Speed | 0.5 | Recovery speed (higher = faster recovery) |
+| Dent Smoothness | 0.08 | SmoothSubtraction blend factor |
+
+#### Mochi — Grab, Merge, Split & Grow
+
+Soft mochi (rice cake) blobs sitting on a ground plane. In VR, you can grab them, pull them apart, push them together, and watch them grow.
+
+**How it works:**
+1. Up to 16 mochi spheres are tracked as `(position, radius)` pairs
+2. All mochis are blended together using `opSmoothUnion` — nearby mochis naturally appear to merge visually
+3. Ground contact uses a separate `opSmoothUnion` with a lower `k` for a "squishy sitting on the floor" look
+4. UdonSharp sends the mochi array to the shader every frame via `Material.SetVectorArray("_MochiData", ...)`
+
+**VR Interaction:**
+
+| Action | How | What Happens |
+|--------|-----|--------------|
+| **Grab** | Hold hand inside a mochi for 0.08s | Mochi sticks to your hand |
+| **Move** | Move hand while grabbing | Mochi follows your hand |
+| **Split** | Pull hand far from grab origin (2.5x radius) | Mochi splits into two pieces (volume conserved: `r_new = r * cbrt(0.5)`) |
+| **Release** | Move hand very far (4x radius) | Mochi drops and settles to the ground |
+| **Merge** | Push two free mochis close together | They merge into one bigger mochi (`r = cbrt(r1^3 + r2^3)`) |
+| **Grow** | Keep merging mochis | The merged mochi gets bigger and bigger |
+
+**Inspector Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Blend K | 0.5 | SmoothUnion factor between mochis (higher = stickier) |
+| Ground K | 0.15 | SmoothUnion factor with ground (squishy floor contact) |
+| Min Radius | 0.1 | Smallest allowed mochi (won't split below this) |
+| Grab Threshold | 0.8 | Hand must be within this fraction of radius to grab |
+| Grab Dwell Time | 0.08s | Hold time before grab activates (prevents accidental grabs) |
+| Split Distance | 2.5 | Pull distance (x radius) to trigger split |
+| Merge Threshold | 0.7 | Distance (x combined radii) for auto-merge |
+
+#### TerrainSculpt — Dig Holes & Build Hills
+
+**The first VRChat experience where you can dig a hole and actually fall into it.**
+
+A flat ground plane that players can sculpt in real-time. Left hand adds terrain, right hand digs. Both rendering and collision use the exact same SDF formula — what you see is what you collide with, even as the terrain changes.
+
+This is fundamentally impossible with VRChat's mesh-based approach because MeshColliders cannot be recalculated at runtime. ALICE-SDF evaluates the same math for both pixels and physics.
+
+**How it works:**
+1. Base terrain is a ground plane at Y=0
+2. Left hand near surface → `opSmoothUnion(terrain, sphere)` — adds a hill at hand position
+3. Right hand near surface → `opSmoothSubtraction(terrain, sphere)` — digs a hole at hand position
+4. Operations are stored in a circular buffer (max 48). When full, oldest operations are overwritten
+5. UdonSharp sends the operation array to the shader every frame
+6. Player collision evaluates the same formula — fall into holes, climb hills
+
+**VR Interaction:**
+
+| Action | Hand | What Happens |
+|--------|------|--------------|
+| **Dig** | Right hand near ground | A hemispherical hole is carved. You can fall in |
+| **Build** | Left hand near ground | A hill/mound appears. You can climb it |
+| **Sculpt deeper** | Keep right hand in the hole | Dig deeper with each operation |
+| **Build higher** | Keep left hand on the mound | Stack more terrain on top |
+
+**Visual feedback:**
+- Blue glow around left hand = add mode
+- Red glow around right hand = dig mode
+- Glows only appear when hand is near the terrain surface
+
+**Terrain coloring:**
+- Green grass on flat surfaces
+- Brown dirt on steep slopes
+- Gray rock when digging deep underground
+
+**Inspector Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Sculpt Radius | 0.3 | Size of each sculpt brush stroke |
+| Sculpt Distance | 0.15 | How close hand must be to terrain surface to sculpt |
+| Sculpt Cooldown | 0.12s | Minimum time between operations (prevents buffer spam) |
+| Add Smooth | 0.25 | SmoothUnion blend for hills (higher = smoother) |
+| Sub Smooth | 0.15 | SmoothSubtraction blend for holes (higher = smoother edges) |
+
+#### Setup (All Interactive Samples)
+
+1. Place a **Cube** in your scene (this is the raymarching bounding volume)
+2. Scale it to cover the desired area (e.g. `(12, 8, 12)` for DeformableWall, `(20, 10, 20)` for TerrainSculpt)
+3. Create a **Material** from `AliceSDF/Samples/DeformableWall`, `AliceSDF/Samples/Mochi`, or `AliceSDF/Samples/TerrainSculpt`
+4. Assign the material to the Cube's **MeshRenderer**
+5. Add the corresponding `*_Collider.cs` script to the same GameObject
+6. **Build & Test** in VRChat — use your VR hands to interact
+
+**Desktop mode:** The interactive features require VR hand tracking. In desktop mode, the SDF rendering and player collision still work, but you cannot trigger sculpting, dents, or mochi grabs.
+
+**Multiplayer note:** All interactive samples run in local-only mode (each player sees their own state). To sync across players, add `[UdonSynced]` to the data arrays and call `RequestSerialization()` on state changes.
 
 ### Generate Sample Scenes
 
@@ -156,7 +281,10 @@ com.alice.sdf/
 │       ├── SampleBasic/             # Ground + Sphere
 │       ├── SampleCosmic/            # Solar system
 │       ├── SampleFractal/           # Menger Sponge labyrinth
-│       └── SampleMix/              # Cosmic x Fractal fusion
+│       ├── SampleMix/              # Cosmic x Fractal fusion
+│       ├── SampleDeformableWall/    # Interactive: touch wall → dent → recover
+│       ├── SampleMochi/            # Interactive: grab, merge, split, grow
+│       └── SampleTerrainSculpt/   # Interactive: dig holes, build hills, fall in
 └── Prefabs~/                        # Hidden from Unity import
 ```
 
