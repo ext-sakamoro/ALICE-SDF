@@ -601,6 +601,64 @@ println!("Avg aspect ratio: {}", quality.avg_aspect_ratio);
 | `MeshRepair::repair_all()` | Run all repairs in sequence |
 | `compute_quality()` | Aspect ratio and area statistics |
 
+## Texture Fitting (Texture-to-Formula)
+
+Converts bitmap textures (PNG/JPG) into resolution-independent procedural noise formulas. The fitted formula can be rendered on GPU at **any resolution** without the original image.
+
+```
+texture(u,v) ≈ bias + Σᵢ aᵢ · noise(uv · fᵢ + φᵢ, seedᵢ)
+```
+
+The CPU noise implementation (`hash_noise_3d`) exactly matches the GPU version in WGSL/HLSL/GLSL, guaranteeing CPU fitting = GPU rendering.
+
+### Pipeline
+
+1. Load image → grayscale f32
+2. DCT frequency analysis → dominant bands
+3. Greedy octave-by-octave fitting (Nelder-Mead, SIMD f32x8 + rayon parallel)
+4. Export as JSON parameters and/or standalone shader function
+
+### CLI
+
+```bash
+# Basic: fit texture and print results
+alice-sdf texture-fit granite.png
+
+# Export JSON parameters + HLSL shader
+alice-sdf texture-fit granite.png -o params.json --shader hlsl --shader-output granite.hlsl
+
+# High quality: more octaves, higher PSNR target
+alice-sdf texture-fit marble.png --octaves 12 --target-psnr 35.0 --iterations 2000
+```
+
+### Rust API
+
+```rust
+use alice_sdf::texture::{fit_texture, generate_shader, ShaderLanguage, TextureFitConfig};
+use std::path::Path;
+
+let config = TextureFitConfig {
+    max_octaves: 8,
+    target_psnr_db: 28.0,
+    iterations_per_octave: 500,
+    tileable: true,
+};
+
+let result = fit_texture(Path::new("granite.png"), &config).unwrap();
+println!("PSNR: {:.1} dB, {} octaves", result.psnr_db, result.octaves[0].len());
+
+// Generate standalone WGSL shader
+let shader = generate_shader(&result, ShaderLanguage::Wgsl, "granite.png");
+```
+
+### Output Shader Languages
+
+| Target | Function Signature | Use Case |
+|--------|-------------------|----------|
+| **WGSL** | `fn procedural_texture(uv: vec2<f32>) -> f32` | WebGPU, wgpu |
+| **HLSL** | `float procedural_texture(float2 uv)` | Unity, Unreal, DirectX |
+| **GLSL** | `float procedural_texture(vec2 uv)` | OpenGL, Vulkan |
+
 ## Raymarching
 
 Sphere tracing for ray-SDF intersection with specialized optimizations:
@@ -664,6 +722,7 @@ pip install alice-sdf  # or: maturin develop --features python
 | `unity` | Unity integration | ffi + glsl |
 | `unreal` | Unreal Engine integration | ffi + hlsl |
 | `all-shaders` | All shader transpilers | gpu + hlsl + glsl |
+| `texture-fit` | Texture-to-formula conversion | image, rayon, wide |
 
 ```bash
 # Examples
