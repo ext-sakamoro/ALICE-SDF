@@ -21,6 +21,7 @@ path = "src/bin/main.rs"
 [features]
 default = ["cli"]
 cli = ["clap"]
+texture-fit = ["image", "cli"]
 python = ["pyo3", "numpy"]
 jit = ["cranelift-codegen", "cranelift-frontend", "cranelift-jit", "cranelift-module", "cranelift-native"]
 gpu = ["wgpu", "pollster", "bytemuck", "futures-channel"]
@@ -75,6 +76,9 @@ wgpu = { version = "23", optional = true }
 pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1.21", features = ["derive"], optional = true }
 futures-channel = { version = "0.3", optional = true }
+
+# Image loading (optional, for texture-fit)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

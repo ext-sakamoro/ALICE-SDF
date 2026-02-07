@@ -64,6 +64,9 @@ pub mod python;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 
+#[cfg(feature = "texture-fit")]
+pub mod texture;
+
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

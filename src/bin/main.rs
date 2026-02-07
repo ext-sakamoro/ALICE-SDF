@@ -76,6 +76,31 @@ enum Commands {
         #[arg(short, long, default_value = "1000000")]
         points: usize,
     },
+
+    /// Fit a texture image to procedural noise formula
+    #[cfg(feature = "texture-fit")]
+    TextureFit {
+        /// Input image file (PNG/JPG)
+        input: PathBuf,
+        /// Maximum octaves
+        #[arg(long, default_value = "8")]
+        octaves: u32,
+        /// Target PSNR (dB)
+        #[arg(long, default_value = "28.0")]
+        target_psnr: f32,
+        /// Iterations per octave
+        #[arg(long, default_value = "500")]
+        iterations: u32,
+        /// Output JSON file for parameters
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Shader language: wgsl, hlsl, or glsl
+        #[arg(long)]
+        shader: Option<String>,
+        /// Shader output file
+        #[arg(long)]
+        shader_output: Option<PathBuf>,
+    },
 }
 
 #[cfg(feature = "cli")]
@@ -93,6 +118,16 @@ fn main() {
         } => cmd_to_mesh(input, output, resolution, bounds),
         Commands::Demo { output } => cmd_demo(output),
         Commands::Bench { file, points } => cmd_bench(file, points),
+        #[cfg(feature = "texture-fit")]
+        Commands::TextureFit {
+            input,
+            octaves,
+            target_psnr,
+            iterations,
+            output,
+            shader,
+            shader_output,
+        } => cmd_texture_fit(input, octaves, target_psnr, iterations, output, shader, shader_output),
     }
 }
 
@@ -424,4 +459,83 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     println!("Time       : {:.3} ms", elapsed.as_secs_f64() * 1000.0);
     println!("Throughput : {:.2} M points/sec", points_per_sec / 1_000_000.0);
     println!("--------------------------------------------------");
+}
+
+#[cfg(all(feature = "cli", feature = "texture-fit"))]
+fn cmd_texture_fit(
+    input: PathBuf,
+    octaves: u32,
+    target_psnr: f32,
+    iterations: u32,
+    output: Option<PathBuf>,
+    shader: Option<String>,
+    shader_output: Option<PathBuf>,
+) {
+    use alice_sdf::texture::{TextureFitConfig, fit_texture, generate_shader, ShaderLanguage};
+
+    let config = TextureFitConfig {
+        max_octaves: octaves,
+        target_psnr_db: target_psnr,
+        iterations_per_octave: iterations,
+        tileable: true,
+    };
+
+    println!("Fitting texture: {}", input.display());
+    println!("  Max octaves: {}", octaves);
+    println!("  Target PSNR: {:.1} dB", target_psnr);
+    println!("  Iterations/octave: {}", iterations);
+
+    let start = std::time::Instant::now();
+    let result = match fit_texture(&input, &config) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let elapsed = start.elapsed();
+
+    let total_octaves: usize = result.octaves.iter().map(|o| o.len()).sum();
+    println!("\nResult:");
+    println!("  Image: {}x{}", result.width, result.height);
+    println!("  Octaves: {}", total_octaves);
+    println!("  PSNR: {:.2} dB", result.psnr_db);
+    println!("  NMSE: {:.4}", result.nmse);
+    println!("  Time: {:.3}s", elapsed.as_secs_f64());
+
+    // Save JSON
+    if let Some(out_path) = output {
+        let json = serde_json::to_string_pretty(&result).unwrap();
+        match std::fs::write(&out_path, json) {
+            Ok(_) => println!("  Saved parameters to {}", out_path.display()),
+            Err(e) => eprintln!("  Failed to save JSON: {}", e),
+        }
+    }
+
+    // Generate shader
+    if let Some(lang_str) = shader {
+        let lang: ShaderLanguage = match lang_str.parse() {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        let source_name = input.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let shader_code = generate_shader(&result, lang, &source_name);
+
+        if let Some(shader_path) = shader_output {
+            match std::fs::write(&shader_path, &shader_code) {
+                Ok(_) => println!("  Saved shader to {}", shader_path.display()),
+                Err(e) => eprintln!("  Failed to save shader: {}", e),
+            }
+        } else {
+            println!("\n--- Generated Shader ({:?}) ---", lang);
+            println!("{}", shader_code);
+        }
+    }
 }
