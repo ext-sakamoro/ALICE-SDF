@@ -26,6 +26,9 @@ DEFAULT_MODEL = "haiku"
 DEFAULT_RESOLUTION = 64
 DEFAULT_BOUNDS = (-5.0, 5.0)
 
+# Cache
+CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "86400"))
+
 # Server
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))

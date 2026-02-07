@@ -79,6 +79,44 @@ def export_mesh_obj(vertices, indices) -> bytes:
         os.unlink(tmp_path)
 
 
+def recommend_resolution(json_str: str, quality: str = "medium") -> int:
+    """Recommend mesh resolution based on scene complexity and quality level.
+
+    Args:
+        json_str: SDF JSON string
+        quality: "low" (32), "medium" (64), "high" (128), "ultra" (256)
+
+    Returns:
+        Resolution as int (multiple of 8, clamped to 8-256).
+    """
+    import json as _json
+
+    base_map = {"low": 32, "medium": 64, "high": 128, "ultra": 256}
+    base = base_map.get(quality, 64)
+
+    # Count nodes for complexity scaling
+    try:
+        node = parse_sdf_json(json_str)
+        node_count = node.node_count()
+    except Exception:
+        return base
+
+    # Complexity correction factor
+    if node_count <= 3:
+        factor = 1.0
+    elif node_count <= 8:
+        factor = 1.0
+    elif node_count <= 15:
+        factor = 0.85
+    else:
+        factor = 0.7
+
+    res = int(base * factor)
+    # Round to nearest multiple of 8
+    res = max(8, min(256, ((res + 4) // 8) * 8))
+    return res
+
+
 def full_pipeline(
     sdf_json: str,
     resolution: int = 64,

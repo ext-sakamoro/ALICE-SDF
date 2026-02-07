@@ -225,6 +225,98 @@ EXAMPLES = [
             "metadata": None
         })
     },
+    {
+        "prompt": "A spiral staircase",
+        "sdf_json": json.dumps({
+            "version": "0.1.0",
+            "root": {
+                "Union": {
+                    "a": {
+                        "Twist": {
+                            "child": {
+                                "Stairs": {
+                                    "step_width": 0.8,
+                                    "step_height": 0.25,
+                                    "n_steps": 10.0,
+                                    "half_depth": 1.2
+                                }
+                            },
+                            "strength": 0.3
+                        }
+                    },
+                    "b": {
+                        "Cylinder": {"radius": 0.15, "half_height": 2.5}
+                    }
+                }
+            },
+            "metadata": None
+        })
+    },
+    {
+        "prompt": "A treasure chest",
+        "sdf_json": json.dumps({
+            "version": "0.1.0",
+            "root": {
+                "Union": {
+                    "a": {
+                        "Translate": {
+                            "child": {
+                                "RoundedBox": {
+                                    "half_extents": [1.2, 0.6, 0.8],
+                                    "round_radius": 0.05
+                                }
+                            },
+                            "offset": [0.0, 0.6, 0.0]
+                        }
+                    },
+                    "b": {
+                        "Translate": {
+                            "child": {
+                                "Barrel": {
+                                    "radius": 1.2,
+                                    "half_height": 0.4,
+                                    "bulge": 0.15
+                                }
+                            },
+                            "offset": [0.0, 1.5, 0.0]
+                        }
+                    }
+                }
+            },
+            "metadata": None
+        })
+    },
+    {
+        "prompt": "A decorative star badge",
+        "sdf_json": json.dumps({
+            "version": "0.1.0",
+            "root": {
+                "SmoothUnion": {
+                    "a": {
+                        "StarPolygon": {
+                            "radius": 1.5,
+                            "n_points": 5.0,
+                            "m": 0.5,
+                            "half_height": 0.15
+                        }
+                    },
+                    "b": {
+                        "Translate": {
+                            "child": {
+                                "Diamond": {
+                                    "radius": 0.4,
+                                    "half_height": 0.3
+                                }
+                            },
+                            "offset": [0.0, 0.3, 0.0]
+                        }
+                    },
+                    "k": 0.1
+                }
+            },
+            "metadata": None
+        })
+    },
 ]
 
 

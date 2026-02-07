@@ -8,7 +8,8 @@ class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="Text description of the 3D scene")
     provider: Literal["claude", "gemini"] = "claude"
     model: Optional[str] = None
-    resolution: int = Field(64, ge=8, le=256)
+    resolution: Optional[int] = Field(None, ge=8, le=256)
+    quality: Literal["low", "medium", "high", "ultra"] = "medium"
     format: Literal["glb", "obj", "json"] = "glb"
 
 
@@ -36,6 +37,7 @@ class GenerateResponse(BaseModel):
     mesh_vertices: Optional[int] = None
     mesh_triangles: Optional[int] = None
     timings: Optional[dict] = None
+    preview_glb_base64: Optional[str] = None
     error: Optional[str] = None
 
 

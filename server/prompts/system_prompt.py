@@ -22,11 +22,11 @@ Output ONLY a valid JSON object. No explanation, no markdown, no code fences. AL
 
 When you want a box 4 units wide, 2 tall, 1 deep → half_extents: [2.0, 1.0, 0.5]
 When you want a cylinder 3 units tall → half_height: 1.5
-This applies to: Box3d.half_extents, Cylinder.half_height, Cone.half_height, RoundedCone.half_height, Pyramid.half_height, HexPrism.half_height, Link.half_length, Extrude.half_height
+This applies to: Box3d.half_extents, Cylinder.half_height, Cone.half_height, RoundedCone.half_height, Pyramid.half_height, HexPrism.half_height, Link.half_length, Extrude.half_height, CappedCone.half_height, RoundedCylinder.half_height, TriangularPrism.half_depth, Rhombus.half_height, Horseshoe.half_length, Tube.half_height, Barrel.half_height, Diamond.half_height, RoundedX.half_height, Pie.half_height, Trapezoid.half_depth, Parallelogram.half_depth, Tunnel.half_depth, UnevenCapsule.half_depth, ArcShape.half_height, Moon.half_height, CrossShape.half_height, BlobbyCross.half_height, ParabolaSegment.half_depth, RegularPolygon.half_height, StarPolygon.half_height, Stairs.half_depth, Helix.half_height
 
 ## Node Types Reference
 
-### Primitives (15 types)
+### Primitives (53 types)
 
 {"Sphere": {"radius": 1.0}}
   Centered at origin. radius = distance from center to surface.
@@ -72,6 +72,128 @@ This applies to: Box3d.half_extents, Cylinder.half_height, Cone.half_height, Rou
 
 {"Bezier": {"point_a": [-1,0,0], "point_b": [0,1,0], "point_c": [1,0,0], "radius": 0.1}}
   Tube swept along a quadratic Bezier curve. 3 control points + tube radius. Good for curved pipes, tentacles, arches.
+
+#### Extended Geometric (16 types)
+
+{"RoundedBox": {"half_extents": [1.0, 1.0, 1.0], "round_radius": 0.1}}
+  Box with rounded edges. half_extents = [X, Y, Z] half-dimensions before rounding. round_radius = fillet size.
+
+{"CappedCone": {"half_height": 1.0, "r1": 0.8, "r2": 0.3}}
+  Frustum (truncated cone) along Y-axis. r1 = bottom radius, r2 = top radius, half_height = half total height.
+
+{"CappedTorus": {"major_radius": 1.0, "minor_radius": 0.3, "cap_angle": 1.57}}
+  Partial torus (arc) in XZ plane. cap_angle = half opening angle in radians (1.57 ≈ 180° arc).
+
+{"RoundedCylinder": {"radius": 0.5, "round_radius": 0.05, "half_height": 1.0}}
+  Cylinder with rounded edges along Y-axis. round_radius = edge fillet.
+
+{"TriangularPrism": {"width": 0.5, "half_depth": 1.0}}
+  Equilateral triangular prism along Z-axis. width = half-width of triangle cross-section, half_depth = half Z extent.
+
+{"CutSphere": {"radius": 1.0, "cut_height": 0.3}}
+  Sphere with a planar cut. cut_height = Y position of cut plane. Positive keeps top, negative keeps bottom.
+
+{"CutHollowSphere": {"radius": 1.0, "cut_height": 0.3, "thickness": 0.1}}
+  Hollow sphere shell with a planar cut. Good for bowls, domes, lampshades.
+
+{"DeathStar": {"ra": 1.0, "rb": 0.8, "d": 0.6}}
+  Sphere with spherical indentation. ra = main sphere, rb = carving sphere, d = distance between centers.
+
+{"SolidAngle": {"angle": 0.5, "radius": 1.0}}
+  Cone sector (solid angle). angle = half-angle in radians, radius = bounding radius.
+
+{"Rhombus": {"la": 1.0, "lb": 0.6, "half_height": 0.2, "round_radius": 0.05}}
+  3D diamond shape. la = half-diagonal X, lb = half-diagonal Z, half_height = Y extent, round_radius = edge fillet.
+
+{"Horseshoe": {"angle": 1.0, "radius": 0.8, "half_length": 0.3, "width": 0.1, "thickness": 0.1}}
+  U-shape. angle = opening half-angle (radians), radius = ring radius, half_length = straight extension, width/thickness = cross-section.
+
+{"Vesica": {"radius": 1.0, "half_dist": 0.5}}
+  Lens shape (revolved). radius = arc radius, half_dist = half distance between arc centers.
+
+{"InfiniteCylinder": {"radius": 0.5}}
+  Infinite cylinder along Y-axis. Clip with Intersection for finite segments.
+
+{"InfiniteCone": {"angle": 0.3}}
+  Infinite cone along Y-axis. angle = half-angle in radians. Clip with Intersection.
+
+{"Gyroid": {"scale": 3.0, "thickness": 0.1}}
+  Triply-periodic minimal surface. scale = spatial frequency, thickness = shell half-thickness. Good for organic lattice structures.
+
+{"Heart": {"size": 1.0}}
+  3D heart shape. size = overall scale.
+
+#### 3D Native (7 types)
+
+{"Tube": {"outer_radius": 1.0, "thickness": 0.1, "half_height": 1.0}}
+  Hollow cylinder (pipe) along Y-axis. outer_radius = center-line radius, thickness = half wall thickness, half_height = half total height.
+
+{"Barrel": {"radius": 0.8, "half_height": 1.0, "bulge": 0.2}}
+  Cylinder with parabolic bulge along Y-axis. radius = cap radius, bulge = extra radius at middle.
+
+{"Diamond": {"radius": 0.8, "half_height": 1.0}}
+  Bipyramid (double-cone). radius = equator radius, half_height = half total height. Good for gems, crystals.
+
+{"ChamferedCube": {"half_extents": [1.0, 1.0, 1.0], "chamfer": 0.1}}
+  Box with beveled edges. chamfer = bevel amount. Good for cut gems, mechanical housings.
+
+{"SchwarzP": {"scale": 3.0, "thickness": 0.1}}
+  Schwarz P triply-periodic minimal surface. Similar to Gyroid but cubic symmetry.
+
+{"Superellipsoid": {"half_extents": [1.0, 1.0, 1.0], "e1": 1.0, "e2": 1.0}}
+  Generalized ellipsoid. e1 = north-south roundness, e2 = east-west roundness. e1=e2=1 is ellipsoid, <1 is boxy, >1 is pinched.
+
+{"RoundedX": {"width": 1.0, "round_radius": 0.1, "half_height": 0.3}}
+  Rounded X (cross) shape extruded along Y-axis. width = arm length.
+
+#### 2D→3D Prisms (13 types)
+
+{"Pie": {"angle": 0.785, "radius": 1.0, "half_height": 0.3}}
+  Pie slice shape extruded along Y. angle = half opening angle in radians (0.785 ≈ 45° slice).
+
+{"Trapezoid": {"r1": 1.0, "r2": 0.5, "trap_height": 0.8, "half_depth": 0.3}}
+  Trapezoid prism in XY plane, extruded along Z. r1 = half bottom width, r2 = half top width.
+
+{"Parallelogram": {"width": 1.0, "para_height": 0.8, "skew": 0.3, "half_depth": 0.3}}
+  Parallelogram prism in XY plane, extruded along Z. skew = horizontal offset.
+
+{"Tunnel": {"width": 1.0, "height_2d": 1.5, "half_depth": 0.5}}
+  Arch opening in XY plane, extruded along Z. Good for doorways, archways.
+
+{"UnevenCapsule": {"r1": 0.5, "r2": 0.3, "cap_height": 0.8, "half_depth": 0.3}}
+  Capsule with different radii at each end, extruded along Z. Good for organic lozenge shapes.
+
+{"Egg": {"ra": 1.0, "rb": 0.3}}
+  Egg shape (revolution body) around Y-axis. ra = base radius, rb = top deformation (controls pointiness).
+
+{"ArcShape": {"aperture": 1.0, "radius": 1.0, "thickness": 0.15, "half_height": 0.3}}
+  Thick ring sector in XZ plane, extruded along Y. aperture = half opening angle in radians.
+
+{"Moon": {"d": 0.5, "ra": 1.0, "rb": 0.8, "half_height": 0.3}}
+  Crescent shape in XZ plane, extruded along Y. d = center offset, ra = outer radius, rb = inner radius.
+
+{"CrossShape": {"length": 1.0, "thickness": 0.3, "round_radius": 0.05, "half_height": 0.3}}
+  Plus/cross shape in XZ plane, extruded along Y. length = arm half-length, thickness = arm half-thickness.
+
+{"BlobbyCross": {"size": 1.0, "half_height": 0.3}}
+  Organic (blobby) cross in XZ plane, extruded along Y. Soft rounded corners.
+
+{"ParabolaSegment": {"width": 1.0, "para_height": 1.0, "half_depth": 0.3}}
+  Parabola segment in XY plane, extruded along Z. width = half base width, para_height = height of arc.
+
+{"RegularPolygon": {"radius": 1.0, "n_sides": 6.0, "half_height": 0.3}}
+  Regular N-sided polygon prism in XZ plane, extruded along Y. n_sides is a float (e.g. 5.0 for pentagon).
+
+{"StarPolygon": {"radius": 1.0, "n_points": 5.0, "m": 0.4, "half_height": 0.3}}
+  Star polygon prism in XZ plane, extruded along Y. n_points = star points, m = inner vertex radius (spike depth).
+
+#### Complex 3D (2 types)
+
+{"Stairs": {"step_width": 0.5, "step_height": 0.3, "n_steps": 8.0, "half_depth": 1.0}}
+  Staircase shape in XY plane, extruded along Z. n_steps is a float. Good for spiral staircases when combined with PolarRepeat or Twist.
+
+{"Helix": {"major_r": 1.0, "minor_r": 0.1, "pitch": 1.0, "half_height": 2.0}}
+  Spiral tube along Y-axis. major_r = distance from Y-axis, minor_r = tube thickness, pitch = vertical distance per revolution.
 
 ### Boolean Operations (6 types)
 

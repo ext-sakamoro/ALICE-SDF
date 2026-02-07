@@ -209,6 +209,10 @@ function connectWebSocket() {
         statusBar.textContent = msg.message;
         break;
 
+      case 'progress':
+        statusBar.textContent = `[${msg.phase}] ${msg.message} (${msg.percent}%)`;
+        break;
+
       case 'tokens':
         tokenStream.style.display = 'block';
         tokenStream.textContent += msg.content;
@@ -224,10 +228,16 @@ function connectWebSocket() {
         statusBar.textContent = 'Preview loaded, generating final mesh...';
         break;
 
+      case 'mesh_stats':
+        statsEl.textContent = `${msg.vertices} verts | ${msg.triangles} tris | res=${msg.resolution} | ${msg.mesh_time_ms}ms mesh`;
+        break;
+
       case 'mesh':
         loadGLB(msg.glb_base64, false);
-        const s = msg.stats;
-        statsEl.textContent = `${s.vertices} verts | ${s.triangles} tris | ${s.mesh_time_ms}ms mesh`;
+        if (msg.stats) {
+          const s = msg.stats;
+          statsEl.textContent = `${s.vertices} verts | ${s.triangles} tris | ${s.mesh_time_ms}ms mesh`;
+        }
         break;
 
       case 'done':

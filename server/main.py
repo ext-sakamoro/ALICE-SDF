@@ -87,17 +87,32 @@ async def generate(req: GenerateRequest):
     except Exception as e:
         return GenerateResponse(error=f"LLM error: {e}")
 
+    # Auto-select resolution if not specified
+    resolution = req.resolution
+    if resolution is None:
+        resolution = sdf_service.recommend_resolution(sdf_json, req.quality)
+
     if req.format == "json":
         valid, node_count, err = sdf_service.validate_sdf_json(sdf_json)
+        # Generate low-res preview GLB
+        preview_b64 = None
+        try:
+            node = sdf_service.parse_sdf_json(sdf_json)
+            pv, pi, _ = sdf_service.generate_mesh(node, (-5, -5, -5), (5, 5, 5), 16)
+            preview_bytes = sdf_service.export_mesh_glb(pv, pi)
+            preview_b64 = base64.b64encode(preview_bytes).decode()
+        except Exception:
+            pass
         return GenerateResponse(
             sdf_json=sdf_json,
             node_count=node_count,
             timings=llm_meta,
+            preview_glb_base64=preview_b64,
         )
 
     try:
         data, stats = sdf_service.full_pipeline(
-            sdf_json, req.resolution, req.format
+            sdf_json, resolution, req.format
         )
     except Exception as e:
         return GenerateResponse(
@@ -108,15 +123,6 @@ async def generate(req: GenerateRequest):
 
     total_ms = round((time.perf_counter() - total_t0) * 1000, 2)
     timings = {**llm_meta, **stats.get("timings", {}), "total_ms": total_ms}
-
-    if req.format == "json":
-        return GenerateResponse(
-            sdf_json=sdf_json,
-            node_count=stats.get("node_count"),
-            mesh_vertices=stats.get("vertices"),
-            mesh_triangles=stats.get("triangles"),
-            timings=timings,
-        )
 
     media_type = "model/gltf-binary" if req.format == "glb" else "text/plain"
     filename = f"scene.{req.format}"
@@ -130,6 +136,12 @@ async def generate(req: GenerateRequest):
             "X-Stats": json.dumps(timings),
         },
     )
+
+
+@app.post("/api/cache/clear")
+async def cache_clear():
+    count = llm_service.cache_clear()
+    return {"cleared": count}
 
 
 @app.get("/api/examples")
@@ -149,6 +161,15 @@ async def viewer():
 # ── WebSocket Endpoint ──────────────────────────────────────────
 
 
+async def _safe_send(ws: WebSocket, data: dict) -> bool:
+    """Send JSON to WebSocket, returning False if disconnected."""
+    try:
+        await ws.send_json(data)
+        return True
+    except (WebSocketDisconnect, RuntimeError):
+        return False
+
+
 @app.websocket("/ws/generate")
 async def ws_generate(ws: WebSocket):
     await ws.accept()
@@ -160,15 +181,20 @@ async def ws_generate(ws: WebSocket):
             provider = data.get("provider", "claude")
             model = data.get("model")
             resolution = data.get("resolution", 64)
+            quality = data.get("quality", "medium")
 
             if not prompt:
-                await ws.send_json({"type": "error", "message": "Empty prompt"})
+                await _safe_send(ws, {"type": "error", "message": "Empty prompt"})
                 continue
 
             total_t0 = time.perf_counter()
 
             # Phase 1: Stream LLM tokens
-            await ws.send_json({"type": "status", "message": "Generating SDF..."})
+            if not await _safe_send(ws, {
+                "type": "progress", "phase": "llm", "percent": 0,
+                "message": "Generating SDF..."
+            }):
+                continue
 
             accumulated = ""
             try:
@@ -178,56 +204,75 @@ async def ws_generate(ws: WebSocket):
                         prompt, stream_model
                     ):
                         accumulated += token
-                        await ws.send_json({"type": "tokens", "content": token})
+                        if not await _safe_send(ws, {"type": "tokens", "content": token}):
+                            break
                 elif provider == "gemini":
                     stream_model = model or "flash"
                     async for token in llm_service.stream_sdf_gemini(
                         prompt, stream_model
                     ):
                         accumulated += token
-                        await ws.send_json({"type": "tokens", "content": token})
+                        if not await _safe_send(ws, {"type": "tokens", "content": token}):
+                            break
                 else:
-                    await ws.send_json(
-                        {"type": "error", "message": f"Unknown provider: {provider}"}
-                    )
+                    await _safe_send(ws, {"type": "error", "message": f"Unknown provider: {provider}"})
                     continue
             except Exception as e:
-                await ws.send_json({"type": "error", "message": f"LLM error: {e}"})
+                await _safe_send(ws, {"type": "error", "message": f"LLM error: {e}"})
+                continue
+
+            if not await _safe_send(ws, {
+                "type": "progress", "phase": "llm", "percent": 100,
+                "message": "SDF generation complete"
+            }):
                 continue
 
             # Extract JSON from accumulated text
             try:
                 sdf_json = llm_service._extract_json(accumulated)
             except Exception as e:
-                await ws.send_json(
-                    {"type": "error", "message": f"JSON extraction error: {e}"}
-                )
+                await _safe_send(ws, {"type": "error", "message": f"JSON extraction error: {e}"})
                 continue
 
             # Validate
             valid, node_count, err = sdf_service.validate_sdf_json(sdf_json)
             if not valid:
-                await ws.send_json(
-                    {"type": "error", "message": f"Invalid SDF: {err}"}
-                )
+                await _safe_send(ws, {"type": "error", "message": f"Invalid SDF: {err}"})
                 continue
 
-            await ws.send_json(
-                {"type": "sdf", "json": json.loads(sdf_json), "node_count": node_count}
-            )
+            if not await _safe_send(ws, {
+                "type": "sdf", "json": json.loads(sdf_json), "node_count": node_count
+            }):
+                continue
+
+            # Auto-select resolution if default
+            if resolution is None or resolution == 0:
+                resolution = sdf_service.recommend_resolution(sdf_json, quality)
 
             # Phase 2: Progressive mesh generation
             node = sdf_service.parse_sdf_json(sdf_json)
 
-            # Preview (low resolution)
-            await ws.send_json({"type": "status", "message": "Generating preview..."})
-            preview_res = min(16, resolution)
+            # Adaptive preview resolution based on node count
+            if node_count is not None and node_count <= 5:
+                preview_res = 12
+            elif node_count is not None and node_count <= 10:
+                preview_res = 16
+            else:
+                preview_res = 24
+            preview_res = min(preview_res, resolution)
+
+            if not await _safe_send(ws, {
+                "type": "progress", "phase": "preview", "percent": 0,
+                "message": "Generating preview..."
+            }):
+                continue
+
             try:
                 verts, idxs, _ = sdf_service.generate_mesh(
                     node, (-5, -5, -5), (5, 5, 5), preview_res
                 )
                 preview_bytes = sdf_service.export_mesh_glb(verts, idxs)
-                await ws.send_json({
+                await _safe_send(ws, {
                     "type": "preview",
                     "glb_base64": base64.b64encode(preview_bytes).decode(),
                 })
@@ -235,25 +280,47 @@ async def ws_generate(ws: WebSocket):
                 pass  # Preview is optional
 
             # Final mesh
-            await ws.send_json({"type": "status", "message": "Generating final mesh..."})
+            if not await _safe_send(ws, {
+                "type": "progress", "phase": "mesh", "percent": 0,
+                "message": f"Generating final mesh (res={resolution})..."
+            }):
+                continue
+
             try:
                 verts, idxs, mesh_stats = sdf_service.generate_mesh(
                     node, (-5, -5, -5), (5, 5, 5), resolution
                 )
+
+                # Send mesh stats before the mesh data
+                if not await _safe_send(ws, {
+                    "type": "mesh_stats",
+                    "vertices": mesh_stats["vertices"],
+                    "triangles": mesh_stats["triangles"],
+                    "resolution": mesh_stats["resolution"],
+                    "mesh_time_ms": mesh_stats["mesh_time_ms"],
+                }):
+                    continue
+
+                if not await _safe_send(ws, {
+                    "type": "progress", "phase": "export", "percent": 50,
+                    "message": "Exporting GLB..."
+                }):
+                    continue
+
                 mesh_bytes = sdf_service.export_mesh_glb(verts, idxs)
                 total_ms = round((time.perf_counter() - total_t0) * 1000, 2)
 
-                await ws.send_json({
+                await _safe_send(ws, {
                     "type": "mesh",
                     "glb_base64": base64.b64encode(mesh_bytes).decode(),
                     "stats": mesh_stats,
                 })
-                await ws.send_json({
+                await _safe_send(ws, {
                     "type": "done",
                     "total_time_ms": total_ms,
                 })
             except Exception as e:
-                await ws.send_json({"type": "error", "message": f"Mesh error: {e}"})
+                await _safe_send(ws, {"type": "error", "message": f"Mesh error: {e}"})
 
     except WebSocketDisconnect:
         pass

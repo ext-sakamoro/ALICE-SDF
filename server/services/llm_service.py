@@ -1,5 +1,6 @@
 """LLM Service - Claude/Gemini API abstraction for SDF generation."""
 
+import difflib
 import json
 import logging
 import re
@@ -23,7 +24,114 @@ CHILD_OPS = {"Translate", "Rotate", "Scale", "ScaleNonUniform",
              "Revolution", "Extrude", "Taper", "Displacement",
              "PolarRepeat", "WithMaterial"}
 
+# All 53 known primitives (must match Rust types.rs)
+KNOWN_PRIMITIVES = {
+    "Sphere", "Box3d", "Cylinder", "Torus", "Plane", "Capsule", "Cone",
+    "Ellipsoid", "RoundedCone", "Pyramid", "Octahedron", "HexPrism",
+    "Link", "Triangle", "Bezier",
+    # Extended Geometric
+    "RoundedBox", "CappedCone", "CappedTorus", "RoundedCylinder",
+    "TriangularPrism", "CutSphere", "CutHollowSphere", "DeathStar",
+    "SolidAngle", "Rhombus", "Horseshoe", "Vesica", "InfiniteCylinder",
+    "InfiniteCone", "Gyroid", "Heart",
+    # 3D Native
+    "Tube", "Barrel", "Diamond", "ChamferedCube", "SchwarzP",
+    "Superellipsoid", "RoundedX",
+    # 2D→3D Prisms
+    "Pie", "Trapezoid", "Parallelogram", "Tunnel", "UnevenCapsule",
+    "Egg", "ArcShape", "Moon", "CrossShape", "BlobbyCross",
+    "ParabolaSegment", "RegularPolygon", "StarPolygon",
+    # Complex 3D
+    "Stairs", "Helix",
+}
+
+ALL_NODE_TYPES = KNOWN_PRIMITIVES | BOOLEAN_OPS | CHILD_OPS
+
 MAX_RETRIES = 2
+
+
+def _suggest_fix(error: str, sdf_json: str) -> str:
+    """Generate a specific fix suggestion based on error pattern."""
+    suggestions = []
+
+    # Missing 'a' or 'b' in boolean ops
+    if "missing" in error and ("'a'" in error or "'b'" in error):
+        suggestions.append(
+            "Boolean ops (Union, SmoothUnion, Intersection, Subtraction, etc.) "
+            "require BOTH 'a' and 'b' child nodes. Add the missing field with a valid SDF node."
+        )
+
+    # Missing 'child' in transform/modifier
+    if "missing" in error and "'child'" in error:
+        suggestions.append(
+            "Transform/modifier ops (Translate, Rotate, Scale, Twist, Noise, etc.) "
+            "require a 'child' field containing the SDF node to operate on."
+        )
+
+    # Unknown variant (typo in primitive name)
+    if "unknown variant" in error.lower():
+        match = re.search(r"unknown variant `(\w+)`", error, re.IGNORECASE)
+        if match:
+            bad_name = match.group(1)
+            close = difflib.get_close_matches(bad_name, ALL_NODE_TYPES, n=3, cutoff=0.6)
+            if close:
+                suggestions.append(
+                    f"Unknown node type '{bad_name}'. Did you mean: {', '.join(close)}?"
+                )
+            else:
+                suggestions.append(
+                    f"Unknown node type '{bad_name}'. Check the primitives list for valid type names."
+                )
+
+    # NaN or infinity
+    if "nan" in error.lower() or "infinity" in error.lower() or "inf" in error.lower():
+        suggestions.append(
+            "Numeric value is NaN or infinity. All values must be finite numbers. "
+            "Reduce large scale values and ensure no division by zero."
+        )
+
+    return " ".join(suggestions) if suggestions else ""
+
+
+# ── LLM Response Cache ────────────────────────────────────────
+
+import hashlib
+
+_cache: dict[str, dict] = {}
+CACHE_TTL = config.CACHE_TTL_SECONDS
+
+
+def _cache_key(prompt: str, provider: str, model: str) -> str:
+    """Generate a cache key from prompt + provider + model."""
+    raw = f"{prompt}|{provider}|{model}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str) -> dict | None:
+    """Get cached entry if exists and not expired."""
+    entry = _cache.get(key)
+    if entry is None:
+        return None
+    if time.time() - entry["timestamp"] > CACHE_TTL:
+        del _cache[key]
+        return None
+    return entry
+
+
+def _cache_set(key: str, sdf_json: str, metadata: dict) -> None:
+    """Store result in cache."""
+    _cache[key] = {
+        "sdf_json": sdf_json,
+        "metadata": metadata,
+        "timestamp": time.time(),
+    }
+
+
+def cache_clear() -> int:
+    """Clear all cached entries. Returns number of entries cleared."""
+    count = len(_cache)
+    _cache.clear()
+    return count
 
 
 def _build_messages(prompt: str) -> list[dict]:
@@ -37,6 +145,8 @@ def _build_retry_messages(prompt: str, error: str, bad_json: str) -> list[dict]:
     """Build messages for retry with error feedback."""
     # Truncate bad_json to avoid token waste
     snippet = bad_json[:500] + "..." if len(bad_json) > 500 else bad_json
+    fix_hint = _suggest_fix(error, bad_json)
+    fix_line = f"\n\nSpecific fix: {fix_hint}" if fix_hint else ""
     return [
         {"role": "user", "content": prompt},
         {"role": "assistant", "content": snippet},
@@ -44,7 +154,7 @@ def _build_retry_messages(prompt: str, error: str, bad_json: str) -> list[dict]:
             f"The JSON you produced has a structural error:\n{error}\n\n"
             "Please fix the error and output the corrected JSON. "
             "Remember: Boolean ops (Union, SmoothUnion, etc.) need BOTH \"a\" and \"b\" fields. "
-            "Keep node count under 20. Output ONLY valid JSON."
+            f"Keep node count under 20. Output ONLY valid JSON.{fix_line}"
         )},
     ]
 
@@ -209,10 +319,14 @@ async def generate_sdf_claude(
     elapsed = time.perf_counter() - t0
 
     text = response.content[0].text
-    sdf_json = _extract_json(text)
 
-    # Validate it's parseable JSON
-    json.loads(sdf_json)
+    # Try direct JSON parse first (structured output), fallback to extraction
+    try:
+        json.loads(text)
+        sdf_json = text
+    except (json.JSONDecodeError, TypeError):
+        sdf_json = _extract_json(text)
+        json.loads(sdf_json)
 
     return sdf_json, elapsed
 
@@ -246,15 +360,22 @@ async def generate_sdf_gemini(
     response = await client.aio.models.generate_content(
         model=model_id,
         contents=full_prompt,
-        config={"max_output_tokens": 65536},
+        config={
+            "max_output_tokens": 65536,
+            "response_mime_type": "application/json",
+        },
     )
     elapsed = time.perf_counter() - t0
 
     text = response.text
-    sdf_json = _extract_json(text)
 
-    # Validate it's parseable JSON
-    json.loads(sdf_json)
+    # Try direct JSON parse first (structured output), fallback to extraction
+    try:
+        json.loads(text)
+        sdf_json = text
+    except (json.JSONDecodeError, TypeError):
+        sdf_json = _extract_json(text)
+        json.loads(sdf_json)
 
     return sdf_json, elapsed
 
@@ -280,6 +401,14 @@ async def generate_sdf(
         gen_fn = generate_sdf_gemini
     else:
         raise ValueError(f"Unknown provider: {provider}")
+
+    # Cache check
+    key = _cache_key(prompt, provider, model)
+    cached = _cache_get(key)
+    if cached is not None:
+        logger.info(f"Cache hit for prompt: {prompt[:50]}...")
+        meta = {**cached["metadata"], "cache_hit": True}
+        return cached["sdf_json"], meta
 
     total_elapsed = 0.0
     last_error = None
@@ -328,7 +457,9 @@ async def generate_sdf(
                 "model": model,
                 "llm_time_s": round(total_elapsed, 3),
                 "retries": retries_used,
+                "cache_hit": False,
             }
+            _cache_set(key, sdf_json, metadata)
             return sdf_json, metadata
 
         except Exception as e:
