@@ -1,5 +1,7 @@
 # ALICE-SDF
 
+**English** | [日本語](README_JP.md)
+
 **A.L.I.C.E. - Adaptive Lightweight Implicit Compression Engine**
 
 > "Don't send polygons. Send the law of shapes."
