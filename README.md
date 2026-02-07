@@ -177,6 +177,68 @@ source .venv/bin/activate
 python -m pytest server/tests/ -v   # 37 tests, all passing
 ```
 
+## ALICE-View (Real-time 3D Viewer)
+
+**[ALICE-View](../ALICE-View)** is a native GPU raymarching viewer built with wgpu. It renders SDF trees directly on the GPU via WGSL transpilation — no mesh conversion needed.
+
+```
+SDF JSON → ALICE-SDF (WGSL transpile) → wgpu GPU Raymarching → Real-time 3D
+              ~1ms                            60 FPS
+```
+
+### Features
+
+- **GPU Raymarching** — SdfNode tree transpiled to WGSL shader, evaluated per-pixel on GPU
+- **Drag & Drop** — Drop `.json` / `.asdf` / `.asdf.json` files onto the window
+- **File Dialog** — File > Open (Ctrl+O) with format filters
+- **Camera Controls** — Mouse orbit, scroll zoom, WASD movement
+- **Live SDF Panel** — Node count, raymarching parameters (max steps, epsilon, AO)
+
+### Supported Formats
+
+| Extension | Format | Description |
+|-----------|--------|-------------|
+| `.json` | SDF JSON | Text-to-3D pipeline output, few-shot examples |
+| `.asdf.json` | ALICE SDF JSON | Native ALICE-SDF JSON format |
+| `.asdf` | ALICE SDF Binary | Compact binary with CRC32 |
+| `.alice` / `.alz` | ALICE Legacy | Procedural content (Perlin, Fractal) |
+
+### Quick Start
+
+```bash
+cd /path/to/ALICE-View
+
+# Open a specific file
+cargo run --bin alice-view -- path/to/scene.json
+
+# Or launch empty and drag & drop files onto the window
+cargo run --bin alice-view
+```
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `W/A/S/D` | Camera movement |
+| `Mouse drag` | Orbit camera |
+| `Scroll` | Zoom in/out |
+| `Ctrl+O` | Open file dialog |
+| `Q` | Quit |
+
+### Viewing Text-to-3D Results
+
+Generated scene JSON files from the Text-to-3D pipeline can be viewed directly:
+
+```bash
+# View a generated scene
+cargo run --bin alice-view -- /path/to/ALICE-SDF/server/examples/scenes/snowman.json
+
+# Or drag any of these onto the window:
+#   server/examples/scenes/castle_tower.json
+#   server/examples/scenes/mechanical_gear.json
+#   server/examples/scenes/alien_mushroom_forest.json
+```
+
 ---
 
 ## Core Concepts
@@ -863,6 +925,7 @@ See `docs/GODOT_GUIDE.md` for integration guide.
 
 | Document | Description |
 |----------|-------------|
+| [ALICE-View](../ALICE-View) | Real-time GPU raymarching viewer (wgpu, drag & drop) |
 | [QUICKSTART](docs/QUICKSTART.md) | 5-minute getting started guide for all platforms |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | 13-layer architecture deep dive |
 | [API Reference](docs/API_REFERENCE.md) | Complete API reference |
