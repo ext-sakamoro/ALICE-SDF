@@ -488,38 +488,15 @@ fn decimate_mesh<'py>(
     target_ratio: f32,
     preserve_boundary: bool,
 ) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
-    use crate::mesh::{Mesh, Vertex, DecimateConfig, decimate};
+    use crate::mesh::{DecimateConfig, decimate};
 
-    let verts = unsafe { vertices.as_array() };
-    let idx = unsafe { indices.as_array() };
-
-    if verts.shape()[1] != 3 {
-        return Err(PyValueError::new_err("Vertices must have shape (N, 3)"));
-    }
-
-    let mesh_verts: Vec<Vertex> = verts
-        .rows()
-        .into_iter()
-        .map(|row| Vertex {
-            position: Vec3::new(row[0], row[1], row[2]),
-            ..Default::default()
-        })
-        .collect();
-
-    let mesh_indices: Vec<u32> = idx.to_vec();
-
-    let mut mesh = Mesh {
-        vertices: mesh_verts,
-        indices: mesh_indices,
-    };
-
+    let mut mesh = numpy_to_mesh(vertices, indices)?;
     let config = DecimateConfig {
         target_ratio,
         preserve_boundary,
         ..Default::default()
     };
 
-    // Release GIL during mesh decimation (CPU-heavy)
     py.allow_threads(|| {
         decimate(&mut mesh, &config);
     });
@@ -535,35 +512,10 @@ fn export_obj(
     indices: &Bound<'_, PyArray1<u32>>,
     path: &str,
 ) -> PyResult<()> {
-    use crate::mesh::{Mesh, Vertex};
     use crate::io::{export_obj as io_export_obj, ObjConfig};
-
-    let verts = unsafe { vertices.as_array() };
-    let idx = unsafe { indices.as_array() };
-
-    if verts.shape()[1] != 3 {
-        return Err(PyValueError::new_err("Vertices must have shape (N, 3)"));
-    }
-
-    let mesh_verts: Vec<Vertex> = verts
-        .rows()
-        .into_iter()
-        .map(|row| Vertex {
-            position: Vec3::new(row[0], row[1], row[2]),
-            ..Default::default()
-        })
-        .collect();
-
-    let mesh = Mesh {
-        vertices: mesh_verts,
-        indices: idx.to_vec(),
-    };
-
-    // Release GIL during file I/O
-    py.allow_threads(|| {
-        io_export_obj(&mesh, path, &ObjConfig::default(), None)
-    })
-    .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
+    let mesh = numpy_to_mesh(vertices, indices)?;
+    py.allow_threads(|| io_export_obj(&mesh, path, &ObjConfig::default(), None))
+        .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
 /// Export mesh to GLB file
@@ -575,34 +527,9 @@ fn export_glb(
     indices: &Bound<'_, PyArray1<u32>>,
     path: &str,
 ) -> PyResult<()> {
-    use crate::mesh::{Mesh, Vertex};
     use crate::io::{export_glb as io_export_glb, GltfConfig};
-
-    let verts = unsafe { vertices.as_array() };
-    let idx = unsafe { indices.as_array() };
-
-    if verts.shape()[1] != 3 {
-        return Err(PyValueError::new_err("Vertices must have shape (N, 3)"));
-    }
-
-    let mesh_verts: Vec<Vertex> = verts
-        .rows()
-        .into_iter()
-        .map(|row| Vertex {
-            position: Vec3::new(row[0], row[1], row[2]),
-            ..Default::default()
-        })
-        .collect();
-
-    let mesh = Mesh {
-        vertices: mesh_verts,
-        indices: idx.to_vec(),
-    };
-
-    // Release GIL during file I/O
-    py.allow_threads(|| {
-        io_export_glb(&mesh, path, &GltfConfig::default(), None)
-    })
+    let mesh = numpy_to_mesh(vertices, indices)?;
+    py.allow_threads(|| io_export_glb(&mesh, path, &GltfConfig::default(), None))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -1076,10 +1003,126 @@ fn bake_gi<'py>(
     Ok((pos_array, sh_array))
 }
 
+/// Export mesh to FBX file
+#[pyfunction]
+#[pyo3(signature = (vertices, indices, path))]
+fn export_fbx(
+    py: Python<'_>,
+    vertices: &Bound<'_, PyArray2<f32>>,
+    indices: &Bound<'_, PyArray1<u32>>,
+    path: &str,
+) -> PyResult<()> {
+    use crate::io::{export_fbx as io_export_fbx, FbxConfig};
+    let mesh = numpy_to_mesh(vertices, indices)?;
+    py.allow_threads(|| io_export_fbx(&mesh, path, &FbxConfig::default(), None))
+        .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
+}
+
+/// Export mesh to USDA file
+#[pyfunction]
+#[pyo3(signature = (vertices, indices, path))]
+fn export_usda(
+    py: Python<'_>,
+    vertices: &Bound<'_, PyArray2<f32>>,
+    indices: &Bound<'_, PyArray1<u32>>,
+    path: &str,
+) -> PyResult<()> {
+    use crate::io::{export_usda as io_export_usda, UsdConfig};
+    let mesh = numpy_to_mesh(vertices, indices)?;
+    py.allow_threads(|| io_export_usda(&mesh, path, &UsdConfig::default(), None))
+        .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
+}
+
+/// Export mesh to Alembic file
+#[pyfunction]
+#[pyo3(signature = (vertices, indices, path))]
+fn export_alembic(
+    py: Python<'_>,
+    vertices: &Bound<'_, PyArray2<f32>>,
+    indices: &Bound<'_, PyArray1<u32>>,
+    path: &str,
+) -> PyResult<()> {
+    use crate::io::{export_alembic as io_export_alembic, AlembicConfig};
+    let mesh = numpy_to_mesh(vertices, indices)?;
+    py.allow_threads(|| io_export_alembic(&mesh, path, &AlembicConfig::default()))
+        .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
+}
+
+/// UV unwrap a mesh using LSCM (Least Squares Conformal Map)
+///
+/// Returns (positions: ndarray[N,3], uvs: ndarray[N,2], indices: ndarray[M]).
+#[pyfunction]
+#[pyo3(signature = (vertices, indices))]
+fn uv_unwrap<'py>(
+    py: Python<'py>,
+    vertices: &Bound<'py, PyArray2<f32>>,
+    indices: &Bound<'py, PyArray1<u32>>,
+) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
+    use crate::mesh::{uv_unwrap as mesh_uv_unwrap, apply_uvs, UvUnwrapConfig};
+
+    let mut mesh = numpy_to_mesh(vertices, indices)?;
+
+    py.allow_threads(|| {
+        let result = mesh_uv_unwrap(&mesh, &UvUnwrapConfig::default());
+        apply_uvs(&mut mesh, &result);
+    });
+
+    let n = mesh.vertices.len();
+
+    // Positions [N, 3]
+    let positions: Vec<f32> = mesh.vertices.iter()
+        .flat_map(|v| [v.position.x, v.position.y, v.position.z])
+        .collect();
+    let pos_array = numpy::PyArray1::from_vec(py, positions)
+        .reshape([n, 3])
+        .map_err(|e| PyValueError::new_err(format!("Reshape error: {}", e)))?;
+
+    // UVs [N, 2]
+    let uvs: Vec<f32> = mesh.vertices.iter()
+        .flat_map(|v| [v.uv.x, v.uv.y])
+        .collect();
+    let uv_array = numpy::PyArray1::from_vec(py, uvs)
+        .reshape([n, 2])
+        .map_err(|e| PyValueError::new_err(format!("Reshape error: {}", e)))?;
+
+    let indices_array = mesh.indices.clone().into_pyarray(py);
+
+    Ok((pos_array, uv_array, indices_array))
+}
+
 /// Get library version
 #[pyfunction]
 fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
+}
+
+/// Helper: convert NumPy arrays to Mesh (shared by all export functions)
+fn numpy_to_mesh(
+    vertices: &Bound<'_, PyArray2<f32>>,
+    indices: &Bound<'_, PyArray1<u32>>,
+) -> PyResult<crate::mesh::Mesh> {
+    use crate::mesh::{Mesh, Vertex};
+
+    let verts = unsafe { vertices.as_array() };
+    let idx = unsafe { indices.as_array() };
+
+    if verts.shape()[1] != 3 {
+        return Err(PyValueError::new_err("Vertices must have shape (N, 3)"));
+    }
+
+    let mesh_verts: Vec<Vertex> = verts
+        .rows()
+        .into_iter()
+        .map(|row| Vertex {
+            position: Vec3::new(row[0], row[1], row[2]),
+            ..Default::default()
+        })
+        .collect();
+
+    Ok(Mesh {
+        vertices: mesh_verts,
+        indices: idx.to_vec(),
+    })
 }
 
 /// Helper: convert Mesh to NumPy arrays
@@ -1116,6 +1159,10 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decimate_mesh, m)?)?;
     m.add_function(wrap_pyfunction!(export_obj, m)?)?;
     m.add_function(wrap_pyfunction!(export_glb, m)?)?;
+    m.add_function(wrap_pyfunction!(export_fbx, m)?)?;
+    m.add_function(wrap_pyfunction!(export_usda, m)?)?;
+    m.add_function(wrap_pyfunction!(export_alembic, m)?)?;
+    m.add_function(wrap_pyfunction!(uv_unwrap, m)?)?;
     m.add_function(wrap_pyfunction!(save_sdf, m)?)?;
     m.add_function(wrap_pyfunction!(load_sdf, m)?)?;
     m.add_function(wrap_pyfunction!(from_json, m)?)?;

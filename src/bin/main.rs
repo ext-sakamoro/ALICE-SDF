@@ -77,6 +77,21 @@ enum Commands {
         points: usize,
     },
 
+    /// Export SDF to mesh file (auto-detect format from extension)
+    Export {
+        /// Input SDF file (.asdf or .asdf.json)
+        input: PathBuf,
+        /// Output mesh file (.obj, .glb, .fbx, .usda, .abc)
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Grid resolution for marching cubes
+        #[arg(short, long, default_value = "64")]
+        resolution: usize,
+        /// Bounding box half-size
+        #[arg(short, long, default_value = "2.0")]
+        bounds: f32,
+    },
+
     /// Fit a texture image to procedural noise formula
     #[cfg(feature = "texture-fit")]
     TextureFit {
@@ -117,6 +132,12 @@ fn main() {
             bounds,
         } => cmd_to_mesh(input, output, resolution, bounds),
         Commands::Demo { output } => cmd_demo(output),
+        Commands::Export {
+            input,
+            output,
+            resolution,
+            bounds,
+        } => cmd_export(input, output, resolution, bounds),
         Commands::Bench { file, points } => cmd_bench(file, points),
         #[cfg(feature = "texture-fit")]
         Commands::TextureFit {
@@ -230,6 +251,58 @@ fn cmd_to_mesh(input: PathBuf, output: PathBuf, resolution: usize, bounds: f32) 
         ),
         Err(e) => {
             eprintln!("Write error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(feature = "cli")]
+fn cmd_export(input: PathBuf, output: PathBuf, resolution: usize, bounds: f32) {
+    let tree = match load(&input) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Load error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let config = MarchingCubesConfig {
+        resolution,
+        iso_level: 0.0,
+        compute_normals: true,
+        ..Default::default()
+    };
+
+    let min = Vec3::splat(-bounds);
+    let max = Vec3::splat(bounds);
+
+    println!("Generating mesh with resolution {}...", resolution);
+    let mesh = sdf_to_mesh(&tree.root, min, max, &config);
+    println!("  {} vertices, {} triangles", mesh.vertex_count(), mesh.triangle_count());
+
+    let ext = output
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let result = match ext.as_str() {
+        "obj" => export_obj(&mesh, &output, &ObjConfig::default(), None),
+        "glb" => export_glb(&mesh, &output, &GltfConfig::default(), None),
+        "fbx" => export_fbx(&mesh, &output, &FbxConfig::default(), None),
+        "usda" | "usd" => export_usda(&mesh, &output, &UsdConfig::default(), None),
+        "abc" => export_alembic(&mesh, &output, &AlembicConfig::default()),
+        _ => {
+            eprintln!("Unsupported format: .{}", ext);
+            eprintln!("Supported: .obj, .glb, .fbx, .usda, .abc");
+            std::process::exit(1);
+        }
+    };
+
+    match result {
+        Ok(_) => println!("Exported to {}", output.display()),
+        Err(e) => {
+            eprintln!("Export error: {}", e);
             std::process::exit(1);
         }
     }

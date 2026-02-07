@@ -345,6 +345,16 @@ vertices, indices = compiled.to_mesh((-2,-2,-2), (2,2,2), resolution=64)  # コ�
 
 # メッシュに変換
 vertices, indices = sdf.to_mesh(translated, (-2.0, -2.0, -2.0), (2.0, 2.0, 2.0))
+
+# 複数フォーマットにエクスポート
+sdf.export_obj(vertices, indices, "model.obj")
+sdf.export_glb(vertices, indices, "model.glb")
+sdf.export_fbx(vertices, indices, "model.fbx")
+sdf.export_usda(vertices, indices, "model.usda")
+sdf.export_alembic(vertices, indices, "model.abc")
+
+# UV展開 → (positions[N,3], uvs[N,2], indices[M])
+positions, uvs, indices = sdf.uv_unwrap(vertices, indices)
 ```
 
 ## マテリアルシステム
@@ -710,8 +720,17 @@ let shader = generate_shader(&result, ShaderLanguage::Wgsl, "granite.png");
 ```c
 #include "alice_sdf.h"
 
+// SDF評価
 AliceSdfHandle sdf = alice_sdf_sphere(1.0);
 float dist = alice_sdf_eval(sdf, 0.5, 0.0, 0.0);
+
+// メッシュを1回生成、複数フォーマットにエクスポート
+MeshHandle mesh = alice_sdf_generate_mesh(sdf, 64, 2.0);
+alice_sdf_export_glb(mesh, NULL, "model.glb", 0, 0);
+alice_sdf_export_fbx(mesh, NULL, "model.fbx", 0, 0);
+alice_sdf_export_obj(mesh, NULL, "model.obj", 0, 0);
+alice_sdf_free_mesh(mesh);
+alice_sdf_free(sdf);
 ```
 
 ### C# / Unity（`bindings/AliceSdf.cs`）
@@ -728,6 +747,20 @@ float dist = sdf.Eval(new Vector3(0.5f, 0f, 0f));
 ```bash
 pip install alice-sdf  # または: maturin develop --features python
 ```
+
+### FFIメッシュエクスポート
+
+| 関数 | フォーマット | 説明 |
+|----------|--------|-------|
+| `alice_sdf_generate_mesh` | — | メッシュを1回生成（`MeshHandle`を返す） |
+| `alice_sdf_export_obj` | `.obj` | Wavefront OBJ |
+| `alice_sdf_export_glb` | `.glb` | バイナリglTF 2.0 |
+| `alice_sdf_export_fbx` | `.fbx` | Autodesk FBX |
+| `alice_sdf_export_usda` | `.usda` | Universal Scene Description |
+| `alice_sdf_export_alembic` | `.abc` | Alembic（Ogawa） |
+| `alice_sdf_free_mesh` | — | メッシュハンドルを解放 |
+
+全エクスポート関数は`MeshHandle`（事前生成）または`SdfHandle`（オンザフライ生成）を受け付けます。
 
 ### FFIパフォーマンス階層
 
@@ -769,6 +802,31 @@ cargo build --features "all-shaders,jit"  # 全部入り
 ```bash
 cargo test
 ```
+
+## CLI
+
+```bash
+# ファイル情報を表示
+alice-sdf info model.asdf
+
+# フォーマット変換（.asdf ↔ .asdf.json）
+alice-sdf convert model.asdf -o model.asdf.json
+
+# SDFをメッシュにエクスポート（拡張子から自動判定）
+alice-sdf export model.asdf -o model.glb
+alice-sdf export model.asdf -o model.obj --resolution 128 --bounds 3.0
+alice-sdf export model.asdf -o scene.usda
+alice-sdf export model.asdf -o anim.abc
+alice-sdf export model.asdf -o model.fbx
+
+# デモSDF生成
+alice-sdf demo -o demo.asdf
+
+# ベンチマーク
+alice-sdf bench --points 1000000
+```
+
+対応エクスポート形式: `.obj`, `.glb`, `.fbx`, `.usda`, `.abc`
 
 ## パフォーマンス
 

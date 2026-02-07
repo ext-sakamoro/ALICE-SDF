@@ -12,7 +12,8 @@
 
 use crate::types::SdfNode;
 use crate::compiled::CompiledSdf;
-use super::types::{SdfHandle, CompiledHandle};
+use crate::mesh::Mesh;
+use super::types::{SdfHandle, CompiledHandle, MeshHandle};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
 
@@ -120,6 +121,56 @@ pub fn remove_compiled(handle: CompiledHandle) {
 }
 
 // ============================================================================
+// Mesh Registry
+// ============================================================================
+
+lazy_static::lazy_static! {
+    /// Global registry of generated meshes
+    static ref MESH_REGISTRY: Mutex<HashMap<u64, Arc<Mesh>>> = Mutex::new(HashMap::new());
+}
+
+/// Counter for generating unique mesh handle IDs
+static MESH_COUNTER: AtomicU64 = AtomicU64::new(0x4000_0000_0000_0001);
+
+/// Register a mesh and return its handle
+#[inline]
+pub fn register_mesh(mesh: Mesh) -> MeshHandle {
+    let id = MESH_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let arc_mesh = Arc::new(mesh);
+
+    {
+        let mut registry = MESH_REGISTRY.lock().unwrap();
+        registry.insert(id, arc_mesh);
+    }
+
+    id as MeshHandle
+}
+
+/// Get a mesh by handle (clones Arc - cheap)
+#[inline]
+pub fn get_mesh(handle: MeshHandle) -> Option<Arc<Mesh>> {
+    if handle.is_null() {
+        return None;
+    }
+
+    let id = handle as u64;
+    let registry = MESH_REGISTRY.lock().unwrap();
+    registry.get(&id).cloned()
+}
+
+/// Remove a mesh by handle
+#[inline]
+pub fn remove_mesh(handle: MeshHandle) {
+    if handle.is_null() {
+        return;
+    }
+
+    let id = handle as u64;
+    let mut registry = MESH_REGISTRY.lock().unwrap();
+    registry.remove(&id);
+}
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
@@ -146,6 +197,10 @@ pub fn clear_all() {
     }
     {
         let mut registry = COMPILED_REGISTRY.lock().unwrap();
+        registry.clear();
+    }
+    {
+        let mut registry = MESH_REGISTRY.lock().unwrap();
         registry.clear();
     }
 }

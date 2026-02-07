@@ -345,6 +345,16 @@ vertices, indices = compiled.to_mesh((-2,-2,-2), (2,2,2), resolution=64)  # comp
 
 # Convert to mesh
 vertices, indices = sdf.to_mesh(translated, (-2.0, -2.0, -2.0), (2.0, 2.0, 2.0))
+
+# Export to multiple formats
+sdf.export_obj(vertices, indices, "model.obj")
+sdf.export_glb(vertices, indices, "model.glb")
+sdf.export_fbx(vertices, indices, "model.fbx")
+sdf.export_usda(vertices, indices, "model.usda")
+sdf.export_alembic(vertices, indices, "model.abc")
+
+# UV unwrap → (positions[N,3], uvs[N,2], indices[M])
+positions, uvs, indices = sdf.uv_unwrap(vertices, indices)
 ```
 
 ## Material System
@@ -710,8 +720,17 @@ Features: dedicated Shadow/AO loops (skip normal computation), early exit for ha
 ```c
 #include "alice_sdf.h"
 
+// Evaluate SDF
 AliceSdfHandle sdf = alice_sdf_sphere(1.0);
 float dist = alice_sdf_eval(sdf, 0.5, 0.0, 0.0);
+
+// Generate mesh once, export to multiple formats
+MeshHandle mesh = alice_sdf_generate_mesh(sdf, 64, 2.0);
+alice_sdf_export_glb(mesh, NULL, "model.glb", 0, 0);
+alice_sdf_export_fbx(mesh, NULL, "model.fbx", 0, 0);
+alice_sdf_export_obj(mesh, NULL, "model.obj", 0, 0);
+alice_sdf_free_mesh(mesh);
+alice_sdf_free(sdf);
 ```
 
 ### C# / Unity (`bindings/AliceSdf.cs`)
@@ -728,6 +747,20 @@ float dist = sdf.Eval(new Vector3(0.5f, 0f, 0f));
 ```bash
 pip install alice-sdf  # or: maturin develop --features python
 ```
+
+### FFI Mesh Export
+
+| Function | Format | Notes |
+|----------|--------|-------|
+| `alice_sdf_generate_mesh` | — | Generate mesh once (returns `MeshHandle`) |
+| `alice_sdf_export_obj` | `.obj` | Wavefront OBJ |
+| `alice_sdf_export_glb` | `.glb` | Binary glTF 2.0 |
+| `alice_sdf_export_fbx` | `.fbx` | Autodesk FBX |
+| `alice_sdf_export_usda` | `.usda` | Universal Scene Description |
+| `alice_sdf_export_alembic` | `.abc` | Alembic (Ogawa) |
+| `alice_sdf_free_mesh` | — | Free mesh handle |
+
+All export functions accept `MeshHandle` (pre-generated) or `SdfHandle` (generates on the fly).
 
 ### FFI Performance Hierarchy
 
@@ -769,6 +802,31 @@ cargo build --features "all-shaders,jit"  # Everything
 ```bash
 cargo test
 ```
+
+## CLI
+
+```bash
+# Display file info
+alice-sdf info model.asdf
+
+# Convert between formats (.asdf ↔ .asdf.json)
+alice-sdf convert model.asdf -o model.asdf.json
+
+# Export SDF to mesh (auto-detect format from extension)
+alice-sdf export model.asdf -o model.glb
+alice-sdf export model.asdf -o model.obj --resolution 128 --bounds 3.0
+alice-sdf export model.asdf -o scene.usda
+alice-sdf export model.asdf -o anim.abc
+alice-sdf export model.asdf -o model.fbx
+
+# Generate demo SDF
+alice-sdf demo -o demo.asdf
+
+# Benchmark evaluation
+alice-sdf bench --points 1000000
+```
+
+Supported export formats: `.obj`, `.glb`, `.fbx`, `.usda`, `.abc`
 
 ## Performance
 

@@ -24,11 +24,19 @@ pub type SdfHandle = *mut std::ffi::c_void;
 /// Create once with `alice_sdf_compile`, reuse many times.
 pub type CompiledHandle = *mut std::ffi::c_void;
 
+/// Opaque handle to a generated mesh
+///
+/// Generate once with `alice_sdf_generate_mesh`, export to multiple formats.
+pub type MeshHandle = *mut std::ffi::c_void;
+
 /// Null handle constant
 pub const SDF_HANDLE_NULL: SdfHandle = std::ptr::null_mut();
 
 /// Null compiled handle constant
 pub const COMPILED_HANDLE_NULL: CompiledHandle = std::ptr::null_mut();
+
+/// Null mesh handle constant
+pub const MESH_HANDLE_NULL: MeshHandle = std::ptr::null_mut();
 
 /// 3D vector for FFI (C-compatible layout)
 #[repr(C)]
