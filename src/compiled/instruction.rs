@@ -605,6 +605,57 @@ impl Instruction {
         inst
     }
 
+    /// Create a chamfer union instruction
+    #[inline]
+    pub fn chamfer_union(r: f32) -> Self {
+        let mut inst = Self::new(OpCode::ChamferUnion);
+        inst.params[0] = r.max(0.0);
+        inst
+    }
+
+    /// Create a chamfer intersection instruction
+    #[inline]
+    pub fn chamfer_intersection(r: f32) -> Self {
+        let mut inst = Self::new(OpCode::ChamferIntersection);
+        inst.params[0] = r.max(0.0);
+        inst
+    }
+
+    /// Create a chamfer subtraction instruction
+    #[inline]
+    pub fn chamfer_subtraction(r: f32) -> Self {
+        let mut inst = Self::new(OpCode::ChamferSubtraction);
+        inst.params[0] = r.max(0.0);
+        inst
+    }
+
+    /// Create a stairs union instruction
+    #[inline]
+    pub fn stairs_union(r: f32, n: f32) -> Self {
+        let mut inst = Self::new(OpCode::StairsUnion);
+        inst.params[0] = r.max(1e-10);
+        inst.params[1] = n.max(1.0);
+        inst
+    }
+
+    /// Create a stairs intersection instruction
+    #[inline]
+    pub fn stairs_intersection(r: f32, n: f32) -> Self {
+        let mut inst = Self::new(OpCode::StairsIntersection);
+        inst.params[0] = r.max(1e-10);
+        inst.params[1] = n.max(1.0);
+        inst
+    }
+
+    /// Create a stairs subtraction instruction
+    #[inline]
+    pub fn stairs_subtraction(r: f32, n: f32) -> Self {
+        let mut inst = Self::new(OpCode::StairsSubtraction);
+        inst.params[0] = r.max(1e-10);
+        inst.params[1] = n.max(1.0);
+        inst
+    }
+
     /// Create a translate instruction
     #[inline]
     pub fn translate(x: f32, y: f32, z: f32) -> Self {
@@ -772,6 +823,20 @@ impl Instruction {
     pub fn extrude(half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Extrude);
         inst.params[0] = half_height;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create a sweep bezier instruction
+    #[inline]
+    pub fn sweep_bezier(p0x: f32, p0z: f32, p1x: f32, p1z: f32, p2x: f32, p2z: f32) -> Self {
+        let mut inst = Self::new(OpCode::SweepBezier);
+        inst.params[0] = p0x;
+        inst.params[1] = p0z;
+        inst.params[2] = p1x;
+        inst.params[3] = p1z;
+        inst.params[4] = p2x;
+        inst.params[5] = p2z;
         inst.child_count = 1;
         inst
     }

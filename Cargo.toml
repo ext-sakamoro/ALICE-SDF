@@ -34,6 +34,7 @@ terrain = []  # Terrain system (heightmap + erosion + caves)
 gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
+physics = ["alice-physics"]  # ALICE-Physics SDF collider bridge
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
@@ -68,6 +69,9 @@ numpy = { version = "0.23", optional = true }
 
 # CRC for file integrity
 crc32fast = "1.4"
+
+# Physics bridge (optional)
+alice-physics = { path = "../ALICE-Physics", optional = true }
 
 # FFI support (optional)
 lazy_static = { version = "1.5", optional = true }

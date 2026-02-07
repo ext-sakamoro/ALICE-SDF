@@ -22,7 +22,12 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **53 primitives, 4 transforms, 15 modifiers** - rich shape vocabulary
+- **54 primitives, 12 operations, 4 transforms, 15 modifiers** - rich shape vocabulary
+- **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
+- **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
+- **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
+- **Neural SDF** - pure-Rust MLP that approximates an SDF tree ~10-100x faster for complex scenes
+- **SDF-to-SDF Collision** - grid-based contact detection with interval arithmetic AABB pruning
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
 - **Engine integrations** - Unity, Unreal Engine 5, VRChat, Godot, WebAssembly
@@ -256,7 +261,7 @@ An SDF returns the shortest distance from any point to the surface:
 
 ```
 SdfNode
-  |-- Primitive (53): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- Primitive (54): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -264,8 +269,11 @@ SdfNode
   |                    Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
   |                    Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
   |                    ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
-  |                    RegularPolygon, StarPolygon, Stairs, Helix
-  |-- Operation: Union, Intersection, Subtraction, SmoothUnion, SmoothIntersection, SmoothSubtraction
+  |                    RegularPolygon, StarPolygon, Stairs, Helix, Sweep
+  |-- Operation (12): Union, Intersection, Subtraction,
+  |                    SmoothUnion, SmoothIntersection, SmoothSubtraction,
+  |                    ChamferUnion, ChamferIntersection, ChamferSubtraction,
+  |                    StairsUnion, StairsIntersection, StairsSubtraction
   |-- Transform (4): Translate, Rotate, Scale, ScaleNonUniform
   |-- Modifier (15): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
   |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, Symmetry
@@ -532,7 +540,7 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 
 ## Architecture
 
-ALICE-SDF uses a 13-layer architecture. Each SDF feature is implemented across all layers:
+ALICE-SDF uses a layered architecture. Each SDF primitive/operation is implemented across all 16 core layers, plus specialized modules:
 
 ```
 Layer 1:  types.rs          -- SdfNode enum (AST definition)
@@ -547,8 +555,14 @@ Layer 9:  compiled/eval_bvh -- BVH-accelerated evaluator (AABB pruning)
 Layer 10: compiled/glsl     -- GLSL transpiler (Unity/OpenGL/Vulkan)
 Layer 11: compiled/wgsl     -- WGSL transpiler (WebGPU)
 Layer 12: compiled/hlsl     -- HLSL transpiler (DirectX/Unreal)
-Layer 13: compiled/jit      -- JIT native code (Cranelift)
-Layer 14: crispy.rs         -- Hardware-native math (branchless, BitMask64, BloomFilter)
+Layer 13: compiled/jit      -- JIT native code scalar (Cranelift)
+Layer 14: compiled/jit_simd -- JIT SIMD 8-wide native code (Cranelift)
+Layer 15: crispy.rs         -- Hardware-native math (branchless, BitMask64, BloomFilter)
+Layer 16: interval.rs       -- Interval arithmetic evaluation + Lipschitz bounds
+
+Specialized modules:
+  neural.rs     -- Neural SDF (MLP approximation, training, inference)
+  collision.rs  -- SDF-to-SDF contact detection with IA pruning
 ```
 
 ### Evaluation Modes
@@ -610,6 +624,86 @@ Layer 14: crispy.rs         -- Hardware-native math (branchless, BitMask64, Bloo
 | **Mesh BVH** | `mesh/bvh` | Bounding volume hierarchy for exact signed distance queries |
 | **Manifold Validation** | `mesh/manifold` | Topology validation, repair, and quality metrics |
 | **UV Unwrapping** | `mesh/uv_unwrap` | LSCM conformal UV unwrapping with seam detection and chart packing |
+
+## Interval Arithmetic
+
+Conservative evaluation of SDFs over axis-aligned bounding boxes (AABBs). Returns `[lo, hi]` bounds on the distance field — if `lo > 0`, the entire region is outside the surface and can be skipped.
+
+```rust
+use alice_sdf::interval::{eval_interval, eval_lipschitz, Interval, Vec3Interval};
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+
+// Evaluate over a spatial region
+let region = Vec3Interval::from_bounds(Vec3::new(2.0, 2.0, 2.0), Vec3::new(3.0, 3.0, 3.0));
+let bounds = eval_interval(&shape, region);
+// bounds.lo > 0 → entire region is outside, skip it
+
+// Lipschitz constant for adaptive step sizing
+let lip = eval_lipschitz(&shape); // 1.0 for distance-preserving shapes
+```
+
+Supports all 54 primitives, 12 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
+
+## Neural SDF
+
+Pure-Rust MLP (multi-layer perceptron) that learns to approximate an SDF tree. No external ML dependencies. Useful for accelerating evaluation of complex trees with many nodes.
+
+```rust
+use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
+use alice_sdf::prelude::*;
+
+let complex_scene = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5).translate(1.5, 0.0, 0.0), 0.3);
+
+// Train (samples random points, evaluates tree, fits MLP)
+let config = NeuralSdfConfig::default(); // 3 layers, 64 wide, positional encoding
+let nsdf = NeuralSdf::train(&complex_scene, Vec3::splat(-3.0), Vec3::splat(3.0), &config);
+
+// Evaluate (~10-100x faster than tree for complex scenes)
+let d = nsdf.eval(Vec3::new(0.0, 0.0, 0.0));
+
+// Save/load binary weights
+let mut buf = Vec::new();
+nsdf.save(&mut buf).unwrap();
+let loaded = NeuralSdf::load(&mut &buf[..]).unwrap();
+```
+
+Features: Xavier initialization, Adam optimizer, positional encoding, ReLU activations, compact binary serialization (`b"NSDF"` format).
+
+## SDF-to-SDF Collision
+
+Grid-based contact detection between two SDF fields with interval arithmetic AABB pruning.
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::collision::*;
+
+let a = SdfNode::sphere(1.0);
+let b = SdfNode::sphere(1.0).translate(1.5, 0.0, 0.0);
+let aabb = Aabb { min: Vec3::splat(-3.0), max: Vec3::splat(3.0) };
+
+// Fast boolean overlap test (early exit)
+if sdf_overlap(&a, &b, &aabb, 16) {
+    // Detailed contact points (sorted by depth, deepest first)
+    let contacts = sdf_collide(&a, &b, &aabb, 32);
+    for c in &contacts {
+        println!("point={}, normal={}, depth={}", c.point, c.normal, c.depth);
+    }
+}
+
+// Minimum separation distance (0.0 if overlapping)
+let dist = sdf_distance(&a, &b, &aabb, 16);
+```
+
+| Function | Description |
+|----------|-------------|
+| `sdf_overlap()` | Boolean intersection test with early exit |
+| `sdf_collide()` | Contact points with position, normal, and penetration depth |
+| `sdf_distance()` | Minimum separation distance (upper bound) |
+
+All functions use interval arithmetic to skip grid cells where either SDF is provably positive, typically pruning 80-95% of cells.
 
 ### Manifold Mesh Guarantee
 
@@ -706,12 +800,28 @@ Sphere tracing for ray-SDF intersection with specialized optimizations:
 | Function | Description |
 |----------|-------------|
 | `raymarch()` | Single ray intersection with sphere tracing |
+| `raymarch_relaxed()` | Relaxed sphere tracing with Lipschitz-adaptive over-relaxation |
 | `raymarch_batch()` | Batch ray evaluation |
 | `raymarch_batch_parallel()` | Parallel batch via Rayon |
 | `render_depth()` | Depth buffer rendering |
 | `render_normals()` | Normal map rendering |
 
 Features: dedicated Shadow/AO loops (skip normal computation), early exit for hard shadows, configurable iteration limits via `RaymarchConfig`.
+
+### Relaxed Sphere Tracing
+
+Uses `RaymarchConfig::relaxed(node)` to automatically compute the Lipschitz constant from the SDF tree and apply over-relaxation (ω ∈ [1, 2)) with safety fallback:
+
+```rust
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::sphere(1.0).twist(0.5);
+let config = RaymarchConfig::relaxed(&shape); // auto Lipschitz
+let ray = Ray::new(Vec3::new(-5.0, 0.0, 0.0), Vec3::X);
+let hit = raymarch_with_config(&shape, ray, 20.0, &config);
+```
+
+Step formula: `step = d / L × ω` with safety check — if `d < prev_step - prev_dist`, falls back to `d / L`. Typically reaches surfaces in 30-50% fewer steps compared to standard sphere tracing.
 
 ## FFI & Language Bindings
 
@@ -786,6 +896,7 @@ All export functions accept `MeshHandle` (pre-generated) or `SdfHandle` (generat
 | `unreal` | Unreal Engine integration | ffi + hlsl |
 | `all-shaders` | All shader transpilers | gpu + hlsl + glsl |
 | `texture-fit` | Texture-to-formula conversion | image, rayon, wide |
+| `physics` | ALICE-Physics integration (SdfField trait) | alice-physics |
 
 ```bash
 # Examples
@@ -793,11 +904,73 @@ cargo build --features "jit,gpu"          # JIT + GPU
 cargo build --features unity              # Unity (FFI + GLSL)
 cargo build --features unreal             # Unreal (FFI + HLSL)
 cargo build --features "all-shaders,jit"  # Everything
+cargo build --features physics             # ALICE-Physics integration
 ```
+
+## Physics Bridge (ALICE-Physics Integration)
+
+ALICE-SDF can serve as a collision shape backend for [ALICE-Physics](../ALICE-Physics), a deterministic 128-bit fixed-point physics engine. Instead of GJK/EPA on convex hulls, the physics engine samples the SDF distance field directly — O(1) per query with mathematically exact surfaces.
+
+### How It Works
+
+```
+ALICE-Physics (Fix128 world)          ALICE-SDF (f32 world)
+┌──────────────────────┐             ┌──────────────────────┐
+│ PhysicsWorld         │             │ CompiledSdfField     │
+│   bodies: Vec<Body>  │──query──▶  │   distance(x,y,z)→f32│
+│   sdf_colliders: Vec │             │   normal(x,y,z)→Vec3 │
+│   step(dt)           │◀─contact─  │   distance_and_normal │
+│                      │             │     → (f32, Vec3)     │
+│ Fix128 ←→ f32 bridge│             │ 4-eval tetrahedral    │
+└──────────────────────┘             └──────────────────────┘
+```
+
+The `physics` feature gate enables the `SdfField` trait implementation. All coordinate conversion between Fix128 and f32 happens at the trait boundary.
+
+### Enable
+
+```toml
+# Cargo.toml
+[dependencies]
+alice-sdf = { path = "../ALICE-SDF", features = ["physics"] }
+```
+
+### Usage (ALICE-SDF side)
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::physics_bridge::CompiledSdfField;
+
+// Create an SDF shape
+let shape = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+
+// Wrap as physics-ready field
+let field = CompiledSdfField::new(shape);
+
+// The field implements alice_physics::SdfField trait:
+//   field.distance(x, y, z) → f32       (1 eval)
+//   field.normal(x, y, z)   → (f32,f32,f32)  (4 evals, tetrahedral)
+//   field.distance_and_normal(x, y, z)   → (f32, (f32,f32,f32))  (4 evals combined)
+```
+
+### Performance
+
+| Operation | Evals | Notes |
+|-----------|-------|-------|
+| `distance()` | 1 | Single compiled SDF evaluation |
+| `normal()` | 4 | Tetrahedral gradient (4 offset samples) |
+| `distance_and_normal()` | 4 | Combined: distance ≈ avg of 4, normal from differences |
+
+The 4-eval tetrahedral method computes both distance (average of 4 samples, O(epsilon²) error) and normal from the same 4 evaluations, saving 1 eval compared to the naive 1+4 approach.
+
+### Integration with ALICE-Physics
+
+See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf-integration) for how to register `CompiledSdfField` as a physics collider.
 
 ## Testing
 
-574+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter). With `--features jit`, 590+ tests including JIT scalar and JIT SIMD backends.
+636+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision). With `--features jit`, 650+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test

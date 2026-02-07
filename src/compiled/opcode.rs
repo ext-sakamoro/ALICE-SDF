@@ -129,6 +129,18 @@ pub enum OpCode {
     SmoothIntersection = 20,
     /// SmoothSubtraction: params[0] = k
     SmoothSubtraction = 21,
+    /// ChamferUnion: params[0] = r (chamfer radius)
+    ChamferUnion = 22,
+    /// ChamferIntersection: params[0] = r
+    ChamferIntersection = 23,
+    /// ChamferSubtraction: params[0] = r
+    ChamferSubtraction = 24,
+    /// StairsUnion: params[0] = r, params[1] = n
+    StairsUnion = 25,
+    /// StairsIntersection: params[0] = r, params[1] = n
+    StairsIntersection = 26,
+    /// StairsSubtraction: params[0] = r, params[1] = n
+    StairsSubtraction = 27,
 
     // === Transforms (modify point, then evaluate child) ===
     /// Translate: params[0..3] = offset (x, y, z)
@@ -170,6 +182,8 @@ pub enum OpCode {
     Displacement = 60,
     /// PolarRepeat: params[0] = count (as f32)
     PolarRepeat = 61,
+    /// SweepBezier: params[0..6] = p0.x, p0.z, p1.x, p1.z, p2.x, p2.z
+    SweepBezier = 62,
 
     // === Control ===
     /// Pop transform from coordinate stack
@@ -214,7 +228,7 @@ impl OpCode {
             self,
             OpCode::Twist | OpCode::Bend | OpCode::RepeatInfinite |
             OpCode::RepeatFinite | OpCode::Elongate | OpCode::Mirror |
-            OpCode::Revolution | OpCode::Extrude | OpCode::Taper |
+            OpCode::Revolution | OpCode::Extrude | OpCode::SweepBezier | OpCode::Taper |
             OpCode::PolarRepeat
         )
     }

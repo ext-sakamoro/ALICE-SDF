@@ -310,6 +310,42 @@ impl WgslTranspiler {
         }
     }
 
+    /// Emit inline WGSL code for stairs_union(a, b, r, n) → result stored in `out_var`.
+    /// Mercury hg_sdf fOpUnionStairs formula, fully inlined.
+    fn emit_stairs_union_inline(
+        &mut self, code: &mut String,
+        d_a: &str, d_b: &str, r_s: &str, n_s: &str, out_var: &str,
+    ) {
+        let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
+        let s2_str = self.param(std::f32::consts::SQRT_2);
+        let rn = self.next_var();
+        let off = self.next_var();
+        let step = self.next_var();
+        let px = self.next_var();
+        let py = self.next_var();
+        let px2 = self.next_var();
+        let t = self.next_var();
+        let px3 = self.next_var();
+        let d2 = self.next_var();
+        let npx = self.next_var();
+        let npy = self.next_var();
+        let edge = self.next_var();
+
+        writeln!(code, "    let {} = {} / {};", rn, r_s, n_s).unwrap();
+        writeln!(code, "    let {} = ({} - {}) * 0.5 * {};", off, r_s, rn, s2_str).unwrap();
+        writeln!(code, "    let {} = {} * {} / {};", step, r_s, s2_str, n_s).unwrap();
+        writeln!(code, "    let {} = ({} - {}) * {} - {};", px, d_b, d_a, s_str, off).unwrap();
+        writeln!(code, "    let {} = ({} + {}) * {} - {};", py, d_a, d_b, s_str, off).unwrap();
+        writeln!(code, "    let {} = {} + 0.5 * {} * {};", px2, px, s2_str, rn).unwrap();
+        writeln!(code, "    let {} = {} + {} * 0.5;", t, px2, step).unwrap();
+        writeln!(code, "    let {} = {} - {} * floor({} / {}) - {} * 0.5;", px3, t, step, t, step, step).unwrap();
+        writeln!(code, "    let {} = min(min({}, {}), {});", d2, d_a, d_b, py).unwrap();
+        writeln!(code, "    let {} = ({} + {}) * {};", npx, px3, py, s_str).unwrap();
+        writeln!(code, "    let {} = ({} - {}) * {};", npy, py, px3, s_str).unwrap();
+        writeln!(code, "    let {} = 0.5 * {};", edge, rn).unwrap();
+        writeln!(code, "    let {} = min({}, max({} - {}, {} - {}));", out_var, d2, npx, edge, npy, edge).unwrap();
+    }
+
     fn generate_shader(&self, body: &str) -> String {
         let mut shader = String::new();
 
@@ -1299,6 +1335,133 @@ impl WgslTranspiler {
                 var
             }
 
+            // ★ Chamfer blends: 45-degree beveled edge
+            SdfNode::ChamferUnion { a, b, r } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+
+                if self.mode == TranspileMode::Hardcoded && *r < FOLD_EPSILON {
+                    writeln!(code, "    let {} = min({}, {});", var, d_a, d_b).unwrap();
+                    return var;
+                }
+
+                let r_str = self.param(*r);
+                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
+
+                writeln!(
+                    code,
+                    "    let {} = min(min({}, {}), ({} + {}) * {} - {});",
+                    var, d_a, d_b, d_a, d_b, s_str, r_str
+                ).unwrap();
+                var
+            }
+
+            SdfNode::ChamferIntersection { a, b, r } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+
+                if self.mode == TranspileMode::Hardcoded && *r < FOLD_EPSILON {
+                    writeln!(code, "    let {} = max({}, {});", var, d_a, d_b).unwrap();
+                    return var;
+                }
+
+                let r_str = self.param(*r);
+                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
+
+                writeln!(
+                    code,
+                    "    let {} = max(max({}, {}), ({} + {}) * {} + {});",
+                    var, d_a, d_b, d_a, d_b, s_str, r_str
+                ).unwrap();
+                var
+            }
+
+            SdfNode::ChamferSubtraction { a, b, r } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+
+                if self.mode == TranspileMode::Hardcoded && *r < FOLD_EPSILON {
+                    writeln!(code, "    let {} = max({}, -{});", var, d_a, d_b).unwrap();
+                    return var;
+                }
+
+                let r_str = self.param(*r);
+                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
+                let neg_b = self.next_var();
+
+                writeln!(code, "    let {} = -{};", neg_b, d_b).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = max(max({}, {}), ({} + {}) * {} + {});",
+                    var, d_a, neg_b, d_a, neg_b, s_str, r_str
+                ).unwrap();
+                var
+            }
+
+            // ★ Stairs blends: stepped/terraced edge (Mercury hg_sdf)
+            SdfNode::StairsUnion { a, b, r, n } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+
+                if self.mode == TranspileMode::Hardcoded && *r < FOLD_EPSILON {
+                    writeln!(code, "    let {} = min({}, {});", var, d_a, d_b).unwrap();
+                    return var;
+                }
+
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                self.emit_stairs_union_inline(code, &d_a, &d_b, &r_s, &n_s, &var);
+                var
+            }
+
+            SdfNode::StairsIntersection { a, b, r, n } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+
+                if self.mode == TranspileMode::Hardcoded && *r < FOLD_EPSILON {
+                    writeln!(code, "    let {} = max({}, {});", var, d_a, d_b).unwrap();
+                    return var;
+                }
+
+                // stairs_intersection(a,b,r,n) = -stairs_union(-a, -b, r, n)
+                let na = self.next_var();
+                let nb = self.next_var();
+                writeln!(code, "    let {} = -{};", na, d_a).unwrap();
+                writeln!(code, "    let {} = -{};", nb, d_b).unwrap();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                let su = self.next_var();
+                self.emit_stairs_union_inline(code, &na, &nb, &r_s, &n_s, &su);
+                writeln!(code, "    let {} = -{};", var, su).unwrap();
+                var
+            }
+
+            SdfNode::StairsSubtraction { a, b, r, n } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+
+                if self.mode == TranspileMode::Hardcoded && *r < FOLD_EPSILON {
+                    writeln!(code, "    let {} = max({}, -{});", var, d_a, d_b).unwrap();
+                    return var;
+                }
+
+                // stairs_subtraction(a,b,r,n) = -stairs_union(-a, b, r, n)
+                let na = self.next_var();
+                writeln!(code, "    let {} = -{};", na, d_a).unwrap();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                let su = self.next_var();
+                self.emit_stairs_union_inline(code, &na, &d_b, &r_s, &n_s, &su);
+                writeln!(code, "    let {} = -{};", var, su).unwrap();
+                var
+            }
+
             // ============ Transforms ============
 
             SdfNode::Translate { child, offset } => {
@@ -1599,6 +1762,53 @@ impl WgslTranspiler {
                     var, d, disp_var, s
                 ).unwrap();
                 var
+            }
+
+            SdfNode::SweepBezier { child, p0, p1, p2 } => {
+                let new_p = self.next_var();
+                let p0x = self.param(p0.x); let p0z = self.param(p0.y);
+                let p1x = self.param(p1.x); let p1z = self.param(p1.y);
+                let p2x = self.param(p2.x); let p2z = self.param(p2.y);
+                // Query point in XZ
+                writeln!(code, "    let {np}_qx = {p}.x;", np = new_p, p = point_var).unwrap();
+                writeln!(code, "    let {np}_qz = {p}.z;", np = new_p, p = point_var).unwrap();
+                // Coarse search: 5 samples
+                writeln!(code, "    var {np}_bt: f32 = 0.0;", np = new_p).unwrap();
+                writeln!(code, "    var {np}_bd: f32 = 1e38;", np = new_p).unwrap();
+                for i in 0..5u32 {
+                    let t_val = i as f32 * 0.25;
+                    let omt = 1.0 - t_val;
+                    let omt2 = omt * omt;
+                    let t2 = t_val * t_val;
+                    let omt_t_2 = 2.0 * omt * t_val;
+                    writeln!(code, "    {{ let bx = {p0x}*{omt2} + {p1x}*{omt_t_2} + {p2x}*{t2}; let bz = {p0z}*{omt2} + {p1z}*{omt_t_2} + {p2z}*{t2}; let dx = {np}_qx - bx; let dz = {np}_qz - bz; let d2 = dx*dx + dz*dz; if (d2 < {np}_bd) {{ {np}_bd = d2; {np}_bt = {t}; }} }}",
+                        np = new_p, p0x = p0x, p1x = p1x, p2x = p2x, p0z = p0z, p1z = p1z, p2z = p2z,
+                        omt2 = self.param(omt2), t2 = self.param(t2), omt_t_2 = self.param(omt_t_2), t = self.param(t_val)
+                    ).unwrap();
+                }
+                // B''(t) constant
+                let bddx_val = 2.0 * (p0.x - 2.0 * p1.x + p2.x);
+                let bddz_val = 2.0 * (p0.y - 2.0 * p1.y + p2.y);
+                let bddx = self.param(bddx_val);
+                let bddz = self.param(bddz_val);
+                // Newton iterations (unrolled)
+                writeln!(code, "    var {np}_t: f32 = {np}_bt;", np = new_p).unwrap();
+                for _ in 0..5 {
+                    writeln!(code, "    {{ let omt = 1.0 - {np}_t; let bx = {p0x}*omt*omt + {p1x}*2.0*omt*{np}_t + {p2x}*{np}_t*{np}_t; let bz = {p0z}*omt*omt + {p1z}*2.0*omt*{np}_t + {p2z}*{np}_t*{np}_t; let tdx = ({p1x}-{p0x})*2.0*omt + ({p2x}-{p1x})*2.0*{np}_t; let tdz = ({p1z}-{p0z})*2.0*omt + ({p2z}-{p1z})*2.0*{np}_t; let dx = bx - {np}_qx; let dz = bz - {np}_qz; let num = dx*tdx + dz*tdz; let den = tdx*tdx + tdz*tdz + dx*{bddx} + dz*{bddz}; if (abs(den) > 1e-10) {{ {np}_t = clamp({np}_t - num/den, 0.0, 1.0); }} }}",
+                        np = new_p, p0x = p0x, p1x = p1x, p2x = p2x, p0z = p0z, p1z = p1z, p2z = p2z, bddx = bddx, bddz = bddz
+                    ).unwrap();
+                }
+                // Distance
+                writeln!(code, "    let {np}_omt = 1.0 - {np}_t;", np = new_p).unwrap();
+                writeln!(code, "    let {np}_cx = {p0x}*{np}_omt*{np}_omt + {p1x}*2.0*{np}_omt*{np}_t + {p2x}*{np}_t*{np}_t;",
+                    np = new_p, p0x = p0x, p1x = p1x, p2x = p2x).unwrap();
+                writeln!(code, "    let {np}_cz = {p0z}*{np}_omt*{np}_omt + {p1z}*2.0*{np}_omt*{np}_t + {p2z}*{np}_t*{np}_t;",
+                    np = new_p, p0z = p0z, p1z = p1z, p2z = p2z).unwrap();
+                writeln!(code, "    let {np}_dx = {np}_qx - {np}_cx;", np = new_p).unwrap();
+                writeln!(code, "    let {np}_dz = {np}_qz - {np}_cz;", np = new_p).unwrap();
+                writeln!(code, "    let {} = vec3<f32>(sqrt({np}_dx*{np}_dx + {np}_dz*{np}_dz), {p}.y, 0.0);",
+                    new_p, np = new_p, p = point_var).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
             }
 
             // ★ Deep Fried: Division Exorcism for PolarRepeat

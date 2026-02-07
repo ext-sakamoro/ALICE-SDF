@@ -162,6 +162,70 @@ fn simd_sincos_approx_js(
     (cos_r, sin_r)
 }
 
+/// Emit SIMD stairs_min for one F32X4 lane (constants baked in)
+#[cfg(feature = "jit")]
+fn emit_jitsimd_stairs_min(
+    builder: &mut FunctionBuilder,
+    simd_type: types::Type,
+    a: Value, b: Value,
+    r: f32, n: f32,
+) -> Value {
+    let half_s = builder.ins().f32const(0.5);
+    let half = builder.ins().splat(simd_type, half_s);
+    let s_s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
+    let s_v = builder.ins().splat(simd_type, s_s);
+    let s2_s = builder.ins().f32const(std::f32::consts::SQRT_2);
+    let s2_v = builder.ins().splat(simd_type, s2_s);
+
+    let rn_f = r / n;
+    let rn_s = builder.ins().f32const(rn_f);
+    let rn_v = builder.ins().splat(simd_type, rn_s);
+
+    let off_f = (r - rn_f) * 0.5 * std::f32::consts::SQRT_2;
+    let off_s = builder.ins().f32const(off_f);
+    let off_v = builder.ins().splat(simd_type, off_s);
+
+    let step_f = r * std::f32::consts::SQRT_2 / n;
+    let step_s = builder.ins().f32const(step_f);
+    let step_v = builder.ins().splat(simd_type, step_s);
+
+    // px = (b - a) * s - off
+    let b_minus_a = builder.ins().fsub(b, a);
+    let px_rot = builder.ins().fmul(b_minus_a, s_v);
+    let px = builder.ins().fsub(px_rot, off_v);
+    // py = (a + b) * s - off
+    let a_plus_b = builder.ins().fadd(a, b);
+    let py_rot = builder.ins().fmul(a_plus_b, s_v);
+    let py = builder.ins().fsub(py_rot, off_v);
+
+    // pMod1
+    let half_s2 = builder.ins().fmul(half, s2_v);
+    let half_s2_rn = builder.ins().fmul(half_s2, rn_v);
+    let px2 = builder.ins().fadd(px, half_s2_rn);
+    let step_half = builder.ins().fmul(step_v, half);
+    let t = builder.ins().fadd(px2, step_half);
+
+    let t_div_step = builder.ins().fdiv(t, step_v);
+    let t_floor = builder.ins().floor(t_div_step);
+    let t_mod = builder.ins().fmul(step_v, t_floor);
+    let t_sub = builder.ins().fsub(t, t_mod);
+    let px3 = builder.ins().fsub(t_sub, step_half);
+
+    let min_ab = builder.ins().fmin(a, b);
+    let d2 = builder.ins().fmin(min_ab, py);
+
+    let px3_plus_py = builder.ins().fadd(px3, py);
+    let npx = builder.ins().fmul(px3_plus_py, s_v);
+    let py_minus_px3 = builder.ins().fsub(py, px3);
+    let npy = builder.ins().fmul(py_minus_px3, s_v);
+
+    let edge = builder.ins().fmul(half, rn_v);
+    let npx_e = builder.ins().fsub(npx, edge);
+    let npy_e = builder.ins().fsub(npy, edge);
+    let vmax = builder.ins().fmax(npx_e, npy_e);
+    builder.ins().fmin(d2, vmax)
+}
+
 #[cfg(feature = "jit")]
 impl JitSimd {
     /// Compile the SDF bytecode into a native SIMD function.
@@ -1327,6 +1391,138 @@ impl JitSimd {
                         value_stack.push((d0, d1));
                     }
 
+                    OpCode::ChamferUnion => {
+                        let r = inst.params[0];
+                        let b = value_stack.pop().unwrap();
+                        let a = value_stack.pop().unwrap();
+
+                        let r_s = builder.ins().f32const(r);
+                        let r_v = builder.ins().splat(simd_type, r_s);
+                        let s_s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
+                        let s_v = builder.ins().splat(simd_type, s_s);
+
+                        let min0 = builder.ins().fmin(a.0, b.0);
+                        let sum0 = builder.ins().fadd(a.0, b.0);
+                        let sc0 = builder.ins().fmul(sum0, s_v);
+                        let ch0 = builder.ins().fsub(sc0, r_v);
+                        let d0 = builder.ins().fmin(min0, ch0);
+
+                        let min1 = builder.ins().fmin(a.1, b.1);
+                        let sum1 = builder.ins().fadd(a.1, b.1);
+                        let sc1 = builder.ins().fmul(sum1, s_v);
+                        let ch1 = builder.ins().fsub(sc1, r_v);
+                        let d1 = builder.ins().fmin(min1, ch1);
+
+                        value_stack.push((d0, d1));
+                    }
+
+                    OpCode::ChamferIntersection => {
+                        let r = inst.params[0];
+                        let b = value_stack.pop().unwrap();
+                        let a = value_stack.pop().unwrap();
+
+                        let r_s = builder.ins().f32const(r);
+                        let r_v = builder.ins().splat(simd_type, r_s);
+                        let s_s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
+                        let s_v = builder.ins().splat(simd_type, s_s);
+
+                        let na0 = builder.ins().fneg(a.0);
+                        let nb0 = builder.ins().fneg(b.0);
+                        let min0 = builder.ins().fmin(na0, nb0);
+                        let sum0 = builder.ins().fadd(na0, nb0);
+                        let sc0 = builder.ins().fmul(sum0, s_v);
+                        let ch0 = builder.ins().fsub(sc0, r_v);
+                        let cm0 = builder.ins().fmin(min0, ch0);
+                        let d0 = builder.ins().fneg(cm0);
+
+                        let na1 = builder.ins().fneg(a.1);
+                        let nb1 = builder.ins().fneg(b.1);
+                        let min1 = builder.ins().fmin(na1, nb1);
+                        let sum1 = builder.ins().fadd(na1, nb1);
+                        let sc1 = builder.ins().fmul(sum1, s_v);
+                        let ch1 = builder.ins().fsub(sc1, r_v);
+                        let cm1 = builder.ins().fmin(min1, ch1);
+                        let d1 = builder.ins().fneg(cm1);
+
+                        value_stack.push((d0, d1));
+                    }
+
+                    OpCode::ChamferSubtraction => {
+                        let r = inst.params[0];
+                        let b = value_stack.pop().unwrap();
+                        let a = value_stack.pop().unwrap();
+
+                        let r_s = builder.ins().f32const(r);
+                        let r_v = builder.ins().splat(simd_type, r_s);
+                        let s_s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
+                        let s_v = builder.ins().splat(simd_type, s_s);
+
+                        let na0 = builder.ins().fneg(a.0);
+                        let min0 = builder.ins().fmin(na0, b.0);
+                        let sum0 = builder.ins().fadd(na0, b.0);
+                        let sc0 = builder.ins().fmul(sum0, s_v);
+                        let ch0 = builder.ins().fsub(sc0, r_v);
+                        let cm0 = builder.ins().fmin(min0, ch0);
+                        let d0 = builder.ins().fneg(cm0);
+
+                        let na1 = builder.ins().fneg(a.1);
+                        let min1 = builder.ins().fmin(na1, b.1);
+                        let sum1 = builder.ins().fadd(na1, b.1);
+                        let sc1 = builder.ins().fmul(sum1, s_v);
+                        let ch1 = builder.ins().fsub(sc1, r_v);
+                        let cm1 = builder.ins().fmin(min1, ch1);
+                        let d1 = builder.ins().fneg(cm1);
+
+                        value_stack.push((d0, d1));
+                    }
+
+                    OpCode::StairsUnion => {
+                        let r = inst.params[0];
+                        let n = inst.params[1];
+                        let b = value_stack.pop().unwrap();
+                        let a = value_stack.pop().unwrap();
+
+                        let d0 = emit_jitsimd_stairs_min(&mut builder, simd_type, a.0, b.0, r, n);
+                        let d1 = emit_jitsimd_stairs_min(&mut builder, simd_type, a.1, b.1, r, n);
+                        value_stack.push((d0, d1));
+                    }
+
+                    OpCode::StairsIntersection => {
+                        let r = inst.params[0];
+                        let n = inst.params[1];
+                        let b = value_stack.pop().unwrap();
+                        let a = value_stack.pop().unwrap();
+
+                        let na0 = builder.ins().fneg(a.0);
+                        let nb0 = builder.ins().fneg(b.0);
+                        let sm0 = emit_jitsimd_stairs_min(&mut builder, simd_type, na0, nb0, r, n);
+                        let d0 = builder.ins().fneg(sm0);
+
+                        let na1 = builder.ins().fneg(a.1);
+                        let nb1 = builder.ins().fneg(b.1);
+                        let sm1 = emit_jitsimd_stairs_min(&mut builder, simd_type, na1, nb1, r, n);
+                        let d1 = builder.ins().fneg(sm1);
+
+                        value_stack.push((d0, d1));
+                    }
+
+                    OpCode::StairsSubtraction => {
+                        let r = inst.params[0];
+                        let n = inst.params[1];
+                        let b = value_stack.pop().unwrap();
+                        let a = value_stack.pop().unwrap();
+
+                        let na0 = builder.ins().fneg(a.0);
+                        let sm0 = emit_jitsimd_stairs_min(&mut builder, simd_type, na0, b.0, r, n);
+                        let d0 = builder.ins().fneg(sm0);
+
+                        let na1 = builder.ins().fneg(a.1);
+                        let sm1 = emit_jitsimd_stairs_min(&mut builder, simd_type, na1, b.1, r, n);
+                        let d1 = builder.ins().fneg(sm1);
+
+                        value_stack.push((d0, d1));
+                    }
+
                     OpCode::Translate => {
                         coord_stack.push(CoordState {
                             x: curr_x,
@@ -1433,6 +1629,10 @@ impl JitSimd {
                         if inst.params[2] != 0.0 {
                             curr_z = (builder.ins().fabs(curr_z.0), builder.ins().fabs(curr_z.1));
                         }
+                    }
+
+                    OpCode::SweepBezier => {
+                        return Err("SweepBezier not supported in SIMD JIT".to_string());
                     }
 
                     OpCode::Revolution => {

@@ -702,6 +702,64 @@ fn compile_node(
             Ok(emit_smooth_max(builder, d_a, neg_b, k_val, inv_k_val))
         }
 
+        SdfNode::ChamferUnion { a, b, r } => {
+            let r_val = emitter.emit(builder, *r);
+            let s_val = emitter.emit(builder, std::f32::consts::FRAC_1_SQRT_2);
+            let d_a = compile_node(builder, a, x, y, z, emitter)?;
+            let d_b = compile_node(builder, b, x, y, z, emitter)?;
+            Ok(emit_chamfer_min(builder, d_a, d_b, r_val, s_val))
+        }
+
+        SdfNode::ChamferIntersection { a, b, r } => {
+            let r_val = emitter.emit(builder, *r);
+            let s_val = emitter.emit(builder, std::f32::consts::FRAC_1_SQRT_2);
+            let d_a = compile_node(builder, a, x, y, z, emitter)?;
+            let d_b = compile_node(builder, b, x, y, z, emitter)?;
+            let neg_a = builder.ins().fneg(d_a);
+            let neg_b = builder.ins().fneg(d_b);
+            let cm = emit_chamfer_min(builder, neg_a, neg_b, r_val, s_val);
+            Ok(builder.ins().fneg(cm))
+        }
+
+        SdfNode::ChamferSubtraction { a, b, r } => {
+            let r_val = emitter.emit(builder, *r);
+            let s_val = emitter.emit(builder, std::f32::consts::FRAC_1_SQRT_2);
+            let d_a = compile_node(builder, a, x, y, z, emitter)?;
+            let d_b = compile_node(builder, b, x, y, z, emitter)?;
+            let neg_a = builder.ins().fneg(d_a);
+            let cm = emit_chamfer_min(builder, neg_a, d_b, r_val, s_val);
+            Ok(builder.ins().fneg(cm))
+        }
+
+        SdfNode::StairsUnion { a, b, r, n } => {
+            let r_val = emitter.emit(builder, *r);
+            let n_val = emitter.emit(builder, *n);
+            let d_a = compile_node(builder, a, x, y, z, emitter)?;
+            let d_b = compile_node(builder, b, x, y, z, emitter)?;
+            Ok(emit_stairs_min(builder, d_a, d_b, r_val, n_val))
+        }
+
+        SdfNode::StairsIntersection { a, b, r, n } => {
+            let r_val = emitter.emit(builder, *r);
+            let n_val = emitter.emit(builder, *n);
+            let d_a = compile_node(builder, a, x, y, z, emitter)?;
+            let d_b = compile_node(builder, b, x, y, z, emitter)?;
+            let neg_a = builder.ins().fneg(d_a);
+            let neg_b = builder.ins().fneg(d_b);
+            let sm = emit_stairs_min(builder, neg_a, neg_b, r_val, n_val);
+            Ok(builder.ins().fneg(sm))
+        }
+
+        SdfNode::StairsSubtraction { a, b, r, n } => {
+            let r_val = emitter.emit(builder, *r);
+            let n_val = emitter.emit(builder, *n);
+            let d_a = compile_node(builder, a, x, y, z, emitter)?;
+            let d_b = compile_node(builder, b, x, y, z, emitter)?;
+            let neg_a = builder.ins().fneg(d_a);
+            let sm = emit_stairs_min(builder, neg_a, d_b, r_val, n_val);
+            Ok(builder.ins().fneg(sm))
+        }
+
         // ============ Transforms ============
 
         SdfNode::Translate { child, offset } => {
@@ -932,6 +990,10 @@ fn compile_node(
             Err(JitError::UnsupportedNode("Noise".to_string()))
         }
 
+        SdfNode::SweepBezier { .. } => {
+            Err(JitError::UnsupportedNode("SweepBezier".to_string()))
+        }
+
         SdfNode::WithMaterial { child, .. } => {
             compile_node(builder, child, x, y, z, emitter)
         }
@@ -1001,6 +1063,86 @@ fn emit_smooth_max(
     let neg_b = builder.ins().fneg(b);
     let result = emit_smooth_min(builder, neg_a, neg_b, k, inv_k);
     builder.ins().fneg(result)
+}
+
+/// Emit chamfer minimum: min(min(a,b), (a+b)*s - r)
+fn emit_chamfer_min(
+    builder: &mut FunctionBuilder,
+    a: Value, b: Value,
+    r: Value, s: Value,
+) -> Value {
+    let min_ab = builder.ins().fmin(a, b);
+    let sum = builder.ins().fadd(a, b);
+    let scaled = builder.ins().fmul(sum, s);
+    let chamfer = builder.ins().fsub(scaled, r);
+    builder.ins().fmin(min_ab, chamfer)
+}
+
+/// Emit stairs minimum (Mercury hg_sdf fOpUnionStairs)
+///
+/// Implements the full stepped blend formula with 45-degree rotation,
+/// modular repetition, and edge computation.
+fn emit_stairs_min(
+    builder: &mut FunctionBuilder,
+    a: Value, b: Value,
+    r: Value, n: Value,
+) -> Value {
+    let half = builder.ins().f32const(0.5);
+    let s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
+    let s2 = builder.ins().f32const(std::f32::consts::SQRT_2);
+
+    // rn = r / n
+    let rn = builder.ins().fdiv(r, n);
+    // off = (r - rn) * 0.5 * sqrt(2)
+    let r_minus_rn = builder.ins().fsub(r, rn);
+    let tmp1 = builder.ins().fmul(r_minus_rn, half);
+    let off = builder.ins().fmul(tmp1, s2);
+    // step = r * sqrt(2) / n
+    let r_s2 = builder.ins().fmul(r, s2);
+    let step = builder.ins().fdiv(r_s2, n);
+
+    // pR45: rotate (b-a, a+b) by 1/sqrt(2)
+    // px = (b - a) * s - off
+    let b_minus_a = builder.ins().fsub(b, a);
+    let px_rot = builder.ins().fmul(b_minus_a, s);
+    let px = builder.ins().fsub(px_rot, off);
+    // py = (a + b) * s - off
+    let a_plus_b = builder.ins().fadd(a, b);
+    let py_rot = builder.ins().fmul(a_plus_b, s);
+    let py = builder.ins().fsub(py_rot, off);
+
+    // pMod1: px2 = px + 0.5 * sqrt(2) * rn
+    let half_s2_rn = builder.ins().fmul(half, s2);
+    let half_s2_rn2 = builder.ins().fmul(half_s2_rn, rn);
+    let px2 = builder.ins().fadd(px, half_s2_rn2);
+    // t = px2 + step * 0.5
+    let step_half = builder.ins().fmul(step, half);
+    let t = builder.ins().fadd(px2, step_half);
+    // px3 = t - step * floor(t / step) - step * 0.5
+    let t_div_step = builder.ins().fdiv(t, step);
+    let t_floor = builder.ins().floor(t_div_step);
+    let t_mod = builder.ins().fmul(step, t_floor);
+    let t_sub = builder.ins().fsub(t, t_mod);
+    let px3 = builder.ins().fsub(t_sub, step_half);
+
+    // d2 = min(min(a, b), py)
+    let min_ab = builder.ins().fmin(a, b);
+    let d2 = builder.ins().fmin(min_ab, py);
+
+    // Rotate back: npx = (px3 + py) * s, npy = (py - px3) * s
+    let px3_plus_py = builder.ins().fadd(px3, py);
+    let npx = builder.ins().fmul(px3_plus_py, s);
+    let py_minus_px3 = builder.ins().fsub(py, px3);
+    let npy = builder.ins().fmul(py_minus_px3, s);
+
+    // edge = 0.5 * rn
+    let edge = builder.ins().fmul(half, rn);
+
+    // result = min(d2, max(npx - edge, npy - edge))
+    let npx_e = builder.ins().fsub(npx, edge);
+    let npy_e = builder.ins().fsub(npy, edge);
+    let vmax = builder.ins().fmax(npx_e, npy_e);
+    builder.ins().fmin(d2, vmax)
 }
 
 /// Emit quaternion rotation from pre-loaded Values
@@ -1185,6 +1327,24 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             extract_params_recursive(b, params);
         }
 
+        SdfNode::ChamferUnion { a, b, r }
+        | SdfNode::ChamferIntersection { a, b, r }
+        | SdfNode::ChamferSubtraction { a, b, r } => {
+            params.push(*r);
+            params.push(std::f32::consts::FRAC_1_SQRT_2);
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+        }
+
+        SdfNode::StairsUnion { a, b, r, n }
+        | SdfNode::StairsIntersection { a, b, r, n }
+        | SdfNode::StairsSubtraction { a, b, r, n } => {
+            params.push(*r);
+            params.push(*n);
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+        }
+
         // Transforms
         SdfNode::Translate { child, offset } => {
             params.push(offset.x);
@@ -1277,6 +1437,13 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
 
         SdfNode::Revolution { child, offset } => {
             params.push(*offset);
+            extract_params_recursive(child, params);
+        }
+
+        SdfNode::SweepBezier { child, p0, p1, p2 } => {
+            params.push(p0.x); params.push(p0.y);
+            params.push(p1.x); params.push(p1.y);
+            params.push(p2.x); params.push(p2.y);
             extract_params_recursive(child, params);
         }
 

@@ -135,6 +135,36 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d2 = eval(b, point);
             sdf_smooth_subtraction(d1, d2, *k)
         }
+        SdfNode::ChamferUnion { a, b, r } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_chamfer_union(d1, d2, *r)
+        }
+        SdfNode::ChamferIntersection { a, b, r } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_chamfer_intersection(d1, d2, *r)
+        }
+        SdfNode::ChamferSubtraction { a, b, r } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_chamfer_subtraction(d1, d2, *r)
+        }
+        SdfNode::StairsUnion { a, b, r, n } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_stairs_union(d1, d2, *r, *n)
+        }
+        SdfNode::StairsIntersection { a, b, r, n } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_stairs_intersection(d1, d2, *r, *n)
+        }
+        SdfNode::StairsSubtraction { a, b, r, n } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_stairs_subtraction(d1, d2, *r, *n)
+        }
 
         // === Transforms ===
         // Transform point, then recurse.
@@ -219,6 +249,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let p = modifier_polar_repeat(point, *count);
             eval(child, p)
         }
+        SdfNode::SweepBezier { child, p0, p1, p2 } => {
+            let p = modifier_sweep_bezier(point, *p0, *p1, *p2);
+            eval(child, p)
+        }
 
         // Material assignment is transparent for distance evaluation
         SdfNode::WithMaterial { child, .. } => eval(child, point),
@@ -242,19 +276,25 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
 
         // Operations: return material of the closer child
         SdfNode::Union { a, b }
-        | SdfNode::SmoothUnion { a, b, .. } => {
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da <= db { eval_material(a, point) } else { eval_material(b, point) }
         }
         SdfNode::Intersection { a, b }
-        | SdfNode::SmoothIntersection { a, b, .. } => {
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da >= db { eval_material(a, point) } else { eval_material(b, point) }
         }
         SdfNode::Subtraction { a, b }
-        | SdfNode::SmoothSubtraction { a, b, .. } => {
+        | SdfNode::SmoothSubtraction { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da >= -db { eval_material(a, point) } else { eval_material(b, point) }
@@ -283,6 +323,7 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Taper { child, factor } => eval_material(child, modifier_taper(point, *factor)),
         SdfNode::Displacement { child, .. } => eval_material(child, point),
         SdfNode::PolarRepeat { child, count } => eval_material(child, modifier_polar_repeat(point, *count)),
+        SdfNode::SweepBezier { child, p0, p1, p2 } => eval_material(child, modifier_sweep_bezier(point, *p0, *p1, *p2)),
 
         // Primitives: no material assigned
         _ => 0,

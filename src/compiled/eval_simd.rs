@@ -702,6 +702,51 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 value_stack[vsp - 1] = -smooth_min_simd_rk(-a, b, k, rk);
             }
 
+            OpCode::ChamferUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = f32x8::splat(inst.params[0]);
+                value_stack[vsp - 1] = chamfer_min_simd(a, b, r);
+            }
+
+            OpCode::ChamferIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = f32x8::splat(inst.params[0]);
+                value_stack[vsp - 1] = -chamfer_min_simd(-a, -b, r);
+            }
+
+            OpCode::ChamferSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = f32x8::splat(inst.params[0]);
+                value_stack[vsp - 1] = -chamfer_min_simd(-a, b, r);
+            }
+
+            OpCode::StairsUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = stairs_min_simd(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::StairsIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = -stairs_min_simd(-a, -b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::StairsSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = -stairs_min_simd(-a, b, inst.params[0], inst.params[1]);
+            }
+
             // === Transforms ===
             OpCode::Translate => {
                 coord_stack[csp] = CoordFrameSimd {
@@ -1001,6 +1046,81 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // Displacement doesn't modify point, only post-processes distance
             }
 
+            OpCode::SweepBezier => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::SweepBezier,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let p0x = f32x8::splat(inst.params[0]);
+                let p0z = f32x8::splat(inst.params[1]);
+                let p1x = f32x8::splat(inst.params[2]);
+                let p1z = f32x8::splat(inst.params[3]);
+                let p2x = f32x8::splat(inst.params[4]);
+                let p2z = f32x8::splat(inst.params[5]);
+                let two = f32x8::splat(2.0);
+
+                // Query point in XZ plane
+                let qx = p.x;
+                let qz = p.z;
+
+                // Coarse search: 5 samples
+                let mut best_t = f32x8::ZERO;
+                let mut best_d2 = f32x8::splat(f32::MAX);
+                for i in 0..5u32 {
+                    let t = f32x8::splat(i as f32 * 0.25);
+                    let omt = f32x8::ONE - t;
+                    let omt2 = omt * omt;
+                    let t2 = t * t;
+                    let omt_t_2 = two * omt * t;
+                    let bx = p0x * omt2 + p1x * omt_t_2 + p2x * t2;
+                    let bz = p0z * omt2 + p1z * omt_t_2 + p2z * t2;
+                    let dx = qx - bx;
+                    let dz = qz - bz;
+                    let d2 = dx * dx + dz * dz;
+                    let mask = d2.cmp_lt(best_d2);
+                    best_d2 = mask.blend(d2, best_d2);
+                    best_t = mask.blend(t, best_t);
+                }
+
+                // B''(t) is constant for quadratic
+                let bddx = two * (p0x - two * p1x + p2x);
+                let bddz = two * (p0z - two * p1z + p2z);
+
+                // Newton iterations
+                let mut t = best_t;
+                let eps = f32x8::splat(1e-10);
+                for _ in 0..5 {
+                    let omt = f32x8::ONE - t;
+                    let omt2 = omt * omt;
+                    let t2 = t * t;
+                    let omt_t_2 = two * omt * t;
+                    let bx = p0x * omt2 + p1x * omt_t_2 + p2x * t2;
+                    let bz = p0z * omt2 + p1z * omt_t_2 + p2z * t2;
+                    let tdx = (p1x - p0x) * (two * omt) + (p2x - p1x) * (two * t);
+                    let tdz = (p1z - p0z) * (two * omt) + (p2z - p1z) * (two * t);
+                    let diffx = bx - qx;
+                    let diffz = bz - qz;
+                    let num = diffx * tdx + diffz * tdz;
+                    let den = tdx * tdx + tdz * tdz + diffx * bddx + diffz * bddz;
+                    let safe_den = den.abs().cmp_lt(eps).blend(f32x8::ONE, den);
+                    t = (t - num / safe_den).max(f32x8::ZERO).min(f32x8::ONE);
+                }
+
+                // Distance to closest point on bezier
+                let omt = f32x8::ONE - t;
+                let cx = p0x * (omt * omt) + p1x * (two * omt * t) + p2x * (t * t);
+                let cz = p0z * (omt * omt) + p1z * (two * omt * t) + p2z * (t * t);
+                let dx = qx - cx;
+                let dz = qz - cz;
+                let d = (dx * dx + dz * dz).sqrt();
+
+                p = Vec3x8 { x: d, y: p.y, z: f32x8::ZERO };
+            }
+
             // ★ Deep Fried: SIMD PolarRepeat with atan2 approximation
             OpCode::PolarRepeat => {
                 coord_stack[csp] = CoordFrameSimd {
@@ -1111,6 +1231,54 @@ fn smooth_min_simd(a: f32x8, b: f32x8, k: f32x8) -> f32x8 {
 fn smooth_min_simd_rk(a: f32x8, b: f32x8, k: f32x8, rk: f32x8) -> f32x8 {
     let h = (f32x8::ONE - (a - b).abs() * rk).max(f32x8::ZERO);
     a.min(b) - h * h * k * f32x8::splat(0.25)
+}
+
+/// Chamfer minimum for SIMD: 45-degree beveled blend
+/// `min(min(a,b), (a + b) * FRAC_1_SQRT_2 - r)`
+#[inline]
+fn chamfer_min_simd(a: f32x8, b: f32x8, r: f32x8) -> f32x8 {
+    let s = f32x8::splat(std::f32::consts::FRAC_1_SQRT_2);
+    a.min(b).min((a + b) * s - r)
+}
+
+/// Stairs minimum for SIMD: stepped/terraced blend (Mercury hg_sdf)
+/// Processes 8 lanes with scalar params r and n
+#[inline]
+fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
+    let s = f32x8::splat(std::f32::consts::FRAC_1_SQRT_2);
+    let s2 = f32x8::splat(std::f32::consts::SQRT_2);
+    let half = f32x8::splat(0.5);
+    let n_v = f32x8::splat(n);
+    let r_v = f32x8::splat(r);
+    let rn_v = r_v / n_v;
+    let off_v = (r_v - rn_v) * half * s2;
+    let step_v = r_v * s2 / n_v;
+    let hs_v = step_v * half;
+    let edge_v = half * rn_v;
+
+    let d = a.min(b);
+
+    // pR45
+    let mut px = (a + b) * s;
+    let mut py = (b - a) * s;
+    // swap
+    std::mem::swap(&mut px, &mut py);
+
+    px = px - off_v;
+    py = py - off_v;
+    px = px + half * s2 * rn_v;
+
+    // pMod1: px = glsl_mod(px + hs, step) - hs
+    let t = px + hs_v;
+    px = t - step_v * (t / step_v).floor() - hs_v;
+
+    let d = d.min(py);
+
+    // Second pR45
+    let npx = (px + py) * s;
+    let npy = (py - px) * s;
+
+    d.min((npx - edge_v).max(npy - edge_v))
 }
 
 /// Fast cosine approximation for SIMD

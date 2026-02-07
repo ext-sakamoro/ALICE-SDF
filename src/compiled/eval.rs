@@ -10,7 +10,7 @@ use super::opcode::OpCode;
 use crate::primitives::*;
 use crate::operations::*;
 use crate::modifiers::*;
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
 
 use crate::modifiers::perlin_noise_3d;
 
@@ -429,6 +429,48 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 value_stack[vsp - 1] = sdf_smooth_subtraction_rk(a, b, inst.params[0], inst.params[1]);
             }
 
+            OpCode::ChamferUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_chamfer_union(a, b, inst.params[0]);
+            }
+
+            OpCode::ChamferIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_chamfer_intersection(a, b, inst.params[0]);
+            }
+
+            OpCode::ChamferSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_chamfer_subtraction(a, b, inst.params[0]);
+            }
+
+            OpCode::StairsUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_stairs_union(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::StairsIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_stairs_intersection(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::StairsSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_stairs_subtraction(a, b, inst.params[0], inst.params[1]);
+            }
+
             // === Transforms ===
             OpCode::Translate => {
                 // Push current state
@@ -694,6 +736,22 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 p = modifier_polar_repeat_rk(p, inst.params[1], inst.params[2]);
             }
 
+            OpCode::SweepBezier => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::SweepBezier,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let p0 = Vec2::new(inst.params[0], inst.params[1]);
+                let p1 = Vec2::new(inst.params[2], inst.params[3]);
+                let p2 = Vec2::new(inst.params[4], inst.params[5]);
+                p = modifier_sweep_bezier(p, p0, p1, p2);
+            }
+
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
@@ -767,6 +825,34 @@ pub fn eval_compiled_normal(sdf: &CompiledSdf, point: Vec3, epsilon: f32) -> Vec
         -v0 + v1 - v2 + v3,
     )
     .normalize()
+}
+
+/// Combined distance + normal from 4 evaluations (tetrahedral method).
+///
+/// The distance at center is approximated as the average of the 4 tetrahedral
+/// offset distances. This avoids the 5th eval needed when calling
+/// `eval_compiled` + `eval_compiled_normal` separately.
+///
+/// Accuracy: distance error ≈ O(epsilon²), negligible for collision detection.
+pub fn eval_compiled_distance_and_normal(sdf: &CompiledSdf, point: Vec3, epsilon: f32) -> (f32, Vec3) {
+    let e = epsilon;
+
+    let v0 = eval_compiled(sdf, point + Vec3::new( e, -e, -e));
+    let v1 = eval_compiled(sdf, point + Vec3::new(-e, -e,  e));
+    let v2 = eval_compiled(sdf, point + Vec3::new(-e,  e, -e));
+    let v3 = eval_compiled(sdf, point + Vec3::new( e,  e,  e));
+
+    // Distance ≈ average of the 4 offset samples
+    let dist = (v0 + v1 + v2 + v3) * 0.25;
+
+    let normal = Vec3::new(
+        v0 - v1 - v2 + v3,
+        -v0 - v1 + v2 + v3,
+        -v0 + v1 - v2 + v3,
+    )
+    .normalize();
+
+    (dist, normal)
 }
 
 /// Batch evaluate compiled SDF at multiple points

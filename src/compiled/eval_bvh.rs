@@ -13,7 +13,7 @@ use crate::primitives::*;
 use crate::operations::*;
 use crate::modifiers::*;
 use crate::types::SdfNode;
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
 
 use crate::modifiers::perlin_noise_3d;
 
@@ -311,6 +311,58 @@ impl BvhCompiler {
                 let aabb_a = self.compile_node(a);
                 let _aabb_b = self.compile_node(b);
                 self.instructions.push(Instruction::smooth_subtraction(*k));
+                self.aabbs.push(aabb_a);
+                aabb_a
+            }
+
+            SdfNode::ChamferUnion { a, b, r } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.union(&aabb_b).expand(*r);
+                self.instructions.push(Instruction::chamfer_union(*r));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::ChamferIntersection { a, b, r } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.intersection(&aabb_b);
+                self.instructions.push(Instruction::chamfer_intersection(*r));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::ChamferSubtraction { a, b, r } => {
+                let aabb_a = self.compile_node(a);
+                let _aabb_b = self.compile_node(b);
+                self.instructions.push(Instruction::chamfer_subtraction(*r));
+                self.aabbs.push(aabb_a);
+                aabb_a
+            }
+
+            SdfNode::StairsUnion { a, b, r, n } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.union(&aabb_b).expand(*r);
+                self.instructions.push(Instruction::stairs_union(*r, *n));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::StairsIntersection { a, b, r, n } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.intersection(&aabb_b);
+                self.instructions.push(Instruction::stairs_intersection(*r, *n));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::StairsSubtraction { a, b, r, n } => {
+                let aabb_a = self.compile_node(a);
+                let _aabb_b = self.compile_node(b);
+                self.instructions.push(Instruction::stairs_subtraction(*r, *n));
                 self.aabbs.push(aabb_a);
                 aabb_a
             }
@@ -660,6 +712,31 @@ impl BvhCompiler {
                 let aabb = AabbPacked::new(
                     Vec3::new(-max_r, child_aabb.min().y, -max_r),
                     Vec3::new(max_r, child_aabb.max().y, max_r),
+                );
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            SdfNode::SweepBezier { child, p0, p1, p2 } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::sweep_bezier(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // SweepBezier: curve in XZ plane, child at (perp_dist, y, 0)
+                let bmin_x = p0.x.min(p1.x).min(p2.x);
+                let bmax_x = p0.x.max(p1.x).max(p2.x);
+                let bmin_z = p0.y.min(p1.y).min(p2.y);
+                let bmax_z = p0.y.max(p1.y).max(p2.y);
+                let max_perp = child_aabb.max().x.abs().max(child_aabb.min().x.abs());
+                let aabb = AabbPacked::new(
+                    Vec3::new(bmin_x - max_perp, child_aabb.min().y, bmin_z - max_perp),
+                    Vec3::new(bmax_x + max_perp, child_aabb.max().y, bmax_z + max_perp),
                 );
                 self.aabbs[inst_idx] = aabb;
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
@@ -1047,6 +1124,48 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 value_stack[vsp - 1] = sdf_smooth_subtraction_rk(a, b, inst.params[0], inst.params[1]);
             }
 
+            OpCode::ChamferUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_chamfer_union(a, b, inst.params[0]);
+            }
+
+            OpCode::ChamferIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_chamfer_intersection(a, b, inst.params[0]);
+            }
+
+            OpCode::ChamferSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_chamfer_subtraction(a, b, inst.params[0]);
+            }
+
+            OpCode::StairsUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_stairs_union(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::StairsIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_stairs_intersection(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::StairsSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_stairs_subtraction(a, b, inst.params[0], inst.params[1]);
+            }
+
             // === Transforms ===
             OpCode::Translate => {
                 coord_stack[csp] = CoordFrame {
@@ -1288,6 +1407,21 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 // Division Exorcism: params[1]=sector, params[2]=recip_sector
                 use crate::modifiers::modifier_polar_repeat_rk;
                 p = modifier_polar_repeat_rk(p, inst.params[1], inst.params[2]);
+            }
+
+            OpCode::SweepBezier => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::SweepBezier,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let p0 = Vec2::new(inst.params[0], inst.params[1]);
+                let p1 = Vec2::new(inst.params[2], inst.params[3]);
+                let p2 = Vec2::new(inst.params[4], inst.params[5]);
+                p = modifier_sweep_bezier(p, p0, p1, p2);
             }
 
             // === Control ===

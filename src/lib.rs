@@ -58,12 +58,18 @@ pub mod io;
 pub mod compiled;
 pub mod soa;
 pub mod crispy;
+pub mod interval;
+pub mod neural;
+pub mod collision;
 
 #[cfg(feature = "python")]
 pub mod python;
 
 #[cfg(feature = "ffi")]
 pub mod ffi;
+
+#[cfg(feature = "physics")]
+pub mod physics_bridge;
 
 #[cfg(feature = "texture-fit")]
 pub mod texture;
@@ -137,7 +143,7 @@ pub mod prelude {
         export_nanite, export_nanite_with_config, export_nanite_json, NaniteExportConfig,
     };
     pub use crate::compiled::{
-        CompiledSdf, eval_compiled, eval_compiled_normal,
+        CompiledSdf, eval_compiled, eval_compiled_normal, eval_compiled_distance_and_normal,
         eval_compiled_simd, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
         eval_compiled_batch_soa, eval_compiled_batch_soa_parallel,
         Vec3x8,
@@ -185,6 +191,7 @@ pub mod prelude {
         LinearizedSvo, linearize_svo,
         SvoStreamingCache, SvoChunk,
     };
+    pub use crate::collision::{SdfContact, sdf_collide, sdf_distance, sdf_overlap};
     pub use crate::primitives::*;
     pub use crate::operations::*;
     pub use crate::transforms::*;

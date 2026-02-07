@@ -4,7 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -565,6 +565,72 @@ pub enum SdfNode {
         k: f32,
     },
 
+    /// Chamfer union: 45-degree beveled blend
+    ChamferUnion {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+        /// Chamfer radius
+        r: f32,
+    },
+
+    /// Chamfer intersection: 45-degree beveled blend
+    ChamferIntersection {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+        /// Chamfer radius
+        r: f32,
+    },
+
+    /// Chamfer subtraction: 45-degree beveled blend
+    ChamferSubtraction {
+        /// Shape to subtract from
+        a: Arc<SdfNode>,
+        /// Shape to subtract
+        b: Arc<SdfNode>,
+        /// Chamfer radius
+        r: f32,
+    },
+
+    /// Stairs union: stepped/terraced blend (Mercury hg_sdf)
+    StairsUnion {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+        /// Blend radius
+        r: f32,
+        /// Number of steps (n-1 visible steps)
+        n: f32,
+    },
+
+    /// Stairs intersection: stepped/terraced blend
+    StairsIntersection {
+        /// First operand
+        a: Arc<SdfNode>,
+        /// Second operand
+        b: Arc<SdfNode>,
+        /// Blend radius
+        r: f32,
+        /// Number of steps
+        n: f32,
+    },
+
+    /// Stairs subtraction: stepped/terraced blend
+    StairsSubtraction {
+        /// Shape to subtract from
+        a: Arc<SdfNode>,
+        /// Shape to subtract
+        b: Arc<SdfNode>,
+        /// Blend radius
+        r: f32,
+        /// Number of steps
+        n: f32,
+    },
+
     // === Transforms ===
     /// Translation
     Translate {
@@ -691,6 +757,20 @@ pub enum SdfNode {
         child: Arc<SdfNode>,
         /// Half the extrusion height
         half_height: f32,
+    },
+
+    /// Sweep along a quadratic Bezier curve in the XZ plane.
+    /// The child SDF is evaluated at (perpendicular_distance, y, 0).
+    /// Creates tubes, channels, or any cross-section shape along a curved path.
+    SweepBezier {
+        /// Child node (2D cross-section, evaluated in XY)
+        child: Arc<SdfNode>,
+        /// Bezier start point (XZ plane)
+        p0: Vec2,
+        /// Bezier control point (XZ plane)
+        p1: Vec2,
+        /// Bezier end point (XZ plane)
+        p2: Vec2,
     },
 
     /// Taper: scale XZ by inverse of (1 - y*factor)
@@ -1220,6 +1300,69 @@ impl SdfNode {
         }
     }
 
+    /// Chamfer union with another shape
+    #[inline]
+    pub fn chamfer_union(self, other: SdfNode, r: f32) -> Self {
+        SdfNode::ChamferUnion {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+        }
+    }
+
+    /// Chamfer intersection with another shape
+    #[inline]
+    pub fn chamfer_intersection(self, other: SdfNode, r: f32) -> Self {
+        SdfNode::ChamferIntersection {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+        }
+    }
+
+    /// Chamfer subtraction of another shape
+    #[inline]
+    pub fn chamfer_subtract(self, other: SdfNode, r: f32) -> Self {
+        SdfNode::ChamferSubtraction {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+        }
+    }
+
+    /// Stairs union with another shape
+    #[inline]
+    pub fn stairs_union(self, other: SdfNode, r: f32, n: f32) -> Self {
+        SdfNode::StairsUnion {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+            n,
+        }
+    }
+
+    /// Stairs intersection with another shape
+    #[inline]
+    pub fn stairs_intersection(self, other: SdfNode, r: f32, n: f32) -> Self {
+        SdfNode::StairsIntersection {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+            n,
+        }
+    }
+
+    /// Stairs subtraction of another shape
+    #[inline]
+    pub fn stairs_subtract(self, other: SdfNode, r: f32, n: f32) -> Self {
+        SdfNode::StairsSubtraction {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+            n,
+        }
+    }
+
     // === Transform methods ===
 
     /// Translate by offset
@@ -1384,6 +1527,18 @@ impl SdfNode {
         }
     }
 
+    /// Sweep along a quadratic Bezier curve in the XZ plane.
+    /// Control points are (x, z) coordinates.
+    #[inline]
+    pub fn sweep_bezier(self, p0: Vec2, p1: Vec2, p2: Vec2) -> Self {
+        SdfNode::SweepBezier {
+            child: Arc::new(self),
+            p0,
+            p1,
+            p2,
+        }
+    }
+
     /// Taper along Y-axis
     #[inline]
     pub fn taper(self, factor: f32) -> Self {
@@ -1484,7 +1639,13 @@ impl SdfNode {
             | SdfNode::Subtraction { a, b }
             | SdfNode::SmoothUnion { a, b, .. }
             | SdfNode::SmoothIntersection { a, b, .. }
-            | SdfNode::SmoothSubtraction { a, b, .. } => 1 + a.node_count() + b.node_count(),
+            | SdfNode::SmoothSubtraction { a, b, .. }
+            | SdfNode::ChamferUnion { a, b, .. }
+            | SdfNode::ChamferIntersection { a, b, .. }
+            | SdfNode::ChamferSubtraction { a, b, .. }
+            | SdfNode::StairsUnion { a, b, .. }
+            | SdfNode::StairsIntersection { a, b, .. }
+            | SdfNode::StairsSubtraction { a, b, .. } => 1 + a.node_count() + b.node_count(),
 
             // Transforms and modifiers: 1 + child
             SdfNode::Translate { child, .. }
@@ -1502,6 +1663,7 @@ impl SdfNode {
             | SdfNode::Mirror { child, .. }
             | SdfNode::Revolution { child, .. }
             | SdfNode::Extrude { child, .. }
+            | SdfNode::SweepBezier { child, .. }
             | SdfNode::Taper { child, .. }
             | SdfNode::Displacement { child, .. }
             | SdfNode::PolarRepeat { child, .. }

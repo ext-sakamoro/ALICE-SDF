@@ -132,6 +132,42 @@ pub fn export_glb(
     Ok(())
 }
 
+/// Export a mesh to GLB 2.0 binary format in memory (no file I/O).
+///
+/// Returns the complete GLB byte buffer.
+pub fn export_glb_bytes(
+    mesh: &Mesh,
+    config: &GltfConfig,
+    materials: Option<&MaterialLibrary>,
+) -> Result<Vec<u8>, IoError> {
+    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials)?;
+
+    let json_padded_len = (json_bytes.len() + 3) & !3;
+    let bin_padded_len = (bin_bytes.len() + 3) & !3;
+    let total_len = 12 + 8 + json_padded_len + 8 + bin_padded_len;
+
+    let mut buf = Vec::with_capacity(total_len);
+
+    // GLB header
+    buf.extend_from_slice(&GLB_MAGIC.to_le_bytes());
+    buf.extend_from_slice(&GLB_VERSION.to_le_bytes());
+    buf.extend_from_slice(&(total_len as u32).to_le_bytes());
+
+    // JSON chunk
+    buf.extend_from_slice(&(json_padded_len as u32).to_le_bytes());
+    buf.extend_from_slice(&GLB_CHUNK_JSON.to_le_bytes());
+    buf.extend_from_slice(&json_bytes);
+    buf.resize(buf.len() + json_padded_len - json_bytes.len(), b' ');
+
+    // BIN chunk
+    buf.extend_from_slice(&(bin_padded_len as u32).to_le_bytes());
+    buf.extend_from_slice(&GLB_CHUNK_BIN.to_le_bytes());
+    buf.extend_from_slice(&bin_bytes);
+    buf.resize(buf.len() + bin_padded_len - bin_bytes.len(), 0u8);
+
+    Ok(buf)
+}
+
 /// Export a mesh to glTF 2.0 JSON (.gltf) with embedded base64 buffer
 pub fn export_gltf_json(
     mesh: &Mesh,

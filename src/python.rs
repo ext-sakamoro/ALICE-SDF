@@ -260,16 +260,7 @@ impl PyCompiledSdf {
         py: Python<'py>,
         points: &Bound<'py, PyArray2<f32>>,
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-        let pts = unsafe { points.as_array() };
-        if pts.shape()[1] != 3 {
-            return Err(PyValueError::new_err("Points must have shape (N, 3)"));
-        }
-
-        let vec_points: Vec<Vec3> = pts
-            .rows()
-            .into_iter()
-            .map(|row| Vec3::new(row[0], row[1], row[2]))
-            .collect();
+        let vec_points = numpy_to_vec3_fast(points)?;
 
         let compiled_ref = &self.compiled;
         let distances = py.allow_threads(|| {
@@ -336,19 +327,8 @@ fn eval_compiled_batch<'py>(
     compiled: &PyCompiledSdf,
     points: &Bound<'py, PyArray2<f32>>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let points = unsafe { points.as_array() };
+    let vec_points = numpy_to_vec3_fast(points)?;
 
-    if points.shape()[1] != 3 {
-        return Err(PyValueError::new_err("Points must have shape (N, 3)"));
-    }
-
-    let vec_points: Vec<Vec3> = points
-        .rows()
-        .into_iter()
-        .map(|row| Vec3::new(row[0], row[1], row[2]))
-        .collect();
-
-    // Release GIL during heavy computation to allow Python threads to run
     let compiled_ref = &compiled.compiled;
     let distances = py.allow_threads(|| {
         crate::compiled::eval_compiled_batch_parallel(compiled_ref, &vec_points)
@@ -366,19 +346,7 @@ fn eval_compiled_batch_soa<'py>(
     compiled: &PyCompiledSdf,
     points: &Bound<'py, PyArray2<f32>>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let pts = unsafe { points.as_array() };
-
-    if pts.shape()[1] != 3 {
-        return Err(PyValueError::new_err("Points must have shape (N, 3)"));
-    }
-
-    // Convert AoS NumPy rows to SoA layout for optimal SIMD loading
-    let vec_points: Vec<Vec3> = pts
-        .rows()
-        .into_iter()
-        .map(|row| Vec3::new(row[0], row[1], row[2]))
-        .collect();
-
+    let vec_points = numpy_to_vec3_fast(points)?;
     let soa = crate::soa::SoAPoints::from_vec3_slice(&vec_points);
 
     let compiled_ref = &compiled.compiled;
@@ -386,7 +354,6 @@ fn eval_compiled_batch_soa<'py>(
         crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa)
     });
 
-    // Extract results from SoA distances
     let distances = soa_distances.to_vec();
     Ok(distances.into_pyarray(py))
 }
@@ -398,19 +365,8 @@ fn eval_batch<'py>(
     node: &PySdfNode,
     points: &Bound<'py, PyArray2<f32>>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let points = unsafe { points.as_array() };
+    let vec_points = numpy_to_vec3_fast(points)?;
 
-    if points.shape()[1] != 3 {
-        return Err(PyValueError::new_err("Points must have shape (N, 3)"));
-    }
-
-    let vec_points: Vec<Vec3> = points
-        .rows()
-        .into_iter()
-        .map(|row| Vec3::new(row[0], row[1], row[2]))
-        .collect();
-
-    // Release GIL during heavy computation to allow Python threads to run
     let node_ref = &node.inner;
     let distances = py.allow_threads(|| {
         eval_batch_parallel(node_ref, &vec_points)
@@ -532,6 +488,20 @@ fn export_glb(
     use crate::io::{export_glb as io_export_glb, GltfConfig};
     let mesh = numpy_to_mesh(vertices, indices)?;
     py.allow_threads(|| io_export_glb(&mesh, path, &GltfConfig::default(), None))
+        .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
+}
+
+/// Export mesh to GLB bytes in memory (no temp file I/O)
+#[pyfunction]
+#[pyo3(signature = (vertices, indices))]
+fn export_glb_bytes<'py>(
+    py: Python<'py>,
+    vertices: &Bound<'py, PyArray2<f32>>,
+    indices: &Bound<'py, PyArray1<u32>>,
+) -> PyResult<Vec<u8>> {
+    use crate::io::{export_glb_bytes as io_export_glb_bytes, GltfConfig};
+    let mesh = numpy_to_mesh(vertices, indices)?;
+    py.allow_threads(|| io_export_glb_bytes(&mesh, &GltfConfig::default(), None))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -1212,6 +1182,30 @@ fn heightmap_sample_batch<'py>(
     Ok(results.into_pyarray(py))
 }
 
+/// Helper: fast conversion from C-contiguous NumPy (N,3) f32 to Vec<Vec3>.
+///
+/// Uses raw pointer reinterpret when contiguous (zero-copy slice),
+/// falls back to row iteration otherwise.
+fn numpy_to_vec3_fast(points: &Bound<'_, PyArray2<f32>>) -> PyResult<Vec<Vec3>> {
+    let arr = unsafe { points.as_array() };
+    if arr.shape()[1] != 3 {
+        return Err(PyValueError::new_err("Points must have shape (N, 3)"));
+    }
+    let n = arr.shape()[0];
+    if let Some(slice) = arr.as_slice() {
+        // C-contiguous: reinterpret [f32; N*3] as [Vec3; N]
+        let vec3_slice = unsafe {
+            std::slice::from_raw_parts(slice.as_ptr() as *const Vec3, n)
+        };
+        Ok(vec3_slice.to_vec())
+    } else {
+        // Non-contiguous fallback: row iteration
+        Ok(arr.rows().into_iter()
+            .map(|row| Vec3::new(row[0], row[1], row[2]))
+            .collect())
+    }
+}
+
 /// Python module
 #[pymodule]
 pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -1226,6 +1220,7 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decimate_mesh, m)?)?;
     m.add_function(wrap_pyfunction!(export_obj, m)?)?;
     m.add_function(wrap_pyfunction!(export_glb, m)?)?;
+    m.add_function(wrap_pyfunction!(export_glb_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(export_fbx, m)?)?;
     m.add_function(wrap_pyfunction!(export_usda, m)?)?;
     m.add_function(wrap_pyfunction!(export_alembic, m)?)?;

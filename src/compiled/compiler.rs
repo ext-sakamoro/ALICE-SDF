@@ -338,6 +338,42 @@ impl Compiler {
                 self.instructions.push(Instruction::smooth_subtraction(*k));
             }
 
+            SdfNode::ChamferUnion { a, b, r } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::chamfer_union(*r));
+            }
+
+            SdfNode::ChamferIntersection { a, b, r } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::chamfer_intersection(*r));
+            }
+
+            SdfNode::ChamferSubtraction { a, b, r } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::chamfer_subtraction(*r));
+            }
+
+            SdfNode::StairsUnion { a, b, r, n } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::stairs_union(*r, *n));
+            }
+
+            SdfNode::StairsIntersection { a, b, r, n } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::stairs_intersection(*r, *n));
+            }
+
+            SdfNode::StairsSubtraction { a, b, r, n } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::stairs_subtraction(*r, *n));
+            }
+
             // === Transforms ===
             // For transforms, we: emit transform, compile child, emit pop
             SdfNode::Translate { child, offset } => {
@@ -467,6 +503,14 @@ impl Compiler {
             SdfNode::Extrude { child, half_height } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::extrude(*half_height));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::SweepBezier { child, p0, p1, p2 } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::sweep_bezier(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y));
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;

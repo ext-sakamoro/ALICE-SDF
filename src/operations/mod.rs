@@ -12,6 +12,8 @@ mod union;
 mod intersection;
 mod subtraction;
 mod smooth;
+mod chamfer;
+mod stairs;
 
 pub use union::{sdf_union, sdf_union_multi};
 pub use intersection::{sdf_intersection, sdf_intersection_multi};
@@ -21,4 +23,12 @@ pub use smooth::{
     sdf_smooth_union_rk, sdf_smooth_intersection_rk, sdf_smooth_subtraction_rk,
     smooth_min, smooth_max, smooth_min_rk, smooth_max_rk,
     smooth_min_exp, smooth_min_cubic,
+};
+pub use chamfer::{
+    sdf_chamfer_union, sdf_chamfer_intersection, sdf_chamfer_subtraction,
+    chamfer_min, chamfer_max,
+};
+pub use stairs::{
+    sdf_stairs_union, sdf_stairs_intersection, sdf_stairs_subtraction,
+    stairs_min, stairs_max,
 };

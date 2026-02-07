@@ -203,6 +203,7 @@ pub use compiler::CompiledSdf;
 pub use eval::{
     eval_compiled,
     eval_compiled_normal,
+    eval_compiled_distance_and_normal,
     eval_compiled_batch,
     eval_compiled_batch_parallel,
 };
