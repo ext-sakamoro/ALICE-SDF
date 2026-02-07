@@ -22,7 +22,12 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **53プリミティブ、4トランスフォーム、15モディファイア** - 豊富なシェイプボキャブラリ
+- **54プリミティブ、12演算、4トランスフォーム、15モディファイア** - 豊富なシェイプボキャブラリ
+- **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
+- **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
+- **緩和球トレーシング（Relaxed Sphere Tracing）** - リプシッツ適応ステップサイズによるオーバーリラクゼーション
+- **ニューラルSDF** - 複雑シーンを~10-100倍高速に近似する純Rust MLP
+- **SDF対SDFコリジョン** - 区間演算AABBプルーニング付きグリッドベース接触検出
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
 - **エンジン統合** - Unity、Unreal Engine 5、VRChat、Godot、WebAssembly
@@ -256,7 +261,7 @@ SDFは任意の点から表面までの最短距離を返します:
 
 ```
 SdfNode
-  |-- プリミティブ (53): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- プリミティブ (54): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -264,8 +269,11 @@ SdfNode
   |                    Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
   |                    Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
   |                    ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
-  |                    RegularPolygon, StarPolygon, Stairs, Helix
-  |-- 演算: Union, Intersection, Subtraction, SmoothUnion, SmoothIntersection, SmoothSubtraction
+  |                    RegularPolygon, StarPolygon, Stairs, Helix, Sweep
+  |-- 演算 (12): Union, Intersection, Subtraction,
+  |              SmoothUnion, SmoothIntersection, SmoothSubtraction,
+  |              ChamferUnion, ChamferIntersection, ChamferSubtraction,
+  |              StairsUnion, StairsIntersection, StairsSubtraction
   |-- トランスフォーム (4): Translate, Rotate, Scale, ScaleNonUniform
   |-- モディファイア (15): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
   |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, Symmetry
@@ -532,7 +540,7 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 
 ## アーキテクチャ
 
-ALICE-SDFは13層アーキテクチャを使用しています。各SDF機能は全レイヤーにまたがって実装されています:
+ALICE-SDFはレイヤードアーキテクチャを使用しています。各SDFプリミティブ/演算は16のコアレイヤー全てに実装され、さらに専門モジュールが追加されています:
 
 ```
 Layer 1:  types.rs          -- SdfNode列挙型（AST定義）
@@ -547,8 +555,14 @@ Layer 9:  compiled/eval_bvh -- BVH加速エバリュエータ（AABBプルーニ
 Layer 10: compiled/glsl     -- GLSLトランスパイラ（Unity/OpenGL/Vulkan）
 Layer 11: compiled/wgsl     -- WGSLトランスパイラ（WebGPU）
 Layer 12: compiled/hlsl     -- HLSLトランスパイラ（DirectX/Unreal）
-Layer 13: compiled/jit      -- JITネイティブコード（Cranelift）
-Layer 14: crispy.rs         -- ハードウェアネイティブ数学（ブランチレス、BitMask64、BloomFilter）
+Layer 13: compiled/jit      -- JITネイティブコードスカラー（Cranelift）
+Layer 14: compiled/jit_simd -- JIT SIMD 8-wideネイティブコード（Cranelift）
+Layer 15: crispy.rs         -- ハードウェアネイティブ数学（ブランチレス、BitMask64、BloomFilter）
+Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
+
+専門モジュール:
+  neural.rs     -- ニューラルSDF（MLP近似、訓練、推論）
+  collision.rs  -- SDF対SDF接触検出（区間演算プルーニング付き）
 ```
 
 ### 評価モード
@@ -610,6 +624,86 @@ Layer 14: crispy.rs         -- ハードウェアネイティブ数学（ブラ�
 | **メッシュBVH** | `mesh/bvh` | 精密符号付き距離クエリ用バウンディングボリューム階層 |
 | **マニフォールドバリデーション** | `mesh/manifold` | トポロジーバリデーション、修復、品質メトリクス |
 | **UV展開** | `mesh/uv_unwrap` | LCSMコンフォーマルUV展開（シーム検出、チャートパッキング） |
+
+## 区間演算（Interval Arithmetic）
+
+軸平行バウンディングボックス（AABB）上でのSDFの保守的評価。距離場の `[lo, hi]` 範囲を返します — `lo > 0` なら領域全体が表面外のためスキップ可能。
+
+```rust
+use alice_sdf::interval::{eval_interval, eval_lipschitz, Interval, Vec3Interval};
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+
+// 空間領域上で評価
+let region = Vec3Interval::from_bounds(Vec3::new(2.0, 2.0, 2.0), Vec3::new(3.0, 3.0, 3.0));
+let bounds = eval_interval(&shape, region);
+// bounds.lo > 0 → 領域全体が外部、スキップ
+
+// 適応ステップサイズ用リプシッツ定数
+let lip = eval_lipschitz(&shape); // 距離保存形状なら1.0
+```
+
+全54プリミティブ、12演算、トランスフォーム、モディファイアをサポート。緩和球トレーシングとSDF対SDFコリジョンの空間プルーニングに内部使用。
+
+## ニューラルSDF
+
+SDFツリーを近似する純Rust MLP（多層パーセプトロン）。外部ML依存なし。多ノードの複雑なツリーの評価高速化に有用。
+
+```rust
+use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
+use alice_sdf::prelude::*;
+
+let complex_scene = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5).translate(1.5, 0.0, 0.0), 0.3);
+
+// 訓練（ランダム点サンプリング → ツリー評価 → MLPフィッティング）
+let config = NeuralSdfConfig::default(); // 3層、64幅、位置エンコーディング
+let nsdf = NeuralSdf::train(&complex_scene, Vec3::splat(-3.0), Vec3::splat(3.0), &config);
+
+// 評価（複雑シーンでツリーより~10-100倍高速）
+let d = nsdf.eval(Vec3::new(0.0, 0.0, 0.0));
+
+// バイナリ重みの保存/読み込み
+let mut buf = Vec::new();
+nsdf.save(&mut buf).unwrap();
+let loaded = NeuralSdf::load(&mut &buf[..]).unwrap();
+```
+
+機能: Xavier初期化、Adamオプティマイザ、位置エンコーディング、ReLU活性化、コンパクトバイナリシリアライゼーション（`b"NSDF"`フォーマット）。
+
+## SDF対SDFコリジョン
+
+区間演算AABBプルーニング付きの2つのSDF場間のグリッドベース接触検出。
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::collision::*;
+
+let a = SdfNode::sphere(1.0);
+let b = SdfNode::sphere(1.0).translate(1.5, 0.0, 0.0);
+let aabb = Aabb { min: Vec3::splat(-3.0), max: Vec3::splat(3.0) };
+
+// 高速ブーリアンオーバーラップテスト（早期終了）
+if sdf_overlap(&a, &b, &aabb, 16) {
+    // 詳細な接触点（深度順、最深から）
+    let contacts = sdf_collide(&a, &b, &aabb, 32);
+    for c in &contacts {
+        println!("点={}, 法線={}, 深度={}", c.point, c.normal, c.depth);
+    }
+}
+
+// 最小分離距離（オーバーラップ時は0.0）
+let dist = sdf_distance(&a, &b, &aabb, 16);
+```
+
+| 関数 | 説明 |
+|----------|-------------|
+| `sdf_overlap()` | 早期終了付きブーリアン交差テスト |
+| `sdf_collide()` | 位置・法線・貫通深度付き接触点 |
+| `sdf_distance()` | 最小分離距離（上界） |
+
+全関数で区間演算によりいずれかのSDFが正であることが証明可能なセルをスキップし、通常80-95%のセルをプルーニング。
 
 ### マニフォールドメッシュ保証
 
@@ -706,12 +800,28 @@ let shader = generate_shader(&result, ShaderLanguage::Wgsl, "granite.png");
 | 関数 | 説明 |
 |----------|-------------|
 | `raymarch()` | スフィアトレーシングによる単一レイ交差 |
+| `raymarch_relaxed()` | リプシッツ適応オーバーリラクゼーション付き緩和球トレーシング |
 | `raymarch_batch()` | バッチレイ評価 |
 | `raymarch_batch_parallel()` | Rayonによる並列バッチ |
 | `render_depth()` | 深度バッファレンダリング |
 | `render_normals()` | 法線マップレンダリング |
 
 機能: 専用Shadow/AOループ（法線計算をスキップ）、ハードシャドウ用早期終了、`RaymarchConfig`による設定可能な反復回数制限。
+
+### 緩和球トレーシング（Relaxed Sphere Tracing）
+
+`RaymarchConfig::relaxed(node)` でSDFツリーからリプシッツ定数を自動計算し、安全性フォールバック付きオーバーリラクゼーション（ω ∈ [1, 2)）を適用:
+
+```rust
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::sphere(1.0).twist(0.5);
+let config = RaymarchConfig::relaxed(&shape); // リプシッツ定数を自動計算
+let ray = Ray::new(Vec3::new(-5.0, 0.0, 0.0), Vec3::X);
+let hit = raymarch_with_config(&shape, ray, 20.0, &config);
+```
+
+ステップ公式: `step = d / L × ω`（安全チェック付き — `d < prev_step - prev_dist` の場合は `d / L` にフォールバック）。標準スフィアトレーシングと比較して、通常30-50%少ないステップで表面に到達。
 
 ## FFI & 言語バインディング
 
@@ -797,7 +907,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる574以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、コリジョン、デシメーション、LOD、適応型MC、crispyユーティリティ、BloomFilter）。`--features jit`で590以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる636以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン）。`--features jit`で650以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test
@@ -979,7 +1089,7 @@ ALICE-SDFはWebAssemblyでブラウザ上で動作し、WebGPU/Canvas2Dをサポ
 npm install @alice-sdf/wasm
 ```
 
-TypeScript型定義を完備。53プリミティブ、CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
+TypeScript型定義を完備。54プリミティブ、CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
 
 ### WASMデモのビルド
 
