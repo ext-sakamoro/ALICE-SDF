@@ -603,45 +603,88 @@ fn compute_group_bounds(clusters: &[NaniteCluster]) -> ClusterBounds {
 }
 
 /// Build LOD DAG by connecting parent-child relationships
+///
+/// [Deep Fried v2] Uses spatial grid bucketing to reduce O(n²) overlap checks
+/// to O(n) amortized. Clusters are inserted into grid cells based on their
+/// bounding sphere, then only clusters in the same or adjacent cells are tested.
 fn build_lod_dag(clusters: &mut [NaniteCluster]) {
-    // Group clusters by LOD level
+    use std::collections::HashMap;
+
     let max_lod = clusters.iter().map(|c| c.lod_level).max().unwrap_or(0);
 
-    // Collect relationships first (to avoid borrow conflicts)
-    let mut relationships: Vec<(u32, u32)> = Vec::new(); // (parent_id, child_id)
+    let mut relationships: Vec<(u32, u32)> = Vec::new();
 
     for lod in 1..=max_lod {
-        // Get parents at this LOD level
         let parents: Vec<_> = clusters.iter()
             .filter(|c| c.lod_level == lod)
             .map(|c| (c.id, c.bounds))
             .collect();
 
-        // Get children at previous LOD level
         let children: Vec<_> = clusters.iter()
             .filter(|c| c.lod_level == lod - 1)
             .map(|c| (c.id, c.bounds))
             .collect();
 
-        // Find overlapping pairs
+        if parents.is_empty() || children.is_empty() {
+            continue;
+        }
+
+        // Determine grid cell size from max radius of children at this LOD
+        let max_radius = children.iter()
+            .map(|(_, b)| b.radius)
+            .fold(0.0f32, f32::max)
+            .max(0.01);
+        let cell_size = max_radius * 2.0; // Each cell = 2*max_radius
+        let inv_cell = 1.0 / cell_size; // Division Exorcism
+
+        // Build spatial grid for children
+        let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
+        for (ci, (_, bounds)) in children.iter().enumerate() {
+            let cx = (bounds.center.x * inv_cell).floor() as i32;
+            let cy = (bounds.center.y * inv_cell).floor() as i32;
+            let cz = (bounds.center.z * inv_cell).floor() as i32;
+            grid.entry((cx, cy, cz)).or_default().push(ci);
+        }
+
+        // For each parent, check only nearby grid cells
         for (parent_id, parent_bounds) in &parents {
-            for (child_id, child_bounds) in &children {
-                if bounds_overlap(parent_bounds, child_bounds) {
-                    relationships.push((*parent_id, *child_id));
+            let px = (parent_bounds.center.x * inv_cell).floor() as i32;
+            let py = (parent_bounds.center.y * inv_cell).floor() as i32;
+            let pz = (parent_bounds.center.z * inv_cell).floor() as i32;
+
+            // Search radius in cells (parent may span multiple cells)
+            let search_r = ((parent_bounds.radius * inv_cell).ceil() as i32).max(1);
+
+            for dx in -search_r..=search_r {
+                for dy in -search_r..=search_r {
+                    for dz in -search_r..=search_r {
+                        if let Some(cell) = grid.get(&(px + dx, py + dy, pz + dz)) {
+                            for &ci in cell {
+                                let (child_id, child_bounds) = &children[ci];
+                                if bounds_overlap(parent_bounds, child_bounds) {
+                                    relationships.push((*parent_id, *child_id));
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    // Apply relationships
+    // Build ID → index map for O(1) lookup instead of linear scan
+    let mut id_to_idx: HashMap<u32, usize> = HashMap::with_capacity(clusters.len());
+    for (i, c) in clusters.iter().enumerate() {
+        id_to_idx.insert(c.id, i);
+    }
+
+    // Apply relationships via direct index lookup
     for (parent_id, child_id) in relationships {
-        for c in clusters.iter_mut() {
-            if c.id == parent_id {
-                c.child_ids.push(child_id);
-            }
-            if c.id == child_id {
-                c.parent_ids.push(parent_id);
-            }
+        if let Some(&pi) = id_to_idx.get(&parent_id) {
+            clusters[pi].child_ids.push(child_id);
+        }
+        if let Some(&ci) = id_to_idx.get(&child_id) {
+            clusters[ci].parent_ids.push(parent_id);
         }
     }
 }

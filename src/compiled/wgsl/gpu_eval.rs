@@ -96,6 +96,8 @@ pub struct GpuEvaluator {
     full_pipeline: Option<wgpu::ComputePipeline>,
     /// Bind group layout for 4-binding pipelines
     dynamic_bind_group_layout: Option<wgpu::BindGroupLayout>,
+    /// [Deep Fried v2] Workgroup size used in shader (matches dispatch calculation)
+    workgroup_size: u32,
 }
 
 impl GpuEvaluator {
@@ -111,7 +113,9 @@ impl GpuEvaluator {
     /// Create a GPU evaluator from a pre-generated WGSL shader
     pub fn from_shader(shader: &WgslShader) -> Result<Self, GpuError> {
         let compute_shader = shader.to_compute_shader();
-        Self::from_wgsl(&compute_shader)
+        let mut evaluator = Self::from_wgsl(&compute_shader)?;
+        evaluator.workgroup_size = shader.workgroup_size;
+        Ok(evaluator)
     }
 
     /// Create a GPU evaluator from raw WGSL source
@@ -211,6 +215,7 @@ impl GpuEvaluator {
             param_buffer: None,
             full_pipeline: None,
             dynamic_bind_group_layout: None,
+            workgroup_size: 256,
         })
     }
 
@@ -300,8 +305,9 @@ impl GpuEvaluator {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            // Calculate workgroup count (256 threads per workgroup)
-            let workgroup_count = (point_count as u32 + 255) / 256;
+            // Calculate workgroup count (adaptive threads per workgroup)
+            let wg = self.workgroup_size;
+            let workgroup_count = (point_count as u32 + wg - 1) / wg;
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -315,14 +321,14 @@ impl GpuEvaluator {
         let buffer_slice = staging_buffer.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            sender.send(result).unwrap();
+            let _ = sender.send(result);
         });
 
         self.device.poll(wgpu::Maintain::Wait);
 
         receiver
             .recv()
-            .unwrap()
+            .map_err(|_| GpuError::BufferMapping("GPU channel closed unexpectedly".to_string()))?
             .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
 
         let data = buffer_slice.get_mapped_range();
@@ -433,14 +439,14 @@ impl GpuEvaluator {
         let buffer_slice = pool.staging_buffer.slice(..read_size);
         let (sender, receiver) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            sender.send(result).unwrap();
+            let _ = sender.send(result);
         });
 
         self.device.poll(wgpu::Maintain::Wait);
 
         receiver
             .recv()
-            .unwrap()
+            .map_err(|_| GpuError::BufferMapping("GPU channel closed unexpectedly".to_string()))?
             .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
 
         let data = buffer_slice.get_mapped_range();
@@ -499,7 +505,9 @@ impl GpuEvaluator {
     /// Create a GPU evaluator from a pre-generated WGSL shader (async)
     pub async fn from_shader_async(shader: &WgslShader) -> Result<Self, GpuError> {
         let compute_shader = shader.to_compute_shader();
-        Self::from_wgsl_async(&compute_shader).await
+        let mut evaluator = Self::from_wgsl_async(&compute_shader).await?;
+        evaluator.workgroup_size = shader.workgroup_size;
+        Ok(evaluator)
     }
 
     /// Create a GPU evaluator from raw WGSL source (async)
@@ -599,6 +607,7 @@ impl GpuEvaluator {
             param_buffer: None,
             full_pipeline: None,
             dynamic_bind_group_layout: None,
+            workgroup_size: 256,
         })
     }
 
@@ -904,6 +913,7 @@ impl GpuEvaluator {
             param_buffer: Some(param_buffer),
             full_pipeline: Some(full_pipeline),
             dynamic_bind_group_layout: Some(dynamic_bind_group_layout),
+            workgroup_size: shader.workgroup_size,
         })
     }
 
@@ -1037,14 +1047,14 @@ impl GpuEvaluator {
         let buffer_slice = staging_buffer.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            sender.send(result).unwrap();
+            let _ = sender.send(result);
         });
 
         self.device.poll(wgpu::Maintain::Wait);
 
         receiver
             .recv()
-            .unwrap()
+            .map_err(|_| GpuError::BufferMapping("GPU channel closed unexpectedly".to_string()))?
             .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
 
         let data = buffer_slice.get_mapped_range();

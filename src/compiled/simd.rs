@@ -76,14 +76,16 @@ impl Vec3x8 {
         self.x * self.x + self.y * self.y + self.z * self.z
     }
 
-    /// Normalize all 8 vectors
+    /// Normalize all 8 vectors (zero-safe: returns zero vector for zero-length inputs)
     #[inline]
     pub fn normalize(self) -> Self {
         let len = self.length();
+        // Branchless zero guard: clamp denominator to epsilon
+        let safe_len = len.max(f32x8::splat(1e-10));
         Vec3x8 {
-            x: self.x / len,
-            y: self.y / len,
-            z: self.z / len,
+            x: self.x / safe_len,
+            y: self.y / safe_len,
+            z: self.z / safe_len,
         }
     }
 

@@ -119,7 +119,7 @@ float aliceAO_LOD(float3 pos, float3 nor, int tier)
     float sca = 1.0;
     for (int i = 0; i < aoSteps; i++)
     {
-        float h = 0.01 + 0.12 * float(i) / float(aoSteps - 1);
+        float h = 0.01 + 0.12 * float(i) / float(max(aoSteps - 1, 1));
         float d = map(pos + h * nor);
         occ += (h - d) * sca;
         sca *= 0.95;

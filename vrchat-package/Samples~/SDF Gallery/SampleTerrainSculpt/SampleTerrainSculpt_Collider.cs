@@ -75,7 +75,10 @@ namespace AliceSDF.Samples
                 sculptData[i] = Vector4.zero;
 
             MeshRenderer rend = GetComponent<MeshRenderer>();
-            if (rend != null) mat = rend.material;
+            if (rend != null)
+                mat = rend.material;
+            else
+                Debug.LogWarning("[ALICE-SDF] SampleTerrainSculpt_Collider: No MeshRenderer found. Shader sync disabled.");
 
 #if UDONSHARP
             localPlayer = Networking.LocalPlayer;
@@ -89,15 +92,23 @@ namespace AliceSDF.Samples
         {
             if (localPlayer == null) return;
 
-            // --- Left hand: Add terrain ---
-            Vector3 lPos = localPlayer.GetTrackingData(
-                VRCPlayerApi.TrackingDataType.LeftHand).position;
-            TrySculpt(lPos, true);
+            // --- Hand Sculpting (VR only) ---
+            Vector3 lPos = Vector3.zero;
+            Vector3 rPos = Vector3.zero;
+            bool hasVR = localPlayer.IsUserInVR();
 
-            // --- Right hand: Dig terrain ---
-            Vector3 rPos = localPlayer.GetTrackingData(
-                VRCPlayerApi.TrackingDataType.RightHand).position;
-            TrySculpt(rPos, false);
+            if (hasVR)
+            {
+                lPos = localPlayer.GetTrackingData(
+                    VRCPlayerApi.TrackingDataType.LeftHand).position;
+                rPos = localPlayer.GetTrackingData(
+                    VRCPlayerApi.TrackingDataType.RightHand).position;
+
+                if (IsTrackingValid(lPos))
+                    TrySculpt(lPos, true);
+                if (IsTrackingValid(rPos))
+                    TrySculpt(rPos, false);
+            }
 
             // --- Player Collision ---
             Vector3 playerPos = localPlayer.GetPosition();
@@ -108,8 +119,9 @@ namespace AliceSDF.Samples
             {
                 Vector3 normal = EstimateGradient(feetPos);
                 float pen = Mathf.Min(collisionMargin - dist, 2.0f);
+                float smooth = Mathf.Min(Time.deltaTime * 10f, 1f);
                 localPlayer.TeleportTo(
-                    playerPos + normal * pen * pushStrength,
+                    playerPos + normal * pen * pushStrength * smooth,
                     localPlayer.GetRotation()
                 );
             }
@@ -117,17 +129,25 @@ namespace AliceSDF.Samples
             // --- Shader Sync ---
             SyncShader();
 
-            // --- Hand Cursor ---
-            if (mat != null)
+            // --- Hand Cursor (VR only, valid tracking only) ---
+            if (mat != null && hasVR)
             {
-                float lDist = EvaluateSdf(lPos);
-                float rDist = EvaluateSdf(rPos);
+                bool lValid = IsTrackingValid(lPos);
+                bool rValid = IsTrackingValid(rPos);
+                float lDist = lValid ? EvaluateSdf(lPos) : 1e10f;
+                float rDist = rValid ? EvaluateSdf(rPos) : 1e10f;
                 mat.SetVector("_LeftHand", new Vector4(
                     lPos.x, lPos.y, lPos.z,
-                    Mathf.Abs(lDist) < sculptRadius * 2f ? 1f : 0f));
+                    lValid && Mathf.Abs(lDist) < sculptRadius * 2f ? 1f : 0f));
                 mat.SetVector("_RightHand", new Vector4(
                     rPos.x, rPos.y, rPos.z,
-                    Mathf.Abs(rDist) < sculptRadius * 2f ? 1f : 0f));
+                    rValid && Mathf.Abs(rDist) < sculptRadius * 2f ? 1f : 0f));
+            }
+            else if (mat != null)
+            {
+                // Desktop: hide cursors
+                mat.SetVector("_LeftHand", Vector4.zero);
+                mat.SetVector("_RightHand", Vector4.zero);
             }
         }
 #endif
@@ -215,6 +235,12 @@ namespace AliceSDF.Samples
         // =================================================================
         // Inlined SDF Operations (UdonSharp compatible)
         // =================================================================
+        private bool IsTrackingValid(Vector3 pos)
+        {
+            // Tracking returns (0,0,0) when lost — reject positions near world origin
+            return pos.sqrMagnitude > 0.01f;
+        }
+
         private float OpSmoothUnion(float d1, float d2, float k)
         {
             if (k < 0.0001f) return Mathf.Min(d1, d2);

@@ -8,22 +8,22 @@
 
 /// Polynomial smooth minimum (Deep Fried)
 ///
-/// # Safety
-/// Assumes `k > 0.0`. Passing `k <= 0.0` may result in division by zero or NaN.
+/// Branchless k=0 safety: clamps k to epsilon via max(),
+/// which compiles to a single maxss instruction on x86.
 #[inline(always)]
 pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
-    // Branchless optimization: removed zero check
+    // Branchless k=0 guard: maxss on x86, fmax on ARM
+    let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
     a.min(b) - h * h * k * 0.25
 }
 
 /// Polynomial smooth maximum (Deep Fried)
 ///
-/// # Safety
-/// Assumes `k > 0.0`.
+/// Branchless k=0 safety via max().
 #[inline(always)]
 pub fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
-    // Branchless optimization: removed zero check
+    let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
     a.max(b) + h * h * k * 0.25
 }
@@ -49,7 +49,7 @@ pub fn sdf_smooth_subtraction(d1: f32, d2: f32, k: f32) -> f32 {
 /// Exponential smooth minimum (Deep Fried)
 #[inline(always)]
 pub fn smooth_min_exp(a: f32, b: f32, k: f32) -> f32 {
-    // Branchless
+    let k = k.max(1e-10);
     let res = (-k * a).exp() + (-k * b).exp();
     -res.ln() / k
 }
@@ -57,7 +57,7 @@ pub fn smooth_min_exp(a: f32, b: f32, k: f32) -> f32 {
 /// Cubic smooth minimum (Deep Fried)
 #[inline(always)]
 pub fn smooth_min_cubic(a: f32, b: f32, k: f32) -> f32 {
-    // Branchless
+    let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
     a.min(b) - h * h * h * k * (1.0 / 6.0)
 }

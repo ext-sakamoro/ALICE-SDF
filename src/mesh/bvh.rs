@@ -283,7 +283,9 @@ impl MeshBvh {
             };
         }
 
-        // Split along longest axis using median
+        // [Deep Fried v2] SAH (Surface Area Heuristic) split
+        // Evaluates candidate splits to minimize traversal cost.
+        // Falls back to median if SAH finds no improvement over leaf.
         let axis = aabb.longest_axis();
         let mut sorted_indices = indices;
         sorted_indices.sort_unstable_by(|&a, &b| {
@@ -302,8 +304,32 @@ impl MeshBvh {
             va.partial_cmp(&vb).unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        let mid = sorted_indices.len() / 2;
-        let (left_indices, right_indices) = sorted_indices.split_at(mid);
+        let n = sorted_indices.len();
+        let parent_sa = aabb.surface_area().max(1e-10); // Division Exorcism
+        let inv_parent_sa = 1.0 / parent_sa;
+
+        // Evaluate SAH at ~8 candidate split positions (or every position if small)
+        let num_buckets = n.min(16).max(2);
+        let mut best_cost = f32::INFINITY;
+        let mut best_mid = n / 2;
+
+        for bucket in 1..num_buckets {
+            let mid = bucket * n / num_buckets;
+            if mid == 0 || mid == n { continue; }
+
+            let left_aabb = compute_aabb_simd(triangles, &sorted_indices[..mid]);
+            let right_aabb = compute_aabb_simd(triangles, &sorted_indices[mid..]);
+
+            let cost = left_aabb.surface_area() * inv_parent_sa * mid as f32
+                     + right_aabb.surface_area() * inv_parent_sa * (n - mid) as f32;
+
+            if cost < best_cost {
+                best_cost = cost;
+                best_mid = mid;
+            }
+        }
+
+        let (left_indices, right_indices) = sorted_indices.split_at(best_mid);
 
         let left = Self::build_node(triangles, left_indices.to_vec(), max_per_leaf);
         let right = Self::build_node(triangles, right_indices.to_vec(), max_per_leaf);
@@ -405,19 +431,20 @@ fn compute_aabb_simd(triangles: &[Triangle], indices: &[usize]) -> Aabb {
         return Aabb::empty();
     }
 
-    let mut global_min_x = f32::INFINITY;
-    let mut global_min_y = f32::INFINITY;
-    let mut global_min_z = f32::INFINITY;
-    let mut global_max_x = f32::NEG_INFINITY;
-    let mut global_max_y = f32::NEG_INFINITY;
-    let mut global_max_z = f32::NEG_INFINITY;
+    // [Deep Fried v2] SIMD accumulators — accumulate min/max in f32x8 lanes,
+    // single horizontal reduction at the end instead of per-chunk extract.
+    let mut acc_min_x = f32x8::splat(f32::INFINITY);
+    let mut acc_min_y = f32x8::splat(f32::INFINITY);
+    let mut acc_min_z = f32x8::splat(f32::INFINITY);
+    let mut acc_max_x = f32x8::splat(f32::NEG_INFINITY);
+    let mut acc_max_y = f32x8::splat(f32::NEG_INFINITY);
+    let mut acc_max_z = f32x8::splat(f32::NEG_INFINITY);
 
     // Process 8 triangles at a time with SIMD
     let chunks = indices.chunks_exact(8);
     let remainder = chunks.remainder();
 
     for chunk in chunks {
-        // Load min_x of 8 triangles into f32x8
         let min_x = f32x8::new([
             triangles[chunk[0]].aabb.min.x, triangles[chunk[1]].aabb.min.x,
             triangles[chunk[2]].aabb.min.x, triangles[chunk[3]].aabb.min.x,
@@ -455,22 +482,37 @@ fn compute_aabb_simd(triangles: &[Triangle], indices: &[usize]) -> Aabb {
             triangles[chunk[6]].aabb.max.z, triangles[chunk[7]].aabb.max.z,
         ]);
 
-        // Horizontal reduction: extract to array, find min/max
-        let min_x_arr: [f32; 8] = min_x.into();
-        let min_y_arr: [f32; 8] = min_y.into();
-        let min_z_arr: [f32; 8] = min_z.into();
-        let max_x_arr: [f32; 8] = max_x.into();
-        let max_y_arr: [f32; 8] = max_y.into();
-        let max_z_arr: [f32; 8] = max_z.into();
+        // Accumulate in SIMD lanes — no per-chunk extract
+        acc_min_x = acc_min_x.min(min_x);
+        acc_min_y = acc_min_y.min(min_y);
+        acc_min_z = acc_min_z.min(min_z);
+        acc_max_x = acc_max_x.max(max_x);
+        acc_max_y = acc_max_y.max(max_y);
+        acc_max_z = acc_max_z.max(max_z);
+    }
 
-        for i in 0..8 {
-            global_min_x = global_min_x.min(min_x_arr[i]);
-            global_min_y = global_min_y.min(min_y_arr[i]);
-            global_min_z = global_min_z.min(min_z_arr[i]);
-            global_max_x = global_max_x.max(max_x_arr[i]);
-            global_max_y = global_max_y.max(max_y_arr[i]);
-            global_max_z = global_max_z.max(max_z_arr[i]);
-        }
+    // Single horizontal reduction across 8 lanes
+    let min_x_arr: [f32; 8] = acc_min_x.into();
+    let min_y_arr: [f32; 8] = acc_min_y.into();
+    let min_z_arr: [f32; 8] = acc_min_z.into();
+    let max_x_arr: [f32; 8] = acc_max_x.into();
+    let max_y_arr: [f32; 8] = acc_max_y.into();
+    let max_z_arr: [f32; 8] = acc_max_z.into();
+
+    let mut global_min_x = f32::INFINITY;
+    let mut global_min_y = f32::INFINITY;
+    let mut global_min_z = f32::INFINITY;
+    let mut global_max_x = f32::NEG_INFINITY;
+    let mut global_max_y = f32::NEG_INFINITY;
+    let mut global_max_z = f32::NEG_INFINITY;
+
+    for i in 0..8 {
+        global_min_x = global_min_x.min(min_x_arr[i]);
+        global_min_y = global_min_y.min(min_y_arr[i]);
+        global_min_z = global_min_z.min(min_z_arr[i]);
+        global_max_x = global_max_x.max(max_x_arr[i]);
+        global_max_y = global_max_y.max(max_y_arr[i]);
+        global_max_z = global_max_z.max(max_z_arr[i]);
     }
 
     // Scalar remainder

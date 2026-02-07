@@ -247,17 +247,22 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
 /// Normalized surface normal
 #[inline(always)]
 pub fn normal(node: &SdfNode, point: Vec3, epsilon: f32) -> Vec3 {
-    // Use direct construction which is clearer and equally fast
     let ex = Vec3::new(epsilon, 0.0, 0.0);
     let ey = Vec3::new(0.0, epsilon, 0.0);
     let ez = Vec3::new(0.0, 0.0, epsilon);
 
-    Vec3::new(
+    let grad = Vec3::new(
         eval(node, point + ex) - eval(node, point - ex),
         eval(node, point + ey) - eval(node, point - ey),
         eval(node, point + ez) - eval(node, point - ez),
-    )
-    .normalize()
+    );
+
+    // NaN guard: if gradient is zero/degenerate, return safe default
+    let len_sq = grad.length_squared();
+    if len_sq < 1e-20 {
+        return Vec3::Y; // Safe fallback: up vector
+    }
+    grad / len_sq.sqrt()
 }
 
 /// Compute the gradient of the SDF at a point (Deep Fried)

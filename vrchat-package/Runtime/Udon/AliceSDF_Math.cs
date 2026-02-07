@@ -78,23 +78,27 @@ namespace AliceSDF
         }
 
         /// <summary>
-        /// Component-wise fmod (positive modulo).
+        /// Component-wise fmod (positive modulo, zero-safe).
         /// </summary>
         public static Vector3 Fmod(Vector3 a, Vector3 b)
         {
             return new Vector3(
-                a.x - b.x * Mathf.Floor(a.x / b.x),
-                a.y - b.y * Mathf.Floor(a.y / b.y),
-                a.z - b.z * Mathf.Floor(a.z / b.z)
+                Mathf.Abs(b.x) > 0.0001f ? a.x - b.x * Mathf.Floor(a.x / b.x) : a.x,
+                Mathf.Abs(b.y) > 0.0001f ? a.y - b.y * Mathf.Floor(a.y / b.y) : a.y,
+                Mathf.Abs(b.z) > 0.0001f ? a.z - b.z * Mathf.Floor(a.z / b.z) : a.z
             );
         }
 
         /// <summary>
-        /// Component-wise divide.
+        /// Component-wise divide (zero-safe: returns 0 for zero divisor components).
         /// </summary>
         public static Vector3 Divide(Vector3 a, Vector3 b)
         {
-            return new Vector3(a.x / b.x, a.y / b.y, a.z / b.z);
+            return new Vector3(
+                Mathf.Abs(b.x) > 0.0001f ? a.x / b.x : 0f,
+                Mathf.Abs(b.y) > 0.0001f ? a.y / b.y : 0f,
+                Mathf.Abs(b.z) > 0.0001f ? a.z / b.z : 0f
+            );
         }
 
         /// <summary>

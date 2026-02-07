@@ -102,7 +102,10 @@ namespace AliceSDF.Samples
             SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
 
             MeshRenderer rend = GetComponent<MeshRenderer>();
-            if (rend != null) mat = rend.material;
+            if (rend != null)
+                mat = rend.material;
+            else
+                Debug.LogWarning("[ALICE-SDF] SampleMochi_Collider: No MeshRenderer found. Shader sync disabled.");
 
 #if UDONSHARP
             localPlayer = Networking.LocalPlayer;
@@ -116,15 +119,20 @@ namespace AliceSDF.Samples
         {
             if (localPlayer == null) return;
 
-            // --- Hand Tracking ---
-            Vector3 lPos = localPlayer.GetTrackingData(
-                VRCPlayerApi.TrackingDataType.LeftHand).position;
-            Vector3 rPos = localPlayer.GetTrackingData(
-                VRCPlayerApi.TrackingDataType.RightHand).position;
+            // --- Hand Tracking (VR only) ---
+            if (localPlayer.IsUserInVR())
+            {
+                Vector3 lPos = localPlayer.GetTrackingData(
+                    VRCPlayerApi.TrackingDataType.LeftHand).position;
+                Vector3 rPos = localPlayer.GetTrackingData(
+                    VRCPlayerApi.TrackingDataType.RightHand).position;
 
-            // --- Grab / Move / Split ---
-            ProcessHand(lPos, true);
-            ProcessHand(rPos, false);
+                // Grab / Move / Split (only with valid tracking)
+                if (IsTrackingValid(lPos))
+                    ProcessHand(lPos, true);
+                if (IsTrackingValid(rPos))
+                    ProcessHand(rPos, false);
+            }
 
             // --- Auto-Merge free mochis ---
             CheckMerge();
@@ -141,8 +149,9 @@ namespace AliceSDF.Samples
             {
                 Vector3 normal = EstimateGradient(feetPos);
                 float pen = Mathf.Min(collisionMargin - dist, 2.0f);
+                float smooth = Mathf.Min(Time.deltaTime * 10f, 1f);
                 localPlayer.TeleportTo(
-                    playerPos + normal * pen * pushStrength,
+                    playerPos + normal * pen * pushStrength * smooth,
                     localPlayer.GetRotation()
                 );
             }
@@ -427,6 +436,12 @@ namespace AliceSDF.Samples
         {
             // cbrt via pow — works for positive values
             return Mathf.Pow(x, 1f / 3f);
+        }
+
+        private bool IsTrackingValid(Vector3 pos)
+        {
+            // Tracking returns (0,0,0) when lost — reject positions near world origin
+            return pos.sqrMagnitude > 0.01f;
         }
 
         private float OpSmoothUnion(float d1, float d2, float k)

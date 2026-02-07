@@ -257,7 +257,13 @@ impl PartialOrd for CollapseCandidate {
 impl Ord for CollapseCandidate {
     fn cmp(&self, other: &Self) -> Ordering {
         // Min-heap: reverse ordering
-        other.error.partial_cmp(&self.error).unwrap_or(Ordering::Equal)
+        // [Deep Fried v2] NaN-safe: treat NaN as worst (largest) error
+        match (self.error.is_nan(), other.error.is_nan()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Less,   // NaN self = worst, goes to bottom
+            (false, true) => Ordering::Greater, // NaN other = worst
+            (false, false) => other.error.partial_cmp(&self.error).unwrap_or(Ordering::Equal),
+        }
     }
 }
 

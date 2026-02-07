@@ -66,7 +66,9 @@ namespace AliceSDF
         {
             Vector3 pa = p - a;
             Vector3 ba = b - a;
-            float h = Mathf.Clamp01(Vector3.Dot(pa, ba) / Vector3.Dot(ba, ba));
+            float baDot = Vector3.Dot(ba, ba);
+            // Guard: degenerate capsule (a == b) → sphere
+            float h = baDot > 0.0001f ? Mathf.Clamp01(Vector3.Dot(pa, ba) / baDot) : 0f;
             return (pa - ba * h).magnitude - radius;
         }
 
@@ -95,6 +97,7 @@ namespace AliceSDF
         /// <summary>Smooth union with blending factor k.</summary>
         public static float SmoothUnion(float d1, float d2, float k)
         {
+            if (k < 0.0001f) return Mathf.Min(d1, d2);
             float invK = 1f / k;
             float h = Mathf.Max(k - Mathf.Abs(d1 - d2), 0f) * invK;
             return Mathf.Min(d1, d2) - h * h * k * 0.25f;
@@ -103,6 +106,7 @@ namespace AliceSDF
         /// <summary>Smooth intersection with blending factor k.</summary>
         public static float SmoothIntersection(float d1, float d2, float k)
         {
+            if (k < 0.0001f) return Mathf.Max(d1, d2);
             float invK = 1f / k;
             float h = Mathf.Max(k - Mathf.Abs(d1 - d2), 0f) * invK;
             return Mathf.Max(d1, d2) + h * h * k * 0.25f;
@@ -111,6 +115,7 @@ namespace AliceSDF
         /// <summary>Smooth subtraction with blending factor k.</summary>
         public static float SmoothSubtraction(float d1, float d2, float k)
         {
+            if (k < 0.0001f) return Mathf.Max(d1, -d2);
             float invK = 1f / k;
             float h = Mathf.Max(k - Mathf.Abs(d1 + d2), 0f) * invK;
             return Mathf.Max(d1, -d2) + h * h * k * 0.25f;
@@ -183,7 +188,10 @@ namespace AliceSDF
             float dx = evaluate(p + Vector3.right * eps) - evaluate(p - Vector3.right * eps);
             float dy = evaluate(p + Vector3.up * eps) - evaluate(p - Vector3.up * eps);
             float dz = evaluate(p + Vector3.forward * eps) - evaluate(p - Vector3.forward * eps);
-            return new Vector3(dx, dy, dz).normalized;
+            Vector3 grad = new Vector3(dx, dy, dz);
+            // NaN guard: zero gradient → safe up vector
+            float lenSq = grad.sqrMagnitude;
+            return lenSq > 0.0001f ? grad / Mathf.Sqrt(lenSq) : Vector3.up;
         }
     }
 }

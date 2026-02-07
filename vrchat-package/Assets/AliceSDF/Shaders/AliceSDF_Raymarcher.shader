@@ -86,6 +86,7 @@ Shader "AliceSDF/Raymarcher"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 3.0
+            #pragma multi_compile_instancing
             #include "UnityCG.cginc"
 
             #include "AliceSDF_Include.cginc"
@@ -130,6 +131,7 @@ Shader "AliceSDF/Raymarcher"
             struct appdata
             {
                 float4 vertex : POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct v2f
@@ -138,6 +140,7 @@ Shader "AliceSDF/Raymarcher"
                 float3 worldPos : TEXCOORD0;
                 float3 rayDir : TEXCOORD1;
                 float3 objectCenter : TEXCOORD2;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             // =============================================================
@@ -382,6 +385,9 @@ Shader "AliceSDF/Raymarcher"
             v2f vert(appdata v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.rayDir = o.worldPos - _WorldSpaceCameraPos;
@@ -400,6 +406,7 @@ Shader "AliceSDF/Raymarcher"
 
             FragOutput frag(v2f i)
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float3 ro = _WorldSpaceCameraPos;
                 float3 rd = normalize(i.rayDir);
 

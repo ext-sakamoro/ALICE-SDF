@@ -39,6 +39,9 @@ pub struct WgslShader {
     pub param_layout: Vec<f32>,
     /// Transpilation mode used
     pub mode: TranspileMode,
+    /// [Deep Fried v2] Workgroup size for compute shaders (default 256).
+    /// Set via `with_workgroup_size()` after querying device limits.
+    pub workgroup_size: u32,
 }
 
 impl WgslShader {
@@ -53,6 +56,7 @@ impl WgslShader {
             helper_count: transpiler.helper_functions.len(),
             param_layout: transpiler.params,
             mode,
+            workgroup_size: 256, // Default; override with with_workgroup_size()
         }
     }
 
@@ -64,6 +68,18 @@ impl WgslShader {
         let mut transpiler = WgslTranspiler::new(TranspileMode::Dynamic);
         let _ = transpiler.transpile_node(node, "p");
         transpiler.params
+    }
+
+    /// [Deep Fried v2] Set workgroup size based on device limits.
+    ///
+    /// Call with `device.limits().max_compute_workgroup_size_x` to adapt
+    /// to the GPU's optimal workgroup size. Clamps to power-of-2 between 64 and 1024.
+    pub fn with_workgroup_size(mut self, max_workgroup_x: u32) -> Self {
+        // Clamp to power-of-2 <= device limit, between 64..=1024
+        let clamped = max_workgroup_x.min(1024).max(64);
+        // Round down to nearest power of 2
+        self.workgroup_size = 1 << (31 - clamped.leading_zeros());
+        self
     }
 
     /// Generate a complete compute shader for batch distance evaluation
@@ -97,7 +113,7 @@ struct OutputDistance {{
 {params_decl}
 {sdf_func}
 
-@compute @workgroup_size(256)
+@compute @workgroup_size({wg_size})
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     let idx = global_id.x;
     if (idx >= point_count) {{
@@ -113,6 +129,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             mode = self.mode,
             params_decl = params_decl,
             sdf_func = self.source,
+            wg_size = self.workgroup_size,
         )
     }
 
@@ -165,7 +182,7 @@ fn estimate_normal(p: vec3<f32>) -> vec3<f32> {{
     return normalize(k0 * d0 + k1 * d1 + k2 * d2 + k3 * d3);
 }}
 
-@compute @workgroup_size(256)
+@compute @workgroup_size({wg_size})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let idx = gid.x;
     if (idx >= point_count) {{ return; }}
@@ -185,6 +202,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
             mode = self.mode,
             params_decl = params_decl,
             sdf_func = self.source,
+            wg_size = self.workgroup_size,
         )
     }
 
@@ -1214,7 +1232,7 @@ mod tests {
         let compute = shader.to_compute_shader();
 
         assert!(compute.contains("@compute"));
-        assert!(compute.contains("@workgroup_size(256)"));
+        assert!(compute.contains("@workgroup_size("));
         assert!(compute.contains("input_points"));
         assert!(compute.contains("output_distances"));
         // Hardcoded mode: no sdf_params

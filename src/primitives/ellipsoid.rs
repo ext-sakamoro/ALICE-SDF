@@ -17,10 +17,16 @@ use glam::Vec3;
 /// * `radii` - Semi-axes lengths (x, y, z)
 #[inline(always)]
 pub fn sdf_ellipsoid(p: Vec3, radii: Vec3) -> f32 {
-    let k0 = (p / radii).length();
-    let k1 = (p / (radii * radii)).length();
+    // Guard against zero radii (prevents division by zero in p/radii)
+    let safe_radii = Vec3::new(
+        radii.x.max(1e-10),
+        radii.y.max(1e-10),
+        radii.z.max(1e-10),
+    );
+    let k0 = (p / safe_radii).length();
+    let k1 = (p / (safe_radii * safe_radii)).length();
     if k1 < 1e-10 {
-        return -radii.x.min(radii.y).min(radii.z);
+        return -safe_radii.x.min(safe_radii.y).min(safe_radii.z);
     }
     k0 * (k0 - 1.0) / k1
 }

@@ -77,24 +77,30 @@ float opSubtraction(float d1, float d2)
 }
 
 // Smooth Union (Deep Fried: division exorcism, pre-computed inv_k)
+// Guarded: k <= 0 falls back to hard union (no division by zero)
 float opSmoothUnion(float d1, float d2, float k)
 {
+    if (k < 0.0001) return min(d1, d2);
     float inv_k = 1.0 / k;
     float h = max(k - abs(d1 - d2), 0.0) * inv_k;
     return min(d1, d2) - h * h * k * 0.25;
 }
 
 // Smooth Intersection
+// Guarded: k <= 0 falls back to hard intersection
 float opSmoothIntersection(float d1, float d2, float k)
 {
+    if (k < 0.0001) return max(d1, d2);
     float inv_k = 1.0 / k;
     float h = max(k - abs(d1 - d2), 0.0) * inv_k;
     return max(d1, d2) + h * h * k * 0.25;
 }
 
 // Smooth Subtraction
+// Guarded: k <= 0 falls back to hard subtraction
 float opSmoothSubtraction(float d1, float d2, float k)
 {
+    if (k < 0.0001) return max(d1, -d2);
     float inv_k = 1.0 / k;
     float h = max(k - abs(d1 + d2), 0.0) * inv_k;
     return max(d1, -d2) + h * h * k * 0.25;

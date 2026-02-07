@@ -156,7 +156,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // h = clamp(dot(pa, ba) / dot(ba, ba), 0, 1)
                 let dot_pa_ba = pax * bax + pay * bay + paz * baz;
                 let dot_ba_ba = bax * bax + bay * bay + baz * baz;
-                let h = (dot_pa_ba / dot_ba_ba).max(f32x8::ZERO).min(f32x8::ONE);
+                // Branchless zero guard for degenerate capsule (a == b)
+                let safe_dot = dot_ba_ba.max(f32x8::splat(1e-10));
+                let h = (dot_pa_ba / safe_dot).max(f32x8::ZERO).min(f32x8::ONE);
 
                 // length(pa - ba * h) - radius
                 let dx = pax - bax * h;
@@ -207,13 +209,16 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::Ellipsoid => {
-                // Division Exorcism: pre-compute reciprocals at compile time
-                let inv_rx = f32x8::splat(1.0 / inst.params[0]);
-                let inv_ry = f32x8::splat(1.0 / inst.params[1]);
-                let inv_rz = f32x8::splat(1.0 / inst.params[2]);
-                let inv_rx2 = f32x8::splat(1.0 / (inst.params[0] * inst.params[0]));
-                let inv_ry2 = f32x8::splat(1.0 / (inst.params[1] * inst.params[1]));
-                let inv_rz2 = f32x8::splat(1.0 / (inst.params[2] * inst.params[2]));
+                // Division Exorcism: pre-compute reciprocals (zero-safe)
+                let rx = inst.params[0].max(1e-10);
+                let ry = inst.params[1].max(1e-10);
+                let rz = inst.params[2].max(1e-10);
+                let inv_rx = f32x8::splat(1.0 / rx);
+                let inv_ry = f32x8::splat(1.0 / ry);
+                let inv_rz = f32x8::splat(1.0 / rz);
+                let inv_rx2 = f32x8::splat(1.0 / (rx * rx));
+                let inv_ry2 = f32x8::splat(1.0 / (ry * ry));
+                let inv_rz2 = f32x8::splat(1.0 / (rz * rz));
 
                 // k0 = length(p * inv_radii)
                 let px_r = p.x * inv_rx;
@@ -770,9 +775,10 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
     }
 }
 
-/// Smooth minimum (polynomial) for SIMD
+/// Smooth minimum (polynomial) for SIMD — branchless k=0 guard
 #[inline]
 fn smooth_min_simd(a: f32x8, b: f32x8, k: f32x8) -> f32x8 {
+    let k = k.max(f32x8::splat(1e-10));
     let h = (f32x8::ONE - ((a - b).abs() / k)).max(f32x8::ZERO);
     a.min(b) - h * h * k * f32x8::splat(0.25)
 }

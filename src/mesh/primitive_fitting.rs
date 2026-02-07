@@ -532,8 +532,11 @@ pub fn detect_primitive(points: &[Vec3], config: &FittingConfig) -> Option<Fitti
         };
 
         let n = points.len() as f32;
-        let bic_a = n * a.mse.ln() + complexity_a as f32 * n.ln();
-        let bic_b = n * b.mse.ln() + complexity_b as f32 * n.ln();
+        // [Deep Fried v2] Guard mse <= 0 to prevent ln(-x) = NaN
+        let safe_mse_a = a.mse.max(1e-20);
+        let safe_mse_b = b.mse.max(1e-20);
+        let bic_a = n * safe_mse_a.ln() + complexity_a as f32 * n.ln();
+        let bic_b = n * safe_mse_b.ln() + complexity_b as f32 * n.ln();
 
         bic_a.partial_cmp(&bic_b).unwrap_or(std::cmp::Ordering::Equal)
     })

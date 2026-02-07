@@ -49,6 +49,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 3.0
+            #pragma multi_compile_instancing
             #include "UnityCG.cginc"
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_Include.cginc"
 
@@ -67,15 +68,21 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             float4 _LeftHand;
             float4 _RightHand;
 
-            struct appdata { float4 vertex : POSITION; };
+            struct appdata {
+                float4 vertex : POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
             struct v2f {
                 float4 pos : SV_POSITION;
                 float3 worldPos : TEXCOORD0;
                 float3 rayDir : TEXCOORD1;
+                float3 objectCenter : TEXCOORD2;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             // =================================================================
             // SDF: Ground Plane + Dynamic Sculpt Operations
+            // Deep Fried: early distance culling skips far-away sculpts
             // =================================================================
             float map(float3 p)
             {
@@ -83,23 +90,33 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 float terrain = p.y;
 
                 // Apply sculpt operations in order
+                // Deep Fried: skip sculpts whose sphere of influence is too far
+                int count = (int)_SculptCount;
                 for (int i = 0; i < 48; i++)
                 {
-                    if (i >= (int)_SculptCount) break;
+                    if (i >= count) break;
 
                     float3 sp = _SculptData[i].xyz;
                     float rw = _SculptData[i].w;
+                    float absR = abs(rw);
+
+                    // Early cull: if point is far beyond sculpt influence, skip
+                    // Smooth ops affect up to ~2*k beyond the sphere radius
+                    float maxInfluence = absR + max(_AddSmooth, _SubSmooth) * 2.0;
+                    float3 delta = p - sp;
+                    float distSq = dot(delta, delta);
+                    if (distSq > maxInfluence * maxInfluence) continue;
 
                     if (rw > 0.001)
                     {
                         // Add terrain (left hand): SmoothUnion
-                        float hill = sdSphere(p - sp, rw);
+                        float hill = sdSphere(delta, rw);
                         terrain = opSmoothUnion(terrain, hill, _AddSmooth);
                     }
                     else if (rw < -0.001)
                     {
                         // Dig terrain (right hand): SmoothSubtraction
-                        float hole = sdSphere(p - sp, -rw);
+                        float hole = sdSphere(delta, -rw);
                         terrain = opSmoothSubtraction(terrain, hole, _SubSmooth);
                     }
                 }
@@ -179,28 +196,40 @@ Shader "AliceSDF/Samples/TerrainSculpt"
 
             v2f vert(appdata v) {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.rayDir = o.worldPos - _WorldSpaceCameraPos;
+                o.objectCenter = mul(unity_ObjectToWorld, float4(0,0,0,1)).xyz;
                 return o;
             }
 
             struct FragOutput { fixed4 color : SV_Target; float depth : SV_Depth; };
 
             FragOutput frag(v2f i) {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float3 ro = _WorldSpaceCameraPos;
                 float3 rd = normalize(i.rayDir);
+                // LOD: adapt steps based on camera distance
+                float camDist = length(i.objectCenter - ro);
+                int tier = aliceLodTier(camDist);
+                int maxSteps = aliceLodSteps(tier);
+                float eps = aliceLodEpsilon(tier);
+                float ss = aliceLodStepScale(tier);
                 float t = 0.0;
                 FragOutput o;
 
                 for (int k = 0; k < 128; k++) {
+                    if (k >= maxSteps) break;
                     float3 p = ro + rd * t;
                     float d = map(p);
 
-                    if (d < 0.001) {
+                    if (d < eps) {
                         float3 n = calcN(p);
                         float3 lightDir = normalize(float3(1, 1.5, -0.5));
-                        float ao = calcAO(p, n);
+                        float ao = aliceAO_LOD(p, n, tier);
 
                         // Terrain color
                         float3 baseCol = terrainColor(p, n);
@@ -225,7 +254,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                         return o;
                     }
 
-                    t += d;
+                    t += d * ss;
                     if (t > _MaxDist) break;
                 }
 

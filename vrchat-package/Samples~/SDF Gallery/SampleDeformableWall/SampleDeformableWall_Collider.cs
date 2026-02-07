@@ -85,7 +85,10 @@ namespace AliceSDF.Samples
                 impactPoints[i] = Vector4.zero;
 
             MeshRenderer rend = GetComponent<MeshRenderer>();
-            if (rend != null) mat = rend.material;
+            if (rend != null)
+                mat = rend.material;
+            else
+                Debug.LogWarning("[ALICE-SDF] SampleDeformableWall_Collider: No MeshRenderer found. Shader sync disabled.");
 
 #if UDONSHARP
             localPlayer = Networking.LocalPlayer;
@@ -97,20 +100,23 @@ namespace AliceSDF.Samples
         {
             if (localPlayer == null) return;
 
-            // --- Hand Impact Detection ---
-            // Left hand
-            VRCPlayerApi.TrackingData lh =
-                localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.LeftHand);
-            Vector3 lPos = lh.position;
-            TryRegisterImpact(lPos, true);
+            // --- Hand Impact Detection (VR only) ---
+            if (localPlayer.IsUserInVR())
+            {
+                VRCPlayerApi.TrackingData lh =
+                    localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.LeftHand);
+                Vector3 lPos = lh.position;
+                if (IsTrackingValid(lPos))
+                    TryRegisterImpact(lPos, true);
 
-            // Right hand
-            VRCPlayerApi.TrackingData rh =
-                localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.RightHand);
-            Vector3 rPos = rh.position;
-            TryRegisterImpact(rPos, false);
+                VRCPlayerApi.TrackingData rh =
+                    localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.RightHand);
+                Vector3 rPos = rh.position;
+                if (IsTrackingValid(rPos))
+                    TryRegisterImpact(rPos, false);
+            }
 
-            // --- Player Collision ---
+            // --- Player Collision (smoothed push-back) ---
             Vector3 playerPos = localPlayer.GetPosition();
             Vector3 feetPos = playerPos + Vector3.down * 0.05f;
             float dist = EvaluateSdf(feetPos);
@@ -119,8 +125,10 @@ namespace AliceSDF.Samples
             {
                 Vector3 normal = EstimateGradient(feetPos);
                 float pen = Mathf.Min(collisionMargin - dist, maxPushDistance);
+                // Smooth: lerp push strength by deltaTime to prevent jitter
+                float smooth = Mathf.Min(Time.deltaTime * 10f, 1f);
                 localPlayer.TeleportTo(
-                    playerPos + normal * pen * pushStrength,
+                    playerPos + normal * pen * pushStrength * smooth,
                     localPlayer.GetRotation()
                 );
             }
@@ -229,6 +237,12 @@ namespace AliceSDF.Samples
         // =================================================================
         // Inlined SDF (UdonSharp compatible - no static class calls)
         // =================================================================
+        private bool IsTrackingValid(Vector3 pos)
+        {
+            // Tracking returns (0,0,0) when lost — reject positions near world origin
+            return pos.sqrMagnitude > 0.01f;
+        }
+
         private float SdfBox(Vector3 p, Vector3 half)
         {
             float qx = Mathf.Abs(p.x) - half.x;
