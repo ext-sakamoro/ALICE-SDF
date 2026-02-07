@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2026-02-07
+
+### Added
+- 16 new IQ-based SDF primitives (15 → 31 total):
+  RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
+  TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
+  Rhombus, Horseshoe, Vesica, InfiniteCone, Heart, Gyroid
+- GLSL/WGSL/HLSL shader transpiler support for all 16 new primitives
+- 57 new unit tests (401 → 458 total)
+
 ## [0.2.0] - 2026-02-03
 
 ### Added

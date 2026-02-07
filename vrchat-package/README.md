@@ -55,7 +55,7 @@ Pixel-level SDF rendering via HLSL raymarching.
 
 Evaluates the same SDF formula in UdonSharp (pure C#) to push players out of solid geometry.
 
-- `AliceSDF_Primitives.cs` — 15 primitives + CSG operations + transforms (pure C#)
+- `AliceSDF_Primitives.cs` — 31 primitives + CSG operations + transforms (pure C#)
 - `AliceSDF_Math.cs` — Vector math helpers
 - `AliceSDF_Collider.cs` — Player collision detection & push-back
 
@@ -288,7 +288,7 @@ com.alice.sdf/
 └── Prefabs~/                        # Hidden from Unity import
 ```
 
-## Supported Primitives (15)
+## Supported Primitives (31)
 
 | Primitive | HLSL | C# | Formula |
 |-----------|------|----|---------|
@@ -307,6 +307,22 @@ com.alice.sdf/
 | Pyramid   | `sdPyramid`    | `Sdf.Pyramid`    | 4-sided Y-axis pyramid |
 | Octahedron | `sdOctahedron` | `Sdf.Octahedron` | Regular octahedron |
 | Link      | `sdLink`       | `Sdf.Link`       | Chain link (torus + Y stretch) |
+| RoundedBox | `sdRoundedBox` | `Sdf.RoundedBox` | Box with rounded edges |
+| CappedCone | `sdCappedCone` | `Sdf.CappedCone` | Frustum (two radii + height) |
+| CappedTorus | `sdCappedTorus` | `Sdf.CappedTorus` | Torus arc segment |
+| InfiniteCylinder | — (inline) | `Sdf.InfiniteCylinder` | Infinite cylinder (XZ) |
+| RoundedCylinder | `sdRoundedCylinder` | `Sdf.RoundedCylinder` | Cylinder with rounded edges |
+| TriangularPrism | `sdTriangularPrism` | `Sdf.TriangularPrism` | Z-axis triangular prism |
+| CutSphere | `sdCutSphere` | `Sdf.CutSphere` | Sphere with planar cut |
+| CutHollowSphere | `sdCutHollowSphere` | `Sdf.CutHollowSphere` | Hollow sphere with cut |
+| DeathStar | `sdDeathStar` | `Sdf.DeathStar` | Sphere with spherical carving |
+| SolidAngle | `sdSolidAngle` | `Sdf.SolidAngle` | 3D cone sector |
+| Rhombus   | `sdRhombus`    | `Sdf.Rhombus`    | 3D rhombus with rounding |
+| Horseshoe | `sdHorseshoe`  | `Sdf.Horseshoe`  | Horseshoe / arc shape |
+| Vesica    | `sdVesica`     | `Sdf.Vesica`     | Vesica piscis (lens) |
+| InfiniteCone | `sdInfiniteCone` | `Sdf.InfiniteCone` | Infinite cone (Y-axis) |
+| Heart     | `sdHeart`      | `Sdf.Heart`      | 3D heart (revolution) |
+| Gyroid    | — (inline)     | `Sdf.Gyroid`     | Gyroid minimal surface |
 
 ## Supported Operations (17)
 

@@ -22,6 +22,22 @@ mod hex_prism;
 mod link;
 mod triangle;
 mod bezier;
+mod rounded_box;
+mod capped_cone;
+mod capped_torus;
+mod rounded_cylinder;
+mod triangular_prism;
+mod cut_sphere;
+mod cut_hollow_sphere;
+mod death_star;
+mod solid_angle;
+mod rhombus;
+mod horseshoe;
+mod vesica;
+mod infinite_cylinder;
+mod infinite_cone;
+mod gyroid;
+mod heart;
 
 pub use sphere::{sdf_sphere, sdf_sphere_at};
 pub use box3d::{sdf_box3d, sdf_box3d_at, sdf_rounded_box3d};
@@ -38,6 +54,22 @@ pub use hex_prism::sdf_hex_prism;
 pub use link::sdf_link;
 pub use triangle::sdf_triangle;
 pub use bezier::sdf_bezier;
+pub use rounded_box::sdf_rounded_box;
+pub use capped_cone::sdf_capped_cone;
+pub use capped_torus::sdf_capped_torus;
+pub use rounded_cylinder::sdf_rounded_cylinder;
+pub use triangular_prism::sdf_triangular_prism;
+pub use cut_sphere::sdf_cut_sphere;
+pub use cut_hollow_sphere::sdf_cut_hollow_sphere;
+pub use death_star::sdf_death_star;
+pub use solid_angle::sdf_solid_angle;
+pub use rhombus::sdf_rhombus;
+pub use horseshoe::sdf_horseshoe;
+pub use vesica::sdf_vesica;
+pub use infinite_cylinder::sdf_infinite_cylinder;
+pub use infinite_cone::sdf_infinite_cone;
+pub use gyroid::sdf_gyroid;
+pub use heart::sdf_heart;
 
 use glam::Vec3;
 
@@ -77,6 +109,38 @@ pub enum PrimitiveType {
     Triangle,
     /// Quadratic Bezier curve with radius
     Bezier,
+    /// Rounded box
+    RoundedBox,
+    /// Capped cone (frustum)
+    CappedCone,
+    /// Capped torus (arc)
+    CappedTorus,
+    /// Rounded cylinder
+    RoundedCylinder,
+    /// Triangular prism
+    TriangularPrism,
+    /// Cut sphere
+    CutSphere,
+    /// Cut hollow sphere
+    CutHollowSphere,
+    /// Death Star
+    DeathStar,
+    /// Solid angle
+    SolidAngle,
+    /// Rhombus
+    Rhombus,
+    /// Horseshoe
+    Horseshoe,
+    /// Vesica
+    Vesica,
+    /// Infinite cylinder
+    InfiniteCylinder,
+    /// Infinite cone
+    InfiniteCone,
+    /// Gyroid
+    Gyroid,
+    /// Heart
+    Heart,
 }
 
 /// Evaluate a primitive SDF using fast Enum dispatch (Safe version)
@@ -209,6 +273,86 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
                 None
             }
         }
+        PrimitiveType::RoundedBox => {
+            if params.len() >= 4 {
+                Some(sdf_rounded_box(point, Vec3::new(params[0], params[1], params[2]), params[3]))
+            } else { None }
+        }
+        PrimitiveType::CappedCone => {
+            if params.len() >= 3 {
+                Some(sdf_capped_cone(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::CappedTorus => {
+            if params.len() >= 3 {
+                Some(sdf_capped_torus(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::RoundedCylinder => {
+            if params.len() >= 3 {
+                Some(sdf_rounded_cylinder(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::TriangularPrism => {
+            if params.len() >= 2 {
+                Some(sdf_triangular_prism(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::CutSphere => {
+            if params.len() >= 2 {
+                Some(sdf_cut_sphere(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::CutHollowSphere => {
+            if params.len() >= 3 {
+                Some(sdf_cut_hollow_sphere(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::DeathStar => {
+            if params.len() >= 3 {
+                Some(sdf_death_star(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::SolidAngle => {
+            if params.len() >= 2 {
+                Some(sdf_solid_angle(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::Rhombus => {
+            if params.len() >= 4 {
+                Some(sdf_rhombus(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::Horseshoe => {
+            if params.len() >= 5 {
+                Some(sdf_horseshoe(point, params[0], params[1], params[2], params[3], params[4]))
+            } else { None }
+        }
+        PrimitiveType::Vesica => {
+            if params.len() >= 2 {
+                Some(sdf_vesica(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::InfiniteCylinder => {
+            if params.len() >= 1 {
+                Some(sdf_infinite_cylinder(point, params[0]))
+            } else { None }
+        }
+        PrimitiveType::InfiniteCone => {
+            if params.len() >= 1 {
+                Some(sdf_infinite_cone(point, params[0]))
+            } else { None }
+        }
+        PrimitiveType::Gyroid => {
+            if params.len() >= 2 {
+                Some(sdf_gyroid(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::Heart => {
+            if params.len() >= 1 {
+                Some(sdf_heart(point, params[0]))
+            } else { None }
+        }
     }
 }
 
@@ -292,6 +436,52 @@ pub unsafe fn eval_primitive_unchecked(prim: PrimitiveType, point: Vec3, params:
             Vec3::new(*params.get_unchecked(6), *params.get_unchecked(7), *params.get_unchecked(8)),
             *params.get_unchecked(9),
         ),
+        PrimitiveType::RoundedBox => sdf_rounded_box(
+            point,
+            Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2)),
+            *params.get_unchecked(3),
+        ),
+        PrimitiveType::CappedCone => sdf_capped_cone(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::CappedTorus => sdf_capped_torus(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::RoundedCylinder => sdf_rounded_cylinder(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::TriangularPrism => sdf_triangular_prism(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::CutSphere => sdf_cut_sphere(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::CutHollowSphere => sdf_cut_hollow_sphere(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::DeathStar => sdf_death_star(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::SolidAngle => sdf_solid_angle(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::Rhombus => sdf_rhombus(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Horseshoe => sdf_horseshoe(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3), *params.get_unchecked(4),
+        ),
+        PrimitiveType::Vesica => sdf_vesica(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::InfiniteCylinder => sdf_infinite_cylinder(point, *params.get_unchecked(0)),
+        PrimitiveType::InfiniteCone => sdf_infinite_cone(point, *params.get_unchecked(0)),
+        PrimitiveType::Gyroid => sdf_gyroid(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::Heart => sdf_heart(point, *params.get_unchecked(0)),
     }
 }
 

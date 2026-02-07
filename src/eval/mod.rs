@@ -64,6 +64,22 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::Link { half_length, r1, r2 } => sdf_link(point, *half_length, *r1, *r2),
         SdfNode::Triangle { point_a, point_b, point_c } => sdf_triangle(point, *point_a, *point_b, *point_c),
         SdfNode::Bezier { point_a, point_b, point_c, radius } => sdf_bezier(point, *point_a, *point_b, *point_c, *radius),
+        SdfNode::RoundedBox { half_extents, round_radius } => sdf_rounded_box(point, *half_extents, *round_radius),
+        SdfNode::CappedCone { half_height, r1, r2 } => sdf_capped_cone(point, *half_height, *r1, *r2),
+        SdfNode::CappedTorus { major_radius, minor_radius, cap_angle } => sdf_capped_torus(point, *major_radius, *minor_radius, *cap_angle),
+        SdfNode::RoundedCylinder { radius, round_radius, half_height } => sdf_rounded_cylinder(point, *radius, *round_radius, *half_height),
+        SdfNode::TriangularPrism { width, half_depth } => sdf_triangular_prism(point, *width, *half_depth),
+        SdfNode::CutSphere { radius, cut_height } => sdf_cut_sphere(point, *radius, *cut_height),
+        SdfNode::CutHollowSphere { radius, cut_height, thickness } => sdf_cut_hollow_sphere(point, *radius, *cut_height, *thickness),
+        SdfNode::DeathStar { ra, rb, d } => sdf_death_star(point, *ra, *rb, *d),
+        SdfNode::SolidAngle { angle, radius } => sdf_solid_angle(point, *angle, *radius),
+        SdfNode::Rhombus { la, lb, half_height, round_radius } => sdf_rhombus(point, *la, *lb, *half_height, *round_radius),
+        SdfNode::Horseshoe { angle, radius, half_length, width, thickness } => sdf_horseshoe(point, *angle, *radius, *half_length, *width, *thickness),
+        SdfNode::Vesica { radius, half_dist } => sdf_vesica(point, *radius, *half_dist),
+        SdfNode::InfiniteCylinder { radius } => sdf_infinite_cylinder(point, *radius),
+        SdfNode::InfiniteCone { angle } => sdf_infinite_cone(point, *angle),
+        SdfNode::Gyroid { scale, thickness } => sdf_gyroid(point, *scale, *thickness),
+        SdfNode::Heart { size } => sdf_heart(point, *size),
 
         // === Operations ===
         // Recurse first, then combine. Compiler can reorder these instruction streams.

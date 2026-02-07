@@ -20,7 +20,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **15 primitives, 4 transforms, 15 modifiers** - rich shape vocabulary
+- **31 primitives, 4 transforms, 15 modifiers** - rich shape vocabulary
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
 - **Engine integrations** - Unity, Unreal Engine 5, VRChat, Godot, WebAssembly
@@ -38,8 +38,11 @@ An SDF returns the shortest distance from any point to the surface:
 
 ```
 SdfNode
-  |-- Primitive (15): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
-  |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier
+  |-- Primitive (31): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
+  |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
+  |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
+  |                    Rhombus, Horseshoe, Vesica, InfiniteCone, Heart, Gyroid
   |-- Operation: Union, Intersection, Subtraction, SmoothUnion, SmoothIntersection, SmoothSubtraction
   |-- Transform (4): Translate, Rotate, Scale, ScaleNonUniform
   |-- Modifier (15): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
@@ -450,7 +453,7 @@ cargo build --features "all-shaders,jit"  # Everything
 
 ## Testing
 
-401+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC). With `--features jit`, 425 tests including JIT scalar and JIT SIMD backends.
+458+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC). With `--features jit`, 482+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
@@ -488,7 +491,7 @@ Benchmarked on Apple M3 Max, Rust 1.75+, `--release` build.
 
 ### JIT Compilation
 
-The JIT compiler generates native SIMD machine code using Cranelift, achieving the highest throughput. All 15 primitives are fully supported in both JIT scalar and JIT SIMD (8-wide) backends.
+The JIT compiler generates native SIMD machine code using Cranelift, achieving the highest throughput. The original 15 primitives are fully supported in both JIT scalar and JIT SIMD (8-wide) backends. The 16 new IQ primitives are supported in interpreted, compiled VM, and shader transpiler modes.
 
 **Deep Fried v2 optimizations:**
 - **Division Exorcism** - all runtime divisions pre-computed as reciprocal multiplications at compile time

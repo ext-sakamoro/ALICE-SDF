@@ -241,6 +241,58 @@ impl HlslTranspiler {
                     shader.push_str(HELPER_SDF_BEZIER);
                     shader.push('\n');
                 }
+                "sdf_capped_cone" => {
+                    shader.push_str(HELPER_SDF_CAPPED_CONE);
+                    shader.push('\n');
+                }
+                "sdf_capped_torus" => {
+                    shader.push_str(HELPER_SDF_CAPPED_TORUS);
+                    shader.push('\n');
+                }
+                "sdf_rounded_cylinder" => {
+                    shader.push_str(HELPER_SDF_ROUNDED_CYLINDER);
+                    shader.push('\n');
+                }
+                "sdf_triangular_prism" => {
+                    shader.push_str(HELPER_SDF_TRIANGULAR_PRISM);
+                    shader.push('\n');
+                }
+                "sdf_cut_sphere" => {
+                    shader.push_str(HELPER_SDF_CUT_SPHERE);
+                    shader.push('\n');
+                }
+                "sdf_cut_hollow_sphere" => {
+                    shader.push_str(HELPER_SDF_CUT_HOLLOW_SPHERE);
+                    shader.push('\n');
+                }
+                "sdf_death_star" => {
+                    shader.push_str(HELPER_SDF_DEATH_STAR);
+                    shader.push('\n');
+                }
+                "sdf_solid_angle" => {
+                    shader.push_str(HELPER_SDF_SOLID_ANGLE);
+                    shader.push('\n');
+                }
+                "sdf_rhombus" => {
+                    shader.push_str(HELPER_SDF_RHOMBUS);
+                    shader.push('\n');
+                }
+                "sdf_horseshoe" => {
+                    shader.push_str(HELPER_SDF_HORSESHOE);
+                    shader.push('\n');
+                }
+                "sdf_vesica" => {
+                    shader.push_str(HELPER_SDF_VESICA);
+                    shader.push('\n');
+                }
+                "sdf_infinite_cone" => {
+                    shader.push_str(HELPER_SDF_INFINITE_CONE);
+                    shader.push('\n');
+                }
+                "sdf_heart" => {
+                    shader.push_str(HELPER_SDF_HEART);
+                    shader.push('\n');
+                }
                 _ => {}
             }
         }
@@ -571,6 +623,162 @@ impl HlslTranspiler {
                     "    float {} = sdf_bezier({}, float3({}, {}, {}), float3({}, {}, {}), float3({}, {}, {}), {});",
                     var, point_var, ax, ay, az, bx, by, bz, cx, cy, cz, r
                 ).unwrap();
+                var
+            }
+
+            // --- New Primitives (16) ---
+
+            SdfNode::RoundedBox { half_extents, round_radius } => {
+                let hx = self.param(half_extents.x);
+                let hy = self.param(half_extents.y);
+                let hz = self.param(half_extents.z);
+                let rr = self.param(*round_radius);
+                let q_var = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    float3 {} = abs({}) - float3({}, {}, {});", q_var, point_var, hx, hy, hz).unwrap();
+                writeln!(code, "    float {} = length(max({}, float3(0.0, 0.0, 0.0))) + min(max({}.x, max({}.y, {}.z)), 0.0) - {};", var, q_var, q_var, q_var, q_var, rr).unwrap();
+                var
+            }
+
+            SdfNode::CappedCone { half_height, r1, r2 } => {
+                self.ensure_helper("sdf_capped_cone");
+                let h = self.param(*half_height);
+                let p_r1 = self.param(*r1);
+                let p_r2 = self.param(*r2);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_capped_cone({}, {}, {}, {});", var, point_var, h, p_r1, p_r2).unwrap();
+                var
+            }
+
+            SdfNode::CappedTorus { major_radius, minor_radius, cap_angle } => {
+                self.ensure_helper("sdf_capped_torus");
+                let ra = self.param(*major_radius);
+                let rb = self.param(*minor_radius);
+                let an = self.param(*cap_angle);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_capped_torus({}, {}, {}, {});", var, point_var, ra, rb, an).unwrap();
+                var
+            }
+
+            SdfNode::RoundedCylinder { radius, round_radius, half_height } => {
+                self.ensure_helper("sdf_rounded_cylinder");
+                let r = self.param(*radius);
+                let rr = self.param(*round_radius);
+                let h = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_rounded_cylinder({}, {}, {}, {});", var, point_var, r, rr, h).unwrap();
+                var
+            }
+
+            SdfNode::TriangularPrism { width, half_depth } => {
+                self.ensure_helper("sdf_triangular_prism");
+                let w = self.param(*width);
+                let d = self.param(*half_depth);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_triangular_prism({}, {}, {});", var, point_var, w, d).unwrap();
+                var
+            }
+
+            SdfNode::CutSphere { radius, cut_height } => {
+                self.ensure_helper("sdf_cut_sphere");
+                let r = self.param(*radius);
+                let h = self.param(*cut_height);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_cut_sphere({}, {}, {});", var, point_var, r, h).unwrap();
+                var
+            }
+
+            SdfNode::CutHollowSphere { radius, cut_height, thickness } => {
+                self.ensure_helper("sdf_cut_hollow_sphere");
+                let r = self.param(*radius);
+                let h = self.param(*cut_height);
+                let t = self.param(*thickness);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_cut_hollow_sphere({}, {}, {}, {});", var, point_var, r, h, t).unwrap();
+                var
+            }
+
+            SdfNode::DeathStar { ra, rb, d } => {
+                self.ensure_helper("sdf_death_star");
+                let p_ra = self.param(*ra);
+                let p_rb = self.param(*rb);
+                let p_d = self.param(*d);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_death_star({}, {}, {}, {});", var, point_var, p_ra, p_rb, p_d).unwrap();
+                var
+            }
+
+            SdfNode::SolidAngle { angle, radius } => {
+                self.ensure_helper("sdf_solid_angle");
+                let an = self.param(*angle);
+                let r = self.param(*radius);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_solid_angle({}, {}, {});", var, point_var, an, r).unwrap();
+                var
+            }
+
+            SdfNode::Rhombus { la, lb, half_height, round_radius } => {
+                self.ensure_helper("sdf_rhombus");
+                let p_la = self.param(*la);
+                let p_lb = self.param(*lb);
+                let h = self.param(*half_height);
+                let rr = self.param(*round_radius);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_rhombus({}, {}, {}, {}, {});", var, point_var, p_la, p_lb, h, rr).unwrap();
+                var
+            }
+
+            SdfNode::Horseshoe { angle, radius, half_length, width, thickness } => {
+                self.ensure_helper("sdf_horseshoe");
+                let an = self.param(*angle);
+                let r = self.param(*radius);
+                let hl = self.param(*half_length);
+                let w = self.param(*width);
+                let t = self.param(*thickness);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_horseshoe({}, {}, {}, {}, {}, {});", var, point_var, an, r, hl, w, t).unwrap();
+                var
+            }
+
+            SdfNode::Vesica { radius, half_dist } => {
+                self.ensure_helper("sdf_vesica");
+                let r = self.param(*radius);
+                let d = self.param(*half_dist);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_vesica({}, {}, {});", var, point_var, r, d).unwrap();
+                var
+            }
+
+            SdfNode::InfiniteCylinder { radius } => {
+                let r = self.param(*radius);
+                let var = self.next_var();
+                writeln!(code, "    float {} = length({}.xz) - {};", var, point_var, r).unwrap();
+                var
+            }
+
+            SdfNode::InfiniteCone { angle } => {
+                self.ensure_helper("sdf_infinite_cone");
+                let an = self.param(*angle);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_infinite_cone({}, {});", var, point_var, an).unwrap();
+                var
+            }
+
+            SdfNode::Gyroid { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp_var = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    float3 {} = {} * {};", sp_var, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(sin({}.x) * cos({}.y) + sin({}.y) * cos({}.z) + sin({}.z) * cos({}.x)) / {} - {};", var, sp_var, sp_var, sp_var, sp_var, sp_var, sp_var, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::Heart { size } => {
+                self.ensure_helper("sdf_heart");
+                let s = self.param(*size);
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_heart({}, {});", var, point_var, s).unwrap();
                 var
             }
 
@@ -1183,6 +1391,137 @@ const HELPER_SDF_LINK: &str = r#"float sdf_link(float3 p, float le, float r1, fl
     float qz = p.z;
     float xy_len = sqrt(qx * qx + qy * qy) - r1;
     return sqrt(xy_len * xy_len + qz * qz) - r2;
+}
+"#;
+
+const HELPER_SDF_CAPPED_CONE: &str = r#"float sdf_capped_cone(float3 p, float h, float r1, float r2) {
+    float qx = length(p.xz);
+    float qy = p.y;
+    float2 k1 = float2(r2, h);
+    float2 k2 = float2(r2 - r1, 2.0 * h);
+    float min_r = (qy < 0.0) ? r1 : r2;
+    float2 ca = float2(qx - min(qx, min_r), abs(qy) - h);
+    float2 q = float2(qx, qy);
+    float2 cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
+    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+    return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+}
+"#;
+
+const HELPER_SDF_CAPPED_TORUS: &str = r#"float sdf_capped_torus(float3 p, float ra, float rb, float an) {
+    float2 sc = float2(sin(an), cos(an));
+    float px = abs(p.x);
+    float k = (sc.y * px > sc.x * p.y) ? dot(float2(px, p.y), sc) : length(float2(px, p.y));
+    return sqrt(px * px + p.y * p.y + p.z * p.z + ra * ra - 2.0 * ra * k) - rb;
+}
+"#;
+
+const HELPER_SDF_ROUNDED_CYLINDER: &str = r#"float sdf_rounded_cylinder(float3 p, float r, float rr, float h) {
+    float2 d = float2(length(p.xz) - r + rr, abs(p.y) - h);
+    return min(max(d.x, d.y), 0.0) + length(max(d, float2(0.0, 0.0))) - rr;
+}
+"#;
+
+const HELPER_SDF_TRIANGULAR_PRISM: &str = r#"float sdf_triangular_prism(float3 p, float w, float h) {
+    float3 q = abs(p);
+    return max(q.z - h, max(q.x * 0.866025 + p.y * 0.5, -p.y) - w * 0.5);
+}
+"#;
+
+const HELPER_SDF_CUT_SPHERE: &str = r#"float sdf_cut_sphere(float3 p, float r, float h) {
+    float w = sqrt(max(r * r - h * h, 0.0));
+    float2 q = float2(length(p.xz), p.y);
+    float s = max((h - r) * q.x * q.x + w * w * (h + r - 2.0 * q.y), h * q.x - w * q.y);
+    if (s < 0.0) return length(q) - r;
+    if (q.x < w) return h - q.y;
+    return length(q - float2(w, h));
+}
+"#;
+
+const HELPER_SDF_CUT_HOLLOW_SPHERE: &str = r#"float sdf_cut_hollow_sphere(float3 p, float r, float h, float t) {
+    float w = sqrt(max(r * r - h * h, 0.0));
+    float2 q = float2(length(p.xz), p.y);
+    if (h * q.x < w * q.y) return length(q - float2(w, h)) - t;
+    return abs(length(q) - r) - t;
+}
+"#;
+
+const HELPER_SDF_DEATH_STAR: &str = r#"float sdf_death_star(float3 p, float ra, float rb, float d) {
+    float a = (ra * ra - rb * rb + d * d) / (2.0 * d);
+    float b = sqrt(max(ra * ra - a * a, 0.0));
+    float2 q = float2(p.x, length(p.yz));
+    if (q.x * b - q.y * a > d * max(b - q.y, 0.0))
+        return length(q - float2(a, b));
+    return max(length(q) - ra, -(length(q - float2(d, 0.0)) - rb));
+}
+"#;
+
+const HELPER_SDF_SOLID_ANGLE: &str = r#"float sdf_solid_angle(float3 p, float an, float ra) {
+    float2 c = float2(sin(an), cos(an));
+    float2 q = float2(length(p.xz), p.y);
+    float l = length(q) - ra;
+    float m = length(q - c * clamp(dot(q, c), 0.0, ra));
+    return max(l, m * sign(c.y * q.x - c.x * q.y));
+}
+"#;
+
+const HELPER_SDF_RHOMBUS: &str = r#"float ndot_rh(float2 a, float2 b) {
+    return a.x * b.x - a.y * b.y;
+}
+float sdf_rhombus(float3 p, float la, float lb, float h, float ra) {
+    float3 ap = abs(p);
+    float2 b = float2(la, lb);
+    float f = clamp(ndot_rh(b, b - 2.0 * ap.xz) / dot(b, b), -1.0, 1.0);
+    float dxz = length(ap.xz - 0.5 * b * float2(1.0 - f, 1.0 + f)) * sign(ap.x * b.y + ap.z * b.x - b.x * b.y) - ra;
+    float2 q = float2(dxz, ap.y - h);
+    return min(max(q.x, q.y), 0.0) + length(max(q, float2(0.0, 0.0)));
+}
+"#;
+
+const HELPER_SDF_HORSESHOE: &str = r#"float sdf_horseshoe(float3 pos, float an, float r, float le, float w, float t) {
+    float2 c = float2(cos(an), sin(an));
+    float px = abs(pos.x);
+    float l = length(float2(px, pos.y));
+    float qx = -c.x * px + c.y * pos.y;
+    float qy = c.y * px + c.x * pos.y;
+    if (!(qy > 0.0 || qx > 0.0)) qx = l * sign(-c.x);
+    if (qx <= 0.0) qy = l;
+    qx = abs(qx) - le;
+    qy = abs(qy - r);
+    float e = length(max(float2(qx, qy), float2(0.0, 0.0))) + min(max(qx, qy), 0.0);
+    float2 d = abs(float2(e, pos.z)) - float2(w, t);
+    return min(max(d.x, d.y), 0.0) + length(max(d, float2(0.0, 0.0)));
+}
+"#;
+
+const HELPER_SDF_VESICA: &str = r#"float sdf_vesica(float3 p, float r, float d) {
+    float px = abs(p.x);
+    float py = length(p.yz);
+    float b = sqrt(max(r * r - d * d, 0.0));
+    if ((py - b) * d > px * b) return length(float2(px, py - b));
+    return length(float2(px - d, py)) - r;
+}
+"#;
+
+const HELPER_SDF_INFINITE_CONE: &str = r#"float sdf_infinite_cone(float3 p, float an) {
+    float2 c = float2(sin(an), cos(an));
+    float2 q = float2(length(p.xz), -p.y);
+    float d = length(q - c * max(dot(q, c), 0.0));
+    return d * ((q.x * c.y - q.y * c.x < 0.0) ? -1.0 : 1.0);
+}
+"#;
+
+const HELPER_SDF_HEART: &str = r#"float sdf_heart(float3 p, float s) {
+    float3 q = p / s;
+    float x = length(q.xz);
+    float y = -(q.y - 0.5);
+    float x2 = x * x;
+    float y2 = y * y;
+    float y3 = y2 * y;
+    float cubic = x2 + y2 - 1.0;
+    float iv = cubic * cubic * cubic - x2 * y3;
+    if (iv <= 0.0) return -0.02 * s;
+    return (pow(iv, 1.0 / 6.0) * 0.5 - 0.02) * s;
 }
 "#;
 

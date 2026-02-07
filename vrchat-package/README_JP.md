@@ -330,7 +330,7 @@ com.alice.sdf/
 └── Prefabs~/                        # Unity Importから隠蔽
 ```
 
-## 対応プリミティブ (15種)
+## 対応プリミティブ (31種)
 
 | プリミティブ | HLSL | C# | 数式 |
 |-------------|------|----|------|
@@ -349,6 +349,22 @@ com.alice.sdf/
 | Pyramid (四角錐) | `sdPyramid` | `Sdf.Pyramid` | Y軸四角錐 |
 | Octahedron (八面体) | `sdOctahedron` | `Sdf.Octahedron` | 正八面体 |
 | Link (鎖リンク) | `sdLink` | `Sdf.Link` | チェーンリンク (トーラス + Y伸長) |
+| RoundedBox (丸角箱) | `sdRoundedBox` | `Sdf.RoundedBox` | 角丸付きボックス |
+| CappedCone (切頂円錐) | `sdCappedCone` | `Sdf.CappedCone` | 円錐台 (2半径 + 高さ) |
+| CappedTorus (切頂トーラス) | `sdCappedTorus` | `Sdf.CappedTorus` | トーラス弧セグメント |
+| InfiniteCylinder (無限円柱) | — (inline) | `Sdf.InfiniteCylinder` | 無限円柱 (XZ平面) |
+| RoundedCylinder (丸角円柱) | `sdRoundedCylinder` | `Sdf.RoundedCylinder` | 角丸付き円柱 |
+| TriangularPrism (三角柱) | `sdTriangularPrism` | `Sdf.TriangularPrism` | Z軸三角柱 |
+| CutSphere (切断球) | `sdCutSphere` | `Sdf.CutSphere` | 平面切断された球 |
+| CutHollowSphere (中空切断球) | `sdCutHollowSphere` | `Sdf.CutHollowSphere` | 中空球の切断 |
+| DeathStar (デス・スター) | `sdDeathStar` | `Sdf.DeathStar` | 球体のくり抜き |
+| SolidAngle (立体角) | `sdSolidAngle` | `Sdf.SolidAngle` | 3D錐セクター |
+| Rhombus (菱形) | `sdRhombus` | `Sdf.Rhombus` | 3D菱形 + 丸め |
+| Horseshoe (馬蹄形) | `sdHorseshoe` | `Sdf.Horseshoe` | 馬蹄形 / アーチ |
+| Vesica (ヴェシカ) | `sdVesica` | `Sdf.Vesica` | ヴェシカ・ピスキス（レンズ形） |
+| InfiniteCone (無限円錐) | `sdInfiniteCone` | `Sdf.InfiniteCone` | 無限円錐 (Y軸) |
+| Heart (ハート) | `sdHeart` | `Sdf.Heart` | 3Dハート (回転体) |
+| Gyroid (ジャイロイド) | — (inline) | `Sdf.Gyroid` | ジャイロイド極小曲面 |
 
 ## 対応演算 (17種)
 

@@ -141,6 +141,26 @@ impl Compiler {
                 panic!("Bezier requires 10 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
             }
 
+            // New primitives — interpreter-only (use eval() or transpiler)
+            SdfNode::RoundedBox { .. }
+            | SdfNode::CappedCone { .. }
+            | SdfNode::CappedTorus { .. }
+            | SdfNode::RoundedCylinder { .. }
+            | SdfNode::TriangularPrism { .. }
+            | SdfNode::CutSphere { .. }
+            | SdfNode::CutHollowSphere { .. }
+            | SdfNode::DeathStar { .. }
+            | SdfNode::SolidAngle { .. }
+            | SdfNode::Rhombus { .. }
+            | SdfNode::Horseshoe { .. }
+            | SdfNode::Vesica { .. }
+            | SdfNode::InfiniteCylinder { .. }
+            | SdfNode::InfiniteCone { .. }
+            | SdfNode::Gyroid { .. }
+            | SdfNode::Heart { .. } => {
+                panic!("This primitive is interpreter/transpiler-only. Use eval() or shader transpiler instead.");
+            }
+
             // === Binary Operations ===
             // For binary operations, we use post-order: left, right, op
             SdfNode::Union { a, b } => {

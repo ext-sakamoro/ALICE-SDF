@@ -140,6 +140,148 @@ pub enum SdfNode {
         radius: f32,
     },
 
+    /// Box with rounded edges
+    RoundedBox {
+        /// Half-extents (before rounding)
+        half_extents: Vec3,
+        /// Edge rounding radius
+        round_radius: f32,
+    },
+
+    /// Capped cone (frustum) along Y-axis
+    CappedCone {
+        /// Half the cone height
+        half_height: f32,
+        /// Bottom radius
+        r1: f32,
+        /// Top radius
+        r2: f32,
+    },
+
+    /// Partial torus (arc) in XZ plane
+    CappedTorus {
+        /// Distance from center to tube center
+        major_radius: f32,
+        /// Tube radius
+        minor_radius: f32,
+        /// Half opening angle (radians)
+        cap_angle: f32,
+    },
+
+    /// Cylinder with rounded edges along Y-axis
+    RoundedCylinder {
+        /// Cylinder radius
+        radius: f32,
+        /// Edge rounding radius
+        round_radius: f32,
+        /// Half the cylinder height
+        half_height: f32,
+    },
+
+    /// Equilateral triangular prism along Z-axis
+    TriangularPrism {
+        /// Half-width of the triangle cross-section
+        width: f32,
+        /// Half the prism depth along Z
+        half_depth: f32,
+    },
+
+    /// Sphere with a planar cut
+    CutSphere {
+        /// Sphere radius
+        radius: f32,
+        /// Y height of the cut plane
+        cut_height: f32,
+    },
+
+    /// Hollow sphere shell with a planar cut
+    CutHollowSphere {
+        /// Sphere radius
+        radius: f32,
+        /// Y height of the cut plane
+        cut_height: f32,
+        /// Shell thickness
+        thickness: f32,
+    },
+
+    /// Death Star: sphere with spherical indentation
+    DeathStar {
+        /// Main sphere radius
+        ra: f32,
+        /// Carving sphere radius
+        rb: f32,
+        /// Distance between sphere centers
+        d: f32,
+    },
+
+    /// Solid angle (cone sector)
+    SolidAngle {
+        /// Half-angle in radians
+        angle: f32,
+        /// Bounding radius
+        radius: f32,
+    },
+
+    /// 3D rhombus (diamond shape)
+    Rhombus {
+        /// Half-diagonal along X
+        la: f32,
+        /// Half-diagonal along Z
+        lb: f32,
+        /// Half-height along Y
+        half_height: f32,
+        /// Edge rounding
+        round_radius: f32,
+    },
+
+    /// Horseshoe (U-shape)
+    Horseshoe {
+        /// Opening half-angle (radians)
+        angle: f32,
+        /// Ring radius
+        radius: f32,
+        /// Straight extension half-length
+        half_length: f32,
+        /// Cross-section half-width
+        width: f32,
+        /// Cross-section half-thickness
+        thickness: f32,
+    },
+
+    /// 3D vesica (lens shape, revolved)
+    Vesica {
+        /// Arc radius
+        radius: f32,
+        /// Half distance between arc centers
+        half_dist: f32,
+    },
+
+    /// Infinite cylinder along Y-axis
+    InfiniteCylinder {
+        /// Cylinder radius
+        radius: f32,
+    },
+
+    /// Infinite cone along Y-axis
+    InfiniteCone {
+        /// Half-angle in radians
+        angle: f32,
+    },
+
+    /// Gyroid triply-periodic minimal surface
+    Gyroid {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// 3D heart shape (revolved contour)
+    Heart {
+        /// Overall size
+        size: f32,
+    },
+
     // === Operations ===
     /// Union of two shapes (min distance)
     Union {
@@ -491,6 +633,138 @@ impl SdfNode {
         }
     }
 
+    /// Create a rounded box
+    #[inline]
+    pub fn rounded_box(hx: f32, hy: f32, hz: f32, round_radius: f32) -> Self {
+        SdfNode::RoundedBox {
+            half_extents: Vec3::new(hx, hy, hz),
+            round_radius,
+        }
+    }
+
+    /// Create a capped cone (frustum)
+    #[inline]
+    pub fn capped_cone(height: f32, r1: f32, r2: f32) -> Self {
+        SdfNode::CappedCone {
+            half_height: height * 0.5,
+            r1,
+            r2,
+        }
+    }
+
+    /// Create a capped torus (arc)
+    #[inline]
+    pub fn capped_torus(major_radius: f32, minor_radius: f32, cap_angle: f32) -> Self {
+        SdfNode::CappedTorus {
+            major_radius,
+            minor_radius,
+            cap_angle,
+        }
+    }
+
+    /// Create a rounded cylinder
+    #[inline]
+    pub fn rounded_cylinder(radius: f32, round_radius: f32, height: f32) -> Self {
+        SdfNode::RoundedCylinder {
+            radius,
+            round_radius,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a triangular prism
+    #[inline]
+    pub fn triangular_prism(width: f32, depth: f32) -> Self {
+        SdfNode::TriangularPrism {
+            width,
+            half_depth: depth * 0.5,
+        }
+    }
+
+    /// Create a cut sphere
+    #[inline]
+    pub fn cut_sphere(radius: f32, cut_height: f32) -> Self {
+        SdfNode::CutSphere { radius, cut_height }
+    }
+
+    /// Create a cut hollow sphere
+    #[inline]
+    pub fn cut_hollow_sphere(radius: f32, cut_height: f32, thickness: f32) -> Self {
+        SdfNode::CutHollowSphere {
+            radius,
+            cut_height,
+            thickness,
+        }
+    }
+
+    /// Create a Death Star shape
+    #[inline]
+    pub fn death_star(ra: f32, rb: f32, d: f32) -> Self {
+        SdfNode::DeathStar { ra, rb, d }
+    }
+
+    /// Create a solid angle
+    #[inline]
+    pub fn solid_angle(angle: f32, radius: f32) -> Self {
+        SdfNode::SolidAngle { angle, radius }
+    }
+
+    /// Create a rhombus
+    #[inline]
+    pub fn rhombus(la: f32, lb: f32, height: f32, round_radius: f32) -> Self {
+        SdfNode::Rhombus {
+            la,
+            lb,
+            half_height: height * 0.5,
+            round_radius,
+        }
+    }
+
+    /// Create a horseshoe shape
+    #[inline]
+    pub fn horseshoe(angle: f32, radius: f32, length: f32, width: f32, thickness: f32) -> Self {
+        SdfNode::Horseshoe {
+            angle,
+            radius,
+            half_length: length * 0.5,
+            width,
+            thickness,
+        }
+    }
+
+    /// Create a 3D vesica
+    #[inline]
+    pub fn vesica(radius: f32, dist: f32) -> Self {
+        SdfNode::Vesica {
+            radius,
+            half_dist: dist * 0.5,
+        }
+    }
+
+    /// Create an infinite cylinder
+    #[inline]
+    pub fn infinite_cylinder(radius: f32) -> Self {
+        SdfNode::InfiniteCylinder { radius }
+    }
+
+    /// Create an infinite cone
+    #[inline]
+    pub fn infinite_cone(angle: f32) -> Self {
+        SdfNode::InfiniteCone { angle }
+    }
+
+    /// Create a gyroid surface
+    #[inline]
+    pub fn gyroid(scale: f32, thickness: f32) -> Self {
+        SdfNode::Gyroid { scale, thickness }
+    }
+
+    /// Create a 3D heart
+    #[inline]
+    pub fn heart(size: f32) -> Self {
+        SdfNode::Heart { size }
+    }
+
     // === Operation methods ===
 
     /// Union with another shape
@@ -768,7 +1042,23 @@ impl SdfNode {
             | SdfNode::HexPrism { .. }
             | SdfNode::Link { .. }
             | SdfNode::Triangle { .. }
-            | SdfNode::Bezier { .. } => 1,
+            | SdfNode::Bezier { .. }
+            | SdfNode::RoundedBox { .. }
+            | SdfNode::CappedCone { .. }
+            | SdfNode::CappedTorus { .. }
+            | SdfNode::RoundedCylinder { .. }
+            | SdfNode::TriangularPrism { .. }
+            | SdfNode::CutSphere { .. }
+            | SdfNode::CutHollowSphere { .. }
+            | SdfNode::DeathStar { .. }
+            | SdfNode::SolidAngle { .. }
+            | SdfNode::Rhombus { .. }
+            | SdfNode::Horseshoe { .. }
+            | SdfNode::Vesica { .. }
+            | SdfNode::InfiniteCylinder { .. }
+            | SdfNode::InfiniteCone { .. }
+            | SdfNode::Gyroid { .. }
+            | SdfNode::Heart { .. } => 1,
 
             // Operations: 1 + children
             SdfNode::Union { a, b }
