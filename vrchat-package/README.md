@@ -55,7 +55,7 @@ Pixel-level SDF rendering via HLSL raymarching.
 
 Evaluates the same SDF formula in UdonSharp (pure C#) to push players out of solid geometry.
 
-- `AliceSDF_Primitives.cs` — 6 primitives + CSG operations + transforms (pure C#)
+- `AliceSDF_Primitives.cs` — 15 primitives + CSG operations + transforms (pure C#)
 - `AliceSDF_Math.cs` — Vector math helpers
 - `AliceSDF_Collider.cs` — Player collision detection & push-back
 
@@ -65,7 +65,7 @@ Evaluates the same SDF formula in UdonSharp (pure C#) to push players out of sol
 2. Compute **d = SDF(P)**
 3. If **d < 0** (inside), push along **gradSDF(P)** by **|d|**
 
-### 3. ALICE-Baker v0.2 (Deep Fried Editor Tool)
+### 3. ALICE-Baker v0.3 (Deep Fried Editor Tool)
 
 Paste `.asdf.json` and auto-generate optimized Shader + Udon + Prefab.
 
@@ -74,7 +74,7 @@ Paste `.asdf.json` and auto-generate optimized Shader + Udon + Prefab.
 - Click **Bake!** to generate everything at once
 - **Live preview**: code updates in real-time as you edit JSON
 
-#### Baker v0.2 Optimizations
+#### Baker v0.3 Optimizations
 
 | Optimization | Target | Effect |
 |-------------|--------|--------|
@@ -274,7 +274,7 @@ com.alice.sdf/
 │       └── AliceSDF_Collider.cs     # Player collision
 ├── Editor/
 │   ├── AliceSDF.Editor.asmdef       # Editor Assembly Definition
-│   ├── AliceSDF_Baker.cs            # Baker v0.2 (Deep Fried)
+│   ├── AliceSDF_Baker.cs            # Baker v0.3 (Deep Fried)
 │   └── SampleSceneGenerator.cs      # Menu: ALICE-SDF > Generate Sample Scenes
 ├── Samples~/                        # UPM Samples (import via Package Manager)
 │   └── SDF Gallery/
@@ -288,7 +288,7 @@ com.alice.sdf/
 └── Prefabs~/                        # Hidden from Unity import
 ```
 
-## Supported Primitives (11)
+## Supported Primitives (15)
 
 | Primitive | HLSL | C# | Formula |
 |-----------|------|----|---------|
@@ -303,8 +303,12 @@ com.alice.sdf/
 | HexPrism  | `sdHexPrism`   | `Sdf.HexPrism`   | Hexagonal prism (Z-axis) |
 | Triangle  | `sdTriangle`   | `Sdf.Triangle`   | Exact 3D triangle |
 | Bezier    | `sdBezier`     | `Sdf.Bezier`     | Quadratic curve + radius |
+| RoundedCone | `sdRoundedCone` | `Sdf.RoundedCone` | Smooth-capped cone (r1, r2) |
+| Pyramid   | `sdPyramid`    | `Sdf.Pyramid`    | 4-sided Y-axis pyramid |
+| Octahedron | `sdOctahedron` | `Sdf.Octahedron` | Regular octahedron |
+| Link      | `sdLink`       | `Sdf.Link`       | Chain link (torus + Y stretch) |
 
-## Supported Operations (16)
+## Supported Operations (17)
 
 | Operation | HLSL | C# | Effect |
 |-----------|------|----|--------|
