@@ -181,9 +181,10 @@ impl PySdfNode {
         }
     }
 
-    /// Evaluate at a single point
-    fn eval(&self, x: f32, y: f32, z: f32) -> f32 {
-        eval(&self.inner, Vec3::new(x, y, z))
+    /// Evaluate at a single point (GIL released)
+    fn eval(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
+        let inner = &self.inner;
+        py.allow_threads(|| eval(inner, Vec3::new(x, y, z)))
     }
 
     /// Get node count
@@ -244,9 +245,10 @@ pub struct PyCompiledSdf {
 
 #[pymethods]
 impl PyCompiledSdf {
-    /// Evaluate at a single point
-    fn eval(&self, x: f32, y: f32, z: f32) -> f32 {
-        crate::compiled::eval_compiled(&self.compiled, Vec3::new(x, y, z))
+    /// Evaluate at a single point (GIL released)
+    fn eval(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
+        let compiled = &self.compiled;
+        py.allow_threads(|| crate::compiled::eval_compiled(compiled, Vec3::new(x, y, z)))
     }
 
     /// Evaluate compiled SDF at multiple points (GIL released, SIMD + Rayon)
@@ -694,9 +696,10 @@ pub struct PySvo {
 #[cfg(feature = "svo")]
 #[pymethods]
 impl PySvo {
-    /// Query distance at a point
-    fn query_point(&self, x: f32, y: f32, z: f32) -> f32 {
-        self.inner.query_point(Vec3::new(x, y, z))
+    /// Query distance at a point (GIL released)
+    fn query_point(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
+        let inner = &self.inner;
+        py.allow_threads(|| inner.query_point(Vec3::new(x, y, z)))
     }
 
     /// Get node count
@@ -741,9 +744,10 @@ struct PyHeightmap {
 #[cfg(feature = "terrain")]
 #[pymethods]
 impl PyHeightmap {
-    /// Get height at world coordinates
-    fn sample(&self, x: f32, z: f32) -> f32 {
-        self.inner.sample(x, z)
+    /// Get height at world coordinates (GIL released)
+    fn sample(&self, py: Python<'_>, x: f32, z: f32) -> f32 {
+        let inner = &self.inner;
+        py.allow_threads(|| inner.sample(x, z))
     }
 
     /// Get the height range (min, max)
@@ -756,9 +760,9 @@ impl PyHeightmap {
         self.inner.sample_count()
     }
 
-    /// Get heights as a numpy array
+    /// Get heights as a numpy array (avoids intermediate Vec clone)
     fn heights<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f32>> {
-        self.inner.heights.clone().into_pyarray(py)
+        numpy::PyArray1::from_slice(py, &self.inner.heights)
     }
 
     fn __repr__(&self) -> String {
@@ -847,13 +851,16 @@ impl PyVoxelGrid {
         (r[0], r[1], r[2])
     }
 
-    /// Get distance at a world position
-    fn get_distance(&self, x: f32, y: f32, z: f32) -> f32 {
-        if let Some([gx, gy, gz]) = self.inner.world_to_grid(Vec3::new(x, y, z)) {
-            self.inner.get_distance(gx, gy, gz)
-        } else {
-            f32::MAX
-        }
+    /// Get distance at a world position (GIL released)
+    fn get_distance(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
+        let inner = &self.inner;
+        py.allow_threads(|| {
+            if let Some([gx, gy, gz]) = inner.world_to_grid(Vec3::new(x, y, z)) {
+                inner.get_distance(gx, gy, gz)
+            } else {
+                f32::MAX
+            }
+        })
     }
 
     fn __repr__(&self) -> String {
@@ -985,10 +992,10 @@ fn bake_gi<'py>(
         .collect();
     let sh_coeffs: Vec<f32> = grid.probes.iter()
         .flat_map(|p| {
-            let mut c = Vec::with_capacity(12);
-            c.extend_from_slice(&p.sh_r.coeffs);
-            c.extend_from_slice(&p.sh_g.coeffs);
-            c.extend_from_slice(&p.sh_b.coeffs);
+            let mut c = [0.0f32; 12];
+            c[0..4].copy_from_slice(&p.sh_r.coeffs);
+            c[4..8].copy_from_slice(&p.sh_g.coeffs);
+            c[8..12].copy_from_slice(&p.sh_b.coeffs);
             c
         })
         .collect();
@@ -1085,7 +1092,7 @@ fn uv_unwrap<'py>(
         .reshape([n, 2])
         .map_err(|e| PyValueError::new_err(format!("Reshape error: {}", e)))?;
 
-    let indices_array = mesh.indices.clone().into_pyarray(py);
+    let indices_array = numpy::PyArray1::from_slice(py, &mesh.indices);
 
     Ok((pos_array, uv_array, indices_array))
 }
@@ -1140,9 +1147,69 @@ fn mesh_to_numpy<'py>(
         .reshape([mesh.vertices.len(), 3])
         .map_err(|e| PyValueError::new_err(format!("Reshape error: {}", e)))?;
 
-    let indices = mesh.indices.clone().into_pyarray(py);
+    let indices = numpy::PyArray1::from_slice(py, &mesh.indices);
 
     Ok((vertex_array, indices))
+}
+
+/// Query SVO distance at multiple points (GIL released, Rayon parallel)
+#[cfg(feature = "svo")]
+#[pyfunction]
+#[pyo3(signature = (svo, points))]
+fn svo_query_batch<'py>(
+    py: Python<'py>,
+    svo: &PySvo,
+    points: &Bound<'py, PyArray2<f32>>,
+) -> PyResult<Bound<'py, PyArray1<f32>>> {
+    let pts = unsafe { points.as_array() };
+    if pts.shape()[1] != 3 {
+        return Err(PyValueError::new_err("points must have shape (N, 3)"));
+    }
+    let vec_points: Vec<Vec3> = pts
+        .rows()
+        .into_iter()
+        .map(|row| Vec3::new(row[0], row[1], row[2]))
+        .collect();
+
+    let svo_ref = &svo.inner;
+    let results = py.allow_threads(|| {
+        use rayon::prelude::*;
+        vec_points
+            .par_iter()
+            .map(|p| svo_ref.query_point(*p))
+            .collect::<Vec<f32>>()
+    });
+    Ok(results.into_pyarray(py))
+}
+
+/// Sample heightmap at multiple world positions (GIL released, Rayon parallel)
+#[cfg(feature = "terrain")]
+#[pyfunction]
+#[pyo3(signature = (heightmap, points))]
+fn heightmap_sample_batch<'py>(
+    py: Python<'py>,
+    heightmap: &PyHeightmap,
+    points: &Bound<'py, PyArray2<f32>>,
+) -> PyResult<Bound<'py, PyArray1<f32>>> {
+    let pts = unsafe { points.as_array() };
+    if pts.shape()[1] != 2 {
+        return Err(PyValueError::new_err("points must have shape (N, 2) for (x, z) pairs"));
+    }
+    let vec_points: Vec<(f32, f32)> = pts
+        .rows()
+        .into_iter()
+        .map(|row| (row[0], row[1]))
+        .collect();
+
+    let hm_ref = &heightmap.inner;
+    let results = py.allow_threads(|| {
+        use rayon::prelude::*;
+        vec_points
+            .par_iter()
+            .map(|&(x, z)| hm_ref.sample(x, z))
+            .collect::<Vec<f32>>()
+    });
+    Ok(results.into_pyarray(py))
 }
 
 /// Python module
@@ -1181,6 +1248,7 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     {
         m.add_class::<PySvo>()?;
         m.add_function(wrap_pyfunction!(build_svo, m)?)?;
+        m.add_function(wrap_pyfunction!(svo_query_batch, m)?)?;
     }
     #[cfg(feature = "destruction")]
     {
@@ -1194,6 +1262,7 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyHeightmap>()?;
         m.add_function(wrap_pyfunction!(generate_terrain, m)?)?;
         m.add_function(wrap_pyfunction!(erode_terrain, m)?)?;
+        m.add_function(wrap_pyfunction!(heightmap_sample_batch, m)?)?;
     }
     #[cfg(feature = "gi")]
     {

@@ -476,10 +476,12 @@ fn process_cell(
 
 /// Linear interpolation along an edge (Deep Fried)
 ///
-/// Branchless: division by near-zero handled by clamp saturating to 0/1.
+/// Branchless NaN-safe: copysign ensures |denom| >= epsilon without branching.
 #[inline(always)]
 fn interpolate_vertex(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) -> Vec3 {
-    let t = ((iso_level - v0) / (v1 - v0)).clamp(0.0, 1.0);
+    let denom = v1 - v0;
+    let safe_denom = f32::copysign(denom.abs().max(1e-10), denom);
+    let t = ((iso_level - v0) / safe_denom).clamp(0.0, 1.0);
     p0 + (p1 - p0) * t
 }
 
