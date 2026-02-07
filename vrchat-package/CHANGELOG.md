@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0] - 2026-02-07
+
+### Added
+- 22 new IQ-based SDF primitives (31 → 53 total):
+  Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
+  Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
+  ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
+  RegularPolygon, StarPolygon, Stairs, Helix
+- GLSL/WGSL/HLSL shader transpiler support for all 22 new primitives
+- 88 new unit tests (458 → 546 total)
+- New categories: 2D→3D prisms (HD2D), 3D revolution bodies, native 3D shapes
+
 ## [0.3.0] - 2026-02-07
 
 ### Added

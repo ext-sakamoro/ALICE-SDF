@@ -234,7 +234,29 @@ impl BvhCompiler {
             | SdfNode::InfiniteCylinder { .. }
             | SdfNode::InfiniteCone { .. }
             | SdfNode::Gyroid { .. }
-            | SdfNode::Heart { .. } => {
+            | SdfNode::Heart { .. }
+            | SdfNode::Tube { .. }
+            | SdfNode::Barrel { .. }
+            | SdfNode::Diamond { .. }
+            | SdfNode::ChamferedCube { .. }
+            | SdfNode::SchwarzP { .. }
+            | SdfNode::Superellipsoid { .. }
+            | SdfNode::RoundedX { .. }
+            | SdfNode::Pie { .. }
+            | SdfNode::Trapezoid { .. }
+            | SdfNode::Parallelogram { .. }
+            | SdfNode::Tunnel { .. }
+            | SdfNode::UnevenCapsule { .. }
+            | SdfNode::Egg { .. }
+            | SdfNode::ArcShape { .. }
+            | SdfNode::Moon { .. }
+            | SdfNode::CrossShape { .. }
+            | SdfNode::BlobbyCross { .. }
+            | SdfNode::ParabolaSegment { .. }
+            | SdfNode::RegularPolygon { .. }
+            | SdfNode::StarPolygon { .. }
+            | SdfNode::Stairs { .. }
+            | SdfNode::Helix { .. } => {
                 panic!("This primitive is interpreter/transpiler-only. Use eval() or shader transpiler instead.");
             }
 

@@ -55,7 +55,7 @@ Pixel-level SDF rendering via HLSL raymarching.
 
 Evaluates the same SDF formula in UdonSharp (pure C#) to push players out of solid geometry.
 
-- `AliceSDF_Primitives.cs` — 31 primitives + CSG operations + transforms (pure C#)
+- `AliceSDF_Primitives.cs` — 53 primitives + CSG operations + transforms (pure C#)
 - `AliceSDF_Math.cs` — Vector math helpers
 - `AliceSDF_Collider.cs` — Player collision detection & push-back
 
@@ -288,7 +288,7 @@ com.alice.sdf/
 └── Prefabs~/                        # Hidden from Unity import
 ```
 
-## Supported Primitives (31)
+## Supported Primitives (53)
 
 | Primitive | HLSL | C# | Formula |
 |-----------|------|----|---------|
@@ -323,6 +323,28 @@ com.alice.sdf/
 | InfiniteCone | `sdInfiniteCone` | `Sdf.InfiniteCone` | Infinite cone (Y-axis) |
 | Heart     | `sdHeart`      | `Sdf.Heart`      | 3D heart (revolution) |
 | Gyroid    | — (inline)     | `Sdf.Gyroid`     | Gyroid minimal surface |
+| Tube      | `sdTube`       | `Sdf.Tube`       | Hollow cylinder (outer_r, thickness) |
+| Barrel    | `sdBarrel`     | `Sdf.Barrel`     | Barrel with bulge |
+| Diamond   | `sdDiamond`    | `Sdf.Diamond`    | Diamond / double cone |
+| ChamferedCube | `sdChamferedCube` | `Sdf.ChamferedCube` | Box with chamfered edges |
+| SchwarzP  | — (inline)     | `Sdf.SchwarzP`   | Schwarz P minimal surface |
+| Superellipsoid | — (inline) | `Sdf.Superellipsoid` | Sphere↔Box morph (e1, e2) |
+| RoundedX  | — (inline)     | `Sdf.RoundedX`   | Rounded X/cross shape |
+| Pie       | `sdPie`        | `Sdf.Pie`        | Sector / fan shape |
+| Trapezoid | `sdTrapezoid`  | `Sdf.Trapezoid`  | Trapezoid prism |
+| Parallelogram | `sdParallelogram` | `Sdf.Parallelogram` | Skewed rectangle prism |
+| Tunnel    | `sdTunnel`     | `Sdf.Tunnel`     | Tunnel / archway |
+| UnevenCapsule | `sdUnevenCapsule` | `Sdf.UnevenCapsule` | Capsule with two radii |
+| Egg       | `sdEgg`        | `Sdf.Egg`        | Egg (revolution) |
+| ArcShape  | `sdArcShape`   | `Sdf.ArcShape`   | Arc / bridge |
+| Moon      | `sdMoon`       | `Sdf.Moon`       | Crescent moon |
+| CrossShape | `sdCrossShape` | `Sdf.CrossShape` | 3D cross / plus sign |
+| BlobbyCross | `sdBlobbyCross` | `Sdf.BlobbyCross` | Organic cross |
+| ParabolaSegment | `sdParabolaSegment` | `Sdf.ParabolaSegment` | Parabolic arch |
+| RegularPolygon | `sdRegularPolygon` | `Sdf.RegularPolygon` | N-sided polygon prism |
+| StarPolygon | `sdStarPolygon` | `Sdf.StarPolygon` | Star polygon prism |
+| Stairs    | `sdStairs`     | `Sdf.Stairs`     | Staircase shape |
+| Helix     | `sdHelix`      | `Sdf.Helix`      | Spiral tube (spring) |
 
 ## Supported Operations (17)
 

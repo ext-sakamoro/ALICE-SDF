@@ -282,6 +282,234 @@ pub enum SdfNode {
         size: f32,
     },
 
+    /// Hollow cylinder (tube/pipe) along Y-axis
+    Tube {
+        /// Radius of the tube center-line
+        outer_radius: f32,
+        /// Half-wall thickness
+        thickness: f32,
+        /// Half the tube height
+        half_height: f32,
+    },
+
+    /// Cylinder with parabolic radial bulge along Y-axis
+    Barrel {
+        /// Base radius at caps
+        radius: f32,
+        /// Half the barrel height
+        half_height: f32,
+        /// Additional radius at the middle
+        bulge: f32,
+    },
+
+    /// Bipyramid (double-cone) with revolution symmetry
+    Diamond {
+        /// Equator radius
+        radius: f32,
+        /// Half the total height
+        half_height: f32,
+    },
+
+    /// Box with chamfered (beveled) edges
+    ChamferedCube {
+        /// Half-extents along each axis
+        half_extents: Vec3,
+        /// Chamfer amount
+        chamfer: f32,
+    },
+
+    /// Schwarz P triply-periodic minimal surface
+    SchwarzP {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// Generalized ellipsoid (sphere-box morph)
+    Superellipsoid {
+        /// Semi-axis radii
+        half_extents: Vec3,
+        /// North-south roundness
+        e1: f32,
+        /// East-west roundness
+        e2: f32,
+    },
+
+    /// Rounded X shape extruded along Y-axis
+    RoundedX {
+        /// Arm length
+        width: f32,
+        /// Rounding radius
+        round_radius: f32,
+        /// Half the extrusion height
+        half_height: f32,
+    },
+
+    /// Pie (sector) shape extruded along Y-axis
+    Pie {
+        /// Half opening angle in radians
+        angle: f32,
+        /// Pie radius
+        radius: f32,
+        /// Half the extrusion height
+        half_height: f32,
+    },
+
+    /// Trapezoid prism in XY plane, extruded along Z
+    Trapezoid {
+        /// Half-width at bottom
+        r1: f32,
+        /// Half-width at top
+        r2: f32,
+        /// Half-height of the 2D trapezoid
+        trap_height: f32,
+        /// Half the extrusion depth along Z
+        half_depth: f32,
+    },
+
+    /// Parallelogram prism in XY plane, extruded along Z
+    Parallelogram {
+        /// Half-width
+        width: f32,
+        /// Half-height
+        para_height: f32,
+        /// Horizontal skew
+        skew: f32,
+        /// Half the extrusion depth along Z
+        half_depth: f32,
+    },
+
+    /// Tunnel (arch opening) in XY plane, extruded along Z
+    Tunnel {
+        /// Half-width of the tunnel
+        width: f32,
+        /// Height of the 2D tunnel opening
+        height_2d: f32,
+        /// Half the extrusion depth along Z
+        half_depth: f32,
+    },
+
+    /// Uneven capsule prism in XY plane, extruded along Z
+    UnevenCapsule {
+        /// Bottom circle radius
+        r1: f32,
+        /// Top circle radius
+        r2: f32,
+        /// Half-height between circle centers
+        cap_height: f32,
+        /// Half the extrusion depth along Z
+        half_depth: f32,
+    },
+
+    /// Egg shape (revolution body) around Y-axis
+    Egg {
+        /// Overall size / base radius
+        ra: f32,
+        /// Top deformation (controls pointiness)
+        rb: f32,
+    },
+
+    /// Arc shape (thick ring sector) in XZ plane, extruded along Y
+    ArcShape {
+        /// Half opening angle in radians
+        aperture: f32,
+        /// Arc center radius
+        radius: f32,
+        /// Ring half-thickness
+        thickness: f32,
+        /// Half the extrusion height along Y
+        half_height: f32,
+    },
+
+    /// Moon (crescent) shape in XZ plane, extruded along Y
+    Moon {
+        /// Distance between circle centers
+        d: f32,
+        /// Outer circle radius
+        ra: f32,
+        /// Inner (subtracted) circle radius
+        rb: f32,
+        /// Half the extrusion height along Y
+        half_height: f32,
+    },
+
+    /// Cross (plus) shape in XZ plane, extruded along Y
+    CrossShape {
+        /// Half-length of cross arms
+        length: f32,
+        /// Half-thickness of cross arms
+        thickness: f32,
+        /// Rounding radius
+        round_radius: f32,
+        /// Half the extrusion height along Y
+        half_height: f32,
+    },
+
+    /// Blobby cross (organic) in XZ plane, extruded along Y
+    BlobbyCross {
+        /// Overall size
+        size: f32,
+        /// Half the extrusion height along Y
+        half_height: f32,
+    },
+
+    /// Parabola segment in XY plane, extruded along Z
+    ParabolaSegment {
+        /// Half-width of the parabola base
+        width: f32,
+        /// Height of the parabola
+        para_height: f32,
+        /// Half the extrusion depth along Z
+        half_depth: f32,
+    },
+
+    /// Regular N-sided polygon prism in XZ plane, extruded along Y
+    RegularPolygon {
+        /// Circumscribed circle radius (center to vertex)
+        radius: f32,
+        /// Number of sides (as f32)
+        n_sides: f32,
+        /// Half the extrusion height along Y
+        half_height: f32,
+    },
+
+    /// Star polygon prism in XZ plane, extruded along Y
+    StarPolygon {
+        /// Outer vertex radius
+        radius: f32,
+        /// Number of star points (as f32)
+        n_points: f32,
+        /// Inner vertex radius (spike depth)
+        m: f32,
+        /// Half the extrusion height along Y
+        half_height: f32,
+    },
+
+    /// Staircase shape in XY plane, extruded along Z
+    Stairs {
+        /// Width of each step
+        step_width: f32,
+        /// Height of each step
+        step_height: f32,
+        /// Number of steps (as f32)
+        n_steps: f32,
+        /// Half the extrusion depth along Z
+        half_depth: f32,
+    },
+
+    /// Helix (spiral tube) along Y-axis
+    Helix {
+        /// Major radius (distance from Y-axis to helix center)
+        major_r: f32,
+        /// Minor radius (tube thickness)
+        minor_r: f32,
+        /// Vertical distance per full revolution
+        pitch: f32,
+        /// Half the height along Y
+        half_height: f32,
+    },
+
     // === Operations ===
     /// Union of two shapes (min distance)
     Union {
@@ -765,6 +993,174 @@ impl SdfNode {
         SdfNode::Heart { size }
     }
 
+    /// Create a tube (hollow cylinder) along Y-axis
+    #[inline]
+    pub fn tube(outer_radius: f32, thickness: f32, height: f32) -> Self {
+        SdfNode::Tube {
+            outer_radius,
+            thickness,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a barrel along Y-axis
+    #[inline]
+    pub fn barrel(radius: f32, height: f32, bulge: f32) -> Self {
+        SdfNode::Barrel {
+            radius,
+            half_height: height * 0.5,
+            bulge,
+        }
+    }
+
+    /// Create a diamond (bipyramid)
+    #[inline]
+    pub fn diamond(radius: f32, height: f32) -> Self {
+        SdfNode::Diamond {
+            radius,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a chamfered cube
+    #[inline]
+    pub fn chamfered_cube(width: f32, height: f32, depth: f32, chamfer: f32) -> Self {
+        SdfNode::ChamferedCube {
+            half_extents: Vec3::new(width * 0.5, height * 0.5, depth * 0.5),
+            chamfer,
+        }
+    }
+
+    /// Create a Schwarz P surface
+    #[inline]
+    pub fn schwarz_p(scale: f32, thickness: f32) -> Self {
+        SdfNode::SchwarzP { scale, thickness }
+    }
+
+    /// Create a superellipsoid
+    #[inline]
+    pub fn superellipsoid(width: f32, height: f32, depth: f32, e1: f32, e2: f32) -> Self {
+        SdfNode::Superellipsoid {
+            half_extents: Vec3::new(width * 0.5, height * 0.5, depth * 0.5),
+            e1,
+            e2,
+        }
+    }
+
+    /// Create a rounded X shape
+    #[inline]
+    pub fn rounded_x(width: f32, round_radius: f32, height: f32) -> Self {
+        SdfNode::RoundedX {
+            width,
+            round_radius,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a pie (sector) shape
+    #[inline]
+    pub fn pie(angle: f32, radius: f32, height: f32) -> Self {
+        SdfNode::Pie {
+            angle,
+            radius,
+            half_height: height * 0.5,
+        }
+    }
+
+    /// Create a trapezoid prism
+    #[inline]
+    pub fn trapezoid(r1: f32, r2: f32, trap_height: f32, depth: f32) -> Self {
+        SdfNode::Trapezoid {
+            r1,
+            r2,
+            trap_height: trap_height * 0.5,
+            half_depth: depth * 0.5,
+        }
+    }
+
+    /// Create a parallelogram prism
+    #[inline]
+    pub fn parallelogram(width: f32, para_height: f32, skew: f32, depth: f32) -> Self {
+        SdfNode::Parallelogram {
+            width,
+            para_height: para_height * 0.5,
+            skew,
+            half_depth: depth * 0.5,
+        }
+    }
+
+    /// Create a tunnel shape
+    #[inline]
+    pub fn tunnel(width: f32, height_2d: f32, depth: f32) -> Self {
+        SdfNode::Tunnel {
+            width,
+            height_2d,
+            half_depth: depth * 0.5,
+        }
+    }
+
+    /// Create an uneven capsule prism
+    #[inline]
+    pub fn uneven_capsule(r1: f32, r2: f32, cap_height: f32, depth: f32) -> Self {
+        SdfNode::UnevenCapsule {
+            r1,
+            r2,
+            cap_height: cap_height * 0.5,
+            half_depth: depth * 0.5,
+        }
+    }
+
+    /// Create an egg shape
+    #[inline]
+    pub fn egg(ra: f32, rb: f32) -> Self {
+        SdfNode::Egg { ra, rb }
+    }
+
+    /// Create an arc shape (thick ring sector)
+    pub fn arc_shape(aperture: f32, radius: f32, thickness: f32, height: f32) -> Self {
+        SdfNode::ArcShape { aperture, radius, thickness, half_height: height * 0.5 }
+    }
+
+    /// Create a moon (crescent) shape
+    pub fn moon(d: f32, ra: f32, rb: f32, height: f32) -> Self {
+        SdfNode::Moon { d, ra, rb, half_height: height * 0.5 }
+    }
+
+    /// Create a cross (plus) shape
+    pub fn cross_shape(length: f32, thickness: f32, round_radius: f32, height: f32) -> Self {
+        SdfNode::CrossShape { length, thickness, round_radius, half_height: height * 0.5 }
+    }
+
+    /// Create a blobby cross (organic) shape
+    pub fn blobby_cross(size: f32, height: f32) -> Self {
+        SdfNode::BlobbyCross { size, half_height: height * 0.5 }
+    }
+
+    /// Create a parabola segment
+    pub fn parabola_segment(width: f32, para_height: f32, depth: f32) -> Self {
+        SdfNode::ParabolaSegment { width, para_height, half_depth: depth * 0.5 }
+    }
+
+    /// Create a regular N-sided polygon prism
+    pub fn regular_polygon(radius: f32, n_sides: u32, height: f32) -> Self {
+        SdfNode::RegularPolygon { radius, n_sides: n_sides as f32, half_height: height * 0.5 }
+    }
+
+    /// Create a star polygon prism
+    pub fn star_polygon(radius: f32, n_points: u32, m: f32, height: f32) -> Self {
+        SdfNode::StarPolygon { radius, n_points: n_points as f32, m, half_height: height * 0.5 }
+    }
+
+    /// Create a staircase shape
+    pub fn stairs(step_width: f32, step_height: f32, n_steps: u32, depth: f32) -> Self {
+        SdfNode::Stairs { step_width, step_height, n_steps: n_steps as f32, half_depth: depth * 0.5 }
+    }
+
+    /// Create a helix (spiral tube)
+    pub fn helix(major_r: f32, minor_r: f32, pitch: f32, height: f32) -> Self {
+        SdfNode::Helix { major_r, minor_r, pitch, half_height: height * 0.5 }
+    }
+
     // === Operation methods ===
 
     /// Union with another shape
@@ -1058,7 +1454,29 @@ impl SdfNode {
             | SdfNode::InfiniteCylinder { .. }
             | SdfNode::InfiniteCone { .. }
             | SdfNode::Gyroid { .. }
-            | SdfNode::Heart { .. } => 1,
+            | SdfNode::Heart { .. }
+            | SdfNode::Tube { .. }
+            | SdfNode::Barrel { .. }
+            | SdfNode::Diamond { .. }
+            | SdfNode::ChamferedCube { .. }
+            | SdfNode::SchwarzP { .. }
+            | SdfNode::Superellipsoid { .. }
+            | SdfNode::RoundedX { .. }
+            | SdfNode::Pie { .. }
+            | SdfNode::Trapezoid { .. }
+            | SdfNode::Parallelogram { .. }
+            | SdfNode::Tunnel { .. }
+            | SdfNode::UnevenCapsule { .. }
+            | SdfNode::Egg { .. }
+            | SdfNode::ArcShape { .. }
+            | SdfNode::Moon { .. }
+            | SdfNode::CrossShape { .. }
+            | SdfNode::BlobbyCross { .. }
+            | SdfNode::ParabolaSegment { .. }
+            | SdfNode::RegularPolygon { .. }
+            | SdfNode::StarPolygon { .. }
+            | SdfNode::Stairs { .. }
+            | SdfNode::Helix { .. } => 1,
 
             // Operations: 1 + children
             SdfNode::Union { a, b }

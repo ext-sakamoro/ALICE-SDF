@@ -370,6 +370,90 @@ impl WgslTranspiler {
                     shader.push_str(HELPER_SDF_HEART);
                     shader.push('\n');
                 }
+                "sdf_tube" => {
+                    shader.push_str(HELPER_SDF_TUBE);
+                    shader.push('\n');
+                }
+                "sdf_barrel" => {
+                    shader.push_str(HELPER_SDF_BARREL);
+                    shader.push('\n');
+                }
+                "sdf_diamond" => {
+                    shader.push_str(HELPER_SDF_DIAMOND);
+                    shader.push('\n');
+                }
+                "sdf_chamfered_cube" => {
+                    shader.push_str(HELPER_SDF_CHAMFERED_CUBE);
+                    shader.push('\n');
+                }
+                "sdf_superellipsoid" => {
+                    shader.push_str(HELPER_SDF_SUPERELLIPSOID);
+                    shader.push('\n');
+                }
+                "sdf_rounded_x" => {
+                    shader.push_str(HELPER_SDF_ROUNDED_X);
+                    shader.push('\n');
+                }
+                "sdf_pie" => {
+                    shader.push_str(HELPER_SDF_PIE);
+                    shader.push('\n');
+                }
+                "sdf_trapezoid" => {
+                    shader.push_str(HELPER_SDF_TRAPEZOID);
+                    shader.push('\n');
+                }
+                "sdf_parallelogram" => {
+                    shader.push_str(HELPER_SDF_PARALLELOGRAM);
+                    shader.push('\n');
+                }
+                "sdf_tunnel" => {
+                    shader.push_str(HELPER_SDF_TUNNEL);
+                    shader.push('\n');
+                }
+                "sdf_uneven_capsule" => {
+                    shader.push_str(HELPER_SDF_UNEVEN_CAPSULE);
+                    shader.push('\n');
+                }
+                "sdf_egg" => {
+                    shader.push_str(HELPER_SDF_EGG);
+                    shader.push('\n');
+                }
+                "sdf_arc_shape" => {
+                    shader.push_str(HELPER_SDF_ARC_SHAPE);
+                    shader.push('\n');
+                }
+                "sdf_moon" => {
+                    shader.push_str(HELPER_SDF_MOON);
+                    shader.push('\n');
+                }
+                "sdf_cross_shape" => {
+                    shader.push_str(HELPER_SDF_CROSS_SHAPE);
+                    shader.push('\n');
+                }
+                "sdf_blobby_cross" => {
+                    shader.push_str(HELPER_SDF_BLOBBY_CROSS);
+                    shader.push('\n');
+                }
+                "sdf_parabola_segment" => {
+                    shader.push_str(HELPER_SDF_PARABOLA_SEGMENT);
+                    shader.push('\n');
+                }
+                "sdf_regular_polygon" => {
+                    shader.push_str(HELPER_SDF_REGULAR_POLYGON);
+                    shader.push('\n');
+                }
+                "sdf_star_polygon" => {
+                    shader.push_str(HELPER_SDF_STAR_POLYGON);
+                    shader.push('\n');
+                }
+                "sdf_stairs" => {
+                    shader.push_str(HELPER_SDF_STAIRS);
+                    shader.push('\n');
+                }
+                "sdf_helix" => {
+                    shader.push_str(HELPER_SDF_HELIX);
+                    shader.push('\n');
+                }
                 _ => {}
             }
         }
@@ -850,6 +934,212 @@ impl WgslTranspiler {
                 let s = self.param(*size);
                 let var = self.next_var();
                 writeln!(code, "    let {} = sdf_heart({}, {});", var, point_var, s).unwrap();
+                var
+            }
+
+            SdfNode::Tube { outer_radius, thickness, half_height } => {
+                self.ensure_helper("sdf_tube");
+                let or = self.param(*outer_radius);
+                let th = self.param(*thickness);
+                let hh = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_tube({}, {}, {}, {});", var, point_var, or, th, hh).unwrap();
+                var
+            }
+
+            SdfNode::Barrel { radius, half_height, bulge } => {
+                self.ensure_helper("sdf_barrel");
+                let r = self.param(*radius);
+                let hh = self.param(*half_height);
+                let b = self.param(*bulge);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_barrel({}, {}, {}, {});", var, point_var, r, hh, b).unwrap();
+                var
+            }
+
+            SdfNode::Diamond { radius, half_height } => {
+                self.ensure_helper("sdf_diamond");
+                let r = self.param(*radius);
+                let hh = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_diamond({}, {}, {});", var, point_var, r, hh).unwrap();
+                var
+            }
+
+            SdfNode::ChamferedCube { half_extents, chamfer } => {
+                self.ensure_helper("sdf_chamfered_cube");
+                let hx = self.param(half_extents.x);
+                let hy = self.param(half_extents.y);
+                let hz = self.param(half_extents.z);
+                let ch = self.param(*chamfer);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_chamfered_cube({}, {}, {}, {}, {});", var, point_var, hx, hy, hz, ch).unwrap();
+                var
+            }
+
+            SdfNode::SchwarzP { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp_var = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    let {} = {} * {};", sp_var, point_var, sc).unwrap();
+                writeln!(code, "    let {} = abs(cos({}.x) + cos({}.y) + cos({}.z)) / {} - {};", var, sp_var, sp_var, sp_var, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::Superellipsoid { half_extents, e1, e2 } => {
+                self.ensure_helper("sdf_superellipsoid");
+                let hx = self.param(half_extents.x);
+                let hy = self.param(half_extents.y);
+                let hz = self.param(half_extents.z);
+                let e1_s = self.param(*e1);
+                let e2_s = self.param(*e2);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_superellipsoid({}, {}, {}, {}, {}, {});", var, point_var, hx, hy, hz, e1_s, e2_s).unwrap();
+                var
+            }
+
+            SdfNode::RoundedX { width, round_radius, half_height } => {
+                self.ensure_helper("sdf_rounded_x");
+                let w = self.param(*width);
+                let r = self.param(*round_radius);
+                let hh = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_rounded_x({}, {}, {}, {});", var, point_var, w, r, hh).unwrap();
+                var
+            }
+
+            SdfNode::Pie { angle, radius, half_height } => {
+                self.ensure_helper("sdf_pie");
+                let a = self.param(*angle);
+                let r = self.param(*radius);
+                let hh = self.param(*half_height);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_pie({}, {}, {}, {});", var, point_var, a, r, hh).unwrap();
+                var
+            }
+
+            SdfNode::Trapezoid { r1, r2, trap_height, half_depth } => {
+                self.ensure_helper("sdf_trapezoid");
+                let p_r1 = self.param(*r1);
+                let p_r2 = self.param(*r2);
+                let th = self.param(*trap_height);
+                let hd = self.param(*half_depth);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_trapezoid({}, {}, {}, {}, {});", var, point_var, p_r1, p_r2, th, hd).unwrap();
+                var
+            }
+
+            SdfNode::Parallelogram { width, para_height, skew, half_depth } => {
+                self.ensure_helper("sdf_parallelogram");
+                let w = self.param(*width);
+                let ph = self.param(*para_height);
+                let sk = self.param(*skew);
+                let hd = self.param(*half_depth);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_parallelogram({}, {}, {}, {}, {});", var, point_var, w, ph, sk, hd).unwrap();
+                var
+            }
+
+            SdfNode::Tunnel { width, height_2d, half_depth } => {
+                self.ensure_helper("sdf_tunnel");
+                let w = self.param(*width);
+                let h2d = self.param(*height_2d);
+                let hd = self.param(*half_depth);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_tunnel({}, {}, {}, {});", var, point_var, w, h2d, hd).unwrap();
+                var
+            }
+
+            SdfNode::UnevenCapsule { r1, r2, cap_height, half_depth } => {
+                self.ensure_helper("sdf_uneven_capsule");
+                let p_r1 = self.param(*r1);
+                let p_r2 = self.param(*r2);
+                let ch = self.param(*cap_height);
+                let hd = self.param(*half_depth);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_uneven_capsule({}, {}, {}, {}, {});", var, point_var, p_r1, p_r2, ch, hd).unwrap();
+                var
+            }
+
+            SdfNode::Egg { ra, rb } => {
+                self.ensure_helper("sdf_egg");
+                let p_ra = self.param(*ra);
+                let p_rb = self.param(*rb);
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_egg({}, {}, {});", var, point_var, p_ra, p_rb).unwrap();
+                var
+            }
+
+            SdfNode::ArcShape { aperture, radius, thickness, half_height } => {
+                self.ensure_helper("sdf_arc_shape");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_arc_shape({}, {}, {}, {}, {});", var, point_var,
+                    self.param(*aperture), self.param(*radius), self.param(*thickness), self.param(*half_height)).unwrap();
+                var
+            }
+
+            SdfNode::Moon { d, ra, rb, half_height } => {
+                self.ensure_helper("sdf_moon");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_moon({}, {}, {}, {}, {});", var, point_var,
+                    self.param(*d), self.param(*ra), self.param(*rb), self.param(*half_height)).unwrap();
+                var
+            }
+
+            SdfNode::CrossShape { length, thickness, round_radius, half_height } => {
+                self.ensure_helper("sdf_cross_shape");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_cross_shape({}, {}, {}, {}, {});", var, point_var,
+                    self.param(*length), self.param(*thickness), self.param(*round_radius), self.param(*half_height)).unwrap();
+                var
+            }
+
+            SdfNode::BlobbyCross { size, half_height } => {
+                self.ensure_helper("sdf_blobby_cross");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_blobby_cross({}, {}, {});", var, point_var,
+                    self.param(*size), self.param(*half_height)).unwrap();
+                var
+            }
+
+            SdfNode::ParabolaSegment { width, para_height, half_depth } => {
+                self.ensure_helper("sdf_parabola_segment");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_parabola_segment({}, {}, {}, {});", var, point_var,
+                    self.param(*width), self.param(*para_height), self.param(*half_depth)).unwrap();
+                var
+            }
+
+            SdfNode::RegularPolygon { radius, n_sides, half_height } => {
+                self.ensure_helper("sdf_regular_polygon");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_regular_polygon({}, {}, {}, {});", var, point_var,
+                    self.param(*radius), self.param(*n_sides), self.param(*half_height)).unwrap();
+                var
+            }
+
+            SdfNode::StarPolygon { radius, n_points, m, half_height } => {
+                self.ensure_helper("sdf_star_polygon");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_star_polygon({}, {}, {}, {}, {});", var, point_var,
+                    self.param(*radius), self.param(*n_points), self.param(*m), self.param(*half_height)).unwrap();
+                var
+            }
+
+            SdfNode::Stairs { step_width, step_height, n_steps, half_depth } => {
+                self.ensure_helper("sdf_stairs");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_stairs({}, {}, {}, {}, {});", var, point_var,
+                    self.param(*step_width), self.param(*step_height), self.param(*n_steps), self.param(*half_depth)).unwrap();
+                var
+            }
+
+            SdfNode::Helix { major_r, minor_r, pitch, half_height } => {
+                self.ensure_helper("sdf_helix");
+                let var = self.next_var();
+                writeln!(code, "    let {} = sdf_helix({}, {}, {}, {}, {});", var, point_var,
+                    self.param(*major_r), self.param(*minor_r), self.param(*pitch), self.param(*half_height)).unwrap();
                 var
             }
 
@@ -1629,6 +1919,385 @@ const HELPER_SDF_HEART: &str = r#"fn sdf_heart(p: vec3<f32>, s: f32) -> f32 {
     let iv = cubic * cubic * cubic - x2 * y3;
     if (iv <= 0.0) { return -0.02 * s; }
     return (pow(iv, 1.0 / 6.0) * 0.5 - 0.02) * s;
+}
+"#;
+
+const HELPER_SDF_TUBE: &str = r#"fn sdf_tube(p: vec3<f32>, outer_r: f32, thick: f32, h: f32) -> f32 {
+    let r = length(p.xz);
+    let dr = abs(r - outer_r) - thick;
+    let dy = abs(p.y) - h;
+    let w = max(vec2<f32>(dr, dy), vec2<f32>(0.0));
+    return min(max(dr, dy), 0.0) + length(w);
+}
+"#;
+
+const HELPER_SDF_BARREL: &str = r#"fn sdf_barrel(p: vec3<f32>, radius: f32, h: f32, bulge: f32) -> f32 {
+    let r = length(p.xz);
+    let yn = clamp(p.y / h, -1.0, 1.0);
+    let er = radius + bulge * (1.0 - yn * yn);
+    let dr = r - er;
+    let dy = abs(p.y) - h;
+    let w = max(vec2<f32>(dr, dy), vec2<f32>(0.0));
+    return min(max(dr, dy), 0.0) + length(w);
+}
+"#;
+
+const HELPER_SDF_DIAMOND: &str = r#"fn sdf_diamond(p: vec3<f32>, r: f32, h: f32) -> f32 {
+    let q = vec2<f32>(length(p.xz), abs(p.y));
+    let ba = vec2<f32>(-r, h);
+    let qa = q - vec2<f32>(r, 0.0);
+    let t = clamp(dot(qa, ba) / dot(ba, ba), 0.0, 1.0);
+    let closest = vec2<f32>(r, 0.0) + ba * t;
+    let dist = length(q - closest);
+    if (q.x * h + q.y * r < r * h) { return -dist; }
+    return dist;
+}
+"#;
+
+const HELPER_SDF_CHAMFERED_CUBE: &str = r#"fn sdf_chamfered_cube(p: vec3<f32>, hx: f32, hy: f32, hz: f32, ch: f32) -> f32 {
+    let ap = abs(p);
+    let q = ap - vec3<f32>(hx, hy, hz);
+    let d_box = min(max(q.x, max(q.y, q.z)), 0.0) + length(max(q, vec3<f32>(0.0)));
+    let s = hx + hy + hz;
+    let d_ch = (ap.x + ap.y + ap.z - s + ch) * 0.57735;
+    return max(d_box, d_ch);
+}
+"#;
+
+const HELPER_SDF_SUPERELLIPSOID: &str = r#"fn sdf_superellipsoid(p: vec3<f32>, hx: f32, hy: f32, hz: f32, e1: f32, e2: f32) -> f32 {
+    let qx = max(abs(p.x / hx), 0.00001);
+    let qy = max(abs(p.y / hy), 0.00001);
+    let qz = max(abs(p.z / hz), 0.00001);
+    let ee1 = max(e1, 0.02);
+    let ee2 = max(e2, 0.02);
+    let m1 = 2.0 / ee2;
+    let m2 = 2.0 / ee1;
+    let w = pow(qx, m1) + pow(qz, m1);
+    let v = pow(w, ee2 / ee1) + pow(qy, m2);
+    let f = pow(v, ee1 * 0.5);
+    return (f - 1.0) * min(hx, min(hy, hz)) * 0.5;
+}
+"#;
+
+const HELPER_SDF_ROUNDED_X: &str = r#"fn sdf_rounded_x(p: vec3<f32>, w: f32, r: f32, h: f32) -> f32 {
+    let q = abs(p.xz);
+    let s = min(q.x + q.y, w) * 0.5;
+    let d2d = length(q - vec2<f32>(s)) - r;
+    let dy = abs(p.y) - h;
+    let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_PIE: &str = r#"fn sdf_pie(p: vec3<f32>, angle: f32, radius: f32, h: f32) -> f32 {
+    let q = vec2<f32>(p.x, p.z);
+    let l = length(q) - radius;
+    let sc = vec2<f32>(sin(angle), cos(angle));
+    let m = length(q) * clamp(sc.y * abs(q.x) - sc.x * q.y, -radius, 0.0);
+    let d2d = max(l, m / max(radius, 1e-10));
+    let dy = abs(p.y) - h;
+    let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_TRAPEZOID: &str = r#"fn _trap_ds(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len_sq = dx * dx + dy * dy;
+    var t = 0.0;
+    if (len_sq > 0.0) { t = ((px - ax) * dx + (py - ay) * dy) / len_sq; }
+    let tc = clamp(t, 0.0, 1.0);
+    let cx = ax + dx * tc;
+    let cy = ay + dy * tc;
+    return sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+}
+fn sdf_trapezoid(p: vec3<f32>, r1: f32, r2: f32, th: f32, hd: f32) -> f32 {
+    let px = abs(p.x);
+    let py = p.y;
+    let he = th;
+    let d_bot = _trap_ds(px, py, 0.0, -he, r1, -he);
+    let d_slant = _trap_ds(px, py, r1, -he, r2, he);
+    let d_top = _trap_ds(px, py, r2, he, 0.0, he);
+    let d_unsigned = min(d_bot, min(d_slant, d_top));
+    let nx = 2.0 * he;
+    let ny = r1 - r2;
+    let d_slant_plane = (px - r1) * nx + (py + he) * ny;
+    var d2d = d_unsigned;
+    if (py >= -he && py <= he && d_slant_plane <= 0.0) { d2d = -d_unsigned; }
+    let dz = abs(p.z) - hd;
+    let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
+    return min(max(d2d, dz), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_PARALLELOGRAM: &str = r#"fn _para_ds(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len_sq = dx * dx + dy * dy;
+    var t = 0.0;
+    if (len_sq > 0.0) { t = ((px - ax) * dx + (py - ay) * dy) / len_sq; }
+    let tc = clamp(t, 0.0, 1.0);
+    let cx = ax + dx * tc;
+    let cy = ay + dy * tc;
+    return sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+}
+fn _para_c2d(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+}
+fn sdf_parallelogram(p: vec3<f32>, w: f32, ph: f32, sk: f32, hd: f32) -> f32 {
+    let px = p.x;
+    let py = p.y;
+    let vdx = w - sk;  let vdy = -ph;
+    let vax = w + sk;  let vay = ph;
+    let vbx = -w + sk; let vby = ph;
+    let vcx = -w - sk; let vcy = -ph;
+    let d1 = _para_ds(px, py, vdx, vdy, vax, vay);
+    let d2 = _para_ds(px, py, vax, vay, vbx, vby);
+    let d3 = _para_ds(px, py, vbx, vby, vcx, vcy);
+    let d4 = _para_ds(px, py, vcx, vcy, vdx, vdy);
+    let d_unsigned = min(d1, min(d2, min(d3, d4)));
+    let c1 = _para_c2d(px, py, vdx, vdy, vax, vay);
+    let c2 = _para_c2d(px, py, vax, vay, vbx, vby);
+    let c3 = _para_c2d(px, py, vbx, vby, vcx, vcy);
+    let c4 = _para_c2d(px, py, vcx, vcy, vdx, vdy);
+    var d2d = d_unsigned;
+    if (c1 <= 0.0 && c2 <= 0.0 && c3 <= 0.0 && c4 <= 0.0) { d2d = -d_unsigned; }
+    let dz = abs(p.z) - hd;
+    let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
+    return min(max(d2d, dz), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_TUNNEL: &str = r#"fn sdf_tunnel(p: vec3<f32>, w: f32, h2d: f32, hd: f32) -> f32 {
+    let px = abs(p.x);
+    let py = p.y;
+    let dx = px - w;
+    let dy_rect = abs(py) - h2d;
+    let d_rect = length(max(vec2<f32>(dx, dy_rect), vec2<f32>(0.0))) + min(max(dx, dy_rect), 0.0);
+    let d_circle = length(vec2<f32>(px, py - h2d)) - w;
+    var d2d = d_rect;
+    if (py > h2d) { d2d = min(d_rect, d_circle); }
+    let dz = abs(p.z) - hd;
+    let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
+    return min(max(d2d, dz), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_UNEVEN_CAPSULE: &str = r#"fn sdf_uneven_capsule(p: vec3<f32>, r1: f32, r2: f32, ch: f32, hd: f32) -> f32 {
+    let px = abs(p.x);
+    let hh = ch * 2.0;
+    let b = (r1 - r2) / hh;
+    let a = sqrt(max(1.0 - b * b, 0.0));
+    let k = dot(vec2<f32>(-b, a), vec2<f32>(px, p.y));
+    var d2d: f32;
+    if (k < 0.0) {
+        d2d = length(vec2<f32>(px, p.y)) - r1;
+    } else if (k > a * hh) {
+        d2d = length(vec2<f32>(px, p.y - hh)) - r2;
+    } else {
+        d2d = dot(vec2<f32>(px, p.y), vec2<f32>(a, b)) - r1;
+    }
+    let dz = abs(p.z) - hd;
+    let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
+    return min(max(d2d, dz), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_EGG: &str = r#"fn sdf_egg(p: vec3<f32>, ra: f32, rb: f32) -> f32 {
+    let px = length(p.xz);
+    let py = p.y;
+    let r = ra - rb;
+    if (py < 0.0) {
+        return length(vec2<f32>(px, py)) - r;
+    } else if (px * ra < py * rb) {
+        return length(vec2<f32>(px, py - ra));
+    } else {
+        return length(vec2<f32>(px + rb, py)) - ra;
+    }
+}
+"#;
+
+const HELPER_SDF_ARC_SHAPE: &str = r#"fn sdf_arc_shape(p: vec3<f32>, aperture: f32, radius: f32, thickness: f32, h: f32) -> f32 {
+    let qx = abs(p.x);
+    let qz = p.z;
+    let sc = vec2<f32>(sin(aperture), cos(aperture));
+    var d2d: f32;
+    if (sc.y * qx > sc.x * qz) {
+        d2d = length(vec2<f32>(qx, qz) - sc * radius) - thickness;
+    } else {
+        d2d = abs(length(vec2<f32>(qx, qz)) - radius) - thickness;
+    }
+    let dy = abs(p.y) - h;
+    let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_MOON: &str = r#"fn sdf_moon(p: vec3<f32>, d: f32, ra: f32, rb: f32, h: f32) -> f32 {
+    let qx = abs(p.x);
+    let qz = p.z;
+    let d_outer = length(vec2<f32>(qx, qz)) - ra;
+    let d_inner = length(vec2<f32>(qx - d, qz)) - rb;
+    let d2d = max(d_outer, -d_inner);
+    let dy = abs(p.y) - h;
+    let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_CROSS_SHAPE: &str = r#"fn sdf_cross_shape(p: vec3<f32>, len: f32, th: f32, rr: f32, h: f32) -> f32 {
+    let qx = abs(p.x);
+    let qz = abs(p.z);
+    let dh = vec2<f32>(qx - len, qz - th);
+    let dv = vec2<f32>(qx - th, qz - len);
+    let dh_sdf = length(max(dh, vec2<f32>(0.0))) + min(max(dh.x, dh.y), 0.0);
+    let dv_sdf = length(max(dv, vec2<f32>(0.0))) + min(max(dv.x, dv.y), 0.0);
+    let d2d = min(dh_sdf, dv_sdf) - rr;
+    let dy = abs(p.y) - h;
+    let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_BLOBBY_CROSS: &str = r#"fn sdf_blobby_cross(p: vec3<f32>, size: f32, h: f32) -> f32 {
+    let qx = abs(p.x) / size;
+    let qz = abs(p.z) / size;
+    let n = qx + qz;
+    var d2d: f32;
+    if (n < 1.0) {
+        let t = 1.0 - n;
+        let b = qx * qz;
+        d2d = (-(max(t * t - 2.0 * b, 0.0))) * sqrt(0.5) * size;
+        d2d = d2d + (n - 1.0) * sqrt(0.5) * size;
+    } else {
+        let dx = vec2<f32>(qx - 1.0, qz);
+        let dz = vec2<f32>(qx, qz - 1.0);
+        let d1 = max(qx - 1.0, 0.0);
+        let d22 = max(qz - 1.0, 0.0);
+        d2d = min(length(dx), min(length(dz), sqrt(d1 * d1 + d22 * d22))) * size;
+    }
+    let dy = abs(p.y) - h;
+    let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(ww);
+}
+"#;
+
+const HELPER_SDF_PARABOLA_SEGMENT: &str = r#"fn sdf_parabola_segment(p: vec3<f32>, w: f32, ph: f32, hd: f32) -> f32 {
+    let px = abs(p.x);
+    let py = p.y;
+    let ww_sq = w * w;
+    let y_arch = ph * (1.0 - px * px / ww_sq);
+    var is_in = false;
+    if (px <= w && py >= 0.0 && py <= y_arch) { is_in = true; }
+    var t = clamp(px, 0.0, w);
+    for (var i = 0; i < 8; i = i + 1) {
+        let ft = ph * (1.0 - t * t / ww_sq);
+        let dft = -2.0 * ph * t / ww_sq;
+        let ex = px - t;
+        let ey = py - ft;
+        let f = -ex + ey * dft;
+        let df = 1.0 + dft * dft + ey * (-2.0 * ph / ww_sq);
+        if (abs(df) > 1e-10) { t = clamp(t - f / df, 0.0, w); }
+    }
+    let cy = ph * (1.0 - t * t / ww_sq);
+    let d_para = length(vec2<f32>(px - t, py - cy));
+    var d_base: f32;
+    if (px <= w) { d_base = abs(py); } else { d_base = length(vec2<f32>(px - w, py)); }
+    let d_unsigned = min(d_para, d_base);
+    var d2d = d_unsigned;
+    if (is_in) { d2d = -d_unsigned; }
+    let dz = abs(p.z) - hd;
+    let ext = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
+    return min(max(d2d, dz), 0.0) + length(ext);
+}
+"#;
+
+const HELPER_SDF_REGULAR_POLYGON: &str = r#"fn sdf_regular_polygon(p: vec3<f32>, radius: f32, n: f32, hh: f32) -> f32 {
+    let qx = abs(p.x);
+    let qz = p.z;
+    let nn = max(n, 3.0);
+    let an = 3.14159265358979 / nn;
+    let he = radius * cos(an);
+    let angle = atan2(qx, qz);
+    let bn = an * floor((angle + an) / (2.0 * an));
+    let rx = cos(bn) * qx + sin(bn) * qz;
+    let d2d = rx - he;
+    let dy = abs(p.y) - hh;
+    let w = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(w);
+}
+"#;
+
+const HELPER_SDF_STAR_POLYGON: &str = r#"fn sdf_star_polygon(p: vec3<f32>, radius: f32, np: f32, m: f32, hh: f32) -> f32 {
+    let qx = abs(p.x);
+    let qz = p.z;
+    let n = max(np, 3.0);
+    let an = 3.14159265358979 / n;
+    let r = length(vec2<f32>(qx, qz));
+    var angle = atan2(qx, qz);
+    angle = ((angle % (2.0 * an)) + 2.0 * an) % (2.0 * an);
+    if (angle > an) { angle = 2.0 * an - angle; }
+    let pt = vec2<f32>(r * cos(angle), r * sin(angle));
+    let a = vec2<f32>(radius, 0.0);
+    let b = vec2<f32>(m * cos(an), m * sin(an));
+    let ab = b - a;
+    let ap = pt - a;
+    let t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
+    let closest = a + ab * t;
+    let dist = length(pt - closest);
+    let cross_val = ab.x * ap.y - ab.y * ap.x;
+    var d2d = dist;
+    if (cross_val > 0.0) { d2d = -dist; }
+    let dy = abs(p.y) - hh;
+    let w = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
+    return min(max(d2d, dy), 0.0) + length(w);
+}
+"#;
+
+const HELPER_SDF_STAIRS: &str = r#"fn _stair_box(lx: f32, ly: f32, s: f32, sw: f32, sh: f32) -> f32 {
+    let cx = s * sw + sw * 0.5;
+    let hy = (s + 1.0) * sh * 0.5;
+    let dx = abs(lx - cx) - sw * 0.5;
+    let dy = abs(ly - hy) - hy;
+    return length(max(vec2<f32>(dx, dy), vec2<f32>(0.0))) + min(max(dx, dy), 0.0);
+}
+fn sdf_stairs(p: vec3<f32>, sw: f32, sh: f32, ns: f32, hd: f32) -> f32 {
+    let n = max(ns, 1.0);
+    let tw = n * sw;
+    let th = n * sh;
+    let lx = p.x + tw * 0.5;
+    let ly = p.y + th * 0.5;
+    let si = clamp(floor(lx / sw), 0.0, n - 1.0);
+    let sj = clamp(ceil(ly / sh) - 1.0, 0.0, n - 1.0);
+    var d2d = _stair_box(lx, ly, si, sw, sh);
+    if (si > 0.0) { d2d = min(d2d, _stair_box(lx, ly, si - 1.0, sw, sh)); }
+    if (si < n - 1.0) { d2d = min(d2d, _stair_box(lx, ly, si + 1.0, sw, sh)); }
+    if (sj != si && sj != si - 1.0 && sj != si + 1.0) { d2d = min(d2d, _stair_box(lx, ly, sj, sw, sh)); }
+    let dz = abs(p.z) - hd;
+    let w = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
+    return min(max(d2d, dz), 0.0) + length(w);
+}
+"#;
+
+const HELPER_SDF_HELIX: &str = r#"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_r: f32, pitch: f32, hh: f32) -> f32 {
+    let r_xz = length(vec2<f32>(p.x, p.z));
+    let theta = atan2(p.z, p.x);
+    let py = p.y;
+    let tau = 6.28318530717959;
+    let d_radial = r_xz - major_r;
+    let y_at_theta = theta * pitch / tau;
+    let k = round((py - y_at_theta) / pitch);
+    var d_tube = 1e20;
+    for (var dk = -1.0; dk <= 1.0; dk = dk + 1.0) {
+        let kk = k + dk;
+        let y_helix = y_at_theta + kk * pitch;
+        let dy = py - y_helix;
+        let d = length(vec2<f32>(d_radial, dy)) - minor_r;
+        d_tube = min(d_tube, d);
+    }
+    let d_cap = abs(py) - hh;
+    return max(d_tube, d_cap);
 }
 "#;
 

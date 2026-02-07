@@ -38,6 +38,28 @@ mod infinite_cylinder;
 mod infinite_cone;
 mod gyroid;
 mod heart;
+mod tube;
+mod barrel;
+mod diamond;
+mod chamfered_cube;
+mod schwarz_p;
+mod superellipsoid;
+mod rounded_x;
+mod pie;
+mod trapezoid;
+mod parallelogram;
+mod tunnel;
+mod uneven_capsule;
+mod egg;
+mod arc_shape;
+mod moon;
+mod cross_shape;
+mod blobby_cross;
+mod parabola_segment;
+mod regular_polygon;
+mod star_polygon;
+mod stairs;
+mod helix;
 
 pub use sphere::{sdf_sphere, sdf_sphere_at};
 pub use box3d::{sdf_box3d, sdf_box3d_at, sdf_rounded_box3d};
@@ -70,6 +92,28 @@ pub use infinite_cylinder::sdf_infinite_cylinder;
 pub use infinite_cone::sdf_infinite_cone;
 pub use gyroid::sdf_gyroid;
 pub use heart::sdf_heart;
+pub use tube::sdf_tube;
+pub use barrel::sdf_barrel;
+pub use diamond::sdf_diamond;
+pub use chamfered_cube::sdf_chamfered_cube;
+pub use schwarz_p::sdf_schwarz_p;
+pub use superellipsoid::sdf_superellipsoid;
+pub use rounded_x::sdf_rounded_x;
+pub use pie::sdf_pie;
+pub use trapezoid::sdf_trapezoid;
+pub use parallelogram::sdf_parallelogram;
+pub use tunnel::sdf_tunnel;
+pub use uneven_capsule::sdf_uneven_capsule;
+pub use egg::sdf_egg;
+pub use arc_shape::sdf_arc_shape;
+pub use moon::sdf_moon;
+pub use cross_shape::sdf_cross_shape;
+pub use blobby_cross::sdf_blobby_cross;
+pub use parabola_segment::sdf_parabola_segment;
+pub use regular_polygon::sdf_regular_polygon;
+pub use star_polygon::sdf_star_polygon;
+pub use stairs::sdf_stairs;
+pub use helix::sdf_helix;
 
 use glam::Vec3;
 
@@ -141,6 +185,50 @@ pub enum PrimitiveType {
     Gyroid,
     /// Heart
     Heart,
+    /// Tube (hollow cylinder)
+    Tube,
+    /// Barrel (bulged cylinder)
+    Barrel,
+    /// Diamond (bipyramid)
+    Diamond,
+    /// Chamfered cube
+    ChamferedCube,
+    /// Schwarz P surface
+    SchwarzP,
+    /// Superellipsoid
+    Superellipsoid,
+    /// Rounded X
+    RoundedX,
+    /// Pie (sector prism)
+    Pie,
+    /// Trapezoid prism
+    Trapezoid,
+    /// Parallelogram prism
+    Parallelogram,
+    /// Tunnel (arch opening)
+    Tunnel,
+    /// Uneven capsule prism
+    UnevenCapsule,
+    /// Egg (revolution body)
+    Egg,
+    /// Arc shape (thick ring sector)
+    ArcShape,
+    /// Moon (crescent)
+    Moon,
+    /// Cross shape (plus)
+    CrossShape,
+    /// Blobby cross (organic)
+    BlobbyCross,
+    /// Parabola segment
+    ParabolaSegment,
+    /// Regular N-sided polygon prism
+    RegularPolygon,
+    /// Star polygon prism
+    StarPolygon,
+    /// Staircase shape
+    Stairs,
+    /// Helix (spiral tube)
+    Helix,
 }
 
 /// Evaluate a primitive SDF using fast Enum dispatch (Safe version)
@@ -353,6 +441,116 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
                 Some(sdf_heart(point, params[0]))
             } else { None }
         }
+        PrimitiveType::Tube => {
+            if params.len() >= 3 {
+                Some(sdf_tube(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::Barrel => {
+            if params.len() >= 3 {
+                Some(sdf_barrel(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::Diamond => {
+            if params.len() >= 2 {
+                Some(sdf_diamond(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::ChamferedCube => {
+            if params.len() >= 4 {
+                Some(sdf_chamfered_cube(point, Vec3::new(params[0], params[1], params[2]), params[3]))
+            } else { None }
+        }
+        PrimitiveType::SchwarzP => {
+            if params.len() >= 2 {
+                Some(sdf_schwarz_p(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::Superellipsoid => {
+            if params.len() >= 5 {
+                Some(sdf_superellipsoid(point, Vec3::new(params[0], params[1], params[2]), params[3], params[4]))
+            } else { None }
+        }
+        PrimitiveType::RoundedX => {
+            if params.len() >= 3 {
+                Some(sdf_rounded_x(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::Pie => {
+            if params.len() >= 3 {
+                Some(sdf_pie(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::Trapezoid => {
+            if params.len() >= 4 {
+                Some(sdf_trapezoid(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::Parallelogram => {
+            if params.len() >= 4 {
+                Some(sdf_parallelogram(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::Tunnel => {
+            if params.len() >= 3 {
+                Some(sdf_tunnel(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::UnevenCapsule => {
+            if params.len() >= 4 {
+                Some(sdf_uneven_capsule(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::Egg => {
+            if params.len() >= 2 {
+                Some(sdf_egg(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::ArcShape => {
+            if params.len() >= 4 {
+                Some(sdf_arc_shape(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::Moon => {
+            if params.len() >= 4 {
+                Some(sdf_moon(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::CrossShape => {
+            if params.len() >= 4 {
+                Some(sdf_cross_shape(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::BlobbyCross => {
+            if params.len() >= 2 {
+                Some(sdf_blobby_cross(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::ParabolaSegment => {
+            if params.len() >= 3 {
+                Some(sdf_parabola_segment(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::RegularPolygon => {
+            if params.len() >= 3 {
+                Some(sdf_regular_polygon(point, params[0], params[1], params[2]))
+            } else { None }
+        }
+        PrimitiveType::StarPolygon => {
+            if params.len() >= 4 {
+                Some(sdf_star_polygon(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::Stairs => {
+            if params.len() >= 4 {
+                Some(sdf_stairs(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
+        PrimitiveType::Helix => {
+            if params.len() >= 4 {
+                Some(sdf_helix(point, params[0], params[1], params[2], params[3]))
+            } else { None }
+        }
     }
 }
 
@@ -482,6 +680,85 @@ pub unsafe fn eval_primitive_unchecked(prim: PrimitiveType, point: Vec3, params:
             point, *params.get_unchecked(0), *params.get_unchecked(1),
         ),
         PrimitiveType::Heart => sdf_heart(point, *params.get_unchecked(0)),
+        PrimitiveType::Tube => sdf_tube(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::Barrel => sdf_barrel(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::Diamond => sdf_diamond(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::ChamferedCube => sdf_chamfered_cube(
+            point,
+            Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2)),
+            *params.get_unchecked(3),
+        ),
+        PrimitiveType::SchwarzP => sdf_schwarz_p(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::Superellipsoid => sdf_superellipsoid(
+            point,
+            Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2)),
+            *params.get_unchecked(3), *params.get_unchecked(4),
+        ),
+        PrimitiveType::RoundedX => sdf_rounded_x(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::Pie => sdf_pie(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::Trapezoid => sdf_trapezoid(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Parallelogram => sdf_parallelogram(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Tunnel => sdf_tunnel(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::UnevenCapsule => sdf_uneven_capsule(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Egg => sdf_egg(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::ArcShape => sdf_arc_shape(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Moon => sdf_moon(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::CrossShape => sdf_cross_shape(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::BlobbyCross => sdf_blobby_cross(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::ParabolaSegment => sdf_parabola_segment(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::RegularPolygon => sdf_regular_polygon(
+            point, *params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2),
+        ),
+        PrimitiveType::StarPolygon => sdf_star_polygon(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Stairs => sdf_stairs(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Helix => sdf_helix(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+            *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
     }
 }
 

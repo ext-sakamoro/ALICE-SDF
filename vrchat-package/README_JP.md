@@ -330,7 +330,7 @@ com.alice.sdf/
 └── Prefabs~/                        # Unity Importから隠蔽
 ```
 
-## 対応プリミティブ (31種)
+## 対応プリミティブ (53種)
 
 | プリミティブ | HLSL | C# | 数式 |
 |-------------|------|----|------|
@@ -365,6 +365,28 @@ com.alice.sdf/
 | InfiniteCone (無限円錐) | `sdInfiniteCone` | `Sdf.InfiniteCone` | 無限円錐 (Y軸) |
 | Heart (ハート) | `sdHeart` | `Sdf.Heart` | 3Dハート (回転体) |
 | Gyroid (ジャイロイド) | — (inline) | `Sdf.Gyroid` | ジャイロイド極小曲面 |
+| Tube (チューブ) | `sdTube` | `Sdf.Tube` | 中空円柱 (外径, 厚さ) |
+| Barrel (樽) | `sdBarrel` | `Sdf.Barrel` | 膨らみ付き樽 |
+| Diamond (ダイヤモンド) | `sdDiamond` | `Sdf.Diamond` | ダイヤモンド / 双円錐 |
+| ChamferedCube (面取り箱) | `sdChamferedCube` | `Sdf.ChamferedCube` | 面取り付きボックス |
+| SchwarzP (シュワルツP) | — (inline) | `Sdf.SchwarzP` | シュワルツP極小曲面 |
+| Superellipsoid (超楕円体) | — (inline) | `Sdf.Superellipsoid` | 球↔箱モーフ (e1, e2) |
+| RoundedX (丸十字) | — (inline) | `Sdf.RoundedX` | 丸みのある十字/X形 |
+| Pie (扇形) | `sdPie` | `Sdf.Pie` | セクター / 扇形 |
+| Trapezoid (台形) | `sdTrapezoid` | `Sdf.Trapezoid` | 台形プリズム |
+| Parallelogram (平行四辺形) | `sdParallelogram` | `Sdf.Parallelogram` | 斜め四角形プリズム |
+| Tunnel (トンネル) | `sdTunnel` | `Sdf.Tunnel` | トンネル / アーチ門 |
+| UnevenCapsule (非対称カプセル) | `sdUnevenCapsule` | `Sdf.UnevenCapsule` | 2半径カプセル |
+| Egg (卵) | `sdEgg` | `Sdf.Egg` | 卵形 (回転体) |
+| ArcShape (アーク) | `sdArcShape` | `Sdf.ArcShape` | アーチ / 橋 |
+| Moon (三日月) | `sdMoon` | `Sdf.Moon` | 三日月形 |
+| CrossShape (十字形) | `sdCrossShape` | `Sdf.CrossShape` | 3D十字 / プラス記号 |
+| BlobbyCross (有機十字) | `sdBlobbyCross` | `Sdf.BlobbyCross` | 有機的クロス |
+| ParabolaSegment (放物線) | `sdParabolaSegment` | `Sdf.ParabolaSegment` | 放物線アーチ |
+| RegularPolygon (正多角形) | `sdRegularPolygon` | `Sdf.RegularPolygon` | N角形柱 |
+| StarPolygon (星形) | `sdStarPolygon` | `Sdf.StarPolygon` | 星形多角形柱 |
+| Stairs (階段) | `sdStairs` | `Sdf.Stairs` | 階段形状 |
+| Helix (螺旋) | `sdHelix` | `Sdf.Helix` | 螺旋チューブ (バネ) |
 
 ## 対応演算 (17種)
 
