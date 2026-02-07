@@ -1,5 +1,9 @@
 # ALICE-SDF
 
+<p align="center">
+  <img src="asset/logo-on-light.jpeg" alt="ALICE-SDF ロゴ" width="720">
+</p>
+
 [English](README.md) | **日本語**
 
 **A.L.I.C.E. - Adaptive Lightweight Implicit Compression Engine**
