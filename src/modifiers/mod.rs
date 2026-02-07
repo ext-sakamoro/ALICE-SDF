@@ -25,7 +25,8 @@ mod polar_repeat;
 pub use twist::{modifier_twist, modifier_twist_x, modifier_twist_z};
 pub use bend::{modifier_bend, modifier_bend_x, modifier_bend_z, modifier_bend_cheap};
 pub use repeat::{
-    modifier_repeat_infinite, modifier_repeat_finite, modifier_repeat_polar,
+    modifier_repeat_infinite, modifier_repeat_infinite_rk,
+    modifier_repeat_finite, modifier_repeat_polar,
     modifier_repeat_x, modifier_repeat_y, modifier_repeat_z,
 };
 pub use noise::{modifier_noise_perlin, modifier_noise_simplex, perlin_noise_3d, fbm_noise_3d};
@@ -34,4 +35,4 @@ pub use revolution::modifier_revolution;
 pub use extrude::{modifier_extrude, modifier_extrude_point};
 pub use taper::modifier_taper;
 pub use displacement::modifier_displacement;
-pub use polar_repeat::modifier_polar_repeat;
+pub use polar_repeat::{modifier_polar_repeat, modifier_polar_repeat_rk};

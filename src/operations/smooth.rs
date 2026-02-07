@@ -18,6 +18,17 @@ pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
     a.min(b) - h * h * k * 0.25
 }
 
+/// Polynomial smooth minimum — Division Exorcism edition.
+///
+/// Takes precomputed `rk = 1.0 / k` to eliminate division from the hot path.
+/// Mathematically equivalent to `smooth_min` but uses `(1.0 - abs_diff * rk)`
+/// instead of `(k - abs_diff) / k`.
+#[inline(always)]
+pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
+    let h = (1.0 - (a - b).abs() * rk).max(0.0);
+    a.min(b) - h * h * k * 0.25
+}
+
 /// Polynomial smooth maximum (Deep Fried)
 ///
 /// Branchless k=0 safety via max().
@@ -25,6 +36,15 @@ pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
 pub fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
     let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
+    a.max(b) + h * h * k * 0.25
+}
+
+/// Polynomial smooth maximum — Division Exorcism edition.
+///
+/// Takes precomputed `rk = 1.0 / k` to eliminate division from the hot path.
+#[inline(always)]
+pub fn smooth_max_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
+    let h = (1.0 - (a - b).abs() * rk).max(0.0);
     a.max(b) + h * h * k * 0.25
 }
 
@@ -44,6 +64,24 @@ pub fn sdf_smooth_intersection(d1: f32, d2: f32, k: f32) -> f32 {
 #[inline(always)]
 pub fn sdf_smooth_subtraction(d1: f32, d2: f32, k: f32) -> f32 {
     smooth_max(d1, -d2, k)
+}
+
+/// Smooth union — Division Exorcism edition. Takes precomputed `rk = 1.0/k`.
+#[inline(always)]
+pub fn sdf_smooth_union_rk(d1: f32, d2: f32, k: f32, rk: f32) -> f32 {
+    smooth_min_rk(d1, d2, k, rk)
+}
+
+/// Smooth intersection — Division Exorcism edition. Takes precomputed `rk = 1.0/k`.
+#[inline(always)]
+pub fn sdf_smooth_intersection_rk(d1: f32, d2: f32, k: f32, rk: f32) -> f32 {
+    smooth_max_rk(d1, d2, k, rk)
+}
+
+/// Smooth subtraction — Division Exorcism edition. Takes precomputed `rk = 1.0/k`.
+#[inline(always)]
+pub fn sdf_smooth_subtraction_rk(d1: f32, d2: f32, k: f32, rk: f32) -> f32 {
+    smooth_max_rk(d1, -d2, k, rk)
 }
 
 /// Exponential smooth minimum (Deep Fried)

@@ -12,6 +12,7 @@ use glam::Vec3;
 use wide::{f32x8, CmpLt, CmpGt};
 
 use crate::modifiers::perlin_noise_3d;
+use crate::primitives::*;
 
 /// Maximum stack depth for value stack (SIMD)
 const MAX_VALUE_STACK: usize = 64;
@@ -406,6 +407,255 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 vsp += 1;
             }
 
+            // === Extended Primitives (per-lane scalar dispatch) ===
+            OpCode::RoundedBox => {
+                let d = eval_per_lane(&p, |pt| {
+                    let he = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                    sdf_rounded_box(pt, he, inst.params[3])
+                });
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CappedCone => {
+                let d = eval_per_lane(&p, |pt| sdf_capped_cone(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CappedTorus => {
+                let d = eval_per_lane(&p, |pt| sdf_capped_torus(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RoundedCylinder => {
+                let d = eval_per_lane(&p, |pt| sdf_rounded_cylinder(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::TriangularPrism => {
+                let d = eval_per_lane(&p, |pt| sdf_triangular_prism(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CutSphere => {
+                let d = eval_per_lane(&p, |pt| sdf_cut_sphere(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CutHollowSphere => {
+                let d = eval_per_lane(&p, |pt| sdf_cut_hollow_sphere(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::DeathStar => {
+                let d = eval_per_lane(&p, |pt| sdf_death_star(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::SolidAngle => {
+                let d = eval_per_lane(&p, |pt| sdf_solid_angle(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Rhombus => {
+                let d = eval_per_lane(&p, |pt| sdf_rhombus(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Horseshoe => {
+                let d = eval_per_lane(&p, |pt| sdf_horseshoe(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3], inst.params[4]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Vesica => {
+                let d = eval_per_lane(&p, |pt| sdf_vesica(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::InfiniteCylinder => {
+                // Simple SIMD: length(p.xz) - r
+                let r = f32x8::splat(inst.params[0]);
+                let d = (p.x * p.x + p.z * p.z).sqrt() - r;
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::InfiniteCone => {
+                let d = eval_per_lane(&p, |pt| sdf_infinite_cone(pt, inst.params[0]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Gyroid => {
+                let d = eval_per_lane(&p, |pt| sdf_gyroid(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Heart => {
+                let d = eval_per_lane(&p, |pt| sdf_heart(pt, inst.params[0]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Tube => {
+                // SIMD: hollow cylinder
+                let outer_r = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let half_h = f32x8::splat(inst.params[2]);
+                let xz_len = (p.x * p.x + p.z * p.z).sqrt();
+                let dx = (xz_len - outer_r).abs() - thickness;
+                let dy = p.y.abs() - half_h;
+                let dx_pos = dx.max(f32x8::ZERO);
+                let dy_pos = dy.max(f32x8::ZERO);
+                let d = (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() + dx.max(dy).min(f32x8::ZERO);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Barrel => {
+                let d = eval_per_lane(&p, |pt| sdf_barrel(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Diamond => {
+                let d = eval_per_lane(&p, |pt| sdf_diamond(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::ChamferedCube => {
+                let d = eval_per_lane(&p, |pt| {
+                    let he = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                    sdf_chamfered_cube(pt, he, inst.params[3])
+                });
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::SchwarzP => {
+                let d = eval_per_lane(&p, |pt| sdf_schwarz_p(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Superellipsoid => {
+                let d = eval_per_lane(&p, |pt| {
+                    let he = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                    sdf_superellipsoid(pt, he, inst.params[3], inst.params[4])
+                });
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RoundedX => {
+                let d = eval_per_lane(&p, |pt| sdf_rounded_x(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Pie => {
+                let d = eval_per_lane(&p, |pt| sdf_pie(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Trapezoid => {
+                let d = eval_per_lane(&p, |pt| sdf_trapezoid(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Parallelogram => {
+                let d = eval_per_lane(&p, |pt| sdf_parallelogram(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Tunnel => {
+                let d = eval_per_lane(&p, |pt| sdf_tunnel(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::UnevenCapsule => {
+                let d = eval_per_lane(&p, |pt| sdf_uneven_capsule(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Egg => {
+                let d = eval_per_lane(&p, |pt| sdf_egg(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::ArcShape => {
+                let d = eval_per_lane(&p, |pt| sdf_arc_shape(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Moon => {
+                let d = eval_per_lane(&p, |pt| sdf_moon(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CrossShape => {
+                let d = eval_per_lane(&p, |pt| sdf_cross_shape(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::BlobbyCross => {
+                let d = eval_per_lane(&p, |pt| sdf_blobby_cross(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::ParabolaSegment => {
+                let d = eval_per_lane(&p, |pt| sdf_parabola_segment(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RegularPolygon => {
+                let d = eval_per_lane(&p, |pt| sdf_regular_polygon(pt, inst.params[0], inst.params[1], inst.params[2]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::StarPolygon => {
+                let d = eval_per_lane(&p, |pt| sdf_star_polygon(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Stairs => {
+                let d = eval_per_lane(&p, |pt| sdf_stairs(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Helix => {
+                let d = eval_per_lane(&p, |pt| sdf_helix(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
             // === Binary Operations ===
             OpCode::Union => {
                 vsp -= 1;
@@ -430,7 +680,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
                 let k = f32x8::splat(inst.params[0]);
-                value_stack[vsp - 1] = smooth_min_simd(a, b, k);
+                let rk = f32x8::splat(inst.params[1]); // Division Exorcism: precomputed 1/k
+                value_stack[vsp - 1] = smooth_min_simd_rk(a, b, k, rk);
             }
 
             OpCode::SmoothIntersection => {
@@ -438,7 +689,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
                 let k = f32x8::splat(inst.params[0]);
-                value_stack[vsp - 1] = -smooth_min_simd(-a, -b, k);
+                let rk = f32x8::splat(inst.params[1]);
+                value_stack[vsp - 1] = -smooth_min_simd_rk(-a, -b, k, rk);
             }
 
             OpCode::SmoothSubtraction => {
@@ -446,7 +698,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
                 let k = f32x8::splat(inst.params[0]);
-                value_stack[vsp - 1] = -smooth_min_simd(-a, b, k);
+                let rk = f32x8::splat(inst.params[1]);
+                value_stack[vsp - 1] = -smooth_min_simd_rk(-a, b, k, rk);
             }
 
             // === Transforms ===
@@ -582,13 +835,17 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let sx = f32x8::splat(inst.params[0]);
                 let sy = f32x8::splat(inst.params[1]);
                 let sz = f32x8::splat(inst.params[2]);
+                // Division Exorcism: precomputed reciprocal spacing
+                let rsx = f32x8::splat(inst.params[3]);
+                let rsy = f32x8::splat(inst.params[4]);
+                let rsz = f32x8::splat(inst.params[5]);
                 let half = f32x8::splat(0.5);
 
-                // modulo operation: p - spacing * floor(p / spacing + 0.5)
+                // modulo operation: p - spacing * floor(p * recip_spacing + 0.5)
                 p = Vec3x8 {
-                    x: p.x - sx * (p.x / sx + half).floor(),
-                    y: p.y - sy * (p.y / sy + half).floor(),
-                    z: p.z - sz * (p.z / sz + half).floor(),
+                    x: p.x - sx * (p.x * rsx + half).floor(),
+                    y: p.y - sy * (p.y * rsy + half).floor(),
+                    z: p.z - sz * (p.z * rsz + half).floor(),
                 };
             }
 
@@ -754,9 +1011,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 };
                 csp += 1;
 
-                let count_f = inst.params[0];
-                let sector = f32x8::splat(std::f32::consts::TAU / count_f);
-                let inv_sector = f32x8::splat(count_f / std::f32::consts::TAU);
+                // Division Exorcism: params[1]=sector, params[2]=recip_sector
+                let sector = f32x8::splat(inst.params[1]);
+                let inv_sector = f32x8::splat(inst.params[2]);
                 let half = f32x8::splat(0.5);
 
                 let angle = atan2_approx(p.z, p.x);
@@ -848,6 +1105,14 @@ fn smooth_min_simd(a: f32x8, b: f32x8, k: f32x8) -> f32x8 {
     a.min(b) - h * h * k * f32x8::splat(0.25)
 }
 
+/// Smooth min — Division Exorcism edition.
+/// Takes precomputed `rk = 1/k` to eliminate SIMD division.
+#[inline]
+fn smooth_min_simd_rk(a: f32x8, b: f32x8, k: f32x8, rk: f32x8) -> f32x8 {
+    let h = (f32x8::ONE - (a - b).abs() * rk).max(f32x8::ZERO);
+    a.min(b) - h * h * k * f32x8::splat(0.25)
+}
+
 /// Fast cosine approximation for SIMD
 #[inline]
 fn cos_approx(x: f32x8) -> f32x8 {
@@ -902,6 +1167,24 @@ fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
     // Negate for y < 0
     let neg_y_mask = y.cmp_lt(f32x8::ZERO);
     neg_y_mask.blend(-result, result)
+}
+
+/// Per-lane scalar evaluation helper for extended primitives
+///
+/// Evaluates a scalar SDF function for each of the 8 SIMD lanes independently.
+/// This is used for complex primitives where full SIMD implementation would be
+/// error-prone. The SIMD benefit still comes from parallelizing tree traversal
+/// (transforms, operations) across 8 points.
+#[inline]
+fn eval_per_lane(p: &Vec3x8, f: impl Fn(Vec3) -> f32) -> f32x8 {
+    let px = p.x.as_array_ref();
+    let py = p.y.as_array_ref();
+    let pz = p.z.as_array_ref();
+    let mut results = [0.0f32; 8];
+    for i in 0..8 {
+        results[i] = f(Vec3::new(px[i], py[i], pz[i]));
+    }
+    f32x8::new(results)
 }
 
 /// Batch evaluate compiled SDF using SIMD (8 points at a time)

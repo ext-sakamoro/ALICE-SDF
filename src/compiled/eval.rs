@@ -153,6 +153,238 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 vsp += 1;
             }
 
+            // === Extended Primitives ===
+            OpCode::RoundedBox => {
+                let half_extents = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let d = sdf_rounded_box(p, half_extents, inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CappedCone => {
+                let d = sdf_capped_cone(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CappedTorus => {
+                let d = sdf_capped_torus(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RoundedCylinder => {
+                let d = sdf_rounded_cylinder(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::TriangularPrism => {
+                let d = sdf_triangular_prism(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CutSphere => {
+                let d = sdf_cut_sphere(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CutHollowSphere => {
+                let d = sdf_cut_hollow_sphere(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::DeathStar => {
+                let d = sdf_death_star(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::SolidAngle => {
+                let d = sdf_solid_angle(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Rhombus => {
+                let d = sdf_rhombus(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Horseshoe => {
+                let d = sdf_horseshoe(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3], inst.params[4]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Vesica => {
+                let d = sdf_vesica(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::InfiniteCylinder => {
+                let d = sdf_infinite_cylinder(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::InfiniteCone => {
+                let d = sdf_infinite_cone(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Gyroid => {
+                let d = sdf_gyroid(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Heart => {
+                let d = sdf_heart(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Tube => {
+                let d = sdf_tube(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Barrel => {
+                let d = sdf_barrel(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Diamond => {
+                let d = sdf_diamond(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::ChamferedCube => {
+                let half_extents = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let d = sdf_chamfered_cube(p, half_extents, inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::SchwarzP => {
+                let d = sdf_schwarz_p(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Superellipsoid => {
+                let half_extents = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let d = sdf_superellipsoid(p, half_extents, inst.params[3], inst.params[4]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RoundedX => {
+                let d = sdf_rounded_x(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Pie => {
+                let d = sdf_pie(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Trapezoid => {
+                let d = sdf_trapezoid(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Parallelogram => {
+                let d = sdf_parallelogram(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Tunnel => {
+                let d = sdf_tunnel(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::UnevenCapsule => {
+                let d = sdf_uneven_capsule(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Egg => {
+                let d = sdf_egg(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::ArcShape => {
+                let d = sdf_arc_shape(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Moon => {
+                let d = sdf_moon(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::CrossShape => {
+                let d = sdf_cross_shape(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::BlobbyCross => {
+                let d = sdf_blobby_cross(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::ParabolaSegment => {
+                let d = sdf_parabola_segment(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::RegularPolygon => {
+                let d = sdf_regular_polygon(p, inst.params[0], inst.params[1], inst.params[2]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::StarPolygon => {
+                let d = sdf_star_polygon(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Stairs => {
+                let d = sdf_stairs(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Helix => {
+                let d = sdf_helix(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
             // === Binary Operations ===
             OpCode::Union => {
                 vsp -= 1;
@@ -179,21 +411,22 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_smooth_union(a, b, inst.params[0]);
+                // Division Exorcism: params[1] = precomputed 1/k
+                value_stack[vsp - 1] = sdf_smooth_union_rk(a, b, inst.params[0], inst.params[1]);
             }
 
             OpCode::SmoothIntersection => {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_smooth_intersection(a, b, inst.params[0]);
+                value_stack[vsp - 1] = sdf_smooth_intersection_rk(a, b, inst.params[0], inst.params[1]);
             }
 
             OpCode::SmoothSubtraction => {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_smooth_subtraction(a, b, inst.params[0]);
+                value_stack[vsp - 1] = sdf_smooth_subtraction_rk(a, b, inst.params[0], inst.params[1]);
             }
 
             // === Transforms ===
@@ -306,8 +539,10 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 };
                 csp += 1;
 
+                // Division Exorcism: params[3..5] = precomputed 1/spacing
                 let spacing = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-                p = modifier_repeat_infinite(p, spacing);
+                let recip = Vec3::new(inst.params[3], inst.params[4], inst.params[5]);
+                p = modifier_repeat_infinite_rk(p, spacing, recip);
             }
 
             OpCode::RepeatFinite => {
@@ -455,7 +690,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 };
                 csp += 1;
 
-                p = modifier_polar_repeat(p, inst.params[0] as u32);
+                // Division Exorcism: params[1]=sector, params[2]=recip_sector
+                p = modifier_polar_repeat_rk(p, inst.params[1], inst.params[2]);
             }
 
             // === Control ===

@@ -22,6 +22,24 @@ pub fn modifier_polar_repeat(p: Vec3, count: u32) -> Vec3 {
     Vec3::new(r * a_mod.cos(), p.y, r * a_mod.sin())
 }
 
+/// Polar repeat — Division Exorcism edition.
+///
+/// Takes precomputed `sector = TAU / count` and `recip_sector = count / TAU`
+/// to eliminate division and replace `%` with the round-trick:
+/// `a - sector * round(a * recip_sector)` instead of `a % sector`.
+#[inline(always)]
+pub fn modifier_polar_repeat_rk(p: Vec3, sector: f32, recip_sector: f32) -> Vec3 {
+    let a = p.z.atan2(p.x);
+    let r = (p.x * p.x + p.z * p.z).sqrt();
+
+    // Round trick: a - sector * round(a / sector)
+    // = a - sector * round(a * recip_sector)
+    let sector_angle = a - sector * (a * recip_sector).round();
+
+    let (s, c) = sector_angle.sin_cos();
+    Vec3::new(r * c, p.y, r * s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

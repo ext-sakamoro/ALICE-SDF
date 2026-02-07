@@ -96,7 +96,8 @@ pub fn fbm_noise_3d(
         frequency *= lacunarity;
     }
 
-    value / max_value
+    // Division Exorcism: reciprocal multiplication instead of division
+    value * (1.0 / max_value)
 }
 
 // Helper functions - all forced inline for maximum optimization
@@ -124,28 +125,48 @@ fn hash3d(x: i32, y: i32, z: i32, seed: u32) -> u32 {
     h
 }
 
+/// Branchless gradient selection via lookup table.
+///
+/// The 16 Perlin gradient vectors are encoded as (u_src, v_src, u_sign, v_sign):
+/// - u_src/v_src: 0=x, 1=y, 2=z
+/// - u_sign/v_sign: 0=positive, 1=negative
+///
+/// This eliminates all conditional branches from the inner loop.
 #[inline(always)]
 fn grad3d(hash: u32, x: f32, y: f32, z: f32) -> f32 {
-    let h = hash & 15;
-    // Branchless selection using logic ops
-    // u = h < 8 ? x : y
-    let u = if (h & 8) == 0 { x } else { y };
+    // Packed LUT: each entry is (u_src << 4 | v_src << 2 | u_sign << 1 | v_sign)
+    // Derived from Perlin's original gradient table
+    const LUT: [u8; 16] = [
+        0b_00_01_00, // h=0:  +x +y
+        0b_00_01_01, // h=1:  +x -y
+        0b_00_01_10, // h=2:  -x +y
+        0b_00_01_11, // h=3:  -x -y
+        0b_00_10_00, // h=4:  +x +z
+        0b_00_10_01, // h=5:  +x -z
+        0b_00_10_10, // h=6:  -x +z
+        0b_00_10_11, // h=7:  -x -z
+        0b_01_10_00, // h=8:  +y +z
+        0b_01_10_01, // h=9:  +y -z
+        0b_01_10_10, // h=10: -y +z
+        0b_01_10_11, // h=11: -y -z
+        0b_01_00_00, // h=12: +y +x
+        0b_00_10_10, // h=13: -x +z  (same as h=6)
+        0b_01_00_10, // h=14: -y +x
+        0b_00_10_01, // h=15: +x -z  (same as h=5)
+    ];
 
-    // v = h < 4 ? y : (h == 12 || h == 14 ? x : z)
-    // h=12(1100), 14(1110). Bit 2 is 1 (4,5,6,7, 12,13,14,15).
-    // This logic is tricky to fully de-branch without lookup,
-    // but the compiler does a good job with simple ifs.
-    let v = if h < 4 {
-        y
-    } else if h == 12 || h == 14 {
-        x
-    } else {
-        z
-    };
+    let entry = LUT[(hash & 15) as usize];
+    let coords = [x, y, z];
 
-    let g1 = if (h & 1) == 0 { u } else { -u };
-    let g2 = if (h & 2) == 0 { v } else { -v };
-    g1 + g2
+    let u_src = ((entry >> 4) & 3) as usize;
+    let v_src = ((entry >> 2) & 3) as usize;
+    let u_neg = (entry >> 1) & 1;
+    let v_neg = entry & 1;
+
+    // Branchless sign application: val * (1 - 2 * sign_bit)
+    let u = coords[u_src] * (1.0 - 2.0 * u_neg as f32);
+    let v = coords[v_src] * (1.0 - 2.0 * v_neg as f32);
+    u + v
 }
 
 /// [Deep Fried v2] Batch Perlin noise for 8 points

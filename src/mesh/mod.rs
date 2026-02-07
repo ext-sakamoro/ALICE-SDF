@@ -42,6 +42,11 @@ pub mod primitive_fitting;
 mod mesh_to_sdf;
 mod sdf_to_mesh;
 
+#[cfg(feature = "gpu")]
+pub mod gpu_mc_shaders;
+#[cfg(feature = "gpu")]
+pub mod gpu_marching_cubes;
+
 pub use bvh::{Aabb, MeshBvh, BvhNode, Triangle as BvhTriangle};
 pub use hermite::{
     HermitePoint, EdgeCrossing, HermiteConfig, HermiteExtractor,
@@ -79,9 +84,12 @@ pub use collision::{
     VhacdConfig, ConvexDecomposition, convex_decomposition,
 };
 pub use sdf_to_mesh::{
-    sdf_to_mesh, marching_cubes, MarchingCubesConfig, Mesh,
-    adaptive_marching_cubes, AdaptiveConfig,
+    sdf_to_mesh, sdf_to_mesh_compiled, marching_cubes, marching_cubes_compiled,
+    MarchingCubesConfig, Mesh,
+    adaptive_marching_cubes, adaptive_marching_cubes_compiled, AdaptiveConfig,
 };
+#[cfg(feature = "gpu")]
+pub use gpu_marching_cubes::{gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig};
 
 /// Vertex with position, normal, UV, tangent, color, and material ID
 ///

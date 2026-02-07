@@ -25,12 +25,20 @@ texture-fit = ["image", "cli"]
 python = ["pyo3", "numpy"]
 jit = ["cranelift-codegen", "cranelift-frontend", "cranelift-jit", "cranelift-module", "cranelift-native"]
 gpu = ["wgpu", "pollster", "bytemuck", "futures-channel"]
+volume = ["gpu"]  # 3D volume texture baking
+gpu-mesh = ["gpu"]  # GPU Marching Cubes mesh generation
+svo = []  # Sparse Voxel Octree
+svo-gpu = ["svo", "gpu"]  # SVO with GPU support
+destruction = []  # Voxel destruction system
+terrain = []  # Terrain system (heightmap + erosion + caves)
+gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
 unreal = ["ffi", "hlsl"]  # Unreal Engine integration (FFI + HLSL)
+aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All AAA game features
 
 [dependencies]
 # SIMD math
@@ -97,6 +105,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
+panic = "abort"
 
 [profile.bench]
 opt-level = 3

@@ -141,46 +141,163 @@ impl Compiler {
                 panic!("Bezier requires 10 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
             }
 
-            // New primitives — interpreter-only (use eval() or transpiler)
-            SdfNode::RoundedBox { .. }
-            | SdfNode::CappedCone { .. }
-            | SdfNode::CappedTorus { .. }
-            | SdfNode::RoundedCylinder { .. }
-            | SdfNode::TriangularPrism { .. }
-            | SdfNode::CutSphere { .. }
-            | SdfNode::CutHollowSphere { .. }
-            | SdfNode::DeathStar { .. }
-            | SdfNode::SolidAngle { .. }
-            | SdfNode::Rhombus { .. }
-            | SdfNode::Horseshoe { .. }
-            | SdfNode::Vesica { .. }
-            | SdfNode::InfiniteCylinder { .. }
-            | SdfNode::InfiniteCone { .. }
-            | SdfNode::Gyroid { .. }
-            | SdfNode::Heart { .. }
-            | SdfNode::Tube { .. }
-            | SdfNode::Barrel { .. }
-            | SdfNode::Diamond { .. }
-            | SdfNode::ChamferedCube { .. }
-            | SdfNode::SchwarzP { .. }
-            | SdfNode::Superellipsoid { .. }
-            | SdfNode::RoundedX { .. }
-            | SdfNode::Pie { .. }
-            | SdfNode::Trapezoid { .. }
-            | SdfNode::Parallelogram { .. }
-            | SdfNode::Tunnel { .. }
-            | SdfNode::UnevenCapsule { .. }
-            | SdfNode::Egg { .. }
-            | SdfNode::ArcShape { .. }
-            | SdfNode::Moon { .. }
-            | SdfNode::CrossShape { .. }
-            | SdfNode::BlobbyCross { .. }
-            | SdfNode::ParabolaSegment { .. }
-            | SdfNode::RegularPolygon { .. }
-            | SdfNode::StarPolygon { .. }
-            | SdfNode::Stairs { .. }
-            | SdfNode::Helix { .. } => {
-                panic!("This primitive is interpreter/transpiler-only. Use eval() or shader transpiler instead.");
+            // === Extended Primitives (38 new) ===
+            SdfNode::RoundedBox { half_extents, round_radius } => {
+                self.instructions.push(Instruction::rounded_box(
+                    half_extents.x, half_extents.y, half_extents.z, *round_radius,
+                ));
+            }
+
+            SdfNode::CappedCone { half_height, r1, r2 } => {
+                self.instructions.push(Instruction::capped_cone(*half_height, *r1, *r2));
+            }
+
+            SdfNode::CappedTorus { major_radius, minor_radius, cap_angle } => {
+                self.instructions.push(Instruction::capped_torus(*major_radius, *minor_radius, *cap_angle));
+            }
+
+            SdfNode::RoundedCylinder { radius, round_radius, half_height } => {
+                self.instructions.push(Instruction::rounded_cylinder(*radius, *round_radius, *half_height));
+            }
+
+            SdfNode::TriangularPrism { width, half_depth } => {
+                self.instructions.push(Instruction::triangular_prism(*width, *half_depth));
+            }
+
+            SdfNode::CutSphere { radius, cut_height } => {
+                self.instructions.push(Instruction::cut_sphere(*radius, *cut_height));
+            }
+
+            SdfNode::CutHollowSphere { radius, cut_height, thickness } => {
+                self.instructions.push(Instruction::cut_hollow_sphere(*radius, *cut_height, *thickness));
+            }
+
+            SdfNode::DeathStar { ra, rb, d } => {
+                self.instructions.push(Instruction::death_star(*ra, *rb, *d));
+            }
+
+            SdfNode::SolidAngle { angle, radius } => {
+                self.instructions.push(Instruction::solid_angle(*angle, *radius));
+            }
+
+            SdfNode::Rhombus { la, lb, half_height, round_radius } => {
+                self.instructions.push(Instruction::rhombus(*la, *lb, *half_height, *round_radius));
+            }
+
+            SdfNode::Horseshoe { angle, radius, half_length, width, thickness } => {
+                self.instructions.push(Instruction::horseshoe(*angle, *radius, *half_length, *width, *thickness));
+            }
+
+            SdfNode::Vesica { radius, half_dist } => {
+                self.instructions.push(Instruction::vesica(*radius, *half_dist));
+            }
+
+            SdfNode::InfiniteCylinder { radius } => {
+                self.instructions.push(Instruction::infinite_cylinder(*radius));
+            }
+
+            SdfNode::InfiniteCone { angle } => {
+                self.instructions.push(Instruction::infinite_cone(*angle));
+            }
+
+            SdfNode::Gyroid { scale, thickness } => {
+                self.instructions.push(Instruction::gyroid(*scale, *thickness));
+            }
+
+            SdfNode::Heart { size } => {
+                self.instructions.push(Instruction::heart(*size));
+            }
+
+            SdfNode::Tube { outer_radius, thickness, half_height } => {
+                self.instructions.push(Instruction::tube(*outer_radius, *thickness, *half_height));
+            }
+
+            SdfNode::Barrel { radius, half_height, bulge } => {
+                self.instructions.push(Instruction::barrel(*radius, *half_height, *bulge));
+            }
+
+            SdfNode::Diamond { radius, half_height } => {
+                self.instructions.push(Instruction::diamond(*radius, *half_height));
+            }
+
+            SdfNode::ChamferedCube { half_extents, chamfer } => {
+                self.instructions.push(Instruction::chamfered_cube(
+                    half_extents.x, half_extents.y, half_extents.z, *chamfer,
+                ));
+            }
+
+            SdfNode::SchwarzP { scale, thickness } => {
+                self.instructions.push(Instruction::schwarz_p(*scale, *thickness));
+            }
+
+            SdfNode::Superellipsoid { half_extents, e1, e2 } => {
+                self.instructions.push(Instruction::superellipsoid(
+                    half_extents.x, half_extents.y, half_extents.z, *e1, *e2,
+                ));
+            }
+
+            SdfNode::RoundedX { width, round_radius, half_height } => {
+                self.instructions.push(Instruction::rounded_x(*width, *round_radius, *half_height));
+            }
+
+            SdfNode::Pie { angle, radius, half_height } => {
+                self.instructions.push(Instruction::pie(*angle, *radius, *half_height));
+            }
+
+            SdfNode::Trapezoid { r1, r2, trap_height, half_depth } => {
+                self.instructions.push(Instruction::trapezoid(*r1, *r2, *trap_height, *half_depth));
+            }
+
+            SdfNode::Parallelogram { width, para_height, skew, half_depth } => {
+                self.instructions.push(Instruction::parallelogram(*width, *para_height, *skew, *half_depth));
+            }
+
+            SdfNode::Tunnel { width, height_2d, half_depth } => {
+                self.instructions.push(Instruction::tunnel(*width, *height_2d, *half_depth));
+            }
+
+            SdfNode::UnevenCapsule { r1, r2, cap_height, half_depth } => {
+                self.instructions.push(Instruction::uneven_capsule(*r1, *r2, *cap_height, *half_depth));
+            }
+
+            SdfNode::Egg { ra, rb } => {
+                self.instructions.push(Instruction::egg(*ra, *rb));
+            }
+
+            SdfNode::ArcShape { aperture, radius, thickness, half_height } => {
+                self.instructions.push(Instruction::arc_shape(*aperture, *radius, *thickness, *half_height));
+            }
+
+            SdfNode::Moon { d, ra, rb, half_height } => {
+                self.instructions.push(Instruction::moon(*d, *ra, *rb, *half_height));
+            }
+
+            SdfNode::CrossShape { length, thickness, round_radius, half_height } => {
+                self.instructions.push(Instruction::cross_shape(*length, *thickness, *round_radius, *half_height));
+            }
+
+            SdfNode::BlobbyCross { size, half_height } => {
+                self.instructions.push(Instruction::blobby_cross(*size, *half_height));
+            }
+
+            SdfNode::ParabolaSegment { width, para_height, half_depth } => {
+                self.instructions.push(Instruction::parabola_segment(*width, *para_height, *half_depth));
+            }
+
+            SdfNode::RegularPolygon { radius, n_sides, half_height } => {
+                self.instructions.push(Instruction::regular_polygon(*radius, *n_sides, *half_height));
+            }
+
+            SdfNode::StarPolygon { radius, n_points, m, half_height } => {
+                self.instructions.push(Instruction::star_polygon(*radius, *n_points, *m, *half_height));
+            }
+
+            SdfNode::Stairs { step_width, step_height, n_steps, half_depth } => {
+                self.instructions.push(Instruction::stairs(*step_width, *step_height, *n_steps, *half_depth));
+            }
+
+            SdfNode::Helix { major_r, minor_r, pitch, half_height } => {
+                self.instructions.push(Instruction::helix(*major_r, *minor_r, *pitch, *half_height));
             }
 
             // === Binary Operations ===

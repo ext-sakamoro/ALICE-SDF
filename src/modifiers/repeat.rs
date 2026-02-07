@@ -21,6 +21,19 @@ pub fn modifier_repeat_infinite(point: Vec3, spacing: Vec3) -> Vec3 {
     )
 }
 
+/// Infinite repetition — Division Exorcism edition.
+///
+/// Takes precomputed `recip_spacing = 1.0 / spacing` to eliminate 3 divisions
+/// from the hot path. `p * recip` replaces `p / spacing`.
+#[inline(always)]
+pub fn modifier_repeat_infinite_rk(point: Vec3, spacing: Vec3, recip_spacing: Vec3) -> Vec3 {
+    Vec3::new(
+        point.x - spacing.x * (point.x * recip_spacing.x).round(),
+        point.y - spacing.y * (point.y * recip_spacing.y).round(),
+        point.z - spacing.z * (point.z * recip_spacing.z).round(),
+    )
+}
+
 /// Finite repetition along all axes (Deep Fried)
 #[inline(always)]
 pub fn modifier_repeat_finite(point: Vec3, count: [u32; 3], spacing: Vec3) -> Vec3 {

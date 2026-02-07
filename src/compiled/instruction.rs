@@ -212,6 +212,351 @@ impl Instruction {
         inst
     }
 
+    // === Extended Primitives (38 new) ===
+
+    #[inline]
+    pub fn rounded_box(hx: f32, hy: f32, hz: f32, round_radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::RoundedBox);
+        inst.params[0] = hx;
+        inst.params[1] = hy;
+        inst.params[2] = hz;
+        inst.params[3] = round_radius;
+        inst
+    }
+
+    #[inline]
+    pub fn capped_cone(half_height: f32, r1: f32, r2: f32) -> Self {
+        let mut inst = Self::new(OpCode::CappedCone);
+        inst.params[0] = half_height;
+        inst.params[1] = r1;
+        inst.params[2] = r2;
+        inst
+    }
+
+    #[inline]
+    pub fn capped_torus(major_radius: f32, minor_radius: f32, cap_angle: f32) -> Self {
+        let mut inst = Self::new(OpCode::CappedTorus);
+        inst.params[0] = major_radius;
+        inst.params[1] = minor_radius;
+        inst.params[2] = cap_angle;
+        inst
+    }
+
+    #[inline]
+    pub fn rounded_cylinder(radius: f32, round_radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::RoundedCylinder);
+        inst.params[0] = radius;
+        inst.params[1] = round_radius;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn triangular_prism(width: f32, half_depth: f32) -> Self {
+        let mut inst = Self::new(OpCode::TriangularPrism);
+        inst.params[0] = width;
+        inst.params[1] = half_depth;
+        inst
+    }
+
+    #[inline]
+    pub fn cut_sphere(radius: f32, cut_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::CutSphere);
+        inst.params[0] = radius;
+        inst.params[1] = cut_height;
+        inst
+    }
+
+    #[inline]
+    pub fn cut_hollow_sphere(radius: f32, cut_height: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::CutHollowSphere);
+        inst.params[0] = radius;
+        inst.params[1] = cut_height;
+        inst.params[2] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn death_star(ra: f32, rb: f32, d: f32) -> Self {
+        let mut inst = Self::new(OpCode::DeathStar);
+        inst.params[0] = ra;
+        inst.params[1] = rb;
+        inst.params[2] = d;
+        inst
+    }
+
+    #[inline]
+    pub fn solid_angle(angle: f32, radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::SolidAngle);
+        inst.params[0] = angle;
+        inst.params[1] = radius;
+        inst
+    }
+
+    #[inline]
+    pub fn rhombus(la: f32, lb: f32, half_height: f32, round_radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::Rhombus);
+        inst.params[0] = la;
+        inst.params[1] = lb;
+        inst.params[2] = half_height;
+        inst.params[3] = round_radius;
+        inst
+    }
+
+    #[inline]
+    pub fn horseshoe(angle: f32, radius: f32, half_length: f32, width: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::Horseshoe);
+        inst.params[0] = angle;
+        inst.params[1] = radius;
+        inst.params[2] = half_length;
+        inst.params[3] = width;
+        inst.params[4] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn vesica(radius: f32, half_dist: f32) -> Self {
+        let mut inst = Self::new(OpCode::Vesica);
+        inst.params[0] = radius;
+        inst.params[1] = half_dist;
+        inst
+    }
+
+    #[inline]
+    pub fn infinite_cylinder(radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::InfiniteCylinder);
+        inst.params[0] = radius;
+        inst
+    }
+
+    #[inline]
+    pub fn infinite_cone(angle: f32) -> Self {
+        let mut inst = Self::new(OpCode::InfiniteCone);
+        inst.params[0] = angle;
+        inst
+    }
+
+    #[inline]
+    pub fn gyroid(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::Gyroid);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn heart(size: f32) -> Self {
+        let mut inst = Self::new(OpCode::Heart);
+        inst.params[0] = size;
+        inst
+    }
+
+    #[inline]
+    pub fn tube(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Tube);
+        inst.params[0] = outer_radius;
+        inst.params[1] = thickness;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn barrel(radius: f32, half_height: f32, bulge: f32) -> Self {
+        let mut inst = Self::new(OpCode::Barrel);
+        inst.params[0] = radius;
+        inst.params[1] = half_height;
+        inst.params[2] = bulge;
+        inst
+    }
+
+    #[inline]
+    pub fn diamond(radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Diamond);
+        inst.params[0] = radius;
+        inst.params[1] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn chamfered_cube(hx: f32, hy: f32, hz: f32, chamfer: f32) -> Self {
+        let mut inst = Self::new(OpCode::ChamferedCube);
+        inst.params[0] = hx;
+        inst.params[1] = hy;
+        inst.params[2] = hz;
+        inst.params[3] = chamfer;
+        inst
+    }
+
+    #[inline]
+    pub fn schwarz_p(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::SchwarzP);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn superellipsoid(hx: f32, hy: f32, hz: f32, e1: f32, e2: f32) -> Self {
+        let mut inst = Self::new(OpCode::Superellipsoid);
+        inst.params[0] = hx;
+        inst.params[1] = hy;
+        inst.params[2] = hz;
+        inst.params[3] = e1;
+        inst.params[4] = e2;
+        inst
+    }
+
+    #[inline]
+    pub fn rounded_x(width: f32, round_radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::RoundedX);
+        inst.params[0] = width;
+        inst.params[1] = round_radius;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn pie(angle: f32, radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Pie);
+        inst.params[0] = angle;
+        inst.params[1] = radius;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn trapezoid(r1: f32, r2: f32, trap_height: f32, half_depth: f32) -> Self {
+        let mut inst = Self::new(OpCode::Trapezoid);
+        inst.params[0] = r1;
+        inst.params[1] = r2;
+        inst.params[2] = trap_height;
+        inst.params[3] = half_depth;
+        inst
+    }
+
+    #[inline]
+    pub fn parallelogram(width: f32, para_height: f32, skew: f32, half_depth: f32) -> Self {
+        let mut inst = Self::new(OpCode::Parallelogram);
+        inst.params[0] = width;
+        inst.params[1] = para_height;
+        inst.params[2] = skew;
+        inst.params[3] = half_depth;
+        inst
+    }
+
+    #[inline]
+    pub fn tunnel(width: f32, height_2d: f32, half_depth: f32) -> Self {
+        let mut inst = Self::new(OpCode::Tunnel);
+        inst.params[0] = width;
+        inst.params[1] = height_2d;
+        inst.params[2] = half_depth;
+        inst
+    }
+
+    #[inline]
+    pub fn uneven_capsule(r1: f32, r2: f32, cap_height: f32, half_depth: f32) -> Self {
+        let mut inst = Self::new(OpCode::UnevenCapsule);
+        inst.params[0] = r1;
+        inst.params[1] = r2;
+        inst.params[2] = cap_height;
+        inst.params[3] = half_depth;
+        inst
+    }
+
+    #[inline]
+    pub fn egg(ra: f32, rb: f32) -> Self {
+        let mut inst = Self::new(OpCode::Egg);
+        inst.params[0] = ra;
+        inst.params[1] = rb;
+        inst
+    }
+
+    #[inline]
+    pub fn arc_shape(aperture: f32, radius: f32, thickness: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::ArcShape);
+        inst.params[0] = aperture;
+        inst.params[1] = radius;
+        inst.params[2] = thickness;
+        inst.params[3] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn moon(d: f32, ra: f32, rb: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Moon);
+        inst.params[0] = d;
+        inst.params[1] = ra;
+        inst.params[2] = rb;
+        inst.params[3] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn cross_shape(length: f32, thickness: f32, round_radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::CrossShape);
+        inst.params[0] = length;
+        inst.params[1] = thickness;
+        inst.params[2] = round_radius;
+        inst.params[3] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn blobby_cross(size: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::BlobbyCross);
+        inst.params[0] = size;
+        inst.params[1] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn parabola_segment(width: f32, para_height: f32, half_depth: f32) -> Self {
+        let mut inst = Self::new(OpCode::ParabolaSegment);
+        inst.params[0] = width;
+        inst.params[1] = para_height;
+        inst.params[2] = half_depth;
+        inst
+    }
+
+    #[inline]
+    pub fn regular_polygon(radius: f32, n_sides: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::RegularPolygon);
+        inst.params[0] = radius;
+        inst.params[1] = n_sides;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn star_polygon(radius: f32, n_points: f32, m: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::StarPolygon);
+        inst.params[0] = radius;
+        inst.params[1] = n_points;
+        inst.params[2] = m;
+        inst.params[3] = half_height;
+        inst
+    }
+
+    #[inline]
+    pub fn stairs(step_width: f32, step_height: f32, n_steps: f32, half_depth: f32) -> Self {
+        let mut inst = Self::new(OpCode::Stairs);
+        inst.params[0] = step_width;
+        inst.params[1] = step_height;
+        inst.params[2] = n_steps;
+        inst.params[3] = half_depth;
+        inst
+    }
+
+    #[inline]
+    pub fn helix(major_r: f32, minor_r: f32, pitch: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Helix);
+        inst.params[0] = major_r;
+        inst.params[1] = minor_r;
+        inst.params[2] = pitch;
+        inst.params[3] = half_height;
+        inst
+    }
+
     /// Create a union instruction
     #[inline]
     pub fn union() -> Self {
@@ -234,7 +579,9 @@ impl Instruction {
     #[inline]
     pub fn smooth_union(k: f32) -> Self {
         let mut inst = Self::new(OpCode::SmoothUnion);
-        inst.params[0] = k;
+        let k_safe = k.max(1e-10);
+        inst.params[0] = k_safe;
+        inst.params[1] = 1.0 / k_safe; // Division Exorcism: precomputed reciprocal
         inst
     }
 
@@ -242,7 +589,9 @@ impl Instruction {
     #[inline]
     pub fn smooth_intersection(k: f32) -> Self {
         let mut inst = Self::new(OpCode::SmoothIntersection);
-        inst.params[0] = k;
+        let k_safe = k.max(1e-10);
+        inst.params[0] = k_safe;
+        inst.params[1] = 1.0 / k_safe; // Division Exorcism: precomputed reciprocal
         inst
     }
 
@@ -250,7 +599,9 @@ impl Instruction {
     #[inline]
     pub fn smooth_subtraction(k: f32) -> Self {
         let mut inst = Self::new(OpCode::SmoothSubtraction);
-        inst.params[0] = k;
+        let k_safe = k.max(1e-10);
+        inst.params[0] = k_safe;
+        inst.params[1] = 1.0 / k_safe; // Division Exorcism: precomputed reciprocal
         inst
     }
 
@@ -334,6 +685,10 @@ impl Instruction {
         inst.params[0] = sx;
         inst.params[1] = sy;
         inst.params[2] = sz;
+        // Division Exorcism: precomputed reciprocal spacing
+        inst.params[3] = 1.0 / sx;
+        inst.params[4] = 1.0 / sy;
+        inst.params[5] = 1.0 / sz;
         inst.child_count = 1;
         inst
     }
@@ -444,6 +799,10 @@ impl Instruction {
     pub fn polar_repeat(count: f32) -> Self {
         let mut inst = Self::new(OpCode::PolarRepeat);
         inst.params[0] = count;
+        // Division Exorcism: precomputed sector angle and its reciprocal
+        let sector = std::f32::consts::TAU / count;
+        inst.params[1] = sector;           // TAU / count
+        inst.params[2] = count / std::f32::consts::TAU; // 1.0 / sector = count / TAU
         inst.child_count = 1;
         inst
     }

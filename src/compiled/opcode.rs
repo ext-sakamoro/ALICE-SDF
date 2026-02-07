@@ -38,6 +38,84 @@ pub enum OpCode {
     /// Link: params[0] = half_length, params[1] = r1, params[2] = r2
     Link = 12,
 
+    // === Extended Primitives (64-101) ===
+    /// RoundedBox: params[0..3] = half_extents, params[3] = round_radius
+    RoundedBox = 64,
+    /// CappedCone: params[0] = half_height, params[1] = r1, params[2] = r2
+    CappedCone = 65,
+    /// CappedTorus: params[0] = major_radius, params[1] = minor_radius, params[2] = cap_angle
+    CappedTorus = 66,
+    /// RoundedCylinder: params[0] = radius, params[1] = round_radius, params[2] = half_height
+    RoundedCylinder = 67,
+    /// TriangularPrism: params[0] = width, params[1] = half_depth
+    TriangularPrism = 68,
+    /// CutSphere: params[0] = radius, params[1] = cut_height
+    CutSphere = 69,
+    /// CutHollowSphere: params[0] = radius, params[1] = cut_height, params[2] = thickness
+    CutHollowSphere = 70,
+    /// DeathStar: params[0] = ra, params[1] = rb, params[2] = d
+    DeathStar = 71,
+    /// SolidAngle: params[0] = angle, params[1] = radius
+    SolidAngle = 72,
+    /// Rhombus: params[0] = la, params[1] = lb, params[2] = half_height, params[3] = round_radius
+    Rhombus = 73,
+    /// Horseshoe: params[0] = angle, params[1] = radius, params[2] = half_length, params[3] = width, params[4] = thickness
+    Horseshoe = 74,
+    /// Vesica: params[0] = radius, params[1] = half_dist
+    Vesica = 75,
+    /// InfiniteCylinder: params[0] = radius
+    InfiniteCylinder = 76,
+    /// InfiniteCone: params[0] = angle
+    InfiniteCone = 77,
+    /// Gyroid: params[0] = scale, params[1] = thickness
+    Gyroid = 78,
+    /// Heart: params[0] = size
+    Heart = 79,
+    /// Tube: params[0] = outer_radius, params[1] = thickness, params[2] = half_height
+    Tube = 80,
+    /// Barrel: params[0] = radius, params[1] = half_height, params[2] = bulge
+    Barrel = 81,
+    /// Diamond: params[0] = radius, params[1] = half_height
+    Diamond = 82,
+    /// ChamferedCube: params[0..3] = half_extents, params[3] = chamfer
+    ChamferedCube = 83,
+    /// SchwarzP: params[0] = scale, params[1] = thickness
+    SchwarzP = 84,
+    /// Superellipsoid: params[0..3] = half_extents, params[3] = e1, params[4] = e2
+    Superellipsoid = 85,
+    /// RoundedX: params[0] = width, params[1] = round_radius, params[2] = half_height
+    RoundedX = 86,
+    /// Pie: params[0] = angle, params[1] = radius, params[2] = half_height
+    Pie = 87,
+    /// Trapezoid: params[0] = r1, params[1] = r2, params[2] = trap_height, params[3] = half_depth
+    Trapezoid = 88,
+    /// Parallelogram: params[0] = width, params[1] = para_height, params[2] = skew, params[3] = half_depth
+    Parallelogram = 89,
+    /// Tunnel: params[0] = width, params[1] = height_2d, params[2] = half_depth
+    Tunnel = 90,
+    /// UnevenCapsule: params[0] = r1, params[1] = r2, params[2] = cap_height, params[3] = half_depth
+    UnevenCapsule = 91,
+    /// Egg: params[0] = ra, params[1] = rb
+    Egg = 92,
+    /// ArcShape: params[0] = aperture, params[1] = radius, params[2] = thickness, params[3] = half_height
+    ArcShape = 93,
+    /// Moon: params[0] = d, params[1] = ra, params[2] = rb, params[3] = half_height
+    Moon = 94,
+    /// CrossShape: params[0] = length, params[1] = thickness, params[2] = round_radius, params[3] = half_height
+    CrossShape = 95,
+    /// BlobbyCross: params[0] = size, params[1] = half_height
+    BlobbyCross = 96,
+    /// ParabolaSegment: params[0] = width, params[1] = para_height, params[2] = half_depth
+    ParabolaSegment = 97,
+    /// RegularPolygon: params[0] = radius, params[1] = n_sides, params[2] = half_height
+    RegularPolygon = 98,
+    /// StarPolygon: params[0] = radius, params[1] = n_points, params[2] = m, params[3] = half_height
+    StarPolygon = 99,
+    /// Stairs: params[0] = step_width, params[1] = step_height, params[2] = n_steps, params[3] = half_depth
+    Stairs = 100,
+    /// Helix: params[0] = major_r, params[1] = minor_r, params[2] = pitch, params[3] = half_height
+    Helix = 101,
+
     // === Binary Operations (pop 2, push 1) ===
     /// Union: min(a, b)
     Union = 16,
@@ -104,7 +182,8 @@ impl OpCode {
     /// Returns true if this opcode is a primitive (pushes to value stack)
     #[inline]
     pub fn is_primitive(self) -> bool {
-        (self as u8) < 16
+        let v = self as u8;
+        v < 16 || (v >= 64 && v <= 101)
     }
 
     /// Returns true if this opcode is a binary operation
@@ -177,6 +256,20 @@ mod tests {
         assert_eq!(OpCode::Union as u8, 16);
         assert_eq!(OpCode::Translate as u8, 32);
         assert_eq!(OpCode::Twist as u8, 48);
+        assert_eq!(OpCode::RoundedBox as u8, 64);
+        assert_eq!(OpCode::Helix as u8, 101);
         assert_eq!(OpCode::End as u8, 255);
+    }
+
+    #[test]
+    fn test_extended_primitives_are_primitives() {
+        assert!(OpCode::RoundedBox.is_primitive());
+        assert!(OpCode::Stairs.is_primitive());
+        assert!(OpCode::Helix.is_primitive());
+        assert!(OpCode::Heart.is_primitive());
+        assert!(OpCode::Gyroid.is_primitive());
+        assert!(!OpCode::RoundedBox.is_binary_op());
+        assert!(!OpCode::RoundedBox.is_transform());
+        assert!(!OpCode::RoundedBox.is_modifier());
     }
 }

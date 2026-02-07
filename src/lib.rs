@@ -57,6 +57,7 @@ pub mod mesh;
 pub mod io;
 pub mod compiled;
 pub mod soa;
+pub mod crispy;
 
 #[cfg(feature = "python")]
 pub mod python;
@@ -66,6 +67,21 @@ pub mod ffi;
 
 #[cfg(feature = "texture-fit")]
 pub mod texture;
+
+#[cfg(feature = "volume")]
+pub mod volume;
+
+#[cfg(feature = "svo")]
+pub mod svo;
+
+#[cfg(feature = "destruction")]
+pub mod destruction;
+
+#[cfg(feature = "terrain")]
+pub mod terrain;
+
+#[cfg(feature = "gi")]
+pub mod gi;
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -123,6 +139,47 @@ pub mod prelude {
         CompiledSdfBvh, eval_compiled_bvh, get_scene_aabb, AabbPacked,
     };
     pub use crate::soa::{SoAPoints, SoADistances};
+    #[cfg(feature = "volume")]
+    pub use crate::volume::{
+        Volume3D, BakeConfig, BakeChannels, VoxelDistGrad,
+        bake_volume, bake_volume_with_normals,
+        export_raw, export_dds_3d,
+        generate_mip_chain,
+    };
+    #[cfg(feature = "gpu")]
+    pub use crate::mesh::{
+        gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig,
+    };
+    #[cfg(feature = "terrain")]
+    pub use crate::terrain::{
+        Heightmap, TerrainConfig, terrain_sdf,
+        ClipmapTerrain, ClipmapLevel, ClipmapMesh,
+        Splatmap, SplatLayer,
+        ErosionConfig, erode,
+        CaveConfig, generate_cave_sdf,
+    };
+    #[cfg(feature = "destruction")]
+    pub use crate::destruction::{
+        MutableVoxelGrid, ChunkMesh,
+        CarveShape, DestructionResult, carve, carve_batch,
+        DebrisConfig, DebrisPiece, generate_debris,
+        FractureConfig, FracturePiece, voronoi_fracture,
+    };
+    #[cfg(feature = "gi")]
+    pub use crate::gi::{
+        DirectionalLight, PointLight, sky_color, direct_lighting,
+        ConeTraceConfig, ConeTraceResult, cone_trace, trace_hemisphere,
+        IrradianceGrid, IrradianceProbe,
+        BakeGiConfig, bake_irradiance_grid,
+    };
+    #[cfg(feature = "svo")]
+    pub use crate::svo::{
+        SparseVoxelOctree, SvoNode, SvoBuildConfig, SvoRayHit,
+        build_svo, build_svo_compiled,
+        svo_query_point, svo_ray_query, svo_nearest_surface,
+        LinearizedSvo, linearize_svo,
+        SvoStreamingCache, SvoChunk,
+    };
     pub use crate::primitives::*;
     pub use crate::operations::*;
     pub use crate::transforms::*;
