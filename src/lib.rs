@@ -124,12 +124,17 @@ pub mod prelude {
         compute_aabb, compute_bounding_sphere, compute_convex_hull, simplify_collision,
         // Convex decomposition (V-HACD)
         VhacdConfig, ConvexDecomposition, convex_decomposition,
+        // UV unwrapping (LSCM)
+        uv_unwrap, apply_uvs, UvUnwrapConfig, UvUnwrapResult, UvChart,
     };
     pub use crate::io::{
         save, load, save_asdf, load_asdf, save_asdf_json, load_asdf_json, get_info,
         export_obj, import_obj, ObjConfig,
         export_glb, export_gltf_json, GltfConfig,
         export_fbx, FbxConfig, FbxFormat, FbxUpAxis,
+        export_usda, UsdConfig, UsdUpAxis,
+        export_alembic, AlembicConfig,
+        export_nanite, export_nanite_with_config, export_nanite_json, NaniteExportConfig,
     };
     pub use crate::compiled::{
         CompiledSdf, eval_compiled, eval_compiled_normal,
