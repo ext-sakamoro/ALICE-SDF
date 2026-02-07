@@ -62,6 +62,8 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::Octahedron { size } => sdf_octahedron(point, *size),
         SdfNode::HexPrism { hex_radius, half_height } => sdf_hex_prism(point, *hex_radius, *half_height),
         SdfNode::Link { half_length, r1, r2 } => sdf_link(point, *half_length, *r1, *r2),
+        SdfNode::Triangle { point_a, point_b, point_c } => sdf_triangle(point, *point_a, *point_b, *point_c),
+        SdfNode::Bezier { point_a, point_b, point_c, radius } => sdf_bezier(point, *point_a, *point_b, *point_c, *radius),
 
         // === Operations ===
         // Recurse first, then combine. Compiler can reorder these instruction streams.
@@ -167,6 +169,18 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d = eval(child, p_flat);
             modifier_extrude(d, point.z, *half_height)
         }
+        SdfNode::Taper { child, factor } => {
+            let p = modifier_taper(point, *factor);
+            eval(child, p)
+        }
+        SdfNode::Displacement { child, strength } => {
+            let d = eval(child, point);
+            modifier_displacement(d, point, *strength)
+        }
+        SdfNode::PolarRepeat { child, count } => {
+            let p = modifier_polar_repeat(point, *count);
+            eval(child, p)
+        }
 
         // Material assignment is transparent for distance evaluation
         SdfNode::WithMaterial { child, .. } => eval(child, point),
@@ -228,6 +242,9 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Mirror { child, axes } => eval_material(child, modifier_mirror(point, *axes)),
         SdfNode::Revolution { child, offset } => eval_material(child, modifier_revolution(point, *offset)),
         SdfNode::Extrude { child, .. } => eval_material(child, modifier_extrude_point(point)),
+        SdfNode::Taper { child, factor } => eval_material(child, modifier_taper(point, *factor)),
+        SdfNode::Displacement { child, .. } => eval_material(child, point),
+        SdfNode::PolarRepeat { child, count } => eval_material(child, modifier_polar_repeat(point, *count)),
 
         // Primitives: no material assigned
         _ => 0,

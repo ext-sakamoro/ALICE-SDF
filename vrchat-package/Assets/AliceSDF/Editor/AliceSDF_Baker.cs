@@ -62,7 +62,7 @@ namespace AliceSDF.Editor
             EditorGUILayout.HelpBox(
                 "Generate VRChat-ready Shader + Udon Collider from ALICE-SDF definitions.\n" +
                 "Drag a .asdf.json file or paste the SDF JSON directly.\n" +
-                "v0.3: 11 primitives + 16 operations + Instruction Fusion + Division Exorcism",
+                "v0.3: 15 primitives + 16 operations + Instruction Fusion + Division Exorcism",
                 MessageType.Info
             );
             EditorGUILayout.Space();
@@ -296,6 +296,9 @@ namespace AliceSDF.Editor
         public float[] point_c;      // triangle/bezier 3rd vertex
         public float[] axes;         // symmetry mask [x,y,z]
         public int polar_count;      // polar repeat count
+        public float r1;             // RoundedCone bottom radius / Link major radius
+        public float r2;             // RoundedCone top radius / Link minor radius
+        public float half_length;    // Link straight section half-length
         public float[] elongate;     // elongate half-extents [x,y,z]
         public SdfNodeData[] children;
         public SdfNodeData child;
@@ -737,6 +740,22 @@ Shader ""AliceSDF/{name}""
                     stats.varsInlined++;
                     return $"sdBezier({pVar}, float3({F(node.point_a[0])}, {F(node.point_a[1])}, {F(node.point_a[2])}), float3({F(node.point_b[0])}, {F(node.point_b[1])}, {F(node.point_b[2])}), float3({F(node.point_c[0])}, {F(node.point_c[1])}, {F(node.point_c[2])}), {F(node.radius)})";
 
+                case "RoundedCone":
+                    stats.varsInlined++;
+                    return $"sdRoundedCone({pVar}, {F(node.r1)}, {F(node.r2)}, {F(node.half_height)})";
+
+                case "Pyramid":
+                    stats.varsInlined++;
+                    return $"sdPyramid({pVar}, {F(node.half_height)})";
+
+                case "Octahedron":
+                    stats.varsInlined++;
+                    return $"sdOctahedron({pVar}, {F(node.radius)})";
+
+                case "Link":
+                    stats.varsInlined++;
+                    return $"sdLink({pVar}, {F(node.half_length)}, {F(node.r1)}, {F(node.r2)})";
+
                 // ---------------------------------------------------------
                 // Binary Ops: Inline if shallow, emit var if deep
                 // ---------------------------------------------------------
@@ -1081,6 +1100,22 @@ namespace AliceSDF
                 case "Bezier":
                     stats.varsInlined++;
                     return $"Sdf.Bezier({pVar}, new Vector3({F(node.point_a[0])}f, {F(node.point_a[1])}f, {F(node.point_a[2])}f), new Vector3({F(node.point_b[0])}f, {F(node.point_b[1])}f, {F(node.point_b[2])}f), new Vector3({F(node.point_c[0])}f, {F(node.point_c[1])}f, {F(node.point_c[2])}f), {F(node.radius)}f)";
+
+                case "RoundedCone":
+                    stats.varsInlined++;
+                    return $"Sdf.RoundedCone({pVar}, {F(node.r1)}f, {F(node.r2)}f, {F(node.half_height)}f)";
+
+                case "Pyramid":
+                    stats.varsInlined++;
+                    return $"Sdf.Pyramid({pVar}, {F(node.half_height)}f)";
+
+                case "Octahedron":
+                    stats.varsInlined++;
+                    return $"Sdf.Octahedron({pVar}, {F(node.radius)}f)";
+
+                case "Link":
+                    stats.varsInlined++;
+                    return $"Sdf.Link({pVar}, {F(node.half_length)}f, {F(node.r1)}f, {F(node.r2)}f)";
 
                 // ---------------------------------------------------------
                 // Binary Ops: Scalar-expanded (no Sdf.* wrapper call)

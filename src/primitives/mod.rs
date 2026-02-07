@@ -20,6 +20,8 @@ mod pyramid;
 mod octahedron;
 mod hex_prism;
 mod link;
+mod triangle;
+mod bezier;
 
 pub use sphere::{sdf_sphere, sdf_sphere_at};
 pub use box3d::{sdf_box3d, sdf_box3d_at, sdf_rounded_box3d};
@@ -34,6 +36,8 @@ pub use pyramid::sdf_pyramid;
 pub use octahedron::sdf_octahedron;
 pub use hex_prism::sdf_hex_prism;
 pub use link::sdf_link;
+pub use triangle::sdf_triangle;
+pub use bezier::sdf_bezier;
 
 use glam::Vec3;
 
@@ -69,6 +73,10 @@ pub enum PrimitiveType {
     HexPrism,
     /// Chain link
     Link,
+    /// Triangle (3 vertices)
+    Triangle,
+    /// Quadratic Bezier curve with radius
+    Bezier,
 }
 
 /// Evaluate a primitive SDF using fast Enum dispatch (Safe version)
@@ -176,6 +184,31 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
                 None
             }
         }
+        PrimitiveType::Triangle => {
+            if params.len() >= 9 {
+                Some(sdf_triangle(
+                    point,
+                    Vec3::new(params[0], params[1], params[2]),
+                    Vec3::new(params[3], params[4], params[5]),
+                    Vec3::new(params[6], params[7], params[8]),
+                ))
+            } else {
+                None
+            }
+        }
+        PrimitiveType::Bezier => {
+            if params.len() >= 10 {
+                Some(sdf_bezier(
+                    point,
+                    Vec3::new(params[0], params[1], params[2]),
+                    Vec3::new(params[3], params[4], params[5]),
+                    Vec3::new(params[6], params[7], params[8]),
+                    params[9],
+                ))
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -245,6 +278,19 @@ pub unsafe fn eval_primitive_unchecked(prim: PrimitiveType, point: Vec3, params:
             *params.get_unchecked(0),
             *params.get_unchecked(1),
             *params.get_unchecked(2)
+        ),
+        PrimitiveType::Triangle => sdf_triangle(
+            point,
+            Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2)),
+            Vec3::new(*params.get_unchecked(3), *params.get_unchecked(4), *params.get_unchecked(5)),
+            Vec3::new(*params.get_unchecked(6), *params.get_unchecked(7), *params.get_unchecked(8)),
+        ),
+        PrimitiveType::Bezier => sdf_bezier(
+            point,
+            Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2)),
+            Vec3::new(*params.get_unchecked(3), *params.get_unchecked(4), *params.get_unchecked(5)),
+            Vec3::new(*params.get_unchecked(6), *params.get_unchecked(7), *params.get_unchecked(8)),
+            *params.get_unchecked(9),
         ),
     }
 }

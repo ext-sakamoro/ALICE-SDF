@@ -110,6 +110,66 @@ namespace AliceSDF
                  + new Vector2(Mathf.Max(dx, 0f), Mathf.Max(dy, 0f)).magnitude;
         }
 
+        /// <summary>Rounded cone along Y-axis (bottom r1, top r2).</summary>
+        public static float RoundedCone(Vector3 p, float r1, float r2, float halfHeight)
+        {
+            float h = halfHeight * 2f;
+            float qx = Mathf.Sqrt(p.x * p.x + p.z * p.z);
+            float qy = p.y + halfHeight;
+            float b = (r1 - r2) / h;
+            float a = Mathf.Sqrt(1f - b * b);
+            float k = qx * (-b) + qy * a;
+            if (k < 0f) return new Vector2(qx, qy).magnitude - r1;
+            if (k > a * h) return new Vector2(qx, qy - h).magnitude - r2;
+            return qx * a + qy * b - r1;
+        }
+
+        /// <summary>4-sided pyramid along Y-axis (unit base).</summary>
+        public static float Pyramid(Vector3 p, float halfHeight)
+        {
+            float h = halfHeight * 2f;
+            float m2 = h * h + 0.25f;
+            float py = p.y + halfHeight;
+            float px = Mathf.Abs(p.x);
+            float pz = Mathf.Abs(p.z);
+            if (pz > px) { float tmp = px; px = pz; pz = tmp; }
+            px -= 0.5f;
+            pz -= 0.5f;
+            float qx = pz;
+            float qy = h * py - 0.5f * px;
+            float qz = h * px + 0.5f * py;
+            float s = Mathf.Max(-qx, 0f);
+            float t = Mathf.Clamp((qy - 0.5f * pz) / (m2 + 0.25f), 0f, 1f);
+            float aa = m2 * (qx + s) * (qx + s) + qy * qy;
+            float bb = m2 * (qx + 0.5f * t) * (qx + 0.5f * t) + (qy - m2 * t) * (qy - m2 * t);
+            float d2 = (Mathf.Min(-qx * m2 - qy * 0.5f, qy) > 0f) ? 0f : Mathf.Min(aa, bb);
+            return Mathf.Sqrt((d2 + qz * qz) / m2) * Mathf.Sign(Mathf.Max(qz, -py));
+        }
+
+        /// <summary>Regular octahedron centered at origin.</summary>
+        public static float Octahedron(Vector3 p, float s)
+        {
+            Vector3 ap = SdfMath.Abs(p);
+            float m = ap.x + ap.y + ap.z - s;
+            Vector3 q;
+            if (3f * ap.x < m) q = ap;
+            else if (3f * ap.y < m) q = new Vector3(ap.y, ap.z, ap.x);
+            else if (3f * ap.z < m) q = new Vector3(ap.z, ap.x, ap.y);
+            else return m * 0.57735027f;
+            float k = Mathf.Clamp(0.5f * (q.z - q.y + s), 0f, s);
+            return new Vector3(q.x, q.y - s + k, q.z - k).magnitude;
+        }
+
+        /// <summary>Chain link shape (torus stretched along Y).</summary>
+        public static float Link(Vector3 p, float halfLength, float r1, float r2)
+        {
+            float qx = p.x;
+            float qy = Mathf.Max(Mathf.Abs(p.y) - halfLength, 0f);
+            float qz = p.z;
+            float xyLen = Mathf.Sqrt(qx * qx + qy * qy) - r1;
+            return Mathf.Sqrt(xyLen * xyLen + qz * qz) - r2;
+        }
+
         /// <summary>Exact distance to a 3D triangle (vertices a, b, c).</summary>
         public static float Triangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
         {

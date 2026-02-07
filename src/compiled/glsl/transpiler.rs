@@ -322,6 +322,14 @@ impl GlslTranspiler {
                     shader.push_str(HELPER_SDF_LINK);
                     shader.push('\n');
                 }
+                "sdf_triangle" => {
+                    shader.push_str(HELPER_SDF_TRIANGLE);
+                    shader.push('\n');
+                }
+                "sdf_bezier" => {
+                    shader.push_str(HELPER_SDF_BEZIER);
+                    shader.push('\n');
+                }
                 _ => {}
             }
         }
@@ -529,23 +537,24 @@ impl GlslTranspiler {
                 var
             }
 
+            // ★ Deep Fried: Division Exorcism for Ellipsoid
             SdfNode::Ellipsoid { radii } => {
-                let rx = self.param(radii.x);
-                let ry = self.param(radii.y);
-                let rz = self.param(radii.z);
-                let rx2 = self.param(radii.x * radii.x);
-                let ry2 = self.param(radii.y * radii.y);
-                let rz2 = self.param(radii.z * radii.z);
+                let inv_rx = self.param(1.0 / radii.x.max(1e-10));
+                let inv_ry = self.param(1.0 / radii.y.max(1e-10));
+                let inv_rz = self.param(1.0 / radii.z.max(1e-10));
+                let inv_rx2 = self.param(1.0 / (radii.x * radii.x).max(1e-10));
+                let inv_ry2 = self.param(1.0 / (radii.y * radii.y).max(1e-10));
+                let inv_rz2 = self.param(1.0 / (radii.z * radii.z).max(1e-10));
                 let var = self.next_var();
                 let k0_var = self.next_var();
                 let k1_var = self.next_var();
                 writeln!(code,
-                    "    float {} = length({} / vec3({}, {}, {}));",
-                    k0_var, point_var, rx, ry, rz
+                    "    float {} = length({} * vec3({}, {}, {}));",
+                    k0_var, point_var, inv_rx, inv_ry, inv_rz
                 ).unwrap();
                 writeln!(code,
-                    "    float {} = length({} / vec3({}, {}, {}));",
-                    k1_var, point_var, rx2, ry2, rz2
+                    "    float {} = length({} * vec3({}, {}, {}));",
+                    k1_var, point_var, inv_rx2, inv_ry2, inv_rz2
                 ).unwrap();
                 writeln!(code,
                     "    float {} = {} * ({} - 1.0) / max({}, 1e-10);",
@@ -610,6 +619,45 @@ impl GlslTranspiler {
                 writeln!(code,
                     "    float {} = sdf_link({}, {}, {}, {});",
                     var, point_var, hl_s, r1_s, r2_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Triangle { point_a, point_b, point_c } => {
+                self.ensure_helper("sdf_triangle");
+                let ax = self.param(point_a.x);
+                let ay = self.param(point_a.y);
+                let az = self.param(point_a.z);
+                let bx = self.param(point_b.x);
+                let by = self.param(point_b.y);
+                let bz = self.param(point_b.z);
+                let cx = self.param(point_c.x);
+                let cy = self.param(point_c.y);
+                let cz = self.param(point_c.z);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = sdf_triangle({}, vec3({}, {}, {}), vec3({}, {}, {}), vec3({}, {}, {}));",
+                    var, point_var, ax, ay, az, bx, by, bz, cx, cy, cz
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Bezier { point_a, point_b, point_c, radius } => {
+                self.ensure_helper("sdf_bezier");
+                let ax = self.param(point_a.x);
+                let ay = self.param(point_a.y);
+                let az = self.param(point_a.z);
+                let bx = self.param(point_b.x);
+                let by = self.param(point_b.y);
+                let bz = self.param(point_b.z);
+                let cx = self.param(point_c.x);
+                let cy = self.param(point_c.y);
+                let cz = self.param(point_c.z);
+                let r_s = self.param(*radius);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = sdf_bezier({}, vec3({}, {}, {}), vec3({}, {}, {}), vec3({}, {}, {}), {});",
+                    var, point_var, ax, ay, az, bx, by, bz, cx, cy, cz, r_s
                 ).unwrap();
                 var
             }
@@ -1000,6 +1048,55 @@ impl GlslTranspiler {
                 var
             }
 
+            SdfNode::Taper { child, factor } => {
+                let f_s = self.param(*factor);
+                let s_var = self.next_var();
+                let new_p = self.next_var();
+                writeln!(code,
+                    "    float {} = 1.0 / (1.0 - {}.y * {});",
+                    s_var, point_var, f_s
+                ).unwrap();
+                writeln!(code,
+                    "    vec3 {} = vec3({}.x * {}, {}.y, {}.z * {});",
+                    new_p, point_var, s_var, point_var, point_var, s_var
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::Displacement { child, strength } => {
+                let d = self.transpile_node_inner(child, point_var, code);
+                let str_s = self.param(*strength);
+                let var = self.next_var();
+                writeln!(code,
+                    "    float {} = {} + sin(5.0 * {}.x) * sin(5.0 * {}.y) * sin(5.0 * {}.z) * {};",
+                    var, d, point_var, point_var, point_var, str_s
+                ).unwrap();
+                var
+            }
+
+            // ★ Deep Fried: Division Exorcism for PolarRepeat
+            SdfNode::PolarRepeat { child, count } => {
+                let count_f = *count as f32;
+                let sector_angle = std::f32::consts::TAU / count_f;
+                let sa = self.param(sector_angle);
+                let angle_var = self.next_var();
+                let new_angle_var = self.next_var();
+                let new_p = self.next_var();
+                writeln!(code,
+                    "    float {} = atan({}.z, {}.x);",
+                    angle_var, point_var, point_var
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = mod({} + {} * 0.5, {}) - {} * 0.5;",
+                    new_angle_var, angle_var, sa, sa, sa
+                ).unwrap();
+                writeln!(code,
+                    "    vec3 {} = vec3(length({}.xz) * cos({}), {}.y, length({}.xz) * sin({}));",
+                    new_p, point_var, new_angle_var, point_var, point_var, new_angle_var
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
             // WithMaterial is transparent for shader evaluation
             SdfNode::WithMaterial { child, .. } => {
                 self.transpile_node_inner(child, point_var, code)
@@ -1099,6 +1196,64 @@ const HELPER_SDF_HEX_PRISM: &str = r#"float sdf_hex_prism(vec3 p, float hex_r, f
     float d_xy = sqrt(dx * dx + dy * dy) * sign(dy);
     float d_z = pz - h;
     return min(max(d_xy, d_z), 0.0) + length(max(vec2(d_xy, d_z), vec2(0.0)));
+}
+"#;
+
+const HELPER_SDF_TRIANGLE: &str = r#"float sdf_triangle(vec3 p, vec3 a, vec3 b, vec3 c) {
+    vec3 ba = b - a; vec3 pa = p - a;
+    vec3 cb = c - b; vec3 pb = p - b;
+    vec3 ac = a - c; vec3 pc = p - c;
+    vec3 nor = cross(ba, ac);
+    return sqrt(
+        (sign(dot(cross(ba, nor), pa)) +
+         sign(dot(cross(cb, nor), pb)) +
+         sign(dot(cross(ac, nor), pc)) < 2.0)
+        ?
+        min(min(
+            dot(ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0) - pa,
+                ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0) - pa),
+            dot(cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0) - pb,
+                cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0) - pb)),
+            dot(ac * clamp(dot(ac, pc) / dot(ac, ac), 0.0, 1.0) - pc,
+                ac * clamp(dot(ac, pc) / dot(ac, ac), 0.0, 1.0) - pc))
+        :
+        dot(nor, pa) * dot(nor, pa) / dot(nor, nor)
+    );
+}
+"#;
+
+const HELPER_SDF_BEZIER: &str = r#"float sdf_bezier(vec3 pos, vec3 A, vec3 B, vec3 C, float r) {
+    vec3 a = B - A;
+    vec3 b = A - 2.0 * B + C;
+    vec3 c = a * 2.0;
+    vec3 d = A - pos;
+    float kk = 1.0 / max(dot(b, b), 1e-10);
+    float kx = kk * dot(a, b);
+    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    float kz = kk * dot(d, a);
+    float p2 = ky - kx * kx;
+    float q = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    float p3 = p2 * p2 * p2;
+    float h = q * q + 4.0 * p3;
+    float res;
+    if (h >= 0.0) {
+        h = sqrt(h);
+        vec2 x = (vec2(h, -h) - q) * 0.5;
+        vec2 uv = sign(x) * pow(abs(x), vec2(1.0 / 3.0));
+        float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
+        res = dot(d + (c + b * t) * t, d + (c + b * t) * t);
+    } else {
+        float z = sqrt(-p2);
+        float v2 = acos(q / (p2 * z * 2.0)) / 3.0;
+        float m = cos(v2);
+        float n = sin(v2) * 1.732050808;
+        float t1 = clamp(( m + m) * z - kx, 0.0, 1.0);
+        float t2 = clamp((-n - m) * z - kx, 0.0, 1.0);
+        float d1 = dot(d + (c + b * t1) * t1, d + (c + b * t1) * t1);
+        float d2 = dot(d + (c + b * t2) * t2, d + (c + b * t2) * t2);
+        res = min(d1, d2);
+    }
+    return sqrt(res) - r;
 }
 "#;
 

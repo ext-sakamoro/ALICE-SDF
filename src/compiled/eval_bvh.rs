@@ -210,6 +210,14 @@ impl BvhCompiler {
                 aabb
             }
 
+            SdfNode::Triangle { .. } => {
+                panic!("Triangle requires 9 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+            }
+
+            SdfNode::Bezier { .. } => {
+                panic!("Bezier requires 10 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+            }
+
             // === Binary Operations ===
             SdfNode::Union { a, b } => {
                 let aabb_a = self.compile_node(a);
@@ -553,6 +561,63 @@ impl BvhCompiler {
                 let aabb = AabbPacked::new(
                     Vec3::new(child_aabb.min().x, child_aabb.min().y, -*half_height),
                     Vec3::new(child_aabb.max().x, child_aabb.max().y, *half_height),
+                );
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            SdfNode::Taper { child, factor } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::taper(*factor));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // Taper can expand the AABB - conservative estimate
+                let max_extent = child_aabb.half_size().max_element();
+                let aabb = child_aabb.expand(max_extent * factor.abs());
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            SdfNode::Displacement { child, strength } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::displacement(*strength));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // Displacement expands the AABB by strength
+                let aabb = child_aabb.expand(strength.abs());
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            SdfNode::PolarRepeat { child, count } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::polar_repeat(*count as f32));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // Polar repeat creates a radially symmetric shape around Y
+                let max_r = child_aabb.half_size().x.max(child_aabb.half_size().z)
+                    + child_aabb.center().x.abs().max(child_aabb.center().z.abs());
+                let aabb = AabbPacked::new(
+                    Vec3::new(-max_r, child_aabb.min().y, -max_r),
+                    Vec3::new(max_r, child_aabb.max().y, max_r),
                 );
                 self.aabbs[inst_idx] = aabb;
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
@@ -946,6 +1011,44 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 p = Vec3::new(p.x, p.y, 0.0);
             }
 
+            OpCode::Taper => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Taper,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let factor = inst.params[0];
+                let s = 1.0 / (1.0 - p.y * factor);
+                p = Vec3::new(p.x * s, p.y, p.z * s);
+            }
+
+            OpCode::Displacement => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Displacement,
+                    params: [inst.params[0], 0.0, 0.0, 0.0],
+                };
+                csp += 1;
+                // Displacement doesn't modify point, only post-processes distance
+            }
+
+            OpCode::PolarRepeat => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::PolarRepeat,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                use crate::modifiers::modifier_polar_repeat;
+                p = modifier_polar_repeat(p, inst.params[0] as u32);
+            }
+
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
@@ -973,6 +1076,12 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                         let outside = glam::Vec2::new(child_dist.max(0.0), w_y.max(0.0)).length();
                         let inside = child_dist.max(w_y).min(0.0);
                         value_stack[vsp - 1] = outside + inside;
+                    }
+                    OpCode::Displacement => {
+                        let strength = frame.params[0];
+                        let d = value_stack[vsp - 1];
+                        let fp = frame.point;
+                        value_stack[vsp - 1] = d + (5.0 * fp.x).sin() * (5.0 * fp.y).sin() * (5.0 * fp.z).sin() * strength;
                     }
                     _ => {}
                 }

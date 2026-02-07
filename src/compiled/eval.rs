@@ -420,6 +420,44 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 p = modifier_extrude_point(p);
             }
 
+            OpCode::Taper => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::Taper,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                p = modifier_taper(p, inst.params[0]);
+            }
+
+            OpCode::Displacement => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::Displacement,
+                    params: [inst.params[0], 0.0, 0.0, 0.0], // store strength
+                };
+                csp += 1;
+                // Displacement doesn't modify point, only post-processes distance
+            }
+
+            OpCode::PolarRepeat => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::PolarRepeat,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                p = modifier_polar_repeat(p, inst.params[0] as u32);
+            }
+
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
@@ -449,6 +487,11 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                         let original_z = frame.params[1];
                         let d = value_stack[vsp - 1];
                         value_stack[vsp - 1] = modifier_extrude(d, original_z, half_height);
+                    }
+                    OpCode::Displacement => {
+                        let strength = frame.params[0];
+                        let d = value_stack[vsp - 1];
+                        value_stack[vsp - 1] = modifier_displacement(d, frame.point, strength);
                     }
                     _ => {}
                 }

@@ -86,6 +86,12 @@ pub enum OpCode {
     Revolution = 57,
     /// Extrude: params[0] = half_height
     Extrude = 58,
+    /// Taper: params[0] = factor
+    Taper = 59,
+    /// Displacement: params[0] = strength (post-process)
+    Displacement = 60,
+    /// PolarRepeat: params[0] = count (as f32)
+    PolarRepeat = 61,
 
     // === Control ===
     /// Pop transform from coordinate stack
@@ -129,14 +135,15 @@ impl OpCode {
             self,
             OpCode::Twist | OpCode::Bend | OpCode::RepeatInfinite |
             OpCode::RepeatFinite | OpCode::Elongate | OpCode::Mirror |
-            OpCode::Revolution | OpCode::Extrude
+            OpCode::Revolution | OpCode::Extrude | OpCode::Taper |
+            OpCode::PolarRepeat
         )
     }
 
     /// Returns true if this opcode post-processes the distance value
     #[inline]
     pub fn is_post_process(self) -> bool {
-        matches!(self, OpCode::Round | OpCode::Onion | OpCode::Scale | OpCode::Noise | OpCode::Extrude)
+        matches!(self, OpCode::Round | OpCode::Onion | OpCode::Scale | OpCode::Noise | OpCode::Extrude | OpCode::Displacement)
     }
 }
 

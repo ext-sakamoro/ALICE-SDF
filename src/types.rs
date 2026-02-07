@@ -118,6 +118,28 @@ pub enum SdfNode {
         r2: f32,
     },
 
+    /// Triangle defined by three vertices (unsigned distance)
+    Triangle {
+        /// First vertex
+        point_a: Vec3,
+        /// Second vertex
+        point_b: Vec3,
+        /// Third vertex
+        point_c: Vec3,
+    },
+
+    /// Quadratic Bezier curve with radius (tube around curve)
+    Bezier {
+        /// Start point
+        point_a: Vec3,
+        /// Control point
+        point_b: Vec3,
+        /// End point
+        point_c: Vec3,
+        /// Tube radius
+        radius: f32,
+    },
+
     // === Operations ===
     /// Union of two shapes (min distance)
     Union {
@@ -301,6 +323,30 @@ pub enum SdfNode {
         half_height: f32,
     },
 
+    /// Taper: scale XZ by inverse of (1 - y*factor)
+    Taper {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Taper factor
+        factor: f32,
+    },
+
+    /// Sin-based displacement (post-processing modifier)
+    Displacement {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Displacement strength
+        strength: f32,
+    },
+
+    /// Polar repetition around Y-axis
+    PolarRepeat {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Number of copies around Y-axis
+        count: u32,
+    },
+
     /// Assign a material ID to a subtree (transparent for distance evaluation)
     WithMaterial {
         /// Child node
@@ -421,6 +467,27 @@ impl SdfNode {
             half_length: length * 0.5,
             r1,
             r2,
+        }
+    }
+
+    /// Create a triangle from three vertices
+    #[inline]
+    pub fn triangle(a: Vec3, b: Vec3, c: Vec3) -> Self {
+        SdfNode::Triangle {
+            point_a: a,
+            point_b: b,
+            point_c: c,
+        }
+    }
+
+    /// Create a quadratic Bezier curve tube
+    #[inline]
+    pub fn bezier(a: Vec3, b: Vec3, c: Vec3, radius: f32) -> Self {
+        SdfNode::Bezier {
+            point_a: a,
+            point_b: b,
+            point_c: c,
+            radius,
         }
     }
 
@@ -647,6 +714,33 @@ impl SdfNode {
         }
     }
 
+    /// Taper along Y-axis
+    #[inline]
+    pub fn taper(self, factor: f32) -> Self {
+        SdfNode::Taper {
+            child: Arc::new(self),
+            factor,
+        }
+    }
+
+    /// Sin-based displacement
+    #[inline]
+    pub fn displacement(self, strength: f32) -> Self {
+        SdfNode::Displacement {
+            child: Arc::new(self),
+            strength,
+        }
+    }
+
+    /// Polar repetition around Y-axis
+    #[inline]
+    pub fn polar_repeat(self, count: u32) -> Self {
+        SdfNode::PolarRepeat {
+            child: Arc::new(self),
+            count,
+        }
+    }
+
     /// Assign a material ID to this subtree
     #[inline]
     pub fn with_material(self, material_id: u32) -> Self {
@@ -672,7 +766,9 @@ impl SdfNode {
             | SdfNode::Pyramid { .. }
             | SdfNode::Octahedron { .. }
             | SdfNode::HexPrism { .. }
-            | SdfNode::Link { .. } => 1,
+            | SdfNode::Link { .. }
+            | SdfNode::Triangle { .. }
+            | SdfNode::Bezier { .. } => 1,
 
             // Operations: 1 + children
             SdfNode::Union { a, b }
@@ -698,6 +794,9 @@ impl SdfNode {
             | SdfNode::Mirror { child, .. }
             | SdfNode::Revolution { child, .. }
             | SdfNode::Extrude { child, .. }
+            | SdfNode::Taper { child, .. }
+            | SdfNode::Displacement { child, .. }
+            | SdfNode::PolarRepeat { child, .. }
             | SdfNode::WithMaterial { child, .. } => 1 + child.node_count(),
         }
     }

@@ -421,6 +421,33 @@ impl Instruction {
         inst
     }
 
+    /// Create a taper instruction
+    #[inline]
+    pub fn taper(factor: f32) -> Self {
+        let mut inst = Self::new(OpCode::Taper);
+        inst.params[0] = factor;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create a displacement instruction
+    #[inline]
+    pub fn displacement(strength: f32) -> Self {
+        let mut inst = Self::new(OpCode::Displacement);
+        inst.params[0] = strength;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create a polar repeat instruction
+    #[inline]
+    pub fn polar_repeat(count: f32) -> Self {
+        let mut inst = Self::new(OpCode::PolarRepeat);
+        inst.params[0] = count;
+        inst.child_count = 1;
+        inst
+    }
+
     /// Create a pop transform instruction
     #[inline]
     pub fn pop_transform() -> Self {

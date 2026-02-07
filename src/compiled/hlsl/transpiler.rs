@@ -233,6 +233,14 @@ impl HlslTranspiler {
                     shader.push_str(HELPER_SDF_LINK);
                     shader.push('\n');
                 }
+                "sdf_triangle" => {
+                    shader.push_str(HELPER_SDF_TRIANGLE);
+                    shader.push('\n');
+                }
+                "sdf_bezier" => {
+                    shader.push_str(HELPER_SDF_BEZIER);
+                    shader.push('\n');
+                }
                 _ => {}
             }
         }
@@ -376,9 +384,10 @@ impl HlslTranspiler {
                     ba_var, pbx, pby, pbz, pax2, pay2, paz2
                 )
                 .unwrap();
+                // ★ Deep Fried: Zero-safe guard for degenerate capsule (a == b)
                 writeln!(
                     code,
-                    "    float {} = clamp(dot({}, {}) / dot({}, {}), 0.0, 1.0);",
+                    "    float {} = clamp(dot({}, {}) / max(dot({}, {}), 1e-10), 0.0, 1.0);",
                     h_var, pa_var, ba_var, ba_var, ba_var
                 )
                 .unwrap();
@@ -440,23 +449,24 @@ impl HlslTranspiler {
                 var
             }
 
+            // ★ Deep Fried: Division Exorcism for Ellipsoid
             SdfNode::Ellipsoid { radii } => {
-                let rx = self.param(radii.x);
-                let ry = self.param(radii.y);
-                let rz = self.param(radii.z);
-                let rx2 = self.param(radii.x * radii.x);
-                let ry2 = self.param(radii.y * radii.y);
-                let rz2 = self.param(radii.z * radii.z);
+                let inv_rx = self.param(1.0 / radii.x.max(1e-10));
+                let inv_ry = self.param(1.0 / radii.y.max(1e-10));
+                let inv_rz = self.param(1.0 / radii.z.max(1e-10));
+                let inv_rx2 = self.param(1.0 / (radii.x * radii.x).max(1e-10));
+                let inv_ry2 = self.param(1.0 / (radii.y * radii.y).max(1e-10));
+                let inv_rz2 = self.param(1.0 / (radii.z * radii.z).max(1e-10));
                 let var = self.next_var();
                 let k0_var = self.next_var();
                 let k1_var = self.next_var();
                 writeln!(code,
-                    "    float {} = length({} / float3({}, {}, {}));",
-                    k0_var, point_var, rx, ry, rz
+                    "    float {} = length({} * float3({}, {}, {}));",
+                    k0_var, point_var, inv_rx, inv_ry, inv_rz
                 ).unwrap();
                 writeln!(code,
-                    "    float {} = length({} / float3({}, {}, {}));",
-                    k1_var, point_var, rx2, ry2, rz2
+                    "    float {} = length({} * float3({}, {}, {}));",
+                    k1_var, point_var, inv_rx2, inv_ry2, inv_rz2
                 ).unwrap();
                 writeln!(code,
                     "    float {} = {} * ({} - 1.0) / max({}, 1e-10);",
@@ -521,6 +531,45 @@ impl HlslTranspiler {
                 writeln!(code,
                     "    float {} = sdf_link({}, {}, {}, {});",
                     var, point_var, hl_s, r1_s, r2_s
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Triangle { point_a, point_b, point_c } => {
+                self.ensure_helper("sdf_triangle");
+                let var = self.next_var();
+                let ax = self.param(point_a.x);
+                let ay = self.param(point_a.y);
+                let az = self.param(point_a.z);
+                let bx = self.param(point_b.x);
+                let by = self.param(point_b.y);
+                let bz = self.param(point_b.z);
+                let cx = self.param(point_c.x);
+                let cy = self.param(point_c.y);
+                let cz = self.param(point_c.z);
+                writeln!(code,
+                    "    float {} = sdf_triangle({}, float3({}, {}, {}), float3({}, {}, {}), float3({}, {}, {}));",
+                    var, point_var, ax, ay, az, bx, by, bz, cx, cy, cz
+                ).unwrap();
+                var
+            }
+
+            SdfNode::Bezier { point_a, point_b, point_c, radius } => {
+                self.ensure_helper("sdf_bezier");
+                let var = self.next_var();
+                let ax = self.param(point_a.x);
+                let ay = self.param(point_a.y);
+                let az = self.param(point_a.z);
+                let bx = self.param(point_b.x);
+                let by = self.param(point_b.y);
+                let bz = self.param(point_b.z);
+                let cx = self.param(point_c.x);
+                let cy = self.param(point_c.y);
+                let cz = self.param(point_c.z);
+                let r = self.param(*radius);
+                writeln!(code,
+                    "    float {} = sdf_bezier({}, float3({}, {}, {}), float3({}, {}, {}), float3({}, {}, {}), {});",
+                    var, point_var, ax, ay, az, bx, by, bz, cx, cy, cz, r
                 ).unwrap();
                 var
             }
@@ -911,6 +960,61 @@ impl HlslTranspiler {
                 var
             }
 
+            SdfNode::Taper { child, factor } => {
+                let new_p = self.next_var();
+                let f = self.param(*factor);
+                writeln!(code,
+                    "    float {np}_s = 1.0 / (1.0 - {p}.y * {f});",
+                    np = new_p, p = point_var, f = f
+                ).unwrap();
+                writeln!(code,
+                    "    float3 {} = float3({}.x * {np}_s, {}.y, {}.z * {np}_s);",
+                    new_p, point_var, point_var, point_var, np = new_p
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::Displacement { child, strength } => {
+                let d = self.transpile_node_inner(child, point_var, code);
+                let disp_var = self.next_var();
+                let var = self.next_var();
+                let s = self.param(*strength);
+                writeln!(code,
+                    "    float {} = sin({}.x * 5.0) * sin({}.y * 5.0) * sin({}.z * 5.0);",
+                    disp_var, point_var, point_var, point_var
+                ).unwrap();
+                writeln!(code,
+                    "    float {} = {} + {} * {};",
+                    var, d, disp_var, s
+                ).unwrap();
+                var
+            }
+
+            // ★ Deep Fried: Division Exorcism for PolarRepeat
+            SdfNode::PolarRepeat { child, count } => {
+                let new_p = self.next_var();
+                let count_f = *count as f32;
+                let sector_angle = std::f32::consts::TAU / count_f;
+                let sa = self.param(sector_angle);
+                writeln!(code,
+                    "    float {np}_a = atan2({p}.z, {p}.x) + {sa} * 0.5;",
+                    np = new_p, p = point_var, sa = sa
+                ).unwrap();
+                writeln!(code,
+                    "    float {np}_r = length({p}.xz);",
+                    np = new_p, p = point_var
+                ).unwrap();
+                writeln!(code,
+                    "    float {np}_am = fmod({np}_a + 100.0 * {sa}, {sa}) - {sa} * 0.5;",
+                    np = new_p, sa = sa
+                ).unwrap();
+                writeln!(code,
+                    "    float3 {} = float3({np}_r * cos({np}_am), {p}.y, {np}_r * sin({np}_am));",
+                    new_p, np = new_p, p = point_var
+                ).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
             // WithMaterial is transparent for shader evaluation
             SdfNode::WithMaterial { child, .. } => {
                 self.transpile_node_inner(child, point_var, code)
@@ -1011,6 +1115,65 @@ const HELPER_SDF_HEX_PRISM: &str = r#"float sdf_hex_prism(float3 p, float hex_r,
     float d_xy = sqrt(dx * dx + dy * dy) * sign(dy);
     float d_z = pz - h;
     return min(max(d_xy, d_z), 0.0) + length(max(float2(d_xy, d_z), float2(0.0, 0.0)));
+}
+"#;
+
+const HELPER_SDF_TRIANGLE: &str = r#"float sdf_triangle(float3 p, float3 a, float3 b, float3 c) {
+    float3 ba = b - a; float3 pa = p - a;
+    float3 cb = c - b; float3 pb = p - b;
+    float3 ac = a - c; float3 pc = p - c;
+    float3 nor = cross(ba, ac);
+    float sign_check = sign(dot(cross(ba, nor), pa)) +
+                       sign(dot(cross(cb, nor), pb)) +
+                       sign(dot(cross(ac, nor), pc));
+    if (sign_check < 2.0) {
+        float d1 = dot(ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0) - pa,
+                       ba * clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0) - pa);
+        float d2 = dot(cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0) - pb,
+                       cb * clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0) - pb);
+        float d3 = dot(ac * clamp(dot(ac, pc) / dot(ac, ac), 0.0, 1.0) - pc,
+                       ac * clamp(dot(ac, pc) / dot(ac, ac), 0.0, 1.0) - pc);
+        return sqrt(min(min(d1, d2), d3));
+    } else {
+        return sqrt(dot(nor, pa) * dot(nor, pa) / dot(nor, nor));
+    }
+}
+"#;
+
+const HELPER_SDF_BEZIER: &str = r#"float sdf_bezier(float3 pos, float3 A, float3 B, float3 C, float rad) {
+    float3 a = B - A;
+    float3 b = A - 2.0 * B + C;
+    float3 c = a * 2.0;
+    float3 d = A - pos;
+    float kk = 1.0 / max(dot(b, b), 1e-10);
+    float kx = kk * dot(a, b);
+    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    float kz = kk * dot(d, a);
+    float p = ky - kx * kx;
+    float q = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    float p3 = p * p * p;
+    float q2 = q * q;
+    float h = q2 + 4.0 * p3;
+    float res;
+    if (h >= 0.0) {
+        float sh = sqrt(h);
+        float2 x = (float2(sh, -sh) - q) * 0.5;
+        float2 uv = sign(x) * pow(abs(x), float2(1.0 / 3.0, 1.0 / 3.0));
+        float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
+        float3 qp = d + (c + b * t) * t;
+        res = dot(qp, qp);
+    } else {
+        float z = sqrt(-p);
+        float v = acos(q / (p * z * 2.0)) / 3.0;
+        float m = cos(v);
+        float n = sin(v) * 1.732050808;
+        float t0 = clamp(( m + m) * z - kx, 0.0, 1.0);
+        float t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
+        float3 qp0 = d + (c + b * t0) * t0;
+        float3 qp1 = d + (c + b * t1) * t1;
+        res = min(dot(qp0, qp0), dot(qp1, qp1));
+    }
+    return sqrt(res) - rad;
 }
 "#;
 

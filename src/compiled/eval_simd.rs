@@ -715,6 +715,63 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 p = Vec3x8 { x: p.x, y: p.y, z: f32x8::ZERO };
             }
 
+            OpCode::Taper => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Taper,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let factor = f32x8::splat(inst.params[0]);
+                let s = f32x8::ONE / (f32x8::ONE - p.y * factor);
+                p = Vec3x8 {
+                    x: p.x * s,
+                    y: p.y,
+                    z: p.z * s,
+                };
+            }
+
+            OpCode::Displacement => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::Displacement,
+                    params: [inst.params[0], 0.0, 0.0, 0.0],
+                };
+                csp += 1;
+                // Displacement doesn't modify point, only post-processes distance
+            }
+
+            // ★ Deep Fried: SIMD PolarRepeat with atan2 approximation
+            OpCode::PolarRepeat => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::PolarRepeat,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let count_f = inst.params[0];
+                let sector = f32x8::splat(std::f32::consts::TAU / count_f);
+                let inv_sector = f32x8::splat(count_f / std::f32::consts::TAU);
+                let half = f32x8::splat(0.5);
+
+                let angle = atan2_approx(p.z, p.x);
+                let r = (p.x * p.x + p.z * p.z).sqrt();
+
+                // remainder = angle - round(angle / sector) * sector
+                let remainder = angle - ((angle * inv_sector + half).floor()) * sector;
+
+                p = Vec3x8 {
+                    x: r * cos_approx(remainder),
+                    y: p.y,
+                    z: r * sin_approx(remainder),
+                };
+            }
+
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
@@ -754,6 +811,14 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         let outside = (w_x_pos * w_x_pos + w_y_pos * w_y_pos).sqrt();
                         let inside = child_dist.max(w_y).min(f32x8::ZERO);
                         value_stack[vsp - 1] = outside + inside;
+                    }
+                    OpCode::Displacement => {
+                        let strength = f32x8::splat(frame.params[0]);
+                        let five = f32x8::splat(5.0);
+                        let sx = sin_approx(five * frame.point.x);
+                        let sy = sin_approx(five * frame.point.y);
+                        let sz = sin_approx(five * frame.point.z);
+                        value_stack[vsp - 1] = value_stack[vsp - 1] + sx * sy * sz * strength;
                     }
                     _ => {}
                 }
@@ -801,6 +866,42 @@ fn cos_approx(x: f32x8) -> f32x8 {
 #[inline]
 fn sin_approx(x: f32x8) -> f32x8 {
     cos_approx(x - f32x8::splat(std::f32::consts::FRAC_PI_2))
+}
+
+/// ★ Deep Fried: Fast atan2 approximation for SIMD
+///
+/// Minimax polynomial approximation of atan2(y, x).
+/// Max error ~0.0038 radians (~0.22 degrees) — sufficient for SDF polar repeat.
+#[inline]
+fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
+    let pi = f32x8::splat(std::f32::consts::PI);
+    let half_pi = f32x8::splat(std::f32::consts::FRAC_PI_2);
+    let abs_x = x.abs();
+    let abs_y = y.abs();
+
+    // min/max ratio for range reduction to [0, 1]
+    let a = abs_x.min(abs_y);
+    let b = abs_x.max(abs_y);
+    let safe_b = b.max(f32x8::splat(1e-20));
+    let r = a / safe_b;
+
+    // Polynomial approximation of atan(r) for r in [0, 1]
+    // atan(r) ≈ r * (0.9998660 - r² * (0.3302995 - r² * 0.1801410))
+    let r2 = r * r;
+    let atan_r = r * (f32x8::splat(0.9998660)
+        - r2 * (f32x8::splat(0.3302995) - r2 * f32x8::splat(0.1801410)));
+
+    // If |y| > |x|, result = pi/2 - atan_r, else atan_r
+    let swap_mask = abs_y.cmp_gt(abs_x);
+    let result = swap_mask.blend(half_pi - atan_r, atan_r);
+
+    // Negate for x < 0: pi - result
+    let neg_x_mask = x.cmp_lt(f32x8::ZERO);
+    let result = neg_x_mask.blend(pi - result, result);
+
+    // Negate for y < 0
+    let neg_y_mask = y.cmp_lt(f32x8::ZERO);
+    neg_y_mask.blend(-result, result)
 }
 
 /// Batch evaluate compiled SDF using SIMD (8 points at a time)

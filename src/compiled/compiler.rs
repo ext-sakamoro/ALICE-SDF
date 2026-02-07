@@ -133,6 +133,14 @@ impl Compiler {
                 self.instructions.push(Instruction::link(*half_length, *r1, *r2));
             }
 
+            SdfNode::Triangle { .. } => {
+                panic!("Triangle requires 9 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+            }
+
+            SdfNode::Bezier { .. } => {
+                panic!("Bezier requires 10 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+            }
+
             // === Binary Operations ===
             // For binary operations, we use post-order: left, right, op
             SdfNode::Union { a, b } => {
@@ -300,6 +308,30 @@ impl Compiler {
             SdfNode::Extrude { child, half_height } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::extrude(*half_height));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::Taper { child, factor } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::taper(*factor));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::Displacement { child, strength } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::displacement(*strength));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::PolarRepeat { child, count } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::polar_repeat(*count as f32));
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;

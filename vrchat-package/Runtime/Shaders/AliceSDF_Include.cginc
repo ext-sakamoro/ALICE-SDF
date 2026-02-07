@@ -57,6 +57,66 @@ float sdCapsule(float3 p, float3 a, float3 b, float radius)
     return length(pa - ba * h) - radius;
 }
 
+// Rounded Cone: smooth-capped cone along Y-axis
+float sdRoundedCone(float3 p, float r1, float r2, float h)
+{
+    float qx = length(p.xz);
+    float qy = p.y + h;
+    float ht = h * 2.0;
+    float b = (r1 - r2) / ht;
+    float a = sqrt(1.0 - b * b);
+    float k = qx * (-b) + qy * a;
+    if (k < 0.0) return length(float2(qx, qy)) - r1;
+    if (k > a * ht) return length(float2(qx, qy - ht)) - r2;
+    return qx * a + qy * b - r1;
+}
+
+// Pyramid: 4-sided pyramid along Y-axis (unit base)
+float sdPyramid(float3 p, float h)
+{
+    float ht = h * 2.0;
+    float m2 = ht * ht + 0.25;
+    float py = p.y + h;
+    float px = abs(p.x);
+    float pz = abs(p.z);
+    if (pz > px) { float tmp = px; px = pz; pz = tmp; }
+    px -= 0.5;
+    pz -= 0.5;
+    float qx = pz;
+    float qy = ht * py - 0.5 * px;
+    float qz = ht * px + 0.5 * py;
+    float s = max(-qx, 0.0);
+    float t = clamp((qy - 0.5 * pz) / (m2 + 0.25), 0.0, 1.0);
+    float aa = m2 * (qx + s) * (qx + s) + qy * qy;
+    float bb = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
+    float d2 = (min(-qx * m2 - qy * 0.5, qy) > 0.0) ? 0.0 : min(aa, bb);
+    return sqrt((d2 + qz * qz) / m2) * sign(max(qz, -py));
+}
+
+// Octahedron: regular octahedron centered at origin
+float sdOctahedron(float3 p, float s)
+{
+    float3 ap = abs(p);
+    float m = ap.x + ap.y + ap.z - s;
+    float3 q;
+    if (3.0 * ap.x < m) q = ap;
+    else if (3.0 * ap.y < m) q = float3(ap.y, ap.z, ap.x);
+    else if (3.0 * ap.z < m) q = float3(ap.z, ap.x, ap.y);
+    else return m * 0.57735027;
+    float kk = clamp(0.5 * (q.z - q.y + s), 0.0, s);
+    return length(float3(q.x, q.y - s + kk, q.z - kk));
+}
+
+// Link: chain link shape (torus stretched along Y)
+float sdLink(float3 p, float le, float r1, float r2)
+{
+    float qx = p.x;
+    float qy = max(abs(p.y) - le, 0.0);
+    float qz = p.z;
+    float xy_len = sqrt(qx * qx + qy * qy) - r1;
+    return sqrt(xy_len * xy_len + qz * qz) - r2;
+}
+
 // =============================================================================
 // Boolean Operations
 // =============================================================================
