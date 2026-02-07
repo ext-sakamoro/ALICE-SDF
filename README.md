@@ -318,8 +318,15 @@ import alice_sdf as sdf
 sphere = sdf.SdfNode.sphere(1.0)
 box3d = sdf.SdfNode.box3d(2.0, 1.0, 1.0)
 
-# CSG operations
+# CSG operations (method syntax)
 result = sphere.subtract(box3d)
+
+# Operator overloads (Pythonic syntax)
+a = sdf.SdfNode.sphere(1.0)
+b = sdf.SdfNode.box3d(0.5, 0.5, 0.5)
+union     = a | b    # a.union(b)
+intersect = a & b    # a.intersection(b)
+subtract  = a - b    # a.subtract(b)
 
 # Transform
 translated = result.translate(1.0, 0.0, 0.0)
@@ -328,6 +335,11 @@ translated = result.translate(1.0, 0.0, 0.0)
 import numpy as np
 points = np.array([[0.5, 0.0, 0.0], [1.0, 1.0, 1.0]], dtype=np.float32)
 distances = sdf.eval_batch(translated, points)
+
+# Compiled evaluation (2-5x faster for repeated use)
+compiled = sdf.compile_sdf(sphere)
+distances = compiled.eval_batch(points)               # compiled batch
+vertices, indices = compiled.to_mesh((-2,-2,-2), (2,2,2), resolution=64)  # compiled mesh
 
 # Convert to mesh
 vertices, indices = sdf.to_mesh(translated, (-2.0, -2.0, -2.0), (2.0, 2.0, 2.0))
@@ -521,6 +533,7 @@ Layer 10: compiled/glsl     -- GLSL transpiler (Unity/OpenGL/Vulkan)
 Layer 11: compiled/wgsl     -- WGSL transpiler (WebGPU)
 Layer 12: compiled/hlsl     -- HLSL transpiler (DirectX/Unreal)
 Layer 13: compiled/jit      -- JIT native code (Cranelift)
+Layer 14: crispy.rs         -- Hardware-native math (branchless, BitMask64, BloomFilter)
 ```
 
 ### Evaluation Modes
@@ -550,6 +563,10 @@ Layer 13: compiled/jit      -- JIT native code (Cranelift)
 | Function | Description |
 |----------|-------------|
 | `sdf_to_mesh()` | SDF to mesh via parallel marching cubes (Z-slab parallelization) |
+| `sdf_to_mesh_compiled()` | Compiled VM path — SIMD batch grid eval + grid finite-difference normals |
+| `marching_cubes_compiled()` | Compiled MC with `eval_compiled_batch_simd_parallel` grid evaluation |
+| `adaptive_marching_cubes()` | Octree-adaptive MC (interpreted) — 60-80% fewer triangles |
+| `adaptive_marching_cubes_compiled()` | Octree-adaptive MC (compiled VM) — 2-5x faster |
 | `mesh_to_sdf()` | Mesh to SDF via capsule approximation (edge-based) |
 | `mesh_to_sdf_exact()` | Mesh to SDF via BVH exact distance (O(log n) queries) |
 
@@ -734,7 +751,7 @@ cargo build --features "all-shaders,jit"  # Everything
 
 ## Testing
 
-546+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC). With `--features jit`, 570+ tests including JIT scalar and JIT SIMD backends.
+561+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter). With `--features jit`, 580+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
@@ -778,6 +795,29 @@ The JIT compiler generates native SIMD machine code using Cranelift, achieving t
 - **Division Exorcism** - all runtime divisions pre-computed as reciprocal multiplications at compile time
 - **Branchless SIMD selection** - sign-bit extraction via `bitcast`/`sshr`/`bitselect` (zero-overhead on SSE/AVX/NEON)
 - **FMA fusion** - fused multiply-add for reduced latency in complex primitives (Cone, RoundedCone, Pyramid)
+
+### crispy.rs — Hardware-Native Math Utilities
+
+Low-level branchless operations for hot inner loops. Trades sub-ULP precision for throughput.
+
+| Function | Description |
+|----------|-------------|
+| `fast_recip(x)` | Fast `1/x` via hardware rcpss + Newton-Raphson (~0.02% error) |
+| `fast_inv_sqrt(x)` | Quake III inverse sqrt + NR iteration (~0.175% error) |
+| `fast_normalize_2d(gx, gz)` | Normalize 2D gradient using fast inverse sqrt |
+| `select_f32(cond, a, b)` | Branchless cmov via bit manipulation |
+| `branchless_min/max/clamp/abs` | Zero-branch arithmetic via `select_f32` |
+| `BitMask64` | 64-element batch mask (AND/OR/NOT/popcnt via hardware) |
+| `BloomFilter` | 4KB Bloom filter with FNV-1a double-hashing, O(1) membership test |
+| `fnv1a_hash(data)` | FNV-1a 64-bit hash (fast, well-distributed) |
+
+### Compiled Marching Cubes Performance
+
+The compiled MC path (`sdf_to_mesh_compiled`) applies two key optimizations:
+
+1. **SIMD Batch Grid Evaluation** — All grid points are collected into a `Vec<Vec3>`, then evaluated in one call to `eval_compiled_batch_simd_parallel` (8-wide SIMD + Rayon). Eliminates per-point function call overhead.
+
+2. **Grid Finite-Difference Normals** — Vertex normals are computed from neighboring grid values (`values[x+1] - values[x-1]`) instead of 6 additional `eval_compiled` calls per vertex. Interior cells use zero eval calls for normals; boundary cells fall back to analytical normals.
 
 ```bash
 # Run CLI benchmark

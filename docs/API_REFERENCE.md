@@ -25,6 +25,8 @@ Complete API reference for all modules.
 
 All primitives return `SdfNode` and can be chained with operations, transforms, and modifiers.
 
+### Core Primitives (15)
+
 | Constructor | Parameters | Description |
 |-------------|-----------|-------------|
 | `SdfNode::sphere(radius)` | `f32` | Sphere centered at origin |
@@ -40,6 +42,66 @@ All primitives return `SdfNode` and can be chained with operations, transforms, 
 | `SdfNode::octahedron(size)` | `f32` | Regular octahedron |
 | `SdfNode::hex_prism(hex_radius, height)` | `f32, f32` | Hexagonal prism |
 | `SdfNode::link(length, r1, r2)` | `f32, f32, f32` | Chain link |
+| `SdfNode::triangle(v0, v1, v2)` | `Vec3, Vec3, Vec3` | Triangle primitive |
+| `SdfNode::bezier(v0, v1, v2)` | `Vec3, Vec3, Vec3` | Quadratic Bezier curve |
+
+### Extended Geometric (16)
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `SdfNode::rounded_box(w, h, d, r)` | `f32, f32, f32, f32` | Box with rounded edges |
+| `SdfNode::capped_cone(h, r1, r2)` | `f32, f32, f32` | Capped cone (two radii) |
+| `SdfNode::capped_torus(ro, ri, angle)` | `f32, f32, f32` | Partial torus arc |
+| `SdfNode::rounded_cylinder(r, rr, h)` | `f32, f32, f32` | Cylinder with rounded edges |
+| `SdfNode::triangular_prism(w, h)` | `f32, f32` | Triangular cross-section prism |
+| `SdfNode::cut_sphere(r, h)` | `f32, f32` | Sphere with flat cut |
+| `SdfNode::cut_hollow_sphere(r, h, t)` | `f32, f32, f32` | Hollow sphere with cut |
+| `SdfNode::death_star(ra, rb, d)` | `f32, f32, f32` | Death Star shape |
+| `SdfNode::solid_angle(angle, ra)` | `f32, f32` | Solid angle (cone sector) |
+| `SdfNode::rhombus(la, lb, h, ra)` | `f32, f32, f32, f32` | Rhombus shape |
+| `SdfNode::horseshoe(angle, r, w, h)` | `f32, f32, f32, f32` | Horseshoe shape |
+| `SdfNode::vesica(a, b, w)` | `Vec3, Vec3, f32` | Vesica shape |
+| `SdfNode::infinite_cylinder(dir, r)` | `Vec3, f32` | Infinite cylinder |
+| `SdfNode::infinite_cone(angle)` | `f32` | Infinite cone |
+| `SdfNode::gyroid(scale, thickness)` | `f32, f32` | Gyroid minimal surface |
+| `SdfNode::heart(size)` | `f32` | Heart shape |
+
+### 3D Native (7)
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `SdfNode::tube(outer_r, inner_r, h)` | `f32, f32, f32` | Tube (hollow cylinder) |
+| `SdfNode::barrel(r, h, bulge)` | `f32, f32, f32` | Barrel shape |
+| `SdfNode::diamond(size)` | `f32` | Diamond (octahedron variant) |
+| `SdfNode::chamfered_cube(size, chamfer)` | `f32, f32` | Cube with chamfered edges |
+| `SdfNode::schwarz_p(scale, thickness)` | `f32, f32` | Schwarz P minimal surface |
+| `SdfNode::superellipsoid(r, e1, e2)` | `f32, f32, f32` | Superellipsoid |
+| `SdfNode::rounded_x(w, r)` | `f32, f32` | Rounded X shape |
+
+### 2D→3D Prisms (13)
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `SdfNode::pie(r, angle)` | `f32, f32` | Pie slice |
+| `SdfNode::trapezoid(r1, r2, h)` | `f32, f32, f32` | Trapezoid prism |
+| `SdfNode::parallelogram(w, h, skew)` | `f32, f32, f32` | Parallelogram |
+| `SdfNode::tunnel(r, h)` | `f32, f32` | Tunnel shape |
+| `SdfNode::uneven_capsule(r1, r2, h)` | `f32, f32, f32` | Capsule with different end radii |
+| `SdfNode::egg(r)` | `f32` | Egg shape |
+| `SdfNode::arc_shape(r, angle, w)` | `f32, f32, f32` | Arc shape |
+| `SdfNode::moon(d, ra, rb)` | `f32, f32, f32` | Moon/crescent |
+| `SdfNode::cross_shape(w, h, r)` | `f32, f32, f32` | Cross shape |
+| `SdfNode::blobby_cross(size)` | `f32` | Blobby cross |
+| `SdfNode::parabola_segment(w, h)` | `f32, f32` | Parabola segment |
+| `SdfNode::regular_polygon(r, n)` | `f32, u32` | Regular N-gon |
+| `SdfNode::star_polygon(r, n, m)` | `f32, u32, u32` | Star polygon {n/m} |
+
+### Complex 3D (2)
+
+| Constructor | Parameters | Description |
+|-------------|-----------|-------------|
+| `SdfNode::stairs(step_count, step_height, step_depth)` | `u32, f32, f32` | Staircase |
+| `SdfNode::helix(r, pitch, thickness)` | `f32, f32, f32` | Helix / spring |
 
 ---
 
@@ -142,10 +204,29 @@ let mesh = sdf_to_mesh(&shape, min_bounds, max_bounds, &config);
 
 **Preset**: `MarchingCubesConfig::aaa(resolution)` enables all attributes.
 
+### Compiled Marching Cubes
+
+Compiled VM path with SIMD batch grid evaluation and grid finite-difference normals.
+
+```rust
+let compiled = CompiledSdf::compile(&shape);
+
+// Standard compiled MC (SIMD batch grid eval + grid FD normals)
+let mesh = sdf_to_mesh_compiled(&compiled, min, max, &config);
+
+// Low-level compiled MC (no dedup/tangent post-processing)
+let mesh = marching_cubes_compiled(&compiled, min, max, &config);
+```
+
 ### Adaptive Marching Cubes
 
 ```rust
+// Interpreted
 let mesh = adaptive_marching_cubes(&shape, min, max, &config);
+
+// Compiled VM (2-5x faster)
+let compiled = CompiledSdf::compile(&shape);
+let mesh = adaptive_marching_cubes_compiled(&compiled, min, max, &config);
 ```
 
 | Config Field | Type | Default | Description |
@@ -430,6 +511,70 @@ use alice_sdf::compiled::WgslShader;
 let shader = WgslShader::transpile(&shape);
 println!("{}", shader.source);
 ```
+
+---
+
+## crispy.rs — Hardware-Native Math Utilities
+
+Branchless operations and data structures for hot inner loops.
+
+### Branchless Arithmetic
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fast_recip(x)` | `f32` | `f32` | Fast `1/x` (rcpss + Newton-Raphson) |
+| `fast_recip_vec3(v)` | `Vec3` | `Vec3` | Component-wise fast reciprocal |
+| `fast_inv_sqrt(x)` | `f32` | `f32` | Quake III inverse sqrt (~0.175% error) |
+| `fast_normalize_2d(gx, gz)` | `f32, f32` | `(f32, f32)` | Fast 2D normalize via inv_sqrt |
+| `select_f32(cond, a, b)` | `bool, f32, f32` | `f32` | Branchless cmov (bit manipulation) |
+| `branchless_min(a, b)` | `f32, f32` | `f32` | Min without branching |
+| `branchless_max(a, b)` | `f32, f32` | `f32` | Max without branching |
+| `branchless_clamp(x, lo, hi)` | `f32, f32, f32` | `f32` | Clamp without branching |
+| `branchless_abs(x)` | `f32` | `f32` | Abs via sign-bit clear |
+
+### BitMask64
+
+64-element batch mask for branchless filtering (hardware `popcnt`).
+
+```rust
+let a = BitMask64(0b1010);
+let b = BitMask64(0b1100);
+assert_eq!(a.and(b), BitMask64(0b1000));
+assert_eq!(a.count_ones(), 2);
+assert!(a.test(1));
+```
+
+| Method | Description |
+|--------|-------------|
+| `and(other)` | Bitwise AND |
+| `or(other)` | Bitwise OR |
+| `not()` | Bitwise NOT |
+| `count_ones()` | Population count (hardware popcnt) |
+| `test(index)` | Test bit at index |
+| `set(index)` | Set bit at index |
+| `clear(index)` | Clear bit at index |
+| `is_empty()` | True if no bits set |
+
+### BloomFilter
+
+4KB Bloom filter with FNV-1a double-hashing. O(1) membership test, ~1-2% false positive rate at 200 entries.
+
+```rust
+let mut bloom = BloomFilter::new();
+bloom.insert(b"Sphere");
+bloom.insert(b"Box");
+assert!(bloom.test(b"Sphere"));   // true (guaranteed)
+assert!(!bloom.test(b"Teapot"));  // false (probabilistic)
+```
+
+| Method | Description |
+|--------|-------------|
+| `BloomFilter::new()` | Create empty 4KB filter |
+| `BloomFilter::from_items(iter)` | Build from byte slice iterator |
+| `insert(data)` | Insert element |
+| `test(data)` | O(1) membership test |
+| `test_hash(filter, hash)` | Test using pre-computed hash (hot loop optimization) |
+| `fnv1a_hash(data)` | FNV-1a 64-bit hash function |
 
 ---
 

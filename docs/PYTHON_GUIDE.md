@@ -110,6 +110,25 @@ smooth_inter = a.smooth_intersection(b, 0.2)
 smooth_sub = a.smooth_subtract(b, 0.2)
 ```
 
+### Operator Overloads
+
+Python operator syntax for CSG operations — write SDFs like math expressions:
+
+```python
+import alice_sdf as sdf
+
+a = sdf.SdfNode.sphere(1.0)
+b = sdf.SdfNode.box3d(0.5, 0.5, 0.5)
+
+# Operator syntax         # Equivalent method call
+union     = a | b         # a.union(b)
+intersect = a & b         # a.intersection(b)
+subtract  = a - b         # a.subtract(b)
+
+# Chain operations
+result = (a | b) - sdf.SdfNode.cylinder(0.3, 2.0)
+```
+
 ---
 
 ## Transforms and Modifiers
@@ -357,6 +376,47 @@ for frame in range(60):
     distances = sdf.eval_compiled_batch(compiled, points)
 ```
 
+### PyCompiledSdf Methods
+
+The compiled object exposes direct methods for batch evaluation and mesh generation:
+
+```python
+import alice_sdf as sdf
+import numpy as np
+
+shape = sdf.SdfNode.sphere(1.0).smooth_union(sdf.SdfNode.box3d(0.5, 0.5, 0.5), 0.2)
+compiled = sdf.compile_sdf(shape)
+
+# Batch evaluate (GIL released, Rayon parallel)
+points = np.random.randn(1000000, 3).astype(np.float32)
+distances = compiled.eval_batch(points)
+
+# Generate mesh directly from compiled SDF
+# Uses SIMD batch grid eval + grid finite-difference normals internally
+vertices, indices = compiled.to_mesh(
+    bounds_min=(-2.0, -2.0, -2.0),
+    bounds_max=(2.0, 2.0, 2.0),
+    resolution=64
+)
+```
+
+### SoA Batch Evaluation
+
+Structure-of-Arrays layout for maximum cache efficiency and SIMD throughput:
+
+```python
+import alice_sdf as sdf
+import numpy as np
+
+shape = sdf.SdfNode.sphere(1.0)
+compiled = sdf.compile_sdf(shape)
+
+points = np.random.randn(1000000, 3).astype(np.float32)
+
+# SoA path — internally converts to x[], y[], z[] arrays for SIMD loading
+distances = sdf.eval_compiled_batch_soa(compiled, points)
+```
+
 ---
 
 ## Blender Integration
@@ -601,6 +661,18 @@ plt.show()
 | `onion(t)` | `float` | `SdfNode` | Shell modifier |
 | `eval(x, y, z)` | `float, float, float` | `float` | Evaluate distance |
 | `node_count()` | - | `int` | Count nodes in tree |
+| `__or__(other)` | `SdfNode` | `SdfNode` | `a \| b` → union |
+| `__and__(other)` | `SdfNode` | `SdfNode` | `a & b` → intersection |
+| `__sub__(other)` | `SdfNode` | `SdfNode` | `a - b` → subtraction |
+
+### `sdf.CompiledSdf` (Class)
+
+Returned by `compile_sdf()`. All methods release the GIL for parallel execution.
+
+| Method | Arguments | Returns | Description |
+|--------|-----------|---------|-------------|
+| `eval_batch(points)` | `ndarray(N,3)` | `ndarray(N,)` | Compiled batch evaluation (Rayon parallel) |
+| `to_mesh(min, max, resolution=64)` | `tuple, tuple, int` | `(ndarray, ndarray)` | Compiled mesh (SIMD grid + FD normals) |
 
 ### Module Functions
 
@@ -609,6 +681,7 @@ plt.show()
 | `eval_batch(node, points)` | `SdfNode, ndarray(N,3)` | `ndarray(N,)` | Parallel batch evaluation |
 | `compile_sdf(node)` | `SdfNode` | `CompiledSdf` | Compile for fast evaluation |
 | `eval_compiled_batch(compiled, points)` | `CompiledSdf, ndarray(N,3)` | `ndarray(N,)` | Evaluate compiled SDF in batch |
+| `eval_compiled_batch_soa(compiled, points)` | `CompiledSdf, ndarray(N,3)` | `ndarray(N,)` | SoA batch (cache-optimal SIMD) |
 | `to_mesh(node, min, max, res)` | `SdfNode, tuple, tuple, int` | `(ndarray, ndarray)` | Marching cubes |
 | `to_mesh_adaptive(node, ...)` | `SdfNode, bounds, depths, threshold` | `(ndarray, ndarray)` | Adaptive mesh generation |
 | `save_sdf(node, path)` | `SdfNode, str` | `None` | Save to .asdf/.asdf.json |
