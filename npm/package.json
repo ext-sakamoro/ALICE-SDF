@@ -1,0 +1,42 @@
+{
+  "name": "@alice-sdf/wasm",
+  "version": "0.1.0",
+  "description": "ALICE-SDF WebAssembly bindings - Mathematical 3D shape compression via Signed Distance Functions",
+  "main": "dist/alice_sdf.js",
+  "module": "dist/alice_sdf_bg.js",
+  "types": "dist/alice_sdf.d.ts",
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "cd ../examples/wasm-demo && wasm-pack build --target web --out-dir ../../npm/dist",
+    "build:bundler": "cd ../examples/wasm-demo && wasm-pack build --target bundler --out-dir ../../npm/dist",
+    "build:node": "cd ../examples/wasm-demo && wasm-pack build --target nodejs --out-dir ../../npm/dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "sdf",
+    "signed-distance-function",
+    "3d",
+    "webgpu",
+    "wasm",
+    "webassembly",
+    "mesh",
+    "procedural",
+    "compression",
+    "csg",
+    "marching-cubes"
+  ],
+  "author": "Moroya Sakamoto",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ext-sakamoro/ALICE-SDF"
+  },
+  "homepage": "https://github.com/ext-sakamoro/ALICE-SDF#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "sideEffects": false
+}

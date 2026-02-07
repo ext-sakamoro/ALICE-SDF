@@ -13,16 +13,22 @@
 //! Author: Moroya Sakamoto
 
 mod asdf;
+pub mod alembic;
 pub mod fbx;
 pub mod gltf;
 mod json;
+pub mod nanite;
 pub mod obj;
+pub mod usd;
 
+pub use alembic::{export_alembic, AlembicConfig};
 pub use asdf::{save_asdf, load_asdf, AsdfHeader, ASDF_MAGIC};
 pub use fbx::{export_fbx, FbxConfig, FbxFormat, FbxUpAxis};
 pub use gltf::{export_glb, export_gltf_json, GltfConfig};
 pub use json::{save_asdf_json, load_asdf_json, to_json_string, from_json_string};
+pub use nanite::{export_nanite, export_nanite_with_config, export_nanite_json, NaniteExportConfig};
 pub use obj::{export_obj, import_obj, ObjConfig};
+pub use usd::{export_usda, UsdConfig, UsdUpAxis};
 
 use crate::types::SdfTree;
 use std::path::Path;

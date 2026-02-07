@@ -16,7 +16,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **リアルタイムレイマーチング** - GPU加速レンダリング
 - **PBRマテリアル** - UE5/Unity/Godot互換のメタリック-ラフネスワークフロー
 - **キーフレームアニメーション** - タイムライントラック付きパラメトリック変形
-- **アセットパイプライン** - OBJインポート/エクスポート、glTF 2.0 (.glb) エクスポート、FBXエクスポート
+- **アセットパイプライン** - OBJインポート/エクスポート、glTF 2.0 (.glb)、FBX、USD、Alembic、Naniteエクスポート
 - **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
 - **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中
 - **V-HACD凸分解** - 物理用自動凸包分解
@@ -516,6 +516,9 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 | `.obj` | 対応 | 対応 | .mtl | Wavefront OBJ（汎用DCCツール） |
 | `.glb` | - | 対応 | PBR | glTF 2.0バイナリ（ゲームエンジン） |
 | `.fbx` | - | 対応 | PBR | FBX 7.4 ASCII/バイナリ（DCCツール） |
+| `.usda` | - | 対応 | UsdPreviewSurface | USD ASCII（Pixar/Omniverse/Houdini/Maya/Blender） |
+| `.abc` | - | 対応 | - | Alembic Ogawaバイナリ（Maya/Houdini/Nuke/Blender） |
+| `.nanite` | - | 対応 | - | UE5 Nanite階層クラスタバイナリ + JSONマニフェスト |
 
 ## アーキテクチャ
 
@@ -558,6 +561,13 @@ Layer 14: crispy.rs         -- ハードウェアネイティブ数学（ブラ�
 | **WGSL** | WebGPUシェーダー | ブラウザ、wgpu |
 | **HLSL** | DirectXシェーダー | Unreal Engine、DirectX |
 
+#### エンジン固有シェーダーエクスポート
+
+| メソッド | 出力 | ターゲットエンジン |
+|--------|--------|---------------|
+| `HlslShader::export_ue5_material_function()` | `.ush` Material Functionインクルード | Unreal Engine 5（Custom Expression） |
+| `GlslShader::export_unity_shader_graph()` | `.hlsl` Custom Functionノード | Unity Shader Graph（HDRP/URP） |
+
 ## メッシュモジュール
 
 ### 変換
@@ -589,6 +599,7 @@ Layer 14: crispy.rs         -- ハードウェアネイティブ数学（ブラ�
 | **頂点最適化** | `mesh/optimize` | 頂点キャッシュ最適化と重複排除 |
 | **メッシュBVH** | `mesh/bvh` | 精密符号付き距離クエリ用バウンディングボリューム階層 |
 | **マニフォールドバリデーション** | `mesh/manifold` | トポロジーバリデーション、修復、品質メトリクス |
+| **UV展開** | `mesh/uv_unwrap` | LCSMコンフォーマルUV展開（シーム検出、チャートパッキング） |
 
 ### マニフォールドメッシュ保証
 
@@ -753,7 +764,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる561以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、コリジョン、デシメーション、LOD、適応型MC、crispyユーティリティ、BloomFilter）。`--features jit`で580以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる574以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、コリジョン、デシメーション、LOD、適応型MC、crispyユーティリティ、BloomFilter）。`--features jit`で590以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test
@@ -903,6 +914,14 @@ let distances = gpu.eval_batch_auto(&points, &mut pool).unwrap();
 ## WebAssembly（ブラウザ）
 
 ALICE-SDFはWebAssemblyでブラウザ上で動作し、WebGPU/Canvas2Dをサポートします。
+
+### npmパッケージ（`@alice-sdf/wasm`）
+
+```bash
+npm install @alice-sdf/wasm
+```
+
+TypeScript型定義を完備。53プリミティブ、CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
 
 ### WASMデモのビルド
 

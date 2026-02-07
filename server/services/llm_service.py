@@ -13,6 +13,28 @@ from server import config
 
 logger = logging.getLogger(__name__)
 
+# ── Lazy Singleton Clients (connection reuse) ─────────────────
+_claude_client = None
+_gemini_client = None
+
+def _get_claude_client():
+    """Get or create singleton AsyncAnthropic client."""
+    global _claude_client
+    if _claude_client is None:
+        import anthropic
+        _claude_client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+        logger.info("Claude client initialized (singleton)")
+    return _claude_client
+
+def _get_gemini_client():
+    """Get or create singleton genai.Client."""
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
+        _gemini_client = genai.Client(api_key=config.GOOGLE_API_KEY)
+        logger.info("Gemini client initialized (singleton)")
+    return _gemini_client
+
 # Boolean operations that require both "a" and "b" fields
 BOOLEAN_OPS = {"Union", "Intersection", "Subtraction",
                "SmoothUnion", "SmoothIntersection", "SmoothSubtraction"}
@@ -93,12 +115,14 @@ def _suggest_fix(error: str, sdf_json: str) -> str:
     return " ".join(suggestions) if suggestions else ""
 
 
-# ── LLM Response Cache ────────────────────────────────────────
+# ── LLM Response Cache (LRU with TTL + maxsize) ──────────────
 
 import hashlib
+from collections import OrderedDict
 
-_cache: dict[str, dict] = {}
+_cache: OrderedDict[str, dict] = OrderedDict()
 CACHE_TTL = config.CACHE_TTL_SECONDS
+CACHE_MAX_SIZE = 256  # Max cached entries to prevent unbounded memory growth
 
 
 def _cache_key(prompt: str, provider: str, model: str) -> str:
@@ -107,24 +131,38 @@ def _cache_key(prompt: str, provider: str, model: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _cache_evict_expired() -> int:
+    """Remove all expired entries. Returns count removed."""
+    now = time.time()
+    expired = [k for k, v in _cache.items() if now - v["timestamp"] > CACHE_TTL]
+    for k in expired:
+        del _cache[k]
+    return len(expired)
+
+
 def _cache_get(key: str) -> dict | None:
-    """Get cached entry if exists and not expired."""
+    """Get cached entry if exists and not expired. Promotes to MRU on hit."""
     entry = _cache.get(key)
     if entry is None:
         return None
     if time.time() - entry["timestamp"] > CACHE_TTL:
         del _cache[key]
         return None
+    _cache.move_to_end(key)  # LRU: move to most-recently-used
     return entry
 
 
 def _cache_set(key: str, sdf_json: str, metadata: dict) -> None:
-    """Store result in cache."""
+    """Store result in cache with LRU eviction."""
     _cache[key] = {
         "sdf_json": sdf_json,
         "metadata": metadata,
         "timestamp": time.time(),
     }
+    _cache.move_to_end(key)
+    # Evict oldest entries if over max size
+    while len(_cache) > CACHE_MAX_SIZE:
+        _cache.popitem(last=False)
 
 
 def cache_clear() -> int:
@@ -301,10 +339,8 @@ async def generate_sdf_claude(
 
     Returns (sdf_json, elapsed_seconds).
     """
-    import anthropic
-
     model_id = config.CLAUDE_MODELS.get(model, model)
-    client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+    client = _get_claude_client()
 
     system = SYSTEM_PROMPT + "\n\n## Examples\n\n" + format_few_shot()
     messages = retry_messages or _build_messages(prompt)
@@ -339,10 +375,8 @@ async def generate_sdf_gemini(
 
     Returns (sdf_json, elapsed_seconds).
     """
-    from google import genai
-
     model_id = config.GEMINI_MODELS.get(model, model)
-    client = genai.Client(api_key=config.GOOGLE_API_KEY)
+    client = _get_gemini_client()
 
     system = SYSTEM_PROMPT + "\n\n## Examples\n\n" + format_few_shot()
 
@@ -492,10 +526,8 @@ async def stream_sdf_claude(
     prompt: str, model: str = "haiku"
 ) -> AsyncIterator[str]:
     """Stream SDF JSON tokens from Claude API."""
-    import anthropic
-
     model_id = config.CLAUDE_MODELS.get(model, model)
-    client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+    client = _get_claude_client()
 
     system = SYSTEM_PROMPT + "\n\n## Examples\n\n" + format_few_shot()
 
@@ -513,10 +545,8 @@ async def stream_sdf_gemini(
     prompt: str, model: str = "flash"
 ) -> AsyncIterator[str]:
     """Stream SDF JSON tokens from Gemini API."""
-    from google import genai
-
     model_id = config.GEMINI_MODELS.get(model, model)
-    client = genai.Client(api_key=config.GOOGLE_API_KEY)
+    client = _get_gemini_client()
 
     system = SYSTEM_PROMPT + "\n\n## Examples\n\n" + format_few_shot()
     full_prompt = system + "\n\nUser: " + prompt + "\nAssistant:"

@@ -106,7 +106,10 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
+# For native CPU optimizations: RUSTFLAGS="-C target-cpu=native" cargo build --release
 
 [profile.bench]
 opt-level = 3
 lto = "thin"
+debug = false
+codegen-units = 1

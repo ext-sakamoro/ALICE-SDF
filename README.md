@@ -16,7 +16,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Real-time raymarching** - GPU-accelerated rendering
 - **PBR materials** - metallic-roughness workflow compatible with UE5/Unity/Godot
 - **Keyframe animation** - parametric deformation with timeline tracks
-- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX export
+- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
 - **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
@@ -516,6 +516,9 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 | `.obj` | yes | yes | .mtl | Wavefront OBJ (universal DCC) |
 | `.glb` | - | yes | PBR | glTF 2.0 binary (game engines) |
 | `.fbx` | - | yes | PBR | FBX 7.4 ASCII/Binary (DCC tools) |
+| `.usda` | - | yes | UsdPreviewSurface | USD ASCII (Pixar/Omniverse/Houdini/Maya/Blender) |
+| `.abc` | - | yes | - | Alembic Ogawa binary (Maya/Houdini/Nuke/Blender) |
+| `.nanite` | - | yes | - | UE5 Nanite hierarchical cluster binary + JSON manifest |
 
 ## Architecture
 
@@ -558,6 +561,13 @@ Layer 14: crispy.rs         -- Hardware-native math (branchless, BitMask64, Bloo
 | **WGSL** | WebGPU shaders | Browser, wgpu |
 | **HLSL** | DirectX shaders | Unreal Engine, DirectX |
 
+#### Engine-Specific Shader Exports
+
+| Method | Output | Target Engine |
+|--------|--------|---------------|
+| `HlslShader::export_ue5_material_function()` | `.ush` Material Function include | Unreal Engine 5 (Custom Expression) |
+| `GlslShader::export_unity_shader_graph()` | `.hlsl` Custom Function node | Unity Shader Graph (HDRP/URP) |
+
 ## Mesh Module
 
 ### Conversion
@@ -589,6 +599,7 @@ Layer 14: crispy.rs         -- Hardware-native math (branchless, BitMask64, Bloo
 | **Vertex Optimization** | `mesh/optimize` | Vertex cache optimization and deduplication |
 | **Mesh BVH** | `mesh/bvh` | Bounding volume hierarchy for exact signed distance queries |
 | **Manifold Validation** | `mesh/manifold` | Topology validation, repair, and quality metrics |
+| **UV Unwrapping** | `mesh/uv_unwrap` | LSCM conformal UV unwrapping with seam detection and chart packing |
 
 ### Manifold Mesh Guarantee
 
@@ -753,7 +764,7 @@ cargo build --features "all-shaders,jit"  # Everything
 
 ## Testing
 
-561+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter). With `--features jit`, 580+ tests including JIT scalar and JIT SIMD backends.
+574+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter). With `--features jit`, 590+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
@@ -903,6 +914,14 @@ Enable with: `cargo build --features gpu`
 ## WebAssembly (Browser)
 
 ALICE-SDF runs in the browser via WebAssembly with WebGPU/Canvas2D support.
+
+### npm Package (`@alice-sdf/wasm`)
+
+```bash
+npm install @alice-sdf/wasm
+```
+
+Full TypeScript type definitions included. Supports all 53 primitives, CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
 
 ### Building the WASM Demo
 
