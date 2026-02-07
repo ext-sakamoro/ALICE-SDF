@@ -8,7 +8,7 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, IntoPyArray};
+use numpy::{PyArray1, PyArray2, PyArrayMethods, IntoPyArray};
 use glam::Vec3;
 
 use crate::types::{SdfNode, SdfTree};
@@ -271,7 +271,7 @@ fn eval_compiled_batch<'py>(
     let distances = py.allow_threads(|| {
         crate::compiled::eval_compiled_batch_parallel(compiled_ref, &vec_points)
     });
-    Ok(distances.into_pyarray_bound(py))
+    Ok(distances.into_pyarray(py))
 }
 
 /// Evaluate SDF at multiple points (NumPy array, GIL released)
@@ -298,7 +298,7 @@ fn eval_batch<'py>(
     let distances = py.allow_threads(|| {
         eval_batch_parallel(node_ref, &vec_points)
     });
-    Ok(distances.into_pyarray_bound(py))
+    Ok(distances.into_pyarray(py))
 }
 
 /// Convert SDF to mesh (standard marching cubes)
@@ -391,7 +391,7 @@ fn decimate_mesh<'py>(
         })
         .collect();
 
-    let mesh_indices: Vec<u32> = idx.to_vec().unwrap_or_default();
+    let mesh_indices: Vec<u32> = idx.to_vec();
 
     let mut mesh = Mesh {
         vertices: mesh_verts,
@@ -437,7 +437,7 @@ fn export_obj(
 
     let mesh = Mesh {
         vertices: mesh_verts,
-        indices: idx.to_vec().unwrap_or_default(),
+        indices: idx.to_vec(),
     };
 
     io_export_obj(&mesh, path, &ObjConfig::default(), None)
@@ -473,10 +473,10 @@ fn export_glb(
 
     let mesh = Mesh {
         vertices: mesh_verts,
-        indices: idx.to_vec().unwrap_or_default(),
+        indices: idx.to_vec(),
     };
 
-    io_export_glb(&mesh, path, &GltfConfig::default())
+    io_export_glb(&mesh, path, &GltfConfig::default(), None)
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -492,6 +492,24 @@ fn save_sdf(node: &PySdfNode, path: &str) -> PyResult<()> {
 fn load_sdf(path: &str) -> PyResult<PySdfNode> {
     let tree = load(path).map_err(|e| PyValueError::new_err(format!("Load error: {}", e)))?;
     Ok(PySdfNode { inner: tree.root })
+}
+
+/// Parse SDF tree from JSON string (for LLM-generated SDF)
+#[pyfunction]
+fn from_json(json_str: &str) -> PyResult<PySdfNode> {
+    use crate::io::from_json_string;
+    let tree = from_json_string(json_str)
+        .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+    Ok(PySdfNode { inner: tree.root })
+}
+
+/// Serialize SDF node to JSON string
+#[pyfunction]
+fn to_json(node: &PySdfNode) -> PyResult<String> {
+    use crate::io::to_json_string;
+    let tree = SdfTree::new(node.inner.clone());
+    to_json_string(&tree)
+        .map_err(|e| PyValueError::new_err(format!("JSON serialize error: {}", e)))
 }
 
 /// Get library version
@@ -511,11 +529,11 @@ fn mesh_to_numpy<'py>(
         .flat_map(|v| [v.position.x, v.position.y, v.position.z])
         .collect();
 
-    let vertex_array = numpy::PyArray1::from_vec_bound(py, vertices)
+    let vertex_array = numpy::PyArray1::from_vec(py, vertices)
         .reshape([mesh.vertices.len(), 3])
         .map_err(|e| PyValueError::new_err(format!("Reshape error: {}", e)))?;
 
-    let indices = mesh.indices.clone().into_pyarray_bound(py);
+    let indices = mesh.indices.clone().into_pyarray(py);
 
     Ok((vertex_array, indices))
 }
@@ -535,6 +553,8 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(export_glb, m)?)?;
     m.add_function(wrap_pyfunction!(save_sdf, m)?)?;
     m.add_function(wrap_pyfunction!(load_sdf, m)?)?;
+    m.add_function(wrap_pyfunction!(from_json, m)?)?;
+    m.add_function(wrap_pyfunction!(to_json, m)?)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     Ok(())
 }

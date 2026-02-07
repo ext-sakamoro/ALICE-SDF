@@ -1,0 +1,58 @@
+{
+  "version": "0.1.0",
+  "root": {
+    "Subtraction": {
+      "a": {
+        "SmoothUnion": {
+          "a": {
+            "Extrude": {
+              "child": {
+                "Torus": {
+                  "major_radius": 2.0,
+                  "minor_radius": 0.5
+                }
+              },
+              "half_height": 0.3
+            }
+          },
+          "b": {
+            "PolarRepeat": {
+              "child": {
+                "Translate": {
+                  "child": {
+                    "Round": {
+                      "child": {
+                        "Box3d": {
+                          "half_extents": [
+                            0.3,
+                            0.3,
+                            0.35
+                          ]
+                        }
+                      },
+                      "radius": 0.05
+                    }
+                  },
+                  "offset": [
+                    2.0,
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "count": 12
+            }
+          },
+          "k": 0.1
+        }
+      },
+      "b": {
+        "Cylinder": {
+          "radius": 0.4,
+          "half_height": 0.5
+        }
+      }
+    }
+  },
+  "metadata": null
+}

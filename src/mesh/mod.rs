@@ -87,7 +87,7 @@ pub use sdf_to_mesh::{
 ///
 /// Compatible with standard game engine vertex formats (UE5, Unity, Godot).
 /// Includes UV2 for lightmap coordinates.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Vertex {
     /// Position in 3D space
     pub position: glam::Vec3,

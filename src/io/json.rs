@@ -43,13 +43,11 @@ pub fn load_asdf_json(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
 }
 
 /// Serialize an SDF tree to JSON string (Memory-bound, prefer file I/O)
-#[allow(dead_code)]
 pub fn to_json_string(tree: &SdfTree) -> Result<String, IoError> {
     serde_json::to_string_pretty(tree).map_err(|e| IoError::Serialization(e.to_string()))
 }
 
 /// Parse an SDF tree from JSON string
-#[allow(dead_code)]
 pub fn from_json_string(json: &str) -> Result<SdfTree, IoError> {
     serde_json::from_str(json).map_err(|e| IoError::Serialization(e.to_string()))
 }

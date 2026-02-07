@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALICE-SDF Text-to-3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; overflow: hidden; }
+  #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
+  canvas { display: block; }
+
+  #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: min(90vw, 700px); z-index: 10; }
+  #prompt-bar {
+    display: flex; gap: 8px; background: rgba(30,30,60,0.9); border: 1px solid #444; border-radius: 12px; padding: 8px 12px;
+    backdrop-filter: blur(10px);
+  }
+  #prompt-input {
+    flex: 1; background: transparent; border: none; outline: none; color: #eee; font-size: 16px; padding: 8px;
+  }
+  #prompt-input::placeholder { color: #888; }
+  select {
+    background: #2a2a4a; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 4px 8px; font-size: 13px;
+  }
+  button {
+    background: #6c5ce7; color: #fff; border: none; border-radius: 8px; padding: 8px 20px; font-size: 14px; cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #7d6ff0; }
+  button:disabled { background: #444; cursor: not-allowed; }
+
+  #status-bar {
+    margin-top: 8px; text-align: center; font-size: 13px; color: #aaa; min-height: 20px;
+  }
+  #token-stream {
+    margin-top: 4px; max-height: 80px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #666;
+    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 4px 8px; display: none;
+  }
+
+  #stats {
+    position: absolute; top: 10px; right: 10px; font-size: 12px; color: #888; font-family: monospace;
+    background: rgba(0,0,0,0.5); padding: 8px 12px; border-radius: 6px;
+  }
+
+  #title {
+    position: absolute; top: 10px; left: 10px; font-size: 14px; font-weight: 700; color: #6c5ce7;
+  }
+  #title span { color: #888; font-weight: 400; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div id="title">ALICE-SDF <span>Text-to-3D</span></div>
+<div id="stats"></div>
+
+<div id="ui">
+  <div id="prompt-bar">
+    <input id="prompt-input" type="text" placeholder="Describe a 3D scene..." autocomplete="off">
+    <select id="provider-select">
+      <option value="claude">Claude</option>
+      <option value="gemini">Gemini</option>
+    </select>
+    <button id="generate-btn">Generate</button>
+  </div>
+  <div id="status-bar"></div>
+  <div id="token-stream"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// Scene setup
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(6, 5, 8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.target.set(0, 1, 0);
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0x404060, 0.6);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+dirLight.position.set(5, 10, 5);
+dirLight.castShadow = true;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0x6c5ce7, 0.4);
+fillLight.position.set(-5, 3, -5);
+scene.add(fillLight);
+
+// Grid
+const grid = new THREE.GridHelper(20, 20, 0x333355, 0x222244);
+scene.add(grid);
+
+// Loader
+const gltfLoader = new GLTFLoader();
+let currentModel = null;
+
+function loadGLB(base64Data, isPreview = false) {
+  const binary = atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  if (currentModel && !isPreview) {
+    scene.remove(currentModel);
+    currentModel = null;
+  }
+  if (currentModel && isPreview) {
+    scene.remove(currentModel);
+  }
+
+  gltfLoader.parse(bytes.buffer, '', (gltf) => {
+    const model = gltf.scene;
+
+    // Apply material
+    model.traverse((child) => {
+      if (child.isMesh) {
+        child.material = new THREE.MeshStandardMaterial({
+          color: isPreview ? 0x444466 : 0x8888cc,
+          roughness: 0.6,
+          metalness: 0.2,
+          wireframe: isPreview,
+        });
+        child.geometry.computeVertexNormals();
+      }
+    });
+
+    scene.add(model);
+    currentModel = model;
+
+    // Auto-fit camera
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const dist = maxDim * 2;
+
+    controls.target.copy(center);
+    camera.position.set(center.x + dist, center.y + dist * 0.7, center.z + dist);
+    controls.update();
+  }, (err) => {
+    console.error('GLB parse error:', err);
+  });
+}
+
+// Animation loop
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// UI Elements
+const promptInput = document.getElementById('prompt-input');
+const providerSelect = document.getElementById('provider-select');
+const generateBtn = document.getElementById('generate-btn');
+const statusBar = document.getElementById('status-bar');
+const tokenStream = document.getElementById('token-stream');
+const statsEl = document.getElementById('stats');
+
+let ws = null;
+
+function connectWebSocket() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${protocol}//${location.host}/ws/generate`);
+
+  ws.onopen = () => {
+    statusBar.textContent = 'Connected';
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+
+    switch (msg.type) {
+      case 'status':
+        statusBar.textContent = msg.message;
+        break;
+
+      case 'tokens':
+        tokenStream.style.display = 'block';
+        tokenStream.textContent += msg.content;
+        tokenStream.scrollTop = tokenStream.scrollHeight;
+        break;
+
+      case 'sdf':
+        statusBar.textContent = `SDF generated (${msg.node_count} nodes)`;
+        break;
+
+      case 'preview':
+        loadGLB(msg.glb_base64, true);
+        statusBar.textContent = 'Preview loaded, generating final mesh...';
+        break;
+
+      case 'mesh':
+        loadGLB(msg.glb_base64, false);
+        const s = msg.stats;
+        statsEl.textContent = `${s.vertices} verts | ${s.triangles} tris | ${s.mesh_time_ms}ms mesh`;
+        break;
+
+      case 'done':
+        statusBar.textContent = `Done in ${msg.total_time_ms}ms`;
+        generateBtn.disabled = false;
+        break;
+
+      case 'error':
+        statusBar.textContent = `Error: ${msg.message}`;
+        generateBtn.disabled = false;
+        break;
+    }
+  };
+
+  ws.onclose = () => {
+    statusBar.textContent = 'Disconnected. Reconnecting...';
+    setTimeout(connectWebSocket, 2000);
+  };
+
+  ws.onerror = () => {
+    statusBar.textContent = 'Connection error';
+  };
+}
+
+function doGenerate() {
+  const prompt = promptInput.value.trim();
+  if (!prompt || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+  generateBtn.disabled = true;
+  tokenStream.textContent = '';
+  tokenStream.style.display = 'none';
+  statsEl.textContent = '';
+
+  ws.send(JSON.stringify({
+    prompt,
+    provider: providerSelect.value,
+    resolution: 64,
+  }));
+}
+
+generateBtn.addEventListener('click', doGenerate);
+promptInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !generateBtn.disabled) doGenerate();
+});
+
+connectWebSocket();
+</script>
+</body>
+</html>

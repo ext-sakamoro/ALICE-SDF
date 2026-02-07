@@ -1,0 +1,32 @@
+{
+  "version": "0.1.0",
+  "root": {
+    "Union": {
+      "a": {
+        "Translate": {
+          "child": {
+            "Sphere": {
+              "radius": 1.0
+            }
+          },
+          "offset": [
+            0.0,
+            1.0,
+            0.0
+          ]
+        }
+      },
+      "b": {
+        "Plane": {
+          "normal": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "distance": 0.0
+        }
+      }
+    }
+  },
+  "metadata": null
+}

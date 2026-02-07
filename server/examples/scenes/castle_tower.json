@@ -1,0 +1,74 @@
+{
+  "version": "0.1.0",
+  "root": {
+    "Union": {
+      "a": {
+        "Union": {
+          "a": {
+            "Cylinder": {
+              "radius": 1.5,
+              "half_height": 2.5
+            }
+          },
+          "b": {
+            "Translate": {
+              "child": {
+                "Cone": {
+                  "radius": 2.0,
+                  "half_height": 1.5
+                }
+              },
+              "offset": [
+                0.0,
+                4.0,
+                0.0
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "Translate": {
+          "child": {
+            "Subtraction": {
+              "a": {
+                "PolarRepeat": {
+                  "child": {
+                    "Translate": {
+                      "child": {
+                        "Box3d": {
+                          "half_extents": [
+                            0.2,
+                            0.3,
+                            0.2
+                          ]
+                        }
+                      },
+                      "offset": [
+                        1.5,
+                        2.5,
+                        0.0
+                      ]
+                    }
+                  },
+                  "count": 8
+                }
+              },
+              "b": {
+                "Sphere": {
+                  "radius": 0.01
+                }
+              }
+            }
+          },
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    }
+  },
+  "metadata": null
+}

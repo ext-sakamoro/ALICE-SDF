@@ -21,7 +21,7 @@ pub mod obj;
 pub use asdf::{save_asdf, load_asdf, AsdfHeader, ASDF_MAGIC};
 pub use fbx::{export_fbx, FbxConfig, FbxFormat, FbxUpAxis};
 pub use gltf::{export_glb, export_gltf_json, GltfConfig};
-pub use json::{save_asdf_json, load_asdf_json};
+pub use json::{save_asdf_json, load_asdf_json, to_json_string, from_json_string};
 pub use obj::{export_obj, import_obj, ObjConfig};
 
 use crate::types::SdfTree;

@@ -1,0 +1,56 @@
+{
+  "version": "0.1.0",
+  "root": {
+    "SmoothUnion": {
+      "a": {
+        "SmoothUnion": {
+          "a": {
+            "Translate": {
+              "child": {
+                "Sphere": {
+                  "radius": 1.2
+                }
+              },
+              "offset": [
+                0.0,
+                1.2,
+                0.0
+              ]
+            }
+          },
+          "b": {
+            "Translate": {
+              "child": {
+                "Sphere": {
+                  "radius": 0.9
+                }
+              },
+              "offset": [
+                0.0,
+                3.0,
+                0.0
+              ]
+            }
+          },
+          "k": 0.2
+        }
+      },
+      "b": {
+        "Translate": {
+          "child": {
+            "Sphere": {
+              "radius": 0.6
+            }
+          },
+          "offset": [
+            0.0,
+            4.3,
+            0.0
+          ]
+        }
+      },
+      "k": 0.15
+    }
+  },
+  "metadata": null
+}
