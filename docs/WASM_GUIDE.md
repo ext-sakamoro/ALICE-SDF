@@ -138,9 +138,6 @@ evaluator.set_params(1.0, 0.0);
 
 // Set translation
 evaluator.set_translation(0.0, 1.0, 0.0);
-
-// Set rotation (euler angles in radians)
-evaluator.set_rotation(0.0, Math.PI / 4, 0.0);
 ```
 
 ### Batch Evaluation
@@ -182,32 +179,15 @@ async function checkWebGPU() {
 }
 ```
 
-### GPU Compute Shader Evaluation
+### GPU Compute Shader Evaluation (Planned)
+
+> **Note**: `GpuSdfEvaluator` is planned but not yet exposed to JavaScript. The WebGPU compute infrastructure exists in the Rust crate (`wgpu` dependency in `examples/wasm-demo/Cargo.toml`) but the JS binding is not yet implemented. For now, use the CPU-based `SdfEvaluator` for batch evaluation.
 
 ```javascript
-import init, { GpuSdfEvaluator } from './pkg/alice_sdf_wasm.js';
-
-async function gpuEval() {
-    await init();
-
-    const device = await checkWebGPU();
-    if (!device) return;
-
-    // Create GPU evaluator (compiles SDF to WGSL compute shader)
-    const gpuEval = new GpuSdfEvaluator(device, "sphere", 1.0);
-
-    // Evaluate 1M points on GPU
-    const N = 1000000;
-    const points = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) {
-        points[i * 3 + 0] = (Math.random() - 0.5) * 4;
-        points[i * 3 + 1] = (Math.random() - 0.5) * 4;
-        points[i * 3 + 2] = (Math.random() - 0.5) * 4;
-    }
-
-    const distances = await gpuEval.eval_batch(points);
-    console.log(`Evaluated ${N} points on GPU`);
-}
+// Future API (not yet available):
+// import init, { GpuSdfEvaluator } from './pkg/alice_sdf_wasm.js';
+// const gpuEval = new GpuSdfEvaluator(device, "sphere", 1.0);
+// const distances = await gpuEval.eval_batch(points);
 ```
 
 ### Real-time Raymarching (Canvas)
@@ -221,7 +201,7 @@ async function setupRaymarcher() {
     const canvas = document.getElementById('sdf-canvas');
     const ctx = canvas.getContext('2d');
 
-    const raymarcher = new Raymarcher("sphere", canvas.width, canvas.height);
+    const raymarcher = new Raymarcher(canvas.width, canvas.height);
 
     function render() {
         const time = performance.now() / 1000.0;
@@ -250,10 +230,10 @@ async function setupRaymarcher() {
 
 ## Canvas2D Fallback
 
-For browsers without WebGPU, CPU-based raymarching is used:
+For browsers without WebGPU, use the `Raymarcher` class which performs CPU-based raymarching:
 
 ```javascript
-import init, { CpuRaymarcher } from './pkg/alice_sdf_wasm.js';
+import init, { Raymarcher } from './pkg/alice_sdf_wasm.js';
 
 async function cpuRender() {
     await init();
@@ -261,12 +241,11 @@ async function cpuRender() {
     const canvas = document.getElementById('sdf-canvas');
     const ctx = canvas.getContext('2d');
 
-    const raymarcher = new CpuRaymarcher("sphere");
-    raymarcher.set_resolution(canvas.width, canvas.height);
-    raymarcher.set_max_steps(64);  // Fewer steps for CPU
+    // Use Raymarcher for CPU rendering (same class as above)
+    const raymarcher = new Raymarcher(canvas.width, canvas.height);
 
     function render() {
-        const pixels = raymarcher.render_frame();
+        const pixels = raymarcher.render();
         const imageData = new ImageData(
             new Uint8ClampedArray(pixels),
             canvas.width,

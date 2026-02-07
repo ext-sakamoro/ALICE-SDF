@@ -20,7 +20,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **13 primitives, 7 modifiers** - rich shape vocabulary
+- **13 primitives, 4 transforms, 11 modifiers** - rich shape vocabulary
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
 - **Engine integrations** - Unity, Unreal Engine 5, VRChat, Godot, WebAssembly
@@ -41,8 +41,8 @@ SdfNode
   |-- Primitive (13): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link
   |-- Operation: Union, Intersection, Subtraction, SmoothUnion, SmoothIntersection, SmoothSubtraction
-  |-- Transform: Translate, Rotate, Scale
-  |-- Modifier (7): Twist, Bend, Repeat, Noise, Extrude, Revolution, Mirror
+  |-- Transform (4): Translate, Rotate, Scale, ScaleNonUniform
+  |-- Modifier (11): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate, Mirror, Revolution, Extrude
   +-- WithMaterial: PBR material assignment (transparent to distance evaluation)
 ```
 

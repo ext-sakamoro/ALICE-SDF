@@ -40,7 +40,8 @@ maturin develop --features python
 
 ```python
 import alice_sdf as sdf
-print(sdf.version())  # e.g. "0.1.0"
+sphere = sdf.SdfNode.sphere(1.0)
+print(sphere.eval(0.0, 0.0, 0.0))  # -1.0
 ```
 
 ---
@@ -309,24 +310,27 @@ d = loaded.eval(0.0, 0.0, 0.0)
 
 ## Shader Export
 
-Generate shader code from Python for use in game engines:
+Generate shader code from Python for use in game engines.
+
+> **Note**: Shader export requires building with additional feature flags:
+> `maturin develop --features "python,glsl,hlsl,gpu"`
 
 ```python
 import alice_sdf as sdf
 
 shape = sdf.SdfNode.sphere(1.0).smooth_union(sdf.SdfNode.box3d(0.5, 0.5, 0.5), 0.2)
 
-# Export GLSL (Unity, OpenGL)
+# Export GLSL (Unity, OpenGL) — requires 'glsl' feature
 glsl_code = sdf.to_glsl(shape)
 with open("sdf_shader.glsl", "w") as f:
     f.write(glsl_code)
 
-# Export HLSL (Unreal Engine, DirectX)
+# Export HLSL (Unreal Engine, DirectX) — requires 'hlsl' feature
 hlsl_code = sdf.to_hlsl(shape)
 with open("sdf_shader.hlsl", "w") as f:
     f.write(hlsl_code)
 
-# Export WGSL (WebGPU)
+# Export WGSL (WebGPU) — requires 'gpu' feature
 wgsl_code = sdf.to_wgsl(shape)
 with open("sdf_shader.wgsl", "w") as f:
     f.write(wgsl_code)
@@ -345,12 +349,12 @@ import numpy as np
 shape = sdf.SdfNode.sphere(1.0)
 
 # Compile once
-compiled = sdf.compile(shape)
+compiled = sdf.compile_sdf(shape)
 
 # Evaluate many times (reuses compiled bytecode)
 for frame in range(60):
     points = np.random.randn(100000, 3).astype(np.float32)
-    distances = sdf.eval_batch_compiled(compiled, points)
+    distances = sdf.eval_compiled_batch(compiled, points)
 ```
 
 ---
@@ -603,10 +607,12 @@ plt.show()
 | Function | Arguments | Returns | Description |
 |----------|-----------|---------|-------------|
 | `eval_batch(node, points)` | `SdfNode, ndarray(N,3)` | `ndarray(N,)` | Parallel batch evaluation |
+| `compile_sdf(node)` | `SdfNode` | `CompiledSdf` | Compile for fast evaluation |
+| `eval_compiled_batch(compiled, points)` | `CompiledSdf, ndarray(N,3)` | `ndarray(N,)` | Evaluate compiled SDF in batch |
 | `to_mesh(node, min, max, res)` | `SdfNode, tuple, tuple, int` | `(ndarray, ndarray)` | Marching cubes |
+| `to_mesh_adaptive(node, ...)` | `SdfNode, bounds, depths, threshold` | `(ndarray, ndarray)` | Adaptive mesh generation |
 | `save_sdf(node, path)` | `SdfNode, str` | `None` | Save to .asdf/.asdf.json |
 | `load_sdf(path)` | `str` | `SdfNode` | Load from file |
-| `version()` | - | `str` | Library version |
 
 ---
 

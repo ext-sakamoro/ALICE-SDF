@@ -263,12 +263,12 @@ Copy `unreal-plugin/AliceSDF/` to your UE5 project's `Plugins/` directory, then 
 
 ```rust
 use alice_sdf::prelude::*;
-use alice_sdf::compiled::HlslShader;
+use alice_sdf::compiled::{HlslShader, HlslTranspileMode};
 
 let shape = SdfNode::sphere(1.0)
     .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
 
-let shader = HlslShader::transpile(&shape);
+let shader = HlslShader::transpile(&shape, HlslTranspileMode::Hardcoded);
 let hlsl_code = shader.to_ue5_custom_node();
 // Paste into UE5 Custom Material Expression node
 ```
@@ -302,10 +302,10 @@ See `vrchat-package/README.md` for full documentation.
 ### 1. Export glTF from ALICE-SDF
 
 ```bash
-# CLI approach
-cargo run --release -- to-mesh input.asdf -o model.glb --resolution 64
+# CLI approach (outputs OBJ format)
+cargo run --release -- to-mesh input.asdf -o model.obj --resolution 64
 
-# Or from Rust code
+# Or from Rust code (exports glTF binary)
 export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib)).unwrap();
 ```
 

@@ -72,10 +72,10 @@ Every SDF primitive, operation, and modifier is implemented across all 13 layers
 
 | Layer | File | Description | Key Types |
 |-------|------|-------------|-----------|
-| 1 | `types.rs` | SDF node AST with 13 primitives, 6 operations, 3 transforms, 7 modifiers | `SdfNode`, `SdfTree`, `Aabb`, `Ray`, `Hit` |
+| 1 | `types.rs` | SDF node AST with 13 primitives, 6 operations, 4 transforms, 11 modifiers | `SdfNode`, `SdfTree`, `Aabb`, `Ray`, `Hit` |
 | 2 | `primitives/` | Mathematical distance functions (Inigo Quilez formulas) | `eval_sphere()`, `eval_box3d()`, etc. |
 | 3 | `eval/` | Recursive tree-walk interpreter with parallel batch | `eval()`, `eval_batch_parallel()` |
-| 4 | `compiled/opcode.rs` | Instruction set (37 opcodes) | `OpCode` enum |
+| 4 | `compiled/opcode.rs` | Instruction set (36 opcodes) | `OpCode` enum |
 | 5 | `compiled/instruction.rs` | 32-byte aligned instruction encoding | `Instruction` struct |
 | 6 | `compiled/compiler.rs` | AST to instruction compiler (single-pass) | `CompiledSdf::compile()` |
 | 7 | `compiled/eval.rs` | Stack-based VM evaluator | `eval_compiled()` |
@@ -225,7 +225,7 @@ src/
 │
 ├── compiled/              # Layers 4-13: Compiled pipeline
 │   ├── mod.rs             # Module documentation
-│   ├── opcode.rs          # 37 opcodes
+│   ├── opcode.rs          # 36 opcodes
 │   ├── instruction.rs     # 32-byte instruction encoding
 │   ├── compiler.rs        # AST → instructions
 │   ├── eval.rs            # Stack VM evaluator
@@ -253,7 +253,7 @@ src/
 │
 ├── ffi/                   # C/C++/C# FFI
 │   ├── mod.rs
-│   ├── api.rs             # 50+ extern "C" functions
+│   ├── api.rs             # 47 extern "C" functions
 │   ├── registry.rs        # Thread-safe handle registry
 │   └── types.rs           # FFI type definitions
 │
@@ -356,8 +356,8 @@ Also update: serialization (`io/`), FFI (`ffi/api.rs`), Python (`python.rs`), te
 | `bincode` | Binary serialization | 1.3 |
 | `thiserror` | Error handling | 2.0 |
 | `clap` | CLI argument parsing | 4.5 |
-| `pyo3` | Python bindings (optional) | 0.22 |
-| `cranelift-*` | JIT compilation (optional) | 0.112 |
+| `pyo3` | Python bindings (optional) | 0.23 |
+| `cranelift-*` | JIT compilation (optional) | 0.113 |
 | `wgpu` | WebGPU compute (optional) | 23 |
 | `lazy_static` | FFI handle registry (optional) | 1.5 |
 

@@ -28,17 +28,17 @@ All primitives return `SdfNode` and can be chained with operations, transforms, 
 | Constructor | Parameters | Description |
 |-------------|-----------|-------------|
 | `SdfNode::sphere(radius)` | `f32` | Sphere centered at origin |
-| `SdfNode::box3d(hx, hy, hz)` | `f32, f32, f32` | Axis-aligned box (half-extents) |
-| `SdfNode::cylinder(radius, half_height)` | `f32, f32` | Cylinder along Y axis |
+| `SdfNode::box3d(width, height, depth)` | `f32, f32, f32` | Axis-aligned box (full dimensions, halved internally) |
+| `SdfNode::cylinder(radius, height)` | `f32, f32` | Cylinder along Y axis (full height, halved internally) |
 | `SdfNode::torus(major_radius, minor_radius)` | `f32, f32` | Torus in XZ plane |
 | `SdfNode::capsule(point_a, point_b, radius)` | `Vec3, Vec3, f32` | Capsule between two points |
 | `SdfNode::plane(normal, distance)` | `Vec3, f32` | Infinite plane |
 | `SdfNode::cone(radius, height)` | `f32, f32` | Cone along Y axis |
-| `SdfNode::ellipsoid(radii)` | `Vec3` | Ellipsoid (non-uniform radii) |
+| `SdfNode::ellipsoid(rx, ry, rz)` | `f32, f32, f32` | Ellipsoid (non-uniform radii) |
 | `SdfNode::rounded_cone(r1, r2, height)` | `f32, f32, f32` | Rounded cone |
 | `SdfNode::pyramid(height)` | `f32` | Pyramid (square base) |
 | `SdfNode::octahedron(size)` | `f32` | Regular octahedron |
-| `SdfNode::hex_prism(radius, height)` | `f32, f32` | Hexagonal prism |
+| `SdfNode::hex_prism(hex_radius, height)` | `f32, f32` | Hexagonal prism |
 | `SdfNode::link(length, r1, r2)` | `f32, f32, f32` | Chain link |
 
 ---
@@ -61,12 +61,12 @@ All primitives return `SdfNode` and can be chained with operations, transforms, 
 | `a.smooth_intersection(b, k)` | `SdfNode, f32` | Smooth intersection |
 | `a.smooth_subtract(b, k)` | `SdfNode, f32` | Smooth subtraction |
 
-### Multi-Shape
+### Multi-Shape (Module-Level Functions)
 
 | Function | Parameters | Description |
 |----------|-----------|-------------|
-| `SdfNode::union_multi(nodes)` | `Vec<SdfNode>` | Union of multiple shapes |
-| `SdfNode::intersection_multi(nodes)` | `Vec<SdfNode>` | Intersection of multiple shapes |
+| `sdf_union_multi(distances)` | `&[f32]` | Union of pre-evaluated distances |
+| `sdf_intersection_multi(distances)` | `&[f32]` | Intersection of pre-evaluated distances |
 
 ---
 
@@ -89,12 +89,13 @@ All primitives return `SdfNode` and can be chained with operations, transforms, 
 | `node.twist(strength)` | `f32` | Twist around Y axis (radians/unit) |
 | `node.bend(curvature)` | `f32` | Bend along X axis |
 | `node.repeat_infinite(sx, sy, sz)` | `f32, f32, f32` | Infinite repetition |
-| `node.repeat_finite(sx, sy, sz, cx, cy, cz)` | `6x f32` | Finite repetition (count) |
+| `node.repeat_finite(count, spacing)` | `[u32; 3], Vec3` | Finite repetition (count per axis, spacing) |
 | `node.noise(amplitude, frequency, seed)` | `f32, f32, u32` | Perlin noise displacement |
 | `node.round(radius)` | `f32` | Round edges |
 | `node.onion(thickness)` | `f32` | Shell / onion |
+| `node.elongate(amount)` | `Vec3` | Elongate along axes |
 | `node.extrude(height)` | `f32` | 2D to 3D extrusion |
-| `node.revolution()` | - | Revolution around Y axis |
+| `node.revolution(offset)` | `f32` | Revolution around Y axis (radial offset) |
 | `node.mirror_x()` / `mirror_y()` / `mirror_z()` | - | Mirror across axis |
 | `node.with_material(id)` | `u32` | Assign material ID |
 
@@ -107,8 +108,8 @@ All primitives return `SdfNode` and can be chained with operations, transforms, 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `eval(node, point)` | `&SdfNode, Vec3` | `f32` | Evaluate SDF distance |
-| `eval_material(node, point)` | `&SdfNode, Vec3` | `(f32, u32)` | Distance + material ID |
-| `normal(node, point)` | `&SdfNode, Vec3` | `Vec3` | Surface normal via gradient |
+| `eval_material(node, point)` | `&SdfNode, Vec3` | `u32` | Material ID at point |
+| `normal(node, point, epsilon)` | `&SdfNode, Vec3, f32` | `Vec3` | Surface normal via gradient |
 | `gradient(node, point, eps)` | `&SdfNode, Vec3, f32` | `Vec3` | Gradient vector |
 
 ### Batch
@@ -396,7 +397,7 @@ let distances = eval_compiled_batch_soa_parallel(&compiled, &soa_points);
 ```rust
 let bvh = CompiledSdfBvh::build(&shape);
 let distance = eval_compiled_bvh(&bvh, point);
-let aabb = get_scene_aabb(&shape);
+let aabb = get_scene_aabb(&bvh);
 ```
 
 ---
@@ -416,8 +417,8 @@ let compute_code = shader.to_compute_shader();
 ### HLSL
 
 ```rust
-use alice_sdf::compiled::HlslShader;
-let shader = HlslShader::transpile(&shape);
+use alice_sdf::compiled::{HlslShader, HlslTranspileMode};
+let shader = HlslShader::transpile(&shape, HlslTranspileMode::Hardcoded);
 let ue5_code = shader.to_ue5_custom_node();
 let compute_code = shader.to_compute_shader();
 ```
