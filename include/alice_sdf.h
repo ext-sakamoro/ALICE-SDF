@@ -299,6 +299,13 @@ SdfHandle alice_sdf_chamfered_cube(float hx, float hy, float hz, float chamfer);
 SdfHandle alice_sdf_stairs(float step_width, float step_height, float num_steps, float half_depth);
 SdfHandle alice_sdf_helix(float major_radius, float minor_radius, float pitch, float half_height);
 
+/* 2D Primitives (extruded along Z) */
+SdfHandle alice_sdf_circle_2d(float radius, float half_height);
+SdfHandle alice_sdf_rect_2d(float half_w, float half_h, float half_height);
+SdfHandle alice_sdf_segment_2d(float ax, float ay, float bx, float by, float thickness, float half_height);
+SdfHandle alice_sdf_rounded_rect_2d(float half_w, float half_h, float round_radius, float half_height);
+SdfHandle alice_sdf_annular_2d(float outer_radius, float thickness, float half_height);
+
 /* ============================================================================
  * Boolean Operations
  * ============================================================================ */
@@ -352,6 +359,11 @@ SdfHandle alice_sdf_pipe(SdfHandle a, SdfHandle b, float radius);
 SdfHandle alice_sdf_engrave(SdfHandle a, SdfHandle b, float depth);
 SdfHandle alice_sdf_groove(SdfHandle a, SdfHandle b, float ra, float rb);
 SdfHandle alice_sdf_tongue(SdfHandle a, SdfHandle b, float ra, float rb);
+
+/** Exponential smooth operations */
+SdfHandle alice_sdf_exp_smooth_union(SdfHandle a, SdfHandle b, float k);
+SdfHandle alice_sdf_exp_smooth_intersection(SdfHandle a, SdfHandle b, float k);
+SdfHandle alice_sdf_exp_smooth_subtract(SdfHandle a, SdfHandle b, float k);
 
 /* ============================================================================
  * Transforms
@@ -419,6 +431,8 @@ SdfHandle alice_sdf_displacement(SdfHandle node, float strength);
 SdfHandle alice_sdf_polar_repeat(SdfHandle node, uint32_t count);
 SdfHandle alice_sdf_octant_mirror(SdfHandle node);
 SdfHandle alice_sdf_sweep_bezier(SdfHandle node, float p0x, float p0y, float p1x, float p1y, float p2x, float p2y);
+SdfHandle alice_sdf_shear(SdfHandle node, float xy, float xz, float yz);
+SdfHandle alice_sdf_animated(SdfHandle node, float speed, float amplitude);
 SdfHandle alice_sdf_with_material(SdfHandle node, uint32_t material_id);
 
 /* ============================================================================

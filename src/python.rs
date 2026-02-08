@@ -745,6 +745,90 @@ impl PySdfNode {
         }
     }
 
+    /// Create a 2D circle extruded along Z
+    #[staticmethod]
+    fn circle_2d(radius: f32, half_height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::circle_2d(radius, half_height),
+        }
+    }
+
+    /// Create a 2D rectangle extruded along Z
+    #[staticmethod]
+    fn rect_2d(half_w: f32, half_h: f32, half_height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::rect_2d(half_w, half_h, half_height),
+        }
+    }
+
+    /// Create a 2D line segment extruded along Z
+    #[staticmethod]
+    fn segment_2d(ax: f32, ay: f32, bx: f32, by: f32, thickness: f32, half_height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::segment_2d(ax, ay, bx, by, thickness, half_height),
+        }
+    }
+
+    /// Create a 2D polygon extruded along Z
+    #[staticmethod]
+    fn polygon_2d(vertices: Vec<(f32, f32)>, half_height: f32) -> Self {
+        let verts: Vec<Vec2> = vertices.iter().map(|(x, y)| Vec2::new(*x, *y)).collect();
+        PySdfNode {
+            inner: SdfNode::polygon_2d(verts, half_height),
+        }
+    }
+
+    /// Create a 2D rounded rectangle extruded along Z
+    #[staticmethod]
+    fn rounded_rect_2d(half_w: f32, half_h: f32, round_radius: f32, half_height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::rounded_rect_2d(half_w, half_h, round_radius, half_height),
+        }
+    }
+
+    /// Create a 2D annular (ring) shape extruded along Z
+    #[staticmethod]
+    fn annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::annular_2d(outer_radius, thickness, half_height),
+        }
+    }
+
+    /// Shear deformation
+    fn shear(&self, xy: f32, xz: f32, yz: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().shear(xy, xz, yz),
+        }
+    }
+
+    /// Apply time-based animation
+    fn animated(&self, speed: f32, amplitude: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().animated(speed, amplitude),
+        }
+    }
+
+    /// Exponential smooth union with another shape
+    fn exp_smooth_union(&self, other: &PySdfNode, k: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().exp_smooth_union(other.inner.clone(), k),
+        }
+    }
+
+    /// Exponential smooth intersection with another shape
+    fn exp_smooth_intersection(&self, other: &PySdfNode, k: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().exp_smooth_intersection(other.inner.clone(), k),
+        }
+    }
+
+    /// Exponential smooth subtraction of another shape
+    fn exp_smooth_subtract(&self, other: &PySdfNode, k: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().exp_smooth_subtract(other.inner.clone(), k),
+        }
+    }
+
     /// XOR (symmetric difference) with another shape
     fn xor(&self, other: &PySdfNode) -> Self {
         PySdfNode {

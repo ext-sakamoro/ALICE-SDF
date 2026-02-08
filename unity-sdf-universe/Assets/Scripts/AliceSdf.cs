@@ -292,6 +292,20 @@ namespace AliceSdfUnity
         public static IntPtr RegularPolygon(float radius, float nSides, float halfHeight) => alice_sdf_regular_polygon(radius, nSides, halfHeight);
         public static IntPtr StarPolygon(float radius, float nPoints, float m, float halfHeight) => alice_sdf_star_polygon(radius, nPoints, m, halfHeight);
 
+        // --- 2D/Extruded Primitives ---
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_circle_2d(float radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_rect_2d(float half_w, float half_h, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_segment_2d(float ax, float ay, float bx, float by, float thickness, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_rounded_rect_2d(float half_w, float half_h, float round_radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_annular_2d(float outer_radius, float thickness, float half_height);
+
+        public static IntPtr Circle2D(float radius, float halfHeight) => alice_sdf_circle_2d(radius, halfHeight);
+        public static IntPtr Rect2D(float halfW, float halfH, float halfHeight) => alice_sdf_rect_2d(halfW, halfH, halfHeight);
+        public static IntPtr Segment2D(Vector2 a, Vector2 b, float thickness, float halfHeight) => alice_sdf_segment_2d(a.x, a.y, b.x, b.y, thickness, halfHeight);
+        public static IntPtr RoundedRect2D(float halfW, float halfH, float roundRadius, float halfHeight) => alice_sdf_rounded_rect_2d(halfW, halfH, roundRadius, halfHeight);
+        public static IntPtr Annular2D(float outerRadius, float thickness, float halfHeight) => alice_sdf_annular_2d(outerRadius, thickness, halfHeight);
+
         // --- Platonic & Archimedean ---
 
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_tetrahedron(float size);
@@ -424,6 +438,15 @@ namespace AliceSdfUnity
         public static IntPtr Groove(IntPtr a, IntPtr b, float ra, float rb) => alice_sdf_groove(a, b, ra, rb);
         public static IntPtr Tongue(IntPtr a, IntPtr b, float ra, float rb) => alice_sdf_tongue(a, b, ra, rb);
 
+        // --- Exponential Smooth ---
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_exp_smooth_union(IntPtr a, IntPtr b, float k);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_exp_smooth_intersection(IntPtr a, IntPtr b, float k);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_exp_smooth_subtract(IntPtr a, IntPtr b, float k);
+
+        public static IntPtr ExpSmoothUnion(IntPtr a, IntPtr b, float k) => alice_sdf_exp_smooth_union(a, b, k);
+        public static IntPtr ExpSmoothIntersection(IntPtr a, IntPtr b, float k) => alice_sdf_exp_smooth_intersection(a, b, k);
+        public static IntPtr ExpSmoothSubtract(IntPtr a, IntPtr b, float k) => alice_sdf_exp_smooth_subtract(a, b, k);
+
         // ============================================================================
         // Transforms
         // ============================================================================
@@ -515,7 +538,12 @@ namespace AliceSdfUnity
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_polar_repeat(IntPtr node, uint count);
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_octant_mirror(IntPtr node);
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_sweep_bezier(IntPtr node, float p0x, float p0y, float p1x, float p1y, float p2x, float p2y);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_shear(IntPtr node, float xy, float xz, float yz);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_animated(IntPtr node, float speed, float amplitude);
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_with_material(IntPtr node, uint material_id);
+
+        public static IntPtr Shear(IntPtr node, float xy, float xz, float yz) => alice_sdf_shear(node, xy, xz, yz);
+        public static IntPtr Animated(IntPtr node, float speed, float amplitude) => alice_sdf_animated(node, speed, amplitude);
 
         public static IntPtr RepeatFinite(IntPtr node, Vector3Int count, Vector3 spacing) =>
             alice_sdf_repeat_finite(node, count.x, count.y, count.z, spacing.x, spacing.y, spacing.z);

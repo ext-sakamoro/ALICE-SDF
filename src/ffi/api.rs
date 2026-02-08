@@ -554,6 +554,40 @@ pub extern "C" fn alice_sdf_pmy(scale: f32, thickness: f32) -> SdfHandle {
 }
 
 // ============================================================================
+// 2D Primitives (extruded along Z)
+// ============================================================================
+
+/// Create a 2D circle extruded along Z
+#[no_mangle]
+pub extern "C" fn alice_sdf_circle_2d(radius: f32, half_height: f32) -> SdfHandle {
+    register_node(SdfNode::circle_2d(radius, half_height))
+}
+
+/// Create a 2D rectangle extruded along Z
+#[no_mangle]
+pub extern "C" fn alice_sdf_rect_2d(half_w: f32, half_h: f32, half_height: f32) -> SdfHandle {
+    register_node(SdfNode::rect_2d(half_w, half_h, half_height))
+}
+
+/// Create a 2D line segment extruded along Z
+#[no_mangle]
+pub extern "C" fn alice_sdf_segment_2d(ax: f32, ay: f32, bx: f32, by: f32, thickness: f32, half_height: f32) -> SdfHandle {
+    register_node(SdfNode::segment_2d(ax, ay, bx, by, thickness, half_height))
+}
+
+/// Create a 2D rounded rectangle extruded along Z
+#[no_mangle]
+pub extern "C" fn alice_sdf_rounded_rect_2d(half_w: f32, half_h: f32, round_radius: f32, half_height: f32) -> SdfHandle {
+    register_node(SdfNode::rounded_rect_2d(half_w, half_h, round_radius, half_height))
+}
+
+/// Create a 2D annular (ring) shape extruded along Z
+#[no_mangle]
+pub extern "C" fn alice_sdf_annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> SdfHandle {
+    register_node(SdfNode::annular_2d(outer_radius, thickness, half_height))
+}
+
+// ============================================================================
 // Boolean Operations
 // ============================================================================
 
@@ -782,6 +816,33 @@ pub extern "C" fn alice_sdf_tongue(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32)
     register_node(node)
 }
 
+/// Exponential smooth union of two SDFs
+#[no_mangle]
+pub extern "C" fn alice_sdf_exp_smooth_union(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
+    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node = (*node_a).clone().exp_smooth_union((*node_b).clone(), k);
+    register_node(node)
+}
+
+/// Exponential smooth intersection of two SDFs
+#[no_mangle]
+pub extern "C" fn alice_sdf_exp_smooth_intersection(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
+    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node = (*node_a).clone().exp_smooth_intersection((*node_b).clone(), k);
+    register_node(node)
+}
+
+/// Exponential smooth subtraction of two SDFs
+#[no_mangle]
+pub extern "C" fn alice_sdf_exp_smooth_subtract(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
+    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node = (*node_a).clone().exp_smooth_subtract((*node_b).clone(), k);
+    register_node(node)
+}
+
 // ============================================================================
 // Transforms
 // ============================================================================
@@ -980,6 +1041,22 @@ pub extern "C" fn alice_sdf_polar_repeat(node: SdfHandle, count: u32) -> SdfHand
 pub extern "C" fn alice_sdf_octant_mirror(node: SdfHandle) -> SdfHandle {
     let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
     let new_node = (*sdf_node).clone().octant_mirror();
+    register_node(new_node)
+}
+
+/// Shear deformation
+#[no_mangle]
+pub extern "C" fn alice_sdf_shear(node: SdfHandle, xy: f32, xz: f32, yz: f32) -> SdfHandle {
+    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let new_node = (*sdf_node).clone().shear(xy, xz, yz);
+    register_node(new_node)
+}
+
+/// Apply time-based animation
+#[no_mangle]
+pub extern "C" fn alice_sdf_animated(node: SdfHandle, speed: f32, amplitude: f32) -> SdfHandle {
+    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let new_node = (*sdf_node).clone().animated(speed, amplitude);
     register_node(new_node)
 }
 
