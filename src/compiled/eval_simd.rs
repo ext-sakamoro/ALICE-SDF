@@ -1740,6 +1740,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
 }
 
 /// Smooth minimum (polynomial) for SIMD — branchless k=0 guard
+#[allow(dead_code)] // superseded by smooth_min_simd_rk; kept for reference
 #[inline(always)]
 fn smooth_min_simd(a: f32x8, b: f32x8, k: f32x8) -> f32x8 {
     let k = k.max(f32x8::splat(1e-10));

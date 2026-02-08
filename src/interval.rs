@@ -613,18 +613,31 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Engrave { a, b, r } => {
             let ia = eval_interval(a, bounds);
             let ib = eval_interval(b, bounds);
-            // engrave = max(a, (a+r-|b|)*FRAC_1_SQRT_2); conservative: expand a
-            Interval::new(ia.lo, ia.hi + r)
+            // engrave = max(a, (a+r-|b|)*FRAC_1_SQRT_2)
+            let abs_b = ib.abs();
+            let inner = Interval::new(
+                (ia.lo + r - abs_b.hi) * std::f32::consts::FRAC_1_SQRT_2,
+                (ia.hi + r - abs_b.lo).max(0.0) * std::f32::consts::FRAC_1_SQRT_2,
+            );
+            ia.max(inner)
         }
         SdfNode::Groove { a, b, ra, rb } => {
             let ia = eval_interval(a, bounds);
-            // groove = max(a, min(a+ra, rb-|b|)); conservative: bound by a expanded
-            Interval::new(ia.lo, ia.hi + ra)
+            let ib = eval_interval(b, bounds);
+            // groove = max(a, min(a+ra, rb-|b|))
+            let abs_b = ib.abs();
+            let arm1 = Interval::new(ia.lo + ra, ia.hi + ra);
+            let arm2 = Interval::new(rb - abs_b.hi, rb - abs_b.lo);
+            ia.max(arm1.min(arm2))
         }
         SdfNode::Tongue { a, b, ra, rb } => {
             let ia = eval_interval(a, bounds);
-            // tongue = min(a, max(a-ra, |b|-rb)); conservative: expand a
-            Interval::new(ia.lo - ra, ia.hi)
+            let ib = eval_interval(b, bounds);
+            // tongue = min(a, max(a-ra, |b|-rb))
+            let abs_b = ib.abs();
+            let arm1 = Interval::new(ia.lo - ra, ia.hi - ra);
+            let arm2 = Interval::new(abs_b.lo - rb, abs_b.hi - rb);
+            ia.min(arm1.max(arm2))
         }
         SdfNode::ExpSmoothUnion { a, b, k } => {
             let sharp = eval_interval(a, bounds).min(eval_interval(b, bounds));

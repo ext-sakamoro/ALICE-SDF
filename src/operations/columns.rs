@@ -5,8 +5,6 @@
 //!
 //! Author: Moroya Sakamoto
 
-use std::f32::consts::FRAC_PI_2;
-
 /// Helper: rotate 2D point by 45 degrees
 #[inline(always)]
 fn p_r45(x: f32, y: f32) -> (f32, f32) {
@@ -32,7 +30,7 @@ pub fn sdf_columns_union(a: f32, b: f32, r: f32, n: f32) -> f32 {
         return a.min(b);
     }
 
-    let (mut a2, mut b2) = if a < b { (a, b) } else { (b, a) };
+    let (a2, b2) = if a < b { (a, b) } else { (b, a) };
 
     let col_size = r * (2.0 / n);
     let (ra, rb) = p_r45(a2, b2);

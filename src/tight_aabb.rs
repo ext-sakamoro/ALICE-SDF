@@ -302,7 +302,6 @@ fn get_axis(v: Vec3, axis: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::*;
 
     #[test]
     fn test_sphere_tight_aabb() {

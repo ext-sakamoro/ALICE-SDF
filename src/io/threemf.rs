@@ -8,7 +8,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Seek, Write};
 use std::path::Path;
 
 /// Export mesh to 3MF format

@@ -23,7 +23,7 @@ use crate::types::SdfNode;
 use crate::mesh::{Vertex, Triangle, Mesh, MarchingCubesConfig, sdf_to_mesh};
 use crate::mesh::dual_contouring::{dual_contouring, DualContouringConfig};
 use crate::tight_aabb::compute_tight_aabb;
-use crate::eval::{eval_material, eval, eval_normal};
+use crate::eval::{eval_material, eval_normal};
 use glam::Vec3;
 
 /// Maximum triangles per Nanite cluster (UE5 uses ~128)

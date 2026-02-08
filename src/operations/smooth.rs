@@ -94,6 +94,7 @@ pub fn smooth_min_exp(a: f32, b: f32, k: f32) -> f32 {
 
 /// Exponential smooth minimum — precomputed reciprocal edition.
 /// Takes `rk = 1.0 / k` to eliminate division.
+#[allow(dead_code)] // reserved for future SIMD optimization path
 #[inline(always)]
 pub fn smooth_min_exp_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
     let res = (-k * a).exp() + (-k * b).exp();
@@ -110,6 +111,7 @@ pub fn smooth_min_cubic(a: f32, b: f32, k: f32) -> f32 {
 
 /// Cubic smooth minimum — precomputed reciprocal edition.
 /// Takes `rk = 1.0 / k` to eliminate division.
+#[allow(dead_code)] // reserved for future SIMD optimization path
 #[inline(always)]
 pub fn smooth_min_cubic_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
     let h = (1.0 - (a - b).abs() * rk).max(0.0);

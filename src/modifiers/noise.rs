@@ -175,6 +175,7 @@ fn grad3d(hash: u32, x: f32, y: f32, z: f32) -> f32 {
 /// is scalar (hash lookups prevent true SIMD), the batch interface enables
 /// the caller to amortize function call overhead and allows the compiler
 /// to interleave independent computations across the 8 evaluations.
+#[allow(dead_code)] // batch8 API reserved for compiled SIMD evaluator
 #[inline(always)]
 pub fn perlin_noise_3d_batch8(
     points: &[(f32, f32, f32); 8],
@@ -195,6 +196,7 @@ pub fn perlin_noise_3d_batch8(
 /// [Deep Fried v2] Batch noise modifier for 8 distances
 ///
 /// Applies Perlin noise displacement to 8 distance values at once.
+#[allow(dead_code)] // batch8 API reserved for compiled SIMD evaluator
 #[inline(always)]
 pub fn modifier_noise_perlin_batch8(
     distances: &[f32; 8],

@@ -22,7 +22,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::eval::{eval, normal};
-use crate::interval::{eval_interval, Interval, Vec3Interval};
+use crate::interval::{eval_interval, Vec3Interval};
 use crate::types::{Aabb, SdfNode};
 use glam::Vec3;
 

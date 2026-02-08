@@ -126,6 +126,7 @@ impl Rng {
 pub struct NeuralSdf {
     layers: Vec<Layer>,
     adam: Vec<AdamState>,
+    #[allow(dead_code)] // stored for serialization round-trip; encode() derives from pos_freqs
     input_dim: usize,
     pos_freqs: usize,
     adam_t: u32,
@@ -322,7 +323,7 @@ impl NeuralSdf {
         let mut rng = Rng::new(config.seed.wrapping_add(12345));
 
         // Pre-allocate gradient accumulators
-        let n_layers = nsdf.layers.len();
+        let _n_layers = nsdf.layers.len();
         let mut grad_w: Vec<Vec<f32>> = nsdf.layers.iter()
             .map(|l| vec![0.0; l.w.len()])
             .collect();
@@ -337,7 +338,7 @@ impl NeuralSdf {
             for g in grad_w.iter_mut() { g.fill(0.0); }
             for g in grad_b.iter_mut() { g.fill(0.0); }
 
-            let mut epoch_loss = 0.0;
+            let mut _epoch_loss = 0.0;
 
             for _s in 0..config.batch_size {
                 // Sample random point
@@ -354,7 +355,7 @@ impl NeuralSdf {
 
                 // Loss = MSE
                 let diff = pred - target;
-                epoch_loss += diff * diff;
+                _epoch_loss += diff * diff;
 
                 // Backward: d_loss/d_pred = 2 * (pred - target) / batch_size
                 let d_output = 2.0 * diff * inv_batch;

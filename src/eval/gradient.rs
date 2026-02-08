@@ -17,7 +17,6 @@
 
 use crate::eval::eval;
 use crate::modifiers::*;
-use crate::primitives::*;
 use crate::types::SdfNode;
 use glam::Vec3;
 use std::f32::consts::FRAC_1_SQRT_2;
@@ -309,7 +308,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
                 if axes.z != 0.0 && point.z < 0.0 { -grad.z } else { grad.z },
             )
         }
-        SdfNode::OctantMirror { child } => {
+        SdfNode::OctantMirror { child: _child } => {
             // Octant mirror has complex Jacobian (abs + sort permutation).
             // Use numerical gradient for correctness.
             let eps = 1e-4;

@@ -397,79 +397,6 @@ fn demote_smooth_to_standard(node: &SdfNode) -> SdfNode {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/// Check if a node is a primitive (leaf node)
-fn is_primitive(node: &SdfNode) -> bool {
-    matches!(
-        node,
-        SdfNode::Sphere { .. }
-            | SdfNode::Box3d { .. }
-            | SdfNode::Cylinder { .. }
-            | SdfNode::Torus { .. }
-            | SdfNode::Plane { .. }
-            | SdfNode::Capsule { .. }
-            | SdfNode::Cone { .. }
-            | SdfNode::Ellipsoid { .. }
-            | SdfNode::RoundedCone { .. }
-            | SdfNode::Pyramid { .. }
-            | SdfNode::Octahedron { .. }
-            | SdfNode::HexPrism { .. }
-            | SdfNode::Link { .. }
-            | SdfNode::Triangle { .. }
-            | SdfNode::Bezier { .. }
-            | SdfNode::RoundedBox { .. }
-            | SdfNode::CappedCone { .. }
-            | SdfNode::CappedTorus { .. }
-            | SdfNode::RoundedCylinder { .. }
-            | SdfNode::TriangularPrism { .. }
-            | SdfNode::CutSphere { .. }
-            | SdfNode::CutHollowSphere { .. }
-            | SdfNode::DeathStar { .. }
-            | SdfNode::SolidAngle { .. }
-            | SdfNode::Rhombus { .. }
-            | SdfNode::Horseshoe { .. }
-            | SdfNode::Vesica { .. }
-            | SdfNode::InfiniteCylinder { .. }
-            | SdfNode::InfiniteCone { .. }
-            | SdfNode::Gyroid { .. }
-            | SdfNode::Heart { .. }
-            | SdfNode::Tube { .. }
-            | SdfNode::Barrel { .. }
-            | SdfNode::Diamond { .. }
-            | SdfNode::ChamferedCube { .. }
-            | SdfNode::SchwarzP { .. }
-            | SdfNode::Superellipsoid { .. }
-            | SdfNode::RoundedX { .. }
-            | SdfNode::Pie { .. }
-            | SdfNode::Trapezoid { .. }
-            | SdfNode::Parallelogram { .. }
-            | SdfNode::Tunnel { .. }
-            | SdfNode::UnevenCapsule { .. }
-            | SdfNode::Egg { .. }
-            | SdfNode::ArcShape { .. }
-            | SdfNode::Moon { .. }
-            | SdfNode::CrossShape { .. }
-            | SdfNode::BlobbyCross { .. }
-            | SdfNode::ParabolaSegment { .. }
-            | SdfNode::RegularPolygon { .. }
-            | SdfNode::StarPolygon { .. }
-            | SdfNode::Stairs { .. }
-            | SdfNode::Helix { .. }
-            | SdfNode::Tetrahedron { .. }
-            | SdfNode::Dodecahedron { .. }
-            | SdfNode::Icosahedron { .. }
-            | SdfNode::TruncatedOctahedron { .. }
-            | SdfNode::TruncatedIcosahedron { .. }
-            | SdfNode::BoxFrame { .. }
-            | SdfNode::DiamondSurface { .. }
-            | SdfNode::Neovius { .. }
-            | SdfNode::Lidinoid { .. }
-            | SdfNode::IWP { .. }
-            | SdfNode::FRD { .. }
-            | SdfNode::FischerKochS { .. }
-            | SdfNode::PMY { .. }
-    )
-}
-
 /// Count the number of nodes removed by optimization
 pub fn optimization_stats(original: &SdfNode, optimized: &SdfNode) -> OptimizationStats {
     let before = original.node_count();
@@ -513,7 +440,6 @@ impl std::fmt::Display for OptimizationStats {
 mod tests {
     use super::*;
     use crate::eval::eval;
-    use crate::prelude::*;
 
     #[test]
     fn test_identity_translate_removed() {

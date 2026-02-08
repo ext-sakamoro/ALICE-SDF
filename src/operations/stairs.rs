@@ -125,7 +125,7 @@ mod tests {
         let n = 3.0;
 
         let int_result = sdf_stairs_intersection(a, b, r, n);
-        let sub_result = sdf_stairs_subtraction(a, b, r, n);
+        let _sub_result = sdf_stairs_subtraction(a, b, r, n);
 
         // Intersection should generally be >= max(a,b) - some blend
         // Subtraction should be related to intersection with negated b

@@ -7,9 +7,6 @@
 
 use glam::Vec3;
 
-/// Golden ratio φ = (1 + √5) / 2
-const PHI: f32 = 1.618033988749895;
-
 /// Cube face normals [0..3]
 pub const GDF_CUBE: [Vec3; 3] = [
     Vec3::new(1.0, 0.0, 0.0),
