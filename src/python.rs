@@ -9,7 +9,7 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use numpy::{PyArray1, PyArray2, PyArrayMethods, IntoPyArray};
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 use crate::types::{SdfNode, SdfTree};
 use crate::eval::{eval, eval_batch_parallel};
@@ -73,6 +73,486 @@ impl PySdfNode {
                 normal: Vec3::new(nx, ny, nz).normalize(),
                 distance,
             },
+        }
+    }
+
+    /// Create a cone
+    #[staticmethod]
+    fn cone(radius: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::cone(radius, height),
+        }
+    }
+
+    /// Create an ellipsoid
+    #[staticmethod]
+    fn ellipsoid(rx: f32, ry: f32, rz: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::ellipsoid(rx, ry, rz),
+        }
+    }
+
+    /// Create a rounded cone
+    #[staticmethod]
+    fn rounded_cone(r1: f32, r2: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::rounded_cone(r1, r2, height),
+        }
+    }
+
+    /// Create a pyramid
+    #[staticmethod]
+    fn pyramid(height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::pyramid(height),
+        }
+    }
+
+    /// Create an octahedron
+    #[staticmethod]
+    fn octahedron(size: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::octahedron(size),
+        }
+    }
+
+    /// Create a hexagonal prism
+    #[staticmethod]
+    fn hex_prism(hex_radius: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::hex_prism(hex_radius, height),
+        }
+    }
+
+    /// Create a chain link
+    #[staticmethod]
+    fn link(length: f32, r1: f32, r2: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::link(length, r1, r2),
+        }
+    }
+
+    /// Create a triangle from 3 vertices (9 floats)
+    #[staticmethod]
+    fn triangle(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, cx: f32, cy: f32, cz: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::triangle(Vec3::new(ax, ay, az), Vec3::new(bx, by, bz), Vec3::new(cx, cy, cz)),
+        }
+    }
+
+    /// Create a quadratic Bezier curve tube (9 floats + radius)
+    #[staticmethod]
+    fn bezier(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, cx: f32, cy: f32, cz: f32, radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::bezier(Vec3::new(ax, ay, az), Vec3::new(bx, by, bz), Vec3::new(cx, cy, cz), radius),
+        }
+    }
+
+    /// Create a rounded box
+    #[staticmethod]
+    fn rounded_box(hx: f32, hy: f32, hz: f32, round_radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::rounded_box(hx, hy, hz, round_radius),
+        }
+    }
+
+    /// Create a capped cone
+    #[staticmethod]
+    fn capped_cone(height: f32, r1: f32, r2: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::capped_cone(height, r1, r2),
+        }
+    }
+
+    /// Create a capped torus
+    #[staticmethod]
+    fn capped_torus(major_radius: f32, minor_radius: f32, cap_angle: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::capped_torus(major_radius, minor_radius, cap_angle),
+        }
+    }
+
+    /// Create a rounded cylinder
+    #[staticmethod]
+    fn rounded_cylinder(radius: f32, round_radius: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::rounded_cylinder(radius, round_radius, height),
+        }
+    }
+
+    /// Create a triangular prism
+    #[staticmethod]
+    fn triangular_prism(width: f32, depth: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::triangular_prism(width, depth),
+        }
+    }
+
+    /// Create a cut sphere
+    #[staticmethod]
+    fn cut_sphere(radius: f32, cut_height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::cut_sphere(radius, cut_height),
+        }
+    }
+
+    /// Create a cut hollow sphere
+    #[staticmethod]
+    fn cut_hollow_sphere(radius: f32, cut_height: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::cut_hollow_sphere(radius, cut_height, thickness),
+        }
+    }
+
+    /// Create a death star shape
+    #[staticmethod]
+    fn death_star(ra: f32, rb: f32, d: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::death_star(ra, rb, d),
+        }
+    }
+
+    /// Create a solid angle
+    #[staticmethod]
+    fn solid_angle(angle: f32, radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::solid_angle(angle, radius),
+        }
+    }
+
+    /// Create a rhombus
+    #[staticmethod]
+    fn rhombus(la: f32, lb: f32, height: f32, round_radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::rhombus(la, lb, height, round_radius),
+        }
+    }
+
+    /// Create a horseshoe shape
+    #[staticmethod]
+    fn horseshoe(angle: f32, radius: f32, length: f32, width: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::horseshoe(angle, radius, length, width, thickness),
+        }
+    }
+
+    /// Create a vesica shape
+    #[staticmethod]
+    fn vesica(radius: f32, dist: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::vesica(radius, dist),
+        }
+    }
+
+    /// Create an infinite cylinder
+    #[staticmethod]
+    fn infinite_cylinder(radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::infinite_cylinder(radius),
+        }
+    }
+
+    /// Create an infinite cone
+    #[staticmethod]
+    fn infinite_cone(angle: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::infinite_cone(angle),
+        }
+    }
+
+    /// Create a gyroid surface
+    #[staticmethod]
+    fn gyroid(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::gyroid(scale, thickness),
+        }
+    }
+
+    /// Create a 3D heart
+    #[staticmethod]
+    fn heart(size: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::heart(size),
+        }
+    }
+
+    /// Create a tube (hollow cylinder)
+    #[staticmethod]
+    fn tube(outer_radius: f32, thickness: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::tube(outer_radius, thickness, height),
+        }
+    }
+
+    /// Create a barrel
+    #[staticmethod]
+    fn barrel(radius: f32, height: f32, bulge: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::barrel(radius, height, bulge),
+        }
+    }
+
+    /// Create a diamond shape
+    #[staticmethod]
+    fn diamond_shape(radius: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::diamond(radius, height),
+        }
+    }
+
+    /// Create a chamfered cube
+    #[staticmethod]
+    fn chamfered_cube(width: f32, height: f32, depth: f32, chamfer: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::chamfered_cube(width, height, depth, chamfer),
+        }
+    }
+
+    /// Create a Schwarz P surface (TPMS)
+    #[staticmethod]
+    fn schwarz_p(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::schwarz_p(scale, thickness),
+        }
+    }
+
+    /// Create a superellipsoid
+    #[staticmethod]
+    fn superellipsoid(width: f32, height: f32, depth: f32, e1: f32, e2: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::superellipsoid(width, height, depth, e1, e2),
+        }
+    }
+
+    /// Create a rounded X shape
+    #[staticmethod]
+    fn rounded_x(width: f32, round_radius: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::rounded_x(width, round_radius, height),
+        }
+    }
+
+    /// Create a pie (sector) shape
+    #[staticmethod]
+    fn pie(angle: f32, radius: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::pie(angle, radius, height),
+        }
+    }
+
+    /// Create a trapezoid
+    #[staticmethod]
+    fn trapezoid(r1: f32, r2: f32, trap_height: f32, depth: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::trapezoid(r1, r2, trap_height, depth),
+        }
+    }
+
+    /// Create a parallelogram
+    #[staticmethod]
+    fn parallelogram(width: f32, para_height: f32, skew: f32, depth: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::parallelogram(width, para_height, skew, depth),
+        }
+    }
+
+    /// Create a tunnel
+    #[staticmethod]
+    fn tunnel(width: f32, height_2d: f32, depth: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::tunnel(width, height_2d, depth),
+        }
+    }
+
+    /// Create an uneven capsule
+    #[staticmethod]
+    fn uneven_capsule(r1: f32, r2: f32, cap_height: f32, depth: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::uneven_capsule(r1, r2, cap_height, depth),
+        }
+    }
+
+    /// Create an egg shape
+    #[staticmethod]
+    fn egg(ra: f32, rb: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::egg(ra, rb),
+        }
+    }
+
+    /// Create an arc shape (thick ring sector)
+    #[staticmethod]
+    fn arc_shape(aperture: f32, radius: f32, thickness: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::arc_shape(aperture, radius, thickness, height),
+        }
+    }
+
+    /// Create a moon (crescent) shape
+    #[staticmethod]
+    fn moon(d: f32, ra: f32, rb: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::moon(d, ra, rb, height),
+        }
+    }
+
+    /// Create a cross (plus) shape
+    #[staticmethod]
+    fn cross_shape(length: f32, thickness: f32, round_radius: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::cross_shape(length, thickness, round_radius, height),
+        }
+    }
+
+    /// Create a blobby cross (organic) shape
+    #[staticmethod]
+    fn blobby_cross(size: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::blobby_cross(size, height),
+        }
+    }
+
+    /// Create a parabola segment
+    #[staticmethod]
+    fn parabola_segment(width: f32, para_height: f32, depth: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::parabola_segment(width, para_height, depth),
+        }
+    }
+
+    /// Create a regular N-sided polygon prism
+    #[staticmethod]
+    fn regular_polygon(radius: f32, n_sides: u32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::regular_polygon(radius, n_sides, height),
+        }
+    }
+
+    /// Create a star polygon prism
+    #[staticmethod]
+    fn star_polygon(radius: f32, n_points: u32, m: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::star_polygon(radius, n_points, m, height),
+        }
+    }
+
+    /// Create a staircase shape
+    #[staticmethod]
+    fn stairs_shape(step_width: f32, step_height: f32, n_steps: u32, depth: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::stairs(step_width, step_height, n_steps, depth),
+        }
+    }
+
+    /// Create a helix (spiral tube)
+    #[staticmethod]
+    fn helix(major_r: f32, minor_r: f32, pitch: f32, height: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::helix(major_r, minor_r, pitch, height),
+        }
+    }
+
+    /// Create a regular tetrahedron
+    #[staticmethod]
+    fn tetrahedron(size: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::tetrahedron(size),
+        }
+    }
+
+    /// Create a regular dodecahedron
+    #[staticmethod]
+    fn dodecahedron(radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::dodecahedron(radius),
+        }
+    }
+
+    /// Create a regular icosahedron
+    #[staticmethod]
+    fn icosahedron(radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::icosahedron(radius),
+        }
+    }
+
+    /// Create a truncated octahedron
+    #[staticmethod]
+    fn truncated_octahedron(radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::truncated_octahedron(radius),
+        }
+    }
+
+    /// Create a truncated icosahedron (soccer ball)
+    #[staticmethod]
+    fn truncated_icosahedron(radius: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::truncated_icosahedron(radius),
+        }
+    }
+
+    /// Create a box frame (wireframe box)
+    #[staticmethod]
+    fn box_frame(hx: f32, hy: f32, hz: f32, edge: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::box_frame(Vec3::new(hx, hy, hz), edge),
+        }
+    }
+
+    /// Create a diamond surface (TPMS)
+    #[staticmethod]
+    fn diamond_surface(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::diamond_surface(scale, thickness),
+        }
+    }
+
+    /// Create a neovius surface (TPMS)
+    #[staticmethod]
+    fn neovius(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::neovius(scale, thickness),
+        }
+    }
+
+    /// Create a lidinoid surface (TPMS)
+    #[staticmethod]
+    fn lidinoid(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::lidinoid(scale, thickness),
+        }
+    }
+
+    /// Create an IWP surface (TPMS)
+    #[staticmethod]
+    fn iwp(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::iwp(scale, thickness),
+        }
+    }
+
+    /// Create an FRD surface (TPMS)
+    #[staticmethod]
+    fn frd(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::frd(scale, thickness),
+        }
+    }
+
+    /// Create a Fischer-Koch S surface (TPMS)
+    #[staticmethod]
+    fn fischer_koch_s(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::fischer_koch_s(scale, thickness),
+        }
+    }
+
+    /// Create a PMY surface (TPMS)
+    #[staticmethod]
+    fn pmy(scale: f32, thickness: f32) -> Self {
+        PySdfNode {
+            inner: SdfNode::pmy(scale, thickness),
         }
     }
 
@@ -199,6 +679,69 @@ impl PySdfNode {
     fn elongate(&self, x: f32, y: f32, z: f32) -> Self {
         PySdfNode {
             inner: self.inner.clone().elongate(x, y, z),
+        }
+    }
+
+    /// Finite repetition
+    fn repeat_finite(&self, count_x: u32, count_y: u32, count_z: u32, spacing_x: f32, spacing_y: f32, spacing_z: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().repeat_finite(
+                [count_x, count_y, count_z],
+                Vec3::new(spacing_x, spacing_y, spacing_z),
+            ),
+        }
+    }
+
+    /// Revolution around Y-axis
+    fn revolution(&self, offset: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().revolution(offset),
+        }
+    }
+
+    /// Extrude along Z-axis
+    fn extrude(&self, height: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().extrude(height),
+        }
+    }
+
+    /// Taper along Y-axis
+    fn taper(&self, factor: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().taper(factor),
+        }
+    }
+
+    /// Sin-based displacement
+    fn displacement(&self, strength: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().displacement(strength),
+        }
+    }
+
+    /// Polar repetition around Y-axis
+    fn polar_repeat(&self, count: u32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().polar_repeat(count),
+        }
+    }
+
+    /// Assign material ID
+    fn with_material(&self, material_id: u32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().with_material(material_id),
+        }
+    }
+
+    /// Sweep along a quadratic Bezier curve in XZ plane
+    fn sweep_bezier(&self, p0x: f32, p0y: f32, p1x: f32, p1y: f32, p2x: f32, p2y: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().sweep_bezier(
+                Vec2::new(p0x, p0y),
+                Vec2::new(p1x, p1y),
+                Vec2::new(p2x, p2y),
+            ),
         }
     }
 
