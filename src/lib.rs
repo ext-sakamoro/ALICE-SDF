@@ -62,6 +62,7 @@ pub mod interval;
 pub mod neural;
 pub mod collision;
 pub mod optimize;
+pub mod tight_aabb;
 
 #[cfg(feature = "python")]
 pub mod python;

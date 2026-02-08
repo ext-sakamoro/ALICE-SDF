@@ -35,6 +35,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **SDF-to-SDF Collision** - grid-based contact detection with interval arithmetic AABB pruning
 - **CSG Tree Optimization** - identity transform/modifier removal, nested transform merging, smooth→standard demotion
 - **Analytic Gradient** - single-pass gradient via chain rules and Jacobian propagation (9 analytic + 44 numerical-fallback primitives)
+- **Auto Tight AABB** - interval arithmetic + binary search to find minimal bounding box containing the SDF surface
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
 - **Engine integrations** - Unity, Unreal Engine 5, VRChat, Godot, WebAssembly
@@ -573,6 +574,7 @@ Specialized modules:
   eval/gradient -- Analytic gradient (chain rules, Jacobian propagation)
   mesh/dual_contouring -- Dual Contouring (QEF vertex placement, sharp edges)
   optimize.rs   -- CSG tree optimization (identity folding, transform merging)
+  tight_aabb.rs -- Auto tight AABB (interval arithmetic + binary search)
 ```
 
 ### Evaluation Modes
@@ -800,6 +802,33 @@ println!("{}", stats); // "5 → 2 nodes (3 removed, 60.0% reduction)"
 | `Rotate(Rotate(c,r1),r2)` | 3 nodes | 2 nodes (`Rotate(c,r2*r1)`) |
 | `SmoothUnion(k=0)` | 3 nodes | 3 nodes (demoted to `Union`) |
 | `Round(0.0)` / `Twist(0.0)` / `Bend(0.0)` | 2 nodes | 1 node |
+
+## Auto Tight AABB
+
+Computes a minimal axis-aligned bounding box for any SDF tree using interval arithmetic and binary search. Useful for automatic mesh generation bounds, spatial indexing, and culling.
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::tight_aabb::{compute_tight_aabb, compute_tight_aabb_with_config, TightAabbConfig};
+
+let shape = SdfNode::sphere(1.0).translate(2.0, 0.0, 0.0);
+let aabb = compute_tight_aabb(&shape);
+// aabb ≈ (1.0, -1.0, -1.0) to (3.0, 1.0, 1.0)
+
+// Custom config for larger shapes
+let config = TightAabbConfig {
+    initial_half_size: 50.0,   // search range [-50, 50]³
+    bisection_iterations: 25,  // ~1e-7 precision
+    coarse_subdivisions: 16,   // finer initial scan
+};
+let aabb = compute_tight_aabb_with_config(&shape, &config);
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `initial_half_size` | 10.0 | Search cube `[-h, h]³`. Must contain the shape. |
+| `bisection_iterations` | 20 | Precision ≈ `2h / 2^iters` per axis |
+| `coarse_subdivisions` | 8 | Coarse scan slabs before binary search |
 
 ### Manifold Mesh Guarantee
 
@@ -1066,7 +1095,7 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-684+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 698+ tests including JIT scalar and JIT SIMD backends.
+693+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 707+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
@@ -1386,6 +1415,59 @@ See `docs/GODOT_GUIDE.md` for integration guide.
 | [Godot Guide](docs/GODOT_GUIDE.md) | Godot integration guide |
 | [Unity Setup](unity-sdf-universe/SETUP_GUIDE.md) | Unity project setup |
 | [VRChat Package](vrchat-package/README.md) | VRChat SDK integration |
+
+## SDF Asset Delivery Network
+
+ALICE-SDF + [ALICE-CDN](https://github.com/ext-sakamoro/ALICE-CDN) + [ALICE-Cache](https://github.com/ext-sakamoro/ALICE-Cache) to achieve **200-800x bandwidth reduction** vs traditional glTF delivery.
+
+> "Why transfer 2MB of triangles when 80 bytes of math will do?"
+
+### Architecture
+
+```
+Client Request (asset_id + VivaldiCoord)
+    │
+    ▼
+┌──────────────────────────────────────┐
+│  ALICE-CDN (Vivaldi Routing)          │
+│  ・VivaldiCoord → nearest node (RTT)  │
+│  ・IndexedLocator: O(log n + k)       │
+│  ・Rendezvous hash + distance weight  │
+└──────────┬───────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────┐
+│  ALICE-Cache (Markov Prefetch)        │
+│  ・256-shard parallel cache           │
+│  ・SharedOracle: lock-free prediction │
+│  ・TinyLFU sampled eviction           │
+└──────────┬───────────────────────────┘
+           │ cache miss → origin
+           ▼
+┌──────────────────────────────────────┐
+│  ALICE-SDF (ASDF Binary Format)       │
+│  ・16-byte header + bincode body      │
+│  ・CRC32 integrity validation         │
+│  ・65+ SDF primitives + CSG ops       │
+└──────────────────────────────────────┘
+```
+
+### Compression Ratio
+
+| Asset Type | glTF Size | SDF Size | Ratio |
+|------------|-----------|----------|-------|
+| Sphere | 15-25 KB | ~80 bytes | **200-300x** |
+| Box | 15-20 KB | ~90 bytes | **170-220x** |
+| CSG (10 ops) | 200-500 KB | ~500 bytes | **400-1000x** |
+| Complex scene (100 nodes) | 2-4 MB | 2-4 KB | **500-1000x** |
+
+### Use Cases
+
+1. **Game Level Streaming**: Stream SDF game worlds zone-by-zone. Markov oracle prefetches the next zone while the current one renders.
+2. **Procedural Content**: Transmit CSG recipes instead of baked meshes. Client-side SDF evaluation generates geometry at any LOD.
+3. **Collaborative 3D Editing**: Real-time sync of SDF edits (add/remove CSG nodes) at minimal bandwidth.
+4. **IoT/Edge 3D**: Deliver 3D content to bandwidth-constrained devices (80 bytes vs 20 KB per object).
+5. **CDN Cost Reduction**: 200-800x less data transferred = proportional CDN cost savings.
 
 ## License
 

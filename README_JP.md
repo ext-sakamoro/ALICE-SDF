@@ -35,6 +35,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **SDF対SDFコリジョン** - 区間演算AABBプルーニング付きグリッドベース接触検出
 - **CSGツリー最適化** - 恒等変換/モディファイア除去、ネスト変換マージ、Smooth→Standard降格
 - **解析的勾配（Analytic Gradient）** - 連鎖律とヤコビアン伝播による単一パス勾配計算（9解析+44数値フォールバックプリミティブ）
+- **自動タイトAABB** - 区間演算＋二分探索によるSDF表面を含む最小バウンディングボックス計算
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
 - **エンジン統合** - Unity、Unreal Engine 5、VRChat、Godot、WebAssembly
@@ -573,6 +574,7 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
   eval/gradient -- 解析的勾配（連鎖律、ヤコビアン伝播）
   mesh/dual_contouring -- Dual Contouring（QEF頂点配置、シャープエッジ）
   optimize.rs   -- CSGツリー最適化（恒等変換除去、変換マージ）
+  tight_aabb.rs -- 自動タイトAABB（区間演算＋二分探索）
 ```
 
 ### 評価モード
@@ -800,6 +802,33 @@ println!("{}", stats); // "5 → 2 nodes (3 removed, 60.0% reduction)"
 | `SmoothUnion(k=0)` | 3ノード | 3ノード（`Union`に降格） |
 | `Round(0.0)` / `Twist(0.0)` | 2ノード | 1ノード |
 
+## 自動タイトAABB
+
+区間演算と二分探索を使用して、任意のSDFツリーの最小軸平行バウンディングボックスを計算します。メッシュ生成バウンドの自動決定、空間インデックス、カリングに有用。
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::tight_aabb::{compute_tight_aabb, compute_tight_aabb_with_config, TightAabbConfig};
+
+let shape = SdfNode::sphere(1.0).translate(2.0, 0.0, 0.0);
+let aabb = compute_tight_aabb(&shape);
+// aabb ≈ (1.0, -1.0, -1.0) to (3.0, 1.0, 1.0)
+
+// 大きな形状用のカスタム設定
+let config = TightAabbConfig {
+    initial_half_size: 50.0,   // 探索範囲 [-50, 50]³
+    bisection_iterations: 25,  // ~1e-7 精度
+    coarse_subdivisions: 16,   // より細かい初期スキャン
+};
+let aabb = compute_tight_aabb_with_config(&shape, &config);
+```
+
+| パラメータ | デフォルト | 説明 |
+|-----------|---------|-------------|
+| `initial_half_size` | 10.0 | 探索立方体 `[-h, h]³`。形状を含む必要あり |
+| `bisection_iterations` | 20 | 精度 ≈ `2h / 2^iters` per axis |
+| `coarse_subdivisions` | 8 | 二分探索前の粗スキャン分割数 |
+
 ### マニフォールドメッシュ保証
 
 物理、レンダリング、3Dプリントに適した水密マニフォールドメッシュを保証。
@@ -1002,7 +1031,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる684以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で698以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる693以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、タイトAABB、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で707以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test
@@ -1322,6 +1351,59 @@ ALICE-SDFはglTF 2.0インポートとGDExtension FFI経由でGodotと連携し�
 | [Godotガイド](docs/GODOT_GUIDE.md) | Godot統合ガイド |
 | [Unityセットアップ](unity-sdf-universe/SETUP_GUIDE.md) | Unityプロジェクトセットアップ |
 | [VRChatパッケージ](vrchat-package/README.md) | VRChat SDK統合 |
+
+## SDF アセット配信ネットワーク
+
+ALICE-SDF + [ALICE-CDN](https://github.com/ext-sakamoro/ALICE-CDN) + [ALICE-Cache](https://github.com/ext-sakamoro/ALICE-Cache) の統合により、従来のglTF配信と比較して **200-800倍の帯域幅削減** を実現。
+
+> "2MBの三角形を転送する必要があるか？80バイトの数学で十分だ。"
+
+### アーキテクチャ
+
+```
+クライアントリクエスト (asset_id + VivaldiCoord)
+    │
+    ▼
+┌──────────────────────────────────────┐
+│  ALICE-CDN (Vivaldi ルーティング)     │
+│  ・VivaldiCoord → 最近傍ノード (RTT)  │
+│  ・IndexedLocator: O(log n + k)       │
+│  ・ランデブーハッシュ + 距離重み       │
+└──────────┬───────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────┐
+│  ALICE-Cache (Markov プリフェッチ)    │
+│  ・256シャード並列キャッシュ          │
+│  ・SharedOracle: ロックフリー予測     │
+│  ・TinyLFU サンプルドエビクション     │
+└──────────┬───────────────────────────┘
+           │ キャッシュミス → オリジン
+           ▼
+┌──────────────────────────────────────┐
+│  ALICE-SDF (ASDF バイナリ形式)        │
+│  ・16バイトヘッダー + bincode本体     │
+│  ・CRC32 整合性検証                   │
+│  ・65+ SDFプリミティブ + CSG演算      │
+└──────────────────────────────────────┘
+```
+
+### 圧縮率
+
+| アセットタイプ | glTF サイズ | SDF サイズ | 倍率 |
+|--------------|-------------|----------|------|
+| 球体 | 15-25 KB | ~80 bytes | **200-300倍** |
+| ボックス | 15-20 KB | ~90 bytes | **170-220倍** |
+| CSG (10演算) | 200-500 KB | ~500 bytes | **400-1000倍** |
+| 複雑シーン (100ノード) | 2-4 MB | 2-4 KB | **500-1000倍** |
+
+### ユースケース
+
+1. **ゲームレベルストリーミング**: SDFゲームワールドをゾーンごとにストリーミング。Markovオラクルが現在のゾーン描画中に次のゾーンをプリフェッチ。
+2. **プロシージャルコンテンツ**: ベイクドメッシュの代わりにCSGレシピを伝送。クライアント側のSDF評価で任意のLODでジオメトリを生成。
+3. **協調3D編集**: SDF編集（CSGノードの追加/削除）を最小帯域幅でリアルタイム同期。
+4. **IoT/エッジ3D**: 帯域幅制約のあるデバイスへの3Dコンテンツ配信（オブジェクトあたり80バイト vs 20KB）。
+5. **CDNコスト削減**: 200-800倍のデータ削減 = 比例するCDNコスト削減。
 
 ## ライセンス
 
