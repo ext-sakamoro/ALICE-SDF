@@ -155,6 +155,25 @@ VersionInfo alice_sdf_version(void);
 char* alice_sdf_version_string(void);
 
 /* ============================================================================
+ * Category Counts
+ * ============================================================================ */
+
+/** @brief Get number of primitive SDF variants */
+uint32_t alice_sdf_primitive_count(void);
+
+/** @brief Get number of operation SDF variants */
+uint32_t alice_sdf_operation_count(void);
+
+/** @brief Get number of transform SDF variants */
+uint32_t alice_sdf_transform_count(void);
+
+/** @brief Get number of modifier SDF variants */
+uint32_t alice_sdf_modifier_count(void);
+
+/** @brief Get total number of all SDF variants */
+uint32_t alice_sdf_total_count(void);
+
+/* ============================================================================
  * Primitives
  * ============================================================================ */
 

@@ -122,6 +122,36 @@ namespace AliceSdfUnity
         }
 
         // ============================================================================
+        // Category Counts
+        // ============================================================================
+
+        [DllImport(LibraryName)]
+        private static extern uint alice_sdf_primitive_count();
+
+        [DllImport(LibraryName)]
+        private static extern uint alice_sdf_operation_count();
+
+        [DllImport(LibraryName)]
+        private static extern uint alice_sdf_transform_count();
+
+        [DllImport(LibraryName)]
+        private static extern uint alice_sdf_modifier_count();
+
+        [DllImport(LibraryName)]
+        private static extern uint alice_sdf_total_count();
+
+        /// <summary>Number of primitive SDF variants</summary>
+        public static uint PrimitiveCount => alice_sdf_primitive_count();
+        /// <summary>Number of operation SDF variants</summary>
+        public static uint OperationCount => alice_sdf_operation_count();
+        /// <summary>Number of transform SDF variants</summary>
+        public static uint TransformCount => alice_sdf_transform_count();
+        /// <summary>Number of modifier SDF variants</summary>
+        public static uint ModifierCount => alice_sdf_modifier_count();
+        /// <summary>Total number of all SDF variants</summary>
+        public static uint TotalCount => alice_sdf_total_count();
+
+        // ============================================================================
         // Primitives
         // ============================================================================
 

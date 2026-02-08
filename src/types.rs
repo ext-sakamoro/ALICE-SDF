@@ -8,6 +8,35 @@ use glam::{Quat, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Category of an SDF node variant
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SdfCategory {
+    Primitive,
+    Operation,
+    Transform,
+    Modifier,
+}
+
+impl SdfCategory {
+    /// Number of SdfNode variants in this category
+    pub fn count(self) -> u32 {
+        match self {
+            SdfCategory::Primitive => 72,
+            SdfCategory::Operation => 24,
+            SdfCategory::Transform => 4,
+            SdfCategory::Modifier => 19,
+        }
+    }
+
+    /// Total number of all SdfNode variants
+    pub fn total() -> u32 {
+        SdfCategory::Primitive.count()
+            + SdfCategory::Operation.count()
+            + SdfCategory::Transform.count()
+            + SdfCategory::Modifier.count()
+    }
+}
+
 /// Signed Distance Function Node
 ///
 /// Represents a node in the SDF tree. Each node can be:
@@ -1079,6 +1108,62 @@ pub enum SdfNode {
 }
 
 impl SdfNode {
+    /// Returns the category of this node variant
+    pub fn category(&self) -> SdfCategory {
+        match self {
+            // === Primitives ===
+            Self::Sphere { .. } | Self::Box3d { .. } | Self::Cylinder { .. } |
+            Self::Torus { .. } | Self::Plane { .. } | Self::Capsule { .. } |
+            Self::Cone { .. } | Self::Ellipsoid { .. } | Self::RoundedCone { .. } |
+            Self::Pyramid { .. } | Self::Octahedron { .. } | Self::HexPrism { .. } |
+            Self::Link { .. } | Self::Triangle { .. } | Self::Bezier { .. } |
+            Self::RoundedBox { .. } | Self::CappedCone { .. } | Self::CappedTorus { .. } |
+            Self::RoundedCylinder { .. } | Self::TriangularPrism { .. } |
+            Self::CutSphere { .. } | Self::CutHollowSphere { .. } |
+            Self::DeathStar { .. } | Self::SolidAngle { .. } | Self::Rhombus { .. } |
+            Self::Horseshoe { .. } | Self::Vesica { .. } | Self::InfiniteCylinder { .. } |
+            Self::InfiniteCone { .. } | Self::Gyroid { .. } | Self::Heart { .. } |
+            Self::Tube { .. } | Self::Barrel { .. } | Self::Diamond { .. } |
+            Self::ChamferedCube { .. } | Self::SchwarzP { .. } | Self::Superellipsoid { .. } |
+            Self::RoundedX { .. } | Self::Pie { .. } | Self::Trapezoid { .. } |
+            Self::Parallelogram { .. } | Self::Tunnel { .. } | Self::UnevenCapsule { .. } |
+            Self::Egg { .. } | Self::ArcShape { .. } | Self::Moon { .. } |
+            Self::CrossShape { .. } | Self::BlobbyCross { .. } |
+            Self::ParabolaSegment { .. } | Self::RegularPolygon { .. } |
+            Self::StarPolygon { .. } | Self::Stairs { .. } | Self::Helix { .. } |
+            Self::Tetrahedron { .. } | Self::Dodecahedron { .. } | Self::Icosahedron { .. } |
+            Self::TruncatedOctahedron { .. } | Self::TruncatedIcosahedron { .. } |
+            Self::BoxFrame { .. } | Self::DiamondSurface { .. } | Self::Neovius { .. } |
+            Self::Lidinoid { .. } | Self::IWP { .. } | Self::FRD { .. } |
+            Self::FischerKochS { .. } | Self::PMY { .. } |
+            Self::Circle2D { .. } | Self::Rect2D { .. } | Self::Segment2D { .. } |
+            Self::Polygon2D { .. } | Self::RoundedRect2D { .. } | Self::Annular2D { .. } => SdfCategory::Primitive,
+
+            // === Operations ===
+            Self::Union { .. } | Self::Intersection { .. } | Self::Subtraction { .. } |
+            Self::SmoothUnion { .. } | Self::SmoothIntersection { .. } | Self::SmoothSubtraction { .. } |
+            Self::ChamferUnion { .. } | Self::ChamferIntersection { .. } | Self::ChamferSubtraction { .. } |
+            Self::StairsUnion { .. } | Self::StairsIntersection { .. } | Self::StairsSubtraction { .. } |
+            Self::XOR { .. } | Self::Morph { .. } |
+            Self::ColumnsUnion { .. } | Self::ColumnsIntersection { .. } | Self::ColumnsSubtraction { .. } |
+            Self::Pipe { .. } | Self::Engrave { .. } | Self::Groove { .. } | Self::Tongue { .. } |
+            Self::ExpSmoothUnion { .. } | Self::ExpSmoothIntersection { .. } | Self::ExpSmoothSubtraction { .. } => SdfCategory::Operation,
+
+            // === Transforms ===
+            Self::Translate { .. } | Self::Rotate { .. } |
+            Self::Scale { .. } | Self::ScaleNonUniform { .. } => SdfCategory::Transform,
+
+            // === Modifiers ===
+            Self::Twist { .. } | Self::Bend { .. } | Self::RepeatInfinite { .. } |
+            Self::RepeatFinite { .. } | Self::Noise { .. } | Self::Round { .. } |
+            Self::Onion { .. } | Self::Elongate { .. } | Self::Mirror { .. } |
+            Self::Revolution { .. } | Self::Extrude { .. } | Self::SweepBezier { .. } |
+            Self::Taper { .. } | Self::Displacement { .. } | Self::PolarRepeat { .. } |
+            Self::OctantMirror { .. } | Self::Shear { .. } | Self::Animated { .. } |
+            Self::WithMaterial { .. } => SdfCategory::Modifier,
+        }
+    }
+
     // === Primitive constructors ===
 
     /// Create a sphere with the given radius

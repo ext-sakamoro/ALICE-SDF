@@ -1,13 +1,13 @@
 # ALICE-SDF — Unreal Engine 5 Plugin
 
-66 primitives, 24 CSG operations, 17 modifiers, HLSL generation, mesh export.
+72 primitives, 24 CSG operations, 19 modifiers, HLSL generation, mesh export.
 Drop into your UE5 project and start using SDFs immediately.
 
 ## Quick Start (No Rust Required)
 
 ### 1. Download
 
-Download `AliceSDF-UE5-Plugin-{platform}.zip` from [GitHub Releases](https://github.com/nicebuild/ALICE-SDF/releases).
+Download `AliceSDF-UE5-Plugin-{platform}.zip` from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases).
 
 ### 2. Extract to Plugins
 

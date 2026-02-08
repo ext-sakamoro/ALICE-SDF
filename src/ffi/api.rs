@@ -70,6 +70,40 @@ pub extern "C" fn alice_sdf_version_string() -> *mut c_char {
 }
 
 // ============================================================================
+// Category Counts
+// ============================================================================
+
+/// Get number of primitive SDF variants
+#[no_mangle]
+pub extern "C" fn alice_sdf_primitive_count() -> u32 {
+    SdfCategory::Primitive.count()
+}
+
+/// Get number of operation SDF variants
+#[no_mangle]
+pub extern "C" fn alice_sdf_operation_count() -> u32 {
+    SdfCategory::Operation.count()
+}
+
+/// Get number of transform SDF variants
+#[no_mangle]
+pub extern "C" fn alice_sdf_transform_count() -> u32 {
+    SdfCategory::Transform.count()
+}
+
+/// Get number of modifier SDF variants
+#[no_mangle]
+pub extern "C" fn alice_sdf_modifier_count() -> u32 {
+    SdfCategory::Modifier.count()
+}
+
+/// Get total number of all SDF variants
+#[no_mangle]
+pub extern "C" fn alice_sdf_total_count() -> u32 {
+    SdfCategory::total()
+}
+
+// ============================================================================
 // Primitives
 // ============================================================================
 

@@ -27,7 +27,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **68 primitives, 24 operations, 5 transforms, 17 modifiers** - industry-leading shape vocabulary
+- **72 primitives, 24 operations, 4 transforms, 19 modifiers** - industry-leading shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
 - **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
@@ -793,7 +793,7 @@ let bounds = eval_interval(&shape, region);
 let lip = eval_lipschitz(&shape); // 1.0 for distance-preserving shapes
 ```
 
-Supports all 68 primitives, 24 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
+Supports all 72 primitives, 24 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
 
 ## Neural SDF
 
@@ -1434,7 +1434,7 @@ ALICE-SDF runs in the browser via WebAssembly with WebGPU/Canvas2D support.
 npm install @alice-sdf/wasm
 ```
 
-Full TypeScript type definitions included. Supports all 68 primitives, 24 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
+Full TypeScript type definitions included. Supports all 72 primitives, 24 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
 
 ### Building the WASM Demo
 
