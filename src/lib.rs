@@ -96,7 +96,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Prelude - commonly used types and functions
 pub mod prelude {
-    pub use crate::types::{SdfNode, SdfTree, SdfMetadata, Aabb, Ray, Hit};
+    pub use crate::types::{SdfNode, SdfTree, SdfMetadata, SdfCategory, Aabb, Ray, Hit};
     pub use crate::material::{Material, MaterialLibrary, TextureSlot};
     pub use crate::animation::{Keyframe, Track, Timeline, AnimatedSdf, Interpolation, LoopMode, morph};
     pub use crate::eval::{eval, eval_material, normal, gradient, eval_gradient, eval_normal, eval_batch, eval_batch_parallel, eval_grid};
