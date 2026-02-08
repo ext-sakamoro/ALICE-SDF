@@ -67,6 +67,9 @@ pub mod types;
 #[cfg(feature = "python")]
 pub mod python;
 
+#[cfg(feature = "godot")]
+pub mod godot;
+
 #[cfg(feature = "ffi")]
 pub mod ffi;
 

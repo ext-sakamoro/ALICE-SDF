@@ -204,6 +204,243 @@ pub fn export_usda(
     Ok(())
 }
 
+/// Imported USD data with mesh and optional material
+#[derive(Debug, Clone)]
+pub struct ImportedUsda {
+    /// The imported mesh
+    pub mesh: Mesh,
+    /// Optional material extracted from USDA
+    pub material: Option<ImportedUsdMaterial>,
+}
+
+/// Material extracted from USDA
+#[derive(Debug, Clone)]
+pub struct ImportedUsdMaterial {
+    /// Diffuse color (RGB)
+    pub diffuse_color: [f32; 3],
+    /// Metallic value (0.0 = dielectric, 1.0 = metal)
+    pub metallic: f32,
+    /// Roughness value (0.0 = smooth, 1.0 = rough)
+    pub roughness: f32,
+    /// Opacity (0.0 = transparent, 1.0 = opaque)
+    pub opacity: f32,
+}
+
+/// Import mesh from USDA (ASCII USD) format
+///
+/// # Arguments
+/// * `path` - Path to .usda file
+///
+/// # Returns
+/// ImportedUsda containing mesh and optional material
+pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
+    use crate::mesh::Vertex;
+    use glam::{Vec2, Vec3};
+
+    let content = std::fs::read_to_string(path.as_ref())?;
+
+    if !content.starts_with("#usda") {
+        return Err(IoError::InvalidFormat(
+            "Not a USDA file (missing #usda header)".into(),
+        ));
+    }
+
+    // Parse helper: extract array content between [ ]
+    fn extract_array(content: &str, key: &str) -> Option<String> {
+        let search = format!("{} = [", key);
+        if let Some(start) = content.find(&search) {
+            let after_bracket = start + search.len();
+            if let Some(end) = content[after_bracket..].find(']') {
+                return Some(content[after_bracket..after_bracket + end].to_string());
+            }
+        }
+        None
+    }
+
+    // Parse helper: extract single value
+    fn extract_single_value(content: &str, key: &str) -> Option<String> {
+        let search = format!("{} = ", key);
+        if let Some(start) = content.find(&search) {
+            let after_eq = start + search.len();
+            let rest = &content[after_eq..];
+            if let Some(end) = rest.find('\n') {
+                return Some(rest[..end].trim().to_string());
+            }
+        }
+        None
+    }
+
+    // Parse points: point3f[] points = [(x, y, z), ...]
+    let points_str = extract_array(&content, "point3f[] points")
+        .ok_or_else(|| IoError::InvalidFormat("Missing points array".into()))?;
+
+    let mut positions = Vec::new();
+    for tuple_str in points_str.split("),") {
+        let cleaned = tuple_str
+            .trim()
+            .trim_start_matches('(')
+            .trim_end_matches(')');
+        if cleaned.is_empty() {
+            continue;
+        }
+        let coords: Vec<f32> = cleaned
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        if coords.len() == 3 {
+            positions.push(Vec3::new(coords[0], coords[1], coords[2]));
+        }
+    }
+
+    if positions.is_empty() {
+        return Err(IoError::InvalidFormat("No valid points found".into()));
+    }
+
+    // Parse indices: int[] faceVertexIndices = [0, 1, 2, ...]
+    let indices_str = extract_array(&content, "int[] faceVertexIndices")
+        .ok_or_else(|| IoError::InvalidFormat("Missing faceVertexIndices".into()))?;
+
+    let raw_indices: Vec<u32> = indices_str
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+
+    // Parse face counts: int[] faceVertexCounts = [3, 3, 3, ...]
+    let face_counts_str = extract_array(&content, "int[] faceVertexCounts")
+        .ok_or_else(|| IoError::InvalidFormat("Missing faceVertexCounts".into()))?;
+
+    let face_counts: Vec<usize> = face_counts_str
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+
+    // Triangulate faces (fan triangulation for quads/n-gons)
+    let mut triangulated_indices = Vec::new();
+    let mut idx_offset = 0;
+    for &count in &face_counts {
+        if count == 3 {
+            // Already a triangle
+            triangulated_indices.push(raw_indices[idx_offset]);
+            triangulated_indices.push(raw_indices[idx_offset + 1]);
+            triangulated_indices.push(raw_indices[idx_offset + 2]);
+        } else if count > 3 {
+            // Fan triangulation: (0, 1, 2), (0, 2, 3), (0, 3, 4), ...
+            for i in 1..(count - 1) {
+                triangulated_indices.push(raw_indices[idx_offset]);
+                triangulated_indices.push(raw_indices[idx_offset + i]);
+                triangulated_indices.push(raw_indices[idx_offset + i + 1]);
+            }
+        }
+        idx_offset += count;
+    }
+
+    // Parse normals: normal3f[] normals = [(x, y, z), ...]
+    let mut normals = vec![Vec3::Y; positions.len()]; // Default to Y-up
+    if let Some(normals_str) = extract_array(&content, "normal3f[] normals") {
+        let mut parsed_normals = Vec::new();
+        for tuple_str in normals_str.split("),") {
+            let cleaned = tuple_str
+                .trim()
+                .trim_start_matches('(')
+                .trim_end_matches(')');
+            if cleaned.is_empty() {
+                continue;
+            }
+            let coords: Vec<f32> = cleaned
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if coords.len() == 3 {
+                let n = Vec3::new(coords[0], coords[1], coords[2]);
+                parsed_normals.push(if n.length_squared() > 0.0001 {
+                    n.normalize()
+                } else {
+                    Vec3::Y
+                });
+            }
+        }
+        if parsed_normals.len() == positions.len() {
+            normals = parsed_normals;
+        }
+    }
+
+    // Parse UVs: texCoord2f[] primvars:st = [(u, v), ...]
+    let mut uvs = vec![Vec2::ZERO; positions.len()];
+    if let Some(uvs_str) = extract_array(&content, "texCoord2f[] primvars:st") {
+        let mut parsed_uvs = Vec::new();
+        for tuple_str in uvs_str.split("),") {
+            let cleaned = tuple_str
+                .trim()
+                .trim_start_matches('(')
+                .trim_end_matches(')');
+            if cleaned.is_empty() {
+                continue;
+            }
+            let coords: Vec<f32> = cleaned
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if coords.len() == 2 {
+                parsed_uvs.push(Vec2::new(coords[0], coords[1]));
+            }
+        }
+        if parsed_uvs.len() == positions.len() {
+            uvs = parsed_uvs;
+        }
+    }
+
+    // Build vertices
+    let vertices: Vec<Vertex> = positions
+        .iter()
+        .zip(normals.iter())
+        .zip(uvs.iter())
+        .map(|((&pos, &norm), &uv)| {
+            let mut v = Vertex::new(pos, norm);
+            v.uv = uv;
+            v
+        })
+        .collect();
+
+    // Parse material (optional)
+    let mut material = None;
+    if let Some(diffuse_str) = extract_single_value(&content, "color3f inputs:diffuseColor") {
+        let cleaned = diffuse_str
+            .trim()
+            .trim_start_matches('(')
+            .trim_end_matches(')');
+        let rgb: Vec<f32> = cleaned
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+
+        if rgb.len() == 3 {
+            let metallic = extract_single_value(&content, "float inputs:metallic")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0);
+            let roughness = extract_single_value(&content, "float inputs:roughness")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.5);
+            let opacity = extract_single_value(&content, "float inputs:opacity")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1.0);
+
+            material = Some(ImportedUsdMaterial {
+                diffuse_color: [rgb[0], rgb[1], rgb[2]],
+                metallic,
+                roughness,
+                opacity,
+            });
+        }
+    }
+
+    let mesh = Mesh {
+        vertices,
+        indices: triangulated_indices,
+    };
+
+    Ok(ImportedUsda { mesh, material })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,6 +496,117 @@ mod tests {
 
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("upAxis = \"Z\""));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_usda_import_roundtrip() {
+        // Create a sphere mesh
+        let sphere = SdfNode::sphere(1.0);
+        let original_mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 16,
+                ..Default::default()
+            },
+        );
+
+        // Export to USDA
+        let path = std::env::temp_dir().join("alice_test_import.usda");
+        export_usda(&original_mesh, &path, &UsdConfig::default(), None).unwrap();
+
+        // Import back
+        let imported = import_usda(&path).unwrap();
+
+        // Verify counts match
+        assert_eq!(
+            imported.mesh.vertices.len(),
+            original_mesh.vertices.len(),
+            "Vertex count mismatch"
+        );
+        assert_eq!(
+            imported.mesh.indices.len(),
+            original_mesh.indices.len(),
+            "Index count mismatch"
+        );
+
+        // Verify positions are close (within epsilon)
+        for (orig, imp) in original_mesh
+            .vertices
+            .iter()
+            .zip(imported.mesh.vertices.iter())
+        {
+            let diff = (orig.position - imp.position).length();
+            assert!(diff < 0.001, "Position difference too large: {}", diff);
+        }
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_usda_import_with_material() {
+        use crate::material::{Material, MaterialLibrary};
+
+        let sphere = SdfNode::sphere(1.0);
+        let mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 8,
+                ..Default::default()
+            },
+        );
+
+        // Create material with specific values
+        let mut mat_lib = MaterialLibrary::default();
+        mat_lib.materials.push(Material {
+            base_color: [0.9, 0.2, 0.1, 1.0],
+            metallic: 0.7,
+            roughness: 0.3,
+            opacity: 0.8,
+            ..Default::default()
+        });
+
+        // Export with material
+        let path = std::env::temp_dir().join("alice_test_material.usda");
+        export_usda(&mesh, &path, &UsdConfig::default(), Some(&mat_lib)).unwrap();
+
+        // Import and verify material
+        let imported = import_usda(&path).unwrap();
+        assert!(imported.material.is_some(), "Material should be imported");
+
+        let mat = imported.material.unwrap();
+        assert!((mat.diffuse_color[0] - 0.9).abs() < 0.01, "Red mismatch");
+        assert!((mat.diffuse_color[1] - 0.2).abs() < 0.01, "Green mismatch");
+        assert!((mat.diffuse_color[2] - 0.1).abs() < 0.01, "Blue mismatch");
+        assert!((mat.metallic - 0.7).abs() < 0.01, "Metallic mismatch");
+        assert!((mat.roughness - 0.3).abs() < 0.01, "Roughness mismatch");
+        assert!((mat.opacity - 0.8).abs() < 0.01, "Opacity mismatch");
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_usda_import_invalid() {
+        // Try to import a non-USDA file
+        let path = std::env::temp_dir().join("alice_test_invalid.txt");
+        std::fs::write(&path, "This is not a USDA file").unwrap();
+
+        let result = import_usda(&path);
+        assert!(result.is_err(), "Should fail on invalid file");
+
+        if let Err(IoError::InvalidFormat(msg)) = result {
+            assert!(
+                msg.contains("missing #usda header"),
+                "Should mention missing header"
+            );
+        } else {
+            panic!("Expected InvalidFormat error");
+        }
 
         std::fs::remove_file(&path).ok();
     }

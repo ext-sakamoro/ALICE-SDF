@@ -23,6 +23,7 @@ default = ["cli"]
 cli = ["clap"]
 texture-fit = ["image", "cli"]
 python = ["pyo3", "numpy"]
+godot = ["godot-rust"]  # Godot 4.x GDExtension integration
 jit = ["cranelift-codegen", "cranelift-frontend", "cranelift-jit", "cranelift-module", "cranelift-native"]
 gpu = ["wgpu", "pollster", "bytemuck", "futures-channel"]
 volume = ["gpu"]  # 3D volume texture baking
@@ -66,6 +67,9 @@ clap = { version = "4.5", features = ["derive"], optional = true }
 # Python bindings (optional)
 pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
 numpy = { version = "0.23", optional = true }
+
+# Godot GDExtension (optional)
+godot-rust = { package = "godot", version = "0.2", optional = true }
 
 # CRC for file integrity
 crc32fast = "1.4"

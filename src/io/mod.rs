@@ -26,7 +26,10 @@ pub mod usd;
 
 pub use alembic::{export_alembic, AlembicConfig};
 pub use asdf::{load_asdf, save_asdf, AsdfHeader, ASDF_MAGIC};
-pub use fbx::{export_fbx, import_fbx, FbxConfig, FbxFormat, FbxUpAxis};
+pub use fbx::{
+    export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, FbxAnimClip, FbxAnimCurve,
+    FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
+};
 pub use gltf::{
     export_glb, export_glb_bytes, export_gltf_json, import_glb, import_glb_bytes, GltfConfig,
 };
@@ -38,7 +41,7 @@ pub use obj::{export_obj, import_obj, ObjConfig};
 pub use ply::{export_ply, import_ply, PlyConfig};
 pub use stl::{export_stl, export_stl_ascii, import_stl};
 pub use threemf::export_3mf;
-pub use usd::{export_usda, UsdConfig, UsdUpAxis};
+pub use usd::{export_usda, import_usda, ImportedUsdMaterial, ImportedUsda, UsdConfig, UsdUpAxis};
 
 use crate::types::SdfTree;
 use std::path::Path;

@@ -16,6 +16,7 @@
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
@@ -72,6 +73,62 @@ impl FbxConfig {
             ..Default::default()
         }
     }
+}
+
+// ============================================================
+// FBX Skeletal/Animation Data Structures
+// ============================================================
+
+/// A single bone in a skeleton hierarchy
+#[derive(Debug, Clone)]
+pub struct FbxBone {
+    /// Bone name
+    pub name: String,
+    /// Parent bone index (None for root)
+    pub parent: Option<usize>,
+    /// Bind pose transform (4x4 column-major)
+    pub bind_pose: [f32; 16],
+    /// Vertex indices influenced by this bone
+    pub vertex_indices: Vec<u32>,
+    /// Corresponding weights for each vertex
+    pub weights: Vec<f32>,
+}
+
+/// Animation curve data for a single channel
+#[derive(Debug, Clone)]
+pub struct FbxAnimCurve {
+    /// Target property (e.g., "Lcl Translation", "Lcl Rotation")
+    pub property: String,
+    /// Channel index (0=X, 1=Y, 2=Z)
+    pub channel: usize,
+    /// Keyframe times (seconds)
+    pub times: Vec<f32>,
+    /// Keyframe values
+    pub values: Vec<f32>,
+}
+
+/// Animation clip extracted from FBX
+#[derive(Debug, Clone)]
+pub struct FbxAnimClip {
+    /// Clip name
+    pub name: String,
+    /// Animation curves per bone (bone_name -> curves)
+    pub bone_curves: HashMap<String, Vec<FbxAnimCurve>>,
+    /// Duration in seconds
+    pub duration: f32,
+    /// Frames per second
+    pub fps: f32,
+}
+
+/// Complete imported FBX data with optional skeleton and animation
+#[derive(Debug, Clone)]
+pub struct ImportedFbx {
+    /// Mesh geometry
+    pub mesh: Mesh,
+    /// Skeleton (None if no skeleton in file)
+    pub skeleton: Option<Vec<FbxBone>>,
+    /// Animation clips (empty if no animation)
+    pub animations: Vec<FbxAnimClip>,
 }
 
 /// Export a mesh to FBX format (dispatches based on config.format)
@@ -1109,6 +1166,333 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     Ok(Mesh { vertices, indices })
 }
 
+// ============================================================
+// FBX Skeletal/Animation Import
+// ============================================================
+
+/// Import FBX with full skeletal + animation data (ASCII format)
+///
+/// Extends the basic geometry import with:
+/// - Deformer/Cluster parsing for bone hierarchy and vertex weights
+/// - AnimationCurveNode parsing for keyframe animation
+/// - Connection graph (C: "OO") for resolving parent-child relationships
+pub fn import_fbx_full(path: impl AsRef<Path>) -> Result<ImportedFbx, IoError> {
+    // First, get the base mesh using existing import_fbx
+    let mesh = import_fbx(path.as_ref())?;
+
+    let content = std::fs::read_to_string(path.as_ref())?;
+
+    // Parse skeleton from Deformer sections
+    let skeleton = parse_skeleton(&content);
+
+    // Parse animations from AnimationCurveNode sections
+    let animations = parse_animations(&content);
+
+    Ok(ImportedFbx {
+        mesh,
+        skeleton,
+        animations,
+    })
+}
+
+/// Parse skeleton from FBX ASCII Deformer/Cluster sections
+fn parse_skeleton(content: &str) -> Option<Vec<FbxBone>> {
+    let mut bones = Vec::new();
+    let mut bone_id_map: HashMap<i64, usize> = HashMap::new();
+    let mut connections: Vec<(i64, i64)> = Vec::new(); // (child_id, parent_id)
+
+    // Parse Deformer sections
+    let mut current_bone: Option<(i64, FbxBone)> = None;
+    let mut in_indices = false;
+    let mut in_weights = false;
+    let mut in_transform_link = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Detect Cluster (bone) definition
+        if trimmed.starts_with("Deformer:") && trimmed.contains("\"Cluster\"") {
+            // Parse: Deformer: 400001, "SubDeformer::BoneName", "Cluster"
+            let parts: Vec<&str> = trimmed.split(',').collect();
+            if parts.len() >= 2 {
+                if let Some(id_str) = parts[0].strip_prefix("Deformer:") {
+                    if let Ok(id) = id_str.trim().parse::<i64>() {
+                        // Extract bone name from "SubDeformer::BoneName"
+                        let name = parts[1]
+                            .trim()
+                            .trim_matches('"')
+                            .strip_prefix("SubDeformer::")
+                            .unwrap_or("UnnamedBone")
+                            .to_string();
+
+                        current_bone = Some((
+                            id,
+                            FbxBone {
+                                name,
+                                parent: None,
+                                bind_pose: [
+                                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+                                    0.0, 0.0, 0.0, 1.0,
+                                ],
+                                vertex_indices: Vec::new(),
+                                weights: Vec::new(),
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Parse Indexes array
+        if trimmed.starts_with("Indexes: *") {
+            in_indices = true;
+            continue;
+        }
+
+        // Parse Weights array
+        if trimmed.starts_with("Weights: *") {
+            in_weights = true;
+            continue;
+        }
+
+        // Parse TransformLink (bind pose)
+        if trimmed.starts_with("TransformLink: *") {
+            in_transform_link = true;
+            continue;
+        }
+
+        // Parse "a: " data lines
+        if trimmed.starts_with("a: ") {
+            let data_str = &trimmed[3..];
+
+            if in_indices {
+                if let Some((_, ref mut bone)) = current_bone {
+                    for tok in data_str.split(',') {
+                        if let Ok(idx) = tok.trim().parse::<u32>() {
+                            bone.vertex_indices.push(idx);
+                        }
+                    }
+                }
+                in_indices = false;
+            } else if in_weights {
+                if let Some((_, ref mut bone)) = current_bone {
+                    for tok in data_str.split(',') {
+                        if let Ok(w) = tok.trim().parse::<f32>() {
+                            bone.weights.push(w);
+                        }
+                    }
+                }
+                in_weights = false;
+            } else if in_transform_link {
+                if let Some((_, ref mut bone)) = current_bone {
+                    let mut values: Vec<f32> = Vec::new();
+                    for tok in data_str.split(',') {
+                        if let Ok(v) = tok.trim().parse::<f32>() {
+                            values.push(v);
+                        }
+                    }
+                    if values.len() == 16 {
+                        bone.bind_pose.copy_from_slice(&values);
+                    }
+                }
+                in_transform_link = false;
+            }
+        }
+
+        // End of Deformer section
+        if trimmed == "}" {
+            if let Some((id, bone)) = current_bone.take() {
+                bone_id_map.insert(id, bones.len());
+                bones.push(bone);
+            }
+            in_indices = false;
+            in_weights = false;
+            in_transform_link = false;
+        }
+    }
+
+    // Parse Connections section for parent-child relationships
+    let mut in_connections = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("Connections:") {
+            in_connections = true;
+            continue;
+        }
+
+        if in_connections {
+            if trimmed == "}" {
+                break;
+            }
+
+            // Parse: C: "OO",child_id,parent_id
+            if trimmed.starts_with("C: \"OO\"") {
+                let parts: Vec<&str> = trimmed.split(',').collect();
+                if parts.len() >= 3 {
+                    if let (Ok(child_id), Ok(parent_id)) = (
+                        parts[1].trim().parse::<i64>(),
+                        parts[2].trim().parse::<i64>(),
+                    ) {
+                        connections.push((child_id, parent_id));
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply parent-child relationships
+    for (child_id, parent_id) in connections {
+        if let (Some(&child_idx), Some(&parent_idx)) =
+            (bone_id_map.get(&child_id), bone_id_map.get(&parent_id))
+        {
+            bones[child_idx].parent = Some(parent_idx);
+        }
+    }
+
+    if bones.is_empty() {
+        None
+    } else {
+        Some(bones)
+    }
+}
+
+/// Parse animations from FBX ASCII AnimationCurveNode sections
+fn parse_animations(content: &str) -> Vec<FbxAnimClip> {
+    let mut clips = Vec::new();
+    let mut bone_curves: HashMap<String, Vec<FbxAnimCurve>> = HashMap::new();
+
+    // FBX time unit: 1 second = 46186158000
+    const FBX_TIME_UNIT: f64 = 46186158000.0;
+
+    let mut current_curve: Option<FbxAnimCurve> = None;
+    let mut in_key_time = false;
+    let mut in_key_value = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Detect AnimationCurve
+        if trimmed.starts_with("AnimationCurve:") {
+            current_curve = Some(FbxAnimCurve {
+                property: "Unknown".to_string(),
+                channel: 0,
+                times: Vec::new(),
+                values: Vec::new(),
+            });
+        }
+
+        // Parse KeyTime
+        if trimmed.starts_with("KeyTime: *") {
+            in_key_time = true;
+            continue;
+        }
+
+        // Parse KeyValueFloat
+        if trimmed.starts_with("KeyValueFloat: *") {
+            in_key_value = true;
+            continue;
+        }
+
+        // Parse "a: " data lines
+        if trimmed.starts_with("a: ") {
+            let data_str = &trimmed[3..];
+
+            if in_key_time {
+                if let Some(ref mut curve) = current_curve {
+                    for tok in data_str.split(',') {
+                        if let Ok(fbx_time) = tok.trim().parse::<i64>() {
+                            let time_sec = (fbx_time as f64 / FBX_TIME_UNIT) as f32;
+                            curve.times.push(time_sec);
+                        }
+                    }
+                }
+                in_key_time = false;
+            } else if in_key_value {
+                if let Some(ref mut curve) = current_curve {
+                    for tok in data_str.split(',') {
+                        if let Ok(val) = tok.trim().parse::<f32>() {
+                            curve.values.push(val);
+                        }
+                    }
+                }
+                in_key_value = false;
+            }
+        }
+
+        // End of AnimationCurve section
+        if trimmed == "}" {
+            if let Some(curve) = current_curve.take() {
+                // Store curve (simplified: assume all curves belong to root bone)
+                bone_curves
+                    .entry("Root".to_string())
+                    .or_insert_with(Vec::new)
+                    .push(curve);
+            }
+            in_key_time = false;
+            in_key_value = false;
+        }
+    }
+
+    // Create a single clip if we have curves
+    if !bone_curves.is_empty() {
+        let max_time = bone_curves
+            .values()
+            .flat_map(|curves| curves.iter().flat_map(|c| c.times.iter()))
+            .cloned()
+            .fold(0.0f32, f32::max);
+
+        clips.push(FbxAnimClip {
+            name: "DefaultClip".to_string(),
+            bone_curves,
+            duration: max_time,
+            fps: 30.0,
+        });
+    }
+
+    clips
+}
+
+/// Convert FBX skeleton animation to ALICE-SDF AnimationParams timeline
+///
+/// Maps the root bone's translation/rotation to SDF animation parameters.
+/// This is a simplified mapping suitable for single-body SDF animation.
+pub fn fbx_animation_to_timeline(
+    clip: &FbxAnimClip,
+    root_bone: &str,
+) -> crate::animation::Timeline {
+    use crate::animation::{Keyframe, Timeline, Track};
+
+    let mut timeline = Timeline::new(&clip.name);
+
+    if let Some(curves) = clip.bone_curves.get(root_bone) {
+        for curve in curves {
+            let track_name = match (curve.property.as_str(), curve.channel) {
+                ("Lcl Translation", 0) => "translate.x",
+                ("Lcl Translation", 1) => "translate.y",
+                ("Lcl Translation", 2) => "translate.z",
+                ("Lcl Rotation", 0) => "rotate.x",
+                ("Lcl Rotation", 1) => "rotate.y",
+                ("Lcl Rotation", 2) => "rotate.z",
+                _ => continue,
+            };
+
+            let mut track = Track::new(track_name);
+            for (t, v) in curve.times.iter().zip(curve.values.iter()) {
+                let value = if curve.property == "Lcl Rotation" {
+                    v.to_radians()
+                } else {
+                    *v
+                };
+                track.add_keyframe(Keyframe::new(*t, value));
+            }
+            timeline.add_track(track);
+        }
+    }
+
+    timeline
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1295,5 +1679,119 @@ mod tests {
     fn test_fbx_import_empty() {
         let result = import_fbx("/nonexistent/file.fbx");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_fbx_skeletal_structs() {
+        // Test FbxBone creation
+        let bone = FbxBone {
+            name: "TestBone".to_string(),
+            parent: None,
+            bind_pose: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            vertex_indices: vec![0, 1, 2],
+            weights: vec![1.0, 0.8, 0.5],
+        };
+        assert_eq!(bone.name, "TestBone");
+        assert_eq!(bone.vertex_indices.len(), 3);
+        assert_eq!(bone.weights.len(), 3);
+
+        // Test ImportedFbx creation
+        let sphere = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 4,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        let imported = ImportedFbx {
+            mesh,
+            skeleton: Some(vec![bone]),
+            animations: Vec::new(),
+        };
+
+        assert!(imported.skeleton.is_some());
+        assert_eq!(imported.skeleton.unwrap().len(), 1);
+        assert_eq!(imported.animations.len(), 0);
+    }
+
+    #[test]
+    fn test_fbx_animation_to_timeline() {
+        // Create FbxAnimClip with translation curves
+        let mut bone_curves = HashMap::new();
+        let curves = vec![
+            FbxAnimCurve {
+                property: "Lcl Translation".to_string(),
+                channel: 0,
+                times: vec![0.0, 1.0, 2.0],
+                values: vec![0.0, 1.0, 2.0],
+            },
+            FbxAnimCurve {
+                property: "Lcl Rotation".to_string(),
+                channel: 0,
+                times: vec![0.0, 1.0],
+                values: vec![0.0, 90.0], // degrees
+            },
+        ];
+        bone_curves.insert("Root".to_string(), curves);
+
+        let clip = FbxAnimClip {
+            name: "TestClip".to_string(),
+            bone_curves,
+            duration: 2.0,
+            fps: 30.0,
+        };
+
+        // Convert to Timeline
+        let timeline = fbx_animation_to_timeline(&clip, "Root");
+
+        assert_eq!(timeline.name, "TestClip");
+        assert!(timeline.tracks.len() >= 1);
+
+        // Find translate.x track
+        let translate_x = timeline.tracks.iter().find(|t| t.name == "translate.x");
+        assert!(translate_x.is_some());
+        let track = translate_x.unwrap();
+        assert_eq!(track.keyframes.len(), 3);
+        assert_eq!(track.keyframes[0].value, 0.0);
+        assert_eq!(track.keyframes[1].value, 1.0);
+        assert_eq!(track.keyframes[2].value, 2.0);
+
+        // Find rotate.x track (should be in radians)
+        let rotate_x = timeline.tracks.iter().find(|t| t.name == "rotate.x");
+        assert!(rotate_x.is_some());
+        let track = rotate_x.unwrap();
+        assert_eq!(track.keyframes.len(), 2);
+        assert_eq!(track.keyframes[0].value, 0.0);
+        assert!((track.keyframes[1].value - (90.0f32.to_radians())).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_import_fbx_full_geometry_only() {
+        // Export a simple mesh
+        let sphere = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 8,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        let path = std::env::temp_dir().join("alice_fbx_full_test.fbx");
+        export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
+
+        // Import with full parser
+        let imported = import_fbx_full(&path).unwrap();
+
+        // Should have geometry, but no skeleton
+        assert_eq!(imported.mesh.vertex_count(), mesh.vertex_count());
+        assert!(imported.skeleton.is_none());
+        assert_eq!(imported.animations.len(), 0);
+
+        std::fs::remove_file(&path).ok();
     }
 }

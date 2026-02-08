@@ -1,0 +1,12 @@
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.2
+reloadable = true
+
+[libraries]
+macos.debug = "res://addons/alice_sdf/libalice_sdf.dylib"
+macos.release = "res://addons/alice_sdf/libalice_sdf.dylib"
+windows.debug.x86_64 = "res://addons/alice_sdf/alice_sdf.dll"
+windows.release.x86_64 = "res://addons/alice_sdf/alice_sdf.dll"
+linux.debug.x86_64 = "res://addons/alice_sdf/libalice_sdf.so"
+linux.release.x86_64 = "res://addons/alice_sdf/libalice_sdf.so"
