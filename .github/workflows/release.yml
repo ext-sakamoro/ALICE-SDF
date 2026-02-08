@@ -43,6 +43,18 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Create stub for optional local dependency
+        shell: bash
+        run: |
+          mkdir -p ../ALICE-Physics/src
+          echo '[package]
+          name = "alice-physics"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"' > ../ALICE-Physics/Cargo.toml
+          echo "" > ../ALICE-Physics/src/lib.rs
+
       - name: Build release library
         run: cargo build --release --features "ffi,hlsl,glsl" --target ${{ matrix.target }}
 
