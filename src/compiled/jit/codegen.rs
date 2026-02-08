@@ -997,6 +997,157 @@ fn compile_node(
         SdfNode::WithMaterial { child, .. } => {
             compile_node(builder, child, x, y, z, emitter)
         }
+
+        // ============ Implementable Operations ============
+
+        SdfNode::XOR { a, b } => {
+            let da = compile_node(builder, a, x, y, z, emitter)?;
+            let db = compile_node(builder, b, x, y, z, emitter)?;
+            let min_ab = builder.ins().fmin(da, db);
+            let max_ab = builder.ins().fmax(da, db);
+            let neg_max = builder.ins().fneg(max_ab);
+            Ok(builder.ins().fmax(min_ab, neg_max))
+        }
+
+        SdfNode::Morph { a, b, t } => {
+            let da = compile_node(builder, a, x, y, z, emitter)?;
+            let db = compile_node(builder, b, x, y, z, emitter)?;
+            let t_val = emitter.emit(builder, *t);
+            let diff = builder.ins().fsub(db, da);
+            let blend = builder.ins().fmul(diff, t_val);
+            Ok(builder.ins().fadd(da, blend))
+        }
+
+        SdfNode::Pipe { a, b, r } => {
+            let da = compile_node(builder, a, x, y, z, emitter)?;
+            let db = compile_node(builder, b, x, y, z, emitter)?;
+            let r_val = emitter.emit(builder, *r);
+            let len = emit_length2(builder, da, db);
+            Ok(builder.ins().fsub(len, r_val))
+        }
+
+        SdfNode::Engrave { a, b, r } => {
+            let da = compile_node(builder, a, x, y, z, emitter)?;
+            let db = compile_node(builder, b, x, y, z, emitter)?;
+            let r_val = emitter.emit(builder, *r);
+            let abs_db = builder.ins().fabs(db);
+            let sum = builder.ins().fadd(da, r_val);
+            let diff = builder.ins().fsub(sum, abs_db);
+            let half = builder.ins().f32const(0.5);
+            let half_val = builder.ins().fmul(diff, half);
+            Ok(builder.ins().fmax(da, half_val))
+        }
+
+        SdfNode::Groove { a, b, ra, rb } => {
+            let da = compile_node(builder, a, x, y, z, emitter)?;
+            let db = compile_node(builder, b, x, y, z, emitter)?;
+            let ra_val = emitter.emit(builder, *ra);
+            let rb_val = emitter.emit(builder, *rb);
+            let abs_db = builder.ins().fabs(db);
+            let sum = builder.ins().fadd(da, ra_val);
+            let diff = builder.ins().fsub(rb_val, abs_db);
+            let inner = builder.ins().fmin(sum, diff);
+            Ok(builder.ins().fmax(da, inner))
+        }
+
+        SdfNode::Tongue { a, b, ra, rb } => {
+            let da = compile_node(builder, a, x, y, z, emitter)?;
+            let db = compile_node(builder, b, x, y, z, emitter)?;
+            let ra_val = emitter.emit(builder, *ra);
+            let rb_val = emitter.emit(builder, *rb);
+            let abs_db = builder.ins().fabs(db);
+            let sub_ra = builder.ins().fsub(da, ra_val);
+            let sub_rb = builder.ins().fsub(abs_db, rb_val);
+            let inner = builder.ins().fmax(sub_ra, sub_rb);
+            Ok(builder.ins().fmin(da, inner))
+        }
+
+        // ============ Implementable Modifier ============
+
+        SdfNode::OctantMirror { child } => {
+            let ax = builder.ins().fabs(x);
+            let ay = builder.ins().fabs(y);
+            let az = builder.ins().fabs(z);
+            // Sort: x >= y >= z
+            let max_xy = builder.ins().fmax(ax, ay);
+            let min_xy = builder.ins().fmin(ax, ay);
+            let sx = builder.ins().fmax(max_xy, az);
+            let mid_cand = builder.ins().fmin(max_xy, az);
+            let sy = builder.ins().fmax(min_xy, mid_cand);
+            let sz = builder.ins().fmin(min_xy, mid_cand);
+            compile_node(builder, child, sx, sy, sz, emitter)
+        }
+
+        // ============ Unsupported Complex Primitives ============
+
+        SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        => {
+            Err(JitError::UnsupportedNode("ComplexPrimitive".to_string()))
+        }
+
+        // ============ Unsupported Complex Operations/Modifiers ============
+
+        SdfNode::ColumnsUnion { .. }
+        | SdfNode::ColumnsIntersection { .. }
+        | SdfNode::ColumnsSubtraction { .. }
+        | SdfNode::Taper { .. }
+        | SdfNode::Displacement { .. }
+        | SdfNode::PolarRepeat { .. }
+        => {
+            Err(JitError::UnsupportedNode("ComplexModifier".to_string()))
+        }
     }
 }
 
@@ -1500,5 +1651,110 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
         SdfNode::WithMaterial { child, .. } => {
             extract_params_recursive(child, params);
         }
+
+        // Implementable operations
+        SdfNode::XOR { a, b } => {
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+        }
+
+        SdfNode::Morph { a, b, t } => {
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+            params.push(*t);
+        }
+
+        SdfNode::Pipe { a, b, r } => {
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+            params.push(*r);
+        }
+
+        SdfNode::Engrave { a, b, r } => {
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+            params.push(*r);
+        }
+
+        SdfNode::Groove { a, b, ra, rb } => {
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+            params.push(*ra);
+            params.push(*rb);
+        }
+
+        SdfNode::Tongue { a, b, ra, rb } => {
+            extract_params_recursive(a, params);
+            extract_params_recursive(b, params);
+            params.push(*ra);
+            params.push(*rb);
+        }
+
+        // Implementable modifier
+        SdfNode::OctantMirror { child } => {
+            extract_params_recursive(child, params);
+        }
+
+        // Unsupported complex primitives (no params to extract)
+        SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::ColumnsUnion { .. }
+        | SdfNode::ColumnsIntersection { .. }
+        | SdfNode::ColumnsSubtraction { .. }
+        | SdfNode::Taper { .. }
+        | SdfNode::Displacement { .. }
+        | SdfNode::PolarRepeat { .. }
+        => {}
     }
 }
