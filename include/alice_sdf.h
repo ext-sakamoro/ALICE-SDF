@@ -209,6 +209,77 @@ SdfHandle alice_sdf_capsule(float ax, float ay, float az,
  */
 SdfHandle alice_sdf_plane(float nx, float ny, float nz, float distance);
 
+SdfHandle alice_sdf_cone(float radius, float half_height);
+SdfHandle alice_sdf_ellipsoid(float rx, float ry, float rz);
+SdfHandle alice_sdf_rounded_cone(float r1, float r2, float half_height);
+SdfHandle alice_sdf_pyramid(float half_height);
+SdfHandle alice_sdf_octahedron(float size);
+SdfHandle alice_sdf_hex_prism(float hex_radius, float half_height);
+SdfHandle alice_sdf_link(float half_length, float r1, float r2);
+SdfHandle alice_sdf_rounded_box(float hx, float hy, float hz, float round_radius);
+
+/* Advanced */
+SdfHandle alice_sdf_capped_cone(float half_height, float r1, float r2);
+SdfHandle alice_sdf_capped_torus(float major_radius, float minor_radius, float cap_angle);
+SdfHandle alice_sdf_rounded_cylinder(float radius, float round_radius, float half_height);
+SdfHandle alice_sdf_triangular_prism(float width, float half_depth);
+SdfHandle alice_sdf_cut_sphere(float radius, float cut_height);
+SdfHandle alice_sdf_cut_hollow_sphere(float radius, float cut_height, float thickness);
+SdfHandle alice_sdf_death_star(float ra, float rb, float d);
+SdfHandle alice_sdf_solid_angle(float angle, float radius);
+SdfHandle alice_sdf_heart(float size);
+SdfHandle alice_sdf_barrel(float radius, float half_height, float bulge);
+SdfHandle alice_sdf_diamond(float radius, float half_height);
+SdfHandle alice_sdf_egg(float ra, float rb);
+
+/* 2D/Extruded */
+SdfHandle alice_sdf_triangle(float ax, float ay, float az, float bx, float by, float bz, float cx, float cy, float cz);
+SdfHandle alice_sdf_bezier(float ax, float ay, float az, float bx, float by, float bz, float cx, float cy, float cz, float radius);
+SdfHandle alice_sdf_rhombus(float la, float lb, float half_height, float round_radius);
+SdfHandle alice_sdf_horseshoe(float angle, float radius, float half_length, float width, float thickness);
+SdfHandle alice_sdf_vesica(float radius, float half_dist);
+SdfHandle alice_sdf_superellipsoid(float hx, float hy, float hz, float e1, float e2);
+SdfHandle alice_sdf_rounded_x(float width, float round_radius, float half_height);
+SdfHandle alice_sdf_pie(float angle, float radius, float half_height);
+SdfHandle alice_sdf_trapezoid(float r1, float r2, float trap_height, float half_depth);
+SdfHandle alice_sdf_parallelogram(float width, float para_height, float skew, float half_depth);
+SdfHandle alice_sdf_tunnel(float width, float height_2d, float half_depth);
+SdfHandle alice_sdf_uneven_capsule(float r1, float r2, float cap_height, float half_depth);
+SdfHandle alice_sdf_arc_shape(float aperture, float radius, float thickness, float half_height);
+SdfHandle alice_sdf_moon(float d, float ra, float rb, float half_height);
+SdfHandle alice_sdf_cross_shape(float length, float thickness, float round_radius, float half_height);
+SdfHandle alice_sdf_blobby_cross(float size, float half_height);
+SdfHandle alice_sdf_parabola_segment(float width, float para_height, float half_depth);
+SdfHandle alice_sdf_regular_polygon(float radius, float n_sides, float half_height);
+SdfHandle alice_sdf_star_polygon(float radius, float n_points, float m, float half_height);
+SdfHandle alice_sdf_infinite_cylinder(float radius);
+SdfHandle alice_sdf_infinite_cone(float angle);
+
+/* Platonic & Archimedean */
+SdfHandle alice_sdf_tetrahedron(float size);
+SdfHandle alice_sdf_dodecahedron(float radius);
+SdfHandle alice_sdf_icosahedron(float radius);
+SdfHandle alice_sdf_truncated_octahedron(float radius);
+SdfHandle alice_sdf_truncated_icosahedron(float radius);
+
+/* TPMS */
+SdfHandle alice_sdf_gyroid(float scale, float thickness);
+SdfHandle alice_sdf_schwarz_p(float scale, float thickness);
+SdfHandle alice_sdf_diamond_surface(float scale, float thickness);
+SdfHandle alice_sdf_neovius(float scale, float thickness);
+SdfHandle alice_sdf_lidinoid(float scale, float thickness);
+SdfHandle alice_sdf_iwp(float scale, float thickness);
+SdfHandle alice_sdf_frd(float scale, float thickness);
+SdfHandle alice_sdf_fischer_koch_s(float scale, float thickness);
+SdfHandle alice_sdf_pmy(float scale, float thickness);
+
+/* Structural */
+SdfHandle alice_sdf_box_frame(float hx, float hy, float hz, float edge);
+SdfHandle alice_sdf_tube(float outer_radius, float thickness, float half_height);
+SdfHandle alice_sdf_chamfered_cube(float hx, float hy, float hz, float chamfer);
+SdfHandle alice_sdf_stairs(float step_width, float step_height, float num_steps, float half_depth);
+SdfHandle alice_sdf_helix(float major_radius, float minor_radius, float pitch, float half_height);
+
 /* ============================================================================
  * Boolean Operations
  * ============================================================================ */
@@ -240,6 +311,29 @@ SdfHandle alice_sdf_smooth_intersection(SdfHandle a, SdfHandle b, float k);
  */
 SdfHandle alice_sdf_smooth_subtract(SdfHandle a, SdfHandle b, float k);
 
+/** Chamfer operations */
+SdfHandle alice_sdf_chamfer_union(SdfHandle a, SdfHandle b, float radius);
+SdfHandle alice_sdf_chamfer_intersection(SdfHandle a, SdfHandle b, float radius);
+SdfHandle alice_sdf_chamfer_subtract(SdfHandle a, SdfHandle b, float radius);
+
+/** Stairs (terraced) operations */
+SdfHandle alice_sdf_stairs_union(SdfHandle a, SdfHandle b, float radius, float steps);
+SdfHandle alice_sdf_stairs_intersection(SdfHandle a, SdfHandle b, float radius, float steps);
+SdfHandle alice_sdf_stairs_subtract(SdfHandle a, SdfHandle b, float radius, float steps);
+
+/** Columns operations */
+SdfHandle alice_sdf_columns_union(SdfHandle a, SdfHandle b, float radius, float count);
+SdfHandle alice_sdf_columns_intersection(SdfHandle a, SdfHandle b, float radius, float count);
+SdfHandle alice_sdf_columns_subtract(SdfHandle a, SdfHandle b, float radius, float count);
+
+/** Advanced operations */
+SdfHandle alice_sdf_xor(SdfHandle a, SdfHandle b);
+SdfHandle alice_sdf_morph(SdfHandle a, SdfHandle b, float t);
+SdfHandle alice_sdf_pipe(SdfHandle a, SdfHandle b, float radius);
+SdfHandle alice_sdf_engrave(SdfHandle a, SdfHandle b, float depth);
+SdfHandle alice_sdf_groove(SdfHandle a, SdfHandle b, float ra, float rb);
+SdfHandle alice_sdf_tongue(SdfHandle a, SdfHandle b, float ra, float rb);
+
 /* ============================================================================
  * Transforms
  * ============================================================================ */
@@ -258,6 +352,9 @@ SdfHandle alice_sdf_scale(SdfHandle node, float factor);
 
 /** @brief Non-uniform scale an SDF */
 SdfHandle alice_sdf_scale_xyz(SdfHandle node, float x, float y, float z);
+
+/** @brief Non-uniform scale (alias) */
+SdfHandle alice_sdf_scale_non_uniform(SdfHandle node, float x, float y, float z);
 
 /* ============================================================================
  * Modifiers
@@ -292,6 +389,35 @@ SdfHandle alice_sdf_bend(SdfHandle node, float curvature);
  * @param sx,sy,sz Spacing in each axis
  */
 SdfHandle alice_sdf_repeat(SdfHandle node, float sx, float sy, float sz);
+SdfHandle alice_sdf_repeat_finite(SdfHandle node, int32_t cx, int32_t cy, int32_t cz, float sx, float sy, float sz);
+SdfHandle alice_sdf_mirror(SdfHandle node, float mx, float my, float mz);
+SdfHandle alice_sdf_elongate(SdfHandle node, float ex, float ey, float ez);
+SdfHandle alice_sdf_revolution(SdfHandle node, float offset);
+SdfHandle alice_sdf_extrude(SdfHandle node, float half_height);
+SdfHandle alice_sdf_noise(SdfHandle node, float amplitude, float frequency, uint32_t seed);
+SdfHandle alice_sdf_taper(SdfHandle node, float factor);
+SdfHandle alice_sdf_displacement(SdfHandle node, float strength);
+SdfHandle alice_sdf_polar_repeat(SdfHandle node, uint32_t count);
+SdfHandle alice_sdf_octant_mirror(SdfHandle node);
+SdfHandle alice_sdf_sweep_bezier(SdfHandle node, float p0x, float p0y, float p1x, float p1y, float p2x, float p2y);
+SdfHandle alice_sdf_with_material(SdfHandle node, uint32_t material_id);
+
+/* ============================================================================
+ * Mesh Generation & Export
+ * ============================================================================ */
+
+typedef void* MeshHandle;
+#define MESH_HANDLE_NULL ((MeshHandle)0)
+
+MeshHandle alice_sdf_generate_mesh(SdfHandle node, uint32_t resolution, float bounds);
+uint32_t alice_sdf_mesh_vertex_count(MeshHandle mesh);
+uint32_t alice_sdf_mesh_triangle_count(MeshHandle mesh);
+void alice_sdf_free_mesh(MeshHandle mesh);
+SdfResult alice_sdf_export_obj(MeshHandle mesh, SdfHandle node, const char* path, uint32_t resolution, float bounds);
+SdfResult alice_sdf_export_glb(MeshHandle mesh, SdfHandle node, const char* path, uint32_t resolution, float bounds);
+SdfResult alice_sdf_export_usda(MeshHandle mesh, SdfHandle node, const char* path, uint32_t resolution, float bounds);
+SdfResult alice_sdf_export_fbx(MeshHandle mesh, SdfHandle node, const char* path, uint32_t resolution, float bounds);
+SdfResult alice_sdf_export_alembic(MeshHandle mesh, SdfHandle node, const char* path, uint32_t resolution, float bounds);
 
 /* ============================================================================
  * Compilation (Deep Fried)

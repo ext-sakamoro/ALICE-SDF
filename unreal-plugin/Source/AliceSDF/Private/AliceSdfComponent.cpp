@@ -225,6 +225,79 @@ void UAliceSdfComponent::CreateHelix(float MajorRadius, float MinorRadius, float
 { SetNewShape(alice_sdf_helix(MajorRadius, MinorRadius, Pitch, HalfHeight)); }
 
 // ============================================================================
+// Primitives — 2D/Extruded & Additional
+// ============================================================================
+
+void UAliceSdfComponent::CreateTriangle(FVector A, FVector B, FVector C)
+{ SetNewShape(alice_sdf_triangle(A.X, A.Y, A.Z, B.X, B.Y, B.Z, C.X, C.Y, C.Z)); }
+
+void UAliceSdfComponent::CreateBezier(FVector A, FVector B, FVector C, float Radius)
+{ SetNewShape(alice_sdf_bezier(A.X, A.Y, A.Z, B.X, B.Y, B.Z, C.X, C.Y, C.Z, Radius)); }
+
+void UAliceSdfComponent::CreateCutHollowSphere(float Radius, float CutHeight, float Thickness)
+{ SetNewShape(alice_sdf_cut_hollow_sphere(Radius, CutHeight, Thickness)); }
+
+void UAliceSdfComponent::CreateSolidAngle(float Angle, float Radius)
+{ SetNewShape(alice_sdf_solid_angle(Angle, Radius)); }
+
+void UAliceSdfComponent::CreateRhombus(float La, float Lb, float HalfHeight, float RoundRadius)
+{ SetNewShape(alice_sdf_rhombus(La, Lb, HalfHeight, RoundRadius)); }
+
+void UAliceSdfComponent::CreateHorseshoe(float Angle, float Radius, float HalfLength, float Width, float Thickness)
+{ SetNewShape(alice_sdf_horseshoe(Angle, Radius, HalfLength, Width, Thickness)); }
+
+void UAliceSdfComponent::CreateVesica(float Radius, float HalfDist)
+{ SetNewShape(alice_sdf_vesica(Radius, HalfDist)); }
+
+void UAliceSdfComponent::CreateInfiniteCylinder(float Radius)
+{ SetNewShape(alice_sdf_infinite_cylinder(Radius)); }
+
+void UAliceSdfComponent::CreateInfiniteCone(float Angle)
+{ SetNewShape(alice_sdf_infinite_cone(Angle)); }
+
+void UAliceSdfComponent::CreateSuperEllipsoid(FVector H, float E1, float E2)
+{ SetNewShape(alice_sdf_superellipsoid(H.X, H.Y, H.Z, E1, E2)); }
+
+void UAliceSdfComponent::CreateRoundedX(float Width, float RoundRadius, float HalfHeight)
+{ SetNewShape(alice_sdf_rounded_x(Width, RoundRadius, HalfHeight)); }
+
+void UAliceSdfComponent::CreatePie(float Angle, float Radius, float HalfHeight)
+{ SetNewShape(alice_sdf_pie(Angle, Radius, HalfHeight)); }
+
+void UAliceSdfComponent::CreateTrapezoid(float R1, float R2, float TrapHeight, float HalfDepth)
+{ SetNewShape(alice_sdf_trapezoid(R1, R2, TrapHeight, HalfDepth)); }
+
+void UAliceSdfComponent::CreateParallelogram(float Width, float ParaHeight, float Skew, float HalfDepth)
+{ SetNewShape(alice_sdf_parallelogram(Width, ParaHeight, Skew, HalfDepth)); }
+
+void UAliceSdfComponent::CreateTunnel(float Width, float Height2D, float HalfDepth)
+{ SetNewShape(alice_sdf_tunnel(Width, Height2D, HalfDepth)); }
+
+void UAliceSdfComponent::CreateUnevenCapsule(float R1, float R2, float CapHeight, float HalfDepth)
+{ SetNewShape(alice_sdf_uneven_capsule(R1, R2, CapHeight, HalfDepth)); }
+
+void UAliceSdfComponent::CreateArcShape(float Aperture, float Radius, float Thickness, float HalfHeight)
+{ SetNewShape(alice_sdf_arc_shape(Aperture, Radius, Thickness, HalfHeight)); }
+
+void UAliceSdfComponent::CreateMoon(float D, float Ra, float Rb, float HalfHeight)
+{ SetNewShape(alice_sdf_moon(D, Ra, Rb, HalfHeight)); }
+
+void UAliceSdfComponent::CreateCrossShape(float Length, float Thickness, float RoundRadius, float HalfHeight)
+{ SetNewShape(alice_sdf_cross_shape(Length, Thickness, RoundRadius, HalfHeight)); }
+
+void UAliceSdfComponent::CreateBlobbyCross(float Size, float HalfHeight)
+{ SetNewShape(alice_sdf_blobby_cross(Size, HalfHeight)); }
+
+void UAliceSdfComponent::CreateParabolaSegment(float Width, float ParaHeight, float HalfDepth)
+{ SetNewShape(alice_sdf_parabola_segment(Width, ParaHeight, HalfDepth)); }
+
+void UAliceSdfComponent::CreateRegularPolygon(float Radius, float NSides, float HalfHeight)
+{ SetNewShape(alice_sdf_regular_polygon(Radius, NSides, HalfHeight)); }
+
+void UAliceSdfComponent::CreateStarPolygon(float Radius, float NPoints, float M, float HalfHeight)
+{ SetNewShape(alice_sdf_star_polygon(Radius, NPoints, M, HalfHeight)); }
+
+// ============================================================================
 // Boolean Operations
 // ============================================================================
 
@@ -390,6 +463,12 @@ void UAliceSdfComponent::ScaleSdfNonUniform(FVector S)
 {
 	if (!SdfNodeHandle) return;
 	ApplyModifier(alice_sdf_scale_non_uniform(SdfNodeHandle, S.X, S.Y, S.Z));
+}
+
+void UAliceSdfComponent::RotateEulerSdf(FVector EulerRadians)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_rotate_euler(SdfNodeHandle, EulerRadians.X, EulerRadians.Y, EulerRadians.Z));
 }
 
 // ============================================================================

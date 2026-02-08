@@ -1,6 +1,6 @@
 # ALICE-SDF — Unreal Engine 5 Plugin
 
-68 primitives, 24 CSG operations, 17 modifiers, HLSL generation, mesh export.
+66 primitives, 24 CSG operations, 17 modifiers, HLSL generation, mesh export.
 Drop into your UE5 project and start using SDFs immediately.
 
 ## Quick Start (No Rust Required)
@@ -130,21 +130,24 @@ Check **Output Log** for results.
 
 ---
 
-## Available Primitives (68)
+## Available Primitives (66)
 
-### Basic
+### Basic (14)
 Sphere, Box, Cylinder, Torus, Capsule, Plane, Cone, Ellipsoid, RoundedCone, Pyramid, Octahedron, HexPrism, Link, RoundedBox
 
-### Advanced
-CappedCone, CappedTorus, RoundedCylinder, TriangularPrism, CutSphere, DeathStar, Heart, Barrel, Diamond, Egg
+### Advanced (12)
+CappedCone, CappedTorus, RoundedCylinder, TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle, Heart, Barrel, Diamond, Egg
 
-### Platonic & Archimedean
+### 2D/Extruded (23)
+Triangle, Bezier, Rhombus, Horseshoe, Vesica, SuperEllipsoid, RoundedX, Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment, RegularPolygon, StarPolygon, InfiniteCylinder, InfiniteCone, RegularPolygon, StarPolygon
+
+### Platonic & Archimedean (5)
 Tetrahedron, Dodecahedron, Icosahedron, TruncatedOctahedron, TruncatedIcosahedron
 
 ### TPMS (9 surfaces)
 Gyroid, SchwarzP, DiamondSurface, Neovius, Lidinoid, IWP, FRD, FischerKochS, PMY
 
-### Structural
+### Structural (5)
 BoxFrame, Tube, ChamferedCube, Stairs, Helix
 
 ---

@@ -12,7 +12,7 @@
  * UAliceSdfComponent
  *
  * Full-featured SDF component for Unreal Engine 5.
- * 68 primitives, 24 CSG operations, 17 modifiers, HLSL generation, mesh export.
+ * 66 primitives, 24 CSG operations, 17 modifiers, HLSL generation, mesh export.
  *
  * Usage:
  *   1. Add this component to any Actor
@@ -184,6 +184,79 @@ public:
 	void CreateHelix(float MajorRadius = 1.0f, float MinorRadius = 0.1f, float Pitch = 0.5f, float HalfHeight = 2.0f);
 
 	// ========================================================================
+	// Primitives — 2D/Extruded & Additional
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateTriangle(FVector A, FVector B, FVector C);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateBezier(FVector A, FVector B, FVector C, float Radius = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateCutHollowSphere(float Radius = 1.0f, float CutHeight = 0.3f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateSolidAngle(float Angle = 0.5f, float Radius = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateRhombus(float La = 0.5f, float Lb = 0.3f, float HalfHeight = 0.5f, float RoundRadius = 0.05f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateHorseshoe(float Angle = 1.0f, float Radius = 0.5f, float HalfLength = 0.3f, float Width = 0.1f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateVesica(float Radius = 0.5f, float HalfDist = 0.3f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateInfiniteCylinder(float Radius = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateInfiniteCone(float Angle = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateSuperEllipsoid(FVector HalfExtents, float E1 = 1.0f, float E2 = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateRoundedX(float Width = 0.5f, float RoundRadius = 0.1f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreatePie(float Angle = 1.0f, float Radius = 1.0f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateTrapezoid(float R1 = 0.5f, float R2 = 0.3f, float TrapHeight = 0.5f, float HalfDepth = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateParallelogram(float Width = 0.5f, float ParaHeight = 0.5f, float Skew = 0.2f, float HalfDepth = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateTunnel(float Width = 0.5f, float Height2D = 0.5f, float HalfDepth = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateUnevenCapsule(float R1 = 0.3f, float R2 = 0.15f, float CapHeight = 0.5f, float HalfDepth = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateArcShape(float Aperture = 1.0f, float Radius = 0.5f, float Thickness = 0.1f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateMoon(float D = 0.5f, float Ra = 0.5f, float Rb = 0.3f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateCrossShape(float Length = 0.5f, float Thickness = 0.2f, float RoundRadius = 0.05f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateBlobbyCross(float Size = 0.5f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateParabolaSegment(float Width = 0.5f, float ParaHeight = 0.5f, float HalfDepth = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateRegularPolygon(float Radius = 0.5f, float NSides = 6.0f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|2D")
+	void CreateStarPolygon(float Radius = 0.5f, float NPoints = 5.0f, float M = 2.0f, float HalfHeight = 0.5f);
+
+	// ========================================================================
 	// Boolean Operations — Standard
 	// ========================================================================
 
@@ -291,6 +364,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
 	void ScaleSdfNonUniform(FVector Scale);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
+	void RotateEulerSdf(FVector EulerRadians);
 
 	// ========================================================================
 	// Modifiers
