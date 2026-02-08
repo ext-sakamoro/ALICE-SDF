@@ -19,6 +19,10 @@ void UAliceSdfComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+// ============================================================================
+// Internal Helpers
+// ============================================================================
+
 void UAliceSdfComponent::FreeHandles()
 {
 	if (CompiledSdfHandle)
@@ -37,166 +41,324 @@ void UAliceSdfComponent::FreeHandles()
 
 void UAliceSdfComponent::UpdateNodeCount()
 {
-	if (SdfNodeHandle)
-	{
-		NodeCount = static_cast<int32>(alice_sdf_node_count(SdfNodeHandle));
-	}
-	else
-	{
-		NodeCount = 0;
-	}
+	NodeCount = SdfNodeHandle ? static_cast<int32>(alice_sdf_node_count(SdfNodeHandle)) : 0;
 }
 
 void UAliceSdfComponent::AutoCompileIfNeeded()
 {
-	if (bAutoCompile && SdfNodeHandle)
-	{
-		Compile();
-	}
+	if (bAutoCompile && SdfNodeHandle) { Compile(); }
+}
+
+void UAliceSdfComponent::SetNewShape(SdfHandle NewHandle)
+{
+	FreeHandles();
+	SdfNodeHandle = NewHandle;
+	UpdateNodeCount();
+	AutoCompileIfNeeded();
+}
+
+void UAliceSdfComponent::ApplyModifier(SdfHandle NewHandle)
+{
+	if (!NewHandle) return;
+	alice_sdf_free(SdfNodeHandle);
+	SdfNodeHandle = NewHandle;
+	UpdateNodeCount();
+	AutoCompileIfNeeded();
+}
+
+void UAliceSdfComponent::ApplyBinaryOp(UAliceSdfComponent* Other, SdfHandle Result)
+{
+	if (!Result) return;
+	alice_sdf_free(SdfNodeHandle);
+	SdfNodeHandle = Result;
+	UpdateNodeCount();
+	AutoCompileIfNeeded();
 }
 
 // ============================================================================
-// Primitives
+// Primitives — Basic
 // ============================================================================
 
 void UAliceSdfComponent::CreateSphere(float Radius)
-{
-	FreeHandles();
-	SdfNodeHandle = alice_sdf_sphere(Radius);
-	UpdateNodeCount();
-	AutoCompileIfNeeded();
-}
+{ SetNewShape(alice_sdf_sphere(Radius)); }
 
-void UAliceSdfComponent::CreateBox(FVector HalfExtents)
-{
-	FreeHandles();
-	SdfNodeHandle = alice_sdf_box(HalfExtents.X, HalfExtents.Y, HalfExtents.Z);
-	UpdateNodeCount();
-	AutoCompileIfNeeded();
-}
+void UAliceSdfComponent::CreateBox(FVector H)
+{ SetNewShape(alice_sdf_box(H.X, H.Y, H.Z)); }
 
 void UAliceSdfComponent::CreateCylinder(float Radius, float HalfHeight)
-{
-	FreeHandles();
-	SdfNodeHandle = alice_sdf_cylinder(Radius, HalfHeight);
-	UpdateNodeCount();
-	AutoCompileIfNeeded();
-}
+{ SetNewShape(alice_sdf_cylinder(Radius, HalfHeight)); }
 
 void UAliceSdfComponent::CreateTorus(float MajorRadius, float MinorRadius)
-{
-	FreeHandles();
-	SdfNodeHandle = alice_sdf_torus(MajorRadius, MinorRadius);
-	UpdateNodeCount();
-	AutoCompileIfNeeded();
-}
+{ SetNewShape(alice_sdf_torus(MajorRadius, MinorRadius)); }
 
-void UAliceSdfComponent::CreateCapsule(FVector PointA, FVector PointB, float Radius)
-{
-	FreeHandles();
-	SdfNodeHandle = alice_sdf_capsule(
-		PointA.X, PointA.Y, PointA.Z,
-		PointB.X, PointB.Y, PointB.Z,
-		Radius
-	);
-	UpdateNodeCount();
-	AutoCompileIfNeeded();
-}
+void UAliceSdfComponent::CreateCapsule(FVector A, FVector B, float Radius)
+{ SetNewShape(alice_sdf_capsule(A.X, A.Y, A.Z, B.X, B.Y, B.Z, Radius)); }
 
 void UAliceSdfComponent::CreatePlane(FVector Normal, float Distance)
-{
-	FreeHandles();
-	SdfNodeHandle = alice_sdf_plane(Normal.X, Normal.Y, Normal.Z, Distance);
-	UpdateNodeCount();
-	AutoCompileIfNeeded();
-}
+{ SetNewShape(alice_sdf_plane(Normal.X, Normal.Y, Normal.Z, Distance)); }
+
+void UAliceSdfComponent::CreateCone(float Radius, float HalfHeight)
+{ SetNewShape(alice_sdf_cone(Radius, HalfHeight)); }
+
+void UAliceSdfComponent::CreateEllipsoid(FVector Radii)
+{ SetNewShape(alice_sdf_ellipsoid(Radii.X, Radii.Y, Radii.Z)); }
+
+void UAliceSdfComponent::CreateRoundedCone(float R1, float R2, float HalfHeight)
+{ SetNewShape(alice_sdf_rounded_cone(R1, R2, HalfHeight)); }
+
+void UAliceSdfComponent::CreatePyramid(float HalfHeight)
+{ SetNewShape(alice_sdf_pyramid(HalfHeight)); }
+
+void UAliceSdfComponent::CreateOctahedron(float Size)
+{ SetNewShape(alice_sdf_octahedron(Size)); }
+
+void UAliceSdfComponent::CreateHexPrism(float HexRadius, float HalfHeight)
+{ SetNewShape(alice_sdf_hex_prism(HexRadius, HalfHeight)); }
+
+void UAliceSdfComponent::CreateLink(float HalfLength, float R1, float R2)
+{ SetNewShape(alice_sdf_link(HalfLength, R1, R2)); }
+
+void UAliceSdfComponent::CreateRoundedBox(FVector H, float RoundRadius)
+{ SetNewShape(alice_sdf_rounded_box(H.X, H.Y, H.Z, RoundRadius)); }
+
+// ============================================================================
+// Primitives — Advanced
+// ============================================================================
+
+void UAliceSdfComponent::CreateCappedCone(float HalfHeight, float R1, float R2)
+{ SetNewShape(alice_sdf_capped_cone(HalfHeight, R1, R2)); }
+
+void UAliceSdfComponent::CreateCappedTorus(float MajorRadius, float MinorRadius, float CapAngle)
+{ SetNewShape(alice_sdf_capped_torus(MajorRadius, MinorRadius, CapAngle)); }
+
+void UAliceSdfComponent::CreateRoundedCylinder(float Radius, float RoundRadius, float HalfHeight)
+{ SetNewShape(alice_sdf_rounded_cylinder(Radius, RoundRadius, HalfHeight)); }
+
+void UAliceSdfComponent::CreateTriangularPrism(float Width, float HalfDepth)
+{ SetNewShape(alice_sdf_triangular_prism(Width, HalfDepth)); }
+
+void UAliceSdfComponent::CreateCutSphere(float Radius, float CutHeight)
+{ SetNewShape(alice_sdf_cut_sphere(Radius, CutHeight)); }
+
+void UAliceSdfComponent::CreateDeathStar(float Ra, float Rb, float D)
+{ SetNewShape(alice_sdf_death_star(Ra, Rb, D)); }
+
+void UAliceSdfComponent::CreateHeart(float Size)
+{ SetNewShape(alice_sdf_heart(Size)); }
+
+void UAliceSdfComponent::CreateBarrel(float Radius, float HalfHeight, float Bulge)
+{ SetNewShape(alice_sdf_barrel(Radius, HalfHeight, Bulge)); }
+
+void UAliceSdfComponent::CreateDiamond(float Radius, float HalfHeight)
+{ SetNewShape(alice_sdf_diamond(Radius, HalfHeight)); }
+
+void UAliceSdfComponent::CreateEgg(float Ra, float Rb)
+{ SetNewShape(alice_sdf_egg(Ra, Rb)); }
+
+// ============================================================================
+// Primitives — Platonic & Archimedean
+// ============================================================================
+
+void UAliceSdfComponent::CreateTetrahedron(float Size)
+{ SetNewShape(alice_sdf_tetrahedron(Size)); }
+
+void UAliceSdfComponent::CreateDodecahedron(float Radius)
+{ SetNewShape(alice_sdf_dodecahedron(Radius)); }
+
+void UAliceSdfComponent::CreateIcosahedron(float Radius)
+{ SetNewShape(alice_sdf_icosahedron(Radius)); }
+
+void UAliceSdfComponent::CreateTruncatedOctahedron(float Radius)
+{ SetNewShape(alice_sdf_truncated_octahedron(Radius)); }
+
+void UAliceSdfComponent::CreateTruncatedIcosahedron(float Radius)
+{ SetNewShape(alice_sdf_truncated_icosahedron(Radius)); }
+
+// ============================================================================
+// Primitives — TPMS
+// ============================================================================
+
+void UAliceSdfComponent::CreateGyroid(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_gyroid(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreateSchwarzP(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_schwarz_p(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreateDiamondSurface(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_diamond_surface(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreateNeovius(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_neovius(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreateLidinoid(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_lidinoid(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreateIWP(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_iwp(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreateFRD(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_frd(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreateFischerKochS(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_fischer_koch_s(Scale, Thickness)); }
+
+void UAliceSdfComponent::CreatePMY(float Scale, float Thickness)
+{ SetNewShape(alice_sdf_pmy(Scale, Thickness)); }
+
+// ============================================================================
+// Primitives — Structural
+// ============================================================================
+
+void UAliceSdfComponent::CreateBoxFrame(FVector H, float Edge)
+{ SetNewShape(alice_sdf_box_frame(H.X, H.Y, H.Z, Edge)); }
+
+void UAliceSdfComponent::CreateTube(float OuterRadius, float Thickness, float HalfHeight)
+{ SetNewShape(alice_sdf_tube(OuterRadius, Thickness, HalfHeight)); }
+
+void UAliceSdfComponent::CreateChamferedCube(FVector H, float Chamfer)
+{ SetNewShape(alice_sdf_chamfered_cube(H.X, H.Y, H.Z, Chamfer)); }
+
+void UAliceSdfComponent::CreateStairs(float StepWidth, float StepHeight, float NumSteps, float HalfDepth)
+{ SetNewShape(alice_sdf_stairs(StepWidth, StepHeight, NumSteps, HalfDepth)); }
+
+void UAliceSdfComponent::CreateHelix(float MajorRadius, float MinorRadius, float Pitch, float HalfHeight)
+{ SetNewShape(alice_sdf_helix(MajorRadius, MinorRadius, Pitch, HalfHeight)); }
 
 // ============================================================================
 // Boolean Operations
 // ============================================================================
 
+#define ALICE_BINARY_OP(Method, FfiFunc, ...) \
+void UAliceSdfComponent::Method(UAliceSdfComponent* Other __VA_OPT__(,) __VA_ARGS__) \
+{ \
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return; \
+	ApplyBinaryOp(Other, FfiFunc); \
+}
+
 void UAliceSdfComponent::UnionWith(UAliceSdfComponent* Other)
 {
 	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_union(SdfNodeHandle, Other->SdfNodeHandle);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyBinaryOp(Other, alice_sdf_union(SdfNodeHandle, Other->SdfNodeHandle));
 }
 
 void UAliceSdfComponent::IntersectWith(UAliceSdfComponent* Other)
 {
 	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_intersection(SdfNodeHandle, Other->SdfNodeHandle);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyBinaryOp(Other, alice_sdf_intersection(SdfNodeHandle, Other->SdfNodeHandle));
 }
 
 void UAliceSdfComponent::SubtractFrom(UAliceSdfComponent* Other)
 {
 	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_subtract(SdfNodeHandle, Other->SdfNodeHandle);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyBinaryOp(Other, alice_sdf_subtract(SdfNodeHandle, Other->SdfNodeHandle));
 }
 
-void UAliceSdfComponent::SmoothUnionWith(UAliceSdfComponent* Other, float Smoothness)
+void UAliceSdfComponent::SmoothUnionWith(UAliceSdfComponent* Other, float K)
 {
 	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_smooth_union(SdfNodeHandle, Other->SdfNodeHandle, Smoothness);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyBinaryOp(Other, alice_sdf_smooth_union(SdfNodeHandle, Other->SdfNodeHandle, K));
 }
 
-void UAliceSdfComponent::SmoothIntersectWith(UAliceSdfComponent* Other, float Smoothness)
+void UAliceSdfComponent::SmoothIntersectWith(UAliceSdfComponent* Other, float K)
 {
 	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_smooth_intersection(SdfNodeHandle, Other->SdfNodeHandle, Smoothness);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyBinaryOp(Other, alice_sdf_smooth_intersection(SdfNodeHandle, Other->SdfNodeHandle, K));
 }
 
-void UAliceSdfComponent::SmoothSubtractFrom(UAliceSdfComponent* Other, float Smoothness)
+void UAliceSdfComponent::SmoothSubtractFrom(UAliceSdfComponent* Other, float K)
 {
 	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_smooth_subtract(SdfNodeHandle, Other->SdfNodeHandle, K));
+}
 
-	SdfHandle Result = alice_sdf_smooth_subtract(SdfNodeHandle, Other->SdfNodeHandle, Smoothness);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+void UAliceSdfComponent::ChamferUnionWith(UAliceSdfComponent* Other, float R)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_chamfer_union(SdfNodeHandle, Other->SdfNodeHandle, R));
+}
+
+void UAliceSdfComponent::ChamferIntersectWith(UAliceSdfComponent* Other, float R)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_chamfer_intersection(SdfNodeHandle, Other->SdfNodeHandle, R));
+}
+
+void UAliceSdfComponent::ChamferSubtractFrom(UAliceSdfComponent* Other, float R)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_chamfer_subtract(SdfNodeHandle, Other->SdfNodeHandle, R));
+}
+
+void UAliceSdfComponent::StairsUnionWith(UAliceSdfComponent* Other, float R, float N)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_stairs_union(SdfNodeHandle, Other->SdfNodeHandle, R, N));
+}
+
+void UAliceSdfComponent::StairsIntersectWith(UAliceSdfComponent* Other, float R, float N)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_stairs_intersection(SdfNodeHandle, Other->SdfNodeHandle, R, N));
+}
+
+void UAliceSdfComponent::StairsSubtractFrom(UAliceSdfComponent* Other, float R, float N)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_stairs_subtract(SdfNodeHandle, Other->SdfNodeHandle, R, N));
+}
+
+void UAliceSdfComponent::ColumnsUnionWith(UAliceSdfComponent* Other, float R, float N)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_columns_union(SdfNodeHandle, Other->SdfNodeHandle, R, N));
+}
+
+void UAliceSdfComponent::ColumnsIntersectWith(UAliceSdfComponent* Other, float R, float N)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_columns_intersection(SdfNodeHandle, Other->SdfNodeHandle, R, N));
+}
+
+void UAliceSdfComponent::ColumnsSubtractFrom(UAliceSdfComponent* Other, float R, float N)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_columns_subtract(SdfNodeHandle, Other->SdfNodeHandle, R, N));
+}
+
+void UAliceSdfComponent::XorWith(UAliceSdfComponent* Other)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_xor(SdfNodeHandle, Other->SdfNodeHandle));
+}
+
+void UAliceSdfComponent::MorphWith(UAliceSdfComponent* Other, float T)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_morph(SdfNodeHandle, Other->SdfNodeHandle, T));
+}
+
+void UAliceSdfComponent::PipeWith(UAliceSdfComponent* Other, float R)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_pipe(SdfNodeHandle, Other->SdfNodeHandle, R));
+}
+
+void UAliceSdfComponent::EngraveWith(UAliceSdfComponent* Other, float R)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_engrave(SdfNodeHandle, Other->SdfNodeHandle, R));
+}
+
+void UAliceSdfComponent::GrooveWith(UAliceSdfComponent* Other, float Ra, float Rb)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_groove(SdfNodeHandle, Other->SdfNodeHandle, Ra, Rb));
+}
+
+void UAliceSdfComponent::TongueWith(UAliceSdfComponent* Other, float Ra, float Rb)
+{
+	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return;
+	ApplyBinaryOp(Other, alice_sdf_tongue(SdfNodeHandle, Other->SdfNodeHandle, Ra, Rb));
 }
 
 // ============================================================================
@@ -206,48 +368,28 @@ void UAliceSdfComponent::SmoothSubtractFrom(UAliceSdfComponent* Other, float Smo
 void UAliceSdfComponent::TranslateSdf(FVector Offset)
 {
 	if (!SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_translate(SdfNodeHandle, Offset.X, Offset.Y, Offset.Z);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyModifier(alice_sdf_translate(SdfNodeHandle, Offset.X, Offset.Y, Offset.Z));
 }
 
 void UAliceSdfComponent::RotateSdf(FRotator Rotation)
 {
 	if (!SdfNodeHandle) return;
-
-	// Convert degrees to radians
 	float Rx = FMath::DegreesToRadians(Rotation.Pitch);
 	float Ry = FMath::DegreesToRadians(Rotation.Yaw);
 	float Rz = FMath::DegreesToRadians(Rotation.Roll);
-
-	SdfHandle Result = alice_sdf_rotate_euler(SdfNodeHandle, Rx, Ry, Rz);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyModifier(alice_sdf_rotate_euler(SdfNodeHandle, Rx, Ry, Rz));
 }
 
 void UAliceSdfComponent::ScaleSdf(float Factor)
 {
 	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_scale(SdfNodeHandle, Factor));
+}
 
-	SdfHandle Result = alice_sdf_scale(SdfNodeHandle, Factor);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+void UAliceSdfComponent::ScaleSdfNonUniform(FVector S)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_scale_non_uniform(SdfNodeHandle, S.X, S.Y, S.Z));
 }
 
 // ============================================================================
@@ -257,71 +399,103 @@ void UAliceSdfComponent::ScaleSdf(float Factor)
 void UAliceSdfComponent::ApplyRound(float Radius)
 {
 	if (!SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_round(SdfNodeHandle, Radius);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyModifier(alice_sdf_round(SdfNodeHandle, Radius));
 }
 
 void UAliceSdfComponent::ApplyOnion(float Thickness)
 {
 	if (!SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_onion(SdfNodeHandle, Thickness);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyModifier(alice_sdf_onion(SdfNodeHandle, Thickness));
 }
 
 void UAliceSdfComponent::ApplyTwist(float Strength)
 {
 	if (!SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_twist(SdfNodeHandle, Strength);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyModifier(alice_sdf_twist(SdfNodeHandle, Strength));
 }
 
 void UAliceSdfComponent::ApplyBend(float Curvature)
 {
 	if (!SdfNodeHandle) return;
-
-	SdfHandle Result = alice_sdf_bend(SdfNodeHandle, Curvature);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+	ApplyModifier(alice_sdf_bend(SdfNodeHandle, Curvature));
 }
 
 void UAliceSdfComponent::ApplyRepeat(FVector Spacing)
 {
 	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_repeat(SdfNodeHandle, Spacing.X, Spacing.Y, Spacing.Z));
+}
 
-	SdfHandle Result = alice_sdf_repeat(SdfNodeHandle, Spacing.X, Spacing.Y, Spacing.Z);
-	if (Result)
-	{
-		alice_sdf_free(SdfNodeHandle);
-		SdfNodeHandle = Result;
-		UpdateNodeCount();
-		AutoCompileIfNeeded();
-	}
+void UAliceSdfComponent::ApplyRepeatFinite(FIntVector Count, FVector Spacing)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_repeat_finite(SdfNodeHandle, Count.X, Count.Y, Count.Z, Spacing.X, Spacing.Y, Spacing.Z));
+}
+
+void UAliceSdfComponent::ApplyMirror(bool X, bool Y, bool Z)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_mirror(SdfNodeHandle, X ? 1 : 0, Y ? 1 : 0, Z ? 1 : 0));
+}
+
+void UAliceSdfComponent::ApplyElongate(FVector Amount)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_elongate(SdfNodeHandle, Amount.X, Amount.Y, Amount.Z));
+}
+
+void UAliceSdfComponent::ApplyRevolution(float Offset)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_revolution(SdfNodeHandle, Offset));
+}
+
+void UAliceSdfComponent::ApplyExtrude(float HalfHeight)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_extrude(SdfNodeHandle, HalfHeight));
+}
+
+void UAliceSdfComponent::ApplyNoise(float Amplitude, float Frequency, int32 Seed)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_noise(SdfNodeHandle, Amplitude, Frequency, static_cast<uint32>(Seed)));
+}
+
+void UAliceSdfComponent::ApplyTaper(float Factor)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_taper(SdfNodeHandle, Factor));
+}
+
+void UAliceSdfComponent::ApplyDisplacement(float Strength)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_displacement(SdfNodeHandle, Strength));
+}
+
+void UAliceSdfComponent::ApplyPolarRepeat(int32 Count)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_polar_repeat(SdfNodeHandle, static_cast<uint32>(Count)));
+}
+
+void UAliceSdfComponent::ApplyOctantMirror()
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_octant_mirror(SdfNodeHandle));
+}
+
+void UAliceSdfComponent::ApplySweepBezier(FVector2D P0, FVector2D P1, FVector2D P2)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_sweep_bezier(SdfNodeHandle, P0.X, P0.Y, P1.X, P1.Y, P2.X, P2.Y));
+}
+
+void UAliceSdfComponent::SetMaterialId(int32 MaterialId)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_with_material(SdfNodeHandle, static_cast<uint32>(MaterialId)));
 }
 
 // ============================================================================
@@ -345,7 +519,6 @@ bool UAliceSdfComponent::Compile()
 
 float UAliceSdfComponent::EvalDistance(FVector WorldPosition) const
 {
-	// Convert world to local space
 	FVector LocalPos = GetComponentTransform().InverseTransformPosition(WorldPosition);
 	return EvalDistanceLocal(LocalPos);
 }
@@ -354,13 +527,11 @@ float UAliceSdfComponent::EvalDistanceLocal(FVector LocalPosition) const
 {
 	if (bIsCompiled && CompiledSdfHandle)
 	{
-		return alice_sdf_eval_compiled(CompiledSdfHandle,
-			LocalPosition.X, LocalPosition.Y, LocalPosition.Z);
+		return alice_sdf_eval_compiled(CompiledSdfHandle, LocalPosition.X, LocalPosition.Y, LocalPosition.Z);
 	}
 	if (SdfNodeHandle)
 	{
-		return alice_sdf_eval(SdfNodeHandle,
-			LocalPosition.X, LocalPosition.Y, LocalPosition.Z);
+		return alice_sdf_eval(SdfNodeHandle, LocalPosition.X, LocalPosition.Y, LocalPosition.Z);
 	}
 	return MAX_FLT;
 }
@@ -369,12 +540,10 @@ TArray<float> UAliceSdfComponent::EvalDistanceBatch(const TArray<FVector>& Point
 {
 	TArray<float> Distances;
 	Distances.SetNum(Points.Num());
-
 	if (Points.Num() == 0) return Distances;
 
 	if (bIsCompiled && CompiledSdfHandle)
 	{
-		// Convert FVector array to flat float array
 		TArray<float> FlatPoints;
 		FlatPoints.SetNum(Points.Num() * 3);
 		for (int32 i = 0; i < Points.Num(); i++)
@@ -384,13 +553,9 @@ TArray<float> UAliceSdfComponent::EvalDistanceBatch(const TArray<FVector>& Point
 			FlatPoints[i * 3 + 1] = LocalPos.Y;
 			FlatPoints[i * 3 + 2] = LocalPos.Z;
 		}
-
 		alice_sdf_eval_compiled_batch(
-			CompiledSdfHandle,
-			FlatPoints.GetData(),
-			Distances.GetData(),
-			static_cast<uint32>(Points.Num())
-		);
+			CompiledSdfHandle, FlatPoints.GetData(), Distances.GetData(),
+			static_cast<uint32>(Points.Num()));
 	}
 	else
 	{
@@ -399,7 +564,6 @@ TArray<float> UAliceSdfComponent::EvalDistanceBatch(const TArray<FVector>& Point
 			Distances[i] = EvalDistance(Points[i]);
 		}
 	}
-
 	return Distances;
 }
 
@@ -442,25 +606,53 @@ FString UAliceSdfComponent::GenerateWgsl() const
 }
 
 // ============================================================================
+// Mesh Export
+// ============================================================================
+
+bool UAliceSdfComponent::ExportObj(const FString& FilePath, int32 Resolution, float Bounds)
+{
+	if (!SdfNodeHandle) return false;
+	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
+	return alice_sdf_export_obj(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+}
+
+bool UAliceSdfComponent::ExportGlb(const FString& FilePath, int32 Resolution, float Bounds)
+{
+	if (!SdfNodeHandle) return false;
+	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
+	return alice_sdf_export_glb(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+}
+
+bool UAliceSdfComponent::ExportUsda(const FString& FilePath, int32 Resolution, float Bounds)
+{
+	if (!SdfNodeHandle) return false;
+	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
+	return alice_sdf_export_usda(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+}
+
+bool UAliceSdfComponent::ExportFbx(const FString& FilePath, int32 Resolution, float Bounds)
+{
+	if (!SdfNodeHandle) return false;
+	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
+	return alice_sdf_export_fbx(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+}
+
+// ============================================================================
 // File I/O
 // ============================================================================
 
 bool UAliceSdfComponent::SaveToFile(const FString& FilePath)
 {
 	if (!SdfNodeHandle) return false;
-
 	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
-	SdfResult Result = alice_sdf_save(SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath));
-	return Result == SdfResult_Ok;
+	return alice_sdf_save(SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath)) == SdfResult_Ok;
 }
 
 bool UAliceSdfComponent::LoadFromFile(const FString& FilePath)
 {
 	FreeHandles();
-
 	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
 	SdfNodeHandle = alice_sdf_load(TCHAR_TO_UTF8(*AbsPath));
-
 	if (SdfNodeHandle)
 	{
 		UpdateNodeCount();

@@ -1,67 +1,81 @@
-# ALICE-SDF Unreal Engine 5 Plugin
+# ALICE-SDF — Unreal Engine 5 Plugin
 
-Integrate ALICE-SDF with Unreal Engine 5 for real-time SDF evaluation, HLSL shader generation, and Blueprint scripting.
+68 primitives, 24 CSG operations, 17 modifiers, HLSL generation, mesh export.
+Drop into your UE5 project and start using SDFs immediately.
 
-## Installation
+## Quick Start (No Rust Required)
 
-### 1. Build the native library
+### 1. Download
 
-```bash
-cd ALICE-SDF
-cargo build --release --features "ffi hlsl glsl gpu"
-```
+Download `AliceSDF-UE5-Plugin-{platform}.zip` from [GitHub Releases](https://github.com/nicebuild/ALICE-SDF/releases).
 
-### 2. Copy files to your UE5 project
+### 2. Extract to Plugins
 
 ```
 YourProject/
   Plugins/
-    AliceSDF/
+    AliceSDF/          <-- Extract here
       AliceSDF.uplugin
       Source/
-        AliceSDF/
-          AliceSDF.Build.cs
-          Public/
-            AliceSdfComponent.h
-          Private/
-            AliceSdfComponent.cpp
-            AliceSdfModule.cpp
-      ThirdParty/
-        AliceSDF/
-          include/
-            alice_sdf.h          <- from ALICE-SDF/include/
-          lib/
-            Win64/
-              alice_sdf.dll      <- from target/release/
-              alice_sdf.lib
-            Mac/
-              libalice_sdf.dylib <- from target/release/
-            Linux/
-              libalice_sdf.so    <- from target/release/
+      ThirdParty/      <-- Pre-built native library included
 ```
 
-### 3. Regenerate project files
+### 3. Open UE5
 
-Open your `.uproject` in UE5 or run:
+Open your `.uproject`. The plugin loads automatically.
+If prompted, click "Yes" to rebuild.
 
-```bash
-# Windows
-UnrealBuildTool.exe -projectfiles -project="YourProject.uproject"
+### 4. Use It
 
-# macOS
-mono UnrealBuildTool.exe -projectfiles -project="YourProject.uproject"
+Add `AliceSdfComponent` to any Actor via Blueprint or C++.
+
+---
+
+## Blueprint Usage
+
+### Create a Shape
+
+1. Add `AliceSdfComponent` to your Actor
+2. In the Event Graph, call **Create Sphere**, **Create Box**, **Create Torus**, etc.
+3. The shape is auto-compiled for fast evaluation
+
+### CSG Operations
+
+```
+[CreateSphere (r=1.0)] --> [SmoothSubtractFrom (Other, k=0.1)]
+                                     ^
+[CreateBox (0.7, 0.7, 0.7)] --------+
 ```
 
-## Usage
+Available operations:
+- **Standard**: Union, Intersection, Subtract
+- **Smooth**: SmoothUnion, SmoothIntersect, SmoothSubtract
+- **Chamfer**: ChamferUnion, ChamferIntersect, ChamferSubtract
+- **Stairs**: StairsUnion, StairsIntersect, StairsSubtract (terraced)
+- **Columns**: ColumnsUnion, ColumnsIntersect, ColumnsSubtract
+- **Advanced**: XOR, Morph, Pipe, Engrave, Groove, Tongue
 
-### Blueprint
+### Evaluate Distance
 
-1. Add `AliceSdfComponent` to any Actor
-2. Call `CreateSphere`, `CreateBox`, etc. from Blueprint
-3. Use `EvalDistance` for collision queries
-4. Use `GenerateHlsl` to get shader code for Custom Material Expressions
+```
+EvalDistance(WorldPosition) → float
+  negative = inside
+  zero     = surface
+  positive = outside
+```
 
-### C++
+### Generate HLSL for Materials
+
+```
+GenerateHlsl() → FString
+```
+
+Paste into a **Custom** node in your Material graph.
+Connect `WorldPosition / 100.0` as input (UE5 uses cm, SDF uses m).
+
+---
+
+## C++ Usage
 
 ```cpp
 #include "AliceSdfComponent.h"
@@ -70,38 +84,129 @@ void AMyActor::BeginPlay()
 {
     Super::BeginPlay();
 
-    UAliceSdfComponent* Sdf = FindComponentByClass<UAliceSdfComponent>();
+    auto* Sdf = FindComponentByClass<UAliceSdfComponent>();
+
+    // Create shape
     Sdf->CreateSphere(1.0f);
-    Sdf->Compile();
 
+    // Apply modifiers
+    Sdf->ApplyTwist(2.0f);
+    Sdf->ApplyNoise(0.1f, 5.0f, 42);
+
+    // Evaluate
     float Distance = Sdf->EvalDistance(GetActorLocation());
+    bool bInside = Sdf->IsPointInside(GetActorLocation());
 
+    // Generate HLSL for Custom Material Expression
     FString Hlsl = Sdf->GenerateHlsl();
+
+    // Export mesh
+    Sdf->ExportObj(TEXT("C:/Output/shape.obj"), 128, 2.0f);
+    Sdf->ExportGlb(TEXT("C:/Output/shape.glb"), 128, 2.0f);
+    Sdf->ExportFbx(TEXT("C:/Output/shape.fbx"), 128, 2.0f);
+    Sdf->ExportUsda(TEXT("C:/Output/shape.usda"), 128, 2.0f);
+
+    // Save/Load SDF tree
+    Sdf->SaveToFile(TEXT("C:/Output/shape.asdf"));
+    Sdf->LoadFromFile(TEXT("C:/Output/shape.asdf"));
 }
 ```
 
-### Custom Material Expression
+---
 
-```cpp
-// Get HLSL code from SDF component
-FString HlslCode = SdfComponent->GenerateHlsl();
+## Demo Actor
 
-// Paste into a Custom node in your Material graph
-// Input: WorldPosition (from World Position node)
-// Output: float (signed distance)
-```
+Drop `AAliceSdfDemoActor` into any level and set `DemoIndex` (0-4):
+
+| Index | Demo | Description |
+|-------|------|-------------|
+| 0 | Basic Shapes | Sphere, Box, Torus, Heart, BoxFrame |
+| 1 | CSG Operations | SmoothSubtract, ChamferUnion, XOR, Morph |
+| 2 | TPMS Surfaces | Gyroid, SchwarzP, Diamond, Neovius, Lidinoid |
+| 3 | Modifiers | Twist, Onion, Repeat, PolarRepeat, OctantMirror, Noise |
+| 4 | Shader Generation | HLSL output + mesh export |
+
+Check **Output Log** for results.
+
+---
+
+## Available Primitives (68)
+
+### Basic
+Sphere, Box, Cylinder, Torus, Capsule, Plane, Cone, Ellipsoid, RoundedCone, Pyramid, Octahedron, HexPrism, Link, RoundedBox
+
+### Advanced
+CappedCone, CappedTorus, RoundedCylinder, TriangularPrism, CutSphere, DeathStar, Heart, Barrel, Diamond, Egg
+
+### Platonic & Archimedean
+Tetrahedron, Dodecahedron, Icosahedron, TruncatedOctahedron, TruncatedIcosahedron
+
+### TPMS (9 surfaces)
+Gyroid, SchwarzP, DiamondSurface, Neovius, Lidinoid, IWP, FRD, FischerKochS, PMY
+
+### Structural
+BoxFrame, Tube, ChamferedCube, Stairs, Helix
+
+---
+
+## Available Modifiers (17)
+
+Round, Onion, Twist, Bend, Repeat, RepeatFinite, Mirror, Elongate, Revolution, Extrude, Noise, Taper, Displacement, PolarRepeat, OctantMirror, SweepBezier, MaterialId
+
+---
+
+## Mesh Export Formats
+
+| Format | Function | Use Case |
+|--------|----------|----------|
+| OBJ | `ExportObj()` | DCC tools (Blender, Maya) |
+| GLB | `ExportGlb()` | Web, glTF viewers |
+| USDA | `ExportUsda()` | USD pipelines, Omniverse |
+| FBX | `ExportFbx()` | UE5 Static Mesh import |
+
+---
 
 ## Supported Platforms
 
 | Platform | Library | Status |
 |----------|---------|--------|
-| Windows x64 | `alice_sdf.dll` | Supported |
+| Windows x64 | `alice_sdf.dll` + `.lib` | Supported |
 | macOS (arm64/x64) | `libalice_sdf.dylib` | Supported |
 | Linux x64 | `libalice_sdf.so` | Supported |
 
-## API Reference
+---
 
-See [UNREAL_ENGINE.md](../docs/UNREAL_ENGINE.md) for the complete integration guide.
+## Building from Source (Optional)
+
+Only needed if you want to modify the native library.
+
+```bash
+# Install Rust (https://rustup.rs)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Build + package
+cd ALICE-SDF
+./scripts/build_ue5_plugin.sh --zip
+```
+
+---
+
+## Performance
+
+| Method | Throughput | Use Case |
+|--------|-----------|----------|
+| Compiled batch (SoA) | 1B+ ops/sec | Physics, particles |
+| Compiled batch (AoS) | 500M ops/sec | General batch |
+| Single eval (compiled) | 100M ops/sec | Per-frame queries |
+| Single eval (tree) | 50M ops/sec | Debug only |
+
+The component auto-compiles by default. Disable with `bAutoCompile = false`.
+
+---
+
+## Full API Reference
+
+See [docs/UNREAL_ENGINE.md](../docs/UNREAL_ENGINE.md) for the complete integration guide.
 
 ---
 

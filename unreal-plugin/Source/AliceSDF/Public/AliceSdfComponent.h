@@ -11,14 +11,15 @@
 /**
  * UAliceSdfComponent
  *
- * Provides SDF evaluation, shader generation, and mesh conversion
- * as an Unreal Engine 5 ActorComponent.
+ * Full-featured SDF component for Unreal Engine 5.
+ * 68 primitives, 24 CSG operations, 17 modifiers, HLSL generation, mesh export.
  *
  * Usage:
  *   1. Add this component to any Actor
  *   2. Call CreateSphere/CreateBox/etc. to define the SDF shape
- *   3. Call Compile() for fast evaluation
- *   4. Use EvalDistance() for collision queries or GenerateHlsl() for materials
+ *   3. Use CSG operations (UnionWith, SmoothSubtractFrom, etc.) to combine shapes
+ *   4. Call Compile() for fast evaluation (auto-compiled by default)
+ *   5. Use EvalDistance() for collision or GenerateHlsl() for materials
  */
 UCLASS(ClassGroup=(Rendering), meta=(BlueprintSpawnableComponent))
 class ALICESDF_API UAliceSdfComponent : public UActorComponent
@@ -34,122 +35,335 @@ protected:
 
 public:
 	// ========================================================================
-	// Primitives
+	// Primitives — Basic
 	// ========================================================================
 
-	/** Create a sphere SDF */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
 	void CreateSphere(float Radius = 1.0f);
 
-	/** Create a box SDF */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
 	void CreateBox(FVector HalfExtents);
 
-	/** Create a cylinder SDF */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
 	void CreateCylinder(float Radius = 1.0f, float HalfHeight = 1.0f);
 
-	/** Create a torus SDF */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
 	void CreateTorus(float MajorRadius = 1.0f, float MinorRadius = 0.25f);
 
-	/** Create a capsule SDF */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
 	void CreateCapsule(FVector PointA, FVector PointB, float Radius = 0.5f);
 
-	/** Create a plane SDF */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
 	void CreatePlane(FVector Normal, float Distance = 0.0f);
 
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateCone(float Radius = 1.0f, float HalfHeight = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateEllipsoid(FVector Radii);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateRoundedCone(float R1 = 0.5f, float R2 = 0.2f, float HalfHeight = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreatePyramid(float HalfHeight = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateOctahedron(float Size = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateHexPrism(float HexRadius = 1.0f, float HalfHeight = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateLink(float HalfLength = 0.5f, float R1 = 0.5f, float R2 = 0.15f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateRoundedBox(FVector HalfExtents, float RoundRadius = 0.1f);
+
 	// ========================================================================
-	// Boolean Operations
+	// Primitives — Advanced
 	// ========================================================================
 
-	/** Union with another SDF component */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateCappedCone(float HalfHeight = 1.0f, float R1 = 0.5f, float R2 = 0.2f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateCappedTorus(float MajorRadius = 1.0f, float MinorRadius = 0.25f, float CapAngle = 1.57f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateRoundedCylinder(float Radius = 0.5f, float RoundRadius = 0.1f, float HalfHeight = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateTriangularPrism(float Width = 1.0f, float HalfDepth = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateCutSphere(float Radius = 1.0f, float CutHeight = 0.3f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateDeathStar(float Ra = 1.0f, float Rb = 0.8f, float D = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateHeart(float Size = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateBarrel(float Radius = 0.5f, float HalfHeight = 1.0f, float Bulge = 0.2f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateDiamond(float Radius = 0.5f, float HalfHeight = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateEgg(float Ra = 0.5f, float Rb = 0.3f);
+
+	// ========================================================================
+	// Primitives — Platonic & Archimedean
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|Platonic")
+	void CreateTetrahedron(float Size = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|Platonic")
+	void CreateDodecahedron(float Radius = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|Platonic")
+	void CreateIcosahedron(float Radius = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|Platonic")
+	void CreateTruncatedOctahedron(float Radius = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|Platonic")
+	void CreateTruncatedIcosahedron(float Radius = 1.0f);
+
+	// ========================================================================
+	// Primitives — TPMS (Triply Periodic Minimal Surfaces)
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateGyroid(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateSchwarzP(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateDiamondSurface(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateNeovius(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateLidinoid(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateIWP(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateFRD(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreateFischerKochS(float Scale = 1.0f, float Thickness = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives|TPMS")
+	void CreatePMY(float Scale = 1.0f, float Thickness = 0.1f);
+
+	// ========================================================================
+	// Primitives — Structural
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateBoxFrame(FVector HalfExtents, float Edge = 0.05f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateTube(float OuterRadius = 0.5f, float Thickness = 0.1f, float HalfHeight = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateChamferedCube(FVector HalfExtents, float Chamfer = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateStairs(float StepWidth = 0.3f, float StepHeight = 0.2f, float NumSteps = 5.0f, float HalfDepth = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Primitives")
+	void CreateHelix(float MajorRadius = 1.0f, float MinorRadius = 0.1f, float Pitch = 0.5f, float HalfHeight = 2.0f);
+
+	// ========================================================================
+	// Boolean Operations — Standard
+	// ========================================================================
+
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
 	void UnionWith(UAliceSdfComponent* Other);
 
-	/** Intersection with another SDF component */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
 	void IntersectWith(UAliceSdfComponent* Other);
 
-	/** Subtract another SDF component */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
 	void SubtractFrom(UAliceSdfComponent* Other);
 
-	/** Smooth union with another SDF component */
-	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	// ========================================================================
+	// Boolean Operations — Smooth
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Smooth")
 	void SmoothUnionWith(UAliceSdfComponent* Other, float Smoothness = 0.2f);
 
-	/** Smooth intersection with another SDF component */
-	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Smooth")
 	void SmoothIntersectWith(UAliceSdfComponent* Other, float Smoothness = 0.2f);
 
-	/** Smooth subtraction */
-	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Smooth")
 	void SmoothSubtractFrom(UAliceSdfComponent* Other, float Smoothness = 0.2f);
+
+	// ========================================================================
+	// Boolean Operations — Chamfer
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Chamfer")
+	void ChamferUnionWith(UAliceSdfComponent* Other, float Radius = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Chamfer")
+	void ChamferIntersectWith(UAliceSdfComponent* Other, float Radius = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Chamfer")
+	void ChamferSubtractFrom(UAliceSdfComponent* Other, float Radius = 0.1f);
+
+	// ========================================================================
+	// Boolean Operations — Stairs (terraced blend)
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Stairs")
+	void StairsUnionWith(UAliceSdfComponent* Other, float Radius = 0.2f, float Steps = 4.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Stairs")
+	void StairsIntersectWith(UAliceSdfComponent* Other, float Radius = 0.2f, float Steps = 4.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Stairs")
+	void StairsSubtractFrom(UAliceSdfComponent* Other, float Radius = 0.2f, float Steps = 4.0f);
+
+	// ========================================================================
+	// Boolean Operations — Columns
+	// ========================================================================
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Columns")
+	void ColumnsUnionWith(UAliceSdfComponent* Other, float Radius = 0.2f, float Count = 4.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Columns")
+	void ColumnsIntersectWith(UAliceSdfComponent* Other, float Radius = 0.2f, float Count = 4.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations|Columns")
+	void ColumnsSubtractFrom(UAliceSdfComponent* Other, float Radius = 0.2f, float Count = 4.0f);
+
+	// ========================================================================
+	// Boolean Operations — Advanced
+	// ========================================================================
+
+	/** XOR (symmetric difference) */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	void XorWith(UAliceSdfComponent* Other);
+
+	/** Morph (linear interpolation between two shapes) */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	void MorphWith(UAliceSdfComponent* Other, float T = 0.5f);
+
+	/** Pipe: cylindrical surface at intersection */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	void PipeWith(UAliceSdfComponent* Other, float Radius = 0.1f);
+
+	/** Engrave shape B into shape A */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	void EngraveWith(UAliceSdfComponent* Other, float Depth = 0.1f);
+
+	/** Groove: cut a groove of shape B into shape A */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	void GrooveWith(UAliceSdfComponent* Other, float Ra = 0.2f, float Rb = 0.1f);
+
+	/** Tongue: add a tongue protrusion */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Operations")
+	void TongueWith(UAliceSdfComponent* Other, float Ra = 0.2f, float Rb = 0.1f);
 
 	// ========================================================================
 	// Transforms
 	// ========================================================================
 
-	/** Translate the SDF */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
 	void TranslateSdf(FVector Offset);
 
-	/** Rotate the SDF by Euler angles (degrees) */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
 	void RotateSdf(FRotator Rotation);
 
-	/** Scale the SDF uniformly */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
 	void ScaleSdf(float Factor);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
+	void ScaleSdfNonUniform(FVector Scale);
 
 	// ========================================================================
 	// Modifiers
 	// ========================================================================
 
-	/** Apply rounding to edges */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
 	void ApplyRound(float Radius = 0.1f);
 
-	/** Apply shell (onion) modifier */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
 	void ApplyOnion(float Thickness = 0.1f);
 
-	/** Apply twist modifier */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
 	void ApplyTwist(float Strength = 1.0f);
 
-	/** Apply bend modifier */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
 	void ApplyBend(float Curvature = 1.0f);
 
-	/** Apply infinite repetition */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
 	void ApplyRepeat(FVector Spacing);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyRepeatFinite(FIntVector Count, FVector Spacing);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyMirror(bool X = true, bool Y = false, bool Z = false);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyElongate(FVector Amount);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyRevolution(float Offset = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyExtrude(float HalfHeight = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyNoise(float Amplitude = 0.1f, float Frequency = 5.0f, int32 Seed = 42);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyTaper(float Factor = 0.5f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyDisplacement(float Strength = 0.1f);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyPolarRepeat(int32 Count = 6);
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplyOctantMirror();
+
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void ApplySweepBezier(FVector2D P0, FVector2D P1, FVector2D P2);
+
+	/** Assign a material ID to this SDF subtree */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Modifiers")
+	void SetMaterialId(int32 MaterialId = 0);
 
 	// ========================================================================
 	// Compilation & Evaluation
 	// ========================================================================
 
-	/** Compile SDF for fast evaluation (call once at setup time) */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Evaluation")
 	bool Compile();
 
-	/** Evaluate signed distance at a world-space point */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ALICE SDF|Evaluation")
 	float EvalDistance(FVector WorldPosition) const;
 
-	/** Evaluate signed distance at a local-space point */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ALICE SDF|Evaluation")
 	float EvalDistanceLocal(FVector LocalPosition) const;
 
-	/** Batch evaluate distances (returns array of distances) */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Evaluation")
 	TArray<float> EvalDistanceBatch(const TArray<FVector>& Points) const;
 
-	/** Check if a point is inside the SDF */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ALICE SDF|Evaluation")
 	bool IsPointInside(FVector WorldPosition) const;
 
@@ -157,27 +371,42 @@ public:
 	// Shader Generation
 	// ========================================================================
 
-	/** Generate HLSL shader code for Custom Material Expression */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Shaders")
 	FString GenerateHlsl() const;
 
-	/** Generate GLSL shader code */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Shaders")
 	FString GenerateGlsl() const;
 
-	/** Generate WGSL shader code */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Shaders")
 	FString GenerateWgsl() const;
+
+	// ========================================================================
+	// Mesh Export
+	// ========================================================================
+
+	/** Generate mesh and export to OBJ */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
+	bool ExportObj(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
+
+	/** Generate mesh and export to GLB (binary glTF) */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
+	bool ExportGlb(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
+
+	/** Generate mesh and export to USDA (Universal Scene Description) */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
+	bool ExportUsda(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
+
+	/** Generate mesh and export to FBX */
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
+	bool ExportFbx(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
 
 	// ========================================================================
 	// File I/O
 	// ========================================================================
 
-	/** Save SDF to .asdf file */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|IO")
 	bool SaveToFile(const FString& FilePath);
 
-	/** Load SDF from .asdf file */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|IO")
 	bool LoadFromFile(const FString& FilePath);
 
@@ -185,22 +414,25 @@ public:
 	// Properties
 	// ========================================================================
 
-	/** Whether the SDF is compiled for fast evaluation */
 	UPROPERTY(BlueprintReadOnly, Category = "ALICE SDF")
 	bool bIsCompiled = false;
 
-	/** Number of nodes in the SDF tree */
 	UPROPERTY(BlueprintReadOnly, Category = "ALICE SDF")
 	int32 NodeCount = 0;
 
-	/** Auto-compile when shape changes */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALICE SDF")
 	bool bAutoCompile = true;
+
+	/** Get the raw SDF handle (for advanced C++ usage) */
+	SdfHandle GetSdfHandle() const { return SdfNodeHandle; }
 
 private:
 	void FreeHandles();
 	void UpdateNodeCount();
 	void AutoCompileIfNeeded();
+	void SetNewShape(SdfHandle NewHandle);
+	void ApplyModifier(SdfHandle NewHandle);
+	void ApplyBinaryOp(UAliceSdfComponent* Other, SdfHandle Result);
 	FString ShaderResultToString(StringResult Result) const;
 
 	SdfHandle SdfNodeHandle = nullptr;
