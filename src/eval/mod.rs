@@ -494,6 +494,39 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let (p, mult) = transform_scale_nonuniform(point, *factors);
             eval(child, p) * mult
         }
+        SdfNode::ProjectiveTransform {
+            child,
+            inv_matrix,
+            lipschitz_bound,
+        } => {
+            let (q, correction) =
+                crate::transforms::projective::projective_transform(point, inv_matrix);
+            eval(child, q) * correction.min(*lipschitz_bound)
+        }
+        SdfNode::LatticeDeform {
+            child,
+            control_points,
+            nx,
+            ny,
+            nz,
+            bbox_min,
+            bbox_max,
+        } => {
+            let (q, correction) = crate::transforms::lattice::lattice_deform(
+                point,
+                control_points,
+                *nx,
+                *ny,
+                *nz,
+                *bbox_min,
+                *bbox_max,
+            );
+            eval(child, q) / correction
+        }
+        SdfNode::SdfSkinning { child, bones } => {
+            let (q, _) = crate::transforms::skinning::sdf_skinning(point, bones);
+            eval(child, q)
+        }
 
         // === Modifiers ===
         SdfNode::Twist { child, strength } => {
@@ -582,6 +615,43 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
 
         // Material assignment is transparent for distance evaluation
         SdfNode::WithMaterial { child, .. } => eval(child, point),
+
+        // New modifiers
+        SdfNode::IcosahedralSymmetry { child } => {
+            let q = crate::modifiers::icosahedral_fold(point);
+            eval(child, q)
+        }
+        SdfNode::IFS {
+            child,
+            transforms,
+            iterations,
+        } => {
+            let (q, scale) = crate::modifiers::ifs_fold_with_scale(point, transforms, *iterations);
+            eval(child, q) / scale.max(1e-6)
+        }
+        SdfNode::HeightmapDisplacement {
+            child,
+            heightmap,
+            width,
+            height,
+            amplitude,
+            scale,
+        } => {
+            let d = eval(child, point);
+            let disp = crate::modifiers::heightmap_displacement(
+                point, heightmap, *width, *height, *amplitude, *scale,
+            );
+            d - disp
+        }
+        SdfNode::SurfaceRoughness {
+            child,
+            frequency,
+            amplitude,
+            octaves,
+        } => {
+            let d = eval(child, point);
+            crate::modifiers::surface_roughness(point, d, *frequency, *amplitude, *octaves)
+        }
 
         #[allow(unreachable_patterns)]
         _ => todo!("new SdfNode variant in eval"),
@@ -709,6 +779,19 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
             eval_material(child, p)
         }
         SdfNode::Animated { child, .. } => eval_material(child, point),
+        SdfNode::IcosahedralSymmetry { child } => {
+            eval_material(child, crate::modifiers::icosahedral_fold(point))
+        }
+        SdfNode::IFS {
+            child,
+            transforms,
+            iterations,
+        } => {
+            let (q, _) = crate::modifiers::ifs_fold_with_scale(point, transforms, *iterations);
+            eval_material(child, q)
+        }
+        SdfNode::HeightmapDisplacement { child, .. } => eval_material(child, point),
+        SdfNode::SurfaceRoughness { child, .. } => eval_material(child, point),
 
         // Primitives: no material assigned
         _ => 0,

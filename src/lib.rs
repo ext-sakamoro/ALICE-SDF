@@ -76,6 +76,9 @@ pub mod ffi;
 #[cfg(feature = "physics")]
 pub mod physics_bridge;
 
+#[cfg(feature = "physics")]
+pub mod sim_bridge;
+
 #[cfg(feature = "texture-fit")]
 pub mod texture;
 
@@ -224,6 +227,8 @@ pub mod prelude {
         ambient_occlusion, raycast, raycast_batch, raymarch, raymarch_with_config, soft_shadow,
         RaymarchConfig, RaymarchResult,
     };
+    #[cfg(feature = "physics")]
+    pub use crate::sim_bridge::{simulate_sdf, SimulatedSdf};
     pub use crate::soa::{SoADistances, SoAPoints};
     #[cfg(feature = "svo")]
     pub use crate::svo::{

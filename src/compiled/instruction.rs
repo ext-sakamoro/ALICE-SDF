@@ -1166,6 +1166,74 @@ impl Instruction {
         inst
     }
 
+    /// Create a projective transform instruction
+    /// Auxiliary data (inv_matrix, lipschitz_bound) must be stored separately
+    #[inline]
+    pub fn projective_transform(lipschitz_bound: f32) -> Self {
+        let mut inst = Self::new(OpCode::ProjectiveTransform);
+        inst.params[0] = lipschitz_bound;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create a lattice deform instruction
+    /// Auxiliary data (control_points, lattice params) must be stored separately
+    #[inline]
+    pub fn lattice_deform() -> Self {
+        let mut inst = Self::new(OpCode::LatticeDeform);
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create an SDF skinning instruction
+    /// Auxiliary data (bones) must be stored separately
+    #[inline]
+    pub fn sdf_skinning() -> Self {
+        let mut inst = Self::new(OpCode::SdfSkinning);
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create an icosahedral symmetry instruction
+    #[inline]
+    pub fn icosahedral_symmetry() -> Self {
+        let mut inst = Self::new(OpCode::IcosahedralSymmetry);
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create an IFS instruction
+    /// Auxiliary data (transforms, iterations) must be stored separately
+    #[inline]
+    pub fn ifs(iterations: u32) -> Self {
+        let mut inst = Self::new(OpCode::IFS);
+        inst.params[0] = iterations as f32;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create a heightmap displacement instruction
+    /// Auxiliary data (heightmap, dimensions) must be stored separately
+    #[inline]
+    pub fn heightmap_displacement(amplitude: f32, scale: f32) -> Self {
+        let mut inst = Self::new(OpCode::HeightmapDisplacement);
+        inst.params[0] = amplitude;
+        inst.params[1] = scale;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create a surface roughness instruction
+    #[inline]
+    pub fn surface_roughness(frequency: f32, amplitude: f32, octaves: u32) -> Self {
+        let mut inst = Self::new(OpCode::SurfaceRoughness);
+        inst.params[0] = frequency;
+        inst.params[1] = amplitude;
+        inst.params[2] = octaves as f32;
+        inst.child_count = 1;
+        inst
+    }
+
     /// Create a pop transform instruction
     #[inline]
     pub fn pop_transform() -> Self {

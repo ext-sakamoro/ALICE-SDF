@@ -304,6 +304,10 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
                 m * grad.z / factors.z,
             )
         }
+        // New complex transforms: use numerical gradient
+        SdfNode::ProjectiveTransform { .. }
+        | SdfNode::LatticeDeform { .. }
+        | SdfNode::SdfSkinning { .. } => numerical_gradient_of(node, point),
 
         // === Modifiers with analytic Jacobians ===
         SdfNode::Round { child, .. } => {
@@ -458,7 +462,11 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         | SdfNode::Taper { .. }
         | SdfNode::Displacement { .. }
         | SdfNode::PolarRepeat { .. }
-        | SdfNode::SweepBezier { .. } => numerical_gradient_of(node, point),
+        | SdfNode::SweepBezier { .. }
+        | SdfNode::IcosahedralSymmetry { .. }
+        | SdfNode::IFS { .. }
+        | SdfNode::HeightmapDisplacement { .. }
+        | SdfNode::SurfaceRoughness { .. } => numerical_gradient_of(node, point),
 
         // Shear modifier: inverse Jacobian transpose
         SdfNode::Shear { child, shear } => {

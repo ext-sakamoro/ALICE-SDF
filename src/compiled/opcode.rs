@@ -216,6 +216,14 @@ pub enum OpCode {
     /// ScaleNonUniform: params[0..3] = scale factors (x, y, z)
     ScaleNonUniform = 35,
 
+    // === Extended Transforms (200-202) ===
+    /// ProjectiveTransform: requires auxiliary data (inv_matrix, lipschitz_bound)
+    ProjectiveTransform = 200,
+    /// LatticeDeform: requires auxiliary data (control_points, lattice params)
+    LatticeDeform = 201,
+    /// SdfSkinning: requires auxiliary data (bones)
+    SdfSkinning = 202,
+
     // === Modifiers ===
     /// Twist: params[0] = strength
     Twist = 48,
@@ -255,6 +263,16 @@ pub enum OpCode {
     /// Animated: params[0] = speed, params[1] = amplitude
     Animated = 145,
 
+    // === Extended Modifiers (160-163) ===
+    /// IcosahedralSymmetry: no params (maps to fundamental domain)
+    IcosahedralSymmetry = 160,
+    /// IFS: requires auxiliary data (transforms, iterations)
+    IFS = 161,
+    /// HeightmapDisplacement: requires auxiliary data (heightmap, dimensions)
+    HeightmapDisplacement = 162,
+    /// SurfaceRoughness: params[0] = frequency, params[1] = amplitude, params[2] = octaves
+    SurfaceRoughness = 163,
+
     // === Control ===
     /// Pop transform from coordinate stack
     PopTransform = 240,
@@ -281,14 +299,14 @@ impl OpCode {
     #[inline]
     pub fn is_transform(self) -> bool {
         let v = self as u8;
-        v >= 32 && v < 48
+        (v >= 32 && v < 48) || (v >= 200 && v <= 202)
     }
 
     /// Returns true if this opcode is a modifier
     #[inline]
     pub fn is_modifier(self) -> bool {
         let v = self as u8;
-        (v >= 48 && v < 64) || (v >= 144 && v < 160)
+        (v >= 48 && v < 64) || (v >= 144 && v < 164)
     }
 
     /// Returns true if this opcode modifies the evaluation point
@@ -373,5 +391,39 @@ mod tests {
         assert!(!OpCode::RoundedBox.is_binary_op());
         assert!(!OpCode::RoundedBox.is_transform());
         assert!(!OpCode::RoundedBox.is_modifier());
+    }
+
+    #[test]
+    fn test_new_transforms() {
+        // Test the 3 new transform opcodes
+        assert!(OpCode::ProjectiveTransform.is_transform());
+        assert!(OpCode::LatticeDeform.is_transform());
+        assert!(OpCode::SdfSkinning.is_transform());
+
+        assert!(!OpCode::ProjectiveTransform.is_primitive());
+        assert!(!OpCode::ProjectiveTransform.is_binary_op());
+        assert!(!OpCode::ProjectiveTransform.is_modifier());
+
+        assert_eq!(OpCode::ProjectiveTransform as u8, 200);
+        assert_eq!(OpCode::LatticeDeform as u8, 201);
+        assert_eq!(OpCode::SdfSkinning as u8, 202);
+    }
+
+    #[test]
+    fn test_new_modifiers() {
+        // Test the 4 new modifier opcodes
+        assert!(OpCode::IcosahedralSymmetry.is_modifier());
+        assert!(OpCode::IFS.is_modifier());
+        assert!(OpCode::HeightmapDisplacement.is_modifier());
+        assert!(OpCode::SurfaceRoughness.is_modifier());
+
+        assert!(!OpCode::IcosahedralSymmetry.is_primitive());
+        assert!(!OpCode::IcosahedralSymmetry.is_binary_op());
+        assert!(!OpCode::IcosahedralSymmetry.is_transform());
+
+        assert_eq!(OpCode::IcosahedralSymmetry as u8, 160);
+        assert_eq!(OpCode::IFS as u8, 161);
+        assert_eq!(OpCode::HeightmapDisplacement as u8, 162);
+        assert_eq!(OpCode::SurfaceRoughness as u8, 163);
     }
 }

@@ -1006,6 +1006,131 @@ impl PySdfNode {
         }
     }
 
+    // --- New Transform Variants ---
+
+    /// Apply a projective transformation (4x4 matrix)
+    #[pyo3(text_signature = "(inv_matrix, lipschitz_bound)")]
+    fn projective_transform(&self, inv_matrix: Vec<f32>, lipschitz_bound: f32) -> PyResult<Self> {
+        if inv_matrix.len() != 16 {
+            return Err(PyValueError::new_err("Matrix must have 16 elements"));
+        }
+        let matrix: [f32; 16] = inv_matrix.try_into().unwrap();
+        Ok(Self {
+            inner: self
+                .inner
+                .clone()
+                .projective_transform(matrix, lipschitz_bound),
+        })
+    }
+
+    /// Apply lattice-based Free-Form Deformation (FFD)
+    #[pyo3(text_signature = "(control_points, nx, ny, nz, bbox_min, bbox_max)")]
+    fn lattice_deform(
+        &self,
+        control_points: Vec<[f32; 3]>,
+        nx: u32,
+        ny: u32,
+        nz: u32,
+        bbox_min: [f32; 3],
+        bbox_max: [f32; 3],
+    ) -> Self {
+        let cp: Vec<Vec3> = control_points
+            .iter()
+            .map(|p| Vec3::new(p[0], p[1], p[2]))
+            .collect();
+        Self {
+            inner: self.inner.clone().lattice_deform(
+                cp,
+                nx,
+                ny,
+                nz,
+                Vec3::from(bbox_min),
+                Vec3::from(bbox_max),
+            ),
+        }
+    }
+
+    /// Apply skeletal skinning deformation with bone weights
+    #[pyo3(text_signature = "(bones)")]
+    fn sdf_skinning(&self, bones: Vec<(Vec<f32>, Vec<f32>, f32)>) -> PyResult<Self> {
+        use crate::transforms::skinning::BoneTransform;
+
+        let mut bone_data = Vec::new();
+        for (ibp, cp, w) in bones {
+            if ibp.len() != 16 || cp.len() != 16 {
+                return Err(PyValueError::new_err(
+                    "Each bone matrix must have 16 elements (inv_bind_pose, current_pose, weight)",
+                ));
+            }
+            bone_data.push(BoneTransform {
+                inv_bind_pose: ibp.try_into().unwrap(),
+                current_pose: cp.try_into().unwrap(),
+                weight: w,
+            });
+        }
+        Ok(Self {
+            inner: self.inner.clone().sdf_skinning(bone_data),
+        })
+    }
+
+    // --- New Modifier Variants ---
+
+    /// Apply icosahedral symmetry (60-fold rotational symmetry)
+    fn icosahedral_symmetry(&self) -> Self {
+        Self {
+            inner: self.inner.clone().icosahedral_symmetry(),
+        }
+    }
+
+    /// Apply Iterated Function System (fractal) transformations
+    #[pyo3(text_signature = "(transforms, iterations)")]
+    fn ifs(&self, transforms: Vec<Vec<f32>>, iterations: u32) -> PyResult<Self> {
+        let ts: Result<Vec<[f32; 16]>, _> = transforms
+            .iter()
+            .map(|t| {
+                if t.len() != 16 {
+                    Err(PyValueError::new_err(
+                        "Each transform must have 16 elements",
+                    ))
+                } else {
+                    Ok(t.as_slice().try_into().unwrap())
+                }
+            })
+            .collect();
+        Ok(Self {
+            inner: self.inner.clone().ifs(ts?, iterations),
+        })
+    }
+
+    /// Apply heightmap-based displacement
+    #[pyo3(text_signature = "(heightmap, width, height, amplitude, scale)")]
+    fn heightmap_displacement(
+        &self,
+        heightmap: Vec<f32>,
+        width: u32,
+        height: u32,
+        amplitude: f32,
+        scale: f32,
+    ) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .heightmap_displacement(heightmap, width, height, amplitude, scale),
+        }
+    }
+
+    /// Apply surface roughness using Perlin noise
+    #[pyo3(text_signature = "(frequency, amplitude, octaves)")]
+    fn surface_roughness(&self, frequency: f32, amplitude: f32, octaves: u32) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .surface_roughness(frequency, amplitude, octaves),
+        }
+    }
+
     /// Evaluate at a single point (GIL released)
     fn eval(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
         let inner = &self.inner;

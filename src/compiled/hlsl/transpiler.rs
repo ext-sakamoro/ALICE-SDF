@@ -2523,6 +2523,118 @@ impl HlslTranspiler {
                 self.transpile_node_inner(child, &sorted_p, code)
             }
 
+            // ============ New Transforms (7 variants) ============
+            SdfNode::ProjectiveTransform { child, .. } => {
+                // ProjectiveTransform: requires uniform matrix (not available in shader)
+                // Pass through child unchanged
+                writeln!(
+                    code,
+                    "    // ProjectiveTransform: requires runtime data, evaluating child directly"
+                )
+                .unwrap();
+                self.transpile_node_inner(child, point_var, code)
+            }
+
+            SdfNode::LatticeDeform { child, .. } => {
+                // LatticeDeform: requires uniform control points (not available in shader)
+                // Pass through child unchanged
+                writeln!(code, "    // LatticeDeform: requires runtime control points, evaluating child directly").unwrap();
+                self.transpile_node_inner(child, point_var, code)
+            }
+
+            SdfNode::SdfSkinning { child, .. } => {
+                // SdfSkinning: requires uniform bones and weights (not available in shader)
+                // Pass through child unchanged
+                writeln!(
+                    code,
+                    "    // SdfSkinning: requires runtime bone data, evaluating child directly"
+                )
+                .unwrap();
+                self.transpile_node_inner(child, point_var, code)
+            }
+
+            SdfNode::IcosahedralSymmetry { child } => {
+                // Icosahedral symmetry: fold point through icosahedral planes
+                let p_ico = self.next_var();
+                writeln!(code, "    float3 {} = abs({});", p_ico, point_var).unwrap();
+
+                // Golden ratio constant
+                let phi = (1.0 + 5.0f32.sqrt()) / 2.0;
+                let phi_s = self.param(phi);
+                let one_s = self.param(1.0);
+
+                // 8 iterations of icosahedral folding
+                for _ in 0..8 {
+                    // Fold through planes: (1, phi, 0), (phi, 0, 1), (0, 1, phi)
+                    writeln!(code, "    if ({}.x + {} * {}.y < 0.0) {{ {} = float3(-{}.x, -{}.y * {}, {}.z); }}",
+                        p_ico, phi_s, p_ico, p_ico, p_ico, p_ico, phi_s, p_ico).unwrap();
+                    writeln!(code, "    if ({}.y + {} * {}.z < 0.0) {{ {} = float3({}.x, -{}.y, -{}.z * {}); }}",
+                        p_ico, phi_s, p_ico, p_ico, p_ico, p_ico, p_ico, phi_s).unwrap();
+                    writeln!(code, "    if ({}.z + {} * {}.x < 0.0) {{ {} = float3(-{}.x * {}, {}.y, -{}.z); }}",
+                        p_ico, phi_s, p_ico, p_ico, p_ico, phi_s, p_ico, p_ico).unwrap();
+                    writeln!(code, "    {} = abs({});", p_ico, p_ico).unwrap();
+                }
+
+                self.transpile_node_inner(child, &p_ico, code)
+            }
+
+            SdfNode::IFS { child, .. } => {
+                // IFS (Iterated Function System): requires uniform transforms (not available in shader)
+                // Pass through child unchanged
+                writeln!(
+                    code,
+                    "    // IFS: requires runtime transform data, evaluating child directly"
+                )
+                .unwrap();
+                self.transpile_node_inner(child, point_var, code)
+            }
+
+            SdfNode::HeightmapDisplacement { child, .. } => {
+                // HeightmapDisplacement: requires uniform texture/heightmap (not available in shader)
+                // Pass through child unchanged
+                writeln!(code, "    // HeightmapDisplacement: requires runtime heightmap texture, evaluating child directly").unwrap();
+                self.transpile_node_inner(child, point_var, code)
+            }
+
+            SdfNode::SurfaceRoughness {
+                child,
+                frequency,
+                amplitude,
+                octaves,
+                ..
+            } => {
+                // SurfaceRoughness: inline FBM noise function
+                self.ensure_helper("hash_noise");
+                let d = self.transpile_node_inner(child, point_var, code);
+
+                let freq_s = self.param(*frequency);
+                let amp_s = self.param(*amplitude);
+                let octaves_val = *octaves as i32;
+
+                // Generate FBM noise
+                let fbm_var = self.next_var();
+                writeln!(code, "    float {} = 0.0;", fbm_var).unwrap();
+                writeln!(code, "    {{").unwrap();
+                writeln!(code, "        float a = 0.5;").unwrap();
+                writeln!(code, "        float3 q = {} * {};", point_var, freq_s).unwrap();
+                writeln!(code, "        for(int i = 0; i < {}; i++) {{", octaves_val).unwrap();
+                writeln!(
+                    code,
+                    "            {} += a * hash_noise_3d(q, uint(i));",
+                    fbm_var
+                )
+                .unwrap();
+                writeln!(code, "            a *= 0.5;").unwrap();
+                writeln!(code, "            q *= 2.0;").unwrap();
+                writeln!(code, "        }}").unwrap();
+                writeln!(code, "        {} *= {};", fbm_var, amp_s).unwrap();
+                writeln!(code, "    }}").unwrap();
+
+                let var = self.next_var();
+                writeln!(code, "    float {} = {} + {};", var, d, fbm_var).unwrap();
+                var
+            }
+
             SdfNode::Revolution { child, offset } => {
                 let off_s = self.param(*offset);
                 let q_var = self.next_var();

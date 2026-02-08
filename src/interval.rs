@@ -806,6 +806,27 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let d = eval_interval(child, scaled);
             Interval::new(d.lo * min_f, d.hi * max_f)
         }
+        SdfNode::ProjectiveTransform {
+            child,
+            lipschitz_bound,
+            ..
+        } => {
+            // Conservative: scale by Lipschitz bound
+            let child_interval = eval_interval(child, bounds);
+            Interval::new(
+                child_interval.lo / lipschitz_bound,
+                child_interval.hi / lipschitz_bound,
+            )
+        }
+        SdfNode::LatticeDeform { child, .. } => {
+            // Conservative: assume worst-case deformation doubles distances
+            let child_interval = eval_interval(child, bounds);
+            Interval::new(child_interval.lo * 0.5, child_interval.hi * 2.0)
+        }
+        SdfNode::SdfSkinning { child, .. } => {
+            // LBS is approximately distance-preserving
+            eval_interval(child, bounds)
+        }
 
         // ============ Modifiers ============
         SdfNode::Twist { child, strength: _ } => {
@@ -988,6 +1009,30 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             )
         }
 
+        SdfNode::IcosahedralSymmetry { child } => {
+            // Symmetry fold preserves distance bounds
+            eval_interval(child, bounds.mirror(Vec3::ONE))
+        }
+        SdfNode::IFS { child, .. } => {
+            // Conservative: IFS may contract, so interval is child's interval
+            eval_interval(child, bounds)
+        }
+        SdfNode::HeightmapDisplacement {
+            child, amplitude, ..
+        } => {
+            let child_iv = eval_interval(child, bounds);
+            // Displacement shifts distance by at most amplitude
+            let amp = *amplitude;
+            Interval::new(child_iv.lo - amp.abs(), child_iv.hi + amp.abs())
+        }
+        SdfNode::SurfaceRoughness {
+            child, amplitude, ..
+        } => {
+            let child_iv = eval_interval(child, bounds);
+            let amp = *amplitude;
+            Interval::new(child_iv.lo - amp.abs(), child_iv.hi + amp.abs())
+        }
+
         SdfNode::WithMaterial { child, .. } => eval_interval(child, bounds),
 
         #[allow(unreachable_patterns)]
@@ -1124,6 +1169,16 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             let max_s = s[0].max(s[1]).max(s[2]);
             eval_lipschitz(child) * max_s / min_s
         }
+        // Projective transform: use user-provided bound
+        SdfNode::ProjectiveTransform {
+            child,
+            lipschitz_bound,
+            ..
+        } => eval_lipschitz(child) * lipschitz_bound,
+        // Lattice deform: conservative estimate (Jacobian can be large near control points)
+        SdfNode::LatticeDeform { child, .. } => eval_lipschitz(child) * 2.0,
+        // SDF Skinning: LBS preserves distance (approximately)
+        SdfNode::SdfSkinning { child, .. } => eval_lipschitz(child),
 
         // Modifiers with Jacobian norm ≤ 1
         SdfNode::Round { child, .. }
@@ -1166,6 +1221,23 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             eval_lipschitz(child) * (1.0 + max_shear)
         }
         SdfNode::Animated { child, .. } => eval_lipschitz(child),
+        SdfNode::IcosahedralSymmetry { child } => eval_lipschitz(child),
+        SdfNode::IFS { child, .. } => {
+            // IFS can have arbitrary scale factors, conservative estimate
+            eval_lipschitz(child) * 2.0
+        }
+        SdfNode::HeightmapDisplacement {
+            child,
+            amplitude,
+            scale,
+            ..
+        } => eval_lipschitz(child) + amplitude.abs() * scale.abs(),
+        SdfNode::SurfaceRoughness {
+            child,
+            amplitude,
+            frequency,
+            ..
+        } => eval_lipschitz(child) + amplitude.abs() * frequency.abs(),
 
         SdfNode::WithMaterial { child, .. } => eval_lipschitz(child),
 

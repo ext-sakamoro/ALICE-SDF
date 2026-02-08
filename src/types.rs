@@ -23,8 +23,8 @@ impl SdfCategory {
         match self {
             SdfCategory::Primitive => 72,
             SdfCategory::Operation => 24,
-            SdfCategory::Transform => 4,
-            SdfCategory::Modifier => 19,
+            SdfCategory::Transform => 7,
+            SdfCategory::Modifier => 23,
         }
     }
 
@@ -938,6 +938,42 @@ pub enum SdfNode {
         factors: Vec3,
     },
 
+    /// Projective (perspective) transform with Lipschitz correction
+    ProjectiveTransform {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Inverse projection matrix (column-major)
+        inv_matrix: [f32; 16],
+        /// Lipschitz bound for distance correction
+        lipschitz_bound: f32,
+    },
+
+    /// Free-Form Deformation via control point lattice
+    LatticeDeform {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Control points array
+        control_points: Vec<Vec3>,
+        /// Number of control points along X
+        nx: u32,
+        /// Number of control points along Y
+        ny: u32,
+        /// Number of control points along Z
+        nz: u32,
+        /// Lattice bounding box minimum
+        bbox_min: Vec3,
+        /// Lattice bounding box maximum
+        bbox_max: Vec3,
+    },
+
+    /// SDF Skinning — bone-weight based spatial blending
+    SdfSkinning {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Bone transforms with weights
+        bones: Vec<crate::transforms::skinning::BoneTransform>,
+    },
+
     // === Modifiers ===
     /// Twist around Y-axis (radians per unit height)
     Twist {
@@ -1102,6 +1138,50 @@ pub enum SdfNode {
         /// Material ID (indexes into MaterialLibrary)
         material_id: u32,
     },
+
+    /// Icosahedral symmetry (120-fold) — maps to fundamental domain
+    IcosahedralSymmetry {
+        /// Child node
+        child: Arc<SdfNode>,
+    },
+
+    /// Iterated Function System — fractal self-similar folding
+    IFS {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Affine transforms (column-major Mat4)
+        transforms: Vec<[f32; 16]>,
+        /// Number of iterations
+        iterations: u32,
+    },
+
+    /// Heightmap displacement — image-based surface perturbation
+    HeightmapDisplacement {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Heightmap data (row-major, grayscale)
+        heightmap: Vec<f32>,
+        /// Heightmap width
+        width: u32,
+        /// Heightmap height
+        height: u32,
+        /// Displacement amplitude
+        amplitude: f32,
+        /// UV scale
+        scale: f32,
+    },
+
+    /// Surface roughness — FBM micro-detail noise
+    SurfaceRoughness {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Noise frequency
+        frequency: f32,
+        /// Noise amplitude
+        amplitude: f32,
+        /// Number of octaves
+        octaves: u32,
+    },
 }
 
 impl SdfNode {
@@ -1212,7 +1292,10 @@ impl SdfNode {
             Self::Translate { .. }
             | Self::Rotate { .. }
             | Self::Scale { .. }
-            | Self::ScaleNonUniform { .. } => SdfCategory::Transform,
+            | Self::ScaleNonUniform { .. }
+            | Self::ProjectiveTransform { .. }
+            | Self::LatticeDeform { .. }
+            | Self::SdfSkinning { .. } => SdfCategory::Transform,
 
             // === Modifiers ===
             Self::Twist { .. }
@@ -1233,7 +1316,11 @@ impl SdfNode {
             | Self::OctantMirror { .. }
             | Self::Shear { .. }
             | Self::Animated { .. }
-            | Self::WithMaterial { .. } => SdfCategory::Modifier,
+            | Self::WithMaterial { .. }
+            | Self::IcosahedralSymmetry { .. }
+            | Self::IFS { .. }
+            | Self::HeightmapDisplacement { .. }
+            | Self::SurfaceRoughness { .. } => SdfCategory::Modifier,
         }
     }
 
@@ -2159,6 +2246,47 @@ impl SdfNode {
         }
     }
 
+    /// Projective (perspective) transform
+    #[inline]
+    pub fn projective_transform(self, inv_matrix: [f32; 16], lipschitz_bound: f32) -> Self {
+        SdfNode::ProjectiveTransform {
+            child: Arc::new(self),
+            inv_matrix,
+            lipschitz_bound,
+        }
+    }
+
+    /// Lattice deformation (Free-Form Deformation)
+    #[inline]
+    pub fn lattice_deform(
+        self,
+        control_points: Vec<Vec3>,
+        nx: u32,
+        ny: u32,
+        nz: u32,
+        bbox_min: Vec3,
+        bbox_max: Vec3,
+    ) -> Self {
+        SdfNode::LatticeDeform {
+            child: Arc::new(self),
+            control_points,
+            nx,
+            ny,
+            nz,
+            bbox_min,
+            bbox_max,
+        }
+    }
+
+    /// SDF skinning (bone-weight based deformation)
+    #[inline]
+    pub fn sdf_skinning(self, bones: Vec<crate::transforms::skinning::BoneTransform>) -> Self {
+        SdfNode::SdfSkinning {
+            child: Arc::new(self),
+            bones,
+        }
+    }
+
     // === Modifier methods ===
 
     /// Twist around Y-axis
@@ -2342,6 +2470,55 @@ impl SdfNode {
         }
     }
 
+    /// Icosahedral symmetry (120-fold)
+    #[inline]
+    pub fn icosahedral_symmetry(self) -> Self {
+        SdfNode::IcosahedralSymmetry {
+            child: Arc::new(self),
+        }
+    }
+
+    /// Iterated Function System
+    #[inline]
+    pub fn ifs(self, transforms: Vec<[f32; 16]>, iterations: u32) -> Self {
+        SdfNode::IFS {
+            child: Arc::new(self),
+            transforms,
+            iterations,
+        }
+    }
+
+    /// Heightmap displacement
+    #[inline]
+    pub fn heightmap_displacement(
+        self,
+        heightmap: Vec<f32>,
+        width: u32,
+        height: u32,
+        amplitude: f32,
+        scale: f32,
+    ) -> Self {
+        SdfNode::HeightmapDisplacement {
+            child: Arc::new(self),
+            heightmap,
+            width,
+            height,
+            amplitude,
+            scale,
+        }
+    }
+
+    /// Surface roughness (FBM noise)
+    #[inline]
+    pub fn surface_roughness(self, frequency: f32, amplitude: f32, octaves: u32) -> Self {
+        SdfNode::SurfaceRoughness {
+            child: Arc::new(self),
+            frequency,
+            amplitude,
+            octaves,
+        }
+    }
+
     /// Count total nodes in the tree
     pub fn node_count(&self) -> u32 {
         match self {
@@ -2441,6 +2618,9 @@ impl SdfNode {
             | SdfNode::Rotate { child, .. }
             | SdfNode::Scale { child, .. }
             | SdfNode::ScaleNonUniform { child, .. }
+            | SdfNode::ProjectiveTransform { child, .. }
+            | SdfNode::LatticeDeform { child, .. }
+            | SdfNode::SdfSkinning { child, .. }
             | SdfNode::Twist { child, .. }
             | SdfNode::Bend { child, .. }
             | SdfNode::RepeatInfinite { child, .. }
@@ -2457,7 +2637,13 @@ impl SdfNode {
             | SdfNode::Displacement { child, .. }
             | SdfNode::PolarRepeat { child, .. }
             | SdfNode::OctantMirror { child, .. }
-            | SdfNode::WithMaterial { child, .. } => 1 + child.node_count(),
+            | SdfNode::Shear { child, .. }
+            | SdfNode::Animated { child, .. }
+            | SdfNode::WithMaterial { child, .. }
+            | SdfNode::IcosahedralSymmetry { child, .. }
+            | SdfNode::IFS { child, .. }
+            | SdfNode::HeightmapDisplacement { child, .. }
+            | SdfNode::SurfaceRoughness { child, .. } => 1 + child.node_count(),
 
             #[allow(unreachable_patterns)]
             _ => 1,

@@ -1013,6 +1013,84 @@ impl Compiler {
                 self.compile_node(child);
             }
 
+            // === New Transforms (7 variants) ===
+            SdfNode::ProjectiveTransform {
+                child,
+                lipschitz_bound,
+                ..
+            } => {
+                let inst_idx = self.instructions.len();
+                self.instructions
+                    .push(Instruction::projective_transform(*lipschitz_bound));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::LatticeDeform { child, .. } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::lattice_deform());
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::SdfSkinning { child, .. } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::sdf_skinning());
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            // === New Modifiers (4 variants) ===
+            SdfNode::IcosahedralSymmetry { child } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::icosahedral_symmetry());
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::IFS {
+                child, iterations, ..
+            } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::ifs(*iterations));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::HeightmapDisplacement {
+                child,
+                amplitude,
+                scale,
+                ..
+            } => {
+                let inst_idx = self.instructions.len();
+                self.instructions
+                    .push(Instruction::heightmap_displacement(*amplitude, *scale));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::SurfaceRoughness {
+                child,
+                frequency,
+                amplitude,
+                octaves,
+            } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::surface_roughness(
+                    *frequency, *amplitude, *octaves,
+                ));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
             #[allow(unreachable_patterns)]
             _ => {} // new variants handled later
         }
