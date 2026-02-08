@@ -17,9 +17,10 @@ pub fn sdf_pmy(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let (sx, cx) = sp.x.sin_cos();
     let (sy, cy) = sp.y.sin_cos();
     let (sz, cz) = sp.z.sin_cos();
-    let s2x = (sp.x * 2.0).sin();
-    let s2y = (sp.y * 2.0).sin();
-    let s2z = (sp.z * 2.0).sin();
+    // Double-angle identity: sin(2x) = 2*sin(x)*cos(x) — eliminates 3 trig calls
+    let s2x = 2.0 * sx * cx;
+    let s2y = 2.0 * sy * cy;
+    let s2z = 2.0 * sz * cz;
     let d = 2.0 * cx * cy * cz + s2x * sy + sx * s2z + s2y * sz;
     d.abs() / scale - thickness
 }

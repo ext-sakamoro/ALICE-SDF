@@ -17,9 +17,10 @@ pub fn sdf_frd(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let (sx, cx) = sp.x.sin_cos();
     let (sy, cy) = sp.y.sin_cos();
     let (sz, cz) = sp.z.sin_cos();
-    let c2x = (sp.x * 2.0).cos();
-    let c2y = (sp.y * 2.0).cos();
-    let c2z = (sp.z * 2.0).cos();
+    // Double-angle identity: cos(2x) = 2*cos²(x) - 1 — eliminates 3 trig calls
+    let c2x = 2.0 * cx * cx - 1.0;
+    let c2y = 2.0 * cy * cy - 1.0;
+    let c2z = 2.0 * cz * cz - 1.0;
     let d = c2x * sy * cz + cx * c2y * sz + sx * cy * c2z;
     d.abs() / scale - thickness
 }

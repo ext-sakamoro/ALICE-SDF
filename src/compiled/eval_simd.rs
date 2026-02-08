@@ -499,7 +499,15 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::Gyroid => {
-                let d = eval_per_lane(&p, |pt| sdf_gyroid(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD: sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
+                let sx = sin_approx(spx); let cx = cos_approx(spx);
+                let sy = sin_approx(spy); let cy = cos_approx(spy);
+                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let d = (sx * cy + sy * cz + sz * cx).abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -547,7 +555,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::SchwarzP => {
-                let d = eval_per_lane(&p, |pt| sdf_schwarz_p(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD: cos(x) + cos(y) + cos(z)
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let d = (cos_approx(p.x * scale) + cos_approx(p.y * scale) + cos_approx(p.z * scale)).abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -658,80 +670,264 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::Tetrahedron => {
-                let d = eval_per_lane(&p, |pt| sdf_tetrahedron(pt, inst.params[0]));
+                // ★ Native SIMD: 4 dot products + max (no abs — tetrahedron normals are signed)
+                let radius = f32x8::splat(inst.params[0]);
+                let s = f32x8::splat(0.5773502691896258_f32);  // 1/sqrt(3)
+                let ns = f32x8::splat(-0.5773502691896258_f32);
+                // n0=(s,s,s) n1=(-s,-s,s) n2=(-s,s,-s) n3=(s,-s,-s)
+                let d0 = p.x * s  + p.y * s  + p.z * s;
+                let d1 = p.x * ns + p.y * ns + p.z * s;
+                let d2 = p.x * ns + p.y * s  + p.z * ns;
+                let d3 = p.x * s  + p.y * ns + p.z * ns;
+                let d = d0.max(d1).max(d2).max(d3) - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Dodecahedron => {
-                let d = eval_per_lane(&p, |pt| sdf_dodecahedron(pt, inst.params[0]));
+                // ★ Native SIMD: 6 abs-dot products (GDF_DODECAHEDRON normals)
+                let radius = f32x8::splat(inst.params[0]);
+                let a = f32x8::splat(0.8506508083520400_f32);  // ICO_B
+                let b = f32x8::splat(0.5257311121191336_f32);  // ICO_A
+                // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
+                let d0 = (p.y * a + p.z * b).abs();
+                let d1 = (p.y * a - p.z * b).abs();
+                let d2 = (p.x * a + p.y * b).abs();
+                let d3 = (p.x * a - p.y * b).abs();
+                let d4 = (p.x * b + p.z * a).abs();
+                let d5 = (p.x * b - p.z * a).abs();
+                let d = d0.max(d1).max(d2).max(d3).max(d4).max(d5) - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Icosahedron => {
-                let d = eval_per_lane(&p, |pt| sdf_icosahedron(pt, inst.params[0]));
+                // ★ Native SIMD: 10 abs-dot products (octahedron[4] + icosahedron[6])
+                let radius = f32x8::splat(inst.params[0]);
+                let s = f32x8::splat(0.5773502691896258_f32);  // 1/sqrt(3)
+                let ia = f32x8::splat(0.5257311121191336_f32); // ICO_A
+                let ib = f32x8::splat(0.8506508083520400_f32); // ICO_B
+                // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
+                let d0 = ( p.x * s + p.y * s + p.z * s).abs();
+                let d1 = (-p.x * s + p.y * s + p.z * s).abs();
+                let d2 = ( p.x * s - p.y * s + p.z * s).abs();
+                let d3 = ( p.x * s + p.y * s - p.z * s).abs();
+                // Icosahedron normals (6): abs(dot) with (0,±a,±b) permutations
+                let d4 = (p.y * ia + p.z * ib).abs();
+                let d5 = (p.y * ia - p.z * ib).abs();
+                let d6 = (p.x * ia + p.y * ib).abs();
+                let d7 = (p.x * ia - p.y * ib).abs();
+                let d8 = (p.x * ib + p.z * ia).abs();
+                let d9 = (p.x * ib - p.z * ia).abs();
+                let d = d0.max(d1).max(d2).max(d3).max(d4).max(d5).max(d6).max(d7).max(d8).max(d9) - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::TruncatedOctahedron => {
-                let d = eval_per_lane(&p, |pt| sdf_truncated_octahedron(pt, inst.params[0]));
+                // ★ Native SIMD: 7 abs-dot products (cube[3] + octahedron[4])
+                let radius = f32x8::splat(inst.params[0]);
+                let s = f32x8::splat(0.5773502691896258_f32);
+                // Cube normals (3): abs of each axis
+                let d0 = p.x.abs();
+                let d1 = p.y.abs();
+                let d2 = p.z.abs();
+                // Octahedron normals (4)
+                let d3 = ( p.x * s + p.y * s + p.z * s).abs();
+                let d4 = (-p.x * s + p.y * s + p.z * s).abs();
+                let d5 = ( p.x * s - p.y * s + p.z * s).abs();
+                let d6 = ( p.x * s + p.y * s - p.z * s).abs();
+                let d = d0.max(d1).max(d2).max(d3).max(d4).max(d5).max(d6) - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::TruncatedIcosahedron => {
-                let d = eval_per_lane(&p, |pt| sdf_truncated_icosahedron(pt, inst.params[0]));
+                // ★ Native SIMD: 16 abs-dot products (oct[4] + ico[6] + dodec[6])
+                let radius = f32x8::splat(inst.params[0]);
+                let s = f32x8::splat(0.5773502691896258_f32);
+                let ia = f32x8::splat(0.5257311121191336_f32);
+                let ib = f32x8::splat(0.8506508083520400_f32);
+                // Octahedron (4)
+                let d0  = ( p.x * s + p.y * s + p.z * s).abs();
+                let d1  = (-p.x * s + p.y * s + p.z * s).abs();
+                let d2  = ( p.x * s - p.y * s + p.z * s).abs();
+                let d3  = ( p.x * s + p.y * s - p.z * s).abs();
+                // Icosahedron (6)
+                let d4  = (p.y * ia + p.z * ib).abs();
+                let d5  = (p.y * ia - p.z * ib).abs();
+                let d6  = (p.x * ia + p.y * ib).abs();
+                let d7  = (p.x * ia - p.y * ib).abs();
+                let d8  = (p.x * ib + p.z * ia).abs();
+                let d9  = (p.x * ib - p.z * ia).abs();
+                // Dodecahedron (6)
+                let d10 = (p.y * ib + p.z * ia).abs();
+                let d11 = (p.y * ib - p.z * ia).abs();
+                let d12 = (p.x * ib + p.y * ia).abs();
+                let d13 = (p.x * ib - p.y * ia).abs();
+                let d14 = (p.x * ia + p.z * ib).abs();
+                let d15 = (p.x * ia - p.z * ib).abs();
+                let d = d0.max(d1).max(d2).max(d3)
+                    .max(d4).max(d5).max(d6).max(d7).max(d8).max(d9)
+                    .max(d10).max(d11).max(d12).max(d13).max(d14).max(d15) - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::BoxFrame => {
-                let he = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-                let d = eval_per_lane(&p, |pt| sdf_box_frame(pt, he, inst.params[3]));
+                // ★ Native SIMD: abs, max, min, sqrt — all native ops
+                let bx = f32x8::splat(inst.params[0]);
+                let by = f32x8::splat(inst.params[1]);
+                let bz = f32x8::splat(inst.params[2]);
+                let e = f32x8::splat(inst.params[3]);
+                let zero = f32x8::ZERO;
+                // p = abs(p) - half_extents
+                let px = p.x.abs() - bx;
+                let py = p.y.abs() - by;
+                let pz = p.z.abs() - bz;
+                // q = abs(p + e) - e
+                let qx = (px + e).abs() - e;
+                let qy = (py + e).abs() - e;
+                let qz = (pz + e).abs() - e;
+                // d1 = length(max(vec3(px,qy,qz),0)) + min(max(px,max(qy,qz)),0)
+                let v1x = px.max(zero); let v1y = qy.max(zero); let v1z = qz.max(zero);
+                let d1 = (v1x*v1x + v1y*v1y + v1z*v1z).sqrt() + px.max(qy.max(qz)).min(zero);
+                // d2
+                let v2x = qx.max(zero); let v2y = py.max(zero); let v2z = qz.max(zero);
+                let d2 = (v2x*v2x + v2y*v2y + v2z*v2z).sqrt() + qx.max(py.max(qz)).min(zero);
+                // d3
+                let v3x = qx.max(zero); let v3y = qy.max(zero); let v3z = pz.max(zero);
+                let d3 = (v3x*v3x + v3y*v3y + v3z*v3z).sqrt() + qx.max(qy.max(pz)).min(zero);
+                let d = d1.min(d2).min(d3);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::DiamondSurface => {
-                let d = eval_per_lane(&p, |pt| sdf_diamond_surface(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD: sin(x)*sin(y)*sin(z) + sin(x)*cos(y)*cos(z) + cos(x)*sin(y)*cos(z) + cos(x)*cos(y)*sin(z)
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
+                let sx = sin_approx(spx); let cx = cos_approx(spx);
+                let sy = sin_approx(spy); let cy = cos_approx(spy);
+                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let d = sx*sy*sz + sx*cy*cz + cx*sy*cz + cx*cy*sz;
+                let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Neovius => {
-                let d = eval_per_lane(&p, |pt| sdf_neovius(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD: 3*(cos(x)+cos(y)+cos(z)) + 4*cos(x)*cos(y)*cos(z)
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let three = f32x8::splat(3.0);
+                let four = f32x8::splat(4.0);
+                let cx = cos_approx(p.x * scale);
+                let cy = cos_approx(p.y * scale);
+                let cz = cos_approx(p.z * scale);
+                let d = three * (cx + cy + cz) + four * cx * cy * cz;
+                let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Lidinoid => {
-                let d = eval_per_lane(&p, |pt| sdf_lidinoid(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD + double-angle identities (0 extra trig calls)
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let two = f32x8::splat(2.0);
+                let one = f32x8::ONE;
+                let half = f32x8::splat(0.5);
+                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
+                let sx = sin_approx(spx); let cx = cos_approx(spx);
+                let sy = sin_approx(spy); let cy = cos_approx(spy);
+                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                // sin(2x) = 2*sx*cx, cos(2x) = 2*cx*cx - 1
+                let s2x = two * sx * cx; let s2y = two * sy * cy; let s2z = two * sz * cz;
+                let c2x = two * cx * cx - one; let c2y = two * cy * cy - one; let c2z = two * cz * cz - one;
+                let term1 = half * (s2x * cy * sz + sx * s2y * cz + cx * sy * s2z);
+                let term2 = half * (c2x * c2y + c2y * c2z + c2z * c2x);
+                let d = (term1 - term2 + f32x8::splat(0.15)).abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::IWP => {
-                let d = eval_per_lane(&p, |pt| sdf_iwp(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD + double-angle: cos(2x) = 2*cos²(x)-1
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let two = f32x8::splat(2.0);
+                let one = f32x8::ONE;
+                let cx = cos_approx(p.x * scale);
+                let cy = cos_approx(p.y * scale);
+                let cz = cos_approx(p.z * scale);
+                let c2x = two * cx * cx - one;
+                let c2y = two * cy * cy - one;
+                let c2z = two * cz * cz - one;
+                let d = two * (cx*cy + cy*cz + cz*cx) - (c2x + c2y + c2z);
+                let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::FRD => {
-                let d = eval_per_lane(&p, |pt| sdf_frd(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD + double-angle: cos(2x) = 2*cos²(x)-1
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let two = f32x8::splat(2.0);
+                let one = f32x8::ONE;
+                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
+                let sx = sin_approx(spx); let cx = cos_approx(spx);
+                let sy = sin_approx(spy); let cy = cos_approx(spy);
+                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let c2x = two * cx * cx - one;
+                let c2y = two * cy * cy - one;
+                let c2z = two * cz * cz - one;
+                let d = c2x*sy*cz + cx*c2y*sz + sx*cy*c2z;
+                let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::FischerKochS => {
-                let d = eval_per_lane(&p, |pt| sdf_fischer_koch_s(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD + double-angle (same as FRD with -0.4 offset)
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let two = f32x8::splat(2.0);
+                let one = f32x8::ONE;
+                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
+                let sx = sin_approx(spx); let cx = cos_approx(spx);
+                let sy = sin_approx(spy); let cy = cos_approx(spy);
+                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let c2x = two * cx * cx - one;
+                let c2y = two * cy * cy - one;
+                let c2z = two * cz * cz - one;
+                let d = c2x*sy*cz + cx*c2y*sz + sx*cy*c2z - f32x8::splat(0.4);
+                let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::PMY => {
-                let d = eval_per_lane(&p, |pt| sdf_pmy(pt, inst.params[0], inst.params[1]));
+                // ★ Native SIMD + double-angle: sin(2x) = 2*sin(x)*cos(x)
+                let scale = f32x8::splat(inst.params[0]);
+                let thickness = f32x8::splat(inst.params[1]);
+                let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+                let two = f32x8::splat(2.0);
+                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
+                let sx = sin_approx(spx); let cx = cos_approx(spx);
+                let sy = sin_approx(spy); let cy = cos_approx(spy);
+                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let s2x = two * sx * cx; let s2y = two * sy * cy; let s2z = two * sz * cz;
+                let d = two * cx*cy*cz + s2x*sy + sx*s2z + s2y*sz;
+                let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -1073,12 +1269,16 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let sx = f32x8::splat(inst.params[3]);
                 let sy = f32x8::splat(inst.params[4]);
                 let sz = f32x8::splat(inst.params[5]);
-                let _half = f32x8::splat(0.5);
 
-                // clamp(round(p / spacing), -count, count) * spacing
-                let ix = ((p.x / sx).round()).max(-cx).min(cx);
-                let iy = ((p.y / sy).round()).max(-cy).min(cy);
-                let iz = ((p.z / sz).round()).max(-cz).min(cz);
+                // Division Exorcism: precompute scalar reciprocals, splat to SIMD
+                let rsx = f32x8::splat(1.0 / inst.params[3]);
+                let rsy = f32x8::splat(1.0 / inst.params[4]);
+                let rsz = f32x8::splat(1.0 / inst.params[5]);
+
+                // clamp(round(p * recip_spacing), -count, count) * spacing
+                let ix = ((p.x * rsx).round()).max(-cx).min(cx);
+                let iy = ((p.y * rsy).round()).max(-cy).min(cy);
+                let iz = ((p.z * rsz).round()).max(-cz).min(cz);
 
                 p = Vec3x8 {
                     x: p.x - ix * sx,
@@ -1407,7 +1607,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
 }
 
 /// Smooth minimum (polynomial) for SIMD — branchless k=0 guard
-#[inline]
+#[inline(always)]
 fn smooth_min_simd(a: f32x8, b: f32x8, k: f32x8) -> f32x8 {
     let k = k.max(f32x8::splat(1e-10));
     let h = (f32x8::ONE - ((a - b).abs() / k)).max(f32x8::ZERO);
@@ -1416,7 +1616,7 @@ fn smooth_min_simd(a: f32x8, b: f32x8, k: f32x8) -> f32x8 {
 
 /// Smooth min — Division Exorcism edition.
 /// Takes precomputed `rk = 1/k` to eliminate SIMD division.
-#[inline]
+#[inline(always)]
 fn smooth_min_simd_rk(a: f32x8, b: f32x8, k: f32x8, rk: f32x8) -> f32x8 {
     let h = (f32x8::ONE - (a - b).abs() * rk).max(f32x8::ZERO);
     a.min(b) - h * h * k * f32x8::splat(0.25)
@@ -1424,7 +1624,7 @@ fn smooth_min_simd_rk(a: f32x8, b: f32x8, k: f32x8, rk: f32x8) -> f32x8 {
 
 /// Chamfer minimum for SIMD: 45-degree beveled blend
 /// `min(min(a,b), (a + b) * FRAC_1_SQRT_2 - r)`
-#[inline]
+#[inline(always)]
 fn chamfer_min_simd(a: f32x8, b: f32x8, r: f32x8) -> f32x8 {
     let s = f32x8::splat(std::f32::consts::FRAC_1_SQRT_2);
     a.min(b).min((a + b) * s - r)
@@ -1432,18 +1632,21 @@ fn chamfer_min_simd(a: f32x8, b: f32x8, r: f32x8) -> f32x8 {
 
 /// Stairs minimum for SIMD: stepped/terraced blend (Mercury hg_sdf)
 /// Processes 8 lanes with scalar params r and n
-#[inline]
+#[inline(always)]
 fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
     let s = f32x8::splat(std::f32::consts::FRAC_1_SQRT_2);
     let s2 = f32x8::splat(std::f32::consts::SQRT_2);
     let half = f32x8::splat(0.5);
-    let n_v = f32x8::splat(n);
-    let r_v = f32x8::splat(r);
-    let rn_v = r_v / n_v;
-    let off_v = (r_v - rn_v) * half * s2;
-    let step_v = r_v * s2 / n_v;
+    // Division Exorcism: precompute scalar reciprocals, then splat
+    let rn = r / n;                         // scalar division (1 cycle amortized over 8 lanes)
+    let rn_v = f32x8::splat(rn);
+    let step = r * std::f32::consts::SQRT_2 / n;
+    let inv_step = 1.0 / step;             // scalar reciprocal
+    let step_v = f32x8::splat(step);
+    let inv_step_v = f32x8::splat(inv_step);
     let hs_v = step_v * half;
-    let edge_v = half * rn_v;
+    let off_v = f32x8::splat((r - rn) * 0.5 * std::f32::consts::SQRT_2);
+    let edge_v = f32x8::splat(0.5 * rn);
 
     let d = a.min(b);
 
@@ -1457,9 +1660,9 @@ fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
     py = py - off_v;
     px = px + half * s2 * rn_v;
 
-    // pMod1: px = glsl_mod(px + hs, step) - hs
+    // pMod1: px = glsl_mod(px + hs, step) - hs — Division Exorcism: multiply by inv_step
     let t = px + hs_v;
-    px = t - step_v * (t / step_v).floor() - hs_v;
+    px = t - step_v * (t * inv_step_v).floor() - hs_v;
 
     let d = d.min(py);
 
@@ -1471,7 +1674,7 @@ fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
 }
 
 /// Fast cosine approximation for SIMD
-#[inline]
+#[inline(always)]
 fn cos_approx(x: f32x8) -> f32x8 {
     // Normalize to [-pi, pi]
     let pi = f32x8::splat(std::f32::consts::PI);
@@ -1485,7 +1688,7 @@ fn cos_approx(x: f32x8) -> f32x8 {
 }
 
 /// Fast sine approximation for SIMD
-#[inline]
+#[inline(always)]
 fn sin_approx(x: f32x8) -> f32x8 {
     cos_approx(x - f32x8::splat(std::f32::consts::FRAC_PI_2))
 }
@@ -1494,7 +1697,7 @@ fn sin_approx(x: f32x8) -> f32x8 {
 ///
 /// Minimax polynomial approximation of atan2(y, x).
 /// Max error ~0.0038 radians (~0.22 degrees) — sufficient for SDF polar repeat.
-#[inline]
+#[inline(always)]
 fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
     let pi = f32x8::splat(std::f32::consts::PI);
     let half_pi = f32x8::splat(std::f32::consts::FRAC_PI_2);
@@ -1529,7 +1732,7 @@ fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
 /// Per-lane scalar evaluation helper for binary operations
 ///
 /// Evaluates a scalar binary operation for each of the 8 SIMD lanes independently.
-#[inline]
+#[inline(always)]
 fn eval_per_lane_binary(a: f32x8, b: f32x8, f: impl Fn(f32, f32) -> f32) -> f32x8 {
     let aa = a.as_array_ref();
     let ba = b.as_array_ref();
@@ -1546,7 +1749,7 @@ fn eval_per_lane_binary(a: f32x8, b: f32x8, f: impl Fn(f32, f32) -> f32) -> f32x
 /// This is used for complex primitives where full SIMD implementation would be
 /// error-prone. The SIMD benefit still comes from parallelizing tree traversal
 /// (transforms, operations) across 8 points.
-#[inline]
+#[inline(always)]
 fn eval_per_lane(p: &Vec3x8, f: impl Fn(Vec3) -> f32) -> f32x8 {
     let px = p.x.as_array_ref();
     let py = p.y.as_array_ref();

@@ -1534,28 +1534,51 @@ impl HlslTranspiler {
                 var
             }
 
-            SdfNode::ColumnsUnion { a, b, r: _, n: _ } => {
+            SdfNode::ColumnsUnion { a, b, r, n } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
-                // Inline fallback: use smooth union as approximation for HLSL
-                writeln!(code, "    float {} = min({}, {});", var, d_a, d_b).unwrap();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                writeln!(code, "    float {v}_m = min({a}, {b});", v=var, a=d_a, b=d_b).unwrap();
+                writeln!(code, "    float {v}_a2 = min({a}, {b}); float {v}_b2 = max({a}, {b});", v=var, a=d_a, b=d_b).unwrap();
+                writeln!(code, "    float {v}_cs = {r} * 2.0 / {n};", v=var, r=r_s, n=n_s).unwrap();
+                writeln!(code, "    float {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;", v=var, r=r_s).unwrap();
+                writeln!(code, "    float {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);", v=var).unwrap();
+                writeln!(code, "    {v}_ra = fmod({v}_ra + {v}_cs * 0.5, {v}_cs) - {v}_cs * 0.5;", v=var).unwrap();
+                writeln!(code, "    float {} = ({v}_m > {r}) ? {v}_m : min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m);", var, v=var, r=r_s).unwrap();
                 var
             }
 
-            SdfNode::ColumnsIntersection { a, b, r: _, n: _ } => {
+            SdfNode::ColumnsIntersection { a, b, r, n } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
-                writeln!(code, "    float {} = max({}, {});", var, d_a, d_b).unwrap();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                writeln!(code, "    float {v}_na = -({a}); float {v}_m = min({v}_na, {b});", v=var, a=d_a, b=d_b).unwrap();
+                writeln!(code, "    float {v}_a2 = min({v}_na, {b}); float {v}_b2 = max({v}_na, {b});", v=var, b=d_b).unwrap();
+                writeln!(code, "    float {v}_cs = {r} * 2.0 / {n};", v=var, r=r_s, n=n_s).unwrap();
+                writeln!(code, "    float {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;", v=var, r=r_s).unwrap();
+                writeln!(code, "    float {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);", v=var).unwrap();
+                writeln!(code, "    {v}_ra = fmod({v}_ra + {v}_cs * 0.5, {v}_cs) - {v}_cs * 0.5;", v=var).unwrap();
+                writeln!(code, "    float {} = ({v}_m > {r}) ? -{v}_m : -min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m);", var, v=var, r=r_s).unwrap();
                 var
             }
 
-            SdfNode::ColumnsSubtraction { a, b, r: _, n: _ } => {
+            SdfNode::ColumnsSubtraction { a, b, r, n } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
-                writeln!(code, "    float {} = max({}, -{});", var, d_a, d_b).unwrap();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                writeln!(code, "    float {v}_na = -({a}); float {v}_m = min({v}_na, {b});", v=var, a=d_a, b=d_b).unwrap();
+                writeln!(code, "    float {v}_a2 = min({v}_na, {b}); float {v}_b2 = max({v}_na, {b});", v=var, b=d_b).unwrap();
+                writeln!(code, "    float {v}_cs = {r} * 2.0 / {n};", v=var, r=r_s, n=n_s).unwrap();
+                writeln!(code, "    float {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;", v=var, r=r_s).unwrap();
+                writeln!(code, "    float {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);", v=var).unwrap();
+                writeln!(code, "    {v}_ra = fmod({v}_ra + {v}_cs * 0.5, {v}_cs) - {v}_cs * 0.5;", v=var).unwrap();
+                writeln!(code, "    float {} = ({v}_m > {r}) ? -{v}_m : -min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m);", var, v=var, r=r_s).unwrap();
                 var
             }
 

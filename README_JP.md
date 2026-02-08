@@ -27,7 +27,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **53プリミティブ、12演算、4トランスフォーム、15モディファイア** - 豊富なシェイプボキャブラリ
+- **62プリミティブ、21演算、4トランスフォーム、16モディファイア** - 業界最高水準のシェイプボキャブラリ
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
 - **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
 - **緩和球トレーシング（Relaxed Sphere Tracing）** - リプシッツ適応ステップサイズによるオーバーリラクゼーション
@@ -269,7 +269,7 @@ SDFは任意の点から表面までの最短距離を返します:
 
 ```
 SdfNode
-  |-- プリミティブ (53): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- プリミティブ (62): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -277,14 +277,23 @@ SdfNode
   |                    Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
   |                    Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
   |                    ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
-  |                    RegularPolygon, StarPolygon, Stairs, Helix
-  |-- 演算 (12): Union, Intersection, Subtraction,
+  |                    RegularPolygon, StarPolygon, Stairs, Helix,
+  |                    Tetrahedron, Dodecahedron, Icosahedron,                    ← プラトン立体 (GDF)
+  |                    TruncatedOctahedron, TruncatedIcosahedron,                 ← アルキメデス立体
+  |                    BoxFrame,                                                   ← IQワイヤーフレームボックス
+  |                    DiamondSurface, Neovius, Lidinoid, IWP, FRD,              ← TPMS曲面
+  |                    FischerKochS, PMY                                           ← TPMS曲面
+  |-- 演算 (21): Union, Intersection, Subtraction,
   |              SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |              ChamferUnion, ChamferIntersection, ChamferSubtraction,
-  |              StairsUnion, StairsIntersection, StairsSubtraction
+  |              StairsUnion, StairsIntersection, StairsSubtraction,
+  |              XOR, Morph,                                                       ← ブーリアン/補間
+  |              ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,            ← hg_sdfカラム
+  |              Pipe, Engrave, Groove, Tongue                                     ← hg_sdf高度操作
   |-- トランスフォーム (4): Translate, Rotate, Scale, ScaleNonUniform
-  |-- モディファイア (15): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
-  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier
+  |-- モディファイア (16): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
+  |                   OctantMirror                                                 ← 48重対称性
   +-- WithMaterial: PBRマテリアル割り当て（距離評価に対して透過的）
 ```
 
@@ -624,7 +633,7 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
 |---------|--------|-------------|
 | **エルミートデータ** | `mesh/hermite` | Dual Contouring用の位置+法線抽出 |
 | **プリミティブフィッティング** | `mesh/primitive_fitting` | メッシュデータ内の球/箱/円柱検出（CSG再構成用） |
-| **Naniteクラスタ** | `mesh/nanite` | UE5 Nanite互換階層クラスタ生成 |
+| **Naniteクラスタ** | `mesh/nanite` | UE5 Nanite互換階層クラスタ生成（Dual Contouring、タイトAABB、マテリアルID、曲率適応密度） |
 | **LOD生成** | `mesh/lod` | 効率的レンダリング用LODチェーン生成 |
 | **デシメーションLOD** | `mesh/lod` | 高解像度ベースメッシュからのプログレッシブデシメーションLOD |
 | **適応型MC** | `mesh/sdf_to_mesh` | 表面適応細分化を備えたオクツリーベースマーチングキューブ |
@@ -636,6 +645,70 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
 | **メッシュBVH** | `mesh/bvh` | 精密符号付き距離クエリ用バウンディングボリューム階層 |
 | **マニフォールドバリデーション** | `mesh/manifold` | トポロジーバリデーション、修復、品質メトリクス |
 | **UV展開** | `mesh/uv_unwrap` | LCSMコンフォーマルUV展開（シーム検出、チャートパッキング） |
+
+## 新機能: プラトン立体、TPMS曲面、高度CSG (v2.0)
+
+### プラトン立体・アルキメデス立体 (GDF)
+
+hg_sdfのGDF（一般化距離関数）アプローチによる5種の新プラトン/アルキメデス立体。面法線との絶対内積の最大値でSDFを定義。
+
+| プリミティブ | 法線数 | 説明 |
+|-------------|--------|------|
+| `Tetrahedron` | 4 | 正四面体 |
+| `Dodecahedron` | 6 | 正十二面体 (12正五角形面) |
+| `Icosahedron` | 10 | 正二十面体 (20三角形面) |
+| `TruncatedOctahedron` | 7 | 切頂八面体 (8六角形+6正方形面) |
+| `TruncatedIcosahedron` | 16 | サッカーボール/C60 (12五角形+20六角形) |
+
+全5種はネイティブSIMD 8-wide評価（スカラーフォールバックなし）— 純粋FMA + max演算。
+
+### BoxFrame
+
+IQの`sdBoxFrame` — エッジのみ表示するワイヤーフレームボックス。
+
+### TPMS曲面 (7種新規 + 2種既存)
+
+格子/スキャフォールド生成用の三重周期極小曲面。`scale`（空間周波数）と`thickness`（シェル半厚）で制御。
+
+| 曲面 | 説明 |
+|------|------|
+| `DiamondSurface` | ダイアモンド曲面 |
+| `Neovius` | ネオヴィウス曲面 |
+| `Lidinoid` | リディノイド曲面 |
+| `IWP` | I-WP (I-graph and Wrapped Package) 曲面 |
+| `FRD` | F-RD (面心立方、菱形十二面体) 曲面 |
+| `FischerKochS` | フィッシャー-コッホS曲面 |
+| `PMY` | PMY曲面 |
+
+**倍角公式**（`cos(2x) = 2cos²(x)-1`）で冗長なtrig呼び出しを排除。**ネイティブSIMD**で`sin_approx`/`cos_approx`を使用。
+
+### 高度CSG演算 (9種新規)
+
+| 演算 | 数式 | 出典 |
+|------|------|------|
+| `XOR` | `min(a,b).max(-max(a,b))` | IQ |
+| `Morph` | `a*(1-t) + b*t` | libfive/Curv |
+| `ColumnsUnion/Intersection/Subtraction` | カラム形状ブレンド | hg_sdf |
+| `Pipe` | `length(vec2(a,b)) - r` | hg_sdf |
+| `Engrave` / `Groove` / `Tongue` | 表面装飾演算 | hg_sdf |
+
+### OctantMirrorモディファイア
+
+48重対称性: 全座標の`abs()` + 降順ソート (`x ≥ y ≥ z`)。完全八面体対称群。
+
+### Nanite強化
+
+| 機能 | 説明 |
+|------|------|
+| **Dual Contouring** | シャープエッジ形状向けDCメッシュ生成 |
+| **タイトAABB** | 区間演算による自動バウンド縮小 |
+| **マテリアルID** | クラスタ毎のマテリアル割り当て |
+| **曲率適応** | 高曲率領域のクラスタ密度を自動細分化 |
+| **HLSLマテリアルエクスポート** | UE5用`.usf`ファイル生成 |
+
+### smooth_min_root (IQ)
+
+C-無限滑らかな平方根型スムースミニマム: `0.5 * (a + b - sqrt((b-a)² + k²))`。多項式版と異なり、入力分離に関わらず一定のブレンド幅。
 
 ## 区間演算（Interval Arithmetic）
 
@@ -656,7 +729,7 @@ let bounds = eval_interval(&shape, region);
 let lip = eval_lipschitz(&shape); // 距離保存形状なら1.0
 ```
 
-全54プリミティブ、12演算、トランスフォーム、モディファイアをサポート。緩和球トレーシングとSDF対SDFコリジョンの空間プルーニングに内部使用。
+全62プリミティブ、21演算、トランスフォーム、モディファイアをサポート。緩和球トレーシングとSDF対SDFコリジョンの空間プルーニングに内部使用。
 
 ## ニューラルSDF
 
@@ -1233,7 +1306,7 @@ ALICE-SDFはWebAssemblyでブラウザ上で動作し、WebGPU/Canvas2Dをサポ
 npm install @alice-sdf/wasm
 ```
 
-TypeScript型定義を完備。53プリミティブ、CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
+TypeScript型定義を完備。62プリミティブ、21 CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
 
 ### WASMデモのビルド
 

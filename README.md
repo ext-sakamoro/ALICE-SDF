@@ -27,7 +27,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **53 primitives, 12 operations, 4 transforms, 15 modifiers** - rich shape vocabulary
+- **62 primitives, 21 operations, 4 transforms, 16 modifiers** - industry-leading shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
 - **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
@@ -269,7 +269,7 @@ An SDF returns the shortest distance from any point to the surface:
 
 ```
 SdfNode
-  |-- Primitive (53): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- Primitive (62): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -277,14 +277,23 @@ SdfNode
   |                    Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
   |                    Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
   |                    ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
-  |                    RegularPolygon, StarPolygon, Stairs, Helix
-  |-- Operation (12): Union, Intersection, Subtraction,
+  |                    RegularPolygon, StarPolygon, Stairs, Helix,
+  |                    Tetrahedron, Dodecahedron, Icosahedron,                    ← Platonic solids (GDF)
+  |                    TruncatedOctahedron, TruncatedIcosahedron,                 ← Archimedean solids
+  |                    BoxFrame,                                                   ← IQ wireframe box
+  |                    DiamondSurface, Neovius, Lidinoid, IWP, FRD,              ← TPMS surfaces
+  |                    FischerKochS, PMY                                           ← TPMS surfaces
+  |-- Operation (21): Union, Intersection, Subtraction,
   |                    SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |                    ChamferUnion, ChamferIntersection, ChamferSubtraction,
-  |                    StairsUnion, StairsIntersection, StairsSubtraction
+  |                    StairsUnion, StairsIntersection, StairsSubtraction,
+  |                    XOR, Morph,                                                 ← Boolean / Interpolation
+  |                    ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,      ← hg_sdf columns
+  |                    Pipe, Engrave, Groove, Tongue                               ← hg_sdf advanced
   |-- Transform (4): Translate, Rotate, Scale, ScaleNonUniform
-  |-- Modifier (15): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
-  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier
+  |-- Modifier (16): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
+  |                   OctantMirror                                                 ← 48-fold symmetry
   +-- WithMaterial: PBR material assignment (transparent to distance evaluation)
 ```
 
@@ -624,7 +633,7 @@ Specialized modules:
 |---------|--------|-------------|
 | **Hermite Data** | `mesh/hermite` | Position + normal extraction for Dual Contouring |
 | **Primitive Fitting** | `mesh/primitive_fitting` | Detect sphere/box/cylinder in mesh data for CSG reconstruction |
-| **Nanite Clusters** | `mesh/nanite` | UE5 Nanite-compatible hierarchical cluster generation |
+| **Nanite Clusters** | `mesh/nanite` | UE5 Nanite-compatible hierarchical cluster generation with Dual Contouring, tight AABB, material ID, curvature-adaptive density |
 | **LOD Generation** | `mesh/lod` | Level-of-detail chain generation for efficient rendering |
 | **Decimation LOD** | `mesh/lod` | Progressive decimation-based LOD from high-res base mesh |
 | **Adaptive MC** | `mesh/sdf_to_mesh` | Octree-based marching cubes with surface-adaptive subdivision |
@@ -636,6 +645,74 @@ Specialized modules:
 | **Mesh BVH** | `mesh/bvh` | Bounding volume hierarchy for exact signed distance queries |
 | **Manifold Validation** | `mesh/manifold` | Topology validation, repair, and quality metrics |
 | **UV Unwrapping** | `mesh/uv_unwrap` | LSCM conformal UV unwrapping with seam detection and chart packing |
+
+## New: Platonic Solids, TPMS Surfaces, Advanced CSG (v2.0)
+
+### Platonic & Archimedean Solids (GDF)
+
+5 new Platonic/Archimedean solids using the Generalized Distance Function (GDF) approach from hg_sdf. Each is defined by a set of face normals — the SDF is the maximum abs-dot product minus the radius.
+
+| Primitive | Normals | Description |
+|-----------|---------|-------------|
+| `Tetrahedron` | 4 | Regular tetrahedron |
+| `Dodecahedron` | 6 | Regular dodecahedron (12 pentagonal faces) |
+| `Icosahedron` | 10 | Regular icosahedron (20 triangular faces) |
+| `TruncatedOctahedron` | 7 | Archimedean solid (8 hex + 6 square faces) |
+| `TruncatedIcosahedron` | 16 | Soccer ball / C60 (12 pentagons + 20 hexagons) |
+
+All 5 evaluate via native SIMD 8-wide (no scalar fallback) — pure FMA + max operations.
+
+### BoxFrame
+
+IQ's `sdBoxFrame` — a wireframe box showing only edges. Parameters: `half_extents: Vec3`, `edge: f32`.
+
+### TPMS Surfaces (7 new + 2 existing)
+
+Triply-Periodic Minimal Surfaces for lattice/scaffold generation. Each uses `scale` (spatial frequency) and `thickness` (shell half-thickness).
+
+| Surface | Implicit Function |
+|---------|-------------------|
+| `DiamondSurface` | `sin(x)sin(y)sin(z) + sin(x)cos(y)cos(z) + cos(x)sin(y)cos(z) + cos(x)cos(y)sin(z)` |
+| `Neovius` | `3(cos(x)+cos(y)+cos(z)) + 4cos(x)cos(y)cos(z)` |
+| `Lidinoid` | Complex sin/cos terms with 2x harmonics |
+| `IWP` | `2(cos(x)cos(y)+cos(y)cos(z)+cos(z)cos(x)) - (cos(2x)+cos(2y)+cos(2z))` |
+| `FRD` | `cos(2x)sin(y)cos(z) + cos(x)cos(2y)sin(z) + sin(x)cos(y)cos(2z)` |
+| `FischerKochS` | FRD - 0.4 |
+| `PMY` | `2cos(x)cos(y)cos(z) + sin(2x)sin(y) + sin(x)sin(2z) + sin(2y)sin(z)` |
+
+All use **double-angle identities** (`cos(2x) = 2cos²(x)-1`) to eliminate redundant trig calls, and evaluate via **native SIMD** with `sin_approx`/`cos_approx`.
+
+### Advanced CSG Operations (9 new)
+
+| Operation | Formula | Source |
+|-----------|---------|--------|
+| `XOR` | `min(a,b).max(-max(a,b))` | IQ |
+| `Morph` | `a*(1-t) + b*t` | libfive/Curv |
+| `ColumnsUnion` | Column-shaped blending with `r` radius, `n` columns | hg_sdf |
+| `ColumnsIntersection` | Column blend at intersection boundary | hg_sdf |
+| `ColumnsSubtraction` | Column blend at subtraction boundary | hg_sdf |
+| `Pipe` | `length(vec2(a,b)) - r` | hg_sdf |
+| `Engrave` | `max(a, (a+r-abs(b))*√½)` | hg_sdf |
+| `Groove` | `max(a, min(a+ra, rb-abs(b)))` | hg_sdf |
+| `Tongue` | `min(a, max(a-ra, abs(b)-rb))` | hg_sdf |
+
+### OctantMirror Modifier
+
+48-fold symmetry: `abs()` all coordinates + sort descending (`x ≥ y ≥ z`). Creates full octahedral symmetry group. OpCode 63.
+
+### Nanite Enhancements
+
+| Feature | Description |
+|---------|-------------|
+| **Dual Contouring** | Optional DC mesh generation per LOD for sharp-edge shapes |
+| **Tight AABB** | Automatic bounds shrinking via interval arithmetic |
+| **Material ID** | Per-cluster material assignment via `eval_material()` at centroid |
+| **Curvature Adaptive** | High-curvature regions get finer cluster density |
+| **HLSL Material Export** | `export_nanite_hlsl_material()` generates UE5 `.usf` with `AliceSdfNormal()` and `AliceSdfMaterial()` |
+
+### smooth_min_root (IQ)
+
+C-infinity square root smooth minimum: `0.5 * (a + b - sqrt((b-a)² + k²))`. Unlike polynomial `smooth_min`, this has a constant blend width regardless of input separation.
 
 ## Interval Arithmetic
 
@@ -656,7 +733,7 @@ let bounds = eval_interval(&shape, region);
 let lip = eval_lipschitz(&shape); // 1.0 for distance-preserving shapes
 ```
 
-Supports all 54 primitives, 12 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
+Supports all 62 primitives, 21 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
 
 ## Neural SDF
 
@@ -1297,7 +1374,7 @@ ALICE-SDF runs in the browser via WebAssembly with WebGPU/Canvas2D support.
 npm install @alice-sdf/wasm
 ```
 
-Full TypeScript type definitions included. Supports all 53 primitives, CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
+Full TypeScript type definitions included. Supports all 62 primitives, 21 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
 
 ### Building the WASM Demo
 

@@ -18,9 +18,14 @@ pub fn sdf_lidinoid(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let (sx, cx) = sp.x.sin_cos();
     let (sy, cy) = sp.y.sin_cos();
     let (sz, cz) = sp.z.sin_cos();
-    let (s2x, c2x) = (sp.x * 2.0).sin_cos();
-    let (s2y, c2y) = (sp.y * 2.0).sin_cos();
-    let (s2z, c2z) = (sp.z * 2.0).sin_cos();
+    // Double-angle identities: sin(2x) = 2*sin(x)*cos(x), cos(2x) = 2*cos²(x)-1
+    // Eliminates 3 sin_cos() calls (6 trig → 0 trig)
+    let s2x = 2.0 * sx * cx;
+    let s2y = 2.0 * sy * cy;
+    let s2z = 2.0 * sz * cz;
+    let c2x = 2.0 * cx * cx - 1.0;
+    let c2y = 2.0 * cy * cy - 1.0;
+    let c2z = 2.0 * cz * cz - 1.0;
 
     let term1 = 0.5 * (s2x * cy * sz + sx * s2y * cz + cx * sy * s2z);
     let term2 = 0.5 * (c2x * c2y + c2y * c2z + c2z * c2x);
