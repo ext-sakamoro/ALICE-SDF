@@ -209,12 +209,7 @@ mod tests {
         assert_eq!(grid.len(), resolution * resolution * resolution);
 
         // Center should be inside
-        let center_idx = grid_index(
-            resolution / 2,
-            resolution / 2,
-            resolution / 2,
-            resolution,
-        );
+        let center_idx = grid_index(resolution / 2, resolution / 2, resolution / 2, resolution);
         assert!(grid[center_idx] < 0.0);
     }
 

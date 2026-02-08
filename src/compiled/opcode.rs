@@ -294,19 +294,37 @@ impl OpCode {
     /// Returns true if this opcode modifies the evaluation point
     #[inline]
     pub fn modifies_point(self) -> bool {
-        self.is_transform() || matches!(
-            self,
-            OpCode::Twist | OpCode::Bend | OpCode::RepeatInfinite |
-            OpCode::RepeatFinite | OpCode::Elongate | OpCode::Mirror |
-            OpCode::Revolution | OpCode::Extrude | OpCode::SweepBezier | OpCode::Taper |
-            OpCode::PolarRepeat | OpCode::OctantMirror | OpCode::Shear
-        )
+        self.is_transform()
+            || matches!(
+                self,
+                OpCode::Twist
+                    | OpCode::Bend
+                    | OpCode::RepeatInfinite
+                    | OpCode::RepeatFinite
+                    | OpCode::Elongate
+                    | OpCode::Mirror
+                    | OpCode::Revolution
+                    | OpCode::Extrude
+                    | OpCode::SweepBezier
+                    | OpCode::Taper
+                    | OpCode::PolarRepeat
+                    | OpCode::OctantMirror
+                    | OpCode::Shear
+            )
     }
 
     /// Returns true if this opcode post-processes the distance value
     #[inline]
     pub fn is_post_process(self) -> bool {
-        matches!(self, OpCode::Round | OpCode::Onion | OpCode::Scale | OpCode::Noise | OpCode::Extrude | OpCode::Displacement)
+        matches!(
+            self,
+            OpCode::Round
+                | OpCode::Onion
+                | OpCode::Scale
+                | OpCode::Noise
+                | OpCode::Extrude
+                | OpCode::Displacement
+        )
     }
 }
 

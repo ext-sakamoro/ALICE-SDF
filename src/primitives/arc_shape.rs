@@ -42,27 +42,63 @@ mod tests {
     #[test]
     fn test_arc_shape_inside() {
         // Point on the arc center line at z=0.5 (within 45deg aperture, radius=1.0)
-        let d = sdf_arc_shape(Vec3::new(0.0, 0.0, 1.0), std::f32::consts::FRAC_PI_4, 1.0, 0.2, 0.5);
+        let d = sdf_arc_shape(
+            Vec3::new(0.0, 0.0, 1.0),
+            std::f32::consts::FRAC_PI_4,
+            1.0,
+            0.2,
+            0.5,
+        );
         assert!(d < 0.0, "Point on arc center should be inside, got {}", d);
     }
 
     #[test]
     fn test_arc_shape_far_outside() {
-        let d = sdf_arc_shape(Vec3::new(5.0, 0.0, 0.0), std::f32::consts::FRAC_PI_4, 1.0, 0.2, 0.5);
+        let d = sdf_arc_shape(
+            Vec3::new(5.0, 0.0, 0.0),
+            std::f32::consts::FRAC_PI_4,
+            1.0,
+            0.2,
+            0.5,
+        );
         assert!(d > 0.0, "Far point should be outside, got {}", d);
     }
 
     #[test]
     fn test_arc_shape_symmetry_x() {
-        let d1 = sdf_arc_shape(Vec3::new(0.3, 0.1, 0.8), std::f32::consts::FRAC_PI_4, 1.0, 0.2, 0.5);
-        let d2 = sdf_arc_shape(Vec3::new(-0.3, 0.1, 0.8), std::f32::consts::FRAC_PI_4, 1.0, 0.2, 0.5);
+        let d1 = sdf_arc_shape(
+            Vec3::new(0.3, 0.1, 0.8),
+            std::f32::consts::FRAC_PI_4,
+            1.0,
+            0.2,
+            0.5,
+        );
+        let d2 = sdf_arc_shape(
+            Vec3::new(-0.3, 0.1, 0.8),
+            std::f32::consts::FRAC_PI_4,
+            1.0,
+            0.2,
+            0.5,
+        );
         assert!((d1 - d2).abs() < 0.001, "Should be symmetric in X");
     }
 
     #[test]
     fn test_arc_shape_symmetry_y() {
-        let d1 = sdf_arc_shape(Vec3::new(0.1, 0.2, 0.8), std::f32::consts::FRAC_PI_4, 1.0, 0.2, 0.5);
-        let d2 = sdf_arc_shape(Vec3::new(0.1, -0.2, 0.8), std::f32::consts::FRAC_PI_4, 1.0, 0.2, 0.5);
+        let d1 = sdf_arc_shape(
+            Vec3::new(0.1, 0.2, 0.8),
+            std::f32::consts::FRAC_PI_4,
+            1.0,
+            0.2,
+            0.5,
+        );
+        let d2 = sdf_arc_shape(
+            Vec3::new(0.1, -0.2, 0.8),
+            std::f32::consts::FRAC_PI_4,
+            1.0,
+            0.2,
+            0.5,
+        );
         assert!((d1 - d2).abs() < 0.001, "Should be symmetric in Y");
     }
 }

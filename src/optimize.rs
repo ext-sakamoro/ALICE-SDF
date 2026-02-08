@@ -192,12 +192,21 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
             child: Arc::new(optimize(child)),
             spacing: *spacing,
         },
-        SdfNode::RepeatFinite { child, count, spacing } => SdfNode::RepeatFinite {
+        SdfNode::RepeatFinite {
+            child,
+            count,
+            spacing,
+        } => SdfNode::RepeatFinite {
             child: Arc::new(optimize(child)),
             count: *count,
             spacing: *spacing,
         },
-        SdfNode::Noise { child, amplitude, frequency, seed } => SdfNode::Noise {
+        SdfNode::Noise {
+            child,
+            amplitude,
+            frequency,
+            seed,
+        } => SdfNode::Noise {
             child: Arc::new(optimize(child)),
             amplitude: *amplitude,
             frequency: *frequency,
@@ -268,12 +277,8 @@ fn fold_identity_transform(node: &SdfNode) -> SdfNode {
         SdfNode::Translate { child, offset } if offset.length_squared() < EPS * EPS => {
             child.as_ref().clone()
         }
-        SdfNode::Rotate { child, rotation } if is_identity_quat(rotation) => {
-            child.as_ref().clone()
-        }
-        SdfNode::Scale { child, factor } if (*factor - 1.0).abs() < EPS => {
-            child.as_ref().clone()
-        }
+        SdfNode::Rotate { child, rotation } if is_identity_quat(rotation) => child.as_ref().clone(),
+        SdfNode::Scale { child, factor } if (*factor - 1.0).abs() < EPS => child.as_ref().clone(),
         SdfNode::ScaleNonUniform { child, factors }
             if (factors.x - 1.0).abs() < EPS
                 && (factors.y - 1.0).abs() < EPS
@@ -299,8 +304,15 @@ fn is_identity_quat(q: &Quat) -> bool {
 fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
     match node {
         // Translate(Translate(child, inner_offset), outer_offset) → Translate(child, inner+outer)
-        SdfNode::Translate { child, offset: outer } => {
-            if let SdfNode::Translate { child: inner_child, offset: inner } = child.as_ref() {
+        SdfNode::Translate {
+            child,
+            offset: outer,
+        } => {
+            if let SdfNode::Translate {
+                child: inner_child,
+                offset: inner,
+            } = child.as_ref()
+            {
                 SdfNode::Translate {
                     child: inner_child.clone(),
                     offset: *inner + *outer,
@@ -311,8 +323,15 @@ fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
         }
 
         // Scale(Scale(child, inner_factor), outer_factor) → Scale(child, inner*outer)
-        SdfNode::Scale { child, factor: outer } => {
-            if let SdfNode::Scale { child: inner_child, factor: inner } = child.as_ref() {
+        SdfNode::Scale {
+            child,
+            factor: outer,
+        } => {
+            if let SdfNode::Scale {
+                child: inner_child,
+                factor: inner,
+            } = child.as_ref()
+            {
                 SdfNode::Scale {
                     child: inner_child.clone(),
                     factor: inner * outer,
@@ -323,8 +342,15 @@ fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
         }
 
         // Rotate(Rotate(child, inner_rot), outer_rot) → Rotate(child, outer*inner)
-        SdfNode::Rotate { child, rotation: outer } => {
-            if let SdfNode::Rotate { child: inner_child, rotation: inner } = child.as_ref() {
+        SdfNode::Rotate {
+            child,
+            rotation: outer,
+        } => {
+            if let SdfNode::Rotate {
+                child: inner_child,
+                rotation: inner,
+            } = child.as_ref()
+            {
                 SdfNode::Rotate {
                     child: inner_child.clone(),
                     rotation: *outer * *inner,
@@ -343,27 +369,17 @@ fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
 /// Remove identity modifiers: Round(0.0), Elongate(0,0,0), Noise(amplitude=0), etc.
 fn fold_identity_modifier(node: &SdfNode) -> SdfNode {
     match node {
-        SdfNode::Round { child, radius } if radius.abs() < EPS => {
-            child.as_ref().clone()
-        }
+        SdfNode::Round { child, radius } if radius.abs() < EPS => child.as_ref().clone(),
         SdfNode::Elongate { child, amount } if amount.length_squared() < EPS * EPS => {
             child.as_ref().clone()
         }
-        SdfNode::Noise { child, amplitude, .. } if amplitude.abs() < EPS => {
-            child.as_ref().clone()
-        }
-        SdfNode::Displacement { child, strength } if strength.abs() < EPS => {
-            child.as_ref().clone()
-        }
-        SdfNode::Twist { child, strength } if strength.abs() < EPS => {
-            child.as_ref().clone()
-        }
-        SdfNode::Bend { child, curvature } if curvature.abs() < EPS => {
-            child.as_ref().clone()
-        }
-        SdfNode::Taper { child, factor } if (*factor - 1.0).abs() < EPS => {
-            child.as_ref().clone()
-        }
+        SdfNode::Noise {
+            child, amplitude, ..
+        } if amplitude.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Displacement { child, strength } if strength.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Twist { child, strength } if strength.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Bend { child, curvature } if curvature.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Taper { child, factor } if (*factor - 1.0).abs() < EPS => child.as_ref().clone(),
         _ => node.clone(),
     }
 }
@@ -373,24 +389,30 @@ fn fold_identity_modifier(node: &SdfNode) -> SdfNode {
 /// Demote SmoothOp(k=0) to standard Op, ChamferOp(r=0) to standard Op
 fn demote_smooth_to_standard(node: &SdfNode) -> SdfNode {
     match node {
-        SdfNode::SmoothUnion { a, b, k } if k.abs() < EPS => {
-            SdfNode::Union { a: a.clone(), b: b.clone() }
-        }
-        SdfNode::SmoothIntersection { a, b, k } if k.abs() < EPS => {
-            SdfNode::Intersection { a: a.clone(), b: b.clone() }
-        }
-        SdfNode::SmoothSubtraction { a, b, k } if k.abs() < EPS => {
-            SdfNode::Subtraction { a: a.clone(), b: b.clone() }
-        }
-        SdfNode::ChamferUnion { a, b, r } if r.abs() < EPS => {
-            SdfNode::Union { a: a.clone(), b: b.clone() }
-        }
-        SdfNode::ChamferIntersection { a, b, r } if r.abs() < EPS => {
-            SdfNode::Intersection { a: a.clone(), b: b.clone() }
-        }
-        SdfNode::ChamferSubtraction { a, b, r } if r.abs() < EPS => {
-            SdfNode::Subtraction { a: a.clone(), b: b.clone() }
-        }
+        SdfNode::SmoothUnion { a, b, k } if k.abs() < EPS => SdfNode::Union {
+            a: a.clone(),
+            b: b.clone(),
+        },
+        SdfNode::SmoothIntersection { a, b, k } if k.abs() < EPS => SdfNode::Intersection {
+            a: a.clone(),
+            b: b.clone(),
+        },
+        SdfNode::SmoothSubtraction { a, b, k } if k.abs() < EPS => SdfNode::Subtraction {
+            a: a.clone(),
+            b: b.clone(),
+        },
+        SdfNode::ChamferUnion { a, b, r } if r.abs() < EPS => SdfNode::Union {
+            a: a.clone(),
+            b: b.clone(),
+        },
+        SdfNode::ChamferIntersection { a, b, r } if r.abs() < EPS => SdfNode::Intersection {
+            a: a.clone(),
+            b: b.clone(),
+        },
+        SdfNode::ChamferSubtraction { a, b, r } if r.abs() < EPS => SdfNode::Subtraction {
+            a: a.clone(),
+            b: b.clone(),
+        },
         _ => node.clone(),
     }
 }
@@ -560,15 +582,15 @@ mod tests {
         // Build a tree with multiple redundancies
         let shape = SdfNode::sphere(1.0)
             .translate(0.0, 0.0, 0.0) // identity → removed
-            .scale(1.0)               // identity → removed
+            .scale(1.0) // identity → removed
             .translate(1.0, 0.0, 0.0)
             .translate(0.0, 2.0, 0.0) // merges with above → (1, 2, 0)
             .smooth_union(
                 SdfNode::box3d(0.5, 0.5, 0.5)
-                    .twist(0.0)        // identity → removed
+                    .twist(0.0) // identity → removed
                     .scale(2.0)
-                    .scale(0.5),       // merges with above → Scale(1.0) → identity → removed
-                0.0,                   // k=0 → demoted to Union
+                    .scale(0.5), // merges with above → Scale(1.0) → identity → removed
+                0.0, // k=0 → demoted to Union
             );
 
         let original_count = shape.node_count();
@@ -595,7 +617,9 @@ mod tests {
             assert!(
                 (d_orig - d_opt).abs() < 1e-4,
                 "Mismatch at {:?}: orig={}, opt={}",
-                p, d_orig, d_opt
+                p,
+                d_orig,
+                d_opt
             );
         }
     }
@@ -614,9 +638,7 @@ mod tests {
 
     #[test]
     fn test_optimization_stats_display() {
-        let shape = SdfNode::sphere(1.0)
-            .translate(0.0, 0.0, 0.0)
-            .scale(1.0);
+        let shape = SdfNode::sphere(1.0).translate(0.0, 0.0, 0.0).scale(1.0);
 
         let opt = optimize(&shape);
         let stats = optimization_stats(&shape, &opt);

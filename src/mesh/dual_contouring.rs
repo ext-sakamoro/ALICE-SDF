@@ -11,7 +11,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::compiled::{CompiledSdf, eval_compiled};
+use crate::compiled::{eval_compiled, CompiledSdf};
 use crate::eval::{eval, normal};
 use crate::mesh::{Mesh, Vertex};
 use crate::SdfNode;
@@ -89,7 +89,8 @@ fn qef_solve(intersections: &[(Vec3, Vec3)], cell_min: Vec3, cell_max: Vec3, cla
     }
 
     // Mass point (centroid of intersections) — used as origin shift for numerical stability
-    let mass_point = intersections.iter().map(|(p, _)| *p).sum::<Vec3>() / intersections.len() as f32;
+    let mass_point =
+        intersections.iter().map(|(p, _)| *p).sum::<Vec3>() / intersections.len() as f32;
 
     // Build AᵀA and Aᵀb (3×3 symmetric system)
     let mut ata = [[0.0f32; 3]; 3];
@@ -173,7 +174,14 @@ fn solve_3x3_regularized(ata: &[[f32; 3]; 3], atb: &[f32; 3]) -> Option<[f32; 3]
 
 /// Find surface intersection along an edge using bisection
 #[inline(always)]
-fn bisect_edge(sdf_fn: impl Fn(Vec3) -> f32, a: Vec3, b: Vec3, da: f32, db: f32, iters: u32) -> Vec3 {
+fn bisect_edge(
+    sdf_fn: impl Fn(Vec3) -> f32,
+    a: Vec3,
+    b: Vec3,
+    da: f32,
+    db: f32,
+    iters: u32,
+) -> Vec3 {
     let mut lo = a;
     let mut hi = b;
     let mut dlo = da;
@@ -289,13 +297,13 @@ fn dual_contouring_impl(
 
             // Gather 8 corner values
             let corners = [
-                values[idx(cx,     cy,     cz)],
-                values[idx(cx + 1, cy,     cz)],
-                values[idx(cx,     cy + 1, cz)],
+                values[idx(cx, cy, cz)],
+                values[idx(cx + 1, cy, cz)],
+                values[idx(cx, cy + 1, cz)],
                 values[idx(cx + 1, cy + 1, cz)],
-                values[idx(cx,     cy,     cz + 1)],
-                values[idx(cx + 1, cy,     cz + 1)],
-                values[idx(cx,     cy + 1, cz + 1)],
+                values[idx(cx, cy, cz + 1)],
+                values[idx(cx + 1, cy, cz + 1)],
+                values[idx(cx, cy + 1, cz + 1)],
                 values[idx(cx + 1, cy + 1, cz + 1)],
             ];
 
@@ -309,20 +317,20 @@ fn dual_contouring_impl(
             // 12 edges of the cube — find crossings
             const EDGES: [(usize, usize, [usize; 3], [usize; 3]); 12] = [
                 // Bottom face (z=0)
-                (0, 1, [0,0,0], [1,0,0]),
-                (2, 3, [0,1,0], [1,1,0]),
-                (0, 2, [0,0,0], [0,1,0]),
-                (1, 3, [1,0,0], [1,1,0]),
+                (0, 1, [0, 0, 0], [1, 0, 0]),
+                (2, 3, [0, 1, 0], [1, 1, 0]),
+                (0, 2, [0, 0, 0], [0, 1, 0]),
+                (1, 3, [1, 0, 0], [1, 1, 0]),
                 // Top face (z=1)
-                (4, 5, [0,0,1], [1,0,1]),
-                (6, 7, [0,1,1], [1,1,1]),
-                (4, 6, [0,0,1], [0,1,1]),
-                (5, 7, [1,0,1], [1,1,1]),
+                (4, 5, [0, 0, 1], [1, 0, 1]),
+                (6, 7, [0, 1, 1], [1, 1, 1]),
+                (4, 6, [0, 0, 1], [0, 1, 1]),
+                (5, 7, [1, 0, 1], [1, 1, 1]),
                 // Vertical edges
-                (0, 4, [0,0,0], [0,0,1]),
-                (1, 5, [1,0,0], [1,0,1]),
-                (2, 6, [0,1,0], [0,1,1]),
-                (3, 7, [1,1,0], [1,1,1]),
+                (0, 4, [0, 0, 0], [0, 0, 1]),
+                (1, 5, [1, 0, 0], [1, 0, 1]),
+                (2, 6, [0, 1, 0], [0, 1, 1]),
+                (3, 7, [1, 1, 0], [1, 1, 1]),
             ];
 
             let mut hermite: Vec<(Vec3, Vec3)> = Vec::with_capacity(12);
@@ -352,7 +360,11 @@ fn dual_contouring_impl(
             let vertex_pos = qef_solve(&hermite, cell_min, cell_max, config.clamp_to_cell);
 
             // Average normal from intersections
-            let avg_normal = hermite.iter().map(|(_, n)| *n).sum::<Vec3>().normalize_or_zero();
+            let avg_normal = hermite
+                .iter()
+                .map(|(_, n)| *n)
+                .sum::<Vec3>()
+                .normalize_or_zero();
 
             Some((vertex_pos, avg_normal))
         })
@@ -381,9 +393,7 @@ fn dual_contouring_impl(
     //    For each internal edge, the 4 cells sharing that edge form a quad.
     let mut indices: Vec<u32> = Vec::new();
 
-    let cell_idx = |cx: usize, cy: usize, cz: usize| -> usize {
-        cz * res * res + cy * res + cx
-    };
+    let cell_idx = |cx: usize, cy: usize, cz: usize| -> usize { cz * res * res + cy * res + cx };
 
     // X-edges: edge along X between grid vertices (x, y, z) and (x+1, y, z)
     // Shared by cells: (x, y-1, z-1), (x, y, z-1), (x, y-1, z), (x, y, z)
@@ -397,8 +407,8 @@ fn dual_contouring_impl(
                     let d1 = values[idx(x + 1, y, z)];
                     if (d0 > 0.0) != (d1 > 0.0) {
                         let c0 = cell_idx(x, y - 1, z - 1);
-                        let c1 = cell_idx(x, y,     z - 1);
-                        let c2 = cell_idx(x, y,     z);
+                        let c1 = cell_idx(x, y, z - 1);
+                        let c2 = cell_idx(x, y, z);
                         let c3 = cell_idx(x, y - 1, z);
 
                         let v0 = vertex_index_map[c0];
@@ -421,8 +431,8 @@ fn dual_contouring_impl(
                     let d1 = values[idx(x, y + 1, z)];
                     if (d0 > 0.0) != (d1 > 0.0) {
                         let c0 = cell_idx(x - 1, y, z - 1);
-                        let c1 = cell_idx(x,     y, z - 1);
-                        let c2 = cell_idx(x,     y, z);
+                        let c1 = cell_idx(x, y, z - 1);
+                        let c2 = cell_idx(x, y, z);
                         let c3 = cell_idx(x - 1, y, z);
 
                         let v0 = vertex_index_map[c0];
@@ -445,9 +455,9 @@ fn dual_contouring_impl(
                     let d1 = values[idx(x, y, z + 1)];
                     if (d0 > 0.0) != (d1 > 0.0) {
                         let c0 = cell_idx(x - 1, y - 1, z);
-                        let c1 = cell_idx(x,     y - 1, z);
-                        let c2 = cell_idx(x,     y,     z);
-                        let c3 = cell_idx(x - 1, y,     z);
+                        let c1 = cell_idx(x, y - 1, z);
+                        let c2 = cell_idx(x, y, z);
+                        let c3 = cell_idx(x - 1, y, z);
 
                         let v0 = vertex_index_map[c0];
                         let v1 = vertex_index_map[c1];
@@ -562,8 +572,7 @@ mod tests {
 
     #[test]
     fn test_dc_smooth_union() {
-        let shape = SdfNode::sphere(0.8)
-            .smooth_union(SdfNode::box3d(0.6, 0.6, 0.6), 0.2);
+        let shape = SdfNode::sphere(0.8).smooth_union(SdfNode::box3d(0.6, 0.6, 0.6), 0.2);
         let config = DualContouringConfig {
             resolution: 16,
             ..Default::default()
@@ -584,12 +593,18 @@ mod tests {
         let mesh = dual_contouring(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // DC vertices should be near the iso-surface
-        let max_dist = mesh.vertices.iter()
+        let max_dist = mesh
+            .vertices
+            .iter()
             .map(|v| (v.position.length() - 1.0).abs())
             .fold(0.0f32, f32::max);
 
         // At resolution 24, cell size = 4/24 ≈ 0.167, so vertices should be within ~cell diagonal
-        assert!(max_dist < 0.5, "Vertices should be near surface, max_dist={}", max_dist);
+        assert!(
+            max_dist < 0.5,
+            "Vertices should be near surface, max_dist={}",
+            max_dist
+        );
     }
 
     #[test]
@@ -603,12 +618,18 @@ mod tests {
         let mesh = dual_contouring(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // All normals should point outward (dot with position > 0)
-        let outward_count = mesh.vertices.iter()
+        let outward_count = mesh
+            .vertices
+            .iter()
             .filter(|v| v.normal.dot(v.position.normalize_or_zero()) > 0.0)
             .count();
 
         let ratio = outward_count as f32 / mesh.vertex_count() as f32;
-        assert!(ratio > 0.9, "Most normals should point outward, ratio={}", ratio);
+        assert!(
+            ratio > 0.9,
+            "Most normals should point outward, ratio={}",
+            ratio
+        );
     }
 
     #[test]
@@ -621,13 +642,20 @@ mod tests {
         };
 
         let mesh_interp = dual_contouring(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
-        let mesh_compiled = dual_contouring_compiled(&compiled, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+        let mesh_compiled =
+            dual_contouring_compiled(&compiled, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // Both should produce similar vertex counts (exact match expected for same resolution)
-        assert_eq!(mesh_interp.vertex_count(), mesh_compiled.vertex_count(),
-            "Compiled should match interpreted vertex count");
-        assert_eq!(mesh_interp.triangle_count(), mesh_compiled.triangle_count(),
-            "Compiled should match interpreted triangle count");
+        assert_eq!(
+            mesh_interp.vertex_count(),
+            mesh_compiled.vertex_count(),
+            "Compiled should match interpreted vertex count"
+        );
+        assert_eq!(
+            mesh_interp.triangle_count(),
+            mesh_compiled.triangle_count(),
+            "Compiled should match interpreted triangle count"
+        );
     }
 
     #[test]
@@ -647,8 +675,7 @@ mod tests {
 
     #[test]
     fn test_dc_aaa_preset() {
-        let shape = SdfNode::sphere(1.0)
-            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
         let config = DualContouringConfig::aaa(16);
         let mesh = dual_contouring(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
@@ -664,15 +691,24 @@ mod tests {
     fn test_dc_higher_resolution_more_detail() {
         let sphere = SdfNode::sphere(1.0);
 
-        let config_lo = DualContouringConfig { resolution: 8, ..Default::default() };
-        let config_hi = DualContouringConfig { resolution: 24, ..Default::default() };
+        let config_lo = DualContouringConfig {
+            resolution: 8,
+            ..Default::default()
+        };
+        let config_hi = DualContouringConfig {
+            resolution: 24,
+            ..Default::default()
+        };
 
         let mesh_lo = dual_contouring(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config_lo);
         let mesh_hi = dual_contouring(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config_hi);
 
-        assert!(mesh_hi.vertex_count() > mesh_lo.vertex_count(),
+        assert!(
+            mesh_hi.vertex_count() > mesh_lo.vertex_count(),
             "Higher resolution should produce more vertices: hi={} lo={}",
-            mesh_hi.vertex_count(), mesh_lo.vertex_count());
+            mesh_hi.vertex_count(),
+            mesh_lo.vertex_count()
+        );
     }
 
     #[test]
@@ -688,6 +724,10 @@ mod tests {
         let cell_max = Vec3::splat(1.0);
 
         let result = qef_solve(&intersections, cell_min, cell_max, true);
-        assert!(result.length() < 0.2, "QEF should find near-origin: {:?}", result);
+        assert!(
+            result.length() < 0.2,
+            "QEF should find near-origin: {:?}",
+            result
+        );
     }
 }

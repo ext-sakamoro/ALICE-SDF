@@ -12,21 +12,33 @@ use glam::Vec3;
 #[inline(always)]
 pub fn modifier_twist(point: Vec3, strength: f32) -> Vec3 {
     let (s, c) = (point.y * strength).sin_cos();
-    Vec3::new(point.x * c - point.z * s, point.y, point.x * s + point.z * c)
+    Vec3::new(
+        point.x * c - point.z * s,
+        point.y,
+        point.x * s + point.z * c,
+    )
 }
 
 /// Twist space around the X-axis
 #[inline(always)]
 pub fn modifier_twist_x(point: Vec3, strength: f32) -> Vec3 {
     let (s, c) = (point.x * strength).sin_cos();
-    Vec3::new(point.x, point.y * c - point.z * s, point.y * s + point.z * c)
+    Vec3::new(
+        point.x,
+        point.y * c - point.z * s,
+        point.y * s + point.z * c,
+    )
 }
 
 /// Twist space around the Z-axis
 #[inline(always)]
 pub fn modifier_twist_z(point: Vec3, strength: f32) -> Vec3 {
     let (s, c) = (point.z * strength).sin_cos();
-    Vec3::new(point.x * c - point.y * s, point.x * s + point.y * c, point.z)
+    Vec3::new(
+        point.x * c - point.y * s,
+        point.x * s + point.y * c,
+        point.z,
+    )
 }
 
 #[cfg(test)]
@@ -41,7 +53,11 @@ mod tests {
         let t1 = modifier_twist(p, s);
         // Manual calc
         let a = p.y * s;
-        let t2 = Vec3::new(p.x * a.cos() - p.z * a.sin(), p.y, p.x * a.sin() + p.z * a.cos());
+        let t2 = Vec3::new(
+            p.x * a.cos() - p.z * a.sin(),
+            p.y,
+            p.x * a.sin() + p.z * a.cos(),
+        );
         assert!((t1 - t2).length() < 1e-6);
     }
 

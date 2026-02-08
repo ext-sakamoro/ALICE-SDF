@@ -6,15 +6,15 @@
 
 #![cfg(feature = "python")]
 
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, PyArrayMethods, IntoPyArray};
 use glam::{Vec2, Vec3};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
-use crate::types::{SdfNode, SdfTree};
 use crate::eval::{eval, eval_batch_parallel};
+use crate::io::{load, save};
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
-use crate::io::{save, load};
+use crate::types::{SdfNode, SdfTree};
 
 /// Python-visible SdfNode wrapper
 #[pyclass(name = "SdfNode")]
@@ -134,17 +134,47 @@ impl PySdfNode {
 
     /// Create a triangle from 3 vertices (9 floats)
     #[staticmethod]
-    fn triangle(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, cx: f32, cy: f32, cz: f32) -> Self {
+    fn triangle(
+        ax: f32,
+        ay: f32,
+        az: f32,
+        bx: f32,
+        by: f32,
+        bz: f32,
+        cx: f32,
+        cy: f32,
+        cz: f32,
+    ) -> Self {
         PySdfNode {
-            inner: SdfNode::triangle(Vec3::new(ax, ay, az), Vec3::new(bx, by, bz), Vec3::new(cx, cy, cz)),
+            inner: SdfNode::triangle(
+                Vec3::new(ax, ay, az),
+                Vec3::new(bx, by, bz),
+                Vec3::new(cx, cy, cz),
+            ),
         }
     }
 
     /// Create a quadratic Bezier curve tube (9 floats + radius)
     #[staticmethod]
-    fn bezier(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, cx: f32, cy: f32, cz: f32, radius: f32) -> Self {
+    fn bezier(
+        ax: f32,
+        ay: f32,
+        az: f32,
+        bx: f32,
+        by: f32,
+        bz: f32,
+        cx: f32,
+        cy: f32,
+        cz: f32,
+        radius: f32,
+    ) -> Self {
         PySdfNode {
-            inner: SdfNode::bezier(Vec3::new(ax, ay, az), Vec3::new(bx, by, bz), Vec3::new(cx, cy, cz), radius),
+            inner: SdfNode::bezier(
+                Vec3::new(ax, ay, az),
+                Vec3::new(bx, by, bz),
+                Vec3::new(cx, cy, cz),
+                radius,
+            ),
         }
     }
 
@@ -587,7 +617,10 @@ impl PySdfNode {
     /// Smooth intersection with another shape
     fn smooth_intersection(&self, other: &PySdfNode, k: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().smooth_intersection(other.inner.clone(), k),
+            inner: self
+                .inner
+                .clone()
+                .smooth_intersection(other.inner.clone(), k),
         }
     }
 
@@ -643,7 +676,10 @@ impl PySdfNode {
     /// Infinite repetition
     fn repeat(&self, spacing_x: f32, spacing_y: f32, spacing_z: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().repeat_infinite(spacing_x, spacing_y, spacing_z),
+            inner: self
+                .inner
+                .clone()
+                .repeat_infinite(spacing_x, spacing_y, spacing_z),
         }
     }
 
@@ -690,7 +726,15 @@ impl PySdfNode {
     }
 
     /// Finite repetition
-    fn repeat_finite(&self, count_x: u32, count_y: u32, count_z: u32, spacing_x: f32, spacing_y: f32, spacing_z: f32) -> Self {
+    fn repeat_finite(
+        &self,
+        count_x: u32,
+        count_y: u32,
+        count_z: u32,
+        spacing_x: f32,
+        spacing_y: f32,
+        spacing_z: f32,
+    ) -> Self {
         PySdfNode {
             inner: self.inner.clone().repeat_finite(
                 [count_x, count_y, count_z],
@@ -825,14 +869,20 @@ impl PySdfNode {
     /// Exponential smooth intersection with another shape
     fn exp_smooth_intersection(&self, other: &PySdfNode, k: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().exp_smooth_intersection(other.inner.clone(), k),
+            inner: self
+                .inner
+                .clone()
+                .exp_smooth_intersection(other.inner.clone(), k),
         }
     }
 
     /// Exponential smooth subtraction of another shape
     fn exp_smooth_subtract(&self, other: &PySdfNode, k: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().exp_smooth_subtract(other.inner.clone(), k),
+            inner: self
+                .inner
+                .clone()
+                .exp_smooth_subtract(other.inner.clone(), k),
         }
     }
 
@@ -860,14 +910,20 @@ impl PySdfNode {
     /// Columns intersection with another shape
     fn columns_intersection(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().columns_intersection(other.inner.clone(), r, n),
+            inner: self
+                .inner
+                .clone()
+                .columns_intersection(other.inner.clone(), r, n),
         }
     }
 
     /// Columns subtraction of another shape
     fn columns_subtract(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().columns_subtract(other.inner.clone(), r, n),
+            inner: self
+                .inner
+                .clone()
+                .columns_subtract(other.inner.clone(), r, n),
         }
     }
 
@@ -909,7 +965,10 @@ impl PySdfNode {
     /// Chamfer intersection with another shape
     fn chamfer_intersection(&self, other: &PySdfNode, r: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().chamfer_intersection(other.inner.clone(), r),
+            inner: self
+                .inner
+                .clone()
+                .chamfer_intersection(other.inner.clone(), r),
         }
     }
 
@@ -930,14 +989,20 @@ impl PySdfNode {
     /// Stairs intersection with another shape
     fn stairs_intersection(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().stairs_intersection(other.inner.clone(), r, n),
+            inner: self
+                .inner
+                .clone()
+                .stairs_intersection(other.inner.clone(), r, n),
         }
     }
 
     /// Stairs subtraction of another shape
     fn stairs_subtract(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
         PySdfNode {
-            inner: self.inner.clone().stairs_subtract(other.inner.clone(), r, n),
+            inner: self
+                .inner
+                .clone()
+                .stairs_subtract(other.inner.clone(), r, n),
         }
     }
 
@@ -998,21 +1063,30 @@ impl PySdfNode {
     /// Generate GLSL shader code
     #[cfg(feature = "glsl")]
     fn to_glsl(&self) -> String {
-        let shader = crate::compiled::GlslShader::transpile(&self.inner, crate::compiled::GlslTranspileMode::Hardcoded);
+        let shader = crate::compiled::GlslShader::transpile(
+            &self.inner,
+            crate::compiled::GlslTranspileMode::Hardcoded,
+        );
         shader.source
     }
 
     /// Generate HLSL shader code
     #[cfg(feature = "hlsl")]
     fn to_hlsl(&self) -> String {
-        let shader = crate::compiled::HlslShader::transpile(&self.inner, crate::compiled::HlslTranspileMode::Hardcoded);
+        let shader = crate::compiled::HlslShader::transpile(
+            &self.inner,
+            crate::compiled::HlslTranspileMode::Hardcoded,
+        );
         shader.source
     }
 
     /// Generate WGSL shader code
     #[cfg(feature = "gpu")]
     fn to_wgsl(&self) -> String {
-        let shader = crate::compiled::WgslShader::transpile(&self.inner, crate::compiled::TranspileMode::Hardcoded);
+        let shader = crate::compiled::WgslShader::transpile(
+            &self.inner,
+            crate::compiled::TranspileMode::Hardcoded,
+        );
         shader.source
     }
 
@@ -1065,9 +1139,7 @@ impl PyCompiledSdf {
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
         let compiled_ref = &self.compiled;
         let distances = with_numpy_as_vec3(points, |pts| {
-            py.allow_threads(|| {
-                crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts)
-            })
+            py.allow_threads(|| crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts))
         })?;
         Ok(distances.into_pyarray(py))
     }
@@ -1094,9 +1166,8 @@ impl PyCompiledSdf {
         let max = Vec3::new(bounds_max.0, bounds_max.1, bounds_max.2);
 
         let compiled_ref = &self.compiled;
-        let mesh = py.allow_threads(|| {
-            crate::mesh::sdf_to_mesh_compiled(compiled_ref, min, max, &config)
-        });
+        let mesh =
+            py.allow_threads(|| crate::mesh::sdf_to_mesh_compiled(compiled_ref, min, max, &config));
         mesh_to_numpy(py, &mesh)
     }
 
@@ -1106,7 +1177,10 @@ impl PyCompiledSdf {
     }
 
     fn __repr__(&self) -> String {
-        format!("CompiledSdf(instructions={})", self.compiled.instruction_count())
+        format!(
+            "CompiledSdf(instructions={})",
+            self.compiled.instruction_count()
+        )
     }
 }
 
@@ -1114,9 +1188,7 @@ impl PyCompiledSdf {
 #[pyfunction]
 fn compile_sdf(py: Python<'_>, node: &PySdfNode) -> PyCompiledSdf {
     let source_node = node.inner.clone();
-    let compiled = py.allow_threads(|| {
-        crate::compiled::CompiledSdf::compile(&source_node)
-    });
+    let compiled = py.allow_threads(|| crate::compiled::CompiledSdf::compile(&source_node));
     PyCompiledSdf {
         compiled,
         source_node,
@@ -1132,9 +1204,7 @@ fn eval_compiled_batch<'py>(
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
     let compiled_ref = &compiled.compiled;
     let distances = with_numpy_as_vec3(points, |pts| {
-        py.allow_threads(|| {
-            crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts)
-        })
+        py.allow_threads(|| crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts))
     })?;
     Ok(distances.into_pyarray(py))
 }
@@ -1153,8 +1223,7 @@ fn eval_compiled_batch_soa<'py>(
     let distances = with_numpy_as_vec3(points, |pts| {
         let soa = crate::soa::SoAPoints::from_vec3_slice(pts);
         py.allow_threads(|| {
-            crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa)
-                .to_vec()
+            crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa).to_vec()
         })
     })?;
     Ok(distances.into_pyarray(py))
@@ -1169,9 +1238,7 @@ fn eval_batch<'py>(
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
     let node_ref = &node.inner;
     let distances = with_numpy_as_vec3(points, |pts| {
-        py.allow_threads(|| {
-            eval_batch_parallel(node_ref, pts)
-        })
+        py.allow_threads(|| eval_batch_parallel(node_ref, pts))
     })?;
     Ok(distances.into_pyarray(py))
 }
@@ -1198,9 +1265,7 @@ fn to_mesh<'py>(
 
     // Release GIL during mesh generation
     let node_ref = &node.inner;
-    let mesh = py.allow_threads(|| {
-        sdf_to_mesh(node_ref, min, max, &config)
-    });
+    let mesh = py.allow_threads(|| sdf_to_mesh(node_ref, min, max, &config));
     mesh_to_numpy(py, &mesh)
 }
 
@@ -1232,9 +1297,8 @@ fn to_mesh_adaptive<'py>(
 
     // Release GIL during mesh generation
     let node_ref = &node.inner;
-    let mesh = py.allow_threads(|| {
-        crate::mesh::adaptive_marching_cubes(node_ref, min, max, &config)
-    });
+    let mesh =
+        py.allow_threads(|| crate::mesh::adaptive_marching_cubes(node_ref, min, max, &config));
     mesh_to_numpy(py, &mesh)
 }
 
@@ -1260,9 +1324,7 @@ fn to_mesh_dual_contouring<'py>(
     let max = Vec3::new(bounds_max.0, bounds_max.1, bounds_max.2);
 
     let node_ref = &node.inner;
-    let mesh = py.allow_threads(|| {
-        dual_contouring(node_ref, min, max, &config)
-    });
+    let mesh = py.allow_threads(|| dual_contouring(node_ref, min, max, &config));
     mesh_to_numpy(py, &mesh)
 }
 
@@ -1276,7 +1338,7 @@ fn decimate_mesh<'py>(
     target_ratio: f32,
     preserve_boundary: bool,
 ) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
-    use crate::mesh::{DecimateConfig, decimate};
+    use crate::mesh::{decimate, DecimateConfig};
 
     let mut mesh = numpy_to_mesh(vertices, indices)?;
     let config = DecimateConfig {
@@ -1340,18 +1402,17 @@ fn export_glb_bytes<'py>(
 fn save_sdf(py: Python<'_>, node: &PySdfNode, path: &str) -> PyResult<()> {
     let tree = SdfTree::new(node.inner.clone());
     let path = path.to_string();
-    py.allow_threads(|| {
-        save(&tree, &path)
-    }).map_err(|e| PyValueError::new_err(format!("Save error: {}", e)))
+    py.allow_threads(|| save(&tree, &path))
+        .map_err(|e| PyValueError::new_err(format!("Save error: {}", e)))
 }
 
 /// Load SDF from file (GIL released during I/O)
 #[pyfunction]
 fn load_sdf(py: Python<'_>, path: &str) -> PyResult<PySdfNode> {
     let path = path.to_string();
-    let tree = py.allow_threads(|| {
-        load(&path)
-    }).map_err(|e| PyValueError::new_err(format!("Load error: {}", e)))?;
+    let tree = py
+        .allow_threads(|| load(&path))
+        .map_err(|e| PyValueError::new_err(format!("Load error: {}", e)))?;
     Ok(PySdfNode { inner: tree.root })
 }
 
@@ -1369,8 +1430,7 @@ fn from_json(json_str: &str) -> PyResult<PySdfNode> {
 fn to_json(node: &PySdfNode) -> PyResult<String> {
     use crate::io::to_json_string;
     let tree = SdfTree::new(node.inner.clone());
-    to_json_string(&tree)
-        .map_err(|e| PyValueError::new_err(format!("JSON serialize error: {}", e)))
+    to_json_string(&tree).map_err(|e| PyValueError::new_err(format!("JSON serialize error: {}", e)))
 }
 
 /// Bake SDF to 3D volume texture (CPU, returns NumPy 3D array)
@@ -1385,7 +1445,7 @@ fn bake_volume<'py>(
     resolution: u32,
     generate_mips: bool,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    use crate::volume::{BakeConfig, bake_volume as cpu_bake};
+    use crate::volume::{bake_volume as cpu_bake, BakeConfig};
 
     let config = BakeConfig {
         resolution: [resolution, resolution, resolution],
@@ -1411,7 +1471,7 @@ fn gpu_bake_volume<'py>(
     bounds_max: (f32, f32, f32),
     resolution: u32,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    use crate::volume::{BakeConfig, gpu_bake_volume as gpu_bake};
+    use crate::volume::{gpu_bake_volume as gpu_bake, BakeConfig};
 
     let config = BakeConfig {
         resolution: [resolution, resolution, resolution],
@@ -1421,7 +1481,8 @@ fn gpu_bake_volume<'py>(
     };
 
     let node_ref = &node.inner;
-    let volume = py.allow_threads(|| gpu_bake(node_ref, &config))
+    let volume = py
+        .allow_threads(|| gpu_bake(node_ref, &config))
         .map_err(|e| PyValueError::new_err(format!("GPU bake error: {}", e)))?;
     Ok(volume.data.into_pyarray(py))
 }
@@ -1451,7 +1512,8 @@ fn gpu_marching_cubes<'py>(
     let max = Vec3::new(bounds_max.0, bounds_max.1, bounds_max.2);
 
     let node_ref = &node.inner;
-    let mesh = py.allow_threads(|| gpu_mc(node_ref, min, max, &config))
+    let mesh = py
+        .allow_threads(|| gpu_mc(node_ref, min, max, &config))
         .map_err(|e| PyValueError::new_err(format!("GPU MC error: {}", e)))?;
     mesh_to_numpy(py, &mesh)
 }
@@ -1468,7 +1530,7 @@ fn build_svo(
     max_depth: u32,
     distance_threshold: f32,
 ) -> PyResult<PySvo> {
-    use crate::svo::{SvoBuildConfig, SparseVoxelOctree};
+    use crate::svo::{SparseVoxelOctree, SvoBuildConfig};
 
     let config = SvoBuildConfig {
         max_depth,
@@ -1569,9 +1631,12 @@ impl PyHeightmap {
         let (min, max) = self.inner.height_range();
         format!(
             "Heightmap({}x{}, world={}x{}, range=[{:.2}, {:.2}])",
-            self.inner.width, self.inner.depth,
-            self.inner.world_width, self.inner.world_depth,
-            min, max,
+            self.inner.width,
+            self.inner.depth,
+            self.inner.world_width,
+            self.inner.world_depth,
+            min,
+            max,
         )
     }
 }
@@ -1667,7 +1732,9 @@ impl PyVoxelGrid {
         let r = self.inner.resolution;
         format!(
             "VoxelGrid({}x{}x{}, voxels={}, memory={}KB)",
-            r[0], r[1], r[2],
+            r[0],
+            r[1],
+            r[2],
             self.inner.voxel_count(),
             self.inner.memory_bytes() / 1024,
         )
@@ -1693,7 +1760,8 @@ fn create_voxel_grid(
         crate::destruction::MutableVoxelGrid::from_sdf(
             node_ref,
             [resolution, resolution, resolution],
-            min, max,
+            min,
+            max,
         )
     });
 
@@ -1715,9 +1783,7 @@ fn carve_sphere(
         radius,
     };
 
-    let result = py.allow_threads(|| {
-        crate::destruction::carve(&mut grid.inner, &shape)
-    });
+    let result = py.allow_threads(|| crate::destruction::carve(&mut grid.inner, &shape));
 
     (result.modified_voxels, result.removed_volume)
 }
@@ -1744,9 +1810,8 @@ fn voxel_fracture<'py>(
     let c = Vec3::new(center.0, center.1, center.2);
     let grid_ref = &grid.inner;
 
-    let pieces = py.allow_threads(|| {
-        crate::destruction::voronoi_fracture(grid_ref, c, radius, &config)
-    });
+    let pieces =
+        py.allow_threads(|| crate::destruction::voronoi_fracture(grid_ref, c, radius, &config));
 
     let mut results = Vec::new();
     for piece in &pieces {
@@ -1771,7 +1836,7 @@ fn bake_gi<'py>(
     bounds_max: (f32, f32, f32),
     samples_per_probe: u32,
 ) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray2<f32>>)> {
-    use crate::gi::{BakeGiConfig, bake_irradiance_grid, ConeTraceConfig, DirectionalLight};
+    use crate::gi::{bake_irradiance_grid, BakeGiConfig, ConeTraceConfig, DirectionalLight};
 
     let config = BakeGiConfig {
         grid_size: [grid_size, grid_size, grid_size],
@@ -1787,10 +1852,14 @@ fn bake_gi<'py>(
 
     // Return positions (N,3) and SH coefficients (N,12) for RGB L1 SH
     let n = grid.probes.len();
-    let positions: Vec<f32> = grid.probes.iter()
+    let positions: Vec<f32> = grid
+        .probes
+        .iter()
         .flat_map(|p| [p.position.x, p.position.y, p.position.z])
         .collect();
-    let sh_coeffs: Vec<f32> = grid.probes.iter()
+    let sh_coeffs: Vec<f32> = grid
+        .probes
+        .iter()
         .flat_map(|p| {
             let mut c = [0.0f32; 12];
             c[0..4].copy_from_slice(&p.sh_r.coeffs);
@@ -1864,8 +1933,12 @@ fn uv_unwrap<'py>(
     py: Python<'py>,
     vertices: &Bound<'py, PyArray2<f32>>,
     indices: &Bound<'py, PyArray1<u32>>,
-) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
-    use crate::mesh::{uv_unwrap as mesh_uv_unwrap, apply_uvs, UvUnwrapConfig};
+) -> PyResult<(
+    Bound<'py, PyArray2<f32>>,
+    Bound<'py, PyArray2<f32>>,
+    Bound<'py, PyArray1<u32>>,
+)> {
+    use crate::mesh::{apply_uvs, uv_unwrap as mesh_uv_unwrap, UvUnwrapConfig};
 
     let mut mesh = numpy_to_mesh(vertices, indices)?;
 
@@ -1877,7 +1950,9 @@ fn uv_unwrap<'py>(
     let n = mesh.vertices.len();
 
     // Positions [N, 3]
-    let positions: Vec<f32> = mesh.vertices.iter()
+    let positions: Vec<f32> = mesh
+        .vertices
+        .iter()
         .flat_map(|v| [v.position.x, v.position.y, v.position.z])
         .collect();
     let pos_array = numpy::PyArray1::from_vec(py, positions)
@@ -1885,7 +1960,9 @@ fn uv_unwrap<'py>(
         .map_err(|e| PyValueError::new_err(format!("Reshape error: {}", e)))?;
 
     // UVs [N, 2]
-    let uvs: Vec<f32> = mesh.vertices.iter()
+    let uvs: Vec<f32> = mesh
+        .vertices
+        .iter()
         .flat_map(|v| [v.uv.x, v.uv.y])
         .collect();
     let uv_array = numpy::PyArray1::from_vec(py, uvs)
@@ -1986,13 +2063,11 @@ fn heightmap_sample_batch<'py>(
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
     let pts = unsafe { points.as_array() };
     if pts.shape()[1] != 2 {
-        return Err(PyValueError::new_err("points must have shape (N, 2) for (x, z) pairs"));
+        return Err(PyValueError::new_err(
+            "points must have shape (N, 2) for (x, z) pairs",
+        ));
     }
-    let vec_points: Vec<(f32, f32)> = pts
-        .rows()
-        .into_iter()
-        .map(|row| (row[0], row[1]))
-        .collect();
+    let vec_points: Vec<(f32, f32)> = pts.rows().into_iter().map(|row| (row[0], row[1])).collect();
 
     let hm_ref = &heightmap.inner;
     let results = py.allow_threads(|| {
@@ -2018,13 +2093,13 @@ fn numpy_to_vec3_fast(points: &Bound<'_, PyArray2<f32>>) -> PyResult<Vec<Vec3>> 
     let n = arr.shape()[0];
     if let Some(slice) = arr.as_slice() {
         // C-contiguous: reinterpret [f32; N*3] as [Vec3; N]
-        let vec3_slice = unsafe {
-            std::slice::from_raw_parts(slice.as_ptr() as *const Vec3, n)
-        };
+        let vec3_slice = unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const Vec3, n) };
         Ok(vec3_slice.to_vec())
     } else {
         // Non-contiguous fallback: row iteration
-        Ok(arr.rows().into_iter()
+        Ok(arr
+            .rows()
+            .into_iter()
             .map(|row| Vec3::new(row[0], row[1], row[2]))
             .collect())
     }
@@ -2046,13 +2121,13 @@ fn with_numpy_as_vec3<R>(
     let n = arr.shape()[0];
     if let Some(slice) = arr.as_slice() {
         // Zero-Copy: reinterpret contiguous f32 data as Vec3 slice
-        let vec3_slice = unsafe {
-            std::slice::from_raw_parts(slice.as_ptr() as *const Vec3, n)
-        };
+        let vec3_slice = unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const Vec3, n) };
         Ok(f(vec3_slice))
     } else {
         // Non-contiguous fallback: copy then process
-        let vec: Vec<Vec3> = arr.rows().into_iter()
+        let vec: Vec<Vec3> = arr
+            .rows()
+            .into_iter()
             .map(|row| Vec3::new(row[0], row[1], row[2]))
             .collect();
         Ok(f(&vec))

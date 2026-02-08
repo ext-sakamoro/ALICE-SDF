@@ -46,9 +46,15 @@ pub fn export_raw(volume: &Volume3D<f32>, path: &str) -> io::Result<()> {
   "byte_size": {},
   "mip_levels": {}
 }}"#,
-        volume.resolution[0], volume.resolution[1], volume.resolution[2],
-        volume.world_min.x, volume.world_min.y, volume.world_min.z,
-        volume.world_max.x, volume.world_max.y, volume.world_max.z,
+        volume.resolution[0],
+        volume.resolution[1],
+        volume.resolution[2],
+        volume.world_min.x,
+        volume.world_min.y,
+        volume.world_min.z,
+        volume.world_max.x,
+        volume.world_max.y,
+        volume.world_max.z,
         volume.voxel_count(),
         volume.data.len() * 4,
         volume.mip_count(),
@@ -93,7 +99,8 @@ pub fn export_raw_with_mips(volume: &Volume3D<f32>, path: &str) -> io::Result<()
 
     // Write metadata JSON with mip offsets
     let meta_path = path.with_extension("raw.meta.json");
-    let offsets_str = mip_offsets.iter()
+    let offsets_str = mip_offsets
+        .iter()
         .map(|o| o.to_string())
         .collect::<Vec<_>>()
         .join(", ");
@@ -109,9 +116,15 @@ pub fn export_raw_with_mips(volume: &Volume3D<f32>, path: &str) -> io::Result<()
   "mip_levels": {},
   "mip_byte_offsets": [{}]
 }}"#,
-        volume.resolution[0], volume.resolution[1], volume.resolution[2],
-        volume.world_min.x, volume.world_min.y, volume.world_min.z,
-        volume.world_max.x, volume.world_max.y, volume.world_max.z,
+        volume.resolution[0],
+        volume.resolution[1],
+        volume.resolution[2],
+        volume.world_min.x,
+        volume.world_min.y,
+        volume.world_min.z,
+        volume.world_max.x,
+        volume.world_max.y,
+        volume.world_max.z,
         volume.voxel_count(),
         offset,
         volume.mip_count(),
@@ -159,7 +172,13 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
     let pitch_or_linear = volume.resolution[0] * bytes_per_pixel;
     let header = DdsHeader {
         size: 124,
-        flags: 0x00000001 | 0x00000002 | 0x00000004 | 0x00000008 | 0x00001000 | 0x00080000 | 0x00800000,
+        flags: 0x00000001
+            | 0x00000002
+            | 0x00000004
+            | 0x00000008
+            | 0x00001000
+            | 0x00080000
+            | 0x00800000,
         // DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT | DDSD_MIPMAPCOUNT | DDSD_LINEARSIZE | DDSD_DEPTH
         height: volume.resolution[1],
         width: volume.resolution[0],
@@ -178,7 +197,7 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
         pf_a_bitmask: 0,
         // DDS_HEADER caps
         caps: 0x00001000 | 0x00000008 | 0x00400000, // DDSCAPS_TEXTURE | DDSCAPS_COMPLEX | DDSCAPS_MIPMAP
-        caps2: 0x00200000, // DDSCAPS2_VOLUME
+        caps2: 0x00200000,                          // DDSCAPS2_VOLUME
         caps3: 0,
         caps4: 0,
         reserved2: 0,
@@ -200,21 +219,14 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
     match format {
         DdsFormat::R32Float => {
             let bytes: &[u8] = unsafe {
-                std::slice::from_raw_parts(
-                    volume.data.as_ptr() as *const u8,
-                    volume.data.len() * 4,
-                )
+                std::slice::from_raw_parts(volume.data.as_ptr() as *const u8, volume.data.len() * 4)
             };
             file.write_all(bytes)?;
 
             // Write mip levels
             for mip in &volume.mips {
-                let mip_bytes: &[u8] = unsafe {
-                    std::slice::from_raw_parts(
-                        mip.as_ptr() as *const u8,
-                        mip.len() * 4,
-                    )
-                };
+                let mip_bytes: &[u8] =
+                    unsafe { std::slice::from_raw_parts(mip.as_ptr() as *const u8, mip.len() * 4) };
                 file.write_all(mip_bytes)?;
             }
         }
@@ -269,7 +281,13 @@ pub fn export_dds_3d_distgrad(
 
     let header = DdsHeader {
         size: 124,
-        flags: 0x00000001 | 0x00000002 | 0x00000004 | 0x00000008 | 0x00001000 | 0x00080000 | 0x00800000,
+        flags: 0x00000001
+            | 0x00000002
+            | 0x00000004
+            | 0x00000008
+            | 0x00001000
+            | 0x00080000
+            | 0x00800000,
         height: volume.resolution[1],
         width: volume.resolution[0],
         pitch_or_linear_size: volume.resolution[0] * bytes_per_pixel,
@@ -434,11 +452,7 @@ mod tests {
 
     #[test]
     fn test_export_raw() {
-        let vol = Volume3D::<f32>::new(
-            [4, 4, 4],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol = Volume3D::<f32>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         let dir = std::env::temp_dir();
         let path = dir.join("alice_test_volume.raw");
@@ -461,11 +475,7 @@ mod tests {
 
     #[test]
     fn test_export_dds_3d() {
-        let vol = Volume3D::<f32>::new(
-            [4, 4, 4],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol = Volume3D::<f32>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         let dir = std::env::temp_dir();
         let path = dir.join("alice_test_volume.dds");

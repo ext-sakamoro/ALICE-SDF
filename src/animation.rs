@@ -120,7 +120,8 @@ impl Track {
 
     /// Add a keyframe (maintains sorted order)
     pub fn add_keyframe(&mut self, keyframe: Keyframe) {
-        let pos = self.keyframes
+        let pos = self
+            .keyframes
             .binary_search_by(|k| k.time.partial_cmp(&keyframe.time).unwrap())
             .unwrap_or_else(|p| p);
         self.keyframes.insert(pos, keyframe);
@@ -153,7 +154,11 @@ impl Track {
             LoopMode::Once => time.clamp(0.0, duration),
             LoopMode::Loop => {
                 let t = time % duration;
-                if t < 0.0 { t + duration } else { t }
+                if t < 0.0 {
+                    t + duration
+                } else {
+                    t
+                }
             }
             LoopMode::PingPong => {
                 let cycle = time / duration;
@@ -175,7 +180,8 @@ impl Track {
         }
 
         // Binary search for the keyframe pair
-        let idx = self.keyframes
+        let idx = self
+            .keyframes
             .binary_search_by(|k| k.time.partial_cmp(&t).unwrap())
             .unwrap_or_else(|p| p);
 
@@ -191,11 +197,12 @@ impl Track {
         let alpha = (t - k0.time) / span;
 
         match k0.interpolation {
-            Interpolation::Linear => {
-                k0.value + (k1.value - k0.value) * alpha
-            }
+            Interpolation::Linear => k0.value + (k1.value - k0.value) * alpha,
             Interpolation::Step => k0.value,
-            Interpolation::CubicBezier { out_tangent, in_tangent } => {
+            Interpolation::CubicBezier {
+                out_tangent,
+                in_tangent,
+            } => {
                 // Hermite interpolation
                 let t2 = alpha * alpha;
                 let t3 = t2 * alpha;
@@ -237,21 +244,26 @@ impl Timeline {
 
     /// Get the total duration
     pub fn duration(&self) -> f32 {
-        self.tracks.iter().map(|t| t.duration()).fold(0.0_f32, f32::max)
+        self.tracks
+            .iter()
+            .map(|t| t.duration())
+            .fold(0.0_f32, f32::max)
     }
 
     /// Evaluate all tracks at a given time, returning name-value pairs
     pub fn evaluate(&self, time: f32) -> Vec<(&str, f32)> {
         let t = time * self.speed;
-        self.tracks.iter().map(|track| {
-            (track.name.as_str(), track.evaluate(t))
-        }).collect()
+        self.tracks
+            .iter()
+            .map(|track| (track.name.as_str(), track.evaluate(t)))
+            .collect()
     }
 
     /// Get the value of a specific track by name
     pub fn get_value(&self, track_name: &str, time: f32) -> Option<f32> {
         let t = time * self.speed;
-        self.tracks.iter()
+        self.tracks
+            .iter()
             .find(|track| track.name == track_name)
             .map(|track| track.evaluate(t))
     }
@@ -287,9 +299,7 @@ impl AnimationParams {
 
     #[inline]
     pub fn has_rotation(&self) -> bool {
-        self.rotate_x.abs() > 1e-6
-            || self.rotate_y.abs() > 1e-6
-            || self.rotate_z.abs() > 1e-6
+        self.rotate_x.abs() > 1e-6 || self.rotate_y.abs() > 1e-6 || self.rotate_z.abs() > 1e-6
     }
 
     #[inline]

@@ -25,7 +25,11 @@ mod tests {
         let d = sdf_tongue(5.0, 5.0, 0.1, 0.05);
         // b=5.0, abs(b)-rb = 4.95, max(a-ra, abs(b)-rb) = max(4.9,4.95) = 4.95
         // min(5.0, 4.95) = 4.95
-        assert!((d - 4.95).abs() < 0.01, "Far outside should be ~4.95, got {}", d);
+        assert!(
+            (d - 4.95).abs() < 0.01,
+            "Far outside should be ~4.95, got {}",
+            d
+        );
     }
 
     #[test]

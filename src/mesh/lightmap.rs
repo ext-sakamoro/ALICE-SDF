@@ -73,11 +73,23 @@ pub fn generate_lightmap_uvs(mesh: &mut Mesh, resolution: u32) {
 
         let abs_n = face_normal.abs();
         let group = if abs_n.x >= abs_n.y && abs_n.x >= abs_n.z {
-            if face_normal.x >= 0.0 { 0 } else { 1 }
+            if face_normal.x >= 0.0 {
+                0
+            } else {
+                1
+            }
         } else if abs_n.y >= abs_n.x && abs_n.y >= abs_n.z {
-            if face_normal.y >= 0.0 { 2 } else { 3 }
+            if face_normal.y >= 0.0 {
+                2
+            } else {
+                3
+            }
         } else {
-            if face_normal.z >= 0.0 { 4 } else { 5 }
+            if face_normal.z >= 0.0 {
+                4
+            } else {
+                5
+            }
         };
 
         groups[group].push(t);
@@ -133,7 +145,8 @@ pub fn generate_lightmap_uvs(mesh: &mut Mesh, resolution: u32) {
         // [Deep Fried v2] Parallel projection bounds computation
         // Collect all vertex indices for this group (borrow-safe)
         let indices_ref = &mesh.indices;
-        let vert_indices: Vec<u32> = tris.iter()
+        let vert_indices: Vec<u32> = tris
+            .iter()
             .flat_map(|&t| {
                 let i0 = indices_ref[t * 3];
                 let i1 = indices_ref[t * 3 + 1];
@@ -151,9 +164,7 @@ pub fn generate_lightmap_uvs(mesh: &mut Mesh, resolution: u32) {
             })
             .reduce(
                 || (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN)),
-                |(min_a, max_a), (min_b, max_b)| {
-                    (min_a.min(min_b), max_a.max(max_b))
-                },
+                |(min_a, max_a), (min_b, max_b)| (min_a.min(min_b), max_a.max(max_b)),
             );
 
         let range = proj_max - proj_min;
@@ -191,7 +202,7 @@ fn project_to_2d(pos: glam::Vec3, group: usize) -> Vec2 {
     match group {
         0 | 1 => Vec2::new(pos.y, pos.z), // +/-X: project onto YZ
         2 | 3 => Vec2::new(pos.x, pos.z), // +/-Y: project onto XZ
-        _     => Vec2::new(pos.x, pos.y), // +/-Z: project onto XY
+        _ => Vec2::new(pos.x, pos.y),     // +/-Z: project onto XY
     }
 }
 
@@ -239,16 +250,20 @@ mod tests {
         generate_lightmap_uvs(&mut mesh, 1024);
 
         // After: UV2 should be non-zero and in [0, 1] range
-        let non_zero_count = mesh.vertices.iter()
-            .filter(|v| v.uv2 != Vec2::ZERO)
-            .count();
+        let non_zero_count = mesh.vertices.iter().filter(|v| v.uv2 != Vec2::ZERO).count();
         assert!(non_zero_count > 0, "Expected non-zero UV2 values");
 
         for v in &mesh.vertices {
-            assert!(v.uv2.x >= 0.0 && v.uv2.x <= 1.0,
-                "UV2.x out of range: {}", v.uv2.x);
-            assert!(v.uv2.y >= 0.0 && v.uv2.y <= 1.0,
-                "UV2.y out of range: {}", v.uv2.y);
+            assert!(
+                v.uv2.x >= 0.0 && v.uv2.x <= 1.0,
+                "UV2.x out of range: {}",
+                v.uv2.x
+            );
+            assert!(
+                v.uv2.y >= 0.0 && v.uv2.y <= 1.0,
+                "UV2.y out of range: {}",
+                v.uv2.y
+            );
         }
     }
 
@@ -265,9 +280,7 @@ mod tests {
 
         generate_lightmap_uvs_fast(&mut mesh);
 
-        let non_zero_count = mesh.vertices.iter()
-            .filter(|v| v.uv2 != Vec2::ZERO)
-            .count();
+        let non_zero_count = mesh.vertices.iter().filter(|v| v.uv2 != Vec2::ZERO).count();
         assert!(non_zero_count > 0);
     }
 
@@ -309,8 +322,12 @@ mod tests {
         let verts_after = mesh.vertices.len();
 
         // Sphere has vertices at group boundaries that need splitting
-        assert!(verts_after >= verts_before,
-            "Vertex count should not decrease: before={}, after={}", verts_before, verts_after);
+        assert!(
+            verts_after >= verts_before,
+            "Vertex count should not decrease: before={}, after={}",
+            verts_before,
+            verts_after
+        );
 
         // Verify each triangle's UV2 values are within a single atlas cell
         let tri_count = mesh.indices.len() / 3;
@@ -325,10 +342,18 @@ mod tests {
             let max_v = uv0.y.max(uv1.y).max(uv2.y);
             let min_v = uv0.y.min(uv1.y).min(uv2.y);
 
-            assert!(max_u - min_u <= 0.4,
-                "Triangle {} UV2.x span too large: {}", t, max_u - min_u);
-            assert!(max_v - min_v <= 0.6,
-                "Triangle {} UV2.y span too large: {}", t, max_v - min_v);
+            assert!(
+                max_u - min_u <= 0.4,
+                "Triangle {} UV2.x span too large: {}",
+                t,
+                max_u - min_u
+            );
+            assert!(
+                max_v - min_v <= 0.6,
+                "Triangle {} UV2.y span too large: {}",
+                t,
+                max_v - min_v
+            );
         }
     }
 }

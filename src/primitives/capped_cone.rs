@@ -22,10 +22,7 @@ pub fn sdf_capped_cone(p: Vec3, half_height: f32, r1: f32, r2: f32) -> f32 {
     let k2 = Vec2::new(r2 - r1, 2.0 * h);
 
     let min_r = if q.y < 0.0 { r1 } else { r2 };
-    let ca = Vec2::new(
-        q.x - q.x.min(min_r),
-        q.y.abs() - h,
-    );
+    let ca = Vec2::new(q.x - q.x.min(min_r), q.y.abs() - h);
     let k2_dot = k2.dot(k2);
     let t = if k2_dot > 0.0001 {
         ((k1 - q).dot(k2) / k2_dot).clamp(0.0, 1.0)

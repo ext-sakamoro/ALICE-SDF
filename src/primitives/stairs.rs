@@ -26,7 +26,13 @@ fn step_box(lx: f32, ly: f32, s: f32, sw: f32, sh: f32) -> f32 {
 /// - `n_steps`: number of steps (as f32)
 /// - `half_depth`: half the extrusion depth along Z
 #[inline(always)]
-pub fn sdf_stairs(p: Vec3, step_width: f32, step_height: f32, n_steps: f32, half_depth: f32) -> f32 {
+pub fn sdf_stairs(
+    p: Vec3,
+    step_width: f32,
+    step_height: f32,
+    n_steps: f32,
+    half_depth: f32,
+) -> f32 {
     let sw = step_width;
     let sh = step_height;
     let n = n_steps.max(1.0);

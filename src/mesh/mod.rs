@@ -37,65 +37,60 @@ pub mod hermite;
 pub mod lightmap;
 pub mod lod;
 pub mod manifold;
+mod mesh_to_sdf;
 pub mod nanite;
 pub mod optimize;
-pub mod primitive_fitting;
 pub mod point_cloud_sdf;
-pub mod uv_unwrap;
-mod mesh_to_sdf;
+pub mod primitive_fitting;
 mod sdf_to_mesh;
+pub mod uv_unwrap;
 
-#[cfg(feature = "gpu")]
-pub mod gpu_mc_shaders;
 #[cfg(feature = "gpu")]
 pub mod gpu_marching_cubes;
+#[cfg(feature = "gpu")]
+pub mod gpu_mc_shaders;
 
-pub use bvh::{Aabb, MeshBvh, BvhNode, Triangle as BvhTriangle};
-pub use hermite::{
-    HermitePoint, EdgeCrossing, HermiteConfig, HermiteExtractor,
-    extract_hermite, extract_edge_crossings,
-};
-pub use lod::{
-    LodMesh, LodChain, LodConfig, LodSelector, ContinuousLod,
-    generate_lod_chain,
-    DecimationLodConfig, generate_lod_chain_decimated,
-};
-pub use mesh_to_sdf::{
-    mesh_to_sdf, mesh_to_sdf_exact,
-    MeshToSdfConfig, MeshToSdfStrategy, MeshSdf
-};
-pub use nanite::{
-    NaniteCluster, NaniteMesh, NaniteConfig, ClusterBounds, ClusterGroup, LodLevel,
-    generate_nanite_mesh, CLUSTER_MAX_TRIANGLES, CLUSTER_MAX_VERTICES,
-};
-pub use primitive_fitting::{
-    PrimitiveType, FittedPrimitive, FittingResult, FittingConfig,
-    fit_sphere, fit_box, fit_cylinder, fit_plane,
-    detect_primitive, primitives_to_csg,
-};
-pub use manifold::{
-    MeshValidation, MeshRepair, MeshQuality,
-    validate_mesh, compute_quality,
+pub use bvh::{Aabb, BvhNode, MeshBvh, Triangle as BvhTriangle};
+pub use collision::{
+    compute_aabb, compute_bounding_sphere, compute_convex_hull, convex_decomposition,
+    convex_hull_from_points, simplify_collision, BoundingSphere, CollisionAabb, CollisionMesh,
+    ConvexDecomposition, ConvexHull, VhacdConfig,
 };
 pub use decimate::{decimate, DecimateConfig};
-pub use lightmap::{generate_lightmap_uvs, generate_lightmap_uvs_fast};
-pub use optimize::{optimize_vertex_cache, compute_acmr, deduplicate_vertices};
-pub use uv_unwrap::{uv_unwrap, apply_uvs, UvUnwrapConfig, UvUnwrapResult, UvChart};
-pub use point_cloud_sdf::{PointCloudSdf, PointCloudSdfConfig, point_cloud_to_sdf};
-pub use collision::{
-    CollisionAabb, BoundingSphere, ConvexHull, CollisionMesh,
-    compute_aabb, compute_bounding_sphere, compute_convex_hull,
-    convex_hull_from_points, simplify_collision,
-    VhacdConfig, ConvexDecomposition, convex_decomposition,
-};
-pub use sdf_to_mesh::{
-    sdf_to_mesh, sdf_to_mesh_compiled, marching_cubes, marching_cubes_compiled,
-    MarchingCubesConfig, Mesh,
-    adaptive_marching_cubes, adaptive_marching_cubes_compiled, AdaptiveConfig,
-};
 pub use dual_contouring::{dual_contouring, dual_contouring_compiled, DualContouringConfig};
 #[cfg(feature = "gpu")]
-pub use gpu_marching_cubes::{gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig};
+pub use gpu_marching_cubes::{
+    gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig,
+};
+pub use hermite::{
+    extract_edge_crossings, extract_hermite, EdgeCrossing, HermiteConfig, HermiteExtractor,
+    HermitePoint,
+};
+pub use lightmap::{generate_lightmap_uvs, generate_lightmap_uvs_fast};
+pub use lod::{
+    generate_lod_chain, generate_lod_chain_decimated, ContinuousLod, DecimationLodConfig, LodChain,
+    LodConfig, LodMesh, LodSelector,
+};
+pub use manifold::{compute_quality, validate_mesh, MeshQuality, MeshRepair, MeshValidation};
+pub use mesh_to_sdf::{
+    mesh_to_sdf, mesh_to_sdf_exact, MeshSdf, MeshToSdfConfig, MeshToSdfStrategy,
+};
+pub use nanite::{
+    generate_nanite_mesh, ClusterBounds, ClusterGroup, LodLevel, NaniteCluster, NaniteConfig,
+    NaniteMesh, CLUSTER_MAX_TRIANGLES, CLUSTER_MAX_VERTICES,
+};
+pub use optimize::{compute_acmr, deduplicate_vertices, optimize_vertex_cache};
+pub use point_cloud_sdf::{point_cloud_to_sdf, PointCloudSdf, PointCloudSdfConfig};
+pub use primitive_fitting::{
+    detect_primitive, fit_box, fit_cylinder, fit_plane, fit_sphere, primitives_to_csg,
+    FittedPrimitive, FittingConfig, FittingResult, PrimitiveType,
+};
+pub use sdf_to_mesh::{
+    adaptive_marching_cubes, adaptive_marching_cubes_compiled, marching_cubes,
+    marching_cubes_compiled, sdf_to_mesh, sdf_to_mesh_compiled, AdaptiveConfig,
+    MarchingCubesConfig, Mesh,
+};
+pub use uv_unwrap::{apply_uvs, uv_unwrap, UvChart, UvUnwrapConfig, UvUnwrapResult};
 
 /// Vertex with position, normal, UV, tangent, color, and material ID
 ///
@@ -143,7 +138,15 @@ impl Vertex {
         color: [f32; 4],
         material_id: u32,
     ) -> Self {
-        Vertex { position, normal, uv, uv2, tangent, color, material_id }
+        Vertex {
+            position,
+            normal,
+            uv,
+            uv2,
+            tangent,
+            color,
+            material_id,
+        }
     }
 }
 

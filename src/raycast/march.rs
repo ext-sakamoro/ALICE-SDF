@@ -20,8 +20,10 @@ use crate::SdfNode;
 use glam::Vec3;
 use rayon::prelude::*;
 
-use crate::compiled::{CompiledSdf, eval_compiled, eval_compiled_normal, Vec3x8, eval_compiled_simd};
-use wide::{f32x8, CmpLt, CmpGt, CmpGe};
+use crate::compiled::{
+    eval_compiled, eval_compiled_normal, eval_compiled_simd, CompiledSdf, Vec3x8,
+};
+use wide::{f32x8, CmpGe, CmpGt, CmpLt};
 
 /// Raymarch configuration
 #[derive(Debug, Clone, Copy)]
@@ -116,12 +118,7 @@ pub struct RaymarchResult {
 /// path but slowest. Prefer `raymarch_compiled()` or `raymarch_jit()` for
 /// production use.
 #[inline(always)]
-pub fn raymarch(
-    node: &SdfNode,
-    origin: Vec3,
-    direction: Vec3,
-    max_distance: f32,
-) -> Option<Hit> {
+pub fn raymarch(node: &SdfNode, origin: Vec3, direction: Vec3, max_distance: f32) -> Option<Hit> {
     const EPSILON: f32 = 0.0001;
     const MAX_STEPS: u32 = 128;
 
@@ -186,7 +183,11 @@ pub fn raymarch_with_config(
         let safe_d = d * inv_lip;
         let step = if use_relaxation && steps > 0 {
             let expected_min = prev_step - prev_dist;
-            if d < expected_min { safe_d } else { safe_d * omega }
+            if d < expected_min {
+                safe_d
+            } else {
+                safe_d * omega
+            }
         } else {
             safe_d
         };
@@ -258,11 +259,7 @@ pub fn raymarch_detailed(
 }
 
 /// Batch raymarch (single-threaded)
-pub fn raymarch_batch(
-    node: &SdfNode,
-    rays: &[Ray],
-    max_distance: f32,
-) -> Vec<Option<Hit>> {
+pub fn raymarch_batch(node: &SdfNode, rays: &[Ray], max_distance: f32) -> Vec<Option<Hit>> {
     rays.iter()
         .map(|ray| raymarch(node, ray.origin, ray.direction, max_distance))
         .collect()
@@ -348,14 +345,15 @@ pub fn render_normals(
                 let u = (x as f32 * inv_width) * 2.0 - 1.0;
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel = match raymarch_with_config(node, camera_pos, ray_dir, max_distance, &config) {
-                    Some(hit) => [
-                        ((hit.normal.x * 0.5 + 0.5) * 255.0) as u8,
-                        ((hit.normal.y * 0.5 + 0.5) * 255.0) as u8,
-                        ((hit.normal.z * 0.5 + 0.5) * 255.0) as u8,
-                    ],
-                    None => [0, 0, 0],
-                };
+                *pixel =
+                    match raymarch_with_config(node, camera_pos, ray_dir, max_distance, &config) {
+                        Some(hit) => [
+                            ((hit.normal.x * 0.5 + 0.5) * 255.0) as u8,
+                            ((hit.normal.y * 0.5 + 0.5) * 255.0) as u8,
+                            ((hit.normal.z * 0.5 + 0.5) * 255.0) as u8,
+                        ],
+                        None => [0, 0, 0],
+                    };
             }
         });
 
@@ -440,7 +438,11 @@ pub fn raymarch_compiled_with_config(
         let safe_d = d * inv_lip;
         let step = if use_relaxation && steps > 0 {
             let expected_min = prev_step - prev_dist;
-            if d < expected_min { safe_d } else { safe_d * omega }
+            if d < expected_min {
+                safe_d
+            } else {
+                safe_d * omega
+            }
         } else {
             safe_d
         };
@@ -534,7 +536,13 @@ pub fn render_normals_compiled(
                 let u = (x as f32 * inv_width) * 2.0 - 1.0;
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel = match raymarch_compiled_with_config(sdf, camera_pos, ray_dir, max_distance, &config) {
+                *pixel = match raymarch_compiled_with_config(
+                    sdf,
+                    camera_pos,
+                    ray_dir,
+                    max_distance,
+                    &config,
+                ) {
                     Some(hit) => [
                         ((hit.normal.x * 0.5 + 0.5) * 255.0) as u8,
                         ((hit.normal.y * 0.5 + 0.5) * 255.0) as u8,
@@ -587,7 +595,11 @@ pub fn raymarch_simd_8(
         let py = origins.y + directions.y * t;
         let pz = origins.z + directions.z * t;
 
-        let points = Vec3x8 { x: px, y: py, z: pz };
+        let points = Vec3x8 {
+            x: px,
+            y: py,
+            z: pz,
+        };
         let d = eval_compiled_simd(sdf, points);
 
         // Check hit: |d| < epsilon
@@ -809,7 +821,11 @@ pub fn raymarch_jit_with_config(
         let safe_d = d * inv_lip;
         let step = if use_relaxation && steps > 0 {
             let expected_min = prev_step - prev_dist;
-            if d < expected_min { safe_d } else { safe_d * omega }
+            if d < expected_min {
+                safe_d
+            } else {
+                safe_d * omega
+            }
         } else {
             safe_d
         };
@@ -833,9 +849,9 @@ fn calc_normal_jit(sdf: &crate::compiled::jit::JitCompiledSdf, p: Vec3, eps: f32
     let k3 = Vec3::new(1.0, 1.0, 1.0);
 
     (k0 * sdf.eval(p + k0 * eps)
-     + k1 * sdf.eval(p + k1 * eps)
-     + k2 * sdf.eval(p + k2 * eps)
-     + k3 * sdf.eval(p + k3 * eps))
+        + k1 * sdf.eval(p + k1 * eps)
+        + k2 * sdf.eval(p + k2 * eps)
+        + k3 * sdf.eval(p + k3 * eps))
     .normalize()
 }
 
@@ -1037,7 +1053,8 @@ pub fn render_depth_jit_simd(
                 let origins = Vec3x8::splat(camera_pos);
                 let directions = Vec3x8::new(dir_x, dir_y, dir_z);
 
-                let results = raymarch_jit_simd_8(sdf, compiled, origins, directions, max_distance, &config);
+                let results =
+                    raymarch_jit_simd_8(sdf, compiled, origins, directions, max_distance, &config);
 
                 for i in 0..8 {
                     row[x + i] = match results[i] {
@@ -1159,8 +1176,14 @@ mod tests {
         let camera_up = Vec3::new(0.0, 1.0, 0.0);
 
         let depth = render_depth(
-            &sphere, camera_pos, camera_dir, camera_up,
-            8, 8, std::f32::consts::FRAC_PI_4, 10.0,
+            &sphere,
+            camera_pos,
+            camera_dir,
+            camera_up,
+            8,
+            8,
+            std::f32::consts::FRAC_PI_4,
+            10.0,
         );
 
         assert_eq!(depth.len(), 64);
@@ -1177,8 +1200,14 @@ mod tests {
         let camera_up = Vec3::new(0.0, 1.0, 0.0);
 
         let normals = render_normals(
-            &sphere, camera_pos, camera_dir, camera_up,
-            8, 8, std::f32::consts::FRAC_PI_4, 10.0,
+            &sphere,
+            camera_pos,
+            camera_dir,
+            camera_up,
+            8,
+            8,
+            std::f32::consts::FRAC_PI_4,
+            10.0,
         );
 
         assert_eq!(normals.len(), 64);
@@ -1211,8 +1240,11 @@ mod tests {
         let hit = raymarch_relaxed(&sphere, origin, direction, 10.0);
         assert!(hit.is_some());
         let hit = hit.unwrap();
-        assert!((hit.distance - 4.0).abs() < 0.01,
-            "Relaxed hit distance: {}", hit.distance);
+        assert!(
+            (hit.distance - 4.0).abs() < 0.01,
+            "Relaxed hit distance: {}",
+            hit.distance
+        );
     }
 
     #[test]
@@ -1242,17 +1274,25 @@ mod tests {
         assert!(result_std.hit);
         assert!(result_rel.hit);
         // Relaxed should use fewer steps (omega=1.6 means ~1.6x larger steps)
-        assert!(result_rel.steps <= result_std.steps,
+        assert!(
+            result_rel.steps <= result_std.steps,
             "Relaxed steps={} should be <= standard steps={}",
-            result_rel.steps, result_std.steps);
+            result_rel.steps,
+            result_std.steps
+        );
         // Hit distance should be very similar
-        assert!((result_std.distance - result_rel.distance).abs() < 0.01,
-            "Standard={}, Relaxed={}", result_std.distance, result_rel.distance);
+        assert!(
+            (result_std.distance - result_rel.distance).abs() < 0.01,
+            "Standard={}, Relaxed={}",
+            result_std.distance,
+            result_rel.distance
+        );
     }
 
     #[test]
     fn test_relaxed_complex_scene() {
-        let scene = SdfNode::sphere(1.0).translate(1.0, 0.0, 0.0)
+        let scene = SdfNode::sphere(1.0)
+            .translate(1.0, 0.0, 0.0)
             .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5).translate(-1.0, 0.0, 0.0), 0.3);
         let origin = Vec3::new(-5.0, 0.0, 0.0);
         let direction = Vec3::new(1.0, 0.0, 0.0);
@@ -1277,8 +1317,11 @@ mod tests {
             strength: 0.5,
         };
         let config_twist = RaymarchConfig::relaxed(&twisted);
-        assert!(config_twist.lipschitz > 1.0,
-            "Twisted SDF should have L > 1, got {}", config_twist.lipschitz);
+        assert!(
+            config_twist.lipschitz > 1.0,
+            "Twisted SDF should have L > 1, got {}",
+            config_twist.lipschitz
+        );
     }
 
     // ============ Compiled Backend Tests ============
@@ -1294,8 +1337,11 @@ mod tests {
         assert!(hit.is_some());
 
         let hit = hit.unwrap();
-        assert!((hit.distance - 4.0).abs() < 0.01,
-            "Compiled sphere hit distance: {}", hit.distance);
+        assert!(
+            (hit.distance - 4.0).abs() < 0.01,
+            "Compiled sphere hit distance: {}",
+            hit.distance
+        );
     }
 
     #[test]
@@ -1322,8 +1368,12 @@ mod tests {
 
         assert_eq!(hit_interp.is_some(), hit_compiled.is_some());
         if let (Some(h1), Some(h2)) = (hit_interp, hit_compiled) {
-            assert!((h1.distance - h2.distance).abs() < 0.01,
-                "Interpreter={}, Compiled={}", h1.distance, h2.distance);
+            assert!(
+                (h1.distance - h2.distance).abs() < 0.01,
+                "Interpreter={}, Compiled={}",
+                h1.distance,
+                h2.distance
+            );
         }
     }
 
@@ -1336,15 +1386,24 @@ mod tests {
         let camera_up = Vec3::new(0.0, 1.0, 0.0);
 
         let depth = render_depth_compiled(
-            &compiled, camera_pos, camera_dir, camera_up,
-            8, 8, std::f32::consts::FRAC_PI_4, 10.0,
+            &compiled,
+            camera_pos,
+            camera_dir,
+            camera_up,
+            8,
+            8,
+            std::f32::consts::FRAC_PI_4,
+            10.0,
         );
 
         assert_eq!(depth.len(), 64);
         let center_depth = depth[8 * 4 + 4];
         assert!(center_depth < f32::MAX);
-        assert!((center_depth - 4.0).abs() < 0.5,
-            "Compiled depth center: {}", center_depth);
+        assert!(
+            (center_depth - 4.0).abs() < 0.5,
+            "Compiled depth center: {}",
+            center_depth
+        );
     }
 
     // ============ SIMD Packet Tests ============
@@ -1361,11 +1420,7 @@ mod tests {
             [0.0; 8],
             [-5.0; 8],
         );
-        let directions = Vec3x8::new(
-            [0.0; 8],
-            [0.0; 8],
-            [1.0; 8],
-        );
+        let directions = Vec3x8::new([0.0; 8], [0.0; 8], [1.0; 8]);
 
         let results = raymarch_simd_8(&compiled, origins, directions, 20.0, &config);
 
@@ -1388,12 +1443,24 @@ mod tests {
         let camera_up = Vec3::new(0.0, 1.0, 0.0);
 
         let depth_scalar = render_depth_compiled(
-            &compiled, camera_pos, camera_dir, camera_up,
-            16, 16, std::f32::consts::FRAC_PI_4, 10.0,
+            &compiled,
+            camera_pos,
+            camera_dir,
+            camera_up,
+            16,
+            16,
+            std::f32::consts::FRAC_PI_4,
+            10.0,
         );
         let depth_simd = render_depth_compiled_simd(
-            &compiled, camera_pos, camera_dir, camera_up,
-            16, 16, std::f32::consts::FRAC_PI_4, 10.0,
+            &compiled,
+            camera_pos,
+            camera_dir,
+            camera_up,
+            16,
+            16,
+            std::f32::consts::FRAC_PI_4,
+            10.0,
         );
 
         assert_eq!(depth_scalar.len(), depth_simd.len());
@@ -1401,9 +1468,13 @@ mod tests {
         // Compare results: should be very close
         for i in 0..depth_scalar.len() {
             if depth_scalar[i] < f32::MAX && depth_simd[i] < f32::MAX {
-                assert!((depth_scalar[i] - depth_simd[i]).abs() < 0.5,
+                assert!(
+                    (depth_scalar[i] - depth_simd[i]).abs() < 0.5,
                     "Pixel {} mismatch: scalar={}, simd={}",
-                    i, depth_scalar[i], depth_simd[i]);
+                    i,
+                    depth_scalar[i],
+                    depth_simd[i]
+                );
             }
         }
     }
@@ -1422,15 +1493,18 @@ mod tests {
         assert!(hit.is_some());
 
         let hit = hit.unwrap();
-        assert!((hit.distance - 4.0).abs() < 0.01,
-            "JIT sphere hit distance: {}", hit.distance);
+        assert!(
+            (hit.distance - 4.0).abs() < 0.01,
+            "JIT sphere hit distance: {}",
+            hit.distance
+        );
     }
 
     #[cfg(feature = "jit")]
     #[test]
     fn test_raymarch_jit_matches_compiled() {
-        let shape = SdfNode::sphere(1.0)
-            .union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
+        let shape =
+            SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
         let compiled = CompiledSdf::compile(&shape);
         let jit = crate::compiled::jit::JitCompiledSdf::compile(&shape).unwrap();
         let origin = Vec3::new(-5.0, 0.0, 0.0);
@@ -1441,8 +1515,12 @@ mod tests {
 
         assert_eq!(hit_compiled.is_some(), hit_jit.is_some());
         if let (Some(h1), Some(h2)) = (hit_compiled, hit_jit) {
-            assert!((h1.distance - h2.distance).abs() < 0.01,
-                "Compiled={}, JIT={}", h1.distance, h2.distance);
+            assert!(
+                (h1.distance - h2.distance).abs() < 0.01,
+                "Compiled={}, JIT={}",
+                h1.distance,
+                h2.distance
+            );
         }
     }
 
@@ -1454,16 +1532,8 @@ mod tests {
         let jit_simd = crate::compiled::jit::JitSimdSdf::compile(&compiled).unwrap();
         let config = RaymarchConfig::default();
 
-        let origins = Vec3x8::new(
-            [0.0; 8],
-            [0.0; 8],
-            [-5.0; 8],
-        );
-        let directions = Vec3x8::new(
-            [0.0; 8],
-            [0.0; 8],
-            [1.0; 8],
-        );
+        let origins = Vec3x8::new([0.0; 8], [0.0; 8], [-5.0; 8]);
+        let directions = Vec3x8::new([0.0; 8], [0.0; 8], [1.0; 8]);
 
         let results = raymarch_jit_simd_8(&jit_simd, &compiled, origins, directions, 20.0, &config);
 

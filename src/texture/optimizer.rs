@@ -160,37 +160,43 @@ mod tests {
     #[test]
     fn test_minimize_quadratic() {
         // Minimize (x-3)² + (y-5)²
-        let result = nelder_mead(
-            &[0.0, 0.0],
-            &[1.0, 1.0],
-            1000,
-            |p| {
-                let dx = (p[0] - 3.0) as f64;
-                let dy = (p[1] - 5.0) as f64;
-                dx * dx + dy * dy
-            },
-        );
+        let result = nelder_mead(&[0.0, 0.0], &[1.0, 1.0], 1000, |p| {
+            let dx = (p[0] - 3.0) as f64;
+            let dy = (p[1] - 5.0) as f64;
+            dx * dx + dy * dy
+        });
 
-        assert!((result.params[0] - 3.0).abs() < 0.01, "x={}", result.params[0]);
-        assert!((result.params[1] - 5.0).abs() < 0.01, "y={}", result.params[1]);
+        assert!(
+            (result.params[0] - 3.0).abs() < 0.01,
+            "x={}",
+            result.params[0]
+        );
+        assert!(
+            (result.params[1] - 5.0).abs() < 0.01,
+            "y={}",
+            result.params[1]
+        );
         assert!(result.cost < 0.001);
     }
 
     #[test]
     fn test_minimize_rosenbrock() {
         // Rosenbrock: f(x,y) = (1-x)² + 100(y-x²)²
-        let result = nelder_mead(
-            &[-1.0, -1.0],
-            &[0.5, 0.5],
-            5000,
-            |p| {
-                let x = p[0] as f64;
-                let y = p[1] as f64;
-                (1.0 - x).powi(2) + 100.0 * (y - x * x).powi(2)
-            },
-        );
+        let result = nelder_mead(&[-1.0, -1.0], &[0.5, 0.5], 5000, |p| {
+            let x = p[0] as f64;
+            let y = p[1] as f64;
+            (1.0 - x).powi(2) + 100.0 * (y - x * x).powi(2)
+        });
 
-        assert!((result.params[0] - 1.0).abs() < 0.1, "x={}", result.params[0]);
-        assert!((result.params[1] - 1.0).abs() < 0.1, "y={}", result.params[1]);
+        assert!(
+            (result.params[0] - 1.0).abs() < 0.1,
+            "x={}",
+            result.params[0]
+        );
+        assert!(
+            (result.params[1] - 1.0).abs() < 0.1,
+            "y={}",
+            result.params[1]
+        );
     }
 }

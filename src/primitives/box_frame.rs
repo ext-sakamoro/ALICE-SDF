@@ -38,21 +38,33 @@ mod tests {
     fn test_box_frame_center_hollow() {
         // Center of a box frame is in the hollow interior (positive distance)
         let d = sdf_box_frame(Vec3::ZERO, Vec3::splat(1.0), 0.1);
-        assert!(d > 0.0, "Center should be outside frame (hollow), got {}", d);
+        assert!(
+            d > 0.0,
+            "Center should be outside frame (hollow), got {}",
+            d
+        );
     }
 
     #[test]
     fn test_box_frame_inside_edge() {
         // Point slightly inside the edge volume should be inside or on surface
         let d = sdf_box_frame(Vec3::new(0.0, 0.95, 0.95), Vec3::splat(1.0), 0.1);
-        assert!(d <= 0.0, "Near-edge point should be inside or on surface, got {}", d);
+        assert!(
+            d <= 0.0,
+            "Near-edge point should be inside or on surface, got {}",
+            d
+        );
     }
 
     #[test]
     fn test_box_frame_on_edge() {
         // Point on an edge should be near zero
         let d = sdf_box_frame(Vec3::new(1.0, 1.0, 0.0), Vec3::splat(1.0), 0.1);
-        assert!(d.abs() < 0.15, "Edge point should be near surface, got {}", d);
+        assert!(
+            d.abs() < 0.15,
+            "Edge point should be near surface, got {}",
+            d
+        );
     }
 
     #[test]

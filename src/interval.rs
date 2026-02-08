@@ -331,7 +331,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             outer + inner
         }
 
-        SdfNode::Cylinder { radius, half_height } => {
+        SdfNode::Cylinder {
+            radius,
+            half_height,
+        } => {
             let dx = bounds.length_xz() - Interval::point(*radius);
             let dy = bounds.y.abs() - Interval::point(*half_height);
             let ox = dx.max(Interval::ZERO);
@@ -339,7 +342,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             (ox.sqr() + oy.sqr()).sqrt() + dx.max(dy).min(Interval::ZERO)
         }
 
-        SdfNode::Torus { major_radius, minor_radius } => {
+        SdfNode::Torus {
+            major_radius,
+            minor_radius,
+        } => {
             let qx = bounds.length_xz() - Interval::point(*major_radius);
             (qx.sqr() + bounds.y.sqr()).sqrt() - Interval::point(*minor_radius)
         }
@@ -351,7 +357,11 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 - Interval::point(*distance)
         }
 
-        SdfNode::Capsule { point_a, point_b, radius } => {
+        SdfNode::Capsule {
+            point_a,
+            point_b,
+            radius,
+        } => {
             let ab = *point_b - *point_a;
             let ab_sq = ab.length_squared();
             if ab_sq < 1e-10 {
@@ -370,14 +380,21 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let cx = pa.x - Interval::point(ab.x) * t;
             let cy = pa.y - Interval::point(ab.y) * t;
             let cz = pa.z - Interval::point(ab.z) * t;
-            Vec3Interval { x: cx, y: cy, z: cz }.length() - Interval::point(*radius)
+            Vec3Interval {
+                x: cx,
+                y: cy,
+                z: cz,
+            }
+            .length()
+                - Interval::point(*radius)
         }
 
-        SdfNode::InfiniteCylinder { radius } => {
-            bounds.length_xz() - Interval::point(*radius)
-        }
+        SdfNode::InfiniteCylinder { radius } => bounds.length_xz() - Interval::point(*radius),
 
-        SdfNode::RoundedBox { half_extents, round_radius } => {
+        SdfNode::RoundedBox {
+            half_extents,
+            round_radius,
+        } => {
             let h = *half_extents;
             let qx = bounds.x.abs() - Interval::point(h.x);
             let qy = bounds.y.abs() - Interval::point(h.y);
@@ -393,33 +410,57 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         }
 
         // ============ Conservative-IA Primitives (bounding sphere) ============
-        SdfNode::Cone { radius, half_height } => {
-            ia_bsphere(bounds, ((2.0 * half_height).powi(2) + radius.powi(2)).sqrt())
-        }
-        SdfNode::Ellipsoid { radii } => {
-            ia_bsphere(bounds, radii.x.max(radii.y).max(radii.z))
-        }
-        SdfNode::RoundedCone { r1, r2, half_height } => {
-            ia_bsphere(bounds, ((2.0 * half_height).powi(2) + r1.max(*r2).powi(2)).sqrt())
-        }
+        SdfNode::Cone {
+            radius,
+            half_height,
+        } => ia_bsphere(
+            bounds,
+            ((2.0 * half_height).powi(2) + radius.powi(2)).sqrt(),
+        ),
+        SdfNode::Ellipsoid { radii } => ia_bsphere(bounds, radii.x.max(radii.y).max(radii.z)),
+        SdfNode::RoundedCone {
+            r1,
+            r2,
+            half_height,
+        } => ia_bsphere(
+            bounds,
+            ((2.0 * half_height).powi(2) + r1.max(*r2).powi(2)).sqrt(),
+        ),
         SdfNode::Pyramid { half_height } => {
             ia_bsphere(bounds, (0.25 + (2.0 * half_height).powi(2)).sqrt())
         }
         SdfNode::Octahedron { size } => ia_bsphere(bounds, *size),
-        SdfNode::HexPrism { hex_radius, half_height } => {
-            ia_bsphere(bounds, (hex_radius.powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::Link { half_length, r1, r2 } => ia_bsphere(bounds, half_length + r1 + r2),
+        SdfNode::HexPrism {
+            hex_radius,
+            half_height,
+        } => ia_bsphere(bounds, (hex_radius.powi(2) + half_height.powi(2)).sqrt()),
+        SdfNode::Link {
+            half_length,
+            r1,
+            r2,
+        } => ia_bsphere(bounds, half_length + r1 + r2),
         SdfNode::Triangle { .. } | SdfNode::Bezier { .. } => Interval::EVERYTHING,
-        SdfNode::CappedCone { half_height, r1, r2 } => {
-            ia_bsphere(bounds, ((2.0 * half_height).powi(2) + r1.max(*r2).powi(2)).sqrt())
-        }
-        SdfNode::CappedTorus { major_radius, minor_radius, .. } => {
-            ia_bsphere(bounds, major_radius + minor_radius)
-        }
-        SdfNode::RoundedCylinder { radius, round_radius, half_height } => {
-            ia_bsphere(bounds, ((radius + round_radius).powi(2) + half_height.powi(2)).sqrt())
-        }
+        SdfNode::CappedCone {
+            half_height,
+            r1,
+            r2,
+        } => ia_bsphere(
+            bounds,
+            ((2.0 * half_height).powi(2) + r1.max(*r2).powi(2)).sqrt(),
+        ),
+        SdfNode::CappedTorus {
+            major_radius,
+            minor_radius,
+            ..
+        } => ia_bsphere(bounds, major_radius + minor_radius),
+        SdfNode::RoundedCylinder {
+            radius,
+            round_radius,
+            half_height,
+        } => ia_bsphere(
+            bounds,
+            ((radius + round_radius).powi(2) + half_height.powi(2)).sqrt(),
+        ),
         SdfNode::TriangularPrism { width, half_depth } => {
             ia_bsphere(bounds, (width.powi(2) + half_depth.powi(2)).sqrt())
         }
@@ -427,75 +468,152 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::CutHollowSphere { radius, .. } => ia_bsphere(bounds, *radius),
         SdfNode::DeathStar { ra, rb, .. } => ia_bsphere(bounds, ra.max(*rb)),
         SdfNode::SolidAngle { radius, .. } => ia_bsphere(bounds, *radius),
-        SdfNode::Rhombus { la, lb, half_height, .. } => {
-            ia_bsphere(bounds, (la.max(*lb).powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::Horseshoe { radius, half_length, width, thickness, .. } => {
-            ia_bsphere(bounds, radius + half_length + width + thickness)
-        }
+        SdfNode::Rhombus {
+            la,
+            lb,
+            half_height,
+            ..
+        } => ia_bsphere(bounds, (la.max(*lb).powi(2) + half_height.powi(2)).sqrt()),
+        SdfNode::Horseshoe {
+            radius,
+            half_length,
+            width,
+            thickness,
+            ..
+        } => ia_bsphere(bounds, radius + half_length + width + thickness),
         SdfNode::Vesica { radius, .. } => ia_bsphere(bounds, *radius),
         SdfNode::InfiniteCone { .. } | SdfNode::Gyroid { .. } | SdfNode::SchwarzP { .. } => {
             Interval::EVERYTHING
         }
         SdfNode::Heart { size } => ia_bsphere(bounds, *size * 2.0),
-        SdfNode::Tube { outer_radius, half_height, .. } => {
-            ia_bsphere(bounds, (outer_radius.powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::Barrel { radius, half_height, bulge } => {
-            ia_bsphere(bounds, ((radius + bulge.abs()).powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::Diamond { radius, half_height } => {
-            ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt())
-        }
+        SdfNode::Tube {
+            outer_radius,
+            half_height,
+            ..
+        } => ia_bsphere(bounds, (outer_radius.powi(2) + half_height.powi(2)).sqrt()),
+        SdfNode::Barrel {
+            radius,
+            half_height,
+            bulge,
+        } => ia_bsphere(
+            bounds,
+            ((radius + bulge.abs()).powi(2) + half_height.powi(2)).sqrt(),
+        ),
+        SdfNode::Diamond {
+            radius,
+            half_height,
+        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
         SdfNode::ChamferedCube { half_extents, .. } => ia_bsphere(bounds, half_extents.length()),
         SdfNode::Superellipsoid { half_extents, .. } => ia_bsphere(bounds, half_extents.length()),
-        SdfNode::RoundedX { width, round_radius, half_height } => {
-            ia_bsphere(bounds, (width + round_radius).max(*half_height))
-        }
-        SdfNode::Pie { radius, half_height, .. } => {
-            ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::Trapezoid { r1, r2, trap_height, half_depth } => {
-            ia_bsphere(bounds, (r1.max(*r2).powi(2) + trap_height.powi(2) + half_depth.powi(2)).sqrt())
-        }
-        SdfNode::Parallelogram { width, para_height, skew, half_depth } => {
-            ia_bsphere(bounds, ((width + skew.abs()).powi(2) + para_height.powi(2) + half_depth.powi(2)).sqrt())
-        }
-        SdfNode::Tunnel { width, height_2d, half_depth } => {
-            ia_bsphere(bounds, (width.powi(2) + height_2d.powi(2) + half_depth.powi(2)).sqrt())
-        }
-        SdfNode::UnevenCapsule { r1, r2, cap_height, half_depth } => {
-            ia_bsphere(bounds, r1.max(*r2) + cap_height + half_depth)
-        }
+        SdfNode::RoundedX {
+            width,
+            round_radius,
+            half_height,
+        } => ia_bsphere(bounds, (width + round_radius).max(*half_height)),
+        SdfNode::Pie {
+            radius,
+            half_height,
+            ..
+        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
+        SdfNode::Trapezoid {
+            r1,
+            r2,
+            trap_height,
+            half_depth,
+        } => ia_bsphere(
+            bounds,
+            (r1.max(*r2).powi(2) + trap_height.powi(2) + half_depth.powi(2)).sqrt(),
+        ),
+        SdfNode::Parallelogram {
+            width,
+            para_height,
+            skew,
+            half_depth,
+        } => ia_bsphere(
+            bounds,
+            ((width + skew.abs()).powi(2) + para_height.powi(2) + half_depth.powi(2)).sqrt(),
+        ),
+        SdfNode::Tunnel {
+            width,
+            height_2d,
+            half_depth,
+        } => ia_bsphere(
+            bounds,
+            (width.powi(2) + height_2d.powi(2) + half_depth.powi(2)).sqrt(),
+        ),
+        SdfNode::UnevenCapsule {
+            r1,
+            r2,
+            cap_height,
+            half_depth,
+        } => ia_bsphere(bounds, r1.max(*r2) + cap_height + half_depth),
         SdfNode::Egg { ra, rb } => ia_bsphere(bounds, *ra + *rb),
-        SdfNode::ArcShape { radius, thickness, half_height, .. } => {
-            ia_bsphere(bounds, ((radius + thickness).powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::Moon { ra, rb, half_height, .. } => {
-            ia_bsphere(bounds, (ra.max(*rb).powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::CrossShape { length, thickness, half_height, .. } => {
-            ia_bsphere(bounds, (length.max(*thickness).powi(2) + half_height.powi(2)).sqrt())
-        }
+        SdfNode::ArcShape {
+            radius,
+            thickness,
+            half_height,
+            ..
+        } => ia_bsphere(
+            bounds,
+            ((radius + thickness).powi(2) + half_height.powi(2)).sqrt(),
+        ),
+        SdfNode::Moon {
+            ra,
+            rb,
+            half_height,
+            ..
+        } => ia_bsphere(bounds, (ra.max(*rb).powi(2) + half_height.powi(2)).sqrt()),
+        SdfNode::CrossShape {
+            length,
+            thickness,
+            half_height,
+            ..
+        } => ia_bsphere(
+            bounds,
+            (length.max(*thickness).powi(2) + half_height.powi(2)).sqrt(),
+        ),
         SdfNode::BlobbyCross { size, half_height } => {
             ia_bsphere(bounds, (size.powi(2) + half_height.powi(2)).sqrt())
         }
-        SdfNode::ParabolaSegment { width, para_height, half_depth } => {
-            ia_bsphere(bounds, (width.powi(2) + para_height.powi(2) + half_depth.powi(2)).sqrt())
-        }
-        SdfNode::RegularPolygon { radius, half_height, .. } => {
-            ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::StarPolygon { radius, half_height, .. } => {
-            ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt())
-        }
-        SdfNode::Stairs { step_width, step_height, n_steps, half_depth } => {
-            let extent = ((step_width * n_steps).powi(2) + (step_height * n_steps).powi(2) + half_depth.powi(2)).sqrt();
+        SdfNode::ParabolaSegment {
+            width,
+            para_height,
+            half_depth,
+        } => ia_bsphere(
+            bounds,
+            (width.powi(2) + para_height.powi(2) + half_depth.powi(2)).sqrt(),
+        ),
+        SdfNode::RegularPolygon {
+            radius,
+            half_height,
+            ..
+        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
+        SdfNode::StarPolygon {
+            radius,
+            half_height,
+            ..
+        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
+        SdfNode::Stairs {
+            step_width,
+            step_height,
+            n_steps,
+            half_depth,
+        } => {
+            let extent = ((step_width * n_steps).powi(2)
+                + (step_height * n_steps).powi(2)
+                + half_depth.powi(2))
+            .sqrt();
             ia_bsphere(bounds, extent)
         }
-        SdfNode::Helix { major_r, minor_r, half_height, .. } => {
-            ia_bsphere(bounds, ((major_r + minor_r).powi(2) + half_height.powi(2)).sqrt())
-        }
+        SdfNode::Helix {
+            major_r,
+            minor_r,
+            half_height,
+            ..
+        } => ia_bsphere(
+            bounds,
+            ((major_r + minor_r).powi(2) + half_height.powi(2)).sqrt(),
+        ),
         SdfNode::Tetrahedron { size } => ia_bsphere(bounds, *size),
         SdfNode::Dodecahedron { radius } => ia_bsphere(bounds, *radius),
         SdfNode::Icosahedron { radius } => ia_bsphere(bounds, *radius),
@@ -511,16 +629,25 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::PMY { .. } => Interval::EVERYTHING,
 
         // ============ 2D Primitives ============
-        SdfNode::Circle2D { radius, half_height } => {
+        SdfNode::Circle2D {
+            radius,
+            half_height,
+        } => {
             let xy_len = (bounds.x.sqr() + bounds.y.sqr()).sqrt();
             let d2d = xy_len - Interval::point(*radius);
             let dz = bounds.z.abs() - Interval::point(*half_height);
             d2d.max(dz)
         }
-        SdfNode::Rect2D { half_extents, half_height } => {
+        SdfNode::Rect2D {
+            half_extents,
+            half_height,
+        } => {
             let dx = bounds.x.abs() - Interval::point(half_extents.x);
             let dy = bounds.y.abs() - Interval::point(half_extents.y);
-            let d2d = Interval::new(dx.lo.max(dy.lo).min(0.0), 0.0_f32.max(dx.hi.max(0.0).hypot(dy.hi.max(0.0))));
+            let d2d = Interval::new(
+                dx.lo.max(dy.lo).min(0.0),
+                0.0_f32.max(dx.hi.max(0.0).hypot(dy.hi.max(0.0))),
+            );
             let dz = bounds.z.abs() - Interval::point(*half_height);
             d2d.max(dz)
         }
@@ -528,20 +655,12 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::RoundedRect2D { half_extents, .. } => {
             ia_bsphere(bounds, half_extents.max_element())
         }
-        SdfNode::Annular2D { outer_radius, .. } => {
-            ia_bsphere(bounds, *outer_radius)
-        }
+        SdfNode::Annular2D { outer_radius, .. } => ia_bsphere(bounds, *outer_radius),
 
         // ============ Operations ============
-        SdfNode::Union { a, b } => {
-            eval_interval(a, bounds).min(eval_interval(b, bounds))
-        }
-        SdfNode::Intersection { a, b } => {
-            eval_interval(a, bounds).max(eval_interval(b, bounds))
-        }
-        SdfNode::Subtraction { a, b } => {
-            eval_interval(a, bounds).max(-eval_interval(b, bounds))
-        }
+        SdfNode::Union { a, b } => eval_interval(a, bounds).min(eval_interval(b, bounds)),
+        SdfNode::Intersection { a, b } => eval_interval(a, bounds).max(eval_interval(b, bounds)),
+        SdfNode::Subtraction { a, b } => eval_interval(a, bounds).max(-eval_interval(b, bounds)),
         SdfNode::SmoothUnion { a, b, k } => {
             let sharp = eval_interval(a, bounds).min(eval_interval(b, bounds));
             Interval::new(sharp.lo - k * 0.25, sharp.hi)
@@ -653,19 +772,20 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         }
         SdfNode::Shear { child, shear } => {
             let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
-            let max_extent = (bounds.x.hi - bounds.x.lo).max(bounds.y.hi - bounds.y.lo).max(bounds.z.hi - bounds.z.lo);
+            let max_extent = (bounds.x.hi - bounds.x.lo)
+                .max(bounds.y.hi - bounds.y.lo)
+                .max(bounds.z.hi - bounds.z.lo);
             let child_interval = eval_interval(child, bounds);
-            Interval::new(child_interval.lo - max_shear * max_extent, child_interval.hi + max_shear * max_extent)
+            Interval::new(
+                child_interval.lo - max_shear * max_extent,
+                child_interval.hi + max_shear * max_extent,
+            )
         }
         SdfNode::Animated { child, .. } => eval_interval(child, bounds),
 
         // ============ Transforms ============
-        SdfNode::Translate { child, offset } => {
-            eval_interval(child, bounds.translate(*offset))
-        }
-        SdfNode::Rotate { child, rotation } => {
-            eval_interval(child, bounds.rotate(*rotation))
-        }
+        SdfNode::Translate { child, offset } => eval_interval(child, bounds.translate(*offset)),
+        SdfNode::Rotate { child, rotation } => eval_interval(child, bounds.rotate(*rotation)),
         SdfNode::Scale { child, factor } => {
             let inv = 1.0 / *factor;
             let scaled = Vec3Interval {
@@ -700,32 +820,57 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         }
         SdfNode::Bend { child, .. } => {
             let max_r = bounds.length().hi;
-            eval_interval(child, Vec3Interval::from_bounds(Vec3::splat(-max_r), Vec3::splat(max_r)))
+            eval_interval(
+                child,
+                Vec3Interval::from_bounds(Vec3::splat(-max_r), Vec3::splat(max_r)),
+            )
         }
         SdfNode::RepeatInfinite { child, spacing } => {
             let hs = *spacing * 0.5;
             let cell = Vec3Interval {
-                x: if spacing.x > 0.0 { Interval::new(-hs.x, hs.x) } else { bounds.x },
-                y: if spacing.y > 0.0 { Interval::new(-hs.y, hs.y) } else { bounds.y },
-                z: if spacing.z > 0.0 { Interval::new(-hs.z, hs.z) } else { bounds.z },
+                x: if spacing.x > 0.0 {
+                    Interval::new(-hs.x, hs.x)
+                } else {
+                    bounds.x
+                },
+                y: if spacing.y > 0.0 {
+                    Interval::new(-hs.y, hs.y)
+                } else {
+                    bounds.y
+                },
+                z: if spacing.z > 0.0 {
+                    Interval::new(-hs.z, hs.z)
+                } else {
+                    bounds.z
+                },
             };
             eval_interval(child, cell)
         }
         SdfNode::RepeatFinite { child, spacing, .. } => {
             let hs = *spacing * 0.5;
             let cell = Vec3Interval {
-                x: if spacing.x > 0.0 { Interval::new(-hs.x, hs.x) } else { bounds.x },
-                y: if spacing.y > 0.0 { Interval::new(-hs.y, hs.y) } else { bounds.y },
-                z: if spacing.z > 0.0 { Interval::new(-hs.z, hs.z) } else { bounds.z },
+                x: if spacing.x > 0.0 {
+                    Interval::new(-hs.x, hs.x)
+                } else {
+                    bounds.x
+                },
+                y: if spacing.y > 0.0 {
+                    Interval::new(-hs.y, hs.y)
+                } else {
+                    bounds.y
+                },
+                z: if spacing.z > 0.0 {
+                    Interval::new(-hs.z, hs.z)
+                } else {
+                    bounds.z
+                },
             };
             eval_interval(child, cell)
         }
-        SdfNode::Noise { child, amplitude, .. } => {
-            eval_interval(child, bounds).expand(*amplitude)
-        }
-        SdfNode::Round { child, radius } => {
-            eval_interval(child, bounds) - Interval::point(*radius)
-        }
+        SdfNode::Noise {
+            child, amplitude, ..
+        } => eval_interval(child, bounds).expand(*amplitude),
+        SdfNode::Round { child, radius } => eval_interval(child, bounds) - Interval::point(*radius),
         SdfNode::Onion { child, thickness } => {
             eval_interval(child, bounds).abs() - Interval::point(*thickness)
         }
@@ -733,21 +878,37 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let qx = bounds.x - bounds.x.clamp(-amount.x, amount.x);
             let qy = bounds.y - bounds.y.clamp(-amount.y, amount.y);
             let qz = bounds.z - bounds.z.clamp(-amount.z, amount.z);
-            eval_interval(child, Vec3Interval { x: qx, y: qy, z: qz })
+            eval_interval(
+                child,
+                Vec3Interval {
+                    x: qx,
+                    y: qy,
+                    z: qz,
+                },
+            )
         }
-        SdfNode::Mirror { child, axes } => {
-            eval_interval(child, bounds.mirror(*axes))
-        }
+        SdfNode::Mirror { child, axes } => eval_interval(child, bounds.mirror(*axes)),
         SdfNode::OctantMirror { child } => {
             // abs all axes (mirror), then eval with conservative sorted bounds
             eval_interval(child, bounds.mirror(Vec3::ONE))
         }
         SdfNode::Revolution { child, offset } => {
             let qx = bounds.length_xz() - Interval::point(*offset);
-            eval_interval(child, Vec3Interval { x: qx, y: bounds.y, z: Interval::ZERO })
+            eval_interval(
+                child,
+                Vec3Interval {
+                    x: qx,
+                    y: bounds.y,
+                    z: Interval::ZERO,
+                },
+            )
         }
         SdfNode::Extrude { child, half_height } => {
-            let flat = Vec3Interval { x: bounds.x, y: bounds.y, z: Interval::ZERO };
+            let flat = Vec3Interval {
+                x: bounds.x,
+                y: bounds.y,
+                z: Interval::ZERO,
+            };
             let d = eval_interval(child, flat);
             let wy = bounds.z.abs() - Interval::point(*half_height);
             let ox = d.max(Interval::ZERO);
@@ -764,11 +925,14 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let sector = std::f32::consts::TAU / (*count as f32);
             let max_r = bounds.length_xz().hi;
             let ha = sector * 0.5;
-            eval_interval(child, Vec3Interval {
-                x: Interval::new(0.0, max_r),
-                y: bounds.y,
-                z: Interval::new(-max_r * ha.sin(), max_r * ha.sin()),
-            })
+            eval_interval(
+                child,
+                Vec3Interval {
+                    x: Interval::new(0.0, max_r),
+                    y: bounds.y,
+                    z: Interval::new(-max_r * ha.sin(), max_r * ha.sin()),
+                },
+            )
         }
         SdfNode::SweepBezier { child, p0, p1, p2 } => {
             let bmin_x = p0.x.min(p1.x).min(p2.x);
@@ -777,10 +941,17 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let bmax_z = p0.y.max(p1.y).max(p2.y);
             // Max perpendicular distance
             let corners = [
-                (bounds.x.lo, bounds.z.lo), (bounds.x.lo, bounds.z.hi),
-                (bounds.x.hi, bounds.z.lo), (bounds.x.hi, bounds.z.hi),
+                (bounds.x.lo, bounds.z.lo),
+                (bounds.x.lo, bounds.z.hi),
+                (bounds.x.hi, bounds.z.lo),
+                (bounds.x.hi, bounds.z.hi),
             ];
-            let curve_corners = [(bmin_x, bmin_z), (bmin_x, bmax_z), (bmax_x, bmin_z), (bmax_x, bmax_z)];
+            let curve_corners = [
+                (bmin_x, bmin_z),
+                (bmin_x, bmax_z),
+                (bmax_x, bmin_z),
+                (bmax_x, bmax_z),
+            ];
             let mut max_d2: f32 = 0.0;
             for &(px, pz) in &corners {
                 for &(cx, cz) in &curve_corners {
@@ -791,19 +962,30 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             }
             // Min distance: 0 if overlapping, else min box-to-box distance
             let min_perp = {
-                let dx = if bounds.x.hi < bmin_x { bmin_x - bounds.x.hi }
-                    else if bounds.x.lo > bmax_x { bounds.x.lo - bmax_x }
-                    else { 0.0 };
-                let dz = if bounds.z.hi < bmin_z { bmin_z - bounds.z.hi }
-                    else if bounds.z.lo > bmax_z { bounds.z.lo - bmax_z }
-                    else { 0.0 };
+                let dx = if bounds.x.hi < bmin_x {
+                    bmin_x - bounds.x.hi
+                } else if bounds.x.lo > bmax_x {
+                    bounds.x.lo - bmax_x
+                } else {
+                    0.0
+                };
+                let dz = if bounds.z.hi < bmin_z {
+                    bmin_z - bounds.z.hi
+                } else if bounds.z.lo > bmax_z {
+                    bounds.z.lo - bmax_z
+                } else {
+                    0.0
+                };
                 (dx * dx + dz * dz).sqrt()
             };
-            eval_interval(child, Vec3Interval {
-                x: Interval::new(min_perp, max_d2.sqrt()),
-                y: bounds.y,
-                z: Interval::ZERO,
-            })
+            eval_interval(
+                child,
+                Vec3Interval {
+                    x: Interval::new(min_perp, max_d2.sqrt()),
+                    y: bounds.y,
+                    z: Interval::ZERO,
+                },
+            )
         }
 
         SdfNode::WithMaterial { child, .. } => eval_interval(child, bounds),
@@ -832,65 +1014,107 @@ fn ia_bsphere(bounds: Vec3Interval, radius: f32) -> Interval {
 pub fn eval_lipschitz(node: &SdfNode) -> f32 {
     match node {
         // All primitives are exact SDFs with L = 1.0
-        SdfNode::Sphere { .. } | SdfNode::Box3d { .. } | SdfNode::Cylinder { .. } |
-        SdfNode::Torus { .. } | SdfNode::Plane { .. } | SdfNode::Capsule { .. } |
-        SdfNode::Cone { .. } | SdfNode::Ellipsoid { .. } | SdfNode::RoundedCone { .. } |
-        SdfNode::Pyramid { .. } | SdfNode::Octahedron { .. } | SdfNode::HexPrism { .. } |
-        SdfNode::Link { .. } | SdfNode::Triangle { .. } | SdfNode::Bezier { .. } |
-        SdfNode::RoundedBox { .. } |
-        SdfNode::CappedCone { .. } | SdfNode::CappedTorus { .. } |
-        SdfNode::RoundedCylinder { .. } | SdfNode::TriangularPrism { .. } |
-        SdfNode::CutSphere { .. } | SdfNode::CutHollowSphere { .. } |
-        SdfNode::DeathStar { .. } | SdfNode::SolidAngle { .. } |
-        SdfNode::Rhombus { .. } | SdfNode::Horseshoe { .. } | SdfNode::Vesica { .. } |
-        SdfNode::InfiniteCylinder { .. } | SdfNode::InfiniteCone { .. } |
-        SdfNode::Gyroid { .. } | SdfNode::Heart { .. } |
-        SdfNode::Tube { .. } | SdfNode::Barrel { .. } | SdfNode::Diamond { .. } |
-        SdfNode::ChamferedCube { .. } | SdfNode::SchwarzP { .. } |
-        SdfNode::Superellipsoid { .. } | SdfNode::RoundedX { .. } |
-        SdfNode::Pie { .. } | SdfNode::Trapezoid { .. } |
-        SdfNode::Parallelogram { .. } | SdfNode::Tunnel { .. } |
-        SdfNode::UnevenCapsule { .. } | SdfNode::Egg { .. } |
-        SdfNode::ArcShape { .. } | SdfNode::Moon { .. } |
-        SdfNode::CrossShape { .. } | SdfNode::BlobbyCross { .. } |
-        SdfNode::ParabolaSegment { .. } | SdfNode::RegularPolygon { .. } |
-        SdfNode::StarPolygon { .. } | SdfNode::Stairs { .. } |
-        SdfNode::Helix { .. } |
-        SdfNode::Tetrahedron { .. } | SdfNode::Dodecahedron { .. } |
-        SdfNode::Icosahedron { .. } | SdfNode::TruncatedOctahedron { .. } |
-        SdfNode::TruncatedIcosahedron { .. } |
-        SdfNode::BoxFrame { .. } |
-        SdfNode::DiamondSurface { .. } | SdfNode::Neovius { .. } |
-        SdfNode::Lidinoid { .. } | SdfNode::IWP { .. } |
-        SdfNode::FRD { .. } | SdfNode::FischerKochS { .. } |
-        SdfNode::PMY { .. } |
-        SdfNode::Circle2D { .. } | SdfNode::Rect2D { .. } |
-        SdfNode::Segment2D { .. } | SdfNode::Polygon2D { .. } |
-        SdfNode::RoundedRect2D { .. } | SdfNode::Annular2D { .. } => 1.0,
+        SdfNode::Sphere { .. }
+        | SdfNode::Box3d { .. }
+        | SdfNode::Cylinder { .. }
+        | SdfNode::Torus { .. }
+        | SdfNode::Plane { .. }
+        | SdfNode::Capsule { .. }
+        | SdfNode::Cone { .. }
+        | SdfNode::Ellipsoid { .. }
+        | SdfNode::RoundedCone { .. }
+        | SdfNode::Pyramid { .. }
+        | SdfNode::Octahedron { .. }
+        | SdfNode::HexPrism { .. }
+        | SdfNode::Link { .. }
+        | SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. } => 1.0,
 
         // Boolean ops: smooth min/max is 1-Lipschitz in (a,b)
-        SdfNode::Union { a, b } | SdfNode::Intersection { a, b } |
-        SdfNode::Subtraction { a, b } |
-        SdfNode::SmoothUnion { a, b, .. } | SdfNode::SmoothIntersection { a, b, .. } |
-        SdfNode::SmoothSubtraction { a, b, .. } |
-        SdfNode::ChamferUnion { a, b, .. } | SdfNode::ChamferIntersection { a, b, .. } |
-        SdfNode::ChamferSubtraction { a, b, .. } |
-        SdfNode::StairsUnion { a, b, .. } | SdfNode::StairsIntersection { a, b, .. } |
-        SdfNode::StairsSubtraction { a, b, .. } |
-        SdfNode::XOR { a, b } | SdfNode::Morph { a, b, .. } |
-        SdfNode::ColumnsUnion { a, b, .. } | SdfNode::ColumnsIntersection { a, b, .. } |
-        SdfNode::ColumnsSubtraction { a, b, .. } |
-        SdfNode::Pipe { a, b, .. } | SdfNode::Engrave { a, b, .. } |
-        SdfNode::Groove { a, b, .. } | SdfNode::Tongue { a, b, .. } |
-        SdfNode::ExpSmoothUnion { a, b, .. } | SdfNode::ExpSmoothIntersection { a, b, .. } |
-        SdfNode::ExpSmoothSubtraction { a, b, .. } => {
-            eval_lipschitz(a).max(eval_lipschitz(b))
-        }
+        SdfNode::Union { a, b }
+        | SdfNode::Intersection { a, b }
+        | SdfNode::Subtraction { a, b }
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::SmoothSubtraction { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::XOR { a, b }
+        | SdfNode::Morph { a, b, .. }
+        | SdfNode::ColumnsUnion { a, b, .. }
+        | SdfNode::ColumnsIntersection { a, b, .. }
+        | SdfNode::ColumnsSubtraction { a, b, .. }
+        | SdfNode::Pipe { a, b, .. }
+        | SdfNode::Engrave { a, b, .. }
+        | SdfNode::Groove { a, b, .. }
+        | SdfNode::Tongue { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. }
+        | SdfNode::ExpSmoothSubtraction { a, b, .. } => eval_lipschitz(a).max(eval_lipschitz(b)),
 
         // Distance-preserving transforms
-        SdfNode::Translate { child, .. } | SdfNode::Rotate { child, .. } => {
-            eval_lipschitz(child)
-        }
+        SdfNode::Translate { child, .. } | SdfNode::Rotate { child, .. } => eval_lipschitz(child),
         // Uniform scale: SDF(p/s)*s, gradient = (1/s)*∇child*s = ∇child
         SdfNode::Scale { child, .. } => eval_lipschitz(child),
         // Non-uniform scale: gradient stretches by max/min factor ratio
@@ -902,15 +1126,19 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         }
 
         // Modifiers with Jacobian norm ≤ 1
-        SdfNode::Round { child, .. } | SdfNode::Onion { child, .. } |
-        SdfNode::Elongate { child, .. } | SdfNode::Mirror { child, .. } |
-        SdfNode::OctantMirror { child, .. } |
-        SdfNode::Revolution { child, .. } | SdfNode::Extrude { child, .. } |
-        SdfNode::SweepBezier { child, .. } => eval_lipschitz(child),
+        SdfNode::Round { child, .. }
+        | SdfNode::Onion { child, .. }
+        | SdfNode::Elongate { child, .. }
+        | SdfNode::Mirror { child, .. }
+        | SdfNode::OctantMirror { child, .. }
+        | SdfNode::Revolution { child, .. }
+        | SdfNode::Extrude { child, .. }
+        | SdfNode::SweepBezier { child, .. } => eval_lipschitz(child),
 
         // Repeat: Lipschitz preserved per cell
-        SdfNode::RepeatInfinite { child, .. } | SdfNode::RepeatFinite { child, .. } |
-        SdfNode::PolarRepeat { child, .. } => eval_lipschitz(child),
+        SdfNode::RepeatInfinite { child, .. }
+        | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::PolarRepeat { child, .. } => eval_lipschitz(child),
 
         // Twist: Jacobian spectral norm = sqrt(1 + strength² * r²)
         // Conservative estimate assumes max XZ radius ≈ 10 units
@@ -918,22 +1146,21 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             eval_lipschitz(child) * (1.0 + strength * strength * 100.0).sqrt()
         }
         // Bend: similar deformation
-        SdfNode::Bend { child, curvature, .. } => {
-            eval_lipschitz(child) * (1.0 + curvature * curvature * 100.0).sqrt()
-        }
+        SdfNode::Bend {
+            child, curvature, ..
+        } => eval_lipschitz(child) * (1.0 + curvature * curvature * 100.0).sqrt(),
 
         // Noise: adds noise gradient (bounded by amplitude * frequency)
-        SdfNode::Noise { child, amplitude, frequency, .. } => {
-            eval_lipschitz(child) + amplitude.abs() * frequency.abs()
-        }
+        SdfNode::Noise {
+            child,
+            amplitude,
+            frequency,
+            ..
+        } => eval_lipschitz(child) + amplitude.abs() * frequency.abs(),
         // Taper: scale varies along Y, gradient stretches
-        SdfNode::Taper { child, factor } => {
-            eval_lipschitz(child) * (1.0 + factor.abs())
-        }
+        SdfNode::Taper { child, factor } => eval_lipschitz(child) * (1.0 + factor.abs()),
         // Displacement: procedural perturbation adds gradient
-        SdfNode::Displacement { child, strength } => {
-            eval_lipschitz(child) + strength.abs()
-        }
+        SdfNode::Displacement { child, strength } => eval_lipschitz(child) + strength.abs(),
         SdfNode::Shear { child, shear } => {
             let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
             eval_lipschitz(child) * (1.0 + max_shear)
@@ -964,7 +1191,8 @@ mod tests {
                     assert!(
                         d >= iv.lo - 1e-4 && d <= iv.hi + 1e-4,
                         "d={d} not in [{lo}, {hi}] at {p:?}",
-                        lo = iv.lo, hi = iv.hi,
+                        lo = iv.lo,
+                        hi = iv.hi,
                     );
                 }
             }
@@ -999,44 +1227,77 @@ mod tests {
 
     #[test]
     fn test_sphere() {
-        check(&SdfNode::sphere(1.0), Vec3::splat(-2.0), Vec3::splat(2.0), 5);
+        check(
+            &SdfNode::sphere(1.0),
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            5,
+        );
     }
 
     #[test]
     fn test_box3d() {
-        check(&SdfNode::box3d(1.0, 0.5, 0.75), Vec3::splat(-2.0), Vec3::splat(2.0), 5);
+        check(
+            &SdfNode::box3d(1.0, 0.5, 0.75),
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            5,
+        );
     }
 
     #[test]
     fn test_cylinder() {
-        check(&SdfNode::cylinder(0.5, 1.0), Vec3::splat(-2.0), Vec3::splat(2.0), 5);
+        check(
+            &SdfNode::cylinder(0.5, 1.0),
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            5,
+        );
     }
 
     #[test]
     fn test_torus() {
-        check(&SdfNode::torus(1.0, 0.25), Vec3::splat(-2.0), Vec3::splat(2.0), 5);
+        check(
+            &SdfNode::torus(1.0, 0.25),
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            5,
+        );
     }
 
     #[test]
     fn test_plane() {
-        check(&SdfNode::plane(Vec3::Y, 0.0), Vec3::splat(-2.0), Vec3::splat(2.0), 5);
+        check(
+            &SdfNode::plane(Vec3::Y, 0.0),
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            5,
+        );
     }
 
     #[test]
     fn test_rounded_box() {
-        check(&SdfNode::rounded_box(1.0, 0.5, 0.75, 0.1), Vec3::splat(-2.0), Vec3::splat(2.0), 4);
+        check(
+            &SdfNode::rounded_box(1.0, 0.5, 0.75, 0.1),
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            4,
+        );
     }
 
     #[test]
     fn test_union() {
-        let node = SdfNode::sphere(1.0).translate(1.0, 0.0, 0.0).union(SdfNode::sphere(1.0).translate(-1.0, 0.0, 0.0));
+        let node = SdfNode::sphere(1.0)
+            .translate(1.0, 0.0, 0.0)
+            .union(SdfNode::sphere(1.0).translate(-1.0, 0.0, 0.0));
         check(&node, Vec3::splat(-3.0), Vec3::splat(3.0), 4);
     }
 
     #[test]
     fn test_smooth_union() {
-        let node = SdfNode::sphere(1.0).translate(0.5, 0.0, 0.0).smooth_union(
-            SdfNode::sphere(1.0).translate(-0.5, 0.0, 0.0), 0.5);
+        let node = SdfNode::sphere(1.0)
+            .translate(0.5, 0.0, 0.0)
+            .smooth_union(SdfNode::sphere(1.0).translate(-0.5, 0.0, 0.0), 0.5);
         check(&node, Vec3::splat(-3.0), Vec3::splat(3.0), 4);
     }
 
@@ -1048,8 +1309,12 @@ mod tests {
 
     #[test]
     fn test_translate() {
-        check(&SdfNode::sphere(1.0).translate(2.0, 0.0, 0.0),
-            Vec3::new(0.0, -2.0, -2.0), Vec3::new(4.0, 2.0, 2.0), 4);
+        check(
+            &SdfNode::sphere(1.0).translate(2.0, 0.0, 0.0),
+            Vec3::new(0.0, -2.0, -2.0),
+            Vec3::new(4.0, 2.0, 2.0),
+            4,
+        );
     }
 
     #[test]
@@ -1060,7 +1325,12 @@ mod tests {
 
     #[test]
     fn test_scale() {
-        check(&SdfNode::sphere(1.0).scale(2.0), Vec3::splat(-4.0), Vec3::splat(4.0), 4);
+        check(
+            &SdfNode::sphere(1.0).scale(2.0),
+            Vec3::splat(-4.0),
+            Vec3::splat(4.0),
+            4,
+        );
     }
 
     #[test]
@@ -1125,9 +1395,24 @@ mod tests {
     #[test]
     fn test_conservative_primitives() {
         // These use bounding sphere — should still contain all scalar values
-        check(&SdfNode::cone(0.5, 1.0), Vec3::splat(-3.0), Vec3::splat(3.0), 4);
-        check(&SdfNode::octahedron(1.0), Vec3::splat(-2.0), Vec3::splat(2.0), 4);
-        check(&SdfNode::pyramid(1.0), Vec3::splat(-3.0), Vec3::splat(3.0), 4);
+        check(
+            &SdfNode::cone(0.5, 1.0),
+            Vec3::splat(-3.0),
+            Vec3::splat(3.0),
+            4,
+        );
+        check(
+            &SdfNode::octahedron(1.0),
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            4,
+        );
+        check(
+            &SdfNode::pyramid(1.0),
+            Vec3::splat(-3.0),
+            Vec3::splat(3.0),
+            4,
+        );
     }
 
     // ============ Lipschitz tests ============
@@ -1145,14 +1430,19 @@ mod tests {
                     let p = min + step * Vec3::new(ix as f32, iy as f32, iz as f32);
                     let d = eval(node, p);
                     // Finite-difference gradient (central differences)
-                    let gx = (eval(node, p + Vec3::X * eps) - eval(node, p - Vec3::X * eps)) / (2.0 * eps);
-                    let gy = (eval(node, p + Vec3::Y * eps) - eval(node, p - Vec3::Y * eps)) / (2.0 * eps);
-                    let gz = (eval(node, p + Vec3::Z * eps) - eval(node, p - Vec3::Z * eps)) / (2.0 * eps);
+                    let gx = (eval(node, p + Vec3::X * eps) - eval(node, p - Vec3::X * eps))
+                        / (2.0 * eps);
+                    let gy = (eval(node, p + Vec3::Y * eps) - eval(node, p - Vec3::Y * eps))
+                        / (2.0 * eps);
+                    let gz = (eval(node, p + Vec3::Z * eps) - eval(node, p - Vec3::Z * eps))
+                        / (2.0 * eps);
                     let grad_mag = (gx * gx + gy * gy + gz * gz).sqrt();
                     max_grad = max_grad.max(grad_mag);
                     // Allow 5% tolerance for finite-difference error
-                    assert!(grad_mag <= lip * 1.05 + 0.01,
-                        "|∇SDF|={grad_mag:.4} > L={lip:.4} at {p:?} (d={d:.4})");
+                    assert!(
+                        grad_mag <= lip * 1.05 + 0.01,
+                        "|∇SDF|={grad_mag:.4} > L={lip:.4} at {p:?} (d={d:.4})"
+                    );
                 }
             }
         }
@@ -1160,17 +1450,28 @@ mod tests {
 
     #[test]
     fn test_lipschitz_sphere() {
-        check_lipschitz(&SdfNode::sphere(1.0), Vec3::splat(-3.0), Vec3::splat(3.0), 6);
+        check_lipschitz(
+            &SdfNode::sphere(1.0),
+            Vec3::splat(-3.0),
+            Vec3::splat(3.0),
+            6,
+        );
     }
 
     #[test]
     fn test_lipschitz_box() {
-        check_lipschitz(&SdfNode::box3d(1.0, 0.5, 0.75), Vec3::splat(-3.0), Vec3::splat(3.0), 6);
+        check_lipschitz(
+            &SdfNode::box3d(1.0, 0.5, 0.75),
+            Vec3::splat(-3.0),
+            Vec3::splat(3.0),
+            6,
+        );
     }
 
     #[test]
     fn test_lipschitz_union() {
-        let node = SdfNode::sphere(1.0).translate(1.0, 0.0, 0.0)
+        let node = SdfNode::sphere(1.0)
+            .translate(1.0, 0.0, 0.0)
             .union(SdfNode::sphere(1.0).translate(-1.0, 0.0, 0.0));
         assert_eq!(eval_lipschitz(&node), 1.0);
         check_lipschitz(&node, Vec3::splat(-3.0), Vec3::splat(3.0), 5);
@@ -1178,7 +1479,8 @@ mod tests {
 
     #[test]
     fn test_lipschitz_smooth_union() {
-        let node = SdfNode::sphere(1.0).translate(0.5, 0.0, 0.0)
+        let node = SdfNode::sphere(1.0)
+            .translate(0.5, 0.0, 0.0)
             .smooth_union(SdfNode::sphere(1.0).translate(-0.5, 0.0, 0.0), 0.5);
         assert_eq!(eval_lipschitz(&node), 1.0);
         check_lipschitz(&node, Vec3::splat(-3.0), Vec3::splat(3.0), 5);

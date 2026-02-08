@@ -13,8 +13,8 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::types::SdfNode;
 use crate::mesh::bvh::MeshBvh;
+use crate::types::SdfNode;
 use glam::Vec3;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -172,7 +172,8 @@ impl MeshSdf {
     pub fn to_sdf_node(&self, radius_factor: f32) -> SdfNode {
         // Extract vertices and edges from triangles
         let mut vertices: Vec<Vec3> = Vec::new();
-        let mut vertex_map: std::collections::HashMap<[u32; 3], usize> = std::collections::HashMap::new();
+        let mut vertex_map: std::collections::HashMap<[u32; 3], usize> =
+            std::collections::HashMap::new();
         let mut unique_edges: HashSet<(usize, usize)> = HashSet::new();
 
         for tri in &self.bvh.triangles {
@@ -232,11 +233,7 @@ impl MeshSdf {
 ///
 /// # Returns
 /// SDF tree approximating the mesh
-pub fn mesh_to_sdf(
-    vertices: &[Vec3],
-    indices: &[u32],
-    config: &MeshToSdfConfig,
-) -> SdfNode {
+pub fn mesh_to_sdf(vertices: &[Vec3], indices: &[u32], config: &MeshToSdfConfig) -> SdfNode {
     if vertices.is_empty() || indices.is_empty() {
         return SdfNode::sphere(0.001); // Degenerate case
     }
@@ -324,13 +321,21 @@ pub fn mesh_to_sdf_exact(
 /// Create canonical edge key (min, max) for HashSet deduplication
 #[inline(always)]
 fn edge_key(a: u32, b: u32) -> (u32, u32) {
-    if a < b { (a, b) } else { (b, a) }
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 /// Create canonical edge key for usize indices
 #[inline(always)]
 fn edge_key_usize(a: usize, b: usize) -> (usize, usize) {
-    if a < b { (a, b) } else { (b, a) }
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 /// Reduce a list of nodes to a single union using binary tree structure (Deep Fried)
@@ -481,10 +486,18 @@ mod tests {
 
         // Point above
         let d_above = mesh_sdf.eval(Vec3::new(0.0, 0.0, 1.0));
-        assert!((d_above.abs() - 1.0).abs() < 0.01, "Expected ~1, got {}", d_above);
+        assert!(
+            (d_above.abs() - 1.0).abs() < 0.01,
+            "Expected ~1, got {}",
+            d_above
+        );
 
         // Batch evaluation
-        let points = vec![Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0), Vec3::new(0.0, 0.0, -1.0)];
+        let points = vec![
+            Vec3::ZERO,
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 0.0, -1.0),
+        ];
         let distances = mesh_sdf.eval_batch(&points);
         assert_eq!(distances.len(), 3);
     }

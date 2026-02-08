@@ -158,7 +158,8 @@ pub fn optimize_vertex_cache(mesh: &mut Mesh) {
         for &vi in &cache {
             let vi = vi as usize;
             if vi < vert_count {
-                vdata[vi].score = compute_vertex_score(vdata[vi].cache_pos, vdata[vi].active_tri_count);
+                vdata[vi].score =
+                    compute_vertex_score(vdata[vi].cache_pos, vdata[vi].active_tri_count);
                 for &ti in &vdata[vi].tri_indices {
                     if !tri_emitted[ti as usize] {
                         dirty_tris.push(ti as usize);
@@ -304,10 +305,7 @@ fn hash_vertex(v: &crate::mesh::Vertex) -> u64 {
         (v.normal.y * 1000.0) as i32,
         (v.normal.z * 1000.0) as i32,
     ];
-    let quv = [
-        (v.uv.x * 10000.0) as i32,
-        (v.uv.y * 10000.0) as i32,
-    ];
+    let quv = [(v.uv.x * 10000.0) as i32, (v.uv.y * 10000.0) as i32];
 
     qp.hash(&mut hasher);
     qn.hash(&mut hasher);
@@ -340,8 +338,12 @@ mod tests {
         let acmr_after = compute_acmr(&mesh, 32);
 
         // Optimized should be equal or better
-        assert!(acmr_after <= acmr_before + 0.01,
-            "ACMR should improve: before={}, after={}", acmr_before, acmr_after);
+        assert!(
+            acmr_after <= acmr_before + 0.01,
+            "ACMR should improve: before={}, after={}",
+            acmr_before,
+            acmr_after
+        );
     }
 
     #[test]

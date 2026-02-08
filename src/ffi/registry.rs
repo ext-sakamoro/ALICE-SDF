@@ -10,12 +10,15 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::types::SdfNode;
+use super::types::{CompiledHandle, MeshHandle, SdfHandle};
 use crate::compiled::CompiledSdf;
 use crate::mesh::Mesh;
-use super::types::{SdfHandle, CompiledHandle, MeshHandle};
+use crate::types::SdfNode;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 
 // ============================================================================
 // Node Registry

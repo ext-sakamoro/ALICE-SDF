@@ -12,8 +12,8 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod asdf;
 pub mod alembic;
+mod asdf;
 pub mod fbx;
 pub mod gltf;
 mod json;
@@ -25,11 +25,15 @@ pub mod threemf;
 pub mod usd;
 
 pub use alembic::{export_alembic, AlembicConfig};
-pub use asdf::{save_asdf, load_asdf, AsdfHeader, ASDF_MAGIC};
+pub use asdf::{load_asdf, save_asdf, AsdfHeader, ASDF_MAGIC};
 pub use fbx::{export_fbx, import_fbx, FbxConfig, FbxFormat, FbxUpAxis};
-pub use gltf::{export_glb, export_glb_bytes, export_gltf_json, import_glb, import_glb_bytes, GltfConfig};
-pub use json::{save_asdf_json, load_asdf_json, to_json_string, from_json_string};
-pub use nanite::{export_nanite, export_nanite_with_config, export_nanite_json, NaniteExportConfig};
+pub use gltf::{
+    export_glb, export_glb_bytes, export_gltf_json, import_glb, import_glb_bytes, GltfConfig,
+};
+pub use json::{from_json_string, load_asdf_json, save_asdf_json, to_json_string};
+pub use nanite::{
+    export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig,
+};
 pub use obj::{export_obj, import_obj, ObjConfig};
 pub use ply::{export_ply, import_ply, PlyConfig};
 pub use stl::{export_stl, export_stl_ascii, import_stl};
@@ -139,9 +143,7 @@ pub fn get_info(path: impl AsRef<Path>) -> Result<String, IoError> {
             header.version, header.node_count, header.crc32
         ))
     } else {
-        Err(IoError::InvalidFormat(
-            "Unknown file extension".to_string(),
-        ))
+        Err(IoError::InvalidFormat("Unknown file extension".to_string()))
     }
 }
 

@@ -9,18 +9,18 @@
 //!
 //! Author: Moroya Sakamoto
 
-pub mod parallel;
 pub mod gradient;
+pub mod parallel;
 
-pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
 pub use gradient::{eval_gradient, eval_normal};
+pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
 
-use glam::Vec2;
 use crate::modifiers::*;
 use crate::operations::*;
 use crate::primitives::*;
 use crate::transforms::*;
 use crate::types::SdfNode;
+use glam::Vec2;
 use glam::Vec3;
 
 /// Evaluate an SDF tree at a single point (Deep Fried)
@@ -60,58 +60,195 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             half_height,
         } => sdf_cone(point, *radius, *half_height),
         SdfNode::Ellipsoid { radii } => sdf_ellipsoid(point, *radii),
-        SdfNode::RoundedCone { r1, r2, half_height } => sdf_rounded_cone(point, *r1, *r2, *half_height),
+        SdfNode::RoundedCone {
+            r1,
+            r2,
+            half_height,
+        } => sdf_rounded_cone(point, *r1, *r2, *half_height),
         SdfNode::Pyramid { half_height } => sdf_pyramid(point, *half_height),
         SdfNode::Octahedron { size } => sdf_octahedron(point, *size),
-        SdfNode::HexPrism { hex_radius, half_height } => sdf_hex_prism(point, *hex_radius, *half_height),
-        SdfNode::Link { half_length, r1, r2 } => sdf_link(point, *half_length, *r1, *r2),
-        SdfNode::Triangle { point_a, point_b, point_c } => sdf_triangle(point, *point_a, *point_b, *point_c),
-        SdfNode::Bezier { point_a, point_b, point_c, radius } => sdf_bezier(point, *point_a, *point_b, *point_c, *radius),
-        SdfNode::RoundedBox { half_extents, round_radius } => sdf_rounded_box(point, *half_extents, *round_radius),
-        SdfNode::CappedCone { half_height, r1, r2 } => sdf_capped_cone(point, *half_height, *r1, *r2),
-        SdfNode::CappedTorus { major_radius, minor_radius, cap_angle } => sdf_capped_torus(point, *major_radius, *minor_radius, *cap_angle),
-        SdfNode::RoundedCylinder { radius, round_radius, half_height } => sdf_rounded_cylinder(point, *radius, *round_radius, *half_height),
-        SdfNode::TriangularPrism { width, half_depth } => sdf_triangular_prism(point, *width, *half_depth),
+        SdfNode::HexPrism {
+            hex_radius,
+            half_height,
+        } => sdf_hex_prism(point, *hex_radius, *half_height),
+        SdfNode::Link {
+            half_length,
+            r1,
+            r2,
+        } => sdf_link(point, *half_length, *r1, *r2),
+        SdfNode::Triangle {
+            point_a,
+            point_b,
+            point_c,
+        } => sdf_triangle(point, *point_a, *point_b, *point_c),
+        SdfNode::Bezier {
+            point_a,
+            point_b,
+            point_c,
+            radius,
+        } => sdf_bezier(point, *point_a, *point_b, *point_c, *radius),
+        SdfNode::RoundedBox {
+            half_extents,
+            round_radius,
+        } => sdf_rounded_box(point, *half_extents, *round_radius),
+        SdfNode::CappedCone {
+            half_height,
+            r1,
+            r2,
+        } => sdf_capped_cone(point, *half_height, *r1, *r2),
+        SdfNode::CappedTorus {
+            major_radius,
+            minor_radius,
+            cap_angle,
+        } => sdf_capped_torus(point, *major_radius, *minor_radius, *cap_angle),
+        SdfNode::RoundedCylinder {
+            radius,
+            round_radius,
+            half_height,
+        } => sdf_rounded_cylinder(point, *radius, *round_radius, *half_height),
+        SdfNode::TriangularPrism { width, half_depth } => {
+            sdf_triangular_prism(point, *width, *half_depth)
+        }
         SdfNode::CutSphere { radius, cut_height } => sdf_cut_sphere(point, *radius, *cut_height),
-        SdfNode::CutHollowSphere { radius, cut_height, thickness } => sdf_cut_hollow_sphere(point, *radius, *cut_height, *thickness),
+        SdfNode::CutHollowSphere {
+            radius,
+            cut_height,
+            thickness,
+        } => sdf_cut_hollow_sphere(point, *radius, *cut_height, *thickness),
         SdfNode::DeathStar { ra, rb, d } => sdf_death_star(point, *ra, *rb, *d),
         SdfNode::SolidAngle { angle, radius } => sdf_solid_angle(point, *angle, *radius),
-        SdfNode::Rhombus { la, lb, half_height, round_radius } => sdf_rhombus(point, *la, *lb, *half_height, *round_radius),
-        SdfNode::Horseshoe { angle, radius, half_length, width, thickness } => sdf_horseshoe(point, *angle, *radius, *half_length, *width, *thickness),
+        SdfNode::Rhombus {
+            la,
+            lb,
+            half_height,
+            round_radius,
+        } => sdf_rhombus(point, *la, *lb, *half_height, *round_radius),
+        SdfNode::Horseshoe {
+            angle,
+            radius,
+            half_length,
+            width,
+            thickness,
+        } => sdf_horseshoe(point, *angle, *radius, *half_length, *width, *thickness),
         SdfNode::Vesica { radius, half_dist } => sdf_vesica(point, *radius, *half_dist),
         SdfNode::InfiniteCylinder { radius } => sdf_infinite_cylinder(point, *radius),
         SdfNode::InfiniteCone { angle } => sdf_infinite_cone(point, *angle),
         SdfNode::Gyroid { scale, thickness } => sdf_gyroid(point, *scale, *thickness),
         SdfNode::Heart { size } => sdf_heart(point, *size),
-        SdfNode::Tube { outer_radius, thickness, half_height } => sdf_tube(point, *outer_radius, *thickness, *half_height),
-        SdfNode::Barrel { radius, half_height, bulge } => sdf_barrel(point, *radius, *half_height, *bulge),
-        SdfNode::Diamond { radius, half_height } => sdf_diamond(point, *radius, *half_height),
-        SdfNode::ChamferedCube { half_extents, chamfer } => sdf_chamfered_cube(point, *half_extents, *chamfer),
+        SdfNode::Tube {
+            outer_radius,
+            thickness,
+            half_height,
+        } => sdf_tube(point, *outer_radius, *thickness, *half_height),
+        SdfNode::Barrel {
+            radius,
+            half_height,
+            bulge,
+        } => sdf_barrel(point, *radius, *half_height, *bulge),
+        SdfNode::Diamond {
+            radius,
+            half_height,
+        } => sdf_diamond(point, *radius, *half_height),
+        SdfNode::ChamferedCube {
+            half_extents,
+            chamfer,
+        } => sdf_chamfered_cube(point, *half_extents, *chamfer),
         SdfNode::SchwarzP { scale, thickness } => sdf_schwarz_p(point, *scale, *thickness),
-        SdfNode::Superellipsoid { half_extents, e1, e2 } => sdf_superellipsoid(point, *half_extents, *e1, *e2),
-        SdfNode::RoundedX { width, round_radius, half_height } => sdf_rounded_x(point, *width, *round_radius, *half_height),
-        SdfNode::Pie { angle, radius, half_height } => sdf_pie(point, *angle, *radius, *half_height),
-        SdfNode::Trapezoid { r1, r2, trap_height, half_depth } => sdf_trapezoid(point, *r1, *r2, *trap_height, *half_depth),
-        SdfNode::Parallelogram { width, para_height, skew, half_depth } => sdf_parallelogram(point, *width, *para_height, *skew, *half_depth),
-        SdfNode::Tunnel { width, height_2d, half_depth } => sdf_tunnel(point, *width, *height_2d, *half_depth),
-        SdfNode::UnevenCapsule { r1, r2, cap_height, half_depth } => sdf_uneven_capsule(point, *r1, *r2, *cap_height, *half_depth),
+        SdfNode::Superellipsoid {
+            half_extents,
+            e1,
+            e2,
+        } => sdf_superellipsoid(point, *half_extents, *e1, *e2),
+        SdfNode::RoundedX {
+            width,
+            round_radius,
+            half_height,
+        } => sdf_rounded_x(point, *width, *round_radius, *half_height),
+        SdfNode::Pie {
+            angle,
+            radius,
+            half_height,
+        } => sdf_pie(point, *angle, *radius, *half_height),
+        SdfNode::Trapezoid {
+            r1,
+            r2,
+            trap_height,
+            half_depth,
+        } => sdf_trapezoid(point, *r1, *r2, *trap_height, *half_depth),
+        SdfNode::Parallelogram {
+            width,
+            para_height,
+            skew,
+            half_depth,
+        } => sdf_parallelogram(point, *width, *para_height, *skew, *half_depth),
+        SdfNode::Tunnel {
+            width,
+            height_2d,
+            half_depth,
+        } => sdf_tunnel(point, *width, *height_2d, *half_depth),
+        SdfNode::UnevenCapsule {
+            r1,
+            r2,
+            cap_height,
+            half_depth,
+        } => sdf_uneven_capsule(point, *r1, *r2, *cap_height, *half_depth),
         SdfNode::Egg { ra, rb } => sdf_egg(point, *ra, *rb),
-        SdfNode::ArcShape { aperture, radius, thickness, half_height } => sdf_arc_shape(point, *aperture, *radius, *thickness, *half_height),
-        SdfNode::Moon { d, ra, rb, half_height } => sdf_moon(point, *d, *ra, *rb, *half_height),
-        SdfNode::CrossShape { length, thickness, round_radius, half_height } => sdf_cross_shape(point, *length, *thickness, *round_radius, *half_height),
+        SdfNode::ArcShape {
+            aperture,
+            radius,
+            thickness,
+            half_height,
+        } => sdf_arc_shape(point, *aperture, *radius, *thickness, *half_height),
+        SdfNode::Moon {
+            d,
+            ra,
+            rb,
+            half_height,
+        } => sdf_moon(point, *d, *ra, *rb, *half_height),
+        SdfNode::CrossShape {
+            length,
+            thickness,
+            round_radius,
+            half_height,
+        } => sdf_cross_shape(point, *length, *thickness, *round_radius, *half_height),
         SdfNode::BlobbyCross { size, half_height } => sdf_blobby_cross(point, *size, *half_height),
-        SdfNode::ParabolaSegment { width, para_height, half_depth } => sdf_parabola_segment(point, *width, *para_height, *half_depth),
-        SdfNode::RegularPolygon { radius, n_sides, half_height } => sdf_regular_polygon(point, *radius, *n_sides, *half_height),
-        SdfNode::StarPolygon { radius, n_points, m, half_height } => sdf_star_polygon(point, *radius, *n_points, *m, *half_height),
-        SdfNode::Stairs { step_width, step_height, n_steps, half_depth } => sdf_stairs(point, *step_width, *step_height, *n_steps, *half_depth),
-        SdfNode::Helix { major_r, minor_r, pitch, half_height } => sdf_helix(point, *major_r, *minor_r, *pitch, *half_height),
+        SdfNode::ParabolaSegment {
+            width,
+            para_height,
+            half_depth,
+        } => sdf_parabola_segment(point, *width, *para_height, *half_depth),
+        SdfNode::RegularPolygon {
+            radius,
+            n_sides,
+            half_height,
+        } => sdf_regular_polygon(point, *radius, *n_sides, *half_height),
+        SdfNode::StarPolygon {
+            radius,
+            n_points,
+            m,
+            half_height,
+        } => sdf_star_polygon(point, *radius, *n_points, *m, *half_height),
+        SdfNode::Stairs {
+            step_width,
+            step_height,
+            n_steps,
+            half_depth,
+        } => sdf_stairs(point, *step_width, *step_height, *n_steps, *half_depth),
+        SdfNode::Helix {
+            major_r,
+            minor_r,
+            pitch,
+            half_height,
+        } => sdf_helix(point, *major_r, *minor_r, *pitch, *half_height),
         SdfNode::Tetrahedron { size } => sdf_tetrahedron(point, *size),
         SdfNode::Dodecahedron { radius } => sdf_dodecahedron(point, *radius),
         SdfNode::Icosahedron { radius } => sdf_icosahedron(point, *radius),
         SdfNode::TruncatedOctahedron { radius } => sdf_truncated_octahedron(point, *radius),
         SdfNode::TruncatedIcosahedron { radius } => sdf_truncated_icosahedron(point, *radius),
         SdfNode::BoxFrame { half_extents, edge } => sdf_box_frame(point, *half_extents, *edge),
-        SdfNode::DiamondSurface { scale, thickness } => sdf_diamond_surface(point, *scale, *thickness),
+        SdfNode::DiamondSurface { scale, thickness } => {
+            sdf_diamond_surface(point, *scale, *thickness)
+        }
         SdfNode::Neovius { scale, thickness } => sdf_neovius(point, *scale, *thickness),
         SdfNode::Lidinoid { scale, thickness } => sdf_lidinoid(point, *scale, *thickness),
         SdfNode::IWP { scale, thickness } => sdf_iwp(point, *scale, *thickness),
@@ -120,18 +257,32 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::PMY { scale, thickness } => sdf_pmy(point, *scale, *thickness),
 
         // === 2D Primitives (extruded along Z) ===
-        SdfNode::Circle2D { radius, half_height } => {
+        SdfNode::Circle2D {
+            radius,
+            half_height,
+        } => {
             let d2d = Vec2::new(point.x, point.y).length() - radius;
             let dz = point.z.abs() - half_height;
             d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
         }
-        SdfNode::Rect2D { half_extents, half_height } => {
-            let d = Vec2::new(point.x.abs() - half_extents.x, point.y.abs() - half_extents.y);
+        SdfNode::Rect2D {
+            half_extents,
+            half_height,
+        } => {
+            let d = Vec2::new(
+                point.x.abs() - half_extents.x,
+                point.y.abs() - half_extents.y,
+            );
             let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0);
             let dz = point.z.abs() - half_height;
             d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
         }
-        SdfNode::Segment2D { a, b, thickness, half_height } => {
+        SdfNode::Segment2D {
+            a,
+            b,
+            thickness,
+            half_height,
+        } => {
             let p2 = Vec2::new(point.x, point.y);
             let pa = p2 - *a;
             let ba = *b - *a;
@@ -140,10 +291,15 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let dz = point.z.abs() - half_height;
             d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
         }
-        SdfNode::Polygon2D { vertices, half_height } => {
+        SdfNode::Polygon2D {
+            vertices,
+            half_height,
+        } => {
             let p2 = Vec2::new(point.x, point.y);
             let n = vertices.len();
-            if n < 3 { return 1e10; }
+            if n < 3 {
+                return 1e10;
+            }
             let mut d = (p2 - vertices[0]).length_squared();
             let mut s = 1.0_f32;
             let mut j = n - 1;
@@ -152,21 +308,39 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
                 let w = p2 - vertices[i];
                 let b_proj = w - e * (w.dot(e) / e.dot(e)).clamp(0.0, 1.0);
                 d = d.min(b_proj.dot(b_proj));
-                let c = [p2.y >= vertices[i].y, p2.y < vertices[j].y, e.x * w.y > e.y * w.x];
-                if c.iter().all(|x| *x) || c.iter().all(|x| !*x) { s = -s; }
+                let c = [
+                    p2.y >= vertices[i].y,
+                    p2.y < vertices[j].y,
+                    e.x * w.y > e.y * w.x,
+                ];
+                if c.iter().all(|x| *x) || c.iter().all(|x| !*x) {
+                    s = -s;
+                }
                 j = i;
             }
             let d2d = s * d.sqrt();
             let dz = point.z.abs() - half_height;
             d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
         }
-        SdfNode::RoundedRect2D { half_extents, round_radius, half_height } => {
-            let d = Vec2::new(point.x.abs() - half_extents.x + round_radius, point.y.abs() - half_extents.y + round_radius);
-            let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0) - round_radius;
+        SdfNode::RoundedRect2D {
+            half_extents,
+            round_radius,
+            half_height,
+        } => {
+            let d = Vec2::new(
+                point.x.abs() - half_extents.x + round_radius,
+                point.y.abs() - half_extents.y + round_radius,
+            );
+            let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0)
+                - round_radius;
             let dz = point.z.abs() - half_height;
             d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
         }
-        SdfNode::Annular2D { outer_radius, thickness, half_height } => {
+        SdfNode::Annular2D {
+            outer_radius,
+            thickness,
+            half_height,
+        } => {
             let d2d = (Vec2::new(point.x, point.y).length() - outer_radius).abs() - thickness;
             let dz = point.z.abs() - half_height;
             d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
@@ -426,7 +600,11 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
             // This subtree has a material; return it
             // (nested WithMaterial: inner wins if closer)
             let inner = eval_material(child, point);
-            if inner != 0 { inner } else { *material_id }
+            if inner != 0 {
+                inner
+            } else {
+                *material_id
+            }
         }
 
         // Operations: return material of the closer child
@@ -441,7 +619,11 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         | SdfNode::ExpSmoothUnion { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
-            if da <= db { eval_material(a, point) } else { eval_material(b, point) }
+            if da <= db {
+                eval_material(a, point)
+            } else {
+                eval_material(b, point)
+            }
         }
         SdfNode::Intersection { a, b }
         | SdfNode::SmoothIntersection { a, b, .. }
@@ -451,7 +633,11 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         | SdfNode::ExpSmoothIntersection { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
-            if da >= db { eval_material(a, point) } else { eval_material(b, point) }
+            if da >= db {
+                eval_material(a, point)
+            } else {
+                eval_material(b, point)
+            }
         }
         SdfNode::Subtraction { a, b }
         | SdfNode::SmoothSubtraction { a, b, .. }
@@ -464,7 +650,11 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
-            if da >= -db { eval_material(a, point) } else { eval_material(b, point) }
+            if da >= -db {
+                eval_material(a, point)
+            } else {
+                eval_material(b, point)
+            }
         }
 
         // Transforms: transform point, recurse
@@ -477,21 +667,39 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         }
 
         // Modifiers: transform point, recurse
-        SdfNode::Twist { child, strength } => eval_material(child, modifier_twist(point, *strength)),
-        SdfNode::Bend { child, curvature } => eval_material(child, modifier_bend(point, *curvature)),
-        SdfNode::RepeatInfinite { child, spacing } => eval_material(child, modifier_repeat_infinite(point, *spacing)),
-        SdfNode::RepeatFinite { child, count, spacing } => eval_material(child, modifier_repeat_finite(point, *count, *spacing)),
+        SdfNode::Twist { child, strength } => {
+            eval_material(child, modifier_twist(point, *strength))
+        }
+        SdfNode::Bend { child, curvature } => {
+            eval_material(child, modifier_bend(point, *curvature))
+        }
+        SdfNode::RepeatInfinite { child, spacing } => {
+            eval_material(child, modifier_repeat_infinite(point, *spacing))
+        }
+        SdfNode::RepeatFinite {
+            child,
+            count,
+            spacing,
+        } => eval_material(child, modifier_repeat_finite(point, *count, *spacing)),
         SdfNode::Noise { child, .. } => eval_material(child, point),
         SdfNode::Round { child, .. } | SdfNode::Onion { child, .. } => eval_material(child, point),
-        SdfNode::Elongate { child, amount } => eval_material(child, point - point.clamp(-*amount, *amount)),
+        SdfNode::Elongate { child, amount } => {
+            eval_material(child, point - point.clamp(-*amount, *amount))
+        }
         SdfNode::Mirror { child, axes } => eval_material(child, modifier_mirror(point, *axes)),
         SdfNode::OctantMirror { child } => eval_material(child, modifier_octant_mirror(point)),
-        SdfNode::Revolution { child, offset } => eval_material(child, modifier_revolution(point, *offset)),
+        SdfNode::Revolution { child, offset } => {
+            eval_material(child, modifier_revolution(point, *offset))
+        }
         SdfNode::Extrude { child, .. } => eval_material(child, modifier_extrude_point(point)),
         SdfNode::Taper { child, factor } => eval_material(child, modifier_taper(point, *factor)),
         SdfNode::Displacement { child, .. } => eval_material(child, point),
-        SdfNode::PolarRepeat { child, count } => eval_material(child, modifier_polar_repeat(point, *count)),
-        SdfNode::SweepBezier { child, p0, p1, p2 } => eval_material(child, modifier_sweep_bezier(point, *p0, *p1, *p2)),
+        SdfNode::PolarRepeat { child, count } => {
+            eval_material(child, modifier_polar_repeat(point, *count))
+        }
+        SdfNode::SweepBezier { child, p0, p1, p2 } => {
+            eval_material(child, modifier_sweep_bezier(point, *p0, *p1, *p2))
+        }
         SdfNode::Shear { child, shear } => {
             let p = Vec3::new(
                 point.x,

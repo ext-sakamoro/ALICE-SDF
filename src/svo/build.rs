@@ -17,11 +17,11 @@
 
 use glam::Vec3;
 
-use crate::compiled::{CompiledSdf, AabbPacked};
-use crate::eval::{eval, normal};
+use super::{child_center, SparseVoxelOctree, SvoBuildConfig, SvoNode};
 use crate::compiled::{eval_compiled, eval_compiled_normal};
+use crate::compiled::{AabbPacked, CompiledSdf};
+use crate::eval::{eval, normal};
 use crate::types::SdfNode;
-use super::{SvoNode, SvoBuildConfig, SparseVoxelOctree, child_center};
 
 /// Temporary tree node during construction (pointer-based)
 struct BuildNode {
@@ -55,14 +55,7 @@ pub fn build_svo(node: &SdfNode, config: &SvoBuildConfig) -> SparseVoxelOctree {
     let evaluator = |p: Vec3| eval(node, p);
     let normal_fn = |p: Vec3| normal(node, p, 0.001);
 
-    let root = build_recursive(
-        center,
-        half_size,
-        0,
-        config,
-        &evaluator,
-        &normal_fn,
-    );
+    let root = build_recursive(center, half_size, 0, config, &evaluator, &normal_fn);
 
     flatten_tree(root, config, center, half_size)
 }
@@ -75,14 +68,7 @@ pub fn build_svo_compiled(compiled: &CompiledSdf, config: &SvoBuildConfig) -> Sp
     let evaluator = |p: Vec3| eval_compiled(compiled, p);
     let normal_fn = |p: Vec3| eval_compiled_normal(compiled, p, 0.001);
 
-    let root = build_recursive(
-        center,
-        half_size,
-        0,
-        config,
-        &evaluator,
-        &normal_fn,
-    );
+    let root = build_recursive(center, half_size, 0, config, &evaluator, &normal_fn);
 
     flatten_tree(root, config, center, half_size)
 }
@@ -160,7 +146,9 @@ fn flatten_tree(
         if node.is_leaf() {
             1
         } else {
-            1 + node.children.iter()
+            1 + node
+                .children
+                .iter()
                 .filter_map(|c| c.as_ref())
                 .map(|c| count_nodes(c))
                 .sum::<usize>()
@@ -197,11 +185,7 @@ fn flatten_tree(
                 nodes.push(SvoNode::default());
             }
 
-            nodes[write_idx] = SvoNode::interior(
-                build_node.distance,
-                mask,
-                first_child_idx as u32,
-            );
+            nodes[write_idx] = SvoNode::interior(build_node.distance, mask, first_child_idx as u32);
             interior_count += 1;
 
             // Enqueue children in order
@@ -245,7 +229,10 @@ mod tests {
         assert!(svo.nodes.len() > 1, "SVO should have multiple nodes");
         assert!(svo.leaf_count > 0, "SVO should have leaves");
         assert!(svo.interior_count > 0, "SVO should have interior nodes");
-        assert_eq!(svo.node_count(), (svo.leaf_count + svo.interior_count) as usize);
+        assert_eq!(
+            svo.node_count(),
+            (svo.leaf_count + svo.interior_count) as usize
+        );
     }
 
     #[test]
@@ -294,7 +281,10 @@ mod tests {
 
         let svo = build_svo(&sphere, &config);
         // Should be very compact since everything is far from surface
-        assert!(svo.interior_count <= 1, "Far object should produce mostly root-level leaf");
+        assert!(
+            svo.interior_count <= 1,
+            "Far object should produce mostly root-level leaf"
+        );
     }
 
     #[test]
@@ -312,7 +302,10 @@ mod tests {
 
         // Root should be at index 0 and be interior (sphere surface exists within bounds)
         let root = &svo.nodes[0];
-        assert_eq!(root.is_leaf, 0, "Root should be interior for sphere in bounds");
+        assert_eq!(
+            root.is_leaf, 0,
+            "Root should be interior for sphere in bounds"
+        );
         assert!(root.child_mask > 0, "Root should have children");
     }
 }

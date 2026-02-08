@@ -75,15 +75,15 @@ mod codegen;
 mod runtime;
 mod simd;
 
-pub use codegen::{JitCompiler, extract_jit_params};
+pub use codegen::{extract_jit_params, JitCompiler};
 pub use runtime::{JitCompiledSdf, JitCompiledSdfDynamic, JitError};
-pub use simd::{JitSimdSdf, JitSimdSdfDynamic, extract_simd_params};
+pub use simd::{extract_simd_params, JitSimdSdf, JitSimdSdfDynamic};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::eval::eval;
+    use crate::types::SdfNode;
     use glam::Vec3;
 
     #[test]
@@ -94,20 +94,32 @@ mod tests {
         // Test at origin (inside)
         let d_jit = jit.eval(Vec3::ZERO);
         let d_interp = eval(&sphere, Vec3::ZERO);
-        assert!((d_jit - d_interp).abs() < 0.0001,
-            "Mismatch at origin: jit={}, interp={}", d_jit, d_interp);
+        assert!(
+            (d_jit - d_interp).abs() < 0.0001,
+            "Mismatch at origin: jit={}, interp={}",
+            d_jit,
+            d_interp
+        );
 
         // Test at surface
         let d_jit = jit.eval(Vec3::new(1.0, 0.0, 0.0));
         let d_interp = eval(&sphere, Vec3::new(1.0, 0.0, 0.0));
-        assert!((d_jit - d_interp).abs() < 0.0001,
-            "Mismatch at surface: jit={}, interp={}", d_jit, d_interp);
+        assert!(
+            (d_jit - d_interp).abs() < 0.0001,
+            "Mismatch at surface: jit={}, interp={}",
+            d_jit,
+            d_interp
+        );
 
         // Test outside
         let d_jit = jit.eval(Vec3::new(2.0, 0.0, 0.0));
         let d_interp = eval(&sphere, Vec3::new(2.0, 0.0, 0.0));
-        assert!((d_jit - d_interp).abs() < 0.0001,
-            "Mismatch outside: jit={}, interp={}", d_jit, d_interp);
+        assert!(
+            (d_jit - d_interp).abs() < 0.0001,
+            "Mismatch outside: jit={}, interp={}",
+            d_jit,
+            d_interp
+        );
     }
 
     #[test]
@@ -125,15 +137,20 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&box3d, p);
-            assert!((d_jit - d_interp).abs() < 0.0001,
-                "Mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.0001,
+                "Mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
     #[test]
     fn test_jit_union() {
-        let shape = SdfNode::sphere(1.0)
-            .union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
+        let shape =
+            SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
         let jit = JitCompiledSdf::compile(&shape).unwrap();
 
         let test_points = [
@@ -146,15 +163,19 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.0001,
-                "Mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.0001,
+                "Mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
     #[test]
     fn test_jit_smooth_union() {
-        let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::cylinder(0.5, 1.0), 0.2);
+        let shape = SdfNode::sphere(1.0).smooth_union(SdfNode::cylinder(0.5, 1.0), 0.2);
         let jit = JitCompiledSdf::compile(&shape).unwrap();
 
         let test_points = [
@@ -167,8 +188,13 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.001,
-                "Mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.001,
+                "Mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
@@ -186,8 +212,13 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.0001,
-                "Mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.0001,
+                "Mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
@@ -205,15 +236,23 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.001,
-                "Mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.001,
+                "Mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
     #[test]
     fn test_jit_complex() {
         let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0), 0.2)
+            .smooth_union(
+                SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0),
+                0.2,
+            )
             .subtract(SdfNode::box3d(0.4, 0.4, 0.4))
             .translate(0.5, 0.0, 0.0);
 
@@ -229,15 +268,20 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.001,
-                "Mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.001,
+                "Mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
     #[test]
     fn test_jit_batch() {
-        let shape = SdfNode::sphere(1.0)
-            .union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
+        let shape =
+            SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
         let jit = JitCompiledSdf::compile(&shape).unwrap();
 
         let points: Vec<Vec3> = (0..100)
@@ -248,8 +292,13 @@ mod tests {
 
         for (i, p) in points.iter().enumerate() {
             let d_interp = eval(&shape, *p);
-            assert!((results[i] - d_interp).abs() < 0.0001,
-                "Mismatch at {:?}: jit={}, interp={}", p, results[i], d_interp);
+            assert!(
+                (results[i] - d_interp).abs() < 0.0001,
+                "Mismatch at {:?}: jit={}, interp={}",
+                p,
+                results[i],
+                d_interp
+            );
         }
     }
 
@@ -264,8 +313,13 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&sphere, p);
-            assert!((d_jit - d_interp).abs() < 0.0001,
-                "Dynamic sphere mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.0001,
+                "Dynamic sphere mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
@@ -277,8 +331,12 @@ mod tests {
 
         let d1 = jit.eval(Vec3::new(1.5, 0.0, 0.0));
         let expected1 = eval(&shape1, Vec3::new(1.5, 0.0, 0.0));
-        assert!((d1 - expected1).abs() < 0.0001,
-            "Before update: jit={}, interp={}", d1, expected1);
+        assert!(
+            (d1 - expected1).abs() < 0.0001,
+            "Before update: jit={}, interp={}",
+            d1,
+            expected1
+        );
 
         // Update to radius=2.0 (no recompilation!)
         let shape2 = SdfNode::sphere(2.0);
@@ -286,14 +344,21 @@ mod tests {
 
         let d2 = jit.eval(Vec3::new(1.5, 0.0, 0.0));
         let expected2 = eval(&shape2, Vec3::new(1.5, 0.0, 0.0));
-        assert!((d2 - expected2).abs() < 0.0001,
-            "After update: jit={}, interp={}", d2, expected2);
+        assert!(
+            (d2 - expected2).abs() < 0.0001,
+            "After update: jit={}, interp={}",
+            d2,
+            expected2
+        );
     }
 
     #[test]
     fn test_jit_dynamic_complex() {
         let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0), 0.2)
+            .smooth_union(
+                SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0),
+                0.2,
+            )
             .subtract(SdfNode::box3d(0.4, 0.4, 0.4))
             .translate(0.5, 0.0, 0.0);
 
@@ -309,8 +374,13 @@ mod tests {
         for p in test_points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.001,
-                "Dynamic complex mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.001,
+                "Dynamic complex mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
@@ -325,20 +395,27 @@ mod tests {
 
         let d = jit.eval(Vec3::new(2.0, 0.0, 0.0));
         let expected = eval(&shape2, Vec3::new(2.0, 0.0, 0.0));
-        assert!((d - expected).abs() < 0.0001,
-            "Translate update: jit={}, interp={}", d, expected);
+        assert!(
+            (d - expected).abs() < 0.0001,
+            "Translate update: jit={}, interp={}",
+            d,
+            expected
+        );
 
         // Distance from origin should be ~1.0 (2.0 - radius)
         let d_origin = jit.eval(Vec3::ZERO);
         let expected_origin = eval(&shape2, Vec3::ZERO);
-        assert!((d_origin - expected_origin).abs() < 0.0001,
-            "Translate origin: jit={}, interp={}", d_origin, expected_origin);
+        assert!(
+            (d_origin - expected_origin).abs() < 0.0001,
+            "Translate origin: jit={}, interp={}",
+            d_origin,
+            expected_origin
+        );
     }
 
     #[test]
     fn test_jit_dynamic_extract_params() {
-        let shape = SdfNode::sphere(1.5)
-            .translate(2.0, 3.0, 4.0);
+        let shape = SdfNode::sphere(1.5).translate(2.0, 3.0, 4.0);
         let params = extract_jit_params(&shape);
 
         // Translate: 3 params (offset.x/y/z), Sphere: 1 param (radius)
@@ -353,27 +430,53 @@ mod tests {
 
     #[test]
     fn test_jit_cone() {
-        let shape = SdfNode::Cone { radius: 1.0, half_height: 1.0 };
+        let shape = SdfNode::Cone {
+            radius: 1.0,
+            half_height: 1.0,
+        };
         let jit = JitCompiledSdf::compile(&shape).unwrap();
-        let points = [Vec3::ZERO, Vec3::X, Vec3::new(0.0, 1.0, 0.0), Vec3::new(3.0, 0.0, 0.0)];
+        let points = [
+            Vec3::ZERO,
+            Vec3::X,
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(3.0, 0.0, 0.0),
+        ];
         for p in points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.01,
-                "Cone mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.01,
+                "Cone mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
     #[test]
     fn test_jit_rounded_cone() {
-        let shape = SdfNode::RoundedCone { r1: 1.0, r2: 0.5, half_height: 1.0 };
+        let shape = SdfNode::RoundedCone {
+            r1: 1.0,
+            r2: 0.5,
+            half_height: 1.0,
+        };
         let jit = JitCompiledSdf::compile(&shape).unwrap();
-        let points = [Vec3::ZERO, Vec3::new(0.0, -2.0, 0.0), Vec3::new(5.0, 0.0, 0.0)];
+        let points = [
+            Vec3::ZERO,
+            Vec3::new(0.0, -2.0, 0.0),
+            Vec3::new(5.0, 0.0, 0.0),
+        ];
         for p in points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.01,
-                "RoundedCone mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.01,
+                "RoundedCone mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
@@ -381,12 +484,21 @@ mod tests {
     fn test_jit_pyramid() {
         let shape = SdfNode::Pyramid { half_height: 1.0 };
         let jit = JitCompiledSdf::compile(&shape).unwrap();
-        let points = [Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), Vec3::new(5.0, 0.0, 0.0)];
+        let points = [
+            Vec3::ZERO,
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(5.0, 0.0, 0.0),
+        ];
         for p in points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.01,
-                "Pyramid mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.01,
+                "Pyramid mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
@@ -394,38 +506,67 @@ mod tests {
     fn test_jit_octahedron() {
         let shape = SdfNode::Octahedron { size: 1.0 };
         let jit = JitCompiledSdf::compile(&shape).unwrap();
-        let points = [Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), Vec3::new(5.0, 0.0, 0.0)];
+        let points = [
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(5.0, 0.0, 0.0),
+        ];
         for p in points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.01,
-                "Octahedron mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.01,
+                "Octahedron mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
     #[test]
     fn test_jit_hex_prism() {
-        let shape = SdfNode::HexPrism { hex_radius: 1.0, half_height: 1.0 };
+        let shape = SdfNode::HexPrism {
+            hex_radius: 1.0,
+            half_height: 1.0,
+        };
         let jit = JitCompiledSdf::compile(&shape).unwrap();
-        let points = [Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0), Vec3::new(5.0, 0.0, 0.0)];
+        let points = [
+            Vec3::ZERO,
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(5.0, 0.0, 0.0),
+        ];
         for p in points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.01,
-                "HexPrism mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.01,
+                "HexPrism mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 
     #[test]
     fn test_jit_dynamic_cone() {
-        let shape = SdfNode::Cone { radius: 1.0, half_height: 1.0 };
+        let shape = SdfNode::Cone {
+            radius: 1.0,
+            half_height: 1.0,
+        };
         let jit = JitCompiledSdfDynamic::compile(&shape).unwrap();
         let points = [Vec3::ZERO, Vec3::X, Vec3::new(0.0, 1.0, 0.0)];
         for p in points {
             let d_jit = jit.eval(p);
             let d_interp = eval(&shape, p);
-            assert!((d_jit - d_interp).abs() < 0.01,
-                "Dynamic Cone mismatch at {:?}: jit={}, interp={}", p, d_jit, d_interp);
+            assert!(
+                (d_jit - d_interp).abs() < 0.01,
+                "Dynamic Cone mismatch at {:?}: jit={}, interp={}",
+                p,
+                d_jit,
+                d_interp
+            );
         }
     }
 }

@@ -7,15 +7,15 @@
 //!
 //! Author: Moroya Sakamoto
 
-use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, UserFuncName, Value};
 use cranelift_codegen::ir::condcodes::FloatCC;
+use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, UserFuncName, Value};
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
 
-use crate::types::SdfNode;
 use super::runtime::JitError;
+use crate::types::SdfNode;
 
 // ============ Parameter Emitter ============
 
@@ -31,11 +31,19 @@ struct JitParamEmitter {
 
 impl JitParamEmitter {
     fn hardcoded() -> Self {
-        Self { params_ptr: None, param_index: 0, params: Vec::new() }
+        Self {
+            params_ptr: None,
+            param_index: 0,
+            params: Vec::new(),
+        }
     }
 
     fn dynamic(params_ptr: Value) -> Self {
-        Self { params_ptr: Some(params_ptr), param_index: 0, params: Vec::new() }
+        Self {
+            params_ptr: Some(params_ptr),
+            param_index: 0,
+            params: Vec::new(),
+        }
     }
 
     /// Emit a shape parameter value.
@@ -72,7 +80,11 @@ impl<'a> JitCompiler<'a> {
     pub fn new(module: &'a mut JITModule) -> Self {
         let ctx = module.make_context();
         let func_ctx = FunctionBuilderContext::new();
-        JitCompiler { module, ctx, func_ctx }
+        JitCompiler {
+            module,
+            ctx,
+            func_ctx,
+        }
     }
 
     /// Compile an SDF node to a function: fn(f32, f32, f32) -> f32
@@ -122,11 +134,11 @@ impl<'a> JitCompiler<'a> {
         let ptr_type = self.module.target_config().pointer_type();
 
         let mut sig = self.module.make_signature();
-        sig.params.push(AbiParam::new(types::F32));    // x
-        sig.params.push(AbiParam::new(types::F32));    // y
-        sig.params.push(AbiParam::new(types::F32));    // z
-        sig.params.push(AbiParam::new(ptr_type));       // params_ptr
-        sig.returns.push(AbiParam::new(types::F32));    // distance
+        sig.params.push(AbiParam::new(types::F32)); // x
+        sig.params.push(AbiParam::new(types::F32)); // y
+        sig.params.push(AbiParam::new(types::F32)); // z
+        sig.params.push(AbiParam::new(ptr_type)); // params_ptr
+        sig.returns.push(AbiParam::new(types::F32)); // distance
 
         let func_id = self
             .module
@@ -178,7 +190,6 @@ fn compile_node(
 ) -> Result<Value, JitError> {
     match node {
         // ============ Primitives ============
-
         SdfNode::Sphere { radius } => {
             let r = emitter.emit(builder, *radius);
             let len = emit_length3(builder, x, y, z);
@@ -212,7 +223,10 @@ fn compile_node(
             Ok(builder.ins().fadd(outside, inside))
         }
 
-        SdfNode::Cylinder { radius, half_height } => {
+        SdfNode::Cylinder {
+            radius,
+            half_height,
+        } => {
             let r = emitter.emit(builder, *radius);
             let h = emitter.emit(builder, *half_height);
             let zero = builder.ins().f32const(0.0);
@@ -233,7 +247,10 @@ fn compile_node(
             Ok(builder.ins().fadd(inside, outside))
         }
 
-        SdfNode::Torus { major_radius, minor_radius } => {
+        SdfNode::Torus {
+            major_radius,
+            minor_radius,
+        } => {
             let major = emitter.emit(builder, *major_radius);
             let minor = emitter.emit(builder, *minor_radius);
 
@@ -253,7 +270,11 @@ fn compile_node(
             Ok(builder.ins().fadd(dot, dist))
         }
 
-        SdfNode::Capsule { point_a, point_b, radius } => {
+        SdfNode::Capsule {
+            point_a,
+            point_b,
+            radius,
+        } => {
             // Emit shape params
             let ax_v = emitter.emit(builder, point_a.x);
             let ay_v = emitter.emit(builder, point_a.y);
@@ -266,7 +287,11 @@ fn compile_node(
             // Division Exorcism: pre-compute 1/dot(ba,ba)
             let ba = *point_b - *point_a;
             let dot_ba_ba = ba.dot(ba);
-            let inv_dbb = if dot_ba_ba.abs() < 1e-10 { 1.0 } else { 1.0 / dot_ba_ba };
+            let inv_dbb = if dot_ba_ba.abs() < 1e-10 {
+                1.0
+            } else {
+                1.0 / dot_ba_ba
+            };
             let inv_dbb_v = emitter.emit(builder, inv_dbb);
 
             // pa = p - a
@@ -299,7 +324,10 @@ fn compile_node(
             Ok(builder.ins().fsub(len, r))
         }
 
-        SdfNode::Cone { radius, half_height } => {
+        SdfNode::Cone {
+            radius,
+            half_height,
+        } => {
             let r = emitter.emit(builder, *radius);
             let h = emitter.emit(builder, *half_height);
             let zero = builder.ins().f32const(0.0);
@@ -317,7 +345,11 @@ fn compile_node(
             // Division Exorcism: pre-compute 1/k2_dot
             let inv_k2_dot = {
                 let k2d_val = (*radius) * (*radius) + (2.0 * *half_height) * (2.0 * *half_height);
-                let inv = if k2d_val.abs() < 1e-10 { 1.0 } else { 1.0 / k2d_val };
+                let inv = if k2d_val.abs() < 1e-10 {
+                    1.0
+                } else {
+                    1.0 / k2d_val
+                };
                 emitter.emit(builder, inv)
             };
 
@@ -389,7 +421,11 @@ fn compile_node(
             Ok(builder.ins().fdiv(num, k1_safe)) // data-dependent, can't precompute
         }
 
-        SdfNode::RoundedCone { r1, r2, half_height } => {
+        SdfNode::RoundedCone {
+            r1,
+            r2,
+            half_height,
+        } => {
             let r1_val = emitter.emit(builder, *r1);
             let r2_val = emitter.emit(builder, *r2);
             let hh = emitter.emit(builder, *half_height);
@@ -397,7 +433,11 @@ fn compile_node(
 
             // Pre-compute constants (Division Exorcism)
             let h_scalar = half_height * 2.0;
-            let inv_h = if h_scalar.abs() < 1e-10 { 1.0 } else { 1.0 / h_scalar };
+            let inv_h = if h_scalar.abs() < 1e-10 {
+                1.0
+            } else {
+                1.0 / h_scalar
+            };
             let b_scalar = (r1 - r2) * inv_h;
             let a_scalar = (1.0 - b_scalar * b_scalar).max(0.0).sqrt();
             let ah_scalar = a_scalar * h_scalar;
@@ -580,7 +620,10 @@ fn compile_node(
             Ok(builder.ins().select(any_case, detail, early))
         }
 
-        SdfNode::HexPrism { hex_radius, half_height } => {
+        SdfNode::HexPrism {
+            hex_radius,
+            half_height,
+        } => {
             let hr = emitter.emit(builder, *hex_radius);
             let hh = emitter.emit(builder, *half_height);
 
@@ -635,7 +678,11 @@ fn compile_node(
             Ok(builder.ins().fadd(interior, exterior))
         }
 
-        SdfNode::Link { half_length, r1, r2 } => {
+        SdfNode::Link {
+            half_length,
+            r1,
+            r2,
+        } => {
             let hl = emitter.emit(builder, *half_length);
             let r1_val = emitter.emit(builder, *r1);
             let r2_val = emitter.emit(builder, *r2);
@@ -653,7 +700,6 @@ fn compile_node(
         }
 
         // ============ Operations ============
-
         SdfNode::Union { a, b } => {
             let d_a = compile_node(builder, a, x, y, z, emitter)?;
             let d_b = compile_node(builder, b, x, y, z, emitter)?;
@@ -761,7 +807,6 @@ fn compile_node(
         }
 
         // ============ Transforms ============
-
         SdfNode::Translate { child, offset } => {
             let ox = emitter.emit(builder, offset.x);
             let oy = emitter.emit(builder, offset.y);
@@ -814,7 +859,6 @@ fn compile_node(
         }
 
         // ============ Modifiers ============
-
         SdfNode::Twist { child, strength } => {
             let k = emitter.emit(builder, *strength);
             let angle = builder.ins().fmul(k, y);
@@ -910,7 +954,11 @@ fn compile_node(
             compile_node(builder, child, qx, qy, qz, emitter)
         }
 
-        SdfNode::RepeatFinite { child, count, spacing } => {
+        SdfNode::RepeatFinite {
+            child,
+            count,
+            spacing,
+        } => {
             // Division Exorcism: pre-compute reciprocals
             let inv_px = emitter.emit(builder, 1.0 / spacing.x);
             let inv_py = emitter.emit(builder, 1.0 / spacing.y);
@@ -954,9 +1002,21 @@ fn compile_node(
 
         SdfNode::Mirror { child, axes } => {
             // Mirror axes are structural (compile-time decision)
-            let nx = if axes.x != 0.0 { builder.ins().fabs(x) } else { x };
-            let ny = if axes.y != 0.0 { builder.ins().fabs(y) } else { y };
-            let nz = if axes.z != 0.0 { builder.ins().fabs(z) } else { z };
+            let nx = if axes.x != 0.0 {
+                builder.ins().fabs(x)
+            } else {
+                x
+            };
+            let ny = if axes.y != 0.0 {
+                builder.ins().fabs(y)
+            } else {
+                y
+            };
+            let nz = if axes.z != 0.0 {
+                builder.ins().fabs(z)
+            } else {
+                z
+            };
             compile_node(builder, child, nx, ny, nz, emitter)
         }
 
@@ -986,20 +1046,13 @@ fn compile_node(
             Ok(builder.ins().fadd(inside, outside))
         }
 
-        SdfNode::Noise { .. } => {
-            Err(JitError::UnsupportedNode("Noise".to_string()))
-        }
+        SdfNode::Noise { .. } => Err(JitError::UnsupportedNode("Noise".to_string())),
 
-        SdfNode::SweepBezier { .. } => {
-            Err(JitError::UnsupportedNode("SweepBezier".to_string()))
-        }
+        SdfNode::SweepBezier { .. } => Err(JitError::UnsupportedNode("SweepBezier".to_string())),
 
-        SdfNode::WithMaterial { child, .. } => {
-            compile_node(builder, child, x, y, z, emitter)
-        }
+        SdfNode::WithMaterial { child, .. } => compile_node(builder, child, x, y, z, emitter),
 
         // ============ Implementable Operations ============
-
         SdfNode::XOR { a, b } => {
             let da = compile_node(builder, a, x, y, z, emitter)?;
             let db = compile_node(builder, b, x, y, z, emitter)?;
@@ -1063,7 +1116,6 @@ fn compile_node(
         }
 
         // ============ Implementable Modifier ============
-
         SdfNode::OctantMirror { child } => {
             let ax = builder.ins().fabs(x);
             let ay = builder.ins().fabs(y);
@@ -1079,7 +1131,6 @@ fn compile_node(
         }
 
         // ============ Unsupported Complex Primitives ============
-
         SdfNode::Triangle { .. }
         | SdfNode::Bezier { .. }
         | SdfNode::RoundedBox { .. }
@@ -1132,25 +1183,20 @@ fn compile_node(
         | SdfNode::IWP { .. }
         | SdfNode::FRD { .. }
         | SdfNode::FischerKochS { .. }
-        | SdfNode::PMY { .. }
-        => {
-            Err(JitError::UnsupportedNode("ComplexPrimitive".to_string()))
-        }
+        | SdfNode::PMY { .. } => Err(JitError::UnsupportedNode("ComplexPrimitive".to_string())),
 
         // ============ Unsupported Complex Operations/Modifiers ============
-
         SdfNode::ColumnsUnion { .. }
         | SdfNode::ColumnsIntersection { .. }
         | SdfNode::ColumnsSubtraction { .. }
         | SdfNode::Taper { .. }
         | SdfNode::Displacement { .. }
-        | SdfNode::PolarRepeat { .. }
-        => {
+        | SdfNode::PolarRepeat { .. } => {
             Err(JitError::UnsupportedNode("ComplexModifier".to_string()))
         }
 
         #[allow(unreachable_patterns)]
-        _ => Err(JitError::UnsupportedNode("NewVariant".to_string()))
+        _ => Err(JitError::UnsupportedNode("NewVariant".to_string())),
     }
 }
 
@@ -1174,8 +1220,12 @@ fn emit_length2(builder: &mut FunctionBuilder, x: Value, y: Value) -> Value {
 /// Emit 3D dot product with FMA
 fn emit_dot3(
     builder: &mut FunctionBuilder,
-    ax: Value, ay: Value, az: Value,
-    bx: Value, by: Value, bz: Value,
+    ax: Value,
+    ay: Value,
+    az: Value,
+    bx: Value,
+    by: Value,
+    bz: Value,
 ) -> Value {
     let zz = builder.ins().fmul(az, bz);
     let yy_zz = builder.ins().fma(ay, by, zz);
@@ -1185,8 +1235,10 @@ fn emit_dot3(
 /// Emit smooth minimum with Division Exorcism (uses pre-computed inv_k)
 fn emit_smooth_min(
     builder: &mut FunctionBuilder,
-    a: Value, b: Value,
-    k: Value, inv_k: Value,
+    a: Value,
+    b: Value,
+    k: Value,
+    inv_k: Value,
 ) -> Value {
     // h = max(k - abs(a - b), 0) * inv_k  — Division Exorcism!
     // return min(a, b) - h² * k * 0.25
@@ -1210,8 +1262,10 @@ fn emit_smooth_min(
 /// Emit smooth maximum with Division Exorcism
 fn emit_smooth_max(
     builder: &mut FunctionBuilder,
-    a: Value, b: Value,
-    k: Value, inv_k: Value,
+    a: Value,
+    b: Value,
+    k: Value,
+    inv_k: Value,
 ) -> Value {
     let neg_a = builder.ins().fneg(a);
     let neg_b = builder.ins().fneg(b);
@@ -1222,8 +1276,10 @@ fn emit_smooth_max(
 /// Emit chamfer minimum: min(min(a,b), (a+b)*s - r)
 fn emit_chamfer_min(
     builder: &mut FunctionBuilder,
-    a: Value, b: Value,
-    r: Value, s: Value,
+    a: Value,
+    b: Value,
+    r: Value,
+    s: Value,
 ) -> Value {
     let min_ab = builder.ins().fmin(a, b);
     let sum = builder.ins().fadd(a, b);
@@ -1236,11 +1292,7 @@ fn emit_chamfer_min(
 ///
 /// Implements the full stepped blend formula with 45-degree rotation,
 /// modular repetition, and edge computation.
-fn emit_stairs_min(
-    builder: &mut FunctionBuilder,
-    a: Value, b: Value,
-    r: Value, n: Value,
-) -> Value {
+fn emit_stairs_min(builder: &mut FunctionBuilder, a: Value, b: Value, r: Value, n: Value) -> Value {
     let half = builder.ins().f32const(0.5);
     let s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
     let s2 = builder.ins().f32const(std::f32::consts::SQRT_2);
@@ -1302,8 +1354,13 @@ fn emit_stairs_min(
 /// Emit quaternion rotation from pre-loaded Values
 fn emit_quat_rotate(
     builder: &mut FunctionBuilder,
-    x: Value, y: Value, z: Value,
-    qx: Value, qy: Value, qz: Value, qw: Value,
+    x: Value,
+    y: Value,
+    z: Value,
+    qx: Value,
+    qy: Value,
+    qz: Value,
+    qw: Value,
 ) -> (Value, Value, Value) {
     let two = builder.ins().f32const(2.0);
 
@@ -1354,10 +1411,7 @@ fn emit_quat_rotate(
 }
 
 /// Emit approximate sin/cos using Taylor series
-fn emit_sincos_approx(
-    builder: &mut FunctionBuilder,
-    angle: Value,
-) -> (Value, Value) {
+fn emit_sincos_approx(builder: &mut FunctionBuilder, angle: Value) -> (Value, Value) {
     let one = builder.ins().f32const(1.0);
     let half = builder.ins().f32const(0.5);
     let sixth = builder.ins().f32const(1.0 / 6.0);
@@ -1385,10 +1439,7 @@ fn emit_sincos_approx(
 }
 
 /// Emit modulo with Division Exorcism: a mod b = a - b * floor(a * inv_b)
-fn emit_mod_fast(
-    builder: &mut FunctionBuilder,
-    a: Value, b: Value, inv_b: Value,
-) -> Value {
+fn emit_mod_fast(builder: &mut FunctionBuilder, a: Value, b: Value, inv_b: Value) -> Value {
     let div = builder.ins().fmul(a, inv_b); // Division Exorcism!
     let floored = builder.ins().floor(div);
     let mult = builder.ins().fmul(b, floored);
@@ -1420,12 +1471,18 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(half_extents.z);
         }
 
-        SdfNode::Cylinder { radius, half_height } => {
+        SdfNode::Cylinder {
+            radius,
+            half_height,
+        } => {
             params.push(*radius);
             params.push(*half_height);
         }
 
-        SdfNode::Torus { major_radius, minor_radius } => {
+        SdfNode::Torus {
+            major_radius,
+            minor_radius,
+        } => {
             params.push(*major_radius);
             params.push(*minor_radius);
         }
@@ -1437,7 +1494,11 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(*distance);
         }
 
-        SdfNode::Capsule { point_a, point_b, radius } => {
+        SdfNode::Capsule {
+            point_a,
+            point_b,
+            radius,
+        } => {
             params.push(point_a.x);
             params.push(point_a.y);
             params.push(point_a.z);
@@ -1460,14 +1521,20 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(1.0 / (radii.z * radii.z));
         }
 
-        SdfNode::Link { half_length, r1, r2 } => {
+        SdfNode::Link {
+            half_length,
+            r1,
+            r2,
+        } => {
             params.push(*half_length);
             params.push(*r1);
             params.push(*r2);
         }
 
         // Operations (no params for Union/Intersection/Subtraction)
-        SdfNode::Union { a, b } | SdfNode::Intersection { a, b } | SdfNode::Subtraction { a, b } => {
+        SdfNode::Union { a, b }
+        | SdfNode::Intersection { a, b }
+        | SdfNode::Subtraction { a, b } => {
             extract_params_recursive(a, params);
             extract_params_recursive(b, params);
         }
@@ -1571,7 +1638,11 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             extract_params_recursive(child, params);
         }
 
-        SdfNode::RepeatFinite { child, count, spacing } => {
+        SdfNode::RepeatFinite {
+            child,
+            count,
+            spacing,
+        } => {
             params.push(1.0 / spacing.x);
             params.push(1.0 / spacing.y);
             params.push(1.0 / spacing.z);
@@ -1595,9 +1666,12 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
         }
 
         SdfNode::SweepBezier { child, p0, p1, p2 } => {
-            params.push(p0.x); params.push(p0.y);
-            params.push(p1.x); params.push(p1.y);
-            params.push(p2.x); params.push(p2.y);
+            params.push(p0.x);
+            params.push(p0.y);
+            params.push(p1.x);
+            params.push(p1.y);
+            params.push(p2.x);
+            params.push(p2.y);
             extract_params_recursive(child, params);
         }
 
@@ -1606,7 +1680,10 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(*half_height);
         }
 
-        SdfNode::Cone { radius, half_height } => {
+        SdfNode::Cone {
+            radius,
+            half_height,
+        } => {
             params.push(*radius);
             params.push(*half_height);
             // Division Exorcism: pre-compute inv_k2_dot
@@ -1614,12 +1691,20 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(if k2d.abs() < 1e-10 { 1.0 } else { 1.0 / k2d });
         }
 
-        SdfNode::RoundedCone { r1, r2, half_height } => {
+        SdfNode::RoundedCone {
+            r1,
+            r2,
+            half_height,
+        } => {
             params.push(*r1);
             params.push(*r2);
             params.push(*half_height);
             let h_val = half_height * 2.0;
-            let inv_h = if h_val.abs() < 1e-10 { 1.0 } else { 1.0 / h_val };
+            let inv_h = if h_val.abs() < 1e-10 {
+                1.0
+            } else {
+                1.0 / h_val
+            };
             let b_val = (r1 - r2) * inv_h;
             let a_val = (1.0 - b_val * b_val).max(0.0).sqrt();
             let ah_val = a_val * h_val;
@@ -1643,7 +1728,10 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(*size);
         }
 
-        SdfNode::HexPrism { hex_radius, half_height } => {
+        SdfNode::HexPrism {
+            hex_radius,
+            half_height,
+        } => {
             params.push(*hex_radius);
             params.push(*half_height);
         }
@@ -1757,8 +1845,7 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
         | SdfNode::ColumnsSubtraction { .. }
         | SdfNode::Taper { .. }
         | SdfNode::Displacement { .. }
-        | SdfNode::PolarRepeat { .. }
-        => {}
+        | SdfNode::PolarRepeat { .. } => {}
 
         #[allow(unreachable_patterns)]
         _ => {}

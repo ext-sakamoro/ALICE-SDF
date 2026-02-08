@@ -115,7 +115,13 @@ impl Triangle {
         aabb.expand_point(v1);
         aabb.expand_point(v2);
 
-        Triangle { v0, v1, v2, normal, aabb }
+        Triangle {
+            v0,
+            v1,
+            v2,
+            normal,
+            aabb,
+        }
     }
 
     /// Signed distance to triangle
@@ -172,7 +178,11 @@ impl Triangle {
 
         // Determine sign using triangle normal
         // Positive = outside (same side as normal), Negative = inside
-        let sign = if self.normal.dot(point - v0) >= 0.0 { 1.0 } else { -1.0 };
+        let sign = if self.normal.dot(point - v0) >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
 
         unsigned_dist * sign
     }
@@ -267,11 +277,7 @@ impl MeshBvh {
     /// Recursively build BVH nodes
     ///
     /// [Deep Fried v2] SIMD-accelerated AABB computation for batches of 8 triangles.
-    fn build_node(
-        triangles: &[Triangle],
-        indices: Vec<usize>,
-        max_per_leaf: usize,
-    ) -> BvhNode {
+    fn build_node(triangles: &[Triangle], indices: Vec<usize>, max_per_leaf: usize) -> BvhNode {
         // [Deep Fried v2] SIMD AABB computation — process 8 triangle AABBs at a time
         let aabb = compute_aabb_simd(triangles, &indices);
 
@@ -315,13 +321,15 @@ impl MeshBvh {
 
         for bucket in 1..num_buckets {
             let mid = bucket * n / num_buckets;
-            if mid == 0 || mid == n { continue; }
+            if mid == 0 || mid == n {
+                continue;
+            }
 
             let left_aabb = compute_aabb_simd(triangles, &sorted_indices[..mid]);
             let right_aabb = compute_aabb_simd(triangles, &sorted_indices[mid..]);
 
             let cost = left_aabb.surface_area() * inv_parent_sa * mid as f32
-                     + right_aabb.surface_area() * inv_parent_sa * (n - mid) as f32;
+                + right_aabb.surface_area() * inv_parent_sa * (n - mid) as f32;
 
             if cost < best_cost {
                 best_cost = cost;
@@ -361,7 +369,9 @@ impl MeshBvh {
                 }
                 best
             }
-            BvhNode::Internal { aabb, left, right, .. } => {
+            BvhNode::Internal {
+                aabb, left, right, ..
+            } => {
                 // Early termination: if AABB is farther than best, skip
                 let aabb_dist = aabb.signed_distance(point);
                 if aabb_dist > best.abs() {
@@ -446,40 +456,64 @@ fn compute_aabb_simd(triangles: &[Triangle], indices: &[usize]) -> Aabb {
 
     for chunk in chunks {
         let min_x = f32x8::new([
-            triangles[chunk[0]].aabb.min.x, triangles[chunk[1]].aabb.min.x,
-            triangles[chunk[2]].aabb.min.x, triangles[chunk[3]].aabb.min.x,
-            triangles[chunk[4]].aabb.min.x, triangles[chunk[5]].aabb.min.x,
-            triangles[chunk[6]].aabb.min.x, triangles[chunk[7]].aabb.min.x,
+            triangles[chunk[0]].aabb.min.x,
+            triangles[chunk[1]].aabb.min.x,
+            triangles[chunk[2]].aabb.min.x,
+            triangles[chunk[3]].aabb.min.x,
+            triangles[chunk[4]].aabb.min.x,
+            triangles[chunk[5]].aabb.min.x,
+            triangles[chunk[6]].aabb.min.x,
+            triangles[chunk[7]].aabb.min.x,
         ]);
         let min_y = f32x8::new([
-            triangles[chunk[0]].aabb.min.y, triangles[chunk[1]].aabb.min.y,
-            triangles[chunk[2]].aabb.min.y, triangles[chunk[3]].aabb.min.y,
-            triangles[chunk[4]].aabb.min.y, triangles[chunk[5]].aabb.min.y,
-            triangles[chunk[6]].aabb.min.y, triangles[chunk[7]].aabb.min.y,
+            triangles[chunk[0]].aabb.min.y,
+            triangles[chunk[1]].aabb.min.y,
+            triangles[chunk[2]].aabb.min.y,
+            triangles[chunk[3]].aabb.min.y,
+            triangles[chunk[4]].aabb.min.y,
+            triangles[chunk[5]].aabb.min.y,
+            triangles[chunk[6]].aabb.min.y,
+            triangles[chunk[7]].aabb.min.y,
         ]);
         let min_z = f32x8::new([
-            triangles[chunk[0]].aabb.min.z, triangles[chunk[1]].aabb.min.z,
-            triangles[chunk[2]].aabb.min.z, triangles[chunk[3]].aabb.min.z,
-            triangles[chunk[4]].aabb.min.z, triangles[chunk[5]].aabb.min.z,
-            triangles[chunk[6]].aabb.min.z, triangles[chunk[7]].aabb.min.z,
+            triangles[chunk[0]].aabb.min.z,
+            triangles[chunk[1]].aabb.min.z,
+            triangles[chunk[2]].aabb.min.z,
+            triangles[chunk[3]].aabb.min.z,
+            triangles[chunk[4]].aabb.min.z,
+            triangles[chunk[5]].aabb.min.z,
+            triangles[chunk[6]].aabb.min.z,
+            triangles[chunk[7]].aabb.min.z,
         ]);
         let max_x = f32x8::new([
-            triangles[chunk[0]].aabb.max.x, triangles[chunk[1]].aabb.max.x,
-            triangles[chunk[2]].aabb.max.x, triangles[chunk[3]].aabb.max.x,
-            triangles[chunk[4]].aabb.max.x, triangles[chunk[5]].aabb.max.x,
-            triangles[chunk[6]].aabb.max.x, triangles[chunk[7]].aabb.max.x,
+            triangles[chunk[0]].aabb.max.x,
+            triangles[chunk[1]].aabb.max.x,
+            triangles[chunk[2]].aabb.max.x,
+            triangles[chunk[3]].aabb.max.x,
+            triangles[chunk[4]].aabb.max.x,
+            triangles[chunk[5]].aabb.max.x,
+            triangles[chunk[6]].aabb.max.x,
+            triangles[chunk[7]].aabb.max.x,
         ]);
         let max_y = f32x8::new([
-            triangles[chunk[0]].aabb.max.y, triangles[chunk[1]].aabb.max.y,
-            triangles[chunk[2]].aabb.max.y, triangles[chunk[3]].aabb.max.y,
-            triangles[chunk[4]].aabb.max.y, triangles[chunk[5]].aabb.max.y,
-            triangles[chunk[6]].aabb.max.y, triangles[chunk[7]].aabb.max.y,
+            triangles[chunk[0]].aabb.max.y,
+            triangles[chunk[1]].aabb.max.y,
+            triangles[chunk[2]].aabb.max.y,
+            triangles[chunk[3]].aabb.max.y,
+            triangles[chunk[4]].aabb.max.y,
+            triangles[chunk[5]].aabb.max.y,
+            triangles[chunk[6]].aabb.max.y,
+            triangles[chunk[7]].aabb.max.y,
         ]);
         let max_z = f32x8::new([
-            triangles[chunk[0]].aabb.max.z, triangles[chunk[1]].aabb.max.z,
-            triangles[chunk[2]].aabb.max.z, triangles[chunk[3]].aabb.max.z,
-            triangles[chunk[4]].aabb.max.z, triangles[chunk[5]].aabb.max.z,
-            triangles[chunk[6]].aabb.max.z, triangles[chunk[7]].aabb.max.z,
+            triangles[chunk[0]].aabb.max.z,
+            triangles[chunk[1]].aabb.max.z,
+            triangles[chunk[2]].aabb.max.z,
+            triangles[chunk[3]].aabb.max.z,
+            triangles[chunk[4]].aabb.max.z,
+            triangles[chunk[5]].aabb.max.z,
+            triangles[chunk[6]].aabb.max.z,
+            triangles[chunk[7]].aabb.max.z,
         ]);
 
         // Accumulate in SIMD lanes — no per-chunk extract

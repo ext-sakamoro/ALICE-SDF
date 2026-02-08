@@ -34,7 +34,11 @@ mod tests {
     fn test_solid_angle_origin() {
         // Origin is on the cone tip, distance = max(-radius, 0) = 0
         let d = sdf_solid_angle(Vec3::ZERO, 0.5, 1.0);
-        assert!(d <= 0.001, "Origin should be on or inside surface, got {}", d);
+        assert!(
+            d <= 0.001,
+            "Origin should be on or inside surface, got {}",
+            d
+        );
     }
 
     #[test]

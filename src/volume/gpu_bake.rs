@@ -15,9 +15,9 @@
 use glam::Vec3;
 use wgpu::util::DeviceExt;
 
-use crate::compiled::{WgslShader, TranspileMode, GpuError};
-use crate::types::SdfNode;
 use super::{BakeConfig, Volume3D, VoxelDistGrad};
+use crate::compiled::{GpuError, TranspileMode, WgslShader};
+use crate::types::SdfNode;
 
 /// Uniform buffer for volume bake parameters (48 bytes, 16-byte aligned)
 #[repr(C)]
@@ -94,10 +94,11 @@ pub fn gpu_bake_volume_from_shader(
     .map_err(|e: wgpu::RequestDeviceError| GpuError::DeviceCreation(e.to_string()))?;
 
     // Create shader module
-    let shader_module: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Volume Bake Shader"),
-        source: wgpu::ShaderSource::Wgsl(compute_source.into()),
-    });
+    let shader_module: wgpu::ShaderModule =
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Volume Bake Shader"),
+            source: wgpu::ShaderSource::Wgsl(compute_source.into()),
+        });
 
     // Create output buffer
     let output_buffer_size = (total * std::mem::size_of::<f32>()) as u64;

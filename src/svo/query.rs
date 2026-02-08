@@ -13,7 +13,7 @@
 
 use glam::Vec3;
 
-use super::{SparseVoxelOctree, SvoNode, octant_for_point, child_center};
+use super::{child_center, octant_for_point, SparseVoxelOctree, SvoNode};
 
 /// Result of a ray query against the SVO
 #[derive(Debug, Clone, Copy)]
@@ -40,9 +40,12 @@ pub fn svo_query_point(svo: &SparseVoxelOctree, point: Vec3) -> f32 {
     // Check bounds
     let bounds_min = svo.bounds.min();
     let bounds_max = svo.bounds.max();
-    if point.x < bounds_min.x || point.x > bounds_max.x
-        || point.y < bounds_min.y || point.y > bounds_max.y
-        || point.z < bounds_min.z || point.z > bounds_max.z
+    if point.x < bounds_min.x
+        || point.x > bounds_max.x
+        || point.y < bounds_min.y
+        || point.y > bounds_max.y
+        || point.z < bounds_min.z
+        || point.z > bounds_max.z
     {
         // Outside bounds: return distance to bounds surface
         return svo.bounds.distance_to_point(point);
@@ -103,12 +106,7 @@ pub fn svo_ray_query(
     let dir = direction.normalize();
 
     // Check if ray intersects SVO bounds at all
-    let (t_enter, t_exit) = ray_aabb_intersect(
-        origin,
-        dir,
-        svo.bounds.min(),
-        svo.bounds.max(),
-    )?;
+    let (t_enter, t_exit) = ray_aabb_intersect(origin, dir, svo.bounds.min(), svo.bounds.max())?;
 
     let t_start = t_enter.max(0.0);
     if t_start > max_distance || t_start >= t_exit {
@@ -173,7 +171,14 @@ fn query_descent_with_depth(
     if let Some(child_idx) = node.child_index(octant) {
         let child_c = child_center(center, half_size, octant);
         let child_half = half_size * 0.5;
-        query_descent_with_depth(svo, child_idx as usize, child_c, child_half, point, depth + 1)
+        query_descent_with_depth(
+            svo,
+            child_idx as usize,
+            child_c,
+            child_half,
+            point,
+            depth + 1,
+        )
     } else {
         (node.distance, depth)
     }
@@ -188,11 +193,11 @@ fn estimate_svo_normal(
 ) -> Vec3 {
     let e = 0.002;
     let dx = query_descent(svo, 0, center, half_size, point + Vec3::new(e, 0.0, 0.0))
-           - query_descent(svo, 0, center, half_size, point - Vec3::new(e, 0.0, 0.0));
+        - query_descent(svo, 0, center, half_size, point - Vec3::new(e, 0.0, 0.0));
     let dy = query_descent(svo, 0, center, half_size, point + Vec3::new(0.0, e, 0.0))
-           - query_descent(svo, 0, center, half_size, point - Vec3::new(0.0, e, 0.0));
+        - query_descent(svo, 0, center, half_size, point - Vec3::new(0.0, e, 0.0));
     let dz = query_descent(svo, 0, center, half_size, point + Vec3::new(0.0, 0.0, e))
-           - query_descent(svo, 0, center, half_size, point - Vec3::new(0.0, 0.0, e));
+        - query_descent(svo, 0, center, half_size, point - Vec3::new(0.0, 0.0, e));
 
     Vec3::new(dx, dy, dz).normalize_or_zero()
 }
@@ -262,9 +267,21 @@ fn ray_aabb_intersect(
     aabb_max: Vec3,
 ) -> Option<(f32, f32)> {
     let inv_dir = Vec3::new(
-        if dir.x.abs() > 1e-10 { 1.0 / dir.x } else { f32::MAX * dir.x.signum() },
-        if dir.y.abs() > 1e-10 { 1.0 / dir.y } else { f32::MAX * dir.y.signum() },
-        if dir.z.abs() > 1e-10 { 1.0 / dir.z } else { f32::MAX * dir.z.signum() },
+        if dir.x.abs() > 1e-10 {
+            1.0 / dir.x
+        } else {
+            f32::MAX * dir.x.signum()
+        },
+        if dir.y.abs() > 1e-10 {
+            1.0 / dir.y
+        } else {
+            f32::MAX * dir.y.signum()
+        },
+        if dir.z.abs() > 1e-10 {
+            1.0 / dir.z
+        } else {
+            f32::MAX * dir.z.signum()
+        },
     );
 
     let t1 = (aabb_min - origin) * inv_dir;
@@ -286,8 +303,8 @@ fn ray_aabb_intersect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::svo::SvoBuildConfig;
+    use crate::types::SdfNode;
 
     fn make_test_svo() -> SparseVoxelOctree {
         let sphere = SdfNode::sphere(1.0);
@@ -332,8 +349,11 @@ mod tests {
 
         if let Some(h) = hit {
             // Should hit sphere surface around x=-1
-            assert!((h.distance - 4.0).abs() < 0.5,
-                "Hit distance should be ~4.0, got {}", h.distance);
+            assert!(
+                (h.distance - 4.0).abs() < 0.5,
+                "Hit distance should be ~4.0, got {}",
+                h.distance
+            );
             assert!(h.position.x < 0.0, "Hit should be on -X side");
         }
         // Note: hit may be None if SVO resolution is too coarse

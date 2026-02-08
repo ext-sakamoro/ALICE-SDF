@@ -137,11 +137,7 @@ pub struct IrradianceGrid {
 
 impl IrradianceGrid {
     /// Create an empty grid with evenly spaced probes
-    pub fn new(
-        grid_size: [u32; 3],
-        bounds_min: Vec3,
-        bounds_max: Vec3,
-    ) -> Self {
+    pub fn new(grid_size: [u32; 3], bounds_min: Vec3, bounds_max: Vec3) -> Self {
         let total = (grid_size[0] * grid_size[1] * grid_size[2]) as usize;
         let mut probes = Vec::with_capacity(total);
 
@@ -155,11 +151,12 @@ impl IrradianceGrid {
         for z in 0..grid_size[2] {
             for y in 0..grid_size[1] {
                 for x in 0..grid_size[0] {
-                    let pos = bounds_min + Vec3::new(
-                        (x as f32 + 0.5) * step.x,
-                        (y as f32 + 0.5) * step.y,
-                        (z as f32 + 0.5) * step.z,
-                    );
+                    let pos = bounds_min
+                        + Vec3::new(
+                            (x as f32 + 0.5) * step.x,
+                            (y as f32 + 0.5) * step.y,
+                            (z as f32 + 0.5) * step.z,
+                        );
                     probes.push(IrradianceProbe {
                         position: pos,
                         ..Default::default()
@@ -197,7 +194,8 @@ impl IrradianceGrid {
 
         // Trilinear interpolation of 8 surrounding probes
         let eval = |x: u32, y: u32, z: u32| -> Vec3 {
-            let idx = (x + y * self.grid_size[0] + z * self.grid_size[0] * self.grid_size[1]) as usize;
+            let idx =
+                (x + y * self.grid_size[0] + z * self.grid_size[0] * self.grid_size[1]) as usize;
             if idx < self.probes.len() {
                 self.probes[idx].evaluate(normal)
             } else {
@@ -259,7 +257,11 @@ mod tests {
 
         // Evaluating in the same direction should give a positive value
         let val = sh.evaluate(dir);
-        assert!(val > 0.0, "SH eval in projected dir should be positive, got {}", val);
+        assert!(
+            val > 0.0,
+            "SH eval in projected dir should be positive, got {}",
+            val
+        );
 
         // Evaluating in opposite direction should be lower
         let val_neg = sh.evaluate(Vec3::NEG_Y);
@@ -290,11 +292,7 @@ mod tests {
 
     #[test]
     fn test_grid_new() {
-        let grid = IrradianceGrid::new(
-            [4, 4, 4],
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-        );
+        let grid = IrradianceGrid::new([4, 4, 4], Vec3::splat(-2.0), Vec3::splat(2.0));
 
         assert_eq!(grid.probe_count(), 64);
         assert!(grid.memory_bytes() > 0);
@@ -302,11 +300,7 @@ mod tests {
 
     #[test]
     fn test_grid_probe_positions() {
-        let grid = IrradianceGrid::new(
-            [2, 2, 2],
-            Vec3::ZERO,
-            Vec3::splat(4.0),
-        );
+        let grid = IrradianceGrid::new([2, 2, 2], Vec3::ZERO, Vec3::splat(4.0));
 
         // First probe should be near (1, 1, 1) (center of first cell)
         let p = grid.get_probe(0, 0, 0).unwrap();
@@ -319,11 +313,7 @@ mod tests {
 
     #[test]
     fn test_grid_sample_uniform() {
-        let mut grid = IrradianceGrid::new(
-            [2, 2, 2],
-            Vec3::ZERO,
-            Vec3::splat(4.0),
-        );
+        let mut grid = IrradianceGrid::new([2, 2, 2], Vec3::ZERO, Vec3::splat(4.0));
 
         // Set all probes to constant red light from above
         for probe in &mut grid.probes {
@@ -337,11 +327,7 @@ mod tests {
 
     #[test]
     fn test_grid_sample_interpolated() {
-        let mut grid = IrradianceGrid::new(
-            [2, 1, 1],
-            Vec3::ZERO,
-            Vec3::new(4.0, 1.0, 1.0),
-        );
+        let mut grid = IrradianceGrid::new([2, 1, 1], Vec3::ZERO, Vec3::new(4.0, 1.0, 1.0));
 
         // Left probe: red, right probe: blue
         grid.probes[0].add_sample(Vec3::Y, Vec3::new(2.0, 0.0, 0.0));

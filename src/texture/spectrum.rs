@@ -48,7 +48,8 @@ pub fn analyze_frequencies(
             for k in 1..max_coeffs.min(width) {
                 let mut sum = 0.0f64;
                 for n in 0..width {
-                    let angle = std::f64::consts::PI * (2.0 * n as f64 + 1.0) * k as f64 / (2.0 * width as f64);
+                    let angle = std::f64::consts::PI * (2.0 * n as f64 + 1.0) * k as f64
+                        / (2.0 * width as f64);
                     sum += (row[n] as f64 - mean) * angle.cos();
                 }
                 let coeff = sum / width as f64;
@@ -74,7 +75,8 @@ pub fn analyze_frequencies(
             for k in 1..max_coeffs.min(height) {
                 let mut sum = 0.0f64;
                 for n in 0..height {
-                    let angle = std::f64::consts::PI * (2.0 * n as f64 + 1.0) * k as f64 / (2.0 * height as f64);
+                    let angle = std::f64::consts::PI * (2.0 * n as f64 + 1.0) * k as f64
+                        / (2.0 * height as f64);
                     sum += (data[n * width + x] as f64 - mean) * angle.cos();
                 }
                 let coeff = sum / height as f64;
@@ -137,7 +139,10 @@ mod tests {
         assert!(!bands.is_empty());
         // DCT-II coefficient k=8 corresponds to 4 full cycles in 64 pixels
         // (basis cos(π(2n+1)k/2N) has period 2N/k = 128/8 = 16 pixels = 4 cycles)
-        assert!(bands[0].frequency >= 7.0 && bands[0].frequency <= 9.0,
-            "Expected freq ~8 (DCT-II k for 4 cycles), got {}", bands[0].frequency);
+        assert!(
+            bands[0].frequency >= 7.0 && bands[0].frequency <= 9.0,
+            "Expected freq ~8 (DCT-II k for 4 cycles), got {}",
+            bands[0].frequency
+        );
     }
 }

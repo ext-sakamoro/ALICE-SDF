@@ -27,7 +27,7 @@
 
 use glam::Vec3;
 
-use super::{SvoNode, SparseVoxelOctree};
+use super::{SparseVoxelOctree, SvoNode};
 use crate::compiled::AabbPacked;
 
 /// A spatial chunk of the SVO
@@ -240,10 +240,13 @@ impl SvoStreamingCache {
 
         self.access_counter += 1;
         self.memory_used += chunk_mem;
-        self.entries.insert(chunk_id, CacheEntry {
-            chunk,
-            last_access: self.access_counter,
-        });
+        self.entries.insert(
+            chunk_id,
+            CacheEntry {
+                chunk,
+                last_access: self.access_counter,
+            },
+        );
     }
 
     /// Check if eviction is needed
@@ -325,10 +328,7 @@ impl SvoStreamingCache {
 ///
 /// Each chunk contains the subtree rooted at the given depth.
 /// The top-level nodes (above split_depth) are stored in a "root chunk".
-pub fn split_into_chunks(
-    svo: &SparseVoxelOctree,
-    split_depth: u32,
-) -> Vec<SvoChunk> {
+pub fn split_into_chunks(svo: &SparseVoxelOctree, split_depth: u32) -> Vec<SvoChunk> {
     if svo.nodes.is_empty() {
         return Vec::new();
     }
@@ -396,12 +396,15 @@ pub fn split_into_chunks(
 
     // Insert root chunk at the beginning
     if !root_nodes.is_empty() {
-        chunks.insert(0, SvoChunk::new(
-            u32::MAX, // Special ID for root chunk
-            root_nodes,
-            svo.bounds,
+        chunks.insert(
             0,
-        ));
+            SvoChunk::new(
+                u32::MAX, // Special ID for root chunk
+                root_nodes,
+                svo.bounds,
+                0,
+            ),
+        );
     }
 
     chunks
@@ -467,8 +470,8 @@ fn extract_subtree(svo: &SparseVoxelOctree, root_idx: usize) -> Vec<SvoNode> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::svo::SvoBuildConfig;
+    use crate::types::SdfNode;
 
     fn make_test_svo() -> SparseVoxelOctree {
         let sphere = SdfNode::sphere(1.0);
@@ -526,7 +529,10 @@ mod tests {
         let chunk2 = SvoChunk::new(2, vec![SvoNode::default()], AabbPacked::empty(), 0);
         cache.insert(chunk2);
 
-        assert!(cache.get(0).is_some(), "Chunk 0 was recently accessed, should still be cached");
+        assert!(
+            cache.get(0).is_some(),
+            "Chunk 0 was recently accessed, should still be cached"
+        );
         assert!(cache.get(1).is_none(), "Chunk 1 should have been evicted");
         assert!(cache.get(2).is_some());
     }
@@ -588,7 +594,10 @@ mod tests {
         }
 
         // Should have evicted some chunks to stay under 128 bytes
-        assert!(cache.memory_used() <= 128 + 32, "Memory should be near budget");
+        assert!(
+            cache.memory_used() <= 128 + 32,
+            "Memory should be near budget"
+        );
     }
 
     #[test]
@@ -596,7 +605,12 @@ mod tests {
         let mut cache = SvoStreamingCache::new(4);
 
         for i in 0..3 {
-            cache.insert(SvoChunk::new(i, vec![SvoNode::default()], AabbPacked::empty(), 0));
+            cache.insert(SvoChunk::new(
+                i,
+                vec![SvoNode::default()],
+                AabbPacked::empty(),
+                0,
+            ));
         }
 
         cache.clear();

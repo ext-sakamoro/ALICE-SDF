@@ -807,10 +807,7 @@ pub enum SdfNode {
     },
 
     /// XOR (symmetric difference)
-    XOR {
-        a: Arc<SdfNode>,
-        b: Arc<SdfNode>,
-    },
+    XOR { a: Arc<SdfNode>, b: Arc<SdfNode> },
 
     /// Morph (linear interpolation between two shapes)
     Morph {
@@ -1112,55 +1109,131 @@ impl SdfNode {
     pub fn category(&self) -> SdfCategory {
         match self {
             // === Primitives ===
-            Self::Sphere { .. } | Self::Box3d { .. } | Self::Cylinder { .. } |
-            Self::Torus { .. } | Self::Plane { .. } | Self::Capsule { .. } |
-            Self::Cone { .. } | Self::Ellipsoid { .. } | Self::RoundedCone { .. } |
-            Self::Pyramid { .. } | Self::Octahedron { .. } | Self::HexPrism { .. } |
-            Self::Link { .. } | Self::Triangle { .. } | Self::Bezier { .. } |
-            Self::RoundedBox { .. } | Self::CappedCone { .. } | Self::CappedTorus { .. } |
-            Self::RoundedCylinder { .. } | Self::TriangularPrism { .. } |
-            Self::CutSphere { .. } | Self::CutHollowSphere { .. } |
-            Self::DeathStar { .. } | Self::SolidAngle { .. } | Self::Rhombus { .. } |
-            Self::Horseshoe { .. } | Self::Vesica { .. } | Self::InfiniteCylinder { .. } |
-            Self::InfiniteCone { .. } | Self::Gyroid { .. } | Self::Heart { .. } |
-            Self::Tube { .. } | Self::Barrel { .. } | Self::Diamond { .. } |
-            Self::ChamferedCube { .. } | Self::SchwarzP { .. } | Self::Superellipsoid { .. } |
-            Self::RoundedX { .. } | Self::Pie { .. } | Self::Trapezoid { .. } |
-            Self::Parallelogram { .. } | Self::Tunnel { .. } | Self::UnevenCapsule { .. } |
-            Self::Egg { .. } | Self::ArcShape { .. } | Self::Moon { .. } |
-            Self::CrossShape { .. } | Self::BlobbyCross { .. } |
-            Self::ParabolaSegment { .. } | Self::RegularPolygon { .. } |
-            Self::StarPolygon { .. } | Self::Stairs { .. } | Self::Helix { .. } |
-            Self::Tetrahedron { .. } | Self::Dodecahedron { .. } | Self::Icosahedron { .. } |
-            Self::TruncatedOctahedron { .. } | Self::TruncatedIcosahedron { .. } |
-            Self::BoxFrame { .. } | Self::DiamondSurface { .. } | Self::Neovius { .. } |
-            Self::Lidinoid { .. } | Self::IWP { .. } | Self::FRD { .. } |
-            Self::FischerKochS { .. } | Self::PMY { .. } |
-            Self::Circle2D { .. } | Self::Rect2D { .. } | Self::Segment2D { .. } |
-            Self::Polygon2D { .. } | Self::RoundedRect2D { .. } | Self::Annular2D { .. } => SdfCategory::Primitive,
+            Self::Sphere { .. }
+            | Self::Box3d { .. }
+            | Self::Cylinder { .. }
+            | Self::Torus { .. }
+            | Self::Plane { .. }
+            | Self::Capsule { .. }
+            | Self::Cone { .. }
+            | Self::Ellipsoid { .. }
+            | Self::RoundedCone { .. }
+            | Self::Pyramid { .. }
+            | Self::Octahedron { .. }
+            | Self::HexPrism { .. }
+            | Self::Link { .. }
+            | Self::Triangle { .. }
+            | Self::Bezier { .. }
+            | Self::RoundedBox { .. }
+            | Self::CappedCone { .. }
+            | Self::CappedTorus { .. }
+            | Self::RoundedCylinder { .. }
+            | Self::TriangularPrism { .. }
+            | Self::CutSphere { .. }
+            | Self::CutHollowSphere { .. }
+            | Self::DeathStar { .. }
+            | Self::SolidAngle { .. }
+            | Self::Rhombus { .. }
+            | Self::Horseshoe { .. }
+            | Self::Vesica { .. }
+            | Self::InfiniteCylinder { .. }
+            | Self::InfiniteCone { .. }
+            | Self::Gyroid { .. }
+            | Self::Heart { .. }
+            | Self::Tube { .. }
+            | Self::Barrel { .. }
+            | Self::Diamond { .. }
+            | Self::ChamferedCube { .. }
+            | Self::SchwarzP { .. }
+            | Self::Superellipsoid { .. }
+            | Self::RoundedX { .. }
+            | Self::Pie { .. }
+            | Self::Trapezoid { .. }
+            | Self::Parallelogram { .. }
+            | Self::Tunnel { .. }
+            | Self::UnevenCapsule { .. }
+            | Self::Egg { .. }
+            | Self::ArcShape { .. }
+            | Self::Moon { .. }
+            | Self::CrossShape { .. }
+            | Self::BlobbyCross { .. }
+            | Self::ParabolaSegment { .. }
+            | Self::RegularPolygon { .. }
+            | Self::StarPolygon { .. }
+            | Self::Stairs { .. }
+            | Self::Helix { .. }
+            | Self::Tetrahedron { .. }
+            | Self::Dodecahedron { .. }
+            | Self::Icosahedron { .. }
+            | Self::TruncatedOctahedron { .. }
+            | Self::TruncatedIcosahedron { .. }
+            | Self::BoxFrame { .. }
+            | Self::DiamondSurface { .. }
+            | Self::Neovius { .. }
+            | Self::Lidinoid { .. }
+            | Self::IWP { .. }
+            | Self::FRD { .. }
+            | Self::FischerKochS { .. }
+            | Self::PMY { .. }
+            | Self::Circle2D { .. }
+            | Self::Rect2D { .. }
+            | Self::Segment2D { .. }
+            | Self::Polygon2D { .. }
+            | Self::RoundedRect2D { .. }
+            | Self::Annular2D { .. } => SdfCategory::Primitive,
 
             // === Operations ===
-            Self::Union { .. } | Self::Intersection { .. } | Self::Subtraction { .. } |
-            Self::SmoothUnion { .. } | Self::SmoothIntersection { .. } | Self::SmoothSubtraction { .. } |
-            Self::ChamferUnion { .. } | Self::ChamferIntersection { .. } | Self::ChamferSubtraction { .. } |
-            Self::StairsUnion { .. } | Self::StairsIntersection { .. } | Self::StairsSubtraction { .. } |
-            Self::XOR { .. } | Self::Morph { .. } |
-            Self::ColumnsUnion { .. } | Self::ColumnsIntersection { .. } | Self::ColumnsSubtraction { .. } |
-            Self::Pipe { .. } | Self::Engrave { .. } | Self::Groove { .. } | Self::Tongue { .. } |
-            Self::ExpSmoothUnion { .. } | Self::ExpSmoothIntersection { .. } | Self::ExpSmoothSubtraction { .. } => SdfCategory::Operation,
+            Self::Union { .. }
+            | Self::Intersection { .. }
+            | Self::Subtraction { .. }
+            | Self::SmoothUnion { .. }
+            | Self::SmoothIntersection { .. }
+            | Self::SmoothSubtraction { .. }
+            | Self::ChamferUnion { .. }
+            | Self::ChamferIntersection { .. }
+            | Self::ChamferSubtraction { .. }
+            | Self::StairsUnion { .. }
+            | Self::StairsIntersection { .. }
+            | Self::StairsSubtraction { .. }
+            | Self::XOR { .. }
+            | Self::Morph { .. }
+            | Self::ColumnsUnion { .. }
+            | Self::ColumnsIntersection { .. }
+            | Self::ColumnsSubtraction { .. }
+            | Self::Pipe { .. }
+            | Self::Engrave { .. }
+            | Self::Groove { .. }
+            | Self::Tongue { .. }
+            | Self::ExpSmoothUnion { .. }
+            | Self::ExpSmoothIntersection { .. }
+            | Self::ExpSmoothSubtraction { .. } => SdfCategory::Operation,
 
             // === Transforms ===
-            Self::Translate { .. } | Self::Rotate { .. } |
-            Self::Scale { .. } | Self::ScaleNonUniform { .. } => SdfCategory::Transform,
+            Self::Translate { .. }
+            | Self::Rotate { .. }
+            | Self::Scale { .. }
+            | Self::ScaleNonUniform { .. } => SdfCategory::Transform,
 
             // === Modifiers ===
-            Self::Twist { .. } | Self::Bend { .. } | Self::RepeatInfinite { .. } |
-            Self::RepeatFinite { .. } | Self::Noise { .. } | Self::Round { .. } |
-            Self::Onion { .. } | Self::Elongate { .. } | Self::Mirror { .. } |
-            Self::Revolution { .. } | Self::Extrude { .. } | Self::SweepBezier { .. } |
-            Self::Taper { .. } | Self::Displacement { .. } | Self::PolarRepeat { .. } |
-            Self::OctantMirror { .. } | Self::Shear { .. } | Self::Animated { .. } |
-            Self::WithMaterial { .. } => SdfCategory::Modifier,
+            Self::Twist { .. }
+            | Self::Bend { .. }
+            | Self::RepeatInfinite { .. }
+            | Self::RepeatFinite { .. }
+            | Self::Noise { .. }
+            | Self::Round { .. }
+            | Self::Onion { .. }
+            | Self::Elongate { .. }
+            | Self::Mirror { .. }
+            | Self::Revolution { .. }
+            | Self::Extrude { .. }
+            | Self::SweepBezier { .. }
+            | Self::Taper { .. }
+            | Self::Displacement { .. }
+            | Self::PolarRepeat { .. }
+            | Self::OctantMirror { .. }
+            | Self::Shear { .. }
+            | Self::Animated { .. }
+            | Self::WithMaterial { .. } => SdfCategory::Modifier,
         }
     }
 
@@ -1555,47 +1628,88 @@ impl SdfNode {
 
     /// Create an arc shape (thick ring sector)
     pub fn arc_shape(aperture: f32, radius: f32, thickness: f32, height: f32) -> Self {
-        SdfNode::ArcShape { aperture, radius, thickness, half_height: height * 0.5 }
+        SdfNode::ArcShape {
+            aperture,
+            radius,
+            thickness,
+            half_height: height * 0.5,
+        }
     }
 
     /// Create a moon (crescent) shape
     pub fn moon(d: f32, ra: f32, rb: f32, height: f32) -> Self {
-        SdfNode::Moon { d, ra, rb, half_height: height * 0.5 }
+        SdfNode::Moon {
+            d,
+            ra,
+            rb,
+            half_height: height * 0.5,
+        }
     }
 
     /// Create a cross (plus) shape
     pub fn cross_shape(length: f32, thickness: f32, round_radius: f32, height: f32) -> Self {
-        SdfNode::CrossShape { length, thickness, round_radius, half_height: height * 0.5 }
+        SdfNode::CrossShape {
+            length,
+            thickness,
+            round_radius,
+            half_height: height * 0.5,
+        }
     }
 
     /// Create a blobby cross (organic) shape
     pub fn blobby_cross(size: f32, height: f32) -> Self {
-        SdfNode::BlobbyCross { size, half_height: height * 0.5 }
+        SdfNode::BlobbyCross {
+            size,
+            half_height: height * 0.5,
+        }
     }
 
     /// Create a parabola segment
     pub fn parabola_segment(width: f32, para_height: f32, depth: f32) -> Self {
-        SdfNode::ParabolaSegment { width, para_height, half_depth: depth * 0.5 }
+        SdfNode::ParabolaSegment {
+            width,
+            para_height,
+            half_depth: depth * 0.5,
+        }
     }
 
     /// Create a regular N-sided polygon prism
     pub fn regular_polygon(radius: f32, n_sides: u32, height: f32) -> Self {
-        SdfNode::RegularPolygon { radius, n_sides: n_sides as f32, half_height: height * 0.5 }
+        SdfNode::RegularPolygon {
+            radius,
+            n_sides: n_sides as f32,
+            half_height: height * 0.5,
+        }
     }
 
     /// Create a star polygon prism
     pub fn star_polygon(radius: f32, n_points: u32, m: f32, height: f32) -> Self {
-        SdfNode::StarPolygon { radius, n_points: n_points as f32, m, half_height: height * 0.5 }
+        SdfNode::StarPolygon {
+            radius,
+            n_points: n_points as f32,
+            m,
+            half_height: height * 0.5,
+        }
     }
 
     /// Create a staircase shape
     pub fn stairs(step_width: f32, step_height: f32, n_steps: u32, depth: f32) -> Self {
-        SdfNode::Stairs { step_width, step_height, n_steps: n_steps as f32, half_depth: depth * 0.5 }
+        SdfNode::Stairs {
+            step_width,
+            step_height,
+            n_steps: n_steps as f32,
+            half_depth: depth * 0.5,
+        }
     }
 
     /// Create a helix (spiral tube)
     pub fn helix(major_r: f32, minor_r: f32, pitch: f32, height: f32) -> Self {
-        SdfNode::Helix { major_r, minor_r, pitch, half_height: height * 0.5 }
+        SdfNode::Helix {
+            major_r,
+            minor_r,
+            pitch,
+            half_height: height * 0.5,
+        }
     }
 
     /// Create a regular tetrahedron
@@ -1681,37 +1795,66 @@ impl SdfNode {
     /// Create a 2D circle extruded along Z
     #[inline]
     pub fn circle_2d(radius: f32, half_height: f32) -> Self {
-        SdfNode::Circle2D { radius, half_height }
+        SdfNode::Circle2D {
+            radius,
+            half_height,
+        }
     }
 
     /// Create a 2D rectangle extruded along Z
     #[inline]
     pub fn rect_2d(half_w: f32, half_h: f32, half_height: f32) -> Self {
-        SdfNode::Rect2D { half_extents: Vec2::new(half_w, half_h), half_height }
+        SdfNode::Rect2D {
+            half_extents: Vec2::new(half_w, half_h),
+            half_height,
+        }
     }
 
     /// Create a 2D line segment extruded along Z
     #[inline]
-    pub fn segment_2d(ax: f32, ay: f32, bx: f32, by: f32, thickness: f32, half_height: f32) -> Self {
-        SdfNode::Segment2D { a: Vec2::new(ax, ay), b: Vec2::new(bx, by), thickness, half_height }
+    pub fn segment_2d(
+        ax: f32,
+        ay: f32,
+        bx: f32,
+        by: f32,
+        thickness: f32,
+        half_height: f32,
+    ) -> Self {
+        SdfNode::Segment2D {
+            a: Vec2::new(ax, ay),
+            b: Vec2::new(bx, by),
+            thickness,
+            half_height,
+        }
     }
 
     /// Create a 2D polygon extruded along Z
     #[inline]
     pub fn polygon_2d(vertices: Vec<Vec2>, half_height: f32) -> Self {
-        SdfNode::Polygon2D { vertices, half_height }
+        SdfNode::Polygon2D {
+            vertices,
+            half_height,
+        }
     }
 
     /// Create a 2D rounded rectangle extruded along Z
     #[inline]
     pub fn rounded_rect_2d(half_w: f32, half_h: f32, round_radius: f32, half_height: f32) -> Self {
-        SdfNode::RoundedRect2D { half_extents: Vec2::new(half_w, half_h), round_radius, half_height }
+        SdfNode::RoundedRect2D {
+            half_extents: Vec2::new(half_w, half_h),
+            round_radius,
+            half_height,
+        }
     }
 
     /// Create a 2D annular (ring) shape extruded along Z
     #[inline]
     pub fn annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
-        SdfNode::Annular2D { outer_radius, thickness, half_height }
+        SdfNode::Annular2D {
+            outer_radius,
+            thickness,
+            half_height,
+        }
     }
 
     // === Operation methods ===
@@ -1839,73 +1982,125 @@ impl SdfNode {
     /// XOR (symmetric difference) with another shape
     #[inline]
     pub fn xor(self, other: SdfNode) -> Self {
-        SdfNode::XOR { a: Arc::new(self), b: Arc::new(other) }
+        SdfNode::XOR {
+            a: Arc::new(self),
+            b: Arc::new(other),
+        }
     }
 
     /// Morph with another shape
     #[inline]
     pub fn morph(self, other: SdfNode, t: f32) -> Self {
-        SdfNode::Morph { a: Arc::new(self), b: Arc::new(other), t }
+        SdfNode::Morph {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            t,
+        }
     }
 
     /// Columns union with another shape
     #[inline]
     pub fn columns_union(self, other: SdfNode, r: f32, n: f32) -> Self {
-        SdfNode::ColumnsUnion { a: Arc::new(self), b: Arc::new(other), r, n }
+        SdfNode::ColumnsUnion {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+            n,
+        }
     }
 
     /// Columns intersection with another shape
     #[inline]
     pub fn columns_intersection(self, other: SdfNode, r: f32, n: f32) -> Self {
-        SdfNode::ColumnsIntersection { a: Arc::new(self), b: Arc::new(other), r, n }
+        SdfNode::ColumnsIntersection {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+            n,
+        }
     }
 
     /// Columns subtraction of another shape
     #[inline]
     pub fn columns_subtract(self, other: SdfNode, r: f32, n: f32) -> Self {
-        SdfNode::ColumnsSubtraction { a: Arc::new(self), b: Arc::new(other), r, n }
+        SdfNode::ColumnsSubtraction {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+            n,
+        }
     }
 
     /// Pipe operation with another shape
     #[inline]
     pub fn pipe(self, other: SdfNode, r: f32) -> Self {
-        SdfNode::Pipe { a: Arc::new(self), b: Arc::new(other), r }
+        SdfNode::Pipe {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+        }
     }
 
     /// Engrave another shape into this one
     #[inline]
     pub fn engrave(self, other: SdfNode, r: f32) -> Self {
-        SdfNode::Engrave { a: Arc::new(self), b: Arc::new(other), r }
+        SdfNode::Engrave {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            r,
+        }
     }
 
     /// Cut a groove of another shape into this one
     #[inline]
     pub fn groove(self, other: SdfNode, ra: f32, rb: f32) -> Self {
-        SdfNode::Groove { a: Arc::new(self), b: Arc::new(other), ra, rb }
+        SdfNode::Groove {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            ra,
+            rb,
+        }
     }
 
     /// Add a tongue protrusion of another shape
     #[inline]
     pub fn tongue(self, other: SdfNode, ra: f32, rb: f32) -> Self {
-        SdfNode::Tongue { a: Arc::new(self), b: Arc::new(other), ra, rb }
+        SdfNode::Tongue {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            ra,
+            rb,
+        }
     }
 
     /// Exponential smooth union with another shape
     #[inline]
     pub fn exp_smooth_union(self, other: SdfNode, k: f32) -> Self {
-        SdfNode::ExpSmoothUnion { a: Arc::new(self), b: Arc::new(other), k }
+        SdfNode::ExpSmoothUnion {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            k,
+        }
     }
 
     /// Exponential smooth intersection with another shape
     #[inline]
     pub fn exp_smooth_intersection(self, other: SdfNode, k: f32) -> Self {
-        SdfNode::ExpSmoothIntersection { a: Arc::new(self), b: Arc::new(other), k }
+        SdfNode::ExpSmoothIntersection {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            k,
+        }
     }
 
     /// Exponential smooth subtraction of another shape
     #[inline]
     pub fn exp_smooth_subtract(self, other: SdfNode, k: f32) -> Self {
-        SdfNode::ExpSmoothSubtraction { a: Arc::new(self), b: Arc::new(other), k }
+        SdfNode::ExpSmoothSubtraction {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            k,
+        }
     }
 
     // === Transform methods ===

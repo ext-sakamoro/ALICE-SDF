@@ -5,8 +5,8 @@
 //!
 //! Author: Moroya Sakamoto
 
-use glam::Vec3;
 use crate::types::SdfNode;
+use glam::Vec3;
 
 /// Configuration for cave generation
 #[derive(Debug, Clone)]
@@ -77,8 +77,7 @@ pub fn generate_cave_sdf(config: &CaveConfig) -> SdfNode {
             let radius = config.tunnel_radius * (0.5 + lcg_float(rng) * 1.0);
 
             // Create a capsule segment
-            let segment = SdfNode::sphere(radius)
-                .translate(px, py, pz);
+            let segment = SdfNode::sphere(radius).translate(px, py, pz);
             cave_parts.push(segment);
 
             px += dx;
@@ -115,7 +114,9 @@ pub fn generate_chamber(center: Vec3, radius: f32, height: f32) -> SdfNode {
 
 #[inline]
 fn lcg_next(state: u64) -> u64 {
-    state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+    state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
 }
 
 #[inline]
@@ -178,7 +179,10 @@ mod tests {
         let p = Vec3::new(5.0, -15.0, 3.0);
         let d1 = eval(&cave1, p);
         let d2 = eval(&cave2, p);
-        assert!((d1 - d2).abs() < 0.001, "Same seed should produce same cave");
+        assert!(
+            (d1 - d2).abs() < 0.001,
+            "Same seed should produce same cave"
+        );
     }
 
     #[test]

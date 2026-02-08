@@ -33,14 +33,13 @@
 //! Author: Moroya Sakamoto
 
 use super::registry::{
-    register_node, get_node, remove_node,
-    register_compiled, get_compiled, remove_compiled,
-    register_mesh, get_mesh, remove_mesh,
+    get_compiled, get_mesh, get_node, register_compiled, register_mesh, register_node,
+    remove_compiled, remove_mesh, remove_node,
 };
 use super::types::*;
-use crate::prelude::*;
-use crate::compiled::{CompiledSdf, eval_compiled, eval_compiled_batch_parallel};
 use crate::animation::AnimationParams;
+use crate::compiled::{eval_compiled, eval_compiled_batch_parallel, CompiledSdf};
+use crate::prelude::*;
 use std::ffi::{c_char, CString};
 use std::ptr;
 use std::slice;
@@ -58,7 +57,8 @@ pub extern "C" fn alice_sdf_version() -> VersionInfo {
 /// Get version string (caller must free with alice_sdf_free_string)
 #[no_mangle]
 pub extern "C" fn alice_sdf_version_string() -> *mut c_char {
-    let version = format!("ALICE-SDF v{}.{}.{} (Deep Fried)",
+    let version = format!(
+        "ALICE-SDF v{}.{}.{} (Deep Fried)",
         VersionInfo::current().major,
         VersionInfo::current().minor,
         VersionInfo::current().patch
@@ -126,23 +126,33 @@ pub extern "C" fn alice_sdf_box(hx: f32, hy: f32, hz: f32) -> SdfHandle {
 /// Create a cylinder SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_cylinder(radius: f32, half_height: f32) -> SdfHandle {
-    let node = SdfNode::Cylinder { radius, half_height };
+    let node = SdfNode::Cylinder {
+        radius,
+        half_height,
+    };
     register_node(node)
 }
 
 /// Create a torus SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_torus(major_radius: f32, minor_radius: f32) -> SdfHandle {
-    let node = SdfNode::Torus { major_radius, minor_radius };
+    let node = SdfNode::Torus {
+        major_radius,
+        minor_radius,
+    };
     register_node(node)
 }
 
 /// Create a capsule SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_capsule(
-    ax: f32, ay: f32, az: f32,
-    bx: f32, by: f32, bz: f32,
-    radius: f32
+    ax: f32,
+    ay: f32,
+    az: f32,
+    bx: f32,
+    by: f32,
+    bz: f32,
+    radius: f32,
 ) -> SdfHandle {
     let node = SdfNode::Capsule {
         point_a: glam::Vec3::new(ax, ay, az),
@@ -165,19 +175,28 @@ pub extern "C" fn alice_sdf_plane(nx: f32, ny: f32, nz: f32, distance: f32) -> S
 /// Create a cone SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_cone(radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::Cone { radius, half_height })
+    register_node(SdfNode::Cone {
+        radius,
+        half_height,
+    })
 }
 
 /// Create an ellipsoid SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_ellipsoid(rx: f32, ry: f32, rz: f32) -> SdfHandle {
-    register_node(SdfNode::Ellipsoid { radii: glam::Vec3::new(rx, ry, rz) })
+    register_node(SdfNode::Ellipsoid {
+        radii: glam::Vec3::new(rx, ry, rz),
+    })
 }
 
 /// Create a rounded cone SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_rounded_cone(r1: f32, r2: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::RoundedCone { r1, r2, half_height })
+    register_node(SdfNode::RoundedCone {
+        r1,
+        r2,
+        half_height,
+    })
 }
 
 /// Create a pyramid SDF
@@ -195,21 +214,34 @@ pub extern "C" fn alice_sdf_octahedron(size: f32) -> SdfHandle {
 /// Create a hexagonal prism SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_hex_prism(hex_radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::HexPrism { hex_radius, half_height })
+    register_node(SdfNode::HexPrism {
+        hex_radius,
+        half_height,
+    })
 }
 
 /// Create a chain link SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_link(half_length: f32, r1: f32, r2: f32) -> SdfHandle {
-    register_node(SdfNode::Link { half_length, r1, r2 })
+    register_node(SdfNode::Link {
+        half_length,
+        r1,
+        r2,
+    })
 }
 
 /// Create a triangle SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_triangle(
-    ax: f32, ay: f32, az: f32,
-    bx: f32, by: f32, bz: f32,
-    cx: f32, cy: f32, cz: f32,
+    ax: f32,
+    ay: f32,
+    az: f32,
+    bx: f32,
+    by: f32,
+    bz: f32,
+    cx: f32,
+    cy: f32,
+    cz: f32,
 ) -> SdfHandle {
     register_node(SdfNode::Triangle {
         point_a: glam::Vec3::new(ax, ay, az),
@@ -221,9 +253,15 @@ pub extern "C" fn alice_sdf_triangle(
 /// Create a quadratic Bezier curve tube SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_bezier(
-    ax: f32, ay: f32, az: f32,
-    bx: f32, by: f32, bz: f32,
-    cx: f32, cy: f32, cz: f32,
+    ax: f32,
+    ay: f32,
+    az: f32,
+    bx: f32,
+    by: f32,
+    bz: f32,
+    cx: f32,
+    cy: f32,
+    cz: f32,
     radius: f32,
 ) -> SdfHandle {
     register_node(SdfNode::Bezier {
@@ -246,19 +284,39 @@ pub extern "C" fn alice_sdf_rounded_box(hx: f32, hy: f32, hz: f32, round_radius:
 /// Create a capped cone (frustum) SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_capped_cone(half_height: f32, r1: f32, r2: f32) -> SdfHandle {
-    register_node(SdfNode::CappedCone { half_height, r1, r2 })
+    register_node(SdfNode::CappedCone {
+        half_height,
+        r1,
+        r2,
+    })
 }
 
 /// Create a capped torus (arc) SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_capped_torus(major_radius: f32, minor_radius: f32, cap_angle: f32) -> SdfHandle {
-    register_node(SdfNode::CappedTorus { major_radius, minor_radius, cap_angle })
+pub extern "C" fn alice_sdf_capped_torus(
+    major_radius: f32,
+    minor_radius: f32,
+    cap_angle: f32,
+) -> SdfHandle {
+    register_node(SdfNode::CappedTorus {
+        major_radius,
+        minor_radius,
+        cap_angle,
+    })
 }
 
 /// Create a rounded cylinder SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_rounded_cylinder(radius: f32, round_radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::RoundedCylinder { radius, round_radius, half_height })
+pub extern "C" fn alice_sdf_rounded_cylinder(
+    radius: f32,
+    round_radius: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::RoundedCylinder {
+        radius,
+        round_radius,
+        half_height,
+    })
 }
 
 /// Create a triangular prism SDF
@@ -275,8 +333,16 @@ pub extern "C" fn alice_sdf_cut_sphere(radius: f32, cut_height: f32) -> SdfHandl
 
 /// Create a cut hollow sphere SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_cut_hollow_sphere(radius: f32, cut_height: f32, thickness: f32) -> SdfHandle {
-    register_node(SdfNode::CutHollowSphere { radius, cut_height, thickness })
+pub extern "C" fn alice_sdf_cut_hollow_sphere(
+    radius: f32,
+    cut_height: f32,
+    thickness: f32,
+) -> SdfHandle {
+    register_node(SdfNode::CutHollowSphere {
+        radius,
+        cut_height,
+        thickness,
+    })
 }
 
 /// Create a Death Star SDF
@@ -293,14 +359,36 @@ pub extern "C" fn alice_sdf_solid_angle(angle: f32, radius: f32) -> SdfHandle {
 
 /// Create a rhombus SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_rhombus(la: f32, lb: f32, half_height: f32, round_radius: f32) -> SdfHandle {
-    register_node(SdfNode::Rhombus { la, lb, half_height, round_radius })
+pub extern "C" fn alice_sdf_rhombus(
+    la: f32,
+    lb: f32,
+    half_height: f32,
+    round_radius: f32,
+) -> SdfHandle {
+    register_node(SdfNode::Rhombus {
+        la,
+        lb,
+        half_height,
+        round_radius,
+    })
 }
 
 /// Create a horseshoe SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_horseshoe(angle: f32, radius: f32, half_length: f32, width: f32, thickness: f32) -> SdfHandle {
-    register_node(SdfNode::Horseshoe { angle, radius, half_length, width, thickness })
+pub extern "C" fn alice_sdf_horseshoe(
+    angle: f32,
+    radius: f32,
+    half_length: f32,
+    width: f32,
+    thickness: f32,
+) -> SdfHandle {
+    register_node(SdfNode::Horseshoe {
+        angle,
+        radius,
+        half_length,
+        width,
+        thickness,
+    })
 }
 
 /// Create a vesica SDF
@@ -336,19 +424,30 @@ pub extern "C" fn alice_sdf_heart(size: f32) -> SdfHandle {
 /// Create a tube (hollow cylinder) SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_tube(outer_radius: f32, thickness: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::Tube { outer_radius, thickness, half_height })
+    register_node(SdfNode::Tube {
+        outer_radius,
+        thickness,
+        half_height,
+    })
 }
 
 /// Create a barrel SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_barrel(radius: f32, half_height: f32, bulge: f32) -> SdfHandle {
-    register_node(SdfNode::Barrel { radius, half_height, bulge })
+    register_node(SdfNode::Barrel {
+        radius,
+        half_height,
+        bulge,
+    })
 }
 
 /// Create a diamond (bipyramid) SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_diamond(radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::Diamond { radius, half_height })
+    register_node(SdfNode::Diamond {
+        radius,
+        half_height,
+    })
 }
 
 /// Create a chamfered cube SDF
@@ -368,7 +467,13 @@ pub extern "C" fn alice_sdf_schwarz_p(scale: f32, thickness: f32) -> SdfHandle {
 
 /// Create a superellipsoid SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_superellipsoid(hx: f32, hy: f32, hz: f32, e1: f32, e2: f32) -> SdfHandle {
+pub extern "C" fn alice_sdf_superellipsoid(
+    hx: f32,
+    hy: f32,
+    hz: f32,
+    e1: f32,
+    e2: f32,
+) -> SdfHandle {
     register_node(SdfNode::Superellipsoid {
         half_extents: glam::Vec3::new(hx, hy, hz),
         e1,
@@ -378,38 +483,84 @@ pub extern "C" fn alice_sdf_superellipsoid(hx: f32, hy: f32, hz: f32, e1: f32, e
 
 /// Create a rounded X shape SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_rounded_x(width: f32, round_radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::RoundedX { width, round_radius, half_height })
+pub extern "C" fn alice_sdf_rounded_x(
+    width: f32,
+    round_radius: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::RoundedX {
+        width,
+        round_radius,
+        half_height,
+    })
 }
 
 /// Create a pie (sector) SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_pie(angle: f32, radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::Pie { angle, radius, half_height })
+    register_node(SdfNode::Pie {
+        angle,
+        radius,
+        half_height,
+    })
 }
 
 /// Create a trapezoid prism SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_trapezoid(r1: f32, r2: f32, trap_height: f32, half_depth: f32) -> SdfHandle {
-    register_node(SdfNode::Trapezoid { r1, r2, trap_height, half_depth })
+pub extern "C" fn alice_sdf_trapezoid(
+    r1: f32,
+    r2: f32,
+    trap_height: f32,
+    half_depth: f32,
+) -> SdfHandle {
+    register_node(SdfNode::Trapezoid {
+        r1,
+        r2,
+        trap_height,
+        half_depth,
+    })
 }
 
 /// Create a parallelogram prism SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_parallelogram(width: f32, para_height: f32, skew: f32, half_depth: f32) -> SdfHandle {
-    register_node(SdfNode::Parallelogram { width, para_height, skew, half_depth })
+pub extern "C" fn alice_sdf_parallelogram(
+    width: f32,
+    para_height: f32,
+    skew: f32,
+    half_depth: f32,
+) -> SdfHandle {
+    register_node(SdfNode::Parallelogram {
+        width,
+        para_height,
+        skew,
+        half_depth,
+    })
 }
 
 /// Create a tunnel SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_tunnel(width: f32, height_2d: f32, half_depth: f32) -> SdfHandle {
-    register_node(SdfNode::Tunnel { width, height_2d, half_depth })
+    register_node(SdfNode::Tunnel {
+        width,
+        height_2d,
+        half_depth,
+    })
 }
 
 /// Create an uneven capsule SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_uneven_capsule(r1: f32, r2: f32, cap_height: f32, half_depth: f32) -> SdfHandle {
-    register_node(SdfNode::UnevenCapsule { r1, r2, cap_height, half_depth })
+pub extern "C" fn alice_sdf_uneven_capsule(
+    r1: f32,
+    r2: f32,
+    cap_height: f32,
+    half_depth: f32,
+) -> SdfHandle {
+    register_node(SdfNode::UnevenCapsule {
+        r1,
+        r2,
+        cap_height,
+        half_depth,
+    })
 }
 
 /// Create an egg SDF
@@ -420,20 +571,45 @@ pub extern "C" fn alice_sdf_egg(ra: f32, rb: f32) -> SdfHandle {
 
 /// Create an arc shape SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_arc_shape(aperture: f32, radius: f32, thickness: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::ArcShape { aperture, radius, thickness, half_height })
+pub extern "C" fn alice_sdf_arc_shape(
+    aperture: f32,
+    radius: f32,
+    thickness: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::ArcShape {
+        aperture,
+        radius,
+        thickness,
+        half_height,
+    })
 }
 
 /// Create a moon (crescent) SDF
 #[no_mangle]
 pub extern "C" fn alice_sdf_moon(d: f32, ra: f32, rb: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::Moon { d, ra, rb, half_height })
+    register_node(SdfNode::Moon {
+        d,
+        ra,
+        rb,
+        half_height,
+    })
 }
 
 /// Create a cross shape SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_cross_shape(length: f32, thickness: f32, round_radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::CrossShape { length, thickness, round_radius, half_height })
+pub extern "C" fn alice_sdf_cross_shape(
+    length: f32,
+    thickness: f32,
+    round_radius: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::CrossShape {
+        length,
+        thickness,
+        round_radius,
+        half_height,
+    })
 }
 
 /// Create a blobby cross SDF
@@ -444,32 +620,78 @@ pub extern "C" fn alice_sdf_blobby_cross(size: f32, half_height: f32) -> SdfHand
 
 /// Create a parabola segment SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_parabola_segment(width: f32, para_height: f32, half_depth: f32) -> SdfHandle {
-    register_node(SdfNode::ParabolaSegment { width, para_height, half_depth })
+pub extern "C" fn alice_sdf_parabola_segment(
+    width: f32,
+    para_height: f32,
+    half_depth: f32,
+) -> SdfHandle {
+    register_node(SdfNode::ParabolaSegment {
+        width,
+        para_height,
+        half_depth,
+    })
 }
 
 /// Create a regular polygon prism SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_regular_polygon(radius: f32, n_sides: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::RegularPolygon { radius, n_sides, half_height })
+pub extern "C" fn alice_sdf_regular_polygon(
+    radius: f32,
+    n_sides: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::RegularPolygon {
+        radius,
+        n_sides,
+        half_height,
+    })
 }
 
 /// Create a star polygon prism SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_star_polygon(radius: f32, n_points: f32, m: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::StarPolygon { radius, n_points, m, half_height })
+pub extern "C" fn alice_sdf_star_polygon(
+    radius: f32,
+    n_points: f32,
+    m: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::StarPolygon {
+        radius,
+        n_points,
+        m,
+        half_height,
+    })
 }
 
 /// Create a stairs SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_stairs(step_width: f32, step_height: f32, n_steps: f32, half_depth: f32) -> SdfHandle {
-    register_node(SdfNode::Stairs { step_width, step_height, n_steps, half_depth })
+pub extern "C" fn alice_sdf_stairs(
+    step_width: f32,
+    step_height: f32,
+    n_steps: f32,
+    half_depth: f32,
+) -> SdfHandle {
+    register_node(SdfNode::Stairs {
+        step_width,
+        step_height,
+        n_steps,
+        half_depth,
+    })
 }
 
 /// Create a helix SDF
 #[no_mangle]
-pub extern "C" fn alice_sdf_helix(major_r: f32, minor_r: f32, pitch: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::Helix { major_r, minor_r, pitch, half_height })
+pub extern "C" fn alice_sdf_helix(
+    major_r: f32,
+    minor_r: f32,
+    pitch: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::Helix {
+        major_r,
+        minor_r,
+        pitch,
+        half_height,
+    })
 }
 
 /// Create a tetrahedron SDF
@@ -571,19 +793,40 @@ pub extern "C" fn alice_sdf_rect_2d(half_w: f32, half_h: f32, half_height: f32) 
 
 /// Create a 2D line segment extruded along Z
 #[no_mangle]
-pub extern "C" fn alice_sdf_segment_2d(ax: f32, ay: f32, bx: f32, by: f32, thickness: f32, half_height: f32) -> SdfHandle {
+pub extern "C" fn alice_sdf_segment_2d(
+    ax: f32,
+    ay: f32,
+    bx: f32,
+    by: f32,
+    thickness: f32,
+    half_height: f32,
+) -> SdfHandle {
     register_node(SdfNode::segment_2d(ax, ay, bx, by, thickness, half_height))
 }
 
 /// Create a 2D rounded rectangle extruded along Z
 #[no_mangle]
-pub extern "C" fn alice_sdf_rounded_rect_2d(half_w: f32, half_h: f32, round_radius: f32, half_height: f32) -> SdfHandle {
-    register_node(SdfNode::rounded_rect_2d(half_w, half_h, round_radius, half_height))
+pub extern "C" fn alice_sdf_rounded_rect_2d(
+    half_w: f32,
+    half_h: f32,
+    round_radius: f32,
+    half_height: f32,
+) -> SdfHandle {
+    register_node(SdfNode::rounded_rect_2d(
+        half_w,
+        half_h,
+        round_radius,
+        half_height,
+    ))
 }
 
 /// Create a 2D annular (ring) shape extruded along Z
 #[no_mangle]
-pub extern "C" fn alice_sdf_annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> SdfHandle {
+pub extern "C" fn alice_sdf_annular_2d(
+    outer_radius: f32,
+    thickness: f32,
+    half_height: f32,
+) -> SdfHandle {
     register_node(SdfNode::annular_2d(outer_radius, thickness, half_height))
 }
 
@@ -684,8 +927,14 @@ pub extern "C" fn alice_sdf_smooth_subtract(a: SdfHandle, b: SdfHandle, k: f32) 
 /// Chamfer union of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_chamfer_union(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().chamfer_union((*node_b).clone(), r);
     register_node(node)
 }
@@ -693,8 +942,14 @@ pub extern "C" fn alice_sdf_chamfer_union(a: SdfHandle, b: SdfHandle, r: f32) ->
 /// Chamfer intersection of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_chamfer_intersection(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().chamfer_intersection((*node_b).clone(), r);
     register_node(node)
 }
@@ -702,8 +957,14 @@ pub extern "C" fn alice_sdf_chamfer_intersection(a: SdfHandle, b: SdfHandle, r: 
 /// Chamfer subtraction of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_chamfer_subtract(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().chamfer_subtract((*node_b).clone(), r);
     register_node(node)
 }
@@ -711,26 +972,56 @@ pub extern "C" fn alice_sdf_chamfer_subtract(a: SdfHandle, b: SdfHandle, r: f32)
 /// Stairs union of two SDFs (stepped/terraced blend)
 #[no_mangle]
 pub extern "C" fn alice_sdf_stairs_union(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().stairs_union((*node_b).clone(), r, n);
     register_node(node)
 }
 
 /// Stairs intersection of two SDFs
 #[no_mangle]
-pub extern "C" fn alice_sdf_stairs_intersection(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node = (*node_a).clone().stairs_intersection((*node_b).clone(), r, n);
+pub extern "C" fn alice_sdf_stairs_intersection(
+    a: SdfHandle,
+    b: SdfHandle,
+    r: f32,
+    n: f32,
+) -> SdfHandle {
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node = (*node_a)
+        .clone()
+        .stairs_intersection((*node_b).clone(), r, n);
     register_node(node)
 }
 
 /// Stairs subtraction of two SDFs
 #[no_mangle]
-pub extern "C" fn alice_sdf_stairs_subtract(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+pub extern "C" fn alice_sdf_stairs_subtract(
+    a: SdfHandle,
+    b: SdfHandle,
+    r: f32,
+    n: f32,
+) -> SdfHandle {
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().stairs_subtract((*node_b).clone(), r, n);
     register_node(node)
 }
@@ -738,8 +1029,14 @@ pub extern "C" fn alice_sdf_stairs_subtract(a: SdfHandle, b: SdfHandle, r: f32, 
 /// XOR (symmetric difference) of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_xor(a: SdfHandle, b: SdfHandle) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().xor((*node_b).clone());
     register_node(node)
 }
@@ -747,8 +1044,14 @@ pub extern "C" fn alice_sdf_xor(a: SdfHandle, b: SdfHandle) -> SdfHandle {
 /// Morph (linear interpolation) between two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_morph(a: SdfHandle, b: SdfHandle, t: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().morph((*node_b).clone(), t);
     register_node(node)
 }
@@ -756,26 +1059,56 @@ pub extern "C" fn alice_sdf_morph(a: SdfHandle, b: SdfHandle, t: f32) -> SdfHand
 /// Columns union of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_columns_union(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().columns_union((*node_b).clone(), r, n);
     register_node(node)
 }
 
 /// Columns intersection of two SDFs
 #[no_mangle]
-pub extern "C" fn alice_sdf_columns_intersection(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node = (*node_a).clone().columns_intersection((*node_b).clone(), r, n);
+pub extern "C" fn alice_sdf_columns_intersection(
+    a: SdfHandle,
+    b: SdfHandle,
+    r: f32,
+    n: f32,
+) -> SdfHandle {
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node = (*node_a)
+        .clone()
+        .columns_intersection((*node_b).clone(), r, n);
     register_node(node)
 }
 
 /// Columns subtraction of two SDFs
 #[no_mangle]
-pub extern "C" fn alice_sdf_columns_subtract(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+pub extern "C" fn alice_sdf_columns_subtract(
+    a: SdfHandle,
+    b: SdfHandle,
+    r: f32,
+    n: f32,
+) -> SdfHandle {
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().columns_subtract((*node_b).clone(), r, n);
     register_node(node)
 }
@@ -783,8 +1116,14 @@ pub extern "C" fn alice_sdf_columns_subtract(a: SdfHandle, b: SdfHandle, r: f32,
 /// Pipe operation: cylindrical surface at intersection of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_pipe(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().pipe((*node_b).clone(), r);
     register_node(node)
 }
@@ -792,8 +1131,14 @@ pub extern "C" fn alice_sdf_pipe(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandl
 /// Engrave shape b into shape a
 #[no_mangle]
 pub extern "C" fn alice_sdf_engrave(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().engrave((*node_b).clone(), r);
     register_node(node)
 }
@@ -801,8 +1146,14 @@ pub extern "C" fn alice_sdf_engrave(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHa
 /// Groove: cut a groove of shape b into shape a
 #[no_mangle]
 pub extern "C" fn alice_sdf_groove(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().groove((*node_b).clone(), ra, rb);
     register_node(node)
 }
@@ -810,8 +1161,14 @@ pub extern "C" fn alice_sdf_groove(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32)
 /// Tongue: add a tongue protrusion of shape b to shape a
 #[no_mangle]
 pub extern "C" fn alice_sdf_tongue(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().tongue((*node_b).clone(), ra, rb);
     register_node(node)
 }
@@ -819,26 +1176,50 @@ pub extern "C" fn alice_sdf_tongue(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32)
 /// Exponential smooth union of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_exp_smooth_union(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().exp_smooth_union((*node_b).clone(), k);
     register_node(node)
 }
 
 /// Exponential smooth intersection of two SDFs
 #[no_mangle]
-pub extern "C" fn alice_sdf_exp_smooth_intersection(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node = (*node_a).clone().exp_smooth_intersection((*node_b).clone(), k);
+pub extern "C" fn alice_sdf_exp_smooth_intersection(
+    a: SdfHandle,
+    b: SdfHandle,
+    k: f32,
+) -> SdfHandle {
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node = (*node_a)
+        .clone()
+        .exp_smooth_intersection((*node_b).clone(), k);
     register_node(node)
 }
 
 /// Exponential smooth subtraction of two SDFs
 #[no_mangle]
 pub extern "C" fn alice_sdf_exp_smooth_subtract(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
-    let node_a = match get_node(a) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let node_b = match get_node(b) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let node_a = match get_node(a) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let node_b = match get_node(b) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let node = (*node_a).clone().exp_smooth_subtract((*node_b).clone(), k);
     register_node(node)
 }
@@ -860,7 +1241,13 @@ pub extern "C" fn alice_sdf_translate(node: SdfHandle, x: f32, y: f32, z: f32) -
 
 /// Rotate an SDF using quaternion
 #[no_mangle]
-pub extern "C" fn alice_sdf_rotate(node: SdfHandle, qx: f32, qy: f32, qz: f32, qw: f32) -> SdfHandle {
+pub extern "C" fn alice_sdf_rotate(
+    node: SdfHandle,
+    qx: f32,
+    qy: f32,
+    qz: f32,
+    qw: f32,
+) -> SdfHandle {
     let sdf_node = match get_node(node) {
         Some(n) => n,
         None => return SDF_HANDLE_NULL,
@@ -965,7 +1352,10 @@ pub extern "C" fn alice_sdf_repeat(node: SdfHandle, sx: f32, sy: f32, sz: f32) -
 /// Apply mirror modifier (reflects along specified axes)
 #[no_mangle]
 pub extern "C" fn alice_sdf_mirror(node: SdfHandle, mx: u8, my: u8, mz: u8) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().mirror(mx != 0, my != 0, mz != 0);
     register_node(new_node)
 }
@@ -973,7 +1363,10 @@ pub extern "C" fn alice_sdf_mirror(node: SdfHandle, mx: u8, my: u8, mz: u8) -> S
 /// Apply elongation modifier
 #[no_mangle]
 pub extern "C" fn alice_sdf_elongate(node: SdfHandle, x: f32, y: f32, z: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().elongate(x, y, z);
     register_node(new_node)
 }
@@ -981,7 +1374,10 @@ pub extern "C" fn alice_sdf_elongate(node: SdfHandle, x: f32, y: f32, z: f32) ->
 /// Apply revolution modifier (rotational symmetry around Y-axis)
 #[no_mangle]
 pub extern "C" fn alice_sdf_revolution(node: SdfHandle, offset: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().revolution(offset);
     register_node(new_node)
 }
@@ -989,7 +1385,10 @@ pub extern "C" fn alice_sdf_revolution(node: SdfHandle, offset: f32) -> SdfHandl
 /// Apply extrude modifier (creates 3D from XY cross-section along Z)
 #[no_mangle]
 pub extern "C" fn alice_sdf_extrude(node: SdfHandle, half_height: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     // The .extrude() method takes full height and halves it internally,
     // but FFI takes half_height directly, so pass double to match the method.
     let new_node = (*sdf_node).clone().extrude(half_height * 2.0);
@@ -998,24 +1397,48 @@ pub extern "C" fn alice_sdf_extrude(node: SdfHandle, half_height: f32) -> SdfHan
 
 /// Apply Perlin noise displacement
 #[no_mangle]
-pub extern "C" fn alice_sdf_noise(node: SdfHandle, amplitude: f32, frequency: f32, seed: u32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+pub extern "C" fn alice_sdf_noise(
+    node: SdfHandle,
+    amplitude: f32,
+    frequency: f32,
+    seed: u32,
+) -> SdfHandle {
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().noise(amplitude, frequency, seed);
     register_node(new_node)
 }
 
 /// Apply finite repetition
 #[no_mangle]
-pub extern "C" fn alice_sdf_repeat_finite(node: SdfHandle, cx: u32, cy: u32, cz: u32, sx: f32, sy: f32, sz: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
-    let new_node = (*sdf_node).clone().repeat_finite([cx, cy, cz], glam::Vec3::new(sx, sy, sz));
+pub extern "C" fn alice_sdf_repeat_finite(
+    node: SdfHandle,
+    cx: u32,
+    cy: u32,
+    cz: u32,
+    sx: f32,
+    sy: f32,
+    sz: f32,
+) -> SdfHandle {
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
+    let new_node = (*sdf_node)
+        .clone()
+        .repeat_finite([cx, cy, cz], glam::Vec3::new(sx, sy, sz));
     register_node(new_node)
 }
 
 /// Apply taper modifier (scale XZ by Y position)
 #[no_mangle]
 pub extern "C" fn alice_sdf_taper(node: SdfHandle, factor: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().taper(factor);
     register_node(new_node)
 }
@@ -1023,7 +1446,10 @@ pub extern "C" fn alice_sdf_taper(node: SdfHandle, factor: f32) -> SdfHandle {
 /// Apply sin-based displacement modifier
 #[no_mangle]
 pub extern "C" fn alice_sdf_displacement(node: SdfHandle, strength: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().displacement(strength);
     register_node(new_node)
 }
@@ -1031,7 +1457,10 @@ pub extern "C" fn alice_sdf_displacement(node: SdfHandle, strength: f32) -> SdfH
 /// Apply polar repetition around Y-axis
 #[no_mangle]
 pub extern "C" fn alice_sdf_polar_repeat(node: SdfHandle, count: u32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().polar_repeat(count);
     register_node(new_node)
 }
@@ -1039,7 +1468,10 @@ pub extern "C" fn alice_sdf_polar_repeat(node: SdfHandle, count: u32) -> SdfHand
 /// Apply octant mirror (48-fold symmetry)
 #[no_mangle]
 pub extern "C" fn alice_sdf_octant_mirror(node: SdfHandle) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().octant_mirror();
     register_node(new_node)
 }
@@ -1047,7 +1479,10 @@ pub extern "C" fn alice_sdf_octant_mirror(node: SdfHandle) -> SdfHandle {
 /// Shear deformation
 #[no_mangle]
 pub extern "C" fn alice_sdf_shear(node: SdfHandle, xy: f32, xz: f32, yz: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().shear(xy, xz, yz);
     register_node(new_node)
 }
@@ -1055,7 +1490,10 @@ pub extern "C" fn alice_sdf_shear(node: SdfHandle, xy: f32, xz: f32, yz: f32) ->
 /// Apply time-based animation
 #[no_mangle]
 pub extern "C" fn alice_sdf_animated(node: SdfHandle, speed: f32, amplitude: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().animated(speed, amplitude);
     register_node(new_node)
 }
@@ -1063,7 +1501,10 @@ pub extern "C" fn alice_sdf_animated(node: SdfHandle, speed: f32, amplitude: f32
 /// Assign a material ID to a subtree
 #[no_mangle]
 pub extern "C" fn alice_sdf_with_material(node: SdfHandle, material_id: u32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().with_material(material_id);
     register_node(new_node)
 }
@@ -1072,11 +1513,17 @@ pub extern "C" fn alice_sdf_with_material(node: SdfHandle, material_id: u32) -> 
 #[no_mangle]
 pub extern "C" fn alice_sdf_sweep_bezier(
     node: SdfHandle,
-    p0x: f32, p0z: f32,
-    p1x: f32, p1z: f32,
-    p2x: f32, p2z: f32,
+    p0x: f32,
+    p0z: f32,
+    p1x: f32,
+    p1z: f32,
+    p2x: f32,
+    p2z: f32,
 ) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().sweep_bezier(
         glam::Vec2::new(p0x, p0z),
         glam::Vec2::new(p1x, p1z),
@@ -1087,8 +1534,16 @@ pub extern "C" fn alice_sdf_sweep_bezier(
 
 /// Apply non-uniform scale modifier
 #[no_mangle]
-pub extern "C" fn alice_sdf_scale_non_uniform(node: SdfHandle, x: f32, y: f32, z: f32) -> SdfHandle {
-    let sdf_node = match get_node(node) { Some(n) => n, None => return SDF_HANDLE_NULL };
+pub extern "C" fn alice_sdf_scale_non_uniform(
+    node: SdfHandle,
+    x: f32,
+    y: f32,
+    z: f32,
+) -> SdfHandle {
+    let sdf_node = match get_node(node) {
+        Some(n) => n,
+        None => return SDF_HANDLE_NULL,
+    };
     let new_node = (*sdf_node).clone().scale_xyz(x, y, z);
     register_node(new_node)
 }
@@ -1178,12 +1633,20 @@ pub unsafe extern "C" fn alice_sdf_eval_batch(
     count: u32,
 ) -> BatchResult {
     if points.is_null() || distances.is_null() {
-        return BatchResult { count: 0, result: SdfResult::NullPointer };
+        return BatchResult {
+            count: 0,
+            result: SdfResult::NullPointer,
+        };
     }
 
     let sdf_node = match get_node(node) {
         Some(n) => n,
-        None => return BatchResult { count: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return BatchResult {
+                count: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
     let count_usize = count as usize;
@@ -1221,7 +1684,10 @@ pub unsafe extern "C" fn alice_sdf_eval_batch(
         }
     }
 
-    BatchResult { count, result: SdfResult::Ok }
+    BatchResult {
+        count,
+        result: SdfResult::Ok,
+    }
 }
 
 /// Batch evaluate compiled SDF (fastest path for AoS data)
@@ -1243,12 +1709,20 @@ pub unsafe extern "C" fn alice_sdf_eval_compiled_batch(
     count: u32,
 ) -> BatchResult {
     if points.is_null() || distances.is_null() {
-        return BatchResult { count: 0, result: SdfResult::NullPointer };
+        return BatchResult {
+            count: 0,
+            result: SdfResult::NullPointer,
+        };
     }
 
     let comp = match get_compiled(compiled) {
         Some(c) => c,
-        None => return BatchResult { count: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return BatchResult {
+                count: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
     let count_usize = count as usize;
@@ -1280,7 +1754,10 @@ pub unsafe extern "C" fn alice_sdf_eval_compiled_batch(
         }
     }
 
-    BatchResult { count, result: SdfResult::Ok }
+    BatchResult {
+        count,
+        result: SdfResult::Ok,
+    }
 }
 
 /// Batch evaluate using SoA (Structure of Arrays) layout - THE FASTEST PATH
@@ -1315,12 +1792,20 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
     count: u32,
 ) -> BatchResult {
     if x.is_null() || y.is_null() || z.is_null() || distances.is_null() {
-        return BatchResult { count: 0, result: SdfResult::NullPointer };
+        return BatchResult {
+            count: 0,
+            result: SdfResult::NullPointer,
+        };
     }
 
     let comp = match get_compiled(compiled) {
         Some(c) => c,
-        None => return BatchResult { count: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return BatchResult {
+                count: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
     let count_usize = count as usize;
@@ -1344,52 +1829,78 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
         // Parallel: split into chunks, each chunk uses SIMD internally
         const CHUNK_SIZE: usize = 4096;
 
-        dist_slice.par_chunks_mut(CHUNK_SIZE).enumerate().for_each(|(chunk_idx, chunk)| {
-            let start = chunk_idx * CHUNK_SIZE;
-            let chunk_len = chunk.len();
-            let simd_count = (chunk_len + 7) & !7;
+        dist_slice
+            .par_chunks_mut(CHUNK_SIZE)
+            .enumerate()
+            .for_each(|(chunk_idx, chunk)| {
+                let start = chunk_idx * CHUNK_SIZE;
+                let chunk_len = chunk.len();
+                let simd_count = (chunk_len + 7) & !7;
 
-            // Use SIMD for full 8-wide groups
-            let simd_iters = chunk_len / 8;
-            for s in 0..simd_iters {
-                let base = start + s * 8;
-                let local_base = s * 8;
+                // Use SIMD for full 8-wide groups
+                let simd_iters = chunk_len / 8;
+                for s in 0..simd_iters {
+                    let base = start + s * 8;
+                    let local_base = s * 8;
 
-                let vx = wide::f32x8::from([
-                    x_slice[base], x_slice[base + 1], x_slice[base + 2], x_slice[base + 3],
-                    x_slice[base + 4], x_slice[base + 5], x_slice[base + 6], x_slice[base + 7],
-                ]);
-                let vy = wide::f32x8::from([
-                    y_slice[base], y_slice[base + 1], y_slice[base + 2], y_slice[base + 3],
-                    y_slice[base + 4], y_slice[base + 5], y_slice[base + 6], y_slice[base + 7],
-                ]);
-                let vz = wide::f32x8::from([
-                    z_slice[base], z_slice[base + 1], z_slice[base + 2], z_slice[base + 3],
-                    z_slice[base + 4], z_slice[base + 5], z_slice[base + 6], z_slice[base + 7],
-                ]);
+                    let vx = wide::f32x8::from([
+                        x_slice[base],
+                        x_slice[base + 1],
+                        x_slice[base + 2],
+                        x_slice[base + 3],
+                        x_slice[base + 4],
+                        x_slice[base + 5],
+                        x_slice[base + 6],
+                        x_slice[base + 7],
+                    ]);
+                    let vy = wide::f32x8::from([
+                        y_slice[base],
+                        y_slice[base + 1],
+                        y_slice[base + 2],
+                        y_slice[base + 3],
+                        y_slice[base + 4],
+                        y_slice[base + 5],
+                        y_slice[base + 6],
+                        y_slice[base + 7],
+                    ]);
+                    let vz = wide::f32x8::from([
+                        z_slice[base],
+                        z_slice[base + 1],
+                        z_slice[base + 2],
+                        z_slice[base + 3],
+                        z_slice[base + 4],
+                        z_slice[base + 5],
+                        z_slice[base + 6],
+                        z_slice[base + 7],
+                    ]);
 
-                let p = crate::compiled::Vec3x8 { x: vx, y: vy, z: vz };
-                let distances = crate::compiled::eval_compiled_simd(&comp, p);
-                let arr: [f32; 8] = distances.into();
-                chunk[local_base..local_base + 8].copy_from_slice(&arr);
-            }
+                    let p = crate::compiled::Vec3x8 {
+                        x: vx,
+                        y: vy,
+                        z: vz,
+                    };
+                    let distances = crate::compiled::eval_compiled_simd(&comp, p);
+                    let arr: [f32; 8] = distances.into();
+                    chunk[local_base..local_base + 8].copy_from_slice(&arr);
+                }
 
-            // Handle remainder scalar
-            let remainder_start = simd_iters * 8;
-            for local_i in remainder_start..chunk_len {
-                let i = start + local_i;
-                let p = glam::Vec3::new(x_slice[i], y_slice[i], z_slice[i]);
-                chunk[local_i] = eval_compiled(&comp, p);
-            }
-        });
+                // Handle remainder scalar
+                let remainder_start = simd_iters * 8;
+                for local_i in remainder_start..chunk_len {
+                    let i = start + local_i;
+                    let p = glam::Vec3::new(x_slice[i], y_slice[i], z_slice[i]);
+                    chunk[local_i] = eval_compiled(&comp, p);
+                }
+            });
     } else {
         // Sequential: use raw SIMD path for full groups, scalar for remainder
-        crate::compiled::eval_compiled_batch_soa_raw(
-            &comp, x, y, z, distances, count_usize,
-        );
+        crate::compiled::eval_compiled_batch_soa_raw(&comp, x, y, z, distances, count_usize);
     }
 
-    BatchResult { count, result: SdfResult::Ok }
+    BatchResult {
+        count,
+        result: SdfResult::Ok,
+    }
 }
 
 // ============================================================================
@@ -1430,12 +1941,20 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
 ) -> BatchResult {
     // Null pointer checks
     if x.is_null() || y.is_null() || z.is_null() || nx.is_null() || ny.is_null() || nz.is_null() {
-        return BatchResult { count: 0, result: SdfResult::NullPointer };
+        return BatchResult {
+            count: 0,
+            result: SdfResult::NullPointer,
+        };
     }
 
     let comp = match get_compiled(compiled) {
         Some(c) => c,
-        None => return BatchResult { count: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return BatchResult {
+                count: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
     let count_usize = count as usize;
@@ -1451,8 +1970,8 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
         Some(slice::from_raw_parts_mut(dist, count_usize))
     };
 
-    use rayon::prelude::*;
     use crate::compiled::{eval_compiled_simd, eval_distance_and_gradient_simd, Vec3x8};
+    use rayon::prelude::*;
     use wide::f32x8;
 
     const EPSILON: f32 = 0.001;
@@ -1476,19 +1995,41 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
 
                 // Load 8 points from SoA arrays
                 let vx = f32x8::from([
-                    x_slice[base], x_slice[base + 1], x_slice[base + 2], x_slice[base + 3],
-                    x_slice[base + 4], x_slice[base + 5], x_slice[base + 6], x_slice[base + 7],
+                    x_slice[base],
+                    x_slice[base + 1],
+                    x_slice[base + 2],
+                    x_slice[base + 3],
+                    x_slice[base + 4],
+                    x_slice[base + 5],
+                    x_slice[base + 6],
+                    x_slice[base + 7],
                 ]);
                 let vy = f32x8::from([
-                    y_slice[base], y_slice[base + 1], y_slice[base + 2], y_slice[base + 3],
-                    y_slice[base + 4], y_slice[base + 5], y_slice[base + 6], y_slice[base + 7],
+                    y_slice[base],
+                    y_slice[base + 1],
+                    y_slice[base + 2],
+                    y_slice[base + 3],
+                    y_slice[base + 4],
+                    y_slice[base + 5],
+                    y_slice[base + 6],
+                    y_slice[base + 7],
                 ]);
                 let vz = f32x8::from([
-                    z_slice[base], z_slice[base + 1], z_slice[base + 2], z_slice[base + 3],
-                    z_slice[base + 4], z_slice[base + 5], z_slice[base + 6], z_slice[base + 7],
+                    z_slice[base],
+                    z_slice[base + 1],
+                    z_slice[base + 2],
+                    z_slice[base + 3],
+                    z_slice[base + 4],
+                    z_slice[base + 5],
+                    z_slice[base + 6],
+                    z_slice[base + 7],
                 ]);
 
-                let p = Vec3x8 { x: vx, y: vy, z: vz };
+                let p = Vec3x8 {
+                    x: vx,
+                    y: vy,
+                    z: vz,
+                };
 
                 // Compute distance and gradient in one call
                 let (d, gx, gy, gz) = eval_distance_and_gradient_simd(&comp, p, EPSILON);
@@ -1501,7 +2042,9 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
 
                 for i in 0..8 {
                     // Normalize gradient to get unit normal
-                    let len = (gx_arr[i] * gx_arr[i] + gy_arr[i] * gy_arr[i] + gz_arr[i] * gz_arr[i]).sqrt();
+                    let len =
+                        (gx_arr[i] * gx_arr[i] + gy_arr[i] * gy_arr[i] + gz_arr[i] * gz_arr[i])
+                            .sqrt();
                     let inv_len = if len > 1e-8 { 1.0 / len } else { 0.0 };
 
                     // Write to output arrays (unsafe but we're in unsafe fn)
@@ -1525,9 +2068,12 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
 
                 // Finite difference gradient
                 let eps = EPSILON;
-                let dx = eval_compiled(&comp, p + glam::Vec3::X * eps) - eval_compiled(&comp, p - glam::Vec3::X * eps);
-                let dy = eval_compiled(&comp, p + glam::Vec3::Y * eps) - eval_compiled(&comp, p - glam::Vec3::Y * eps);
-                let dz = eval_compiled(&comp, p + glam::Vec3::Z * eps) - eval_compiled(&comp, p - glam::Vec3::Z * eps);
+                let dx = eval_compiled(&comp, p + glam::Vec3::X * eps)
+                    - eval_compiled(&comp, p - glam::Vec3::X * eps);
+                let dy = eval_compiled(&comp, p + glam::Vec3::Y * eps)
+                    - eval_compiled(&comp, p - glam::Vec3::Y * eps);
+                let dz = eval_compiled(&comp, p + glam::Vec3::Z * eps)
+                    - eval_compiled(&comp, p - glam::Vec3::Z * eps);
 
                 let len = (dx * dx + dy * dy + dz * dz).sqrt();
                 let inv_len = if len > 1e-8 { 1.0 / len } else { 0.0 };
@@ -1548,9 +2094,12 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
             let d = eval_compiled(&comp, p);
 
             let eps = EPSILON;
-            let dx = eval_compiled(&comp, p + glam::Vec3::X * eps) - eval_compiled(&comp, p - glam::Vec3::X * eps);
-            let dy = eval_compiled(&comp, p + glam::Vec3::Y * eps) - eval_compiled(&comp, p - glam::Vec3::Y * eps);
-            let dz = eval_compiled(&comp, p + glam::Vec3::Z * eps) - eval_compiled(&comp, p - glam::Vec3::Z * eps);
+            let dx = eval_compiled(&comp, p + glam::Vec3::X * eps)
+                - eval_compiled(&comp, p - glam::Vec3::X * eps);
+            let dy = eval_compiled(&comp, p + glam::Vec3::Y * eps)
+                - eval_compiled(&comp, p - glam::Vec3::Y * eps);
+            let dz = eval_compiled(&comp, p + glam::Vec3::Z * eps)
+                - eval_compiled(&comp, p - glam::Vec3::Z * eps);
 
             let len = (dx * dx + dy * dy + dz * dz).sqrt();
             let inv_len = if len > 1e-8 { 1.0 / len } else { 0.0 };
@@ -1565,7 +2114,10 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
         }
     }
 
-    BatchResult { count, result: SdfResult::Ok }
+    BatchResult {
+        count,
+        result: SdfResult::Ok,
+    }
 }
 
 // ============================================================================
@@ -1627,12 +2179,20 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
     count: u32,
 ) -> BatchResult {
     if params.is_null() || x.is_null() || y.is_null() || z.is_null() || distances.is_null() {
-        return BatchResult { count: 0, result: SdfResult::NullPointer };
+        return BatchResult {
+            count: 0,
+            result: SdfResult::NullPointer,
+        };
     }
 
     let comp = match get_compiled(compiled) {
         Some(c) => c,
-        None => return BatchResult { count: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return BatchResult {
+                count: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
     let params_ref = &*params;
@@ -1643,15 +2203,12 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
     let dist_slice = slice::from_raw_parts_mut(distances, count_usize);
 
     // Apply inverse animation transform to each point, then evaluate via SIMD
-    let has_transform = params_ref.has_translation()
-        || params_ref.has_rotation()
-        || params_ref.has_scale();
+    let has_transform =
+        params_ref.has_translation() || params_ref.has_rotation() || params_ref.has_scale();
 
     if !has_transform {
         // No animation transform: use direct SIMD SoA path
-        crate::compiled::eval_compiled_batch_soa_raw(
-            &comp, x, y, z, distances, count_usize,
-        );
+        crate::compiled::eval_compiled_batch_soa_raw(&comp, x, y, z, distances, count_usize);
     } else {
         // Transform points then evaluate
         // For SIMD efficiency, we transform in 8-wide batches
@@ -1667,7 +2224,8 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
             let mut scale_corrections = [1.0f32; 8];
 
             for i in 0..8 {
-                let point = glam::Vec3::new(x_slice[base + i], y_slice[base + i], z_slice[base + i]);
+                let point =
+                    glam::Vec3::new(x_slice[base + i], y_slice[base + i], z_slice[base + i]);
                 let (tp, sc) = params_ref.transform_point(point);
                 px[i] = tp.x;
                 py[i] = tp.y;
@@ -1679,7 +2237,11 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
             let vx = wide::f32x8::from(px);
             let vy = wide::f32x8::from(py);
             let vz = wide::f32x8::from(pz);
-            let p = crate::compiled::Vec3x8 { x: vx, y: vy, z: vz };
+            let p = crate::compiled::Vec3x8 {
+                x: vx,
+                y: vy,
+                z: vz,
+            };
             let raw_distances = crate::compiled::eval_compiled_simd(&comp, p);
             let raw_arr: [f32; 8] = raw_distances.into();
 
@@ -1697,7 +2259,10 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
         }
     }
 
-    BatchResult { count, result: SdfResult::Ok }
+    BatchResult {
+        count,
+        result: SdfResult::Ok,
+    }
 }
 
 // ============================================================================
@@ -1710,16 +2275,33 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
 pub extern "C" fn alice_sdf_to_wgsl(node: SdfHandle) -> StringResult {
     let sdf_node = match get_node(node) {
         Some(n) => n,
-        None => return StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return StringResult {
+                data: ptr::null_mut(),
+                len: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
-    let shader = crate::compiled::WgslShader::transpile(&sdf_node, crate::compiled::TranspileMode::Hardcoded);
+    let shader = crate::compiled::WgslShader::transpile(
+        &sdf_node,
+        crate::compiled::TranspileMode::Hardcoded,
+    );
     match CString::new(shader.source.clone()) {
         Ok(s) => {
             let len = shader.source.len() as u32;
-            StringResult { data: s.into_raw(), len, result: SdfResult::Ok }
+            StringResult {
+                data: s.into_raw(),
+                len,
+                result: SdfResult::Ok,
+            }
         }
-        Err(_) => StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::Unknown },
+        Err(_) => StringResult {
+            data: ptr::null_mut(),
+            len: 0,
+            result: SdfResult::Unknown,
+        },
     }
 }
 
@@ -1729,16 +2311,33 @@ pub extern "C" fn alice_sdf_to_wgsl(node: SdfHandle) -> StringResult {
 pub extern "C" fn alice_sdf_to_hlsl(node: SdfHandle) -> StringResult {
     let sdf_node = match get_node(node) {
         Some(n) => n,
-        None => return StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return StringResult {
+                data: ptr::null_mut(),
+                len: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
-    let shader = crate::compiled::HlslShader::transpile(&sdf_node, crate::compiled::HlslTranspileMode::Hardcoded);
+    let shader = crate::compiled::HlslShader::transpile(
+        &sdf_node,
+        crate::compiled::HlslTranspileMode::Hardcoded,
+    );
     match CString::new(shader.source.clone()) {
         Ok(s) => {
             let len = shader.source.len() as u32;
-            StringResult { data: s.into_raw(), len, result: SdfResult::Ok }
+            StringResult {
+                data: s.into_raw(),
+                len,
+                result: SdfResult::Ok,
+            }
         }
-        Err(_) => StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::Unknown },
+        Err(_) => StringResult {
+            data: ptr::null_mut(),
+            len: 0,
+            result: SdfResult::Unknown,
+        },
     }
 }
 
@@ -1748,16 +2347,33 @@ pub extern "C" fn alice_sdf_to_hlsl(node: SdfHandle) -> StringResult {
 pub extern "C" fn alice_sdf_to_glsl(node: SdfHandle) -> StringResult {
     let sdf_node = match get_node(node) {
         Some(n) => n,
-        None => return StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::InvalidHandle },
+        None => {
+            return StringResult {
+                data: ptr::null_mut(),
+                len: 0,
+                result: SdfResult::InvalidHandle,
+            }
+        }
     };
 
-    let shader = crate::compiled::GlslShader::transpile(&sdf_node, crate::compiled::GlslTranspileMode::Hardcoded);
+    let shader = crate::compiled::GlslShader::transpile(
+        &sdf_node,
+        crate::compiled::GlslTranspileMode::Hardcoded,
+    );
     match CString::new(shader.source.clone()) {
         Ok(s) => {
             let len = shader.source.len() as u32;
-            StringResult { data: s.into_raw(), len, result: SdfResult::Ok }
+            StringResult {
+                data: s.into_raw(),
+                len,
+                result: SdfResult::Ok,
+            }
         }
-        Err(_) => StringResult { data: ptr::null_mut(), len: 0, result: SdfResult::Unknown },
+        Err(_) => StringResult {
+            data: ptr::null_mut(),
+            len: 0,
+            result: SdfResult::Unknown,
+        },
     }
 }
 
@@ -1902,7 +2518,9 @@ unsafe fn resolve_mesh(
     };
     let min = glam::Vec3::splat(-bounds);
     let max = glam::Vec3::splat(bounds);
-    Ok(std::sync::Arc::new(sdf_to_mesh(&sdf_node, min, max, &config)))
+    Ok(std::sync::Arc::new(sdf_to_mesh(
+        &sdf_node, min, max, &config,
+    )))
 }
 
 /// Export mesh to OBJ file
@@ -1917,9 +2535,13 @@ pub unsafe extern "C" fn alice_sdf_export_obj(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) { Ok(s) => s, Err(e) => return e };
+    let path_str = match path_from_c(path) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
     let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m, Err(e) => return e,
+        Ok(m) => m,
+        Err(e) => return e,
     };
     match crate::io::export_obj(&mesh, path_str, &ObjConfig::default(), None) {
         Ok(_) => SdfResult::Ok,
@@ -1936,9 +2558,13 @@ pub unsafe extern "C" fn alice_sdf_export_glb(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) { Ok(s) => s, Err(e) => return e };
+    let path_str = match path_from_c(path) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
     let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m, Err(e) => return e,
+        Ok(m) => m,
+        Err(e) => return e,
     };
     match crate::io::export_glb(&mesh, path_str, &GltfConfig::default(), None) {
         Ok(_) => SdfResult::Ok,
@@ -1955,9 +2581,13 @@ pub unsafe extern "C" fn alice_sdf_export_usda(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) { Ok(s) => s, Err(e) => return e };
+    let path_str = match path_from_c(path) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
     let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m, Err(e) => return e,
+        Ok(m) => m,
+        Err(e) => return e,
     };
     match crate::io::export_usda(&mesh, path_str, &UsdConfig::default(), None) {
         Ok(_) => SdfResult::Ok,
@@ -1974,9 +2604,13 @@ pub unsafe extern "C" fn alice_sdf_export_alembic(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) { Ok(s) => s, Err(e) => return e };
+    let path_str = match path_from_c(path) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
     let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m, Err(e) => return e,
+        Ok(m) => m,
+        Err(e) => return e,
     };
     match crate::io::export_alembic(&mesh, path_str, &AlembicConfig::default()) {
         Ok(_) => SdfResult::Ok,
@@ -1993,9 +2627,13 @@ pub unsafe extern "C" fn alice_sdf_export_fbx(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) { Ok(s) => s, Err(e) => return e };
+    let path_str = match path_from_c(path) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
     let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m, Err(e) => return e,
+        Ok(m) => m,
+        Err(e) => return e,
     };
     match crate::io::export_fbx(&mesh, path_str, &FbxConfig::default(), None) {
         Ok(_) => SdfResult::Ok,
@@ -2095,25 +2733,21 @@ mod tests {
         let compiled = alice_sdf_compile(sphere);
 
         let points: [f32; 9] = [
-            0.0, 0.0, 0.0,  // inside
-            1.0, 0.0, 0.0,  // on surface
-            2.0, 0.0, 0.0,  // outside
+            0.0, 0.0, 0.0, // inside
+            1.0, 0.0, 0.0, // on surface
+            2.0, 0.0, 0.0, // outside
         ];
         let mut distances: [f32; 3] = [0.0; 3];
 
         unsafe {
-            let result = alice_sdf_eval_compiled_batch(
-                compiled,
-                points.as_ptr(),
-                distances.as_mut_ptr(),
-                3,
-            );
+            let result =
+                alice_sdf_eval_compiled_batch(compiled, points.as_ptr(), distances.as_mut_ptr(), 3);
             assert_eq!(result.result, SdfResult::Ok);
             assert_eq!(result.count, 3);
         }
 
         assert!((distances[0] + 1.0).abs() < 0.001); // inside
-        assert!(distances[1].abs() < 0.001);          // surface
+        assert!(distances[1].abs() < 0.001); // surface
         assert!((distances[2] - 1.0).abs() < 0.001); // outside
 
         alice_sdf_free_compiled(compiled);
@@ -2211,7 +2845,7 @@ mod tests {
         }
 
         assert!((distances[0] + 1.0).abs() < 0.001); // origin
-        assert!(distances[1].abs() < 0.001);          // surface
+        assert!(distances[1].abs() < 0.001); // surface
         assert!((distances[2] - 1.0).abs() < 0.001); // outside
 
         alice_sdf_free_compiled(compiled);

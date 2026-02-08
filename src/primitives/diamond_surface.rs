@@ -31,7 +31,11 @@ mod tests {
         // At origin: all sin=0, cos=1, d = 0+0+0+1*1*0 = 0
         // Actually: sin(0)*sin(0)*sin(0) + sin(0)*cos(0)*cos(0) + cos(0)*sin(0)*cos(0) + cos(0)*cos(0)*sin(0) = 0
         let d = sdf_diamond_surface(Vec3::ZERO, 1.0, 0.1);
-        assert!((d + 0.1).abs() < 0.01, "Origin on surface minus thickness, got {}", d);
+        assert!(
+            (d + 0.1).abs() < 0.01,
+            "Origin on surface minus thickness, got {}",
+            d
+        );
     }
 
     #[test]

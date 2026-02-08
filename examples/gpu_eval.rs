@@ -52,7 +52,10 @@ fn run_gpu_example() {
     println!("--- Generated WGSL Shader ---");
     let shader = WgslShader::transpile(&shape);
     println!("WGSL source length: {} bytes", shader.source.len());
-    println!("First 500 chars:\n{}\n...\n", &shader.source[..500.min(shader.source.len())]);
+    println!(
+        "First 500 chars:\n{}\n...\n",
+        &shader.source[..500.min(shader.source.len())]
+    );
 
     // === Method 2: Create GPU Evaluator ===
     println!("--- Creating GPU Evaluator ---");
@@ -78,7 +81,10 @@ fn run_gpu_example() {
     // GPU evaluation (batch of 1)
     let gpu_distances = gpu.eval_batch(&[point]).unwrap();
     println!("GPU distance at {:?}: {:.6}", point, gpu_distances[0]);
-    println!("Difference: {:.9}\n", (cpu_distance - gpu_distances[0]).abs());
+    println!(
+        "Difference: {:.9}\n",
+        (cpu_distance - gpu_distances[0]).abs()
+    );
 
     // === Method 4: Batch Evaluation ===
     println!("--- Batch Evaluation Comparison ---");
@@ -110,7 +116,11 @@ fn run_gpu_example() {
 
         println!(
             "Batch {:>7}: CPU {:>8.2?} | GPU {:>8.2?} | {:.2}x ({} wins)",
-            batch_size, cpu_time, gpu_time, speedup.max(1.0 / speedup), winner
+            batch_size,
+            cpu_time,
+            gpu_time,
+            speedup.max(1.0 / speedup),
+            winner
         );
     }
 
@@ -140,11 +150,19 @@ fn run_gpu_example() {
         .iter()
         .zip(gpu_results.iter())
         .map(|(c, g)| (c - g).abs())
-        .sum::<f32>() / test_points.len() as f32;
+        .sum::<f32>()
+        / test_points.len() as f32;
 
     println!("Max error: {:.9}", max_error);
     println!("Avg error: {:.9}", avg_error);
-    println!("Status: {}", if max_error < 0.001 { "PASS ✓" } else { "FAIL ✗" });
+    println!(
+        "Status: {}",
+        if max_error < 0.001 {
+            "PASS ✓"
+        } else {
+            "FAIL ✗"
+        }
+    );
 
     println!("\n=== Example Complete ===");
 }

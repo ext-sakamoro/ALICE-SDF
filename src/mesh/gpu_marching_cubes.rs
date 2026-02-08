@@ -25,10 +25,10 @@
 use glam::Vec3;
 use wgpu::util::DeviceExt;
 
-use crate::compiled::{WgslShader, TranspileMode, GpuError};
+use super::gpu_mc_shaders;
+use crate::compiled::{GpuError, TranspileMode, WgslShader};
 use crate::mesh::{Mesh, Vertex};
 use crate::types::SdfNode;
-use super::gpu_mc_shaders;
 
 /// Configuration for GPU Marching Cubes
 #[derive(Debug, Clone, Copy)]
@@ -177,10 +177,11 @@ pub fn gpu_marching_cubes_from_shader(
         mapped_at_creation: false,
     });
 
-    let pass1_shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("MC Pass 1 Shader"),
-        source: wgpu::ShaderSource::Wgsl(pass1_source.into()),
-    });
+    let pass1_shader: wgpu::ShaderModule =
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("MC Pass 1 Shader"),
+            source: wgpu::ShaderSource::Wgsl(pass1_source.into()),
+        });
 
     let pass1_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("MC Pass 1 BGL"),
@@ -198,8 +199,14 @@ pub fn gpu_marching_cubes_from_shader(
         label: Some("MC Pass 1 BG"),
         layout: &pass1_bgl,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: sdf_grid_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: uniform_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: sdf_grid_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: uniform_buffer.as_entire_binding(),
+            },
         ],
     });
 
@@ -227,10 +234,11 @@ pub fn gpu_marching_cubes_from_shader(
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
     });
 
-    let pass2_shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("MC Pass 2 Shader"),
-        source: wgpu::ShaderSource::Wgsl(pass2_source.into()),
-    });
+    let pass2_shader: wgpu::ShaderModule =
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("MC Pass 2 Shader"),
+            source: wgpu::ShaderSource::Wgsl(pass2_source.into()),
+        });
 
     let pass2_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("MC Pass 2 BGL"),
@@ -254,11 +262,26 @@ pub fn gpu_marching_cubes_from_shader(
         label: Some("MC Pass 2 BG"),
         layout: &pass2_bgl,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: sdf_grid_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: uniform_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: cell_counts_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: cell_indices_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: total_count_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: sdf_grid_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: uniform_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: cell_counts_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: cell_indices_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: total_count_buffer.as_entire_binding(),
+            },
         ],
     });
 
@@ -353,10 +376,11 @@ pub fn gpu_marching_cubes_from_shader(
         mapped_at_creation: false,
     });
 
-    let pass3_shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("MC Pass 3 Shader"),
-        source: wgpu::ShaderSource::Wgsl(pass3_source.into()),
-    });
+    let pass3_shader: wgpu::ShaderModule =
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("MC Pass 3 Shader"),
+            source: wgpu::ShaderSource::Wgsl(pass3_source.into()),
+        });
 
     let pass3_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("MC Pass 3 BGL"),
@@ -380,11 +404,26 @@ pub fn gpu_marching_cubes_from_shader(
         label: Some("MC Pass 3 BG"),
         layout: &pass3_bgl,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: sdf_grid_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: uniform_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: offsets_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: cell_indices_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: output_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: sdf_grid_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: uniform_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: offsets_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: cell_indices_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: output_buffer.as_entire_binding(),
+            },
         ],
     });
 
@@ -580,12 +619,7 @@ mod tests {
             ..Default::default()
         };
 
-        match gpu_marching_cubes(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        ) {
+        match gpu_marching_cubes(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config) {
             Ok(mesh) => {
                 assert!(mesh.vertices.len() > 0, "Mesh should have vertices");
                 assert!(mesh.indices.len() > 0, "Mesh should have indices");
@@ -594,19 +628,32 @@ mod tests {
 
                 // All vertices should be within bounds (with some tolerance)
                 for v in &mesh.vertices {
-                    assert!(v.position.x >= -2.5 && v.position.x <= 2.5,
-                        "Vertex out of bounds: {:?}", v.position);
-                    assert!(v.position.y >= -2.5 && v.position.y <= 2.5,
-                        "Vertex out of bounds: {:?}", v.position);
-                    assert!(v.position.z >= -2.5 && v.position.z <= 2.5,
-                        "Vertex out of bounds: {:?}", v.position);
+                    assert!(
+                        v.position.x >= -2.5 && v.position.x <= 2.5,
+                        "Vertex out of bounds: {:?}",
+                        v.position
+                    );
+                    assert!(
+                        v.position.y >= -2.5 && v.position.y <= 2.5,
+                        "Vertex out of bounds: {:?}",
+                        v.position
+                    );
+                    assert!(
+                        v.position.z >= -2.5 && v.position.z <= 2.5,
+                        "Vertex out of bounds: {:?}",
+                        v.position
+                    );
                 }
 
                 // Normals should be approximately unit length
                 for v in &mesh.vertices {
                     let n_len = v.normal.length();
-                    assert!(n_len > 0.5 && n_len < 1.5,
-                        "Normal not unit length: {} at {:?}", n_len, v.position);
+                    assert!(
+                        n_len > 0.5 && n_len < 1.5,
+                        "Normal not unit length: {} at {:?}",
+                        n_len,
+                        v.position
+                    );
                 }
             }
             Err(GpuError::NoAdapter) => {
@@ -626,14 +673,13 @@ mod tests {
             ..Default::default()
         };
 
-        match gpu_marching_cubes(
-            &sphere,
-            Vec3::splat(10.0),
-            Vec3::splat(12.0),
-            &config,
-        ) {
+        match gpu_marching_cubes(&sphere, Vec3::splat(10.0), Vec3::splat(12.0), &config) {
             Ok(mesh) => {
-                assert_eq!(mesh.vertices.len(), 0, "Should produce empty mesh far from surface");
+                assert_eq!(
+                    mesh.vertices.len(),
+                    0,
+                    "Should produce empty mesh far from surface"
+                );
             }
             Err(GpuError::NoAdapter) => {
                 eprintln!("Skipping GPU MC test: no GPU adapter available");
@@ -644,19 +690,13 @@ mod tests {
 
     #[test]
     fn test_gpu_mc_complex_shape() {
-        let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+        let shape = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
         let config = GpuMarchingCubesConfig {
             resolution: 16,
             ..Default::default()
         };
 
-        match gpu_marching_cubes(
-            &shape,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        ) {
+        match gpu_marching_cubes(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config) {
             Ok(mesh) => {
                 assert!(mesh.vertices.len() > 0, "Complex shape should produce mesh");
             }

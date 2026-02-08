@@ -313,8 +313,13 @@ impl WgslTranspiler {
     /// Emit inline WGSL code for stairs_union(a, b, r, n) → result stored in `out_var`.
     /// Mercury hg_sdf fOpUnionStairs formula, fully inlined.
     fn emit_stairs_union_inline(
-        &mut self, code: &mut String,
-        d_a: &str, d_b: &str, r_s: &str, n_s: &str, out_var: &str,
+        &mut self,
+        code: &mut String,
+        d_a: &str,
+        d_b: &str,
+        r_s: &str,
+        n_s: &str,
+        out_var: &str,
     ) {
         let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
         let s2_str = self.param(std::f32::consts::SQRT_2);
@@ -332,18 +337,48 @@ impl WgslTranspiler {
         let edge = self.next_var();
 
         writeln!(code, "    let {} = {} / {};", rn, r_s, n_s).unwrap();
-        writeln!(code, "    let {} = ({} - {}) * 0.5 * {};", off, r_s, rn, s2_str).unwrap();
+        writeln!(
+            code,
+            "    let {} = ({} - {}) * 0.5 * {};",
+            off, r_s, rn, s2_str
+        )
+        .unwrap();
         writeln!(code, "    let {} = {} * {} / {};", step, r_s, s2_str, n_s).unwrap();
-        writeln!(code, "    let {} = ({} - {}) * {} - {};", px, d_b, d_a, s_str, off).unwrap();
-        writeln!(code, "    let {} = ({} + {}) * {} - {};", py, d_a, d_b, s_str, off).unwrap();
-        writeln!(code, "    let {} = {} + 0.5 * {} * {};", px2, px, s2_str, rn).unwrap();
+        writeln!(
+            code,
+            "    let {} = ({} - {}) * {} - {};",
+            px, d_b, d_a, s_str, off
+        )
+        .unwrap();
+        writeln!(
+            code,
+            "    let {} = ({} + {}) * {} - {};",
+            py, d_a, d_b, s_str, off
+        )
+        .unwrap();
+        writeln!(
+            code,
+            "    let {} = {} + 0.5 * {} * {};",
+            px2, px, s2_str, rn
+        )
+        .unwrap();
         writeln!(code, "    let {} = {} + {} * 0.5;", t, px2, step).unwrap();
-        writeln!(code, "    let {} = {} - {} * floor({} / {}) - {} * 0.5;", px3, t, step, t, step, step).unwrap();
+        writeln!(
+            code,
+            "    let {} = {} - {} * floor({} / {}) - {} * 0.5;",
+            px3, t, step, t, step, step
+        )
+        .unwrap();
         writeln!(code, "    let {} = min(min({}, {}), {});", d2, d_a, d_b, py).unwrap();
         writeln!(code, "    let {} = ({} + {}) * {};", npx, px3, py, s_str).unwrap();
         writeln!(code, "    let {} = ({} - {}) * {};", npy, py, px3, s_str).unwrap();
         writeln!(code, "    let {} = 0.5 * {};", edge, rn).unwrap();
-        writeln!(code, "    let {} = min({}, max({} - {}, {} - {}));", out_var, d2, npx, edge, npy, edge).unwrap();
+        writeln!(
+            code,
+            "    let {} = min({}, max({} - {}, {} - {}));",
+            out_var, d2, npx, edge, npy, edge
+        )
+        .unwrap();
     }
 
     fn generate_shader(&self, body: &str) -> String {
@@ -559,7 +594,6 @@ impl WgslTranspiler {
     ) -> String {
         match node {
             // ============ Primitives ============
-
             SdfNode::Sphere { radius } => {
                 let var = self.next_var();
                 let r = self.param(*radius);
@@ -588,7 +622,10 @@ impl WgslTranspiler {
                 var
             }
 
-            SdfNode::Cylinder { radius, half_height } => {
+            SdfNode::Cylinder {
+                radius,
+                half_height,
+            } => {
                 let d_var = self.next_var();
                 let var = self.next_var();
                 let r = self.param(*radius);
@@ -687,7 +724,10 @@ impl WgslTranspiler {
                 var
             }
 
-            SdfNode::Cone { radius, half_height } => {
+            SdfNode::Cone {
+                radius,
+                half_height,
+            } => {
                 let qx_var = self.next_var();
                 let h_var = self.next_var();
                 let k2x = -radius;
@@ -711,26 +751,31 @@ impl WgslTranspiler {
                     "    let {} = vec2<f32>({} - min({}, select(0.0, {}, {}.y < 0.0)), abs({}.y) - {});",
                     ca_var, qx_var, qx_var, p_r, point_var, point_var, h_var
                 ).unwrap();
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = clamp((-{} * {} + ({} - {}.y) * {}) / {}, 0.0, 1.0);",
                     t_var, qx_var, p_k2x, h_var, point_var, p_k2y, p_k2sq
-                ).unwrap();
-                writeln!(code,
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = vec2<f32>({} + {} * {}, {}.y - {} + {} * {});",
                     cb_var, qx_var, p_k2x, t_var, point_var, h_var, p_k2y, t_var
-                ).unwrap();
-                writeln!(code,
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = select(1.0, -1.0, {}.x < 0.0 && {}.y < 0.0);",
                     s_var, cb_var, ca_var
-                ).unwrap();
-                writeln!(code,
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = min(dot({}, {}), dot({}, {}));",
                     d2_var, ca_var, ca_var, cb_var, cb_var
-                ).unwrap();
-                writeln!(code,
-                    "    let {} = {} * sqrt({});",
-                    var, s_var, d2_var
-                ).unwrap();
+                )
+                .unwrap();
+                writeln!(code, "    let {} = {} * sqrt({});", var, s_var, d2_var).unwrap();
                 var
             }
 
@@ -745,31 +790,43 @@ impl WgslTranspiler {
                 let inv_rx2 = self.param(1.0 / (radii.x * radii.x).max(1e-10));
                 let inv_ry2 = self.param(1.0 / (radii.y * radii.y).max(1e-10));
                 let inv_rz2 = self.param(1.0 / (radii.z * radii.z).max(1e-10));
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = length({} * vec3<f32>({}, {}, {}));",
                     k0_var, point_var, inv_rx, inv_ry, inv_rz
-                ).unwrap();
-                writeln!(code,
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = length({} * vec3<f32>({}, {}, {}));",
                     k1_var, point_var, inv_rx2, inv_ry2, inv_rz2
-                ).unwrap();
-                writeln!(code,
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = {} * ({} - 1.0) / max({}, 1e-10);",
                     var, k0_var, k0_var, k1_var
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::RoundedCone { r1, r2, half_height } => {
+            SdfNode::RoundedCone {
+                r1,
+                r2,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_rounded_cone");
                 let var = self.next_var();
                 let p_r1 = self.param(*r1);
                 let p_r2 = self.param(*r2);
                 let p_hh = self.param(*half_height);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = sdf_rounded_cone({}, {}, {}, {});",
                     var, point_var, p_r1, p_r2, p_hh
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -777,10 +834,12 @@ impl WgslTranspiler {
                 self.ensure_helper("sdf_pyramid");
                 let var = self.next_var();
                 let p_hh = self.param(*half_height);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = sdf_pyramid({}, {});",
                     var, point_var, p_hh
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -788,39 +847,56 @@ impl WgslTranspiler {
                 self.ensure_helper("sdf_octahedron");
                 let var = self.next_var();
                 let p_s = self.param(*size);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = sdf_octahedron({}, {});",
                     var, point_var, p_s
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::HexPrism { hex_radius, half_height } => {
+            SdfNode::HexPrism {
+                hex_radius,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_hex_prism");
                 let var = self.next_var();
                 let p_hr = self.param(*hex_radius);
                 let p_hh = self.param(*half_height);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = sdf_hex_prism({}, {}, {});",
                     var, point_var, p_hr, p_hh
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Link { half_length, r1, r2 } => {
+            SdfNode::Link {
+                half_length,
+                r1,
+                r2,
+            } => {
                 self.ensure_helper("sdf_link");
                 let var = self.next_var();
                 let p_hl = self.param(*half_length);
                 let p_r1 = self.param(*r1);
                 let p_r2 = self.param(*r2);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = sdf_link({}, {}, {}, {});",
                     var, point_var, p_hl, p_r1, p_r2
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Triangle { point_a, point_b, point_c } => {
+            SdfNode::Triangle {
+                point_a,
+                point_b,
+                point_c,
+            } => {
                 self.ensure_helper("sdf_triangle");
                 let var = self.next_var();
                 let ax = self.param(point_a.x);
@@ -839,7 +915,12 @@ impl WgslTranspiler {
                 var
             }
 
-            SdfNode::Bezier { point_a, point_b, point_c, radius } => {
+            SdfNode::Bezier {
+                point_a,
+                point_b,
+                point_c,
+                radius,
+            } => {
                 self.ensure_helper("sdf_bezier");
                 let var = self.next_var();
                 let ax = self.param(point_a.x);
@@ -860,46 +941,80 @@ impl WgslTranspiler {
             }
 
             // --- New Primitives (16) ---
-
-            SdfNode::RoundedBox { half_extents, round_radius } => {
+            SdfNode::RoundedBox {
+                half_extents,
+                round_radius,
+            } => {
                 let hx = self.param(half_extents.x);
                 let hy = self.param(half_extents.y);
                 let hz = self.param(half_extents.z);
                 let rr = self.param(*round_radius);
                 let q_var = self.next_var();
                 let var = self.next_var();
-                writeln!(code, "    let {} = abs({}) - vec3<f32>({}, {}, {});", q_var, point_var, hx, hy, hz).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = abs({}) - vec3<f32>({}, {}, {});",
+                    q_var, point_var, hx, hy, hz
+                )
+                .unwrap();
                 writeln!(code, "    let {} = length(max({}, vec3<f32>(0.0))) + min(max({}.x, max({}.y, {}.z)), 0.0) - {};", var, q_var, q_var, q_var, q_var, rr).unwrap();
                 var
             }
 
-            SdfNode::CappedCone { half_height, r1, r2 } => {
+            SdfNode::CappedCone {
+                half_height,
+                r1,
+                r2,
+            } => {
                 self.ensure_helper("sdf_capped_cone");
                 let h = self.param(*half_height);
                 let p_r1 = self.param(*r1);
                 let p_r2 = self.param(*r2);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_capped_cone({}, {}, {}, {});", var, point_var, h, p_r1, p_r2).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_capped_cone({}, {}, {}, {});",
+                    var, point_var, h, p_r1, p_r2
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::CappedTorus { major_radius, minor_radius, cap_angle } => {
+            SdfNode::CappedTorus {
+                major_radius,
+                minor_radius,
+                cap_angle,
+            } => {
                 self.ensure_helper("sdf_capped_torus");
                 let ra = self.param(*major_radius);
                 let rb = self.param(*minor_radius);
                 let an = self.param(*cap_angle);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_capped_torus({}, {}, {}, {});", var, point_var, ra, rb, an).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_capped_torus({}, {}, {}, {});",
+                    var, point_var, ra, rb, an
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::RoundedCylinder { radius, round_radius, half_height } => {
+            SdfNode::RoundedCylinder {
+                radius,
+                round_radius,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_rounded_cylinder");
                 let r = self.param(*radius);
                 let rr = self.param(*round_radius);
                 let h = self.param(*half_height);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_rounded_cylinder({}, {}, {}, {});", var, point_var, r, rr, h).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_rounded_cylinder({}, {}, {}, {});",
+                    var, point_var, r, rr, h
+                )
+                .unwrap();
                 var
             }
 
@@ -908,7 +1023,12 @@ impl WgslTranspiler {
                 let w = self.param(*width);
                 let d = self.param(*half_depth);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_triangular_prism({}, {}, {});", var, point_var, w, d).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_triangular_prism({}, {}, {});",
+                    var, point_var, w, d
+                )
+                .unwrap();
                 var
             }
 
@@ -917,17 +1037,31 @@ impl WgslTranspiler {
                 let r = self.param(*radius);
                 let h = self.param(*cut_height);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_cut_sphere({}, {}, {});", var, point_var, r, h).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_cut_sphere({}, {}, {});",
+                    var, point_var, r, h
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::CutHollowSphere { radius, cut_height, thickness } => {
+            SdfNode::CutHollowSphere {
+                radius,
+                cut_height,
+                thickness,
+            } => {
                 self.ensure_helper("sdf_cut_hollow_sphere");
                 let r = self.param(*radius);
                 let h = self.param(*cut_height);
                 let t = self.param(*thickness);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_cut_hollow_sphere({}, {}, {}, {});", var, point_var, r, h, t).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_cut_hollow_sphere({}, {}, {}, {});",
+                    var, point_var, r, h, t
+                )
+                .unwrap();
                 var
             }
 
@@ -937,7 +1071,12 @@ impl WgslTranspiler {
                 let p_rb = self.param(*rb);
                 let p_d = self.param(*d);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_death_star({}, {}, {}, {});", var, point_var, p_ra, p_rb, p_d).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_death_star({}, {}, {}, {});",
+                    var, point_var, p_ra, p_rb, p_d
+                )
+                .unwrap();
                 var
             }
 
@@ -946,22 +1085,43 @@ impl WgslTranspiler {
                 let an = self.param(*angle);
                 let r = self.param(*radius);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_solid_angle({}, {}, {});", var, point_var, an, r).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_solid_angle({}, {}, {});",
+                    var, point_var, an, r
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Rhombus { la, lb, half_height, round_radius } => {
+            SdfNode::Rhombus {
+                la,
+                lb,
+                half_height,
+                round_radius,
+            } => {
                 self.ensure_helper("sdf_rhombus");
                 let p_la = self.param(*la);
                 let p_lb = self.param(*lb);
                 let h = self.param(*half_height);
                 let rr = self.param(*round_radius);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_rhombus({}, {}, {}, {}, {});", var, point_var, p_la, p_lb, h, rr).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_rhombus({}, {}, {}, {}, {});",
+                    var, point_var, p_la, p_lb, h, rr
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Horseshoe { angle, radius, half_length, width, thickness } => {
+            SdfNode::Horseshoe {
+                angle,
+                radius,
+                half_length,
+                width,
+                thickness,
+            } => {
                 self.ensure_helper("sdf_horseshoe");
                 let an = self.param(*angle);
                 let r = self.param(*radius);
@@ -969,7 +1129,12 @@ impl WgslTranspiler {
                 let w = self.param(*width);
                 let t = self.param(*thickness);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_horseshoe({}, {}, {}, {}, {}, {});", var, point_var, an, r, hl, w, t).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_horseshoe({}, {}, {}, {}, {}, {});",
+                    var, point_var, an, r, hl, w, t
+                )
+                .unwrap();
                 var
             }
 
@@ -978,7 +1143,12 @@ impl WgslTranspiler {
                 let r = self.param(*radius);
                 let d = self.param(*half_dist);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_vesica({}, {}, {});", var, point_var, r, d).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_vesica({}, {}, {});",
+                    var, point_var, r, d
+                )
+                .unwrap();
                 var
             }
 
@@ -993,7 +1163,12 @@ impl WgslTranspiler {
                 self.ensure_helper("sdf_infinite_cone");
                 let an = self.param(*angle);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_infinite_cone({}, {});", var, point_var, an).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_infinite_cone({}, {});",
+                    var, point_var, an
+                )
+                .unwrap();
                 var
             }
 
@@ -1015,43 +1190,77 @@ impl WgslTranspiler {
                 var
             }
 
-            SdfNode::Tube { outer_radius, thickness, half_height } => {
+            SdfNode::Tube {
+                outer_radius,
+                thickness,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_tube");
                 let or = self.param(*outer_radius);
                 let th = self.param(*thickness);
                 let hh = self.param(*half_height);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_tube({}, {}, {}, {});", var, point_var, or, th, hh).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_tube({}, {}, {}, {});",
+                    var, point_var, or, th, hh
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Barrel { radius, half_height, bulge } => {
+            SdfNode::Barrel {
+                radius,
+                half_height,
+                bulge,
+            } => {
                 self.ensure_helper("sdf_barrel");
                 let r = self.param(*radius);
                 let hh = self.param(*half_height);
                 let b = self.param(*bulge);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_barrel({}, {}, {}, {});", var, point_var, r, hh, b).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_barrel({}, {}, {}, {});",
+                    var, point_var, r, hh, b
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Diamond { radius, half_height } => {
+            SdfNode::Diamond {
+                radius,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_diamond");
                 let r = self.param(*radius);
                 let hh = self.param(*half_height);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_diamond({}, {}, {});", var, point_var, r, hh).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_diamond({}, {}, {});",
+                    var, point_var, r, hh
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::ChamferedCube { half_extents, chamfer } => {
+            SdfNode::ChamferedCube {
+                half_extents,
+                chamfer,
+            } => {
                 self.ensure_helper("sdf_chamfered_cube");
                 let hx = self.param(half_extents.x);
                 let hy = self.param(half_extents.y);
                 let hz = self.param(half_extents.z);
                 let ch = self.param(*chamfer);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_chamfered_cube({}, {}, {}, {}, {});", var, point_var, hx, hy, hz, ch).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_chamfered_cube({}, {}, {}, {}, {});",
+                    var, point_var, hx, hy, hz, ch
+                )
+                .unwrap();
                 var
             }
 
@@ -1061,11 +1270,20 @@ impl WgslTranspiler {
                 let sp_var = self.next_var();
                 let var = self.next_var();
                 writeln!(code, "    let {} = {} * {};", sp_var, point_var, sc).unwrap();
-                writeln!(code, "    let {} = abs(cos({}.x) + cos({}.y) + cos({}.z)) / {} - {};", var, sp_var, sp_var, sp_var, sc, th).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = abs(cos({}.x) + cos({}.y) + cos({}.z)) / {} - {};",
+                    var, sp_var, sp_var, sp_var, sc, th
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Superellipsoid { half_extents, e1, e2 } => {
+            SdfNode::Superellipsoid {
+                half_extents,
+                e1,
+                e2,
+            } => {
                 self.ensure_helper("sdf_superellipsoid");
                 let hx = self.param(half_extents.x);
                 let hy = self.param(half_extents.y);
@@ -1073,70 +1291,132 @@ impl WgslTranspiler {
                 let e1_s = self.param(*e1);
                 let e2_s = self.param(*e2);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_superellipsoid({}, {}, {}, {}, {}, {});", var, point_var, hx, hy, hz, e1_s, e2_s).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_superellipsoid({}, {}, {}, {}, {}, {});",
+                    var, point_var, hx, hy, hz, e1_s, e2_s
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::RoundedX { width, round_radius, half_height } => {
+            SdfNode::RoundedX {
+                width,
+                round_radius,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_rounded_x");
                 let w = self.param(*width);
                 let r = self.param(*round_radius);
                 let hh = self.param(*half_height);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_rounded_x({}, {}, {}, {});", var, point_var, w, r, hh).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_rounded_x({}, {}, {}, {});",
+                    var, point_var, w, r, hh
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Pie { angle, radius, half_height } => {
+            SdfNode::Pie {
+                angle,
+                radius,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_pie");
                 let a = self.param(*angle);
                 let r = self.param(*radius);
                 let hh = self.param(*half_height);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_pie({}, {}, {}, {});", var, point_var, a, r, hh).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_pie({}, {}, {}, {});",
+                    var, point_var, a, r, hh
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Trapezoid { r1, r2, trap_height, half_depth } => {
+            SdfNode::Trapezoid {
+                r1,
+                r2,
+                trap_height,
+                half_depth,
+            } => {
                 self.ensure_helper("sdf_trapezoid");
                 let p_r1 = self.param(*r1);
                 let p_r2 = self.param(*r2);
                 let th = self.param(*trap_height);
                 let hd = self.param(*half_depth);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_trapezoid({}, {}, {}, {}, {});", var, point_var, p_r1, p_r2, th, hd).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_trapezoid({}, {}, {}, {}, {});",
+                    var, point_var, p_r1, p_r2, th, hd
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Parallelogram { width, para_height, skew, half_depth } => {
+            SdfNode::Parallelogram {
+                width,
+                para_height,
+                skew,
+                half_depth,
+            } => {
                 self.ensure_helper("sdf_parallelogram");
                 let w = self.param(*width);
                 let ph = self.param(*para_height);
                 let sk = self.param(*skew);
                 let hd = self.param(*half_depth);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_parallelogram({}, {}, {}, {}, {});", var, point_var, w, ph, sk, hd).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_parallelogram({}, {}, {}, {}, {});",
+                    var, point_var, w, ph, sk, hd
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Tunnel { width, height_2d, half_depth } => {
+            SdfNode::Tunnel {
+                width,
+                height_2d,
+                half_depth,
+            } => {
                 self.ensure_helper("sdf_tunnel");
                 let w = self.param(*width);
                 let h2d = self.param(*height_2d);
                 let hd = self.param(*half_depth);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_tunnel({}, {}, {}, {});", var, point_var, w, h2d, hd).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_tunnel({}, {}, {}, {});",
+                    var, point_var, w, h2d, hd
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::UnevenCapsule { r1, r2, cap_height, half_depth } => {
+            SdfNode::UnevenCapsule {
+                r1,
+                r2,
+                cap_height,
+                half_depth,
+            } => {
                 self.ensure_helper("sdf_uneven_capsule");
                 let p_r1 = self.param(*r1);
                 let p_r2 = self.param(*r2);
                 let ch = self.param(*cap_height);
                 let hd = self.param(*half_depth);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_uneven_capsule({}, {}, {}, {}, {});", var, point_var, p_r1, p_r2, ch, hd).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_uneven_capsule({}, {}, {}, {}, {});",
+                    var, point_var, p_r1, p_r2, ch, hd
+                )
+                .unwrap();
                 var
             }
 
@@ -1145,114 +1425,269 @@ impl WgslTranspiler {
                 let p_ra = self.param(*ra);
                 let p_rb = self.param(*rb);
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_egg({}, {}, {});", var, point_var, p_ra, p_rb).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_egg({}, {}, {});",
+                    var, point_var, p_ra, p_rb
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::ArcShape { aperture, radius, thickness, half_height } => {
+            SdfNode::ArcShape {
+                aperture,
+                radius,
+                thickness,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_arc_shape");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_arc_shape({}, {}, {}, {}, {});", var, point_var,
-                    self.param(*aperture), self.param(*radius), self.param(*thickness), self.param(*half_height)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_arc_shape({}, {}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*aperture),
+                    self.param(*radius),
+                    self.param(*thickness),
+                    self.param(*half_height)
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Moon { d, ra, rb, half_height } => {
+            SdfNode::Moon {
+                d,
+                ra,
+                rb,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_moon");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_moon({}, {}, {}, {}, {});", var, point_var,
-                    self.param(*d), self.param(*ra), self.param(*rb), self.param(*half_height)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_moon({}, {}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*d),
+                    self.param(*ra),
+                    self.param(*rb),
+                    self.param(*half_height)
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::CrossShape { length, thickness, round_radius, half_height } => {
+            SdfNode::CrossShape {
+                length,
+                thickness,
+                round_radius,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_cross_shape");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_cross_shape({}, {}, {}, {}, {});", var, point_var,
-                    self.param(*length), self.param(*thickness), self.param(*round_radius), self.param(*half_height)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_cross_shape({}, {}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*length),
+                    self.param(*thickness),
+                    self.param(*round_radius),
+                    self.param(*half_height)
+                )
+                .unwrap();
                 var
             }
 
             SdfNode::BlobbyCross { size, half_height } => {
                 self.ensure_helper("sdf_blobby_cross");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_blobby_cross({}, {}, {});", var, point_var,
-                    self.param(*size), self.param(*half_height)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_blobby_cross({}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*size),
+                    self.param(*half_height)
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::ParabolaSegment { width, para_height, half_depth } => {
+            SdfNode::ParabolaSegment {
+                width,
+                para_height,
+                half_depth,
+            } => {
                 self.ensure_helper("sdf_parabola_segment");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_parabola_segment({}, {}, {}, {});", var, point_var,
-                    self.param(*width), self.param(*para_height), self.param(*half_depth)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_parabola_segment({}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*width),
+                    self.param(*para_height),
+                    self.param(*half_depth)
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::RegularPolygon { radius, n_sides, half_height } => {
+            SdfNode::RegularPolygon {
+                radius,
+                n_sides,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_regular_polygon");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_regular_polygon({}, {}, {}, {});", var, point_var,
-                    self.param(*radius), self.param(*n_sides), self.param(*half_height)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_regular_polygon({}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*radius),
+                    self.param(*n_sides),
+                    self.param(*half_height)
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::StarPolygon { radius, n_points, m, half_height } => {
+            SdfNode::StarPolygon {
+                radius,
+                n_points,
+                m,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_star_polygon");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_star_polygon({}, {}, {}, {}, {});", var, point_var,
-                    self.param(*radius), self.param(*n_points), self.param(*m), self.param(*half_height)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_star_polygon({}, {}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*radius),
+                    self.param(*n_points),
+                    self.param(*m),
+                    self.param(*half_height)
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Stairs { step_width, step_height, n_steps, half_depth } => {
+            SdfNode::Stairs {
+                step_width,
+                step_height,
+                n_steps,
+                half_depth,
+            } => {
                 self.ensure_helper("sdf_stairs");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_stairs({}, {}, {}, {}, {});", var, point_var,
-                    self.param(*step_width), self.param(*step_height), self.param(*n_steps), self.param(*half_depth)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_stairs({}, {}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*step_width),
+                    self.param(*step_height),
+                    self.param(*n_steps),
+                    self.param(*half_depth)
+                )
+                .unwrap();
                 var
             }
 
-            SdfNode::Helix { major_r, minor_r, pitch, half_height } => {
+            SdfNode::Helix {
+                major_r,
+                minor_r,
+                pitch,
+                half_height,
+            } => {
                 self.ensure_helper("sdf_helix");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_helix({}, {}, {}, {}, {});", var, point_var,
-                    self.param(*major_r), self.param(*minor_r), self.param(*pitch), self.param(*half_height)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_helix({}, {}, {}, {}, {});",
+                    var,
+                    point_var,
+                    self.param(*major_r),
+                    self.param(*minor_r),
+                    self.param(*pitch),
+                    self.param(*half_height)
+                )
+                .unwrap();
                 var
             }
 
             SdfNode::Tetrahedron { size } => {
                 self.ensure_helper("sdf_tetrahedron");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_tetrahedron({}, {});", var, point_var, self.param(*size)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_tetrahedron({}, {});",
+                    var,
+                    point_var,
+                    self.param(*size)
+                )
+                .unwrap();
                 var
             }
 
             SdfNode::Dodecahedron { radius } => {
                 self.ensure_helper("sdf_dodecahedron");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_dodecahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_dodecahedron({}, {});",
+                    var,
+                    point_var,
+                    self.param(*radius)
+                )
+                .unwrap();
                 var
             }
 
             SdfNode::Icosahedron { radius } => {
                 self.ensure_helper("sdf_icosahedron");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_icosahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_icosahedron({}, {});",
+                    var,
+                    point_var,
+                    self.param(*radius)
+                )
+                .unwrap();
                 var
             }
 
             SdfNode::TruncatedOctahedron { radius } => {
                 self.ensure_helper("sdf_truncated_octahedron");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_truncated_octahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_truncated_octahedron({}, {});",
+                    var,
+                    point_var,
+                    self.param(*radius)
+                )
+                .unwrap();
                 var
             }
 
             SdfNode::TruncatedIcosahedron { radius } => {
                 self.ensure_helper("sdf_truncated_icosahedron");
                 let var = self.next_var();
-                writeln!(code, "    let {} = sdf_truncated_icosahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = sdf_truncated_icosahedron({}, {});",
+                    var,
+                    point_var,
+                    self.param(*radius)
+                )
+                .unwrap();
                 var
             }
 
@@ -1267,7 +1702,12 @@ impl WgslTranspiler {
                 let d2 = self.next_var();
                 let d3 = self.next_var();
                 let var = self.next_var();
-                writeln!(code, "    let {} = abs({}) - vec3<f32>({}, {}, {});", pv, point_var, bx, by, bz).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = abs({}) - vec3<f32>({}, {}, {});",
+                    pv, point_var, bx, by, bz
+                )
+                .unwrap();
                 writeln!(code, "    let {} = abs({} + {}) - {};", qv, pv, e, e).unwrap();
                 writeln!(code, "    let {} = length(max(vec3<f32>({}.x, {}.y, {}.z), vec3<f32>(0.0))) + min(max({}.x, max({}.y, {}.z)), 0.0);", d1, pv, qv, qv, pv, qv, qv).unwrap();
                 writeln!(code, "    let {} = length(max(vec3<f32>({}.x, {}.y, {}.z), vec3<f32>(0.0))) + min(max({}.x, max({}.y, {}.z)), 0.0);", d2, qv, pv, qv, qv, pv, qv).unwrap();
@@ -1347,7 +1787,6 @@ impl WgslTranspiler {
             }
 
             // ============ Operations ============
-
             SdfNode::Union { a, b } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
@@ -1393,12 +1832,14 @@ impl WgslTranspiler {
                     code,
                     "    let {} = max({} - abs({} - {}), 0.0) * {};",
                     h_var, k_str, d_a, d_b, inv_k_str
-                ).unwrap();
+                )
+                .unwrap();
                 writeln!(
                     code,
                     "    let {} = min({}, {}) - {} * {} * {} * 0.25;",
                     var, d_a, d_b, h_var, h_var, k_str
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -1421,12 +1862,14 @@ impl WgslTranspiler {
                     code,
                     "    let {} = max({} - abs({} - {}), 0.0) * {};",
                     h_var, k_str, d_a, d_b, inv_k_str
-                ).unwrap();
+                )
+                .unwrap();
                 writeln!(
                     code,
                     "    let {} = max({}, {}) + {} * {} * {} * 0.25;",
                     var, d_a, d_b, h_var, h_var, k_str
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -1451,12 +1894,14 @@ impl WgslTranspiler {
                     code,
                     "    let {} = max({} - abs({} - {}), 0.0) * {};",
                     h_var, k_str, d_a, neg_b, inv_k_str
-                ).unwrap();
+                )
+                .unwrap();
                 writeln!(
                     code,
                     "    let {} = max({}, {}) + {} * {} * {} * 0.25;",
                     var, d_a, neg_b, h_var, h_var, k_str
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -1478,7 +1923,8 @@ impl WgslTranspiler {
                     code,
                     "    let {} = min(min({}, {}), ({} + {}) * {} - {});",
                     var, d_a, d_b, d_a, d_b, s_str, r_str
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -1499,7 +1945,8 @@ impl WgslTranspiler {
                     code,
                     "    let {} = max(max({}, {}), ({} + {}) * {} + {});",
                     var, d_a, d_b, d_a, d_b, s_str, r_str
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -1522,7 +1969,8 @@ impl WgslTranspiler {
                     code,
                     "    let {} = max(max({}, {}), ({} + {}) * {} + {});",
                     var, d_a, neg_b, d_a, neg_b, s_str, r_str
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
@@ -1591,7 +2039,12 @@ impl WgslTranspiler {
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
-                writeln!(code, "    let {} = max(min({}, {}), -max({}, {}));", var, d_a, d_b, d_a, d_b).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = max(min({}, {}), -max({}, {}));",
+                    var, d_a, d_b, d_a, d_b
+                )
+                .unwrap();
                 var
             }
 
@@ -1610,12 +2063,49 @@ impl WgslTranspiler {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
-                writeln!(code, "    var {v}_m = min({a}, {b});", v=var, a=d_a, b=d_b).unwrap();
-                writeln!(code, "    var {v}_a2 = min({a}, {b}); var {v}_b2 = max({a}, {b});", v=var, a=d_a, b=d_b).unwrap();
-                writeln!(code, "    let {v}_cs = {r} * 2.0 / {n};", v=var, r=r_s, n=n_s).unwrap();
-                writeln!(code, "    var {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;", v=var, r=r_s).unwrap();
-                writeln!(code, "    let {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);", v=var).unwrap();
-                writeln!(code, "    {v}_ra = ({v}_ra + {v}_cs * 0.5) % {v}_cs - {v}_cs * 0.5;", v=var).unwrap();
+                writeln!(
+                    code,
+                    "    var {v}_m = min({a}, {b});",
+                    v = var,
+                    a = d_a,
+                    b = d_b
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    var {v}_a2 = min({a}, {b}); var {v}_b2 = max({a}, {b});",
+                    v = var,
+                    a = d_a,
+                    b = d_b
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_cs = {r} * 2.0 / {n};",
+                    v = var,
+                    r = r_s,
+                    n = n_s
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    var {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;",
+                    v = var,
+                    r = r_s
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);",
+                    v = var
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    {v}_ra = ({v}_ra + {v}_cs * 0.5) % {v}_cs - {v}_cs * 0.5;",
+                    v = var
+                )
+                .unwrap();
                 writeln!(code, "    let {} = select(min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m), {v}_m, {v}_m > {r});", var, v=var, r=r_s).unwrap();
                 var
             }
@@ -1626,12 +2116,48 @@ impl WgslTranspiler {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
-                writeln!(code, "    let {v}_na = -({a}); var {v}_m = min({v}_na, {b});", v=var, a=d_a, b=d_b).unwrap();
-                writeln!(code, "    var {v}_a2 = min({v}_na, {b}); var {v}_b2 = max({v}_na, {b});", v=var, b=d_b).unwrap();
-                writeln!(code, "    let {v}_cs = {r} * 2.0 / {n};", v=var, r=r_s, n=n_s).unwrap();
-                writeln!(code, "    var {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;", v=var, r=r_s).unwrap();
-                writeln!(code, "    let {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);", v=var).unwrap();
-                writeln!(code, "    {v}_ra = ({v}_ra + {v}_cs * 0.5) % {v}_cs - {v}_cs * 0.5;", v=var).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_na = -({a}); var {v}_m = min({v}_na, {b});",
+                    v = var,
+                    a = d_a,
+                    b = d_b
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    var {v}_a2 = min({v}_na, {b}); var {v}_b2 = max({v}_na, {b});",
+                    v = var,
+                    b = d_b
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_cs = {r} * 2.0 / {n};",
+                    v = var,
+                    r = r_s,
+                    n = n_s
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    var {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;",
+                    v = var,
+                    r = r_s
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);",
+                    v = var
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    {v}_ra = ({v}_ra + {v}_cs * 0.5) % {v}_cs - {v}_cs * 0.5;",
+                    v = var
+                )
+                .unwrap();
                 writeln!(code, "    let {} = select(-min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m), -{v}_m, {v}_m > {r});", var, v=var, r=r_s).unwrap();
                 var
             }
@@ -1642,12 +2168,48 @@ impl WgslTranspiler {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
-                writeln!(code, "    let {v}_na = -({a}); var {v}_m = min({v}_na, {b});", v=var, a=d_a, b=d_b).unwrap();
-                writeln!(code, "    var {v}_a2 = min({v}_na, {b}); var {v}_b2 = max({v}_na, {b});", v=var, b=d_b).unwrap();
-                writeln!(code, "    let {v}_cs = {r} * 2.0 / {n};", v=var, r=r_s, n=n_s).unwrap();
-                writeln!(code, "    var {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;", v=var, r=r_s).unwrap();
-                writeln!(code, "    let {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);", v=var).unwrap();
-                writeln!(code, "    {v}_ra = ({v}_ra + {v}_cs * 0.5) % {v}_cs - {v}_cs * 0.5;", v=var).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_na = -({a}); var {v}_m = min({v}_na, {b});",
+                    v = var,
+                    a = d_a,
+                    b = d_b
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    var {v}_a2 = min({v}_na, {b}); var {v}_b2 = max({v}_na, {b});",
+                    v = var,
+                    b = d_b
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_cs = {r} * 2.0 / {n};",
+                    v = var,
+                    r = r_s,
+                    n = n_s
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    var {v}_ra = 0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678;",
+                    v = var,
+                    r = r_s
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_rb = 0.70710678 * ({v}_b2 - {v}_a2);",
+                    v = var
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    {v}_ra = ({v}_ra + {v}_cs * 0.5) % {v}_cs - {v}_cs * 0.5;",
+                    v = var
+                )
+                .unwrap();
                 writeln!(code, "    let {} = select(-min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m), -{v}_m, {v}_m > {r});", var, v=var, r=r_s).unwrap();
                 var
             }
@@ -1657,7 +2219,12 @@ impl WgslTranspiler {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 let r_s = self.param(*r);
-                writeln!(code, "    let {} = length(vec2<f32>({}, {})) - {};", var, d_a, d_b, r_s).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = length(vec2<f32>({}, {})) - {};",
+                    var, d_a, d_b, r_s
+                )
+                .unwrap();
                 var
             }
 
@@ -1666,7 +2233,12 @@ impl WgslTranspiler {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 let r_s = self.param(*r);
-                writeln!(code, "    let {} = max({}, ({} + {} - abs({})) * 0.70710678);", var, d_a, d_a, r_s, d_b).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = max({}, ({} + {} - abs({})) * 0.70710678);",
+                    var, d_a, d_a, r_s, d_b
+                )
+                .unwrap();
                 var
             }
 
@@ -1676,7 +2248,12 @@ impl WgslTranspiler {
                 let var = self.next_var();
                 let ra_s = self.param(*ra);
                 let rb_s = self.param(*rb);
-                writeln!(code, "    let {} = max({}, min({} + {}, {} - abs({})));", var, d_a, d_a, ra_s, rb_s, d_b).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = max({}, min({} + {}, {} - abs({})));",
+                    var, d_a, d_a, ra_s, rb_s, d_b
+                )
+                .unwrap();
                 var
             }
 
@@ -1686,12 +2263,16 @@ impl WgslTranspiler {
                 let var = self.next_var();
                 let ra_s = self.param(*ra);
                 let rb_s = self.param(*rb);
-                writeln!(code, "    let {} = min({}, max({} - {}, abs({}) - {}));", var, d_a, d_a, ra_s, d_b, rb_s).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = min({}, max({} - {}, abs({}) - {}));",
+                    var, d_a, d_a, ra_s, d_b, rb_s
+                )
+                .unwrap();
                 var
             }
 
             // ============ Transforms ============
-
             SdfNode::Translate { child, offset } => {
                 let new_p = self.next_var();
                 let ox = self.param(offset.x);
@@ -1728,12 +2309,7 @@ impl WgslTranspiler {
                 let inv_factor = 1.0 / factor;
                 let p_inv = self.param(inv_factor);
                 let p_factor = self.param(*factor);
-                writeln!(
-                    code,
-                    "    let {} = {} * {};",
-                    new_p, point_var, p_inv
-                )
-                .unwrap();
+                writeln!(code, "    let {} = {} * {};", new_p, point_var, p_inv).unwrap();
                 let d = self.transpile_node_inner(child, &new_p, code);
                 let var = self.next_var();
                 writeln!(code, "    let {} = {} * {};", var, d, p_factor).unwrap();
@@ -1761,7 +2337,6 @@ impl WgslTranspiler {
             }
 
             // ============ Modifiers ============
-
             SdfNode::Twist { child, strength } => {
                 let angle_var = self.next_var();
                 let c_var = self.next_var();
@@ -1780,7 +2355,16 @@ impl WgslTranspiler {
                 writeln!(
                     code,
                     "    let {} = vec3<f32>({} * {}.x - {} * {}.z, {}.y, {} * {}.x + {} * {}.z);",
-                    new_p, c_var, point_var, s_var, point_var, point_var, s_var, point_var, c_var, point_var
+                    new_p,
+                    c_var,
+                    point_var,
+                    s_var,
+                    point_var,
+                    point_var,
+                    s_var,
+                    point_var,
+                    c_var,
+                    point_var
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
@@ -1793,18 +2377,22 @@ impl WgslTranspiler {
                 let new_p = self.next_var();
                 let curv = self.param(*curvature);
 
-                writeln!(
-                    code,
-                    "    let {} = {} * {}.x;",
-                    angle_var, curv, point_var
-                )
-                .unwrap();
+                writeln!(code, "    let {} = {} * {}.x;", angle_var, curv, point_var).unwrap();
                 writeln!(code, "    let {} = cos({});", c_var, angle_var).unwrap();
                 writeln!(code, "    let {} = sin({});", s_var, angle_var).unwrap();
                 writeln!(
                     code,
                     "    let {} = vec3<f32>({} * {}.x + {} * {}.y, {} * {}.y - {} * {}.x, {}.z);",
-                    new_p, c_var, point_var, s_var, point_var, c_var, point_var, s_var, point_var, point_var
+                    new_p,
+                    c_var,
+                    point_var,
+                    s_var,
+                    point_var,
+                    c_var,
+                    point_var,
+                    s_var,
+                    point_var,
+                    point_var
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
@@ -1837,9 +2425,7 @@ impl WgslTranspiler {
                 writeln!(
                     code,
                     "    let {} = {} - clamp({}, vec3<f32>({}, {}, {}), vec3<f32>({}, {}, {}));",
-                    q_var, point_var, point_var,
-                    neg_ax, neg_ay, neg_az,
-                    ax, ay, az
+                    q_var, point_var, point_var, neg_ax, neg_ay, neg_az, ax, ay, az
                 )
                 .unwrap();
                 self.transpile_node_inner(child, &q_var, code)
@@ -1896,33 +2482,51 @@ impl WgslTranspiler {
                 self.transpile_node_inner(child, &q_var, code)
             }
 
-            SdfNode::Noise { child, amplitude, frequency, seed } => {
+            SdfNode::Noise {
+                child,
+                amplitude,
+                frequency,
+                seed,
+            } => {
                 self.ensure_helper("hash_noise");
                 let d = self.transpile_node_inner(child, point_var, code);
                 let n_var = self.next_var();
                 let var = self.next_var();
                 let freq = self.param(*frequency);
                 let amp = self.param(*amplitude);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = hash_noise_3d({} * {}, {}u);",
                     n_var, point_var, freq, seed
-                ).unwrap();
-                writeln!(code,
-                    "    let {} = {} + {} * {};",
-                    var, d, n_var, amp
-                ).unwrap();
+                )
+                .unwrap();
+                writeln!(code, "    let {} = {} + {} * {};", var, d, n_var, amp).unwrap();
                 var
             }
 
             SdfNode::Mirror { child, axes } => {
                 let new_p = self.next_var();
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = vec3<f32>({}, {}, {});",
                     new_p,
-                    if axes.x != 0.0 { format!("abs({}.x)", point_var) } else { format!("{}.x", point_var) },
-                    if axes.y != 0.0 { format!("abs({}.y)", point_var) } else { format!("{}.y", point_var) },
-                    if axes.z != 0.0 { format!("abs({}.z)", point_var) } else { format!("{}.z", point_var) },
-                ).unwrap();
+                    if axes.x != 0.0 {
+                        format!("abs({}.x)", point_var)
+                    } else {
+                        format!("{}.x", point_var)
+                    },
+                    if axes.y != 0.0 {
+                        format!("abs({}.y)", point_var)
+                    } else {
+                        format!("{}.y", point_var)
+                    },
+                    if axes.z != 0.0 {
+                        format!("abs({}.z)", point_var)
+                    } else {
+                        format!("{}.z", point_var)
+                    },
+                )
+                .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
             }
 
@@ -1932,10 +2536,24 @@ impl WgslTranspiler {
                 let mn = self.next_var();
                 let sorted_p = self.next_var();
                 writeln!(code, "    let {} = abs({});", abs_p, point_var).unwrap();
-                writeln!(code, "    let {} = max({}.x, max({}.y, {}.z));", mx, abs_p, abs_p, abs_p).unwrap();
-                writeln!(code, "    let {} = min({}.x, min({}.y, {}.z));", mn, abs_p, abs_p, abs_p).unwrap();
-                writeln!(code, "    let {} = vec3<f32>({}, {}.x + {}.y + {}.z - {} - {}, {});",
-                    sorted_p, mx, abs_p, abs_p, abs_p, mx, mn, mn).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = max({}.x, max({}.y, {}.z));",
+                    mx, abs_p, abs_p, abs_p
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {} = min({}.x, min({}.y, {}.z));",
+                    mn, abs_p, abs_p, abs_p
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {} = vec3<f32>({}, {}.x + {}.y + {}.z - {} - {}, {});",
+                    sorted_p, mx, abs_p, abs_p, abs_p, mx, mn, mn
+                )
+                .unwrap();
                 self.transpile_node_inner(child, &sorted_p, code)
             }
 
@@ -1943,49 +2561,69 @@ impl WgslTranspiler {
                 let q_var = self.next_var();
                 let new_p = self.next_var();
                 let off = self.param(*offset);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = length({}.xz) - {};",
                     q_var, point_var, off
-                ).unwrap();
-                writeln!(code,
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = vec3<f32>({}, {}.y, 0.0);",
                     new_p, q_var, point_var
-                ).unwrap();
+                )
+                .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
             }
 
             SdfNode::Extrude { child, half_height } => {
                 let flat_p = self.next_var();
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = vec3<f32>({}.x, {}.y, 0.0);",
                     flat_p, point_var, point_var
-                ).unwrap();
+                )
+                .unwrap();
                 let d = self.transpile_node_inner(child, &flat_p, code);
                 let w_var = self.next_var();
                 let var = self.next_var();
                 let hh = self.param(*half_height);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = vec2<f32>({}, abs({}.z) - {});",
                     w_var, d, point_var, hh
-                ).unwrap();
-                writeln!(code,
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = min(max({}.x, {}.y), 0.0) + length(max({}, vec2<f32>(0.0)));",
                     var, w_var, w_var, w_var
-                ).unwrap();
+                )
+                .unwrap();
                 var
             }
 
             SdfNode::Taper { child, factor } => {
                 let new_p = self.next_var();
                 let f = self.param(*factor);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {np}_s = 1.0 / (1.0 - {p}.y * {f});",
-                    np = new_p, p = point_var, f = f
-                ).unwrap();
-                writeln!(code,
+                    np = new_p,
+                    p = point_var,
+                    f = f
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = vec3<f32>({}.x * {np}_s, {}.y, {}.z * {np}_s);",
-                    new_p, point_var, point_var, point_var, np = new_p
-                ).unwrap();
+                    new_p,
+                    point_var,
+                    point_var,
+                    point_var,
+                    np = new_p
+                )
+                .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
             }
 
@@ -1994,22 +2632,24 @@ impl WgslTranspiler {
                 let disp_var = self.next_var();
                 let var = self.next_var();
                 let s = self.param(*strength);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {} = sin({}.x * 5.0) * sin({}.y * 5.0) * sin({}.z * 5.0);",
                     disp_var, point_var, point_var, point_var
-                ).unwrap();
-                writeln!(code,
-                    "    let {} = {} + {} * {};",
-                    var, d, disp_var, s
-                ).unwrap();
+                )
+                .unwrap();
+                writeln!(code, "    let {} = {} + {} * {};", var, d, disp_var, s).unwrap();
                 var
             }
 
             SdfNode::SweepBezier { child, p0, p1, p2 } => {
                 let new_p = self.next_var();
-                let p0x = self.param(p0.x); let p0z = self.param(p0.y);
-                let p1x = self.param(p1.x); let p1z = self.param(p1.y);
-                let p2x = self.param(p2.x); let p2z = self.param(p2.y);
+                let p0x = self.param(p0.x);
+                let p0z = self.param(p0.y);
+                let p1x = self.param(p1.x);
+                let p1z = self.param(p1.y);
+                let p2x = self.param(p2.x);
+                let p2z = self.param(p2.y);
                 // Query point in XZ
                 writeln!(code, "    let {np}_qx = {p}.x;", np = new_p, p = point_var).unwrap();
                 writeln!(code, "    let {np}_qz = {p}.z;", np = new_p, p = point_var).unwrap();
@@ -2047,8 +2687,14 @@ impl WgslTranspiler {
                     np = new_p, p0z = p0z, p1z = p1z, p2z = p2z).unwrap();
                 writeln!(code, "    let {np}_dx = {np}_qx - {np}_cx;", np = new_p).unwrap();
                 writeln!(code, "    let {np}_dz = {np}_qz - {np}_cz;", np = new_p).unwrap();
-                writeln!(code, "    let {} = vec3<f32>(sqrt({np}_dx*{np}_dx + {np}_dz*{np}_dz), {p}.y, 0.0);",
-                    new_p, np = new_p, p = point_var).unwrap();
+                writeln!(
+                    code,
+                    "    let {} = vec3<f32>(sqrt({np}_dx*{np}_dx + {np}_dz*{np}_dz), {p}.y, 0.0);",
+                    new_p,
+                    np = new_p,
+                    p = point_var
+                )
+                .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
             }
 
@@ -2058,22 +2704,36 @@ impl WgslTranspiler {
                 let count_f = *count as f32;
                 let sector_angle = std::f32::consts::TAU / count_f;
                 let sa = self.param(sector_angle);
-                writeln!(code,
+                writeln!(
+                    code,
                     "    let {np}_a = atan2({p}.z, {p}.x) + {sa} * 0.5;",
-                    np = new_p, p = point_var, sa = sa
-                ).unwrap();
-                writeln!(code,
+                    np = new_p,
+                    p = point_var,
+                    sa = sa
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {np}_r = length({p}.xz);",
-                    np = new_p, p = point_var
-                ).unwrap();
-                writeln!(code,
+                    np = new_p,
+                    p = point_var
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {np}_am = (({np}_a + 100.0 * {sa}) % {sa}) - {sa} * 0.5;",
-                    np = new_p, sa = sa
-                ).unwrap();
-                writeln!(code,
+                    np = new_p,
+                    sa = sa
+                )
+                .unwrap();
+                writeln!(
+                    code,
                     "    let {} = vec3<f32>({np}_r * cos({np}_am), {p}.y, {np}_r * sin({np}_am));",
-                    new_p, np = new_p, p = point_var
-                ).unwrap();
+                    new_p,
+                    np = new_p,
+                    p = point_var
+                )
+                .unwrap();
                 self.transpile_node_inner(child, &new_p, code)
             }
 
@@ -2083,34 +2743,80 @@ impl WgslTranspiler {
             }
 
             // === 2D Primitives (extruded to 3D) ===
-            SdfNode::Circle2D { radius, half_height } => {
+            SdfNode::Circle2D {
+                radius,
+                half_height,
+            } => {
                 let r = self.param(*radius);
                 let hh = self.param(*half_height);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_d2d = length({p}.xy) - {r};", v=v, p=point_var, r=r).unwrap();
-                writeln!(code, "    let {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
-                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_d2d = length({p}.xy) - {r};",
+                    v = v,
+                    p = point_var,
+                    r = r
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dz = abs({p}.z) - {hh};",
+                    v = v,
+                    p = point_var,
+                    hh = hh
+                )
+                .unwrap();
+                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v = v).unwrap();
+                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v = v).unwrap();
                 writeln!(code, "    let {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
                 v
             }
 
-            SdfNode::Rect2D { half_extents, half_height } => {
+            SdfNode::Rect2D {
+                half_extents,
+                half_height,
+            } => {
                 let hx = self.param(half_extents.x);
                 let hy = self.param(half_extents.y);
                 let hh = self.param(*half_height);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_dx = abs({p}.x) - {hx};", v=v, p=point_var, hx=hx).unwrap();
-                writeln!(code, "    let {v}_dy = abs({p}.y) - {hy};", v=v, p=point_var, hy=hy).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dx = abs({p}.x) - {hx};",
+                    v = v,
+                    p = point_var,
+                    hx = hx
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dy = abs({p}.y) - {hy};",
+                    v = v,
+                    p = point_var,
+                    hy = hy
+                )
+                .unwrap();
                 writeln!(code, "    let {v}_d2d = length(max(vec2<f32>({v}_dx, {v}_dy), vec2<f32>(0.0))) + min(max({v}_dx, {v}_dy), 0.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
-                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dz = abs({p}.z) - {hh};",
+                    v = v,
+                    p = point_var,
+                    hh = hh
+                )
+                .unwrap();
+                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v = v).unwrap();
+                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v = v).unwrap();
                 writeln!(code, "    let {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
                 v
             }
 
-            SdfNode::Segment2D { a, b, thickness, half_height } => {
+            SdfNode::Segment2D {
+                a,
+                b,
+                thickness,
+                half_height,
+            } => {
                 let ax = self.param(a.x);
                 let ay = self.param(a.y);
                 let bx = self.param(b.x);
@@ -2118,59 +2824,166 @@ impl WgslTranspiler {
                 let th = self.param(*thickness);
                 let hh = self.param(*half_height);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_pa = {p}.xy - vec2<f32>({ax}, {ay});", v=v, p=point_var, ax=ax, ay=ay).unwrap();
-                writeln!(code, "    let {v}_ba = vec2<f32>({bx}, {by}) - vec2<f32>({ax}, {ay});", v=v, bx=bx, by=by, ax=ax, ay=ay).unwrap();
-                writeln!(code, "    let {v}_h = clamp(dot({v}_pa, {v}_ba) / dot({v}_ba, {v}_ba), 0.0, 1.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_d2d = length({v}_pa - {v}_ba * {v}_h) - {th};", v=v, th=th).unwrap();
-                writeln!(code, "    let {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
-                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_pa = {p}.xy - vec2<f32>({ax}, {ay});",
+                    v = v,
+                    p = point_var,
+                    ax = ax,
+                    ay = ay
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_ba = vec2<f32>({bx}, {by}) - vec2<f32>({ax}, {ay});",
+                    v = v,
+                    bx = bx,
+                    by = by,
+                    ax = ax,
+                    ay = ay
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_h = clamp(dot({v}_pa, {v}_ba) / dot({v}_ba, {v}_ba), 0.0, 1.0);",
+                    v = v
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_d2d = length({v}_pa - {v}_ba * {v}_h) - {th};",
+                    v = v,
+                    th = th
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dz = abs({p}.z) - {hh};",
+                    v = v,
+                    p = point_var,
+                    hh = hh
+                )
+                .unwrap();
+                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v = v).unwrap();
+                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v = v).unwrap();
                 writeln!(code, "    let {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
                 v
             }
 
-            SdfNode::Polygon2D { vertices, half_height } => {
+            SdfNode::Polygon2D {
+                vertices,
+                half_height,
+            } => {
                 let hh = self.param(*half_height);
                 let v = self.next_var();
                 if vertices.len() >= 2 {
-                    let max_r = vertices.iter().map(|v| (v.x*v.x + v.y*v.y).sqrt()).fold(0.0f32, f32::max);
+                    let max_r = vertices
+                        .iter()
+                        .map(|v| (v.x * v.x + v.y * v.y).sqrt())
+                        .fold(0.0f32, f32::max);
                     let r = self.param(max_r);
-                    writeln!(code, "    let {v}_d2d = length({p}.xy) - {r};", v=v, p=point_var, r=r).unwrap();
+                    writeln!(
+                        code,
+                        "    let {v}_d2d = length({p}.xy) - {r};",
+                        v = v,
+                        p = point_var,
+                        r = r
+                    )
+                    .unwrap();
                 } else {
-                    writeln!(code, "    let {v}_d2d = length({p}.xy);", v=v, p=point_var).unwrap();
+                    writeln!(
+                        code,
+                        "    let {v}_d2d = length({p}.xy);",
+                        v = v,
+                        p = point_var
+                    )
+                    .unwrap();
                 }
-                writeln!(code, "    let {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
-                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dz = abs({p}.z) - {hh};",
+                    v = v,
+                    p = point_var,
+                    hh = hh
+                )
+                .unwrap();
+                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v = v).unwrap();
+                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v = v).unwrap();
                 writeln!(code, "    let {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
                 v
             }
 
-            SdfNode::RoundedRect2D { half_extents, round_radius, half_height } => {
+            SdfNode::RoundedRect2D {
+                half_extents,
+                round_radius,
+                half_height,
+            } => {
                 let hx = self.param(half_extents.x);
                 let hy = self.param(half_extents.y);
                 let rr = self.param(*round_radius);
                 let hh = self.param(*half_height);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_dx = abs({p}.x) - {hx} + {rr};", v=v, p=point_var, hx=hx, rr=rr).unwrap();
-                writeln!(code, "    let {v}_dy = abs({p}.y) - {hy} + {rr};", v=v, p=point_var, hy=hy, rr=rr).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dx = abs({p}.x) - {hx} + {rr};",
+                    v = v,
+                    p = point_var,
+                    hx = hx,
+                    rr = rr
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dy = abs({p}.y) - {hy} + {rr};",
+                    v = v,
+                    p = point_var,
+                    hy = hy,
+                    rr = rr
+                )
+                .unwrap();
                 writeln!(code, "    let {v}_d2d = length(max(vec2<f32>({v}_dx, {v}_dy), vec2<f32>(0.0))) + min(max({v}_dx, {v}_dy), 0.0) - {rr};", v=v, rr=rr).unwrap();
-                writeln!(code, "    let {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
-                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dz = abs({p}.z) - {hh};",
+                    v = v,
+                    p = point_var,
+                    hh = hh
+                )
+                .unwrap();
+                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v = v).unwrap();
+                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v = v).unwrap();
                 writeln!(code, "    let {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
                 v
             }
 
-            SdfNode::Annular2D { outer_radius, thickness, half_height } => {
+            SdfNode::Annular2D {
+                outer_radius,
+                thickness,
+                half_height,
+            } => {
                 let or = self.param(*outer_radius);
                 let th = self.param(*thickness);
                 let hh = self.param(*half_height);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_d2d = abs(length({p}.xy) - {or}) - {th};", v=v, p=point_var, or=or, th=th).unwrap();
-                writeln!(code, "    let {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
-                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
-                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_d2d = abs(length({p}.xy) - {or}) - {th};",
+                    v = v,
+                    p = point_var,
+                    or = or,
+                    th = th
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_dz = abs({p}.z) - {hh};",
+                    v = v,
+                    p = point_var,
+                    hh = hh
+                )
+                .unwrap();
+                writeln!(code, "    let {v}_wx = max({v}_d2d, 0.0);", v = v).unwrap();
+                writeln!(code, "    let {v}_wy = max({v}_dz, 0.0);", v = v).unwrap();
                 writeln!(code, "    let {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
                 v
             }
@@ -2181,9 +2994,29 @@ impl WgslTranspiler {
                 let db = self.transpile_node_inner(b, point_var, code);
                 let k_val = self.param(*k);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_ea = exp(-{da} / {k});", v=v, da=da, k=k_val).unwrap();
-                writeln!(code, "    let {v}_eb = exp(-{db} / {k});", v=v, db=db, k=k_val).unwrap();
-                writeln!(code, "    let {v} = -log(max({v}_ea + {v}_eb, 1e-10)) * {k};", v=v, k=k_val).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_ea = exp(-{da} / {k});",
+                    v = v,
+                    da = da,
+                    k = k_val
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_eb = exp(-{db} / {k});",
+                    v = v,
+                    db = db,
+                    k = k_val
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v} = -log(max({v}_ea + {v}_eb, 1e-10)) * {k};",
+                    v = v,
+                    k = k_val
+                )
+                .unwrap();
                 v
             }
 
@@ -2192,9 +3025,29 @@ impl WgslTranspiler {
                 let db = self.transpile_node_inner(b, point_var, code);
                 let k_val = self.param(*k);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_ea = exp({da} / {k});", v=v, da=da, k=k_val).unwrap();
-                writeln!(code, "    let {v}_eb = exp({db} / {k});", v=v, db=db, k=k_val).unwrap();
-                writeln!(code, "    let {v} = log(max({v}_ea + {v}_eb, 1e-10)) * {k};", v=v, k=k_val).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_ea = exp({da} / {k});",
+                    v = v,
+                    da = da,
+                    k = k_val
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_eb = exp({db} / {k});",
+                    v = v,
+                    db = db,
+                    k = k_val
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v} = log(max({v}_ea + {v}_eb, 1e-10)) * {k};",
+                    v = v,
+                    k = k_val
+                )
+                .unwrap();
                 v
             }
 
@@ -2203,9 +3056,29 @@ impl WgslTranspiler {
                 let db = self.transpile_node_inner(b, point_var, code);
                 let k_val = self.param(*k);
                 let v = self.next_var();
-                writeln!(code, "    let {v}_ea = exp({da} / {k});", v=v, da=da, k=k_val).unwrap();
-                writeln!(code, "    let {v}_enb = exp(-{db} / {k});", v=v, db=db, k=k_val).unwrap();
-                writeln!(code, "    let {v} = log(max({v}_ea + {v}_enb, 1e-10)) * {k};", v=v, k=k_val).unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_ea = exp({da} / {k});",
+                    v = v,
+                    da = da,
+                    k = k_val
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v}_enb = exp(-{db} / {k});",
+                    v = v,
+                    db = db,
+                    k = k_val
+                )
+                .unwrap();
+                writeln!(
+                    code,
+                    "    let {v} = log(max({v}_ea + {v}_enb, 1e-10)) * {k};",
+                    v = v,
+                    k = k_val
+                )
+                .unwrap();
                 v
             }
 
@@ -2220,10 +3093,7 @@ impl WgslTranspiler {
                 self.transpile_node_inner(child, &new_p, code)
             }
 
-            SdfNode::Animated { child, .. } => {
-                self.transpile_node_inner(child, point_var, code)
-            }
-
+            SdfNode::Animated { child, .. } => self.transpile_node_inner(child, point_var, code),
         }
     }
 }
@@ -3037,8 +3907,8 @@ mod tests {
 
     #[test]
     fn test_transpile_rotate() {
-        let shape = SdfNode::Sphere { radius: 1.0 }
-            .rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0);
+        let shape =
+            SdfNode::Sphere { radius: 1.0 }.rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0);
         let shader = WgslShader::transpile(&shape, TranspileMode::Hardcoded);
 
         assert!(shader.source.contains("fn quat_rotate"));
@@ -3085,17 +3955,16 @@ mod tests {
 
     #[test]
     fn test_extract_params() {
-        let shape = SdfNode::Sphere { radius: 1.5 }
-            .translate(1.0, 2.0, 3.0);
+        let shape = SdfNode::Sphere { radius: 1.5 }.translate(1.0, 2.0, 3.0);
 
         let params = WgslShader::extract_params(&shape);
         // Translate: 3 params (offset.x, y, z), then Sphere: 1 param (radius)
         // Translate is outer, processes first in transpile_node_inner
         assert_eq!(params.len(), 4);
-        assert_eq!(params[0], 1.0);  // offset.x
-        assert_eq!(params[1], 2.0);  // offset.y
-        assert_eq!(params[2], 3.0);  // offset.z
-        assert_eq!(params[3], 1.5);  // radius
+        assert_eq!(params[0], 1.0); // offset.x
+        assert_eq!(params[1], 2.0); // offset.y
+        assert_eq!(params[2], 3.0); // offset.z
+        assert_eq!(params[3], 1.5); // radius
     }
 
     #[test]
@@ -3170,7 +4039,13 @@ mod tests {
             ("box3d", SdfNode::box3d(1.0, 0.5, 0.5)),
             ("cylinder", SdfNode::cylinder(0.5, 1.0)),
             ("torus", SdfNode::torus(1.0, 0.3)),
-            ("plane", SdfNode::Plane { normal: Vec3::Y, distance: 0.0 }),
+            (
+                "plane",
+                SdfNode::Plane {
+                    normal: Vec3::Y,
+                    distance: 0.0,
+                },
+            ),
             ("capsule", SdfNode::capsule(Vec3::ZERO, Vec3::Y, 0.3)),
             ("cone", SdfNode::cone(0.5, 1.0)),
             ("ellipsoid", SdfNode::ellipsoid(1.0, 0.5, 0.3)),
@@ -3185,7 +4060,10 @@ mod tests {
             ("rounded_cylinder", SdfNode::rounded_cylinder(0.5, 0.1, 1.0)),
             ("triangular_prism", SdfNode::triangular_prism(0.5, 1.0)),
             ("cut_sphere", SdfNode::cut_sphere(1.0, 0.3)),
-            ("cut_hollow_sphere", SdfNode::cut_hollow_sphere(1.0, 0.3, 0.1)),
+            (
+                "cut_hollow_sphere",
+                SdfNode::cut_hollow_sphere(1.0, 0.3, 0.1),
+            ),
             ("death_star", SdfNode::death_star(1.0, 0.8, 0.5)),
             ("solid_angle", SdfNode::solid_angle(0.5, 1.0)),
             ("rhombus", SdfNode::rhombus(0.5, 0.3, 1.0, 0.05)),
@@ -3200,13 +4078,19 @@ mod tests {
             ("barrel", SdfNode::barrel(0.5, 1.0, 0.2)),
             ("diamond", SdfNode::diamond(0.5, 1.0)),
             ("egg", SdfNode::egg(1.0, 0.5)),
-            ("superellipsoid", SdfNode::superellipsoid(1.0, 0.5, 0.5, 0.5, 0.5)),
+            (
+                "superellipsoid",
+                SdfNode::superellipsoid(1.0, 0.5, 0.5, 0.5, 0.5),
+            ),
             ("rounded_x", SdfNode::rounded_x(0.5, 0.1, 1.0)),
             ("pie", SdfNode::pie(1.0, 0.5, 1.0)),
             ("trapezoid", SdfNode::trapezoid(0.5, 0.3, 1.0, 0.5)),
             ("parallelogram", SdfNode::parallelogram(0.5, 1.0, 0.2, 0.5)),
             ("tunnel", SdfNode::tunnel(0.5, 1.0, 0.5)),
-            ("uneven_capsule", SdfNode::uneven_capsule(0.3, 0.5, 1.0, 0.5)),
+            (
+                "uneven_capsule",
+                SdfNode::uneven_capsule(0.3, 0.5, 1.0, 0.5),
+            ),
             ("arc_shape", SdfNode::arc_shape(1.0, 0.5, 0.1, 1.0)),
             ("moon", SdfNode::moon(0.5, 1.0, 0.8, 1.0)),
             ("cross_shape", SdfNode::cross_shape(0.5, 0.1, 0.05, 1.0)),
@@ -3214,7 +4098,10 @@ mod tests {
             ("parabola_segment", SdfNode::parabola_segment(0.5, 1.0, 0.5)),
             ("regular_polygon", SdfNode::regular_polygon(0.5, 6, 1.0)),
             ("star_polygon", SdfNode::star_polygon(0.5, 5, 2.0, 1.0)),
-            ("chamfered_cube", SdfNode::chamfered_cube(0.5, 0.5, 0.5, 0.1)),
+            (
+                "chamfered_cube",
+                SdfNode::chamfered_cube(0.5, 0.5, 0.5, 0.1),
+            ),
             ("stairs", SdfNode::stairs(0.3, 0.2, 5, 0.5)),
             ("helix", SdfNode::helix(1.0, 0.1, 0.5, 2.0)),
             ("tetrahedron", SdfNode::tetrahedron(1.0)),
@@ -3231,12 +4118,31 @@ mod tests {
             ("fischer_koch_s", SdfNode::fischer_koch_s(1.0, 0.1)),
             ("pmy", SdfNode::pmy(1.0, 0.1)),
             ("triangle", SdfNode::triangle(Vec3::X, Vec3::Y, Vec3::Z)),
-            ("bezier", SdfNode::bezier(Vec3::ZERO, Vec3::new(0.5, 1.0, 0.0), Vec3::X, 0.1)),
+            (
+                "bezier",
+                SdfNode::bezier(Vec3::ZERO, Vec3::new(0.5, 1.0, 0.0), Vec3::X, 0.1),
+            ),
             ("circle_2d", SdfNode::circle_2d(0.5, 1.0)),
             ("rect_2d", SdfNode::rect_2d(0.5, 0.3, 1.0)),
-            ("segment_2d", SdfNode::segment_2d(0.0, 0.0, 1.0, 1.0, 0.1, 1.0)),
-            ("polygon_2d", SdfNode::polygon_2d(vec![Vec2::new(0.0, 0.0), Vec2::new(1.0, 0.0), Vec2::new(0.5, 1.0)], 1.0)),
-            ("rounded_rect_2d", SdfNode::rounded_rect_2d(0.5, 0.3, 0.1, 1.0)),
+            (
+                "segment_2d",
+                SdfNode::segment_2d(0.0, 0.0, 1.0, 1.0, 0.1, 1.0),
+            ),
+            (
+                "polygon_2d",
+                SdfNode::polygon_2d(
+                    vec![
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(1.0, 0.0),
+                        Vec2::new(0.5, 1.0),
+                    ],
+                    1.0,
+                ),
+            ),
+            (
+                "rounded_rect_2d",
+                SdfNode::rounded_rect_2d(0.5, 0.3, 0.1, 1.0),
+            ),
             ("annular_2d", SdfNode::annular_2d(0.5, 0.1, 1.0)),
         ];
 
@@ -3244,7 +4150,8 @@ mod tests {
             let shader = WgslShader::transpile(prim, TranspileMode::Hardcoded);
             assert!(
                 shader.source.contains("fn sdf_eval"),
-                "WGSL transpile failed for primitive '{}': missing sdf_eval", name,
+                "WGSL transpile failed for primitive '{}': missing sdf_eval",
+                name,
             );
         }
 
@@ -3256,33 +4163,67 @@ mod tests {
             ("intersection", a.clone().intersection(b.clone())),
             ("subtract", a.clone().subtract(b.clone())),
             ("smooth_union", a.clone().smooth_union(b.clone(), 0.2)),
-            ("smooth_intersection", a.clone().smooth_intersection(b.clone(), 0.2)),
+            (
+                "smooth_intersection",
+                a.clone().smooth_intersection(b.clone(), 0.2),
+            ),
             ("smooth_subtract", a.clone().smooth_subtract(b.clone(), 0.2)),
             ("chamfer_union", a.clone().chamfer_union(b.clone(), 0.2)),
-            ("chamfer_intersection", a.clone().chamfer_intersection(b.clone(), 0.2)),
-            ("chamfer_subtract", a.clone().chamfer_subtract(b.clone(), 0.2)),
+            (
+                "chamfer_intersection",
+                a.clone().chamfer_intersection(b.clone(), 0.2),
+            ),
+            (
+                "chamfer_subtract",
+                a.clone().chamfer_subtract(b.clone(), 0.2),
+            ),
             ("stairs_union", a.clone().stairs_union(b.clone(), 0.2, 4.0)),
-            ("stairs_intersection", a.clone().stairs_intersection(b.clone(), 0.2, 4.0)),
-            ("stairs_subtract", a.clone().stairs_subtract(b.clone(), 0.2, 4.0)),
-            ("columns_union", a.clone().columns_union(b.clone(), 0.2, 4.0)),
-            ("columns_intersection", a.clone().columns_intersection(b.clone(), 0.2, 4.0)),
-            ("columns_subtract", a.clone().columns_subtract(b.clone(), 0.2, 4.0)),
+            (
+                "stairs_intersection",
+                a.clone().stairs_intersection(b.clone(), 0.2, 4.0),
+            ),
+            (
+                "stairs_subtract",
+                a.clone().stairs_subtract(b.clone(), 0.2, 4.0),
+            ),
+            (
+                "columns_union",
+                a.clone().columns_union(b.clone(), 0.2, 4.0),
+            ),
+            (
+                "columns_intersection",
+                a.clone().columns_intersection(b.clone(), 0.2, 4.0),
+            ),
+            (
+                "columns_subtract",
+                a.clone().columns_subtract(b.clone(), 0.2, 4.0),
+            ),
             ("xor", a.clone().xor(b.clone())),
             ("morph", a.clone().morph(b.clone(), 0.5)),
             ("pipe", a.clone().pipe(b.clone(), 0.2)),
             ("engrave", a.clone().engrave(b.clone(), 0.1)),
             ("groove", a.clone().groove(b.clone(), 0.2, 0.1)),
             ("tongue", a.clone().tongue(b.clone(), 0.2, 0.1)),
-            ("exp_smooth_union", a.clone().exp_smooth_union(b.clone(), 0.2)),
-            ("exp_smooth_intersection", a.clone().exp_smooth_intersection(b.clone(), 0.2)),
-            ("exp_smooth_subtract", a.clone().exp_smooth_subtract(b.clone(), 0.2)),
+            (
+                "exp_smooth_union",
+                a.clone().exp_smooth_union(b.clone(), 0.2),
+            ),
+            (
+                "exp_smooth_intersection",
+                a.clone().exp_smooth_intersection(b.clone(), 0.2),
+            ),
+            (
+                "exp_smooth_subtract",
+                a.clone().exp_smooth_subtract(b.clone(), 0.2),
+            ),
         ];
 
         for (name, op) in &operations {
             let shader = WgslShader::transpile(op, TranspileMode::Hardcoded);
             assert!(
                 shader.source.contains("fn sdf_eval"),
-                "WGSL transpile failed for operation '{}': missing sdf_eval", name,
+                "WGSL transpile failed for operation '{}': missing sdf_eval",
+                name,
             );
         }
 
@@ -3316,7 +4257,8 @@ mod tests {
             let shader = WgslShader::transpile(m, TranspileMode::Hardcoded);
             assert!(
                 shader.source.contains("fn sdf_eval"),
-                "WGSL transpile failed for modifier '{}': missing sdf_eval", name,
+                "WGSL transpile failed for modifier '{}': missing sdf_eval",
+                name,
             );
         }
     }

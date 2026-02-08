@@ -21,7 +21,11 @@ mod tests {
     #[test]
     fn test_infinite_cylinder_origin() {
         let d = sdf_infinite_cylinder(Vec3::ZERO, 1.0);
-        assert!((d + 1.0).abs() < 0.001, "Origin should be -radius, got {}", d);
+        assert!(
+            (d + 1.0).abs() < 0.001,
+            "Origin should be -radius, got {}",
+            d
+        );
     }
 
     #[test]

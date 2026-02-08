@@ -154,17 +154,17 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod opcode;
-mod instruction;
+mod aabb;
 mod compiler;
 mod eval;
-mod simd;
-mod eval_simd;
-mod aabb;
 mod eval_bvh;
+mod eval_simd;
 mod eval_soa;
 /// Instanced SDF rendering (1 shape × N transforms)
 pub mod instanced;
+mod instruction;
+mod opcode;
+mod simd;
 
 #[cfg(feature = "jit")]
 pub mod jit;
@@ -182,14 +182,7 @@ pub mod hlsl;
 pub mod glsl;
 
 #[cfg(feature = "gpu")]
-pub use wgsl::{
-    WgslShader,
-    TranspileMode,
-    GpuEvaluator,
-    GpuError,
-    GpuEvalFuture,
-    GpuBufferPool,
-};
+pub use wgsl::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator, TranspileMode, WgslShader};
 
 #[cfg(feature = "hlsl")]
 pub use hlsl::{HlslShader, HlslTranspileMode};
@@ -197,34 +190,22 @@ pub use hlsl::{HlslShader, HlslTranspileMode};
 #[cfg(feature = "glsl")]
 pub use glsl::{GlslShader, GlslTranspileMode};
 
-pub use opcode::OpCode;
-pub use instruction::Instruction;
+pub use aabb::AabbPacked;
 pub use compiler::CompiledSdf;
 pub use eval::{
-    eval_compiled,
-    eval_compiled_normal,
-    eval_compiled_distance_and_normal,
-    eval_compiled_batch,
-    eval_compiled_batch_parallel,
+    eval_compiled, eval_compiled_batch, eval_compiled_batch_parallel,
+    eval_compiled_distance_and_normal, eval_compiled_normal,
 };
-pub use simd::{Vec3x8, Quatx8};
+pub use eval_bvh::{eval_compiled_bvh, get_scene_aabb, CompiledSdfBvh};
 pub use eval_simd::{
-    eval_compiled_simd,
-    eval_compiled_batch_simd,
-    eval_compiled_batch_simd_parallel,
-    eval_gradient_simd,
-    eval_distance_and_gradient_simd,
-};
-pub use aabb::AabbPacked;
-pub use eval_bvh::{
-    CompiledSdfBvh,
-    eval_compiled_bvh,
-    get_scene_aabb,
+    eval_compiled_batch_simd, eval_compiled_batch_simd_parallel, eval_compiled_simd,
+    eval_distance_and_gradient_simd, eval_gradient_simd,
 };
 pub use eval_soa::{
-    eval_compiled_batch_soa,
-    eval_compiled_batch_soa_parallel,
-    eval_compiled_batch_soa_into,
+    eval_compiled_batch_soa, eval_compiled_batch_soa_into, eval_compiled_batch_soa_parallel,
     eval_compiled_batch_soa_raw,
 };
 pub use instanced::InstancedSdf;
+pub use instruction::Instruction;
+pub use opcode::OpCode;
+pub use simd::{Quatx8, Vec3x8};

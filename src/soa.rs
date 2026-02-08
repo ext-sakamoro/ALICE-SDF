@@ -224,9 +224,7 @@ impl SoAPoints {
 
     /// Iterate over points as Vec3
     pub fn iter(&self) -> impl Iterator<Item = Vec3> + '_ {
-        (0..self.len).map(move |i| {
-            Vec3::new(self.x.data[i], self.y.data[i], self.z.data[i])
-        })
+        (0..self.len).map(move |i| Vec3::new(self.x.data[i], self.y.data[i], self.z.data[i]))
     }
 
     /// Get slices for each coordinate array
@@ -451,10 +449,7 @@ mod tests {
 
     #[test]
     fn test_soa_iter() {
-        let points = vec![
-            Vec3::new(1.0, 2.0, 3.0),
-            Vec3::new(4.0, 5.0, 6.0),
-        ];
+        let points = vec![Vec3::new(1.0, 2.0, 3.0), Vec3::new(4.0, 5.0, 6.0)];
 
         let soa = SoAPoints::from_vec3_slice(&points);
         let collected: Vec<Vec3> = soa.iter().collect();
@@ -464,10 +459,7 @@ mod tests {
 
     #[test]
     fn test_soa_from_iterator() {
-        let points = vec![
-            Vec3::new(1.0, 2.0, 3.0),
-            Vec3::new(4.0, 5.0, 6.0),
-        ];
+        let points = vec![Vec3::new(1.0, 2.0, 3.0), Vec3::new(4.0, 5.0, 6.0)];
 
         let soa: SoAPoints = points.iter().collect();
 

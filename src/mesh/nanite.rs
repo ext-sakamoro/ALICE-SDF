@@ -19,11 +19,11 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::types::SdfNode;
-use crate::mesh::{Vertex, Triangle, Mesh, MarchingCubesConfig, sdf_to_mesh};
-use crate::mesh::dual_contouring::{dual_contouring, DualContouringConfig};
-use crate::tight_aabb::compute_tight_aabb;
 use crate::eval::{eval_material, eval_normal};
+use crate::mesh::dual_contouring::{dual_contouring, DualContouringConfig};
+use crate::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh, Triangle, Vertex};
+use crate::tight_aabb::compute_tight_aabb;
+use crate::types::SdfNode;
 use glam::Vec3;
 
 /// Maximum triangles per Nanite cluster (UE5 uses ~128)
@@ -68,7 +68,8 @@ impl ClusterBounds {
 
         // Compute bounding sphere
         let center = (aabb_min + aabb_max) * 0.5;
-        let radius = vertices.iter()
+        let radius = vertices
+            .iter()
             .map(|&v| (v - center).length())
             .fold(0.0f32, f32::max);
 
@@ -265,7 +266,8 @@ pub struct NaniteMesh {
 impl NaniteMesh {
     /// Get clusters at a specific LOD level
     pub fn clusters_at_lod(&self, level: u32) -> Vec<&NaniteCluster> {
-        self.clusters.iter()
+        self.clusters
+            .iter()
             .filter(|c| c.lod_level == level)
             .collect()
     }
@@ -282,12 +284,11 @@ impl NaniteMesh {
         for cluster in &self.clusters {
             if cluster.should_render(view_pos, error_threshold) {
                 // Check if any child is also visible (prefer children for detail)
-                let child_visible = cluster.child_ids.iter()
-                    .any(|&id| {
-                        self.get_cluster(id)
-                            .map(|c| c.should_render(view_pos, error_threshold))
-                            .unwrap_or(false)
-                    });
+                let child_visible = cluster.child_ids.iter().any(|&id| {
+                    self.get_cluster(id)
+                        .map(|c| c.should_render(view_pos, error_threshold))
+                        .unwrap_or(false)
+                });
 
                 if !child_visible {
                     visible.push(cluster.id);
@@ -360,7 +361,8 @@ pub fn generate_nanite_mesh(
 
     // Generate each LOD level
     for lod in 0..config.lod_levels {
-        let resolution = (config.base_resolution as f32 * config.lod_factor.powi(lod as i32)) as u32;
+        let resolution =
+            (config.base_resolution as f32 * config.lod_factor.powi(lod as i32)) as u32;
         let resolution = resolution.max(4); // Minimum resolution
 
         let mesh = if config.use_dual_contouring {
@@ -393,10 +395,13 @@ pub fn generate_nanite_mesh(
         );
 
         // Evaluate material ID for each cluster
-        let clusters: Vec<_> = clusters.into_iter().map(|mut c| {
-            c.material_id = eval_material(sdf, c.bounds.center);
-            c
-        }).collect();
+        let clusters: Vec<_> = clusters
+            .into_iter()
+            .map(|mut c| {
+                c.material_id = eval_material(sdf, c.bounds.center);
+                c
+            })
+            .collect();
 
         // Curvature-adaptive: subdivide high-curvature clusters
         let clusters = if config.curvature_adaptive && lod == 0 {
@@ -434,7 +439,8 @@ pub fn generate_nanite_mesh(
 
     // Compute global bounds
     let global_bounds = if !all_clusters.is_empty() {
-        let all_vertices: Vec<Vec3> = all_clusters.iter()
+        let all_vertices: Vec<Vec3> = all_clusters
+            .iter()
             .flat_map(|c| c.vertices.iter().map(|v| v.position))
             .collect();
         ClusterBounds::from_vertices(&all_vertices)
@@ -442,7 +448,8 @@ pub fn generate_nanite_mesh(
         ClusterBounds::from_vertices(&[bounds_center])
     };
 
-    let total_triangles = all_clusters.iter()
+    let total_triangles = all_clusters
+        .iter()
         .filter(|c| c.lod_level == 0)
         .map(|c| c.triangle_count())
         .sum();
@@ -479,7 +486,9 @@ fn split_into_clusters(
             id: *cluster_id,
             lod_level,
             vertices: mesh.vertices.clone(),
-            triangles: mesh.indices.chunks(3)
+            triangles: mesh
+                .indices
+                .chunks(3)
                 .map(|c| Triangle::new(c[0], c[1], c[2]))
                 .collect(),
             bounds,
@@ -581,7 +590,11 @@ fn extract_cluster_geometry(mesh: &Mesh, tri_indices: &[usize]) -> (Vec<Vertex>,
             new_indices[i] = new_idx;
         }
 
-        triangles.push(Triangle::new(new_indices[0], new_indices[1], new_indices[2]));
+        triangles.push(Triangle::new(
+            new_indices[0],
+            new_indices[1],
+            new_indices[2],
+        ));
     }
 
     (vertices, triangles)
@@ -648,7 +661,8 @@ fn compute_cluster_error(vertices: &[Vertex], lod_level: u32) -> f32 {
 
 /// Compute combined bounds for a group of clusters
 fn compute_group_bounds(clusters: &[NaniteCluster]) -> ClusterBounds {
-    let all_vertices: Vec<Vec3> = clusters.iter()
+    let all_vertices: Vec<Vec3> = clusters
+        .iter()
         .flat_map(|c| c.vertices.iter().map(|v| v.position))
         .collect();
 
@@ -668,12 +682,14 @@ fn build_lod_dag(clusters: &mut [NaniteCluster]) {
     let mut relationships: Vec<(u32, u32)> = Vec::new();
 
     for lod in 1..=max_lod {
-        let parents: Vec<_> = clusters.iter()
+        let parents: Vec<_> = clusters
+            .iter()
             .filter(|c| c.lod_level == lod)
             .map(|c| (c.id, c.bounds))
             .collect();
 
-        let children: Vec<_> = clusters.iter()
+        let children: Vec<_> = clusters
+            .iter()
             .filter(|c| c.lod_level == lod - 1)
             .map(|c| (c.id, c.bounds))
             .collect();
@@ -683,7 +699,8 @@ fn build_lod_dag(clusters: &mut [NaniteCluster]) {
         }
 
         // Determine grid cell size from max radius of children at this LOD
-        let max_radius = children.iter()
+        let max_radius = children
+            .iter()
             .map(|(_, b)| b.radius)
             .fold(0.0f32, f32::max)
             .max(0.01);
@@ -774,9 +791,11 @@ fn refine_high_curvature_clusters(
 
         // Curvature estimate: variance of normals
         let mean_normal = normals.iter().copied().sum::<Vec3>() / normals.len() as f32;
-        let variance: f32 = normals.iter()
+        let variance: f32 = normals
+            .iter()
             .map(|n| (*n - mean_normal).length_squared())
-            .sum::<f32>() / normals.len() as f32;
+            .sum::<f32>()
+            / normals.len() as f32;
 
         // High curvature threshold: if variance > 0.1, cluster needs refinement
         if variance > 0.1 && cluster.triangles.len() > max_triangles / 2 {
@@ -818,12 +837,7 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = NaniteConfig::preview();
 
-        let nanite = generate_nanite_mesh(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let nanite = generate_nanite_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         assert!(!nanite.clusters.is_empty());
         assert!(!nanite.lod_levels.is_empty());
@@ -835,12 +849,7 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = NaniteConfig::preview();
 
-        let nanite = generate_nanite_mesh(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let nanite = generate_nanite_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // Close view - should select more clusters
         let close_clusters = nanite.select_clusters(Vec3::new(0.0, 0.0, 3.0), 0.01);
@@ -857,12 +866,7 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = NaniteConfig::preview();
 
-        let nanite = generate_nanite_mesh(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let nanite = generate_nanite_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         let mesh = nanite.to_mesh(0);
         assert!(mesh.vertex_count() > 0);
@@ -879,12 +883,7 @@ mod tests {
             ..NaniteConfig::preview()
         };
 
-        let nanite = generate_nanite_mesh(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let nanite = generate_nanite_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         assert!(!nanite.clusters.is_empty());
         assert!(nanite.total_triangles > 0);
@@ -899,12 +898,7 @@ mod tests {
         };
 
         // Use excessively large bounds - tight AABB should shrink them
-        let nanite = generate_nanite_mesh(
-            &sphere,
-            Vec3::splat(-10.0),
-            Vec3::splat(10.0),
-            &config,
-        );
+        let nanite = generate_nanite_mesh(&sphere, Vec3::splat(-10.0), Vec3::splat(10.0), &config);
 
         assert!(!nanite.clusters.is_empty());
     }
@@ -914,12 +908,7 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = NaniteConfig::preview();
 
-        let nanite = generate_nanite_mesh(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let nanite = generate_nanite_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // Default material should be 0
         for cluster in &nanite.clusters {

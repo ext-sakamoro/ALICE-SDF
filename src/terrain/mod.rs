@@ -26,21 +26,21 @@
 //!
 //! Author: Moroya Sakamoto
 
-pub mod heightmap;
-pub mod clipmap;
-pub mod splatmap;
-pub mod erosion;
 pub mod caves;
+pub mod clipmap;
+pub mod erosion;
+pub mod heightmap;
+pub mod splatmap;
 
 use glam::Vec3;
 
+pub use caves::{generate_cave_sdf, CaveConfig};
+pub use clipmap::{ClipmapLevel, ClipmapMesh, ClipmapTerrain};
+pub use erosion::{erode, ErosionConfig};
 pub use heightmap::Heightmap;
 #[cfg(feature = "image")]
 pub use heightmap::HeightmapImageConfig;
-pub use clipmap::{ClipmapTerrain, ClipmapLevel, ClipmapMesh};
-pub use splatmap::{Splatmap, SplatLayer};
-pub use erosion::{erode, ErosionConfig};
-pub use caves::{generate_cave_sdf, CaveConfig};
+pub use splatmap::{SplatLayer, Splatmap};
 
 /// Configuration for terrain generation
 #[derive(Debug, Clone)]

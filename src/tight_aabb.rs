@@ -103,14 +103,7 @@ pub fn compute_tight_aabb_with_config(node: &SdfNode, config: &TightAabbConfig) 
             let axis = (face / 2) as usize; // 0=X, 1=Y, 2=Z
             let is_max = face % 2 == 1;
 
-            find_tight_bound(
-                node,
-                axis,
-                is_max,
-                initial_min,
-                initial_max,
-                config,
-            )
+            find_tight_bound(node, axis, is_max, initial_min, initial_max, config)
         })
         .collect();
 
@@ -253,7 +246,11 @@ fn bisect_bound(
         }
     }
 
-    if is_max { lo } else { hi }
+    if is_max {
+        lo
+    } else {
+        hi
+    }
 }
 
 /// Create a Vec3Interval slab: full extent on two axes, restricted on one axis.
@@ -312,8 +309,18 @@ mod tests {
         for i in 0..3 {
             let lo = get_axis(aabb.min, i);
             let hi = get_axis(aabb.max, i);
-            assert!(lo < -0.9 && lo > -1.2, "min[{}] = {} should be near -1.0", i, lo);
-            assert!(hi > 0.9 && hi < 1.2, "max[{}] = {} should be near 1.0", i, hi);
+            assert!(
+                lo < -0.9 && lo > -1.2,
+                "min[{}] = {} should be near -1.0",
+                i,
+                lo
+            );
+            assert!(
+                hi > 0.9 && hi < 1.2,
+                "max[{}] = {} should be near 1.0",
+                i,
+                hi
+            );
         }
     }
 
@@ -325,12 +332,36 @@ mod tests {
         let box3 = SdfNode::box3d(1.0, 2.0, 0.5);
         let aabb = compute_tight_aabb(&box3);
 
-        assert!(aabb.min.x < -0.4 && aabb.min.x > -0.7, "min.x = {}", aabb.min.x);
-        assert!(aabb.max.x > 0.4 && aabb.max.x < 0.7, "max.x = {}", aabb.max.x);
-        assert!(aabb.min.y < -0.9 && aabb.min.y > -1.2, "min.y = {}", aabb.min.y);
-        assert!(aabb.max.y > 0.9 && aabb.max.y < 1.2, "max.y = {}", aabb.max.y);
-        assert!(aabb.min.z < -0.15 && aabb.min.z > -0.4, "min.z = {}", aabb.min.z);
-        assert!(aabb.max.z > 0.15 && aabb.max.z < 0.4, "max.z = {}", aabb.max.z);
+        assert!(
+            aabb.min.x < -0.4 && aabb.min.x > -0.7,
+            "min.x = {}",
+            aabb.min.x
+        );
+        assert!(
+            aabb.max.x > 0.4 && aabb.max.x < 0.7,
+            "max.x = {}",
+            aabb.max.x
+        );
+        assert!(
+            aabb.min.y < -0.9 && aabb.min.y > -1.2,
+            "min.y = {}",
+            aabb.min.y
+        );
+        assert!(
+            aabb.max.y > 0.9 && aabb.max.y < 1.2,
+            "max.y = {}",
+            aabb.max.y
+        );
+        assert!(
+            aabb.min.z < -0.15 && aabb.min.z > -0.4,
+            "min.z = {}",
+            aabb.min.z
+        );
+        assert!(
+            aabb.max.z > 0.15 && aabb.max.z < 0.4,
+            "max.z = {}",
+            aabb.max.z
+        );
     }
 
     #[test]
@@ -339,10 +370,26 @@ mod tests {
         let aabb = compute_tight_aabb(&shape);
 
         // Sphere at (3, -2, 1) → AABB ~(2, -3, 0) to (4, -1, 2)
-        assert!(aabb.min.x > 1.5 && aabb.min.x < 2.2, "min.x = {}", aabb.min.x);
-        assert!(aabb.max.x > 3.8 && aabb.max.x < 4.5, "max.x = {}", aabb.max.x);
-        assert!(aabb.min.y > -3.2 && aabb.min.y < -2.5, "min.y = {}", aabb.min.y);
-        assert!(aabb.max.y > -1.5 && aabb.max.y < -0.8, "max.y = {}", aabb.max.y);
+        assert!(
+            aabb.min.x > 1.5 && aabb.min.x < 2.2,
+            "min.x = {}",
+            aabb.min.x
+        );
+        assert!(
+            aabb.max.x > 3.8 && aabb.max.x < 4.5,
+            "max.x = {}",
+            aabb.max.x
+        );
+        assert!(
+            aabb.min.y > -3.2 && aabb.min.y < -2.5,
+            "min.y = {}",
+            aabb.min.y
+        );
+        assert!(
+            aabb.max.y > -1.5 && aabb.max.y < -0.8,
+            "max.y = {}",
+            aabb.max.y
+        );
     }
 
     #[test]
@@ -370,14 +417,17 @@ mod tests {
         // Two spheres at (-3,0,0) and (3,0,0) → AABB ~(-4,-1,-1) to (4,1,1)
         assert!(aabb.min.x < -3.5, "min.x = {}", aabb.min.x);
         assert!(aabb.max.x > 3.5, "max.x = {}", aabb.max.x);
-        assert!(aabb.min.y > -1.5 && aabb.min.y < -0.5, "min.y = {}", aabb.min.y);
+        assert!(
+            aabb.min.y > -1.5 && aabb.min.y < -0.5,
+            "min.y = {}",
+            aabb.min.y
+        );
     }
 
     #[test]
     fn test_subtraction_aabb() {
         // Sphere minus small box → outer surface is the sphere
-        let shape = SdfNode::sphere(2.0)
-            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let shape = SdfNode::sphere(2.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
 
         let aabb = compute_tight_aabb(&shape);
 
@@ -430,9 +480,25 @@ mod tests {
         let aabb = compute_tight_aabb(&torus);
 
         // Torus major=2, minor=0.5 → AABB ~(-2.5, -0.5, -2.5) to (2.5, 0.5, 2.5)
-        assert!(aabb.min.x < -2.3 && aabb.min.x > -2.8, "min.x = {}", aabb.min.x);
-        assert!(aabb.max.x > 2.3 && aabb.max.x < 2.8, "max.x = {}", aabb.max.x);
-        assert!(aabb.min.y > -0.8 && aabb.min.y < -0.3, "min.y = {}", aabb.min.y);
-        assert!(aabb.max.y > 0.3 && aabb.max.y < 0.8, "max.y = {}", aabb.max.y);
+        assert!(
+            aabb.min.x < -2.3 && aabb.min.x > -2.8,
+            "min.x = {}",
+            aabb.min.x
+        );
+        assert!(
+            aabb.max.x > 2.3 && aabb.max.x < 2.8,
+            "max.x = {}",
+            aabb.max.x
+        );
+        assert!(
+            aabb.min.y > -0.8 && aabb.min.y < -0.3,
+            "min.y = {}",
+            aabb.min.y
+        );
+        assert!(
+            aabb.max.y > 0.3 && aabb.max.y < 0.8,
+            "max.y = {}",
+            aabb.max.y
+        );
     }
 }

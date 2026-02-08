@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS (ARM64)
+          - os: ubuntu-latest
+            name: Linux (x86_64)
+          - os: windows-latest
+            name: Windows (x86_64)
+
+    name: Test — ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE-Physics stub
+        shell: bash
+        run: |
+          mkdir -p ../ALICE-Physics/src
+          cat > ../ALICE-Physics/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-physics"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Physics/src/lib.rs
+
+      - name: Build
+        run: cargo build --lib
+
+      - name: Test (core)
+        run: cargo test --lib
+
+      - name: Test (shader transpilers)
+        run: cargo test --lib --features "glsl,hlsl,gpu"
+
+      - name: Build (FFI + shaders)
+        run: cargo build --features "ffi,hlsl,glsl"
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE-Physics stub
+        run: |
+          mkdir -p ../ALICE-Physics/src
+          cat > ../ALICE-Physics/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-physics"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Physics/src/lib.rs
+
+      - name: Clippy
+        run: cargo clippy --lib --features "glsl,hlsl,gpu" 2>&1 | tee clippy-output.txt
+        env:
+          RUSTFLAGS: "--cap-lints warn"
+
+      - name: Report clippy warning count
+        if: always()
+        shell: bash
+        run: |
+          COUNT=$(grep -c '^warning:' clippy-output.txt 2>/dev/null || echo 0)
+          echo "::notice::Clippy warnings: $COUNT (non-blocking)"
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --check

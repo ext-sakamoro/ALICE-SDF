@@ -52,7 +52,11 @@ mod tests {
         // Bottom sphere center is at y=-half_height, radius=r1
         // Surface point at bottom pole: y = -half_height - r1 = -2.0
         let d = sdf_rounded_cone(Vec3::new(0.0, -2.0, 0.0), 1.0, 0.5, 1.0);
-        assert!(d.abs() < 0.001, "Bottom pole should be on surface, got {}", d);
+        assert!(
+            d.abs() < 0.001,
+            "Bottom pole should be on surface, got {}",
+            d
+        );
     }
 
     #[test]

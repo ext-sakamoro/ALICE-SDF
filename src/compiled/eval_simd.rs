@@ -9,10 +9,10 @@ use super::compiler::CompiledSdf;
 use super::opcode::OpCode;
 use super::simd::{Quatx8, Vec3x8};
 use glam::Vec3;
-use wide::{f32x8, CmpLt, CmpGt};
+use wide::{f32x8, CmpGt, CmpLt};
 
 use crate::modifiers::perlin_noise_3d;
-use crate::operations::{sdf_columns_union, sdf_columns_intersection, sdf_columns_subtraction};
+use crate::operations::{sdf_columns_intersection, sdf_columns_subtraction, sdf_columns_union};
 use crate::primitives::*;
 
 /// Maximum stack depth for value stack (SIMD)
@@ -386,7 +386,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // max(d_xy, d_z).min(0) + sqrt(max(d_xy,0)^2 + max(d_z,0)^2)
                 let d_xy_pos = d_xy.max(f32x8::ZERO);
                 let d_z_pos = d_z.max(f32x8::ZERO);
-                let d = d_xy.max(d_z).min(f32x8::ZERO) + (d_xy_pos * d_xy_pos + d_z_pos * d_z_pos).sqrt();
+                let d = d_xy.max(d_z).min(f32x8::ZERO)
+                    + (d_xy_pos * d_xy_pos + d_z_pos * d_z_pos).sqrt();
 
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -419,25 +420,33 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::CappedCone => {
-                let d = eval_per_lane(&p, |pt| sdf_capped_cone(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_capped_cone(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::CappedTorus => {
-                let d = eval_per_lane(&p, |pt| sdf_capped_torus(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_capped_torus(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::RoundedCylinder => {
-                let d = eval_per_lane(&p, |pt| sdf_rounded_cylinder(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_rounded_cylinder(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::TriangularPrism => {
-                let d = eval_per_lane(&p, |pt| sdf_triangular_prism(pt, inst.params[0], inst.params[1]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_triangular_prism(pt, inst.params[0], inst.params[1])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -449,13 +458,17 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::CutHollowSphere => {
-                let d = eval_per_lane(&p, |pt| sdf_cut_hollow_sphere(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_cut_hollow_sphere(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::DeathStar => {
-                let d = eval_per_lane(&p, |pt| sdf_death_star(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_death_star(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -467,13 +480,30 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::Rhombus => {
-                let d = eval_per_lane(&p, |pt| sdf_rhombus(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_rhombus(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Horseshoe => {
-                let d = eval_per_lane(&p, |pt| sdf_horseshoe(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3], inst.params[4]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_horseshoe(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                        inst.params[4],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -503,10 +533,15 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let scale = f32x8::splat(inst.params[0]);
                 let thickness = f32x8::splat(inst.params[1]);
                 let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
-                let sx = sin_approx(spx); let cx = cos_approx(spx);
-                let sy = sin_approx(spy); let cy = cos_approx(spy);
-                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let spx = p.x * scale;
+                let spy = p.y * scale;
+                let spz = p.z * scale;
+                let sx = sin_approx(spx);
+                let cx = cos_approx(spx);
+                let sy = sin_approx(spy);
+                let cy = cos_approx(spy);
+                let sz = sin_approx(spz);
+                let cz = cos_approx(spz);
                 let d = (sx * cy + sy * cz + sz * cx).abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -534,7 +569,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::Barrel => {
-                let d = eval_per_lane(&p, |pt| sdf_barrel(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_barrel(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -559,7 +596,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let scale = f32x8::splat(inst.params[0]);
                 let thickness = f32x8::splat(inst.params[1]);
                 let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-                let d = (cos_approx(p.x * scale) + cos_approx(p.y * scale) + cos_approx(p.z * scale)).abs() * inv_scale - thickness;
+                let d =
+                    (cos_approx(p.x * scale) + cos_approx(p.y * scale) + cos_approx(p.z * scale))
+                        .abs()
+                        * inv_scale
+                        - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -574,37 +615,67 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::RoundedX => {
-                let d = eval_per_lane(&p, |pt| sdf_rounded_x(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_rounded_x(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Pie => {
-                let d = eval_per_lane(&p, |pt| sdf_pie(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_pie(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Trapezoid => {
-                let d = eval_per_lane(&p, |pt| sdf_trapezoid(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_trapezoid(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Parallelogram => {
-                let d = eval_per_lane(&p, |pt| sdf_parallelogram(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_parallelogram(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Tunnel => {
-                let d = eval_per_lane(&p, |pt| sdf_tunnel(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_tunnel(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::UnevenCapsule => {
-                let d = eval_per_lane(&p, |pt| sdf_uneven_capsule(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_uneven_capsule(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -616,55 +687,109 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             }
 
             OpCode::ArcShape => {
-                let d = eval_per_lane(&p, |pt| sdf_arc_shape(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_arc_shape(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Moon => {
-                let d = eval_per_lane(&p, |pt| sdf_moon(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_moon(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::CrossShape => {
-                let d = eval_per_lane(&p, |pt| sdf_cross_shape(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_cross_shape(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::BlobbyCross => {
-                let d = eval_per_lane(&p, |pt| sdf_blobby_cross(pt, inst.params[0], inst.params[1]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_blobby_cross(pt, inst.params[0], inst.params[1])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::ParabolaSegment => {
-                let d = eval_per_lane(&p, |pt| sdf_parabola_segment(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_parabola_segment(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::RegularPolygon => {
-                let d = eval_per_lane(&p, |pt| sdf_regular_polygon(pt, inst.params[0], inst.params[1], inst.params[2]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_regular_polygon(pt, inst.params[0], inst.params[1], inst.params[2])
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::StarPolygon => {
-                let d = eval_per_lane(&p, |pt| sdf_star_polygon(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_star_polygon(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Stairs => {
-                let d = eval_per_lane(&p, |pt| sdf_stairs(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_stairs(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Helix => {
-                let d = eval_per_lane(&p, |pt| sdf_helix(pt, inst.params[0], inst.params[1], inst.params[2], inst.params[3]));
+                let d = eval_per_lane(&p, |pt| {
+                    sdf_helix(
+                        pt,
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    )
+                });
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -672,13 +797,13 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::Tetrahedron => {
                 // ★ Native SIMD: 4 dot products + max (no abs — tetrahedron normals are signed)
                 let radius = f32x8::splat(inst.params[0]);
-                let s = f32x8::splat(0.5773502691896258_f32);  // 1/sqrt(3)
+                let s = f32x8::splat(0.5773502691896258_f32); // 1/sqrt(3)
                 let ns = f32x8::splat(-0.5773502691896258_f32);
                 // n0=(s,s,s) n1=(-s,-s,s) n2=(-s,s,-s) n3=(s,-s,-s)
-                let d0 = p.x * s  + p.y * s  + p.z * s;
+                let d0 = p.x * s + p.y * s + p.z * s;
                 let d1 = p.x * ns + p.y * ns + p.z * s;
-                let d2 = p.x * ns + p.y * s  + p.z * ns;
-                let d3 = p.x * s  + p.y * ns + p.z * ns;
+                let d2 = p.x * ns + p.y * s + p.z * ns;
+                let d3 = p.x * s + p.y * ns + p.z * ns;
                 let d = d0.max(d1).max(d2).max(d3) - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -687,9 +812,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::Dodecahedron => {
                 // ★ Native SIMD: 6 abs-dot products (GDF_DODECAHEDRON normals)
                 let radius = f32x8::splat(inst.params[0]);
-                let a = f32x8::splat(0.8506508083520400_f32);  // ICO_B
-                let b = f32x8::splat(0.5257311121191336_f32);  // ICO_A
-                // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
+                let a = f32x8::splat(0.8506508083520400_f32); // ICO_B
+                let b = f32x8::splat(0.5257311121191336_f32); // ICO_A
+                                                              // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
                 let d0 = (p.y * a + p.z * b).abs();
                 let d1 = (p.y * a - p.z * b).abs();
                 let d2 = (p.x * a + p.y * b).abs();
@@ -704,14 +829,14 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::Icosahedron => {
                 // ★ Native SIMD: 10 abs-dot products (octahedron[4] + icosahedron[6])
                 let radius = f32x8::splat(inst.params[0]);
-                let s = f32x8::splat(0.5773502691896258_f32);  // 1/sqrt(3)
+                let s = f32x8::splat(0.5773502691896258_f32); // 1/sqrt(3)
                 let ia = f32x8::splat(0.5257311121191336_f32); // ICO_A
                 let ib = f32x8::splat(0.8506508083520400_f32); // ICO_B
-                // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
-                let d0 = ( p.x * s + p.y * s + p.z * s).abs();
+                                                               // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
+                let d0 = (p.x * s + p.y * s + p.z * s).abs();
                 let d1 = (-p.x * s + p.y * s + p.z * s).abs();
-                let d2 = ( p.x * s - p.y * s + p.z * s).abs();
-                let d3 = ( p.x * s + p.y * s - p.z * s).abs();
+                let d2 = (p.x * s - p.y * s + p.z * s).abs();
+                let d3 = (p.x * s + p.y * s - p.z * s).abs();
                 // Icosahedron normals (6): abs(dot) with (0,±a,±b) permutations
                 let d4 = (p.y * ia + p.z * ib).abs();
                 let d5 = (p.y * ia - p.z * ib).abs();
@@ -719,7 +844,17 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let d7 = (p.x * ia - p.y * ib).abs();
                 let d8 = (p.x * ib + p.z * ia).abs();
                 let d9 = (p.x * ib - p.z * ia).abs();
-                let d = d0.max(d1).max(d2).max(d3).max(d4).max(d5).max(d6).max(d7).max(d8).max(d9) - radius;
+                let d = d0
+                    .max(d1)
+                    .max(d2)
+                    .max(d3)
+                    .max(d4)
+                    .max(d5)
+                    .max(d6)
+                    .max(d7)
+                    .max(d8)
+                    .max(d9)
+                    - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -733,10 +868,10 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let d1 = p.y.abs();
                 let d2 = p.z.abs();
                 // Octahedron normals (4)
-                let d3 = ( p.x * s + p.y * s + p.z * s).abs();
+                let d3 = (p.x * s + p.y * s + p.z * s).abs();
                 let d4 = (-p.x * s + p.y * s + p.z * s).abs();
-                let d5 = ( p.x * s - p.y * s + p.z * s).abs();
-                let d6 = ( p.x * s + p.y * s - p.z * s).abs();
+                let d5 = (p.x * s - p.y * s + p.z * s).abs();
+                let d6 = (p.x * s + p.y * s - p.z * s).abs();
                 let d = d0.max(d1).max(d2).max(d3).max(d4).max(d5).max(d6) - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -749,17 +884,17 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let ia = f32x8::splat(0.5257311121191336_f32);
                 let ib = f32x8::splat(0.8506508083520400_f32);
                 // Octahedron (4)
-                let d0  = ( p.x * s + p.y * s + p.z * s).abs();
-                let d1  = (-p.x * s + p.y * s + p.z * s).abs();
-                let d2  = ( p.x * s - p.y * s + p.z * s).abs();
-                let d3  = ( p.x * s + p.y * s - p.z * s).abs();
+                let d0 = (p.x * s + p.y * s + p.z * s).abs();
+                let d1 = (-p.x * s + p.y * s + p.z * s).abs();
+                let d2 = (p.x * s - p.y * s + p.z * s).abs();
+                let d3 = (p.x * s + p.y * s - p.z * s).abs();
                 // Icosahedron (6)
-                let d4  = (p.y * ia + p.z * ib).abs();
-                let d5  = (p.y * ia - p.z * ib).abs();
-                let d6  = (p.x * ia + p.y * ib).abs();
-                let d7  = (p.x * ia - p.y * ib).abs();
-                let d8  = (p.x * ib + p.z * ia).abs();
-                let d9  = (p.x * ib - p.z * ia).abs();
+                let d4 = (p.y * ia + p.z * ib).abs();
+                let d5 = (p.y * ia - p.z * ib).abs();
+                let d6 = (p.x * ia + p.y * ib).abs();
+                let d7 = (p.x * ia - p.y * ib).abs();
+                let d8 = (p.x * ib + p.z * ia).abs();
+                let d9 = (p.x * ib - p.z * ia).abs();
                 // Dodecahedron (6)
                 let d10 = (p.y * ib + p.z * ia).abs();
                 let d11 = (p.y * ib - p.z * ia).abs();
@@ -767,9 +902,23 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let d13 = (p.x * ib - p.y * ia).abs();
                 let d14 = (p.x * ia + p.z * ib).abs();
                 let d15 = (p.x * ia - p.z * ib).abs();
-                let d = d0.max(d1).max(d2).max(d3)
-                    .max(d4).max(d5).max(d6).max(d7).max(d8).max(d9)
-                    .max(d10).max(d11).max(d12).max(d13).max(d14).max(d15) - radius;
+                let d = d0
+                    .max(d1)
+                    .max(d2)
+                    .max(d3)
+                    .max(d4)
+                    .max(d5)
+                    .max(d6)
+                    .max(d7)
+                    .max(d8)
+                    .max(d9)
+                    .max(d10)
+                    .max(d11)
+                    .max(d12)
+                    .max(d13)
+                    .max(d14)
+                    .max(d15)
+                    - radius;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -790,14 +939,20 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let qy = (py + e).abs() - e;
                 let qz = (pz + e).abs() - e;
                 // d1 = length(max(vec3(px,qy,qz),0)) + min(max(px,max(qy,qz)),0)
-                let v1x = px.max(zero); let v1y = qy.max(zero); let v1z = qz.max(zero);
-                let d1 = (v1x*v1x + v1y*v1y + v1z*v1z).sqrt() + px.max(qy.max(qz)).min(zero);
+                let v1x = px.max(zero);
+                let v1y = qy.max(zero);
+                let v1z = qz.max(zero);
+                let d1 = (v1x * v1x + v1y * v1y + v1z * v1z).sqrt() + px.max(qy.max(qz)).min(zero);
                 // d2
-                let v2x = qx.max(zero); let v2y = py.max(zero); let v2z = qz.max(zero);
-                let d2 = (v2x*v2x + v2y*v2y + v2z*v2z).sqrt() + qx.max(py.max(qz)).min(zero);
+                let v2x = qx.max(zero);
+                let v2y = py.max(zero);
+                let v2z = qz.max(zero);
+                let d2 = (v2x * v2x + v2y * v2y + v2z * v2z).sqrt() + qx.max(py.max(qz)).min(zero);
                 // d3
-                let v3x = qx.max(zero); let v3y = qy.max(zero); let v3z = pz.max(zero);
-                let d3 = (v3x*v3x + v3y*v3y + v3z*v3z).sqrt() + qx.max(qy.max(pz)).min(zero);
+                let v3x = qx.max(zero);
+                let v3y = qy.max(zero);
+                let v3z = pz.max(zero);
+                let d3 = (v3x * v3x + v3y * v3y + v3z * v3z).sqrt() + qx.max(qy.max(pz)).min(zero);
                 let d = d1.min(d2).min(d3);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -808,11 +963,16 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let scale = f32x8::splat(inst.params[0]);
                 let thickness = f32x8::splat(inst.params[1]);
                 let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
-                let sx = sin_approx(spx); let cx = cos_approx(spx);
-                let sy = sin_approx(spy); let cy = cos_approx(spy);
-                let sz = sin_approx(spz); let cz = cos_approx(spz);
-                let d = sx*sy*sz + sx*cy*cz + cx*sy*cz + cx*cy*sz;
+                let spx = p.x * scale;
+                let spy = p.y * scale;
+                let spz = p.z * scale;
+                let sx = sin_approx(spx);
+                let cx = cos_approx(spx);
+                let sy = sin_approx(spy);
+                let cy = cos_approx(spy);
+                let sz = sin_approx(spz);
+                let cz = cos_approx(spz);
+                let d = sx * sy * sz + sx * cy * cz + cx * sy * cz + cx * cy * sz;
                 let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -842,13 +1002,22 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let two = f32x8::splat(2.0);
                 let one = f32x8::ONE;
                 let half = f32x8::splat(0.5);
-                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
-                let sx = sin_approx(spx); let cx = cos_approx(spx);
-                let sy = sin_approx(spy); let cy = cos_approx(spy);
-                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let spx = p.x * scale;
+                let spy = p.y * scale;
+                let spz = p.z * scale;
+                let sx = sin_approx(spx);
+                let cx = cos_approx(spx);
+                let sy = sin_approx(spy);
+                let cy = cos_approx(spy);
+                let sz = sin_approx(spz);
+                let cz = cos_approx(spz);
                 // sin(2x) = 2*sx*cx, cos(2x) = 2*cx*cx - 1
-                let s2x = two * sx * cx; let s2y = two * sy * cy; let s2z = two * sz * cz;
-                let c2x = two * cx * cx - one; let c2y = two * cy * cy - one; let c2z = two * cz * cz - one;
+                let s2x = two * sx * cx;
+                let s2y = two * sy * cy;
+                let s2z = two * sz * cz;
+                let c2x = two * cx * cx - one;
+                let c2y = two * cy * cy - one;
+                let c2z = two * cz * cz - one;
                 let term1 = half * (s2x * cy * sz + sx * s2y * cz + cx * sy * s2z);
                 let term2 = half * (c2x * c2y + c2y * c2z + c2z * c2x);
                 let d = (term1 - term2 + f32x8::splat(0.15)).abs() * inv_scale - thickness;
@@ -869,7 +1038,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let c2x = two * cx * cx - one;
                 let c2y = two * cy * cy - one;
                 let c2z = two * cz * cz - one;
-                let d = two * (cx*cy + cy*cz + cz*cx) - (c2x + c2y + c2z);
+                let d = two * (cx * cy + cy * cz + cz * cx) - (c2x + c2y + c2z);
                 let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -882,14 +1051,19 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let inv_scale = f32x8::splat(1.0 / inst.params[0]);
                 let two = f32x8::splat(2.0);
                 let one = f32x8::ONE;
-                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
-                let sx = sin_approx(spx); let cx = cos_approx(spx);
-                let sy = sin_approx(spy); let cy = cos_approx(spy);
-                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let spx = p.x * scale;
+                let spy = p.y * scale;
+                let spz = p.z * scale;
+                let sx = sin_approx(spx);
+                let cx = cos_approx(spx);
+                let sy = sin_approx(spy);
+                let cy = cos_approx(spy);
+                let sz = sin_approx(spz);
+                let cz = cos_approx(spz);
                 let c2x = two * cx * cx - one;
                 let c2y = two * cy * cy - one;
                 let c2z = two * cz * cz - one;
-                let d = c2x*sy*cz + cx*c2y*sz + sx*cy*c2z;
+                let d = c2x * sy * cz + cx * c2y * sz + sx * cy * c2z;
                 let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -902,14 +1076,19 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let inv_scale = f32x8::splat(1.0 / inst.params[0]);
                 let two = f32x8::splat(2.0);
                 let one = f32x8::ONE;
-                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
-                let sx = sin_approx(spx); let cx = cos_approx(spx);
-                let sy = sin_approx(spy); let cy = cos_approx(spy);
-                let sz = sin_approx(spz); let cz = cos_approx(spz);
+                let spx = p.x * scale;
+                let spy = p.y * scale;
+                let spz = p.z * scale;
+                let sx = sin_approx(spx);
+                let cx = cos_approx(spx);
+                let sy = sin_approx(spy);
+                let cy = cos_approx(spy);
+                let sz = sin_approx(spz);
+                let cz = cos_approx(spz);
                 let c2x = two * cx * cx - one;
                 let c2y = two * cy * cy - one;
                 let c2z = two * cz * cz - one;
-                let d = c2x*sy*cz + cx*c2y*sz + sx*cy*c2z - f32x8::splat(0.4);
+                let d = c2x * sy * cz + cx * c2y * sz + sx * cy * c2z - f32x8::splat(0.4);
                 let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -921,12 +1100,19 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let thickness = f32x8::splat(inst.params[1]);
                 let inv_scale = f32x8::splat(1.0 / inst.params[0]);
                 let two = f32x8::splat(2.0);
-                let spx = p.x * scale; let spy = p.y * scale; let spz = p.z * scale;
-                let sx = sin_approx(spx); let cx = cos_approx(spx);
-                let sy = sin_approx(spy); let cy = cos_approx(spy);
-                let sz = sin_approx(spz); let cz = cos_approx(spz);
-                let s2x = two * sx * cx; let s2y = two * sy * cy; let s2z = two * sz * cz;
-                let d = two * cx*cy*cz + s2x*sy + sx*s2z + s2y*sz;
+                let spx = p.x * scale;
+                let spy = p.y * scale;
+                let spz = p.z * scale;
+                let sx = sin_approx(spx);
+                let cx = cos_approx(spx);
+                let sy = sin_approx(spy);
+                let cy = cos_approx(spy);
+                let sz = sin_approx(spz);
+                let cz = cos_approx(spz);
+                let s2x = two * sx * cx;
+                let s2y = two * sy * cy;
+                let s2z = two * sz * cz;
+                let d = two * cx * cy * cz + s2x * sy + sx * s2z + s2y * sz;
                 let d = d.abs() * inv_scale - thickness;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -1146,7 +1332,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
 
             OpCode::Scale => {
                 let inv_factor = inst.params[0]; // precomputed 1.0/factor
-                let factor = inst.params[1];     // original factor
+                let factor = inst.params[1]; // original factor
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
@@ -1349,9 +1535,21 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 csp += 1;
 
                 p = Vec3x8 {
-                    x: if inst.params[0] != 0.0 { p.x.abs() } else { p.x },
-                    y: if inst.params[1] != 0.0 { p.y.abs() } else { p.y },
-                    z: if inst.params[2] != 0.0 { p.z.abs() } else { p.z },
+                    x: if inst.params[0] != 0.0 {
+                        p.x.abs()
+                    } else {
+                        p.x
+                    },
+                    y: if inst.params[1] != 0.0 {
+                        p.y.abs()
+                    } else {
+                        p.y
+                    },
+                    z: if inst.params[2] != 0.0 {
+                        p.z.abs()
+                    } else {
+                        p.z
+                    },
                 };
             }
 
@@ -1377,7 +1575,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let y1 = min_xy.max(min_xz);
                 let z1 = min_xy.min(min_xz);
 
-                p = Vec3x8 { x: x1, y: y1, z: z1 };
+                p = Vec3x8 {
+                    x: x1,
+                    y: y1,
+                    z: z1,
+                };
             }
 
             OpCode::Revolution => {
@@ -1391,7 +1593,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
 
                 let offset = f32x8::splat(inst.params[0]);
                 let q = (p.x * p.x + p.z * p.z).sqrt() - offset;
-                p = Vec3x8 { x: q, y: p.y, z: f32x8::ZERO };
+                p = Vec3x8 {
+                    x: q,
+                    y: p.y,
+                    z: f32x8::ZERO,
+                };
             }
 
             OpCode::Extrude => {
@@ -1403,7 +1609,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 };
                 csp += 1;
 
-                p = Vec3x8 { x: p.x, y: p.y, z: f32x8::ZERO };
+                p = Vec3x8 {
+                    x: p.x,
+                    y: p.y,
+                    z: f32x8::ZERO,
+                };
             }
 
             OpCode::Taper => {
@@ -1507,7 +1717,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let dz = qz - cz;
                 let d = (dx * dx + dz * dz).sqrt();
 
-                p = Vec3x8 { x: d, y: p.y, z: f32x8::ZERO };
+                p = Vec3x8 {
+                    x: d,
+                    y: p.y,
+                    z: f32x8::ZERO,
+                };
             }
 
             // ★ Deep Fried: SIMD PolarRepeat with atan2 approximation
@@ -1557,7 +1771,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let half_h = f32x8::splat(inst.params[2]);
                 let dx = p.x.abs() - hx;
                 let dy = p.y.abs() - hy;
-                let d2d = (dx.max(f32x8::ZERO) * dx.max(f32x8::ZERO) + dy.max(f32x8::ZERO) * dy.max(f32x8::ZERO)).sqrt()
+                let d2d = (dx.max(f32x8::ZERO) * dx.max(f32x8::ZERO)
+                    + dy.max(f32x8::ZERO) * dy.max(f32x8::ZERO))
+                .sqrt()
                     + dx.max(dy).min(f32x8::ZERO);
                 let dz = p.z.abs() - half_h;
                 let wx = d2d.max(f32x8::ZERO);
@@ -1574,8 +1790,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let half_h = f32x8::splat(inst.params[3]);
                 let dx = p.x.abs() - hx + round_r;
                 let dy = p.y.abs() - hy + round_r;
-                let d2d = (dx.max(f32x8::ZERO) * dx.max(f32x8::ZERO) + dy.max(f32x8::ZERO) * dy.max(f32x8::ZERO)).sqrt()
-                    + dx.max(dy).min(f32x8::ZERO) - round_r;
+                let d2d = (dx.max(f32x8::ZERO) * dx.max(f32x8::ZERO)
+                    + dy.max(f32x8::ZERO) * dy.max(f32x8::ZERO))
+                .sqrt()
+                    + dx.max(dy).min(f32x8::ZERO)
+                    - round_r;
                 let dz = p.z.abs() - half_h;
                 let wx = d2d.max(f32x8::ZERO);
                 let wy = dz.max(f32x8::ZERO);
@@ -1772,10 +1991,10 @@ fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
     let s2 = f32x8::splat(std::f32::consts::SQRT_2);
     let half = f32x8::splat(0.5);
     // Division Exorcism: precompute scalar reciprocals, then splat
-    let rn = r / n;                         // scalar division (1 cycle amortized over 8 lanes)
+    let rn = r / n; // scalar division (1 cycle amortized over 8 lanes)
     let rn_v = f32x8::splat(rn);
     let step = r * std::f32::consts::SQRT_2 / n;
-    let inv_step = 1.0 / step;             // scalar reciprocal
+    let inv_step = 1.0 / step; // scalar reciprocal
     let step_v = f32x8::splat(step);
     let inv_step_v = f32x8::splat(inv_step);
     let hs_v = step_v * half;
@@ -1815,10 +2034,14 @@ fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
 fn fast_rcp_simd(x: f32x8) -> f32x8 {
     let a = x.as_array_ref();
     f32x8::new([
-        fast_rcp_scalar(a[0]), fast_rcp_scalar(a[1]),
-        fast_rcp_scalar(a[2]), fast_rcp_scalar(a[3]),
-        fast_rcp_scalar(a[4]), fast_rcp_scalar(a[5]),
-        fast_rcp_scalar(a[6]), fast_rcp_scalar(a[7]),
+        fast_rcp_scalar(a[0]),
+        fast_rcp_scalar(a[1]),
+        fast_rcp_scalar(a[2]),
+        fast_rcp_scalar(a[3]),
+        fast_rcp_scalar(a[4]),
+        fast_rcp_scalar(a[5]),
+        fast_rcp_scalar(a[6]),
+        fast_rcp_scalar(a[7]),
     ])
 }
 
@@ -1873,8 +2096,8 @@ fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
     // Polynomial approximation of atan(r) for r in [0, 1]
     // atan(r) ≈ r * (0.9998660 - r² * (0.3302995 - r² * 0.1801410))
     let r2 = r * r;
-    let atan_r = r * (f32x8::splat(0.9998660)
-        - r2 * (f32x8::splat(0.3302995) - r2 * f32x8::splat(0.1801410)));
+    let atan_r = r
+        * (f32x8::splat(0.9998660) - r2 * (f32x8::splat(0.3302995) - r2 * f32x8::splat(0.1801410)));
 
     // If |y| > |x|, result = pi/2 - atan_r, else atan_r
     let swap_mask = abs_y.cmp_gt(abs_x);
@@ -1897,10 +2120,14 @@ fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
 fn exp_approx_simd(x: f32x8) -> f32x8 {
     let a = x.as_array_ref();
     f32x8::new([
-        fast_exp_scalar(a[0]), fast_exp_scalar(a[1]),
-        fast_exp_scalar(a[2]), fast_exp_scalar(a[3]),
-        fast_exp_scalar(a[4]), fast_exp_scalar(a[5]),
-        fast_exp_scalar(a[6]), fast_exp_scalar(a[7]),
+        fast_exp_scalar(a[0]),
+        fast_exp_scalar(a[1]),
+        fast_exp_scalar(a[2]),
+        fast_exp_scalar(a[3]),
+        fast_exp_scalar(a[4]),
+        fast_exp_scalar(a[5]),
+        fast_exp_scalar(a[6]),
+        fast_exp_scalar(a[7]),
     ])
 }
 
@@ -1911,10 +2138,14 @@ fn exp_approx_simd(x: f32x8) -> f32x8 {
 fn ln_approx_simd(x: f32x8) -> f32x8 {
     let a = x.as_array_ref();
     f32x8::new([
-        fast_ln_scalar(a[0]), fast_ln_scalar(a[1]),
-        fast_ln_scalar(a[2]), fast_ln_scalar(a[3]),
-        fast_ln_scalar(a[4]), fast_ln_scalar(a[5]),
-        fast_ln_scalar(a[6]), fast_ln_scalar(a[7]),
+        fast_ln_scalar(a[0]),
+        fast_ln_scalar(a[1]),
+        fast_ln_scalar(a[2]),
+        fast_ln_scalar(a[3]),
+        fast_ln_scalar(a[4]),
+        fast_ln_scalar(a[5]),
+        fast_ln_scalar(a[6]),
+        fast_ln_scalar(a[7]),
     ])
 }
 
@@ -2092,10 +2323,38 @@ pub fn eval_gradient_simd(sdf: &CompiledSdf, p: Vec3x8, epsilon: f32) -> (f32x8,
     let ne = f32x8::splat(-epsilon);
 
     // Tetrahedral method: 4 evaluations instead of 6
-    let v0 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + ne, z: p.z + ne }); // (+,-,-)
-    let v1 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + ne, z: p.z + e  }); // (-,-,+)
-    let v2 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + e,  z: p.z + ne }); // (-,+,-)
-    let v3 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + e,  z: p.z + e  }); // (+,+,+)
+    let v0 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + e,
+            y: p.y + ne,
+            z: p.z + ne,
+        },
+    ); // (+,-,-)
+    let v1 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + ne,
+            y: p.y + ne,
+            z: p.z + e,
+        },
+    ); // (-,-,+)
+    let v2 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + ne,
+            y: p.y + e,
+            z: p.z + ne,
+        },
+    ); // (-,+,-)
+    let v3 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + e,
+            y: p.y + e,
+            z: p.z + e,
+        },
+    ); // (+,+,+)
 
     let gx = v0 - v1 - v2 + v3;
     let gy = -v0 - v1 + v2 + v3;
@@ -2120,10 +2379,38 @@ pub fn eval_distance_and_gradient_simd(
     let e = f32x8::splat(epsilon);
     let ne = f32x8::splat(-epsilon);
 
-    let v0 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + ne, z: p.z + ne }); // (+,-,-)
-    let v1 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + ne, z: p.z + e  }); // (-,-,+)
-    let v2 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + ne, y: p.y + e,  z: p.z + ne }); // (-,+,-)
-    let v3 = eval_compiled_simd(sdf, Vec3x8 { x: p.x + e,  y: p.y + e,  z: p.z + e  }); // (+,+,+)
+    let v0 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + e,
+            y: p.y + ne,
+            z: p.z + ne,
+        },
+    ); // (+,-,-)
+    let v1 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + ne,
+            y: p.y + ne,
+            z: p.z + e,
+        },
+    ); // (-,-,+)
+    let v2 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + ne,
+            y: p.y + e,
+            z: p.z + ne,
+        },
+    ); // (-,+,-)
+    let v3 = eval_compiled_simd(
+        sdf,
+        Vec3x8 {
+            x: p.x + e,
+            y: p.y + e,
+            z: p.z + e,
+        },
+    ); // (+,+,+)
 
     let gx = v0 - v1 - v2 + v3;
     let gy = -v0 - v1 + v2 + v3;
@@ -2221,7 +2508,11 @@ mod tests {
         let arr = d.to_array();
 
         // Verify against scalar
-        let test_vecs = [Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), Vec3::new(2.0, 0.0, 0.0)];
+        let test_vecs = [
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+        ];
         for (i, v) in test_vecs.iter().enumerate() {
             let scalar = eval(&node, *v);
             assert!(

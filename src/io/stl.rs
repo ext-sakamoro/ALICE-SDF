@@ -75,7 +75,11 @@ pub fn export_stl_ascii(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoErr
         writeln!(w, "  facet normal {} {} {}", n.x, n.y, n.z)?;
         writeln!(w, "    outer loop")?;
         for v in [v0, v1, v2] {
-            writeln!(w, "      vertex {} {} {}", v.position.x, v.position.y, v.position.z)?;
+            writeln!(
+                w,
+                "      vertex {} {} {}",
+                v.position.x, v.position.y, v.position.z
+            )?;
         }
         writeln!(w, "    endloop")?;
         writeln!(w, "  endfacet")?;
@@ -126,11 +130,15 @@ fn import_stl_binary(data: &[u8]) -> Result<Mesh, IoError> {
 
     let mut vertices = Vec::with_capacity(tri_count * 3);
     let mut indices = Vec::with_capacity(tri_count * 3);
-    let mut vertex_map: std::collections::HashMap<[u32; 3], u32> =
-        std::collections::HashMap::new();
+    let mut vertex_map: std::collections::HashMap<[u32; 3], u32> = std::collections::HashMap::new();
 
     let read_f32 = |offset: usize| -> f32 {
-        f32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+        f32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ])
     };
 
     for t in 0..tri_count {
@@ -171,8 +179,7 @@ fn import_stl_ascii(data: &[u8]) -> Result<Mesh, IoError> {
 
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
-    let mut vertex_map: std::collections::HashMap<[u32; 3], u32> =
-        std::collections::HashMap::new();
+    let mut vertex_map: std::collections::HashMap<[u32; 3], u32> = std::collections::HashMap::new();
     let mut current_normal = Vec3::Y;
 
     for line in text.lines() {

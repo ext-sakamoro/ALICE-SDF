@@ -50,7 +50,11 @@ impl Heightmap {
     ) -> Self {
         assert_eq!(heights.len(), (width * depth) as usize);
         Heightmap {
-            heights, width, depth, world_width, world_depth,
+            heights,
+            width,
+            depth,
+            world_width,
+            world_depth,
             inv_world_width: 1.0 / world_width,
             inv_world_depth: 1.0 / world_depth,
         }
@@ -74,8 +78,10 @@ impl Heightmap {
 
     /// Sample height at world coordinates using bilinear interpolation
     pub fn sample(&self, world_x: f32, world_z: f32) -> f32 {
-        let fx = (world_x * self.inv_world_width * self.width as f32).clamp(0.0, (self.width - 1) as f32);
-        let fz = (world_z * self.inv_world_depth * self.depth as f32).clamp(0.0, (self.depth - 1) as f32);
+        let fx = (world_x * self.inv_world_width * self.width as f32)
+            .clamp(0.0, (self.width - 1) as f32);
+        let fz = (world_z * self.inv_world_depth * self.depth as f32)
+            .clamp(0.0, (self.depth - 1) as f32);
 
         let x0 = fx.floor() as u32;
         let z0 = fz.floor() as u32;
@@ -98,8 +104,10 @@ impl Heightmap {
 
     /// Sample height using bicubic interpolation (smoother)
     pub fn sample_bicubic(&self, world_x: f32, world_z: f32) -> f32 {
-        let fx = (world_x * self.inv_world_width * self.width as f32).clamp(1.0, (self.width - 2) as f32);
-        let fz = (world_z * self.inv_world_depth * self.depth as f32).clamp(1.0, (self.depth - 2) as f32);
+        let fx = (world_x * self.inv_world_width * self.width as f32)
+            .clamp(1.0, (self.width - 2) as f32);
+        let fz = (world_z * self.inv_world_depth * self.depth as f32)
+            .clamp(1.0, (self.depth - 2) as f32);
 
         let ix = fx.floor() as i32;
         let iz = fz.floor() as i32;
@@ -140,13 +148,7 @@ impl Heightmap {
     /// Generate fractal Brownian motion (fBm) terrain
     ///
     /// Layered simplex-like noise using a hash-based approach.
-    pub fn generate_fbm(
-        &mut self,
-        octaves: u32,
-        persistence: f32,
-        lacunarity: f32,
-        seed: u64,
-    ) {
+    pub fn generate_fbm(&mut self, octaves: u32, persistence: f32, lacunarity: f32, seed: u64) {
         let scale = 1.0 / self.width.max(self.depth) as f32;
 
         for z in 0..self.depth {
@@ -254,9 +256,7 @@ impl Heightmap {
 
         let scale = config.height_scale / 255.0;
         let raw = gray.as_raw();
-        let heights: Vec<f32> = raw.iter()
-            .map(|&p| p as f32 * scale)
-            .collect();
+        let heights: Vec<f32> = raw.iter().map(|&p| p as f32 * scale).collect();
 
         Ok(Heightmap {
             heights,
@@ -343,7 +343,8 @@ fn hash_noise_2d(x: f32, z: f32) -> f32 {
 /// Integer hash -> float in [-1, 1]
 #[inline]
 fn hash_2d(x: i32, z: i32) -> f32 {
-    let mut h = (x as u32).wrapping_mul(374761393)
+    let mut h = (x as u32)
+        .wrapping_mul(374761393)
         .wrapping_add((z as u32).wrapping_mul(668265263));
     h = (h ^ (h >> 13)).wrapping_mul(1103515245);
     h = h ^ (h >> 16);
@@ -386,7 +387,11 @@ mod tests {
         let mut hm = Heightmap::new(8, 8, 8.0, 8.0);
         // Flat terrain
         let n = hm.normal_at(4.0, 4.0);
-        assert!((n.y - 1.0).abs() < 0.1, "Flat terrain normal should be ~(0,1,0), got {:?}", n);
+        assert!(
+            (n.y - 1.0).abs() < 0.1,
+            "Flat terrain normal should be ~(0,1,0), got {:?}",
+            n
+        );
     }
 
     #[test]
@@ -396,7 +401,12 @@ mod tests {
 
         let (min, max) = hm.height_range();
         assert!(max > min, "fBm should produce variation");
-        assert!(min >= -1.0 && max <= 1.0, "fBm should be in [-1,1], got [{}, {}]", min, max);
+        assert!(
+            min >= -1.0 && max <= 1.0,
+            "fBm should be in [-1,1], got [{}, {}]",
+            min,
+            max
+        );
     }
 
     #[test]

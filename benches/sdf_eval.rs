@@ -2,16 +2,14 @@
 //!
 //! Author: Moroya Sakamoto
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use alice_sdf::prelude::*;
 use alice_sdf::compiled::{
-    CompiledSdf, eval_compiled, eval_compiled_batch_parallel,
-    eval_compiled_simd, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
-    eval_compiled_batch_soa_parallel,
-    Vec3x8,
-    CompiledSdfBvh, eval_compiled_bvh,
+    eval_compiled, eval_compiled_batch_parallel, eval_compiled_batch_simd,
+    eval_compiled_batch_simd_parallel, eval_compiled_batch_soa_parallel, eval_compiled_bvh,
+    eval_compiled_simd, CompiledSdf, CompiledSdfBvh, Vec3x8,
 };
+use alice_sdf::prelude::*;
 use alice_sdf::soa::SoAPoints;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 #[cfg(feature = "jit")]
 use alice_sdf::compiled::jit::JitSimdSdf;
@@ -195,13 +193,9 @@ fn bench_batch_eval(c: &mut Criterion) {
             })
             .collect();
 
-        group.bench_with_input(
-            BenchmarkId::new("parallel", size),
-            &points,
-            |b, points| {
-                b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("parallel", size), &points, |b, points| {
+            b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points)))
+        });
     }
 
     group.finish();
@@ -243,13 +237,9 @@ fn bench_marching_cubes(c: &mut Criterion) {
             compute_normals: true,
         };
 
-        group.bench_with_input(
-            BenchmarkId::new("resolution", res),
-            &config,
-            |b, config| {
-                b.iter(|| sdf_to_mesh(black_box(&sphere), min, max, config))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("resolution", res), &config, |b, config| {
+            b.iter(|| sdf_to_mesh(black_box(&sphere), min, max, config))
+        });
     }
 
     group.finish();
@@ -421,9 +411,7 @@ fn bench_batch_all(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("interpreted_parallel", size),
             &points,
-            |b, points| {
-                b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points)))
-            },
+            |b, points| b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points))),
         );
 
         group.bench_with_input(
@@ -446,7 +434,9 @@ fn bench_batch_all(c: &mut Criterion) {
             BenchmarkId::new("simd_parallel", size),
             &points,
             |b, points| {
-                b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
+                b.iter(|| {
+                    eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points))
+                })
             },
         );
     }
@@ -526,12 +516,9 @@ fn bench_bvh_complex(c: &mut Criterion) {
             SdfNode::cylinder(0.3, 2.0)
                 .rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0)
                 .translate(-5.0, 0.0, 0.0),
-            0.2
+            0.2,
         )
-        .smooth_union(
-            SdfNode::torus(1.0, 0.3).translate(0.0, 5.0, 0.0),
-            0.1
-        );
+        .smooth_union(SdfNode::torus(1.0, 0.3).translate(0.0, 5.0, 0.0), 0.1);
 
     let compiled = CompiledSdf::compile(&shape);
     let compiled_bvh = CompiledSdfBvh::compile(&shape);
@@ -583,32 +570,20 @@ fn bench_soa_throughput(c: &mut Criterion) {
         group.throughput(Throughput::Elements(size as u64));
 
         // AoS SIMD (standard)
-        group.bench_with_input(
-            BenchmarkId::new("aos_simd", size),
-            &points,
-            |b, points| {
-                b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("aos_simd", size), &points, |b, points| {
+            b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
+        });
 
         // SoA SIMD (optimized layout)
-        group.bench_with_input(
-            BenchmarkId::new("soa_simd", size),
-            &soa,
-            |b, soa| {
-                b.iter(|| eval_compiled_batch_soa_parallel(black_box(&compiled), black_box(soa)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("soa_simd", size), &soa, |b, soa| {
+            b.iter(|| eval_compiled_batch_soa_parallel(black_box(&compiled), black_box(soa)))
+        });
 
         // JIT + SoA (maximum throughput)
         #[cfg(feature = "jit")]
-        group.bench_with_input(
-            BenchmarkId::new("jit_soa", size),
-            &soa,
-            |b, soa| {
-                b.iter(|| jit.eval_soa(black_box(soa)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("jit_soa", size), &soa, |b, soa| {
+            b.iter(|| jit.eval_soa(black_box(soa)))
+        });
     }
 
     group.finish();

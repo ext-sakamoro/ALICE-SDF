@@ -148,7 +148,15 @@ fn main() {
             output,
             shader,
             shader_output,
-        } => cmd_texture_fit(input, octaves, target_psnr, iterations, output, shader, shader_output),
+        } => cmd_texture_fit(
+            input,
+            octaves,
+            target_psnr,
+            iterations,
+            output,
+            shader,
+            shader_output,
+        ),
     }
 }
 
@@ -278,7 +286,11 @@ fn cmd_export(input: PathBuf, output: PathBuf, resolution: usize, bounds: f32) {
 
     println!("Generating mesh with resolution {}...", resolution);
     let mesh = sdf_to_mesh(&tree.root, min, max, &config);
-    println!("  {} vertices, {} triangles", mesh.vertex_count(), mesh.triangle_count());
+    println!(
+        "  {} vertices, {} triangles",
+        mesh.vertex_count(),
+        mesh.triangle_count()
+    );
 
     let ext = output
         .extension()
@@ -313,17 +325,12 @@ fn cmd_demo(output: PathBuf) {
     let shape = SdfNode::sphere(1.0)
         .smooth_subtract(SdfNode::box3d(1.2, 1.2, 1.2), 0.1)
         .smooth_union(
-            SdfNode::cylinder(0.3, 2.0)
-                .rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0),
+            SdfNode::cylinder(0.3, 2.0).rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0),
             0.1,
         )
+        .smooth_union(SdfNode::cylinder(0.3, 2.0), 0.1)
         .smooth_union(
-            SdfNode::cylinder(0.3, 2.0),
-            0.1,
-        )
-        .smooth_union(
-            SdfNode::cylinder(0.3, 2.0)
-                .rotate_euler(0.0, 0.0, std::f32::consts::FRAC_PI_2),
+            SdfNode::cylinder(0.3, 2.0).rotate_euler(0.0, 0.0, std::f32::consts::FRAC_PI_2),
             0.1,
         );
 
@@ -351,7 +358,6 @@ fn cmd_demo(output: PathBuf) {
 /// - GPU: WebGPU compute shader for comparison
 #[cfg(all(feature = "cli", feature = "jit"))]
 fn cmd_bench(file: Option<PathBuf>, points: usize) {
-
     // 1. Load or create SDF node
     let node = if let Some(path) = file {
         match load(&path) {
@@ -377,7 +383,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     println!("\n--- Compilation Phase ---");
     let compile_start = std::time::Instant::now();
     let compiled_sdf = CompiledSdf::compile(&node);
-    println!("Stack VM: {:.3}ms", compile_start.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "Stack VM: {:.3}ms",
+        compile_start.elapsed().as_secs_f64() * 1000.0
+    );
 
     let jit_start = std::time::Instant::now();
     let jit = match JitSimdSdf::compile(&compiled_sdf) {
@@ -387,7 +396,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
             std::process::exit(1);
         }
     };
-    println!("JIT SIMD : {:.3}ms", jit_start.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "JIT SIMD : {:.3}ms",
+        jit_start.elapsed().as_secs_f64() * 1000.0
+    );
 
     // GPU compilation (optional)
     #[cfg(feature = "gpu")]
@@ -395,7 +407,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
         let gpu_start = std::time::Instant::now();
         match alice_sdf::compiled::GpuEvaluator::new(&node) {
             Ok(g) => {
-                println!("GPU WGSL : {:.3}ms", gpu_start.elapsed().as_secs_f64() * 1000.0);
+                println!(
+                    "GPU WGSL : {:.3}ms",
+                    gpu_start.elapsed().as_secs_f64() * 1000.0
+                );
                 Some(g)
             }
             Err(e) => {
@@ -422,7 +437,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
             *y = (t * 2345.678).cos() * 50.0;
             *z = (t * 3456.789).sin() * 50.0;
         });
-    println!("SoA data : {:.3}ms", data_start.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "SoA data : {:.3}ms",
+        data_start.elapsed().as_secs_f64() * 1000.0
+    );
 
     // Also prepare AoS for GPU
     let points_vec: Vec<Vec3> = (0..points)
@@ -431,7 +449,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 
     // 4. Benchmark all modes
     println!("\n--- Benchmark Results ---");
-    println!("{:<20} {:>12} {:>15} {:>12}", "Mode", "Time (ms)", "Throughput", "ns/point");
+    println!(
+        "{:<20} {:>12} {:>15} {:>12}",
+        "Mode", "Time (ms)", "Throughput", "ns/point"
+    );
     println!("{}", "-".repeat(62));
 
     // CPU Scalar (interpreted)
@@ -442,7 +463,8 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 
     // CPU SIMD (stack VM)
     let start = std::time::Instant::now();
-    let _results_simd = alice_sdf::compiled::eval_compiled_batch_simd_parallel(&compiled_sdf, &points_vec);
+    let _results_simd =
+        alice_sdf::compiled::eval_compiled_batch_simd_parallel(&compiled_sdf, &points_vec);
     let elapsed = start.elapsed();
     print_result("CPU SIMD (VM)", elapsed, points);
 
@@ -530,7 +552,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 
     println!("\n--------------------------------------------------");
     println!("Time       : {:.3} ms", elapsed.as_secs_f64() * 1000.0);
-    println!("Throughput : {:.2} M points/sec", points_per_sec / 1_000_000.0);
+    println!(
+        "Throughput : {:.2} M points/sec",
+        points_per_sec / 1_000_000.0
+    );
     println!("--------------------------------------------------");
 }
 
@@ -544,7 +569,7 @@ fn cmd_texture_fit(
     shader: Option<String>,
     shader_output: Option<PathBuf>,
 ) {
-    use alice_sdf::texture::{TextureFitConfig, fit_texture, generate_shader, ShaderLanguage};
+    use alice_sdf::texture::{fit_texture, generate_shader, ShaderLanguage, TextureFitConfig};
 
     let config = TextureFitConfig {
         max_octaves: octaves,
@@ -595,7 +620,8 @@ fn cmd_texture_fit(
             }
         };
 
-        let source_name = input.file_name()
+        let source_name = input
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 

@@ -28,9 +28,15 @@ impl Vec3x8 {
     #[inline]
     pub fn from_vecs(v: [glam::Vec3; 8]) -> Self {
         Vec3x8 {
-            x: f32x8::new([v[0].x, v[1].x, v[2].x, v[3].x, v[4].x, v[5].x, v[6].x, v[7].x]),
-            y: f32x8::new([v[0].y, v[1].y, v[2].y, v[3].y, v[4].y, v[5].y, v[6].y, v[7].y]),
-            z: f32x8::new([v[0].z, v[1].z, v[2].z, v[3].z, v[4].z, v[5].z, v[6].z, v[7].z]),
+            x: f32x8::new([
+                v[0].x, v[1].x, v[2].x, v[3].x, v[4].x, v[5].x, v[6].x, v[7].x,
+            ]),
+            y: f32x8::new([
+                v[0].y, v[1].y, v[2].y, v[3].y, v[4].y, v[5].y, v[6].y, v[7].y,
+            ]),
+            z: f32x8::new([
+                v[0].z, v[1].z, v[2].z, v[3].z, v[4].z, v[5].z, v[6].z, v[7].z,
+            ]),
         }
     }
 

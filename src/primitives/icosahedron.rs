@@ -5,8 +5,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use super::gdf_vectors::{GDF_ICOSAHEDRON, GDF_OCTAHEDRON};
 use glam::Vec3;
-use super::gdf_vectors::{GDF_OCTAHEDRON, GDF_ICOSAHEDRON};
 
 /// SDF for a regular icosahedron
 ///

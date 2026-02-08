@@ -102,9 +102,9 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod types;
-mod registry;
 mod api;
+mod registry;
+mod types;
 
-pub use types::*;
 pub use api::*;
+pub use types::*;

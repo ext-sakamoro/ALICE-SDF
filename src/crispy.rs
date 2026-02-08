@@ -100,33 +100,49 @@ impl BitMask64 {
     pub const FULL: Self = Self(!0u64);
 
     #[inline(always)]
-    pub fn and(self, other: Self) -> Self { Self(self.0 & other.0) }
+    pub fn and(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
 
     #[inline(always)]
-    pub fn or(self, other: Self) -> Self { Self(self.0 | other.0) }
+    pub fn or(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
 
     #[inline(always)]
-    pub fn not(self) -> Self { Self(!self.0) }
+    pub fn not(self) -> Self {
+        Self(!self.0)
+    }
 
     /// Population count — number of set bits (uses hardware popcnt).
     #[inline(always)]
-    pub fn count_ones(self) -> u32 { self.0.count_ones() }
+    pub fn count_ones(self) -> u32 {
+        self.0.count_ones()
+    }
 
     /// Test if bit at `index` is set.
     #[inline(always)]
-    pub fn test(self, index: u32) -> bool { (self.0 >> index) & 1 != 0 }
+    pub fn test(self, index: u32) -> bool {
+        (self.0 >> index) & 1 != 0
+    }
 
     /// Set bit at `index`.
     #[inline(always)]
-    pub fn set(self, index: u32) -> Self { Self(self.0 | (1u64 << index)) }
+    pub fn set(self, index: u32) -> Self {
+        Self(self.0 | (1u64 << index))
+    }
 
     /// Clear bit at `index`.
     #[inline(always)]
-    pub fn clear(self, index: u32) -> Self { Self(self.0 & !(1u64 << index)) }
+    pub fn clear(self, index: u32) -> Self {
+        Self(self.0 & !(1u64 << index))
+    }
 
     /// True if no bits are set.
     #[inline(always)]
-    pub fn is_empty(self) -> bool { self.0 == 0 }
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +166,9 @@ impl BloomFilter {
 
     /// Create an empty Bloom filter.
     pub fn new() -> Self {
-        Self { bits: [0u8; Self::SIZE_BYTES] }
+        Self {
+            bits: [0u8; Self::SIZE_BYTES],
+        }
     }
 
     /// Build a Bloom filter from an iterator of byte slices.
@@ -183,8 +201,7 @@ impl BloomFilter {
     pub fn test_hash(filter: &[u8; 4096], hash: u64) -> bool {
         let (h1, h2) = Self::double_hash(hash);
         // Branchless AND — no short-circuit, single bitwise &
-        (filter[h1 >> 3] & (1 << (h1 & 7)) != 0)
-            & (filter[h2 >> 3] & (1 << (h2 & 7)) != 0)
+        (filter[h1 >> 3] & (1 << (h1 & 7)) != 0) & (filter[h2 >> 3] & (1 << (h2 & 7)) != 0)
     }
 
     #[inline(always)]
@@ -222,7 +239,10 @@ mod tests {
             assert!(
                 error < 0.002,
                 "fast_inv_sqrt({}) = {}, expected {}, error = {:.4}%",
-                x, got, expected, error * 100.0,
+                x,
+                got,
+                expected,
+                error * 100.0,
             );
         }
     }
@@ -239,7 +259,11 @@ mod tests {
     fn test_fast_normalize_2d() {
         let (nx, nz) = fast_normalize_2d(3.0, 4.0);
         let len = (nx * nx + nz * nz).sqrt();
-        assert!((len - 1.0).abs() < 0.01, "Should be unit length, got {}", len);
+        assert!(
+            (len - 1.0).abs() < 0.01,
+            "Should be unit length, got {}",
+            len
+        );
         assert!((nx - 0.6).abs() < 0.01);
         assert!((nz - 0.8).abs() < 0.01);
     }
@@ -345,17 +369,59 @@ mod tests {
     fn test_bloom_filter_many_entries() {
         // Insert 53 SDF primitive names — realistic ALICE-SDF workload
         let primitives = [
-            "Sphere", "Box", "Cylinder", "Torus", "Capsule", "Plane",
-            "Cone", "Ellipsoid", "HexPrism", "Octahedron", "Link",
-            "RoundedBox", "CappedCone", "CappedTorus", "RoundedCylinder",
-            "TriangularPrism", "CutSphere", "CutHollowSphere", "DeathStar",
-            "SolidAngle", "Rhombus", "Horseshoe", "Vesica", "InfiniteCylinder",
-            "InfiniteCone", "Gyroid", "Heart", "Tube", "Barrel", "Diamond",
-            "ChamferedCube", "SchwarzP", "Superellipsoid", "RoundedX",
-            "Pie", "Trapezoid", "Parallelogram", "Tunnel", "UnevenCapsule",
-            "Egg", "ArcShape", "Moon", "CrossShape", "BlobbyCross",
-            "ParabolaSegment", "RegularPolygon", "StarPolygon", "Stairs",
-            "Helix", "Bezier", "Pyramid", "Spring", "Chain",
+            "Sphere",
+            "Box",
+            "Cylinder",
+            "Torus",
+            "Capsule",
+            "Plane",
+            "Cone",
+            "Ellipsoid",
+            "HexPrism",
+            "Octahedron",
+            "Link",
+            "RoundedBox",
+            "CappedCone",
+            "CappedTorus",
+            "RoundedCylinder",
+            "TriangularPrism",
+            "CutSphere",
+            "CutHollowSphere",
+            "DeathStar",
+            "SolidAngle",
+            "Rhombus",
+            "Horseshoe",
+            "Vesica",
+            "InfiniteCylinder",
+            "InfiniteCone",
+            "Gyroid",
+            "Heart",
+            "Tube",
+            "Barrel",
+            "Diamond",
+            "ChamferedCube",
+            "SchwarzP",
+            "Superellipsoid",
+            "RoundedX",
+            "Pie",
+            "Trapezoid",
+            "Parallelogram",
+            "Tunnel",
+            "UnevenCapsule",
+            "Egg",
+            "ArcShape",
+            "Moon",
+            "CrossShape",
+            "BlobbyCross",
+            "ParabolaSegment",
+            "RegularPolygon",
+            "StarPolygon",
+            "Stairs",
+            "Helix",
+            "Bezier",
+            "Pyramid",
+            "Spring",
+            "Chain",
         ];
 
         let items: Vec<&[u8]> = primitives.iter().map(|s| s.as_bytes()).collect();
@@ -367,12 +433,26 @@ mod tests {
         }
 
         // Spot-check non-members
-        let false_positives: usize = ["FooBar", "Teapot", "Dodecahedron", "Mobius",
-            "Klein", "Trefoil", "Catmull", "Nurbs", "Spline", "Metaball"]
-            .iter()
-            .filter(|s| bloom.test(s.as_bytes()))
-            .count();
+        let false_positives: usize = [
+            "FooBar",
+            "Teapot",
+            "Dodecahedron",
+            "Mobius",
+            "Klein",
+            "Trefoil",
+            "Catmull",
+            "Nurbs",
+            "Spline",
+            "Metaball",
+        ]
+        .iter()
+        .filter(|s| bloom.test(s.as_bytes()))
+        .count();
         // With 53 entries in 32768 bits, expected FP rate < 2%
-        assert!(false_positives <= 2, "Too many false positives: {}/10", false_positives);
+        assert!(
+            false_positives <= 2,
+            "Too many false positives: {}/10",
+            false_positives
+        );
     }
 }

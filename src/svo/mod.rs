@@ -32,17 +32,17 @@
 //! Author: Moroya Sakamoto
 
 pub mod build;
-pub mod query;
 pub mod linearize;
+pub mod query;
 pub mod streaming;
 
-use glam::Vec3;
 use crate::compiled::AabbPacked;
+use glam::Vec3;
 
 pub use build::{build_svo, build_svo_compiled};
-pub use query::{svo_query_point, svo_ray_query, svo_nearest_surface, SvoRayHit};
 pub use linearize::{linearize_svo, LinearizedSvo};
-pub use streaming::{SvoStreamingCache, SvoChunk};
+pub use query::{svo_nearest_surface, svo_query_point, svo_ray_query, SvoRayHit};
+pub use streaming::{SvoChunk, SvoStreamingCache};
 
 /// Sparse Voxel Octree node (32 bytes, cache-aligned)
 ///
@@ -256,9 +256,15 @@ impl SparseVoxelOctree {
 #[inline]
 pub fn octant_for_point(point: Vec3, center: Vec3) -> u8 {
     let mut octant = 0u8;
-    if point.x > center.x { octant |= 1; }
-    if point.y > center.y { octant |= 2; }
-    if point.z > center.z { octant |= 4; }
+    if point.x > center.x {
+        octant |= 1;
+    }
+    if point.y > center.y {
+        octant |= 2;
+    }
+    if point.z > center.z {
+        octant |= 4;
+    }
     octant
 }
 
@@ -267,9 +273,24 @@ pub fn octant_for_point(point: Vec3, center: Vec3) -> u8 {
 pub fn child_center(parent_center: Vec3, parent_half_size: Vec3, octant: u8) -> Vec3 {
     let quarter = parent_half_size * 0.5;
     Vec3::new(
-        parent_center.x + if octant & 1 != 0 { quarter.x } else { -quarter.x },
-        parent_center.y + if octant & 2 != 0 { quarter.y } else { -quarter.y },
-        parent_center.z + if octant & 4 != 0 { quarter.z } else { -quarter.z },
+        parent_center.x
+            + if octant & 1 != 0 {
+                quarter.x
+            } else {
+                -quarter.x
+            },
+        parent_center.y
+            + if octant & 2 != 0 {
+                quarter.y
+            } else {
+                -quarter.y
+            },
+        parent_center.z
+            + if octant & 4 != 0 {
+                quarter.z
+            } else {
+                -quarter.z
+            },
     )
 }
 
@@ -315,13 +336,13 @@ mod tests {
         let node = SvoNode::interior(0.0, 0b00110101, 10);
 
         assert_eq!(node.child_index(0), Some(10)); // first child
-        assert_eq!(node.child_index(1), None);     // no child
+        assert_eq!(node.child_index(1), None); // no child
         assert_eq!(node.child_index(2), Some(11)); // second child
-        assert_eq!(node.child_index(3), None);     // no child
+        assert_eq!(node.child_index(3), None); // no child
         assert_eq!(node.child_index(4), Some(12)); // third child
         assert_eq!(node.child_index(5), Some(13)); // fourth child
-        assert_eq!(node.child_index(6), None);     // no child
-        assert_eq!(node.child_index(7), None);     // no child
+        assert_eq!(node.child_index(6), None); // no child
+        assert_eq!(node.child_index(7), None); // no child
     }
 
     #[test]

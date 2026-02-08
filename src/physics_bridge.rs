@@ -35,10 +35,12 @@
 //!
 //! Author: Moroya Sakamoto
 
-use std::sync::Arc;
+use crate::compiled::{
+    eval_compiled, eval_compiled_distance_and_normal, eval_compiled_normal, CompiledSdf,
+};
 use alice_physics::SdfField;
-use crate::compiled::{CompiledSdf, eval_compiled, eval_compiled_normal, eval_compiled_distance_and_normal};
 use glam::Vec3;
+use std::sync::Arc;
 
 /// Wrapper around `CompiledSdf` that implements `alice_physics::SdfField`.
 ///
@@ -120,8 +122,8 @@ pub fn sdf_to_physics_field(node: &crate::types::SdfNode) -> CompiledSdfField {
 mod tests {
     use super::*;
     use crate::types::SdfNode;
-    use alice_physics::{Fix128, Vec3Fix, QuatFix};
-    use alice_physics::sdf_collider::{SdfCollider, collide_point_sdf};
+    use alice_physics::sdf_collider::{collide_point_sdf, SdfCollider};
+    use alice_physics::{Fix128, QuatFix, Vec3Fix};
 
     #[test]
     fn test_compiled_sdf_as_physics_field() {
@@ -149,11 +151,7 @@ mod tests {
         let node = SdfNode::Sphere { radius: 2.0 };
         let field = sdf_to_physics_field(&node);
 
-        let collider = SdfCollider::new_static(
-            Box::new(field),
-            Vec3Fix::ZERO,
-            QuatFix::IDENTITY,
-        );
+        let collider = SdfCollider::new_static(Box::new(field), Vec3Fix::ZERO, QuatFix::IDENTITY);
 
         // Point inside sphere — should collide
         let point_inside = Vec3Fix::from_f32(0.5, 0.0, 0.0);
@@ -169,30 +167,31 @@ mod tests {
     #[test]
     fn test_csg_collider_via_bridge() {
         // CSG: sphere with box hole
-        let node = SdfNode::sphere(2.0)
-            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let node = SdfNode::sphere(2.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
         let field = sdf_to_physics_field(&node);
 
-        let collider = SdfCollider::new_static(
-            Box::new(field),
-            Vec3Fix::ZERO,
-            QuatFix::IDENTITY,
-        );
+        let collider = SdfCollider::new_static(Box::new(field), Vec3Fix::ZERO, QuatFix::IDENTITY);
 
         // Origin is inside the subtracted box — should be outside the CSG shape
         let origin = Vec3Fix::ZERO;
         let result = collide_point_sdf(origin, &collider);
-        assert!(result.is_none(), "Origin inside box hole should not collide");
+        assert!(
+            result.is_none(),
+            "Origin inside box hole should not collide"
+        );
 
         // Point on sphere shell (1.5, 0, 0) — inside the SDF
         let shell_point = Vec3Fix::from_f32(1.5, 0.0, 0.0);
         let result2 = collide_point_sdf(shell_point, &collider);
-        assert!(result2.is_some(), "Point inside sphere shell should collide");
+        assert!(
+            result2.is_some(),
+            "Point inside sphere shell should collide"
+        );
     }
 
     #[test]
     fn test_physics_world_with_sdf() {
-        use alice_physics::{PhysicsWorld, PhysicsConfig, RigidBody};
+        use alice_physics::{PhysicsConfig, PhysicsWorld, RigidBody};
 
         let node = SdfNode::Plane {
             normal: glam::Vec3::Y,
@@ -205,10 +204,7 @@ mod tests {
         world.set_sdf_collision_radius(Fix128::from_f32(0.5));
 
         // Add falling body
-        let body = RigidBody::new_dynamic(
-            Vec3Fix::from_f32(0.0, 5.0, 0.0),
-            Fix128::ONE,
-        );
+        let body = RigidBody::new_dynamic(Vec3Fix::from_f32(0.0, 5.0, 0.0), Fix128::ONE);
         world.add_body(body);
 
         // Add SDF ground

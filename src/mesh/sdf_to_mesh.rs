@@ -7,8 +7,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::{eval_compiled, eval_compiled_batch_simd_parallel, CompiledSdf};
 use crate::eval::{eval, eval_material, normal};
-use crate::compiled::{CompiledSdf, eval_compiled, eval_compiled_batch_simd_parallel};
 use crate::mesh::Vertex;
 use crate::SdfNode;
 use glam::{Vec2, Vec3, Vec4};
@@ -266,12 +266,7 @@ pub fn sdf_to_mesh(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCubesC
 /// Marching cubes algorithm implementation (Deep Fried Edition)
 ///
 /// Parallelized by Z-slabs to maximize throughput while avoiding mutex contention.
-pub fn marching_cubes(
-    node: &SdfNode,
-    min: Vec3,
-    max: Vec3,
-    config: &MarchingCubesConfig,
-) -> Mesh {
+pub fn marching_cubes(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCubesConfig) -> Mesh {
     let resolution = config.resolution;
     let size = max - min;
     let cell_size = size / resolution as f32;
@@ -342,7 +337,9 @@ fn merge_meshes(sub_meshes: Vec<Mesh>) -> Mesh {
     for sub in sub_meshes {
         let base_idx = merged.vertices.len() as u32;
         merged.vertices.extend(sub.vertices);
-        merged.indices.extend(sub.indices.iter().map(|i| i + base_idx));
+        merged
+            .indices
+            .extend(sub.indices.iter().map(|i| i + base_idx));
     }
 
     merged
@@ -514,7 +511,12 @@ fn normal_compiled(sdf: &CompiledSdf, point: Vec3, epsilon: f32) -> Vec3 {
 ///
 /// Uses `eval_compiled` for grid evaluation and normal computation,
 /// providing 2-5x speedup over the interpreted `sdf_to_mesh`.
-pub fn sdf_to_mesh_compiled(sdf: &CompiledSdf, min: Vec3, max: Vec3, config: &MarchingCubesConfig) -> Mesh {
+pub fn sdf_to_mesh_compiled(
+    sdf: &CompiledSdf,
+    min: Vec3,
+    max: Vec3,
+    config: &MarchingCubesConfig,
+) -> Mesh {
     let mut mesh = marching_cubes_compiled(sdf, min, max, config);
 
     super::optimize::deduplicate_vertices(&mut mesh);
@@ -568,7 +570,9 @@ pub fn marching_cubes_compiled(
                     process_cell_compiled(
                         sdf,
                         &values,
-                        x, y, z,
+                        x,
+                        y,
+                        z,
                         grid_size,
                         min,
                         cell_size,
@@ -593,7 +597,9 @@ fn normal_from_grid(
     sdf: &CompiledSdf,
     vertex: Vec3,
     values: &[f32],
-    gx: usize, gy: usize, gz: usize,
+    gx: usize,
+    gy: usize,
+    gz: usize,
     grid_size: usize,
     cell_size: Vec3,
 ) -> Vec3 {
@@ -603,9 +609,8 @@ fn normal_from_grid(
         return normal_compiled(sdf, vertex, 0.001);
     }
 
-    let idx = |x: usize, y: usize, z: usize| -> usize {
-        x + y * grid_size + z * grid_size * grid_size
-    };
+    let idx =
+        |x: usize, y: usize, z: usize| -> usize { x + y * grid_size + z * grid_size * grid_size };
 
     let grad = Vec3::new(
         (values[idx(gx + 1, gy, gz)] - values[idx(gx - 1, gy, gz)]) / (2.0 * cell_size.x),
@@ -627,7 +632,9 @@ fn normal_from_grid(
 fn process_cell_compiled(
     sdf: &CompiledSdf,
     values: &[f32],
-    x: usize, y: usize, z: usize,
+    x: usize,
+    y: usize,
+    z: usize,
     grid_size: usize,
     min: Vec3,
     cell_size: Vec3,
@@ -686,8 +693,12 @@ fn process_cell_compiled(
 
             // Store grid coords for both endpoints
             edge_grid_coords[i] = [
-                x + CORNER_OFFSETS[e0][0], y + CORNER_OFFSETS[e0][1], z + CORNER_OFFSETS[e0][2],
-                x + CORNER_OFFSETS[e1][0], y + CORNER_OFFSETS[e1][1], z + CORNER_OFFSETS[e1][2],
+                x + CORNER_OFFSETS[e0][0],
+                y + CORNER_OFFSETS[e0][1],
+                z + CORNER_OFFSETS[e0][2],
+                x + CORNER_OFFSETS[e1][0],
+                y + CORNER_OFFSETS[e1][1],
+                z + CORNER_OFFSETS[e1][2],
             ];
         }
     }
@@ -710,9 +721,15 @@ fn process_cell_compiled(
             let gc1 = &edge_grid_coords[ei1];
             let gc2 = &edge_grid_coords[ei2];
             (
-                normal_from_grid(sdf, v0, values, gc0[0], gc0[1], gc0[2], grid_size, cell_size),
-                normal_from_grid(sdf, v1, values, gc1[0], gc1[1], gc1[2], grid_size, cell_size),
-                normal_from_grid(sdf, v2, values, gc2[0], gc2[1], gc2[2], grid_size, cell_size),
+                normal_from_grid(
+                    sdf, v0, values, gc0[0], gc0[1], gc0[2], grid_size, cell_size,
+                ),
+                normal_from_grid(
+                    sdf, v1, values, gc1[0], gc1[1], gc1[2], grid_size, cell_size,
+                ),
+                normal_from_grid(
+                    sdf, v2, values, gc2[0], gc2[1], gc2[2], grid_size, cell_size,
+                ),
             )
         } else {
             let face_normal = (v1 - v0).cross(v2 - v0).normalize();
@@ -806,7 +823,9 @@ const EDGE_TABLE: [u16; 256] = [
 
 // Triangle table - which edges form triangles for each cube configuration
 const TRI_TABLE: [[i8; 16]; 256] = [
-    [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+    [
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    ],
     [0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
     [0, 1, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
     [1, 8, 3, 9, 8, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
@@ -1061,7 +1080,9 @@ const TRI_TABLE: [[i8; 16]; 256] = [
     [1, 3, 8, 9, 1, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
     [0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
     [0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
-    [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+    [
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    ],
 ];
 
 /// Configuration for adaptive marching cubes
@@ -1090,8 +1111,8 @@ pub struct AdaptiveConfig {
 impl Default for AdaptiveConfig {
     fn default() -> Self {
         AdaptiveConfig {
-            max_depth: 6,   // 64 effective resolution
-            min_depth: 2,   // 4 minimum
+            max_depth: 6, // 64 effective resolution
+            min_depth: 2, // 4 minimum
             surface_threshold: 0.0,
             iso_level: 0.0,
             compute_normals: true,
@@ -1162,9 +1183,7 @@ pub fn adaptive_marching_cubes(
 
     let sub_meshes: Vec<Mesh> = leaf_cells
         .par_iter()
-        .map(|cell| {
-            process_adaptive_cell(node, cell, &mc_config)
-        })
+        .map(|cell| process_adaptive_cell(node, cell, &mc_config))
         .collect();
 
     let mut mesh = merge_meshes(sub_meshes);
@@ -1204,8 +1223,8 @@ fn subdivide_octree(
     // 1. Not at max depth yet
     // 2. Cell is near the surface (distance < threshold)
     // 3. Above minimum depth
-    let should_subdivide = cell.depth < config.max_depth
-        && (dist < threshold || cell.depth < config.min_depth);
+    let should_subdivide =
+        cell.depth < config.max_depth && (dist < threshold || cell.depth < config.min_depth);
 
     if should_subdivide {
         // Split into 8 octants
@@ -1244,11 +1263,7 @@ fn subdivide_octree(
 }
 
 /// Process a single adaptive cell using marching cubes
-fn process_adaptive_cell(
-    node: &SdfNode,
-    cell: &OctreeCell,
-    config: &MarchingCubesConfig,
-) -> Mesh {
+fn process_adaptive_cell(node: &SdfNode, cell: &OctreeCell, config: &MarchingCubesConfig) -> Mesh {
     let mut mesh = Mesh::new();
     let cell_size = cell.max - cell.min;
 
@@ -1382,9 +1397,7 @@ pub fn adaptive_marching_cubes_compiled(
 
     let sub_meshes: Vec<Mesh> = leaf_cells
         .par_iter()
-        .map(|cell| {
-            process_adaptive_cell_compiled(sdf, cell, &mc_config)
-        })
+        .map(|cell| process_adaptive_cell_compiled(sdf, cell, &mc_config))
         .collect();
 
     let mut mesh = merge_meshes(sub_meshes);
@@ -1416,8 +1429,8 @@ fn subdivide_octree_compiled(
         half_diag * 1.2
     };
 
-    let should_subdivide = cell.depth < config.max_depth
-        && (dist < threshold || cell.depth < config.min_depth);
+    let should_subdivide =
+        cell.depth < config.max_depth && (dist < threshold || cell.depth < config.min_depth);
 
     if should_subdivide {
         for octant in 0..8 {
@@ -1621,7 +1634,9 @@ mod tests {
         assert!(
             mesh.vertex_count() < tri_count * 3,
             "Expected shared vertices: {} verts < {} (3 * {} tris)",
-            mesh.vertex_count(), tri_count * 3, tri_count
+            mesh.vertex_count(),
+            tri_count * 3,
+            tri_count
         );
 
         // Verify manifold: every edge should be shared by exactly 2 triangles
@@ -1640,7 +1655,11 @@ mod tests {
 
         // Allow some boundary edges (count == 1) but no edge should have > 2 triangles
         let bad_edges = edge_count.values().filter(|&&c| c > 2).count();
-        assert_eq!(bad_edges, 0, "Found {} non-manifold edges (shared by >2 triangles)", bad_edges);
+        assert_eq!(
+            bad_edges, 0,
+            "Found {} non-manifold edges (shared by >2 triangles)",
+            bad_edges
+        );
     }
 
     #[test]
@@ -1658,21 +1677,24 @@ mod tests {
             let t_len = t.length();
             assert!(
                 (t_len - 1.0).abs() < 0.1,
-                "Tangent not normalized: length = {}", t_len
+                "Tangent not normalized: length = {}",
+                t_len
             );
 
             // Tangent should be perpendicular to normal
             let dot = t.dot(n).abs();
             assert!(
                 dot < 0.15,
-                "Tangent not perpendicular to normal: dot = {}", dot
+                "Tangent not perpendicular to normal: dot = {}",
+                dot
             );
 
             // Handedness should be -1 or +1
             let w = v.tangent.w;
             assert!(
                 (w.abs() - 1.0).abs() < 0.01,
-                "Invalid handedness: w = {}", w
+                "Invalid handedness: w = {}",
+                w
             );
         }
     }
@@ -1682,12 +1704,16 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = AdaptiveConfig::default();
 
-        let mesh = adaptive_marching_cubes(
-            &sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config
-        );
+        let mesh = adaptive_marching_cubes(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        assert!(mesh.vertex_count() > 0, "Adaptive MC should produce vertices");
-        assert!(mesh.triangle_count() > 0, "Adaptive MC should produce triangles");
+        assert!(
+            mesh.vertex_count() > 0,
+            "Adaptive MC should produce vertices"
+        );
+        assert!(
+            mesh.triangle_count() > 0,
+            "Adaptive MC should produce triangles"
+        );
     }
 
     #[test]
@@ -1704,7 +1730,10 @@ mod tests {
             ..Default::default()
         };
         let uniform_mesh = sdf_to_mesh(
-            &sphere, Vec3::splat(-5.0), Vec3::splat(5.0), &uniform_config
+            &sphere,
+            Vec3::splat(-5.0),
+            Vec3::splat(5.0),
+            &uniform_config,
         );
 
         // Adaptive: same effective max resolution but tight surface threshold
@@ -1716,26 +1745,27 @@ mod tests {
             ..Default::default()
         };
         let adaptive_mesh = adaptive_marching_cubes(
-            &sphere, Vec3::splat(-5.0), Vec3::splat(5.0), &adaptive_config
+            &sphere,
+            Vec3::splat(-5.0),
+            Vec3::splat(5.0),
+            &adaptive_config,
         );
 
         // Adaptive should produce fewer or equal triangles
         assert!(
             adaptive_mesh.triangle_count() <= uniform_mesh.triangle_count(),
             "Adaptive ({}) should have <= triangles than uniform ({})",
-            adaptive_mesh.triangle_count(), uniform_mesh.triangle_count()
+            adaptive_mesh.triangle_count(),
+            uniform_mesh.triangle_count()
         );
     }
 
     #[test]
     fn test_adaptive_aaa_preset() {
-        let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+        let shape = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
         let config = AdaptiveConfig::aaa(5);
 
-        let mesh = adaptive_marching_cubes(
-            &shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config
-        );
+        let mesh = adaptive_marching_cubes(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         assert!(mesh.vertex_count() > 0);
         // Verify normals are normalized

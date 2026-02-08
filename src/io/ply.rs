@@ -28,11 +28,7 @@ impl Default for PlyConfig {
 }
 
 /// Export mesh to PLY format
-pub fn export_ply(
-    mesh: &Mesh,
-    path: impl AsRef<Path>,
-    config: &PlyConfig,
-) -> Result<(), IoError> {
+pub fn export_ply(mesh: &Mesh, path: impl AsRef<Path>, config: &PlyConfig) -> Result<(), IoError> {
     use std::io::{BufWriter, Write};
 
     let file = std::fs::File::create(path)?;
@@ -92,8 +88,7 @@ pub fn export_ply(
                 writeln!(
                     w,
                     "{} {} {} {} {} {}",
-                    v.position.x, v.position.y, v.position.z,
-                    v.normal.x, v.normal.y, v.normal.z
+                    v.position.x, v.position.y, v.position.z, v.normal.x, v.normal.y, v.normal.z
                 )?;
             } else {
                 writeln!(w, "{} {} {}", v.position.x, v.position.y, v.position.z)?;

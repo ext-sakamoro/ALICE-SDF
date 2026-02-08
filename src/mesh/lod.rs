@@ -12,8 +12,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh, Vertex};
 use crate::types::SdfNode;
-use crate::mesh::{Mesh, MarchingCubesConfig, sdf_to_mesh, Vertex};
 use glam::Vec3;
 
 /// LOD entry with mesh and metadata
@@ -104,15 +104,21 @@ impl LodChain {
 
     /// Get total triangle count at LOD 0
     pub fn base_triangle_count(&self) -> usize {
-        self.levels.first().map(|l| l.mesh.triangle_count()).unwrap_or(0)
+        self.levels
+            .first()
+            .map(|l| l.mesh.triangle_count())
+            .unwrap_or(0)
     }
 
     /// Get memory usage in bytes (approximate)
     pub fn memory_usage(&self) -> usize {
-        self.levels.iter().map(|l| {
-            l.mesh.vertices.len() * std::mem::size_of::<Vertex>()
-                + l.mesh.indices.len() * std::mem::size_of::<u32>()
-        }).sum()
+        self.levels
+            .iter()
+            .map(|l| {
+                l.mesh.vertices.len() * std::mem::size_of::<Vertex>()
+                    + l.mesh.indices.len() * std::mem::size_of::<u32>()
+            })
+            .sum()
     }
 }
 
@@ -341,8 +347,8 @@ pub fn generate_lod_chain_decimated(
         let mut lod_mesh = current_mesh.clone();
         decimate(&mut lod_mesh, &dec_config);
 
-        let effective_res = (base_resolution as f32
-            * config.decimation_ratio.powi(level as i32)) as u32;
+        let effective_res =
+            (base_resolution as f32 * config.decimation_ratio.powi(level as i32)) as u32;
         let max_error = compute_lod_error(&lod_mesh, effective_res.max(4), bounds_radius);
 
         levels.push(LodMesh {
@@ -500,7 +506,9 @@ impl ContinuousLod {
 
         if diff.abs() > 0.01 {
             self.current_lod += diff.signum() * self.transition_speed * delta_time;
-            self.current_lod = self.current_lod.clamp(0.0, (self.chain.levels.len() - 1) as f32);
+            self.current_lod = self
+                .current_lod
+                .clamp(0.0, (self.chain.levels.len() - 1) as f32);
         }
     }
 
@@ -554,23 +562,24 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = LodConfig::fast();
 
-        let chain = generate_lod_chain(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let chain = generate_lod_chain(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         assert_eq!(chain.levels.len(), config.num_levels as usize);
 
         // Higher LOD levels should have fewer triangles
-        let tri_counts: Vec<usize> = chain.levels.iter()
+        let tri_counts: Vec<usize> = chain
+            .levels
+            .iter()
             .map(|l| l.mesh.triangle_count())
             .collect();
 
         for i in 1..tri_counts.len() {
-            assert!(tri_counts[i] <= tri_counts[i-1] || tri_counts[i-1] == 0,
-                "LOD {} has more triangles than LOD {}", i, i-1);
+            assert!(
+                tri_counts[i] <= tri_counts[i - 1] || tri_counts[i - 1] == 0,
+                "LOD {} has more triangles than LOD {}",
+                i,
+                i - 1
+            );
         }
     }
 
@@ -579,12 +588,7 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = LodConfig::default();
 
-        let chain = generate_lod_chain(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let chain = generate_lod_chain(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // Close distance should select LOD 0
         let close_lod = chain.get_lod(0.5);
@@ -614,12 +618,8 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = DecimationLodConfig::fast();
 
-        let chain = generate_lod_chain_decimated(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let chain =
+            generate_lod_chain_decimated(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         assert_eq!(chain.levels.len(), config.num_levels as usize);
 
@@ -630,7 +630,10 @@ mod tests {
             assert!(
                 curr <= prev,
                 "LOD {} ({} tris) should have <= LOD {} ({} tris)",
-                i, curr, i - 1, prev
+                i,
+                curr,
+                i - 1,
+                prev
             );
         }
 
@@ -640,7 +643,8 @@ mod tests {
         assert!(
             last_lod_tris < lod0_tris,
             "Last LOD ({} tris) should be less than LOD 0 ({} tris)",
-            last_lod_tris, lod0_tris
+            last_lod_tris,
+            lod0_tris
         );
     }
 
@@ -650,15 +654,13 @@ mod tests {
 
         // Resolution-based LOD
         let res_config = LodConfig::fast();
-        let res_chain = generate_lod_chain(
-            &sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &res_config
-        );
+        let res_chain =
+            generate_lod_chain(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &res_config);
 
         // Decimation-based LOD
         let dec_config = DecimationLodConfig::fast();
-        let dec_chain = generate_lod_chain_decimated(
-            &sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &dec_config
-        );
+        let dec_chain =
+            generate_lod_chain_decimated(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &dec_config);
 
         // Both should produce valid LOD chains
         assert!(!res_chain.levels.is_empty());
@@ -674,12 +676,7 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let config = LodConfig::fast();
 
-        let chain = generate_lod_chain(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let chain = generate_lod_chain(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         let mut clod = ContinuousLod::new(chain, 2.0);
 

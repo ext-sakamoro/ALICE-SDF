@@ -33,7 +33,11 @@ mod tests {
     fn test_frd_origin() {
         // At origin: sin=0, cos=1: d = 1*0*1 + 1*1*0 + 0*1*1 = 0
         let d = sdf_frd(Vec3::ZERO, 1.0, 0.1);
-        assert!((d + 0.1).abs() < 0.01, "Origin on surface minus thickness, got {}", d);
+        assert!(
+            (d + 0.1).abs() < 0.01,
+            "Origin on surface minus thickness, got {}",
+            d
+        );
     }
 
     #[test]

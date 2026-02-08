@@ -42,7 +42,11 @@ mod tests {
         // Face center along (1,1,1) direction at distance = size
         let n = Vec3::new(1.0, 1.0, 1.0).normalize();
         let d = sdf_tetrahedron(n * 1.0, 1.0);
-        assert!(d.abs() < 0.01, "Face center should be on surface, got {}", d);
+        assert!(
+            d.abs() < 0.01,
+            "Face center should be on surface, got {}",
+            d
+        );
     }
 
     #[test]

@@ -9,7 +9,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use std::f32::consts::{SQRT_2, FRAC_1_SQRT_2};
+use std::f32::consts::{FRAC_1_SQRT_2, SQRT_2};
 
 /// GLSL-compatible modulo: always returns positive remainder
 #[inline(always)]
@@ -100,7 +100,10 @@ mod tests {
         let r = 0.5;
         let n = 4.0;
         let result = sdf_stairs_union(a, b, r, n);
-        assert!(result <= a + 0.01, "stairs union should approximate min when far apart");
+        assert!(
+            result <= a + 0.01,
+            "stairs union should approximate min when far apart"
+        );
     }
 
     #[test]
@@ -130,6 +133,9 @@ mod tests {
         // Intersection should generally be >= max(a,b) - some blend
         // Subtraction should be related to intersection with negated b
         let int_alt = -sdf_stairs_union(-a, -b, r, n);
-        assert!((int_result - int_alt).abs() < 1e-6, "intersection = -union(-a,-b)");
+        assert!(
+            (int_result - int_alt).abs() < 1e-6,
+            "intersection = -union(-a,-b)"
+        );
     }
 }

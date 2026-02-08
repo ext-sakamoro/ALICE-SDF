@@ -99,7 +99,11 @@ impl ClipmapTerrain {
     }
 
     /// Generate mesh for a single level
-    pub fn generate_level_mesh(&self, level_idx: u32, heightmap: &Heightmap) -> Option<ClipmapMesh> {
+    pub fn generate_level_mesh(
+        &self,
+        level_idx: u32,
+        heightmap: &Heightmap,
+    ) -> Option<ClipmapMesh> {
         self.levels.get(level_idx as usize).map(|level| {
             let mesh = generate_level_mesh(level, heightmap);
             ClipmapMesh {
@@ -199,8 +203,16 @@ mod tests {
         for level in &clipmap.levels {
             let remainder_x = level.origin_x % level.spacing;
             let remainder_z = level.origin_z % level.spacing;
-            assert!(remainder_x.abs() < 0.001, "Origin X not snapped at level {}", level.level);
-            assert!(remainder_z.abs() < 0.001, "Origin Z not snapped at level {}", level.level);
+            assert!(
+                remainder_x.abs() < 0.001,
+                "Origin X not snapped at level {}",
+                level.level
+            );
+            assert!(
+                remainder_z.abs() < 0.001,
+                "Origin Z not snapped at level {}",
+                level.level
+            );
         }
     }
 
@@ -228,7 +240,11 @@ mod tests {
         let meshes = clipmap.generate_meshes(&hm);
         for v in &meshes[0].mesh.vertices {
             let len = v.normal.length();
-            assert!((len - 1.0).abs() < 0.1, "Normal should be unit length, got {}", len);
+            assert!(
+                (len - 1.0).abs() < 0.1,
+                "Normal should be unit length, got {}",
+                len
+            );
         }
     }
 

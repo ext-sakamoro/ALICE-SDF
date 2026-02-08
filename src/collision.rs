@@ -46,12 +46,7 @@ pub struct SdfContact {
 /// provably positive (no surface present).
 ///
 /// Returns contacts sorted by depth (deepest first).
-pub fn sdf_collide(
-    a: &SdfNode,
-    b: &SdfNode,
-    aabb: &Aabb,
-    resolution: u32,
-) -> Vec<SdfContact> {
+pub fn sdf_collide(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> Vec<SdfContact> {
     let res = resolution.max(2) as usize;
     let extent = aabb.max - aabb.min;
     let cell = extent / res as f32;
@@ -62,11 +57,8 @@ pub fn sdf_collide(
     for iz in 0..res {
         for iy in 0..res {
             for ix in 0..res {
-                let lo = aabb.min + Vec3::new(
-                    ix as f32 * cell.x,
-                    iy as f32 * cell.y,
-                    iz as f32 * cell.z,
-                );
+                let lo = aabb.min
+                    + Vec3::new(ix as f32 * cell.x, iy as f32 * cell.y, iz as f32 * cell.z);
                 let hi = lo + cell;
 
                 // Interval pruning: if either SDF is entirely positive in
@@ -100,7 +92,11 @@ pub fn sdf_collide(
     }
 
     // Sort deepest first
-    contacts.sort_by(|c1, c2| c2.depth.partial_cmp(&c1.depth).unwrap_or(std::cmp::Ordering::Equal));
+    contacts.sort_by(|c1, c2| {
+        c2.depth
+            .partial_cmp(&c1.depth)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     contacts
 }
 
@@ -108,12 +104,7 @@ pub fn sdf_collide(
 ///
 /// Returns 0.0 if they overlap, otherwise the smallest `da + db` found
 /// on the grid (an upper bound on the true separation).
-pub fn sdf_distance(
-    a: &SdfNode,
-    b: &SdfNode,
-    aabb: &Aabb,
-    resolution: u32,
-) -> f32 {
+pub fn sdf_distance(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> f32 {
     let res = resolution.max(2) as usize;
     let extent = aabb.max - aabb.min;
     let cell = extent / res as f32;
@@ -122,11 +113,8 @@ pub fn sdf_distance(
     for iz in 0..res {
         for iy in 0..res {
             for ix in 0..res {
-                let lo = aabb.min + Vec3::new(
-                    ix as f32 * cell.x,
-                    iy as f32 * cell.y,
-                    iz as f32 * cell.z,
-                );
+                let lo = aabb.min
+                    + Vec3::new(ix as f32 * cell.x, iy as f32 * cell.y, iz as f32 * cell.z);
                 let hi = lo + cell;
 
                 // Interval pruning: skip if we can't improve
@@ -160,12 +148,7 @@ pub fn sdf_distance(
 ///
 /// Returns `true` if the interiors of `a` and `b` overlap anywhere
 /// on the sample grid.
-pub fn sdf_overlap(
-    a: &SdfNode,
-    b: &SdfNode,
-    aabb: &Aabb,
-    resolution: u32,
-) -> bool {
+pub fn sdf_overlap(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> bool {
     let res = resolution.max(2) as usize;
     let extent = aabb.max - aabb.min;
     let cell = extent / res as f32;
@@ -173,11 +156,8 @@ pub fn sdf_overlap(
     for iz in 0..res {
         for iy in 0..res {
             for ix in 0..res {
-                let lo = aabb.min + Vec3::new(
-                    ix as f32 * cell.x,
-                    iy as f32 * cell.y,
-                    iz as f32 * cell.z,
-                );
+                let lo = aabb.min
+                    + Vec3::new(ix as f32 * cell.x, iy as f32 * cell.y, iz as f32 * cell.z);
                 let hi = lo + cell;
 
                 let ia = eval_interval(a, Vec3Interval::from_bounds(lo, hi));
@@ -265,7 +245,10 @@ mod tests {
         // All contacts should have positive depth
         for c in &contacts {
             assert!(c.depth > 0.0, "depth should be positive: {}", c.depth);
-            assert!(c.normal.length() > 0.5, "normal should be roughly unit length");
+            assert!(
+                c.normal.length() > 0.5,
+                "normal should be roughly unit length"
+            );
         }
     }
 
@@ -276,8 +259,10 @@ mod tests {
 
         let contacts = sdf_collide(&a, &b, &test_aabb(), 16);
         for w in contacts.windows(2) {
-            assert!(w[0].depth >= w[1].depth,
-                "Contacts should be sorted deepest first");
+            assert!(
+                w[0].depth >= w[1].depth,
+                "Contacts should be sorted deepest first"
+            );
         }
     }
 
@@ -308,7 +293,10 @@ mod tests {
         let b = SdfNode::sphere(1.0).translate(3.0, 0.0, 0.0);
 
         let contacts = sdf_collide(&a, &b, &test_aabb(), 16);
-        assert!(contacts.is_empty(), "Non-overlapping should have no contacts");
+        assert!(
+            contacts.is_empty(),
+            "Non-overlapping should have no contacts"
+        );
     }
 
     #[test]
@@ -321,8 +309,11 @@ mod tests {
 
         // Contact points should be near x=0.5 (midpoint of overlap region)
         if let Some(deepest) = contacts.first() {
-            assert!(deepest.point.x > 0.0 && deepest.point.x < 1.0,
-                "Deepest contact x should be between 0 and 1, got {}", deepest.point.x);
+            assert!(
+                deepest.point.x > 0.0 && deepest.point.x < 1.0,
+                "Deepest contact x should be between 0 and 1, got {}",
+                deepest.point.x
+            );
         }
     }
 }

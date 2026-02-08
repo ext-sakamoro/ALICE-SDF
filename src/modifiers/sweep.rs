@@ -78,7 +78,17 @@ pub fn modifier_sweep_bezier(p: Vec3, p0: Vec2, p1: Vec2, p2: Vec2) -> Vec3 {
 
 /// SIMD-friendly version: returns (perpendicular_distance, y) without Vec3 allocation
 #[inline]
-pub fn sweep_bezier_dist_y(px: f32, py: f32, pz: f32, p0x: f32, p0z: f32, p1x: f32, p1z: f32, p2x: f32, p2z: f32) -> (f32, f32) {
+pub fn sweep_bezier_dist_y(
+    px: f32,
+    py: f32,
+    pz: f32,
+    p0x: f32,
+    p0z: f32,
+    p1x: f32,
+    p1z: f32,
+    p2x: f32,
+    p2z: f32,
+) -> (f32, f32) {
     let p0 = Vec2::new(p0x, p0z);
     let p1 = Vec2::new(p1x, p1z);
     let p2 = Vec2::new(p2x, p2z);
@@ -129,7 +139,11 @@ mod tests {
 
         // Point above the line at x=0
         let result = modifier_sweep_bezier(Vec3::new(0.0, 2.0, 0.5), p0, p1, p2);
-        assert!((result.x - 0.5).abs() < 0.05, "perp dist should be ~0.5, got {}", result.x);
+        assert!(
+            (result.x - 0.5).abs() < 0.05,
+            "perp dist should be ~0.5, got {}",
+            result.x
+        );
         assert!((result.y - 2.0).abs() < 1e-6, "y should be preserved");
     }
 
@@ -142,6 +156,10 @@ mod tests {
 
         let mid = bezier_eval(p0, p1, p2, 0.5);
         let result = modifier_sweep_bezier(Vec3::new(mid.x, 3.0, mid.y), p0, p1, p2);
-        assert!(result.x < 0.01, "perp dist on curve should be ~0, got {}", result.x);
+        assert!(
+            result.x < 0.01,
+            "perp dist on curve should be ~0, got {}",
+            result.x
+        );
     }
 }

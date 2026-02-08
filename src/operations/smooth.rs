@@ -184,19 +184,32 @@ mod tests {
         let k = 0.3;
         let r1 = smooth_min_root(0.5, 0.8, k);
         let r2 = smooth_min_root(0.8, 0.5, k);
-        assert!((r1 - r2).abs() < 1e-6, "Should be symmetric: {} vs {}", r1, r2);
+        assert!(
+            (r1 - r2).abs() < 1e-6,
+            "Should be symmetric: {} vs {}",
+            r1,
+            r2
+        );
     }
 
     #[test]
     fn test_smooth_min_root_k_zero() {
         // k=0 should degenerate to min
         let result = smooth_min_root(2.0, 5.0, 0.0);
-        assert!((result - 2.0).abs() < 1e-6, "k=0 should be min, got {}", result);
+        assert!(
+            (result - 2.0).abs() < 1e-6,
+            "k=0 should be min, got {}",
+            result
+        );
     }
 
     #[test]
     fn test_smooth_min_root_equal() {
         let result = smooth_min_root(1.0, 1.0, 0.5);
-        assert!(result < 1.0, "Equal inputs with k>0 should blend below, got {}", result);
+        assert!(
+            result < 1.0,
+            "Equal inputs with k>0 should blend below, got {}",
+            result
+        );
     }
 }

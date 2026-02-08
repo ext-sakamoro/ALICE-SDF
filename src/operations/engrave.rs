@@ -23,7 +23,11 @@ mod tests {
     fn test_engrave_far_outside() {
         // Far outside a: engrave has no effect
         let d = sdf_engrave(5.0, 0.5, 0.1);
-        assert!((d - 5.0).abs() < 0.01, "Far outside should be ~a, got {}", d);
+        assert!(
+            (d - 5.0).abs() < 0.01,
+            "Far outside should be ~a, got {}",
+            d
+        );
     }
 
     #[test]

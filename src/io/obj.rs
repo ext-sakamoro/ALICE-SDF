@@ -46,10 +46,7 @@ pub fn export_obj(
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
 
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mesh");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("mesh");
 
     // Header
     writeln!(w, "# ALICE-SDF OBJ Export")?;
@@ -71,7 +68,11 @@ pub fn export_obj(
     // UVs
     if config.export_uvs {
         for v in &mesh.vertices {
-            let v_coord = if config.flip_uv_v { 1.0 - v.uv.y } else { v.uv.y };
+            let v_coord = if config.flip_uv_v {
+                1.0 - v.uv.y
+            } else {
+                v.uv.y
+            };
             writeln!(w, "vt {} {}", v.uv.x, v_coord)?;
         }
     }
@@ -239,8 +240,7 @@ pub fn import_obj(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::{Vec2, Vec3};
 
-    let content =
-        std::fs::read_to_string(path).map_err(IoError::Io)?;
+    let content = std::fs::read_to_string(path).map_err(IoError::Io)?;
 
     let mut positions: Vec<Vec3> = Vec::new();
     let mut normals: Vec<Vec3> = Vec::new();
@@ -382,7 +382,9 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         let mut mat_lib = MaterialLibrary::new();
-        mat_lib.add(crate::material::Material::metal("gold", 1.0, 0.84, 0.0, 0.3));
+        mat_lib.add(crate::material::Material::metal(
+            "gold", 1.0, 0.84, 0.0, 0.3,
+        ));
 
         let path = std::env::temp_dir().join("alice_test_mat.obj");
         export_obj(&mesh, &path, &ObjConfig::default(), Some(&mat_lib)).unwrap();

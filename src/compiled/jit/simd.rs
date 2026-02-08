@@ -33,12 +33,8 @@ use super::super::opcode::OpCode;
 use super::super::CompiledSdf;
 
 /// Function signature for SIMD JIT: processes 8 points at once
-type SimdSdfFn = unsafe extern "C" fn(
-    px: *const f32,
-    py: *const f32,
-    pz: *const f32,
-    out: *mut f32,
-);
+type SimdSdfFn =
+    unsafe extern "C" fn(px: *const f32, py: *const f32, pz: *const f32, out: *mut f32);
 
 /// JIT-compiled SIMD SDF evaluator (Deep Fried Crispy Edition)
 pub struct JitSimdSdf {
@@ -81,13 +77,20 @@ fn simd_length3_fma(builder: &mut FunctionBuilder, x: Value, y: Value, z: Value)
 }
 
 /// Branchless SIMD select: returns if_neg where cond < 0, else if_pos
-fn simd_select_neg(builder: &mut FunctionBuilder, cond: Value, if_neg: Value, if_pos: Value) -> Value {
+fn simd_select_neg(
+    builder: &mut FunctionBuilder,
+    cond: Value,
+    if_neg: Value,
+    if_pos: Value,
+) -> Value {
     let mask_i32 = builder.ins().bitcast(types::I32X4, MemFlags::new(), cond);
     let sign_mask = builder.ins().sshr_imm(mask_i32, 31);
     let true_bits = builder.ins().bitcast(types::I32X4, MemFlags::new(), if_neg);
     let false_bits = builder.ins().bitcast(types::I32X4, MemFlags::new(), if_pos);
     let selected = builder.ins().bitselect(sign_mask, true_bits, false_bits);
-    builder.ins().bitcast(types::F32X4, MemFlags::new(), selected)
+    builder
+        .ins()
+        .bitcast(types::F32X4, MemFlags::new(), selected)
 }
 
 /// SIMD Taylor-series sin/cos approximation for F32X4 vectors.
@@ -132,8 +135,10 @@ fn simd_sincos_approx(
 fn emit_simd_stairs_min(
     builder: &mut FunctionBuilder,
     vec_type: types::Type,
-    a: Value, b: Value,
-    r: f32, n: f32,
+    a: Value,
+    b: Value,
+    r: f32,
+    n: f32,
 ) -> Value {
     let half_s = builder.ins().f32const(0.5);
     let half = builder.ins().splat(vec_type, half_s);
@@ -197,9 +202,14 @@ fn emit_simd_stairs_min(
 /// Emit SIMD stairs_min for one F32X4 lane using pre-splatted constants
 fn emit_simd_stairs_min_lane(
     builder: &mut FunctionBuilder,
-    a: Value, b: Value,
-    s_v: Value, half: Value, s2_v: Value,
-    rn_v: Value, off_v: Value, step_v: Value,
+    a: Value,
+    b: Value,
+    s_v: Value,
+    half: Value,
+    s2_v: Value,
+    rn_v: Value,
+    off_v: Value,
+    step_v: Value,
 ) -> Value {
     // px = (b - a) * s - off
     let b_minus_a = builder.ins().fsub(b, a);
@@ -242,10 +252,14 @@ impl JitSimdSdf {
     /// Compile SDF to native SIMD machine code with Aggressive optimizations
     pub fn compile(sdf: &CompiledSdf) -> Result<Self, String> {
         let mut flag_builder = settings::builder();
-        flag_builder.set("opt_level", "speed").map_err(|e| e.to_string())?;
+        flag_builder
+            .set("opt_level", "speed")
+            .map_err(|e| e.to_string())?;
 
         // Use colocated libcalls to avoid PLT overhead
-        flag_builder.set("use_colocated_libcalls", "true").map_err(|e| e.to_string())?;
+        flag_builder
+            .set("use_colocated_libcalls", "true")
+            .map_err(|e| e.to_string())?;
 
         // Enable SIMD on x86_64
         if cfg!(target_arch = "x86_64") {
@@ -269,7 +283,11 @@ impl JitSimdSdf {
         ctx.func.signature.params.push(AbiParam::new(ptr_type)); // out
 
         let func_id = module
-            .declare_function("eval_sdf_simd_deep_fried", Linkage::Export, &ctx.func.signature)
+            .declare_function(
+                "eval_sdf_simd_deep_fried",
+                Linkage::Export,
+                &ctx.func.signature,
+            )
             .map_err(|e| e.to_string())?;
 
         {
@@ -512,7 +530,11 @@ impl JitSimdSdf {
                         let ba_y = inst.params[4] - inst.params[1];
                         let ba_z = inst.params[5] - inst.params[2];
                         let ba_dot_val = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
-                        let inv_ba_dot = if ba_dot_val.abs() < 1e-10 { 1.0 } else { 1.0 / ba_dot_val };
+                        let inv_ba_dot = if ba_dot_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / ba_dot_val
+                        };
 
                         let bax_s = builder.ins().f32const(ba_x);
                         let bay_s = builder.ins().f32const(ba_y);
@@ -579,7 +601,11 @@ impl JitSimdSdf {
                         let k2x_val = -radius_val;
                         let k2y_val = 2.0 * half_height;
                         let k2_dot_val = k2x_val * k2x_val + k2y_val * k2y_val;
-                        let inv_k2d_val = if k2_dot_val.abs() < 1e-10 { 1.0 } else { 1.0 / k2_dot_val };
+                        let inv_k2d_val = if k2_dot_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / k2_dot_val
+                        };
 
                         let k2x_s = builder.ins().f32const(k2x_val);
                         let k2y_s = builder.ins().f32const(k2y_val);
@@ -671,9 +697,15 @@ impl JitSimdSdf {
                         let inv_ry = builder.ins().splat(vec_type, inv_ry_s);
                         let inv_rz = builder.ins().splat(vec_type, inv_rz_s);
 
-                        let inv_rx2_s = builder.ins().f32const(1.0 / (inst.params[0] * inst.params[0]));
-                        let inv_ry2_s = builder.ins().f32const(1.0 / (inst.params[1] * inst.params[1]));
-                        let inv_rz2_s = builder.ins().f32const(1.0 / (inst.params[2] * inst.params[2]));
+                        let inv_rx2_s = builder
+                            .ins()
+                            .f32const(1.0 / (inst.params[0] * inst.params[0]));
+                        let inv_ry2_s = builder
+                            .ins()
+                            .f32const(1.0 / (inst.params[1] * inst.params[1]));
+                        let inv_rz2_s = builder
+                            .ins()
+                            .f32const(1.0 / (inst.params[2] * inst.params[2]));
                         let inv_rx2 = builder.ins().splat(vec_type, inv_rx2_s);
                         let inv_ry2 = builder.ins().splat(vec_type, inv_ry2_s);
                         let inv_rz2 = builder.ins().splat(vec_type, inv_rz2_s);
@@ -723,7 +755,11 @@ impl JitSimdSdf {
 
                         // Pre-compute constants (Division Exorcism)
                         let h_val = half_height * 2.0;
-                        let inv_h = if h_val.abs() < 1e-10 { 1.0 } else { 1.0 / h_val };
+                        let inv_h = if h_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / h_val
+                        };
                         let b_val = (r1_val - r2_val) * inv_h;
                         let a_val = (1.0 - b_val * b_val).max(0.0).sqrt();
                         let ah_val = a_val * h_val;
@@ -1118,19 +1154,15 @@ impl JitSimdSdf {
                     OpCode::Union => {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                        value_stack.push((
-                            builder.ins().fmin(a.0, b.0),
-                            builder.ins().fmin(a.1, b.1)
-                        ));
+                        value_stack
+                            .push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
                     }
 
                     OpCode::Intersection => {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                        value_stack.push((
-                            builder.ins().fmax(a.0, b.0),
-                            builder.ins().fmax(a.1, b.1)
-                        ));
+                        value_stack
+                            .push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
                     }
 
                     OpCode::Subtraction => {
@@ -1140,7 +1172,7 @@ impl JitSimdSdf {
                         let neg_b1 = builder.ins().fneg(b.1);
                         value_stack.push((
                             builder.ins().fmax(a.0, neg_b0),
-                            builder.ins().fmax(a.1, neg_b1)
+                            builder.ins().fmax(a.1, neg_b1),
                         ));
                     }
 
@@ -1151,10 +1183,8 @@ impl JitSimdSdf {
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
                         if k.abs() < FOLD_EPSILON {
-                            value_stack.push((
-                                builder.ins().fmin(a.0, b.0),
-                                builder.ins().fmin(a.1, b.1)
-                            ));
+                            value_stack
+                                .push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
                             continue;
                         }
 
@@ -1201,10 +1231,8 @@ impl JitSimdSdf {
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
                         if k.abs() < FOLD_EPSILON {
-                            value_stack.push((
-                                builder.ins().fmax(a.0, b.0),
-                                builder.ins().fmax(a.1, b.1)
-                            ));
+                            value_stack
+                                .push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
                             continue;
                         }
 
@@ -1253,7 +1281,7 @@ impl JitSimdSdf {
                             let neg_b1 = builder.ins().fneg(b.1);
                             value_stack.push((
                                 builder.ins().fmax(a.0, neg_b0),
-                                builder.ins().fmax(a.1, neg_b1)
+                                builder.ins().fmax(a.1, neg_b1),
                             ));
                             continue;
                         }
@@ -1301,10 +1329,8 @@ impl JitSimdSdf {
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
                         if r.abs() < FOLD_EPSILON {
-                            value_stack.push((
-                                builder.ins().fmin(a.0, b.0),
-                                builder.ins().fmin(a.1, b.1)
-                            ));
+                            value_stack
+                                .push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
                             continue;
                         }
 
@@ -1336,10 +1362,8 @@ impl JitSimdSdf {
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
                         if r.abs() < FOLD_EPSILON {
-                            value_stack.push((
-                                builder.ins().fmax(a.0, b.0),
-                                builder.ins().fmax(a.1, b.1)
-                            ));
+                            value_stack
+                                .push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
                             continue;
                         }
 
@@ -1380,7 +1404,7 @@ impl JitSimdSdf {
                             let neg_b1 = builder.ins().fneg(b.1);
                             value_stack.push((
                                 builder.ins().fmax(a.0, neg_b0),
-                                builder.ins().fmax(a.1, neg_b1)
+                                builder.ins().fmax(a.1, neg_b1),
                             ));
                             continue;
                         }
@@ -1462,17 +1486,30 @@ impl JitSimdSdf {
                         let ty = inst.params[1];
                         let tz = inst.params[2];
 
-                        if tx.abs() < FOLD_EPSILON && ty.abs() < FOLD_EPSILON && tz.abs() < FOLD_EPSILON {
+                        if tx.abs() < FOLD_EPSILON
+                            && ty.abs() < FOLD_EPSILON
+                            && tz.abs() < FOLD_EPSILON
+                        {
                             coord_stack.push(SimdCoordState {
-                                x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                                opcode: OpCode::Translate, params: [0.0; 4], folded: true,
+                                x: curr_x,
+                                y: curr_y,
+                                z: curr_z,
+                                scale: curr_scale,
+                                opcode: OpCode::Translate,
+                                params: [0.0; 4],
+                                folded: true,
                             });
                             continue;
                         }
 
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Translate, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Translate,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         let tx_s = builder.ins().f32const(tx);
@@ -1503,15 +1540,25 @@ impl JitSimdSdf {
 
                         if (factor - 1.0).abs() < FOLD_EPSILON {
                             coord_stack.push(SimdCoordState {
-                                x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                                opcode: OpCode::Scale, params: [0.0; 4], folded: true,
+                                x: curr_x,
+                                y: curr_y,
+                                z: curr_z,
+                                scale: curr_scale,
+                                opcode: OpCode::Scale,
+                                params: [0.0; 4],
+                                folded: true,
                             });
                             continue;
                         }
 
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Scale, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Scale,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         // Division Exorcism: p *= inv_factor (no division)
@@ -1540,8 +1587,13 @@ impl JitSimdSdf {
 
                     OpCode::Rotate => {
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Rotate, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Rotate,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         // Quaternion → rotation matrix (compile-time)
@@ -1550,7 +1602,9 @@ impl JitSimdSdf {
                         let qz = inst.params[2];
                         let qw = inst.params[3];
                         // Inverse quaternion: negate xyz
-                        let qx = -qx; let qy = -qy; let qz = -qz;
+                        let qx = -qx;
+                        let qy = -qy;
+                        let qz = -qz;
                         // Rotation matrix from quaternion
                         let m00 = 1.0 - 2.0 * (qy * qy + qz * qz);
                         let m01 = 2.0 * (qx * qy - qz * qw);
@@ -1618,8 +1672,13 @@ impl JitSimdSdf {
                         let min_factor = inst.params[3];
 
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::ScaleNonUniform, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::ScaleNonUniform,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         let _ts10 = builder.ins().f32const(inv_sx);
@@ -1631,25 +1690,47 @@ impl JitSimdSdf {
                         let _ts13 = builder.ins().f32const(min_factor);
                         let mf = builder.ins().splat(vec_type, _ts13);
 
-                        curr_x = (builder.ins().fmul(curr_x.0, isx), builder.ins().fmul(curr_x.1, isx));
-                        curr_y = (builder.ins().fmul(curr_y.0, isy), builder.ins().fmul(curr_y.1, isy));
-                        curr_z = (builder.ins().fmul(curr_z.0, isz), builder.ins().fmul(curr_z.1, isz));
-                        curr_scale = (builder.ins().fmul(curr_scale.0, mf), builder.ins().fmul(curr_scale.1, mf));
+                        curr_x = (
+                            builder.ins().fmul(curr_x.0, isx),
+                            builder.ins().fmul(curr_x.1, isx),
+                        );
+                        curr_y = (
+                            builder.ins().fmul(curr_y.0, isy),
+                            builder.ins().fmul(curr_y.1, isy),
+                        );
+                        curr_z = (
+                            builder.ins().fmul(curr_z.0, isz),
+                            builder.ins().fmul(curr_z.1, isz),
+                        );
+                        curr_scale = (
+                            builder.ins().fmul(curr_scale.0, mf),
+                            builder.ins().fmul(curr_scale.1, mf),
+                        );
                     }
 
                     OpCode::Twist => {
                         let k = inst.params[0];
                         if k.abs() < FOLD_EPSILON {
                             coord_stack.push(SimdCoordState {
-                                x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                                opcode: OpCode::Twist, params: [0.0; 4], folded: true,
+                                x: curr_x,
+                                y: curr_y,
+                                z: curr_z,
+                                scale: curr_scale,
+                                opcode: OpCode::Twist,
+                                params: [0.0; 4],
+                                folded: true,
                             });
                             continue;
                         }
 
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Twist, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Twist,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         let k_s = builder.ins().f32const(k);
@@ -1684,15 +1765,25 @@ impl JitSimdSdf {
                         let k = inst.params[0];
                         if k.abs() < FOLD_EPSILON {
                             coord_stack.push(SimdCoordState {
-                                x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                                opcode: OpCode::Bend, params: [0.0; 4], folded: true,
+                                x: curr_x,
+                                y: curr_y,
+                                z: curr_z,
+                                scale: curr_scale,
+                                opcode: OpCode::Bend,
+                                params: [0.0; 4],
+                                folded: true,
                             });
                             continue;
                         }
 
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Bend, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Bend,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         let k_s = builder.ins().f32const(k);
@@ -1726,12 +1817,19 @@ impl JitSimdSdf {
 
                     OpCode::RepeatInfinite => {
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::RepeatInfinite, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::RepeatInfinite,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         // Division Exorcism: pre-compute reciprocals at compile time
-                        let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
+                        let sx = inst.params[0];
+                        let sy = inst.params[1];
+                        let sz = inst.params[2];
                         let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                         let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                         let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
@@ -1784,18 +1882,27 @@ impl JitSimdSdf {
 
                     OpCode::RepeatFinite => {
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::RepeatFinite, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::RepeatFinite,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         let cx = inst.params[0] as f32; // count already as f32
                         let cy = inst.params[1] as f32;
                         let cz = inst.params[2] as f32;
-                        let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
+                        let sx = inst.params[3];
+                        let sy = inst.params[4];
+                        let sz = inst.params[5];
                         let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                         let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                         let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
-                        let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
+                        let lx = cx * 0.5;
+                        let ly = cy * 0.5;
+                        let lz = cz * 0.5;
 
                         let _ts20 = builder.ins().f32const(sx);
                         let sx_v = builder.ins().splat(vec_type, _ts20);
@@ -1869,8 +1976,13 @@ impl JitSimdSdf {
 
                     OpCode::Elongate => {
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Elongate, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Elongate,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         let _ts47 = builder.ins().f32const(inst.params[0]);
@@ -1912,8 +2024,13 @@ impl JitSimdSdf {
 
                     OpCode::Mirror => {
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Mirror, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Mirror,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         if inst.params[0] != 0.0 {
@@ -1929,8 +2046,13 @@ impl JitSimdSdf {
 
                     OpCode::Revolution => {
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Revolution, params: [0.0; 4], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Revolution,
+                            params: [0.0; 4],
+                            folded: false,
                         });
 
                         let _ts56 = builder.ins().f32const(inst.params[0]);
@@ -1955,8 +2077,13 @@ impl JitSimdSdf {
                     OpCode::Extrude => {
                         // Store half_height in params[0] for PopTransform
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Extrude, params: [inst.params[0], 0.0, 0.0, 0.0], folded: false,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Extrude,
+                            params: [inst.params[0], 0.0, 0.0, 0.0],
+                            folded: false,
                         });
 
                         // Evaluate child at (x, y, 0)
@@ -1966,24 +2093,39 @@ impl JitSimdSdf {
                     OpCode::Noise => {
                         // Store noise params for PopTransform (nop in JIT - perlin not available)
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Noise, params: [0.0; 4], folded: true,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Noise,
+                            params: [0.0; 4],
+                            folded: true,
                         });
                     }
 
                     OpCode::Round => {
                         let r = inst.params[0];
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Round, params: [r, 0.0, 0.0, 0.0], folded: r.abs() < FOLD_EPSILON
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Round,
+                            params: [r, 0.0, 0.0, 0.0],
+                            folded: r.abs() < FOLD_EPSILON,
                         });
                     }
 
                     OpCode::Onion => {
                         let t = inst.params[0];
                         coord_stack.push(SimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Onion, params: [t, 0.0, 0.0, 0.0], folded: t.abs() < FOLD_EPSILON
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Onion,
+                            params: [t, 0.0, 0.0, 0.0],
+                            folded: t.abs() < FOLD_EPSILON,
                         });
                     }
 
@@ -1997,7 +2139,7 @@ impl JitSimdSdf {
                                         let r = builder.ins().splat(vec_type, r_s);
                                         value_stack.push((
                                             builder.ins().fsub(d.0, r),
-                                            builder.ins().fsub(d.1, r)
+                                            builder.ins().fsub(d.1, r),
                                         ));
                                     }
                                     OpCode::Onion => {
@@ -2008,7 +2150,7 @@ impl JitSimdSdf {
                                         let a1 = builder.ins().fabs(d.1);
                                         value_stack.push((
                                             builder.ins().fsub(a0, t),
-                                            builder.ins().fsub(a1, t)
+                                            builder.ins().fsub(a1, t),
                                         ));
                                     }
                                     OpCode::Extrude => {
@@ -2071,13 +2213,18 @@ impl JitSimdSdf {
             builder.finalize();
         }
 
-        module.define_function(func_id, &mut ctx).map_err(|e| e.to_string())?;
+        module
+            .define_function(func_id, &mut ctx)
+            .map_err(|e| e.to_string())?;
         module.clear_context(&mut ctx);
         module.finalize_definitions().map_err(|e| e.to_string())?;
 
         let code = module.get_finalized_function(func_id);
 
-        Ok(JitSimdSdf { module, func_ptr: code })
+        Ok(JitSimdSdf {
+            module,
+            func_ptr: code,
+        })
     }
 
     /// Evaluate 8 points using native SIMD (raw pointer interface)
@@ -2114,12 +2261,7 @@ impl JitSimdSdf {
 
             for i in (0..loop_len).step_by(chunk_size) {
                 unsafe {
-                    self.eval_8_raw(
-                        x_ptr.add(i),
-                        y_ptr.add(i),
-                        z_ptr.add(i),
-                        out_ptr.add(i)
-                    );
+                    self.eval_8_raw(x_ptr.add(i), y_ptr.add(i), z_ptr.add(i), out_ptr.add(i));
                 }
             }
         }
@@ -2134,13 +2276,34 @@ impl JitSimdSdf {
             let mut out_pad = [0.0f32; 8];
 
             unsafe {
-                std::ptr::copy_nonoverlapping(x.as_ptr().add(offset), x_pad.as_mut_ptr(), remainder);
-                std::ptr::copy_nonoverlapping(y.as_ptr().add(offset), y_pad.as_mut_ptr(), remainder);
-                std::ptr::copy_nonoverlapping(z.as_ptr().add(offset), z_pad.as_mut_ptr(), remainder);
+                std::ptr::copy_nonoverlapping(
+                    x.as_ptr().add(offset),
+                    x_pad.as_mut_ptr(),
+                    remainder,
+                );
+                std::ptr::copy_nonoverlapping(
+                    y.as_ptr().add(offset),
+                    y_pad.as_mut_ptr(),
+                    remainder,
+                );
+                std::ptr::copy_nonoverlapping(
+                    z.as_ptr().add(offset),
+                    z_pad.as_mut_ptr(),
+                    remainder,
+                );
 
-                self.eval_8_raw(x_pad.as_ptr(), y_pad.as_ptr(), z_pad.as_ptr(), out_pad.as_mut_ptr());
+                self.eval_8_raw(
+                    x_pad.as_ptr(),
+                    y_pad.as_ptr(),
+                    z_pad.as_ptr(),
+                    out_pad.as_mut_ptr(),
+                );
 
-                std::ptr::copy_nonoverlapping(out_pad.as_ptr(), results.as_mut_ptr().add(offset), remainder);
+                std::ptr::copy_nonoverlapping(
+                    out_pad.as_ptr(),
+                    results.as_mut_ptr().add(offset),
+                    remainder,
+                );
             }
         }
 
@@ -2165,7 +2328,11 @@ struct SimdParamEmitter {
 
 impl SimdParamEmitter {
     fn new(params_ptr: Value) -> Self {
-        Self { params_ptr, param_index: 0, params: Vec::new() }
+        Self {
+            params_ptr,
+            param_index: 0,
+            params: Vec::new(),
+        }
     }
 
     /// Emit a parameter: load scalar from params_ptr buffer
@@ -2175,7 +2342,9 @@ impl SimdParamEmitter {
         self.param_index += 1;
         let mut flags = MemFlags::new();
         flags.set_notrap();
-        builder.ins().load(types::F32, flags, self.params_ptr, (idx * 4) as i32)
+        builder
+            .ins()
+            .load(types::F32, flags, self.params_ptr, (idx * 4) as i32)
     }
 
     /// Emit a parameter and splat to F32X4 SIMD vector
@@ -2226,8 +2395,12 @@ impl JitSimdSdfDynamic {
     /// Compile SDF to native SIMD machine code with dynamic parameter support
     pub fn compile(sdf: &CompiledSdf) -> Result<Self, String> {
         let mut flag_builder = settings::builder();
-        flag_builder.set("opt_level", "speed").map_err(|e| e.to_string())?;
-        flag_builder.set("use_colocated_libcalls", "true").map_err(|e| e.to_string())?;
+        flag_builder
+            .set("opt_level", "speed")
+            .map_err(|e| e.to_string())?;
+        flag_builder
+            .set("use_colocated_libcalls", "true")
+            .map_err(|e| e.to_string())?;
         if cfg!(target_arch = "x86_64") {
             let _ = flag_builder.set("enable_simd", "true");
         }
@@ -2250,7 +2423,11 @@ impl JitSimdSdfDynamic {
         ctx.func.signature.params.push(AbiParam::new(ptr_type)); // params_ptr
 
         let func_id = module
-            .declare_function("eval_sdf_simd_dynamic", Linkage::Export, &ctx.func.signature)
+            .declare_function(
+                "eval_sdf_simd_dynamic",
+                Linkage::Export,
+                &ctx.func.signature,
+            )
             .map_err(|e| e.to_string())?;
 
         let initial_params;
@@ -2461,7 +2638,11 @@ impl JitSimdSdfDynamic {
                         let ba_y = inst.params[4] - inst.params[1];
                         let ba_z = inst.params[5] - inst.params[2];
                         let ba_dot_val = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
-                        let inv_ba_dot = if ba_dot_val.abs() < 1e-10 { 1.0 } else { 1.0 / ba_dot_val };
+                        let inv_ba_dot = if ba_dot_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / ba_dot_val
+                        };
 
                         let bax = emitter.emit_splat(&mut builder, ba_x);
                         let bay = emitter.emit_splat(&mut builder, ba_y);
@@ -2521,7 +2702,11 @@ impl JitSimdSdfDynamic {
                         let k2x_val = -radius_val;
                         let k2y_val = 2.0 * half_height;
                         let k2_dot_val = k2x_val * k2x_val + k2y_val * k2y_val;
-                        let inv_k2d_val = if k2_dot_val.abs() < 1e-10 { 1.0 } else { 1.0 / k2_dot_val };
+                        let inv_k2d_val = if k2_dot_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / k2_dot_val
+                        };
 
                         let k2x = emitter.emit_splat(&mut builder, k2x_val);
                         let k2y = emitter.emit_splat(&mut builder, k2y_val);
@@ -2606,9 +2791,12 @@ impl JitSimdSdfDynamic {
                         let inv_rx = emitter.emit_splat(&mut builder, 1.0 / inst.params[0]);
                         let inv_ry = emitter.emit_splat(&mut builder, 1.0 / inst.params[1]);
                         let inv_rz = emitter.emit_splat(&mut builder, 1.0 / inst.params[2]);
-                        let inv_rx2 = emitter.emit_splat(&mut builder, 1.0 / (inst.params[0] * inst.params[0]));
-                        let inv_ry2 = emitter.emit_splat(&mut builder, 1.0 / (inst.params[1] * inst.params[1]));
-                        let inv_rz2 = emitter.emit_splat(&mut builder, 1.0 / (inst.params[2] * inst.params[2]));
+                        let inv_rx2 = emitter
+                            .emit_splat(&mut builder, 1.0 / (inst.params[0] * inst.params[0]));
+                        let inv_ry2 = emitter
+                            .emit_splat(&mut builder, 1.0 / (inst.params[1] * inst.params[1]));
+                        let inv_rz2 = emitter
+                            .emit_splat(&mut builder, 1.0 / (inst.params[2] * inst.params[2]));
                         let eps_s = builder.ins().f32const(1e-10);
                         let eps = builder.ins().splat(vec_type, eps_s);
 
@@ -2650,7 +2838,11 @@ impl JitSimdSdfDynamic {
                         let r2_val = inst.params[1];
                         let half_height = inst.params[2];
                         let h_val = half_height * 2.0;
-                        let inv_h = if h_val.abs() < 1e-10 { 1.0 } else { 1.0 / h_val };
+                        let inv_h = if h_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / h_val
+                        };
                         let b_val = (r1_val - r2_val) * inv_h;
                         let a_val = (1.0 - b_val * b_val).max(0.0).sqrt();
                         let ah_val = a_val * h_val;
@@ -3021,19 +3213,15 @@ impl JitSimdSdfDynamic {
                     OpCode::Union => {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                        value_stack.push((
-                            builder.ins().fmin(a.0, b.0),
-                            builder.ins().fmin(a.1, b.1),
-                        ));
+                        value_stack
+                            .push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
                     }
 
                     OpCode::Intersection => {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                        value_stack.push((
-                            builder.ins().fmax(a.0, b.0),
-                            builder.ins().fmax(a.1, b.1),
-                        ));
+                        value_stack
+                            .push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
                     }
 
                     OpCode::Subtraction => {
@@ -3050,7 +3238,11 @@ impl JitSimdSdfDynamic {
                     // Division Exorcism: Dynamic Smooth ops with mul(inv_k)
                     OpCode::SmoothUnion => {
                         let k_raw = inst.params[0];
-                        let inv_k_raw = if k_raw.abs() < 1e-10 { 1.0 } else { 1.0 / k_raw };
+                        let inv_k_raw = if k_raw.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / k_raw
+                        };
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
@@ -3086,7 +3278,11 @@ impl JitSimdSdfDynamic {
 
                     OpCode::SmoothIntersection => {
                         let k_raw = inst.params[0];
-                        let inv_k_raw = if k_raw.abs() < 1e-10 { 1.0 } else { 1.0 / k_raw };
+                        let inv_k_raw = if k_raw.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / k_raw
+                        };
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
@@ -3122,7 +3318,11 @@ impl JitSimdSdfDynamic {
 
                     OpCode::SmoothSubtraction => {
                         let k_raw = inst.params[0];
-                        let inv_k_raw = if k_raw.abs() < 1e-10 { 1.0 } else { 1.0 / k_raw };
+                        let inv_k_raw = if k_raw.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / k_raw
+                        };
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
@@ -3234,7 +3434,9 @@ impl JitSimdSdfDynamic {
                         value_stack.push((res0, res1));
                     }
 
-                    OpCode::StairsUnion | OpCode::StairsIntersection | OpCode::StairsSubtraction => {
+                    OpCode::StairsUnion
+                    | OpCode::StairsIntersection
+                    | OpCode::StairsSubtraction => {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let r = inst.params[0];
@@ -3254,19 +3456,40 @@ impl JitSimdSdfDynamic {
 
                         let (a0, b0, a1, b1) = match inst.opcode {
                             OpCode::StairsUnion => (a.0, b.0, a.1, b.1),
-                            OpCode::StairsIntersection => {
-                                (builder.ins().fneg(a.0), builder.ins().fneg(b.0),
-                                 builder.ins().fneg(a.1), builder.ins().fneg(b.1))
-                            }
+                            OpCode::StairsIntersection => (
+                                builder.ins().fneg(a.0),
+                                builder.ins().fneg(b.0),
+                                builder.ins().fneg(a.1),
+                                builder.ins().fneg(b.1),
+                            ),
                             OpCode::StairsSubtraction => {
-                                (builder.ins().fneg(a.0), b.0,
-                                 builder.ins().fneg(a.1), b.1)
+                                (builder.ins().fneg(a.0), b.0, builder.ins().fneg(a.1), b.1)
                             }
                             _ => unreachable!(),
                         };
 
-                        let sm0 = emit_simd_stairs_min_lane(&mut builder, a0, b0, s_v, half_v, s2_v, rn_v, off_v, step_v);
-                        let sm1 = emit_simd_stairs_min_lane(&mut builder, a1, b1, s_v, half_v, s2_v, rn_v, off_v, step_v);
+                        let sm0 = emit_simd_stairs_min_lane(
+                            &mut builder,
+                            a0,
+                            b0,
+                            s_v,
+                            half_v,
+                            s2_v,
+                            rn_v,
+                            off_v,
+                            step_v,
+                        );
+                        let sm1 = emit_simd_stairs_min_lane(
+                            &mut builder,
+                            a1,
+                            b1,
+                            s_v,
+                            half_v,
+                            s2_v,
+                            rn_v,
+                            off_v,
+                            step_v,
+                        );
 
                         let (res0, res1) = if inst.opcode == OpCode::StairsUnion {
                             (sm0, sm1)
@@ -3279,8 +3502,13 @@ impl JitSimdSdfDynamic {
 
                     OpCode::Translate => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Translate, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Translate,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         let tx_v = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3303,8 +3531,13 @@ impl JitSimdSdfDynamic {
                     // params[0] = inv_factor, params[1] = factor
                     OpCode::Scale => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Scale, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Scale,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         let inv_factor = inst.params[0];
@@ -3333,13 +3566,20 @@ impl JitSimdSdfDynamic {
 
                     OpCode::Rotate => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Rotate, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Rotate,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         // Quaternion → rotation matrix (compile-time)
-                        let qx = -inst.params[0]; let qy = -inst.params[1];
-                        let qz = -inst.params[2]; let qw = inst.params[3];
+                        let qx = -inst.params[0];
+                        let qy = -inst.params[1];
+                        let qz = -inst.params[2];
+                        let qw = inst.params[3];
                         let m00 = 1.0 - 2.0 * (qy * qy + qz * qz);
                         let m01 = 2.0 * (qx * qy - qz * qw);
                         let m02 = 2.0 * (qx * qz + qy * qw);
@@ -3389,8 +3629,13 @@ impl JitSimdSdfDynamic {
 
                     OpCode::ScaleNonUniform => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::ScaleNonUniform, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::ScaleNonUniform,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         let isx = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3398,16 +3643,33 @@ impl JitSimdSdfDynamic {
                         let isz = emitter.emit_splat(&mut builder, inst.params[2]);
                         let mf = emitter.emit_splat(&mut builder, inst.params[3]);
 
-                        curr_x = (builder.ins().fmul(curr_x.0, isx), builder.ins().fmul(curr_x.1, isx));
-                        curr_y = (builder.ins().fmul(curr_y.0, isy), builder.ins().fmul(curr_y.1, isy));
-                        curr_z = (builder.ins().fmul(curr_z.0, isz), builder.ins().fmul(curr_z.1, isz));
-                        curr_scale = (builder.ins().fmul(curr_scale.0, mf), builder.ins().fmul(curr_scale.1, mf));
+                        curr_x = (
+                            builder.ins().fmul(curr_x.0, isx),
+                            builder.ins().fmul(curr_x.1, isx),
+                        );
+                        curr_y = (
+                            builder.ins().fmul(curr_y.0, isy),
+                            builder.ins().fmul(curr_y.1, isy),
+                        );
+                        curr_z = (
+                            builder.ins().fmul(curr_z.0, isz),
+                            builder.ins().fmul(curr_z.1, isz),
+                        );
+                        curr_scale = (
+                            builder.ins().fmul(curr_scale.0, mf),
+                            builder.ins().fmul(curr_scale.1, mf),
+                        );
                     }
 
                     OpCode::Twist => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Twist, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Twist,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         let k_v = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3438,8 +3700,13 @@ impl JitSimdSdfDynamic {
 
                     OpCode::Bend => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Bend, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Bend,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         let k_v = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3470,11 +3737,18 @@ impl JitSimdSdfDynamic {
 
                     OpCode::RepeatInfinite => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::RepeatInfinite, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::RepeatInfinite,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
-                        let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
+                        let sx = inst.params[0];
+                        let sy = inst.params[1];
+                        let sz = inst.params[2];
                         let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                         let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                         let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
@@ -3521,16 +3795,27 @@ impl JitSimdSdfDynamic {
 
                     OpCode::RepeatFinite => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::RepeatFinite, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::RepeatFinite,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
-                        let cx = inst.params[0]; let cy = inst.params[1]; let cz = inst.params[2];
-                        let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
+                        let cx = inst.params[0];
+                        let cy = inst.params[1];
+                        let cz = inst.params[2];
+                        let sx = inst.params[3];
+                        let sy = inst.params[4];
+                        let sz = inst.params[5];
                         let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                         let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                         let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
-                        let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
+                        let lx = cx * 0.5;
+                        let ly = cy * 0.5;
+                        let lz = cz * 0.5;
 
                         let sx_v = emitter.emit_splat(&mut builder, sx);
                         let sy_v = emitter.emit_splat(&mut builder, sy);
@@ -3592,8 +3877,13 @@ impl JitSimdSdfDynamic {
 
                     OpCode::Elongate => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Elongate, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Elongate,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         let hx = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3632,8 +3922,13 @@ impl JitSimdSdfDynamic {
 
                     OpCode::Mirror => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Mirror, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Mirror,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         if inst.params[0] != 0.0 {
@@ -3649,8 +3944,13 @@ impl JitSimdSdfDynamic {
 
                     OpCode::Revolution => {
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Revolution, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Revolution,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
 
                         let off = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3672,8 +3972,13 @@ impl JitSimdSdfDynamic {
                         let hh = inst.params[0];
                         let hh_v = emitter.emit_splat(&mut builder, hh);
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Extrude, param_vec: hh_v, params: [hh, 0.0, 0.0, 0.0],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Extrude,
+                            param_vec: hh_v,
+                            params: [hh, 0.0, 0.0, 0.0],
                         });
 
                         curr_z = (zero_vec, zero_vec);
@@ -3682,24 +3987,39 @@ impl JitSimdSdfDynamic {
                     OpCode::Noise => {
                         // Noise is nop in JIT (perlin not available)
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Noise, param_vec: zero_vec, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Noise,
+                            param_vec: zero_vec,
+                            params: [0.0; 4],
                         });
                     }
 
                     OpCode::Round => {
                         let r_v = emitter.emit_splat(&mut builder, inst.params[0]);
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Round, param_vec: r_v, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Round,
+                            param_vec: r_v,
+                            params: [0.0; 4],
                         });
                     }
 
                     OpCode::Onion => {
                         let t_v = emitter.emit_splat(&mut builder, inst.params[0]);
                         coord_stack.push(DynSimdCoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Onion, param_vec: t_v, params: [0.0; 4],
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Onion,
+                            param_vec: t_v,
+                            params: [0.0; 4],
                         });
                     }
 
@@ -3775,13 +4095,19 @@ impl JitSimdSdfDynamic {
             initial_params = emitter.params;
         }
 
-        module.define_function(func_id, &mut ctx).map_err(|e| e.to_string())?;
+        module
+            .define_function(func_id, &mut ctx)
+            .map_err(|e| e.to_string())?;
         module.clear_context(&mut ctx);
         module.finalize_definitions().map_err(|e| e.to_string())?;
 
         let code = module.get_finalized_function(func_id);
 
-        Ok(JitSimdSdfDynamic { module, func_ptr: code, params: initial_params })
+        Ok(JitSimdSdfDynamic {
+            module,
+            func_ptr: code,
+            params: initial_params,
+        })
     }
 
     /// Update parameters from a modified CompiledSdf (zero-latency, no recompilation)
@@ -3827,10 +4153,7 @@ impl JitSimdSdfDynamic {
 
             for i in (0..loop_len).step_by(chunk_size) {
                 unsafe {
-                    self.eval_8_raw(
-                        x_ptr.add(i), y_ptr.add(i),
-                        z_ptr.add(i), out_ptr.add(i),
-                    );
+                    self.eval_8_raw(x_ptr.add(i), y_ptr.add(i), z_ptr.add(i), out_ptr.add(i));
                 }
             }
         }
@@ -3844,11 +4167,32 @@ impl JitSimdSdfDynamic {
             let mut out_pad = [0.0f32; 8];
 
             unsafe {
-                std::ptr::copy_nonoverlapping(x.as_ptr().add(offset), x_pad.as_mut_ptr(), remainder);
-                std::ptr::copy_nonoverlapping(y.as_ptr().add(offset), y_pad.as_mut_ptr(), remainder);
-                std::ptr::copy_nonoverlapping(z.as_ptr().add(offset), z_pad.as_mut_ptr(), remainder);
-                self.eval_8_raw(x_pad.as_ptr(), y_pad.as_ptr(), z_pad.as_ptr(), out_pad.as_mut_ptr());
-                std::ptr::copy_nonoverlapping(out_pad.as_ptr(), results.as_mut_ptr().add(offset), remainder);
+                std::ptr::copy_nonoverlapping(
+                    x.as_ptr().add(offset),
+                    x_pad.as_mut_ptr(),
+                    remainder,
+                );
+                std::ptr::copy_nonoverlapping(
+                    y.as_ptr().add(offset),
+                    y_pad.as_mut_ptr(),
+                    remainder,
+                );
+                std::ptr::copy_nonoverlapping(
+                    z.as_ptr().add(offset),
+                    z_pad.as_mut_ptr(),
+                    remainder,
+                );
+                self.eval_8_raw(
+                    x_pad.as_ptr(),
+                    y_pad.as_ptr(),
+                    z_pad.as_ptr(),
+                    out_pad.as_mut_ptr(),
+                );
+                std::ptr::copy_nonoverlapping(
+                    out_pad.as_ptr(),
+                    results.as_mut_ptr().add(offset),
+                    remainder,
+                );
             }
         }
 
@@ -3902,7 +4246,11 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 let ba_y = inst.params[4] - ay;
                 let ba_z = inst.params[5] - az;
                 let ba_dot = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
-                let inv_ba_dot = if ba_dot.abs() < 1e-10 { 1.0 } else { 1.0 / ba_dot };
+                let inv_ba_dot = if ba_dot.abs() < 1e-10 {
+                    1.0
+                } else {
+                    1.0 / ba_dot
+                };
                 params.push(ax);
                 params.push(ay);
                 params.push(az);
@@ -3918,7 +4266,11 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 let k2x = -radius;
                 let k2y = 2.0 * half_height;
                 let k2_dot = k2x * k2x + k2y * k2y;
-                let inv_k2d = if k2_dot.abs() < 1e-10 { 1.0 } else { 1.0 / k2_dot };
+                let inv_k2d = if k2_dot.abs() < 1e-10 {
+                    1.0
+                } else {
+                    1.0 / k2_dot
+                };
                 params.push(radius);
                 params.push(half_height);
                 params.push(k2x);
@@ -4003,16 +4355,18 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
             }
             OpCode::Rotate => {
                 // Quaternion → rotation matrix (must match dynamic compile emit order)
-                let qx = -inst.params[0]; let qy = -inst.params[1];
-                let qz = -inst.params[2]; let qw = inst.params[3];
+                let qx = -inst.params[0];
+                let qy = -inst.params[1];
+                let qz = -inst.params[2];
+                let qw = inst.params[3];
                 params.push(1.0 - 2.0 * (qy * qy + qz * qz)); // m00
-                params.push(2.0 * (qx * qy - qz * qw));         // m01
-                params.push(2.0 * (qx * qz + qy * qw));         // m02
-                params.push(2.0 * (qx * qy + qz * qw));         // m10
+                params.push(2.0 * (qx * qy - qz * qw)); // m01
+                params.push(2.0 * (qx * qz + qy * qw)); // m02
+                params.push(2.0 * (qx * qy + qz * qw)); // m10
                 params.push(1.0 - 2.0 * (qx * qx + qz * qz)); // m11
-                params.push(2.0 * (qy * qz - qx * qw));         // m12
-                params.push(2.0 * (qx * qz - qy * qw));         // m20
-                params.push(2.0 * (qy * qz + qx * qw));         // m21
+                params.push(2.0 * (qy * qz - qx * qw)); // m12
+                params.push(2.0 * (qx * qz - qy * qw)); // m20
+                params.push(2.0 * (qy * qz + qx * qw)); // m21
                 params.push(1.0 - 2.0 * (qx * qx + qy * qy)); // m22
             }
             OpCode::ScaleNonUniform => {
@@ -4028,23 +4382,41 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 params.push(inst.params[0]); // curvature
             }
             OpCode::RepeatInfinite => {
-                let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
+                let sx = inst.params[0];
+                let sy = inst.params[1];
+                let sz = inst.params[2];
                 let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                 let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                 let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
-                params.push(sx); params.push(sy); params.push(sz);
-                params.push(isx); params.push(isy); params.push(isz);
+                params.push(sx);
+                params.push(sy);
+                params.push(sz);
+                params.push(isx);
+                params.push(isy);
+                params.push(isz);
             }
             OpCode::RepeatFinite => {
-                let cx = inst.params[0]; let cy = inst.params[1]; let cz = inst.params[2];
-                let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
+                let cx = inst.params[0];
+                let cy = inst.params[1];
+                let cz = inst.params[2];
+                let sx = inst.params[3];
+                let sy = inst.params[4];
+                let sz = inst.params[5];
                 let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                 let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                 let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
-                let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
-                params.push(sx); params.push(sy); params.push(sz);
-                params.push(isx); params.push(isy); params.push(isz);
-                params.push(lx); params.push(ly); params.push(lz);
+                let lx = cx * 0.5;
+                let ly = cy * 0.5;
+                let lz = cz * 0.5;
+                params.push(sx);
+                params.push(sy);
+                params.push(sz);
+                params.push(isx);
+                params.push(isy);
+                params.push(isz);
+                params.push(lx);
+                params.push(ly);
+                params.push(lz);
             }
             OpCode::Elongate => {
                 params.push(inst.params[0]);
@@ -4055,7 +4427,9 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 params.push(inst.params[0]); // offset
             }
             OpCode::SweepBezier => {
-                for i in 0..6 { params.push(inst.params[i]); }
+                for i in 0..6 {
+                    params.push(inst.params[i]);
+                }
             }
             OpCode::Extrude => {
                 params.push(inst.params[0]); // half_height
@@ -4102,14 +4476,18 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.001),
                 "Mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
 
     #[test]
     fn test_jit_simd_box() {
-        let box3d = SdfNode::Box3d { half_extents: Vec3::new(1.0, 0.5, 0.5) };
+        let box3d = SdfNode::Box3d {
+            half_extents: Vec3::new(1.0, 0.5, 0.5),
+        };
         let compiled = CompiledSdf::compile(&box3d);
         let jit = JitSimdSdf::compile(&compiled).unwrap();
 
@@ -4124,7 +4502,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.001),
                 "Mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4132,7 +4512,10 @@ mod tests {
     #[test]
     fn test_jit_simd_union() {
         let shape = SdfNode::Sphere { radius: 1.0 }.union(
-            SdfNode::Box3d { half_extents: Vec3::splat(0.5) }.translate(2.0, 0.0, 0.0),
+            SdfNode::Box3d {
+                half_extents: Vec3::splat(0.5),
+            }
+            .translate(2.0, 0.0, 0.0),
         );
         let compiled = CompiledSdf::compile(&shape);
         let jit = JitSimdSdf::compile(&compiled).unwrap();
@@ -4148,7 +4531,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.01),
                 "Mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4156,7 +4541,10 @@ mod tests {
     #[test]
     fn test_jit_simd_smooth_union() {
         let shape = SdfNode::Sphere { radius: 1.0 }.smooth_union(
-            SdfNode::Box3d { half_extents: Vec3::splat(0.5) }.translate(1.5, 0.0, 0.0),
+            SdfNode::Box3d {
+                half_extents: Vec3::splat(0.5),
+            }
+            .translate(1.5, 0.0, 0.0),
             0.3,
         );
         let compiled = CompiledSdf::compile(&shape);
@@ -4173,7 +4561,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.01),
                 "Mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4197,7 +4587,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.01),
                 "Mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4219,7 +4611,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.01),
                 "Mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4229,7 +4623,10 @@ mod tests {
         use crate::soa::SoAPoints;
 
         let shape = SdfNode::Sphere { radius: 1.0 }.smooth_union(
-            SdfNode::Cylinder { radius: 0.3, half_height: 1.5 },
+            SdfNode::Cylinder {
+                radius: 0.3,
+                half_height: 1.5,
+            },
             0.2,
         );
         let compiled = CompiledSdf::compile(&shape);
@@ -4250,7 +4647,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.01),
                 "Mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4273,7 +4672,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.001),
                 "Identity translate fold mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4297,7 +4698,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.001),
                 "Dynamic sphere mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
@@ -4314,8 +4717,12 @@ mod tests {
 
         let results1 = unsafe { jit.eval_8(&x, &y, &z) };
         let expected1 = eval(&sphere1, Vec3::new(1.5, 0.0, 0.0));
-        assert!(approx_eq(results1[0], expected1, 0.001),
-            "Before update: jit={}, cpu={}", results1[0], expected1);
+        assert!(
+            approx_eq(results1[0], expected1, 0.001),
+            "Before update: jit={}, cpu={}",
+            results1[0],
+            expected1
+        );
 
         // Update to radius=2.0 (no recompilation!)
         let sphere2 = SdfNode::Sphere { radius: 2.0 };
@@ -4324,14 +4731,21 @@ mod tests {
 
         let results2 = unsafe { jit.eval_8(&x, &y, &z) };
         let expected2 = eval(&sphere2, Vec3::new(1.5, 0.0, 0.0));
-        assert!(approx_eq(results2[0], expected2, 0.001),
-            "After update: jit={}, cpu={}", results2[0], expected2);
+        assert!(
+            approx_eq(results2[0], expected2, 0.001),
+            "After update: jit={}, cpu={}",
+            results2[0],
+            expected2
+        );
     }
 
     #[test]
     fn test_jit_simd_dynamic_smooth_union() {
         let shape = SdfNode::Sphere { radius: 1.0 }.smooth_union(
-            SdfNode::Box3d { half_extents: Vec3::splat(0.5) }.translate(1.5, 0.0, 0.0),
+            SdfNode::Box3d {
+                half_extents: Vec3::splat(0.5),
+            }
+            .translate(1.5, 0.0, 0.0),
             0.3,
         );
         let compiled = CompiledSdf::compile(&shape);
@@ -4348,15 +4762,16 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.01),
                 "Dynamic smooth union mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }
 
     #[test]
     fn test_jit_simd_dynamic_extract_params() {
-        let shape = SdfNode::Sphere { radius: 1.5 }
-            .translate(2.0, 3.0, 4.0);
+        let shape = SdfNode::Sphere { radius: 1.5 }.translate(2.0, 3.0, 4.0);
         let compiled = CompiledSdf::compile(&shape);
         let params = extract_simd_params(&compiled);
 
@@ -4388,7 +4803,9 @@ mod tests {
             assert!(
                 approx_eq(results[i], expected, 0.001),
                 "Identity scale fold mismatch at {}: jit={}, cpu={}",
-                i, results[i], expected
+                i,
+                results[i],
+                expected
             );
         }
     }

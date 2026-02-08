@@ -56,7 +56,11 @@ mod tests {
     fn test_hex_prism_vertex() {
         // At (0, hex_radius, 0), should be on surface
         let d = sdf_hex_prism(Vec3::new(0.0, 1.0, 0.0), 1.0, 1.0);
-        assert!(d.abs() < 0.001, "Hex vertex should be on surface, got {}", d);
+        assert!(
+            d.abs() < 0.001,
+            "Hex vertex should be on surface, got {}",
+            d
+        );
     }
 
     #[test]

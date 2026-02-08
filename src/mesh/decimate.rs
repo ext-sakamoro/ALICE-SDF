@@ -28,9 +28,9 @@
 
 use crate::mesh::{Mesh, Vertex};
 use glam::{Vec3, Vec4};
-use std::collections::{BinaryHeap, HashMap, HashSet};
-use std::cmp::Ordering;
 use rayon::prelude::*;
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 /// Decimation configuration
 #[derive(Debug, Clone)]
@@ -103,10 +103,16 @@ impl Quadric {
     fn from_plane(a: f64, b: f64, c: f64, d: f64) -> Self {
         Quadric {
             data: [
-                a * a, a * b, a * c, a * d,
-                       b * b, b * c, b * d,
-                              c * c, c * d,
-                                     d * d,
+                a * a,
+                a * b,
+                a * c,
+                a * d,
+                b * b,
+                b * c,
+                b * d,
+                c * c,
+                c * d,
+                d * d,
             ],
         }
     }
@@ -125,37 +131,44 @@ impl Quadric {
     fn evaluate(&self, x: f64, y: f64, z: f64) -> f64 {
         let d = &self.data;
         // v^T * Q * v where v = [x, y, z, 1]
-        x * x * d[0] + 2.0 * x * y * d[1] + 2.0 * x * z * d[2] + 2.0 * x * d[3]
-                      +       y * y * d[4] + 2.0 * y * z * d[5] + 2.0 * y * d[6]
-                                           +       z * z * d[7] + 2.0 * z * d[8]
-                                                                 +         d[9]
+        x * x * d[0]
+            + 2.0 * x * y * d[1]
+            + 2.0 * x * z * d[2]
+            + 2.0 * x * d[3]
+            + y * y * d[4]
+            + 2.0 * y * z * d[5]
+            + 2.0 * y * d[6]
+            + z * z * d[7]
+            + 2.0 * z * d[8]
+            + d[9]
     }
 
     /// Find optimal point that minimizes error.
     /// Falls back to midpoint if matrix is singular.
     fn optimal_point(&self, v1: Vec3, v2: Vec3) -> Vec3 {
         let d = &self.data;
-        let a = [[d[0], d[1], d[2]],
-                 [d[1], d[4], d[5]],
-                 [d[2], d[5], d[7]]];
+        let a = [[d[0], d[1], d[2]], [d[1], d[4], d[5]], [d[2], d[5], d[7]]];
         let b = [-d[3], -d[6], -d[8]];
 
         // Cramer's rule
         let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-                - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-                + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+            - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+            + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
 
         if det.abs() > 1e-10 {
             let inv_det = 1.0 / det;
             let x = (b[0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-                   - a[0][1] * (b[1] * a[2][2] - a[1][2] * b[2])
-                   + a[0][2] * (b[1] * a[2][1] - a[1][1] * b[2])) * inv_det;
+                - a[0][1] * (b[1] * a[2][2] - a[1][2] * b[2])
+                + a[0][2] * (b[1] * a[2][1] - a[1][1] * b[2]))
+                * inv_det;
             let y = (a[0][0] * (b[1] * a[2][2] - a[1][2] * b[2])
-                   - b[0] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-                   + a[0][2] * (a[1][0] * b[2] - b[1] * a[2][0])) * inv_det;
+                - b[0] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+                + a[0][2] * (a[1][0] * b[2] - b[1] * a[2][0]))
+                * inv_det;
             let z = (a[0][0] * (a[1][1] * b[2] - b[1] * a[2][1])
-                   - a[0][1] * (a[1][0] * b[2] - b[1] * a[2][0])
-                   + b[0] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])) * inv_det;
+                - a[0][1] * (a[1][0] * b[2] - b[1] * a[2][0])
+                + b[0] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]))
+                * inv_det;
             Vec3::new(x as f32, y as f32, z as f32)
         } else {
             // Singular — try midpoint, v1, v2 and pick lowest error
@@ -218,7 +231,11 @@ fn interpolate_attributes(v1: &Vertex, v2: &Vertex, optimal_pos: Vec3) -> Vertex
     ];
 
     // Material ID from closer endpoint
-    let material_id = if t < 0.5 { v1.material_id } else { v2.material_id };
+    let material_id = if t < 0.5 {
+        v1.material_id
+    } else {
+        v2.material_id
+    };
 
     Vertex {
         position: optimal_pos,
@@ -260,9 +277,12 @@ impl Ord for CollapseCandidate {
         // [Deep Fried v2] NaN-safe: treat NaN as worst (largest) error
         match (self.error.is_nan(), other.error.is_nan()) {
             (true, true) => Ordering::Equal,
-            (true, false) => Ordering::Less,   // NaN self = worst, goes to bottom
+            (true, false) => Ordering::Less, // NaN self = worst, goes to bottom
             (false, true) => Ordering::Greater, // NaN other = worst
-            (false, false) => other.error.partial_cmp(&self.error).unwrap_or(Ordering::Equal),
+            (false, false) => other
+                .error
+                .partial_cmp(&self.error)
+                .unwrap_or(Ordering::Equal),
         }
     }
 }
@@ -347,7 +367,11 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
                 (0..3).map(move |k| {
                     let a = indices[t * 3 + k];
                     let b = indices[t * 3 + (k + 1) % 3];
-                    if a < b { (a, b) } else { (b, a) }
+                    if a < b {
+                        (a, b)
+                    } else {
+                        (b, a)
+                    }
                 })
             })
             .collect();
@@ -395,7 +419,9 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
 
     // Locked vertices (from locked_materials config)
     let locked_verts: HashSet<u32> = if !config.locked_materials.is_empty() {
-        mesh.vertices.iter().enumerate()
+        mesh.vertices
+            .iter()
+            .enumerate()
             .filter(|(_, v)| config.locked_materials.contains(&v.material_id))
             .map(|(i, _)| i as u32)
             .collect()
@@ -413,10 +439,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
         if locked_verts.contains(&a) || locked_verts.contains(&b) {
             return true;
         }
-        if preserve_bnd
-            && boundary_verts.contains(&a)
-            && boundary_verts.contains(&b)
-        {
+        if preserve_bnd && boundary_verts.contains(&a) && boundary_verts.contains(&b) {
             return true;
         }
         if preserve_mats
@@ -449,7 +472,12 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
                 );
                 let error = q_sum.evaluate(optimal.x as f64, optimal.y as f64, optimal.z as f64);
                 if error <= config.max_error as f64 {
-                    heap.push(CollapseCandidate { error, v1: a, v2: b, optimal_pos: optimal });
+                    heap.push(CollapseCandidate {
+                        error,
+                        v1: a,
+                        v2: b,
+                        optimal_pos: optimal,
+                    });
                 }
             }
         }
@@ -551,7 +579,12 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
             );
             let error = q_sum.evaluate(optimal.x as f64, optimal.y as f64, optimal.z as f64);
             if error <= config.max_error as f64 {
-                heap.push(CollapseCandidate { error, v1, v2: nb, optimal_pos: optimal });
+                heap.push(CollapseCandidate {
+                    error,
+                    v1,
+                    v2: nb,
+                    optimal_pos: optimal,
+                });
             }
         }
     }
@@ -636,14 +669,22 @@ mod tests {
         decimate(&mut mesh, &DecimateConfig::default());
 
         let tri_after = mesh.triangle_count();
-        assert!(tri_after < tri_before,
-            "Should reduce triangles: before={}, after={}", tri_before, tri_after);
+        assert!(
+            tri_after < tri_before,
+            "Should reduce triangles: before={}, after={}",
+            tri_before,
+            tri_after
+        );
         assert!(tri_after > 0, "Should not remove all triangles");
 
         // Verify mesh integrity
         for &idx in &mesh.indices {
-            assert!((idx as usize) < mesh.vertices.len(),
-                "Index {} out of bounds (vertex count: {})", idx, mesh.vertices.len());
+            assert!(
+                (idx as usize) < mesh.vertices.len(),
+                "Index {} out of bounds (vertex count: {})",
+                idx,
+                mesh.vertices.len()
+            );
         }
     }
 
@@ -663,8 +704,12 @@ mod tests {
         let tri_after = mesh.triangle_count();
 
         // Aggressive should remove more
-        assert!(tri_after <= (tri_before as f32 * 0.35) as usize,
-            "Aggressive should reduce to ~25%: before={}, after={}", tri_before, tri_after);
+        assert!(
+            tri_after <= (tri_before as f32 * 0.35) as usize,
+            "Aggressive should reduce to ~25%: before={}, after={}",
+            tri_before,
+            tri_after
+        );
     }
 
     #[test]
@@ -683,8 +728,12 @@ mod tests {
         let tri_after = mesh.triangle_count();
 
         // Conservative should keep more
-        assert!(tri_after >= (tri_before as f32 * 0.5) as usize,
-            "Conservative should keep ~75%: before={}, after={}", tri_before, tri_after);
+        assert!(
+            tri_after >= (tri_before as f32 * 0.5) as usize,
+            "Conservative should keep ~75%: before={}, after={}",
+            tri_before,
+            tri_after
+        );
     }
 
     #[test]
@@ -703,8 +752,11 @@ mod tests {
         // All vertices should still be roughly on the unit sphere
         for v in &mesh.vertices {
             let dist = v.position.length();
-            assert!(dist > 0.5 && dist < 1.5,
-                "Vertex at distance {} from origin (expected ~1.0)", dist);
+            assert!(
+                dist > 0.5 && dist < 1.5,
+                "Vertex at distance {} from origin (expected ~1.0)",
+                dist
+            );
         }
     }
 
@@ -743,8 +795,11 @@ mod tests {
 
         // All UVs should be finite
         for v in &mesh.vertices {
-            assert!(v.uv.x.is_finite() && v.uv.y.is_finite(),
-                "UV should be finite: {:?}", v.uv);
+            assert!(
+                v.uv.x.is_finite() && v.uv.y.is_finite(),
+                "UV should be finite: {:?}",
+                v.uv
+            );
         }
     }
 
@@ -761,12 +816,18 @@ mod tests {
             let t = Vec3::new(v.tangent.x, v.tangent.y, v.tangent.z);
             let t_len = t.length();
             if t_len > 0.01 {
-                assert!((t_len - 1.0).abs() < 0.2,
-                    "Tangent should be normalized: length = {}", t_len);
+                assert!(
+                    (t_len - 1.0).abs() < 0.2,
+                    "Tangent should be normalized: length = {}",
+                    t_len
+                );
             }
             // Handedness should be -1 or +1
-            assert!(v.tangent.w == 1.0 || v.tangent.w == -1.0,
-                "Handedness should be +/-1: w = {}", v.tangent.w);
+            assert!(
+                v.tangent.w == 1.0 || v.tangent.w == -1.0,
+                "Handedness should be +/-1: w = {}",
+                v.tangent.w
+            );
         }
     }
 
@@ -828,6 +889,9 @@ mod tests {
 
         // Locked material vertices should still exist
         let locked_after = mesh.vertices.iter().filter(|v| v.material_id == 99).count();
-        assert!(locked_after > 0, "Locked material vertices should survive decimation");
+        assert!(
+            locked_after > 0,
+            "Locked material vertices should survive decimation"
+        );
     }
 }

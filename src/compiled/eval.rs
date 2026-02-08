@@ -7,9 +7,9 @@
 
 use super::compiler::CompiledSdf;
 use super::opcode::OpCode;
-use crate::primitives::*;
-use crate::operations::*;
 use crate::modifiers::*;
+use crate::operations::*;
+use crate::primitives::*;
 use glam::{Quat, Vec2, Vec3};
 
 use crate::modifiers::perlin_noise_3d;
@@ -210,13 +210,26 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             }
 
             OpCode::Rhombus => {
-                let d = sdf_rhombus(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_rhombus(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Horseshoe => {
-                let d = sdf_horseshoe(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3], inst.params[4]);
+                let d = sdf_horseshoe(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                    inst.params[4],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -302,13 +315,25 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             }
 
             OpCode::Trapezoid => {
-                let d = sdf_trapezoid(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_trapezoid(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Parallelogram => {
-                let d = sdf_parallelogram(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_parallelogram(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -320,7 +345,13 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             }
 
             OpCode::UnevenCapsule => {
-                let d = sdf_uneven_capsule(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_uneven_capsule(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -332,19 +363,37 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             }
 
             OpCode::ArcShape => {
-                let d = sdf_arc_shape(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_arc_shape(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Moon => {
-                let d = sdf_moon(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_moon(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::CrossShape => {
-                let d = sdf_cross_shape(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_cross_shape(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -368,19 +417,37 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             }
 
             OpCode::StarPolygon => {
-                let d = sdf_star_polygon(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_star_polygon(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Stairs => {
-                let d = sdf_stairs(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_stairs(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Helix => {
-                let d = sdf_helix(p, inst.params[0], inst.params[1], inst.params[2], inst.params[3]);
+                let d = sdf_helix(
+                    p,
+                    inst.params[0],
+                    inst.params[1],
+                    inst.params[2],
+                    inst.params[3],
+                );
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -498,14 +565,16 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_smooth_intersection_rk(a, b, inst.params[0], inst.params[1]);
+                value_stack[vsp - 1] =
+                    sdf_smooth_intersection_rk(a, b, inst.params[0], inst.params[1]);
             }
 
             OpCode::SmoothSubtraction => {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_smooth_subtraction_rk(a, b, inst.params[0], inst.params[1]);
+                value_stack[vsp - 1] =
+                    sdf_smooth_subtraction_rk(a, b, inst.params[0], inst.params[1]);
             }
 
             OpCode::ChamferUnion => {
@@ -540,7 +609,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_stairs_intersection(a, b, inst.params[0], inst.params[1]);
+                value_stack[vsp - 1] =
+                    sdf_stairs_intersection(a, b, inst.params[0], inst.params[1]);
             }
 
             OpCode::StairsSubtraction => {
@@ -575,14 +645,16 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_columns_intersection(a, b, inst.params[0], inst.params[1]);
+                value_stack[vsp - 1] =
+                    sdf_columns_intersection(a, b, inst.params[0], inst.params[1]);
             }
 
             OpCode::ColumnsSubtraction => {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                value_stack[vsp - 1] = sdf_columns_subtraction(a, b, inst.params[0], inst.params[1]);
+                value_stack[vsp - 1] =
+                    sdf_columns_subtraction(a, b, inst.params[0], inst.params[1]);
             }
 
             OpCode::Pipe => {
@@ -653,7 +725,7 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
 
             OpCode::Scale => {
                 let inv_factor = inst.params[0]; // precomputed 1.0/factor
-                let factor = inst.params[1];     // original factor
+                let factor = inst.params[1]; // original factor
                 coord_stack[csp] = CoordFrame {
                     point: p,
                     scale_correction,
@@ -826,9 +898,15 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 let mut x = p.x.abs();
                 let mut y = p.y.abs();
                 let mut z = p.z.abs();
-                if y > x { std::mem::swap(&mut x, &mut y); }
-                if z > y { std::mem::swap(&mut y, &mut z); }
-                if y > x { std::mem::swap(&mut x, &mut y); }
+                if y > x {
+                    std::mem::swap(&mut x, &mut y);
+                }
+                if z > y {
+                    std::mem::swap(&mut y, &mut z);
+                }
+                if y > x {
+                    std::mem::swap(&mut x, &mut y);
+                }
                 p = Vec3::new(x, y, z);
             }
 
@@ -989,17 +1067,12 @@ pub fn eval_compiled_normal(sdf: &CompiledSdf, point: Vec3, epsilon: f32) -> Vec
     let e = epsilon;
 
     // Tetrahedral method: 4 evaluations instead of 6
-    let v0 = eval_compiled(sdf, point + Vec3::new( e, -e, -e)); // (+,-,-)
-    let v1 = eval_compiled(sdf, point + Vec3::new(-e, -e,  e)); // (-,-,+)
-    let v2 = eval_compiled(sdf, point + Vec3::new(-e,  e, -e)); // (-,+,-)
-    let v3 = eval_compiled(sdf, point + Vec3::new( e,  e,  e)); // (+,+,+)
+    let v0 = eval_compiled(sdf, point + Vec3::new(e, -e, -e)); // (+,-,-)
+    let v1 = eval_compiled(sdf, point + Vec3::new(-e, -e, e)); // (-,-,+)
+    let v2 = eval_compiled(sdf, point + Vec3::new(-e, e, -e)); // (-,+,-)
+    let v3 = eval_compiled(sdf, point + Vec3::new(e, e, e)); // (+,+,+)
 
-    Vec3::new(
-        v0 - v1 - v2 + v3,
-        -v0 - v1 + v2 + v3,
-        -v0 + v1 - v2 + v3,
-    )
-    .normalize()
+    Vec3::new(v0 - v1 - v2 + v3, -v0 - v1 + v2 + v3, -v0 + v1 - v2 + v3).normalize()
 }
 
 /// Combined distance + normal from 4 evaluations (tetrahedral method).
@@ -1009,23 +1082,22 @@ pub fn eval_compiled_normal(sdf: &CompiledSdf, point: Vec3, epsilon: f32) -> Vec
 /// `eval_compiled` + `eval_compiled_normal` separately.
 ///
 /// Accuracy: distance error ≈ O(epsilon²), negligible for collision detection.
-pub fn eval_compiled_distance_and_normal(sdf: &CompiledSdf, point: Vec3, epsilon: f32) -> (f32, Vec3) {
+pub fn eval_compiled_distance_and_normal(
+    sdf: &CompiledSdf,
+    point: Vec3,
+    epsilon: f32,
+) -> (f32, Vec3) {
     let e = epsilon;
 
-    let v0 = eval_compiled(sdf, point + Vec3::new( e, -e, -e));
-    let v1 = eval_compiled(sdf, point + Vec3::new(-e, -e,  e));
-    let v2 = eval_compiled(sdf, point + Vec3::new(-e,  e, -e));
-    let v3 = eval_compiled(sdf, point + Vec3::new( e,  e,  e));
+    let v0 = eval_compiled(sdf, point + Vec3::new(e, -e, -e));
+    let v1 = eval_compiled(sdf, point + Vec3::new(-e, -e, e));
+    let v2 = eval_compiled(sdf, point + Vec3::new(-e, e, -e));
+    let v3 = eval_compiled(sdf, point + Vec3::new(e, e, e));
 
     // Distance ≈ average of the 4 offset samples
     let dist = (v0 + v1 + v2 + v3) * 0.25;
 
-    let normal = Vec3::new(
-        v0 - v1 - v2 + v3,
-        -v0 - v1 + v2 + v3,
-        -v0 + v1 - v2 + v3,
-    )
-    .normalize();
+    let normal = Vec3::new(v0 - v1 - v2 + v3, -v0 - v1 + v2 + v3, -v0 + v1 - v2 + v3).normalize();
 
     (dist, normal)
 }
@@ -1044,8 +1116,8 @@ pub fn eval_compiled_batch_parallel(sdf: &CompiledSdf, points: &[Vec3]) -> Vec<f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::eval::eval;
+    use crate::types::SdfNode;
 
     #[test]
     fn test_eval_sphere() {
@@ -1081,7 +1153,8 @@ mod tests {
         assert!(
             (d_interpreted - d_compiled).abs() < 0.0001,
             "Box at (1,0,0): interpreted={}, compiled={}",
-            d_interpreted, d_compiled
+            d_interpreted,
+            d_compiled
         );
     }
 
@@ -1147,7 +1220,9 @@ mod tests {
             assert!(
                 (d_interpreted - d_compiled).abs() < 0.001,
                 "Mismatch at {:?}: interpreted={}, compiled={}",
-                p, d_interpreted, d_compiled
+                p,
+                d_interpreted,
+                d_compiled
             );
         }
     }
@@ -1187,7 +1262,10 @@ mod tests {
             assert!(
                 diff <= 0.1 + 0.001, // tolerance for floating point
                 "Noise effect too large at {:?}: base={}, noise={}, diff={}",
-                p, d_base, d_noise, diff
+                p,
+                d_base,
+                d_noise,
+                diff
             );
         }
 

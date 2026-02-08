@@ -145,7 +145,8 @@ impl<T: Copy + Default> Volume3D<T> {
     /// Get flat index from 3D coordinates (bounds-unchecked)
     #[inline(always)]
     pub fn index(&self, x: u32, y: u32, z: u32) -> usize {
-        x as usize + y as usize * self.resolution[0] as usize
+        x as usize
+            + y as usize * self.resolution[0] as usize
             + z as usize * self.resolution[0] as usize * self.resolution[1] as usize
     }
 
@@ -262,10 +263,14 @@ impl Volume3D<VoxelDistGrad> {
 
         // 8-corner lookup
         let corners = [
-            self.get(x0, y0, z0), self.get(x1, y0, z0),
-            self.get(x0, y1, z0), self.get(x1, y1, z0),
-            self.get(x0, y0, z1), self.get(x1, y0, z1),
-            self.get(x0, y1, z1), self.get(x1, y1, z1),
+            self.get(x0, y0, z0),
+            self.get(x1, y0, z0),
+            self.get(x0, y1, z0),
+            self.get(x1, y1, z0),
+            self.get(x0, y0, z1),
+            self.get(x1, y0, z1),
+            self.get(x0, y1, z1),
+            self.get(x1, y1, z1),
         ];
 
         // Interpolate each component
@@ -292,7 +297,7 @@ impl Volume3D<VoxelDistGrad> {
 
 // Re-exports
 pub use bake::{bake_volume, bake_volume_with_normals};
-pub use export::{export_raw, export_dds_3d};
+pub use export::{export_dds_3d, export_raw};
 pub use mipchain::generate_mip_chain;
 
 #[cfg(feature = "gpu")]
@@ -304,22 +309,14 @@ mod tests {
 
     #[test]
     fn test_volume_creation() {
-        let vol: Volume3D<f32> = Volume3D::new(
-            [4, 4, 4],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol: Volume3D<f32> = Volume3D::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
         assert_eq!(vol.voxel_count(), 64);
         assert_eq!(vol.data.len(), 64);
     }
 
     #[test]
     fn test_volume_indexing() {
-        let mut vol: Volume3D<f32> = Volume3D::new(
-            [4, 4, 4],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let mut vol: Volume3D<f32> = Volume3D::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         vol.set(1, 2, 3, 42.0);
         assert_eq!(vol.get(1, 2, 3), 42.0);
@@ -328,11 +325,7 @@ mod tests {
 
     #[test]
     fn test_trilinear_sampling_corners() {
-        let mut vol: Volume3D<f32> = Volume3D::new(
-            [2, 2, 2],
-            Vec3::ZERO,
-            Vec3::ONE,
-        );
+        let mut vol: Volume3D<f32> = Volume3D::new([2, 2, 2], Vec3::ZERO, Vec3::ONE);
 
         // Set corners
         vol.set(0, 0, 0, 0.0);
@@ -358,11 +351,7 @@ mod tests {
 
     #[test]
     fn test_trilinear_clamping() {
-        let vol: Volume3D<f32> = Volume3D::new(
-            [4, 4, 4],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol: Volume3D<f32> = Volume3D::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         // Should not panic for out-of-bounds
         let _ = vol.sample_trilinear(Vec3::splat(-10.0));
@@ -371,11 +360,7 @@ mod tests {
 
     #[test]
     fn test_voxel_to_world() {
-        let vol: Volume3D<f32> = Volume3D::new(
-            [3, 3, 3],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol: Volume3D<f32> = Volume3D::new([3, 3, 3], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         let p = vol.voxel_to_world(0, 0, 0);
         assert!((p - Vec3::splat(-1.0)).length() < 1e-5);

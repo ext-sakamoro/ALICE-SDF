@@ -27,7 +27,11 @@ mod tests {
     #[test]
     fn test_tube_wall_inside() {
         let d = sdf_tube(Vec3::new(1.0, 0.0, 0.0), 1.0, 0.1, 1.0);
-        assert!(d < 0.0, "Point on tube wall ring should be inside, got {}", d);
+        assert!(
+            d < 0.0,
+            "Point on tube wall ring should be inside, got {}",
+            d
+        );
     }
 
     #[test]
@@ -46,6 +50,10 @@ mod tests {
     #[test]
     fn test_tube_hollow_center() {
         let d = sdf_tube(Vec3::ZERO, 1.0, 0.1, 1.0);
-        assert!(d > 0.0, "Center of hollow tube should be outside, got {}", d);
+        assert!(
+            d > 0.0,
+            "Center of hollow tube should be outside, got {}",
+            d
+        );
     }
 }

@@ -98,8 +98,7 @@ impl<W: Write + Seek> ZipWriter<W> {
     }
 
     fn add_file(&mut self, name: &str, data: &[u8]) -> Result<(), IoError> {
-        let offset = self.writer.stream_position()
-            .map_err(|e| IoError::Io(e))? as u32;
+        let offset = self.writer.stream_position().map_err(|e| IoError::Io(e))? as u32;
         let crc = crc32fast::hash(data);
         let size = data.len() as u32;
         let name_bytes = name.as_bytes();
@@ -114,7 +113,8 @@ impl<W: Write + Seek> ZipWriter<W> {
         self.writer.write_all(&crc.to_le_bytes())?; // crc32
         self.writer.write_all(&size.to_le_bytes())?; // compressed size
         self.writer.write_all(&size.to_le_bytes())?; // uncompressed size
-        self.writer.write_all(&(name_bytes.len() as u16).to_le_bytes())?; // name len
+        self.writer
+            .write_all(&(name_bytes.len() as u16).to_le_bytes())?; // name len
         self.writer.write_all(&0u16.to_le_bytes())?; // extra len
         self.writer.write_all(name_bytes)?;
         self.writer.write_all(data)?;
@@ -130,8 +130,7 @@ impl<W: Write + Seek> ZipWriter<W> {
     }
 
     fn finish(mut self) -> Result<(), IoError> {
-        let cd_offset = self.writer.stream_position()
-            .map_err(|e| IoError::Io(e))? as u32;
+        let cd_offset = self.writer.stream_position().map_err(|e| IoError::Io(e))? as u32;
 
         // Central directory entries
         for entry in &self.entries {
@@ -145,7 +144,8 @@ impl<W: Write + Seek> ZipWriter<W> {
             self.writer.write_all(&entry.crc32.to_le_bytes())?;
             self.writer.write_all(&entry.size.to_le_bytes())?; // compressed
             self.writer.write_all(&entry.size.to_le_bytes())?; // uncompressed
-            self.writer.write_all(&(entry.name.len() as u16).to_le_bytes())?;
+            self.writer
+                .write_all(&(entry.name.len() as u16).to_le_bytes())?;
             self.writer.write_all(&0u16.to_le_bytes())?; // extra len
             self.writer.write_all(&0u16.to_le_bytes())?; // comment len
             self.writer.write_all(&0u16.to_le_bytes())?; // disk number
@@ -155,8 +155,7 @@ impl<W: Write + Seek> ZipWriter<W> {
             self.writer.write_all(&entry.name)?;
         }
 
-        let cd_end = self.writer.stream_position()
-            .map_err(|e| IoError::Io(e))? as u32;
+        let cd_end = self.writer.stream_position().map_err(|e| IoError::Io(e))? as u32;
         let cd_size = cd_end - cd_offset;
         let entry_count = self.entries.len() as u16;
 

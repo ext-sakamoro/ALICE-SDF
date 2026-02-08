@@ -21,9 +21,9 @@
 //! Author: Moroya Sakamoto
 
 use crate::animation::AnimationParams;
-use crate::compiled::CompiledSdf;
 use crate::compiled::eval_simd::eval_compiled_simd;
-use crate::compiled::simd::{Vec3x8, Quatx8};
+use crate::compiled::simd::{Quatx8, Vec3x8};
+use crate::compiled::CompiledSdf;
 use wide::f32x8;
 
 /// SIMD-ready instance data in Structure-of-Arrays layout
@@ -292,15 +292,9 @@ impl InstancedSdf {
         use rayon::prelude::*;
 
         if points.len() < 256 {
-            points
-                .iter()
-                .map(|&p| self.eval_min_simd(p))
-                .collect()
+            points.iter().map(|&p| self.eval_min_simd(p)).collect()
         } else {
-            points
-                .par_iter()
-                .map(|&p| self.eval_min_simd(p))
-                .collect()
+            points.par_iter().map(|&p| self.eval_min_simd(p)).collect()
         }
     }
 
@@ -321,15 +315,9 @@ impl InstancedSdf {
         use rayon::prelude::*;
 
         if points.len() < 256 {
-            points
-                .iter()
-                .map(|&p| self.eval_min(p))
-                .collect()
+            points.iter().map(|&p| self.eval_min(p)).collect()
         } else {
-            points
-                .par_iter()
-                .map(|&p| self.eval_min(p))
-                .collect()
+            points.par_iter().map(|&p| self.eval_min(p)).collect()
         }
     }
 
@@ -343,7 +331,8 @@ impl InstancedSdf {
     /// Requires the original SdfNode since CompiledSdf doesn't store the tree.
     #[cfg(feature = "gpu")]
     pub fn to_instanced_wgsl(node: &crate::types::SdfNode) -> String {
-        let base_wgsl = crate::compiled::WgslShader::transpile(node, crate::compiled::TranspileMode::Hardcoded);
+        let base_wgsl =
+            crate::compiled::WgslShader::transpile(node, crate::compiled::TranspileMode::Hardcoded);
 
         format!(
             r#"// ALICE-SDF Instanced Compute Shader
@@ -527,7 +516,9 @@ mod tests {
             assert!(
                 (scalar - simd).abs() < 0.01,
                 "Mismatch at {:?}: scalar={}, simd={}",
-                p, scalar, simd
+                p,
+                scalar,
+                simd
             );
         }
     }
@@ -556,7 +547,9 @@ mod tests {
             assert!(
                 (scalar - simd).abs() < 0.01,
                 "Mismatch at {:?}: scalar={}, simd={}",
-                p, scalar, simd
+                p,
+                scalar,
+                simd
             );
         }
     }
@@ -589,7 +582,9 @@ mod tests {
             assert!(
                 (scalar - simd).abs() < 0.01,
                 "Mismatch at {:?}: scalar={}, simd={}",
-                p, scalar, simd
+                p,
+                scalar,
+                simd
             );
         }
     }
@@ -616,7 +611,9 @@ mod tests {
             assert!(
                 (scalar_results[i] - simd_results[i]).abs() < 0.01,
                 "Mismatch at point {}: scalar={}, simd={}",
-                i, scalar_results[i], simd_results[i]
+                i,
+                scalar_results[i],
+                simd_results[i]
             );
         }
     }

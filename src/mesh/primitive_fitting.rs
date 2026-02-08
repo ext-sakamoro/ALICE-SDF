@@ -95,11 +95,17 @@ impl FittedPrimitive {
             FittedPrimitive::Sphere { center, radius } => {
                 SdfNode::sphere(*radius).translate(center.x, center.y, center.z)
             }
-            FittedPrimitive::Box { center, half_extents } => {
-                SdfNode::box3d(half_extents.x, half_extents.y, half_extents.z)
-                    .translate(center.x, center.y, center.z)
-            }
-            FittedPrimitive::Cylinder { center, axis, radius, half_height } => {
+            FittedPrimitive::Box {
+                center,
+                half_extents,
+            } => SdfNode::box3d(half_extents.x, half_extents.y, half_extents.z)
+                .translate(center.x, center.y, center.z),
+            FittedPrimitive::Cylinder {
+                center,
+                axis,
+                radius,
+                half_height,
+            } => {
                 let cylinder = SdfNode::cylinder(*radius, *half_height);
 
                 // Compute rotation from Y-axis to target axis
@@ -122,34 +128,43 @@ impl FittedPrimitive {
 
                 rotated.translate(center.x, center.y, center.z)
             }
-            FittedPrimitive::Capsule { point_a, point_b, radius } => {
-                SdfNode::capsule(*point_a, *point_b, *radius)
-            }
-            FittedPrimitive::Plane { normal, distance } => {
-                SdfNode::plane(*normal, *distance)
-            }
+            FittedPrimitive::Capsule {
+                point_a,
+                point_b,
+                radius,
+            } => SdfNode::capsule(*point_a, *point_b, *radius),
+            FittedPrimitive::Plane { normal, distance } => SdfNode::plane(*normal, *distance),
         }
     }
 
     /// Compute fitting error (sum of squared distances)
     pub fn compute_error(&self, points: &[Vec3]) -> f32 {
-        points.iter().map(|&p| {
-            let dist = self.distance(p);
-            dist * dist
-        }).sum()
+        points
+            .iter()
+            .map(|&p| {
+                let dist = self.distance(p);
+                dist * dist
+            })
+            .sum()
     }
 
     /// Compute signed distance to the primitive
     pub fn distance(&self, point: Vec3) -> f32 {
         match self {
-            FittedPrimitive::Sphere { center, radius } => {
-                (point - *center).length() - radius
-            }
-            FittedPrimitive::Box { center, half_extents } => {
+            FittedPrimitive::Sphere { center, radius } => (point - *center).length() - radius,
+            FittedPrimitive::Box {
+                center,
+                half_extents,
+            } => {
                 let q = (point - *center).abs() - *half_extents;
                 q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0)
             }
-            FittedPrimitive::Cylinder { center, axis, radius, half_height } => {
+            FittedPrimitive::Cylinder {
+                center,
+                axis,
+                radius,
+                half_height,
+            } => {
                 let d = point - *center;
                 let h = d.dot(*axis);
                 let r = (d - *axis * h).length();
@@ -167,15 +182,17 @@ impl FittedPrimitive {
                     (dh * dh + dr * dr).sqrt()
                 }
             }
-            FittedPrimitive::Capsule { point_a, point_b, radius } => {
+            FittedPrimitive::Capsule {
+                point_a,
+                point_b,
+                radius,
+            } => {
                 let pa = point - *point_a;
                 let ba = *point_b - *point_a;
                 let h = (pa.dot(ba) / ba.length_squared()).clamp(0.0, 1.0);
                 (pa - ba * h).length() - radius
             }
-            FittedPrimitive::Plane { normal, distance } => {
-                point.dot(*normal) - *distance
-            }
+            FittedPrimitive::Plane { normal, distance } => point.dot(*normal) - *distance,
         }
     }
 }
@@ -238,8 +255,8 @@ pub fn fit_sphere(points: &[Vec3], config: &FittingConfig) -> Option<FittingResu
 
     // Initial estimate: centroid and average distance
     let centroid: Vec3 = points.iter().copied().sum::<Vec3>() / points.len() as f32;
-    let avg_dist: f32 = points.iter().map(|&p| (p - centroid).length()).sum::<f32>()
-        / points.len() as f32;
+    let avg_dist: f32 =
+        points.iter().map(|&p| (p - centroid).length()).sum::<f32>() / points.len() as f32;
 
     let mut center = centroid;
     let mut radius = avg_dist;
@@ -282,10 +299,16 @@ pub fn fit_sphere(points: &[Vec3], config: &FittingConfig) -> Option<FittingResu
     let primitive = FittedPrimitive::Sphere { center, radius };
 
     // Compute error metrics
-    let errors: Vec<f32> = points.iter().map(|&p| primitive.distance(p).abs()).collect();
+    let errors: Vec<f32> = points
+        .iter()
+        .map(|&p| primitive.distance(p).abs())
+        .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
     let max_error = errors.iter().copied().fold(0.0f32, f32::max);
-    let inlier_count = errors.iter().filter(|&&e| e < config.inlier_threshold).count();
+    let inlier_count = errors
+        .iter()
+        .filter(|&&e| e < config.inlier_threshold)
+        .count();
 
     Some(FittingResult {
         primitive,
@@ -314,13 +337,22 @@ pub fn fit_box(points: &[Vec3], config: &FittingConfig) -> Option<FittingResult>
     let center = (min + max) * 0.5;
     let half_extents = (max - min) * 0.5;
 
-    let primitive = FittedPrimitive::Box { center, half_extents };
+    let primitive = FittedPrimitive::Box {
+        center,
+        half_extents,
+    };
 
     // Compute error metrics
-    let errors: Vec<f32> = points.iter().map(|&p| primitive.distance(p).abs()).collect();
+    let errors: Vec<f32> = points
+        .iter()
+        .map(|&p| primitive.distance(p).abs())
+        .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
     let max_error = errors.iter().copied().fold(0.0f32, f32::max);
-    let inlier_count = errors.iter().filter(|&&e| e < config.inlier_threshold).count();
+    let inlier_count = errors
+        .iter()
+        .filter(|&&e| e < config.inlier_threshold)
+        .count();
 
     Some(FittingResult {
         primitive,
@@ -372,12 +404,21 @@ fn fit_cylinder_along_axis(
     let center_2d: Vec3 = projected.iter().map(|(p, _)| *p).sum::<Vec3>() / points.len() as f32;
 
     // Compute radius as average distance from center
-    let radius: f32 = projected.iter().map(|(p, _)| (*p - center_2d).length()).sum::<f32>()
+    let radius: f32 = projected
+        .iter()
+        .map(|(p, _)| (*p - center_2d).length())
+        .sum::<f32>()
         / points.len() as f32;
 
     // Find height range
-    let min_h = projected.iter().map(|(_, h)| *h).fold(f32::INFINITY, f32::min);
-    let max_h = projected.iter().map(|(_, h)| *h).fold(f32::NEG_INFINITY, f32::max);
+    let min_h = projected
+        .iter()
+        .map(|(_, h)| *h)
+        .fold(f32::INFINITY, f32::min);
+    let max_h = projected
+        .iter()
+        .map(|(_, h)| *h)
+        .fold(f32::NEG_INFINITY, f32::max);
 
     let center_h = (min_h + max_h) * 0.5;
     let half_height = (max_h - min_h) * 0.5;
@@ -392,10 +433,16 @@ fn fit_cylinder_along_axis(
     };
 
     // Compute error metrics
-    let errors: Vec<f32> = points.iter().map(|&p| primitive.distance(p).abs()).collect();
+    let errors: Vec<f32> = points
+        .iter()
+        .map(|&p| primitive.distance(p).abs())
+        .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
     let max_error = errors.iter().copied().fold(0.0f32, f32::max);
-    let inlier_count = errors.iter().filter(|&&e| e < config.inlier_threshold).count();
+    let inlier_count = errors
+        .iter()
+        .filter(|&&e| e < config.inlier_threshold)
+        .count();
 
     Some(FittingResult {
         primitive,
@@ -434,10 +481,16 @@ pub fn fit_plane(points: &[Vec3], config: &FittingConfig) -> Option<FittingResul
     let primitive = FittedPrimitive::Plane { normal, distance };
 
     // Compute error metrics
-    let errors: Vec<f32> = points.iter().map(|&p| primitive.distance(p).abs()).collect();
+    let errors: Vec<f32> = points
+        .iter()
+        .map(|&p| primitive.distance(p).abs())
+        .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
     let max_error = errors.iter().copied().fold(0.0f32, f32::max);
-    let inlier_count = errors.iter().filter(|&&e| e < config.inlier_threshold).count();
+    let inlier_count = errors
+        .iter()
+        .filter(|&&e| e < config.inlier_threshold)
+        .count();
 
     Some(FittingResult {
         primitive,
@@ -538,7 +591,9 @@ pub fn detect_primitive(points: &[Vec3], config: &FittingConfig) -> Option<Fitti
         let bic_a = n * safe_mse_a.ln() + complexity_a as f32 * n.ln();
         let bic_b = n * safe_mse_b.ln() + complexity_b as f32 * n.ln();
 
-        bic_a.partial_cmp(&bic_b).unwrap_or(std::cmp::Ordering::Equal)
+        bic_a
+            .partial_cmp(&bic_b)
+            .unwrap_or(std::cmp::Ordering::Equal)
     })
 }
 
@@ -625,7 +680,11 @@ mod tests {
 
         let result = fit_box(&points, &config).expect("Should fit box");
 
-        if let FittedPrimitive::Box { center, half_extents } = result.primitive {
+        if let FittedPrimitive::Box {
+            center,
+            half_extents,
+        } = result.primitive
+        {
             assert!(center.length() < 0.1);
             assert!((half_extents.x - 1.0).abs() < 0.2);
             assert!((half_extents.y - 1.0).abs() < 0.2);
@@ -658,8 +717,14 @@ mod tests {
     #[test]
     fn test_primitives_to_csg() {
         let primitives = vec![
-            FittedPrimitive::Sphere { center: Vec3::ZERO, radius: 1.0 },
-            FittedPrimitive::Box { center: Vec3::new(2.0, 0.0, 0.0), half_extents: Vec3::ONE },
+            FittedPrimitive::Sphere {
+                center: Vec3::ZERO,
+                radius: 1.0,
+            },
+            FittedPrimitive::Box {
+                center: Vec3::new(2.0, 0.0, 0.0),
+                half_extents: Vec3::ONE,
+            },
         ];
 
         let csg = primitives_to_csg(&primitives).expect("Should create CSG");

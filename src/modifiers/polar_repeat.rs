@@ -85,7 +85,9 @@ mod tests {
 
         assert!(
             (q1 - q2).length() < 0.01,
-            "Symmetric points should map to same result: {:?} vs {:?}", q1, q2
+            "Symmetric points should map to same result: {:?} vs {:?}",
+            q1,
+            q2
         );
     }
 }

@@ -18,23 +18,23 @@ pub struct Instruction {
     /// - Operations: smoothing factor k
     /// - Transforms: offset, quaternion, scale
     /// - Modifiers: strength, spacing, etc.
-    pub params: [f32; 6],  // 24 bytes
+    pub params: [f32; 6], // 24 bytes
 
     /// The operation code
-    pub opcode: OpCode,    // 1 byte
+    pub opcode: OpCode, // 1 byte
 
     /// Flags for special behavior
     /// - bit 0: has_scale_correction (for Scale opcode)
     /// - bit 1-7: reserved
-    pub flags: u8,         // 1 byte
+    pub flags: u8, // 1 byte
 
     /// Number of child nodes (for debugging/validation)
-    pub child_count: u16,  // 2 bytes
+    pub child_count: u16, // 2 bytes
 
     /// Offset to skip this subtree (for BVH pruning in Phase 3)
     /// Points to the instruction index after this subtree
-    pub skip_offset: u32,  // 4 bytes
-}                          // Total: 32 bytes
+    pub skip_offset: u32, // 4 bytes
+} // Total: 32 bytes
 
 impl Instruction {
     /// Create a new instruction
@@ -120,7 +120,11 @@ impl Instruction {
     /// because `params[6]` is fully used for the two 3D endpoints.
     #[inline]
     pub fn get_capsule_radius(&self) -> f32 {
-        debug_assert_eq!(self.opcode, OpCode::Capsule, "get_capsule_radius() called on non-Capsule instruction");
+        debug_assert_eq!(
+            self.opcode,
+            OpCode::Capsule,
+            "get_capsule_radius() called on non-Capsule instruction"
+        );
         f32::from_bits(self.skip_offset)
     }
 
@@ -304,7 +308,13 @@ impl Instruction {
     }
 
     #[inline]
-    pub fn horseshoe(angle: f32, radius: f32, half_length: f32, width: f32, thickness: f32) -> Self {
+    pub fn horseshoe(
+        angle: f32,
+        radius: f32,
+        half_length: f32,
+        width: f32,
+        thickness: f32,
+    ) -> Self {
         let mut inst = Self::new(OpCode::Horseshoe);
         inst.params[0] = angle;
         inst.params[1] = radius;
@@ -855,7 +865,7 @@ impl Instruction {
     pub fn scale(factor: f32) -> Self {
         let mut inst = Self::new(OpCode::Scale);
         inst.params[0] = 1.0 / factor; // precomputed inverse
-        inst.params[1] = factor;        // original factor
+        inst.params[1] = factor; // original factor
         inst.flags = 1; // has_scale_correction
         inst.child_count = 1;
         inst
@@ -1033,7 +1043,7 @@ impl Instruction {
         inst.params[0] = count;
         // Division Exorcism: precomputed sector angle and its reciprocal
         let sector = std::f32::consts::TAU / count;
-        inst.params[1] = sector;           // TAU / count
+        inst.params[1] = sector; // TAU / count
         inst.params[2] = count / std::f32::consts::TAU; // 1.0 / sector = count / TAU
         inst.child_count = 1;
         inst

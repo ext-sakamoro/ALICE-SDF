@@ -71,8 +71,8 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod transpiler;
 mod gpu_eval;
+mod transpiler;
 
-pub use transpiler::{WgslShader, TranspileMode};
-pub use gpu_eval::{GpuEvaluator, GpuError, GpuEvalFuture, GpuBufferPool};
+pub use gpu_eval::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator};
+pub use transpiler::{TranspileMode, WgslShader};

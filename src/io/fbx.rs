@@ -121,13 +121,20 @@ fn export_fbx_ascii(
     writeln!(w, "GlobalSettings:  {{")?;
     writeln!(w, "\tVersion: 1000")?;
     writeln!(w, "\tProperties70:  {{")?;
-    writeln!(w, "\t\tP: \"UpAxis\", \"int\", \"Integer\", \"\",{}", up_axis_val)?;
+    writeln!(
+        w,
+        "\t\tP: \"UpAxis\", \"int\", \"Integer\", \"\",{}",
+        up_axis_val
+    )?;
     writeln!(w, "\t\tP: \"UpAxisSign\", \"int\", \"Integer\", \"\",1")?;
     writeln!(w, "\t\tP: \"FrontAxis\", \"int\", \"Integer\", \"\",2")?;
     writeln!(w, "\t\tP: \"FrontAxisSign\", \"int\", \"Integer\", \"\",1")?;
     writeln!(w, "\t\tP: \"CoordAxis\", \"int\", \"Integer\", \"\",0")?;
     writeln!(w, "\t\tP: \"CoordAxisSign\", \"int\", \"Integer\", \"\",1")?;
-    writeln!(w, "\t\tP: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1.0")?;
+    writeln!(
+        w,
+        "\t\tP: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1.0"
+    )?;
     writeln!(w, "\t}}")?;
     writeln!(w, "}}")?;
     writeln!(w)?;
@@ -157,13 +164,19 @@ fn export_fbx_ascii(
 
     // Geometry
     let geom_id: i64 = 100000;
-    writeln!(w, "\tGeometry: {}, \"Geometry::Mesh\", \"Mesh\" {{", geom_id)?;
+    writeln!(
+        w,
+        "\tGeometry: {}, \"Geometry::Mesh\", \"Mesh\" {{",
+        geom_id
+    )?;
 
     // Vertices
     writeln!(w, "\t\tVertices: *{} {{", vert_count * 3)?;
     write!(w, "\t\t\ta: ")?;
     for (i, v) in mesh.vertices.iter().enumerate() {
-        if i > 0 { write!(w, ",")?; }
+        if i > 0 {
+            write!(w, ",")?;
+        }
         write!(w, "{},{},{}", v.position.x, v.position.y, v.position.z)?;
     }
     writeln!(w)?;
@@ -173,7 +186,9 @@ fn export_fbx_ascii(
     writeln!(w, "\t\tPolygonVertexIndex: *{} {{", tri_count * 3)?;
     write!(w, "\t\t\ta: ")?;
     for t in 0..tri_count {
-        if t > 0 { write!(w, ",")?; }
+        if t > 0 {
+            write!(w, ",")?;
+        }
         let a = mesh.indices[t * 3] as i32;
         let b = mesh.indices[t * 3 + 1] as i32;
         let c = mesh.indices[t * 3 + 2] as i32;
@@ -193,7 +208,9 @@ fn export_fbx_ascii(
         writeln!(w, "\t\t\tNormals: *{} {{", vert_count * 3)?;
         write!(w, "\t\t\t\ta: ")?;
         for (i, v) in mesh.vertices.iter().enumerate() {
-            if i > 0 { write!(w, ",")?; }
+            if i > 0 {
+                write!(w, ",")?;
+            }
             write!(w, "{},{},{}", v.normal.x, v.normal.y, v.normal.z)?;
         }
         writeln!(w)?;
@@ -211,7 +228,9 @@ fn export_fbx_ascii(
         writeln!(w, "\t\t\tUV: *{} {{", vert_count * 2)?;
         write!(w, "\t\t\t\ta: ")?;
         for (i, v) in mesh.vertices.iter().enumerate() {
-            if i > 0 { write!(w, ",")?; }
+            if i > 0 {
+                write!(w, ",")?;
+            }
             write!(w, "{},{}", v.uv.x, v.uv.y)?;
         }
         writeln!(w)?;
@@ -229,7 +248,9 @@ fn export_fbx_ascii(
         writeln!(w, "\t\t\tMaterials: *{} {{", tri_count)?;
         write!(w, "\t\t\t\ta: ")?;
         for t in 0..tri_count {
-            if t > 0 { write!(w, ",")?; }
+            if t > 0 {
+                write!(w, ",")?;
+            }
             let v0 = mesh.indices[t * 3] as usize;
             let mat_id = if v0 < mesh.vertices.len() {
                 mesh.vertices[v0].material_id
@@ -272,7 +293,10 @@ fn export_fbx_ascii(
     writeln!(w, "\tModel: {}, \"Model::Mesh\", \"Mesh\" {{", model_id)?;
     writeln!(w, "\t\tVersion: 232")?;
     writeln!(w, "\t\tProperties70:  {{")?;
-    writeln!(w, "\t\t\tP: \"ScalingMax\", \"Vector3D\", \"Vector\", \"\",0,0,0")?;
+    writeln!(
+        w,
+        "\t\t\tP: \"ScalingMax\", \"Vector3D\", \"Vector\", \"\",0,0,0"
+    )?;
     writeln!(w, "\t\t}}")?;
     writeln!(w, "\t\tShading: T")?;
     writeln!(w, "\t\tCulling: \"CullingOff\"")?;
@@ -283,23 +307,45 @@ fn export_fbx_ascii(
         if let Some(mat_lib) = materials {
             for (i, mat) in mat_lib.materials.iter().enumerate() {
                 let mat_id: i64 = 300000 + i as i64;
-                writeln!(w, "\tMaterial: {}, \"Material::{}\", \"\" {{", mat_id, mat.name)?;
+                writeln!(
+                    w,
+                    "\tMaterial: {}, \"Material::{}\", \"\" {{",
+                    mat_id, mat.name
+                )?;
                 writeln!(w, "\t\tVersion: 102")?;
                 writeln!(w, "\t\tShadingModel: \"phong\"")?;
                 writeln!(w, "\t\tProperties70:  {{")?;
-                writeln!(w, "\t\t\tP: \"DiffuseColor\", \"Color\", \"\", \"A\",{},{},{}",
-                    mat.base_color[0], mat.base_color[1], mat.base_color[2])?;
-                writeln!(w, "\t\t\tP: \"SpecularColor\", \"Color\", \"\", \"A\",{},{},{}",
-                    mat.metallic, mat.metallic, mat.metallic)?;
-                writeln!(w, "\t\t\tP: \"Shininess\", \"double\", \"Number\", \"\",{}",
-                    (1.0 - mat.roughness) * 100.0)?;
-                writeln!(w, "\t\t\tP: \"Opacity\", \"double\", \"Number\", \"\",{}",
-                    mat.opacity)?;
+                writeln!(
+                    w,
+                    "\t\t\tP: \"DiffuseColor\", \"Color\", \"\", \"A\",{},{},{}",
+                    mat.base_color[0], mat.base_color[1], mat.base_color[2]
+                )?;
+                writeln!(
+                    w,
+                    "\t\t\tP: \"SpecularColor\", \"Color\", \"\", \"A\",{},{},{}",
+                    mat.metallic, mat.metallic, mat.metallic
+                )?;
+                writeln!(
+                    w,
+                    "\t\t\tP: \"Shininess\", \"double\", \"Number\", \"\",{}",
+                    (1.0 - mat.roughness) * 100.0
+                )?;
+                writeln!(
+                    w,
+                    "\t\t\tP: \"Opacity\", \"double\", \"Number\", \"\",{}",
+                    mat.opacity
+                )?;
                 if mat.emission_strength > 0.0 {
-                    writeln!(w, "\t\t\tP: \"EmissiveColor\", \"Color\", \"\", \"A\",{},{},{}",
-                        mat.emission[0], mat.emission[1], mat.emission[2])?;
-                    writeln!(w, "\t\t\tP: \"EmissiveFactor\", \"double\", \"Number\", \"\",{}",
-                        mat.emission_strength)?;
+                    writeln!(
+                        w,
+                        "\t\t\tP: \"EmissiveColor\", \"Color\", \"\", \"A\",{},{},{}",
+                        mat.emission[0], mat.emission[1], mat.emission[2]
+                    )?;
+                    writeln!(
+                        w,
+                        "\t\t\tP: \"EmissiveFactor\", \"double\", \"Number\", \"\",{}",
+                        mat.emission_strength
+                    )?;
                 }
                 writeln!(w, "\t\t}}")?;
                 writeln!(w, "\t}}")?;
@@ -388,23 +434,31 @@ fn write_fbx_prop_i32_array(w: &mut impl Write, data: &[i32]) -> Result<(), IoEr
 
 /// Serialize an FBX binary node to a buffer.
 /// Returns the serialized bytes.
-fn serialize_fbx_node(
-    name: &str,
-    props: &[FbxProp],
-    children: &[Vec<u8>],
-) -> Vec<u8> {
+fn serialize_fbx_node(name: &str, props: &[FbxProp], children: &[Vec<u8>]) -> Vec<u8> {
     let mut body = Vec::new();
 
     // Properties
     let mut prop_data = Vec::new();
     for prop in props {
         match prop {
-            FbxProp::I32(v) => { write_fbx_prop_i32(&mut prop_data, *v).ok(); }
-            FbxProp::I64(v) => { write_fbx_prop_i64(&mut prop_data, *v).ok(); }
-            FbxProp::F64(v) => { write_fbx_prop_f64(&mut prop_data, *v).ok(); }
-            FbxProp::Str(s) => { write_fbx_prop_str(&mut prop_data, s).ok(); }
-            FbxProp::F64Array(a) => { write_fbx_prop_f64_array(&mut prop_data, a).ok(); }
-            FbxProp::I32Array(a) => { write_fbx_prop_i32_array(&mut prop_data, a).ok(); }
+            FbxProp::I32(v) => {
+                write_fbx_prop_i32(&mut prop_data, *v).ok();
+            }
+            FbxProp::I64(v) => {
+                write_fbx_prop_i64(&mut prop_data, *v).ok();
+            }
+            FbxProp::F64(v) => {
+                write_fbx_prop_f64(&mut prop_data, *v).ok();
+            }
+            FbxProp::Str(s) => {
+                write_fbx_prop_str(&mut prop_data, s).ok();
+            }
+            FbxProp::F64Array(a) => {
+                write_fbx_prop_f64_array(&mut prop_data, a).ok();
+            }
+            FbxProp::I32Array(a) => {
+                write_fbx_prop_i32_array(&mut prop_data, a).ok();
+            }
         }
     }
 
@@ -469,7 +523,8 @@ fn export_fbx_binary(
         let fbx_version = serialize_fbx_node("FBXVersion", &[FbxProp::I32(7400)], &[]);
         let creator = serialize_fbx_node("Creator", &[FbxProp::Str("ALICE-SDF".to_string())], &[]);
         top_nodes.push(serialize_fbx_node(
-            "FBXHeaderExtension", &[],
+            "FBXHeaderExtension",
+            &[],
             &[version_node, fbx_version, creator],
         ));
     }
@@ -481,31 +536,47 @@ fn export_fbx_binary(
             FbxUpAxis::Z => 2,
         };
         let p_nodes = vec![
-            serialize_fbx_node("P", &[
-                FbxProp::Str("UpAxis".to_string()),
-                FbxProp::Str("int".to_string()),
-                FbxProp::Str("Integer".to_string()),
-                FbxProp::Str(String::new()),
-                FbxProp::I32(up_axis_val),
-            ], &[]),
-            serialize_fbx_node("P", &[
-                FbxProp::Str("UpAxisSign".to_string()),
-                FbxProp::Str("int".to_string()),
-                FbxProp::Str("Integer".to_string()),
-                FbxProp::Str(String::new()),
-                FbxProp::I32(1),
-            ], &[]),
-            serialize_fbx_node("P", &[
-                FbxProp::Str("UnitScaleFactor".to_string()),
-                FbxProp::Str("double".to_string()),
-                FbxProp::Str("Number".to_string()),
-                FbxProp::Str(String::new()),
-                FbxProp::F64(1.0),
-            ], &[]),
+            serialize_fbx_node(
+                "P",
+                &[
+                    FbxProp::Str("UpAxis".to_string()),
+                    FbxProp::Str("int".to_string()),
+                    FbxProp::Str("Integer".to_string()),
+                    FbxProp::Str(String::new()),
+                    FbxProp::I32(up_axis_val),
+                ],
+                &[],
+            ),
+            serialize_fbx_node(
+                "P",
+                &[
+                    FbxProp::Str("UpAxisSign".to_string()),
+                    FbxProp::Str("int".to_string()),
+                    FbxProp::Str("Integer".to_string()),
+                    FbxProp::Str(String::new()),
+                    FbxProp::I32(1),
+                ],
+                &[],
+            ),
+            serialize_fbx_node(
+                "P",
+                &[
+                    FbxProp::Str("UnitScaleFactor".to_string()),
+                    FbxProp::Str("double".to_string()),
+                    FbxProp::Str("Number".to_string()),
+                    FbxProp::Str(String::new()),
+                    FbxProp::F64(1.0),
+                ],
+                &[],
+            ),
         ];
         let props70 = serialize_fbx_node("Properties70", &[], &p_nodes);
         let version = serialize_fbx_node("Version", &[FbxProp::I32(1000)], &[]);
-        top_nodes.push(serialize_fbx_node("GlobalSettings", &[], &[version, props70]));
+        top_nodes.push(serialize_fbx_node(
+            "GlobalSettings",
+            &[],
+            &[version, props70],
+        ));
     }
 
     // --- Objects ---
@@ -519,112 +590,220 @@ fn export_fbx_binary(
             let mut geom_children = Vec::new();
 
             // Vertices
-            let verts_f64: Vec<f64> = mesh.vertices.iter()
-                .flat_map(|v| vec![v.position.x as f64, v.position.y as f64, v.position.z as f64])
+            let verts_f64: Vec<f64> = mesh
+                .vertices
+                .iter()
+                .flat_map(|v| {
+                    vec![
+                        v.position.x as f64,
+                        v.position.y as f64,
+                        v.position.z as f64,
+                    ]
+                })
                 .collect();
-            geom_children.push(serialize_fbx_node("Vertices", &[FbxProp::F64Array(verts_f64)], &[]));
+            geom_children.push(serialize_fbx_node(
+                "Vertices",
+                &[FbxProp::F64Array(verts_f64)],
+                &[],
+            ));
 
             // PolygonVertexIndex
-            let indices_i32: Vec<i32> = (0..tri_count).flat_map(|t| {
-                let a = mesh.indices[t * 3] as i32;
-                let b = mesh.indices[t * 3 + 1] as i32;
-                let c = mesh.indices[t * 3 + 2] as i32;
-                vec![a, b, -(c + 1)]
-            }).collect();
-            geom_children.push(serialize_fbx_node("PolygonVertexIndex", &[FbxProp::I32Array(indices_i32)], &[]));
+            let indices_i32: Vec<i32> = (0..tri_count)
+                .flat_map(|t| {
+                    let a = mesh.indices[t * 3] as i32;
+                    let b = mesh.indices[t * 3 + 1] as i32;
+                    let c = mesh.indices[t * 3 + 2] as i32;
+                    vec![a, b, -(c + 1)]
+                })
+                .collect();
+            geom_children.push(serialize_fbx_node(
+                "PolygonVertexIndex",
+                &[FbxProp::I32Array(indices_i32)],
+                &[],
+            ));
 
             // Normals
             if config.export_normals {
-                let normals_f64: Vec<f64> = mesh.vertices.iter()
+                let normals_f64: Vec<f64> = mesh
+                    .vertices
+                    .iter()
                     .flat_map(|v| vec![v.normal.x as f64, v.normal.y as f64, v.normal.z as f64])
                     .collect();
-                let normals_node = serialize_fbx_node("Normals", &[FbxProp::F64Array(normals_f64)], &[]);
-                let mapping = serialize_fbx_node("MappingInformationType", &[FbxProp::Str("ByVertice".to_string())], &[]);
-                let reference = serialize_fbx_node("ReferenceInformationType", &[FbxProp::Str("Direct".to_string())], &[]);
+                let normals_node =
+                    serialize_fbx_node("Normals", &[FbxProp::F64Array(normals_f64)], &[]);
+                let mapping = serialize_fbx_node(
+                    "MappingInformationType",
+                    &[FbxProp::Str("ByVertice".to_string())],
+                    &[],
+                );
+                let reference = serialize_fbx_node(
+                    "ReferenceInformationType",
+                    &[FbxProp::Str("Direct".to_string())],
+                    &[],
+                );
                 let version = serialize_fbx_node("Version", &[FbxProp::I32(101)], &[]);
-                geom_children.push(serialize_fbx_node("LayerElementNormal", &[FbxProp::I32(0)], &[version, mapping, reference, normals_node]));
+                geom_children.push(serialize_fbx_node(
+                    "LayerElementNormal",
+                    &[FbxProp::I32(0)],
+                    &[version, mapping, reference, normals_node],
+                ));
             }
 
             // UVs
             if config.export_uvs {
-                let uvs_f64: Vec<f64> = mesh.vertices.iter()
+                let uvs_f64: Vec<f64> = mesh
+                    .vertices
+                    .iter()
                     .flat_map(|v| vec![v.uv.x as f64, v.uv.y as f64])
                     .collect();
                 let uv_node = serialize_fbx_node("UV", &[FbxProp::F64Array(uvs_f64)], &[]);
                 let name = serialize_fbx_node("Name", &[FbxProp::Str("UVMap".to_string())], &[]);
-                let mapping = serialize_fbx_node("MappingInformationType", &[FbxProp::Str("ByVertice".to_string())], &[]);
-                let reference = serialize_fbx_node("ReferenceInformationType", &[FbxProp::Str("Direct".to_string())], &[]);
+                let mapping = serialize_fbx_node(
+                    "MappingInformationType",
+                    &[FbxProp::Str("ByVertice".to_string())],
+                    &[],
+                );
+                let reference = serialize_fbx_node(
+                    "ReferenceInformationType",
+                    &[FbxProp::Str("Direct".to_string())],
+                    &[],
+                );
                 let version = serialize_fbx_node("Version", &[FbxProp::I32(101)], &[]);
-                geom_children.push(serialize_fbx_node("LayerElementUV", &[FbxProp::I32(0)], &[version, name, mapping, reference, uv_node]));
+                geom_children.push(serialize_fbx_node(
+                    "LayerElementUV",
+                    &[FbxProp::I32(0)],
+                    &[version, name, mapping, reference, uv_node],
+                ));
             }
 
             // Materials layer
             let mat_count = materials.map_or(0, |m| m.materials.len());
             if config.export_materials && mat_count > 0 {
-                let mat_ids: Vec<i32> = (0..tri_count).map(|t| {
-                    let v0 = mesh.indices[t * 3] as usize;
-                    if v0 < vert_count { mesh.vertices[v0].material_id as i32 } else { 0 }
-                }).collect();
+                let mat_ids: Vec<i32> = (0..tri_count)
+                    .map(|t| {
+                        let v0 = mesh.indices[t * 3] as usize;
+                        if v0 < vert_count {
+                            mesh.vertices[v0].material_id as i32
+                        } else {
+                            0
+                        }
+                    })
+                    .collect();
                 let mat_data = serialize_fbx_node("Materials", &[FbxProp::I32Array(mat_ids)], &[]);
-                let mapping = serialize_fbx_node("MappingInformationType", &[FbxProp::Str("ByPolygon".to_string())], &[]);
-                let reference = serialize_fbx_node("ReferenceInformationType", &[FbxProp::Str("IndexToDirect".to_string())], &[]);
+                let mapping = serialize_fbx_node(
+                    "MappingInformationType",
+                    &[FbxProp::Str("ByPolygon".to_string())],
+                    &[],
+                );
+                let reference = serialize_fbx_node(
+                    "ReferenceInformationType",
+                    &[FbxProp::Str("IndexToDirect".to_string())],
+                    &[],
+                );
                 let version = serialize_fbx_node("Version", &[FbxProp::I32(101)], &[]);
-                geom_children.push(serialize_fbx_node("LayerElementMaterial", &[FbxProp::I32(0)], &[version, mapping, reference, mat_data]));
+                geom_children.push(serialize_fbx_node(
+                    "LayerElementMaterial",
+                    &[FbxProp::I32(0)],
+                    &[version, mapping, reference, mat_data],
+                ));
             }
 
             // Layer
             {
-                let mut layer_children = vec![
-                    serialize_fbx_node("Version", &[FbxProp::I32(100)], &[]),
-                ];
+                let mut layer_children =
+                    vec![serialize_fbx_node("Version", &[FbxProp::I32(100)], &[])];
                 if config.export_normals {
-                    let le = serialize_fbx_node("LayerElement", &[], &[
-                        serialize_fbx_node("Type", &[FbxProp::Str("LayerElementNormal".to_string())], &[]),
-                        serialize_fbx_node("TypedIndex", &[FbxProp::I32(0)], &[]),
-                    ]);
+                    let le = serialize_fbx_node(
+                        "LayerElement",
+                        &[],
+                        &[
+                            serialize_fbx_node(
+                                "Type",
+                                &[FbxProp::Str("LayerElementNormal".to_string())],
+                                &[],
+                            ),
+                            serialize_fbx_node("TypedIndex", &[FbxProp::I32(0)], &[]),
+                        ],
+                    );
                     layer_children.push(le);
                 }
                 if config.export_uvs {
-                    let le = serialize_fbx_node("LayerElement", &[], &[
-                        serialize_fbx_node("Type", &[FbxProp::Str("LayerElementUV".to_string())], &[]),
-                        serialize_fbx_node("TypedIndex", &[FbxProp::I32(0)], &[]),
-                    ]);
+                    let le = serialize_fbx_node(
+                        "LayerElement",
+                        &[],
+                        &[
+                            serialize_fbx_node(
+                                "Type",
+                                &[FbxProp::Str("LayerElementUV".to_string())],
+                                &[],
+                            ),
+                            serialize_fbx_node("TypedIndex", &[FbxProp::I32(0)], &[]),
+                        ],
+                    );
                     layer_children.push(le);
                 }
                 if config.export_materials && mat_count > 0 {
-                    let le = serialize_fbx_node("LayerElement", &[], &[
-                        serialize_fbx_node("Type", &[FbxProp::Str("LayerElementMaterial".to_string())], &[]),
-                        serialize_fbx_node("TypedIndex", &[FbxProp::I32(0)], &[]),
-                    ]);
+                    let le = serialize_fbx_node(
+                        "LayerElement",
+                        &[],
+                        &[
+                            serialize_fbx_node(
+                                "Type",
+                                &[FbxProp::Str("LayerElementMaterial".to_string())],
+                                &[],
+                            ),
+                            serialize_fbx_node("TypedIndex", &[FbxProp::I32(0)], &[]),
+                        ],
+                    );
                     layer_children.push(le);
                 }
-                geom_children.push(serialize_fbx_node("Layer", &[FbxProp::I32(0)], &layer_children));
+                geom_children.push(serialize_fbx_node(
+                    "Layer",
+                    &[FbxProp::I32(0)],
+                    &layer_children,
+                ));
             }
 
-            object_children.push(serialize_fbx_node("Geometry", &[
-                FbxProp::I64(geom_id),
-                FbxProp::Str("Geometry::Mesh\x00\x01Mesh".to_string()),
-                FbxProp::Str("Mesh".to_string()),
-            ], &geom_children));
+            object_children.push(serialize_fbx_node(
+                "Geometry",
+                &[
+                    FbxProp::I64(geom_id),
+                    FbxProp::Str("Geometry::Mesh\x00\x01Mesh".to_string()),
+                    FbxProp::Str("Mesh".to_string()),
+                ],
+                &geom_children,
+            ));
         }
 
         // Model node
         {
-            let props70 = serialize_fbx_node("Properties70", &[], &[
-                serialize_fbx_node("P", &[
-                    FbxProp::Str("ScalingMax".to_string()),
-                    FbxProp::Str("Vector3D".to_string()),
-                    FbxProp::Str("Vector".to_string()),
-                    FbxProp::Str(String::new()),
-                    FbxProp::F64(0.0), FbxProp::F64(0.0), FbxProp::F64(0.0),
-                ], &[]),
-            ]);
+            let props70 = serialize_fbx_node(
+                "Properties70",
+                &[],
+                &[serialize_fbx_node(
+                    "P",
+                    &[
+                        FbxProp::Str("ScalingMax".to_string()),
+                        FbxProp::Str("Vector3D".to_string()),
+                        FbxProp::Str("Vector".to_string()),
+                        FbxProp::Str(String::new()),
+                        FbxProp::F64(0.0),
+                        FbxProp::F64(0.0),
+                        FbxProp::F64(0.0),
+                    ],
+                    &[],
+                )],
+            );
             let version = serialize_fbx_node("Version", &[FbxProp::I32(232)], &[]);
-            object_children.push(serialize_fbx_node("Model", &[
-                FbxProp::I64(model_id),
-                FbxProp::Str("Model::Mesh\x00\x01Mesh".to_string()),
-                FbxProp::Str("Mesh".to_string()),
-            ], &[version, props70]));
+            object_children.push(serialize_fbx_node(
+                "Model",
+                &[
+                    FbxProp::I64(model_id),
+                    FbxProp::Str("Model::Mesh\x00\x01Mesh".to_string()),
+                    FbxProp::Str("Mesh".to_string()),
+                ],
+                &[version, props70],
+            ));
         }
 
         // Material nodes
@@ -633,40 +812,60 @@ fn export_fbx_binary(
                 for (i, mat) in mat_lib.materials.iter().enumerate() {
                     let mat_id: i64 = 300000 + i as i64;
                     let p_nodes = vec![
-                        serialize_fbx_node("P", &[
-                            FbxProp::Str("DiffuseColor".to_string()),
-                            FbxProp::Str("Color".to_string()),
-                            FbxProp::Str(String::new()),
-                            FbxProp::Str("A".to_string()),
-                            FbxProp::F64(mat.base_color[0] as f64),
-                            FbxProp::F64(mat.base_color[1] as f64),
-                            FbxProp::F64(mat.base_color[2] as f64),
-                        ], &[]),
-                        serialize_fbx_node("P", &[
-                            FbxProp::Str("Shininess".to_string()),
-                            FbxProp::Str("double".to_string()),
-                            FbxProp::Str("Number".to_string()),
-                            FbxProp::Str(String::new()),
-                            FbxProp::F64(((1.0 - mat.roughness) * 100.0) as f64),
-                        ], &[]),
-                        serialize_fbx_node("P", &[
-                            FbxProp::Str("Opacity".to_string()),
-                            FbxProp::Str("double".to_string()),
-                            FbxProp::Str("Number".to_string()),
-                            FbxProp::Str(String::new()),
-                            FbxProp::F64(mat.opacity as f64),
-                        ], &[]),
+                        serialize_fbx_node(
+                            "P",
+                            &[
+                                FbxProp::Str("DiffuseColor".to_string()),
+                                FbxProp::Str("Color".to_string()),
+                                FbxProp::Str(String::new()),
+                                FbxProp::Str("A".to_string()),
+                                FbxProp::F64(mat.base_color[0] as f64),
+                                FbxProp::F64(mat.base_color[1] as f64),
+                                FbxProp::F64(mat.base_color[2] as f64),
+                            ],
+                            &[],
+                        ),
+                        serialize_fbx_node(
+                            "P",
+                            &[
+                                FbxProp::Str("Shininess".to_string()),
+                                FbxProp::Str("double".to_string()),
+                                FbxProp::Str("Number".to_string()),
+                                FbxProp::Str(String::new()),
+                                FbxProp::F64(((1.0 - mat.roughness) * 100.0) as f64),
+                            ],
+                            &[],
+                        ),
+                        serialize_fbx_node(
+                            "P",
+                            &[
+                                FbxProp::Str("Opacity".to_string()),
+                                FbxProp::Str("double".to_string()),
+                                FbxProp::Str("Number".to_string()),
+                                FbxProp::Str(String::new()),
+                                FbxProp::F64(mat.opacity as f64),
+                            ],
+                            &[],
+                        ),
                     ];
                     let props70 = serialize_fbx_node("Properties70", &[], &p_nodes);
                     let version = serialize_fbx_node("Version", &[FbxProp::I32(102)], &[]);
-                    let shading = serialize_fbx_node("ShadingModel", &[FbxProp::Str("phong".to_string())], &[]);
+                    let shading = serialize_fbx_node(
+                        "ShadingModel",
+                        &[FbxProp::Str("phong".to_string())],
+                        &[],
+                    );
 
                     let mat_name = format!("Material::{}\x00\x01", mat.name);
-                    object_children.push(serialize_fbx_node("Material", &[
-                        FbxProp::I64(mat_id),
-                        FbxProp::Str(mat_name),
-                        FbxProp::Str(String::new()),
-                    ], &[version, shading, props70]));
+                    object_children.push(serialize_fbx_node(
+                        "Material",
+                        &[
+                            FbxProp::I64(mat_id),
+                            FbxProp::Str(mat_name),
+                            FbxProp::Str(String::new()),
+                        ],
+                        &[version, shading, props70],
+                    ));
                 }
             }
         }
@@ -680,26 +879,38 @@ fn export_fbx_binary(
         let geom_id: i64 = 100000;
         let mut conn_children = Vec::new();
 
-        conn_children.push(serialize_fbx_node("C", &[
-            FbxProp::Str("OO".to_string()),
-            FbxProp::I64(model_id),
-            FbxProp::I64(0),
-        ], &[]));
-        conn_children.push(serialize_fbx_node("C", &[
-            FbxProp::Str("OO".to_string()),
-            FbxProp::I64(geom_id),
-            FbxProp::I64(model_id),
-        ], &[]));
+        conn_children.push(serialize_fbx_node(
+            "C",
+            &[
+                FbxProp::Str("OO".to_string()),
+                FbxProp::I64(model_id),
+                FbxProp::I64(0),
+            ],
+            &[],
+        ));
+        conn_children.push(serialize_fbx_node(
+            "C",
+            &[
+                FbxProp::Str("OO".to_string()),
+                FbxProp::I64(geom_id),
+                FbxProp::I64(model_id),
+            ],
+            &[],
+        ));
 
         if config.export_materials {
             if let Some(mat_lib) = materials {
                 for i in 0..mat_lib.materials.len() {
                     let mat_id: i64 = 300000 + i as i64;
-                    conn_children.push(serialize_fbx_node("C", &[
-                        FbxProp::Str("OO".to_string()),
-                        FbxProp::I64(mat_id),
-                        FbxProp::I64(model_id),
-                    ], &[]));
+                    conn_children.push(serialize_fbx_node(
+                        "C",
+                        &[
+                            FbxProp::Str("OO".to_string()),
+                            FbxProp::I64(mat_id),
+                            FbxProp::I64(model_id),
+                        ],
+                        &[],
+                    ));
                 }
             }
         }
@@ -768,28 +979,36 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
         // Detect sections and pre-allocate from element count in header
         if trimmed.starts_with("Vertices: *") {
             if let Some(n_str) = trimmed.strip_prefix("Vertices: *") {
-                if let Ok(n) = n_str.parse::<usize>() { raw_vertices.reserve(n); }
+                if let Ok(n) = n_str.parse::<usize>() {
+                    raw_vertices.reserve(n);
+                }
             }
             in_vertices = true;
             continue;
         }
         if trimmed.starts_with("PolygonVertexIndex: *") {
             if let Some(n_str) = trimmed.strip_prefix("PolygonVertexIndex: *") {
-                if let Ok(n) = n_str.parse::<usize>() { raw_polygon_indices.reserve(n); }
+                if let Ok(n) = n_str.parse::<usize>() {
+                    raw_polygon_indices.reserve(n);
+                }
             }
             in_polygon_indices = true;
             continue;
         }
         if trimmed.starts_with("Normals: *") {
             if let Some(n_str) = trimmed.strip_prefix("Normals: *") {
-                if let Ok(n) = n_str.parse::<usize>() { raw_normals.reserve(n); }
+                if let Ok(n) = n_str.parse::<usize>() {
+                    raw_normals.reserve(n);
+                }
             }
             in_normals = true;
             continue;
         }
         if trimmed.starts_with("UV: *") && !trimmed.starts_with("UVIndex:") {
             if let Some(n_str) = trimmed.strip_prefix("UV: *") {
-                if let Ok(n) = n_str.parse::<usize>() { raw_uvs.reserve(n); }
+                if let Ok(n) = n_str.parse::<usize>() {
+                    raw_uvs.reserve(n);
+                }
             }
             in_uvs = true;
             continue;
@@ -839,7 +1058,9 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     }
 
     if raw_vertices.is_empty() || raw_polygon_indices.is_empty() {
-        return Err(IoError::InvalidFormat("No geometry found in FBX file".into()));
+        return Err(IoError::InvalidFormat(
+            "No geometry found in FBX file".into(),
+        ));
     }
 
     let vert_count = raw_vertices.len() / 3;
@@ -931,7 +1152,9 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         let mut mat_lib = crate::material::MaterialLibrary::new();
-        mat_lib.add(crate::material::Material::metal("Steel", 0.7, 0.7, 0.7, 0.4));
+        mat_lib.add(crate::material::Material::metal(
+            "Steel", 0.7, 0.7, 0.7, 0.4,
+        ));
 
         let path = std::env::temp_dir().join("alice_test_mat.fbx");
         export_fbx(&mesh, &path, &FbxConfig::default(), Some(&mat_lib)).unwrap();
@@ -985,13 +1208,20 @@ mod tests {
 
         let bytes = std::fs::read(&path).unwrap();
         // Verify FBX binary magic
-        assert_eq!(&bytes[0..21], &FBX_BINARY_MAGIC[0..21],
-            "FBX binary magic mismatch");
+        assert_eq!(
+            &bytes[0..21],
+            &FBX_BINARY_MAGIC[0..21],
+            "FBX binary magic mismatch"
+        );
         // Verify version
         let version = u32::from_le_bytes([bytes[23], bytes[24], bytes[25], bytes[26]]);
         assert_eq!(version, 7400);
         // Should be reasonably sized
-        assert!(bytes.len() > 100, "Binary FBX too small: {} bytes", bytes.len());
+        assert!(
+            bytes.len() > 100,
+            "Binary FBX too small: {} bytes",
+            bytes.len()
+        );
 
         std::fs::remove_file(&path).ok();
     }
@@ -1008,7 +1238,9 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         let mut mat_lib = crate::material::MaterialLibrary::new();
-        mat_lib.add(crate::material::Material::metal("Steel", 0.7, 0.7, 0.7, 0.4));
+        mat_lib.add(crate::material::Material::metal(
+            "Steel", 0.7, 0.7, 0.7, 0.4,
+        ));
 
         let path = std::env::temp_dir().join("alice_test_bin_mat.fbx");
         export_fbx(&mesh, &path, &FbxConfig::binary(), Some(&mat_lib)).unwrap();
@@ -1040,13 +1272,21 @@ mod tests {
         let imported = import_fbx(&path).unwrap();
 
         assert_eq!(imported.vertex_count(), orig_verts, "Vertex count mismatch");
-        assert_eq!(imported.indices.len() / 3, orig_tris, "Triangle count mismatch");
+        assert_eq!(
+            imported.indices.len() / 3,
+            orig_tris,
+            "Triangle count mismatch"
+        );
 
         // Check first vertex position is close
         let orig_pos = mesh.vertices[0].position;
         let imp_pos = imported.vertices[0].position;
-        assert!((orig_pos - imp_pos).length() < 0.001,
-            "Position mismatch: {:?} vs {:?}", orig_pos, imp_pos);
+        assert!(
+            (orig_pos - imp_pos).length() < 0.001,
+            "Position mismatch: {:?} vs {:?}",
+            orig_pos,
+            imp_pos
+        );
 
         std::fs::remove_file(&path).ok();
     }

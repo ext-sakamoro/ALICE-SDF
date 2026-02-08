@@ -5,11 +5,11 @@
 //!
 //! Author: Moroya Sakamoto
 
-use glam::{Vec3, Quat};
+use glam::{Quat, Vec3};
 
 use super::MutableVoxelGrid;
-use crate::types::SdfNode;
 use crate::eval::eval;
+use crate::types::SdfNode;
 
 /// Shape used for carving operations
 #[derive(Clone, Debug)]
@@ -38,30 +38,32 @@ impl CarveShape {
     /// Evaluate the carve shape's signed distance at a point
     fn eval(&self, point: Vec3) -> f32 {
         match self {
-            CarveShape::Sphere { center, radius } => {
-                (point - *center).length() - radius
-            }
-            CarveShape::Box { center, half_extents, rotation } => {
+            CarveShape::Sphere { center, radius } => (point - *center).length() - radius,
+            CarveShape::Box {
+                center,
+                half_extents,
+                rotation,
+            } => {
                 let local = rotation.inverse() * (point - *center);
                 let q = local.abs() - *half_extents;
                 q.max(Vec3::ZERO).length() + q.max_element().min(0.0)
             }
-            CarveShape::Sdf(node) => {
-                eval(node, point)
-            }
+            CarveShape::Sdf(node) => eval(node, point),
         }
     }
 
     /// Compute the world-space AABB of this shape (for grid bounds check)
     fn aabb(&self) -> (Vec3, Vec3) {
         match self {
-            CarveShape::Sphere { center, radius } => {
-                (
-                    *center - Vec3::splat(*radius),
-                    *center + Vec3::splat(*radius),
-                )
-            }
-            CarveShape::Box { center, half_extents, rotation } => {
+            CarveShape::Sphere { center, radius } => (
+                *center - Vec3::splat(*radius),
+                *center + Vec3::splat(*radius),
+            ),
+            CarveShape::Box {
+                center,
+                half_extents,
+                rotation,
+            } => {
                 // Conservative AABB of rotated box
                 let axes = [
                     *rotation * Vec3::new(half_extents.x, 0.0, 0.0),
@@ -108,7 +110,10 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
     let clamped_max = shape_max.min(grid.bounds_max);
 
     // Check for valid overlap
-    if clamped_min.x >= clamped_max.x || clamped_min.y >= clamped_max.y || clamped_min.z >= clamped_max.z {
+    if clamped_min.x >= clamped_max.x
+        || clamped_min.y >= clamped_max.y
+        || clamped_min.z >= clamped_max.z
+    {
         return DestructionResult {
             dirty_chunks: Vec::new(),
             removed_volume: 0.0,
@@ -120,14 +125,26 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
     let size = grid.bounds_max - grid.bounds_min;
     let inv_size = Vec3::new(1.0 / size.x, 1.0 / size.y, 1.0 / size.z);
     let start = [
-        ((clamped_min.x - grid.bounds_min.x) * inv_size.x * grid.resolution[0] as f32).floor().max(0.0) as u32,
-        ((clamped_min.y - grid.bounds_min.y) * inv_size.y * grid.resolution[1] as f32).floor().max(0.0) as u32,
-        ((clamped_min.z - grid.bounds_min.z) * inv_size.z * grid.resolution[2] as f32).floor().max(0.0) as u32,
+        ((clamped_min.x - grid.bounds_min.x) * inv_size.x * grid.resolution[0] as f32)
+            .floor()
+            .max(0.0) as u32,
+        ((clamped_min.y - grid.bounds_min.y) * inv_size.y * grid.resolution[1] as f32)
+            .floor()
+            .max(0.0) as u32,
+        ((clamped_min.z - grid.bounds_min.z) * inv_size.z * grid.resolution[2] as f32)
+            .floor()
+            .max(0.0) as u32,
     ];
     let end = [
-        ((clamped_max.x - grid.bounds_min.x) * inv_size.x * grid.resolution[0] as f32).ceil().min(grid.resolution[0] as f32) as u32,
-        ((clamped_max.y - grid.bounds_min.y) * inv_size.y * grid.resolution[1] as f32).ceil().min(grid.resolution[1] as f32) as u32,
-        ((clamped_max.z - grid.bounds_min.z) * inv_size.z * grid.resolution[2] as f32).ceil().min(grid.resolution[2] as f32) as u32,
+        ((clamped_max.x - grid.bounds_min.x) * inv_size.x * grid.resolution[0] as f32)
+            .ceil()
+            .min(grid.resolution[0] as f32) as u32,
+        ((clamped_max.y - grid.bounds_min.y) * inv_size.y * grid.resolution[1] as f32)
+            .ceil()
+            .min(grid.resolution[1] as f32) as u32,
+        ((clamped_max.z - grid.bounds_min.z) * inv_size.z * grid.resolution[2] as f32)
+            .ceil()
+            .min(grid.resolution[2] as f32) as u32,
     ];
 
     let mut removed_volume = 0.0f32;
@@ -209,17 +226,27 @@ pub fn explode(
     let mut rng_state = seed;
     for _ in 0..fragment_count {
         // Simple LCG pseudo-random
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let rx = ((rng_state >> 16) as f32 / u32::MAX as f32) * 2.0 - 1.0;
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let ry = ((rng_state >> 16) as f32 / u32::MAX as f32) * 2.0 - 1.0;
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let rz = ((rng_state >> 16) as f32 / u32::MAX as f32) * 2.0 - 1.0;
 
         let dir = Vec3::new(rx, ry, rz).normalize_or_zero();
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let dist = ((rng_state >> 16) as f32 / u32::MAX as f32) * radius * 0.8;
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let frag_radius = radius * (0.2 + ((rng_state >> 16) as f32 / u32::MAX as f32) * 0.5);
 
         shapes.push(CarveShape::Sphere {
@@ -238,19 +265,19 @@ mod tests {
 
     fn make_test_grid() -> MutableVoxelGrid {
         let sphere = SdfNode::sphere(1.5);
-        MutableVoxelGrid::from_sdf(
-            &sphere, [32, 32, 32],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        )
+        MutableVoxelGrid::from_sdf(&sphere, [32, 32, 32], Vec3::splat(-2.0), Vec3::splat(2.0))
     }
 
     #[test]
     fn test_carve_sphere() {
         let mut grid = make_test_grid();
-        let result = carve(&mut grid, &CarveShape::Sphere {
-            center: Vec3::ZERO,
-            radius: 0.5,
-        });
+        let result = carve(
+            &mut grid,
+            &CarveShape::Sphere {
+                center: Vec3::ZERO,
+                radius: 0.5,
+            },
+        );
 
         assert!(result.modified_voxels > 0);
         assert!(result.removed_volume > 0.0);
@@ -258,17 +285,24 @@ mod tests {
 
         // Center should now be outside (positive distance)
         let center_d = grid.get_distance(16, 16, 16);
-        assert!(center_d >= 0.0, "Center should be carved out, got {}", center_d);
+        assert!(
+            center_d >= 0.0,
+            "Center should be carved out, got {}",
+            center_d
+        );
     }
 
     #[test]
     fn test_carve_box() {
         let mut grid = make_test_grid();
-        let result = carve(&mut grid, &CarveShape::Box {
-            center: Vec3::ZERO,
-            half_extents: Vec3::splat(0.3),
-            rotation: Quat::IDENTITY,
-        });
+        let result = carve(
+            &mut grid,
+            &CarveShape::Box {
+                center: Vec3::ZERO,
+                half_extents: Vec3::splat(0.3),
+                rotation: Quat::IDENTITY,
+            },
+        );
 
         assert!(result.modified_voxels > 0);
         assert!(result.removed_volume > 0.0);
@@ -287,8 +321,14 @@ mod tests {
     fn test_carve_batch() {
         let mut grid = make_test_grid();
         let shapes = vec![
-            CarveShape::Sphere { center: Vec3::new(0.5, 0.0, 0.0), radius: 0.3 },
-            CarveShape::Sphere { center: Vec3::new(-0.5, 0.0, 0.0), radius: 0.3 },
+            CarveShape::Sphere {
+                center: Vec3::new(0.5, 0.0, 0.0),
+                radius: 0.3,
+            },
+            CarveShape::Sphere {
+                center: Vec3::new(-0.5, 0.0, 0.0),
+                radius: 0.3,
+            },
         ];
 
         let result = carve_batch(&mut grid, &shapes);
@@ -298,10 +338,13 @@ mod tests {
     #[test]
     fn test_carve_outside_bounds() {
         let mut grid = make_test_grid();
-        let result = carve(&mut grid, &CarveShape::Sphere {
-            center: Vec3::splat(100.0),
-            radius: 0.5,
-        });
+        let result = carve(
+            &mut grid,
+            &CarveShape::Sphere {
+                center: Vec3::splat(100.0),
+                radius: 0.5,
+            },
+        );
 
         assert_eq!(result.modified_voxels, 0);
     }
@@ -322,13 +365,19 @@ mod tests {
         // Distance at edge should be near 1.5 (sphere radius) minus distance to center
         let edge_before = grid.get_distance(16, 16, 16); // center, should be ~-1.5
 
-        carve(&mut grid, &CarveShape::Sphere {
-            center: Vec3::new(0.0, 0.0, 0.0),
-            radius: 0.5,
-        });
+        carve(
+            &mut grid,
+            &CarveShape::Sphere {
+                center: Vec3::new(0.0, 0.0, 0.0),
+                radius: 0.5,
+            },
+        );
 
         let edge_after = grid.get_distance(16, 16, 16);
         // After carving a 0.5 radius sphere at center, distance should be ~0.5 (max(-1.5, -(-0.5)))
-        assert!(edge_after > edge_before, "Distance should increase after carving");
+        assert!(
+            edge_after > edge_before,
+            "Distance should increase after carving"
+        );
     }
 }

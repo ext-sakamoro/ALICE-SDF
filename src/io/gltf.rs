@@ -224,13 +224,19 @@ fn build_glb_data(
         for v in &mesh.vertices {
             let qx = if range[0] > 1e-6 {
                 (((v.position.x - min_pos[0]) / range[0]) * 32767.0) as i16
-            } else { 0 };
+            } else {
+                0
+            };
             let qy = if range[1] > 1e-6 {
                 (((v.position.y - min_pos[1]) / range[1]) * 32767.0) as i16
-            } else { 0 };
+            } else {
+                0
+            };
             let qz = if range[2] > 1e-6 {
                 (((v.position.z - min_pos[2]) / range[2]) * 32767.0) as i16
-            } else { 0 };
+            } else {
+                0
+            };
             bin.extend_from_slice(&qx.to_le_bytes());
             bin.extend_from_slice(&qy.to_le_bytes());
             bin.extend_from_slice(&qz.to_le_bytes());
@@ -281,7 +287,9 @@ fn build_glb_data(
         ));
         accessors.push(format!(
             r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC3"}}"#,
-            buffer_views.len() - 1, FLOAT, vert_count
+            buffer_views.len() - 1,
+            FLOAT,
+            vert_count
         ));
         attributes.push(format!(r#""NORMAL":{}"#, accessors.len() - 1));
     }
@@ -300,7 +308,9 @@ fn build_glb_data(
         ));
         accessors.push(format!(
             r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC2"}}"#,
-            buffer_views.len() - 1, FLOAT, vert_count
+            buffer_views.len() - 1,
+            FLOAT,
+            vert_count
         ));
         attributes.push(format!(r#""TEXCOORD_0":{}"#, accessors.len() - 1));
     }
@@ -319,7 +329,9 @@ fn build_glb_data(
         ));
         accessors.push(format!(
             r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC2"}}"#,
-            buffer_views.len() - 1, FLOAT, vert_count
+            buffer_views.len() - 1,
+            FLOAT,
+            vert_count
         ));
         attributes.push(format!(r#""TEXCOORD_1":{}"#, accessors.len() - 1));
     }
@@ -340,7 +352,9 @@ fn build_glb_data(
         ));
         accessors.push(format!(
             r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4"}}"#,
-            buffer_views.len() - 1, FLOAT, vert_count
+            buffer_views.len() - 1,
+            FLOAT,
+            vert_count
         ));
         attributes.push(format!(r#""TANGENT":{}"#, accessors.len() - 1));
     }
@@ -361,7 +375,9 @@ fn build_glb_data(
         ));
         accessors.push(format!(
             r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4"}}"#,
-            buffer_views.len() - 1, FLOAT, vert_count
+            buffer_views.len() - 1,
+            FLOAT,
+            vert_count
         ));
         attributes.push(format!(r#""COLOR_0":{}"#, accessors.len() - 1));
     }
@@ -375,9 +391,14 @@ fn build_glb_data(
         if let Some(mat_lib) = materials {
             for mat in &mat_lib.materials {
                 let slots: [&Option<crate::material::TextureSlot>; 8] = [
-                    &mat.albedo_map, &mat.normal_map, &mat.metallic_map,
-                    &mat.roughness_map, &mat.ao_map, &mat.emissive_map,
-                    &mat.metallic_roughness_map, &mat.clearcoat_normal_map,
+                    &mat.albedo_map,
+                    &mat.normal_map,
+                    &mat.metallic_map,
+                    &mat.roughness_map,
+                    &mat.ao_map,
+                    &mat.emissive_map,
+                    &mat.metallic_roughness_map,
+                    &mat.clearcoat_normal_map,
                 ];
                 for slot_opt in &slots {
                     if let Some(slot) = slot_opt {
@@ -400,8 +421,12 @@ fn build_glb_data(
                 // Build PBR metallic-roughness object
                 let mut pbr = format!(
                     r#"{{"baseColorFactor":[{},{},{},{}],"metallicFactor":{},"roughnessFactor":{}"#,
-                    mat.base_color[0], mat.base_color[1], mat.base_color[2], mat.base_color[3],
-                    mat.metallic, mat.roughness
+                    mat.base_color[0],
+                    mat.base_color[1],
+                    mat.base_color[2],
+                    mat.base_color[3],
+                    mat.metallic,
+                    mat.roughness
                 );
 
                 if let Some(ref tex) = mat.albedo_map {
@@ -417,10 +442,8 @@ fn build_glb_data(
 
                 pbr += "}"; // close pbrMetallicRoughness
 
-                let mut mat_str = format!(
-                    r#"{{"name":"{}","pbrMetallicRoughness":{}"#,
-                    mat.name, pbr
-                );
+                let mut mat_str =
+                    format!(r#"{{"name":"{}","pbrMetallicRoughness":{}"#, mat.name, pbr);
 
                 // Normal map
                 if let Some(ref tex) = mat.normal_map {
@@ -498,10 +521,7 @@ fn build_glb_data(
 
                     // KHR_materials_ior (only if not default 1.5)
                     if (mat.ior - 1.5).abs() > 0.001 {
-                        ext_parts.push(format!(
-                            r#""KHR_materials_ior":{{"ior":{}}}"#,
-                            mat.ior
-                        ));
+                        ext_parts.push(format!(r#""KHR_materials_ior":{{"ior":{}}}"#, mat.ior));
                         if !used_extensions.contains(&"KHR_materials_ior".to_string()) {
                             used_extensions.push("KHR_materials_ior".to_string());
                         }
@@ -514,12 +534,15 @@ fn build_glb_data(
                             mat.thickness
                         );
                         if mat.attenuation_distance.is_finite() {
-                            vol += &format!(r#","attenuationDistance":{}"#, mat.attenuation_distance);
+                            vol +=
+                                &format!(r#","attenuationDistance":{}"#, mat.attenuation_distance);
                         }
                         if mat.attenuation_color != [1.0, 1.0, 1.0] {
                             vol += &format!(
                                 r#","attenuationColor":[{},{},{}]"#,
-                                mat.attenuation_color[0], mat.attenuation_color[1], mat.attenuation_color[2]
+                                mat.attenuation_color[0],
+                                mat.attenuation_color[1],
+                                mat.attenuation_color[2]
                             );
                         }
                         vol += "}";
@@ -552,7 +575,11 @@ fn build_glb_data(
     }
 
     // --- Indices: group by material for multi-material splitting ---
-    let idx_comp_type = if use_u16 { UNSIGNED_SHORT } else { UNSIGNED_INT };
+    let idx_comp_type = if use_u16 {
+        UNSIGNED_SHORT
+    } else {
+        UNSIGNED_INT
+    };
     let attr_str = attributes.join(",");
     let mut primitives = Vec::new();
 
@@ -598,7 +625,9 @@ fn build_glb_data(
             ));
             accessors.push(format!(
                 r#"{{"bufferView":{},"componentType":{},"count":{},"type":"SCALAR"}}"#,
-                buffer_views.len() - 1, idx_comp_type, group_indices.len()
+                buffer_views.len() - 1,
+                idx_comp_type,
+                group_indices.len()
             ));
 
             let mat_ref = if (*mat_id as usize) < materials_json.len() {
@@ -638,7 +667,9 @@ fn build_glb_data(
         ));
         accessors.push(format!(
             r#"{{"bufferView":{},"componentType":{},"count":{},"type":"SCALAR"}}"#,
-            buffer_views.len() - 1, idx_comp_type, mesh.indices.len()
+            buffer_views.len() - 1,
+            idx_comp_type,
+            mesh.indices.len()
         ));
 
         primitives.push(format!(
@@ -658,7 +689,8 @@ fn build_glb_data(
         }
     }
     if !used_extensions.is_empty() {
-        let ext_list: Vec<String> = used_extensions.iter()
+        let ext_list: Vec<String> = used_extensions
+            .iter()
             .map(|e| format!(r#""{}""#, e))
             .collect();
         json += &format!(r#","extensionsUsed":[{}]"#, ext_list.join(","));
@@ -687,9 +719,21 @@ fn build_glb_data(
             max_pos[1] - min_pos[1],
             max_pos[2] - min_pos[2],
         ];
-        let sx = if range[0] > 1e-6 { range[0] / 32767.0 } else { 1.0 };
-        let sy = if range[1] > 1e-6 { range[1] / 32767.0 } else { 1.0 };
-        let sz = if range[2] > 1e-6 { range[2] / 32767.0 } else { 1.0 };
+        let sx = if range[0] > 1e-6 {
+            range[0] / 32767.0
+        } else {
+            1.0
+        };
+        let sy = if range[1] > 1e-6 {
+            range[1] / 32767.0
+        } else {
+            1.0
+        };
+        let sz = if range[2] > 1e-6 {
+            range[2] / 32767.0
+        } else {
+            1.0
+        };
         json += &format!(
             r#","nodes":[{{"mesh":0,"translation":[{},{},{}],"scale":[{},{},{}]}}]"#,
             min_pos[0], min_pos[1], min_pos[2], sx, sy, sz
@@ -738,7 +782,8 @@ fn build_glb_data(
                         ));
                         images_json.push(format!(
                             r#"{{"bufferView":{},"mimeType":"{}"}}"#,
-                            buffer_views.len() - 1, mime
+                            buffer_views.len() - 1,
+                            mime
                         ));
                     }
                     Err(_) => {
@@ -750,7 +795,8 @@ fn build_glb_data(
             json += &format!(r#","images":[{}]"#, images_json.join(","));
         } else {
             // URI references to external texture files
-            let images: Vec<String> = image_paths.iter()
+            let images: Vec<String> = image_paths
+                .iter()
                 .map(|p| format!(r#"{{"uri":"{}"}}"#, p))
                 .collect();
             json += &format!(r#","images":[{}]"#, images.join(","));
@@ -803,7 +849,8 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
     if magic != GLB_MAGIC {
         return Err(IoError::InvalidFormat(format!(
-            "Not a GLB file (magic: 0x{:08X}, expected 0x{:08X})", magic, GLB_MAGIC
+            "Not a GLB file (magic: 0x{:08X}, expected 0x{:08X})",
+            magic, GLB_MAGIC
         )));
     }
     let _version = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
@@ -816,10 +863,16 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
 
     while offset + 8 <= data.len() {
         let chunk_len = u32::from_le_bytes([
-            data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
         ]) as usize;
         let chunk_type = u32::from_le_bytes([
-            data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7],
+            data[offset + 4],
+            data[offset + 5],
+            data[offset + 6],
+            data[offset + 7],
         ]);
         offset += 8;
 
@@ -835,25 +888,30 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
         offset += chunk_len;
     }
 
-    let json_bytes = json_data.ok_or_else(|| IoError::InvalidFormat("Missing JSON chunk".into()))?;
+    let json_bytes =
+        json_data.ok_or_else(|| IoError::InvalidFormat("Missing JSON chunk".into()))?;
     let bin_bytes = bin_data.ok_or_else(|| IoError::InvalidFormat("Missing BIN chunk".into()))?;
 
     // Parse JSON using serde_json::Value (minimal parsing)
     let root: serde_json::Value = serde_json::from_slice(json_bytes)
         .map_err(|e| IoError::InvalidFormat(format!("Invalid glTF JSON: {}", e)))?;
 
-    let buffer_views = root["bufferViews"].as_array()
+    let buffer_views = root["bufferViews"]
+        .as_array()
         .ok_or_else(|| IoError::InvalidFormat("Missing bufferViews".into()))?;
-    let accessors = root["accessors"].as_array()
+    let accessors = root["accessors"]
+        .as_array()
         .ok_or_else(|| IoError::InvalidFormat("Missing accessors".into()))?;
 
     // Get first mesh, first primitive
-    let meshes = root["meshes"].as_array()
+    let meshes = root["meshes"]
+        .as_array()
         .ok_or_else(|| IoError::InvalidFormat("Missing meshes".into()))?;
     if meshes.is_empty() {
         return Err(IoError::InvalidFormat("No meshes in glTF".into()));
     }
-    let primitives = meshes[0]["primitives"].as_array()
+    let primitives = meshes[0]["primitives"]
+        .as_array()
         .ok_or_else(|| IoError::InvalidFormat("Missing primitives".into()))?;
     if primitives.is_empty() {
         return Err(IoError::InvalidFormat("No primitives in mesh".into()));
@@ -878,12 +936,18 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
             "VEC2" => 2,
             "VEC3" => 3,
             "VEC4" => 4,
-            _ => return Err(IoError::InvalidFormat(format!("Unknown accessor type: {}", acc_type))),
+            _ => {
+                return Err(IoError::InvalidFormat(format!(
+                    "Unknown accessor type: {}",
+                    acc_type
+                )))
+            }
         };
 
         if comp_type != FLOAT {
             return Err(IoError::InvalidFormat(format!(
-                "Expected FLOAT component, got {}", comp_type
+                "Expected FLOAT component, got {}",
+                comp_type
             )));
         }
 
@@ -911,7 +975,10 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
                         return Err(IoError::InvalidFormat("Buffer overrun".into()));
                     }
                     result.push(f32::from_le_bytes([
-                        bin_bytes[off], bin_bytes[off + 1], bin_bytes[off + 2], bin_bytes[off + 3],
+                        bin_bytes[off],
+                        bin_bytes[off + 1],
+                        bin_bytes[off + 2],
+                        bin_bytes[off + 3],
                     ]));
                 }
             }
@@ -920,8 +987,10 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     };
 
     // Read positions (required)
-    let pos_idx = attrs["POSITION"].as_u64()
-        .ok_or_else(|| IoError::InvalidFormat("Missing POSITION attribute".into()))? as usize;
+    let pos_idx = attrs["POSITION"]
+        .as_u64()
+        .ok_or_else(|| IoError::InvalidFormat("Missing POSITION attribute".into()))?
+        as usize;
     let positions = read_accessor_f32(pos_idx)?;
     let vert_count = positions.len() / 3;
 
@@ -943,9 +1012,9 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     let mut vertices = Vec::with_capacity(vert_count);
     for i in 0..vert_count {
         let pos = Vec3::new(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
-        let norm = normals.as_ref().map_or(Vec3::Y, |n| {
-            Vec3::new(n[i * 3], n[i * 3 + 1], n[i * 3 + 2])
-        });
+        let norm = normals
+            .as_ref()
+            .map_or(Vec3::Y, |n| Vec3::new(n[i * 3], n[i * 3 + 1], n[i * 3 + 2]));
         let mut vert = Vertex::new(pos, norm);
         if let Some(ref uv_data) = uvs {
             vert.uv = Vec2::new(uv_data[i * 2], uv_data[i * 2 + 1]);
@@ -974,12 +1043,16 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
                 UNSIGNED_INT => {
                     let off = byte_offset + i * 4;
                     u32::from_le_bytes([
-                        bin_bytes[off], bin_bytes[off + 1], bin_bytes[off + 2], bin_bytes[off + 3],
+                        bin_bytes[off],
+                        bin_bytes[off + 1],
+                        bin_bytes[off + 2],
+                        bin_bytes[off + 3],
                     ])
                 }
                 _ => {
                     return Err(IoError::InvalidFormat(format!(
-                        "Unsupported index type: {}", comp_type
+                        "Unsupported index type: {}",
+                        comp_type
                     )));
                 }
             };
@@ -1034,7 +1107,9 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         let mut mat_lib = MaterialLibrary::new();
-        mat_lib.add(crate::material::Material::metal("chrome", 0.9, 0.9, 0.9, 0.2));
+        mat_lib.add(crate::material::Material::metal(
+            "chrome", 0.9, 0.9, 0.9, 0.2,
+        ));
 
         let path = std::env::temp_dir().join("alice_test_mat.glb");
         export_glb(&mesh, &path, &GltfConfig::default(), Some(&mat_lib)).unwrap();
@@ -1077,20 +1152,39 @@ mod tests {
                 .with_albedo_map("textures/albedo.png")
                 .with_normal_map("textures/normal.png")
                 .with_metallic_roughness_map("textures/mr.png")
-                .with_ao_map("textures/ao.png")
+                .with_ao_map("textures/ao.png"),
         );
 
-        let (json_bytes, _bin) = build_glb_data(&mesh, &GltfConfig::default(), Some(&mat_lib)).unwrap();
+        let (json_bytes, _bin) =
+            build_glb_data(&mesh, &GltfConfig::default(), Some(&mat_lib)).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
 
         // Verify texture pipeline is present
-        assert!(json_str.contains(r#""images":[{"uri":"textures/albedo.png"}"#),
-            "Missing images array. JSON: {}", json_str);
-        assert!(json_str.contains(r#""textures":["#), "Missing textures array");
-        assert!(json_str.contains(r#""samplers":["#), "Missing samplers array");
-        assert!(json_str.contains(r#""baseColorTexture":"#), "Missing baseColorTexture in material");
-        assert!(json_str.contains(r#""normalTexture":"#), "Missing normalTexture in material");
-        assert!(json_str.contains(r#""occlusionTexture":"#), "Missing occlusionTexture");
+        assert!(
+            json_str.contains(r#""images":[{"uri":"textures/albedo.png"}"#),
+            "Missing images array. JSON: {}",
+            json_str
+        );
+        assert!(
+            json_str.contains(r#""textures":["#),
+            "Missing textures array"
+        );
+        assert!(
+            json_str.contains(r#""samplers":["#),
+            "Missing samplers array"
+        );
+        assert!(
+            json_str.contains(r#""baseColorTexture":"#),
+            "Missing baseColorTexture in material"
+        );
+        assert!(
+            json_str.contains(r#""normalTexture":"#),
+            "Missing normalTexture in material"
+        );
+        assert!(
+            json_str.contains(r#""occlusionTexture":"#),
+            "Missing occlusionTexture"
+        );
     }
 
     #[test]
@@ -1113,16 +1207,28 @@ mod tests {
         let json_str = String::from_utf8(json_bytes).unwrap();
 
         // Should declare the extension
-        assert!(json_str.contains("KHR_mesh_quantization"),
-            "Missing quantization extension. JSON: {}", json_str);
+        assert!(
+            json_str.contains("KHR_mesh_quantization"),
+            "Missing quantization extension. JSON: {}",
+            json_str
+        );
         // Should have node transform for dequantization
-        assert!(json_str.contains("\"translation\":["), "Missing dequantization translation");
-        assert!(json_str.contains("\"scale\":["), "Missing dequantization scale");
+        assert!(
+            json_str.contains("\"translation\":["),
+            "Missing dequantization translation"
+        );
+        assert!(
+            json_str.contains("\"scale\":["),
+            "Missing dequantization scale"
+        );
         // Compare with non-quantized version to verify size reduction
         let (_, bin_float) = build_glb_data(&mesh, &GltfConfig::default(), None).unwrap();
-        assert!(bin.len() < bin_float.len(),
+        assert!(
+            bin.len() < bin_float.len(),
             "Quantized buffer ({}) should be smaller than float ({})",
-            bin.len(), bin_float.len());
+            bin.len(),
+            bin_float.len()
+        );
 
         // Export as file to verify GLB integrity
         let path = std::env::temp_dir().join("alice_test_quantized.glb");
@@ -1172,12 +1278,10 @@ mod tests {
         let png_data: Vec<u8> = vec![
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
             0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-            0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
-            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
-            0x00, 0x00, 0x03, 0x00, 0x01, 0x36, 0x28, 0x19,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+            0x77, 0x53, 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
+            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x36,
+            0x28, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
             0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         std::fs::write(&tex_path, &png_data).unwrap();
@@ -1185,7 +1289,7 @@ mod tests {
         let mut mat_lib = MaterialLibrary::new();
         mat_lib.add(
             crate::material::Material::metal("Textured", 0.9, 0.9, 0.9, 0.2)
-                .with_albedo_map(tex_path.to_string_lossy().to_string())
+                .with_albedo_map(tex_path.to_string_lossy().to_string()),
         );
 
         let gltf_config = GltfConfig {
@@ -1197,10 +1301,20 @@ mod tests {
         let json_str = String::from_utf8(json_bytes).unwrap();
 
         // Should use bufferView instead of URI
-        assert!(json_str.contains(r#""bufferView""#), "Should embed via bufferView, got: {}", json_str);
-        assert!(json_str.contains(r#""mimeType":"image/png""#), "Should have mimeType");
+        assert!(
+            json_str.contains(r#""bufferView""#),
+            "Should embed via bufferView, got: {}",
+            json_str
+        );
+        assert!(
+            json_str.contains(r#""mimeType":"image/png""#),
+            "Should have mimeType"
+        );
         // Binary buffer should contain the PNG data
-        assert!(bin.len() >= png_data.len(), "Binary buffer should contain embedded image");
+        assert!(
+            bin.len() >= png_data.len(),
+            "Binary buffer should contain embedded image"
+        );
 
         std::fs::remove_dir_all(&test_dir).ok();
     }
@@ -1222,17 +1336,14 @@ mod tests {
                 .with_color(0.8, 0.0, 0.0, 1.0)
                 .with_clearcoat(1.0, 0.1)
                 .with_metallic(0.9)
-                .with_roughness(0.3)
+                .with_roughness(0.3),
         );
         mat_lib.add(
             crate::material::Material::glass("GlassPanel", 1.52)
                 .with_transmission(0.95)
-                .with_volume(0.01, 0.5, 0.9, 0.95, 1.0)
+                .with_volume(0.01, 0.5, 0.9, 0.95, 1.0),
         );
-        mat_lib.add(
-            crate::material::Material::new("Velvet")
-                .with_sheen(0.5, 0.3, 0.8, 0.7)
-        );
+        mat_lib.add(crate::material::Material::new("Velvet").with_sheen(0.5, 0.3, 0.8, 0.7));
 
         let gltf_config = GltfConfig {
             export_extensions: true,
@@ -1242,12 +1353,31 @@ mod tests {
         let (json_bytes, _) = build_glb_data(&mesh, &gltf_config, Some(&mat_lib)).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
 
-        assert!(json_str.contains("KHR_materials_clearcoat"), "Missing clearcoat extension: {}", json_str);
-        assert!(json_str.contains("KHR_materials_transmission"), "Missing transmission extension");
-        assert!(json_str.contains("KHR_materials_ior"), "Missing IOR extension");
-        assert!(json_str.contains("KHR_materials_volume"), "Missing volume extension");
-        assert!(json_str.contains("KHR_materials_sheen"), "Missing sheen extension");
-        assert!(json_str.contains("extensionsUsed"), "Missing extensionsUsed");
+        assert!(
+            json_str.contains("KHR_materials_clearcoat"),
+            "Missing clearcoat extension: {}",
+            json_str
+        );
+        assert!(
+            json_str.contains("KHR_materials_transmission"),
+            "Missing transmission extension"
+        );
+        assert!(
+            json_str.contains("KHR_materials_ior"),
+            "Missing IOR extension"
+        );
+        assert!(
+            json_str.contains("KHR_materials_volume"),
+            "Missing volume extension"
+        );
+        assert!(
+            json_str.contains("KHR_materials_sheen"),
+            "Missing sheen extension"
+        );
+        assert!(
+            json_str.contains("extensionsUsed"),
+            "Missing extensionsUsed"
+        );
     }
 
     #[test]
@@ -1270,13 +1400,21 @@ mod tests {
         let imported = import_glb_bytes(&glb_bytes).unwrap();
 
         assert_eq!(imported.vertex_count(), orig_verts, "Vertex count mismatch");
-        assert_eq!(imported.indices.len() / 3, orig_tris, "Triangle count mismatch");
+        assert_eq!(
+            imported.indices.len() / 3,
+            orig_tris,
+            "Triangle count mismatch"
+        );
 
         // Check first vertex position is close
         let orig_pos = mesh.vertices[0].position;
         let imp_pos = imported.vertices[0].position;
-        assert!((orig_pos - imp_pos).length() < 0.001,
-            "Position mismatch: {:?} vs {:?}", orig_pos, imp_pos);
+        assert!(
+            (orig_pos - imp_pos).length() < 0.001,
+            "Position mismatch: {:?} vs {:?}",
+            orig_pos,
+            imp_pos
+        );
     }
 
     #[test]

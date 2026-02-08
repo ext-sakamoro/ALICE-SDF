@@ -82,7 +82,11 @@ mod tests {
     fn test_columns_union_far() {
         // When both are far from boundary, behaves like regular union
         let d = sdf_columns_union(5.0, 3.0, 0.1, 4.0);
-        assert!((d - 3.0).abs() < 0.01, "Far from boundary should be like union, got {}", d);
+        assert!(
+            (d - 3.0).abs() < 0.01,
+            "Far from boundary should be like union, got {}",
+            d
+        );
     }
 
     #[test]
@@ -97,7 +101,11 @@ mod tests {
         // Far from boundary: behaves like regular subtraction
         let d = sdf_columns_subtraction(5.0, -3.0, 0.1, 4.0);
         let d_regular = 5.0f32.max(3.0);
-        assert!((d - d_regular).abs() < 0.01, "Far should be like subtraction, got {}", d);
+        assert!(
+            (d - d_regular).abs() < 0.01,
+            "Far should be like subtraction, got {}",
+            d
+        );
     }
 
     #[test]
@@ -105,6 +113,10 @@ mod tests {
         // Far from boundary: behaves like regular intersection
         let d = sdf_columns_intersection(5.0, 3.0, 0.1, 4.0);
         let d_regular = 5.0f32.max(3.0);
-        assert!((d - d_regular).abs() < 0.01, "Far should be like intersection, got {}", d);
+        assert!(
+            (d - d_regular).abs() < 0.01,
+            "Far should be like intersection, got {}",
+            d
+        );
     }
 }

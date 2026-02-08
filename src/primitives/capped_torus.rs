@@ -23,8 +23,7 @@ pub fn sdf_capped_torus(p: Vec3, major_radius: f32, minor_radius: f32, cap_angle
     } else {
         (px * px + p.y * p.y).sqrt()
     };
-    (p.x * p.x + p.y * p.y + p.z * p.z + major_radius * major_radius
-        - 2.0 * major_radius * k)
+    (p.x * p.x + p.y * p.y + p.z * p.z + major_radius * major_radius - 2.0 * major_radius * k)
         .sqrt()
         - minor_radius
 }
@@ -36,13 +35,12 @@ mod tests {
     #[test]
     fn test_capped_torus_full() {
         // Full torus (cap_angle = PI)
-        let d = sdf_capped_torus(
-            Vec3::new(1.0, 0.0, 0.0),
-            1.0,
-            0.3,
-            std::f32::consts::PI,
+        let d = sdf_capped_torus(Vec3::new(1.0, 0.0, 0.0), 1.0, 0.3, std::f32::consts::PI);
+        assert!(
+            (d + 0.3).abs() < 0.01,
+            "On tube center should be ~-0.3, got {}",
+            d
         );
-        assert!((d + 0.3).abs() < 0.01, "On tube center should be ~-0.3, got {}", d);
     }
 
     #[test]

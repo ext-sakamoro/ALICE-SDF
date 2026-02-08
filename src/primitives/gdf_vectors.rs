@@ -74,7 +74,11 @@ mod tests {
             assert!((n.length() - 1.0).abs() < 1e-6, "ICO norm: {}", n.length());
         }
         for n in &GDF_DODECAHEDRON {
-            assert!((n.length() - 1.0).abs() < 1e-6, "DODEC norm: {}", n.length());
+            assert!(
+                (n.length() - 1.0).abs() < 1e-6,
+                "DODEC norm: {}",
+                n.length()
+            );
         }
     }
 }

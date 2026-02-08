@@ -13,7 +13,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::mesh::{Vertex, Mesh};
+use crate::mesh::{Mesh, Vertex};
 use std::collections::HashMap;
 
 /// Mesh validation result
@@ -40,9 +40,7 @@ pub struct MeshValidation {
 impl MeshValidation {
     /// Check if the mesh passes all quality checks
     pub fn is_clean(&self) -> bool {
-        self.is_manifold
-            && self.degenerate_triangles == 0
-            && self.inconsistent_normals == 0
+        self.is_manifold && self.degenerate_triangles == 0 && self.inconsistent_normals == 0
     }
 }
 
@@ -51,13 +49,25 @@ impl std::fmt::Display for MeshValidation {
         writeln!(f, "Mesh Validation Report")?;
         writeln!(f, "  Vertices: {}", self.vertex_count)?;
         writeln!(f, "  Triangles: {}", self.triangle_count)?;
-        writeln!(f, "  Manifold: {}", if self.is_manifold { "YES" } else { "NO" })?;
+        writeln!(
+            f,
+            "  Manifold: {}",
+            if self.is_manifold { "YES" } else { "NO" }
+        )?;
         writeln!(f, "  Non-manifold edges: {}", self.non_manifold_edges)?;
         writeln!(f, "  Boundary edges: {}", self.boundary_edges)?;
         writeln!(f, "  Degenerate triangles: {}", self.degenerate_triangles)?;
         writeln!(f, "  Duplicate vertices: {}", self.duplicate_vertices)?;
         writeln!(f, "  Inconsistent normals: {}", self.inconsistent_normals)?;
-        write!(f, "  Status: {}", if self.is_clean() { "CLEAN" } else { "NEEDS REPAIR" })
+        write!(
+            f,
+            "  Status: {}",
+            if self.is_clean() {
+                "CLEAN"
+            } else {
+                "NEEDS REPAIR"
+            }
+        )
     }
 }
 
@@ -67,7 +77,11 @@ struct EdgeKey(u32, u32);
 
 impl EdgeKey {
     fn new(a: u32, b: u32) -> Self {
-        if a <= b { EdgeKey(a, b) } else { EdgeKey(b, a) }
+        if a <= b {
+            EdgeKey(a, b)
+        } else {
+            EdgeKey(b, a)
+        }
     }
 }
 
@@ -163,11 +177,17 @@ fn count_duplicate_vertices(mesh: &Mesh, epsilon: f32) -> usize {
                             }
                         }
                     }
-                    if is_duplicate { break; }
+                    if is_duplicate {
+                        break;
+                    }
                 }
-                if is_duplicate { break; }
+                if is_duplicate {
+                    break;
+                }
             }
-            if is_duplicate { break; }
+            if is_duplicate {
+                break;
+            }
         }
 
         if is_duplicate {
@@ -260,7 +280,8 @@ impl MeshRepair {
                     for dz in -1..=1 {
                         if let Some(indices) = grid.get(&(cx + dx, cy + dy, cz + dz)) {
                             for &j in indices {
-                                if (new_vertices[j].position - v.position).length_squared() < eps_sq {
+                                if (new_vertices[j].position - v.position).length_squared() < eps_sq
+                                {
                                     found = Some(j);
                                     break 'search;
                                 }
@@ -458,7 +479,8 @@ mod tests {
 
         // Two identical vertices
         mesh.vertices.push(Vertex::new(Vec3::ZERO, Vec3::Y));
-        mesh.vertices.push(Vertex::new(Vec3::new(0.0, 0.0, 1e-8), Vec3::Y)); // near-duplicate
+        mesh.vertices
+            .push(Vertex::new(Vec3::new(0.0, 0.0, 1e-8), Vec3::Y)); // near-duplicate
         mesh.vertices.push(Vertex::new(Vec3::X, Vec3::Y));
         mesh.indices = vec![0, 1, 2];
 

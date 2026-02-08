@@ -41,9 +41,17 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         SdfNode::Sphere { .. } => grad_sphere(point),
         SdfNode::Box3d { half_extents } => grad_box3d(point, *half_extents),
         SdfNode::Plane { normal, .. } => *normal,
-        SdfNode::Cylinder { radius, half_height } => grad_cylinder(point, *radius, *half_height),
-        SdfNode::Torus { major_radius, minor_radius } => grad_torus(point, *major_radius, *minor_radius),
-        SdfNode::Capsule { point_a, point_b, .. } => grad_capsule(point, *point_a, *point_b),
+        SdfNode::Cylinder {
+            radius,
+            half_height,
+        } => grad_cylinder(point, *radius, *half_height),
+        SdfNode::Torus {
+            major_radius,
+            minor_radius,
+        } => grad_torus(point, *major_radius, *minor_radius),
+        SdfNode::Capsule {
+            point_a, point_b, ..
+        } => grad_capsule(point, *point_a, *point_b),
         SdfNode::InfiniteCylinder { .. } => grad_infinite_cylinder(point),
         SdfNode::Gyroid { scale, thickness } => grad_gyroid(point, *scale, *thickness),
         SdfNode::SchwarzP { scale, thickness } => grad_schwarz_p(point, *scale, *thickness),
@@ -118,17 +126,29 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         SdfNode::Union { a, b } => {
             let da = eval(a, point);
             let db = eval(b, point);
-            if da <= db { eval_gradient(a, point) } else { eval_gradient(b, point) }
+            if da <= db {
+                eval_gradient(a, point)
+            } else {
+                eval_gradient(b, point)
+            }
         }
         SdfNode::Intersection { a, b } => {
             let da = eval(a, point);
             let db = eval(b, point);
-            if da >= db { eval_gradient(a, point) } else { eval_gradient(b, point) }
+            if da >= db {
+                eval_gradient(a, point)
+            } else {
+                eval_gradient(b, point)
+            }
         }
         SdfNode::Subtraction { a, b } => {
             let da = eval(a, point);
             let db = eval(b, point);
-            if da >= -db { eval_gradient(a, point) } else { -eval_gradient(b, point) }
+            if da >= -db {
+                eval_gradient(a, point)
+            } else {
+                -eval_gradient(b, point)
+            }
         }
         SdfNode::SmoothUnion { a, b, k } => {
             let da = eval(a, point);
@@ -226,10 +246,18 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let neg_max_ab = -da.max(db);
             if min_ab > neg_max_ab {
                 // min(a,b) wins
-                if da <= db { eval_gradient(a, point) } else { eval_gradient(b, point) }
+                if da <= db {
+                    eval_gradient(a, point)
+                } else {
+                    eval_gradient(b, point)
+                }
             } else {
                 // -max(a,b) wins
-                if da >= db { -eval_gradient(a, point) } else { -eval_gradient(b, point) }
+                if da >= db {
+                    -eval_gradient(a, point)
+                } else {
+                    -eval_gradient(b, point)
+                }
             }
         }
         // Morph: linear blend
@@ -286,16 +314,32 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             // f = |eval(child, p)| - thickness → ∇f = sign(d) · ∇child
             let d = eval(child, point);
             let grad = eval_gradient(child, point);
-            if d >= 0.0 { grad } else { -grad }
+            if d >= 0.0 {
+                grad
+            } else {
+                -grad
+            }
         }
         SdfNode::Elongate { child, amount } => {
             // q = p - clamp(p, -a, a); ∂qᵢ/∂pᵢ = 1 if |pᵢ|>aᵢ, else 0
             let q = point - point.clamp(-*amount, *amount);
             let grad = eval_gradient(child, q);
             Vec3::new(
-                if point.x.abs() > amount.x { grad.x } else { 0.0 },
-                if point.y.abs() > amount.y { grad.y } else { 0.0 },
-                if point.z.abs() > amount.z { grad.z } else { 0.0 },
+                if point.x.abs() > amount.x {
+                    grad.x
+                } else {
+                    0.0
+                },
+                if point.y.abs() > amount.y {
+                    grad.y
+                } else {
+                    0.0
+                },
+                if point.z.abs() > amount.z {
+                    grad.z
+                } else {
+                    0.0
+                },
             )
         }
         SdfNode::Mirror { child, axes } => {
@@ -303,9 +347,21 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let p = modifier_mirror(point, *axes);
             let grad = eval_gradient(child, p);
             Vec3::new(
-                if axes.x != 0.0 && point.x < 0.0 { -grad.x } else { grad.x },
-                if axes.y != 0.0 && point.y < 0.0 { -grad.y } else { grad.y },
-                if axes.z != 0.0 && point.z < 0.0 { -grad.z } else { grad.z },
+                if axes.x != 0.0 && point.x < 0.0 {
+                    -grad.x
+                } else {
+                    grad.x
+                },
+                if axes.y != 0.0 && point.y < 0.0 {
+                    -grad.y
+                } else {
+                    grad.y
+                },
+                if axes.z != 0.0 && point.z < 0.0 {
+                    -grad.z
+                } else {
+                    grad.z
+                },
             )
         }
         SdfNode::OctantMirror { child: _child } => {
@@ -313,9 +369,12 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             // Use numerical gradient for correctness.
             let eps = 1e-4;
             Vec3::new(
-                (eval(node, point + Vec3::X * eps) - eval(node, point - Vec3::X * eps)) / (2.0 * eps),
-                (eval(node, point + Vec3::Y * eps) - eval(node, point - Vec3::Y * eps)) / (2.0 * eps),
-                (eval(node, point + Vec3::Z * eps) - eval(node, point - Vec3::Z * eps)) / (2.0 * eps),
+                (eval(node, point + Vec3::X * eps) - eval(node, point - Vec3::X * eps))
+                    / (2.0 * eps),
+                (eval(node, point + Vec3::Y * eps) - eval(node, point - Vec3::Y * eps))
+                    / (2.0 * eps),
+                (eval(node, point + Vec3::Z * eps) - eval(node, point - Vec3::Z * eps))
+                    / (2.0 * eps),
             )
         }
         SdfNode::Revolution { child, offset } => {
@@ -324,11 +383,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let q = Vec3::new(r_xz - *offset, point.y, 0.0);
             let g = eval_gradient(child, q);
             // ∂qₓ/∂pₓ = pₓ/r_xz, ∂qₓ/∂p_z = p_z/r_xz, ∂q_y/∂p_y = 1
-            Vec3::new(
-                g.x * point.x / r_xz,
-                g.y,
-                g.x * point.z / r_xz,
-            )
+            Vec3::new(g.x * point.x / r_xz, g.y, g.x * point.z / r_xz)
         }
         SdfNode::Extrude { child, half_height } => {
             // f = max_min(d2d, |pz|-h) (box-like combination)
@@ -389,7 +444,11 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let p = modifier_repeat_infinite(point, *spacing);
             eval_gradient(child, p)
         }
-        SdfNode::RepeatFinite { child, count, spacing } => {
+        SdfNode::RepeatFinite {
+            child,
+            count,
+            spacing,
+        } => {
             let p = modifier_repeat_finite(point, *count, *spacing);
             eval_gradient(child, p)
         }
@@ -472,7 +531,9 @@ fn numerical_gradient_of(node: &SdfNode, point: Vec3) -> Vec3 {
 #[inline(always)]
 fn grad_sphere(point: Vec3) -> Vec3 {
     let len = point.length();
-    if len < 1e-10 { return Vec3::Y; }
+    if len < 1e-10 {
+        return Vec3::Y;
+    }
     point / len
 }
 
@@ -490,7 +551,9 @@ fn grad_box3d(point: Vec3, half_extents: Vec3) -> Vec3 {
         // Outside: gradient of max(q,0).length()
         let clamped = Vec3::new(q.x.max(0.0), q.y.max(0.0), q.z.max(0.0));
         let len = clamped.length();
-        if len < 1e-10 { return Vec3::Y; }
+        if len < 1e-10 {
+            return Vec3::Y;
+        }
         clamped * signs / len
     } else {
         // Inside: gradient points toward nearest face
@@ -556,7 +619,9 @@ fn grad_capsule(point: Vec3, a: Vec3, b: Vec3) -> Vec3 {
     let closest = a + ab * t;
     let diff = point - closest;
     let len = diff.length();
-    if len < 1e-10 { return Vec3::Y; }
+    if len < 1e-10 {
+        return Vec3::Y;
+    }
     diff / len
 }
 
@@ -564,7 +629,9 @@ fn grad_capsule(point: Vec3, a: Vec3, b: Vec3) -> Vec3 {
 #[inline(always)]
 fn grad_infinite_cylinder(point: Vec3) -> Vec3 {
     let r = (point.x * point.x + point.z * point.z).sqrt();
-    if r < 1e-10 { return Vec3::X; }
+    if r < 1e-10 {
+        return Vec3::X;
+    }
     Vec3::new(point.x / r, 0.0, point.z / r)
 }
 
@@ -621,7 +688,11 @@ fn smooth_min_weights(da: f32, db: f32, k: f32) -> (f32, f32) {
 
     if h < 1e-10 {
         // Outside blend zone: gradient of whichever is smaller
-        if da <= db { (1.0, 0.0) } else { (0.0, 1.0) }
+        if da <= db {
+            (1.0, 0.0)
+        } else {
+            (0.0, 1.0)
+        }
     } else if da <= db {
         (1.0 - h * 0.5, h * 0.5)
     } else {
@@ -637,7 +708,11 @@ fn smooth_max_weights(da: f32, db: f32, k: f32) -> (f32, f32) {
     let h = ((k - diff.abs()) / k).max(0.0);
 
     if h < 1e-10 {
-        if da >= db { (1.0, 0.0) } else { (0.0, 1.0) }
+        if da >= db {
+            (1.0, 0.0)
+        } else {
+            (0.0, 1.0)
+        }
     } else if da >= db {
         (1.0 - h * 0.5, h * 0.5)
     } else {
@@ -677,7 +752,10 @@ mod tests {
         assert!(
             diff < tolerance,
             "Gradient mismatch at {:?}: analytic={:?}, numerical={:?}, diff={}",
-            point, analytic, numerical, diff
+            point,
+            analytic,
+            numerical,
+            diff
         );
     }
 
@@ -776,10 +854,8 @@ mod tests {
 
     #[test]
     fn test_grad_smooth_union() {
-        let shape = SdfNode::sphere(1.0).smooth_union(
-            SdfNode::box3d(1.0, 1.0, 1.0).translate(1.0, 0.0, 0.0),
-            0.3,
-        );
+        let shape = SdfNode::sphere(1.0)
+            .smooth_union(SdfNode::box3d(1.0, 1.0, 1.0).translate(1.0, 0.0, 0.0), 0.3);
         for p in test_points() {
             check_gradient(&shape, p, 0.1);
         }
@@ -835,7 +911,9 @@ mod tests {
 
     #[test]
     fn test_grad_mirror() {
-        let shape = SdfNode::sphere(1.0).translate(1.0, 0.0, 0.0).mirror(true, false, false);
+        let shape = SdfNode::sphere(1.0)
+            .translate(1.0, 0.0, 0.0)
+            .mirror(true, false, false);
         for p in test_points() {
             check_gradient(&shape, p, 0.02);
         }
@@ -861,7 +939,10 @@ mod tests {
     fn test_grad_complex_tree() {
         // Complex tree: tests chain rule propagation
         let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0), 0.2)
+            .smooth_union(
+                SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0),
+                0.2,
+            )
             .subtract(SdfNode::box3d(0.4, 0.4, 0.4))
             .translate(0.5, 0.0, 0.0);
 
@@ -881,10 +962,8 @@ mod tests {
 
     #[test]
     fn test_grad_chamfer_union() {
-        let shape = SdfNode::sphere(1.0).chamfer_union(
-            SdfNode::box3d(1.0, 1.0, 1.0).translate(1.0, 0.0, 0.0),
-            0.2,
-        );
+        let shape = SdfNode::sphere(1.0)
+            .chamfer_union(SdfNode::box3d(1.0, 1.0, 1.0).translate(1.0, 0.0, 0.0), 0.2);
         for p in test_points() {
             check_gradient(&shape, p, 0.1);
         }

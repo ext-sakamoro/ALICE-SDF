@@ -18,11 +18,7 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_ellipsoid(p: Vec3, radii: Vec3) -> f32 {
     // Guard against zero radii (prevents division by zero in p/radii)
-    let safe_radii = Vec3::new(
-        radii.x.max(1e-10),
-        radii.y.max(1e-10),
-        radii.z.max(1e-10),
-    );
+    let safe_radii = Vec3::new(radii.x.max(1e-10), radii.y.max(1e-10), radii.z.max(1e-10));
     let k0 = (p / safe_radii).length();
     let k1 = (p / (safe_radii * safe_radii)).length();
     if k1 < 1e-10 {
@@ -62,7 +58,11 @@ mod tests {
         let r = 1.5;
         let p = Vec3::new(r, 0.0, 0.0);
         let d = sdf_ellipsoid(p, Vec3::splat(r));
-        assert!(d.abs() < 0.01, "Equal radii should be like a sphere, got {}", d);
+        assert!(
+            d.abs() < 0.01,
+            "Equal radii should be like a sphere, got {}",
+            d
+        );
     }
 
     #[test]

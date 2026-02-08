@@ -33,19 +33,19 @@
 //!
 //! Author: Moroya Sakamoto
 
-pub mod operations;
 pub mod debris;
 pub mod fracture;
+pub mod operations;
 
 use glam::Vec3;
 use rayon::prelude::*;
 
-use crate::types::SdfNode;
 use crate::eval::eval;
+use crate::types::SdfNode;
 
-pub use operations::{carve, carve_batch, CarveShape, DestructionResult};
 pub use debris::{generate_debris, DebrisConfig, DebrisPiece};
 pub use fracture::{voronoi_fracture, FractureConfig, FracturePiece};
+pub use operations::{carve, carve_batch, CarveShape, DestructionResult};
 
 /// Mutable voxel grid for real-time destruction
 ///
@@ -97,11 +97,7 @@ impl MutableVoxelGrid {
         let materials = vec![0u16; total];
 
         let size = bounds_max - bounds_min;
-        let step = Vec3::new(
-            size.x / rx as f32,
-            size.y / ry as f32,
-            size.z / rz as f32,
-        );
+        let step = Vec3::new(size.x / rx as f32, size.y / ry as f32, size.z / rz as f32);
         let half_step = step * 0.5;
 
         // Parallel Z-slab evaluation
@@ -180,9 +176,12 @@ impl MutableVoxelGrid {
         let gy = (t.y * self.resolution[1] as f32) as i32;
         let gz = (t.z * self.resolution[2] as f32) as i32;
 
-        if gx >= 0 && gx < self.resolution[0] as i32
-            && gy >= 0 && gy < self.resolution[1] as i32
-            && gz >= 0 && gz < self.resolution[2] as i32
+        if gx >= 0
+            && gx < self.resolution[0] as i32
+            && gy >= 0
+            && gy < self.resolution[1] as i32
+            && gz >= 0
+            && gz < self.resolution[2] as i32
         {
             Some([gx as u32, gy as u32, gz as u32])
         } else {
@@ -199,11 +198,12 @@ impl MutableVoxelGrid {
             size.y / self.resolution[1] as f32,
             size.z / self.resolution[2] as f32,
         );
-        self.bounds_min + Vec3::new(
-            (x as f32 + 0.5) * step.x,
-            (y as f32 + 0.5) * step.y,
-            (z as f32 + 0.5) * step.z,
-        )
+        self.bounds_min
+            + Vec3::new(
+                (x as f32 + 0.5) * step.x,
+                (y as f32 + 0.5) * step.y,
+                (z as f32 + 0.5) * step.z,
+            )
     }
 
     /// Voxel size (step between adjacent voxels)
@@ -223,7 +223,8 @@ impl MutableVoxelGrid {
         let cx = x / self.chunk_size;
         let cy = y / self.chunk_size;
         let cz = z / self.chunk_size;
-        let ci = (cx + cy * self.chunks_per_axis[0]
+        let ci = (cx
+            + cy * self.chunks_per_axis[0]
             + cz * self.chunks_per_axis[0] * self.chunks_per_axis[1]) as usize;
         if ci < self.dirty_chunks.len() {
             self.dirty_chunks[ci] = true;
@@ -254,7 +255,8 @@ impl MutableVoxelGrid {
 
     /// Check if a specific chunk is dirty
     pub fn is_chunk_dirty(&self, cx: u32, cy: u32, cz: u32) -> bool {
-        let ci = (cx + cy * self.chunks_per_axis[0]
+        let ci = (cx
+            + cy * self.chunks_per_axis[0]
             + cz * self.chunks_per_axis[0] * self.chunks_per_axis[1]) as usize;
         ci < self.dirty_chunks.len() && self.dirty_chunks[ci]
     }
@@ -323,17 +325,16 @@ impl MutableVoxelGrid {
                     }
 
                     // Generate triangles using edge midpoints
-                    let base_pos = self.bounds_min + Vec3::new(
-                        x as f32 * vs.x,
-                        y as f32 * vs.y,
-                        z as f32 * vs.z,
-                    );
+                    let base_pos = self.bounds_min
+                        + Vec3::new(x as f32 * vs.x, y as f32 * vs.y, z as f32 * vs.z);
 
                     let edge_positions = mc_edge_positions(base_pos, vs, &corners);
                     let base_idx = vertices.len() as u32;
 
                     for &[a, b, c] in MC_TRI_TABLE[cube_index as usize].iter() {
-                        if a == 255 { break; }
+                        if a == 255 {
+                            break;
+                        }
                         let pa = edge_positions[a as usize];
                         let pb = edge_positions[b as usize];
                         let pc = edge_positions[c as usize];
@@ -376,7 +377,10 @@ impl MutableVoxelGrid {
             .iter()
             .map(|&[cx, cy, cz]| {
                 let mesh = self.remesh_chunk(cx, cy, cz);
-                ChunkMesh { chunk: [cx, cy, cz], mesh }
+                ChunkMesh {
+                    chunk: [cx, cy, cz],
+                    mesh,
+                }
             })
             .collect();
         self.clear_dirty();
@@ -418,9 +422,18 @@ fn mc_edge_positions(base: Vec3, step: Vec3, corners: &[f32; 8]) -> [Vec3; 12] {
     };
 
     [
-        interp(0, 1), interp(1, 2), interp(2, 3), interp(3, 0),
-        interp(4, 5), interp(5, 6), interp(6, 7), interp(7, 4),
-        interp(0, 4), interp(1, 5), interp(2, 6), interp(3, 7),
+        interp(0, 1),
+        interp(1, 2),
+        interp(2, 3),
+        interp(3, 0),
+        interp(4, 5),
+        interp(5, 6),
+        interp(6, 7),
+        interp(7, 4),
+        interp(0, 4),
+        interp(1, 5),
+        interp(2, 6),
+        interp(3, 7),
     ]
 }
 
@@ -514,8 +527,22 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0x3A, [2, 3, 11], [0, 1, 8], [1, 7, 8], [1, 5, 7]);
     tri!(0x3B, [11, 2, 1], [11, 1, 7], [7, 1, 5]);
     tri!(0x3C, [9, 5, 8], [8, 5, 7], [10, 1, 3], [10, 3, 11]);
-    tri!(0x3D, [5, 7, 0], [5, 0, 9], [7, 11, 0], [1, 0, 10], [11, 10, 0]);
-    tri!(0x3E, [11, 10, 0], [11, 0, 3], [10, 5, 0], [8, 0, 7], [5, 7, 0]);
+    tri!(
+        0x3D,
+        [5, 7, 0],
+        [5, 0, 9],
+        [7, 11, 0],
+        [1, 0, 10],
+        [11, 10, 0]
+    );
+    tri!(
+        0x3E,
+        [11, 10, 0],
+        [11, 0, 3],
+        [10, 5, 0],
+        [8, 0, 7],
+        [5, 7, 0]
+    );
     tri!(0x3F, [11, 10, 5], [7, 11, 5]);
     tri!(0x40, [10, 6, 5]);
     tri!(0x41, [0, 8, 3], [5, 10, 6]);
@@ -544,9 +571,23 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0x58, [3, 11, 2], [7, 8, 4], [10, 6, 5]);
     tri!(0x59, [5, 10, 6], [4, 7, 2], [4, 2, 0], [2, 7, 11]);
     tri!(0x5A, [0, 1, 9], [4, 7, 8], [2, 3, 11], [5, 10, 6]);
-    tri!(0x5B, [9, 2, 1], [9, 11, 2], [9, 4, 11], [7, 11, 4], [5, 10, 6]);
+    tri!(
+        0x5B,
+        [9, 2, 1],
+        [9, 11, 2],
+        [9, 4, 11],
+        [7, 11, 4],
+        [5, 10, 6]
+    );
     tri!(0x5C, [8, 4, 7], [3, 11, 5], [3, 5, 1], [5, 11, 6]);
-    tri!(0x5D, [5, 1, 11], [5, 11, 6], [1, 0, 11], [7, 11, 4], [0, 4, 11]);
+    tri!(
+        0x5D,
+        [5, 1, 11],
+        [5, 11, 6],
+        [1, 0, 11],
+        [7, 11, 4],
+        [0, 4, 11]
+    );
     tri!(0x5E, [0, 5, 9], [0, 6, 5], [0, 3, 6], [11, 6, 3], [8, 4, 7]);
     tri!(0x5F, [6, 5, 9], [6, 9, 11], [4, 7, 9], [7, 11, 9]);
     tri!(0x60, [10, 4, 9], [6, 4, 10]);
@@ -560,9 +601,23 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0x68, [10, 4, 9], [10, 6, 4], [11, 2, 3]);
     tri!(0x69, [0, 8, 2], [2, 8, 11], [4, 9, 10], [4, 10, 6]);
     tri!(0x6A, [3, 11, 2], [0, 1, 6], [0, 6, 4], [6, 1, 10]);
-    tri!(0x6B, [6, 4, 1], [6, 1, 10], [4, 8, 1], [2, 1, 11], [8, 11, 1]);
+    tri!(
+        0x6B,
+        [6, 4, 1],
+        [6, 1, 10],
+        [4, 8, 1],
+        [2, 1, 11],
+        [8, 11, 1]
+    );
     tri!(0x6C, [9, 6, 4], [9, 3, 6], [9, 1, 3], [11, 6, 3]);
-    tri!(0x6D, [8, 11, 1], [8, 1, 0], [11, 6, 1], [9, 1, 4], [6, 4, 1]);
+    tri!(
+        0x6D,
+        [8, 11, 1],
+        [8, 1, 0],
+        [11, 6, 1],
+        [9, 1, 4],
+        [6, 4, 1]
+    );
     tri!(0x6E, [3, 11, 6], [3, 6, 0], [0, 6, 4]);
     tri!(0x6F, [6, 4, 8], [11, 6, 8]);
     tri!(0x70, [7, 10, 6], [7, 8, 10], [8, 9, 10]);
@@ -574,8 +629,22 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0x76, [7, 8, 0], [7, 0, 6], [6, 0, 2]);
     tri!(0x77, [7, 3, 2], [6, 7, 2]);
     tri!(0x78, [2, 3, 11], [10, 6, 8], [10, 8, 9], [8, 6, 7]);
-    tri!(0x79, [2, 0, 7], [2, 7, 11], [0, 9, 7], [6, 7, 10], [9, 10, 7]);
-    tri!(0x7A, [1, 8, 0], [1, 7, 8], [1, 10, 7], [6, 7, 10], [2, 3, 11]);
+    tri!(
+        0x79,
+        [2, 0, 7],
+        [2, 7, 11],
+        [0, 9, 7],
+        [6, 7, 10],
+        [9, 10, 7]
+    );
+    tri!(
+        0x7A,
+        [1, 8, 0],
+        [1, 7, 8],
+        [1, 10, 7],
+        [6, 7, 10],
+        [2, 3, 11]
+    );
     tri!(0x7B, [11, 2, 1], [11, 1, 7], [10, 6, 1], [6, 7, 1]);
     tri!(0x7C, [8, 9, 6], [8, 6, 7], [9, 1, 6], [11, 6, 3], [1, 3, 6]);
     tri!(0x7D, [0, 9, 1], [11, 6, 7]);
@@ -604,14 +673,28 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0x94, [6, 8, 4], [6, 11, 8], [2, 10, 1]);
     tri!(0x95, [1, 2, 10], [3, 0, 11], [0, 6, 11], [0, 4, 6]);
     tri!(0x96, [4, 11, 8], [4, 6, 11], [0, 2, 9], [2, 10, 9]);
-    tri!(0x97, [10, 9, 3], [10, 3, 2], [9, 4, 3], [11, 3, 6], [4, 6, 3]);
+    tri!(
+        0x97,
+        [10, 9, 3],
+        [10, 3, 2],
+        [9, 4, 3],
+        [11, 3, 6],
+        [4, 6, 3]
+    );
     tri!(0x98, [8, 2, 3], [8, 4, 2], [4, 6, 2]);
     tri!(0x99, [0, 4, 2], [4, 6, 2]);
     tri!(0x9A, [1, 9, 0], [2, 3, 4], [2, 4, 6], [4, 3, 8]);
     tri!(0x9B, [1, 9, 4], [1, 4, 2], [2, 4, 6]);
     tri!(0x9C, [8, 1, 3], [8, 6, 1], [8, 4, 6], [6, 10, 1]);
     tri!(0x9D, [10, 1, 0], [10, 0, 6], [6, 0, 4]);
-    tri!(0x9E, [4, 6, 3], [4, 3, 8], [6, 10, 3], [0, 3, 9], [10, 9, 3]);
+    tri!(
+        0x9E,
+        [4, 6, 3],
+        [4, 3, 8],
+        [6, 10, 3],
+        [0, 3, 9],
+        [10, 9, 3]
+    );
     tri!(0x9F, [10, 9, 4], [6, 10, 4]);
     tri!(0xA0, [4, 9, 5], [7, 6, 11]);
     tri!(0xA1, [0, 8, 3], [4, 9, 5], [11, 7, 6]);
@@ -620,22 +703,50 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0xA4, [9, 5, 4], [10, 1, 2], [7, 6, 11]);
     tri!(0xA5, [6, 11, 7], [1, 2, 10], [0, 8, 3], [4, 9, 5]);
     tri!(0xA6, [7, 6, 11], [5, 4, 10], [4, 2, 10], [4, 0, 2]);
-    tri!(0xA7, [3, 4, 8], [3, 5, 4], [3, 2, 5], [10, 5, 2], [11, 7, 6]);
+    tri!(
+        0xA7,
+        [3, 4, 8],
+        [3, 5, 4],
+        [3, 2, 5],
+        [10, 5, 2],
+        [11, 7, 6]
+    );
     tri!(0xA8, [7, 2, 3], [7, 6, 2], [5, 4, 9]);
     tri!(0xA9, [9, 5, 4], [0, 8, 6], [0, 6, 2], [6, 8, 7]);
     tri!(0xAA, [3, 6, 2], [3, 7, 6], [1, 5, 0], [5, 4, 0]);
     tri!(0xAB, [6, 2, 8], [6, 8, 7], [2, 1, 8], [4, 8, 5], [1, 5, 8]);
     tri!(0xAC, [9, 5, 4], [10, 1, 6], [1, 7, 6], [1, 3, 7]);
     tri!(0xAD, [1, 6, 10], [1, 7, 6], [1, 0, 7], [8, 7, 0], [9, 5, 4]);
-    tri!(0xAE, [4, 0, 10], [4, 10, 5], [0, 3, 10], [6, 10, 7], [3, 7, 10]);
+    tri!(
+        0xAE,
+        [4, 0, 10],
+        [4, 10, 5],
+        [0, 3, 10],
+        [6, 10, 7],
+        [3, 7, 10]
+    );
     tri!(0xAF, [7, 6, 10], [7, 10, 8], [5, 4, 10], [4, 8, 10]);
     tri!(0xB0, [6, 9, 5], [6, 11, 9], [11, 8, 9]);
     tri!(0xB1, [3, 6, 11], [0, 6, 3], [0, 5, 6], [0, 9, 5]);
     tri!(0xB2, [0, 11, 8], [0, 5, 11], [0, 1, 5], [5, 6, 11]);
     tri!(0xB3, [6, 11, 3], [6, 3, 5], [5, 3, 1]);
     tri!(0xB4, [1, 2, 10], [9, 5, 11], [9, 11, 8], [11, 5, 6]);
-    tri!(0xB5, [0, 11, 3], [0, 6, 11], [0, 9, 6], [5, 6, 9], [1, 2, 10]);
-    tri!(0xB6, [11, 8, 5], [11, 5, 6], [8, 0, 5], [10, 5, 2], [0, 2, 5]);
+    tri!(
+        0xB5,
+        [0, 11, 3],
+        [0, 6, 11],
+        [0, 9, 6],
+        [5, 6, 9],
+        [1, 2, 10]
+    );
+    tri!(
+        0xB6,
+        [11, 8, 5],
+        [11, 5, 6],
+        [8, 0, 5],
+        [10, 5, 2],
+        [0, 2, 5]
+    );
     tri!(0xB7, [6, 11, 3], [6, 3, 5], [2, 10, 3], [10, 5, 3]);
     tri!(0xB8, [5, 8, 9], [5, 2, 8], [5, 6, 2], [3, 8, 2]);
     tri!(0xB9, [9, 5, 6], [9, 6, 0], [0, 6, 2]);
@@ -664,14 +775,42 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0xD0, [5, 8, 4], [5, 10, 8], [10, 11, 8]);
     tri!(0xD1, [5, 0, 4], [5, 11, 0], [5, 10, 11], [11, 3, 0]);
     tri!(0xD2, [0, 1, 9], [8, 4, 10], [8, 10, 11], [10, 4, 5]);
-    tri!(0xD3, [10, 11, 4], [10, 4, 5], [11, 3, 4], [9, 4, 1], [3, 1, 4]);
+    tri!(
+        0xD3,
+        [10, 11, 4],
+        [10, 4, 5],
+        [11, 3, 4],
+        [9, 4, 1],
+        [3, 1, 4]
+    );
     tri!(0xD4, [2, 5, 1], [2, 8, 5], [2, 11, 8], [4, 5, 8]);
-    tri!(0xD5, [0, 4, 11], [0, 11, 3], [4, 5, 11], [2, 11, 1], [5, 1, 11]);
-    tri!(0xD6, [0, 2, 5], [0, 5, 9], [2, 11, 5], [4, 5, 8], [11, 8, 5]);
+    tri!(
+        0xD5,
+        [0, 4, 11],
+        [0, 11, 3],
+        [4, 5, 11],
+        [2, 11, 1],
+        [5, 1, 11]
+    );
+    tri!(
+        0xD6,
+        [0, 2, 5],
+        [0, 5, 9],
+        [2, 11, 5],
+        [4, 5, 8],
+        [11, 8, 5]
+    );
     tri!(0xD7, [9, 4, 5], [2, 11, 3]);
     tri!(0xD8, [2, 5, 10], [3, 5, 2], [3, 4, 5], [3, 8, 4]);
     tri!(0xD9, [5, 10, 2], [5, 2, 4], [4, 2, 0]);
-    tri!(0xDA, [3, 10, 2], [3, 5, 10], [3, 8, 5], [4, 5, 8], [0, 1, 9]);
+    tri!(
+        0xDA,
+        [3, 10, 2],
+        [3, 5, 10],
+        [3, 8, 5],
+        [4, 5, 8],
+        [0, 1, 9]
+    );
     tri!(0xDB, [5, 10, 2], [5, 2, 4], [1, 9, 2], [9, 4, 2]);
     tri!(0xDC, [8, 4, 5], [8, 5, 3], [3, 5, 1]);
     tri!(0xDD, [0, 4, 5], [1, 0, 5]);
@@ -680,14 +819,42 @@ static MC_TRI_TABLE: [[[u8; 3]; 5]; 256] = {
     tri!(0xE0, [4, 11, 7], [4, 9, 11], [9, 10, 11]);
     tri!(0xE1, [0, 8, 3], [4, 9, 7], [9, 11, 7], [9, 10, 11]);
     tri!(0xE2, [1, 10, 11], [1, 11, 4], [1, 4, 0], [7, 4, 11]);
-    tri!(0xE3, [3, 1, 4], [3, 4, 8], [1, 10, 4], [7, 4, 11], [10, 11, 4]);
+    tri!(
+        0xE3,
+        [3, 1, 4],
+        [3, 4, 8],
+        [1, 10, 4],
+        [7, 4, 11],
+        [10, 11, 4]
+    );
     tri!(0xE4, [4, 11, 7], [9, 11, 4], [9, 2, 11], [9, 1, 2]);
-    tri!(0xE5, [9, 7, 4], [9, 11, 7], [9, 1, 11], [2, 11, 1], [0, 8, 3]);
+    tri!(
+        0xE5,
+        [9, 7, 4],
+        [9, 11, 7],
+        [9, 1, 11],
+        [2, 11, 1],
+        [0, 8, 3]
+    );
     tri!(0xE6, [11, 7, 4], [11, 4, 2], [2, 4, 0]);
     tri!(0xE7, [11, 7, 4], [11, 4, 2], [8, 3, 4], [3, 2, 4]);
     tri!(0xE8, [2, 9, 10], [2, 7, 9], [2, 3, 7], [7, 4, 9]);
-    tri!(0xE9, [9, 10, 7], [9, 7, 4], [10, 2, 7], [8, 7, 0], [2, 0, 7]);
-    tri!(0xEA, [3, 7, 10], [3, 10, 2], [7, 4, 10], [1, 10, 0], [4, 0, 10]);
+    tri!(
+        0xE9,
+        [9, 10, 7],
+        [9, 7, 4],
+        [10, 2, 7],
+        [8, 7, 0],
+        [2, 0, 7]
+    );
+    tri!(
+        0xEA,
+        [3, 7, 10],
+        [3, 10, 2],
+        [7, 4, 10],
+        [1, 10, 0],
+        [4, 0, 10]
+    );
     tri!(0xEB, [1, 10, 2], [8, 7, 4]);
     tri!(0xEC, [4, 9, 1], [4, 1, 7], [7, 1, 3]);
     tri!(0xED, [4, 9, 1], [4, 1, 7], [0, 8, 1], [8, 7, 1]);
@@ -721,28 +888,32 @@ mod tests {
     #[test]
     fn test_grid_from_sphere() {
         let sphere = SdfNode::sphere(1.0);
-        let grid = MutableVoxelGrid::from_sdf(
-            &sphere, [16, 16, 16],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        );
+        let grid =
+            MutableVoxelGrid::from_sdf(&sphere, [16, 16, 16], Vec3::splat(-2.0), Vec3::splat(2.0));
 
         assert_eq!(grid.voxel_count(), 16 * 16 * 16);
         // Center voxel should be inside (negative distance)
         let center_d = grid.get_distance(8, 8, 8);
-        assert!(center_d < 0.0, "Center should be inside sphere, got {}", center_d);
+        assert!(
+            center_d < 0.0,
+            "Center should be inside sphere, got {}",
+            center_d
+        );
 
         // Corner voxel should be outside
         let corner_d = grid.get_distance(0, 0, 0);
-        assert!(corner_d > 0.0, "Corner should be outside sphere, got {}", corner_d);
+        assert!(
+            corner_d > 0.0,
+            "Corner should be outside sphere, got {}",
+            corner_d
+        );
     }
 
     #[test]
     fn test_grid_world_conversion() {
         let sphere = SdfNode::sphere(1.0);
-        let grid = MutableVoxelGrid::from_sdf(
-            &sphere, [8, 8, 8],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        );
+        let grid =
+            MutableVoxelGrid::from_sdf(&sphere, [8, 8, 8], Vec3::splat(-2.0), Vec3::splat(2.0));
 
         // Center of grid should map to ~(0,0,0) in world
         let world = grid.grid_to_world(4, 4, 4);
@@ -756,10 +927,8 @@ mod tests {
     #[test]
     fn test_dirty_tracking() {
         let sphere = SdfNode::sphere(1.0);
-        let mut grid = MutableVoxelGrid::from_sdf(
-            &sphere, [32, 32, 32],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        );
+        let mut grid =
+            MutableVoxelGrid::from_sdf(&sphere, [32, 32, 32], Vec3::splat(-2.0), Vec3::splat(2.0));
 
         assert!(grid.dirty_chunks().is_empty());
 
@@ -774,10 +943,8 @@ mod tests {
     #[test]
     fn test_voxel_size() {
         let sphere = SdfNode::sphere(1.0);
-        let grid = MutableVoxelGrid::from_sdf(
-            &sphere, [16, 16, 16],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        );
+        let grid =
+            MutableVoxelGrid::from_sdf(&sphere, [16, 16, 16], Vec3::splat(-2.0), Vec3::splat(2.0));
 
         let vs = grid.voxel_size();
         assert!((vs.x - 0.25).abs() < 0.001);
@@ -788,10 +955,8 @@ mod tests {
     #[test]
     fn test_memory_bytes() {
         let sphere = SdfNode::sphere(1.0);
-        let grid = MutableVoxelGrid::from_sdf(
-            &sphere, [16, 16, 16],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        );
+        let grid =
+            MutableVoxelGrid::from_sdf(&sphere, [16, 16, 16], Vec3::splat(-2.0), Vec3::splat(2.0));
 
         // 4096 voxels * (4 bytes float + 2 bytes u16) + chunk flags
         assert!(grid.memory_bytes() > 4096 * 4);
@@ -800,10 +965,8 @@ mod tests {
     #[test]
     fn test_remesh_chunk() {
         let sphere = SdfNode::sphere(1.0);
-        let grid = MutableVoxelGrid::from_sdf(
-            &sphere, [16, 16, 16],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        );
+        let grid =
+            MutableVoxelGrid::from_sdf(&sphere, [16, 16, 16], Vec3::splat(-2.0), Vec3::splat(2.0));
 
         // Remesh a chunk that should contain sphere surface
         let mesh = grid.remesh_chunk(0, 0, 0);

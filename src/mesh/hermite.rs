@@ -157,8 +157,7 @@ where
                 let y = (idx / (res + 1)) % (res + 1);
                 let x = idx % (res + 1);
 
-                let pos = self.min_bounds
-                    + Vec3::new(x as f32, y as f32, z as f32) * cell_size;
+                let pos = self.min_bounds + Vec3::new(x as f32, y as f32, z as f32) * cell_size;
                 (self.sdf)(pos)
             })
             .collect();
@@ -327,12 +326,7 @@ mod tests {
             ..Default::default()
         };
 
-        let points = extract_hermite(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let points = extract_hermite(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // Should find surface points
         assert!(!points.is_empty());
@@ -357,12 +351,8 @@ mod tests {
             ..Default::default()
         };
 
-        let crossings = extract_edge_crossings(
-            &sphere,
-            Vec3::splat(-2.0),
-            Vec3::splat(2.0),
-            &config,
-        );
+        let crossings =
+            extract_edge_crossings(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         assert!(!crossings.is_empty());
 

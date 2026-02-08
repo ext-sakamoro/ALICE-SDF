@@ -84,7 +84,9 @@ pub fn export_usda(
     let tri_count = mesh.indices.len() / 3;
     write!(w, "        int[] faceVertexCounts = [")?;
     for i in 0..tri_count {
-        if i > 0 { write!(w, ", ")?; }
+        if i > 0 {
+            write!(w, ", ")?;
+        }
         write!(w, "3")?;
     }
     writeln!(w, "]")?;
@@ -92,7 +94,9 @@ pub fn export_usda(
     // Face vertex indices
     write!(w, "        int[] faceVertexIndices = [")?;
     for (i, idx) in mesh.indices.iter().enumerate() {
-        if i > 0 { write!(w, ", ")?; }
+        if i > 0 {
+            write!(w, ", ")?;
+        }
         write!(w, "{}", idx)?;
     }
     writeln!(w, "]")?;
@@ -100,7 +104,9 @@ pub fn export_usda(
     // Points
     write!(w, "        point3f[] points = [")?;
     for (i, v) in mesh.vertices.iter().enumerate() {
-        if i > 0 { write!(w, ", ")?; }
+        if i > 0 {
+            write!(w, ", ")?;
+        }
         write!(w, "({}, {}, {})", v.position.x, v.position.y, v.position.z)?;
     }
     writeln!(w, "]")?;
@@ -109,26 +115,39 @@ pub fn export_usda(
     if config.export_normals {
         write!(w, "        normal3f[] normals = [")?;
         for (i, v) in mesh.vertices.iter().enumerate() {
-            if i > 0 { write!(w, ", ")?; }
+            if i > 0 {
+                write!(w, ", ")?;
+            }
             write!(w, "({}, {}, {})", v.normal.x, v.normal.y, v.normal.z)?;
         }
         writeln!(w, "]")?;
-        writeln!(w, "        uniform token normals:interpolation = \"vertex\"")?;
+        writeln!(
+            w,
+            "        uniform token normals:interpolation = \"vertex\""
+        )?;
     }
 
     // UVs
     write!(w, "        texCoord2f[] primvars:st = [")?;
     for (i, v) in mesh.vertices.iter().enumerate() {
-        if i > 0 { write!(w, ", ")?; }
+        if i > 0 {
+            write!(w, ", ")?;
+        }
         write!(w, "({}, {})", v.uv.x, v.uv.y)?;
     }
     writeln!(w, "]")?;
-    writeln!(w, "        uniform token primvars:st:interpolation = \"vertex\"")?;
+    writeln!(
+        w,
+        "        uniform token primvars:st:interpolation = \"vertex\""
+    )?;
 
     writeln!(w, "        uniform token subdivisionScheme = \"none\"")?;
 
     if config.export_materials {
-        writeln!(w, "        rel material:binding = </Root/Materials/Material_0>")?;
+        writeln!(
+            w,
+            "        rel material:binding = </Root/Materials/Material_0>"
+        )?;
     }
 
     writeln!(w, "    }}\n")?;
@@ -141,8 +160,14 @@ pub fn export_usda(
         let (diffuse_r, diffuse_g, diffuse_b, metallic, roughness, opacity) =
             if let Some(lib) = materials {
                 if let Some(mat) = lib.materials.first() {
-                    (mat.base_color[0], mat.base_color[1], mat.base_color[2],
-                     mat.metallic, mat.roughness, mat.opacity)
+                    (
+                        mat.base_color[0],
+                        mat.base_color[1],
+                        mat.base_color[2],
+                        mat.metallic,
+                        mat.roughness,
+                        mat.opacity,
+                    )
                 } else {
                     (0.8, 0.8, 0.8, 0.0, 0.5, 1.0)
                 }
@@ -156,8 +181,15 @@ pub fn export_usda(
         writeln!(w)?;
         writeln!(w, "            def Shader \"PBR\"")?;
         writeln!(w, "            {{")?;
-        writeln!(w, "                uniform token info:id = \"UsdPreviewSurface\"")?;
-        writeln!(w, "                color3f inputs:diffuseColor = ({}, {}, {})", diffuse_r, diffuse_g, diffuse_b)?;
+        writeln!(
+            w,
+            "                uniform token info:id = \"UsdPreviewSurface\""
+        )?;
+        writeln!(
+            w,
+            "                color3f inputs:diffuseColor = ({}, {}, {})",
+            diffuse_r, diffuse_g, diffuse_b
+        )?;
         writeln!(w, "                float inputs:metallic = {}", metallic)?;
         writeln!(w, "                float inputs:roughness = {}", roughness)?;
         writeln!(w, "                float inputs:opacity = {}", opacity)?;
@@ -175,14 +207,22 @@ pub fn export_usda(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
+    use crate::types::SdfNode;
     use glam::Vec3;
 
     #[test]
     fn test_usda_export() {
         let sphere = SdfNode::sphere(1.0);
-        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig { resolution: 16, ..Default::default() });
+        let mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 16,
+                ..Default::default()
+            },
+        );
 
         let path = std::env::temp_dir().join("alice_test.usda");
         export_usda(&mesh, &path, &UsdConfig::default(), None).unwrap();
@@ -200,10 +240,21 @@ mod tests {
     #[test]
     fn test_usda_z_up() {
         let sphere = SdfNode::sphere(1.0);
-        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig { resolution: 8, ..Default::default() });
+        let mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 8,
+                ..Default::default()
+            },
+        );
 
         let path = std::env::temp_dir().join("alice_test_zup.usda");
-        let config = UsdConfig { up_axis: UsdUpAxis::Z, ..Default::default() };
+        let config = UsdConfig {
+            up_axis: UsdUpAxis::Z,
+            ..Default::default()
+        };
         export_usda(&mesh, &path, &config, None).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();

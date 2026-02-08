@@ -67,7 +67,8 @@ pub fn generate_mip_chain(volume: &Volume3D<f32>) -> Vec<Vec<f32>> {
                         .min(prev_data[idx(x0, y1, z1)])
                         .min(prev_data[idx(x1, y1, z1)]);
 
-                    let out_idx = x + y * next_res[0] as usize
+                    let out_idx = x
+                        + y * next_res[0] as usize
                         + z * next_res[0] as usize * next_res[1] as usize;
                     mip_data[out_idx] = min_val;
                 }
@@ -143,7 +144,8 @@ pub fn generate_mip_chain_distgrad(volume: &Volume3D<VoxelDistGrad>) -> Vec<Vec<
                         }
                     }
 
-                    let out_idx = x + y * next_res[0] as usize
+                    let out_idx = x
+                        + y * next_res[0] as usize
                         + z * next_res[0] as usize * next_res[1] as usize;
                     mip_data[out_idx] = min_child;
                 }
@@ -166,11 +168,7 @@ mod tests {
 
     #[test]
     fn test_mip_chain_dimensions() {
-        let vol: Volume3D<f32> = Volume3D::new(
-            [8, 8, 8],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol: Volume3D<f32> = Volume3D::new([8, 8, 8], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         let mips = generate_mip_chain(&vol);
 
@@ -182,11 +180,7 @@ mod tests {
 
     #[test]
     fn test_mip_chain_min_downsample() {
-        let mut vol: Volume3D<f32> = Volume3D::new(
-            [4, 4, 4],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let mut vol: Volume3D<f32> = Volume3D::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         // Fill with positive values
         for v in vol.data.iter_mut() {
@@ -199,16 +193,16 @@ mod tests {
         let mips = generate_mip_chain(&vol);
 
         // First mip should carry the minimum (-1.0) to the parent
-        assert!(mips[0][0] < 0.0, "Min downsample should preserve negative distance");
+        assert!(
+            mips[0][0] < 0.0,
+            "Min downsample should preserve negative distance"
+        );
     }
 
     #[test]
     fn test_mip_chain_distgrad() {
-        let vol: Volume3D<VoxelDistGrad> = Volume3D::new(
-            [4, 4, 4],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol: Volume3D<VoxelDistGrad> =
+            Volume3D::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         let mips = generate_mip_chain_distgrad(&vol);
 
@@ -219,11 +213,7 @@ mod tests {
 
     #[test]
     fn test_non_power_of_two() {
-        let vol: Volume3D<f32> = Volume3D::new(
-            [6, 6, 6],
-            Vec3::splat(-1.0),
-            Vec3::splat(1.0),
-        );
+        let vol: Volume3D<f32> = Volume3D::new([6, 6, 6], Vec3::splat(-1.0), Vec3::splat(1.0));
 
         let mips = generate_mip_chain(&vol);
 

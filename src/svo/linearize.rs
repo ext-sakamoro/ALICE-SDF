@@ -141,7 +141,10 @@ pub fn validate_linearized(lin: &LinearizedSvo) -> Result<(), String> {
             if last >= lin.nodes.len() {
                 return Err(format!(
                     "Node {} references children {}-{} but only {} nodes exist",
-                    i, first, last, lin.nodes.len()
+                    i,
+                    first,
+                    last,
+                    lin.nodes.len()
                 ));
             }
         }
@@ -236,9 +239,9 @@ pub fn compact_svo(svo: &SparseVoxelOctree) -> SparseVoxelOctree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::Vec3;
-    use crate::types::SdfNode;
     use crate::svo::SvoBuildConfig;
+    use crate::types::SdfNode;
+    use glam::Vec3;
 
     fn make_test_svo() -> SparseVoxelOctree {
         let sphere = SdfNode::sphere(1.0);
@@ -273,7 +276,8 @@ mod tests {
             assert_eq!(
                 lin.level_offsets[i],
                 lin.level_offsets[i - 1] + lin.level_counts[i - 1],
-                "Level offsets should be cumulative at level {}", i
+                "Level offsets should be cumulative at level {}",
+                i
             );
         }
     }

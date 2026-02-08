@@ -26,9 +26,15 @@ pub fn modifier_octant_mirror(p: Vec3) -> Vec3 {
     let mut z = p.z.abs();
 
     // Sort descending: x >= y >= z (3 compare-and-swap)
-    if y > x { std::mem::swap(&mut x, &mut y); }
-    if z > y { std::mem::swap(&mut y, &mut z); }
-    if y > x { std::mem::swap(&mut x, &mut y); }
+    if y > x {
+        std::mem::swap(&mut x, &mut y);
+    }
+    if z > y {
+        std::mem::swap(&mut y, &mut z);
+    }
+    if y > x {
+        std::mem::swap(&mut x, &mut y);
+    }
 
     Vec3::new(x, y, z)
 }
@@ -73,7 +79,12 @@ mod tests {
         ];
         for p in &cases {
             let m = modifier_octant_mirror(*p);
-            assert!((m - expected).length() < 1e-6, "Failed for {:?}: got {:?}", p, m);
+            assert!(
+                (m - expected).length() < 1e-6,
+                "Failed for {:?}: got {:?}",
+                p,
+                m
+            );
         }
     }
 

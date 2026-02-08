@@ -11,8 +11,8 @@ use glam::Vec3;
 use std::mem;
 use thiserror::Error;
 
+use super::codegen::{extract_jit_params, JitCompiler};
 use crate::types::SdfNode;
-use super::codegen::{JitCompiler, extract_jit_params};
 
 /// Error type for JIT compilation
 #[derive(Error, Debug)]
@@ -70,15 +70,17 @@ impl JitCompiledSdf {
         let mut flag_builder = settings::builder();
 
         // Use colocated libcalls to avoid PLT issues on ARM64
-        flag_builder.set("use_colocated_libcalls", "true")
+        flag_builder
+            .set("use_colocated_libcalls", "true")
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
         // Optimize for speed
-        flag_builder.set("opt_level", "speed")
+        flag_builder
+            .set("opt_level", "speed")
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
-        let isa_builder = cranelift_native::builder()
-            .map_err(|e| JitError::ModuleError(e.to_string()))?;
+        let isa_builder =
+            cranelift_native::builder().map_err(|e| JitError::ModuleError(e.to_string()))?;
 
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
@@ -94,7 +96,8 @@ impl JitCompiledSdf {
         let func_id = compiler.compile_sdf(node)?;
 
         // Finalize the module
-        module.finalize_definitions()
+        module
+            .finalize_definitions()
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
         // Get the function pointer
@@ -134,9 +137,7 @@ impl JitCompiledSdf {
     ///
     /// Vector of signed distances, one per input point
     pub fn eval_batch(&self, points: &[Vec3]) -> Vec<f32> {
-        points.iter()
-            .map(|p| self.eval(*p))
-            .collect()
+        points.iter().map(|p| self.eval(*p)).collect()
     }
 
     /// Evaluate the SDF at multiple points in parallel
@@ -151,9 +152,7 @@ impl JitCompiledSdf {
     pub fn eval_batch_parallel(&self, points: &[Vec3]) -> Vec<f32> {
         use rayon::prelude::*;
 
-        points.par_iter()
-            .map(|p| self.eval(*p))
-            .collect()
+        points.par_iter().map(|p| self.eval(*p)).collect()
     }
 }
 
@@ -208,13 +207,15 @@ impl JitCompiledSdfDynamic {
     pub fn compile(node: &SdfNode) -> Result<Self, JitError> {
         let mut flag_builder = settings::builder();
 
-        flag_builder.set("use_colocated_libcalls", "true")
+        flag_builder
+            .set("use_colocated_libcalls", "true")
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
-        flag_builder.set("opt_level", "speed")
+        flag_builder
+            .set("opt_level", "speed")
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
-        let isa_builder = cranelift_native::builder()
-            .map_err(|e| JitError::ModuleError(e.to_string()))?;
+        let isa_builder =
+            cranelift_native::builder().map_err(|e| JitError::ModuleError(e.to_string()))?;
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
@@ -225,7 +226,8 @@ impl JitCompiledSdfDynamic {
         let mut compiler = JitCompiler::new(&mut module);
         let (func_id, params) = compiler.compile_sdf_dynamic(node)?;
 
-        module.finalize_definitions()
+        module
+            .finalize_definitions()
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
         let code_ptr = module.get_finalized_function(func_id);

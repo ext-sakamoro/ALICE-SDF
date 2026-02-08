@@ -52,7 +52,11 @@ mod tests {
     fn test_cut_sphere_negative_cut() {
         // With h = -0.5 (cut below center), most of sphere is the cap
         let d = sdf_cut_sphere(Vec3::ZERO, 1.0, -0.5);
-        assert!(d < 0.0, "Origin should be inside cap with low cut, got {}", d);
+        assert!(
+            d < 0.0,
+            "Origin should be inside cap with low cut, got {}",
+            d
+        );
     }
 
     #[test]

@@ -105,6 +105,9 @@ mod tests {
         let d1 = sdf_parallelogram(Vec3::ZERO, 1.0, 0.5, 0.3, 0.5);
         let d2 = sdf_parallelogram(Vec3::ZERO, 2.0, 1.0, 0.6, 1.0);
         assert!(d1 < 0.0 && d2 < 0.0, "Both should be inside");
-        assert!(d2 < d1, "Larger shape should have more negative distance at center");
+        assert!(
+            d2 < d1,
+            "Larger shape should have more negative distance at center"
+        );
     }
 }

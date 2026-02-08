@@ -95,7 +95,11 @@ impl PointCloudSdf {
     /// * `normals` - Surface normals at each point (must be same length as points)
     /// * `config` - Construction parameters
     pub fn new(points: &[Vec3], normals: &[Vec3], config: &PointCloudSdfConfig) -> Self {
-        assert_eq!(points.len(), normals.len(), "Points and normals must have same length");
+        assert_eq!(
+            points.len(),
+            normals.len(),
+            "Points and normals must have same length"
+        );
 
         let indices: Vec<usize> = (0..points.len()).collect();
         let tree = Self::build_tree(points, &indices, config.leaf_size, 0);
@@ -120,8 +124,16 @@ impl PointCloudSdf {
         // Find median along axis
         let mut sorted_indices = indices.to_vec();
         sorted_indices.sort_by(|&a, &b| {
-            let va = match axis { 0 => points[a].x, 1 => points[a].y, _ => points[a].z };
-            let vb = match axis { 0 => points[b].x, 1 => points[b].y, _ => points[b].z };
+            let va = match axis {
+                0 => points[a].x,
+                1 => points[a].y,
+                _ => points[a].z,
+            };
+            let vb = match axis {
+                0 => points[b].x,
+                1 => points[b].y,
+                _ => points[b].z,
+            };
             va.partial_cmp(&vb).unwrap_or(std::cmp::Ordering::Equal)
         });
 
@@ -139,7 +151,12 @@ impl PointCloudSdf {
             axis,
             split_val,
             left: Box::new(Self::build_tree(points, left_indices, leaf_size, depth + 1)),
-            right: Box::new(Self::build_tree(points, right_indices, leaf_size, depth + 1)),
+            right: Box::new(Self::build_tree(
+                points,
+                right_indices,
+                leaf_size,
+                depth + 1,
+            )),
         }
     }
 
@@ -198,11 +215,20 @@ impl PointCloudSdf {
                     Self::knn_insert(best, k, idx, dist_sq);
                 }
             }
-            KdNode::Split { axis, split_val, left, right } => {
+            KdNode::Split {
+                axis,
+                split_val,
+                left,
+                right,
+            } => {
                 let val = pos_arr[*axis];
                 let diff = val - split_val;
 
-                let (near, far) = if diff < 0.0 { (left, right) } else { (right, left) };
+                let (near, far) = if diff < 0.0 {
+                    (left, right)
+                } else {
+                    (right, left)
+                };
 
                 // Search near side first
                 self.knn_search(near, pos, k, best);
@@ -249,13 +275,9 @@ mod tests {
         let golden_ratio = (1.0 + 5.0f32.sqrt()) / 2.0;
         for i in 0..n {
             let theta = 2.0 * std::f32::consts::PI * (i as f32) / golden_ratio;
-            let phi = ((1.0 - 2.0 * (i as f32 + 0.5) / n as f32)).acos();
+            let phi = (1.0 - 2.0 * (i as f32 + 0.5) / n as f32).acos();
 
-            let normal = Vec3::new(
-                phi.sin() * theta.cos(),
-                phi.sin() * theta.sin(),
-                phi.cos(),
-            );
+            let normal = Vec3::new(phi.sin() * theta.cos(), phi.sin() * theta.sin(), phi.cos());
             points.push(normal * radius);
             normals.push(normal);
         }
@@ -276,11 +298,19 @@ mod tests {
 
         // Outside the sphere (distance ~1.0 from surface)
         let outside = sdf.eval(Vec3::new(2.0, 0.0, 0.0));
-        assert!(outside > 0.0, "Expected positive outside sphere, got {}", outside);
+        assert!(
+            outside > 0.0,
+            "Expected positive outside sphere, got {}",
+            outside
+        );
 
         // Inside the sphere
         let inside = sdf.eval(Vec3::ZERO);
-        assert!(inside < 0.0, "Expected negative inside sphere, got {}", inside);
+        assert!(
+            inside < 0.0,
+            "Expected negative inside sphere, got {}",
+            inside
+        );
     }
 
     #[test]

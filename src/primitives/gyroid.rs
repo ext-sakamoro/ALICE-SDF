@@ -29,11 +29,7 @@ mod tests {
     fn test_gyroid_on_surface() {
         // At (PI/2, 0, 0): sin(PI/2)*cos(0) + sin(0)*cos(0) + sin(0)*cos(PI/2) = 1
         // So distance from surface is (1/scale - thickness)
-        let d = sdf_gyroid(
-            Vec3::new(std::f32::consts::FRAC_PI_2, 0.0, 0.0),
-            1.0,
-            0.5,
-        );
+        let d = sdf_gyroid(Vec3::new(std::f32::consts::FRAC_PI_2, 0.0, 0.0), 1.0, 0.5);
         assert!((d - 0.5).abs() < 0.01, "Expected ~0.5, got {}", d);
     }
 
@@ -42,7 +38,11 @@ mod tests {
         // At origin: sin(0)*cos(0) + sin(0)*cos(0) + sin(0)*cos(0) = 0
         // Should be on the surface minus thickness
         let d = sdf_gyroid(Vec3::ZERO, 1.0, 0.1);
-        assert!((d + 0.1).abs() < 0.01, "Origin should be -thickness, got {}", d);
+        assert!(
+            (d + 0.1).abs() < 0.01,
+            "Origin should be -thickness, got {}",
+            d
+        );
     }
 
     #[test]

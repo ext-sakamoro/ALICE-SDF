@@ -136,7 +136,8 @@ impl Splatmap {
 
                 if has_steep && slope > slope_threshold {
                     // Steep: mostly rock
-                    let steep_blend = ((slope - slope_threshold) / (1.0 - slope_threshold)).clamp(0.0, 1.0);
+                    let steep_blend =
+                        ((slope - slope_threshold) / (1.0 - slope_threshold)).clamp(0.0, 1.0);
                     self.layers[1].weights[idx] = steep_blend;
                     self.layers[0].weights[idx] = 1.0 - steep_blend;
                 } else {
@@ -235,7 +236,9 @@ mod tests {
         let mut any_grass = false;
         for z in 0..16 {
             for x in 0..16 {
-                if splatmap.get_weight(0, x, z) > 0.0 { any_grass = true; }
+                if splatmap.get_weight(0, x, z) > 0.0 {
+                    any_grass = true;
+                }
             }
         }
         assert!(any_grass, "Should have some grass");

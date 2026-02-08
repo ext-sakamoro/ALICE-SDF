@@ -15,7 +15,13 @@ use glam::{Vec2, Vec3};
 /// - `round_radius`: rounding radius (0 = sharp corners)
 /// - `half_height`: half the extrusion height along Y
 #[inline(always)]
-pub fn sdf_cross_shape(p: Vec3, length: f32, thickness: f32, round_radius: f32, half_height: f32) -> f32 {
+pub fn sdf_cross_shape(
+    p: Vec3,
+    length: f32,
+    thickness: f32,
+    round_radius: f32,
+    half_height: f32,
+) -> f32 {
     // 2D cross in XZ plane
     let qx = p.x.abs();
     let qz = p.z.abs();

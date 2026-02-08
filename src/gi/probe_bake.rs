@@ -8,10 +8,10 @@
 use glam::Vec3;
 use rayon::prelude::*;
 
-use crate::svo::SparseVoxelOctree;
-use super::cone_trace::{ConeTraceConfig, trace_hemisphere};
+use super::cone_trace::{trace_hemisphere, ConeTraceConfig};
 use super::irradiance::{IrradianceGrid, IrradianceProbe};
 use super::DirectionalLight;
+use crate::svo::SparseVoxelOctree;
 
 /// Configuration for GI probe baking
 #[derive(Debug, Clone)]
@@ -52,21 +52,15 @@ impl Default for BakeGiConfig {
 /// For each probe, traces cones in uniformly distributed directions
 /// and accumulates the results into L1 spherical harmonics.
 /// Uses Rayon for parallel probe baking.
-pub fn bake_irradiance_grid(
-    svo: &SparseVoxelOctree,
-    config: &BakeGiConfig,
-) -> IrradianceGrid {
-    let mut grid = IrradianceGrid::new(
-        config.grid_size,
-        config.bounds_min,
-        config.bounds_max,
-    );
+pub fn bake_irradiance_grid(svo: &SparseVoxelOctree, config: &BakeGiConfig) -> IrradianceGrid {
+    let mut grid = IrradianceGrid::new(config.grid_size, config.bounds_min, config.bounds_max);
 
     // Generate uniform sample directions on sphere
     let directions = generate_uniform_directions(config.samples_per_probe);
 
     // Bake probes in parallel
-    let baked_probes: Vec<IrradianceProbe> = grid.probes
+    let baked_probes: Vec<IrradianceProbe> = grid
+        .probes
         .par_iter()
         .map(|probe| {
             bake_single_probe(
@@ -104,13 +98,7 @@ fn bake_single_probe(
     }
 
     for &(dir, weight) in directions {
-        let result = super::cone_trace::cone_trace(
-            svo,
-            position,
-            dir,
-            cone_config,
-            light,
-        );
+        let result = super::cone_trace::cone_trace(svo, position, dir, cone_config, light);
 
         probe.add_sample(dir, result.color * weight);
     }
@@ -131,7 +119,7 @@ fn generate_uniform_directions(count: u32) -> Vec<(Vec3, f32)> {
 
     for i in 0..count {
         let theta = std::f32::consts::TAU * i as f32 * inv_golden;
-        let phi = ((1.0 - 2.0 * (i as f32 + 0.5) * inv_count)).acos();
+        let phi = (1.0 - 2.0 * (i as f32 + 0.5) * inv_count).acos();
 
         let x = phi.sin() * theta.cos();
         let y = phi.sin() * theta.sin();
@@ -146,8 +134,8 @@ fn generate_uniform_directions(count: u32) -> Vec<(Vec3, f32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::svo::SvoBuildConfig;
+    use crate::types::SdfNode;
 
     fn make_test_svo() -> SparseVoxelOctree {
         let sphere = SdfNode::sphere(1.0);
@@ -206,7 +194,11 @@ mod tests {
 
         // All should be unit vectors
         for (d, w) in &dirs {
-            assert!((d.length() - 1.0).abs() < 0.01, "Direction should be unit, got {}", d.length());
+            assert!(
+                (d.length() - 1.0).abs() < 0.01,
+                "Direction should be unit, got {}",
+                d.length()
+            );
             assert!(*w > 0.0);
         }
     }
@@ -219,9 +211,15 @@ mod tests {
         let mut octant_counts = [0u32; 8];
         for (d, _) in &dirs {
             let mut oct = 0u8;
-            if d.x > 0.0 { oct |= 1; }
-            if d.y > 0.0 { oct |= 2; }
-            if d.z > 0.0 { oct |= 4; }
+            if d.x > 0.0 {
+                oct |= 1;
+            }
+            if d.y > 0.0 {
+                oct |= 2;
+            }
+            if d.z > 0.0 {
+                oct |= 4;
+            }
             octant_counts[oct as usize] += 1;
         }
 
@@ -271,6 +269,9 @@ mod tests {
 
         // Should be default (zero) since it's inside geometry
         let irr = probe.evaluate(Vec3::Y);
-        assert!(irr.length() < 0.1, "Probe inside geometry should have near-zero irradiance");
+        assert!(
+            irr.length() < 0.1,
+            "Probe inside geometry should have near-zero irradiance"
+        );
     }
 }

@@ -55,9 +55,12 @@ impl CollisionAabb {
     /// Test if a point is inside the AABB
     #[inline]
     pub fn contains(&self, point: Vec3) -> bool {
-        point.x >= self.min.x && point.x <= self.max.x
-            && point.y >= self.min.y && point.y <= self.max.y
-            && point.z >= self.min.z && point.z <= self.max.z
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
+            && point.z >= self.min.z
+            && point.z <= self.max.z
     }
 }
 
@@ -107,14 +110,13 @@ pub fn compute_aabb(mesh: &Mesh) -> CollisionAabb {
         };
     }
 
-    let (min, max) = mesh.vertices
+    let (min, max) = mesh
+        .vertices
         .par_iter()
         .map(|v| (v.position, v.position))
         .reduce(
             || (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)),
-            |(min_a, max_a), (min_b, max_b)| {
-                (min_a.min(min_b), max_a.max(max_b))
-            },
+            |(min_a, max_a), (min_b, max_b)| (min_a.min(min_b), max_a.max(max_b)),
         );
 
     CollisionAabb { min, max }
@@ -191,7 +193,11 @@ pub fn convex_hull_from_points(points: &[Vec3]) -> ConvexHull {
     if points.len() < 4 {
         return ConvexHull {
             vertices: points.to_vec(),
-            indices: if points.len() == 3 { vec![0, 1, 2] } else { vec![] },
+            indices: if points.len() == 3 {
+                vec![0, 1, 2]
+            } else {
+                vec![]
+            },
         };
     }
 
@@ -199,12 +205,7 @@ pub fn convex_hull_from_points(points: &[Vec3]) -> ConvexHull {
     let (p0, p1, p2, p3) = find_initial_tetrahedron(points);
 
     let mut hull_verts = vec![points[p0], points[p1], points[p2], points[p3]];
-    let mut hull_faces: Vec<[u32; 3]> = vec![
-        [0, 1, 2],
-        [0, 2, 3],
-        [0, 3, 1],
-        [1, 3, 2],
-    ];
+    let mut hull_faces: Vec<[u32; 3]> = vec![[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
 
     // Ensure faces are oriented outward
     let center = (hull_verts[0] + hull_verts[1] + hull_verts[2] + hull_verts[3]) * 0.25;
@@ -380,9 +381,21 @@ pub fn simplify_collision(mesh: &Mesh, grid_resolution: u32) -> CollisionMesh {
 
     // Division Exorcism: pre-compute inverse
     let inv_cell = Vec3::new(
-        if cell_size.x > 1e-6 { 1.0 / cell_size.x } else { 0.0 },
-        if cell_size.y > 1e-6 { 1.0 / cell_size.y } else { 0.0 },
-        if cell_size.z > 1e-6 { 1.0 / cell_size.z } else { 0.0 },
+        if cell_size.x > 1e-6 {
+            1.0 / cell_size.x
+        } else {
+            0.0
+        },
+        if cell_size.y > 1e-6 {
+            1.0 / cell_size.y
+        } else {
+            0.0
+        },
+        if cell_size.z > 1e-6 {
+            1.0 / cell_size.z
+        } else {
+            0.0
+        },
     );
 
     // Cluster vertices into grid cells
@@ -530,14 +543,13 @@ pub fn convex_decomposition(mesh: &Mesh, config: &VhacdConfig) -> ConvexDecompos
 
     // Step 1: Voxelize the mesh (Deep Fried: parallel)
     let total_voxels = (res * res * res) as usize;
-    let voxels_atomic: Vec<AtomicU8> = (0..total_voxels)
-        .map(|_| AtomicU8::new(0))
-        .collect();
+    let voxels_atomic: Vec<AtomicU8> = (0..total_voxels).map(|_| AtomicU8::new(0)).collect();
 
     voxelize_mesh_parallel(mesh, vox_min, cell_size, res, &voxels_atomic);
 
     // Convert atomics to bool vec for flood fill
-    let mut voxels: Vec<bool> = voxels_atomic.iter()
+    let mut voxels: Vec<bool> = voxels_atomic
+        .iter()
         .map(|a| a.load(Ordering::Relaxed) != 0)
         .collect();
 
@@ -576,11 +588,12 @@ pub fn convex_decomposition(mesh: &Mesh, config: &VhacdConfig) -> ConvexDecompos
                 let x = idx % res as usize;
                 let y = (idx / res as usize) % res as usize;
                 let z = idx / (res as usize * res as usize);
-                vox_min + Vec3::new(
-                    (x as f32 + 0.5) * cell_size.x,
-                    (y as f32 + 0.5) * cell_size.y,
-                    (z as f32 + 0.5) * cell_size.z,
-                )
+                vox_min
+                    + Vec3::new(
+                        (x as f32 + 0.5) * cell_size.x,
+                        (y as f32 + 0.5) * cell_size.y,
+                        (z as f32 + 0.5) * cell_size.z,
+                    )
             })
             .collect();
 
@@ -617,9 +630,21 @@ fn voxelize_mesh_parallel(
 ) {
     // Division Exorcism: pre-compute inverse
     let inv_cell = Vec3::new(
-        if cell_size.x > 1e-8 { 1.0 / cell_size.x } else { 0.0 },
-        if cell_size.y > 1e-8 { 1.0 / cell_size.y } else { 0.0 },
-        if cell_size.z > 1e-8 { 1.0 / cell_size.z } else { 0.0 },
+        if cell_size.x > 1e-8 {
+            1.0 / cell_size.x
+        } else {
+            0.0
+        },
+        if cell_size.y > 1e-8 {
+            1.0 / cell_size.y
+        } else {
+            0.0
+        },
+        if cell_size.z > 1e-8 {
+            1.0 / cell_size.z
+        } else {
+            0.0
+        },
     );
 
     let tri_count = mesh.indices.len() / 3;
@@ -684,13 +709,7 @@ fn interior_fill(voxels: &mut [bool], res: u32) {
 }
 
 /// 3D flood fill for label assignment
-fn flood_fill_3d(
-    voxels: &[bool],
-    labels: &mut [u32],
-    start: usize,
-    label: u32,
-    res: u32,
-) {
+fn flood_fill_3d(voxels: &[bool], labels: &mut [u32], start: usize, label: u32, res: u32) {
     let mut stack = vec![start];
     let res_usize = res as usize;
 
@@ -706,12 +725,24 @@ fn flood_fill_3d(
         let z = idx / (res_usize * res_usize);
 
         // 6-connected neighbors
-        if x > 0 { stack.push(idx - 1); }
-        if x + 1 < res_usize { stack.push(idx + 1); }
-        if y > 0 { stack.push(idx - res_usize); }
-        if y + 1 < res_usize { stack.push(idx + res_usize); }
-        if z > 0 { stack.push(idx - res_usize * res_usize); }
-        if z + 1 < res_usize { stack.push(idx + res_usize * res_usize); }
+        if x > 0 {
+            stack.push(idx - 1);
+        }
+        if x + 1 < res_usize {
+            stack.push(idx + 1);
+        }
+        if y > 0 {
+            stack.push(idx - res_usize);
+        }
+        if y + 1 < res_usize {
+            stack.push(idx + res_usize);
+        }
+        if z > 0 {
+            stack.push(idx - res_usize * res_usize);
+        }
+        if z + 1 < res_usize {
+            stack.push(idx + res_usize * res_usize);
+        }
     }
 }
 
@@ -870,7 +901,10 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         let decomp = convex_decomposition(&mesh, &VhacdConfig::default());
-        assert!(!decomp.parts.is_empty(), "Should produce at least 1 convex part");
+        assert!(
+            !decomp.parts.is_empty(),
+            "Should produce at least 1 convex part"
+        );
         assert!(decomp.total_vertices() > 0);
         assert!(decomp.total_triangles() > 0);
     }
@@ -878,8 +912,7 @@ mod tests {
     #[test]
     fn test_convex_decomposition_concave() {
         // Subtract box from sphere -> concave shape
-        let shape = SdfNode::sphere(1.0)
-            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
         let config = MarchingCubesConfig {
             resolution: 16,
             iso_level: 0.0,
@@ -890,22 +923,32 @@ mod tests {
 
         let decomp = convex_decomposition(&mesh, &VhacdConfig::default());
         // Concave shape should produce multiple parts
-        assert!(decomp.parts.len() >= 1,
-            "Concave shape should produce convex parts, got {}", decomp.parts.len());
+        assert!(
+            decomp.parts.len() >= 1,
+            "Concave shape should produce convex parts, got {}",
+            decomp.parts.len()
+        );
 
         // Each part should have valid convex hull
         for (i, part) in decomp.parts.iter().enumerate() {
-            assert!(part.vertices.len() >= 4,
-                "Part {} has only {} vertices", i, part.vertices.len());
-            assert!(part.indices.len() >= 12,
-                "Part {} has only {} indices", i, part.indices.len());
+            assert!(
+                part.vertices.len() >= 4,
+                "Part {} has only {} vertices",
+                i,
+                part.vertices.len()
+            );
+            assert!(
+                part.indices.len() >= 12,
+                "Part {} has only {} indices",
+                i,
+                part.indices.len()
+            );
         }
     }
 
     #[test]
     fn test_convex_decomposition_max_hulls() {
-        let shape = SdfNode::sphere(1.0)
-            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
         let config = MarchingCubesConfig {
             resolution: 16,
             iso_level: 0.0,
@@ -919,7 +962,10 @@ mod tests {
             ..Default::default()
         };
         let decomp = convex_decomposition(&mesh, &vhacd_config);
-        assert!(decomp.parts.len() <= 4,
-            "Should respect max_hulls limit: got {}", decomp.parts.len());
+        assert!(
+            decomp.parts.len() <= 4,
+            "Should respect max_hulls limit: got {}",
+            decomp.parts.len()
+        );
     }
 }

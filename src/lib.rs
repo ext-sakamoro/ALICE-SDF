@@ -44,25 +44,25 @@
 
 #![warn(missing_docs)]
 
-pub mod types;
-pub mod material;
 pub mod animation;
-pub mod primitives;
-pub mod operations;
-pub mod transforms;
-pub mod modifiers;
-pub mod eval;
-pub mod raycast;
-pub mod mesh;
-pub mod io;
-pub mod compiled;
-pub mod soa;
-pub mod crispy;
-pub mod interval;
-pub mod neural;
 pub mod collision;
+pub mod compiled;
+pub mod crispy;
+pub mod eval;
+pub mod interval;
+pub mod io;
+pub mod material;
+pub mod mesh;
+pub mod modifiers;
+pub mod neural;
+pub mod operations;
 pub mod optimize;
+pub mod primitives;
+pub mod raycast;
+pub mod soa;
 pub mod tight_aabb;
+pub mod transforms;
+pub mod types;
 
 #[cfg(feature = "python")]
 pub mod python;
@@ -96,122 +96,160 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Prelude - commonly used types and functions
 pub mod prelude {
-    pub use crate::types::{SdfNode, SdfTree, SdfMetadata, SdfCategory, Aabb, Ray, Hit};
-    pub use crate::material::{Material, MaterialLibrary, TextureSlot};
-    pub use crate::animation::{Keyframe, Track, Timeline, AnimatedSdf, Interpolation, LoopMode, morph};
-    pub use crate::eval::{eval, eval_material, normal, gradient, eval_gradient, eval_normal, eval_batch, eval_batch_parallel, eval_grid};
-    pub use crate::raycast::{
-        raycast, raycast_batch, raymarch, raymarch_with_config,
-        RaymarchConfig, RaymarchResult, ambient_occlusion, soft_shadow,
+    pub use crate::animation::{
+        morph, AnimatedSdf, Interpolation, Keyframe, LoopMode, Timeline, Track,
     };
-    pub use crate::mesh::{
-        sdf_to_mesh, mesh_to_sdf, mesh_to_sdf_exact, marching_cubes,
-        MarchingCubesConfig, MeshToSdfConfig, MeshToSdfStrategy, MeshSdf,
-        Mesh, Vertex, Triangle, MeshBvh,
-        // Adaptive marching cubes
-        adaptive_marching_cubes, AdaptiveConfig,
-        // Dual Contouring
-        dual_contouring, dual_contouring_compiled, DualContouringConfig,
-        // Hermite data extraction
-        HermitePoint, HermiteConfig, extract_hermite,
-        // Primitive fitting
-        FittedPrimitive, FittingConfig, detect_primitive, primitives_to_csg,
-        // Nanite clusters
-        NaniteCluster, NaniteMesh, NaniteConfig, generate_nanite_mesh,
-        // LOD generation
-        LodChain, LodConfig, LodSelector, generate_lod_chain,
-        DecimationLodConfig, generate_lod_chain_decimated,
-        // Manifold mesh validation & repair
-        MeshValidation, MeshRepair, MeshQuality, validate_mesh, compute_quality,
-        // Mesh decimation
-        decimate, DecimateConfig,
-        // Lightmap UV generation
-        generate_lightmap_uvs, generate_lightmap_uvs_fast,
-        // Vertex cache optimization
-        optimize_vertex_cache, compute_acmr, deduplicate_vertices,
-        // Physics collision primitives
-        CollisionAabb, BoundingSphere, ConvexHull, CollisionMesh,
-        compute_aabb, compute_bounding_sphere, compute_convex_hull, simplify_collision,
-        // Convex decomposition (V-HACD)
-        VhacdConfig, ConvexDecomposition, convex_decomposition,
-        // UV unwrapping (LSCM)
-        uv_unwrap, apply_uvs, UvUnwrapConfig, UvUnwrapResult, UvChart,
-        // Point cloud SDF
-        PointCloudSdf, PointCloudSdfConfig, point_cloud_to_sdf,
+    pub use crate::collision::{sdf_collide, sdf_distance, sdf_overlap, SdfContact};
+    pub use crate::compiled::{
+        eval_compiled, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
+        eval_compiled_batch_soa, eval_compiled_batch_soa_parallel, eval_compiled_bvh,
+        eval_compiled_distance_and_normal, eval_compiled_normal, eval_compiled_simd,
+        get_scene_aabb, AabbPacked, CompiledSdf, CompiledSdfBvh, Vec3x8,
+    };
+    #[cfg(feature = "destruction")]
+    pub use crate::destruction::{
+        carve, carve_batch, generate_debris, voronoi_fracture, CarveShape, ChunkMesh, DebrisConfig,
+        DebrisPiece, DestructionResult, FractureConfig, FracturePiece, MutableVoxelGrid,
+    };
+    pub use crate::eval::{
+        eval, eval_batch, eval_batch_parallel, eval_gradient, eval_grid, eval_material,
+        eval_normal, gradient, normal,
+    };
+    #[cfg(feature = "gi")]
+    pub use crate::gi::{
+        bake_irradiance_grid, cone_trace, direct_lighting, sky_color, trace_hemisphere,
+        BakeGiConfig, ConeTraceConfig, ConeTraceResult, DirectionalLight, IrradianceGrid,
+        IrradianceProbe, PointLight,
     };
     pub use crate::io::{
-        save, load, save_asdf, load_asdf, save_asdf_json, load_asdf_json, get_info,
-        export_obj, import_obj, ObjConfig,
-        export_glb, export_glb_bytes, export_gltf_json, import_glb, import_glb_bytes, GltfConfig,
-        export_fbx, import_fbx, FbxConfig, FbxFormat, FbxUpAxis,
-        export_usda, UsdConfig, UsdUpAxis,
-        export_alembic, AlembicConfig,
-        export_nanite, export_nanite_with_config, export_nanite_json, NaniteExportConfig,
+        export_alembic, export_fbx, export_glb, export_glb_bytes, export_gltf_json, export_nanite,
+        export_nanite_json, export_nanite_with_config, export_obj, export_usda, get_info,
+        import_fbx, import_glb, import_glb_bytes, import_obj, load, load_asdf, load_asdf_json,
+        save, save_asdf, save_asdf_json, AlembicConfig, FbxConfig, FbxFormat, FbxUpAxis,
+        GltfConfig, NaniteExportConfig, ObjConfig, UsdConfig, UsdUpAxis,
     };
-    pub use crate::compiled::{
-        CompiledSdf, eval_compiled, eval_compiled_normal, eval_compiled_distance_and_normal,
-        eval_compiled_simd, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
-        eval_compiled_batch_soa, eval_compiled_batch_soa_parallel,
-        Vec3x8,
-        CompiledSdfBvh, eval_compiled_bvh, get_scene_aabb, AabbPacked,
-    };
-    pub use crate::soa::{SoAPoints, SoADistances};
-    #[cfg(feature = "volume")]
-    pub use crate::volume::{
-        Volume3D, BakeConfig, BakeChannels, VoxelDistGrad,
-        bake_volume, bake_volume_with_normals,
-        export_raw, export_dds_3d,
-        generate_mip_chain,
+    pub use crate::material::{Material, MaterialLibrary, TextureSlot};
+    pub use crate::mesh::{
+        // Adaptive marching cubes
+        adaptive_marching_cubes,
+        apply_uvs,
+        compute_aabb,
+        compute_acmr,
+        compute_bounding_sphere,
+        compute_convex_hull,
+        compute_quality,
+        convex_decomposition,
+        // Mesh decimation
+        decimate,
+        deduplicate_vertices,
+        detect_primitive,
+        // Dual Contouring
+        dual_contouring,
+        dual_contouring_compiled,
+        extract_hermite,
+        // Lightmap UV generation
+        generate_lightmap_uvs,
+        generate_lightmap_uvs_fast,
+        generate_lod_chain,
+        generate_lod_chain_decimated,
+        generate_nanite_mesh,
+        marching_cubes,
+        mesh_to_sdf,
+        mesh_to_sdf_exact,
+        // Vertex cache optimization
+        optimize_vertex_cache,
+        point_cloud_to_sdf,
+        primitives_to_csg,
+        sdf_to_mesh,
+        simplify_collision,
+        // UV unwrapping (LSCM)
+        uv_unwrap,
+        validate_mesh,
+        AdaptiveConfig,
+        BoundingSphere,
+        // Physics collision primitives
+        CollisionAabb,
+        CollisionMesh,
+        ConvexDecomposition,
+        ConvexHull,
+        DecimateConfig,
+        DecimationLodConfig,
+        DualContouringConfig,
+        // Primitive fitting
+        FittedPrimitive,
+        FittingConfig,
+        HermiteConfig,
+        // Hermite data extraction
+        HermitePoint,
+        // LOD generation
+        LodChain,
+        LodConfig,
+        LodSelector,
+        MarchingCubesConfig,
+        Mesh,
+        MeshBvh,
+        MeshQuality,
+        MeshRepair,
+        MeshSdf,
+        MeshToSdfConfig,
+        MeshToSdfStrategy,
+        // Manifold mesh validation & repair
+        MeshValidation,
+        // Nanite clusters
+        NaniteCluster,
+        NaniteConfig,
+        NaniteMesh,
+        // Point cloud SDF
+        PointCloudSdf,
+        PointCloudSdfConfig,
+        Triangle,
+        UvChart,
+        UvUnwrapConfig,
+        UvUnwrapResult,
+        Vertex,
+        // Convex decomposition (V-HACD)
+        VhacdConfig,
     };
     #[cfg(feature = "gpu")]
     pub use crate::mesh::{
         gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig,
     };
-    #[cfg(feature = "terrain")]
-    pub use crate::terrain::{
-        Heightmap, TerrainConfig, terrain_sdf,
-        ClipmapTerrain, ClipmapLevel, ClipmapMesh,
-        Splatmap, SplatLayer,
-        ErosionConfig, erode,
-        CaveConfig, generate_cave_sdf,
+    pub use crate::modifiers::*;
+    pub use crate::operations::*;
+    pub use crate::primitives::*;
+    pub use crate::raycast::{
+        ambient_occlusion, raycast, raycast_batch, raymarch, raymarch_with_config, soft_shadow,
+        RaymarchConfig, RaymarchResult,
+    };
+    pub use crate::soa::{SoADistances, SoAPoints};
+    #[cfg(feature = "svo")]
+    pub use crate::svo::{
+        build_svo, build_svo_compiled, linearize_svo, svo_nearest_surface, svo_query_point,
+        svo_ray_query, LinearizedSvo, SparseVoxelOctree, SvoBuildConfig, SvoChunk, SvoNode,
+        SvoRayHit, SvoStreamingCache,
     };
     #[cfg(all(feature = "terrain", feature = "image"))]
     pub use crate::terrain::HeightmapImageConfig;
-    #[cfg(feature = "destruction")]
-    pub use crate::destruction::{
-        MutableVoxelGrid, ChunkMesh,
-        CarveShape, DestructionResult, carve, carve_batch,
-        DebrisConfig, DebrisPiece, generate_debris,
-        FractureConfig, FracturePiece, voronoi_fracture,
+    #[cfg(feature = "terrain")]
+    pub use crate::terrain::{
+        erode, generate_cave_sdf, terrain_sdf, CaveConfig, ClipmapLevel, ClipmapMesh,
+        ClipmapTerrain, ErosionConfig, Heightmap, SplatLayer, Splatmap, TerrainConfig,
     };
-    #[cfg(feature = "gi")]
-    pub use crate::gi::{
-        DirectionalLight, PointLight, sky_color, direct_lighting,
-        ConeTraceConfig, ConeTraceResult, cone_trace, trace_hemisphere,
-        IrradianceGrid, IrradianceProbe,
-        BakeGiConfig, bake_irradiance_grid,
-    };
-    #[cfg(feature = "svo")]
-    pub use crate::svo::{
-        SparseVoxelOctree, SvoNode, SvoBuildConfig, SvoRayHit,
-        build_svo, build_svo_compiled,
-        svo_query_point, svo_ray_query, svo_nearest_surface,
-        LinearizedSvo, linearize_svo,
-        SvoStreamingCache, SvoChunk,
-    };
-    pub use crate::collision::{SdfContact, sdf_collide, sdf_distance, sdf_overlap};
-    pub use crate::primitives::*;
-    pub use crate::operations::*;
     pub use crate::transforms::*;
-    pub use crate::modifiers::*;
-    pub use glam::{Vec3, Quat};
+    pub use crate::types::{Aabb, Hit, Ray, SdfCategory, SdfMetadata, SdfNode, SdfTree};
+    #[cfg(feature = "volume")]
+    pub use crate::volume::{
+        bake_volume, bake_volume_with_normals, export_dds_3d, export_raw, generate_mip_chain,
+        BakeChannels, BakeConfig, Volume3D, VoxelDistGrad,
+    };
+    pub use glam::{Quat, Vec3};
 }
 
 // Re-exports for convenience
-pub use types::{SdfNode, SdfTree};
 pub use eval::eval;
+pub use io::{load, save};
 pub use mesh::sdf_to_mesh;
-pub use io::{save, load};
+pub use types::{SdfNode, SdfTree};
 
 #[cfg(test)]
 mod tests {
@@ -220,8 +258,7 @@ mod tests {
     #[test]
     fn test_basic_workflow() {
         // Create a shape: sphere with hole carved out
-        let shape = SdfNode::sphere(1.0)
-            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
 
         // Evaluate at origin - box is inside sphere, so origin is carved out
         let d = eval(&shape, Vec3::ZERO);
@@ -240,10 +277,7 @@ mod tests {
     fn test_complex_tree() {
         let shape = SdfNode::sphere(1.0)
             .smooth_union(SdfNode::cylinder(0.5, 2.0), 0.2)
-            .subtract(
-                SdfNode::box3d(0.5, 0.5, 0.5)
-                    .repeat_infinite(1.0, 1.0, 1.0)
-            )
+            .subtract(SdfNode::box3d(0.5, 0.5, 0.5).repeat_infinite(1.0, 1.0, 1.0))
             .twist(0.5)
             .scale(2.0);
 
@@ -280,8 +314,7 @@ mod tests {
     #[test]
     fn test_production_stress_high_res() {
         // High-resolution mesh generation (production scale)
-        let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+        let shape = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
         let config = MarchingCubesConfig {
             resolution: 64,
             iso_level: 0.0,
@@ -291,8 +324,16 @@ mod tests {
         let mesh = sdf_to_mesh(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // Should produce a substantial mesh
-        assert!(mesh.vertex_count() > 1000, "Expected >1000 vertices, got {}", mesh.vertex_count());
-        assert!(mesh.triangle_count() > 500, "Expected >500 triangles, got {}", mesh.triangle_count());
+        assert!(
+            mesh.vertex_count() > 1000,
+            "Expected >1000 vertices, got {}",
+            mesh.vertex_count()
+        );
+        assert!(
+            mesh.triangle_count() > 500,
+            "Expected >500 triangles, got {}",
+            mesh.triangle_count()
+        );
     }
 
     #[test]
@@ -324,7 +365,7 @@ mod tests {
         mat_lib.add(
             Material::metal("Chrome", 0.9, 0.9, 0.9, 0.2)
                 .with_albedo_map("textures/chrome_albedo.png")
-                .with_normal_map("textures/chrome_normal.png")
+                .with_normal_map("textures/chrome_normal.png"),
         );
 
         // Export glTF with multi-material
@@ -342,8 +383,7 @@ mod tests {
     #[test]
     fn test_production_collision_pipeline() {
         // Full pipeline: SDF → mesh → collision primitives
-        let shape = SdfNode::sphere(1.0)
-            .subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
         let config = MarchingCubesConfig {
             resolution: 16,
             iso_level: 0.0,
@@ -374,7 +414,10 @@ mod tests {
     fn test_compiled_vs_interpreted() {
         // Complex shape to test
         let shape = SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0), 0.2)
+            .smooth_union(
+                SdfNode::cylinder(0.3, 1.5).rotate_euler(1.57, 0.0, 0.0),
+                0.2,
+            )
             .subtract(SdfNode::box3d(0.4, 0.4, 0.4))
             .translate(0.5, 0.0, 0.0);
 
@@ -396,7 +439,9 @@ mod tests {
             assert!(
                 (d_interp - d_compiled).abs() < 0.001,
                 "Mismatch at {:?}: interp={}, compiled={}",
-                p, d_interp, d_compiled
+                p,
+                d_interp,
+                d_compiled
             );
         }
     }

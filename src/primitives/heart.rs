@@ -58,7 +58,10 @@ mod tests {
     fn test_heart_scale() {
         let d1 = sdf_heart(Vec3::new(2.0, 0.0, 0.0), 1.0);
         let d2 = sdf_heart(Vec3::new(4.0, 0.0, 0.0), 2.0);
-        assert!((d1 / 1.0 - d2 / 2.0).abs() < 0.2, "Scale should be proportional");
+        assert!(
+            (d1 / 1.0 - d2 / 2.0).abs() < 0.2,
+            "Scale should be proportional"
+        );
     }
 
     #[test]

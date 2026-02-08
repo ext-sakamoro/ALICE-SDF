@@ -23,7 +23,11 @@ mod tests {
     fn test_groove_far_outside() {
         // Far outside a: groove has no effect
         let d = sdf_groove(5.0, 0.5, 0.1, 0.05);
-        assert!((d - 5.0).abs() < 0.01, "Far outside should be ~a, got {}", d);
+        assert!(
+            (d - 5.0).abs() < 0.01,
+            "Far outside should be ~a, got {}",
+            d
+        );
     }
 
     #[test]

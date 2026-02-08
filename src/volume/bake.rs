@@ -8,9 +8,9 @@
 use glam::Vec3;
 use rayon::prelude::*;
 
+use super::{BakeConfig, Volume3D, VoxelDistGrad};
 use crate::eval::{eval, normal};
 use crate::types::SdfNode;
-use super::{BakeConfig, Volume3D, VoxelDistGrad};
 
 /// Bake SDF to a distance-only volume (Deep Fried)
 ///
@@ -249,11 +249,19 @@ mod tests {
 
         // Center should be inside (negative distance)
         let center = volume.get(3, 3, 3);
-        assert!(center < 0.0, "Center should be inside sphere, got {}", center);
+        assert!(
+            center < 0.0,
+            "Center should be inside sphere, got {}",
+            center
+        );
 
         // Corner should be outside (positive distance)
         let corner = volume.get(0, 0, 0);
-        assert!(corner > 0.0, "Corner should be outside sphere, got {}", corner);
+        assert!(
+            corner > 0.0,
+            "Corner should be outside sphere, got {}",
+            corner
+        );
     }
 
     #[test]
@@ -274,7 +282,11 @@ mod tests {
         // Check that normals are approximately normalized near surface
         let voxel = volume.get(7, 3, 3); // Near surface in +X direction
         let n_len = (voxel.nx * voxel.nx + voxel.ny * voxel.ny + voxel.nz * voxel.nz).sqrt();
-        assert!(n_len > 0.9 && n_len < 1.1, "Normal should be ~normalized, got length {}", n_len);
+        assert!(
+            n_len > 0.9 && n_len < 1.1,
+            "Normal should be ~normalized, got length {}",
+            n_len
+        );
     }
 
     #[test]
@@ -296,7 +308,9 @@ mod tests {
             assert!(
                 (vol_interp.data[i] - vol_compiled.data[i]).abs() < 0.001,
                 "Mismatch at index {}: interp={}, compiled={}",
-                i, vol_interp.data[i], vol_compiled.data[i]
+                i,
+                vol_interp.data[i],
+                vol_compiled.data[i]
             );
         }
     }

@@ -70,8 +70,8 @@ impl Default for NeuralSdfConfig {
 
 /// Dense layer: output = W * input + b
 struct Layer {
-    w: Vec<f32>,   // [out_dim * in_dim] row-major
-    b: Vec<f32>,   // [out_dim]
+    w: Vec<f32>, // [out_dim * in_dim] row-major
+    b: Vec<f32>, // [out_dim]
     in_dim: usize,
     out_dim: usize,
 }
@@ -167,7 +167,12 @@ impl NeuralSdf {
         let n = in_dim * out_dim;
         let w: Vec<f32> = (0..n).map(|_| rng.normal(0.0, std)).collect();
         let b = vec![0.0; out_dim];
-        Layer { w, b, in_dim, out_dim }
+        Layer {
+            w,
+            b,
+            in_dim,
+            out_dim,
+        }
     }
 
     fn make_adam(in_dim: usize, out_dim: usize) -> AdamState {
@@ -248,7 +253,9 @@ impl NeuralSdf {
 
             // d_pre_act = d_act * relu_derivative (hidden) or d_act (output)
             let d_pre_act: Vec<f32> = if !is_last {
-                d_act.iter().zip(output.iter())
+                d_act
+                    .iter()
+                    .zip(output.iter())
                     .map(|(&da, &o)| if o > 0.0 { da } else { 0.0 })
                     .collect()
             } else {
@@ -324,19 +331,19 @@ impl NeuralSdf {
 
         // Pre-allocate gradient accumulators
         let _n_layers = nsdf.layers.len();
-        let mut grad_w: Vec<Vec<f32>> = nsdf.layers.iter()
-            .map(|l| vec![0.0; l.w.len()])
-            .collect();
-        let mut grad_b: Vec<Vec<f32>> = nsdf.layers.iter()
-            .map(|l| vec![0.0; l.b.len()])
-            .collect();
+        let mut grad_w: Vec<Vec<f32>> = nsdf.layers.iter().map(|l| vec![0.0; l.w.len()]).collect();
+        let mut grad_b: Vec<Vec<f32>> = nsdf.layers.iter().map(|l| vec![0.0; l.b.len()]).collect();
 
         let inv_batch = 1.0 / config.batch_size as f32;
 
         for _epoch in 0..config.epochs {
             // Zero gradients
-            for g in grad_w.iter_mut() { g.fill(0.0); }
-            for g in grad_b.iter_mut() { g.fill(0.0); }
+            for g in grad_w.iter_mut() {
+                g.fill(0.0);
+            }
+            for g in grad_b.iter_mut() {
+                g.fill(0.0);
+            }
 
             let mut _epoch_loss = 0.0;
 
@@ -368,10 +375,14 @@ impl NeuralSdf {
 
         // Drop Adam state to save memory (inference only)
         for st in nsdf.adam.iter_mut() {
-            st.m_w.clear(); st.m_w.shrink_to_fit();
-            st.v_w.clear(); st.v_w.shrink_to_fit();
-            st.m_b.clear(); st.m_b.shrink_to_fit();
-            st.v_b.clear(); st.v_b.shrink_to_fit();
+            st.m_w.clear();
+            st.m_w.shrink_to_fit();
+            st.v_w.clear();
+            st.v_w.shrink_to_fit();
+            st.m_b.clear();
+            st.m_b.shrink_to_fit();
+            st.v_b.clear();
+            st.v_b.shrink_to_fit();
         }
 
         nsdf
@@ -406,12 +417,18 @@ impl NeuralSdf {
         let mut magic = [0u8; 4];
         r.read_exact(&mut magic)?;
         if &magic != b"NSDF" {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Not an NSDF file"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Not an NSDF file",
+            ));
         }
 
         let version = read_u32(r)?;
         if version != 1 {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Unsupported version"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Unsupported version",
+            ));
         }
 
         let pos_freqs = read_u32(r)? as usize;
@@ -435,7 +452,12 @@ impl NeuralSdf {
                 *val = read_f32(r)?;
             }
 
-            layers.push(Layer { w, b, in_dim, out_dim });
+            layers.push(Layer {
+                w,
+                b,
+                in_dim,
+                out_dim,
+            });
             adam.push(NeuralSdf::make_adam(in_dim, out_dim));
         }
 
@@ -550,10 +572,10 @@ mod tests {
 
         // Check that the neural SDF approximates the sphere reasonably
         let test_points = [
-            Vec3::new(0.0, 0.0, 0.0),  // inside, d = -1
-            Vec3::new(1.0, 0.0, 0.0),  // on surface, d = 0
-            Vec3::new(2.0, 0.0, 0.0),  // outside, d = 1
-            Vec3::new(0.5, 0.5, 0.0),  // inside
+            Vec3::new(0.0, 0.0, 0.0), // inside, d = -1
+            Vec3::new(1.0, 0.0, 0.0), // on surface, d = 0
+            Vec3::new(2.0, 0.0, 0.0), // outside, d = 1
+            Vec3::new(0.5, 0.5, 0.0), // inside
         ];
 
         let mut max_err: f32 = 0.0;
@@ -564,8 +586,11 @@ mod tests {
             max_err = max_err.max(err);
         }
 
-        assert!(max_err < 0.3,
-            "Max error should be < 0.3, got {:.4}", max_err);
+        assert!(
+            max_err < 0.3,
+            "Max error should be < 0.3, got {:.4}",
+            max_err
+        );
     }
 
     #[test]
@@ -592,8 +617,12 @@ mod tests {
         // Evaluate after load
         let d_after = nsdf2.eval(p);
 
-        assert!((d_before - d_after).abs() < 1e-6,
-            "Before={}, After={}", d_before, d_after);
+        assert!(
+            (d_before - d_after).abs() < 1e-6,
+            "Before={}, After={}",
+            d_before,
+            d_after
+        );
         assert_eq!(nsdf.param_count(), nsdf2.param_count());
     }
 
@@ -615,10 +644,8 @@ mod tests {
         let diff = pred - target;
 
         // Analytical gradient
-        let mut grad_w: Vec<Vec<f32>> = nsdf.layers.iter()
-            .map(|l| vec![0.0; l.w.len()]).collect();
-        let mut grad_b: Vec<Vec<f32>> = nsdf.layers.iter()
-            .map(|l| vec![0.0; l.b.len()]).collect();
+        let mut grad_w: Vec<Vec<f32>> = nsdf.layers.iter().map(|l| vec![0.0; l.w.len()]).collect();
+        let mut grad_b: Vec<Vec<f32>> = nsdf.layers.iter().map(|l| vec![0.0; l.b.len()]).collect();
         nsdf.backward(&activations, 2.0 * diff, &mut grad_w, &mut grad_b);
 
         // Numerical gradient check on first layer weights

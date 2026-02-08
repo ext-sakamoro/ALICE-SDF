@@ -17,14 +17,12 @@
 //!
 //! Author: Moroya Sakamoto
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use alice_sdf::prelude::*;
 use alice_sdf::compiled::{
-    CompiledSdf,
-    eval_compiled_batch_parallel,
-    eval_compiled_batch_simd_parallel,
+    eval_compiled_batch_parallel, eval_compiled_batch_simd_parallel, CompiledSdf,
 };
+use alice_sdf::prelude::*;
 use alice_sdf::soa::SoAPoints;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 #[cfg(feature = "gpu")]
 use alice_sdf::compiled::GpuEvaluator;
@@ -76,9 +74,7 @@ fn bench_crossover(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("cpu_interpreted", size),
             &points,
-            |b, points| {
-                b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points)))
-            },
+            |b, points| b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points))),
         );
 
         // CPU Compiled (parallel)
@@ -91,32 +87,22 @@ fn bench_crossover(c: &mut Criterion) {
         );
 
         // CPU SIMD (parallel)
-        group.bench_with_input(
-            BenchmarkId::new("cpu_simd", size),
-            &points,
-            |b, points| {
-                b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("cpu_simd", size), &points, |b, points| {
+            b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
+        });
 
         // CPU JIT SIMD (parallel)
         #[cfg(feature = "jit")]
-        group.bench_with_input(
-            BenchmarkId::new("cpu_jit_simd", size),
-            &soa,
-            |b, soa| {
-                b.iter(|| jit.eval_soa(black_box(soa)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("cpu_jit_simd", size), &soa, |b, soa| {
+            b.iter(|| jit.eval_soa(black_box(soa)))
+        });
 
         // GPU Compute
         #[cfg(feature = "gpu")]
         group.bench_with_input(
             BenchmarkId::new("gpu_compute", size),
             &points,
-            |b, points| {
-                b.iter(|| gpu.eval_batch(black_box(points)).unwrap())
-            },
+            |b, points| b.iter(|| gpu.eval_batch(black_box(points)).unwrap()),
         );
     }
 
@@ -142,30 +128,20 @@ fn bench_simple_shape(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(size as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("cpu_simd", size),
-            &points,
-            |b, points| {
-                b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("cpu_simd", size), &points, |b, points| {
+            b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
+        });
 
         #[cfg(feature = "jit")]
-        group.bench_with_input(
-            BenchmarkId::new("cpu_jit_simd", size),
-            &soa,
-            |b, soa| {
-                b.iter(|| jit.eval_soa(black_box(soa)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("cpu_jit_simd", size), &soa, |b, soa| {
+            b.iter(|| jit.eval_soa(black_box(soa)))
+        });
 
         #[cfg(feature = "gpu")]
         group.bench_with_input(
             BenchmarkId::new("gpu_compute", size),
             &points,
-            |b, points| {
-                b.iter(|| gpu.eval_batch(black_box(points)).unwrap())
-            },
+            |b, points| b.iter(|| gpu.eval_batch(black_box(points)).unwrap()),
         );
     }
 
@@ -188,10 +164,7 @@ fn bench_complex_shape(c: &mut Criterion) {
             SdfNode::cylinder(0.3, 2.0).rotate_euler(0.0, 0.0, std::f32::consts::FRAC_PI_2),
             0.1,
         )
-        .smooth_union(
-            SdfNode::torus(0.8, 0.2).translate(0.0, 1.0, 0.0),
-            0.1,
-        )
+        .smooth_union(SdfNode::torus(0.8, 0.2).translate(0.0, 1.0, 0.0), 0.1)
         .twist(0.1)
         .round(0.02)
         .translate(0.0, 0.5, 0.0);
@@ -210,30 +183,20 @@ fn bench_complex_shape(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(size as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("cpu_simd", size),
-            &points,
-            |b, points| {
-                b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("cpu_simd", size), &points, |b, points| {
+            b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
+        });
 
         #[cfg(feature = "jit")]
-        group.bench_with_input(
-            BenchmarkId::new("cpu_jit_simd", size),
-            &soa,
-            |b, soa| {
-                b.iter(|| jit.eval_soa(black_box(soa)))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("cpu_jit_simd", size), &soa, |b, soa| {
+            b.iter(|| jit.eval_soa(black_box(soa)))
+        });
 
         #[cfg(feature = "gpu")]
         group.bench_with_input(
             BenchmarkId::new("gpu_compute", size),
             &points,
-            |b, points| {
-                b.iter(|| gpu.eval_batch(black_box(points)).unwrap())
-            },
+            |b, points| b.iter(|| gpu.eval_batch(black_box(points)).unwrap()),
         );
     }
 

@@ -374,11 +374,8 @@ impl GpuEvaluator {
 
         // Write input data
         let input_data: Vec<GpuInputPoint> = points.iter().map(|&p| p.into()).collect();
-        self.queue.write_buffer(
-            &pool.input_buffer,
-            0,
-            bytemuck::cast_slice(&input_data),
-        );
+        self.queue
+            .write_buffer(&pool.input_buffer, 0, bytemuck::cast_slice(&input_data));
 
         // Write point count
         self.queue.write_buffer(
@@ -408,9 +405,11 @@ impl GpuEvaluator {
         });
 
         // Dispatch
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("ALICE-SDF Pooled Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("ALICE-SDF Pooled Encoder"),
+            });
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -425,13 +424,7 @@ impl GpuEvaluator {
         }
 
         let read_size = (point_count * std::mem::size_of::<GpuOutputDistance>()) as u64;
-        encoder.copy_buffer_to_buffer(
-            &pool.output_buffer,
-            0,
-            &pool.staging_buffer,
-            0,
-            read_size,
-        );
+        encoder.copy_buffer_to_buffer(&pool.output_buffer, 0, &pool.staging_buffer, 0, read_size);
 
         self.queue.submit(std::iter::once(encoder.finish()));
 
@@ -451,10 +444,7 @@ impl GpuEvaluator {
 
         let data = buffer_slice.get_mapped_range();
         let output: &[GpuOutputDistance] = bytemuck::cast_slice(&data);
-        let distances: Vec<f32> = output[..point_count]
-            .iter()
-            .map(|d| d.distance)
-            .collect();
+        let distances: Vec<f32> = output[..point_count].iter().map(|d| d.distance).collect();
 
         drop(data);
         pool.staging_buffer.unmap();
@@ -860,50 +850,48 @@ impl GpuEvaluator {
         }
         // Ensure minimum size for the uniform buffer
         param_data.resize(PARAM_BUFFER_SIZE as usize / 4, 0.0);
-        let param_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("SDF Params Buffer"),
-                contents: bytemuck::cast_slice(&param_data),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+        let param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("SDF Params Buffer"),
+            contents: bytemuck::cast_slice(&param_data),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
 
         // Also create a 3-binding layout for backward compat (unused in Dynamic, but required by struct)
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("ALICE-SDF Legacy Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("ALICE-SDF Legacy Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                ],
-            });
+                    count: None,
+                },
+            ],
+        });
 
         Ok(GpuEvaluator {
             device,
@@ -1186,8 +1174,14 @@ impl std::fmt::Debug for GpuBufferPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GpuBufferPool")
             .field("capacity", &self.capacity)
-            .field("input_bytes", &(self.capacity * std::mem::size_of::<GpuInputPoint>()))
-            .field("output_bytes", &(self.capacity * std::mem::size_of::<GpuOutputDistance>()))
+            .field(
+                "input_bytes",
+                &(self.capacity * std::mem::size_of::<GpuInputPoint>()),
+            )
+            .field(
+                "output_bytes",
+                &(self.capacity * std::mem::size_of::<GpuOutputDistance>()),
+            )
             .finish()
     }
 }
@@ -1283,10 +1277,12 @@ mod tests {
             return;
         }
 
-        let shape = SdfNode::Sphere { radius: 1.0 }
-            .union(SdfNode::Box3d {
+        let shape = SdfNode::Sphere { radius: 1.0 }.union(
+            SdfNode::Box3d {
                 half_extents: Vec3::splat(0.5),
-            }.translate(2.0, 0.0, 0.0));
+            }
+            .translate(2.0, 0.0, 0.0),
+        );
 
         let gpu = GpuEvaluator::new(&shape).unwrap();
 

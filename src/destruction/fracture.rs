@@ -169,11 +169,7 @@ fn generate_seeds(center: Vec3, radius: f32, count: u32, seed: u64) -> Vec<Vec3>
 ///
 /// Creates an isosurface at the boundary of the cell using a simple
 /// surface-finding approach on the assignment grid.
-fn extract_piece_mesh(
-    grid: &MutableVoxelGrid,
-    assignments: &[u32],
-    cell: u32,
-) -> (Mesh, Vec3) {
+fn extract_piece_mesh(grid: &MutableVoxelGrid, assignments: &[u32], cell: u32) -> (Mesh, Vec3) {
     let [rx, ry, rz] = grid.resolution;
     let vs = grid.voxel_size();
     let mut vertices = Vec::new();
@@ -205,9 +201,12 @@ fn extract_piece_mesh(
                     grid.voxel_index(x, y, z.saturating_sub(1)),
                 ];
                 let normals = [
-                    Vec3::X, Vec3::NEG_X,
-                    Vec3::Y, Vec3::NEG_Y,
-                    Vec3::Z, Vec3::NEG_Z,
+                    Vec3::X,
+                    Vec3::NEG_X,
+                    Vec3::Y,
+                    Vec3::NEG_Y,
+                    Vec3::Z,
+                    Vec3::NEG_Z,
                 ];
 
                 for (ni, &nidx) in neighbors.iter().enumerate() {
@@ -225,10 +224,26 @@ fn extract_piece_mesh(
                         let p3 = face_center + (-u + v) * half;
 
                         let vi = vertices.len() as u32;
-                        vertices.push(Vertex { position: p0, normal, ..Default::default() });
-                        vertices.push(Vertex { position: p1, normal, ..Default::default() });
-                        vertices.push(Vertex { position: p2, normal, ..Default::default() });
-                        vertices.push(Vertex { position: p3, normal, ..Default::default() });
+                        vertices.push(Vertex {
+                            position: p0,
+                            normal,
+                            ..Default::default()
+                        });
+                        vertices.push(Vertex {
+                            position: p1,
+                            normal,
+                            ..Default::default()
+                        });
+                        vertices.push(Vertex {
+                            position: p2,
+                            normal,
+                            ..Default::default()
+                        });
+                        vertices.push(Vertex {
+                            position: p3,
+                            normal,
+                            ..Default::default()
+                        });
 
                         indices.push(vi);
                         indices.push(vi + 1);
@@ -253,7 +268,11 @@ fn extract_piece_mesh(
 
 /// Create an orthonormal tangent basis for a face normal
 fn make_tangent_basis(normal: Vec3) -> (Vec3, Vec3) {
-    let up = if normal.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
+    let up = if normal.y.abs() < 0.9 {
+        Vec3::Y
+    } else {
+        Vec3::X
+    };
     let u = normal.cross(up).normalize();
     let v = u.cross(normal).normalize();
     (u, v)
@@ -264,7 +283,8 @@ fn simple_hash_noise(pos: Vec3, seed: u32) -> f32 {
     let ix = (pos.x * 100.0) as u32;
     let iy = (pos.y * 100.0) as u32;
     let iz = (pos.z * 100.0) as u32;
-    let h = ix.wrapping_mul(374761393)
+    let h = ix
+        .wrapping_mul(374761393)
         .wrapping_add(iy.wrapping_mul(668265263))
         .wrapping_add(iz.wrapping_mul(1274126177))
         .wrapping_add(seed.wrapping_mul(1103515245));
@@ -275,7 +295,9 @@ fn simple_hash_noise(pos: Vec3, seed: u32) -> f32 {
 
 #[inline]
 fn lcg_next(state: u64) -> u64 {
-    state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+    state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
 }
 
 #[inline]
@@ -290,10 +312,7 @@ mod tests {
 
     fn make_test_grid() -> MutableVoxelGrid {
         let sphere = SdfNode::sphere(1.5);
-        MutableVoxelGrid::from_sdf(
-            &sphere, [16, 16, 16],
-            Vec3::splat(-2.0), Vec3::splat(2.0),
-        )
+        MutableVoxelGrid::from_sdf(&sphere, [16, 16, 16], Vec3::splat(-2.0), Vec3::splat(2.0))
     }
 
     #[test]

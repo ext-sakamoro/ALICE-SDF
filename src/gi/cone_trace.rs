@@ -8,8 +8,8 @@
 
 use glam::Vec3;
 
-use crate::svo::{SparseVoxelOctree, svo_query_point};
-use super::{sky_color, DirectionalLight, direct_lighting};
+use super::{direct_lighting, sky_color, DirectionalLight};
+use crate::svo::{svo_query_point, SparseVoxelOctree};
 
 /// Configuration for cone tracing
 #[derive(Debug, Clone)]
@@ -35,7 +35,7 @@ impl Default for ConeTraceConfig {
         ConeTraceConfig {
             num_cones: 5,
             max_distance: 20.0,
-            cone_angle: 0.5,    // ~28 degrees half-angle
+            cone_angle: 0.5, // ~28 degrees half-angle
             step_multiplier: 1.0,
             min_step: 0.05,
             surface_offset: 0.1,
@@ -145,16 +145,15 @@ fn estimate_radiance(
     light: Option<&DirectionalLight>,
 ) -> Vec3 {
     let e = 0.05;
-    let k0 = Vec3::new( 1.0, -1.0, -1.0);
-    let k1 = Vec3::new(-1.0, -1.0,  1.0);
-    let k2 = Vec3::new(-1.0,  1.0, -1.0);
-    let k3 = Vec3::new( 1.0,  1.0,  1.0);
-    let normal = (
-        k0 * svo_query_point(svo, pos + k0 * e)
-      + k1 * svo_query_point(svo, pos + k1 * e)
-      + k2 * svo_query_point(svo, pos + k2 * e)
-      + k3 * svo_query_point(svo, pos + k3 * e)
-    ).normalize_or_zero();
+    let k0 = Vec3::new(1.0, -1.0, -1.0);
+    let k1 = Vec3::new(-1.0, -1.0, 1.0);
+    let k2 = Vec3::new(-1.0, 1.0, -1.0);
+    let k3 = Vec3::new(1.0, 1.0, 1.0);
+    let normal = (k0 * svo_query_point(svo, pos + k0 * e)
+        + k1 * svo_query_point(svo, pos + k1 * e)
+        + k2 * svo_query_point(svo, pos + k2 * e)
+        + k3 * svo_query_point(svo, pos + k3 * e))
+    .normalize_or_zero();
 
     // Diffuse surface albedo (gray)
     let albedo = Vec3::splat(0.5);
@@ -205,7 +204,11 @@ fn generate_cosine_cones(normal: Vec3, num_cones: u32) -> Vec<(Vec3, f32)> {
 
 /// Create an orthonormal basis from a normal vector
 fn make_orthonormal_basis(normal: Vec3) -> (Vec3, Vec3) {
-    let up = if normal.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
+    let up = if normal.y.abs() < 0.9 {
+        Vec3::Y
+    } else {
+        Vec3::X
+    };
     let tangent = normal.cross(up).normalize();
     let bitangent = tangent.cross(normal).normalize();
     (tangent, bitangent)
@@ -214,8 +217,8 @@ fn make_orthonormal_basis(normal: Vec3) -> (Vec3, Vec3) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::svo::{SparseVoxelOctree, SvoBuildConfig};
     use crate::types::SdfNode;
-    use crate::svo::{SvoBuildConfig, SparseVoxelOctree};
 
     fn make_test_svo() -> SparseVoxelOctree {
         let sphere = SdfNode::sphere(1.0);
@@ -236,13 +239,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = cone_trace(
-            &svo,
-            Vec3::new(0.0, 3.0, 0.0),
-            Vec3::NEG_Y,
-            &config,
-            None,
-        );
+        let result = cone_trace(&svo, Vec3::new(0.0, 3.0, 0.0), Vec3::NEG_Y, &config, None);
 
         assert!(result.color.length() > 0.0, "Should have some color");
         assert!(result.occlusion >= 0.0 && result.occlusion <= 1.0);
@@ -257,16 +254,13 @@ mod tests {
         };
 
         // Trace away from sphere
-        let result = cone_trace(
-            &svo,
-            Vec3::new(0.0, 3.0, 0.0),
-            Vec3::Y,
-            &config,
-            None,
-        );
+        let result = cone_trace(&svo, Vec3::new(0.0, 3.0, 0.0), Vec3::Y, &config, None);
 
         // Should get mostly sky color (low occlusion)
-        assert!(result.occlusion > 0.5, "Tracing away should have low occlusion");
+        assert!(
+            result.occlusion > 0.5,
+            "Tracing away should have low occlusion"
+        );
     }
 
     #[test]
@@ -296,9 +290,16 @@ mod tests {
 
         // All directions should be in the upper hemisphere
         for (dir, weight) in &cones {
-            assert!(dir.y > -0.1, "Cone should be in upper hemisphere, y={}", dir.y);
+            assert!(
+                dir.y > -0.1,
+                "Cone should be in upper hemisphere, y={}",
+                dir.y
+            );
             assert!(*weight > 0.0);
-            assert!((dir.length() - 1.0).abs() < 0.01, "Direction should be normalized");
+            assert!(
+                (dir.length() - 1.0).abs() < 0.01,
+                "Direction should be normalized"
+            );
         }
     }
 
@@ -316,13 +317,7 @@ mod tests {
             Some(&light),
         );
 
-        let without_light = cone_trace(
-            &svo,
-            Vec3::new(0.0, 3.0, 0.0),
-            Vec3::NEG_Y,
-            &config,
-            None,
-        );
+        let without_light = cone_trace(&svo, Vec3::new(0.0, 3.0, 0.0), Vec3::NEG_Y, &config, None);
 
         // With light should be brighter (or at least as bright)
         assert!(with_light.color.length() >= without_light.color.length() - 0.1);

@@ -120,7 +120,11 @@ pub fn apply_uvs(mesh: &mut Mesh, result: &UvUnwrapResult) {
 type EdgeKey = (u32, u32);
 
 fn edge_key(a: u32, b: u32) -> EdgeKey {
-    if a < b { (a, b) } else { (b, a) }
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 /// Detect seam edges based on dihedral angle threshold
@@ -169,11 +173,7 @@ fn triangle_normal(mesh: &Mesh, ti: usize) -> glam::Vec3 {
 }
 
 /// Split mesh triangles into connected charts separated by seams
-fn split_into_charts(
-    mesh: &Mesh,
-    tri_count: usize,
-    seams: &HashSet<EdgeKey>,
-) -> Vec<Vec<usize>> {
+fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) -> Vec<Vec<usize>> {
     // Build triangle adjacency (not crossing seams)
     let mut tri_adj: Vec<Vec<usize>> = vec![Vec::new(); tri_count];
 
@@ -313,20 +313,44 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
         let a = mesh.indices[gti * 3] as u32;
         let b = mesh.indices[gti * 3 + 1] as u32;
         let c = mesh.indices[gti * 3 + 2] as u32;
-        edge_to_local_tri.entry(edge_key(a, b)).or_default().push(lti);
-        edge_to_local_tri.entry(edge_key(b, c)).or_default().push(lti);
-        edge_to_local_tri.entry(edge_key(c, a)).or_default().push(lti);
+        edge_to_local_tri
+            .entry(edge_key(a, b))
+            .or_default()
+            .push(lti);
+        edge_to_local_tri
+            .entry(edge_key(b, c))
+            .or_default()
+            .push(lti);
+        edge_to_local_tri
+            .entry(edge_key(c, a))
+            .or_default()
+            .push(lti);
     }
 
     // Seed the queue with neighbors of first triangle
-    for &lti in edge_to_local_tri.get(&edge_key(gi0, gi1)).unwrap_or(&vec![]) {
-        if !tri_placed[lti] { tri_queue.push_back(lti); }
+    for &lti in edge_to_local_tri
+        .get(&edge_key(gi0, gi1))
+        .unwrap_or(&vec![])
+    {
+        if !tri_placed[lti] {
+            tri_queue.push_back(lti);
+        }
     }
-    for &lti in edge_to_local_tri.get(&edge_key(gi1, gi2)).unwrap_or(&vec![]) {
-        if !tri_placed[lti] { tri_queue.push_back(lti); }
+    for &lti in edge_to_local_tri
+        .get(&edge_key(gi1, gi2))
+        .unwrap_or(&vec![])
+    {
+        if !tri_placed[lti] {
+            tri_queue.push_back(lti);
+        }
     }
-    for &lti in edge_to_local_tri.get(&edge_key(gi2, gi0)).unwrap_or(&vec![]) {
-        if !tri_placed[lti] { tri_queue.push_back(lti); }
+    for &lti in edge_to_local_tri
+        .get(&edge_key(gi2, gi0))
+        .unwrap_or(&vec![])
+    {
+        if !tri_placed[lti] {
+            tri_queue.push_back(lti);
+        }
     }
 
     while let Some(lti) = tri_queue.pop_front() {
@@ -380,7 +404,9 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
                     let uv_perp = Vec2::new(-uv_dir.y, uv_dir.x);
 
                     let ratio = len_ik / len_ij.max(1e-10);
-                    local_uvs[locals[ek]] = uv_i + uv_dir * (cos_a * ratio * uv_edge.length()) + uv_perp * (sin_a * ratio * uv_edge.length());
+                    local_uvs[locals[ek]] = uv_i
+                        + uv_dir * (cos_a * ratio * uv_edge.length())
+                        + uv_perp * (sin_a * ratio * uv_edge.length());
                 }
                 placed[locals[ek]] = true;
             }
@@ -503,14 +529,22 @@ fn pack_charts(charts: &mut [UvChart], margin: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
+    use crate::types::SdfNode;
     use glam::Vec3;
 
     #[test]
     fn test_uv_unwrap_sphere() {
         let sphere = SdfNode::sphere(1.0);
-        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig { resolution: 8, ..Default::default() });
+        let mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 8,
+                ..Default::default()
+            },
+        );
 
         let result = uv_unwrap(&mesh, &UvUnwrapConfig::default());
 
@@ -527,7 +561,15 @@ mod tests {
     #[test]
     fn test_uv_unwrap_box() {
         let box3d = SdfNode::box3d(1.0, 1.0, 1.0);
-        let mesh = sdf_to_mesh(&box3d, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig { resolution: 8, ..Default::default() });
+        let mesh = sdf_to_mesh(
+            &box3d,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 8,
+                ..Default::default()
+            },
+        );
 
         let result = uv_unwrap(&mesh, &UvUnwrapConfig::default());
 
@@ -538,7 +580,15 @@ mod tests {
     #[test]
     fn test_apply_uvs() {
         let sphere = SdfNode::sphere(1.0);
-        let mut mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig { resolution: 8, ..Default::default() });
+        let mut mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 8,
+                ..Default::default()
+            },
+        );
 
         let result = uv_unwrap(&mesh, &UvUnwrapConfig::default());
         apply_uvs(&mut mesh, &result);

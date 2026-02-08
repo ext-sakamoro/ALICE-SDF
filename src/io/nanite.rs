@@ -42,10 +42,7 @@ impl Default for NaniteExportConfig {
 }
 
 /// Export NaniteMesh to binary .nanite format
-pub fn export_nanite(
-    nanite: &NaniteMesh,
-    path: impl AsRef<Path>,
-) -> Result<(), IoError> {
+pub fn export_nanite(nanite: &NaniteMesh, path: impl AsRef<Path>) -> Result<(), IoError> {
     export_nanite_with_config(nanite, path, &NaniteExportConfig::default())
 }
 
@@ -59,10 +56,14 @@ pub fn export_nanite_with_config(
     let mut w = std::io::BufWriter::new(file);
 
     // Count totals
-    let total_vertices: u32 = nanite.clusters.iter()
+    let total_vertices: u32 = nanite
+        .clusters
+        .iter()
         .map(|c| c.vertices.len() as u32)
         .sum();
-    let total_triangles: u32 = nanite.clusters.iter()
+    let total_triangles: u32 = nanite
+        .clusters
+        .iter()
         .map(|c| c.triangles.len() as u32)
         .sum();
 
@@ -148,10 +149,7 @@ pub fn export_nanite_with_config(
 }
 
 /// Export NaniteMesh metadata to JSON manifest
-pub fn export_nanite_json(
-    nanite: &NaniteMesh,
-    path: impl AsRef<Path>,
-) -> Result<(), IoError> {
+pub fn export_nanite_json(nanite: &NaniteMesh, path: impl AsRef<Path>) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
 
@@ -164,7 +162,11 @@ pub fn export_nanite_json(
     // LOD levels
     writeln!(w, "  \"lod_levels\": [")?;
     for (i, lod) in nanite.lod_levels.iter().enumerate() {
-        let comma = if i + 1 < nanite.lod_levels.len() { "," } else { "" };
+        let comma = if i + 1 < nanite.lod_levels.len() {
+            ","
+        } else {
+            ""
+        };
         writeln!(w, "    {{\"level\": {}, \"resolution\": {}, \"max_error\": {:.6}, \"triangle_count\": {}}}{comma}",
             lod.level, lod.resolution, lod.max_error, lod.triangle_count)?;
     }
@@ -173,22 +175,39 @@ pub fn export_nanite_json(
     // Clusters summary
     writeln!(w, "  \"clusters\": [")?;
     for (i, cluster) in nanite.clusters.iter().enumerate() {
-        let comma = if i + 1 < nanite.clusters.len() { "," } else { "" };
+        let comma = if i + 1 < nanite.clusters.len() {
+            ","
+        } else {
+            ""
+        };
         writeln!(w, "    {{")?;
         writeln!(w, "      \"id\": {},", cluster.id)?;
         writeln!(w, "      \"lod_level\": {},", cluster.lod_level)?;
         writeln!(w, "      \"vertex_count\": {},", cluster.vertices.len())?;
         writeln!(w, "      \"triangle_count\": {},", cluster.triangles.len())?;
-        writeln!(w, "      \"geometric_error\": {:.6},", cluster.geometric_error)?;
+        writeln!(
+            w,
+            "      \"geometric_error\": {:.6},",
+            cluster.geometric_error
+        )?;
         writeln!(w, "      \"material_id\": {},", cluster.material_id)?;
         writeln!(w, "      \"bounds\": {{")?;
-        writeln!(w, "        \"center\": [{:.6}, {:.6}, {:.6}],",
-            cluster.bounds.center.x, cluster.bounds.center.y, cluster.bounds.center.z)?;
+        writeln!(
+            w,
+            "        \"center\": [{:.6}, {:.6}, {:.6}],",
+            cluster.bounds.center.x, cluster.bounds.center.y, cluster.bounds.center.z
+        )?;
         writeln!(w, "        \"radius\": {:.6},", cluster.bounds.radius)?;
-        writeln!(w, "        \"aabb_min\": [{:.6}, {:.6}, {:.6}],",
-            cluster.bounds.aabb_min.x, cluster.bounds.aabb_min.y, cluster.bounds.aabb_min.z)?;
-        writeln!(w, "        \"aabb_max\": [{:.6}, {:.6}, {:.6}]",
-            cluster.bounds.aabb_max.x, cluster.bounds.aabb_max.y, cluster.bounds.aabb_max.z)?;
+        writeln!(
+            w,
+            "        \"aabb_min\": [{:.6}, {:.6}, {:.6}],",
+            cluster.bounds.aabb_min.x, cluster.bounds.aabb_min.y, cluster.bounds.aabb_min.z
+        )?;
+        writeln!(
+            w,
+            "        \"aabb_max\": [{:.6}, {:.6}, {:.6}]",
+            cluster.bounds.aabb_max.x, cluster.bounds.aabb_max.y, cluster.bounds.aabb_max.z
+        )?;
         writeln!(w, "      }},")?;
         writeln!(w, "      \"parent_ids\": {:?},", cluster.parent_ids)?;
         writeln!(w, "      \"child_ids\": {:?}", cluster.child_ids)?;
@@ -224,7 +243,10 @@ pub fn export_nanite_hlsl_material(
 
     writeln!(w, "// ALICE-SDF Nanite Material Function")?;
     writeln!(w, "// Auto-generated procedural material for UE5 Nanite")?;
-    writeln!(w, "// Usage: Add as Custom Expression in UE5 Material Editor")?;
+    writeln!(
+        w,
+        "// Usage: Add as Custom Expression in UE5 Material Editor"
+    )?;
     writeln!(w, "// Input: float3 WorldPosition")?;
     writeln!(w, "// Output: float4 (xyz = normal, w = signed_distance)")?;
     writeln!(w, "")?;
@@ -240,9 +262,18 @@ pub fn export_nanite_hlsl_material(
     writeln!(w, "{{")?;
     writeln!(w, "    const float eps = 0.001;")?;
     writeln!(w, "    return normalize(float3(")?;
-    writeln!(w, "        sdf_eval(p + float3(eps, 0, 0)) - sdf_eval(p - float3(eps, 0, 0)),")?;
-    writeln!(w, "        sdf_eval(p + float3(0, eps, 0)) - sdf_eval(p - float3(0, eps, 0)),")?;
-    writeln!(w, "        sdf_eval(p + float3(0, 0, eps)) - sdf_eval(p - float3(0, 0, eps))")?;
+    writeln!(
+        w,
+        "        sdf_eval(p + float3(eps, 0, 0)) - sdf_eval(p - float3(eps, 0, 0)),"
+    )?;
+    writeln!(
+        w,
+        "        sdf_eval(p + float3(0, eps, 0)) - sdf_eval(p - float3(0, eps, 0)),"
+    )?;
+    writeln!(
+        w,
+        "        sdf_eval(p + float3(0, 0, eps)) - sdf_eval(p - float3(0, 0, eps))"
+    )?;
     writeln!(w, "    ));")?;
     writeln!(w, "}}")?;
     writeln!(w, "")?;
@@ -264,12 +295,17 @@ pub fn export_nanite_hlsl_material(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::mesh::nanite::{generate_nanite_mesh, NaniteConfig};
+    use crate::types::SdfNode;
 
     fn make_test_nanite() -> NaniteMesh {
         let sphere = SdfNode::sphere(1.0);
-        generate_nanite_mesh(&sphere, glam::Vec3::splat(-2.0), glam::Vec3::splat(2.0), &NaniteConfig::default())
+        generate_nanite_mesh(
+            &sphere,
+            glam::Vec3::splat(-2.0),
+            glam::Vec3::splat(2.0),
+            &NaniteConfig::default(),
+        )
     }
 
     #[test]

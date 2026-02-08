@@ -3,8 +3,8 @@
 //! Generates standalone WGSL, HLSL, or GLSL shader functions
 //! that reproduce the fitted texture using hash_noise_3d.
 
-use std::fmt::Write;
 use super::TextureFitResult;
+use std::fmt::Write;
 
 /// Target shader language
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,13 +24,20 @@ impl std::str::FromStr for ShaderLanguage {
             "wgsl" => Ok(ShaderLanguage::Wgsl),
             "hlsl" => Ok(ShaderLanguage::Hlsl),
             "glsl" => Ok(ShaderLanguage::Glsl),
-            _ => Err(format!("Unknown shader language: '{}'. Expected wgsl, hlsl, or glsl", s)),
+            _ => Err(format!(
+                "Unknown shader language: '{}'. Expected wgsl, hlsl, or glsl",
+                s
+            )),
         }
     }
 }
 
 /// Generate a standalone shader function from a fit result
-pub fn generate_shader(result: &TextureFitResult, lang: ShaderLanguage, source_name: &str) -> String {
+pub fn generate_shader(
+    result: &TextureFitResult,
+    lang: ShaderLanguage,
+    source_name: &str,
+) -> String {
     match lang {
         ShaderLanguage::Wgsl => generate_wgsl(result, source_name),
         ShaderLanguage::Hlsl => generate_hlsl(result, source_name),
@@ -42,8 +49,18 @@ fn generate_wgsl(result: &TextureFitResult, source_name: &str) -> String {
     let mut s = String::with_capacity(2048);
     let total_octaves: usize = result.octaves.iter().map(|o| o.len()).sum();
 
-    writeln!(s, "// ALICE-SDF Procedural Texture (fitted from {})", source_name).unwrap();
-    writeln!(s, "// PSNR: {:.1} dB, {} octaves", result.psnr_db, total_octaves).unwrap();
+    writeln!(
+        s,
+        "// ALICE-SDF Procedural Texture (fitted from {})",
+        source_name
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "// PSNR: {:.1} dB, {} octaves",
+        result.psnr_db, total_octaves
+    )
+    .unwrap();
     writeln!(s).unwrap();
 
     // hash_noise_3d function
@@ -60,11 +77,20 @@ fn generate_wgsl(result: &TextureFitResult, source_name: &str) -> String {
 
         for oct in octaves {
             if oct.rotation.abs() > 1e-6 {
-                writeln!(s, "    // rotated octave (freq={:.1}, seed={})", oct.frequency, oct.seed).unwrap();
+                writeln!(
+                    s,
+                    "    // rotated octave (freq={:.1}, seed={})",
+                    oct.frequency, oct.seed
+                )
+                .unwrap();
                 writeln!(s, "    {{").unwrap();
                 writeln!(s, "        let s = sin({:.6});", oct.rotation).unwrap();
                 writeln!(s, "        let c = cos({:.6});", oct.rotation).unwrap();
-                writeln!(s, "        let ruv = vec2<f32>(uv.x * c - uv.y * s, uv.x * s + uv.y * c);").unwrap();
+                writeln!(
+                    s,
+                    "        let ruv = vec2<f32>(uv.x * c - uv.y * s, uv.x * s + uv.y * c);"
+                )
+                .unwrap();
                 writeln!(s, "        value += {:.6} * hash_noise_3d(vec3<f32>(ruv * {:.6} + vec2<f32>({:.6}, {:.6}), 0.0), {}u);",
                     oct.amplitude, oct.frequency, oct.phase[0], oct.phase[1], oct.seed).unwrap();
                 writeln!(s, "    }}").unwrap();
@@ -84,8 +110,18 @@ fn generate_hlsl(result: &TextureFitResult, source_name: &str) -> String {
     let mut s = String::with_capacity(2048);
     let total_octaves: usize = result.octaves.iter().map(|o| o.len()).sum();
 
-    writeln!(s, "// ALICE-SDF Procedural Texture (fitted from {})", source_name).unwrap();
-    writeln!(s, "// PSNR: {:.1} dB, {} octaves", result.psnr_db, total_octaves).unwrap();
+    writeln!(
+        s,
+        "// ALICE-SDF Procedural Texture (fitted from {})",
+        source_name
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "// PSNR: {:.1} dB, {} octaves",
+        result.psnr_db, total_octaves
+    )
+    .unwrap();
     writeln!(s).unwrap();
 
     s.push_str(HLSL_HASH_NOISE);
@@ -103,7 +139,11 @@ fn generate_hlsl(result: &TextureFitResult, source_name: &str) -> String {
                 writeln!(s, "    {{").unwrap();
                 writeln!(s, "        float s = sin({:.6});", oct.rotation).unwrap();
                 writeln!(s, "        float c = cos({:.6});", oct.rotation).unwrap();
-                writeln!(s, "        float2 ruv = float2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);").unwrap();
+                writeln!(
+                    s,
+                    "        float2 ruv = float2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);"
+                )
+                .unwrap();
                 writeln!(s, "        value += {:.6} * hash_noise_3d(float3(ruv * {:.6} + float2({:.6}, {:.6}), 0.0), {}u);",
                     oct.amplitude, oct.frequency, oct.phase[0], oct.phase[1], oct.seed).unwrap();
                 writeln!(s, "    }}").unwrap();
@@ -123,8 +163,18 @@ fn generate_glsl(result: &TextureFitResult, source_name: &str) -> String {
     let mut s = String::with_capacity(2048);
     let total_octaves: usize = result.octaves.iter().map(|o| o.len()).sum();
 
-    writeln!(s, "// ALICE-SDF Procedural Texture (fitted from {})", source_name).unwrap();
-    writeln!(s, "// PSNR: {:.1} dB, {} octaves", result.psnr_db, total_octaves).unwrap();
+    writeln!(
+        s,
+        "// ALICE-SDF Procedural Texture (fitted from {})",
+        source_name
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "// PSNR: {:.1} dB, {} octaves",
+        result.psnr_db, total_octaves
+    )
+    .unwrap();
     writeln!(s).unwrap();
 
     s.push_str(GLSL_HASH_NOISE);
@@ -142,7 +192,11 @@ fn generate_glsl(result: &TextureFitResult, source_name: &str) -> String {
                 writeln!(s, "    {{").unwrap();
                 writeln!(s, "        float s = sin({:.6});", oct.rotation).unwrap();
                 writeln!(s, "        float c = cos({:.6});", oct.rotation).unwrap();
-                writeln!(s, "        vec2 ruv = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);").unwrap();
+                writeln!(
+                    s,
+                    "        vec2 ruv = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);"
+                )
+                .unwrap();
                 writeln!(s, "        value += {:.6} * hash_noise_3d(vec3(ruv * {:.6} + vec2({:.6}, {:.6}), 0.0), {}u);",
                     oct.amplitude, oct.frequency, oct.phase[0], oct.phase[1], oct.seed).unwrap();
                 writeln!(s, "    }}").unwrap();
@@ -299,9 +353,18 @@ mod tests {
 
     #[test]
     fn test_shader_language_parse() {
-        assert_eq!("wgsl".parse::<ShaderLanguage>().unwrap(), ShaderLanguage::Wgsl);
-        assert_eq!("HLSL".parse::<ShaderLanguage>().unwrap(), ShaderLanguage::Hlsl);
-        assert_eq!("Glsl".parse::<ShaderLanguage>().unwrap(), ShaderLanguage::Glsl);
+        assert_eq!(
+            "wgsl".parse::<ShaderLanguage>().unwrap(),
+            ShaderLanguage::Wgsl
+        );
+        assert_eq!(
+            "HLSL".parse::<ShaderLanguage>().unwrap(),
+            ShaderLanguage::Hlsl
+        );
+        assert_eq!(
+            "Glsl".parse::<ShaderLanguage>().unwrap(),
+            ShaderLanguage::Glsl
+        );
         assert!("foobar".parse::<ShaderLanguage>().is_err());
     }
 }

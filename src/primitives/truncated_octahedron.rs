@@ -4,8 +4,8 @@
 //!
 //! Author: Moroya Sakamoto
 
-use glam::Vec3;
 use super::gdf_vectors::{GDF_CUBE, GDF_OCTAHEDRON};
+use glam::Vec3;
 
 /// SDF for a truncated octahedron
 ///

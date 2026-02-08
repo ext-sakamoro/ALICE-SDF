@@ -19,41 +19,31 @@ mod march;
 
 // === Interpreter Backend (original) ===
 pub use march::{
-    raymarch, raymarch_batch, raymarch_batch_parallel, raymarch_with_config,
-    render_depth, render_normals,
-    RaymarchConfig, RaymarchResult,
+    raymarch, raymarch_batch, raymarch_batch_parallel, raymarch_with_config, render_depth,
+    render_normals, RaymarchConfig, RaymarchResult,
 };
 
 // === Compiled Backend ===
 pub use march::{
-    raymarch_compiled, raymarch_compiled_with_config,
-    raymarch_compiled_batch_parallel,
+    raymarch_compiled, raymarch_compiled_batch_parallel, raymarch_compiled_with_config,
     render_depth_compiled, render_normals_compiled,
 };
 
 // === SIMD Packet Tracing (Compiled) ===
-pub use march::{
-    raymarch_simd_8,
-    render_depth_compiled_simd,
-};
+pub use march::{raymarch_simd_8, render_depth_compiled_simd};
 
 // === JIT Backend ===
 #[cfg(feature = "jit")]
 pub use march::{
-    raymarch_jit, raymarch_jit_with_config,
-    raymarch_jit_batch_parallel,
-    render_depth_jit,
+    raymarch_jit, raymarch_jit_batch_parallel, raymarch_jit_with_config, render_depth_jit,
 };
 
 // === JIT SIMD Packet Tracing ===
 #[cfg(feature = "jit")]
-pub use march::{
-    raymarch_jit_simd_8,
-    render_depth_jit_simd,
-};
+pub use march::{raymarch_jit_simd_8, render_depth_jit_simd};
 
+use crate::compiled::{eval_compiled, CompiledSdf};
 use crate::eval::eval;
-use crate::compiled::{CompiledSdf, eval_compiled};
 use crate::types::{Hit, Ray};
 use crate::SdfNode;
 use glam::Vec3;
@@ -155,13 +145,7 @@ pub fn soft_shadow(
 ///
 /// Fast binary shadow test - just checks if anything blocks the ray.
 #[inline(always)]
-pub fn hard_shadow(
-    node: &SdfNode,
-    origin: Vec3,
-    direction: Vec3,
-    min_t: f32,
-    max_t: f32,
-) -> bool {
+pub fn hard_shadow(node: &SdfNode, origin: Vec3, direction: Vec3, min_t: f32, max_t: f32) -> bool {
     const EPSILON: f32 = 0.001;
     const MAX_STEPS: u32 = 64;
 

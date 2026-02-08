@@ -76,7 +76,15 @@ pub fn hash_noise_2d(u: f32, v: f32, seed: u32) -> f32 {
 
 /// Evaluate a single octave: amplitude * noise(uv * frequency + phase, seed)
 #[inline]
-pub fn eval_octave(u: f32, v: f32, amplitude: f32, frequency: f32, phase: [f32; 2], seed: u32, rotation: f32) -> f32 {
+pub fn eval_octave(
+    u: f32,
+    v: f32,
+    amplitude: f32,
+    frequency: f32,
+    phase: [f32; 2],
+    seed: u32,
+    rotation: f32,
+) -> f32 {
     let (sin_r, cos_r) = rotation.sin_cos();
     let ru = u * cos_r - v * sin_r;
     let rv = u * sin_r + v * cos_r;
@@ -94,8 +102,14 @@ pub fn eval_octave(u: f32, v: f32, amplitude: f32, frequency: f32, phase: [f32; 
 fn sin_f32x8(x: f32x8) -> f32x8 {
     let arr: [f32; 8] = x.into();
     f32x8::new([
-        arr[0].sin(), arr[1].sin(), arr[2].sin(), arr[3].sin(),
-        arr[4].sin(), arr[5].sin(), arr[6].sin(), arr[7].sin(),
+        arr[0].sin(),
+        arr[1].sin(),
+        arr[2].sin(),
+        arr[3].sin(),
+        arr[4].sin(),
+        arr[5].sin(),
+        arr[6].sin(),
+        arr[7].sin(),
     ])
 }
 
@@ -152,13 +166,13 @@ pub fn hash_noise_3d_simd(px: f32x8, py: f32x8, pz: f32x8, seed: u32) -> f32x8 {
     let iy1 = iy + one;
     let iz1 = iz + one;
 
-    let n000 = hash_corner_simd(ix,  iy,  iz,  s);
-    let n100 = hash_corner_simd(ix1, iy,  iz,  s);
-    let n010 = hash_corner_simd(ix,  iy1, iz,  s);
-    let n110 = hash_corner_simd(ix1, iy1, iz,  s);
-    let n001 = hash_corner_simd(ix,  iy,  iz1, s);
-    let n101 = hash_corner_simd(ix1, iy,  iz1, s);
-    let n011 = hash_corner_simd(ix,  iy1, iz1, s);
+    let n000 = hash_corner_simd(ix, iy, iz, s);
+    let n100 = hash_corner_simd(ix1, iy, iz, s);
+    let n010 = hash_corner_simd(ix, iy1, iz, s);
+    let n110 = hash_corner_simd(ix1, iy1, iz, s);
+    let n001 = hash_corner_simd(ix, iy, iz1, s);
+    let n101 = hash_corner_simd(ix1, iy, iz1, s);
+    let n011 = hash_corner_simd(ix, iy1, iz1, s);
     let n111 = hash_corner_simd(ix1, iy1, iz1, s);
 
     // Trilinear interpolation
@@ -238,7 +252,10 @@ mod tests {
     fn test_noise_different_seeds() {
         let a = hash_noise_3d_cpu(1.0, 2.0, 3.0, 0);
         let b = hash_noise_3d_cpu(1.0, 2.0, 3.0, 1);
-        assert!((a - b).abs() > 0.001, "Different seeds should give different values");
+        assert!(
+            (a - b).abs() > 0.001,
+            "Different seeds should give different values"
+        );
     }
 
     #[test]
@@ -256,16 +273,17 @@ mod tests {
         let zs = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         let seed = 42u32;
 
-        let simd_result = hash_noise_3d_simd(
-            f32x8::new(xs), f32x8::new(ys), f32x8::new(zs), seed
-        );
+        let simd_result = hash_noise_3d_simd(f32x8::new(xs), f32x8::new(ys), f32x8::new(zs), seed);
         let simd_arr: [f32; 8] = simd_result.into();
 
         for i in 0..8 {
             let scalar = hash_noise_3d_cpu(xs[i], ys[i], zs[i], seed);
             assert!(
                 (simd_arr[i] - scalar).abs() < 1e-5,
-                "Lane {} mismatch: simd={}, scalar={}", i, simd_arr[i], scalar
+                "Lane {} mismatch: simd={}, scalar={}",
+                i,
+                simd_arr[i],
+                scalar
             );
         }
     }
@@ -280,16 +298,18 @@ mod tests {
         let seed = 7u32;
         let rot = 0.4;
 
-        let simd_result = eval_octave_simd(
-            f32x8::new(us), f32x8::new(vs), amp, freq, phase, seed, rot
-        );
+        let simd_result =
+            eval_octave_simd(f32x8::new(us), f32x8::new(vs), amp, freq, phase, seed, rot);
         let simd_arr: [f32; 8] = simd_result.into();
 
         for i in 0..8 {
             let scalar = eval_octave(us[i], vs[i], amp, freq, phase, seed, rot);
             assert!(
                 (simd_arr[i] - scalar).abs() < 1e-5,
-                "Lane {} mismatch: simd={}, scalar={}", i, simd_arr[i], scalar
+                "Lane {} mismatch: simd={}, scalar={}",
+                i,
+                simd_arr[i],
+                scalar
             );
         }
     }
@@ -299,8 +319,14 @@ mod tests {
         for batch in 0..125 {
             let base = batch as f32 * 0.8;
             let px = f32x8::new([
-                base, base + 0.1, base + 0.2, base + 0.3,
-                base + 0.4, base + 0.5, base + 0.6, base + 0.7,
+                base,
+                base + 0.1,
+                base + 0.2,
+                base + 0.3,
+                base + 0.4,
+                base + 0.5,
+                base + 0.6,
+                base + 0.7,
             ]);
             let py = px * f32x8::splat(1.37);
             let pz = f32x8::splat(0.0);

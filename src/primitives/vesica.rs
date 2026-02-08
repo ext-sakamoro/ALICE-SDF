@@ -53,6 +53,10 @@ mod tests {
         // When half_dist = 0, vesica degenerates towards sphere
         let d = sdf_vesica(Vec3::new(2.0, 0.0, 0.0), 1.0, 0.0);
         let d_sphere = Vec3::new(2.0, 0.0, 0.0).length() - 1.0;
-        assert!((d - d_sphere).abs() < 0.1, "Zero dist should be ~sphere, got {}", d);
+        assert!(
+            (d - d_sphere).abs() < 0.1,
+            "Zero dist should be ~sphere, got {}",
+            d
+        );
     }
 }

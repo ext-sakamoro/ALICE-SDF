@@ -16,21 +16,33 @@ pub fn modifier_bend(point: Vec3, curvature: f32) -> Vec3 {
     // k = 0 case is handled naturally by cos(0)=1, sin(0)=0
     // k * x -> 0, so c=1, s=0 -> x'=x, y'=y
     let (s, c) = (curvature * point.x).sin_cos();
-    Vec3::new(c * point.x - s * point.y, s * point.x + c * point.y, point.z)
+    Vec3::new(
+        c * point.x - s * point.y,
+        s * point.x + c * point.y,
+        point.z,
+    )
 }
 
 /// Bend space around the Y-axis (bending in the XZ plane)
 #[inline(always)]
 pub fn modifier_bend_x(point: Vec3, curvature: f32) -> Vec3 {
     let (s, c) = (curvature * point.y).sin_cos();
-    Vec3::new(c * point.x - s * point.z, point.y, s * point.x + c * point.z)
+    Vec3::new(
+        c * point.x - s * point.z,
+        point.y,
+        s * point.x + c * point.z,
+    )
 }
 
 /// Bend space around the X-axis (bending in the YZ plane)
 #[inline(always)]
 pub fn modifier_bend_z(point: Vec3, curvature: f32) -> Vec3 {
     let (s, c) = (curvature * point.y).sin_cos();
-    Vec3::new(point.x, c * point.y - s * point.z, s * point.y + c * point.z)
+    Vec3::new(
+        point.x,
+        c * point.y - s * point.z,
+        s * point.y + c * point.z,
+    )
 }
 
 /// Cheap bend approximation using polynomial (Optimized)

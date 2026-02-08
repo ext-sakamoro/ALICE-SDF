@@ -64,7 +64,12 @@ pub fn perlin_noise_3d(x: f32, y: f32, z: f32, seed: u32) -> f32 {
     let baa = grad3d(hash3d(xi + 1, yi, zi, seed), xf - 1.0, yf, zf);
     let bba = grad3d(hash3d(xi + 1, yi + 1, zi, seed), xf - 1.0, yf - 1.0, zf);
     let bab = grad3d(hash3d(xi + 1, yi, zi + 1, seed), xf - 1.0, yf, zf - 1.0);
-    let bbb = grad3d(hash3d(xi + 1, yi + 1, zi + 1, seed), xf - 1.0, yf - 1.0, zf - 1.0);
+    let bbb = grad3d(
+        hash3d(xi + 1, yi + 1, zi + 1, seed),
+        xf - 1.0,
+        yf - 1.0,
+        zf - 1.0,
+    );
 
     lerp(
         lerp(lerp(aaa, baa, u), lerp(aba, bba, u), v),
@@ -177,10 +182,7 @@ fn grad3d(hash: u32, x: f32, y: f32, z: f32) -> f32 {
 /// to interleave independent computations across the 8 evaluations.
 #[allow(dead_code)] // batch8 API reserved for compiled SIMD evaluator
 #[inline(always)]
-pub fn perlin_noise_3d_batch8(
-    points: &[(f32, f32, f32); 8],
-    seed: u32,
-) -> [f32; 8] {
+pub fn perlin_noise_3d_batch8(points: &[(f32, f32, f32); 8], seed: u32) -> [f32; 8] {
     [
         perlin_noise_3d(points[0].0, points[0].1, points[0].2, seed),
         perlin_noise_3d(points[1].0, points[1].1, points[1].2, seed),
@@ -206,14 +208,46 @@ pub fn modifier_noise_perlin_batch8(
     seed: u32,
 ) -> [f32; 8] {
     let scaled: [(f32, f32, f32); 8] = [
-        (points[0].x * frequency, points[0].y * frequency, points[0].z * frequency),
-        (points[1].x * frequency, points[1].y * frequency, points[1].z * frequency),
-        (points[2].x * frequency, points[2].y * frequency, points[2].z * frequency),
-        (points[3].x * frequency, points[3].y * frequency, points[3].z * frequency),
-        (points[4].x * frequency, points[4].y * frequency, points[4].z * frequency),
-        (points[5].x * frequency, points[5].y * frequency, points[5].z * frequency),
-        (points[6].x * frequency, points[6].y * frequency, points[6].z * frequency),
-        (points[7].x * frequency, points[7].y * frequency, points[7].z * frequency),
+        (
+            points[0].x * frequency,
+            points[0].y * frequency,
+            points[0].z * frequency,
+        ),
+        (
+            points[1].x * frequency,
+            points[1].y * frequency,
+            points[1].z * frequency,
+        ),
+        (
+            points[2].x * frequency,
+            points[2].y * frequency,
+            points[2].z * frequency,
+        ),
+        (
+            points[3].x * frequency,
+            points[3].y * frequency,
+            points[3].z * frequency,
+        ),
+        (
+            points[4].x * frequency,
+            points[4].y * frequency,
+            points[4].z * frequency,
+        ),
+        (
+            points[5].x * frequency,
+            points[5].y * frequency,
+            points[5].z * frequency,
+        ),
+        (
+            points[6].x * frequency,
+            points[6].y * frequency,
+            points[6].z * frequency,
+        ),
+        (
+            points[7].x * frequency,
+            points[7].y * frequency,
+            points[7].z * frequency,
+        ),
     ];
     let noise = perlin_noise_3d_batch8(&scaled, seed);
     let mut result = [0.0f32; 8];

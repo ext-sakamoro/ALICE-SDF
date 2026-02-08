@@ -50,15 +50,13 @@ pub struct DebrisPiece {
 ///
 /// Given the carve center, radius, and the old/new distances at affected voxels,
 /// generates small convex debris pieces.
-pub fn generate_debris(
-    center: Vec3,
-    radius: f32,
-    config: &DebrisConfig,
-) -> Vec<DebrisPiece> {
+pub fn generate_debris(center: Vec3, radius: f32, config: &DebrisConfig) -> Vec<DebrisPiece> {
     let mut pieces = Vec::new();
     let mut rng_state = config.seed;
 
-    let piece_count = config.max_pieces.min(((radius / config.min_size) as u32).max(1));
+    let piece_count = config
+        .max_pieces
+        .min(((radius / config.min_size) as u32).max(1));
 
     for _ in 0..piece_count {
         // Generate random position within the carve area
@@ -75,8 +73,8 @@ pub fn generate_debris(
         let piece_center = center + dir * dist;
 
         rng_state = lcg_next(rng_state);
-        let piece_radius = config.min_size
-            + lcg_float(rng_state) * (config.max_size - config.min_size);
+        let piece_radius =
+            config.min_size + lcg_float(rng_state) * (config.max_size - config.min_size);
 
         // Generate a simple convex debris mesh (distorted icosahedron)
         let mesh = generate_debris_mesh(piece_center, piece_radius, rng_state);
@@ -121,8 +119,14 @@ fn generate_debris_mesh(center: Vec3, radius: f32, seed: u64) -> Mesh {
 
     // 8 triangular faces of the octahedron
     let face_indices: [[usize; 3]; 8] = [
-        [0, 2, 4], [0, 4, 3], [0, 3, 5], [0, 5, 2],
-        [1, 4, 2], [1, 3, 4], [1, 5, 3], [1, 2, 5],
+        [0, 2, 4],
+        [0, 4, 3],
+        [0, 3, 5],
+        [0, 5, 2],
+        [1, 4, 2],
+        [1, 3, 4],
+        [1, 5, 3],
+        [1, 2, 5],
     ];
 
     let mut vertices = Vec::with_capacity(24); // 8 faces * 3 verts
@@ -161,7 +165,9 @@ fn generate_debris_mesh(center: Vec3, radius: f32, seed: u64) -> Mesh {
 /// Simple LCG pseudo-random number generator
 #[inline]
 fn lcg_next(state: u64) -> u64 {
-    state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+    state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
 }
 
 /// Convert LCG state to float in [0, 1)
@@ -176,11 +182,7 @@ mod tests {
 
     #[test]
     fn test_generate_debris() {
-        let pieces = generate_debris(
-            Vec3::ZERO,
-            1.0,
-            &DebrisConfig::default(),
-        );
+        let pieces = generate_debris(Vec3::ZERO, 1.0, &DebrisConfig::default());
 
         assert!(!pieces.is_empty());
         for piece in &pieces {
@@ -207,8 +209,22 @@ mod tests {
 
     #[test]
     fn test_debris_deterministic() {
-        let a = generate_debris(Vec3::ZERO, 1.0, &DebrisConfig { seed: 123, ..Default::default() });
-        let b = generate_debris(Vec3::ZERO, 1.0, &DebrisConfig { seed: 123, ..Default::default() });
+        let a = generate_debris(
+            Vec3::ZERO,
+            1.0,
+            &DebrisConfig {
+                seed: 123,
+                ..Default::default()
+            },
+        );
+        let b = generate_debris(
+            Vec3::ZERO,
+            1.0,
+            &DebrisConfig {
+                seed: 123,
+                ..Default::default()
+            },
+        );
 
         assert_eq!(a.len(), b.len());
         for (pa, pb) in a.iter().zip(b.iter()) {

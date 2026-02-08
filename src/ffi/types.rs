@@ -55,7 +55,11 @@ impl Vec3Ffi {
 
 impl From<glam::Vec3> for Vec3Ffi {
     fn from(v: glam::Vec3) -> Self {
-        Self { x: v.x, y: v.y, z: v.z }
+        Self {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+        }
     }
 }
 
@@ -81,7 +85,12 @@ impl QuatFfi {
     }
 
     pub fn identity() -> Self {
-        Self { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            w: 1.0,
+        }
     }
 }
 
@@ -93,7 +102,12 @@ impl Default for QuatFfi {
 
 impl From<glam::Quat> for QuatFfi {
     fn from(q: glam::Quat) -> Self {
-        Self { x: q.x, y: q.y, z: q.z, w: q.w }
+        Self {
+            x: q.x,
+            y: q.y,
+            z: q.z,
+            w: q.w,
+        }
     }
 }
 

@@ -32,14 +32,22 @@ mod tests {
     fn test_link_origin_outside() {
         // Origin is outside the tube (torus-like shape). Distance = r1 - r2
         let d = sdf_link(Vec3::ZERO, 0.5, 1.0, 0.3);
-        assert!((d - 0.7).abs() < 0.001, "Origin distance should be r1-r2=0.7, got {}", d);
+        assert!(
+            (d - 0.7).abs() < 0.001,
+            "Origin distance should be r1-r2=0.7, got {}",
+            d
+        );
     }
 
     #[test]
     fn test_link_on_tube() {
         // At (r1, 0, 0), distance should be approximately -r2
         let d = sdf_link(Vec3::new(1.0, 0.0, 0.0), 0.5, 1.0, 0.3);
-        assert!((d + 0.3).abs() < 0.01, "On major radius, d should be ~-r2, got {}", d);
+        assert!(
+            (d + 0.3).abs() < 0.01,
+            "On major radius, d should be ~-r2, got {}",
+            d
+        );
     }
 
     #[test]

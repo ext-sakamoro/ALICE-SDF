@@ -78,7 +78,6 @@ pub struct Material {
     pub normal_scale: f32,
 
     // --- Texture Maps (AAA pipeline) ---
-
     /// Albedo / base color texture map
     pub albedo_map: Option<TextureSlot>,
     /// Normal map (tangent-space)
@@ -95,7 +94,6 @@ pub struct Material {
     pub metallic_roughness_map: Option<TextureSlot>,
 
     // --- Extended PBR (AAA pipeline) ---
-
     /// Clearcoat factor (0.0 = no clearcoat, 1.0 = full clearcoat)
     pub clearcoat: f32,
     /// Clearcoat roughness
@@ -278,7 +276,14 @@ impl Material {
 
     /// Set volume properties (for transmission materials)
     #[inline]
-    pub fn with_volume(mut self, thickness: f32, attenuation_distance: f32, r: f32, g: f32, b: f32) -> Self {
+    pub fn with_volume(
+        mut self,
+        thickness: f32,
+        attenuation_distance: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+    ) -> Self {
         self.thickness = thickness;
         self.attenuation_distance = attenuation_distance;
         self.attenuation_color = [r, g, b];
@@ -429,7 +434,10 @@ impl MaterialLibrary {
 
     /// Iterate over all materials with their IDs
     pub fn iter(&self) -> impl Iterator<Item = (u32, &Material)> {
-        self.materials.iter().enumerate().map(|(i, m)| (i as u32, m))
+        self.materials
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (i as u32, m))
     }
 }
 
@@ -525,8 +533,7 @@ mod tests {
 
     #[test]
     fn test_extended_pbr_sheen() {
-        let mat = Material::new("Velvet")
-            .with_sheen(0.5, 0.3, 0.8, 0.7);
+        let mat = Material::new("Velvet").with_sheen(0.5, 0.3, 0.8, 0.7);
 
         assert_eq!(mat.sheen_color, [0.5, 0.3, 0.8]);
         assert_eq!(mat.sheen_roughness, 0.7);
@@ -538,8 +545,7 @@ mod tests {
         assert_eq!(glass.transmission, 1.0);
         assert_eq!(glass.ior, 1.5);
 
-        let water = Material::new("Water")
-            .with_transmission(0.95);
+        let water = Material::new("Water").with_transmission(0.95);
         assert_eq!(water.transmission, 0.95);
     }
 
@@ -556,8 +562,7 @@ mod tests {
 
     #[test]
     fn test_extended_pbr_anisotropy() {
-        let mat = Material::metal("BrushedSteel", 0.7, 0.7, 0.7, 0.3)
-            .with_anisotropy(0.8, 0.5);
+        let mat = Material::metal("BrushedSteel", 0.7, 0.7, 0.7, 0.3).with_anisotropy(0.8, 0.5);
 
         assert_eq!(mat.anisotropy, 0.8);
         assert_eq!(mat.anisotropy_rotation, 0.5);
@@ -579,8 +584,7 @@ mod tests {
 
     #[test]
     fn test_particle_material_from_material() {
-        let mat = Material::metal("Gold", 1.0, 0.766, 0.336, 0.3)
-            .with_emission(1.0, 0.5, 0.0, 5.0);
+        let mat = Material::metal("Gold", 1.0, 0.766, 0.336, 0.3).with_emission(1.0, 0.5, 0.0, 5.0);
         let p = mat.to_particle();
         assert_eq!(p.color[0], 1.0);
         assert_eq!(p.emission_strength, 5.0);
@@ -594,8 +598,7 @@ mod tests {
 
     #[test]
     fn test_extended_pbr_subsurface() {
-        let mat = Material::new("Skin")
-            .with_subsurface(0.6, 1.0, 0.5, 0.4);
+        let mat = Material::new("Skin").with_subsurface(0.6, 1.0, 0.5, 0.4);
 
         assert_eq!(mat.subsurface, 0.6);
         assert_eq!(mat.subsurface_color, [1.0, 0.5, 0.4]);

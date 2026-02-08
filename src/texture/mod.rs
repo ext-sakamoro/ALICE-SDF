@@ -8,17 +8,17 @@
 //! The CPU noise implementation exactly matches the GPU `hash_noise_3d`
 //! used in WGSL/HLSL/GLSL shaders, guaranteeing CPU fitting = GPU rendering.
 
+mod fitting;
 mod noise_cpu;
 mod optimizer;
-mod spectrum;
-mod fitting;
 mod shader;
+mod spectrum;
 
-pub use noise_cpu::hash_noise_3d_cpu;
 pub use fitting::fit_texture;
+pub use noise_cpu::hash_noise_3d_cpu;
 pub use shader::{generate_shader, ShaderLanguage};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Result of fitting a texture to procedural noise octaves
 #[derive(Debug, Clone, Serialize, Deserialize)]

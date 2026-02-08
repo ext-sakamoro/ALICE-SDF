@@ -28,7 +28,11 @@ mod tests {
     fn test_schwarz_p_on_surface() {
         let half_pi = std::f32::consts::FRAC_PI_2;
         let d = sdf_schwarz_p(Vec3::splat(half_pi), 1.0, 0.1);
-        assert!((d + 0.1).abs() < 0.01, "Should be on surface minus thickness, got {}", d);
+        assert!(
+            (d + 0.1).abs() < 0.01,
+            "Should be on surface minus thickness, got {}",
+            d
+        );
     }
 
     #[test]

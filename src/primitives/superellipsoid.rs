@@ -60,6 +60,10 @@ mod tests {
     #[test]
     fn test_superellipsoid_near_surface() {
         let d = sdf_superellipsoid(Vec3::new(1.0, 0.0, 0.0), Vec3::splat(1.0), 1.0, 1.0);
-        assert!(d.abs() < 0.1, "e1=e2=1 should be near surface at r=1, got {}", d);
+        assert!(
+            d.abs() < 0.1,
+            "e1=e2=1 should be near surface at r=1, got {}",
+            d
+        );
     }
 }

@@ -15,14 +15,14 @@
 //! - Subsampled grid stored in SoA layout for optimal SIMD loads
 //! - Residual subtraction parallelized row-wise with rayon + SIMD
 
-use std::path::Path;
 use rayon::prelude::*;
+use std::path::Path;
 use wide::f32x8;
 
-use super::{TextureFitResult, FittedOctave, TextureFitConfig};
 use super::noise_cpu::{eval_octave, eval_octave_simd, f32x8_sum};
 use super::optimizer::nelder_mead;
 use super::spectrum::analyze_frequencies;
+use super::{FittedOctave, TextureFitConfig, TextureFitResult};
 
 /// [Deep Fried] SoA layout for subsampled evaluation grid.
 /// Aligned for SIMD: length is always a multiple of 8.
@@ -71,7 +71,13 @@ impl SubsampleGrid {
             src_y.push(0);
         }
 
-        Self { u, v, src_x, src_y, count }
+        Self {
+            u,
+            v,
+            src_x,
+            src_y,
+            count,
+        }
     }
 
     fn padded_len(&self) -> usize {
@@ -83,16 +89,14 @@ impl SubsampleGrid {
 ///
 /// Reads an image file (PNG/JPG), converts to grayscale, and fits
 /// a sum of noise octaves to approximate it.
-pub fn fit_texture(
-    path: &Path,
-    config: &TextureFitConfig,
-) -> Result<TextureFitResult, String> {
+pub fn fit_texture(path: &Path, config: &TextureFitConfig) -> Result<TextureFitResult, String> {
     let img = image::open(path).map_err(|e| format!("Failed to load image: {}", e))?;
     let gray = img.to_luma32f();
     let (width, height) = gray.dimensions();
     let pixels: Vec<f32> = gray.as_raw().to_vec();
 
-    let (bias, octaves, psnr, nmse) = fit_channel(&pixels, width as usize, height as usize, config)?;
+    let (bias, octaves, psnr, nmse) =
+        fit_channel(&pixels, width as usize, height as usize, config)?;
 
     Ok(TextureFitResult {
         width,
@@ -138,7 +142,10 @@ fn fit_channel(
     // 5. Greedy octave fitting
     for octave_idx in 0..config.max_octaves {
         let (init_freq, init_amp) = if (octave_idx as usize) < bands.len() {
-            (bands[octave_idx as usize].frequency, bands[octave_idx as usize].energy.min(1.0))
+            (
+                bands[octave_idx as usize].frequency,
+                bands[octave_idx as usize].energy.min(1.0),
+            )
         } else {
             (2.0f32.powi(octave_idx as i32 + 1), 0.1)
         };
@@ -167,7 +174,8 @@ fn fit_channel(
 
                 // Process in chunks of 2048 pixels (rayon parallelism)
                 // Each chunk uses SIMD 8-wide evaluation
-                let total_err: f64 = grid_u.par_chunks(2048)
+                let total_err: f64 = grid_u
+                    .par_chunks(2048)
                     .zip(grid_v.par_chunks(2048))
                     .zip(sub_res.par_chunks(2048))
                     .map(|((u_chunk, v_chunk), res_chunk)| {
@@ -178,16 +186,34 @@ fn fit_channel(
                         for i in 0..simd_chunks {
                             let base = i * 8;
                             let u8 = f32x8::new([
-                                u_chunk[base], u_chunk[base+1], u_chunk[base+2], u_chunk[base+3],
-                                u_chunk[base+4], u_chunk[base+5], u_chunk[base+6], u_chunk[base+7],
+                                u_chunk[base],
+                                u_chunk[base + 1],
+                                u_chunk[base + 2],
+                                u_chunk[base + 3],
+                                u_chunk[base + 4],
+                                u_chunk[base + 5],
+                                u_chunk[base + 6],
+                                u_chunk[base + 7],
                             ]);
                             let v8 = f32x8::new([
-                                v_chunk[base], v_chunk[base+1], v_chunk[base+2], v_chunk[base+3],
-                                v_chunk[base+4], v_chunk[base+5], v_chunk[base+6], v_chunk[base+7],
+                                v_chunk[base],
+                                v_chunk[base + 1],
+                                v_chunk[base + 2],
+                                v_chunk[base + 3],
+                                v_chunk[base + 4],
+                                v_chunk[base + 5],
+                                v_chunk[base + 6],
+                                v_chunk[base + 7],
                             ]);
                             let r8 = f32x8::new([
-                                res_chunk[base], res_chunk[base+1], res_chunk[base+2], res_chunk[base+3],
-                                res_chunk[base+4], res_chunk[base+5], res_chunk[base+6], res_chunk[base+7],
+                                res_chunk[base],
+                                res_chunk[base + 1],
+                                res_chunk[base + 2],
+                                res_chunk[base + 3],
+                                res_chunk[base + 4],
+                                res_chunk[base + 5],
+                                res_chunk[base + 6],
+                                res_chunk[base + 7],
                             ]);
 
                             let val = eval_octave_simd(u8, v8, amp, freq, phase, seed, rot);
@@ -199,7 +225,8 @@ fn fit_channel(
                         // Scalar remainder
                         let remainder_start = simd_chunks * 8;
                         for j in remainder_start..u_chunk.len() {
-                            let val = eval_octave(u_chunk[j], v_chunk[j], amp, freq, phase, seed, rot);
+                            let val =
+                                eval_octave(u_chunk[j], v_chunk[j], amp, freq, phase, seed, rot);
                             let diff = (res_chunk[j] - val) as f64;
                             chunk_err += diff * diff;
                         }
@@ -254,7 +281,7 @@ fn fit_channel(
                 ]);
                 let vals = eval_octave_simd(u8, v8, amp, freq, phase, seed, rot);
                 let arr: [f32; 8] = vals.into();
-                row[base]     -= arr[0];
+                row[base] -= arr[0];
                 row[base + 1] -= arr[1];
                 row[base + 2] -= arr[2];
                 row[base + 3] -= arr[3];
@@ -297,7 +324,11 @@ fn fit_channel(
 /// Compute PSNR from residual (assuming signal range [0, 1])
 fn compute_psnr(residual: &[f32]) -> f32 {
     let n = residual.len() as f64;
-    let mse: f64 = residual.iter().map(|&r| (r as f64) * (r as f64)).sum::<f64>() / n;
+    let mse: f64 = residual
+        .iter()
+        .map(|&r| (r as f64) * (r as f64))
+        .sum::<f64>()
+        / n;
     if mse < 1e-15 {
         return 100.0;
     }
@@ -307,8 +338,16 @@ fn compute_psnr(residual: &[f32]) -> f32 {
 /// Compute Normalized MSE: MSE / variance_of_original
 fn compute_nmse(original: &[f32], residual: &[f32], mean: f32) -> f32 {
     let n = original.len() as f64;
-    let mse: f64 = residual.iter().map(|&r| (r as f64) * (r as f64)).sum::<f64>() / n;
-    let variance: f64 = original.iter().map(|&p| ((p - mean) as f64).powi(2)).sum::<f64>() / n;
+    let mse: f64 = residual
+        .iter()
+        .map(|&r| (r as f64) * (r as f64))
+        .sum::<f64>()
+        / n;
+    let variance: f64 = original
+        .iter()
+        .map(|&p| ((p - mean) as f64).powi(2))
+        .sum::<f64>()
+        / n;
     if variance < 1e-15 {
         return 0.0;
     }
@@ -323,47 +362,66 @@ pub fn reconstruct(result: &TextureFitResult, width: usize, height: usize) -> Ve
         let bias = result.bias[0];
         let octaves = &result.octaves[0];
 
-        buffer.par_chunks_mut(width).enumerate().for_each(|(y, row)| {
-            let v_coord = y as f32 / height as f32;
-            let v8 = f32x8::splat(v_coord);
+        buffer
+            .par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(y, row)| {
+                let v_coord = y as f32 / height as f32;
+                let v8 = f32x8::splat(v_coord);
 
-            let simd_cols = width / 8;
-            for i in 0..simd_cols {
-                let base = i * 8;
-                let u8 = f32x8::new([
-                    base as f32 / width as f32,
-                    (base + 1) as f32 / width as f32,
-                    (base + 2) as f32 / width as f32,
-                    (base + 3) as f32 / width as f32,
-                    (base + 4) as f32 / width as f32,
-                    (base + 5) as f32 / width as f32,
-                    (base + 6) as f32 / width as f32,
-                    (base + 7) as f32 / width as f32,
-                ]);
+                let simd_cols = width / 8;
+                for i in 0..simd_cols {
+                    let base = i * 8;
+                    let u8 = f32x8::new([
+                        base as f32 / width as f32,
+                        (base + 1) as f32 / width as f32,
+                        (base + 2) as f32 / width as f32,
+                        (base + 3) as f32 / width as f32,
+                        (base + 4) as f32 / width as f32,
+                        (base + 5) as f32 / width as f32,
+                        (base + 6) as f32 / width as f32,
+                        (base + 7) as f32 / width as f32,
+                    ]);
 
-                let mut acc = f32x8::splat(bias);
-                for oct in octaves {
-                    acc += eval_octave_simd(u8, v8, oct.amplitude, oct.frequency, oct.phase, oct.seed, oct.rotation);
+                    let mut acc = f32x8::splat(bias);
+                    for oct in octaves {
+                        acc += eval_octave_simd(
+                            u8,
+                            v8,
+                            oct.amplitude,
+                            oct.frequency,
+                            oct.phase,
+                            oct.seed,
+                            oct.rotation,
+                        );
+                    }
+
+                    // Clamp to [0, 1]
+                    let zero = f32x8::splat(0.0);
+                    let one = f32x8::splat(1.0);
+                    let clamped = acc.max(zero).min(one);
+                    let arr: [f32; 8] = clamped.into();
+                    row[base..base + 8].copy_from_slice(&arr);
                 }
 
-                // Clamp to [0, 1]
-                let zero = f32x8::splat(0.0);
-                let one = f32x8::splat(1.0);
-                let clamped = acc.max(zero).min(one);
-                let arr: [f32; 8] = clamped.into();
-                row[base..base + 8].copy_from_slice(&arr);
-            }
-
-            // Scalar remainder
-            for x in (simd_cols * 8)..width {
-                let u_coord = x as f32 / width as f32;
-                let mut val = bias;
-                for oct in octaves {
-                    val += eval_octave(u_coord, v_coord, oct.amplitude, oct.frequency, oct.phase, oct.seed, oct.rotation);
+                // Scalar remainder
+                for x in (simd_cols * 8)..width {
+                    let u_coord = x as f32 / width as f32;
+                    let mut val = bias;
+                    for oct in octaves {
+                        val += eval_octave(
+                            u_coord,
+                            v_coord,
+                            oct.amplitude,
+                            oct.frequency,
+                            oct.phase,
+                            oct.seed,
+                            oct.rotation,
+                        );
+                    }
+                    row[x] = val.clamp(0.0, 1.0);
                 }
-                row[x] = val.clamp(0.0, 1.0);
-            }
-        });
+            });
     }
 
     buffer
@@ -403,7 +461,12 @@ mod tests {
 
         let (fitted_bias, _octaves, psnr, _) = fit_channel(&pixels, w, h, &config).unwrap();
 
-        assert!((fitted_bias - bias).abs() < 0.1, "Bias: {} vs {}", fitted_bias, bias);
+        assert!(
+            (fitted_bias - bias).abs() < 0.1,
+            "Bias: {} vs {}",
+            fitted_bias,
+            bias
+        );
         assert!(psnr > 10.0, "PSNR too low: {}", psnr);
     }
 
@@ -476,7 +539,15 @@ mod tests {
                 let v = y as f32 / h as f32;
                 let mut val = bias;
                 for oct in octaves {
-                    val += eval_octave(u, v, oct.amplitude, oct.frequency, oct.phase, oct.seed, oct.rotation);
+                    val += eval_octave(
+                        u,
+                        v,
+                        oct.amplitude,
+                        oct.frequency,
+                        oct.phase,
+                        oct.seed,
+                        oct.rotation,
+                    );
                 }
                 buf_scalar[y * w + x] = val.clamp(0.0, 1.0);
             }
@@ -485,7 +556,10 @@ mod tests {
         for i in 0..(w * h) {
             assert!(
                 (buf_simd[i] - buf_scalar[i]).abs() < 1e-5,
-                "Pixel {} mismatch: simd={}, scalar={}", i, buf_simd[i], buf_scalar[i]
+                "Pixel {} mismatch: simd={}, scalar={}",
+                i,
+                buf_simd[i],
+                buf_scalar[i]
             );
         }
     }

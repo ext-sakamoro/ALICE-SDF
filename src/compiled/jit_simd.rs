@@ -87,16 +87,18 @@ struct CoordState {
 #[cfg(feature = "jit")]
 fn simd_select_neg(
     builder: &mut FunctionBuilder,
-    cond: Value,     // F32X4 - select based on sign
-    if_neg: Value,   // F32X4 - selected when cond < 0
-    if_pos: Value,   // F32X4 - selected when cond >= 0
+    cond: Value,   // F32X4 - select based on sign
+    if_neg: Value, // F32X4 - selected when cond < 0
+    if_pos: Value, // F32X4 - selected when cond >= 0
 ) -> Value {
     let mask_i32 = builder.ins().bitcast(types::I32X4, MemFlags::new(), cond);
     let sign_mask = builder.ins().sshr_imm(mask_i32, 31);
     let true_bits = builder.ins().bitcast(types::I32X4, MemFlags::new(), if_neg);
     let false_bits = builder.ins().bitcast(types::I32X4, MemFlags::new(), if_pos);
     let selected = builder.ins().bitselect(sign_mask, true_bits, false_bits);
-    builder.ins().bitcast(types::F32X4, MemFlags::new(), selected)
+    builder
+        .ins()
+        .bitcast(types::F32X4, MemFlags::new(), selected)
 }
 
 /// SIMD 2D vector length: sqrt(x² + y²)
@@ -167,8 +169,10 @@ fn simd_sincos_approx_js(
 fn emit_jitsimd_stairs_min(
     builder: &mut FunctionBuilder,
     simd_type: types::Type,
-    a: Value, b: Value,
-    r: f32, n: f32,
+    a: Value,
+    b: Value,
+    r: f32,
+    n: f32,
 ) -> Value {
     let half_s = builder.ins().f32const(0.5);
     let half = builder.ins().splat(simd_type, half_s);
@@ -240,8 +244,12 @@ impl JitSimd {
     /// A JitSimd instance containing the compiled native code
     pub fn compile(sdf: &CompiledSdf) -> Result<Self, String> {
         let mut flag_builder = settings::builder();
-        flag_builder.set("opt_level", "speed").map_err(|e| e.to_string())?;
-        flag_builder.set("use_colocated_libcalls", "false").map_err(|e| e.to_string())?;
+        flag_builder
+            .set("opt_level", "speed")
+            .map_err(|e| e.to_string())?;
+        flag_builder
+            .set("use_colocated_libcalls", "false")
+            .map_err(|e| e.to_string())?;
 
         // Enable SIMD on x86_64
         if cfg!(target_arch = "x86_64") {
@@ -545,9 +553,15 @@ impl JitSimd {
                         let inv_ry = builder.ins().splat(simd_type, inv_ry_s);
                         let inv_rz = builder.ins().splat(simd_type, inv_rz_s);
 
-                        let inv_rx2_s = builder.ins().f32const(1.0 / (inst.params[0] * inst.params[0]));
-                        let inv_ry2_s = builder.ins().f32const(1.0 / (inst.params[1] * inst.params[1]));
-                        let inv_rz2_s = builder.ins().f32const(1.0 / (inst.params[2] * inst.params[2]));
+                        let inv_rx2_s = builder
+                            .ins()
+                            .f32const(1.0 / (inst.params[0] * inst.params[0]));
+                        let inv_ry2_s = builder
+                            .ins()
+                            .f32const(1.0 / (inst.params[1] * inst.params[1]));
+                        let inv_rz2_s = builder
+                            .ins()
+                            .f32const(1.0 / (inst.params[2] * inst.params[2]));
                         let inv_rx2 = builder.ins().splat(simd_type, inv_rx2_s);
                         let inv_ry2 = builder.ins().splat(simd_type, inv_ry2_s);
                         let inv_rz2 = builder.ins().splat(simd_type, inv_rz2_s);
@@ -678,7 +692,11 @@ impl JitSimd {
                         let ba_y = inst.params[4] - inst.params[1];
                         let ba_z = inst.params[5] - inst.params[2];
                         let ba_dot_val = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
-                        let inv_ba_dot = if ba_dot_val.abs() < 1e-10 { 1.0 } else { 1.0 / ba_dot_val };
+                        let inv_ba_dot = if ba_dot_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / ba_dot_val
+                        };
 
                         let bax_s = builder.ins().f32const(ba_x);
                         let bay_s = builder.ins().f32const(ba_y);
@@ -750,7 +768,11 @@ impl JitSimd {
                         let k2x_val = -radius_val;
                         let k2y_val = 2.0 * half_height;
                         let k2_dot_val = k2x_val * k2x_val + k2y_val * k2y_val;
-                        let inv_k2d_val = if k2_dot_val.abs() < 1e-10 { 1.0 } else { 1.0 / k2_dot_val };
+                        let inv_k2d_val = if k2_dot_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / k2_dot_val
+                        };
 
                         let k2x_s = builder.ins().f32const(k2x_val);
                         let k2y_s = builder.ins().f32const(k2y_val);
@@ -850,7 +872,11 @@ impl JitSimd {
 
                         // Pre-compute constants (Division Exorcism)
                         let h_val = half_height * 2.0;
-                        let inv_h = if h_val.abs() < 1e-10 { 1.0 } else { 1.0 / h_val };
+                        let inv_h = if h_val.abs() < 1e-10 {
+                            1.0
+                        } else {
+                            1.0 / h_val
+                        };
                         let b_val = (r1_val - r2_val) * inv_h;
                         let a_val = (1.0 - b_val * b_val).max(0.0).sqrt();
                         let ah_val = a_val * h_val;
@@ -1683,8 +1709,12 @@ impl JitSimd {
 
                     OpCode::Rotate => {
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Rotate, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Rotate,
+                            params: inst.params,
                         });
 
                         // Quaternion → rotation matrix (compile-time)
@@ -1693,7 +1723,9 @@ impl JitSimd {
                         let qz = inst.params[2];
                         let qw = inst.params[3];
                         // Inverse quaternion: negate xyz
-                        let qx = -qx; let qy = -qy; let qz = -qz;
+                        let qx = -qx;
+                        let qy = -qy;
+                        let qz = -qz;
                         let m00 = 1.0 - 2.0 * (qy * qy + qz * qz);
                         let m01 = 2.0 * (qx * qy - qz * qw);
                         let m02 = 2.0 * (qx * qz + qy * qw);
@@ -1760,8 +1792,12 @@ impl JitSimd {
                         let min_factor = inst.params[3];
 
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::ScaleNonUniform, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::ScaleNonUniform,
+                            params: inst.params,
                         });
 
                         let isx_s = builder.ins().f32const(inv_sx);
@@ -1773,16 +1809,32 @@ impl JitSimd {
                         let mf_s = builder.ins().f32const(min_factor);
                         let mf = builder.ins().splat(simd_type, mf_s);
 
-                        curr_x = (builder.ins().fmul(curr_x.0, isx), builder.ins().fmul(curr_x.1, isx));
-                        curr_y = (builder.ins().fmul(curr_y.0, isy), builder.ins().fmul(curr_y.1, isy));
-                        curr_z = (builder.ins().fmul(curr_z.0, isz), builder.ins().fmul(curr_z.1, isz));
-                        curr_scale = (builder.ins().fmul(curr_scale.0, mf), builder.ins().fmul(curr_scale.1, mf));
+                        curr_x = (
+                            builder.ins().fmul(curr_x.0, isx),
+                            builder.ins().fmul(curr_x.1, isx),
+                        );
+                        curr_y = (
+                            builder.ins().fmul(curr_y.0, isy),
+                            builder.ins().fmul(curr_y.1, isy),
+                        );
+                        curr_z = (
+                            builder.ins().fmul(curr_z.0, isz),
+                            builder.ins().fmul(curr_z.1, isz),
+                        );
+                        curr_scale = (
+                            builder.ins().fmul(curr_scale.0, mf),
+                            builder.ins().fmul(curr_scale.1, mf),
+                        );
                     }
 
                     OpCode::Twist => {
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Twist, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Twist,
+                            params: inst.params,
                         });
 
                         let k_s = builder.ins().f32const(inst.params[0]);
@@ -1815,8 +1867,12 @@ impl JitSimd {
 
                     OpCode::Bend => {
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Bend, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Bend,
+                            params: inst.params,
                         });
 
                         let k_s = builder.ins().f32const(inst.params[0]);
@@ -1850,12 +1906,18 @@ impl JitSimd {
 
                     OpCode::RepeatInfinite => {
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::RepeatInfinite, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::RepeatInfinite,
+                            params: inst.params,
                         });
 
                         // Division Exorcism: pre-compute reciprocals at compile time
-                        let sx = inst.params[0]; let sy = inst.params[1]; let sz = inst.params[2];
+                        let sx = inst.params[0];
+                        let sy = inst.params[1];
+                        let sz = inst.params[2];
                         let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                         let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                         let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
@@ -1908,18 +1970,26 @@ impl JitSimd {
 
                     OpCode::RepeatFinite => {
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::RepeatFinite, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::RepeatFinite,
+                            params: inst.params,
                         });
 
                         let cx = inst.params[0]; // count_x
                         let cy = inst.params[1]; // count_y
                         let cz = inst.params[2]; // count_z
-                        let sx = inst.params[3]; let sy = inst.params[4]; let sz = inst.params[5];
+                        let sx = inst.params[3];
+                        let sy = inst.params[4];
+                        let sz = inst.params[5];
                         let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                         let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                         let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
-                        let lx = cx * 0.5; let ly = cy * 0.5; let lz = cz * 0.5;
+                        let lx = cx * 0.5;
+                        let ly = cy * 0.5;
+                        let lz = cz * 0.5;
 
                         let sx_s = builder.ins().f32const(sx);
                         let sx_v = builder.ins().splat(simd_type, sx_s);
@@ -1993,8 +2063,12 @@ impl JitSimd {
 
                     OpCode::Elongate => {
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Elongate, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Elongate,
+                            params: inst.params,
                         });
 
                         let hx_s = builder.ins().f32const(inst.params[0]);
@@ -2038,8 +2112,12 @@ impl JitSimd {
                         // Noise cannot be evaluated in JIT (perlin_noise_3d not available)
                         // Treat as nop — just save state for PopTransform to restore
                         coord_stack.push(CoordState {
-                            x: curr_x, y: curr_y, z: curr_z, scale: curr_scale,
-                            opcode: OpCode::Noise, params: inst.params,
+                            x: curr_x,
+                            y: curr_y,
+                            z: curr_z,
+                            scale: curr_scale,
+                            opcode: OpCode::Noise,
+                            params: inst.params,
                         });
                     }
 
@@ -2146,9 +2224,7 @@ impl JitSimd {
             .define_function(func_id, &mut ctx)
             .map_err(|e| e.to_string())?;
         module.clear_context(&mut ctx);
-        module
-            .finalize_definitions()
-            .map_err(|e| e.to_string())?;
+        module.finalize_definitions().map_err(|e| e.to_string())?;
 
         let code = module.get_finalized_function(func_id);
 
@@ -2165,13 +2241,7 @@ impl JitSimd {
     /// - Pointers should be 32-byte aligned for best performance
     /// - Output pointer must be writable
     #[inline(always)]
-    pub unsafe fn eval(
-        &self,
-        px: *const f32,
-        py: *const f32,
-        pz: *const f32,
-        pout: *mut f32,
-    ) {
+    pub unsafe fn eval(&self, px: *const f32, py: *const f32, pz: *const f32, pout: *mut f32) {
         let func: unsafe extern "C" fn(*const f32, *const f32, *const f32, *mut f32) =
             std::mem::transmute(self.func_ptr);
         func(px, py, pz, pout);
@@ -2284,7 +2354,8 @@ mod tests {
 
     #[test]
     fn test_jit_simd_union() {
-        let shape = SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
+        let shape =
+            SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0));
         let compiled = CompiledSdf::compile(&shape);
         let jit = JitSimd::compile(&compiled).unwrap();
 

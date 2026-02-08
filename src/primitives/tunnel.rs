@@ -23,8 +23,7 @@ pub fn sdf_tunnel(p: Vec3, width: f32, height_2d: f32, half_depth: f32) -> f32 {
     // SDF of rectangle: |x| <= width, -height_2d <= y <= height_2d
     let dx = px - width;
     let dy_rect = py.abs() - height_2d;
-    let d_rect = Vec2::new(dx.max(0.0), dy_rect.max(0.0)).length()
-        + dx.max(dy_rect).min(0.0);
+    let d_rect = Vec2::new(dx.max(0.0), dy_rect.max(0.0)).length() + dx.max(dy_rect).min(0.0);
 
     // SDF of semicircle dome: center at (0, height_2d), radius = width, y >= height_2d
     let d_circle = Vec2::new(px, py - height_2d).length() - width;

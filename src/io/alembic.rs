@@ -67,16 +67,12 @@ impl<W: Write> OgawaWriter<W> {
     }
 
     fn write_f32_array(&mut self, data: &[f32]) -> Result<u64, std::io::Error> {
-        let bytes: Vec<u8> = data.iter()
-            .flat_map(|f| f.to_le_bytes())
-            .collect();
+        let bytes: Vec<u8> = data.iter().flat_map(|f| f.to_le_bytes()).collect();
         self.write_data(&bytes)
     }
 
     fn write_i32_array(&mut self, data: &[i32]) -> Result<u64, std::io::Error> {
-        let bytes: Vec<u8> = data.iter()
-            .flat_map(|i| i.to_le_bytes())
-            .collect();
+        let bytes: Vec<u8> = data.iter().flat_map(|i| i.to_le_bytes()).collect();
         self.write_data(&bytes)
     }
 
@@ -122,15 +118,15 @@ pub fn export_alembic(
     w.write_string("mesh")?;
 
     // Positions (P): flatten Vec3 to f32 array
-    let positions: Vec<f32> = mesh.vertices.iter()
+    let positions: Vec<f32> = mesh
+        .vertices
+        .iter()
         .flat_map(|v| [v.position.x, v.position.y, v.position.z])
         .collect();
     w.write_f32_array(&positions)?;
 
     // Face indices
-    let face_indices: Vec<i32> = mesh.indices.iter()
-        .map(|&i| i as i32)
-        .collect();
+    let face_indices: Vec<i32> = mesh.indices.iter().map(|&i| i as i32).collect();
     w.write_i32_array(&face_indices)?;
 
     // Face counts (all triangles)
@@ -140,7 +136,9 @@ pub fn export_alembic(
 
     // Normals (N)
     if config.export_normals {
-        let normals: Vec<f32> = mesh.vertices.iter()
+        let normals: Vec<f32> = mesh
+            .vertices
+            .iter()
             .flat_map(|v| [v.normal.x, v.normal.y, v.normal.z])
             .collect();
         w.write_f32_array(&normals)?;
@@ -148,7 +146,9 @@ pub fn export_alembic(
 
     // UVs
     if config.export_uvs {
-        let uvs: Vec<f32> = mesh.vertices.iter()
+        let uvs: Vec<f32> = mesh
+            .vertices
+            .iter()
             .flat_map(|v| [v.uv.x, v.uv.y])
             .collect();
         w.write_f32_array(&uvs)?;
@@ -161,14 +161,22 @@ pub fn export_alembic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SdfNode;
     use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
+    use crate::types::SdfNode;
     use glam::Vec3;
 
     #[test]
     fn test_alembic_export() {
         let sphere = SdfNode::sphere(1.0);
-        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig { resolution: 8, ..Default::default() });
+        let mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 8,
+                ..Default::default()
+            },
+        );
 
         let path = std::env::temp_dir().join("alice_test.abc");
         export_alembic(&mesh, &path, &AlembicConfig::default()).unwrap();
@@ -183,10 +191,21 @@ mod tests {
     #[test]
     fn test_alembic_no_normals() {
         let sphere = SdfNode::sphere(1.0);
-        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &MarchingCubesConfig { resolution: 8, ..Default::default() });
+        let mesh = sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 8,
+                ..Default::default()
+            },
+        );
 
         let path = std::env::temp_dir().join("alice_test_nonorm.abc");
-        let config = AlembicConfig { export_normals: false, ..Default::default() };
+        let config = AlembicConfig {
+            export_normals: false,
+            ..Default::default()
+        };
         export_alembic(&mesh, &path, &config).unwrap();
 
         let data = std::fs::read(&path).unwrap();

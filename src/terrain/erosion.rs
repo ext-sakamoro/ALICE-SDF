@@ -85,13 +85,18 @@ fn hydraulic_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
         let mut speed = 1.0f32;
 
         for _ in 0..config.max_steps {
-            if water < config.min_water { break; }
+            if water < config.min_water {
+                break;
+            }
 
             let ix = px.floor() as i32;
             let iz = pz.floor() as i32;
 
-            if ix < 1 || ix >= (heightmap.width as i32 - 1)
-                || iz < 1 || iz >= (heightmap.depth as i32 - 1) {
+            if ix < 1
+                || ix >= (heightmap.width as i32 - 1)
+                || iz < 1
+                || iz >= (heightmap.depth as i32 - 1)
+            {
                 break;
             }
 
@@ -193,10 +198,7 @@ fn thermal_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
                             let diff = h - nh;
                             if diff > max_slope {
                                 let ratio = (diff - max_slope) * inv_total_diff;
-                                heightmap.set_height(
-                                    nx, nz,
-                                    nh + transfer * ratio,
-                                );
+                                heightmap.set_height(nx, nz, nh + transfer * ratio);
                             }
                         }
                     }
@@ -265,7 +267,9 @@ fn erode_at(hm: &mut Heightmap, gx: f32, gz: f32, amount: f32) {
 
 #[inline]
 fn lcg_next(state: u64) -> u64 {
-    state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+    state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
 }
 
 #[inline]
@@ -359,16 +363,19 @@ mod tests {
         for z in 1..(hm.depth - 1) {
             for x in 1..(hm.width - 1) {
                 let h = hm.get_height(x, z);
-                let avg_neighbor = (
-                    hm.get_height(x - 1, z)
+                let avg_neighbor = (hm.get_height(x - 1, z)
                     + hm.get_height(x + 1, z)
                     + hm.get_height(x, z - 1)
-                    + hm.get_height(x, z + 1)
-                ) / 4.0;
+                    + hm.get_height(x, z + 1))
+                    / 4.0;
                 total += (h - avg_neighbor).abs();
                 count += 1;
             }
         }
-        if count > 0 { total / count as f32 } else { 0.0 }
+        if count > 0 {
+            total / count as f32
+        } else {
+            0.0
+        }
     }
 }
