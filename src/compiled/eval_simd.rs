@@ -12,6 +12,7 @@ use glam::Vec3;
 use wide::{f32x8, CmpLt, CmpGt};
 
 use crate::modifiers::perlin_noise_3d;
+use crate::operations::{sdf_columns_union, sdf_columns_intersection, sdf_columns_subtraction};
 use crate::primitives::*;
 
 /// Maximum stack depth for value stack (SIMD)
@@ -656,6 +657,85 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 vsp += 1;
             }
 
+            OpCode::Tetrahedron => {
+                let d = eval_per_lane(&p, |pt| sdf_tetrahedron(pt, inst.params[0]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Dodecahedron => {
+                let d = eval_per_lane(&p, |pt| sdf_dodecahedron(pt, inst.params[0]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Icosahedron => {
+                let d = eval_per_lane(&p, |pt| sdf_icosahedron(pt, inst.params[0]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::TruncatedOctahedron => {
+                let d = eval_per_lane(&p, |pt| sdf_truncated_octahedron(pt, inst.params[0]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::TruncatedIcosahedron => {
+                let d = eval_per_lane(&p, |pt| sdf_truncated_icosahedron(pt, inst.params[0]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::BoxFrame => {
+                let he = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let d = eval_per_lane(&p, |pt| sdf_box_frame(pt, he, inst.params[3]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::DiamondSurface => {
+                let d = eval_per_lane(&p, |pt| sdf_diamond_surface(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Neovius => {
+                let d = eval_per_lane(&p, |pt| sdf_neovius(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Lidinoid => {
+                let d = eval_per_lane(&p, |pt| sdf_lidinoid(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::IWP => {
+                let d = eval_per_lane(&p, |pt| sdf_iwp(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::FRD => {
+                let d = eval_per_lane(&p, |pt| sdf_frd(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::FischerKochS => {
+                let d = eval_per_lane(&p, |pt| sdf_fischer_koch_s(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::PMY => {
+                let d = eval_per_lane(&p, |pt| sdf_pmy(pt, inst.params[0], inst.params[1]));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
             // === Binary Operations ===
             OpCode::Union => {
                 vsp -= 1;
@@ -745,6 +825,90 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
                 value_stack[vsp - 1] = -stairs_min_simd(-a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::XOR => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = a.min(b).max(-a.max(b));
+            }
+
+            OpCode::Morph => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let t = f32x8::splat(inst.params[0]);
+                let one_minus_t = f32x8::splat(1.0 - inst.params[0]);
+                value_stack[vsp - 1] = a * one_minus_t + b * t;
+            }
+
+            OpCode::ColumnsUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = inst.params[0];
+                let n = inst.params[1];
+                let d = eval_per_lane_binary(a, b, |av, bv| sdf_columns_union(av, bv, r, n));
+                value_stack[vsp - 1] = d;
+            }
+
+            OpCode::ColumnsIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = inst.params[0];
+                let n = inst.params[1];
+                let d = eval_per_lane_binary(a, b, |av, bv| sdf_columns_intersection(av, bv, r, n));
+                value_stack[vsp - 1] = d;
+            }
+
+            OpCode::ColumnsSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = inst.params[0];
+                let n = inst.params[1];
+                let d = eval_per_lane_binary(a, b, |av, bv| sdf_columns_subtraction(av, bv, r, n));
+                value_stack[vsp - 1] = d;
+            }
+
+            OpCode::Pipe => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = f32x8::splat(inst.params[0]);
+                value_stack[vsp - 1] = (a * a + b * b).sqrt() - r;
+            }
+
+            OpCode::Engrave => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let r = f32x8::splat(inst.params[0]);
+                let s = f32x8::splat(std::f32::consts::FRAC_1_SQRT_2);
+                let abs_b = b.abs();
+                value_stack[vsp - 1] = a.max((a + r - abs_b) * s);
+            }
+
+            OpCode::Groove => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let ra = f32x8::splat(inst.params[0]);
+                let rb = f32x8::splat(inst.params[1]);
+                let abs_b = b.abs();
+                value_stack[vsp - 1] = a.max((a + ra).min(rb - abs_b));
+            }
+
+            OpCode::Tongue => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                let ra = f32x8::splat(inst.params[0]);
+                let rb = f32x8::splat(inst.params[1]);
+                let abs_b = b.abs();
+                value_stack[vsp - 1] = a.min((a - ra).max(abs_b - rb));
             }
 
             // === Transforms ===
@@ -989,6 +1153,31 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     y: if inst.params[1] != 0.0 { p.y.abs() } else { p.y },
                     z: if inst.params[2] != 0.0 { p.z.abs() } else { p.z },
                 };
+            }
+
+            OpCode::OctantMirror => {
+                coord_stack[csp] = CoordFrameSimd {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::OctantMirror,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                // abs
+                let ax = p.x.abs();
+                let ay = p.y.abs();
+                let az = p.z.abs();
+
+                // sort: x >= y >= z using min/max (branchless per lane)
+                let max_xy = ax.max(ay);
+                let min_xy = ax.min(ay);
+                let x1 = max_xy.max(az);
+                let min_xz = max_xy.min(az);
+                let y1 = min_xy.max(min_xz);
+                let z1 = min_xy.min(min_xz);
+
+                p = Vec3x8 { x: x1, y: y1, z: z1 };
             }
 
             OpCode::Revolution => {
@@ -1335,6 +1524,20 @@ fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
     // Negate for y < 0
     let neg_y_mask = y.cmp_lt(f32x8::ZERO);
     neg_y_mask.blend(-result, result)
+}
+
+/// Per-lane scalar evaluation helper for binary operations
+///
+/// Evaluates a scalar binary operation for each of the 8 SIMD lanes independently.
+#[inline]
+fn eval_per_lane_binary(a: f32x8, b: f32x8, f: impl Fn(f32, f32) -> f32) -> f32x8 {
+    let aa = a.as_array_ref();
+    let ba = b.as_array_ref();
+    let mut results = [0.0f32; 8];
+    for i in 0..8 {
+        results[i] = f(aa[i], ba[i]);
+    }
+    f32x8::new(results)
 }
 
 /// Per-lane scalar evaluation helper for extended primitives

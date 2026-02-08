@@ -1244,6 +1244,131 @@ impl GlslTranspiler {
                 var
             }
 
+            SdfNode::Tetrahedron { size } => {
+                self.ensure_helper("sdf_tetrahedron");
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_tetrahedron({}, {});", var, point_var, self.param(*size)).unwrap();
+                var
+            }
+
+            SdfNode::Dodecahedron { radius } => {
+                self.ensure_helper("sdf_dodecahedron");
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_dodecahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                var
+            }
+
+            SdfNode::Icosahedron { radius } => {
+                self.ensure_helper("sdf_icosahedron");
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_icosahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                var
+            }
+
+            SdfNode::TruncatedOctahedron { radius } => {
+                self.ensure_helper("sdf_truncated_octahedron");
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_truncated_octahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                var
+            }
+
+            SdfNode::TruncatedIcosahedron { radius } => {
+                self.ensure_helper("sdf_truncated_icosahedron");
+                let var = self.next_var();
+                writeln!(code, "    float {} = sdf_truncated_icosahedron({}, {});", var, point_var, self.param(*radius)).unwrap();
+                var
+            }
+
+            SdfNode::BoxFrame { half_extents, edge } => {
+                let bx = self.param(half_extents.x);
+                let by = self.param(half_extents.y);
+                let bz = self.param(half_extents.z);
+                let e = self.param(*edge);
+                let pv = self.next_var();
+                let qv = self.next_var();
+                let d1 = self.next_var();
+                let d2 = self.next_var();
+                let d3 = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = abs({}) - vec3({}, {}, {});", pv, point_var, bx, by, bz).unwrap();
+                writeln!(code, "    vec3 {} = abs({} + {}) - {};", qv, pv, e, e).unwrap();
+                writeln!(code, "    float {} = length(max(vec3({}.x, {}.y, {}.z), 0.0)) + min(max({}.x, max({}.y, {}.z)), 0.0);", d1, pv, qv, qv, pv, qv, qv).unwrap();
+                writeln!(code, "    float {} = length(max(vec3({}.x, {}.y, {}.z), 0.0)) + min(max({}.x, max({}.y, {}.z)), 0.0);", d2, qv, pv, qv, qv, pv, qv).unwrap();
+                writeln!(code, "    float {} = length(max(vec3({}.x, {}.y, {}.z), 0.0)) + min(max({}.x, max({}.y, {}.z)), 0.0);", d3, qv, qv, pv, qv, qv, pv).unwrap();
+                writeln!(code, "    float {} = min({}, min({}, {}));", var, d1, d2, d3).unwrap();
+                var
+            }
+
+            SdfNode::DiamondSurface { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = {} * {};", sp, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(sin({}.x)*sin({}.y)*sin({}.z) + sin({}.x)*cos({}.y)*cos({}.z) + cos({}.x)*sin({}.y)*cos({}.z) + cos({}.x)*cos({}.y)*sin({}.z)) / {} - {};", var, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::Neovius { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = {} * {};", sp, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(3.0*(cos({}.x)+cos({}.y)+cos({}.z)) + 4.0*cos({}.x)*cos({}.y)*cos({}.z)) / {} - {};", var, sp, sp, sp, sp, sp, sp, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::Lidinoid { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = {} * {};", sp, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(0.5*(sin(2.0*{}.x)*cos({}.y)*sin({}.z)+sin({}.x)*sin(2.0*{}.y)*cos({}.z)+cos({}.x)*sin({}.y)*sin(2.0*{}.z)) - 0.5*(cos(2.0*{}.x)*cos(2.0*{}.y)+cos(2.0*{}.y)*cos(2.0*{}.z)+cos(2.0*{}.z)*cos(2.0*{}.x)) + 0.15) / {} - {};", var, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sp, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::IWP { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = {} * {};", sp, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(2.0*(cos({}.x)*cos({}.y)+cos({}.y)*cos({}.z)+cos({}.z)*cos({}.x)) - (cos(2.0*{}.x)+cos(2.0*{}.y)+cos(2.0*{}.z))) / {} - {};", var, sp, sp, sp, sp, sp, sp, sp, sp, sp, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::FRD { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = {} * {};", sp, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(cos(2.0*{}.x)*sin({}.y)*cos({}.z) + cos({}.x)*cos(2.0*{}.y)*sin({}.z) + sin({}.x)*cos({}.y)*cos(2.0*{}.z)) / {} - {};", var, sp, sp, sp, sp, sp, sp, sp, sp, sp, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::FischerKochS { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = {} * {};", sp, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(cos(2.0*{}.x)*sin({}.y)*cos({}.z) + cos({}.x)*cos(2.0*{}.y)*sin({}.z) + sin({}.x)*cos({}.y)*cos(2.0*{}.z) - 0.4) / {} - {};", var, sp, sp, sp, sp, sp, sp, sp, sp, sp, sc, th).unwrap();
+                var
+            }
+
+            SdfNode::PMY { scale, thickness } => {
+                let sc = self.param(*scale);
+                let th = self.param(*thickness);
+                let sp = self.next_var();
+                let var = self.next_var();
+                writeln!(code, "    vec3 {} = {} * {};", sp, point_var, sc).unwrap();
+                writeln!(code, "    float {} = abs(2.0*cos({}.x)*cos({}.y)*cos({}.z) + sin(2.0*{}.x)*sin({}.y) + sin({}.x)*sin(2.0*{}.z) + sin(2.0*{}.y)*sin({}.z)) / {} - {};", var, sp, sp, sp, sp, sp, sp, sp, sp, sp, sc, th).unwrap();
+                var
+            }
+
             // ============ Operations ============
 
             SdfNode::Union { a, b } => {
@@ -1485,6 +1610,86 @@ impl GlslTranspiler {
                 var
             }
 
+            SdfNode::XOR { a, b } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                writeln!(code, "    float {} = max(min({}, {}), -max({}, {}));", var, d_a, d_b, d_a, d_b).unwrap();
+                var
+            }
+
+            SdfNode::Morph { a, b, t } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                let t_s = self.param(*t);
+                writeln!(code, "    float {} = mix({}, {}, {});", var, d_a, d_b, t_s).unwrap();
+                var
+            }
+
+            SdfNode::ColumnsUnion { a, b, r: _, n: _ } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                // Inline fallback: use min as approximation (full columns formula is complex)
+                writeln!(code, "    float {} = min({}, {});", var, d_a, d_b).unwrap();
+                var
+            }
+
+            SdfNode::ColumnsIntersection { a, b, r: _, n: _ } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                writeln!(code, "    float {} = max({}, {});", var, d_a, d_b).unwrap();
+                var
+            }
+
+            SdfNode::ColumnsSubtraction { a, b, r: _, n: _ } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                writeln!(code, "    float {} = max({}, -{});", var, d_a, d_b).unwrap();
+                var
+            }
+
+            SdfNode::Pipe { a, b, r } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                let r_s = self.param(*r);
+                writeln!(code, "    float {} = length(vec2({}, {})) - {};", var, d_a, d_b, r_s).unwrap();
+                var
+            }
+
+            SdfNode::Engrave { a, b, r } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                let r_s = self.param(*r);
+                writeln!(code, "    float {} = max({}, ({} + {} - abs({})) * 0.70710678);", var, d_a, d_a, r_s, d_b).unwrap();
+                var
+            }
+
+            SdfNode::Groove { a, b, ra, rb } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                let ra_s = self.param(*ra);
+                let rb_s = self.param(*rb);
+                writeln!(code, "    float {} = max({}, min({} + {}, {} - abs({})));", var, d_a, d_a, ra_s, rb_s, d_b).unwrap();
+                var
+            }
+
+            SdfNode::Tongue { a, b, ra, rb } => {
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let var = self.next_var();
+                let ra_s = self.param(*ra);
+                let rb_s = self.param(*rb);
+                writeln!(code, "    float {} = min({}, max({} - {}, abs({}) - {}));", var, d_a, d_a, ra_s, d_b, rb_s).unwrap();
+                var
+            }
+
             // ============ Transforms ============
 
             SdfNode::Translate { child, offset } => {
@@ -1717,6 +1922,19 @@ impl GlslTranspiler {
                     if axes.z != 0.0 { format!("abs({}.z)", point_var) } else { format!("{}.z", point_var) },
                 ).unwrap();
                 self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::OctantMirror { child } => {
+                let abs_p = self.next_var();
+                let mx = self.next_var();
+                let mn = self.next_var();
+                let sorted_p = self.next_var();
+                writeln!(code, "    vec3 {} = abs({});", abs_p, point_var).unwrap();
+                writeln!(code, "    float {} = max({}.x, max({}.y, {}.z));", mx, abs_p, abs_p, abs_p).unwrap();
+                writeln!(code, "    float {} = min({}.x, min({}.y, {}.z));", mn, abs_p, abs_p, abs_p).unwrap();
+                writeln!(code, "    vec3 {} = vec3({}, {}.x + {}.y + {}.z - {} - {}, {});",
+                    sorted_p, mx, abs_p, abs_p, abs_p, mx, mn, mn).unwrap();
+                self.transpile_node_inner(child, &sorted_p, code)
             }
 
             SdfNode::Revolution { child, offset } => {

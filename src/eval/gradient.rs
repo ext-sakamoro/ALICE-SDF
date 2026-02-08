@@ -94,7 +94,20 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         | SdfNode::RegularPolygon { .. }
         | SdfNode::StarPolygon { .. }
         | SdfNode::Stairs { .. }
-        | SdfNode::Helix { .. } => numerical_gradient_of(node, point),
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. } => numerical_gradient_of(node, point),
 
         // === Operations: chain rule ===
         SdfNode::Union { a, b } => {
@@ -161,6 +174,34 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         SdfNode::StairsUnion { .. }
         | SdfNode::StairsIntersection { .. }
         | SdfNode::StairsSubtraction { .. } => numerical_gradient_of(node, point),
+        // XOR: piecewise — gradient of whichever term wins
+        SdfNode::XOR { a, b } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            let min_ab = da.min(db);
+            let neg_max_ab = -da.max(db);
+            if min_ab > neg_max_ab {
+                // min(a,b) wins
+                if da <= db { eval_gradient(a, point) } else { eval_gradient(b, point) }
+            } else {
+                // -max(a,b) wins
+                if da >= db { -eval_gradient(a, point) } else { -eval_gradient(b, point) }
+            }
+        }
+        // Morph: linear blend
+        SdfNode::Morph { a, b, t } => {
+            let ga = eval_gradient(a, point);
+            let gb = eval_gradient(b, point);
+            ga * (1.0 - *t) + gb * *t
+        }
+        // Columns/Pipe/Engrave/Groove/Tongue: complex — numerical fallback
+        SdfNode::ColumnsUnion { .. }
+        | SdfNode::ColumnsIntersection { .. }
+        | SdfNode::ColumnsSubtraction { .. }
+        | SdfNode::Pipe { .. }
+        | SdfNode::Engrave { .. }
+        | SdfNode::Groove { .. }
+        | SdfNode::Tongue { .. } => numerical_gradient_of(node, point),
 
         // === Transforms: Jacobian propagation ===
         SdfNode::Translate { child, offset } => {
@@ -221,6 +262,16 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
                 if axes.x != 0.0 && point.x < 0.0 { -grad.x } else { grad.x },
                 if axes.y != 0.0 && point.y < 0.0 { -grad.y } else { grad.y },
                 if axes.z != 0.0 && point.z < 0.0 { -grad.z } else { grad.z },
+            )
+        }
+        SdfNode::OctantMirror { child } => {
+            // Octant mirror has complex Jacobian (abs + sort permutation).
+            // Use numerical gradient for correctness.
+            let eps = 1e-4;
+            Vec3::new(
+                (eval(node, point + Vec3::X * eps) - eval(node, point - Vec3::X * eps)) / (2.0 * eps),
+                (eval(node, point + Vec3::Y * eps) - eval(node, point - Vec3::Y * eps)) / (2.0 * eps),
+                (eval(node, point + Vec3::Z * eps) - eval(node, point - Vec3::Z * eps)) / (2.0 * eps),
             )
         }
         SdfNode::Revolution { child, offset } => {

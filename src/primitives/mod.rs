@@ -60,6 +60,20 @@ mod regular_polygon;
 mod star_polygon;
 mod stairs;
 mod helix;
+mod gdf_vectors;
+mod tetrahedron;
+mod dodecahedron;
+mod icosahedron;
+mod truncated_octahedron;
+mod truncated_icosahedron;
+mod box_frame;
+mod diamond_surface;
+mod neovius;
+mod lidinoid;
+mod iwp;
+mod frd;
+mod fischer_koch_s;
+mod pmy;
 
 pub use sphere::{sdf_sphere, sdf_sphere_at};
 pub use box3d::{sdf_box3d, sdf_box3d_at, sdf_rounded_box3d};
@@ -114,6 +128,19 @@ pub use regular_polygon::sdf_regular_polygon;
 pub use star_polygon::sdf_star_polygon;
 pub use stairs::sdf_stairs;
 pub use helix::sdf_helix;
+pub use tetrahedron::sdf_tetrahedron;
+pub use dodecahedron::sdf_dodecahedron;
+pub use icosahedron::sdf_icosahedron;
+pub use truncated_octahedron::sdf_truncated_octahedron;
+pub use truncated_icosahedron::sdf_truncated_icosahedron;
+pub use box_frame::sdf_box_frame;
+pub use diamond_surface::sdf_diamond_surface;
+pub use neovius::sdf_neovius;
+pub use lidinoid::sdf_lidinoid;
+pub use iwp::sdf_iwp;
+pub use frd::sdf_frd;
+pub use fischer_koch_s::sdf_fischer_koch_s;
+pub use pmy::sdf_pmy;
 
 use glam::Vec3;
 
@@ -229,6 +256,32 @@ pub enum PrimitiveType {
     Stairs,
     /// Helix (spiral tube)
     Helix,
+    /// Tetrahedron
+    Tetrahedron,
+    /// Dodecahedron
+    Dodecahedron,
+    /// Icosahedron
+    Icosahedron,
+    /// Truncated octahedron
+    TruncatedOctahedron,
+    /// Truncated icosahedron
+    TruncatedIcosahedron,
+    /// Box frame (wireframe box)
+    BoxFrame,
+    /// Diamond surface (TPMS)
+    DiamondSurface,
+    /// Neovius surface (TPMS)
+    Neovius,
+    /// Lidinoid surface (TPMS)
+    Lidinoid,
+    /// IWP surface (TPMS)
+    IWP,
+    /// FRD surface (TPMS)
+    FRD,
+    /// Fischer-Koch S surface (TPMS)
+    FischerKochS,
+    /// PMY surface (TPMS)
+    PMY,
 }
 
 /// Evaluate a primitive SDF using fast Enum dispatch (Safe version)
@@ -551,6 +604,71 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
                 Some(sdf_helix(point, params[0], params[1], params[2], params[3]))
             } else { None }
         }
+        PrimitiveType::Tetrahedron => {
+            if params.len() >= 1 {
+                Some(sdf_tetrahedron(point, params[0]))
+            } else { None }
+        }
+        PrimitiveType::Dodecahedron => {
+            if params.len() >= 1 {
+                Some(sdf_dodecahedron(point, params[0]))
+            } else { None }
+        }
+        PrimitiveType::Icosahedron => {
+            if params.len() >= 1 {
+                Some(sdf_icosahedron(point, params[0]))
+            } else { None }
+        }
+        PrimitiveType::TruncatedOctahedron => {
+            if params.len() >= 1 {
+                Some(sdf_truncated_octahedron(point, params[0]))
+            } else { None }
+        }
+        PrimitiveType::TruncatedIcosahedron => {
+            if params.len() >= 1 {
+                Some(sdf_truncated_icosahedron(point, params[0]))
+            } else { None }
+        }
+        PrimitiveType::BoxFrame => {
+            if params.len() >= 4 {
+                Some(sdf_box_frame(point, Vec3::new(params[0], params[1], params[2]), params[3]))
+            } else { None }
+        }
+        PrimitiveType::DiamondSurface => {
+            if params.len() >= 2 {
+                Some(sdf_diamond_surface(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::Neovius => {
+            if params.len() >= 2 {
+                Some(sdf_neovius(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::Lidinoid => {
+            if params.len() >= 2 {
+                Some(sdf_lidinoid(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::IWP => {
+            if params.len() >= 2 {
+                Some(sdf_iwp(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::FRD => {
+            if params.len() >= 2 {
+                Some(sdf_frd(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::FischerKochS => {
+            if params.len() >= 2 {
+                Some(sdf_fischer_koch_s(point, params[0], params[1]))
+            } else { None }
+        }
+        PrimitiveType::PMY => {
+            if params.len() >= 2 {
+                Some(sdf_pmy(point, params[0], params[1]))
+            } else { None }
+        }
     }
 }
 
@@ -758,6 +876,37 @@ pub unsafe fn eval_primitive_unchecked(prim: PrimitiveType, point: Vec3, params:
         PrimitiveType::Helix => sdf_helix(
             point, *params.get_unchecked(0), *params.get_unchecked(1),
             *params.get_unchecked(2), *params.get_unchecked(3),
+        ),
+        PrimitiveType::Tetrahedron => sdf_tetrahedron(point, *params.get_unchecked(0)),
+        PrimitiveType::Dodecahedron => sdf_dodecahedron(point, *params.get_unchecked(0)),
+        PrimitiveType::Icosahedron => sdf_icosahedron(point, *params.get_unchecked(0)),
+        PrimitiveType::TruncatedOctahedron => sdf_truncated_octahedron(point, *params.get_unchecked(0)),
+        PrimitiveType::TruncatedIcosahedron => sdf_truncated_icosahedron(point, *params.get_unchecked(0)),
+        PrimitiveType::BoxFrame => sdf_box_frame(
+            point,
+            Vec3::new(*params.get_unchecked(0), *params.get_unchecked(1), *params.get_unchecked(2)),
+            *params.get_unchecked(3),
+        ),
+        PrimitiveType::DiamondSurface => sdf_diamond_surface(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::Neovius => sdf_neovius(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::Lidinoid => sdf_lidinoid(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::IWP => sdf_iwp(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::FRD => sdf_frd(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::FischerKochS => sdf_fischer_koch_s(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
+        ),
+        PrimitiveType::PMY => sdf_pmy(
+            point, *params.get_unchecked(0), *params.get_unchecked(1),
         ),
     }
 }

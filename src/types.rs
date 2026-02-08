@@ -510,6 +510,100 @@ pub enum SdfNode {
         half_height: f32,
     },
 
+    /// Regular tetrahedron centered at origin
+    Tetrahedron {
+        /// Distance from center to face
+        size: f32,
+    },
+
+    /// Regular dodecahedron centered at origin (GDF)
+    Dodecahedron {
+        /// Distance from center to face
+        radius: f32,
+    },
+
+    /// Regular icosahedron centered at origin (GDF)
+    Icosahedron {
+        /// Distance from center to face
+        radius: f32,
+    },
+
+    /// Truncated octahedron centered at origin (GDF)
+    TruncatedOctahedron {
+        /// Distance from center to face
+        radius: f32,
+    },
+
+    /// Truncated icosahedron (soccer ball) centered at origin (GDF)
+    TruncatedIcosahedron {
+        /// Distance from center to face
+        radius: f32,
+    },
+
+    /// Box frame (wireframe box, edges only)
+    BoxFrame {
+        /// Half-extents along each axis
+        half_extents: Vec3,
+        /// Edge thickness
+        edge: f32,
+    },
+
+    /// Diamond surface (Schwarz D TPMS)
+    DiamondSurface {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// Neovius surface (TPMS)
+    Neovius {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// Lidinoid surface (TPMS)
+    Lidinoid {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// IWP surface (TPMS)
+    IWP {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// FRD surface (TPMS)
+    FRD {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// Fischer-Koch S surface (TPMS)
+    FischerKochS {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
+    /// PMY surface (TPMS)
+    PMY {
+        /// Spatial frequency
+        scale: f32,
+        /// Shell half-thickness
+        thickness: f32,
+    },
+
     // === Operations ===
     /// Union of two shapes (min distance)
     Union {
@@ -629,6 +723,86 @@ pub enum SdfNode {
         r: f32,
         /// Number of steps
         n: f32,
+    },
+
+    /// XOR (symmetric difference)
+    XOR {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+    },
+
+    /// Morph (linear interpolation between two shapes)
+    Morph {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Blend factor (0=a, 1=b)
+        t: f32,
+    },
+
+    /// Columns union: column-shaped blend
+    ColumnsUnion {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Column radius
+        r: f32,
+        /// Number of columns
+        n: f32,
+    },
+
+    /// Columns intersection: column-shaped blend
+    ColumnsIntersection {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Column radius
+        r: f32,
+        /// Number of columns
+        n: f32,
+    },
+
+    /// Columns subtraction: column-shaped blend
+    ColumnsSubtraction {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Column radius
+        r: f32,
+        /// Number of columns
+        n: f32,
+    },
+
+    /// Pipe: cylindrical surface at intersection
+    Pipe {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Pipe radius
+        r: f32,
+    },
+
+    /// Engrave: engrave shape b into shape a
+    Engrave {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Engrave depth
+        r: f32,
+    },
+
+    /// Groove: cut a groove of shape b into shape a
+    Groove {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Groove width
+        ra: f32,
+        /// Groove depth
+        rb: f32,
+    },
+
+    /// Tongue: add a tongue protrusion
+    Tongue {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Tongue width
+        ra: f32,
+        /// Tongue height
+        rb: f32,
     },
 
     // === Transforms ===
@@ -795,6 +969,12 @@ pub enum SdfNode {
         child: Arc<SdfNode>,
         /// Number of copies around Y-axis
         count: u32,
+    },
+
+    /// Octant mirror: maps point to first octant with x >= y >= z (48-fold symmetry)
+    OctantMirror {
+        /// Child node
+        child: Arc<SdfNode>,
     },
 
     /// Assign a material ID to a subtree (transparent for distance evaluation)
@@ -1241,6 +1421,84 @@ impl SdfNode {
         SdfNode::Helix { major_r, minor_r, pitch, half_height: height * 0.5 }
     }
 
+    /// Create a regular tetrahedron
+    #[inline]
+    pub fn tetrahedron(size: f32) -> Self {
+        SdfNode::Tetrahedron { size }
+    }
+
+    /// Create a regular dodecahedron
+    #[inline]
+    pub fn dodecahedron(radius: f32) -> Self {
+        SdfNode::Dodecahedron { radius }
+    }
+
+    /// Create a regular icosahedron
+    #[inline]
+    pub fn icosahedron(radius: f32) -> Self {
+        SdfNode::Icosahedron { radius }
+    }
+
+    /// Create a truncated octahedron
+    #[inline]
+    pub fn truncated_octahedron(radius: f32) -> Self {
+        SdfNode::TruncatedOctahedron { radius }
+    }
+
+    /// Create a truncated icosahedron (soccer ball)
+    #[inline]
+    pub fn truncated_icosahedron(radius: f32) -> Self {
+        SdfNode::TruncatedIcosahedron { radius }
+    }
+
+    /// Create a box frame (wireframe box)
+    #[inline]
+    pub fn box_frame(half_extents: Vec3, edge: f32) -> Self {
+        SdfNode::BoxFrame { half_extents, edge }
+    }
+
+    /// Create a diamond surface (TPMS)
+    #[inline]
+    pub fn diamond_surface(scale: f32, thickness: f32) -> Self {
+        SdfNode::DiamondSurface { scale, thickness }
+    }
+
+    /// Create a neovius surface (TPMS)
+    #[inline]
+    pub fn neovius(scale: f32, thickness: f32) -> Self {
+        SdfNode::Neovius { scale, thickness }
+    }
+
+    /// Create a lidinoid surface (TPMS)
+    #[inline]
+    pub fn lidinoid(scale: f32, thickness: f32) -> Self {
+        SdfNode::Lidinoid { scale, thickness }
+    }
+
+    /// Create an IWP surface (TPMS)
+    #[inline]
+    pub fn iwp(scale: f32, thickness: f32) -> Self {
+        SdfNode::IWP { scale, thickness }
+    }
+
+    /// Create an FRD surface (TPMS)
+    #[inline]
+    pub fn frd(scale: f32, thickness: f32) -> Self {
+        SdfNode::FRD { scale, thickness }
+    }
+
+    /// Create a Fischer-Koch S surface (TPMS)
+    #[inline]
+    pub fn fischer_koch_s(scale: f32, thickness: f32) -> Self {
+        SdfNode::FischerKochS { scale, thickness }
+    }
+
+    /// Create a PMY surface (TPMS)
+    #[inline]
+    pub fn pmy(scale: f32, thickness: f32) -> Self {
+        SdfNode::PMY { scale, thickness }
+    }
+
     // === Operation methods ===
 
     /// Union with another shape
@@ -1361,6 +1619,60 @@ impl SdfNode {
             r,
             n,
         }
+    }
+
+    /// XOR (symmetric difference) with another shape
+    #[inline]
+    pub fn xor(self, other: SdfNode) -> Self {
+        SdfNode::XOR { a: Arc::new(self), b: Arc::new(other) }
+    }
+
+    /// Morph with another shape
+    #[inline]
+    pub fn morph(self, other: SdfNode, t: f32) -> Self {
+        SdfNode::Morph { a: Arc::new(self), b: Arc::new(other), t }
+    }
+
+    /// Columns union with another shape
+    #[inline]
+    pub fn columns_union(self, other: SdfNode, r: f32, n: f32) -> Self {
+        SdfNode::ColumnsUnion { a: Arc::new(self), b: Arc::new(other), r, n }
+    }
+
+    /// Columns intersection with another shape
+    #[inline]
+    pub fn columns_intersection(self, other: SdfNode, r: f32, n: f32) -> Self {
+        SdfNode::ColumnsIntersection { a: Arc::new(self), b: Arc::new(other), r, n }
+    }
+
+    /// Columns subtraction of another shape
+    #[inline]
+    pub fn columns_subtract(self, other: SdfNode, r: f32, n: f32) -> Self {
+        SdfNode::ColumnsSubtraction { a: Arc::new(self), b: Arc::new(other), r, n }
+    }
+
+    /// Pipe operation with another shape
+    #[inline]
+    pub fn pipe(self, other: SdfNode, r: f32) -> Self {
+        SdfNode::Pipe { a: Arc::new(self), b: Arc::new(other), r }
+    }
+
+    /// Engrave another shape into this one
+    #[inline]
+    pub fn engrave(self, other: SdfNode, r: f32) -> Self {
+        SdfNode::Engrave { a: Arc::new(self), b: Arc::new(other), r }
+    }
+
+    /// Cut a groove of another shape into this one
+    #[inline]
+    pub fn groove(self, other: SdfNode, ra: f32, rb: f32) -> Self {
+        SdfNode::Groove { a: Arc::new(self), b: Arc::new(other), ra, rb }
+    }
+
+    /// Add a tongue protrusion of another shape
+    #[inline]
+    pub fn tongue(self, other: SdfNode, ra: f32, rb: f32) -> Self {
+        SdfNode::Tongue { a: Arc::new(self), b: Arc::new(other), ra, rb }
     }
 
     // === Transform methods ===
@@ -1566,6 +1878,14 @@ impl SdfNode {
         }
     }
 
+    /// Octant mirror (48-fold symmetry)
+    #[inline]
+    pub fn octant_mirror(self) -> Self {
+        SdfNode::OctantMirror {
+            child: Arc::new(self),
+        }
+    }
+
     /// Assign a material ID to this subtree
     #[inline]
     pub fn with_material(self, material_id: u32) -> Self {
@@ -1631,7 +1951,20 @@ impl SdfNode {
             | SdfNode::RegularPolygon { .. }
             | SdfNode::StarPolygon { .. }
             | SdfNode::Stairs { .. }
-            | SdfNode::Helix { .. } => 1,
+            | SdfNode::Helix { .. }
+            | SdfNode::Tetrahedron { .. }
+            | SdfNode::Dodecahedron { .. }
+            | SdfNode::Icosahedron { .. }
+            | SdfNode::TruncatedOctahedron { .. }
+            | SdfNode::TruncatedIcosahedron { .. }
+            | SdfNode::BoxFrame { .. }
+            | SdfNode::DiamondSurface { .. }
+            | SdfNode::Neovius { .. }
+            | SdfNode::Lidinoid { .. }
+            | SdfNode::IWP { .. }
+            | SdfNode::FRD { .. }
+            | SdfNode::FischerKochS { .. }
+            | SdfNode::PMY { .. } => 1,
 
             // Operations: 1 + children
             SdfNode::Union { a, b }
@@ -1645,7 +1978,16 @@ impl SdfNode {
             | SdfNode::ChamferSubtraction { a, b, .. }
             | SdfNode::StairsUnion { a, b, .. }
             | SdfNode::StairsIntersection { a, b, .. }
-            | SdfNode::StairsSubtraction { a, b, .. } => 1 + a.node_count() + b.node_count(),
+            | SdfNode::StairsSubtraction { a, b, .. }
+            | SdfNode::XOR { a, b }
+            | SdfNode::Morph { a, b, .. }
+            | SdfNode::ColumnsUnion { a, b, .. }
+            | SdfNode::ColumnsIntersection { a, b, .. }
+            | SdfNode::ColumnsSubtraction { a, b, .. }
+            | SdfNode::Pipe { a, b, .. }
+            | SdfNode::Engrave { a, b, .. }
+            | SdfNode::Groove { a, b, .. }
+            | SdfNode::Tongue { a, b, .. } => 1 + a.node_count() + b.node_count(),
 
             // Transforms and modifiers: 1 + child
             SdfNode::Translate { child, .. }
@@ -1667,6 +2009,7 @@ impl SdfNode {
             | SdfNode::Taper { child, .. }
             | SdfNode::Displacement { child, .. }
             | SdfNode::PolarRepeat { child, .. }
+            | SdfNode::OctantMirror { child, .. }
             | SdfNode::WithMaterial { child, .. } => 1 + child.node_count(),
         }
     }

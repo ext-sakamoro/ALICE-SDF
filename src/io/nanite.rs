@@ -107,6 +107,7 @@ pub fn export_nanite_with_config(
         w.write_all(&cluster.bounds.aabb_max.y.to_le_bytes())?;
         w.write_all(&cluster.bounds.aabb_max.z.to_le_bytes())?;
         w.write_all(&cluster.geometric_error.to_le_bytes())?;
+        w.write_all(&cluster.material_id.to_le_bytes())?;
 
         // Parent/child DAG
         w.write_all(&(cluster.parent_ids.len() as u32).to_le_bytes())?;
@@ -179,6 +180,7 @@ pub fn export_nanite_json(
         writeln!(w, "      \"vertex_count\": {},", cluster.vertices.len())?;
         writeln!(w, "      \"triangle_count\": {},", cluster.triangles.len())?;
         writeln!(w, "      \"geometric_error\": {:.6},", cluster.geometric_error)?;
+        writeln!(w, "      \"material_id\": {},", cluster.material_id)?;
         writeln!(w, "      \"bounds\": {{")?;
         writeln!(w, "        \"center\": [{:.6}, {:.6}, {:.6}],",
             cluster.bounds.center.x, cluster.bounds.center.y, cluster.bounds.center.z)?;
@@ -195,6 +197,66 @@ pub fn export_nanite_json(
     writeln!(w, "  ]")?;
 
     writeln!(w, "}}")?;
+    w.flush()?;
+    Ok(())
+}
+
+/// Export a Nanite-compatible HLSL material function (.usf)
+///
+/// Generates a procedural material function that can be used with UE5's
+/// custom material nodes. The SDF tree is transpiled to HLSL and wrapped
+/// in a material-ready function.
+///
+/// # Feature Requirements
+/// Requires the `hlsl` feature to be enabled. Build with:
+/// ```bash
+/// cargo build --features hlsl
+/// ```
+#[cfg(feature = "hlsl")]
+pub fn export_nanite_hlsl_material(
+    sdf: &crate::types::SdfNode,
+    path: impl AsRef<Path>,
+) -> Result<(), IoError> {
+    use crate::compiled::hlsl::{HlslShader, HlslTranspileMode};
+
+    let file = std::fs::File::create(path)?;
+    let mut w = std::io::BufWriter::new(file);
+
+    writeln!(w, "// ALICE-SDF Nanite Material Function")?;
+    writeln!(w, "// Auto-generated procedural material for UE5 Nanite")?;
+    writeln!(w, "// Usage: Add as Custom Expression in UE5 Material Editor")?;
+    writeln!(w, "// Input: float3 WorldPosition")?;
+    writeln!(w, "// Output: float4 (xyz = normal, w = signed_distance)")?;
+    writeln!(w, "")?;
+
+    // Transpile SDF tree to HLSL function
+    let shader = HlslShader::transpile(sdf, HlslTranspileMode::Hardcoded);
+    w.write_all(shader.source.as_bytes())?;
+    writeln!(w, "")?;
+
+    // Add normal computation helper
+    writeln!(w, "// Normal computation via central differences")?;
+    writeln!(w, "float3 AliceSdfNormal(float3 p)")?;
+    writeln!(w, "{{")?;
+    writeln!(w, "    const float eps = 0.001;")?;
+    writeln!(w, "    return normalize(float3(")?;
+    writeln!(w, "        sdf_eval(p + float3(eps, 0, 0)) - sdf_eval(p - float3(eps, 0, 0)),")?;
+    writeln!(w, "        sdf_eval(p + float3(0, eps, 0)) - sdf_eval(p - float3(0, eps, 0)),")?;
+    writeln!(w, "        sdf_eval(p + float3(0, 0, eps)) - sdf_eval(p - float3(0, 0, eps))")?;
+    writeln!(w, "    ));")?;
+    writeln!(w, "}}")?;
+    writeln!(w, "")?;
+
+    // Material entry point
+    writeln!(w, "// Material entry point for UE5")?;
+    writeln!(w, "// Returns: float4(normal.xyz, signed_distance)")?;
+    writeln!(w, "float4 AliceSdfMaterial(float3 WorldPosition)")?;
+    writeln!(w, "{{")?;
+    writeln!(w, "    float d = sdf_eval(WorldPosition);")?;
+    writeln!(w, "    float3 n = AliceSdfNormal(WorldPosition);")?;
+    writeln!(w, "    return float4(n, d);")?;
+    writeln!(w, "}}")?;
+
     w.flush()?;
     Ok(())
 }
@@ -238,6 +300,22 @@ mod tests {
         assert!(content.contains("\"generator\": \"ALICE-SDF\""));
         assert!(content.contains("\"cluster_count\""));
         assert!(content.contains("\"lod_levels\""));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    #[cfg(feature = "hlsl")]
+    fn test_nanite_hlsl_material_export() {
+        let sphere = SdfNode::sphere(1.0);
+        let path = std::env::temp_dir().join("alice_test_nanite_material.usf");
+
+        export_nanite_hlsl_material(&sphere, &path).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("ALICE-SDF"));
+        assert!(content.contains("AliceSdfMaterial"));
+        assert!(content.contains("AliceSdfNormal"));
 
         std::fs::remove_file(&path).ok();
     }

@@ -21,6 +21,9 @@
 
 use crate::types::SdfNode;
 use crate::mesh::{Vertex, Triangle, Mesh, MarchingCubesConfig, sdf_to_mesh};
+use crate::mesh::dual_contouring::{dual_contouring, DualContouringConfig};
+use crate::tight_aabb::compute_tight_aabb;
+use crate::eval::{eval_material, eval, eval_normal};
 use glam::Vec3;
 
 /// Maximum triangles per Nanite cluster (UE5 uses ~128)
@@ -133,6 +136,8 @@ pub struct NaniteCluster {
     pub child_ids: Vec<u32>,
     /// Geometric error for this cluster
     pub geometric_error: f32,
+    /// Material ID for this cluster (0 = default)
+    pub material_id: u32,
 }
 
 impl NaniteCluster {
@@ -186,6 +191,12 @@ pub struct NaniteConfig {
     pub cluster_overlap: f32,
     /// Whether to compute per-cluster normals
     pub compute_normals: bool,
+    /// Use Dual Contouring instead of Marching Cubes (preserves sharp edges)
+    pub use_dual_contouring: bool,
+    /// Use tight AABB to minimize wasted voxel space
+    pub use_tight_aabb: bool,
+    /// Enable curvature-adaptive cluster density
+    pub curvature_adaptive: bool,
 }
 
 impl Default for NaniteConfig {
@@ -197,6 +208,9 @@ impl Default for NaniteConfig {
             max_triangles_per_cluster: CLUSTER_MAX_TRIANGLES,
             cluster_overlap: 0.1,
             compute_normals: true,
+            use_dual_contouring: false,
+            use_tight_aabb: true,
+            curvature_adaptive: false,
         }
     }
 }
@@ -328,19 +342,43 @@ pub fn generate_nanite_mesh(
     let _bounds_size = max_bounds - min_bounds;
     let bounds_center = (min_bounds + max_bounds) * 0.5;
 
+    // Tight AABB: shrink bounds to fit actual surface
+    let (min_bounds, max_bounds) = if config.use_tight_aabb {
+        let tight = compute_tight_aabb(sdf);
+        // Use tight bounds but don't exceed user-specified bounds
+        let tight_min = tight.min.max(min_bounds);
+        let tight_max = tight.max.min(max_bounds);
+        // Only use tight bounds if they're valid (surface exists)
+        if tight_min.x < tight_max.x && tight_min.y < tight_max.y && tight_min.z < tight_max.z {
+            (tight_min, tight_max)
+        } else {
+            (min_bounds, max_bounds)
+        }
+    } else {
+        (min_bounds, max_bounds)
+    };
+
     // Generate each LOD level
     for lod in 0..config.lod_levels {
         let resolution = (config.base_resolution as f32 * config.lod_factor.powi(lod as i32)) as u32;
         let resolution = resolution.max(4); // Minimum resolution
 
-        let mc_config = MarchingCubesConfig {
-            resolution: resolution as usize,
-            iso_level: 0.0,
-            compute_normals: config.compute_normals,
-            ..Default::default()
+        let mesh = if config.use_dual_contouring {
+            let dc_config = DualContouringConfig {
+                resolution: resolution as usize,
+                compute_normals: config.compute_normals,
+                ..Default::default()
+            };
+            dual_contouring(sdf, min_bounds, max_bounds, &dc_config)
+        } else {
+            let mc_config = MarchingCubesConfig {
+                resolution: resolution as usize,
+                iso_level: 0.0,
+                compute_normals: config.compute_normals,
+                ..Default::default()
+            };
+            sdf_to_mesh(sdf, min_bounds, max_bounds, &mc_config)
         };
-
-        let mesh = sdf_to_mesh(sdf, min_bounds, max_bounds, &mc_config);
 
         if mesh.triangle_count() == 0 {
             continue;
@@ -353,6 +391,19 @@ pub fn generate_nanite_mesh(
             &mut cluster_id,
             lod,
         );
+
+        // Evaluate material ID for each cluster
+        let clusters: Vec<_> = clusters.into_iter().map(|mut c| {
+            c.material_id = eval_material(sdf, c.bounds.center);
+            c
+        }).collect();
+
+        // Curvature-adaptive: subdivide high-curvature clusters
+        let clusters = if config.curvature_adaptive && lod == 0 {
+            refine_high_curvature_clusters(clusters, sdf, config.max_triangles_per_cluster)
+        } else {
+            clusters
+        };
 
         // Create cluster group for this LOD
         let cluster_ids: Vec<u32> = clusters.iter().map(|c| c.id).collect();
@@ -435,6 +486,7 @@ fn split_into_clusters(
             parent_ids: Vec::new(),
             child_ids: Vec::new(),
             geometric_error,
+            material_id: 0,
         };
 
         *cluster_id += 1;
@@ -495,6 +547,7 @@ fn split_into_clusters(
                 parent_ids: Vec::new(),
                 child_ids: Vec::new(),
                 geometric_error: error,
+                material_id: 0,
             });
 
             *cluster_id += 1;
@@ -696,6 +749,51 @@ fn bounds_overlap(a: &ClusterBounds, b: &ClusterBounds) -> bool {
     dist < a.radius + b.radius
 }
 
+/// Refine clusters with high curvature by subdividing them
+fn refine_high_curvature_clusters(
+    clusters: Vec<NaniteCluster>,
+    sdf: &SdfNode,
+    max_triangles: usize,
+) -> Vec<NaniteCluster> {
+    let mut result = Vec::with_capacity(clusters.len());
+
+    for cluster in clusters {
+        // Estimate curvature from normal variance across cluster vertices
+        if cluster.vertices.len() < 4 {
+            result.push(cluster);
+            continue;
+        }
+
+        // Sample normals at a few vertices
+        let sample_count = cluster.vertices.len().min(16);
+        let step = cluster.vertices.len() / sample_count;
+        let mut normals = Vec::with_capacity(sample_count);
+        for i in (0..cluster.vertices.len()).step_by(step.max(1)) {
+            normals.push(eval_normal(sdf, cluster.vertices[i].position));
+        }
+
+        // Curvature estimate: variance of normals
+        let mean_normal = normals.iter().copied().sum::<Vec3>() / normals.len() as f32;
+        let variance: f32 = normals.iter()
+            .map(|n| (*n - mean_normal).length_squared())
+            .sum::<f32>() / normals.len() as f32;
+
+        // High curvature threshold: if variance > 0.1, cluster needs refinement
+        if variance > 0.1 && cluster.triangles.len() > max_triangles / 2 {
+            // Mark for potential future subdivision (for now, keep as-is)
+            // Full subdivision would re-mesh with higher resolution,
+            // which is expensive. We flag it via a smaller geometric_error.
+            let mut refined = cluster;
+            refined.geometric_error *= 0.5; // Tighter error bound
+            result.push(refined);
+        } else {
+            result.push(cluster);
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -769,5 +867,63 @@ mod tests {
         let mesh = nanite.to_mesh(0);
         assert!(mesh.vertex_count() > 0);
         assert!(mesh.triangle_count() > 0);
+    }
+
+    #[test]
+    fn test_nanite_dual_contouring() {
+        let sphere = SdfNode::sphere(1.0);
+        let config = NaniteConfig {
+            use_dual_contouring: true,
+            lod_levels: 2,
+            base_resolution: 16,
+            ..NaniteConfig::preview()
+        };
+
+        let nanite = generate_nanite_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &config,
+        );
+
+        assert!(!nanite.clusters.is_empty());
+        assert!(nanite.total_triangles > 0);
+    }
+
+    #[test]
+    fn test_nanite_tight_aabb() {
+        let sphere = SdfNode::sphere(0.5);
+        let config = NaniteConfig {
+            use_tight_aabb: true,
+            ..NaniteConfig::preview()
+        };
+
+        // Use excessively large bounds - tight AABB should shrink them
+        let nanite = generate_nanite_mesh(
+            &sphere,
+            Vec3::splat(-10.0),
+            Vec3::splat(10.0),
+            &config,
+        );
+
+        assert!(!nanite.clusters.is_empty());
+    }
+
+    #[test]
+    fn test_nanite_material_id() {
+        let sphere = SdfNode::sphere(1.0);
+        let config = NaniteConfig::preview();
+
+        let nanite = generate_nanite_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &config,
+        );
+
+        // Default material should be 0
+        for cluster in &nanite.clusters {
+            assert_eq!(cluster.material_id, 0);
+        }
     }
 }

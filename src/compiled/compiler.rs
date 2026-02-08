@@ -300,6 +300,58 @@ impl Compiler {
                 self.instructions.push(Instruction::helix(*major_r, *minor_r, *pitch, *half_height));
             }
 
+            SdfNode::Tetrahedron { size } => {
+                self.instructions.push(Instruction::tetrahedron(*size));
+            }
+
+            SdfNode::Dodecahedron { radius } => {
+                self.instructions.push(Instruction::dodecahedron(*radius));
+            }
+
+            SdfNode::Icosahedron { radius } => {
+                self.instructions.push(Instruction::icosahedron(*radius));
+            }
+
+            SdfNode::TruncatedOctahedron { radius } => {
+                self.instructions.push(Instruction::truncated_octahedron(*radius));
+            }
+
+            SdfNode::TruncatedIcosahedron { radius } => {
+                self.instructions.push(Instruction::truncated_icosahedron(*radius));
+            }
+
+            SdfNode::BoxFrame { half_extents, edge } => {
+                self.instructions.push(Instruction::box_frame(*half_extents, *edge));
+            }
+
+            SdfNode::DiamondSurface { scale, thickness } => {
+                self.instructions.push(Instruction::diamond_surface(*scale, *thickness));
+            }
+
+            SdfNode::Neovius { scale, thickness } => {
+                self.instructions.push(Instruction::neovius(*scale, *thickness));
+            }
+
+            SdfNode::Lidinoid { scale, thickness } => {
+                self.instructions.push(Instruction::lidinoid(*scale, *thickness));
+            }
+
+            SdfNode::IWP { scale, thickness } => {
+                self.instructions.push(Instruction::iwp(*scale, *thickness));
+            }
+
+            SdfNode::FRD { scale, thickness } => {
+                self.instructions.push(Instruction::frd(*scale, *thickness));
+            }
+
+            SdfNode::FischerKochS { scale, thickness } => {
+                self.instructions.push(Instruction::fischer_koch_s(*scale, *thickness));
+            }
+
+            SdfNode::PMY { scale, thickness } => {
+                self.instructions.push(Instruction::pmy(*scale, *thickness));
+            }
+
             // === Binary Operations ===
             // For binary operations, we use post-order: left, right, op
             SdfNode::Union { a, b } => {
@@ -372,6 +424,60 @@ impl Compiler {
                 self.compile_node(a);
                 self.compile_node(b);
                 self.instructions.push(Instruction::stairs_subtraction(*r, *n));
+            }
+
+            SdfNode::XOR { a, b } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::xor());
+            }
+
+            SdfNode::Morph { a, b, t } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::morph(*t));
+            }
+
+            SdfNode::ColumnsUnion { a, b, r, n } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::columns_union(*r, *n));
+            }
+
+            SdfNode::ColumnsIntersection { a, b, r, n } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::columns_intersection(*r, *n));
+            }
+
+            SdfNode::ColumnsSubtraction { a, b, r, n } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::columns_subtraction(*r, *n));
+            }
+
+            SdfNode::Pipe { a, b, r } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::pipe(*r));
+            }
+
+            SdfNode::Engrave { a, b, r } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::engrave(*r));
+            }
+
+            SdfNode::Groove { a, b, ra, rb } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::groove(*ra, *rb));
+            }
+
+            SdfNode::Tongue { a, b, ra, rb } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::tongue(*ra, *rb));
             }
 
             // === Transforms ===
@@ -487,6 +593,14 @@ impl Compiler {
             SdfNode::Mirror { child, axes } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::mirror(axes.x, axes.y, axes.z));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            SdfNode::OctantMirror { child } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::octant_mirror());
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;

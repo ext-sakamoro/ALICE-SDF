@@ -115,6 +115,32 @@ pub enum OpCode {
     Stairs = 100,
     /// Helix: params[0] = major_r, params[1] = minor_r, params[2] = pitch, params[3] = half_height
     Helix = 101,
+    /// Tetrahedron: params[0] = size
+    Tetrahedron = 102,
+    /// Dodecahedron: params[0] = radius
+    Dodecahedron = 103,
+    /// Icosahedron: params[0] = radius
+    Icosahedron = 104,
+    /// TruncatedOctahedron: params[0] = radius
+    TruncatedOctahedron = 105,
+    /// TruncatedIcosahedron: params[0] = radius
+    TruncatedIcosahedron = 106,
+    /// BoxFrame: params[0..3] = half_extents, params[3] = edge
+    BoxFrame = 107,
+    /// DiamondSurface: params[0] = scale, params[1] = thickness
+    DiamondSurface = 108,
+    /// Neovius: params[0] = scale, params[1] = thickness
+    Neovius = 109,
+    /// Lidinoid: params[0] = scale, params[1] = thickness
+    Lidinoid = 110,
+    /// IWP: params[0] = scale, params[1] = thickness
+    IWP = 111,
+    /// FRD: params[0] = scale, params[1] = thickness
+    FRD = 112,
+    /// FischerKochS: params[0] = scale, params[1] = thickness
+    FischerKochS = 113,
+    /// PMY: params[0] = scale, params[1] = thickness
+    PMY = 114,
 
     // === Binary Operations (pop 2, push 1) ===
     /// Union: min(a, b)
@@ -141,6 +167,26 @@ pub enum OpCode {
     StairsIntersection = 26,
     /// StairsSubtraction: params[0] = r, params[1] = n
     StairsSubtraction = 27,
+
+    // === Extended Binary Operations (128-136) ===
+    /// XOR: symmetric difference
+    XOR = 128,
+    /// Morph: params[0] = t (blend factor)
+    Morph = 129,
+    /// ColumnsUnion: params[0] = r, params[1] = n
+    ColumnsUnion = 130,
+    /// ColumnsIntersection: params[0] = r, params[1] = n
+    ColumnsIntersection = 131,
+    /// ColumnsSubtraction: params[0] = r, params[1] = n
+    ColumnsSubtraction = 132,
+    /// Pipe: params[0] = r
+    Pipe = 133,
+    /// Engrave: params[0] = r
+    Engrave = 134,
+    /// Groove: params[0] = ra, params[1] = rb
+    Groove = 135,
+    /// Tongue: params[0] = ra, params[1] = rb
+    Tongue = 136,
 
     // === Transforms (modify point, then evaluate child) ===
     /// Translate: params[0..3] = offset (x, y, z)
@@ -184,6 +230,8 @@ pub enum OpCode {
     PolarRepeat = 61,
     /// SweepBezier: params[0..6] = p0.x, p0.z, p1.x, p1.z, p2.x, p2.z
     SweepBezier = 62,
+    /// OctantMirror: abs + sort (x >= y >= z)
+    OctantMirror = 63,
 
     // === Control ===
     /// Pop transform from coordinate stack
@@ -197,14 +245,14 @@ impl OpCode {
     #[inline]
     pub fn is_primitive(self) -> bool {
         let v = self as u8;
-        v < 16 || (v >= 64 && v <= 101)
+        v < 16 || (v >= 64 && v <= 114)
     }
 
     /// Returns true if this opcode is a binary operation
     #[inline]
     pub fn is_binary_op(self) -> bool {
         let v = self as u8;
-        v >= 16 && v < 32
+        (v >= 16 && v < 32) || (v >= 128 && v < 144)
     }
 
     /// Returns true if this opcode is a transform
@@ -229,7 +277,7 @@ impl OpCode {
             OpCode::Twist | OpCode::Bend | OpCode::RepeatInfinite |
             OpCode::RepeatFinite | OpCode::Elongate | OpCode::Mirror |
             OpCode::Revolution | OpCode::Extrude | OpCode::SweepBezier | OpCode::Taper |
-            OpCode::PolarRepeat
+            OpCode::PolarRepeat | OpCode::OctantMirror
         )
     }
 

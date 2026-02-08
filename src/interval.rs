@@ -496,6 +496,19 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Helix { major_r, minor_r, half_height, .. } => {
             ia_bsphere(bounds, ((major_r + minor_r).powi(2) + half_height.powi(2)).sqrt())
         }
+        SdfNode::Tetrahedron { size } => ia_bsphere(bounds, *size),
+        SdfNode::Dodecahedron { radius } => ia_bsphere(bounds, *radius),
+        SdfNode::Icosahedron { radius } => ia_bsphere(bounds, *radius),
+        SdfNode::TruncatedOctahedron { radius } => ia_bsphere(bounds, *radius),
+        SdfNode::TruncatedIcosahedron { radius } => ia_bsphere(bounds, *radius),
+        SdfNode::BoxFrame { half_extents, .. } => ia_bsphere(bounds, half_extents.max_element()),
+        SdfNode::DiamondSurface { .. } => Interval::EVERYTHING,
+        SdfNode::Neovius { .. } => Interval::EVERYTHING,
+        SdfNode::Lidinoid { .. } => Interval::EVERYTHING,
+        SdfNode::IWP { .. } => Interval::EVERYTHING,
+        SdfNode::FRD { .. } => Interval::EVERYTHING,
+        SdfNode::FischerKochS { .. } => Interval::EVERYTHING,
+        SdfNode::PMY { .. } => Interval::EVERYTHING,
 
         // ============ Operations ============
         SdfNode::Union { a, b } => {
@@ -542,6 +555,54 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::StairsSubtraction { a, b, r, .. } => {
             let sharp = eval_interval(a, bounds).max(-eval_interval(b, bounds));
             Interval::new(sharp.lo, sharp.hi + r)
+        }
+        SdfNode::XOR { a, b } => {
+            let ia = eval_interval(a, bounds);
+            let ib = eval_interval(b, bounds);
+            // XOR = min(a,b).max(-max(a,b)); conservative: union of both bounds
+            let min_ab = ia.min(ib);
+            let neg_max = -(ia.max(ib));
+            min_ab.max(neg_max)
+        }
+        SdfNode::Morph { a, b, t } => {
+            let ia = eval_interval(a, bounds);
+            let ib = eval_interval(b, bounds);
+            ia * (1.0 - *t) + ib * *t
+        }
+        SdfNode::ColumnsUnion { a, b, r, .. } => {
+            let sharp = eval_interval(a, bounds).min(eval_interval(b, bounds));
+            Interval::new(sharp.lo - r, sharp.hi)
+        }
+        SdfNode::ColumnsIntersection { a, b, r, .. } => {
+            let sharp = eval_interval(a, bounds).max(eval_interval(b, bounds));
+            Interval::new(sharp.lo, sharp.hi + r)
+        }
+        SdfNode::ColumnsSubtraction { a, b, r, .. } => {
+            let sharp = eval_interval(a, bounds).max(-eval_interval(b, bounds));
+            Interval::new(sharp.lo, sharp.hi + r)
+        }
+        SdfNode::Pipe { a, b, r } => {
+            let ia = eval_interval(a, bounds);
+            let ib = eval_interval(b, bounds);
+            // pipe = sqrt(a²+b²) - r; conservative bound
+            let sq = ia * ia + ib * ib;
+            Interval::new(sq.lo.max(0.0).sqrt() - r, sq.hi.max(0.0).sqrt() + r.abs())
+        }
+        SdfNode::Engrave { a, b, r } => {
+            let ia = eval_interval(a, bounds);
+            let ib = eval_interval(b, bounds);
+            // engrave = max(a, (a+r-|b|)*FRAC_1_SQRT_2); conservative: expand a
+            Interval::new(ia.lo, ia.hi + r)
+        }
+        SdfNode::Groove { a, b, ra, rb } => {
+            let ia = eval_interval(a, bounds);
+            // groove = max(a, min(a+ra, rb-|b|)); conservative: bound by a expanded
+            Interval::new(ia.lo, ia.hi + ra)
+        }
+        SdfNode::Tongue { a, b, ra, rb } => {
+            let ia = eval_interval(a, bounds);
+            // tongue = min(a, max(a-ra, |b|-rb)); conservative: expand a
+            Interval::new(ia.lo - ra, ia.hi)
         }
 
         // ============ Transforms ============
@@ -622,6 +683,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         }
         SdfNode::Mirror { child, axes } => {
             eval_interval(child, bounds.mirror(*axes))
+        }
+        SdfNode::OctantMirror { child } => {
+            // abs all axes (mirror), then eval with conservative sorted bounds
+            eval_interval(child, bounds.mirror(Vec3::ONE))
         }
         SdfNode::Revolution { child, offset } => {
             let qx = bounds.length_xz() - Interval::point(*offset);
@@ -733,7 +798,15 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::CrossShape { .. } | SdfNode::BlobbyCross { .. } |
         SdfNode::ParabolaSegment { .. } | SdfNode::RegularPolygon { .. } |
         SdfNode::StarPolygon { .. } | SdfNode::Stairs { .. } |
-        SdfNode::Helix { .. } => 1.0,
+        SdfNode::Helix { .. } |
+        SdfNode::Tetrahedron { .. } | SdfNode::Dodecahedron { .. } |
+        SdfNode::Icosahedron { .. } | SdfNode::TruncatedOctahedron { .. } |
+        SdfNode::TruncatedIcosahedron { .. } |
+        SdfNode::BoxFrame { .. } |
+        SdfNode::DiamondSurface { .. } | SdfNode::Neovius { .. } |
+        SdfNode::Lidinoid { .. } | SdfNode::IWP { .. } |
+        SdfNode::FRD { .. } | SdfNode::FischerKochS { .. } |
+        SdfNode::PMY { .. } => 1.0,
 
         // Boolean ops: smooth min/max is 1-Lipschitz in (a,b)
         SdfNode::Union { a, b } | SdfNode::Intersection { a, b } |
@@ -743,7 +816,12 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::ChamferUnion { a, b, .. } | SdfNode::ChamferIntersection { a, b, .. } |
         SdfNode::ChamferSubtraction { a, b, .. } |
         SdfNode::StairsUnion { a, b, .. } | SdfNode::StairsIntersection { a, b, .. } |
-        SdfNode::StairsSubtraction { a, b, .. } => {
+        SdfNode::StairsSubtraction { a, b, .. } |
+        SdfNode::XOR { a, b } | SdfNode::Morph { a, b, .. } |
+        SdfNode::ColumnsUnion { a, b, .. } | SdfNode::ColumnsIntersection { a, b, .. } |
+        SdfNode::ColumnsSubtraction { a, b, .. } |
+        SdfNode::Pipe { a, b, .. } | SdfNode::Engrave { a, b, .. } |
+        SdfNode::Groove { a, b, .. } | SdfNode::Tongue { a, b, .. } => {
             eval_lipschitz(a).max(eval_lipschitz(b))
         }
 
@@ -764,6 +842,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // Modifiers with Jacobian norm ≤ 1
         SdfNode::Round { child, .. } | SdfNode::Onion { child, .. } |
         SdfNode::Elongate { child, .. } | SdfNode::Mirror { child, .. } |
+        SdfNode::OctantMirror { child, .. } |
         SdfNode::Revolution { child, .. } | SdfNode::Extrude { child, .. } |
         SdfNode::SweepBezier { child, .. } => eval_lipschitz(child),
 

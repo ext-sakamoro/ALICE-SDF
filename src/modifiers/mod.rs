@@ -22,6 +22,7 @@ mod taper;
 mod displacement;
 mod polar_repeat;
 mod sweep;
+mod octant_mirror;
 
 pub use twist::{modifier_twist, modifier_twist_x, modifier_twist_z};
 pub use bend::{modifier_bend, modifier_bend_x, modifier_bend_z, modifier_bend_cheap};
@@ -38,3 +39,4 @@ pub use taper::modifier_taper;
 pub use displacement::modifier_displacement;
 pub use polar_repeat::{modifier_polar_repeat, modifier_polar_repeat_rk};
 pub use sweep::{modifier_sweep_bezier, sweep_bezier_dist_y};
+pub use octant_mirror::modifier_octant_mirror;

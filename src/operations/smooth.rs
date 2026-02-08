@@ -116,6 +116,19 @@ pub fn smooth_min_cubic_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
     a.min(b) - h * h * h * k * (1.0 / 6.0)
 }
 
+/// Square root smooth minimum (IQ)
+///
+/// `0.5 * (a + b - sqrt((b-a)^2 + k^2))`
+///
+/// Unlike polynomial smooth_min, this variant is C-infinity smooth
+/// and has a constant blend region width (doesn't depend on a/b separation).
+/// The blend radius is always k, regardless of input values.
+#[inline(always)]
+pub fn smooth_min_root(a: f32, b: f32, k: f32) -> f32 {
+    let x = b - a;
+    0.5 * (a + b - (x * x + k * k).sqrt())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +169,32 @@ mod tests {
     fn test_smooth_min_cubic() {
         let result = smooth_min_cubic(1.0, 1.0, 0.5);
         assert!(result < 1.0);
+    }
+
+    #[test]
+    fn test_smooth_min_root_basic() {
+        let result = smooth_min_root(1.0, 3.0, 0.5);
+        assert!(result <= 1.0, "Should be <= min(a,b), got {}", result);
+    }
+
+    #[test]
+    fn test_smooth_min_root_symmetry() {
+        let k = 0.3;
+        let r1 = smooth_min_root(0.5, 0.8, k);
+        let r2 = smooth_min_root(0.8, 0.5, k);
+        assert!((r1 - r2).abs() < 1e-6, "Should be symmetric: {} vs {}", r1, r2);
+    }
+
+    #[test]
+    fn test_smooth_min_root_k_zero() {
+        // k=0 should degenerate to min
+        let result = smooth_min_root(2.0, 5.0, 0.0);
+        assert!((result - 2.0).abs() < 1e-6, "k=0 should be min, got {}", result);
+    }
+
+    #[test]
+    fn test_smooth_min_root_equal() {
+        let result = smooth_min_root(1.0, 1.0, 0.5);
+        assert!(result < 1.0, "Equal inputs with k>0 should blend below, got {}", result);
     }
 }

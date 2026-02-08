@@ -104,6 +104,19 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::StarPolygon { radius, n_points, m, half_height } => sdf_star_polygon(point, *radius, *n_points, *m, *half_height),
         SdfNode::Stairs { step_width, step_height, n_steps, half_depth } => sdf_stairs(point, *step_width, *step_height, *n_steps, *half_depth),
         SdfNode::Helix { major_r, minor_r, pitch, half_height } => sdf_helix(point, *major_r, *minor_r, *pitch, *half_height),
+        SdfNode::Tetrahedron { size } => sdf_tetrahedron(point, *size),
+        SdfNode::Dodecahedron { radius } => sdf_dodecahedron(point, *radius),
+        SdfNode::Icosahedron { radius } => sdf_icosahedron(point, *radius),
+        SdfNode::TruncatedOctahedron { radius } => sdf_truncated_octahedron(point, *radius),
+        SdfNode::TruncatedIcosahedron { radius } => sdf_truncated_icosahedron(point, *radius),
+        SdfNode::BoxFrame { half_extents, edge } => sdf_box_frame(point, *half_extents, *edge),
+        SdfNode::DiamondSurface { scale, thickness } => sdf_diamond_surface(point, *scale, *thickness),
+        SdfNode::Neovius { scale, thickness } => sdf_neovius(point, *scale, *thickness),
+        SdfNode::Lidinoid { scale, thickness } => sdf_lidinoid(point, *scale, *thickness),
+        SdfNode::IWP { scale, thickness } => sdf_iwp(point, *scale, *thickness),
+        SdfNode::FRD { scale, thickness } => sdf_frd(point, *scale, *thickness),
+        SdfNode::FischerKochS { scale, thickness } => sdf_fischer_koch_s(point, *scale, *thickness),
+        SdfNode::PMY { scale, thickness } => sdf_pmy(point, *scale, *thickness),
 
         // === Operations ===
         // Recurse first, then combine. Compiler can reorder these instruction streams.
@@ -166,6 +179,51 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d1 = eval(a, point);
             let d2 = eval(b, point);
             sdf_stairs_subtraction(d1, d2, *r, *n)
+        }
+        SdfNode::XOR { a, b } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_xor(d1, d2)
+        }
+        SdfNode::Morph { a, b, t } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_morph(d1, d2, *t)
+        }
+        SdfNode::ColumnsUnion { a, b, r, n } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_columns_union(d1, d2, *r, *n)
+        }
+        SdfNode::ColumnsIntersection { a, b, r, n } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_columns_intersection(d1, d2, *r, *n)
+        }
+        SdfNode::ColumnsSubtraction { a, b, r, n } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_columns_subtraction(d1, d2, *r, *n)
+        }
+        SdfNode::Pipe { a, b, r } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_pipe(d1, d2, *r)
+        }
+        SdfNode::Engrave { a, b, r } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_engrave(d1, d2, *r)
+        }
+        SdfNode::Groove { a, b, ra, rb } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_groove(d1, d2, *ra, *rb)
+        }
+        SdfNode::Tongue { a, b, ra, rb } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            sdf_tongue(d1, d2, *ra, *rb)
         }
 
         // === Transforms ===
@@ -230,6 +288,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let p = modifier_mirror(point, *axes);
             eval(child, p)
         }
+        SdfNode::OctantMirror { child } => {
+            let p = modifier_octant_mirror(point);
+            eval(child, p)
+        }
         SdfNode::Revolution { child, offset } => {
             let p = modifier_revolution(point, *offset);
             eval(child, p)
@@ -280,7 +342,11 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Union { a, b }
         | SdfNode::SmoothUnion { a, b, .. }
         | SdfNode::ChamferUnion { a, b, .. }
-        | SdfNode::StairsUnion { a, b, .. } => {
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::XOR { a, b }
+        | SdfNode::Morph { a, b, .. }
+        | SdfNode::ColumnsUnion { a, b, .. }
+        | SdfNode::Pipe { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da <= db { eval_material(a, point) } else { eval_material(b, point) }
@@ -288,7 +354,8 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Intersection { a, b }
         | SdfNode::SmoothIntersection { a, b, .. }
         | SdfNode::ChamferIntersection { a, b, .. }
-        | SdfNode::StairsIntersection { a, b, .. } => {
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::ColumnsIntersection { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da >= db { eval_material(a, point) } else { eval_material(b, point) }
@@ -296,7 +363,11 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Subtraction { a, b }
         | SdfNode::SmoothSubtraction { a, b, .. }
         | SdfNode::ChamferSubtraction { a, b, .. }
-        | SdfNode::StairsSubtraction { a, b, .. } => {
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::ColumnsSubtraction { a, b, .. }
+        | SdfNode::Engrave { a, b, .. }
+        | SdfNode::Groove { a, b, .. }
+        | SdfNode::Tongue { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da >= -db { eval_material(a, point) } else { eval_material(b, point) }
@@ -320,6 +391,7 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Round { child, .. } | SdfNode::Onion { child, .. } => eval_material(child, point),
         SdfNode::Elongate { child, amount } => eval_material(child, point - point.clamp(-*amount, *amount)),
         SdfNode::Mirror { child, axes } => eval_material(child, modifier_mirror(point, *axes)),
+        SdfNode::OctantMirror { child } => eval_material(child, modifier_octant_mirror(point)),
         SdfNode::Revolution { child, offset } => eval_material(child, modifier_revolution(point, *offset)),
         SdfNode::Extrude { child, .. } => eval_material(child, modifier_extrude_point(point)),
         SdfNode::Taper { child, factor } => eval_material(child, modifier_taper(point, *factor)),

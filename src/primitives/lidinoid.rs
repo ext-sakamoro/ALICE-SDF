@@ -1,0 +1,54 @@
+//! Lidinoid Surface TPMS SDF (Deep Fried Edition)
+//!
+//! Lidinoid triply-periodic minimal surface.
+//! Implicit: 0.5*(sin(2x)*cos(y)*sin(z) + sin(x)*sin(2y)*cos(z) + cos(x)*sin(y)*sin(2z))
+//!         - 0.5*(cos(2x)*cos(2y) + cos(2y)*cos(2z) + cos(2z)*cos(2x)) + 0.15 = 0
+//!
+//! Author: Moroya Sakamoto
+
+use glam::Vec3;
+
+/// Approximate SDF for a Lidinoid surface (TPMS)
+///
+/// - `scale`: spatial frequency
+/// - `thickness`: shell half-thickness
+#[inline(always)]
+pub fn sdf_lidinoid(p: Vec3, scale: f32, thickness: f32) -> f32 {
+    let sp = p * scale;
+    let (sx, cx) = sp.x.sin_cos();
+    let (sy, cy) = sp.y.sin_cos();
+    let (sz, cz) = sp.z.sin_cos();
+    let (s2x, c2x) = (sp.x * 2.0).sin_cos();
+    let (s2y, c2y) = (sp.y * 2.0).sin_cos();
+    let (s2z, c2z) = (sp.z * 2.0).sin_cos();
+
+    let term1 = 0.5 * (s2x * cy * sz + sx * s2y * cz + cx * sy * s2z);
+    let term2 = 0.5 * (c2x * c2y + c2y * c2z + c2z * c2x);
+    let d = term1 - term2 + 0.15;
+    d.abs() / scale - thickness
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lidinoid_periodicity() {
+        let tau = 2.0 * std::f32::consts::PI;
+        let d1 = sdf_lidinoid(Vec3::new(0.5, 0.3, 0.7), 1.0, 0.1);
+        let d2 = sdf_lidinoid(Vec3::new(0.5 + tau, 0.3 + tau, 0.7 + tau), 1.0, 0.1);
+        assert!((d1 - d2).abs() < 0.01, "Should be periodic");
+    }
+
+    #[test]
+    fn test_lidinoid_finite() {
+        let d = sdf_lidinoid(Vec3::new(1.0, 2.0, 3.0), 2.0, 0.05);
+        assert!(d.is_finite());
+    }
+
+    #[test]
+    fn test_lidinoid_symmetry() {
+        let d1 = sdf_lidinoid(Vec3::new(0.5, 0.5, 0.5), 1.0, 0.1);
+        assert!(d1.is_finite());
+    }
+}

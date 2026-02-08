@@ -557,6 +557,107 @@ impl Instruction {
         inst
     }
 
+    #[inline]
+    pub fn tetrahedron(size: f32) -> Self {
+        let mut inst = Self::new(OpCode::Tetrahedron);
+        inst.params[0] = size;
+        inst
+    }
+
+    #[inline]
+    pub fn dodecahedron(radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::Dodecahedron);
+        inst.params[0] = radius;
+        inst
+    }
+
+    #[inline]
+    pub fn icosahedron(radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::Icosahedron);
+        inst.params[0] = radius;
+        inst
+    }
+
+    #[inline]
+    pub fn truncated_octahedron(radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::TruncatedOctahedron);
+        inst.params[0] = radius;
+        inst
+    }
+
+    #[inline]
+    pub fn truncated_icosahedron(radius: f32) -> Self {
+        let mut inst = Self::new(OpCode::TruncatedIcosahedron);
+        inst.params[0] = radius;
+        inst
+    }
+
+    #[inline]
+    pub fn box_frame(half_extents: glam::Vec3, edge: f32) -> Self {
+        let mut inst = Self::new(OpCode::BoxFrame);
+        inst.params[0] = half_extents.x;
+        inst.params[1] = half_extents.y;
+        inst.params[2] = half_extents.z;
+        inst.params[3] = edge;
+        inst
+    }
+
+    #[inline]
+    pub fn diamond_surface(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::DiamondSurface);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn neovius(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::Neovius);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn lidinoid(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::Lidinoid);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn iwp(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::IWP);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn frd(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::FRD);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn fischer_koch_s(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::FischerKochS);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
+    #[inline]
+    pub fn pmy(scale: f32, thickness: f32) -> Self {
+        let mut inst = Self::new(OpCode::PMY);
+        inst.params[0] = scale;
+        inst.params[1] = thickness;
+        inst
+    }
+
     /// Create a union instruction
     #[inline]
     pub fn union() -> Self {
@@ -653,6 +754,72 @@ impl Instruction {
         let mut inst = Self::new(OpCode::StairsSubtraction);
         inst.params[0] = r.max(1e-10);
         inst.params[1] = n.max(1.0);
+        inst
+    }
+
+    #[inline]
+    pub fn xor() -> Self {
+        Self::new(OpCode::XOR)
+    }
+
+    #[inline]
+    pub fn morph(t: f32) -> Self {
+        let mut inst = Self::new(OpCode::Morph);
+        inst.params[0] = t;
+        inst
+    }
+
+    #[inline]
+    pub fn columns_union(r: f32, n: f32) -> Self {
+        let mut inst = Self::new(OpCode::ColumnsUnion);
+        inst.params[0] = r.max(1e-10);
+        inst.params[1] = n.max(1.0);
+        inst
+    }
+
+    #[inline]
+    pub fn columns_intersection(r: f32, n: f32) -> Self {
+        let mut inst = Self::new(OpCode::ColumnsIntersection);
+        inst.params[0] = r.max(1e-10);
+        inst.params[1] = n.max(1.0);
+        inst
+    }
+
+    #[inline]
+    pub fn columns_subtraction(r: f32, n: f32) -> Self {
+        let mut inst = Self::new(OpCode::ColumnsSubtraction);
+        inst.params[0] = r.max(1e-10);
+        inst.params[1] = n.max(1.0);
+        inst
+    }
+
+    #[inline]
+    pub fn pipe(r: f32) -> Self {
+        let mut inst = Self::new(OpCode::Pipe);
+        inst.params[0] = r;
+        inst
+    }
+
+    #[inline]
+    pub fn engrave(r: f32) -> Self {
+        let mut inst = Self::new(OpCode::Engrave);
+        inst.params[0] = r;
+        inst
+    }
+
+    #[inline]
+    pub fn groove(ra: f32, rb: f32) -> Self {
+        let mut inst = Self::new(OpCode::Groove);
+        inst.params[0] = ra;
+        inst.params[1] = rb;
+        inst
+    }
+
+    #[inline]
+    pub fn tongue(ra: f32, rb: f32) -> Self {
+        let mut inst = Self::new(OpCode::Tongue);
+        inst.params[0] = ra;
+        inst.params[1] = rb;
         inst
     }
 
@@ -868,6 +1035,14 @@ impl Instruction {
         let sector = std::f32::consts::TAU / count;
         inst.params[1] = sector;           // TAU / count
         inst.params[2] = count / std::f32::consts::TAU; // 1.0 / sector = count / TAU
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create an octant mirror instruction
+    #[inline]
+    pub fn octant_mirror() -> Self {
+        let mut inst = Self::new(OpCode::OctantMirror);
         inst.child_count = 1;
         inst
     }

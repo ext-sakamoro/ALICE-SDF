@@ -181,6 +181,132 @@ impl PySdfNode {
         }
     }
 
+    /// Mirror along specified axes
+    fn mirror(&self, x: bool, y: bool, z: bool) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().mirror(x, y, z),
+        }
+    }
+
+    /// Octant mirror (48-fold symmetry: abs + sort x >= y >= z)
+    fn octant_mirror(&self) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().octant_mirror(),
+        }
+    }
+
+    /// Elongate along axes
+    fn elongate(&self, x: f32, y: f32, z: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().elongate(x, y, z),
+        }
+    }
+
+    /// XOR (symmetric difference) with another shape
+    fn xor(&self, other: &PySdfNode) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().xor(other.inner.clone()),
+        }
+    }
+
+    /// Morph between two shapes (t=0: self, t=1: other)
+    fn morph(&self, other: &PySdfNode, t: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().morph(other.inner.clone(), t),
+        }
+    }
+
+    /// Columns union with another shape
+    fn columns_union(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().columns_union(other.inner.clone(), r, n),
+        }
+    }
+
+    /// Columns intersection with another shape
+    fn columns_intersection(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().columns_intersection(other.inner.clone(), r, n),
+        }
+    }
+
+    /// Columns subtraction of another shape
+    fn columns_subtract(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().columns_subtract(other.inner.clone(), r, n),
+        }
+    }
+
+    /// Pipe operation with another shape
+    fn pipe(&self, other: &PySdfNode, r: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().pipe(other.inner.clone(), r),
+        }
+    }
+
+    /// Engrave another shape into this one
+    fn engrave(&self, other: &PySdfNode, r: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().engrave(other.inner.clone(), r),
+        }
+    }
+
+    /// Cut a groove of another shape into this one
+    fn groove(&self, other: &PySdfNode, ra: f32, rb: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().groove(other.inner.clone(), ra, rb),
+        }
+    }
+
+    /// Add a tongue protrusion of another shape
+    fn tongue(&self, other: &PySdfNode, ra: f32, rb: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().tongue(other.inner.clone(), ra, rb),
+        }
+    }
+
+    /// Chamfer union with another shape
+    fn chamfer_union(&self, other: &PySdfNode, r: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().chamfer_union(other.inner.clone(), r),
+        }
+    }
+
+    /// Chamfer intersection with another shape
+    fn chamfer_intersection(&self, other: &PySdfNode, r: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().chamfer_intersection(other.inner.clone(), r),
+        }
+    }
+
+    /// Chamfer subtraction of another shape
+    fn chamfer_subtract(&self, other: &PySdfNode, r: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().chamfer_subtract(other.inner.clone(), r),
+        }
+    }
+
+    /// Stairs union with another shape
+    fn stairs_union(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().stairs_union(other.inner.clone(), r, n),
+        }
+    }
+
+    /// Stairs intersection with another shape
+    fn stairs_intersection(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().stairs_intersection(other.inner.clone(), r, n),
+        }
+    }
+
+    /// Stairs subtraction of another shape
+    fn stairs_subtract(&self, other: &PySdfNode, r: f32, n: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().stairs_subtract(other.inner.clone(), r, n),
+        }
+    }
+
     /// Evaluate at a single point (GIL released)
     fn eval(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
         let inner = &self.inner;

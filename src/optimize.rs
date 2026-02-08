@@ -111,6 +111,55 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
             r: *r,
             n: *n,
         },
+        SdfNode::XOR { a, b } => SdfNode::XOR {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+        },
+        SdfNode::Morph { a, b, t } => SdfNode::Morph {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            t: *t,
+        },
+        SdfNode::ColumnsUnion { a, b, r, n } => SdfNode::ColumnsUnion {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            r: *r,
+            n: *n,
+        },
+        SdfNode::ColumnsIntersection { a, b, r, n } => SdfNode::ColumnsIntersection {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            r: *r,
+            n: *n,
+        },
+        SdfNode::ColumnsSubtraction { a, b, r, n } => SdfNode::ColumnsSubtraction {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            r: *r,
+            n: *n,
+        },
+        SdfNode::Pipe { a, b, r } => SdfNode::Pipe {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            r: *r,
+        },
+        SdfNode::Engrave { a, b, r } => SdfNode::Engrave {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            r: *r,
+        },
+        SdfNode::Groove { a, b, ra, rb } => SdfNode::Groove {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            ra: *ra,
+            rb: *rb,
+        },
+        SdfNode::Tongue { a, b, ra, rb } => SdfNode::Tongue {
+            a: Arc::new(optimize(a)),
+            b: Arc::new(optimize(b)),
+            ra: *ra,
+            rb: *rb,
+        },
 
         // Unary transforms: optimize child
         SdfNode::Translate { child, offset } => SdfNode::Translate {
@@ -169,6 +218,9 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
         SdfNode::Mirror { child, axes } => SdfNode::Mirror {
             child: Arc::new(optimize(child)),
             axes: *axes,
+        },
+        SdfNode::OctantMirror { child } => SdfNode::OctantMirror {
+            child: Arc::new(optimize(child)),
         },
         SdfNode::Revolution { child, offset } => SdfNode::Revolution {
             child: Arc::new(optimize(child)),
@@ -402,6 +454,19 @@ fn is_primitive(node: &SdfNode) -> bool {
             | SdfNode::StarPolygon { .. }
             | SdfNode::Stairs { .. }
             | SdfNode::Helix { .. }
+            | SdfNode::Tetrahedron { .. }
+            | SdfNode::Dodecahedron { .. }
+            | SdfNode::Icosahedron { .. }
+            | SdfNode::TruncatedOctahedron { .. }
+            | SdfNode::TruncatedIcosahedron { .. }
+            | SdfNode::BoxFrame { .. }
+            | SdfNode::DiamondSurface { .. }
+            | SdfNode::Neovius { .. }
+            | SdfNode::Lidinoid { .. }
+            | SdfNode::IWP { .. }
+            | SdfNode::FRD { .. }
+            | SdfNode::FischerKochS { .. }
+            | SdfNode::PMY { .. }
     )
 }
 

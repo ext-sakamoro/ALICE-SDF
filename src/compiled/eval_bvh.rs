@@ -256,8 +256,99 @@ impl BvhCompiler {
             | SdfNode::RegularPolygon { .. }
             | SdfNode::StarPolygon { .. }
             | SdfNode::Stairs { .. }
-            | SdfNode::Helix { .. } => {
+            | SdfNode::Helix { .. }
+            | SdfNode::Tetrahedron { .. }
+            | SdfNode::Dodecahedron { .. }
+            | SdfNode::Icosahedron { .. }
+            | SdfNode::TruncatedOctahedron { .. }
+            | SdfNode::TruncatedIcosahedron { .. }
+            | SdfNode::BoxFrame { .. }
+            | SdfNode::DiamondSurface { .. }
+            | SdfNode::Neovius { .. }
+            | SdfNode::Lidinoid { .. }
+            | SdfNode::IWP { .. }
+            | SdfNode::FRD { .. }
+            | SdfNode::FischerKochS { .. }
+            | SdfNode::PMY { .. } => {
                 panic!("This primitive is interpreter/transpiler-only. Use eval() or shader transpiler instead.");
+            }
+
+            // === New Binary Operations ===
+            SdfNode::XOR { a, b } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.union(&aabb_b);
+                self.instructions.push(Instruction::xor());
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::Morph { a, b, t } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.union(&aabb_b);
+                self.instructions.push(Instruction::morph(*t));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::ColumnsUnion { a, b, r, n } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.union(&aabb_b).expand(*r);
+                self.instructions.push(Instruction::columns_union(*r, *n));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::ColumnsIntersection { a, b, r, n } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.intersection(&aabb_b);
+                self.instructions.push(Instruction::columns_intersection(*r, *n));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::ColumnsSubtraction { a, b, r, n } => {
+                let aabb_a = self.compile_node(a);
+                let _aabb_b = self.compile_node(b);
+                self.instructions.push(Instruction::columns_subtraction(*r, *n));
+                self.aabbs.push(aabb_a);
+                aabb_a
+            }
+
+            SdfNode::Pipe { a, b, r } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.union(&aabb_b);
+                self.instructions.push(Instruction::pipe(*r));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::Engrave { a, b, r } => {
+                let aabb_a = self.compile_node(a);
+                let _aabb_b = self.compile_node(b);
+                self.instructions.push(Instruction::engrave(*r));
+                self.aabbs.push(aabb_a);
+                aabb_a
+            }
+
+            SdfNode::Groove { a, b, ra, rb } => {
+                let aabb_a = self.compile_node(a);
+                let _aabb_b = self.compile_node(b);
+                self.instructions.push(Instruction::groove(*ra, *rb));
+                self.aabbs.push(aabb_a);
+                aabb_a
+            }
+
+            SdfNode::Tongue { a, b, ra, rb } => {
+                let aabb_a = self.compile_node(a);
+                let _aabb_b = self.compile_node(b);
+                self.instructions.push(Instruction::tongue(*ra, *rb));
+                self.aabbs.push(aabb_a);
+                aabb_a
             }
 
             // === Binary Operations ===
@@ -618,6 +709,10 @@ impl BvhCompiler {
                 self.aabbs[inst_idx] = aabb;
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
                 aabb
+            }
+
+            SdfNode::OctantMirror { child } => {
+                self.compile_node(child)
             }
 
             SdfNode::Revolution { child, offset } => {
@@ -1080,6 +1175,85 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 vsp += 1;
             }
 
+            OpCode::Tetrahedron => {
+                let d = sdf_tetrahedron(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Dodecahedron => {
+                let d = sdf_dodecahedron(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Icosahedron => {
+                let d = sdf_icosahedron(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::TruncatedOctahedron => {
+                let d = sdf_truncated_octahedron(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::TruncatedIcosahedron => {
+                let d = sdf_truncated_icosahedron(p, inst.params[0]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::BoxFrame => {
+                let he = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let d = sdf_box_frame(p, he, inst.params[3]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::DiamondSurface => {
+                let d = sdf_diamond_surface(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Neovius => {
+                let d = sdf_neovius(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Lidinoid => {
+                let d = sdf_lidinoid(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::IWP => {
+                let d = sdf_iwp(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::FRD => {
+                let d = sdf_frd(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::FischerKochS => {
+                let d = sdf_fischer_koch_s(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::PMY => {
+                let d = sdf_pmy(p, inst.params[0], inst.params[1]);
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
             // === Binary Operations ===
             OpCode::Union => {
                 vsp -= 1;
@@ -1164,6 +1338,69 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
                 value_stack[vsp - 1] = sdf_stairs_subtraction(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::XOR => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_xor(a, b);
+            }
+
+            OpCode::Morph => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_morph(a, b, inst.params[0]);
+            }
+
+            OpCode::ColumnsUnion => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_columns_union(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::ColumnsIntersection => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_columns_intersection(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::ColumnsSubtraction => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_columns_subtraction(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::Pipe => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_pipe(a, b, inst.params[0]);
+            }
+
+            OpCode::Engrave => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_engrave(a, b, inst.params[0]);
+            }
+
+            OpCode::Groove => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_groove(a, b, inst.params[0], inst.params[1]);
+            }
+
+            OpCode::Tongue => {
+                vsp -= 1;
+                let b = value_stack[vsp];
+                let a = value_stack[vsp - 1];
+                value_stack[vsp - 1] = sdf_tongue(a, b, inst.params[0], inst.params[1]);
             }
 
             // === Transforms ===
@@ -1344,6 +1581,24 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
 
                 let axes = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
                 p = modifier_mirror(p, axes);
+            }
+
+            OpCode::OctantMirror => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    opcode: OpCode::OctantMirror,
+                    params: [0.0; 4],
+                };
+                csp += 1;
+
+                let mut x = p.x.abs();
+                let mut y = p.y.abs();
+                let mut z = p.z.abs();
+                if y > x { std::mem::swap(&mut x, &mut y); }
+                if z > y { std::mem::swap(&mut y, &mut z); }
+                if y > x { std::mem::swap(&mut x, &mut y); }
+                p = Vec3::new(x, y, z);
             }
 
             OpCode::Revolution => {
