@@ -1566,6 +1566,98 @@ Client Request (asset_id + VivaldiCoord)
 4. **IoT/Edge 3D**: Deliver 3D content to bandwidth-constrained devices (80 bytes vs 20 KB per object).
 5. **CDN Cost Reduction**: 200-800x less data transferred = proportional CDN cost savings.
 
+## SDF × Nanite Hybrid Pipeline
+
+ALICE-SDF generates UE5 Nanite-compatible hierarchical cluster meshes directly from SDF mathematical descriptions. This hybrid pipeline combines SDF compactness with Nanite rendering performance — a fundamentally different workflow from conventional polygon mesh delivery.
+
+```
+┌────────────────────┐     ┌─────────────────────────────┐     ┌──────────────┐
+│  ALICE-SDF (.asdf) │     │  ALICE Engine (load time)    │     │  UE5 Nanite  │
+│  Formula = ~KB     │ ──→ │  generate_nanite_mesh()      │ ──→ │  GPU render  │
+│  Storage/Transfer  │     │  Hierarchical cluster + DAG  │     │  100M+ poly  │
+└────────────────────┘     └─────────────────────────────┘     └──────────────┘
+```
+
+| Process | Technology | Benefit |
+|---------|-----------|---------|
+| Storage & Transfer | ALICE-SDF | Data is just a few KB (mathematical formula). Downloads are instant. |
+| Load Time | ALICE Engine | Generates Nanite mesh from the formula at high speed. |
+| Rendering | UE5 Nanite | Renders hundreds of millions of polygons smoothly without GPU bottleneck. |
+
+**Transfer at SDF compactness, render at polygon speed.** There is no need to run raymarching (expensive per-pixel computation) every frame — the GPU workload is the same as a conventional polygon game.
+
+### Comparison with Conventional Nanite Workflow
+
+| | Conventional Nanite | SDF × Nanite (ALICE) |
+|---|---|---|
+| Asset authoring | ZBrush / Photogrammetry scan | Mathematical formula (CSG, noise, procedural) |
+| Disk space | 100 MB - 1 GB per asset | 80 bytes - 4 KB per asset |
+| Network transfer | Requires large download | Instant (formula only) |
+| Runtime modification | Not possible (static mesh) | Re-generate from modified SDF |
+| LOD | Baked into Nanite clusters | Generated per LOD level from SDF |
+| Variety | Each variation = separate asset | Parameterized — infinite variations from one formula |
+
+### What Makes This Different
+
+Conventionally, using Nanite requires GB-scale pre-authored mesh data (e.g., ZBrush scans) stored on disk. With ALICE-SDF:
+
+- **Disk savings**: A massive rock formation is stored as "sphere + noise formula" — a few KB instead of hundreds of MB.
+- **Procedural generation × Nanite**: Generate infinite cave systems, terrain, or organic structures mathematically, then materialize them as high-detail Nanite meshes on the fly.
+- **Runtime destruction**: Because ALICE-SDF mesh generation is fast, a wall destroyed by a spell can be **re-generated as a new Nanite mesh with the destroyed shape** in real time. This enables freeform destruction that is fundamentally different from the traditional "swap in a pre-made destroyed mesh" approach.
+
+### Usage
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::mesh::{generate_nanite_mesh, NaniteConfig};
+
+let shape = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+
+let nanite = generate_nanite_mesh(
+    &shape,
+    Vec3::splat(-2.0),
+    Vec3::splat(2.0),
+    &NaniteConfig::high_detail(),
+);
+
+alice_sdf::io::nanite::export_nanite(&nanite, "MyAsset.nanite")?;
+```
+
+See `docs/UNREAL_ENGINE.md` — "Nanite Integration" section for full setup instructions.
+
+### Asset Creation: Natural Language to Nanite Mesh
+
+ALICE-SDF includes a Text-to-3D Pipeline (FastAPI server) that eliminates the need for humans to write SDF formulas. Combined with the Nanite pipeline, the full workflow becomes:
+
+```
+"A weathered stone tower"      LLM thinks            ALICE-SDF             UE5
+  (natural language)   ──→   SDF formula    ──→   Nanite mesh    ──→   GPU render
+  User types/speaks          Claude/Gemini         <55ms               100M+ poly
+```
+
+Users (artists, level designers) do not need to know SDF operations (Union, Intersection, SmoothMin...) at all. They describe what they want in plain language, and the pipeline produces a Nanite-ready mesh.
+
+#### Error Self-Repair
+
+LLM-generated code is not always perfect. The server handles this automatically:
+
+- **JSON repair**: Automatic brace/bracket completion for truncated LLM output
+- **Retry with feedback**: Error messages are fed back to the LLM for up to 2 correction attempts — only valid, working assets are produced
+
+#### Runtime On-Demand Generation
+
+The server runs as a FastAPI web service. The SDF-to-mesh step takes <55ms (excluding LLM inference), enabling game clients to request new geometry during gameplay. This is on-demand generation, not pre-baked assets.
+
+#### Complete Pipeline: No Blind Spots
+
+| Concern | Solution | Technology |
+|---------|----------|-----------|
+| Rendering | Nanite integration — polygon-speed GPU rendering | `generate_nanite_mesh()` → UE5 Nanite |
+| Physics | Deterministic fixed-point collision | ALICE-Physics (Fix128) |
+| Asset creation | Natural language — no SDF expertise needed | Text-to-3D server (Claude/Gemini) |
+| Delivery | Instant transfer — formulas, not polygons | ALICE-CDN + ALICE-Cache |
+
 ## License
 
 **Open Core Model** - Free for creators, licensed for infrastructure.
