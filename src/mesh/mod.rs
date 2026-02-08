@@ -32,6 +32,7 @@
 pub mod bvh;
 pub mod collision;
 pub mod decimate;
+pub mod dual_contouring;
 pub mod hermite;
 pub mod lightmap;
 pub mod lod;
@@ -90,6 +91,7 @@ pub use sdf_to_mesh::{
     MarchingCubesConfig, Mesh,
     adaptive_marching_cubes, adaptive_marching_cubes_compiled, AdaptiveConfig,
 };
+pub use dual_contouring::{dual_contouring, dual_contouring_compiled, DualContouringConfig};
 #[cfg(feature = "gpu")]
 pub use gpu_marching_cubes::{gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig};
 

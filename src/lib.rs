@@ -108,6 +108,8 @@ pub mod prelude {
         Mesh, Vertex, Triangle, MeshBvh,
         // Adaptive marching cubes
         adaptive_marching_cubes, AdaptiveConfig,
+        // Dual Contouring
+        dual_contouring, dual_contouring_compiled, DualContouringConfig,
         // Hermite data extraction
         HermitePoint, HermiteConfig, extract_hermite,
         // Primitive fitting

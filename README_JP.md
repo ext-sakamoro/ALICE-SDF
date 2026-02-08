@@ -23,6 +23,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **アセットパイプライン** - OBJインポート/エクスポート、glTF 2.0 (.glb)、FBX、USD、Alembic、Naniteエクスポート
 - **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
 - **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中
+- **Dual Contouring** - QEFベースのメッシュ生成、シャープエッジとコーナーを保持
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
@@ -569,6 +570,7 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
   neural.rs     -- ニューラルSDF（MLP近似、訓練、推論）
   collision.rs  -- SDF対SDF接触検出（区間演算プルーニング付き）
   eval/gradient -- 解析的勾配（連鎖律、ヤコビアン伝播）
+  mesh/dual_contouring -- Dual Contouring（QEF頂点配置、シャープエッジ）
 ```
 
 ### 評価モード
@@ -738,6 +740,35 @@ let n = eval_normal(&shape, Vec3::new(0.5, 0.0, 0.0));
 | **5モディファイア** | 数値フォールバック | Noise, Taper, Displacement, PolarRepeat, SweepBezier |
 
 深さDでNリーフノードを持つツリーの場合、標準的な数値勾配は`6 × (フルツリー評価)`を要します。解析的勾配は最大N回のリーフ評価+複雑リーフあたり~6回で済み、深いツリーでは大幅にコスト削減できます。
+
+## Dual Contouring
+
+Dual Contouringは各セルにQEF（二次誤差関数）最小化で1頂点を配置し、マーチングキューブよりもシャープエッジとコーナーを正確に再現するメッシュを生成します。
+
+```rust
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::box3d(1.0, 1.0, 1.0)
+    .subtract(SdfNode::cylinder(0.3, 2.0));
+
+let config = DualContouringConfig {
+    resolution: 64,
+    ..Default::default()
+};
+
+let mesh = dual_contouring(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+// コンパイル版で2-5倍高速化
+let compiled = CompiledSdf::compile(&shape);
+let mesh_fast = dual_contouring_compiled(&compiled, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+```
+
+| 特徴 | マーチングキューブ | Dual Contouring |
+|------|-------------------|-----------------|
+| シャープエッジ | 丸められる | 保持される |
+| 頂点配置 | エッジ交差点 | QEF最適化（セルごと） |
+| トポロジー | ルックアップテーブルから三角形 | 共有エッジから四角形 |
+| 最適な用途 | 有機的形状 | ハードサーフェス / CADモデル |
 
 ### マニフォールドメッシュ保証
 
@@ -941,7 +972,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる660以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で674以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる670以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で684以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test

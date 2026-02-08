@@ -23,6 +23,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
 - **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters
+- **Dual Contouring** - QEF-based mesh generation that preserves sharp edges and corners
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
@@ -569,6 +570,7 @@ Specialized modules:
   neural.rs     -- Neural SDF (MLP approximation, training, inference)
   collision.rs  -- SDF-to-SDF contact detection with IA pruning
   eval/gradient -- Analytic gradient (chain rules, Jacobian propagation)
+  mesh/dual_contouring -- Dual Contouring (QEF vertex placement, sharp edges)
 ```
 
 ### Evaluation Modes
@@ -738,6 +740,35 @@ let n = eval_normal(&shape, Vec3::new(0.5, 0.0, 0.0));
 | **5 modifiers** | Numerical fallback | Noise, Taper, Displacement, PolarRepeat, SweepBezier |
 
 For a tree of depth D with N leaf nodes, the standard numerical gradient requires `6 × (full tree eval)`. The analytic gradient requires at most N leaf evaluations plus ~6 per complex leaf — significantly cheaper for deep trees.
+
+## Dual Contouring
+
+Dual Contouring places one vertex per cell using QEF (Quadric Error Function) minimization, producing meshes that preserve sharp edges and corners better than Marching Cubes.
+
+```rust
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::box3d(1.0, 1.0, 1.0)
+    .subtract(SdfNode::cylinder(0.3, 2.0));
+
+let config = DualContouringConfig {
+    resolution: 64,
+    ..Default::default()
+};
+
+let mesh = dual_contouring(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+// Compiled version for 2-5x speedup
+let compiled = CompiledSdf::compile(&shape);
+let mesh_fast = dual_contouring_compiled(&compiled, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+```
+
+| Feature | Marching Cubes | Dual Contouring |
+|---------|---------------|-----------------|
+| Sharp edges | Rounded off | Preserved |
+| Vertex placement | Edge intersections | QEF-optimal per cell |
+| Topology | Triangles from lookup table | Quads from shared edges |
+| Best for | Organic shapes | Hard-surface / CAD models |
 
 ### Manifold Mesh Guarantee
 
@@ -1004,7 +1035,7 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-660+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 674+ tests including JIT scalar and JIT SIMD backends.
+670+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 684+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
