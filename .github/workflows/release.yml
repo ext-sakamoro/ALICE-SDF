@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            lib_name: libalice_sdf.dylib
+            platform: macOS
+            lib_dir: Mac
+          - os: macos-13
+            target: x86_64-apple-darwin
+            lib_name: libalice_sdf.dylib
+            platform: macOS-Intel
+            lib_dir: Mac
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            lib_name: alice_sdf.dll
+            platform: Win64
+            lib_dir: Win64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            lib_name: libalice_sdf.so
+            platform: Linux
+            lib_dir: Linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release library
+        run: cargo build --release --features "ffi,hlsl,glsl" --target ${{ matrix.target }}
+
+      - name: Package UE5 plugin
+        shell: bash
+        run: |
+          PLUGIN_DIR="AliceSDF"
+          mkdir -p "$PLUGIN_DIR/ThirdParty/AliceSDF/lib/${{ matrix.lib_dir }}"
+          mkdir -p "$PLUGIN_DIR/ThirdParty/AliceSDF/include"
+
+          # Copy plugin sources
+          cp unreal-plugin/AliceSDF.uplugin "$PLUGIN_DIR/"
+          cp -r unreal-plugin/Source "$PLUGIN_DIR/"
+          cp -r unreal-plugin/Resources "$PLUGIN_DIR/" 2>/dev/null || true
+          cp unreal-plugin/README.md "$PLUGIN_DIR/"
+
+          # Copy header and built library
+          cp include/alice_sdf.h "$PLUGIN_DIR/ThirdParty/AliceSDF/include/"
+          cp "target/${{ matrix.target }}/release/${{ matrix.lib_name }}" \
+             "$PLUGIN_DIR/ThirdParty/AliceSDF/lib/${{ matrix.lib_dir }}/"
+
+      - name: Create ZIP
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "Win64" ]; then
+            7z a "AliceSDF-UE5-Plugin-${{ matrix.platform }}.zip" AliceSDF/
+          else
+            zip -r "AliceSDF-UE5-Plugin-${{ matrix.platform }}.zip" AliceSDF/
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-${{ matrix.platform }}
+          path: AliceSDF-UE5-Plugin-${{ matrix.platform }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AliceSDF-UE5-Plugin-*.zip
+          generate_release_notes: true
