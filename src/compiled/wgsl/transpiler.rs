@@ -3158,4 +3158,166 @@ mod tests {
         assert!(dynamic.source.contains("0.25")); // smooth op present
         assert!(dynamic.source.contains("sdf_params.data["));
     }
+
+    /// Exhaustive test: every SdfNode variant transpiles without panic
+    /// and produces valid WGSL containing `sdf_eval`.
+    #[test]
+    fn test_transpile_all_variants_exhaustive() {
+        use glam::Vec2;
+
+        let primitives: Vec<(&str, SdfNode)> = vec![
+            ("sphere", SdfNode::sphere(1.0)),
+            ("box3d", SdfNode::box3d(1.0, 0.5, 0.5)),
+            ("cylinder", SdfNode::cylinder(0.5, 1.0)),
+            ("torus", SdfNode::torus(1.0, 0.3)),
+            ("plane", SdfNode::Plane { normal: Vec3::Y, distance: 0.0 }),
+            ("capsule", SdfNode::capsule(Vec3::ZERO, Vec3::Y, 0.3)),
+            ("cone", SdfNode::cone(0.5, 1.0)),
+            ("ellipsoid", SdfNode::ellipsoid(1.0, 0.5, 0.3)),
+            ("rounded_cone", SdfNode::rounded_cone(0.5, 0.2, 1.0)),
+            ("pyramid", SdfNode::pyramid(1.0)),
+            ("octahedron", SdfNode::octahedron(1.0)),
+            ("hex_prism", SdfNode::hex_prism(0.5, 1.0)),
+            ("link", SdfNode::link(0.5, 0.3, 0.1)),
+            ("rounded_box", SdfNode::rounded_box(1.0, 0.5, 0.5, 0.1)),
+            ("capped_cone", SdfNode::capped_cone(1.0, 0.5, 0.2)),
+            ("capped_torus", SdfNode::capped_torus(1.0, 0.3, 1.0)),
+            ("rounded_cylinder", SdfNode::rounded_cylinder(0.5, 0.1, 1.0)),
+            ("triangular_prism", SdfNode::triangular_prism(0.5, 1.0)),
+            ("cut_sphere", SdfNode::cut_sphere(1.0, 0.3)),
+            ("cut_hollow_sphere", SdfNode::cut_hollow_sphere(1.0, 0.3, 0.1)),
+            ("death_star", SdfNode::death_star(1.0, 0.8, 0.5)),
+            ("solid_angle", SdfNode::solid_angle(0.5, 1.0)),
+            ("rhombus", SdfNode::rhombus(0.5, 0.3, 1.0, 0.05)),
+            ("horseshoe", SdfNode::horseshoe(1.0, 0.5, 0.3, 0.1, 0.05)),
+            ("vesica", SdfNode::vesica(1.0, 0.5)),
+            ("infinite_cylinder", SdfNode::infinite_cylinder(0.5)),
+            ("infinite_cone", SdfNode::infinite_cone(0.5)),
+            ("gyroid", SdfNode::gyroid(1.0, 0.1)),
+            ("schwarz_p", SdfNode::schwarz_p(1.0, 0.1)),
+            ("heart", SdfNode::heart(1.0)),
+            ("tube", SdfNode::tube(0.5, 0.1, 1.0)),
+            ("barrel", SdfNode::barrel(0.5, 1.0, 0.2)),
+            ("diamond", SdfNode::diamond(0.5, 1.0)),
+            ("egg", SdfNode::egg(1.0, 0.5)),
+            ("superellipsoid", SdfNode::superellipsoid(1.0, 0.5, 0.5, 0.5, 0.5)),
+            ("rounded_x", SdfNode::rounded_x(0.5, 0.1, 1.0)),
+            ("pie", SdfNode::pie(1.0, 0.5, 1.0)),
+            ("trapezoid", SdfNode::trapezoid(0.5, 0.3, 1.0, 0.5)),
+            ("parallelogram", SdfNode::parallelogram(0.5, 1.0, 0.2, 0.5)),
+            ("tunnel", SdfNode::tunnel(0.5, 1.0, 0.5)),
+            ("uneven_capsule", SdfNode::uneven_capsule(0.3, 0.5, 1.0, 0.5)),
+            ("arc_shape", SdfNode::arc_shape(1.0, 0.5, 0.1, 1.0)),
+            ("moon", SdfNode::moon(0.5, 1.0, 0.8, 1.0)),
+            ("cross_shape", SdfNode::cross_shape(0.5, 0.1, 0.05, 1.0)),
+            ("blobby_cross", SdfNode::blobby_cross(0.5, 1.0)),
+            ("parabola_segment", SdfNode::parabola_segment(0.5, 1.0, 0.5)),
+            ("regular_polygon", SdfNode::regular_polygon(0.5, 6, 1.0)),
+            ("star_polygon", SdfNode::star_polygon(0.5, 5, 2.0, 1.0)),
+            ("chamfered_cube", SdfNode::chamfered_cube(0.5, 0.5, 0.5, 0.1)),
+            ("stairs", SdfNode::stairs(0.3, 0.2, 5, 0.5)),
+            ("helix", SdfNode::helix(1.0, 0.1, 0.5, 2.0)),
+            ("tetrahedron", SdfNode::tetrahedron(1.0)),
+            ("dodecahedron", SdfNode::dodecahedron(1.0)),
+            ("icosahedron", SdfNode::icosahedron(1.0)),
+            ("truncated_octahedron", SdfNode::truncated_octahedron(1.0)),
+            ("truncated_icosahedron", SdfNode::truncated_icosahedron(1.0)),
+            ("box_frame", SdfNode::box_frame(Vec3::splat(1.0), 0.1)),
+            ("diamond_surface", SdfNode::diamond_surface(1.0, 0.1)),
+            ("neovius", SdfNode::neovius(1.0, 0.1)),
+            ("lidinoid", SdfNode::lidinoid(1.0, 0.1)),
+            ("iwp", SdfNode::iwp(1.0, 0.1)),
+            ("frd", SdfNode::frd(1.0, 0.1)),
+            ("fischer_koch_s", SdfNode::fischer_koch_s(1.0, 0.1)),
+            ("pmy", SdfNode::pmy(1.0, 0.1)),
+            ("triangle", SdfNode::triangle(Vec3::X, Vec3::Y, Vec3::Z)),
+            ("bezier", SdfNode::bezier(Vec3::ZERO, Vec3::new(0.5, 1.0, 0.0), Vec3::X, 0.1)),
+            ("circle_2d", SdfNode::circle_2d(0.5, 1.0)),
+            ("rect_2d", SdfNode::rect_2d(0.5, 0.3, 1.0)),
+            ("segment_2d", SdfNode::segment_2d(0.0, 0.0, 1.0, 1.0, 0.1, 1.0)),
+            ("polygon_2d", SdfNode::polygon_2d(vec![Vec2::new(0.0, 0.0), Vec2::new(1.0, 0.0), Vec2::new(0.5, 1.0)], 1.0)),
+            ("rounded_rect_2d", SdfNode::rounded_rect_2d(0.5, 0.3, 0.1, 1.0)),
+            ("annular_2d", SdfNode::annular_2d(0.5, 0.1, 1.0)),
+        ];
+
+        for (name, prim) in &primitives {
+            let shader = WgslShader::transpile(prim, TranspileMode::Hardcoded);
+            assert!(
+                shader.source.contains("fn sdf_eval"),
+                "WGSL transpile failed for primitive '{}': missing sdf_eval", name,
+            );
+        }
+
+        // Operations
+        let a = SdfNode::sphere(1.0);
+        let b = SdfNode::box3d(0.5, 0.5, 0.5);
+        let operations: Vec<(&str, SdfNode)> = vec![
+            ("union", a.clone().union(b.clone())),
+            ("intersection", a.clone().intersection(b.clone())),
+            ("subtract", a.clone().subtract(b.clone())),
+            ("smooth_union", a.clone().smooth_union(b.clone(), 0.2)),
+            ("smooth_intersection", a.clone().smooth_intersection(b.clone(), 0.2)),
+            ("smooth_subtract", a.clone().smooth_subtract(b.clone(), 0.2)),
+            ("chamfer_union", a.clone().chamfer_union(b.clone(), 0.2)),
+            ("chamfer_intersection", a.clone().chamfer_intersection(b.clone(), 0.2)),
+            ("chamfer_subtract", a.clone().chamfer_subtract(b.clone(), 0.2)),
+            ("stairs_union", a.clone().stairs_union(b.clone(), 0.2, 4.0)),
+            ("stairs_intersection", a.clone().stairs_intersection(b.clone(), 0.2, 4.0)),
+            ("stairs_subtract", a.clone().stairs_subtract(b.clone(), 0.2, 4.0)),
+            ("columns_union", a.clone().columns_union(b.clone(), 0.2, 4.0)),
+            ("columns_intersection", a.clone().columns_intersection(b.clone(), 0.2, 4.0)),
+            ("columns_subtract", a.clone().columns_subtract(b.clone(), 0.2, 4.0)),
+            ("xor", a.clone().xor(b.clone())),
+            ("morph", a.clone().morph(b.clone(), 0.5)),
+            ("pipe", a.clone().pipe(b.clone(), 0.2)),
+            ("engrave", a.clone().engrave(b.clone(), 0.1)),
+            ("groove", a.clone().groove(b.clone(), 0.2, 0.1)),
+            ("tongue", a.clone().tongue(b.clone(), 0.2, 0.1)),
+            ("exp_smooth_union", a.clone().exp_smooth_union(b.clone(), 0.2)),
+            ("exp_smooth_intersection", a.clone().exp_smooth_intersection(b.clone(), 0.2)),
+            ("exp_smooth_subtract", a.clone().exp_smooth_subtract(b.clone(), 0.2)),
+        ];
+
+        for (name, op) in &operations {
+            let shader = WgslShader::transpile(op, TranspileMode::Hardcoded);
+            assert!(
+                shader.source.contains("fn sdf_eval"),
+                "WGSL transpile failed for operation '{}': missing sdf_eval", name,
+            );
+        }
+
+        // Transforms & Modifiers
+        let s = SdfNode::sphere(1.0);
+        let modifiers: Vec<(&str, SdfNode)> = vec![
+            ("translate", s.clone().translate(1.0, 0.0, 0.0)),
+            ("rotate", s.clone().rotate_euler(0.5, 0.0, 0.0)),
+            ("scale", s.clone().scale(2.0)),
+            ("scale_xyz", s.clone().scale_xyz(1.0, 2.0, 0.5)),
+            ("twist", s.clone().twist(1.0)),
+            ("bend", s.clone().bend(0.5)),
+            ("round", s.clone().round(0.1)),
+            ("onion", s.clone().onion(0.1)),
+            ("elongate", s.clone().elongate(0.5, 0.0, 0.0)),
+            ("repeat_infinite", s.clone().repeat_infinite(3.0, 3.0, 3.0)),
+            ("mirror", s.clone().mirror(true, false, false)),
+            ("octant_mirror", s.clone().octant_mirror()),
+            ("revolution", s.clone().revolution(0.5)),
+            ("extrude", s.clone().extrude(0.5)),
+            ("noise", s.clone().noise(0.1, 2.0, 42)),
+            ("taper", s.clone().taper(0.5)),
+            ("displacement", s.clone().displacement(0.1)),
+            ("polar_repeat", s.clone().polar_repeat(6)),
+            ("shear", s.clone().shear(0.1, 0.0, 0.0)),
+            ("animated", s.clone().animated(1.0, 0.5)),
+            ("with_material", s.clone().with_material(1)),
+        ];
+
+        for (name, m) in &modifiers {
+            let shader = WgslShader::transpile(m, TranspileMode::Hardcoded);
+            assert!(
+                shader.source.contains("fn sdf_eval"),
+                "WGSL transpile failed for modifier '{}': missing sdf_eval", name,
+            );
+        }
+    }
 }

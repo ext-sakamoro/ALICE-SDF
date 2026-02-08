@@ -619,6 +619,13 @@ impl PySdfNode {
         }
     }
 
+    /// Non-uniform scale (different factor per axis)
+    fn scale_xyz(&self, x: f32, y: f32, z: f32) -> Self {
+        PySdfNode {
+            inner: self.inner.clone().scale_xyz(x, y, z),
+        }
+    }
+
     /// Twist around Y-axis
     fn twist(&self, strength: f32) -> Self {
         PySdfNode {
