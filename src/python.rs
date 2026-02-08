@@ -972,12 +972,12 @@ impl PyCompiledSdf {
         py: Python<'py>,
         points: &Bound<'py, PyArray2<f32>>,
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-        let vec_points = numpy_to_vec3_fast(points)?;
-
         let compiled_ref = &self.compiled;
-        let distances = py.allow_threads(|| {
-            crate::compiled::eval_compiled_batch_parallel(compiled_ref, &vec_points)
-        });
+        let distances = with_numpy_as_vec3(points, |pts| {
+            py.allow_threads(|| {
+                crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts)
+            })
+        })?;
         Ok(distances.into_pyarray(py))
     }
 
@@ -1039,12 +1039,12 @@ fn eval_compiled_batch<'py>(
     compiled: &PyCompiledSdf,
     points: &Bound<'py, PyArray2<f32>>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let vec_points = numpy_to_vec3_fast(points)?;
-
     let compiled_ref = &compiled.compiled;
-    let distances = py.allow_threads(|| {
-        crate::compiled::eval_compiled_batch_parallel(compiled_ref, &vec_points)
-    });
+    let distances = with_numpy_as_vec3(points, |pts| {
+        py.allow_threads(|| {
+            crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts)
+        })
+    })?;
     Ok(distances.into_pyarray(py))
 }
 
@@ -1058,15 +1058,14 @@ fn eval_compiled_batch_soa<'py>(
     compiled: &PyCompiledSdf,
     points: &Bound<'py, PyArray2<f32>>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let vec_points = numpy_to_vec3_fast(points)?;
-    let soa = crate::soa::SoAPoints::from_vec3_slice(&vec_points);
-
     let compiled_ref = &compiled.compiled;
-    let soa_distances = py.allow_threads(|| {
-        crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa)
-    });
-
-    let distances = soa_distances.to_vec();
+    let distances = with_numpy_as_vec3(points, |pts| {
+        let soa = crate::soa::SoAPoints::from_vec3_slice(pts);
+        py.allow_threads(|| {
+            crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa)
+                .to_vec()
+        })
+    })?;
     Ok(distances.into_pyarray(py))
 }
 
@@ -1077,12 +1076,12 @@ fn eval_batch<'py>(
     node: &PySdfNode,
     points: &Bound<'py, PyArray2<f32>>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let vec_points = numpy_to_vec3_fast(points)?;
-
     let node_ref = &node.inner;
-    let distances = py.allow_threads(|| {
-        eval_batch_parallel(node_ref, &vec_points)
-    });
+    let distances = with_numpy_as_vec3(points, |pts| {
+        py.allow_threads(|| {
+            eval_batch_parallel(node_ref, pts)
+        })
+    })?;
     Ok(distances.into_pyarray(py))
 }
 
@@ -1814,6 +1813,7 @@ fn version() -> &'static str {
 }
 
 /// Helper: convert NumPy arrays to Mesh (shared by all export functions)
+#[inline]
 fn numpy_to_mesh(
     vertices: &Bound<'_, PyArray2<f32>>,
     indices: &Bound<'_, PyArray1<u32>>,
@@ -1843,6 +1843,7 @@ fn numpy_to_mesh(
 }
 
 /// Helper: convert Mesh to NumPy arrays
+#[inline]
 fn mesh_to_numpy<'py>(
     py: Python<'py>,
     mesh: &crate::mesh::Mesh,
@@ -1871,24 +1872,15 @@ fn svo_query_batch<'py>(
     svo: &PySvo,
     points: &Bound<'py, PyArray2<f32>>,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let pts = unsafe { points.as_array() };
-    if pts.shape()[1] != 3 {
-        return Err(PyValueError::new_err("points must have shape (N, 3)"));
-    }
-    let vec_points: Vec<Vec3> = pts
-        .rows()
-        .into_iter()
-        .map(|row| Vec3::new(row[0], row[1], row[2]))
-        .collect();
-
     let svo_ref = &svo.inner;
-    let results = py.allow_threads(|| {
-        use rayon::prelude::*;
-        vec_points
-            .par_iter()
-            .map(|p| svo_ref.query_point(*p))
-            .collect::<Vec<f32>>()
-    });
+    let results = with_numpy_as_vec3(points, |pts| {
+        py.allow_threads(|| {
+            use rayon::prelude::*;
+            pts.par_iter()
+                .map(|p| svo_ref.query_point(*p))
+                .collect::<Vec<f32>>()
+        })
+    })?;
     Ok(results.into_pyarray(py))
 }
 
@@ -1926,6 +1918,7 @@ fn heightmap_sample_batch<'py>(
 ///
 /// Uses raw pointer reinterpret when contiguous (zero-copy slice),
 /// falls back to row iteration otherwise.
+#[inline]
 fn numpy_to_vec3_fast(points: &Bound<'_, PyArray2<f32>>) -> PyResult<Vec<Vec3>> {
     let arr = unsafe { points.as_array() };
     if arr.shape()[1] != 3 {
@@ -1943,6 +1936,35 @@ fn numpy_to_vec3_fast(points: &Bound<'_, PyArray2<f32>>) -> PyResult<Vec<Vec3>> 
         Ok(arr.rows().into_iter()
             .map(|row| Vec3::new(row[0], row[1], row[2]))
             .collect())
+    }
+}
+
+/// ★ Deep Fried: Zero-copy callback on NumPy data, eliminating Vec allocation.
+///
+/// Reinterprets contiguous NumPy (N,3) f32 as &[Vec3] slice and passes
+/// it directly to the closure. No allocation in the contiguous path.
+#[inline]
+fn with_numpy_as_vec3<R>(
+    points: &Bound<'_, PyArray2<f32>>,
+    f: impl FnOnce(&[Vec3]) -> R,
+) -> PyResult<R> {
+    let arr = unsafe { points.as_array() };
+    if arr.shape()[1] != 3 {
+        return Err(PyValueError::new_err("Points must have shape (N, 3)"));
+    }
+    let n = arr.shape()[0];
+    if let Some(slice) = arr.as_slice() {
+        // Zero-Copy: reinterpret contiguous f32 data as Vec3 slice
+        let vec3_slice = unsafe {
+            std::slice::from_raw_parts(slice.as_ptr() as *const Vec3, n)
+        };
+        Ok(f(vec3_slice))
+    } else {
+        // Non-contiguous fallback: copy then process
+        let vec: Vec<Vec3> = arr.rows().into_iter()
+            .map(|row| Vec3::new(row[0], row[1], row[2]))
+            .collect();
+        Ok(f(&vec))
     }
 }
 

@@ -141,6 +141,18 @@ pub enum OpCode {
     FischerKochS = 113,
     /// PMY: params[0] = scale, params[1] = thickness
     PMY = 114,
+    /// Circle2D: params[0] = radius, params[1] = half_height
+    Circle2D = 115,
+    /// Rect2D: params[0..2] = half_extents, params[2] = half_height
+    Rect2D = 116,
+    /// Segment2D: params[0..4] = a,b, params[4] = thickness, params[5] = half_height
+    Segment2D = 117,
+    /// Polygon2D: special handling
+    Polygon2D = 118,
+    /// RoundedRect2D: params[0..2] = half_extents, params[2] = round_radius, params[3] = half_height
+    RoundedRect2D = 119,
+    /// Annular2D: params[0] = outer_radius, params[1] = thickness, params[2] = half_height
+    Annular2D = 120,
 
     // === Binary Operations (pop 2, push 1) ===
     /// Union: min(a, b)
@@ -187,6 +199,12 @@ pub enum OpCode {
     Groove = 135,
     /// Tongue: params[0] = ra, params[1] = rb
     Tongue = 136,
+    /// ExpSmoothUnion: params[0] = k
+    ExpSmoothUnion = 137,
+    /// ExpSmoothIntersection: params[0] = k
+    ExpSmoothIntersection = 138,
+    /// ExpSmoothSubtraction: params[0] = k
+    ExpSmoothSubtraction = 139,
 
     // === Transforms (modify point, then evaluate child) ===
     /// Translate: params[0..3] = offset (x, y, z)
@@ -232,6 +250,10 @@ pub enum OpCode {
     SweepBezier = 62,
     /// OctantMirror: abs + sort (x >= y >= z)
     OctantMirror = 63,
+    /// Shear: params[0..3] = shear factors (xy, xz, yz)
+    Shear = 144,
+    /// Animated: params[0] = speed, params[1] = amplitude
+    Animated = 145,
 
     // === Control ===
     /// Pop transform from coordinate stack
@@ -245,7 +267,7 @@ impl OpCode {
     #[inline]
     pub fn is_primitive(self) -> bool {
         let v = self as u8;
-        v < 16 || (v >= 64 && v <= 114)
+        v < 16 || (v >= 64 && v <= 120)
     }
 
     /// Returns true if this opcode is a binary operation
@@ -266,7 +288,7 @@ impl OpCode {
     #[inline]
     pub fn is_modifier(self) -> bool {
         let v = self as u8;
-        v >= 48 && v < 64
+        (v >= 48 && v < 64) || (v >= 144 && v < 160)
     }
 
     /// Returns true if this opcode modifies the evaluation point
@@ -277,7 +299,7 @@ impl OpCode {
             OpCode::Twist | OpCode::Bend | OpCode::RepeatInfinite |
             OpCode::RepeatFinite | OpCode::Elongate | OpCode::Mirror |
             OpCode::Revolution | OpCode::Extrude | OpCode::SweepBezier | OpCode::Taper |
-            OpCode::PolarRepeat | OpCode::OctantMirror
+            OpCode::PolarRepeat | OpCode::OctantMirror | OpCode::Shear
         )
     }
 

@@ -15,6 +15,7 @@ pub mod gradient;
 pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
 pub use gradient::{eval_gradient, eval_normal};
 
+use glam::Vec2;
 use crate::modifiers::*;
 use crate::operations::*;
 use crate::primitives::*;
@@ -436,7 +437,8 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         | SdfNode::XOR { a, b }
         | SdfNode::Morph { a, b, .. }
         | SdfNode::ColumnsUnion { a, b, .. }
-        | SdfNode::Pipe { a, b, .. } => {
+        | SdfNode::Pipe { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da <= db { eval_material(a, point) } else { eval_material(b, point) }
@@ -445,7 +447,8 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         | SdfNode::SmoothIntersection { a, b, .. }
         | SdfNode::ChamferIntersection { a, b, .. }
         | SdfNode::StairsIntersection { a, b, .. }
-        | SdfNode::ColumnsIntersection { a, b, .. } => {
+        | SdfNode::ColumnsIntersection { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da >= db { eval_material(a, point) } else { eval_material(b, point) }
@@ -457,7 +460,8 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         | SdfNode::ColumnsSubtraction { a, b, .. }
         | SdfNode::Engrave { a, b, .. }
         | SdfNode::Groove { a, b, .. }
-        | SdfNode::Tongue { a, b, .. } => {
+        | SdfNode::Tongue { a, b, .. }
+        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
             let da = eval(a, point);
             let db = eval(b, point);
             if da >= -db { eval_material(a, point) } else { eval_material(b, point) }
@@ -488,6 +492,15 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Displacement { child, .. } => eval_material(child, point),
         SdfNode::PolarRepeat { child, count } => eval_material(child, modifier_polar_repeat(point, *count)),
         SdfNode::SweepBezier { child, p0, p1, p2 } => eval_material(child, modifier_sweep_bezier(point, *p0, *p1, *p2)),
+        SdfNode::Shear { child, shear } => {
+            let p = Vec3::new(
+                point.x,
+                point.y - shear.x * point.x,
+                point.z - shear.y * point.x - shear.z * point.y,
+            );
+            eval_material(child, p)
+        }
+        SdfNode::Animated { child, .. } => eval_material(child, point),
 
         // Primitives: no material assigned
         _ => 0,

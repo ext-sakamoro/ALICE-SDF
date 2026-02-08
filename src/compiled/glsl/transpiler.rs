@@ -2095,6 +2095,151 @@ impl GlslTranspiler {
                 self.transpile_node_inner(child, point_var, code)
             }
 
+            // === 2D Primitives (extruded to 3D) ===
+            SdfNode::Circle2D { radius, half_height } => {
+                let r = self.param(*radius);
+                let hh = self.param(*half_height);
+                let v = self.next_var();
+                writeln!(code, "    float {v}_d2d = length({p}.xy) - {r};", v=v, p=point_var, r=r).unwrap();
+                writeln!(code, "    float {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
+                writeln!(code, "    float {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
+                v
+            }
+
+            SdfNode::Rect2D { half_extents, half_height } => {
+                let hx = self.param(half_extents.x);
+                let hy = self.param(half_extents.y);
+                let hh = self.param(*half_height);
+                let v = self.next_var();
+                writeln!(code, "    float {v}_dx = abs({p}.x) - {hx};", v=v, p=point_var, hx=hx).unwrap();
+                writeln!(code, "    float {v}_dy = abs({p}.y) - {hy};", v=v, p=point_var, hy=hy).unwrap();
+                writeln!(code, "    float {v}_d2d = length(max(vec2({v}_dx, {v}_dy), 0.0)) + min(max({v}_dx, {v}_dy), 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
+                writeln!(code, "    float {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
+                v
+            }
+
+            SdfNode::Segment2D { a, b, thickness, half_height } => {
+                let ax = self.param(a.x);
+                let ay = self.param(a.y);
+                let bx = self.param(b.x);
+                let by = self.param(b.y);
+                let th = self.param(*thickness);
+                let hh = self.param(*half_height);
+                let v = self.next_var();
+                writeln!(code, "    vec2 {v}_pa = {p}.xy - vec2({ax}, {ay});", v=v, p=point_var, ax=ax, ay=ay).unwrap();
+                writeln!(code, "    vec2 {v}_ba = vec2({bx}, {by}) - vec2({ax}, {ay});", v=v, bx=bx, by=by, ax=ax, ay=ay).unwrap();
+                writeln!(code, "    float {v}_h = clamp(dot({v}_pa, {v}_ba) / dot({v}_ba, {v}_ba), 0.0, 1.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_d2d = length({v}_pa - {v}_ba * {v}_h) - {th};", v=v, th=th).unwrap();
+                writeln!(code, "    float {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
+                writeln!(code, "    float {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
+                v
+            }
+
+            SdfNode::Polygon2D { vertices, half_height } => {
+                // Polygon2D: complex shape, use bounding circle fallback in shader
+                let hh = self.param(*half_height);
+                let v = self.next_var();
+                if vertices.len() >= 2 {
+                    // Approximate as bounding circle
+                    let max_r = vertices.iter().map(|v| (v.x*v.x + v.y*v.y).sqrt()).fold(0.0f32, f32::max);
+                    let r = self.param(max_r);
+                    writeln!(code, "    float {v}_d2d = length({p}.xy) - {r};", v=v, p=point_var, r=r).unwrap();
+                } else {
+                    writeln!(code, "    float {v}_d2d = length({p}.xy);", v=v, p=point_var).unwrap();
+                }
+                writeln!(code, "    float {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
+                writeln!(code, "    float {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
+                v
+            }
+
+            SdfNode::RoundedRect2D { half_extents, round_radius, half_height } => {
+                let hx = self.param(half_extents.x);
+                let hy = self.param(half_extents.y);
+                let rr = self.param(*round_radius);
+                let hh = self.param(*half_height);
+                let v = self.next_var();
+                writeln!(code, "    float {v}_dx = abs({p}.x) - {hx} + {rr};", v=v, p=point_var, hx=hx, rr=rr).unwrap();
+                writeln!(code, "    float {v}_dy = abs({p}.y) - {hy} + {rr};", v=v, p=point_var, hy=hy, rr=rr).unwrap();
+                writeln!(code, "    float {v}_d2d = length(max(vec2({v}_dx, {v}_dy), 0.0)) + min(max({v}_dx, {v}_dy), 0.0) - {rr};", v=v, rr=rr).unwrap();
+                writeln!(code, "    float {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
+                writeln!(code, "    float {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
+                v
+            }
+
+            SdfNode::Annular2D { outer_radius, thickness, half_height } => {
+                let or = self.param(*outer_radius);
+                let th = self.param(*thickness);
+                let hh = self.param(*half_height);
+                let v = self.next_var();
+                writeln!(code, "    float {v}_d2d = abs(length({p}.xy) - {or}) - {th};", v=v, p=point_var, or=or, th=th).unwrap();
+                writeln!(code, "    float {v}_dz = abs({p}.z) - {hh};", v=v, p=point_var, hh=hh).unwrap();
+                writeln!(code, "    float {v}_wx = max({v}_d2d, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v}_wy = max({v}_dz, 0.0);", v=v).unwrap();
+                writeln!(code, "    float {v} = sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0);", v=v).unwrap();
+                v
+            }
+
+            // === Exponential Smooth Operations ===
+            SdfNode::ExpSmoothUnion { a, b, k } => {
+                let da = self.transpile_node_inner(a, point_var, code);
+                let db = self.transpile_node_inner(b, point_var, code);
+                let k_val = self.param(*k);
+                let v = self.next_var();
+                writeln!(code, "    float {v}_ea = exp(-{da} / {k});", v=v, da=da, k=k_val).unwrap();
+                writeln!(code, "    float {v}_eb = exp(-{db} / {k});", v=v, db=db, k=k_val).unwrap();
+                writeln!(code, "    float {v} = -log(max({v}_ea + {v}_eb, 1e-10)) * {k};", v=v, k=k_val).unwrap();
+                v
+            }
+
+            SdfNode::ExpSmoothIntersection { a, b, k } => {
+                let da = self.transpile_node_inner(a, point_var, code);
+                let db = self.transpile_node_inner(b, point_var, code);
+                let k_val = self.param(*k);
+                let v = self.next_var();
+                writeln!(code, "    float {v}_ea = exp({da} / {k});", v=v, da=da, k=k_val).unwrap();
+                writeln!(code, "    float {v}_eb = exp({db} / {k});", v=v, db=db, k=k_val).unwrap();
+                writeln!(code, "    float {v} = log(max({v}_ea + {v}_eb, 1e-10)) * {k};", v=v, k=k_val).unwrap();
+                v
+            }
+
+            SdfNode::ExpSmoothSubtraction { a, b, k } => {
+                let da = self.transpile_node_inner(a, point_var, code);
+                let db = self.transpile_node_inner(b, point_var, code);
+                let k_val = self.param(*k);
+                let v = self.next_var();
+                writeln!(code, "    float {v}_ea = exp({da} / {k});", v=v, da=da, k=k_val).unwrap();
+                writeln!(code, "    float {v}_enb = exp(-{db} / {k});", v=v, db=db, k=k_val).unwrap();
+                writeln!(code, "    float {v} = log(max({v}_ea + {v}_enb, 1e-10)) * {k};", v=v, k=k_val).unwrap();
+                v
+            }
+
+            // === New Modifiers ===
+            SdfNode::Shear { child, shear } => {
+                let sx = self.param(shear.x);
+                let sy = self.param(shear.y);
+                let sz = self.param(shear.z);
+                let new_p = self.next_var();
+                writeln!(code, "    vec3 {np} = vec3({p}.x, {p}.y - {sx} * {p}.x, {p}.z - {sy} * {p}.x - {sz} * {p}.y);",
+                    np=new_p, p=point_var, sx=sx, sy=sy, sz=sz).unwrap();
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::Animated { child, .. } => {
+                // Static shader: animation is time-dependent, just pass through
+                self.transpile_node_inner(child, point_var, code)
+            }
+
             #[allow(unreachable_patterns)]
             _ => "0.0".to_string() // new variants handled later
         }

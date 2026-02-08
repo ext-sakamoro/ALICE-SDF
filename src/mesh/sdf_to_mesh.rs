@@ -68,9 +68,8 @@ impl MarchingCubesConfig {
 /// Projects the vertex position onto the dominant axis plane determined
 /// by the surface normal, producing seamless UVs for arbitrary SDF surfaces.
 #[inline(always)]
-fn triplanar_uv(position: Vec3, normal: Vec3, scale: f32) -> Vec2 {
+fn triplanar_uv(position: Vec3, normal: Vec3, inv_scale: f32) -> Vec2 {
     let abs_n = normal.abs();
-    let inv_scale = 1.0 / scale;
 
     if abs_n.x >= abs_n.y && abs_n.x >= abs_n.z {
         // X-dominant: project onto YZ plane
@@ -443,9 +442,11 @@ fn process_cell(
         let mut vert2 = Vertex::new(v2, n2);
 
         if config.compute_uvs {
-            vert0.uv = triplanar_uv(v0, n0, config.uv_scale);
-            vert1.uv = triplanar_uv(v1, n1, config.uv_scale);
-            vert2.uv = triplanar_uv(v2, n2, config.uv_scale);
+            // Division Exorcism: precompute reciprocal once per triangle
+            let inv_uv = 1.0 / config.uv_scale;
+            vert0.uv = triplanar_uv(v0, n0, inv_uv);
+            vert1.uv = triplanar_uv(v1, n1, inv_uv);
+            vert2.uv = triplanar_uv(v2, n2, inv_uv);
         }
 
         // When UVs are enabled, tangents are computed in post-processing via MikkTSpace.
@@ -723,9 +724,11 @@ fn process_cell_compiled(
         let mut vert2 = Vertex::new(v2, n2);
 
         if config.compute_uvs {
-            vert0.uv = triplanar_uv(v0, n0, config.uv_scale);
-            vert1.uv = triplanar_uv(v1, n1, config.uv_scale);
-            vert2.uv = triplanar_uv(v2, n2, config.uv_scale);
+            // Division Exorcism: precompute reciprocal once per triangle
+            let inv_uv = 1.0 / config.uv_scale;
+            vert0.uv = triplanar_uv(v0, n0, inv_uv);
+            vert1.uv = triplanar_uv(v1, n1, inv_uv);
+            vert2.uv = triplanar_uv(v2, n2, inv_uv);
         }
 
         if config.compute_tangents && config.compute_normals && !config.compute_uvs {
@@ -1316,9 +1319,11 @@ fn process_adaptive_cell(
         let mut vert2 = Vertex::new(v2, n2);
 
         if config.compute_uvs {
-            vert0.uv = triplanar_uv(v0, n0, config.uv_scale);
-            vert1.uv = triplanar_uv(v1, n1, config.uv_scale);
-            vert2.uv = triplanar_uv(v2, n2, config.uv_scale);
+            // Division Exorcism: precompute reciprocal once per triangle
+            let inv_uv = 1.0 / config.uv_scale;
+            vert0.uv = triplanar_uv(v0, n0, inv_uv);
+            vert1.uv = triplanar_uv(v1, n1, inv_uv);
+            vert2.uv = triplanar_uv(v2, n2, inv_uv);
         }
 
         if config.compute_materials {
@@ -1520,9 +1525,11 @@ fn process_adaptive_cell_compiled(
         let mut vert2 = Vertex::new(v2, n2);
 
         if config.compute_uvs {
-            vert0.uv = triplanar_uv(v0, n0, config.uv_scale);
-            vert1.uv = triplanar_uv(v1, n1, config.uv_scale);
-            vert2.uv = triplanar_uv(v2, n2, config.uv_scale);
+            // Division Exorcism: precompute reciprocal once per triangle
+            let inv_uv = 1.0 / config.uv_scale;
+            vert0.uv = triplanar_uv(v0, n0, inv_uv);
+            vert1.uv = triplanar_uv(v1, n1, inv_uv);
+            vert2.uv = triplanar_uv(v2, n2, inv_uv);
         }
 
         mesh.vertices.push(vert0);

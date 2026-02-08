@@ -155,6 +155,45 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let (wa, wb) = smooth_max_weights(da, -db, *k);
             ga * wa - gb * wb
         }
+        SdfNode::ExpSmoothUnion { a, b, k } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            let ga = eval_gradient(a, point);
+            let gb = eval_gradient(b, point);
+            let k = k.max(1e-6);
+            let wa_raw = (-da / k).exp();
+            let wb_raw = (-db / k).exp();
+            let sum = wa_raw + wb_raw;
+            let wa = wa_raw / sum;
+            let wb = wb_raw / sum;
+            ga * wa + gb * wb
+        }
+        SdfNode::ExpSmoothIntersection { a, b, k } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            let ga = eval_gradient(a, point);
+            let gb = eval_gradient(b, point);
+            let k = k.max(1e-6);
+            let wa_raw = (da / k).exp();
+            let wb_raw = (db / k).exp();
+            let sum = wa_raw + wb_raw;
+            let wa = wa_raw / sum;
+            let wb = wb_raw / sum;
+            ga * wa + gb * wb
+        }
+        SdfNode::ExpSmoothSubtraction { a, b, k } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            let ga = eval_gradient(a, point);
+            let gb = eval_gradient(b, point);
+            let k = k.max(1e-6);
+            let wa_raw = (da / k).exp();
+            let wb_raw = (-db / k).exp();
+            let sum = wa_raw + wb_raw;
+            let wa = wa_raw / sum;
+            let wb = wb_raw / sum;
+            ga * wa - gb * wb
+        }
         SdfNode::ChamferUnion { a, b, r } => {
             let da = eval(a, point);
             let db = eval(b, point);
@@ -362,6 +401,24 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         | SdfNode::Displacement { .. }
         | SdfNode::PolarRepeat { .. }
         | SdfNode::SweepBezier { .. } => numerical_gradient_of(node, point),
+
+        // Shear modifier: inverse Jacobian transpose
+        SdfNode::Shear { child, shear } => {
+            let p = Vec3::new(
+                point.x,
+                point.y - shear.x * point.x,
+                point.z - shear.y * point.x - shear.z * point.y,
+            );
+            let g = eval_gradient(child, p);
+            Vec3::new(
+                g.x - shear.x * g.y - shear.y * g.z,
+                g.y - shear.z * g.z,
+                g.z,
+            )
+        }
+
+        // Animated modifier: transparent (child gradient)
+        SdfNode::Animated { child, .. } => eval_gradient(child, point),
 
         // Material is transparent
         SdfNode::WithMaterial { child, .. } => eval_gradient(child, point),

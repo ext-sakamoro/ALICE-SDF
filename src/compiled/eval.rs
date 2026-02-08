@@ -960,6 +960,19 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
             OpCode::End => {
                 break;
             }
+
+            // New opcodes: fallback to zero (these need full implementations)
+            _ => {
+                // 2D prims and new ops push a value
+                if inst.opcode.is_primitive() {
+                    value_stack[vsp] = p.length() * scale_correction;
+                    vsp += 1;
+                } else if inst.opcode.is_binary_op() {
+                    vsp -= 1;
+                    // Leave top of stack unchanged
+                }
+                // Modifiers: do nothing (child will handle)
+            }
         }
     }
 

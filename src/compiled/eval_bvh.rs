@@ -269,7 +269,13 @@ impl BvhCompiler {
             | SdfNode::IWP { .. }
             | SdfNode::FRD { .. }
             | SdfNode::FischerKochS { .. }
-            | SdfNode::PMY { .. } => {
+            | SdfNode::PMY { .. }
+            | SdfNode::Circle2D { .. }
+            | SdfNode::Rect2D { .. }
+            | SdfNode::Segment2D { .. }
+            | SdfNode::Polygon2D { .. }
+            | SdfNode::RoundedRect2D { .. }
+            | SdfNode::Annular2D { .. } => {
                 panic!("This primitive is interpreter/transpiler-only. Use eval() or shader transpiler instead.");
             }
 
@@ -836,6 +842,57 @@ impl BvhCompiler {
                 self.aabbs[inst_idx] = aabb;
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
                 aabb
+            }
+
+            SdfNode::ExpSmoothUnion { a, b, k } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.union(&aabb_b).expand(*k);
+                self.instructions.push(Instruction::exp_smooth_union(*k));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::ExpSmoothIntersection { a, b, k } => {
+                let aabb_a = self.compile_node(a);
+                let aabb_b = self.compile_node(b);
+                let aabb = aabb_a.intersection(&aabb_b);
+                self.instructions.push(Instruction::exp_smooth_intersection(*k));
+                self.aabbs.push(aabb);
+                aabb
+            }
+
+            SdfNode::ExpSmoothSubtraction { a, b, k } => {
+                let aabb_a = self.compile_node(a);
+                let _aabb_b = self.compile_node(b);
+                self.instructions.push(Instruction::exp_smooth_subtraction(*k));
+                self.aabbs.push(aabb_a);
+                aabb_a
+            }
+
+            SdfNode::Shear { child, shear } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::shear(*shear));
+                self.aabbs.push(AabbPacked::empty());
+
+                let child_aabb = self.compile_node(child);
+
+                self.instructions.push(Instruction::pop_transform());
+                self.aabbs.push(AabbPacked::infinite());
+
+                // Conservative: expand AABB by shear amount
+                let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
+                let half = child_aabb.half_size();
+                let expand = half.length() * max_shear;
+                let aabb = child_aabb.expand(expand);
+                self.aabbs[inst_idx] = aabb;
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                aabb
+            }
+
+            SdfNode::Animated { child, .. } => {
+                // Static compilation: just compile child
+                self.compile_node(child)
             }
 
             // WithMaterial is transparent for distance evaluation
@@ -1725,6 +1782,16 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
 
             OpCode::End => {
                 break;
+            }
+
+            // New opcodes: fallback
+            _ => {
+                if inst.opcode.is_primitive() {
+                    value_stack[vsp] = p.length() * scale_correction;
+                    vsp += 1;
+                } else if inst.opcode.is_binary_op() {
+                    vsp -= 1;
+                }
             }
         }
 

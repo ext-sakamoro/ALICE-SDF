@@ -510,6 +510,28 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::FischerKochS { .. } => Interval::EVERYTHING,
         SdfNode::PMY { .. } => Interval::EVERYTHING,
 
+        // ============ 2D Primitives ============
+        SdfNode::Circle2D { radius, half_height } => {
+            let xy_len = (bounds.x.sqr() + bounds.y.sqr()).sqrt();
+            let d2d = xy_len - Interval::point(*radius);
+            let dz = bounds.z.abs() - Interval::point(*half_height);
+            d2d.max(dz)
+        }
+        SdfNode::Rect2D { half_extents, half_height } => {
+            let dx = bounds.x.abs() - Interval::point(half_extents.x);
+            let dy = bounds.y.abs() - Interval::point(half_extents.y);
+            let d2d = Interval::new(dx.lo.max(dy.lo).min(0.0), 0.0_f32.max(dx.hi.max(0.0).hypot(dy.hi.max(0.0))));
+            let dz = bounds.z.abs() - Interval::point(*half_height);
+            d2d.max(dz)
+        }
+        SdfNode::Segment2D { .. } | SdfNode::Polygon2D { .. } => Interval::EVERYTHING,
+        SdfNode::RoundedRect2D { half_extents, .. } => {
+            ia_bsphere(bounds, half_extents.max_element())
+        }
+        SdfNode::Annular2D { outer_radius, .. } => {
+            ia_bsphere(bounds, *outer_radius)
+        }
+
         // ============ Operations ============
         SdfNode::Union { a, b } => {
             eval_interval(a, bounds).min(eval_interval(b, bounds))
@@ -604,6 +626,25 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             // tongue = min(a, max(a-ra, |b|-rb)); conservative: expand a
             Interval::new(ia.lo - ra, ia.hi)
         }
+        SdfNode::ExpSmoothUnion { a, b, k } => {
+            let sharp = eval_interval(a, bounds).min(eval_interval(b, bounds));
+            Interval::new(sharp.lo - k * 0.5, sharp.hi)
+        }
+        SdfNode::ExpSmoothIntersection { a, b, k } => {
+            let sharp = eval_interval(a, bounds).max(eval_interval(b, bounds));
+            Interval::new(sharp.lo, sharp.hi + k * 0.5)
+        }
+        SdfNode::ExpSmoothSubtraction { a, b, k } => {
+            let sharp = eval_interval(a, bounds).max(-eval_interval(b, bounds));
+            Interval::new(sharp.lo, sharp.hi + k * 0.5)
+        }
+        SdfNode::Shear { child, shear } => {
+            let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
+            let max_extent = (bounds.x.hi - bounds.x.lo).max(bounds.y.hi - bounds.y.lo).max(bounds.z.hi - bounds.z.lo);
+            let child_interval = eval_interval(child, bounds);
+            Interval::new(child_interval.lo - max_shear * max_extent, child_interval.hi + max_shear * max_extent)
+        }
+        SdfNode::Animated { child, .. } => eval_interval(child, bounds),
 
         // ============ Transforms ============
         SdfNode::Translate { child, offset } => {
@@ -809,7 +850,10 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::DiamondSurface { .. } | SdfNode::Neovius { .. } |
         SdfNode::Lidinoid { .. } | SdfNode::IWP { .. } |
         SdfNode::FRD { .. } | SdfNode::FischerKochS { .. } |
-        SdfNode::PMY { .. } => 1.0,
+        SdfNode::PMY { .. } |
+        SdfNode::Circle2D { .. } | SdfNode::Rect2D { .. } |
+        SdfNode::Segment2D { .. } | SdfNode::Polygon2D { .. } |
+        SdfNode::RoundedRect2D { .. } | SdfNode::Annular2D { .. } => 1.0,
 
         // Boolean ops: smooth min/max is 1-Lipschitz in (a,b)
         SdfNode::Union { a, b } | SdfNode::Intersection { a, b } |
@@ -824,7 +868,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::ColumnsUnion { a, b, .. } | SdfNode::ColumnsIntersection { a, b, .. } |
         SdfNode::ColumnsSubtraction { a, b, .. } |
         SdfNode::Pipe { a, b, .. } | SdfNode::Engrave { a, b, .. } |
-        SdfNode::Groove { a, b, .. } | SdfNode::Tongue { a, b, .. } => {
+        SdfNode::Groove { a, b, .. } | SdfNode::Tongue { a, b, .. } |
+        SdfNode::ExpSmoothUnion { a, b, .. } | SdfNode::ExpSmoothIntersection { a, b, .. } |
+        SdfNode::ExpSmoothSubtraction { a, b, .. } => {
             eval_lipschitz(a).max(eval_lipschitz(b))
         }
 
@@ -875,6 +921,11 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::Displacement { child, strength } => {
             eval_lipschitz(child) + strength.abs()
         }
+        SdfNode::Shear { child, shear } => {
+            let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
+            eval_lipschitz(child) * (1.0 + max_shear)
+        }
+        SdfNode::Animated { child, .. } => eval_lipschitz(child),
 
         SdfNode::WithMaterial { child, .. } => eval_lipschitz(child),
 

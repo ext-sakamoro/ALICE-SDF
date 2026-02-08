@@ -1047,6 +1047,115 @@ impl Instruction {
         inst
     }
 
+    /// Create a circle 2D instruction
+    #[inline]
+    pub fn circle_2d(radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Circle2D);
+        inst.params[0] = radius;
+        inst.params[1] = half_height;
+        inst
+    }
+
+    /// Create a rect 2D instruction
+    #[inline]
+    pub fn rect_2d(half_extents: glam::Vec2, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Rect2D);
+        inst.params[0] = half_extents.x;
+        inst.params[1] = half_extents.y;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    /// Create a segment 2D instruction
+    #[inline]
+    pub fn segment_2d(a: glam::Vec2, b: glam::Vec2, thickness: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Segment2D);
+        inst.params[0] = a.x;
+        inst.params[1] = a.y;
+        inst.params[2] = b.x;
+        inst.params[3] = b.y;
+        inst.params[4] = thickness;
+        inst.params[5] = half_height;
+        inst
+    }
+
+    /// Create a polygon 2D instruction
+    #[inline]
+    pub fn polygon_2d(half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Polygon2D);
+        inst.params[0] = half_height;
+        inst
+    }
+
+    /// Create a rounded rect 2D instruction
+    #[inline]
+    pub fn rounded_rect_2d(half_extents: glam::Vec2, round_radius: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::RoundedRect2D);
+        inst.params[0] = half_extents.x;
+        inst.params[1] = half_extents.y;
+        inst.params[2] = round_radius;
+        inst.params[3] = half_height;
+        inst
+    }
+
+    /// Create an annular 2D instruction
+    #[inline]
+    pub fn annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
+        let mut inst = Self::new(OpCode::Annular2D);
+        inst.params[0] = outer_radius;
+        inst.params[1] = thickness;
+        inst.params[2] = half_height;
+        inst
+    }
+
+    /// Create an exp smooth union instruction
+    #[inline]
+    pub fn exp_smooth_union(k: f32) -> Self {
+        let mut inst = Self::new(OpCode::ExpSmoothUnion);
+        inst.params[0] = k;
+        inst.child_count = 2;
+        inst
+    }
+
+    /// Create an exp smooth intersection instruction
+    #[inline]
+    pub fn exp_smooth_intersection(k: f32) -> Self {
+        let mut inst = Self::new(OpCode::ExpSmoothIntersection);
+        inst.params[0] = k;
+        inst.child_count = 2;
+        inst
+    }
+
+    /// Create an exp smooth subtraction instruction
+    #[inline]
+    pub fn exp_smooth_subtraction(k: f32) -> Self {
+        let mut inst = Self::new(OpCode::ExpSmoothSubtraction);
+        inst.params[0] = k;
+        inst.child_count = 2;
+        inst
+    }
+
+    /// Create a shear instruction
+    #[inline]
+    pub fn shear(shear: glam::Vec3) -> Self {
+        let mut inst = Self::new(OpCode::Shear);
+        inst.params[0] = shear.x;
+        inst.params[1] = shear.y;
+        inst.params[2] = shear.z;
+        inst.child_count = 1;
+        inst
+    }
+
+    /// Create an animated instruction
+    #[inline]
+    pub fn animated(speed: f32, amplitude: f32) -> Self {
+        let mut inst = Self::new(OpCode::Animated);
+        inst.params[0] = speed;
+        inst.params[1] = amplitude;
+        inst.child_count = 1;
+        inst
+    }
+
     /// Create a pop transform instruction
     #[inline]
     pub fn pop_transform() -> Self {

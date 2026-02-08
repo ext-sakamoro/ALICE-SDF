@@ -20,14 +20,14 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Real-time raymarching** - GPU-accelerated rendering
 - **PBR materials** - metallic-roughness workflow compatible with UE5/Unity/Godot
 - **Keyframe animation** - parametric deformation with timeline tracks
-- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite export
+- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite, STL, PLY, 3MF export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
 - **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters
 - **Dual Contouring** - QEF-based mesh generation that preserves sharp edges and corners
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **62 primitives, 21 operations, 4 transforms, 16 modifiers** - industry-leading shape vocabulary
+- **68 primitives, 24 operations, 5 transforms, 17 modifiers** - industry-leading shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
 - **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
@@ -269,7 +269,7 @@ An SDF returns the shortest distance from any point to the surface:
 
 ```
 SdfNode
-  |-- Primitive (62): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- Primitive (68): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -282,18 +282,23 @@ SdfNode
   |                    TruncatedOctahedron, TruncatedIcosahedron,                 ← Archimedean solids
   |                    BoxFrame,                                                   ← IQ wireframe box
   |                    DiamondSurface, Neovius, Lidinoid, IWP, FRD,              ← TPMS surfaces
-  |                    FischerKochS, PMY                                           ← TPMS surfaces
-  |-- Operation (21): Union, Intersection, Subtraction,
+  |                    FischerKochS, PMY,                                          ← TPMS surfaces
+  |                    Circle2D, Rect2D, Segment2D, Polygon2D,                   ← 2D primitives (extruded)
+  |                    RoundedRect2D, Annular2D                                    ← 2D primitives (extruded)
+  |-- Operation (24): Union, Intersection, Subtraction,
   |                    SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |                    ChamferUnion, ChamferIntersection, ChamferSubtraction,
   |                    StairsUnion, StairsIntersection, StairsSubtraction,
+  |                    ExpSmoothUnion, ExpSmoothIntersection, ExpSmoothSubtraction, ← IQ exponential smooth
   |                    XOR, Morph,                                                 ← Boolean / Interpolation
   |                    ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,      ← hg_sdf columns
   |                    Pipe, Engrave, Groove, Tongue                               ← hg_sdf advanced
-  |-- Transform (4): Translate, Rotate, Scale, ScaleNonUniform
-  |-- Modifier (16): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |-- Transform (5): Translate, Rotate, Scale, ScaleNonUniform,
+  |                   Shear                                                        ← 3-axis shear deformation
+  |-- Modifier (17): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
   |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
-  |                   OctantMirror                                                 ← 48-fold symmetry
+  |                   OctantMirror,                                                ← 48-fold symmetry
+  |                   Animated                                                     ← timeline-driven parameter animation
   +-- WithMaterial: PBR material assignment (transparent to distance evaluation)
 ```
 
@@ -554,6 +559,9 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 | `.usda` | - | yes | UsdPreviewSurface | USD ASCII (Pixar/Omniverse/Houdini/Maya/Blender) |
 | `.abc` | - | yes | - | Alembic Ogawa binary (Maya/Houdini/Nuke/Blender) |
 | `.nanite` | - | yes | - | UE5 Nanite hierarchical cluster binary + JSON manifest |
+| `.stl` | yes | yes | - | STL ASCII/Binary (3D printing, CAD) |
+| `.ply` | yes | yes | - | PLY ASCII/Binary (point clouds, scanning) |
+| `.3mf` | - | yes | PBR | 3MF XML (modern 3D printing with materials) |
 
 ## Architecture
 
@@ -710,6 +718,58 @@ All use **double-angle identities** (`cos(2x) = 2cos²(x)-1`) to eliminate redun
 | **Curvature Adaptive** | High-curvature regions get finer cluster density |
 | **HLSL Material Export** | `export_nanite_hlsl_material()` generates UE5 `.usf` with `AliceSdfNormal()` and `AliceSdfMaterial()` |
 
+### 2D Primitives (6 new)
+
+Extruded 2D shapes for UI, decals, and cross-sections. Each is evaluated in the XY plane and extruded along Z.
+
+| Primitive | Parameters | Description |
+|-----------|-----------|-------------|
+| `Circle2D` | `radius` | 2D circle |
+| `Rect2D` | `half_width, half_height` | 2D rectangle |
+| `Segment2D` | `a: Vec2, b: Vec2` | Line segment |
+| `Polygon2D` | `vertices: Vec<Vec2>` | Arbitrary polygon |
+| `RoundedRect2D` | `half_width, half_height, radius` | Rounded rectangle |
+| `Annular2D` | `outer_radius, inner_radius` | Ring/annulus |
+
+All 2D primitives support full SIMD evaluation and GLSL/HLSL/WGSL transpilation.
+
+### ExpSmooth Operations (3 new)
+
+IQ's exponential smooth min/max — C-infinity smooth with exponential falloff. Better for organic shapes than polynomial smooth.
+
+| Operation | Formula | Description |
+|-----------|---------|-------------|
+| `ExpSmoothUnion` | `exp(-k*a) + exp(-k*b)` → `-ln(sum)/k` | Exponential smooth union |
+| `ExpSmoothIntersection` | Negated ExpSmoothUnion | Exponential smooth intersection |
+| `ExpSmoothSubtraction` | ExpSmoothIntersection(a, -b) | Exponential smooth subtraction |
+
+### Shear Transform
+
+3-axis shear deformation: `y' = y - shear.x * x`, `z' = z - shear.y * x - shear.z * y`. Useful for italic text, architectural slopes, and non-rigid deformation.
+
+### Animated Modifier
+
+Timeline-driven parameter animation modifier. Wraps a child SDF with keyframe animation tracks (translate, rotate, scale, twist, bend). Evaluated by sampling the timeline at a given time `t`.
+
+### STL / PLY / 3MF I/O
+
+| Format | Import | Export | Description |
+|--------|--------|--------|-------------|
+| STL | ASCII + Binary | ASCII + Binary | Standard 3D printing format |
+| PLY | ASCII + Binary | ASCII + Binary | Point cloud and scanning format |
+| 3MF | - | XML | Modern 3D printing with PBR materials |
+
+### Performance Optimizations (v2.1)
+
+| Optimization | Target | Effect |
+|-------------|--------|--------|
+| **Schraudolph fast exp** | SIMD eval (ExpSmooth) | ~25 → ~3 cycles/lane (~0.3% error) |
+| **IEEE 754 fast ln** | SIMD eval (ExpSmooth) | Exponent extraction + Pade (~0.4% error) |
+| **Fast reciprocal** | SIMD eval (atan2) | Bit trick + Newton-Raphson (~0.02% error) |
+| **Ellipsoid division halving** | SIMD eval | 6 → 3 divisions via precomputed inverse |
+| **Triplanar UV division exorcism** | Mesh generation | `1/scale` precomputed once per triangle |
+| **Zero-Copy NumPy** | Python bindings | `with_numpy_as_vec3()` eliminates intermediate Vec allocation |
+
 ### smooth_min_root (IQ)
 
 C-infinity square root smooth minimum: `0.5 * (a + b - sqrt((b-a)² + k²))`. Unlike polynomial `smooth_min`, this has a constant blend width regardless of input separation.
@@ -733,7 +793,7 @@ let bounds = eval_interval(&shape, region);
 let lip = eval_lipschitz(&shape); // 1.0 for distance-preserving shapes
 ```
 
-Supports all 62 primitives, 21 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
+Supports all 68 primitives, 24 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
 
 ## Neural SDF
 
@@ -1192,7 +1252,7 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-693+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 707+ tests including JIT scalar and JIT SIMD backends.
+791+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier). With `--features jit`, 800+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
@@ -1221,7 +1281,7 @@ alice-sdf demo -o demo.asdf
 alice-sdf bench --points 1000000
 ```
 
-Supported export formats: `.obj`, `.glb`, `.fbx`, `.usda`, `.abc`
+Supported export formats: `.obj`, `.glb`, `.fbx`, `.usda`, `.abc`, `.stl`, `.ply`, `.3mf`
 
 ## Performance
 
@@ -1374,7 +1434,7 @@ ALICE-SDF runs in the browser via WebAssembly with WebGPU/Canvas2D support.
 npm install @alice-sdf/wasm
 ```
 
-Full TypeScript type definitions included. Supports all 62 primitives, 21 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
+Full TypeScript type definitions included. Supports all 68 primitives, 24 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
 
 ### Building the WASM Demo
 
@@ -1545,7 +1605,7 @@ Client Request (asset_id + VivaldiCoord)
 │  ALICE-SDF (ASDF Binary Format)       │
 │  ・16-byte header + bincode body      │
 │  ・CRC32 integrity validation         │
-│  ・65+ SDF primitives + CSG ops       │
+│  ・68+ SDF primitives + CSG ops       │
 └──────────────────────────────────────┘
 ```
 
@@ -1689,4 +1749,4 @@ See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for deta
 
 ---
 
-Copyright (c) 2025 Moroya Sakamoto
+Copyright (c) 2025-2026 Moroya Sakamoto

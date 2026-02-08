@@ -659,6 +659,64 @@ impl Compiler {
                 self.compile_node(child);
             }
 
+            // === 2D Primitives ===
+            SdfNode::Circle2D { radius, half_height } => {
+                self.instructions.push(Instruction::circle_2d(*radius, *half_height));
+            }
+
+            SdfNode::Rect2D { half_extents, half_height } => {
+                self.instructions.push(Instruction::rect_2d(*half_extents, *half_height));
+            }
+
+            SdfNode::Segment2D { a, b, thickness, half_height } => {
+                self.instructions.push(Instruction::segment_2d(*a, *b, *thickness, *half_height));
+            }
+
+            SdfNode::Polygon2D { half_height, .. } => {
+                self.instructions.push(Instruction::polygon_2d(*half_height));
+            }
+
+            SdfNode::RoundedRect2D { half_extents, round_radius, half_height } => {
+                self.instructions.push(Instruction::rounded_rect_2d(*half_extents, *round_radius, *half_height));
+            }
+
+            SdfNode::Annular2D { outer_radius, thickness, half_height } => {
+                self.instructions.push(Instruction::annular_2d(*outer_radius, *thickness, *half_height));
+            }
+
+            // === ExpSmooth operations ===
+            SdfNode::ExpSmoothUnion { a, b, k } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::exp_smooth_union(*k));
+            }
+
+            SdfNode::ExpSmoothIntersection { a, b, k } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::exp_smooth_intersection(*k));
+            }
+
+            SdfNode::ExpSmoothSubtraction { a, b, k } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions.push(Instruction::exp_smooth_subtraction(*k));
+            }
+
+            // === Shear modifier (point transform) ===
+            SdfNode::Shear { child, shear } => {
+                let inst_idx = self.instructions.len();
+                self.instructions.push(Instruction::shear(*shear));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
+            // === Animated modifier (passthrough) ===
+            SdfNode::Animated { child, .. } => {
+                self.compile_node(child);
+            }
+
             #[allow(unreachable_patterns)]
             _ => {} // new variants handled later
         }

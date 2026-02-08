@@ -20,14 +20,14 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **リアルタイムレイマーチング** - GPU加速レンダリング
 - **PBRマテリアル** - UE5/Unity/Godot互換のメタリック-ラフネスワークフロー
 - **キーフレームアニメーション** - タイムライントラック付きパラメトリック変形
-- **アセットパイプライン** - OBJインポート/エクスポート、glTF 2.0 (.glb)、FBX、USD、Alembic、Naniteエクスポート
+- **アセットパイプライン** - OBJインポート/エクスポート、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MFエクスポート
 - **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
 - **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中
 - **Dual Contouring** - QEFベースのメッシュ生成、シャープエッジとコーナーを保持
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **62プリミティブ、21演算、4トランスフォーム、16モディファイア** - 業界最高水準のシェイプボキャブラリ
+- **68プリミティブ、24演算、5トランスフォーム、17モディファイア** - 業界最高水準のシェイプボキャブラリ
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
 - **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
 - **緩和球トレーシング（Relaxed Sphere Tracing）** - リプシッツ適応ステップサイズによるオーバーリラクゼーション
@@ -269,7 +269,7 @@ SDFは任意の点から表面までの最短距離を返します:
 
 ```
 SdfNode
-  |-- プリミティブ (62): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- プリミティブ (68): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -282,18 +282,23 @@ SdfNode
   |                    TruncatedOctahedron, TruncatedIcosahedron,                 ← アルキメデス立体
   |                    BoxFrame,                                                   ← IQワイヤーフレームボックス
   |                    DiamondSurface, Neovius, Lidinoid, IWP, FRD,              ← TPMS曲面
-  |                    FischerKochS, PMY                                           ← TPMS曲面
-  |-- 演算 (21): Union, Intersection, Subtraction,
+  |                    FischerKochS, PMY,                                          ← TPMS曲面
+  |                    Circle2D, Rect2D, Segment2D, Polygon2D,                   ← 2Dプリミティブ（押し出し）
+  |                    RoundedRect2D, Annular2D                                    ← 2Dプリミティブ（押し出し）
+  |-- 演算 (24): Union, Intersection, Subtraction,
   |              SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |              ChamferUnion, ChamferIntersection, ChamferSubtraction,
   |              StairsUnion, StairsIntersection, StairsSubtraction,
+  |              ExpSmoothUnion, ExpSmoothIntersection, ExpSmoothSubtraction,     ← IQ指数スムース
   |              XOR, Morph,                                                       ← ブーリアン/補間
   |              ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,            ← hg_sdfカラム
   |              Pipe, Engrave, Groove, Tongue                                     ← hg_sdf高度操作
-  |-- トランスフォーム (4): Translate, Rotate, Scale, ScaleNonUniform
-  |-- モディファイア (16): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |-- トランスフォーム (5): Translate, Rotate, Scale, ScaleNonUniform,
+  |                        Shear                                                   ← 3軸せん断変形
+  |-- モディファイア (17): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
   |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
-  |                   OctantMirror                                                 ← 48重対称性
+  |                   OctantMirror,                                                ← 48重対称性
+  |                   Animated                                                     ← タイムライン駆動アニメーション
   +-- WithMaterial: PBRマテリアル割り当て（距離評価に対して透過的）
 ```
 
@@ -554,6 +559,9 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 | `.usda` | - | 対応 | UsdPreviewSurface | USD ASCII（Pixar/Omniverse/Houdini/Maya/Blender） |
 | `.abc` | - | 対応 | - | Alembic Ogawaバイナリ（Maya/Houdini/Nuke/Blender） |
 | `.nanite` | - | 対応 | - | UE5 Nanite階層クラスタバイナリ + JSONマニフェスト |
+| `.stl` | 対応 | 対応 | - | STL ASCII/バイナリ（3Dプリント、CAD） |
+| `.ply` | 対応 | 対応 | - | PLY ASCII/バイナリ（点群、スキャニング） |
+| `.3mf` | - | 対応 | PBR | 3MF XML（PBRマテリアル付き最新3Dプリント） |
 
 ## アーキテクチャ
 
@@ -706,6 +714,58 @@ IQの`sdBoxFrame` — エッジのみ表示するワイヤーフレームボッ�
 | **曲率適応** | 高曲率領域のクラスタ密度を自動細分化 |
 | **HLSLマテリアルエクスポート** | UE5用`.usf`ファイル生成 |
 
+### 2Dプリミティブ（6種新規）
+
+UI、デカール、断面図向けの押し出し2D形状。XY平面で評価し、Z軸に沿って押し出し。
+
+| プリミティブ | パラメータ | 説明 |
+|-------------|-----------|------|
+| `Circle2D` | `radius` | 2D円 |
+| `Rect2D` | `half_width, half_height` | 2D矩形 |
+| `Segment2D` | `a: Vec2, b: Vec2` | 線分 |
+| `Polygon2D` | `vertices: Vec<Vec2>` | 任意多角形 |
+| `RoundedRect2D` | `half_width, half_height, radius` | 角丸矩形 |
+| `Annular2D` | `outer_radius, inner_radius` | リング/環状 |
+
+全2DプリミティブはSIMD評価およびGLSL/HLSL/WGSLトランスパイルを完全サポート。
+
+### ExpSmooth演算（3種新規）
+
+IQの指数スムースmin/max — 指数減衰によるC-無限滑らかなブレンド。有機的形状には多項式スムースより効果的。
+
+| 演算 | 数式 | 説明 |
+|------|------|------|
+| `ExpSmoothUnion` | `exp(-k*a) + exp(-k*b)` → `-ln(sum)/k` | 指数スムースユニオン |
+| `ExpSmoothIntersection` | 反転ExpSmoothUnion | 指数スムースインターセクション |
+| `ExpSmoothSubtraction` | ExpSmoothIntersection(a, -b) | 指数スムースサブトラクション |
+
+### Shearトランスフォーム
+
+3軸せん断変形: `y' = y - shear.x * x`, `z' = z - shear.y * x - shear.z * y`。イタリック文字、建築的傾斜、非剛体変形に有用。
+
+### Animatedモディファイア
+
+タイムライン駆動パラメータアニメーションモディファイア。キーフレームアニメーショントラック（translate, rotate, scale, twist, bend）で子SDFをラップ。指定時刻`t`でタイムラインをサンプリングして評価。
+
+### STL / PLY / 3MF I/O
+
+| フォーマット | インポート | エクスポート | 説明 |
+|-------------|-----------|-------------|------|
+| STL | ASCII + バイナリ | ASCII + バイナリ | 標準3Dプリントフォーマット |
+| PLY | ASCII + バイナリ | ASCII + バイナリ | 点群・スキャニングフォーマット |
+| 3MF | - | XML | PBRマテリアル付き最新3Dプリントフォーマット |
+
+### パフォーマンス最適化 (v2.1)
+
+| 最適化 | 対象 | 効果 |
+|--------|------|------|
+| **Schraudolph高速exp** | SIMD評価（ExpSmooth） | ~25 → ~3 cycles/lane（~0.3%誤差） |
+| **IEEE 754高速ln** | SIMD評価（ExpSmooth） | 指数抽出 + Padé近似（~0.4%誤差） |
+| **高速逆数** | SIMD評価（atan2） | ビットトリック + Newton-Raphson（~0.02%誤差） |
+| **Ellipsoid除算半減** | SIMD評価 | 6 → 3除算（事前計算済み逆数） |
+| **トリプラナーUV除算追放** | メッシュ生成 | `1/scale`を三角形ごとに1回事前計算 |
+| **ゼロコピーNumPy** | Pythonバインディング | `with_numpy_as_vec3()`で中間Vec割り当て排除 |
+
 ### smooth_min_root (IQ)
 
 C-無限滑らかな平方根型スムースミニマム: `0.5 * (a + b - sqrt((b-a)² + k²))`。多項式版と異なり、入力分離に関わらず一定のブレンド幅。
@@ -729,7 +789,7 @@ let bounds = eval_interval(&shape, region);
 let lip = eval_lipschitz(&shape); // 距離保存形状なら1.0
 ```
 
-全62プリミティブ、21演算、トランスフォーム、モディファイアをサポート。緩和球トレーシングとSDF対SDFコリジョンの空間プルーニングに内部使用。
+全68プリミティブ、24演算、トランスフォーム、モディファイアをサポート。緩和球トレーシングとSDF対SDFコリジョンの空間プルーニングに内部使用。
 
 ## ニューラルSDF
 
@@ -1124,7 +1184,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる693以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、タイトAABB、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で707以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる791以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、STL、PLY、3MF、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、タイトAABB、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配、2Dプリミティブ、ExpSmooth演算、Shearトランスフォーム、Animatedモディファイア）。`--features jit`で800以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test
@@ -1153,7 +1213,7 @@ alice-sdf demo -o demo.asdf
 alice-sdf bench --points 1000000
 ```
 
-対応エクスポート形式: `.obj`, `.glb`, `.fbx`, `.usda`, `.abc`
+対応エクスポート形式: `.obj`, `.glb`, `.fbx`, `.usda`, `.abc`, `.stl`, `.ply`, `.3mf`
 
 ## パフォーマンス
 
@@ -1306,7 +1366,7 @@ ALICE-SDFはWebAssemblyでブラウザ上で動作し、WebGPU/Canvas2Dをサポ
 npm install @alice-sdf/wasm
 ```
 
-TypeScript型定義を完備。62プリミティブ、21 CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
+TypeScript型定義を完備。68プリミティブ、24 CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
 
 ### WASMデモのビルド
 
@@ -1477,7 +1537,7 @@ ALICE-SDF + [ALICE-CDN](https://github.com/ext-sakamoro/ALICE-CDN) + [ALICE-Cach
 │  ALICE-SDF (ASDF バイナリ形式)        │
 │  ・16バイトヘッダー + bincode本体     │
 │  ・CRC32 整合性検証                   │
-│  ・65+ SDFプリミティブ + CSG演算      │
+│  ・68+ SDFプリミティブ + CSG演算      │
 └──────────────────────────────────────┘
 ```
 
@@ -1626,4 +1686,4 @@ LLMが生成するコードは完璧ではなく、括弧の閉じ忘れや不�
 
 ---
 
-Copyright (c) 2025 Moroya Sakamoto
+Copyright (c) 2025-2026 Moroya Sakamoto
