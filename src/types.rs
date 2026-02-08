@@ -604,6 +604,58 @@ pub enum SdfNode {
         thickness: f32,
     },
 
+    // === 2D Primitives (extruded to 3D) ===
+    /// 2D Circle extruded along Z
+    Circle2D {
+        /// Circle radius
+        radius: f32,
+        /// Half-height of extrusion along Z
+        half_height: f32,
+    },
+    /// 2D Rectangle extruded along Z
+    Rect2D {
+        /// Half-width and half-height of the rectangle
+        half_extents: Vec2,
+        /// Half-depth of extrusion along Z
+        half_height: f32,
+    },
+    /// 2D Line Segment extruded along Z
+    Segment2D {
+        /// Start point
+        a: Vec2,
+        /// End point
+        b: Vec2,
+        /// Segment thickness (radius)
+        thickness: f32,
+        /// Half-depth of extrusion along Z
+        half_height: f32,
+    },
+    /// 2D Polygon (convex, up to 8 vertices) extruded along Z
+    Polygon2D {
+        /// Vertices (up to 8)
+        vertices: Vec<Vec2>,
+        /// Half-depth of extrusion along Z
+        half_height: f32,
+    },
+    /// 2D Rounded Rectangle extruded along Z
+    RoundedRect2D {
+        /// Half-extents of the rectangle
+        half_extents: Vec2,
+        /// Corner rounding radius
+        round_radius: f32,
+        /// Half-depth of extrusion along Z
+        half_height: f32,
+    },
+    /// 2D Annular (ring) shape extruded along Z
+    Annular2D {
+        /// Outer radius
+        outer_radius: f32,
+        /// Ring thickness
+        thickness: f32,
+        /// Half-depth of extrusion along Z
+        half_height: f32,
+    },
+
     // === Operations ===
     /// Union of two shapes (min distance)
     Union {
@@ -805,6 +857,28 @@ pub enum SdfNode {
         rb: f32,
     },
 
+    /// Exponential smooth union (IQ): exp-weighted smooth min
+    ExpSmoothUnion {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Smoothness parameter
+        k: f32,
+    },
+    /// Exponential smooth intersection
+    ExpSmoothIntersection {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Smoothness parameter
+        k: f32,
+    },
+    /// Exponential smooth subtraction
+    ExpSmoothSubtraction {
+        a: Arc<SdfNode>,
+        b: Arc<SdfNode>,
+        /// Smoothness parameter
+        k: f32,
+    },
+
     // === Transforms ===
     /// Translation
     Translate {
@@ -975,6 +1049,24 @@ pub enum SdfNode {
     OctantMirror {
         /// Child node
         child: Arc<SdfNode>,
+    },
+
+    /// Shear deformation (modifies evaluation point)
+    Shear {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Shear factors: (xy, xz, yz)
+        shear: Vec3,
+    },
+
+    /// Animated modifier: applies time-based transformation
+    Animated {
+        /// Child node
+        child: Arc<SdfNode>,
+        /// Animation speed multiplier
+        speed: f32,
+        /// Animation amplitude
+        amplitude: f32,
     },
 
     /// Assign a material ID to a subtree (transparent for distance evaluation)
@@ -1499,6 +1591,44 @@ impl SdfNode {
         SdfNode::PMY { scale, thickness }
     }
 
+    // === 2D Primitive constructors ===
+
+    /// Create a 2D circle extruded along Z
+    #[inline]
+    pub fn circle_2d(radius: f32, half_height: f32) -> Self {
+        SdfNode::Circle2D { radius, half_height }
+    }
+
+    /// Create a 2D rectangle extruded along Z
+    #[inline]
+    pub fn rect_2d(half_w: f32, half_h: f32, half_height: f32) -> Self {
+        SdfNode::Rect2D { half_extents: Vec2::new(half_w, half_h), half_height }
+    }
+
+    /// Create a 2D line segment extruded along Z
+    #[inline]
+    pub fn segment_2d(ax: f32, ay: f32, bx: f32, by: f32, thickness: f32, half_height: f32) -> Self {
+        SdfNode::Segment2D { a: Vec2::new(ax, ay), b: Vec2::new(bx, by), thickness, half_height }
+    }
+
+    /// Create a 2D polygon extruded along Z
+    #[inline]
+    pub fn polygon_2d(vertices: Vec<Vec2>, half_height: f32) -> Self {
+        SdfNode::Polygon2D { vertices, half_height }
+    }
+
+    /// Create a 2D rounded rectangle extruded along Z
+    #[inline]
+    pub fn rounded_rect_2d(half_w: f32, half_h: f32, round_radius: f32, half_height: f32) -> Self {
+        SdfNode::RoundedRect2D { half_extents: Vec2::new(half_w, half_h), round_radius, half_height }
+    }
+
+    /// Create a 2D annular (ring) shape extruded along Z
+    #[inline]
+    pub fn annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
+        SdfNode::Annular2D { outer_radius, thickness, half_height }
+    }
+
     // === Operation methods ===
 
     /// Union with another shape
@@ -1673,6 +1803,24 @@ impl SdfNode {
     #[inline]
     pub fn tongue(self, other: SdfNode, ra: f32, rb: f32) -> Self {
         SdfNode::Tongue { a: Arc::new(self), b: Arc::new(other), ra, rb }
+    }
+
+    /// Exponential smooth union with another shape
+    #[inline]
+    pub fn exp_smooth_union(self, other: SdfNode, k: f32) -> Self {
+        SdfNode::ExpSmoothUnion { a: Arc::new(self), b: Arc::new(other), k }
+    }
+
+    /// Exponential smooth intersection with another shape
+    #[inline]
+    pub fn exp_smooth_intersection(self, other: SdfNode, k: f32) -> Self {
+        SdfNode::ExpSmoothIntersection { a: Arc::new(self), b: Arc::new(other), k }
+    }
+
+    /// Exponential smooth subtraction of another shape
+    #[inline]
+    pub fn exp_smooth_subtract(self, other: SdfNode, k: f32) -> Self {
+        SdfNode::ExpSmoothSubtraction { a: Arc::new(self), b: Arc::new(other), k }
     }
 
     // === Transform methods ===
@@ -1886,6 +2034,25 @@ impl SdfNode {
         }
     }
 
+    /// Apply shear deformation
+    #[inline]
+    pub fn shear(self, xy: f32, xz: f32, yz: f32) -> Self {
+        SdfNode::Shear {
+            child: Arc::new(self),
+            shear: Vec3::new(xy, xz, yz),
+        }
+    }
+
+    /// Apply time-based animation
+    #[inline]
+    pub fn animated(self, speed: f32, amplitude: f32) -> Self {
+        SdfNode::Animated {
+            child: Arc::new(self),
+            speed,
+            amplitude,
+        }
+    }
+
     /// Assign a material ID to this subtree
     #[inline]
     pub fn with_material(self, material_id: u32) -> Self {
@@ -2011,6 +2178,9 @@ impl SdfNode {
             | SdfNode::PolarRepeat { child, .. }
             | SdfNode::OctantMirror { child, .. }
             | SdfNode::WithMaterial { child, .. } => 1 + child.node_count(),
+
+            #[allow(unreachable_patterns)]
+            _ => 1,
         }
     }
 }

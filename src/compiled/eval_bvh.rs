@@ -842,6 +842,9 @@ impl BvhCompiler {
             SdfNode::WithMaterial { child, .. } => {
                 self.compile_node(child)
             }
+
+            #[allow(unreachable_patterns)]
+            _ => self.compile_node(&SdfNode::Sphere { radius: 0.001 }) // fallback
         }
     }
 }

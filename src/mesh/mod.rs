@@ -40,6 +40,7 @@ pub mod manifold;
 pub mod nanite;
 pub mod optimize;
 pub mod primitive_fitting;
+pub mod point_cloud_sdf;
 pub mod uv_unwrap;
 mod mesh_to_sdf;
 mod sdf_to_mesh;
@@ -80,6 +81,7 @@ pub use decimate::{decimate, DecimateConfig};
 pub use lightmap::{generate_lightmap_uvs, generate_lightmap_uvs_fast};
 pub use optimize::{optimize_vertex_cache, compute_acmr, deduplicate_vertices};
 pub use uv_unwrap::{uv_unwrap, apply_uvs, UvUnwrapConfig, UvUnwrapResult, UvChart};
+pub use point_cloud_sdf::{PointCloudSdf, PointCloudSdfConfig, point_cloud_to_sdf};
 pub use collision::{
     CollisionAabb, BoundingSphere, ConvexHull, CollisionMesh,
     compute_aabb, compute_bounding_sphere, compute_convex_hull,

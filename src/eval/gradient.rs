@@ -107,7 +107,13 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         | SdfNode::IWP { .. }
         | SdfNode::FRD { .. }
         | SdfNode::FischerKochS { .. }
-        | SdfNode::PMY { .. } => numerical_gradient_of(node, point),
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. } => numerical_gradient_of(node, point),
 
         // === Operations: chain rule ===
         SdfNode::Union { a, b } => {
@@ -359,6 +365,9 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
 
         // Material is transparent
         SdfNode::WithMaterial { child, .. } => eval_gradient(child, point),
+
+        #[allow(unreachable_patterns)]
+        _ => numerical_gradient_of(node, point),
     }
 }
 

@@ -2081,6 +2081,9 @@ impl WgslTranspiler {
             SdfNode::WithMaterial { child, .. } => {
                 self.transpile_node_inner(child, point_var, code)
             }
+
+            #[allow(unreachable_patterns)]
+            _ => "0.0".to_string() // new variants handled later
         }
     }
 }

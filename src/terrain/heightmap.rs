@@ -209,6 +209,100 @@ impl Heightmap {
     pub fn sample_count(&self) -> usize {
         (self.width * self.depth) as usize
     }
+
+    /// Load a heightmap from an image file (PNG, JPEG)
+    ///
+    /// Converts the image to grayscale and maps pixel luminance [0, 255]
+    /// to height values [0, height_scale].
+    ///
+    /// Requires the `image` feature to be enabled.
+    #[cfg(feature = "image")]
+    pub fn from_image(
+        path: impl AsRef<std::path::Path>,
+        config: &HeightmapImageConfig,
+    ) -> Result<Self, std::io::Error> {
+        let img = image::open(path.as_ref())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        let gray = img.to_luma8();
+
+        Self::from_gray_image(&gray, config)
+    }
+
+    /// Load a heightmap from in-memory image bytes (PNG, JPEG)
+    ///
+    /// Requires the `image` feature to be enabled.
+    #[cfg(feature = "image")]
+    pub fn from_image_bytes(
+        bytes: &[u8],
+        config: &HeightmapImageConfig,
+    ) -> Result<Self, std::io::Error> {
+        let img = image::load_from_memory(bytes)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        let gray = img.to_luma8();
+
+        Self::from_gray_image(&gray, config)
+    }
+
+    /// Build heightmap from a grayscale image buffer
+    #[cfg(feature = "image")]
+    fn from_gray_image(
+        gray: &image::GrayImage,
+        config: &HeightmapImageConfig,
+    ) -> Result<Self, std::io::Error> {
+        let width = gray.width();
+        let height = gray.height();
+
+        let scale = config.height_scale / 255.0;
+        let raw = gray.as_raw();
+        let heights: Vec<f32> = raw.iter()
+            .map(|&p| p as f32 * scale)
+            .collect();
+
+        Ok(Heightmap {
+            heights,
+            width,
+            depth: height,
+            world_width: config.world_width.unwrap_or(width as f32),
+            world_depth: config.world_depth.unwrap_or(height as f32),
+            inv_world_width: 1.0 / config.world_width.unwrap_or(width as f32),
+            inv_world_depth: 1.0 / config.world_depth.unwrap_or(height as f32),
+        })
+    }
+}
+
+/// Configuration for loading a heightmap from an image
+#[cfg(feature = "image")]
+#[derive(Debug, Clone)]
+pub struct HeightmapImageConfig {
+    /// Maximum height value (luminance 255 maps to this). Default: 100.0
+    pub height_scale: f32,
+    /// World-space width. If None, uses image width in pixels.
+    pub world_width: Option<f32>,
+    /// World-space depth. If None, uses image height in pixels.
+    pub world_depth: Option<f32>,
+}
+
+#[cfg(feature = "image")]
+impl Default for HeightmapImageConfig {
+    fn default() -> Self {
+        HeightmapImageConfig {
+            height_scale: 100.0,
+            world_width: None,
+            world_depth: None,
+        }
+    }
+}
+
+#[cfg(feature = "image")]
+impl HeightmapImageConfig {
+    /// Create config with custom height scale and world dimensions
+    pub fn new(height_scale: f32, world_width: f32, world_depth: f32) -> Self {
+        HeightmapImageConfig {
+            height_scale,
+            world_width: Some(world_width),
+            world_depth: Some(world_depth),
+        }
+    }
 }
 
 /// Catmull-Rom cubic interpolation weight
@@ -341,5 +435,42 @@ mod tests {
         let (min, max) = hm.height_range();
         assert_eq!(min, -5.0);
         assert_eq!(max, 10.0);
+    }
+
+    #[cfg(feature = "image")]
+    #[test]
+    fn test_from_image_bytes() {
+        // Minimal 2x2 grayscale PNG (hand-crafted)
+        // Use image crate to create in-memory PNG
+        use image::{GrayImage, Luma};
+
+        let mut img = GrayImage::new(4, 4);
+        // Set corners: TL=0, TR=128, BL=64, BR=255
+        img.put_pixel(0, 0, Luma([0u8]));
+        img.put_pixel(3, 0, Luma([128u8]));
+        img.put_pixel(0, 3, Luma([64u8]));
+        img.put_pixel(3, 3, Luma([255u8]));
+
+        // Encode to PNG bytes
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        let png_bytes = buf.into_inner();
+
+        let config = super::HeightmapImageConfig {
+            height_scale: 100.0,
+            world_width: Some(400.0),
+            world_depth: Some(400.0),
+        };
+        let hm = Heightmap::from_image_bytes(&png_bytes, &config).unwrap();
+
+        assert_eq!(hm.width, 4);
+        assert_eq!(hm.depth, 4);
+        assert_eq!(hm.sample_count(), 16);
+        assert!((hm.world_width - 400.0).abs() < 0.001);
+
+        // Top-left should be 0
+        assert!((hm.get_height(0, 0) - 0.0).abs() < 0.01);
+        // Bottom-right should be 100.0
+        assert!((hm.get_height(3, 3) - 100.0).abs() < 0.01);
     }
 }

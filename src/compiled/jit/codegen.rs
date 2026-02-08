@@ -1148,6 +1148,9 @@ fn compile_node(
         => {
             Err(JitError::UnsupportedNode("ComplexModifier".to_string()))
         }
+
+        #[allow(unreachable_patterns)]
+        _ => Err(JitError::UnsupportedNode("NewVariant".to_string()))
     }
 }
 
@@ -1756,5 +1759,8 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
         | SdfNode::Displacement { .. }
         | SdfNode::PolarRepeat { .. }
         => {}
+
+        #[allow(unreachable_patterns)]
+        _ => {}
     }
 }

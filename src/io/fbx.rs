@@ -727,6 +727,167 @@ fn export_fbx_binary(
     Ok(())
 }
 
+// ============================================================
+// FBX ASCII Import
+// ============================================================
+
+/// Import a mesh from FBX file (ASCII format only)
+///
+/// Parses FBX 7.x ASCII format, extracting:
+/// - Vertices (flat x,y,z floats)
+/// - PolygonVertexIndex (negative index encoding for polygon end)
+/// - LayerElementNormal / Normals
+/// - LayerElementUV / UV
+pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    use crate::mesh::Vertex;
+    use glam::{Vec2, Vec3};
+
+    let content = std::fs::read_to_string(path.as_ref())?;
+
+    // Check for binary FBX (starts with "Kaydara FBX Binary")
+    if content.as_bytes().len() >= 23 && &content.as_bytes()[..18] == b"Kaydara FBX Binary" {
+        return Err(IoError::InvalidFormat(
+            "Binary FBX import not supported. Use ASCII FBX or convert to glTF.".into(),
+        ));
+    }
+
+    let mut raw_vertices: Vec<f32> = Vec::new();
+    let mut raw_polygon_indices: Vec<i32> = Vec::new();
+    let mut raw_normals: Vec<f32> = Vec::new();
+    let mut raw_uvs: Vec<f32> = Vec::new();
+
+    // Simple state-machine parser for FBX ASCII
+    let mut in_vertices = false;
+    let mut in_polygon_indices = false;
+    let mut in_normals = false;
+    let mut in_uvs = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Detect sections and pre-allocate from element count in header
+        if trimmed.starts_with("Vertices: *") {
+            if let Some(n_str) = trimmed.strip_prefix("Vertices: *") {
+                if let Ok(n) = n_str.parse::<usize>() { raw_vertices.reserve(n); }
+            }
+            in_vertices = true;
+            continue;
+        }
+        if trimmed.starts_with("PolygonVertexIndex: *") {
+            if let Some(n_str) = trimmed.strip_prefix("PolygonVertexIndex: *") {
+                if let Ok(n) = n_str.parse::<usize>() { raw_polygon_indices.reserve(n); }
+            }
+            in_polygon_indices = true;
+            continue;
+        }
+        if trimmed.starts_with("Normals: *") {
+            if let Some(n_str) = trimmed.strip_prefix("Normals: *") {
+                if let Ok(n) = n_str.parse::<usize>() { raw_normals.reserve(n); }
+            }
+            in_normals = true;
+            continue;
+        }
+        if trimmed.starts_with("UV: *") && !trimmed.starts_with("UVIndex:") {
+            if let Some(n_str) = trimmed.strip_prefix("UV: *") {
+                if let Ok(n) = n_str.parse::<usize>() { raw_uvs.reserve(n); }
+            }
+            in_uvs = true;
+            continue;
+        }
+
+        // Parse "a: val,val,val,..." lines
+        if trimmed.starts_with("a: ") {
+            let data_str = &trimmed[3..];
+            if in_vertices {
+                for tok in data_str.split(',') {
+                    if let Ok(v) = tok.trim().parse::<f32>() {
+                        raw_vertices.push(v);
+                    }
+                }
+                in_vertices = false;
+            } else if in_polygon_indices {
+                for tok in data_str.split(',') {
+                    if let Ok(v) = tok.trim().parse::<i32>() {
+                        raw_polygon_indices.push(v);
+                    }
+                }
+                in_polygon_indices = false;
+            } else if in_normals {
+                for tok in data_str.split(',') {
+                    if let Ok(v) = tok.trim().parse::<f32>() {
+                        raw_normals.push(v);
+                    }
+                }
+                in_normals = false;
+            } else if in_uvs {
+                for tok in data_str.split(',') {
+                    if let Ok(v) = tok.trim().parse::<f32>() {
+                        raw_uvs.push(v);
+                    }
+                }
+                in_uvs = false;
+            }
+        }
+
+        // Close section on "}"
+        if trimmed == "}" {
+            in_vertices = false;
+            in_polygon_indices = false;
+            in_normals = false;
+            in_uvs = false;
+        }
+    }
+
+    if raw_vertices.is_empty() || raw_polygon_indices.is_empty() {
+        return Err(IoError::InvalidFormat("No geometry found in FBX file".into()));
+    }
+
+    let vert_count = raw_vertices.len() / 3;
+    let has_normals = raw_normals.len() / 3 == vert_count;
+    let has_uvs = raw_uvs.len() / 2 == vert_count;
+
+    // Build vertices directly from raw arrays (no intermediate Vec<Vec3> allocation)
+    let mut vertices: Vec<Vertex> = Vec::with_capacity(vert_count);
+    for i in 0..vert_count {
+        let i3 = i * 3;
+        let pos = Vec3::new(raw_vertices[i3], raw_vertices[i3 + 1], raw_vertices[i3 + 2]);
+        let norm = if has_normals {
+            Vec3::new(raw_normals[i3], raw_normals[i3 + 1], raw_normals[i3 + 2]).normalize()
+        } else {
+            Vec3::Y
+        };
+        let mut vert = Vertex::new(pos, norm);
+        if has_uvs {
+            let i2 = i * 2;
+            vert.uv = Vec2::new(raw_uvs[i2], raw_uvs[i2 + 1]);
+        }
+        vertices.push(vert);
+    }
+
+    // Decode polygon indices (negative index = -(c + 1) marks polygon end)
+    let mut indices: Vec<u32> = Vec::new();
+    let mut polygon: Vec<u32> = Vec::new();
+
+    for &idx in &raw_polygon_indices {
+        if idx < 0 {
+            // Last vertex in polygon: real index = -(idx + 1)
+            let real_idx = (-(idx + 1)) as u32;
+            polygon.push(real_idx);
+            // Fan-triangulate the polygon
+            for i in 1..polygon.len().saturating_sub(1) {
+                indices.push(polygon[0]);
+                indices.push(polygon[i] as u32);
+                indices.push(polygon[i + 1] as u32);
+            }
+            polygon.clear();
+        } else {
+            polygon.push(idx as u32);
+        }
+    }
+
+    Ok(Mesh { vertices, indices })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -856,5 +1017,43 @@ mod tests {
         assert_eq!(&bytes[0..21], &FBX_BINARY_MAGIC[0..21]);
 
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_fbx_import_roundtrip() {
+        let sphere = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 8,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+        let orig_verts = mesh.vertex_count();
+        let orig_tris = mesh.indices.len() / 3;
+
+        // Export as ASCII FBX
+        let path = std::env::temp_dir().join("alice_import_test.fbx");
+        export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
+
+        // Import back
+        let imported = import_fbx(&path).unwrap();
+
+        assert_eq!(imported.vertex_count(), orig_verts, "Vertex count mismatch");
+        assert_eq!(imported.indices.len() / 3, orig_tris, "Triangle count mismatch");
+
+        // Check first vertex position is close
+        let orig_pos = mesh.vertices[0].position;
+        let imp_pos = imported.vertices[0].position;
+        assert!((orig_pos - imp_pos).length() < 0.001,
+            "Position mismatch: {:?} vs {:?}", orig_pos, imp_pos);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_fbx_import_empty() {
+        let result = import_fbx("/nonexistent/file.fbx");
+        assert!(result.is_err());
     }
 }

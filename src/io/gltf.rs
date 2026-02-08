@@ -771,6 +771,228 @@ fn build_glb_data(
     Ok((json.into_bytes(), bin))
 }
 
+// ============================================================
+// GLB Import
+// ============================================================
+
+/// Import a mesh from glTF 2.0 Binary (.glb) file
+///
+/// Parses GLB header, JSON chunk, and BIN chunk. Extracts positions,
+/// normals, UVs, and indices from the binary buffer.
+///
+/// # Supported accessor types
+/// - Positions: VEC3 / FLOAT
+/// - Normals: VEC3 / FLOAT
+/// - UVs (TEXCOORD_0): VEC2 / FLOAT
+/// - Indices: SCALAR / UNSIGNED_SHORT or UNSIGNED_INT
+pub fn import_glb(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    let data = std::fs::read(path)?;
+    import_glb_bytes(&data)
+}
+
+/// Import a mesh from in-memory GLB bytes
+pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
+    use crate::mesh::Vertex;
+    use glam::{Vec2, Vec3};
+
+    if data.len() < 12 {
+        return Err(IoError::InvalidFormat("GLB too short for header".into()));
+    }
+
+    // Parse GLB header (12 bytes)
+    let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    if magic != GLB_MAGIC {
+        return Err(IoError::InvalidFormat(format!(
+            "Not a GLB file (magic: 0x{:08X}, expected 0x{:08X})", magic, GLB_MAGIC
+        )));
+    }
+    let _version = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+    let _total_len = u32::from_le_bytes([data[8], data[9], data[10], data[11]]);
+
+    // Parse chunks
+    let mut json_data: Option<&[u8]> = None;
+    let mut bin_data: Option<&[u8]> = None;
+    let mut offset = 12usize;
+
+    while offset + 8 <= data.len() {
+        let chunk_len = u32::from_le_bytes([
+            data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+        ]) as usize;
+        let chunk_type = u32::from_le_bytes([
+            data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7],
+        ]);
+        offset += 8;
+
+        if offset + chunk_len > data.len() {
+            break;
+        }
+
+        match chunk_type {
+            GLB_CHUNK_JSON => json_data = Some(&data[offset..offset + chunk_len]),
+            GLB_CHUNK_BIN => bin_data = Some(&data[offset..offset + chunk_len]),
+            _ => {} // skip unknown chunks
+        }
+        offset += chunk_len;
+    }
+
+    let json_bytes = json_data.ok_or_else(|| IoError::InvalidFormat("Missing JSON chunk".into()))?;
+    let bin_bytes = bin_data.ok_or_else(|| IoError::InvalidFormat("Missing BIN chunk".into()))?;
+
+    // Parse JSON using serde_json::Value (minimal parsing)
+    let root: serde_json::Value = serde_json::from_slice(json_bytes)
+        .map_err(|e| IoError::InvalidFormat(format!("Invalid glTF JSON: {}", e)))?;
+
+    let buffer_views = root["bufferViews"].as_array()
+        .ok_or_else(|| IoError::InvalidFormat("Missing bufferViews".into()))?;
+    let accessors = root["accessors"].as_array()
+        .ok_or_else(|| IoError::InvalidFormat("Missing accessors".into()))?;
+
+    // Get first mesh, first primitive
+    let meshes = root["meshes"].as_array()
+        .ok_or_else(|| IoError::InvalidFormat("Missing meshes".into()))?;
+    if meshes.is_empty() {
+        return Err(IoError::InvalidFormat("No meshes in glTF".into()));
+    }
+    let primitives = meshes[0]["primitives"].as_array()
+        .ok_or_else(|| IoError::InvalidFormat("Missing primitives".into()))?;
+    if primitives.is_empty() {
+        return Err(IoError::InvalidFormat("No primitives in mesh".into()));
+    }
+
+    let prim = &primitives[0];
+    let attrs = &prim["attributes"];
+
+    // Helper: read accessor data from BIN chunk
+    let read_accessor_f32 = |acc_idx: usize| -> Result<Vec<f32>, IoError> {
+        let acc = &accessors[acc_idx];
+        let bv_idx = acc["bufferView"].as_u64().unwrap_or(0) as usize;
+        let bv = &buffer_views[bv_idx];
+        let byte_offset = bv["byteOffset"].as_u64().unwrap_or(0) as usize
+            + acc["byteOffset"].as_u64().unwrap_or(0) as usize;
+        let count = acc["count"].as_u64().unwrap_or(0) as usize;
+        let comp_type = acc["componentType"].as_u64().unwrap_or(0) as u32;
+        let acc_type = acc["type"].as_str().unwrap_or("");
+
+        let components = match acc_type {
+            "SCALAR" => 1,
+            "VEC2" => 2,
+            "VEC3" => 3,
+            "VEC4" => 4,
+            _ => return Err(IoError::InvalidFormat(format!("Unknown accessor type: {}", acc_type))),
+        };
+
+        if comp_type != FLOAT {
+            return Err(IoError::InvalidFormat(format!(
+                "Expected FLOAT component, got {}", comp_type
+            )));
+        }
+
+        let total = count * components;
+        let mut result = Vec::with_capacity(total);
+        let stride = bv.get("byteStride").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let elem_size = components * 4;
+
+        if stride == 0 || stride == elem_size {
+            // Tightly packed: bulk convert with single bounds check
+            let end = byte_offset + total * 4;
+            if end > bin_bytes.len() {
+                return Err(IoError::InvalidFormat("Buffer overrun".into()));
+            }
+            for chunk in bin_bytes[byte_offset..end].chunks_exact(4) {
+                result.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+            }
+        } else {
+            // Strided: per-element access
+            for i in 0..count {
+                let base = byte_offset + i * stride;
+                for c in 0..components {
+                    let off = base + c * 4;
+                    if off + 4 > bin_bytes.len() {
+                        return Err(IoError::InvalidFormat("Buffer overrun".into()));
+                    }
+                    result.push(f32::from_le_bytes([
+                        bin_bytes[off], bin_bytes[off + 1], bin_bytes[off + 2], bin_bytes[off + 3],
+                    ]));
+                }
+            }
+        }
+        Ok(result)
+    };
+
+    // Read positions (required)
+    let pos_idx = attrs["POSITION"].as_u64()
+        .ok_or_else(|| IoError::InvalidFormat("Missing POSITION attribute".into()))? as usize;
+    let positions = read_accessor_f32(pos_idx)?;
+    let vert_count = positions.len() / 3;
+
+    // Read normals (optional)
+    let normals = if let Some(idx) = attrs["NORMAL"].as_u64() {
+        Some(read_accessor_f32(idx as usize)?)
+    } else {
+        None
+    };
+
+    // Read UVs (optional)
+    let uvs = if let Some(idx) = attrs["TEXCOORD_0"].as_u64() {
+        Some(read_accessor_f32(idx as usize)?)
+    } else {
+        None
+    };
+
+    // Build vertices
+    let mut vertices = Vec::with_capacity(vert_count);
+    for i in 0..vert_count {
+        let pos = Vec3::new(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+        let norm = normals.as_ref().map_or(Vec3::Y, |n| {
+            Vec3::new(n[i * 3], n[i * 3 + 1], n[i * 3 + 2])
+        });
+        let mut vert = Vertex::new(pos, norm);
+        if let Some(ref uv_data) = uvs {
+            vert.uv = Vec2::new(uv_data[i * 2], uv_data[i * 2 + 1]);
+        }
+        vertices.push(vert);
+    }
+
+    // Read indices
+    let mut indices = Vec::new();
+    if let Some(idx_acc) = prim["indices"].as_u64() {
+        let acc = &accessors[idx_acc as usize];
+        let bv_idx = acc["bufferView"].as_u64().unwrap_or(0) as usize;
+        let bv = &buffer_views[bv_idx];
+        let byte_offset = bv["byteOffset"].as_u64().unwrap_or(0) as usize
+            + acc["byteOffset"].as_u64().unwrap_or(0) as usize;
+        let count = acc["count"].as_u64().unwrap_or(0) as usize;
+        let comp_type = acc["componentType"].as_u64().unwrap_or(0) as u32;
+
+        indices.reserve(count);
+        for i in 0..count {
+            let idx = match comp_type {
+                UNSIGNED_SHORT => {
+                    let off = byte_offset + i * 2;
+                    u16::from_le_bytes([bin_bytes[off], bin_bytes[off + 1]]) as u32
+                }
+                UNSIGNED_INT => {
+                    let off = byte_offset + i * 4;
+                    u32::from_le_bytes([
+                        bin_bytes[off], bin_bytes[off + 1], bin_bytes[off + 2], bin_bytes[off + 3],
+                    ])
+                }
+                _ => {
+                    return Err(IoError::InvalidFormat(format!(
+                        "Unsupported index type: {}", comp_type
+                    )));
+                }
+            };
+            indices.push(idx);
+        }
+    } else {
+        // No indices: generate sequential indices
+        indices = (0..vert_count as u32).collect();
+    }
+
+    Ok(Mesh { vertices, indices })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1026,5 +1248,62 @@ mod tests {
         assert!(json_str.contains("KHR_materials_volume"), "Missing volume extension");
         assert!(json_str.contains("KHR_materials_sheen"), "Missing sheen extension");
         assert!(json_str.contains("extensionsUsed"), "Missing extensionsUsed");
+    }
+
+    #[test]
+    fn test_glb_import_roundtrip() {
+        let sphere = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 8,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+        let orig_verts = mesh.vertex_count();
+        let orig_tris = mesh.indices.len() / 3;
+
+        // Export to GLB bytes
+        let glb_bytes = export_glb_bytes(&mesh, &GltfConfig::default(), None).unwrap();
+
+        // Import back
+        let imported = import_glb_bytes(&glb_bytes).unwrap();
+
+        assert_eq!(imported.vertex_count(), orig_verts, "Vertex count mismatch");
+        assert_eq!(imported.indices.len() / 3, orig_tris, "Triangle count mismatch");
+
+        // Check first vertex position is close
+        let orig_pos = mesh.vertices[0].position;
+        let imp_pos = imported.vertices[0].position;
+        assert!((orig_pos - imp_pos).length() < 0.001,
+            "Position mismatch: {:?} vs {:?}", orig_pos, imp_pos);
+    }
+
+    #[test]
+    fn test_glb_import_file_roundtrip() {
+        let sphere = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 4,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        let path = std::env::temp_dir().join("alice_import_test.glb");
+        export_glb(&mesh, &path, &GltfConfig::default(), None).unwrap();
+
+        let imported = import_glb(&path).unwrap();
+        assert_eq!(imported.vertex_count(), mesh.vertex_count());
+        assert_eq!(imported.indices.len(), mesh.indices.len());
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_glb_import_invalid() {
+        assert!(import_glb_bytes(&[]).is_err());
+        assert!(import_glb_bytes(&[0u8; 12]).is_err());
+        assert!(import_glb_bytes(b"not a glb file at all").is_err());
     }
 }

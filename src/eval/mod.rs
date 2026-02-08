@@ -118,6 +118,59 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::FischerKochS { scale, thickness } => sdf_fischer_koch_s(point, *scale, *thickness),
         SdfNode::PMY { scale, thickness } => sdf_pmy(point, *scale, *thickness),
 
+        // === 2D Primitives (extruded along Z) ===
+        SdfNode::Circle2D { radius, half_height } => {
+            let d2d = Vec2::new(point.x, point.y).length() - radius;
+            let dz = point.z.abs() - half_height;
+            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
+        }
+        SdfNode::Rect2D { half_extents, half_height } => {
+            let d = Vec2::new(point.x.abs() - half_extents.x, point.y.abs() - half_extents.y);
+            let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0);
+            let dz = point.z.abs() - half_height;
+            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
+        }
+        SdfNode::Segment2D { a, b, thickness, half_height } => {
+            let p2 = Vec2::new(point.x, point.y);
+            let pa = p2 - *a;
+            let ba = *b - *a;
+            let h = (pa.dot(ba) / ba.dot(ba)).clamp(0.0, 1.0);
+            let d2d = (pa - ba * h).length() - thickness;
+            let dz = point.z.abs() - half_height;
+            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
+        }
+        SdfNode::Polygon2D { vertices, half_height } => {
+            let p2 = Vec2::new(point.x, point.y);
+            let n = vertices.len();
+            if n < 3 { return 1e10; }
+            let mut d = (p2 - vertices[0]).length_squared();
+            let mut s = 1.0_f32;
+            let mut j = n - 1;
+            for i in 0..n {
+                let e = vertices[j] - vertices[i];
+                let w = p2 - vertices[i];
+                let b_proj = w - e * (w.dot(e) / e.dot(e)).clamp(0.0, 1.0);
+                d = d.min(b_proj.dot(b_proj));
+                let c = [p2.y >= vertices[i].y, p2.y < vertices[j].y, e.x * w.y > e.y * w.x];
+                if c.iter().all(|x| *x) || c.iter().all(|x| !*x) { s = -s; }
+                j = i;
+            }
+            let d2d = s * d.sqrt();
+            let dz = point.z.abs() - half_height;
+            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
+        }
+        SdfNode::RoundedRect2D { half_extents, round_radius, half_height } => {
+            let d = Vec2::new(point.x.abs() - half_extents.x + round_radius, point.y.abs() - half_extents.y + round_radius);
+            let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0) - round_radius;
+            let dz = point.z.abs() - half_height;
+            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
+        }
+        SdfNode::Annular2D { outer_radius, thickness, half_height } => {
+            let d2d = (Vec2::new(point.x, point.y).length() - outer_radius).abs() - thickness;
+            let dz = point.z.abs() - half_height;
+            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
+        }
+
         // === Operations ===
         // Recurse first, then combine. Compiler can reorder these instruction streams.
         SdfNode::Union { a, b } => {
@@ -225,6 +278,27 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d2 = eval(b, point);
             sdf_tongue(d1, d2, *ra, *rb)
         }
+        SdfNode::ExpSmoothUnion { a, b, k } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            let k = k.max(1e-6);
+            let res = (-d1 / k).exp() + (-d2 / k).exp();
+            -res.ln() * k
+        }
+        SdfNode::ExpSmoothIntersection { a, b, k } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            let k = k.max(1e-6);
+            let res = (d1 / k).exp() + (d2 / k).exp();
+            res.ln() * k
+        }
+        SdfNode::ExpSmoothSubtraction { a, b, k } => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            let k = k.max(1e-6);
+            let res = (d1 / k).exp() + (-d2 / k).exp();
+            res.ln() * k
+        }
 
         // === Transforms ===
         // Transform point, then recurse.
@@ -317,9 +391,25 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let p = modifier_sweep_bezier(point, *p0, *p1, *p2);
             eval(child, p)
         }
+        SdfNode::Shear { child, shear } => {
+            // Inverse shear: subtract shear contributions
+            let p = Vec3::new(
+                point.x,
+                point.y - shear.x * point.x,
+                point.z - shear.y * point.x - shear.z * point.y,
+            );
+            eval(child, p)
+        }
+        SdfNode::Animated { child, .. } => {
+            // Static evaluation: animation is time-dependent, evaluate child as-is
+            eval(child, point)
+        }
 
         // Material assignment is transparent for distance evaluation
         SdfNode::WithMaterial { child, .. } => eval(child, point),
+
+        #[allow(unreachable_patterns)]
+        _ => todo!("new SdfNode variant in eval"),
     }
 }
 

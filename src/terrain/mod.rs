@@ -35,6 +35,8 @@ pub mod caves;
 use glam::Vec3;
 
 pub use heightmap::Heightmap;
+#[cfg(feature = "image")]
+pub use heightmap::HeightmapImageConfig;
 pub use clipmap::{ClipmapTerrain, ClipmapLevel, ClipmapMesh};
 pub use splatmap::{Splatmap, SplatLayer};
 pub use erosion::{erode, ErosionConfig};

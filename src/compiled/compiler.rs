@@ -658,6 +658,9 @@ impl Compiler {
             SdfNode::WithMaterial { child, .. } => {
                 self.compile_node(child);
             }
+
+            #[allow(unreachable_patterns)]
+            _ => {} // new variants handled later
         }
     }
 }

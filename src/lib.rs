@@ -136,12 +136,14 @@ pub mod prelude {
         VhacdConfig, ConvexDecomposition, convex_decomposition,
         // UV unwrapping (LSCM)
         uv_unwrap, apply_uvs, UvUnwrapConfig, UvUnwrapResult, UvChart,
+        // Point cloud SDF
+        PointCloudSdf, PointCloudSdfConfig, point_cloud_to_sdf,
     };
     pub use crate::io::{
         save, load, save_asdf, load_asdf, save_asdf_json, load_asdf_json, get_info,
         export_obj, import_obj, ObjConfig,
-        export_glb, export_gltf_json, GltfConfig,
-        export_fbx, FbxConfig, FbxFormat, FbxUpAxis,
+        export_glb, export_glb_bytes, export_gltf_json, import_glb, import_glb_bytes, GltfConfig,
+        export_fbx, import_fbx, FbxConfig, FbxFormat, FbxUpAxis,
         export_usda, UsdConfig, UsdUpAxis,
         export_alembic, AlembicConfig,
         export_nanite, export_nanite_with_config, export_nanite_json, NaniteExportConfig,
@@ -173,6 +175,8 @@ pub mod prelude {
         ErosionConfig, erode,
         CaveConfig, generate_cave_sdf,
     };
+    #[cfg(all(feature = "terrain", feature = "image"))]
+    pub use crate::terrain::HeightmapImageConfig;
     #[cfg(feature = "destruction")]
     pub use crate::destruction::{
         MutableVoxelGrid, ChunkMesh,
