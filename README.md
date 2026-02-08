@@ -26,12 +26,13 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **54 primitives, 12 operations, 4 transforms, 15 modifiers** - rich shape vocabulary
+- **53 primitives, 12 operations, 4 transforms, 15 modifiers** - rich shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
 - **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
 - **Neural SDF** - pure-Rust MLP that approximates an SDF tree ~10-100x faster for complex scenes
 - **SDF-to-SDF Collision** - grid-based contact detection with interval arithmetic AABB pruning
+- **Analytic Gradient** - single-pass gradient via chain rules and Jacobian propagation (9 analytic + 44 numerical-fallback primitives)
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
 - **Engine integrations** - Unity, Unreal Engine 5, VRChat, Godot, WebAssembly
@@ -265,7 +266,7 @@ An SDF returns the shortest distance from any point to the surface:
 
 ```
 SdfNode
-  |-- Primitive (54): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- Primitive (53): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -273,14 +274,14 @@ SdfNode
   |                    Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
   |                    Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
   |                    ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
-  |                    RegularPolygon, StarPolygon, Stairs, Helix, Sweep
+  |                    RegularPolygon, StarPolygon, Stairs, Helix
   |-- Operation (12): Union, Intersection, Subtraction,
   |                    SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |                    ChamferUnion, ChamferIntersection, ChamferSubtraction,
   |                    StairsUnion, StairsIntersection, StairsSubtraction
   |-- Transform (4): Translate, Rotate, Scale, ScaleNonUniform
   |-- Modifier (15): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
-  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, Symmetry
+  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier
   +-- WithMaterial: PBR material assignment (transparent to distance evaluation)
 ```
 
@@ -567,6 +568,7 @@ Layer 16: interval.rs       -- Interval arithmetic evaluation + Lipschitz bounds
 Specialized modules:
   neural.rs     -- Neural SDF (MLP approximation, training, inference)
   collision.rs  -- SDF-to-SDF contact detection with IA pruning
+  eval/gradient -- Analytic gradient (chain rules, Jacobian propagation)
 ```
 
 ### Evaluation Modes
@@ -708,6 +710,34 @@ let dist = sdf_distance(&a, &b, &aabb, 16);
 | `sdf_distance()` | Minimum separation distance (upper bound) |
 
 All functions use interval arithmetic to skip grid cells where either SDF is provably positive, typically pruning 80-95% of cells.
+
+## Analytic Gradient
+
+Single-pass gradient computation via chain rules and Jacobian transpose propagation. Replaces the default 6-evaluation finite-difference method with analytic derivatives where possible.
+
+```rust
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5).translate(1.0, 0.0, 0.0), 0.3);
+
+// Analytic gradient (single tree pass)
+let grad = eval_gradient(&shape, Vec3::new(0.5, 0.0, 0.0));
+
+// Analytic normal (normalized gradient)
+let n = eval_normal(&shape, Vec3::new(0.5, 0.0, 0.0));
+```
+
+| Component | Method | Coverage |
+|-----------|--------|----------|
+| **9 primitives** | Closed-form analytic | Sphere, Box3d, Plane, Cylinder, Torus, Capsule, InfiniteCylinder, Gyroid, SchwarzP |
+| **44 primitives** | Numerical fallback (6 leaf evals) | All remaining complex primitives |
+| **12 operations** | Chain rule | Union, Intersection, Subtraction + Smooth/Chamfer/Stairs variants |
+| **4 transforms** | Jacobian transpose | Translate, Rotate, Scale, ScaleNonUniform |
+| **10 modifiers** | Analytic Jacobian | Round, Onion, Elongate, Mirror, Revolution, Extrude, Twist, Bend, RepeatInfinite, RepeatFinite |
+| **5 modifiers** | Numerical fallback | Noise, Taper, Displacement, PolarRepeat, SweepBezier |
+
+For a tree of depth D with N leaf nodes, the standard numerical gradient requires `6 × (full tree eval)`. The analytic gradient requires at most N leaf evaluations plus ~6 per complex leaf — significantly cheaper for deep trees.
 
 ### Manifold Mesh Guarantee
 
@@ -974,7 +1004,7 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-636+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision). With `--features jit`, 650+ tests including JIT scalar and JIT SIMD backends.
+660+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 674+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test

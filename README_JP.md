@@ -26,12 +26,13 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **54プリミティブ、12演算、4トランスフォーム、15モディファイア** - 豊富なシェイプボキャブラリ
+- **53プリミティブ、12演算、4トランスフォーム、15モディファイア** - 豊富なシェイプボキャブラリ
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
 - **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
 - **緩和球トレーシング（Relaxed Sphere Tracing）** - リプシッツ適応ステップサイズによるオーバーリラクゼーション
 - **ニューラルSDF** - 複雑シーンを~10-100倍高速に近似する純Rust MLP
 - **SDF対SDFコリジョン** - 区間演算AABBプルーニング付きグリッドベース接触検出
+- **解析的勾配（Analytic Gradient）** - 連鎖律とヤコビアン伝播による単一パス勾配計算（9解析+44数値フォールバックプリミティブ）
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
 - **エンジン統合** - Unity、Unreal Engine 5、VRChat、Godot、WebAssembly
@@ -265,7 +266,7 @@ SDFは任意の点から表面までの最短距離を返します:
 
 ```
 SdfNode
-  |-- プリミティブ (54): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- プリミティブ (53): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -273,14 +274,14 @@ SdfNode
   |                    Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
   |                    Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
   |                    ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
-  |                    RegularPolygon, StarPolygon, Stairs, Helix, Sweep
+  |                    RegularPolygon, StarPolygon, Stairs, Helix
   |-- 演算 (12): Union, Intersection, Subtraction,
   |              SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |              ChamferUnion, ChamferIntersection, ChamferSubtraction,
   |              StairsUnion, StairsIntersection, StairsSubtraction
   |-- トランスフォーム (4): Translate, Rotate, Scale, ScaleNonUniform
   |-- モディファイア (15): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
-  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, Symmetry
+  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier
   +-- WithMaterial: PBRマテリアル割り当て（距離評価に対して透過的）
 ```
 
@@ -567,6 +568,7 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
 専門モジュール:
   neural.rs     -- ニューラルSDF（MLP近似、訓練、推論）
   collision.rs  -- SDF対SDF接触検出（区間演算プルーニング付き）
+  eval/gradient -- 解析的勾配（連鎖律、ヤコビアン伝播）
 ```
 
 ### 評価モード
@@ -708,6 +710,34 @@ let dist = sdf_distance(&a, &b, &aabb, 16);
 | `sdf_distance()` | 最小分離距離（上界） |
 
 全関数で区間演算によりいずれかのSDFが正であることが証明可能なセルをスキップし、通常80-95%のセルをプルーニング。
+
+## 解析的勾配（Analytic Gradient）
+
+連鎖律とヤコビアン転置伝播による単一パス勾配計算。デフォルトの6評価有限差分法を、可能な限り解析的導関数で置き換えます。
+
+```rust
+use alice_sdf::prelude::*;
+
+let shape = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5).translate(1.0, 0.0, 0.0), 0.3);
+
+// 解析的勾配（単一ツリーパス）
+let grad = eval_gradient(&shape, Vec3::new(0.5, 0.0, 0.0));
+
+// 解析的法線（正規化勾配）
+let n = eval_normal(&shape, Vec3::new(0.5, 0.0, 0.0));
+```
+
+| コンポーネント | 手法 | カバレッジ |
+|-----------|--------|----------|
+| **9プリミティブ** | 閉形式解析解 | Sphere, Box3d, Plane, Cylinder, Torus, Capsule, InfiniteCylinder, Gyroid, SchwarzP |
+| **44プリミティブ** | 数値フォールバック（6リーフeval） | 残りの全複雑プリミティブ |
+| **12演算** | 連鎖律 | Union, Intersection, Subtraction + Smooth/Chamfer/Stairs変種 |
+| **4トランスフォーム** | ヤコビアン転置 | Translate, Rotate, Scale, ScaleNonUniform |
+| **10モディファイア** | 解析的ヤコビアン | Round, Onion, Elongate, Mirror, Revolution, Extrude, Twist, Bend, RepeatInfinite, RepeatFinite |
+| **5モディファイア** | 数値フォールバック | Noise, Taper, Displacement, PolarRepeat, SweepBezier |
+
+深さDでNリーフノードを持つツリーの場合、標準的な数値勾配は`6 × (フルツリー評価)`を要します。解析的勾配は最大N回のリーフ評価+複雑リーフあたり~6回で済み、深いツリーでは大幅にコスト削減できます。
 
 ### マニフォールドメッシュ保証
 
@@ -911,7 +941,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる636以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン）。`--features jit`で650以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる660以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で674以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test
@@ -1093,7 +1123,7 @@ ALICE-SDFはWebAssemblyでブラウザ上で動作し、WebGPU/Canvas2Dをサポ
 npm install @alice-sdf/wasm
 ```
 
-TypeScript型定義を完備。54プリミティブ、CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
+TypeScript型定義を完備。53プリミティブ、CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
 
 ### WASMデモのビルド
 

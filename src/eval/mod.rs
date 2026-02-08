@@ -10,8 +10,10 @@
 //! Author: Moroya Sakamoto
 
 pub mod parallel;
+pub mod gradient;
 
 pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
+pub use gradient::{eval_gradient, eval_normal};
 
 use crate::modifiers::*;
 use crate::operations::*;
