@@ -983,6 +983,26 @@ float dist = sdf.Eval(new Vector3(0.5f, 0f, 0f));
 pip install alice-sdf  # or: maturin develop --features python
 ```
 
+```python
+import alice_sdf as sdf
+
+# Create & evaluate
+node = sdf.sphere(1.0)
+d = node.eval(0.0, 0.0, 0.0)       # -1.0
+
+# Analytic gradient (GIL released)
+gx, gy, gz = node.gradient(1.0, 0.0, 0.0)  # (1.0, 0.0, 0.0)
+
+# Auto tight AABB (Rayon parallel, GIL released)
+(min_xyz, max_xyz) = node.tight_aabb()      # ((-1.0,-1.0,-1.0), (1.0,1.0,1.0))
+
+# CSG tree optimization (GIL released)
+optimized = node.translate(0, 0, 0).optimize()  # identity removed
+
+# Dual contouring mesh (sharp edges, GIL released, NumPy zero-copy)
+verts, indices = sdf.to_mesh_dual_contouring(node, (-2,-2,-2), (2,2,2), resolution=64)
+```
+
 ### FFI Mesh Export
 
 | Function | Format | Notes |

@@ -982,6 +982,26 @@ float dist = sdf.Eval(new Vector3(0.5f, 0f, 0f));
 pip install alice-sdf  # または: maturin develop --features python
 ```
 
+```python
+import alice_sdf as sdf
+
+# 作成 & 評価
+node = sdf.sphere(1.0)
+d = node.eval(0.0, 0.0, 0.0)       # -1.0
+
+# 解析的勾配（GIL解放）
+gx, gy, gz = node.gradient(1.0, 0.0, 0.0)  # (1.0, 0.0, 0.0)
+
+# 自動タイトAABB（Rayon並列、GIL解放）
+(min_xyz, max_xyz) = node.tight_aabb()      # ((-1.0,-1.0,-1.0), (1.0,1.0,1.0))
+
+# CSGツリー最適化（GIL解放）
+optimized = node.translate(0, 0, 0).optimize()  # 恒等変換除去
+
+# Dual Contouringメッシュ（シャープエッジ保持、GIL解放、NumPyゼロコピー）
+verts, indices = sdf.to_mesh_dual_contouring(node, (-2,-2,-2), (2,2,2), resolution=64)
+```
+
 ### FFIメッシュエクスポート
 
 | 関数 | フォーマット | 説明 |

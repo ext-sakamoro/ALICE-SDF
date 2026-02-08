@@ -187,6 +187,49 @@ impl PySdfNode {
         py.allow_threads(|| eval(inner, Vec3::new(x, y, z)))
     }
 
+    /// Compute analytic gradient at a point (GIL released)
+    ///
+    /// Returns (gx, gy, gz) gradient vector. For exact SDFs, |g| ≈ 1.
+    fn gradient(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+        let inner = &self.inner;
+        let g = py.allow_threads(|| crate::eval::eval_gradient(inner, Vec3::new(x, y, z)));
+        (g.x, g.y, g.z)
+    }
+
+    /// Compute tight AABB for the SDF surface (GIL released, Rayon parallel)
+    ///
+    /// Returns ((min_x, min_y, min_z), (max_x, max_y, max_z)).
+    #[pyo3(signature = (initial_half_size=10.0, bisection_iterations=20, coarse_subdivisions=8))]
+    fn tight_aabb(
+        &self,
+        py: Python<'_>,
+        initial_half_size: f32,
+        bisection_iterations: u32,
+        coarse_subdivisions: u32,
+    ) -> ((f32, f32, f32), (f32, f32, f32)) {
+        use crate::tight_aabb::{compute_tight_aabb_with_config, TightAabbConfig};
+        let config = TightAabbConfig {
+            initial_half_size,
+            bisection_iterations,
+            coarse_subdivisions,
+        };
+        let inner = &self.inner;
+        let aabb = py.allow_threads(|| compute_tight_aabb_with_config(inner, &config));
+        (
+            (aabb.min.x, aabb.min.y, aabb.min.z),
+            (aabb.max.x, aabb.max.y, aabb.max.z),
+        )
+    }
+
+    /// Optimize CSG tree by removing identity nodes and merging transforms (GIL released)
+    ///
+    /// Returns a new optimized SdfNode.
+    fn optimize(&self, py: Python<'_>) -> Self {
+        let inner = &self.inner;
+        let optimized = py.allow_threads(|| crate::optimize::optimize(inner));
+        PySdfNode { inner: optimized }
+    }
+
     /// Get node count
     fn node_count(&self) -> u32 {
         self.inner.node_count()
@@ -432,6 +475,34 @@ fn to_mesh_adaptive<'py>(
     let node_ref = &node.inner;
     let mesh = py.allow_threads(|| {
         crate::mesh::adaptive_marching_cubes(node_ref, min, max, &config)
+    });
+    mesh_to_numpy(py, &mesh)
+}
+
+/// Convert SDF to mesh using Dual Contouring (sharp edges, QEF vertex placement)
+#[pyfunction]
+#[pyo3(signature = (node, bounds_min, bounds_max, resolution=64))]
+fn to_mesh_dual_contouring<'py>(
+    py: Python<'py>,
+    node: &PySdfNode,
+    bounds_min: (f32, f32, f32),
+    bounds_max: (f32, f32, f32),
+    resolution: usize,
+) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
+    use crate::mesh::{dual_contouring, DualContouringConfig};
+
+    let config = DualContouringConfig {
+        resolution,
+        compute_normals: true,
+        ..Default::default()
+    };
+
+    let min = Vec3::new(bounds_min.0, bounds_min.1, bounds_min.2);
+    let max = Vec3::new(bounds_max.0, bounds_max.1, bounds_max.2);
+
+    let node_ref = &node.inner;
+    let mesh = py.allow_threads(|| {
+        dual_contouring(node_ref, min, max, &config)
     });
     mesh_to_numpy(py, &mesh)
 }
@@ -1217,6 +1288,7 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(eval_compiled_batch_soa, m)?)?;
     m.add_function(wrap_pyfunction!(to_mesh, m)?)?;
     m.add_function(wrap_pyfunction!(to_mesh_adaptive, m)?)?;
+    m.add_function(wrap_pyfunction!(to_mesh_dual_contouring, m)?)?;
     m.add_function(wrap_pyfunction!(decimate_mesh, m)?)?;
     m.add_function(wrap_pyfunction!(export_obj, m)?)?;
     m.add_function(wrap_pyfunction!(export_glb, m)?)?;
