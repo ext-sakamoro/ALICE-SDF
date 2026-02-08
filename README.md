@@ -33,6 +33,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
 - **Neural SDF** - pure-Rust MLP that approximates an SDF tree ~10-100x faster for complex scenes
 - **SDF-to-SDF Collision** - grid-based contact detection with interval arithmetic AABB pruning
+- **CSG Tree Optimization** - identity transform/modifier removal, nested transform merging, smooth→standard demotion
 - **Analytic Gradient** - single-pass gradient via chain rules and Jacobian propagation (9 analytic + 44 numerical-fallback primitives)
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
@@ -571,6 +572,7 @@ Specialized modules:
   collision.rs  -- SDF-to-SDF contact detection with IA pruning
   eval/gradient -- Analytic gradient (chain rules, Jacobian propagation)
   mesh/dual_contouring -- Dual Contouring (QEF vertex placement, sharp edges)
+  optimize.rs   -- CSG tree optimization (identity folding, transform merging)
 ```
 
 ### Evaluation Modes
@@ -769,6 +771,35 @@ let mesh_fast = dual_contouring_compiled(&compiled, Vec3::splat(-2.0), Vec3::spl
 | Vertex placement | Edge intersections | QEF-optimal per cell |
 | Topology | Triangles from lookup table | Quads from shared edges |
 | Best for | Organic shapes | Hard-surface / CAD models |
+
+## CSG Tree Optimization
+
+Reduces SDF tree size by removing redundant nodes before evaluation or mesh generation.
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::optimize::{optimize, optimization_stats};
+
+let shape = SdfNode::sphere(1.0)
+    .translate(0.0, 0.0, 0.0)  // identity → removed
+    .scale(1.0)                 // identity → removed
+    .translate(1.0, 0.0, 0.0)
+    .translate(0.0, 2.0, 0.0); // merges → Translate(1, 2, 0)
+
+let optimized = optimize(&shape);
+let stats = optimization_stats(&shape, &optimized);
+println!("{}", stats); // "5 → 2 nodes (3 removed, 60.0% reduction)"
+```
+
+| Optimization | Before | After |
+|-------------|--------|-------|
+| `Translate(0,0,0)` | 2 nodes | 1 node (child only) |
+| `Scale(1.0)` / `Rotate(identity)` | 2 nodes | 1 node |
+| `Translate(Translate(c,a),b)` | 3 nodes | 2 nodes (`Translate(c,a+b)`) |
+| `Scale(Scale(c,a),b)` | 3 nodes | 2 nodes (`Scale(c,a*b)`) |
+| `Rotate(Rotate(c,r1),r2)` | 3 nodes | 2 nodes (`Rotate(c,r2*r1)`) |
+| `SmoothUnion(k=0)` | 3 nodes | 3 nodes (demoted to `Union`) |
+| `Round(0.0)` / `Twist(0.0)` / `Bend(0.0)` | 2 nodes | 1 node |
 
 ### Manifold Mesh Guarantee
 
@@ -1035,7 +1066,7 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-670+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 684+ tests including JIT scalar and JIT SIMD backends.
+684+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient). With `--features jit`, 698+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test

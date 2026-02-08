@@ -33,6 +33,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **緩和球トレーシング（Relaxed Sphere Tracing）** - リプシッツ適応ステップサイズによるオーバーリラクゼーション
 - **ニューラルSDF** - 複雑シーンを~10-100倍高速に近似する純Rust MLP
 - **SDF対SDFコリジョン** - 区間演算AABBプルーニング付きグリッドベース接触検出
+- **CSGツリー最適化** - 恒等変換/モディファイア除去、ネスト変換マージ、Smooth→Standard降格
 - **解析的勾配（Analytic Gradient）** - 連鎖律とヤコビアン伝播による単一パス勾配計算（9解析+44数値フォールバックプリミティブ）
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
@@ -571,6 +572,7 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
   collision.rs  -- SDF対SDF接触検出（区間演算プルーニング付き）
   eval/gradient -- 解析的勾配（連鎖律、ヤコビアン伝播）
   mesh/dual_contouring -- Dual Contouring（QEF頂点配置、シャープエッジ）
+  optimize.rs   -- CSGツリー最適化（恒等変換除去、変換マージ）
 ```
 
 ### 評価モード
@@ -769,6 +771,34 @@ let mesh_fast = dual_contouring_compiled(&compiled, Vec3::splat(-2.0), Vec3::spl
 | 頂点配置 | エッジ交差点 | QEF最適化（セルごと） |
 | トポロジー | ルックアップテーブルから三角形 | 共有エッジから四角形 |
 | 最適な用途 | 有機的形状 | ハードサーフェス / CADモデル |
+
+## CSGツリー最適化
+
+評価やメッシュ生成の前に冗長ノードを除去し、SDFツリーサイズを削減します。
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::optimize::{optimize, optimization_stats};
+
+let shape = SdfNode::sphere(1.0)
+    .translate(0.0, 0.0, 0.0)  // 恒等変換 → 除去
+    .scale(1.0)                 // 恒等変換 → 除去
+    .translate(1.0, 0.0, 0.0)
+    .translate(0.0, 2.0, 0.0); // マージ → Translate(1, 2, 0)
+
+let optimized = optimize(&shape);
+let stats = optimization_stats(&shape, &optimized);
+println!("{}", stats); // "5 → 2 nodes (3 removed, 60.0% reduction)"
+```
+
+| 最適化 | 変換前 | 変換後 |
+|-------|--------|-------|
+| `Translate(0,0,0)` | 2ノード | 1ノード（子のみ） |
+| `Scale(1.0)` / `Rotate(identity)` | 2ノード | 1ノード |
+| `Translate(Translate(c,a),b)` | 3ノード | 2ノード（`Translate(c,a+b)`） |
+| `Scale(Scale(c,a),b)` | 3ノード | 2ノード（`Scale(c,a*b)`） |
+| `SmoothUnion(k=0)` | 3ノード | 3ノード（`Union`に降格） |
+| `Round(0.0)` / `Twist(0.0)` | 2ノード | 1ノード |
 
 ### マニフォールドメッシュ保証
 
@@ -972,7 +1002,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる670以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で684以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる684以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配）。`--features jit`で698以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test

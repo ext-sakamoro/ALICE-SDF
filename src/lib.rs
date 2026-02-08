@@ -61,6 +61,7 @@ pub mod crispy;
 pub mod interval;
 pub mod neural;
 pub mod collision;
+pub mod optimize;
 
 #[cfg(feature = "python")]
 pub mod python;
