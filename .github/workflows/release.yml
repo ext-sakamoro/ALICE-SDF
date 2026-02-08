@@ -18,7 +18,7 @@ jobs:
             lib_name: libalice_sdf.dylib
             platform: macOS
             lib_dir: Mac
-          - os: macos-13
+          - os: macos-15
             target: x86_64-apple-darwin
             lib_name: libalice_sdf.dylib
             platform: macOS-Intel
@@ -58,6 +58,7 @@ jobs:
       - name: Build release library
         run: cargo build --release --features "ffi,hlsl,glsl" --target ${{ matrix.target }}
 
+      # ── UE5 Plugin ──
       - name: Package UE5 plugin
         shell: bash
         run: |
@@ -76,7 +77,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.lib_name }}" \
              "$PLUGIN_DIR/ThirdParty/AliceSDF/lib/${{ matrix.lib_dir }}/"
 
-      - name: Create ZIP
+      - name: Create UE5 ZIP
         shell: bash
         run: |
           if [ "${{ matrix.platform }}" = "Win64" ]; then
@@ -85,13 +86,67 @@ jobs:
             zip -r "AliceSDF-UE5-Plugin-${{ matrix.platform }}.zip" AliceSDF/
           fi
 
+      # ── Unity Plugin ──
+      - name: Package Unity plugin
+        shell: bash
+        run: |
+          UNITY_DIR="AliceSDF-Unity"
+          mkdir -p "$UNITY_DIR/Plugins/${{ matrix.lib_dir }}"
+
+          # C# bindings
+          cp bindings/AliceSdf.cs "$UNITY_DIR/"
+
+          # C header (for advanced users)
+          cp include/alice_sdf.h "$UNITY_DIR/"
+
+          # Native library
+          cp "target/${{ matrix.target }}/release/${{ matrix.lib_name }}" \
+             "$UNITY_DIR/Plugins/${{ matrix.lib_dir }}/"
+
+      - name: Create Unity ZIP
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "Win64" ]; then
+            7z a "AliceSDF-Unity-Plugin-${{ matrix.platform }}.zip" AliceSDF-Unity/
+          else
+            zip -r "AliceSDF-Unity-Plugin-${{ matrix.platform }}.zip" AliceSDF-Unity/
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: plugin-${{ matrix.platform }}
-          path: AliceSDF-UE5-Plugin-${{ matrix.platform }}.zip
+          path: |
+            AliceSDF-UE5-Plugin-${{ matrix.platform }}.zip
+            AliceSDF-Unity-Plugin-${{ matrix.platform }}.zip
+
+  # ── VRChat Package (pure C#, platform-independent) ──
+  vrchat:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package VRChat
+        run: |
+          cd vrchat-package
+          zip -r ../AliceSDF-VRChat-Package.zip \
+            package.json \
+            README.md \
+            README_JP.md \
+            CHANGELOG.md \
+            Runtime/ \
+            Editor/ \
+            Samples~/ \
+            Prefabs~/ \
+            -x "*.meta" "Library/*" "Logs/*" "UserSettings/*" "ProjectSettings/*" "Packages/*" "Assets/*"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vrchat-package
+          path: AliceSDF-VRChat-Package.zip
 
   release:
-    needs: build
+    needs: [build, vrchat]
     runs-on: ubuntu-latest
 
     steps:
@@ -99,8 +154,14 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: List release assets
+        run: ls -la *.zip
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: AliceSDF-UE5-Plugin-*.zip
+          files: |
+            AliceSDF-UE5-Plugin-*.zip
+            AliceSDF-Unity-Plugin-*.zip
+            AliceSDF-VRChat-Package.zip
           generate_release_notes: true
