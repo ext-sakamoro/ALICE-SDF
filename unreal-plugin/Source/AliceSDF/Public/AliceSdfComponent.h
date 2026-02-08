@@ -368,6 +368,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
 	void RotateEulerSdf(FVector EulerRadians);
 
+	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Transforms")
+	void RotateQuatSdf(FQuat Rotation);
+
 	// ========================================================================
 	// Modifiers
 	// ========================================================================

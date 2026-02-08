@@ -1,7 +1,7 @@
 // =============================================================================
 // AliceSDF_Primitives.cs - Pure C# SDF Functions for UdonSharp
 // =============================================================================
-// All 6 primitives + operations + transforms ported from ALICE-SDF Rust engine.
+// 22 primitives + operations + transforms ported from ALICE-SDF Rust engine.
 // No DllImport - works in VRChat's UdonSharp sandbox.
 //
 // These functions mirror the HLSL versions in AliceSDF_Include.cginc exactly,
@@ -66,48 +66,10 @@ namespace AliceSDF
         {
             Vector3 pa = p - a;
             Vector3 ba = b - a;
-            float h = Mathf.Clamp01(Vector3.Dot(pa, ba) / Vector3.Dot(ba, ba));
+            float baDot = Vector3.Dot(ba, ba);
+            // Guard: degenerate capsule (a == b) → sphere
+            float h = baDot > 0.0001f ? Mathf.Clamp01(Vector3.Dot(pa, ba) / baDot) : 0f;
             return (pa - ba * h).magnitude - radius;
-        }
-
-        /// <summary>Capped cone along Y-axis (base radius at y=0, tip at y=height).</summary>
-        public static float Cone(Vector3 p, float radius, float height)
-        {
-            Vector2 q = new Vector2(radius, -height);
-            Vector2 w = new Vector2(SdfMath.LengthXZ(p), p.y);
-            float qq = Vector2.Dot(q, q);
-            Vector2 a = w - q * Mathf.Clamp(Vector2.Dot(w, q) / qq, 0f, 1f);
-            Vector2 b = w - q * new Vector2(Mathf.Clamp(w.x / q.x, 0f, 1f), 1f);
-            float k = Mathf.Sign(q.y);
-            float d = Mathf.Min(Vector2.Dot(a, a), Vector2.Dot(b, b));
-            float s = Mathf.Max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));
-            return Mathf.Sqrt(d) * Mathf.Sign(s);
-        }
-
-        /// <summary>Ellipsoid: approximate SDF (exact at surface).</summary>
-        public static float Ellipsoid(Vector3 p, Vector3 radii)
-        {
-            float k0 = SdfMath.Divide(p, radii).magnitude;
-            float k1 = SdfMath.Divide(p, SdfMath.Multiply(radii, radii)).magnitude;
-            return k0 * (k0 - 1f) / k1;
-        }
-
-        /// <summary>Hexagonal prism along Z-axis.</summary>
-        public static float HexPrism(Vector3 p, float halfHeight, float radius)
-        {
-            Vector3 k = new Vector3(-0.8660254038f, 0.5f, 0.57735026919f);
-            p = SdfMath.Abs(p);
-            float dot_kxy = k.x * p.x + k.y * p.y;
-            float m = Mathf.Min(dot_kxy, 0f);
-            p.x -= 2f * m * k.x;
-            p.y -= 2f * m * k.y;
-            float dx = new Vector2(
-                p.x - Mathf.Clamp(p.x, -k.z * radius, k.z * radius),
-                p.y - radius
-            ).magnitude * Mathf.Sign(p.y - radius);
-            float dy = p.z - halfHeight;
-            return Mathf.Min(Mathf.Max(dx, dy), 0f)
-                 + new Vector2(Mathf.Max(dx, 0f), Mathf.Max(dy, 0f)).magnitude;
         }
 
         /// <summary>Rounded cone along Y-axis (bottom r1, top r2).</summary>
@@ -170,66 +132,108 @@ namespace AliceSDF
             return Mathf.Sqrt(xyLen * xyLen + qz * qz) - r2;
         }
 
-        /// <summary>Exact distance to a 3D triangle (vertices a, b, c).</summary>
-        public static float Triangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        /// <summary>Cone along Y-axis.</summary>
+        public static float Cone(Vector3 p, float radius, float halfHeight)
         {
-            Vector3 ba = b - a; Vector3 pa = p - a;
-            Vector3 cb = c - b; Vector3 pb = p - b;
-            Vector3 ac = a - c; Vector3 pc = p - c;
-            Vector3 nor = Vector3.Cross(ba, ac);
-            float sba = Mathf.Sign(Vector3.Dot(Vector3.Cross(ba, nor), pa));
-            float scb = Mathf.Sign(Vector3.Dot(Vector3.Cross(cb, nor), pb));
-            float sac = Mathf.Sign(Vector3.Dot(Vector3.Cross(ac, nor), pc));
-            if (sba + scb + sac < 2f)
-            {
-                float d1 = (ba * Mathf.Clamp(Vector3.Dot(ba, pa) / Vector3.Dot(ba, ba), 0f, 1f) - pa).sqrMagnitude;
-                float d2 = (cb * Mathf.Clamp(Vector3.Dot(cb, pb) / Vector3.Dot(cb, cb), 0f, 1f) - pb).sqrMagnitude;
-                float d3 = (ac * Mathf.Clamp(Vector3.Dot(ac, pc) / Vector3.Dot(ac, ac), 0f, 1f) - pc).sqrMagnitude;
-                return Mathf.Sqrt(Mathf.Min(d1, Mathf.Min(d2, d3)));
-            }
-            float dn = Vector3.Dot(nor, pa);
-            return Mathf.Sqrt(dn * dn / Vector3.Dot(nor, nor));
+            float h = halfHeight * 2f;
+            float qx = SdfMath.LengthXZ(p);
+            float qy = p.y + halfHeight;
+            float s = Mathf.Max(0f, qx * h - qy * radius);
+            float d = new Vector2(
+                qx - radius * Mathf.Clamp(s > 0f ? (qx * h - qy * radius) / (radius * radius + h * h) : qx / radius, 0f, 1f),
+                qy - h * (s > 0f ? (qx * h - qy * radius) / (radius * radius + h * h) : 0f)
+            ).magnitude;
+            return d * (qy > h ? 1f : (qx > radius ? 1f : -1f));
         }
 
-        /// <summary>Quadratic Bezier curve with radius (analytical cubic solver).</summary>
-        public static float Bezier(Vector3 pos, Vector3 A, Vector3 B, Vector3 C, float rad)
+        /// <summary>Ellipsoid at origin.</summary>
+        public static float Ellipsoid(Vector3 p, Vector3 radii)
         {
-            Vector3 a = B - A;
-            Vector3 b = A - 2f * B + C;
-            Vector3 c2 = a * 2f;
-            Vector3 d = A - pos;
-            float kk = 1f / Vector3.Dot(b, b);
-            float kx = kk * Vector3.Dot(a, b);
-            float ky = kk * (2f * Vector3.Dot(a, a) + Vector3.Dot(d, b)) / 3f;
-            float kz = kk * Vector3.Dot(d, a);
-            float p2 = ky - kx * kx;
-            float p3 = p2 * p2 * p2;
-            float q2 = kx * (2f * kx * kx - 3f * ky) + kz;
-            float h = q2 * q2 + 4f * p3;
-            float res;
-            if (h >= 0f)
-            {
-                h = Mathf.Sqrt(h);
-                float x0 = (h - q2) * 0.5f;
-                float x1 = (-h - q2) * 0.5f;
-                float uv0 = Mathf.Sign(x0) * Mathf.Pow(Mathf.Abs(x0), 1f / 3f);
-                float uv1 = Mathf.Sign(x1) * Mathf.Pow(Mathf.Abs(x1), 1f / 3f);
-                float t = Mathf.Clamp01(uv0 + uv1 - kx);
-                res = (d + (c2 + b * t) * t).magnitude;
-            }
-            else
-            {
-                float z = Mathf.Sqrt(-p2);
-                float v = Mathf.Acos(q2 / (p2 * z * 2f)) / 3f;
-                float m = Mathf.Cos(v);
-                float n = Mathf.Sin(v) * 1.732050808f;
-                float t0 = Mathf.Clamp01((m + m) * z - kx);
-                float t1 = Mathf.Clamp01((-n - m) * z - kx);
-                float r0 = (d + (c2 + b * t0) * t0).magnitude;
-                float r1 = (d + (c2 + b * t1) * t1).magnitude;
-                res = Mathf.Min(r0, r1);
-            }
-            return res - rad;
+            float k0 = new Vector3(p.x / radii.x, p.y / radii.y, p.z / radii.z).magnitude;
+            float k1 = new Vector3(p.x / (radii.x * radii.x), p.y / (radii.y * radii.y), p.z / (radii.z * radii.z)).magnitude;
+            return k0 > 0.0001f ? k0 * (k0 - 1f) / k1 : 0f;
+        }
+
+        /// <summary>Hex prism along Y-axis.</summary>
+        public static float HexPrism(Vector3 p, float hexRadius, float halfHeight)
+        {
+            Vector3 ap = SdfMath.Abs(p);
+            float dx = ap.x * 0.866025f + ap.z * 0.5f;
+            float dy = ap.z;
+            float d2d = Mathf.Max(dx, dy) - hexRadius;
+            float dh = ap.y - halfHeight;
+            return Mathf.Min(Mathf.Max(d2d, dh), 0f) +
+                   new Vector2(Mathf.Max(d2d, 0f), Mathf.Max(dh, 0f)).magnitude;
+        }
+
+        /// <summary>Rounded box at origin.</summary>
+        public static float RoundedBox(Vector3 p, Vector3 halfExtents, float roundRadius)
+        {
+            Vector3 q = SdfMath.Abs(p) - halfExtents;
+            return SdfMath.Max(q, 0f).magnitude + Mathf.Min(SdfMath.MaxComponent(q), 0f) - roundRadius;
+        }
+
+        /// <summary>Heart shape at origin.</summary>
+        public static float Heart(Vector3 p, float size)
+        {
+            float px = Mathf.Abs(p.x);
+            float py = p.y;
+            float pz = p.z;
+            float s = size;
+            if (px + py > s) return Mathf.Sqrt((px - 0.25f * s) * (px - 0.25f * s) + (py - 0.75f * s) * (py - 0.75f * s) + pz * pz) - s * 0.3536f;
+            return Mathf.Sqrt(Mathf.Min(px * px + (py - s) * (py - s), (px + py - s) * 0.5f * (px + py - s) * 0.5f) + pz * pz) * Mathf.Sign(px + py - s);
+        }
+
+        /// <summary>Capped torus in XZ plane.</summary>
+        public static float CappedTorus(Vector3 p, float majorRadius, float minorRadius, float capAngle)
+        {
+            float sc = Mathf.Sin(capAngle);
+            float cc = Mathf.Cos(capAngle);
+            float px = Mathf.Abs(p.x);
+            float lenXZ = Mathf.Sqrt(px * px + p.z * p.z);
+            float kx = (cc * px > sc * lenXZ) ? px * sc - p.z * cc : lenXZ;
+            return Mathf.Sqrt(kx * kx + p.y * p.y + majorRadius * majorRadius + minorRadius * 0f
+                - 2f * majorRadius * (cc * px > sc * lenXZ ? px * cc + p.z * sc : lenXZ)) - minorRadius;
+        }
+
+        /// <summary>Box frame (hollow wireframe box).</summary>
+        public static float BoxFrame(Vector3 p, Vector3 halfExtents, float edge)
+        {
+            Vector3 ap = SdfMath.Abs(p) - halfExtents;
+            Vector3 q = SdfMath.Abs(ap + new Vector3(edge, edge, edge)) - new Vector3(edge, edge, edge);
+            float d1 = SdfMath.Max(new Vector3(ap.x, q.y, q.z), 0f).magnitude + Mathf.Min(Mathf.Max(ap.x, Mathf.Max(q.y, q.z)), 0f);
+            float d2 = SdfMath.Max(new Vector3(q.x, ap.y, q.z), 0f).magnitude + Mathf.Min(Mathf.Max(q.x, Mathf.Max(ap.y, q.z)), 0f);
+            float d3 = SdfMath.Max(new Vector3(q.x, q.y, ap.z), 0f).magnitude + Mathf.Min(Mathf.Max(q.x, Mathf.Max(q.y, ap.z)), 0f);
+            return Mathf.Min(d1, Mathf.Min(d2, d3));
+        }
+
+        /// <summary>Gyroid TPMS surface.</summary>
+        public static float Gyroid(Vector3 p, float scale, float thickness)
+        {
+            float t = Mathf.PI * 2f / scale;
+            float qx = p.x * t, qy = p.y * t, qz = p.z * t;
+            float d = Mathf.Sin(qx) * Mathf.Cos(qy) + Mathf.Sin(qy) * Mathf.Cos(qz) + Mathf.Sin(qz) * Mathf.Cos(qx);
+            return Mathf.Abs(d) - thickness;
+        }
+
+        /// <summary>Schwarz P TPMS surface.</summary>
+        public static float SchwarzP(Vector3 p, float scale, float thickness)
+        {
+            float t = Mathf.PI * 2f / scale;
+            float d = Mathf.Cos(p.x * t) + Mathf.Cos(p.y * t) + Mathf.Cos(p.z * t);
+            return Mathf.Abs(d) - thickness;
+        }
+
+        /// <summary>XOR (symmetric difference) of two distances.</summary>
+        public static float Xor(float d1, float d2)
+        {
+            return Mathf.Max(Mathf.Min(d1, d2), -Mathf.Max(d1, d2));
+        }
+
+        /// <summary>Morph (linear interpolation between two shapes).</summary>
+        public static float Morph(float d1, float d2, float t)
+        {
+            return d1 * (1f - t) + d2 * t;
         }
 
         // =====================================================================
@@ -257,6 +261,7 @@ namespace AliceSDF
         /// <summary>Smooth union with blending factor k.</summary>
         public static float SmoothUnion(float d1, float d2, float k)
         {
+            if (k < 0.0001f) return Mathf.Min(d1, d2);
             float invK = 1f / k;
             float h = Mathf.Max(k - Mathf.Abs(d1 - d2), 0f) * invK;
             return Mathf.Min(d1, d2) - h * h * k * 0.25f;
@@ -265,6 +270,7 @@ namespace AliceSDF
         /// <summary>Smooth intersection with blending factor k.</summary>
         public static float SmoothIntersection(float d1, float d2, float k)
         {
+            if (k < 0.0001f) return Mathf.Max(d1, d2);
             float invK = 1f / k;
             float h = Mathf.Max(k - Mathf.Abs(d1 - d2), 0f) * invK;
             return Mathf.Max(d1, d2) + h * h * k * 0.25f;
@@ -273,6 +279,7 @@ namespace AliceSDF
         /// <summary>Smooth subtraction with blending factor k.</summary>
         public static float SmoothSubtraction(float d1, float d2, float k)
         {
+            if (k < 0.0001f) return Mathf.Max(d1, -d2);
             float invK = 1f / k;
             float h = Mathf.Max(k - Mathf.Abs(d1 + d2), 0f) * invK;
             return Mathf.Max(d1, -d2) + h * h * k * 0.25f;
@@ -332,49 +339,6 @@ namespace AliceSDF
             return Mathf.Abs(d) - thickness;
         }
 
-        /// <summary>Taper: shrink cross-section along Y-axis.</summary>
-        public static Vector3 Taper(Vector3 p, float factor)
-        {
-            float s = 1f / (1f - p.y * factor);
-            return new Vector3(p.x * s, p.y, p.z * s);
-        }
-
-        /// <summary>Displacement: add sin-based noise to distance field.</summary>
-        public static float Displacement(float d, Vector3 p, float strength)
-        {
-            return d + Mathf.Sin(p.x * 5f) * Mathf.Sin(p.y * 5f) * Mathf.Sin(p.z * 5f) * strength;
-        }
-
-        /// <summary>Symmetry: mirror across axes (mask: 1=mirror, 0=no mirror).</summary>
-        public static Vector3 Symmetry(Vector3 p, Vector3 mask)
-        {
-            return new Vector3(
-                mask.x > 0.5f ? Mathf.Abs(p.x) : p.x,
-                mask.y > 0.5f ? Mathf.Abs(p.y) : p.y,
-                mask.z > 0.5f ? Mathf.Abs(p.z) : p.z
-            );
-        }
-
-        /// <summary>Polar repetition around Y-axis.</summary>
-        public static Vector3 PolarRepeat(Vector3 p, float count)
-        {
-            float angle = 6.283185307f / count;
-            float a = Mathf.Atan2(p.z, p.x) + angle * 0.5f;
-            float r = SdfMath.LengthXZ(p);
-            a = ((a % angle) + angle) % angle - angle * 0.5f;
-            return new Vector3(r * Mathf.Cos(a), p.y, r * Mathf.Sin(a));
-        }
-
-        /// <summary>Elongate: stretch SDF along axes (apply to point before evaluation).</summary>
-        public static Vector3 Elongate(Vector3 p, Vector3 h)
-        {
-            return new Vector3(
-                p.x - Mathf.Clamp(p.x, -h.x, h.x),
-                p.y - Mathf.Clamp(p.y, -h.y, h.y),
-                p.z - Mathf.Clamp(p.z, -h.z, h.z)
-            );
-        }
-
         // =====================================================================
         // Gradient (Normal) Estimation
         // =====================================================================
@@ -388,7 +352,10 @@ namespace AliceSDF
             float dx = evaluate(p + Vector3.right * eps) - evaluate(p - Vector3.right * eps);
             float dy = evaluate(p + Vector3.up * eps) - evaluate(p - Vector3.up * eps);
             float dz = evaluate(p + Vector3.forward * eps) - evaluate(p - Vector3.forward * eps);
-            return new Vector3(dx, dy, dz).normalized;
+            Vector3 grad = new Vector3(dx, dy, dz);
+            // NaN guard: zero gradient → safe up vector
+            float lenSq = grad.sqrMagnitude;
+            return lenSq > 0.0001f ? grad / Mathf.Sqrt(lenSq) : Vector3.up;
         }
     }
 }

@@ -1,26 +1,33 @@
-// =============================================================================
-// ALICE-SDF Unity FFI Bindings
-// =============================================================================
-// High-performance C# bindings for ALICE-SDF Rust library
-// Supports: Primitives, Booleans, Transforms, Compilation, Batch Evaluation
-//
-// Performance Hierarchy:
-//   1. alice_sdf_eval_soa       - 1B+ ops/sec (SoA layout)
-//   2. alice_sdf_eval_compiled_batch - 500M ops/sec (AoS layout)
-//   3. alice_sdf_eval_batch     - 100M ops/sec (auto-compile)
-//   4. alice_sdf_eval           - 10M ops/sec (single point)
-//
-// Author: Moroya Sakamoto
-// =============================================================================
+/**
+ * ALICE-SDF C# Bindings for Unity
+ *
+ * Usage:
+ * 1. Copy this file to your Unity project's Assets folder
+ * 2. Copy libalice_sdf.dylib (macOS), alice_sdf.dll (Windows), or libalice_sdf.so (Linux)
+ *    to Assets/Plugins/
+ * 3. Use AliceSdf class to create and evaluate SDFs
+ *
+ * Example:
+ *   var sphere = AliceSdf.Sphere(1.0f);
+ *   var box = AliceSdf.Box(0.5f, 0.5f, 0.5f);
+ *   var shape = AliceSdf.SmoothUnion(sphere, box, 0.2f);
+ *   float distance = AliceSdf.Eval(shape, new Vector3(0.5f, 0, 0));
+ *   string glsl = AliceSdf.ToGlsl(shape);
+ *   AliceSdf.Free(shape);
+ *   AliceSdf.Free(box);
+ *   AliceSdf.Free(sphere);
+ *
+ * Author: Moroya Sakamoto
+ */
 
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
-namespace AliceSdf
+namespace AliceSdfUnity
 {
     /// <summary>
-    /// Result codes for SDF operations
+    /// Result codes from FFI operations
     /// </summary>
     public enum SdfResult : int
     {
@@ -30,20 +37,7 @@ namespace AliceSdf
         InvalidParameter = 3,
         OutOfMemory = 4,
         IoError = 5,
-        CompileError = 6,
         Unknown = 99
-    }
-
-    /// <summary>
-    /// Batch evaluation result
-    /// </summary>
-    [StructLayout(LayoutKind.Sequential)]
-    public struct BatchResult
-    {
-        public uint count;
-        public SdfResult result;
-
-        public bool IsOk => result == SdfResult.Ok;
     }
 
     /// <summary>
@@ -52,365 +46,656 @@ namespace AliceSdf
     [StructLayout(LayoutKind.Sequential)]
     public struct VersionInfo
     {
-        public ushort major;
-        public ushort minor;
-        public ushort patch;
+        public ushort Major;
+        public ushort Minor;
+        public ushort Patch;
 
-        public override string ToString() => $"{major}.{minor}.{patch}";
+        public override string ToString() => $"{Major}.{Minor}.{Patch}";
     }
 
     /// <summary>
-    /// Native ALICE-SDF library bindings
+    /// Batch evaluation result
     /// </summary>
-    public static class Native
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BatchResult
     {
-        #if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-        private const string LibName = "alice_sdf";
+        public uint Count;
+        public SdfResult Result;
+    }
+
+    /// <summary>
+    /// String result from shader generation
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct StringResult
+    {
+        public IntPtr Data;
+        public uint Len;
+        public SdfResult Result;
+    }
+
+    /// <summary>
+    /// ALICE-SDF Native Library Bindings
+    /// </summary>
+    public static class AliceSdf
+    {
+        #if UNITY_IOS && !UNITY_EDITOR
+        private const string LibraryName = "__Internal";
+        #elif UNITY_ANDROID && !UNITY_EDITOR
+        private const string LibraryName = "alice_sdf";
+        #elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        private const string LibraryName = "libalice_sdf";
         #elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        private const string LibName = "alice_sdf.dll";
-        #elif UNITY_STANDALONE_LINUX || UNITY_EDITOR_LINUX
-        private const string LibName = "alice_sdf.so";
+        private const string LibraryName = "alice_sdf";
         #else
-        private const string LibName = "alice_sdf";
+        private const string LibraryName = "alice_sdf";
         #endif
 
-        // =====================================================================
+        // ============================================================================
         // Library Info
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern VersionInfo alice_sdf_version();
+        [DllImport(LibraryName)]
+        private static extern VersionInfo alice_sdf_version();
 
-        // =====================================================================
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_version_string();
+
+        /// <summary>
+        /// Get library version
+        /// </summary>
+        public static VersionInfo Version => alice_sdf_version();
+
+        /// <summary>
+        /// Get version string
+        /// </summary>
+        public static string VersionString
+        {
+            get
+            {
+                IntPtr ptr = alice_sdf_version_string();
+                if (ptr == IntPtr.Zero) return "unknown";
+                string result = Marshal.PtrToStringAnsi(ptr);
+                alice_sdf_free_string(ptr);
+                return result;
+            }
+        }
+
+        // ============================================================================
         // Primitives
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_sphere(float radius);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_box(float hx, float hy, float hz);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_cylinder(float radius, float halfHeight);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_torus(float majorRadius, float minorRadius);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_capsule(
-            float ax, float ay, float az,
-            float bx, float by, float bz,
-            float radius);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_plane(
-            float nx, float ny, float nz, float distance);
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_sphere(float radius);
 
-        // =====================================================================
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_box(float hx, float hy, float hz);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_cylinder(float radius, float half_height);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_torus(float major_radius, float minor_radius);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_capsule(float ax, float ay, float az,
+                                                        float bx, float by, float bz,
+                                                        float radius);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_plane(float nx, float ny, float nz, float distance);
+
+        /// <summary>Create a sphere SDF</summary>
+        public static IntPtr Sphere(float radius) => alice_sdf_sphere(radius);
+
+        /// <summary>Create a box SDF</summary>
+        public static IntPtr Box(float hx, float hy, float hz) => alice_sdf_box(hx, hy, hz);
+
+        /// <summary>Create a box SDF</summary>
+        public static IntPtr Box(Vector3 halfExtents) => alice_sdf_box(halfExtents.x, halfExtents.y, halfExtents.z);
+
+        /// <summary>Create a cylinder SDF</summary>
+        public static IntPtr Cylinder(float radius, float halfHeight) => alice_sdf_cylinder(radius, halfHeight);
+
+        /// <summary>Create a torus SDF</summary>
+        public static IntPtr Torus(float majorRadius, float minorRadius) => alice_sdf_torus(majorRadius, minorRadius);
+
+        /// <summary>Create a capsule SDF</summary>
+        public static IntPtr Capsule(Vector3 a, Vector3 b, float radius) =>
+            alice_sdf_capsule(a.x, a.y, a.z, b.x, b.y, b.z, radius);
+
+        /// <summary>Create a plane SDF</summary>
+        public static IntPtr Plane(Vector3 normal, float distance) =>
+            alice_sdf_plane(normal.x, normal.y, normal.z, distance);
+
+        // --- Basic (continued) ---
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_cone(float radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_ellipsoid(float rx, float ry, float rz);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_rounded_cone(float r1, float r2, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_pyramid(float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_octahedron(float size);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_hex_prism(float hex_radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_link(float half_length, float r1, float r2);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_rounded_box(float hx, float hy, float hz, float round_radius);
+
+        public static IntPtr Cone(float radius, float halfHeight) => alice_sdf_cone(radius, halfHeight);
+        public static IntPtr Ellipsoid(Vector3 radii) => alice_sdf_ellipsoid(radii.x, radii.y, radii.z);
+        public static IntPtr RoundedCone(float r1, float r2, float halfHeight) => alice_sdf_rounded_cone(r1, r2, halfHeight);
+        public static IntPtr Pyramid(float halfHeight) => alice_sdf_pyramid(halfHeight);
+        public static IntPtr Octahedron(float size) => alice_sdf_octahedron(size);
+        public static IntPtr HexPrism(float hexRadius, float halfHeight) => alice_sdf_hex_prism(hexRadius, halfHeight);
+        public static IntPtr Link(float halfLength, float r1, float r2) => alice_sdf_link(halfLength, r1, r2);
+        public static IntPtr RoundedBox(Vector3 halfExtents, float roundRadius) => alice_sdf_rounded_box(halfExtents.x, halfExtents.y, halfExtents.z, roundRadius);
+
+        // --- Advanced ---
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_capped_cone(float half_height, float r1, float r2);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_capped_torus(float major_radius, float minor_radius, float cap_angle);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_rounded_cylinder(float radius, float round_radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_triangular_prism(float width, float half_depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_cut_sphere(float radius, float cut_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_cut_hollow_sphere(float radius, float cut_height, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_death_star(float ra, float rb, float d);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_solid_angle(float angle, float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_heart(float size);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_barrel(float radius, float half_height, float bulge);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_diamond(float radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_egg(float ra, float rb);
+
+        public static IntPtr CappedCone(float halfHeight, float r1, float r2) => alice_sdf_capped_cone(halfHeight, r1, r2);
+        public static IntPtr CappedTorus(float majorRadius, float minorRadius, float capAngle) => alice_sdf_capped_torus(majorRadius, minorRadius, capAngle);
+        public static IntPtr RoundedCylinder(float radius, float roundRadius, float halfHeight) => alice_sdf_rounded_cylinder(radius, roundRadius, halfHeight);
+        public static IntPtr TriangularPrism(float width, float halfDepth) => alice_sdf_triangular_prism(width, halfDepth);
+        public static IntPtr CutSphere(float radius, float cutHeight) => alice_sdf_cut_sphere(radius, cutHeight);
+        public static IntPtr CutHollowSphere(float radius, float cutHeight, float thickness) => alice_sdf_cut_hollow_sphere(radius, cutHeight, thickness);
+        public static IntPtr DeathStar(float ra, float rb, float d) => alice_sdf_death_star(ra, rb, d);
+        public static IntPtr SolidAngle(float angle, float radius) => alice_sdf_solid_angle(angle, radius);
+        public static IntPtr Heart(float size) => alice_sdf_heart(size);
+        public static IntPtr Barrel(float radius, float halfHeight, float bulge) => alice_sdf_barrel(radius, halfHeight, bulge);
+        public static IntPtr Diamond(float radius, float halfHeight) => alice_sdf_diamond(radius, halfHeight);
+        public static IntPtr Egg(float ra, float rb) => alice_sdf_egg(ra, rb);
+
+        // --- 2D/Extruded ---
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_triangle(float ax, float ay, float az, float bx, float by, float bz, float cx, float cy, float cz);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_bezier(float ax, float ay, float az, float bx, float by, float bz, float cx, float cy, float cz, float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_rhombus(float la, float lb, float half_height, float round_radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_horseshoe(float angle, float radius, float half_length, float width, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_vesica(float radius, float half_dist);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_infinite_cylinder(float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_infinite_cone(float angle);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_superellipsoid(float hx, float hy, float hz, float e1, float e2);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_rounded_x(float width, float round_radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_pie(float angle, float radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_trapezoid(float r1, float r2, float trap_height, float half_depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_parallelogram(float width, float para_height, float skew, float half_depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_tunnel(float width, float height_2d, float half_depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_uneven_capsule(float r1, float r2, float cap_height, float half_depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_arc_shape(float aperture, float radius, float thickness, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_moon(float d, float ra, float rb, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_cross_shape(float length, float thickness, float round_radius, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_blobby_cross(float size, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_parabola_segment(float width, float para_height, float half_depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_regular_polygon(float radius, float n_sides, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_star_polygon(float radius, float n_points, float m, float half_height);
+
+        public static IntPtr Triangle(Vector3 a, Vector3 b, Vector3 c) => alice_sdf_triangle(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+        public static IntPtr Bezier(Vector3 a, Vector3 b, Vector3 c, float radius) => alice_sdf_bezier(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, radius);
+        public static IntPtr Rhombus(float la, float lb, float halfHeight, float roundRadius) => alice_sdf_rhombus(la, lb, halfHeight, roundRadius);
+        public static IntPtr Horseshoe(float angle, float radius, float halfLength, float width, float thickness) => alice_sdf_horseshoe(angle, radius, halfLength, width, thickness);
+        public static IntPtr Vesica(float radius, float halfDist) => alice_sdf_vesica(radius, halfDist);
+        public static IntPtr InfiniteCylinder(float radius) => alice_sdf_infinite_cylinder(radius);
+        public static IntPtr InfiniteCone(float angle) => alice_sdf_infinite_cone(angle);
+        public static IntPtr Superellipsoid(Vector3 halfExtents, float e1, float e2) => alice_sdf_superellipsoid(halfExtents.x, halfExtents.y, halfExtents.z, e1, e2);
+        public static IntPtr RoundedX(float width, float roundRadius, float halfHeight) => alice_sdf_rounded_x(width, roundRadius, halfHeight);
+        public static IntPtr Pie(float angle, float radius, float halfHeight) => alice_sdf_pie(angle, radius, halfHeight);
+        public static IntPtr Trapezoid(float r1, float r2, float trapHeight, float halfDepth) => alice_sdf_trapezoid(r1, r2, trapHeight, halfDepth);
+        public static IntPtr Parallelogram(float width, float paraHeight, float skew, float halfDepth) => alice_sdf_parallelogram(width, paraHeight, skew, halfDepth);
+        public static IntPtr Tunnel(float width, float height2D, float halfDepth) => alice_sdf_tunnel(width, height2D, halfDepth);
+        public static IntPtr UnevenCapsule(float r1, float r2, float capHeight, float halfDepth) => alice_sdf_uneven_capsule(r1, r2, capHeight, halfDepth);
+        public static IntPtr ArcShape(float aperture, float radius, float thickness, float halfHeight) => alice_sdf_arc_shape(aperture, radius, thickness, halfHeight);
+        public static IntPtr Moon(float d, float ra, float rb, float halfHeight) => alice_sdf_moon(d, ra, rb, halfHeight);
+        public static IntPtr CrossShape(float length, float thickness, float roundRadius, float halfHeight) => alice_sdf_cross_shape(length, thickness, roundRadius, halfHeight);
+        public static IntPtr BlobbyCross(float size, float halfHeight) => alice_sdf_blobby_cross(size, halfHeight);
+        public static IntPtr ParabolaSegment(float width, float paraHeight, float halfDepth) => alice_sdf_parabola_segment(width, paraHeight, halfDepth);
+        public static IntPtr RegularPolygon(float radius, float nSides, float halfHeight) => alice_sdf_regular_polygon(radius, nSides, halfHeight);
+        public static IntPtr StarPolygon(float radius, float nPoints, float m, float halfHeight) => alice_sdf_star_polygon(radius, nPoints, m, halfHeight);
+
+        // --- Platonic & Archimedean ---
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_tetrahedron(float size);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_dodecahedron(float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_icosahedron(float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_truncated_octahedron(float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_truncated_icosahedron(float radius);
+
+        public static IntPtr Tetrahedron(float size) => alice_sdf_tetrahedron(size);
+        public static IntPtr Dodecahedron(float radius) => alice_sdf_dodecahedron(radius);
+        public static IntPtr Icosahedron(float radius) => alice_sdf_icosahedron(radius);
+        public static IntPtr TruncatedOctahedron(float radius) => alice_sdf_truncated_octahedron(radius);
+        public static IntPtr TruncatedIcosahedron(float radius) => alice_sdf_truncated_icosahedron(radius);
+
+        // --- TPMS ---
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_gyroid(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_schwarz_p(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_diamond_surface(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_neovius(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_lidinoid(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_iwp(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_frd(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_fischer_koch_s(float scale, float thickness);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_pmy(float scale, float thickness);
+
+        public static IntPtr Gyroid(float scale, float thickness) => alice_sdf_gyroid(scale, thickness);
+        public static IntPtr SchwarzP(float scale, float thickness) => alice_sdf_schwarz_p(scale, thickness);
+        public static IntPtr DiamondSurface(float scale, float thickness) => alice_sdf_diamond_surface(scale, thickness);
+        public static IntPtr Neovius(float scale, float thickness) => alice_sdf_neovius(scale, thickness);
+        public static IntPtr Lidinoid(float scale, float thickness) => alice_sdf_lidinoid(scale, thickness);
+        public static IntPtr IWP(float scale, float thickness) => alice_sdf_iwp(scale, thickness);
+        public static IntPtr FRD(float scale, float thickness) => alice_sdf_frd(scale, thickness);
+        public static IntPtr FischerKochS(float scale, float thickness) => alice_sdf_fischer_koch_s(scale, thickness);
+        public static IntPtr PMY(float scale, float thickness) => alice_sdf_pmy(scale, thickness);
+
+        // --- Structural ---
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_box_frame(float hx, float hy, float hz, float edge);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_tube(float outer_radius, float thickness, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_chamfered_cube(float hx, float hy, float hz, float chamfer);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_stairs(float step_width, float step_height, float num_steps, float half_depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_helix(float major_radius, float minor_radius, float pitch, float half_height);
+
+        public static IntPtr BoxFrame(Vector3 halfExtents, float edge) => alice_sdf_box_frame(halfExtents.x, halfExtents.y, halfExtents.z, edge);
+        public static IntPtr Tube(float outerRadius, float thickness, float halfHeight) => alice_sdf_tube(outerRadius, thickness, halfHeight);
+        public static IntPtr ChamferedCube(Vector3 halfExtents, float chamfer) => alice_sdf_chamfered_cube(halfExtents.x, halfExtents.y, halfExtents.z, chamfer);
+        public static IntPtr Stairs(float stepWidth, float stepHeight, float numSteps, float halfDepth) => alice_sdf_stairs(stepWidth, stepHeight, numSteps, halfDepth);
+        public static IntPtr Helix(float majorRadius, float minorRadius, float pitch, float halfHeight) => alice_sdf_helix(majorRadius, minorRadius, pitch, halfHeight);
+
+        // ============================================================================
         // Boolean Operations
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_union(IntPtr a, IntPtr b);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_intersection(IntPtr a, IntPtr b);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_subtract(IntPtr a, IntPtr b);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_smooth_union(IntPtr a, IntPtr b, float k);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_smooth_intersection(IntPtr a, IntPtr b, float k);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_smooth_subtract(IntPtr a, IntPtr b, float k);
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_union(IntPtr a, IntPtr b);
 
-        // =====================================================================
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_intersection(IntPtr a, IntPtr b);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_subtract(IntPtr a, IntPtr b);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_smooth_union(IntPtr a, IntPtr b, float k);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_smooth_intersection(IntPtr a, IntPtr b, float k);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_smooth_subtract(IntPtr a, IntPtr b, float k);
+
+        /// <summary>Union of two SDFs (A ∪ B)</summary>
+        public static IntPtr Union(IntPtr a, IntPtr b) => alice_sdf_union(a, b);
+
+        /// <summary>Intersection of two SDFs (A ∩ B)</summary>
+        public static IntPtr Intersection(IntPtr a, IntPtr b) => alice_sdf_intersection(a, b);
+
+        /// <summary>Subtraction of SDFs (A - B)</summary>
+        public static IntPtr Subtract(IntPtr a, IntPtr b) => alice_sdf_subtract(a, b);
+
+        /// <summary>Smooth union of two SDFs</summary>
+        public static IntPtr SmoothUnion(IntPtr a, IntPtr b, float k) => alice_sdf_smooth_union(a, b, k);
+
+        /// <summary>Smooth intersection of two SDFs</summary>
+        public static IntPtr SmoothIntersection(IntPtr a, IntPtr b, float k) => alice_sdf_smooth_intersection(a, b, k);
+
+        /// <summary>Smooth subtraction of SDFs</summary>
+        public static IntPtr SmoothSubtract(IntPtr a, IntPtr b, float k) => alice_sdf_smooth_subtract(a, b, k);
+
+        // --- Chamfer ---
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_chamfer_union(IntPtr a, IntPtr b, float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_chamfer_intersection(IntPtr a, IntPtr b, float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_chamfer_subtract(IntPtr a, IntPtr b, float radius);
+
+        public static IntPtr ChamferUnion(IntPtr a, IntPtr b, float radius) => alice_sdf_chamfer_union(a, b, radius);
+        public static IntPtr ChamferIntersection(IntPtr a, IntPtr b, float radius) => alice_sdf_chamfer_intersection(a, b, radius);
+        public static IntPtr ChamferSubtract(IntPtr a, IntPtr b, float radius) => alice_sdf_chamfer_subtract(a, b, radius);
+
+        // --- Stairs ---
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_stairs_union(IntPtr a, IntPtr b, float radius, float steps);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_stairs_intersection(IntPtr a, IntPtr b, float radius, float steps);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_stairs_subtract(IntPtr a, IntPtr b, float radius, float steps);
+
+        public static IntPtr StairsUnion(IntPtr a, IntPtr b, float radius, float steps) => alice_sdf_stairs_union(a, b, radius, steps);
+        public static IntPtr StairsIntersection(IntPtr a, IntPtr b, float radius, float steps) => alice_sdf_stairs_intersection(a, b, radius, steps);
+        public static IntPtr StairsSubtract(IntPtr a, IntPtr b, float radius, float steps) => alice_sdf_stairs_subtract(a, b, radius, steps);
+
+        // --- Columns ---
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_columns_union(IntPtr a, IntPtr b, float radius, float count);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_columns_intersection(IntPtr a, IntPtr b, float radius, float count);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_columns_subtract(IntPtr a, IntPtr b, float radius, float count);
+
+        public static IntPtr ColumnsUnion(IntPtr a, IntPtr b, float radius, float count) => alice_sdf_columns_union(a, b, radius, count);
+        public static IntPtr ColumnsIntersection(IntPtr a, IntPtr b, float radius, float count) => alice_sdf_columns_intersection(a, b, radius, count);
+        public static IntPtr ColumnsSubtract(IntPtr a, IntPtr b, float radius, float count) => alice_sdf_columns_subtract(a, b, radius, count);
+
+        // --- Advanced ---
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_xor(IntPtr a, IntPtr b);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_morph(IntPtr a, IntPtr b, float t);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_pipe(IntPtr a, IntPtr b, float radius);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_engrave(IntPtr a, IntPtr b, float depth);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_groove(IntPtr a, IntPtr b, float ra, float rb);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_tongue(IntPtr a, IntPtr b, float ra, float rb);
+
+        public static IntPtr Xor(IntPtr a, IntPtr b) => alice_sdf_xor(a, b);
+        public static IntPtr Morph(IntPtr a, IntPtr b, float t) => alice_sdf_morph(a, b, t);
+        public static IntPtr Pipe(IntPtr a, IntPtr b, float radius) => alice_sdf_pipe(a, b, radius);
+        public static IntPtr Engrave(IntPtr a, IntPtr b, float depth) => alice_sdf_engrave(a, b, depth);
+        public static IntPtr Groove(IntPtr a, IntPtr b, float ra, float rb) => alice_sdf_groove(a, b, ra, rb);
+        public static IntPtr Tongue(IntPtr a, IntPtr b, float ra, float rb) => alice_sdf_tongue(a, b, ra, rb);
+
+        // ============================================================================
         // Transforms
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_translate(IntPtr node, float x, float y, float z);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_rotate(IntPtr node, float qx, float qy, float qz, float qw);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_rotate_euler(IntPtr node, float x, float y, float z);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_scale(IntPtr node, float factor);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_scale_xyz(IntPtr node, float x, float y, float z);
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_translate(IntPtr node, float x, float y, float z);
 
-        // =====================================================================
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_rotate(IntPtr node, float qx, float qy, float qz, float qw);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_rotate_euler(IntPtr node, float x, float y, float z);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_scale(IntPtr node, float factor);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_scale_xyz(IntPtr node, float x, float y, float z);
+
+        /// <summary>Translate an SDF</summary>
+        public static IntPtr Translate(IntPtr node, Vector3 offset) =>
+            alice_sdf_translate(node, offset.x, offset.y, offset.z);
+
+        /// <summary>Rotate an SDF using quaternion</summary>
+        public static IntPtr Rotate(IntPtr node, Quaternion rotation) =>
+            alice_sdf_rotate(node, rotation.x, rotation.y, rotation.z, rotation.w);
+
+        /// <summary>Rotate an SDF using Euler angles (radians)</summary>
+        public static IntPtr RotateEuler(IntPtr node, Vector3 euler) =>
+            alice_sdf_rotate_euler(node, euler.x, euler.y, euler.z);
+
+        /// <summary>Uniform scale an SDF</summary>
+        public static IntPtr Scale(IntPtr node, float factor) => alice_sdf_scale(node, factor);
+
+        /// <summary>Non-uniform scale an SDF</summary>
+        public static IntPtr Scale(IntPtr node, Vector3 factors) =>
+            alice_sdf_scale_xyz(node, factors.x, factors.y, factors.z);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_scale_non_uniform(IntPtr node, float x, float y, float z);
+
+        /// <summary>Non-uniform scale (explicit)</summary>
+        public static IntPtr ScaleNonUniform(IntPtr node, float x, float y, float z) =>
+            alice_sdf_scale_non_uniform(node, x, y, z);
+
+        // ============================================================================
         // Modifiers
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_round(IntPtr node, float radius);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_onion(IntPtr node, float thickness);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_twist(IntPtr node, float strength);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_bend(IntPtr node, float curvature);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_repeat(IntPtr node, float sx, float sy, float sz);
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_round(IntPtr node, float radius);
 
-        // =====================================================================
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_onion(IntPtr node, float thickness);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_twist(IntPtr node, float strength);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_bend(IntPtr node, float curvature);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_repeat(IntPtr node, float sx, float sy, float sz);
+
+        /// <summary>Apply rounding</summary>
+        public static IntPtr Round(IntPtr node, float radius) => alice_sdf_round(node, radius);
+
+        /// <summary>Apply onion (shell) modifier</summary>
+        public static IntPtr Onion(IntPtr node, float thickness) => alice_sdf_onion(node, thickness);
+
+        /// <summary>Apply twist modifier</summary>
+        public static IntPtr Twist(IntPtr node, float strength) => alice_sdf_twist(node, strength);
+
+        /// <summary>Apply bend modifier</summary>
+        public static IntPtr Bend(IntPtr node, float curvature) => alice_sdf_bend(node, curvature);
+
+        /// <summary>Apply infinite repetition</summary>
+        public static IntPtr Repeat(IntPtr node, Vector3 spacing) =>
+            alice_sdf_repeat(node, spacing.x, spacing.y, spacing.z);
+
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_repeat_finite(IntPtr node, int cx, int cy, int cz, float sx, float sy, float sz);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_mirror(IntPtr node, float mx, float my, float mz);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_elongate(IntPtr node, float ex, float ey, float ez);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_revolution(IntPtr node, float offset);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_extrude(IntPtr node, float half_height);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_noise(IntPtr node, float amplitude, float frequency, uint seed);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_taper(IntPtr node, float factor);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_displacement(IntPtr node, float strength);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_polar_repeat(IntPtr node, uint count);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_octant_mirror(IntPtr node);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_sweep_bezier(IntPtr node, float p0x, float p0y, float p1x, float p1y, float p2x, float p2y);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_with_material(IntPtr node, uint material_id);
+
+        public static IntPtr RepeatFinite(IntPtr node, Vector3Int count, Vector3 spacing) =>
+            alice_sdf_repeat_finite(node, count.x, count.y, count.z, spacing.x, spacing.y, spacing.z);
+        public static IntPtr Mirror(IntPtr node, bool x, bool y, bool z) =>
+            alice_sdf_mirror(node, x ? 1f : 0f, y ? 1f : 0f, z ? 1f : 0f);
+        public static IntPtr Elongate(IntPtr node, Vector3 amount) =>
+            alice_sdf_elongate(node, amount.x, amount.y, amount.z);
+        public static IntPtr Revolution(IntPtr node, float offset) => alice_sdf_revolution(node, offset);
+        public static IntPtr Extrude(IntPtr node, float halfHeight) => alice_sdf_extrude(node, halfHeight);
+        public static IntPtr Noise(IntPtr node, float amplitude, float frequency, uint seed) => alice_sdf_noise(node, amplitude, frequency, seed);
+        public static IntPtr Taper(IntPtr node, float factor) => alice_sdf_taper(node, factor);
+        public static IntPtr Displacement(IntPtr node, float strength) => alice_sdf_displacement(node, strength);
+        public static IntPtr PolarRepeat(IntPtr node, uint count) => alice_sdf_polar_repeat(node, count);
+        public static IntPtr OctantMirror(IntPtr node) => alice_sdf_octant_mirror(node);
+        public static IntPtr SweepBezier(IntPtr node, Vector2 p0, Vector2 p1, Vector2 p2) =>
+            alice_sdf_sweep_bezier(node, p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
+        public static IntPtr WithMaterial(IntPtr node, uint materialId) => alice_sdf_with_material(node, materialId);
+
+        // ============================================================================
         // Compilation
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_compile(IntPtr node);
-        [DllImport(LibName)] public static extern void alice_sdf_free_compiled(IntPtr compiled);
-        [DllImport(LibName)] public static extern uint alice_sdf_compiled_instruction_count(IntPtr compiled);
-        [DllImport(LibName)] public static extern bool alice_sdf_is_compiled_valid(IntPtr compiled);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_compile(IntPtr node);
+        [DllImport(LibraryName)] private static extern void alice_sdf_free_compiled(IntPtr compiled);
+        [DllImport(LibraryName)] private static extern float alice_sdf_eval_compiled(IntPtr compiled, float x, float y, float z);
+        [DllImport(LibraryName)] private static extern BatchResult alice_sdf_eval_compiled_batch(IntPtr compiled, [In] float[] points, [Out] float[] distances, uint count);
 
-        // =====================================================================
+        /// <summary>Compile SDF to bytecode for fast evaluation</summary>
+        public static IntPtr Compile(IntPtr node) => alice_sdf_compile(node);
+
+        /// <summary>Free a compiled SDF handle</summary>
+        public static void FreeCompiled(IntPtr compiled) => alice_sdf_free_compiled(compiled);
+
+        /// <summary>Evaluate compiled SDF at a single point</summary>
+        public static float EvalCompiled(IntPtr compiled, Vector3 point) =>
+            alice_sdf_eval_compiled(compiled, point.x, point.y, point.z);
+
+        /// <summary>Evaluate compiled SDF at multiple points (fastest AoS path)</summary>
+        public static float[] EvalCompiledBatch(IntPtr compiled, Vector3[] points)
+        {
+            int count = points.Length;
+            float[] pointsFlat = new float[count * 3];
+            for (int i = 0; i < count; i++)
+            {
+                pointsFlat[i * 3 + 0] = points[i].x;
+                pointsFlat[i * 3 + 1] = points[i].y;
+                pointsFlat[i * 3 + 2] = points[i].z;
+            }
+            float[] distances = new float[count];
+            var result = alice_sdf_eval_compiled_batch(compiled, pointsFlat, distances, (uint)count);
+            if (result.Result != SdfResult.Ok)
+            {
+                Debug.LogError($"EvalCompiledBatch failed: {result.Result}");
+                return null;
+            }
+            return distances;
+        }
+
+        // ============================================================================
+        // Mesh Export
+        // ============================================================================
+
+        [DllImport(LibraryName)] private static extern SdfResult alice_sdf_export_obj(IntPtr mesh, IntPtr node, string path, uint resolution, float bounds);
+        [DllImport(LibraryName)] private static extern SdfResult alice_sdf_export_glb(IntPtr mesh, IntPtr node, string path, uint resolution, float bounds);
+        [DllImport(LibraryName)] private static extern SdfResult alice_sdf_export_usda(IntPtr mesh, IntPtr node, string path, uint resolution, float bounds);
+        [DllImport(LibraryName)] private static extern SdfResult alice_sdf_export_fbx(IntPtr mesh, IntPtr node, string path, uint resolution, float bounds);
+
+        public static bool ExportObj(IntPtr node, string path, uint resolution = 128, float bounds = 2f) =>
+            alice_sdf_export_obj(IntPtr.Zero, node, path, resolution, bounds) == SdfResult.Ok;
+        public static bool ExportGlb(IntPtr node, string path, uint resolution = 128, float bounds = 2f) =>
+            alice_sdf_export_glb(IntPtr.Zero, node, path, resolution, bounds) == SdfResult.Ok;
+        public static bool ExportUsda(IntPtr node, string path, uint resolution = 128, float bounds = 2f) =>
+            alice_sdf_export_usda(IntPtr.Zero, node, path, resolution, bounds) == SdfResult.Ok;
+        public static bool ExportFbx(IntPtr node, string path, uint resolution = 128, float bounds = 2f) =>
+            alice_sdf_export_fbx(IntPtr.Zero, node, path, resolution, bounds) == SdfResult.Ok;
+
+        // ============================================================================
         // Evaluation
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern float alice_sdf_eval(IntPtr node, float x, float y, float z);
-        [DllImport(LibName)] public static extern float alice_sdf_eval_compiled(IntPtr compiled, float x, float y, float z);
+        [DllImport(LibraryName)]
+        private static extern float alice_sdf_eval(IntPtr node, float x, float y, float z);
 
-        // Batch evaluation (AoS layout: [x0,y0,z0, x1,y1,z1, ...])
-        [DllImport(LibName)] public static extern BatchResult alice_sdf_eval_batch(
-            IntPtr node, float[] points, float[] distances, uint count);
+        [DllImport(LibraryName)]
+        private static extern BatchResult alice_sdf_eval_batch(IntPtr node,
+                                                                [In] float[] points,
+                                                                [Out] float[] distances,
+                                                                uint count);
 
-        [DllImport(LibName)] public static extern BatchResult alice_sdf_eval_compiled_batch(
-            IntPtr compiled, float[] points, float[] distances, uint count);
+        /// <summary>Evaluate SDF at a single point</summary>
+        public static float Eval(IntPtr node, Vector3 point) =>
+            alice_sdf_eval(node, point.x, point.y, point.z);
 
-        // SoA evaluation (fastest path: separate x[], y[], z[] arrays)
-        [DllImport(LibName)] public static extern BatchResult alice_sdf_eval_soa(
-            IntPtr compiled, float[] x, float[] y, float[] z, float[] distances, uint count);
+        /// <summary>Evaluate SDF at multiple points (parallel)</summary>
+        public static float[] EvalBatch(IntPtr node, Vector3[] points)
+        {
+            int count = points.Length;
+            float[] pointsFlat = new float[count * 3];
+            for (int i = 0; i < count; i++)
+            {
+                pointsFlat[i * 3 + 0] = points[i].x;
+                pointsFlat[i * 3 + 1] = points[i].y;
+                pointsFlat[i * 3 + 2] = points[i].z;
+            }
 
-        // SoA evaluation with unsafe pointers (for NativeArray support)
-        [DllImport(LibName)] public static extern unsafe BatchResult alice_sdf_eval_soa(
-            IntPtr compiled, float* x, float* y, float* z, float* distances, uint count);
+            float[] distances = new float[count];
+            var result = alice_sdf_eval_batch(node, pointsFlat, distances, (uint)count);
 
-        // Gradient (Normal) evaluation - THE DEEP FRIED PATH
-        [DllImport(LibName)] public static extern BatchResult alice_sdf_eval_gradient_soa(
-            IntPtr compiled, float[] x, float[] y, float[] z,
-            float[] nx, float[] ny, float[] nz, float[] dist, uint count);
+            if (result.Result != SdfResult.Ok)
+            {
+                Debug.LogError($"EvalBatch failed: {result.Result}");
+                return null;
+            }
 
-        // Gradient evaluation with unsafe pointers (for NativeArray support)
-        [DllImport(LibName)] public static extern unsafe BatchResult alice_sdf_eval_gradient_soa(
-            IntPtr compiled, float* x, float* y, float* z,
-            float* nx, float* ny, float* nz, float* dist, uint count);
+            return distances;
+        }
 
-        // =====================================================================
+        // ============================================================================
+        // Shader Generation
+        // ============================================================================
+
+        [DllImport(LibraryName)]
+        private static extern StringResult alice_sdf_to_wgsl(IntPtr node);
+
+        [DllImport(LibraryName)]
+        private static extern StringResult alice_sdf_to_hlsl(IntPtr node);
+
+        [DllImport(LibraryName)]
+        private static extern StringResult alice_sdf_to_glsl(IntPtr node);
+
+        /// <summary>Generate WGSL shader code</summary>
+        public static string ToWgsl(IntPtr node)
+        {
+            var result = alice_sdf_to_wgsl(node);
+            if (result.Result != SdfResult.Ok || result.Data == IntPtr.Zero) return null;
+            string shader = Marshal.PtrToStringAnsi(result.Data);
+            alice_sdf_free_string(result.Data);
+            return shader;
+        }
+
+        /// <summary>Generate HLSL shader code (for UE5/DirectX)</summary>
+        public static string ToHlsl(IntPtr node)
+        {
+            var result = alice_sdf_to_hlsl(node);
+            if (result.Result != SdfResult.Ok || result.Data == IntPtr.Zero) return null;
+            string shader = Marshal.PtrToStringAnsi(result.Data);
+            alice_sdf_free_string(result.Data);
+            return shader;
+        }
+
+        /// <summary>Generate GLSL shader code (for Unity/OpenGL)</summary>
+        public static string ToGlsl(IntPtr node)
+        {
+            var result = alice_sdf_to_glsl(node);
+            if (result.Result != SdfResult.Ok || result.Data == IntPtr.Zero) return null;
+            string shader = Marshal.PtrToStringAnsi(result.Data);
+            alice_sdf_free_string(result.Data);
+            return shader;
+        }
+
+        // ============================================================================
+        // File I/O
+        // ============================================================================
+
+        [DllImport(LibraryName)]
+        private static extern SdfResult alice_sdf_save(IntPtr node, string path);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_load(string path);
+
+        /// <summary>Save SDF to .asdf file</summary>
+        public static bool Save(IntPtr node, string path) =>
+            alice_sdf_save(node, path) == SdfResult.Ok;
+
+        /// <summary>Load SDF from .asdf file</summary>
+        public static IntPtr Load(string path) => alice_sdf_load(path);
+
+        // ============================================================================
         // Memory Management
-        // =====================================================================
+        // ============================================================================
 
-        [DllImport(LibName)] public static extern void alice_sdf_free(IntPtr node);
-        [DllImport(LibName)] public static extern IntPtr alice_sdf_clone(IntPtr node);
-        [DllImport(LibName)] public static extern bool alice_sdf_is_valid(IntPtr node);
-        [DllImport(LibName)] public static extern uint alice_sdf_node_count(IntPtr node);
-    }
+        [DllImport(LibraryName)]
+        private static extern void alice_sdf_free(IntPtr node);
 
-    /// <summary>
-    /// Managed SDF node wrapper with automatic disposal
-    /// </summary>
-    public class SdfNode : IDisposable
-    {
-        public IntPtr Handle { get; private set; }
-        private bool _disposed;
+        [DllImport(LibraryName)]
+        private static extern void alice_sdf_free_string(IntPtr str);
 
-        internal SdfNode(IntPtr handle)
-        {
-            Handle = handle;
-        }
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_clone(IntPtr node);
 
-        public bool IsValid => Handle != IntPtr.Zero && Native.alice_sdf_is_valid(Handle);
-        public uint NodeCount => Native.alice_sdf_node_count(Handle);
+        /// <summary>Free an SDF handle</summary>
+        public static void Free(IntPtr node) => alice_sdf_free(node);
 
-        // Primitives
-        public static SdfNode Sphere(float radius) => new SdfNode(Native.alice_sdf_sphere(radius));
-        public static SdfNode Box(Vector3 halfExtents) => new SdfNode(Native.alice_sdf_box(halfExtents.x, halfExtents.y, halfExtents.z));
-        public static SdfNode Box(float hx, float hy, float hz) => new SdfNode(Native.alice_sdf_box(hx, hy, hz));
-        public static SdfNode Cylinder(float radius, float halfHeight) => new SdfNode(Native.alice_sdf_cylinder(radius, halfHeight));
-        public static SdfNode Torus(float majorRadius, float minorRadius) => new SdfNode(Native.alice_sdf_torus(majorRadius, minorRadius));
-        public static SdfNode Capsule(Vector3 a, Vector3 b, float radius) => new SdfNode(Native.alice_sdf_capsule(a.x, a.y, a.z, b.x, b.y, b.z, radius));
-        public static SdfNode Plane(Vector3 normal, float distance) => new SdfNode(Native.alice_sdf_plane(normal.x, normal.y, normal.z, distance));
+        /// <summary>Clone an SDF handle</summary>
+        public static IntPtr Clone(IntPtr node) => alice_sdf_clone(node);
 
-        // Boolean operations
-        public SdfNode Union(SdfNode other) => new SdfNode(Native.alice_sdf_union(Handle, other.Handle));
-        public SdfNode Intersection(SdfNode other) => new SdfNode(Native.alice_sdf_intersection(Handle, other.Handle));
-        public SdfNode Subtract(SdfNode other) => new SdfNode(Native.alice_sdf_subtract(Handle, other.Handle));
-        public SdfNode SmoothUnion(SdfNode other, float k) => new SdfNode(Native.alice_sdf_smooth_union(Handle, other.Handle, k));
-        public SdfNode SmoothIntersection(SdfNode other, float k) => new SdfNode(Native.alice_sdf_smooth_intersection(Handle, other.Handle, k));
-        public SdfNode SmoothSubtract(SdfNode other, float k) => new SdfNode(Native.alice_sdf_smooth_subtract(Handle, other.Handle, k));
+        // ============================================================================
+        // Utilities
+        // ============================================================================
 
-        // Transforms
-        public SdfNode Translate(Vector3 offset) => new SdfNode(Native.alice_sdf_translate(Handle, offset.x, offset.y, offset.z));
-        public SdfNode Translate(float x, float y, float z) => new SdfNode(Native.alice_sdf_translate(Handle, x, y, z));
-        public SdfNode Rotate(Quaternion rotation) => new SdfNode(Native.alice_sdf_rotate(Handle, rotation.x, rotation.y, rotation.z, rotation.w));
-        public SdfNode RotateEuler(Vector3 euler) => new SdfNode(Native.alice_sdf_rotate_euler(Handle, euler.x, euler.y, euler.z));
-        public SdfNode Scale(float factor) => new SdfNode(Native.alice_sdf_scale(Handle, factor));
-        public SdfNode Scale(Vector3 factors) => new SdfNode(Native.alice_sdf_scale_xyz(Handle, factors.x, factors.y, factors.z));
+        [DllImport(LibraryName)]
+        private static extern uint alice_sdf_node_count(IntPtr node);
 
-        // Modifiers
-        public SdfNode Round(float radius) => new SdfNode(Native.alice_sdf_round(Handle, radius));
-        public SdfNode Onion(float thickness) => new SdfNode(Native.alice_sdf_onion(Handle, thickness));
-        public SdfNode Twist(float strength) => new SdfNode(Native.alice_sdf_twist(Handle, strength));
-        public SdfNode Bend(float curvature) => new SdfNode(Native.alice_sdf_bend(Handle, curvature));
-        public SdfNode Repeat(Vector3 spacing) => new SdfNode(Native.alice_sdf_repeat(Handle, spacing.x, spacing.y, spacing.z));
+        [DllImport(LibraryName)]
+        private static extern bool alice_sdf_is_valid(IntPtr node);
 
-        // Evaluation
-        public float Eval(Vector3 point) => Native.alice_sdf_eval(Handle, point.x, point.y, point.z);
+        /// <summary>Get node count in an SDF tree</summary>
+        public static uint NodeCount(IntPtr node) => alice_sdf_node_count(node);
 
-        // Compilation
-        public CompiledSdf Compile() => new CompiledSdf(Native.alice_sdf_compile(Handle));
-
-        public SdfNode Clone() => new SdfNode(Native.alice_sdf_clone(Handle));
-
-        public void Dispose()
-        {
-            if (!_disposed && Handle != IntPtr.Zero)
-            {
-                Native.alice_sdf_free(Handle);
-                Handle = IntPtr.Zero;
-                _disposed = true;
-            }
-            GC.SuppressFinalize(this);
-        }
-
-        ~SdfNode() => Dispose();
-    }
-
-    /// <summary>
-    /// Compiled SDF for high-performance evaluation
-    /// </summary>
-    public class CompiledSdf : IDisposable
-    {
-        public IntPtr Handle { get; private set; }
-        private bool _disposed;
-
-        internal CompiledSdf(IntPtr handle)
-        {
-            Handle = handle;
-        }
-
-        public bool IsValid => Handle != IntPtr.Zero && Native.alice_sdf_is_compiled_valid(Handle);
-        public uint InstructionCount => Native.alice_sdf_compiled_instruction_count(Handle);
-
-        /// <summary>
-        /// Evaluate SDF at a single point
-        /// </summary>
-        public float Eval(Vector3 point) => Native.alice_sdf_eval_compiled(Handle, point.x, point.y, point.z);
-
-        /// <summary>
-        /// Batch evaluate using SoA layout (FASTEST PATH)
-        /// </summary>
-        public BatchResult EvalSoA(float[] x, float[] y, float[] z, float[] distances)
-        {
-            return Native.alice_sdf_eval_soa(Handle, x, y, z, distances, (uint)x.Length);
-        }
-
-        /// <summary>
-        /// Batch evaluate using AoS layout
-        /// </summary>
-        public BatchResult EvalBatch(float[] points, float[] distances)
-        {
-            return Native.alice_sdf_eval_compiled_batch(Handle, points, distances, (uint)(points.Length / 3));
-        }
-
-        /// <summary>
-        /// Evaluate gradient (surface normal) using SoA layout - DEEP FRIED PATH
-        /// </summary>
-        public BatchResult EvalGradientSoA(
-            float[] x, float[] y, float[] z,
-            float[] nx, float[] ny, float[] nz,
-            float[] dist)
-        {
-            return Native.alice_sdf_eval_gradient_soa(Handle, x, y, z, nx, ny, nz, dist, (uint)x.Length);
-        }
-
-        /// <summary>
-        /// Batch evaluate using NativeArray (GC-FREE) - THE ULTIMATE PATH
-        /// Requires: com.unity.collections package
-        /// </summary>
-        public unsafe BatchResult EvalSoA(
-            Unity.Collections.NativeArray<float> x,
-            Unity.Collections.NativeArray<float> y,
-            Unity.Collections.NativeArray<float> z,
-            Unity.Collections.NativeArray<float> distances)
-        {
-            return Native.alice_sdf_eval_soa(
-                Handle,
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(x),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(y),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(z),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafePtr(distances),
-                (uint)x.Length);
-        }
-
-        /// <summary>
-        /// Evaluate gradient using NativeArray (GC-FREE) - THE DEEP FRIED ULTIMATE PATH
-        /// Requires: com.unity.collections package
-        /// </summary>
-        public unsafe BatchResult EvalGradientSoA(
-            Unity.Collections.NativeArray<float> x,
-            Unity.Collections.NativeArray<float> y,
-            Unity.Collections.NativeArray<float> z,
-            Unity.Collections.NativeArray<float> nx,
-            Unity.Collections.NativeArray<float> ny,
-            Unity.Collections.NativeArray<float> nz,
-            Unity.Collections.NativeArray<float> dist)
-        {
-            return Native.alice_sdf_eval_gradient_soa(
-                Handle,
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(x),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(y),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(z),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafePtr(nx),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafePtr(ny),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafePtr(nz),
-                (float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafePtr(dist),
-                (uint)x.Length);
-        }
-
-        public void Dispose()
-        {
-            if (!_disposed && Handle != IntPtr.Zero)
-            {
-                Native.alice_sdf_free_compiled(Handle);
-                Handle = IntPtr.Zero;
-                _disposed = true;
-            }
-            GC.SuppressFinalize(this);
-        }
-
-        ~CompiledSdf() => Dispose();
-    }
-
-    /// <summary>
-    /// SoA (Structure of Arrays) buffer for maximum performance
-    /// </summary>
-    public class SoABuffer : IDisposable
-    {
-        public float[] X { get; private set; }
-        public float[] Y { get; private set; }
-        public float[] Z { get; private set; }
-        public float[] Distances { get; private set; }
-        public int Count { get; private set; }
-        public int Capacity { get; private set; }
-
-        public SoABuffer(int capacity)
-        {
-            Capacity = capacity;
-            X = new float[capacity];
-            Y = new float[capacity];
-            Z = new float[capacity];
-            Distances = new float[capacity];
-            Count = 0;
-        }
-
-        public void Clear() => Count = 0;
-
-        public void Add(Vector3 point)
-        {
-            if (Count >= Capacity) return;
-            X[Count] = point.x;
-            Y[Count] = point.y;
-            Z[Count] = point.z;
-            Count++;
-        }
-
-        public void Add(float x, float y, float z)
-        {
-            if (Count >= Capacity) return;
-            X[Count] = x;
-            Y[Count] = y;
-            Z[Count] = z;
-            Count++;
-        }
-
-        public void SetCount(int count)
-        {
-            Count = Mathf.Min(count, Capacity);
-        }
-
-        public BatchResult Evaluate(CompiledSdf sdf)
-        {
-            return sdf.EvalSoA(X, Y, Z, Distances);
-        }
-
-        public void Dispose()
-        {
-            X = null;
-            Y = null;
-            Z = null;
-            Distances = null;
-        }
+        /// <summary>Check if a handle is valid</summary>
+        public static bool IsValid(IntPtr node) => alice_sdf_is_valid(node);
     }
 }

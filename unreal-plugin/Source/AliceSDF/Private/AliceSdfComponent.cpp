@@ -471,6 +471,12 @@ void UAliceSdfComponent::RotateEulerSdf(FVector EulerRadians)
 	ApplyModifier(alice_sdf_rotate_euler(SdfNodeHandle, EulerRadians.X, EulerRadians.Y, EulerRadians.Z));
 }
 
+void UAliceSdfComponent::RotateQuatSdf(FQuat Rotation)
+{
+	if (!SdfNodeHandle) return;
+	ApplyModifier(alice_sdf_rotate(SdfNodeHandle, Rotation.X, Rotation.Y, Rotation.Z, Rotation.W));
+}
+
 // ============================================================================
 // Modifiers
 // ============================================================================
