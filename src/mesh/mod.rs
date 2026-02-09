@@ -36,6 +36,7 @@ pub mod dual_contouring;
 pub mod hermite;
 pub mod lightmap;
 pub mod lod;
+pub mod lod_persist;
 pub mod manifold;
 mod mesh_to_sdf;
 pub mod nanite;
@@ -71,6 +72,10 @@ pub use lod::{
     generate_lod_chain, generate_lod_chain_decimated, ContinuousLod, DecimationLodConfig, LodChain,
     LodConfig, LodMesh, LodSelector,
 };
+pub use lod_persist::{
+    load_lod_chain, load_lod_chain_metadata, save_lod_chain, save_lod_chain_metadata,
+    LodChainConfig, LodChainPersist, LodChainSummary, LodLevelPersist,
+};
 pub use manifold::{compute_quality, validate_mesh, MeshQuality, MeshRepair, MeshValidation};
 pub use mesh_to_sdf::{
     mesh_to_sdf, mesh_to_sdf_exact, MeshSdf, MeshToSdfConfig, MeshToSdfStrategy,
@@ -96,7 +101,7 @@ pub use uv_unwrap::{apply_uvs, uv_unwrap, UvChart, UvUnwrapConfig, UvUnwrapResul
 ///
 /// Compatible with standard game engine vertex formats (UE5, Unity, Godot).
 /// Includes UV2 for lightmap coordinates.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Vertex {
     /// Position in 3D space
     pub position: glam::Vec3,
@@ -151,7 +156,7 @@ impl Vertex {
 }
 
 /// Triangle face indices
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Triangle {
     /// First vertex index
     pub a: u32,

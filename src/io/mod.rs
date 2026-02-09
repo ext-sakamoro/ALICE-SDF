@@ -12,6 +12,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+pub mod abm;
 pub mod alembic;
 mod asdf;
 pub mod fbx;
@@ -22,8 +23,15 @@ pub mod obj;
 pub mod ply;
 pub mod stl;
 pub mod threemf;
+pub mod ue5_asset;
+pub mod unity_mesh;
 pub mod usd;
 
+pub use abm::{
+    load_abm, load_abm_with_lods, read_abm_header, save_abm, save_abm_with_lods, AbmHeader,
+    ABM_FLAG_HAS_COLORS, ABM_FLAG_HAS_LODS, ABM_FLAG_HAS_MATERIAL_IDS, ABM_FLAG_HAS_NORMALS,
+    ABM_FLAG_HAS_TANGENTS, ABM_FLAG_HAS_UV2, ABM_FLAG_HAS_UVS, ABM_MAGIC, ABM_VERSION,
+};
 pub use alembic::{export_alembic, AlembicConfig};
 pub use asdf::{load_asdf, save_asdf, AsdfHeader, ASDF_MAGIC};
 pub use fbx::{
@@ -41,6 +49,8 @@ pub use obj::{export_obj, import_obj, ObjConfig};
 pub use ply::{export_ply, import_ply, PlyConfig};
 pub use stl::{export_stl, export_stl_ascii, import_stl};
 pub use threemf::export_3mf;
+pub use ue5_asset::{export_ue5_mesh, export_ue5_mesh_binary, export_ue5_mesh_with_lods, Ue5MeshConfig};
+pub use unity_mesh::{export_unity_mesh, export_unity_mesh_binary, UnityMeshConfig};
 pub use usd::{export_usda, import_usda, ImportedUsdMaterial, ImportedUsda, UsdConfig, UsdUpAxis};
 
 use crate::types::SdfTree;

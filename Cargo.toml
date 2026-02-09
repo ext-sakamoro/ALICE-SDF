@@ -35,6 +35,7 @@ terrain = []  # Terrain system (heightmap + erosion + caves)
 gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
+codec = ["alice-codec"]  # ALICE-Codec 3D wavelet encoding bridge
 physics = ["alice-physics"]  # ALICE-Physics SDF collider bridge
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
@@ -73,6 +74,9 @@ godot-rust = { package = "godot", version = "0.2", optional = true }
 
 # CRC for file integrity
 crc32fast = "1.4"
+
+# Codec bridge (optional)
+alice-codec = { path = "../ALICE-Codec", optional = true }
 
 # Physics bridge (optional)
 alice-physics = { path = "../ALICE-Physics", optional = true }

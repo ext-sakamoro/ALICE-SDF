@@ -45,6 +45,7 @@
 #![warn(missing_docs)]
 
 pub mod animation;
+pub mod cache;
 pub mod collision;
 pub mod compiled;
 pub mod crispy;
@@ -72,6 +73,9 @@ pub mod godot;
 
 #[cfg(feature = "ffi")]
 pub mod ffi;
+
+#[cfg(feature = "codec")]
+pub mod codec_bridge;
 
 #[cfg(feature = "physics")]
 pub mod physics_bridge;
@@ -254,6 +258,10 @@ pub mod prelude {
 }
 
 // Re-exports for convenience
+pub use cache::{
+    compute_cache_key, hash_sdf_node, CacheConfig, ChunkCoord, ChunkedCacheConfig,
+    ChunkedMeshCache, MeshCache, MeshCacheKey,
+};
 pub use eval::eval;
 pub use io::{load, save};
 pub use mesh::sdf_to_mesh;

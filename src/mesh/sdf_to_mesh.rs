@@ -15,7 +15,7 @@ use glam::{Vec2, Vec3, Vec4};
 use rayon::prelude::*;
 
 /// Configuration for marching cubes
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MarchingCubesConfig {
     /// Grid resolution along each axis
     pub resolution: usize,
@@ -199,7 +199,7 @@ fn compute_mikktspace_tangents(mesh: &mut Mesh) {
 }
 
 /// Simple mesh structure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Mesh {
     /// Mesh vertices
     pub vertices: Vec<Vertex>,
