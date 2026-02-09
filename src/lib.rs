@@ -83,6 +83,9 @@ pub mod physics_bridge;
 #[cfg(feature = "physics")]
 pub mod sim_bridge;
 
+#[cfg(feature = "asp")]
+pub mod asp_bridge;
+
 #[cfg(feature = "texture-fit")]
 pub mod texture;
 
