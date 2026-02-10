@@ -86,6 +86,9 @@ pub mod sim_bridge;
 #[cfg(feature = "asp")]
 pub mod asp_bridge;
 
+#[cfg(feature = "sdf-cache")]
+pub mod cache_bridge;
+
 #[cfg(feature = "texture-fit")]
 pub mod texture;
 

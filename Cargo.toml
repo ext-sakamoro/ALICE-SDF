@@ -38,6 +38,7 @@ glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
 codec = ["alice-codec"]  # ALICE-Codec 3D wavelet encoding bridge
 physics = ["alice-physics"]  # ALICE-Physics SDF collider bridge
 asp = ["libasp"]  # ALICE-Streaming-Protocol SDF delivery bridge
+sdf-cache = ["dep:alice-cache"]  # ALICE-Cache SDF evaluation caching
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
@@ -84,6 +85,9 @@ alice-physics = { path = "../ALICE-Physics", optional = true }
 
 # Streaming protocol bridge (optional)
 libasp = { path = "../ALICE-Streaming-Protocol", optional = true, default-features = false }
+
+# Cache bridge (optional)
+alice-cache = { path = "../ALICE-Cache", optional = true }
 
 # FFI support (optional)
 lazy_static = { version = "1.5", optional = true }
