@@ -20,7 +20,8 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Real-time raymarching** - GPU-accelerated rendering
 - **PBR materials** - metallic-roughness workflow compatible with UE5/Unity/Godot
 - **Keyframe animation** - parametric deformation with timeline tracks
-- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite, STL, PLY, 3MF export
+- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM export
+- **5-layer mesh persistence** - ABM binary format, LOD chain persistence, chunked mesh cache with FIFO eviction, Unity/UE5 native export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
 - **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters
 - **Dual Contouring** - QEF-based mesh generation that preserves sharp edges and corners
@@ -562,6 +563,9 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 | `.stl` | yes | yes | - | STL ASCII/Binary (3D printing, CAD) |
 | `.ply` | yes | yes | - | PLY ASCII/Binary (point clouds, scanning) |
 | `.3mf` | - | yes | PBR | 3MF XML (modern 3D printing with materials) |
+| `.abm` | yes | yes | - | ALICE Binary Mesh (compact, CRC32, LOD chain support) |
+| `.unity_mesh` | - | yes | - | Unity native JSON/binary mesh (left-handed, Z-flip) |
+| `.ue5_mesh` | - | yes | - | UE5 native JSON/binary mesh (Z-up, centimeters) |
 
 ## Architecture
 
@@ -653,6 +657,31 @@ Specialized modules:
 | **Mesh BVH** | `mesh/bvh` | Bounding volume hierarchy for exact signed distance queries |
 | **Manifold Validation** | `mesh/manifold` | Topology validation, repair, and quality metrics |
 | **UV Unwrapping** | `mesh/uv_unwrap` | LSCM conformal UV unwrapping with seam detection and chart packing |
+
+### Mesh Persistence (5-Layer Architecture)
+
+| Layer | Module | Description |
+|-------|--------|-------------|
+| **ABM Binary Format** | `io/abm` | ALICE Binary Mesh — compact binary with CRC32, optional normals/UVs/tangents/colors, LOD chain support |
+| **LOD Chain Persistence** | `mesh/lod_persist` | Save/load entire LOD chains (meshes + transition distances) with SDF hash validation |
+| **Chunked Mesh Cache** | `cache/chunked` | Thread-safe LRU-like cache with FIFO eviction, dirty tracking, and persistence to disk |
+| **Unity Export** | `io/unity_mesh` | JSON and binary export with left-handed coordinate conversion (Z-flip, winding flip, scale) |
+| **UE5 Export** | `io/ue5_asset` | JSON and binary export with Z-up coordinate conversion (meters → centimeters) and multi-LOD support |
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::io::{save_abm, load_abm, export_unity_mesh, export_ue5_mesh, UnityMeshConfig, Ue5MeshConfig};
+
+// Save/load ABM binary mesh
+save_abm(&mesh, "model.abm")?;
+let loaded = load_abm("model.abm")?;
+
+// Export to Unity (left-handed, Z-flip)
+export_unity_mesh(&mesh, "model.unity_mesh", &UnityMeshConfig::default())?;
+
+// Export to UE5 (Z-up, centimeters)
+export_ue5_mesh(&mesh, "model.ue5_mesh", &Ue5MeshConfig::default())?;
+```
 
 ## New: Platonic Solids, TPMS Surfaces, Advanced CSG (v2.0)
 
@@ -1101,6 +1130,31 @@ MeshHandle mesh = alice_sdf_generate_mesh(sdf, 64, 2.0);
 alice_sdf_export_glb(mesh, NULL, "model.glb", 0, 0);
 alice_sdf_export_fbx(mesh, NULL, "model.fbx", 0, 0);
 alice_sdf_export_obj(mesh, NULL, "model.obj", 0, 0);
+
+// --- Mesh Persistence ---
+
+// Save/load ABM binary mesh
+alice_sdf_save_abm(mesh, NULL, "model.abm");
+MeshHandle loaded = alice_sdf_load_abm("model.abm");
+
+// Export for Unity (left-handed, Z-flip, scale=1.0)
+alice_sdf_export_unity(mesh, NULL, "model.unity_mesh", 1/*flip_z*/, 1/*flip_winding*/, 1.0f);
+alice_sdf_export_unity_binary(mesh, NULL, "model.unity_mesh_bin", 1, 1, 1.0f);
+
+// Export for UE5 (Z-up, centimeters, scale=100.0)
+alice_sdf_export_ue5(mesh, NULL, "model.ue5_mesh", 100.0f);
+alice_sdf_export_ue5_binary(mesh, NULL, "model.ue5_mesh_bin", 100.0f);
+
+// Save/load LOD chain (multiple detail levels)
+MeshHandle lods[4] = { mesh_lod0, mesh_lod1, mesh_lod2, mesh_lod3 };
+float distances[4] = { 0.0f, 10.0f, 30.0f, 100.0f };
+alice_sdf_save_lod_chain(lods, distances, 4, "asset_lod");
+
+MeshHandle out_lods[8];
+float out_dist[8];
+int count = alice_sdf_load_lod_chain("asset_lod", out_lods, out_dist, 8);
+
+alice_sdf_free_mesh(loaded);
 alice_sdf_free_mesh(mesh);
 alice_sdf_free(sdf);
 ```
@@ -1110,8 +1164,40 @@ alice_sdf_free(sdf);
 ```csharp
 using AliceSdf;
 
+// --- Basic SDF ---
 var sdf = AliceSdf.Sphere(1.0f);
 float dist = sdf.Eval(new Vector3(0.5f, 0f, 0f));
+
+// --- Mesh Generation & Export ---
+var mesh = sdf.GenerateMesh(resolution: 64, bounds: 2.0f);
+
+// Save to ABM (fast binary, good for asset caching)
+mesh.SaveAbm("Assets/Cache/sphere.abm");
+
+// Load from ABM
+var cached = AliceSdf.LoadAbm("Assets/Cache/sphere.abm");
+
+// Export for Unity (auto left-handed conversion)
+mesh.ExportUnity("Assets/Meshes/sphere.unity_mesh");
+mesh.ExportUnity("Assets/Meshes/sphere.unity_mesh", flipZ: true, flipWinding: true, scale: 1.0f);
+
+// Export for UE5 (auto Z-up + cm conversion)
+mesh.ExportUE5("sphere.ue5_mesh", scale: 100.0f);
+
+// --- LOD Chain ---
+var lod0 = sdf.GenerateMesh(resolution: 128, bounds: 2.0f);
+var lod1 = sdf.GenerateMesh(resolution: 64,  bounds: 2.0f);
+var lod2 = sdf.GenerateMesh(resolution: 32,  bounds: 2.0f);
+
+AliceSdf.SaveLodChain(
+    meshes: new[] { lod0, lod1, lod2 },
+    distances: new[] { 0f, 15f, 50f },
+    path: "Assets/LOD/sphere_lod"
+);
+
+var (lodMeshes, lodDistances) = AliceSdf.LoadLodChain("Assets/LOD/sphere_lod");
+// lodMeshes[0] = highest detail (distance >= 0)
+// lodMeshes[2] = lowest detail  (distance >= 50)
 ```
 
 ### Python (PyO3)
@@ -1122,8 +1208,9 @@ pip install alice-sdf  # or: maturin develop --features python
 
 ```python
 import alice_sdf as sdf
+import numpy as np
 
-# Create & evaluate
+# --- Basic SDF ---
 node = sdf.sphere(1.0)
 d = node.eval(0.0, 0.0, 0.0)       # -1.0
 
@@ -1140,6 +1227,69 @@ optimized = node.translate(0, 0, 0).optimize()  # identity removed
 verts, indices = sdf.to_mesh_dual_contouring(node, (-2,-2,-2), (2,2,2), resolution=64)
 ```
 
+#### Python: Mesh Persistence & Engine Export
+
+```python
+import alice_sdf as sdf
+
+# Create a shape and generate mesh
+shape = sdf.SdfNode.sphere(1.0) - sdf.SdfNode.box3d(0.5, 0.5, 0.5)
+verts, indices = sdf.to_mesh(shape, (-2,-2,-2), (2,2,2))
+
+# --- ABM Binary Format ---
+# Fast save/load for asset caching (GIL released, ~10x faster than OBJ)
+sdf.save_abm(verts, indices, "model.abm")
+verts2, indices2 = sdf.load_abm("model.abm")  # Zero-Copy NumPy return
+
+# --- Unity Export ---
+# Automatic left-handed coordinate conversion (Z-flip + winding)
+sdf.export_unity(verts, indices, "model.unity_mesh")
+
+# Custom parameters
+sdf.export_unity(verts, indices, "model.unity_mesh",
+    flip_z=True,          # Unity is left-handed (default: True)
+    flip_winding=True,    # Flip triangle winding (default: True)
+    scale=1.0             # Scale factor (default: 1.0)
+)
+
+# --- UE5 Export ---
+# Automatic Z-up + meters-to-centimeters conversion
+sdf.export_ue5(verts, indices, "model.ue5_mesh")
+
+# Custom scale (UE5 uses centimeters, default: 100.0)
+sdf.export_ue5(verts, indices, "model.ue5_mesh", scale=100.0)
+
+# --- Chunked Mesh Cache ---
+# Thread-safe cache with FIFO eviction (useful for streaming/open worlds)
+cache = sdf.PyMeshCache(max_chunks=256, chunk_size=1.0)
+print(f"Chunks: {len(cache)}, Empty: {cache.is_empty()}")
+print(f"Memory: {cache.memory_usage()} bytes")
+cache.clear()  # Evict all cached chunks
+```
+
+#### Python: Full Workflow Example
+
+```python
+import alice_sdf as sdf
+
+# 1. Design shape via CSG
+base = sdf.SdfNode.box3d(2.0, 0.2, 2.0)          # floor
+pillar = sdf.SdfNode.cylinder(0.15, 1.5)           # pillar
+pillars = pillar.repeat_finite(1.5, 0.0, 1.5, 2, 0, 2)  # 3x3 grid
+roof = sdf.SdfNode.box3d(2.5, 0.1, 2.5).translate(0, 1.6, 0)
+temple = base | pillars | roof                      # union via operator
+
+# 2. Generate mesh
+verts, indices = sdf.to_mesh(temple, (-4,-1,-4), (4,3,4))
+
+# 3. Export to all engines simultaneously
+sdf.export_obj(verts, indices, "temple.obj")       # Blender / DCC tools
+sdf.export_glb(verts, indices, "temple.glb")       # Web / glTF viewers
+sdf.save_abm(verts, indices, "temple.abm")         # Fast binary cache
+sdf.export_unity(verts, indices, "temple.unity_mesh")   # Unity
+sdf.export_ue5(verts, indices, "temple.ue5_mesh")       # Unreal Engine 5
+```
+
 ### FFI Mesh Export
 
 | Function | Format | Notes |
@@ -1150,6 +1300,14 @@ verts, indices = sdf.to_mesh_dual_contouring(node, (-2,-2,-2), (2,2,2), resoluti
 | `alice_sdf_export_fbx` | `.fbx` | Autodesk FBX |
 | `alice_sdf_export_usda` | `.usda` | Universal Scene Description |
 | `alice_sdf_export_alembic` | `.abc` | Alembic (Ogawa) |
+| `alice_sdf_save_abm` | `.abm` | ALICE Binary Mesh |
+| `alice_sdf_load_abm` | `.abm` | Load ABM → MeshHandle |
+| `alice_sdf_export_unity` | `.unity_mesh` | Unity JSON mesh |
+| `alice_sdf_export_unity_binary` | `.unity_mesh_bin` | Unity binary mesh |
+| `alice_sdf_export_ue5` | `.ue5_mesh` | UE5 JSON mesh |
+| `alice_sdf_export_ue5_binary` | `.ue5_mesh_bin` | UE5 binary mesh |
+| `alice_sdf_save_lod_chain` | `.abm` + `.json` | Save LOD chain |
+| `alice_sdf_load_lod_chain` | `.abm` + `.json` | Load LOD chain |
 | `alice_sdf_free_mesh` | — | Free mesh handle |
 
 All export functions accept `MeshHandle` (pre-generated) or `SdfHandle` (generates on the fly).
@@ -1252,7 +1410,7 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-791+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier). With `--features jit`, 800+ tests including JIT scalar and JIT SIMD backends.
+886+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier, mesh persistence, chunked cache, Unity/UE5 export, FFI bindings). With `--features jit`, 900+ tests including JIT scalar and JIT SIMD backends.
 
 ```bash
 cargo test
@@ -1557,6 +1715,27 @@ ALICE-SDF works with Godot via glTF 2.0 import and GDExtension FFI.
 - **Visual Shader** - Use GLSL transpiler output in shader nodes
 
 See `docs/GODOT_GUIDE.md` for integration guide.
+
+## Cross-Crate Bridges
+
+### Cache Bridge (feature: `sdf-cache`)
+
+SDF evaluation result caching via [ALICE-Cache](../ALICE-Cache). Caches distance field evaluations keyed by quantised grid positions to avoid redundant computation during interactive editing and mesh generation.
+
+```toml
+[dependencies]
+alice-sdf = { path = "../ALICE-SDF", features = ["sdf-cache"] }
+```
+
+```rust
+use alice_sdf::cache_bridge::SdfEvalCache;
+
+let cache = SdfEvalCache::new(1_000_000, 0.01); // 1M entries, 0.01 cell size
+cache.put(1.0, 2.0, 3.0, 0.42);
+if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
+    // Cache hit — skip evaluation
+}
+```
 
 ## Documentation
 
