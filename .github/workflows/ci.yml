@@ -61,6 +61,24 @@ jobs:
       - name: Build (FFI + shaders)
         run: cargo build --features "ffi,hlsl,glsl"
 
+      - name: Build (no default features) [T0]
+        run: cargo build --lib --no-default-features
+
+      - name: Build (JIT) [T3]
+        run: cargo build --lib --no-default-features --features "jit"
+
+      - name: Build (all bridges) [T3]
+        run: cargo build --lib --no-default-features --features "codec,physics,asp,sdf-cache"
+
+      - name: Build (Unity meta) [T2]
+        run: cargo build --lib --no-default-features --features "unity"
+
+      - name: Build (Unreal meta) [T2]
+        run: cargo build --lib --no-default-features --features "unreal"
+
+      - name: Test (AAA meta) [T4]
+        run: cargo test --lib --no-default-features --features "aaa"
+
       - name: Benchmark compilation check
         run: cargo bench --no-run
 
