@@ -83,6 +83,10 @@ pub struct VoxelDistGrad {
     pub nz: f32,
 }
 
+// SAFETY: VoxelDistGrad is #[repr(C)] and contains only four f32 fields
+// (distance, nx, ny, nz) with no padding bytes (4 * 4 = 16 bytes total).
+// All bit patterns are valid for f32, making it safe to interpret as raw bytes
+// (Pod) and to zero-initialize (Zeroable).
 #[cfg(feature = "gpu")]
 unsafe impl bytemuck::Pod for VoxelDistGrad {}
 #[cfg(feature = "gpu")]

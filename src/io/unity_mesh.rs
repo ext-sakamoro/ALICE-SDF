@@ -139,12 +139,7 @@ pub fn export_unity_mesh(
     let mut colors = Vec::with_capacity(vc * 4);
 
     for v in &mesh.vertices {
-        let (px, py, pz) = convert_position(
-            v.position.x,
-            v.position.y,
-            v.position.z,
-            config,
-        );
+        let (px, py, pz) = convert_position(v.position.x, v.position.y, v.position.z, config);
         positions.push(px);
         positions.push(py);
         positions.push(pz);
@@ -308,12 +303,7 @@ pub fn export_unity_mesh_binary(
 
     // Interleaved vertex data
     for v in &mesh.vertices {
-        let (px, py, pz) = convert_position(
-            v.position.x,
-            v.position.y,
-            v.position.z,
-            config,
-        );
+        let (px, py, pz) = convert_position(v.position.x, v.position.y, v.position.z, config);
         w.write_all(&px.to_le_bytes())?;
         w.write_all(&py.to_le_bytes())?;
         w.write_all(&pz.to_le_bytes())?;

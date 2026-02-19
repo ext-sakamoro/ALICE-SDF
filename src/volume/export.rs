@@ -26,6 +26,9 @@ pub fn export_raw(volume: &Volume3D<f32>, path: &str) -> io::Result<()> {
 
     // Write raw data
     let mut file = std::fs::File::create(path)?;
+    // SAFETY: `volume.data` is a contiguous Vec<f32>. f32 is POD with no padding,
+    // so reinterpreting as &[u8] with byte length = len * 4 is sound.
+    // The resulting slice borrows `volume.data` and is valid for its lifetime.
     let bytes: &[u8] = unsafe {
         std::slice::from_raw_parts(
             volume.data.as_ptr() as *const u8,
@@ -73,6 +76,8 @@ pub fn export_raw_with_mips(volume: &Volume3D<f32>, path: &str) -> io::Result<()
     let mut file = std::fs::File::create(path)?;
 
     // Write mip 0 (base level)
+    // SAFETY: `volume.data` is a contiguous Vec<f32>. f32 is POD with no padding,
+    // so reinterpreting as &[u8] with byte length = len * 4 is sound.
     let bytes: &[u8] = unsafe {
         std::slice::from_raw_parts(
             volume.data.as_ptr() as *const u8,
@@ -87,6 +92,8 @@ pub fn export_raw_with_mips(volume: &Volume3D<f32>, path: &str) -> io::Result<()
 
     for mip in &volume.mips {
         mip_offsets.push(offset);
+        // SAFETY: Each mip level is a contiguous Vec<f32>. f32 is POD,
+        // so reinterpreting as &[u8] with byte length = len * 4 is sound.
         let mip_bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(
                 mip.as_ptr() as *const u8,
@@ -218,6 +225,8 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
     // Write pixel data
     match format {
         DdsFormat::R32Float => {
+            // SAFETY: `volume.data` is a contiguous Vec<f32>. f32 is POD,
+            // so reinterpreting as &[u8] with byte length = len * 4 is sound.
             let bytes: &[u8] = unsafe {
                 std::slice::from_raw_parts(volume.data.as_ptr() as *const u8, volume.data.len() * 4)
             };
@@ -225,6 +234,8 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
 
             // Write mip levels
             for mip in &volume.mips {
+                // SAFETY: Each mip is a contiguous Vec<f32>. f32 is POD,
+                // so reinterpreting as &[u8] with byte length = len * 4 is sound.
                 let mip_bytes: &[u8] =
                     unsafe { std::slice::from_raw_parts(mip.as_ptr() as *const u8, mip.len() * 4) };
                 file.write_all(mip_bytes)?;

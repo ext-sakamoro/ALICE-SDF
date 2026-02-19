@@ -178,6 +178,9 @@ pub fn eval_compiled_batch_soa_into(
         let distances = eval_compiled_simd(sdf, p);
 
         // Store directly
+        // SAFETY: `chunk_start` is bounded by the loop condition
+        // (chunk_start + SIMD_WIDTH <= padded_len). The output buffer was
+        // resized to at least `padded_len` elements above.
         unsafe {
             output.store_simd_unchecked(chunk_start, distances);
         }
@@ -206,7 +209,10 @@ pub unsafe fn eval_compiled_batch_soa_raw(
     let aligned_count = (count + 7) & !7; // Round up to multiple of 8
 
     for i in (0..aligned_count).step_by(8) {
-        // Direct pointer loads
+        // SAFETY: Caller guarantees x_ptr, y_ptr, z_ptr each point to at least
+        // `count` valid f32 elements (rounded up to multiple of 8). The loop
+        // index `i` ranges from 0 to aligned_count in steps of 8, so
+        // `ptr.add(i)` through `ptr.add(i + 7)` are within bounds.
         let x = f32x8::from(std::slice::from_raw_parts(x_ptr.add(i), 8));
         let y = f32x8::from(std::slice::from_raw_parts(y_ptr.add(i), 8));
         let z = f32x8::from(std::slice::from_raw_parts(z_ptr.add(i), 8));
@@ -214,7 +220,8 @@ pub unsafe fn eval_compiled_batch_soa_raw(
         let p = Vec3x8 { x, y, z };
         let distances = eval_compiled_simd(sdf, p);
 
-        // Direct pointer store
+        // SAFETY: Caller guarantees out_ptr points to at least `count` writable
+        // f32 elements. Source (stack array) and destination (out_ptr) do not overlap.
         let arr: [f32; 8] = distances.into();
         std::ptr::copy_nonoverlapping(arr.as_ptr(), out_ptr.add(i), 8);
     }

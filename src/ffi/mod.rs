@@ -102,9 +102,18 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod api;
+mod compilation;
+mod eval;
+mod info;
+mod io_ffi;
+mod memory;
+mod mesh;
+mod modifiers;
+mod operations;
+mod primitives;
 mod registry;
+mod shader;
+mod transforms;
 mod types;
 
-pub use api::*;
 pub use types::*;

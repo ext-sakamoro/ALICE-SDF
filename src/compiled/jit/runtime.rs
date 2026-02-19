@@ -47,8 +47,11 @@ pub struct JitCompiledSdf {
     eval_fn: SdfEvalFn,
 }
 
-// SAFETY: The JIT module and function pointer are thread-safe once compiled
+// SAFETY: JitCompiledSdf holds a read-only function pointer to JIT-compiled machine code.
+// After compilation completes, the code is immutable and safe to call from any thread.
+// The JITModule is held alive by the struct, preventing use-after-free.
 unsafe impl Send for JitCompiledSdf {}
+// SAFETY: See Send impl above. The function pointer is read-only and thread-safe.
 unsafe impl Sync for JitCompiledSdf {}
 
 impl JitCompiledSdf {
@@ -103,7 +106,9 @@ impl JitCompiledSdf {
         // Get the function pointer
         let code_ptr = module.get_finalized_function(func_id);
 
-        // SAFETY: We just compiled this function with the correct signature
+        // SAFETY: code_ptr was compiled by Cranelift with verified extern "C" ABI signature
+        // matching (f32, f32, f32) -> f32. The module has been finalized, so the code is
+        // ready to execute. The JITModule is moved into the struct, keeping the code alive.
         let eval_fn: SdfEvalFn = unsafe { mem::transmute(code_ptr) };
 
         Ok(JitCompiledSdf {
@@ -123,7 +128,9 @@ impl JitCompiledSdf {
     /// The signed distance from the point to the surface
     #[inline]
     pub fn eval(&self, point: Vec3) -> f32 {
-        // SAFETY: The function pointer is valid and has the correct signature
+        // SAFETY: eval_fn was transmuted from a Cranelift-compiled function with the
+        // extern "C" fn(f32, f32, f32) -> f32 signature. The JITModule (_module) is held
+        // alive by the struct, so the function pointer remains valid for the struct's lifetime.
         unsafe { (self.eval_fn)(point.x, point.y, point.z) }
     }
 
@@ -198,8 +205,12 @@ pub struct JitCompiledSdfDynamic {
     params: Vec<f32>,
 }
 
-// SAFETY: JIT module and function pointer are thread-safe once compiled
+// SAFETY: JitCompiledSdfDynamic holds a read-only function pointer to JIT-compiled machine code
+// and an owned params Vec. After compilation, the code is immutable. The params Vec is only
+// mutated through &mut self methods. The JITModule is held alive by the struct.
 unsafe impl Send for JitCompiledSdfDynamic {}
+// SAFETY: See Send impl above. The function pointer is read-only and thread-safe.
+// Shared references only read params, which is safe across threads.
 unsafe impl Sync for JitCompiledSdfDynamic {}
 
 impl JitCompiledSdfDynamic {
@@ -231,6 +242,9 @@ impl JitCompiledSdfDynamic {
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
         let code_ptr = module.get_finalized_function(func_id);
+        // SAFETY: code_ptr was compiled by Cranelift with verified extern "C" ABI signature
+        // matching (f32, f32, f32, *const f32) -> f32. The module has been finalized, so the
+        // code is ready to execute. The JITModule is moved into the struct, keeping the code alive.
         let eval_fn: SdfEvalDynamicFn = unsafe { mem::transmute(code_ptr) };
 
         Ok(JitCompiledSdfDynamic {
@@ -256,6 +270,10 @@ impl JitCompiledSdfDynamic {
     /// Evaluate the SDF at a point
     #[inline]
     pub fn eval(&self, point: Vec3) -> f32 {
+        // SAFETY: eval_fn was transmuted from a Cranelift-compiled function with the
+        // extern "C" fn(f32, f32, f32, *const f32) -> f32 signature. The JITModule (_module)
+        // is held alive by the struct. self.params.as_ptr() is valid because params is an
+        // owned Vec kept alive by the struct.
         unsafe { (self.eval_fn)(point.x, point.y, point.z, self.params.as_ptr()) }
     }
 

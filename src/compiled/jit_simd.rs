@@ -62,8 +62,12 @@ pub struct JitSimd {
     func_ptr: *const u8,
 }
 
+// SAFETY: JitSimd holds a read-only function pointer to JIT-compiled machine code.
+// After compilation completes, the code is immutable and safe to call from any thread.
+// The JITModule is held alive by the struct, preventing use-after-free.
 #[cfg(feature = "jit")]
 unsafe impl Send for JitSimd {}
+// SAFETY: See Send impl above. The function pointer is read-only and thread-safe.
 #[cfg(feature = "jit")]
 unsafe impl Sync for JitSimd {}
 
@@ -2242,6 +2246,9 @@ impl JitSimd {
     /// - Output pointer must be writable
     #[inline(always)]
     pub unsafe fn eval(&self, px: *const f32, py: *const f32, pz: *const f32, pout: *mut f32) {
+        // SAFETY: func_ptr was compiled by Cranelift with verified extern "C" ABI signature
+        // matching (px: *const f32, py: *const f32, pz: *const f32, pout: *mut f32).
+        // The JITModule is held alive by the struct, preventing use-after-free.
         let func: unsafe extern "C" fn(*const f32, *const f32, *const f32, *mut f32) =
             std::mem::transmute(self.func_ptr);
         func(px, py, pz, pout);
@@ -2265,6 +2272,9 @@ impl JitSimd {
         let (px, py, pz) = points.as_ptrs();
 
         for i in (0..padded_len).step_by(8) {
+            // SAFETY: Loop bounds ensure i + 8 <= padded_len. The SoA buffers are
+            // allocated with padded_len elements, so ptr.add(i) stays within bounds.
+            // results is allocated with padded_len elements, so the output pointer is valid.
             unsafe {
                 self.eval(px.add(i), py.add(i), pz.add(i), results.as_mut_ptr().add(i));
             }
@@ -2490,6 +2500,8 @@ mod tests {
         let z = [0.0f32; 8];
         let mut out = [0.0f32; 8];
 
+        // SAFETY: All arrays are [f32; 8], providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function.
         unsafe {
             jit.eval(x.as_ptr(), y.as_ptr(), z.as_ptr(), out.as_mut_ptr());
         }

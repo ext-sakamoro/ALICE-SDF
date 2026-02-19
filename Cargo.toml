@@ -68,7 +68,7 @@ log = "0.4"
 clap = { version = "4.5", features = ["derive"], optional = true }
 
 # Python bindings (optional)
-pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
+pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods"], optional = true }
 numpy = { version = "0.23", optional = true }
 
 # Godot GDExtension (optional)
@@ -133,3 +133,4 @@ opt-level = 3
 lto = "thin"
 debug = false
 codegen-units = 1
+panic = "unwind"

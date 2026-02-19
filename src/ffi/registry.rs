@@ -41,7 +41,9 @@ pub fn register_node(node: SdfNode) -> SdfHandle {
 
     // Minimize lock duration - just insert
     {
-        let mut registry = NODE_REGISTRY.lock().unwrap();
+        let mut registry = NODE_REGISTRY
+            .lock()
+            .expect("NODE_REGISTRY: Mutex poisoned in register_node()");
         registry.insert(id, arc_node);
     }
 
@@ -56,7 +58,9 @@ pub fn get_node(handle: SdfHandle) -> Option<Arc<SdfNode>> {
     }
 
     let id = handle as u64;
-    let registry = NODE_REGISTRY.lock().unwrap();
+    let registry = NODE_REGISTRY
+        .lock()
+        .expect("NODE_REGISTRY: Mutex poisoned in get_node()");
     registry.get(&id).cloned()
 }
 
@@ -68,7 +72,9 @@ pub fn remove_node(handle: SdfHandle) {
     }
 
     let id = handle as u64;
-    let mut registry = NODE_REGISTRY.lock().unwrap();
+    let mut registry = NODE_REGISTRY
+        .lock()
+        .expect("NODE_REGISTRY: Mutex poisoned in remove_node()");
     registry.remove(&id);
 }
 
@@ -92,7 +98,9 @@ pub fn register_compiled(compiled: CompiledSdf) -> CompiledHandle {
     let arc_compiled = Arc::new(compiled);
 
     {
-        let mut registry = COMPILED_REGISTRY.lock().unwrap();
+        let mut registry = COMPILED_REGISTRY
+            .lock()
+            .expect("COMPILED_REGISTRY: Mutex poisoned in register_compiled()");
         registry.insert(id, arc_compiled);
     }
 
@@ -107,7 +115,9 @@ pub fn get_compiled(handle: CompiledHandle) -> Option<Arc<CompiledSdf>> {
     }
 
     let id = handle as u64;
-    let registry = COMPILED_REGISTRY.lock().unwrap();
+    let registry = COMPILED_REGISTRY
+        .lock()
+        .expect("COMPILED_REGISTRY: Mutex poisoned in get_compiled()");
     registry.get(&id).cloned()
 }
 
@@ -119,7 +129,9 @@ pub fn remove_compiled(handle: CompiledHandle) {
     }
 
     let id = handle as u64;
-    let mut registry = COMPILED_REGISTRY.lock().unwrap();
+    let mut registry = COMPILED_REGISTRY
+        .lock()
+        .expect("COMPILED_REGISTRY: Mutex poisoned in remove_compiled()");
     registry.remove(&id);
 }
 
@@ -142,7 +154,9 @@ pub fn register_mesh(mesh: Mesh) -> MeshHandle {
     let arc_mesh = Arc::new(mesh);
 
     {
-        let mut registry = MESH_REGISTRY.lock().unwrap();
+        let mut registry = MESH_REGISTRY
+            .lock()
+            .expect("MESH_REGISTRY: Mutex poisoned in register_mesh()");
         registry.insert(id, arc_mesh);
     }
 
@@ -157,7 +171,9 @@ pub fn get_mesh(handle: MeshHandle) -> Option<Arc<Mesh>> {
     }
 
     let id = handle as u64;
-    let registry = MESH_REGISTRY.lock().unwrap();
+    let registry = MESH_REGISTRY
+        .lock()
+        .expect("MESH_REGISTRY: Mutex poisoned in get_mesh()");
     registry.get(&id).cloned()
 }
 
@@ -169,7 +185,9 @@ pub fn remove_mesh(handle: MeshHandle) {
     }
 
     let id = handle as u64;
-    let mut registry = MESH_REGISTRY.lock().unwrap();
+    let mut registry = MESH_REGISTRY
+        .lock()
+        .expect("MESH_REGISTRY: Mutex poisoned in remove_mesh()");
     registry.remove(&id);
 }
 
@@ -180,14 +198,18 @@ pub fn remove_mesh(handle: MeshHandle) {
 /// Get the number of registered nodes (for debugging)
 #[allow(dead_code)]
 pub fn node_count() -> usize {
-    let registry = NODE_REGISTRY.lock().unwrap();
+    let registry = NODE_REGISTRY
+        .lock()
+        .expect("NODE_REGISTRY: Mutex poisoned in node_count()");
     registry.len()
 }
 
 /// Get the number of registered compiled SDFs (for debugging)
 #[allow(dead_code)]
 pub fn compiled_count() -> usize {
-    let registry = COMPILED_REGISTRY.lock().unwrap();
+    let registry = COMPILED_REGISTRY
+        .lock()
+        .expect("COMPILED_REGISTRY: Mutex poisoned in compiled_count()");
     registry.len()
 }
 
@@ -195,15 +217,21 @@ pub fn compiled_count() -> usize {
 #[allow(dead_code)]
 pub fn clear_all() {
     {
-        let mut registry = NODE_REGISTRY.lock().unwrap();
+        let mut registry = NODE_REGISTRY
+            .lock()
+            .expect("NODE_REGISTRY: Mutex poisoned in clear_all()");
         registry.clear();
     }
     {
-        let mut registry = COMPILED_REGISTRY.lock().unwrap();
+        let mut registry = COMPILED_REGISTRY
+            .lock()
+            .expect("COMPILED_REGISTRY: Mutex poisoned in clear_all()");
         registry.clear();
     }
     {
-        let mut registry = MESH_REGISTRY.lock().unwrap();
+        let mut registry = MESH_REGISTRY
+            .lock()
+            .expect("MESH_REGISTRY: Mutex poisoned in clear_all()");
         registry.clear();
     }
 }

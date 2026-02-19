@@ -181,6 +181,9 @@ impl SoAPoints {
     #[inline]
     pub unsafe fn load_simd_unchecked(&self, index: usize) -> (f32x8, f32x8, f32x8) {
         let (px, py, pz) = self.as_ptrs();
+        // SAFETY: Caller guarantees `index + 8 <= padded_len()`. The SoA arrays
+        // are contiguous Vec<f32> allocations, so `ptr.add(index)` through
+        // `ptr.add(index + 7)` are valid for reads. Lifetime is tied to `&self`.
         let x = f32x8::from(std::slice::from_raw_parts(px.add(index), 8));
         let y = f32x8::from(std::slice::from_raw_parts(py.add(index), 8));
         let z = f32x8::from(std::slice::from_raw_parts(pz.add(index), 8));
@@ -383,6 +386,10 @@ impl SoADistances {
     #[inline]
     pub unsafe fn store_simd_unchecked(&mut self, index: usize, values: f32x8) {
         let arr: [f32; 8] = values.into();
+        // SAFETY: Caller guarantees `index + 8 <= self.distances.len()`.
+        // The distances Vec was pre-allocated with aligned capacity.
+        // `copy_nonoverlapping` is valid because source (stack array) and
+        // destination (heap Vec) never overlap.
         std::ptr::copy_nonoverlapping(arr.as_ptr(), self.distances.as_mut_ptr().add(index), 8);
     }
 }

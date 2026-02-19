@@ -55,8 +55,14 @@ jobs:
       - name: Test (shader transpilers)
         run: cargo test --lib --features "glsl,hlsl,gpu"
 
+      - name: Test (integration)
+        run: cargo test --tests
+
       - name: Build (FFI + shaders)
         run: cargo build --features "ffi,hlsl,glsl"
+
+      - name: Benchmark compilation check
+        run: cargo bench --no-run
 
   clippy:
     name: Clippy

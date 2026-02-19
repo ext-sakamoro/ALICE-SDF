@@ -208,7 +208,10 @@ impl MeshCache {
     /// This promotes the entry to most-recently-used position.
     pub fn get(&self, key: &MeshCacheKey) -> Option<Arc<Mesh>> {
         // We need write access because `get` updates LRU order.
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self
+            .entries
+            .write()
+            .expect("MeshCache: RwLock poisoned on entries.write() in get()");
         entries.get(key)
     }
 
@@ -223,7 +226,10 @@ impl MeshCache {
             size_bytes,
         };
 
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self
+            .entries
+            .write()
+            .expect("MeshCache: RwLock poisoned on entries.write() in insert()");
         let _evicted = entries.insert(key, entry, self.config.max_entries);
         // Future: if persist_on_evict && disk_cache_dir is set, write evicted mesh to disk.
 
@@ -232,20 +238,29 @@ impl MeshCache {
 
     /// Remove an entry from the cache.
     pub fn remove(&self, key: &MeshCacheKey) -> Option<Arc<Mesh>> {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self
+            .entries
+            .write()
+            .expect("MeshCache: RwLock poisoned on entries.write() in remove()");
         entries.remove(key)
     }
 
     /// Clear all cached meshes.
     pub fn clear(&self) {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self
+            .entries
+            .write()
+            .expect("MeshCache: RwLock poisoned on entries.write() in clear()");
         entries.clear();
     }
 
     /// Number of cached entries.
     #[inline(always)]
     pub fn len(&self) -> usize {
-        let entries = self.entries.read().unwrap();
+        let entries = self
+            .entries
+            .read()
+            .expect("MeshCache: RwLock poisoned on entries.read() in len()");
         entries.len()
     }
 
@@ -257,7 +272,10 @@ impl MeshCache {
 
     /// Total approximate memory usage of all cached meshes in bytes.
     pub fn memory_usage(&self) -> usize {
-        let entries = self.entries.read().unwrap();
+        let entries = self
+            .entries
+            .read()
+            .expect("MeshCache: RwLock poisoned on entries.read() in memory_usage()");
         entries.memory_usage()
     }
 
@@ -275,7 +293,10 @@ impl MeshCache {
     {
         // Fast path: check if already cached.
         {
-            let mut entries = self.entries.write().unwrap();
+            let mut entries = self
+                .entries
+                .write()
+                .expect("MeshCache: RwLock poisoned on entries.write() in get_or_generate()");
             if let Some(mesh) = entries.get(&key) {
                 return mesh;
             }
@@ -292,7 +313,10 @@ impl MeshCache {
             size_bytes,
         };
 
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self
+            .entries
+            .write()
+            .expect("MeshCache: RwLock poisoned on entries.write() in get_or_generate()");
         // Double-check: if another thread inserted while we were generating,
         // return the existing entry instead.
         if let Some(existing) = entries.get(&key) {
@@ -534,7 +558,10 @@ mod tests {
         // Different tree should (very likely) produce different hash.
         let node2 = SdfNode::sphere(2.0);
         let hash3 = hash_sdf_node(&node2);
-        assert_ne!(hash1, hash3, "Different SDF trees should produce different hashes");
+        assert_ne!(
+            hash1, hash3,
+            "Different SDF trees should produce different hashes"
+        );
     }
 
     #[test]

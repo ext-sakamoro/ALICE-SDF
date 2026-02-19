@@ -235,6 +235,7 @@ fn bench_marching_cubes(c: &mut Criterion) {
             resolution: res,
             iso_level: 0.0,
             compute_normals: true,
+            ..Default::default()
         };
 
         group.bench_with_input(BenchmarkId::new("resolution", res), &config, |b, config| {

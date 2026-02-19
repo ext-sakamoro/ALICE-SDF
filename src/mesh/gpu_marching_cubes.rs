@@ -525,9 +525,16 @@ fn read_u32(device: &wgpu::Device, staging: &wgpu::Buffer) -> Result<u32, GpuErr
         .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
         .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
 
-    let mapped = slice.get_mapped_range();
-    let val: u32 = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
-    drop(mapped);
+    let val = {
+        let mapped = slice.get_mapped_range();
+        let data: &[u32] = bytemuck::cast_slice::<u8, u32>(&mapped);
+        if data.is_empty() {
+            return Err(GpuError::BufferMapping(
+                "read_u32: mapped buffer too small (0 u32 elements)".into(),
+            ));
+        }
+        data[0]
+    };
     staging.unmap();
 
     Ok(val)
@@ -550,10 +557,18 @@ fn read_u32_vec(
         .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
         .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
 
-    let mapped = slice.get_mapped_range();
-    let data: &[u32] = bytemuck::cast_slice(&mapped);
-    let result = data[..count].to_vec();
-    drop(mapped);
+    let result = {
+        let mapped = slice.get_mapped_range();
+        let data: &[u32] = bytemuck::cast_slice(&mapped);
+        if data.len() < count {
+            return Err(GpuError::BufferMapping(format!(
+                "read_u32_vec: buffer has {} u32 elements, expected {}",
+                data.len(),
+                count
+            )));
+        }
+        data[..count].to_vec()
+    };
     staging.unmap();
 
     Ok(result)
@@ -576,10 +591,18 @@ fn read_gpu_vertices(
         .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
         .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
 
-    let mapped = slice.get_mapped_range();
-    let data: &[GpuVertex] = bytemuck::cast_slice(&mapped);
-    let result = data[..count].to_vec();
-    drop(mapped);
+    let result = {
+        let mapped = slice.get_mapped_range();
+        let data: &[GpuVertex] = bytemuck::cast_slice(&mapped);
+        if data.len() < count {
+            return Err(GpuError::BufferMapping(format!(
+                "read_gpu_vertices: buffer has {} vertices, expected {}",
+                data.len(),
+                count
+            )));
+        }
+        data[..count].to_vec()
+    };
     staging.unmap();
 
     Ok(result)

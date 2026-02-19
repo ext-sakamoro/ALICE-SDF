@@ -182,17 +182,13 @@ impl LodChainPersist {
     /// distance. Falls back to the last (lowest detail) level if distance
     /// exceeds all thresholds.
     pub fn select_lod(&self, distance: f32) -> usize {
-        // Walk from lowest detail to highest; return the first (lowest index)
-        // whose transition distance is <= distance.
-        // LOD 0 transition_distance is typically 0.0, so for very small
-        // distances we return 0.
-        let mut selected = 0;
-        for (i, level) in self.meshes.iter().enumerate() {
-            if distance >= level.transition_distance {
-                selected = i;
-            }
-        }
-        selected
+        // Find the last (highest index) LOD whose transition_distance <= distance.
+        // rposition scans from the end, so for sorted transition distances this
+        // is effectively O(1) for the common case of selecting the coarsest LOD.
+        self.meshes
+            .iter()
+            .rposition(|l| distance >= l.transition_distance)
+            .unwrap_or(0)
     }
 
     /// Get the mesh at a specific LOD level
@@ -290,7 +286,10 @@ pub fn save_lod_chain(chain: &LodChainPersist, path: impl AsRef<Path>) -> Result
     // save_abm_with_lods expects transition_distances of length meshes.len() - 1
     // (distances for LOD levels after the first)
     let transition_distances: Vec<f32> = if chain.meshes.len() > 1 {
-        chain.meshes[1..].iter().map(|l| l.transition_distance).collect()
+        chain.meshes[1..]
+            .iter()
+            .map(|l| l.transition_distance)
+            .collect()
     } else {
         Vec::new()
     };
@@ -433,9 +432,8 @@ fn sidecar_path(abm_path: &Path) -> std::path::PathBuf {
 fn read_sidecar_metadata(path: impl AsRef<Path>) -> Result<LodChainMetadata, IoError> {
     let file = std::fs::File::open(path.as_ref())?;
     let reader = std::io::BufReader::new(file);
-    serde_json::from_reader(reader).map_err(|e| {
-        IoError::Serialization(format!("Failed to read LOD chain metadata: {}", e))
-    })
+    serde_json::from_reader(reader)
+        .map_err(|e| IoError::Serialization(format!("Failed to read LOD chain metadata: {}", e)))
 }
 
 // ---------------------------------------------------------------------------
@@ -548,12 +546,7 @@ mod tests {
     #[test]
     fn test_mesh_accessor() {
         let lod0 = make_test_mesh(10);
-        let chain = LodChainPersist::new(
-            vec![lod0],
-            vec![0.0],
-            0,
-            LodChainConfig::default(),
-        );
+        let chain = LodChainPersist::new(vec![lod0], vec![0.0], 0, LodChainConfig::default());
 
         assert!(chain.mesh(0).is_some());
         assert_eq!(chain.mesh(0).unwrap().triangle_count(), 10);
@@ -596,17 +589,11 @@ mod tests {
     #[test]
     fn test_memory_calculation() {
         let lod0 = make_test_mesh(10);
-        let chain = LodChainPersist::new(
-            vec![lod0],
-            vec![0.0],
-            0,
-            LodChainConfig::default(),
-        );
+        let chain = LodChainPersist::new(vec![lod0], vec![0.0], 0, LodChainConfig::default());
 
         let mem = chain.total_memory_bytes();
         // 30 vertices * size_of::<Vertex>() + 30 indices * 4 bytes
-        let expected =
-            30 * std::mem::size_of::<Vertex>() + 30 * std::mem::size_of::<u32>();
+        let expected = 30 * std::mem::size_of::<Vertex>() + 30 * std::mem::size_of::<u32>();
         assert_eq!(mem, expected);
     }
 
@@ -690,12 +677,7 @@ mod tests {
     fn test_save_load_single_lod() {
         let lod0 = make_test_mesh(8);
 
-        let chain = LodChainPersist::new(
-            vec![lod0],
-            vec![0.0],
-            123,
-            LodChainConfig::default(),
-        );
+        let chain = LodChainPersist::new(vec![lod0], vec![0.0], 123, LodChainConfig::default());
 
         let path = temp_path("single_lod.abm");
 
@@ -747,12 +729,7 @@ mod tests {
     fn test_aabb_stored_in_levels() {
         let lod0 = make_test_mesh(3);
 
-        let chain = LodChainPersist::new(
-            vec![lod0],
-            vec![0.0],
-            0,
-            LodChainConfig::default(),
-        );
+        let chain = LodChainPersist::new(vec![lod0], vec![0.0], 0, LodChainConfig::default());
 
         let level = &chain.meshes[0];
         // 3 triangles at offsets 0, 2, 4 -> x range [0, 5.0], y range [0, 1.0]
@@ -774,12 +751,7 @@ mod tests {
 
     #[test]
     fn test_empty_chain() {
-        let chain = LodChainPersist::new(
-            vec![],
-            vec![],
-            0,
-            LodChainConfig::default(),
-        );
+        let chain = LodChainPersist::new(vec![], vec![], 0, LodChainConfig::default());
         assert_eq!(chain.level_count(), 0);
         assert_eq!(chain.total_memory_bytes(), 0);
         let summary = chain.summary();

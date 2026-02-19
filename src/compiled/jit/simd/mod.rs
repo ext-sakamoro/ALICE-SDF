@@ -22,6 +22,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+mod platform;
+
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, Value};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -43,7 +45,11 @@ pub struct JitSimdSdf {
     func_ptr: *const u8,
 }
 
+// SAFETY: JitSimdSdf holds a read-only function pointer to JIT-compiled machine code.
+// After compilation completes, the code is immutable and safe to call from any thread.
+// The JITModule is held alive by the struct, preventing use-after-free.
 unsafe impl Send for JitSimdSdf {}
+// SAFETY: See Send impl above. The function pointer is read-only and thread-safe.
 unsafe impl Sync for JitSimdSdf {}
 
 /// SIMD coordinate state (2 lanes of F32X4)
@@ -261,10 +267,8 @@ impl JitSimdSdf {
             .set("use_colocated_libcalls", "true")
             .map_err(|e| e.to_string())?;
 
-        // Enable SIMD on x86_64
-        if cfg!(target_arch = "x86_64") {
-            let _ = flag_builder.set("enable_simd", "true");
-        }
+        // Enable platform-specific SIMD (AVX2 on x86_64, NEON on aarch64)
+        platform::configure_simd_flags(&mut flag_builder);
 
         let isa_builder = cranelift_native::builder().map_err(|e| e.to_string())?;
         let isa = isa_builder
@@ -2230,6 +2234,9 @@ impl JitSimdSdf {
     /// Evaluate 8 points using native SIMD (raw pointer interface)
     #[inline]
     pub unsafe fn eval_8_raw(&self, x: *const f32, y: *const f32, z: *const f32, out: *mut f32) {
+        // SAFETY: func_ptr was compiled by Cranelift with verified extern "C" ABI signature
+        // matching (px: *const f32, py: *const f32, pz: *const f32, out: *mut f32).
+        // The JITModule is held alive by the struct, preventing use-after-free.
         let func: SimdSdfFn = mem::transmute(self.func_ptr);
         func(x, y, z, out);
     }
@@ -2238,6 +2245,8 @@ impl JitSimdSdf {
     #[inline]
     pub unsafe fn eval_8(&self, x: &[f32; 8], y: &[f32; 8], z: &[f32; 8]) -> [f32; 8] {
         let mut out = [0.0f32; 8];
+        // SAFETY: [f32; 8] arrays are contiguous and provide exactly 8 elements.
+        // as_ptr()/as_mut_ptr() yield valid pointers for the full array extent.
         self.eval_8_raw(x.as_ptr(), y.as_ptr(), z.as_ptr(), out.as_mut_ptr());
         out
     }
@@ -2260,6 +2269,9 @@ impl JitSimdSdf {
             let out_ptr = results.as_mut_ptr();
 
             for i in (0..loop_len).step_by(chunk_size) {
+                // SAFETY: Loop bounds ensure i + 8 <= loop_len <= len. The input slices
+                // have `len` elements and results has `len` elements, so ptr.add(i) with
+                // 8-element SIMD reads/writes stays within bounds.
                 unsafe {
                     self.eval_8_raw(x_ptr.add(i), y_ptr.add(i), z_ptr.add(i), out_ptr.add(i));
                 }
@@ -2275,6 +2287,11 @@ impl JitSimdSdf {
             let mut z_pad = [0.0f32; 8];
             let mut out_pad = [0.0f32; 8];
 
+            // SAFETY: remainder < 8 and x_pad/y_pad/z_pad are stack-allocated [f32; 8] buffers.
+            // Source slices have at least `remainder` elements starting at `offset`.
+            // copy_nonoverlapping is safe because pad buffers do not overlap with source slices.
+            // The final copy back writes `remainder` elements to results at `offset`, which
+            // is within bounds since offset + remainder == len == results.len().
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     x.as_ptr().add(offset),
@@ -2388,7 +2405,12 @@ pub struct JitSimdSdfDynamic {
     params: Vec<f32>,
 }
 
+// SAFETY: JitSimdSdfDynamic holds a read-only function pointer to JIT-compiled machine code
+// and an owned params Vec. After compilation, the code is immutable. The params Vec is only
+// mutated through &mut self methods. The JITModule is held alive by the struct.
 unsafe impl Send for JitSimdSdfDynamic {}
+// SAFETY: See Send impl above. The function pointer is read-only and thread-safe.
+// Shared references only read params, which is safe across threads.
 unsafe impl Sync for JitSimdSdfDynamic {}
 
 impl JitSimdSdfDynamic {
@@ -2401,9 +2423,8 @@ impl JitSimdSdfDynamic {
         flag_builder
             .set("use_colocated_libcalls", "true")
             .map_err(|e| e.to_string())?;
-        if cfg!(target_arch = "x86_64") {
-            let _ = flag_builder.set("enable_simd", "true");
-        }
+        // Enable platform-specific SIMD (AVX2 on x86_64, NEON on aarch64)
+        platform::configure_simd_flags(&mut flag_builder);
 
         let isa_builder = cranelift_native::builder().map_err(|e| e.to_string())?;
         let isa = isa_builder
@@ -4123,6 +4144,10 @@ impl JitSimdSdfDynamic {
     /// Evaluate 8 points using native SIMD (raw pointer interface)
     #[inline]
     pub unsafe fn eval_8_raw(&self, x: *const f32, y: *const f32, z: *const f32, out: *mut f32) {
+        // SAFETY: func_ptr was compiled by Cranelift with verified extern "C" ABI signature
+        // matching (px: *const f32, py: *const f32, pz: *const f32, out: *mut f32, params: *const f32).
+        // The JITModule is held alive by the struct, preventing use-after-free.
+        // self.params.as_ptr() is valid because params is an owned Vec kept alive by the struct.
         let func: SimdSdfDynamicFn = mem::transmute(self.func_ptr);
         func(x, y, z, out, self.params.as_ptr());
     }
@@ -4131,6 +4156,8 @@ impl JitSimdSdfDynamic {
     #[inline]
     pub unsafe fn eval_8(&self, x: &[f32; 8], y: &[f32; 8], z: &[f32; 8]) -> [f32; 8] {
         let mut out = [0.0f32; 8];
+        // SAFETY: [f32; 8] arrays are contiguous and provide exactly 8 elements.
+        // as_ptr()/as_mut_ptr() yield valid pointers for the full array extent.
         self.eval_8_raw(x.as_ptr(), y.as_ptr(), z.as_ptr(), out.as_mut_ptr());
         out
     }
@@ -4152,6 +4179,9 @@ impl JitSimdSdfDynamic {
             let out_ptr = results.as_mut_ptr();
 
             for i in (0..loop_len).step_by(chunk_size) {
+                // SAFETY: Loop bounds ensure i + 8 <= loop_len <= len. The input slices
+                // have `len` elements and results has `len` elements, so ptr.add(i) with
+                // 8-element SIMD reads/writes stays within bounds.
                 unsafe {
                     self.eval_8_raw(x_ptr.add(i), y_ptr.add(i), z_ptr.add(i), out_ptr.add(i));
                 }
@@ -4166,6 +4196,11 @@ impl JitSimdSdfDynamic {
             let mut z_pad = [0.0f32; 8];
             let mut out_pad = [0.0f32; 8];
 
+            // SAFETY: remainder < 8 and x_pad/y_pad/z_pad are stack-allocated [f32; 8] buffers.
+            // Source slices have at least `remainder` elements starting at `offset`.
+            // copy_nonoverlapping is safe because pad buffers do not overlap with source slices.
+            // The final copy back writes `remainder` elements to results at `offset`, which
+            // is within bounds since offset + remainder == len == results.len().
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     x.as_ptr().add(offset),
@@ -4469,6 +4504,8 @@ mod tests {
         let y = [0.0, 0.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0];
         let z = [0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.0];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         for i in 0..8 {
@@ -4495,6 +4532,8 @@ mod tests {
         let y = [0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 0.0, -0.5];
         let z = [0.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.0];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         for i in 0..8 {
@@ -4524,6 +4563,8 @@ mod tests {
         let y = [0.0; 8];
         let z = [0.0; 8];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         for i in 0..8 {
@@ -4554,6 +4595,8 @@ mod tests {
         let y = [0.0; 8];
         let z = [0.0; 8];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         for i in 0..8 {
@@ -4580,6 +4623,8 @@ mod tests {
         let y = [2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 1.0, 2.0];
         let z = [3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 4.0];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         for i in 0..8 {
@@ -4664,6 +4709,8 @@ mod tests {
         let y = [0.0; 8];
         let z = [0.0; 8];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         let plain_sphere = SdfNode::Sphere { radius: 1.0 };
@@ -4691,6 +4738,8 @@ mod tests {
         let y = [0.0, 0.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0];
         let z = [0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.0];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         for i in 0..8 {
@@ -4715,6 +4764,8 @@ mod tests {
         let y = [0.0; 8];
         let z = [0.0; 8];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results1 = unsafe { jit.eval_8(&x, &y, &z) };
         let expected1 = eval(&sphere1, Vec3::new(1.5, 0.0, 0.0));
         assert!(
@@ -4729,6 +4780,9 @@ mod tests {
         let compiled2 = CompiledSdf::compile(&sphere2);
         jit.update_params(&compiled2);
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. Params were updated but the
+        // compiled function signature is unchanged.
         let results2 = unsafe { jit.eval_8(&x, &y, &z) };
         let expected2 = eval(&sphere2, Vec3::new(1.5, 0.0, 0.0));
         assert!(
@@ -4755,6 +4809,8 @@ mod tests {
         let y = [0.0; 8];
         let z = [0.0; 8];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         for i in 0..8 {
@@ -4795,6 +4851,8 @@ mod tests {
         let y = [0.0; 8];
         let z = [0.0; 8];
 
+        // SAFETY: x, y, z are [f32; 8] arrays providing exactly 8 contiguous elements
+        // as required by the JIT-compiled SIMD function. The JIT was compiled successfully above.
         let results = unsafe { jit.eval_8(&x, &y, &z) };
 
         let plain_sphere = SdfNode::Sphere { radius: 1.0 };

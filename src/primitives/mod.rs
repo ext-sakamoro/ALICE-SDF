@@ -830,6 +830,12 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
 /// This is intended for use in the inner loop where validation happened upstream.
 #[inline(always)]
 pub unsafe fn eval_primitive_unchecked(prim: PrimitiveType, point: Vec3, params: &[f32]) -> f32 {
+    // SAFETY: Each `get_unchecked(i)` accesses `params[i]` without bounds
+    // checking. The caller's contract (documented in `# Safety` above) guarantees
+    // that `params` contains at least as many elements as the primitive type
+    // requires (e.g., 1 for Sphere, 3 for Box3d, 7 for Capsule). This function
+    // is only called from the compiled evaluator's inner loop, where `params`
+    // is a slice into the pre-validated `CompiledSdf::constants` buffer.
     match prim {
         PrimitiveType::Sphere => sdf_sphere(point, *params.get_unchecked(0)),
         PrimitiveType::Box3d => sdf_box3d(

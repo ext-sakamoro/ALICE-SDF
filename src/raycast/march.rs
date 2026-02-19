@@ -948,6 +948,10 @@ pub fn raymarch_jit_simd_8(
         let px_arr: [f32; 8] = px.into();
         let py_arr: [f32; 8] = py.into();
         let pz_arr: [f32; 8] = pz.into();
+        // SAFETY: `eval_8` calls a JIT-compiled native function pointer that was
+        // generated from a validated CompiledSdf. The input arrays are stack-
+        // allocated [f32; 8] with valid data. The JIT code only reads from these
+        // arrays and writes to its return value, with no aliasing concerns.
         let d_arr = unsafe { sdf.eval_8(&px_arr, &py_arr, &pz_arr) };
         let d = f32x8::from(d_arr);
 

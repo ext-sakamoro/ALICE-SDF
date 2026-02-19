@@ -8,6 +8,27 @@
 use super::instruction::Instruction;
 use crate::types::SdfNode;
 
+/// Error type for SDF compilation failures.
+#[derive(Debug, thiserror::Error)]
+pub enum CompileError {
+    /// A primitive in the SDF tree is not supported by the bytecode compiler.
+    #[error(
+        "Unsupported primitive for bytecode compilation: {0}. Use eval() or transpiler instead."
+    )]
+    UnsupportedPrimitive(String),
+
+    /// The SDF tree is too deep and would overflow the evaluation stack.
+    #[error("SDF tree requires stack depth {required} but maximum is {limit} ({kind} stack)")]
+    StackOverflow {
+        /// Kind of stack that overflows ("value" or "coordinate")
+        kind: &'static str,
+        /// Required depth
+        required: usize,
+        /// Maximum allowed depth
+        limit: usize,
+    },
+}
+
 /// Compiled SDF representation
 ///
 /// A flat array of instructions that can be evaluated without
@@ -21,21 +42,50 @@ pub struct CompiledSdf {
 }
 
 impl CompiledSdf {
-    /// Compile an SdfNode tree into bytecode
+    /// Compile an SdfNode tree into bytecode.
     ///
-    /// The compilation uses post-order traversal:
-    /// - For primitives: emit the primitive instruction
-    /// - For binary ops: compile left child, compile right child, emit operation
-    /// - For transforms/modifiers: emit transform, compile child, emit pop
+    /// # Panics
+    ///
+    /// Panics if the tree contains unsupported primitives (Triangle, Bezier).
+    /// Use [`try_compile`](Self::try_compile) for a non-panicking alternative.
     pub fn compile(node: &SdfNode) -> Self {
+        Self::try_compile(node)
+            .expect("CompiledSdf::compile() failed: unsupported primitive in SDF tree")
+    }
+
+    /// Compile an SdfNode tree into bytecode, returning an error on failure.
+    ///
+    /// Use this instead of [`compile`](Self::compile) when the SDF tree may contain
+    /// primitives that cannot be represented in bytecode (e.g. Triangle, Bezier which
+    /// exceed the params\[6\] limit) or when the tree may be too deep for the
+    /// fixed-size evaluation stacks (value: 64, coordinate: 32).
+    pub fn try_compile(node: &SdfNode) -> Result<Self, CompileError> {
+        validate_for_compile(node)?;
+
+        let (value_depth, coord_depth) = compute_stack_depths(node);
+        if value_depth > MAX_VALUE_STACK {
+            return Err(CompileError::StackOverflow {
+                kind: "value",
+                required: value_depth,
+                limit: MAX_VALUE_STACK,
+            });
+        }
+        if coord_depth > MAX_COORD_STACK {
+            return Err(CompileError::StackOverflow {
+                kind: "coordinate",
+                required: coord_depth,
+                limit: MAX_COORD_STACK,
+            });
+        }
+
         let mut compiler = Compiler::new();
         compiler.compile_node(node);
         compiler.instructions.push(Instruction::end());
 
-        CompiledSdf {
+        Ok(CompiledSdf {
             instructions: compiler.instructions,
             node_count: compiler.node_count,
-        }
+        })
     }
 
     /// Get the number of instructions
@@ -162,11 +212,11 @@ impl Compiler {
             }
 
             SdfNode::Triangle { .. } => {
-                panic!("Triangle requires 9 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+                unreachable!("Triangle: validated by validate_for_compile()");
             }
 
             SdfNode::Bezier { .. } => {
-                panic!("Bezier requires 10 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+                unreachable!("Bezier: validated by validate_for_compile()");
             }
 
             // === Extended Primitives (38 new) ===
@@ -1095,6 +1145,247 @@ impl Compiler {
             _ => {} // new variants handled later
         }
     }
+}
+
+/// Maximum stack depth for value stack (must match eval.rs / eval_simd.rs).
+const MAX_VALUE_STACK: usize = 64;
+/// Maximum stack depth for coordinate transform stack.
+const MAX_COORD_STACK: usize = 32;
+
+/// Compute the maximum value stack depth and coordinate stack depth required
+/// to evaluate the given SDF tree.
+///
+/// Returns `(value_depth, coord_depth)`.
+pub(crate) fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
+    match node {
+        // Primitives push 1 value onto the value stack, no coord push
+        SdfNode::Sphere { .. }
+        | SdfNode::Box3d { .. }
+        | SdfNode::Cylinder { .. }
+        | SdfNode::Torus { .. }
+        | SdfNode::Plane { .. }
+        | SdfNode::Capsule { .. }
+        | SdfNode::Cone { .. }
+        | SdfNode::Ellipsoid { .. }
+        | SdfNode::RoundedCone { .. }
+        | SdfNode::Pyramid { .. }
+        | SdfNode::Octahedron { .. }
+        | SdfNode::HexPrism { .. }
+        | SdfNode::Link { .. }
+        | SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. } => (1, 0),
+
+        // Binary operations: compile left, then right (both on stack), then consume 2 → produce 1.
+        // Peak value depth = max(left_depth, left_result + right_depth)
+        // where left_result = 1 (left subtree leaves one value on stack).
+        SdfNode::Union { a, b }
+        | SdfNode::Intersection { a, b }
+        | SdfNode::Subtraction { a, b }
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::SmoothSubtraction { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::XOR { a, b }
+        | SdfNode::Morph { a, b, .. }
+        | SdfNode::ColumnsUnion { a, b, .. }
+        | SdfNode::ColumnsIntersection { a, b, .. }
+        | SdfNode::ColumnsSubtraction { a, b, .. }
+        | SdfNode::Pipe { a, b, .. }
+        | SdfNode::Engrave { a, b, .. }
+        | SdfNode::Groove { a, b, .. }
+        | SdfNode::Tongue { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. }
+        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+            let (va, ca) = compute_stack_depths(a);
+            let (vb, cb) = compute_stack_depths(b);
+            // Left is evaluated first, leaving 1 value. Then right is evaluated on top.
+            let value_depth = va.max(1 + vb);
+            let coord_depth = ca.max(cb);
+            (value_depth, coord_depth)
+        }
+
+        // Transforms: push 1 coord frame, evaluate child, pop coord frame.
+        // Value depth = child's value depth.
+        // Coord depth = 1 + child's coord depth.
+        SdfNode::Translate { child, .. }
+        | SdfNode::Rotate { child, .. }
+        | SdfNode::Scale { child, .. }
+        | SdfNode::ScaleNonUniform { child, .. }
+        | SdfNode::Twist { child, .. }
+        | SdfNode::Bend { child, .. }
+        | SdfNode::RepeatInfinite { child, .. }
+        | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::Noise { child, .. }
+        | SdfNode::Elongate { child, .. }
+        | SdfNode::Mirror { child, .. }
+        | SdfNode::OctantMirror { child }
+        | SdfNode::Revolution { child, .. }
+        | SdfNode::Extrude { child, .. }
+        | SdfNode::SweepBezier { child, .. }
+        | SdfNode::Taper { child, .. }
+        | SdfNode::Displacement { child, .. }
+        | SdfNode::PolarRepeat { child, .. }
+        | SdfNode::Animated { child, .. }
+        | SdfNode::Shear { child, .. }
+        | SdfNode::ProjectiveTransform { child, .. }
+        | SdfNode::LatticeDeform { child, .. }
+        | SdfNode::SdfSkinning { child, .. }
+        | SdfNode::IcosahedralSymmetry { child }
+        | SdfNode::IFS { child, .. }
+        | SdfNode::HeightmapDisplacement { child, .. }
+        | SdfNode::SurfaceRoughness { child, .. } => {
+            let (vc, cc) = compute_stack_depths(child);
+            (vc, 1 + cc)
+        }
+
+        // Modifiers that don't push a coord frame (value-only modifiers)
+        SdfNode::Round { child, .. }
+        | SdfNode::Onion { child, .. }
+        | SdfNode::WithMaterial { child, .. } => compute_stack_depths(child),
+
+        // Catch-all for future variants
+        #[allow(unreachable_patterns)]
+        _ => (1, 0),
+    }
+}
+
+/// Recursively validate that all nodes in the tree are supported by the bytecode compiler.
+fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
+    match node {
+        // Unsupported primitives (exceed params[6] limit)
+        SdfNode::Triangle { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("Triangle".into()));
+        }
+        SdfNode::Bezier { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("Bezier".into()));
+        }
+        // Binary operations — validate both children
+        SdfNode::Union { a, b }
+        | SdfNode::Intersection { a, b }
+        | SdfNode::Subtraction { a, b }
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::SmoothSubtraction { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::XOR { a, b }
+        | SdfNode::Morph { a, b, .. }
+        | SdfNode::ColumnsUnion { a, b, .. }
+        | SdfNode::ColumnsIntersection { a, b, .. }
+        | SdfNode::ColumnsSubtraction { a, b, .. }
+        | SdfNode::Pipe { a, b, .. }
+        | SdfNode::Engrave { a, b, .. }
+        | SdfNode::Groove { a, b, .. }
+        | SdfNode::Tongue { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. }
+        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+            validate_for_compile(a)?;
+            validate_for_compile(b)?;
+        }
+        // Transforms and modifiers — validate child
+        SdfNode::Translate { child, .. }
+        | SdfNode::Rotate { child, .. }
+        | SdfNode::Scale { child, .. }
+        | SdfNode::ScaleNonUniform { child, .. }
+        | SdfNode::Twist { child, .. }
+        | SdfNode::Bend { child, .. }
+        | SdfNode::RepeatInfinite { child, .. }
+        | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::Noise { child, .. }
+        | SdfNode::Round { child, .. }
+        | SdfNode::Onion { child, .. }
+        | SdfNode::Elongate { child, .. }
+        | SdfNode::Mirror { child, .. }
+        | SdfNode::OctantMirror { child }
+        | SdfNode::Revolution { child, .. }
+        | SdfNode::Extrude { child, .. }
+        | SdfNode::SweepBezier { child, .. }
+        | SdfNode::Taper { child, .. }
+        | SdfNode::Displacement { child, .. }
+        | SdfNode::PolarRepeat { child, .. }
+        | SdfNode::WithMaterial { child, .. }
+        | SdfNode::Animated { child, .. }
+        | SdfNode::Shear { child, .. }
+        | SdfNode::ProjectiveTransform { child, .. }
+        | SdfNode::LatticeDeform { child, .. }
+        | SdfNode::SdfSkinning { child, .. }
+        | SdfNode::IcosahedralSymmetry { child }
+        | SdfNode::IFS { child, .. }
+        | SdfNode::HeightmapDisplacement { child, .. }
+        | SdfNode::SurfaceRoughness { child, .. } => {
+            validate_for_compile(child)?;
+        }
+        // All other primitives are supported by bytecode
+        _ => {}
+    }
+    Ok(())
 }
 
 #[cfg(test)]

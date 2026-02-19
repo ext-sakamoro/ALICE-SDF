@@ -46,6 +46,10 @@ impl LinearizedSvo {
     /// creating a wgpu storage buffer.
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `self.nodes` is a contiguous Vec<SvoNode>. SvoNode is #[repr(C)]
+        // and contains only primitive fields (u32, f32) with no padding, totaling
+        // 32 bytes per node. Reinterpreting as &[u8] with byte length =
+        // len * size_of::<SvoNode>() is sound. The slice borrows `self.nodes`.
         unsafe {
             std::slice::from_raw_parts(
                 self.nodes.as_ptr() as *const u8,

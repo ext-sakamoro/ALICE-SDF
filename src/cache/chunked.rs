@@ -91,6 +91,13 @@ struct ChunkEntry {
     dirty: bool,
 }
 
+/// Internal storage combining entries with insertion-order tracking for FIFO eviction.
+struct ChunkedStore {
+    entries: HashMap<ChunkCoord, ChunkEntry>,
+    /// Insertion order: oldest at front, newest at back.
+    order: Vec<ChunkCoord>,
+}
+
 // ---------------------------------------------------------------------------
 // ChunkedMeshCache
 // ---------------------------------------------------------------------------
@@ -102,7 +109,7 @@ struct ChunkEntry {
 /// SDF changes — either globally or within a specific region.
 pub struct ChunkedMeshCache {
     config: ChunkedCacheConfig,
-    chunks: RwLock<HashMap<ChunkCoord, ChunkEntry>>,
+    chunks: RwLock<ChunkedStore>,
     /// Current global SDF hash used for invalidation.
     current_sdf_hash: RwLock<u64>,
 }
@@ -112,7 +119,10 @@ impl ChunkedMeshCache {
     pub fn new(config: ChunkedCacheConfig) -> Self {
         Self {
             config,
-            chunks: RwLock::new(HashMap::new()),
+            chunks: RwLock::new(ChunkedStore {
+                entries: HashMap::new(),
+                order: Vec::new(),
+            }),
             current_sdf_hash: RwLock::new(0),
         }
     }
@@ -121,24 +131,41 @@ impl ChunkedMeshCache {
 
     /// Get the chunk mesh at the given coordinate, if cached and valid.
     pub fn get_chunk(&self, coord: &ChunkCoord) -> Option<Arc<Mesh>> {
-        let chunks = self.chunks.read().unwrap();
-        chunks.get(coord).map(|e| Arc::clone(&e.mesh))
+        let chunks = self
+            .chunks
+            .read()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in get_chunk()");
+        chunks.entries.get(coord).map(|e| Arc::clone(&e.mesh))
     }
 
     /// Insert or update a chunk mesh.
+    ///
+    /// Uses FIFO eviction: when at capacity, the oldest-inserted chunk is
+    /// removed first — deterministic and cache-friendly compared to random.
     pub fn set_chunk(&self, coord: ChunkCoord, mesh: Mesh, sdf_hash: u64) {
-        let mut chunks = self.chunks.write().unwrap();
+        let mut chunks = self
+            .chunks
+            .write()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in set_chunk()");
 
-        // If we are at capacity and the coord is new, evict nothing (HashMap
-        // simply grows).  A hard cap is checked here to avoid unbounded memory.
-        if chunks.len() >= self.config.max_cached_chunks && !chunks.contains_key(&coord) {
-            // Remove an arbitrary entry (effectively random eviction).
-            if let Some(&evict_key) = chunks.keys().next() {
-                chunks.remove(&evict_key);
+        // FIFO eviction: remove the oldest entry when at capacity.
+        if chunks.entries.len() >= self.config.max_cached_chunks
+            && !chunks.entries.contains_key(&coord)
+        {
+            if let Some(evict_key) = chunks.order.first().copied() {
+                chunks.entries.remove(&evict_key);
+                chunks.order.remove(0);
             }
         }
 
-        chunks.insert(
+        // If updating an existing entry, remove old position from order.
+        if chunks.entries.contains_key(&coord) {
+            if let Some(pos) = chunks.order.iter().position(|c| *c == coord) {
+                chunks.order.remove(pos);
+            }
+        }
+
+        chunks.entries.insert(
             coord,
             ChunkEntry {
                 mesh: Arc::new(mesh),
@@ -146,14 +173,18 @@ impl ChunkedMeshCache {
                 dirty: true,
             },
         );
+        chunks.order.push(coord);
     }
 
     // -- Invalidation --------------------------------------------------------
 
     /// Mark **all** chunks as dirty (e.g. the SDF changed globally).
     pub fn invalidate_all(&self) {
-        let mut chunks = self.chunks.write().unwrap();
-        for entry in chunks.values_mut() {
+        let mut chunks = self
+            .chunks
+            .write()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in invalidate_all()");
+        for entry in chunks.entries.values_mut() {
             entry.dirty = true;
         }
     }
@@ -161,9 +192,12 @@ impl ChunkedMeshCache {
     /// Mark chunks overlapping a world-space bounding box as dirty.
     pub fn invalidate_region(&self, min: Vec3, max: Vec3) {
         let coords = self.chunks_in_bounds(min, max);
-        let mut chunks = self.chunks.write().unwrap();
+        let mut chunks = self
+            .chunks
+            .write()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in invalidate_region()");
         for c in &coords {
-            if let Some(entry) = chunks.get_mut(c) {
+            if let Some(entry) = chunks.entries.get_mut(c) {
                 entry.dirty = true;
             }
         }
@@ -171,8 +205,12 @@ impl ChunkedMeshCache {
 
     /// Get the coordinates of all currently dirty chunks.
     pub fn dirty_chunks(&self) -> Vec<ChunkCoord> {
-        let chunks = self.chunks.read().unwrap();
+        let chunks = self
+            .chunks
+            .read()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in dirty_chunks()");
         chunks
+            .entries
             .iter()
             .filter(|(_, e)| e.dirty)
             .map(|(&c, _)| c)
@@ -183,13 +221,17 @@ impl ChunkedMeshCache {
     /// invalidated (those whose stored hash differs from `new_hash`).
     pub fn update_sdf_hash(&self, new_hash: u64) -> Vec<ChunkCoord> {
         {
-            let mut h = self.current_sdf_hash.write().unwrap();
+            let mut h = self.current_sdf_hash.write()
+                .expect("ChunkedMeshCache: RwLock poisoned on current_sdf_hash.write() in update_sdf_hash()");
             *h = new_hash;
         }
 
         let mut invalidated = Vec::new();
-        let mut chunks = self.chunks.write().unwrap();
-        for (&coord, entry) in chunks.iter_mut() {
+        let mut chunks = self
+            .chunks
+            .write()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in update_sdf_hash()");
+        for (&coord, entry) in chunks.entries.iter_mut() {
             if entry.sdf_hash != new_hash {
                 entry.dirty = true;
                 invalidated.push(coord);
@@ -202,21 +244,31 @@ impl ChunkedMeshCache {
 
     /// Get all cached chunk coordinates.
     pub fn cached_chunks(&self) -> Vec<ChunkCoord> {
-        let chunks = self.chunks.read().unwrap();
-        chunks.keys().copied().collect()
+        let chunks = self
+            .chunks
+            .read()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in cached_chunks()");
+        chunks.entries.keys().copied().collect()
     }
 
     /// Number of cached chunks.
     #[inline]
     pub fn chunk_count(&self) -> usize {
-        let chunks = self.chunks.read().unwrap();
-        chunks.len()
+        let chunks = self
+            .chunks
+            .read()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in chunk_count()");
+        chunks.entries.len()
     }
 
     /// Total approximate memory usage of all cached chunk meshes (bytes).
     pub fn memory_usage(&self) -> usize {
-        let chunks = self.chunks.read().unwrap();
+        let chunks = self
+            .chunks
+            .read()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in memory_usage()");
         chunks
+            .entries
             .values()
             .map(|e| estimate_mesh_bytes(&e.mesh))
             .sum()
@@ -274,9 +326,12 @@ impl ChunkedMeshCache {
         })?;
         std::fs::create_dir_all(dir)?;
 
-        let mut chunks = self.chunks.write().unwrap();
+        let mut chunks = self
+            .chunks
+            .write()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in persist_dirty()");
         let mut written = 0usize;
-        for (&coord, entry) in chunks.iter_mut() {
+        for (&coord, entry) in chunks.entries.iter_mut() {
             if entry.dirty {
                 let path = dir.join(format!("{}_{}_{}_.abm", coord.x, coord.y, coord.z));
                 save_abm(&entry.mesh, &path)?;
@@ -301,11 +356,18 @@ impl ChunkedMeshCache {
             return Ok(None);
         }
         let mesh = load_abm(&path)?;
-        let sdf_hash = *self.current_sdf_hash.read().unwrap();
+        let sdf_hash = *self
+            .current_sdf_hash
+            .read()
+            .expect("ChunkedMeshCache: RwLock poisoned on current_sdf_hash.read() in load_chunk()");
         let arc = Arc::new(mesh);
 
-        let mut chunks = self.chunks.write().unwrap();
-        chunks.insert(
+        let mut chunks = self
+            .chunks
+            .write()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in load_chunk()");
+        let is_new = !chunks.entries.contains_key(coord);
+        chunks.entries.insert(
             *coord,
             ChunkEntry {
                 mesh: Arc::clone(&arc),
@@ -313,6 +375,9 @@ impl ChunkedMeshCache {
                 dirty: false,
             },
         );
+        if is_new {
+            chunks.order.push(*coord);
+        }
         Ok(Some(arc))
     }
 
@@ -320,8 +385,12 @@ impl ChunkedMeshCache {
 
     /// Clear all cached chunks.
     pub fn clear(&self) {
-        let mut chunks = self.chunks.write().unwrap();
-        chunks.clear();
+        let mut chunks = self
+            .chunks
+            .write()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in clear()");
+        chunks.entries.clear();
+        chunks.order.clear();
     }
 
     /// Merge all cached chunk meshes into a single combined [`Mesh`].
@@ -329,10 +398,13 @@ impl ChunkedMeshCache {
     /// Vertex positions are preserved in world space. Index offsets are
     /// adjusted so the resulting mesh is self-consistent.
     pub fn merge_all(&self) -> Mesh {
-        let chunks = self.chunks.read().unwrap();
+        let chunks = self
+            .chunks
+            .read()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in merge_all()");
         let mut vertices: Vec<Vertex> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
-        for entry in chunks.values() {
+        for entry in chunks.entries.values() {
             let base = vertices.len() as u32;
             vertices.extend_from_slice(&entry.mesh.vertices);
             indices.extend(entry.mesh.indices.iter().map(|&i| i + base));
@@ -466,7 +538,7 @@ mod tests {
         // Manually mark all clean first.
         {
             let mut chunks = cache.chunks.write().unwrap();
-            for e in chunks.values_mut() {
+            for e in chunks.entries.values_mut() {
                 e.dirty = false;
             }
         }
@@ -487,7 +559,7 @@ mod tests {
         // Mark clean.
         {
             let mut chunks = cache.chunks.write().unwrap();
-            for e in chunks.values_mut() {
+            for e in chunks.entries.values_mut() {
                 e.dirty = false;
             }
         }
@@ -528,8 +600,7 @@ mod tests {
         assert_eq!(cache.memory_usage(), 0);
 
         let mesh = make_mesh(10, 4);
-        let expected =
-            10 * std::mem::size_of::<Vertex>() + 12 * std::mem::size_of::<u32>();
+        let expected = 10 * std::mem::size_of::<Vertex>() + 12 * std::mem::size_of::<u32>();
         cache.set_chunk(ChunkCoord::new(0, 0, 0), mesh, 1);
         assert_eq!(cache.memory_usage(), expected);
     }
@@ -543,7 +614,7 @@ mod tests {
         // Mark clean.
         {
             let mut chunks = cache.chunks.write().unwrap();
-            for e in chunks.values_mut() {
+            for e in chunks.entries.values_mut() {
                 e.dirty = false;
             }
         }

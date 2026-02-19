@@ -52,6 +52,7 @@ pub mod crispy;
 pub mod eval;
 pub mod interval;
 pub mod io;
+pub mod llm_schema;
 pub mod material;
 pub mod mesh;
 pub mod modifiers;
@@ -120,7 +121,7 @@ pub mod prelude {
         eval_compiled, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
         eval_compiled_batch_soa, eval_compiled_batch_soa_parallel, eval_compiled_bvh,
         eval_compiled_distance_and_normal, eval_compiled_normal, eval_compiled_simd,
-        get_scene_aabb, AabbPacked, CompiledSdf, CompiledSdfBvh, Vec3x8,
+        get_scene_aabb, AabbPacked, CompileError, CompiledSdf, CompiledSdfBvh, Vec3x8,
     };
     #[cfg(feature = "destruction")]
     pub use crate::destruction::{

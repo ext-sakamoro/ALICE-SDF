@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use alice_sdf::io::{export_3mf, export_ply, export_stl, PlyConfig};
 use alice_sdf::prelude::*;
 use std::path::PathBuf;
 
@@ -92,6 +93,21 @@ enum Commands {
         bounds: f32,
     },
 
+    /// Generate 3D-printable mesh from SDF (STL/3MF output)
+    Print {
+        /// Input SDF file (.asdf or .asdf.json)
+        input: PathBuf,
+        /// Output mesh file (.3mf, .stl, .obj)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Grid resolution for marching cubes (higher = finer detail)
+        #[arg(short, long, default_value = "128")]
+        resolution: usize,
+        /// Bounding box half-size (auto-detect if omitted)
+        #[arg(short, long)]
+        bounds: Option<f32>,
+    },
+
     /// Fit a texture image to procedural noise formula
     #[cfg(feature = "texture-fit")]
     TextureFit {
@@ -138,6 +154,12 @@ fn main() {
             resolution,
             bounds,
         } => cmd_export(input, output, resolution, bounds),
+        Commands::Print {
+            input,
+            output,
+            resolution,
+            bounds,
+        } => cmd_print(input, output, resolution, bounds),
         Commands::Bench { file, points } => cmd_bench(file, points),
         #[cfg(feature = "texture-fit")]
         Commands::TextureFit {
@@ -304,15 +326,139 @@ fn cmd_export(input: PathBuf, output: PathBuf, resolution: usize, bounds: f32) {
         "fbx" => export_fbx(&mesh, &output, &FbxConfig::default(), None),
         "usda" | "usd" => export_usda(&mesh, &output, &UsdConfig::default(), None),
         "abc" => export_alembic(&mesh, &output, &AlembicConfig::default()),
+        "stl" => export_stl(&mesh, &output),
+        "3mf" => export_3mf(&mesh, &output),
+        "ply" => export_ply(&mesh, &output, &PlyConfig::default()),
         _ => {
             eprintln!("Unsupported format: .{}", ext);
-            eprintln!("Supported: .obj, .glb, .fbx, .usda, .abc");
+            eprintln!("Supported: .obj, .glb, .fbx, .usda, .abc, .stl, .3mf, .ply");
             std::process::exit(1);
         }
     };
 
     match result {
         Ok(_) => println!("Exported to {}", output.display()),
+        Err(e) => {
+            eprintln!("Export error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(feature = "cli")]
+fn cmd_print(
+    input: PathBuf,
+    output: Option<PathBuf>,
+    resolution: usize,
+    bounds_override: Option<f32>,
+) {
+    use alice_sdf::mesh::sdf_to_mesh_compiled;
+
+    let total_start = std::time::Instant::now();
+
+    let tree = match load(&input) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Load error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let node_count = tree.node_count();
+    println!("Loaded SDF: {} nodes", node_count);
+
+    // Compile SDF for faster mesh generation (SIMD batch eval)
+    let compile_start = std::time::Instant::now();
+    let compiled = CompiledSdf::compile(&tree.root);
+    let compile_ms = compile_start.elapsed().as_secs_f64() * 1000.0;
+
+    // Auto-detect bounds from tight AABB if not specified
+    let (min, max) = if let Some(b) = bounds_override {
+        (Vec3::splat(-b), Vec3::splat(b))
+    } else {
+        // Use large initial search for 3D printing scale (up to 500mm)
+        let aabb_config = alice_sdf::tight_aabb::TightAabbConfig {
+            initial_half_size: 500.0,
+            bisection_iterations: 24,
+            coarse_subdivisions: 16,
+        };
+        let aabb = alice_sdf::tight_aabb::compute_tight_aabb_with_config(&tree.root, &aabb_config);
+        if aabb.min == Vec3::ZERO && aabb.max == Vec3::ZERO {
+            eprintln!("Warning: Could not detect bounds. Using default [-200, 200]³");
+            (Vec3::splat(-200.0), Vec3::splat(200.0))
+        } else {
+            let center = (aabb.min + aabb.max) * 0.5;
+            let half = (aabb.max - aabb.min) * 0.5;
+            let max_extent = half.x.max(half.y).max(half.z);
+            let padded = max_extent * 1.1;
+            (center - Vec3::splat(padded), center + Vec3::splat(padded))
+        }
+    };
+
+    let config = MarchingCubesConfig {
+        resolution,
+        iso_level: 0.0,
+        compute_normals: true,
+        ..Default::default()
+    };
+
+    println!(
+        "Generating mesh: resolution={}, bounds=[{:.1}, {:.1}, {:.1}] to [{:.1}, {:.1}, {:.1}]",
+        resolution, min.x, min.y, min.z, max.x, max.y, max.z
+    );
+
+    // Use compiled SDF for faster marching cubes (SIMD 8-wide batch evaluation)
+    let mesh_start = std::time::Instant::now();
+    let mesh = sdf_to_mesh_compiled(&compiled, min, max, &config);
+    let mesh_ms = mesh_start.elapsed().as_secs_f64() * 1000.0;
+
+    println!(
+        "  {} vertices, {} triangles (compile: {:.1}ms, mesh: {:.1}ms)",
+        mesh.vertex_count(),
+        mesh.triangle_count(),
+        compile_ms,
+        mesh_ms
+    );
+
+    // Determine output path and format
+    let out_path = output.unwrap_or_else(|| {
+        let stem = input.file_stem().unwrap_or_default().to_string_lossy();
+        PathBuf::from(format!("{}.3mf", stem))
+    });
+
+    let ext = out_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("3mf")
+        .to_lowercase();
+
+    let export_start = std::time::Instant::now();
+    let result = match ext.as_str() {
+        "3mf" => export_3mf(&mesh, &out_path),
+        "stl" => export_stl(&mesh, &out_path),
+        "obj" => export_obj(&mesh, &out_path, &ObjConfig::default(), None),
+        "ply" => export_ply(&mesh, &out_path, &PlyConfig::default()),
+        _ => {
+            eprintln!("Unsupported print format: .{}", ext);
+            eprintln!("Supported: .3mf (recommended), .stl, .obj, .ply");
+            std::process::exit(1);
+        }
+    };
+    let export_ms = export_start.elapsed().as_secs_f64() * 1000.0;
+
+    match result {
+        Ok(_) => {
+            let file_size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
+            let total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "Exported to {} ({:.1} KB, export: {:.1}ms, total: {:.1}ms)",
+                out_path.display(),
+                file_size as f64 / 1024.0,
+                export_ms,
+                total_ms
+            );
+            println!("Ready for slicing (Bambu Studio / Orca Slicer)");
+        }
         Err(e) => {
             eprintln!("Export error: {}", e);
             std::process::exit(1);

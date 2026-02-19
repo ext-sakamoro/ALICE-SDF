@@ -1194,7 +1194,11 @@ pub struct GpuEvalFuture {
     points: Vec<Vec3>,
 }
 
-// Safety: GpuEvaluator is Send + Sync
+// SAFETY: GpuEvalFuture holds a raw pointer to GpuEvaluator, which itself
+// contains only wgpu handles (Device, Queue, Pipeline) that are Send + Sync.
+// The pointer is derived from a shared reference and is only dereferenced in
+// `wait()` / `resolve()`, where the evaluator is guaranteed to outlive the future
+// (it is created from `&GpuEvaluator` with the same lifetime scope).
 unsafe impl Send for GpuEvalFuture {}
 unsafe impl Sync for GpuEvalFuture {}
 
@@ -1208,14 +1212,18 @@ impl GpuEvalFuture {
 
     /// Wait for the GPU result (blocking)
     pub fn wait(self) -> Result<Vec<f32>, GpuError> {
-        // Safety: evaluator pointer is valid for the lifetime of GpuEvalFuture
+        // SAFETY: The evaluator pointer was created from a valid `&GpuEvaluator`
+        // reference in `eval_batch_submit()`. The caller must ensure the
+        // GpuEvaluator outlives this future, which is the documented contract.
         let evaluator = unsafe { &*self.evaluator };
         evaluator.eval_batch(&self.points)
     }
 
     /// Get the GPU result asynchronously
     pub async fn resolve(self) -> Result<Vec<f32>, GpuError> {
-        // Safety: evaluator pointer is valid for the lifetime of GpuEvalFuture
+        // SAFETY: The evaluator pointer was created from a valid `&GpuEvaluator`
+        // reference in `eval_batch_submit()`. The caller must ensure the
+        // GpuEvaluator outlives this future, which is the documented contract.
         let evaluator = unsafe { &*self.evaluator };
         evaluator.eval_batch_async(&self.points).await
     }

@@ -33,6 +33,12 @@ use crate::types::SdfNode;
 /// GDExtension entry point
 struct AliceSdfExtension;
 
+// SAFETY: `AliceSdfExtension` is an empty unit struct with no state.
+// The `#[gdextension]` macro generates the GDExtension entry-point callbacks
+// (init, deinit, get_minimum_library_level) that Godot calls exactly once
+// during plugin load/unload. No thread-safety or aliasing concerns arise
+// because the struct carries no data and the callbacks are invoked
+// sequentially by the Godot engine's main thread.
 #[gdextension]
 unsafe impl ExtensionLibrary for AliceSdfExtension {}
 

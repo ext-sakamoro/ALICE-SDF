@@ -207,8 +207,7 @@ pub fn export_ue5_mesh_binary(
 
     // Interleaved vertex data
     for v in &mesh.vertices {
-        let (px, py, pz) =
-            convert_position(v.position.x, v.position.y, v.position.z, config.scale);
+        let (px, py, pz) = convert_position(v.position.x, v.position.y, v.position.z, config.scale);
         w.write_all(&px.to_le_bytes())?;
         w.write_all(&py.to_le_bytes())?;
         w.write_all(&pz.to_le_bytes())?;
@@ -221,8 +220,7 @@ pub fn export_ue5_mesh_binary(
         w.write_all(&v.uv.x.to_le_bytes())?;
         w.write_all(&v.uv.y.to_le_bytes())?;
 
-        let (tx, ty, tz, tw) =
-            convert_tangent(v.tangent.x, v.tangent.y, v.tangent.z, v.tangent.w);
+        let (tx, ty, tz, tw) = convert_tangent(v.tangent.x, v.tangent.y, v.tangent.z, v.tangent.w);
         w.write_all(&tx.to_le_bytes())?;
         w.write_all(&ty.to_le_bytes())?;
         w.write_all(&tz.to_le_bytes())?;
@@ -402,11 +400,7 @@ pub fn export_ue5_mesh_with_lods(
 // Vertex data writers
 // ---------------------------------------------------------------------------
 
-fn write_ue5_vertex_positions(
-    w: &mut impl Write,
-    mesh: &Mesh,
-    scale: f32,
-) -> Result<(), IoError> {
+fn write_ue5_vertex_positions(w: &mut impl Write, mesh: &Mesh, scale: f32) -> Result<(), IoError> {
     write!(w, "          \"positions\": [")?;
     for (i, v) in mesh.vertices.iter().enumerate() {
         if i > 0 {
@@ -460,8 +454,7 @@ fn write_ue5_vertex_tangents(w: &mut impl Write, mesh: &Mesh) -> Result<(), IoEr
         if i > 0 {
             write!(w, ", ")?;
         }
-        let (tx, ty, tz, tw) =
-            convert_tangent(v.tangent.x, v.tangent.y, v.tangent.z, v.tangent.w);
+        let (tx, ty, tz, tw) = convert_tangent(v.tangent.x, v.tangent.y, v.tangent.z, v.tangent.w);
         write!(w, "{:.6}, {:.6}, {:.6}, {:.6}", tx, ty, tz, tw)?;
     }
     write!(w, "]")?;
@@ -809,8 +802,7 @@ mod tests {
     #[test]
     fn test_ue5_empty_meshes_error() {
         let path = temp_path("no_meshes.ue5_mesh");
-        let result =
-            export_ue5_mesh_with_lods(&[], &[], &path, &Ue5MeshConfig::default());
+        let result = export_ue5_mesh_with_lods(&[], &[], &path, &Ue5MeshConfig::default());
         assert!(matches!(result, Err(IoError::InvalidFormat(_))));
     }
 

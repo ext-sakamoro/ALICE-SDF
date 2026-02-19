@@ -7,6 +7,7 @@
 //! Author: Moroya Sakamoto
 
 use super::aabb::{primitives as aabb_prims, AabbPacked};
+use super::compiler::CompileError;
 use super::instruction::Instruction;
 use super::opcode::OpCode;
 use crate::modifiers::*;
@@ -35,19 +36,51 @@ pub struct CompiledSdfBvh {
 }
 
 impl CompiledSdfBvh {
-    /// Compile an SdfNode tree with BVH data
+    /// Compile an SdfNode tree with BVH data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tree contains unsupported primitives.
+    /// Use [`try_compile`](Self::try_compile) for a non-panicking alternative.
     pub fn compile(node: &SdfNode) -> Self {
+        Self::try_compile(node)
+            .expect("CompiledSdfBvh::compile() failed: unsupported primitive in SDF tree")
+    }
+
+    /// Compile an SdfNode tree with BVH data, returning an error for unsupported primitives.
+    ///
+    /// The BVH compiler supports a subset of primitives (basic shapes only).
+    /// Extended primitives and 2D shapes require the interpreter or shader transpiler.
+    pub fn try_compile(node: &SdfNode) -> Result<Self, CompileError> {
+        validate_for_bvh_compile(node)?;
+
+        let (value_depth, coord_depth) = super::compiler::compute_stack_depths(node);
+        if value_depth > 64 {
+            return Err(CompileError::StackOverflow {
+                kind: "value",
+                required: value_depth,
+                limit: 64,
+            });
+        }
+        if coord_depth > 32 {
+            return Err(CompileError::StackOverflow {
+                kind: "coordinate",
+                required: coord_depth,
+                limit: 32,
+            });
+        }
+
         let mut compiler = BvhCompiler::new();
         let scene_aabb = compiler.compile_node(node);
         compiler.instructions.push(Instruction::end());
-        compiler.aabbs.push(AabbPacked::infinite()); // End instruction has infinite AABB
+        compiler.aabbs.push(AabbPacked::infinite());
 
-        CompiledSdfBvh {
+        Ok(CompiledSdfBvh {
             instructions: compiler.instructions,
             aabbs: compiler.aabbs,
             node_count: compiler.node_count,
             scene_aabb,
-        }
+        })
     }
 
     /// Get the number of instructions
@@ -239,11 +272,11 @@ impl BvhCompiler {
             }
 
             SdfNode::Triangle { .. } => {
-                panic!("Triangle requires 9 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+                unreachable!("Triangle: validated by validate_for_bvh_compile()");
             }
 
             SdfNode::Bezier { .. } => {
-                panic!("Bezier requires 10 params and cannot be compiled to bytecode (params[6] limit). Use eval() or transpiler instead.");
+                unreachable!("Bezier: validated by validate_for_bvh_compile()");
             }
 
             // New primitives — interpreter-only (use eval() or transpiler)
@@ -304,7 +337,7 @@ impl BvhCompiler {
             | SdfNode::Polygon2D { .. }
             | SdfNode::RoundedRect2D { .. }
             | SdfNode::Annular2D { .. } => {
-                panic!("This primitive is interpreter/transpiler-only. Use eval() or shader transpiler instead.");
+                unreachable!("Extended primitive: validated by validate_for_bvh_compile()");
             }
 
             // === New Binary Operations ===
@@ -1939,6 +1972,149 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
 /// correctly handles all node types including transforms and modifiers as root.
 pub fn get_scene_aabb(sdf: &CompiledSdfBvh) -> AabbPacked {
     sdf.scene_aabb
+}
+
+/// Recursively validate that all nodes in the tree are supported by the BVH bytecode compiler.
+///
+/// The BVH compiler supports only basic primitives. Extended primitives and
+/// 2D shapes require the interpreter or shader transpiler.
+fn validate_for_bvh_compile(node: &SdfNode) -> Result<(), CompileError> {
+    match node {
+        // Unsupported: params[6] limit
+        SdfNode::Triangle { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("Triangle".into()));
+        }
+        SdfNode::Bezier { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("Bezier".into()));
+        }
+        // Unsupported: BVH bytecode not yet implemented for extended primitives
+        SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. } => {
+            return Err(CompileError::UnsupportedPrimitive(format!(
+                "{:?}",
+                std::mem::discriminant(node)
+            )));
+        }
+        // Binary operations — validate both children
+        SdfNode::Union { a, b }
+        | SdfNode::Intersection { a, b }
+        | SdfNode::Subtraction { a, b }
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::SmoothSubtraction { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::XOR { a, b }
+        | SdfNode::Morph { a, b, .. }
+        | SdfNode::ColumnsUnion { a, b, .. }
+        | SdfNode::ColumnsIntersection { a, b, .. }
+        | SdfNode::ColumnsSubtraction { a, b, .. }
+        | SdfNode::Pipe { a, b, .. }
+        | SdfNode::Engrave { a, b, .. }
+        | SdfNode::Groove { a, b, .. }
+        | SdfNode::Tongue { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. }
+        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+            validate_for_bvh_compile(a)?;
+            validate_for_bvh_compile(b)?;
+        }
+        // Transforms and modifiers — validate child
+        SdfNode::Translate { child, .. }
+        | SdfNode::Rotate { child, .. }
+        | SdfNode::Scale { child, .. }
+        | SdfNode::ScaleNonUniform { child, .. }
+        | SdfNode::Twist { child, .. }
+        | SdfNode::Bend { child, .. }
+        | SdfNode::RepeatInfinite { child, .. }
+        | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::Noise { child, .. }
+        | SdfNode::Round { child, .. }
+        | SdfNode::Onion { child, .. }
+        | SdfNode::Elongate { child, .. }
+        | SdfNode::Mirror { child, .. }
+        | SdfNode::OctantMirror { child }
+        | SdfNode::Revolution { child, .. }
+        | SdfNode::Extrude { child, .. }
+        | SdfNode::SweepBezier { child, .. }
+        | SdfNode::Taper { child, .. }
+        | SdfNode::Displacement { child, .. }
+        | SdfNode::PolarRepeat { child, .. }
+        | SdfNode::WithMaterial { child, .. }
+        | SdfNode::Animated { child, .. }
+        | SdfNode::Shear { child, .. }
+        | SdfNode::ProjectiveTransform { child, .. }
+        | SdfNode::LatticeDeform { child, .. }
+        | SdfNode::SdfSkinning { child, .. }
+        | SdfNode::IcosahedralSymmetry { child }
+        | SdfNode::IFS { child, .. }
+        | SdfNode::HeightmapDisplacement { child, .. }
+        | SdfNode::SurfaceRoughness { child, .. } => {
+            validate_for_bvh_compile(child)?;
+        }
+        // All basic primitives are supported
+        _ => {}
+    }
+    Ok(())
 }
 
 #[cfg(test)]

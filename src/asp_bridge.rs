@@ -19,9 +19,8 @@
 //! ```
 
 use libasp::{
-    AspPacket,
-    DPacketPayload, IPacketPayload, Rect,
-    AspResult, Color, ColorPalette, QualityLevel, RegionDescriptor,
+    AspPacket, AspResult, Color, ColorPalette, DPacketPayload, IPacketPayload, QualityLevel, Rect,
+    RegionDescriptor,
 };
 
 use crate::types::SdfTree;

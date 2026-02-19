@@ -166,6 +166,10 @@ mod instruction;
 mod opcode;
 mod simd;
 
+/// Shared shader transpiler framework (ShaderLang trait + GenericTranspiler)
+#[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
+pub mod transpiler_common;
+
 #[cfg(feature = "jit")]
 pub mod jit;
 
@@ -191,7 +195,7 @@ pub use hlsl::{HlslShader, HlslTranspileMode};
 pub use glsl::{GlslShader, GlslTranspileMode};
 
 pub use aabb::AabbPacked;
-pub use compiler::CompiledSdf;
+pub use compiler::{CompileError, CompiledSdf};
 pub use eval::{
     eval_compiled, eval_compiled_batch, eval_compiled_batch_parallel,
     eval_compiled_distance_and_normal, eval_compiled_normal,

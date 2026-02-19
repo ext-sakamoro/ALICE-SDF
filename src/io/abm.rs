@@ -673,9 +673,7 @@ pub fn save_abm_with_lods(
 ///
 /// # Errors
 /// Returns `IoError::CrcMismatch` on integrity failure.
-pub fn load_abm_with_lods(
-    path: impl AsRef<Path>,
-) -> Result<(Vec<Mesh>, Vec<f32>), IoError> {
+pub fn load_abm_with_lods(path: impl AsRef<Path>) -> Result<(Vec<Mesh>, Vec<f32>), IoError> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
 
@@ -717,13 +715,7 @@ pub fn load_abm_with_lods(
             let lod_ic = read_u32(&payload, &mut offset)?;
             let dist = read_f32(&payload, &mut offset)?;
 
-            let lod_mesh = read_mesh_payload(
-                &payload,
-                &mut offset,
-                lod_vc,
-                lod_ic,
-                header.flags,
-            )?;
+            let lod_mesh = read_mesh_payload(&payload, &mut offset, lod_vc, lod_ic, header.flags)?;
 
             meshes.push(lod_mesh);
             distances.push(dist);
