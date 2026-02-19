@@ -20,14 +20,15 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **リアルタイムレイマーチング** - GPU加速レンダリング
 - **PBRマテリアル** - UE5/Unity/Godot互換のメタリック-ラフネスワークフロー
 - **キーフレームアニメーション** - タイムライントラック付きパラメトリック変形
-- **アセットパイプライン** - OBJインポート/エクスポート、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MFエクスポート
+- **アセットパイプライン** - OBJ、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、Unity、UE5エクスポート
 - **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
 - **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中
 - **Dual Contouring** - QEFベースのメッシュ生成、シャープエッジとコーナーを保持
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **68プリミティブ、24演算、5トランスフォーム、17モディファイア** - 業界最高水準のシェイプボキャブラリ
+- **72プリミティブ、24演算、5トランスフォーム、19モディファイア** - 業界最高水準のシェイプボキャブラリ
+- **5層メッシュ永続化** - ABMバイナリフォーマット、LODチェーン永続化、FIFO排出チャンクキャッシュ、Unity/UE5ネイティブエクスポート
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
 - **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
 - **緩和球トレーシング（Relaxed Sphere Tracing）** - リプシッツ適応ステップサイズによるオーバーリラクゼーション
@@ -562,6 +563,9 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 | `.stl` | 対応 | 対応 | - | STL ASCII/バイナリ（3Dプリント、CAD） |
 | `.ply` | 対応 | 対応 | - | PLY ASCII/バイナリ（点群、スキャニング） |
 | `.3mf` | - | 対応 | PBR | 3MF XML（PBRマテリアル付き最新3Dプリント） |
+| `.abm` | 対応 | 対応 | - | ALICE Binary Mesh（コンパクト、CRC32、LODチェーン対応） |
+| `.unity_mesh` | - | 対応 | - | Unity ネイティブJSON/バイナリメッシュ（左手系、Z反転） |
+| `.ue5_mesh` | - | 対応 | - | UE5 ネイティブJSON/バイナリメッシュ（Z-up、センチメートル） |
 
 ## アーキテクチャ
 
@@ -653,6 +657,31 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
 | **メッシュBVH** | `mesh/bvh` | 精密符号付き距離クエリ用バウンディングボリューム階層 |
 | **マニフォールドバリデーション** | `mesh/manifold` | トポロジーバリデーション、修復、品質メトリクス |
 | **UV展開** | `mesh/uv_unwrap` | LCSMコンフォーマルUV展開（シーム検出、チャートパッキング） |
+
+### メッシュ永続化（5層アーキテクチャ）
+
+| レイヤー | モジュール | 説明 |
+|---------|--------|-------------|
+| **ABMバイナリフォーマット** | `io/abm` | ALICE Binary Mesh — CRC32付きコンパクトバイナリ、法線/UV/タンジェント/カラーオプション、LODチェーン対応 |
+| **LODチェーン永続化** | `mesh/lod_persist` | LODチェーン全体（メッシュ＋遷移距離）をSDFハッシュ検証付きで保存/読込 |
+| **チャンクメッシュキャッシュ** | `cache/chunked` | スレッドセーフなFIFO排出キャッシュ、ダーティ追跡、ディスク永続化 |
+| **Unityエクスポート** | `io/unity_mesh` | 左手座標系変換（Z反転、ワインディング反転、スケール）付きJSON/バイナリ出力 |
+| **UE5エクスポート** | `io/ue5_asset` | Z-up座標変換（メートル→センチメートル）、マルチLOD対応JSON/バイナリ出力 |
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::io::{save_abm, load_abm, export_unity_mesh, export_ue5_mesh, UnityMeshConfig, Ue5MeshConfig};
+
+// ABMバイナリメッシュの保存/読込
+save_abm(&mesh, "model.abm")?;
+let loaded = load_abm("model.abm")?;
+
+// Unityエクスポート（左手系、Z反転）
+export_unity_mesh(&mesh, "model.unity_mesh", &UnityMeshConfig::default())?;
+
+// UE5エクスポート（Z-up、センチメートル）
+export_ue5_mesh(&mesh, "model.ue5_mesh", &Ue5MeshConfig::default())?;
+```
 
 ## 新機能: プラトン立体、TPMS曲面、高度CSG (v2.0)
 
@@ -1096,6 +1125,31 @@ MeshHandle mesh = alice_sdf_generate_mesh(sdf, 64, 2.0);
 alice_sdf_export_glb(mesh, NULL, "model.glb", 0, 0);
 alice_sdf_export_fbx(mesh, NULL, "model.fbx", 0, 0);
 alice_sdf_export_obj(mesh, NULL, "model.obj", 0, 0);
+
+// --- メッシュ永続化 ---
+
+// ABMバイナリメッシュの保存/読込
+alice_sdf_save_abm(mesh, NULL, "model.abm");
+MeshHandle loaded = alice_sdf_load_abm("model.abm");
+
+// Unityエクスポート（左手系、Z反転、scale=1.0）
+alice_sdf_export_unity(mesh, NULL, "model.unity_mesh", 1/*flip_z*/, 1/*flip_winding*/, 1.0f);
+alice_sdf_export_unity_binary(mesh, NULL, "model.unity_mesh_bin", 1, 1, 1.0f);
+
+// UE5エクスポート（Z-up、センチメートル、scale=100.0）
+alice_sdf_export_ue5(mesh, NULL, "model.ue5_mesh", 100.0f);
+alice_sdf_export_ue5_binary(mesh, NULL, "model.ue5_mesh_bin", 100.0f);
+
+// LODチェーンの保存/読込（複数ディテールレベル）
+MeshHandle lods[4] = { mesh_lod0, mesh_lod1, mesh_lod2, mesh_lod3 };
+float distances[4] = { 0.0f, 10.0f, 30.0f, 100.0f };
+alice_sdf_save_lod_chain(lods, distances, 4, "asset_lod");
+
+MeshHandle out_lods[8];
+float out_dist[8];
+int count = alice_sdf_load_lod_chain("asset_lod", out_lods, out_dist, 8);
+
+alice_sdf_free_mesh(loaded);
 alice_sdf_free_mesh(mesh);
 alice_sdf_free(sdf);
 ```
@@ -1105,8 +1159,40 @@ alice_sdf_free(sdf);
 ```csharp
 using AliceSdf;
 
+// --- 基本SDF ---
 var sdf = AliceSdf.Sphere(1.0f);
 float dist = sdf.Eval(new Vector3(0.5f, 0f, 0f));
+
+// --- メッシュ生成 & エクスポート ---
+var mesh = sdf.GenerateMesh(resolution: 64, bounds: 2.0f);
+
+// ABMバイナリ保存（アセットキャッシュに最適）
+mesh.SaveAbm("Assets/Cache/sphere.abm");
+
+// ABM読込
+var cached = AliceSdf.LoadAbm("Assets/Cache/sphere.abm");
+
+// Unityエクスポート（自動で左手座標系に変換）
+mesh.ExportUnity("Assets/Meshes/sphere.unity_mesh");
+mesh.ExportUnity("Assets/Meshes/sphere.unity_mesh", flipZ: true, flipWinding: true, scale: 1.0f);
+
+// UE5エクスポート（自動でZ-up + cm変換）
+mesh.ExportUE5("sphere.ue5_mesh", scale: 100.0f);
+
+// --- LODチェーン ---
+var lod0 = sdf.GenerateMesh(resolution: 128, bounds: 2.0f);
+var lod1 = sdf.GenerateMesh(resolution: 64,  bounds: 2.0f);
+var lod2 = sdf.GenerateMesh(resolution: 32,  bounds: 2.0f);
+
+AliceSdf.SaveLodChain(
+    meshes: new[] { lod0, lod1, lod2 },
+    distances: new[] { 0f, 15f, 50f },
+    path: "Assets/LOD/sphere_lod"
+);
+
+var (lodMeshes, lodDistances) = AliceSdf.LoadLodChain("Assets/LOD/sphere_lod");
+// lodMeshes[0] = 最高ディテール（distance >= 0）
+// lodMeshes[2] = 最低ディテール（distance >= 50）
 ```
 
 ### Python（PyO3）
@@ -1117,8 +1203,9 @@ pip install alice-sdf  # または: maturin develop --features python
 
 ```python
 import alice_sdf as sdf
+import numpy as np
 
-# 作成 & 評価
+# --- 基本SDF ---
 node = sdf.sphere(1.0)
 d = node.eval(0.0, 0.0, 0.0)       # -1.0
 
@@ -1135,6 +1222,69 @@ optimized = node.translate(0, 0, 0).optimize()  # 恒等変換除去
 verts, indices = sdf.to_mesh_dual_contouring(node, (-2,-2,-2), (2,2,2), resolution=64)
 ```
 
+#### Python: メッシュ永続化 & エンジンエクスポート
+
+```python
+import alice_sdf as sdf
+
+# 形状を作成してメッシュ生成
+shape = sdf.SdfNode.sphere(1.0) - sdf.SdfNode.box3d(0.5, 0.5, 0.5)
+verts, indices = sdf.to_mesh(shape, (-2,-2,-2), (2,2,2))
+
+# --- ABMバイナリフォーマット ---
+# 高速保存/読込（GIL解放、OBJの約10倍高速）
+sdf.save_abm(verts, indices, "model.abm")
+verts2, indices2 = sdf.load_abm("model.abm")  # Zero-Copy NumPy返却
+
+# --- Unityエクスポート ---
+# 自動で左手座標系に変換（Z反転 + ワインディング反転）
+sdf.export_unity(verts, indices, "model.unity_mesh")
+
+# カスタムパラメータ
+sdf.export_unity(verts, indices, "model.unity_mesh",
+    flip_z=True,          # Unityは左手系（デフォルト: True）
+    flip_winding=True,    # 三角形ワインディング反転（デフォルト: True）
+    scale=1.0             # スケール係数（デフォルト: 1.0）
+)
+
+# --- UE5エクスポート ---
+# 自動でZ-up + メートル→センチメートル変換
+sdf.export_ue5(verts, indices, "model.ue5_mesh")
+
+# カスタムスケール（UE5はセンチメートル単位、デフォルト: 100.0）
+sdf.export_ue5(verts, indices, "model.ue5_mesh", scale=100.0)
+
+# --- チャンクメッシュキャッシュ ---
+# スレッドセーフ、FIFO排出（ストリーミング/オープンワールドに有用）
+cache = sdf.PyMeshCache(max_chunks=256, chunk_size=1.0)
+print(f"チャンク数: {len(cache)}, 空: {cache.is_empty()}")
+print(f"メモリ: {cache.memory_usage()} バイト")
+cache.clear()  # キャッシュ全クリア
+```
+
+#### Python: フルワークフロー例
+
+```python
+import alice_sdf as sdf
+
+# 1. CSGで形状を設計
+base = sdf.SdfNode.box3d(2.0, 0.2, 2.0)          # 床
+pillar = sdf.SdfNode.cylinder(0.15, 1.5)           # 柱
+pillars = pillar.repeat_finite(1.5, 0.0, 1.5, 2, 0, 2)  # 3x3グリッド
+roof = sdf.SdfNode.box3d(2.5, 0.1, 2.5).translate(0, 1.6, 0)
+temple = base | pillars | roof                      # union（演算子オーバーロード）
+
+# 2. メッシュ生成
+verts, indices = sdf.to_mesh(temple, (-4,-1,-4), (4,3,4))
+
+# 3. 全エンジンに同時エクスポート
+sdf.export_obj(verts, indices, "temple.obj")       # Blender / DCCツール
+sdf.export_glb(verts, indices, "temple.glb")       # Web / glTFビューア
+sdf.save_abm(verts, indices, "temple.abm")         # 高速バイナリキャッシュ
+sdf.export_unity(verts, indices, "temple.unity_mesh")   # Unity
+sdf.export_ue5(verts, indices, "temple.ue5_mesh")       # Unreal Engine 5
+```
+
 ### FFIメッシュエクスポート
 
 | 関数 | フォーマット | 説明 |
@@ -1145,6 +1295,14 @@ verts, indices = sdf.to_mesh_dual_contouring(node, (-2,-2,-2), (2,2,2), resoluti
 | `alice_sdf_export_fbx` | `.fbx` | Autodesk FBX |
 | `alice_sdf_export_usda` | `.usda` | Universal Scene Description |
 | `alice_sdf_export_alembic` | `.abc` | Alembic（Ogawa） |
+| `alice_sdf_save_abm` | `.abm` | ALICE Binary Mesh保存 |
+| `alice_sdf_load_abm` | `.abm` | ABM読込→MeshHandle |
+| `alice_sdf_export_unity` | `.unity_mesh` | Unity JSONメッシュ |
+| `alice_sdf_export_unity_binary` | `.unity_mesh_bin` | Unity バイナリメッシュ |
+| `alice_sdf_export_ue5` | `.ue5_mesh` | UE5 JSONメッシュ |
+| `alice_sdf_export_ue5_binary` | `.ue5_mesh_bin` | UE5 バイナリメッシュ |
+| `alice_sdf_save_lod_chain` | `.abm` + `.json` | LODチェーン保存 |
+| `alice_sdf_load_lod_chain` | `.abm` + `.json` | LODチェーン読込 |
 | `alice_sdf_free_mesh` | — | メッシュハンドルを解放 |
 
 全エクスポート関数は`MeshHandle`（事前生成）または`SdfHandle`（オンザフライ生成）を受け付けます。
@@ -1184,7 +1342,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる791以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、STL、PLY、3MF、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、タイトAABB、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配、2Dプリミティブ、ExpSmooth演算、Shearトランスフォーム、Animatedモディファイア）。`--features jit`で800以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる886以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、タイトAABB、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配、2Dプリミティブ、ExpSmooth演算、Shearトランスフォーム、Animatedモディファイア、メッシュ永続化、チャンクキャッシュ、Unity/UE5エクスポート、FFIバインディング）。`--features jit`で900以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test

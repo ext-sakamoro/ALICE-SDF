@@ -1431,6 +1431,15 @@ alice-sdf export model.asdf -o model.obj --resolution 128 --bounds 3.0
 alice-sdf export model.asdf -o scene.usda
 alice-sdf export model.asdf -o anim.abc
 alice-sdf export model.asdf -o model.fbx
+alice-sdf export model.asdf -o model.stl
+alice-sdf export model.asdf -o model.3mf
+alice-sdf export model.asdf -o model.ply
+
+# 3D Print: SDF → printable mesh (auto-detect bounds, high resolution)
+alice-sdf print model.asdf.json                     # → model.3mf (default)
+alice-sdf print model.asdf.json -o basket.stl       # → STL format
+alice-sdf print model.asdf.json -r 256              # higher resolution
+alice-sdf print model.asdf.json -r 256 -b 150.0     # manual bounds (mm)
 
 # Generate demo SDF
 alice-sdf demo -o demo.asdf
@@ -1440,6 +1449,68 @@ alice-sdf bench --points 1000000
 ```
 
 Supported export formats: `.obj`, `.glb`, `.fbx`, `.usda`, `.abc`, `.stl`, `.ply`, `.3mf`
+
+## 3D Print Pipeline (LLM → SDF → Slicer → Printer)
+
+ALICE-SDF enables a direct **"describe it → print it"** workflow for FDM/SLA 3D printers.
+
+```
+User Prompt → LLM (Claude/Gemini) → ALICE-SDF JSON → alice-sdf print → .3mf/.stl → Slicer → Printer
+                                         ~5s              ~58ms            ~0s
+```
+
+### How It Works
+
+1. **Describe** — natural language prompt to LLM with `prompts/sdf_generation_system_prompt.md`
+2. **Generate** — LLM outputs ALICE-SDF JSON (CSG tree with dimensions in mm)
+3. **Mesh** — `alice-sdf print model.asdf.json` compiles to SIMD VM → Marching Cubes → 3MF/STL
+4. **Slice** — Bambu Studio / Orca Slicer / PrusaSlicer converts mesh to G-code
+5. **Print** — Send to printer via network or USB
+
+### Print Command Performance
+
+| Step | Time | Notes |
+|------|------|-------|
+| SDF compile | <0.1ms | SdfNode → CompiledSdf (SIMD 8-wide bytecode) |
+| Bounds detect | ~2ms | Interval arithmetic tight AABB (500mm search) |
+| Mesh generation | ~37ms | Compiled Marching Cubes, Rayon parallel, res=128 |
+| 3MF export | ~20ms | ZIP compression |
+| **Total** | **~58ms** | 105K triangles from 11 nodes (release build, M3 Max) |
+
+### Example: Storage Basket
+
+```bash
+# Load the included example (200x120x80mm basket with diamond mesh pattern)
+alice-sdf print examples/storage_basket.asdf.json -o basket.3mf -r 256
+
+# Result: ~105K triangles, 8.9 MB 3MF, ready for Bambu Studio
+```
+
+### LLM System Prompt
+
+A complete system prompt for LLM-based SDF generation is provided at `prompts/sdf_generation_system_prompt.md`. It includes:
+
+- Full SdfNode JSON reference (primitives, operations, transforms, modifiers)
+- 3D printing design rules (wall thickness, overhangs, feature size)
+- Composition patterns (hollow containers, repeated patterns, organic shapes)
+- Worked example (storage basket with Onion shell + RepeatInfinite mesh)
+
+### Bambu Lab Integration (MQTT + FTPS)
+
+For direct printer integration (Bambu Lab X1C, H2S, etc.), ALICE can control printers via:
+
+| Protocol | Port | Purpose |
+|----------|------|---------|
+| MQTTS | 8883 | Status monitoring, print commands |
+| FTPS | 990 | File transfer (.3mf upload) |
+
+Auth: username `bblp`, password = LAN Access Code from printer display.
+
+```
+ALICE-SDF (Rust) → .3mf → FTPS upload → MQTT "print" command → Bambu H2S
+                                                                     │
+ALICE-View ← MQTT telemetry (XYZ position, temperature, progress) ──┘
+```
 
 ## Performance
 

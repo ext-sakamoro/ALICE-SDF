@@ -58,3 +58,11 @@ vrchat-package/*.userprefs
 
 # Rust
 Cargo.lock
+
+# Wasm demo build artifacts
+examples/wasm-demo/target/
+
+# Python compiled extensions
+python/alice_sdf/*.so
+python/alice_sdf/*.dylib
+python/alice_sdf/*.pyd

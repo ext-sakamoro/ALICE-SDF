@@ -1,0 +1,63 @@
+{
+  "version": "0.1.0",
+  "metadata": {
+    "name": "Storage Basket",
+    "description": "Rectangular basket with rounded corners, 2mm wall, diamond mesh pattern on sides. 200x120x80mm.",
+    "author": "ALICE-SDF"
+  },
+  "root": {
+    "Subtraction": {
+      "a": {
+        "Subtraction": {
+          "a": {
+            "Onion": {
+              "child": {
+                "RoundedBox": {
+                  "half_extents": [100.0, 40.0, 60.0],
+                  "round_radius": 8.0
+                }
+              },
+              "thickness": 2.0
+            }
+          },
+          "b": {
+            "Translate": {
+              "child": {
+                "Box3d": {
+                  "half_extents": [200.0, 200.0, 200.0]
+                }
+              },
+              "offset": [0.0, 240.0, 0.0]
+            }
+          }
+        }
+      },
+      "b": {
+        "Intersection": {
+          "a": {
+            "RepeatInfinite": {
+              "child": {
+                "Rotate": {
+                  "child": {
+                    "Cylinder": {
+                      "radius": 3.0,
+                      "half_height": 200.0
+                    }
+                  },
+                  "rotation": [0.0, 0.0, 0.3827, 0.9239]
+                }
+              },
+              "spacing": [12.0, 12.0, 12.0]
+            }
+          },
+          "b": {
+            "RoundedBox": {
+              "half_extents": [95.0, 35.0, 55.0],
+              "round_radius": 6.0
+            }
+          }
+        }
+      }
+    }
+  }
+}
