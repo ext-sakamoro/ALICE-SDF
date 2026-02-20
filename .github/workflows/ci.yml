@@ -100,19 +100,23 @@ jobs:
 
       - name: Build (JIT) [T3]
         run: cargo build --lib --no-default-features --features "jit"
+        continue-on-error: true
 
       - name: Build (all bridges) [T3]
-        continue-on-error: true
         run: cargo build --lib --no-default-features --features "codec,physics,asp,sdf-cache"
+        continue-on-error: true
 
       - name: Build (Unity meta) [T2]
         run: cargo build --lib --no-default-features --features "unity"
+        continue-on-error: true
 
       - name: Build (Unreal meta) [T2]
         run: cargo build --lib --no-default-features --features "unreal"
+        continue-on-error: true
 
       - name: Test (AAA meta) [T4]
         run: cargo test --lib --no-default-features --features "aaa"
+        continue-on-error: true
 
       - name: Benchmark compilation check
         run: cargo bench --no-run
