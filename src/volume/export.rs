@@ -352,6 +352,7 @@ pub fn export_dds_3d_distgrad(
 
 // --- Internal helpers ---
 
+// DDS header helper used by export_dds()
 #[allow(dead_code)]
 struct DdsHeader {
     size: u32,

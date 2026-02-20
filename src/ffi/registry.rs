@@ -196,7 +196,7 @@ pub fn remove_mesh(handle: MeshHandle) {
 // ============================================================================
 
 /// Get the number of registered nodes (for debugging)
-#[allow(dead_code)]
+#[allow(dead_code)] // Exported via FFI — not called from Rust directly
 pub fn node_count() -> usize {
     let registry = NODE_REGISTRY
         .lock()
@@ -205,7 +205,7 @@ pub fn node_count() -> usize {
 }
 
 /// Get the number of registered compiled SDFs (for debugging)
-#[allow(dead_code)]
+#[allow(dead_code)] // Exported via FFI — not called from Rust directly
 pub fn compiled_count() -> usize {
     let registry = COMPILED_REGISTRY
         .lock()
@@ -214,7 +214,7 @@ pub fn compiled_count() -> usize {
 }
 
 /// Clear all registered nodes (for testing)
-#[allow(dead_code)]
+#[allow(dead_code)] // Exported via FFI — not called from Rust directly
 pub fn clear_all() {
     {
         let mut registry = NODE_REGISTRY

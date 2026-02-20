@@ -366,6 +366,7 @@ fn reduce_to_union(mut nodes: Vec<SdfNode>) -> SdfNode {
 ///
 /// Computes the exact signed distance to a triangle.
 /// Positive outside, negative inside (requires consistent winding).
+// Internal helper for mesh-to-SDF conversion pipeline
 #[allow(dead_code)]
 #[inline(always)]
 fn sdf_triangle(point: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> f32 {

@@ -654,7 +654,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         }
 
         #[allow(unreachable_patterns)]
-        _ => todo!("new SdfNode variant in eval"),
+        _ => f32::MAX, // Unknown variant: treat as infinitely far (outside any surface)
     }
 }
 

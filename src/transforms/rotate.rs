@@ -56,6 +56,7 @@ pub fn transform_rotate_euler(point: Vec3, x: f32, y: f32, z: f32) -> Vec3 {
 }
 
 /// Create a rotation quaternion around an arbitrary axis
+// Public API — used by consumers for SDF transformation
 #[allow(dead_code)]
 #[inline(always)]
 pub fn rotation_axis_angle(axis: Vec3, angle: f32) -> Quat {
@@ -63,6 +64,7 @@ pub fn rotation_axis_angle(axis: Vec3, angle: f32) -> Quat {
 }
 
 /// Create a rotation quaternion from a "look at" direction
+// Public API — used by consumers for SDF transformation
 #[allow(dead_code)]
 #[inline(always)]
 pub fn rotation_look_at(direction: Vec3, up: Vec3) -> Quat {

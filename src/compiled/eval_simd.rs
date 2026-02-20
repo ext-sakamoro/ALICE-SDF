@@ -2160,15 +2160,6 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
     }
 }
 
-/// Smooth minimum (polynomial) for SIMD — branchless k=0 guard
-#[allow(dead_code)] // superseded by smooth_min_simd_rk; kept for reference
-#[inline(always)]
-fn smooth_min_simd(a: f32x8, b: f32x8, k: f32x8) -> f32x8 {
-    let k = k.max(f32x8::splat(1e-10));
-    let h = (f32x8::ONE - ((a - b).abs() / k)).max(f32x8::ZERO);
-    a.min(b) - h * h * k * f32x8::splat(0.25)
-}
-
 /// Smooth min — Division Exorcism edition.
 /// Takes precomputed `rk = 1/k` to eliminate SIMD division.
 #[inline(always)]
