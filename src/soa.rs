@@ -102,17 +102,17 @@ impl SoAPoints {
 
         // Copy data
         for p in points {
-            soa.x.data.push(p.x);
-            soa.y.data.push(p.y);
-            soa.z.data.push(p.z);
+            soa.x.push(p.x);
+            soa.y.push(p.y);
+            soa.z.push(p.z);
         }
 
         // Pad to SIMD width with zeros (safe default for SDF evaluation)
         let padding = aligned_len - len;
         for _ in 0..padding {
-            soa.x.data.push(0.0);
-            soa.y.data.push(0.0);
-            soa.z.data.push(0.0);
+            soa.x.push(0.0);
+            soa.y.push(0.0);
+            soa.z.push(0.0);
         }
 
         soa.len = len;
@@ -122,9 +122,9 @@ impl SoAPoints {
     /// Push a single point
     #[inline]
     pub fn push(&mut self, x: f32, y: f32, z: f32) {
-        self.x.data.push(x);
-        self.y.data.push(y);
-        self.z.data.push(z);
+        self.x.push(x);
+        self.y.push(y);
+        self.z.push(z);
         self.len += 1;
     }
 
@@ -157,10 +157,10 @@ impl SoAPoints {
     /// Call this after all points are added to ensure safe SIMD iteration.
     pub fn ensure_padding(&mut self) {
         let padded = self.padded_len();
-        while self.x.data.len() < padded {
-            self.x.data.push(0.0);
-            self.y.data.push(0.0);
-            self.z.data.push(0.0);
+        while self.x.len() < padded {
+            self.x.push(0.0);
+            self.y.push(0.0);
+            self.z.push(0.0);
         }
     }
 
@@ -193,10 +193,10 @@ impl SoAPoints {
     /// Load 8 points as SIMD vectors with bounds checking
     #[inline]
     pub fn load_simd(&self, index: usize) -> Option<(f32x8, f32x8, f32x8)> {
-        if index + SIMD_WIDTH <= self.x.data.len() {
-            let x = f32x8::from(&self.x.data[index..index + 8]);
-            let y = f32x8::from(&self.y.data[index..index + 8]);
-            let z = f32x8::from(&self.z.data[index..index + 8]);
+        if index + SIMD_WIDTH <= self.x.len() {
+            let x = f32x8::from(&self.x.as_slice()[index..index + 8]);
+            let y = f32x8::from(&self.y.as_slice()[index..index + 8]);
+            let z = f32x8::from(&self.z.as_slice()[index..index + 8]);
             Some((x, y, z))
         } else {
             None
@@ -207,11 +207,7 @@ impl SoAPoints {
     #[inline]
     pub fn get(&self, index: usize) -> Option<Vec3> {
         if index < self.len {
-            Some(Vec3::new(
-                self.x.data[index],
-                self.y.data[index],
-                self.z.data[index],
-            ))
+            Some(Vec3::new(self.x[index], self.y[index], self.z[index]))
         } else {
             None
         }
@@ -219,21 +215,21 @@ impl SoAPoints {
 
     /// Clear all points
     pub fn clear(&mut self) {
-        self.x.data.clear();
-        self.y.data.clear();
-        self.z.data.clear();
+        self.x.clear();
+        self.y.clear();
+        self.z.clear();
         self.len = 0;
     }
 
     /// Iterate over points as Vec3
     pub fn iter(&self) -> impl Iterator<Item = Vec3> + '_ {
-        (0..self.len).map(move |i| Vec3::new(self.x.data[i], self.y.data[i], self.z.data[i]))
+        (0..self.len).map(move |i| Vec3::new(self.x[i], self.y[i], self.z[i]))
     }
 
     /// Get slices for each coordinate array
     #[inline]
     pub fn as_slices(&self) -> (&[f32], &[f32], &[f32]) {
-        (&self.x.data, &self.y.data, &self.z.data)
+        (self.x.as_slice(), self.y.as_slice(), self.z.as_slice())
     }
 }
 
@@ -275,59 +271,219 @@ impl<'a> FromIterator<&'a Vec3> for SoAPoints {
 
 /// Aligned vector for SIMD operations
 ///
-/// Provides 32-byte aligned storage for direct AVX2 loads.
-#[derive(Debug, Clone)]
+/// Provides guaranteed 32-byte aligned storage for direct AVX2 loads.
+/// Uses manual allocation via `std::alloc::Layout::from_size_align(size, 32)`
+/// to ensure the data pointer is always on a 32-byte boundary.
 pub struct AlignedVec {
-    data: Vec<f32>,
+    ptr: *mut f32,
+    len: usize,
+    capacity: usize,
 }
 
+// SAFETY: The raw pointer is exclusively owned by this struct and not aliased.
+// All mutable access goes through &mut self, preventing data races.
+unsafe impl Send for AlignedVec {}
+unsafe impl Sync for AlignedVec {}
+
 impl AlignedVec {
+    /// Alignment in bytes (32 = AVX2 register width)
+    const ALIGN: usize = 32;
+
     /// Create empty aligned vector
     pub fn new() -> Self {
-        Self { data: Vec::new() }
-    }
-
-    /// Create with capacity
-    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            data: Vec::with_capacity(capacity),
+            ptr: std::ptr::NonNull::dangling().as_ptr(),
+            len: 0,
+            capacity: 0,
         }
     }
 
-    /// Get raw pointer
+    /// Create with pre-allocated capacity (32-byte aligned)
+    pub fn with_capacity(capacity: usize) -> Self {
+        if capacity == 0 {
+            return Self::new();
+        }
+        let byte_size = capacity * std::mem::size_of::<f32>();
+        // SAFETY: align is non-zero power of two, byte_size > 0 when capacity > 0
+        let layout = std::alloc::Layout::from_size_align(byte_size, Self::ALIGN)
+            .expect("AlignedVec: invalid layout");
+        // SAFETY: layout has non-zero size
+        let raw = unsafe { std::alloc::alloc_zeroed(layout) };
+        if raw.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
+        Self {
+            ptr: raw as *mut f32,
+            len: 0,
+            capacity,
+        }
+    }
+
+    /// Push a value, growing if necessary
+    pub fn push(&mut self, value: f32) {
+        if self.len == self.capacity {
+            self.grow();
+        }
+        // SAFETY: len < capacity after grow, so ptr.add(len) is within allocation
+        unsafe {
+            self.ptr.add(self.len).write(value);
+        }
+        self.len += 1;
+    }
+
+    /// Clear all elements (capacity retained)
+    #[inline]
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    /// Get raw pointer (guaranteed 32-byte aligned when capacity > 0)
     #[inline]
     pub fn as_ptr(&self) -> *const f32 {
-        self.data.as_ptr()
+        self.ptr
     }
 
     /// Get mutable raw pointer
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut f32 {
-        self.data.as_mut_ptr()
+        self.ptr
     }
 
     /// Get slice
     #[inline]
     pub fn as_slice(&self) -> &[f32] {
-        &self.data
+        if self.len == 0 {
+            return &[];
+        }
+        // SAFETY: ptr is valid for len elements, all initialized
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
 
     /// Get mutable slice
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [f32] {
-        &mut self.data
+        if self.len == 0 {
+            return &mut [];
+        }
+        // SAFETY: ptr is valid for len elements, exclusive access via &mut self
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 
     /// Length
     #[inline]
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.len
     }
 
     /// Is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        self.len == 0
+    }
+
+    /// Grow capacity (double or minimum 8)
+    fn grow(&mut self) {
+        let new_capacity = if self.capacity == 0 {
+            8
+        } else {
+            self.capacity * 2
+        };
+        let new_byte_size = new_capacity * std::mem::size_of::<f32>();
+        let new_layout = std::alloc::Layout::from_size_align(new_byte_size, Self::ALIGN)
+            .expect("AlignedVec: invalid layout on grow");
+        let new_raw = unsafe { std::alloc::alloc_zeroed(new_layout) };
+        if new_raw.is_null() {
+            std::alloc::handle_alloc_error(new_layout);
+        }
+        let new_ptr = new_raw as *mut f32;
+
+        if self.capacity > 0 && self.len > 0 {
+            // SAFETY: old allocation is valid for len elements, new allocation
+            // has capacity >= old len. Source and dest do not overlap (separate allocs).
+            unsafe {
+                std::ptr::copy_nonoverlapping(self.ptr, new_ptr, self.len);
+            }
+            self.dealloc_current();
+        }
+        self.ptr = new_ptr;
+        self.capacity = new_capacity;
+    }
+
+    /// Deallocate current buffer
+    fn dealloc_current(&self) {
+        if self.capacity > 0 {
+            let byte_size = self.capacity * std::mem::size_of::<f32>();
+            // SAFETY: layout matches the one used during allocation
+            let layout = std::alloc::Layout::from_size_align(byte_size, Self::ALIGN)
+                .expect("AlignedVec: invalid layout on dealloc");
+            unsafe {
+                std::alloc::dealloc(self.ptr as *mut u8, layout);
+            }
+        }
+    }
+}
+
+impl Drop for AlignedVec {
+    fn drop(&mut self) {
+        self.dealloc_current();
+    }
+}
+
+impl Clone for AlignedVec {
+    fn clone(&self) -> Self {
+        let mut new = Self::with_capacity(self.capacity);
+        if self.len > 0 {
+            // SAFETY: both allocations are valid for self.len elements
+            unsafe {
+                std::ptr::copy_nonoverlapping(self.ptr, new.ptr, self.len);
+            }
+        }
+        new.len = self.len;
+        new
+    }
+}
+
+impl std::fmt::Debug for AlignedVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AlignedVec")
+            .field("len", &self.len)
+            .field("capacity", &self.capacity)
+            .field("aligned", &(self.ptr as usize % Self::ALIGN == 0))
+            .finish()
+    }
+}
+
+impl std::ops::Deref for AlignedVec {
+    type Target = [f32];
+    #[inline]
+    fn deref(&self) -> &[f32] {
+        self.as_slice()
+    }
+}
+
+impl std::ops::DerefMut for AlignedVec {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [f32] {
+        self.as_mut_slice()
+    }
+}
+
+impl std::ops::Index<usize> for AlignedVec {
+    type Output = f32;
+    #[inline]
+    fn index(&self, index: usize) -> &f32 {
+        assert!(index < self.len, "AlignedVec index out of bounds");
+        // SAFETY: bounds checked above
+        unsafe { &*self.ptr.add(index) }
+    }
+}
+
+impl std::ops::IndexMut<usize> for AlignedVec {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut f32 {
+        assert!(index < self.len, "AlignedVec index out of bounds");
+        // SAFETY: bounds checked above, exclusive access via &mut self
+        unsafe { &mut *self.ptr.add(index) }
     }
 }
 
@@ -481,5 +637,76 @@ mod tests {
         assert_eq!(align_up(7, 8), 8);
         assert_eq!(align_up(8, 8), 8);
         assert_eq!(align_up(9, 8), 16);
+    }
+
+    #[test]
+    fn test_aligned_vec_32byte_alignment() {
+        let v = AlignedVec::with_capacity(16);
+        assert!(
+            v.as_ptr() as usize % 32 == 0,
+            "AlignedVec pointer must be 32-byte aligned, got {:p}",
+            v.as_ptr()
+        );
+
+        // Verify alignment survives grow
+        let mut v2 = AlignedVec::new();
+        for i in 0..100 {
+            v2.push(i as f32);
+        }
+        assert!(
+            v2.as_ptr() as usize % 32 == 0,
+            "AlignedVec pointer must remain 32-byte aligned after grow, got {:p}",
+            v2.as_ptr()
+        );
+        assert_eq!(v2.len(), 100);
+        assert_eq!(v2[0], 0.0);
+        assert_eq!(v2[99], 99.0);
+    }
+
+    #[test]
+    fn test_aligned_vec_push_and_index() {
+        let mut v = AlignedVec::new();
+        v.push(1.0);
+        v.push(2.0);
+        v.push(3.0);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v[0], 1.0);
+        assert_eq!(v[1], 2.0);
+        assert_eq!(v[2], 3.0);
+        assert_eq!(v.as_slice(), &[1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_aligned_vec_clone() {
+        let mut v = AlignedVec::with_capacity(8);
+        v.push(10.0);
+        v.push(20.0);
+        let v2 = v.clone();
+        assert_eq!(v2.len(), 2);
+        assert_eq!(v2[0], 10.0);
+        assert_eq!(v2[1], 20.0);
+        assert!(v2.as_ptr() as usize % 32 == 0);
+    }
+
+    #[test]
+    fn test_aligned_vec_clear() {
+        let mut v = AlignedVec::with_capacity(8);
+        v.push(1.0);
+        v.push(2.0);
+        v.clear();
+        assert_eq!(v.len(), 0);
+        assert!(v.is_empty());
+    }
+
+    #[test]
+    fn test_soa_points_alignment() {
+        let points: Vec<Vec3> = (0..8)
+            .map(|i| Vec3::new(i as f32, (i * 10) as f32, (i * 100) as f32))
+            .collect();
+        let soa = SoAPoints::from_vec3_slice(&points);
+
+        assert!(soa.x.as_ptr() as usize % 32 == 0, "SoA x must be 32-byte aligned");
+        assert!(soa.y.as_ptr() as usize % 32 == 0, "SoA y must be 32-byte aligned");
+        assert!(soa.z.as_ptr() as usize % 32 == 0, "SoA z must be 32-byte aligned");
     }
 }

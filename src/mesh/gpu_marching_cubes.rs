@@ -30,6 +30,9 @@ use crate::compiled::{GpuError, TranspileMode, WgslShader};
 use crate::mesh::{Mesh, Vertex};
 use crate::types::SdfNode;
 
+/// Resolution threshold: use GPU prefix sum when res > this value
+const GPU_PREFIX_SUM_THRESHOLD: u32 = 128;
+
 /// Configuration for GPU Marching Cubes
 #[derive(Debug, Clone, Copy)]
 pub struct GpuMarchingCubesConfig {
@@ -315,14 +318,7 @@ pub fn gpu_marching_cubes_from_shader(
         pass.dispatch_workgroups(dispatch_cell, dispatch_cell, dispatch_cell);
     }
 
-    // Copy cell counts and total to staging for CPU readback
-    let counts_staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Counts Staging"),
-        size: cell_counts_size,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-
+    // Copy total vertex count to staging for readback
     let total_staging = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Total Staging"),
         size: 4,
@@ -330,8 +326,23 @@ pub fn gpu_marching_cubes_from_shader(
         mapped_at_creation: false,
     });
 
-    encoder.copy_buffer_to_buffer(&cell_counts_buffer, 0, &counts_staging, 0, cell_counts_size);
     encoder.copy_buffer_to_buffer(&total_count_buffer, 0, &total_staging, 0, 4);
+
+    let use_gpu_prefix_sum = res > GPU_PREFIX_SUM_THRESHOLD;
+
+    // For CPU path, also copy cell counts to staging
+    let counts_staging = if !use_gpu_prefix_sum {
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Counts Staging"),
+            size: cell_counts_size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        encoder.copy_buffer_to_buffer(&cell_counts_buffer, 0, &staging, 0, cell_counts_size);
+        Some(staging)
+    } else {
+        None
+    };
 
     queue.submit(std::iter::once(encoder.finish()));
 
@@ -345,28 +356,31 @@ pub fn gpu_marching_cubes_from_shader(
         });
     }
 
-    // Read back cell vertex counts
-    let cell_counts = read_u32_vec(&device, &counts_staging, cell_total)?;
-
-    // ====== CPU Prefix Sum ======
-    // Compute exclusive prefix sum for per-cell vertex write offsets
-    let mut offsets = vec![0u32; cell_total];
-    let mut running = 0u32;
-    for i in 0..cell_total {
-        offsets[i] = running;
-        running += cell_counts[i];
-    }
-
     // Clamp total_verts to max_verts for safety
     let actual_verts = (total_verts as usize).min(max_verts);
 
-    // ====== PASS 3: Vertex Generation ======
+    // ====== Prefix Sum: GPU or CPU ======
 
-    let offsets_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Cell Offsets"),
-        contents: bytemuck::cast_slice(&offsets),
-        usage: wgpu::BufferUsages::STORAGE,
-    });
+    let offsets_buffer = if use_gpu_prefix_sum {
+        // GPU prefix sum: compute offsets entirely on the GPU
+        dispatch_gpu_prefix_sum(&device, &queue, &cell_counts_buffer, cell_total)?
+    } else {
+        // CPU prefix sum: read back counts, scan on CPU, upload offsets
+        let cell_counts = read_u32_vec(&device, counts_staging.as_ref().unwrap(), cell_total)?;
+        let mut offsets = vec![0u32; cell_total];
+        let mut running = 0u32;
+        for i in 0..cell_total {
+            offsets[i] = running;
+            running += cell_counts[i];
+        }
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cell Offsets"),
+            contents: bytemuck::cast_slice(&offsets),
+            usage: wgpu::BufferUsages::STORAGE,
+        })
+    };
+
+    // ====== PASS 3: Vertex Generation ======
 
     let output_size = (actual_verts * std::mem::size_of::<GpuVertex>()) as u64;
     let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -510,6 +524,204 @@ fn create_pipeline(
         compilation_options: wgpu::PipelineCompilationOptions::default(),
         cache: None,
     })
+}
+
+/// Dispatch recursive GPU prefix sum (Hillis-Steele)
+///
+/// Computes exclusive prefix sum of `input_buffer` (u32 × `count` elements)
+/// entirely on the GPU. Returns a STORAGE buffer containing the offsets.
+fn dispatch_gpu_prefix_sum(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    input_buffer: &wgpu::Buffer,
+    count: usize,
+) -> Result<wgpu::Buffer, GpuError> {
+    let wg = gpu_mc_shaders::PREFIX_SUM_WG;
+    let n = count as u32;
+    let num_blocks = (n + wg - 1) / wg;
+
+    // Compile scan and propagate shaders
+    let scan_source = gpu_mc_shaders::generate_prefix_sum_scan_shader();
+    let propagate_source = gpu_mc_shaders::generate_prefix_sum_propagate_shader();
+
+    let scan_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Prefix Sum Scan Shader"),
+        source: wgpu::ShaderSource::Wgsl(scan_source.into()),
+    });
+    let propagate_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Prefix Sum Propagate Shader"),
+        source: wgpu::ShaderSource::Wgsl(propagate_source.into()),
+    });
+
+    // Scan BGL: input(read), output(rw), block_sums(rw), params(uniform)
+    let scan_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Prefix Sum Scan BGL"),
+        entries: &[
+            bgl_entry(0, wgpu::BufferBindingType::Storage { read_only: true }),
+            bgl_entry(1, wgpu::BufferBindingType::Storage { read_only: false }),
+            bgl_entry(2, wgpu::BufferBindingType::Storage { read_only: false }),
+            bgl_entry(3, wgpu::BufferBindingType::Uniform),
+        ],
+    });
+    let scan_pipeline = create_pipeline(device, &scan_bgl, &scan_shader, "Prefix Sum Scan");
+
+    // Propagate BGL: data(rw), block_offsets(read), params(uniform)
+    let propagate_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Prefix Sum Propagate BGL"),
+        entries: &[
+            bgl_entry(0, wgpu::BufferBindingType::Storage { read_only: false }),
+            bgl_entry(1, wgpu::BufferBindingType::Storage { read_only: true }),
+            bgl_entry(2, wgpu::BufferBindingType::Uniform),
+        ],
+    });
+    let propagate_pipeline =
+        create_pipeline(device, &propagate_bgl, &propagate_shader, "Prefix Sum Propagate");
+
+    // Recursive prefix sum implementation
+    gpu_prefix_sum_recursive(
+        device,
+        queue,
+        input_buffer,
+        n,
+        num_blocks,
+        &scan_bgl,
+        &scan_pipeline,
+        &propagate_bgl,
+        &propagate_pipeline,
+    )
+}
+
+/// Recursive helper for multi-level GPU prefix sum
+fn gpu_prefix_sum_recursive(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    input_buffer: &wgpu::Buffer,
+    n: u32,
+    num_blocks: u32,
+    scan_bgl: &wgpu::BindGroupLayout,
+    scan_pipeline: &wgpu::ComputePipeline,
+    propagate_bgl: &wgpu::BindGroupLayout,
+    propagate_pipeline: &wgpu::ComputePipeline,
+) -> Result<wgpu::Buffer, GpuError> {
+    let wg = gpu_mc_shaders::PREFIX_SUM_WG;
+
+    // Output buffer for scanned results
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Prefix Sum Output"),
+        size: (n as u64) * 4,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+
+    // Block sums buffer
+    let block_sums_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Prefix Sum Block Sums"),
+        size: (num_blocks as u64) * 4,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    // Params uniform (element count)
+    let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Prefix Sum Params"),
+        contents: bytemuck::cast_slice(&[n, 0u32, 0u32, 0u32]),
+        usage: wgpu::BufferUsages::UNIFORM,
+    });
+
+    // Scan pass: scan each block, extract block sums
+    let scan_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Prefix Sum Scan BG"),
+        layout: scan_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: input_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: output_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: block_sums_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("Prefix Sum Scan Encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Prefix Sum Scan"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(scan_pipeline);
+        pass.set_bind_group(0, &scan_bg, &[]);
+        pass.dispatch_workgroups(num_blocks, 1, 1);
+    }
+    queue.submit(std::iter::once(encoder.finish()));
+
+    // If only 1 block, no propagation needed
+    if num_blocks <= 1 {
+        return Ok(output_buffer);
+    }
+
+    // Recursively scan block sums
+    let next_num_blocks = (num_blocks + wg - 1) / wg;
+    let scanned_block_sums = gpu_prefix_sum_recursive(
+        device,
+        queue,
+        &block_sums_buffer,
+        num_blocks,
+        next_num_blocks,
+        scan_bgl,
+        scan_pipeline,
+        propagate_bgl,
+        propagate_pipeline,
+    )?;
+
+    // Propagate: add scanned block sums back to each element
+    let propagate_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Prefix Sum Propagate BG"),
+        layout: propagate_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: output_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: scanned_block_sums.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: params_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("Prefix Sum Propagate Encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Prefix Sum Propagate"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(propagate_pipeline);
+        pass.set_bind_group(0, &propagate_bg, &[]);
+        pass.dispatch_workgroups(num_blocks, 1, 1);
+    }
+    queue.submit(std::iter::once(encoder.finish()));
+
+    Ok(output_buffer)
 }
 
 /// Read a single u32 from a mapped staging buffer

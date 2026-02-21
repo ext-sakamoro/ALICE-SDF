@@ -391,6 +391,132 @@ fn generate_tri_table_flat_wgsl() -> String {
     )
 }
 
+/// Workgroup size for prefix sum shaders
+pub const PREFIX_SUM_WG: u32 = 256;
+
+/// Generate Prefix Sum Scan shader (Hillis-Steele, exclusive)
+///
+/// Each workgroup scans a block of `PREFIX_SUM_WG` elements.
+/// Block sums are written to `block_sums` for recursive scanning.
+pub fn generate_prefix_sum_scan_shader() -> String {
+    format!(
+        r#"// ALICE-SDF GPU Prefix Sum - Scan Pass (Hillis-Steele)
+
+@group(0) @binding(0) var<storage, read> input: array<u32>;
+@group(0) @binding(1) var<storage, read_write> output: array<u32>;
+@group(0) @binding(2) var<storage, read_write> block_sums: array<u32>;
+@group(0) @binding(3) var<uniform> params: vec4<u32>; // x = element_count
+
+var<workgroup> s_a: array<u32, {wg}>;
+var<workgroup> s_b: array<u32, {wg}>;
+
+@compute @workgroup_size({wg})
+fn main(
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {{
+    let tid = lid.x;
+    let block_offset = wid.x * {wg}u;
+    let global_id = block_offset + tid;
+    let n = params.x;
+
+    // Load input into shared memory (0 for out-of-bounds)
+    if (global_id < n) {{
+        s_a[tid] = input[global_id];
+    }} else {{
+        s_a[tid] = 0u;
+    }}
+    workgroupBarrier();
+
+    // Hillis-Steele inclusive scan with ping-pong buffers
+    var read_buf = 0u; // 0 = s_a, 1 = s_b
+    var stride = 1u;
+    loop {{
+        if (stride >= {wg}u) {{
+            break;
+        }}
+        if (read_buf == 0u) {{
+            if (tid >= stride) {{
+                s_b[tid] = s_a[tid] + s_a[tid - stride];
+            }} else {{
+                s_b[tid] = s_a[tid];
+            }}
+        }} else {{
+            if (tid >= stride) {{
+                s_a[tid] = s_b[tid] + s_b[tid - stride];
+            }} else {{
+                s_a[tid] = s_b[tid];
+            }}
+        }}
+        read_buf = 1u - read_buf;
+        stride = stride * 2u;
+        workgroupBarrier();
+    }}
+
+    // Read inclusive scan result from the current read buffer
+    var inclusive: u32;
+    if (read_buf == 0u) {{
+        inclusive = s_a[tid];
+    }} else {{
+        inclusive = s_b[tid];
+    }}
+
+    // Convert inclusive scan to exclusive: shift right, first element = 0
+    if (global_id < n) {{
+        if (tid == 0u) {{
+            output[global_id] = 0u;
+        }} else {{
+            if (read_buf == 0u) {{
+                output[global_id] = s_a[tid - 1u];
+            }} else {{
+                output[global_id] = s_b[tid - 1u];
+            }}
+        }}
+    }}
+
+    // Last thread in block writes the block's total (inclusive scan of last element)
+    if (tid == {wg}u - 1u) {{
+        block_sums[wid.x] = inclusive;
+    }}
+}}
+"#,
+        wg = PREFIX_SUM_WG,
+    )
+}
+
+/// Generate Prefix Sum Propagate shader
+///
+/// Adds scanned block sums back to each element (skipping block 0).
+pub fn generate_prefix_sum_propagate_shader() -> String {
+    format!(
+        r#"// ALICE-SDF GPU Prefix Sum - Propagate Pass
+
+@group(0) @binding(0) var<storage, read_write> data: array<u32>;
+@group(0) @binding(1) var<storage, read> block_offsets: array<u32>;
+@group(0) @binding(2) var<uniform> params: vec4<u32>; // x = element_count
+
+@compute @workgroup_size({wg})
+fn main(
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {{
+    // Block 0 already has correct values; only propagate to blocks 1+
+    if (wid.x == 0u) {{
+        return;
+    }}
+
+    let global_id = wid.x * {wg}u + lid.x;
+    let n = params.x;
+
+    if (global_id < n) {{
+        data[global_id] = data[global_id] + block_offsets[wid.x];
+    }}
+}}
+"#,
+        wg = PREFIX_SUM_WG,
+    )
+}
+
 /// Standard Marching Cubes TRI_TABLE (Lorensen & Cline, 1987)
 fn get_tri_table() -> [[i8; 16]; 256] {
     [

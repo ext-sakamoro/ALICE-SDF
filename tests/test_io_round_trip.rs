@@ -1,11 +1,13 @@
 //! Integration tests: I/O round-trip consistency
 //!
-//! Verifies ASDF binary/JSON save-load, ABM mesh persistence, and OBJ export.
+//! Verifies ASDF binary/JSON save-load, ABM mesh persistence, OBJ/STL/GLB/PLY/FBX/USDA
+//! export-import round-trips.
 //!
 //! Author: Moroya Sakamoto
 
 mod common;
 
+use alice_sdf::io;
 use alice_sdf::prelude::*;
 use common::*;
 use std::path::PathBuf;
@@ -239,6 +241,173 @@ fn obj_export_creates_valid_file() {
     let content = std::fs::read_to_string(&path).expect("read OBJ failed");
     assert!(content.contains("v "), "OBJ should contain vertex data");
     assert!(content.contains("f "), "OBJ should contain face data");
+
+    std::fs::remove_file(&path).ok();
+}
+
+// ============================================================================
+// Mesh format round-trip tests
+// ============================================================================
+
+/// Generate a sphere mesh for round-trip testing
+fn test_mesh_sphere() -> Mesh {
+    let shape = test_sphere();
+    let config = MarchingCubesConfig {
+        resolution: 16,
+        compute_normals: true,
+        ..Default::default()
+    };
+    sdf_to_mesh(&shape, Vec3::splat(-1.5), Vec3::splat(1.5), &config)
+}
+
+#[test]
+fn stl_binary_round_trip() {
+    let mesh = test_mesh_sphere();
+    let path = temp_dir().join("rt_sphere.stl");
+
+    io::export_stl(&mesh, &path).expect("export_stl failed");
+    let loaded = io::import_stl(&path).expect("import_stl failed");
+
+    assert_eq!(
+        mesh.indices.len(),
+        loaded.indices.len(),
+        "STL binary: index count mismatch"
+    );
+    // STL stores per-face vertices, so vertex count may differ (de-duplicated on import)
+    assert!(
+        loaded.vertices.len() > 0,
+        "STL binary: loaded mesh should have vertices"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn stl_ascii_export_valid() {
+    let mesh = test_mesh_sphere();
+    let path = temp_dir().join("rt_sphere_ascii.stl");
+
+    io::export_stl_ascii(&mesh, &path).expect("export_stl_ascii failed");
+
+    let content = std::fs::read_to_string(&path).expect("read STL ASCII failed");
+    assert!(
+        content.starts_with("solid"),
+        "STL ASCII should start with 'solid'"
+    );
+    assert!(
+        content.contains("endsolid"),
+        "STL ASCII should contain 'endsolid'"
+    );
+    assert!(
+        content.contains("facet normal"),
+        "STL ASCII should contain facet normals"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn glb_round_trip() {
+    let mesh = test_mesh_sphere();
+    let path = temp_dir().join("rt_sphere.glb");
+
+    let config = GltfConfig::default();
+    export_glb(&mesh, &path, &config, None).expect("export_glb failed");
+    let loaded = import_glb(&path).expect("import_glb failed");
+
+    assert_eq!(
+        mesh.vertices.len(),
+        loaded.vertices.len(),
+        "GLB: vertex count mismatch"
+    );
+    assert_eq!(
+        mesh.indices.len(),
+        loaded.indices.len(),
+        "GLB: index count mismatch"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn ply_round_trip() {
+    let mesh = test_mesh_sphere();
+    let path = temp_dir().join("rt_sphere.ply");
+
+    let config = io::PlyConfig {
+        binary: true,
+        export_normals: true,
+    };
+    io::export_ply(&mesh, &path, &config).expect("export_ply failed");
+    let loaded = io::import_ply(&path).expect("import_ply failed");
+
+    assert_eq!(
+        mesh.vertices.len(),
+        loaded.vertices.len(),
+        "PLY: vertex count mismatch"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn fbx_ascii_round_trip() {
+    let mesh = test_mesh_sphere();
+    let path = temp_dir().join("rt_sphere.fbx");
+
+    let config = FbxConfig {
+        format: FbxFormat::Ascii,
+        ..Default::default()
+    };
+    export_fbx(&mesh, &path, &config, None).expect("export_fbx failed");
+    let loaded = import_fbx(&path).expect("import_fbx failed");
+
+    assert_eq!(
+        mesh.vertices.len(),
+        loaded.vertices.len(),
+        "FBX ASCII: vertex count mismatch"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn usda_round_trip() {
+    let mesh = test_mesh_sphere();
+    let path = temp_dir().join("rt_sphere.usda");
+
+    let config = UsdConfig::default();
+    export_usda(&mesh, &path, &config, None).expect("export_usda failed");
+    let loaded = io::import_usda(&path).expect("import_usda failed");
+
+    assert_eq!(
+        mesh.vertices.len(),
+        loaded.mesh.vertices.len(),
+        "USDA: vertex count mismatch"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn obj_round_trip() {
+    let mesh = test_mesh_sphere();
+    let path = temp_dir().join("rt_sphere.obj");
+
+    let config = ObjConfig::default();
+    export_obj(&mesh, &path, &config, None).expect("export_obj failed");
+    let loaded = import_obj(&path).expect("import_obj failed");
+
+    assert_eq!(
+        mesh.vertices.len(),
+        loaded.vertices.len(),
+        "OBJ: vertex count mismatch"
+    );
+    assert_eq!(
+        mesh.indices.len(),
+        loaded.indices.len(),
+        "OBJ: index count mismatch"
+    );
 
     std::fs::remove_file(&path).ok();
 }

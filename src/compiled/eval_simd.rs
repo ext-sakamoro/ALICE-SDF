@@ -409,86 +409,239 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 vsp += 1;
             }
 
-            // === Extended Primitives (per-lane scalar dispatch) ===
+            // === Extended Primitives (native SIMD) ===
             OpCode::RoundedBox => {
-                let d = eval_per_lane(&p, |pt| {
-                    let he = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-                    sdf_rounded_box(pt, he, inst.params[3])
-                });
+                // q = abs(p) - half_extents; max(q, 0).length() + min(max(q.x, q.y, q.z), 0) - r
+                let hx = f32x8::splat(inst.params[0]);
+                let hy = f32x8::splat(inst.params[1]);
+                let hz = f32x8::splat(inst.params[2]);
+                let rr = f32x8::splat(inst.params[3]);
+                let qx = p.x.abs() - hx;
+                let qy = p.y.abs() - hy;
+                let qz = p.z.abs() - hz;
+                let qx_pos = qx.max(f32x8::ZERO);
+                let qy_pos = qy.max(f32x8::ZERO);
+                let qz_pos = qz.max(f32x8::ZERO);
+                let outer = (qx_pos * qx_pos + qy_pos * qy_pos + qz_pos * qz_pos).sqrt();
+                let inner = qx.max(qy).max(qz).min(f32x8::ZERO);
+                let d = outer + inner - rr;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::CappedCone => {
-                let d = eval_per_lane(&p, |pt| {
-                    sdf_capped_cone(pt, inst.params[0], inst.params[1], inst.params[2])
-                });
+                // 2D profile in (length(p.xz), p.y) space
+                let h = f32x8::splat(inst.params[0]);
+                let r1 = f32x8::splat(inst.params[1]);
+                let r2 = f32x8::splat(inst.params[2]);
+                let qx = (p.x * p.x + p.z * p.z).sqrt();
+                let qy = p.y;
+                // k2 = (r2 - r1, 2*h)
+                let k2x = r2 - r1;
+                let k2y = h * f32x8::splat(2.0);
+                let k2_dot = k2x * k2x + k2y * k2y;
+                // ca = (qx - min(qx, if qy<0 {r1} else {r2}), abs(qy) - h)
+                let neg_mask = qy.cmp_lt(f32x8::ZERO);
+                let min_r = neg_mask.blend(r1, r2);
+                let ca_x = qx - qx.min(min_r);
+                let ca_y = qy.abs() - h;
+                // t = clamp(dot(k1-q, k2) / dot(k2,k2), 0, 1); k1=(r2,h)
+                let d_to_k1_x = r2 - qx;
+                let d_to_k1_y = h - qy;
+                let num = d_to_k1_x * k2x + d_to_k1_y * k2y;
+                let safe_k2_dot = k2_dot.max(f32x8::splat(0.0001));
+                let t = (num / safe_k2_dot).max(f32x8::ZERO).min(f32x8::ONE);
+                // cb = q - k1 + k2*t
+                let cb_x = qx - r2 + k2x * t;
+                let cb_y = qy - h + k2y * t;
+                let ca_d2 = ca_x * ca_x + ca_y * ca_y;
+                let cb_d2 = cb_x * cb_x + cb_y * cb_y;
+                // s = -1 if cb.x<0 && ca.y<0, else 1
+                let both_neg = cb_x.cmp_lt(f32x8::ZERO) & ca_y.cmp_lt(f32x8::ZERO);
+                let s = both_neg.blend(f32x8::splat(-1.0), f32x8::ONE);
+                let d = s * ca_d2.min(cb_d2).sqrt();
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::CappedTorus => {
-                let d = eval_per_lane(&p, |pt| {
-                    sdf_capped_torus(pt, inst.params[0], inst.params[1], inst.params[2])
-                });
+                let major_r = f32x8::splat(inst.params[0]);
+                let minor_r = f32x8::splat(inst.params[1]);
+                let sc_sin = f32x8::splat(inst.params[2].sin());
+                let sc_cos = f32x8::splat(inst.params[2].cos());
+                let px = p.x.abs();
+                // k = sc.cos*px > sc.sin*py ? sc.sin*px + sc.cos*py : sqrt(px² + py²)
+                let dot_val = sc_sin * px + sc_cos * p.y;
+                let len_val = (px * px + p.y * p.y).sqrt();
+                let mask = (sc_cos * px).cmp_gt(sc_sin * p.y);
+                let k = mask.blend(dot_val, len_val);
+                // sqrt(px² + py² + pz² + R² - 2*R*k) - r
+                let inner = px * px + p.y * p.y + p.z * p.z + major_r * major_r
+                    - f32x8::splat(2.0) * major_r * k;
+                let d = inner.max(f32x8::ZERO).sqrt() - minor_r;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::RoundedCylinder => {
-                let d = eval_per_lane(&p, |pt| {
-                    sdf_rounded_cylinder(pt, inst.params[0], inst.params[1], inst.params[2])
-                });
+                let radius = f32x8::splat(inst.params[0]);
+                let round_r = f32x8::splat(inst.params[1]);
+                let half_h = f32x8::splat(inst.params[2]);
+                let dx = (p.x * p.x + p.z * p.z).sqrt()
+                    - f32x8::splat(2.0) * radius
+                    + round_r;
+                let dy = p.y.abs() - half_h;
+                let dx_pos = dx.max(f32x8::ZERO);
+                let dy_pos = dy.max(f32x8::ZERO);
+                let d = dx.max(dy).min(f32x8::ZERO)
+                    + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt()
+                    - round_r;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::TriangularPrism => {
-                let d = eval_per_lane(&p, |pt| {
-                    sdf_triangular_prism(pt, inst.params[0], inst.params[1])
-                });
+                let width = f32x8::splat(inst.params[0]);
+                let half_depth = f32x8::splat(inst.params[1]);
+                let qx = p.x.abs();
+                let qy = p.y; // not abs for y
+                let qz = p.z.abs();
+                // 0.866025 = sqrt(3)/2
+                let sqrt3_half = f32x8::splat(0.866025);
+                let half = f32x8::splat(0.5);
+                let d = (qz - half_depth)
+                    .max((qx * sqrt3_half + qy * half).max(-qy) - width * half);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::CutSphere => {
-                let d = eval_per_lane(&p, |pt| sdf_cut_sphere(pt, inst.params[0], inst.params[1]));
+                let radius = f32x8::splat(inst.params[0]);
+                let ch = f32x8::splat(inst.params[1]); // cut_height
+                let w = (radius * radius - ch * ch).max(f32x8::ZERO).sqrt();
+                let qx = (p.x * p.x + p.z * p.z).sqrt();
+                let qy = p.y;
+                let q_len = (qx * qx + qy * qy).sqrt();
+                // Three regions via branchless blend
+                let s1 = (ch - radius) * qx * qx + w * w * (ch + radius - f32x8::splat(2.0) * qy);
+                let s2 = ch * qx - w * qy;
+                let s = s1.max(s2);
+                // d_sphere = length(q) - r
+                let d_sphere = q_len - radius;
+                // d_plane = h - q.y
+                let d_plane = ch - qy;
+                // d_edge = length(q - (w, h))
+                let ex = qx - w;
+                let ey = qy - ch;
+                let d_edge = (ex * ex + ey * ey).sqrt();
+                // if s < 0 -> d_sphere; elif qx < w -> d_plane; else -> d_edge
+                let mask_s_neg = s.cmp_lt(f32x8::ZERO);
+                let mask_qx_lt_w = qx.cmp_lt(w);
+                let d = mask_s_neg.blend(d_sphere, mask_qx_lt_w.blend(d_plane, d_edge));
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::CutHollowSphere => {
-                let d = eval_per_lane(&p, |pt| {
-                    sdf_cut_hollow_sphere(pt, inst.params[0], inst.params[1], inst.params[2])
-                });
+                let radius = f32x8::splat(inst.params[0]);
+                let ch = f32x8::splat(inst.params[1]);
+                let thickness = f32x8::splat(inst.params[2]);
+                let w = (radius * radius - ch * ch).max(f32x8::ZERO).sqrt();
+                let qx = (p.x * p.x + p.z * p.z).sqrt();
+                let qy = p.y;
+                // if h*qx < w*qy -> length(q - (w,h)) - t; else -> abs(length(q) - r) - t
+                let mask = (ch * qx).cmp_lt(w * qy);
+                let ex = qx - w;
+                let ey = qy - ch;
+                let d_cap = (ex * ex + ey * ey).sqrt() - thickness;
+                let q_len = (qx * qx + qy * qy).sqrt();
+                let d_shell = (q_len - radius).abs() - thickness;
+                let d = mask.blend(d_cap, d_shell);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::DeathStar => {
-                let d = eval_per_lane(&p, |pt| {
-                    sdf_death_star(pt, inst.params[0], inst.params[1], inst.params[2])
-                });
+                let ra = f32x8::splat(inst.params[0]);
+                let rb = f32x8::splat(inst.params[1]);
+                let dd = f32x8::splat(inst.params[2]);
+                let two = f32x8::splat(2.0);
+                // a = (ra² - rb² + d²) / (2d)
+                let a = (ra * ra - rb * rb + dd * dd) / (two * dd);
+                let b = (ra * ra - a * a).max(f32x8::ZERO).sqrt();
+                let p2x = p.x;
+                let p2y = (p.y * p.y + p.z * p.z).sqrt();
+                // Condition: p2.x*b - p2.y*a > d*max(b - p2.y, 0)
+                let lhs = p2x * b - p2y * a;
+                let rhs = dd * (b - p2y).max(f32x8::ZERO);
+                let mask = lhs.cmp_gt(rhs);
+                // d_edge = length(p2 - (a, b))
+                let ex = p2x - a;
+                let ey = p2y - b;
+                let d_edge = (ex * ex + ey * ey).sqrt();
+                // d_main = max(length(p2) - ra, -(length(p2 - (d,0)) - rb))
+                let p2_len = (p2x * p2x + p2y * p2y).sqrt();
+                let dx = p2x - dd;
+                let d_ra = p2_len - ra;
+                let d_rb = -((dx * dx + p2y * p2y).sqrt() - rb);
+                let d_main = d_ra.max(d_rb);
+                let d = mask.blend(d_edge, d_main);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::SolidAngle => {
-                let d = eval_per_lane(&p, |pt| sdf_solid_angle(pt, inst.params[0], inst.params[1]));
+                let c_sin = f32x8::splat(inst.params[0].sin());
+                let c_cos = f32x8::splat(inst.params[0].cos());
+                let radius = f32x8::splat(inst.params[1]);
+                let qx = (p.x * p.x + p.z * p.z).sqrt();
+                let qy = p.y;
+                let q_len = (qx * qx + qy * qy).sqrt();
+                let l = q_len - radius;
+                // dot(q, c) clamped to [0, radius]
+                let q_dot_c = (qx * c_sin + qy * c_cos).max(f32x8::ZERO).min(radius);
+                // m = length(q - c * clamp(dot(q,c), 0, r))
+                let proj_x = qx - c_sin * q_dot_c;
+                let proj_y = qy - c_cos * q_dot_c;
+                let m = (proj_x * proj_x + proj_y * proj_y).sqrt();
+                // sign = c.y*q.x - c.x*q.y < 0 ? -1 : 1
+                let sign_val = c_cos * qx - c_sin * qy;
+                let neg_mask = sign_val.cmp_lt(f32x8::ZERO);
+                let sign = neg_mask.blend(f32x8::splat(-1.0), f32x8::ONE);
+                let d = l.max(m * sign);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             OpCode::Rhombus => {
-                let d = eval_per_lane(&p, |pt| {
-                    sdf_rhombus(
-                        pt,
-                        inst.params[0],
-                        inst.params[1],
-                        inst.params[2],
-                        inst.params[3],
-                    )
-                });
+                let la = f32x8::splat(inst.params[0]);
+                let lb = f32x8::splat(inst.params[1]);
+                let half_h = f32x8::splat(inst.params[2]);
+                let rr = f32x8::splat(inst.params[3]);
+                let ax = p.x.abs();
+                let ay = p.y.abs();
+                let az = p.z.abs();
+                // ndot(b, b - 2*(px,pz)) = la*(la-2*px) - lb*(lb-2*pz)
+                //                        = la² - 2*la*px - lb² + 2*lb*pz
+                let b_dot_b = la * la + lb * lb;
+                let ndot_val = la * (la - f32x8::splat(2.0) * ax)
+                    - lb * (lb - f32x8::splat(2.0) * az);
+                let f = (ndot_val / b_dot_b).max(f32x8::splat(-1.0)).min(f32x8::ONE);
+                // q_xz = length((px,pz) - 0.5*b*(1-f, 1+f))
+                let half = f32x8::splat(0.5);
+                let proj_x = ax - half * la * (f32x8::ONE - f);
+                let proj_z = az - half * lb * (f32x8::ONE + f);
+                let qxz_len = (proj_x * proj_x + proj_z * proj_z).sqrt();
+                // sign(px*lb + pz*la - la*lb)
+                let sign_input = ax * lb + az * la - la * lb;
+                let pos = sign_input.cmp_gt(f32x8::ZERO);
+                let neg = sign_input.cmp_lt(f32x8::ZERO);
+                let sign = pos.blend(f32x8::ONE, neg.blend(f32x8::splat(-1.0), f32x8::ZERO));
+                let dx = qxz_len * sign - rr;
+                let dy = ay - half_h;
+                let dx_pos = dx.max(f32x8::ZERO);
+                let dy_pos = dy.max(f32x8::ZERO);
+                let d = dx.max(dy).min(f32x8::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt();
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }

@@ -96,19 +96,24 @@ pub fn branchless_abs(x: f32) -> f32 {
 pub struct BitMask64(pub u64);
 
 impl BitMask64 {
+    /// A mask with all 64 bits cleared (no elements selected).
     pub const EMPTY: Self = Self(0);
+    /// A mask with all 64 bits set (all elements selected).
     pub const FULL: Self = Self(!0u64);
 
+    /// Bitwise AND of two masks.
     #[inline(always)]
     pub fn and(self, other: Self) -> Self {
         Self(self.0 & other.0)
     }
 
+    /// Bitwise OR of two masks.
     #[inline(always)]
     pub fn or(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
 
+    /// Bitwise NOT (complement) of this mask.
     #[inline(always)]
     pub fn not(self) -> Self {
         Self(!self.0)

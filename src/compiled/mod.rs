@@ -66,15 +66,16 @@
 //!
 //! ## Instruction Format
 //!
-//! Each instruction is 32 bytes (half a cache line):
+//! Each instruction is 64 bytes (one full cache line):
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────┐
-//! │ params[6]: f32[6]  (24 bytes)                   │
+//! │ params[7]: f32[7]  (28 bytes)                   │
 //! │ opcode: u8         (1 byte)                     │
 //! │ flags: u8          (1 byte)                     │
 //! │ child_count: u16   (2 bytes)                    │
 //! │ skip_offset: u32   (4 bytes)                    │
+//! │ padding            (28 bytes)                   │
 //! └─────────────────────────────────────────────────┘
 //! ```
 //!

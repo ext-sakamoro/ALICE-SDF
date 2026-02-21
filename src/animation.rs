@@ -118,11 +118,13 @@ impl Track {
         }
     }
 
-    /// Add a keyframe (maintains sorted order)
+    /// Add a keyframe (maintains sorted order).
+    ///
+    /// Uses `total_cmp` for the time comparison so NaN timestamps do not panic.
     pub fn add_keyframe(&mut self, keyframe: Keyframe) {
         let pos = self
             .keyframes
-            .binary_search_by(|k| k.time.partial_cmp(&keyframe.time).unwrap())
+            .binary_search_by(|k| k.time.total_cmp(&keyframe.time))
             .unwrap_or_else(|p| p);
         self.keyframes.insert(pos, keyframe);
     }
@@ -175,14 +177,18 @@ impl Track {
         if t <= self.keyframes[0].time {
             return self.keyframes[0].value;
         }
-        if t >= self.keyframes.last().unwrap().time {
-            return self.keyframes.last().unwrap().value;
+        // SAFETY: keyframes is non-empty (checked above) so last() always returns Some.
+        if let Some(last) = self.keyframes.last() {
+            if t >= last.time {
+                return last.value;
+            }
         }
 
         // Binary search for the keyframe pair
+        // Use total_cmp to avoid panicking on NaN timestamps.
         let idx = self
             .keyframes
-            .binary_search_by(|k| k.time.partial_cmp(&t).unwrap())
+            .binary_search_by(|k| k.time.total_cmp(&t))
             .unwrap_or_else(|p| p);
 
         let idx = if idx > 0 { idx - 1 } else { 0 };
@@ -277,19 +283,28 @@ impl Timeline {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AnimationParams {
+    /// Translation along the X axis (world units)
     pub translate_x: f32,
+    /// Translation along the Y axis (world units)
     pub translate_y: f32,
+    /// Translation along the Z axis (world units)
     pub translate_z: f32,
+    /// Euler rotation around the X axis (radians)
     pub rotate_x: f32,
+    /// Euler rotation around the Y axis (radians)
     pub rotate_y: f32,
+    /// Euler rotation around the Z axis (radians)
     pub rotate_z: f32,
+    /// Uniform scale factor (1.0 = no scale)
     pub scale: f32,
+    /// Twist deformation strength
     pub twist: f32,
+    /// Bend deformation curvature
     pub bend: f32,
 }
 
 impl AnimationParams {
-    /// Check if any transform is active
+    /// Returns `true` if any translation component is non-zero (> 1e-6).
     #[inline]
     pub fn has_translation(&self) -> bool {
         self.translate_x.abs() > 1e-6
@@ -297,11 +312,13 @@ impl AnimationParams {
             || self.translate_z.abs() > 1e-6
     }
 
+    /// Returns `true` if any rotation component is non-zero (> 1e-6).
     #[inline]
     pub fn has_rotation(&self) -> bool {
         self.rotate_x.abs() > 1e-6 || self.rotate_y.abs() > 1e-6 || self.rotate_z.abs() > 1e-6
     }
 
+    /// Returns `true` if the scale factor differs from 1.0 by more than 1e-6.
     #[inline]
     pub fn has_scale(&self) -> bool {
         (self.scale - 1.0).abs() > 1e-6

@@ -21,13 +21,16 @@
 //! Author: Moroya Sakamoto
 
 use godot::classes::{
-    ArrayMesh, IMeshInstance3D, INode3D, IResource, MeshInstance3D, Node3D, Resource,
+    ArrayMesh, CollisionShape3D, ConvexPolygonShape3D, IMeshInstance3D, INode3D, IResource,
+    MeshInstance3D, Node3D, Resource,
 };
 use godot::prelude::*;
 use std::sync::Arc;
 
-use crate::compiled::CompiledSdf;
-use crate::mesh::{sdf_to_mesh, MarchingCubesConfig, Vertex};
+use crate::compiled::{
+    eval_compiled_batch_parallel, CompiledSdf,
+};
+use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use crate::types::SdfNode;
 
 /// GDExtension entry point
@@ -61,7 +64,6 @@ pub struct AliceSdfResource {
     shape_params_json: GString,
 
     /// Cached SDF node
-    #[init(val = None)]
     sdf_cache: Option<SdfNode>,
 }
 
@@ -226,7 +228,6 @@ pub struct AliceSdfNode {
     smooth_k: f32,
 
     /// Built SDF node
-    #[init(val = None)]
     sdf_node: Option<SdfNode>,
 }
 
@@ -331,9 +332,9 @@ impl AliceSdfNode {
         };
         if let (Some(a), Some(b)) = (self.sdf_node.take(), other_sdf) {
             self.sdf_node = Some(if self.smooth_k > 0.0 {
-                a.smooth_subtraction(b, self.smooth_k)
+                a.smooth_subtract(b, self.smooth_k)
             } else {
-                a.subtraction(b)
+                a.subtract(b)
             });
         }
     }
@@ -409,7 +410,6 @@ pub struct AliceSdfMeshInstance {
     auto_rebuild: bool,
 
     /// Cached SDF for mesh generation
-    #[init(val = None)]
     cached_sdf: Option<SdfNode>,
 }
 
@@ -483,7 +483,8 @@ impl AliceSdfMeshInstance {
 
         // Convert to Godot ArrayMesh
         let godot_mesh = alice_mesh_to_godot(&mesh);
-        self.base_mut().set_mesh(&godot_mesh.upcast());
+        self.base_mut()
+            .set_mesh(&godot_mesh.upcast::<godot::classes::Mesh>());
     }
 
     /// Get vertex count of the current mesh
@@ -521,30 +522,24 @@ fn alice_mesh_to_godot(mesh: &crate::mesh::Mesh) -> Gd<ArrayMesh> {
     uvs.resize(vert_count);
 
     for (i, v) in mesh.vertices.iter().enumerate() {
-        positions.set(i, Vector3::new(v.position.x, v.position.y, v.position.z));
-        normals.set(i, Vector3::new(v.normal.x, v.normal.y, v.normal.z));
-        uvs.set(i, Vector2::new(v.uv.x, v.uv.y));
+        positions[i] = Vector3::new(v.position.x, v.position.y, v.position.z);
+        normals[i] = Vector3::new(v.normal.x, v.normal.y, v.normal.z);
+        uvs[i] = Vector2::new(v.uv.x, v.uv.y);
     }
 
     indices.resize(mesh.indices.len());
     for (i, &idx) in mesh.indices.iter().enumerate() {
-        indices.set(i, idx as i32);
+        indices[i] = idx as i32;
     }
 
     let mut arrays = VariantArray::new();
-    arrays.resize(ArrayType::ARRAY_MAX.ord() as usize);
-    arrays.set(
-        ArrayType::ARRAY_VERTEX.ord() as usize,
-        &positions.to_variant(),
-    );
-    arrays.set(
-        ArrayType::ARRAY_NORMAL.ord() as usize,
-        &normals.to_variant(),
-    );
-    arrays.set(ArrayType::ARRAY_TEX_UV.ord() as usize, &uvs.to_variant());
-    arrays.set(ArrayType::ARRAY_INDEX.ord() as usize, &indices.to_variant());
+    arrays.resize(ArrayType::MAX.ord() as usize, &Variant::nil());
+    arrays.set(ArrayType::VERTEX.ord() as usize, &positions.to_variant());
+    arrays.set(ArrayType::NORMAL.ord() as usize, &normals.to_variant());
+    arrays.set(ArrayType::TEX_UV.ord() as usize, &uvs.to_variant());
+    arrays.set(ArrayType::INDEX.ord() as usize, &indices.to_variant());
 
-    array_mesh.add_surface_from_arrays(PrimitiveType::PRIMITIVE_TRIANGLES, &arrays);
+    array_mesh.add_surface_from_arrays(PrimitiveType::TRIANGLES, &arrays);
 
     array_mesh
 }
@@ -1088,5 +1083,335 @@ fn build_sdf_from_params(shape: &str, params_json: &str) -> Option<SdfNode> {
         }
 
         _ => None,
+    }
+}
+
+// ============================================================
+// AliceSdfCollisionGenerator — Collision shape from SDF
+// ============================================================
+
+/// Generates ConvexPolygonShape3D collision shapes from SDF meshes
+#[derive(GodotClass)]
+#[class(base=Node3D, tool)]
+pub struct AliceSdfCollisionGenerator {
+    base: Base<Node3D>,
+
+    /// Resolution for collision mesh (lower than visual for performance)
+    #[var]
+    collision_resolution: i32,
+
+    /// Bounds size (half-extent of the evaluation volume)
+    #[var]
+    bounds_size: f32,
+
+    /// Maximum number of collision vertices (decimation target)
+    #[var]
+    max_collision_vertices: i32,
+}
+
+#[godot_api]
+impl INode3D for AliceSdfCollisionGenerator {
+    fn init(base: Base<Node3D>) -> Self {
+        Self {
+            base,
+            collision_resolution: 16,
+            bounds_size: 2.0,
+            max_collision_vertices: 256,
+        }
+    }
+}
+
+#[godot_api]
+impl AliceSdfCollisionGenerator {
+    /// Generate a ConvexPolygonShape3D from an AliceSdfNode
+    ///
+    /// Returns a CollisionShape3D node that can be added as a child
+    /// of a StaticBody3D or RigidBody3D.
+    #[func]
+    fn generate_collision_shape(&self, sdf_node: Gd<AliceSdfNode>) -> Option<Gd<CollisionShape3D>> {
+        let sdf = {
+            let node_ref = sdf_node.bind();
+            node_ref.sdf_node.clone()
+        }?;
+
+        let bounds = self.bounds_size;
+        let min_bounds = glam::Vec3::splat(-bounds);
+        let max_bounds = glam::Vec3::splat(bounds);
+
+        let config = MarchingCubesConfig {
+            resolution: self.collision_resolution.max(4) as usize,
+            compute_normals: false, // Normals not needed for collision
+            ..Default::default()
+        };
+
+        let mesh = sdf_to_mesh(&sdf, min_bounds, max_bounds, &config);
+
+        if mesh.vertices.is_empty() {
+            return None;
+        }
+
+        // Convert vertices to PackedVector3Array for ConvexPolygonShape3D
+        let mut points = PackedVector3Array::new();
+
+        // Subsample if too many vertices
+        let step = if mesh.vertices.len() > self.max_collision_vertices as usize {
+            mesh.vertices.len() / self.max_collision_vertices as usize
+        } else {
+            1
+        };
+
+        for (i, v) in mesh.vertices.iter().enumerate() {
+            if i % step == 0 {
+                points.push(Vector3::new(v.position.x, v.position.y, v.position.z));
+            }
+        }
+
+        let mut convex_shape = ConvexPolygonShape3D::new_gd();
+        convex_shape.set_points(&points);
+
+        let mut collision_shape = CollisionShape3D::new_alloc();
+        collision_shape.set_shape(&convex_shape.upcast::<godot::classes::Shape3D>());
+
+        Some(collision_shape)
+    }
+}
+
+// ============================================================
+// AliceSdfLodManager — Camera-distance LOD switching
+// ============================================================
+
+/// Manages LOD switching based on camera distance for SDF meshes
+#[derive(GodotClass)]
+#[class(base=Node3D, tool)]
+pub struct AliceSdfLodManager {
+    base: Base<Node3D>,
+
+    /// Number of LOD levels to generate
+    #[var]
+    num_lod_levels: i32,
+
+    /// Base resolution for LOD 0 (highest detail)
+    #[var]
+    base_resolution: i32,
+
+    /// Distance at which LOD 0 transitions to LOD 1
+    #[var]
+    lod0_distance: f32,
+
+    /// Distance multiplier for each subsequent LOD level
+    #[var]
+    distance_multiplier: f32,
+
+    /// Bounds size (half-extent of the evaluation volume)
+    #[var]
+    bounds_size: f32,
+
+    /// Current active LOD level
+    #[var]
+    current_lod: i32,
+
+    /// Cached LOD meshes
+    lod_meshes: Vec<Gd<ArrayMesh>>,
+
+    /// Cached SDF for mesh generation
+    cached_sdf: Option<SdfNode>,
+}
+
+#[godot_api]
+impl INode3D for AliceSdfLodManager {
+    fn init(base: Base<Node3D>) -> Self {
+        Self {
+            base,
+            num_lod_levels: 3,
+            base_resolution: 64,
+            lod0_distance: 10.0,
+            distance_multiplier: 2.0,
+            bounds_size: 2.0,
+            current_lod: 0,
+            lod_meshes: Vec::new(),
+            cached_sdf: None,
+        }
+    }
+}
+
+#[godot_api]
+impl AliceSdfLodManager {
+    /// Set the SDF source and generate all LOD levels
+    #[func]
+    fn set_sdf(&mut self, sdf_node: Gd<AliceSdfNode>) {
+        let sdf = {
+            let node_ref = sdf_node.bind();
+            node_ref.sdf_node.clone()
+        };
+        self.cached_sdf = sdf;
+        self.generate_all_lods();
+    }
+
+    /// Generate all LOD level meshes
+    #[func]
+    fn generate_all_lods(&mut self) {
+        let sdf = match &self.cached_sdf {
+            Some(s) => s,
+            None => return,
+        };
+
+        let bounds = self.bounds_size;
+        let min_bounds = glam::Vec3::splat(-bounds);
+        let max_bounds = glam::Vec3::splat(bounds);
+
+        self.lod_meshes.clear();
+
+        for level in 0..self.num_lod_levels {
+            // Halve resolution per LOD level
+            let res = (self.base_resolution >> level).max(4) as usize;
+
+            let config = MarchingCubesConfig {
+                resolution: res,
+                compute_normals: true,
+                ..Default::default()
+            };
+
+            let mesh = sdf_to_mesh(sdf, min_bounds, max_bounds, &config);
+
+            if !mesh.vertices.is_empty() {
+                self.lod_meshes.push(alice_mesh_to_godot(&mesh));
+            }
+        }
+    }
+
+    /// Update LOD based on distance to a given camera position
+    ///
+    /// Call this from `_process()` with the camera's global position.
+    /// Returns the selected LOD level.
+    #[func]
+    fn update_lod(&mut self, camera_position: Vector3) -> i32 {
+        if self.lod_meshes.is_empty() {
+            return -1;
+        }
+
+        let self_pos = self.base().get_global_position();
+        let distance = self_pos.distance_to(camera_position);
+
+        // Determine LOD level from distance
+        let mut level = 0i32;
+        let mut threshold = self.lod0_distance;
+        while level < (self.lod_meshes.len() as i32 - 1) && distance > threshold {
+            level += 1;
+            threshold *= self.distance_multiplier;
+        }
+
+        self.current_lod = level;
+        level
+    }
+
+    /// Get the mesh for a specific LOD level
+    #[func]
+    fn get_lod_mesh(&self, level: i32) -> Option<Gd<ArrayMesh>> {
+        self.lod_meshes.get(level as usize).cloned()
+    }
+
+    /// Get the number of generated LOD levels
+    #[func]
+    fn get_lod_count(&self) -> i32 {
+        self.lod_meshes.len() as i32
+    }
+
+    /// Get vertex count for each LOD level (for debugging)
+    #[func]
+    fn get_lod_vertex_counts(&self) -> PackedInt32Array {
+        let mut counts = PackedInt32Array::new();
+        for mesh in &self.lod_meshes {
+            counts.push(mesh.get_surface_count());
+        }
+        counts
+    }
+}
+
+// ============================================================
+// AliceSdfBatchEvaluator — Batch SDF evaluation for GDScript
+// ============================================================
+
+/// High-performance batch SDF evaluation exposed to GDScript
+///
+/// Compiles the SDF once and evaluates many points using
+/// SIMD + multi-threading (GIL-free Rust backend).
+#[derive(GodotClass)]
+#[class(base=RefCounted)]
+pub struct AliceSdfBatchEvaluator {
+    base: Base<RefCounted>,
+
+    /// Compiled SDF for fast evaluation
+    compiled: Option<Arc<CompiledSdf>>,
+}
+
+#[godot_api]
+impl IRefCounted for AliceSdfBatchEvaluator {
+    fn init(base: Base<RefCounted>) -> Self {
+        Self {
+            base,
+            compiled: None,
+        }
+    }
+}
+
+#[godot_api]
+impl AliceSdfBatchEvaluator {
+    /// Compile an SDF for fast batch evaluation
+    #[func]
+    fn compile(&mut self, sdf_node: Gd<AliceSdfNode>) -> bool {
+        let sdf = {
+            let node_ref = sdf_node.bind();
+            node_ref.sdf_node.clone()
+        };
+        match sdf {
+            Some(node) => {
+                self.compiled = Some(Arc::new(CompiledSdf::compile(&node)));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Evaluate SDF distances at multiple points
+    ///
+    /// `points` is a PackedVector3Array of query positions.
+    /// Returns a PackedFloat32Array of SDF distances.
+    #[func]
+    fn eval_batch(&self, points: PackedVector3Array) -> PackedFloat32Array {
+        let compiled = match &self.compiled {
+            Some(c) => c,
+            None => return PackedFloat32Array::new(),
+        };
+
+        let len = points.len();
+        let mut glam_points = Vec::with_capacity(len);
+        for i in 0..len {
+            let p = points[i];
+            glam_points.push(glam::Vec3::new(p.x, p.y, p.z));
+        }
+
+        let distances = eval_compiled_batch_parallel(compiled, &glam_points);
+
+        let mut result = PackedFloat32Array::new();
+        result.resize(len);
+        for (i, &d) in distances.iter().enumerate() {
+            result[i] = d;
+        }
+        result
+    }
+
+    /// Check if a compiled SDF is available
+    #[func]
+    fn is_compiled(&self) -> bool {
+        self.compiled.is_some()
+    }
+
+    /// Get the instruction count of the compiled SDF
+    #[func]
+    fn get_instruction_count(&self) -> i32 {
+        self.compiled
+            .as_ref()
+            .map(|c| c.node_count as i32)
+            .unwrap_or(0)
     }
 }

@@ -19,9 +19,13 @@ pub use containers::{Aabb, Hit, Ray, SdfMetadata, SdfTree};
 /// Category of an SDF node variant
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SdfCategory {
+    /// Leaf geometry nodes (spheres, boxes, cylinders, etc.)
     Primitive,
+    /// Boolean and blending operations (union, intersection, smooth union, etc.)
     Operation,
+    /// Spatial transform nodes (translate, rotate, scale, etc.)
     Transform,
+    /// Surface and domain modifiers (twist, bend, shell, etc.)
     Modifier,
 }
 
@@ -815,11 +819,18 @@ pub enum SdfNode {
     },
 
     /// XOR (symmetric difference)
-    XOR { a: Arc<SdfNode>, b: Arc<SdfNode> },
+    XOR {
+        /// Left operand
+        a: Arc<SdfNode>,
+        /// Right operand
+        b: Arc<SdfNode>,
+    },
 
     /// Morph (linear interpolation between two shapes)
     Morph {
+        /// Source shape
         a: Arc<SdfNode>,
+        /// Target shape
         b: Arc<SdfNode>,
         /// Blend factor (0=a, 1=b)
         t: f32,
@@ -827,7 +838,9 @@ pub enum SdfNode {
 
     /// Columns union: column-shaped blend
     ColumnsUnion {
+        /// Left operand
         a: Arc<SdfNode>,
+        /// Right operand
         b: Arc<SdfNode>,
         /// Column radius
         r: f32,
@@ -837,7 +850,9 @@ pub enum SdfNode {
 
     /// Columns intersection: column-shaped blend
     ColumnsIntersection {
+        /// Left operand
         a: Arc<SdfNode>,
+        /// Right operand
         b: Arc<SdfNode>,
         /// Column radius
         r: f32,
@@ -847,7 +862,9 @@ pub enum SdfNode {
 
     /// Columns subtraction: column-shaped blend
     ColumnsSubtraction {
+        /// Left operand
         a: Arc<SdfNode>,
+        /// Right operand
         b: Arc<SdfNode>,
         /// Column radius
         r: f32,
@@ -857,7 +874,9 @@ pub enum SdfNode {
 
     /// Pipe: cylindrical surface at intersection
     Pipe {
+        /// Left operand
         a: Arc<SdfNode>,
+        /// Right operand
         b: Arc<SdfNode>,
         /// Pipe radius
         r: f32,
@@ -865,7 +884,9 @@ pub enum SdfNode {
 
     /// Engrave: engrave shape b into shape a
     Engrave {
+        /// Base shape (receives the engraving)
         a: Arc<SdfNode>,
+        /// Engraving shape
         b: Arc<SdfNode>,
         /// Engrave depth
         r: f32,
@@ -873,7 +894,9 @@ pub enum SdfNode {
 
     /// Groove: cut a groove of shape b into shape a
     Groove {
+        /// Base shape (receives the groove)
         a: Arc<SdfNode>,
+        /// Groove profile shape
         b: Arc<SdfNode>,
         /// Groove width
         ra: f32,
@@ -883,7 +906,9 @@ pub enum SdfNode {
 
     /// Tongue: add a tongue protrusion
     Tongue {
+        /// Base shape
         a: Arc<SdfNode>,
+        /// Tongue profile shape
         b: Arc<SdfNode>,
         /// Tongue width
         ra: f32,
@@ -893,21 +918,27 @@ pub enum SdfNode {
 
     /// Exponential smooth union (IQ): exp-weighted smooth min
     ExpSmoothUnion {
+        /// Left operand
         a: Arc<SdfNode>,
+        /// Right operand
         b: Arc<SdfNode>,
         /// Smoothness parameter
         k: f32,
     },
     /// Exponential smooth intersection
     ExpSmoothIntersection {
+        /// Left operand
         a: Arc<SdfNode>,
+        /// Right operand
         b: Arc<SdfNode>,
         /// Smoothness parameter
         k: f32,
     },
     /// Exponential smooth subtraction
     ExpSmoothSubtraction {
+        /// Left operand
         a: Arc<SdfNode>,
+        /// Right operand
         b: Arc<SdfNode>,
         /// Smoothness parameter
         k: f32,
