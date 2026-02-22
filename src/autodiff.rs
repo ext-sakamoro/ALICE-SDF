@@ -65,11 +65,7 @@ impl Dual {
     #[inline(always)]
     pub fn sqrt(self) -> Self {
         let r = self.val.max(0.0).sqrt();
-        let d = if r > 1e-10 {
-            self.dot / (2.0 * r)
-        } else {
-            0.0
-        };
+        let d = if r > 1e-10 { self.dot / (2.0 * r) } else { 0.0 };
         Self { val: r, dot: d }
     }
 

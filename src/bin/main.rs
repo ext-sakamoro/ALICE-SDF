@@ -12,7 +12,7 @@
     clippy::cast_precision_loss,
     clippy::too_many_lines,
     clippy::doc_markdown,
-    clippy::ignored_unit_patterns,
+    clippy::ignored_unit_patterns
 )]
 
 use alice_sdf::io::{export_3mf, export_ply, export_stl, PlyConfig};

@@ -1525,8 +1525,14 @@ mod tests {
     #[test]
     fn test_category_primitive() {
         assert_eq!(SdfNode::sphere(1.0).category(), SdfCategory::Primitive);
-        assert_eq!(SdfNode::box3d(1.0, 1.0, 1.0).category(), SdfCategory::Primitive);
-        assert_eq!(SdfNode::cylinder(0.5, 1.0).category(), SdfCategory::Primitive);
+        assert_eq!(
+            SdfNode::box3d(1.0, 1.0, 1.0).category(),
+            SdfCategory::Primitive
+        );
+        assert_eq!(
+            SdfNode::cylinder(0.5, 1.0).category(),
+            SdfCategory::Primitive
+        );
         assert_eq!(SdfNode::torus(1.0, 0.3).category(), SdfCategory::Primitive);
     }
 

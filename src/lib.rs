@@ -184,6 +184,7 @@ pub mod prelude {
     pub use crate::animation::{
         morph, AnimatedSdf, Interpolation, Keyframe, LoopMode, Timeline, Track,
     };
+    pub use crate::autodiff::{eval_hessian, eval_with_gradient, mean_curvature, Dual, Dual3};
     pub use crate::collision::{sdf_collide, sdf_distance, sdf_overlap, SdfContact};
     pub use crate::compiled::{
         eval_compiled, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
@@ -191,11 +192,15 @@ pub mod prelude {
         eval_compiled_distance_and_normal, eval_compiled_normal, eval_compiled_simd,
         get_scene_aabb, AabbPacked, CompileError, CompiledSdf, CompiledSdfBvh, Vec3x8,
     };
+    pub use crate::constraint::{
+        Constraint, ConstraintKind, ConstraintSolver, ParamId, SolveResult,
+    };
     #[cfg(feature = "destruction")]
     pub use crate::destruction::{
         carve, carve_batch, generate_debris, voronoi_fracture, CarveShape, ChunkMesh, DebrisConfig,
         DebrisPiece, DestructionResult, FractureConfig, FracturePiece, MutableVoxelGrid,
     };
+    pub use crate::diff::{apply_patch, tree_diff, tree_hash, DiffError, DiffOp, TreePatch};
     pub use crate::eval::{
         eval, eval_batch, eval_batch_parallel, eval_gradient, eval_grid, eval_material,
         eval_normal, gradient, normal,
@@ -206,6 +211,9 @@ pub mod prelude {
         BakeGiConfig, ConeTraceConfig, ConeTraceResult, DirectionalLight, IrradianceGrid,
         IrradianceProbe, PointLight,
     };
+    pub use crate::heatmap::{
+        generate_heatmap, heatmap_to_rgba, ColorMap, Heatmap, HeatmapConfig, SlicePlane,
+    };
     pub use crate::io::{
         export_alembic, export_fbx, export_glb, export_glb_bytes, export_gltf_json, export_nanite,
         export_nanite_json, export_nanite_with_config, export_obj, export_usda, get_info,
@@ -214,6 +222,10 @@ pub mod prelude {
         GltfConfig, NaniteExportConfig, ObjConfig, UsdConfig, UsdUpAxis,
     };
     pub use crate::material::{Material, MaterialLibrary, TextureSlot};
+    pub use crate::measure::{
+        estimate_center_of_mass, estimate_surface_area, estimate_volume, AreaEstimate,
+        CenterOfMass, VolumeEstimate,
+    };
     pub use crate::mesh::{
         // Adaptive marching cubes
         adaptive_marching_cubes,
@@ -306,6 +318,8 @@ pub mod prelude {
         ambient_occlusion, raycast, raycast_batch, raymarch, raymarch_with_config, soft_shadow,
         RaymarchConfig, RaymarchResult,
     };
+    pub use crate::sdf2d::{eval_2d, eval_2d_batch, Sdf2dNode};
+    pub use crate::shell::{eval_shell, eval_shell_batch, shell_node, ShellConfig};
     #[cfg(feature = "physics")]
     pub use crate::sim_bridge::{simulate_sdf, SimulatedSdf};
     pub use crate::soa::{SoADistances, SoAPoints};
@@ -322,22 +336,6 @@ pub mod prelude {
         erode, generate_cave_sdf, terrain_sdf, CaveConfig, ClipmapLevel, ClipmapMesh,
         ClipmapTerrain, ErosionConfig, Heightmap, SplatLayer, Splatmap, TerrainConfig,
     };
-    pub use crate::autodiff::{
-        eval_hessian, eval_with_gradient, mean_curvature, Dual, Dual3,
-    };
-    pub use crate::constraint::{
-        Constraint, ConstraintKind, ConstraintSolver, ParamId, SolveResult,
-    };
-    pub use crate::diff::{apply_patch, tree_diff, tree_hash, DiffError, DiffOp, TreePatch};
-    pub use crate::heatmap::{
-        generate_heatmap, heatmap_to_rgba, ColorMap, Heatmap, HeatmapConfig, SlicePlane,
-    };
-    pub use crate::measure::{
-        estimate_center_of_mass, estimate_surface_area, estimate_volume, AreaEstimate,
-        CenterOfMass, VolumeEstimate,
-    };
-    pub use crate::sdf2d::{eval_2d, eval_2d_batch, Sdf2dNode};
-    pub use crate::shell::{eval_shell, eval_shell_batch, shell_node, ShellConfig};
     pub use crate::transforms::*;
     pub use crate::types::{Aabb, Hit, Ray, SdfCategory, SdfMetadata, SdfNode, SdfTree};
     #[cfg(feature = "volume")]

@@ -103,8 +103,7 @@ pub fn estimate_volume(node: &SdfNode, aabb: Aabb, samples: u64, seed: u64) -> V
     }
 
     let mut rng = Rng64::new(seed);
-    let box_volume =
-        (aabb.max.x - aabb.min.x) as f64
+    let box_volume = (aabb.max.x - aabb.min.x) as f64
         * (aabb.max.y - aabb.min.y) as f64
         * (aabb.max.z - aabb.min.z) as f64;
 
@@ -155,8 +154,7 @@ pub fn estimate_surface_area(
     }
 
     let mut rng = Rng64::new(seed);
-    let box_volume =
-        (aabb.max.x - aabb.min.x) as f64
+    let box_volume = (aabb.max.x - aabb.min.x) as f64
         * (aabb.max.y - aabb.min.y) as f64
         * (aabb.max.z - aabb.min.z) as f64;
 
@@ -246,7 +244,11 @@ mod tests {
         let est = estimate_volume(&sphere, sphere_aabb(1.0), 100_000, 42);
         let expected = 4.0 / 3.0 * std::f64::consts::PI;
         let error = (est.volume - expected).abs() / expected;
-        assert!(error < 0.05, "Volume error {:.1}%, expected < 5%", error * 100.0);
+        assert!(
+            error < 0.05,
+            "Volume error {:.1}%, expected < 5%",
+            error * 100.0
+        );
     }
 
     #[test]
@@ -286,7 +288,11 @@ mod tests {
         let est = estimate_surface_area(&sphere, sphere_aabb(1.0), 500_000, 0.05, 42);
         let expected = 4.0 * std::f64::consts::PI;
         let error = (est.area - expected).abs() / expected;
-        assert!(error < 0.15, "Area error {:.1}%, expected < 15%", error * 100.0);
+        assert!(
+            error < 0.15,
+            "Area error {:.1}%, expected < 15%",
+            error * 100.0
+        );
     }
 
     #[test]
@@ -301,7 +307,11 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let com = estimate_center_of_mass(&sphere, sphere_aabb(1.0), 100_000, 42);
         // Sphere centered at origin: COM should be near (0,0,0)
-        assert!(com.center.length() < 0.05, "COM {:?} too far from origin", com.center);
+        assert!(
+            com.center.length() < 0.05,
+            "COM {:?} too far from origin",
+            com.center
+        );
         assert!(com.interior_count > 0);
     }
 
@@ -313,7 +323,11 @@ mod tests {
             max: Vec3::new(3.0, 1.0, 1.0),
         };
         let com = estimate_center_of_mass(&sphere, aabb, 50_000, 42);
-        assert!((com.center.x - 2.0).abs() < 0.1, "COM.x {:?} should be near 2.0", com.center);
+        assert!(
+            (com.center.x - 2.0).abs() < 0.1,
+            "COM.x {:?} should be near 2.0",
+            com.center
+        );
     }
 
     #[test]

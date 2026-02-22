@@ -129,11 +129,7 @@ fn plane_to_world(plane: SlicePlane, u: f32, v: f32) -> Vec3 {
         SlicePlane::Custom { origin, normal } => {
             let n = normal.normalize();
             // Build orthonormal basis
-            let up = if n.y.abs() < 0.99 {
-                Vec3::Y
-            } else {
-                Vec3::X
-            };
+            let up = if n.y.abs() < 0.99 { Vec3::Y } else { Vec3::X };
             let right = up.cross(n).normalize();
             let forward = n.cross(right);
             origin + right * u + forward * v
@@ -233,7 +229,11 @@ mod tests {
         let hm = generate_heatmap(&sphere, &config);
         // Center pixel should be negative (inside sphere)
         let center = hm.sample(16, 16);
-        assert!(center < 0.0, "Center should be inside sphere, got {}", center);
+        assert!(
+            center < 0.0,
+            "Center should be inside sphere, got {}",
+            center
+        );
     }
 
     #[test]
@@ -247,7 +247,11 @@ mod tests {
         let hm = generate_heatmap(&sphere, &config);
         // Corner pixel should be positive (outside sphere)
         let corner = hm.sample(0, 0);
-        assert!(corner > 0.0, "Corner should be outside sphere, got {}", corner);
+        assert!(
+            corner > 0.0,
+            "Corner should be outside sphere, got {}",
+            corner
+        );
     }
 
     #[test]
@@ -354,7 +358,11 @@ mod tests {
         let hm = generate_heatmap(&sphere, &config);
         // Center should still be inside sphere
         let center = hm.sample(8, 8);
-        assert!(center < 0.0, "Custom plane center should be inside, got {}", center);
+        assert!(
+            center < 0.0,
+            "Custom plane center should be inside, got {}",
+            center
+        );
     }
 
     #[test]

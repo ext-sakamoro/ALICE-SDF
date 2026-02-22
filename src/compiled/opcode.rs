@@ -132,7 +132,7 @@ pub enum OpCode {
     /// Neovius: `params[0]` = scale, `params[1]` = thickness
     Neovius = 109,
     /// Lidinoid: `params[0]` = scale, `params[1]` = thickness
-    Lidinoid =110,
+    Lidinoid = 110,
     /// IWP: `params[0]` = scale, `params[1]` = thickness
     IWP = 111,
     /// FRD: `params[0]` = scale, `params[1]` = thickness

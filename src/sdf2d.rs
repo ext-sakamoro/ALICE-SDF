@@ -128,7 +128,10 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             (dx * dx + dy * dy).sqrt() - radius
         }
 
-        Sdf2dNode::Rect { center, half_extents } => {
+        Sdf2dNode::Rect {
+            center,
+            half_extents,
+        } => {
             let dx = (point[0] - center[0]).abs() - half_extents[0];
             let dy = (point[1] - center[1]).abs() - half_extents[1];
             let outside = (dx.max(0.0) * dx.max(0.0) + dy.max(0.0) * dy.max(0.0)).sqrt();
@@ -221,10 +224,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         }
         Sdf2dNode::Rotate { child, angle } => {
             let (s, c) = angle.sin_cos();
-            let p = [
-                point[0] * c + point[1] * s,
-                -point[0] * s + point[1] * c,
-            ];
+            let p = [point[0] * c + point[1] * s, -point[0] * s + point[1] * c];
             eval_2d(child, p)
         }
         Sdf2dNode::Scale { child, factor } => {
@@ -277,7 +277,13 @@ fn bilinear_sample(data: &[f32; 1024], u: f32, v: f32) -> f32 {
 }
 
 /// Approximate distance to a cubic Bezier curve via uniform sampling.
-fn eval_bezier_distance(point: [f32; 2], p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2]) -> f32 {
+fn eval_bezier_distance(
+    point: [f32; 2],
+    p0: [f32; 2],
+    p1: [f32; 2],
+    p2: [f32; 2],
+    p3: [f32; 2],
+) -> f32 {
     const SAMPLES: u32 = 16;
     let mut min_dist_sq = f32::MAX;
 

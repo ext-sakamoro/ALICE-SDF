@@ -44,7 +44,7 @@ impl SdfTree {
 }
 
 /// Optional metadata for SDF trees
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SdfMetadata {
     /// Name of the model
     pub name: Option<String>,
@@ -56,18 +56,6 @@ pub struct SdfMetadata {
     pub bounds: Option<(Vec3, Vec3)>,
     /// Custom key-value pairs
     pub custom: Option<std::collections::HashMap<String, String>>,
-}
-
-impl Default for SdfMetadata {
-    fn default() -> Self {
-        SdfMetadata {
-            name: None,
-            description: None,
-            author: None,
-            bounds: None,
-            custom: None,
-        }
-    }
 }
 
 /// Axis-aligned bounding box

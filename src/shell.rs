@@ -90,11 +90,7 @@ pub fn eval_shell(node: &SdfNode, point: Vec3, config: &ShellConfig) -> f32 {
 }
 
 /// Evaluate shell SDF for a batch of points.
-pub fn eval_shell_batch(
-    node: &SdfNode,
-    points: &[Vec3],
-    config: &ShellConfig,
-) -> Vec<f32> {
+pub fn eval_shell_batch(node: &SdfNode, points: &[Vec3], config: &ShellConfig) -> Vec<f32> {
     points
         .iter()
         .map(|&p| eval_shell(node, p, config))

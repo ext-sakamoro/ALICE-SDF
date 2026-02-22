@@ -113,12 +113,7 @@ pub fn tree_diff(old: &SdfNode, new: &SdfNode) -> TreePatch {
 }
 
 /// Recursive diff: compare old and new subtrees at the current path.
-fn diff_recursive(
-    old: &SdfNode,
-    new: &SdfNode,
-    path: &mut Vec<usize>,
-    ops: &mut Vec<DiffOp>,
-) {
+fn diff_recursive(old: &SdfNode, new: &SdfNode, path: &mut Vec<usize>, ops: &mut Vec<DiffOp>) {
     let old_hash = tree_hash(old);
     let new_hash = tree_hash(new);
 
@@ -131,7 +126,9 @@ fn diff_recursive(
     let old_children = get_children(old);
     let new_children = get_children(new);
 
-    if same_variant(old, new) && old_children.len() == new_children.len() && !old_children.is_empty()
+    if same_variant(old, new)
+        && old_children.len() == new_children.len()
+        && !old_children.is_empty()
     {
         // Same node type with same child count: recurse into children
         let ops_before = ops.len();
@@ -276,7 +273,12 @@ fn replace_at_path(
         return Err(DiffError::InvalidPath(path.to_vec()));
     }
 
-    let new_child = Arc::new(replace_at_path(children[idx], rest, expected_hash, replacement)?);
+    let new_child = Arc::new(replace_at_path(
+        children[idx],
+        rest,
+        expected_hash,
+        replacement,
+    )?);
     Ok(replace_child(node, idx, new_child))
 }
 
@@ -286,170 +288,370 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
         // ── Two-child operations ──────────────────────────────────
         SdfNode::Union { a, b } => {
             if child_idx == 0 {
-                SdfNode::Union { a: new_child, b: b.clone() }
+                SdfNode::Union {
+                    a: new_child,
+                    b: b.clone(),
+                }
             } else {
-                SdfNode::Union { a: a.clone(), b: new_child }
+                SdfNode::Union {
+                    a: a.clone(),
+                    b: new_child,
+                }
             }
         }
         SdfNode::Intersection { a, b } => {
             if child_idx == 0 {
-                SdfNode::Intersection { a: new_child, b: b.clone() }
+                SdfNode::Intersection {
+                    a: new_child,
+                    b: b.clone(),
+                }
             } else {
-                SdfNode::Intersection { a: a.clone(), b: new_child }
+                SdfNode::Intersection {
+                    a: a.clone(),
+                    b: new_child,
+                }
             }
         }
         SdfNode::Subtraction { a, b } => {
             if child_idx == 0 {
-                SdfNode::Subtraction { a: new_child, b: b.clone() }
+                SdfNode::Subtraction {
+                    a: new_child,
+                    b: b.clone(),
+                }
             } else {
-                SdfNode::Subtraction { a: a.clone(), b: new_child }
+                SdfNode::Subtraction {
+                    a: a.clone(),
+                    b: new_child,
+                }
             }
         }
         SdfNode::SmoothUnion { a, b, k } => {
             if child_idx == 0 {
-                SdfNode::SmoothUnion { a: new_child, b: b.clone(), k: *k }
+                SdfNode::SmoothUnion {
+                    a: new_child,
+                    b: b.clone(),
+                    k: *k,
+                }
             } else {
-                SdfNode::SmoothUnion { a: a.clone(), b: new_child, k: *k }
+                SdfNode::SmoothUnion {
+                    a: a.clone(),
+                    b: new_child,
+                    k: *k,
+                }
             }
         }
         SdfNode::SmoothIntersection { a, b, k } => {
             if child_idx == 0 {
-                SdfNode::SmoothIntersection { a: new_child, b: b.clone(), k: *k }
+                SdfNode::SmoothIntersection {
+                    a: new_child,
+                    b: b.clone(),
+                    k: *k,
+                }
             } else {
-                SdfNode::SmoothIntersection { a: a.clone(), b: new_child, k: *k }
+                SdfNode::SmoothIntersection {
+                    a: a.clone(),
+                    b: new_child,
+                    k: *k,
+                }
             }
         }
         SdfNode::SmoothSubtraction { a, b, k } => {
             if child_idx == 0 {
-                SdfNode::SmoothSubtraction { a: new_child, b: b.clone(), k: *k }
+                SdfNode::SmoothSubtraction {
+                    a: new_child,
+                    b: b.clone(),
+                    k: *k,
+                }
             } else {
-                SdfNode::SmoothSubtraction { a: a.clone(), b: new_child, k: *k }
+                SdfNode::SmoothSubtraction {
+                    a: a.clone(),
+                    b: new_child,
+                    k: *k,
+                }
             }
         }
         SdfNode::ChamferUnion { a, b, r } => {
             if child_idx == 0 {
-                SdfNode::ChamferUnion { a: new_child, b: b.clone(), r: *r }
+                SdfNode::ChamferUnion {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                }
             } else {
-                SdfNode::ChamferUnion { a: a.clone(), b: new_child, r: *r }
+                SdfNode::ChamferUnion {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                }
             }
         }
         SdfNode::ChamferIntersection { a, b, r } => {
             if child_idx == 0 {
-                SdfNode::ChamferIntersection { a: new_child, b: b.clone(), r: *r }
+                SdfNode::ChamferIntersection {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                }
             } else {
-                SdfNode::ChamferIntersection { a: a.clone(), b: new_child, r: *r }
+                SdfNode::ChamferIntersection {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                }
             }
         }
         SdfNode::ChamferSubtraction { a, b, r } => {
             if child_idx == 0 {
-                SdfNode::ChamferSubtraction { a: new_child, b: b.clone(), r: *r }
+                SdfNode::ChamferSubtraction {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                }
             } else {
-                SdfNode::ChamferSubtraction { a: a.clone(), b: new_child, r: *r }
+                SdfNode::ChamferSubtraction {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                }
             }
         }
         SdfNode::StairsUnion { a, b, r, n } => {
             if child_idx == 0 {
-                SdfNode::StairsUnion { a: new_child, b: b.clone(), r: *r, n: *n }
+                SdfNode::StairsUnion {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                    n: *n,
+                }
             } else {
-                SdfNode::StairsUnion { a: a.clone(), b: new_child, r: *r, n: *n }
+                SdfNode::StairsUnion {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                    n: *n,
+                }
             }
         }
         SdfNode::StairsIntersection { a, b, r, n } => {
             if child_idx == 0 {
-                SdfNode::StairsIntersection { a: new_child, b: b.clone(), r: *r, n: *n }
+                SdfNode::StairsIntersection {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                    n: *n,
+                }
             } else {
-                SdfNode::StairsIntersection { a: a.clone(), b: new_child, r: *r, n: *n }
+                SdfNode::StairsIntersection {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                    n: *n,
+                }
             }
         }
         SdfNode::StairsSubtraction { a, b, r, n } => {
             if child_idx == 0 {
-                SdfNode::StairsSubtraction { a: new_child, b: b.clone(), r: *r, n: *n }
+                SdfNode::StairsSubtraction {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                    n: *n,
+                }
             } else {
-                SdfNode::StairsSubtraction { a: a.clone(), b: new_child, r: *r, n: *n }
+                SdfNode::StairsSubtraction {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                    n: *n,
+                }
             }
         }
         SdfNode::XOR { a, b } => {
             if child_idx == 0 {
-                SdfNode::XOR { a: new_child, b: b.clone() }
+                SdfNode::XOR {
+                    a: new_child,
+                    b: b.clone(),
+                }
             } else {
-                SdfNode::XOR { a: a.clone(), b: new_child }
+                SdfNode::XOR {
+                    a: a.clone(),
+                    b: new_child,
+                }
             }
         }
         SdfNode::Morph { a, b, t } => {
             if child_idx == 0 {
-                SdfNode::Morph { a: new_child, b: b.clone(), t: *t }
+                SdfNode::Morph {
+                    a: new_child,
+                    b: b.clone(),
+                    t: *t,
+                }
             } else {
-                SdfNode::Morph { a: a.clone(), b: new_child, t: *t }
+                SdfNode::Morph {
+                    a: a.clone(),
+                    b: new_child,
+                    t: *t,
+                }
             }
         }
         SdfNode::ColumnsUnion { a, b, r, n } => {
             if child_idx == 0 {
-                SdfNode::ColumnsUnion { a: new_child, b: b.clone(), r: *r, n: *n }
+                SdfNode::ColumnsUnion {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                    n: *n,
+                }
             } else {
-                SdfNode::ColumnsUnion { a: a.clone(), b: new_child, r: *r, n: *n }
+                SdfNode::ColumnsUnion {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                    n: *n,
+                }
             }
         }
         SdfNode::ColumnsIntersection { a, b, r, n } => {
             if child_idx == 0 {
-                SdfNode::ColumnsIntersection { a: new_child, b: b.clone(), r: *r, n: *n }
+                SdfNode::ColumnsIntersection {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                    n: *n,
+                }
             } else {
-                SdfNode::ColumnsIntersection { a: a.clone(), b: new_child, r: *r, n: *n }
+                SdfNode::ColumnsIntersection {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                    n: *n,
+                }
             }
         }
         SdfNode::ColumnsSubtraction { a, b, r, n } => {
             if child_idx == 0 {
-                SdfNode::ColumnsSubtraction { a: new_child, b: b.clone(), r: *r, n: *n }
+                SdfNode::ColumnsSubtraction {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                    n: *n,
+                }
             } else {
-                SdfNode::ColumnsSubtraction { a: a.clone(), b: new_child, r: *r, n: *n }
+                SdfNode::ColumnsSubtraction {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                    n: *n,
+                }
             }
         }
         SdfNode::Pipe { a, b, r } => {
             if child_idx == 0 {
-                SdfNode::Pipe { a: new_child, b: b.clone(), r: *r }
+                SdfNode::Pipe {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                }
             } else {
-                SdfNode::Pipe { a: a.clone(), b: new_child, r: *r }
+                SdfNode::Pipe {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                }
             }
         }
         SdfNode::Engrave { a, b, r } => {
             if child_idx == 0 {
-                SdfNode::Engrave { a: new_child, b: b.clone(), r: *r }
+                SdfNode::Engrave {
+                    a: new_child,
+                    b: b.clone(),
+                    r: *r,
+                }
             } else {
-                SdfNode::Engrave { a: a.clone(), b: new_child, r: *r }
+                SdfNode::Engrave {
+                    a: a.clone(),
+                    b: new_child,
+                    r: *r,
+                }
             }
         }
         SdfNode::Groove { a, b, ra, rb } => {
             if child_idx == 0 {
-                SdfNode::Groove { a: new_child, b: b.clone(), ra: *ra, rb: *rb }
+                SdfNode::Groove {
+                    a: new_child,
+                    b: b.clone(),
+                    ra: *ra,
+                    rb: *rb,
+                }
             } else {
-                SdfNode::Groove { a: a.clone(), b: new_child, ra: *ra, rb: *rb }
+                SdfNode::Groove {
+                    a: a.clone(),
+                    b: new_child,
+                    ra: *ra,
+                    rb: *rb,
+                }
             }
         }
         SdfNode::Tongue { a, b, ra, rb } => {
             if child_idx == 0 {
-                SdfNode::Tongue { a: new_child, b: b.clone(), ra: *ra, rb: *rb }
+                SdfNode::Tongue {
+                    a: new_child,
+                    b: b.clone(),
+                    ra: *ra,
+                    rb: *rb,
+                }
             } else {
-                SdfNode::Tongue { a: a.clone(), b: new_child, ra: *ra, rb: *rb }
+                SdfNode::Tongue {
+                    a: a.clone(),
+                    b: new_child,
+                    ra: *ra,
+                    rb: *rb,
+                }
             }
         }
         SdfNode::ExpSmoothUnion { a, b, k } => {
             if child_idx == 0 {
-                SdfNode::ExpSmoothUnion { a: new_child, b: b.clone(), k: *k }
+                SdfNode::ExpSmoothUnion {
+                    a: new_child,
+                    b: b.clone(),
+                    k: *k,
+                }
             } else {
-                SdfNode::ExpSmoothUnion { a: a.clone(), b: new_child, k: *k }
+                SdfNode::ExpSmoothUnion {
+                    a: a.clone(),
+                    b: new_child,
+                    k: *k,
+                }
             }
         }
         SdfNode::ExpSmoothIntersection { a, b, k } => {
             if child_idx == 0 {
-                SdfNode::ExpSmoothIntersection { a: new_child, b: b.clone(), k: *k }
+                SdfNode::ExpSmoothIntersection {
+                    a: new_child,
+                    b: b.clone(),
+                    k: *k,
+                }
             } else {
-                SdfNode::ExpSmoothIntersection { a: a.clone(), b: new_child, k: *k }
+                SdfNode::ExpSmoothIntersection {
+                    a: a.clone(),
+                    b: new_child,
+                    k: *k,
+                }
             }
         }
         SdfNode::ExpSmoothSubtraction { a, b, k } => {
             if child_idx == 0 {
-                SdfNode::ExpSmoothSubtraction { a: new_child, b: b.clone(), k: *k }
+                SdfNode::ExpSmoothSubtraction {
+                    a: new_child,
+                    b: b.clone(),
+                    k: *k,
+                }
             } else {
-                SdfNode::ExpSmoothSubtraction { a: a.clone(), b: new_child, k: *k }
+                SdfNode::ExpSmoothSubtraction {
+                    a: a.clone(),
+                    b: new_child,
+                    k: *k,
+                }
             }
         }
 
@@ -470,24 +672,32 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
             child: new_child,
             factors: *factors,
         },
-        SdfNode::ProjectiveTransform { inv_matrix, lipschitz_bound, .. } => {
-            SdfNode::ProjectiveTransform {
-                child: new_child,
-                inv_matrix: *inv_matrix,
-                lipschitz_bound: *lipschitz_bound,
-            }
-        }
-        SdfNode::LatticeDeform { control_points, nx, ny, nz, bbox_min, bbox_max, .. } => {
-            SdfNode::LatticeDeform {
-                child: new_child,
-                control_points: control_points.clone(),
-                nx: *nx,
-                ny: *ny,
-                nz: *nz,
-                bbox_min: *bbox_min,
-                bbox_max: *bbox_max,
-            }
-        }
+        SdfNode::ProjectiveTransform {
+            inv_matrix,
+            lipschitz_bound,
+            ..
+        } => SdfNode::ProjectiveTransform {
+            child: new_child,
+            inv_matrix: *inv_matrix,
+            lipschitz_bound: *lipschitz_bound,
+        },
+        SdfNode::LatticeDeform {
+            control_points,
+            nx,
+            ny,
+            nz,
+            bbox_min,
+            bbox_max,
+            ..
+        } => SdfNode::LatticeDeform {
+            child: new_child,
+            control_points: control_points.clone(),
+            nx: *nx,
+            ny: *ny,
+            nz: *nz,
+            bbox_min: *bbox_min,
+            bbox_max: *bbox_max,
+        },
         SdfNode::SdfSkinning { bones, .. } => SdfNode::SdfSkinning {
             child: new_child,
             bones: bones.clone(),
@@ -511,7 +721,12 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
             count: *count,
             spacing: *spacing,
         },
-        SdfNode::Noise { amplitude, frequency, seed, .. } => SdfNode::Noise {
+        SdfNode::Noise {
+            amplitude,
+            frequency,
+            seed,
+            ..
+        } => SdfNode::Noise {
             child: new_child,
             amplitude: *amplitude,
             frequency: *frequency,
@@ -561,34 +776,48 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
             p2: *p2,
         },
         SdfNode::IcosahedralSymmetry { .. } => SdfNode::IcosahedralSymmetry { child: new_child },
-        SdfNode::IFS { transforms, iterations, .. } => SdfNode::IFS {
+        SdfNode::IFS {
+            transforms,
+            iterations,
+            ..
+        } => SdfNode::IFS {
             child: new_child,
             transforms: transforms.clone(),
             iterations: *iterations,
         },
-        SdfNode::HeightmapDisplacement { heightmap, width, height, amplitude, scale, .. } => {
-            SdfNode::HeightmapDisplacement {
-                child: new_child,
-                heightmap: heightmap.clone(),
-                width: *width,
-                height: *height,
-                amplitude: *amplitude,
-                scale: *scale,
-            }
-        }
-        SdfNode::SurfaceRoughness { frequency, amplitude, octaves, .. } => {
-            SdfNode::SurfaceRoughness {
-                child: new_child,
-                frequency: *frequency,
-                amplitude: *amplitude,
-                octaves: *octaves,
-            }
-        }
+        SdfNode::HeightmapDisplacement {
+            heightmap,
+            width,
+            height,
+            amplitude,
+            scale,
+            ..
+        } => SdfNode::HeightmapDisplacement {
+            child: new_child,
+            heightmap: heightmap.clone(),
+            width: *width,
+            height: *height,
+            amplitude: *amplitude,
+            scale: *scale,
+        },
+        SdfNode::SurfaceRoughness {
+            frequency,
+            amplitude,
+            octaves,
+            ..
+        } => SdfNode::SurfaceRoughness {
+            child: new_child,
+            frequency: *frequency,
+            amplitude: *amplitude,
+            octaves: *octaves,
+        },
         SdfNode::Shear { shear, .. } => SdfNode::Shear {
             child: new_child,
             shear: *shear,
         },
-        SdfNode::Animated { speed, amplitude, .. } => SdfNode::Animated {
+        SdfNode::Animated {
+            speed, amplitude, ..
+        } => SdfNode::Animated {
             child: new_child,
             speed: *speed,
             amplitude: *amplitude,
@@ -791,8 +1020,14 @@ mod tests {
                 rb: 0.2,
             }),
             b: Arc::new(SdfNode::StairsUnion {
-                a: Arc::new(SdfNode::Cylinder { radius: 0.5, half_height: 1.0 }),
-                b: Arc::new(SdfNode::Torus { major_radius: 1.0, minor_radius: 0.2 }),
+                a: Arc::new(SdfNode::Cylinder {
+                    radius: 0.5,
+                    half_height: 1.0,
+                }),
+                b: Arc::new(SdfNode::Torus {
+                    major_radius: 1.0,
+                    minor_radius: 0.2,
+                }),
                 r: 0.3,
                 n: 4.0,
             }),
@@ -807,8 +1042,14 @@ mod tests {
                 rb: 0.2,
             }),
             b: Arc::new(SdfNode::StairsUnion {
-                a: Arc::new(SdfNode::Cylinder { radius: 0.5, half_height: 1.0 }),
-                b: Arc::new(SdfNode::Torus { major_radius: 1.0, minor_radius: 0.5 }), // changed
+                a: Arc::new(SdfNode::Cylinder {
+                    radius: 0.5,
+                    half_height: 1.0,
+                }),
+                b: Arc::new(SdfNode::Torus {
+                    major_radius: 1.0,
+                    minor_radius: 0.5,
+                }), // changed
                 r: 0.3,
                 n: 4.0,
             }),

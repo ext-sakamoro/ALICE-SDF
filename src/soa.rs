@@ -706,9 +706,18 @@ mod tests {
             .collect();
         let soa = SoAPoints::from_vec3_slice(&points);
 
-        assert!(soa.x.as_ptr() as usize % 32 == 0, "SoA x must be 32-byte aligned");
-        assert!(soa.y.as_ptr() as usize % 32 == 0, "SoA y must be 32-byte aligned");
-        assert!(soa.z.as_ptr() as usize % 32 == 0, "SoA z must be 32-byte aligned");
+        assert!(
+            soa.x.as_ptr() as usize % 32 == 0,
+            "SoA x must be 32-byte aligned"
+        );
+        assert!(
+            soa.y.as_ptr() as usize % 32 == 0,
+            "SoA y must be 32-byte aligned"
+        );
+        assert!(
+            soa.z.as_ptr() as usize % 32 == 0,
+            "SoA z must be 32-byte aligned"
+        );
     }
 
     #[test]
