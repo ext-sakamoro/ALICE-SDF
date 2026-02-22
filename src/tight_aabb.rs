@@ -155,6 +155,7 @@ fn find_tight_bound(
 
 /// Coarse scan: divide the axis into subdivisions and find the outermost
 /// slab that can contain the surface.
+#[allow(clippy::too_many_arguments)]
 fn coarse_scan(
     node: &SdfNode,
     axis: usize,
@@ -202,6 +203,7 @@ fn coarse_scan(
 }
 
 /// Binary search for the tight bound within [search_lo, search_hi].
+#[allow(clippy::too_many_arguments)]
 fn bisect_bound(
     node: &SdfNode,
     axis: usize,

@@ -274,6 +274,7 @@ impl NeuralSdf {
             // Propagate gradient to previous layer
             if i > 0 {
                 d_act = vec![0.0; layer.in_dim];
+                #[allow(clippy::needless_range_loop)]
                 for r in 0..layer.out_dim {
                     let row_off = r * layer.in_dim;
                     for c in 0..layer.in_dim {
@@ -296,6 +297,7 @@ impl NeuralSdf {
         for (i, layer) in self.layers.iter_mut().enumerate() {
             let st = &mut self.adam[i];
 
+            #[allow(clippy::needless_range_loop)]
             for j in 0..layer.w.len() {
                 let g = grad_w[i][j];
                 st.m_w[j] = beta1 * st.m_w[j] + (1.0 - beta1) * g;
@@ -305,6 +307,7 @@ impl NeuralSdf {
                 layer.w[j] -= lr * m_hat / (v_hat.sqrt() + eps);
             }
 
+            #[allow(clippy::needless_range_loop)]
             for j in 0..layer.b.len() {
                 let g = grad_b[i][j];
                 st.m_b[j] = beta1 * st.m_b[j] + (1.0 - beta1) * g;
@@ -481,6 +484,7 @@ impl NeuralSdf {
 // ============================================================
 
 #[inline(always)]
+#[allow(clippy::needless_range_loop)]
 fn layer_forward(layer: &Layer, input: &[f32], output: &mut [f32], relu: bool) {
     for r in 0..layer.out_dim {
         let mut sum = layer.b[r];

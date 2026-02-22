@@ -149,7 +149,7 @@ pub fn export_ue5_mesh(
     path: impl AsRef<Path>,
     config: &Ue5MeshConfig,
 ) -> Result<(), IoError> {
-    export_ue5_mesh_with_lods(&[mesh.clone()], &[1.0], path, config)
+    export_ue5_mesh_with_lods(std::slice::from_ref(mesh), &[1.0], path, config)
 }
 
 // ---------------------------------------------------------------------------
@@ -292,15 +292,15 @@ pub fn export_ue5_mesh_with_lods(
     let (origin, extent) = compute_bounds(&meshes[0], config.scale);
 
     write!(w, "{{\n  \"alice_sdf_static_mesh\": {{\n")?;
-    write!(w, "    \"version\": {},\n", UE5_JSON_VERSION)?;
-    write!(w, "    \"name\": \"{}\",\n", config.name)?;
+    writeln!(w, "    \"version\": {},", UE5_JSON_VERSION)?;
+    writeln!(w, "    \"name\": \"{}\",", config.name)?;
 
     // LODs array
-    write!(w, "    \"lods\": [\n")?;
+    writeln!(w, "    \"lods\": [")?;
 
     for (lod_idx, mesh) in meshes.iter().enumerate() {
         if lod_idx > 0 {
-            write!(w, ",\n")?;
+            writeln!(w, ",")?;
         }
 
         let ic = mesh.indices.len();
@@ -318,43 +318,43 @@ pub fn export_ue5_mesh_with_lods(
             *mesh.indices.iter().max().unwrap()
         };
 
-        write!(w, "      {{\n")?;
-        write!(w, "        \"lod_index\": {},\n", lod_idx)?;
-        write!(
+        writeln!(w, "      {{")?;
+        writeln!(w, "        \"lod_index\": {},", lod_idx)?;
+        writeln!(
             w,
-            "        \"screen_size\": {:.6},\n",
+            "        \"screen_size\": {:.6},",
             lod_screen_sizes[lod_idx]
         )?;
 
         // Sections (single section per LOD)
-        write!(w, "        \"sections\": [{{\n")?;
-        write!(w, "          \"material_index\": 0,\n")?;
-        write!(w, "          \"first_index\": 0,\n")?;
-        write!(w, "          \"num_triangles\": {},\n", tri_count)?;
-        write!(w, "          \"min_vertex_index\": {},\n", min_vi)?;
-        write!(w, "          \"max_vertex_index\": {}\n", max_vi)?;
-        write!(w, "        }}],\n")?;
+        writeln!(w, "        \"sections\": [{{")?;
+        writeln!(w, "          \"material_index\": 0,")?;
+        writeln!(w, "          \"first_index\": 0,")?;
+        writeln!(w, "          \"num_triangles\": {},", tri_count)?;
+        writeln!(w, "          \"min_vertex_index\": {},", min_vi)?;
+        writeln!(w, "          \"max_vertex_index\": {}", max_vi)?;
+        writeln!(w, "        }}],")?;
 
         // Vertex data
-        write!(w, "        \"vertex_data\": {{\n")?;
+        writeln!(w, "        \"vertex_data\": {{")?;
 
         // Positions
         write_ue5_vertex_positions(&mut w, mesh, config.scale)?;
-        write!(w, ",\n")?;
+        writeln!(w, ",")?;
 
         // Normals
         write_ue5_vertex_normals(&mut w, mesh)?;
-        write!(w, ",\n")?;
+        writeln!(w, ",")?;
 
         // UVs (two channels: primary + lightmap)
         write_ue5_vertex_uvs(&mut w, mesh)?;
-        write!(w, ",\n")?;
+        writeln!(w, ",")?;
 
         // Tangents
         write_ue5_vertex_tangents(&mut w, mesh)?;
-        write!(w, "\n")?;
+        writeln!(w)?;
 
-        write!(w, "        }},\n")?;
+        writeln!(w, "        }},")?;
 
         // Index data (flip winding for left-handed)
         write!(w, "        \"index_data\": [")?;
@@ -369,7 +369,7 @@ pub fn export_ue5_mesh_with_lods(
             // Flip winding
             write!(w, "{}, {}, {}", i0, i2, i1)?;
         }
-        write!(w, "]\n")?;
+        writeln!(w, "]")?;
 
         write!(w, "      }}")?;
     }
@@ -377,18 +377,18 @@ pub fn export_ue5_mesh_with_lods(
     write!(w, "\n    ],\n")?;
 
     // Bounds
-    write!(w, "    \"bounds\": {{\n")?;
-    write!(
+    writeln!(w, "    \"bounds\": {{")?;
+    writeln!(
         w,
-        "      \"origin\": [{:.6}, {:.6}, {:.6}],\n",
+        "      \"origin\": [{:.6}, {:.6}, {:.6}],",
         origin[0], origin[1], origin[2]
     )?;
-    write!(
+    writeln!(
         w,
-        "      \"extent\": [{:.6}, {:.6}, {:.6}]\n",
+        "      \"extent\": [{:.6}, {:.6}, {:.6}]",
         extent[0], extent[1], extent[2]
     )?;
-    write!(w, "    }}\n")?;
+    writeln!(w, "    }}")?;
 
     write!(w, "  }}\n}}\n")?;
     w.flush()?;

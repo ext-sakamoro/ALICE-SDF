@@ -574,8 +574,12 @@ fn dispatch_gpu_prefix_sum(
             bgl_entry(2, wgpu::BufferBindingType::Uniform),
         ],
     });
-    let propagate_pipeline =
-        create_pipeline(device, &propagate_bgl, &propagate_shader, "Prefix Sum Propagate");
+    let propagate_pipeline = create_pipeline(
+        device,
+        &propagate_bgl,
+        &propagate_shader,
+        "Prefix Sum Propagate",
+    );
 
     // Recursive prefix sum implementation
     gpu_prefix_sum_recursive(

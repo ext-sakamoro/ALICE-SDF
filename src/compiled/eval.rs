@@ -699,7 +699,7 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
 
                 // Apply inverse transform (subtract offset)
                 let offset = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-                p = p - offset;
+                p -= offset;
             }
 
             OpCode::Rotate => {
@@ -736,7 +736,7 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 csp += 1;
 
                 // Multiply by precomputed inverse (no division)
-                p = p * inv_factor;
+                p *= inv_factor;
                 scale_correction *= factor;
             }
 
@@ -754,7 +754,7 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 csp += 1;
 
                 // Multiply by precomputed inverses (no division)
-                p = p * inv_factors;
+                p *= inv_factors;
                 scale_correction *= min_factor;
             }
 

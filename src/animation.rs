@@ -16,9 +16,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Interpolation mode between keyframes
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum Interpolation {
     /// Linear interpolation (lerp)
+    #[default]
     Linear,
     /// Cubic Bezier with control tangents
     CubicBezier {
@@ -31,27 +32,16 @@ pub enum Interpolation {
     Step,
 }
 
-impl Default for Interpolation {
-    fn default() -> Self {
-        Interpolation::Linear
-    }
-}
-
 /// Loop mode for animation playback
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum LoopMode {
     /// Play once and stop at the end
+    #[default]
     Once,
     /// Loop back to start
     Loop,
     /// Alternate forward and backward
     PingPong,
-}
-
-impl Default for LoopMode {
-    fn default() -> Self {
-        LoopMode::Once
-    }
 }
 
 /// A single keyframe with time, value, and interpolation mode

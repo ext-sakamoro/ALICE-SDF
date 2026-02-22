@@ -39,6 +39,7 @@ codec = ["alice-codec"]  # ALICE-Codec 3D wavelet encoding bridge
 physics = ["alice-physics"]  # ALICE-Physics SDF collider bridge
 asp = ["libasp"]  # ALICE-Streaming-Protocol SDF delivery bridge
 sdf-cache = ["dep:alice-cache"]  # ALICE-Cache SDF evaluation caching
+font = ["dep:alice-font"]  # ALICE-Font glyph SDF bridge
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
@@ -88,6 +89,9 @@ libasp = { path = "../ALICE-Streaming-Protocol", optional = true, default-featur
 
 # Cache bridge (optional)
 alice-cache = { path = "../ALICE-Cache", optional = true }
+
+# Font bridge (optional)
+alice-font = { path = "../ALICE-Font", optional = true }
 
 # FFI support (optional)
 lazy_static = { version = "1.5", optional = true }

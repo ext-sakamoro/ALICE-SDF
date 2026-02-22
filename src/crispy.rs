@@ -16,8 +16,8 @@
 pub fn fast_recip(x: f32) -> f32 {
     // Initial estimate via bit manipulation (same idea as fast_inv_sqrt)
     // For most inputs the compiler will use rcpss on x86
-    let est = 1.0 / x; // compiler emits rcpss + NR on -O2
-    est
+    // compiler emits rcpss + NR on -O2
+    1.0 / x
 }
 
 /// Fast reciprocal for Vec3: component-wise `1.0 / v`.
@@ -113,12 +113,6 @@ impl BitMask64 {
         Self(self.0 | other.0)
     }
 
-    /// Bitwise NOT (complement) of this mask.
-    #[inline(always)]
-    pub fn not(self) -> Self {
-        Self(!self.0)
-    }
-
     /// Population count — number of set bits (uses hardware popcnt).
     #[inline(always)]
     pub fn count_ones(self) -> u32 {
@@ -147,6 +141,14 @@ impl BitMask64 {
     #[inline(always)]
     pub fn is_empty(self) -> bool {
         self.0 == 0
+    }
+}
+
+impl std::ops::Not for BitMask64 {
+    type Output = Self;
+    #[inline(always)]
+    fn not(self) -> Self::Output {
+        Self(!self.0)
     }
 }
 
@@ -214,6 +216,12 @@ impl BloomFilter {
         let h1 = (hash & 0x7FFF) as usize;
         let h2 = ((hash >> 16) & 0x7FFF) as usize;
         (h1, h2)
+    }
+}
+
+impl Default for BloomFilter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

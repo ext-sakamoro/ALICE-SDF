@@ -77,6 +77,7 @@ pub fn modifier_sweep_bezier(p: Vec3, p0: Vec2, p1: Vec2, p2: Vec2) -> Vec3 {
 }
 
 /// SIMD-friendly version: returns (perpendicular_distance, y) without Vec3 allocation
+#[allow(clippy::too_many_arguments)]
 #[inline]
 pub fn sweep_bezier_dist_y(
     px: f32,

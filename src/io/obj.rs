@@ -87,8 +87,7 @@ pub fn export_obj(
     // Faces - group by material_id
     let tri_count = mesh.indices.len() / 3;
 
-    if config.export_materials && materials.is_some() {
-        let mat_lib = materials.unwrap();
+    if let Some(mat_lib) = materials.filter(|_| config.export_materials) {
         // Collect triangles by material
         let mut mat_tris: std::collections::BTreeMap<u32, Vec<usize>> =
             std::collections::BTreeMap::new();
@@ -286,12 +285,12 @@ pub fn import_obj(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
                 // Triangulate face (fan triangulation for n-gons)
                 let face_verts: Vec<u32> = parts[1..]
                     .iter()
-                    .filter_map(|&s| {
+                    .map(|&s| {
                         let (pi, ui, ni) = parse_face_vertex(s);
                         let key = (pi, ui, ni);
 
                         if let Some(&idx) = vertex_map.get(&key) {
-                            Some(idx)
+                            idx
                         } else {
                             let pos = if pi > 0 && pi <= positions.len() {
                                 positions[pi - 1]
@@ -314,7 +313,7 @@ pub fn import_obj(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
                             vert.uv = uv;
                             vertices.push(vert);
                             vertex_map.insert(key, idx);
-                            Some(idx)
+                            idx
                         }
                     })
                     .collect();

@@ -205,6 +205,7 @@ pub fn raymarch_with_config(
 ///
 /// Uses ω=1.6 over-relaxation with Lipschitz-safe step sizes.
 /// Typically converges in ~40% fewer steps than standard tracing for exact SDFs.
+#[allow(dead_code)]
 #[inline(always)]
 pub fn raymarch_relaxed(
     node: &SdfNode,
@@ -277,6 +278,7 @@ pub fn raymarch_batch_parallel(
 }
 
 /// Render a depth buffer (Interpreter path)
+#[allow(clippy::too_many_arguments)]
 pub fn render_depth(
     node: &SdfNode,
     camera_pos: Vec3,
@@ -316,6 +318,7 @@ pub fn render_depth(
 }
 
 /// Render normals as RGB values (Interpreter path)
+#[allow(clippy::too_many_arguments)]
 pub fn render_normals(
     node: &SdfNode,
     camera_pos: Vec3,
@@ -468,6 +471,7 @@ pub fn raymarch_compiled_batch_parallel(
 }
 
 /// Render depth buffer using CompiledSdf
+#[allow(clippy::too_many_arguments)]
 pub fn render_depth_compiled(
     sdf: &CompiledSdf,
     camera_pos: Vec3,
@@ -507,6 +511,7 @@ pub fn render_depth_compiled(
 }
 
 /// Render normals using CompiledSdf
+#[allow(clippy::too_many_arguments)]
 pub fn render_normals_compiled(
     sdf: &CompiledSdf,
     camera_pos: Vec3,
@@ -615,7 +620,7 @@ pub fn raymarch_simd_8(
         let newly_far = is_far.blend(one, zero) * (one - finished);
 
         // Update hit flags (only for newly hit, not far)
-        hit_flags = hit_flags + newly_hit;
+        hit_flags += newly_hit;
 
         // Mark finished lanes
         finished = finished + newly_hit + newly_far;
@@ -637,7 +642,7 @@ pub fn raymarch_simd_8(
 
         // Advance t for active lanes only (finished lanes get zero advance)
         let active = one - finished;
-        t = t + d * active;
+        t += d * active;
     }
 
     // Extract results
@@ -669,6 +674,7 @@ pub fn raymarch_simd_8(
 ///
 /// Processes 8 horizontal pixels at once, maximizing SIMD utilization.
 /// Each tile evaluates 8 points per step through `eval_compiled_simd()`.
+#[allow(clippy::too_many_arguments)]
 pub fn render_depth_compiled_simd(
     sdf: &CompiledSdf,
     camera_pos: Vec3,

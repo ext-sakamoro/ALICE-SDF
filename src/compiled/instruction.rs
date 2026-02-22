@@ -35,7 +35,7 @@ pub struct Instruction {
     /// Offset to skip this subtree (for BVH pruning in Phase 3)
     /// Points to the instruction index after this subtree
     pub skip_offset: u32, // 4 bytes
-    // padding: 28 bytes (auto-padded to 64-byte boundary)
+                          // padding: 28 bytes (auto-padded to 64-byte boundary)
 } // Total: 64 bytes = 1 cache line
 
 impl Instruction {

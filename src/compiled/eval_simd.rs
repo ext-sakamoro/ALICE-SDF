@@ -153,11 +153,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let paz = p.z - az;
                 let bax = bx - ax;
                 let bay = by - ay;
-                let baz = bz - az;
+                let ba_z = bz - az;
 
                 // h = clamp(dot(pa, ba) / dot(ba, ba), 0, 1)
-                let dot_pa_ba = pax * bax + pay * bay + paz * baz;
-                let dot_ba_ba = bax * bax + bay * bay + baz * baz;
+                let dot_pa_ba = pax * bax + pay * bay + paz * ba_z;
+                let dot_ba_ba = bax * bax + bay * bay + ba_z * ba_z;
                 // Branchless zero guard for degenerate capsule (a == b)
                 let safe_dot = dot_ba_ba.max(f32x8::splat(1e-10));
                 let h = (dot_pa_ba / safe_dot).max(f32x8::ZERO).min(f32x8::ONE);
@@ -165,7 +165,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // length(pa - ba * h) - radius
                 let dx = pax - bax * h;
                 let dy = pay - bay * h;
-                let dz = paz - baz * h;
+                let dz = paz - ba_z * h;
                 let d = (dx * dx + dy * dy + dz * dz).sqrt() - radius;
 
                 value_stack[vsp] = d * scale_correction;
@@ -366,8 +366,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // Reflect across hex symmetry
                 let dot_kxy = kx * px + ky * py;
                 let reflect = two * dot_kxy.min(f32x8::ZERO);
-                px = px - reflect * kx;
-                py = py - reflect * ky;
+                px -= reflect * kx;
+                py -= reflect * ky;
 
                 // Clamp and compute XY distance
                 let clamped_x = px.max(-kz_c * hex_radius).min(kz_c * hex_radius);
@@ -487,14 +487,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let radius = f32x8::splat(inst.params[0]);
                 let round_r = f32x8::splat(inst.params[1]);
                 let half_h = f32x8::splat(inst.params[2]);
-                let dx = (p.x * p.x + p.z * p.z).sqrt()
-                    - f32x8::splat(2.0) * radius
-                    + round_r;
+                let dx = (p.x * p.x + p.z * p.z).sqrt() - f32x8::splat(2.0) * radius + round_r;
                 let dy = p.y.abs() - half_h;
                 let dx_pos = dx.max(f32x8::ZERO);
                 let dy_pos = dy.max(f32x8::ZERO);
-                let d = dx.max(dy).min(f32x8::ZERO)
-                    + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt()
+                let d = dx.max(dy).min(f32x8::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt()
                     - round_r;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
@@ -509,8 +506,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // 0.866025 = sqrt(3)/2
                 let sqrt3_half = f32x8::splat(0.866025);
                 let half = f32x8::splat(0.5);
-                let d = (qz - half_depth)
-                    .max((qx * sqrt3_half + qy * half).max(-qy) - width * half);
+                let d =
+                    (qz - half_depth).max((qx * sqrt3_half + qy * half).max(-qy) - width * half);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -624,8 +621,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 // ndot(b, b - 2*(px,pz)) = la*(la-2*px) - lb*(lb-2*pz)
                 //                        = la² - 2*la*px - lb² + 2*lb*pz
                 let b_dot_b = la * la + lb * lb;
-                let ndot_val = la * (la - f32x8::splat(2.0) * ax)
-                    - lb * (lb - f32x8::splat(2.0) * az);
+                let ndot_val =
+                    la * (la - f32x8::splat(2.0) * ax) - lb * (lb - f32x8::splat(2.0) * az);
                 let f = (ndot_val / b_dot_b).max(f32x8::splat(-1.0)).min(f32x8::ONE);
                 // q_xz = length((px,pz) - 0.5*b*(1-f, 1+f))
                 let half = f32x8::splat(0.5);
@@ -950,8 +947,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::Tetrahedron => {
                 // ★ Native SIMD: 4 dot products + max (no abs — tetrahedron normals are signed)
                 let radius = f32x8::splat(inst.params[0]);
-                let s = f32x8::splat(0.5773502691896258_f32); // 1/sqrt(3)
-                let ns = f32x8::splat(-0.5773502691896258_f32);
+                let s = f32x8::splat(0.577_350_26_f32); // 1/sqrt(3)
+                let ns = f32x8::splat(-0.577_350_26_f32);
                 // n0=(s,s,s) n1=(-s,-s,s) n2=(-s,s,-s) n3=(s,-s,-s)
                 let d0 = p.x * s + p.y * s + p.z * s;
                 let d1 = p.x * ns + p.y * ns + p.z * s;
@@ -965,9 +962,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::Dodecahedron => {
                 // ★ Native SIMD: 6 abs-dot products (GDF_DODECAHEDRON normals)
                 let radius = f32x8::splat(inst.params[0]);
-                let a = f32x8::splat(0.8506508083520400_f32); // ICO_B
-                let b = f32x8::splat(0.5257311121191336_f32); // ICO_A
-                                                              // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
+                let a = f32x8::splat(0.850_650_8_f32); // ICO_B
+                let b = f32x8::splat(0.525_731_1_f32); // ICO_A
+                                                       // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
                 let d0 = (p.y * a + p.z * b).abs();
                 let d1 = (p.y * a - p.z * b).abs();
                 let d2 = (p.x * a + p.y * b).abs();
@@ -982,10 +979,10 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::Icosahedron => {
                 // ★ Native SIMD: 10 abs-dot products (octahedron[4] + icosahedron[6])
                 let radius = f32x8::splat(inst.params[0]);
-                let s = f32x8::splat(0.5773502691896258_f32); // 1/sqrt(3)
-                let ia = f32x8::splat(0.5257311121191336_f32); // ICO_A
-                let ib = f32x8::splat(0.8506508083520400_f32); // ICO_B
-                                                               // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
+                let s = f32x8::splat(0.577_350_26_f32); // 1/sqrt(3)
+                let ia = f32x8::splat(0.525_731_1_f32); // ICO_A
+                let ib = f32x8::splat(0.850_650_8_f32); // ICO_B
+                                                        // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
                 let d0 = (p.x * s + p.y * s + p.z * s).abs();
                 let d1 = (-p.x * s + p.y * s + p.z * s).abs();
                 let d2 = (p.x * s - p.y * s + p.z * s).abs();
@@ -1015,7 +1012,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::TruncatedOctahedron => {
                 // ★ Native SIMD: 7 abs-dot products (cube[3] + octahedron[4])
                 let radius = f32x8::splat(inst.params[0]);
-                let s = f32x8::splat(0.5773502691896258_f32);
+                let s = f32x8::splat(0.577_350_26_f32);
                 // Cube normals (3): abs of each axis
                 let d0 = p.x.abs();
                 let d1 = p.y.abs();
@@ -1033,9 +1030,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
             OpCode::TruncatedIcosahedron => {
                 // ★ Native SIMD: 16 abs-dot products (oct[4] + ico[6] + dodec[6])
                 let radius = f32x8::splat(inst.params[0]);
-                let s = f32x8::splat(0.5773502691896258_f32);
-                let ia = f32x8::splat(0.5257311121191336_f32);
-                let ib = f32x8::splat(0.8506508083520400_f32);
+                let s = f32x8::splat(0.577_350_26_f32);
+                let ia = f32x8::splat(0.525_731_1_f32);
+                let ib = f32x8::splat(0.850_650_8_f32);
                 // Octahedron (4)
                 let d0 = (p.x * s + p.y * s + p.z * s).abs();
                 let d1 = (-p.x * s + p.y * s + p.z * s).abs();
@@ -1496,7 +1493,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
 
                 // Multiply by precomputed inverse (no division)
                 p = p * f32x8::splat(inv_factor);
-                scale_correction = scale_correction * f32x8::splat(factor);
+                scale_correction *= f32x8::splat(factor);
             }
 
             OpCode::ScaleNonUniform => {
@@ -1519,7 +1516,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     y: p.y * f32x8::splat(inv_sy),
                     z: p.z * f32x8::splat(inv_sz),
                 };
-                scale_correction = scale_correction * f32x8::splat(min_factor);
+                scale_correction *= f32x8::splat(min_factor);
             }
 
             // === Modifiers ===
@@ -2210,7 +2207,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 match frame.opcode {
                     OpCode::Round => {
                         let radius = f32x8::splat(frame.params[0]);
-                        value_stack[vsp - 1] = value_stack[vsp - 1] - radius;
+                        value_stack[vsp - 1] -= radius;
                     }
                     OpCode::Onion => {
                         let thickness = f32x8::splat(frame.params[0]);
@@ -2222,6 +2219,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         let frequency = frame.params[1];
                         let seed = frame.params[2] as u32;
                         let mut noise_vals = [0.0f32; 8];
+                        #[allow(clippy::needless_range_loop)]
                         for i in 0..8 {
                             let pt = glam::Vec3::new(
                                 frame.point.x.as_array_ref()[i] * frequency,
@@ -2230,7 +2228,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                             );
                             noise_vals[i] = perlin_noise_3d(pt.x, pt.y, pt.z, seed) * amplitude;
                         }
-                        value_stack[vsp - 1] = value_stack[vsp - 1] + f32x8::new(noise_vals);
+                        value_stack[vsp - 1] += f32x8::new(noise_vals);
                     }
                     OpCode::Extrude => {
                         let half_height = f32x8::splat(frame.params[0]);
@@ -2248,13 +2246,14 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         let sx = sin_approx(five * frame.point.x);
                         let sy = sin_approx(five * frame.point.y);
                         let sz = sin_approx(five * frame.point.z);
-                        value_stack[vsp - 1] = value_stack[vsp - 1] + sx * sy * sz * strength;
+                        value_stack[vsp - 1] += sx * sy * sz * strength;
                     }
                     OpCode::HeightmapDisplacement => {
                         // Per-lane heightmap lookup
                         let amplitude = frame.params[0];
                         let scale = frame.params[1];
                         let mut displacement_vals = [0.0f32; 8];
+                        #[allow(clippy::needless_range_loop)]
                         for i in 0..8 {
                             let px = frame.point.x.as_array_ref()[i] * scale;
                             let pz = frame.point.z.as_array_ref()[i] * scale;
@@ -2263,7 +2262,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                             let h = (px * 3.0).sin() * (pz * 3.0).sin();
                             displacement_vals[i] = h * amplitude;
                         }
-                        value_stack[vsp - 1] = value_stack[vsp - 1] + f32x8::new(displacement_vals);
+                        value_stack[vsp - 1] += f32x8::new(displacement_vals);
                     }
                     OpCode::SurfaceRoughness => {
                         // FBM noise for surface roughness
@@ -2271,6 +2270,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         let amplitude = frame.params[1];
                         let octaves = frame.params[2] as u32;
                         let mut roughness_vals = [0.0f32; 8];
+                        #[allow(clippy::needless_range_loop)]
                         for i in 0..8 {
                             let px = frame.point.x.as_array_ref()[i] * frequency;
                             let py = frame.point.y.as_array_ref()[i] * frequency;
@@ -2286,12 +2286,12 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                             }
                             roughness_vals[i] = fbm;
                         }
-                        value_stack[vsp - 1] = value_stack[vsp - 1] + f32x8::new(roughness_vals);
+                        value_stack[vsp - 1] += f32x8::new(roughness_vals);
                     }
                     OpCode::ProjectiveTransform => {
                         // Lipschitz correction for projective transform
                         let lipschitz_bound = f32x8::splat(frame.params[0]);
-                        value_stack[vsp - 1] = value_stack[vsp - 1] * lipschitz_bound;
+                        value_stack[vsp - 1] *= lipschitz_bound;
                     }
                     _ => {}
                 }
@@ -2355,9 +2355,9 @@ fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
     // swap
     std::mem::swap(&mut px, &mut py);
 
-    px = px - off_v;
-    py = py - off_v;
-    px = px + half * s2 * rn_v;
+    px -= off_v;
+    py -= off_v;
+    px += half * s2 * rn_v;
 
     // pMod1: px = glsl_mod(px + hs, step) - hs — Division Exorcism: multiply by inv_step
     let t = px + hs_v;
@@ -2443,7 +2443,7 @@ fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
     // atan(r) ≈ r * (0.9998660 - r² * (0.3302995 - r² * 0.1801410))
     let r2 = r * r;
     let atan_r = r
-        * (f32x8::splat(0.9998660) - r2 * (f32x8::splat(0.3302995) - r2 * f32x8::splat(0.1801410)));
+        * (f32x8::splat(0.999_866) - r2 * (f32x8::splat(0.3302995) - r2 * f32x8::splat(0.180_141)));
 
     // If |y| > |x|, result = pi/2 - atan_r, else atan_r
     let swap_mask = abs_y.cmp_gt(abs_x);
@@ -2499,7 +2499,7 @@ fn ln_approx_simd(x: f32x8) -> f32x8 {
 #[inline(always)]
 fn fast_exp_scalar(x: f32) -> f32 {
     // Clamp to avoid IEEE overflow/underflow
-    let x = x.max(-87.3).min(88.7);
+    let x = x.clamp(-87.3, 88.7);
     // Schraudolph: reinterpret (2^23/ln2 * x + 127*2^23) as float
     // = 12102203.16 * x + 1065353216
     let v = (12102203.0f32 * x + 1065353216.0f32) as i32;
@@ -2518,7 +2518,7 @@ fn fast_ln_scalar(x: f32) -> f32 {
     // ln(m) ≈ (m-1) * (2.0 - (m-1)/3) — Padé [1/1] on [1,2)
     let mf = m - 1.0;
     let ln_m = mf * (2.0 - mf * 0.33333333);
-    e as f32 * 0.6931472 + ln_m
+    e as f32 * std::f32::consts::LN_2 + ln_m
 }
 
 /// Per-lane scalar evaluation helper for binary operations

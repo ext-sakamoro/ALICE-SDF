@@ -20,8 +20,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Conversion strategy for mesh_to_sdf
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MeshToSdfStrategy {
     /// Use capsule approximation (fast, creates SdfNode tree)
     #[default]
@@ -31,7 +30,6 @@ pub enum MeshToSdfStrategy {
     /// Hybrid: create capsule tree but use BVH for evaluation
     Hybrid,
 }
-
 
 /// Configuration for mesh to SDF conversion
 #[derive(Debug, Clone)]

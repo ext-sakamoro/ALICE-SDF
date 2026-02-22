@@ -242,9 +242,6 @@ fn compute_tangent(normal: Vec3) -> Vec4 {
     let tangent = if abs_n.x >= abs_n.y && abs_n.x >= abs_n.z {
         let t = Vec3::new(0.0, 1.0, 0.0);
         (t - normal * normal.dot(t)).normalize_or_zero()
-    } else if abs_n.y >= abs_n.z {
-        let t = Vec3::new(1.0, 0.0, 0.0);
-        (t - normal * normal.dot(t)).normalize_or_zero()
     } else {
         let t = Vec3::new(1.0, 0.0, 0.0);
         (t - normal * normal.dot(t)).normalize_or_zero()

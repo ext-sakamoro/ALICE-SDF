@@ -27,9 +27,7 @@ use godot::classes::{
 use godot::prelude::*;
 use std::sync::Arc;
 
-use crate::compiled::{
-    eval_compiled_batch_parallel, CompiledSdf,
-};
+use crate::compiled::{eval_compiled_batch_parallel, CompiledSdf};
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use crate::types::SdfNode;
 

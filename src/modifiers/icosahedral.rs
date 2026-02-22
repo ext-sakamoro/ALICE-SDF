@@ -8,7 +8,7 @@
 use glam::Vec3;
 
 /// Golden ratio
-const PHI: f32 = 1.618033988749895;
+const PHI: f32 = 1.618_034;
 
 /// Fold point into icosahedral fundamental domain
 /// Applies reflections through icosahedral symmetry planes until convergence

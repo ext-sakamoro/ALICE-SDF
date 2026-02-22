@@ -82,6 +82,7 @@ pub fn optimize_vertex_cache(mesh: &mut Mesh) {
     // Find best starting triangle
     let mut best_tri = 0usize;
     let mut best_score = -1.0f32;
+    #[allow(clippy::needless_range_loop)]
     for t in 0..tri_count {
         if tri_scores[t] > best_score {
             best_score = tri_scores[t];
@@ -93,6 +94,7 @@ pub fn optimize_vertex_cache(mesh: &mut Mesh) {
         if tri_emitted[best_tri] {
             // Find any unemitted triangle
             let mut found = false;
+            #[allow(clippy::needless_range_loop)]
             for t in 0..tri_count {
                 if !tri_emitted[t] {
                     best_tri = t;

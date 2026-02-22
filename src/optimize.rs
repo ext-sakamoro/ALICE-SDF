@@ -15,7 +15,9 @@
 //! Author: Moroya Sakamoto
 
 use crate::types::SdfNode;
-use glam::{Quat, Vec3};
+use glam::Quat;
+#[cfg(test)]
+use glam::Vec3;
 use std::sync::Arc;
 
 /// Optimize an SDF tree by removing redundant nodes and simplifying transforms.
@@ -43,8 +45,8 @@ pub fn optimize(node: &SdfNode) -> SdfNode {
     let node = fold_identity_transform(&node);
     let node = merge_nested_transforms(&node);
     let node = fold_identity_modifier(&node);
-    let node = demote_smooth_to_standard(&node);
-    node
+
+    demote_smooth_to_standard(&node)
 }
 
 /// Recursively optimize all children of a node.

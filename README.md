@@ -36,6 +36,14 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **SDF-to-SDF Collision** - grid-based contact detection with interval arithmetic AABB pruning
 - **CSG Tree Optimization** - identity transform/modifier removal, nested transform merging, smooth→standard demotion
 - **Analytic Gradient** - single-pass gradient via chain rules and Jacobian propagation (9 analytic + 44 numerical-fallback primitives)
+- **Automatic Differentiation** - Dual Number forward-mode AD, Hessian estimation, mean curvature computation
+- **2D SDF module** - pure 2D SDF primitives (circle, rect, bezier, font glyph) with bilinear sampling
+- **CSG Tree Diff/Patch** - structural diff between SDF trees for undo/redo and network sync
+- **Parametric Constraint Solver** - Gauss-Newton optimization for geometric constraints (fixed, distance, sum, ratio)
+- **Distance Field Heatmap** - cross-section slicing with 4 color maps (coolwarm, binary, viridis, magma)
+- **Shell / Offset Surface** - variable-thickness shell modifier with inner/outer offset control
+- **Volume & Surface Area** - Monte Carlo estimation with deterministic PRNG and standard error
+- **ALICE-Font Bridge** - font glyph → 2D/3D SDF conversion, text layout, 3D extrusion (`--features font`)
 - **Auto Tight AABB** - interval arithmetic + binary search to find minimal bounding box containing the SDF surface
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
@@ -596,6 +604,16 @@ Specialized modules:
   mesh/dual_contouring -- Dual Contouring (QEF vertex placement, sharp edges)
   optimize.rs   -- CSG tree optimization (identity folding, transform merging)
   tight_aabb.rs -- Auto tight AABB (interval arithmetic + binary search)
+
+Analysis & measurement:
+  autodiff.rs   -- Dual Number AD (Dual, Dual3), Hessian, mean curvature
+  measure.rs    -- Monte Carlo volume/surface area/center of mass estimation
+  heatmap.rs    -- Distance field cross-section slicing with color maps
+  shell.rs      -- Variable-thickness shell / offset surface modifier
+  constraint.rs -- Gauss-Newton parametric constraint solver
+  diff.rs       -- CSG tree structural diff and patch (undo/redo, sync)
+  sdf2d.rs      -- Pure 2D SDF module (circle, rect, bezier, font glyph)
+  font_bridge.rs-- ALICE-Font glyph → SDF conversion (requires `font` feature)
 ```
 
 ### Evaluation Modes
@@ -1336,6 +1354,7 @@ All export functions accept `MeshHandle` (pre-generated) or `SdfHandle` (generat
 | `unreal` | Unreal Engine integration | ffi + hlsl |
 | `all-shaders` | All shader transpilers | gpu + hlsl + glsl |
 | `texture-fit` | Texture-to-formula conversion | image, rayon, wide |
+| `font` | ALICE-Font glyph → SDF bridge | alice-font |
 | `physics` | ALICE-Physics integration (SdfField trait) | alice-physics |
 
 ```bash
@@ -1345,6 +1364,7 @@ cargo build --features unity              # Unity (FFI + GLSL)
 cargo build --features unreal             # Unreal (FFI + HLSL)
 cargo build --features "all-shaders,jit"  # Everything
 cargo build --features physics             # ALICE-Physics integration
+cargo build --features font                # ALICE-Font glyph bridge
 ```
 
 ## Physics Bridge (ALICE-Physics Integration)
@@ -1410,10 +1430,11 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-886+ tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier, mesh persistence, chunked cache, Unity/UE5 export, FFI bindings). With `--features jit`, 900+ tests including JIT scalar and JIT SIMD backends.
+1,079 tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier, mesh persistence, chunked cache, Unity/UE5 export, FFI bindings, autodiff, shell, measure, heatmap, diff, constraint, sdf2d, font_bridge).
 
 ```bash
-cargo test
+cargo test                  # default features (1,069 tests)
+cargo test --features font  # + ALICE-Font bridge (1,079 tests)
 ```
 
 ## CLI

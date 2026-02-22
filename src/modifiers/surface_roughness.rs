@@ -11,7 +11,7 @@ use glam::Vec3;
 #[inline(always)]
 fn hash(p: Vec3) -> f32 {
     let h = p.dot(Vec3::new(127.1, 311.7, 74.7));
-    h.sin().fract() * 43758.5453
+    h.sin().fract() * 43_758.547
 }
 
 /// Smooth value noise

@@ -346,6 +346,7 @@ fn merge_meshes(sub_meshes: Vec<Mesh>) -> Mesh {
 }
 
 /// Process a single cell in the marching cubes grid (Deep Fried)
+#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 fn process_cell(
     node: &SdfNode,
@@ -363,6 +364,7 @@ fn process_cell(
     let mut corner_values = [0.0f32; 8];
     let mut corner_positions = [Vec3::ZERO; 8];
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         let dx = CORNER_OFFSETS[i][0];
         let dy = CORNER_OFFSETS[i][1];
@@ -385,6 +387,7 @@ fn process_cell(
 
     // Compute cube index
     let mut cube_index = 0;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         if corner_values[i] < config.iso_level {
             cube_index |= 1 << i;
@@ -592,6 +595,7 @@ pub fn marching_cubes_compiled(
 ///
 /// Uses neighboring grid values to approximate the gradient via central differences.
 /// Falls back to `normal_compiled` for boundary cells where neighbors are unavailable.
+#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 fn normal_from_grid(
     sdf: &CompiledSdf,
@@ -629,6 +633,7 @@ fn normal_from_grid(
 ///
 /// Normal computation uses grid finite differences when possible,
 /// eliminating 6 eval_compiled calls per vertex (the biggest per-vertex cost).
+#[allow(clippy::too_many_arguments)]
 fn process_cell_compiled(
     sdf: &CompiledSdf,
     values: &[f32],
@@ -644,6 +649,7 @@ fn process_cell_compiled(
     let mut corner_values = [0.0f32; 8];
     let mut corner_positions = [Vec3::ZERO; 8];
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         let dx = CORNER_OFFSETS[i][0];
         let dy = CORNER_OFFSETS[i][1];
@@ -665,6 +671,7 @@ fn process_cell_compiled(
     }
 
     let mut cube_index = 0;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         if corner_values[i] < config.iso_level {
             cube_index |= 1 << i;
@@ -1271,6 +1278,7 @@ fn process_adaptive_cell(node: &SdfNode, cell: &OctreeCell, config: &MarchingCub
     let mut corner_values = [0.0f32; 8];
     let mut corner_positions = [Vec3::ZERO; 8];
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         let dx = CORNER_OFFSETS[i][0] as f32;
         let dy = CORNER_OFFSETS[i][1] as f32;
@@ -1283,6 +1291,7 @@ fn process_adaptive_cell(node: &SdfNode, cell: &OctreeCell, config: &MarchingCub
 
     // Compute cube index
     let mut cube_index = 0;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         if corner_values[i] < config.iso_level {
             cube_index |= 1 << i;
@@ -1478,6 +1487,7 @@ fn process_adaptive_cell_compiled(
     let mut corner_values = [0.0f32; 8];
     let mut corner_positions = [Vec3::ZERO; 8];
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         let dx = CORNER_OFFSETS[i][0] as f32;
         let dy = CORNER_OFFSETS[i][1] as f32;
@@ -1489,6 +1499,7 @@ fn process_adaptive_cell_compiled(
     }
 
     let mut cube_index = 0;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..8 {
         if corner_values[i] < config.iso_level {
             cube_index |= 1 << i;

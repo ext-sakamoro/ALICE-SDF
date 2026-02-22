@@ -443,32 +443,32 @@ const FBX_BINARY_VERSION: u32 = 7400;
 
 /// Write a single FBX binary node property
 fn write_fbx_prop_i32(w: &mut impl Write, val: i32) -> Result<(), IoError> {
-    w.write_all(&[b'I'])?;
+    w.write_all(b"I")?;
     w.write_all(&val.to_le_bytes())?;
     Ok(())
 }
 
 fn write_fbx_prop_i64(w: &mut impl Write, val: i64) -> Result<(), IoError> {
-    w.write_all(&[b'L'])?;
+    w.write_all(b"L")?;
     w.write_all(&val.to_le_bytes())?;
     Ok(())
 }
 
 fn write_fbx_prop_f64(w: &mut impl Write, val: f64) -> Result<(), IoError> {
-    w.write_all(&[b'D'])?;
+    w.write_all(b"D")?;
     w.write_all(&val.to_le_bytes())?;
     Ok(())
 }
 
 fn write_fbx_prop_str(w: &mut impl Write, s: &str) -> Result<(), IoError> {
-    w.write_all(&[b'S'])?;
+    w.write_all(b"S")?;
     w.write_all(&(s.len() as u32).to_le_bytes())?;
     w.write_all(s.as_bytes())?;
     Ok(())
 }
 
 fn write_fbx_prop_f64_array(w: &mut impl Write, data: &[f64]) -> Result<(), IoError> {
-    w.write_all(&[b'd'])?;
+    w.write_all(b"d")?;
     w.write_all(&(data.len() as u32).to_le_bytes())?;
     w.write_all(&0u32.to_le_bytes())?; // encoding: 0 = raw
     w.write_all(&((data.len() * 8) as u32).to_le_bytes())?; // compressed_len
@@ -479,7 +479,7 @@ fn write_fbx_prop_f64_array(w: &mut impl Write, data: &[f64]) -> Result<(), IoEr
 }
 
 fn write_fbx_prop_i32_array(w: &mut impl Write, data: &[i32]) -> Result<(), IoError> {
-    w.write_all(&[b'i'])?;
+    w.write_all(b"i")?;
     w.write_all(&(data.len() as u32).to_le_bytes())?;
     w.write_all(&0u32.to_le_bytes())?; // encoding: 0 = raw
     w.write_all(&((data.len() * 4) as u32).to_le_bytes())?; // compressed_len
@@ -1013,7 +1013,7 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     let content = std::fs::read_to_string(path.as_ref())?;
 
     // Check for binary FBX (starts with "Kaydara FBX Binary")
-    if content.as_bytes().len() >= 23 && &content.as_bytes()[..18] == b"Kaydara FBX Binary" {
+    if content.len() >= 23 && &content.as_bytes()[..18] == b"Kaydara FBX Binary" {
         return Err(IoError::InvalidFormat(
             "Binary FBX import not supported. Use ASCII FBX or convert to glTF.".into(),
         ));
@@ -1072,8 +1072,7 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
         }
 
         // Parse "a: val,val,val,..." lines
-        if trimmed.starts_with("a: ") {
-            let data_str = &trimmed[3..];
+        if let Some(data_str) = trimmed.strip_prefix("a: ") {
             if in_vertices {
                 for tok in data_str.split(',') {
                     if let Ok(v) = tok.trim().parse::<f32>() {
@@ -1154,8 +1153,8 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
             // Fan-triangulate the polygon
             for i in 1..polygon.len().saturating_sub(1) {
                 indices.push(polygon[0]);
-                indices.push(polygon[i] as u32);
-                indices.push(polygon[i + 1] as u32);
+                indices.push(polygon[i]);
+                indices.push(polygon[i + 1]);
             }
             polygon.clear();
         } else {
@@ -1262,9 +1261,7 @@ fn parse_skeleton(content: &str) -> Option<Vec<FbxBone>> {
         }
 
         // Parse "a: " data lines
-        if trimmed.starts_with("a: ") {
-            let data_str = &trimmed[3..];
-
+        if let Some(data_str) = trimmed.strip_prefix("a: ") {
             if in_indices {
                 if let Some((_, ref mut bone)) = current_bone {
                     for tok in data_str.split(',') {
@@ -1395,9 +1392,7 @@ fn parse_animations(content: &str) -> Vec<FbxAnimClip> {
         }
 
         // Parse "a: " data lines
-        if trimmed.starts_with("a: ") {
-            let data_str = &trimmed[3..];
-
+        if let Some(data_str) = trimmed.strip_prefix("a: ") {
             if in_key_time {
                 if let Some(ref mut curve) = current_curve {
                     for tok in data_str.split(',') {
@@ -1426,7 +1421,7 @@ fn parse_animations(content: &str) -> Vec<FbxAnimClip> {
                 // Store curve (simplified: assume all curves belong to root bone)
                 bone_curves
                     .entry("Root".to_string())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(curve);
             }
             in_key_time = false;

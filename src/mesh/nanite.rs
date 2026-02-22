@@ -578,12 +578,13 @@ fn extract_cluster_geometry(mesh: &Mesh, tri_indices: &[usize]) -> (Vec<Vertex>,
         let base = tri_idx * 3;
         let mut new_indices = [0u32; 3];
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..3 {
             let old_idx = mesh.indices[base + i];
 
             let new_idx = *vertex_map.entry(old_idx).or_insert_with(|| {
                 let idx = vertices.len() as u32;
-                vertices.push(mesh.vertices[old_idx as usize].clone());
+                vertices.push(mesh.vertices[old_idx as usize]);
                 idx
             });
 

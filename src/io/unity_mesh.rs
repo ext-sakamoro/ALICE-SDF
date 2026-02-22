@@ -186,31 +186,31 @@ pub fn export_unity_mesh(
 
     // Build JSON manually for performance (avoid serde overhead for large arrays)
     write!(w, "{{\n  \"alice_sdf_mesh\": {{\n")?;
-    write!(w, "    \"version\": {},\n", UNITY_JSON_VERSION)?;
-    write!(w, "    \"name\": \"{}\",\n", config.name)?;
-    write!(w, "    \"vertex_count\": {},\n", vc)?;
-    write!(w, "    \"index_count\": {},\n", ic)?;
+    writeln!(w, "    \"version\": {},", UNITY_JSON_VERSION)?;
+    writeln!(w, "    \"name\": \"{}\",", config.name)?;
+    writeln!(w, "    \"vertex_count\": {},", vc)?;
+    writeln!(w, "    \"index_count\": {},", ic)?;
 
     // Sub-meshes (single sub-mesh for now)
-    write!(
+    writeln!(
         w,
-        "    \"sub_meshes\": [{{ \"topology\": 0, \"index_start\": 0, \"index_count\": {} }}],\n",
+        "    \"sub_meshes\": [{{ \"topology\": 0, \"index_start\": 0, \"index_count\": {} }}],",
         ic
     )?;
 
     // Vertex data
-    write!(w, "    \"vertex_data\": {{\n")?;
+    writeln!(w, "    \"vertex_data\": {{")?;
     write_json_f32_array(&mut w, "positions", &positions, 6)?;
-    write!(w, ",\n")?;
+    writeln!(w, ",")?;
     write_json_f32_array(&mut w, "normals", &normals, 6)?;
-    write!(w, ",\n")?;
+    writeln!(w, ",")?;
     write_json_f32_array(&mut w, "uvs", &uvs, 6)?;
-    write!(w, ",\n")?;
+    writeln!(w, ",")?;
     write_json_f32_array(&mut w, "tangents", &tangents, 6)?;
-    write!(w, ",\n")?;
+    writeln!(w, ",")?;
     write_json_f32_array(&mut w, "colors", &colors, 6)?;
-    write!(w, "\n")?;
-    write!(w, "    }},\n")?;
+    writeln!(w)?;
+    writeln!(w, "    }},")?;
 
     // Index data
     write!(w, "    \"index_data\": [")?;
@@ -220,7 +220,7 @@ pub fn export_unity_mesh(
         }
         write!(w, "{}", idx)?;
     }
-    write!(w, "]\n")?;
+    writeln!(w, "]")?;
 
     write!(w, "  }}\n}}\n")?;
     w.flush()?;

@@ -84,12 +84,10 @@ pub fn generate_lightmap_uvs(mesh: &mut Mesh, resolution: u32) {
             } else {
                 3
             }
+        } else if face_normal.z >= 0.0 {
+            4
         } else {
-            if face_normal.z >= 0.0 {
-                4
-            } else {
-                5
-            }
+            5
         };
 
         groups[group].push(t);

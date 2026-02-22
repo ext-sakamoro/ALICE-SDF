@@ -60,7 +60,7 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
         let z = (-p2).sqrt();
         let v = (q2 / (p2 * z * 2.0)).acos() / 3.0;
         let m = v.cos();
-        let n = v.sin() * 1.732050808;
+        let n = v.sin() * 1.732_050_8;
 
         let t0 = ((m + m) * z - kx).clamp(0.0, 1.0);
         let t1 = ((-n - m) * z - kx).clamp(0.0, 1.0);

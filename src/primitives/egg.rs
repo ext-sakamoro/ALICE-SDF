@@ -19,15 +19,15 @@ pub fn sdf_egg(p: Vec3, ra: f32, rb: f32) -> f32 {
     let px = Vec2::new(p.x, p.z).length();
     let py = p.y;
     let r = ra - rb;
-    let d = if py < 0.0 {
+
+    if py < 0.0 {
         Vec2::new(px, py).length() - r
     } else if px * ra < py * rb {
         // Near the top (narrow part)
         Vec2::new(px, py - ra).length()
     } else {
         Vec2::new(px + rb, py).length() - ra
-    };
-    d
+    }
 }
 
 #[cfg(test)]

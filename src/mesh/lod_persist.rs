@@ -143,7 +143,7 @@ impl LodChainPersist {
         let levels: Vec<LodLevelPersist> = meshes
             .into_iter()
             .enumerate()
-            .zip(transition_distances.into_iter())
+            .zip(transition_distances)
             .map(|((i, mesh), dist)| {
                 let (aabb_min, aabb_max) = if mesh.vertices.is_empty() {
                     ([0.0; 3], [0.0; 3])

@@ -607,7 +607,7 @@ pub fn primitives_to_csg(primitives: &[FittedPrimitive]) -> Option<SdfNode> {
 
     // Build balanced binary tree of unions
     while nodes.len() > 1 {
-        let mut next = Vec::with_capacity((nodes.len() + 1) / 2);
+        let mut next = Vec::with_capacity(nodes.len().div_ceil(2));
 
         for chunk in nodes.chunks(2) {
             if chunk.len() == 2 {

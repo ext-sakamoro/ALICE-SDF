@@ -1140,7 +1140,6 @@ impl Compiler {
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
             }
-
         }
     }
 }

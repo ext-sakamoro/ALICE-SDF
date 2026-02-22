@@ -400,12 +400,10 @@ fn build_glb_data(
                     &mat.metallic_roughness_map,
                     &mat.clearcoat_normal_map,
                 ];
-                for slot_opt in &slots {
-                    if let Some(slot) = slot_opt {
-                        if !path_to_tex_idx.contains_key(&slot.path) {
-                            path_to_tex_idx.insert(slot.path.clone(), image_paths.len());
-                            image_paths.push(slot.path.clone());
-                        }
+                for slot in slots.iter().copied().flatten() {
+                    if !path_to_tex_idx.contains_key(&slot.path) {
+                        path_to_tex_idx.insert(slot.path.clone(), image_paths.len());
+                        image_paths.push(slot.path.clone());
                     }
                 }
             }
@@ -683,10 +681,8 @@ fn build_glb_data(
     let mut json = String::from(r#"{"asset":{"version":"2.0","generator":"ALICE-SDF"}"#);
 
     // Extensions
-    if needs_quantization_ext {
-        if !used_extensions.contains(&"KHR_mesh_quantization".to_string()) {
-            used_extensions.push("KHR_mesh_quantization".to_string());
-        }
+    if needs_quantization_ext && !used_extensions.contains(&"KHR_mesh_quantization".to_string()) {
+        used_extensions.push("KHR_mesh_quantization".to_string());
     }
     if !used_extensions.is_empty() {
         let ext_list: Vec<String> = used_extensions

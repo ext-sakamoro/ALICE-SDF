@@ -315,7 +315,7 @@ impl MeshBvh {
         let inv_parent_sa = 1.0 / parent_sa;
 
         // Evaluate SAH at ~8 candidate split positions (or every position if small)
-        let num_buckets = n.min(16).max(2);
+        let num_buckets = n.clamp(2, 16);
         let mut best_cost = f32::INFINITY;
         let mut best_mid = n / 2;
 

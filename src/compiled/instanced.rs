@@ -62,7 +62,7 @@ impl InstanceDataSoA {
     }
 
     fn with_capacity(capacity: usize) -> Self {
-        let chunks = (capacity + 7) / 8;
+        let chunks = capacity.div_ceil(8);
         InstanceDataSoA {
             translate_x: Vec::with_capacity(chunks),
             translate_y: Vec::with_capacity(chunks),
