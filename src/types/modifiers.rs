@@ -11,6 +11,7 @@ impl SdfNode {
     // === Modifier methods ===
 
     /// Twist around Y-axis
+    #[must_use]
     #[inline]
     pub fn twist(self, strength: f32) -> Self {
         SdfNode::Twist {
@@ -20,6 +21,7 @@ impl SdfNode {
     }
 
     /// Bend around Y-axis
+    #[must_use]
     #[inline]
     pub fn bend(self, curvature: f32) -> Self {
         SdfNode::Bend {
@@ -29,6 +31,7 @@ impl SdfNode {
     }
 
     /// Infinite repetition
+    #[must_use]
     #[inline]
     pub fn repeat_infinite(self, spacing_x: f32, spacing_y: f32, spacing_z: f32) -> Self {
         SdfNode::RepeatInfinite {
@@ -38,6 +41,7 @@ impl SdfNode {
     }
 
     /// Finite repetition
+    #[must_use]
     #[inline]
     pub fn repeat_finite(self, count: [u32; 3], spacing: Vec3) -> Self {
         SdfNode::RepeatFinite {
@@ -48,6 +52,7 @@ impl SdfNode {
     }
 
     /// Perlin noise displacement
+    #[must_use]
     #[inline]
     pub fn noise(self, amplitude: f32, frequency: f32, seed: u32) -> Self {
         SdfNode::Noise {
@@ -59,6 +64,7 @@ impl SdfNode {
     }
 
     /// Round edges
+    #[must_use]
     #[inline]
     pub fn round(self, radius: f32) -> Self {
         SdfNode::Round {
@@ -68,6 +74,7 @@ impl SdfNode {
     }
 
     /// Create a shell (onion)
+    #[must_use]
     #[inline]
     pub fn onion(self, thickness: f32) -> Self {
         SdfNode::Onion {
@@ -77,6 +84,7 @@ impl SdfNode {
     }
 
     /// Elongate along an axis
+    #[must_use]
     #[inline]
     pub fn elongate(self, x: f32, y: f32, z: f32) -> Self {
         SdfNode::Elongate {
@@ -86,6 +94,7 @@ impl SdfNode {
     }
 
     /// Mirror along specified axes
+    #[must_use]
     #[inline]
     pub fn mirror(self, x: bool, y: bool, z: bool) -> Self {
         SdfNode::Mirror {
@@ -99,6 +108,7 @@ impl SdfNode {
     }
 
     /// Revolution around Y-axis
+    #[must_use]
     #[inline]
     pub fn revolution(self, offset: f32) -> Self {
         SdfNode::Revolution {
@@ -108,6 +118,7 @@ impl SdfNode {
     }
 
     /// Extrude along Z-axis
+    #[must_use]
     #[inline]
     pub fn extrude(self, height: f32) -> Self {
         SdfNode::Extrude {
@@ -118,6 +129,7 @@ impl SdfNode {
 
     /// Sweep along a quadratic Bezier curve in the XZ plane.
     /// Control points are (x, z) coordinates.
+    #[must_use]
     #[inline]
     pub fn sweep_bezier(self, p0: Vec2, p1: Vec2, p2: Vec2) -> Self {
         SdfNode::SweepBezier {
@@ -129,6 +141,7 @@ impl SdfNode {
     }
 
     /// Taper along Y-axis
+    #[must_use]
     #[inline]
     pub fn taper(self, factor: f32) -> Self {
         SdfNode::Taper {
@@ -138,6 +151,7 @@ impl SdfNode {
     }
 
     /// Sin-based displacement
+    #[must_use]
     #[inline]
     pub fn displacement(self, strength: f32) -> Self {
         SdfNode::Displacement {
@@ -147,6 +161,7 @@ impl SdfNode {
     }
 
     /// Polar repetition around Y-axis
+    #[must_use]
     #[inline]
     pub fn polar_repeat(self, count: u32) -> Self {
         SdfNode::PolarRepeat {
@@ -156,6 +171,7 @@ impl SdfNode {
     }
 
     /// Octant mirror (48-fold symmetry)
+    #[must_use]
     #[inline]
     pub fn octant_mirror(self) -> Self {
         SdfNode::OctantMirror {
@@ -164,6 +180,7 @@ impl SdfNode {
     }
 
     /// Apply shear deformation
+    #[must_use]
     #[inline]
     pub fn shear(self, xy: f32, xz: f32, yz: f32) -> Self {
         SdfNode::Shear {
@@ -173,6 +190,7 @@ impl SdfNode {
     }
 
     /// Apply time-based animation
+    #[must_use]
     #[inline]
     pub fn animated(self, speed: f32, amplitude: f32) -> Self {
         SdfNode::Animated {
@@ -183,6 +201,7 @@ impl SdfNode {
     }
 
     /// Assign a material ID to this subtree
+    #[must_use]
     #[inline]
     pub fn with_material(self, material_id: u32) -> Self {
         SdfNode::WithMaterial {
@@ -192,6 +211,7 @@ impl SdfNode {
     }
 
     /// Icosahedral symmetry (120-fold)
+    #[must_use]
     #[inline]
     pub fn icosahedral_symmetry(self) -> Self {
         SdfNode::IcosahedralSymmetry {
@@ -200,6 +220,7 @@ impl SdfNode {
     }
 
     /// Iterated Function System
+    #[must_use]
     #[inline]
     pub fn ifs(self, transforms: Vec<[f32; 16]>, iterations: u32) -> Self {
         SdfNode::IFS {
@@ -210,6 +231,7 @@ impl SdfNode {
     }
 
     /// Heightmap displacement
+    #[must_use]
     #[inline]
     pub fn heightmap_displacement(
         self,
@@ -230,6 +252,7 @@ impl SdfNode {
     }
 
     /// Surface roughness (FBM noise)
+    #[must_use]
     #[inline]
     pub fn surface_roughness(self, frequency: f32, amplitude: f32, octaves: u32) -> Self {
         SdfNode::SurfaceRoughness {

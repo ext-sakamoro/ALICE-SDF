@@ -43,6 +43,62 @@
 //! Moroya Sakamoto
 
 #![warn(missing_docs)]
+#![allow(
+    // Naming: math/SDF code uses px, py, pz, ra, rb etc.
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::module_name_repetitions,
+    // Casts: SDF code converts freely between f32/u32/usize/i32
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::cast_possible_wrap,
+    // must_use: applied to key constructors; suppress lint for the rest
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    // Docs: type names in doc comments are pervasive in SDF crate
+    clippy::doc_markdown,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    // Style: acceptable in math-heavy codebase
+    clippy::uninlined_format_args,
+    clippy::match_same_arms,
+    clippy::wildcard_imports,
+    clippy::items_after_statements,
+    clippy::format_push_string,
+    clippy::explicit_iter_loop,
+    clippy::needless_pass_by_value,
+    clippy::redundant_closure_for_method_calls,
+    clippy::bool_to_int_with_if,
+    clippy::if_not_else,
+    clippy::needless_bool,
+    clippy::let_unit_value,
+    // Performance: inline(always) is intentional for SIMD hot paths
+    clippy::inline_always,
+    // Structure: large match-based eval functions are inherent to SDF VMs
+    clippy::too_many_lines,
+    clippy::struct_excessive_bools,
+    // Precision: float comparison is intentional in SDF tests/math
+    clippy::float_cmp,
+    // Platform: file extension checks are acceptable
+    clippy::case_sensitive_file_extension_comparisons,
+    // Pointer casts in FFI/SIMD code
+    clippy::ptr_as_ptr,
+    // Misc
+    clippy::map_unwrap_or,
+    clippy::used_underscore_binding,
+    clippy::single_match_else,
+    clippy::unnecessary_wraps,
+    clippy::match_wildcard_for_single_variants,
+    clippy::cloned_instead_of_copied,
+    clippy::let_underscore_untyped,
+    clippy::pub_underscore_fields,
+    clippy::no_effect_underscore_binding,
+    clippy::cast_ptr_alignment,
+    clippy::manual_let_else,
+    clippy::unreadable_literal,
+)]
 
 pub mod animation;
 pub mod cache;
@@ -65,6 +121,18 @@ pub mod soa;
 pub mod tight_aabb;
 pub mod transforms;
 pub mod types;
+
+// New modules: analysis, 2D, and bridges
+pub mod autodiff;
+pub mod constraint;
+pub mod diff;
+pub mod heatmap;
+pub mod measure;
+pub mod sdf2d;
+pub mod shell;
+
+#[cfg(feature = "font")]
+pub mod font_bridge;
 
 #[cfg(feature = "python")]
 pub mod python;
@@ -254,6 +322,22 @@ pub mod prelude {
         erode, generate_cave_sdf, terrain_sdf, CaveConfig, ClipmapLevel, ClipmapMesh,
         ClipmapTerrain, ErosionConfig, Heightmap, SplatLayer, Splatmap, TerrainConfig,
     };
+    pub use crate::autodiff::{
+        eval_hessian, eval_with_gradient, mean_curvature, Dual, Dual3,
+    };
+    pub use crate::constraint::{
+        Constraint, ConstraintKind, ConstraintSolver, ParamId, SolveResult,
+    };
+    pub use crate::diff::{apply_patch, tree_diff, tree_hash, DiffError, DiffOp, TreePatch};
+    pub use crate::heatmap::{
+        generate_heatmap, heatmap_to_rgba, ColorMap, Heatmap, HeatmapConfig, SlicePlane,
+    };
+    pub use crate::measure::{
+        estimate_center_of_mass, estimate_surface_area, estimate_volume, AreaEstimate,
+        CenterOfMass, VolumeEstimate,
+    };
+    pub use crate::sdf2d::{eval_2d, eval_2d_batch, Sdf2dNode};
+    pub use crate::shell::{eval_shell, eval_shell_batch, shell_node, ShellConfig};
     pub use crate::transforms::*;
     pub use crate::types::{Aabb, Hit, Ray, SdfCategory, SdfMetadata, SdfNode, SdfTree};
     #[cfg(feature = "volume")]

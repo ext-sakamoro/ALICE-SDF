@@ -10,6 +10,7 @@ impl SdfNode {
     // === Operation methods ===
 
     /// Union with another shape
+    #[must_use]
     #[inline]
     pub fn union(self, other: SdfNode) -> Self {
         SdfNode::Union {
@@ -19,6 +20,7 @@ impl SdfNode {
     }
 
     /// Intersection with another shape
+    #[must_use]
     #[inline]
     pub fn intersection(self, other: SdfNode) -> Self {
         SdfNode::Intersection {
@@ -28,6 +30,7 @@ impl SdfNode {
     }
 
     /// Subtract another shape from this one
+    #[must_use]
     #[inline]
     pub fn subtract(self, other: SdfNode) -> Self {
         SdfNode::Subtraction {
@@ -37,6 +40,7 @@ impl SdfNode {
     }
 
     /// Smooth union with another shape
+    #[must_use]
     #[inline]
     pub fn smooth_union(self, other: SdfNode, k: f32) -> Self {
         SdfNode::SmoothUnion {
@@ -47,6 +51,7 @@ impl SdfNode {
     }
 
     /// Smooth intersection with another shape
+    #[must_use]
     #[inline]
     pub fn smooth_intersection(self, other: SdfNode, k: f32) -> Self {
         SdfNode::SmoothIntersection {
@@ -57,6 +62,7 @@ impl SdfNode {
     }
 
     /// Smooth subtraction of another shape
+    #[must_use]
     #[inline]
     pub fn smooth_subtract(self, other: SdfNode, k: f32) -> Self {
         SdfNode::SmoothSubtraction {
@@ -67,6 +73,7 @@ impl SdfNode {
     }
 
     /// Chamfer union with another shape
+    #[must_use]
     #[inline]
     pub fn chamfer_union(self, other: SdfNode, r: f32) -> Self {
         SdfNode::ChamferUnion {
@@ -77,6 +84,7 @@ impl SdfNode {
     }
 
     /// Chamfer intersection with another shape
+    #[must_use]
     #[inline]
     pub fn chamfer_intersection(self, other: SdfNode, r: f32) -> Self {
         SdfNode::ChamferIntersection {
@@ -87,6 +95,7 @@ impl SdfNode {
     }
 
     /// Chamfer subtraction of another shape
+    #[must_use]
     #[inline]
     pub fn chamfer_subtract(self, other: SdfNode, r: f32) -> Self {
         SdfNode::ChamferSubtraction {
@@ -97,6 +106,7 @@ impl SdfNode {
     }
 
     /// Stairs union with another shape
+    #[must_use]
     #[inline]
     pub fn stairs_union(self, other: SdfNode, r: f32, n: f32) -> Self {
         SdfNode::StairsUnion {
@@ -108,6 +118,7 @@ impl SdfNode {
     }
 
     /// Stairs intersection with another shape
+    #[must_use]
     #[inline]
     pub fn stairs_intersection(self, other: SdfNode, r: f32, n: f32) -> Self {
         SdfNode::StairsIntersection {
@@ -119,6 +130,7 @@ impl SdfNode {
     }
 
     /// Stairs subtraction of another shape
+    #[must_use]
     #[inline]
     pub fn stairs_subtract(self, other: SdfNode, r: f32, n: f32) -> Self {
         SdfNode::StairsSubtraction {
@@ -130,6 +142,7 @@ impl SdfNode {
     }
 
     /// XOR (symmetric difference) with another shape
+    #[must_use]
     #[inline]
     pub fn xor(self, other: SdfNode) -> Self {
         SdfNode::XOR {
@@ -139,6 +152,7 @@ impl SdfNode {
     }
 
     /// Morph with another shape
+    #[must_use]
     #[inline]
     pub fn morph(self, other: SdfNode, t: f32) -> Self {
         SdfNode::Morph {
@@ -149,6 +163,7 @@ impl SdfNode {
     }
 
     /// Columns union with another shape
+    #[must_use]
     #[inline]
     pub fn columns_union(self, other: SdfNode, r: f32, n: f32) -> Self {
         SdfNode::ColumnsUnion {
@@ -160,6 +175,7 @@ impl SdfNode {
     }
 
     /// Columns intersection with another shape
+    #[must_use]
     #[inline]
     pub fn columns_intersection(self, other: SdfNode, r: f32, n: f32) -> Self {
         SdfNode::ColumnsIntersection {
@@ -171,6 +187,7 @@ impl SdfNode {
     }
 
     /// Columns subtraction of another shape
+    #[must_use]
     #[inline]
     pub fn columns_subtract(self, other: SdfNode, r: f32, n: f32) -> Self {
         SdfNode::ColumnsSubtraction {
@@ -182,6 +199,7 @@ impl SdfNode {
     }
 
     /// Pipe operation with another shape
+    #[must_use]
     #[inline]
     pub fn pipe(self, other: SdfNode, r: f32) -> Self {
         SdfNode::Pipe {
@@ -192,6 +210,7 @@ impl SdfNode {
     }
 
     /// Engrave another shape into this one
+    #[must_use]
     #[inline]
     pub fn engrave(self, other: SdfNode, r: f32) -> Self {
         SdfNode::Engrave {
@@ -202,6 +221,7 @@ impl SdfNode {
     }
 
     /// Cut a groove of another shape into this one
+    #[must_use]
     #[inline]
     pub fn groove(self, other: SdfNode, ra: f32, rb: f32) -> Self {
         SdfNode::Groove {
@@ -213,6 +233,7 @@ impl SdfNode {
     }
 
     /// Add a tongue protrusion of another shape
+    #[must_use]
     #[inline]
     pub fn tongue(self, other: SdfNode, ra: f32, rb: f32) -> Self {
         SdfNode::Tongue {
@@ -224,6 +245,7 @@ impl SdfNode {
     }
 
     /// Exponential smooth union with another shape
+    #[must_use]
     #[inline]
     pub fn exp_smooth_union(self, other: SdfNode, k: f32) -> Self {
         SdfNode::ExpSmoothUnion {
@@ -234,6 +256,7 @@ impl SdfNode {
     }
 
     /// Exponential smooth intersection with another shape
+    #[must_use]
     #[inline]
     pub fn exp_smooth_intersection(self, other: SdfNode, k: f32) -> Self {
         SdfNode::ExpSmoothIntersection {
@@ -244,6 +267,7 @@ impl SdfNode {
     }
 
     /// Exponential smooth subtraction of another shape
+    #[must_use]
     #[inline]
     pub fn exp_smooth_subtract(self, other: SdfNode, k: f32) -> Self {
         SdfNode::ExpSmoothSubtraction {

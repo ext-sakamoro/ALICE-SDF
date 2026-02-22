@@ -7,7 +7,7 @@
 //!
 //! | Method | Memory Layout | SIMD Load | Cache Efficiency |
 //! |--------|---------------|-----------|------------------|
-//! | `eval_compiled_batch` | AoS (Vec<Vec3>) | Gather/Shuffle | Poor |
+//! | `eval_compiled_batch` | AoS (`Vec<Vec3>`) | Gather/Shuffle | Poor |
 //! | `eval_compiled_batch_soa` | SoA | Direct Load | Excellent |
 //!
 //! # Usage
@@ -405,6 +405,8 @@ mod tests {
 
         let mut output = vec![0.0f32; 8];
 
+        // SAFETY: soa.as_ptrs() returns valid pointers into the SoA allocation, each with 8
+        // elements (padded). output has 8 elements. All pointers remain valid for this call.
         unsafe {
             eval_compiled_batch_soa_raw(&compiled, px, py, pz, output.as_mut_ptr(), 8);
         }

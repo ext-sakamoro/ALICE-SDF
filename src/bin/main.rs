@@ -4,6 +4,17 @@
 //!
 //! Author: Moroya Sakamoto
 
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::needless_pass_by_value,
+    clippy::let_unit_value,
+    clippy::format_push_string,
+    clippy::cast_precision_loss,
+    clippy::too_many_lines,
+    clippy::doc_markdown,
+    clippy::ignored_unit_patterns,
+)]
+
 use alice_sdf::io::{export_3mf, export_ply, export_stl, PlyConfig};
 use alice_sdf::prelude::*;
 use std::path::PathBuf;

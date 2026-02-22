@@ -7,7 +7,7 @@
 //! # Features
 //! - **LSCM unwrapping** — Angle-preserving conformal mapping
 //! - **Seam detection** — Automatic chart boundary detection based on angle threshold
-//! - **Chart packing** — Shelf-based bin-packing of UV charts into [0,1]²
+//! - **Chart packing** — Shelf-based bin-packing of UV charts into `[0,1]`²
 //! - **Island merging** — Connected component detection for UV islands
 //!
 //! Author: Moroya Sakamoto
@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 pub struct UvUnwrapConfig {
     /// Dihedral angle threshold in degrees for seam detection (default: 88.0)
     pub angle_threshold: f32,
-    /// Padding between UV islands in [0,1] space (default: 0.01)
+    /// Padding between UV islands in `[0,1]` space (default: 0.01)
     pub margin: f32,
     /// Maximum allowed stretch factor (default: 0.5)
     pub max_stretch: f32,
@@ -135,9 +135,9 @@ fn detect_seams(mesh: &Mesh, angle_threshold_deg: f32) -> HashSet<EdgeKey> {
     // Build edge -> triangle adjacency
     let mut edge_tris: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
     for ti in 0..tri_count {
-        let i0 = mesh.indices[ti * 3] as u32;
-        let i1 = mesh.indices[ti * 3 + 1] as u32;
-        let i2 = mesh.indices[ti * 3 + 2] as u32;
+        let i0 = mesh.indices[ti * 3];
+        let i1 = mesh.indices[ti * 3 + 1];
+        let i2 = mesh.indices[ti * 3 + 2];
 
         edge_tris.entry(edge_key(i0, i1)).or_default().push(ti);
         edge_tris.entry(edge_key(i1, i2)).or_default().push(ti);
@@ -179,9 +179,9 @@ fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) ->
 
     let mut edge_tris: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
     for ti in 0..tri_count {
-        let i0 = mesh.indices[ti * 3] as u32;
-        let i1 = mesh.indices[ti * 3 + 1] as u32;
-        let i2 = mesh.indices[ti * 3 + 2] as u32;
+        let i0 = mesh.indices[ti * 3];
+        let i1 = mesh.indices[ti * 3 + 1];
+        let i2 = mesh.indices[ti * 3 + 2];
 
         edge_tris.entry(edge_key(i0, i1)).or_default().push(ti);
         edge_tris.entry(edge_key(i1, i2)).or_default().push(ti);
@@ -236,7 +236,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     let mut vert_set: Vec<u32> = Vec::new();
     for &ti in tri_indices {
         for k in 0..3 {
-            let vi = mesh.indices[ti * 3 + k] as u32;
+            let vi = mesh.indices[ti * 3 + k];
             if !vert_set.contains(&vi) {
                 vert_set.push(vi);
             }
@@ -271,9 +271,9 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
 
     // Place first triangle
     let first_tri = tri_indices[0];
-    let gi0 = mesh.indices[first_tri * 3] as u32;
-    let gi1 = mesh.indices[first_tri * 3 + 1] as u32;
-    let gi2 = mesh.indices[first_tri * 3 + 2] as u32;
+    let gi0 = mesh.indices[first_tri * 3];
+    let gi1 = mesh.indices[first_tri * 3 + 1];
+    let gi2 = mesh.indices[first_tri * 3 + 2];
 
     let p0 = mesh.vertices[gi0 as usize].position;
     let p1 = mesh.vertices[gi1 as usize].position;
@@ -310,9 +310,9 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     // Build triangle adjacency within this chart
     let mut edge_to_local_tri: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
     for (lti, &gti) in tri_indices.iter().enumerate() {
-        let a = mesh.indices[gti * 3] as u32;
-        let b = mesh.indices[gti * 3 + 1] as u32;
-        let c = mesh.indices[gti * 3 + 2] as u32;
+        let a = mesh.indices[gti * 3];
+        let b = mesh.indices[gti * 3 + 1];
+        let c = mesh.indices[gti * 3 + 2];
         edge_to_local_tri
             .entry(edge_key(a, b))
             .or_default()
@@ -359,9 +359,9 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
         }
 
         let gti = tri_indices[lti];
-        let va = mesh.indices[gti * 3] as u32;
-        let vb = mesh.indices[gti * 3 + 1] as u32;
-        let vc = mesh.indices[gti * 3 + 2] as u32;
+        let va = mesh.indices[gti * 3];
+        let vb = mesh.indices[gti * 3 + 1];
+        let vc = mesh.indices[gti * 3 + 2];
         let verts = [va, vb, vc];
 
         let la = global_to_local[&va];

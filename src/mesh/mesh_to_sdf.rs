@@ -21,8 +21,10 @@ use std::sync::Arc;
 
 /// Conversion strategy for mesh_to_sdf
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum MeshToSdfStrategy {
     /// Use capsule approximation (fast, creates SdfNode tree)
+    #[default]
     Capsule,
     /// Use BVH for exact distance (accurate, returns MeshSdf wrapper)
     BvhExact,
@@ -30,11 +32,6 @@ pub enum MeshToSdfStrategy {
     Hybrid,
 }
 
-impl Default for MeshToSdfStrategy {
-    fn default() -> Self {
-        MeshToSdfStrategy::Capsule
-    }
-}
 
 /// Configuration for mesh to SDF conversion
 #[derive(Debug, Clone)]
@@ -309,7 +306,7 @@ pub fn mesh_to_sdf(vertices: &[Vec3], indices: &[u32], config: &MeshToSdfConfig)
 /// * `config` - Conversion configuration
 ///
 /// # Returns
-/// Option<MeshSdf> - None if mesh is empty
+/// `Option<MeshSdf>` - None if mesh is empty
 pub fn mesh_to_sdf_exact(
     vertices: &[Vec3],
     indices: &[u32],
@@ -346,7 +343,7 @@ fn reduce_to_union(mut nodes: Vec<SdfNode>) -> SdfNode {
     }
 
     while nodes.len() > 1 {
-        let mut next = Vec::with_capacity((nodes.len() + 1) / 2);
+        let mut next = Vec::with_capacity(nodes.len().div_ceil(2));
 
         for chunk in nodes.chunks(2) {
             if chunk.len() == 2 {

@@ -391,6 +391,7 @@ impl AlignedVec {
         let new_byte_size = new_capacity * std::mem::size_of::<f32>();
         let new_layout = std::alloc::Layout::from_size_align(new_byte_size, Self::ALIGN)
             .expect("AlignedVec: invalid layout on grow");
+        // SAFETY: new_layout has non-zero size (new_capacity > 0 and f32 size > 0).
         let new_raw = unsafe { std::alloc::alloc_zeroed(new_layout) };
         if new_raw.is_null() {
             std::alloc::handle_alloc_error(new_layout);
@@ -708,5 +709,58 @@ mod tests {
         assert!(soa.x.as_ptr() as usize % 32 == 0, "SoA x must be 32-byte aligned");
         assert!(soa.y.as_ptr() as usize % 32 == 0, "SoA y must be 32-byte aligned");
         assert!(soa.z.as_ptr() as usize % 32 == 0, "SoA z must be 32-byte aligned");
+    }
+
+    #[test]
+    fn test_soa_points_empty() {
+        let soa = SoAPoints::new();
+        assert_eq!(soa.len(), 0);
+        assert!(soa.is_empty());
+    }
+
+    #[test]
+    fn test_soa_points_single() {
+        let mut soa = SoAPoints::new();
+        soa.push(1.0, 2.0, 3.0);
+        assert_eq!(soa.len(), 1);
+        assert!(!soa.is_empty());
+        let p = soa.get(0).expect("expected Some(Vec3)");
+        assert_eq!(p.x, 1.0);
+        assert_eq!(p.y, 2.0);
+        assert_eq!(p.z, 3.0);
+    }
+
+    #[test]
+    fn test_soa_points_large() {
+        let n = 1024;
+        let mut soa = SoAPoints::with_capacity(n);
+        for i in 0..n {
+            soa.push(i as f32, (i as f32) * 2.0, (i as f32) * 3.0);
+        }
+        assert_eq!(soa.len(), n);
+        let p = soa.get(n - 1).expect("expected Some(Vec3)");
+        assert_eq!(p.x, (n - 1) as f32);
+        assert_eq!(p.y, ((n - 1) as f32) * 2.0);
+        assert_eq!(p.z, ((n - 1) as f32) * 3.0);
+    }
+
+    #[test]
+    fn test_soa_distances_empty() {
+        let soa = SoADistances::with_capacity(0);
+        assert_eq!(soa.len(), 0);
+        assert!(soa.is_empty());
+    }
+
+    #[test]
+    fn test_soa_simd_boundary() {
+        // Test at SIMD boundary (8-wide lanes): 8 + 1 to test boundary handling
+        let n = 9;
+        let mut soa = SoAPoints::with_capacity(n);
+        for i in 0..n {
+            soa.push(i as f32, 0.0, 0.0);
+        }
+        assert_eq!(soa.len(), n);
+        let p = soa.get(8).expect("expected Some(Vec3)");
+        assert_eq!(p.x, 8.0);
     }
 }

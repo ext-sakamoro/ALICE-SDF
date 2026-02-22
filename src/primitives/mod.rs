@@ -294,7 +294,7 @@ pub enum PrimitiveType {
 pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Option<f32> {
     match prim {
         PrimitiveType::Sphere => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_sphere(point, params[0]))
             } else {
                 None
@@ -369,14 +369,14 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
             }
         }
         PrimitiveType::Pyramid => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_pyramid(point, params[0]))
             } else {
                 None
             }
         }
         PrimitiveType::Octahedron => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_octahedron(point, params[0]))
             } else {
                 None
@@ -516,14 +516,14 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
             }
         }
         PrimitiveType::InfiniteCylinder => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_infinite_cylinder(point, params[0]))
             } else {
                 None
             }
         }
         PrimitiveType::InfiniteCone => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_infinite_cone(point, params[0]))
             } else {
                 None
@@ -537,7 +537,7 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
             }
         }
         PrimitiveType::Heart => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_heart(point, params[0]))
             } else {
                 None
@@ -721,35 +721,35 @@ pub fn eval_primitive(prim: PrimitiveType, point: Vec3, params: &[f32]) -> Optio
             }
         }
         PrimitiveType::Tetrahedron => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_tetrahedron(point, params[0]))
             } else {
                 None
             }
         }
         PrimitiveType::Dodecahedron => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_dodecahedron(point, params[0]))
             } else {
                 None
             }
         }
         PrimitiveType::Icosahedron => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_icosahedron(point, params[0]))
             } else {
                 None
             }
         }
         PrimitiveType::TruncatedOctahedron => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_truncated_octahedron(point, params[0]))
             } else {
                 None
             }
         }
         PrimitiveType::TruncatedIcosahedron => {
-            if params.len() >= 1 {
+            if !params.is_empty() {
                 Some(sdf_truncated_icosahedron(point, params[0]))
             } else {
                 None
@@ -1194,7 +1194,7 @@ mod tests {
     #[test]
     fn test_eval_primitive_unchecked() {
         let params = [1.0];
-        // Safety: params length is 1, Sphere needs 1.
+        // SAFETY: params length is 1, Sphere requires exactly 1 parameter (radius).
         let d = unsafe { eval_primitive_unchecked(PrimitiveType::Sphere, Vec3::ZERO, &params) };
         assert!((d + 1.0).abs() < 0.001);
     }

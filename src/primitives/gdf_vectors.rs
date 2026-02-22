@@ -1,7 +1,7 @@
 //! Generalized Distance Function (GDF) normal vectors
 //!
 //! Pre-normalized plane normals used by Platonic/Archimedean solid SDFs.
-//! Based on hg_sdf by Mercury (http://mercury.sexy/hg_sdf/).
+//! Based on [hg_sdf](http://mercury.sexy/hg_sdf/) by Mercury.
 //!
 //! Author: Moroya Sakamoto
 
@@ -16,7 +16,7 @@ pub const GDF_CUBE: [Vec3; 3] = [
 
 /// Octahedron face normals [3..7] — normalize(±1, ±1, ±1)
 /// Only 4 needed since GDF uses abs(dot)
-const INV_SQRT3: f32 = 0.5773502691896258;
+const INV_SQRT3: f32 = 0.577_350_26;
 pub const GDF_OCTAHEDRON: [Vec3; 4] = [
     Vec3::new(INV_SQRT3, INV_SQRT3, INV_SQRT3),
     Vec3::new(-INV_SQRT3, INV_SQRT3, INV_SQRT3),
@@ -26,8 +26,8 @@ pub const GDF_OCTAHEDRON: [Vec3; 4] = [
 
 /// Icosahedron face normals [7..13] — normalize(0, ±1, ±φ) and permutations
 /// Pre-normalized: 1/sqrt(1 + φ²) ≈ 0.52573, φ/sqrt(1 + φ²) ≈ 0.85065
-const ICO_A: f32 = 0.5257311121191336;
-const ICO_B: f32 = 0.8506508083520400;
+const ICO_A: f32 = 0.525_731_1;
+const ICO_B: f32 = 0.850_650_8;
 pub const GDF_ICOSAHEDRON: [Vec3; 6] = [
     Vec3::new(0.0, ICO_A, ICO_B),
     Vec3::new(0.0, ICO_A, -ICO_B),

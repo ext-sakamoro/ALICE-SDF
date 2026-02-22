@@ -1521,4 +1521,82 @@ mod tests {
             .scale(2.0);
         assert_eq!(shape.node_count(), 4);
     }
+
+    #[test]
+    fn test_category_primitive() {
+        assert_eq!(SdfNode::sphere(1.0).category(), SdfCategory::Primitive);
+        assert_eq!(SdfNode::box3d(1.0, 1.0, 1.0).category(), SdfCategory::Primitive);
+        assert_eq!(SdfNode::cylinder(0.5, 1.0).category(), SdfCategory::Primitive);
+        assert_eq!(SdfNode::torus(1.0, 0.3).category(), SdfCategory::Primitive);
+    }
+
+    #[test]
+    fn test_category_operation() {
+        let u = SdfNode::sphere(1.0).union(SdfNode::box3d(1.0, 1.0, 1.0));
+        assert_eq!(u.category(), SdfCategory::Operation);
+        let s = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2);
+        assert_eq!(s.category(), SdfCategory::Operation);
+    }
+
+    #[test]
+    fn test_category_transform() {
+        let t = SdfNode::sphere(1.0).translate(1.0, 0.0, 0.0);
+        assert_eq!(t.category(), SdfCategory::Transform);
+        let r = SdfNode::sphere(1.0).rotate_euler(0.0, 1.0, 0.0);
+        assert_eq!(r.category(), SdfCategory::Transform);
+        let s = SdfNode::sphere(1.0).scale(2.0);
+        assert_eq!(s.category(), SdfCategory::Transform);
+    }
+
+    #[test]
+    fn test_category_modifier() {
+        let t = SdfNode::sphere(1.0).twist(0.5);
+        assert_eq!(t.category(), SdfCategory::Modifier);
+        let b = SdfNode::sphere(1.0).bend(0.3);
+        assert_eq!(b.category(), SdfCategory::Modifier);
+    }
+
+    #[test]
+    fn test_category_total() {
+        assert_eq!(SdfCategory::total(), 126);
+    }
+
+    #[test]
+    fn test_node_count_leaf() {
+        assert_eq!(SdfNode::sphere(1.0).node_count(), 1);
+        assert_eq!(SdfNode::box3d(1.0, 1.0, 1.0).node_count(), 1);
+        assert_eq!(SdfNode::torus(1.0, 0.3).node_count(), 1);
+    }
+
+    #[test]
+    fn test_node_count_deep_tree() {
+        let tree = SdfNode::sphere(1.0)
+            .union(SdfNode::box3d(1.0, 1.0, 1.0))
+            .translate(1.0, 0.0, 0.0)
+            .scale(2.0)
+            .twist(0.5);
+        assert_eq!(tree.node_count(), 6); // sphere + box + union + translate + scale + twist
+    }
+
+    #[test]
+    fn test_clone_equivalence() {
+        let a = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2);
+        let b = a.clone();
+        assert_eq!(format!("{:?}", a), format!("{:?}", b));
+    }
+
+    #[test]
+    fn test_sdf_tree_creation() {
+        let node = SdfNode::sphere(1.0).union(SdfNode::box3d(1.0, 1.0, 1.0));
+        let tree = SdfTree::new(node);
+        assert!(tree.node_count() >= 3);
+    }
+
+    #[test]
+    fn test_node_count_operations() {
+        let xor = SdfNode::sphere(1.0).xor(SdfNode::box3d(1.0, 1.0, 1.0));
+        assert_eq!(xor.node_count(), 3);
+        let morph = SdfNode::sphere(1.0).morph(SdfNode::box3d(1.0, 1.0, 1.0), 0.5);
+        assert_eq!(morph.node_count(), 3);
+    }
 }

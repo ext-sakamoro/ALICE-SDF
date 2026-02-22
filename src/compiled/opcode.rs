@@ -11,147 +11,147 @@
 #[repr(u8)]
 pub enum OpCode {
     // === Primitives (push distance to stack) ===
-    /// Sphere: params[0] = radius
+    /// Sphere: `params[0]` = radius
     Sphere = 0,
-    /// Box3d: params[0..3] = half_extents (x, y, z)
+    /// Box3d: `params[0..3]` = half_extents (x, y, z)
     Box3d = 1,
-    /// Cylinder: params[0] = radius, params[1] = half_height
+    /// Cylinder: `params[0]` = radius, `params[1]` = half_height
     Cylinder = 2,
-    /// Torus: params[0] = major_radius, params[1] = minor_radius
+    /// Torus: `params[0]` = major_radius, `params[1]` = minor_radius
     Torus = 3,
-    /// Plane: params[0..3] = normal (x, y, z), params[3] = distance
+    /// Plane: `params[0..3]` = normal (x, y, z), `params[3]` = distance
     Plane = 4,
-    /// Capsule: params[0..3] = point_a, params[3..6] = point_b (radius in params via separate field)
+    /// Capsule: `params[0..3]` = point_a, `params[3..6]` = point_b (radius in params via separate field)
     Capsule = 5,
-    /// Cone: params[0] = radius, params[1] = half_height
+    /// Cone: `params[0]` = radius, `params[1]` = half_height
     Cone = 6,
-    /// Ellipsoid: params[0..3] = radii (x, y, z)
+    /// Ellipsoid: `params[0..3]` = radii (x, y, z)
     Ellipsoid = 7,
-    /// RoundedCone: params[0] = r1, params[1] = r2, params[2] = half_height
+    /// RoundedCone: `params[0]` = r1, `params[1]` = r2, `params[2]` = half_height
     RoundedCone = 8,
-    /// Pyramid: params[0] = half_height
+    /// Pyramid: `params[0]` = half_height
     Pyramid = 9,
-    /// Octahedron: params[0] = size
+    /// Octahedron: `params[0]` = size
     Octahedron = 10,
-    /// HexPrism: params[0] = hex_radius, params[1] = half_height
+    /// HexPrism: `params[0]` = hex_radius, `params[1]` = half_height
     HexPrism = 11,
-    /// Link: params[0] = half_length, params[1] = r1, params[2] = r2
+    /// Link: `params[0]` = half_length, `params[1]` = r1, `params[2]` = r2
     Link = 12,
 
     // === Extended Primitives (64-101) ===
-    /// RoundedBox: params[0..3] = half_extents, params[3] = round_radius
+    /// RoundedBox: `params[0..3]` = half_extents, `params[3]` = round_radius
     RoundedBox = 64,
-    /// CappedCone: params[0] = half_height, params[1] = r1, params[2] = r2
+    /// CappedCone: `params[0]` = half_height, `params[1]` = r1, `params[2]` = r2
     CappedCone = 65,
-    /// CappedTorus: params[0] = major_radius, params[1] = minor_radius, params[2] = cap_angle
+    /// CappedTorus: `params[0]` = major_radius, `params[1]` = minor_radius, `params[2]` = cap_angle
     CappedTorus = 66,
-    /// RoundedCylinder: params[0] = radius, params[1] = round_radius, params[2] = half_height
+    /// RoundedCylinder: `params[0]` = radius, `params[1]` = round_radius, `params[2]` = half_height
     RoundedCylinder = 67,
-    /// TriangularPrism: params[0] = width, params[1] = half_depth
+    /// TriangularPrism: `params[0]` = width, `params[1]` = half_depth
     TriangularPrism = 68,
-    /// CutSphere: params[0] = radius, params[1] = cut_height
+    /// CutSphere: `params[0]` = radius, `params[1]` = cut_height
     CutSphere = 69,
-    /// CutHollowSphere: params[0] = radius, params[1] = cut_height, params[2] = thickness
+    /// CutHollowSphere: `params[0]` = radius, `params[1]` = cut_height, `params[2]` = thickness
     CutHollowSphere = 70,
-    /// DeathStar: params[0] = ra, params[1] = rb, params[2] = d
+    /// DeathStar: `params[0]` = ra, `params[1]` = rb, `params[2]` = d
     DeathStar = 71,
-    /// SolidAngle: params[0] = angle, params[1] = radius
+    /// SolidAngle: `params[0]` = angle, `params[1]` = radius
     SolidAngle = 72,
-    /// Rhombus: params[0] = la, params[1] = lb, params[2] = half_height, params[3] = round_radius
+    /// Rhombus: `params[0]` = la, `params[1]` = lb, `params[2]` = half_height, `params[3]` = round_radius
     Rhombus = 73,
-    /// Horseshoe: params[0] = angle, params[1] = radius, params[2] = half_length, params[3] = width, params[4] = thickness
+    /// Horseshoe: `params[0]` = angle, `params[1]` = radius, `params[2]` = half_length, `params[3]` = width, `params[4]` = thickness
     Horseshoe = 74,
-    /// Vesica: params[0] = radius, params[1] = half_dist
+    /// Vesica: `params[0]` = radius, `params[1]` = half_dist
     Vesica = 75,
-    /// InfiniteCylinder: params[0] = radius
+    /// InfiniteCylinder: `params[0]` = radius
     InfiniteCylinder = 76,
-    /// InfiniteCone: params[0] = angle
+    /// InfiniteCone: `params[0]` = angle
     InfiniteCone = 77,
-    /// Gyroid: params[0] = scale, params[1] = thickness
+    /// Gyroid: `params[0]` = scale, `params[1]` = thickness
     Gyroid = 78,
-    /// Heart: params[0] = size
+    /// Heart: `params[0]` = size
     Heart = 79,
-    /// Tube: params[0] = outer_radius, params[1] = thickness, params[2] = half_height
+    /// Tube: `params[0]` = outer_radius, `params[1]` = thickness, `params[2]` = half_height
     Tube = 80,
-    /// Barrel: params[0] = radius, params[1] = half_height, params[2] = bulge
+    /// Barrel: `params[0]` = radius, `params[1]` = half_height, `params[2]` = bulge
     Barrel = 81,
-    /// Diamond: params[0] = radius, params[1] = half_height
+    /// Diamond: `params[0]` = radius, `params[1]` = half_height
     Diamond = 82,
-    /// ChamferedCube: params[0..3] = half_extents, params[3] = chamfer
+    /// ChamferedCube: `params[0..3]` = half_extents, `params[3]` = chamfer
     ChamferedCube = 83,
-    /// SchwarzP: params[0] = scale, params[1] = thickness
+    /// SchwarzP: `params[0]` = scale, `params[1]` = thickness
     SchwarzP = 84,
-    /// Superellipsoid: params[0..3] = half_extents, params[3] = e1, params[4] = e2
+    /// Superellipsoid: `params[0..3]` = half_extents, `params[3]` = e1, `params[4]` = e2
     Superellipsoid = 85,
-    /// RoundedX: params[0] = width, params[1] = round_radius, params[2] = half_height
+    /// RoundedX: `params[0]` = width, `params[1]` = round_radius, `params[2]` = half_height
     RoundedX = 86,
-    /// Pie: params[0] = angle, params[1] = radius, params[2] = half_height
+    /// Pie: `params[0]` = angle, `params[1]` = radius, `params[2]` = half_height
     Pie = 87,
-    /// Trapezoid: params[0] = r1, params[1] = r2, params[2] = trap_height, params[3] = half_depth
+    /// Trapezoid: `params[0]` = r1, `params[1]` = r2, `params[2]` = trap_height, `params[3]` = half_depth
     Trapezoid = 88,
-    /// Parallelogram: params[0] = width, params[1] = para_height, params[2] = skew, params[3] = half_depth
+    /// Parallelogram: `params[0]` = width, `params[1]` = para_height, `params[2]` = skew, `params[3]` = half_depth
     Parallelogram = 89,
-    /// Tunnel: params[0] = width, params[1] = height_2d, params[2] = half_depth
+    /// Tunnel: `params[0]` = width, `params[1]` = height_2d, `params[2]` = half_depth
     Tunnel = 90,
-    /// UnevenCapsule: params[0] = r1, params[1] = r2, params[2] = cap_height, params[3] = half_depth
+    /// UnevenCapsule: `params[0]` = r1, `params[1]` = r2, `params[2]` = cap_height, `params[3]` = half_depth
     UnevenCapsule = 91,
-    /// Egg: params[0] = ra, params[1] = rb
+    /// Egg: `params[0]` = ra, `params[1]` = rb
     Egg = 92,
-    /// ArcShape: params[0] = aperture, params[1] = radius, params[2] = thickness, params[3] = half_height
+    /// ArcShape: `params[0]` = aperture, `params[1]` = radius, `params[2]` = thickness, `params[3]` = half_height
     ArcShape = 93,
-    /// Moon: params[0] = d, params[1] = ra, params[2] = rb, params[3] = half_height
+    /// Moon: `params[0]` = d, `params[1]` = ra, `params[2]` = rb, `params[3]` = half_height
     Moon = 94,
-    /// CrossShape: params[0] = length, params[1] = thickness, params[2] = round_radius, params[3] = half_height
+    /// CrossShape: `params[0]` = length, `params[1]` = thickness, `params[2]` = round_radius, `params[3]` = half_height
     CrossShape = 95,
-    /// BlobbyCross: params[0] = size, params[1] = half_height
+    /// BlobbyCross: `params[0]` = size, `params[1]` = half_height
     BlobbyCross = 96,
-    /// ParabolaSegment: params[0] = width, params[1] = para_height, params[2] = half_depth
+    /// ParabolaSegment: `params[0]` = width, `params[1]` = para_height, `params[2]` = half_depth
     ParabolaSegment = 97,
-    /// RegularPolygon: params[0] = radius, params[1] = n_sides, params[2] = half_height
+    /// RegularPolygon: `params[0]` = radius, `params[1]` = n_sides, `params[2]` = half_height
     RegularPolygon = 98,
-    /// StarPolygon: params[0] = radius, params[1] = n_points, params[2] = m, params[3] = half_height
+    /// StarPolygon: `params[0]` = radius, `params[1]` = n_points, `params[2]` = m, `params[3]` = half_height
     StarPolygon = 99,
-    /// Stairs: params[0] = step_width, params[1] = step_height, params[2] = n_steps, params[3] = half_depth
+    /// Stairs: `params[0]` = step_width, `params[1]` = step_height, `params[2]` = n_steps, `params[3]` = half_depth
     Stairs = 100,
-    /// Helix: params[0] = major_r, params[1] = minor_r, params[2] = pitch, params[3] = half_height
+    /// Helix: `params[0]` = major_r, `params[1]` = minor_r, `params[2]` = pitch, `params[3]` = half_height
     Helix = 101,
-    /// Tetrahedron: params[0] = size
+    /// Tetrahedron: `params[0]` = size
     Tetrahedron = 102,
-    /// Dodecahedron: params[0] = radius
+    /// Dodecahedron: `params[0]` = radius
     Dodecahedron = 103,
-    /// Icosahedron: params[0] = radius
+    /// Icosahedron: `params[0]` = radius
     Icosahedron = 104,
-    /// TruncatedOctahedron: params[0] = radius
+    /// TruncatedOctahedron: `params[0]` = radius
     TruncatedOctahedron = 105,
-    /// TruncatedIcosahedron: params[0] = radius
+    /// TruncatedIcosahedron: `params[0]` = radius
     TruncatedIcosahedron = 106,
-    /// BoxFrame: params[0..3] = half_extents, params[3] = edge
+    /// BoxFrame: `params[0..3]` = half_extents, `params[3]` = edge
     BoxFrame = 107,
-    /// DiamondSurface: params[0] = scale, params[1] = thickness
+    /// DiamondSurface: `params[0]` = scale, `params[1]` = thickness
     DiamondSurface = 108,
-    /// Neovius: params[0] = scale, params[1] = thickness
+    /// Neovius: `params[0]` = scale, `params[1]` = thickness
     Neovius = 109,
-    /// Lidinoid: params[0] = scale, params[1] = thickness
-    Lidinoid = 110,
-    /// IWP: params[0] = scale, params[1] = thickness
+    /// Lidinoid: `params[0]` = scale, `params[1]` = thickness
+    Lidinoid =110,
+    /// IWP: `params[0]` = scale, `params[1]` = thickness
     IWP = 111,
-    /// FRD: params[0] = scale, params[1] = thickness
+    /// FRD: `params[0]` = scale, `params[1]` = thickness
     FRD = 112,
-    /// FischerKochS: params[0] = scale, params[1] = thickness
+    /// FischerKochS: `params[0]` = scale, `params[1]` = thickness
     FischerKochS = 113,
-    /// PMY: params[0] = scale, params[1] = thickness
+    /// PMY: `params[0]` = scale, `params[1]` = thickness
     PMY = 114,
-    /// Circle2D: params[0] = radius, params[1] = half_height
+    /// Circle2D: `params[0]` = radius, `params[1]` = half_height
     Circle2D = 115,
-    /// Rect2D: params[0..2] = half_extents, params[2] = half_height
+    /// Rect2D: `params[0..2]` = half_extents, `params[2]` = half_height
     Rect2D = 116,
-    /// Segment2D: params[0..4] = a,b, params[4] = thickness, params[5] = half_height
+    /// Segment2D: `params[0..4]` = a,b, `params[4]` = thickness, `params[5]` = half_height
     Segment2D = 117,
     /// Polygon2D: special handling
     Polygon2D = 118,
-    /// RoundedRect2D: params[0..2] = half_extents, params[2] = round_radius, params[3] = half_height
+    /// RoundedRect2D: `params[0..2]` = half_extents, `params[2]` = round_radius, `params[3]` = half_height
     RoundedRect2D = 119,
-    /// Annular2D: params[0] = outer_radius, params[1] = thickness, params[2] = half_height
+    /// Annular2D: `params[0]` = outer_radius, `params[1]` = thickness, `params[2]` = half_height
     Annular2D = 120,
 
     // === Binary Operations (pop 2, push 1) ===
@@ -161,59 +161,59 @@ pub enum OpCode {
     Intersection = 17,
     /// Subtraction: max(a, -b)
     Subtraction = 18,
-    /// SmoothUnion: params[0] = k
+    /// SmoothUnion: `params[0]` = k
     SmoothUnion = 19,
-    /// SmoothIntersection: params[0] = k
+    /// SmoothIntersection: `params[0]` = k
     SmoothIntersection = 20,
-    /// SmoothSubtraction: params[0] = k
+    /// SmoothSubtraction: `params[0]` = k
     SmoothSubtraction = 21,
-    /// ChamferUnion: params[0] = r (chamfer radius)
+    /// ChamferUnion: `params[0]` = r (chamfer radius)
     ChamferUnion = 22,
-    /// ChamferIntersection: params[0] = r
+    /// ChamferIntersection: `params[0]` = r
     ChamferIntersection = 23,
-    /// ChamferSubtraction: params[0] = r
+    /// ChamferSubtraction: `params[0]` = r
     ChamferSubtraction = 24,
-    /// StairsUnion: params[0] = r, params[1] = n
+    /// StairsUnion: `params[0]` = r, `params[1]` = n
     StairsUnion = 25,
-    /// StairsIntersection: params[0] = r, params[1] = n
+    /// StairsIntersection: `params[0]` = r, `params[1]` = n
     StairsIntersection = 26,
-    /// StairsSubtraction: params[0] = r, params[1] = n
+    /// StairsSubtraction: `params[0]` = r, `params[1]` = n
     StairsSubtraction = 27,
 
     // === Extended Binary Operations (128-136) ===
     /// XOR: symmetric difference
     XOR = 128,
-    /// Morph: params[0] = t (blend factor)
+    /// Morph: `params[0]` = t (blend factor)
     Morph = 129,
-    /// ColumnsUnion: params[0] = r, params[1] = n
+    /// ColumnsUnion: `params[0]` = r, `params[1]` = n
     ColumnsUnion = 130,
-    /// ColumnsIntersection: params[0] = r, params[1] = n
+    /// ColumnsIntersection: `params[0]` = r, `params[1]` = n
     ColumnsIntersection = 131,
-    /// ColumnsSubtraction: params[0] = r, params[1] = n
+    /// ColumnsSubtraction: `params[0]` = r, `params[1]` = n
     ColumnsSubtraction = 132,
-    /// Pipe: params[0] = r
+    /// Pipe: `params[0]` = r
     Pipe = 133,
-    /// Engrave: params[0] = r
+    /// Engrave: `params[0]` = r
     Engrave = 134,
-    /// Groove: params[0] = ra, params[1] = rb
+    /// Groove: `params[0]` = ra, `params[1]` = rb
     Groove = 135,
-    /// Tongue: params[0] = ra, params[1] = rb
+    /// Tongue: `params[0]` = ra, `params[1]` = rb
     Tongue = 136,
-    /// ExpSmoothUnion: params[0] = k
+    /// ExpSmoothUnion: `params[0]` = k
     ExpSmoothUnion = 137,
-    /// ExpSmoothIntersection: params[0] = k
+    /// ExpSmoothIntersection: `params[0]` = k
     ExpSmoothIntersection = 138,
-    /// ExpSmoothSubtraction: params[0] = k
+    /// ExpSmoothSubtraction: `params[0]` = k
     ExpSmoothSubtraction = 139,
 
     // === Transforms (modify point, then evaluate child) ===
-    /// Translate: params[0..3] = offset (x, y, z)
+    /// Translate: `params[0..3]` = offset (x, y, z)
     Translate = 32,
-    /// Rotate: params[0..4] = quaternion (x, y, z, w)
+    /// Rotate: `params[0..4]` = quaternion (x, y, z, w)
     Rotate = 33,
-    /// Scale: params[0] = uniform scale factor
+    /// Scale: `params[0]` = uniform scale factor
     Scale = 34,
-    /// ScaleNonUniform: params[0..3] = scale factors (x, y, z)
+    /// ScaleNonUniform: `params[0..3]` = scale factors (x, y, z)
     ScaleNonUniform = 35,
 
     // === Extended Transforms (200-202) ===
@@ -225,42 +225,42 @@ pub enum OpCode {
     SdfSkinning = 202,
 
     // === Modifiers ===
-    /// Twist: params[0] = strength
+    /// Twist: `params[0]` = strength
     Twist = 48,
-    /// Bend: params[0] = curvature
+    /// Bend: `params[0]` = curvature
     Bend = 49,
-    /// RepeatInfinite: params[0..3] = spacing (x, y, z)
+    /// RepeatInfinite: `params[0..3]` = spacing (x, y, z)
     RepeatInfinite = 50,
-    /// RepeatFinite: params[0..3] = count, params[3..6] = spacing
+    /// RepeatFinite: `params[0..3]` = count, `params[3..6]` = spacing
     RepeatFinite = 51,
-    /// Round: params[0] = radius (post-process: d - radius)
+    /// Round: `params[0]` = radius (post-process: d - radius)
     Round = 52,
-    /// Onion: params[0] = thickness (post-process: |d| - thickness)
+    /// Onion: `params[0]` = thickness (post-process: |d| - thickness)
     Onion = 53,
-    /// Elongate: params[0..3] = amount (x, y, z)
+    /// Elongate: `params[0..3]` = amount (x, y, z)
     Elongate = 54,
-    /// Noise: params[0] = amplitude, params[1] = frequency, params[2] = seed
+    /// Noise: `params[0]` = amplitude, `params[1]` = frequency, `params[2]` = seed
     /// Post-processes distance: d += noise(p * frequency) * amplitude
     Noise = 55,
-    /// Mirror: params[0..3] = axes (non-zero = mirror that axis)
+    /// Mirror: `params[0..3]` = axes (non-zero = mirror that axis)
     Mirror = 56,
-    /// Revolution: params[0] = offset from Y-axis
+    /// Revolution: `params[0]` = offset from Y-axis
     Revolution = 57,
-    /// Extrude: params[0] = half_height
+    /// Extrude: `params[0]` = half_height
     Extrude = 58,
-    /// Taper: params[0] = factor
+    /// Taper: `params[0]` = factor
     Taper = 59,
-    /// Displacement: params[0] = strength (post-process)
+    /// Displacement: `params[0]` = strength (post-process)
     Displacement = 60,
-    /// PolarRepeat: params[0] = count (as f32)
+    /// PolarRepeat: `params[0]` = count (as f32)
     PolarRepeat = 61,
-    /// SweepBezier: params[0..6] = p0.x, p0.z, p1.x, p1.z, p2.x, p2.z
+    /// SweepBezier: `params[0..6]` = p0.x, p0.z, p1.x, p1.z, p2.x, p2.z
     SweepBezier = 62,
     /// OctantMirror: abs + sort (x >= y >= z)
     OctantMirror = 63,
-    /// Shear: params[0..3] = shear factors (xy, xz, yz)
+    /// Shear: `params[0..3]` = shear factors (xy, xz, yz)
     Shear = 144,
-    /// Animated: params[0] = speed, params[1] = amplitude
+    /// Animated: `params[0]` = speed, `params[1]` = amplitude
     Animated = 145,
 
     // === Extended Modifiers (160-163) ===
@@ -270,7 +270,7 @@ pub enum OpCode {
     IFS = 161,
     /// HeightmapDisplacement: requires auxiliary data (heightmap, dimensions)
     HeightmapDisplacement = 162,
-    /// SurfaceRoughness: params[0] = frequency, params[1] = amplitude, params[2] = octaves
+    /// SurfaceRoughness: `params[0]` = frequency, `params[1]` = amplitude, `params[2]` = octaves
     SurfaceRoughness = 163,
 
     // === Control ===
@@ -285,28 +285,28 @@ impl OpCode {
     #[inline]
     pub fn is_primitive(self) -> bool {
         let v = self as u8;
-        v < 16 || (v >= 64 && v <= 120)
+        v < 16 || (64..=120).contains(&v)
     }
 
     /// Returns true if this opcode is a binary operation
     #[inline]
     pub fn is_binary_op(self) -> bool {
         let v = self as u8;
-        (v >= 16 && v < 32) || (v >= 128 && v < 144)
+        (16..32).contains(&v) || (128..144).contains(&v)
     }
 
     /// Returns true if this opcode is a transform
     #[inline]
     pub fn is_transform(self) -> bool {
         let v = self as u8;
-        (v >= 32 && v < 48) || (v >= 200 && v <= 202)
+        (32..48).contains(&v) || (200..=202).contains(&v)
     }
 
     /// Returns true if this opcode is a modifier
     #[inline]
     pub fn is_modifier(self) -> bool {
         let v = self as u8;
-        (v >= 48 && v < 64) || (v >= 144 && v < 164)
+        (48..64).contains(&v) || (144..164).contains(&v)
     }
 
     /// Returns true if this opcode modifies the evaluation point
