@@ -15,8 +15,11 @@
     clippy::ignored_unit_patterns
 )]
 
+#[cfg(feature = "cli")]
 use alice_sdf::io::{export_3mf, export_ply, export_stl, PlyConfig};
+#[cfg(feature = "cli")]
 use alice_sdf::prelude::*;
+#[cfg(feature = "cli")]
 use std::path::PathBuf;
 
 #[cfg(feature = "cli")]

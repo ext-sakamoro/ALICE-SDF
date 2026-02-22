@@ -2232,6 +2232,11 @@ impl JitSimdSdf {
     }
 
     /// Evaluate 8 points using native SIMD (raw pointer interface)
+    ///
+    /// # Safety
+    ///
+    /// `x`, `y`, `z` must each point to at least 8 contiguous `f32` values.
+    /// `out` must point to a buffer of at least 8 writable `f32` values.
     #[inline]
     pub unsafe fn eval_8_raw(&self, x: *const f32, y: *const f32, z: *const f32, out: *mut f32) {
         // SAFETY: func_ptr was compiled by Cranelift with verified extern "C" ABI signature
@@ -2242,6 +2247,11 @@ impl JitSimdSdf {
     }
 
     /// Evaluate 8 points using native SIMD (array interface for convenience)
+    ///
+    /// # Safety
+    ///
+    /// The JIT-compiled function pointer must still be valid (i.e. the
+    /// `JitSimdSdf` has not been dropped or corrupted).
     #[inline]
     pub unsafe fn eval_8(&self, x: &[f32; 8], y: &[f32; 8], z: &[f32; 8]) -> [f32; 8] {
         let mut out = [0.0f32; 8];
@@ -4142,6 +4152,11 @@ impl JitSimdSdfDynamic {
     }
 
     /// Evaluate 8 points using native SIMD (raw pointer interface)
+    ///
+    /// # Safety
+    ///
+    /// `x`, `y`, `z` must each point to at least 8 contiguous `f32` values.
+    /// `out` must point to a buffer of at least 8 writable `f32` values.
     #[inline]
     pub unsafe fn eval_8_raw(&self, x: *const f32, y: *const f32, z: *const f32, out: *mut f32) {
         // SAFETY: func_ptr was compiled by Cranelift with verified extern "C" ABI signature
@@ -4153,6 +4168,11 @@ impl JitSimdSdfDynamic {
     }
 
     /// Evaluate 8 points using native SIMD (array interface)
+    ///
+    /// # Safety
+    ///
+    /// The JIT-compiled function pointer must still be valid (i.e. the
+    /// `JitSimdSdfDynamic` has not been dropped or corrupted).
     #[inline]
     pub unsafe fn eval_8(&self, x: &[f32; 8], y: &[f32; 8], z: &[f32; 8]) -> [f32; 8] {
         let mut out = [0.0f32; 8];
