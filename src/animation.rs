@@ -478,12 +478,15 @@ pub fn morph(from: &SdfNode, to: &SdfNode, blend: f32) -> SdfNode {
 /// Uses pre-compiled bytecode + animation parameters for zero-allocation
 /// per-frame evaluation. This is the recommended path for real-time animation:
 ///
-/// ```ignore
+/// ```
+/// use alice_sdf::prelude::*;
+/// use alice_sdf::animation::{AnimatedSdf, Timeline, eval_animated_compiled};
+///
+/// let timeline = Timeline::new("idle");
+/// let animated = AnimatedSdf::new(SdfNode::sphere(1.0), timeline);
 /// let compiled = CompiledSdf::compile(&animated.base);
-/// loop {
-///     let params = animated.evaluate_params(time);
-///     let distance = eval_animated_compiled(&compiled, &params, point);
-/// }
+/// let params = animated.evaluate_params(0.0);
+/// let distance = eval_animated_compiled(&compiled, &params, Vec3::ZERO);
 /// ```
 pub fn eval_animated_compiled(
     compiled: &crate::compiled::CompiledSdf,

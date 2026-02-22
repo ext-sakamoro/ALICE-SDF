@@ -16,12 +16,16 @@
 //! 3. Pack groups into a 3x2 UV atlas with padding
 //!
 //! # Usage
-//! ```rust,ignore
+//! ```
 //! use alice_sdf::mesh::lightmap::generate_lightmap_uvs;
+//! use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig};
+//! use alice_sdf::types::SdfNode;
+//! use glam::Vec3;
 //!
-//! let mut mesh = sdf_to_mesh(&shape, min, max, &config);
-//! generate_lightmap_uvs(&mut mesh, 1024); // 1024x1024 lightmap
-//! // mesh.vertices[i].uv2 now contains unique lightmap coordinates
+//! let shape = SdfNode::sphere(1.0);
+//! let mut mesh = sdf_to_mesh(&shape, Vec3::splat(-2.0), Vec3::splat(2.0),
+//!     &MarchingCubesConfig { resolution: 8, ..Default::default() });
+//! generate_lightmap_uvs(&mut mesh, 64);
 //! ```
 //!
 //! Author: Moroya Sakamoto

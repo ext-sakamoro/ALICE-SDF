@@ -131,21 +131,21 @@
 //!
 //! For maximum SIMD throughput, use Structure of Arrays layout:
 //!
-//! ```rust,ignore
+//! ```
 //! use alice_sdf::prelude::*;
 //! use alice_sdf::soa::SoAPoints;
-//! use alice_sdf::compiled::{CompiledSdf, eval_compiled_batch_soa_parallel};
 //!
 //! let shape = SdfNode::sphere(1.0);
 //! let compiled = CompiledSdf::compile(&shape);
 //!
 //! // Convert to SoA layout (AoS → SoA)
-//! let points: SoAPoints = (0..100000)
-//!     .map(|i| Vec3::new(i as f32 * 0.01, 0.0, 0.0))
+//! let points: SoAPoints = (0..64)
+//!     .map(|i| Vec3::new(i as f32 * 0.1, 0.0, 0.0))
 //!     .collect();
 //!
 //! // Direct SIMD loads without shuffle
 //! let distances = eval_compiled_batch_soa_parallel(&compiled, &points);
+//! assert_eq!(distances.len(), 64);
 //! ```
 //!
 //! SoA benefits:

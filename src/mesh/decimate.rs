@@ -17,11 +17,16 @@
 //! - Configurable target ratio
 //!
 //! # Usage
-//! ```rust,ignore
+//! ```
 //! use alice_sdf::mesh::decimate::{decimate, DecimateConfig};
+//! use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig};
+//! use alice_sdf::types::SdfNode;
+//! use glam::Vec3;
 //!
-//! let mut mesh = sdf_to_mesh(&shape, min, max, &config);
-//! decimate(&mut mesh, &DecimateConfig::default()); // 50% reduction
+//! let shape = SdfNode::sphere(1.0);
+//! let mut mesh = sdf_to_mesh(&shape, Vec3::splat(-2.0), Vec3::splat(2.0),
+//!     &MarchingCubesConfig { resolution: 8, ..Default::default() });
+//! decimate(&mut mesh, &DecimateConfig::default());
 //! ```
 //!
 //! Author: Moroya Sakamoto

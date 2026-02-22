@@ -14,7 +14,7 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```
 //! use alice_sdf::mesh::point_cloud_sdf::{PointCloudSdf, PointCloudSdfConfig};
 //! use glam::Vec3;
 //!

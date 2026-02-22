@@ -12,21 +12,21 @@
 //!
 //! # Usage
 //!
-//! ```rust,ignore
+//! ```
 //! use alice_sdf::prelude::*;
 //! use alice_sdf::soa::SoAPoints;
-//! use alice_sdf::compiled::{CompiledSdf, eval_compiled_batch_soa};
 //!
 //! let shape = SdfNode::sphere(1.0);
 //! let compiled = CompiledSdf::compile(&shape);
 //!
 //! // Create SoA points
-//! let points: SoAPoints = (0..10000)
-//!     .map(|i| Vec3::new(i as f32 * 0.01, 0.0, 0.0))
+//! let points: SoAPoints = (0..64)
+//!     .map(|i| Vec3::new(i as f32 * 0.1, 0.0, 0.0))
 //!     .collect();
 //!
 //! // Evaluate with SoA optimization
 //! let distances = eval_compiled_batch_soa(&compiled, &points);
+//! assert_eq!(distances.len(), 64);
 //! ```
 //!
 //! Author: Moroya Sakamoto
