@@ -43,17 +43,63 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Create stub for optional local dependency
+      - name: Create dependency stubs
         shell: bash
         run: |
           mkdir -p ../ALICE-Physics/src
-          echo '[package]
+          cat > ../ALICE-Physics/Cargo.toml << 'TOML'
+          [package]
           name = "alice-physics"
           version = "0.1.0"
           edition = "2021"
           [lib]
-          path = "src/lib.rs"' > ../ALICE-Physics/Cargo.toml
+          path = "src/lib.rs"
+          TOML
           echo "" > ../ALICE-Physics/src/lib.rs
+
+          mkdir -p ../ALICE-Codec/src
+          cat > ../ALICE-Codec/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-codec"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Codec/src/lib.rs
+
+          mkdir -p ../ALICE-Streaming-Protocol/src
+          cat > ../ALICE-Streaming-Protocol/Cargo.toml << 'TOML'
+          [package]
+          name = "libasp"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Streaming-Protocol/src/lib.rs
+
+          mkdir -p ../ALICE-Cache/src
+          cat > ../ALICE-Cache/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-cache"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Cache/src/lib.rs
+
+          mkdir -p ../ALICE-Font/src
+          cat > ../ALICE-Font/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-font"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Font/src/lib.rs
 
       - name: Build release library
         run: cargo build --release --features "ffi,hlsl,glsl" --target ${{ matrix.target }}
