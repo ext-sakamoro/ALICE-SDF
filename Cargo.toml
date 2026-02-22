@@ -137,3 +137,4 @@ opt-level = 3
 lto = "thin"
 debug = false
 codegen-units = 1
+panic = "unwind"
