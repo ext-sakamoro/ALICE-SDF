@@ -27,7 +27,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **72プリミティブ、24演算、5トランスフォーム、19モディファイア** - 業界最高水準のシェイプボキャブラリ
+- **72プリミティブ、24演算、7トランスフォーム、23モディファイア**（126 total） - 業界最高水準のシェイプボキャブラリ
 - **5層メッシュ永続化** - ABMバイナリフォーマット、LODチェーン永続化、FIFO排出チャンクキャッシュ、Unity/UE5ネイティブエクスポート
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
 - **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
@@ -36,6 +36,14 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **SDF対SDFコリジョン** - 区間演算AABBプルーニング付きグリッドベース接触検出
 - **CSGツリー最適化** - 恒等変換/モディファイア除去、ネスト変換マージ、Smooth→Standard降格
 - **解析的勾配（Analytic Gradient）** - 連鎖律とヤコビアン伝播による単一パス勾配計算（9解析+44数値フォールバックプリミティブ）
+- **自動微分（Automatic Differentiation）** - 双対数前方モードAD、ヘッシアン推定、平均曲率計算
+- **2D SDFモジュール** - 純粋2Dプリミティブ（circle、rect、bezier、フォントグリフ）とバイリニアサンプリング
+- **CSGツリーDiff/Patch** - アンドゥ/リドゥおよびネットワーク同期用のSDFツリー構造差分
+- **パラメトリック拘束ソルバー** - 幾何拘束（固定、距離、和、比率）のガウス-ニュートン最適化
+- **距離場ヒートマップ** - 4カラーマップ（coolwarm、binary、viridis、magma）による断面スライス
+- **Shell / Offset Surface** - 内側/外側オフセット制御付き可変厚シェルモディファイア
+- **体積・表面積** - 決定論的PRNGと標準誤差を用いたモンテカルロ推定
+- **ALICE-Fontブリッジ** - フォントグリフ → 2D/3D SDF変換、テキストレイアウト、3D押し出し（`--features font`）
 - **自動タイトAABB** - 区間演算＋二分探索によるSDF表面を含む最小バウンディングボックス計算
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
@@ -294,13 +302,20 @@ SdfNode
   |              XOR, Morph,                                                       ← ブーリアン/補間
   |              ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,            ← hg_sdfカラム
   |              Pipe, Engrave, Groove, Tongue                                     ← hg_sdf高度操作
-  |-- トランスフォーム (5): Translate, Rotate, Scale, ScaleNonUniform,
-  |                        Shear                                                   ← 3軸せん断変形
-  |-- モディファイア (17): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |-- トランスフォーム (7): Translate, Rotate, Scale, ScaleNonUniform,
+  |                        ProjectiveTransform,                                    ← 逆行列付き射影変換
+  |                        LatticeDeform,                                          ← 自由形状変形（FFD）グリッド
+  |                        SdfSkinning                                             ← ボーンウェイトスケルタル変形
+  |-- モディファイア (23): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
   |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
+  |                   Shear,                                                       ← 3軸せん断変形
   |                   OctantMirror,                                                ← 48重対称性
-  |                   Animated                                                     ← タイムライン駆動アニメーション
-  +-- WithMaterial: PBRマテリアル割り当て（距離評価に対して透過的）
+  |                   IcosahedralSymmetry,                                         ← 120重正二十面体対称性
+  |                   IFS,                                                         ← 反復関数系フラクタル
+  |                   HeightmapDisplacement,                                       ← ハイトマップ駆動表面変位
+  |                   SurfaceRoughness,                                            ← FBMノイズラフネス
+  |                   Animated,                                                    ← タイムライン駆動パラメータアニメーション
+  |                   WithMaterial                                                 ← PBRマテリアル割り当て
 ```
 
 ## インストール
@@ -596,6 +611,16 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
   mesh/dual_contouring -- Dual Contouring（QEF頂点配置、シャープエッジ）
   optimize.rs   -- CSGツリー最適化（恒等変換除去、変換マージ）
   tight_aabb.rs -- 自動タイトAABB（区間演算＋二分探索）
+
+解析・計測:
+  autodiff.rs   -- 双対数AD（Dual、Dual3）、ヘッシアン、平均曲率
+  measure.rs    -- モンテカルロ体積/表面積/重心推定
+  heatmap.rs    -- カラーマップ付き距離場断面スライス
+  shell.rs      -- 可変厚シェル/オフセットサーフェスモディファイア
+  constraint.rs -- ガウス-ニュートンパラメトリック拘束ソルバー
+  diff.rs       -- CSGツリー構造差分とパッチ（アンドゥ/リドゥ、同期）
+  sdf2d.rs      -- 純粋2Dモジュール（circle、rect、bezier、フォントグリフ）
+  font_bridge.rs-- ALICE-Fontグリフ → SDF変換（`font`フィーチャー必須）
 ```
 
 ### 評価モード
@@ -1342,7 +1367,7 @@ cargo build --features "all-shaders,jit"  # 全部入り
 
 ## テスト
 
-全モジュールにまたがる886以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、タイトAABB、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配、2Dプリミティブ、ExpSmooth演算、Shearトランスフォーム、Animatedモディファイア、メッシュ永続化、チャンクキャッシュ、Unity/UE5エクスポート、FFIバインディング）。`--features jit`で900以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
+全モジュールにまたがる1,079以上のテスト（プリミティブ、演算、トランスフォーム、モディファイア、コンパイラ、エバリュエータ、BVH、I/O、メッシュ、シェーダートランスパイラ、マテリアル、アニメーション、マニフォールド、OBJ、glTF、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、UV展開、メッシュコリジョン、デシメーション、LOD、適応型MC、Dual Contouring、CSG最適化、タイトAABB、crispyユーティリティ、BloomFilter、区間演算、リプシッツ定数、緩和球トレーシング、ニューラルSDF、SDF対SDFコリジョン、解析的勾配、2Dプリミティブ、ExpSmooth演算、Shearトランスフォーム、Animatedモディファイア、メッシュ永続化、チャンクキャッシュ、Unity/UE5エクスポート、FFIバインディング）。`--features jit`で900以上のテスト（JITスカラーおよびJIT SIMDバックエンド含む）。
 
 ```bash
 cargo test
@@ -1363,6 +1388,15 @@ alice-sdf export model.asdf -o model.obj --resolution 128 --bounds 3.0
 alice-sdf export model.asdf -o scene.usda
 alice-sdf export model.asdf -o anim.abc
 alice-sdf export model.asdf -o model.fbx
+alice-sdf export model.asdf -o model.stl
+alice-sdf export model.asdf -o model.3mf
+alice-sdf export model.asdf -o model.ply
+
+# 3Dプリント: SDF → 印刷用メッシュ（自動バウンド検出、高解像度）
+alice-sdf print model.asdf.json                     # → model.3mf (デフォルト)
+alice-sdf print model.asdf.json -o basket.stl       # → STL形式
+alice-sdf print model.asdf.json -r 256              # より高い解像度
+alice-sdf print model.asdf.json -r 256 -b 150.0     # 手動バウンド (mm)
 
 # デモSDF生成
 alice-sdf demo -o demo.asdf
@@ -1812,6 +1846,182 @@ LLMが生成するコードは完璧ではなく、括弧の閉じ忘れや不�
 | 物理 | 決定論的固定小数点コリジョン | ALICE-Physics (Fix128) |
 | 制作 | 自然言語 — SDF専門知識不要 | Text-to-3Dサーバー (Claude/Gemini) |
 | 配信 | 即時転送 — ポリゴンではなく数式 | ALICE-CDN + ALICE-Cache |
+
+## 物理ブリッジ（ALICE-Physics統合）
+
+ALICE-SDFは[ALICE-Physics](../ALICE-Physics)（決定論的128ビット固定小数点物理エンジン）のコリジョンシェイプバックエンドとして機能します。凸包のGJK/EPAの代わりに、物理エンジンがSDF距離場を直接サンプリング — クエリあたりO(1)で数学的に正確な表面。
+
+### 仕組み
+
+```
+ALICE-Physics (Fix128ワールド)        ALICE-SDF (f32ワールド)
+┌──────────────────────┐             ┌──────────────────────┐
+│ PhysicsWorld         │             │ CompiledSdfField     │
+│   bodies: Vec<Body>  │──query──▶  │   distance(x,y,z)→f32│
+│   sdf_colliders: Vec │             │   normal(x,y,z)→Vec3 │
+│   step(dt)           │◀─contact─  │   distance_and_normal │
+│                      │             │     → (f32, Vec3)     │
+│ Fix128 ←→ f32 bridge│             │ 4-eval tetrahedral    │
+└──────────────────────┘             └──────────────────────┘
+```
+
+`physics`フィーチャーゲートで`SdfField`トレイト実装が有効になります。Fix128とf32間の全座標変換はトレイト境界で行われます。
+
+### 有効化
+
+```toml
+# Cargo.toml
+[dependencies]
+alice-sdf = { path = "../ALICE-SDF", features = ["physics"] }
+```
+
+### 使用例（ALICE-SDF側）
+
+```rust
+use alice_sdf::prelude::*;
+use alice_sdf::physics_bridge::CompiledSdfField;
+
+// SDF形状を作成
+let shape = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+
+// 物理対応フィールドとしてラップ
+let field = CompiledSdfField::new(shape);
+
+// fieldはalice_physics::SdfFieldトレイトを実装:
+//   field.distance(x, y, z) → f32       (1 eval)
+//   field.normal(x, y, z)   → (f32,f32,f32)  (4 evals, tetrahedral)
+//   field.distance_and_normal(x, y, z)   → (f32, (f32,f32,f32))  (4 evals combined)
+```
+
+### パフォーマンス
+
+| 操作 | 評価回数 | 備考 |
+|------|---------|------|
+| `distance()` | 1 | 単一コンパイルSDF評価 |
+| `normal()` | 4 | 四面体勾配（4オフセットサンプル） |
+| `distance_and_normal()` | 4 | 統合: 距離 ≈ 4サンプルの平均、法線は差分から |
+
+4評価四面体法は同じ4回の評価から距離（4サンプルの平均、O(epsilon²)誤差）と法線の両方を計算し、ナイーブな1+4アプローチと比較して1評価を節約します。
+
+### ALICE-Physicsとの統合
+
+`CompiledSdfField`を物理コライダーとして登録する方法は[ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf-integration)を参照してください。
+
+## 3Dプリントパイプライン（LLM → SDF → スライサー → プリンター）
+
+ALICE-SDFはFDM/SLA 3Dプリンター向けの**「説明する → 印刷する」**ワークフローを実現します。
+
+```
+ユーザープロンプト → LLM (Claude/Gemini) → ALICE-SDF JSON → alice-sdf print → .3mf/.stl → スライサー → プリンター
+                                                ~5s              ~58ms            ~0s
+```
+
+### 仕組み
+
+1. **説明** — `prompts/sdf_generation_system_prompt.md`を使って自然言語プロンプトをLLMに送信
+2. **生成** — LLMがALICE-SDF JSON（mm単位の寸法を持つCSGツリー）を出力
+3. **メッシュ** — `alice-sdf print model.asdf.json`がSIMD VMにコンパイル → マーチングキューブ → 3MF/STL
+4. **スライス** — Bambu Studio / Orca Slicer / PrusaSlicerがメッシュをG-codeに変換
+5. **印刷** — ネットワークまたはUSB経由でプリンターに送信
+
+### Printコマンドのパフォーマンス
+
+| ステップ | 時間 | 備考 |
+|---------|------|------|
+| SDFコンパイル | <0.1ms | SdfNode → CompiledSdf（SIMD 8-wideバイトコード） |
+| バウンド検出 | ~2ms | 区間演算タイトAABB（500mm探索） |
+| メッシュ生成 | ~37ms | コンパイルマーチングキューブ、Rayon並列、res=128 |
+| 3MFエクスポート | ~20ms | ZIP圧縮 |
+| **合計** | **~58ms** | 11ノードから105K三角形（releaseビルド、M3 Max） |
+
+### 使用例: 収納バスケット
+
+```bash
+# 同梱のサンプルを読み込む（200x120x80mmのダイヤモンドメッシュパターン付きバスケット）
+alice-sdf print examples/storage_basket.asdf.json -o basket.3mf -r 256
+
+# 結果: ~105K三角形、8.9 MB 3MF、Bambu Studio対応
+```
+
+### LLMシステムプロンプト
+
+LLMベースSDF生成用の完全なシステムプロンプトが`prompts/sdf_generation_system_prompt.md`に用意されています:
+
+- 完全なSdfNode JSONリファレンス（プリミティブ、演算、トランスフォーム、モディファイア）
+- 3Dプリント設計ルール（壁厚、オーバーハング、特徴サイズ）
+- 構成パターン（中空コンテナ、反復パターン、有機的形状）
+- 実例（Onionシェル + RepeatInfiniteメッシュによる収納バスケット）
+
+### Bambu Lab統合（MQTT + FTPS）
+
+Bambu Lab（X1C、H2S等）のプリンター直接統合:
+
+| プロトコル | ポート | 用途 |
+|----------|------|------|
+| MQTTS | 8883 | ステータス監視、印刷コマンド |
+| FTPS | 990 | ファイル転送（.3mfアップロード） |
+
+認証: ユーザー名`bblp`、パスワード = プリンターディスプレイのLANアクセスコード。
+
+## クロスクレートブリッジ
+
+### キャッシュブリッジ（フィーチャー: `sdf-cache`）
+
+[ALICE-Cache](../ALICE-Cache)経由のSDF評価結果キャッシュ。量子化グリッド位置をキーとして距離場評価をキャッシュし、インタラクティブ編集やメッシュ生成時の冗長な計算を回避します。
+
+```toml
+[dependencies]
+alice-sdf = { path = "../ALICE-SDF", features = ["sdf-cache"] }
+```
+
+```rust
+use alice_sdf::cache_bridge::SdfEvalCache;
+
+let cache = SdfEvalCache::new(1_000_000, 0.01); // 100万エントリ、0.01セルサイズ
+cache.put(1.0, 2.0, 3.0, 0.42);
+if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
+    // キャッシュヒット — 評価をスキップ
+}
+```
+
+## v1.1.0 リリース — Stable
+
+### 品質メトリクス
+
+| メトリクス | 値 |
+|-----------|-----|
+| ユニットテスト | 1003パス、0失敗 |
+| Clippy pedantic | 0警告 |
+| Doc警告 | 0警告 |
+| TODO / FIXME | 0 |
+| `unimplemented!()` / `todo!()` | 0 |
+| SIMDプレースホルダー演算 | 0（全7種を完全実装） |
+| フォーマット | `cargo fmt --check` クリーン |
+
+### ビルド済みバイナリ
+
+[GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.1.0)からダウンロード:
+
+| アセット | プラットフォーム | エンジン |
+|---------|----------------|---------|
+| `AliceSDF-UE5-Plugin-macOS.zip` | macOS ARM64 | Unreal Engine 5 |
+| `AliceSDF-UE5-Plugin-macOS-Intel.zip` | macOS x86_64 | Unreal Engine 5 |
+| `AliceSDF-UE5-Plugin-Win64.zip` | Windows x86_64 | Unreal Engine 5 |
+| `AliceSDF-UE5-Plugin-Linux.zip` | Linux x86_64 | Unreal Engine 5 |
+| `AliceSDF-Unity-Plugin-macOS.zip` | macOS ARM64 | Unity |
+| `AliceSDF-Unity-Plugin-macOS-Intel.zip` | macOS x86_64 | Unity |
+| `AliceSDF-Unity-Plugin-Win64.zip` | Windows x86_64 | Unity |
+| `AliceSDF-Unity-Plugin-Linux.zip` | Linux x86_64 | Unity |
+| `AliceSDF-VRChat-Package.zip` | クロスプラットフォーム | VRChat |
+
+### v1.1.0 主な変更点
+
+- **補助データバッファ**: `Instruction`が`aux_offset`/`aux_len`を持ち`CompiledSdf.aux_data`を参照。複雑な演算（行列、制御点、ハイトマップ）の可変長データに対応
+- **7種の新コンパイル演算**: ProjectiveTransform、LatticeDeform、SdfSkinning、IcosahedralSymmetry、IFS、HeightmapDisplacement、SurfaceRoughness — スカラーとSIMD両エバリュエータで完全実装
+- **126種のSdfNodeバリアント**: 72プリミティブ、24演算、7トランスフォーム、23モディファイア
+- **220のpedantic clippy警告を修正**: raw string hashes、implicit clone、useless format、dead code等
+- **5つのラウンドトリップテスト**: 各新演算をツリーウォーカーと照合して正確性を検証
 
 ## ライセンス
 
