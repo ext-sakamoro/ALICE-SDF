@@ -79,6 +79,17 @@ jobs:
           TOML
           echo "" > ../ALICE-Cache/src/lib.rs
 
+          mkdir -p ../ALICE-Font/src
+          cat > ../ALICE-Font/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-font"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Font/src/lib.rs
+
       - name: Build
         run: cargo build --lib
 
@@ -179,6 +190,17 @@ jobs:
           path = "src/lib.rs"
           TOML
           echo "" > ../ALICE-Cache/src/lib.rs
+
+          mkdir -p ../ALICE-Font/src
+          cat > ../ALICE-Font/Cargo.toml << 'TOML'
+          [package]
+          name = "alice-font"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+          echo "" > ../ALICE-Font/src/lib.rs
 
       - name: Clippy
         run: cargo clippy --lib --features "glsl,hlsl,gpu" 2>&1 | tee clippy-output.txt
