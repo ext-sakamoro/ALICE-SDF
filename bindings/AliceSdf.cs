@@ -492,6 +492,43 @@ namespace AliceSdfUnity
         public static IntPtr ScaleNonUniform(IntPtr node, float x, float y, float z) =>
             alice_sdf_scale_non_uniform(node, x, y, z);
 
+        // --- v1.1.0: Advanced Transforms ---
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_projective_transform(IntPtr node, [In] float[] inv_matrix, float lipschitz_bound);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_lattice_deform(IntPtr node, [In] float[] control_points, uint cp_count,
+            uint nx, uint ny, uint nz, [In] float[] bbox_min, [In] float[] bbox_max);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_skinning(IntPtr node, [In] float[] bones, uint bone_count);
+
+        /// <summary>Apply projective transformation using a 4x4 inverse matrix</summary>
+        public static IntPtr ProjectiveTransform(IntPtr node, float[] invMatrix, float lipschitzBound) =>
+            alice_sdf_projective_transform(node, invMatrix, lipschitzBound);
+
+        /// <summary>Apply projective transformation using a Unity Matrix4x4</summary>
+        public static IntPtr ProjectiveTransform(IntPtr node, Matrix4x4 invMatrix, float lipschitzBound)
+        {
+            float[] m = new float[16];
+            for (int col = 0; col < 4; col++)
+                for (int row = 0; row < 4; row++)
+                    m[col * 4 + row] = invMatrix[row, col];
+            return alice_sdf_projective_transform(node, m, lipschitzBound);
+        }
+
+        /// <summary>Apply lattice Free-Form Deformation (FFD)</summary>
+        public static IntPtr LatticeDeform(IntPtr node, float[] controlPoints, uint cpCount,
+            uint nx, uint ny, uint nz, Vector3 bboxMin, Vector3 bboxMax) =>
+            alice_sdf_lattice_deform(node, controlPoints, cpCount, nx, ny, nz,
+                new[] { bboxMin.x, bboxMin.y, bboxMin.z },
+                new[] { bboxMax.x, bboxMax.y, bboxMax.z });
+
+        /// <summary>Apply skeletal skinning deformation (33 floats per bone: 16 inv_bind + 16 cur_pose + 1 weight)</summary>
+        public static IntPtr Skinning(IntPtr node, float[] boneData, uint boneCount) =>
+            alice_sdf_skinning(node, boneData, boneCount);
+
         // ============================================================================
         // Modifiers
         // ============================================================================
@@ -561,6 +598,36 @@ namespace AliceSdfUnity
         public static IntPtr SweepBezier(IntPtr node, Vector2 p0, Vector2 p1, Vector2 p2) =>
             alice_sdf_sweep_bezier(node, p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
         public static IntPtr WithMaterial(IntPtr node, uint materialId) => alice_sdf_with_material(node, materialId);
+
+        // --- v1.1.0: Advanced Modifiers ---
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_icosahedral_symmetry(IntPtr node);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_ifs(IntPtr node, [In] float[] transforms, uint transform_count, uint iterations);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_heightmap_displacement(IntPtr node, [In] float[] heightmap,
+            uint width, uint height, float amplitude, float scale);
+
+        [DllImport(LibraryName)]
+        private static extern IntPtr alice_sdf_surface_roughness(IntPtr node, float frequency, float amplitude, uint octaves);
+
+        /// <summary>Apply 120-fold icosahedral symmetry</summary>
+        public static IntPtr IcosahedralSymmetry(IntPtr node) => alice_sdf_icosahedral_symmetry(node);
+
+        /// <summary>Apply Iterated Function System (fractal repetition)</summary>
+        public static IntPtr IFS(IntPtr node, float[] transforms, uint transformCount, uint iterations) =>
+            alice_sdf_ifs(node, transforms, transformCount, iterations);
+
+        /// <summary>Apply heightmap-based surface displacement</summary>
+        public static IntPtr HeightmapDisplacement(IntPtr node, float[] heightmap, uint width, uint height, float amplitude, float scale) =>
+            alice_sdf_heightmap_displacement(node, heightmap, width, height, amplitude, scale);
+
+        /// <summary>Apply FBM noise surface roughness</summary>
+        public static IntPtr SurfaceRoughness(IntPtr node, float frequency, float amplitude, uint octaves) =>
+            alice_sdf_surface_roughness(node, frequency, amplitude, octaves);
 
         // ============================================================================
         // Compilation

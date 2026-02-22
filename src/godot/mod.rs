@@ -362,6 +362,86 @@ impl AliceSdfNode {
         }
     }
 
+    /// Apply twist modifier
+    #[func]
+    fn apply_twist(&mut self, strength: f32) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.twist(strength));
+        }
+    }
+
+    /// Apply bend modifier
+    #[func]
+    fn apply_bend(&mut self, curvature: f32) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.bend(curvature));
+        }
+    }
+
+    /// Apply mirror modifier
+    #[func]
+    fn apply_mirror(&mut self, axis: Vector3) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.mirror(glam::Vec3::new(axis.x, axis.y, axis.z)));
+        }
+    }
+
+    /// Apply onion (shell) modifier
+    #[func]
+    fn apply_onion(&mut self, thickness: f32) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.onion(thickness));
+        }
+    }
+
+    /// Apply round modifier
+    #[func]
+    fn apply_round(&mut self, radius: f32) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.round(radius));
+        }
+    }
+
+    /// Apply icosahedral symmetry (120-fold)
+    #[func]
+    fn apply_icosahedral_symmetry(&mut self) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.icosahedral_symmetry());
+        }
+    }
+
+    /// Apply surface roughness
+    #[func]
+    fn apply_surface_roughness(&mut self, frequency: f32, amplitude: f32, octaves: i32) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.surface_roughness(frequency, amplitude, octaves.max(1) as u32));
+        }
+    }
+
+    /// Apply noise displacement
+    #[func]
+    fn apply_noise(&mut self, amplitude: f32, frequency: f32, seed: i32) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.noise(amplitude, frequency, seed as u32));
+        }
+    }
+
+    /// Apply polar repeat around Y axis
+    #[func]
+    fn apply_polar_repeat(&mut self, count: i32) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.polar_repeat(count.max(1) as u32));
+        }
+    }
+
+    /// Apply octant mirror (48-fold symmetry)
+    #[func]
+    fn apply_octant_mirror(&mut self) {
+        if let Some(node) = self.sdf_node.take() {
+            self.sdf_node = Some(node.octant_mirror());
+        }
+    }
+
     /// Export SDF to GLSL shader code
     #[func]
     fn to_glsl(&self) -> GString {

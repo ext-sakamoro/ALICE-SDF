@@ -2,7 +2,7 @@
  * @file alice_sdf.h
  * @brief ALICE-SDF C/C++ API Header (Deep Fried Edition)
  * @author Moroya Sakamoto
- * @version 0.1.0
+ * @version 1.1.0
  *
  * ALICE-SDF: Adaptive Lightweight Implicit Compression Engine
  * Store laws, not polygons.
@@ -299,6 +299,13 @@ SdfHandle alice_sdf_chamfered_cube(float hx, float hy, float hz, float chamfer);
 SdfHandle alice_sdf_stairs(float step_width, float step_height, float num_steps, float half_depth);
 SdfHandle alice_sdf_helix(float major_radius, float minor_radius, float pitch, float half_height);
 
+/* 2D Primitives (extruded along Z) */
+SdfHandle alice_sdf_circle_2d(float radius, float half_height);
+SdfHandle alice_sdf_rect_2d(float half_w, float half_h, float half_height);
+SdfHandle alice_sdf_segment_2d(float ax, float ay, float bx, float by, float thickness, float half_height);
+SdfHandle alice_sdf_rounded_rect_2d(float half_w, float half_h, float round_radius, float half_height);
+SdfHandle alice_sdf_annular_2d(float outer_radius, float thickness, float half_height);
+
 /* ============================================================================
  * Boolean Operations
  * ============================================================================ */
@@ -353,6 +360,11 @@ SdfHandle alice_sdf_engrave(SdfHandle a, SdfHandle b, float depth);
 SdfHandle alice_sdf_groove(SdfHandle a, SdfHandle b, float ra, float rb);
 SdfHandle alice_sdf_tongue(SdfHandle a, SdfHandle b, float ra, float rb);
 
+/** Exponential smooth operations */
+SdfHandle alice_sdf_exp_smooth_union(SdfHandle a, SdfHandle b, float k);
+SdfHandle alice_sdf_exp_smooth_intersection(SdfHandle a, SdfHandle b, float k);
+SdfHandle alice_sdf_exp_smooth_subtract(SdfHandle a, SdfHandle b, float k);
+
 /* ============================================================================
  * Transforms
  * ============================================================================ */
@@ -374,6 +386,50 @@ SdfHandle alice_sdf_scale_xyz(SdfHandle node, float x, float y, float z);
 
 /** @brief Non-uniform scale (alias) */
 SdfHandle alice_sdf_scale_non_uniform(SdfHandle node, float x, float y, float z);
+
+/* v1.1.0: Advanced transforms */
+
+/**
+ * @brief Apply projective transformation using a 4x4 inverse matrix
+ * @param inv_matrix Pointer to 16 floats (4x4 matrix in column-major order)
+ * @param lipschitz_bound Lipschitz constant bound for distance field correction
+ *
+ * @note inv_matrix must point to a valid array of at least 16 floats
+ */
+SdfHandle alice_sdf_projective_transform(SdfHandle node,
+                                          const float* inv_matrix,
+                                          float lipschitz_bound);
+
+/**
+ * @brief Apply lattice-based Free-Form Deformation (FFD)
+ * @param control_points Pointer to control point array (3 floats per point: x, y, z)
+ * @param cp_count Number of control points (must equal nx * ny * nz)
+ * @param nx Lattice dimension X
+ * @param ny Lattice dimension Y
+ * @param nz Lattice dimension Z
+ * @param bbox_min Pointer to 3 floats (min corner of bounding box)
+ * @param bbox_max Pointer to 3 floats (max corner of bounding box)
+ *
+ * @note All pointers must be valid and point to correctly sized arrays
+ */
+SdfHandle alice_sdf_lattice_deform(SdfHandle node,
+                                    const float* control_points,
+                                    uint32_t cp_count,
+                                    uint32_t nx, uint32_t ny, uint32_t nz,
+                                    const float* bbox_min,
+                                    const float* bbox_max);
+
+/**
+ * @brief Apply skeletal skinning deformation with bone weights
+ * @param bones Pointer to bone data (each bone: 16 floats inv_bind_pose +
+ *              16 floats current_pose + 1 float weight = 33 floats per bone)
+ * @param bone_count Number of bones
+ *
+ * @note bones must point to a valid array of bone_count * 33 floats
+ */
+SdfHandle alice_sdf_skinning(SdfHandle node,
+                              const float* bones,
+                              uint32_t bone_count);
 
 /* ============================================================================
  * Modifiers
@@ -419,7 +475,42 @@ SdfHandle alice_sdf_displacement(SdfHandle node, float strength);
 SdfHandle alice_sdf_polar_repeat(SdfHandle node, uint32_t count);
 SdfHandle alice_sdf_octant_mirror(SdfHandle node);
 SdfHandle alice_sdf_sweep_bezier(SdfHandle node, float p0x, float p0y, float p1x, float p1y, float p2x, float p2y);
+SdfHandle alice_sdf_shear(SdfHandle node, float xy, float xz, float yz);
+SdfHandle alice_sdf_animated(SdfHandle node, float speed, float amplitude);
 SdfHandle alice_sdf_with_material(SdfHandle node, uint32_t material_id);
+
+/* v1.1.0: Advanced modifiers */
+
+/** @brief Apply 120-fold icosahedral symmetry */
+SdfHandle alice_sdf_icosahedral_symmetry(SdfHandle node);
+
+/**
+ * @brief Apply Iterated Function System (fractal repetition)
+ * @param transforms Pointer to N * 16 floats (N 4x4 matrices, column-major)
+ * @param transform_count Number of transform matrices
+ * @param iterations Number of IFS fold iterations
+ */
+SdfHandle alice_sdf_ifs(SdfHandle node, const float* transforms, uint32_t transform_count, uint32_t iterations);
+
+/**
+ * @brief Apply heightmap-based surface displacement
+ * @param heightmap Pointer to width * height floats
+ * @param width Heightmap width in pixels
+ * @param height Heightmap height in pixels
+ * @param amplitude Displacement amplitude
+ * @param scale Spatial scale factor
+ */
+SdfHandle alice_sdf_heightmap_displacement(SdfHandle node, const float* heightmap,
+                                            uint32_t width, uint32_t height,
+                                            float amplitude, float scale);
+
+/**
+ * @brief Apply FBM noise surface roughness
+ * @param frequency Noise frequency
+ * @param amplitude Roughness amplitude
+ * @param octaves Number of FBM octaves
+ */
+SdfHandle alice_sdf_surface_roughness(SdfHandle node, float frequency, float amplitude, uint32_t octaves);
 
 /* ============================================================================
  * Mesh Generation & Export
