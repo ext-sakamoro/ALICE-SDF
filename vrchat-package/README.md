@@ -375,6 +375,22 @@ com.alice.sdf/
 - **`#if UDONSHARP` guard**: Compiles without VRC SDK installed (MonoBehaviour stub)
 - **Performance Rank safe**: Deep Fried LOD keeps GPU within budget at any distance
 
+## v1.1.0 Compatibility
+
+ALICE-SDF v1.1.0 added 7 advanced operations to the native Rust compiled evaluator:
+
+| Operation | Rust/FFI | VRChat (Shader+Udon) | Notes |
+|-----------|----------|----------------------|-------|
+| ProjectiveTransform | Yes | No | Requires aux_data buffer (compiled evaluator) |
+| LatticeDeform | Yes | No | Variable-length control point grid |
+| SdfSkinning | Yes | No | Bone-weight skeletal deformation |
+| IcosahedralSymmetry | Yes | No | 120-fold fold requires 60 matrix multiplications |
+| IFS | Yes | No | Iterated Function System with N transform matrices |
+| HeightmapDisplacement | Yes | No | Bilinear heightmap sampling from aux_data |
+| SurfaceRoughness | Yes | No | FBM noise with child distance |
+
+These operations rely on the compiled bytecode VM with auxiliary data buffers and are not available in the VRChat UdonSharp sandbox. All existing primitives (53), CSG operations (17), and basic transforms/modifiers remain fully functional in VRChat.
+
 ## License
 
 ALICE Community License
