@@ -414,7 +414,8 @@ impl AliceSdfNode {
     #[func]
     fn apply_surface_roughness(&mut self, frequency: f32, amplitude: f32, octaves: i32) {
         if let Some(node) = self.sdf_node.take() {
-            self.sdf_node = Some(node.surface_roughness(frequency, amplitude, octaves.max(1) as u32));
+            self.sdf_node =
+                Some(node.surface_roughness(frequency, amplitude, octaves.max(1) as u32));
         }
     }
 
