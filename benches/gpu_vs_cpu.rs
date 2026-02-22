@@ -66,7 +66,7 @@ fn bench_crossover(c: &mut Criterion) {
     // Test batch sizes: 100 to 1M
     for size in [100, 1_000, 10_000, 100_000, 1_000_000] {
         let points = generate_points(size);
-        let soa = SoAPoints::from_vec3_slice(&points);
+        let _soa = SoAPoints::from_vec3_slice(&points);
 
         group.throughput(Throughput::Elements(size as u64));
 
@@ -124,7 +124,7 @@ fn bench_simple_shape(c: &mut Criterion) {
 
     for size in [1_000, 10_000, 100_000] {
         let points = generate_points(size);
-        let soa = SoAPoints::from_vec3_slice(&points);
+        let _soa = SoAPoints::from_vec3_slice(&points);
 
         group.throughput(Throughput::Elements(size as u64));
 
@@ -179,7 +179,7 @@ fn bench_complex_shape(c: &mut Criterion) {
 
     for size in [1_000, 10_000, 100_000] {
         let points = generate_points(size);
-        let soa = SoAPoints::from_vec3_slice(&points);
+        let _soa = SoAPoints::from_vec3_slice(&points);
 
         group.throughput(Throughput::Elements(size as u64));
 

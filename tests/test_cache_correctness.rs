@@ -9,7 +9,6 @@ use alice_sdf::{
     compute_cache_key, hash_sdf_node, CacheConfig, ChunkCoord, ChunkedCacheConfig,
     ChunkedMeshCache, MeshCache, MeshCacheKey,
 };
-use std::sync::Arc;
 
 mod common;
 use common::*;

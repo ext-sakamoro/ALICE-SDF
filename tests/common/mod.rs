@@ -14,16 +14,19 @@ pub fn test_sphere() -> SdfNode {
 }
 
 /// Unit box at origin
+#[allow(dead_code)]
 pub fn test_box() -> SdfNode {
     SdfNode::box3d(0.5, 0.5, 0.5)
 }
 
 /// Complex CSG shape: sphere with box subtracted
+#[allow(dead_code)]
 pub fn test_csg() -> SdfNode {
     SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.6, 0.6, 0.6))
 }
 
 /// Multi-operation shape for stress testing
+#[allow(dead_code)]
 pub fn test_complex_shape() -> SdfNode {
     let base = SdfNode::sphere(1.0);
     let cut = SdfNode::box3d(0.5, 2.0, 0.5).translate(0.5, 0.0, 0.0);
@@ -36,6 +39,7 @@ pub fn test_complex_shape() -> SdfNode {
 // ============================================================================
 
 /// 8 canonical test points (origin, axes, diagonal, surface, outside)
+#[allow(dead_code)]
 pub fn test_points() -> Vec<Vec3> {
     vec![
         Vec3::ZERO,                     // origin (inside sphere)
@@ -50,6 +54,7 @@ pub fn test_points() -> Vec<Vec3> {
 }
 
 /// Generate a grid of points in [-2, 2]^3
+#[allow(dead_code)]
 pub fn test_grid_points(resolution: usize) -> Vec<Vec3> {
     let mut points = Vec::with_capacity(resolution * resolution * resolution);
     let step = 4.0 / resolution as f32;
@@ -86,6 +91,7 @@ pub fn assert_close(a: f32, b: f32, tol: f32, msg: &str) {
 }
 
 /// Assert compiled evaluation matches interpreted evaluation
+#[allow(dead_code)]
 pub fn assert_compiled_matches_interpreted(shape: &SdfNode, tol: f32) {
     let compiled = CompiledSdf::compile(shape);
     for p in test_points() {
