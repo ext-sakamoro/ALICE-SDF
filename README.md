@@ -28,7 +28,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **72 primitives, 24 operations, 4 transforms, 19 modifiers** - industry-leading shape vocabulary
+- **72 primitives, 24 operations, 7 transforms, 23 modifiers** (126 total) - industry-leading shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
 - **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
@@ -302,13 +302,20 @@ SdfNode
   |                    XOR, Morph,                                                 ← Boolean / Interpolation
   |                    ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,      ← hg_sdf columns
   |                    Pipe, Engrave, Groove, Tongue                               ← hg_sdf advanced
-  |-- Transform (5): Translate, Rotate, Scale, ScaleNonUniform,
-  |                   Shear                                                        ← 3-axis shear deformation
-  |-- Modifier (17): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |-- Transform (7): Translate, Rotate, Scale, ScaleNonUniform,
+  |                   ProjectiveTransform,                                         ← perspective projection with inv_matrix
+  |                   LatticeDeform,                                               ← Free-Form Deformation (FFD) grid
+  |                   SdfSkinning                                                  ← bone-weight skeletal deformation
+  |-- Modifier (23): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
   |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
+  |                   Shear,                                                       ← 3-axis shear deformation
   |                   OctantMirror,                                                ← 48-fold symmetry
-  |                   Animated                                                     ← timeline-driven parameter animation
-  +-- WithMaterial: PBR material assignment (transparent to distance evaluation)
+  |                   IcosahedralSymmetry,                                         ← 120-fold icosahedral symmetry
+  |                   IFS,                                                         ← Iterated Function System fractals
+  |                   HeightmapDisplacement,                                       ← heightmap-driven surface displacement
+  |                   SurfaceRoughness,                                            ← FBM noise roughness
+  |                   Animated,                                                    ← timeline-driven parameter animation
+  |                   WithMaterial                                                 ← PBR material assignment
 ```
 
 ## Installation
@@ -584,10 +591,10 @@ Layer 1:  types.rs          -- SdfNode enum (AST definition)
 Layer 2:  primitives/       -- Mathematical SDF formulas (Inigo Quilez)
 Layer 3:  eval/             -- Recursive interpreter
 Layer 4:  compiled/opcode   -- OpCode enum for VM
-Layer 5:  compiled/instr    -- Instruction encoding (32-byte aligned)
-Layer 6:  compiled/compiler -- AST -> instruction compilation
-Layer 7:  compiled/eval     -- Stack-based VM evaluator
-Layer 8:  compiled/eval_simd-- SIMD 8-wide evaluator (AVX2/NEON)
+Layer 5:  compiled/instr    -- Instruction encoding (params[7] + aux_offset/aux_len)
+Layer 6:  compiled/compiler -- AST -> instruction compilation (+ aux_data serialization)
+Layer 7:  compiled/eval     -- Stack-based VM evaluator (with aux_data deserialization)
+Layer 8:  compiled/eval_simd-- SIMD 8-wide evaluator (AVX2/NEON, per-lane aux_data dispatch)
 Layer 9:  compiled/eval_bvh -- BVH-accelerated evaluator (AABB pruning)
 Layer 10: compiled/glsl     -- GLSL transpiler (Unity/OpenGL/Vulkan)
 Layer 11: compiled/wgsl     -- WGSL transpiler (WebGPU)
@@ -1988,6 +1995,44 @@ The server runs as a FastAPI web service. The SDF-to-mesh step takes <55ms (excl
 | Physics | Deterministic fixed-point collision | ALICE-Physics (Fix128) |
 | Asset creation | Natural language — no SDF expertise needed | Text-to-3D server (Claude/Gemini) |
 | Delivery | Instant transfer — formulas, not polygons | ALICE-CDN + ALICE-Cache |
+
+## v1.1.0 Release — Stable
+
+### Quality Metrics
+
+| Metric | Value |
+|--------|-------|
+| Unit tests | 1003 passed, 0 failed |
+| Clippy pedantic | 0 warnings |
+| Doc warnings | 0 warnings |
+| TODO / FIXME | 0 |
+| `unimplemented!()` / `todo!()` | 0 |
+| SIMD placeholder operations | 0 (all 7 fully implemented) |
+| Formatting | `cargo fmt --check` clean |
+
+### Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.1.0):
+
+| Asset | Platform | Engine |
+|-------|----------|--------|
+| `AliceSDF-UE5-Plugin-macOS.zip` | macOS ARM64 | Unreal Engine 5 |
+| `AliceSDF-UE5-Plugin-macOS-Intel.zip` | macOS x86_64 | Unreal Engine 5 |
+| `AliceSDF-UE5-Plugin-Win64.zip` | Windows x86_64 | Unreal Engine 5 |
+| `AliceSDF-UE5-Plugin-Linux.zip` | Linux x86_64 | Unreal Engine 5 |
+| `AliceSDF-Unity-Plugin-macOS.zip` | macOS ARM64 | Unity |
+| `AliceSDF-Unity-Plugin-macOS-Intel.zip` | macOS x86_64 | Unity |
+| `AliceSDF-Unity-Plugin-Win64.zip` | Windows x86_64 | Unity |
+| `AliceSDF-Unity-Plugin-Linux.zip` | Linux x86_64 | Unity |
+| `AliceSDF-VRChat-Package.zip` | Cross-platform | VRChat |
+
+### v1.1.0 Key Changes
+
+- **Auxiliary data buffer**: `Instruction` now carries `aux_offset`/`aux_len` pointing into `CompiledSdf.aux_data`, enabling variable-length data (matrices, control points, heightmaps) for complex operations
+- **7 new compiled operations**: ProjectiveTransform, LatticeDeform, SdfSkinning, IcosahedralSymmetry, IFS, HeightmapDisplacement, SurfaceRoughness — fully implemented in both scalar and SIMD evaluators
+- **126 total SdfNode variants**: 72 primitives, 24 operations, 7 transforms, 23 modifiers
+- **220 pedantic clippy warnings fixed**: raw string hashes, implicit clone, useless format, dead code, etc.
+- **5 roundtrip tests**: each new operation verified against tree-walker for correctness
 
 ## License
 
