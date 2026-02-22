@@ -37,6 +37,9 @@ pub enum CompileError {
 pub struct CompiledSdf {
     /// The instruction bytecode
     pub instructions: Vec<Instruction>,
+    /// Auxiliary data buffer for operations whose data exceeds `Instruction::params`.
+    /// Indexed by `Instruction::aux_offset` / `Instruction::aux_len`.
+    pub aux_data: Vec<f32>,
     /// Original node count (for statistics)
     pub node_count: usize,
 }
@@ -84,6 +87,7 @@ impl CompiledSdf {
 
         Ok(CompiledSdf {
             instructions: compiler.instructions,
+            aux_data: compiler.aux_data,
             node_count: compiler.node_count,
         })
     }
@@ -98,12 +102,14 @@ impl CompiledSdf {
     #[inline]
     pub fn memory_size(&self) -> usize {
         self.instructions.len() * std::mem::size_of::<Instruction>()
+            + self.aux_data.len() * std::mem::size_of::<f32>()
     }
 }
 
 /// Internal compiler state
 struct Compiler {
     instructions: Vec<Instruction>,
+    aux_data: Vec<f32>,
     node_count: usize,
 }
 
@@ -111,8 +117,16 @@ impl Compiler {
     fn new() -> Self {
         Compiler {
             instructions: Vec::with_capacity(256),
+            aux_data: Vec::new(),
             node_count: 0,
         }
+    }
+
+    /// Append floats to the auxiliary data buffer, returning (offset, len).
+    fn push_aux(&mut self, data: &[f32]) -> (u32, u32) {
+        let offset = self.aux_data.len() as u32;
+        self.aux_data.extend_from_slice(data);
+        (offset, data.len() as u32)
     }
 
     /// Compile a single node (recursive)
@@ -1066,28 +1080,71 @@ impl Compiler {
             // === New Transforms (7 variants) ===
             SdfNode::ProjectiveTransform {
                 child,
+                inv_matrix,
                 lipschitz_bound,
-                ..
             } => {
+                let (aux_off, aux_len) = self.push_aux(inv_matrix);
                 let inst_idx = self.instructions.len();
-                self.instructions
-                    .push(Instruction::projective_transform(*lipschitz_bound));
+                let mut inst = Instruction::projective_transform(*lipschitz_bound);
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
             }
 
-            SdfNode::LatticeDeform { child, .. } => {
+            SdfNode::LatticeDeform {
+                child,
+                control_points,
+                nx,
+                ny,
+                nz,
+                bbox_min,
+                bbox_max,
+            } => {
+                // Serialize: [nx, ny, nz, bbox_min.x/y/z, bbox_max.x/y/z, cp0.x, cp0.y, cp0.z, ...]
+                let mut aux = Vec::with_capacity(9 + control_points.len() * 3);
+                aux.push(*nx as f32);
+                aux.push(*ny as f32);
+                aux.push(*nz as f32);
+                aux.push(bbox_min.x);
+                aux.push(bbox_min.y);
+                aux.push(bbox_min.z);
+                aux.push(bbox_max.x);
+                aux.push(bbox_max.y);
+                aux.push(bbox_max.z);
+                for cp in control_points {
+                    aux.push(cp.x);
+                    aux.push(cp.y);
+                    aux.push(cp.z);
+                }
+                let (aux_off, aux_len) = self.push_aux(&aux);
                 let inst_idx = self.instructions.len();
-                self.instructions.push(Instruction::lattice_deform());
+                let mut inst = Instruction::lattice_deform();
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
             }
 
-            SdfNode::SdfSkinning { child, .. } => {
+            SdfNode::SdfSkinning { child, bones } => {
+                // Serialize: [bone_count, (inv_bind_pose[16], current_pose[16], weight) × N]
+                let mut aux = Vec::with_capacity(1 + bones.len() * 33);
+                aux.push(bones.len() as f32);
+                for bone in bones {
+                    aux.extend_from_slice(&bone.inv_bind_pose);
+                    aux.extend_from_slice(&bone.current_pose);
+                    aux.push(bone.weight);
+                }
+                let (aux_off, aux_len) = self.push_aux(&aux);
                 let inst_idx = self.instructions.len();
-                self.instructions.push(Instruction::sdf_skinning());
+                let mut inst = Instruction::sdf_skinning();
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
@@ -1103,10 +1160,22 @@ impl Compiler {
             }
 
             SdfNode::IFS {
-                child, iterations, ..
+                child,
+                transforms,
+                iterations,
             } => {
+                // Serialize: [transform_count, mat4[0..16], mat4[16..32], ...]
+                let mut aux = Vec::with_capacity(1 + transforms.len() * 16);
+                aux.push(transforms.len() as f32);
+                for t in transforms {
+                    aux.extend_from_slice(t);
+                }
+                let (aux_off, aux_len) = self.push_aux(&aux);
                 let inst_idx = self.instructions.len();
-                self.instructions.push(Instruction::ifs(*iterations));
+                let mut inst = Instruction::ifs(*iterations);
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
@@ -1114,13 +1183,23 @@ impl Compiler {
 
             SdfNode::HeightmapDisplacement {
                 child,
+                heightmap,
+                width,
+                height,
                 amplitude,
                 scale,
-                ..
             } => {
+                // Serialize: [width, height, heightmap_data...]
+                let mut aux = Vec::with_capacity(2 + heightmap.len());
+                aux.push(*width as f32);
+                aux.push(*height as f32);
+                aux.extend_from_slice(heightmap);
+                let (aux_off, aux_len) = self.push_aux(&aux);
                 let inst_idx = self.instructions.len();
-                self.instructions
-                    .push(Instruction::heightmap_displacement(*amplitude, *scale));
+                let mut inst = Instruction::heightmap_displacement(*amplitude, *scale);
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
@@ -1520,6 +1599,78 @@ mod tests {
 
         // 2 instructions * 64 bytes = 128 bytes
         assert_eq!(compiled.memory_size(), 128);
+    }
+
+    /// Helper: compare compiled eval vs tree-walker eval at several points
+    fn assert_roundtrip(node: &crate::types::SdfNode, tolerance: f32) {
+        use crate::compiled::eval::eval_compiled;
+        use crate::eval::eval;
+        use glam::Vec3;
+
+        let compiled = CompiledSdf::compile(node);
+        let test_points = [
+            Vec3::new(0.5, 0.3, 0.1),
+            Vec3::new(-0.2, 0.8, -0.4),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+        ];
+        for pt in &test_points {
+            let d_tree = eval(node, *pt);
+            let d_compiled = eval_compiled(&compiled, *pt);
+            assert!(
+                (d_tree - d_compiled).abs() < tolerance,
+                "Mismatch at {pt}: tree={d_tree}, compiled={d_compiled}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_icosahedral_symmetry() {
+        let node = crate::types::SdfNode::sphere(1.0).icosahedral_symmetry();
+        assert_roundtrip(&node, 1e-5);
+    }
+
+    #[test]
+    fn test_roundtrip_surface_roughness() {
+        let node = crate::types::SdfNode::sphere(1.0).surface_roughness(2.0, 0.05, 3);
+        assert_roundtrip(&node, 1e-5);
+    }
+
+    #[test]
+    fn test_roundtrip_heightmap_displacement() {
+        // Simple 4x4 flat heightmap (all zeros = no displacement)
+        let heightmap = vec![0.0f32; 16];
+        let node =
+            crate::types::SdfNode::sphere(1.0).heightmap_displacement(heightmap, 4, 4, 0.1, 1.0);
+        assert_roundtrip(&node, 1e-5);
+    }
+
+    #[test]
+    fn test_roundtrip_projective_transform() {
+        // Identity inverse matrix
+        #[rustfmt::skip]
+        let identity = [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let node = crate::types::SdfNode::sphere(1.0).projective_transform(identity, 1.0);
+        assert_roundtrip(&node, 1e-5);
+    }
+
+    #[test]
+    fn test_roundtrip_ifs() {
+        // Single identity transform, 1 iteration (should be close to original)
+        #[rustfmt::skip]
+        let identity = [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        let node = crate::types::SdfNode::sphere(1.0).ifs(vec![identity], 1);
+        assert_roundtrip(&node, 1e-5);
     }
 
     #[test]

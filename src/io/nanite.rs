@@ -249,12 +249,12 @@ pub fn export_nanite_hlsl_material(
     )?;
     writeln!(w, "// Input: float3 WorldPosition")?;
     writeln!(w, "// Output: float4 (xyz = normal, w = signed_distance)")?;
-    writeln!(w, "")?;
+    writeln!(w)?;
 
     // Transpile SDF tree to HLSL function
     let shader = HlslShader::transpile(sdf, HlslTranspileMode::Hardcoded);
     w.write_all(shader.source.as_bytes())?;
-    writeln!(w, "")?;
+    writeln!(w)?;
 
     // Add normal computation helper
     writeln!(w, "// Normal computation via central differences")?;
@@ -276,7 +276,7 @@ pub fn export_nanite_hlsl_material(
     )?;
     writeln!(w, "    ));")?;
     writeln!(w, "}}")?;
-    writeln!(w, "")?;
+    writeln!(w)?;
 
     // Material entry point
     writeln!(w, "// Material entry point for UE5")?;

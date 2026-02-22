@@ -27,6 +27,8 @@ struct CoordFrameSimd {
     scale_correction: f32x8,
     opcode: OpCode,
     params: [f32; 4],
+    aux_offset: u32,
+    aux_len: u32,
 }
 
 impl Default for CoordFrameSimd {
@@ -36,6 +38,8 @@ impl Default for CoordFrameSimd {
             scale_correction: f32x8::ONE,
             opcode: OpCode::End,
             params: [0.0; 4],
+            aux_offset: 0,
+            aux_len: 0,
         }
     }
 }
@@ -1450,6 +1454,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Translate,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1467,6 +1473,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Rotate,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1488,6 +1496,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Scale,
                     params: [factor, 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1507,6 +1517,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::ScaleNonUniform,
                     params: [min_factor, 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1526,6 +1538,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Twist,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1548,6 +1562,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Bend,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1570,6 +1586,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::RepeatInfinite,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1596,6 +1614,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::RepeatFinite,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1629,6 +1649,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Round,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
             }
@@ -1639,6 +1661,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Onion,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
             }
@@ -1649,6 +1673,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Elongate,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1670,6 +1696,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Noise,
                     params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
                 // Noise doesn't modify point, only post-processes distance
@@ -1681,6 +1709,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Mirror,
                     params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1709,6 +1739,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::OctantMirror,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1738,6 +1770,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Revolution,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1756,6 +1790,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Extrude,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1772,6 +1808,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Taper,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1790,6 +1828,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Displacement,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
                 // Displacement doesn't modify point, only post-processes distance
@@ -1801,6 +1841,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::SweepBezier,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1881,6 +1923,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::PolarRepeat,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -2016,6 +2060,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Shear,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -2036,154 +2082,244 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::Animated,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
             }
 
             // === New Transforms (3) ===
             OpCode::ProjectiveTransform => {
-                // Per-lane scalar fallback for projective transform
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
                     opcode: OpCode::ProjectiveTransform,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
-                // Complex matrix operation: per-lane dispatch
-                let mut result = Vec3x8::zero();
-                for lane in 0..8 {
-                    let px = p.x.as_array_ref()[lane];
-                    let py = p.y.as_array_ref()[lane];
-                    let pz = p.z.as_array_ref()[lane];
-                    // Placeholder: actual inv_matrix would be stored in auxiliary data
-                    // For now, just pass through (identity transform)
-                    result.x.as_array_mut()[lane] = px;
-                    result.y.as_array_mut()[lane] = py;
-                    result.z.as_array_mut()[lane] = pz;
+                // Per-lane projective transform using aux_data
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 16 {
+                    let inv_matrix: &[f32] = &sdf.aux_data[aux_off..aux_off + 16];
+                    let mut inv_m = [0.0f32; 16];
+                    inv_m.copy_from_slice(inv_matrix);
+                    let mut result = Vec3x8::zero();
+                    for lane in 0..8 {
+                        let pt = glam::Vec3::new(
+                            p.x.as_array_ref()[lane],
+                            p.y.as_array_ref()[lane],
+                            p.z.as_array_ref()[lane],
+                        );
+                        let (q, _) =
+                            crate::transforms::projective::projective_transform(pt, &inv_m);
+                        result.x.as_array_mut()[lane] = q.x;
+                        result.y.as_array_mut()[lane] = q.y;
+                        result.z.as_array_mut()[lane] = q.z;
+                    }
+                    p = result;
                 }
-                p = result;
             }
 
             OpCode::LatticeDeform => {
-                // Per-lane scalar fallback for lattice deformation
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
                     opcode: OpCode::LatticeDeform,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
-                // Complex trilinear interpolation: per-lane dispatch
-                let mut result = Vec3x8::zero();
-                for lane in 0..8 {
-                    let px = p.x.as_array_ref()[lane];
-                    let py = p.y.as_array_ref()[lane];
-                    let pz = p.z.as_array_ref()[lane];
-                    // Placeholder: actual control_points would be in auxiliary data
-                    // For now, just pass through (identity deform)
-                    result.x.as_array_mut()[lane] = px;
-                    result.y.as_array_mut()[lane] = py;
-                    result.z.as_array_mut()[lane] = pz;
+                // Per-lane lattice deform using aux_data
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 9 {
+                    let aux = &sdf.aux_data[aux_off..aux_off + inst.aux_len as usize];
+                    let nx = aux[0] as u32;
+                    let ny = aux[1] as u32;
+                    let nz = aux[2] as u32;
+                    let bbox_min = glam::Vec3::new(aux[3], aux[4], aux[5]);
+                    let bbox_max = glam::Vec3::new(aux[6], aux[7], aux[8]);
+                    let cp_data = &aux[9..];
+                    let num_cps = cp_data.len() / 3;
+                    let control_points: Vec<glam::Vec3> = (0..num_cps)
+                        .map(|i| {
+                            glam::Vec3::new(cp_data[i * 3], cp_data[i * 3 + 1], cp_data[i * 3 + 2])
+                        })
+                        .collect();
+                    let mut result = Vec3x8::zero();
+                    for lane in 0..8 {
+                        let pt = glam::Vec3::new(
+                            p.x.as_array_ref()[lane],
+                            p.y.as_array_ref()[lane],
+                            p.z.as_array_ref()[lane],
+                        );
+                        let (q, _) = crate::transforms::lattice::lattice_deform(
+                            pt,
+                            &control_points,
+                            nx,
+                            ny,
+                            nz,
+                            bbox_min,
+                            bbox_max,
+                        );
+                        result.x.as_array_mut()[lane] = q.x;
+                        result.y.as_array_mut()[lane] = q.y;
+                        result.z.as_array_mut()[lane] = q.z;
+                    }
+                    p = result;
                 }
-                p = result;
             }
 
             OpCode::SdfSkinning => {
-                // Per-lane scalar fallback for skinning
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
                     opcode: OpCode::SdfSkinning,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
-                // Complex bone-weight blending: per-lane dispatch
-                let mut result = Vec3x8::zero();
-                for lane in 0..8 {
-                    let px = p.x.as_array_ref()[lane];
-                    let py = p.y.as_array_ref()[lane];
-                    let pz = p.z.as_array_ref()[lane];
-                    // Placeholder: actual bones would be in auxiliary data
-                    // For now, just pass through (identity skinning)
-                    result.x.as_array_mut()[lane] = px;
-                    result.y.as_array_mut()[lane] = py;
-                    result.z.as_array_mut()[lane] = pz;
+                // Per-lane skinning using aux_data
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 1 {
+                    let aux = &sdf.aux_data[aux_off..aux_off + inst.aux_len as usize];
+                    let bone_count = aux[0] as usize;
+                    let mut bones = Vec::with_capacity(bone_count);
+                    let mut cursor = 1;
+                    for _ in 0..bone_count {
+                        let mut inv_bind = [0.0f32; 16];
+                        let mut cur_pose = [0.0f32; 16];
+                        inv_bind.copy_from_slice(&aux[cursor..cursor + 16]);
+                        cursor += 16;
+                        cur_pose.copy_from_slice(&aux[cursor..cursor + 16]);
+                        cursor += 16;
+                        let weight = aux[cursor];
+                        cursor += 1;
+                        bones.push(crate::transforms::skinning::BoneTransform {
+                            inv_bind_pose: inv_bind,
+                            current_pose: cur_pose,
+                            weight,
+                        });
+                    }
+                    let mut result = Vec3x8::zero();
+                    for lane in 0..8 {
+                        let pt = glam::Vec3::new(
+                            p.x.as_array_ref()[lane],
+                            p.y.as_array_ref()[lane],
+                            p.z.as_array_ref()[lane],
+                        );
+                        let (q, _) = crate::transforms::skinning::sdf_skinning(pt, &bones);
+                        result.x.as_array_mut()[lane] = q.x;
+                        result.y.as_array_mut()[lane] = q.y;
+                        result.z.as_array_mut()[lane] = q.z;
+                    }
+                    p = result;
                 }
-                p = result;
             }
 
             // === New Modifiers (4) ===
             OpCode::IcosahedralSymmetry => {
-                // Per-lane scalar fallback for icosahedral symmetry
+                // Per-lane scalar fallback: icosahedral fold has branches
+                // that prevent vectorization, so dispatch per lane.
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
                     opcode: OpCode::IcosahedralSymmetry,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
-                // Complex 120-fold symmetry fold: per-lane dispatch
                 let mut result = Vec3x8::zero();
                 for lane in 0..8 {
-                    let px = p.x.as_array_ref()[lane];
-                    let py = p.y.as_array_ref()[lane];
-                    let pz = p.z.as_array_ref()[lane];
-                    // Placeholder: actual icosahedral fold would be complex
-                    // For now, just use octant mirror as approximation
-                    result.x.as_array_mut()[lane] = px.abs();
-                    result.y.as_array_mut()[lane] = py.abs();
-                    result.z.as_array_mut()[lane] = pz.abs();
+                    let pt = glam::Vec3::new(
+                        p.x.as_array_ref()[lane],
+                        p.y.as_array_ref()[lane],
+                        p.z.as_array_ref()[lane],
+                    );
+                    let q = crate::modifiers::icosahedral_fold(pt);
+                    result.x.as_array_mut()[lane] = q.x;
+                    result.y.as_array_mut()[lane] = q.y;
+                    result.z.as_array_mut()[lane] = q.z;
                 }
                 p = result;
             }
 
             OpCode::IFS => {
-                // Per-lane scalar fallback for IFS
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
                     opcode: OpCode::IFS,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
                 let iterations = inst.params[0] as u32;
-                // Complex iterative folding: per-lane dispatch
-                let mut result = Vec3x8::zero();
-                for lane in 0..8 {
-                    let mut px = p.x.as_array_ref()[lane];
-                    let mut py = p.y.as_array_ref()[lane];
-                    let mut pz = p.z.as_array_ref()[lane];
-                    // Placeholder: actual transforms would be in auxiliary data
-                    // For now, simple scale-fold iteration
-                    for _ in 0..iterations {
-                        px = px.abs() * 0.5;
-                        py = py.abs() * 0.5;
-                        pz = pz.abs() * 0.5;
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 1 {
+                    // Deserialize transforms from aux_data
+                    let aux = &sdf.aux_data[aux_off..aux_off + inst.aux_len as usize];
+                    let transform_count = aux[0] as usize;
+                    let mut transforms = Vec::with_capacity(transform_count);
+                    for i in 0..transform_count {
+                        let base = 1 + i * 16;
+                        let mut mat = [0.0f32; 16];
+                        mat.copy_from_slice(&aux[base..base + 16]);
+                        transforms.push(mat);
                     }
-                    result.x.as_array_mut()[lane] = px;
-                    result.y.as_array_mut()[lane] = py;
-                    result.z.as_array_mut()[lane] = pz;
+                    let mut result = Vec3x8::zero();
+                    for lane in 0..8 {
+                        let pt = glam::Vec3::new(
+                            p.x.as_array_ref()[lane],
+                            p.y.as_array_ref()[lane],
+                            p.z.as_array_ref()[lane],
+                        );
+                        let (q, _) =
+                            crate::modifiers::ifs_fold_with_scale(pt, &transforms, iterations);
+                        result.x.as_array_mut()[lane] = q.x;
+                        result.y.as_array_mut()[lane] = q.y;
+                        result.z.as_array_mut()[lane] = q.z;
+                    }
+                    p = result;
+                } else {
+                    // Fallback: simple abs-fold contraction
+                    let mut result = Vec3x8::zero();
+                    for lane in 0..8 {
+                        let mut px = p.x.as_array_ref()[lane];
+                        let mut py = p.y.as_array_ref()[lane];
+                        let mut pz = p.z.as_array_ref()[lane];
+                        for _ in 0..iterations {
+                            px = px.abs() * 0.5;
+                            py = py.abs() * 0.5;
+                            pz = pz.abs() * 0.5;
+                        }
+                        result.x.as_array_mut()[lane] = px;
+                        result.y.as_array_mut()[lane] = py;
+                        result.z.as_array_mut()[lane] = pz;
+                    }
+                    p = result;
                 }
-                p = result;
             }
 
             OpCode::HeightmapDisplacement => {
-                // Per-lane scalar fallback for heightmap displacement
-                // Note: This is a post-process modifier, child distance will be modified later
                 coord_stack[csp] = CoordFrameSimd {
                     point: p,
                     scale_correction,
                     opcode: OpCode::HeightmapDisplacement,
                     params: [inst.params[0], inst.params[1], 0.0, 0.0],
+                    aux_offset: inst.aux_offset,
+                    aux_len: inst.aux_len,
                 };
                 csp += 1;
-                // No point transformation - displacement is applied after distance eval
             }
 
             OpCode::SurfaceRoughness => {
@@ -2194,6 +2330,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     scale_correction,
                     opcode: OpCode::SurfaceRoughness,
                     params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
                 // No point transformation - roughness is applied after distance eval
@@ -2249,18 +2387,36 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         value_stack[vsp - 1] += sx * sy * sz * strength;
                     }
                     OpCode::HeightmapDisplacement => {
-                        // Per-lane heightmap lookup
                         let amplitude = frame.params[0];
                         let scale = frame.params[1];
+                        let aux_off = frame.aux_offset as usize;
                         let mut displacement_vals = [0.0f32; 8];
-                        #[allow(clippy::needless_range_loop)]
-                        for i in 0..8 {
-                            let px = frame.point.x.as_array_ref()[i] * scale;
-                            let pz = frame.point.z.as_array_ref()[i] * scale;
-                            // Placeholder: actual heightmap lookup would be in auxiliary data
-                            // For now, use simple sine pattern
-                            let h = (px * 3.0).sin() * (pz * 3.0).sin();
-                            displacement_vals[i] = h * amplitude;
+                        if frame.aux_len >= 2 {
+                            // Use actual heightmap from aux_data
+                            let aux = &sdf.aux_data[aux_off..aux_off + frame.aux_len as usize];
+                            let w = aux[0] as u32;
+                            let h = aux[1] as u32;
+                            let hmap = &aux[2..];
+                            #[allow(clippy::needless_range_loop)]
+                            for i in 0..8 {
+                                let pt = glam::Vec3::new(
+                                    frame.point.x.as_array_ref()[i],
+                                    frame.point.y.as_array_ref()[i],
+                                    frame.point.z.as_array_ref()[i],
+                                );
+                                displacement_vals[i] = crate::modifiers::heightmap_displacement(
+                                    pt, hmap, w, h, amplitude, scale,
+                                );
+                            }
+                        } else {
+                            // Fallback: sine pattern
+                            #[allow(clippy::needless_range_loop)]
+                            for i in 0..8 {
+                                let px = frame.point.x.as_array_ref()[i] * scale;
+                                let pz = frame.point.z.as_array_ref()[i] * scale;
+                                displacement_vals[i] =
+                                    (px * 3.0).sin() * (pz * 3.0).sin() * amplitude;
+                            }
                         }
                         value_stack[vsp - 1] += f32x8::new(displacement_vals);
                     }

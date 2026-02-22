@@ -19,22 +19,37 @@ pub const FOLD_EPSILON: f32 = 1e-6;
 /// Trait that captures the syntactic differences between WGSL, GLSL, and HLSL.
 pub trait ShaderLang: 'static {
     // ---- Type constructors ----
+    /// Construct a 2-component vector from scalar strings.
     fn vec2_ctor(x: &str, y: &str) -> String;
+    /// Construct a 3-component vector from scalar strings.
     fn vec3_ctor(x: &str, y: &str, z: &str) -> String;
+    /// Construct a 4-component vector from scalar strings.
     fn vec4_ctor(x: &str, y: &str, z: &str, w: &str) -> String;
+    /// Return the zero literal for a 2-component vector.
     fn vec2_zero() -> &'static str;
+    /// Return the zero literal for a 3-component vector.
     fn vec3_zero() -> &'static str;
+    /// Splat a scalar into a 2-component vector.
     fn vec2_splat(v: &str) -> String;
+    /// Splat a scalar into a 3-component vector.
     fn vec3_splat(v: &str) -> String;
 
     // ---- Variable declarations (returns full "    TYPE name = expr;\n") ----
+    /// Declare an immutable float variable.
     fn decl_float(name: &str, expr: &str) -> String;
+    /// Declare an immutable vec2 variable.
     fn decl_vec2(name: &str, expr: &str) -> String;
+    /// Declare an immutable vec3 variable.
     fn decl_vec3(name: &str, expr: &str) -> String;
+    /// Declare a mutable float variable.
     fn decl_mut_float(name: &str, expr: &str) -> String;
+    /// Declare a mutable vec2 variable.
     fn decl_mut_vec2(name: &str, expr: &str) -> String;
+    /// Declare a mutable vec3 variable.
     fn decl_mut_vec3(name: &str, expr: &str) -> String;
+    /// Declare a mutable float with type annotation only (no initializer).
     fn decl_mut_float_typed(name: &str) -> String;
+    /// Declare a mutable vec3 with type annotation only (no initializer).
     fn decl_mut_vec3_typed(name: &str) -> String;
 
     // ---- Expressions ----
@@ -48,9 +63,11 @@ pub trait ShaderLang: 'static {
     fn for_loop_int(name: &str, init: i32, cond: &str, incr: &str) -> String;
 
     // ---- Param prefix ----
+    /// Return the dynamic parameter accessor expression.
     fn param_dynamic(vec_idx: usize, comp: &str) -> String;
 
     // ---- Function signature ----
+    /// Return the SDF entry-point function signature.
     fn func_signature() -> &'static str;
 
     // ---- Capsule behavior ----
@@ -60,6 +77,7 @@ pub trait ShaderLang: 'static {
     const CAPSULE_RE_EMIT_PARAMS: bool;
 
     // ---- Helper functions ----
+    /// Return the source code for a named helper function, if known.
     fn helper_source(name: &str) -> Option<&'static str>;
 }
 
@@ -67,9 +85,12 @@ pub trait ShaderLang: 'static {
 // Transpile mode (language-independent)
 // ============================================================================
 
+/// Transpilation mode: hardcoded constants or dynamic parameter buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranspileModeLang {
+    /// Inline numeric literals directly into shader source.
     Hardcoded,
+    /// Reference a runtime parameter buffer for SDF constants.
     Dynamic,
 }
 
@@ -77,15 +98,21 @@ pub enum TranspileModeLang {
 // GenericTranspiler<L: ShaderLang>
 // ============================================================================
 
+/// Language-generic SDF-to-shader transpiler parameterized by [`ShaderLang`].
 pub struct GenericTranspiler<L: ShaderLang> {
+    /// Monotonic counter for generating unique variable names.
     pub var_counter: usize,
+    /// Accumulated helper function names required by the generated shader.
     pub helper_functions: Vec<&'static str>,
+    /// Whether to inline constants or use a parameter buffer.
     pub mode: TranspileModeLang,
+    /// Collected float parameters for dynamic mode.
     pub params: Vec<f32>,
     _phantom: std::marker::PhantomData<L>,
 }
 
 impl<L: ShaderLang> GenericTranspiler<L> {
+    /// Create a new transpiler in the given mode.
     pub fn new(mode: TranspileModeLang) -> Self {
         Self {
             var_counter: 0,
@@ -96,18 +123,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         }
     }
 
+    /// Allocate the next unique variable name (d0, d1, ...).
     pub fn next_var(&mut self) -> String {
         let var = format!("d{}", self.var_counter);
         self.var_counter += 1;
         var
     }
 
+    /// Register a helper function by name, deduplicating.
     pub fn ensure_helper(&mut self, name: &'static str) {
         if !self.helper_functions.contains(&name) {
             self.helper_functions.push(name);
         }
     }
 
+    /// Register a float parameter and return its shader expression.
     pub fn param(&mut self, value: f32) -> String {
         match self.mode {
             TranspileModeLang::Hardcoded => format!("{:.6}", value),
@@ -126,6 +156,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         }
     }
 
+    /// Emit inline code for the stairs-style smooth union operator.
     pub fn emit_stairs_union_inline(
         &mut self,
         code: &mut String,
@@ -198,6 +229,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         ));
     }
 
+    /// Assemble the final shader string: helpers + function signature + body.
     pub fn generate_shader(&self, body: &str) -> String {
         let mut shader = String::new();
         for helper in &self.helper_functions {
@@ -212,6 +244,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         shader
     }
 
+    /// Transpile an SDF node tree into shader code, returning the body with a final `return`.
     pub fn transpile_node(&mut self, node: &SdfNode, point_var: &str) -> String {
         let mut code = String::new();
         let result_var = self.transpile_node_inner(node, point_var, &mut code);
@@ -276,13 +309,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let hh = self.param(*half_height);
                 code.push_str(&L::decl_vec2(
                     &d_var,
-                    &format!(
-                        "{}",
-                        L::vec2_ctor(
-                            &format!("length({}.xz) - {}", point_var, r),
-                            &format!("abs({}.y) - {}", point_var, hh)
-                        )
-                    ),
+                    &L::vec2_ctor(
+                        &format!("length({}.xz) - {}", point_var, r),
+                        &format!("abs({}.y) - {}", point_var, hh),
+                    )
+                    .clone(),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
@@ -307,13 +338,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let mnr = self.param(*minor_radius);
                 code.push_str(&L::decl_vec2(
                     &q_var,
-                    &format!(
-                        "{}",
-                        L::vec2_ctor(
-                            &format!("length({}.xz) - {}", point_var, mr),
-                            &format!("{}.y", point_var)
-                        )
-                    ),
+                    &L::vec2_ctor(
+                        &format!("length({}.xz) - {}", point_var, mr),
+                        &format!("{}.y", point_var),
+                    )
+                    .clone(),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
@@ -430,18 +459,16 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &qx_var,
                     &format!("length({}.xz)", point_var),
                 ));
-                code.push_str(&L::decl_float(&h_var, &p_hh.to_string()));
+                code.push_str(&L::decl_float(&h_var, &p_hh.clone()));
                 // ca = vec2(qx - min(qx, select(0.0, r, p.y<0.0)), abs(p.y) - h)
                 let cone_select = L::select_expr(&format!("{}.y < 0.0", point_var), &p_r, "0.0");
                 code.push_str(&L::decl_vec2(
                     &ca_var,
-                    &format!(
-                        "{}",
-                        L::vec2_ctor(
-                            &format!("{} - min({}, {})", qx_var, qx_var, cone_select),
-                            &format!("abs({}.y) - {}", point_var, h_var),
-                        )
-                    ),
+                    &L::vec2_ctor(
+                        &format!("{} - min({}, {})", qx_var, qx_var, cone_select),
+                        &format!("abs({}.y) - {}", point_var, h_var),
+                    )
+                    .clone(),
                 ));
                 code.push_str(&L::decl_float(
                     &t_var,
@@ -452,13 +479,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 code.push_str(&L::decl_vec2(
                     &cb_var,
-                    &format!(
-                        "{}",
-                        L::vec2_ctor(
-                            &format!("{} + {} * {}", qx_var, p_k2x, t_var),
-                            &format!("{}.y - {} + {} * {}", point_var, h_var, p_k2y, t_var),
-                        )
-                    ),
+                    &L::vec2_ctor(
+                        &format!("{} + {} * {}", qx_var, p_k2x, t_var),
+                        &format!("{}.y - {} + {} * {}", point_var, h_var, p_k2y, t_var),
+                    )
+                    .clone(),
                 ));
                 let cone_sign = L::select_expr(
                     &format!("{}.x < 0.0 && {}.y < 0.0", cb_var, ca_var),
@@ -1789,10 +1814,9 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 writeln!(
                     code,
-                    "    {} {} = min({}, {});",
+                    "    {}  = min({}, {});",
                     L::decl_mut_float(&format!("{}_a2", var), &format!("min({}, {})", d_a, d_b))
                         .trim_start(),
-                    "",
                     d_a,
                     d_b
                 )
@@ -2139,14 +2163,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&s_var, &format!("sin({})", angle_var)));
                 code.push_str(&L::decl_vec3(
                     &new_p,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!("{} * {}.x - {} * {}.z", c_var, point_var, s_var, point_var),
-                            &format!("{}.y", point_var),
-                            &format!("{} * {}.x + {} * {}.z", s_var, point_var, c_var, point_var),
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!("{} * {}.x - {} * {}.z", c_var, point_var, s_var, point_var),
+                        &format!("{}.y", point_var),
+                        &format!("{} * {}.x + {} * {}.z", s_var, point_var, c_var, point_var),
+                    )
+                    .clone(),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }
@@ -2165,14 +2187,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&s_var, &format!("sin({})", angle_var)));
                 code.push_str(&L::decl_vec3(
                     &new_p,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!("{} * {}.x + {} * {}.y", c_var, point_var, s_var, point_var),
-                            &format!("{} * {}.y - {} * {}.x", c_var, point_var, s_var, point_var),
-                            &format!("{}.z", point_var),
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!("{} * {}.x + {} * {}.y", c_var, point_var, s_var, point_var),
+                        &format!("{} * {}.y - {} * {}.x", c_var, point_var, s_var, point_var),
+                        &format!("{}.z", point_var),
+                    )
+                    .clone(),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }
@@ -2373,14 +2393,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let off = self.param(*offset);
                 code.push_str(&L::decl_vec3(
                     &new_p,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!("length({}.xz) - {}", point_var, off),
-                            &format!("{}.y", point_var),
-                            "0.0",
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!("length({}.xz) - {}", point_var, off),
+                        &format!("{}.y", point_var),
+                        "0.0",
+                    )
+                    .clone(),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }
@@ -2389,14 +2407,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let new_p_2d = self.next_var();
                 code.push_str(&L::decl_vec3(
                     &new_p_2d,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!("{}.x", point_var),
-                            &format!("{}.z", point_var),
-                            "0.0",
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!("{}.x", point_var),
+                        &format!("{}.z", point_var),
+                        "0.0",
+                    )
+                    .clone(),
                 ));
                 let d = self.transpile_node_inner(child, &new_p_2d, code);
                 let var = self.next_var();
@@ -2404,10 +2420,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let w_var = self.next_var();
                 code.push_str(&L::decl_vec2(
                     &w_var,
-                    &format!(
-                        "{}",
-                        L::vec2_ctor(&d, &format!("abs({}.y) - {}", point_var, hh))
-                    ),
+                    &L::vec2_ctor(&d, &format!("abs({}.y) - {}", point_var, hh)).clone(),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
@@ -2430,14 +2443,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 code.push_str(&L::decl_vec3(
                     &new_p,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!("{}.x / max({}, 0.001)", point_var, taper_var),
-                            &format!("{}.y", point_var),
-                            &format!("{}.z / max({}, 0.001)", point_var, taper_var),
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!("{}.x / max({}, 0.001)", point_var, taper_var),
+                        &format!("{}.y", point_var),
+                        &format!("{}.z / max({}, 0.001)", point_var, taper_var),
+                    )
+                    .clone(),
                 ));
                 let d = self.transpile_node_inner(child, &new_p, code);
                 let var = self.next_var();
@@ -2553,17 +2564,15 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let local_p = self.next_var();
                 code.push_str(&L::decl_vec3(
                     &local_p,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!("length({} - {}.xz)", bp_var, point_var),
-                            &format!("{}.y", point_var),
-                            "0.0",
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!("length({} - {}.xz)", bp_var, point_var),
+                        &format!("{}.y", point_var),
+                        "0.0",
+                    )
+                    .clone(),
                 ));
                 let d = self.transpile_node_inner(child, &local_p, code);
-                code.push_str(&L::decl_float(&var, &d.to_string()));
+                code.push_str(&L::decl_float(&var, &d.clone()));
                 var
             }
 
@@ -2590,27 +2599,25 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&s_var, &format!("sin({})", snapped_var)));
                 code.push_str(&L::decl_vec3(
                     &new_p,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!(
-                                "{c} * {p}.x + {s} * {p}.z",
-                                c = c_var,
-                                s = s_var,
-                                p = point_var
-                            ),
-                            &format!("{}.y", point_var),
-                            &format!(
-                                "-{s} * {p}.x + {c} * {p}.z",
-                                c = c_var,
-                                s = s_var,
-                                p = point_var
-                            ),
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!(
+                            "{c} * {p}.x + {s} * {p}.z",
+                            c = c_var,
+                            s = s_var,
+                            p = point_var
+                        ),
+                        &format!("{}.y", point_var),
+                        &format!(
+                            "-{s} * {p}.x + {c} * {p}.z",
+                            c = c_var,
+                            s = s_var,
+                            p = point_var
+                        ),
+                    )
+                    .clone(),
                 ));
                 let d = self.transpile_node_inner(child, &new_p, code);
-                code.push_str(&L::decl_float(&var, &d.to_string()));
+                code.push_str(&L::decl_float(&var, &d.clone()));
                 var
             }
 
@@ -3025,19 +3032,17 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let new_p = self.next_var();
                 code.push_str(&L::decl_vec3(
                     &new_p,
-                    &format!(
-                        "{}",
-                        L::vec3_ctor(
-                            &format!("{p}.x", p = point_var),
-                            &format!("{p}.y - {sx} * {p}.x", p = point_var, sx = sx),
-                            &format!(
-                                "{p}.z - {sy} * {p}.x - {sz} * {p}.y",
-                                p = point_var,
-                                sy = sy,
-                                sz = sz
-                            ),
-                        )
-                    ),
+                    &L::vec3_ctor(
+                        &format!("{p}.x", p = point_var),
+                        &format!("{p}.y - {sx} * {p}.x", p = point_var, sx = sx),
+                        &format!(
+                            "{p}.z - {sy} * {p}.x - {sz} * {p}.y",
+                            p = point_var,
+                            sy = sy,
+                            sz = sz
+                        ),
+                    )
+                    .clone(),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }

@@ -18,6 +18,7 @@ use crate::types::SdfNode;
 use std::fmt::Write;
 
 /// Epsilon for constant folding (skip operations that are no-ops)
+#[allow(dead_code)]
 const FOLD_EPSILON: f32 = 1e-6;
 
 // ============================================================================
@@ -82,7 +83,7 @@ impl ShaderLang for WgslLang {
     fn cast_float(expr: &str) -> String {
         format!("f32({})", expr)
     }
-    fn for_loop_int(name: &str, init: i32, cond: &str, incr: &str) -> String {
+    fn for_loop_int(name: &str, init: i32, cond: &str, _incr: &str) -> String {
         format!(
             "    var {} = {}i;\n    loop {{\n        if !({}) {{ break; }}\n",
             name, init, cond
@@ -205,7 +206,7 @@ impl WgslShader {
     /// to the GPU's optimal workgroup size. Clamps to power-of-2 between 64 and 1024.
     pub fn with_workgroup_size(mut self, max_workgroup_x: u32) -> Self {
         // Clamp to power-of-2 <= device limit, between 64..=1024
-        let clamped = max_workgroup_x.min(1024).max(64);
+        let clamped = max_workgroup_x.clamp(64, 1024);
         // Round down to nearest power of 2
         self.workgroup_size = 1 << (31 - clamped.leading_zeros());
         self
@@ -220,7 +221,7 @@ impl WgslShader {
         };
 
         format!(
-            r#"// ALICE-SDF Generated Compute Shader ({mode:?} Mode)
+            r"// ALICE-SDF Generated Compute Shader ({mode:?} Mode)
 
 struct InputPoint {{
     x: f32,
@@ -254,7 +255,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     let distance = sdf_eval(p);
     output_distances[idx].distance = distance;
 }}
-"#,
+",
             mode = self.mode,
             params_decl = params_decl,
             sdf_func = self.source,
@@ -274,7 +275,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
         };
 
         format!(
-            r#"// ALICE-SDF Generated Compute Shader - Distance + Normals ({mode:?} Mode)
+            r"// ALICE-SDF Generated Compute Shader - Distance + Normals ({mode:?} Mode)
 
 struct InputPoint {{
     x: f32,
@@ -327,7 +328,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     output[idx].ny = n.y;
     output[idx].nz = n.z;
 }}
-"#,
+",
             mode = self.mode,
             params_decl = params_decl,
             sdf_func = self.source,
@@ -395,6 +396,7 @@ struct WgslTranspiler {
     params: Vec<f32>,
 }
 
+#[allow(dead_code)]
 impl WgslTranspiler {
     fn new(mode: TranspileMode) -> Self {
         WgslTranspiler {
@@ -656,7 +658,7 @@ impl WgslTranspiler {
 }
 
 // Helper function definitions
-const HELPER_SMOOTH_MIN: &str = r#"// Deep Fried Edition: Division-free smooth_min
+const HELPER_SMOOTH_MIN: &str = r"// Deep Fried Edition: Division-free smooth_min
 // inv_k should be pre-computed as 1.0/k
 fn smooth_min_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
     let h = max(k - abs(a - b), 0.0) * inv_k;  // MUL instead of DIV!
@@ -666,9 +668,9 @@ fn smooth_min_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
 // Legacy smooth_min (slower, uses division)
 fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
     return smooth_min_fast(a, b, k, 1.0 / k);
-}"#;
+}";
 
-const HELPER_SMOOTH_MAX: &str = r#"// Deep Fried Edition: Division-free smooth_max
+const HELPER_SMOOTH_MAX: &str = r"// Deep Fried Edition: Division-free smooth_max
 fn smooth_max_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
     let h = max(k - abs(a - b), 0.0) * inv_k;
     return max(a, b) + h * h * k * 0.25;
@@ -676,9 +678,9 @@ fn smooth_max_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
 
 fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
     return smooth_max_fast(a, b, k, 1.0 / k);
-}"#;
+}";
 
-const HELPER_HASH_NOISE: &str = r#"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
+const HELPER_HASH_NOISE: &str = r"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
     let f = fract(p);
     let i = floor(p);
     let u = f * f * (3.0 - 2.0 * f);
@@ -698,14 +700,14 @@ const HELPER_HASH_NOISE: &str = r#"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> 
     let c0 = mix(c00, c10, u.y);
     let c1 = mix(c01, c11, u.y);
     return mix(c0, c1, u.z) * 2.0 - 1.0;
-}"#;
+}";
 
-const HELPER_QUAT_ROTATE: &str = r#"fn quat_rotate(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
+const HELPER_QUAT_ROTATE: &str = r"fn quat_rotate(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
     let t = 2.0 * cross(q.xyz, v);
     return v + q.w * t + cross(q.xyz, t);
-}"#;
+}";
 
-const HELPER_SDF_ROUNDED_CONE: &str = r#"fn sdf_rounded_cone(p: vec3<f32>, r1: f32, r2: f32, h: f32) -> f32 {
+const HELPER_SDF_ROUNDED_CONE: &str = r"fn sdf_rounded_cone(p: vec3<f32>, r1: f32, r2: f32, h: f32) -> f32 {
     let qx = length(p.xz);
     let qy = p.y + h;
     let ht = h * 2.0;
@@ -716,9 +718,9 @@ const HELPER_SDF_ROUNDED_CONE: &str = r#"fn sdf_rounded_cone(p: vec3<f32>, r1: f
     if (k > a * ht) { return length(vec2<f32>(qx, qy - ht)) - r2; }
     return qx * a + qy * b - r1;
 }
-"#;
+";
 
-const HELPER_SDF_PYRAMID: &str = r#"fn sdf_pyramid(p: vec3<f32>, h: f32) -> f32 {
+const HELPER_SDF_PYRAMID: &str = r"fn sdf_pyramid(p: vec3<f32>, h: f32) -> f32 {
     let ht = h * 2.0;
     let m2 = ht * ht + 0.25;
     let py = p.y + h;
@@ -738,9 +740,9 @@ const HELPER_SDF_PYRAMID: &str = r#"fn sdf_pyramid(p: vec3<f32>, h: f32) -> f32 
     if (min(-qx * m2 - qy * 0.5, qy) > 0.0) { d2 = 0.0; } else { d2 = min(a, b); }
     return sqrt((d2 + qz * qz) / m2) * sign(max(qz, -py));
 }
-"#;
+";
 
-const HELPER_SDF_OCTAHEDRON: &str = r#"fn sdf_octahedron(p: vec3<f32>, s: f32) -> f32 {
+const HELPER_SDF_OCTAHEDRON: &str = r"fn sdf_octahedron(p: vec3<f32>, s: f32) -> f32 {
     let ap = abs(p);
     let m = ap.x + ap.y + ap.z - s;
     var q: vec3<f32>;
@@ -751,9 +753,9 @@ const HELPER_SDF_OCTAHEDRON: &str = r#"fn sdf_octahedron(p: vec3<f32>, s: f32) -
     let k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
     return length(vec3<f32>(q.x, q.y - s + k, q.z - k));
 }
-"#;
+";
 
-const HELPER_SDF_HEX_PRISM: &str = r#"fn sdf_hex_prism(p: vec3<f32>, hex_r: f32, h: f32) -> f32 {
+const HELPER_SDF_HEX_PRISM: &str = r"fn sdf_hex_prism(p: vec3<f32>, hex_r: f32, h: f32) -> f32 {
     let kx: f32 = -0.8660254;
     let ky: f32 = 0.5;
     let kz: f32 = 0.57735027;
@@ -771,9 +773,9 @@ const HELPER_SDF_HEX_PRISM: &str = r#"fn sdf_hex_prism(p: vec3<f32>, hex_r: f32,
     let d_z = pz - h;
     return min(max(d_xy, d_z), 0.0) + length(max(vec2<f32>(d_xy, d_z), vec2<f32>(0.0)));
 }
-"#;
+";
 
-const HELPER_SDF_TRIANGLE: &str = r#"fn sdf_triangle(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> f32 {
+const HELPER_SDF_TRIANGLE: &str = r"fn sdf_triangle(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> f32 {
     let ba = b - a; let pa = p - a;
     let cb = c - b; let pb = p - b;
     let ac = a - c; let pc = p - c;
@@ -793,9 +795,9 @@ const HELPER_SDF_TRIANGLE: &str = r#"fn sdf_triangle(p: vec3<f32>, a: vec3<f32>,
         return sqrt(dot(nor, pa) * dot(nor, pa) / dot(nor, nor));
     }
 }
-"#;
+";
 
-const HELPER_SDF_BEZIER: &str = r#"fn sdf_bezier(pos: vec3<f32>, A: vec3<f32>, B: vec3<f32>, C: vec3<f32>, rad: f32) -> f32 {
+const HELPER_SDF_BEZIER: &str = r"fn sdf_bezier(pos: vec3<f32>, A: vec3<f32>, B: vec3<f32>, C: vec3<f32>, rad: f32) -> f32 {
     let a = B - A;
     let b = A - 2.0 * B + C;
     let c = a * 2.0;
@@ -830,18 +832,18 @@ const HELPER_SDF_BEZIER: &str = r#"fn sdf_bezier(pos: vec3<f32>, A: vec3<f32>, B
     }
     return sqrt(res) - rad;
 }
-"#;
+";
 
-const HELPER_SDF_LINK: &str = r#"fn sdf_link(p: vec3<f32>, le: f32, r1: f32, r2: f32) -> f32 {
+const HELPER_SDF_LINK: &str = r"fn sdf_link(p: vec3<f32>, le: f32, r1: f32, r2: f32) -> f32 {
     let qx = p.x;
     let qy = max(abs(p.y) - le, 0.0);
     let qz = p.z;
     let xy_len = sqrt(qx * qx + qy * qy) - r1;
     return sqrt(xy_len * xy_len + qz * qz) - r2;
 }
-"#;
+";
 
-const HELPER_SDF_CAPPED_CONE: &str = r#"fn sdf_capped_cone(p: vec3<f32>, h: f32, r1: f32, r2: f32) -> f32 {
+const HELPER_SDF_CAPPED_CONE: &str = r"fn sdf_capped_cone(p: vec3<f32>, h: f32, r1: f32, r2: f32) -> f32 {
     let qx = length(p.xz);
     let qy = p.y;
     let k1 = vec2<f32>(r2, h);
@@ -855,9 +857,9 @@ const HELPER_SDF_CAPPED_CONE: &str = r#"fn sdf_capped_cone(p: vec3<f32>, h: f32,
     if (cb.x < 0.0 && ca.y < 0.0) { s = -1.0; } else { s = 1.0; }
     return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
 }
-"#;
+";
 
-const HELPER_SDF_CAPPED_TORUS: &str = r#"fn sdf_capped_torus(p: vec3<f32>, ra: f32, rb: f32, an: f32) -> f32 {
+const HELPER_SDF_CAPPED_TORUS: &str = r"fn sdf_capped_torus(p: vec3<f32>, ra: f32, rb: f32, an: f32) -> f32 {
     let sc = vec2<f32>(sin(an), cos(an));
     let px = abs(p.x);
     var k: f32;
@@ -868,21 +870,21 @@ const HELPER_SDF_CAPPED_TORUS: &str = r#"fn sdf_capped_torus(p: vec3<f32>, ra: f
     }
     return sqrt(px * px + p.y * p.y + p.z * p.z + ra * ra - 2.0 * ra * k) - rb;
 }
-"#;
+";
 
-const HELPER_SDF_ROUNDED_CYLINDER: &str = r#"fn sdf_rounded_cylinder(p: vec3<f32>, r: f32, rr: f32, h: f32) -> f32 {
+const HELPER_SDF_ROUNDED_CYLINDER: &str = r"fn sdf_rounded_cylinder(p: vec3<f32>, r: f32, rr: f32, h: f32) -> f32 {
     let d = vec2<f32>(length(p.xz) - r + rr, abs(p.y) - h);
     return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0))) - rr;
 }
-"#;
+";
 
-const HELPER_SDF_TRIANGULAR_PRISM: &str = r#"fn sdf_triangular_prism(p: vec3<f32>, w: f32, h: f32) -> f32 {
+const HELPER_SDF_TRIANGULAR_PRISM: &str = r"fn sdf_triangular_prism(p: vec3<f32>, w: f32, h: f32) -> f32 {
     let q = abs(p);
     return max(q.z - h, max(q.x * 0.866025 + p.y * 0.5, -p.y) - w * 0.5);
 }
-"#;
+";
 
-const HELPER_SDF_CUT_SPHERE: &str = r#"fn sdf_cut_sphere(p: vec3<f32>, r: f32, h: f32) -> f32 {
+const HELPER_SDF_CUT_SPHERE: &str = r"fn sdf_cut_sphere(p: vec3<f32>, r: f32, h: f32) -> f32 {
     let w = sqrt(max(r * r - h * h, 0.0));
     let q = vec2<f32>(length(p.xz), p.y);
     let s = max((h - r) * q.x * q.x + w * w * (h + r - 2.0 * q.y), h * q.x - w * q.y);
@@ -890,9 +892,9 @@ const HELPER_SDF_CUT_SPHERE: &str = r#"fn sdf_cut_sphere(p: vec3<f32>, r: f32, h
     if (q.x < w) { return h - q.y; }
     return length(q - vec2<f32>(w, h));
 }
-"#;
+";
 
-const HELPER_SDF_CUT_HOLLOW_SPHERE: &str = r#"fn sdf_cut_hollow_sphere(p: vec3<f32>, r: f32, h: f32, t: f32) -> f32 {
+const HELPER_SDF_CUT_HOLLOW_SPHERE: &str = r"fn sdf_cut_hollow_sphere(p: vec3<f32>, r: f32, h: f32, t: f32) -> f32 {
     let w = sqrt(max(r * r - h * h, 0.0));
     let q = vec2<f32>(length(p.xz), p.y);
     if (h * q.x < w * q.y) {
@@ -900,9 +902,9 @@ const HELPER_SDF_CUT_HOLLOW_SPHERE: &str = r#"fn sdf_cut_hollow_sphere(p: vec3<f
     }
     return abs(length(q) - r) - t;
 }
-"#;
+";
 
-const HELPER_SDF_DEATH_STAR: &str = r#"fn sdf_death_star(p: vec3<f32>, ra: f32, rb: f32, d: f32) -> f32 {
+const HELPER_SDF_DEATH_STAR: &str = r"fn sdf_death_star(p: vec3<f32>, ra: f32, rb: f32, d: f32) -> f32 {
     let a = (ra * ra - rb * rb + d * d) / (2.0 * d);
     let b = sqrt(max(ra * ra - a * a, 0.0));
     let q = vec2<f32>(p.x, length(p.yz));
@@ -911,18 +913,18 @@ const HELPER_SDF_DEATH_STAR: &str = r#"fn sdf_death_star(p: vec3<f32>, ra: f32, 
     }
     return max(length(q) - ra, -(length(q - vec2<f32>(d, 0.0)) - rb));
 }
-"#;
+";
 
-const HELPER_SDF_SOLID_ANGLE: &str = r#"fn sdf_solid_angle(p: vec3<f32>, an: f32, ra: f32) -> f32 {
+const HELPER_SDF_SOLID_ANGLE: &str = r"fn sdf_solid_angle(p: vec3<f32>, an: f32, ra: f32) -> f32 {
     let c = vec2<f32>(sin(an), cos(an));
     let q = vec2<f32>(length(p.xz), p.y);
     let l = length(q) - ra;
     let m = length(q - c * clamp(dot(q, c), 0.0, ra));
     return max(l, m * sign(c.y * q.x - c.x * q.y));
 }
-"#;
+";
 
-const HELPER_SDF_RHOMBUS: &str = r#"fn ndot_rh(a: vec2<f32>, b: vec2<f32>) -> f32 {
+const HELPER_SDF_RHOMBUS: &str = r"fn ndot_rh(a: vec2<f32>, b: vec2<f32>) -> f32 {
     return a.x * b.x - a.y * b.y;
 }
 fn sdf_rhombus(p: vec3<f32>, la: f32, lb: f32, h: f32, ra: f32) -> f32 {
@@ -933,9 +935,9 @@ fn sdf_rhombus(p: vec3<f32>, la: f32, lb: f32, h: f32, ra: f32) -> f32 {
     let q = vec2<f32>(dxz, ap.y - h);
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0)));
 }
-"#;
+";
 
-const HELPER_SDF_HORSESHOE: &str = r#"fn sdf_horseshoe(pos: vec3<f32>, an: f32, r: f32, le: f32, w: f32, t: f32) -> f32 {
+const HELPER_SDF_HORSESHOE: &str = r"fn sdf_horseshoe(pos: vec3<f32>, an: f32, r: f32, le: f32, w: f32, t: f32) -> f32 {
     let c = vec2<f32>(cos(an), sin(an));
     let px = abs(pos.x);
     let l = length(vec2<f32>(px, pos.y));
@@ -949,9 +951,9 @@ const HELPER_SDF_HORSESHOE: &str = r#"fn sdf_horseshoe(pos: vec3<f32>, an: f32, 
     let d = abs(vec2<f32>(e, pos.z)) - vec2<f32>(w, t);
     return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0)));
 }
-"#;
+";
 
-const HELPER_SDF_VESICA: &str = r#"fn sdf_vesica(p: vec3<f32>, r: f32, d: f32) -> f32 {
+const HELPER_SDF_VESICA: &str = r"fn sdf_vesica(p: vec3<f32>, r: f32, d: f32) -> f32 {
     let px = abs(p.x);
     let py = length(p.yz);
     let b = sqrt(max(r * r - d * d, 0.0));
@@ -960,18 +962,18 @@ const HELPER_SDF_VESICA: &str = r#"fn sdf_vesica(p: vec3<f32>, r: f32, d: f32) -
     }
     return length(vec2<f32>(px - d, py)) - r;
 }
-"#;
+";
 
-const HELPER_SDF_INFINITE_CONE: &str = r#"fn sdf_infinite_cone(p: vec3<f32>, an: f32) -> f32 {
+const HELPER_SDF_INFINITE_CONE: &str = r"fn sdf_infinite_cone(p: vec3<f32>, an: f32) -> f32 {
     let c = vec2<f32>(sin(an), cos(an));
     let q = vec2<f32>(length(p.xz), -p.y);
     let d = length(q - c * max(dot(q, c), 0.0));
     if (q.x * c.y - q.y * c.x < 0.0) { return -d; }
     return d;
 }
-"#;
+";
 
-const HELPER_SDF_HEART: &str = r#"fn sdf_heart(p: vec3<f32>, s: f32) -> f32 {
+const HELPER_SDF_HEART: &str = r"fn sdf_heart(p: vec3<f32>, s: f32) -> f32 {
     let q = p / s;
     let x = length(q.xz);
     let y = -(q.y - 0.5);
@@ -983,18 +985,18 @@ const HELPER_SDF_HEART: &str = r#"fn sdf_heart(p: vec3<f32>, s: f32) -> f32 {
     if (iv <= 0.0) { return -0.02 * s; }
     return (pow(iv, 1.0 / 6.0) * 0.5 - 0.02) * s;
 }
-"#;
+";
 
-const HELPER_SDF_TUBE: &str = r#"fn sdf_tube(p: vec3<f32>, outer_r: f32, thick: f32, h: f32) -> f32 {
+const HELPER_SDF_TUBE: &str = r"fn sdf_tube(p: vec3<f32>, outer_r: f32, thick: f32, h: f32) -> f32 {
     let r = length(p.xz);
     let dr = abs(r - outer_r) - thick;
     let dy = abs(p.y) - h;
     let w = max(vec2<f32>(dr, dy), vec2<f32>(0.0));
     return min(max(dr, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_BARREL: &str = r#"fn sdf_barrel(p: vec3<f32>, radius: f32, h: f32, bulge: f32) -> f32 {
+const HELPER_SDF_BARREL: &str = r"fn sdf_barrel(p: vec3<f32>, radius: f32, h: f32, bulge: f32) -> f32 {
     let r = length(p.xz);
     let yn = clamp(p.y / h, -1.0, 1.0);
     let er = radius + bulge * (1.0 - yn * yn);
@@ -1003,9 +1005,9 @@ const HELPER_SDF_BARREL: &str = r#"fn sdf_barrel(p: vec3<f32>, radius: f32, h: f
     let w = max(vec2<f32>(dr, dy), vec2<f32>(0.0));
     return min(max(dr, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_DIAMOND: &str = r#"fn sdf_diamond(p: vec3<f32>, r: f32, h: f32) -> f32 {
+const HELPER_SDF_DIAMOND: &str = r"fn sdf_diamond(p: vec3<f32>, r: f32, h: f32) -> f32 {
     let q = vec2<f32>(length(p.xz), abs(p.y));
     let ba = vec2<f32>(-r, h);
     let qa = q - vec2<f32>(r, 0.0);
@@ -1015,9 +1017,9 @@ const HELPER_SDF_DIAMOND: &str = r#"fn sdf_diamond(p: vec3<f32>, r: f32, h: f32)
     if (q.x * h + q.y * r < r * h) { return -dist; }
     return dist;
 }
-"#;
+";
 
-const HELPER_SDF_CHAMFERED_CUBE: &str = r#"fn sdf_chamfered_cube(p: vec3<f32>, hx: f32, hy: f32, hz: f32, ch: f32) -> f32 {
+const HELPER_SDF_CHAMFERED_CUBE: &str = r"fn sdf_chamfered_cube(p: vec3<f32>, hx: f32, hy: f32, hz: f32, ch: f32) -> f32 {
     let ap = abs(p);
     let q = ap - vec3<f32>(hx, hy, hz);
     let d_box = min(max(q.x, max(q.y, q.z)), 0.0) + length(max(q, vec3<f32>(0.0)));
@@ -1025,9 +1027,9 @@ const HELPER_SDF_CHAMFERED_CUBE: &str = r#"fn sdf_chamfered_cube(p: vec3<f32>, h
     let d_ch = (ap.x + ap.y + ap.z - s + ch) * 0.57735;
     return max(d_box, d_ch);
 }
-"#;
+";
 
-const HELPER_SDF_SUPERELLIPSOID: &str = r#"fn sdf_superellipsoid(p: vec3<f32>, hx: f32, hy: f32, hz: f32, e1: f32, e2: f32) -> f32 {
+const HELPER_SDF_SUPERELLIPSOID: &str = r"fn sdf_superellipsoid(p: vec3<f32>, hx: f32, hy: f32, hz: f32, e1: f32, e2: f32) -> f32 {
     let qx = max(abs(p.x / hx), 0.00001);
     let qy = max(abs(p.y / hy), 0.00001);
     let qz = max(abs(p.z / hz), 0.00001);
@@ -1040,9 +1042,9 @@ const HELPER_SDF_SUPERELLIPSOID: &str = r#"fn sdf_superellipsoid(p: vec3<f32>, h
     let f = pow(v, ee1 * 0.5);
     return (f - 1.0) * min(hx, min(hy, hz)) * 0.5;
 }
-"#;
+";
 
-const HELPER_SDF_ROUNDED_X: &str = r#"fn sdf_rounded_x(p: vec3<f32>, w: f32, r: f32, h: f32) -> f32 {
+const HELPER_SDF_ROUNDED_X: &str = r"fn sdf_rounded_x(p: vec3<f32>, w: f32, r: f32, h: f32) -> f32 {
     let q = abs(p.xz);
     let s = min(q.x + q.y, w) * 0.5;
     let d2d = length(q - vec2<f32>(s)) - r;
@@ -1050,9 +1052,9 @@ const HELPER_SDF_ROUNDED_X: &str = r#"fn sdf_rounded_x(p: vec3<f32>, w: f32, r: 
     let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_PIE: &str = r#"fn sdf_pie(p: vec3<f32>, angle: f32, radius: f32, h: f32) -> f32 {
+const HELPER_SDF_PIE: &str = r"fn sdf_pie(p: vec3<f32>, angle: f32, radius: f32, h: f32) -> f32 {
     let q = vec2<f32>(p.x, p.z);
     let l = length(q) - radius;
     let sc = vec2<f32>(sin(angle), cos(angle));
@@ -1062,9 +1064,9 @@ const HELPER_SDF_PIE: &str = r#"fn sdf_pie(p: vec3<f32>, angle: f32, radius: f32
     let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_TRAPEZOID: &str = r#"fn _trap_ds(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+const HELPER_SDF_TRAPEZOID: &str = r"fn _trap_ds(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
     let dx = bx - ax;
     let dy = by - ay;
     let len_sq = dx * dx + dy * dy;
@@ -1092,9 +1094,9 @@ fn sdf_trapezoid(p: vec3<f32>, r1: f32, r2: f32, th: f32, hd: f32) -> f32 {
     let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_PARALLELOGRAM: &str = r#"fn _para_ds(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+const HELPER_SDF_PARALLELOGRAM: &str = r"fn _para_ds(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
     let dx = bx - ax;
     let dy = by - ay;
     let len_sq = dx * dx + dy * dy;
@@ -1130,9 +1132,9 @@ fn sdf_parallelogram(p: vec3<f32>, w: f32, ph: f32, sk: f32, hd: f32) -> f32 {
     let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_TUNNEL: &str = r#"fn sdf_tunnel(p: vec3<f32>, w: f32, h2d: f32, hd: f32) -> f32 {
+const HELPER_SDF_TUNNEL: &str = r"fn sdf_tunnel(p: vec3<f32>, w: f32, h2d: f32, hd: f32) -> f32 {
     let px = abs(p.x);
     let py = p.y;
     let dx = px - w;
@@ -1145,9 +1147,9 @@ const HELPER_SDF_TUNNEL: &str = r#"fn sdf_tunnel(p: vec3<f32>, w: f32, h2d: f32,
     let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_UNEVEN_CAPSULE: &str = r#"fn sdf_uneven_capsule(p: vec3<f32>, r1: f32, r2: f32, ch: f32, hd: f32) -> f32 {
+const HELPER_SDF_UNEVEN_CAPSULE: &str = r"fn sdf_uneven_capsule(p: vec3<f32>, r1: f32, r2: f32, ch: f32, hd: f32) -> f32 {
     let px = abs(p.x);
     let hh = ch * 2.0;
     let b = (r1 - r2) / hh;
@@ -1165,9 +1167,9 @@ const HELPER_SDF_UNEVEN_CAPSULE: &str = r#"fn sdf_uneven_capsule(p: vec3<f32>, r
     let ww = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_EGG: &str = r#"fn sdf_egg(p: vec3<f32>, ra: f32, rb: f32) -> f32 {
+const HELPER_SDF_EGG: &str = r"fn sdf_egg(p: vec3<f32>, ra: f32, rb: f32) -> f32 {
     let px = length(p.xz);
     let py = p.y;
     let r = ra - rb;
@@ -1179,9 +1181,9 @@ const HELPER_SDF_EGG: &str = r#"fn sdf_egg(p: vec3<f32>, ra: f32, rb: f32) -> f3
         return length(vec2<f32>(px + rb, py)) - ra;
     }
 }
-"#;
+";
 
-const HELPER_SDF_ARC_SHAPE: &str = r#"fn sdf_arc_shape(p: vec3<f32>, aperture: f32, radius: f32, thickness: f32, h: f32) -> f32 {
+const HELPER_SDF_ARC_SHAPE: &str = r"fn sdf_arc_shape(p: vec3<f32>, aperture: f32, radius: f32, thickness: f32, h: f32) -> f32 {
     let qx = abs(p.x);
     let qz = p.z;
     let sc = vec2<f32>(sin(aperture), cos(aperture));
@@ -1195,9 +1197,9 @@ const HELPER_SDF_ARC_SHAPE: &str = r#"fn sdf_arc_shape(p: vec3<f32>, aperture: f
     let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_MOON: &str = r#"fn sdf_moon(p: vec3<f32>, d: f32, ra: f32, rb: f32, h: f32) -> f32 {
+const HELPER_SDF_MOON: &str = r"fn sdf_moon(p: vec3<f32>, d: f32, ra: f32, rb: f32, h: f32) -> f32 {
     let qx = abs(p.x);
     let qz = p.z;
     let d_outer = length(vec2<f32>(qx, qz)) - ra;
@@ -1207,9 +1209,9 @@ const HELPER_SDF_MOON: &str = r#"fn sdf_moon(p: vec3<f32>, d: f32, ra: f32, rb: 
     let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_CROSS_SHAPE: &str = r#"fn sdf_cross_shape(p: vec3<f32>, len: f32, th: f32, rr: f32, h: f32) -> f32 {
+const HELPER_SDF_CROSS_SHAPE: &str = r"fn sdf_cross_shape(p: vec3<f32>, len: f32, th: f32, rr: f32, h: f32) -> f32 {
     let qx = abs(p.x);
     let qz = abs(p.z);
     let dh = vec2<f32>(qx - len, qz - th);
@@ -1221,9 +1223,9 @@ const HELPER_SDF_CROSS_SHAPE: &str = r#"fn sdf_cross_shape(p: vec3<f32>, len: f3
     let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_BLOBBY_CROSS: &str = r#"fn sdf_blobby_cross(p: vec3<f32>, size: f32, h: f32) -> f32 {
+const HELPER_SDF_BLOBBY_CROSS: &str = r"fn sdf_blobby_cross(p: vec3<f32>, size: f32, h: f32) -> f32 {
     let qx = abs(p.x) / size;
     let qz = abs(p.z) / size;
     let n = qx + qz;
@@ -1244,9 +1246,9 @@ const HELPER_SDF_BLOBBY_CROSS: &str = r#"fn sdf_blobby_cross(p: vec3<f32>, size:
     let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_PARABOLA_SEGMENT: &str = r#"fn sdf_parabola_segment(p: vec3<f32>, w: f32, ph: f32, hd: f32) -> f32 {
+const HELPER_SDF_PARABOLA_SEGMENT: &str = r"fn sdf_parabola_segment(p: vec3<f32>, w: f32, ph: f32, hd: f32) -> f32 {
     let px = abs(p.x);
     let py = p.y;
     let ww_sq = w * w;
@@ -1274,9 +1276,9 @@ const HELPER_SDF_PARABOLA_SEGMENT: &str = r#"fn sdf_parabola_segment(p: vec3<f32
     let ext = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(ext);
 }
-"#;
+";
 
-const HELPER_SDF_REGULAR_POLYGON: &str = r#"fn sdf_regular_polygon(p: vec3<f32>, radius: f32, n: f32, hh: f32) -> f32 {
+const HELPER_SDF_REGULAR_POLYGON: &str = r"fn sdf_regular_polygon(p: vec3<f32>, radius: f32, n: f32, hh: f32) -> f32 {
     let qx = abs(p.x);
     let qz = p.z;
     let nn = max(n, 3.0);
@@ -1290,9 +1292,9 @@ const HELPER_SDF_REGULAR_POLYGON: &str = r#"fn sdf_regular_polygon(p: vec3<f32>,
     let w = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_STAR_POLYGON: &str = r#"fn sdf_star_polygon(p: vec3<f32>, radius: f32, np: f32, m: f32, hh: f32) -> f32 {
+const HELPER_SDF_STAR_POLYGON: &str = r"fn sdf_star_polygon(p: vec3<f32>, radius: f32, np: f32, m: f32, hh: f32) -> f32 {
     let qx = abs(p.x);
     let qz = p.z;
     let n = max(np, 3.0);
@@ -1316,9 +1318,9 @@ const HELPER_SDF_STAR_POLYGON: &str = r#"fn sdf_star_polygon(p: vec3<f32>, radiu
     let w = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_STAIRS: &str = r#"fn _stair_box(lx: f32, ly: f32, s: f32, sw: f32, sh: f32) -> f32 {
+const HELPER_SDF_STAIRS: &str = r"fn _stair_box(lx: f32, ly: f32, s: f32, sw: f32, sh: f32) -> f32 {
     let cx = s * sw + sw * 0.5;
     let hy = (s + 1.0) * sh * 0.5;
     let dx = abs(lx - cx) - sw * 0.5;
@@ -1341,9 +1343,9 @@ fn sdf_stairs(p: vec3<f32>, sw: f32, sh: f32, ns: f32, hd: f32) -> f32 {
     let w = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_HELIX: &str = r#"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_r: f32, pitch: f32, hh: f32) -> f32 {
+const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_r: f32, pitch: f32, hh: f32) -> f32 {
     let r_xz = length(vec2<f32>(p.x, p.z));
     let theta = atan2(p.z, p.x);
     let py = p.y;
@@ -1362,7 +1364,7 @@ const HELPER_SDF_HELIX: &str = r#"fn sdf_helix(p: vec3<f32>, major_r: f32, minor
     let d_cap = abs(py) - hh;
     return max(d_tube, d_cap);
 }
-"#;
+";
 
 #[cfg(test)]
 mod tests {

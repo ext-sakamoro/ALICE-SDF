@@ -35,8 +35,16 @@ pub struct Instruction {
     /// Offset to skip this subtree (for BVH pruning in Phase 3)
     /// Points to the instruction index after this subtree
     pub skip_offset: u32, // 4 bytes
-                          // padding: 28 bytes (auto-padded to 64-byte boundary)
-} // Total: 64 bytes = 1 cache line
+
+    /// Start index into the auxiliary data buffer (`CompiledSdf::aux_data`).
+    /// Used by operations whose data exceeds `params` capacity
+    /// (e.g. ProjectiveTransform inv_matrix, LatticeDeform control_points).
+    pub aux_offset: u32, // 4 bytes
+
+    /// Number of floats in the auxiliary data slice starting at `aux_offset`.
+    pub aux_len: u32, // 4 bytes
+                      // padding to 64-byte boundary
+} // Total: ~48 bytes + padding
 
 impl Instruction {
     /// Create a new instruction
@@ -48,6 +56,8 @@ impl Instruction {
             flags: 0,
             child_count: 0,
             skip_offset: 0,
+            aux_offset: 0,
+            aux_len: 0,
         }
     }
 

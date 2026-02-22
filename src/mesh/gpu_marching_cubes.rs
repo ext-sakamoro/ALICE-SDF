@@ -291,8 +291,8 @@ pub fn gpu_marching_cubes_from_shader(
     // ====== Dispatch Pass 1 + Pass 2 ======
 
     let wg = 4u32;
-    let dispatch_grid = (grid_size as u32 + wg - 1) / wg;
-    let dispatch_cell = (res + wg - 1) / wg;
+    let dispatch_grid = (grid_size as u32).div_ceil(wg);
+    let dispatch_cell = res.div_ceil(wg);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("MC Pass 1+2 Encoder"),
@@ -442,7 +442,7 @@ pub fn gpu_marching_cubes_from_shader(
     });
 
     // Dispatch pass 3: one thread per cell, @workgroup_size(64)
-    let dispatch_cells = (cell_total as u32 + 63) / 64;
+    let dispatch_cells = (cell_total as u32).div_ceil(64);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("MC Pass 3 Encoder"),
@@ -538,7 +538,7 @@ fn dispatch_gpu_prefix_sum(
 ) -> Result<wgpu::Buffer, GpuError> {
     let wg = gpu_mc_shaders::PREFIX_SUM_WG;
     let n = count as u32;
-    let num_blocks = (n + wg - 1) / wg;
+    let num_blocks = n.div_ceil(wg);
 
     // Compile scan and propagate shaders
     let scan_source = gpu_mc_shaders::generate_prefix_sum_scan_shader();
@@ -596,6 +596,7 @@ fn dispatch_gpu_prefix_sum(
 }
 
 /// Recursive helper for multi-level GPU prefix sum
+#[allow(clippy::too_many_arguments)]
 fn gpu_prefix_sum_recursive(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -678,7 +679,7 @@ fn gpu_prefix_sum_recursive(
     }
 
     // Recursively scan block sums
-    let next_num_blocks = (num_blocks + wg - 1) / wg;
+    let next_num_blocks = num_blocks.div_ceil(wg);
     let scanned_block_sums = gpu_prefix_sum_recursive(
         device,
         queue,

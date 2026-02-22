@@ -33,6 +33,10 @@ struct CoordFrame {
     opcode: OpCode,
     /// Parameters for post-processing
     params: [f32; 4],
+    /// Auxiliary data offset into `CompiledSdf::aux_data`
+    aux_offset: u32,
+    /// Auxiliary data length
+    aux_len: u32,
 }
 
 impl Default for CoordFrame {
@@ -43,6 +47,8 @@ impl Default for CoordFrame {
             inst_idx: 0,
             opcode: OpCode::End,
             params: [0.0; 4],
+            aux_offset: 0,
+            aux_len: 0,
         }
     }
 }
@@ -694,6 +700,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Translate,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -710,6 +718,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Rotate,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -732,6 +742,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Scale,
                     params: [factor, 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -750,6 +762,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::ScaleNonUniform,
                     params: [min_factor, 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -766,6 +780,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Twist,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -779,6 +795,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Bend,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -792,6 +810,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::RepeatInfinite,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -808,6 +828,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::RepeatFinite,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -827,6 +849,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Round,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
                 // Round doesn't modify point, only post-processes distance
@@ -839,6 +863,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Onion,
                     params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
                 // Onion doesn't modify point, only post-processes distance
@@ -851,6 +877,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Elongate,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -865,6 +893,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Noise,
                     params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
                 // Noise doesn't modify point, only post-processes distance
@@ -877,6 +907,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Mirror,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -891,6 +923,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::OctantMirror,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -917,6 +951,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Revolution,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -930,6 +966,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Extrude,
                     params: [inst.params[0], p.z, 0.0, 0.0], // store half_height and original z
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -944,6 +982,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Taper,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -957,6 +997,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::Displacement,
                     params: [inst.params[0], 0.0, 0.0, 0.0], // store strength
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
                 // Displacement doesn't modify point, only post-processes distance
@@ -969,6 +1011,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::PolarRepeat,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -983,6 +1027,8 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                     inst_idx,
                     opcode: OpCode::SweepBezier,
                     params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
                 };
                 csp += 1;
 
@@ -1027,6 +1073,44 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                         let d = value_stack[vsp - 1];
                         value_stack[vsp - 1] = modifier_displacement(d, frame.point, strength);
                     }
+                    OpCode::ProjectiveTransform => {
+                        let lipschitz_bound = frame.params[0];
+                        value_stack[vsp - 1] *= lipschitz_bound;
+                    }
+                    OpCode::HeightmapDisplacement => {
+                        let amplitude = frame.params[0];
+                        let hm_scale = frame.params[1];
+                        let aux_off = frame.aux_offset as usize;
+                        if frame.aux_len >= 2 {
+                            let aux = &sdf.aux_data[aux_off..aux_off + frame.aux_len as usize];
+                            let w = aux[0] as u32;
+                            let h = aux[1] as u32;
+                            let hmap = &aux[2..];
+                            let disp = crate::modifiers::heightmap_displacement(
+                                frame.point,
+                                hmap,
+                                w,
+                                h,
+                                amplitude,
+                                hm_scale,
+                            );
+                            value_stack[vsp - 1] -= disp;
+                        }
+                    }
+                    OpCode::SurfaceRoughness => {
+                        let frequency = frame.params[0];
+                        let amplitude = frame.params[1];
+                        let octaves = frame.params[2] as u32;
+                        let child_dist = value_stack[vsp - 1];
+                        let roughness = crate::modifiers::surface_roughness(
+                            frame.point,
+                            child_dist,
+                            frequency,
+                            amplitude,
+                            octaves,
+                        );
+                        value_stack[vsp - 1] = roughness;
+                    }
                     _ => {}
                 }
 
@@ -1039,17 +1123,171 @@ pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
                 break;
             }
 
-            // New opcodes: fallback to zero (these need full implementations)
+            OpCode::ProjectiveTransform => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::ProjectiveTransform,
+                    params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: inst.aux_offset,
+                    aux_len: inst.aux_len,
+                };
+                csp += 1;
+                // Apply projective transform from aux_data
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 16 {
+                    let mut inv_m = [0.0f32; 16];
+                    inv_m.copy_from_slice(&sdf.aux_data[aux_off..aux_off + 16]);
+                    let (q, _) = crate::transforms::projective::projective_transform(p, &inv_m);
+                    p = q;
+                }
+            }
+            OpCode::LatticeDeform => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::LatticeDeform,
+                    params: [0.0; 4],
+                    aux_offset: inst.aux_offset,
+                    aux_len: inst.aux_len,
+                };
+                csp += 1;
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 9 {
+                    let aux = &sdf.aux_data[aux_off..aux_off + inst.aux_len as usize];
+                    let nx = aux[0] as u32;
+                    let ny = aux[1] as u32;
+                    let nz = aux[2] as u32;
+                    let bbox_min = Vec3::new(aux[3], aux[4], aux[5]);
+                    let bbox_max = Vec3::new(aux[6], aux[7], aux[8]);
+                    let cp_data = &aux[9..];
+                    let num_cps = cp_data.len() / 3;
+                    let control_points: Vec<Vec3> = (0..num_cps)
+                        .map(|i| Vec3::new(cp_data[i * 3], cp_data[i * 3 + 1], cp_data[i * 3 + 2]))
+                        .collect();
+                    let (q, _) = crate::transforms::lattice::lattice_deform(
+                        p,
+                        &control_points,
+                        nx,
+                        ny,
+                        nz,
+                        bbox_min,
+                        bbox_max,
+                    );
+                    p = q;
+                }
+            }
+            OpCode::SdfSkinning => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::SdfSkinning,
+                    params: [0.0; 4],
+                    aux_offset: inst.aux_offset,
+                    aux_len: inst.aux_len,
+                };
+                csp += 1;
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 1 {
+                    let aux = &sdf.aux_data[aux_off..aux_off + inst.aux_len as usize];
+                    let bone_count = aux[0] as usize;
+                    let mut bones = Vec::with_capacity(bone_count);
+                    let mut cursor = 1;
+                    for _ in 0..bone_count {
+                        let mut inv_bind = [0.0f32; 16];
+                        let mut cur_pose = [0.0f32; 16];
+                        inv_bind.copy_from_slice(&aux[cursor..cursor + 16]);
+                        cursor += 16;
+                        cur_pose.copy_from_slice(&aux[cursor..cursor + 16]);
+                        cursor += 16;
+                        let weight = aux[cursor];
+                        cursor += 1;
+                        bones.push(crate::transforms::skinning::BoneTransform {
+                            inv_bind_pose: inv_bind,
+                            current_pose: cur_pose,
+                            weight,
+                        });
+                    }
+                    let (q, _) = crate::transforms::skinning::sdf_skinning(p, &bones);
+                    p = q;
+                }
+            }
+            OpCode::IcosahedralSymmetry => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::IcosahedralSymmetry,
+                    params: [0.0; 4],
+                    aux_offset: 0,
+                    aux_len: 0,
+                };
+                csp += 1;
+                p = crate::modifiers::icosahedral_fold(p);
+            }
+            OpCode::IFS => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::IFS,
+                    params: [inst.params[0], 0.0, 0.0, 0.0],
+                    aux_offset: inst.aux_offset,
+                    aux_len: inst.aux_len,
+                };
+                csp += 1;
+                let iterations = inst.params[0] as u32;
+                let aux_off = inst.aux_offset as usize;
+                if inst.aux_len >= 1 {
+                    let aux = &sdf.aux_data[aux_off..aux_off + inst.aux_len as usize];
+                    let transform_count = aux[0] as usize;
+                    let mut transforms = Vec::with_capacity(transform_count);
+                    for i in 0..transform_count {
+                        let base = 1 + i * 16;
+                        let mut mat = [0.0f32; 16];
+                        mat.copy_from_slice(&aux[base..base + 16]);
+                        transforms.push(mat);
+                    }
+                    let (q, _) = crate::modifiers::ifs_fold_with_scale(p, &transforms, iterations);
+                    p = q;
+                }
+            }
+            OpCode::HeightmapDisplacement => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::HeightmapDisplacement,
+                    params: [inst.params[0], inst.params[1], 0.0, 0.0],
+                    aux_offset: inst.aux_offset,
+                    aux_len: inst.aux_len,
+                };
+                csp += 1;
+            }
+            OpCode::SurfaceRoughness => {
+                coord_stack[csp] = CoordFrame {
+                    point: p,
+                    scale_correction,
+                    inst_idx,
+                    opcode: OpCode::SurfaceRoughness,
+                    params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
+                    aux_offset: 0,
+                    aux_len: 0,
+                };
+                csp += 1;
+            }
+
+            // Remaining opcodes: fallback
             _ => {
-                // 2D prims and new ops push a value
                 if inst.opcode.is_primitive() {
                     value_stack[vsp] = p.length() * scale_correction;
                     vsp += 1;
                 } else if inst.opcode.is_binary_op() {
                     vsp -= 1;
-                    // Leave top of stack unchanged
                 }
-                // Modifiers: do nothing (child will handle)
             }
         }
     }

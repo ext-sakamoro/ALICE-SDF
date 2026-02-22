@@ -19,7 +19,7 @@ use crate::compiled::WgslShader;
 /// Output: flat f32 buffer of SDF distances.
 pub fn generate_sdf_grid_shader(sdf_shader: &WgslShader) -> String {
     format!(
-        r#"// ALICE-SDF GPU Marching Cubes - Pass 1: SDF Grid Eval
+        r"// ALICE-SDF GPU Marching Cubes - Pass 1: SDF Grid Eval
 
 struct GridUniforms {{
     resolution: u32,
@@ -52,7 +52,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let idx = gid.x + gid.y * grid_res + gid.z * grid_res * grid_res;
     sdf_grid[idx] = distance;
 }}
-"#,
+",
         sdf_func = sdf_shader.source,
     )
 }
@@ -63,7 +63,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// vertex count from TRI_TABLE. Output count per cell for prefix sum.
 pub fn generate_classify_shader() -> String {
     format!(
-        r#"// ALICE-SDF GPU Marching Cubes - Pass 2: Cell Classification
+        r"// ALICE-SDF GPU Marching Cubes - Pass 2: Cell Classification
 
 struct GridUniforms {{
     resolution: u32,
@@ -134,7 +134,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         atomicAdd(&total_vertex_count, num_verts);
     }}
 }}
-"#,
+",
         edge_table = generate_edge_table_wgsl(),
         vertex_count_table = generate_vertex_count_table_wgsl(),
     )
@@ -146,7 +146,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// Uses tetrahedral gradient for normal estimation.
 pub fn generate_vertex_shader(sdf_shader: &WgslShader) -> String {
     format!(
-        r#"// ALICE-SDF GPU Marching Cubes - Pass 3: Vertex Generation
+        r"// ALICE-SDF GPU Marching Cubes - Pass 3: Vertex Generation
 
 struct GridUniforms {{
     resolution: u32,
@@ -311,7 +311,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         vert_idx += 1u;
     }}
 }}
-"#,
+",
         sdf_func = sdf_shader.source,
         tri_table = generate_tri_table_flat_wgsl(),
     )
@@ -400,7 +400,7 @@ pub const PREFIX_SUM_WG: u32 = 256;
 /// Block sums are written to `block_sums` for recursive scanning.
 pub fn generate_prefix_sum_scan_shader() -> String {
     format!(
-        r#"// ALICE-SDF GPU Prefix Sum - Scan Pass (Hillis-Steele)
+        r"// ALICE-SDF GPU Prefix Sum - Scan Pass (Hillis-Steele)
 
 @group(0) @binding(0) var<storage, read> input: array<u32>;
 @group(0) @binding(1) var<storage, read_write> output: array<u32>;
@@ -479,7 +479,7 @@ fn main(
         block_sums[wid.x] = inclusive;
     }}
 }}
-"#,
+",
         wg = PREFIX_SUM_WG,
     )
 }
@@ -489,7 +489,7 @@ fn main(
 /// Adds scanned block sums back to each element (skipping block 0).
 pub fn generate_prefix_sum_propagate_shader() -> String {
     format!(
-        r#"// ALICE-SDF GPU Prefix Sum - Propagate Pass
+        r"// ALICE-SDF GPU Prefix Sum - Propagate Pass
 
 @group(0) @binding(0) var<storage, read_write> data: array<u32>;
 @group(0) @binding(1) var<storage, read> block_offsets: array<u32>;
@@ -512,7 +512,7 @@ fn main(
         data[global_id] = data[global_id] + block_offsets[wid.x];
     }}
 }}
-"#,
+",
         wg = PREFIX_SUM_WG,
     )
 }

@@ -307,7 +307,7 @@ impl GpuEvaluator {
 
             // Calculate workgroup count (adaptive threads per workgroup)
             let wg = self.workgroup_size;
-            let workgroup_count = (point_count as u32 + wg - 1) / wg;
+            let workgroup_count = (point_count as u32).div_ceil(wg);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -343,7 +343,7 @@ impl GpuEvaluator {
 
     /// Get information about the GPU being used
     pub fn device_info(&self) -> String {
-        format!("WebGPU Device (via wgpu)")
+        "WebGPU Device (via wgpu)".to_string()
     }
 
     /// Create a persistent buffer pool for repeated evaluations
@@ -419,7 +419,7 @@ impl GpuEvaluator {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            let workgroup_count = (point_count as u32 + 255) / 256;
+            let workgroup_count = (point_count as u32).div_ceil(256);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -686,7 +686,7 @@ impl GpuEvaluator {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            let workgroup_count = (point_count as u32 + 255) / 256;
+            let workgroup_count = (point_count as u32).div_ceil(256);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -1025,7 +1025,7 @@ impl GpuEvaluator {
             });
             compute_pass.set_pipeline(full_pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            let workgroup_count = (point_count as u32 + 255) / 256;
+            let workgroup_count = (point_count as u32).div_ceil(256);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -1182,7 +1182,7 @@ impl std::fmt::Debug for GpuBufferPool {
                 "output_bytes",
                 &(self.capacity * std::mem::size_of::<GpuOutputDistance>()),
             )
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

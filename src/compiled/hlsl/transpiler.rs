@@ -23,6 +23,7 @@ use crate::types::SdfNode;
 use std::fmt::Write;
 
 /// Epsilon for constant folding (skip operations that are no-ops)
+#[allow(dead_code)]
 const FOLD_EPSILON: f32 = 1e-6;
 
 // ============================================================================
@@ -207,13 +208,13 @@ impl HlslShader {
         };
 
         format!(
-            r#"// ALICE-SDF Generated HLSL for UE5 Custom Node
+            r"// ALICE-SDF Generated HLSL for UE5 Custom Node
 // Input: float3 p (World Position)
 // Output: float (SDF Distance)
 {dynamic_note}
 {source}
 return sdf_eval(p);
-"#,
+",
             dynamic_note = dynamic_note,
             source = self.source
         )
@@ -228,7 +229,7 @@ return sdf_eval(p);
         };
 
         format!(
-            r#"// ALICE-SDF Generated HLSL Compute Shader ({mode:?} Mode)
+            r"// ALICE-SDF Generated HLSL Compute Shader ({mode:?} Mode)
 
 struct InputPoint {{
     float x, y, z, _pad;
@@ -254,7 +255,7 @@ void main(uint3 id : SV_DispatchThreadID) {{
     float3 p = float3(pt.x, pt.y, pt.z);
     output_distances[id.x].distance = sdf_eval(p);
 }}
-"#,
+",
             mode = self.mode,
             params_decl = params_decl,
             source = self.source
@@ -323,6 +324,7 @@ struct HlslTranspiler {
     params: Vec<f32>,
 }
 
+#[allow(dead_code)]
 impl HlslTranspiler {
     fn new(mode: HlslTranspileMode) -> Self {
         HlslTranspiler {
@@ -576,7 +578,7 @@ impl HlslTranspiler {
 }
 
 // Helper function definitions for HLSL
-const HELPER_HASH_NOISE: &str = r#"float hash_noise_3d(float3 p, uint seed) {
+const HELPER_HASH_NOISE: &str = r"float hash_noise_3d(float3 p, uint seed) {
     float3 f = frac(p);
     float3 i = floor(p);
     float3 u = f * f * (3.0 - 2.0 * f);
@@ -596,14 +598,14 @@ const HELPER_HASH_NOISE: &str = r#"float hash_noise_3d(float3 p, uint seed) {
     float c0 = lerp(c00, c10, u.y);
     float c1 = lerp(c01, c11, u.y);
     return lerp(c0, c1, u.z) * 2.0 - 1.0;
-}"#;
+}";
 
-const HELPER_QUAT_ROTATE: &str = r#"float3 quat_rotate(float3 v, float4 q) {
+const HELPER_QUAT_ROTATE: &str = r"float3 quat_rotate(float3 v, float4 q) {
     float3 t = 2.0 * cross(q.xyz, v);
     return v + q.w * t + cross(q.xyz, t);
-}"#;
+}";
 
-const HELPER_SDF_ROUNDED_CONE: &str = r#"float sdf_rounded_cone(float3 p, float r1, float r2, float h) {
+const HELPER_SDF_ROUNDED_CONE: &str = r"float sdf_rounded_cone(float3 p, float r1, float r2, float h) {
     float qx = length(p.xz);
     float qy = p.y + h;
     float ht = h * 2.0;
@@ -614,9 +616,9 @@ const HELPER_SDF_ROUNDED_CONE: &str = r#"float sdf_rounded_cone(float3 p, float 
     if (k > a * ht) return length(float2(qx, qy - ht)) - r2;
     return qx * a + qy * b - r1;
 }
-"#;
+";
 
-const HELPER_SDF_PYRAMID: &str = r#"float sdf_pyramid(float3 p, float h) {
+const HELPER_SDF_PYRAMID: &str = r"float sdf_pyramid(float3 p, float h) {
     float ht = h * 2.0;
     float m2 = ht * ht + 0.25;
     float py = p.y + h;
@@ -635,9 +637,9 @@ const HELPER_SDF_PYRAMID: &str = r#"float sdf_pyramid(float3 p, float h) {
     float d2 = (min(-qx * m2 - qy * 0.5, qy) > 0.0) ? 0.0 : min(a, b);
     return sqrt((d2 + qz * qz) / m2) * sign(max(qz, -py));
 }
-"#;
+";
 
-const HELPER_SDF_OCTAHEDRON: &str = r#"float sdf_octahedron(float3 p, float s) {
+const HELPER_SDF_OCTAHEDRON: &str = r"float sdf_octahedron(float3 p, float s) {
     float3 ap = abs(p);
     float m = ap.x + ap.y + ap.z - s;
     float3 q;
@@ -648,9 +650,9 @@ const HELPER_SDF_OCTAHEDRON: &str = r#"float sdf_octahedron(float3 p, float s) {
     float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
     return length(float3(q.x, q.y - s + k, q.z - k));
 }
-"#;
+";
 
-const HELPER_SDF_HEX_PRISM: &str = r#"float sdf_hex_prism(float3 p, float hex_r, float h) {
+const HELPER_SDF_HEX_PRISM: &str = r"float sdf_hex_prism(float3 p, float hex_r, float h) {
     float kx = -0.8660254;
     float ky = 0.5;
     float kz = 0.57735027;
@@ -668,9 +670,9 @@ const HELPER_SDF_HEX_PRISM: &str = r#"float sdf_hex_prism(float3 p, float hex_r,
     float d_z = pz - h;
     return min(max(d_xy, d_z), 0.0) + length(max(float2(d_xy, d_z), float2(0.0, 0.0)));
 }
-"#;
+";
 
-const HELPER_SDF_TRIANGLE: &str = r#"float sdf_triangle(float3 p, float3 a, float3 b, float3 c) {
+const HELPER_SDF_TRIANGLE: &str = r"float sdf_triangle(float3 p, float3 a, float3 b, float3 c) {
     float3 ba = b - a; float3 pa = p - a;
     float3 cb = c - b; float3 pb = p - b;
     float3 ac = a - c; float3 pc = p - c;
@@ -690,9 +692,9 @@ const HELPER_SDF_TRIANGLE: &str = r#"float sdf_triangle(float3 p, float3 a, floa
         return sqrt(dot(nor, pa) * dot(nor, pa) / dot(nor, nor));
     }
 }
-"#;
+";
 
-const HELPER_SDF_BEZIER: &str = r#"float sdf_bezier(float3 pos, float3 A, float3 B, float3 C, float rad) {
+const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(float3 pos, float3 A, float3 B, float3 C, float rad) {
     float3 a = B - A;
     float3 b = A - 2.0 * B + C;
     float3 c = a * 2.0;
@@ -727,18 +729,18 @@ const HELPER_SDF_BEZIER: &str = r#"float sdf_bezier(float3 pos, float3 A, float3
     }
     return sqrt(res) - rad;
 }
-"#;
+";
 
-const HELPER_SDF_LINK: &str = r#"float sdf_link(float3 p, float le, float r1, float r2) {
+const HELPER_SDF_LINK: &str = r"float sdf_link(float3 p, float le, float r1, float r2) {
     float qx = p.x;
     float qy = max(abs(p.y) - le, 0.0);
     float qz = p.z;
     float xy_len = sqrt(qx * qx + qy * qy) - r1;
     return sqrt(xy_len * xy_len + qz * qz) - r2;
 }
-"#;
+";
 
-const HELPER_SDF_CAPPED_CONE: &str = r#"float sdf_capped_cone(float3 p, float h, float r1, float r2) {
+const HELPER_SDF_CAPPED_CONE: &str = r"float sdf_capped_cone(float3 p, float h, float r1, float r2) {
     float qx = length(p.xz);
     float qy = p.y;
     float2 k1 = float2(r2, h);
@@ -750,29 +752,29 @@ const HELPER_SDF_CAPPED_CONE: &str = r#"float sdf_capped_cone(float3 p, float h,
     float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
     return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
 }
-"#;
+";
 
-const HELPER_SDF_CAPPED_TORUS: &str = r#"float sdf_capped_torus(float3 p, float ra, float rb, float an) {
+const HELPER_SDF_CAPPED_TORUS: &str = r"float sdf_capped_torus(float3 p, float ra, float rb, float an) {
     float2 sc = float2(sin(an), cos(an));
     float px = abs(p.x);
     float k = (sc.y * px > sc.x * p.y) ? dot(float2(px, p.y), sc) : length(float2(px, p.y));
     return sqrt(px * px + p.y * p.y + p.z * p.z + ra * ra - 2.0 * ra * k) - rb;
 }
-"#;
+";
 
-const HELPER_SDF_ROUNDED_CYLINDER: &str = r#"float sdf_rounded_cylinder(float3 p, float r, float rr, float h) {
+const HELPER_SDF_ROUNDED_CYLINDER: &str = r"float sdf_rounded_cylinder(float3 p, float r, float rr, float h) {
     float2 d = float2(length(p.xz) - r + rr, abs(p.y) - h);
     return min(max(d.x, d.y), 0.0) + length(max(d, float2(0.0, 0.0))) - rr;
 }
-"#;
+";
 
-const HELPER_SDF_TRIANGULAR_PRISM: &str = r#"float sdf_triangular_prism(float3 p, float w, float h) {
+const HELPER_SDF_TRIANGULAR_PRISM: &str = r"float sdf_triangular_prism(float3 p, float w, float h) {
     float3 q = abs(p);
     return max(q.z - h, max(q.x * 0.866025 + p.y * 0.5, -p.y) - w * 0.5);
 }
-"#;
+";
 
-const HELPER_SDF_CUT_SPHERE: &str = r#"float sdf_cut_sphere(float3 p, float r, float h) {
+const HELPER_SDF_CUT_SPHERE: &str = r"float sdf_cut_sphere(float3 p, float r, float h) {
     float w = sqrt(max(r * r - h * h, 0.0));
     float2 q = float2(length(p.xz), p.y);
     float s = max((h - r) * q.x * q.x + w * w * (h + r - 2.0 * q.y), h * q.x - w * q.y);
@@ -780,17 +782,17 @@ const HELPER_SDF_CUT_SPHERE: &str = r#"float sdf_cut_sphere(float3 p, float r, f
     if (q.x < w) return h - q.y;
     return length(q - float2(w, h));
 }
-"#;
+";
 
-const HELPER_SDF_CUT_HOLLOW_SPHERE: &str = r#"float sdf_cut_hollow_sphere(float3 p, float r, float h, float t) {
+const HELPER_SDF_CUT_HOLLOW_SPHERE: &str = r"float sdf_cut_hollow_sphere(float3 p, float r, float h, float t) {
     float w = sqrt(max(r * r - h * h, 0.0));
     float2 q = float2(length(p.xz), p.y);
     if (h * q.x < w * q.y) return length(q - float2(w, h)) - t;
     return abs(length(q) - r) - t;
 }
-"#;
+";
 
-const HELPER_SDF_DEATH_STAR: &str = r#"float sdf_death_star(float3 p, float ra, float rb, float d) {
+const HELPER_SDF_DEATH_STAR: &str = r"float sdf_death_star(float3 p, float ra, float rb, float d) {
     float a = (ra * ra - rb * rb + d * d) / (2.0 * d);
     float b = sqrt(max(ra * ra - a * a, 0.0));
     float2 q = float2(p.x, length(p.yz));
@@ -798,18 +800,18 @@ const HELPER_SDF_DEATH_STAR: &str = r#"float sdf_death_star(float3 p, float ra, 
         return length(q - float2(a, b));
     return max(length(q) - ra, -(length(q - float2(d, 0.0)) - rb));
 }
-"#;
+";
 
-const HELPER_SDF_SOLID_ANGLE: &str = r#"float sdf_solid_angle(float3 p, float an, float ra) {
+const HELPER_SDF_SOLID_ANGLE: &str = r"float sdf_solid_angle(float3 p, float an, float ra) {
     float2 c = float2(sin(an), cos(an));
     float2 q = float2(length(p.xz), p.y);
     float l = length(q) - ra;
     float m = length(q - c * clamp(dot(q, c), 0.0, ra));
     return max(l, m * sign(c.y * q.x - c.x * q.y));
 }
-"#;
+";
 
-const HELPER_SDF_RHOMBUS: &str = r#"float ndot_rh(float2 a, float2 b) {
+const HELPER_SDF_RHOMBUS: &str = r"float ndot_rh(float2 a, float2 b) {
     return a.x * b.x - a.y * b.y;
 }
 float sdf_rhombus(float3 p, float la, float lb, float h, float ra) {
@@ -820,9 +822,9 @@ float sdf_rhombus(float3 p, float la, float lb, float h, float ra) {
     float2 q = float2(dxz, ap.y - h);
     return min(max(q.x, q.y), 0.0) + length(max(q, float2(0.0, 0.0)));
 }
-"#;
+";
 
-const HELPER_SDF_HORSESHOE: &str = r#"float sdf_horseshoe(float3 pos, float an, float r, float le, float w, float t) {
+const HELPER_SDF_HORSESHOE: &str = r"float sdf_horseshoe(float3 pos, float an, float r, float le, float w, float t) {
     float2 c = float2(cos(an), sin(an));
     float px = abs(pos.x);
     float l = length(float2(px, pos.y));
@@ -836,26 +838,26 @@ const HELPER_SDF_HORSESHOE: &str = r#"float sdf_horseshoe(float3 pos, float an, 
     float2 d = abs(float2(e, pos.z)) - float2(w, t);
     return min(max(d.x, d.y), 0.0) + length(max(d, float2(0.0, 0.0)));
 }
-"#;
+";
 
-const HELPER_SDF_VESICA: &str = r#"float sdf_vesica(float3 p, float r, float d) {
+const HELPER_SDF_VESICA: &str = r"float sdf_vesica(float3 p, float r, float d) {
     float px = abs(p.x);
     float py = length(p.yz);
     float b = sqrt(max(r * r - d * d, 0.0));
     if ((py - b) * d > px * b) return length(float2(px, py - b));
     return length(float2(px - d, py)) - r;
 }
-"#;
+";
 
-const HELPER_SDF_INFINITE_CONE: &str = r#"float sdf_infinite_cone(float3 p, float an) {
+const HELPER_SDF_INFINITE_CONE: &str = r"float sdf_infinite_cone(float3 p, float an) {
     float2 c = float2(sin(an), cos(an));
     float2 q = float2(length(p.xz), -p.y);
     float d = length(q - c * max(dot(q, c), 0.0));
     return d * ((q.x * c.y - q.y * c.x < 0.0) ? -1.0 : 1.0);
 }
-"#;
+";
 
-const HELPER_SDF_HEART: &str = r#"float sdf_heart(float3 p, float s) {
+const HELPER_SDF_HEART: &str = r"float sdf_heart(float3 p, float s) {
     float3 q = p / s;
     float x = length(q.xz);
     float y = -(q.y - 0.5);
@@ -867,18 +869,18 @@ const HELPER_SDF_HEART: &str = r#"float sdf_heart(float3 p, float s) {
     if (iv <= 0.0) return -0.02 * s;
     return (pow(iv, 1.0 / 6.0) * 0.5 - 0.02) * s;
 }
-"#;
+";
 
-const HELPER_SDF_TUBE: &str = r#"float sdf_tube(float3 p, float outer_r, float thick, float h) {
+const HELPER_SDF_TUBE: &str = r"float sdf_tube(float3 p, float outer_r, float thick, float h) {
     float r = length(p.xz);
     float dr = abs(r - outer_r) - thick;
     float dy = abs(p.y) - h;
     float2 w = max(float2(dr, dy), float2(0.0, 0.0));
     return min(max(dr, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_BARREL: &str = r#"float sdf_barrel(float3 p, float radius, float h, float bulge) {
+const HELPER_SDF_BARREL: &str = r"float sdf_barrel(float3 p, float radius, float h, float bulge) {
     float r = length(p.xz);
     float yn = clamp(p.y / h, -1.0, 1.0);
     float er = radius + bulge * (1.0 - yn * yn);
@@ -887,9 +889,9 @@ const HELPER_SDF_BARREL: &str = r#"float sdf_barrel(float3 p, float radius, floa
     float2 w = max(float2(dr, dy), float2(0.0, 0.0));
     return min(max(dr, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_DIAMOND: &str = r#"float sdf_diamond(float3 p, float r, float h) {
+const HELPER_SDF_DIAMOND: &str = r"float sdf_diamond(float3 p, float r, float h) {
     float2 q = float2(length(p.xz), abs(p.y));
     float2 ba = float2(-r, h);
     float2 qa = q - float2(r, 0.0);
@@ -899,9 +901,9 @@ const HELPER_SDF_DIAMOND: &str = r#"float sdf_diamond(float3 p, float r, float h
     if (q.x * h + q.y * r < r * h) return -dist;
     return dist;
 }
-"#;
+";
 
-const HELPER_SDF_CHAMFERED_CUBE: &str = r#"float sdf_chamfered_cube(float3 p, float hx, float hy, float hz, float ch) {
+const HELPER_SDF_CHAMFERED_CUBE: &str = r"float sdf_chamfered_cube(float3 p, float hx, float hy, float hz, float ch) {
     float3 ap = abs(p);
     float3 q = ap - float3(hx, hy, hz);
     float d_box = min(max(q.x, max(q.y, q.z)), 0.0) + length(max(q, float3(0.0, 0.0, 0.0)));
@@ -909,9 +911,9 @@ const HELPER_SDF_CHAMFERED_CUBE: &str = r#"float sdf_chamfered_cube(float3 p, fl
     float d_ch = (ap.x + ap.y + ap.z - s + ch) * 0.57735;
     return max(d_box, d_ch);
 }
-"#;
+";
 
-const HELPER_SDF_SUPERELLIPSOID: &str = r#"float sdf_superellipsoid(float3 p, float hx, float hy, float hz, float e1, float e2) {
+const HELPER_SDF_SUPERELLIPSOID: &str = r"float sdf_superellipsoid(float3 p, float hx, float hy, float hz, float e1, float e2) {
     float qx = max(abs(p.x / hx), 0.00001);
     float qy = max(abs(p.y / hy), 0.00001);
     float qz = max(abs(p.z / hz), 0.00001);
@@ -924,9 +926,9 @@ const HELPER_SDF_SUPERELLIPSOID: &str = r#"float sdf_superellipsoid(float3 p, fl
     float f = pow(v, ee1 * 0.5);
     return (f - 1.0) * min(hx, min(hy, hz)) * 0.5;
 }
-"#;
+";
 
-const HELPER_SDF_ROUNDED_X: &str = r#"float sdf_rounded_x(float3 p, float w, float r, float h) {
+const HELPER_SDF_ROUNDED_X: &str = r"float sdf_rounded_x(float3 p, float w, float r, float h) {
     float2 q = abs(p.xz);
     float s = min(q.x + q.y, w) * 0.5;
     float d2d = length(q - float2(s, s)) - r;
@@ -934,9 +936,9 @@ const HELPER_SDF_ROUNDED_X: &str = r#"float sdf_rounded_x(float3 p, float w, flo
     float2 ww = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_PIE: &str = r#"float sdf_pie(float3 p, float angle, float radius, float h) {
+const HELPER_SDF_PIE: &str = r"float sdf_pie(float3 p, float angle, float radius, float h) {
     float2 q = float2(p.x, p.z);
     float l = length(q) - radius;
     float2 sc = float2(sin(angle), cos(angle));
@@ -946,9 +948,9 @@ const HELPER_SDF_PIE: &str = r#"float sdf_pie(float3 p, float angle, float radiu
     float2 ww = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_TRAPEZOID: &str = r#"float _trap_ds(float px, float py, float ax, float ay, float bx, float by) {
+const HELPER_SDF_TRAPEZOID: &str = r"float _trap_ds(float px, float py, float ax, float ay, float bx, float by) {
     float dx = bx - ax;
     float dy = by - ay;
     float len_sq = dx * dx + dy * dy;
@@ -974,9 +976,9 @@ float sdf_trapezoid(float3 p, float r1, float r2, float th, float hd) {
     float2 ww = max(float2(d2d, dz), float2(0.0, 0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_PARALLELOGRAM: &str = r#"float _para_ds(float px, float py, float ax, float ay, float bx, float by) {
+const HELPER_SDF_PARALLELOGRAM: &str = r"float _para_ds(float px, float py, float ax, float ay, float bx, float by) {
     float dx = bx - ax;
     float dy = by - ay;
     float len_sq = dx * dx + dy * dy;
@@ -1010,9 +1012,9 @@ float sdf_parallelogram(float3 p, float w, float ph, float sk, float hd) {
     float2 ww = max(float2(d2d, dz), float2(0.0, 0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_TUNNEL: &str = r#"float sdf_tunnel(float3 p, float w, float h2d, float hd) {
+const HELPER_SDF_TUNNEL: &str = r"float sdf_tunnel(float3 p, float w, float h2d, float hd) {
     float px = abs(p.x);
     float py = p.y;
     float dx = px - w;
@@ -1024,9 +1026,9 @@ const HELPER_SDF_TUNNEL: &str = r#"float sdf_tunnel(float3 p, float w, float h2d
     float2 ww = max(float2(d2d, dz), float2(0.0, 0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_UNEVEN_CAPSULE: &str = r#"float sdf_uneven_capsule(float3 p, float r1, float r2, float ch, float hd) {
+const HELPER_SDF_UNEVEN_CAPSULE: &str = r"float sdf_uneven_capsule(float3 p, float r1, float r2, float ch, float hd) {
     float px = abs(p.x);
     float hh = ch * 2.0;
     float b = (r1 - r2) / hh;
@@ -1044,9 +1046,9 @@ const HELPER_SDF_UNEVEN_CAPSULE: &str = r#"float sdf_uneven_capsule(float3 p, fl
     float2 ww = max(float2(d2d, dz), float2(0.0, 0.0));
     return min(max(d2d, dz), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_EGG: &str = r#"float sdf_egg(float3 p, float ra, float rb) {
+const HELPER_SDF_EGG: &str = r"float sdf_egg(float3 p, float ra, float rb) {
     float px = length(p.xz);
     float py = p.y;
     float r = ra - rb;
@@ -1058,9 +1060,9 @@ const HELPER_SDF_EGG: &str = r#"float sdf_egg(float3 p, float ra, float rb) {
         return length(float2(px + rb, py)) - ra;
     }
 }
-"#;
+";
 
-const HELPER_SDF_ARC_SHAPE: &str = r#"float sdf_arc_shape(float3 p, float aperture, float radius, float thickness, float h) {
+const HELPER_SDF_ARC_SHAPE: &str = r"float sdf_arc_shape(float3 p, float aperture, float radius, float thickness, float h) {
     float qx = abs(p.x);
     float qz = p.z;
     float2 sc = float2(sin(aperture), cos(aperture));
@@ -1074,9 +1076,9 @@ const HELPER_SDF_ARC_SHAPE: &str = r#"float sdf_arc_shape(float3 p, float apertu
     float2 ww = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_MOON: &str = r#"float sdf_moon(float3 p, float d, float ra, float rb, float h) {
+const HELPER_SDF_MOON: &str = r"float sdf_moon(float3 p, float d, float ra, float rb, float h) {
     float qx = abs(p.x);
     float qz = p.z;
     float d_outer = length(float2(qx, qz)) - ra;
@@ -1086,9 +1088,9 @@ const HELPER_SDF_MOON: &str = r#"float sdf_moon(float3 p, float d, float ra, flo
     float2 ww = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_CROSS_SHAPE: &str = r#"float sdf_cross_shape(float3 p, float len, float th, float rr, float h) {
+const HELPER_SDF_CROSS_SHAPE: &str = r"float sdf_cross_shape(float3 p, float len, float th, float rr, float h) {
     float qx = abs(p.x);
     float qz = abs(p.z);
     float2 dh = float2(qx - len, qz - th);
@@ -1100,9 +1102,9 @@ const HELPER_SDF_CROSS_SHAPE: &str = r#"float sdf_cross_shape(float3 p, float le
     float2 ww = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_BLOBBY_CROSS: &str = r#"float sdf_blobby_cross(float3 p, float size, float h) {
+const HELPER_SDF_BLOBBY_CROSS: &str = r"float sdf_blobby_cross(float3 p, float size, float h) {
     float qx = abs(p.x) / size;
     float qz = abs(p.z) / size;
     float n = qx + qz;
@@ -1122,9 +1124,9 @@ const HELPER_SDF_BLOBBY_CROSS: &str = r#"float sdf_blobby_cross(float3 p, float 
     float2 ww = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(ww);
 }
-"#;
+";
 
-const HELPER_SDF_PARABOLA_SEGMENT: &str = r#"float sdf_parabola_segment(float3 p, float w, float ph, float hd) {
+const HELPER_SDF_PARABOLA_SEGMENT: &str = r"float sdf_parabola_segment(float3 p, float w, float ph, float hd) {
     float px = abs(p.x);
     float py = p.y;
     float ww_sq = w * w;
@@ -1149,9 +1151,9 @@ const HELPER_SDF_PARABOLA_SEGMENT: &str = r#"float sdf_parabola_segment(float3 p
     float2 ext = max(float2(d2d, dz), float2(0.0, 0.0));
     return min(max(d2d, dz), 0.0) + length(ext);
 }
-"#;
+";
 
-const HELPER_SDF_REGULAR_POLYGON: &str = r#"float sdf_regular_polygon(float3 p, float radius, float n, float hh) {
+const HELPER_SDF_REGULAR_POLYGON: &str = r"float sdf_regular_polygon(float3 p, float radius, float n, float hh) {
     float qx = abs(p.x);
     float qz = p.z;
     float nn = max(n, 3.0);
@@ -1165,9 +1167,9 @@ const HELPER_SDF_REGULAR_POLYGON: &str = r#"float sdf_regular_polygon(float3 p, 
     float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_STAR_POLYGON: &str = r#"float sdf_star_polygon(float3 p, float radius, float np, float m, float hh) {
+const HELPER_SDF_STAR_POLYGON: &str = r"float sdf_star_polygon(float3 p, float radius, float np, float m, float hh) {
     float qx = abs(p.x);
     float qz = p.z;
     float n = max(np, 3.0);
@@ -1190,9 +1192,9 @@ const HELPER_SDF_STAR_POLYGON: &str = r#"float sdf_star_polygon(float3 p, float 
     float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
     return min(max(d2d, dy), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_STAIRS: &str = r#"float _stair_box(float lx, float ly, float s, float sw, float sh) {
+const HELPER_SDF_STAIRS: &str = r"float _stair_box(float lx, float ly, float s, float sw, float sh) {
     float cx = s * sw + sw * 0.5;
     float hy = (s + 1.0) * sh * 0.5;
     float dx = abs(lx - cx) - sw * 0.5;
@@ -1215,9 +1217,9 @@ float sdf_stairs(float3 p, float sw, float sh, float ns, float hd) {
     float2 w = max(float2(d2d, dz), float2(0.0, 0.0));
     return min(max(d2d, dz), 0.0) + length(w);
 }
-"#;
+";
 
-const HELPER_SDF_HELIX: &str = r#"float sdf_helix(float3 p, float major_r, float minor_r, float pitch, float hh) {
+const HELPER_SDF_HELIX: &str = r"float sdf_helix(float3 p, float major_r, float minor_r, float pitch, float hh) {
     float r_xz = length(float2(p.x, p.z));
     float theta = atan2(p.z, p.x);
     float py = p.y;
@@ -1236,7 +1238,7 @@ const HELPER_SDF_HELIX: &str = r#"float sdf_helix(float3 p, float major_r, float
     float d_cap = abs(py) - hh;
     return max(d_tube, d_cap);
 }
-"#;
+";
 
 #[cfg(test)]
 mod tests {
