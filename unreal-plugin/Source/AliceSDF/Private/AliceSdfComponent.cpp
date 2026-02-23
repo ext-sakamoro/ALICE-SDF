@@ -301,12 +301,6 @@ void UAliceSdfComponent::CreateStarPolygon(float Radius, float NPoints, float M,
 // Boolean Operations
 // ============================================================================
 
-#define ALICE_BINARY_OP(Method, FfiFunc, ...) \
-void UAliceSdfComponent::Method(UAliceSdfComponent* Other __VA_OPT__(,) __VA_ARGS__) \
-{ \
-	if (!SdfNodeHandle || !Other || !Other->SdfNodeHandle) return; \
-	ApplyBinaryOp(Other, FfiFunc); \
-}
 
 void UAliceSdfComponent::UnionWith(UAliceSdfComponent* Other)
 {
@@ -514,13 +508,13 @@ void UAliceSdfComponent::ApplyRepeat(FVector Spacing)
 void UAliceSdfComponent::ApplyRepeatFinite(FIntVector Count, FVector Spacing)
 {
 	if (!SdfNodeHandle) return;
-	ApplyModifier(alice_sdf_repeat_finite(SdfNodeHandle, Count.X, Count.Y, Count.Z, Spacing.X, Spacing.Y, Spacing.Z));
+	ApplyModifier(alice_sdf_repeat_finite(SdfNodeHandle, static_cast<uint32_t>(Count.X), static_cast<uint32_t>(Count.Y), static_cast<uint32_t>(Count.Z), Spacing.X, Spacing.Y, Spacing.Z));
 }
 
 void UAliceSdfComponent::ApplyMirror(bool X, bool Y, bool Z)
 {
 	if (!SdfNodeHandle) return;
-	ApplyModifier(alice_sdf_mirror(SdfNodeHandle, X ? 1 : 0, Y ? 1 : 0, Z ? 1 : 0));
+	ApplyModifier(alice_sdf_mirror(SdfNodeHandle, X ? 1u : 0u, Y ? 1u : 0u, Z ? 1u : 0u));
 }
 
 void UAliceSdfComponent::ApplyElongate(FVector Amount)
@@ -638,9 +632,13 @@ TArray<float> UAliceSdfComponent::EvalDistanceBatch(const TArray<FVector>& Point
 			FlatPoints[i * 3 + 1] = LocalPos.Y;
 			FlatPoints[i * 3 + 2] = LocalPos.Z;
 		}
-		alice_sdf_eval_compiled_batch(
+		BatchResult BatchRes = alice_sdf_eval_compiled_batch(
 			CompiledSdfHandle, FlatPoints.GetData(), Distances.GetData(),
 			static_cast<uint32>(Points.Num()));
+		if (BatchRes.result != SdfResult_Ok)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ALICE-SDF: EvalDistanceBatch failed (result=%d)"), (int)BatchRes.result);
+		}
 	}
 	else
 	{

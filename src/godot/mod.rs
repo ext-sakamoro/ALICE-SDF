@@ -569,10 +569,18 @@ impl AliceSdfMeshInstance {
     /// Get vertex count of the current mesh
     #[func]
     fn get_vertex_count(&self) -> i32 {
-        // Approximate from Godot mesh
         if let Some(mesh) = self.base().get_mesh() {
             if let Ok(array_mesh) = mesh.try_cast::<ArrayMesh>() {
-                return array_mesh.get_surface_count();
+                let mut total = 0i32;
+                for i in 0..array_mesh.get_surface_count() {
+                    let arrays = array_mesh.surface_get_arrays(i);
+                    if let Some(verts) = arrays.get(0) {
+                        if let Ok(packed) = verts.try_to::<PackedVector3Array>() {
+                            total += packed.len() as i32;
+                        }
+                    }
+                }
+                return total;
             }
         }
         0
@@ -1400,7 +1408,16 @@ impl AliceSdfLodManager {
     fn get_lod_vertex_counts(&self) -> PackedInt32Array {
         let mut counts = PackedInt32Array::new();
         for mesh in &self.lod_meshes {
-            counts.push(mesh.get_surface_count());
+            let mut total = 0i32;
+            for i in 0..mesh.get_surface_count() {
+                let arrays = mesh.surface_get_arrays(i);
+                if let Some(verts) = arrays.get(0) {
+                    if let Ok(packed) = verts.try_to::<PackedVector3Array>() {
+                        total += packed.len() as i32;
+                    }
+                }
+            }
+            counts.push(total);
         }
         counts
     }

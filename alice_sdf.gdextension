@@ -4,9 +4,11 @@ compatibility_minimum = 4.2
 reloadable = true
 
 [libraries]
-macos.debug = "res://addons/alice_sdf/libalice_sdf.dylib"
-macos.release = "res://addons/alice_sdf/libalice_sdf.dylib"
-windows.debug.x86_64 = "res://addons/alice_sdf/alice_sdf.dll"
-windows.release.x86_64 = "res://addons/alice_sdf/alice_sdf.dll"
-linux.debug.x86_64 = "res://addons/alice_sdf/libalice_sdf.so"
-linux.release.x86_64 = "res://addons/alice_sdf/libalice_sdf.so"
+macos.debug = "res://addons/alice_sdf/bin/libalice_sdf.dylib"
+macos.release = "res://addons/alice_sdf/bin/libalice_sdf.dylib"
+macos.debug.arm64 = "res://addons/alice_sdf/bin/libalice_sdf.dylib"
+macos.release.arm64 = "res://addons/alice_sdf/bin/libalice_sdf.dylib"
+windows.debug.x86_64 = "res://addons/alice_sdf/bin/alice_sdf.dll"
+windows.release.x86_64 = "res://addons/alice_sdf/bin/alice_sdf.dll"
+linux.debug.x86_64 = "res://addons/alice_sdf/bin/libalice_sdf.so"
+linux.release.x86_64 = "res://addons/alice_sdf/bin/libalice_sdf.so"

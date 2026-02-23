@@ -20,7 +20,7 @@
  *
  * Check the Output Log for results.
  */
-UCLASS(ClassGroup=(AliceSDF), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup=(AliceSDF))
 class ALICESDF_API AAliceSdfDemoActor : public AActor
 {
 	GENERATED_BODY()

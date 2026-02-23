@@ -464,8 +464,8 @@ SdfHandle alice_sdf_bend(SdfHandle node, float curvature);
  * @param sx,sy,sz Spacing in each axis
  */
 SdfHandle alice_sdf_repeat(SdfHandle node, float sx, float sy, float sz);
-SdfHandle alice_sdf_repeat_finite(SdfHandle node, int32_t cx, int32_t cy, int32_t cz, float sx, float sy, float sz);
-SdfHandle alice_sdf_mirror(SdfHandle node, float mx, float my, float mz);
+SdfHandle alice_sdf_repeat_finite(SdfHandle node, uint32_t cx, uint32_t cy, uint32_t cz, float sx, float sy, float sz);
+SdfHandle alice_sdf_mirror(SdfHandle node, uint8_t mx, uint8_t my, uint8_t mz);
 SdfHandle alice_sdf_elongate(SdfHandle node, float ex, float ey, float ez);
 SdfHandle alice_sdf_revolution(SdfHandle node, float offset);
 SdfHandle alice_sdf_extrude(SdfHandle node, float half_height);
