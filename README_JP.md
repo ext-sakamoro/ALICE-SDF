@@ -2052,6 +2052,14 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 
 **あなたが作成するコンテンツ（.asdfファイル、ワールド、ゲーム）は100%あなたのものです。ロイヤリティはありません。**
 
+## 関連プロジェクト
+
+| プロジェクト | 説明 | リンク |
+|-------------|------|--------|
+| **Open Source SDF Assets** | ALICE-SDFで変換した991個のCC0 3Dアセット（.asdf.json形式） | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
+| **ALICE Ecosystem** | 52コンポーネントのエッジtoクラウドデータパイプライン | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
+| **AI Modeler SaaS** | ALICE-SDFを搭載したブラウザベース3Dモデリング | 近日公開 |
+
 ---
 
 Copyright (c) 2025-2026 Moroya Sakamoto
