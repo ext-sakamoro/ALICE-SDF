@@ -61,6 +61,8 @@ namespace AliceSdfUnity
     {
         public uint Count;
         public SdfResult Result;
+
+        public bool IsOk => Result == SdfResult.Ok;
     }
 
     /// <summary>

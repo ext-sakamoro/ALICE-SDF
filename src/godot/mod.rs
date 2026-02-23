@@ -382,7 +382,7 @@ impl AliceSdfNode {
     #[func]
     fn apply_mirror(&mut self, axis: Vector3) {
         if let Some(node) = self.sdf_node.take() {
-            self.sdf_node = Some(node.mirror(glam::Vec3::new(axis.x, axis.y, axis.z)));
+            self.sdf_node = Some(node.mirror(axis.x > 0.5, axis.y > 0.5, axis.z > 0.5));
         }
     }
 
