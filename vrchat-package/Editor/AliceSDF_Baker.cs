@@ -158,13 +158,23 @@ namespace AliceSDF.Editor
                 return;
             }
 
-            var hlslStats = new CodegenStats();
-            var udonStats = new CodegenStats();
-            _previewHlsl = ShaderGenerator.GenerateMapFunction(node, hlslStats);
-            _previewCSharp = UdonGenerator.GenerateEvaluateFunction(node, udonStats);
-            _statusMessage = $"Preview OK. Nodes: {node.CountNodes()} | " +
-                             $"HLSL: {hlslStats.varsEmitted} vars ({hlslStats.varsInlined} inlined) | " +
-                             $"Udon: {udonStats.varsEmitted} vars ({udonStats.scalarExpansions} scalar-expanded)";
+            try
+            {
+                var hlslStats = new CodegenStats();
+                var udonStats = new CodegenStats();
+                _previewHlsl = ShaderGenerator.GenerateMapFunction(node, hlslStats);
+                _previewCSharp = UdonGenerator.GenerateEvaluateFunction(node, udonStats);
+                _statusMessage = $"Preview OK. Nodes: {node.CountNodes()} | " +
+                                 $"HLSL: {hlslStats.varsEmitted} vars ({hlslStats.varsInlined} inlined) | " +
+                                 $"Udon: {udonStats.varsEmitted} vars ({udonStats.scalarExpansions} scalar-expanded)";
+            }
+            catch (System.Exception e)
+            {
+                _previewHlsl = "";
+                _previewCSharp = "";
+                _statusMessage = $"Codegen error: {e.Message}";
+                Debug.LogError($"[AliceSDF Baker] Codegen failed: {e}");
+            }
         }
 
         // =====================================================================
@@ -689,6 +699,11 @@ Shader ""AliceSDF/{name}""
         /// </summary>
         private static string EmitFusedBinaryOp(string hlslFunc, SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] {node.type} requires 2 children, got {node.children?.Length ?? 0}");
+                return "0.0";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
             string expr = $"{hlslFunc}({a}, {b})";
@@ -710,6 +725,11 @@ Shader ""AliceSDF/{name}""
         /// </summary>
         private static string EmitFusedSubtraction(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] Subtraction requires 2 children, got {node.children?.Length ?? 0}");
+                return "0.0";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
             string expr = $"max({a}, -({b}))";
@@ -735,6 +755,11 @@ Shader ""AliceSDF/{name}""
         /// </summary>
         private static string EmitFusedSmoothOp(string hlslFunc, SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] {hlslFunc} requires 2 children, got {node.children?.Length ?? 0}");
+                return "0.0";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
 
