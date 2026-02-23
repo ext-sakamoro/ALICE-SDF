@@ -127,4 +127,64 @@ float aliceAO_LOD(float3 pos, float3 nor, int tier)
     return saturate(1.0 - 3.0 * occ);
 }
 
+// =============================================================================
+// Soft Shadow with LOD (fewer steps when far)
+// =============================================================================
+
+#define ALICE_SHADOW_STEPS_HIGH  48
+#define ALICE_SHADOW_STEPS_MED   24
+#define ALICE_SHADOW_STEPS_LOW   12
+
+float aliceSoftShadow_LOD(float3 ro, float3 rd, float mint, float maxt, float softness, int tier)
+{
+    int maxSteps = (tier == ALICE_LOD_TIER_HIGH) ? ALICE_SHADOW_STEPS_HIGH :
+                   (tier == ALICE_LOD_TIER_MED)  ? ALICE_SHADOW_STEPS_MED :
+                                                   ALICE_SHADOW_STEPS_LOW;
+    float res = 1.0;
+    float t = mint;
+    float ph = 1e20;
+    for (int i = 0; i < 48; i++)
+    {
+        if (i >= maxSteps) break;
+        float h = map(ro + rd * t);
+        if (h < 0.0001)
+            return 0.0;
+        float y = h * h / (2.0 * ph);
+        float d = sqrt(h * h - y * y);
+        res = min(res, softness * d / max(0.0, t - y));
+        ph = h;
+        t += h;
+        if (t > maxt) break;
+    }
+    return saturate(res);
+}
+
+// =============================================================================
+// GI Approximation (2-bounce indirect light estimation)
+// =============================================================================
+
+float3 aliceGI_LOD(float3 pos, float3 nor, float3 lightDir, float3 lightColor, int tier)
+{
+    // 1st bounce: sample in light direction reflected off surface
+    float3 bounceDir = reflect(-lightDir, nor);
+    float bounceDist = (tier == ALICE_LOD_TIER_HIGH) ? 0.5 : 1.0;
+    float3 bouncePos = pos + nor * 0.1 + bounceDir * bounceDist;
+    float d = map(bouncePos);
+    float occlusion = saturate(d / bounceDist);
+
+    // 2nd bounce: hemisphere sampling (approximated by normal-biased sample)
+    float3 hemiPos = pos + nor * 0.3;
+    float d2 = map(hemiPos);
+    float hemiOcc = saturate(d2 / 0.3);
+
+    // Combine: indirect color is surface color tinted by light, attenuated by occlusion
+    float3 indirect = lightColor * 0.15 * occlusion * hemiOcc;
+
+    // Sky contribution (top hemisphere gets more light)
+    float skyAmount = saturate(nor.y * 0.5 + 0.5);
+    indirect += float3(0.05, 0.08, 0.12) * skyAmount * hemiOcc;
+
+    return indirect;
+}
+
 #endif // ALICE_SDF_LOD

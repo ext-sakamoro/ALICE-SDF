@@ -221,17 +221,6 @@ float opOnion(float d, float thickness)
 // Utility
 // =============================================================================
 
-// Normal calculation via central differences
-float3 calcNormal(float3 p, float eps)
-{
-    // Requires: float map(float3 p) to be defined in the including shader
-    float3 n;
-    n.x = map(p + float3(eps, 0, 0)) - map(p - float3(eps, 0, 0));
-    n.y = map(p + float3(0, eps, 0)) - map(p - float3(0, eps, 0));
-    n.z = map(p + float3(0, 0, eps)) - map(p - float3(0, 0, eps));
-    return normalize(n);
-}
-
 // Quaternion rotation
 float3 quatRotate(float3 v, float4 q)
 {

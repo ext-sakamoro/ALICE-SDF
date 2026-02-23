@@ -391,47 +391,11 @@ float2 opSmoothSubtractionMat(float2 a, float2 b, float k)
 // Utility
 // =============================================================================
 
-// Normal calculation via central differences
-float3 calcNormal(float3 p, float eps)
-{
-    // Requires: float map(float3 p) to be defined in the including shader
-    float3 n;
-    n.x = map(p + float3(eps, 0, 0)) - map(p - float3(eps, 0, 0));
-    n.y = map(p + float3(0, eps, 0)) - map(p - float3(0, eps, 0));
-    n.z = map(p + float3(0, 0, eps)) - map(p - float3(0, 0, eps));
-    return normalize(n);
-}
-
 // Quaternion rotation
 float3 quatRotate(float3 v, float4 q)
 {
     float3 t = 2.0 * cross(q.xyz, v);
     return v + q.w * t + cross(q.xyz, t);
-}
-
-// =============================================================================
-// Soft Shadow (penumbra estimation via SDF)
-// =============================================================================
-
-// Requires: float map(float3 p) to be defined
-float aliceSoftShadow(float3 ro, float3 rd, float mint, float maxt, float k)
-{
-    float res = 1.0;
-    float t = mint;
-    float ph = 1e20;
-    for (int i = 0; i < 64; i++)
-    {
-        float h = map(ro + rd * t);
-        if (h < 0.0001)
-            return 0.0;
-        float y = h * h / (2.0 * ph);
-        float d = sqrt(h * h - y * y);
-        res = min(res, k * d / max(0.0, t - y));
-        ph = h;
-        t += h;
-        if (t > maxt) break;
-    }
-    return saturate(res);
 }
 
 // =============================================================================
