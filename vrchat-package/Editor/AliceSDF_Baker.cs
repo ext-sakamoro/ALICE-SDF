@@ -970,6 +970,11 @@ namespace AliceSDF
         /// </summary>
         private static string EmitScalarBinaryOp(string func, SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] {node.type} requires 2 children, got {node.children?.Length ?? 0}");
+                return "0f";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
             string expr = $"{func}({a}, {b})";
@@ -991,6 +996,11 @@ namespace AliceSDF
         /// </summary>
         private static string EmitScalarSubtraction(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] Subtraction requires 2 children, got {node.children?.Length ?? 0}");
+                return "0f";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
             string expr = $"Mathf.Max({a}, -({b}))";
@@ -1013,6 +1023,11 @@ namespace AliceSDF
         /// </summary>
         private static string EmitInlineSmoothUnion(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] SmoothUnion requires 2 children, got {node.children?.Length ?? 0}");
+                return "0f";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
 
@@ -1036,6 +1051,11 @@ namespace AliceSDF
         /// </summary>
         private static string EmitInlineSmoothIntersection(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] SmoothIntersection requires 2 children, got {node.children?.Length ?? 0}");
+                return "0f";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
 
@@ -1058,6 +1078,11 @@ namespace AliceSDF
         /// </summary>
         private static string EmitInlineSmoothSubtraction(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
+            if (node.children == null || node.children.Length < 2)
+            {
+                Debug.LogWarning($"[AliceSDF Baker] SmoothSubtraction requires 2 children, got {node.children?.Length ?? 0}");
+                return "0f";
+            }
             string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
             string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
 
