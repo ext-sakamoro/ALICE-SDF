@@ -725,87 +725,112 @@ Shader ""AliceSDF/{name}""
 
         /// <summary>
         /// Fused binary op: inline min/max directly instead of opUnion/opIntersection wrapper.
+        /// Supports N-ary children via left-fold: min(min(min(a, b), c), d).
         /// At depth >= INLINE_DEPTH, emit a temp variable to avoid extremely long lines.
         /// </summary>
         private static string EmitFusedBinaryOp(string hlslFunc, SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] {node.type} requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] {node.type} requires at least 1 child, got 0");
                 return "0.0";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
-            string expr = $"{hlslFunc}({a}, {b})";
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            if (depth >= INLINE_DEPTH)
+            // Left-fold: op(op(a, b), c) ...
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
+            for (int i = 1; i < node.children.Length; i++)
             {
-                var v = NextVar();
-                stats.varsEmitted++;
-                sb.AppendLine($"    float {v} = {expr};");
-                return v;
-            }
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
+                string expr = $"{hlslFunc}({result}, {next})";
 
-            stats.varsInlined++;
-            return expr;
+                if (depth >= INLINE_DEPTH || i < node.children.Length - 1)
+                {
+                    var v = NextVar();
+                    stats.varsEmitted++;
+                    sb.AppendLine($"    float {v} = {expr};");
+                    result = v;
+                }
+                else
+                {
+                    stats.varsInlined++;
+                    result = expr;
+                }
+            }
+            return result;
         }
 
         /// <summary>
         /// Subtraction: max(a, -b) inlined directly.
+        /// N-ary: A - B - C - D = max(max(max(A, -B), -C), -D).
         /// </summary>
         private static string EmitFusedSubtraction(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] Subtraction requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] Subtraction requires at least 1 child, got 0");
                 return "0.0";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
-            string expr = $"max({a}, -({b}))";
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            if (depth >= INLINE_DEPTH)
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
+            for (int i = 1; i < node.children.Length; i++)
             {
-                var v = NextVar();
-                stats.varsEmitted++;
-                sb.AppendLine($"    float {v} = {expr};");
-                return v;
-            }
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
+                string expr = $"max({result}, -({next}))";
 
-            stats.varsInlined++;
-            return expr;
+                if (depth >= INLINE_DEPTH || i < node.children.Length - 1)
+                {
+                    var v = NextVar();
+                    stats.varsEmitted++;
+                    sb.AppendLine($"    float {v} = {expr};");
+                    result = v;
+                }
+                else
+                {
+                    stats.varsInlined++;
+                    result = expr;
+                }
+            }
+            return result;
         }
 
         /// <summary>
-        /// Smooth ops: still use the library function but reference pre-computed inv_k.
-        /// The smooth functions in AliceSDF_Include.cginc already take k directly,
-        /// but we emit a comment noting the division exorcism is available.
-        /// For truly inlined smooth ops, we'd need to emit the full formula.
-        /// Here we keep the function call but the k pre-computation aids repeated use.
+        /// Smooth ops: use the library function with left-fold for N-ary children.
+        /// opSmoothUnion(opSmoothUnion(a, b, k), c, k) ...
         /// </summary>
         private static string EmitFusedSmoothOp(string hlslFunc, SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] {hlslFunc} requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] {hlslFunc} requires at least 1 child, got 0");
                 return "0.0";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            // Use function call (the include already has optimized smooth ops)
-            string expr = $"{hlslFunc}({a}, {b}, {F(node.k)})";
-
-            if (depth >= INLINE_DEPTH)
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
+            for (int i = 1; i < node.children.Length; i++)
             {
-                var v = NextVar();
-                stats.varsEmitted++;
-                sb.AppendLine($"    float {v} = {expr};");
-                return v;
-            }
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
+                string expr = $"{hlslFunc}({result}, {next}, {F(node.k)})";
 
-            stats.varsInlined++;
-            return expr;
+                if (depth >= INLINE_DEPTH || i < node.children.Length - 1)
+                {
+                    var v = NextVar();
+                    stats.varsEmitted++;
+                    sb.AppendLine($"    float {v} = {expr};");
+                    result = v;
+                }
+                else
+                {
+                    stats.varsInlined++;
+                    result = expr;
+                }
+            }
+            return result;
         }
 
         /// <summary>
@@ -997,137 +1022,183 @@ namespace AliceSDF
 
         /// <summary>
         /// Union/Intersection: Mathf.Min/Max direct call, no Sdf.* wrapper.
+        /// N-ary left-fold: Min(Min(Min(a, b), c), d).
         /// </summary>
         private static string EmitScalarBinaryOp(string func, SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] {node.type} requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] {node.type} requires at least 1 child, got 0");
                 return "0f";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
-            string expr = $"{func}({a}, {b})";
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            if (depth >= 3)
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
+            for (int i = 1; i < node.children.Length; i++)
             {
-                var v = NextVar();
-                stats.varsEmitted++;
-                sb.AppendLine($"            float {v} = {expr};");
-                return v;
-            }
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
+                string expr = $"{func}({result}, {next})";
 
-            stats.scalarExpansions++;
-            return expr;
+                if (depth >= 3 || i < node.children.Length - 1)
+                {
+                    var v = NextVar();
+                    stats.varsEmitted++;
+                    sb.AppendLine($"            float {v} = {expr};");
+                    result = v;
+                }
+                else
+                {
+                    stats.scalarExpansions++;
+                    result = expr;
+                }
+            }
+            return result;
         }
 
         /// <summary>
         /// Subtraction: Mathf.Max(a, -b) direct, no function call.
+        /// N-ary: A - B - C = Max(Max(A, -B), -C).
         /// </summary>
         private static string EmitScalarSubtraction(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] Subtraction requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] Subtraction requires at least 1 child, got 0");
                 return "0f";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
-            string expr = $"Mathf.Max({a}, -({b}))";
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            if (depth >= 3)
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
+            for (int i = 1; i < node.children.Length; i++)
             {
-                var v = NextVar();
-                stats.varsEmitted++;
-                sb.AppendLine($"            float {v} = {expr};");
-                return v;
-            }
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
+                string expr = $"Mathf.Max({result}, -({next}))";
 
-            stats.scalarExpansions++;
-            return expr;
+                if (depth >= 3 || i < node.children.Length - 1)
+                {
+                    var v = NextVar();
+                    stats.varsEmitted++;
+                    sb.AppendLine($"            float {v} = {expr};");
+                    result = v;
+                }
+                else
+                {
+                    stats.scalarExpansions++;
+                    result = expr;
+                }
+            }
+            return result;
         }
 
         /// <summary>
         /// SmoothUnion: Fully inlined with pre-computed inv_k.
         /// Formula: min(d1,d2) - max(k - abs(d1-d2), 0)^2 * inv_k * 0.25
+        /// N-ary left-fold: smoothUnion(smoothUnion(a, b), c) ...
         /// </summary>
         private static string EmitInlineSmoothUnion(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] SmoothUnion requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] SmoothUnion requires at least 1 child, got 0");
                 return "0f";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            // Need temp vars for the smooth formula
-            var va = NextVar(); var vb = NextVar();
-            stats.varsEmitted += 2;
-            sb.AppendLine($"            float {va} = {a};");
-            sb.AppendLine($"            float {vb} = {b};");
+            float invK = (node.k != 0f) ? 1f / node.k : 0f;
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            float invK = 1f / node.k;
-            var vh = NextVar();
-            stats.varsEmitted++;
-            stats.scalarExpansions++;
-            sb.AppendLine($"            float {vh} = Mathf.Max({F(node.k)}f - Mathf.Abs({va} - {vb}), 0f) * {F(invK)}f;");
+            for (int i = 1; i < node.children.Length; i++)
+            {
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
 
-            return $"(Mathf.Min({va}, {vb}) - {vh} * {vh} * {F(node.k)}f * 0.25f)";
+                var va = NextVar(); var vb = NextVar();
+                stats.varsEmitted += 2;
+                sb.AppendLine($"            float {va} = {result};");
+                sb.AppendLine($"            float {vb} = {next};");
+
+                var vh = NextVar();
+                stats.varsEmitted++;
+                stats.scalarExpansions++;
+                sb.AppendLine($"            float {vh} = Mathf.Max({F(node.k)}f - Mathf.Abs({va} - {vb}), 0f) * {F(invK)}f;");
+
+                result = $"(Mathf.Min({va}, {vb}) - {vh} * {vh} * {F(node.k)}f * 0.25f)";
+            }
+            return result;
         }
 
         /// <summary>
         /// SmoothIntersection: max(d1,d2) + h^2 * k * 0.25
+        /// N-ary left-fold.
         /// </summary>
         private static string EmitInlineSmoothIntersection(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] SmoothIntersection requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] SmoothIntersection requires at least 1 child, got 0");
                 return "0f";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            var va = NextVar(); var vb = NextVar();
-            stats.varsEmitted += 2;
-            sb.AppendLine($"            float {va} = {a};");
-            sb.AppendLine($"            float {vb} = {b};");
+            float invK = (node.k != 0f) ? 1f / node.k : 0f;
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            float invK = 1f / node.k;
-            var vh = NextVar();
-            stats.varsEmitted++;
-            stats.scalarExpansions++;
-            sb.AppendLine($"            float {vh} = Mathf.Max({F(node.k)}f - Mathf.Abs({va} - {vb}), 0f) * {F(invK)}f;");
+            for (int i = 1; i < node.children.Length; i++)
+            {
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
 
-            return $"(Mathf.Max({va}, {vb}) + {vh} * {vh} * {F(node.k)}f * 0.25f)";
+                var va = NextVar(); var vb = NextVar();
+                stats.varsEmitted += 2;
+                sb.AppendLine($"            float {va} = {result};");
+                sb.AppendLine($"            float {vb} = {next};");
+
+                var vh = NextVar();
+                stats.varsEmitted++;
+                stats.scalarExpansions++;
+                sb.AppendLine($"            float {vh} = Mathf.Max({F(node.k)}f - Mathf.Abs({va} - {vb}), 0f) * {F(invK)}f;");
+
+                result = $"(Mathf.Max({va}, {vb}) + {vh} * {vh} * {F(node.k)}f * 0.25f)";
+            }
+            return result;
         }
 
         /// <summary>
         /// SmoothSubtraction: max(d1,-d2) + h^2 * k * 0.25
+        /// N-ary left-fold: A - B - C = smoothSub(smoothSub(A, B), C).
         /// </summary>
         private static string EmitInlineSmoothSubtraction(SdfNodeData node, string pVar, StringBuilder sb, int depth, CodegenStats stats)
         {
-            if (node.children == null || node.children.Length < 2)
+            if (node.children == null || node.children.Length == 0)
             {
-                Debug.LogWarning($"[AliceSDF Baker] SmoothSubtraction requires 2 children, got {node.children?.Length ?? 0}");
+                Debug.LogWarning($"[AliceSDF Baker] SmoothSubtraction requires at least 1 child, got 0");
                 return "0f";
             }
-            string a = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
-            string b = EmitNode(node.children[1], pVar, sb, depth + 1, stats);
+            if (node.children.Length == 1)
+                return EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            var va = NextVar(); var vb = NextVar();
-            stats.varsEmitted += 2;
-            sb.AppendLine($"            float {va} = {a};");
-            sb.AppendLine($"            float {vb} = {b};");
+            float invK = (node.k != 0f) ? 1f / node.k : 0f;
+            string result = EmitNode(node.children[0], pVar, sb, depth + 1, stats);
 
-            float invK = 1f / node.k;
-            var vh = NextVar();
-            stats.varsEmitted++;
-            stats.scalarExpansions++;
-            sb.AppendLine($"            float {vh} = Mathf.Max({F(node.k)}f - Mathf.Abs({va} + {vb}), 0f) * {F(invK)}f;");
+            for (int i = 1; i < node.children.Length; i++)
+            {
+                string next = EmitNode(node.children[i], pVar, sb, depth + 1, stats);
 
-            return $"(Mathf.Max({va}, -({vb})) + {vh} * {vh} * {F(node.k)}f * 0.25f)";
+                var va = NextVar(); var vb = NextVar();
+                stats.varsEmitted += 2;
+                sb.AppendLine($"            float {va} = {result};");
+                sb.AppendLine($"            float {vb} = {next};");
+
+                var vh = NextVar();
+                stats.varsEmitted++;
+                stats.scalarExpansions++;
+                sb.AppendLine($"            float {vh} = Mathf.Max({F(node.k)}f - Mathf.Abs({va} + {vb}), 0f) * {F(invK)}f;");
+
+                result = $"(Mathf.Max({va}, -({vb})) + {vh} * {vh} * {F(node.k)}f * 0.25f)";
+            }
+            return result;
         }
 
         /// <summary>
