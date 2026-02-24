@@ -306,32 +306,6 @@ namespace AliceSDF.Editor
         public SdfNodeData[] children;
         public SdfNodeData child;
 
-        // --- JSON camelCase aliases (JsonUtility field-name compatibility) ---
-        public float smoothness;     // alias for k
-        public float majorRadius;    // alias for major_radius
-        public float minorRadius;    // alias for minor_radius
-        public float halfHeight;     // alias for half_height
-        public float[] pointA;       // alias for point_a
-        public float[] pointB;       // alias for point_b
-
-        /// <summary>
-        /// Merge camelCase JSON aliases into snake_case internal fields, recursively.
-        /// Called after JsonUtility.FromJson to unify field naming.
-        /// </summary>
-        public void Normalize()
-        {
-            if (k == 0f && smoothness != 0f) k = smoothness;
-            if (major_radius == 0f && majorRadius != 0f) major_radius = majorRadius;
-            if (minor_radius == 0f && minorRadius != 0f) minor_radius = minorRadius;
-            if (half_height == 0f && halfHeight != 0f) half_height = halfHeight;
-            if (point_a == null && pointA != null) point_a = pointA;
-            if (point_b == null && pointB != null) point_b = pointB;
-
-            if (children != null)
-                foreach (var ch in children) ch?.Normalize();
-            if (child != null) child.Normalize();
-        }
-
         public int CountNodes()
         {
             int c = 1;
@@ -378,15 +352,189 @@ namespace AliceSDF.Editor
         {
             try
             {
-                var node = JsonUtility.FromJson<SdfNodeData>(json);
-                node?.Normalize();
-                return node;
+                int pos = 0;
+                return ParseNode(json, ref pos);
             }
             catch (System.Exception e)
             {
                 Debug.LogError($"[AliceSDF Baker] JSON parse error: {e.Message}");
                 return null;
             }
+        }
+
+        private static SdfNodeData ParseNode(string json, ref int pos)
+        {
+            SkipWs(json, ref pos);
+            if (pos >= json.Length || json[pos] != '{') return null;
+            pos++; // skip '{'
+
+            var node = new SdfNodeData();
+
+            while (pos < json.Length)
+            {
+                SkipWs(json, ref pos);
+                if (json[pos] == '}') { pos++; return node; }
+                if (json[pos] == ',') { pos++; continue; }
+
+                string key = ParseString(json, ref pos);
+                SkipWs(json, ref pos);
+                if (json[pos] == ':') pos++;
+                SkipWs(json, ref pos);
+
+                switch (key)
+                {
+                    case "type":            node.type = ParseString(json, ref pos); break;
+                    case "radius":          node.radius = ParseFloat(json, ref pos); break;
+                    case "size":
+                    case "half_extents":    node.size = ParseFloatArray(json, ref pos); break;
+                    case "half_height":
+                    case "halfHeight":      node.half_height = ParseFloat(json, ref pos); break;
+                    case "major_radius":
+                    case "majorRadius":     node.major_radius = ParseFloat(json, ref pos); break;
+                    case "minor_radius":
+                    case "minorRadius":     node.minor_radius = ParseFloat(json, ref pos); break;
+                    case "normal":          node.normal = ParseFloatArray(json, ref pos); break;
+                    case "distance":        node.distance = ParseFloat(json, ref pos); break;
+                    case "point_a":
+                    case "pointA":          node.point_a = ParseFloatArray(json, ref pos); break;
+                    case "point_b":
+                    case "pointB":          node.point_b = ParseFloatArray(json, ref pos); break;
+                    case "k":
+                    case "smoothness":      node.k = ParseFloat(json, ref pos); break;
+                    case "offset":          node.offset = ParseFloatArray(json, ref pos); break;
+                    case "rotation":        node.rotation = ParseFloatArray(json, ref pos); break;
+                    case "factor":
+                    case "scale":           node.factor = ParseFloat(json, ref pos); break;
+                    case "strength":        node.strength = ParseFloat(json, ref pos); break;
+                    case "curvature":       node.curvature = ParseFloat(json, ref pos); break;
+                    case "spacing":         node.spacing = ParseFloatArray(json, ref pos); break;
+                    case "count":           node.count = ParseIntArray(json, ref pos); break;
+                    case "thickness":       node.thickness = ParseFloat(json, ref pos); break;
+                    case "children":        node.children = ParseNodeArray(json, ref pos); break;
+                    case "child":           node.child = ParseNode(json, ref pos); break;
+                    default:                SkipValue(json, ref pos); break;
+                }
+            }
+
+            return node;
+        }
+
+        private static SdfNodeData[] ParseNodeArray(string json, ref int pos)
+        {
+            SkipWs(json, ref pos);
+            if (pos >= json.Length || json[pos] != '[') return null;
+            pos++; // skip '['
+
+            var list = new List<SdfNodeData>();
+            while (pos < json.Length)
+            {
+                SkipWs(json, ref pos);
+                if (json[pos] == ']') { pos++; break; }
+                if (json[pos] == ',') { pos++; continue; }
+                list.Add(ParseNode(json, ref pos));
+            }
+            return list.ToArray();
+        }
+
+        private static string ParseString(string json, ref int pos)
+        {
+            SkipWs(json, ref pos);
+            if (pos >= json.Length || json[pos] != '"') return "";
+            pos++; // skip opening '"'
+
+            var sb = new StringBuilder();
+            while (pos < json.Length && json[pos] != '"')
+            {
+                if (json[pos] == '\\') { pos++; if (pos < json.Length) sb.Append(json[pos]); }
+                else sb.Append(json[pos]);
+                pos++;
+            }
+            if (pos < json.Length) pos++; // skip closing '"'
+            return sb.ToString();
+        }
+
+        private static float ParseFloat(string json, ref int pos)
+        {
+            SkipWs(json, ref pos);
+            int start = pos;
+            while (pos < json.Length && (char.IsDigit(json[pos]) || json[pos] == '.' || json[pos] == '-' || json[pos] == '+' || json[pos] == 'e' || json[pos] == 'E'))
+                pos++;
+            string s = json.Substring(start, pos - start);
+            float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v);
+            return v;
+        }
+
+        private static float[] ParseFloatArray(string json, ref int pos)
+        {
+            SkipWs(json, ref pos);
+            if (pos >= json.Length || json[pos] != '[') return null;
+            pos++; // skip '['
+
+            var list = new List<float>();
+            while (pos < json.Length)
+            {
+                SkipWs(json, ref pos);
+                if (json[pos] == ']') { pos++; break; }
+                if (json[pos] == ',') { pos++; continue; }
+                list.Add(ParseFloat(json, ref pos));
+            }
+            return list.ToArray();
+        }
+
+        private static int[] ParseIntArray(string json, ref int pos)
+        {
+            SkipWs(json, ref pos);
+            if (pos >= json.Length || json[pos] != '[') return null;
+            pos++; // skip '['
+
+            var list = new List<int>();
+            while (pos < json.Length)
+            {
+                SkipWs(json, ref pos);
+                if (json[pos] == ']') { pos++; break; }
+                if (json[pos] == ',') { pos++; continue; }
+                list.Add((int)ParseFloat(json, ref pos));
+            }
+            return list.ToArray();
+        }
+
+        private static void SkipValue(string json, ref int pos)
+        {
+            SkipWs(json, ref pos);
+            if (pos >= json.Length) return;
+
+            char c = json[pos];
+            if (c == '"') { ParseString(json, ref pos); }
+            else if (c == '{') { SkipBraced(json, ref pos, '{', '}'); }
+            else if (c == '[') { SkipBraced(json, ref pos, '[', ']'); }
+            else if (c == 't' || c == 'f' || c == 'n')
+            {
+                while (pos < json.Length && char.IsLetter(json[pos])) pos++;
+            }
+            else
+            {
+                while (pos < json.Length && json[pos] != ',' && json[pos] != '}' && json[pos] != ']')
+                    pos++;
+            }
+        }
+
+        private static void SkipBraced(string json, ref int pos, char open, char close)
+        {
+            int depth = 0;
+            bool inString = false;
+            while (pos < json.Length)
+            {
+                char c = json[pos];
+                if (inString) { if (c == '\\') pos++; else if (c == '"') inString = false; }
+                else { if (c == '"') inString = true; else if (c == open) depth++; else if (c == close) { depth--; if (depth == 0) { pos++; return; } } }
+                pos++;
+            }
+        }
+
+        private static void SkipWs(string json, ref int pos)
+        {
+            while (pos < json.Length && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r'))
+                pos++;
         }
     }
 
