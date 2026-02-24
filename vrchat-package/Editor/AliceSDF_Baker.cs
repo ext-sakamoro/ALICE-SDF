@@ -367,7 +367,7 @@ namespace AliceSDF.Editor
     public static class ShaderGenerator
     {
         private static int _varCounter;
-        private static HashSet<string> _smoothKValues;
+        private static HashSet<float> _smoothKValues;
 
         // Inline threshold: expressions deeper than this get a temp variable
         private const int INLINE_DEPTH = 3;
@@ -375,7 +375,7 @@ namespace AliceSDF.Editor
         public static string GenerateMapFunction(SdfNodeData node, CodegenStats stats = null)
         {
             _varCounter = 0;
-            _smoothKValues = new HashSet<string>();
+            _smoothKValues = new HashSet<float>();
             if (stats == null) stats = new CodegenStats();
 
             // First pass: collect smooth k values for Division Exorcism
@@ -386,7 +386,7 @@ namespace AliceSDF.Editor
             // Emit pre-computed inverse k values
             foreach (var kv in _smoothKValues)
             {
-                sb.AppendLine($"    float inv_k_{kv} = 1.0 / {kv};");
+                sb.AppendLine($"    float inv_k_{Fk(kv)} = 1.0 / {F(kv)};");
                 stats.divisionExorcisms++;
             }
             if (_smoothKValues.Count > 0)
@@ -561,7 +561,7 @@ Shader ""AliceSDF/{name}""
             if (node == null) return;
             if (node.type == "SmoothUnion" || node.type == "SmoothIntersection" || node.type == "SmoothSubtraction")
             {
-                _smoothKValues.Add(Fk(node.k));
+                _smoothKValues.Add(node.k);
             }
             if (node.children != null)
                 foreach (var ch in node.children) CollectSmoothK(ch);
