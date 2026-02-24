@@ -280,8 +280,10 @@ namespace AliceSDF.Editor
     // ASDF JSON Parser (Minimal - supports core SDF node types)
     // =========================================================================
 
+    [System.Serializable]
     public class SdfNodeData
     {
+        // --- Internal field names (used by codegen) ---
         public string type;
         public float radius;
         public float[] size;         // half_extents [x,y,z]
@@ -303,6 +305,32 @@ namespace AliceSDF.Editor
         public float thickness;      // onion
         public SdfNodeData[] children;
         public SdfNodeData child;
+
+        // --- JSON camelCase aliases (JsonUtility field-name compatibility) ---
+        public float smoothness;     // alias for k
+        public float majorRadius;    // alias for major_radius
+        public float minorRadius;    // alias for minor_radius
+        public float halfHeight;     // alias for half_height
+        public float[] pointA;       // alias for point_a
+        public float[] pointB;       // alias for point_b
+
+        /// <summary>
+        /// Merge camelCase JSON aliases into snake_case internal fields, recursively.
+        /// Called after JsonUtility.FromJson to unify field naming.
+        /// </summary>
+        public void Normalize()
+        {
+            if (k == 0f && smoothness != 0f) k = smoothness;
+            if (major_radius == 0f && majorRadius != 0f) major_radius = majorRadius;
+            if (minor_radius == 0f && minorRadius != 0f) minor_radius = minorRadius;
+            if (half_height == 0f && halfHeight != 0f) half_height = halfHeight;
+            if (point_a == null && pointA != null) point_a = pointA;
+            if (point_b == null && pointB != null) point_b = pointB;
+
+            if (children != null)
+                foreach (var ch in children) ch?.Normalize();
+            if (child != null) child.Normalize();
+        }
 
         public int CountNodes()
         {
@@ -350,7 +378,9 @@ namespace AliceSDF.Editor
         {
             try
             {
-                return JsonUtility.FromJson<SdfNodeData>(json);
+                var node = JsonUtility.FromJson<SdfNodeData>(json);
+                node?.Normalize();
+                return node;
             }
             catch (System.Exception e)
             {
