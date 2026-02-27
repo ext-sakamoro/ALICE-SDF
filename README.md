@@ -2073,4 +2073,4 @@ See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for deta
 
 ---
 
-Copyright (c) 2025-2026 Moroya Sakamoto
+Copyright (c) 2025-2026 Moroya Sakamoto — https://alicelaw.net/

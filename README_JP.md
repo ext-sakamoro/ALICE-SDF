@@ -2062,4 +2062,4 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 
 ---
 
-Copyright (c) 2025-2026 Moroya Sakamoto
+Copyright (c) 2025-2026 Moroya Sakamoto — https://alicelaw.net/
