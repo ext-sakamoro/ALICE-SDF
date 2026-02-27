@@ -1,0 +1,19 @@
+name: Ecosystem Test Count
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+
+jobs:
+  check-tests:
+    name: Minimum Test Count
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check minimum test counts
+        run: bash .github/scripts/check_min_tests.sh 50

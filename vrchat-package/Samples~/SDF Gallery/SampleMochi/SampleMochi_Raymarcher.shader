@@ -1,5 +1,5 @@
 // =============================================================================
-// ALICE-SDF Sample: Mochi (Dynamic Soft-Body Blobs)
+// ALICE-SDF Sample: Mochi (Dynamic Soft-Body Blobs) — Standalone Edition
 // =============================================================================
 // Interactive mochi (rice cake) objects that merge, split, and grow.
 // SmoothUnion creates organic blob-like blending between mochis.
@@ -13,6 +13,9 @@
 //   - Ground contact has a soft "squishy" SmoothUnion feel
 //
 // SDF formula: SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k), groundK)
+//
+// This shader is self-contained — no external include dependencies.
+// Works with manual file copy (no UPM package installation required).
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -42,15 +45,72 @@ Shader "AliceSDF/Samples/Mochi"
         Tags { "RenderType"="Opaque" "Queue"="Geometry" }
         Pass
         {
+            Cull Off
+            ZWrite On
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 3.0
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
-            #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_Include.cginc"
 
+            // =================================================================
+            // Inlined SDF Primitives (from AliceSDF_Include.cginc)
+            // =================================================================
+
+            float sdSphere(float3 p, float radius)
+            {
+                return length(p) - radius;
+            }
+
+            float opSmoothUnion(float d1, float d2, float k)
+            {
+                if (k < 0.0001) return min(d1, d2);
+                float inv_k = 1.0 / k;
+                float h = max(k - abs(d1 - d2), 0.0) * inv_k;
+                return min(d1, d2) - h * h * k * 0.25;
+            }
+
+            // =================================================================
+            // Inlined LOD System (from AliceSDF_LOD.cginc)
+            // =================================================================
+
+            #define ALICE_LOD_TIER_HIGH  0
+            #define ALICE_LOD_TIER_MED   1
+            #define ALICE_LOD_TIER_LOW   2
+
+            int aliceLodTier(float cameraDist)
+            {
+                if (cameraDist < 20.0) return ALICE_LOD_TIER_HIGH;
+                if (cameraDist < 60.0) return ALICE_LOD_TIER_MED;
+                return ALICE_LOD_TIER_LOW;
+            }
+
+            int aliceLodSteps(int tier)
+            {
+                if (tier == ALICE_LOD_TIER_HIGH) return 128;
+                if (tier == ALICE_LOD_TIER_MED)  return 64;
+                return 32;
+            }
+
+            float aliceLodEpsilon(int tier)
+            {
+                if (tier == ALICE_LOD_TIER_HIGH) return 0.0001;
+                if (tier == ALICE_LOD_TIER_MED)  return 0.001;
+                return 0.005;
+            }
+
+            float aliceLodStepScale(int tier)
+            {
+                if (tier == ALICE_LOD_TIER_HIGH) return 0.9;
+                if (tier == ALICE_LOD_TIER_MED)  return 1.0;
+                return 1.2;
+            }
+
+            // =================================================================
             // Inspector properties
+            // =================================================================
+
             float4 _MochiColor, _MochiColor2, _GroundColor, _GroundColor2, _FogColor;
             float _MaxDist;
             float _BlendK, _GroundK;
@@ -96,7 +156,23 @@ Shader "AliceSDF/Samples/Mochi"
                 return opSmoothUnion(ground, mochi, _GroundK);
             }
 
-            #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_LOD.cginc"
+            // Inlined AO with LOD
+            float aliceAO_LOD(float3 pos, float3 nor, int tier)
+            {
+                int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 5 :
+                              (tier == ALICE_LOD_TIER_MED)  ? 3 : 2;
+                float occ = 0.0;
+                float sca = 1.0;
+                for (int i = 0; i < 5; i++)
+                {
+                    if (i >= aoSteps) break;
+                    float h = 0.01 + 0.12 * float(i) / float(max(aoSteps - 1, 1));
+                    float d = map(pos + h * nor);
+                    occ += (h - d) * sca;
+                    sca *= 0.95;
+                }
+                return saturate(1.0 - 3.0 * occ);
+            }
 
             // Normal via central differences
             float3 calcN(float3 p) {
@@ -106,18 +182,6 @@ Shader "AliceSDF/Samples/Mochi"
                     map(p + float3(0,e,0)) - map(p - float3(0,e,0)),
                     map(p + float3(0,0,e)) - map(p - float3(0,0,e))
                 ));
-            }
-
-            // AO
-            float calcAO(float3 p, float3 n) {
-                float occ = 0.0;
-                float sca = 1.0;
-                for (int i = 0; i < 5; i++) {
-                    float h = 0.01 + 0.08 * float(i);
-                    occ += (h - map(p + h * n)) * sca;
-                    sca *= 0.9;
-                }
-                return saturate(1.0 - 3.0 * occ);
             }
 
             // Find distance to nearest mochi sphere (raw, no SmoothUnion)

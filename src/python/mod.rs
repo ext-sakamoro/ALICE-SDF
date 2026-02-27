@@ -54,6 +54,9 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(io::export_ue5, m)?)?;
     m.add_function(wrap_pyfunction!(io::from_json, m)?)?;
     m.add_function(wrap_pyfunction!(io::to_json, m)?)?;
+    m.add_function(wrap_pyfunction!(io::import_glb_bytes, m)?)?;
+    m.add_function(wrap_pyfunction!(io::import_glb, m)?)?;
+    m.add_function(wrap_pyfunction!(io::mesh_to_sdf, m)?)?;
 
     // Feature-gated modules
     #[cfg(feature = "volume")]

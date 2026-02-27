@@ -1,0 +1,179 @@
+// =============================================================================
+// SDF Particle Compute Shader - Cosmic Scene
+// =============================================================================
+// Sun + Orbiting Planet + Ring + Moon + Planet2 + 6 Asteroids
+// Full GPU particle simulation — Zero CPU involvement
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#include "/Plugin/AliceSDF/Private/SdfParticleCommon.ush"
+
+// =============================================================================
+// Buffers
+// =============================================================================
+
+RWStructuredBuffer<FParticle> Particles;
+
+// =============================================================================
+// Uniforms
+// =============================================================================
+
+uint ParticleCount;
+float DeltaTime;
+float Time;
+float FlowSpeed;
+float SurfaceAttraction;
+float NoiseStrength;
+float MaxDistance;
+float SpawnRadius;
+
+// Time Slicing
+uint SliceIndex;
+uint SliceCount;
+
+// Cosmic Parameters
+float SunRadius;
+float PlanetRadius;
+float PlanetDistance;
+float Smoothness;
+float RingMajorRadius;
+float RingMinorRadius;
+
+// =============================================================================
+// Scene SDF (Cosmic)
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+	// === SUN (Center) ===
+	float sun = sdSphere(p, SunRadius);
+
+	// === PLANET (Orbiting) ===
+	float orbitAngle = Time * 0.15;
+	float3 planetPos = float3(
+		cos(orbitAngle) * PlanetDistance,
+		0,
+		sin(orbitAngle) * PlanetDistance
+	);
+	float planet = sdSphere(p - planetPos, PlanetRadius);
+
+	// === RING (Around Planet) ===
+	float3 ringP = p - planetPos;
+	ringP = opRotateX(ringP, 0.26); // ~15 degrees tilt
+	float ring = sdTorus(ringP, float2(RingMajorRadius, RingMinorRadius));
+
+	// === MOON ===
+	float moonOrbit = Time * 0.4;
+	float3 moonPos = planetPos + float3(
+		cos(moonOrbit) * 4.0,
+		sin(moonOrbit) * 1.5,
+		sin(moonOrbit) * 4.0
+	);
+	float moon = sdSphere(p - moonPos, 0.6);
+
+	// === PLANET 2 (Distant) ===
+	float orbit2 = Time * 0.25;
+	float3 planet2Pos = float3(
+		cos(orbit2) * PlanetDistance * 0.6,
+		3.0,
+		sin(orbit2) * PlanetDistance * 0.4
+	);
+	float planet2 = sdSphere(p - planet2Pos, PlanetRadius * 0.5);
+
+	// === ASTEROIDS ===
+	float asteroids = 1e10;
+	float beltRadius = PlanetDistance * 0.75;
+	for (int i = 0; i < 6; i++)
+	{
+		float angle = (float)i * 3.14159 * 2.0 / 6.0 + Time * (0.1 + (float)i * 0.02);
+		float3 astPos = float3(
+			cos(angle) * beltRadius,
+			(i % 2 == 0 ? 0.5 : -0.5),
+			sin(angle) * beltRadius
+		);
+		float ast = sdSphere(p - astPos, 0.3 + (float)i * 0.1);
+		asteroids = min(asteroids, ast);
+	}
+
+	// === COMBINE ALL ===
+	float d = sun;
+	d = opSmoothUnion(d, planet, Smoothness);
+	d = opSmoothUnion(d, ring, Smoothness * 0.5);
+	d = opSmoothUnion(d, moon, Smoothness);
+	d = opSmoothUnion(d, planet2, Smoothness);
+	d = opSmoothUnion(d, asteroids, Smoothness * 0.3);
+
+	return d;
+}
+
+// =============================================================================
+// Gradient (Normal)
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+	const float eps = 0.01;
+	float3 n;
+	n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+	n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+	n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+	return normalize(n);
+}
+
+// =============================================================================
+// Initialize Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSInit(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= ParticleCount) return;
+
+	uint seed = id.x * 1337u + 12345u;
+
+	FParticle p;
+	p.Position = randomDirection(seed) * randomFloat(seed + 2u) * SpawnRadius;
+	p.Velocity = randomDirection(seed + 3u) * 0.5;
+	p.Life = randomFloat(seed + 4u);
+	p._Pad = 0;
+
+	Particles[id.x] = p;
+}
+
+// =============================================================================
+// Main Update Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= ParticleCount) return;
+
+	// Time slicing
+	if (SliceCount > 1 && (id.x % SliceCount) != SliceIndex) return;
+
+	FParticle particle = Particles[id.x];
+
+	float3 pos = particle.Position;
+	float3 vel = particle.Velocity;
+
+	// SDF Evaluation
+	float dist = sceneSDF(pos);
+	float3 normal = calcNormal(pos);
+
+	// Physics
+	surfaceFlowPhysics(pos, vel, dist, normal,
+		FlowSpeed, SurfaceAttraction, NoiseStrength,
+		DeltaTime, Time, MaxDistance, SpawnRadius, id.x);
+
+	// Update lifetime
+	particle.Life += DeltaTime * 0.05;
+	if (particle.Life > 1.0) particle.Life -= 1.0;
+
+	// Write back
+	particle.Position = pos;
+	particle.Velocity = vel;
+
+	Particles[id.x] = particle;
+}

@@ -1,0 +1,173 @@
+#include "/Engine/Public/Platform.ush"
+
+// =============================================================================
+// SDF Particle Render Shader - Billboard + Additive Glow
+// =============================================================================
+// Pure SV_VertexID rendering — NO vertex buffer, NO index buffer.
+// 6 vertices per particle (2 triangles per quad).
+//
+// VertexID layout:
+//   ParticleIndex = VertexID / 6
+//   TriVertex     = VertexID % 6
+//   CornerIndex   = {0,1,2,0,2,3}[TriVertex]
+//
+// Draw call: DrawPrimitive(0, ParticleCount * 2, 1)
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+// =============================================================================
+// Particle Data (matches compute shader struct: 32 bytes)
+// =============================================================================
+
+struct FParticleData
+{
+	float3 Position;
+	float3 Velocity;
+	float Life;
+	float _Pad;
+};
+
+StructuredBuffer<FParticleData> ParticlesBuffer;
+
+// =============================================================================
+// Uniforms
+// =============================================================================
+
+float4x4 ViewProjectionMatrix;
+float3 CameraPosition;
+float ParticleSize;
+float Brightness;
+float CoreGlow;
+float4 BaseColor;
+
+// =============================================================================
+// VS Output
+// =============================================================================
+
+struct FVSOutput
+{
+	float4 Position : SV_POSITION;
+	float2 UV       : TEXCOORD0;
+	float3 Color    : TEXCOORD1;
+	float  Speed    : TEXCOORD2;
+};
+
+// =============================================================================
+// Vertex Shader — Billboard facing camera
+// =============================================================================
+
+// Corner lookup table for 2-triangle quad:
+// Triangle 1: corners 0,1,2 (BL, BR, TR)
+// Triangle 2: corners 0,2,3 (BL, TR, TL)
+static const float2 QuadOffsets[6] =
+{
+	float2(-0.5, -0.5),  // 0: BL
+	float2( 0.5, -0.5),  // 1: BR
+	float2( 0.5,  0.5),  // 2: TR
+	float2(-0.5, -0.5),  // 0: BL (repeated)
+	float2( 0.5,  0.5),  // 2: TR (repeated)
+	float2(-0.5,  0.5),  // 3: TL
+};
+
+static const float2 QuadUVs[6] =
+{
+	float2(0, 1),  // BL
+	float2(1, 1),  // BR
+	float2(1, 0),  // TR
+	float2(0, 1),  // BL
+	float2(1, 0),  // TR
+	float2(0, 0),  // TL
+};
+
+void MainVS(
+	uint VertexId : SV_VertexID,
+	uint InstanceId : SV_InstanceID,
+	out FVSOutput Output)
+{
+	// Instanced draw: 6 vertices per instance, ParticleCount instances
+	uint ParticleIndex = InstanceId;
+	uint TriVertex = VertexId;
+
+	float2 QuadOffset = QuadOffsets[TriVertex];
+	float2 QuadUV = QuadUVs[TriVertex];
+
+	// Read particle data from SRV
+	FParticleData Data = ParticlesBuffer[ParticleIndex];
+	float3 WorldPos = Data.Position;
+	float3 Velocity = Data.Velocity;
+
+	// Billboard: face camera (Z-up)
+	float3 ViewDir = CameraPosition - WorldPos;
+	float ViewDist = length(ViewDir);
+	ViewDir = ViewDist > 0.001 ? ViewDir / ViewDist : float3(1, 0, 0);
+
+	float3 WorldUp = float3(0, 0, 1);
+	float3 Right = cross(WorldUp, ViewDir);
+	float RightLen = length(Right);
+
+	// Handle edge case (camera directly above/below)
+	if (RightLen < 0.001)
+	{
+		Right = float3(1, 0, 0);
+		float3 Up = float3(0, 1, 0);
+		float3 Offset = (Right * QuadOffset.x + Up * QuadOffset.y) * ParticleSize;
+		float3 FinalPos = WorldPos + Offset;
+		Output.Position = mul(float4(FinalPos, 1.0), ViewProjectionMatrix);
+		Output.UV = QuadUV;
+		Output.Speed = 0;
+		Output.Color = BaseColor.rgb * Brightness;
+		return;
+	}
+
+	Right = Right / RightLen;
+	float3 Up = cross(ViewDir, Right);
+
+	// Apply size and build final position
+	float3 Offset = (Right * QuadOffset.x + Up * QuadOffset.y) * ParticleSize;
+	float3 FinalPos = WorldPos + Offset;
+
+	Output.Position = mul(float4(FinalPos, 1.0), ViewProjectionMatrix);
+	Output.UV = QuadUV;
+
+	// Color based on velocity
+	float Speed = length(Velocity);
+	Output.Speed = saturate(Speed / 5.0);
+
+	float3 SlowColor = BaseColor.rgb;
+	float3 FastColor = float3(1, 0.5, 0.2);
+	Output.Color = lerp(SlowColor, FastColor, Output.Speed * 0.5) * Brightness;
+}
+
+// =============================================================================
+// Pixel Shader — Glowing circle with additive blend
+// =============================================================================
+
+void MainPS(
+	in FVSOutput Input,
+	out float4 OutColor : SV_Target0)
+{
+	// Distance from center
+	float2 Centered = Input.UV - 0.5;
+	float Dist = length(Centered) * 2.0;
+
+	// Discard outside circle for perf
+	if (Dist > 1.0)
+	{
+		OutColor = float4(0, 0, 0, 0);
+		return;
+	}
+
+	// Soft circular falloff
+	float Alpha = saturate(1.0 - Dist);
+	Alpha = pow(Alpha, 1.5);
+
+	// Core glow (bright center)
+	float Core = saturate(1.0 - Dist * 3.0);
+	Core = pow(Core, 3.0) * CoreGlow;
+
+	// Final color with core highlight
+	float3 FinalColor = Input.Color + Core * 2.0;
+
+	OutColor = float4(FinalColor, Alpha);
+}

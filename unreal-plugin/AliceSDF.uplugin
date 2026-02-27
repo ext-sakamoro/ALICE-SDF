@@ -17,7 +17,7 @@
 		{
 			"Name": "AliceSDF",
 			"Type": "Runtime",
-			"LoadingPhase": "Default",
+			"LoadingPhase": "PostConfigInit",
 			"PlatformAllowList": [
 				"Win64",
 				"Mac",

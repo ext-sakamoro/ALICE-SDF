@@ -262,3 +262,73 @@ pub fn export_ue5(
     py.allow_threads(move || io_export_ue5(&mesh, &path, &config))
         .map_err(|e| PyValueError::new_err(format!("UE5 export error: {}", e)))
 }
+
+/// Import mesh from in-memory GLB bytes (GIL released during parse)
+///
+/// Returns (vertices: ndarray[N,3], indices: ndarray[M]).
+#[pyfunction]
+pub fn import_glb_bytes<'py>(
+    py: Python<'py>,
+    data: &[u8],
+) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
+    use crate::io::import_glb_bytes as io_import_glb_bytes;
+    let data = data.to_vec();
+    let mesh = py
+        .allow_threads(move || io_import_glb_bytes(&data))
+        .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?;
+    mesh_to_numpy(py, &mesh)
+}
+
+/// Import mesh from GLB file path (GIL released during I/O)
+///
+/// Returns (vertices: ndarray[N,3], indices: ndarray[M]).
+#[pyfunction]
+pub fn import_glb<'py>(
+    py: Python<'py>,
+    path: &str,
+) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
+    use crate::io::import_glb as io_import_glb;
+    let path = path.to_string();
+    let mesh = py
+        .allow_threads(move || io_import_glb(&path))
+        .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?;
+    mesh_to_numpy(py, &mesh)
+}
+
+/// Convert mesh to SDF node tree (capsule approximation, GIL released)
+///
+/// Takes vertices (N,3) and indices (M,) and returns an SdfNode.
+#[pyfunction]
+#[pyo3(signature = (vertices, indices, capsule_radius_factor=0.05))]
+pub fn mesh_to_sdf(
+    py: Python<'_>,
+    vertices: &Bound<'_, PyArray2<f32>>,
+    indices: &Bound<'_, PyArray1<u32>>,
+    capsule_radius_factor: f32,
+) -> PyResult<PySdfNode> {
+    use crate::mesh::{mesh_to_sdf as rust_mesh_to_sdf, MeshToSdfConfig};
+    use glam::Vec3;
+
+    // SAFETY: PyO3 guarantees the NumPy array object is valid for the GIL lifetime.
+    let verts_arr = unsafe { vertices.as_array() };
+    let idx_arr = unsafe { indices.as_array() };
+
+    if verts_arr.shape()[1] != 3 {
+        return Err(PyValueError::new_err("Vertices must have shape (N, 3)"));
+    }
+
+    let verts: Vec<Vec3> = verts_arr
+        .rows()
+        .into_iter()
+        .map(|row| Vec3::new(row[0], row[1], row[2]))
+        .collect();
+    let idx: Vec<u32> = idx_arr.to_vec();
+
+    let config = MeshToSdfConfig {
+        capsule_radius_factor,
+        ..MeshToSdfConfig::fast()
+    };
+
+    let node = py.allow_threads(|| rust_mesh_to_sdf(&verts, &idx, &config));
+    Ok(PySdfNode { inner: node })
+}

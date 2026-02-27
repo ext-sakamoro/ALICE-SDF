@@ -130,6 +130,164 @@ Check **Output Log** for results.
 
 ---
 
+## GPU Showcase Actors
+
+Five showcase actors recreate the full Unity SDF Universe demo using UE5's native rendering systems.
+
+### Rendering Pipelines
+
+| Pipeline | Actor Class | Description |
+|----------|------------|-------------|
+| **Nanite Mesh** | `AAliceSdfNaniteActor` | SDF → Marching Cubes → Nanite StaticMesh. 500K-8M tris at 60fps |
+| **GPU Particles** | `AAliceSdfParticleActor` | Compute Shader SDF physics + instanced billboard render. 10M+ particles |
+| **Raymarching** | `AAliceSdfRaymarchActor` | Per-pixel raymarching on bounding box. Infinite detail, no mesh |
+| **Lumen GI** | `AAliceSdfLumenShowcase` | Gallery room with Nanite shapes + Lumen color bleeding |
+
+### Showcase Scenes (5)
+
+| Actor | Scene | Pipeline | Elements |
+|-------|-------|----------|----------|
+| `AAliceSdfCosmicShowcase` | Solar System | Nanite | Sun, 2 planets, ring, moon, asteroid belt |
+| `AAliceSdfTerrainShowcase` | Landscape | Nanite | FBM terrain, water, 5 rocks, 3 floating islands |
+| `AAliceSdfAbstractShowcase` | Generative Art | Nanite | Gyroid center, 6 metaballs, 3 rings, 4 Schwarz P, 8 cubes |
+| `AAliceSdfFractalShowcase` | Menger Sponge | Nanite | High-res fractal with turntable rotation |
+| `AAliceSdfLumenShowcase` | GI Gallery | Nanite + Lumen | 4 shapes on pedestals, colored lights, PostProcessVolume |
+
+---
+
+### Nanite Actor — High-Polygon SDF Meshes
+
+Place `AAliceSdfNaniteActor` in a level. Select `ShapeType` from 23 presets:
+
+| Category | Shapes |
+|----------|--------|
+| **Showcase** | TPMS Sphere, Organic Sculpture, Crystal, Arch Column, SAO Float |
+| **Fractal** | Menger Sponge, Fractal Planet Mix |
+| **Cosmic** | Cosmic System, Sun, Ringed Planet, Asteroid |
+| **Terrain** | Ground, Water, Rock, Floating Island |
+| **Abstract** | Bounded Gyroid, Metaball, Schwarz P, Floating Cube, Ring |
+| **Lumen** | Cathedral, Coral Reef |
+
+```
+Resolution=256 → ~500K-2M tris (balanced)
+Resolution=512 → ~2M-8M tris (ultra detail, Nanite handles it)
+```
+
+Click **Rebuild Mesh** in Details panel. Nanite automatically handles LOD.
+
+---
+
+### GPU Particle Actor — 10M Particles at 60fps
+
+Place `AAliceSdfParticleActor` in a level. Select `SceneType`:
+
+| Scene | Description |
+|-------|-------------|
+| Cosmic | Particles flowing across Sun + Planet + Ring |
+| Terrain | Particles on FBM landscape + water |
+| Abstract | Particles on Gyroid + Metaballs |
+| Fractal | Particles on Menger Sponge with microscope zoom |
+
+Parameters: ParticleCount (10K-10M), FlowSpeed, SurfaceAttraction, NoiseStrength, ParticleSize, Brightness, CoreGlow.
+
+Time Slicing: Set `UpdateDivisions=3` to process 1/3 of particles per frame for higher counts.
+
+---
+
+### Raymarch Actor — Infinite Detail Without Meshes
+
+Place `AAliceSdfRaymarchActor` in a level. Select `ShaderMode`:
+
+| Mode | Description | Parameters |
+|------|-------------|------------|
+| **Fractal** | Menger Sponge with twist and zoom | BoxSize, HoleSize, RepeatScale, TwistAmount, DetailScale |
+| **CosmicFractal** | 4 demo modes in one | CosmicMode (Normal/Fusion/Destruction/Morph) |
+
+CosmicFractal Modes:
+- **Normal**: Sun + orbiting fractal planet + ring + moon
+- **Fusion**: Two spheres with dynamic smooth union (metaballs)
+- **Destruction**: Box with fractal + runtime hole subtraction
+- **Morph**: Sphere → Box → Torus → Menger interpolation (auto-cycling)
+
+Quality: MaxSteps (32-512), SurfaceEpsilon (0.0001-0.01), FogDensity.
+
+Note: Raymarched surfaces do not receive Lumen GI (no GBuffer output). Lighting is computed analytically in the shader (diffuse + fresnel + fog).
+
+---
+
+### Lumen Showcase — Global Illumination Demo
+
+Place `AAliceSdfLumenShowcase` in a level. Click **Build Gallery**:
+
+- Builds a gallery room (walls, floor, ceiling)
+- Spawns 4 Nanite SDF shapes on pedestals (Cathedral, Coral, TPMS, Crystal)
+- 4 colored point lights for visible color bleeding
+- Auto-spawns PostProcessVolume (GI=Lumen, Reflections=Lumen)
+- Auto-spawns SkyLight for environment indirect lighting
+
+Parameters: LumenFinalGatherQuality (1-4), LumenSceneDetail (1-4), SkyLightIntensity.
+
+---
+
+## Demo Level Setup Guide
+
+### Minimal Setup (Test one actor)
+
+1. Create a new Empty Level
+2. Add a DirectionalLight and SkyLight
+3. Drag one showcase actor into the level
+4. Press Play
+
+### Full Showcase Level (All pipelines)
+
+Recommended layout for a comprehensive demo:
+
+```
++------------------------------------------+
+|                                          |
+|   [Cosmic Showcase]     [Terrain]        |  ← Nanite scenes (back)
+|     (0, -2000, 0)       (3000, -2000, 0) |
+|                                          |
+|                                          |
+|   [Abstract]            [Fractal]        |  ← Nanite scenes (mid)
+|     (0, 0, 0)            (3000, 0, 0)    |
+|                                          |
+|                                          |
+|   [Particle Actor]    [Raymarch Actor]   |  ← GPU scenes (front)
+|     (0, 2000, 0)       (3000, 2000, 0)  |
+|                                          |
+|   [Lumen Showcase]                       |  ← Indoor GI scene
+|     (6000, 0, 0)                         |
+|                                          |
++------------------------------------------+
+```
+
+Steps:
+1. **File → New Level → Empty Level**
+2. **Add Lighting**: DirectionalLight (Movable), SkyLight, SkyAtmosphere, ExponentialHeightFog
+3. **Place Showcases**: Drag each actor class from Place Actors panel (search "AliceSdf")
+4. **Build Nanite**: For each Nanite-based showcase, click "Build" in Details
+5. **Play**: GPU Particles + Raymarching activate on Play
+
+### Project Settings for Lumen
+
+Ensure these are set in **Project Settings**:
+- **Global Illumination → Dynamic GI Method**: Lumen
+- **Reflections → Reflection Method**: Lumen
+- **Nanite → Enable Nanite**: True (default in UE5)
+- **Shader Model**: SM5 or SM6
+
+### Performance Tips
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Low-end GPU | Particle count ≤100K, Raymarch MaxSteps=64, Nanite Resolution=128 |
+| Mid-range GPU | Particle count 500K, MaxSteps=128, Resolution=256 |
+| High-end GPU | Particle count 5M+, MaxSteps=256, Resolution=512 |
+| Lumen on | Reduce particle count, Lumen adds ~2ms GPU cost |
+
+---
+
 ## Available Primitives (66)
 
 ### Basic (14)

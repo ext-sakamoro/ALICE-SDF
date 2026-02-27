@@ -24,6 +24,9 @@ public class AliceSDF : ModuleRules
 			"Engine",
 			"RenderCore",
 			"RHI",
+			"Renderer",
+			"MeshDescription",
+			"StaticMeshDescription",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {

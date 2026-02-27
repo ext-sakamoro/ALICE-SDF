@@ -1,0 +1,249 @@
+// =============================================================================
+// SDF Particle Compute Shader - Abstract Scene
+// =============================================================================
+// Gyroid + Metaballs (morphing) + Rotating Torus Rings + Schwarz P + Cubes
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#include "/Plugin/AliceSDF/Private/SdfParticleCommon.ush"
+
+// =============================================================================
+// Buffers
+// =============================================================================
+
+RWStructuredBuffer<FParticle> Particles;
+
+// =============================================================================
+// Uniforms
+// =============================================================================
+
+uint ParticleCount;
+float DeltaTime;
+float Time;
+float FlowSpeed;
+float SurfaceAttraction;
+float NoiseStrength;
+float MaxDistance;
+float SpawnRadius;
+
+// Time Slicing
+uint SliceIndex;
+uint SliceCount;
+
+// Abstract Parameters
+float GyroidScale;
+float GyroidThickness;
+float MetaballRadius;
+float MorphAmount;
+
+// =============================================================================
+// Scene SDF (Abstract)
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+	// === CENTRAL GYROID (Bounded by sphere) ===
+	float gyroidSphere = sdSphere(p, 8.0);
+	float gyroid = sdGyroid(p, GyroidScale, GyroidThickness);
+	float boundedGyroid = max(gyroid, gyroidSphere);
+
+	// === MORPHING METABALLS ===
+	float metaballs = 1e10;
+	for (int i = 0; i < 6; i++)
+	{
+		float phase = float(i) * 1.047198 + Time * (0.5 + float(i) * 0.1);
+		float radius = 12.0 + sin(Time * 0.3 + float(i)) * 3.0;
+
+		float3 ballPos = float3(
+			cos(phase) * radius,
+			sin(phase * 1.5 + Time * 0.7) * 5.0,
+			sin(phase) * radius
+		);
+
+		// Morphing between sphere and octahedron
+		float morphT = sin(Time * 0.5 + float(i)) * 0.5 + 0.5;
+		float sphere = sdSphere(p - ballPos, MetaballRadius);
+		float octa = sdOctahedron(p - ballPos, MetaballRadius * 1.2);
+		float ball = lerp(sphere, octa, morphT * MorphAmount);
+
+		metaballs = opSmoothUnion(metaballs, ball, 2.0);
+	}
+
+	// === ROTATING TORUS RINGS ===
+	float rings = 1e10;
+	for (int j = 0; j < 3; j++)
+	{
+		float angle = Time * (0.3 + float(j) * 0.15);
+		float3x3 rot = mul(rotateY(angle), rotateX(float(j) * 1.047198 + angle * 0.5));
+
+		float3 rp = mul(rot, p);
+		float ring = sdTorus(rp, float2(10.0 + float(j) * 2.0, 0.3 + float(j) * 0.1));
+		rings = min(rings, ring);
+	}
+
+	// === SCHWARZ P CORNERS ===
+	float corners = 1e10;
+	float3 cornerPositions[4] = {
+		float3(15, 15, 15),
+		float3(-15, 15, -15),
+		float3(15, -15, -15),
+		float3(-15, -15, 15)
+	};
+
+	for (int k = 0; k < 4; k++)
+	{
+		float3 cp = p - cornerPositions[k];
+		float boundSphere = sdSphere(cp, 5.0);
+		float schwarzP = sdSchwarzP(cp, 0.8, 0.15);
+		float corner = max(schwarzP, boundSphere);
+		corners = min(corners, corner);
+	}
+
+	// === FLOATING CUBES (Rotating) ===
+	float cubes = 1e10;
+	for (int m = 0; m < 8; m++)
+	{
+		float t = float(m) * 0.785398 + Time * 0.4;
+		float3 cubePos = float3(
+			cos(t) * 18.0,
+			sin(t * 2.0) * 8.0,
+			sin(t) * 18.0
+		);
+
+		float3 lp = p - cubePos;
+
+		// Rotating cube
+		float rotAngle = Time * (0.5 + float(m) * 0.1);
+		lp = mul(rotateY(rotAngle), mul(rotateX(rotAngle * 0.7), lp));
+
+		float cube = sdBox(lp, float3(1.0, 1.0, 1.0) * (0.5 + float(m % 3) * 0.3));
+		cubes = min(cubes, cube);
+	}
+
+	// === COMBINE ALL ===
+	float d = boundedGyroid;
+	d = opSmoothUnion(d, metaballs, 1.5);
+	d = opSmoothUnion(d, rings, 0.8);
+	d = opSmoothUnion(d, corners, 1.0);
+	d = opSmoothUnion(d, cubes, 0.5);
+
+	return d;
+}
+
+// =============================================================================
+// Gradient (Normal)
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+	const float eps = 0.01;
+	float3 n;
+	n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+	n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+	n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+	return normalize(n);
+}
+
+// =============================================================================
+// Initialize Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSInit(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= ParticleCount) return;
+
+	uint seed = id.x * 1337u + 12345u;
+
+	FParticle p;
+	p.Position = randomDirection(seed) * randomFloat(seed + 2u) * SpawnRadius;
+	p.Velocity = randomDirection(seed + 3u) * 0.5;
+	p.Life = randomFloat(seed + 4u);
+	p._Pad = 0;
+
+	Particles[id.x] = p;
+}
+
+// =============================================================================
+// Main Update Kernel
+// =============================================================================
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= ParticleCount) return;
+
+	// Time slicing
+	if (SliceCount > 1 && (id.x % SliceCount) != SliceIndex) return;
+
+	FParticle particle = Particles[id.x];
+
+	float3 pos = particle.Position;
+	float3 vel = particle.Velocity;
+
+	// SDF Evaluation
+	float dist = sceneSDF(pos);
+	float3 normal = calcNormal(pos);
+
+	// === Physics (spiral flow variant) ===
+
+	// 1. Project velocity onto surface tangent
+	float vDotN = dot(vel, normal);
+	vel -= vDotN * normal;
+
+	// 2. Add swirling flow
+	float3 tangent = cross(normal, float3(0, 1, 0));
+	if (length(tangent) < 0.01)
+	{
+		tangent = cross(normal, float3(1, 0, 0));
+	}
+	tangent = normalize(tangent);
+
+	// Spiral flow pattern
+	float spiral = sin(Time * 0.5 + length(pos) * 0.2);
+	vel += tangent * FlowSpeed * (0.5 + spiral * 0.3);
+
+	// 3. Surface attraction
+	vel -= normal * dist * SurfaceAttraction;
+
+	// 4. Add turbulent noise
+	if (NoiseStrength > 0)
+	{
+		float3 noiseOffset = float3(
+			noise(pos * 0.15 + float3(Time * 0.4, 0, 0)) - 0.5,
+			noise(pos * 0.15 + float3(0, Time * 0.4, 0)) - 0.5,
+			noise(pos * 0.15 + float3(0, 0, Time * 0.4)) - 0.5
+		);
+		vel += noiseOffset * NoiseStrength * 3.0;
+	}
+
+	// 5. Clamp velocity
+	float velLen = length(vel);
+	if (velLen > FlowSpeed * 2.5)
+	{
+		vel = vel / velLen * FlowSpeed * 2.5;
+	}
+
+	// 6. Integrate
+	pos += vel * DeltaTime;
+
+	// 7. Respawn if out of bounds
+	float distFromOrigin = length(pos);
+	if (distFromOrigin > MaxDistance || isnan(pos.x))
+	{
+		uint seed = id.x + asuint(Time * 1000.0);
+		pos = randomDirection(seed) * randomFloat(seed + 1u) * SpawnRadius;
+		vel = randomDirection(seed + 2u) * 0.5;
+	}
+
+	// Update lifetime (faster cycling for abstract effect)
+	particle.Life += DeltaTime * 0.1;
+	if (particle.Life > 1.0) particle.Life -= 1.0;
+
+	// Write back
+	particle.Position = pos;
+	particle.Velocity = vel;
+
+	Particles[id.x] = particle;
+}

@@ -1,0 +1,263 @@
+// =============================================================================
+// SDF Raymarching Shader - Fractal (Infinite Zoom Menger Sponge)
+// =============================================================================
+// Ported from Unity SDF Universe: SdfSurface_Raymarching.shader
+// Object-space raymarching on a bounding box mesh.
+// Outputs pixel depth for correct scene integration.
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#include "/Engine/Public/Platform.ush"
+
+// =============================================================================
+// Uniforms
+// =============================================================================
+
+float4x4 LocalToWorld;
+float4x4 WorldToClip;
+float3 CameraWorldPos;
+
+// Fractal Parameters
+float BoxSize;
+float HoleSize;
+float RepeatScale;
+float TwistAmount;
+float DetailScale;
+
+// Rendering
+int MaxSteps;
+float MaxDist;
+float SurfaceEpsilon;
+float Time;
+
+// =============================================================================
+// SDF Primitives
+// =============================================================================
+
+float sdBox(float3 p, float3 b)
+{
+	float3 q = abs(p) - b;
+	return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float sdCross(float3 p, float size)
+{
+	float inf = 1000.0;
+	float da = sdBox(p, float3(inf, size, size));
+	float db = sdBox(p, float3(size, inf, size));
+	float dc = sdBox(p, float3(size, size, inf));
+	return min(da, min(db, dc));
+}
+
+float3 opRepeat(float3 p, float3 c)
+{
+	return fmod(p + c * 0.5, c) - c * 0.5;
+}
+
+// =============================================================================
+// Scene SDF
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+	// Optional twist
+	if (TwistAmount > 0.001)
+	{
+		float angle = p.y * TwistAmount;
+		float c = cos(angle);
+		float s = sin(angle);
+		float2 xz = float2(c * p.x - s * p.z, s * p.x + c * p.z);
+		p.x = xz.x;
+		p.z = xz.y;
+	}
+
+	float box = sdBox(p, float3(BoxSize, BoxSize, BoxSize));
+	float3 rp = opRepeat(p, float3(RepeatScale, RepeatScale, RepeatScale));
+	float cross = sdCross(rp, HoleSize);
+	return max(-cross, box);
+}
+
+// =============================================================================
+// Normal via Central Differences
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+	float eps = SurfaceEpsilon * 2.0;
+	float3 n;
+	n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+	n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+	n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+	return normalize(n);
+}
+
+// =============================================================================
+// Noise (Procedural Texture)
+// =============================================================================
+
+float hash(float3 p)
+{
+	p = frac(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise3d(float3 p)
+{
+	float3 i = floor(p);
+	float3 f = frac(p);
+	f = f * f * (3.0 - 2.0 * f);
+
+	return lerp(
+		lerp(lerp(hash(i + float3(0,0,0)), hash(i + float3(1,0,0)), f.x),
+			 lerp(hash(i + float3(0,1,0)), hash(i + float3(1,1,0)), f.x), f.y),
+		lerp(lerp(hash(i + float3(0,0,1)), hash(i + float3(1,0,1)), f.x),
+			 lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y),
+		f.z
+	);
+}
+
+float fbm(float3 p, int octaves)
+{
+	float value = 0.0;
+	float amplitude = 0.5;
+	float frequency = 1.0;
+	for (int i = 0; i < octaves; i++)
+	{
+		value += amplitude * noise3d(p * frequency);
+		amplitude *= 0.5;
+		frequency *= 2.0;
+	}
+	return value;
+}
+
+// =============================================================================
+// Ambient Occlusion
+// =============================================================================
+
+float calcAO(float3 pos, float3 nor)
+{
+	float occ = 0.0;
+	float sca = 1.0;
+	for (int i = 0; i < 5; i++)
+	{
+		float h = 0.01 + 0.12 * float(i) / 4.0;
+		float d = sceneSDF(pos + h * nor);
+		occ += (h - d) * sca;
+		sca *= 0.95;
+	}
+	return clamp(1.0 - 3.0 * occ, 0.0, 1.0);
+}
+
+// =============================================================================
+// VS/PS Structures
+// =============================================================================
+
+struct FVSInput
+{
+	float3 Position : ATTRIBUTE0;
+};
+
+struct FVSOutput
+{
+	float4 SvPosition : SV_POSITION;
+	float3 WorldPos   : TEXCOORD0;
+	float3 LocalPos   : TEXCOORD1;
+};
+
+// =============================================================================
+// Vertex Shader — Pass through bounding box vertices
+// =============================================================================
+
+void MainVS(
+	in FVSInput Input,
+	out FVSOutput Output)
+{
+	float4 WorldPos4 = mul(float4(Input.Position, 1.0), LocalToWorld);
+	Output.WorldPos = WorldPos4.xyz;
+	Output.LocalPos = Input.Position;
+	Output.SvPosition = mul(WorldPos4, WorldToClip);
+}
+
+// =============================================================================
+// Pixel Shader — Per-pixel raymarching
+// =============================================================================
+
+void MainPS(
+	in FVSOutput Input,
+	out float4 OutColor : SV_Target0,
+	out float OutDepth : SV_Depth)
+{
+	// Ray setup
+	float3 ro = CameraWorldPos;
+	float3 rd = normalize(Input.WorldPos - ro);
+
+	// Transform ray to local space for SDF evaluation
+	float4x4 WorldToLocal = Primitive.WorldToLocal;
+	float3 localRo = mul(float4(ro, 1.0), WorldToLocal).xyz;
+	float3 localRd = normalize(mul(float4(rd, 0.0), WorldToLocal).xyz);
+
+	// Raymarch
+	float t = 0.0;
+	float3 pos = localRo;
+	bool hit = false;
+
+	for (int i = 0; i < MaxSteps; i++)
+	{
+		pos = localRo + localRd * t;
+		float d = sceneSDF(pos);
+
+		if (d < SurfaceEpsilon)
+		{
+			hit = true;
+			break;
+		}
+
+		if (t > MaxDist)
+		{
+			break;
+		}
+
+		t += d;
+	}
+
+	if (!hit)
+	{
+		discard;
+	}
+
+	// Normal and lighting
+	float3 normal = calcNormal(pos);
+
+	// Simple directional light
+	float3 lightDir = normalize(float3(0.5, 0.8, 0.3));
+	float diff = max(dot(normal, lightDir), 0.0);
+	float amb = 0.15;
+
+	// Ambient occlusion
+	float ao = calcAO(pos, normal);
+
+	// Procedural texture (FBM noise)
+	float3 texColor;
+	float n = fbm(pos * DetailScale, 4);
+	texColor = lerp(float3(0.6, 0.65, 0.7), float3(0.85, 0.8, 0.75), n);
+
+	// Edge highlight (Fresnel)
+	float3 viewDir = normalize(localRo - pos);
+	float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+	float3 fresnelColor = float3(0.3, 0.5, 0.8) * fresnel * 0.4;
+
+	// Combine
+	float3 color = texColor * (amb + diff * 0.85) * ao + fresnelColor;
+
+	// Gamma
+	color = pow(color, 1.0 / 2.2);
+
+	OutColor = float4(color, 1.0);
+
+	// Output depth for correct scene integration
+	float4 worldHitPos = mul(float4(pos, 1.0), LocalToWorld);
+	float4 clipPos = mul(worldHitPos, WorldToClip);
+	OutDepth = clipPos.z / clipPos.w;
+}

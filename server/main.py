@@ -19,7 +19,7 @@ from server.models import (
     MeshRequest,
     HealthResponse,
 )
-from server.services import sdf_service, llm_service
+from server.services import sdf_service, llm_service, crawler_service
 from server.prompts.examples import EXAMPLES
 from server import config
 
@@ -156,6 +156,38 @@ async def examples():
 async def viewer():
     viewer_path = STATIC_DIR / "viewer.html"
     return HTMLResponse(content=viewer_path.read_text())
+
+
+# ── OS3A Crawler Endpoints ─────────────────────────────────────
+
+
+@app.post("/api/crawler/start")
+async def crawler_start():
+    import asyncio
+    asyncio.create_task(crawler_service.run_crawler())
+    return {"status": "started"}
+
+
+@app.get("/api/crawler/status")
+async def crawler_status():
+    return crawler_service.get_state()
+
+
+@app.get("/api/assets")
+async def list_assets():
+    return crawler_service.get_converted_assets()
+
+
+@app.get("/api/assets/{asset_id}/sdf")
+async def get_asset_sdf(asset_id: str):
+    sdf_json = crawler_service.get_asset_sdf(asset_id)
+    if sdf_json is None:
+        return Response(status_code=404, content="Asset not found")
+    return Response(
+        content=sdf_json,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{asset_id}.asdf.json"'},
+    )
 
 
 # ── WebSocket Endpoint ──────────────────────────────────────────

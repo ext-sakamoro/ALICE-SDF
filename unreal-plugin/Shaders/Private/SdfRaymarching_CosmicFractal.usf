@@ -1,0 +1,384 @@
+// =============================================================================
+// SDF Raymarching Shader - Cosmic Fractal (4 Demo Modes)
+// =============================================================================
+// Ported from Unity SDF Universe: CosmicFractal.shader
+// Mode 0: Normal (Sun + Fractal Planet orbit)
+// Mode 1: Fusion (Two spheres with dynamic smooth union)
+// Mode 2: Destruction (Box + runtime-subtracted holes)
+// Mode 3: Morph (Sphere → Box → Torus → Menger interpolation)
+//
+// Author: Moroya Sakamoto
+// =============================================================================
+
+#include "/Engine/Public/Platform.ush"
+
+// =============================================================================
+// Uniforms
+// =============================================================================
+
+float4x4 LocalToWorld;
+float4x4 WorldToClip;
+float3 CameraWorldPos;
+
+float Time;
+int DemoMode;
+
+// Mode 0: Normal
+float SunRadius;
+float PlanetDistance;
+
+// Mode 1: Fusion
+float3 Sphere1Pos;
+float3 Sphere2Pos;
+float FusionSmoothness;
+
+// Mode 2: Destruction
+int HoleCount;
+float4 HolePositions[16]; // xyz = position, w = radius
+
+// Mode 3: Morph
+float MorphT; // 0-3 interpolates between 4 shapes
+
+// Rendering
+int MaxSteps;
+float MaxDist;
+float SurfaceEpsilon;
+float FogDensity;
+
+// =============================================================================
+// SDF Primitives
+// =============================================================================
+
+float sdSphere(float3 p, float r)
+{
+	return length(p) - r;
+}
+
+float sdBox(float3 p, float3 b)
+{
+	float3 q = abs(p) - b;
+	return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float sdTorus(float3 p, float2 t)
+{
+	float2 q = float2(length(p.xz) - t.x, p.y);
+	return length(q) - t.y;
+}
+
+float sdCross(float3 p, float size)
+{
+	float inf = 1000.0;
+	float da = sdBox(p, float3(inf, size, size));
+	float db = sdBox(p, float3(size, inf, size));
+	float dc = sdBox(p, float3(size, size, inf));
+	return min(da, min(db, dc));
+}
+
+float3 opRepeat(float3 p, float3 c)
+{
+	return fmod(p + c * 0.5, c) - c * 0.5;
+}
+
+float opSmoothUnion(float d1, float d2, float k)
+{
+	float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+	return lerp(d2, d1, h) - k * h * (1.0 - h);
+}
+
+// Menger Sponge SDF
+float sdMenger(float3 p, float size)
+{
+	float box = sdBox(p, float3(size, size, size));
+	float3 rp = opRepeat(p, float3(size * 0.666, size * 0.666, size * 0.666));
+	float cross = sdCross(rp, size * 0.1);
+	return max(-cross, box);
+}
+
+// =============================================================================
+// Rotation
+// =============================================================================
+
+float3 rotateY(float3 p, float a)
+{
+	float c = cos(a);
+	float s = sin(a);
+	return float3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
+}
+
+// =============================================================================
+// Noise
+// =============================================================================
+
+float hash3d(float3 p)
+{
+	p = frac(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+// =============================================================================
+// Scene SDF — Mode Dispatch
+// =============================================================================
+
+float sceneSDF(float3 p)
+{
+	if (DemoMode == 0)
+	{
+		// Mode 0: Normal — Sun + orbiting fractal planet
+		float sun = sdSphere(p, SunRadius);
+
+		float orbitAngle = Time * 0.3;
+		float3 planetPos = float3(cos(orbitAngle) * PlanetDistance, 0, sin(orbitAngle) * PlanetDistance);
+		float3 pp = p - planetPos;
+		pp = rotateY(pp, Time * 0.5);
+
+		float planet = sdMenger(pp, 2.0);
+
+		// Ring
+		float3 rp = p - planetPos;
+		float c = cos(0.3);
+		float s = sin(0.3);
+		rp = float3(rp.x, c * rp.y - s * rp.z, s * rp.y + c * rp.z);
+		float ring = sdTorus(rp, float2(3.5, 0.15));
+
+		// Moon
+		float moonAngle = Time * 0.8;
+		float3 moonPos = planetPos + float3(cos(moonAngle) * 4.5, sin(moonAngle) * 1.5, sin(moonAngle) * 4.5);
+		float moon = sdSphere(p - moonPos, 0.5);
+
+		float d = opSmoothUnion(sun, planet, 1.0);
+		d = opSmoothUnion(d, ring, 0.3);
+		d = opSmoothUnion(d, moon, 0.5);
+		return d;
+	}
+	else if (DemoMode == 1)
+	{
+		// Mode 1: Fusion — Two spheres with dynamic smooth union
+		float s1 = sdSphere(p - Sphere1Pos, 2.0);
+		float s2 = sdSphere(p - Sphere2Pos, 2.0);
+		float merged = opSmoothUnion(s1, s2, FusionSmoothness);
+		float floor = p.y + 3.0;
+		return opSmoothUnion(merged, floor, 0.5);
+	}
+	else if (DemoMode == 2)
+	{
+		// Mode 2: Destruction — Box with fractal + subtracted holes
+		float3 bp = rotateY(p, Time * 0.2);
+		float box = sdBox(bp, float3(4, 4, 4));
+		float3 rp = opRepeat(bp, float3(2.66, 2.66, 2.66));
+		float cross = sdCross(rp, 0.4);
+		float d = max(-cross, box);
+
+		// Runtime holes
+		for (int i = 0; i < HoleCount && i < 16; i++)
+		{
+			float hole = sdSphere(p - HolePositions[i].xyz, HolePositions[i].w);
+			d = max(d, -hole);
+		}
+		return d;
+	}
+	else
+	{
+		// Mode 3: Morph — Interpolate between 4 shapes
+		float3 rp = rotateY(p, Time * 0.3);
+
+		float sphere = sdSphere(rp, 3.0);
+		float box = sdBox(rp, float3(2.5, 2.5, 2.5));
+		float torus = sdTorus(rp, float2(2.5, 0.8));
+		float menger = sdMenger(rp, 3.0);
+
+		float t = frac(MorphT);
+		int phase = (int)floor(MorphT) % 4;
+
+		float d;
+		if (phase == 0) d = lerp(sphere, box, t);
+		else if (phase == 1) d = lerp(box, torus, t);
+		else if (phase == 2) d = lerp(torus, menger, t);
+		else d = lerp(menger, sphere, t);
+
+		return d;
+	}
+}
+
+// =============================================================================
+// Normal
+// =============================================================================
+
+float3 calcNormal(float3 p)
+{
+	float eps = SurfaceEpsilon * 2.0;
+	float3 n;
+	n.x = sceneSDF(p + float3(eps, 0, 0)) - sceneSDF(p - float3(eps, 0, 0));
+	n.y = sceneSDF(p + float3(0, eps, 0)) - sceneSDF(p - float3(0, eps, 0));
+	n.z = sceneSDF(p + float3(0, 0, eps)) - sceneSDF(p - float3(0, 0, eps));
+	return normalize(n);
+}
+
+// =============================================================================
+// Mode-Specific Coloring
+// =============================================================================
+
+float3 getColor(float3 pos, float3 normal, float dist, int mode)
+{
+	if (mode == 0)
+	{
+		// Sun glow: warm at center, cool far away
+		float sunDist = length(pos);
+		float glow = exp(-sunDist * 0.15);
+		float3 warmColor = float3(1.0, 0.6, 0.2);
+		float3 coolColor = float3(0.5, 0.6, 0.8);
+		return lerp(coolColor, warmColor, glow);
+	}
+	else if (mode == 1)
+	{
+		// Fusion: hot glow at blend region
+		float s1 = sdSphere(pos - Sphere1Pos, 2.0);
+		float s2 = sdSphere(pos - Sphere2Pos, 2.0);
+		float blendZone = 1.0 - saturate(abs(s1 - s2) / (FusionSmoothness * 2.0));
+		float3 baseColor = float3(0.6, 0.65, 0.7);
+		float3 hotColor = float3(1.0, 0.3, 0.1);
+		return lerp(baseColor, hotColor, blendZone * blendZone);
+	}
+	else if (mode == 2)
+	{
+		// Destruction: red glow near hole edges
+		float minHoleDist = 1e10;
+		for (int i = 0; i < HoleCount && i < 16; i++)
+		{
+			float hd = length(pos - HolePositions[i].xyz) - HolePositions[i].w;
+			minHoleDist = min(minHoleDist, abs(hd));
+		}
+		float edgeGlow = exp(-minHoleDist * 2.0);
+		float3 baseColor = float3(0.7, 0.7, 0.75);
+		float3 glowColor = float3(1.0, 0.2, 0.05);
+		return lerp(baseColor, glowColor, edgeGlow);
+	}
+	else
+	{
+		// Morph: rainbow based on morphT
+		float t = frac(MorphT);
+		float hue = MorphT * 0.25;
+		float3 c1 = float3(0.5 + 0.5 * cos(hue * 6.28), 0.5 + 0.5 * cos((hue + 0.33) * 6.28), 0.5 + 0.5 * cos((hue + 0.66) * 6.28));
+		return c1 * 0.8 + 0.2;
+	}
+}
+
+// =============================================================================
+// VS/PS Structures
+// =============================================================================
+
+struct FVSInput
+{
+	float3 Position : ATTRIBUTE0;
+};
+
+struct FVSOutput
+{
+	float4 SvPosition : SV_POSITION;
+	float3 WorldPos   : TEXCOORD0;
+};
+
+// =============================================================================
+// Vertex Shader
+// =============================================================================
+
+void MainVS(
+	in FVSInput Input,
+	out FVSOutput Output)
+{
+	float4 WorldPos4 = mul(float4(Input.Position, 1.0), LocalToWorld);
+	Output.WorldPos = WorldPos4.xyz;
+	Output.SvPosition = mul(WorldPos4, WorldToClip);
+}
+
+// =============================================================================
+// Pixel Shader
+// =============================================================================
+
+void MainPS(
+	in FVSOutput Input,
+	out float4 OutColor : SV_Target0,
+	out float OutDepth : SV_Depth)
+{
+	float3 ro = CameraWorldPos;
+	float3 rd = normalize(Input.WorldPos - ro);
+
+	// Transform to local space
+	float4x4 WorldToLocal = Primitive.WorldToLocal;
+	float3 localRo = mul(float4(ro, 1.0), WorldToLocal).xyz;
+	float3 localRd = normalize(mul(float4(rd, 0.0), WorldToLocal).xyz);
+
+	// Raymarch
+	float t = 0.0;
+	float3 pos = localRo;
+	bool hit = false;
+
+	for (int i = 0; i < MaxSteps; i++)
+	{
+		pos = localRo + localRd * t;
+		float d = sceneSDF(pos);
+
+		if (d < SurfaceEpsilon)
+		{
+			hit = true;
+			break;
+		}
+
+		if (t > MaxDist)
+		{
+			break;
+		}
+
+		t += d;
+	}
+
+	if (!hit)
+	{
+		// Star field background
+		float stars = step(0.998, hash3d(rd * 500.0));
+		if (stars > 0.5)
+		{
+			OutColor = float4(1, 1, 1, 1);
+		}
+		else
+		{
+			OutColor = float4(0.02, 0.02, 0.05, 0.0);
+			discard;
+		}
+		// Default depth (far plane)
+		OutDepth = 0.0;
+		return;
+	}
+
+	// Normal and lighting
+	float3 normal = calcNormal(pos);
+	float3 lightDir = normalize(float3(0.5, 0.8, 0.3));
+	float diff = max(dot(normal, lightDir), 0.0);
+	float amb = 0.15;
+
+	// Mode-specific color
+	float3 surfaceColor = getColor(pos, normal, t, DemoMode);
+
+	// Fresnel
+	float3 viewDir = normalize(localRo - pos);
+	float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+
+	// Combine
+	float3 color = surfaceColor * (amb + diff * 0.85);
+	color += fresnel * 0.15;
+
+	// Distance fog
+	float fog = 1.0 - exp(-t * FogDensity);
+	color = lerp(color, float3(0.02, 0.02, 0.05), fog);
+
+	// Gamma
+	color = pow(color, 1.0 / 2.2);
+
+	OutColor = float4(color, 1.0);
+
+	// Output depth
+	float4 worldHitPos = mul(float4(pos, 1.0), LocalToWorld);
+	float4 clipPos = mul(worldHitPos, WorldToClip);
+	OutDepth = clipPos.z / clipPos.w;
+}
