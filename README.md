@@ -1440,7 +1440,7 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 1,079 tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier, mesh persistence, chunked cache, Unity/UE5 export, FFI bindings, autodiff, shell, measure, heatmap, diff, constraint, sdf2d, font_bridge).
 
 ```bash
-cargo test                  # default features (1,069 tests)
+cargo test                  # default features (1,003 tests)
 cargo test --features font  # + ALICE-Font bridge (1,079 tests)
 ```
 

@@ -240,6 +240,564 @@ float sdRoundedBox(float3 p, float3 halfExtents, float roundRadius)
     return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - roundRadius;
 }
 
+// InfiniteCylinder: infinite along Y-axis
+float sdInfiniteCylinder(float3 p, float radius)
+{
+    return length(p.xz) - radius;
+}
+
+// RoundedCylinder: cylinder with rounded edges
+float sdRoundedCylinder(float3 p, float radius, float roundRadius, float halfHeight)
+{
+    float2 d = float2(length(p.xz) - 2.0 * radius + roundRadius, abs(p.y) - halfHeight);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - roundRadius;
+}
+
+// TriangularPrism: equilateral triangle along Z
+float sdTriangularPrism(float3 p, float width, float halfDepth)
+{
+    float3 q = abs(p);
+    return max(q.z - halfDepth, max(q.x * 0.866025 + p.y * 0.5, -p.y) - width * 0.5);
+}
+
+// CutSphere: sphere with planar cut
+float sdCutSphere(float3 p, float radius, float cutHeight)
+{
+    float w = sqrt(max(radius * radius - cutHeight * cutHeight, 0.0));
+    float2 q = float2(length(p.xz), p.y);
+    float s1 = (cutHeight - radius) * q.x * q.x + w * w * (cutHeight + radius - 2.0 * q.y);
+    float s2 = cutHeight * q.x - w * q.y;
+    float s = max(s1, s2);
+    if (s < 0.0) return length(q) - radius;
+    if (q.x < w) return cutHeight - q.y;
+    return length(q - float2(w, cutHeight));
+}
+
+// CutHollowSphere: hollow sphere with planar cut
+float sdCutHollowSphere(float3 p, float radius, float cutHeight, float thickness)
+{
+    float w = sqrt(max(radius * radius - cutHeight * cutHeight, 0.0));
+    float2 q = float2(length(p.xz), p.y);
+    if (cutHeight * q.x < w * q.y)
+        return length(q - float2(w, cutHeight)) - thickness;
+    return abs(length(q) - radius) - thickness;
+}
+
+// DeathStar: large sphere with spherical indentation
+float sdDeathStar(float3 p, float ra, float rb, float d)
+{
+    float a = (ra * ra - rb * rb + d * d) / (2.0 * d);
+    float b = sqrt(max(ra * ra - a * a, 0.0));
+    float2 p2 = float2(p.x, length(p.yz));
+    if (p2.x * b - p2.y * a > d * max(b - p2.y, 0.0))
+        return length(p2 - float2(a, b));
+    return max(length(p2) - ra, -(length(p2 - float2(d, 0.0)) - rb));
+}
+
+// SolidAngle: 3D cone sector
+float sdSolidAngle(float3 p, float angle, float radius)
+{
+    float2 c = float2(sin(angle), cos(angle));
+    float2 q = float2(length(p.xz), p.y);
+    float l = length(q) - radius;
+    float m = length(q - c * clamp(dot(q, c), 0.0, radius));
+    float s = (c.y * q.x - c.x * q.y < 0.0) ? -1.0 : 1.0;
+    return max(l, m * s);
+}
+
+// Rhombus: 3D diamond shape with rounding
+float sdRhombus(float3 p, float la, float lb, float halfHeight, float roundRadius)
+{
+    float3 pp = abs(p);
+    float2 b = float2(la, lb);
+    float f = clamp((b.x * b.x - b.y * b.y + 2.0 * pp.x * b.x - 2.0 * pp.z * b.y)
+              / (b.x * b.x + b.y * b.y), -1.0, 1.0);
+    // ndot(b, b - 2*pxz) / dot(b,b) simplified above
+    float2 corner = 0.5 * b * float2(1.0 - f, 1.0 + f);
+    float qx = length(float2(pp.x, pp.z) - corner)
+             * sign(pp.x * b.y + pp.z * b.x - b.x * b.y) - roundRadius;
+    float qy = pp.y - halfHeight;
+    return min(max(qx, qy), 0.0) + length(max(float2(qx, qy), 0.0));
+}
+
+// Vesica: vesica piscis (lens shape) revolved around Y
+float sdVesica(float3 p, float radius, float halfDist)
+{
+    float2 q = float2(length(p.xz), abs(p.y));
+    float b = sqrt(max(radius * radius - halfDist * halfDist, 0.0));
+    if ((q.y - b) * halfDist > q.x * b)
+        return length(q - float2(0.0, b));
+    return length(q - float2(-halfDist, 0.0)) - radius;
+}
+
+// InfiniteCone: infinite cone along Y-axis
+float sdInfiniteCone(float3 p, float angle)
+{
+    float2 c = float2(sin(angle), cos(angle));
+    float2 q = float2(length(p.xz), -p.y);
+    float d = length(q - c * max(dot(q, c), 0.0));
+    return d * ((q.x * c.y - q.y * c.x < 0.0) ? -1.0 : 1.0);
+}
+
+// Tube: hollow cylinder (pipe)
+float sdTube(float3 p, float outerRadius, float thickness, float halfHeight)
+{
+    float r = length(p.xz);
+    float dRing = abs(r - outerRadius) - thickness;
+    float dY = abs(p.y) - halfHeight;
+    return min(max(dRing, dY), 0.0) + length(max(float2(dRing, dY), 0.0));
+}
+
+// Barrel: cylinder with parabolic bulge
+float sdBarrel(float3 p, float radius, float halfHeight, float bulge)
+{
+    float r = length(p.xz);
+    float yNorm = clamp(p.y / halfHeight, -1.0, 1.0);
+    float effectiveR = radius + bulge * (1.0 - yNorm * yNorm);
+    float dR = r - effectiveR;
+    float dY = abs(p.y) - halfHeight;
+    return min(max(dR, dY), 0.0) + length(max(float2(dR, dY), 0.0));
+}
+
+// Diamond: bipyramid (double-cone)
+float sdDiamond(float3 p, float radius, float halfHeight)
+{
+    float2 q = float2(length(p.xz), abs(p.y));
+    float2 ba = float2(-radius, halfHeight);
+    float2 qa = q - float2(radius, 0.0);
+    float t = clamp(dot(qa, ba) / dot(ba, ba), 0.0, 1.0);
+    float2 closest = float2(radius, 0.0) + ba * t;
+    float dist = length(q - closest);
+    if (q.x * halfHeight + q.y * radius < radius * halfHeight) return -dist;
+    return dist;
+}
+
+// ChamferedCube: box with octahedral chamfer
+float sdChamferedCube(float3 p, float3 halfExtents, float chamfer)
+{
+    float3 ap = abs(p);
+    float3 q = ap - halfExtents;
+    float dBox = length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+    float s = halfExtents.x + halfExtents.y + halfExtents.z;
+    float dChamfer = (ap.x + ap.y + ap.z - s + chamfer) * 0.57735027;
+    return max(dBox, dChamfer);
+}
+
+// RoundedX: X-shaped cross in XZ, extruded along Y
+float sdRoundedX(float3 p, float width, float roundRadius, float halfHeight)
+{
+    float2 q = float2(abs(p.x), abs(p.z));
+    float s = min(q.x + q.y, width) * 0.5;
+    float d2d = length(q - float2(s, s)) - roundRadius;
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// Pie: sector/pie shape in XZ, extruded Y
+float sdPie(float3 p, float angle, float radius, float halfHeight)
+{
+    float qx = abs(p.x);
+    float qz = p.z;
+    float2 sc = float2(sin(angle), cos(angle));
+    float l = length(float2(qx, qz)) - radius;
+    float dotQC = clamp(dot(float2(qx, qz), sc), 0.0, radius);
+    float m = length(float2(qx, qz) - sc * dotQC);
+    float crossVal = sc.y * qx - sc.x * qz;
+    float s = (crossVal > 0.0) ? 1.0 : ((crossVal < 0.0) ? -1.0 : 0.0);
+    float d2d = max(l, m * s);
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// Tunnel: D-shaped tunnel (rectangle + semicircle dome), extruded Z
+float sdTunnel(float3 p, float width, float height2d, float halfDepth)
+{
+    float px = abs(p.x);
+    float py = p.y;
+    float dx = px - width;
+    float dyRect = abs(py) - height2d;
+    float dRect = length(max(float2(dx, dyRect), 0.0)) + min(max(dx, dyRect), 0.0);
+    float dCircle = length(float2(px, py - height2d)) - width;
+    float d2d = (py > height2d) ? min(dRect, dCircle) : dRect;
+    float dZ = abs(p.z) - halfDepth;
+    return min(max(d2d, dZ), 0.0) + length(max(float2(d2d, dZ), 0.0));
+}
+
+// UnevenCapsule: two circles of different radii, extruded Z
+float sdUnevenCapsule(float3 p, float r1, float r2, float capHeight, float halfDepth)
+{
+    float px = abs(p.x);
+    float h = capHeight * 2.0;
+    float b = (r1 - r2) / h;
+    float a = sqrt(max(1.0 - b * b, 0.0));
+    float k = dot(float2(-b, a), float2(px, p.y));
+    float d2d;
+    if (k < 0.0) d2d = length(float2(px, p.y)) - r1;
+    else if (k > a * h) d2d = length(float2(px, p.y - h)) - r2;
+    else d2d = dot(float2(px, p.y), float2(a, b)) - r1;
+    float dZ = abs(p.z) - halfDepth;
+    return min(max(d2d, dZ), 0.0) + length(max(float2(d2d, dZ), 0.0));
+}
+
+// Egg: egg shape revolved around Y
+float sdEgg(float3 p, float ra, float rb)
+{
+    float px = length(p.xz);
+    float py = p.y;
+    float r = ra - rb;
+    if (py < 0.0) return length(float2(px, py)) - r;
+    if (px * ra < py * rb) return length(float2(px, py - ra));
+    return length(float2(px + rb, py)) - ra;
+}
+
+// ArcShape: thick ring sector in XZ, extruded Y
+float sdArcShape(float3 p, float aperture, float radius, float thickness, float halfHeight)
+{
+    float qx = abs(p.x);
+    float qz = p.z;
+    float2 sc = float2(sin(aperture), cos(aperture));
+    float d2d;
+    if (sc.y * qx > sc.x * qz)
+        d2d = length(float2(qx, qz) - sc * radius) - thickness;
+    else
+        d2d = abs(length(float2(qx, qz)) - radius) - thickness;
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// Moon: crescent moon (two circles subtracted) in XZ, extruded Y
+float sdMoon(float3 p, float d, float ra, float rb, float halfHeight)
+{
+    float qx = abs(p.x);
+    float qz = p.z;
+    float dOuter = length(float2(qx, qz)) - ra;
+    float dInner = length(float2(qx - d, qz)) - rb;
+    float d2d = max(dOuter, -dInner);
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// CrossShape: plus/cross shape in XZ, extruded Y
+float sdCrossShape(float3 p, float len, float thickness, float roundRadius, float halfHeight)
+{
+    float qx = abs(p.x);
+    float qz = abs(p.z);
+    float2 dH = float2(qx - len, qz - thickness);
+    float2 dV = float2(qx - thickness, qz - len);
+    float dHsdf = length(max(dH, 0.0)) + min(max(dH.x, dH.y), 0.0);
+    float dVsdf = length(max(dV, 0.0)) + min(max(dV.x, dV.y), 0.0);
+    float d2d = min(dHsdf, dVsdf) - roundRadius;
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// Triangle: exact unsigned distance to 3D triangle
+float sdTriangle(float3 p, float3 a, float3 b, float3 c)
+{
+    float3 ba = b - a; float3 pa = p - a;
+    float3 cb = c - b; float3 pb = p - b;
+    float3 ac = a - c; float3 pc = p - c;
+    float3 nor = cross(ba, ac);
+    float signA = sign(dot(cross(ba, nor), pa));
+    float signB = sign(dot(cross(cb, nor), pb));
+    float signC = sign(dot(cross(ac, nor), pc));
+    float d2;
+    if (signA + signB + signC < 2.0)
+    {
+        float tAB = clamp(dot(ba, pa) / dot(ba, ba), 0.0, 1.0);
+        float dAB = dot(ba * tAB - pa, ba * tAB - pa);
+        float tBC = clamp(dot(cb, pb) / dot(cb, cb), 0.0, 1.0);
+        float dBC = dot(cb * tBC - pb, cb * tBC - pb);
+        float tCA = clamp(dot(ac, pc) / dot(ac, ac), 0.0, 1.0);
+        float dCA = dot(ac * tCA - pc, ac * tCA - pc);
+        d2 = min(dAB, min(dBC, dCA));
+    }
+    else
+    {
+        float dn = dot(nor, pa);
+        d2 = dn * dn / dot(nor, nor);
+    }
+    return sqrt(d2);
+}
+
+// Bezier: quadratic Bezier curve with tube radius
+float sdBezier(float3 pos, float3 a, float3 b, float3 c, float radius)
+{
+    float3 ab = b - a;
+    float3 ba2c = a - 2.0 * b + c;
+    float3 cv = ab * 2.0;
+    float3 dv = a - pos;
+    float ba2cDot = dot(ba2c, ba2c);
+    if (ba2cDot < 1e-10)
+    {
+        float3 ac = c - a;
+        float acDot = dot(ac, ac);
+        if (acDot < 1e-10) return length(pos - a) - radius;
+        float t = clamp(dot(pos - a, ac) / acDot, 0.0, 1.0);
+        return length(pos - a - ac * t) - radius;
+    }
+    float kk = 1.0 / ba2cDot;
+    float kx = kk * dot(ab, ba2c);
+    float ky = kk * (2.0 * dot(ab, ab) + dot(dv, ba2c)) / 3.0;
+    float kz = kk * dot(dv, ab);
+    float p2 = ky - kx * kx;
+    float p3 = p2 * p2 * p2;
+    float q2 = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    float h = q2 * q2 + 4.0 * p3;
+    float res;
+    if (h >= 0.0)
+    {
+        float hSqrt = sqrt(h);
+        float x0 = (hSqrt - q2) * 0.5;
+        float x1 = (-hSqrt - q2) * 0.5;
+        float uvX = sign(x0) * pow(abs(x0), 0.333333);
+        float uvY = sign(x1) * pow(abs(x1), 0.333333);
+        float t = clamp(uvX + uvY - kx, 0.0, 1.0);
+        res = length(dv + (cv + ba2c * t) * t);
+    }
+    else
+    {
+        float z = sqrt(-p2);
+        float v = acos(q2 / (p2 * z * 2.0)) / 3.0;
+        float m = cos(v);
+        float n = sin(v) * 1.7320508;
+        float t0 = clamp((m + m) * z - kx, 0.0, 1.0);
+        float t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
+        float d0 = length(dv + (cv + ba2c * t0) * t0);
+        float d1 = length(dv + (cv + ba2c * t1) * t1);
+        res = min(d0, d1);
+    }
+    return res - radius;
+}
+
+// Horseshoe: U-shaped horseshoe
+float sdHorseshoe(float3 p, float angle, float radius, float halfLength, float width, float thickness)
+{
+    float2 cc = float2(cos(angle), sin(angle));
+    float px = abs(p.x);
+    float l = length(float2(px, p.y));
+    float qx = -cc.x * px + cc.y * p.y;
+    float qy = cc.y * px + cc.x * p.y;
+    if (!(qy > 0.0 || qx > 0.0)) qx = l * sign(-cc.x);
+    if (qx <= 0.0) qy = l;
+    qx = abs(qx);
+    qy -= radius;
+    float rx = max(qx - halfLength, 0.0);
+    float innerLen = length(float2(rx, qy)) + min(max(qx - halfLength, qy), 0.0);
+    float dx = max(innerLen - width, 0.0);
+    float dy = max(abs(p.z) - thickness, 0.0);
+    return -min(width, thickness) + length(float2(dx, dy)) + max(innerLen - width, abs(p.z) - thickness) * step(max(innerLen - width, abs(p.z) - thickness), 0.0);
+}
+
+// Superellipsoid: generalized ellipsoid with power exponents
+float sdSuperellipsoid(float3 p, float3 halfExtents, float e1, float e2)
+{
+    e1 = max(e1, 0.02);
+    e2 = max(e2, 0.02);
+    float3 q = float3(
+        max(abs(p.x / halfExtents.x), 1e-10),
+        max(abs(p.y / halfExtents.y), 1e-10),
+        max(abs(p.z / halfExtents.z), 1e-10)
+    );
+    float m1 = 2.0 / e2;
+    float m2 = 2.0 / e1;
+    float w = pow(q.x, m1) + pow(q.z, m1);
+    float v = pow(w, e2 / e1) + pow(q.y, m2);
+    float f = pow(v, e1 * 0.5);
+    float minE = min(halfExtents.x, min(halfExtents.y, halfExtents.z));
+    return (f - 1.0) * minE * 0.5;
+}
+
+// Trapezoid: trapezoid in XY, extruded Z
+float sdTrapezoid(float3 p, float r1, float r2, float trapHeight, float halfDepth)
+{
+    float px = abs(p.x);
+    float py = p.y;
+    float he = trapHeight;
+    // Distance to three edges
+    float dBot = length(float2(max(px - r1, 0.0), max(-py - he, 0.0))) + min(max(px - r1, -py - he), 0.0);
+    float2 slantDir = float2(2.0 * he, r1 - r2);
+    float slantLen = length(slantDir);
+    float2 slantN = slantDir / max(slantLen, 1e-10);
+    float dSlant = dot(float2(px - r1, py + he), slantN);
+    float dTop = length(float2(max(px - r2, 0.0), max(py - he, 0.0))) + min(max(px - r2, py - he), 0.0);
+    float dUnsigned = min(min(abs(dBot), abs(dSlant)), abs(dTop));
+    // Simplified inside check
+    bool inside = py >= -he && py <= he && dSlant <= 0.0;
+    float d2d = inside ? -dUnsigned : dUnsigned;
+    float dZ = abs(p.z) - halfDepth;
+    return min(max(d2d, dZ), 0.0) + length(max(float2(d2d, dZ), 0.0));
+}
+
+// Parallelogram: parallelogram in XY (with skew), extruded Z
+float sdParallelogram(float3 p, float width, float paraHeight, float skew, float halfDepth)
+{
+    float he = paraHeight;
+    float wi = width;
+    float sk = skew;
+    // Four corners: (wi-sk,-he), (wi+sk,he), (-wi+sk,he), (-wi-sk,-he)
+    float ex = wi + abs(sk);
+    float ey = he;
+    // Distance to skewed box (simplified: transform to axis-aligned)
+    float qx = p.x - p.y * sk / he;
+    float d2d_x = abs(qx) - wi;
+    float d2d_y = abs(p.y) - he;
+    float d2d = length(max(float2(d2d_x, d2d_y), 0.0)) + min(max(d2d_x, d2d_y), 0.0);
+    float dZ = abs(p.z) - halfDepth;
+    return min(max(d2d, dZ), 0.0) + length(max(float2(d2d, dZ), 0.0));
+}
+
+// BlobbyCross: organic blobby cross in XZ, extruded Y
+float sdBlobbyCross(float3 p, float size, float halfHeight)
+{
+    float qx = abs(p.x) / size;
+    float qz = abs(p.z) / size;
+    float n = qx + qz;
+    float d2d;
+    if (n < 1.0)
+    {
+        float t = 1.0 - n;
+        float bb = qx * qz;
+        d2d = (-sqrt(max(t * t - 2.0 * bb, 0.0)) + n - 1.0) * size * 0.70710678;
+    }
+    else
+    {
+        float dx = max(qx - 1.0, 0.0);
+        float dz = max(qz - 1.0, 0.0);
+        float dxLen = length(float2(qx - 1.0, qz));
+        float dzLen = length(float2(qx, qz - 1.0));
+        d2d = min(dxLen, min(dzLen, sqrt(dx * dx + dz * dz))) * size;
+    }
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// ParabolaSegment: parabolic arch in XY, extruded Z (Newton's method)
+float sdParabolaSegment(float3 p, float width, float paraHeight, float halfDepth)
+{
+    float px = abs(p.x);
+    float py = p.y;
+    float w = width;
+    float h = paraHeight;
+    float ww = w * w;
+    // Closest point on parabola via Newton's method
+    float t = clamp(px, 0.0, w);
+    for (int i = 0; i < 8; i++)
+    {
+        float ft = h * (1.0 - t * t / ww);
+        float dft = -2.0 * h * t / ww;
+        float ex = px - t;
+        float ey = py - ft;
+        float f = -ex + ey * dft;
+        float df = 1.0 + dft * dft + ey * (-2.0 * h / ww);
+        if (abs(df) > 1e-10) t = clamp(t - f / df, 0.0, w);
+    }
+    float closestY = h * (1.0 - t * t / ww);
+    float dPara = length(float2(px - t, py - closestY));
+    float dBase = (px <= w) ? abs(py) : length(float2(px - w, py));
+    float dUnsigned = min(dPara, dBase);
+    float yArch = (px <= w) ? h * (1.0 - (px / w) * (px / w)) : 0.0;
+    bool inside = px <= w && py >= 0.0 && py <= yArch;
+    float d2d = inside ? -dUnsigned : dUnsigned;
+    float dZ = abs(p.z) - halfDepth;
+    return min(max(d2d, dZ), 0.0) + length(max(float2(d2d, dZ), 0.0));
+}
+
+// RegularPolygon: N-sided polygon in XZ, extruded Y
+float sdRegularPolygon(float3 p, float radius, float nSides, float halfHeight)
+{
+    float qx = abs(p.x);
+    float qz = p.z;
+    float n = max(nSides, 3.0);
+    float an = 3.14159265 / n;
+    float he = radius * cos(an);
+    float angle = atan2(qz, qx);
+    float bn = an * floor((angle + an) / (2.0 * an));
+    float cosB = cos(bn);
+    float sinB = sin(bn);
+    float rx = cosB * qx + sinB * qz;
+    float d2d = rx - he;
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// StarPolygon: star polygon in XZ, extruded Y
+float sdStarPolygon(float3 p, float radius, float nPoints, float m, float halfHeight)
+{
+    float qx = abs(p.x);
+    float qz = p.z;
+    float n = max(nPoints, 3.0);
+    float an = 3.14159265 / n;
+    float r = length(float2(qx, qz));
+    float angle = atan2(qz, qx);
+    angle = fmod(fmod(angle, 2.0 * an) + 2.0 * an, 2.0 * an);
+    if (angle > an) angle = 2.0 * an - angle;
+    float2 pt = float2(r * cos(angle), r * sin(angle));
+    float2 aa = float2(radius, 0.0);
+    float2 bb = float2(m * cos(an), m * sin(an));
+    float2 ab = bb - aa;
+    float2 ap = pt - aa;
+    float t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
+    float2 closest = aa + ab * t;
+    float dist = length(pt - closest);
+    float crossV = ab.x * ap.y - ab.y * ap.x;
+    float d2d = (crossV > 0.0) ? -dist : dist;
+    float dY = abs(p.y) - halfHeight;
+    return min(max(d2d, dY), 0.0) + length(max(float2(d2d, dY), 0.0));
+}
+
+// Stairs: staircase in XY, extruded Z
+float _sdStairsStepBox(float lx, float ly, float s, float sw, float sh)
+{
+    float cx = s * sw + sw * 0.5;
+    float hy = (s + 1.0) * sh * 0.5;
+    float dx = abs(lx - cx) - sw * 0.5;
+    float dy = abs(ly - hy) - hy;
+    return length(max(float2(dx, dy), 0.0)) + min(max(dx, dy), 0.0);
+}
+
+float sdStairs(float3 p, float stepWidth, float stepHeight, float nSteps, float halfDepth)
+{
+    float sw = stepWidth;
+    float sh = stepHeight;
+    float n = max(nSteps, 1.0);
+    float tw = n * sw;
+    float th = n * sh;
+    float lx = p.x + tw * 0.5;
+    float ly = p.y + th * 0.5;
+    float si = clamp(floor(lx / sw), 0.0, n - 1.0);
+    float d2d = _sdStairsStepBox(lx, ly, si, sw, sh);
+    if (si > 0.0) d2d = min(d2d, _sdStairsStepBox(lx, ly, si - 1.0, sw, sh));
+    if (si < n - 1.0) d2d = min(d2d, _sdStairsStepBox(lx, ly, si + 1.0, sw, sh));
+    float sj = clamp(ceil(ly / sh) - 1.0, 0.0, n - 1.0);
+    if (sj != si && sj != si - 1.0 && sj != si + 1.0)
+        d2d = min(d2d, _sdStairsStepBox(lx, ly, sj, sw, sh));
+    float dZ = abs(p.z) - halfDepth;
+    return min(max(d2d, dZ), 0.0) + length(max(float2(d2d, dZ), 0.0));
+}
+
+// Helix: spiral tube along Y-axis
+float sdHelix(float3 p, float majorR, float minorR, float pitch, float halfHeight)
+{
+    float rXZ = length(p.xz);
+    float theta = atan2(p.z, p.x);
+    float py = p.y;
+    float tau = 6.28318530;
+    float dRadial = rXZ - majorR;
+    float yAtTheta = theta * pitch / tau;
+    float k = round((py - yAtTheta) / pitch);
+    float dTube = 1e20;
+    for (int dk = -1; dk <= 1; dk++)
+    {
+        float yHelix = yAtTheta + (k + float(dk)) * pitch;
+        float dy = py - yHelix;
+        float d = length(float2(dRadial, dy)) - minorR;
+        dTube = min(dTube, d);
+    }
+    float dCap = abs(py) - halfHeight;
+    return max(dTube, dCap);
+}
+
 // =============================================================================
 // Boolean Operations
 // =============================================================================
@@ -351,6 +909,45 @@ float opRound(float d, float radius)
 float opOnion(float d, float thickness)
 {
     return abs(d) - thickness;
+}
+
+// Polar Repeat: repeat child around Y-axis
+float3 opPolarRepeat(float3 p, float count)
+{
+    float sector = 6.28318530 / count;
+    float a = atan2(p.z, p.x) + sector * 0.5;
+    float r = length(p.xz);
+    a = fmod(a, sector) - sector * 0.5;
+    return float3(r * cos(a), p.y, r * sin(a));
+}
+
+// Taper: taper XZ cross-section along Y
+float3 opTaper(float3 p, float factor)
+{
+    float s = 1.0 / (1.0 - p.y * factor);
+    return float3(p.x * s, p.y, p.z * s);
+}
+
+// Displacement: sin-based oscillating displacement
+float opDisplacement(float d, float3 p, float strength)
+{
+    return d + sin(p.x * 5.0) * sin(p.y * 5.0) * sin(p.z * 5.0) * strength;
+}
+
+// Symmetry: mirror point along specified axes (1.0 = mirror, 0.0 = keep)
+float3 opSymmetry(float3 p, float3 axes)
+{
+    return float3(
+        axes.x > 0.5 ? abs(p.x) : p.x,
+        axes.y > 0.5 ? abs(p.y) : p.y,
+        axes.z > 0.5 ? abs(p.z) : p.z
+    );
+}
+
+// Elongate: box elongation (pre-processing transform)
+float3 opElongate(float3 p, float3 amount)
+{
+    return p - clamp(p, -amount, amount);
 }
 
 // =============================================================================
