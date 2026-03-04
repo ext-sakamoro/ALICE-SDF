@@ -79,7 +79,7 @@ struct CoordState {
     z: (Value, Value),
     scale: (Value, Value),
     opcode: OpCode,
-    params: [f32; 6],
+    params: [f32; 7],
 }
 
 // ============ SIMD Helpers for Branchless Selection ============

@@ -435,8 +435,8 @@ fn extract_subtree(svo: &SparseVoxelOctree, root_idx: usize) -> Vec<SvoNode> {
                 for octant in 0..8u8 {
                     if let Some(child_idx) = node.child_index(octant) {
                         let ci = child_idx as usize;
-                        if !old_to_new.contains_key(&ci) {
-                            old_to_new.insert(ci, next_new_idx);
+                        if let std::collections::hash_map::Entry::Vacant(e) = old_to_new.entry(ci) {
+                            e.insert(next_new_idx);
                             next_new_idx += 1;
                             temp_queue.push_back(ci);
                         }

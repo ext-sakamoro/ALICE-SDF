@@ -42,12 +42,16 @@ pub const MESH_HANDLE_NULL: MeshHandle = std::ptr::null_mut();
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Vec3Ffi {
+    /// X component
     pub x: f32,
+    /// Y component
     pub y: f32,
+    /// Z component
     pub z: f32,
 }
 
 impl Vec3Ffi {
+    /// Create a new Vec3Ffi from components
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
@@ -73,17 +77,23 @@ impl From<Vec3Ffi> for glam::Vec3 {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct QuatFfi {
+    /// X component
     pub x: f32,
+    /// Y component
     pub y: f32,
+    /// Z component
     pub z: f32,
+    /// W component (scalar)
     pub w: f32,
 }
 
 impl QuatFfi {
+    /// Create a new QuatFfi from components
     pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self { x, y, z, w }
     }
 
+    /// Create an identity quaternion (no rotation)
     pub fn identity() -> Self {
         Self {
             x: 0.0,
@@ -186,15 +196,19 @@ impl Default for StringResult {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct VersionInfo {
+    /// Major version number
     pub major: u16,
+    /// Minor version number
     pub minor: u16,
+    /// Patch version number
     pub patch: u16,
 }
 
 impl VersionInfo {
+    /// Return the current ALICE-SDF version
     pub fn current() -> Self {
         Self {
-            major: 0,
+            major: 1,
             minor: 1,
             patch: 0,
         }

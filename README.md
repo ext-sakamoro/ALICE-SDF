@@ -528,7 +528,7 @@ Human-readable JSON format for debugging, interoperability, and LLM generation.
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "1.1.0",
   "root": {
     "Subtraction": {
       "a": {"Sphere": {"radius": 1.0}},
@@ -1437,11 +1437,11 @@ See the [ALICE-Physics README](../ALICE-Physics/README.md#sdf-collider-alice-sdf
 
 ## Testing
 
-1,079 tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier, mesh persistence, chunked cache, Unity/UE5 export, FFI bindings, autodiff, shell, measure, heatmap, diff, constraint, sdf2d, font_bridge).
+1,100 tests across all modules (primitives, operations, transforms, modifiers, compiler, evaluators, BVH, I/O, mesh, shader transpilers, materials, animation, manifold, OBJ, glTF, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM, UV unwrap, mesh collision, decimation, LOD, adaptive MC, dual contouring, CSG optimization, tight AABB, crispy utilities, BloomFilter, interval arithmetic, Lipschitz bounds, relaxed sphere tracing, neural SDF, SDF-to-SDF collision, analytic gradient, 2D primitives, ExpSmooth operations, Shear transform, Animated modifier, mesh persistence, chunked cache, Unity/UE5 export, FFI bindings, autodiff, shell, measure, heatmap, diff, constraint, sdf2d, font_bridge).
 
 ```bash
-cargo test                  # default features (1,003 tests)
-cargo test --features font  # + ALICE-Font bridge (1,079 tests)
+cargo test                  # default features (1,100 tests)
+cargo test --features font  # + ALICE-Font bridge
 ```
 
 ## CLI
@@ -2002,7 +2002,7 @@ The server runs as a FastAPI web service. The SDF-to-mesh step takes <55ms (excl
 
 | Metric | Value |
 |--------|-------|
-| Unit tests | 1003 passed, 0 failed |
+| Unit tests | 1,100 passed, 0 failed |
 | Clippy pedantic | 0 warnings |
 | Doc warnings | 0 warnings |
 | TODO / FIXME | 0 |
@@ -2067,6 +2067,7 @@ See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for deta
 
 | Project | Description | Link |
 |---------|-------------|------|
+| **ALICE-View** | Real-time GPU raymarching viewer for SDF files (wgpu + WGSL) | [GitHub](https://github.com/ext-sakamoro/ALICE-View) |
 | **Open Source SDF Assets** | 991 free CC0 3D assets in .asdf.json format, converted via ALICE-SDF | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
 | **ALICE Ecosystem** | 52-component edge-to-cloud data pipeline | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
 | **AI Modeler SaaS** | Browser-based 3D modeling powered by ALICE-SDF | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |

@@ -117,9 +117,9 @@ impl MutableVoxelGrid {
             });
 
         let chunks_per_axis = [
-            (rx + chunk_size - 1) / chunk_size,
-            (ry + chunk_size - 1) / chunk_size,
-            (rz + chunk_size - 1) / chunk_size,
+            rx.div_ceil(chunk_size),
+            ry.div_ceil(chunk_size),
+            rz.div_ceil(chunk_size),
         ];
         let total_chunks = (chunks_per_axis[0] * chunks_per_axis[1] * chunks_per_axis[2]) as usize;
 

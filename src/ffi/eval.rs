@@ -332,10 +332,10 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
 
                 // Handle remainder scalar
                 let remainder_start = simd_iters * 8;
-                for local_i in remainder_start..chunk_len {
-                    let i = start + local_i;
+                for (offset, slot) in chunk[remainder_start..chunk_len].iter_mut().enumerate() {
+                    let i = start + remainder_start + offset;
                     let p = glam::Vec3::new(x_slice[i], y_slice[i], z_slice[i]);
-                    chunk[local_i] = eval_compiled(&comp, p);
+                    *slot = eval_compiled(&comp, p);
                 }
             });
     } else {
@@ -517,10 +517,10 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
                 }
 
                 if let Some(ref ds) = dist_slice {
-                    for i in 0..8 {
+                    for (i, &d) in d_arr.iter().enumerate() {
                         // SAFETY: Output slices were created from raw pointers with validated count.
                         // Loop bounds (base + i < count) ensure we stay within the allocated region.
-                        *ds.as_ptr().add(base + i).cast_mut() = d_arr[i];
+                        *ds.as_ptr().add(base + i).cast_mut() = d;
                     }
                 }
             }

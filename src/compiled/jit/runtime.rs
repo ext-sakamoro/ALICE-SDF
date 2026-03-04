@@ -89,7 +89,7 @@ impl JitCompiledSdf {
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
-        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 
         // Create JIT module
         let mut module = JITModule::new(builder);

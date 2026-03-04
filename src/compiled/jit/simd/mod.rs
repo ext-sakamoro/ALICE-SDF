@@ -2391,7 +2391,7 @@ struct DynSimdCoordState {
     /// Pre-splatted parameter vector for Round/Onion/Extrude
     param_vec: Value,
     /// Extra float params for Extrude half_height etc.
-    params: [f32; 4],
+    _params: [f32; 4],
 }
 
 /// Function signature for dynamic SIMD JIT: 5 pointer args
@@ -3539,7 +3539,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Translate,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let tx_v = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3568,7 +3568,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Scale,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let inv_factor = inst.params[0];
@@ -3603,7 +3603,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Rotate,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         // Quaternion → rotation matrix (compile-time)
@@ -3666,7 +3666,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::ScaleNonUniform,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let isx = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3700,7 +3700,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Twist,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let k_v = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3737,7 +3737,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Bend,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let k_v = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3774,7 +3774,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::RepeatInfinite,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let sx = inst.params[0];
@@ -3832,7 +3832,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::RepeatFinite,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let cx = inst.params[0];
@@ -3914,7 +3914,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Elongate,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let hx = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -3959,7 +3959,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Mirror,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         if inst.params[0] != 0.0 {
@@ -3981,7 +3981,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Revolution,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
 
                         let off = emitter.emit_splat(&mut builder, inst.params[0]);
@@ -4009,7 +4009,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Extrude,
                             param_vec: hh_v,
-                            params: [hh, 0.0, 0.0, 0.0],
+                            _params: [hh, 0.0, 0.0, 0.0],
                         });
 
                         curr_z = (zero_vec, zero_vec);
@@ -4024,7 +4024,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Noise,
                             param_vec: zero_vec,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
                     }
 
@@ -4037,7 +4037,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Round,
                             param_vec: r_v,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
                     }
 
@@ -4050,7 +4050,7 @@ impl JitSimdSdfDynamic {
                             scale: curr_scale,
                             opcode: OpCode::Onion,
                             param_vec: t_v,
-                            params: [0.0; 4],
+                            _params: [0.0; 4],
                         });
                     }
 

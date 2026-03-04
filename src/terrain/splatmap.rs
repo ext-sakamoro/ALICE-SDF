@@ -5,8 +5,6 @@
 //!
 //! Author: Moroya Sakamoto
 
-use glam::Vec3;
-
 use super::Heightmap;
 
 /// A single material splat layer

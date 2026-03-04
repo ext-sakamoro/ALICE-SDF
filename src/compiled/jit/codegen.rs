@@ -77,6 +77,7 @@ pub struct JitCompiler<'a> {
 }
 
 impl<'a> JitCompiler<'a> {
+    /// Creates a new JIT compiler for the given Cranelift module.
     pub fn new(module: &'a mut JITModule) -> Self {
         let ctx = module.make_context();
         let func_ctx = FunctionBuilderContext::new();
