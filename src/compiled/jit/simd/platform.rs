@@ -6,6 +6,8 @@
 //! Author: Moroya Sakamoto
 
 use cranelift_codegen::settings::Builder as FlagBuilder;
+#[cfg(target_arch = "x86_64")]
+use cranelift_codegen::settings::Configurable;
 
 /// Configure Cranelift flags for the host platform's SIMD capabilities.
 ///
