@@ -13,9 +13,9 @@ use glam::Vec3;
 pub fn modifier_twist(point: Vec3, strength: f32) -> Vec3 {
     let (s, c) = (point.y * strength).sin_cos();
     Vec3::new(
-        point.x * c - point.z * s,
+        point.x.mul_add(c, -(point.z * s)),
         point.y,
-        point.x * s + point.z * c,
+        point.x.mul_add(s, point.z * c),
     )
 }
 
@@ -25,8 +25,8 @@ pub fn modifier_twist_x(point: Vec3, strength: f32) -> Vec3 {
     let (s, c) = (point.x * strength).sin_cos();
     Vec3::new(
         point.x,
-        point.y * c - point.z * s,
-        point.y * s + point.z * c,
+        point.y.mul_add(c, -(point.z * s)),
+        point.y.mul_add(s, point.z * c),
     )
 }
 
@@ -35,8 +35,8 @@ pub fn modifier_twist_x(point: Vec3, strength: f32) -> Vec3 {
 pub fn modifier_twist_z(point: Vec3, strength: f32) -> Vec3 {
     let (s, c) = (point.z * strength).sin_cos();
     Vec3::new(
-        point.x * c - point.y * s,
-        point.x * s + point.y * c,
+        point.x.mul_add(c, -(point.y * s)),
+        point.x.mul_add(s, point.y * c),
         point.z,
     )
 }
@@ -54,9 +54,9 @@ mod tests {
         // Manual calc
         let a = p.y * s;
         let t2 = Vec3::new(
-            p.x * a.cos() - p.z * a.sin(),
+            p.x.mul_add(a.cos(), -(p.z * a.sin())),
             p.y,
-            p.x * a.sin() + p.z * a.cos(),
+            p.x.mul_add(a.sin(), p.z * a.cos()),
         );
         assert!((t1 - t2).length() < 1e-6);
     }

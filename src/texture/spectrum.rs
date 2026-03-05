@@ -45,15 +45,19 @@ pub fn analyze_frequencies(
         .map(|y| {
             let row = &data[y * width..(y + 1) * width];
             let mut local_energy = vec![0.0f64; max_coeffs];
-            for k in 1..max_coeffs.min(width) {
+            for (k, energy) in local_energy[1..max_coeffs.min(width)]
+                .iter_mut()
+                .enumerate()
+            {
+                let k = k + 1;
                 let mut sum = 0.0f64;
-                for n in 0..width {
-                    let angle = std::f64::consts::PI * (2.0 * n as f64 + 1.0) * k as f64
+                for (n, &val) in row.iter().enumerate() {
+                    let angle = std::f64::consts::PI * 2.0f64.mul_add(n as f64, 1.0) * k as f64
                         / (2.0 * width as f64);
-                    sum += (row[n] as f64 - mean) * angle.cos();
+                    sum += (val as f64 - mean) * angle.cos();
                 }
                 let coeff = sum / width as f64;
-                local_energy[k] = coeff * coeff;
+                *energy = coeff * coeff;
             }
             local_energy
         })
@@ -72,15 +76,19 @@ pub fn analyze_frequencies(
         .into_par_iter()
         .map(|x| {
             let mut local_energy = vec![0.0f64; max_coeffs];
-            for k in 1..max_coeffs.min(height) {
+            for (k, energy) in local_energy[1..max_coeffs.min(height)]
+                .iter_mut()
+                .enumerate()
+            {
+                let k = k + 1;
                 let mut sum = 0.0f64;
-                for n in 0..height {
-                    let angle = std::f64::consts::PI * (2.0 * n as f64 + 1.0) * k as f64
+                for (n, chunk) in data.chunks(width).enumerate() {
+                    let angle = std::f64::consts::PI * 2.0f64.mul_add(n as f64, 1.0) * k as f64
                         / (2.0 * height as f64);
-                    sum += (data[n * width + x] as f64 - mean) * angle.cos();
+                    sum += (chunk[x] as f64 - mean) * angle.cos();
                 }
                 let coeff = sum / height as f64;
-                local_energy[k] = coeff * coeff;
+                *energy = coeff * coeff;
             }
             local_energy
         })
@@ -132,7 +140,7 @@ mod tests {
         for y in 0..h {
             for x in 0..w {
                 let u = x as f32 / w as f32;
-                data[y * w + x] = 0.5 + 0.4 * (u * 4.0 * 2.0 * std::f32::consts::PI).sin();
+                data[y * w + x] = 0.4f32.mul_add((u * 4.0 * 2.0 * std::f32::consts::PI).sin(), 0.5);
             }
         }
         let bands = analyze_frequencies(&data, w, h, 8);

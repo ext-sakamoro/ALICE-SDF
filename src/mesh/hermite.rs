@@ -20,8 +20,8 @@ pub struct HermitePoint {
 impl HermitePoint {
     /// Create a new Hermite point
     #[inline]
-    pub fn new(position: Vec3, normal: Vec3) -> Self {
-        HermitePoint { position, normal }
+    pub const fn new(position: Vec3, normal: Vec3) -> Self {
+        Self { position, normal }
     }
 }
 
@@ -67,7 +67,7 @@ pub struct HermiteConfig {
 
 impl Default for HermiteConfig {
     fn default() -> Self {
-        HermiteConfig {
+        Self {
             resolution: 32,
             gradient_epsilon: 0.001,
             refinement_iterations: 4,
@@ -91,7 +91,12 @@ where
     F: Fn(Vec3) -> f32 + Sync,
 {
     /// Create a new Hermite extractor
-    pub fn new(sdf: &'a F, min_bounds: Vec3, max_bounds: Vec3, config: HermiteConfig) -> Self {
+    pub const fn new(
+        sdf: &'a F,
+        min_bounds: Vec3,
+        max_bounds: Vec3,
+        config: HermiteConfig,
+    ) -> Self {
         HermiteExtractor {
             sdf,
             config,

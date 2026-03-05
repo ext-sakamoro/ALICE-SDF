@@ -41,7 +41,7 @@ pub struct GltfConfig {
 
 impl Default for GltfConfig {
     fn default() -> Self {
-        GltfConfig {
+        Self {
             export_normals: true,
             export_uvs: true,
             export_uv2: false,
@@ -57,8 +57,8 @@ impl Default for GltfConfig {
 
 impl GltfConfig {
     /// Full AAA config with all attributes
-    pub fn aaa() -> Self {
-        GltfConfig {
+    pub const fn aaa() -> Self {
+        Self {
             export_normals: true,
             export_uvs: true,
             export_uv2: true,

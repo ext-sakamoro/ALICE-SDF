@@ -33,9 +33,9 @@ fn value_noise(p: Vec3) -> f32 {
     let n111 = hash(i + Vec3::ONE);
 
     // Trilinear interpolation
-    let a = n000 * (1.0 - u.x) + n100 * u.x;
-    let b = n010 * (1.0 - u.x) + n110 * u.x;
-    let c = n001 * (1.0 - u.x) + n101 * u.x;
+    let a = n000.mul_add(1.0 - u.x, n100 * u.x);
+    let b = n010.mul_add(1.0 - u.x, n110 * u.x);
+    let c = n001.mul_add(1.0 - u.x, n101 * u.x);
     let d = n011 * (1.0 - u.x) + n111 * u.x;
 
     let e = a * (1.0 - u.y) + b * u.y;
@@ -53,11 +53,15 @@ pub fn fbm(p: Vec3, octaves: u32) -> f32 {
     let mut p = p;
 
     for _ in 0..octaves {
-        value += amplitude * (value_noise(p * frequency) * 2.0 - 1.0);
+        value += amplitude * value_noise(p * frequency).mul_add(2.0, -1.0);
         amplitude *= 0.5;
         frequency *= 2.0;
         // Rotate to break axis alignment
-        p = Vec3::new(p.x * 0.8 - p.z * 0.6, p.y, p.x * 0.6 + p.z * 0.8);
+        p = Vec3::new(
+            p.x.mul_add(0.8, -(p.z * 0.6)),
+            p.y,
+            p.x.mul_add(0.6, p.z * 0.8),
+        );
     }
 
     value
@@ -73,7 +77,7 @@ pub fn surface_roughness(
     octaves: u32,
 ) -> f32 {
     let noise = fbm(p * frequency, octaves);
-    distance + noise * amplitude
+    noise.mul_add(amplitude, distance)
 }
 
 #[cfg(test)]

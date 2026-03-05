@@ -76,17 +76,17 @@ pub enum Sdf2dNode {
     },
 
     /// Boolean union of two 2D SDFs.
-    Union(Box<Sdf2dNode>, Box<Sdf2dNode>),
+    Union(Box<Self>, Box<Self>),
     /// Boolean subtraction (a - b).
-    Subtract(Box<Sdf2dNode>, Box<Sdf2dNode>),
+    Subtract(Box<Self>, Box<Self>),
     /// Boolean intersection.
-    Intersect(Box<Sdf2dNode>, Box<Sdf2dNode>),
+    Intersect(Box<Self>, Box<Self>),
     /// Smooth union with blending radius k.
     SmoothUnion {
         /// First child.
-        a: Box<Sdf2dNode>,
+        a: Box<Self>,
         /// Second child.
-        b: Box<Sdf2dNode>,
+        b: Box<Self>,
         /// Blending radius.
         k: f32,
     },
@@ -94,21 +94,21 @@ pub enum Sdf2dNode {
     /// Translation.
     Translate {
         /// Child node.
-        child: Box<Sdf2dNode>,
+        child: Box<Self>,
         /// Offset.
         offset: [f32; 2],
     },
     /// Rotation around origin.
     Rotate {
         /// Child node.
-        child: Box<Sdf2dNode>,
+        child: Box<Self>,
         /// Angle in radians.
         angle: f32,
     },
     /// Uniform scale.
     Scale {
         /// Child node.
-        child: Box<Sdf2dNode>,
+        child: Box<Self>,
         /// Scale factor.
         factor: f32,
     },
@@ -125,7 +125,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         Sdf2dNode::Circle { center, radius } => {
             let dx = point[0] - center[0];
             let dy = point[1] - center[1];
-            (dx * dx + dy * dy).sqrt() - radius
+            dx.hypot(dy) - radius
         }
 
         Sdf2dNode::Rect {
@@ -134,7 +134,10 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         } => {
             let dx = (point[0] - center[0]).abs() - half_extents[0];
             let dy = (point[1] - center[1]).abs() - half_extents[1];
-            let outside = (dx.max(0.0) * dx.max(0.0) + dy.max(0.0) * dy.max(0.0)).sqrt();
+            let outside = dx
+                .max(0.0)
+                .mul_add(dx.max(0.0), dy.max(0.0) * dy.max(0.0))
+                .sqrt();
             let inside = dx.max(dy).min(0.0);
             outside + inside
         }
@@ -146,7 +149,10 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         } => {
             let dx = (point[0] - center[0]).abs() - half_extents[0] + corner_radius;
             let dy = (point[1] - center[1]).abs() - half_extents[1] + corner_radius;
-            let outside = (dx.max(0.0) * dx.max(0.0) + dy.max(0.0) * dy.max(0.0)).sqrt();
+            let outside = dx
+                .max(0.0)
+                .mul_add(dx.max(0.0), dy.max(0.0) * dy.max(0.0))
+                .sqrt();
             let inside = dx.max(dy).min(0.0);
             outside + inside - corner_radius
         }
@@ -154,15 +160,15 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         Sdf2dNode::Line { a, b, thickness } => {
             let pa = [point[0] - a[0], point[1] - a[1]];
             let ba = [b[0] - a[0], b[1] - a[1]];
-            let ba_sq = ba[0] * ba[0] + ba[1] * ba[1];
+            let ba_sq = ba[0].mul_add(ba[0], ba[1] * ba[1]);
             let t = if ba_sq > 1e-10 {
-                ((pa[0] * ba[0] + pa[1] * ba[1]) / ba_sq).clamp(0.0, 1.0)
+                (pa[0].mul_add(ba[0], pa[1] * ba[1]) / ba_sq).clamp(0.0, 1.0)
             } else {
                 0.0
             };
-            let dx = pa[0] - ba[0] * t;
-            let dy = pa[1] - ba[1] * t;
-            (dx * dx + dy * dy).sqrt() - thickness
+            let dx = ba[0].mul_add(-t, pa[0]);
+            let dy = ba[1].mul_add(-t, pa[1]);
+            dx.hypot(dy) - thickness
         }
 
         Sdf2dNode::Bezier {
@@ -205,7 +211,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
                 } else {
                     0.0
                 };
-                return (dx * dx + dy * dy).sqrt();
+                return dx.hypot(dy);
             }
             bilinear_sample(data, u, v)
         }
@@ -224,7 +230,10 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         }
         Sdf2dNode::Rotate { child, angle } => {
             let (s, c) = angle.sin_cos();
-            let p = [point[0] * c + point[1] * s, -point[0] * s + point[1] * c];
+            let p = [
+                point[0].mul_add(c, point[1] * s),
+                (-point[0]).mul_add(s, point[1] * c),
+            ];
             eval_2d(child, p)
         }
         Sdf2dNode::Scale { child, factor } => {
@@ -248,7 +257,7 @@ fn smooth_min_2d(a: f32, b: f32, k: f32) -> f32 {
         return a.min(b);
     }
     let h = ((k - (a - b).abs()) / k).clamp(0.0, 1.0);
-    a.min(b) - h * h * k * 0.25
+    (h * h * k).mul_add(-0.25, a.min(b))
 }
 
 /// Bilinear interpolation on a 32x32 grid.
@@ -271,9 +280,9 @@ fn bilinear_sample(data: &[f32; 1024], u: f32, v: f32) -> f32 {
     let d01 = data[i01];
     let d11 = data[i11];
 
-    let top = d00 + (d10 - d00) * tx;
-    let bottom = d01 + (d11 - d01) * tx;
-    top + (bottom - top) * ty
+    let top = (d10 - d00).mul_add(tx, d00);
+    let bottom = (d11 - d01).mul_add(tx, d01);
+    (bottom - top).mul_add(ty, top)
 }
 
 /// Approximate distance to a cubic Bezier curve via uniform sampling.
@@ -292,8 +301,14 @@ fn eval_bezier_distance(
         let it = 1.0 - t;
         let it2 = it * it;
         let t2 = t * t;
-        let bx = it2 * it * p0[0] + 3.0 * it2 * t * p1[0] + 3.0 * it * t2 * p2[0] + t2 * t * p3[0];
-        let by = it2 * it * p0[1] + 3.0 * it2 * t * p1[1] + 3.0 * it * t2 * p2[1] + t2 * t * p3[1];
+        let bx = (t2 * t).mul_add(
+            p3[0],
+            (3.0 * it * t2).mul_add(p2[0], (it2 * it).mul_add(p0[0], 3.0 * it2 * t * p1[0])),
+        );
+        let by = (t2 * t).mul_add(
+            p3[1],
+            (3.0 * it * t2).mul_add(p2[1], (it2 * it).mul_add(p0[1], 3.0 * it2 * t * p1[1])),
+        );
         let dx = point[0] - bx;
         let dy = point[1] - by;
         let d2 = dx * dx + dy * dy;
@@ -309,24 +324,24 @@ fn eval_bezier_distance(
 
 impl Sdf2dNode {
     /// Create a circle at the origin.
-    pub fn circle(radius: f32) -> Self {
-        Sdf2dNode::Circle {
+    pub const fn circle(radius: f32) -> Self {
+        Self::Circle {
             center: [0.0, 0.0],
             radius,
         }
     }
 
     /// Create a rectangle at the origin.
-    pub fn rect(half_w: f32, half_h: f32) -> Self {
-        Sdf2dNode::Rect {
+    pub const fn rect(half_w: f32, half_h: f32) -> Self {
+        Self::Rect {
             center: [0.0, 0.0],
             half_extents: [half_w, half_h],
         }
     }
 
     /// Create a rounded rectangle at the origin.
-    pub fn rounded_rect(half_w: f32, half_h: f32, corner_radius: f32) -> Self {
-        Sdf2dNode::RoundedRect {
+    pub const fn rounded_rect(half_w: f32, half_h: f32, corner_radius: f32) -> Self {
+        Self::RoundedRect {
             center: [0.0, 0.0],
             half_extents: [half_w, half_h],
             corner_radius,
@@ -334,28 +349,28 @@ impl Sdf2dNode {
     }
 
     /// Create a line segment.
-    pub fn line(a: [f32; 2], b: [f32; 2], thickness: f32) -> Self {
-        Sdf2dNode::Line { a, b, thickness }
+    pub const fn line(a: [f32; 2], b: [f32; 2], thickness: f32) -> Self {
+        Self::Line { a, b, thickness }
     }
 
     /// Boolean union with another 2D SDF.
-    pub fn union(self, other: Sdf2dNode) -> Self {
-        Sdf2dNode::Union(Box::new(self), Box::new(other))
+    pub fn union(self, other: Self) -> Self {
+        Self::Union(Box::new(self), Box::new(other))
     }
 
     /// Boolean subtraction.
-    pub fn subtract(self, other: Sdf2dNode) -> Self {
-        Sdf2dNode::Subtract(Box::new(self), Box::new(other))
+    pub fn subtract(self, other: Self) -> Self {
+        Self::Subtract(Box::new(self), Box::new(other))
     }
 
     /// Boolean intersection.
-    pub fn intersect(self, other: Sdf2dNode) -> Self {
-        Sdf2dNode::Intersect(Box::new(self), Box::new(other))
+    pub fn intersect(self, other: Self) -> Self {
+        Self::Intersect(Box::new(self), Box::new(other))
     }
 
     /// Smooth union.
-    pub fn smooth_union(self, other: Sdf2dNode, k: f32) -> Self {
-        Sdf2dNode::SmoothUnion {
+    pub fn smooth_union(self, other: Self, k: f32) -> Self {
+        Self::SmoothUnion {
             a: Box::new(self),
             b: Box::new(other),
             k,
@@ -364,7 +379,7 @@ impl Sdf2dNode {
 
     /// Translate.
     pub fn translate(self, x: f32, y: f32) -> Self {
-        Sdf2dNode::Translate {
+        Self::Translate {
             child: Box::new(self),
             offset: [x, y],
         }
@@ -372,7 +387,7 @@ impl Sdf2dNode {
 
     /// Rotate by angle (radians).
     pub fn rotate(self, angle: f32) -> Self {
-        Sdf2dNode::Rotate {
+        Self::Rotate {
             child: Box::new(self),
             angle,
         }
@@ -380,7 +395,7 @@ impl Sdf2dNode {
 
     /// Uniform scale.
     pub fn scale(self, factor: f32) -> Self {
-        Sdf2dNode::Scale {
+        Self::Scale {
             child: Box::new(self),
             factor,
         }

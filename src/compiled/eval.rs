@@ -41,7 +41,7 @@ struct CoordFrame {
 
 impl Default for CoordFrame {
     fn default() -> Self {
-        CoordFrame {
+        Self {
             point: Vec3::ZERO,
             scale_correction: 1.0,
             inst_idx: 0,

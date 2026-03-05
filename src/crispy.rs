@@ -37,7 +37,7 @@ pub fn fast_inv_sqrt(x: f32) -> f32 {
     let half = 0.5 * x;
     let i = 0x5f375a86u32.wrapping_sub(f32::to_bits(x) >> 1);
     let y = f32::from_bits(i);
-    y * (1.5 - half * y * y)
+    y * (half * y).mul_add(-y, 1.5)
 }
 
 /// Normalize a 2D gradient (gx, gz) using fast inverse square root.
@@ -45,7 +45,7 @@ pub fn fast_inv_sqrt(x: f32) -> f32 {
 /// Returns `(gx * inv_len, gz * inv_len)`. Returns `(0.0, 0.0)` if near zero.
 #[inline(always)]
 pub fn fast_normalize_2d(gx: f32, gz: f32) -> (f32, f32) {
-    let len_sq = gx * gx + gz * gz;
+    let len_sq = gx.mul_add(gx, gz * gz);
     if len_sq < 1e-12 {
         return (0.0, 0.0);
     }
@@ -103,43 +103,43 @@ impl BitMask64 {
 
     /// Bitwise AND of two masks.
     #[inline(always)]
-    pub fn and(self, other: Self) -> Self {
+    pub const fn and(self, other: Self) -> Self {
         Self(self.0 & other.0)
     }
 
     /// Bitwise OR of two masks.
     #[inline(always)]
-    pub fn or(self, other: Self) -> Self {
+    pub const fn or(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
 
     /// Population count — number of set bits (uses hardware popcnt).
     #[inline(always)]
-    pub fn count_ones(self) -> u32 {
+    pub const fn count_ones(self) -> u32 {
         self.0.count_ones()
     }
 
     /// Test if bit at `index` is set.
     #[inline(always)]
-    pub fn test(self, index: u32) -> bool {
+    pub const fn test(self, index: u32) -> bool {
         (self.0 >> index) & 1 != 0
     }
 
     /// Set bit at `index`.
     #[inline(always)]
-    pub fn set(self, index: u32) -> Self {
+    pub const fn set(self, index: u32) -> Self {
         Self(self.0 | (1u64 << index))
     }
 
     /// Clear bit at `index`.
     #[inline(always)]
-    pub fn clear(self, index: u32) -> Self {
+    pub const fn clear(self, index: u32) -> Self {
         Self(self.0 & !(1u64 << index))
     }
 
     /// True if no bits are set.
     #[inline(always)]
-    pub fn is_empty(self) -> bool {
+    pub const fn is_empty(self) -> bool {
         self.0 == 0
     }
 }
@@ -172,7 +172,7 @@ impl BloomFilter {
     const SIZE_BYTES: usize = Self::SIZE_BITS / 8; // 4096
 
     /// Create an empty Bloom filter.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             bits: [0u8; Self::SIZE_BYTES],
         }
@@ -205,14 +205,14 @@ impl BloomFilter {
 
     /// Test using a pre-computed hash (avoids re-hashing in hot loops).
     #[inline(always)]
-    pub fn test_hash(filter: &[u8; 4096], hash: u64) -> bool {
+    pub const fn test_hash(filter: &[u8; 4096], hash: u64) -> bool {
         let (h1, h2) = Self::double_hash(hash);
         // Branchless AND — no short-circuit, single bitwise &
         (filter[h1 >> 3] & (1 << (h1 & 7)) != 0) & (filter[h2 >> 3] & (1 << (h2 & 7)) != 0)
     }
 
     #[inline(always)]
-    fn double_hash(hash: u64) -> (usize, usize) {
+    const fn double_hash(hash: u64) -> (usize, usize) {
         let h1 = (hash & 0x7FFF) as usize;
         let h2 = ((hash >> 16) & 0x7FFF) as usize;
         (h1, h2)
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn test_fast_normalize_2d() {
         let (nx, nz) = fast_normalize_2d(3.0, 4.0);
-        let len = (nx * nx + nz * nz).sqrt();
+        let len = nx.hypot(nz);
         assert!(
             (len - 1.0).abs() < 0.01,
             "Should be unit length, got {}",

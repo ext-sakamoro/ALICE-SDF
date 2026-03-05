@@ -173,12 +173,11 @@ pub fn export_unity_mesh(
         let i0 = mesh.indices[base];
         let i1 = mesh.indices[base + 1];
         let i2 = mesh.indices[base + 2];
+        indices.push(i0);
         if config.flip_winding {
-            indices.push(i0);
             indices.push(i2);
             indices.push(i1);
         } else {
-            indices.push(i0);
             indices.push(i1);
             indices.push(i2);
         }
@@ -336,12 +335,11 @@ pub fn export_unity_mesh_binary(
         let i0 = mesh.indices[base];
         let i1 = mesh.indices[base + 1];
         let i2 = mesh.indices[base + 2];
+        w.write_all(&i0.to_le_bytes())?;
         if config.flip_winding {
-            w.write_all(&i0.to_le_bytes())?;
             w.write_all(&i2.to_le_bytes())?;
             w.write_all(&i1.to_le_bytes())?;
         } else {
-            w.write_all(&i0.to_le_bytes())?;
             w.write_all(&i1.to_le_bytes())?;
             w.write_all(&i2.to_le_bytes())?;
         }

@@ -25,7 +25,7 @@ pub struct FractureConfig {
 
 impl Default for FractureConfig {
     fn default() -> Self {
-        FractureConfig {
+        Self {
             piece_count: 8,
             seed: 42,
             min_piece_size: 0.05,
@@ -148,11 +148,11 @@ fn generate_seeds(center: Vec3, radius: f32, count: u32, seed: u64) -> Vec<Vec3>
         // Rejection sampling for uniform distribution in sphere
         loop {
             rng = lcg_next(rng);
-            let rx = lcg_float(rng) * 2.0 - 1.0;
+            let rx = lcg_float(rng).mul_add(2.0, -1.0);
             rng = lcg_next(rng);
-            let ry = lcg_float(rng) * 2.0 - 1.0;
+            let ry = lcg_float(rng).mul_add(2.0, -1.0);
             rng = lcg_next(rng);
-            let rz = lcg_float(rng) * 2.0 - 1.0;
+            let rz = lcg_float(rng).mul_add(2.0, -1.0);
 
             let p = Vec3::new(rx, ry, rz);
             if p.length_squared() <= 1.0 {
@@ -294,7 +294,7 @@ fn simple_hash_noise(pos: Vec3, seed: u32) -> f32 {
 }
 
 #[inline]
-fn lcg_next(state: u64) -> u64 {
+const fn lcg_next(state: u64) -> u64 {
     state
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407)

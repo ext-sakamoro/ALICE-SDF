@@ -8,7 +8,7 @@
 use glam::Vec3;
 use rayon::prelude::*;
 
-use super::cone_trace::{trace_hemisphere, ConeTraceConfig};
+use super::cone_trace::ConeTraceConfig;
 use super::irradiance::{IrradianceGrid, IrradianceProbe};
 use super::DirectionalLight;
 use crate::svo::SparseVoxelOctree;
@@ -32,7 +32,7 @@ pub struct BakeGiConfig {
 
 impl Default for BakeGiConfig {
     fn default() -> Self {
-        BakeGiConfig {
+        Self {
             grid_size: [8, 8, 8],
             bounds_min: Vec3::splat(-2.0),
             bounds_max: Vec3::splat(2.0),
@@ -119,7 +119,7 @@ fn generate_uniform_directions(count: u32) -> Vec<(Vec3, f32)> {
 
     for i in 0..count {
         let theta = std::f32::consts::TAU * i as f32 * inv_golden;
-        let phi = (1.0 - 2.0 * (i as f32 + 0.5) * inv_count).acos();
+        let phi = (2.0 * (i as f32 + 0.5)).mul_add(-inv_count, 1.0).acos();
 
         let x = phi.sin() * theta.cos();
         let y = phi.sin() * theta.sin();

@@ -38,13 +38,13 @@ pub struct Dual {
 impl Dual {
     /// Constant (derivative = 0).
     #[inline(always)]
-    pub fn constant(val: f32) -> Self {
+    pub const fn constant(val: f32) -> Self {
         Self { val, dot: 0.0 }
     }
 
     /// Variable (derivative = 1).
     #[inline(always)]
-    pub fn variable(val: f32) -> Self {
+    pub const fn variable(val: f32) -> Self {
         Self { val, dot: 1.0 }
     }
 
@@ -148,7 +148,7 @@ impl std::ops::Mul for Dual {
     fn mul(self, rhs: Self) -> Self {
         Self {
             val: self.val * rhs.val,
-            dot: self.val * rhs.dot + self.dot * rhs.val,
+            dot: self.val.mul_add(rhs.dot, self.dot * rhs.val),
         }
     }
 }
@@ -171,7 +171,7 @@ impl std::ops::Div for Dual {
         let inv = 1.0 / rhs.val;
         Self {
             val: self.val * inv,
-            dot: (self.dot * rhs.val - self.val * rhs.dot) * inv * inv,
+            dot: self.dot.mul_add(rhs.val, -(self.val * rhs.dot)) * inv * inv,
         }
     }
 }
@@ -208,7 +208,7 @@ pub struct Dual3 {
 impl Dual3 {
     /// Constant (all partial derivatives = 0).
     #[inline(always)]
-    pub fn constant(val: f32) -> Self {
+    pub const fn constant(val: f32) -> Self {
         Self {
             val,
             dx: 0.0,
@@ -219,7 +219,7 @@ impl Dual3 {
 
     /// Create from value and gradient vector.
     #[inline(always)]
-    pub fn from_val_grad(val: f32, grad: Vec3) -> Self {
+    pub const fn from_val_grad(val: f32, grad: Vec3) -> Self {
         Self {
             val,
             dx: grad.x,
@@ -230,14 +230,16 @@ impl Dual3 {
 
     /// Extract gradient as Vec3.
     #[inline(always)]
-    pub fn gradient(self) -> Vec3 {
+    pub const fn gradient(self) -> Vec3 {
         Vec3::new(self.dx, self.dy, self.dz)
     }
 
     /// Gradient magnitude.
     #[inline(always)]
     pub fn gradient_magnitude(self) -> f32 {
-        (self.dx * self.dx + self.dy * self.dy + self.dz * self.dz).sqrt()
+        self.dz
+            .mul_add(self.dz, self.dx.mul_add(self.dx, self.dy * self.dy))
+            .sqrt()
     }
 
     /// Absolute value: |f|, ∇|f| = sign(f) * ∇f.
@@ -311,13 +313,13 @@ impl Dual3 {
 
     /// 3D length: sqrt(x² + y² + z²) of a Dual3 triple.
     #[inline]
-    pub fn length3(x: Dual3, y: Dual3, z: Dual3) -> Dual3 {
+    pub fn length3(x: Self, y: Self, z: Self) -> Self {
         (x * x + y * y + z * z).sqrt()
     }
 
     /// 2D length: sqrt(x² + z²) of a Dual3 pair.
     #[inline]
-    pub fn length2(x: Dual3, z: Dual3) -> Dual3 {
+    pub fn length2(x: Self, z: Self) -> Self {
         (x * x + z * z).sqrt()
     }
 }
@@ -354,9 +356,9 @@ impl std::ops::Mul for Dual3 {
     fn mul(self, rhs: Self) -> Self {
         Self {
             val: self.val * rhs.val,
-            dx: self.val * rhs.dx + self.dx * rhs.val,
-            dy: self.val * rhs.dy + self.dy * rhs.val,
-            dz: self.val * rhs.dz + self.dz * rhs.val,
+            dx: self.val.mul_add(rhs.dx, self.dx * rhs.val),
+            dy: self.val.mul_add(rhs.dy, self.dy * rhs.val),
+            dz: self.val.mul_add(rhs.dz, self.dz * rhs.val),
         }
     }
 }
@@ -494,7 +496,7 @@ pub fn dual3_plane(px: Dual3, py: Dual3, pz: Dual3, normal: Vec3, distance: f32)
 
 /// Create Dual3 seed values for a point (x tracks ∂/∂x, y tracks ∂/∂y, z tracks ∂/∂z).
 #[inline(always)]
-pub fn dual3_point(point: Vec3) -> (Dual3, Dual3, Dual3) {
+pub const fn dual3_point(point: Vec3) -> (Dual3, Dual3, Dual3) {
     (
         Dual3 {
             val: point.x,

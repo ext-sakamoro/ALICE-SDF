@@ -39,7 +39,7 @@ pub struct ErosionConfig {
 
 impl Default for ErosionConfig {
     fn default() -> Self {
-        ErosionConfig {
+        Self {
             iterations: 10000,
             rain_amount: 1.0,
             sediment_capacity: 4.0,
@@ -76,9 +76,9 @@ fn hydraulic_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
     for _ in 0..config.iterations {
         // Random starting position
         rng = lcg_next(rng);
-        let mut px = lcg_float(rng) * (w - 2.0) + 1.0;
+        let mut px = lcg_float(rng).mul_add(w - 2.0, 1.0);
         rng = lcg_next(rng);
-        let mut pz = lcg_float(rng) * (d - 2.0) + 1.0;
+        let mut pz = lcg_float(rng).mul_add(d - 2.0, 1.0);
 
         let mut water = config.rain_amount;
         let mut sediment = 0.0f32;
@@ -138,7 +138,7 @@ fn hydraulic_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
             }
 
             // Update speed (acceleration from gravity on slope)
-            speed = (speed * speed + dh * config.gravity).abs().sqrt();
+            speed = speed.mul_add(speed, dh * config.gravity).abs().sqrt();
 
             // Evaporate
             water *= 1.0 - config.evaporation_rate;
@@ -222,9 +222,9 @@ fn sample_height(hm: &Heightmap, gx: f32, gz: f32) -> f32 {
     let h01 = hm.get_height(x0, z1);
     let h11 = hm.get_height(x1, z1);
 
-    let h0 = h00 + (h10 - h00) * tx;
-    let h1 = h01 + (h11 - h01) * tx;
-    h0 + (h1 - h0) * tz
+    let h0 = (h10 - h00).mul_add(tx, h00);
+    let h1 = (h11 - h01).mul_add(tx, h01);
+    (h1 - h0).mul_add(tz, h0)
 }
 
 /// Compute gradient at a position using finite differences
@@ -254,10 +254,10 @@ fn deposit_at(hm: &mut Heightmap, gx: f32, gz: f32, amount: f32) {
     let w01 = (1.0 - tx) * tz;
     let w11 = tx * tz;
 
-    hm.set_height(x0, z0, hm.get_height(x0, z0) + amount * w00);
-    hm.set_height(x1, z0, hm.get_height(x1, z0) + amount * w10);
-    hm.set_height(x0, z1, hm.get_height(x0, z1) + amount * w01);
-    hm.set_height(x1, z1, hm.get_height(x1, z1) + amount * w11);
+    hm.set_height(x0, z0, amount.mul_add(w00, hm.get_height(x0, z0)));
+    hm.set_height(x1, z0, amount.mul_add(w10, hm.get_height(x1, z0)));
+    hm.set_height(x0, z1, amount.mul_add(w01, hm.get_height(x0, z1)));
+    hm.set_height(x1, z1, amount.mul_add(w11, hm.get_height(x1, z1)));
 }
 
 /// Erode terrain at a position (bilinear distribution)
@@ -266,7 +266,7 @@ fn erode_at(hm: &mut Heightmap, gx: f32, gz: f32, amount: f32) {
 }
 
 #[inline]
-fn lcg_next(state: u64) -> u64 {
+const fn lcg_next(state: u64) -> u64 {
     state
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407)

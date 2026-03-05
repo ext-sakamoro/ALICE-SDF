@@ -31,7 +31,7 @@ pub fn sdf_helix(p: Vec3, major_r: f32, minor_r: f32, pitch: f32, half_height: f
     let mut d_tube = f32::MAX;
     for dk in [-1.0_f32, 0.0, 1.0] {
         let kk = k + dk;
-        let y_helix = y_at_theta + kk * pitch;
+        let y_helix = kk.mul_add(pitch, y_at_theta);
         let dy = py - y_helix;
         let d = Vec2::new(d_radial, dy).length() - minor_r;
         d_tube = d_tube.min(d);

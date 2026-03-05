@@ -75,7 +75,7 @@ impl CompiledSdfBvh {
         compiler.instructions.push(Instruction::end());
         compiler.aabbs.push(AabbPacked::infinite());
 
-        Ok(CompiledSdfBvh {
+        Ok(Self {
             instructions: compiler.instructions,
             aabbs: compiler.aabbs,
             node_count: compiler.node_count,
@@ -106,7 +106,7 @@ struct BvhCompiler {
 
 impl BvhCompiler {
     fn new() -> Self {
-        BvhCompiler {
+        Self {
             instructions: Vec::with_capacity(256),
             aabbs: Vec::with_capacity(256),
             node_count: 0,
@@ -1852,7 +1852,7 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                 csp += 1;
 
                 let factor = inst.params[0];
-                let s = 1.0 / (1.0 - p.y * factor);
+                let s = 1.0 / p.y.mul_add(-factor, 1.0);
                 p = Vec3::new(p.x * s, p.y, p.z * s);
             }
 
@@ -1928,11 +1928,9 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
                         let strength = frame.params[0];
                         let d = value_stack[vsp - 1];
                         let fp = frame.point;
-                        value_stack[vsp - 1] = d
-                            + (5.0 * fp.x).sin()
-                                * (5.0 * fp.y).sin()
-                                * (5.0 * fp.z).sin()
-                                * strength;
+                        value_stack[vsp - 1] =
+                            ((5.0 * fp.x).sin() * (5.0 * fp.y).sin() * (5.0 * fp.z).sin())
+                                .mul_add(strength, d);
                     }
                     _ => {}
                 }
@@ -1970,7 +1968,7 @@ pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
 ///
 /// Returns the scene AABB computed during compilation, which
 /// correctly handles all node types including transforms and modifiers as root.
-pub fn get_scene_aabb(sdf: &CompiledSdfBvh) -> AabbPacked {
+pub const fn get_scene_aabb(sdf: &CompiledSdfBvh) -> AabbPacked {
     sdf.scene_aabb
 }
 

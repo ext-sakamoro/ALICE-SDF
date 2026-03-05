@@ -11,22 +11,22 @@ use glam::{Vec2, Vec3};
 fn dist_to_seg(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
     let dx = bx - ax;
     let dy = by - ay;
-    let len_sq = dx * dx + dy * dy;
+    let len_sq = dx.mul_add(dx, dy * dy);
     let t = if len_sq > 0.0 {
-        ((px - ax) * dx + (py - ay) * dy) / len_sq
+        (px - ax).mul_add(dx, (py - ay) * dy) / len_sq
     } else {
         0.0
     };
     let t = t.clamp(0.0, 1.0);
-    let cx = ax + dx * t;
-    let cy = ay + dy * t;
-    ((px - cx) * (px - cx) + (py - cy) * (py - cy)).sqrt()
+    let cx = dx.mul_add(t, ax);
+    let cy = dy.mul_add(t, ay);
+    (px - cx).hypot(py - cy)
 }
 
 /// Cross product (p-a) x (b-a) for inside test
 #[inline(always)]
 fn cross_2d(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
-    (px - ax) * (by - ay) - (py - ay) * (bx - ax)
+    (px - ax).mul_add(by - ay, -((py - ay) * (bx - ax)))
 }
 
 /// SDF for a parallelogram prism

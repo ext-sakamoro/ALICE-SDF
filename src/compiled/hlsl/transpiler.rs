@@ -179,7 +179,7 @@ impl HlslShader {
 
         let source = transpiler.generate_shader(&body);
 
-        HlslShader {
+        Self {
             source,
             helper_count: transpiler.helper_functions.len(),
             param_layout: transpiler.params,
@@ -326,8 +326,8 @@ struct HlslTranspiler {
 
 #[allow(dead_code)]
 impl HlslTranspiler {
-    fn new(mode: HlslTranspileMode) -> Self {
-        HlslTranspiler {
+    const fn new(mode: HlslTranspileMode) -> Self {
+        Self {
             var_counter: 0,
             helper_functions: Vec::new(),
             mode,
@@ -1558,10 +1558,7 @@ mod tests {
                 "exp_smooth_intersection",
                 a.clone().exp_smooth_intersection(b.clone(), 0.2),
             ),
-            (
-                "exp_smooth_subtract",
-                a.clone().exp_smooth_subtract(b.clone(), 0.2),
-            ),
+            ("exp_smooth_subtract", a.exp_smooth_subtract(b, 0.2)),
         ];
 
         for (name, op) in &operations {
@@ -1596,7 +1593,7 @@ mod tests {
             ("polar_repeat", s.clone().polar_repeat(6)),
             ("shear", s.clone().shear(0.1, 0.0, 0.0)),
             ("animated", s.clone().animated(1.0, 0.5)),
-            ("with_material", s.clone().with_material(1)),
+            ("with_material", s.with_material(1)),
         ];
 
         for (name, m) in &modifiers {

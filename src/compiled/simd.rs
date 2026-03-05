@@ -26,8 +26,8 @@ pub struct Vec3x8 {
 impl Vec3x8 {
     /// Create from 8 separate Vec3 values
     #[inline]
-    pub fn from_vecs(v: [glam::Vec3; 8]) -> Self {
-        Vec3x8 {
+    pub const fn from_vecs(v: [glam::Vec3; 8]) -> Self {
+        Self {
             x: f32x8::new([
                 v[0].x, v[1].x, v[2].x, v[3].x, v[4].x, v[5].x, v[6].x, v[7].x,
             ]),
@@ -43,7 +43,7 @@ impl Vec3x8 {
     /// Create with all lanes set to the same vector
     #[inline]
     pub fn splat(v: glam::Vec3) -> Self {
-        Vec3x8 {
+        Self {
             x: f32x8::splat(v.x),
             y: f32x8::splat(v.y),
             z: f32x8::splat(v.z),
@@ -52,8 +52,8 @@ impl Vec3x8 {
 
     /// Create from raw x, y, z arrays
     #[inline]
-    pub fn new(x: [f32; 8], y: [f32; 8], z: [f32; 8]) -> Self {
-        Vec3x8 {
+    pub const fn new(x: [f32; 8], y: [f32; 8], z: [f32; 8]) -> Self {
+        Self {
             x: f32x8::new(x),
             y: f32x8::new(y),
             z: f32x8::new(z),
@@ -62,8 +62,8 @@ impl Vec3x8 {
 
     /// Zero vector for all 8 lanes
     #[inline]
-    pub fn zero() -> Self {
-        Vec3x8 {
+    pub const fn zero() -> Self {
+        Self {
             x: f32x8::ZERO,
             y: f32x8::ZERO,
             z: f32x8::ZERO,
@@ -88,7 +88,7 @@ impl Vec3x8 {
         let len = self.length();
         // Branchless zero guard: clamp denominator to epsilon
         let safe_len = len.max(f32x8::splat(1e-10));
-        Vec3x8 {
+        Self {
             x: self.x / safe_len,
             y: self.y / safe_len,
             z: self.z / safe_len,
@@ -104,7 +104,7 @@ impl Vec3x8 {
     /// Component-wise absolute value
     #[inline]
     pub fn abs(self) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x.abs(),
             y: self.y.abs(),
             z: self.z.abs(),
@@ -114,7 +114,7 @@ impl Vec3x8 {
     /// Component-wise maximum with zero
     #[inline]
     pub fn max_zero(self) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x.max(f32x8::ZERO),
             y: self.y.max(f32x8::ZERO),
             z: self.z.max(f32x8::ZERO),
@@ -124,7 +124,7 @@ impl Vec3x8 {
     /// Component-wise maximum
     #[inline]
     pub fn max(self, other: Self) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x.max(other.x),
             y: self.y.max(other.y),
             z: self.z.max(other.z),
@@ -134,7 +134,7 @@ impl Vec3x8 {
     /// Component-wise minimum
     #[inline]
     pub fn min(self, other: Self) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x.min(other.x),
             y: self.y.min(other.y),
             z: self.z.min(other.z),
@@ -171,7 +171,7 @@ impl std::ops::Add for Vec3x8 {
     type Output = Self;
     #[inline]
     fn add(self, other: Self) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x + other.x,
             y: self.y + other.y,
             z: self.z + other.z,
@@ -183,7 +183,7 @@ impl std::ops::Sub for Vec3x8 {
     type Output = Self;
     #[inline]
     fn sub(self, other: Self) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x - other.x,
             y: self.y - other.y,
             z: self.z - other.z,
@@ -195,7 +195,7 @@ impl std::ops::Mul<f32x8> for Vec3x8 {
     type Output = Self;
     #[inline]
     fn mul(self, scalar: f32x8) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x * scalar,
             y: self.y * scalar,
             z: self.z * scalar,
@@ -207,7 +207,7 @@ impl std::ops::Div<f32x8> for Vec3x8 {
     type Output = Self;
     #[inline]
     fn div(self, scalar: f32x8) -> Self {
-        Vec3x8 {
+        Self {
             x: self.x / scalar,
             y: self.y / scalar,
             z: self.z / scalar,
@@ -219,7 +219,7 @@ impl std::ops::Neg for Vec3x8 {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self {
-        Vec3x8 {
+        Self {
             x: -self.x,
             y: -self.y,
             z: -self.z,
@@ -244,7 +244,7 @@ impl Quatx8 {
     /// Create with all lanes set to the same quaternion
     #[inline]
     pub fn splat(q: glam::Quat) -> Self {
-        Quatx8 {
+        Self {
             x: f32x8::splat(q.x),
             y: f32x8::splat(q.y),
             z: f32x8::splat(q.z),
@@ -256,7 +256,7 @@ impl Quatx8 {
     #[inline]
     pub fn inverse(self) -> Self {
         // For unit quaternions, inverse is conjugate
-        Quatx8 {
+        Self {
             x: -self.x,
             y: -self.y,
             z: -self.z,

@@ -18,7 +18,7 @@ use std::f32::consts::FRAC_1_SQRT_2;
 /// Formula: `max(max(a,b), (a + b) * FRAC_1_SQRT_2 + r)`
 #[inline(always)]
 pub fn chamfer_min(a: f32, b: f32, r: f32) -> f32 {
-    a.min(b).min((a + b) * FRAC_1_SQRT_2 - r)
+    a.min(b).min((a + b).mul_add(FRAC_1_SQRT_2, -r))
 }
 
 /// Chamfer maximum: 45-degree beveled blend (Deep Fried)

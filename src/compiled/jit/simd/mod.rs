@@ -206,6 +206,7 @@ fn emit_simd_stairs_min(
 }
 
 /// Emit SIMD stairs_min for one F32X4 lane using pre-splatted constants
+#[allow(clippy::too_many_arguments)]
 fn emit_simd_stairs_min_lane(
     builder: &mut FunctionBuilder,
     a: Value,
@@ -533,7 +534,7 @@ impl JitSimdSdf {
                         let ba_x = inst.params[3] - inst.params[0];
                         let ba_y = inst.params[4] - inst.params[1];
                         let ba_z = inst.params[5] - inst.params[2];
-                        let ba_dot_val = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
+                        let ba_dot_val = ba_z.mul_add(ba_z, ba_x.mul_add(ba_x, ba_y * ba_y));
                         let inv_ba_dot = if ba_dot_val.abs() < 1e-10 {
                             1.0
                         } else {
@@ -546,14 +547,14 @@ impl JitSimdSdf {
                         let inv_bd_s = builder.ins().f32const(inv_ba_dot);
                         let bax = builder.ins().splat(vec_type, bax_s);
                         let bay = builder.ins().splat(vec_type, bay_s);
-                        let baz = builder.ins().splat(vec_type, baz_s);
+                        let ba_z_v = builder.ins().splat(vec_type, baz_s);
                         let inv_bd = builder.ins().splat(vec_type, inv_bd_s);
 
                         // Lane 0: pa = p - a, h = clamp(dot(pa,ba) * inv_ba_dot, 0, 1)
                         let pax0 = builder.ins().fsub(curr_x.0, ax);
                         let pay0 = builder.ins().fsub(curr_y.0, ay);
                         let paz0 = builder.ins().fsub(curr_z.0, az);
-                        let dot_z0 = builder.ins().fmul(paz0, baz);
+                        let dot_z0 = builder.ins().fmul(paz0, ba_z_v);
                         let dot_yz0 = builder.ins().fma(pay0, bay, dot_z0);
                         let dot0 = builder.ins().fma(pax0, bax, dot_yz0);
                         let h_raw0 = builder.ins().fmul(dot0, inv_bd);
@@ -561,7 +562,7 @@ impl JitSimdSdf {
                         let h0 = builder.ins().fmax(h_min0, zero_vec);
                         let bhx0 = builder.ins().fmul(bax, h0);
                         let bhy0 = builder.ins().fmul(bay, h0);
-                        let bhz0 = builder.ins().fmul(baz, h0);
+                        let bhz0 = builder.ins().fmul(ba_z_v, h0);
                         let dx0 = builder.ins().fsub(pax0, bhx0);
                         let dy0 = builder.ins().fsub(pay0, bhy0);
                         let dz0 = builder.ins().fsub(paz0, bhz0);
@@ -573,7 +574,7 @@ impl JitSimdSdf {
                         let pax1 = builder.ins().fsub(curr_x.1, ax);
                         let pay1 = builder.ins().fsub(curr_y.1, ay);
                         let paz1 = builder.ins().fsub(curr_z.1, az);
-                        let dot_z1 = builder.ins().fmul(paz1, baz);
+                        let dot_z1 = builder.ins().fmul(paz1, ba_z_v);
                         let dot_yz1 = builder.ins().fma(pay1, bay, dot_z1);
                         let dot1 = builder.ins().fma(pax1, bax, dot_yz1);
                         let h_raw1 = builder.ins().fmul(dot1, inv_bd);
@@ -581,7 +582,7 @@ impl JitSimdSdf {
                         let h1 = builder.ins().fmax(h_min1, zero_vec);
                         let bhx1 = builder.ins().fmul(bax, h1);
                         let bhy1 = builder.ins().fmul(bay, h1);
-                        let bhz1 = builder.ins().fmul(baz, h1);
+                        let bhz1 = builder.ins().fmul(ba_z_v, h1);
                         let dx1 = builder.ins().fsub(pax1, bhx1);
                         let dy1 = builder.ins().fsub(pay1, bhy1);
                         let dz1 = builder.ins().fsub(paz1, bhz1);
@@ -604,7 +605,7 @@ impl JitSimdSdf {
                         // Pre-compute k2 and inv_k2_dot (Division Exorcism)
                         let k2x_val = -radius_val;
                         let k2y_val = 2.0 * half_height;
-                        let k2_dot_val = k2x_val * k2x_val + k2y_val * k2y_val;
+                        let k2_dot_val = k2x_val.mul_add(k2x_val, k2y_val * k2y_val);
                         let inv_k2d_val = if k2_dot_val.abs() < 1e-10 {
                             1.0
                         } else {
@@ -1610,15 +1611,15 @@ impl JitSimdSdf {
                         let qy = -qy;
                         let qz = -qz;
                         // Rotation matrix from quaternion
-                        let m00 = 1.0 - 2.0 * (qy * qy + qz * qz);
-                        let m01 = 2.0 * (qx * qy - qz * qw);
-                        let m02 = 2.0 * (qx * qz + qy * qw);
-                        let m10 = 2.0 * (qx * qy + qz * qw);
-                        let m11 = 1.0 - 2.0 * (qx * qx + qz * qz);
-                        let m12 = 2.0 * (qy * qz - qx * qw);
-                        let m20 = 2.0 * (qx * qz - qy * qw);
-                        let m21 = 2.0 * (qy * qz + qx * qw);
-                        let m22 = 1.0 - 2.0 * (qx * qx + qy * qy);
+                        let m00 = 2.0f32.mul_add(-qy.mul_add(qy, qz * qz), 1.0);
+                        let m01 = 2.0 * qx.mul_add(qy, -(qz * qw));
+                        let m02 = 2.0 * qx.mul_add(qz, qy * qw);
+                        let m10 = 2.0 * qx.mul_add(qy, qz * qw);
+                        let m11 = 2.0f32.mul_add(-qx.mul_add(qx, qz * qz), 1.0);
+                        let m12 = 2.0 * qy.mul_add(qz, -(qx * qw));
+                        let m20 = 2.0 * qx.mul_add(qz, -(qy * qw));
+                        let m21 = 2.0 * qy.mul_add(qz, qx * qw);
+                        let m22 = 2.0f32.mul_add(-qx.mul_add(qx, qy * qy), 1.0);
 
                         let _ts1 = builder.ins().f32const(m00);
                         let m00v = builder.ins().splat(vec_type, _ts1);
@@ -1895,9 +1896,9 @@ impl JitSimdSdf {
                             folded: false,
                         });
 
-                        let cx = inst.params[0] as f32; // count already as f32
-                        let cy = inst.params[1] as f32;
-                        let cz = inst.params[2] as f32;
+                        let cx = inst.params[0];
+                        let cy = inst.params[1];
+                        let cz = inst.params[2];
                         let sx = inst.params[3];
                         let sy = inst.params[4];
                         let sz = inst.params[5];
@@ -2225,7 +2226,7 @@ impl JitSimdSdf {
 
         let code = module.get_finalized_function(func_id);
 
-        Ok(JitSimdSdf {
+        Ok(Self {
             module,
             func_ptr: code,
         })
@@ -2354,7 +2355,7 @@ struct SimdParamEmitter {
 }
 
 impl SimdParamEmitter {
-    fn new(params_ptr: Value) -> Self {
+    const fn new(params_ptr: Value) -> Self {
         Self {
             params_ptr,
             param_index: 0,
@@ -2668,7 +2669,7 @@ impl JitSimdSdfDynamic {
                         let ba_x = inst.params[3] - inst.params[0];
                         let ba_y = inst.params[4] - inst.params[1];
                         let ba_z = inst.params[5] - inst.params[2];
-                        let ba_dot_val = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
+                        let ba_dot_val = ba_z.mul_add(ba_z, ba_x.mul_add(ba_x, ba_y * ba_y));
                         let inv_ba_dot = if ba_dot_val.abs() < 1e-10 {
                             1.0
                         } else {
@@ -2677,14 +2678,14 @@ impl JitSimdSdfDynamic {
 
                         let bax = emitter.emit_splat(&mut builder, ba_x);
                         let bay = emitter.emit_splat(&mut builder, ba_y);
-                        let baz = emitter.emit_splat(&mut builder, ba_z);
+                        let ba_z_v = emitter.emit_splat(&mut builder, ba_z);
                         let inv_bd = emitter.emit_splat(&mut builder, inv_ba_dot);
 
                         // Lane 0
                         let pax0 = builder.ins().fsub(curr_x.0, ax);
                         let pay0 = builder.ins().fsub(curr_y.0, ay);
                         let paz0 = builder.ins().fsub(curr_z.0, az);
-                        let dot_z0 = builder.ins().fmul(paz0, baz);
+                        let dot_z0 = builder.ins().fmul(paz0, ba_z_v);
                         let dot_yz0 = builder.ins().fma(pay0, bay, dot_z0);
                         let dot0 = builder.ins().fma(pax0, bax, dot_yz0);
                         let h_raw0 = builder.ins().fmul(dot0, inv_bd);
@@ -2692,7 +2693,7 @@ impl JitSimdSdfDynamic {
                         let h0 = builder.ins().fmax(h_min0, zero_vec);
                         let bhx0 = builder.ins().fmul(bax, h0);
                         let bhy0 = builder.ins().fmul(bay, h0);
-                        let bhz0 = builder.ins().fmul(baz, h0);
+                        let bhz0 = builder.ins().fmul(ba_z_v, h0);
                         let dx0 = builder.ins().fsub(pax0, bhx0);
                         let dy0 = builder.ins().fsub(pay0, bhy0);
                         let dz0 = builder.ins().fsub(paz0, bhz0);
@@ -2704,7 +2705,7 @@ impl JitSimdSdfDynamic {
                         let pax1 = builder.ins().fsub(curr_x.1, ax);
                         let pay1 = builder.ins().fsub(curr_y.1, ay);
                         let paz1 = builder.ins().fsub(curr_z.1, az);
-                        let dot_z1 = builder.ins().fmul(paz1, baz);
+                        let dot_z1 = builder.ins().fmul(paz1, ba_z_v);
                         let dot_yz1 = builder.ins().fma(pay1, bay, dot_z1);
                         let dot1 = builder.ins().fma(pax1, bax, dot_yz1);
                         let h_raw1 = builder.ins().fmul(dot1, inv_bd);
@@ -2712,7 +2713,7 @@ impl JitSimdSdfDynamic {
                         let h1 = builder.ins().fmax(h_min1, zero_vec);
                         let bhx1 = builder.ins().fmul(bax, h1);
                         let bhy1 = builder.ins().fmul(bay, h1);
-                        let bhz1 = builder.ins().fmul(baz, h1);
+                        let bhz1 = builder.ins().fmul(ba_z_v, h1);
                         let dx1 = builder.ins().fsub(pax1, bhx1);
                         let dy1 = builder.ins().fsub(pay1, bhy1);
                         let dz1 = builder.ins().fsub(paz1, bhz1);
@@ -2732,7 +2733,7 @@ impl JitSimdSdfDynamic {
 
                         let k2x_val = -radius_val;
                         let k2y_val = 2.0 * half_height;
-                        let k2_dot_val = k2x_val * k2x_val + k2y_val * k2y_val;
+                        let k2_dot_val = k2x_val.mul_add(k2x_val, k2y_val * k2y_val);
                         let inv_k2d_val = if k2_dot_val.abs() < 1e-10 {
                             1.0
                         } else {
@@ -3611,15 +3612,15 @@ impl JitSimdSdfDynamic {
                         let qy = -inst.params[1];
                         let qz = -inst.params[2];
                         let qw = inst.params[3];
-                        let m00 = 1.0 - 2.0 * (qy * qy + qz * qz);
-                        let m01 = 2.0 * (qx * qy - qz * qw);
-                        let m02 = 2.0 * (qx * qz + qy * qw);
-                        let m10 = 2.0 * (qx * qy + qz * qw);
-                        let m11 = 1.0 - 2.0 * (qx * qx + qz * qz);
-                        let m12 = 2.0 * (qy * qz - qx * qw);
-                        let m20 = 2.0 * (qx * qz - qy * qw);
-                        let m21 = 2.0 * (qy * qz + qx * qw);
-                        let m22 = 1.0 - 2.0 * (qx * qx + qy * qy);
+                        let m00 = 2.0f32.mul_add(-qy.mul_add(qy, qz * qz), 1.0);
+                        let m01 = 2.0 * qx.mul_add(qy, -(qz * qw));
+                        let m02 = 2.0 * qx.mul_add(qz, qy * qw);
+                        let m10 = 2.0 * qx.mul_add(qy, qz * qw);
+                        let m11 = 2.0f32.mul_add(-qx.mul_add(qx, qz * qz), 1.0);
+                        let m12 = 2.0 * qy.mul_add(qz, -(qx * qw));
+                        let m20 = 2.0 * qx.mul_add(qz, -(qy * qw));
+                        let m21 = 2.0 * qy.mul_add(qz, qx * qw);
+                        let m22 = 2.0f32.mul_add(-qx.mul_add(qx, qy * qy), 1.0);
 
                         let m00v = emitter.emit_splat(&mut builder, m00);
                         let m01v = emitter.emit_splat(&mut builder, m01);
@@ -4134,7 +4135,7 @@ impl JitSimdSdfDynamic {
 
         let code = module.get_finalized_function(func_id);
 
-        Ok(JitSimdSdfDynamic {
+        Ok(Self {
             module,
             func_ptr: code,
             params: initial_params,
@@ -4300,7 +4301,7 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 let ba_x = inst.params[3] - ax;
                 let ba_y = inst.params[4] - ay;
                 let ba_z = inst.params[5] - az;
-                let ba_dot = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
+                let ba_dot = ba_z.mul_add(ba_z, ba_x.mul_add(ba_x, ba_y * ba_y));
                 let inv_ba_dot = if ba_dot.abs() < 1e-10 {
                     1.0
                 } else {
@@ -4320,7 +4321,7 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 let half_height = inst.params[1];
                 let k2x = -radius;
                 let k2y = 2.0 * half_height;
-                let k2_dot = k2x * k2x + k2y * k2y;
+                let k2_dot = k2x.mul_add(k2x, k2y * k2y);
                 let inv_k2d = if k2_dot.abs() < 1e-10 {
                     1.0
                 } else {
@@ -4414,15 +4415,15 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 let qy = -inst.params[1];
                 let qz = -inst.params[2];
                 let qw = inst.params[3];
-                params.push(1.0 - 2.0 * (qy * qy + qz * qz)); // m00
-                params.push(2.0 * (qx * qy - qz * qw)); // m01
-                params.push(2.0 * (qx * qz + qy * qw)); // m02
-                params.push(2.0 * (qx * qy + qz * qw)); // m10
-                params.push(1.0 - 2.0 * (qx * qx + qz * qz)); // m11
-                params.push(2.0 * (qy * qz - qx * qw)); // m12
-                params.push(2.0 * (qx * qz - qy * qw)); // m20
-                params.push(2.0 * (qy * qz + qx * qw)); // m21
-                params.push(1.0 - 2.0 * (qx * qx + qy * qy)); // m22
+                params.push(2.0f32.mul_add(-qy.mul_add(qy, qz * qz), 1.0)); // m00
+                params.push(2.0 * qx.mul_add(qy, -(qz * qw))); // m01
+                params.push(2.0 * qx.mul_add(qz, qy * qw)); // m02
+                params.push(2.0 * qx.mul_add(qy, qz * qw)); // m10
+                params.push(2.0f32.mul_add(-qx.mul_add(qx, qz * qz), 1.0)); // m11
+                params.push(2.0 * qy.mul_add(qz, -(qx * qw))); // m12
+                params.push(2.0 * qx.mul_add(qz, -(qy * qw))); // m20
+                params.push(2.0 * qy.mul_add(qz, qx * qw)); // m21
+                params.push(2.0f32.mul_add(-qx.mul_add(qx, qy * qy), 1.0)); // m22
             }
             OpCode::ScaleNonUniform => {
                 params.push(inst.params[0]); // inv_sx
@@ -4665,7 +4666,7 @@ mod tests {
         let compiled = CompiledSdf::compile(&sphere);
         let jit = JitSimdSdf::compile(&compiled).unwrap();
 
-        let x: Vec<f32> = (0..100).map(|i| i as f32 * 0.05 - 2.5).collect();
+        let x: Vec<f32> = (0..100).map(|i| (i as f32).mul_add(0.05, -2.5)).collect();
         let y: Vec<f32> = vec![0.0; 100];
         let z: Vec<f32> = vec![0.0; 100];
 

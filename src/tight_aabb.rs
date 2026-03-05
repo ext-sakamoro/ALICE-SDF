@@ -45,7 +45,7 @@ pub struct TightAabbConfig {
 
 impl Default for TightAabbConfig {
     fn default() -> Self {
-        TightAabbConfig {
+        Self {
             initial_half_size: 10.0,
             bisection_iterations: 20,
             coarse_subdivisions: 8,
@@ -171,7 +171,7 @@ fn coarse_scan(
     if is_max {
         // Scan from hi toward lo, find outermost slab that may contain surface
         for i in 0..subdivisions {
-            let slab_hi = hi - i as f32 * step;
+            let slab_hi = (i as f32).mul_add(-step, hi);
             let slab_lo = slab_hi - step;
 
             let bounds = make_slab_bounds(axis, slab_lo, slab_hi, initial_min, initial_max);
@@ -188,7 +188,7 @@ fn coarse_scan(
     } else {
         // Scan from lo toward hi, find outermost slab that may contain surface
         for i in 0..subdivisions {
-            let slab_lo = lo + i as f32 * step;
+            let slab_lo = (i as f32).mul_add(step, lo);
             let slab_hi = slab_lo + step;
 
             let bounds = make_slab_bounds(axis, slab_lo, slab_hi, initial_min, initial_max);
@@ -290,7 +290,7 @@ fn may_contain_surface(interval: &crate::interval::Interval) -> bool {
 
 /// Get axis value from Vec3
 #[inline(always)]
-fn get_axis(v: Vec3, axis: usize) -> f32 {
+const fn get_axis(v: Vec3, axis: usize) -> f32 {
     match axis {
         0 => v.x,
         1 => v.y,

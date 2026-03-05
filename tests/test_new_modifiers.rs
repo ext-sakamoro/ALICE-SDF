@@ -16,15 +16,11 @@ fn test_icosahedral_symmetry() {
     // Due to symmetry, all should be close
     assert!(
         (d1 - d2).abs() < 0.1,
-        "Icosahedral symmetry failed: {} vs {}",
-        d1,
-        d2
+        "Icosahedral symmetry failed: {d1} vs {d2}"
     );
     assert!(
         (d2 - d3).abs() < 0.1,
-        "Icosahedral symmetry failed: {} vs {}",
-        d2,
-        d3
+        "Icosahedral symmetry failed: {d2} vs {d3}"
     );
 }
 
@@ -40,7 +36,7 @@ fn test_ifs() {
     // Should evaluate without panicking
     let p = Vec3::new(0.5, 0.5, 0.5);
     let d = eval(&sphere, p);
-    assert!(d.is_finite(), "IFS distance should be finite: got {}", d);
+    assert!(d.is_finite(), "IFS distance should be finite: got {d}");
 }
 
 #[test]
@@ -55,8 +51,7 @@ fn test_heightmap_displacement() {
     let d = eval(&sphere, p);
     assert!(
         d.is_finite(),
-        "Heightmap displacement should be finite: got {}",
-        d
+        "Heightmap displacement should be finite: got {d}"
     );
 }
 
@@ -67,18 +62,12 @@ fn test_surface_roughness() {
     // Should evaluate without panicking
     let p = Vec3::new(1.0, 0.0, 0.0);
     let d = eval(&sphere, p);
-    assert!(
-        d.is_finite(),
-        "Surface roughness should be finite: got {}",
-        d
-    );
+    assert!(d.is_finite(), "Surface roughness should be finite: got {d}");
 
     // Roughness should be small compared to base sphere
     let base_d = eval(&SdfNode::sphere(1.0), p);
     assert!(
         (d - base_d).abs() < 0.2,
-        "Roughness too large: {} vs {}",
-        d,
-        base_d
+        "Roughness too large: {d} vs {base_d}"
     );
 }

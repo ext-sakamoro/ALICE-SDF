@@ -23,9 +23,9 @@ pub fn sdf_star_polygon(p: Vec3, radius: f32, n_points: f32, m: f32, half_height
     let r = Vec2::new(qx, qz).length();
     let mut angle = qx.atan2(qz);
     // Modulo to [0, 2*an], then reflect to [0, an]
-    angle = ((angle % (2.0 * an)) + 2.0 * an) % (2.0 * an);
+    angle = 2.0f32.mul_add(an, angle % (2.0 * an)) % (2.0 * an);
     if angle > an {
-        angle = 2.0 * an - angle;
+        angle = 2.0f32.mul_add(an, -angle);
     }
 
     // Point in folded polar-to-Cartesian
@@ -43,7 +43,7 @@ pub fn sdf_star_polygon(p: Vec3, radius: f32, n_points: f32, m: f32, half_height
     let dist = (pt - closest).length();
 
     // Sign via cross product: AB × AP
-    let cross = ab.x * ap.y - ab.y * ap.x;
+    let cross = ab.x.mul_add(ap.y, -(ab.y * ap.x));
     let d_2d = if cross > 0.0 { -dist } else { dist };
 
     // Extrude along Y

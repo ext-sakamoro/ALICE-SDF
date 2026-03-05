@@ -181,7 +181,7 @@ impl WgslShader {
         let body = transpiler.transpile_node(node, "p");
         let source = transpiler.generate_shader(&body);
 
-        WgslShader {
+        Self {
             source,
             helper_count: transpiler.helper_functions.len(),
             param_layout: transpiler.params,
@@ -348,7 +348,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     #[cfg(feature = "volume")]
     pub fn to_volume_shader(&self) -> String {
         format!(
-            r#"// ALICE-SDF Volume Bake Shader (3D Dispatch)
+            r"// ALICE-SDF Volume Bake Shader (3D Dispatch)
 
 struct VolumeUniforms {{
     resolution: vec4<u32>,
@@ -378,7 +378,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let idx = gid.x + gid.y * res.x + gid.z * res.x * res.y;
     output_volume[idx] = distance;
 }}
-"#,
+",
             sdf_func = self.source,
         )
     }
@@ -398,8 +398,8 @@ struct WgslTranspiler {
 
 #[allow(dead_code)]
 impl WgslTranspiler {
-    fn new(mode: TranspileMode) -> Self {
-        WgslTranspiler {
+    const fn new(mode: TranspileMode) -> Self {
+        Self {
             var_counter: 0,
             helper_functions: Vec::new(),
             mode,
@@ -1771,10 +1771,7 @@ mod tests {
                 "exp_smooth_intersection",
                 a.clone().exp_smooth_intersection(b.clone(), 0.2),
             ),
-            (
-                "exp_smooth_subtract",
-                a.clone().exp_smooth_subtract(b.clone(), 0.2),
-            ),
+            ("exp_smooth_subtract", a.exp_smooth_subtract(b, 0.2)),
         ];
 
         for (name, op) in &operations {
@@ -1809,7 +1806,7 @@ mod tests {
             ("polar_repeat", s.clone().polar_repeat(6)),
             ("shear", s.clone().shear(0.1, 0.0, 0.0)),
             ("animated", s.clone().animated(1.0, 0.5)),
-            ("with_material", s.clone().with_material(1)),
+            ("with_material", s.with_material(1)),
         ];
 
         for (name, m) in &modifiers {

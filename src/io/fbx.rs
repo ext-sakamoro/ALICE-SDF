@@ -21,7 +21,7 @@ use std::io::Write;
 use std::path::Path;
 
 /// FBX file format
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FbxFormat {
     /// ASCII text format (human-readable, larger files)
     Ascii,
@@ -45,7 +45,7 @@ pub struct FbxConfig {
 }
 
 /// FBX up axis convention
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FbxUpAxis {
     /// Y-up (Maya, UE5, Unity default)
     Y,
@@ -55,7 +55,7 @@ pub enum FbxUpAxis {
 
 impl Default for FbxConfig {
     fn default() -> Self {
-        FbxConfig {
+        Self {
             export_normals: true,
             export_uvs: true,
             export_materials: true,
@@ -68,7 +68,7 @@ impl Default for FbxConfig {
 impl FbxConfig {
     /// Binary format config (recommended for large meshes)
     pub fn binary() -> Self {
-        FbxConfig {
+        Self {
             format: FbxFormat::Binary,
             ..Default::default()
         }
@@ -1744,7 +1744,7 @@ mod tests {
         let timeline = fbx_animation_to_timeline(&clip, "Root");
 
         assert_eq!(timeline.name, "TestClip");
-        assert!(timeline.tracks.len() >= 1);
+        assert!(!timeline.tracks.is_empty());
 
         // Find translate.x track
         let translate_x = timeline.tracks.iter().find(|t| t.name == "translate.x");

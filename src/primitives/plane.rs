@@ -24,19 +24,19 @@ pub fn sdf_plane(point: Vec3, normal: Vec3, distance: f32) -> f32 {
 
 /// Signed distance to the XY plane (Z = 0)
 #[inline(always)]
-pub fn sdf_plane_xy(point: Vec3) -> f32 {
+pub const fn sdf_plane_xy(point: Vec3) -> f32 {
     point.z
 }
 
 /// Signed distance to the XZ plane (Y = 0)
 #[inline(always)]
-pub fn sdf_plane_xz(point: Vec3) -> f32 {
+pub const fn sdf_plane_xz(point: Vec3) -> f32 {
     point.y
 }
 
 /// Signed distance to the YZ plane (X = 0)
 #[inline(always)]
-pub fn sdf_plane_yz(point: Vec3) -> f32 {
+pub const fn sdf_plane_yz(point: Vec3) -> f32 {
     point.x
 }
 

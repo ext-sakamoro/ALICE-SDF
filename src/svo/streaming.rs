@@ -45,8 +45,13 @@ pub struct SvoChunk {
 
 impl SvoChunk {
     /// Create a new chunk
-    pub fn new(chunk_id: u32, nodes: Vec<SvoNode>, bounds: AabbPacked, start_depth: u32) -> Self {
-        SvoChunk {
+    pub const fn new(
+        chunk_id: u32,
+        nodes: Vec<SvoNode>,
+        bounds: AabbPacked,
+        start_depth: u32,
+    ) -> Self {
+        Self {
             chunk_id,
             nodes,
             bounds,
@@ -147,7 +152,7 @@ impl SvoChunk {
             });
         }
 
-        Some(SvoChunk {
+        Some(Self {
             chunk_id,
             nodes,
             bounds,
@@ -189,7 +194,7 @@ impl SvoStreamingCache {
     /// # Arguments
     /// * `capacity` - Maximum number of chunks to keep in memory
     pub fn new(capacity: usize) -> Self {
-        SvoStreamingCache {
+        Self {
             capacity,
             entries: std::collections::HashMap::new(),
             access_counter: 0,
@@ -202,7 +207,7 @@ impl SvoStreamingCache {
 
     /// Create a cache with a memory budget
     pub fn with_memory_budget(max_memory_bytes: usize) -> Self {
-        SvoStreamingCache {
+        Self {
             capacity: usize::MAX,
             entries: std::collections::HashMap::new(),
             access_counter: 0,
@@ -309,7 +314,7 @@ impl SvoStreamingCache {
     }
 
     /// Total memory used by cached chunks
-    pub fn memory_used(&self) -> usize {
+    pub const fn memory_used(&self) -> usize {
         self.memory_used
     }
 

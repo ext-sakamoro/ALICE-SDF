@@ -20,8 +20,8 @@ pub fn sdf_link(p: Vec3, half_length: f32, r1: f32, r2: f32) -> f32 {
     let qy = (p.y.abs() - half_length).max(0.0);
     let qz = p.z;
 
-    let xy_len = (qx * qx + qy * qy).sqrt() - r1;
-    (xy_len * xy_len + qz * qz).sqrt() - r2
+    let xy_len = qx.hypot(qy) - r1;
+    xy_len.hypot(qz) - r2
 }
 
 #[cfg(test)]

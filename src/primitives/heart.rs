@@ -20,14 +20,15 @@ fn dot2(v: Vec2) -> f32 {
 pub fn sdf_heart(p: Vec3, size: f32) -> f32 {
     let sp = p / size;
     // Use revolution: r = length(p.xz), y = p.y
-    let mut q = Vec2::new((sp.x * sp.x + sp.z * sp.z).sqrt(), sp.y);
+    let mut q = Vec2::new(sp.x.hypot(sp.z), sp.y);
 
     // Shift so the heart center is at origin
     q.y -= 0.5;
     let qx = q.x.abs();
 
     if qx + q.y > 1.0 {
-        (dot2(Vec2::new(qx - 0.25, q.y - 0.75)).sqrt() - std::f32::consts::SQRT_2 * 0.25) * size
+        std::f32::consts::SQRT_2.mul_add(-0.25, dot2(Vec2::new(qx - 0.25, q.y - 0.75)).sqrt())
+            * size
     } else {
         let d1 = dot2(Vec2::new(qx, q.y - 1.0));
         let t = (qx + q.y).max(0.0) * 0.5;

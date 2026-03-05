@@ -26,7 +26,7 @@ pub struct ObjConfig {
 
 impl Default for ObjConfig {
     fn default() -> Self {
-        ObjConfig {
+        Self {
             export_normals: true,
             export_uvs: true,
             export_materials: true,
@@ -182,7 +182,7 @@ fn export_mtl(mat_lib: &MaterialLibrary, path: impl AsRef<Path>) -> Result<(), I
         writeln!(w, "Ks {} {} {}", spec, spec, spec)?;
 
         // Specular exponent (Ns) - from roughness
-        let ns = (1.0 - mat.roughness) * 900.0 + 10.0;
+        let ns = (1.0 - mat.roughness).mul_add(900.0, 10.0);
         writeln!(w, "Ns {}", ns)?;
 
         // Opacity

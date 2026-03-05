@@ -34,7 +34,7 @@ pub fn sdf_columns_union(a: f32, b: f32, r: f32, n: f32) -> f32 {
 
     let col_size = r * (2.0 / n);
     let (ra, rb) = p_r45(a2, b2);
-    let ra = ra - r * std::f32::consts::SQRT_2 * 0.5;
+    let ra = (r * std::f32::consts::SQRT_2).mul_add(-0.5, ra);
     let ra = p_mod1(ra, col_size);
     let (a2, b2) = p_r45(ra, rb);
 
@@ -67,7 +67,7 @@ pub fn sdf_columns_subtraction(a: f32, b: f32, r: f32, n: f32) -> f32 {
 
     let col_size = r * (2.0 / n);
     let (ra, rb) = p_r45(a2, b2);
-    let ra = ra - r * std::f32::consts::SQRT_2 * 0.5;
+    let ra = (r * std::f32::consts::SQRT_2).mul_add(-0.5, ra);
     let ra = p_mod1(ra, col_size);
     let (a2, b2) = p_r45(ra, rb);
 

@@ -519,20 +519,21 @@ fn cmd_demo(output: PathBuf) {
 #[cfg(all(feature = "cli", feature = "jit"))]
 fn cmd_bench(file: Option<PathBuf>, points: usize) {
     // 1. Load or create SDF node
-    let node = if let Some(path) = file {
-        match load(&path) {
+    let node = file.map_or_else(
+        || {
+            // Demo shape (complex enough to stress test)
+            SdfNode::sphere(1.0)
+                .smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2)
+                .twist(0.5)
+        },
+        |path| match load(&path) {
             Ok(tree) => tree.root,
             Err(e) => {
                 eprintln!("Load error: {}", e);
                 std::process::exit(1);
             }
-        }
-    } else {
-        // Demo shape (complex enough to stress test)
-        SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2)
-            .twist(0.5)
-    };
+        },
+    );
 
     println!("=== Deep Fried Crispy Edition Benchmark ===");
     println!("Points: {}", points);
@@ -631,7 +632,7 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     // CPU JIT SIMD
     let start = std::time::Instant::now();
     let num_threads = rayon::current_num_threads();
-    let chunk_size = (points + num_threads - 1) / num_threads;
+    let chunk_size = points.div_ceil(num_threads);
     let _results_jit: Vec<f32> = px
         .par_chunks(chunk_size)
         .zip(py.par_chunks(chunk_size))
@@ -671,20 +672,20 @@ fn print_result(mode: &str, elapsed: std::time::Duration, points: usize) {
 /// Fallback benchmark (no JIT feature)
 #[cfg(all(feature = "cli", not(feature = "jit")))]
 fn cmd_bench(file: Option<PathBuf>, points: usize) {
-    let node = if let Some(path) = file {
-        match load(&path) {
+    let node = file.map_or_else(
+        || {
+            SdfNode::sphere(1.0)
+                .smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2)
+                .twist(0.5)
+        },
+        |path| match load(&path) {
             Ok(tree) => tree.root,
             Err(e) => {
-                eprintln!("Load error: {}", e);
+                eprintln!("Load error: {e}");
                 std::process::exit(1);
             }
-        }
-    } else {
-        // Demo shape
-        SdfNode::sphere(1.0)
-            .smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2)
-            .twist(0.5)
-    };
+        },
+    );
 
     println!("=== Interpreter Benchmark (JIT not enabled) ===");
     println!("Hint: Build with --features jit for 20x+ speedup");
@@ -753,7 +754,7 @@ fn cmd_texture_fit(
     };
     let elapsed = start.elapsed();
 
-    let total_octaves: usize = result.octaves.iter().map(|o| o.len()).sum();
+    let total_octaves: usize = result.octaves.iter().map(std::vec::Vec::len).sum();
     println!("\nResult:");
     println!("  Image: {}x{}", result.width, result.height);
     println!("  Octaves: {}", total_octaves);
@@ -780,10 +781,10 @@ fn cmd_texture_fit(
             }
         };
 
-        let source_name = input
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+        let source_name = input.file_name().map_or_else(
+            || "unknown".to_string(),
+            |n| n.to_string_lossy().to_string(),
+        );
 
         let shader_code = generate_shader(&result, lang, &source_name);
 

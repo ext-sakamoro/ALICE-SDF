@@ -7,8 +7,10 @@ pub struct OptimizeResult {
     /// Best parameter vector found
     pub params: Vec<f32>,
     /// Cost at the best point
+    #[allow(dead_code)]
     pub cost: f64,
     /// Number of iterations performed
+    #[allow(dead_code)]
     pub iterations: u32,
 }
 
@@ -86,7 +88,7 @@ where
 
         // Reflection
         for j in 0..n {
-            reflected[j] = scratch[j] + (alpha as f32) * (scratch[j] - vertices[worst_idx][j]);
+            reflected[j] = (alpha as f32).mul_add(scratch[j] - vertices[worst_idx][j], scratch[j]);
         }
         let cost_r = cost_fn(&reflected);
 
@@ -100,7 +102,7 @@ where
         if cost_r < costs[best_idx] {
             // Try expansion
             for j in 0..n {
-                expanded[j] = scratch[j] + (gamma as f32) * (reflected[j] - scratch[j]);
+                expanded[j] = (gamma as f32).mul_add(reflected[j] - scratch[j], scratch[j]);
             }
             let cost_e = cost_fn(&expanded);
             if cost_e < cost_r {
@@ -115,7 +117,7 @@ where
 
         // Contraction
         for j in 0..n {
-            contracted[j] = scratch[j] + (rho as f32) * (vertices[worst_idx][j] - scratch[j]);
+            contracted[j] = (rho as f32).mul_add(vertices[worst_idx][j] - scratch[j], scratch[j]);
         }
         let cost_c = cost_fn(&contracted);
 
@@ -132,7 +134,7 @@ where
                 continue;
             }
             for j in 0..n {
-                vertices[i][j] = best[j] + (sigma as f32) * (vertices[i][j] - best[j]);
+                vertices[i][j] = (sigma as f32).mul_add(vertices[i][j] - best[j], best[j]);
             }
             costs[i] = cost_fn(&vertices[i]);
         }
@@ -185,7 +187,7 @@ mod tests {
         let result = nelder_mead(&[-1.0, -1.0], &[0.5, 0.5], 5000, |p| {
             let x = p[0] as f64;
             let y = p[1] as f64;
-            (1.0 - x).powi(2) + 100.0 * (y - x * x).powi(2)
+            (1.0 - x).mul_add(1.0 - x, 100.0 * x.mul_add(-x, y).powi(2))
         });
 
         assert!(

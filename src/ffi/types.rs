@@ -52,7 +52,7 @@ pub struct Vec3Ffi {
 
 impl Vec3Ffi {
     /// Create a new Vec3Ffi from components
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
 }
@@ -69,7 +69,7 @@ impl From<glam::Vec3> for Vec3Ffi {
 
 impl From<Vec3Ffi> for glam::Vec3 {
     fn from(v: Vec3Ffi) -> Self {
-        glam::Vec3::new(v.x, v.y, v.z)
+        Self::new(v.x, v.y, v.z)
     }
 }
 
@@ -89,12 +89,12 @@ pub struct QuatFfi {
 
 impl QuatFfi {
     /// Create a new QuatFfi from components
-    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self { x, y, z, w }
     }
 
     /// Create an identity quaternion (no rotation)
-    pub fn identity() -> Self {
+    pub const fn identity() -> Self {
         Self {
             x: 0.0,
             y: 0.0,
@@ -123,7 +123,7 @@ impl From<glam::Quat> for QuatFfi {
 
 impl From<QuatFfi> for glam::Quat {
     fn from(q: QuatFfi) -> Self {
-        glam::Quat::from_xyzw(q.x, q.y, q.z, q.w)
+        Self::from_xyzw(q.x, q.y, q.z, q.w)
     }
 }
 
@@ -206,7 +206,7 @@ pub struct VersionInfo {
 
 impl VersionInfo {
     /// Return the current ALICE-SDF version
-    pub fn current() -> Self {
+    pub const fn current() -> Self {
         Self {
             major: 1,
             minor: 1,

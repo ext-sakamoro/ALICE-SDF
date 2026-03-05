@@ -95,8 +95,8 @@ pub fn generate_heatmap(node: &SdfNode, config: &HeatmapConfig) -> Heatmap {
 
     for iy in 0..res {
         for ix in 0..res {
-            let u = -config.range + (ix as f32 + 0.5) * step;
-            let v = -config.range + (iy as f32 + 0.5) * step;
+            let u = (ix as f32 + 0.5).mul_add(step, -config.range);
+            let v = (iy as f32 + 0.5).mul_add(step, -config.range);
 
             let point = plane_to_world(config.plane, u, v);
             let d = eval(node, point);
@@ -177,7 +177,7 @@ fn distance_to_color(t: f32, colormap: ColorMap) -> [u8; 4] {
             let s = (t + 1.0) * 0.5; // [0, 1]
             let r = (68.0 + s * (187.0)) as u8;
             let g = (1.0 + s * (254.0)) as u8;
-            let b = (84.0 + s * (80.0) - s * s * 100.0).clamp(0.0, 255.0) as u8;
+            let b = (s * s).mul_add(-100.0, 84.0 + s * (80.0)).clamp(0.0, 255.0) as u8;
             [r, g, b, 255]
         }
         ColorMap::Magma => {

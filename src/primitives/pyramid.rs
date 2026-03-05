@@ -36,12 +36,13 @@ pub fn sdf_pyramid(p: Vec3, half_height: f32) -> f32 {
     let qz = h * px + 0.5 * py;
 
     let s = (-qx).max(0.0);
-    let t = ((qy - 0.5 * pz) / (m2 + 0.25)).clamp(0.0, 1.0);
+    let t = (0.5f32.mul_add(-pz, qy) / (m2 + 0.25)).clamp(0.0, 1.0);
 
-    let a = m2 * (qx + s) * (qx + s) + qy * qy;
-    let b = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
+    let a = (m2 * (qx + s)).mul_add(qx + s, qy * qy);
+    let b =
+        (m2 * 0.5f32.mul_add(t, qx)).mul_add(0.5f32.mul_add(t, qx), (qy - m2 * t) * (qy - m2 * t));
 
-    let d2 = if qy.min(-qx * m2 - qy * 0.5) > 0.0 {
+    let d2 = if qy.min((-qx).mul_add(m2, -(qy * 0.5))) > 0.0 {
         0.0
     } else {
         a.min(b)

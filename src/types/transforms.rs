@@ -14,7 +14,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn translate(self, x: f32, y: f32, z: f32) -> Self {
-        SdfNode::Translate {
+        Self::Translate {
             child: Arc::new(self),
             offset: Vec3::new(x, y, z),
         }
@@ -24,7 +24,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn translate_vec(self, offset: Vec3) -> Self {
-        SdfNode::Translate {
+        Self::Translate {
             child: Arc::new(self),
             offset,
         }
@@ -34,7 +34,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn rotate(self, rotation: Quat) -> Self {
-        SdfNode::Rotate {
+        Self::Rotate {
             child: Arc::new(self),
             rotation,
         }
@@ -44,7 +44,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn rotate_euler(self, x: f32, y: f32, z: f32) -> Self {
-        SdfNode::Rotate {
+        Self::Rotate {
             child: Arc::new(self),
             rotation: Quat::from_euler(glam::EulerRot::XYZ, x, y, z),
         }
@@ -54,7 +54,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn scale(self, factor: f32) -> Self {
-        SdfNode::Scale {
+        Self::Scale {
             child: Arc::new(self),
             factor,
         }
@@ -64,7 +64,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn scale_xyz(self, x: f32, y: f32, z: f32) -> Self {
-        SdfNode::ScaleNonUniform {
+        Self::ScaleNonUniform {
             child: Arc::new(self),
             factors: Vec3::new(x, y, z),
         }
@@ -74,7 +74,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn projective_transform(self, inv_matrix: [f32; 16], lipschitz_bound: f32) -> Self {
-        SdfNode::ProjectiveTransform {
+        Self::ProjectiveTransform {
             child: Arc::new(self),
             inv_matrix,
             lipschitz_bound,
@@ -93,7 +93,7 @@ impl SdfNode {
         bbox_min: Vec3,
         bbox_max: Vec3,
     ) -> Self {
-        SdfNode::LatticeDeform {
+        Self::LatticeDeform {
             child: Arc::new(self),
             control_points,
             nx,
@@ -108,7 +108,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn sdf_skinning(self, bones: Vec<crate::transforms::skinning::BoneTransform>) -> Self {
-        SdfNode::SdfSkinning {
+        Self::SdfSkinning {
             child: Arc::new(self),
             bones,
         }

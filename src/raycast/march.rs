@@ -42,7 +42,7 @@ pub struct RaymarchConfig {
 
 impl Default for RaymarchConfig {
     fn default() -> Self {
-        RaymarchConfig {
+        Self {
             max_steps: 128,
             epsilon: 0.0001,
             min_step: 0.0001,
@@ -54,8 +54,8 @@ impl Default for RaymarchConfig {
 
 impl RaymarchConfig {
     /// High quality configuration
-    pub fn high_quality() -> Self {
-        RaymarchConfig {
+    pub const fn high_quality() -> Self {
+        Self {
             max_steps: 256,
             epsilon: 0.00001,
             min_step: 0.00001,
@@ -67,8 +67,8 @@ impl RaymarchConfig {
     /// Fast configuration for preview (Deep Fried)
     ///
     /// Uses moderate over-relaxation for faster convergence while maintaining stability.
-    pub fn fast() -> Self {
-        RaymarchConfig {
+    pub const fn fast() -> Self {
+        Self {
             max_steps: 64,
             epsilon: 0.0005,
             min_step: 0.0001,
@@ -83,7 +83,7 @@ impl RaymarchConfig {
     /// Safe step = d * ω / L. Typically converges in ~40% fewer steps than standard tracing.
     pub fn relaxed(node: &SdfNode) -> Self {
         let lip = eval_lipschitz(node).max(1.0);
-        RaymarchConfig {
+        Self {
             max_steps: 128,
             epsilon: 0.0001,
             min_step: 0.0001,
@@ -298,19 +298,17 @@ pub fn render_depth(
         .par_chunks_mut(width)
         .enumerate()
         .for_each(|(y, row)| {
-            let v = 1.0 - (y as f32 / height as f32) * 2.0;
+            let v = (y as f32 / height as f32).mul_add(-2.0, 1.0);
             let row_vec = forward + up * (v * half_height);
             let right_scaled = right * half_width;
             let inv_width = 1.0 / width as f32;
 
             for (x, pixel) in row.iter_mut().enumerate() {
-                let u = (x as f32 * inv_width) * 2.0 - 1.0;
+                let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel = match raymarch(node, camera_pos, ray_dir, max_distance) {
-                    Some(hit) => hit.distance,
-                    None => f32::MAX,
-                };
+                *pixel = raymarch(node, camera_pos, ray_dir, max_distance)
+                    .map_or(f32::MAX, |hit| hit.distance);
             }
         });
 
@@ -339,24 +337,23 @@ pub fn render_normals(
         .par_chunks_mut(width)
         .enumerate()
         .for_each(|(y, row)| {
-            let v = 1.0 - (y as f32 / height as f32) * 2.0;
+            let v = (y as f32 / height as f32).mul_add(-2.0, 1.0);
             let row_vec = forward + up * (v * half_height);
             let right_scaled = right * half_width;
             let inv_width = 1.0 / width as f32;
 
             for (x, pixel) in row.iter_mut().enumerate() {
-                let u = (x as f32 * inv_width) * 2.0 - 1.0;
+                let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel =
-                    match raymarch_with_config(node, camera_pos, ray_dir, max_distance, &config) {
-                        Some(hit) => [
-                            ((hit.normal.x * 0.5 + 0.5) * 255.0) as u8,
-                            ((hit.normal.y * 0.5 + 0.5) * 255.0) as u8,
-                            ((hit.normal.z * 0.5 + 0.5) * 255.0) as u8,
-                        ],
-                        None => [0, 0, 0],
-                    };
+                *pixel = raymarch_with_config(node, camera_pos, ray_dir, max_distance, &config)
+                    .map_or([0, 0, 0], |hit| {
+                        [
+                            (hit.normal.x.mul_add(0.5, 0.5) * 255.0) as u8,
+                            (hit.normal.y.mul_add(0.5, 0.5) * 255.0) as u8,
+                            (hit.normal.z.mul_add(0.5, 0.5) * 255.0) as u8,
+                        ]
+                    });
             }
         });
 
@@ -491,19 +488,17 @@ pub fn render_depth_compiled(
         .par_chunks_mut(width)
         .enumerate()
         .for_each(|(y, row)| {
-            let v = 1.0 - (y as f32 / height as f32) * 2.0;
+            let v = (y as f32 / height as f32).mul_add(-2.0, 1.0);
             let row_vec = forward + up * (v * half_height);
             let right_scaled = right * half_width;
             let inv_width = 1.0 / width as f32;
 
             for (x, pixel) in row.iter_mut().enumerate() {
-                let u = (x as f32 * inv_width) * 2.0 - 1.0;
+                let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel = match raymarch_compiled(sdf, camera_pos, ray_dir, max_distance) {
-                    Some(hit) => hit.distance,
-                    None => f32::MAX,
-                };
+                *pixel = raymarch_compiled(sdf, camera_pos, ray_dir, max_distance)
+                    .map_or(f32::MAX, |hit| hit.distance);
             }
         });
 
@@ -532,29 +527,24 @@ pub fn render_normals_compiled(
         .par_chunks_mut(width)
         .enumerate()
         .for_each(|(y, row)| {
-            let v = 1.0 - (y as f32 / height as f32) * 2.0;
+            let v = (y as f32 / height as f32).mul_add(-2.0, 1.0);
             let row_vec = forward + up * (v * half_height);
             let right_scaled = right * half_width;
             let inv_width = 1.0 / width as f32;
 
             for (x, pixel) in row.iter_mut().enumerate() {
-                let u = (x as f32 * inv_width) * 2.0 - 1.0;
+                let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel = match raymarch_compiled_with_config(
-                    sdf,
-                    camera_pos,
-                    ray_dir,
-                    max_distance,
-                    &config,
-                ) {
-                    Some(hit) => [
-                        ((hit.normal.x * 0.5 + 0.5) * 255.0) as u8,
-                        ((hit.normal.y * 0.5 + 0.5) * 255.0) as u8,
-                        ((hit.normal.z * 0.5 + 0.5) * 255.0) as u8,
-                    ],
-                    None => [0, 0, 0],
-                };
+                *pixel =
+                    raymarch_compiled_with_config(sdf, camera_pos, ray_dir, max_distance, &config)
+                        .map_or([0, 0, 0], |hit| {
+                            [
+                                (hit.normal.x.mul_add(0.5, 0.5) * 255.0) as u8,
+                                (hit.normal.y.mul_add(0.5, 0.5) * 255.0) as u8,
+                                (hit.normal.z.mul_add(0.5, 0.5) * 255.0) as u8,
+                            ]
+                        });
             }
         });
 
@@ -656,9 +646,9 @@ pub fn raymarch_simd_8(
     for i in 0..8 {
         if hit_arr[i] > 0.5 {
             let p = Vec3::new(
-                ox[i] + dx[i] * t_arr[i],
-                oy[i] + dy[i] * t_arr[i],
-                oz[i] + dz[i] * t_arr[i],
+                dx[i].mul_add(t_arr[i], ox[i]),
+                dy[i].mul_add(t_arr[i], oy[i]),
+                dz[i].mul_add(t_arr[i], oz[i]),
             );
             let _n = eval_compiled_normal(sdf, p, config.epsilon);
             results[i] = Some((t_arr[i], p, step_counts[i]));
@@ -695,7 +685,7 @@ pub fn render_depth_compiled_simd(
         .par_chunks_mut(width)
         .enumerate()
         .for_each(|(y, row)| {
-            let v = 1.0 - (y as f32 / height as f32) * 2.0;
+            let v = (y as f32 / height as f32).mul_add(-2.0, 1.0);
             let row_vec = forward + up * (v * half_height);
             let right_scaled = right * half_width;
             let inv_width = 1.0 / width as f32;
@@ -709,7 +699,7 @@ pub fn render_depth_compiled_simd(
                 let mut dir_z = [0.0f32; 8];
 
                 for i in 0..8 {
-                    let u = ((x + i) as f32 * inv_width) * 2.0 - 1.0;
+                    let u = ((x + i) as f32 * inv_width).mul_add(2.0, -1.0);
                     let rd = (row_vec + right_scaled * u).normalize();
                     dir_x[i] = rd.x;
                     dir_y[i] = rd.y;
@@ -733,13 +723,11 @@ pub fn render_depth_compiled_simd(
 
             // Scalar fallback for remaining pixels
             while x < width {
-                let u = (x as f32 * inv_width) * 2.0 - 1.0;
+                let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                row[x] = match raymarch_compiled(sdf, camera_pos, ray_dir, max_distance) {
-                    Some(hit) => hit.distance,
-                    None => f32::MAX,
-                };
+                row[x] = raymarch_compiled(sdf, camera_pos, ray_dir, max_distance)
+                    .map_or(f32::MAX, |hit| hit.distance);
                 x += 1;
             }
         });
@@ -875,6 +863,7 @@ pub fn raymarch_jit_batch_parallel(
 
 /// Render depth buffer using JIT scalar
 #[cfg(feature = "jit")]
+#[allow(clippy::too_many_arguments)]
 pub fn render_depth_jit(
     sdf: &crate::compiled::jit::JitCompiledSdf,
     camera_pos: Vec3,
@@ -894,19 +883,17 @@ pub fn render_depth_jit(
         .par_chunks_mut(width)
         .enumerate()
         .for_each(|(y, row)| {
-            let v = 1.0 - (y as f32 / height as f32) * 2.0;
+            let v = (y as f32 / height as f32).mul_add(-2.0, 1.0);
             let row_vec = forward + up * (v * half_height);
             let right_scaled = right * half_width;
             let inv_width = 1.0 / width as f32;
 
             for (x, pixel) in row.iter_mut().enumerate() {
-                let u = (x as f32 * inv_width) * 2.0 - 1.0;
+                let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel = match raymarch_jit(sdf, camera_pos, ray_dir, max_distance) {
-                    Some(hit) => hit.distance,
-                    None => f32::MAX,
-                };
+                *pixel = raymarch_jit(sdf, camera_pos, ray_dir, max_distance)
+                    .map_or(f32::MAX, |hit| hit.distance);
             }
         });
 
@@ -969,7 +956,7 @@ pub fn raymarch_jit_simd_8(
         let newly_hit = is_hit.blend(one, zero) * (one - finished);
         let newly_far = is_far.blend(one, zero) * (one - finished);
 
-        hit_flags = hit_flags + newly_hit;
+        hit_flags += newly_hit;
         finished = (finished + newly_hit + newly_far).fast_min(one);
 
         let finished_arr: [f32; 8] = finished.into();
@@ -984,7 +971,7 @@ pub fn raymarch_jit_simd_8(
         }
 
         let active = one - finished;
-        t = t + d * active;
+        t += d * active;
     }
 
     // Extract results
@@ -998,9 +985,9 @@ pub fn raymarch_jit_simd_8(
     for i in 0..8 {
         if hit_arr[i] > 0.5 {
             let p = Vec3::new(
-                ox[i] + dx[i] * t_arr[i],
-                oy[i] + dy[i] * t_arr[i],
-                oz[i] + dz[i] * t_arr[i],
+                dx[i].mul_add(t_arr[i], ox[i]),
+                dy[i].mul_add(t_arr[i], oy[i]),
+                dz[i].mul_add(t_arr[i], oz[i]),
             );
             // Normal from compiled path (no SIMD normal helper needed)
             results[i] = Some((t_arr[i], p, step_counts[i]));
@@ -1020,6 +1007,7 @@ pub fn raymarch_jit_simd_8(
 /// - Row-based parallelization via rayon
 /// - Scalar fallback for edge pixels (width % 8 != 0)
 #[cfg(feature = "jit")]
+#[allow(clippy::too_many_arguments)]
 pub fn render_depth_jit_simd(
     sdf: &crate::compiled::jit::JitSimdSdf,
     compiled: &CompiledSdf,
@@ -1041,7 +1029,7 @@ pub fn render_depth_jit_simd(
         .par_chunks_mut(width)
         .enumerate()
         .for_each(|(y, row)| {
-            let v = 1.0 - (y as f32 / height as f32) * 2.0;
+            let v = (y as f32 / height as f32).mul_add(-2.0, 1.0);
             let row_vec = forward + up * (v * half_height);
             let right_scaled = right * half_width;
             let inv_width = 1.0 / width as f32;
@@ -1053,7 +1041,7 @@ pub fn render_depth_jit_simd(
                 let mut dir_z = [0.0f32; 8];
 
                 for i in 0..8 {
-                    let u = ((x + i) as f32 * inv_width) * 2.0 - 1.0;
+                    let u = ((x + i) as f32 * inv_width).mul_add(2.0, -1.0);
                     let rd = (row_vec + right_scaled * u).normalize();
                     dir_x[i] = rd.x;
                     dir_y[i] = rd.y;
@@ -1078,13 +1066,11 @@ pub fn render_depth_jit_simd(
 
             // Scalar fallback for edge pixels
             while x < width {
-                let u = (x as f32 * inv_width) * 2.0 - 1.0;
+                let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                row[x] = match raymarch_compiled(compiled, camera_pos, ray_dir, max_distance) {
-                    Some(hit) => hit.distance,
-                    None => f32::MAX,
-                };
+                row[x] = raymarch_compiled(compiled, camera_pos, ray_dir, max_distance)
+                    .map_or(f32::MAX, |hit| hit.distance);
                 x += 1;
             }
         });
@@ -1548,9 +1534,9 @@ mod tests {
         let results = raymarch_jit_simd_8(&jit_simd, &compiled, origins, directions, 20.0, &config);
 
         // All 8 rays from origin heading +Z should hit sphere at ~4.0
-        for i in 0..8 {
-            assert!(results[i].is_some(), "Ray {} should hit", i);
-            let (dist, _, _) = results[i].unwrap();
+        for (i, result) in results.iter().enumerate() {
+            assert!(result.is_some(), "Ray {} should hit", i);
+            let (dist, _, _) = result.unwrap();
             assert!((dist - 4.0).abs() < 0.1, "Ray {} dist: {}", i, dist);
         }
     }

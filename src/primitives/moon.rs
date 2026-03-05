@@ -21,20 +21,9 @@ pub fn sdf_moon(p: Vec3, d: f32, ra: f32, rb: f32, half_height: f32) -> f32 {
     let qz = p.z;
     let q = Vec2::new(qx, qz);
 
-    let a = (ra * ra - rb * rb + d * d) / (2.0 * d);
-    let b_sq = ra * ra - a * a;
-    let b = if b_sq > 0.0 { b_sq.sqrt() } else { 0.0 };
-
-    let d_2d = if d * (qx * b - qz * a) > d * d * 0.0_f32.max(qx * b - qz * a).min(1.0).min(0.0) {
-        // Simplified: check which region we're in
-        let d_outer = q.length() - ra;
-        let d_inner = (q - Vec2::new(d, 0.0)).length() - rb;
-        d_outer.max(-d_inner)
-    } else {
-        let d_outer = q.length() - ra;
-        let d_inner = (q - Vec2::new(d, 0.0)).length() - rb;
-        d_outer.max(-d_inner)
-    };
+    let d_outer = q.length() - ra;
+    let d_inner = (q - Vec2::new(d, 0.0)).length() - rb;
+    let d_2d = d_outer.max(-d_inner);
 
     // Extrude along Y
     let d_y = p.y.abs() - half_height;

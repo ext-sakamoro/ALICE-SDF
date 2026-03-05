@@ -141,7 +141,7 @@ pub struct LodConfig {
 
 impl Default for LodConfig {
     fn default() -> Self {
-        LodConfig {
+        Self {
             num_levels: 5,
             base_resolution: 64,
             reduction_factor: 0.5,
@@ -154,8 +154,8 @@ impl Default for LodConfig {
 
 impl LodConfig {
     /// Create config for high quality
-    pub fn high_quality() -> Self {
-        LodConfig {
+    pub const fn high_quality() -> Self {
+        Self {
             num_levels: 6,
             base_resolution: 128,
             reduction_factor: 0.6,
@@ -166,8 +166,8 @@ impl LodConfig {
     }
 
     /// Create config for balanced quality/performance
-    pub fn balanced() -> Self {
-        LodConfig {
+    pub const fn balanced() -> Self {
+        Self {
             num_levels: 4,
             base_resolution: 48,
             reduction_factor: 0.5,
@@ -178,8 +178,8 @@ impl LodConfig {
     }
 
     /// Create config for performance
-    pub fn fast() -> Self {
-        LodConfig {
+    pub const fn fast() -> Self {
+        Self {
             num_levels: 3,
             base_resolution: 32,
             reduction_factor: 0.5,
@@ -232,7 +232,7 @@ pub struct DecimationLodConfig {
 
 impl Default for DecimationLodConfig {
     fn default() -> Self {
-        DecimationLodConfig {
+        Self {
             num_levels: 5,
             base_resolution: 64,
             decimation_ratio: 0.5,
@@ -246,8 +246,8 @@ impl Default for DecimationLodConfig {
 
 impl DecimationLodConfig {
     /// High quality decimation LOD
-    pub fn high_quality() -> Self {
-        DecimationLodConfig {
+    pub const fn high_quality() -> Self {
+        Self {
             num_levels: 6,
             base_resolution: 128,
             decimation_ratio: 0.5,
@@ -259,8 +259,8 @@ impl DecimationLodConfig {
     }
 
     /// Fast decimation LOD
-    pub fn fast() -> Self {
-        DecimationLodConfig {
+    pub const fn fast() -> Self {
+        Self {
             num_levels: 3,
             base_resolution: 32,
             decimation_ratio: 0.4,
@@ -437,7 +437,7 @@ pub struct LodSelector {
 
 impl Default for LodSelector {
     fn default() -> Self {
-        LodSelector {
+        Self {
             fov_y: std::f32::consts::FRAC_PI_3, // 60 degrees
             screen_height: 1080.0,
             pixel_threshold: 1.0, // 1 pixel error threshold
@@ -447,8 +447,8 @@ impl Default for LodSelector {
 
 impl LodSelector {
     /// Create selector for 4K display
-    pub fn high_res() -> Self {
-        LodSelector {
+    pub const fn high_res() -> Self {
+        Self {
             fov_y: std::f32::consts::FRAC_PI_3,
             screen_height: 2160.0,
             pixel_threshold: 1.0,
@@ -491,8 +491,8 @@ pub struct ContinuousLod {
 
 impl ContinuousLod {
     /// Create from LOD chain
-    pub fn new(chain: LodChain, transition_speed: f32) -> Self {
-        ContinuousLod {
+    pub const fn new(chain: LodChain, transition_speed: f32) -> Self {
+        Self {
             chain,
             current_lod: 0.0,
             transition_speed,

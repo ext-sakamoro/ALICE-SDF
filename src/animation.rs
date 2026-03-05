@@ -33,7 +33,7 @@ pub enum Interpolation {
 }
 
 /// Loop mode for animation playback
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum LoopMode {
     /// Play once and stop at the end
     #[default]
@@ -57,8 +57,8 @@ pub struct Keyframe {
 
 impl Keyframe {
     /// Create a linear keyframe
-    pub fn new(time: f32, value: f32) -> Self {
-        Keyframe {
+    pub const fn new(time: f32, value: f32) -> Self {
+        Self {
             time,
             value,
             interpolation: Interpolation::Linear,
@@ -66,8 +66,8 @@ impl Keyframe {
     }
 
     /// Create a step keyframe
-    pub fn step(time: f32, value: f32) -> Self {
-        Keyframe {
+    pub const fn step(time: f32, value: f32) -> Self {
+        Self {
             time,
             value,
             interpolation: Interpolation::Step,
@@ -75,8 +75,8 @@ impl Keyframe {
     }
 
     /// Create a cubic bezier keyframe
-    pub fn cubic(time: f32, value: f32, out_tangent: f32, in_tangent: f32) -> Self {
-        Keyframe {
+    pub const fn cubic(time: f32, value: f32, out_tangent: f32, in_tangent: f32) -> Self {
+        Self {
             time,
             value,
             interpolation: Interpolation::CubicBezier {
@@ -101,7 +101,7 @@ pub struct Track {
 impl Track {
     /// Create a new empty track
     pub fn new(name: impl Into<String>) -> Self {
-        Track {
+        Self {
             name: name.into(),
             keyframes: Vec::new(),
             loop_mode: LoopMode::Once,
@@ -120,7 +120,7 @@ impl Track {
     }
 
     /// Set loop mode
-    pub fn with_loop(mut self, mode: LoopMode) -> Self {
+    pub const fn with_loop(mut self, mode: LoopMode) -> Self {
         self.loop_mode = mode;
         self
     }
@@ -193,7 +193,7 @@ impl Track {
         let alpha = (t - k0.time) / span;
 
         match k0.interpolation {
-            Interpolation::Linear => k0.value + (k1.value - k0.value) * alpha,
+            Interpolation::Linear => (k1.value - k0.value).mul_add(alpha, k0.value),
             Interpolation::Step => k0.value,
             Interpolation::CubicBezier {
                 out_tangent,
@@ -202,11 +202,14 @@ impl Track {
                 // Hermite interpolation
                 let t2 = alpha * alpha;
                 let t3 = t2 * alpha;
-                let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
-                let h10 = t3 - 2.0 * t2 + alpha;
-                let h01 = -2.0 * t3 + 3.0 * t2;
+                let h00 = 2.0f32.mul_add(t3, -(3.0 * t2)) + 1.0;
+                let h10 = 2.0f32.mul_add(-t2, t3) + alpha;
+                let h01 = (-2.0f32).mul_add(t3, 3.0 * t2);
                 let h11 = t3 - t2;
-                h00 * k0.value + h10 * span * out_tangent + h01 * k1.value + h11 * span * in_tangent
+                (h11 * span).mul_add(
+                    in_tangent,
+                    h00 * k0.value + h10 * span * out_tangent + h01 * k1.value,
+                )
             }
         }
     }
@@ -226,7 +229,7 @@ pub struct Timeline {
 impl Timeline {
     /// Create a new empty timeline
     pub fn new(name: impl Into<String>) -> Self {
-        Timeline {
+        Self {
             name: name.into(),
             tracks: Vec::new(),
             speed: 1.0,
@@ -360,8 +363,8 @@ pub struct AnimatedSdf {
 
 impl AnimatedSdf {
     /// Create a new animated SDF
-    pub fn new(base: SdfNode, timeline: Timeline) -> Self {
-        AnimatedSdf { base, timeline }
+    pub const fn new(base: SdfNode, timeline: Timeline) -> Self {
+        Self { base, timeline }
     }
 
     /// Extract animation parameters at a given time (zero-allocation)
@@ -600,7 +603,7 @@ mod tests {
 
         // Mid-point should be somewhere between 0 and 1
         let mid = track.evaluate(0.5);
-        assert!(mid >= -0.1 && mid <= 1.1);
+        assert!((-0.1..=1.1).contains(&mid));
     }
 
     #[test]
@@ -613,7 +616,7 @@ mod tests {
         tx.add_keyframe(Keyframe::new(1.0, 5.0));
         timeline.add_track(tx);
 
-        let animated = AnimatedSdf::new(sphere.clone(), timeline);
+        let animated = AnimatedSdf::new(sphere, timeline);
 
         // At t=0, no translation
         let params = animated.evaluate_params(0.0);

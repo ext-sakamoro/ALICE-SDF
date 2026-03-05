@@ -40,8 +40,5 @@ pub extern "C" fn alice_sdf_free_compiled(compiled: CompiledHandle) {
 /// Get instruction count of a compiled SDF (for profiling)
 #[no_mangle]
 pub extern "C" fn alice_sdf_compiled_instruction_count(compiled: CompiledHandle) -> u32 {
-    match get_compiled(compiled) {
-        Some(c) => c.instruction_count() as u32,
-        None => 0,
-    }
+    get_compiled(compiled).map_or(0, |c| c.instruction_count() as u32)
 }

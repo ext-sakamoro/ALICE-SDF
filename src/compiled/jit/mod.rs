@@ -285,7 +285,7 @@ mod tests {
         let jit = JitCompiledSdf::compile(&shape).unwrap();
 
         let points: Vec<Vec3> = (0..100)
-            .map(|i| Vec3::new(i as f32 * 0.05 - 2.5, 0.0, 0.0))
+            .map(|i| Vec3::new((i as f32).mul_add(0.05, -2.5), 0.0, 0.0))
             .collect();
 
         let results = jit.eval_batch(&points);

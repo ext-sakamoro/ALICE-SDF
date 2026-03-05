@@ -19,22 +19,22 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_rounded_cone(p: Vec3, r1: f32, r2: f32, half_height: f32) -> f32 {
     let h = half_height * 2.0;
-    let q_x = (p.x * p.x + p.z * p.z).sqrt();
+    let q_x = p.x.hypot(p.z);
     let q_y = p.y + half_height; // shift origin to base
 
     let b = (r1 - r2) / h;
     let a = (1.0 - b * b).sqrt();
-    let k = q_x * (-b) + q_y * a;
+    let k = q_x.mul_add(-b, q_y * a);
 
     if k < 0.0 {
-        return (q_x * q_x + q_y * q_y).sqrt() - r1;
+        return q_x.hypot(q_y) - r1;
     }
     if k > a * h {
         let dy = q_y - h;
-        return (q_x * q_x + dy * dy).sqrt() - r2;
+        return q_x.hypot(dy) - r2;
     }
 
-    q_x * a + q_y * b - r1
+    q_x.mul_add(a, q_y * b) - r1
 }
 
 #[cfg(test)]

@@ -32,7 +32,7 @@ pub struct ConeTraceConfig {
 
 impl Default for ConeTraceConfig {
     fn default() -> Self {
-        ConeTraceConfig {
+        Self {
             num_cones: 5,
             max_distance: 20.0,
             cone_angle: 0.5, // ~28 degrees half-angle
@@ -125,7 +125,7 @@ pub fn trace_hemisphere(
         let result = cone_trace(svo, origin, *dir, config, light);
 
         // Mix radiance with AO
-        let ao_factor = 1.0 - config.ao_weight * (1.0 - result.occlusion);
+        let ao_factor = config.ao_weight.mul_add(-(1.0 - result.occlusion), 1.0);
         total_color += result.color * *weight * ao_factor;
         total_weight += weight;
     }
@@ -159,10 +159,7 @@ fn estimate_radiance(
     let albedo = Vec3::splat(0.5);
 
     // Direct lighting from sun
-    let direct = match light {
-        Some(l) => direct_lighting(normal, l),
-        None => Vec3::ZERO,
-    };
+    let direct = light.map_or(Vec3::ZERO, |l| direct_lighting(normal, l));
 
     // Simple ambient
     let ambient = Vec3::splat(0.05);
@@ -188,7 +185,7 @@ fn generate_cosine_cones(normal: Vec3, num_cones: u32) -> Vec<(Vec3, f32)> {
     // Ring of cones at ~60 degrees from normal
     let ring_count = (num_cones - 1) as f32;
     let cone_elevation = 0.5f32; // cos(60°) = 0.5, sin(60°) = 0.866
-    let sin_elev = (1.0 - cone_elevation * cone_elevation).sqrt();
+    let sin_elev = cone_elevation.mul_add(-cone_elevation, 1.0).sqrt();
 
     for i in 0..(num_cones - 1) {
         let angle = (i as f32 / ring_count) * std::f32::consts::TAU;

@@ -39,7 +39,7 @@ pub struct MeshValidation {
 
 impl MeshValidation {
     /// Check if the mesh passes all quality checks
-    pub fn is_clean(&self) -> bool {
+    pub const fn is_clean(&self) -> bool {
         self.is_manifold && self.degenerate_triangles == 0 && self.inconsistent_normals == 0
     }
 }
@@ -76,11 +76,11 @@ impl std::fmt::Display for MeshValidation {
 struct EdgeKey(u32, u32);
 
 impl EdgeKey {
-    fn new(a: u32, b: u32) -> Self {
+    const fn new(a: u32, b: u32) -> Self {
         if a <= b {
-            EdgeKey(a, b)
+            Self(a, b)
         } else {
-            EdgeKey(b, a)
+            Self(b, a)
         }
     }
 }

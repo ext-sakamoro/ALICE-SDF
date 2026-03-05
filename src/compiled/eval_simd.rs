@@ -33,7 +33,7 @@ struct CoordFrameSimd {
 
 impl Default for CoordFrameSimd {
     fn default() -> Self {
-        CoordFrameSimd {
+        Self {
             point: Vec3x8::zero(),
             scale_correction: f32x8::ONE,
             opcode: OpCode::End,
@@ -568,6 +568,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let dd = f32x8::splat(inst.params[2]);
                 let two = f32x8::splat(2.0);
                 // a = (ra² - rb² + d²) / (2d)
+                #[allow(clippy::suspicious_operation_groupings)]
                 let a = (ra * ra - rb * rb + dd * dd) / (two * dd);
                 let b = (ra * ra - a * a).max(f32x8::ZERO).sqrt();
                 let p2x = p.x;
@@ -1896,6 +1897,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     let diffx = bx - qx;
                     let diffz = bz - qz;
                     let num = diffx * tdx + diffz * tdz;
+                    #[allow(clippy::suspicious_operation_groupings)]
                     let den = tdx * tdx + tdz * tdz + diffx * bddx + diffz * bddz;
                     let safe_den = den.abs().cmp_lt(eps).blend(f32x8::ONE, den);
                     t = (t - num / safe_den).max(f32x8::ZERO).min(f32x8::ONE);
@@ -2554,7 +2556,7 @@ fn fast_rcp_scalar(x: f32) -> f32 {
     let bits = x.to_bits();
     let y = f32::from_bits(0x7EF1_27EA_u32.wrapping_sub(bits));
     // One Newton-Raphson refinement: y = y * (2 - x * y)
-    y * (2.0 - x * y)
+    y * x.mul_add(-y, 2.0)
 }
 
 /// Fast cosine approximation for SIMD
@@ -2658,7 +2660,7 @@ fn fast_exp_scalar(x: f32) -> f32 {
     let x = x.clamp(-87.3, 88.7);
     // Schraudolph: reinterpret (2^23/ln2 * x + 127*2^23) as float
     // = 12102203.16 * x + 1065353216
-    let v = (12102203.0f32 * x + 1065353216.0f32) as i32;
+    let v = 12102203.0f32.mul_add(x, 1065353216.0f32) as i32;
     // Correction: reduce error from ~4% to ~0.3%
     let bits = (v as u32).wrapping_add(0x0003_8000);
     f32::from_bits(bits)
@@ -2674,7 +2676,7 @@ fn fast_ln_scalar(x: f32) -> f32 {
     // ln(m) ≈ (m-1) * (2.0 - (m-1)/3) — Padé [1/1] on [1,2)
     let mf = m - 1.0;
     let ln_m = mf * (2.0 - mf * 0.33333333);
-    e as f32 * std::f32::consts::LN_2 + ln_m
+    (e as f32).mul_add(std::f32::consts::LN_2, ln_m)
 }
 
 /// Per-lane scalar evaluation helper for binary operations

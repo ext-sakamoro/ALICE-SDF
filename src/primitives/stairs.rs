@@ -10,9 +10,9 @@ use glam::{Vec2, Vec3};
 /// SDF of a single step box in local coordinates
 #[inline(always)]
 fn step_box(lx: f32, ly: f32, s: f32, sw: f32, sh: f32) -> f32 {
-    let cx = s * sw + sw * 0.5;
+    let cx = s.mul_add(sw, sw * 0.5);
     let hy = (s + 1.0) * sh * 0.5;
-    let dx = (lx - cx).abs() - sw * 0.5;
+    let dx = sw.mul_add(-0.5, (lx - cx).abs());
     let dy = (ly - hy).abs() - hy;
     Vec2::new(dx.max(0.0), dy.max(0.0)).length() + dx.max(dy).min(0.0)
 }

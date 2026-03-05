@@ -16,7 +16,10 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_gyroid(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let sp = p * scale;
-    let d = sp.x.sin() * sp.y.cos() + sp.y.sin() * sp.z.cos() + sp.z.sin() * sp.x.cos();
+    let d = sp.z.sin().mul_add(
+        sp.x.cos(),
+        sp.x.sin().mul_add(sp.y.cos(), sp.y.sin() * sp.z.cos()),
+    );
     // Normalize by scale for proper distance metric
     d.abs() / scale - thickness
 }

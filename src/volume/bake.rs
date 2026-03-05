@@ -55,14 +55,14 @@ pub fn bake_volume(node: &SdfNode, config: &BakeConfig) -> Volume3D<f32> {
     data.par_chunks_mut(slice_size)
         .enumerate()
         .for_each(|(z, slice)| {
-            let z_pos = world_min.z + z as f32 * step.z;
+            let z_pos = (z as f32).mul_add(step.z, world_min.z);
 
             for y in 0..res[1] as usize {
-                let y_pos = world_min.y + y as f32 * step.y;
+                let y_pos = (y as f32).mul_add(step.y, world_min.y);
                 let row_offset = y * res[0] as usize;
 
                 for x in 0..res[0] as usize {
-                    let x_pos = world_min.x + x as f32 * step.x;
+                    let x_pos = (x as f32).mul_add(step.x, world_min.x);
                     let p = Vec3::new(x_pos, y_pos, z_pos);
                     slice[row_offset + x] = eval(node, p);
                 }
@@ -129,14 +129,14 @@ pub fn bake_volume_with_normals(
     data.par_chunks_mut(slice_size)
         .enumerate()
         .for_each(|(z, slice)| {
-            let z_pos = world_min.z + z as f32 * step.z;
+            let z_pos = (z as f32).mul_add(step.z, world_min.z);
 
             for y in 0..res[1] as usize {
-                let y_pos = world_min.y + y as f32 * step.y;
+                let y_pos = (y as f32).mul_add(step.y, world_min.y);
                 let row_offset = y * res[0] as usize;
 
                 for x in 0..res[0] as usize {
-                    let x_pos = world_min.x + x as f32 * step.x;
+                    let x_pos = (x as f32).mul_add(step.x, world_min.x);
                     let p = Vec3::new(x_pos, y_pos, z_pos);
 
                     let d = eval(node, p);
@@ -205,14 +205,14 @@ pub fn bake_volume_compiled(
     data.par_chunks_mut(slice_size)
         .enumerate()
         .for_each(|(z, slice)| {
-            let z_pos = world_min.z + z as f32 * step.z;
+            let z_pos = (z as f32).mul_add(step.z, world_min.z);
 
             for y in 0..res[1] as usize {
-                let y_pos = world_min.y + y as f32 * step.y;
+                let y_pos = (y as f32).mul_add(step.y, world_min.y);
                 let row_offset = y * res[0] as usize;
 
                 for x in 0..res[0] as usize {
-                    let x_pos = world_min.x + x as f32 * step.x;
+                    let x_pos = (x as f32).mul_add(step.x, world_min.x);
                     let p = Vec3::new(x_pos, y_pos, z_pos);
                     slice[row_offset + x] = eval_compiled(compiled, p);
                 }
@@ -281,7 +281,10 @@ mod tests {
 
         // Check that normals are approximately normalized near surface
         let voxel = volume.get(7, 3, 3); // Near surface in +X direction
-        let n_len = (voxel.nx * voxel.nx + voxel.ny * voxel.ny + voxel.nz * voxel.nz).sqrt();
+        let n_len = voxel
+            .nz
+            .mul_add(voxel.nz, voxel.nx.mul_add(voxel.nx, voxel.ny * voxel.ny))
+            .sqrt();
         assert!(
             n_len > 0.9 && n_len < 1.1,
             "Normal should be ~normalized, got length {}",

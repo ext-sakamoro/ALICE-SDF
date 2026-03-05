@@ -79,28 +79,28 @@ pub enum FittedPrimitive {
 
 impl FittedPrimitive {
     /// Get the primitive type
-    pub fn primitive_type(&self) -> PrimitiveType {
+    pub const fn primitive_type(&self) -> PrimitiveType {
         match self {
-            FittedPrimitive::Sphere { .. } => PrimitiveType::Sphere,
-            FittedPrimitive::Box { .. } => PrimitiveType::Box,
-            FittedPrimitive::Cylinder { .. } => PrimitiveType::Cylinder,
-            FittedPrimitive::Capsule { .. } => PrimitiveType::Capsule,
-            FittedPrimitive::Plane { .. } => PrimitiveType::Plane,
+            Self::Sphere { .. } => PrimitiveType::Sphere,
+            Self::Box { .. } => PrimitiveType::Box,
+            Self::Cylinder { .. } => PrimitiveType::Cylinder,
+            Self::Capsule { .. } => PrimitiveType::Capsule,
+            Self::Plane { .. } => PrimitiveType::Plane,
         }
     }
 
     /// Convert to SdfNode
     pub fn to_sdf_node(&self) -> SdfNode {
         match self {
-            FittedPrimitive::Sphere { center, radius } => {
+            Self::Sphere { center, radius } => {
                 SdfNode::sphere(*radius).translate(center.x, center.y, center.z)
             }
-            FittedPrimitive::Box {
+            Self::Box {
                 center,
                 half_extents,
             } => SdfNode::box3d(half_extents.x, half_extents.y, half_extents.z)
                 .translate(center.x, center.y, center.z),
-            FittedPrimitive::Cylinder {
+            Self::Cylinder {
                 center,
                 axis,
                 radius,
@@ -128,12 +128,12 @@ impl FittedPrimitive {
 
                 rotated.translate(center.x, center.y, center.z)
             }
-            FittedPrimitive::Capsule {
+            Self::Capsule {
                 point_a,
                 point_b,
                 radius,
             } => SdfNode::capsule(*point_a, *point_b, *radius),
-            FittedPrimitive::Plane { normal, distance } => SdfNode::plane(*normal, *distance),
+            Self::Plane { normal, distance } => SdfNode::plane(*normal, *distance),
         }
     }
 
@@ -151,15 +151,15 @@ impl FittedPrimitive {
     /// Compute signed distance to the primitive
     pub fn distance(&self, point: Vec3) -> f32 {
         match self {
-            FittedPrimitive::Sphere { center, radius } => (point - *center).length() - radius,
-            FittedPrimitive::Box {
+            Self::Sphere { center, radius } => (point - *center).length() - radius,
+            Self::Box {
                 center,
                 half_extents,
             } => {
                 let q = (point - *center).abs() - *half_extents;
                 q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0)
             }
-            FittedPrimitive::Cylinder {
+            Self::Cylinder {
                 center,
                 axis,
                 radius,
@@ -179,10 +179,10 @@ impl FittedPrimitive {
                 } else if dr <= 0.0 {
                     dh
                 } else {
-                    (dh * dh + dr * dr).sqrt()
+                    dh.hypot(dr)
                 }
             }
-            FittedPrimitive::Capsule {
+            Self::Capsule {
                 point_a,
                 point_b,
                 radius,
@@ -192,7 +192,7 @@ impl FittedPrimitive {
                 let h = (pa.dot(ba) / ba.length_squared()).clamp(0.0, 1.0);
                 (pa - ba * h).length() - radius
             }
-            FittedPrimitive::Plane { normal, distance } => point.dot(*normal) - *distance,
+            Self::Plane { normal, distance } => point.dot(*normal) - *distance,
         }
     }
 }
@@ -237,7 +237,7 @@ pub struct FittingConfig {
 
 impl Default for FittingConfig {
     fn default() -> Self {
-        FittingConfig {
+        Self {
             max_iterations: 100,
             convergence_threshold: 1e-6,
             inlier_threshold: 0.05,
@@ -510,9 +510,13 @@ fn find_smallest_eigenvector(cov: &[[f32; 3]; 3]) -> Vec3 {
 
     for _ in 0..50 {
         // Apply inverse (using Cramer's rule for 3x3)
-        let det = cov[0][0] * (cov[1][1] * cov[2][2] - cov[1][2] * cov[2][1])
-            - cov[0][1] * (cov[1][0] * cov[2][2] - cov[1][2] * cov[2][0])
-            + cov[0][2] * (cov[1][0] * cov[2][1] - cov[1][1] * cov[2][0]);
+        let det = cov[0][2].mul_add(
+            cov[1][0].mul_add(cov[2][1], -(cov[1][1] * cov[2][0])),
+            cov[0][0].mul_add(
+                cov[1][1].mul_add(cov[2][2], -(cov[1][2] * cov[2][1])),
+                -(cov[0][1] * cov[1][0].mul_add(cov[2][2], -(cov[1][2] * cov[2][0]))),
+            ),
+        );
 
         if det.abs() < 1e-10 {
             break;
@@ -521,26 +525,26 @@ fn find_smallest_eigenvector(cov: &[[f32; 3]; 3]) -> Vec3 {
         // Compute A^-1 * v
         let adj = [
             [
-                cov[1][1] * cov[2][2] - cov[1][2] * cov[2][1],
-                cov[0][2] * cov[2][1] - cov[0][1] * cov[2][2],
-                cov[0][1] * cov[1][2] - cov[0][2] * cov[1][1],
+                cov[1][1].mul_add(cov[2][2], -(cov[1][2] * cov[2][1])),
+                cov[0][2].mul_add(cov[2][1], -(cov[0][1] * cov[2][2])),
+                cov[0][1].mul_add(cov[1][2], -(cov[0][2] * cov[1][1])),
             ],
             [
-                cov[1][2] * cov[2][0] - cov[1][0] * cov[2][2],
-                cov[0][0] * cov[2][2] - cov[0][2] * cov[2][0],
-                cov[0][2] * cov[1][0] - cov[0][0] * cov[1][2],
+                cov[1][2].mul_add(cov[2][0], -(cov[1][0] * cov[2][2])),
+                cov[0][0].mul_add(cov[2][2], -(cov[0][2] * cov[2][0])),
+                cov[0][2].mul_add(cov[1][0], -(cov[0][0] * cov[1][2])),
             ],
             [
-                cov[1][0] * cov[2][1] - cov[1][1] * cov[2][0],
-                cov[0][1] * cov[2][0] - cov[0][0] * cov[2][1],
-                cov[0][0] * cov[1][1] - cov[0][1] * cov[1][0],
+                cov[1][0].mul_add(cov[2][1], -(cov[1][1] * cov[2][0])),
+                cov[0][1].mul_add(cov[2][0], -(cov[0][0] * cov[2][1])),
+                cov[0][0].mul_add(cov[1][1], -(cov[0][1] * cov[1][0])),
             ],
         ];
 
         let new_v = Vec3::new(
-            (adj[0][0] * v.x + adj[0][1] * v.y + adj[0][2] * v.z) / det,
-            (adj[1][0] * v.x + adj[1][1] * v.y + adj[1][2] * v.z) / det,
-            (adj[2][0] * v.x + adj[2][1] * v.y + adj[2][2] * v.z) / det,
+            adj[0][2].mul_add(v.z, adj[0][0].mul_add(v.x, adj[0][1] * v.y)) / det,
+            adj[1][2].mul_add(v.z, adj[1][0].mul_add(v.x, adj[1][1] * v.y)) / det,
+            adj[2][2].mul_add(v.z, adj[2][0].mul_add(v.x, adj[2][1] * v.y)) / det,
         );
 
         v = new_v.normalize_or_zero();
@@ -588,8 +592,8 @@ pub fn detect_primitive(points: &[Vec3], config: &FittingConfig) -> Option<Fitti
         // [Deep Fried v2] Guard mse <= 0 to prevent ln(-x) = NaN
         let safe_mse_a = a.mse.max(1e-20);
         let safe_mse_b = b.mse.max(1e-20);
-        let bic_a = n * safe_mse_a.ln() + complexity_a as f32 * n.ln();
-        let bic_b = n * safe_mse_b.ln() + complexity_b as f32 * n.ln();
+        let bic_a = n.mul_add(safe_mse_a.ln(), complexity_a as f32 * n.ln());
+        let bic_b = n.mul_add(safe_mse_b.ln(), complexity_b as f32 * n.ln());
 
         bic_a
             .partial_cmp(&bic_b)
@@ -634,9 +638,9 @@ mod tests {
             let theta = 2.0 * PI * (i as f32 / count as f32);
             let phi = PI * ((i * 7) % count) as f32 / count as f32;
 
-            let x = center.x + radius * phi.sin() * theta.cos();
-            let y = center.y + radius * phi.sin() * theta.sin();
-            let z = center.z + radius * phi.cos();
+            let x = (radius * phi.sin()).mul_add(theta.cos(), center.x);
+            let y = (radius * phi.sin()).mul_add(theta.sin(), center.y);
+            let z = radius.mul_add(phi.cos(), center.z);
 
             points.push(Vec3::new(x, y, z));
         }
@@ -672,9 +676,17 @@ mod tests {
                 let v = j as f32 / 9.0;
 
                 // Front face
-                points.push(Vec3::new(-1.0 + 2.0 * u, -1.0 + 2.0 * v, 1.0));
+                points.push(Vec3::new(
+                    2.0f32.mul_add(u, -1.0),
+                    2.0f32.mul_add(v, -1.0),
+                    1.0,
+                ));
                 // Back face
-                points.push(Vec3::new(-1.0 + 2.0 * u, -1.0 + 2.0 * v, -1.0));
+                points.push(Vec3::new(
+                    2.0f32.mul_add(u, -1.0),
+                    2.0f32.mul_add(v, -1.0),
+                    -1.0,
+                ));
             }
         }
 

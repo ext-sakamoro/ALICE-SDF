@@ -30,7 +30,7 @@ pub fn sdf_blobby_cross(p: Vec3, size: f32, half_height: f32) -> f32 {
         let d2 = (q.y - 1.0).max(0.0);
         let dx = Vec2::new(q.x - 1.0, q.y);
         let dz = Vec2::new(q.x, q.y - 1.0);
-        dx.length().min(dz.length()).min((d1 * d1 + d2 * d2).sqrt()) * size
+        dx.length().min(dz.length()).min(d1.hypot(d2)) * size
     };
 
     // Extrude along Y

@@ -31,21 +31,21 @@ pub enum SdfCategory {
 
 impl SdfCategory {
     /// Number of SdfNode variants in this category
-    pub fn count(self) -> u32 {
+    pub const fn count(self) -> u32 {
         match self {
-            SdfCategory::Primitive => 72,
-            SdfCategory::Operation => 24,
-            SdfCategory::Transform => 7,
-            SdfCategory::Modifier => 23,
+            Self::Primitive => 72,
+            Self::Operation => 24,
+            Self::Transform => 7,
+            Self::Modifier => 23,
         }
     }
 
     /// Total number of all SdfNode variants
-    pub fn total() -> u32 {
-        SdfCategory::Primitive.count()
-            + SdfCategory::Operation.count()
-            + SdfCategory::Transform.count()
-            + SdfCategory::Modifier.count()
+    pub const fn total() -> u32 {
+        Self::Primitive.count()
+            + Self::Operation.count()
+            + Self::Transform.count()
+            + Self::Modifier.count()
     }
 }
 
@@ -701,33 +701,33 @@ pub enum SdfNode {
     /// Union of two shapes (min distance)
     Union {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
     },
 
     /// Intersection of two shapes (max distance)
     Intersection {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
     },
 
     /// Subtraction: a minus b (max of a and -b)
     Subtraction {
         /// Shape to subtract from
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Shape to subtract
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
     },
 
     /// Smooth union with blending factor k
     SmoothUnion {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Blending radius
         k: f32,
     },
@@ -735,9 +735,9 @@ pub enum SdfNode {
     /// Smooth intersection with blending factor k
     SmoothIntersection {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Blending radius
         k: f32,
     },
@@ -745,9 +745,9 @@ pub enum SdfNode {
     /// Smooth subtraction with blending factor k
     SmoothSubtraction {
         /// Shape to subtract from
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Shape to subtract
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Blending radius
         k: f32,
     },
@@ -755,9 +755,9 @@ pub enum SdfNode {
     /// Chamfer union: 45-degree beveled blend
     ChamferUnion {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Chamfer radius
         r: f32,
     },
@@ -765,9 +765,9 @@ pub enum SdfNode {
     /// Chamfer intersection: 45-degree beveled blend
     ChamferIntersection {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Chamfer radius
         r: f32,
     },
@@ -775,9 +775,9 @@ pub enum SdfNode {
     /// Chamfer subtraction: 45-degree beveled blend
     ChamferSubtraction {
         /// Shape to subtract from
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Shape to subtract
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Chamfer radius
         r: f32,
     },
@@ -785,9 +785,9 @@ pub enum SdfNode {
     /// Stairs union: stepped/terraced blend (Mercury hg_sdf)
     StairsUnion {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Blend radius
         r: f32,
         /// Number of steps (n-1 visible steps)
@@ -797,9 +797,9 @@ pub enum SdfNode {
     /// Stairs intersection: stepped/terraced blend
     StairsIntersection {
         /// First operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Second operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Blend radius
         r: f32,
         /// Number of steps
@@ -809,9 +809,9 @@ pub enum SdfNode {
     /// Stairs subtraction: stepped/terraced blend
     StairsSubtraction {
         /// Shape to subtract from
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Shape to subtract
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Blend radius
         r: f32,
         /// Number of steps
@@ -821,17 +821,17 @@ pub enum SdfNode {
     /// XOR (symmetric difference)
     XOR {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
     },
 
     /// Morph (linear interpolation between two shapes)
     Morph {
         /// Source shape
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Target shape
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Blend factor (0=a, 1=b)
         t: f32,
     },
@@ -839,9 +839,9 @@ pub enum SdfNode {
     /// Columns union: column-shaped blend
     ColumnsUnion {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Column radius
         r: f32,
         /// Number of columns
@@ -851,9 +851,9 @@ pub enum SdfNode {
     /// Columns intersection: column-shaped blend
     ColumnsIntersection {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Column radius
         r: f32,
         /// Number of columns
@@ -863,9 +863,9 @@ pub enum SdfNode {
     /// Columns subtraction: column-shaped blend
     ColumnsSubtraction {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Column radius
         r: f32,
         /// Number of columns
@@ -875,9 +875,9 @@ pub enum SdfNode {
     /// Pipe: cylindrical surface at intersection
     Pipe {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Pipe radius
         r: f32,
     },
@@ -885,9 +885,9 @@ pub enum SdfNode {
     /// Engrave: engrave shape b into shape a
     Engrave {
         /// Base shape (receives the engraving)
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Engraving shape
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Engrave depth
         r: f32,
     },
@@ -895,9 +895,9 @@ pub enum SdfNode {
     /// Groove: cut a groove of shape b into shape a
     Groove {
         /// Base shape (receives the groove)
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Groove profile shape
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Groove width
         ra: f32,
         /// Groove depth
@@ -907,9 +907,9 @@ pub enum SdfNode {
     /// Tongue: add a tongue protrusion
     Tongue {
         /// Base shape
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Tongue profile shape
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Tongue width
         ra: f32,
         /// Tongue height
@@ -919,27 +919,27 @@ pub enum SdfNode {
     /// Exponential smooth union (IQ): exp-weighted smooth min
     ExpSmoothUnion {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Smoothness parameter
         k: f32,
     },
     /// Exponential smooth intersection
     ExpSmoothIntersection {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Smoothness parameter
         k: f32,
     },
     /// Exponential smooth subtraction
     ExpSmoothSubtraction {
         /// Left operand
-        a: Arc<SdfNode>,
+        a: Arc<Self>,
         /// Right operand
-        b: Arc<SdfNode>,
+        b: Arc<Self>,
         /// Smoothness parameter
         k: f32,
     },
@@ -948,7 +948,7 @@ pub enum SdfNode {
     /// Translation
     Translate {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Translation offset
         offset: Vec3,
     },
@@ -956,7 +956,7 @@ pub enum SdfNode {
     /// Rotation (quaternion)
     Rotate {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Rotation quaternion
         rotation: Quat,
     },
@@ -964,7 +964,7 @@ pub enum SdfNode {
     /// Uniform scale
     Scale {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Scale factor
         factor: f32,
     },
@@ -972,7 +972,7 @@ pub enum SdfNode {
     /// Non-uniform scale (stretches the shape)
     ScaleNonUniform {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Scale factors per axis
         factors: Vec3,
     },
@@ -980,7 +980,7 @@ pub enum SdfNode {
     /// Projective (perspective) transform with Lipschitz correction
     ProjectiveTransform {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Inverse projection matrix (column-major)
         inv_matrix: [f32; 16],
         /// Lipschitz bound for distance correction
@@ -990,7 +990,7 @@ pub enum SdfNode {
     /// Free-Form Deformation via control point lattice
     LatticeDeform {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Control points array
         control_points: Vec<Vec3>,
         /// Number of control points along X
@@ -1008,7 +1008,7 @@ pub enum SdfNode {
     /// SDF Skinning — bone-weight based spatial blending
     SdfSkinning {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Bone transforms with weights
         bones: Vec<crate::transforms::skinning::BoneTransform>,
     },
@@ -1017,7 +1017,7 @@ pub enum SdfNode {
     /// Twist around Y-axis (radians per unit height)
     Twist {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Twist strength (radians per unit)
         strength: f32,
     },
@@ -1025,7 +1025,7 @@ pub enum SdfNode {
     /// Bend around Y-axis
     Bend {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Bend curvature
         curvature: f32,
     },
@@ -1033,7 +1033,7 @@ pub enum SdfNode {
     /// Infinite repetition with spacing
     RepeatInfinite {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Spacing between repetitions
         spacing: Vec3,
     },
@@ -1041,7 +1041,7 @@ pub enum SdfNode {
     /// Finite repetition with count and spacing
     RepeatFinite {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Repeat count per axis
         count: [u32; 3],
         /// Spacing between repetitions
@@ -1051,7 +1051,7 @@ pub enum SdfNode {
     /// Perlin noise displacement
     Noise {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Noise amplitude
         amplitude: f32,
         /// Noise frequency
@@ -1063,7 +1063,7 @@ pub enum SdfNode {
     /// Round edges by subtracting radius
     Round {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Rounding radius
         radius: f32,
     },
@@ -1071,7 +1071,7 @@ pub enum SdfNode {
     /// Onion: creates a shell with thickness
     Onion {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Shell thickness
         thickness: f32,
     },
@@ -1079,7 +1079,7 @@ pub enum SdfNode {
     /// Elongate along an axis
     Elongate {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Elongation amount per axis
         amount: Vec3,
     },
@@ -1087,7 +1087,7 @@ pub enum SdfNode {
     /// Mirror along specified axes (takes absolute value of coordinates)
     Mirror {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Mirror axes (nonzero = mirrored)
         axes: Vec3,
     },
@@ -1095,7 +1095,7 @@ pub enum SdfNode {
     /// Revolution around Y-axis (creates rotational symmetry)
     Revolution {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Radial offset
         offset: f32,
     },
@@ -1103,7 +1103,7 @@ pub enum SdfNode {
     /// Extrude along Z-axis (creates 3D from XY cross-section)
     Extrude {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Half the extrusion height
         half_height: f32,
     },
@@ -1113,7 +1113,7 @@ pub enum SdfNode {
     /// Creates tubes, channels, or any cross-section shape along a curved path.
     SweepBezier {
         /// Child node (2D cross-section, evaluated in XY)
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Bezier start point (XZ plane)
         p0: Vec2,
         /// Bezier control point (XZ plane)
@@ -1125,7 +1125,7 @@ pub enum SdfNode {
     /// Taper: scale XZ by inverse of (1 - y*factor)
     Taper {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Taper factor
         factor: f32,
     },
@@ -1133,7 +1133,7 @@ pub enum SdfNode {
     /// Sin-based displacement (post-processing modifier)
     Displacement {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Displacement strength
         strength: f32,
     },
@@ -1141,7 +1141,7 @@ pub enum SdfNode {
     /// Polar repetition around Y-axis
     PolarRepeat {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Number of copies around Y-axis
         count: u32,
     },
@@ -1149,13 +1149,13 @@ pub enum SdfNode {
     /// Octant mirror: maps point to first octant with x >= y >= z (48-fold symmetry)
     OctantMirror {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
     },
 
     /// Shear deformation (modifies evaluation point)
     Shear {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Shear factors: (xy, xz, yz)
         shear: Vec3,
     },
@@ -1163,7 +1163,7 @@ pub enum SdfNode {
     /// Animated modifier: applies time-based transformation
     Animated {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Animation speed multiplier
         speed: f32,
         /// Animation amplitude
@@ -1173,7 +1173,7 @@ pub enum SdfNode {
     /// Assign a material ID to a subtree (transparent for distance evaluation)
     WithMaterial {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Material ID (indexes into MaterialLibrary)
         material_id: u32,
     },
@@ -1181,13 +1181,13 @@ pub enum SdfNode {
     /// Icosahedral symmetry (120-fold) — maps to fundamental domain
     IcosahedralSymmetry {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
     },
 
     /// Iterated Function System — fractal self-similar folding
     IFS {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Affine transforms (column-major Mat4)
         transforms: Vec<[f32; 16]>,
         /// Number of iterations
@@ -1197,7 +1197,7 @@ pub enum SdfNode {
     /// Heightmap displacement — image-based surface perturbation
     HeightmapDisplacement {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Heightmap data (row-major, grayscale)
         heightmap: Vec<f32>,
         /// Heightmap width
@@ -1213,7 +1213,7 @@ pub enum SdfNode {
     /// Surface roughness — FBM micro-detail noise
     SurfaceRoughness {
         /// Child node
-        child: Arc<SdfNode>,
+        child: Arc<Self>,
         /// Noise frequency
         frequency: f32,
         /// Noise amplitude
@@ -1225,7 +1225,7 @@ pub enum SdfNode {
 
 impl SdfNode {
     /// Returns the category of this node variant
-    pub fn category(&self) -> SdfCategory {
+    pub const fn category(&self) -> SdfCategory {
         match self {
             // === Primitives ===
             Self::Sphere { .. }
@@ -1367,127 +1367,127 @@ impl SdfNode {
     pub fn node_count(&self) -> u32 {
         match self {
             // Primitives: 1 node
-            SdfNode::Sphere { .. }
-            | SdfNode::Box3d { .. }
-            | SdfNode::Cylinder { .. }
-            | SdfNode::Torus { .. }
-            | SdfNode::Plane { .. }
-            | SdfNode::Capsule { .. }
-            | SdfNode::Cone { .. }
-            | SdfNode::Ellipsoid { .. }
-            | SdfNode::RoundedCone { .. }
-            | SdfNode::Pyramid { .. }
-            | SdfNode::Octahedron { .. }
-            | SdfNode::HexPrism { .. }
-            | SdfNode::Link { .. }
-            | SdfNode::Triangle { .. }
-            | SdfNode::Bezier { .. }
-            | SdfNode::RoundedBox { .. }
-            | SdfNode::CappedCone { .. }
-            | SdfNode::CappedTorus { .. }
-            | SdfNode::RoundedCylinder { .. }
-            | SdfNode::TriangularPrism { .. }
-            | SdfNode::CutSphere { .. }
-            | SdfNode::CutHollowSphere { .. }
-            | SdfNode::DeathStar { .. }
-            | SdfNode::SolidAngle { .. }
-            | SdfNode::Rhombus { .. }
-            | SdfNode::Horseshoe { .. }
-            | SdfNode::Vesica { .. }
-            | SdfNode::InfiniteCylinder { .. }
-            | SdfNode::InfiniteCone { .. }
-            | SdfNode::Gyroid { .. }
-            | SdfNode::Heart { .. }
-            | SdfNode::Tube { .. }
-            | SdfNode::Barrel { .. }
-            | SdfNode::Diamond { .. }
-            | SdfNode::ChamferedCube { .. }
-            | SdfNode::SchwarzP { .. }
-            | SdfNode::Superellipsoid { .. }
-            | SdfNode::RoundedX { .. }
-            | SdfNode::Pie { .. }
-            | SdfNode::Trapezoid { .. }
-            | SdfNode::Parallelogram { .. }
-            | SdfNode::Tunnel { .. }
-            | SdfNode::UnevenCapsule { .. }
-            | SdfNode::Egg { .. }
-            | SdfNode::ArcShape { .. }
-            | SdfNode::Moon { .. }
-            | SdfNode::CrossShape { .. }
-            | SdfNode::BlobbyCross { .. }
-            | SdfNode::ParabolaSegment { .. }
-            | SdfNode::RegularPolygon { .. }
-            | SdfNode::StarPolygon { .. }
-            | SdfNode::Stairs { .. }
-            | SdfNode::Helix { .. }
-            | SdfNode::Tetrahedron { .. }
-            | SdfNode::Dodecahedron { .. }
-            | SdfNode::Icosahedron { .. }
-            | SdfNode::TruncatedOctahedron { .. }
-            | SdfNode::TruncatedIcosahedron { .. }
-            | SdfNode::BoxFrame { .. }
-            | SdfNode::DiamondSurface { .. }
-            | SdfNode::Neovius { .. }
-            | SdfNode::Lidinoid { .. }
-            | SdfNode::IWP { .. }
-            | SdfNode::FRD { .. }
-            | SdfNode::FischerKochS { .. }
-            | SdfNode::PMY { .. } => 1,
+            Self::Sphere { .. }
+            | Self::Box3d { .. }
+            | Self::Cylinder { .. }
+            | Self::Torus { .. }
+            | Self::Plane { .. }
+            | Self::Capsule { .. }
+            | Self::Cone { .. }
+            | Self::Ellipsoid { .. }
+            | Self::RoundedCone { .. }
+            | Self::Pyramid { .. }
+            | Self::Octahedron { .. }
+            | Self::HexPrism { .. }
+            | Self::Link { .. }
+            | Self::Triangle { .. }
+            | Self::Bezier { .. }
+            | Self::RoundedBox { .. }
+            | Self::CappedCone { .. }
+            | Self::CappedTorus { .. }
+            | Self::RoundedCylinder { .. }
+            | Self::TriangularPrism { .. }
+            | Self::CutSphere { .. }
+            | Self::CutHollowSphere { .. }
+            | Self::DeathStar { .. }
+            | Self::SolidAngle { .. }
+            | Self::Rhombus { .. }
+            | Self::Horseshoe { .. }
+            | Self::Vesica { .. }
+            | Self::InfiniteCylinder { .. }
+            | Self::InfiniteCone { .. }
+            | Self::Gyroid { .. }
+            | Self::Heart { .. }
+            | Self::Tube { .. }
+            | Self::Barrel { .. }
+            | Self::Diamond { .. }
+            | Self::ChamferedCube { .. }
+            | Self::SchwarzP { .. }
+            | Self::Superellipsoid { .. }
+            | Self::RoundedX { .. }
+            | Self::Pie { .. }
+            | Self::Trapezoid { .. }
+            | Self::Parallelogram { .. }
+            | Self::Tunnel { .. }
+            | Self::UnevenCapsule { .. }
+            | Self::Egg { .. }
+            | Self::ArcShape { .. }
+            | Self::Moon { .. }
+            | Self::CrossShape { .. }
+            | Self::BlobbyCross { .. }
+            | Self::ParabolaSegment { .. }
+            | Self::RegularPolygon { .. }
+            | Self::StarPolygon { .. }
+            | Self::Stairs { .. }
+            | Self::Helix { .. }
+            | Self::Tetrahedron { .. }
+            | Self::Dodecahedron { .. }
+            | Self::Icosahedron { .. }
+            | Self::TruncatedOctahedron { .. }
+            | Self::TruncatedIcosahedron { .. }
+            | Self::BoxFrame { .. }
+            | Self::DiamondSurface { .. }
+            | Self::Neovius { .. }
+            | Self::Lidinoid { .. }
+            | Self::IWP { .. }
+            | Self::FRD { .. }
+            | Self::FischerKochS { .. }
+            | Self::PMY { .. } => 1,
 
             // Operations: 1 + children
-            SdfNode::Union { a, b }
-            | SdfNode::Intersection { a, b }
-            | SdfNode::Subtraction { a, b }
-            | SdfNode::SmoothUnion { a, b, .. }
-            | SdfNode::SmoothIntersection { a, b, .. }
-            | SdfNode::SmoothSubtraction { a, b, .. }
-            | SdfNode::ChamferUnion { a, b, .. }
-            | SdfNode::ChamferIntersection { a, b, .. }
-            | SdfNode::ChamferSubtraction { a, b, .. }
-            | SdfNode::StairsUnion { a, b, .. }
-            | SdfNode::StairsIntersection { a, b, .. }
-            | SdfNode::StairsSubtraction { a, b, .. }
-            | SdfNode::XOR { a, b }
-            | SdfNode::Morph { a, b, .. }
-            | SdfNode::ColumnsUnion { a, b, .. }
-            | SdfNode::ColumnsIntersection { a, b, .. }
-            | SdfNode::ColumnsSubtraction { a, b, .. }
-            | SdfNode::Pipe { a, b, .. }
-            | SdfNode::Engrave { a, b, .. }
-            | SdfNode::Groove { a, b, .. }
-            | SdfNode::Tongue { a, b, .. } => 1 + a.node_count() + b.node_count(),
+            Self::Union { a, b }
+            | Self::Intersection { a, b }
+            | Self::Subtraction { a, b }
+            | Self::SmoothUnion { a, b, .. }
+            | Self::SmoothIntersection { a, b, .. }
+            | Self::SmoothSubtraction { a, b, .. }
+            | Self::ChamferUnion { a, b, .. }
+            | Self::ChamferIntersection { a, b, .. }
+            | Self::ChamferSubtraction { a, b, .. }
+            | Self::StairsUnion { a, b, .. }
+            | Self::StairsIntersection { a, b, .. }
+            | Self::StairsSubtraction { a, b, .. }
+            | Self::XOR { a, b }
+            | Self::Morph { a, b, .. }
+            | Self::ColumnsUnion { a, b, .. }
+            | Self::ColumnsIntersection { a, b, .. }
+            | Self::ColumnsSubtraction { a, b, .. }
+            | Self::Pipe { a, b, .. }
+            | Self::Engrave { a, b, .. }
+            | Self::Groove { a, b, .. }
+            | Self::Tongue { a, b, .. } => 1 + a.node_count() + b.node_count(),
 
             // Transforms and modifiers: 1 + child
-            SdfNode::Translate { child, .. }
-            | SdfNode::Rotate { child, .. }
-            | SdfNode::Scale { child, .. }
-            | SdfNode::ScaleNonUniform { child, .. }
-            | SdfNode::ProjectiveTransform { child, .. }
-            | SdfNode::LatticeDeform { child, .. }
-            | SdfNode::SdfSkinning { child, .. }
-            | SdfNode::Twist { child, .. }
-            | SdfNode::Bend { child, .. }
-            | SdfNode::RepeatInfinite { child, .. }
-            | SdfNode::RepeatFinite { child, .. }
-            | SdfNode::Noise { child, .. }
-            | SdfNode::Round { child, .. }
-            | SdfNode::Onion { child, .. }
-            | SdfNode::Elongate { child, .. }
-            | SdfNode::Mirror { child, .. }
-            | SdfNode::Revolution { child, .. }
-            | SdfNode::Extrude { child, .. }
-            | SdfNode::SweepBezier { child, .. }
-            | SdfNode::Taper { child, .. }
-            | SdfNode::Displacement { child, .. }
-            | SdfNode::PolarRepeat { child, .. }
-            | SdfNode::OctantMirror { child, .. }
-            | SdfNode::Shear { child, .. }
-            | SdfNode::Animated { child, .. }
-            | SdfNode::WithMaterial { child, .. }
-            | SdfNode::IcosahedralSymmetry { child, .. }
-            | SdfNode::IFS { child, .. }
-            | SdfNode::HeightmapDisplacement { child, .. }
-            | SdfNode::SurfaceRoughness { child, .. } => 1 + child.node_count(),
+            Self::Translate { child, .. }
+            | Self::Rotate { child, .. }
+            | Self::Scale { child, .. }
+            | Self::ScaleNonUniform { child, .. }
+            | Self::ProjectiveTransform { child, .. }
+            | Self::LatticeDeform { child, .. }
+            | Self::SdfSkinning { child, .. }
+            | Self::Twist { child, .. }
+            | Self::Bend { child, .. }
+            | Self::RepeatInfinite { child, .. }
+            | Self::RepeatFinite { child, .. }
+            | Self::Noise { child, .. }
+            | Self::Round { child, .. }
+            | Self::Onion { child, .. }
+            | Self::Elongate { child, .. }
+            | Self::Mirror { child, .. }
+            | Self::Revolution { child, .. }
+            | Self::Extrude { child, .. }
+            | Self::SweepBezier { child, .. }
+            | Self::Taper { child, .. }
+            | Self::Displacement { child, .. }
+            | Self::PolarRepeat { child, .. }
+            | Self::OctantMirror { child, .. }
+            | Self::Shear { child, .. }
+            | Self::Animated { child, .. }
+            | Self::WithMaterial { child, .. }
+            | Self::IcosahedralSymmetry { child, .. }
+            | Self::IFS { child, .. }
+            | Self::HeightmapDisplacement { child, .. }
+            | Self::SurfaceRoughness { child, .. } => 1 + child.node_count(),
 
             #[allow(unreachable_patterns)]
             _ => 1,

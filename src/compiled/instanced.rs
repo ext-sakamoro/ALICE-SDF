@@ -46,8 +46,8 @@ struct InstanceDataSoA {
 }
 
 impl InstanceDataSoA {
-    fn new() -> Self {
-        InstanceDataSoA {
+    const fn new() -> Self {
+        Self {
             translate_x: Vec::new(),
             translate_y: Vec::new(),
             translate_z: Vec::new(),
@@ -63,7 +63,7 @@ impl InstanceDataSoA {
 
     fn with_capacity(capacity: usize) -> Self {
         let chunks = capacity.div_ceil(8);
-        InstanceDataSoA {
+        Self {
             translate_x: Vec::with_capacity(chunks),
             translate_y: Vec::with_capacity(chunks),
             translate_z: Vec::with_capacity(chunks),
@@ -160,8 +160,8 @@ pub struct InstancedSdf {
 
 impl InstancedSdf {
     /// Create a new instanced SDF from a compiled shape
-    pub fn new(compiled: CompiledSdf) -> Self {
-        InstancedSdf {
+    pub const fn new(compiled: CompiledSdf) -> Self {
+        Self {
             compiled,
             instances: Vec::new(),
             soa: InstanceDataSoA::new(),
@@ -170,7 +170,7 @@ impl InstancedSdf {
 
     /// Create with pre-allocated capacity for instances
     pub fn with_capacity(compiled: CompiledSdf, capacity: usize) -> Self {
-        InstancedSdf {
+        Self {
             compiled,
             instances: Vec::with_capacity(capacity),
             soa: InstanceDataSoA::with_capacity(capacity),
@@ -197,7 +197,7 @@ impl InstancedSdf {
     }
 
     /// Number of instances
-    pub fn instance_count(&self) -> usize {
+    pub const fn instance_count(&self) -> usize {
         self.soa.count
     }
 

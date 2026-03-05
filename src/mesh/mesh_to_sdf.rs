@@ -48,7 +48,7 @@ pub struct MeshToSdfConfig {
 
 impl Default for MeshToSdfConfig {
     fn default() -> Self {
-        MeshToSdfConfig {
+        Self {
             strategy: MeshToSdfStrategy::Capsule,
             use_bvh: true,
             max_triangles_per_leaf: 4,
@@ -61,7 +61,7 @@ impl Default for MeshToSdfConfig {
 impl MeshToSdfConfig {
     /// Create config for fast capsule approximation
     pub fn fast() -> Self {
-        MeshToSdfConfig {
+        Self {
             strategy: MeshToSdfStrategy::Capsule,
             use_bvh: false,
             ..Default::default()
@@ -70,7 +70,7 @@ impl MeshToSdfConfig {
 
     /// Create config for accurate BVH-based SDF
     pub fn accurate() -> Self {
-        MeshToSdfConfig {
+        Self {
             strategy: MeshToSdfStrategy::BvhExact,
             use_bvh: true,
             max_triangles_per_leaf: 4,
@@ -80,7 +80,7 @@ impl MeshToSdfConfig {
 
     /// Create config for hybrid approach
     pub fn hybrid() -> Self {
-        MeshToSdfConfig {
+        Self {
             strategy: MeshToSdfStrategy::Hybrid,
             use_bvh: true,
             max_triangles_per_leaf: 4,
@@ -109,7 +109,7 @@ impl MeshSdf {
         let bvh = MeshBvh::build(vertices, indices, config.max_triangles_per_leaf);
         let bounds = bvh.bounds()?;
 
-        Some(MeshSdf {
+        Some(Self {
             bvh: Arc::new(bvh),
             bounds,
         })
@@ -146,7 +146,7 @@ impl MeshSdf {
     }
 
     /// Get mesh bounds
-    pub fn bounds(&self) -> (Vec3, Vec3) {
+    pub const fn bounds(&self) -> (Vec3, Vec3) {
         (self.bounds.min, self.bounds.max)
     }
 
@@ -315,7 +315,7 @@ pub fn mesh_to_sdf_exact(
 
 /// Create canonical edge key (min, max) for HashSet deduplication
 #[inline(always)]
-fn edge_key(a: u32, b: u32) -> (u32, u32) {
+const fn edge_key(a: u32, b: u32) -> (u32, u32) {
     if a < b {
         (a, b)
     } else {
@@ -325,7 +325,7 @@ fn edge_key(a: u32, b: u32) -> (u32, u32) {
 
 /// Create canonical edge key for usize indices
 #[inline(always)]
-fn edge_key_usize(a: usize, b: usize) -> (usize, usize) {
+const fn edge_key_usize(a: usize, b: usize) -> (usize, usize) {
     if a < b {
         (a, b)
     } else {

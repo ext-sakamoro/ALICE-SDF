@@ -29,7 +29,7 @@ pub struct UvUnwrapConfig {
 
 impl Default for UvUnwrapConfig {
     fn default() -> Self {
-        UvUnwrapConfig {
+        Self {
             angle_threshold: 88.0,
             margin: 0.01,
             max_stretch: 0.5,
@@ -119,7 +119,7 @@ pub fn apply_uvs(mesh: &mut Mesh, result: &UvUnwrapResult) {
 
 type EdgeKey = (u32, u32);
 
-fn edge_key(a: u32, b: u32) -> EdgeKey {
+const fn edge_key(a: u32, b: u32) -> EdgeKey {
     if a < b {
         (a, b)
     } else {
@@ -296,7 +296,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     // Place third vertex
     if len01 > 1e-10 {
         let cos_a = e01.dot(e02) / (len01 * e02.length());
-        let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();
+        let sin_a = cos_a.mul_add(-cos_a, 1.0).max(0.0).sqrt();
         let len02 = e02.length();
         local_uvs[li2] = Vec2::new(len02 * cos_a, len02 * sin_a);
     }
@@ -395,7 +395,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
 
                 if len_ij > 1e-10 && len_ik > 1e-10 {
                     let cos_a = edge_ij.dot(edge_ik) / (len_ij * len_ik);
-                    let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();
+                    let sin_a = cos_a.mul_add(-cos_a, 1.0).max(0.0).sqrt();
 
                     let uv_i = local_uvs[locals[ei]];
                     let uv_j = local_uvs[locals[ej]];

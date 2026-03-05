@@ -16,7 +16,7 @@ use glam::{Vec2, Vec3};
 #[inline(always)]
 pub fn sdf_rounded_cylinder(p: Vec3, radius: f32, round_radius: f32, half_height: f32) -> f32 {
     let d = Vec2::new(
-        (p.x * p.x + p.z * p.z).sqrt() - 2.0 * radius + round_radius,
+        2.0f32.mul_add(-radius, p.x.hypot(p.z)) + round_radius,
         p.y.abs() - half_height,
     );
     d.x.max(d.y).min(0.0) + d.max(Vec2::ZERO).length() - round_radius

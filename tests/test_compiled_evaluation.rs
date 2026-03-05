@@ -1,6 +1,6 @@
 //! Integration tests: Compiled vs Interpreted evaluation consistency
 //!
-//! Verifies CompiledSdf, CompiledSdfBvh, SIMD batch, and SoA backends
+//! Verifies `CompiledSdf`, `CompiledSdfBvh`, SIMD batch, and `SoA` backends
 //! produce results consistent with the interpreter.
 //!
 //! Author: Moroya Sakamoto
@@ -147,10 +147,7 @@ fn bvh_matches_compiled() {
         let d_bvh = eval_compiled_bvh(&bvh, p);
         assert!(
             (d_compiled - d_bvh).abs() < 1e-4,
-            "BVH mismatch at {:?}: compiled={}, bvh={}",
-            p,
-            d_compiled,
-            d_bvh
+            "BVH mismatch at {p:?}: compiled={d_compiled}, bvh={d_bvh}"
         );
     }
 }
@@ -202,7 +199,7 @@ fn compiled_normal_direction_is_outward() {
     // Normal at surface point on X-axis should point roughly in +X direction
     let p = Vec3::new(1.0, 0.0, 0.0);
     let n = eval_compiled_normal(&compiled, p, 0.001);
-    assert!(n.x > 0.9, "Normal should point outward: {:?}", n);
+    assert!(n.x > 0.9, "Normal should point outward: {n:?}");
     assert!(
         n.length() > 0.99,
         "Normal should be normalized: len={}",

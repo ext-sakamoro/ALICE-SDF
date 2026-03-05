@@ -125,7 +125,7 @@ impl<T: Copy + Default> Volume3D<T> {
 
     /// Total number of voxels
     #[inline(always)]
-    pub fn voxel_count(&self) -> usize {
+    pub const fn voxel_count(&self) -> usize {
         self.resolution[0] as usize * self.resolution[1] as usize * self.resolution[2] as usize
     }
 
@@ -148,7 +148,7 @@ impl<T: Copy + Default> Volume3D<T> {
 
     /// Get flat index from 3D coordinates (bounds-unchecked)
     #[inline(always)]
-    pub fn index(&self, x: u32, y: u32, z: u32) -> usize {
+    pub const fn index(&self, x: u32, y: u32, z: u32) -> usize {
         x as usize
             + y as usize * self.resolution[0] as usize
             + z as usize * self.resolution[0] as usize * self.resolution[1] as usize
@@ -172,9 +172,9 @@ impl<T: Copy + Default> Volume3D<T> {
     pub fn voxel_to_world(&self, x: u32, y: u32, z: u32) -> Vec3 {
         let step = self.voxel_size();
         Vec3::new(
-            self.world_min.x + x as f32 * step.x,
-            self.world_min.y + y as f32 * step.y,
-            self.world_min.z + z as f32 * step.z,
+            (x as f32).mul_add(step.x, self.world_min.x),
+            (y as f32).mul_add(step.y, self.world_min.y),
+            (z as f32).mul_add(step.z, self.world_min.z),
         )
     }
 
@@ -278,7 +278,7 @@ impl Volume3D<VoxelDistGrad> {
         ];
 
         // Interpolate each component
-        let lerp = |a: f32, b: f32, t: f32| a * (1.0 - t) + b * t;
+        let lerp = |a: f32, b: f32, t: f32| a.mul_add(1.0 - t, b * t);
 
         let interp_component = |f: fn(&VoxelDistGrad) -> f32| -> f32 {
             let c00 = lerp(f(&corners[0]), f(&corners[1]), tx);

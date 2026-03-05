@@ -14,9 +14,9 @@ use glam::{Vec2, Vec3};
 #[inline(always)]
 pub fn sdf_infinite_cone(p: Vec3, angle: f32) -> f32 {
     let c = Vec2::new(angle.sin(), angle.cos());
-    let q = Vec2::new((p.x * p.x + p.z * p.z).sqrt(), -p.y);
+    let q = Vec2::new(p.x.hypot(p.z), -p.y);
     let d = (q - c * q.dot(c).max(0.0)).length();
-    d * if q.x * c.y - q.y * c.x < 0.0 {
+    d * if q.x.mul_add(c.y, -(q.y * c.x)) < 0.0 {
         -1.0
     } else {
         1.0

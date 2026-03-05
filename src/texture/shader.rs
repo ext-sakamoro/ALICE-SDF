@@ -21,9 +21,9 @@ impl std::str::FromStr for ShaderLanguage {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "wgsl" => Ok(ShaderLanguage::Wgsl),
-            "hlsl" => Ok(ShaderLanguage::Hlsl),
-            "glsl" => Ok(ShaderLanguage::Glsl),
+            "wgsl" => Ok(Self::Wgsl),
+            "hlsl" => Ok(Self::Hlsl),
+            "glsl" => Ok(Self::Glsl),
             _ => Err(format!(
                 "Unknown shader language: '{}'. Expected wgsl, hlsl, or glsl",
                 s
@@ -214,7 +214,7 @@ fn generate_glsl(result: &TextureFitResult, source_name: &str) -> String {
 
 // Noise function constants — identical to existing transpiler helpers
 
-const WGSL_HASH_NOISE: &str = r#"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
+const WGSL_HASH_NOISE: &str = r"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
     let f = fract(p);
     let i = floor(p);
     let u = f * f * (3.0 - 2.0 * f);
@@ -234,9 +234,9 @@ const WGSL_HASH_NOISE: &str = r#"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f3
     let c0 = mix(c00, c10, u.y);
     let c1 = mix(c01, c11, u.y);
     return mix(c0, c1, u.z) * 2.0 - 1.0;
-}"#;
+}";
 
-const HLSL_HASH_NOISE: &str = r#"float hash_noise_3d(float3 p, uint seed) {
+const HLSL_HASH_NOISE: &str = r"float hash_noise_3d(float3 p, uint seed) {
     float3 f = frac(p);
     float3 i = floor(p);
     float3 u = f * f * (3.0 - 2.0 * f);
@@ -256,9 +256,9 @@ const HLSL_HASH_NOISE: &str = r#"float hash_noise_3d(float3 p, uint seed) {
     float c0 = lerp(c00, c10, u.y);
     float c1 = lerp(c01, c11, u.y);
     return lerp(c0, c1, u.z) * 2.0 - 1.0;
-}"#;
+}";
 
-const GLSL_HASH_NOISE: &str = r#"float hash_noise_3d(vec3 p, uint seed) {
+const GLSL_HASH_NOISE: &str = r"float hash_noise_3d(vec3 p, uint seed) {
     vec3 f = fract(p);
     vec3 i = floor(p);
     vec3 u = f * f * (3.0 - 2.0 * f);
@@ -277,7 +277,7 @@ const GLSL_HASH_NOISE: &str = r#"float hash_noise_3d(vec3 p, uint seed) {
     float c0 = mix(c00, c10, u.y);
     float c1 = mix(c01, c11, u.y);
     return mix(c0, c1, u.z) * 2.0 - 1.0;
-}"#;
+}";
 
 #[cfg(test)]
 mod tests {

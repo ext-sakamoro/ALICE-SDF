@@ -29,7 +29,7 @@ pub struct CaveConfig {
 
 impl Default for CaveConfig {
     fn default() -> Self {
-        CaveConfig {
+        Self {
             max_depth: 50.0,
             min_depth: 5.0,
             tunnel_radius: 3.0,
@@ -58,23 +58,23 @@ pub fn generate_cave_sdf(config: &CaveConfig) -> SdfNode {
     for _ in 0..num_tunnels {
         // Random starting point
         rng = lcg_next(rng);
-        let mut px = (lcg_float(rng) * 2.0 - 1.0) * 20.0;
+        let mut px = lcg_float(rng).mul_add(2.0, -1.0) * 20.0;
         rng = lcg_next(rng);
-        let mut py = -(config.min_depth + lcg_float(rng) * (config.max_depth - config.min_depth));
+        let mut py = -lcg_float(rng).mul_add(config.max_depth - config.min_depth, config.min_depth);
         rng = lcg_next(rng);
-        let mut pz = (lcg_float(rng) * 2.0 - 1.0) * 20.0;
+        let mut pz = lcg_float(rng).mul_add(2.0, -1.0) * 20.0;
 
         for _ in 0..segments_per_tunnel {
             // Random direction bias (mostly horizontal)
             rng = lcg_next(rng);
-            let dx = (lcg_float(rng) * 2.0 - 1.0) * 5.0;
+            let dx = lcg_float(rng).mul_add(2.0, -1.0) * 5.0;
             rng = lcg_next(rng);
-            let dy = (lcg_float(rng) * 2.0 - 1.0) * 2.0;
+            let dy = lcg_float(rng).mul_add(2.0, -1.0) * 2.0;
             rng = lcg_next(rng);
-            let dz = (lcg_float(rng) * 2.0 - 1.0) * 5.0;
+            let dz = lcg_float(rng).mul_add(2.0, -1.0) * 5.0;
 
             rng = lcg_next(rng);
-            let radius = config.tunnel_radius * (0.5 + lcg_float(rng) * 1.0);
+            let radius = config.tunnel_radius * lcg_float(rng).mul_add(1.0, 0.5);
 
             // Create a capsule segment
             let segment = SdfNode::sphere(radius).translate(px, py, pz);
@@ -113,7 +113,7 @@ pub fn generate_chamber(center: Vec3, radius: f32, height: f32) -> SdfNode {
 }
 
 #[inline]
-fn lcg_next(state: u64) -> u64 {
+const fn lcg_next(state: u64) -> u64 {
     state
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407)

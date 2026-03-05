@@ -20,7 +20,7 @@ pub struct PlyConfig {
 
 impl Default for PlyConfig {
     fn default() -> Self {
-        PlyConfig {
+        Self {
             binary: true,
             export_normals: true,
         }

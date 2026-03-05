@@ -216,7 +216,9 @@ fn compute_vertex_score(cache_pos: i32, active_tri_count: u32) -> f32 {
             score = LAST_TRI_SCORE;
         } else {
             let scaler = 1.0 / (CACHE_SIZE as f32 - 3.0);
-            score = (1.0 - (cache_pos as f32 - 3.0) * scaler).powf(CACHE_DECAY_POWER);
+            score = (cache_pos as f32 - 3.0)
+                .mul_add(-scaler, 1.0)
+                .powf(CACHE_DECAY_POWER);
         }
     }
 

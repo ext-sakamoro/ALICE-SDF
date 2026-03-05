@@ -50,8 +50,8 @@ pub enum DiffError {
 impl std::fmt::Display for DiffError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DiffError::InvalidPath(p) => write!(f, "Invalid path: {:?}", p),
-            DiffError::HashMismatch {
+            Self::InvalidPath(p) => write!(f, "Invalid path: {:?}", p),
+            Self::HashMismatch {
                 path,
                 expected,
                 actual,

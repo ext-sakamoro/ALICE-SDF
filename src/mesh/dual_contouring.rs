@@ -46,7 +46,7 @@ pub struct DualContouringConfig {
 
 impl Default for DualContouringConfig {
     fn default() -> Self {
-        DualContouringConfig {
+        Self {
             resolution: 64,
             gradient_epsilon: 0.001,
             bisection_iterations: 6,
@@ -63,7 +63,7 @@ impl Default for DualContouringConfig {
 impl DualContouringConfig {
     /// AAA preset with all features enabled
     pub fn aaa(resolution: usize) -> Self {
-        DualContouringConfig {
+        Self {
             resolution,
             compute_normals: true,
             compute_uvs: true,
@@ -112,10 +112,7 @@ fn qef_solve(intersections: &[(Vec3, Vec3)], cell_min: Vec3, cell_max: Vec3, cla
     // Solve via Cramer's rule with regularization
     let result = solve_3x3_regularized(&ata, &atb);
 
-    let vertex = match result {
-        Some(v) => mass_point + Vec3::new(v[0], v[1], v[2]),
-        None => mass_point,
-    };
+    let vertex = result.map_or(mass_point, |v| mass_point + Vec3::new(v[0], v[1], v[2]));
 
     if clamp {
         vertex.clamp(cell_min, cell_max)
@@ -137,9 +134,13 @@ fn solve_3x3_regularized(ata: &[[f32; 3]; 3], atb: &[f32; 3]) -> Option<[f32; 3]
     ];
 
     // Determinant
-    let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-        - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-        + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+    let det = a[0][2].mul_add(
+        a[1][0].mul_add(a[2][1], -(a[1][1] * a[2][0])),
+        a[0][0].mul_add(
+            a[1][1].mul_add(a[2][2], -(a[1][2] * a[2][1])),
+            -(a[0][1] * a[1][0].mul_add(a[2][2], -(a[1][2] * a[2][0]))),
+        ),
+    );
 
     if det.abs() < 1e-12 {
         return None;
@@ -148,20 +149,29 @@ fn solve_3x3_regularized(ata: &[[f32; 3]; 3], atb: &[f32; 3]) -> Option<[f32; 3]
     let inv_det = 1.0 / det;
 
     // Cramer's rule
-    let x = (atb[0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-        - a[0][1] * (atb[1] * a[2][2] - a[1][2] * atb[2])
-        + a[0][2] * (atb[1] * a[2][1] - a[1][1] * atb[2]))
-        * inv_det;
+    let x = a[0][2].mul_add(
+        atb[1].mul_add(a[2][1], -(a[1][1] * atb[2])),
+        atb[0].mul_add(
+            a[1][1].mul_add(a[2][2], -(a[1][2] * a[2][1])),
+            -(a[0][1] * atb[1].mul_add(a[2][2], -(a[1][2] * atb[2]))),
+        ),
+    ) * inv_det;
 
-    let y = (a[0][0] * (atb[1] * a[2][2] - a[1][2] * atb[2])
-        - atb[0] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-        + a[0][2] * (a[1][0] * atb[2] - atb[1] * a[2][0]))
-        * inv_det;
+    let y = a[0][2].mul_add(
+        a[1][0].mul_add(atb[2], -(atb[1] * a[2][0])),
+        a[0][0].mul_add(
+            atb[1].mul_add(a[2][2], -(a[1][2] * atb[2])),
+            -(atb[0] * a[1][0].mul_add(a[2][2], -(a[1][2] * a[2][0]))),
+        ),
+    ) * inv_det;
 
-    let z = (a[0][0] * (a[1][1] * atb[2] - atb[1] * a[2][1])
-        - a[0][1] * (a[1][0] * atb[2] - atb[1] * a[2][0])
-        + atb[0] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]))
-        * inv_det;
+    let z = atb[0].mul_add(
+        a[1][0].mul_add(a[2][1], -(a[1][1] * a[2][0])),
+        a[0][0].mul_add(
+            a[1][1].mul_add(atb[2], -(atb[1] * a[2][1])),
+            -(a[0][1] * a[1][0].mul_add(atb[2], -(atb[1] * a[2][0]))),
+        ),
+    ) * inv_det;
 
     if x.is_finite() && y.is_finite() && z.is_finite() {
         Some([x, y, z])

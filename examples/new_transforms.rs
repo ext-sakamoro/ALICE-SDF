@@ -1,6 +1,6 @@
 //! Example demonstrating the new Transform variants
 //!
-//! Shows how to use ProjectiveTransform, LatticeDeform, and SdfSkinning
+//! Shows how to use `ProjectiveTransform`, `LatticeDeform`, and `SdfSkinning`
 //!
 //! Author: Moroya Sakamoto
 
@@ -9,6 +9,7 @@ use alice_sdf::transforms::skinning::BoneTransform;
 use alice_sdf::types::SdfNode;
 use glam::Vec3;
 
+#[allow(clippy::cast_precision_loss)]
 fn main() {
     println!("=== ALICE-SDF New Transform Variants Demo ===\n");
 
@@ -22,10 +23,7 @@ fn main() {
 
     let test_point = Vec3::new(2.0, 0.0, 0.0);
     let distance = eval(&sphere, test_point);
-    println!(
-        "   Sphere with identity projection at {:?}: distance = {}",
-        test_point, distance
-    );
+    println!("   Sphere with identity projection at {test_point:?}: distance = {distance}");
     println!("   (Should be ~1.0 since point is 2 units from origin, radius is 1)\n");
 
     // 2. Lattice Deformation Example
@@ -40,7 +38,7 @@ fn main() {
                 let y = j as f32 / 3.0;
                 let z = k as f32 / 3.0;
                 // Add a slight wave deformation
-                let wave = Vec3::new(0.1 * (y * 6.28).sin(), 0.0, 0.0);
+                let wave = Vec3::new(0.1 * (y * std::f32::consts::TAU).sin(), 0.0, 0.0);
                 control_points.push(Vec3::new(x, y, z) + wave);
             }
         }
@@ -57,10 +55,7 @@ fn main() {
 
     let test_point = Vec3::new(0.5, 0.5, 0.5);
     let distance = eval(&box_deformed, test_point);
-    println!(
-        "   Box with wave lattice at {:?}: distance = {}",
-        test_point, distance
-    );
+    println!("   Box with wave lattice at {test_point:?}: distance = {distance}");
     println!("   (Lattice deforms the box with a sinusoidal wave)\n");
 
     // 3. SDF Skinning Example
@@ -94,10 +89,7 @@ fn main() {
 
     let test_point = Vec3::new(0.0, 0.0, 0.0);
     let distance = eval(&capsule_skinned, test_point);
-    println!(
-        "   Capsule with two-bone skinning at {:?}: distance = {}",
-        test_point, distance
-    );
+    println!("   Capsule with two-bone skinning at {test_point:?}: distance = {distance}");
     println!("   (Blends between identity and translated poses)\n");
 
     // 4. Combined Example: CSG with new transforms
@@ -114,8 +106,7 @@ fn main() {
     let test_point = Vec3::new(0.0, 0.0, 0.0);
     let distance = eval(&csg_shape, test_point);
     println!(
-        "   Union of projected sphere + lattice sphere at {:?}: distance = {}",
-        test_point, distance
+        "   Union of projected sphere + lattice sphere at {test_point:?}: distance = {distance}"
     );
     println!("   (CSG works seamlessly with new transforms)\n");
 

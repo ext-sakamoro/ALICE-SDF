@@ -14,7 +14,7 @@ use std::f32::consts::{FRAC_1_SQRT_2, SQRT_2};
 /// GLSL-compatible modulo: always returns positive remainder
 #[inline(always)]
 fn glsl_mod(a: f32, b: f32) -> f32 {
-    a - b * (a / b).floor()
+    b.mul_add(-(a / b).floor(), a)
 }
 
 /// Stairs minimum: stepped/terraced blend (Mercury hg_sdf)

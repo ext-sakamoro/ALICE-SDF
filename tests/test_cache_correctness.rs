@@ -1,6 +1,6 @@
 //! Integration tests: Cache correctness
 //!
-//! Verifies MeshCache key matching, LRU eviction, and ChunkedMeshCache behavior.
+//! Verifies `MeshCache` key matching, LRU eviction, and `ChunkedMeshCache` behavior.
 //!
 //! Author: Moroya Sakamoto
 

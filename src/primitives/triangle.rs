@@ -92,9 +92,9 @@ mod tests {
         let c = Vec3::new(0.0, 1.0, 0.0);
 
         for i in 0..100 {
-            let x = (i as f32 * 0.137) - 3.0;
-            let y = (i as f32 * 0.291) - 3.0;
-            let z = (i as f32 * 0.473) - 3.0;
+            let x = (i as f32).mul_add(0.137, -3.0);
+            let y = (i as f32).mul_add(0.291, -3.0);
+            let z = (i as f32).mul_add(0.473, -3.0);
             let d = sdf_triangle(Vec3::new(x, y, z), a, b, c);
             assert!(d >= 0.0, "Distance should be >= 0, got {}", d);
         }

@@ -18,7 +18,10 @@ pub fn sdf_diamond_surface(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let (sx, cx) = sp.x.sin_cos();
     let (sy, cy) = sp.y.sin_cos();
     let (sz, cz) = sp.z.sin_cos();
-    let d = sx * sy * sz + sx * cy * cz + cx * sy * cz + cx * cy * sz;
+    let d = (cx * cy).mul_add(
+        sz,
+        (cx * sy).mul_add(cz, (sx * sy).mul_add(sz, sx * cy * cz)),
+    );
     d.abs() / scale - thickness
 }
 

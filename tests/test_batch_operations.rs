@@ -1,6 +1,6 @@
 //! Integration tests: Batch processing operations
 //!
-//! Verifies batch_parallel vs sequential, SIMD vs scalar, and determinism.
+//! Verifies `batch_parallel` vs sequential, SIMD vs scalar, and determinism.
 //!
 //! Author: Moroya Sakamoto
 
@@ -72,12 +72,7 @@ fn compiled_simd_batch_large_dataset() {
 
     // All results should be finite
     for (i, &d) in results.iter().enumerate() {
-        assert!(
-            d.is_finite(),
-            "Distance at index {} is not finite: {}",
-            i,
-            d
-        );
+        assert!(d.is_finite(), "Distance at index {i} is not finite: {d}");
     }
 }
 
@@ -138,8 +133,7 @@ fn eval_is_deterministic() {
         assert_eq!(
             run1[i].to_bits(),
             run2[i].to_bits(),
-            "Evaluation should be bit-exact deterministic at index {}",
-            i
+            "Evaluation should be bit-exact deterministic at index {i}"
         );
     }
 }
@@ -157,8 +151,7 @@ fn compiled_eval_is_deterministic() {
         assert_eq!(
             run1[i].to_bits(),
             run2[i].to_bits(),
-            "Compiled evaluation should be bit-exact deterministic at index {}",
-            i
+            "Compiled evaluation should be bit-exact deterministic at index {i}"
         );
     }
 }

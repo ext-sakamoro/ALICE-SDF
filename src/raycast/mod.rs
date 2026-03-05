@@ -131,7 +131,7 @@ pub fn soft_shadow(
         }
 
         let y = h * h / (2.0 * ph);
-        let d = (h * h - y * y).sqrt();
+        let d = h.mul_add(h, -(y * y)).sqrt();
         res = res.min(k * d / (t - y).max(0.0));
 
         ph = h;
@@ -229,7 +229,7 @@ pub fn soft_shadow_compiled(
         }
 
         let y = h * h / (2.0 * ph);
-        let d = (h * h - y * y).sqrt();
+        let d = h.mul_add(h, -(y * y)).sqrt();
         res = res.min(k * d / (t - y).max(0.0));
 
         ph = h;

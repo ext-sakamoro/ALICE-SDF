@@ -63,7 +63,7 @@ pub struct TerrainConfig {
 
 impl Default for TerrainConfig {
     fn default() -> Self {
-        TerrainConfig {
+        Self {
             width: 1000.0,
             depth: 1000.0,
             height_scale: 100.0,
@@ -87,17 +87,14 @@ pub fn terrain_sdf(
     let height = heightmap.sample(point.x, point.z);
     let terrain_dist = point.y - height;
 
-    match cave_sdf {
-        Some(cave) => {
-            let cave_dist = crate::eval::eval(cave, point);
-            // Terrain is the base, caves subtract from it
-            // Inside terrain = negative, inside cave = negative
-            // Result: max(terrain_dist, -cave_dist) would carve caves
-            // But we want: terrain_dist where no cave, carved where cave
-            terrain_dist.max(-cave_dist)
-        }
-        None => terrain_dist,
-    }
+    cave_sdf.map_or(terrain_dist, |cave| {
+        let cave_dist = crate::eval::eval(cave, point);
+        // Terrain is the base, caves subtract from it
+        // Inside terrain = negative, inside cave = negative
+        // Result: max(terrain_dist, -cave_dist) would carve caves
+        // But we want: terrain_dist where no cave, carved where cave
+        terrain_dist.max(-cave_dist)
+    })
 }
 
 #[cfg(test)]

@@ -28,7 +28,7 @@ pub struct AlembicConfig {
 
 impl Default for AlembicConfig {
     fn default() -> Self {
-        AlembicConfig {
+        Self {
             fps: 24.0,
             export_normals: true,
             export_uvs: true,
@@ -50,7 +50,7 @@ impl<W: Write> OgawaWriter<W> {
         // Ogawa header: magic + version
         writer.write_all(OGAWA_MAGIC)?;
         writer.write_all(&[0x00, 0x01, 0x00])?; // version 1.0
-        Ok(OgawaWriter { writer, pos: 8 })
+        Ok(Self { writer, pos: 8 })
     }
 
     fn write_data(&mut self, data: &[u8]) -> Result<u64, std::io::Error> {

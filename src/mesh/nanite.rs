@@ -49,7 +49,7 @@ impl ClusterBounds {
     /// Create from vertices
     pub fn from_vertices(vertices: &[Vec3]) -> Self {
         if vertices.is_empty() {
-            return ClusterBounds {
+            return Self {
                 center: Vec3::ZERO,
                 radius: 0.0,
                 aabb_min: Vec3::ZERO,
@@ -73,7 +73,7 @@ impl ClusterBounds {
             .map(|&v| (v - center).length())
             .fold(0.0f32, f32::max);
 
-        ClusterBounds {
+        Self {
             center,
             radius,
             aabb_min,
@@ -92,7 +92,7 @@ impl ClusterBounds {
         }
 
         let dir = to_center / dist;
-        let cone_cos = (dist * dist - self.radius * self.radius).sqrt() / dist;
+        let cone_cos = dist.mul_add(dist, -(self.radius * self.radius)).sqrt() / dist;
 
         dir.dot(view_dir) > fov_cos - cone_cos
     }
@@ -202,7 +202,7 @@ pub struct NaniteConfig {
 
 impl Default for NaniteConfig {
     fn default() -> Self {
-        NaniteConfig {
+        Self {
             lod_levels: 6,
             base_resolution: 128,
             lod_factor: 0.5,
@@ -219,7 +219,7 @@ impl Default for NaniteConfig {
 impl NaniteConfig {
     /// Create config for high detail (game-ready assets)
     pub fn high_detail() -> Self {
-        NaniteConfig {
+        Self {
             lod_levels: 8,
             base_resolution: 256,
             lod_factor: 0.5,
@@ -229,7 +229,7 @@ impl NaniteConfig {
 
     /// Create config for medium detail
     pub fn medium_detail() -> Self {
-        NaniteConfig {
+        Self {
             lod_levels: 5,
             base_resolution: 64,
             lod_factor: 0.5,
@@ -239,7 +239,7 @@ impl NaniteConfig {
 
     /// Create config for preview/fast generation
     pub fn preview() -> Self {
-        NaniteConfig {
+        Self {
             lod_levels: 3,
             base_resolution: 32,
             lod_factor: 0.5,

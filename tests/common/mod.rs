@@ -9,7 +9,7 @@ use alice_sdf::prelude::*;
 // ============================================================================
 
 /// Unit sphere at origin
-pub fn test_sphere() -> SdfNode {
+pub const fn test_sphere() -> SdfNode {
     SdfNode::sphere(1.0)
 }
 
@@ -55,6 +55,7 @@ pub fn test_points() -> Vec<Vec3> {
 
 /// Generate a grid of points in [-2, 2]^3
 #[allow(dead_code)]
+#[allow(clippy::cast_precision_loss)]
 pub fn test_grid_points(resolution: usize) -> Vec<Vec3> {
     let mut points = Vec::with_capacity(resolution * resolution * resolution);
     let step = 4.0 / resolution as f32;
@@ -62,9 +63,9 @@ pub fn test_grid_points(resolution: usize) -> Vec<Vec3> {
         for j in 0..resolution {
             for k in 0..resolution {
                 points.push(Vec3::new(
-                    -2.0 + (i as f32 + 0.5) * step,
-                    -2.0 + (j as f32 + 0.5) * step,
-                    -2.0 + (k as f32 + 0.5) * step,
+                    (i as f32 + 0.5).mul_add(step, -2.0),
+                    (j as f32 + 0.5).mul_add(step, -2.0),
+                    (k as f32 + 0.5).mul_add(step, -2.0),
                 ));
             }
         }

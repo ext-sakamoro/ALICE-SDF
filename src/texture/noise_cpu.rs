@@ -29,9 +29,9 @@ pub fn hash_noise_3d_cpu(px: f32, py: f32, pz: f32, seed: u32) -> f32 {
     let fy = py - iy;
     let fz = pz - iz;
 
-    let ux = fx * fx * (3.0 - 2.0 * fx);
-    let uy = fy * fy * (3.0 - 2.0 * fy);
-    let uz = fz * fz * (3.0 - 2.0 * fz);
+    let ux = fx * fx * 2.0f32.mul_add(-fx, 3.0);
+    let uy = fy * fy * 2.0f32.mul_add(-fy, 3.0);
+    let uz = fz * fz * 2.0f32.mul_add(-fz, 3.0);
 
     let n000 = hash_corner(ix, iy, iz, s);
     let n100 = hash_corner(ix + 1.0, iy, iz, s);
@@ -54,8 +54,8 @@ pub fn hash_noise_3d_cpu(px: f32, py: f32, pz: f32, seed: u32) -> f32 {
 
 #[inline(always)]
 fn hash_corner(ix: f32, iy: f32, iz: f32, seed: f32) -> f32 {
-    let dot = ix * 127.1 + iy * 311.7 + iz * 74.7 + seed;
-    fract_scalar(dot.sin() * 43758.5453)
+    let dot = iz.mul_add(74.7, ix.mul_add(127.1, iy * 311.7)) + seed;
+    fract_scalar(dot.sin() * 43_758.547)
 }
 
 #[inline(always)]
@@ -65,7 +65,7 @@ fn fract_scalar(x: f32) -> f32 {
 
 #[inline(always)]
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
+    (b - a).mul_add(t, a)
 }
 
 /// Evaluate noise for 2D UV with z=0 (texture fitting shortcut)
@@ -86,9 +86,14 @@ pub fn eval_octave(
     rotation: f32,
 ) -> f32 {
     let (sin_r, cos_r) = rotation.sin_cos();
-    let ru = u * cos_r - v * sin_r;
-    let rv = u * sin_r + v * cos_r;
-    amplitude * hash_noise_2d(ru * frequency + phase[0], rv * frequency + phase[1], seed)
+    let ru = u.mul_add(cos_r, -(v * sin_r));
+    let rv = u.mul_add(sin_r, v * cos_r);
+    amplitude
+        * hash_noise_2d(
+            ru.mul_add(frequency, phase[0]),
+            rv.mul_add(frequency, phase[1]),
+            seed,
+        )
 }
 
 // ──────────────────────────── SIMD (Deep Fried) ────────────────────────────
@@ -131,7 +136,7 @@ fn hash_corner_simd(ix: f32x8, iy: f32x8, iz: f32x8, seed: f32x8) -> f32x8 {
     let k1 = f32x8::splat(127.1);
     let k2 = f32x8::splat(311.7);
     let k3 = f32x8::splat(74.7);
-    let k4 = f32x8::splat(43758.5453);
+    let k4 = f32x8::splat(43_758.547);
 
     let dot = ix * k1 + iy * k2 + iz * k3 + seed;
     fract_simd(sin_f32x8(dot) * k4)
@@ -237,7 +242,7 @@ mod tests {
             let y = (i as f32) * 0.291;
             let z = (i as f32) * 0.473;
             let v = hash_noise_3d_cpu(x, y, z, 42);
-            assert!(v >= -1.0 && v <= 1.0, "Out of range: {}", v);
+            assert!((-1.0..=1.0).contains(&v), "Out of range: {}", v);
         }
     }
 
@@ -334,7 +339,7 @@ mod tests {
             let result = hash_noise_3d_simd(px, py, pz, 99);
             let arr: [f32; 8] = result.into();
             for &v in &arr {
-                assert!(v >= -1.0 && v <= 1.0, "SIMD out of range: {}", v);
+                assert!((-1.0..=1.0).contains(&v), "SIMD out of range: {}", v);
             }
         }
     }

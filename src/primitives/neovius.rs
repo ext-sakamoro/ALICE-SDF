@@ -17,7 +17,7 @@ pub fn sdf_neovius(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let cx = sp.x.cos();
     let cy = sp.y.cos();
     let cz = sp.z.cos();
-    let d = 3.0 * (cx + cy + cz) + 4.0 * cx * cy * cz;
+    let d = 3.0f32.mul_add(cx + cy + cz, 4.0 * cx * cy * cz);
     d.abs() / scale - thickness
 }
 

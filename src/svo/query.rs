@@ -79,14 +79,11 @@ fn query_descent(
     let octant = octant_for_point(point, center);
 
     // Try to descend into child
-    if let Some(child_idx) = node.child_index(octant) {
+    node.child_index(octant).map_or(node.distance, |child_idx| {
         let child_c = child_center(center, half_size, octant);
         let child_half = half_size * 0.5;
         query_descent(svo, child_idx as usize, child_c, child_half, point)
-    } else {
-        // No child for this octant, use this node's distance
-        node.distance
-    }
+    })
 }
 
 /// Ray query: find intersection with the SDF surface stored in the SVO
@@ -168,20 +165,19 @@ fn query_descent_with_depth(
 
     let octant = octant_for_point(point, center);
 
-    if let Some(child_idx) = node.child_index(octant) {
-        let child_c = child_center(center, half_size, octant);
-        let child_half = half_size * 0.5;
-        query_descent_with_depth(
-            svo,
-            child_idx as usize,
-            child_c,
-            child_half,
-            point,
-            depth + 1,
-        )
-    } else {
-        (node.distance, depth)
-    }
+    node.child_index(octant)
+        .map_or((node.distance, depth), |child_idx| {
+            let child_c = child_center(center, half_size, octant);
+            let child_half = half_size * 0.5;
+            query_descent_with_depth(
+                svo,
+                child_idx as usize,
+                child_c,
+                child_half,
+                point,
+                depth + 1,
+            )
+        })
 }
 
 /// Estimate normal at a point using finite differences on the SVO
@@ -248,13 +244,12 @@ fn nearest_descent(
 
     let octant = octant_for_point(point, center);
 
-    if let Some(child_idx) = node.child_index(octant) {
-        let child_c = child_center(center, half_size, octant);
-        let child_half = half_size * 0.5;
-        nearest_descent(svo, child_idx as usize, child_c, child_half, point)
-    } else {
-        (node.distance, node)
-    }
+    node.child_index(octant)
+        .map_or((node.distance, node), |child_idx| {
+            let child_c = child_center(center, half_size, octant);
+            let child_half = half_size * 0.5;
+            nearest_descent(svo, child_idx as usize, child_c, child_half, point)
+        })
 }
 
 /// Ray-AABB intersection test

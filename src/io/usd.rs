@@ -41,7 +41,7 @@ pub struct UsdConfig {
 
 impl Default for UsdConfig {
     fn default() -> Self {
-        UsdConfig {
+        Self {
             up_axis: UsdUpAxis::Y,
             meters_per_unit: 1.0,
             export_materials: true,
@@ -157,23 +157,19 @@ pub fn export_usda(
         writeln!(w, "    def Scope \"Materials\"")?;
         writeln!(w, "    {{")?;
 
-        let (diffuse_r, diffuse_g, diffuse_b, metallic, roughness, opacity) =
-            if let Some(lib) = materials {
-                if let Some(mat) = lib.materials.first() {
-                    (
-                        mat.base_color[0],
-                        mat.base_color[1],
-                        mat.base_color[2],
-                        mat.metallic,
-                        mat.roughness,
-                        mat.opacity,
-                    )
-                } else {
-                    (0.8, 0.8, 0.8, 0.0, 0.5, 1.0)
-                }
-            } else {
-                (0.8, 0.8, 0.8, 0.0, 0.5, 1.0)
-            };
+        let default_mat = (0.8, 0.8, 0.8, 0.0, 0.5, 1.0);
+        let (diffuse_r, diffuse_g, diffuse_b, metallic, roughness, opacity) = materials
+            .and_then(|lib| lib.materials.first())
+            .map_or(default_mat, |mat| {
+                (
+                    mat.base_color[0],
+                    mat.base_color[1],
+                    mat.base_color[2],
+                    mat.metallic,
+                    mat.roughness,
+                    mat.opacity,
+                )
+            });
 
         writeln!(w, "        def Material \"Material_0\"")?;
         writeln!(w, "        {{")?;

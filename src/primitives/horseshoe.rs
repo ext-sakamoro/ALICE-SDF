@@ -26,11 +26,11 @@ pub fn sdf_horseshoe(
 ) -> f32 {
     let c = Vec2::new(angle.cos(), angle.sin());
     let px = p.x.abs();
-    let l = (px * px + p.y * p.y).sqrt();
+    let l = px.hypot(p.y);
 
     // Rotate by the angle
-    let mut qx = -c.x * px + c.y * p.y;
-    let mut qy = c.y * px + c.x * p.y;
+    let mut qx = (-c.x).mul_add(px, c.y * p.y);
+    let mut qy = c.y.mul_add(px, c.x * p.y);
 
     if !(qy > 0.0 || qx > 0.0) {
         qx = l * (-c.x).signum();

@@ -33,7 +33,7 @@ impl Interval {
 
     /// Create a point interval [v, v]
     #[inline(always)]
-    pub fn point(v: f32) -> Self {
+    pub const fn point(v: f32) -> Self {
         Self { lo: v, hi: v }
     }
 
@@ -413,27 +413,22 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Cone {
             radius,
             half_height,
-        } => ia_bsphere(
-            bounds,
-            ((2.0 * half_height).powi(2) + radius.powi(2)).sqrt(),
-        ),
+        } => ia_bsphere(bounds, (2.0 * half_height).hypot(*radius)),
         SdfNode::Ellipsoid { radii } => ia_bsphere(bounds, radii.x.max(radii.y).max(radii.z)),
         SdfNode::RoundedCone {
             r1,
             r2,
             half_height,
-        } => ia_bsphere(
+        } => ia_bsphere(bounds, (2.0 * half_height).hypot(r1.max(*r2))),
+        SdfNode::Pyramid { half_height } => ia_bsphere(
             bounds,
-            ((2.0 * half_height).powi(2) + r1.max(*r2).powi(2)).sqrt(),
+            (2.0 * half_height).mul_add(2.0 * half_height, 0.25).sqrt(),
         ),
-        SdfNode::Pyramid { half_height } => {
-            ia_bsphere(bounds, (0.25 + (2.0 * half_height).powi(2)).sqrt())
-        }
         SdfNode::Octahedron { size } => ia_bsphere(bounds, *size),
         SdfNode::HexPrism {
             hex_radius,
             half_height,
-        } => ia_bsphere(bounds, (hex_radius.powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, hex_radius.hypot(*half_height)),
         SdfNode::Link {
             half_length,
             r1,
@@ -444,10 +439,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_height,
             r1,
             r2,
-        } => ia_bsphere(
-            bounds,
-            ((2.0 * half_height).powi(2) + r1.max(*r2).powi(2)).sqrt(),
-        ),
+        } => ia_bsphere(bounds, (2.0 * half_height).hypot(r1.max(*r2))),
         SdfNode::CappedTorus {
             major_radius,
             minor_radius,
@@ -457,12 +449,9 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             radius,
             round_radius,
             half_height,
-        } => ia_bsphere(
-            bounds,
-            ((radius + round_radius).powi(2) + half_height.powi(2)).sqrt(),
-        ),
+        } => ia_bsphere(bounds, (radius + round_radius).hypot(*half_height)),
         SdfNode::TriangularPrism { width, half_depth } => {
-            ia_bsphere(bounds, (width.powi(2) + half_depth.powi(2)).sqrt())
+            ia_bsphere(bounds, width.hypot(*half_depth))
         }
         SdfNode::CutSphere { radius, .. } => ia_bsphere(bounds, *radius),
         SdfNode::CutHollowSphere { radius, .. } => ia_bsphere(bounds, *radius),
@@ -473,7 +462,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             lb,
             half_height,
             ..
-        } => ia_bsphere(bounds, (la.max(*lb).powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, la.max(*lb).hypot(*half_height)),
         SdfNode::Horseshoe {
             radius,
             half_length,
@@ -490,19 +479,16 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             outer_radius,
             half_height,
             ..
-        } => ia_bsphere(bounds, (outer_radius.powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, outer_radius.hypot(*half_height)),
         SdfNode::Barrel {
             radius,
             half_height,
             bulge,
-        } => ia_bsphere(
-            bounds,
-            ((radius + bulge.abs()).powi(2) + half_height.powi(2)).sqrt(),
-        ),
+        } => ia_bsphere(bounds, (radius + bulge.abs()).hypot(*half_height)),
         SdfNode::Diamond {
             radius,
             half_height,
-        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, radius.hypot(*half_height)),
         SdfNode::ChamferedCube { half_extents, .. } => ia_bsphere(bounds, half_extents.length()),
         SdfNode::Superellipsoid { half_extents, .. } => ia_bsphere(bounds, half_extents.length()),
         SdfNode::RoundedX {
@@ -514,7 +500,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             radius,
             half_height,
             ..
-        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, radius.hypot(*half_height)),
         SdfNode::Trapezoid {
             r1,
             r2,
@@ -522,7 +508,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            (r1.max(*r2).powi(2) + trap_height.powi(2) + half_depth.powi(2)).sqrt(),
+            (r1.max(*r2).mul_add(r1.max(*r2), trap_height.powi(2)) + half_depth.powi(2)).sqrt(),
         ),
         SdfNode::Parallelogram {
             width,
@@ -531,7 +517,9 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            ((width + skew.abs()).powi(2) + para_height.powi(2) + half_depth.powi(2)).sqrt(),
+            ((width + skew.abs()).mul_add(width + skew.abs(), para_height.powi(2))
+                + half_depth.powi(2))
+            .sqrt(),
         ),
         SdfNode::Tunnel {
             width,
@@ -553,28 +541,20 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             thickness,
             half_height,
             ..
-        } => ia_bsphere(
-            bounds,
-            ((radius + thickness).powi(2) + half_height.powi(2)).sqrt(),
-        ),
+        } => ia_bsphere(bounds, (radius + thickness).hypot(*half_height)),
         SdfNode::Moon {
             ra,
             rb,
             half_height,
             ..
-        } => ia_bsphere(bounds, (ra.max(*rb).powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, ra.max(*rb).hypot(*half_height)),
         SdfNode::CrossShape {
             length,
             thickness,
             half_height,
             ..
-        } => ia_bsphere(
-            bounds,
-            (length.max(*thickness).powi(2) + half_height.powi(2)).sqrt(),
-        ),
-        SdfNode::BlobbyCross { size, half_height } => {
-            ia_bsphere(bounds, (size.powi(2) + half_height.powi(2)).sqrt())
-        }
+        } => ia_bsphere(bounds, length.max(*thickness).hypot(*half_height)),
+        SdfNode::BlobbyCross { size, half_height } => ia_bsphere(bounds, size.hypot(*half_height)),
         SdfNode::ParabolaSegment {
             width,
             para_height,
@@ -587,20 +567,20 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             radius,
             half_height,
             ..
-        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, radius.hypot(*half_height)),
         SdfNode::StarPolygon {
             radius,
             half_height,
             ..
-        } => ia_bsphere(bounds, (radius.powi(2) + half_height.powi(2)).sqrt()),
+        } => ia_bsphere(bounds, radius.hypot(*half_height)),
         SdfNode::Stairs {
             step_width,
             step_height,
             n_steps,
             half_depth,
         } => {
-            let extent = ((step_width * n_steps).powi(2)
-                + (step_height * n_steps).powi(2)
+            let extent = ((step_width * n_steps)
+                .mul_add(step_width * n_steps, (step_height * n_steps).powi(2))
                 + half_depth.powi(2))
             .sqrt();
             ia_bsphere(bounds, extent)
@@ -610,10 +590,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             minor_r,
             half_height,
             ..
-        } => ia_bsphere(
-            bounds,
-            ((major_r + minor_r).powi(2) + half_height.powi(2)).sqrt(),
-        ),
+        } => ia_bsphere(bounds, (major_r + minor_r).hypot(*half_height)),
         SdfNode::Tetrahedron { size } => ia_bsphere(bounds, *size),
         SdfNode::Dodecahedron { radius } => ia_bsphere(bounds, *radius),
         SdfNode::Icosahedron { radius } => ia_bsphere(bounds, *radius),
@@ -777,8 +754,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 .max(bounds.z.hi - bounds.z.lo);
             let child_interval = eval_interval(child, bounds);
             Interval::new(
-                child_interval.lo - max_shear * max_extent,
-                child_interval.hi + max_shear * max_extent,
+                max_shear.mul_add(-max_extent, child_interval.lo),
+                max_shear.mul_add(max_extent, child_interval.hi),
             )
         }
         SdfNode::Animated { child, .. } => eval_interval(child, bounds),
@@ -978,7 +955,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 for &(cx, cz) in &curve_corners {
                     let dx = px - cx;
                     let dz = pz - cz;
-                    max_d2 = max_d2.max(dx * dx + dz * dz);
+                    max_d2 = max_d2.max(dx.mul_add(dx, dz * dz));
                 }
             }
             // Min distance: 0 if overlapping, else min box-to-box distance
@@ -997,7 +974,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 } else {
                     0.0
                 };
-                (dx * dx + dz * dz).sqrt()
+                dx.hypot(dz)
             };
             eval_interval(
                 child,
@@ -1198,12 +1175,12 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // Twist: Jacobian spectral norm = sqrt(1 + strength² * r²)
         // Conservative estimate assumes max XZ radius ≈ 10 units
         SdfNode::Twist { child, strength } => {
-            eval_lipschitz(child) * (1.0 + strength * strength * 100.0).sqrt()
+            eval_lipschitz(child) * (strength * strength).mul_add(100.0, 1.0).sqrt()
         }
         // Bend: similar deformation
         SdfNode::Bend {
             child, curvature, ..
-        } => eval_lipschitz(child) * (1.0 + curvature * curvature * 100.0).sqrt(),
+        } => eval_lipschitz(child) * (curvature * curvature).mul_add(100.0, 1.0).sqrt(),
 
         // Noise: adds noise gradient (bounded by amplitude * frequency)
         SdfNode::Noise {
@@ -1211,7 +1188,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             amplitude,
             frequency,
             ..
-        } => eval_lipschitz(child) + amplitude.abs() * frequency.abs(),
+        } => amplitude
+            .abs()
+            .mul_add(frequency.abs(), eval_lipschitz(child)),
         // Taper: scale varies along Y, gradient stretches
         SdfNode::Taper { child, factor } => eval_lipschitz(child) * (1.0 + factor.abs()),
         // Displacement: procedural perturbation adds gradient
@@ -1231,13 +1210,15 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             amplitude,
             scale,
             ..
-        } => eval_lipschitz(child) + amplitude.abs() * scale.abs(),
+        } => amplitude.abs().mul_add(scale.abs(), eval_lipschitz(child)),
         SdfNode::SurfaceRoughness {
             child,
             amplitude,
             frequency,
             ..
-        } => eval_lipschitz(child) + amplitude.abs() * frequency.abs(),
+        } => amplitude
+            .abs()
+            .mul_add(frequency.abs(), eval_lipschitz(child)),
 
         SdfNode::WithMaterial { child, .. } => eval_lipschitz(child),
 
@@ -1512,7 +1493,7 @@ mod tests {
                     max_grad = max_grad.max(grad_mag);
                     // Allow 5% tolerance for finite-difference error
                     assert!(
-                        grad_mag <= lip * 1.05 + 0.01,
+                        grad_mag <= lip.mul_add(1.05, 0.01),
                         "|∇SDF|={grad_mag:.4} > L={lip:.4} at {p:?} (d={d:.4})"
                     );
                 }

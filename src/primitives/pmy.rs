@@ -21,7 +21,7 @@ pub fn sdf_pmy(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let s2x = 2.0 * sx * cx;
     let s2y = 2.0 * sy * cy;
     let s2z = 2.0 * sz * cz;
-    let d = 2.0 * cx * cy * cz + s2x * sy + sx * s2z + s2y * sz;
+    let d = sx.mul_add(s2z, (2.0 * cx * cy).mul_add(cz, s2x * sy)) + s2y * sz;
     d.abs() / scale - thickness
 }
 

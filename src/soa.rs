@@ -71,7 +71,7 @@ pub struct SoAPoints {
 
 impl SoAPoints {
     /// Create empty SoA storage
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             x: AlignedVec::new(),
             y: AlignedVec::new(),
@@ -136,19 +136,19 @@ impl SoAPoints {
 
     /// Number of points stored
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
     /// Check if empty
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
     /// Get the padded length (rounded up to SIMD width)
     #[inline]
-    pub fn padded_len(&self) -> usize {
+    pub const fn padded_len(&self) -> usize {
         align_up(self.len, SIMD_WIDTH)
     }
 
@@ -170,7 +170,7 @@ impl SoAPoints {
     /// The returned pointers are valid for `padded_len()` elements.
     /// Caller must ensure bounds are respected.
     #[inline]
-    pub fn as_ptrs(&self) -> (*const f32, *const f32, *const f32) {
+    pub const fn as_ptrs(&self) -> (*const f32, *const f32, *const f32) {
         (self.x.as_ptr(), self.y.as_ptr(), self.z.as_ptr())
     }
 
@@ -228,7 +228,7 @@ impl SoAPoints {
 
     /// Get slices for each coordinate array
     #[inline]
-    pub fn as_slices(&self) -> (&[f32], &[f32], &[f32]) {
+    pub const fn as_slices(&self) -> (&[f32], &[f32], &[f32]) {
         (self.x.as_slice(), self.y.as_slice(), self.z.as_slice())
     }
 }
@@ -245,7 +245,7 @@ impl FromIterator<Vec3> for SoAPoints {
         let (lower, upper) = iter.size_hint();
         let capacity = upper.unwrap_or(lower);
 
-        let mut soa = SoAPoints::with_capacity(capacity);
+        let mut soa = Self::with_capacity(capacity);
         for p in iter {
             soa.push_vec3(p);
         }
@@ -260,7 +260,7 @@ impl<'a> FromIterator<&'a Vec3> for SoAPoints {
         let (lower, upper) = iter.size_hint();
         let capacity = upper.unwrap_or(lower);
 
-        let mut soa = SoAPoints::with_capacity(capacity);
+        let mut soa = Self::with_capacity(capacity);
         for p in iter {
             soa.push_vec3(*p);
         }
@@ -290,7 +290,7 @@ impl AlignedVec {
     const ALIGN: usize = 32;
 
     /// Create empty aligned vector
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             ptr: std::ptr::NonNull::dangling().as_ptr(),
             len: 0,
@@ -339,7 +339,7 @@ impl AlignedVec {
 
     /// Get raw pointer (guaranteed 32-byte aligned when capacity > 0)
     #[inline]
-    pub fn as_ptr(&self) -> *const f32 {
+    pub const fn as_ptr(&self) -> *const f32 {
         self.ptr
     }
 
@@ -351,7 +351,7 @@ impl AlignedVec {
 
     /// Get slice
     #[inline]
-    pub fn as_slice(&self) -> &[f32] {
+    pub const fn as_slice(&self) -> &[f32] {
         if self.len == 0 {
             return &[];
         }
@@ -371,13 +371,13 @@ impl AlignedVec {
 
     /// Length
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
     /// Is empty
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
@@ -515,13 +515,13 @@ impl SoADistances {
 
     /// Get the actual length
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
     /// Is empty
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
@@ -623,7 +623,7 @@ mod tests {
 
     #[test]
     fn test_soa_from_iterator() {
-        let points = vec![Vec3::new(1.0, 2.0, 3.0), Vec3::new(4.0, 5.0, 6.0)];
+        let points = [Vec3::new(1.0, 2.0, 3.0), Vec3::new(4.0, 5.0, 6.0)];
 
         let soa: SoAPoints = points.iter().collect();
 

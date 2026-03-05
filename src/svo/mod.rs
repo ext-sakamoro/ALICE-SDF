@@ -75,7 +75,7 @@ pub struct SvoNode {
 
 impl Default for SvoNode {
     fn default() -> Self {
-        SvoNode {
+        Self {
             distance: f32::MAX,
             nx: 0.0,
             ny: 0.0,
@@ -92,8 +92,8 @@ impl Default for SvoNode {
 impl SvoNode {
     /// Create a leaf node with distance and normal
     #[inline]
-    pub fn leaf(distance: f32, normal: Vec3) -> Self {
-        SvoNode {
+    pub const fn leaf(distance: f32, normal: Vec3) -> Self {
+        Self {
             distance,
             nx: normal.x,
             ny: normal.y,
@@ -108,8 +108,8 @@ impl SvoNode {
 
     /// Create an interior node
     #[inline]
-    pub fn interior(distance: f32, child_mask: u8, first_child: u32) -> Self {
-        SvoNode {
+    pub const fn interior(distance: f32, child_mask: u8, first_child: u32) -> Self {
+        Self {
             distance,
             nx: 0.0,
             ny: 0.0,
@@ -124,13 +124,13 @@ impl SvoNode {
 
     /// Get the normal as a Vec3
     #[inline]
-    pub fn normal(&self) -> Vec3 {
+    pub const fn normal(&self) -> Vec3 {
         Vec3::new(self.nx, self.ny, self.nz)
     }
 
     /// Number of active children
     #[inline]
-    pub fn child_count(&self) -> u32 {
+    pub const fn child_count(&self) -> u32 {
         self.child_mask.count_ones()
     }
 
@@ -138,7 +138,7 @@ impl SvoNode {
     ///
     /// Returns `None` if the octant has no child.
     #[inline]
-    pub fn child_index(&self, octant: u8) -> Option<u32> {
+    pub const fn child_index(&self, octant: u8) -> Option<u32> {
         if self.child_mask & (1 << octant) == 0 {
             return None;
         }
@@ -166,7 +166,7 @@ pub struct SvoBuildConfig {
 
 impl Default for SvoBuildConfig {
     fn default() -> Self {
-        SvoBuildConfig {
+        Self {
             max_depth: 8,
             distance_threshold: 1.5,
             surface_detail: 1.0,

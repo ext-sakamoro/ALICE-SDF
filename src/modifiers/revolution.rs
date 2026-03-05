@@ -21,7 +21,7 @@ use glam::Vec3;
 /// - Revolution of a square (box) → Ring with square cross-section
 #[inline(always)]
 pub fn modifier_revolution(p: Vec3, offset: f32) -> Vec3 {
-    let q = (p.x * p.x + p.z * p.z).sqrt() - offset;
+    let q = p.x.hypot(p.z) - offset;
     Vec3::new(q, p.y, 0.0)
 }
 

@@ -49,8 +49,8 @@ pub struct Instruction {
 impl Instruction {
     /// Create a new instruction
     #[inline]
-    pub fn new(opcode: OpCode) -> Self {
-        Instruction {
+    pub const fn new(opcode: OpCode) -> Self {
+        Self {
             params: [0.0; 7],
             opcode,
             flags: 0,
@@ -63,7 +63,7 @@ impl Instruction {
 
     /// Create a sphere instruction
     #[inline]
-    pub fn sphere(radius: f32) -> Self {
+    pub const fn sphere(radius: f32) -> Self {
         let mut inst = Self::new(OpCode::Sphere);
         inst.params[0] = radius;
         inst
@@ -71,7 +71,7 @@ impl Instruction {
 
     /// Create a box instruction
     #[inline]
-    pub fn box3d(hx: f32, hy: f32, hz: f32) -> Self {
+    pub const fn box3d(hx: f32, hy: f32, hz: f32) -> Self {
         let mut inst = Self::new(OpCode::Box3d);
         inst.params[0] = hx;
         inst.params[1] = hy;
@@ -81,7 +81,7 @@ impl Instruction {
 
     /// Create a cylinder instruction
     #[inline]
-    pub fn cylinder(radius: f32, half_height: f32) -> Self {
+    pub const fn cylinder(radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Cylinder);
         inst.params[0] = radius;
         inst.params[1] = half_height;
@@ -90,7 +90,7 @@ impl Instruction {
 
     /// Create a torus instruction
     #[inline]
-    pub fn torus(major_radius: f32, minor_radius: f32) -> Self {
+    pub const fn torus(major_radius: f32, minor_radius: f32) -> Self {
         let mut inst = Self::new(OpCode::Torus);
         inst.params[0] = major_radius;
         inst.params[1] = minor_radius;
@@ -99,7 +99,7 @@ impl Instruction {
 
     /// Create a plane instruction
     #[inline]
-    pub fn plane(nx: f32, ny: f32, nz: f32, distance: f32) -> Self {
+    pub const fn plane(nx: f32, ny: f32, nz: f32, distance: f32) -> Self {
         let mut inst = Self::new(OpCode::Plane);
         inst.params[0] = nx;
         inst.params[1] = ny;
@@ -112,7 +112,15 @@ impl Instruction {
     ///
     /// All 7 parameters fit in `params[0..7]` directly.
     #[inline]
-    pub fn capsule(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, radius: f32) -> Self {
+    pub const fn capsule(
+        ax: f32,
+        ay: f32,
+        az: f32,
+        bx: f32,
+        by: f32,
+        bz: f32,
+        radius: f32,
+    ) -> Self {
         let mut inst = Self::new(OpCode::Capsule);
         inst.params[0] = ax;
         inst.params[1] = ay;
@@ -161,7 +169,7 @@ impl Instruction {
 
     /// Create a cone instruction
     #[inline]
-    pub fn cone(radius: f32, half_height: f32) -> Self {
+    pub const fn cone(radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Cone);
         inst.params[0] = radius;
         inst.params[1] = half_height;
@@ -170,7 +178,7 @@ impl Instruction {
 
     /// Create an ellipsoid instruction
     #[inline]
-    pub fn ellipsoid(rx: f32, ry: f32, rz: f32) -> Self {
+    pub const fn ellipsoid(rx: f32, ry: f32, rz: f32) -> Self {
         let mut inst = Self::new(OpCode::Ellipsoid);
         inst.params[0] = rx;
         inst.params[1] = ry;
@@ -180,7 +188,7 @@ impl Instruction {
 
     /// Create a rounded cone instruction
     #[inline]
-    pub fn rounded_cone(r1: f32, r2: f32, half_height: f32) -> Self {
+    pub const fn rounded_cone(r1: f32, r2: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::RoundedCone);
         inst.params[0] = r1;
         inst.params[1] = r2;
@@ -190,7 +198,7 @@ impl Instruction {
 
     /// Create a pyramid instruction
     #[inline]
-    pub fn pyramid(half_height: f32) -> Self {
+    pub const fn pyramid(half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Pyramid);
         inst.params[0] = half_height;
         inst
@@ -198,7 +206,7 @@ impl Instruction {
 
     /// Create an octahedron instruction
     #[inline]
-    pub fn octahedron(size: f32) -> Self {
+    pub const fn octahedron(size: f32) -> Self {
         let mut inst = Self::new(OpCode::Octahedron);
         inst.params[0] = size;
         inst
@@ -206,7 +214,7 @@ impl Instruction {
 
     /// Create a hex prism instruction
     #[inline]
-    pub fn hex_prism(hex_radius: f32, half_height: f32) -> Self {
+    pub const fn hex_prism(hex_radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::HexPrism);
         inst.params[0] = hex_radius;
         inst.params[1] = half_height;
@@ -215,7 +223,7 @@ impl Instruction {
 
     /// Create a link instruction
     #[inline]
-    pub fn link(half_length: f32, r1: f32, r2: f32) -> Self {
+    pub const fn link(half_length: f32, r1: f32, r2: f32) -> Self {
         let mut inst = Self::new(OpCode::Link);
         inst.params[0] = half_length;
         inst.params[1] = r1;
@@ -227,7 +235,7 @@ impl Instruction {
 
     /// Create a rounded box instruction with per-axis half-extents and corner radius.
     #[inline]
-    pub fn rounded_box(hx: f32, hy: f32, hz: f32, round_radius: f32) -> Self {
+    pub const fn rounded_box(hx: f32, hy: f32, hz: f32, round_radius: f32) -> Self {
         let mut inst = Self::new(OpCode::RoundedBox);
         inst.params[0] = hx;
         inst.params[1] = hy;
@@ -238,7 +246,7 @@ impl Instruction {
 
     /// Create a capped cone instruction with given half-height and top/bottom radii.
     #[inline]
-    pub fn capped_cone(half_height: f32, r1: f32, r2: f32) -> Self {
+    pub const fn capped_cone(half_height: f32, r1: f32, r2: f32) -> Self {
         let mut inst = Self::new(OpCode::CappedCone);
         inst.params[0] = half_height;
         inst.params[1] = r1;
@@ -248,7 +256,7 @@ impl Instruction {
 
     /// Create a capped torus instruction with major/minor radii and angular cap.
     #[inline]
-    pub fn capped_torus(major_radius: f32, minor_radius: f32, cap_angle: f32) -> Self {
+    pub const fn capped_torus(major_radius: f32, minor_radius: f32, cap_angle: f32) -> Self {
         let mut inst = Self::new(OpCode::CappedTorus);
         inst.params[0] = major_radius;
         inst.params[1] = minor_radius;
@@ -258,7 +266,7 @@ impl Instruction {
 
     /// Create a rounded cylinder instruction with radius, corner radius, and half-height.
     #[inline]
-    pub fn rounded_cylinder(radius: f32, round_radius: f32, half_height: f32) -> Self {
+    pub const fn rounded_cylinder(radius: f32, round_radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::RoundedCylinder);
         inst.params[0] = radius;
         inst.params[1] = round_radius;
@@ -268,7 +276,7 @@ impl Instruction {
 
     /// Create a triangular prism instruction with width and half-depth.
     #[inline]
-    pub fn triangular_prism(width: f32, half_depth: f32) -> Self {
+    pub const fn triangular_prism(width: f32, half_depth: f32) -> Self {
         let mut inst = Self::new(OpCode::TriangularPrism);
         inst.params[0] = width;
         inst.params[1] = half_depth;
@@ -277,7 +285,7 @@ impl Instruction {
 
     /// Create a cut sphere instruction — a sphere sliced by a horizontal plane at `cut_height`.
     #[inline]
-    pub fn cut_sphere(radius: f32, cut_height: f32) -> Self {
+    pub const fn cut_sphere(radius: f32, cut_height: f32) -> Self {
         let mut inst = Self::new(OpCode::CutSphere);
         inst.params[0] = radius;
         inst.params[1] = cut_height;
@@ -286,7 +294,7 @@ impl Instruction {
 
     /// Create a cut hollow sphere instruction with a shell of given thickness.
     #[inline]
-    pub fn cut_hollow_sphere(radius: f32, cut_height: f32, thickness: f32) -> Self {
+    pub const fn cut_hollow_sphere(radius: f32, cut_height: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::CutHollowSphere);
         inst.params[0] = radius;
         inst.params[1] = cut_height;
@@ -296,7 +304,7 @@ impl Instruction {
 
     /// Create a death-star instruction (large sphere with a spherical bite taken out).
     #[inline]
-    pub fn death_star(ra: f32, rb: f32, d: f32) -> Self {
+    pub const fn death_star(ra: f32, rb: f32, d: f32) -> Self {
         let mut inst = Self::new(OpCode::DeathStar);
         inst.params[0] = ra;
         inst.params[1] = rb;
@@ -306,7 +314,7 @@ impl Instruction {
 
     /// Create a solid angle instruction (cone-capped sphere sector).
     #[inline]
-    pub fn solid_angle(angle: f32, radius: f32) -> Self {
+    pub const fn solid_angle(angle: f32, radius: f32) -> Self {
         let mut inst = Self::new(OpCode::SolidAngle);
         inst.params[0] = angle;
         inst.params[1] = radius;
@@ -315,7 +323,7 @@ impl Instruction {
 
     /// Create a rhombus instruction (rounded diamond shape extruded along Y).
     #[inline]
-    pub fn rhombus(la: f32, lb: f32, half_height: f32, round_radius: f32) -> Self {
+    pub const fn rhombus(la: f32, lb: f32, half_height: f32, round_radius: f32) -> Self {
         let mut inst = Self::new(OpCode::Rhombus);
         inst.params[0] = la;
         inst.params[1] = lb;
@@ -326,7 +334,7 @@ impl Instruction {
 
     /// Create a horseshoe instruction (U-shaped bent cylinder).
     #[inline]
-    pub fn horseshoe(
+    pub const fn horseshoe(
         angle: f32,
         radius: f32,
         half_length: f32,
@@ -344,7 +352,7 @@ impl Instruction {
 
     /// Create a vesica piscis instruction extruded by `half_dist`.
     #[inline]
-    pub fn vesica(radius: f32, half_dist: f32) -> Self {
+    pub const fn vesica(radius: f32, half_dist: f32) -> Self {
         let mut inst = Self::new(OpCode::Vesica);
         inst.params[0] = radius;
         inst.params[1] = half_dist;
@@ -353,7 +361,7 @@ impl Instruction {
 
     /// Create an infinite cylinder instruction extending along the Y axis.
     #[inline]
-    pub fn infinite_cylinder(radius: f32) -> Self {
+    pub const fn infinite_cylinder(radius: f32) -> Self {
         let mut inst = Self::new(OpCode::InfiniteCylinder);
         inst.params[0] = radius;
         inst
@@ -361,7 +369,7 @@ impl Instruction {
 
     /// Create an infinite cone instruction (apex at origin, opening along Y).
     #[inline]
-    pub fn infinite_cone(angle: f32) -> Self {
+    pub const fn infinite_cone(angle: f32) -> Self {
         let mut inst = Self::new(OpCode::InfiniteCone);
         inst.params[0] = angle;
         inst
@@ -369,7 +377,7 @@ impl Instruction {
 
     /// Create a gyroid TPMS instruction with given scale and surface thickness.
     #[inline]
-    pub fn gyroid(scale: f32, thickness: f32) -> Self {
+    pub const fn gyroid(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::Gyroid);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -378,7 +386,7 @@ impl Instruction {
 
     /// Create a heart shape instruction.
     #[inline]
-    pub fn heart(size: f32) -> Self {
+    pub const fn heart(size: f32) -> Self {
         let mut inst = Self::new(OpCode::Heart);
         inst.params[0] = size;
         inst
@@ -386,7 +394,7 @@ impl Instruction {
 
     /// Create a tube (hollow cylinder) instruction with outer radius, wall thickness, and half-height.
     #[inline]
-    pub fn tube(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
+    pub const fn tube(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Tube);
         inst.params[0] = outer_radius;
         inst.params[1] = thickness;
@@ -396,7 +404,7 @@ impl Instruction {
 
     /// Create a barrel (bulging cylinder) instruction.
     #[inline]
-    pub fn barrel(radius: f32, half_height: f32, bulge: f32) -> Self {
+    pub const fn barrel(radius: f32, half_height: f32, bulge: f32) -> Self {
         let mut inst = Self::new(OpCode::Barrel);
         inst.params[0] = radius;
         inst.params[1] = half_height;
@@ -406,7 +414,7 @@ impl Instruction {
 
     /// Create a diamond (octahedron-like) shape instruction.
     #[inline]
-    pub fn diamond(radius: f32, half_height: f32) -> Self {
+    pub const fn diamond(radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Diamond);
         inst.params[0] = radius;
         inst.params[1] = half_height;
@@ -415,7 +423,7 @@ impl Instruction {
 
     /// Create a chamfered cube instruction — box with beveled edges.
     #[inline]
-    pub fn chamfered_cube(hx: f32, hy: f32, hz: f32, chamfer: f32) -> Self {
+    pub const fn chamfered_cube(hx: f32, hy: f32, hz: f32, chamfer: f32) -> Self {
         let mut inst = Self::new(OpCode::ChamferedCube);
         inst.params[0] = hx;
         inst.params[1] = hy;
@@ -426,7 +434,7 @@ impl Instruction {
 
     /// Create a Schwarz-P TPMS instruction with given scale and surface thickness.
     #[inline]
-    pub fn schwarz_p(scale: f32, thickness: f32) -> Self {
+    pub const fn schwarz_p(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::SchwarzP);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -435,7 +443,7 @@ impl Instruction {
 
     /// Create a superellipsoid instruction with per-axis half-extents and shape exponents.
     #[inline]
-    pub fn superellipsoid(hx: f32, hy: f32, hz: f32, e1: f32, e2: f32) -> Self {
+    pub const fn superellipsoid(hx: f32, hy: f32, hz: f32, e1: f32, e2: f32) -> Self {
         let mut inst = Self::new(OpCode::Superellipsoid);
         inst.params[0] = hx;
         inst.params[1] = hy;
@@ -447,7 +455,7 @@ impl Instruction {
 
     /// Create a rounded X cross instruction extruded along Z.
     #[inline]
-    pub fn rounded_x(width: f32, round_radius: f32, half_height: f32) -> Self {
+    pub const fn rounded_x(width: f32, round_radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::RoundedX);
         inst.params[0] = width;
         inst.params[1] = round_radius;
@@ -457,7 +465,7 @@ impl Instruction {
 
     /// Create a pie (angular sector) instruction.
     #[inline]
-    pub fn pie(angle: f32, radius: f32, half_height: f32) -> Self {
+    pub const fn pie(angle: f32, radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Pie);
         inst.params[0] = angle;
         inst.params[1] = radius;
@@ -467,7 +475,7 @@ impl Instruction {
 
     /// Create a trapezoid prism instruction.
     #[inline]
-    pub fn trapezoid(r1: f32, r2: f32, trap_height: f32, half_depth: f32) -> Self {
+    pub const fn trapezoid(r1: f32, r2: f32, trap_height: f32, half_depth: f32) -> Self {
         let mut inst = Self::new(OpCode::Trapezoid);
         inst.params[0] = r1;
         inst.params[1] = r2;
@@ -478,7 +486,7 @@ impl Instruction {
 
     /// Create a parallelogram prism instruction.
     #[inline]
-    pub fn parallelogram(width: f32, para_height: f32, skew: f32, half_depth: f32) -> Self {
+    pub const fn parallelogram(width: f32, para_height: f32, skew: f32, half_depth: f32) -> Self {
         let mut inst = Self::new(OpCode::Parallelogram);
         inst.params[0] = width;
         inst.params[1] = para_height;
@@ -489,7 +497,7 @@ impl Instruction {
 
     /// Create a tunnel (open-topped rounded box) instruction.
     #[inline]
-    pub fn tunnel(width: f32, height_2d: f32, half_depth: f32) -> Self {
+    pub const fn tunnel(width: f32, height_2d: f32, half_depth: f32) -> Self {
         let mut inst = Self::new(OpCode::Tunnel);
         inst.params[0] = width;
         inst.params[1] = height_2d;
@@ -499,7 +507,7 @@ impl Instruction {
 
     /// Create an uneven capsule instruction with different radii at each end.
     #[inline]
-    pub fn uneven_capsule(r1: f32, r2: f32, cap_height: f32, half_depth: f32) -> Self {
+    pub const fn uneven_capsule(r1: f32, r2: f32, cap_height: f32, half_depth: f32) -> Self {
         let mut inst = Self::new(OpCode::UnevenCapsule);
         inst.params[0] = r1;
         inst.params[1] = r2;
@@ -510,7 +518,7 @@ impl Instruction {
 
     /// Create an egg (prolate spheroid-like) instruction.
     #[inline]
-    pub fn egg(ra: f32, rb: f32) -> Self {
+    pub const fn egg(ra: f32, rb: f32) -> Self {
         let mut inst = Self::new(OpCode::Egg);
         inst.params[0] = ra;
         inst.params[1] = rb;
@@ -519,7 +527,7 @@ impl Instruction {
 
     /// Create an arc shape (curved tube segment) instruction.
     #[inline]
-    pub fn arc_shape(aperture: f32, radius: f32, thickness: f32, half_height: f32) -> Self {
+    pub const fn arc_shape(aperture: f32, radius: f32, thickness: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::ArcShape);
         inst.params[0] = aperture;
         inst.params[1] = radius;
@@ -530,7 +538,7 @@ impl Instruction {
 
     /// Create a moon (crescent) shape instruction.
     #[inline]
-    pub fn moon(d: f32, ra: f32, rb: f32, half_height: f32) -> Self {
+    pub const fn moon(d: f32, ra: f32, rb: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Moon);
         inst.params[0] = d;
         inst.params[1] = ra;
@@ -541,7 +549,12 @@ impl Instruction {
 
     /// Create a cross shape instruction extruded along Z.
     #[inline]
-    pub fn cross_shape(length: f32, thickness: f32, round_radius: f32, half_height: f32) -> Self {
+    pub const fn cross_shape(
+        length: f32,
+        thickness: f32,
+        round_radius: f32,
+        half_height: f32,
+    ) -> Self {
         let mut inst = Self::new(OpCode::CrossShape);
         inst.params[0] = length;
         inst.params[1] = thickness;
@@ -552,7 +565,7 @@ impl Instruction {
 
     /// Create a blobby cross instruction — rounded X shape extruded along Z.
     #[inline]
-    pub fn blobby_cross(size: f32, half_height: f32) -> Self {
+    pub const fn blobby_cross(size: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::BlobbyCross);
         inst.params[0] = size;
         inst.params[1] = half_height;
@@ -561,7 +574,7 @@ impl Instruction {
 
     /// Create a parabola segment instruction extruded along Z.
     #[inline]
-    pub fn parabola_segment(width: f32, para_height: f32, half_depth: f32) -> Self {
+    pub const fn parabola_segment(width: f32, para_height: f32, half_depth: f32) -> Self {
         let mut inst = Self::new(OpCode::ParabolaSegment);
         inst.params[0] = width;
         inst.params[1] = para_height;
@@ -571,7 +584,7 @@ impl Instruction {
 
     /// Create a regular n-gon prism instruction.
     #[inline]
-    pub fn regular_polygon(radius: f32, n_sides: f32, half_height: f32) -> Self {
+    pub const fn regular_polygon(radius: f32, n_sides: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::RegularPolygon);
         inst.params[0] = radius;
         inst.params[1] = n_sides;
@@ -581,7 +594,7 @@ impl Instruction {
 
     /// Create a star polygon prism instruction.
     #[inline]
-    pub fn star_polygon(radius: f32, n_points: f32, m: f32, half_height: f32) -> Self {
+    pub const fn star_polygon(radius: f32, n_points: f32, m: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::StarPolygon);
         inst.params[0] = radius;
         inst.params[1] = n_points;
@@ -592,7 +605,7 @@ impl Instruction {
 
     /// Create a staircase shape instruction.
     #[inline]
-    pub fn stairs(step_width: f32, step_height: f32, n_steps: f32, half_depth: f32) -> Self {
+    pub const fn stairs(step_width: f32, step_height: f32, n_steps: f32, half_depth: f32) -> Self {
         let mut inst = Self::new(OpCode::Stairs);
         inst.params[0] = step_width;
         inst.params[1] = step_height;
@@ -603,7 +616,7 @@ impl Instruction {
 
     /// Create a helix (coil) instruction.
     #[inline]
-    pub fn helix(major_r: f32, minor_r: f32, pitch: f32, half_height: f32) -> Self {
+    pub const fn helix(major_r: f32, minor_r: f32, pitch: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Helix);
         inst.params[0] = major_r;
         inst.params[1] = minor_r;
@@ -614,7 +627,7 @@ impl Instruction {
 
     /// Create a tetrahedron instruction.
     #[inline]
-    pub fn tetrahedron(size: f32) -> Self {
+    pub const fn tetrahedron(size: f32) -> Self {
         let mut inst = Self::new(OpCode::Tetrahedron);
         inst.params[0] = size;
         inst
@@ -622,7 +635,7 @@ impl Instruction {
 
     /// Create a dodecahedron instruction.
     #[inline]
-    pub fn dodecahedron(radius: f32) -> Self {
+    pub const fn dodecahedron(radius: f32) -> Self {
         let mut inst = Self::new(OpCode::Dodecahedron);
         inst.params[0] = radius;
         inst
@@ -630,7 +643,7 @@ impl Instruction {
 
     /// Create an icosahedron instruction.
     #[inline]
-    pub fn icosahedron(radius: f32) -> Self {
+    pub const fn icosahedron(radius: f32) -> Self {
         let mut inst = Self::new(OpCode::Icosahedron);
         inst.params[0] = radius;
         inst
@@ -638,7 +651,7 @@ impl Instruction {
 
     /// Create a truncated octahedron instruction.
     #[inline]
-    pub fn truncated_octahedron(radius: f32) -> Self {
+    pub const fn truncated_octahedron(radius: f32) -> Self {
         let mut inst = Self::new(OpCode::TruncatedOctahedron);
         inst.params[0] = radius;
         inst
@@ -646,7 +659,7 @@ impl Instruction {
 
     /// Create a truncated icosahedron (soccer-ball) instruction.
     #[inline]
-    pub fn truncated_icosahedron(radius: f32) -> Self {
+    pub const fn truncated_icosahedron(radius: f32) -> Self {
         let mut inst = Self::new(OpCode::TruncatedIcosahedron);
         inst.params[0] = radius;
         inst
@@ -654,7 +667,7 @@ impl Instruction {
 
     /// Create a box-frame (wire-frame box) instruction with given half-extents and edge thickness.
     #[inline]
-    pub fn box_frame(half_extents: glam::Vec3, edge: f32) -> Self {
+    pub const fn box_frame(half_extents: glam::Vec3, edge: f32) -> Self {
         let mut inst = Self::new(OpCode::BoxFrame);
         inst.params[0] = half_extents.x;
         inst.params[1] = half_extents.y;
@@ -665,7 +678,7 @@ impl Instruction {
 
     /// Create a diamond-surface TPMS instruction.
     #[inline]
-    pub fn diamond_surface(scale: f32, thickness: f32) -> Self {
+    pub const fn diamond_surface(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::DiamondSurface);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -674,7 +687,7 @@ impl Instruction {
 
     /// Create a Neovius TPMS instruction.
     #[inline]
-    pub fn neovius(scale: f32, thickness: f32) -> Self {
+    pub const fn neovius(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::Neovius);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -683,7 +696,7 @@ impl Instruction {
 
     /// Create a Lidinoid TPMS instruction.
     #[inline]
-    pub fn lidinoid(scale: f32, thickness: f32) -> Self {
+    pub const fn lidinoid(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::Lidinoid);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -692,7 +705,7 @@ impl Instruction {
 
     /// Create an I-WP TPMS instruction.
     #[inline]
-    pub fn iwp(scale: f32, thickness: f32) -> Self {
+    pub const fn iwp(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::IWP);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -701,7 +714,7 @@ impl Instruction {
 
     /// Create an F-RD TPMS instruction.
     #[inline]
-    pub fn frd(scale: f32, thickness: f32) -> Self {
+    pub const fn frd(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::FRD);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -710,7 +723,7 @@ impl Instruction {
 
     /// Create a Fischer-Koch S TPMS instruction.
     #[inline]
-    pub fn fischer_koch_s(scale: f32, thickness: f32) -> Self {
+    pub const fn fischer_koch_s(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::FischerKochS);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -719,7 +732,7 @@ impl Instruction {
 
     /// Create a PMY TPMS instruction.
     #[inline]
-    pub fn pmy(scale: f32, thickness: f32) -> Self {
+    pub const fn pmy(scale: f32, thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::PMY);
         inst.params[0] = scale;
         inst.params[1] = thickness;
@@ -728,19 +741,19 @@ impl Instruction {
 
     /// Create a union instruction
     #[inline]
-    pub fn union() -> Self {
+    pub const fn union() -> Self {
         Self::new(OpCode::Union)
     }
 
     /// Create an intersection instruction
     #[inline]
-    pub fn intersection() -> Self {
+    pub const fn intersection() -> Self {
         Self::new(OpCode::Intersection)
     }
 
     /// Create a subtraction instruction
     #[inline]
-    pub fn subtraction() -> Self {
+    pub const fn subtraction() -> Self {
         Self::new(OpCode::Subtraction)
     }
 
@@ -827,13 +840,13 @@ impl Instruction {
 
     /// Create an XOR (symmetric difference) instruction.
     #[inline]
-    pub fn xor() -> Self {
+    pub const fn xor() -> Self {
         Self::new(OpCode::XOR)
     }
 
     /// Create a morph (linear interpolation) instruction with blend factor `t` (0=a, 1=b).
     #[inline]
-    pub fn morph(t: f32) -> Self {
+    pub const fn morph(t: f32) -> Self {
         let mut inst = Self::new(OpCode::Morph);
         inst.params[0] = t;
         inst
@@ -868,7 +881,7 @@ impl Instruction {
 
     /// Create a pipe instruction — cylindrical surface at the intersection boundary.
     #[inline]
-    pub fn pipe(r: f32) -> Self {
+    pub const fn pipe(r: f32) -> Self {
         let mut inst = Self::new(OpCode::Pipe);
         inst.params[0] = r;
         inst
@@ -876,7 +889,7 @@ impl Instruction {
 
     /// Create an engrave instruction — cuts shape b into the surface of shape a.
     #[inline]
-    pub fn engrave(r: f32) -> Self {
+    pub const fn engrave(r: f32) -> Self {
         let mut inst = Self::new(OpCode::Engrave);
         inst.params[0] = r;
         inst
@@ -884,7 +897,7 @@ impl Instruction {
 
     /// Create a groove instruction — cuts a groove of width `ra` and depth `rb` into shape a.
     #[inline]
-    pub fn groove(ra: f32, rb: f32) -> Self {
+    pub const fn groove(ra: f32, rb: f32) -> Self {
         let mut inst = Self::new(OpCode::Groove);
         inst.params[0] = ra;
         inst.params[1] = rb;
@@ -893,7 +906,7 @@ impl Instruction {
 
     /// Create a tongue instruction — adds a tongue protrusion of width `ra` and height `rb`.
     #[inline]
-    pub fn tongue(ra: f32, rb: f32) -> Self {
+    pub const fn tongue(ra: f32, rb: f32) -> Self {
         let mut inst = Self::new(OpCode::Tongue);
         inst.params[0] = ra;
         inst.params[1] = rb;
@@ -902,7 +915,7 @@ impl Instruction {
 
     /// Create a translate instruction
     #[inline]
-    pub fn translate(x: f32, y: f32, z: f32) -> Self {
+    pub const fn translate(x: f32, y: f32, z: f32) -> Self {
         let mut inst = Self::new(OpCode::Translate);
         inst.params[0] = x;
         inst.params[1] = y;
@@ -913,7 +926,7 @@ impl Instruction {
 
     /// Create a rotate instruction (quaternion)
     #[inline]
-    pub fn rotate(qx: f32, qy: f32, qz: f32, qw: f32) -> Self {
+    pub const fn rotate(qx: f32, qy: f32, qz: f32, qw: f32) -> Self {
         let mut inst = Self::new(OpCode::Rotate);
         inst.params[0] = qx;
         inst.params[1] = qy;
@@ -957,7 +970,7 @@ impl Instruction {
 
     /// Create a twist instruction
     #[inline]
-    pub fn twist(strength: f32) -> Self {
+    pub const fn twist(strength: f32) -> Self {
         let mut inst = Self::new(OpCode::Twist);
         inst.params[0] = strength;
         inst.child_count = 1;
@@ -966,7 +979,7 @@ impl Instruction {
 
     /// Create a bend instruction
     #[inline]
-    pub fn bend(curvature: f32) -> Self {
+    pub const fn bend(curvature: f32) -> Self {
         let mut inst = Self::new(OpCode::Bend);
         inst.params[0] = curvature;
         inst.child_count = 1;
@@ -990,7 +1003,7 @@ impl Instruction {
 
     /// Create a finite repeat instruction
     #[inline]
-    pub fn repeat_finite(cx: f32, cy: f32, cz: f32, sx: f32, sy: f32, sz: f32) -> Self {
+    pub const fn repeat_finite(cx: f32, cy: f32, cz: f32, sx: f32, sy: f32, sz: f32) -> Self {
         let mut inst = Self::new(OpCode::RepeatFinite);
         inst.params[0] = cx;
         inst.params[1] = cy;
@@ -1004,7 +1017,7 @@ impl Instruction {
 
     /// Create a round instruction
     #[inline]
-    pub fn round(radius: f32) -> Self {
+    pub const fn round(radius: f32) -> Self {
         let mut inst = Self::new(OpCode::Round);
         inst.params[0] = radius;
         inst.child_count = 1;
@@ -1013,7 +1026,7 @@ impl Instruction {
 
     /// Create an onion instruction
     #[inline]
-    pub fn onion(thickness: f32) -> Self {
+    pub const fn onion(thickness: f32) -> Self {
         let mut inst = Self::new(OpCode::Onion);
         inst.params[0] = thickness;
         inst.child_count = 1;
@@ -1022,7 +1035,7 @@ impl Instruction {
 
     /// Create an elongate instruction
     #[inline]
-    pub fn elongate(ax: f32, ay: f32, az: f32) -> Self {
+    pub const fn elongate(ax: f32, ay: f32, az: f32) -> Self {
         let mut inst = Self::new(OpCode::Elongate);
         inst.params[0] = ax;
         inst.params[1] = ay;
@@ -1033,7 +1046,7 @@ impl Instruction {
 
     /// Create a noise instruction
     #[inline]
-    pub fn noise(amplitude: f32, frequency: f32, seed: u32) -> Self {
+    pub const fn noise(amplitude: f32, frequency: f32, seed: u32) -> Self {
         let mut inst = Self::new(OpCode::Noise);
         inst.params[0] = amplitude;
         inst.params[1] = frequency;
@@ -1044,7 +1057,7 @@ impl Instruction {
 
     /// Create a mirror instruction
     #[inline]
-    pub fn mirror(ax: f32, ay: f32, az: f32) -> Self {
+    pub const fn mirror(ax: f32, ay: f32, az: f32) -> Self {
         let mut inst = Self::new(OpCode::Mirror);
         inst.params[0] = ax;
         inst.params[1] = ay;
@@ -1055,7 +1068,7 @@ impl Instruction {
 
     /// Create a revolution instruction
     #[inline]
-    pub fn revolution(offset: f32) -> Self {
+    pub const fn revolution(offset: f32) -> Self {
         let mut inst = Self::new(OpCode::Revolution);
         inst.params[0] = offset;
         inst.child_count = 1;
@@ -1064,7 +1077,7 @@ impl Instruction {
 
     /// Create an extrude instruction
     #[inline]
-    pub fn extrude(half_height: f32) -> Self {
+    pub const fn extrude(half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Extrude);
         inst.params[0] = half_height;
         inst.child_count = 1;
@@ -1073,7 +1086,7 @@ impl Instruction {
 
     /// Create a sweep bezier instruction
     #[inline]
-    pub fn sweep_bezier(p0x: f32, p0z: f32, p1x: f32, p1z: f32, p2x: f32, p2z: f32) -> Self {
+    pub const fn sweep_bezier(p0x: f32, p0z: f32, p1x: f32, p1z: f32, p2x: f32, p2z: f32) -> Self {
         let mut inst = Self::new(OpCode::SweepBezier);
         inst.params[0] = p0x;
         inst.params[1] = p0z;
@@ -1087,7 +1100,7 @@ impl Instruction {
 
     /// Create a taper instruction
     #[inline]
-    pub fn taper(factor: f32) -> Self {
+    pub const fn taper(factor: f32) -> Self {
         let mut inst = Self::new(OpCode::Taper);
         inst.params[0] = factor;
         inst.child_count = 1;
@@ -1096,7 +1109,7 @@ impl Instruction {
 
     /// Create a displacement instruction
     #[inline]
-    pub fn displacement(strength: f32) -> Self {
+    pub const fn displacement(strength: f32) -> Self {
         let mut inst = Self::new(OpCode::Displacement);
         inst.params[0] = strength;
         inst.child_count = 1;
@@ -1118,7 +1131,7 @@ impl Instruction {
 
     /// Create an octant mirror instruction
     #[inline]
-    pub fn octant_mirror() -> Self {
+    pub const fn octant_mirror() -> Self {
         let mut inst = Self::new(OpCode::OctantMirror);
         inst.child_count = 1;
         inst
@@ -1126,7 +1139,7 @@ impl Instruction {
 
     /// Create a circle 2D instruction
     #[inline]
-    pub fn circle_2d(radius: f32, half_height: f32) -> Self {
+    pub const fn circle_2d(radius: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Circle2D);
         inst.params[0] = radius;
         inst.params[1] = half_height;
@@ -1135,7 +1148,7 @@ impl Instruction {
 
     /// Create a rect 2D instruction
     #[inline]
-    pub fn rect_2d(half_extents: glam::Vec2, half_height: f32) -> Self {
+    pub const fn rect_2d(half_extents: glam::Vec2, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Rect2D);
         inst.params[0] = half_extents.x;
         inst.params[1] = half_extents.y;
@@ -1145,7 +1158,12 @@ impl Instruction {
 
     /// Create a segment 2D instruction
     #[inline]
-    pub fn segment_2d(a: glam::Vec2, b: glam::Vec2, thickness: f32, half_height: f32) -> Self {
+    pub const fn segment_2d(
+        a: glam::Vec2,
+        b: glam::Vec2,
+        thickness: f32,
+        half_height: f32,
+    ) -> Self {
         let mut inst = Self::new(OpCode::Segment2D);
         inst.params[0] = a.x;
         inst.params[1] = a.y;
@@ -1158,7 +1176,7 @@ impl Instruction {
 
     /// Create a polygon 2D instruction
     #[inline]
-    pub fn polygon_2d(half_height: f32) -> Self {
+    pub const fn polygon_2d(half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Polygon2D);
         inst.params[0] = half_height;
         inst
@@ -1166,7 +1184,11 @@ impl Instruction {
 
     /// Create a rounded rect 2D instruction
     #[inline]
-    pub fn rounded_rect_2d(half_extents: glam::Vec2, round_radius: f32, half_height: f32) -> Self {
+    pub const fn rounded_rect_2d(
+        half_extents: glam::Vec2,
+        round_radius: f32,
+        half_height: f32,
+    ) -> Self {
         let mut inst = Self::new(OpCode::RoundedRect2D);
         inst.params[0] = half_extents.x;
         inst.params[1] = half_extents.y;
@@ -1177,7 +1199,7 @@ impl Instruction {
 
     /// Create an annular 2D instruction
     #[inline]
-    pub fn annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
+    pub const fn annular_2d(outer_radius: f32, thickness: f32, half_height: f32) -> Self {
         let mut inst = Self::new(OpCode::Annular2D);
         inst.params[0] = outer_radius;
         inst.params[1] = thickness;
@@ -1187,7 +1209,7 @@ impl Instruction {
 
     /// Create an exp smooth union instruction
     #[inline]
-    pub fn exp_smooth_union(k: f32) -> Self {
+    pub const fn exp_smooth_union(k: f32) -> Self {
         let mut inst = Self::new(OpCode::ExpSmoothUnion);
         inst.params[0] = k;
         inst.child_count = 2;
@@ -1196,7 +1218,7 @@ impl Instruction {
 
     /// Create an exp smooth intersection instruction
     #[inline]
-    pub fn exp_smooth_intersection(k: f32) -> Self {
+    pub const fn exp_smooth_intersection(k: f32) -> Self {
         let mut inst = Self::new(OpCode::ExpSmoothIntersection);
         inst.params[0] = k;
         inst.child_count = 2;
@@ -1205,7 +1227,7 @@ impl Instruction {
 
     /// Create an exp smooth subtraction instruction
     #[inline]
-    pub fn exp_smooth_subtraction(k: f32) -> Self {
+    pub const fn exp_smooth_subtraction(k: f32) -> Self {
         let mut inst = Self::new(OpCode::ExpSmoothSubtraction);
         inst.params[0] = k;
         inst.child_count = 2;
@@ -1214,7 +1236,7 @@ impl Instruction {
 
     /// Create a shear instruction
     #[inline]
-    pub fn shear(shear: glam::Vec3) -> Self {
+    pub const fn shear(shear: glam::Vec3) -> Self {
         let mut inst = Self::new(OpCode::Shear);
         inst.params[0] = shear.x;
         inst.params[1] = shear.y;
@@ -1225,7 +1247,7 @@ impl Instruction {
 
     /// Create an animated instruction
     #[inline]
-    pub fn animated(speed: f32, amplitude: f32) -> Self {
+    pub const fn animated(speed: f32, amplitude: f32) -> Self {
         let mut inst = Self::new(OpCode::Animated);
         inst.params[0] = speed;
         inst.params[1] = amplitude;
@@ -1236,7 +1258,7 @@ impl Instruction {
     /// Create a projective transform instruction
     /// Auxiliary data (inv_matrix, lipschitz_bound) must be stored separately
     #[inline]
-    pub fn projective_transform(lipschitz_bound: f32) -> Self {
+    pub const fn projective_transform(lipschitz_bound: f32) -> Self {
         let mut inst = Self::new(OpCode::ProjectiveTransform);
         inst.params[0] = lipschitz_bound;
         inst.child_count = 1;
@@ -1246,7 +1268,7 @@ impl Instruction {
     /// Create a lattice deform instruction
     /// Auxiliary data (control_points, lattice params) must be stored separately
     #[inline]
-    pub fn lattice_deform() -> Self {
+    pub const fn lattice_deform() -> Self {
         let mut inst = Self::new(OpCode::LatticeDeform);
         inst.child_count = 1;
         inst
@@ -1255,7 +1277,7 @@ impl Instruction {
     /// Create an SDF skinning instruction
     /// Auxiliary data (bones) must be stored separately
     #[inline]
-    pub fn sdf_skinning() -> Self {
+    pub const fn sdf_skinning() -> Self {
         let mut inst = Self::new(OpCode::SdfSkinning);
         inst.child_count = 1;
         inst
@@ -1263,7 +1285,7 @@ impl Instruction {
 
     /// Create an icosahedral symmetry instruction
     #[inline]
-    pub fn icosahedral_symmetry() -> Self {
+    pub const fn icosahedral_symmetry() -> Self {
         let mut inst = Self::new(OpCode::IcosahedralSymmetry);
         inst.child_count = 1;
         inst
@@ -1272,7 +1294,7 @@ impl Instruction {
     /// Create an IFS instruction
     /// Auxiliary data (transforms, iterations) must be stored separately
     #[inline]
-    pub fn ifs(iterations: u32) -> Self {
+    pub const fn ifs(iterations: u32) -> Self {
         let mut inst = Self::new(OpCode::IFS);
         inst.params[0] = iterations as f32;
         inst.child_count = 1;
@@ -1282,7 +1304,7 @@ impl Instruction {
     /// Create a heightmap displacement instruction
     /// Auxiliary data (heightmap, dimensions) must be stored separately
     #[inline]
-    pub fn heightmap_displacement(amplitude: f32, scale: f32) -> Self {
+    pub const fn heightmap_displacement(amplitude: f32, scale: f32) -> Self {
         let mut inst = Self::new(OpCode::HeightmapDisplacement);
         inst.params[0] = amplitude;
         inst.params[1] = scale;
@@ -1292,7 +1314,7 @@ impl Instruction {
 
     /// Create a surface roughness instruction
     #[inline]
-    pub fn surface_roughness(frequency: f32, amplitude: f32, octaves: u32) -> Self {
+    pub const fn surface_roughness(frequency: f32, amplitude: f32, octaves: u32) -> Self {
         let mut inst = Self::new(OpCode::SurfaceRoughness);
         inst.params[0] = frequency;
         inst.params[1] = amplitude;
@@ -1303,13 +1325,13 @@ impl Instruction {
 
     /// Create a pop transform instruction
     #[inline]
-    pub fn pop_transform() -> Self {
+    pub const fn pop_transform() -> Self {
         Self::new(OpCode::PopTransform)
     }
 
     /// Create an end instruction
     #[inline]
-    pub fn end() -> Self {
+    pub const fn end() -> Self {
         Self::new(OpCode::End)
     }
 }

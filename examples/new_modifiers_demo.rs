@@ -1,6 +1,6 @@
-//! Demo of the 4 new modifiers: IcosahedralSymmetry, IFS, HeightmapDisplacement, SurfaceRoughness
+//! Demo of the 4 new modifiers: `IcosahedralSymmetry`, IFS, `HeightmapDisplacement`, `SurfaceRoughness`
 //!
-//! Usage: cargo run --example new_modifiers_demo
+//! Usage: cargo run --example `new_modifiers_demo`
 
 use alice_sdf::prelude::*;
 

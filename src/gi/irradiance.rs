@@ -21,7 +21,7 @@ pub struct SH1 {
 
 impl Default for SH1 {
     fn default() -> Self {
-        SH1 { coeffs: [0.0; 4] }
+        Self { coeffs: [0.0; 4] }
     }
 }
 
@@ -32,16 +32,16 @@ impl SH1 {
         // L0: 0.282095
         // L1: 0.488603 * {y, z, x}
         let c = &self.coeffs;
-        c[0] * 0.282095
-            + c[1] * 0.488603 * dir.x
-            + c[2] * 0.488603 * dir.y
-            + c[3] * 0.488603 * dir.z
+        (c[3] * 0.488603).mul_add(
+            dir.z,
+            (c[2] * 0.488603).mul_add(dir.y, c[0].mul_add(0.282095, c[1] * 0.488603 * dir.x)),
+        )
     }
 
     /// Project a directional sample into SH
     #[inline]
     pub fn project(dir: Vec3, value: f32) -> Self {
-        SH1 {
+        Self {
             coeffs: [
                 value * 0.282095,
                 value * 0.488603 * dir.x,
@@ -53,7 +53,7 @@ impl SH1 {
 
     /// Add another SH
     #[inline]
-    pub fn add(&mut self, other: &SH1) {
+    pub fn add(&mut self, other: &Self) {
         for i in 0..4 {
             self.coeffs[i] += other.coeffs[i];
         }
@@ -86,7 +86,7 @@ pub struct IrradianceProbe {
 
 impl Default for IrradianceProbe {
     fn default() -> Self {
-        IrradianceProbe {
+        Self {
             position: Vec3::ZERO,
             sh_r: SH1::default(),
             sh_g: SH1::default(),
@@ -165,7 +165,7 @@ impl IrradianceGrid {
             }
         }
 
-        IrradianceGrid {
+        Self {
             probes,
             grid_size,
             bounds_min,
@@ -177,9 +177,9 @@ impl IrradianceGrid {
     pub fn sample(&self, position: Vec3, normal: Vec3) -> Vec3 {
         let size = self.bounds_max - self.bounds_min;
         let t = (position - self.bounds_min) / size;
-        let fx = t.x * self.grid_size[0] as f32 - 0.5;
-        let fy = t.y * self.grid_size[1] as f32 - 0.5;
-        let fz = t.z * self.grid_size[2] as f32 - 0.5;
+        let fx = t.x.mul_add(self.grid_size[0] as f32, -0.5);
+        let fy = t.y.mul_add(self.grid_size[1] as f32, -0.5);
+        let fz = t.z.mul_add(self.grid_size[2] as f32, -0.5);
 
         let x0 = (fx.floor() as i32).clamp(0, self.grid_size[0] as i32 - 1) as u32;
         let y0 = (fy.floor() as i32).clamp(0, self.grid_size[1] as i32 - 1) as u32;

@@ -113,7 +113,7 @@ pub struct GenericTranspiler<L: ShaderLang> {
 
 impl<L: ShaderLang> GenericTranspiler<L> {
     /// Create a new transpiler in the given mode.
-    pub fn new(mode: TranspileModeLang) -> Self {
+    pub const fn new(mode: TranspileModeLang) -> Self {
         Self {
             var_counter: 0,
             helper_functions: Vec::new(),
@@ -312,8 +312,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &L::vec2_ctor(
                         &format!("length({}.xz) - {}", point_var, r),
                         &format!("abs({}.y) - {}", point_var, hh),
-                    )
-                    .clone(),
+                    ),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
@@ -341,8 +340,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &L::vec2_ctor(
                         &format!("length({}.xz) - {}", point_var, mr),
                         &format!("{}.y", point_var),
-                    )
-                    .clone(),
+                    ),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
@@ -444,7 +442,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let p_r = self.param(*radius);
                 let p_k2x = self.param(k2x);
                 let p_k2y = self.param(k2y);
-                let p_k2sq = self.param(k2x * k2x + k2y * k2y);
+                let p_k2sq = self.param(k2x.mul_add(k2x, k2y * k2y));
 
                 let qx_var = self.next_var();
                 let h_var = self.next_var();
@@ -459,7 +457,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &qx_var,
                     &format!("length({}.xz)", point_var),
                 ));
-                code.push_str(&L::decl_float(&h_var, &p_hh.clone()));
+                code.push_str(&L::decl_float(&h_var, &p_hh));
                 // ca = vec2(qx - min(qx, select(0.0, r, p.y<0.0)), abs(p.y) - h)
                 let cone_select = L::select_expr(&format!("{}.y < 0.0", point_var), &p_r, "0.0");
                 code.push_str(&L::decl_vec2(
@@ -467,8 +465,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &L::vec2_ctor(
                         &format!("{} - min({}, {})", qx_var, qx_var, cone_select),
                         &format!("abs({}.y) - {}", point_var, h_var),
-                    )
-                    .clone(),
+                    ),
                 ));
                 code.push_str(&L::decl_float(
                     &t_var,
@@ -482,8 +479,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &L::vec2_ctor(
                         &format!("{} + {} * {}", qx_var, p_k2x, t_var),
                         &format!("{}.y - {} + {} * {}", point_var, h_var, p_k2y, t_var),
-                    )
-                    .clone(),
+                    ),
                 ));
                 let cone_sign = L::select_expr(
                     &format!("{}.x < 0.0 && {}.y < 0.0", cb_var, ca_var),
@@ -2167,8 +2163,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("{} * {}.x - {} * {}.z", c_var, point_var, s_var, point_var),
                         &format!("{}.y", point_var),
                         &format!("{} * {}.x + {} * {}.z", s_var, point_var, c_var, point_var),
-                    )
-                    .clone(),
+                    ),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }
@@ -2191,8 +2186,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("{} * {}.x + {} * {}.y", c_var, point_var, s_var, point_var),
                         &format!("{} * {}.y - {} * {}.x", c_var, point_var, s_var, point_var),
                         &format!("{}.z", point_var),
-                    )
-                    .clone(),
+                    ),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }
@@ -2397,8 +2391,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("length({}.xz) - {}", point_var, off),
                         &format!("{}.y", point_var),
                         "0.0",
-                    )
-                    .clone(),
+                    ),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }
@@ -2411,8 +2404,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("{}.x", point_var),
                         &format!("{}.z", point_var),
                         "0.0",
-                    )
-                    .clone(),
+                    ),
                 ));
                 let d = self.transpile_node_inner(child, &new_p_2d, code);
                 let var = self.next_var();
@@ -2420,7 +2412,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let w_var = self.next_var();
                 code.push_str(&L::decl_vec2(
                     &w_var,
-                    &L::vec2_ctor(&d, &format!("abs({}.y) - {}", point_var, hh)).clone(),
+                    &L::vec2_ctor(&d, &format!("abs({}.y) - {}", point_var, hh)),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
@@ -2447,8 +2439,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("{}.x / max({}, 0.001)", point_var, taper_var),
                         &format!("{}.y", point_var),
                         &format!("{}.z / max({}, 0.001)", point_var, taper_var),
-                    )
-                    .clone(),
+                    ),
                 ));
                 let d = self.transpile_node_inner(child, &new_p, code);
                 let var = self.next_var();
@@ -2568,11 +2559,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("length({} - {}.xz)", bp_var, point_var),
                         &format!("{}.y", point_var),
                         "0.0",
-                    )
-                    .clone(),
+                    ),
                 ));
                 let d = self.transpile_node_inner(child, &local_p, code);
-                code.push_str(&L::decl_float(&var, &d.clone()));
+                code.push_str(&L::decl_float(&var, &d));
                 var
             }
 
@@ -2613,11 +2603,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                             s = s_var,
                             p = point_var
                         ),
-                    )
-                    .clone(),
+                    ),
                 ));
                 let d = self.transpile_node_inner(child, &new_p, code);
-                code.push_str(&L::decl_float(&var, &d.clone()));
+                code.push_str(&L::decl_float(&var, &d));
                 var
             }
 
@@ -3041,8 +3030,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                             sy = sy,
                             sz = sz
                         ),
-                    )
-                    .clone(),
+                    ),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
             }

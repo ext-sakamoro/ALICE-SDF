@@ -333,9 +333,10 @@ impl MeshCache {
 /// Uses JSON serialization of the node for a stable, content-based hash.
 /// The same logical SDF tree will always produce the same hash.
 pub fn hash_sdf_node(node: &SdfNode) -> u64 {
-    let json = serde_json::to_string(node).unwrap_or_default();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    json.hash(&mut hasher);
+    serde_json::to_string(node)
+        .unwrap_or_default()
+        .hash(&mut hasher);
     hasher.finish()
 }
 
@@ -540,7 +541,7 @@ mod tests {
         assert_eq!(mesh1.vertex_count(), 10);
 
         // Second call: generator should NOT run.
-        let mesh2 = cache.get_or_generate(key.clone(), || {
+        let mesh2 = cache.get_or_generate(key, || {
             call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             make_test_mesh(20, 10)
         });

@@ -47,7 +47,7 @@ pub struct AsdfHeader {
 impl AsdfHeader {
     /// Create a new header for a tree
     pub fn new(tree: &SdfTree, body_crc: u32) -> Self {
-        AsdfHeader {
+        Self {
             magic: ASDF_MAGIC,
             version: ASDF_VERSION,
             flags: 0,
@@ -88,7 +88,7 @@ impl AsdfHeader {
         let node_count = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
         let crc32 = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
 
-        Ok(AsdfHeader {
+        Ok(Self {
             magic,
             version,
             flags,

@@ -12,7 +12,7 @@
 /// - `t = 0.5` gives midpoint blend
 #[inline(always)]
 pub fn sdf_morph(a: f32, b: f32, t: f32) -> f32 {
-    a * (1.0 - t) + b * t
+    a.mul_add(1.0 - t, b * t)
 }
 
 #[cfg(test)]

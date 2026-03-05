@@ -30,8 +30,8 @@ pub struct Splatmap {
 
 impl Splatmap {
     /// Create an empty splatmap
-    pub fn new(width: u32, depth: u32) -> Self {
-        Splatmap {
+    pub const fn new(width: u32, depth: u32) -> Self {
+        Self {
             layers: Vec::new(),
             width,
             depth,

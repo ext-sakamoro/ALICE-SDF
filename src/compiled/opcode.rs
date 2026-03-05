@@ -315,33 +315,33 @@ impl OpCode {
         self.is_transform()
             || matches!(
                 self,
-                OpCode::Twist
-                    | OpCode::Bend
-                    | OpCode::RepeatInfinite
-                    | OpCode::RepeatFinite
-                    | OpCode::Elongate
-                    | OpCode::Mirror
-                    | OpCode::Revolution
-                    | OpCode::Extrude
-                    | OpCode::SweepBezier
-                    | OpCode::Taper
-                    | OpCode::PolarRepeat
-                    | OpCode::OctantMirror
-                    | OpCode::Shear
+                Self::Twist
+                    | Self::Bend
+                    | Self::RepeatInfinite
+                    | Self::RepeatFinite
+                    | Self::Elongate
+                    | Self::Mirror
+                    | Self::Revolution
+                    | Self::Extrude
+                    | Self::SweepBezier
+                    | Self::Taper
+                    | Self::PolarRepeat
+                    | Self::OctantMirror
+                    | Self::Shear
             )
     }
 
     /// Returns true if this opcode post-processes the distance value
     #[inline]
-    pub fn is_post_process(self) -> bool {
+    pub const fn is_post_process(self) -> bool {
         matches!(
             self,
-            OpCode::Round
-                | OpCode::Onion
-                | OpCode::Scale
-                | OpCode::Noise
-                | OpCode::Extrude
-                | OpCode::Displacement
+            Self::Round
+                | Self::Onion
+                | Self::Scale
+                | Self::Noise
+                | Self::Extrude
+                | Self::Displacement
         )
     }
 }

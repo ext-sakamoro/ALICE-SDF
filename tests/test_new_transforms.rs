@@ -1,6 +1,6 @@
 //! Integration tests for new Transform variants
 //!
-//! Tests ProjectiveTransform, LatticeDeform, and SdfSkinning
+//! Tests `ProjectiveTransform`, `LatticeDeform`, and `SdfSkinning`
 //!
 //! Author: Moroya Sakamoto
 
@@ -26,9 +26,7 @@ fn test_projective_transform_identity() {
 
     assert!(
         (d_original - d_transformed).abs() < 1e-5,
-        "Identity projection should not change distance: {} vs {}",
-        d_original,
-        d_transformed
+        "Identity projection should not change distance: {d_original} vs {d_transformed}"
     );
 }
 
@@ -51,6 +49,7 @@ fn test_projective_transform_lipschitz_bound() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss)]
 fn test_lattice_deform_identity() {
     // Control points at regular grid = identity deformation
     let mut control_points = Vec::new();
@@ -70,16 +69,15 @@ fn test_lattice_deform_identity() {
     let d = eval(&deformed, p);
 
     // Should be close to sphere at (0.5, 0.5, 0.5) - radius 0.3 = distance
-    let expected = ((0.5_f32 * 0.5 + 0.5 * 0.5 + 0.5 * 0.5).sqrt() - 0.3).abs();
+    let expected = (0.5f32.mul_add(0.5, 0.5_f32.mul_add(0.5, 0.5 * 0.5)).sqrt() - 0.3).abs();
     assert!(
         (d - expected).abs() < 0.2,
-        "Identity lattice should preserve approximate distance: {} vs {}",
-        d,
-        expected
+        "Identity lattice should preserve approximate distance: {d} vs {expected}"
     );
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss)]
 fn test_lattice_deform_warp() {
     // Control points with slight offset = warped space
     let mut control_points = Vec::new();
@@ -90,7 +88,7 @@ fn test_lattice_deform_warp() {
                 let y = j as f32 / 3.0;
                 let z = k as f32 / 3.0;
                 // Add a slight wave
-                let offset = Vec3::new(0.1 * (y * 3.14).sin(), 0.0, 0.0);
+                let offset = Vec3::new(0.1 * (y * std::f32::consts::PI).sin(), 0.0, 0.0);
                 control_points.push(Vec3::new(x, y, z) + offset);
             }
         }
@@ -130,9 +128,7 @@ fn test_sdf_skinning_identity() {
 
     assert!(
         (d_original - d_skinned).abs() < 1e-4,
-        "Identity skinning should not change distance: {} vs {}",
-        d_original,
-        d_skinned
+        "Identity skinning should not change distance: {d_original} vs {d_skinned}"
     );
 }
 
@@ -195,9 +191,7 @@ fn test_sdf_skinning_multi_bone() {
 
     assert!(
         (d_original - d_skinned).abs() < 1e-4,
-        "Multi-bone identity skinning should not change distance: {} vs {}",
-        d_original,
-        d_skinned
+        "Multi-bone identity skinning should not change distance: {d_original} vs {d_skinned}"
     );
 }
 

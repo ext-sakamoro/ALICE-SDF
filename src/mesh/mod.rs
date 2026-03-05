@@ -121,8 +121,8 @@ pub struct Vertex {
 
 impl Vertex {
     /// Create a new vertex with position and normal (UV/tangent/color default)
-    pub fn new(position: glam::Vec3, normal: glam::Vec3) -> Self {
-        Vertex {
+    pub const fn new(position: glam::Vec3, normal: glam::Vec3) -> Self {
+        Self {
             position,
             normal,
             uv: glam::Vec2::ZERO,
@@ -134,7 +134,7 @@ impl Vertex {
     }
 
     /// Create a vertex with all fields specified
-    pub fn with_all(
+    pub const fn with_all(
         position: glam::Vec3,
         normal: glam::Vec3,
         uv: glam::Vec2,
@@ -143,7 +143,7 @@ impl Vertex {
         color: [f32; 4],
         material_id: u32,
     ) -> Self {
-        Vertex {
+        Self {
             position,
             normal,
             uv,
@@ -168,7 +168,7 @@ pub struct Triangle {
 
 impl Triangle {
     /// Create a new triangle
-    pub fn new(a: u32, b: u32, c: u32) -> Self {
-        Triangle { a, b, c }
+    pub const fn new(a: u32, b: u32, c: u32) -> Self {
+        Self { a, b, c }
     }
 }

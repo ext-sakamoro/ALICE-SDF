@@ -280,7 +280,7 @@ mod tests {
 
         // Generate many points
         let points: Vec<Vec3> = (0..1000)
-            .map(|i| Vec3::new(i as f32 * 0.01 - 5.0, 0.0, 0.0))
+            .map(|i| Vec3::new((i as f32).mul_add(0.01, -5.0), 0.0, 0.0))
             .collect();
 
         let soa = SoAPoints::from_vec3_slice(&points);

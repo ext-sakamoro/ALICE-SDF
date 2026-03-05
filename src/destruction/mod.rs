@@ -105,11 +105,11 @@ impl MutableVoxelGrid {
             .par_chunks_mut((rx * ry) as usize)
             .enumerate()
             .for_each(|(z, slab)| {
-                let wz = bounds_min.z + (z as f32) * step.z + half_step.z;
+                let wz = (z as f32).mul_add(step.z, bounds_min.z) + half_step.z;
                 for y in 0..ry {
-                    let wy = bounds_min.y + (y as f32) * step.y + half_step.y;
+                    let wy = (y as f32).mul_add(step.y, bounds_min.y) + half_step.y;
                     for x in 0..rx {
-                        let wx = bounds_min.x + (x as f32) * step.x + half_step.x;
+                        let wx = (x as f32).mul_add(step.x, bounds_min.x) + half_step.x;
                         let idx = (x + y * rx) as usize;
                         slab[idx] = eval(node, Vec3::new(wx, wy, wz));
                     }
@@ -123,7 +123,7 @@ impl MutableVoxelGrid {
         ];
         let total_chunks = (chunks_per_axis[0] * chunks_per_axis[1] * chunks_per_axis[2]) as usize;
 
-        MutableVoxelGrid {
+        Self {
             distances,
             materials,
             resolution,
@@ -137,13 +137,13 @@ impl MutableVoxelGrid {
 
     /// Total number of voxels
     #[inline]
-    pub fn voxel_count(&self) -> usize {
+    pub const fn voxel_count(&self) -> usize {
         (self.resolution[0] * self.resolution[1] * self.resolution[2]) as usize
     }
 
     /// Get voxel index from grid coordinates
     #[inline]
-    pub fn voxel_index(&self, x: u32, y: u32, z: u32) -> usize {
+    pub const fn voxel_index(&self, x: u32, y: u32, z: u32) -> usize {
         (x + y * self.resolution[0] + z * self.resolution[0] * self.resolution[1]) as usize
     }
 
@@ -263,13 +263,13 @@ impl MutableVoxelGrid {
 
     /// Get chunk size
     #[inline]
-    pub fn chunk_size(&self) -> u32 {
+    pub const fn chunk_size(&self) -> u32 {
         self.chunk_size
     }
 
     /// Get chunks per axis
     #[inline]
-    pub fn chunks_per_axis(&self) -> [u32; 3] {
+    pub const fn chunks_per_axis(&self) -> [u32; 3] {
         self.chunks_per_axis
     }
 
@@ -971,6 +971,9 @@ mod tests {
         // Remesh a chunk that should contain sphere surface
         let mesh = grid.remesh_chunk(0, 0, 0);
         // This chunk covers [-2, 0] in all axes, sphere surface is at radius 1
-        assert!(mesh.vertices.len() > 0 || mesh.indices.len() >= 0);
+        // Chunk covers [-2, 0] in all axes; sphere surface is at radius 1.
+        // The mesh may or may not contain triangles depending on resolution,
+        // but remesh_chunk must not panic.
+        let _ = &mesh;
     }
 }

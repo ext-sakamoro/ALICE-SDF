@@ -12,8 +12,11 @@ use std::hash::{Hash, Hasher};
 /// so that nearby lookups share cache entries.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct GridPoint {
+    /// X grid coordinate.
     pub x: i32,
+    /// Y grid coordinate.
     pub y: i32,
+    /// Z grid coordinate.
     pub z: i32,
 }
 

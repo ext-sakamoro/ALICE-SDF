@@ -383,7 +383,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         }
         SdfNode::Revolution { child, offset } => {
             // q = (|p.xz| - offset, p.y, 0)
-            let r_xz = (point.x * point.x + point.z * point.z).sqrt().max(1e-10);
+            let r_xz = point.x.hypot(point.z).max(1e-10);
             let q = Vec3::new(r_xz - *offset, point.y, 0.0);
             let g = eval_gradient(child, q);
             // ∂qₓ/∂pₓ = pₓ/r_xz, ∂qₓ/∂p_z = p_z/r_xz, ∂q_y/∂p_y = 1
@@ -401,7 +401,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
 
             if d2d > 0.0 && w_y > 0.0 {
                 // Outside both: blend
-                let len = (d2d * d2d + w_y * w_y).sqrt().max(1e-10);
+                let len = d2d.hypot(w_y).max(1e-10);
                 (grad_xy * d2d + grad_z * w_y) / len
             } else if d2d > w_y {
                 grad_xy
@@ -414,16 +414,16 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let k = *strength;
             let (s, c) = (point.y * k).sin_cos();
             let q = Vec3::new(
-                point.x * c - point.z * s,
+                point.x.mul_add(c, -(point.z * s)),
                 point.y,
-                point.x * s + point.z * c,
+                point.x.mul_add(s, point.z * c),
             );
             let g = eval_gradient(child, q);
             // J^T = [[c, 0, s], [-k·q_z, 1, k·q_x], [-s, 0, c]]
             Vec3::new(
-                c * g.x + s * g.z,
-                -k * q.z * g.x + g.y + k * q.x * g.z,
-                -s * g.x + c * g.z,
+                c.mul_add(g.x, s * g.z),
+                (k * q.x).mul_add(g.z, (-k * q.z).mul_add(g.x, g.y)),
+                (-s).mul_add(g.x, c * g.z),
             )
         }
         SdfNode::Bend { child, curvature } => {
@@ -431,15 +431,15 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let k = *curvature;
             let (s, c) = (k * point.x).sin_cos();
             let q = Vec3::new(
-                c * point.x - s * point.y,
-                s * point.x + c * point.y,
+                c.mul_add(point.x, -(s * point.y)),
+                s.mul_add(point.x, c * point.y),
                 point.z,
             );
             let g = eval_gradient(child, q);
             // J^T = [[c-k·q_y, s+k·q_x, 0], [-s, c, 0], [0, 0, 1]]
             Vec3::new(
-                (c - k * q.y) * g.x + (s + k * q.x) * g.y,
-                -s * g.x + c * g.y,
+                k.mul_add(-q.y, c).mul_add(g.x, k.mul_add(q.x, s) * g.y),
+                (-s).mul_add(g.x, c * g.y),
                 g.z,
             )
         }
@@ -472,13 +472,15 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         SdfNode::Shear { child, shear } => {
             let p = Vec3::new(
                 point.x,
-                point.y - shear.x * point.x,
-                point.z - shear.y * point.x - shear.z * point.y,
+                shear.x.mul_add(-point.x, point.y),
+                shear
+                    .z
+                    .mul_add(-point.y, shear.y.mul_add(-point.x, point.z)),
             );
             let g = eval_gradient(child, p);
             Vec3::new(
-                g.x - shear.x * g.y - shear.y * g.z,
-                g.y - shear.z * g.z,
+                shear.y.mul_add(-g.z, shear.x.mul_add(-g.y, g.x)),
+                shear.z.mul_add(-g.z, g.y),
                 g.z,
             )
         }
@@ -578,13 +580,13 @@ fn grad_box3d(point: Vec3, half_extents: Vec3) -> Vec3 {
 /// Cylinder: combines radial (XZ) and axial (Y) gradients
 #[inline(always)]
 fn grad_cylinder(point: Vec3, radius: f32, half_height: f32) -> Vec3 {
-    let r_xz = (point.x * point.x + point.z * point.z).sqrt();
+    let r_xz = point.x.hypot(point.z);
     let dr = r_xz - radius;
     let dy = point.y.abs() - half_height;
 
     if dr > 0.0 && dy > 0.0 {
         // Outside corner
-        let len = (dr * dr + dy * dy).sqrt().max(1e-10);
+        let len = dr.hypot(dy).max(1e-10);
         let radial = if r_xz > 1e-10 {
             Vec3::new(point.x / r_xz * dr, 0.0, point.z / r_xz * dr)
         } else {
@@ -608,9 +610,9 @@ fn grad_cylinder(point: Vec3, radius: f32, half_height: f32) -> Vec3 {
 /// Torus: f = |q| - r where q = (|p.xz| - R, p.y)
 #[inline(always)]
 fn grad_torus(point: Vec3, major_radius: f32, _minor_radius: f32) -> Vec3 {
-    let r_xz = (point.x * point.x + point.z * point.z).sqrt().max(1e-10);
+    let r_xz = point.x.hypot(point.z).max(1e-10);
     let qx = r_xz - major_radius;
-    let q_len = (qx * qx + point.y * point.y).sqrt().max(1e-10);
+    let q_len = qx.hypot(point.y).max(1e-10);
     Vec3::new(
         qx * point.x / (q_len * r_xz),
         point.y / q_len,
@@ -636,7 +638,7 @@ fn grad_capsule(point: Vec3, a: Vec3, b: Vec3) -> Vec3 {
 /// Infinite cylinder along Y: f = |p.xz| - r → ∇f = (px,0,pz)/|p.xz|
 #[inline(always)]
 fn grad_infinite_cylinder(point: Vec3) -> Vec3 {
-    let r = (point.x * point.x + point.z * point.z).sqrt();
+    let r = point.x.hypot(point.z);
     if r < 1e-10 {
         return Vec3::X;
     }
@@ -651,14 +653,14 @@ fn grad_gyroid(point: Vec3, scale: f32, _thickness: f32) -> Vec3 {
     let (sx, cx) = sp.x.sin_cos();
     let (sy, cy) = sp.y.sin_cos();
     let (sz, cz) = sp.z.sin_cos();
-    let g = sx * cy + sy * cz + sz * cx;
+    let g = sz.mul_add(cx, sx.mul_add(cy, sy * cz));
     let sign_g = if g >= 0.0 { 1.0 } else { -1.0 };
     // ∇(g/scale)/∂p = (∂g/∂sp · scale) / scale = ∂g/∂sp
     // ∇(|g|/scale) = sign(g) · ∇(g/scale) = sign(g) · ∂g/∂sp
     Vec3::new(
-        sign_g * (cx * cy - sz * sx),
-        sign_g * (-sx * sy + cy * cz),
-        sign_g * (-sy * sz + cz * cx),
+        sign_g * cx.mul_add(cy, -(sz * sx)),
+        sign_g * (-sx).mul_add(sy, cy * cz),
+        sign_g * (-sy).mul_add(sz, cz * cx),
     )
 }
 
@@ -731,7 +733,7 @@ fn smooth_max_weights(da: f32, db: f32, k: f32) -> (f32, f32) {
 /// Gradient of chamfer_min = min(a, b, (a+b)*FRAC_1_SQRT_2 - r)
 #[inline(always)]
 fn grad_chamfer_min(da: f32, db: f32, r: f32, ga: Vec3, gb: Vec3) -> Vec3 {
-    let chamfer_val = (da + db) * FRAC_1_SQRT_2 - r;
+    let chamfer_val = (da + db).mul_add(FRAC_1_SQRT_2, -r);
     let min_ab = da.min(db);
 
     if chamfer_val < min_ab {

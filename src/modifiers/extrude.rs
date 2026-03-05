@@ -31,7 +31,7 @@ pub fn modifier_extrude(child_distance: f32, p_z: f32, half_height: f32) -> f32 
 /// Maps the point to the XY plane by zeroing out Z.
 /// The child SDF should be evaluated at this transformed point.
 #[inline(always)]
-pub fn modifier_extrude_point(p: Vec3) -> Vec3 {
+pub const fn modifier_extrude_point(p: Vec3) -> Vec3 {
     Vec3::new(p.x, p.y, 0.0)
 }
 

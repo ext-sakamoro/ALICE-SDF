@@ -25,7 +25,7 @@ pub fn sdf_hex_prism(p: Vec3, hex_radius: f32, half_height: f32) -> f32 {
     let pz = p.z.abs();
 
     // Reflect across hex symmetry
-    let dot_kxy = kx * px + ky * py;
+    let dot_kxy = kx.mul_add(px, ky * py);
     let reflect = 2.0 * dot_kxy.min(0.0);
     px -= reflect * kx;
     py -= reflect * ky;
@@ -34,7 +34,7 @@ pub fn sdf_hex_prism(p: Vec3, hex_radius: f32, half_height: f32) -> f32 {
     let clamped_x = px.clamp(-kz * hex_radius, kz * hex_radius);
     let dx = px - clamped_x;
     let dy = py - hex_radius;
-    let d_xy = (dx * dx + dy * dy).sqrt() * dy.signum();
+    let d_xy = dx.hypot(dy) * dy.signum();
 
     // Distance along Z
     let d_z = pz - half_height;

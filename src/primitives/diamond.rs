@@ -21,7 +21,7 @@ pub fn sdf_diamond(p: Vec3, radius: f32, half_height: f32) -> f32 {
     let closest = Vec2::new(radius, 0.0) + ba * t;
     let dist = (q - closest).length();
     // Sign: inside if r/radius + y/half_height < 1
-    if q.x * half_height + q.y * radius < radius * half_height {
+    if q.x.mul_add(half_height, q.y * radius) < radius * half_height {
         -dist
     } else {
         dist

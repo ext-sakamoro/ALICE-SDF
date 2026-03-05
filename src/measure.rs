@@ -53,7 +53,7 @@ struct Rng64 {
 }
 
 impl Rng64 {
-    fn new(seed: u64) -> Self {
+    const fn new(seed: u64) -> Self {
         Self {
             state: seed.wrapping_add(0x9E3779B97F4A7C15),
         }
@@ -77,7 +77,7 @@ impl Rng64 {
     /// Uniform f32 in [lo, hi).
     #[inline(always)]
     fn next_range(&mut self, lo: f32, hi: f32) -> f32 {
-        lo + self.next_f32() * (hi - lo)
+        self.next_f32().mul_add(hi - lo, lo)
     }
 }
 

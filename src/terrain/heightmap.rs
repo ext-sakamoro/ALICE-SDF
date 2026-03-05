@@ -29,7 +29,7 @@ pub struct Heightmap {
 impl Heightmap {
     /// Create a flat heightmap (all zeros)
     pub fn new(width: u32, depth: u32, world_width: f32, world_depth: f32) -> Self {
-        Heightmap {
+        Self {
             heights: vec![0.0; (width * depth) as usize],
             width,
             depth,
@@ -49,7 +49,7 @@ impl Heightmap {
         world_depth: f32,
     ) -> Self {
         assert_eq!(heights.len(), (width * depth) as usize);
-        Heightmap {
+        Self {
             heights,
             width,
             depth,
@@ -96,10 +96,10 @@ impl Heightmap {
         let h01 = self.get_height(x0, z1);
         let h11 = self.get_height(x1, z1);
 
-        let h0 = h00 + (h10 - h00) * tx;
-        let h1 = h01 + (h11 - h01) * tx;
+        let h0 = (h10 - h00).mul_add(tx, h00);
+        let h1 = (h11 - h01).mul_add(tx, h01);
 
-        h0 + (h1 - h0) * tz
+        (h1 - h0).mul_add(tz, h0)
     }
 
     /// Sample height using bicubic interpolation (smoother)
@@ -162,8 +162,8 @@ impl Heightmap {
                 let mut max_amp = 0.0f32;
 
                 for oct in 0..octaves {
-                    let nx = wx * frequency + (seed as f32 + oct as f32 * 31.7);
-                    let nz = wz * frequency + (seed as f32 * 0.7 + oct as f32 * 17.3);
+                    let nx = wx * frequency + (oct as f32).mul_add(31.7, seed as f32);
+                    let nz = wz * frequency + (seed as f32).mul_add(0.7, oct as f32 * 17.3);
                     let n = hash_noise_2d(nx, nz);
                     value += n * amplitude;
                     max_amp += amplitude;
@@ -208,7 +208,7 @@ impl Heightmap {
 
     /// Total number of height samples
     #[inline]
-    pub fn sample_count(&self) -> usize {
+    pub const fn sample_count(&self) -> usize {
         (self.width * self.depth) as usize
     }
 
@@ -258,7 +258,7 @@ impl Heightmap {
         let raw = gray.as_raw();
         let heights: Vec<f32> = raw.iter().map(|&p| p as f32 * scale).collect();
 
-        Ok(Heightmap {
+        Ok(Self {
             heights,
             width,
             depth: height,
@@ -285,7 +285,7 @@ pub struct HeightmapImageConfig {
 #[cfg(feature = "image")]
 impl Default for HeightmapImageConfig {
     fn default() -> Self {
-        HeightmapImageConfig {
+        Self {
             height_scale: 100.0,
             world_width: None,
             world_depth: None,
@@ -296,8 +296,8 @@ impl Default for HeightmapImageConfig {
 #[cfg(feature = "image")]
 impl HeightmapImageConfig {
     /// Create config with custom height scale and world dimensions
-    pub fn new(height_scale: f32, world_width: f32, world_depth: f32) -> Self {
-        HeightmapImageConfig {
+    pub const fn new(height_scale: f32, world_width: f32, world_depth: f32) -> Self {
+        Self {
             height_scale,
             world_width: Some(world_width),
             world_depth: Some(world_depth),
@@ -310,9 +310,9 @@ impl HeightmapImageConfig {
 fn cubic_weight(t: f32) -> f32 {
     let t = t.abs();
     if t <= 1.0 {
-        (1.5 * t - 2.5) * t * t + 1.0
+        (1.5f32.mul_add(t, -2.5) * t).mul_add(t, 1.0)
     } else if t <= 2.0 {
-        ((-0.5 * t + 2.5) * t - 4.0) * t + 2.0
+        (-0.5f32).mul_add(t, 2.5).mul_add(t, -4.0).mul_add(t, 2.0)
     } else {
         0.0
     }
@@ -326,18 +326,18 @@ fn hash_noise_2d(x: f32, z: f32) -> f32 {
     let fz = z - z.floor();
 
     // Smoothstep
-    let sx = fx * fx * (3.0 - 2.0 * fx);
-    let sz = fz * fz * (3.0 - 2.0 * fz);
+    let sx = fx * fx * 2.0f32.mul_add(-fx, 3.0);
+    let sz = fz * fz * 2.0f32.mul_add(-fz, 3.0);
 
     let h00 = hash_2d(ix, iz);
     let h10 = hash_2d(ix + 1, iz);
     let h01 = hash_2d(ix, iz + 1);
     let h11 = hash_2d(ix + 1, iz + 1);
 
-    let h0 = h00 + (h10 - h00) * sx;
-    let h1 = h01 + (h11 - h01) * sx;
+    let h0 = (h10 - h00).mul_add(sx, h00);
+    let h1 = (h11 - h01).mul_add(sx, h01);
 
-    h0 + (h1 - h0) * sz
+    (h1 - h0).mul_add(sz, h0)
 }
 
 /// Integer hash -> float in [-1, 1]
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn test_normal_at() {
-        let mut hm = Heightmap::new(8, 8, 8.0, 8.0);
+        let hm = Heightmap::new(8, 8, 8.0, 8.0);
         // Flat terrain
         let n = hm.normal_at(4.0, 4.0);
         assert!(

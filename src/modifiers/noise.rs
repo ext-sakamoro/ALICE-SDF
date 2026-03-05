@@ -24,7 +24,7 @@ pub fn modifier_noise_perlin(
         point.z * frequency,
         seed,
     );
-    distance + noise * amplitude
+    noise.mul_add(amplitude, distance)
 }
 
 /// Apply simplex-like noise displacement
@@ -109,16 +109,16 @@ pub fn fbm_noise_3d(
 
 #[inline(always)]
 fn fade(t: f32) -> f32 {
-    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    t * t * t * t.mul_add(t.mul_add(6.0, -15.0), 10.0)
 }
 
 #[inline(always)]
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + t * (b - a)
+    t.mul_add(b - a, a)
 }
 
 #[inline(always)]
-fn hash3d(x: i32, y: i32, z: i32, seed: u32) -> u32 {
+const fn hash3d(x: i32, y: i32, z: i32, seed: u32) -> u32 {
     let mut h = seed;
     h ^= x as u32;
     h = h.wrapping_mul(0x85EBCA6B);
@@ -169,8 +169,8 @@ fn grad3d(hash: u32, x: f32, y: f32, z: f32) -> f32 {
     let v_neg = entry & 1;
 
     // Branchless sign application: val * (1 - 2 * sign_bit)
-    let u = coords[u_src] * (1.0 - 2.0 * u_neg as f32);
-    let v = coords[v_src] * (1.0 - 2.0 * v_neg as f32);
+    let u = coords[u_src] * 2.0f32.mul_add(-(u_neg as f32), 1.0);
+    let v = coords[v_src] * 2.0f32.mul_add(-(v_neg as f32), 1.0);
     u + v
 }
 
@@ -252,7 +252,7 @@ pub fn modifier_noise_perlin_batch8(
     let noise = perlin_noise_3d_batch8(&scaled, seed);
     let mut result = [0.0f32; 8];
     for i in 0..8 {
-        result[i] = distances[i] + noise[i] * amplitude;
+        result[i] = noise[i].mul_add(amplitude, distances[i]);
     }
     result
 }
@@ -296,6 +296,6 @@ mod tests {
     #[test]
     fn test_fbm() {
         let n = fbm_noise_3d(1.5, 2.5, 3.5, 42, 4, 2.0, 0.5);
-        assert!(n >= -1.0 && n <= 1.0);
+        assert!((-1.0..=1.0).contains(&n));
     }
 }

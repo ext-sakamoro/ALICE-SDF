@@ -54,7 +54,7 @@ pub struct DecimateConfig {
 
 impl Default for DecimateConfig {
     fn default() -> Self {
-        DecimateConfig {
+        Self {
             target_ratio: 0.5,
             max_error: f32::MAX,
             preserve_boundary: true,
@@ -66,8 +66,8 @@ impl Default for DecimateConfig {
 
 impl DecimateConfig {
     /// Aggressive decimation (25% remaining)
-    pub fn aggressive() -> Self {
-        DecimateConfig {
+    pub const fn aggressive() -> Self {
+        Self {
             target_ratio: 0.25,
             max_error: f32::MAX,
             preserve_boundary: false,
@@ -77,8 +77,8 @@ impl DecimateConfig {
     }
 
     /// Conservative decimation (75% remaining)
-    pub fn conservative() -> Self {
-        DecimateConfig {
+    pub const fn conservative() -> Self {
+        Self {
             target_ratio: 0.75,
             max_error: 0.01,
             preserve_boundary: true,
@@ -100,13 +100,13 @@ struct Quadric {
 }
 
 impl Quadric {
-    fn zero() -> Self {
-        Quadric { data: [0.0; 10] }
+    const fn zero() -> Self {
+        Self { data: [0.0; 10] }
     }
 
     /// Create quadric from plane equation ax + by + cz + d = 0
     fn from_plane(a: f64, b: f64, c: f64, d: f64) -> Self {
-        Quadric {
+        Self {
             data: [
                 a * a,
                 a * b,
@@ -123,8 +123,8 @@ impl Quadric {
     }
 
     #[inline]
-    fn add(&self, other: &Quadric) -> Quadric {
-        let mut result = Quadric::zero();
+    fn add(&self, other: &Self) -> Self {
+        let mut result = Self::zero();
         for i in 0..10 {
             result.data[i] = self.data[i] + other.data[i];
         }
@@ -136,16 +136,26 @@ impl Quadric {
     fn evaluate(&self, x: f64, y: f64, z: f64) -> f64 {
         let d = &self.data;
         // v^T * Q * v where v = [x, y, z, 1]
-        x * x * d[0]
-            + 2.0 * x * y * d[1]
-            + 2.0 * x * z * d[2]
-            + 2.0 * x * d[3]
-            + y * y * d[4]
-            + 2.0 * y * z * d[5]
-            + 2.0 * y * d[6]
-            + z * z * d[7]
-            + 2.0 * z * d[8]
-            + d[9]
+        (2.0 * z).mul_add(
+            d[8],
+            (z * z).mul_add(
+                d[7],
+                (2.0 * y).mul_add(
+                    d[6],
+                    (2.0 * y * z).mul_add(
+                        d[5],
+                        (y * y).mul_add(
+                            d[4],
+                            (2.0 * x).mul_add(
+                                d[3],
+                                (2.0 * x * z)
+                                    .mul_add(d[2], (x * x).mul_add(d[0], 2.0 * x * y * d[1])),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ) + d[9]
     }
 
     /// Find optimal point that minimizes error.
@@ -156,24 +166,37 @@ impl Quadric {
         let b = [-d[3], -d[6], -d[8]];
 
         // Cramer's rule
-        let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-            - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-            + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+        let det = a[0][2].mul_add(
+            a[1][0].mul_add(a[2][1], -(a[1][1] * a[2][0])),
+            a[0][0].mul_add(
+                a[1][1].mul_add(a[2][2], -(a[1][2] * a[2][1])),
+                -(a[0][1] * a[1][0].mul_add(a[2][2], -(a[1][2] * a[2][0]))),
+            ),
+        );
 
         if det.abs() > 1e-10 {
             let inv_det = 1.0 / det;
-            let x = (b[0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-                - a[0][1] * (b[1] * a[2][2] - a[1][2] * b[2])
-                + a[0][2] * (b[1] * a[2][1] - a[1][1] * b[2]))
-                * inv_det;
-            let y = (a[0][0] * (b[1] * a[2][2] - a[1][2] * b[2])
-                - b[0] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-                + a[0][2] * (a[1][0] * b[2] - b[1] * a[2][0]))
-                * inv_det;
-            let z = (a[0][0] * (a[1][1] * b[2] - b[1] * a[2][1])
-                - a[0][1] * (a[1][0] * b[2] - b[1] * a[2][0])
-                + b[0] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]))
-                * inv_det;
+            let x = a[0][2].mul_add(
+                b[1].mul_add(a[2][1], -(a[1][1] * b[2])),
+                b[0].mul_add(
+                    a[1][1].mul_add(a[2][2], -(a[1][2] * a[2][1])),
+                    -(a[0][1] * b[1].mul_add(a[2][2], -(a[1][2] * b[2]))),
+                ),
+            ) * inv_det;
+            let y = a[0][2].mul_add(
+                a[1][0].mul_add(b[2], -(b[1] * a[2][0])),
+                a[0][0].mul_add(
+                    b[1].mul_add(a[2][2], -(a[1][2] * b[2])),
+                    -(b[0] * a[1][0].mul_add(a[2][2], -(a[1][2] * a[2][0]))),
+                ),
+            ) * inv_det;
+            let z = b[0].mul_add(
+                a[1][0].mul_add(a[2][1], -(a[1][1] * a[2][0])),
+                a[0][0].mul_add(
+                    a[1][1].mul_add(b[2], -(b[1] * a[2][1])),
+                    -(a[0][1] * a[1][0].mul_add(b[2], -(b[1] * a[2][0]))),
+                ),
+            ) * inv_det;
             Vec3::new(x as f32, y as f32, z as f32)
         } else {
             // Singular — try midpoint, v1, v2 and pick lowest error
@@ -229,10 +252,10 @@ fn interpolate_attributes(v1: &Vertex, v2: &Vertex, optimal_pos: Vec3) -> Vertex
 
     // Interpolate color
     let color = [
-        v1.color[0] * one_minus_t + v2.color[0] * t,
-        v1.color[1] * one_minus_t + v2.color[1] * t,
-        v1.color[2] * one_minus_t + v2.color[2] * t,
-        v1.color[3] * one_minus_t + v2.color[3] * t,
+        v1.color[0].mul_add(one_minus_t, v2.color[0] * t),
+        v1.color[1].mul_add(one_minus_t, v2.color[1] * t),
+        v1.color[2].mul_add(one_minus_t, v2.color[2] * t),
+        v1.color[3].mul_add(one_minus_t, v2.color[3] * t),
     ];
 
     // Material ID from closer endpoint

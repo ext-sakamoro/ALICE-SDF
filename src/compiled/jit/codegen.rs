@@ -30,7 +30,7 @@ struct JitParamEmitter {
 }
 
 impl JitParamEmitter {
-    fn hardcoded() -> Self {
+    const fn hardcoded() -> Self {
         Self {
             params_ptr: None,
             param_index: 0,
@@ -38,7 +38,7 @@ impl JitParamEmitter {
         }
     }
 
-    fn dynamic(params_ptr: Value) -> Self {
+    const fn dynamic(params_ptr: Value) -> Self {
         Self {
             params_ptr: Some(params_ptr),
             param_index: 0,
@@ -303,10 +303,10 @@ fn compile_node(
             // ba = b - a
             let bax = builder.ins().fsub(bx_v, ax_v);
             let bay = builder.ins().fsub(by_v, ay_v);
-            let baz = builder.ins().fsub(bz_v, az_v);
+            let ba_z = builder.ins().fsub(bz_v, az_v);
 
             // h = clamp(dot(pa, ba) * inv_dot_ba_ba, 0, 1)
-            let dot_pa_ba = emit_dot3(builder, pax, pay, paz, bax, bay, baz);
+            let dot_pa_ba = emit_dot3(builder, pax, pay, paz, bax, bay, ba_z);
             let h_raw = builder.ins().fmul(dot_pa_ba, inv_dbb_v); // Division Exorcism!
             let zero = builder.ins().f32const(0.0);
             let one = builder.ins().f32const(1.0);
@@ -316,7 +316,7 @@ fn compile_node(
             // pa - ba * h
             let bhx = builder.ins().fmul(bax, h);
             let bhy = builder.ins().fmul(bay, h);
-            let bhz = builder.ins().fmul(baz, h);
+            let bhz = builder.ins().fmul(ba_z, h);
             let dx = builder.ins().fsub(pax, bhx);
             let dy = builder.ins().fsub(pay, bhy);
             let dz = builder.ins().fsub(paz, bhz);
@@ -345,7 +345,8 @@ fn compile_node(
             let k2y = builder.ins().fmul(two, h);
             // Division Exorcism: pre-compute 1/k2_dot
             let inv_k2_dot = {
-                let k2d_val = (*radius) * (*radius) + (2.0 * *half_height) * (2.0 * *half_height);
+                let k2d_val =
+                    (*radius).mul_add(*radius, (2.0 * *half_height) * (2.0 * *half_height));
                 let inv = if k2d_val.abs() < 1e-10 {
                     1.0
                 } else {
@@ -1353,6 +1354,7 @@ fn emit_stairs_min(builder: &mut FunctionBuilder, a: Value, b: Value, r: Value, 
 }
 
 /// Emit quaternion rotation from pre-loaded Values
+#[allow(clippy::too_many_arguments)]
 fn emit_quat_rotate(
     builder: &mut FunctionBuilder,
     x: Value,
@@ -1688,7 +1690,7 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(*radius);
             params.push(*half_height);
             // Division Exorcism: pre-compute inv_k2_dot
-            let k2d = radius * radius + (2.0 * half_height) * (2.0 * half_height);
+            let k2d = (2.0 * half_height).mul_add(2.0 * half_height, radius * radius);
             params.push(if k2d.abs() < 1e-10 { 1.0 } else { 1.0 / k2d });
         }
 

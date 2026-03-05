@@ -42,7 +42,7 @@ pub struct ShellConfig {
 impl ShellConfig {
     /// Create a new shell configuration.
     #[inline]
-    pub fn new(inner_offset: f32, outer_offset: f32) -> Self {
+    pub const fn new(inner_offset: f32, outer_offset: f32) -> Self {
         Self {
             inner_offset,
             outer_offset,
@@ -51,7 +51,7 @@ impl ShellConfig {
 
     /// Uniform thickness shell (same inner and outer offset).
     #[inline]
-    pub fn uniform(thickness: f32) -> Self {
+    pub const fn uniform(thickness: f32) -> Self {
         Self {
             inner_offset: thickness,
             outer_offset: thickness,

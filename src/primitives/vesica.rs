@@ -15,8 +15,11 @@ use glam::{Vec2, Vec3};
 #[inline(always)]
 pub fn sdf_vesica(p: Vec3, radius: f32, half_dist: f32) -> f32 {
     // 2D cross section in (r, y) where r = length(p.xz)
-    let q = Vec2::new((p.x * p.x + p.z * p.z).sqrt(), p.y.abs());
-    let b = (radius * radius - half_dist * half_dist).max(0.0).sqrt();
+    let q = Vec2::new(p.x.hypot(p.z), p.y.abs());
+    let b = radius
+        .mul_add(radius, -(half_dist * half_dist))
+        .max(0.0)
+        .sqrt();
 
     if (q.y - b) * half_dist > q.x * b {
         (q - Vec2::new(0.0, b)).length()

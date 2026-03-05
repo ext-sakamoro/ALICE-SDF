@@ -18,10 +18,11 @@ fn bernstein3(t: f32, i: usize) -> f32 {
     }
 }
 
-/// Evaluate lattice deformation at point p
-/// control_points: (nx+1) * (ny+1) * (nz+1) control points
-/// bbox_min/bbox_max: lattice bounding box
-/// Returns deformed point and approximate Jacobian magnitude for distance correction
+/// Evaluate lattice deformation at point p.
+///
+/// `control_points`: `(nx+1) * (ny+1) * (nz+1)` control points.
+/// `bbox_min`/`bbox_max`: lattice bounding box.
+/// Returns deformed point and approximate Jacobian magnitude for distance correction.
 #[inline(always)]
 pub fn lattice_deform(
     p: Vec3,

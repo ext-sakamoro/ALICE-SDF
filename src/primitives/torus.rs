@@ -61,7 +61,12 @@ pub fn sdf_torus_capped(point: Vec3, major_radius: f32, minor_radius: f32, angle
     };
 
     let q = Vec2::new(
-        (p_xz.length_squared() + major_radius * major_radius - 2.0 * major_radius * k).sqrt(),
+        (2.0 * major_radius)
+            .mul_add(
+                -k,
+                major_radius.mul_add(major_radius, p_xz.length_squared()),
+            )
+            .sqrt(),
         point.y,
     );
     q.length() - minor_radius

@@ -15,9 +15,9 @@ pub fn modifier_repeat_infinite(point: Vec3, spacing: Vec3) -> Vec3 {
     // p - s * round(p / s) maps to [-s/2, s/2] range
     // Much faster than standard euclidean modulo logic
     Vec3::new(
-        point.x - spacing.x * (point.x / spacing.x).round(),
-        point.y - spacing.y * (point.y / spacing.y).round(),
-        point.z - spacing.z * (point.z / spacing.z).round(),
+        spacing.x.mul_add(-(point.x / spacing.x).round(), point.x),
+        spacing.y.mul_add(-(point.y / spacing.y).round(), point.y),
+        spacing.z.mul_add(-(point.z / spacing.z).round(), point.z),
     )
 }
 
@@ -28,9 +28,15 @@ pub fn modifier_repeat_infinite(point: Vec3, spacing: Vec3) -> Vec3 {
 #[inline(always)]
 pub fn modifier_repeat_infinite_rk(point: Vec3, spacing: Vec3, recip_spacing: Vec3) -> Vec3 {
     Vec3::new(
-        point.x - spacing.x * (point.x * recip_spacing.x).round(),
-        point.y - spacing.y * (point.y * recip_spacing.y).round(),
-        point.z - spacing.z * (point.z * recip_spacing.z).round(),
+        spacing
+            .x
+            .mul_add(-(point.x * recip_spacing.x).round(), point.x),
+        spacing
+            .y
+            .mul_add(-(point.y * recip_spacing.y).round(), point.y),
+        spacing
+            .z
+            .mul_add(-(point.z * recip_spacing.z).round(), point.z),
     )
 }
 
@@ -47,7 +53,7 @@ pub fn modifier_repeat_finite(point: Vec3, count: [u32; 3], spacing: Vec3) -> Ve
 #[inline(always)]
 pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
-        point.x - spacing * (point.x / spacing).round(),
+        spacing.mul_add(-(point.x / spacing).round(), point.x),
         point.y,
         point.z,
     )
@@ -58,7 +64,7 @@ pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
 pub fn modifier_repeat_y(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
-        point.y - spacing * (point.y / spacing).round(),
+        spacing.mul_add(-(point.y / spacing).round(), point.y),
         point.z,
     )
 }
@@ -69,7 +75,7 @@ pub fn modifier_repeat_z(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
         point.y,
-        point.z - spacing * (point.z / spacing).round(),
+        spacing.mul_add(-(point.z / spacing).round(), point.z),
     )
 }
 
@@ -79,11 +85,11 @@ pub fn modifier_repeat_polar(point: Vec3, count: u32) -> Vec3 {
     // Polar repeat is inherently somewhat heavy (atan2, sin/cos)
     // We minimize overheads around it.
     let angle = point.z.atan2(point.x);
-    let radius = (point.x * point.x + point.z * point.z).sqrt();
+    let radius = point.x.hypot(point.z);
 
     let sector = std::f32::consts::TAU / count as f32;
     // Align to sector center: a - s * round(a/s)
-    let sector_angle = angle - sector * (angle / sector).round();
+    let sector_angle = sector.mul_add(-(angle / sector).round(), angle);
 
     let (s, c) = sector_angle.sin_cos();
     Vec3::new(radius * c, point.y, radius * s)

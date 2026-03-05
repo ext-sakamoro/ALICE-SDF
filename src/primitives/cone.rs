@@ -17,7 +17,7 @@ use glam::Vec3;
 /// # Deep Fried: branchless min/max, no sqrt until final
 #[inline(always)]
 pub fn sdf_cone(p: Vec3, radius: f32, half_height: f32) -> f32 {
-    let q_x = (p.x * p.x + p.z * p.z).sqrt();
+    let q_x = p.x.hypot(p.z);
     let q_y = p.y;
 
     let h = half_height;
@@ -36,8 +36,8 @@ pub fn sdf_cone(p: Vec3, radius: f32, half_height: f32) -> f32 {
     // cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0, 1)
     let diff_x = -q_x; // k1.x - q.x = 0 - q_x
     let diff_y = h - q_y;
-    let t = ((diff_x * k2x + diff_y * k2y) / (k2x * k2x + k2y * k2y)).clamp(0.0, 1.0);
-    let cb_x = q_x + k2x * t; // q.x - k1.x + k2.x * t = q_x + k2x * t
+    let t = (diff_x.mul_add(k2x, diff_y * k2y) / k2x.mul_add(k2x, k2y * k2y)).clamp(0.0, 1.0);
+    let cb_x = k2x.mul_add(t, q_x); // q.x - k1.x + k2.x * t = q_x + k2x * t
     let cb_y = q_y - h + k2y * t;
 
     let s = if cb_x < 0.0 && ca_y < 0.0 { -1.0 } else { 1.0 };

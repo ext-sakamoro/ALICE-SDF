@@ -561,7 +561,7 @@ mod tests {
     fn test_identity_round_removed() {
         let shape = SdfNode::Sphere { radius: 1.0 };
         let rounded = SdfNode::Round {
-            child: Arc::new(shape.clone()),
+            child: Arc::new(shape),
             radius: 0.0,
         };
         assert_eq!(rounded.node_count(), 2);

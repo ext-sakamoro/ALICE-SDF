@@ -111,7 +111,7 @@ impl JitCompiledSdf {
         // ready to execute. The JITModule is moved into the struct, keeping the code alive.
         let eval_fn: SdfEvalFn = unsafe { mem::transmute(code_ptr) };
 
-        Ok(JitCompiledSdf {
+        Ok(Self {
             _module: module,
             eval_fn,
         })
@@ -166,6 +166,7 @@ impl JitCompiledSdf {
 impl std::fmt::Debug for JitCompiledSdf {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JitCompiledSdf")
+            .field("_module", &"<JITModule>")
             .field("eval_fn", &format!("{:p}", self.eval_fn as *const ()))
             .finish()
     }
@@ -247,7 +248,7 @@ impl JitCompiledSdfDynamic {
         // code is ready to execute. The JITModule is moved into the struct, keeping the code alive.
         let eval_fn: SdfEvalDynamicFn = unsafe { mem::transmute(code_ptr) };
 
-        Ok(JitCompiledSdfDynamic {
+        Ok(Self {
             _module: module,
             eval_fn,
             params,
@@ -292,8 +293,9 @@ impl JitCompiledSdfDynamic {
 impl std::fmt::Debug for JitCompiledSdfDynamic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JitCompiledSdfDynamic")
+            .field("_module", &"<JITModule>")
             .field("eval_fn", &format!("{:p}", self.eval_fn as *const ()))
-            .field("params_count", &self.params.len())
+            .field("params", &self.params)
             .finish()
     }
 }

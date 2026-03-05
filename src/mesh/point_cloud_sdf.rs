@@ -41,7 +41,7 @@ pub struct PointCloudSdfConfig {
 
 impl Default for PointCloudSdfConfig {
     fn default() -> Self {
-        PointCloudSdfConfig {
+        Self {
             k_neighbors: 8,
             leaf_size: 16,
         }
@@ -50,16 +50,16 @@ impl Default for PointCloudSdfConfig {
 
 impl PointCloudSdfConfig {
     /// Fast config (fewer neighbors, larger leaves)
-    pub fn fast() -> Self {
-        PointCloudSdfConfig {
+    pub const fn fast() -> Self {
+        Self {
             k_neighbors: 4,
             leaf_size: 32,
         }
     }
 
     /// Accurate config (more neighbors, smaller leaves)
-    pub fn accurate() -> Self {
-        PointCloudSdfConfig {
+    pub const fn accurate() -> Self {
+        Self {
             k_neighbors: 16,
             leaf_size: 8,
         }
@@ -74,8 +74,8 @@ enum KdNode {
     Split {
         axis: usize,
         split_val: f32,
-        left: Box<KdNode>,
-        right: Box<KdNode>,
+        left: Box<Self>,
+        right: Box<Self>,
     },
 }
 
@@ -104,7 +104,7 @@ impl PointCloudSdf {
         let indices: Vec<usize> = (0..points.len()).collect();
         let tree = Self::build_tree(points, &indices, config.leaf_size, 0);
 
-        PointCloudSdf {
+        Self {
             points: points.to_vec(),
             normals: normals.to_vec(),
             tree,

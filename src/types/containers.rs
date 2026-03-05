@@ -21,7 +21,7 @@ pub struct SdfTree {
 impl SdfTree {
     /// Create a new SDF tree
     pub fn new(root: SdfNode) -> Self {
-        SdfTree {
+        Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             root,
             metadata: None,
@@ -30,7 +30,7 @@ impl SdfTree {
 
     /// Create with metadata
     pub fn with_metadata(root: SdfNode, metadata: SdfMetadata) -> Self {
-        SdfTree {
+        Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             root,
             metadata: Some(metadata),
@@ -69,13 +69,13 @@ pub struct Aabb {
 
 impl Aabb {
     /// Create a new AABB
-    pub fn new(min: Vec3, max: Vec3) -> Self {
-        Aabb { min, max }
+    pub const fn new(min: Vec3, max: Vec3) -> Self {
+        Self { min, max }
     }
 
     /// Create from center and half-extents
     pub fn from_center_extents(center: Vec3, half_extents: Vec3) -> Self {
-        Aabb {
+        Self {
             min: center - half_extents,
             max: center + half_extents,
         }
@@ -107,8 +107,8 @@ impl Aabb {
     }
 
     /// Expand to include another AABB
-    pub fn union(&self, other: &Aabb) -> Aabb {
-        Aabb {
+    pub fn union(&self, other: &Self) -> Self {
+        Self {
             min: self.min.min(other.min),
             max: self.max.max(other.max),
         }
@@ -127,7 +127,7 @@ pub struct Ray {
 impl Ray {
     /// Create a new ray
     pub fn new(origin: Vec3, direction: Vec3) -> Self {
-        Ray {
+        Self {
             origin,
             direction: direction.normalize(),
         }

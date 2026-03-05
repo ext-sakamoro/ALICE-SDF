@@ -78,9 +78,11 @@ mod tests {
 
     #[test]
     fn test_save_load_with_metadata() {
-        let mut metadata = SdfMetadata::default();
-        metadata.name = Some("Test Model".to_string());
-        metadata.author = Some("Test Author".to_string());
+        let metadata = SdfMetadata {
+            name: Some("Test Model".to_string()),
+            author: Some("Test Author".to_string()),
+            ..SdfMetadata::default()
+        };
 
         let tree = SdfTree::with_metadata(SdfNode::sphere(1.0), metadata);
         let path = temp_path("metadata.asdf.json");

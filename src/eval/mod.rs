@@ -603,8 +603,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             // Inverse shear: subtract shear contributions
             let p = Vec3::new(
                 point.x,
-                point.y - shear.x * point.x,
-                point.z - shear.y * point.x - shear.z * point.y,
+                shear.x.mul_add(-point.x, point.y),
+                shear
+                    .z
+                    .mul_add(-point.y, shear.y.mul_add(-point.x, point.z)),
             );
             eval(child, p)
         }
@@ -773,8 +775,10 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Shear { child, shear } => {
             let p = Vec3::new(
                 point.x,
-                point.y - shear.x * point.x,
-                point.z - shear.y * point.x - shear.z * point.y,
+                shear.x.mul_add(-point.x, point.y),
+                shear
+                    .z
+                    .mul_add(-point.y, shear.y.mul_add(-point.x, point.z)),
             );
             eval_material(child, p)
         }

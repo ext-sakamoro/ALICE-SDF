@@ -17,7 +17,7 @@ use glam::{Vec2, Vec3};
 #[inline(always)]
 pub fn sdf_capped_cone(p: Vec3, half_height: f32, r1: f32, r2: f32) -> f32 {
     let h = half_height;
-    let q = Vec2::new((p.x * p.x + p.z * p.z).sqrt(), p.y);
+    let q = Vec2::new(p.x.hypot(p.z), p.y);
     let k1 = Vec2::new(r2, h);
     let k2 = Vec2::new(r2 - r1, 2.0 * h);
 

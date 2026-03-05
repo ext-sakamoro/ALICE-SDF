@@ -28,7 +28,7 @@ struct BuildNode {
     distance: f32,
     normal: Vec3,
     depth: u32,
-    children: [Option<Box<BuildNode>>; 8],
+    children: [Option<Box<Self>>; 8],
 }
 
 impl BuildNode {

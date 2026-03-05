@@ -83,7 +83,7 @@ fn convert_position(x: f32, y: f32, z: f32, scale: f32) -> (f32, f32, f32) {
 ///
 /// Mapping: (x, y, z) -> (x, z, y)  (no scale for unit vectors)
 #[inline(always)]
-fn convert_direction(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+const fn convert_direction(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     (x, z, y)
 }
 

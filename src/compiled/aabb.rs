@@ -35,8 +35,8 @@ pub struct AabbPacked {
 impl AabbPacked {
     /// Create an empty (invalid) AABB
     #[inline]
-    pub fn empty() -> Self {
-        AabbPacked {
+    pub const fn empty() -> Self {
+        Self {
             min_x: f32::MAX,
             min_y: f32::MAX,
             min_z: f32::MAX,
@@ -50,8 +50,8 @@ impl AabbPacked {
 
     /// Create an AABB that contains everything (infinite)
     #[inline]
-    pub fn infinite() -> Self {
-        AabbPacked {
+    pub const fn infinite() -> Self {
+        Self {
             min_x: f32::MIN,
             min_y: f32::MIN,
             min_z: f32::MIN,
@@ -65,8 +65,8 @@ impl AabbPacked {
 
     /// Create an AABB from min and max corners
     #[inline]
-    pub fn new(min: Vec3, max: Vec3) -> Self {
-        AabbPacked {
+    pub const fn new(min: Vec3, max: Vec3) -> Self {
+        Self {
             min_x: min.x,
             min_y: min.y,
             min_z: min.z,
@@ -81,25 +81,25 @@ impl AabbPacked {
     /// Create an AABB centered at origin with given half-size
     #[inline]
     pub fn from_half_size(half_size: Vec3) -> Self {
-        AabbPacked::new(-half_size, half_size)
+        Self::new(-half_size, half_size)
     }
 
     /// Create an AABB for a sphere
     #[inline]
     pub fn from_sphere(center: Vec3, radius: f32) -> Self {
         let r = Vec3::splat(radius);
-        AabbPacked::new(center - r, center + r)
+        Self::new(center - r, center + r)
     }
 
     /// Get minimum corner as Vec3
     #[inline]
-    pub fn min(&self) -> Vec3 {
+    pub const fn min(&self) -> Vec3 {
         Vec3::new(self.min_x, self.min_y, self.min_z)
     }
 
     /// Get maximum corner as Vec3
     #[inline]
-    pub fn max(&self) -> Vec3 {
+    pub const fn max(&self) -> Vec3 {
         Vec3::new(self.max_x, self.max_y, self.max_z)
     }
 
@@ -158,8 +158,8 @@ impl AabbPacked {
 
     /// Union of two AABBs (smallest AABB containing both)
     #[inline]
-    pub fn union(&self, other: &AabbPacked) -> AabbPacked {
-        AabbPacked {
+    pub fn union(&self, other: &Self) -> Self {
+        Self {
             min_x: self.min_x.min(other.min_x),
             min_y: self.min_y.min(other.min_y),
             min_z: self.min_z.min(other.min_z),
@@ -173,8 +173,8 @@ impl AabbPacked {
 
     /// Intersection of two AABBs
     #[inline]
-    pub fn intersection(&self, other: &AabbPacked) -> AabbPacked {
-        AabbPacked {
+    pub fn intersection(&self, other: &Self) -> Self {
+        Self {
             min_x: self.min_x.max(other.min_x),
             min_y: self.min_y.max(other.min_y),
             min_z: self.min_z.max(other.min_z),
@@ -188,8 +188,8 @@ impl AabbPacked {
 
     /// Expand AABB by a scalar amount in all directions
     #[inline]
-    pub fn expand(&self, amount: f32) -> AabbPacked {
-        AabbPacked {
+    pub fn expand(&self, amount: f32) -> Self {
+        Self {
             min_x: self.min_x - amount,
             min_y: self.min_y - amount,
             min_z: self.min_z - amount,
@@ -203,8 +203,8 @@ impl AabbPacked {
 
     /// Translate the AABB
     #[inline]
-    pub fn translate(&self, offset: Vec3) -> AabbPacked {
-        AabbPacked {
+    pub fn translate(&self, offset: Vec3) -> Self {
+        Self {
             min_x: self.min_x + offset.x,
             min_y: self.min_y + offset.y,
             min_z: self.min_z + offset.z,
@@ -218,8 +218,8 @@ impl AabbPacked {
 
     /// Scale the AABB uniformly from origin
     #[inline]
-    pub fn scale(&self, factor: f32) -> AabbPacked {
-        AabbPacked {
+    pub fn scale(&self, factor: f32) -> Self {
+        Self {
             min_x: self.min_x * factor,
             min_y: self.min_y * factor,
             min_z: self.min_z * factor,
@@ -233,11 +233,11 @@ impl AabbPacked {
 
     /// Scale the AABB non-uniformly from origin
     #[inline]
-    pub fn scale_nonuniform(&self, factors: Vec3) -> AabbPacked {
+    pub fn scale_nonuniform(&self, factors: Vec3) -> Self {
         let min = self.min() * factors;
         let max = self.max() * factors;
         // Handle negative scaling
-        AabbPacked::new(min.min(max), min.max(max))
+        Self::new(min.min(max), min.max(max))
     }
 
     /// Transform AABB by rotation (conservative - may be larger than necessary)
@@ -245,7 +245,7 @@ impl AabbPacked {
     /// Computes the AABB of the rotated AABB, which is always larger or equal
     /// to the actual rotated bounding box.
     #[inline]
-    pub fn rotate(&self, rotation: Quat) -> AabbPacked {
+    pub fn rotate(&self, rotation: Quat) -> Self {
         let center = self.center();
         let half = self.half_size();
 
@@ -270,13 +270,13 @@ impl AabbPacked {
             new_max = new_max.max(rotated);
         }
 
-        AabbPacked::new(new_min, new_max)
+        Self::new(new_min, new_max)
     }
 }
 
 impl Default for AabbPacked {
     fn default() -> Self {
-        AabbPacked::empty()
+        Self::empty()
     }
 }
 
@@ -317,7 +317,7 @@ pub mod primitives {
 
     /// AABB for an infinite plane (returns infinite AABB)
     #[inline]
-    pub fn plane_aabb() -> AabbPacked {
+    pub const fn plane_aabb() -> AabbPacked {
         AabbPacked::infinite()
     }
 

@@ -16,12 +16,12 @@ use glam::{Vec2, Vec3};
 /// - `d`: distance between sphere centers along X-axis
 #[inline(always)]
 pub fn sdf_death_star(p: Vec3, ra: f32, rb: f32, d: f32) -> f32 {
-    let a = (ra * ra - rb * rb + d * d) / (2.0 * d);
-    let b = (ra * ra - a * a).max(0.0).sqrt();
+    let a = d.mul_add(d, ra.mul_add(ra, -(rb * rb))) / (2.0 * d);
+    let b = ra.mul_add(ra, -(a * a)).max(0.0).sqrt();
 
-    let p2 = Vec2::new(p.x, (p.y * p.y + p.z * p.z).sqrt());
+    let p2 = Vec2::new(p.x, p.y.hypot(p.z));
 
-    if p2.x * b - p2.y * a > d * (b - p2.y).max(0.0) {
+    if p2.x.mul_add(b, -(p2.y * a)) > d * (b - p2.y).max(0.0) {
         (p2 - Vec2::new(a, b)).length()
     } else {
         (p2.length() - ra).max(-(Vec2::new(p2.x - d, p2.y).length() - rb))

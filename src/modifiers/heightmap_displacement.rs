@@ -26,8 +26,8 @@ pub fn bilinear_sample(heightmap: &[f32], w: u32, h: u32, u: f32, v: f32) -> f32
     let s01 = heightmap[(v1 * w + u0) as usize];
     let s11 = heightmap[(v1 * w + u1) as usize];
 
-    let a = s00 * (1.0 - fu) + s10 * fu;
-    let b = s01 * (1.0 - fu) + s11 * fu;
+    let a = s00.mul_add(1.0 - fu, s10 * fu);
+    let b = s01.mul_add(1.0 - fu, s11 * fu);
     a * (1.0 - fv) + b * fv
 }
 
@@ -54,8 +54,8 @@ pub fn heightmap_displacement(
     };
 
     // Map to [0, w-1] x [0, h-1]
-    let u = ((u * 0.5 + 0.5) * (w - 1) as f32).clamp(0.0, (w - 1) as f32);
-    let v = ((v * 0.5 + 0.5) * (h - 1) as f32).clamp(0.0, (h - 1) as f32);
+    let u = (u.mul_add(0.5, 0.5) * (w - 1) as f32).clamp(0.0, (w - 1) as f32);
+    let v = (v.mul_add(0.5, 0.5) * (h - 1) as f32).clamp(0.0, (h - 1) as f32);
 
     bilinear_sample(heightmap, w, h, u, v) * amplitude
 }

@@ -21,22 +21,22 @@ fn bench_primitives(c: &mut Criterion) {
 
     group.bench_function("sphere", |b| {
         let sphere = SdfNode::sphere(1.0);
-        b.iter(|| eval(black_box(&sphere), black_box(point)))
+        b.iter(|| eval(black_box(&sphere), black_box(point)));
     });
 
     group.bench_function("box3d", |b| {
         let box3d = SdfNode::box3d(1.0, 1.0, 1.0);
-        b.iter(|| eval(black_box(&box3d), black_box(point)))
+        b.iter(|| eval(black_box(&box3d), black_box(point)));
     });
 
     group.bench_function("cylinder", |b| {
         let cylinder = SdfNode::cylinder(0.5, 1.0);
-        b.iter(|| eval(black_box(&cylinder), black_box(point)))
+        b.iter(|| eval(black_box(&cylinder), black_box(point)));
     });
 
     group.bench_function("torus", |b| {
         let torus = SdfNode::torus(1.0, 0.3);
-        b.iter(|| eval(black_box(&torus), black_box(point)))
+        b.iter(|| eval(black_box(&torus), black_box(point)));
     });
 
     group.finish();
@@ -51,22 +51,22 @@ fn bench_operations(c: &mut Criterion) {
 
     group.bench_function("union", |b_iter| {
         let union = a.clone().union(b.clone());
-        b_iter.iter(|| eval(black_box(&union), black_box(point)))
+        b_iter.iter(|| eval(black_box(&union), black_box(point)));
     });
 
     group.bench_function("intersection", |b_iter| {
         let intersection = a.clone().intersection(b.clone());
-        b_iter.iter(|| eval(black_box(&intersection), black_box(point)))
+        b_iter.iter(|| eval(black_box(&intersection), black_box(point)));
     });
 
     group.bench_function("subtraction", |b_iter| {
         let subtraction = a.clone().subtract(b.clone());
-        b_iter.iter(|| eval(black_box(&subtraction), black_box(point)))
+        b_iter.iter(|| eval(black_box(&subtraction), black_box(point)));
     });
 
     group.bench_function("smooth_union", |b_iter| {
         let smooth = a.clone().smooth_union(b.clone(), 0.2);
-        b_iter.iter(|| eval(black_box(&smooth), black_box(point)))
+        b_iter.iter(|| eval(black_box(&smooth), black_box(point)));
     });
 
     group.finish();
@@ -80,17 +80,17 @@ fn bench_transforms(c: &mut Criterion) {
 
     group.bench_function("translate", |b| {
         let translated = base.clone().translate(1.0, 2.0, 3.0);
-        b.iter(|| eval(black_box(&translated), black_box(point)))
+        b.iter(|| eval(black_box(&translated), black_box(point)));
     });
 
     group.bench_function("rotate", |b| {
         let rotated = base.clone().rotate_euler(0.5, 0.5, 0.5);
-        b.iter(|| eval(black_box(&rotated), black_box(point)))
+        b.iter(|| eval(black_box(&rotated), black_box(point)));
     });
 
     group.bench_function("scale", |b| {
         let scaled = base.clone().scale(2.0);
-        b.iter(|| eval(black_box(&scaled), black_box(point)))
+        b.iter(|| eval(black_box(&scaled), black_box(point)));
     });
 
     group.finish();
@@ -104,22 +104,22 @@ fn bench_modifiers(c: &mut Criterion) {
 
     group.bench_function("twist", |b| {
         let twisted = base.clone().twist(0.5);
-        b.iter(|| eval(black_box(&twisted), black_box(point)))
+        b.iter(|| eval(black_box(&twisted), black_box(point)));
     });
 
     group.bench_function("bend", |b| {
         let bent = base.clone().bend(0.3);
-        b.iter(|| eval(black_box(&bent), black_box(point)))
+        b.iter(|| eval(black_box(&bent), black_box(point)));
     });
 
     group.bench_function("repeat_infinite", |b| {
         let repeated = SdfNode::sphere(0.3).repeat_infinite(1.0, 1.0, 1.0);
-        b.iter(|| eval(black_box(&repeated), black_box(point)))
+        b.iter(|| eval(black_box(&repeated), black_box(point)));
     });
 
     group.bench_function("noise", |b| {
         let noisy = base.clone().noise(0.1, 1.0, 42);
-        b.iter(|| eval(black_box(&noisy), black_box(point)))
+        b.iter(|| eval(black_box(&noisy), black_box(point)));
     });
 
     group.finish();
@@ -160,20 +160,21 @@ fn bench_complex_tree(c: &mut Criterion) {
         .translate(0.0, 0.5, 0.0);
 
     group.bench_function("5_nodes", |b| {
-        b.iter(|| eval(black_box(&tree_5), black_box(point)))
+        b.iter(|| eval(black_box(&tree_5), black_box(point)));
     });
 
     group.bench_function("10_nodes", |b| {
-        b.iter(|| eval(black_box(&tree_10), black_box(point)))
+        b.iter(|| eval(black_box(&tree_10), black_box(point)));
     });
 
     group.bench_function("20_nodes", |b| {
-        b.iter(|| eval(black_box(&tree_20), black_box(point)))
+        b.iter(|| eval(black_box(&tree_20), black_box(point)));
     });
 
     group.finish();
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn bench_batch_eval(c: &mut Criterion) {
     let mut group = c.benchmark_group("batch_eval");
 
@@ -181,7 +182,7 @@ fn bench_batch_eval(c: &mut Criterion) {
         .smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2)
         .twist(0.3);
 
-    for size in [100, 1000, 10000, 100000] {
+    for size in [100, 1_000, 10_000, 100_000] {
         let points: Vec<Vec3> = (0..size)
             .map(|i| {
                 let t = i as f32 / size as f32;
@@ -194,7 +195,7 @@ fn bench_batch_eval(c: &mut Criterion) {
             .collect();
 
         group.bench_with_input(BenchmarkId::new("parallel", size), &points, |b, points| {
-            b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points)))
+            b.iter(|| eval_batch_parallel(black_box(&shape), black_box(points)));
         });
     }
 
@@ -212,11 +213,11 @@ fn bench_raymarching(c: &mut Criterion) {
     let ray = Ray::new(Vec3::new(-5.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0));
 
     group.bench_function("sphere", |b| {
-        b.iter(|| raycast(black_box(&sphere), black_box(ray), 10.0))
+        b.iter(|| raycast(black_box(&sphere), black_box(ray), 10.0));
     });
 
     group.bench_function("complex", |b| {
-        b.iter(|| raycast(black_box(&complex), black_box(ray), 10.0))
+        b.iter(|| raycast(black_box(&complex), black_box(ray), 10.0));
     });
 
     group.finish();
@@ -239,7 +240,7 @@ fn bench_marching_cubes(c: &mut Criterion) {
         };
 
         group.bench_with_input(BenchmarkId::new("resolution", res), &config, |b, config| {
-            b.iter(|| sdf_to_mesh(black_box(&sphere), min, max, config))
+            b.iter(|| sdf_to_mesh(black_box(&sphere), min, max, config));
         });
     }
 
@@ -257,11 +258,11 @@ fn bench_interpreted_vs_compiled(c: &mut Criterion) {
     let simple_compiled = CompiledSdf::compile(&simple);
 
     group.bench_function("simple/interpreted", |b| {
-        b.iter(|| eval(black_box(&simple), black_box(point)))
+        b.iter(|| eval(black_box(&simple), black_box(point)));
     });
 
     group.bench_function("simple/compiled", |b| {
-        b.iter(|| eval_compiled(black_box(&simple_compiled), black_box(point)))
+        b.iter(|| eval_compiled(black_box(&simple_compiled), black_box(point)));
     });
 
     // Medium complexity: union + translate
@@ -271,11 +272,11 @@ fn bench_interpreted_vs_compiled(c: &mut Criterion) {
     let medium_compiled = CompiledSdf::compile(&medium);
 
     group.bench_function("medium/interpreted", |b| {
-        b.iter(|| eval(black_box(&medium), black_box(point)))
+        b.iter(|| eval(black_box(&medium), black_box(point)));
     });
 
     group.bench_function("medium/compiled", |b| {
-        b.iter(|| eval_compiled(black_box(&medium_compiled), black_box(point)))
+        b.iter(|| eval_compiled(black_box(&medium_compiled), black_box(point)));
     });
 
     // Complex shape: many operations
@@ -296,17 +297,18 @@ fn bench_interpreted_vs_compiled(c: &mut Criterion) {
     let complex_compiled = CompiledSdf::compile(&complex);
 
     group.bench_function("complex/interpreted", |b| {
-        b.iter(|| eval(black_box(&complex), black_box(point)))
+        b.iter(|| eval(black_box(&complex), black_box(point)));
     });
 
     group.bench_function("complex/compiled", |b| {
-        b.iter(|| eval_compiled(black_box(&complex_compiled), black_box(point)))
+        b.iter(|| eval_compiled(black_box(&complex_compiled), black_box(point)));
     });
 
     group.finish();
 }
 
 /// Benchmark: Batch evaluation (interpreted vs compiled)
+#[allow(clippy::cast_precision_loss)]
 fn bench_batch_compiled(c: &mut Criterion) {
     let mut group = c.benchmark_group("batch_compiled");
 
@@ -315,7 +317,7 @@ fn bench_batch_compiled(c: &mut Criterion) {
         .twist(0.3);
     let compiled = CompiledSdf::compile(&shape);
 
-    let size = 100000;
+    let size = 100_000;
     let points: Vec<Vec3> = (0..size)
         .map(|i| {
             let t = i as f32 / size as f32;
@@ -328,11 +330,11 @@ fn bench_batch_compiled(c: &mut Criterion) {
         .collect();
 
     group.bench_function("interpreted_parallel", |b| {
-        b.iter(|| eval_batch_parallel(black_box(&shape), black_box(&points)))
+        b.iter(|| eval_batch_parallel(black_box(&shape), black_box(&points)));
     });
 
     group.bench_function("compiled_parallel", |b| {
-        b.iter(|| eval_compiled_batch_parallel(black_box(&compiled), black_box(&points)))
+        b.iter(|| eval_compiled_batch_parallel(black_box(&compiled), black_box(&points)));
     });
 
     group.finish();
@@ -378,17 +380,18 @@ fn bench_simd_evaluation(c: &mut Criterion) {
                 sum += eval_compiled(black_box(&compiled), black_box(*p));
             }
             sum
-        })
+        });
     });
 
     group.bench_function("8_points_simd", |b| {
-        b.iter(|| eval_compiled_simd(black_box(&compiled), black_box(points_8)))
+        b.iter(|| eval_compiled_simd(black_box(&compiled), black_box(points_8)));
     });
 
     group.finish();
 }
 
 /// Benchmark: Batch evaluation comparison (interpreted vs compiled vs SIMD)
+#[allow(clippy::cast_precision_loss)]
 fn bench_batch_all(c: &mut Criterion) {
     let mut group = c.benchmark_group("batch_all");
 
@@ -397,7 +400,7 @@ fn bench_batch_all(c: &mut Criterion) {
         .twist(0.3);
     let compiled = CompiledSdf::compile(&shape);
 
-    for size in [1000, 10000, 100000] {
+    for size in [1_000, 10_000, 100_000] {
         let points: Vec<Vec3> = (0..size)
             .map(|i| {
                 let t = i as f32 / size as f32;
@@ -419,7 +422,7 @@ fn bench_batch_all(c: &mut Criterion) {
             BenchmarkId::new("compiled_parallel", size),
             &points,
             |b, points| {
-                b.iter(|| eval_compiled_batch_parallel(black_box(&compiled), black_box(points)))
+                b.iter(|| eval_compiled_batch_parallel(black_box(&compiled), black_box(points)));
             },
         );
 
@@ -427,7 +430,7 @@ fn bench_batch_all(c: &mut Criterion) {
             BenchmarkId::new("simd_batch", size),
             &points,
             |b, points| {
-                b.iter(|| eval_compiled_batch_simd(black_box(&compiled), black_box(points)))
+                b.iter(|| eval_compiled_batch_simd(black_box(&compiled), black_box(points)));
             },
         );
 
@@ -437,7 +440,7 @@ fn bench_batch_all(c: &mut Criterion) {
             |b, points| {
                 b.iter(|| {
                     eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points))
-                })
+                });
             },
         );
     }
@@ -452,6 +455,7 @@ fn bench_bvh_sparse_scene(c: &mut Criterion) {
     // Create a sparse scene: multiple spheres spread far apart
     let mut shape = SdfNode::sphere(0.5);
     for i in 1..10 {
+        #[allow(clippy::cast_precision_loss)]
         let offset = i as f32 * 5.0; // 5 units apart
         shape = shape.union(SdfNode::sphere(0.5).translate(offset, 0.0, 0.0));
     }
@@ -467,39 +471,39 @@ fn bench_bvh_sparse_scene(c: &mut Criterion) {
     let point_far = Vec3::new(0.0, 10.0, 0.0);
 
     group.bench_function("interpreted/near", |b| {
-        b.iter(|| eval(black_box(&shape), black_box(point_near)))
+        b.iter(|| eval(black_box(&shape), black_box(point_near)));
     });
 
     group.bench_function("compiled/near", |b| {
-        b.iter(|| eval_compiled(black_box(&compiled), black_box(point_near)))
+        b.iter(|| eval_compiled(black_box(&compiled), black_box(point_near)));
     });
 
     group.bench_function("bvh/near", |b| {
-        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point_near)))
+        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point_near)));
     });
 
     group.bench_function("interpreted/middle", |b| {
-        b.iter(|| eval(black_box(&shape), black_box(point_middle)))
+        b.iter(|| eval(black_box(&shape), black_box(point_middle)));
     });
 
     group.bench_function("compiled/middle", |b| {
-        b.iter(|| eval_compiled(black_box(&compiled), black_box(point_middle)))
+        b.iter(|| eval_compiled(black_box(&compiled), black_box(point_middle)));
     });
 
     group.bench_function("bvh/middle", |b| {
-        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point_middle)))
+        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point_middle)));
     });
 
     group.bench_function("interpreted/far", |b| {
-        b.iter(|| eval(black_box(&shape), black_box(point_far)))
+        b.iter(|| eval(black_box(&shape), black_box(point_far)));
     });
 
     group.bench_function("compiled/far", |b| {
-        b.iter(|| eval_compiled(black_box(&compiled), black_box(point_far)))
+        b.iter(|| eval_compiled(black_box(&compiled), black_box(point_far)));
     });
 
     group.bench_function("bvh/far", |b| {
-        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point_far)))
+        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point_far)));
     });
 
     group.finish();
@@ -527,21 +531,22 @@ fn bench_bvh_complex(c: &mut Criterion) {
     let point = Vec3::new(0.0, 0.0, 0.0);
 
     group.bench_function("interpreted", |b| {
-        b.iter(|| eval(black_box(&shape), black_box(point)))
+        b.iter(|| eval(black_box(&shape), black_box(point)));
     });
 
     group.bench_function("compiled", |b| {
-        b.iter(|| eval_compiled(black_box(&compiled), black_box(point)))
+        b.iter(|| eval_compiled(black_box(&compiled), black_box(point)));
     });
 
     group.bench_function("bvh", |b| {
-        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point)))
+        b.iter(|| eval_compiled_bvh(black_box(&compiled_bvh), black_box(point)));
     });
 
     group.finish();
 }
 
-/// Benchmark: SoA throughput (Deep Fried Edition)
+/// Benchmark: `SoA` throughput (Deep Fried Edition)
+#[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
 fn bench_soa_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("soa_throughput");
 
@@ -572,18 +577,18 @@ fn bench_soa_throughput(c: &mut Criterion) {
 
         // AoS SIMD (standard)
         group.bench_with_input(BenchmarkId::new("aos_simd", size), &points, |b, points| {
-            b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)))
+            b.iter(|| eval_compiled_batch_simd_parallel(black_box(&compiled), black_box(points)));
         });
 
         // SoA SIMD (optimized layout)
         group.bench_with_input(BenchmarkId::new("soa_simd", size), &soa, |b, soa| {
-            b.iter(|| eval_compiled_batch_soa_parallel(black_box(&compiled), black_box(soa)))
+            b.iter(|| eval_compiled_batch_soa_parallel(black_box(&compiled), black_box(soa)));
         });
 
         // JIT + SoA (maximum throughput)
         #[cfg(feature = "jit")]
         group.bench_with_input(BenchmarkId::new("jit_soa", size), &soa, |b, soa| {
-            b.iter(|| jit.eval_soa(black_box(soa)))
+            b.iter(|| jit.eval_soa(black_box(soa)));
         });
     }
 
@@ -611,17 +616,17 @@ fn bench_jit_compile(c: &mut Criterion) {
 
     group.bench_function("simple", |b| {
         let compiled = CompiledSdf::compile(&simple);
-        b.iter(|| JitSimdSdf::compile(black_box(&compiled)).unwrap())
+        b.iter(|| JitSimdSdf::compile(black_box(&compiled)).unwrap());
     });
 
     group.bench_function("medium", |b| {
         let compiled = CompiledSdf::compile(&medium);
-        b.iter(|| JitSimdSdf::compile(black_box(&compiled)).unwrap())
+        b.iter(|| JitSimdSdf::compile(black_box(&compiled)).unwrap());
     });
 
     group.bench_function("complex", |b| {
         let compiled = CompiledSdf::compile(&complex);
-        b.iter(|| JitSimdSdf::compile(black_box(&compiled)).unwrap())
+        b.iter(|| JitSimdSdf::compile(black_box(&compiled)).unwrap());
     });
 
     group.finish();

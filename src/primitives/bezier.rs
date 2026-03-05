@@ -38,12 +38,12 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
 
     let kk = 1.0 / ba2c_dot;
     let kx = kk * ab.dot(ba2c);
-    let ky = kk * (2.0 * ab.dot(ab) + dv.dot(ba2c)) / 3.0;
+    let ky = kk * 2.0f32.mul_add(ab.dot(ab), dv.dot(ba2c)) / 3.0;
     let kz = kk * dv.dot(ab);
 
     let p2 = ky - kx * kx;
     let p3 = p2 * p2 * p2;
-    let q2 = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    let q2 = kx * (2.0 * kx).mul_add(kx, -(3.0 * ky)) + kz;
     let h = q2 * q2 + 4.0 * p3;
 
     let res = if h >= 0.0 {
@@ -62,8 +62,8 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
         let m = v.cos();
         let n = v.sin() * 1.732_050_8;
 
-        let t0 = ((m + m) * z - kx).clamp(0.0, 1.0);
-        let t1 = ((-n - m) * z - kx).clamp(0.0, 1.0);
+        let t0 = (m + m).mul_add(z, -kx).clamp(0.0, 1.0);
+        let t1 = (-n - m).mul_add(z, -kx).clamp(0.0, 1.0);
 
         let d0 = (dv + (cv + ba2c * t0) * t0).length();
         let d1 = (dv + (cv + ba2c * t1) * t1).length();

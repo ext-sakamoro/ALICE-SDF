@@ -19,11 +19,15 @@ pub fn sdf_capped_torus(p: Vec3, major_radius: f32, minor_radius: f32, cap_angle
     let sc = (cap_angle.sin(), cap_angle.cos());
     let px = p.x.abs();
     let k = if sc.1 * px > sc.0 * p.y {
-        px * sc.0 + p.y * sc.1
+        px.mul_add(sc.0, p.y * sc.1)
     } else {
-        (px * px + p.y * p.y).sqrt()
+        px.hypot(p.y)
     };
-    (p.x * p.x + p.y * p.y + p.z * p.z + major_radius * major_radius - 2.0 * major_radius * k)
+    (2.0 * major_radius)
+        .mul_add(
+            -k,
+            major_radius.mul_add(major_radius, p.z.mul_add(p.z, p.x.mul_add(p.x, p.y * p.y))),
+        )
         .sqrt()
         - minor_radius
 }

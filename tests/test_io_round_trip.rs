@@ -38,7 +38,7 @@ fn asdf_binary_round_trip_sphere() {
             d_original,
             d_loaded,
             1e-6,
-            &format!("ASDF binary mismatch at {:?}", p),
+            &format!("ASDF binary mismatch at {p:?}"),
         );
     }
 
@@ -60,7 +60,7 @@ fn asdf_binary_round_trip_complex() {
             d_original,
             d_loaded,
             1e-5,
-            &format!("ASDF complex mismatch at {:?}", p),
+            &format!("ASDF complex mismatch at {p:?}"),
         );
     }
 
@@ -69,10 +69,12 @@ fn asdf_binary_round_trip_complex() {
 
 #[test]
 fn asdf_binary_preserves_metadata() {
-    let mut metadata = SdfMetadata::default();
-    metadata.name = Some("test_model".to_string());
-    metadata.author = Some("Moroya Sakamoto".to_string());
-    metadata.description = Some("Integration test shape".to_string());
+    let metadata = SdfMetadata {
+        name: Some("test_model".to_string()),
+        author: Some("Moroya Sakamoto".to_string()),
+        description: Some("Integration test shape".to_string()),
+        ..SdfMetadata::default()
+    };
 
     let tree = SdfTree::with_metadata(test_sphere(), metadata);
     let path = temp_dir().join("metadata.asdf");
@@ -106,7 +108,7 @@ fn asdf_json_round_trip() {
             d_original,
             d_loaded,
             1e-6,
-            &format!("JSON mismatch at {:?}", p),
+            &format!("JSON mismatch at {p:?}"),
         );
     }
 
@@ -161,19 +163,19 @@ fn abm_mesh_round_trip() {
             orig.position.x,
             load.position.x,
             1e-5,
-            &format!("Vertex {} position X", i),
+            &format!("Vertex {i} position X"),
         );
         assert_close(
             orig.position.y,
             load.position.y,
             1e-5,
-            &format!("Vertex {} position Y", i),
+            &format!("Vertex {i} position Y"),
         );
         assert_close(
             orig.position.z,
             load.position.z,
             1e-5,
-            &format!("Vertex {} position Z", i),
+            &format!("Vertex {i} position Z"),
         );
     }
 
@@ -275,7 +277,7 @@ fn stl_binary_round_trip() {
     );
     // STL stores per-face vertices, so vertex count may differ (de-duplicated on import)
     assert!(
-        loaded.vertices.len() > 0,
+        !loaded.vertices.is_empty(),
         "STL binary: loaded mesh should have vertices"
     );
 

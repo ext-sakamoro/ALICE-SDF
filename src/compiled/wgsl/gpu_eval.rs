@@ -50,7 +50,7 @@ struct GpuInputPoint {
 
 impl From<Vec3> for GpuInputPoint {
     fn from(v: Vec3) -> Self {
-        GpuInputPoint {
+        Self {
             x: v.x,
             y: v.y,
             z: v.z,
@@ -207,7 +207,7 @@ impl GpuEvaluator {
             cache: None,
         });
 
-        Ok(GpuEvaluator {
+        Ok(Self {
             device,
             queue,
             pipeline,
@@ -589,7 +589,7 @@ impl GpuEvaluator {
             cache: None,
         });
 
-        Ok(GpuEvaluator {
+        Ok(Self {
             device,
             queue,
             pipeline,
@@ -893,7 +893,7 @@ impl GpuEvaluator {
             ],
         });
 
-        Ok(GpuEvaluator {
+        Ok(Self {
             device,
             queue,
             pipeline,
@@ -1069,7 +1069,7 @@ impl GpuEvaluator {
     /// // Do other CPU work here...
     /// let distances = future.await?;
     /// ```
-    pub fn eval_batch_submit(&self, points: Vec<Vec3>) -> GpuEvalFuture {
+    pub const fn eval_batch_submit(&self, points: Vec<Vec3>) -> GpuEvalFuture {
         GpuEvalFuture::new(self, points)
     }
 }
@@ -1081,7 +1081,7 @@ const AUTO_TUNE_THRESHOLD: usize = 262144; // 256K points
 ///
 /// Balances GPU occupancy against buffer transfer overhead.
 /// Larger chunks = fewer dispatches but more latency per chunk.
-fn optimal_chunk_size(total_points: usize) -> usize {
+const fn optimal_chunk_size(total_points: usize) -> usize {
     if total_points <= 262144 {
         total_points // Single dispatch
     } else if total_points <= 1_048_576 {
@@ -1146,7 +1146,7 @@ impl GpuBufferPool {
             mapped_at_creation: false,
         });
 
-        GpuBufferPool {
+        Self {
             capacity: cap,
             input_buffer,
             output_buffer,
@@ -1203,8 +1203,8 @@ unsafe impl Send for GpuEvalFuture {}
 unsafe impl Sync for GpuEvalFuture {}
 
 impl GpuEvalFuture {
-    fn new(evaluator: &GpuEvaluator, points: Vec<Vec3>) -> Self {
-        GpuEvalFuture {
+    const fn new(evaluator: &GpuEvaluator, points: Vec<Vec3>) -> Self {
+        Self {
             evaluator: evaluator as *const _,
             points,
         }
@@ -1295,7 +1295,7 @@ mod tests {
         let gpu = GpuEvaluator::new(&shape).unwrap();
 
         let points: Vec<Vec3> = (0..100)
-            .map(|i| Vec3::new(i as f32 * 0.05 - 2.5, 0.0, 0.0))
+            .map(|i| Vec3::new((i as f32).mul_add(0.05, -2.5), 0.0, 0.0))
             .collect();
 
         let gpu_results = gpu.eval_batch(&points).unwrap();

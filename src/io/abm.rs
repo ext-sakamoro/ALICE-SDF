@@ -139,7 +139,7 @@ impl AbmHeader {
         reserved.copy_from_slice(&b[21..28]);
         let crc32 = u32::from_le_bytes(b[28..32].try_into().unwrap());
 
-        Ok(AbmHeader {
+        Ok(Self {
             magic,
             version,
             flags,
@@ -228,7 +228,7 @@ fn has_nondefault_color(v: &Vertex) -> bool {
 
 /// Check if a vertex has a non-zero material ID
 #[inline(always)]
-fn has_nonzero_material_id(v: &Vertex) -> bool {
+const fn has_nonzero_material_id(v: &Vertex) -> bool {
     v.material_id != 0
 }
 
@@ -831,7 +831,7 @@ mod tests {
         let path = temp_path("roundtrip_lods.abm");
         let distances = vec![10.0];
 
-        save_abm_with_lods(&[lod0.clone(), lod1.clone()], &distances, &path).unwrap();
+        save_abm_with_lods(&[lod0, lod1], &distances, &path).unwrap();
         let (loaded_meshes, loaded_distances) = load_abm_with_lods(&path).unwrap();
 
         assert_eq!(loaded_meshes.len(), 2);

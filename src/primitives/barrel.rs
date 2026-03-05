@@ -15,7 +15,7 @@ use glam::{Vec2, Vec3};
 pub fn sdf_barrel(p: Vec3, radius: f32, half_height: f32, bulge: f32) -> f32 {
     let r = Vec2::new(p.x, p.z).length();
     let y_norm = (p.y / half_height).clamp(-1.0, 1.0);
-    let effective_r = radius + bulge * (1.0 - y_norm * y_norm);
+    let effective_r = bulge.mul_add(1.0 - y_norm * y_norm, radius);
     let d_r = r - effective_r;
     let d_y = p.y.abs() - half_height;
     let w = Vec2::new(d_r.max(0.0), d_y.max(0.0));

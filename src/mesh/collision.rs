@@ -221,7 +221,7 @@ pub fn convex_hull_from_points(points: &[Vec3]) -> ConvexHull {
     }
 
     // Add remaining points
-    let used = [p0, p1, p2, p3];
+    let used: [usize; 4] = (p0, p1, p2, p3).into();
     for (i, &pt) in points.iter().enumerate() {
         if used.contains(&i) {
             continue;
@@ -470,7 +470,7 @@ pub struct VhacdConfig {
 
 impl Default for VhacdConfig {
     fn default() -> Self {
-        VhacdConfig {
+        Self {
             max_hulls: 16,
             resolution: 32,
             max_vertices_per_hull: 32,
@@ -481,8 +481,8 @@ impl Default for VhacdConfig {
 
 impl VhacdConfig {
     /// High quality decomposition
-    pub fn high_quality() -> Self {
-        VhacdConfig {
+    pub const fn high_quality() -> Self {
+        Self {
             max_hulls: 32,
             resolution: 64,
             max_vertices_per_hull: 64,
@@ -491,8 +491,8 @@ impl VhacdConfig {
     }
 
     /// Fast decomposition for runtime use
-    pub fn fast() -> Self {
-        VhacdConfig {
+    pub const fn fast() -> Self {
+        Self {
             max_hulls: 8,
             resolution: 16,
             max_vertices_per_hull: 16,
@@ -863,7 +863,7 @@ mod tests {
 
         // Should have fewer vertices than original
         assert!(simplified.vertices.len() < mesh.vertices.len());
-        assert!(simplified.indices.len() > 0);
+        assert!(!simplified.indices.is_empty());
     }
 
     #[test]
@@ -924,7 +924,7 @@ mod tests {
         let decomp = convex_decomposition(&mesh, &VhacdConfig::default());
         // Concave shape should produce multiple parts
         assert!(
-            decomp.parts.len() >= 1,
+            !decomp.parts.is_empty(),
             "Concave shape should produce convex parts, got {}",
             decomp.parts.len()
         );

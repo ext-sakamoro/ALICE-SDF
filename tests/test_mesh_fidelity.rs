@@ -40,6 +40,7 @@ fn sphere_mesh_has_vertices_and_faces() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss)]
 fn compiled_mesh_matches_interpreted_mesh() {
     let shape = test_sphere();
     let compiled = CompiledSdf::compile(&shape);
@@ -61,10 +62,7 @@ fn compiled_mesh_matches_interpreted_mesh() {
     let ratio = v_interp.min(v_compiled) as f64 / v_interp.max(v_compiled) as f64;
     assert!(
         ratio > 0.5,
-        "Compiled and interpreted meshes should have similar vertex counts: {} vs {} (ratio={})",
-        v_interp,
-        v_compiled,
-        ratio
+        "Compiled and interpreted meshes should have similar vertex counts: {v_interp} vs {v_compiled} (ratio={ratio})"
     );
 
     // Both should produce non-empty meshes
@@ -96,9 +94,7 @@ fn mesh_normals_are_unit_length() {
         let len = v.normal.length();
         assert!(
             (len - 1.0).abs() < 0.01,
-            "Normal at vertex {} is not unit length: len={}",
-            i,
-            len
+            "Normal at vertex {i} is not unit length: len={len}"
         );
     }
 }
@@ -248,8 +244,6 @@ fn vertex_cache_optimization_improves_acmr() {
 
     assert!(
         acmr_after <= acmr_before + 0.01,
-        "ACMR should not worsen after optimization: before={}, after={}",
-        acmr_before,
-        acmr_after
+        "ACMR should not worsen after optimization: before={acmr_before}, after={acmr_after}"
     );
 }

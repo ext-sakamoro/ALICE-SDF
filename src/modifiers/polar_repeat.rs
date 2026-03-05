@@ -15,10 +15,10 @@ use glam::Vec3;
 pub fn modifier_polar_repeat(p: Vec3, count: u32) -> Vec3 {
     let count_f = count as f32;
     let angle = std::f32::consts::TAU / count_f;
-    let a = p.z.atan2(p.x) + angle * 0.5;
-    let r = (p.x * p.x + p.z * p.z).sqrt();
+    let a = angle.mul_add(0.5, p.z.atan2(p.x));
+    let r = p.x.hypot(p.z);
     // Stable modulo: add large multiple to avoid negative values
-    let a_mod = ((a + 100.0 * angle) % angle) - angle * 0.5;
+    let a_mod = angle.mul_add(-0.5, 100.0f32.mul_add(angle, a) % angle);
     Vec3::new(r * a_mod.cos(), p.y, r * a_mod.sin())
 }
 
@@ -30,11 +30,11 @@ pub fn modifier_polar_repeat(p: Vec3, count: u32) -> Vec3 {
 #[inline(always)]
 pub fn modifier_polar_repeat_rk(p: Vec3, sector: f32, recip_sector: f32) -> Vec3 {
     let a = p.z.atan2(p.x);
-    let r = (p.x * p.x + p.z * p.z).sqrt();
+    let r = p.x.hypot(p.z);
 
     // Round trick: a - sector * round(a / sector)
     // = a - sector * round(a * recip_sector)
-    let sector_angle = a - sector * (a * recip_sector).round();
+    let sector_angle = sector.mul_add(-(a * recip_sector).round(), a);
 
     let (s, c) = sector_angle.sin_cos();
     Vec3::new(r * c, p.y, r * s)
@@ -58,8 +58,8 @@ mod tests {
         // Radius should be preserved
         let p = Vec3::new(3.0, 0.0, 4.0);
         let q = modifier_polar_repeat(p, 8);
-        let r_original = (p.x * p.x + p.z * p.z).sqrt();
-        let r_result = (q.x * q.x + q.z * q.z).sqrt();
+        let r_original = p.x.hypot(p.z);
+        let r_result = q.x.hypot(q.z);
         assert!((r_original - r_result).abs() < 0.001);
     }
 

@@ -106,7 +106,7 @@ impl Rng {
 
     /// Uniform f32 in [lo, hi)
     fn uniform(&mut self, lo: f32, hi: f32) -> f32 {
-        lo + self.next_f32() * (hi - lo)
+        self.next_f32().mul_add(hi - lo, lo)
     }
 
     /// Approximate normal distribution (Box-Muller)
@@ -114,7 +114,7 @@ impl Rng {
         let u1 = self.next_f32().max(1e-10);
         let u2 = self.next_f32();
         let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::TAU * u2).cos();
-        mean + std * z
+        std.mul_add(z, mean)
     }
 }
 
@@ -300,8 +300,8 @@ impl NeuralSdf {
             #[allow(clippy::needless_range_loop)]
             for j in 0..layer.w.len() {
                 let g = grad_w[i][j];
-                st.m_w[j] = beta1 * st.m_w[j] + (1.0 - beta1) * g;
-                st.v_w[j] = beta2 * st.v_w[j] + (1.0 - beta2) * g * g;
+                st.m_w[j] = beta1.mul_add(st.m_w[j], (1.0 - beta1) * g);
+                st.v_w[j] = beta2.mul_add(st.v_w[j], (1.0 - beta2) * g * g);
                 let m_hat = st.m_w[j] / bc1;
                 let v_hat = st.v_w[j] / bc2;
                 layer.w[j] -= lr * m_hat / (v_hat.sqrt() + eps);
@@ -310,8 +310,8 @@ impl NeuralSdf {
             #[allow(clippy::needless_range_loop)]
             for j in 0..layer.b.len() {
                 let g = grad_b[i][j];
-                st.m_b[j] = beta1 * st.m_b[j] + (1.0 - beta1) * g;
-                st.v_b[j] = beta2 * st.v_b[j] + (1.0 - beta2) * g * g;
+                st.m_b[j] = beta1.mul_add(st.m_b[j], (1.0 - beta1) * g);
+                st.v_b[j] = beta2.mul_add(st.v_b[j], (1.0 - beta2) * g * g);
                 let m_hat = st.m_b[j] / bc1;
                 let v_hat = st.v_b[j] / bc2;
                 layer.b[j] -= lr * m_hat / (v_hat.sqrt() + eps);
@@ -461,7 +461,7 @@ impl NeuralSdf {
                 in_dim,
                 out_dim,
             });
-            adam.push(NeuralSdf::make_adam(in_dim, out_dim));
+            adam.push(Self::make_adam(in_dim, out_dim));
         }
 
         Ok(Self {
@@ -654,7 +654,7 @@ mod tests {
 
         // Numerical gradient check on first layer weights
         let eps = 1e-4;
-        for j in 0..nsdf.layers[0].w.len() {
+        for (j, &analytical) in grad_w[0].iter().enumerate() {
             let orig = nsdf.layers[0].w[j];
 
             nsdf.layers[0].w[j] = orig + eps;
@@ -664,7 +664,6 @@ mod tests {
             nsdf.layers[0].w[j] = orig;
 
             let numerical = (loss_p - loss_m) / (2.0 * eps);
-            let analytical = grad_w[0][j];
             let scale = numerical.abs().max(analytical.abs()).max(1e-5);
             let rel_err = (numerical - analytical).abs() / scale;
 

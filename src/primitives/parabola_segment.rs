@@ -26,7 +26,7 @@ pub fn sdf_parabola_segment(p: Vec3, width: f32, para_height: f32, half_depth: f
     // Arch curve: y = h * (1 - (x/w)^2), for x in [0, w]
     // Inside check
     let y_arch = if px <= w {
-        h * (1.0 - (px / w) * (px / w))
+        h * (px / w).mul_add(-(px / w), 1.0)
     } else {
         0.0
     };

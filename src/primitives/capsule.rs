@@ -42,7 +42,11 @@ pub fn sdf_capsule_vertical(point: Vec3, half_height: f32, radius: f32) -> f32 {
     // Optimized: directly compute clamped Y offset
     let p_y = point.y - point.y.clamp(-half_height, half_height);
     // length of (point.x, p_y, point.z) - avoid Vec3 allocation
-    (point.x * point.x + p_y * p_y + point.z * point.z).sqrt() - radius
+    point
+        .z
+        .mul_add(point.z, point.x.mul_add(point.x, p_y * p_y))
+        .sqrt()
+        - radius
 }
 
 /// Signed distance to a horizontal capsule along X-axis centered at origin (Deep Fried)
@@ -54,7 +58,11 @@ pub fn sdf_capsule_horizontal(point: Vec3, half_length: f32, radius: f32) -> f32
     // Optimized: directly compute clamped X offset
     let p_x = point.x - point.x.clamp(-half_length, half_length);
     // length of (p_x, point.y, point.z)
-    (p_x * p_x + point.y * point.y + point.z * point.z).sqrt() - radius
+    point
+        .z
+        .mul_add(point.z, p_x.mul_add(p_x, point.y * point.y))
+        .sqrt()
+        - radius
 }
 
 #[cfg(test)]

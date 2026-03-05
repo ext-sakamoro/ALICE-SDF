@@ -36,7 +36,7 @@ pub extern "C" fn alice_sdf_save(node: SdfHandle, path: *const c_char) -> SdfRes
 
     let tree = SdfTree::new((*sdf_node).clone());
     match crate::save(&tree, path_str) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn alice_sdf_save_abm(
         Err(e) => return e,
     };
     match crate::io::abm::save_abm(&mesh, path_str) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -112,10 +112,7 @@ pub unsafe extern "C" fn alice_sdf_load_abm(path: *const c_char) -> MeshHandle {
         Ok(s) => s,
         Err(_) => return MESH_HANDLE_NULL,
     };
-    match crate::io::abm::load_abm(path_str) {
-        Ok(mesh) => register_mesh(mesh),
-        Err(_) => MESH_HANDLE_NULL,
-    }
+    crate::io::abm::load_abm(path_str).map_or(MESH_HANDLE_NULL, register_mesh)
 }
 
 // ============================================================================
@@ -154,7 +151,7 @@ pub unsafe extern "C" fn alice_sdf_export_unity(
         name: "alice_mesh".to_string(),
     };
     match crate::io::unity_mesh::export_unity_mesh(&mesh, path_str, &config) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -191,7 +188,7 @@ pub unsafe extern "C" fn alice_sdf_export_unity_binary(
         name: "alice_mesh".to_string(),
     };
     match crate::io::unity_mesh::export_unity_mesh_binary(&mesh, path_str, &config) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -229,7 +226,7 @@ pub unsafe extern "C" fn alice_sdf_export_ue5(
         lod_index: 0,
     };
     match crate::io::ue5_asset::export_ue5_mesh(&mesh, path_str, &config) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -263,7 +260,7 @@ pub unsafe extern "C" fn alice_sdf_export_ue5_binary(
         lod_index: 0,
     };
     match crate::io::ue5_asset::export_ue5_mesh_binary(&mesh, path_str, &config) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -324,7 +321,7 @@ pub unsafe extern "C" fn alice_sdf_save_lod_chain(
     );
 
     match crate::mesh::lod_persist::save_lod_chain(&chain, path_str) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }

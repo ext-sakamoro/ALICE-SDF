@@ -48,7 +48,7 @@ pub struct GpuMarchingCubesConfig {
 
 impl Default for GpuMarchingCubesConfig {
     fn default() -> Self {
-        GpuMarchingCubesConfig {
+        Self {
             resolution: 64,
             iso_level: 0.0,
             compute_normals: true,
@@ -490,7 +490,7 @@ pub fn gpu_marching_cubes_from_shader(
 // ====== Helper functions ======
 
 /// Create a bind group layout entry (compute, storage/uniform)
-fn bgl_entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayoutEntry {
+const fn bgl_entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility: wgpu::ShaderStages::COMPUTE,
@@ -861,8 +861,8 @@ mod tests {
 
         match gpu_marching_cubes(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config) {
             Ok(mesh) => {
-                assert!(mesh.vertices.len() > 0, "Mesh should have vertices");
-                assert!(mesh.indices.len() > 0, "Mesh should have indices");
+                assert!(!mesh.vertices.is_empty(), "Mesh should have vertices");
+                assert!(!mesh.indices.is_empty(), "Mesh should have indices");
                 // Vertices should be in groups of 3 (triangles)
                 assert_eq!(mesh.indices.len() % 3, 0, "Indices should be multiple of 3");
 
@@ -938,7 +938,10 @@ mod tests {
 
         match gpu_marching_cubes(&shape, Vec3::splat(-2.0), Vec3::splat(2.0), &config) {
             Ok(mesh) => {
-                assert!(mesh.vertices.len() > 0, "Complex shape should produce mesh");
+                assert!(
+                    !mesh.vertices.is_empty(),
+                    "Complex shape should produce mesh"
+                );
             }
             Err(GpuError::NoAdapter) => {
                 eprintln!("Skipping GPU MC test: no GPU adapter available");

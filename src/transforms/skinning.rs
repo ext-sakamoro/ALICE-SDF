@@ -59,7 +59,7 @@ pub fn sdf_skinning(p: Vec3, bones: &[BoneTransform]) -> (Vec3, f32) {
     (result, 1.0)
 }
 
-fn mat4_from_array(m: &[f32; 16]) -> Mat4 {
+const fn mat4_from_array(m: &[f32; 16]) -> Mat4 {
     Mat4::from_cols_array(m)
 }
 

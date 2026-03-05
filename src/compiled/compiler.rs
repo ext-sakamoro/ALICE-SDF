@@ -85,7 +85,7 @@ impl CompiledSdf {
         compiler.compile_node(node);
         compiler.instructions.push(Instruction::end());
 
-        Ok(CompiledSdf {
+        Ok(Self {
             instructions: compiler.instructions,
             aux_data: compiler.aux_data,
             node_count: compiler.node_count,
@@ -115,7 +115,7 @@ struct Compiler {
 
 impl Compiler {
     fn new() -> Self {
-        Compiler {
+        Self {
             instructions: Vec::with_capacity(256),
             aux_data: Vec::new(),
             node_count: 0,
@@ -1232,7 +1232,7 @@ const MAX_COORD_STACK: usize = 32;
 /// to evaluate the given SDF tree.
 ///
 /// Returns `(value_depth, coord_depth)`.
-pub(crate) fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
+pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
     match node {
         // Primitives push 1 value onto the value stack, no coord push
         SdfNode::Sphere { .. }

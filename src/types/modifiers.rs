@@ -14,7 +14,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn twist(self, strength: f32) -> Self {
-        SdfNode::Twist {
+        Self::Twist {
             child: Arc::new(self),
             strength,
         }
@@ -24,7 +24,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn bend(self, curvature: f32) -> Self {
-        SdfNode::Bend {
+        Self::Bend {
             child: Arc::new(self),
             curvature,
         }
@@ -34,7 +34,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn repeat_infinite(self, spacing_x: f32, spacing_y: f32, spacing_z: f32) -> Self {
-        SdfNode::RepeatInfinite {
+        Self::RepeatInfinite {
             child: Arc::new(self),
             spacing: Vec3::new(spacing_x, spacing_y, spacing_z),
         }
@@ -44,7 +44,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn repeat_finite(self, count: [u32; 3], spacing: Vec3) -> Self {
-        SdfNode::RepeatFinite {
+        Self::RepeatFinite {
             child: Arc::new(self),
             count,
             spacing,
@@ -55,7 +55,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn noise(self, amplitude: f32, frequency: f32, seed: u32) -> Self {
-        SdfNode::Noise {
+        Self::Noise {
             child: Arc::new(self),
             amplitude,
             frequency,
@@ -67,7 +67,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn round(self, radius: f32) -> Self {
-        SdfNode::Round {
+        Self::Round {
             child: Arc::new(self),
             radius,
         }
@@ -77,7 +77,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn onion(self, thickness: f32) -> Self {
-        SdfNode::Onion {
+        Self::Onion {
             child: Arc::new(self),
             thickness,
         }
@@ -87,7 +87,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn elongate(self, x: f32, y: f32, z: f32) -> Self {
-        SdfNode::Elongate {
+        Self::Elongate {
             child: Arc::new(self),
             amount: Vec3::new(x, y, z),
         }
@@ -97,7 +97,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn mirror(self, x: bool, y: bool, z: bool) -> Self {
-        SdfNode::Mirror {
+        Self::Mirror {
             child: Arc::new(self),
             axes: Vec3::new(
                 if x { 1.0 } else { 0.0 },
@@ -111,7 +111,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn revolution(self, offset: f32) -> Self {
-        SdfNode::Revolution {
+        Self::Revolution {
             child: Arc::new(self),
             offset,
         }
@@ -121,7 +121,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn extrude(self, height: f32) -> Self {
-        SdfNode::Extrude {
+        Self::Extrude {
             child: Arc::new(self),
             half_height: height * 0.5,
         }
@@ -132,7 +132,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn sweep_bezier(self, p0: Vec2, p1: Vec2, p2: Vec2) -> Self {
-        SdfNode::SweepBezier {
+        Self::SweepBezier {
             child: Arc::new(self),
             p0,
             p1,
@@ -144,7 +144,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn taper(self, factor: f32) -> Self {
-        SdfNode::Taper {
+        Self::Taper {
             child: Arc::new(self),
             factor,
         }
@@ -154,7 +154,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn displacement(self, strength: f32) -> Self {
-        SdfNode::Displacement {
+        Self::Displacement {
             child: Arc::new(self),
             strength,
         }
@@ -164,7 +164,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn polar_repeat(self, count: u32) -> Self {
-        SdfNode::PolarRepeat {
+        Self::PolarRepeat {
             child: Arc::new(self),
             count,
         }
@@ -174,7 +174,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn octant_mirror(self) -> Self {
-        SdfNode::OctantMirror {
+        Self::OctantMirror {
             child: Arc::new(self),
         }
     }
@@ -183,7 +183,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn shear(self, xy: f32, xz: f32, yz: f32) -> Self {
-        SdfNode::Shear {
+        Self::Shear {
             child: Arc::new(self),
             shear: Vec3::new(xy, xz, yz),
         }
@@ -193,7 +193,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn animated(self, speed: f32, amplitude: f32) -> Self {
-        SdfNode::Animated {
+        Self::Animated {
             child: Arc::new(self),
             speed,
             amplitude,
@@ -204,7 +204,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn with_material(self, material_id: u32) -> Self {
-        SdfNode::WithMaterial {
+        Self::WithMaterial {
             child: Arc::new(self),
             material_id,
         }
@@ -214,7 +214,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn icosahedral_symmetry(self) -> Self {
-        SdfNode::IcosahedralSymmetry {
+        Self::IcosahedralSymmetry {
             child: Arc::new(self),
         }
     }
@@ -223,7 +223,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn ifs(self, transforms: Vec<[f32; 16]>, iterations: u32) -> Self {
-        SdfNode::IFS {
+        Self::IFS {
             child: Arc::new(self),
             transforms,
             iterations,
@@ -241,7 +241,7 @@ impl SdfNode {
         amplitude: f32,
         scale: f32,
     ) -> Self {
-        SdfNode::HeightmapDisplacement {
+        Self::HeightmapDisplacement {
             child: Arc::new(self),
             heightmap,
             width,
@@ -255,7 +255,7 @@ impl SdfNode {
     #[must_use]
     #[inline]
     pub fn surface_roughness(self, frequency: f32, amplitude: f32, octaves: u32) -> Self {
-        SdfNode::SurfaceRoughness {
+        Self::SurfaceRoughness {
             child: Arc::new(self),
             frequency,
             amplitude,

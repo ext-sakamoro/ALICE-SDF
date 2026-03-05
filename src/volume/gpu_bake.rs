@@ -193,9 +193,9 @@ pub fn gpu_bake_volume_from_shader(
 
     // Dispatch 3D compute
     let wg = 4u32; // workgroup_size(4, 4, 4)
-    let dispatch_x = (res[0] + wg - 1) / wg;
-    let dispatch_y = (res[1] + wg - 1) / wg;
-    let dispatch_z = (res[2] + wg - 1) / wg;
+    let dispatch_x = res[0].div_ceil(wg);
+    let dispatch_y = res[1].div_ceil(wg);
+    let dispatch_z = res[2].div_ceil(wg);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("Volume Bake Encoder"),
@@ -385,9 +385,9 @@ pub fn gpu_bake_volume_with_normals(
     });
 
     let wg = 4u32;
-    let dispatch_x = (res[0] + wg - 1) / wg;
-    let dispatch_y = (res[1] + wg - 1) / wg;
-    let dispatch_z = (res[2] + wg - 1) / wg;
+    let dispatch_x = res[0].div_ceil(wg);
+    let dispatch_y = res[1].div_ceil(wg);
+    let dispatch_z = res[2].div_ceil(wg);
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("Volume Bake Encoder"),
@@ -440,7 +440,7 @@ pub fn gpu_bake_volume_with_normals(
 /// Generate WGSL compute shader for 3D volume baking (distance only)
 fn generate_volume_bake_shader(shader: &WgslShader) -> String {
     format!(
-        r#"// ALICE-SDF Volume Bake Shader (3D Dispatch)
+        r"// ALICE-SDF Volume Bake Shader (3D Dispatch)
 
 struct VolumeUniforms {{
     resolution: vec4<u32>,
@@ -474,7 +474,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let idx = gid.x + gid.y * res.x + gid.z * res.x * res.y;
     output_volume[idx] = distance;
 }}
-"#,
+",
         sdf_func = shader.source,
     )
 }
@@ -482,7 +482,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// Generate WGSL compute shader for 3D volume baking (distance + normals)
 fn generate_volume_bake_shader_with_normals(shader: &WgslShader) -> String {
     format!(
-        r#"// ALICE-SDF Volume Bake Shader - Distance + Normals (3D Dispatch)
+        r"// ALICE-SDF Volume Bake Shader - Distance + Normals (3D Dispatch)
 
 struct VolumeUniforms {{
     resolution: vec4<u32>,
@@ -538,7 +538,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     output_volume[idx].ny = n.y;
     output_volume[idx].nz = n.z;
 }}
-"#,
+",
         sdf_func = shader.source,
     )
 }

@@ -35,7 +35,7 @@ mod tests {
     #[test]
     fn test_dodecahedron_surface() {
         // A face normal direction at distance = radius should be on surface
-        let n = Vec3::new(0.0, 0.8506508083520400, 0.5257311121191336);
+        let n = Vec3::new(0.0, 0.850_650_8, 0.525_731_1);
         let d = sdf_dodecahedron(n * 1.0, 1.0);
         assert!(
             d.abs() < 0.01,

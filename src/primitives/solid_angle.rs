@@ -15,10 +15,10 @@ use glam::{Vec2, Vec3};
 #[inline(always)]
 pub fn sdf_solid_angle(p: Vec3, angle: f32, radius: f32) -> f32 {
     let c = Vec2::new(angle.sin(), angle.cos());
-    let q = Vec2::new((p.x * p.x + p.z * p.z).sqrt(), p.y);
+    let q = Vec2::new(p.x.hypot(p.z), p.y);
     let l = q.length() - radius;
     let m = (q - c * q.dot(c).clamp(0.0, radius)).length();
-    let sign = if c.y * q.x - c.x * q.y < 0.0 {
+    let sign = if c.y.mul_add(q.x, -(c.x * q.y)) < 0.0 {
         -1.0
     } else {
         1.0

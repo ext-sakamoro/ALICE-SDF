@@ -35,7 +35,7 @@ pub struct MarchingCubesConfig {
 
 impl Default for MarchingCubesConfig {
     fn default() -> Self {
-        MarchingCubesConfig {
+        Self {
             resolution: 64,
             iso_level: 0.0,
             compute_normals: true,
@@ -50,8 +50,8 @@ impl Default for MarchingCubesConfig {
 /// Configuration preset with all AAA features enabled
 impl MarchingCubesConfig {
     /// AAA preset: normals + triplanar UV + tangents + materials
-    pub fn aaa(resolution: usize) -> Self {
-        MarchingCubesConfig {
+    pub const fn aaa(resolution: usize) -> Self {
+        Self {
             resolution,
             iso_level: 0.0,
             compute_normals: true,
@@ -146,21 +146,21 @@ fn compute_mikktspace_tangents(mesh: &mut Mesh) {
         let duv1 = uv1 - uv0;
         let duv2 = uv2 - uv0;
 
-        let det = duv1.x * duv2.y - duv1.y * duv2.x;
+        let det = duv1.x.mul_add(duv2.y, -(duv1.y * duv2.x));
         if det.abs() < 1e-8 {
             continue; // Degenerate UV mapping
         }
 
         let inv_det = 1.0 / det;
         let t = Vec3::new(
-            (dp1.x * duv2.y - dp2.x * duv1.y) * inv_det,
-            (dp1.y * duv2.y - dp2.y * duv1.y) * inv_det,
-            (dp1.z * duv2.y - dp2.z * duv1.y) * inv_det,
+            dp1.x.mul_add(duv2.y, -(dp2.x * duv1.y)) * inv_det,
+            dp1.y.mul_add(duv2.y, -(dp2.y * duv1.y)) * inv_det,
+            dp1.z.mul_add(duv2.y, -(dp2.z * duv1.y)) * inv_det,
         );
         let b = Vec3::new(
-            (dp2.x * duv1.x - dp1.x * duv2.x) * inv_det,
-            (dp2.y * duv1.x - dp1.y * duv2.x) * inv_det,
-            (dp2.z * duv1.x - dp1.z * duv2.x) * inv_det,
+            dp2.x.mul_add(duv1.x, -(dp1.x * duv2.x)) * inv_det,
+            dp2.y.mul_add(duv1.x, -(dp1.y * duv2.x)) * inv_det,
+            dp2.z.mul_add(duv1.x, -(dp1.z * duv2.x)) * inv_det,
         );
 
         // Area-weighted accumulation (implicit via dp magnitude)
@@ -209,8 +209,8 @@ pub struct Mesh {
 
 impl Mesh {
     /// Create an empty mesh
-    pub fn new() -> Self {
-        Mesh {
+    pub const fn new() -> Self {
+        Self {
             vertices: Vec::new(),
             indices: Vec::new(),
         }
@@ -1117,7 +1117,7 @@ pub struct AdaptiveConfig {
 
 impl Default for AdaptiveConfig {
     fn default() -> Self {
-        AdaptiveConfig {
+        Self {
             max_depth: 6, // 64 effective resolution
             min_depth: 2, // 4 minimum
             surface_threshold: 0.0,
@@ -1133,8 +1133,8 @@ impl Default for AdaptiveConfig {
 
 impl AdaptiveConfig {
     /// AAA preset: high resolution near surface, efficient far away
-    pub fn aaa(max_depth: u32) -> Self {
-        AdaptiveConfig {
+    pub const fn aaa(max_depth: u32) -> Self {
+        Self {
             max_depth,
             min_depth: 2,
             surface_threshold: 0.0,
@@ -1207,6 +1207,7 @@ pub fn adaptive_marching_cubes(
 }
 
 /// Recursively subdivide octree based on SDF distance
+#[allow(clippy::suspicious_operation_groupings)]
 fn subdivide_octree(
     node: &SdfNode,
     cell: &OctreeCell,
@@ -1421,6 +1422,7 @@ pub fn adaptive_marching_cubes_compiled(
 }
 
 /// Recursively subdivide octree using compiled evaluator
+#[allow(clippy::suspicious_operation_groupings)]
 fn subdivide_octree_compiled(
     sdf: &CompiledSdf,
     cell: &OctreeCell,

@@ -17,8 +17,8 @@ pub fn modifier_bend(point: Vec3, curvature: f32) -> Vec3 {
     // k * x -> 0, so c=1, s=0 -> x'=x, y'=y
     let (s, c) = (curvature * point.x).sin_cos();
     Vec3::new(
-        c * point.x - s * point.y,
-        s * point.x + c * point.y,
+        c.mul_add(point.x, -(s * point.y)),
+        s.mul_add(point.x, c * point.y),
         point.z,
     )
 }
@@ -28,9 +28,9 @@ pub fn modifier_bend(point: Vec3, curvature: f32) -> Vec3 {
 pub fn modifier_bend_x(point: Vec3, curvature: f32) -> Vec3 {
     let (s, c) = (curvature * point.y).sin_cos();
     Vec3::new(
-        c * point.x - s * point.z,
+        c.mul_add(point.x, -(s * point.z)),
         point.y,
-        s * point.x + c * point.z,
+        s.mul_add(point.x, c * point.z),
     )
 }
 
@@ -40,8 +40,8 @@ pub fn modifier_bend_z(point: Vec3, curvature: f32) -> Vec3 {
     let (s, c) = (curvature * point.y).sin_cos();
     Vec3::new(
         point.x,
-        c * point.y - s * point.z,
-        s * point.y + c * point.z,
+        c.mul_add(point.y, -(s * point.z)),
+        s.mul_add(point.y, c * point.z),
     )
 }
 

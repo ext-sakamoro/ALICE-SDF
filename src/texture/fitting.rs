@@ -93,7 +93,7 @@ pub fn fit_texture(path: &Path, config: &TextureFitConfig) -> Result<TextureFitR
     let img = image::open(path).map_err(|e| format!("Failed to load image: {}", e))?;
     let gray = img.to_luma32f();
     let (width, height) = gray.dimensions();
-    let pixels: Vec<f32> = gray.as_raw().to_vec();
+    let pixels: Vec<f32> = gray.as_raw().clone();
 
     let (bias, octaves, psnr, nmse) =
         fit_channel(&pixels, width as usize, height as usize, config)?;
@@ -292,9 +292,9 @@ fn fit_channel(
             }
 
             // Scalar remainder
-            for x in (simd_cols * 8)..w {
-                let u_coord = x as f32 / w as f32;
-                row[x] -= eval_octave(u_coord, v_coord, amp, freq, phase, seed, rot);
+            for (x, val) in row[(simd_cols * 8)..].iter_mut().enumerate() {
+                let u_coord = (simd_cols * 8 + x) as f32 / w as f32;
+                *val -= eval_octave(u_coord, v_coord, amp, freq, phase, seed, rot);
             }
         });
 
@@ -303,8 +303,8 @@ fn fit_channel(
             sub_residual[i] = residual[grid.src_y[i] * width + grid.src_x[i]];
         }
         // Keep padding zeros
-        for i in grid.count..padded {
-            sub_residual[i] = 0.0;
+        for val in &mut sub_residual[grid.count..padded] {
+            *val = 0.0;
         }
 
         fitted_octaves.push(octave);
@@ -355,6 +355,7 @@ fn compute_nmse(original: &[f32], residual: &[f32], mean: f32) -> f32 {
 }
 
 /// [Deep Fried] Reconstruct texture with SIMD + rayon at arbitrary resolution
+#[allow(dead_code)]
 pub fn reconstruct(result: &TextureFitResult, width: usize, height: usize) -> Vec<f32> {
     let mut buffer = vec![0.0f32; width * height];
 
@@ -405,8 +406,8 @@ pub fn reconstruct(result: &TextureFitResult, width: usize, height: usize) -> Ve
                 }
 
                 // Scalar remainder
-                for x in (simd_cols * 8)..width {
-                    let u_coord = x as f32 / width as f32;
+                for (x, slot) in row[(simd_cols * 8)..].iter_mut().enumerate() {
+                    let u_coord = (simd_cols * 8 + x) as f32 / width as f32;
                     let mut val = bias;
                     for oct in octaves {
                         val += eval_octave(
@@ -419,7 +420,7 @@ pub fn reconstruct(result: &TextureFitResult, width: usize, height: usize) -> Ve
                             oct.rotation,
                         );
                     }
-                    row[x] = val.clamp(0.0, 1.0);
+                    *slot = val.clamp(0.0, 1.0);
                 }
             });
     }
@@ -492,7 +493,7 @@ mod tests {
         assert_eq!(buf.len(), 128 * 128);
 
         for &v in &buf {
-            assert!(v >= 0.0 && v <= 1.0, "Out of range: {}", v);
+            assert!((0.0..=1.0).contains(&v), "Out of range: {}", v);
         }
     }
 

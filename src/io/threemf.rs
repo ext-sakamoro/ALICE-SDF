@@ -90,8 +90,8 @@ struct ZipEntry {
 }
 
 impl<W: Write + Seek> ZipWriter<W> {
-    fn new(writer: W) -> Self {
-        ZipWriter {
+    const fn new(writer: W) -> Self {
+        Self {
             writer,
             entries: Vec::new(),
         }

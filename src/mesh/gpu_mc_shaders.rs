@@ -518,7 +518,7 @@ fn main(
 }
 
 /// Standard Marching Cubes TRI_TABLE (Lorensen & Cline, 1987)
-fn get_tri_table() -> [[i8; 16]; 256] {
+const fn get_tri_table() -> [[i8; 16]; 256] {
     [
         [
             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,

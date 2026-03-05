@@ -53,8 +53,8 @@ pub fn sdf_cylinder_capped(point: Vec3, a: Vec3, b: Vec3, radius: f32) -> f32 {
     let baba = ba.dot(ba);
     let paba = pa.dot(ba);
 
-    let x = (pa * baba - ba * paba).length() - radius * baba;
-    let y = (paba - baba * 0.5).abs() - baba * 0.5;
+    let x = radius.mul_add(-baba, (pa * baba - ba * paba).length());
+    let y = baba.mul_add(-0.5, baba.mul_add(-0.5, paba).abs());
 
     let x2 = x * x;
     let y2 = y * y * baba;
@@ -66,7 +66,7 @@ pub fn sdf_cylinder_capped(point: Vec3, a: Vec3, b: Vec3, radius: f32) -> f32 {
     // Exterior case: at least one of x or y is positive
     // x.max(0.0)² contributes if outside radially
     // y.max(0.0)² * baba contributes if outside axially
-    let dist_sq_outer = x.max(0.0).powi(2) + y.max(0.0).powi(2) * baba;
+    let dist_sq_outer = y.max(0.0).powi(2).mul_add(baba, x.max(0.0).powi(2));
 
     // Select based on whether we're inside or outside
     let inside = x.max(y) < 0.0;
@@ -79,7 +79,7 @@ pub fn sdf_cylinder_capped(point: Vec3, a: Vec3, b: Vec3, radius: f32) -> f32 {
 #[inline(always)]
 pub fn sdf_cylinder_infinite(point: Vec3, radius: f32) -> f32 {
     // Only XZ distance matters - direct scalar math
-    (point.x * point.x + point.z * point.z).sqrt() - radius
+    point.x.hypot(point.z) - radius
 }
 
 #[cfg(test)]

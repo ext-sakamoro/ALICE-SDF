@@ -169,7 +169,7 @@ impl LodChainPersist {
             })
             .collect();
 
-        LodChainPersist {
+        Self {
             meshes: levels,
             sdf_hash,
             config,

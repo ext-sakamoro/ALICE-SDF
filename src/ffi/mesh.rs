@@ -42,19 +42,13 @@ pub extern "C" fn alice_sdf_generate_mesh(
 /// Get vertex count of a mesh
 #[no_mangle]
 pub extern "C" fn alice_sdf_mesh_vertex_count(mesh: MeshHandle) -> u32 {
-    match get_mesh(mesh) {
-        Some(m) => m.vertex_count() as u32,
-        None => 0,
-    }
+    get_mesh(mesh).map_or(0, |m| m.vertex_count() as u32)
 }
 
 /// Get triangle count of a mesh
 #[no_mangle]
 pub extern "C" fn alice_sdf_mesh_triangle_count(mesh: MeshHandle) -> u32 {
-    match get_mesh(mesh) {
-        Some(m) => m.triangle_count() as u32,
-        None => 0,
-    }
+    get_mesh(mesh).map_or(0, |m| m.triangle_count() as u32)
 }
 
 /// Free a mesh handle
@@ -142,7 +136,7 @@ pub unsafe extern "C" fn alice_sdf_export_obj(
         Err(e) => return e,
     };
     match crate::io::export_obj(&mesh, path_str, &ObjConfig::default(), None) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -170,7 +164,7 @@ pub unsafe extern "C" fn alice_sdf_export_glb(
         Err(e) => return e,
     };
     match crate::io::export_glb(&mesh, path_str, &GltfConfig::default(), None) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -198,7 +192,7 @@ pub unsafe extern "C" fn alice_sdf_export_usda(
         Err(e) => return e,
     };
     match crate::io::export_usda(&mesh, path_str, &UsdConfig::default(), None) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -226,7 +220,7 @@ pub unsafe extern "C" fn alice_sdf_export_alembic(
         Err(e) => return e,
     };
     match crate::io::export_alembic(&mesh, path_str, &AlembicConfig::default()) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }
@@ -254,7 +248,7 @@ pub unsafe extern "C" fn alice_sdf_export_fbx(
         Err(e) => return e,
     };
     match crate::io::export_fbx(&mesh, path_str, &FbxConfig::default(), None) {
-        Ok(_) => SdfResult::Ok,
+        Ok(()) => SdfResult::Ok,
         Err(_) => SdfResult::IoError,
     }
 }

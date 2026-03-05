@@ -15,7 +15,7 @@ pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
     // Branchless k=0 guard: maxss on x86, fmax on ARM
     let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
-    a.min(b) - h * h * k * 0.25
+    (h * h * k).mul_add(-0.25, a.min(b))
 }
 
 /// Polynomial smooth minimum — Division Exorcism edition.
@@ -25,8 +25,8 @@ pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
 /// instead of `(k - abs_diff) / k`.
 #[inline(always)]
 pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    let h = (1.0 - (a - b).abs() * rk).max(0.0);
-    a.min(b) - h * h * k * 0.25
+    let h = (a - b).abs().mul_add(-rk, 1.0).max(0.0);
+    (h * h * k).mul_add(-0.25, a.min(b))
 }
 
 /// Polynomial smooth maximum (Deep Fried)
@@ -36,7 +36,7 @@ pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 pub fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
     let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
-    a.max(b) + h * h * k * 0.25
+    (h * h * k).mul_add(0.25, a.max(b))
 }
 
 /// Polynomial smooth maximum — Division Exorcism edition.
@@ -44,8 +44,8 @@ pub fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
 /// Takes precomputed `rk = 1.0 / k` to eliminate division from the hot path.
 #[inline(always)]
 pub fn smooth_max_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    let h = (1.0 - (a - b).abs() * rk).max(0.0);
-    a.max(b) + h * h * k * 0.25
+    let h = (a - b).abs().mul_add(-rk, 1.0).max(0.0);
+    (h * h * k).mul_add(0.25, a.max(b))
 }
 
 /// Smooth union of two SDFs
@@ -106,7 +106,7 @@ pub fn smooth_min_exp_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 pub fn smooth_min_cubic(a: f32, b: f32, k: f32) -> f32 {
     let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
-    a.min(b) - h * h * h * k * (1.0 / 6.0)
+    (h * h * h * k).mul_add(-(1.0 / 6.0), a.min(b))
 }
 
 /// Cubic smooth minimum — precomputed reciprocal edition.
@@ -114,8 +114,8 @@ pub fn smooth_min_cubic(a: f32, b: f32, k: f32) -> f32 {
 #[allow(dead_code)] // reserved for future SIMD optimization path
 #[inline(always)]
 pub fn smooth_min_cubic_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    let h = (1.0 - (a - b).abs() * rk).max(0.0);
-    a.min(b) - h * h * h * k * (1.0 / 6.0)
+    let h = (a - b).abs().mul_add(-rk, 1.0).max(0.0);
+    (h * h * h * k).mul_add(-(1.0 / 6.0), a.min(b))
 }
 
 /// Square root smooth minimum (IQ)
@@ -128,7 +128,7 @@ pub fn smooth_min_cubic_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 #[inline(always)]
 pub fn smooth_min_root(a: f32, b: f32, k: f32) -> f32 {
     let x = b - a;
-    0.5 * (a + b - (x * x + k * k).sqrt())
+    0.5 * (a + b - x.hypot(k))
 }
 
 #[cfg(test)]

@@ -16,7 +16,7 @@ use glam::Vec3;
 pub fn sdf_triangular_prism(p: Vec3, width: f32, half_depth: f32) -> f32 {
     let q = p.abs();
     // 0.866025 = sqrt(3)/2
-    (q.z - half_depth).max((q.x * 0.866025 + p.y * 0.5).max(-p.y) - width * 0.5)
+    (q.z - half_depth).max(width.mul_add(-0.5, q.x.mul_add(0.866025, p.y * 0.5).max(-p.y)))
 }
 
 #[cfg(test)]

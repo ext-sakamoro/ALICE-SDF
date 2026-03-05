@@ -44,8 +44,7 @@ fn raycast_hit_point_near_surface() {
     let dist_from_center = hit.point.length();
     assert!(
         (dist_from_center - 1.0).abs() < 0.01,
-        "Hit point should be on sphere surface: dist={}",
-        dist_from_center
+        "Hit point should be on sphere surface: dist={dist_from_center}"
     );
 }
 
@@ -85,10 +84,7 @@ fn normal_function_matches_gradient_direction() {
     let dot = n.dot(g.normalize());
     assert!(
         dot > 0.99,
-        "Normal and gradient should align: dot={}, n={:?}, g={:?}",
-        dot,
-        n,
-        g
+        "Normal and gradient should align: dot={dot}, n={n:?}, g={g:?}"
     );
 }
 
@@ -110,8 +106,7 @@ fn raymarch_compiled_hits_sphere() {
     let dist = h.point.length();
     assert!(
         (dist - 1.0).abs() < 0.02,
-        "Compiled hit should be on surface: dist={}",
-        dist
+        "Compiled hit should be on surface: dist={dist}"
     );
 }
 
@@ -154,8 +149,7 @@ fn ao_in_open_space_is_high() {
 
     assert!(
         ao > 0.5,
-        "AO on exposed surface should be high (bright): ao={}",
-        ao
+        "AO on exposed surface should be high (bright): ao={ao}"
     );
 }
 
@@ -170,7 +164,7 @@ fn ao_in_concavity_is_lower() {
     let ao = ambient_occlusion(&shape, p, n, 5, 1.0);
 
     // AO should be lower due to surrounding geometry (approximate check)
-    assert!(ao.is_finite(), "AO should be finite: {}", ao);
+    assert!(ao.is_finite(), "AO should be finite: {ao}");
 }
 
 // ============================================================================
@@ -186,8 +180,7 @@ fn soft_shadow_no_occluder() {
     let shadow = soft_shadow(&shape, point, light_dir, 0.01, 10.0, 8.0);
     assert!(
         shadow > 0.8,
-        "No occluder above → should be mostly lit: shadow={}",
-        shadow
+        "No occluder above → should be mostly lit: shadow={shadow}"
     );
 }
 
@@ -200,7 +193,6 @@ fn soft_shadow_with_occluder() {
     let shadow = soft_shadow(&shape, point, light_dir, 0.01, 10.0, 8.0);
     assert!(
         shadow < 0.5,
-        "Sphere directly above should cast shadow: shadow={}",
-        shadow
+        "Sphere directly above should cast shadow: shadow={shadow}"
     );
 }

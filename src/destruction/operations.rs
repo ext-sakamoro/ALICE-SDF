@@ -38,8 +38,8 @@ impl CarveShape {
     /// Evaluate the carve shape's signed distance at a point
     fn eval(&self, point: Vec3) -> f32 {
         match self {
-            CarveShape::Sphere { center, radius } => (point - *center).length() - radius,
-            CarveShape::Box {
+            Self::Sphere { center, radius } => (point - *center).length() - radius,
+            Self::Box {
                 center,
                 half_extents,
                 rotation,
@@ -48,18 +48,18 @@ impl CarveShape {
                 let q = local.abs() - *half_extents;
                 q.max(Vec3::ZERO).length() + q.max_element().min(0.0)
             }
-            CarveShape::Sdf(node) => eval(node, point),
+            Self::Sdf(node) => eval(node, point),
         }
     }
 
     /// Compute the world-space AABB of this shape (for grid bounds check)
     fn aabb(&self) -> (Vec3, Vec3) {
         match self {
-            CarveShape::Sphere { center, radius } => (
+            Self::Sphere { center, radius } => (
                 *center - Vec3::splat(*radius),
                 *center + Vec3::splat(*radius),
             ),
-            CarveShape::Box {
+            Self::Box {
                 center,
                 half_extents,
                 rotation,
@@ -77,7 +77,7 @@ impl CarveShape {
                 );
                 (*center - extent, *center + extent)
             }
-            CarveShape::Sdf(_node) => {
+            Self::Sdf(_node) => {
                 // Conservative: full grid bounds
                 (Vec3::splat(f32::NEG_INFINITY), Vec3::splat(f32::INFINITY))
             }
@@ -229,15 +229,15 @@ pub fn explode(
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let rx = ((rng_state >> 16) as f32 / u32::MAX as f32) * 2.0 - 1.0;
+        let rx = ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let ry = ((rng_state >> 16) as f32 / u32::MAX as f32) * 2.0 - 1.0;
+        let ry = ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let rz = ((rng_state >> 16) as f32 / u32::MAX as f32) * 2.0 - 1.0;
+        let rz = ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
 
         let dir = Vec3::new(rx, ry, rz).normalize_or_zero();
         rng_state = rng_state
@@ -247,7 +247,7 @@ pub fn explode(
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let frag_radius = radius * (0.2 + ((rng_state >> 16) as f32 / u32::MAX as f32) * 0.5);
+        let frag_radius = radius * ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(0.5, 0.2);
 
         shapes.push(CarveShape::Sphere {
             center: center + dir * dist,

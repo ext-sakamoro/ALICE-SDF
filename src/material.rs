@@ -31,7 +31,7 @@ pub struct TextureSlot {
 impl TextureSlot {
     /// Create a texture slot from a file path
     pub fn new(path: impl Into<String>) -> Self {
-        TextureSlot {
+        Self {
             path: path.into(),
             uv_channel: 0,
             tiling: [1.0, 1.0],
@@ -40,13 +40,13 @@ impl TextureSlot {
     }
 
     /// Set UV channel (0 = primary, 1 = lightmap)
-    pub fn with_uv_channel(mut self, channel: u32) -> Self {
+    pub const fn with_uv_channel(mut self, channel: u32) -> Self {
         self.uv_channel = channel;
         self
     }
 
     /// Set tiling factor
-    pub fn with_tiling(mut self, u: f32, v: f32) -> Self {
+    pub const fn with_tiling(mut self, u: f32, v: f32) -> Self {
         self.tiling = [u, v];
         self
     }
@@ -128,7 +128,7 @@ pub struct Material {
 
 impl Default for Material {
     fn default() -> Self {
-        Material {
+        Self {
             name: "Default".to_string(),
             base_color: [0.8, 0.8, 0.8, 1.0],
             metallic: 0.0,
@@ -165,7 +165,7 @@ impl Default for Material {
 impl Material {
     /// Create a new material with a name
     pub fn new(name: impl Into<String>) -> Self {
-        Material {
+        Self {
             name: name.into(),
             ..Default::default()
         }
@@ -173,7 +173,7 @@ impl Material {
 
     /// Set base color (RGBA)
     #[inline]
-    pub fn with_color(mut self, r: f32, g: f32, b: f32, a: f32) -> Self {
+    pub const fn with_color(mut self, r: f32, g: f32, b: f32, a: f32) -> Self {
         self.base_color = [r, g, b, a];
         self
     }
@@ -194,7 +194,7 @@ impl Material {
 
     /// Set emission color and strength
     #[inline]
-    pub fn with_emission(mut self, r: f32, g: f32, b: f32, strength: f32) -> Self {
+    pub const fn with_emission(mut self, r: f32, g: f32, b: f32, strength: f32) -> Self {
         self.emission = [r, g, b];
         self.emission_strength = strength;
         self
@@ -202,7 +202,7 @@ impl Material {
 
     /// Create a metal material
     pub fn metal(name: impl Into<String>, r: f32, g: f32, b: f32, roughness: f32) -> Self {
-        Material::new(name)
+        Self::new(name)
             .with_color(r, g, b, 1.0)
             .with_metallic(1.0)
             .with_roughness(roughness)
@@ -210,7 +210,7 @@ impl Material {
 
     /// Create a dielectric (non-metal) material
     pub fn dielectric(name: impl Into<String>, r: f32, g: f32, b: f32, roughness: f32) -> Self {
-        Material::new(name)
+        Self::new(name)
             .with_color(r, g, b, 1.0)
             .with_metallic(0.0)
             .with_roughness(roughness)
@@ -276,7 +276,7 @@ impl Material {
 
     /// Set volume properties (for transmission materials)
     #[inline]
-    pub fn with_volume(
+    pub const fn with_volume(
         mut self,
         thickness: f32,
         attenuation_distance: f32,
@@ -308,7 +308,7 @@ impl Material {
 
     /// Create a glass material
     pub fn glass(name: impl Into<String>, ior: f32) -> Self {
-        Material {
+        Self {
             name: name.into(),
             base_color: [1.0, 1.0, 1.0, 0.1],
             metallic: 0.0,
@@ -325,7 +325,7 @@ impl Material {
 
     /// Create an emissive material
     pub fn emissive(name: impl Into<String>, r: f32, g: f32, b: f32, strength: f32) -> Self {
-        Material::new(name).with_emission(r, g, b, strength)
+        Self::new(name).with_emission(r, g, b, strength)
     }
 }
 
@@ -349,8 +349,8 @@ pub struct ParticleMaterial {
 impl ParticleMaterial {
     /// Create a solid-color particle material
     #[inline]
-    pub fn solid(r: f32, g: f32, b: f32) -> Self {
-        ParticleMaterial {
+    pub const fn solid(r: f32, g: f32, b: f32) -> Self {
+        Self {
             color: [r, g, b, 1.0],
             emission_strength: 0.0,
             opacity: 1.0,
@@ -359,8 +359,8 @@ impl ParticleMaterial {
 
     /// Create a glowing particle material
     #[inline]
-    pub fn glow(r: f32, g: f32, b: f32, strength: f32) -> Self {
-        ParticleMaterial {
+    pub const fn glow(r: f32, g: f32, b: f32, strength: f32) -> Self {
+        Self {
             color: [r, g, b, 1.0],
             emission_strength: strength,
             opacity: 1.0,
@@ -369,8 +369,8 @@ impl ParticleMaterial {
 
     /// Create from a full PBR Material (lossy conversion)
     #[inline]
-    pub fn from_material(mat: &Material) -> Self {
-        ParticleMaterial {
+    pub const fn from_material(mat: &Material) -> Self {
+        Self {
             color: mat.base_color,
             emission_strength: mat.emission_strength,
             opacity: mat.opacity,
@@ -381,7 +381,7 @@ impl ParticleMaterial {
 impl Material {
     /// Convert to a lightweight ParticleMaterial (lossy)
     #[inline]
-    pub fn to_particle(&self) -> ParticleMaterial {
+    pub const fn to_particle(&self) -> ParticleMaterial {
         ParticleMaterial::from_material(self)
     }
 }
@@ -396,7 +396,7 @@ pub struct MaterialLibrary {
 impl MaterialLibrary {
     /// Create an empty material library with a default material at index 0
     pub fn new() -> Self {
-        MaterialLibrary {
+        Self {
             materials: vec![Material::default()],
         }
     }

@@ -48,7 +48,7 @@ pub struct DirectionalLight {
 
 impl Default for DirectionalLight {
     fn default() -> Self {
-        DirectionalLight {
+        Self {
             direction: Vec3::new(0.5, 1.0, 0.3).normalize(),
             color: Vec3::new(1.0, 0.95, 0.8),
         }
@@ -71,7 +71,7 @@ pub struct PointLight {
 /// Returns a color based on the direction (hemisphere blend).
 #[inline]
 pub fn sky_color(direction: Vec3) -> Vec3 {
-    let t = direction.y * 0.5 + 0.5; // 0=ground, 1=sky
+    let t = direction.y.mul_add(0.5, 0.5); // 0=ground, 1=sky
     let ground = Vec3::new(0.1, 0.08, 0.05);
     let sky = Vec3::new(0.4, 0.6, 1.0);
     ground + (sky - ground) * t

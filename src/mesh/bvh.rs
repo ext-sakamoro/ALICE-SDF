@@ -26,8 +26,8 @@ pub struct Aabb {
 impl Aabb {
     /// Create an empty (inverted) AABB
     #[inline]
-    pub fn empty() -> Self {
-        Aabb {
+    pub const fn empty() -> Self {
+        Self {
             min: Vec3::splat(f32::INFINITY),
             max: Vec3::splat(f32::NEG_INFINITY),
         }
@@ -35,8 +35,8 @@ impl Aabb {
 
     /// Create AABB from min/max
     #[inline]
-    pub fn new(min: Vec3, max: Vec3) -> Self {
-        Aabb { min, max }
+    pub const fn new(min: Vec3, max: Vec3) -> Self {
+        Self { min, max }
     }
 
     /// Expand AABB to include a point
@@ -48,7 +48,7 @@ impl Aabb {
 
     /// Expand AABB to include another AABB
     #[inline]
-    pub fn expand_aabb(&mut self, other: &Aabb) {
+    pub fn expand_aabb(&mut self, other: &Self) {
         self.min = self.min.min(other.min);
         self.max = self.max.max(other.max);
     }
@@ -63,7 +63,7 @@ impl Aabb {
     #[inline]
     pub fn surface_area(&self) -> f32 {
         let d = self.max - self.min;
-        2.0 * (d.x * d.y + d.y * d.z + d.z * d.x)
+        2.0 * d.z.mul_add(d.x, d.x.mul_add(d.y, d.y * d.z))
     }
 
     /// Get longest axis (0=X, 1=Y, 2=Z)
@@ -115,7 +115,7 @@ impl Triangle {
         aabb.expand_point(v1);
         aabb.expand_point(v2);
 
-        Triangle {
+        Self {
             v0,
             v1,
             v2,
@@ -209,19 +209,19 @@ pub enum BvhNode {
         /// Bounding box
         aabb: Aabb,
         /// Left child
-        left: Box<BvhNode>,
+        left: Box<Self>,
         /// Right child
-        right: Box<BvhNode>,
+        right: Box<Self>,
     },
 }
 
 impl BvhNode {
     /// Get AABB of this node
     #[inline]
-    pub fn aabb(&self) -> &Aabb {
+    pub const fn aabb(&self) -> &Aabb {
         match self {
-            BvhNode::Leaf { aabb, .. } => aabb,
-            BvhNode::Internal { aabb, .. } => aabb,
+            Self::Leaf { aabb, .. } => aabb,
+            Self::Internal { aabb, .. } => aabb,
         }
     }
 }
@@ -257,7 +257,7 @@ impl MeshBvh {
             .collect();
 
         if triangles.is_empty() {
-            return MeshBvh {
+            return Self {
                 triangles,
                 root: None,
                 max_triangles_per_leaf,
@@ -267,7 +267,7 @@ impl MeshBvh {
         let indices: Vec<usize> = (0..triangles.len()).collect();
         let root = Self::build_node(&triangles, indices, max_triangles_per_leaf);
 
-        MeshBvh {
+        Self {
             triangles,
             root: Some(root),
             max_triangles_per_leaf,
@@ -328,8 +328,10 @@ impl MeshBvh {
             let left_aabb = compute_aabb_simd(triangles, &sorted_indices[..mid]);
             let right_aabb = compute_aabb_simd(triangles, &sorted_indices[mid..]);
 
-            let cost = left_aabb.surface_area() * inv_parent_sa * mid as f32
-                + right_aabb.surface_area() * inv_parent_sa * (n - mid) as f32;
+            let cost = (left_aabb.surface_area() * inv_parent_sa).mul_add(
+                mid as f32,
+                right_aabb.surface_area() * inv_parent_sa * (n - mid) as f32,
+            );
 
             if cost < best_cost {
                 best_cost = cost;
@@ -351,10 +353,9 @@ impl MeshBvh {
 
     /// Query signed distance to mesh at a point
     pub fn signed_distance(&self, point: Vec3) -> f32 {
-        match &self.root {
-            None => f32::INFINITY,
-            Some(root) => self.signed_distance_recursive(root, point, f32::INFINITY),
-        }
+        self.root.as_ref().map_or(f32::INFINITY, |root| {
+            self.signed_distance_recursive(root, point, f32::INFINITY)
+        })
     }
 
     /// Recursive signed distance query with early termination

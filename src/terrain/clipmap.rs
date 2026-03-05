@@ -63,7 +63,7 @@ impl ClipmapTerrain {
             });
         }
 
-        ClipmapTerrain {
+        Self {
             levels,
             camera_pos: Vec3::ZERO,
             grid_resolution,
@@ -134,8 +134,8 @@ fn generate_level_mesh(level: &ClipmapLevel, heightmap: &Heightmap) -> Mesh {
     // Generate vertices
     for gz in 0..res {
         for gx in 0..res {
-            let wx = level.origin_x + gx as f32 * spacing;
-            let wz = level.origin_z + gz as f32 * spacing;
+            let wx = (gx as f32).mul_add(spacing, level.origin_x);
+            let wz = (gz as f32).mul_add(spacing, level.origin_z);
             let wy = heightmap.sample(wx, wz);
             let normal = heightmap.normal_at(wx, wz);
 

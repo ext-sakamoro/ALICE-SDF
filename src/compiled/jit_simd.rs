@@ -695,7 +695,7 @@ impl JitSimd {
                         let ba_x = inst.params[3] - inst.params[0];
                         let ba_y = inst.params[4] - inst.params[1];
                         let ba_z = inst.params[5] - inst.params[2];
-                        let ba_dot_val = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
+                        let ba_dot_val = ba_z.mul_add(ba_z, ba_x.mul_add(ba_x, ba_y * ba_y));
                         let inv_ba_dot = if ba_dot_val.abs() < 1e-10 {
                             1.0
                         } else {
@@ -708,7 +708,7 @@ impl JitSimd {
                         let inv_bd_s = builder.ins().f32const(inv_ba_dot);
                         let bax = builder.ins().splat(simd_type, bax_s);
                         let bay = builder.ins().splat(simd_type, bay_s);
-                        let baz = builder.ins().splat(simd_type, baz_s);
+                        let ba_z_v = builder.ins().splat(simd_type, baz_s);
                         let inv_bd = builder.ins().splat(simd_type, inv_bd_s);
 
                         // Lane 0: pa = p - a, h = clamp(dot(pa,ba) * inv_ba_dot, 0, 1)
@@ -717,7 +717,7 @@ impl JitSimd {
                         let paz0 = builder.ins().fsub(curr_z.0, az);
                         let dot_x0 = builder.ins().fmul(pax0, bax);
                         let dot_y0 = builder.ins().fmul(pay0, bay);
-                        let dot_z0 = builder.ins().fmul(paz0, baz);
+                        let dot_z0 = builder.ins().fmul(paz0, ba_z_v);
                         let dot_xy0 = builder.ins().fadd(dot_x0, dot_y0);
                         let dot0 = builder.ins().fadd(dot_xy0, dot_z0);
                         let h_raw0 = builder.ins().fmul(dot0, inv_bd);
@@ -726,7 +726,7 @@ impl JitSimd {
                         // d = length(pa - ba*h) - radius
                         let bhx0 = builder.ins().fmul(bax, h0);
                         let bhy0 = builder.ins().fmul(bay, h0);
-                        let bhz0 = builder.ins().fmul(baz, h0);
+                        let bhz0 = builder.ins().fmul(ba_z_v, h0);
                         let dx0 = builder.ins().fsub(pax0, bhx0);
                         let dy0 = builder.ins().fsub(pay0, bhy0);
                         let dz0 = builder.ins().fsub(paz0, bhz0);
@@ -739,7 +739,7 @@ impl JitSimd {
                         let paz1 = builder.ins().fsub(curr_z.1, az);
                         let dot_x1 = builder.ins().fmul(pax1, bax);
                         let dot_y1 = builder.ins().fmul(pay1, bay);
-                        let dot_z1 = builder.ins().fmul(paz1, baz);
+                        let dot_z1 = builder.ins().fmul(paz1, ba_z_v);
                         let dot_xy1 = builder.ins().fadd(dot_x1, dot_y1);
                         let dot1 = builder.ins().fadd(dot_xy1, dot_z1);
                         let h_raw1 = builder.ins().fmul(dot1, inv_bd);
@@ -747,7 +747,7 @@ impl JitSimd {
                         let h1 = builder.ins().fmax(h_min1, zero);
                         let bhx1 = builder.ins().fmul(bax, h1);
                         let bhy1 = builder.ins().fmul(bay, h1);
-                        let bhz1 = builder.ins().fmul(baz, h1);
+                        let bhz1 = builder.ins().fmul(ba_z_v, h1);
                         let dx1 = builder.ins().fsub(pax1, bhx1);
                         let dy1 = builder.ins().fsub(pay1, bhy1);
                         let dz1 = builder.ins().fsub(paz1, bhz1);
@@ -771,7 +771,7 @@ impl JitSimd {
                         // Pre-compute k2 and inv_k2_dot (Division Exorcism)
                         let k2x_val = -radius_val;
                         let k2y_val = 2.0 * half_height;
-                        let k2_dot_val = k2x_val * k2x_val + k2y_val * k2y_val;
+                        let k2_dot_val = k2x_val.mul_add(k2x_val, k2y_val * k2y_val);
                         let inv_k2d_val = if k2_dot_val.abs() < 1e-10 {
                             1.0
                         } else {
@@ -1730,15 +1730,15 @@ impl JitSimd {
                         let qx = -qx;
                         let qy = -qy;
                         let qz = -qz;
-                        let m00 = 1.0 - 2.0 * (qy * qy + qz * qz);
-                        let m01 = 2.0 * (qx * qy - qz * qw);
-                        let m02 = 2.0 * (qx * qz + qy * qw);
-                        let m10 = 2.0 * (qx * qy + qz * qw);
-                        let m11 = 1.0 - 2.0 * (qx * qx + qz * qz);
-                        let m12 = 2.0 * (qy * qz - qx * qw);
-                        let m20 = 2.0 * (qx * qz - qy * qw);
-                        let m21 = 2.0 * (qy * qz + qx * qw);
-                        let m22 = 1.0 - 2.0 * (qx * qx + qy * qy);
+                        let m00 = 2.0f32.mul_add(-qy.mul_add(qy, qz * qz), 1.0);
+                        let m01 = 2.0 * qx.mul_add(qy, -(qz * qw));
+                        let m02 = 2.0 * qx.mul_add(qz, qy * qw);
+                        let m10 = 2.0 * qx.mul_add(qy, qz * qw);
+                        let m11 = 2.0f32.mul_add(-qx.mul_add(qx, qz * qz), 1.0);
+                        let m12 = 2.0 * qy.mul_add(qz, -(qx * qw));
+                        let m20 = 2.0 * qx.mul_add(qz, -(qy * qw));
+                        let m21 = 2.0 * qy.mul_add(qz, qx * qw);
+                        let m22 = 2.0f32.mul_add(-qx.mul_add(qx, qy * qy), 1.0);
 
                         let m00_s = builder.ins().f32const(m00);
                         let m00v = builder.ins().splat(simd_type, m00_s);
@@ -2232,7 +2232,7 @@ impl JitSimd {
 
         let code = module.get_finalized_function(func_id);
 
-        Ok(JitSimd {
+        Ok(Self {
             module,
             func_ptr: code,
         })

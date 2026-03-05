@@ -38,7 +38,7 @@ pub struct ChunkCoord {
 impl ChunkCoord {
     /// Create a new chunk coordinate.
     #[inline(always)]
-    pub fn new(x: i32, y: i32, z: i32) -> Self {
+    pub const fn new(x: i32, y: i32, z: i32) -> Self {
         Self { x, y, z }
     }
 }
@@ -219,6 +219,7 @@ impl ChunkedMeshCache {
 
     /// Update the global SDF hash. Returns the list of chunks that were
     /// invalidated (those whose stored hash differs from `new_hash`).
+    #[allow(clippy::significant_drop_tightening)]
     pub fn update_sdf_hash(&self, new_hash: u64) -> Vec<ChunkCoord> {
         {
             let mut h = self.current_sdf_hash.write()
@@ -317,6 +318,7 @@ impl ChunkedMeshCache {
     ///
     /// Requires `cache_dir` to be set in the configuration. Returns the
     /// number of chunks written.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn persist_dirty(&self) -> Result<usize, IoError> {
         let dir = self.config.cache_dir.as_ref().ok_or_else(|| {
             IoError::Io(std::io::Error::new(
@@ -344,6 +346,7 @@ impl ChunkedMeshCache {
 
     /// Load a single chunk from the disk cache. Returns `None` if the file
     /// does not exist.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn load_chunk(&self, coord: &ChunkCoord) -> Result<Option<Arc<Mesh>>, IoError> {
         let dir = self.config.cache_dir.as_ref().ok_or_else(|| {
             IoError::Io(std::io::Error::new(
@@ -397,6 +400,7 @@ impl ChunkedMeshCache {
     ///
     /// Vertex positions are preserved in world space. Index offsets are
     /// adjusted so the resulting mesh is self-consistent.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn merge_all(&self) -> Mesh {
         let chunks = self
             .chunks
@@ -506,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_insert_and_get() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         let coord = ChunkCoord::new(0, 0, 0);
         let mesh = make_mesh(4, 2);
 
@@ -518,7 +522,7 @@ mod tests {
 
     #[test]
     fn test_get_missing_returns_none() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         assert!(cache.get_chunk(&ChunkCoord::new(99, 99, 99)).is_none());
     }
 
@@ -553,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_invalidate_all() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         cache.set_chunk(ChunkCoord::new(0, 0, 0), make_mesh(4, 2), 1);
         cache.set_chunk(ChunkCoord::new(1, 0, 0), make_mesh(4, 2), 1);
         // Mark clean.
@@ -571,7 +575,7 @@ mod tests {
 
     #[test]
     fn test_merge_all() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         // Chunk A: 4 verts, indices [0,1,2, 1,2,3]
         let mut mesh_a = make_mesh(4, 0);
         mesh_a.indices = vec![0, 1, 2, 1, 2, 3];
@@ -596,7 +600,7 @@ mod tests {
 
     #[test]
     fn test_memory_usage() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         assert_eq!(cache.memory_usage(), 0);
 
         let mesh = make_mesh(10, 4);
@@ -607,7 +611,7 @@ mod tests {
 
     #[test]
     fn test_update_sdf_hash_invalidation() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         cache.set_chunk(ChunkCoord::new(0, 0, 0), make_mesh(4, 2), 10);
         cache.set_chunk(ChunkCoord::new(1, 0, 0), make_mesh(4, 2), 10);
         cache.set_chunk(ChunkCoord::new(2, 0, 0), make_mesh(4, 2), 20);
@@ -628,7 +632,7 @@ mod tests {
 
     #[test]
     fn test_clear() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         cache.set_chunk(ChunkCoord::new(0, 0, 0), make_mesh(4, 2), 1);
         cache.set_chunk(ChunkCoord::new(1, 0, 0), make_mesh(4, 2), 1);
         assert_eq!(cache.chunk_count(), 2);
@@ -640,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_cached_chunks() {
-        let cache = ChunkedMeshCache::new(Default::default());
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
         cache.set_chunk(ChunkCoord::new(0, 0, 0), make_mesh(4, 2), 1);
         cache.set_chunk(ChunkCoord::new(1, 2, 3), make_mesh(4, 2), 1);
 

@@ -33,7 +33,7 @@ pub struct NaniteExportConfig {
 
 impl Default for NaniteExportConfig {
     fn default() -> Self {
-        NaniteExportConfig {
+        Self {
             export_uvs: true,
             export_normals: true,
             quantize_positions: false,

@@ -12,7 +12,7 @@
 /// - `r`: pipe radius
 #[inline(always)]
 pub fn sdf_pipe(a: f32, b: f32, r: f32) -> f32 {
-    (a * a + b * b).sqrt() - r
+    a.hypot(b) - r
 }
 
 #[cfg(test)]

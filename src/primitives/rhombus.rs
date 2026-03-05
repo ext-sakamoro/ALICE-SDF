@@ -11,7 +11,7 @@ use glam::{Vec2, Vec3};
 /// Dot product variation: a.x*b.x - a.y*b.y
 #[inline(always)]
 fn ndot(a: Vec2, b: Vec2) -> f32 {
-    a.x * b.x - a.y * b.y
+    a.x.mul_add(b.x, -(a.y * b.y))
 }
 
 /// Exact SDF for a rhombus centered at origin
@@ -27,9 +27,12 @@ pub fn sdf_rhombus(p: Vec3, la: f32, lb: f32, half_height: f32, round_radius: f3
     let f = ndot(b, b - 2.0 * Vec2::new(p.x, p.z));
     let f = (f / b.dot(b)).clamp(-1.0, 1.0);
 
-    let qx = (Vec2::new(p.x, p.z) - 0.5 * b * Vec2::new(1.0 - f, 1.0 + f)).length()
-        * (p.x * b.y + p.z * b.x - b.x * b.y).signum()
-        - round_radius;
+    let qx = (Vec2::new(p.x, p.z) - 0.5 * b * Vec2::new(1.0 - f, 1.0 + f))
+        .length()
+        .mul_add(
+            b.x.mul_add(-b.y, p.x.mul_add(b.y, p.z * b.x)).signum(),
+            -round_radius,
+        );
     let qy = p.y - half_height;
 
     let d = Vec2::new(qx, qy);

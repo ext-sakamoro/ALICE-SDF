@@ -77,7 +77,7 @@ pub struct ConstraintSolver {
 
 impl ConstraintSolver {
     /// Create a new solver with the given initial parameter values.
-    pub fn new(params: Vec<f64>) -> Self {
+    pub const fn new(params: Vec<f64>) -> Self {
         Self {
             params,
             constraints: Vec::new(),

@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_validate_invalid_json() {
-        let json = r#"{ invalid }"#;
+        let json = r"{ invalid }";
         assert!(validate_sdf_json(json).is_err());
     }
 
