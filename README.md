@@ -1996,23 +1996,24 @@ The server runs as a FastAPI web service. The SDF-to-mesh step takes <55ms (excl
 | Asset creation | Natural language — no SDF expertise needed | Text-to-3D server (Claude/Gemini) |
 | Delivery | Instant transfer — formulas, not polygons | ALICE-CDN + ALICE-Cache |
 
-## v1.1.0 Release — Stable
+## v1.2.0 Release — Stable
 
 ### Quality Metrics
 
 | Metric | Value |
 |--------|-------|
-| Unit tests | 1,100 passed, 0 failed |
-| Clippy pedantic | 0 warnings |
+| Unit tests | 1,077 passed, 0 failed |
+| Clippy pedantic+nursery | 0 warnings |
 | Doc warnings | 0 warnings |
 | TODO / FIXME | 0 |
 | `unimplemented!()` / `todo!()` | 0 |
 | SIMD placeholder operations | 0 (all 7 fully implemented) |
 | Formatting | `cargo fmt --check` clean |
+| JIT (cranelift) | Builds on all 3 OS (Linux/Windows/macOS) |
 
 ### Pre-built Binaries
 
-Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.1.0):
+Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.2.0):
 
 | Asset | Platform | Engine |
 |-------|----------|--------|
@@ -2026,13 +2027,33 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 | `AliceSDF-Unity-Plugin-Linux.zip` | Linux x86_64 | Unity |
 | `AliceSDF-VRChat-Package.zip` | Cross-platform | VRChat |
 
-### v1.1.0 Key Changes
+### v1.2.0 Key Changes
+
+- **30+ new public APIs** across 10 modules: shell, diff, constraint, sdf2d, interval, autodiff, collision, material, neural, animation
+- **Collision**: `ContactManifold`, `sdf_ccd()` (continuous collision detection), `sdf_closest_point()`
+- **Material**: `material_lerp()`, `StandardMaterials` (15 PBR presets: gold, aluminum, copper, glass, diamond, etc.)
+- **Autodiff**: `principal_curvatures()`, `gaussian_curvature()`
+- **2D SDF**: Ring, RegularPolygon, Star, Ellipse, Onion + `eval_2d_normal()`
+- **Constraint solver**: Product, Min, Max, Range constraint kinds
+- **Shell**: batch parallel, gradient, compiled SDF support
+- **Diff**: Insert/Delete ops, `invert_patch()`, `merge_patches()`
+- **Interval**: `width()`, `midpoint()`, `contains()`, `overlaps()`, `intersect()`, `hull()`
+- **Neural**: `eval_batch()`, `eval_with_gradient()`
+- **JIT fix**: missing `Configurable` import on x86_64 — JIT now builds on all platforms
+- **CI**: JIT build promoted to required step (removed `continue-on-error`)
+- **Docs**: examples (hello_sphere, csg_operations, export_mesh), COOKBOOK.md, ARCHITECTURE.md
+- **+74 tests** (1,003 → 1,077)
+
+<details>
+<summary>v1.1.0 Changes</summary>
 
 - **Auxiliary data buffer**: `Instruction` now carries `aux_offset`/`aux_len` pointing into `CompiledSdf.aux_data`, enabling variable-length data (matrices, control points, heightmaps) for complex operations
 - **7 new compiled operations**: ProjectiveTransform, LatticeDeform, SdfSkinning, IcosahedralSymmetry, IFS, HeightmapDisplacement, SurfaceRoughness — fully implemented in both scalar and SIMD evaluators
 - **126 total SdfNode variants**: 72 primitives, 24 operations, 7 transforms, 23 modifiers
 - **220 pedantic clippy warnings fixed**: raw string hashes, implicit clone, useless format, dead code, etc.
 - **5 roundtrip tests**: each new operation verified against tree-walker for correctness
+
+</details>
 
 ## License
 

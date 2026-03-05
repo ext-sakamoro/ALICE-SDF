@@ -1985,23 +1985,24 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 }
 ```
 
-## v1.1.0 リリース — Stable
+## v1.2.0 リリース — Stable
 
 ### 品質メトリクス
 
 | メトリクス | 値 |
 |-----------|-----|
-| ユニットテスト | 1003パス、0失敗 |
-| Clippy pedantic | 0警告 |
+| ユニットテスト | 1,077パス、0失敗 |
+| Clippy pedantic+nursery | 0警告 |
 | Doc警告 | 0警告 |
 | TODO / FIXME | 0 |
 | `unimplemented!()` / `todo!()` | 0 |
 | SIMDプレースホルダー演算 | 0（全7種を完全実装） |
 | フォーマット | `cargo fmt --check` クリーン |
+| JIT (cranelift) | 全3 OS（Linux/Windows/macOS）でビルド成功 |
 
 ### ビルド済みバイナリ
 
-[GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.1.0)からダウンロード:
+[GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.2.0)からダウンロード:
 
 | アセット | プラットフォーム | エンジン |
 |---------|----------------|---------|
@@ -2015,13 +2016,33 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 | `AliceSDF-Unity-Plugin-Linux.zip` | Linux x86_64 | Unity |
 | `AliceSDF-VRChat-Package.zip` | クロスプラットフォーム | VRChat |
 
-### v1.1.0 主な変更点
+### v1.2.0 主な変更点
+
+- **30以上の新公開API** — shell、diff、constraint、sdf2d、interval、autodiff、collision、material、neural、animationの10モジュールにわたる追加
+- **衝突検出**: `ContactManifold`、`sdf_ccd()`（連続衝突判定）、`sdf_closest_point()`
+- **マテリアル**: `material_lerp()`、`StandardMaterials`（15種PBRプリセット: gold、aluminum、copper、glass、diamond等）
+- **自動微分**: `principal_curvatures()`（主曲率）、`gaussian_curvature()`（ガウス曲率）
+- **2D SDF**: Ring、RegularPolygon、Star、Ellipse、Onion + `eval_2d_normal()`
+- **拘束ソルバー**: Product、Min、Max、Range制約種別
+- **Shell**: バッチ並列、勾配、コンパイルSDF対応
+- **Diff**: Insert/Delete演算、`invert_patch()`、`merge_patches()`
+- **区間演算**: `width()`、`midpoint()`、`contains()`、`overlaps()`、`intersect()`、`hull()`
+- **ニューラルSDF**: `eval_batch()`、`eval_with_gradient()`
+- **JIT修正**: x86_64での`Configurable`インポート漏れ修正 — 全プラットフォームでJITビルド可能に
+- **CI**: JITビルドを必須ステップに昇格（`continue-on-error`削除）
+- **ドキュメント**: examples（hello_sphere、csg_operations、export_mesh）、COOKBOOK.md、ARCHITECTURE.md
+- **+74テスト**（1,003 → 1,077）
+
+<details>
+<summary>v1.1.0 変更点</summary>
 
 - **補助データバッファ**: `Instruction`が`aux_offset`/`aux_len`を持ち`CompiledSdf.aux_data`を参照。複雑な演算（行列、制御点、ハイトマップ）の可変長データに対応
 - **7種の新コンパイル演算**: ProjectiveTransform、LatticeDeform、SdfSkinning、IcosahedralSymmetry、IFS、HeightmapDisplacement、SurfaceRoughness — スカラーとSIMD両エバリュエータで完全実装
 - **126種のSdfNodeバリアント**: 72プリミティブ、24演算、7トランスフォーム、23モディファイア
 - **220のpedantic clippy警告を修正**: raw string hashes、implicit clone、useless format、dead code等
 - **5つのラウンドトリップテスト**: 各新演算をツリーウォーカーと照合して正確性を検証
+
+</details>
 
 ## ライセンス
 
