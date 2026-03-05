@@ -283,7 +283,9 @@ pub fn apply_patch(tree: &SdfNode, patch: &TreePatch) -> Result<SdfNode, DiffErr
 /// Invert a patch: creates an undo patch from a forward patch.
 ///
 /// The inverted patch, when applied to the result tree, produces the original tree.
-/// Only `Replace` operations are invertible (Insert/Delete are not yet reversible).
+/// Invert a patch: produces a patch that undoes the given patch.
+/// Works for all operation types (Replace, Insert, Delete) by
+/// applying the patch then computing the reverse diff.
 pub fn invert_patch(original: &SdfNode, patch: &TreePatch) -> Result<TreePatch, DiffError> {
     let result = apply_patch(original, patch)?;
     Ok(tree_diff(&result, original))
