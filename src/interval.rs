@@ -58,6 +58,48 @@ impl Interval {
         self.hi < 0.0
     }
 
+    /// Width of the interval (hi - lo)
+    #[inline(always)]
+    pub fn width(self) -> f32 {
+        self.hi - self.lo
+    }
+
+    /// Midpoint of the interval
+    #[inline(always)]
+    pub fn midpoint(self) -> f32 {
+        (self.lo + self.hi) * 0.5
+    }
+
+    /// Check if a scalar value is within the interval
+    #[inline(always)]
+    pub fn contains(self, v: f32) -> bool {
+        v >= self.lo && v <= self.hi
+    }
+
+    /// Check if two intervals overlap
+    #[inline(always)]
+    pub fn overlaps(self, other: Self) -> bool {
+        self.lo <= other.hi && other.lo <= self.hi
+    }
+
+    /// Intersection of two intervals (narrowest overlap)
+    #[inline(always)]
+    pub fn intersect(self, other: Self) -> Self {
+        Self {
+            lo: self.lo.max(other.lo),
+            hi: self.hi.min(other.hi),
+        }
+    }
+
+    /// Hull (union) of two intervals (widest encompassing)
+    #[inline(always)]
+    pub fn hull(self, other: Self) -> Self {
+        Self {
+            lo: self.lo.min(other.lo),
+            hi: self.hi.max(other.hi),
+        }
+    }
+
     /// Absolute value of an interval
     #[inline(always)]
     pub fn abs(self) -> Self {
@@ -1582,5 +1624,85 @@ mod tests {
         let node = SdfNode::box3d(1.0, 1.0, 1.0).round(0.2);
         assert_eq!(eval_lipschitz(&node), 1.0);
         check_lipschitz(&node, Vec3::splat(-3.0), Vec3::splat(3.0), 5);
+    }
+
+    #[test]
+    fn interval_width() {
+        let iv = Interval::new(1.0, 3.0);
+        assert!((iv.width() - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn interval_midpoint() {
+        let iv = Interval::new(1.0, 5.0);
+        assert!((iv.midpoint() - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn interval_contains_value() {
+        let iv = Interval::new(-1.0, 2.0);
+        assert!(iv.contains(0.0));
+        assert!(iv.contains(-1.0));
+        assert!(iv.contains(2.0));
+        assert!(!iv.contains(3.0));
+        assert!(!iv.contains(-2.0));
+    }
+
+    #[test]
+    fn interval_overlaps() {
+        let a = Interval::new(0.0, 2.0);
+        let b = Interval::new(1.0, 3.0);
+        let c = Interval::new(3.0, 5.0);
+        assert!(a.overlaps(b));
+        assert!(!a.overlaps(c));
+    }
+
+    #[test]
+    fn interval_intersection() {
+        let a = Interval::new(0.0, 3.0);
+        let b = Interval::new(1.0, 5.0);
+        let c = a.intersect(b);
+        assert!((c.lo - 1.0).abs() < 1e-6);
+        assert!((c.hi - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn interval_hull() {
+        let a = Interval::new(1.0, 2.0);
+        let b = Interval::new(4.0, 5.0);
+        let h = a.hull(b);
+        assert!((h.lo - 1.0).abs() < 1e-6);
+        assert!((h.hi - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_lipschitz_subtraction() {
+        let node = SdfNode::sphere(1.0).subtract(SdfNode::box3d(0.5, 0.5, 0.5));
+        assert_eq!(eval_lipschitz(&node), 1.0);
+    }
+
+    #[test]
+    fn test_lipschitz_intersection() {
+        let node = SdfNode::sphere(1.0).intersection(SdfNode::box3d(0.5, 0.5, 0.5));
+        assert_eq!(eval_lipschitz(&node), 1.0);
+    }
+
+    #[test]
+    fn test_lipschitz_onion() {
+        let node = SdfNode::Onion {
+            child: std::sync::Arc::new(SdfNode::sphere(1.0)),
+            thickness: 0.1,
+        };
+        assert_eq!(eval_lipschitz(&node), 1.0);
+    }
+
+    #[test]
+    fn test_interval_morph() {
+        let node = SdfNode::Morph {
+            a: std::sync::Arc::new(SdfNode::sphere(1.0)),
+            b: std::sync::Arc::new(SdfNode::box3d(1.0, 1.0, 1.0)),
+            t: 0.5,
+        };
+        check(&node, Vec3::splat(-3.0), Vec3::splat(3.0), 4);
     }
 }

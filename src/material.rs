@@ -439,6 +439,189 @@ impl MaterialLibrary {
             .enumerate()
             .map(|(i, m)| (i as u32, m))
     }
+
+    /// Find a material by name (first match)
+    pub fn find_by_name(&self, name: &str) -> Option<(u32, &Material)> {
+        self.iter().find(|(_, m)| m.name == name)
+    }
+}
+
+/// Linearly interpolate between two materials.
+///
+/// Interpolates scalar PBR properties. Texture slots are taken from `a`
+/// when t < 0.5, otherwise from `b`. Name is concatenated.
+pub fn material_lerp(a: &Material, b: &Material, t: f32) -> Material {
+    let t = t.clamp(0.0, 1.0);
+    let it = 1.0 - t;
+    Material {
+        name: format!("{}_{}_blend", a.name, b.name),
+        base_color: [
+            a.base_color[0].mul_add(it, b.base_color[0] * t),
+            a.base_color[1].mul_add(it, b.base_color[1] * t),
+            a.base_color[2].mul_add(it, b.base_color[2] * t),
+            a.base_color[3].mul_add(it, b.base_color[3] * t),
+        ],
+        metallic: a.metallic.mul_add(it, b.metallic * t),
+        roughness: a.roughness.mul_add(it, b.roughness * t),
+        emission: [
+            a.emission[0].mul_add(it, b.emission[0] * t),
+            a.emission[1].mul_add(it, b.emission[1] * t),
+            a.emission[2].mul_add(it, b.emission[2] * t),
+        ],
+        emission_strength: a.emission_strength.mul_add(it, b.emission_strength * t),
+        opacity: a.opacity.mul_add(it, b.opacity * t),
+        ior: a.ior.mul_add(it, b.ior * t),
+        normal_scale: a.normal_scale.mul_add(it, b.normal_scale * t),
+        clearcoat: a.clearcoat.mul_add(it, b.clearcoat * t),
+        clearcoat_roughness: a.clearcoat_roughness.mul_add(it, b.clearcoat_roughness * t),
+        transmission: a.transmission.mul_add(it, b.transmission * t),
+        thickness: a.thickness.mul_add(it, b.thickness * t),
+        attenuation_distance: a.attenuation_distance.min(b.attenuation_distance),
+        attenuation_color: [
+            a.attenuation_color[0].mul_add(it, b.attenuation_color[0] * t),
+            a.attenuation_color[1].mul_add(it, b.attenuation_color[1] * t),
+            a.attenuation_color[2].mul_add(it, b.attenuation_color[2] * t),
+        ],
+        anisotropy: a.anisotropy.mul_add(it, b.anisotropy * t),
+        anisotropy_rotation: a.anisotropy_rotation.mul_add(it, b.anisotropy_rotation * t),
+        subsurface: a.subsurface.mul_add(it, b.subsurface * t),
+        subsurface_color: [
+            a.subsurface_color[0].mul_add(it, b.subsurface_color[0] * t),
+            a.subsurface_color[1].mul_add(it, b.subsurface_color[1] * t),
+            a.subsurface_color[2].mul_add(it, b.subsurface_color[2] * t),
+        ],
+        sheen_color: [
+            a.sheen_color[0].mul_add(it, b.sheen_color[0] * t),
+            a.sheen_color[1].mul_add(it, b.sheen_color[1] * t),
+            a.sheen_color[2].mul_add(it, b.sheen_color[2] * t),
+        ],
+        sheen_roughness: a.sheen_roughness.mul_add(it, b.sheen_roughness * t),
+        // Textures: take from nearest side
+        albedo_map: if t < 0.5 {
+            a.albedo_map.clone()
+        } else {
+            b.albedo_map.clone()
+        },
+        normal_map: if t < 0.5 {
+            a.normal_map.clone()
+        } else {
+            b.normal_map.clone()
+        },
+        metallic_map: if t < 0.5 {
+            a.metallic_map.clone()
+        } else {
+            b.metallic_map.clone()
+        },
+        roughness_map: if t < 0.5 {
+            a.roughness_map.clone()
+        } else {
+            b.roughness_map.clone()
+        },
+        ao_map: if t < 0.5 {
+            a.ao_map.clone()
+        } else {
+            b.ao_map.clone()
+        },
+        emissive_map: if t < 0.5 {
+            a.emissive_map.clone()
+        } else {
+            b.emissive_map.clone()
+        },
+        metallic_roughness_map: if t < 0.5 {
+            a.metallic_roughness_map.clone()
+        } else {
+            b.metallic_roughness_map.clone()
+        },
+        clearcoat_normal_map: if t < 0.5 {
+            a.clearcoat_normal_map.clone()
+        } else {
+            b.clearcoat_normal_map.clone()
+        },
+    }
+}
+
+/// Standard material presets for common real-world materials.
+pub struct StandardMaterials;
+
+impl StandardMaterials {
+    /// Polished gold
+    pub fn gold() -> Material {
+        Material::metal("Gold", 1.0, 0.766, 0.336, 0.1)
+    }
+
+    /// Brushed aluminum
+    pub fn aluminum() -> Material {
+        Material::metal("Aluminum", 0.913, 0.922, 0.924, 0.35).with_anisotropy(0.5, 0.0)
+    }
+
+    /// Polished copper
+    pub fn copper() -> Material {
+        Material::metal("Copper", 0.955, 0.638, 0.538, 0.15)
+    }
+
+    /// Matte plastic (white)
+    pub fn plastic_white() -> Material {
+        Material::dielectric("PlasticWhite", 0.9, 0.9, 0.9, 0.5)
+    }
+
+    /// Glossy red plastic
+    pub fn plastic_red() -> Material {
+        Material::dielectric("PlasticRed", 0.8, 0.05, 0.05, 0.2)
+    }
+
+    /// Clear glass
+    pub fn glass() -> Material {
+        Material::glass("Glass", 1.5)
+    }
+
+    /// Diamond
+    pub fn diamond() -> Material {
+        Material::glass("Diamond", 2.42).with_roughness(0.0)
+    }
+
+    /// Water
+    pub fn water() -> Material {
+        Material::new("Water")
+            .with_color(0.3, 0.5, 0.7, 0.6)
+            .with_transmission(0.9)
+            .with_roughness(0.05)
+    }
+
+    /// Human skin
+    pub fn skin() -> Material {
+        Material::dielectric("Skin", 0.8, 0.6, 0.5, 0.5).with_subsurface(0.5, 0.9, 0.4, 0.3)
+    }
+
+    /// Marble
+    pub fn marble() -> Material {
+        Material::dielectric("Marble", 0.95, 0.93, 0.88, 0.15)
+            .with_subsurface(0.2, 0.95, 0.93, 0.88)
+    }
+
+    /// Wet asphalt
+    pub fn wet_asphalt() -> Material {
+        Material::dielectric("WetAsphalt", 0.1, 0.1, 0.1, 0.15).with_clearcoat(0.8, 0.05)
+    }
+
+    /// Velvet fabric
+    pub fn velvet() -> Material {
+        Material::dielectric("Velvet", 0.3, 0.05, 0.1, 0.8).with_sheen(0.6, 0.1, 0.2, 0.5)
+    }
+
+    /// Rubber
+    pub fn rubber() -> Material {
+        Material::dielectric("Rubber", 0.15, 0.15, 0.15, 0.9)
+    }
+
+    /// Concrete
+    pub fn concrete() -> Material {
+        Material::dielectric("Concrete", 0.6, 0.58, 0.55, 0.85)
+    }
+
+    /// Polished chrome
+    pub fn chrome() -> Material {
+        Material::metal("Chrome", 0.95, 0.93, 0.88, 0.05)
+    }
 }
 
 #[cfg(test)]
@@ -602,5 +785,97 @@ mod tests {
 
         assert_eq!(mat.subsurface, 0.6);
         assert_eq!(mat.subsurface_color, [1.0, 0.5, 0.4]);
+    }
+
+    #[test]
+    fn test_material_lerp_midpoint() {
+        let a = Material::metal("A", 1.0, 0.0, 0.0, 0.0);
+        let b = Material::metal("B", 0.0, 0.0, 1.0, 1.0);
+        let mid = material_lerp(&a, &b, 0.5);
+        assert!((mid.base_color[0] - 0.5).abs() < 1e-4);
+        assert!((mid.base_color[2] - 0.5).abs() < 1e-4);
+        assert!((mid.roughness - 0.5).abs() < 1e-4);
+        assert!((mid.metallic - 1.0).abs() < 1e-4); // both 1.0
+    }
+
+    #[test]
+    fn test_material_lerp_boundaries() {
+        let a = Material::metal("Gold", 1.0, 0.766, 0.336, 0.1);
+        let b = Material::dielectric("Plastic", 0.8, 0.0, 0.0, 0.5);
+        let at_zero = material_lerp(&a, &b, 0.0);
+        assert_eq!(at_zero.base_color[0], a.base_color[0]);
+        let at_one = material_lerp(&a, &b, 1.0);
+        assert_eq!(at_one.base_color[0], b.base_color[0]);
+    }
+
+    #[test]
+    fn test_standard_materials_gold() {
+        let gold = StandardMaterials::gold();
+        assert_eq!(gold.metallic, 1.0);
+        assert!(gold.roughness < 0.2);
+    }
+
+    #[test]
+    fn test_standard_materials_glass() {
+        let glass = StandardMaterials::glass();
+        assert_eq!(glass.ior, 1.5);
+        assert_eq!(glass.transmission, 1.0);
+    }
+
+    #[test]
+    fn test_standard_materials_skin() {
+        let skin = StandardMaterials::skin();
+        assert!(skin.subsurface > 0.0);
+    }
+
+    #[test]
+    fn test_standard_materials_variety() {
+        // Ensure all presets construct without panic
+        let _ = StandardMaterials::aluminum();
+        let _ = StandardMaterials::copper();
+        let _ = StandardMaterials::plastic_white();
+        let _ = StandardMaterials::plastic_red();
+        let _ = StandardMaterials::diamond();
+        let _ = StandardMaterials::water();
+        let _ = StandardMaterials::marble();
+        let _ = StandardMaterials::wet_asphalt();
+        let _ = StandardMaterials::velvet();
+        let _ = StandardMaterials::rubber();
+        let _ = StandardMaterials::concrete();
+        let _ = StandardMaterials::chrome();
+    }
+
+    #[test]
+    fn test_find_by_name() {
+        let mut lib = MaterialLibrary::new();
+        lib.add(Material::metal("Steel", 0.7, 0.7, 0.7, 0.4));
+        lib.add(Material::metal("Gold", 1.0, 0.8, 0.3, 0.1));
+        let (id, mat) = lib.find_by_name("Gold").unwrap();
+        assert_eq!(id, 2);
+        assert_eq!(mat.name, "Gold");
+        assert!(lib.find_by_name("NotExist").is_none());
+    }
+
+    #[test]
+    fn test_material_library_iter() {
+        let mut lib = MaterialLibrary::new();
+        lib.add(Material::new("A"));
+        lib.add(Material::new("B"));
+        let names: Vec<_> = lib.iter().map(|(_, m)| m.name.clone()).collect();
+        assert_eq!(names.len(), 3); // default + A + B
+    }
+
+    #[test]
+    fn test_dielectric_material() {
+        let plastic = Material::dielectric("Plastic", 0.5, 0.5, 0.5, 0.6);
+        assert_eq!(plastic.metallic, 0.0);
+        assert_eq!(plastic.roughness, 0.6);
+    }
+
+    #[test]
+    fn test_emissive_material() {
+        let light = Material::emissive("Light", 1.0, 1.0, 1.0, 100.0);
+        assert_eq!(light.emission_strength, 100.0);
+        assert_eq!(light.emission, [1.0, 1.0, 1.0]);
     }
 }

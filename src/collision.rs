@@ -183,6 +183,104 @@ pub fn sdf_overlap(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> bo
     false
 }
 
+/// Contact manifold: aggregated collision result.
+#[derive(Debug, Clone)]
+pub struct ContactManifold {
+    /// Average contact point.
+    pub center: Vec3,
+    /// Average contact normal.
+    pub normal: Vec3,
+    /// Maximum penetration depth.
+    pub max_depth: f32,
+    /// Number of contact points in the manifold.
+    pub count: usize,
+}
+
+/// Compute a contact manifold from a set of contact points.
+///
+/// Aggregates individual contacts into a single manifold with
+/// averaged position/normal and maximum depth.
+pub fn compute_manifold(contacts: &[SdfContact]) -> Option<ContactManifold> {
+    if contacts.is_empty() {
+        return None;
+    }
+    let count = contacts.len();
+    let inv_n = 1.0 / count as f32;
+    let mut center = Vec3::ZERO;
+    let mut normal = Vec3::ZERO;
+    let mut max_depth: f32 = 0.0;
+    for c in contacts {
+        center += c.point;
+        normal += c.normal;
+        max_depth = max_depth.max(c.depth);
+    }
+    center *= inv_n;
+    let n_len = normal.length();
+    if n_len > 1e-10 {
+        normal /= n_len;
+    }
+    Some(ContactManifold {
+        center,
+        normal,
+        max_depth,
+        count,
+    })
+}
+
+/// Continuous collision detection (CCD) via sphere tracing along velocity.
+///
+/// Returns the time of impact (0..dt) and the contact point, or None if
+/// no collision occurs within the time step.
+pub fn sdf_ccd(
+    sdf: &SdfNode,
+    start: Vec3,
+    velocity: Vec3,
+    dt: f32,
+    radius: f32,
+) -> Option<(f32, Vec3)> {
+    let speed = velocity.length();
+    if speed < 1e-10 || dt < 1e-10 {
+        return None;
+    }
+    let dir = velocity / speed;
+    let max_dist = speed * dt;
+
+    let mut t = 0.0;
+    let max_steps = 128;
+    for _ in 0..max_steps {
+        if t >= max_dist {
+            return None;
+        }
+        let pos = start + dir * t;
+        let d = eval(sdf, pos) - radius;
+        if d < 1e-5 {
+            let toi = t / speed;
+            return Some((toi.min(dt), pos));
+        }
+        // Advance by the safe distance
+        t += d.max(1e-4);
+    }
+    None
+}
+
+/// Closest point on an SDF surface from a given query point.
+///
+/// Uses gradient descent to find the nearest surface point.
+/// Returns (surface_point, distance).
+pub fn sdf_closest_point(sdf: &SdfNode, query: Vec3, max_iter: u32) -> (Vec3, f32) {
+    let mut p = query;
+    for _ in 0..max_iter {
+        let d = eval(sdf, p);
+        if d.abs() < 1e-5 {
+            return (p, 0.0);
+        }
+        let n = normal(sdf, p, 0.001);
+        p -= n * d;
+    }
+    let final_d = eval(sdf, p);
+    (p, final_d.abs())
+}
+
 // ============================================================
 // Tests
 // ============================================================
@@ -296,6 +394,71 @@ mod tests {
         assert!(
             contacts.is_empty(),
             "Non-overlapping should have no contacts"
+        );
+    }
+
+    #[test]
+    fn test_compute_manifold() {
+        let a = SdfNode::sphere(1.0);
+        let b = SdfNode::sphere(1.0).translate(1.0, 0.0, 0.0);
+        let contacts = sdf_collide(&a, &b, &test_aabb(), 16);
+        let manifold = compute_manifold(&contacts);
+        assert!(manifold.is_some());
+        let m = manifold.unwrap();
+        assert!(m.max_depth > 0.0);
+        assert!(m.count > 0);
+        assert!(m.normal.length() > 0.5);
+    }
+
+    #[test]
+    fn test_manifold_empty() {
+        let contacts: Vec<SdfContact> = vec![];
+        assert!(compute_manifold(&contacts).is_none());
+    }
+
+    #[test]
+    fn test_ccd_hit() {
+        // Thin wall at x=0 (extends 0.1 in x, large in y/z)
+        let wall = SdfNode::box3d(0.1, 10.0, 10.0);
+        // Start well outside at x=-5, moving toward wall
+        let result = sdf_ccd(
+            &wall,
+            Vec3::new(-5.0, 0.0, 0.0),
+            Vec3::new(20.0, 0.0, 0.0),
+            1.0,
+            0.0,
+        );
+        assert!(result.is_some(), "Should hit the wall");
+        let (toi, _pos) = result.unwrap();
+        assert!(toi > 0.0 && toi < 1.0, "toi={}", toi);
+    }
+
+    #[test]
+    fn test_ccd_miss() {
+        let wall = SdfNode::box3d(0.1, 10.0, 10.0).translate(5.0, 0.0, 0.0);
+        // Moving away from wall
+        let result = sdf_ccd(&wall, Vec3::ZERO, Vec3::new(-10.0, 0.0, 0.0), 1.0, 0.0);
+        assert!(result.is_none(), "Should miss the wall");
+    }
+
+    #[test]
+    fn test_closest_point_sphere() {
+        let sphere = SdfNode::sphere(1.0);
+        let (p, d) = sdf_closest_point(&sphere, Vec3::new(3.0, 0.0, 0.0), 32);
+        // Should converge near (1, 0, 0)
+        assert!((p.x - 1.0).abs() < 0.05, "closest x={}", p.x);
+        assert!(d < 0.05, "residual distance={}", d);
+    }
+
+    #[test]
+    fn test_closest_point_inside() {
+        let sphere = SdfNode::sphere(1.0);
+        let (p, d) = sdf_closest_point(&sphere, Vec3::new(0.3, 0.0, 0.0), 32);
+        assert!(d < 0.05, "Should find surface");
+        assert!(
+            p.length() > 0.9,
+            "Should be near surface, len={}",
+            p.length()
         );
     }
 

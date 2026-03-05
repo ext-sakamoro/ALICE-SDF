@@ -91,6 +91,54 @@ pub enum Sdf2dNode {
         k: f32,
     },
 
+    /// Ring (annulus): circle with a hole.
+    Ring {
+        /// Center position.
+        center: [f32; 2],
+        /// Outer radius.
+        outer_radius: f32,
+        /// Thickness of the ring wall.
+        thickness: f32,
+    },
+
+    /// N-sided regular polygon.
+    RegularPolygon {
+        /// Center position.
+        center: [f32; 2],
+        /// Circumradius.
+        radius: f32,
+        /// Number of sides (must be >= 3).
+        sides: u32,
+    },
+
+    /// Star shape with inner and outer radii.
+    Star {
+        /// Center position.
+        center: [f32; 2],
+        /// Outer radius (tip distance).
+        outer_radius: f32,
+        /// Inner radius (notch distance).
+        inner_radius: f32,
+        /// Number of points.
+        points: u32,
+    },
+
+    /// Ellipse.
+    Ellipse {
+        /// Center position.
+        center: [f32; 2],
+        /// Semi-axes (half-width, half-height).
+        semi_axes: [f32; 2],
+    },
+
+    /// Onion (shell) modifier: converts a filled shape to a ring-like outline.
+    Onion {
+        /// Child node.
+        child: Box<Self>,
+        /// Shell thickness.
+        thickness: f32,
+    },
+
     /// Translation.
     Translate {
         /// Child node.
@@ -216,6 +264,83 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             bilinear_sample(data, u, v)
         }
 
+        Sdf2dNode::Ring {
+            center,
+            outer_radius,
+            thickness,
+        } => {
+            let dx = point[0] - center[0];
+            let dy = point[1] - center[1];
+            (dx.hypot(dy) - outer_radius).abs() - thickness
+        }
+
+        Sdf2dNode::RegularPolygon {
+            center,
+            radius,
+            sides,
+        } => {
+            let n = (*sides).max(3) as f32;
+            let px = point[0] - center[0];
+            let py = point[1] - center[1];
+            let angle = py.atan2(px);
+            let sector = std::f32::consts::TAU / n;
+            let half_sector = sector * 0.5;
+            // Angle within the nearest sector
+            let a = (angle % sector + sector) % sector - half_sector;
+            let r = px.hypot(py);
+            let cos_a = a.cos();
+            let sin_a = a.sin();
+            // Distance from point to nearest polygon edge
+            let edge_dist = radius * half_sector.cos();
+            let dx = r * cos_a - edge_dist;
+            let dy = (r * sin_a).abs() - radius * half_sector.sin();
+            if dx > 0.0 && dy > 0.0 {
+                dx.hypot(dy)
+            } else {
+                dx.max(dy)
+            }
+        }
+
+        Sdf2dNode::Star {
+            center,
+            outer_radius,
+            inner_radius,
+            points,
+        } => {
+            let n = (*points).max(3) as f32;
+            let px = point[0] - center[0];
+            let py = point[1] - center[1];
+            let r = px.hypot(py);
+            let angle = py.atan2(px);
+            let sector = std::f32::consts::PI / n;
+            let a = (angle % (2.0 * sector) + 2.0 * sector) % (2.0 * sector);
+            // Interpolate between inner and outer radius based on angle
+            let t = (a / sector).min(2.0 - a / sector);
+            let boundary = inner_radius + (outer_radius - inner_radius) * t;
+            r - boundary
+        }
+
+        Sdf2dNode::Ellipse { center, semi_axes } => {
+            let px = (point[0] - center[0]).abs();
+            let py = (point[1] - center[1]).abs();
+            let a = semi_axes[0];
+            let b = semi_axes[1];
+            // Approximate ellipse SDF using scaling
+            if a < 1e-10 || b < 1e-10 {
+                return f32::MAX;
+            }
+            let scale = a.max(b);
+            let nx = px / a;
+            let ny = py / b;
+            let r = nx.hypot(ny);
+            if r < 1e-10 {
+                return -a.min(b);
+            }
+            (r - 1.0) * scale / r.max(1.0)
+        }
+
+        Sdf2dNode::Onion { child, thickness } => eval_2d(child, point).abs() - thickness,
+
         Sdf2dNode::Union(a, b) => eval_2d(a, point).min(eval_2d(b, point)),
         Sdf2dNode::Subtract(a, b) => eval_2d(a, point).max(-eval_2d(b, point)),
         Sdf2dNode::Intersect(a, b) => eval_2d(a, point).max(eval_2d(b, point)),
@@ -246,6 +371,19 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
 /// Evaluate a batch of points against a 2D SDF.
 pub fn eval_2d_batch(node: &Sdf2dNode, points: &[[f32; 2]]) -> Vec<f32> {
     points.iter().map(|&p| eval_2d(node, p)).collect()
+}
+
+/// Compute the 2D gradient (normal direction) at a point via central differences.
+pub fn eval_2d_normal(node: &Sdf2dNode, point: [f32; 2]) -> [f32; 2] {
+    let eps = 1e-4_f32;
+    let dx = eval_2d(node, [point[0] + eps, point[1]]) - eval_2d(node, [point[0] - eps, point[1]]);
+    let dy = eval_2d(node, [point[0], point[1] + eps]) - eval_2d(node, [point[0], point[1] - eps]);
+    let len = dx.hypot(dy);
+    if len < 1e-10 {
+        [0.0, 0.0]
+    } else {
+        [dx / len, dy / len]
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -351,6 +489,50 @@ impl Sdf2dNode {
     /// Create a line segment.
     pub const fn line(a: [f32; 2], b: [f32; 2], thickness: f32) -> Self {
         Self::Line { a, b, thickness }
+    }
+
+    /// Create a ring (annulus) at the origin.
+    pub const fn ring(outer_radius: f32, thickness: f32) -> Self {
+        Self::Ring {
+            center: [0.0, 0.0],
+            outer_radius,
+            thickness,
+        }
+    }
+
+    /// Create a regular polygon at the origin.
+    pub const fn regular_polygon(radius: f32, sides: u32) -> Self {
+        Self::RegularPolygon {
+            center: [0.0, 0.0],
+            radius,
+            sides,
+        }
+    }
+
+    /// Create a star shape at the origin.
+    pub const fn star(outer_radius: f32, inner_radius: f32, points: u32) -> Self {
+        Self::Star {
+            center: [0.0, 0.0],
+            outer_radius,
+            inner_radius,
+            points,
+        }
+    }
+
+    /// Create an ellipse at the origin.
+    pub const fn ellipse(half_w: f32, half_h: f32) -> Self {
+        Self::Ellipse {
+            center: [0.0, 0.0],
+            semi_axes: [half_w, half_h],
+        }
+    }
+
+    /// Onion modifier: converts filled shape to shell/outline.
+    pub fn onion(self, thickness: f32) -> Self {
+        Self::Onion {
+            child: Box::new(self),
+            thickness,
+        }
     }
 
     /// Boolean union with another 2D SDF.
@@ -556,5 +738,105 @@ mod tests {
         let rr = Sdf2dNode::rounded_rect(1.0, 0.5, 0.1);
         assert!(eval_2d(&rr, [0.0, 0.0]) < 0.0);
         assert!(eval_2d(&rr, [2.0, 0.0]) > 0.0);
+    }
+
+    #[test]
+    fn ring_inside_wall() {
+        let r = Sdf2dNode::ring(1.0, 0.1);
+        // On the ring at radius 1.0: inside wall
+        let d = eval_2d(&r, [1.0, 0.0]);
+        assert!(d < 0.0, "Should be inside ring wall, got {}", d);
+    }
+
+    #[test]
+    fn ring_center_outside() {
+        let r = Sdf2dNode::ring(1.0, 0.1);
+        // Center is outside the ring
+        let d = eval_2d(&r, [0.0, 0.0]);
+        assert!(d > 0.0, "Center should be outside ring, got {}", d);
+    }
+
+    #[test]
+    fn ring_far_outside() {
+        let r = Sdf2dNode::ring(1.0, 0.1);
+        let d = eval_2d(&r, [3.0, 0.0]);
+        assert!(d > 0.0);
+    }
+
+    #[test]
+    fn regular_polygon_center_inside() {
+        let hex = Sdf2dNode::regular_polygon(1.0, 6);
+        assert!(eval_2d(&hex, [0.0, 0.0]) < 0.0);
+    }
+
+    #[test]
+    fn regular_polygon_outside() {
+        let hex = Sdf2dNode::regular_polygon(1.0, 6);
+        assert!(eval_2d(&hex, [2.0, 0.0]) > 0.0);
+    }
+
+    #[test]
+    fn star_center_inside() {
+        let s = Sdf2dNode::star(1.0, 0.4, 5);
+        assert!(eval_2d(&s, [0.0, 0.0]) < 0.0);
+    }
+
+    #[test]
+    fn star_far_outside() {
+        let s = Sdf2dNode::star(1.0, 0.4, 5);
+        assert!(eval_2d(&s, [3.0, 0.0]) > 0.0);
+    }
+
+    #[test]
+    fn ellipse_center_inside() {
+        let e = Sdf2dNode::ellipse(2.0, 1.0);
+        assert!(eval_2d(&e, [0.0, 0.0]) < 0.0);
+    }
+
+    #[test]
+    fn ellipse_along_major_axis() {
+        let e = Sdf2dNode::ellipse(2.0, 1.0);
+        // Inside along major axis
+        assert!(eval_2d(&e, [1.5, 0.0]) < 0.0);
+        // Outside along minor axis at same distance
+        assert!(eval_2d(&e, [0.0, 1.5]) > 0.0);
+    }
+
+    #[test]
+    fn onion_2d() {
+        let c = Sdf2dNode::circle(1.0).onion(0.1);
+        // Center: circle gives -1.0, onion → |−1.0| − 0.1 = 0.9 → outside
+        assert!(eval_2d(&c, [0.0, 0.0]) > 0.0);
+        // On surface at radius 1.0: circle gives 0, onion → |0| − 0.1 = −0.1 → inside
+        let d = eval_2d(&c, [1.0, 0.0]);
+        assert!(d < 0.0, "Should be inside onion shell, got {}", d);
+    }
+
+    #[test]
+    fn eval_2d_normal_circle() {
+        let c = Sdf2dNode::circle(1.0);
+        let n = super::eval_2d_normal(&c, [1.0, 0.0]);
+        assert!((n[0] - 1.0).abs() < 0.01, "nx={}", n[0]);
+        assert!(n[1].abs() < 0.01, "ny={}", n[1]);
+    }
+
+    #[test]
+    fn eval_2d_normal_diagonal() {
+        let c = Sdf2dNode::circle(1.0);
+        let n = super::eval_2d_normal(&c, [1.0, 1.0]);
+        let inv_sqrt2 = 1.0 / 2.0_f32.sqrt();
+        assert!((n[0] - inv_sqrt2).abs() < 0.02, "nx={}", n[0]);
+        assert!((n[1] - inv_sqrt2).abs() < 0.02, "ny={}", n[1]);
+    }
+
+    #[test]
+    fn intersect_2d() {
+        let a = Sdf2dNode::circle(1.5).translate(-0.5, 0.0);
+        let b = Sdf2dNode::circle(1.5).translate(0.5, 0.0);
+        let i = a.intersect(b);
+        // Origin: inside both
+        assert!(eval_2d(&i, [0.0, 0.0]) < 0.0);
+        // Far left: inside a only
+        assert!(eval_2d(&i, [-1.5, 0.0]) > 0.0);
     }
 }

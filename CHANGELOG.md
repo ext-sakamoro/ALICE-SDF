@@ -2,6 +2,28 @@
 
 All notable changes to ALICE-SDF are documented in this file.
 
+## [v1.2.0] - 2026-03-05
+
+### Added
+- **shell**: `eval_shell_batch_parallel`, `eval_shell_gradient`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`
+- **diff**: `invert_patch`, `merge_patches`, `insert_at_path`, `delete_at_path`, `DiffOp::Insert`/`Delete`, `TreePatch::op_count`/`is_empty`
+- **constraint**: `Product`/`Min`/`Max`/`Range` constraint kinds, `ratio()`/`product()`/`range()` convenience methods
+- **sdf2d**: `Ring`, `RegularPolygon`, `Star`, `Ellipse`, `Onion` node types, `eval_2d_normal()`
+- **interval**: `width()`, `midpoint()`, `contains()`, `overlaps()`, `intersect()`, `hull()`
+- **autodiff**: `principal_curvatures()`, `gaussian_curvature()`
+- **collision**: `ContactManifold` struct, `compute_manifold()`, `sdf_ccd()`, `sdf_closest_point()`
+- **material**: `material_lerp()`, `MaterialLibrary::find_by_name()`, `StandardMaterials` (15 PBR presets)
+- **neural**: `eval_batch()`, `eval_with_gradient()`, `hidden_layer_count()`, `input_dimension()`
+- 74 new tests (1003 → 1077)
+
+### Fixed
+- `[profile.bench]` panic strategy conflict — added explicit `panic = "unwind"` to fix CI bench compilation on Linux/Windows
+
+### Quality
+- 1077 tests passing, 0 failed
+- 0 clippy pedantic+nursery warnings
+- 0 fmt diffs
+
 ## [v1.1.0] - 2026-02-22
 
 ### Added

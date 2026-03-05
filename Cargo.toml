@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 authors = ["Moroya Sakamoto"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist - Store laws, not polygons"
@@ -137,4 +137,5 @@ opt-level = 3
 lto = "thin"
 debug = false
 codegen-units = 1
+panic = "unwind"
 

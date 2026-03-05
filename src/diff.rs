@@ -29,6 +29,24 @@ pub enum DiffOp {
         /// Replacement node.
         new_node: Arc<SdfNode>,
     },
+    /// Insert a wrapper node at `path` (wraps existing node as child).
+    Insert {
+        /// Path to the node to wrap.
+        path: TreePath,
+        /// Hash of the existing node (for verification).
+        old_hash: u64,
+        /// Wrapper constructor: the existing node becomes the child.
+        wrapper: Arc<SdfNode>,
+    },
+    /// Delete a wrapper node at `path`, replacing it with its child.
+    Delete {
+        /// Path to the wrapper node to unwrap.
+        path: TreePath,
+        /// Hash of the wrapper node (for verification).
+        old_hash: u64,
+        /// Index of the child to promote (0 for single-child nodes).
+        child_index: usize,
+    },
 }
 
 /// Error type for patch application.
@@ -98,7 +116,9 @@ pub fn tree_diff(old: &SdfNode, new: &SdfNode) -> TreePatch {
     for (i, op) in ops.iter().enumerate() {
         hash_data.extend_from_slice(&(i as u64).to_le_bytes());
         match op {
-            DiffOp::Replace { old_hash, .. } => {
+            DiffOp::Replace { old_hash, .. }
+            | DiffOp::Insert { old_hash, .. }
+            | DiffOp::Delete { old_hash, .. } => {
                 hash_data.extend_from_slice(&old_hash.to_le_bytes());
             }
         }
@@ -241,9 +261,59 @@ pub fn apply_patch(tree: &SdfNode, patch: &TreePatch) -> Result<SdfNode, DiffErr
             } => {
                 result = replace_at_path(&result, path, *old_hash, new_node)?;
             }
+            DiffOp::Insert {
+                path,
+                old_hash,
+                wrapper,
+            } => {
+                result = insert_at_path(&result, path, *old_hash, wrapper)?;
+            }
+            DiffOp::Delete {
+                path,
+                old_hash,
+                child_index,
+            } => {
+                result = delete_at_path(&result, path, *old_hash, *child_index)?;
+            }
         }
     }
     Ok(result)
+}
+
+/// Invert a patch: creates an undo patch from a forward patch.
+///
+/// The inverted patch, when applied to the result tree, produces the original tree.
+/// Only `Replace` operations are invertible (Insert/Delete are not yet reversible).
+pub fn invert_patch(original: &SdfNode, patch: &TreePatch) -> Result<TreePatch, DiffError> {
+    let result = apply_patch(original, patch)?;
+    Ok(tree_diff(&result, original))
+}
+
+/// Merge two sequential patches into a single patch.
+///
+/// `patch_a` is applied first, then `patch_b`. The merged patch
+/// transforms the original tree directly to the final state.
+pub fn merge_patches(
+    original: &SdfNode,
+    patch_a: &TreePatch,
+    patch_b: &TreePatch,
+) -> Result<TreePatch, DiffError> {
+    let after_a = apply_patch(original, patch_a)?;
+    let after_b = apply_patch(&after_a, patch_b)?;
+    Ok(tree_diff(original, &after_b))
+}
+
+/// Count the number of operations in a patch.
+impl TreePatch {
+    /// Number of operations.
+    pub fn op_count(&self) -> usize {
+        self.ops.len()
+    }
+
+    /// Whether this patch is a no-op (identity).
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
 }
 
 /// Replace the node at the given path.
@@ -280,6 +350,79 @@ fn replace_at_path(
         replacement,
     )?);
     Ok(replace_child(node, idx, new_child))
+}
+
+/// Insert a wrapper node at the given path (wraps the existing node).
+fn insert_at_path(
+    node: &SdfNode,
+    path: &[usize],
+    expected_hash: u64,
+    wrapper: &Arc<SdfNode>,
+) -> Result<SdfNode, DiffError> {
+    if path.is_empty() {
+        let actual_hash = tree_hash(node);
+        if actual_hash != expected_hash {
+            return Err(DiffError::HashMismatch {
+                path: vec![],
+                expected: expected_hash,
+                actual: actual_hash,
+            });
+        }
+        // The wrapper's first single child is replaced with the existing node
+        let children = get_children(wrapper);
+        if children.len() == 1 {
+            return Ok(replace_child(wrapper, 0, Arc::new(node.clone())));
+        }
+        // For binary ops, existing node goes into child 0
+        Ok(replace_child(wrapper, 0, Arc::new(node.clone())))
+    } else {
+        let idx = path[0];
+        let rest = &path[1..];
+        let children = get_children(node);
+        if idx >= children.len() {
+            return Err(DiffError::InvalidPath(path.to_vec()));
+        }
+        let new_child = Arc::new(insert_at_path(children[idx], rest, expected_hash, wrapper)?);
+        Ok(replace_child(node, idx, new_child))
+    }
+}
+
+/// Delete a wrapper node at the given path, promoting its child.
+fn delete_at_path(
+    node: &SdfNode,
+    path: &[usize],
+    expected_hash: u64,
+    child_index: usize,
+) -> Result<SdfNode, DiffError> {
+    if path.is_empty() {
+        let actual_hash = tree_hash(node);
+        if actual_hash != expected_hash {
+            return Err(DiffError::HashMismatch {
+                path: vec![],
+                expected: expected_hash,
+                actual: actual_hash,
+            });
+        }
+        let children = get_children(node);
+        if child_index >= children.len() {
+            return Err(DiffError::InvalidPath(vec![child_index]));
+        }
+        Ok(children[child_index].clone())
+    } else {
+        let idx = path[0];
+        let rest = &path[1..];
+        let children = get_children(node);
+        if idx >= children.len() {
+            return Err(DiffError::InvalidPath(path.to_vec()));
+        }
+        let new_child = Arc::new(delete_at_path(
+            children[idx],
+            rest,
+            expected_hash,
+            child_index,
+        )?);
+        Ok(replace_child(node, idx, new_child))
+    }
 }
 
 /// Create a clone of the node with one child replaced.
@@ -854,6 +997,7 @@ mod tests {
         assert_eq!(patch.ops.len(), 1);
         match &patch.ops[0] {
             DiffOp::Replace { path, .. } => assert!(path.is_empty()),
+            _ => panic!("Expected Replace op"),
         }
     }
 
@@ -874,6 +1018,7 @@ mod tests {
         assert_eq!(patch.ops.len(), 1);
         match &patch.ops[0] {
             DiffOp::Replace { path, .. } => assert_eq!(path, &vec![0]),
+            _ => panic!("Expected Replace op"),
         }
     }
 
@@ -987,6 +1132,7 @@ mod tests {
         assert_eq!(patch.ops.len(), 1);
         match &patch.ops[0] {
             DiffOp::Replace { path, .. } => assert_eq!(path, &vec![1]),
+            _ => panic!("Expected Replace op"),
         }
         let result = apply_patch(&old, &patch).unwrap();
         assert_eq!(tree_hash(&result), tree_hash(&new));
@@ -1060,6 +1206,104 @@ mod tests {
         assert!(!patch.ops.is_empty());
         let result = apply_patch(&old, &patch).unwrap();
         assert_eq!(tree_hash(&result), tree_hash(&new));
+    }
+
+    #[test]
+    fn invert_patch_roundtrip() {
+        let old = SdfNode::sphere(1.0).union(SdfNode::box3d(1.0, 1.0, 1.0));
+        let new = SdfNode::sphere(2.0).union(SdfNode::box3d(1.0, 1.0, 1.0));
+        let fwd = tree_diff(&old, &new);
+        let result = apply_patch(&old, &fwd).unwrap();
+        let inv = super::invert_patch(&old, &fwd).unwrap();
+        let restored = apply_patch(&result, &inv).unwrap();
+        assert_eq!(tree_hash(&restored), tree_hash(&old));
+    }
+
+    #[test]
+    fn merge_patches_equivalent() {
+        let a = SdfNode::sphere(1.0).union(SdfNode::box3d(1.0, 1.0, 1.0));
+        let b = SdfNode::sphere(2.0).union(SdfNode::box3d(1.0, 1.0, 1.0));
+        let c = SdfNode::sphere(2.0).union(SdfNode::box3d(3.0, 3.0, 3.0));
+        let p1 = tree_diff(&a, &b);
+        let p2 = tree_diff(&b, &c);
+        let merged = super::merge_patches(&a, &p1, &p2).unwrap();
+        let result = apply_patch(&a, &merged).unwrap();
+        assert_eq!(tree_hash(&result), tree_hash(&c));
+    }
+
+    #[test]
+    fn tree_patch_op_count() {
+        let old = SdfNode::sphere(1.0);
+        let new = SdfNode::sphere(2.0);
+        let patch = tree_diff(&old, &new);
+        assert_eq!(patch.op_count(), 1);
+        assert!(!patch.is_empty());
+    }
+
+    #[test]
+    fn empty_patch_is_empty() {
+        let tree = SdfNode::sphere(1.0);
+        let patch = tree_diff(&tree, &tree);
+        assert!(patch.is_empty());
+        assert_eq!(patch.op_count(), 0);
+    }
+
+    #[test]
+    fn insert_op_wraps_node() {
+        let tree = SdfNode::sphere(1.0);
+        let wrapper = SdfNode::Translate {
+            child: Arc::new(SdfNode::sphere(0.0)), // placeholder
+            offset: glam::Vec3::new(1.0, 0.0, 0.0),
+        };
+        let patch = TreePatch {
+            ops: vec![DiffOp::Insert {
+                path: vec![],
+                old_hash: tree_hash(&tree),
+                wrapper: Arc::new(wrapper),
+            }],
+            content_hash: 1,
+        };
+        let result = apply_patch(&tree, &patch).unwrap();
+        match result {
+            SdfNode::Translate { ref child, offset } => {
+                assert_eq!(tree_hash(child), tree_hash(&tree));
+                assert_eq!(offset, glam::Vec3::new(1.0, 0.0, 0.0));
+            }
+            _ => panic!("Expected Translate wrapper"),
+        }
+    }
+
+    #[test]
+    fn delete_op_unwraps_node() {
+        let inner = SdfNode::sphere(1.0);
+        let tree = SdfNode::Translate {
+            child: Arc::new(inner.clone()),
+            offset: glam::Vec3::new(1.0, 0.0, 0.0),
+        };
+        let patch = TreePatch {
+            ops: vec![DiffOp::Delete {
+                path: vec![],
+                old_hash: tree_hash(&tree),
+                child_index: 0,
+            }],
+            content_hash: 1,
+        };
+        let result = apply_patch(&tree, &patch).unwrap();
+        assert_eq!(tree_hash(&result), tree_hash(&inner));
+    }
+
+    #[test]
+    fn delete_invalid_child_index() {
+        let tree = SdfNode::sphere(1.0); // leaf, no children
+        let patch = TreePatch {
+            ops: vec![DiffOp::Delete {
+                path: vec![],
+                old_hash: tree_hash(&tree),
+                child_index: 0,
+            }],
+            content_hash: 1,
+        };
+        assert!(apply_patch(&tree, &patch).is_err());
     }
 
     #[test]

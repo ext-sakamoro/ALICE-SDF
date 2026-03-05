@@ -461,6 +461,65 @@ pub fn mean_curvature(node: &SdfNode, point: Vec3, epsilon: f32) -> f32 {
     laplacian / grad_len
 }
 
+/// Compute principal curvatures (k1, k2) at a surface point.
+///
+/// Uses the shape operator derived from the Hessian and gradient.
+/// k1 >= k2 by convention.
+pub fn principal_curvatures(node: &SdfNode, point: Vec3, epsilon: f32) -> (f32, f32) {
+    let grad = eval_gradient(node, point);
+    let grad_len = grad.length();
+    if grad_len < 1e-10 {
+        return (0.0, 0.0);
+    }
+    let n = grad / grad_len;
+    let h = eval_hessian(node, point, epsilon);
+
+    // Shape operator: S = (H - n n^T H) / |∇f|
+    // For an SDF (|∇f|≈1), principal curvatures are eigenvalues of
+    // the projected Hessian restricted to the tangent plane.
+    // Use the trace (mean curvature H) and determinant (Gaussian curvature K)
+    // of the 2x2 shape operator.
+
+    // Full Hessian matrix
+    let hxx = h[0];
+    let hyy = h[1];
+    let hzz = h[2];
+    let hxy = h[3];
+    let hxz = h[4];
+    let hyz = h[5];
+
+    // Project Hessian: P = H - (H·n)(n^T)
+    // Mean curvature = trace of shape operator / |∇f|
+    let laplacian = hxx + hyy + hzz;
+    let n_hn = hxx * n.x * n.x
+        + hyy * n.y * n.y
+        + hzz * n.z * n.z
+        + 2.0 * (hxy * n.x * n.y + hxz * n.x * n.z + hyz * n.y * n.z);
+    let mean_h = (laplacian - n_hn) / grad_len;
+
+    // Frobenius norm of projected Hessian for discriminant
+    let h_frobenius = hxx * hxx + hyy * hyy + hzz * hzz + 2.0 * (hxy * hxy + hxz * hxz + hyz * hyz);
+    let proj_frobenius = (h_frobenius - n_hn * n_hn) / (grad_len * grad_len);
+
+    // k1 + k2 = mean_h, k1² + k2² = proj_frobenius
+    // k1*k2 = (mean_h² - proj_frobenius) / 2
+    let discriminant = (mean_h * mean_h - proj_frobenius).max(0.0);
+    let sqrt_disc = discriminant.sqrt();
+    let k1 = 0.5 * (mean_h + sqrt_disc);
+    let k2 = 0.5 * (mean_h - sqrt_disc);
+    if k1 >= k2 {
+        (k1, k2)
+    } else {
+        (k2, k1)
+    }
+}
+
+/// Compute Gaussian curvature K = k1 * k2 at a surface point.
+pub fn gaussian_curvature(node: &SdfNode, point: Vec3, epsilon: f32) -> f32 {
+    let (k1, k2) = principal_curvatures(node, point, epsilon);
+    k1 * k2
+}
+
 // ── Dual3 primitives ─────────────────────────────────────────
 
 /// Evaluate sphere SDF as Dual3: f = |p| - r.
@@ -666,5 +725,58 @@ mod tests {
         let c = Dual3::constant(42.0);
         assert_eq!(c.val, 42.0);
         assert_eq!(c.gradient(), Vec3::ZERO);
+    }
+
+    #[test]
+    fn principal_curvatures_sphere() {
+        let sphere = SdfNode::sphere(2.0);
+        // Use a point slightly off-axis for more stable finite differences
+        let p = Vec3::new(2.0, 0.0, 0.0);
+        let (k1, k2) = super::principal_curvatures(&sphere, p, 5e-3);
+        // Both principal curvatures should be positive for a convex surface
+        assert!(k1 > -0.1, "k1={} should be non-negative", k1);
+        assert!(k2 > -0.1, "k2={} should be non-negative", k2);
+        // Mean curvature H = (k1+k2)/2 should be positive
+        let mean = (k1 + k2) * 0.5;
+        assert!(mean > 0.0, "mean curvature={} should be positive", mean);
+    }
+
+    #[test]
+    fn gaussian_curvature_sphere() {
+        let sphere = SdfNode::sphere(2.0);
+        let p = Vec3::new(2.0, 0.0, 0.0);
+        let k = super::gaussian_curvature(&sphere, p, 1e-3);
+        // K = 1/r² = 0.25, finite-difference approximation
+        assert!(k > 0.0, "K={} should be positive for sphere", k);
+    }
+
+    #[test]
+    fn principal_curvatures_plane() {
+        let plane = SdfNode::plane(Vec3::Y, 0.0);
+        let p = Vec3::new(0.0, 1.0, 0.0);
+        let (k1, k2) = super::principal_curvatures(&plane, p, 1e-3);
+        // Plane: both curvatures = 0
+        assert!(k1.abs() < 0.1, "k1={}", k1);
+        assert!(k2.abs() < 0.1, "k2={}", k2);
+    }
+
+    #[test]
+    fn dual3_gradient_magnitude() {
+        let d = Dual3 {
+            val: 1.0,
+            dx: 3.0,
+            dy: 4.0,
+            dz: 0.0,
+        };
+        assert!((d.gradient_magnitude() - 5.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn eval_with_gradient_translated_sphere() {
+        let shape = SdfNode::sphere(1.0).translate(2.0, 0.0, 0.0);
+        let (d, g) = eval_with_gradient(&shape, Vec3::new(4.0, 0.0, 0.0));
+        assert!((d - 1.0).abs() < 1e-3);
+        assert!((g.x - 1.0).abs() < 1e-2);
+        assert!(g.y.abs() < 1e-2);
     }
 }

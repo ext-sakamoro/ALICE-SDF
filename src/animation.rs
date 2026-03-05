@@ -665,4 +665,107 @@ mod tests {
         let morphed = morph(&sphere, &box3d, 0.5);
         assert!(morphed.node_count() >= 3);
     }
+
+    #[test]
+    fn test_morph_midpoint() {
+        let sphere = SdfNode::sphere(1.0);
+        let box3d = SdfNode::box3d(1.0, 1.0, 1.0);
+        let p = glam::Vec3::new(2.0, 0.0, 0.0);
+
+        let ds = crate::eval::eval(&sphere, p);
+        let db = crate::eval::eval(&box3d, p);
+        let m_half = morph(&sphere, &box3d, 0.5);
+        let dm = crate::eval::eval(&m_half, p);
+
+        // Morph result should be between min and max of both shapes
+        assert!(
+            dm >= ds.min(db) - 0.1 && dm <= ds.max(db) + 0.1,
+            "dm={} should be between ds={} and db={}",
+            dm,
+            ds,
+            db
+        );
+    }
+
+    #[test]
+    fn test_timeline_duration() {
+        let mut timeline = Timeline::new("test");
+        let mut track = Track::new("x");
+        track.add_keyframe(Keyframe::new(0.0, 0.0));
+        track.add_keyframe(Keyframe::new(2.5, 1.0));
+        timeline.add_track(track);
+        assert!((timeline.duration() - 2.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_track_empty() {
+        let track = Track::new("empty");
+        assert_eq!(track.evaluate(0.5), 0.0);
+    }
+
+    #[test]
+    fn test_track_single_keyframe() {
+        let mut track = Track::new("single");
+        track.add_keyframe(Keyframe::new(1.0, 42.0));
+        // Before, at, and after the keyframe should all return 42
+        assert_eq!(track.evaluate(0.0), 42.0);
+        assert_eq!(track.evaluate(1.0), 42.0);
+        assert_eq!(track.evaluate(2.0), 42.0);
+    }
+
+    #[test]
+    fn test_timeline_evaluate_tracks() {
+        let mut timeline = Timeline::new("test");
+        let mut track = Track::new("translate.x");
+        track.add_keyframe(Keyframe::new(0.0, 0.0));
+        track.add_keyframe(Keyframe::new(1.0, 10.0));
+        timeline.add_track(track);
+
+        let values = timeline.evaluate(0.5);
+        assert_eq!(values.len(), 1);
+        let (name, val) = &values[0];
+        assert_eq!(*name, "translate.x");
+        assert!((val - 5.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_timeline_speed() {
+        let mut timeline = Timeline::new("fast");
+        timeline.speed = 2.0;
+        let mut track = Track::new("translate.x");
+        track.add_keyframe(Keyframe::new(0.0, 0.0));
+        track.add_keyframe(Keyframe::new(1.0, 10.0));
+        timeline.add_track(track);
+
+        // At t=0.5 with speed=2.0, effective time is 1.0
+        let values = timeline.evaluate(0.5);
+        let (_, val) = &values[0];
+        assert!((val - 10.0).abs() < 0.1, "val={}", val);
+    }
+
+    #[test]
+    fn test_animation_params_all_fields() {
+        let sphere = SdfNode::sphere(1.0);
+        let mut timeline = Timeline::new("all");
+        for name in [
+            "translate.x",
+            "translate.y",
+            "translate.z",
+            "rotate.x",
+            "rotate.y",
+            "rotate.z",
+            "scale",
+            "morph_t",
+        ] {
+            let mut t = Track::new(name);
+            t.add_keyframe(Keyframe::new(0.0, 0.0));
+            t.add_keyframe(Keyframe::new(1.0, 1.0));
+            timeline.add_track(t);
+        }
+        let animated = AnimatedSdf::new(sphere, timeline);
+        let params = animated.evaluate_params(0.5);
+        assert!(params.translate_x > 0.0);
+        assert!(params.translate_y > 0.0);
+        assert!(params.translate_z > 0.0);
+    }
 }

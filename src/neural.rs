@@ -477,6 +477,59 @@ impl NeuralSdf {
     pub fn param_count(&self) -> usize {
         self.layers.iter().map(|l| l.w.len() + l.b.len()).sum()
     }
+
+    /// Evaluate a batch of points.
+    ///
+    /// More efficient than calling `eval()` in a loop because it amortizes
+    /// allocation of intermediate buffers.
+    pub fn eval_batch(&self, points: &[Vec3]) -> Vec<f32> {
+        let mut results = Vec::with_capacity(points.len());
+        let mut buf_a = vec![0.0f32; self.input_dim.max(64)];
+        let mut buf_b = vec![0.0f32; 64];
+
+        for &p in points {
+            let encoded = self.encode(p);
+            let n_layers = self.layers.len();
+            buf_a.resize(encoded.len().max(64), 0.0);
+            buf_a[..encoded.len()].copy_from_slice(&encoded);
+
+            let mut input = &buf_a[..encoded.len()];
+            for (i, layer) in self.layers.iter().enumerate() {
+                buf_b.resize(layer.out_dim, 0.0);
+                let is_last = i == n_layers - 1;
+                layer_forward(layer, input, &mut buf_b, !is_last);
+                // Swap for next iteration
+                std::mem::swap(&mut buf_a, &mut buf_b);
+                buf_b.resize(64, 0.0);
+                input = &buf_a[..layer.out_dim];
+            }
+            results.push(buf_a[0]);
+        }
+        results
+    }
+
+    /// Evaluate with gradient (normal direction) via finite differences.
+    ///
+    /// Returns (distance, gradient) where gradient points away from the surface.
+    pub fn eval_with_gradient(&self, point: Vec3, epsilon: f32) -> (f32, Vec3) {
+        let d = self.eval(point);
+        let dx = self.eval(point + Vec3::X * epsilon) - self.eval(point - Vec3::X * epsilon);
+        let dy = self.eval(point + Vec3::Y * epsilon) - self.eval(point - Vec3::Y * epsilon);
+        let dz = self.eval(point + Vec3::Z * epsilon) - self.eval(point - Vec3::Z * epsilon);
+        let inv_2e = 0.5 / epsilon;
+        let grad = Vec3::new(dx * inv_2e, dy * inv_2e, dz * inv_2e);
+        (d, grad)
+    }
+
+    /// Number of hidden layers.
+    pub fn hidden_layer_count(&self) -> usize {
+        self.layers.len().saturating_sub(1)
+    }
+
+    /// Input dimensionality (3 + positional encoding features).
+    pub fn input_dimension(&self) -> usize {
+        self.input_dim
+    }
 }
 
 // ============================================================
@@ -677,5 +730,88 @@ mod tests {
         let bad_data = b"BADDxxxxxxxx";
         let result = NeuralSdf::load(&mut &bad_data[..]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_eval_batch_matches_single() {
+        let config = NeuralSdfConfig {
+            hidden_layers: 2,
+            hidden_width: 16,
+            pos_encoding_freqs: 2,
+            seed: 42,
+            ..Default::default()
+        };
+        let nsdf = NeuralSdf::new(&config);
+        let points = vec![
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.5, -0.3),
+            Vec3::new(-1.0, 2.0, 0.7),
+        ];
+        let batch_results = nsdf.eval_batch(&points);
+        for (i, &p) in points.iter().enumerate() {
+            let single = nsdf.eval(p);
+            assert!(
+                (batch_results[i] - single).abs() < 1e-5,
+                "batch[{}]={} vs single={}",
+                i,
+                batch_results[i],
+                single
+            );
+        }
+    }
+
+    #[test]
+    fn test_eval_batch_empty() {
+        let nsdf = NeuralSdf::new(&NeuralSdfConfig::default());
+        let results = nsdf.eval_batch(&[]);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_eval_with_gradient() {
+        let config = NeuralSdfConfig {
+            hidden_layers: 2,
+            hidden_width: 16,
+            pos_encoding_freqs: 0,
+            seed: 42,
+            ..Default::default()
+        };
+        let nsdf = NeuralSdf::new(&config);
+        let p = Vec3::new(1.0, 0.5, -0.3);
+        let (d, g) = nsdf.eval_with_gradient(p, 1e-3);
+        assert!(d.is_finite());
+        assert!(g.length().is_finite());
+        // Gradient magnitude should be roughly > 0 for a non-degenerate network
+        // (just check it's not NaN)
+        assert!(!g.x.is_nan());
+    }
+
+    #[test]
+    fn test_hidden_layer_count() {
+        let config = NeuralSdfConfig {
+            hidden_layers: 3,
+            hidden_width: 32,
+            ..Default::default()
+        };
+        let nsdf = NeuralSdf::new(&config);
+        assert_eq!(nsdf.hidden_layer_count(), 3);
+    }
+
+    #[test]
+    fn test_input_dimension() {
+        let config = NeuralSdfConfig {
+            pos_encoding_freqs: 4,
+            ..Default::default()
+        };
+        let nsdf = NeuralSdf::new(&config);
+        // 3 + 3*2*4 = 27
+        assert_eq!(nsdf.input_dimension(), 27);
+    }
+
+    #[test]
+    fn test_default_config() {
+        let config = NeuralSdfConfig::default();
+        assert_eq!(config.hidden_layers, 3);
+        assert_eq!(config.hidden_width, 64);
     }
 }

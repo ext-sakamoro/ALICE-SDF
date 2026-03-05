@@ -184,8 +184,14 @@ pub mod prelude {
     pub use crate::animation::{
         morph, AnimatedSdf, Interpolation, Keyframe, LoopMode, Timeline, Track,
     };
-    pub use crate::autodiff::{eval_hessian, eval_with_gradient, mean_curvature, Dual, Dual3};
-    pub use crate::collision::{sdf_collide, sdf_distance, sdf_overlap, SdfContact};
+    pub use crate::autodiff::{
+        eval_hessian, eval_with_gradient, gaussian_curvature, mean_curvature, principal_curvatures,
+        Dual, Dual3,
+    };
+    pub use crate::collision::{
+        compute_manifold, sdf_ccd, sdf_closest_point, sdf_collide, sdf_distance, sdf_overlap,
+        ContactManifold, SdfContact,
+    };
     pub use crate::compiled::{
         eval_compiled, eval_compiled_batch_simd, eval_compiled_batch_simd_parallel,
         eval_compiled_batch_soa, eval_compiled_batch_soa_parallel, eval_compiled_bvh,
@@ -200,7 +206,10 @@ pub mod prelude {
         carve, carve_batch, generate_debris, voronoi_fracture, CarveShape, ChunkMesh, DebrisConfig,
         DebrisPiece, DestructionResult, FractureConfig, FracturePiece, MutableVoxelGrid,
     };
-    pub use crate::diff::{apply_patch, tree_diff, tree_hash, DiffError, DiffOp, TreePatch};
+    pub use crate::diff::{
+        apply_patch, invert_patch, merge_patches, tree_diff, tree_hash, DiffError, DiffOp,
+        TreePatch,
+    };
     pub use crate::eval::{
         eval, eval_batch, eval_batch_parallel, eval_gradient, eval_grid, eval_material,
         eval_normal, gradient, normal,
@@ -221,7 +230,9 @@ pub mod prelude {
         save, save_asdf, save_asdf_json, AlembicConfig, FbxConfig, FbxFormat, FbxUpAxis,
         GltfConfig, NaniteExportConfig, ObjConfig, UsdConfig, UsdUpAxis,
     };
-    pub use crate::material::{Material, MaterialLibrary, TextureSlot};
+    pub use crate::material::{
+        material_lerp, Material, MaterialLibrary, StandardMaterials, TextureSlot,
+    };
     pub use crate::measure::{
         estimate_center_of_mass, estimate_surface_area, estimate_volume, AreaEstimate,
         CenterOfMass, VolumeEstimate,
@@ -318,8 +329,11 @@ pub mod prelude {
         ambient_occlusion, raycast, raycast_batch, raymarch, raymarch_with_config, soft_shadow,
         RaymarchConfig, RaymarchResult,
     };
-    pub use crate::sdf2d::{eval_2d, eval_2d_batch, Sdf2dNode};
-    pub use crate::shell::{eval_shell, eval_shell_batch, shell_node, ShellConfig};
+    pub use crate::sdf2d::{eval_2d, eval_2d_batch, eval_2d_normal, Sdf2dNode};
+    pub use crate::shell::{
+        eval_shell, eval_shell_batch, eval_shell_batch_parallel, eval_shell_compiled,
+        eval_shell_compiled_batch_parallel, eval_shell_gradient, shell_node, ShellConfig,
+    };
     #[cfg(feature = "physics")]
     pub use crate::sim_bridge::{simulate_sdf, SimulatedSdf};
     pub use crate::soa::{SoADistances, SoAPoints};

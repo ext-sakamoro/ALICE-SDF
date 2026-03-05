@@ -50,6 +50,34 @@ pub enum ConstraintKind {
         /// Denominator parameter.
         param_b: ParamId,
     },
+    /// Product of two parameters equals target (a * b = target).
+    Product {
+        /// First parameter.
+        param_a: ParamId,
+        /// Second parameter.
+        param_b: ParamId,
+    },
+    /// Minimum of two parameters equals target.
+    Min {
+        /// First parameter.
+        param_a: ParamId,
+        /// Second parameter.
+        param_b: ParamId,
+    },
+    /// Maximum of two parameters equals target.
+    Max {
+        /// First parameter.
+        param_a: ParamId,
+        /// Second parameter.
+        param_b: ParamId,
+    },
+    /// Range constraint: parameter must be within [target - epsilon, target + epsilon].
+    Range {
+        /// Parameter to constrain.
+        param: ParamId,
+        /// Half-width of the acceptable range.
+        epsilon: f64,
+    },
 }
 
 /// Result of a constraint solve iteration.
@@ -119,6 +147,36 @@ impl ConstraintSolver {
         });
     }
 
+    /// Constrain the ratio of two parameters (a / b = target).
+    pub fn ratio(&mut self, a: ParamId, b: ParamId, target: f64) {
+        self.add_constraint(Constraint {
+            kind: ConstraintKind::Ratio {
+                param_a: a,
+                param_b: b,
+            },
+            target,
+        });
+    }
+
+    /// Constrain the product of two parameters (a * b = target).
+    pub fn product(&mut self, a: ParamId, b: ParamId, target: f64) {
+        self.add_constraint(Constraint {
+            kind: ConstraintKind::Product {
+                param_a: a,
+                param_b: b,
+            },
+            target,
+        });
+    }
+
+    /// Constrain a parameter to be within [target - epsilon, target + epsilon].
+    pub fn range(&mut self, param: ParamId, target: f64, epsilon: f64) {
+        self.add_constraint(Constraint {
+            kind: ConstraintKind::Range { param, epsilon },
+            target,
+        });
+    }
+
     /// Get the current parameter value.
     pub fn get(&self, id: ParamId) -> f64 {
         self.params[id.0 as usize]
@@ -162,6 +220,32 @@ impl ConstraintSolver {
                     a / b - c.target
                 }
             }
+            ConstraintKind::Product { param_a, param_b } => {
+                let a = self.params[param_a.0 as usize];
+                let b = self.params[param_b.0 as usize];
+                a * b - c.target
+            }
+            ConstraintKind::Min { param_a, param_b } => {
+                let a = self.params[param_a.0 as usize];
+                let b = self.params[param_b.0 as usize];
+                a.min(b) - c.target
+            }
+            ConstraintKind::Max { param_a, param_b } => {
+                let a = self.params[param_a.0 as usize];
+                let b = self.params[param_b.0 as usize];
+                a.max(b) - c.target
+            }
+            ConstraintKind::Range { param, epsilon } => {
+                let v = self.params[param.0 as usize];
+                let diff = v - c.target;
+                if diff.abs() <= *epsilon {
+                    0.0 // within range
+                } else if diff > 0.0 {
+                    diff - epsilon
+                } else {
+                    diff + epsilon
+                }
+            }
         }
     }
 
@@ -193,6 +277,39 @@ impl ConstraintSolver {
                     let a = self.params[param_a.0 as usize];
                     row[param_a.0 as usize] = 1.0 / b;
                     row[param_b.0 as usize] = -a / (b * b);
+                }
+            }
+            ConstraintKind::Product { param_a, param_b } => {
+                let a = self.params[param_a.0 as usize];
+                let b = self.params[param_b.0 as usize];
+                row[param_a.0 as usize] = b;
+                row[param_b.0 as usize] = a;
+            }
+            ConstraintKind::Min { param_a, param_b } => {
+                let a = self.params[param_a.0 as usize];
+                let b = self.params[param_b.0 as usize];
+                if a <= b {
+                    row[param_a.0 as usize] = 1.0;
+                } else {
+                    row[param_b.0 as usize] = 1.0;
+                }
+            }
+            ConstraintKind::Max { param_a, param_b } => {
+                let a = self.params[param_a.0 as usize];
+                let b = self.params[param_b.0 as usize];
+                if a >= b {
+                    row[param_a.0 as usize] = 1.0;
+                } else {
+                    row[param_b.0 as usize] = 1.0;
+                }
+            }
+            ConstraintKind::Range { param, epsilon } => {
+                let v = self.params[param.0 as usize];
+                let diff = v - c.target;
+                if diff.abs() <= *epsilon {
+                    // Inside range: no gradient
+                } else {
+                    row[param.0 as usize] = 1.0;
                 }
             }
         }
@@ -422,6 +539,52 @@ mod tests {
         let result = solver.solve(5, 1e-10);
         assert!(result.converged);
         assert!(result.residual < 1e-8);
+    }
+
+    #[test]
+    fn ratio_constraint() {
+        let mut solver = ConstraintSolver::new(vec![6.0, 3.0]);
+        solver.ratio(ParamId(0), ParamId(1), 2.0);
+        solver.fix(ParamId(1), 3.0);
+        let result = solver.solve(100, 1e-6);
+        assert!(result.converged, "residual={}", result.residual);
+        assert!((result.params[0] - 6.0).abs() < 1e-3);
+        assert!((result.params[1] - 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn product_constraint() {
+        let mut solver = ConstraintSolver::new(vec![2.0, 5.0]);
+        solver.product(ParamId(0), ParamId(1), 12.0);
+        solver.fix(ParamId(0), 3.0);
+        let result = solver.solve(100, 1e-6);
+        assert!(result.converged, "residual={}", result.residual);
+        assert!((result.params[0] - 3.0).abs() < 1e-3);
+        assert!((result.params[1] - 4.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn range_constraint_within() {
+        let mut solver = ConstraintSolver::new(vec![5.0]);
+        solver.range(ParamId(0), 5.0, 1.0);
+        let result = solver.solve(10, 1e-6);
+        assert!(result.converged);
+        // Already within range → no movement needed
+        assert!((result.params[0] - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn range_constraint_outside() {
+        let mut solver = ConstraintSolver::new(vec![10.0]);
+        solver.range(ParamId(0), 5.0, 1.0);
+        let result = solver.solve(100, 1e-6);
+        assert!(result.converged, "residual={}", result.residual);
+        // Should converge to within range [4, 6]
+        assert!(
+            (result.params[0] - 5.0).abs() <= 1.0 + 1e-3,
+            "param={}",
+            result.params[0]
+        );
     }
 
     #[test]
