@@ -111,7 +111,6 @@ jobs:
 
       - name: Build (JIT) [T3]
         run: cargo build --lib --no-default-features --features "jit"
-        continue-on-error: true
 
       - name: Build (all bridges) [T3]
         run: cargo build --lib --no-default-features --features "codec,physics,asp,sdf-cache"
