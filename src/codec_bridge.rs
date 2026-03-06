@@ -640,6 +640,61 @@ pub fn compression_ratio(volume: &SdfVolume, encoded: &[u8]) -> f64 {
 }
 
 // ============================================================================
+// One-call Pipeline API
+// ============================================================================
+
+/// SDF 圧縮パイプライン結果。
+#[derive(Clone, Debug)]
+pub struct CompressResult {
+    /// 圧縮されたバイトストリーム。
+    pub encoded: Vec<u8>,
+    /// ボリューム統計情報。
+    pub stats: VolumeStats,
+    /// 圧縮率（非圧縮サイズ / 圧縮サイズ）。
+    pub ratio: f64,
+    /// ボクセル化に使用した解像度。
+    pub resolution: [usize; 3],
+}
+
+/// ワンコールで SDF ノードを圧縮する。
+///
+/// `SdfNode` → ボクセル化 → ウェーブレット変換 → 量子化 → rANS 符号化
+/// の全パイプラインを 1 回の呼び出しで実行する。
+///
+/// # Arguments
+/// * `sdf` - 圧縮対象の SDF ノード
+/// * `origin` - ワールド空間の最小コーナー
+/// * `extent` - ワールド空間の最大コーナー
+/// * `resolution` - グリッド解像度（各軸）
+/// * `config` - エンコード設定
+pub fn compress_sdf(
+    sdf: &SdfNode,
+    origin: Vec3,
+    extent: Vec3,
+    resolution: usize,
+    config: &EncodeConfig,
+) -> CompressResult {
+    let volume = voxelize_sdf_uniform(sdf, origin, extent, resolution);
+    let stats = volume_stats(&volume);
+    let encoded = encode_sdf_volume(&volume, config);
+    let ratio = compression_ratio(&volume, &encoded);
+
+    CompressResult {
+        encoded,
+        stats,
+        ratio,
+        resolution: [resolution, resolution, resolution],
+    }
+}
+
+/// 圧縮された SDF を復元する。
+///
+/// `compress_sdf` で生成されたバイトストリームから `SdfVolume` を復元する。
+pub fn decompress_sdf(data: &[u8]) -> SdfVolume {
+    decode_sdf_volume(data)
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -815,6 +870,57 @@ mod tests {
         assert!((p.x - 1.5).abs() < 1e-6);
         assert!((p.y - 2.5).abs() < 1e-6);
         assert!((p.z - 3.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compress_sdf_pipeline() {
+        let sphere = SdfNode::sphere(1.0);
+        let result = compress_sdf(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            8,
+            &EncodeConfig::default(),
+        );
+
+        assert!(!result.encoded.is_empty());
+        assert!(result.ratio > 0.0);
+        assert_eq!(result.resolution, [8, 8, 8]);
+        assert_eq!(result.stats.total_voxels, 512);
+        assert!(result.stats.zero_crossings > 0);
+    }
+
+    #[test]
+    fn test_compress_decompress_roundtrip() {
+        let sphere = SdfNode::sphere(1.0);
+        let result = compress_sdf(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            8,
+            &EncodeConfig::high_quality(),
+        );
+
+        let volume = decompress_sdf(&result.encoded);
+        assert_eq!(volume.width, 8);
+        assert_eq!(volume.height, 8);
+        assert_eq!(volume.depth, 8);
+        assert_eq!(volume.data.len(), 512);
+    }
+
+    #[test]
+    fn test_compress_result_fields() {
+        let sphere = SdfNode::sphere(1.0);
+        let result = compress_sdf(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            4,
+            &EncodeConfig::fast(),
+        );
+
+        assert_eq!(result.resolution, [4, 4, 4]);
+        assert_eq!(result.stats.total_voxels, 64);
     }
 
     #[test]

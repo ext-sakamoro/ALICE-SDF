@@ -246,6 +246,69 @@ pub fn simulate_sdf(node: &crate::types::SdfNode) -> SimulatedSdf {
     SimulatedSdf::new(compiled)
 }
 
+// ============================================================================
+// GPU Mesh + Physics Pipeline
+// ============================================================================
+
+/// GPU メッシュ生成と物理パイプラインの統合結果。
+#[cfg(feature = "gpu")]
+pub struct GpuPhysicsBundle {
+    /// GPU MC で生成されたビジュアルメッシュ。
+    pub mesh: crate::mesh::Mesh,
+    /// 物理シミュレーション用 SDF。
+    pub sim: SimulatedSdf,
+}
+
+/// GPU Marching Cubes でメッシュを生成し、同時に物理パイプラインを構築する。
+///
+/// ワンコールで:
+/// 1. `SdfNode` → `CompiledSdf` にコンパイル
+/// 2. GPU MC でビジュアルメッシュを生成
+/// 3. `SimulatedSdf` を構築（物理モディファイア追加可能な状態）
+///
+/// # Arguments
+/// * `node` - メッシュ化する SDF ノード
+/// * `bounds_min` - ワールド空間の最小バウンド
+/// * `bounds_max` - ワールド空間の最大バウンド
+/// * `mc_config` - GPU MC 設定
+///
+/// # Errors
+/// GPU MC が失敗した場合にエラーを返す。
+#[cfg(feature = "gpu")]
+pub fn gpu_mesh_with_physics(
+    node: &crate::types::SdfNode,
+    bounds_min: glam::Vec3,
+    bounds_max: glam::Vec3,
+    mc_config: &crate::mesh::gpu_marching_cubes::GpuMarchingCubesConfig,
+) -> Result<GpuPhysicsBundle, crate::compiled::GpuError> {
+    use crate::mesh::gpu_marching_cubes::gpu_marching_cubes;
+
+    // GPU MC でメッシュ生成
+    let mesh = gpu_marching_cubes(node, bounds_min, bounds_max, mc_config)?;
+
+    // 物理用 CompiledSdf + SimulatedSdf を構築
+    let compiled = CompiledSdf::compile(node);
+    let sim = SimulatedSdf::new(compiled).with_bounds(
+        (bounds_min.x, bounds_min.y, bounds_min.z),
+        (bounds_max.x, bounds_max.y, bounds_max.z),
+    );
+
+    Ok(GpuPhysicsBundle { mesh, sim })
+}
+
+/// 既存メッシュから物理パイプラインを構築する。
+///
+/// GPU MC 等で生成済みのメッシュに対して、
+/// 元の SDF ノードから `SimulatedSdf` を後付けで構築する。
+pub fn attach_physics(
+    node: &crate::types::SdfNode,
+    bounds_min: (f32, f32, f32),
+    bounds_max: (f32, f32, f32),
+) -> SimulatedSdf {
+    let compiled = CompiledSdf::compile(node);
+    SimulatedSdf::new(compiled).with_bounds(bounds_min, bounds_max)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +368,33 @@ mod tests {
         }
 
         // Distance should still be reasonable
+        let d = sim.distance(2.0, 0.0, 0.0);
+        assert!(d > 0.0, "Should still be outside: d={}", d);
+    }
+
+    #[test]
+    fn test_attach_physics() {
+        let node = SdfNode::sphere(1.0);
+        let sim = attach_physics(&node, (-3.0, -3.0, -3.0), (3.0, 3.0, 3.0));
+
+        let (bmin, bmax) = sim.bounds();
+        assert_eq!(bmin, (-3.0, -3.0, -3.0));
+        assert_eq!(bmax, (3.0, 3.0, 3.0));
+
+        // 距離評価が正常に動作すること
+        let d = sim.distance(2.0, 0.0, 0.0);
+        assert!((d - 1.0).abs() < 0.01, "attach_physics d={}", d);
+    }
+
+    #[test]
+    fn test_attach_physics_with_modifiers() {
+        let node = SdfNode::sphere(1.0);
+        let mut sim = attach_physics(&node, (-2.0, -2.0, -2.0), (2.0, 2.0, 2.0));
+
+        sim.add_thermal(ThermalConfig::default(), 8);
+        assert_eq!(sim.modifier_count(), 1);
+
+        sim.update(0.016);
         let d = sim.distance(2.0, 0.0, 0.0);
         assert!(d > 0.0, "Should still be outside: d={}", d);
     }

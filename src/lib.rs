@@ -188,6 +188,12 @@ pub mod prelude {
         eval_hessian, eval_with_gradient, gaussian_curvature, mean_curvature, principal_curvatures,
         Dual, Dual3,
     };
+    #[cfg(feature = "codec")]
+    pub use crate::codec_bridge::{
+        compress_sdf, compression_ratio, decode_sdf_volume, decompress_sdf, encode_sdf_volume,
+        volume_stats, voxelize_sdf, voxelize_sdf_uniform, CompressResult, EncodeConfig, SdfVolume,
+        VolumeStats,
+    };
     pub use crate::collision::{
         compute_manifold, sdf_ccd, sdf_closest_point, sdf_collide, sdf_distance, sdf_overlap,
         ContactManifold, SdfContact,
@@ -335,7 +341,9 @@ pub mod prelude {
         eval_shell_compiled_batch_parallel, eval_shell_gradient, shell_node, ShellConfig,
     };
     #[cfg(feature = "physics")]
-    pub use crate::sim_bridge::{simulate_sdf, SimulatedSdf};
+    pub use crate::sim_bridge::{attach_physics, simulate_sdf, SimulatedSdf};
+    #[cfg(all(feature = "physics", feature = "gpu"))]
+    pub use crate::sim_bridge::{gpu_mesh_with_physics, GpuPhysicsBundle};
     pub use crate::soa::{SoADistances, SoAPoints};
     #[cfg(feature = "svo")]
     pub use crate::svo::{
