@@ -491,19 +491,22 @@ pub fn principal_curvatures(node: &SdfNode, point: Vec3, epsilon: f32) -> (f32, 
     // Project Hessian: P = H - (H·n)(n^T)
     // Mean curvature = trace of shape operator / |∇f|
     let laplacian = hxx + hyy + hzz;
-    let n_hn = hxx * n.x * n.x
-        + hyy * n.y * n.y
-        + hzz * n.z * n.z
-        + 2.0 * (hxy * n.x * n.y + hxz * n.x * n.z + hyz * n.y * n.z);
+    let n_hn = 2.0f32.mul_add(
+        (hyz * n.y).mul_add(n.z, (hxy * n.x).mul_add(n.y, hxz * n.x * n.z)),
+        (hzz * n.z).mul_add(n.z, (hxx * n.x).mul_add(n.x, hyy * n.y * n.y)),
+    );
     let mean_h = (laplacian - n_hn) / grad_len;
 
     // Frobenius norm of projected Hessian for discriminant
-    let h_frobenius = hxx * hxx + hyy * hyy + hzz * hzz + 2.0 * (hxy * hxy + hxz * hxz + hyz * hyz);
-    let proj_frobenius = (h_frobenius - n_hn * n_hn) / (grad_len * grad_len);
+    let h_frobenius = 2.0f32.mul_add(
+        hyz.mul_add(hyz, hxy.mul_add(hxy, hxz * hxz)),
+        hzz.mul_add(hzz, hxx.mul_add(hxx, hyy * hyy)),
+    );
+    let proj_frobenius = (-n_hn).mul_add(n_hn, h_frobenius) / (grad_len * grad_len);
 
     // k1 + k2 = mean_h, k1² + k2² = proj_frobenius
     // k1*k2 = (mean_h² - proj_frobenius) / 2
-    let discriminant = (mean_h * mean_h - proj_frobenius).max(0.0);
+    let discriminant = mean_h.mul_add(mean_h, -proj_frobenius).max(0.0);
     let sqrt_disc = discriminant.sqrt();
     let k1 = 0.5 * (mean_h + sqrt_disc);
     let k2 = 0.5 * (mean_h - sqrt_disc);
