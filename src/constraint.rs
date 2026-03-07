@@ -223,7 +223,7 @@ impl ConstraintSolver {
             ConstraintKind::Product { param_a, param_b } => {
                 let a = self.params[param_a.0 as usize];
                 let b = self.params[param_b.0 as usize];
-                a * b - c.target
+                a.mul_add(b, -c.target)
             }
             ConstraintKind::Min { param_a, param_b } => {
                 let a = self.params[param_a.0 as usize];

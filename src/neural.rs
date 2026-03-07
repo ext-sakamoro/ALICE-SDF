@@ -527,7 +527,7 @@ impl NeuralSdf {
     }
 
     /// Input dimensionality (3 + positional encoding features).
-    pub fn input_dimension(&self) -> usize {
+    pub const fn input_dimension(&self) -> usize {
         self.input_dim
     }
 }

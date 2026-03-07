@@ -861,8 +861,7 @@ mod tests {
         let mut lib = MaterialLibrary::new();
         lib.add(Material::new("A"));
         lib.add(Material::new("B"));
-        let names: Vec<_> = lib.iter().map(|(_, m)| m.name.clone()).collect();
-        assert_eq!(names.len(), 3); // default + A + B
+        assert_eq!(lib.iter().count(), 3); // default + A + B
     }
 
     #[test]

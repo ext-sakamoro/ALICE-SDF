@@ -292,7 +292,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let sin_a = a.sin();
             // Distance from point to nearest polygon edge
             let edge_dist = radius * half_sector.cos();
-            let dx = r * cos_a - edge_dist;
+            let dx = r.mul_add(cos_a, -edge_dist);
             let dy = (r * sin_a).abs() - radius * half_sector.sin();
             if dx > 0.0 && dy > 0.0 {
                 dx.hypot(dy)
@@ -313,7 +313,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let r = px.hypot(py);
             let angle = py.atan2(px);
             let sector = std::f32::consts::PI / n;
-            let a = (angle % (2.0 * sector) + 2.0 * sector) % (2.0 * sector);
+            let a = 2.0f32.mul_add(sector, angle % (2.0 * sector)) % (2.0 * sector);
             // Interpolate between inner and outer radius based on angle
             let t = (a / sector).min(2.0 - a / sector);
             let boundary = inner_radius + (outer_radius - inner_radius) * t;

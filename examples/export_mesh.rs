@@ -9,6 +9,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use std::fmt::Write;
+
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use alice_sdf::prelude::*;
 use glam::Vec3;
@@ -37,13 +39,10 @@ fn main() {
     let path = "output.obj";
     let mut obj = String::new();
     for v in &mesh.vertices {
-        obj.push_str(&format!(
-            "v {} {} {}\n",
-            v.position.x, v.position.y, v.position.z
-        ));
+        let _ = writeln!(obj, "v {} {} {}", v.position.x, v.position.y, v.position.z);
     }
     for tri in mesh.indices.chunks(3) {
-        obj.push_str(&format!("f {} {} {}\n", tri[0] + 1, tri[1] + 1, tri[2] + 1));
+        let _ = writeln!(obj, "f {} {} {}", tri[0] + 1, tri[1] + 1, tri[2] + 1);
     }
     std::fs::write(path, obj).expect("Failed to write OBJ");
     println!("  Exported to: {path}");
