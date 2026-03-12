@@ -2090,6 +2090,7 @@ See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for deta
 |---------|-------------|------|
 | **ALICE-View** | Real-time GPU raymarching viewer for SDF files (wgpu + WGSL) | [GitHub](https://github.com/ext-sakamoro/ALICE-View) |
 | **Open Source SDF Assets** | 991 free CC0 3D assets in .asdf.json format, converted via ALICE-SDF | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
+| **ALICE-LOL** | Law-Oriented Language — `lol!` proc_macro DSL for declarative SDF scene authoring (76 constructs, GLSL/WGSL/HLSL transpile, law constraints, spatial pruning) | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
 | **ALICE Ecosystem** | 52-component edge-to-cloud data pipeline | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
 | **AI Modeler SaaS** | Browser-based 3D modeling powered by ALICE-SDF | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |
 
