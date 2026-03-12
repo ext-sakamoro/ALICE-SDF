@@ -334,7 +334,97 @@ pip install alice-sdf
 
 ## Usage
 
-### Rust
+### With ALICE-LOL DSL (Recommended)
+
+The easiest way to create SDF scenes is [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) — a `lol!` proc_macro that lets you write SDF trees declaratively instead of constructing them by hand.
+
+```toml
+# Cargo.toml
+[dependencies]
+alice-sdf = { path = "../ALICE-SDF" }
+alice-lol = { path = "../ALICE-LOL/alice-lol" }
+```
+
+**Before (manual SdfNode construction):**
+
+```rust
+use alice_sdf::prelude::*;
+
+let scene = SdfNode::SmoothUnion {
+    k: 0.3,
+    children: vec![
+        SdfNode::sphere(1.0),
+        SdfNode::Translate {
+            offset: glam::Vec3::new(2.0, 0.0, 0.0),
+            child: Box::new(SdfNode::Round {
+                radius: 0.05,
+                child: Box::new(SdfNode::box3d(0.8, 0.8, 0.8)),
+            }),
+        },
+    ],
+};
+```
+
+**After (LOL DSL):**
+
+```rust
+use alice_lol::{lol, to_glsl, eval};
+
+let scene = lol! {
+    smooth_union(0.3,
+        sphere(1.0),
+        translate(2.0, 0.0, 0.0, round(0.05, box3d(0.8, 0.8, 0.8)))
+    )
+};
+```
+
+Same `SdfNode` tree, fraction of the code. All 76 constructs (27 primitives, 23 CSG ops, 4 transforms, 19 modifiers, 2 time controls, 3 law constraints) work as function calls.
+
+**Transpile to GPU shaders:**
+
+```rust
+let glsl = to_glsl(&scene);                      // GLSL
+let wgsl = alice_lol::to_wgsl(&scene);            // WGSL (WebGPU)
+let hlsl = alice_lol::to_hlsl(&scene);            // HLSL (DirectX)
+```
+
+**CPU evaluation:**
+
+```rust
+let dist = eval(&scene, glam::Vec3::new(0.0, 1.0, 0.0));
+```
+
+**Inject Rust variables at runtime:**
+
+```rust
+let radius = 1.5_f32;
+let height = compute_height();
+let scene = lol! {
+    smooth_union(0.2,
+        sphere({radius}),
+        translate(0.0, {height}, 0.0, cylinder(2.0, 0.5))
+    )
+};
+```
+
+**Validate shape constraints at compile time:**
+
+```rust
+use alice_lol::law::{LawSet, Law, Priority};
+
+let laws = LawSet::new()
+    .add(Law::non_overlap(&a, &b), Priority::Hard)        // shapes must not intersect
+    .add(Law::min_thickness(&scene, 0.1), Priority::Soft(0.5));  // wall thickness >= 0.1
+let report = laws.check();
+```
+
+For full LOL documentation, see [ALICE-LOL README](https://github.com/ext-sakamoro/ALICE-LOL).
+
+---
+
+### Rust (Direct SdfNode Construction)
+
+For fine-grained control or when you need access to advanced node types not yet covered by the LOL DSL, you can construct `SdfNode` trees directly:
 
 ```rust
 use alice_sdf::prelude::*;
@@ -2083,41 +2173,6 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for details.
 
 **Content you create (.asdf files, worlds, games) is 100% yours. No royalties.**
-
-## ALICE-LOL: Declarative SDF Authoring
-
-[ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) provides a `lol!` proc_macro DSL that compiles declarative SDF descriptions into `SdfNode` trees at build time — no manual tree construction needed.
-
-```rust
-use alice_lol::{lol, to_glsl, to_wgsl, eval};
-
-// Declarative SDF scene — 76 constructs available
-let scene = lol! {
-    smooth_union(0.3,
-        sphere(1.0),
-        translate(2.0, 0.0, 0.0,
-            round(0.05, box3d(0.8, 0.8, 0.8))
-        )
-    )
-};
-
-// Transpile to GPU shader code
-let glsl = to_glsl(&scene);       // GLSL (hardcoded constants)
-let wgsl = to_wgsl(&scene);       // WGSL (WebGPU)
-
-// CPU evaluation
-let dist = eval(&scene, glam::Vec3::new(0.0, 0.0, 0.0));
-
-// Variable capture from Rust
-let r = 1.5_f32;
-let dynamic = lol! { sphere({r * 2.0}) };
-```
-
-```toml
-# Cargo.toml
-[dependencies]
-alice-lol = { path = "../ALICE-LOL/alice-lol" }
-```
 
 ## Related Projects
 
