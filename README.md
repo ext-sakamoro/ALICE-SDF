@@ -2084,6 +2084,41 @@ See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for deta
 
 **Content you create (.asdf files, worlds, games) is 100% yours. No royalties.**
 
+## ALICE-LOL: Declarative SDF Authoring
+
+[ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) provides a `lol!` proc_macro DSL that compiles declarative SDF descriptions into `SdfNode` trees at build time — no manual tree construction needed.
+
+```rust
+use alice_lol::{lol, to_glsl, to_wgsl, eval};
+
+// Declarative SDF scene — 76 constructs available
+let scene = lol! {
+    smooth_union(0.3,
+        sphere(1.0),
+        translate(2.0, 0.0, 0.0,
+            round(0.05, box3d(0.8, 0.8, 0.8))
+        )
+    )
+};
+
+// Transpile to GPU shader code
+let glsl = to_glsl(&scene);       // GLSL (hardcoded constants)
+let wgsl = to_wgsl(&scene);       // WGSL (WebGPU)
+
+// CPU evaluation
+let dist = eval(&scene, glam::Vec3::new(0.0, 0.0, 0.0));
+
+// Variable capture from Rust
+let r = 1.5_f32;
+let dynamic = lol! { sphere({r * 2.0}) };
+```
+
+```toml
+# Cargo.toml
+[dependencies]
+alice-lol = { path = "../ALICE-LOL/alice-lol" }
+```
+
 ## Related Projects
 
 | Project | Description | Link |
