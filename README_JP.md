@@ -334,7 +334,97 @@ pip install alice-sdf
 
 ## 使い方
 
-### Rust
+### ALICE-LOL DSL で書く（推奨）
+
+SDF シーンを作る最も簡単な方法は [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) です。`lol!` proc_macro で SDF ツリーを宣言的に記述でき、手動で `SdfNode` を組み立てる必要がありません。
+
+```toml
+# Cargo.toml
+[dependencies]
+alice-sdf = { path = "../ALICE-SDF" }
+alice-lol = { path = "../ALICE-LOL/alice-lol" }
+```
+
+**従来（手動で SdfNode を構築）:**
+
+```rust
+use alice_sdf::prelude::*;
+
+let scene = SdfNode::SmoothUnion {
+    k: 0.3,
+    children: vec![
+        SdfNode::sphere(1.0),
+        SdfNode::Translate {
+            offset: glam::Vec3::new(2.0, 0.0, 0.0),
+            child: Box::new(SdfNode::Round {
+                radius: 0.05,
+                child: Box::new(SdfNode::box3d(0.8, 0.8, 0.8)),
+            }),
+        },
+    ],
+};
+```
+
+**LOL DSL で書くと:**
+
+```rust
+use alice_lol::{lol, to_glsl, eval};
+
+let scene = lol! {
+    smooth_union(0.3,
+        sphere(1.0),
+        translate(2.0, 0.0, 0.0, round(0.05, box3d(0.8, 0.8, 0.8)))
+    )
+};
+```
+
+同じ `SdfNode` ツリーが、わずかなコードで完成します。76 構文（27 プリミティブ、23 CSG オペレーション、4 トランスフォーム、19 モディファイア、2 時間制御、3 法則制約）がすべて関数呼び出しで使えます。
+
+**GPU シェーダにトランスパイル:**
+
+```rust
+let glsl = to_glsl(&scene);                      // GLSL
+let wgsl = alice_lol::to_wgsl(&scene);            // WGSL (WebGPU)
+let hlsl = alice_lol::to_hlsl(&scene);            // HLSL (DirectX)
+```
+
+**CPU で距離を評価:**
+
+```rust
+let dist = eval(&scene, glam::Vec3::new(0.0, 1.0, 0.0));
+```
+
+**Rust の変数を実行時に注入:**
+
+```rust
+let radius = 1.5_f32;
+let height = compute_height();
+let scene = lol! {
+    smooth_union(0.2,
+        sphere({radius}),
+        translate(0.0, {height}, 0.0, cylinder(2.0, 0.5))
+    )
+};
+```
+
+**形状の制約をチェック:**
+
+```rust
+use alice_lol::law::{LawSet, Law, Priority};
+
+let laws = LawSet::new()
+    .add(Law::non_overlap(&a, &b), Priority::Hard)        // 形状が重ならないこと
+    .add(Law::min_thickness(&scene, 0.1), Priority::Soft(0.5));  // 壁厚 >= 0.1
+let report = laws.check();
+```
+
+LOL の詳細は [ALICE-LOL README](https://github.com/ext-sakamoro/ALICE-LOL) を参照してください。
+
+---
+
+### Rust（直接 SdfNode を構築する場合）
+
+LOL DSL でカバーされていない高度なノード型を使う場合や、細かい制御が必要な場合は `SdfNode` を直接構築できます:
 
 ```rust
 use alice_sdf::prelude::*;
@@ -2077,6 +2167,7 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 
 | プロジェクト | 説明 | リンク |
 |-------------|------|--------|
+| **ALICE-LOL** | Law-Oriented Language — `lol!` proc_macro DSL で SDF シーンを宣言的に記述（76 構文、GLSL/WGSL/HLSL トランスパイル、法則制約、空間枝刈り） | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
 | **Open Source SDF Assets** | ALICE-SDFで変換した991個のCC0 3Dアセット（.asdf.json形式） | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
 | **ALICE Ecosystem** | 52コンポーネントのエッジtoクラウドデータパイプライン | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
 | **AI Modeler SaaS** | ALICE-SDFを搭載したブラウザベース3Dモデリング | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |
