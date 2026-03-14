@@ -200,6 +200,136 @@ impl WgslShader {
         transpiler.params
     }
 
+    /// マテリアル評価関数を生成する。
+    ///
+    /// `WithMaterial` サブツリーを収集し、ヒットポイントで最も近い
+    /// サブツリーのマテリアル ID を返す `sdf_eval_material(p) -> f32` を生成する。
+    /// マテリアルが存在しない場合は空文字列を返す。
+    pub fn transpile_material(node: &SdfNode, mode: TranspileMode) -> String {
+        // WithMaterial サブツリーを収集
+        let mut materials: Vec<(u32, &SdfNode)> = Vec::new();
+        Self::collect_materials(node, &mut materials);
+        if materials.is_empty() {
+            return String::new();
+        }
+
+        // 各サブツリーを個別にトランスパイル
+        let mut helpers_all = String::new();
+        let mut eval_fns = String::new();
+        let mut body = String::from("fn sdf_eval_material(p: vec3<f32>) -> f32 {\n");
+        body.push_str("    var closest_dist: f32 = 1e10;\n");
+        body.push_str("    var mat_id: f32 = 0.0;\n");
+
+        for (i, (mid, child)) in materials.iter().enumerate() {
+            let mut transpiler = WgslTranspiler::new(mode);
+            let fn_name = format!("sdf_mat_sub_{}", i);
+            let inner_body = transpiler.transpile_node(child, "p");
+
+            // ヘルパーを収集
+            for helper in &transpiler.helper_functions {
+                if let Some(src) = WgslLang::helper_source(helper) {
+                    if !helpers_all.contains(&format!("fn {}(", helper)) {
+                        helpers_all.push_str(src);
+                        helpers_all.push('\n');
+                    }
+                }
+            }
+
+            // サブ関数
+            write!(
+                eval_fns,
+                "fn {}(p: vec3<f32>) -> f32 {{\n{}}}\n\n",
+                fn_name, inner_body
+            )
+            .unwrap();
+
+            // 比較コード
+            write!(
+                body,
+                "    let d_m{i} = {fn_name}(p);\n    if (d_m{i} < closest_dist) {{ closest_dist = d_m{i}; mat_id = {mid}.0; }}\n",
+                i = i,
+                fn_name = fn_name,
+                mid = mid,
+            )
+            .unwrap();
+        }
+
+        body.push_str("    return mat_id;\n}\n");
+
+        format!("{}{}{}", helpers_all, eval_fns, body)
+    }
+
+    /// SdfNode ツリーから WithMaterial サブツリーを再帰的に収集
+    fn collect_materials<'a>(node: &'a SdfNode, out: &mut Vec<(u32, &'a SdfNode)>) {
+        match node {
+            SdfNode::WithMaterial { child, material_id } => {
+                out.push((*material_id, child));
+            }
+            // 二項演算: 両方の子を再帰探索
+            SdfNode::Union { a, b }
+            | SdfNode::Intersection { a, b }
+            | SdfNode::Subtraction { a, b }
+            | SdfNode::SmoothUnion { a, b, .. }
+            | SdfNode::SmoothIntersection { a, b, .. }
+            | SdfNode::SmoothSubtraction { a, b, .. }
+            | SdfNode::ChamferUnion { a, b, .. }
+            | SdfNode::ChamferIntersection { a, b, .. }
+            | SdfNode::ChamferSubtraction { a, b, .. }
+            | SdfNode::StairsUnion { a, b, .. }
+            | SdfNode::StairsIntersection { a, b, .. }
+            | SdfNode::StairsSubtraction { a, b, .. }
+            | SdfNode::XOR { a, b }
+            | SdfNode::Morph { a, b, .. }
+            | SdfNode::ColumnsUnion { a, b, .. }
+            | SdfNode::ColumnsIntersection { a, b, .. }
+            | SdfNode::ColumnsSubtraction { a, b, .. }
+            | SdfNode::Pipe { a, b, .. }
+            | SdfNode::Engrave { a, b, .. }
+            | SdfNode::Groove { a, b, .. }
+            | SdfNode::Tongue { a, b, .. }
+            | SdfNode::ExpSmoothUnion { a, b, .. }
+            | SdfNode::ExpSmoothIntersection { a, b, .. }
+            | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+                Self::collect_materials(a, out);
+                Self::collect_materials(b, out);
+            }
+            // 単項（子持ち）: 子を再帰探索
+            SdfNode::Translate { child, .. }
+            | SdfNode::Rotate { child, .. }
+            | SdfNode::Scale { child, .. }
+            | SdfNode::ScaleNonUniform { child, .. }
+            | SdfNode::Twist { child, .. }
+            | SdfNode::Bend { child, .. }
+            | SdfNode::RepeatInfinite { child, .. }
+            | SdfNode::RepeatFinite { child, .. }
+            | SdfNode::Noise { child, .. }
+            | SdfNode::Round { child, .. }
+            | SdfNode::Onion { child, .. }
+            | SdfNode::Elongate { child, .. }
+            | SdfNode::Mirror { child, .. }
+            | SdfNode::Revolution { child, .. }
+            | SdfNode::Extrude { child, .. }
+            | SdfNode::SweepBezier { child, .. }
+            | SdfNode::Taper { child, .. }
+            | SdfNode::Displacement { child, .. }
+            | SdfNode::PolarRepeat { child, .. }
+            | SdfNode::OctantMirror { child, .. }
+            | SdfNode::Shear { child, .. }
+            | SdfNode::Animated { child, .. }
+            | SdfNode::IcosahedralSymmetry { child, .. }
+            | SdfNode::IFS { child, .. }
+            | SdfNode::HeightmapDisplacement { child, .. }
+            | SdfNode::SurfaceRoughness { child, .. }
+            | SdfNode::ProjectiveTransform { child, .. }
+            | SdfNode::LatticeDeform { child, .. }
+            | SdfNode::SdfSkinning { child, .. } => {
+                Self::collect_materials(child, out);
+            }
+            // プリミティブ: 子なし
+            _ => {}
+        }
+    }
+
     /// [Deep Fried v2] Set workgroup size based on device limits.
     ///
     /// Call with `device.limits().max_compute_workgroup_size_x` to adapt
