@@ -356,6 +356,31 @@ void main() {{
         &self.source
     }
 
+    /// フルレンダリングパイプライン付きフラグメントシェーダーを生成
+    ///
+    /// PBR (Cook-Torrance GGX), 大気散乱 (Rayleigh/Mie), 昼夜サイクル,
+    /// 天候 (霧/雨/雷), ボリュメトリックライト, ポストプロセス (ACES/ブルーム/CA)
+    /// を含むフルシェーダーを出力する。
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use alice_sdf::prelude::*;
+    /// use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode, RenderConfig};
+    ///
+    /// let shape = SdfNode::sphere(1.0)
+    ///     .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
+    ///
+    /// let shader = GlslShader::transpile(&shape, GlslTranspileMode::Hardcoded);
+    /// let full = shader.to_fragment_shader_full(&RenderConfig::default());
+    /// ```
+    pub fn to_fragment_shader_full(
+        &self,
+        config: &super::render_pipeline::RenderConfig,
+    ) -> String {
+        super::render_pipeline::build_full_shader(&self.source, config)
+    }
+
     /// Export as Unity Shader Graph Custom Function (.hlsl file)
     ///
     /// Generates an HLSL file compatible with Unity's Shader Graph Custom Function node.

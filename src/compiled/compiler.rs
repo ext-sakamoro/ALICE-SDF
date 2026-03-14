@@ -1042,6 +1042,11 @@ impl Compiler {
                 ));
             }
 
+            SdfNode::Terrain { scale, amplitude } => {
+                // Terrain は eval 側で処理、コンパイラでは Sphere に fallback
+                self.instructions.push(Instruction::sphere(*amplitude * *scale));
+            }
+
             // === ExpSmooth operations ===
             SdfNode::ExpSmoothUnion { a, b, k } => {
                 self.compile_node(a);
@@ -1305,7 +1310,8 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
-        | SdfNode::Annular2D { .. } => (1, 0),
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Terrain { .. } => (1, 0),
 
         // Binary operations: compile left, then right (both on stack), then consume 2 → produce 1.
         // Peak value depth = max(left_depth, left_result + right_depth)
@@ -1528,7 +1534,8 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
-        | SdfNode::Annular2D { .. } => {}
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Terrain { .. } => {}
     }
     Ok(())
 }

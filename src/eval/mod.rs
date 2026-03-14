@@ -346,6 +346,40 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
         }
 
+        SdfNode::Terrain { scale, amplitude } => {
+            // FBM-based terrain: y - terrainHeight(xz)
+            // 簡易実装: 3オクターブ FBM
+            let xz = Vec2::new(point.x * scale, point.z * scale);
+            let mut v = 0.0_f32;
+            let mut a_fbm = 0.5_f32;
+            let mut freq_x = xz.x;
+            let mut freq_z = xz.y;
+            for _ in 0..3 {
+                // vnoise2D 近似 (sin hash)
+                let ix = freq_x.floor();
+                let iz = freq_z.floor();
+                let fx = freq_x - ix;
+                let fz = freq_z - iz;
+                let sx = fx * fx * (3.0 - 2.0 * fx);
+                let sz = fz * fz * (3.0 - 2.0 * fz);
+                let h = |x: f32, z: f32| -> f32 {
+                    ((x * 127.1 + z * 311.7).sin() * 43758.5453).fract().abs()
+                };
+                let a00 = h(ix, iz);
+                let a10 = h(ix + 1.0, iz);
+                let a01 = h(ix, iz + 1.0);
+                let a11 = h(ix + 1.0, iz + 1.0);
+                let n = a00 + (a10 - a00) * sx + (a01 - a00) * sz + (a00 - a10 - a01 + a11) * sx * sz;
+                v += a_fbm * n;
+                let nx = 0.8 * freq_x + 0.6 * freq_z;
+                let nz = -0.6 * freq_x + 0.8 * freq_z;
+                freq_x = nx * 2.1;
+                freq_z = nz * 2.1;
+                a_fbm *= 0.48;
+            }
+            point.y - v * amplitude
+        }
+
         // === Operations ===
         // Recurse first, then combine. Compiler can reorder these instruction streams.
         SdfNode::Union { a, b } => {

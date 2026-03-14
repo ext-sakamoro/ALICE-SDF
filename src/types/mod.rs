@@ -1221,6 +1221,15 @@ pub enum SdfNode {
         /// Number of octaves
         octaves: u32,
     },
+
+    /// Biome terrain — procedural terrain with FBM + Voronoi erosion
+    /// Uses radial biome blending (snow, desert, rock, grassland)
+    Terrain {
+        /// Overall terrain scale (higher = larger terrain features)
+        scale: f32,
+        /// Vertical amplitude multiplier
+        amplitude: f32,
+    },
 }
 
 impl SdfNode {
@@ -1299,7 +1308,8 @@ impl SdfNode {
             | Self::Segment2D { .. }
             | Self::Polygon2D { .. }
             | Self::RoundedRect2D { .. }
-            | Self::Annular2D { .. } => SdfCategory::Primitive,
+            | Self::Annular2D { .. }
+            | Self::Terrain { .. } => SdfCategory::Primitive,
 
             // === Operations ===
             Self::Union { .. }
@@ -1432,7 +1442,8 @@ impl SdfNode {
             | Self::IWP { .. }
             | Self::FRD { .. }
             | Self::FischerKochS { .. }
-            | Self::PMY { .. } => 1,
+            | Self::PMY { .. }
+            | Self::Terrain { .. } => 1,
 
             // Operations: 1 + children
             Self::Union { a, b }

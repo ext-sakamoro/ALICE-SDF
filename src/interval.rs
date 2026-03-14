@@ -675,6 +675,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             ia_bsphere(bounds, half_extents.max_element())
         }
         SdfNode::Annular2D { outer_radius, .. } => ia_bsphere(bounds, *outer_radius),
+        SdfNode::Terrain { amplitude, .. } => {
+            // 地形は y - height なので、amplitude ベースの概算
+            Interval::new(bounds.y.lo - amplitude, bounds.y.hi + amplitude)
+        }
 
         // ============ Operations ============
         SdfNode::Union { a, b } => eval_interval(a, bounds).min(eval_interval(b, bounds)),
@@ -1149,7 +1153,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
-        | SdfNode::Annular2D { .. } => 1.0,
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Terrain { .. } => 1.0,
 
         // Boolean ops: smooth min/max is 1-Lipschitz in (a,b)
         SdfNode::Union { a, b }

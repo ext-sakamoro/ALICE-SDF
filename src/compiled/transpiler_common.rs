@@ -2945,6 +2945,22 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 v
             }
 
+            SdfNode::Terrain { scale, amplitude } => {
+                let sc = self.param(*scale);
+                let amp = self.param(*amplitude);
+                let v = self.next_var();
+                // terrainHeight の GLSL インライン展開 (3-octave FBM)
+                code.push_str(&format!(
+                    "    float {v}_th = 0.0; float {v}_a = 0.5;\n    vec2 {v}_fp = {p}.xz * {sc};\n    for(int {v}_i=0;{v}_i<3;{v}_i++) {{\n        {v}_th += {v}_a * vnoise({v}_fp);\n        vec2 {v}_nfp = vec2(0.8*{v}_fp.x+0.6*{v}_fp.y, -0.6*{v}_fp.x+0.8*{v}_fp.y);\n        {v}_fp = {v}_nfp * 2.1; {v}_a *= 0.48;\n    }}\n",
+                    v = v, p = point_var, sc = sc
+                ));
+                code.push_str(&L::decl_float(
+                    &v,
+                    &format!("{}.y - {}_th * {}", point_var, v, amp),
+                ));
+                v
+            }
+
             // Exponential smooth operations
             SdfNode::ExpSmoothUnion { a, b, k } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
