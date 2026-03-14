@@ -374,10 +374,7 @@ void main() {{
     /// let shader = GlslShader::transpile(&shape, GlslTranspileMode::Hardcoded);
     /// let full = shader.to_fragment_shader_full(&RenderConfig::default());
     /// ```
-    pub fn to_fragment_shader_full(
-        &self,
-        config: &super::render_pipeline::RenderConfig,
-    ) -> String {
+    pub fn to_fragment_shader_full(&self, config: &super::render_pipeline::RenderConfig) -> String {
         super::render_pipeline::build_full_shader(&self.source, config)
     }
 

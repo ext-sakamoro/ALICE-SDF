@@ -35,8 +35,8 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod transpiler;
 pub mod render_pipeline;
+mod transpiler;
 
 pub use render_pipeline::RenderConfig;
 pub use transpiler::{GlslShader, GlslTranspileMode};

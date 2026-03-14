@@ -1044,7 +1044,8 @@ impl Compiler {
 
             SdfNode::Terrain { scale, amplitude } => {
                 // Terrain は eval 側で処理、コンパイラでは Sphere に fallback
-                self.instructions.push(Instruction::sphere(*amplitude * *scale));
+                self.instructions
+                    .push(Instruction::sphere(*amplitude * *scale));
             }
 
             // === ExpSmooth operations ===

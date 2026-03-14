@@ -369,7 +369,8 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
                 let a10 = h(ix + 1.0, iz);
                 let a01 = h(ix, iz + 1.0);
                 let a11 = h(ix + 1.0, iz + 1.0);
-                let n = a00 + (a10 - a00) * sx + (a01 - a00) * sz + (a00 - a10 - a01 + a11) * sx * sz;
+                let n =
+                    a00 + (a10 - a00) * sx + (a01 - a00) * sz + (a00 - a10 - a01 + a11) * sx * sz;
                 v += a_fbm * n;
                 let nx = 0.8 * freq_x + 0.6 * freq_z;
                 let nz = -0.6 * freq_x + 0.8 * freq_z;
