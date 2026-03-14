@@ -213,6 +213,10 @@ impl WgslShader {
             return String::new();
         }
 
+        // メイン transpile で使われるヘルパーを事前収集（重複排除用）
+        let main_shader = Self::transpile(node, mode);
+        let main_source = &main_shader.source;
+
         // 各サブツリーを個別にトランスパイル
         let mut helpers_all = String::new();
         let mut eval_fns = String::new();
@@ -225,10 +229,11 @@ impl WgslShader {
             let fn_name = format!("sdf_mat_sub_{}", i);
             let inner_body = transpiler.transpile_node(child, "p");
 
-            // ヘルパーを収集
+            // ヘルパーを収集（メインソースに既に含まれるものはスキップ）
             for helper in &transpiler.helper_functions {
                 if let Some(src) = WgslLang::helper_source(helper) {
-                    if !helpers_all.contains(&format!("fn {}(", helper)) {
+                    let fn_sig = format!("fn {}(", helper);
+                    if !helpers_all.contains(&fn_sig) && !main_source.contains(&fn_sig) {
                         helpers_all.push_str(src);
                         helpers_all.push('\n');
                     }
