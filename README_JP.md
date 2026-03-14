@@ -2075,13 +2075,13 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 }
 ```
 
-## v1.2.0 リリース — Stable
+## v1.3.0 リリース — Stable
 
 ### 品質メトリクス
 
 | メトリクス | 値 |
 |-----------|-----|
-| ユニットテスト | 1,077パス、0失敗 |
+| ユニットテスト | 1,174パス、0失敗 |
 | Clippy pedantic+nursery | 0警告 |
 | Doc警告 | 0警告 |
 | TODO / FIXME | 0 |
@@ -2092,7 +2092,7 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 
 ### ビルド済みバイナリ
 
-[GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.2.0)からダウンロード:
+[GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.3.0)からダウンロード:
 
 | アセット | プラットフォーム | エンジン |
 |---------|----------------|---------|
@@ -2106,7 +2106,17 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 | `AliceSDF-Unity-Plugin-Linux.zip` | Linux x86_64 | Unity |
 | `AliceSDF-VRChat-Package.zip` | クロスプラットフォーム | VRChat |
 
-### v1.2.0 主な変更点
+### v1.3.0 主な変更点
+
+- **LLM × 3Dパイプライン**: ALICE-SDF + ALICE-LOL + ALICE-View + ALICE-Physics を組み合わせたエンドツーエンドワークフローをドキュメント化
+- **SDF圧縮パイプライン**: API公開、GPU Marching Cubes物理統合
+- **ライセンス**: MIT → MIT OR Apache-2.0 デュアルライセンスに変更
+- **autodiff**: `suboptimal_flops` 警告を `mul_add` に修正
+- **profile.release**: `panic = "abort"` 削除（Linux/Windowsベンチコンパイルエラー修正）
+- **+97テスト**（1,077 → 1,174）
+
+<details>
+<summary>v1.2.0 変更点</summary>
 
 - **30以上の新公開API** — shell、diff、constraint、sdf2d、interval、autodiff、collision、material、neural、animationの10モジュールにわたる追加
 - **衝突検出**: `ContactManifold`、`sdf_ccd()`（連続衝突判定）、`sdf_closest_point()`
@@ -2122,6 +2132,8 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 - **CI**: JITビルドを必須ステップに昇格（`continue-on-error`削除）
 - **ドキュメント**: examples（hello_sphere、csg_operations、export_mesh）、COOKBOOK.md、ARCHITECTURE.md
 - **+74テスト**（1,003 → 1,077）
+
+</details>
 
 <details>
 <summary>v1.1.0 変更点</summary>
@@ -2162,6 +2174,98 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 詳細は[LICENSE](LICENSE)（MIT）および[LICENSE-COMMUNITY](LICENSE-COMMUNITY)を参照。
 
 **あなたが作成するコンテンツ（.asdfファイル、ワールド、ゲーム）は100%あなたのものです。ロイヤリティはありません。**
+
+## LLM × 3D制作パイプライン（SDF + LOL + View + Physics）
+
+4つのALICEプロジェクトを組み合わせることで、自然言語から物理シミュレーション付き3Dシーンまでの**エンドツーエンド**ワークフローが完成します:
+
+```
+ユーザー: 「シルクハットをかぶった雪だるま」
+         │
+         ▼
+┌──────────────────┐  LOL DSL or JSON  ┌───────────────────┐  WGSL / GLB   ┌──────────────┐
+│  LLM             │ ────────────────▶ │  ALICE-SDF        │ ────────────▶ │  ALICE-View  │
+│  (Claude/Gemini) │                   │  parse → compile  │               │  GPUプレビュー│
+│                  │                   │  → mesh / shader  │               │  60 FPS      │
+└──────────────────┘                   └────────┬──────────┘               └──────────────┘
+                                                │
+                                                │ SdfField トレイト
+                                                │ (feature = "physics")
+                                                ▼
+                                       ┌───────────────────┐
+                                       │  ALICE-Physics     │
+                                       │  Fix128 XPBD       │
+                                       │  SDF CCD / 力場    │
+                                       │  破壊 / 流体       │
+                                       └───────────────────┘
+```
+
+| コンポーネント | 役割 |
+|--------------|------|
+| **[ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL)** | LLM向けDSL — JSONより少ないトークンで低ハルシネーション率。`runtime_parser::parse_lol()` でLLMテキスト出力を `SdfNode` にランタイム変換 |
+| **ALICE-SDF** | コアエンジン — SIMD/BVH/JIT評価、メッシュ生成（Marching Cubes / Dual Contouring）、GLSL/WGSL/HLSLトランスパイル、GLB/OBJ/STLエクスポート |
+| **[ALICE-View](https://github.com/ext-sakamoro/ALICE-View)** | リアルタイムGPUレイマーチングビューア — JSON/ASDFファイルをドラッグ&ドロップで即座にプレビュー |
+| **[ALICE-Physics](https://github.com/ext-sakamoro/ALICE-Physics)** | 決定論的128bit固定小数点物理エンジン — `SdfField` トレイトでSDF形状がそのまま衝突ジオメトリに。SDF CCD、力場、破壊、布、流体シミュレーション |
+
+LLMで生成した形状は見た目だけではなく、**物理シミュレーション対応**です。`CompiledSdfField` ラッパーがSDFをO(1)衝突クエリ面として公開するため、凸分解なしで剛体・破壊・流体のインタラクションが可能です。
+
+### クイックスタート
+
+```bash
+# 1. Text-to-3Dサーバー起動（LLMでLOL/JSON生成）
+cd ALICE-SDF/server
+python main.py
+
+# 2. プロンプトをPOST — SDF JSONが返る
+curl -X POST http://localhost:8000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "シルクハットをかぶった雪だるま", "format": "json"}'
+
+# 3. リアルタイムで結果を確認
+cd ALICE-View
+cargo run --bin alice-view -- ../ALICE-SDF/server/output/latest.json
+```
+
+### プログラマティック（Rust）
+
+```rust
+use alice_lol::runtime_parser::parse_lol;
+use alice_sdf::prelude::*;
+use alice_sdf::physics_bridge::CompiledSdfField;
+
+// LLM出力（テキスト） → SdfNode
+let lol_text = r#"smooth_union(0.3, sphere(1.0), translate(0.0, 1.5, 0.0, sphere(0.7)))"#;
+let scene = parse_lol(lol_text).unwrap();
+
+// レンダリング用GPUシェーダー
+let wgsl = alice_lol::to_wgsl(&scene);
+
+// メッシュエクスポート
+let mesh = alice_sdf::mesh::sdf_to_mesh(
+    &scene,
+    glam::Vec3::splat(-3.0),
+    glam::Vec3::splat(3.0),
+    &MeshConfig::default(),
+);
+
+// 物理対応の衝突形状（凸分解不要）
+let field = CompiledSdfField::new(scene);
+// field.distance(x, y, z)            → f32        (1回評価)
+// field.distance_and_normal(x, y, z) → (f32, Vec3) (4回評価、四面体法)
+```
+
+### なぜJSONよりLOLか？
+
+| 指標 | JSON (SdfNode) | LOL DSL |
+|------|---------------|---------|
+| 形状あたりトークン数 | ~120 | ~30 |
+| LLMエラー率 | 高（括弧ネスト） | 低（関数呼び出しスタイル） |
+| ランタイムパース | `serde_json` | `runtime_parser::parse_lol()` |
+| コンパイル時マクロ | — | `lol! { ... }` |
+
+複雑なシーンではLOLは**3〜4倍少ないトークン**で記述でき、LLMのコストとハルシネーションの両方を削減します。
+
+---
 
 ## 関連プロジェクト
 

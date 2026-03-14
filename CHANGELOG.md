@@ -2,6 +2,25 @@
 
 All notable changes to ALICE-SDF are documented in this file.
 
+## [v1.3.0] - 2026-03-14
+
+### Added
+- **LLM × 3D Pipeline docs**: README に SDF + LOL + View + Physics 統合パイプラインセクション追加（EN/JP両対応）
+- **SDF圧縮パイプライン**: API公開、GPU Marching Cubes物理統合
+
+### Changed
+- **License**: MIT → MIT OR Apache-2.0 デュアルライセンスに変更
+- **profile.release**: `panic = "abort"` を削除（ベンチコンパイルエラー修正）
+
+### Fixed
+- **autodiff.rs**: `suboptimal_flops` 警告を `mul_add` に修正
+- **clippy**: pedantic+nursery 0 warnings 達成
+
+### Quality
+- 1,174 tests passing, 0 failed (+97 from v1.2.0)
+- 0 clippy pedantic+nursery warnings
+- 0 fmt diffs
+
 ## [v1.2.0] - 2026-03-05
 
 ### Added

@@ -2086,13 +2086,13 @@ The server runs as a FastAPI web service. The SDF-to-mesh step takes <55ms (excl
 | Asset creation | Natural language — no SDF expertise needed | Text-to-3D server (Claude/Gemini) |
 | Delivery | Instant transfer — formulas, not polygons | ALICE-CDN + ALICE-Cache |
 
-## v1.2.0 Release — Stable
+## v1.3.0 Release — Stable
 
 ### Quality Metrics
 
 | Metric | Value |
 |--------|-------|
-| Unit tests | 1,077 passed, 0 failed |
+| Unit tests | 1,174 passed, 0 failed |
 | Clippy pedantic+nursery | 0 warnings |
 | Doc warnings | 0 warnings |
 | TODO / FIXME | 0 |
@@ -2103,7 +2103,7 @@ The server runs as a FastAPI web service. The SDF-to-mesh step takes <55ms (excl
 
 ### Pre-built Binaries
 
-Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.2.0):
+Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases/tag/v1.3.0):
 
 | Asset | Platform | Engine |
 |-------|----------|--------|
@@ -2117,7 +2117,17 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 | `AliceSDF-Unity-Plugin-Linux.zip` | Linux x86_64 | Unity |
 | `AliceSDF-VRChat-Package.zip` | Cross-platform | VRChat |
 
-### v1.2.0 Key Changes
+### v1.3.0 Key Changes
+
+- **LLM × 3D Pipeline**: documented end-to-end workflow combining ALICE-SDF + ALICE-LOL + ALICE-View + ALICE-Physics
+- **SDF Compression Pipeline**: public API for compression, GPU Marching Cubes physics integration
+- **License**: changed from MIT to MIT OR Apache-2.0 dual license
+- **autodiff**: fixed `suboptimal_flops` warning with `mul_add`
+- **profile.release**: removed `panic = "abort"` to fix bench compilation on Linux/Windows
+- **+97 tests** (1,077 → 1,174)
+
+<details>
+<summary>v1.2.0 Changes</summary>
 
 - **30+ new public APIs** across 10 modules: shell, diff, constraint, sdf2d, interval, autodiff, collision, material, neural, animation
 - **Collision**: `ContactManifold`, `sdf_ccd()` (continuous collision detection), `sdf_closest_point()`
@@ -2133,6 +2143,8 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 - **CI**: JIT build promoted to required step (removed `continue-on-error`)
 - **Docs**: examples (hello_sphere, csg_operations, export_mesh), COOKBOOK.md, ARCHITECTURE.md
 - **+74 tests** (1,003 → 1,077)
+
+</details>
 
 <details>
 <summary>v1.1.0 Changes</summary>
@@ -2173,6 +2185,98 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for details.
 
 **Content you create (.asdf files, worlds, games) is 100% yours. No royalties.**
+
+## LLM × 3D Creation Pipeline (SDF + LOL + View + Physics)
+
+Four ALICE projects combine to form an end-to-end **text-to-3D** workflow — from natural language to physically simulated 3D scenes:
+
+```
+User: "A snowman with a top hat"
+         │
+         ▼
+┌──────────────────┐  LOL DSL or JSON  ┌───────────────────┐  WGSL / GLB   ┌──────────────┐
+│  LLM             │ ────────────────▶ │  ALICE-SDF        │ ────────────▶ │  ALICE-View  │
+│  (Claude/Gemini) │                   │  parse → compile  │               │  GPU Preview │
+│                  │                   │  → mesh / shader  │               │  60 FPS      │
+└──────────────────┘                   └────────┬──────────┘               └──────────────┘
+                                                │
+                                                │ SdfField trait
+                                                │ (feature = "physics")
+                                                ▼
+                                       ┌───────────────────┐
+                                       │  ALICE-Physics     │
+                                       │  Fix128 XPBD       │
+                                       │  SDF CCD / Forces  │
+                                       │  Destruction / Fluid│
+                                       └───────────────────┘
+```
+
+| Component | Role |
+|-----------|------|
+| **[ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL)** | LLM-friendly DSL — fewer tokens, lower hallucination rate than raw JSON. `runtime_parser::parse_lol()` converts LLM text output into `SdfNode` at runtime |
+| **ALICE-SDF** | Core engine — SIMD/BVH/JIT evaluation, mesh generation (Marching Cubes / Dual Contouring), GLSL/WGSL/HLSL transpilation, GLB/OBJ/STL export |
+| **[ALICE-View](https://github.com/ext-sakamoro/ALICE-View)** | Real-time GPU raymarching viewer — drag & drop JSON/ASDF files, instant visual feedback |
+| **[ALICE-Physics](https://github.com/ext-sakamoro/ALICE-Physics)** | Deterministic 128-bit fixed-point physics — SDF shapes become collision geometry via `SdfField` trait. SDF CCD, force fields, destruction, cloth, fluid simulation |
+
+LLM-generated shapes are not just visual — they are physics-ready. The `CompiledSdfField` wrapper exposes the SDF as an O(1) collision query surface, enabling rigid body, destruction, and fluid interactions without convex decomposition.
+
+### Quick Start
+
+```bash
+# 1. Start the Text-to-3D server (generates LOL/JSON via LLM)
+cd ALICE-SDF/server
+python main.py
+
+# 2. POST a prompt — server returns SDF JSON
+curl -X POST http://localhost:8000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A snowman with a top hat", "format": "json"}'
+
+# 3. View the result in real-time
+cd ALICE-View
+cargo run --bin alice-view -- ../ALICE-SDF/server/output/latest.json
+```
+
+### Programmatic (Rust)
+
+```rust
+use alice_lol::runtime_parser::parse_lol;
+use alice_sdf::prelude::*;
+use alice_sdf::physics_bridge::CompiledSdfField;
+
+// LLM output (text) → SdfNode
+let lol_text = r#"smooth_union(0.3, sphere(1.0), translate(0.0, 1.5, 0.0, sphere(0.7)))"#;
+let scene = parse_lol(lol_text).unwrap();
+
+// GPU shader for rendering
+let wgsl = alice_lol::to_wgsl(&scene);
+
+// Export mesh
+let mesh = alice_sdf::mesh::sdf_to_mesh(
+    &scene,
+    glam::Vec3::splat(-3.0),
+    glam::Vec3::splat(3.0),
+    &MeshConfig::default(),
+);
+
+// Physics-ready collision shape (no convex decomposition needed)
+let field = CompiledSdfField::new(scene);
+// field.distance(x, y, z)            → f32        (1 eval)
+// field.distance_and_normal(x, y, z) → (f32, Vec3) (4 evals, tetrahedral)
+```
+
+### Why LOL over JSON?
+
+| Metric | JSON (SdfNode) | LOL DSL |
+|--------|---------------|---------|
+| Tokens per shape | ~120 | ~30 |
+| LLM error rate | higher (bracket nesting) | lower (function-call style) |
+| Runtime parsing | `serde_json` | `runtime_parser::parse_lol()` |
+| Compile-time macro | — | `lol! { ... }` |
+
+For complex scenes, LOL typically uses **3-4x fewer tokens**, which reduces both LLM cost and hallucination.
+
+---
 
 ## Related Projects
 
