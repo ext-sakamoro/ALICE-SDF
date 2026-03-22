@@ -823,11 +823,7 @@ pub fn build_full_shader(sdf_eval_source: &str, config: &RenderConfig) -> String
     } else {
         ""
     };
-    let vfx = if config.vfx_effects {
-        VFX_LIB
-    } else {
-        ""
-    };
+    let vfx = if config.vfx_effects { VFX_LIB } else { "" };
     let micro = if config.micro_normal {
         MICRO_NORMAL_LIB
     } else {
@@ -915,8 +911,7 @@ mod tests {
     use super::*;
 
     const DUMMY_SDF: &str = "float sdf_eval(vec3 p){ return length(p) - 1.0; }";
-    const DUMMY_SDF_MULTI: &str =
-        "vec2 sdf_eval(vec3 p){ return vec2(length(p) - 1.0, 0.0); }";
+    const DUMMY_SDF_MULTI: &str = "vec2 sdf_eval(vec3 p){ return vec2(length(p) - 1.0, 0.0); }";
     const DUMMY_SDF_DUAL: &str = "float sdf_eval(vec3 p){ return length(p) - 1.0; }\nfloat sdf_eval_lite(vec3 p){ return length(p) - 1.0; }";
 
     #[test]
