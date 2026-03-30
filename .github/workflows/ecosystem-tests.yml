@@ -2,8 +2,6 @@ name: Ecosystem Test Count
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
 
 jobs:
   check-tests:
