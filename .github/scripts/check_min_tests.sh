@@ -41,7 +41,9 @@ for crate_dir in "${CRATES[@]}"; do
 
   # Count tests by listing them (much faster than running)
   # cargo may fail if dependencies are missing — treat as 0 tests
-  count=$(cd "$crate_dir" && cargo test --lib -- --list 2>/dev/null | { grep -c ': test$' || true; } || echo 0)
+  if ! count=$(cd "$crate_dir" && cargo test --lib -- --list 2>/dev/null | { grep -c ': test$' || true; }); then
+    count=0
+  fi
   TOTAL_TESTS=$((TOTAL_TESTS + count))
 
   if [ "$count" -ge "$MIN_TESTS" ]; then
