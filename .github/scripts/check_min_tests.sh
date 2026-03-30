@@ -40,8 +40,8 @@ for crate_dir in "${CRATES[@]}"; do
   fi
 
   # Count tests by listing them (much faster than running)
-  # grep -c returns exit 1 when count=0; use `|| true` to absorb that under set -e
-  count=$(cd "$crate_dir" && cargo test --lib -- --list 2>/dev/null | { grep -c ': test$' || true; })
+  # cargo may fail if dependencies are missing — treat as 0 tests
+  count=$(cd "$crate_dir" && cargo test --lib -- --list 2>/dev/null | { grep -c ': test$' || true; } || echo 0)
   TOTAL_TESTS=$((TOTAL_TESTS + count))
 
   if [ "$count" -ge "$MIN_TESTS" ]; then
