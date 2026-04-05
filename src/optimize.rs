@@ -413,18 +413,14 @@ fn demote_smooth_to_standard(node: SdfNode) -> SdfNode {
             a: a.clone(),
             b: b.clone(),
         },
-        SdfNode::SmoothIntersection { ref a, ref b, k } if k.abs() < EPS => {
-            SdfNode::Intersection {
-                a: a.clone(),
-                b: b.clone(),
-            }
-        }
-        SdfNode::SmoothSubtraction { ref a, ref b, k } if k.abs() < EPS => {
-            SdfNode::Subtraction {
-                a: a.clone(),
-                b: b.clone(),
-            }
-        }
+        SdfNode::SmoothIntersection { ref a, ref b, k } if k.abs() < EPS => SdfNode::Intersection {
+            a: a.clone(),
+            b: b.clone(),
+        },
+        SdfNode::SmoothSubtraction { ref a, ref b, k } if k.abs() < EPS => SdfNode::Subtraction {
+            a: a.clone(),
+            b: b.clone(),
+        },
         SdfNode::ChamferUnion { ref a, ref b, r } if r.abs() < EPS => SdfNode::Union {
             a: a.clone(),
             b: b.clone(),
@@ -435,12 +431,10 @@ fn demote_smooth_to_standard(node: SdfNode) -> SdfNode {
                 b: b.clone(),
             }
         }
-        SdfNode::ChamferSubtraction { ref a, ref b, r } if r.abs() < EPS => {
-            SdfNode::Subtraction {
-                a: a.clone(),
-                b: b.clone(),
-            }
-        }
+        SdfNode::ChamferSubtraction { ref a, ref b, r } if r.abs() < EPS => SdfNode::Subtraction {
+            a: a.clone(),
+            b: b.clone(),
+        },
         node => node,
     }
 }
