@@ -339,10 +339,11 @@ impl MeshBvh {
             }
         }
 
-        let (left_indices, right_indices) = sorted_indices.split_at(best_mid);
+        let right_indices = sorted_indices.split_off(best_mid);
+        let left_indices = sorted_indices;
 
-        let left = Self::build_node(triangles, left_indices.to_vec(), max_per_leaf);
-        let right = Self::build_node(triangles, right_indices.to_vec(), max_per_leaf);
+        let left = Self::build_node(triangles, left_indices, max_per_leaf);
+        let right = Self::build_node(triangles, right_indices, max_per_leaf);
 
         BvhNode::Internal {
             aabb,

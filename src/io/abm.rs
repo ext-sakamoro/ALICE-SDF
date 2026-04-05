@@ -540,6 +540,7 @@ pub fn save_abm(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
 /// on malformed data.
 pub fn load_abm(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     let file = File::open(path)?;
+    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0) as usize;
     let mut reader = BufReader::new(file);
 
     // 1. Read header
@@ -548,7 +549,8 @@ pub fn load_abm(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     let header = AbmHeader::from_bytes(&hdr_bytes)?;
 
     // 2. Read entire payload
-    let mut payload = Vec::new();
+    let payload_capacity = file_len.saturating_sub(ABM_HEADER_SIZE);
+    let mut payload = Vec::with_capacity(payload_capacity);
     reader.read_to_end(&mut payload)?;
 
     // 3. CRC-first validation
@@ -675,6 +677,7 @@ pub fn save_abm_with_lods(
 /// Returns `IoError::CrcMismatch` on integrity failure.
 pub fn load_abm_with_lods(path: impl AsRef<Path>) -> Result<(Vec<Mesh>, Vec<f32>), IoError> {
     let file = File::open(path)?;
+    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0) as usize;
     let mut reader = BufReader::new(file);
 
     // 1. Read header
@@ -683,7 +686,8 @@ pub fn load_abm_with_lods(path: impl AsRef<Path>) -> Result<(Vec<Mesh>, Vec<f32>
     let header = AbmHeader::from_bytes(&hdr_bytes)?;
 
     // 2. Read entire payload
-    let mut payload = Vec::new();
+    let payload_capacity = file_len.saturating_sub(ABM_HEADER_SIZE);
+    let mut payload = Vec::with_capacity(payload_capacity);
     reader.read_to_end(&mut payload)?;
 
     // 3. CRC validation

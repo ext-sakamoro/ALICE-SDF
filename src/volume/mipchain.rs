@@ -19,22 +19,36 @@ use super::{Volume3D, VoxelDistGrad};
 /// # Returns
 /// Vector of mip levels (mip 1, mip 2, ..., mip N where any axis <= 1)
 pub fn generate_mip_chain(volume: &Volume3D<f32>) -> Vec<Vec<f32>> {
-    let mut mips = Vec::new();
-    let mut prev_data = &volume.data;
-    let mut prev_res = volume.resolution;
-    let mut owned_data;
+    // Index-based: mip[-1] = volume.data (base), mip[i] reads from mip[i-1].
+    // Avoids clone-before-move by keeping data in-place in the output vec.
+    let mut mips: Vec<Vec<f32>> = Vec::new();
+    let mut res_chain = vec![volume.resolution];
 
+    // Pre-compute resolution chain
     loop {
-        let next_res = [
-            (prev_res[0] / 2).max(1),
-            (prev_res[1] / 2).max(1),
-            (prev_res[2] / 2).max(1),
+        let prev = *res_chain.last().unwrap();
+        let next = [
+            (prev[0] / 2).max(1),
+            (prev[1] / 2).max(1),
+            (prev[2] / 2).max(1),
         ];
-
-        // Stop when we can't downsample further
-        if next_res[0] == prev_res[0] && next_res[1] == prev_res[1] && next_res[2] == prev_res[2] {
+        if next == prev {
             break;
         }
+        res_chain.push(next);
+    }
+
+    // Build each mip level reading from the previous level already in `mips`
+    // (or from `volume.data` for the first level).
+    for level in 1..res_chain.len() {
+        let prev_res = res_chain[level - 1];
+        let next_res = res_chain[level];
+
+        let prev_data: &[f32] = if level == 1 {
+            &volume.data
+        } else {
+            &mips[level - 2]
+        };
 
         let total = next_res[0] as usize * next_res[1] as usize * next_res[2] as usize;
         let mut mip_data = vec![f32::MAX; total];
@@ -75,10 +89,7 @@ pub fn generate_mip_chain(volume: &Volume3D<f32>) -> Vec<Vec<f32>> {
             }
         }
 
-        mips.push(mip_data.clone());
-        owned_data = mip_data;
-        prev_data = &owned_data;
-        prev_res = next_res;
+        mips.push(mip_data);
     }
 
     mips
@@ -89,21 +100,31 @@ pub fn generate_mip_chain(volume: &Volume3D<f32>) -> Vec<Vec<f32>> {
 /// Distance uses min-downsample. Gradient is taken from the child
 /// with the minimum distance (follows the nearest surface).
 pub fn generate_mip_chain_distgrad(volume: &Volume3D<VoxelDistGrad>) -> Vec<Vec<VoxelDistGrad>> {
-    let mut mips = Vec::new();
-    let mut prev_data = &volume.data;
-    let mut prev_res = volume.resolution;
-    let mut owned_data;
+    let mut mips: Vec<Vec<VoxelDistGrad>> = Vec::new();
+    let mut res_chain = vec![volume.resolution];
 
     loop {
-        let next_res = [
-            (prev_res[0] / 2).max(1),
-            (prev_res[1] / 2).max(1),
-            (prev_res[2] / 2).max(1),
+        let prev = *res_chain.last().unwrap();
+        let next = [
+            (prev[0] / 2).max(1),
+            (prev[1] / 2).max(1),
+            (prev[2] / 2).max(1),
         ];
-
-        if next_res[0] == prev_res[0] && next_res[1] == prev_res[1] && next_res[2] == prev_res[2] {
+        if next == prev {
             break;
         }
+        res_chain.push(next);
+    }
+
+    for level in 1..res_chain.len() {
+        let prev_res = res_chain[level - 1];
+        let next_res = res_chain[level];
+
+        let prev_data: &[VoxelDistGrad] = if level == 1 {
+            &volume.data
+        } else {
+            &mips[level - 2]
+        };
 
         let total = next_res[0] as usize * next_res[1] as usize * next_res[2] as usize;
         let mut mip_data = vec![VoxelDistGrad::default(); total];
@@ -152,10 +173,7 @@ pub fn generate_mip_chain_distgrad(volume: &Volume3D<VoxelDistGrad>) -> Vec<Vec<
             }
         }
 
-        mips.push(mip_data.clone());
-        owned_data = mip_data;
-        prev_data = &owned_data;
-        prev_res = next_res;
+        mips.push(mip_data);
     }
 
     mips
