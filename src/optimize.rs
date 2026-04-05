@@ -42,11 +42,11 @@ use std::sync::Arc;
 pub fn optimize(node: &SdfNode) -> SdfNode {
     // Bottom-up: optimize children first, then this node
     let node = optimize_children(node);
-    let node = fold_identity_transform(&node);
-    let node = merge_nested_transforms(&node);
-    let node = fold_identity_modifier(&node);
+    let node = fold_identity_transform(node);
+    let node = merge_nested_transforms(node);
+    let node = fold_identity_modifier(node);
 
-    demote_smooth_to_standard(&node)
+    demote_smooth_to_standard(node)
 }
 
 /// Recursively optimize all children of a node.
@@ -274,21 +274,26 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
 const EPS: f32 = 1e-6;
 
 /// Remove identity transforms: Scale(1.0), Translate(0,0,0), Rotate(identity)
-fn fold_identity_transform(node: &SdfNode) -> SdfNode {
+fn fold_identity_transform(node: SdfNode) -> SdfNode {
     match node {
-        SdfNode::Translate { child, offset } if offset.length_squared() < EPS * EPS => {
+        SdfNode::Translate { ref child, offset } if offset.length_squared() < EPS * EPS => {
             child.as_ref().clone()
         }
-        SdfNode::Rotate { child, rotation } if is_identity_quat(rotation) => child.as_ref().clone(),
-        SdfNode::Scale { child, factor } if (*factor - 1.0).abs() < EPS => child.as_ref().clone(),
-        SdfNode::ScaleNonUniform { child, factors }
+        SdfNode::Rotate {
+            ref child,
+            rotation,
+        } if is_identity_quat(&rotation) => child.as_ref().clone(),
+        SdfNode::Scale { ref child, factor } if (factor - 1.0).abs() < EPS => {
+            child.as_ref().clone()
+        }
+        SdfNode::ScaleNonUniform { ref child, factors }
             if (factors.x - 1.0).abs() < EPS
                 && (factors.y - 1.0).abs() < EPS
                 && (factors.z - 1.0).abs() < EPS =>
         {
             child.as_ref().clone()
         }
-        _ => node.clone(),
+        node => node,
     }
 }
 
@@ -303,11 +308,11 @@ fn is_identity_quat(q: &Quat) -> bool {
 // ── Nested transform merging ────────────────────────────────────────
 
 /// Merge nested transforms: Translate(Translate(c, a), b) → Translate(c, a+b), etc.
-fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
+fn merge_nested_transforms(node: SdfNode) -> SdfNode {
     match node {
         // Translate(Translate(child, inner_offset), outer_offset) → Translate(child, inner+outer)
         SdfNode::Translate {
-            child,
+            ref child,
             offset: outer,
         } => {
             if let SdfNode::Translate {
@@ -317,16 +322,16 @@ fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
             {
                 SdfNode::Translate {
                     child: inner_child.clone(),
-                    offset: *inner + *outer,
+                    offset: *inner + outer,
                 }
             } else {
-                node.clone()
+                node
             }
         }
 
         // Scale(Scale(child, inner_factor), outer_factor) → Scale(child, inner*outer)
         SdfNode::Scale {
-            child,
+            ref child,
             factor: outer,
         } => {
             if let SdfNode::Scale {
@@ -339,13 +344,13 @@ fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
                     factor: inner * outer,
                 }
             } else {
-                node.clone()
+                node
             }
         }
 
         // Rotate(Rotate(child, inner_rot), outer_rot) → Rotate(child, outer*inner)
         SdfNode::Rotate {
-            child,
+            ref child,
             rotation: outer,
         } => {
             if let SdfNode::Rotate {
@@ -355,67 +360,88 @@ fn merge_nested_transforms(node: &SdfNode) -> SdfNode {
             {
                 SdfNode::Rotate {
                     child: inner_child.clone(),
-                    rotation: *outer * *inner,
+                    rotation: outer * *inner,
                 }
             } else {
-                node.clone()
+                node
             }
         }
 
-        _ => node.clone(),
+        node => node,
     }
 }
 
 // ── Identity modifier removal ───────────────────────────────────────
 
 /// Remove identity modifiers: Round(0.0), Elongate(0,0,0), Noise(amplitude=0), etc.
-fn fold_identity_modifier(node: &SdfNode) -> SdfNode {
+fn fold_identity_modifier(node: SdfNode) -> SdfNode {
     match node {
-        SdfNode::Round { child, radius } if radius.abs() < EPS => child.as_ref().clone(),
-        SdfNode::Elongate { child, amount } if amount.length_squared() < EPS * EPS => {
+        SdfNode::Round { ref child, radius } if radius.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Elongate { ref child, amount } if amount.length_squared() < EPS * EPS => {
             child.as_ref().clone()
         }
         SdfNode::Noise {
-            child, amplitude, ..
+            ref child,
+            amplitude,
+            ..
         } if amplitude.abs() < EPS => child.as_ref().clone(),
-        SdfNode::Displacement { child, strength } if strength.abs() < EPS => child.as_ref().clone(),
-        SdfNode::Twist { child, strength } if strength.abs() < EPS => child.as_ref().clone(),
-        SdfNode::Bend { child, curvature } if curvature.abs() < EPS => child.as_ref().clone(),
-        SdfNode::Taper { child, factor } if (*factor - 1.0).abs() < EPS => child.as_ref().clone(),
-        _ => node.clone(),
+        SdfNode::Displacement {
+            ref child,
+            strength,
+        } if strength.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Twist {
+            ref child,
+            strength,
+        } if strength.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Bend {
+            ref child,
+            curvature,
+        } if curvature.abs() < EPS => child.as_ref().clone(),
+        SdfNode::Taper { ref child, factor } if (factor - 1.0).abs() < EPS => {
+            child.as_ref().clone()
+        }
+        node => node,
     }
 }
 
 // ── Smooth/Chamfer demotion ─────────────────────────────────────────
 
 /// Demote SmoothOp(k=0) to standard Op, ChamferOp(r=0) to standard Op
-fn demote_smooth_to_standard(node: &SdfNode) -> SdfNode {
+fn demote_smooth_to_standard(node: SdfNode) -> SdfNode {
     match node {
-        SdfNode::SmoothUnion { a, b, k } if k.abs() < EPS => SdfNode::Union {
+        SdfNode::SmoothUnion { ref a, ref b, k } if k.abs() < EPS => SdfNode::Union {
             a: a.clone(),
             b: b.clone(),
         },
-        SdfNode::SmoothIntersection { a, b, k } if k.abs() < EPS => SdfNode::Intersection {
+        SdfNode::SmoothIntersection { ref a, ref b, k } if k.abs() < EPS => {
+            SdfNode::Intersection {
+                a: a.clone(),
+                b: b.clone(),
+            }
+        }
+        SdfNode::SmoothSubtraction { ref a, ref b, k } if k.abs() < EPS => {
+            SdfNode::Subtraction {
+                a: a.clone(),
+                b: b.clone(),
+            }
+        }
+        SdfNode::ChamferUnion { ref a, ref b, r } if r.abs() < EPS => SdfNode::Union {
             a: a.clone(),
             b: b.clone(),
         },
-        SdfNode::SmoothSubtraction { a, b, k } if k.abs() < EPS => SdfNode::Subtraction {
-            a: a.clone(),
-            b: b.clone(),
-        },
-        SdfNode::ChamferUnion { a, b, r } if r.abs() < EPS => SdfNode::Union {
-            a: a.clone(),
-            b: b.clone(),
-        },
-        SdfNode::ChamferIntersection { a, b, r } if r.abs() < EPS => SdfNode::Intersection {
-            a: a.clone(),
-            b: b.clone(),
-        },
-        SdfNode::ChamferSubtraction { a, b, r } if r.abs() < EPS => SdfNode::Subtraction {
-            a: a.clone(),
-            b: b.clone(),
-        },
-        _ => node.clone(),
+        SdfNode::ChamferIntersection { ref a, ref b, r } if r.abs() < EPS => {
+            SdfNode::Intersection {
+                a: a.clone(),
+                b: b.clone(),
+            }
+        }
+        SdfNode::ChamferSubtraction { ref a, ref b, r } if r.abs() < EPS => {
+            SdfNode::Subtraction {
+                a: a.clone(),
+                b: b.clone(),
+            }
+        }
+        node => node,
     }
 }
 
