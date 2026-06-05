@@ -1,0 +1,29 @@
+namespace alice_sdf {
+  // === Primitives ===
+  f32 sdf_sphere(Vec3 point, Vec3 center, f32 radius);
+  f32 sdf_box(Vec3 point, Vec3 center, Vec3 half_extents);
+  f32 sdf_rounded_box(Vec3 point, Vec3 center, Vec3 half_extents, f32 round_radius);
+  f32 sdf_cylinder(Vec3 point, f32 radius, f32 half_height);
+  f32 sdf_torus(Vec3 point, f32 major_radius, f32 minor_radius);
+  f32 sdf_plane(Vec3 point, Vec3 normal, f32 distance);
+
+  // === Operations ===
+  f32 op_union(f32 a, f32 b);
+  f32 op_intersection(f32 a, f32 b);
+  f32 op_subtraction(f32 a, f32 b);
+  f32 op_smooth_union(f32 a, f32 b, f32 k);
+  f32 op_smooth_intersection(f32 a, f32 b, f32 k);
+  f32 op_smooth_subtraction(f32 a, f32 b, f32 k);
+
+  // === Batch evaluation (zero-copy not yet, but typed) ===
+  sequence<f32> sphere_batch(sequence<Vec3> points, Vec3 center, f32 radius);
+
+  // === Version ===
+  string alice_sdf_version();
+};
+
+dictionary Vec3 {
+  f32 x;
+  f32 y;
+  f32 z;
+};

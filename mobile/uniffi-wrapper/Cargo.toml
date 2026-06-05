@@ -1,0 +1,32 @@
+[package]
+name        = "alice-sdf-mobile"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+description = "iOS/Android mobile SDK for ALICE-SDF (UniFFI Swift/Kotlin bindings)"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
+publish     = false
+
+[lib]
+name       = "alice_sdf_mobile"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi_bindgen.rs"
+
+[dependencies]
+alice-sdf = { path = "../..", default-features = false }
+glam      = "0.29"
+uniffi    = { version = "0.28", features = ["cli"] }
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[profile.release]
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+strip         = true
+panic         = "abort"
