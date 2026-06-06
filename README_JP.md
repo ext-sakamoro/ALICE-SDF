@@ -2333,6 +2333,63 @@ cd mobile/packaging/android && ./build-aar.sh
 
 ---
 
+## Web (WebAssembly) / VFX (OpenVDB) / Bevy エンジン
+
+### `wasm` feature — WebAssembly バインディング
+
+ブラウザ側で SDF 評価 + スライス描画。`wasm-bindgen` ベース。
+
+```bash
+cargo build --target wasm32-unknown-unknown --no-default-features --features wasm
+```
+
+JavaScript 使用例:
+
+```js
+import init, { sdf_sphere, op_smooth_union, render_sphere_slice_rgba } from './alice_sdf.js';
+await init();
+const d = sdf_sphere(1, 0, 0, /*center*/ 0, 0, 0, /*radius*/ 1.0);  // ≈ 0
+const rgba = render_sphere_slice_rgba(256, 256, 0, 0, 0, 1.0, 2.5);  // Uint8Array (canvas へ putImageData)
+```
+
+### `openvdb` feature — OpenVDB Float Grid I/O
+
+SDF を voxel grid に bake、Houdini / Maya / Nuke / Blender 等の VFX/DCC ツール連携。
+
+```rust
+use alice_sdf::io::vdb::{bake_to_vdb, load_dense_grid_from_vdb};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+let bytes = bake_to_vdb(&node, (-2.0, 2.0), 64).unwrap();
+std::fs::write("sphere.vdb", &bytes).unwrap();
+```
+
+[`vdb-rs`](https://crates.io/crates/vdb-rs) 0.6 (pure Rust) ベース。現状は `ALICEVDB1` コンパクト形式、`vdb-rs` の write API 整備に合わせて OpenVDB 正規バイナリへ移行予定。
+
+### `alice-sdf-bevy` — Bevy 0.18 プラグイン
+
+`SdfShape` Component を持つ Entity を spawn すれば、自動的に Mesh が生成・attach される ECS 統合。
+
+```rust
+use bevy::prelude::*;
+use alice_sdf_bevy::{AliceSdfPlugin, SdfShape};
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(AliceSdfPlugin)
+        .add_systems(Startup, |mut commands: Commands| {
+            commands.spawn(SdfShape::Sphere { radius: 1.0 });
+        })
+        .run();
+}
+```
+
+`bindings/bevy/alice-sdf-bevy/examples/sphere_demo.rs` にカメラ + ライト付きの 3 形状デモあり。
+
+---
+
 ## 関連プロジェクト
 
 | プロジェクト | 説明 | リンク |

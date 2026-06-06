@@ -2344,6 +2344,63 @@ Sample apps and the full integration guide live in [`mobile/`](mobile/).
 
 ---
 
+## Web (WebAssembly), VFX (OpenVDB), Bevy Engine
+
+### `wasm` feature — WebAssembly bindings
+
+Browser-side SDF evaluation + slice rendering via [wasm-bindgen](https://rustwasm.github.io/wasm-bindgen/).
+
+```bash
+cargo build --target wasm32-unknown-unknown --no-default-features --features wasm
+```
+
+JavaScript usage:
+
+```js
+import init, { sdf_sphere, op_smooth_union, render_sphere_slice_rgba } from './alice_sdf.js';
+await init();
+const d = sdf_sphere(1, 0, 0, /*center*/ 0, 0, 0, /*radius*/ 1.0);  // ≈ 0
+const rgba = render_sphere_slice_rgba(256, 256, 0, 0, 0, 1.0, 2.5);  // Uint8Array for canvas
+```
+
+### `openvdb` feature — OpenVDB Float Grid I/O
+
+Bake SDF trees into voxel grids for DCC tools (Houdini, Maya, Nuke, Blender).
+
+```rust
+use alice_sdf::io::vdb::{bake_to_vdb, load_dense_grid_from_vdb};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+let bytes = bake_to_vdb(&node, (-2.0, 2.0), 64).unwrap();
+std::fs::write("sphere.vdb", &bytes).unwrap();
+```
+
+Backed by [`vdb-rs`](https://crates.io/crates/vdb-rs) 0.6 (pure Rust). Currently writes a compact custom container (`ALICEVDB1`); full OpenVDB binary parity is planned as `vdb-rs` exposes its write API.
+
+### `alice-sdf-bevy` — Bevy 0.18 plugin
+
+Drop-in plugin that turns `SdfShape` components into renderable `Mesh3d` assets automatically.
+
+```rust
+use bevy::prelude::*;
+use alice_sdf_bevy::{AliceSdfPlugin, SdfShape};
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(AliceSdfPlugin)
+        .add_systems(Startup, |mut commands: Commands| {
+            commands.spawn(SdfShape::Sphere { radius: 1.0 });
+        })
+        .run();
+}
+```
+
+See `bindings/bevy/alice-sdf-bevy/examples/sphere_demo.rs` for a full 3-shape demo with camera + light.
+
+---
+
 ## Related Projects
 
 | Project | Description | Link |
