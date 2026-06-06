@@ -7,8 +7,13 @@ All notable changes to ALICE-SDF are documented in this file.
 ### Added
 
 - **3D Gaussian Splatting I/O** (`src/io/splat.rs`) — Inria 3DGS 互換 `.splat` バイナリ (32 bytes/splat: pos + scale + RGBA + compressed quat) の読書き、`sdf_to_splats()` で SDF 表面近傍を Gaussian Splat 化、4 tests
+- **MagicaVoxel I/O** (`src/io/vox.rs`) — MagicaVoxel `.vox` v150 RIFF (SIZE + XYZI chunks) の読書き、`sdf_to_vox()` で SDF を voxelize、4 tests
+- **WebXR raymarching helpers** (`src/wasm.rs` 拡張) — `raymarch_sphere` / `raymarch_two_spheres_smooth` / `sphere_batch_flat` で VR/AR コントローラ・ハンドメッシュからの SDF クエリ対応
+- **Three.js / React Three Fiber TypeScript wrapper** (`bindings/threejs/`) — `@alice-sdf/threejs` npm パッケージ、`AliceSDF` クラス + `createSliceTexture()` Three.js helper + `<AliceSDFSlicePlane>` R3F コンポーネント + WebXR 統合例
 - **Blender Add-on** (`bindings/blender/`) — Blender 4.0+ プラグイン: `.asdf` Import operator + sphere/box/torus 生成 operator + N-panel UI、PyO3 alice_sdf binding 経由
 - **Houdini Python plugin** (`bindings/houdini/`) — Houdini 20+ 用 Python module + Python SOP body (loader + primitive generator) + 自動 install.sh、HSITE/HOUDINI_USER_PREF_DIR/HFS 自動検出
+- **Maya Python plugin** (`bindings/maya/`) — Autodesk Maya 2024+ 用 Python module + MFnMesh ベース mesh 生成 + `register_menu()` でメインメニュー登録
+- **Nuke Python plugin** (`bindings/nuke/`) — Foundry Nuke 15+ 用 Python module + Volume export + Slice render、`~/.nuke/menu.py` 統合
 
 ## [v1.6.0] - 2026-06-06
 

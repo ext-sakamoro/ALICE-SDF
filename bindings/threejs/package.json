@@ -1,0 +1,61 @@
+{
+  "name": "@alice-sdf/threejs",
+  "version": "1.6.0",
+  "description": "TypeScript wrapper for ALICE-SDF WebAssembly with Three.js helpers (and optional @react-three/fiber components)",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./r3f": {
+      "import": "./dist/r3f.mjs",
+      "require": "./dist/r3f.js",
+      "types": "./dist/r3f.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "alice-sdf",
+    "sdf",
+    "signed-distance-function",
+    "wasm",
+    "webassembly",
+    "three.js",
+    "react-three-fiber",
+    "webxr"
+  ],
+  "author": "Moroya Sakamoto <sakamoro@alicelaw.net>",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ext-sakamoro/ALICE-SDF",
+    "directory": "bindings/threejs"
+  },
+  "peerDependencies": {
+    "three": ">=0.160.0"
+  },
+  "peerDependenciesMeta": {
+    "three": { "optional": false }
+  },
+  "optionalDependencies": {
+    "@react-three/fiber": ">=8.0.0",
+    "react": ">=18.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/three": "^0.160.0"
+  }
+}

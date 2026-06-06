@@ -2418,6 +2418,49 @@ sdf = alice_sdf_hou.sphere(1.0)
 alice_sdf_hou.sdf_to_hou_geo(sdf, hou.pwd().geometry(), bounds=(-2.0, 2.0), resolution=64)
 ```
 
+### MagicaVoxel `.vox` IO
+
+SDF を voxelize して MagicaVoxel `.vox` (v150 RIFF) で書き出し。indie / voxel art パイプライン向け。
+
+```rust
+use alice_sdf::io::vox::{sdf_to_vox, save_vox, VoxConfig};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+let cfg = VoxConfig { size: 64, bounds: (-1.5, 1.5), color_index: 79 };
+save_vox("sphere.vox", &sdf_to_vox(&node, &cfg)).unwrap();
+```
+
+### `@alice-sdf/threejs` — Three.js / React Three Fiber ラッパー
+
+`wasm` feature の上の TypeScript npm パッケージ。型付き `AliceSDF` クラス + Three.js `DataTexture` ヘルパ + R3F 用 `<AliceSDFSlicePlane>` + WebXR raymarching ヘルパを提供。
+
+```ts
+import { AliceSDF } from "@alice-sdf/threejs";
+const sdf = await AliceSDF.load("/alice_sdf.js");
+const tex = await sdf.createSliceTexture(512, 512, [0, 0, 0], 1.0, 2.5);
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: tex })));
+```
+
+### Maya Python プラグイン (`bindings/maya/`)
+
+Autodesk Maya 2024+ 用 Python モジュール — メイン メニューに「ALICE-SDF」を登録し、`MFnMesh` API でポリゴンメッシュを直接構築。
+
+```python
+import alice_sdf_maya
+alice_sdf_maya.register_menu()
+alice_sdf_maya.add_sphere(radius=1.5, resolution=64)
+```
+
+### Nuke Python プラグイン (`bindings/nuke/`)
+
+Foundry Nuke 15+ 用 Python モジュール — `.asdf` をボリュームバイナリと 2D RGBA スライスへ書き出し、VFX コンポジット連携。
+
+```python
+import alice_sdf_nuke
+alice_sdf_nuke.export_asdf_as_volume("/path/to/model.asdf", out_path="/tmp/model.alicevdb")
+```
+
 ---
 
 ## 関連プロジェクト

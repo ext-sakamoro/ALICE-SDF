@@ -2429,6 +2429,49 @@ sdf = alice_sdf_hou.sphere(1.0)
 alice_sdf_hou.sdf_to_hou_geo(sdf, hou.pwd().geometry(), bounds=(-2.0, 2.0), resolution=64)
 ```
 
+### MagicaVoxel `.vox` IO
+
+Voxelize an SDF tree and save as a MagicaVoxel-compatible `.vox` file (v150 RIFF) — ideal for indie / voxel art pipelines.
+
+```rust
+use alice_sdf::io::vox::{sdf_to_vox, save_vox, VoxConfig};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+let cfg = VoxConfig { size: 64, bounds: (-1.5, 1.5), color_index: 79 };
+save_vox("sphere.vox", &sdf_to_vox(&node, &cfg)).unwrap();
+```
+
+### `@alice-sdf/threejs` — Three.js / React Three Fiber wrapper
+
+TypeScript npm package built on the `wasm` feature. Exposes `AliceSDF` class, Three.js `DataTexture` helper, optional `<AliceSDFSlicePlane>` for `@react-three/fiber`, and WebXR raymarching helpers.
+
+```ts
+import { AliceSDF } from "@alice-sdf/threejs";
+const sdf = await AliceSDF.load("/alice_sdf.js");
+const tex = await sdf.createSliceTexture(512, 512, [0, 0, 0], 1.0, 2.5);
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: tex })));
+```
+
+### Maya Python Plugin (`bindings/maya/`)
+
+Autodesk Maya 2024+ Python module — adds "ALICE-SDF" top-level menu, builds polygon meshes through `MFnMesh`.
+
+```python
+import alice_sdf_maya
+alice_sdf_maya.register_menu()
+alice_sdf_maya.add_sphere(radius=1.5, resolution=64)
+```
+
+### Nuke Python Plugin (`bindings/nuke/`)
+
+Foundry Nuke 15+ Python module — exports `.asdf` to volume binary and 2D RGBA slices for compositing pipelines.
+
+```python
+import alice_sdf_nuke
+alice_sdf_nuke.export_asdf_as_volume("/path/to/model.asdf", out_path="/tmp/model.alicevdb")
+```
+
 ---
 
 ## Related Projects

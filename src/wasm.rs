@@ -134,5 +134,112 @@ pub fn render_sphere_slice_rgba(
 
 #[wasm_bindgen]
 pub fn alice_sdf_version() -> String {
-    "1.5.0".to_string()
+    "1.6.0".to_string()
+}
+
+// === WebXR (VR/AR) helpers ===
+//
+// JavaScript 側で WebXR Device API のフレームコールバック (XRSession.requestAnimationFrame)
+// から 1 frame ごとに以下を呼び出して、コントローラ位置 / ハンド位置の SDF クエリを行う。
+
+/// 球の表面にぶつかる最短距離を ray march (WebXR コントローラ / hand pose 用)
+///
+/// 最大 64 step、エプシロン 0.001。ヒットしなければ -1.0 を返す。
+#[wasm_bindgen]
+pub fn raymarch_sphere(
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    dx: f32,
+    dy: f32,
+    dz: f32,
+    cx: f32,
+    cy: f32,
+    cz: f32,
+    radius: f32,
+    max_dist: f32,
+) -> f32 {
+    let origin = Vec3::new(ox, oy, oz);
+    let dir = Vec3::new(dx, dy, dz).normalize_or_zero();
+    if dir.length_squared() < 1e-12 {
+        return -1.0;
+    }
+    let center = Vec3::new(cx, cy, cz);
+    let mut t = 0.0_f32;
+    for _ in 0..64 {
+        let p = origin + dir * t;
+        let d = sdf_sphere_at(p, center, radius);
+        if d.abs() < 0.001 {
+            return t;
+        }
+        t += d.max(0.001);
+        if t > max_dist {
+            return -1.0;
+        }
+    }
+    -1.0
+}
+
+/// 2 球 smooth-union 形状への最短距離 ray march (簡易シーン例、VR デモ用)
+#[wasm_bindgen]
+pub fn raymarch_two_spheres_smooth(
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    dx: f32,
+    dy: f32,
+    dz: f32,
+    c1x: f32,
+    c1y: f32,
+    c1z: f32,
+    r1: f32,
+    c2x: f32,
+    c2y: f32,
+    c2z: f32,
+    r2: f32,
+    k: f32,
+    max_dist: f32,
+) -> f32 {
+    let origin = Vec3::new(ox, oy, oz);
+    let dir = Vec3::new(dx, dy, dz).normalize_or_zero();
+    if dir.length_squared() < 1e-12 {
+        return -1.0;
+    }
+    let c1 = Vec3::new(c1x, c1y, c1z);
+    let c2 = Vec3::new(c2x, c2y, c2z);
+    let mut t = 0.0_f32;
+    for _ in 0..96 {
+        let p = origin + dir * t;
+        let d1 = sdf_sphere_at(p, c1, r1);
+        let d2 = sdf_sphere_at(p, c2, r2);
+        let d = crate::operations::sdf_smooth_union(d1, d2, k);
+        if d.abs() < 0.001 {
+            return t;
+        }
+        t += d.max(0.001);
+        if t > max_dist {
+            return -1.0;
+        }
+    }
+    -1.0
+}
+
+/// バッチ評価 (WebXR ハンドメッシュ全頂点に対する SDF クエリ等)
+///
+/// `points_xyz` は [x0,y0,z0, x1,y1,z1, ...] のフラット配列、長さ = N*3。
+/// 戻り値は長さ N の距離配列。
+#[wasm_bindgen]
+pub fn sphere_batch_flat(points_xyz: &[f32], cx: f32, cy: f32, cz: f32, radius: f32) -> Vec<f32> {
+    let center = Vec3::new(cx, cy, cz);
+    let n = points_xyz.len() / 3;
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let p = Vec3::new(
+            points_xyz[i * 3],
+            points_xyz[i * 3 + 1],
+            points_xyz[i * 3 + 2],
+        );
+        out.push(sdf_sphere_at(p, center, radius));
+    }
+    out
 }

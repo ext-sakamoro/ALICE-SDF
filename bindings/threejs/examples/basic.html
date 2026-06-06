@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ALICE-SDF Three.js basic demo</title>
+    <style>
+      body {
+        margin: 0;
+        background: #111;
+        color: #eee;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      #info {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">ALICE-SDF Three.js demo — 2D slice of a sphere SDF</div>
+    <canvas id="c"></canvas>
+    <script type="module">
+      import * as THREE from "three";
+      import { AliceSDF } from "../dist/index.mjs";
+
+      const sdf = await AliceSDF.load("/path/to/alice_sdf.js");
+      const tex = await sdf.createSliceTexture(512, 512, [0, 0, 0], 1.0, 2.5);
+      const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("c"), antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      const scene = new THREE.Scene();
+      const cam = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+      cam.position.z = 3;
+      const mat = new THREE.MeshBasicMaterial({ map: tex });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+      scene.add(mesh);
+      renderer.setAnimationLoop(() => {
+        mesh.rotation.y += 0.005;
+        renderer.render(scene, cam);
+      });
+    </script>
+  </body>
+</html>
