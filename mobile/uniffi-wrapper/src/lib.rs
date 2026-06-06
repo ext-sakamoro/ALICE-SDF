@@ -4,13 +4,17 @@
 //! から呼び出せる最小公開 API に整理。1077+ tests を持つ ALICE-SDF 本体の極一部を
 //! mobile 向けに切り出した「Hello SDF」レベル。
 
+// uniffi::include_scaffolding! が生成する UNIFFI_META_CONST_UDL_ALICE_SDF doc コメントは
+// clippy::empty_line_after_doc_comments を引っかけるが、生成コード側で制御不可のため許容。
+#![allow(clippy::empty_line_after_doc_comments)]
+
 use alice_sdf::operations::{
     sdf_intersection, sdf_smooth_intersection, sdf_smooth_subtraction, sdf_smooth_union,
     sdf_subtraction, sdf_union,
 };
 use alice_sdf::primitives::{
-    sdf_box3d_at, sdf_cylinder as p_sdf_cylinder, sdf_plane as p_sdf_plane,
-    sdf_rounded_box3d, sdf_sphere_at, sdf_torus as p_sdf_torus,
+    sdf_box3d_at, sdf_cylinder as p_sdf_cylinder, sdf_plane as p_sdf_plane, sdf_rounded_box3d,
+    sdf_sphere_at, sdf_torus as p_sdf_torus,
 };
 use glam::Vec3 as GlamVec3;
 
@@ -39,12 +43,7 @@ pub fn sdf_box(point: Vec3, center: Vec3, half_extents: Vec3) -> f32 {
     sdf_box3d_at(point.into(), center.into(), half_extents.into())
 }
 
-pub fn sdf_rounded_box(
-    point: Vec3,
-    center: Vec3,
-    half_extents: Vec3,
-    round_radius: f32,
-) -> f32 {
+pub fn sdf_rounded_box(point: Vec3, center: Vec3, half_extents: Vec3, round_radius: f32) -> f32 {
     let p: GlamVec3 = point.into();
     let c: GlamVec3 = center.into();
     sdf_rounded_box3d(p - c, half_extents.into(), round_radius)
@@ -110,8 +109,16 @@ mod tests {
 
     #[test]
     fn sphere_surface_is_zero() {
-        let p = Vec3 { x: 1.0, y: 0.0, z: 0.0 };
-        let c = Vec3 { x: 0.0, y: 0.0, z: 0.0 };
+        let p = Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let c = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
         let d = sdf_sphere(p, c, 1.0);
         assert!(d.abs() < 1e-4, "expected ~0, got {d}");
     }
@@ -130,10 +137,22 @@ mod tests {
     #[test]
     fn batch_eval_matches_single() {
         let pts = vec![
-            Vec3 { x: 1.0, y: 0.0, z: 0.0 },
-            Vec3 { x: 0.0, y: 2.0, z: 0.0 },
+            Vec3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Vec3 {
+                x: 0.0,
+                y: 2.0,
+                z: 0.0,
+            },
         ];
-        let c = Vec3 { x: 0.0, y: 0.0, z: 0.0 };
+        let c = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
         let r = 1.0;
         let batch = sphere_batch(pts.clone(), c, r);
         for (i, p) in pts.iter().enumerate() {

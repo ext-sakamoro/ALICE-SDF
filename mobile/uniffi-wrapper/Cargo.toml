@@ -21,6 +21,10 @@ alice-sdf = { path = "../..", default-features = false }
 glam      = "0.29"
 uniffi    = { version = "0.28", features = ["cli"] }
 
+[features]
+default = []
+gpu = ["alice-sdf/gpu"]  # wgpu Metal (iOS) / Vulkan (Android) ※実験的
+
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }
 

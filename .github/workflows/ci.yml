@@ -6,11 +6,49 @@ on:
   pull_request:
     branches: [main]
 
+# 連続 push で前の run を即 cancel (runner minutes 浪費防止)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  # 一過性 HTTP/2 framing layer 失敗対策 (本番 2026-06-06 Windows runner 実害)
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_MULTIPLEXING: "false"
 
 jobs:
+  # docs / mobile-only な PR でフル CI を回さないための paths-filter
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - 'benches/**'
+              - 'examples/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+            mobile:
+              - 'mobile/**'
+            ci:
+              - '.github/**'
+
   test:
+    name: Test — ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -21,77 +59,23 @@ jobs:
             name: Linux (x86_64)
           - os: windows-latest
             name: Windows (x86_64)
-
-    name: Test — ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
-
       - uses: Swatinem/rust-cache@v2
 
-      - name: Create dependency stubs
-        shell: bash
-        run: |
-          mkdir -p ../ALICE-Physics/src
-          cat > ../ALICE-Physics/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-physics"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Physics/src/lib.rs
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
 
-          mkdir -p ../ALICE-Codec/src
-          cat > ../ALICE-Codec/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-codec"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Codec/src/lib.rs
-
-          mkdir -p ../ALICE-Streaming-Protocol/src
-          cat > ../ALICE-Streaming-Protocol/Cargo.toml << 'TOML'
-          [package]
-          name = "libasp"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Streaming-Protocol/src/lib.rs
-
-          mkdir -p ../ALICE-Cache/src
-          cat > ../ALICE-Cache/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-cache"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Cache/src/lib.rs
-
-          mkdir -p ../ALICE-Font/src
-          cat > ../ALICE-Font/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-font"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Font/src/lib.rs
-
-      - name: Build
-        run: cargo build --lib
+      # 主要ビルド (retry あり、本番 HTTP/2 errror 耐性)
+      - name: Build (default)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          command: cargo build --lib
 
       - name: Test (core)
         run: cargo test --lib
@@ -131,77 +115,95 @@ jobs:
       - name: Benchmark compilation check
         run: cargo bench --no-run
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-
+  mobile:
+    name: Mobile — iOS / Android cross-compile
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            mobile/uniffi-wrapper
 
+      - name: Add mobile rustup targets
+        run: |
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install --locked cargo-ndk
+
+      - name: Install Android NDK (cached by setup-java)
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+          add-to-path: true
+
+      - name: Build host (lib + uniffi-bindgen binary)
+        working-directory: mobile/uniffi-wrapper
+        run: cargo build --release
+
+      - name: Build iOS aarch64 (device)
+        working-directory: mobile/uniffi-wrapper
+        run: cargo build --release --target aarch64-apple-ios
+
+      - name: Build iOS aarch64 (sim)
+        working-directory: mobile/uniffi-wrapper
+        run: cargo build --release --target aarch64-apple-ios-sim
+
+      - name: Build iOS x86_64 (sim, Intel Mac)
+        working-directory: mobile/uniffi-wrapper
+        run: cargo build --release --target x86_64-apple-ios
+
+      - name: Build iOS aarch64 with gpu (Metal backend)
+        working-directory: mobile/uniffi-wrapper
+        run: cargo build --release --target aarch64-apple-ios --features gpu
+
+      - name: Build Android 4 ABIs
+        working-directory: mobile/uniffi-wrapper
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          cargo ndk \
+            -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 \
+            build --lib --release
+
+      - name: Verify Swift bindings generate clean
+        working-directory: mobile/uniffi-wrapper
+        run: |
+          cargo run --release --bin uniffi-bindgen -- \
+            generate src/alice_sdf.udl \
+            --language swift \
+            --out-dir /tmp/ci-swift
+
+      - name: Verify Kotlin bindings generate clean
+        working-directory: mobile/uniffi-wrapper
+        run: |
+          cargo run --release --bin uniffi-bindgen -- \
+            generate src/alice_sdf.udl \
+            --language kotlin \
+            --out-dir /tmp/ci-kotlin
+
+  clippy:
+    name: Clippy (informational)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-
       - uses: Swatinem/rust-cache@v2
 
-      - name: Create dependency stubs
-        run: |
-          mkdir -p ../ALICE-Physics/src
-          cat > ../ALICE-Physics/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-physics"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Physics/src/lib.rs
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
 
-          mkdir -p ../ALICE-Codec/src
-          cat > ../ALICE-Codec/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-codec"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Codec/src/lib.rs
-
-          mkdir -p ../ALICE-Streaming-Protocol/src
-          cat > ../ALICE-Streaming-Protocol/Cargo.toml << 'TOML'
-          [package]
-          name = "libasp"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Streaming-Protocol/src/lib.rs
-
-          mkdir -p ../ALICE-Cache/src
-          cat > ../ALICE-Cache/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-cache"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Cache/src/lib.rs
-
-          mkdir -p ../ALICE-Font/src
-          cat > ../ALICE-Font/Cargo.toml << 'TOML'
-          [package]
-          name = "alice-font"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-          echo "" > ../ALICE-Font/src/lib.rs
-
-      - name: Clippy
+      - name: Clippy (cap-lints warn, count only)
         run: cargo clippy --lib --features "glsl,hlsl,gpu" 2>&1 | tee clippy-output.txt
         env:
           RUSTFLAGS: "--cap-lints warn"
@@ -213,16 +215,41 @@ jobs:
           COUNT=$(grep -c '^warning:' clippy-output.txt 2>/dev/null || echo 0)
           echo "::notice::Clippy warnings: $COUNT (non-blocking)"
 
-  fmt:
-    name: Format
+  clippy-strict:
+    name: Clippy strict (mobile wrapper only)
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mobile/uniffi-wrapper
 
+      # 新規 mobile/ クレートは厳格 (-D warnings) — AI-Tencho Backend 教訓適用
+      - name: Clippy strict (mobile/uniffi-wrapper)
+        working-directory: mobile/uniffi-wrapper
+        env:
+          RUSTFLAGS: "-Dwarnings"
+        run: cargo clippy --lib --all-targets
+
+  fmt:
+    name: Format
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
-      - name: Check formatting
+      - name: Check formatting (core)
+        run: cargo fmt --check
+
+      - name: Check formatting (mobile/uniffi-wrapper)
+        working-directory: mobile/uniffi-wrapper
         run: cargo fmt --check
