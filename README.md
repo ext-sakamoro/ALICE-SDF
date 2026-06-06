@@ -2278,6 +2278,72 @@ For complex scenes, LOL typically uses **3-4x fewer tokens**, which reduces both
 
 ---
 
+## Mobile (iOS / Android)
+
+ALICE-SDF ships a [UniFFI](https://mozilla.github.io/uniffi-rs/)-based mobile SDK so the Rust core can be called directly from **Swift** (iOS) and **Kotlin** (Android).
+
+### Supported targets
+
+| Platform | Architectures | Distribution |
+|----------|---------------|--------------|
+| **iOS** | `aarch64-apple-ios` (device), `aarch64-apple-ios-sim`, `x86_64-apple-ios` | `AliceSDF.xcframework` (static lib + Swift bindings) |
+| **Android** | `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` | `libuniffi_alice_sdf.so` + Kotlin bindings |
+
+### Verified on real devices (2026-06-06)
+
+| Platform | Hardware | Result |
+|----------|----------|--------|
+| iOS | iPhone 17 Pro Simulator (iOS 26.0, Xcode 26.2) | ✅ Demo app boots, renders 2D SDF slice ([screenshot](mobile/samples/ios-swiftui/screenshots/AliceSDF-demo.png)) |
+| Android | Pixel 6 emulator (Android 14 / API 34, arm64-v8a) | ✅ Demo app boots, renders 2D SDF slice ([screenshot](mobile/samples/android-compose/screenshots/AliceSDF-android-demo.png)) |
+
+Both platforms produced identical numerical output (`sphere d = 0.2806`, `smooth_union(k=0.3) = 0.2056`) — proving binary parity of the Rust core across Apple Silicon and Android ARM.
+
+### Quick start (Swift)
+
+```swift
+import AliceSDF
+
+let d = sdfSphere(
+    point:  Vec3(x: 1, y: 0, z: 0),
+    center: Vec3(x: 0, y: 0, z: 0),
+    radius: 1.0
+)
+// d ≈ 0 (point on sphere surface)
+
+let blended = opSmoothUnion(a: 0.5, b: 0.6, k: 0.1)
+// blended < 0.5 (smooth union pulls below min)
+```
+
+### Quick start (Kotlin)
+
+```kotlin
+import uniffi.alice_sdf.*
+
+val d = sdfSphere(
+    point  = Vec3(1f, 0f, 0f),
+    center = Vec3(0f, 0f, 0f),
+    radius = 1.0f
+)
+// d ≈ 0
+
+val blended = opSmoothUnion(a = 0.5f, b = 0.6f, k = 0.1f)
+```
+
+### Build the SDK
+
+```bash
+# iOS XCFramework (device + simulator)
+cd mobile/packaging/ios && ./build-xcframework.sh
+
+# Android .so + Kotlin bindings (4 ABI)
+export ANDROID_NDK_HOME=/opt/homebrew/share/android-ndk
+cd mobile/packaging/android && ./build-aar.sh
+```
+
+Sample apps and the full integration guide live in [`mobile/`](mobile/).
+
+---
+
 ## Related Projects
 
 | Project | Description | Link |

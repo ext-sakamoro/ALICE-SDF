@@ -2267,6 +2267,72 @@ let field = CompiledSdfField::new(scene);
 
 ---
 
+## Mobile (iOS / Android)
+
+ALICE-SDF は [UniFFI](https://mozilla.github.io/uniffi-rs/) ベースの mobile SDK を同梱しており、Rust コアを **Swift** (iOS) と **Kotlin** (Android) から直接呼び出せます。
+
+### 対応ターゲット
+
+| プラットフォーム | アーキテクチャ | 配布物 |
+|-----------------|-------------|--------|
+| **iOS** | `aarch64-apple-ios` (実機), `aarch64-apple-ios-sim`, `x86_64-apple-ios` | `AliceSDF.xcframework` (static lib + Swift bindings) |
+| **Android** | `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` | `libuniffi_alice_sdf.so` + Kotlin bindings |
+
+### 実機動作確認済 (2026-06-06)
+
+| プラットフォーム | デバイス | 結果 |
+|-----------------|---------|------|
+| iOS | iPhone 17 Pro Simulator (iOS 26.0, Xcode 26.2) | ✅ アプリ起動、2D SDF スライス描画 ([screenshot](mobile/samples/ios-swiftui/screenshots/AliceSDF-demo.png)) |
+| Android | Pixel 6 emulator (Android 14 / API 34, arm64-v8a) | ✅ アプリ起動、2D SDF スライス描画 ([screenshot](mobile/samples/android-compose/screenshots/AliceSDF-android-demo.png)) |
+
+両プラットフォームで **完全に同じ数値** (`sphere d = 0.2806`、`smooth_union(k=0.3) = 0.2056`) を出力 — Rust コアの Apple Silicon / Android ARM 間移植正確性を実機で実証。
+
+### Swift クイックスタート
+
+```swift
+import AliceSDF
+
+let d = sdfSphere(
+    point:  Vec3(x: 1, y: 0, z: 0),
+    center: Vec3(x: 0, y: 0, z: 0),
+    radius: 1.0
+)
+// d ≈ 0 (球面上の点)
+
+let blended = opSmoothUnion(a: 0.5, b: 0.6, k: 0.1)
+// blended < 0.5 (smooth union が min より下に引っ張る)
+```
+
+### Kotlin クイックスタート
+
+```kotlin
+import uniffi.alice_sdf.*
+
+val d = sdfSphere(
+    point  = Vec3(1f, 0f, 0f),
+    center = Vec3(0f, 0f, 0f),
+    radius = 1.0f
+)
+// d ≈ 0
+
+val blended = opSmoothUnion(a = 0.5f, b = 0.6f, k = 0.1f)
+```
+
+### SDK ビルド
+
+```bash
+# iOS XCFramework (実機 + シミュレータ)
+cd mobile/packaging/ios && ./build-xcframework.sh
+
+# Android .so + Kotlin bindings (4 ABI)
+export ANDROID_NDK_HOME=/opt/homebrew/share/android-ndk
+cd mobile/packaging/android && ./build-aar.sh
+```
+
+サンプルアプリ・統合手順は [`mobile/`](mobile/) を参照。
+
+---
+
 ## 関連プロジェクト
 
 | プロジェクト | 説明 | リンク |
