@@ -1,36 +1,59 @@
 # ALICE-SDF Maya Plugin
 
-Autodesk Maya 2024+ 用 ALICE-SDF Python モジュール。`.asdf` import と SDF プリミティブ生成。
+Autodesk Maya 2024 / 2025 / 2026+ 用 ALICE-SDF Python モジュール。`.asdf` import と SDF プリミティブ生成。
+
+## 対応バージョン
+
+| Maya | Python ABI | 状態 |
+|------|-----------|------|
+| 2024 | 3.10 | 🟢 |
+| 2025 | 3.11 | 🟢 |
+| 2026 | 3.11+ | 🟢 |
 
 ## インストール
 
-### 1. ALICE-SDF Python binding をビルド
+### 1. ALICE-SDF Python binding を該当 Python ABI でビルド
 
 ```bash
 cd /path/to/ALICE-SDF
 cargo build --release --features python
 ```
 
-Maya 内蔵 Python (3.10) の site-packages にコピー (macOS 例):
-```bash
-cp target/release/libalice_sdf.dylib \
-   /Applications/Autodesk/maya2024/Maya.app/Contents/MacOS/lib/python3.10/site-packages/alice_sdf.so
-```
+Maya 内蔵 Python の site-packages にコピー (バージョンを `<YEAR>`、Python を `<PYVER>` で置換):
 
 | Platform | site-packages |
 |----------|---------------|
-| macOS | `/Applications/Autodesk/maya2024/Maya.app/Contents/MacOS/lib/python3.10/site-packages/` |
-| Linux | `/usr/autodesk/maya2024/lib/python3.10/site-packages/` |
-| Windows | `C:\Program Files\Autodesk\Maya2024\bin\Python\Lib\site-packages\` |
+| macOS | `/Applications/Autodesk/maya<YEAR>/Maya.app/Contents/MacOS/lib/python<PYVER>/site-packages/` |
+| Linux | `/usr/autodesk/maya<YEAR>/lib/python<PYVER>/site-packages/` |
+| Windows | `C:\Program Files\Autodesk\Maya<YEAR>\bin\Python\Lib\site-packages\` |
+
+例:
+```bash
+# Maya 2024 (Python 3.10) - macOS
+cp target/release/libalice_sdf.dylib \
+   /Applications/Autodesk/maya2024/Maya.app/Contents/MacOS/lib/python3.10/site-packages/alice_sdf.so
+
+# Maya 2025 (Python 3.11) - macOS
+cp target/release/libalice_sdf.dylib \
+   /Applications/Autodesk/maya2025/Maya.app/Contents/MacOS/lib/python3.11/site-packages/alice_sdf.so
+
+# Maya 2026 (Python 3.11+) - macOS
+cp target/release/libalice_sdf.dylib \
+   /Applications/Autodesk/maya2026/Maya.app/Contents/MacOS/lib/python3.11/site-packages/alice_sdf.so
+```
 
 ### 2. Maya scripts dir にモジュールをコピー
 
 ```bash
-# macOS
-cp -r bindings/maya/alice_sdf_maya ~/Library/Preferences/Autodesk/maya/2024/scripts/
+# macOS (例: Maya 2026)
+cp -r bindings/maya/alice_sdf_maya ~/Library/Preferences/Autodesk/maya/2026/scripts/
+# Maya 2024 / 2025 でも同じパターン、年だけ変える
+cp -r bindings/maya/alice_sdf_maya ~/Library/Preferences/Autodesk/maya/2025/scripts/
+
 # Linux
-cp -r bindings/maya/alice_sdf_maya ~/maya/2024/scripts/
-# Windows: %USERPROFILE%\Documents\maya\2024\scripts\
+cp -r bindings/maya/alice_sdf_maya ~/maya/2026/scripts/
+
+# Windows: %USERPROFILE%\Documents\maya\2026\scripts\
 ```
 
 ### 3. Maya で有効化

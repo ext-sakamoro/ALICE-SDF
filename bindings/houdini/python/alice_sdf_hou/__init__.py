@@ -2,20 +2,26 @@
 ALICE-SDF Houdini Python plugin
 ================================
 
-Houdini (SideFX) 20+ 用 ALICE-SDF 連携 Python モジュール。
+SideFX Houdini 20 / 20.5 / 21+ 用 ALICE-SDF 連携 Python モジュール。
 
 Houdini 内の Python SOP / Python パネル / HDA 内 Python から `import alice_sdf_hou`
 で各種 SDF 操作を呼び出せる。
 
-Install (Houdini 20+):
-    bindings/houdini/python/ 配下を以下にコピー:
-        $HSITE/python3.11libs/                  (推奨、複数 Houdini 版で共有)
-        $HOUDINI_USER_PREF_DIR/python3.11libs/  (ユーザー固有)
-        $HFS/houdini/python3.11libs/             (Houdini インストール先)
+サポート対象 (Python ABI):
+    - Houdini 20.0: Python 3.10
+    - Houdini 20.5: Python 3.11
+    - Houdini 21+:  Python 3.11+
+
+Install:
+    bindings/houdini/python/ 配下を以下にコピー (Houdini Python に合わせて
+    python3.10libs/ または python3.11libs/ を選ぶ):
+        $HSITE/python<PYVER>libs/                  (推奨、複数 Houdini 版で共有)
+        $HOUDINI_USER_PREF_DIR/python<PYVER>libs/  (ユーザー固有)
+        $HFS/houdini/python<PYVER>libs/             (Houdini インストール先)
 
 Backend: ALICE-SDF Python binding (PyO3 経由) を import する必要あり。
     cargo build --release --features python → libalice_sdf.dylib/.so/.dll
-    Houdini 内蔵 Python の site-packages にリネームコピー。
+    Houdini 内蔵 Python の site-packages に Python ABI 別 にリネームコピー。
 """
 
 import importlib

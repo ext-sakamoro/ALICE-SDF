@@ -32,7 +32,16 @@ if [ ${#candidates[@]} -eq 0 ]; then
 fi
 
 TARGET_BASE="${candidates[0]}"
-TARGET="$TARGET_BASE/python3.11libs/alice_sdf_hou"
+# Houdini 20.0 = python3.10libs, 20.5+ = python3.11libs。
+# 既存ディレクトリを優先、無ければデフォルト 3.11
+if [ -d "$TARGET_BASE/python3.11libs" ]; then
+  PYLIBS="python3.11libs"
+elif [ -d "$TARGET_BASE/python3.10libs" ]; then
+  PYLIBS="python3.10libs"
+else
+  PYLIBS="python3.11libs"  # default for Houdini 20.5/21+
+fi
+TARGET="$TARGET_BASE/$PYLIBS/alice_sdf_hou"
 echo ">>> Installing to: $TARGET"
 mkdir -p "$(dirname "$TARGET")"
 rm -rf "$TARGET"

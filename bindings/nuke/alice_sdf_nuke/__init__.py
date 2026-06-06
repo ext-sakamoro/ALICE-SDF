@@ -2,19 +2,23 @@
 ALICE-SDF Nuke plugin
 ======================
 
-Foundry Nuke 15+ 用 ALICE-SDF 連携 Python モジュール。
+Foundry Nuke 15 / 16+ 用 ALICE-SDF 連携 Python モジュール。
 VFX コンポジット内で SDF → ボリュームレンダリング (DeepRecolor 等) や
 .asdf スキャンライン化に使用。
 
-Install (Nuke 15+):
-    1. ALICE-SDF Python binding をビルド:
+サポート対象 (Python ABI):
+    - Nuke 15.x: Python 3.10
+    - Nuke 16.x: Python 3.11
+
+Install:
+    1. ALICE-SDF Python binding を Nuke の Python に合わせてビルド:
         cargo build --release --features python
-    2. Nuke 内蔵 Python (3.10) の site-packages にコピー:
-        macOS:   /Applications/Nuke15.0v0/Nuke15.0v0.app/Contents/MacOS/lib/python3.10/site-packages/
-        Linux:   /usr/local/Nuke15.0v0/lib/python3.10/site-packages/
-        Windows: C:\\Program Files\\Nuke15.0v0\\lib\\python3.10\\site-packages\\
+    2. Nuke 内蔵 Python の site-packages にコピー (<VER>, <PYVER> 置換):
+        macOS:   /Applications/Nuke<VER>/Nuke<VER>.app/Contents/MacOS/lib/python<PYVER>/site-packages/
+        Linux:   /usr/local/Nuke<VER>/lib/python<PYVER>/site-packages/
+        Windows: C:\\Program Files\\Nuke<VER>\\lib\\python<PYVER>\\site-packages\\
     3. bindings/nuke/alice_sdf_nuke/ を Nuke plugin dir にコピー:
-        ~/.nuke/  (全 OS 共通)
+        ~/.nuke/  (全 OS 共通、Nuke 全バージョン共有)
     4. ~/.nuke/menu.py に以下を追加:
         import alice_sdf_nuke
         alice_sdf_nuke.register_menu()

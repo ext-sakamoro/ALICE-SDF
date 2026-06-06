@@ -1,6 +1,14 @@
 # ALICE-SDF Houdini Python Plugin
 
-SideFX Houdini 20+ で ALICE-SDF を呼び出すための Python モジュール集。
+SideFX Houdini 20 / 20.5 / 21+ で ALICE-SDF を呼び出すための Python モジュール集。
+
+## 対応バージョン
+
+| Houdini | Python ABI | 状態 |
+|---------|-----------|------|
+| 20.0    | 3.10 | 🟢 |
+| 20.5    | 3.11 | 🟢 |
+| 21+     | 3.11+ | 🟢 |
 
 ## 構成
 

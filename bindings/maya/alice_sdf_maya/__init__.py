@@ -2,20 +2,25 @@
 ALICE-SDF Maya plugin
 ======================
 
-Autodesk Maya 2024+ 用 ALICE-SDF 連携 Python モジュール。
+Autodesk Maya 2024 / 2025 / 2026+ 用 ALICE-SDF 連携 Python モジュール。
+
+サポート対象 (Python ABI):
+    - Maya 2024: Python 3.10
+    - Maya 2025: Python 3.11
+    - Maya 2026: Python 3.11+
 
 Install:
-    1. ALICE-SDF Python binding をビルド:
+    1. ALICE-SDF Python binding を Maya の Python と同じバージョンでビルド:
         cargo build --release --features python
-    2. Maya 起動 Python の site-packages にコピー:
-        macOS:   /Applications/Autodesk/maya2024/Maya.app/Contents/MacOS/lib/python3.10/site-packages/
-        Linux:   /usr/autodesk/maya2024/lib/python3.10/site-packages/
-        Windows: C:\\Program Files\\Autodesk\\Maya2024\\bin\\Python\\Lib\\site-packages\\
+    2. Maya 起動 Python の site-packages にコピー (<YEAR>, <PYVER> 置換):
+        macOS:   /Applications/Autodesk/maya<YEAR>/Maya.app/Contents/MacOS/lib/python<PYVER>/site-packages/
+        Linux:   /usr/autodesk/maya<YEAR>/lib/python<PYVER>/site-packages/
+        Windows: C:\\Program Files\\Autodesk\\Maya<YEAR>\\bin\\Python\\Lib\\site-packages\\
         ファイル名: alice_sdf.so (macOS/Linux) / alice_sdf.pyd (Windows)
     3. bindings/maya/alice_sdf_maya/ を Maya scripts dir にコピー:
-        macOS:   ~/Library/Preferences/Autodesk/maya/2024/scripts/
-        Linux:   ~/maya/2024/scripts/
-        Windows: %USERPROFILE%\\Documents\\maya\\2024\\scripts\\
+        macOS:   ~/Library/Preferences/Autodesk/maya/<YEAR>/scripts/
+        Linux:   ~/maya/<YEAR>/scripts/
+        Windows: %USERPROFILE%\\Documents\\maya\\<YEAR>\\scripts\\
     4. Maya の Script Editor で実行:
         import alice_sdf_maya
         alice_sdf_maya.register_menu()

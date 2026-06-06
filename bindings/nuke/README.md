@@ -1,29 +1,41 @@
 # ALICE-SDF Nuke Plugin
 
-Foundry Nuke 15+ で ALICE-SDF を呼び出す Python モジュール。VFX コンポジット内で `.asdf` を
+Foundry Nuke 15 / 16+ で ALICE-SDF を呼び出す Python モジュール。VFX コンポジット内で `.asdf` を
 ボリューム / スライス画像として展開する。
+
+## 対応バージョン
+
+| Nuke | Python ABI | 状態 |
+|------|-----------|------|
+| 15.x | 3.10 | 🟢 |
+| 16.x | 3.11 | 🟢 |
 
 ## インストール
 
-### 1. ALICE-SDF Python binding をビルド
+### 1. ALICE-SDF Python binding をビルド (Nuke Python に合わせて)
 
 ```bash
 cd /path/to/ALICE-SDF
 cargo build --release --features python
 ```
 
-### 2. Nuke 内蔵 Python (3.10) の site-packages にコピー
+### 2. Nuke 内蔵 Python の site-packages にコピー (`<VER>`, `<PYVER>` 置換)
 
 | Platform | site-packages |
 |----------|---------------|
-| macOS | `/Applications/Nuke15.0v0/Nuke15.0v0.app/Contents/MacOS/lib/python3.10/site-packages/` |
-| Linux | `/usr/local/Nuke15.0v0/lib/python3.10/site-packages/` |
-| Windows | `C:\Program Files\Nuke15.0v0\lib\python3.10\site-packages\` |
+| macOS | `/Applications/Nuke<VER>/Nuke<VER>.app/Contents/MacOS/lib/python<PYVER>/site-packages/` |
+| Linux | `/usr/local/Nuke<VER>/lib/python<PYVER>/site-packages/` |
+| Windows | `C:\Program Files\Nuke<VER>\lib\python<PYVER>\site-packages\` |
 
-例 (macOS):
+例:
 ```bash
+# Nuke 15.0v0 (Python 3.10) - macOS
 cp target/release/libalice_sdf.dylib \
    /Applications/Nuke15.0v0/Nuke15.0v0.app/Contents/MacOS/lib/python3.10/site-packages/alice_sdf.so
+
+# Nuke 16.0v0 (Python 3.11) - macOS
+cp target/release/libalice_sdf.dylib \
+   /Applications/Nuke16.0v0/Nuke16.0v0.app/Contents/MacOS/lib/python3.11/site-packages/alice_sdf.so
 ```
 
 ### 3. Nuke plugin dir にモジュールをコピー
