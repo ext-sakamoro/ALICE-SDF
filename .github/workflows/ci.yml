@@ -96,8 +96,9 @@ jobs:
       - name: Build (JIT) [T3]
         run: cargo build --lib --no-default-features --features "jit"
 
-      - name: Build (all bridges) [T3]
-        run: cargo build --lib --no-default-features --features "codec,physics,asp,sdf-cache"
+      - name: Build (codec / asp / sdf-cache bridges) [T3]
+        # physics は別 job で実 ALICE-Physics 経由で厳格化、それ以外の bridge はスタブ依存のため continue
+        run: cargo build --lib --no-default-features --features "codec,asp,sdf-cache"
         continue-on-error: true
 
       - name: Build (Unity meta) [T2]
@@ -114,6 +115,38 @@ jobs:
 
       - name: Benchmark compilation check
         run: cargo bench --no-run
+
+  physics:
+    name: Bridge — ALICE-Physics (strict)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ALICE-SDF
+        uses: actions/checkout@v4
+        with:
+          path: ALICE-SDF
+
+      - name: Checkout ALICE-Physics (path dep target)
+        uses: actions/checkout@v4
+        with:
+          repository: ext-sakamoro/ALICE-Physics
+          path: ALICE-Physics
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ALICE-SDF
+
+      # --no-default-features --features physics のみ → alice-physics 以外の optional path dep は
+      # cfg で除外されるため、stub 作成は不要。alice-physics は ../ALICE-Physics で実体解決。
+      - name: Build (physics, strict)
+        working-directory: ALICE-SDF
+        run: cargo build --lib --no-default-features --features "physics"
+
+      - name: Test (physics, strict)
+        working-directory: ALICE-SDF
+        run: cargo test --lib --no-default-features --features "physics"
 
   mobile:
     name: Mobile — iOS / Android cross-compile
