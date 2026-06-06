@@ -1,0 +1,11 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+captures/
+*.iml
+.kotlin/
+
+# gradle wrapper jar は再現可能、コミットしない (再生成: gradle wrapper --gradle-version 8.7 --distribution-type all)
+gradle/wrapper/gradle-wrapper.jar
