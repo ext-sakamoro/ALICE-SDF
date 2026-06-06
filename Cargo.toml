@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "1.5.0"
+version = "1.6.0"
 edition = "2021"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist - Store laws, not polygons"

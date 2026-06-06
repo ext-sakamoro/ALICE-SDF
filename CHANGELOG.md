@@ -2,14 +2,24 @@
 
 All notable changes to ALICE-SDF are documented in this file.
 
-## [Unreleased]
+## [v1.6.0] - 2026-06-06
 
 ### Added
 
 - **`wasm` feature** — WebAssembly bindings (browser): wasm-bindgen + js-sys。`sdf_sphere` / `sdf_box` / `sdf_torus_w` / `sdf_cylinder_w` / `sdf_plane_w` / 6 op + `render_sphere_slice_rgba` を JavaScript から呼び出し可能。`cargo build --target wasm32-unknown-unknown --features wasm` で動作
 - **`openvdb` feature** — OpenVDB Float Grid I/O (Houdini / Maya / Nuke 等の VFX/DCC ツール連携): `bake_dense_grid()` / `bake_to_vdb()` / `load_dense_grid_from_vdb()`。vdb-rs 0.6 ベース。`io::vdb` モジュール、4 tests
 - **Bevy plugin** (`bindings/bevy/alice-sdf-bevy/`) — Bevy 0.18 用 ECS 統合: `AliceSdfPlugin` + `SdfShape` Component (Sphere/Box/Torus/Cylinder)、Mesh 自動生成 system、`examples/sphere_demo.rs`、4 tests
-- **CI matrix 拡張**: `wasm` / `openvdb` / `bevy` の 3 ジョブ追加 (`physics` strict と同様、それぞれ独立 build + test)
+- **CI matrix 拡張**: `wasm` / `openvdb` / `bevy` の 3 ジョブ追加、`physics` strict 化 (continue-on-error 削除 + 実 ALICE-Physics clone + 1088 tests カバー)
+
+### Changed
+
+- README (英日) に "Web (WebAssembly) / VFX (OpenVDB) / Bevy エンジン" セクション追加
+- `AliceSDF.uplugin`: VersionName 1.5.0 → 1.6.0、Version 2 → 3
+
+### Quality
+
+- 全 CI matrix green: macOS ARM64 / Linux x86_64 / Windows x86_64 + Mobile + Physics strict + wasm + openvdb + bevy + clippy + clippy-strict + fmt
+- 全 strict job pass (continue-on-error なし)
 
 ## [v1.5.0] - 2026-06-06
 
