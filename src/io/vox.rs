@@ -20,14 +20,16 @@
 use crate::eval::eval;
 use crate::types::SdfNode;
 use glam::Vec3;
-use std::io::Write;
 use std::path::Path;
 
 /// 単一 voxel (x, y, z, color_index)
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Voxel {
+    /// X 座標 (0..=255)
     pub x: u8,
+    /// Y 座標 (0..=255)
     pub y: u8,
+    /// Z 座標 (0..=255)
     pub z: u8,
     /// MagicaVoxel palette index (1-255)、0 は空 voxel
     pub color: u8,
@@ -38,6 +40,7 @@ pub struct Voxel {
 pub struct VoxModel {
     /// グリッドサイズ (X, Y, Z)、各 1..=256
     pub size: (u32, u32, u32),
+    /// voxel 配列
     pub voxels: Vec<Voxel>,
 }
 

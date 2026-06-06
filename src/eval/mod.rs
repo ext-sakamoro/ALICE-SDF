@@ -363,7 +363,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
                 let sx = fx * fx * (3.0 - 2.0 * fx);
                 let sz = fz * fz * (3.0 - 2.0 * fz);
                 let h = |x: f32, z: f32| -> f32 {
-                    ((x * 127.1 + z * 311.7).sin() * 43758.5453).fract().abs()
+                    ((x * 127.1 + z * 311.7).sin() * 43758.547).fract().abs()
                 };
                 let a00 = h(ix, iz);
                 let a10 = h(ix + 1.0, iz);

@@ -28,7 +28,9 @@ use std::path::Path;
 /// IGES export 設定
 #[derive(Clone, Copy, Debug)]
 pub struct IgesConfig {
+    /// グリッド範囲 (min, max)
     pub bounds: (f32, f32),
+    /// 1 辺の voxel resolution
     pub resolution: u32,
 }
 
@@ -105,8 +107,6 @@ fn iges_line(content: &str, section: char, seq: u32) -> String {
 fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::io::Result<()> {
     let mut sseq = 1u32;
     let mut gseq = 1u32;
-    let mut dseq = 1u32;
-    let mut pseq = 1u32;
 
     // ==== START SECTION ====
     writeln!(
@@ -137,7 +137,7 @@ fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::
     //   Node entity: type 134, NODE
     //   Finite element entity: type 136, FINITE_ELEMENT
     let p_base = 1u32;
-    let mut p_cursor = p_base;
+    let p_cursor = p_base;
     let mut p_line_per_entity = Vec::new();
 
     // We'll lay out PD lines first to determine line count, then DE.
@@ -201,9 +201,6 @@ fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::
         writeln!(w, "{}", iges_line(&content, 'P', p_seq))?;
         p_seq += 1;
     }
-    let _ = pseq;
-    let _ = dseq;
-
     // ==== TERMINATE SECTION ====
     let term = format!(
         "S{:>7}G{:>7}D{:>7}P{:>7}",
