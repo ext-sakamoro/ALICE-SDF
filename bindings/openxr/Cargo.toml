@@ -1,0 +1,22 @@
+[package]
+name        = "alice-sdf-openxr"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+description = "OpenXR helpers for ALICE-SDF — SDF raymarching and surface queries for native VR/AR apps (Meta Quest standalone, PC VR, etc.)"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
+keywords    = ["alice-sdf", "openxr", "vr", "ar", "raymarching"]
+categories  = ["graphics", "game-development"]
+rust-version = "1.75"
+
+[dependencies]
+alice-sdf = { path = "../..", default-features = false }
+openxr    = "0.19"
+glam      = "0.29"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery  = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+needless_pass_by_value = "allow"

@@ -1,0 +1,24 @@
+[package]
+name        = "alice-sdf-server"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+description = "REST HTTP server exposing ALICE-SDF evaluation, mesh, splat, vox, vdb endpoints"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
+publish     = false
+
+[dependencies]
+alice-sdf = { path = "..", default-features = false, features = ["openvdb"] }
+axum      = { version = "0.7", features = ["macros"] }
+tokio     = { version = "1.40", features = ["rt-multi-thread", "macros"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+serde     = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+glam      = "0.29"
+tracing   = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[bin]]
+name = "alice-sdf-server"
+path = "src/main.rs"
