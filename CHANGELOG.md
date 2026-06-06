@@ -23,7 +23,7 @@ All notable changes to ALICE-SDF are documented in this file.
 
 ### Changed
 
-- **CI/CD 大規模強化** (AI-Tencho 知見 Top 10 反映):
+- **CI/CD 大規模強化**:
   - `concurrency: cancel-in-progress` で連続 push 時の前 run 自動 cancel
   - `dorny/paths-filter@v3` で README/docs only push の full CI skip
   - `.github/actions/alice-stubs` composite action で dep stub 生成を DRY 化 (60行 × 2 jobs)

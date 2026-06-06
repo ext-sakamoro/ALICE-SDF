@@ -229,7 +229,7 @@ jobs:
         with:
           workspaces: mobile/uniffi-wrapper
 
-      # 新規 mobile/ クレートは厳格 (-D warnings) — AI-Tencho Backend 教訓適用
+      # 新規 mobile/ クレートは厳格 (-D warnings)
       - name: Clippy strict (mobile/uniffi-wrapper)
         working-directory: mobile/uniffi-wrapper
         env:
