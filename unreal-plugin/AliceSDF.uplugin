@@ -5,6 +5,7 @@
 	"FriendlyName": "ALICE-SDF",
 	"Description": "Adaptive Lightweight Implicit Compression Engine - SDF integration for Unreal Engine 5",
 	"Category": "Rendering",
+	"EngineVersion": "5.7.0",
 	"CreatedBy": "Moroya Sakamoto",
 	"CreatedByURL": "",
 	"DocsURL": "",
