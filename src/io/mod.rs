@@ -26,6 +26,8 @@ pub mod threemf;
 pub mod ue5_asset;
 pub mod unity_mesh;
 pub mod usd;
+#[cfg(feature = "openvdb")]
+pub mod vdb;
 
 pub use abm::{
     load_abm, load_abm_with_lods, read_abm_header, save_abm, save_abm_with_lods, AbmHeader,

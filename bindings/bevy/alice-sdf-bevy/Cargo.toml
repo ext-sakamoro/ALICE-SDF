@@ -1,0 +1,29 @@
+[package]
+name        = "alice-sdf-bevy"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+description = "Bevy plugin for ALICE-SDF — SDF shapes as Bevy Components, mesh generation as Bevy Assets"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
+keywords    = ["bevy", "sdf", "signed-distance-function", "plugin", "rendering"]
+categories  = ["game-engines", "graphics"]
+rust-version = "1.83"
+
+[dependencies]
+alice-sdf = { path = "../../..", default-features = false }
+bevy      = { version = "0.18", default-features = false, features = ["bevy_asset", "bevy_pbr", "bevy_render"] }
+glam      = "0.29"
+
+[dev-dependencies]
+bevy = { version = "0.18" }
+
+[[example]]
+name = "sphere_demo"
+path = "examples/sphere_demo.rs"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+needless_pass_by_value = "allow"

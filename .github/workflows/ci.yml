@@ -116,6 +116,60 @@ jobs:
       - name: Benchmark compilation check
         run: cargo bench --no-run
 
+  wasm:
+    name: WebAssembly (wasm32) cross-compile
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/alice-stubs
+      - name: Build (wasm feature, wasm32 target)
+        run: cargo build --lib --no-default-features --features wasm --target wasm32-unknown-unknown
+      - name: Test wasm (host, lib-only)
+        run: cargo build --lib --no-default-features --features wasm
+
+  openvdb:
+    name: OpenVDB I/O
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/alice-stubs
+      - name: Build (openvdb feature)
+        run: cargo build --lib --no-default-features --features openvdb
+      - name: Test (openvdb feature)
+        run: cargo test --lib --no-default-features --features openvdb vdb
+
+  bevy:
+    name: Bevy plugin (bindings/bevy/alice-sdf-bevy)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bindings/bevy/alice-sdf-bevy
+      - name: Install bevy build deps (Linux)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - name: Build (lib)
+        working-directory: bindings/bevy/alice-sdf-bevy
+        run: cargo build --lib
+      - name: Test (lib)
+        working-directory: bindings/bevy/alice-sdf-bevy
+        run: cargo test --lib
+
   physics:
     name: Bridge — ALICE-Physics (strict)
     needs: changes

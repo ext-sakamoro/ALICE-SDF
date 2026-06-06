@@ -158,6 +158,9 @@ pub mod asp_bridge;
 #[cfg(feature = "sdf-cache")]
 pub mod cache_bridge;
 
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub mod wasm;
+
 #[cfg(feature = "texture-fit")]
 pub mod texture;
 

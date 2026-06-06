@@ -41,6 +41,8 @@ asp = ["libasp"]  # ALICE-Streaming-Protocol SDF delivery bridge
 sdf-cache = ["dep:alice-cache"]  # ALICE-Cache SDF evaluation caching
 font = ["dep:alice-font"]  # ALICE-Font glyph SDF bridge
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
+wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
+openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
 all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
 unreal = ["ffi", "hlsl"]  # Unreal Engine integration (FFI + HLSL)
@@ -111,6 +113,13 @@ futures-channel = { version = "0.3", optional = true }
 
 # Image loading (optional, for texture-fit)
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
+
+# WebAssembly bindings (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+
+# OpenVDB I/O (optional)
+vdb-rs = { version = "0.6", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
