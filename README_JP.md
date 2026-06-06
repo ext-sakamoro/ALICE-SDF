@@ -2454,12 +2454,90 @@ alice_sdf_maya.add_sphere(radius=1.5, resolution=64)
 
 ### Nuke Python プラグイン (`bindings/nuke/`)
 
-Foundry Nuke 15+ 用 Python モジュール — `.asdf` をボリュームバイナリと 2D RGBA スライスへ書き出し、VFX コンポジット連携。
+Foundry Nuke 15 / 16+ 用 Python モジュール — `.asdf` をボリュームバイナリと 2D RGBA スライスへ書き出し、VFX コンポジット連携。
 
 ```python
 import alice_sdf_nuke
 alice_sdf_nuke.export_asdf_as_volume("/path/to/model.asdf", out_path="/tmp/model.alicevdb")
 ```
+
+### Cinema 4D Python プラグイン (`bindings/cinema4d/`)
+
+Maxon Cinema 4D 2024 / 2025 / 2026+ 用 Python モジュール — SDF プリミティブから `PolygonObject` を生成、`.asdf` を直接 C4D シーンに読み込み。
+
+```python
+import alice_sdf_c4d
+alice_sdf_c4d.add_sphere(radius=100.0, resolution=64)   # C4D 単位は cm
+alice_sdf_c4d.import_asdf("/path/to/model.asdf", bounds=(-300.0, 300.0), resolution=128)
+```
+
+### CAD 交換 — STEP / IGES
+
+SDF tree を tessellate して STEP AP203 (ISO 10303-21 ASCII Faceted BREP) または IGES (Entity 134/136 finite-element mesh) で書き出し可能。Fusion 360 / SolidWorks / OnShape / Rhino / AutoCAD / FreeCAD で開ける。
+
+```rust
+use alice_sdf::io::step::{export_step, StepConfig};
+use alice_sdf::io::iges::{export_iges, IgesConfig};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+export_step("sphere.step", &node, &StepConfig::default()).unwrap();
+export_iges("sphere.igs",  &node, &IgesConfig::default()).unwrap();
+```
+
+### `alice-sdf-openxr` — Native VR / AR ヘルパー (`bindings/openxr/`)
+
+[`openxr`](https://crates.io/crates/openxr) Rust バインディングの上に乗る薄いヘルパー。Meta Quest standalone (Android APK)、PC VR (SteamVR / Oculus PC)、Microsoft Mixed Reality、Apple Vision Pro (OpenXR backend) で動く。
+
+```rust
+use alice_sdf_openxr::{XrPose, raymarch_sphere};
+use glam::Vec3;
+
+// XR frame コールバック内で
+let head_pose: XrPose = openxr_pose.into();
+let hit_dist = raymarch_sphere(head_pose, Vec3::new(0.0, 1.5, -1.0), 0.3, 5.0);
+if hit_dist > 0.0 {
+    // コントローラ / ヘッドが球を見ている
+}
+```
+
+### `AliceSDFVisionOS` — Apple Vision Pro SwiftPM パッケージ (`mobile/swift-package-visionos/`)
+
+iOS / iPadOS / macOS と同じ `AliceSDF.xcframework` を再利用しつつ、visionOS / RealityKit 向けの `ModelEntity` ファクトリヘルパーを追加した SwiftPM パッケージ。
+
+```swift
+import SwiftUI
+import RealityKit
+import AliceSDFVisionOS
+
+struct ImmersiveView: View {
+    var body: some View {
+        RealityView { content in
+            let sphere = AliceSDFRealityKit.makeSphereEntity(radius: 0.1)
+            sphere.position = SIMD3(0, 1.5, -1.0)
+            content.add(sphere)
+        }
+    }
+}
+```
+
+### REST API サーバー (`server/`)
+
+`axum` + `tokio` ベースの HTTP サーバー。ALICE-SDF の primitive 評価と operation を JSON で公開。クラウド配信型 SDF UI (例: `alicelaw.net/sdf-metaverse`) のバックエンドを想定。
+
+```bash
+cd server && cargo run --release
+# → ALICE-SDF server listening on http://0.0.0.0:8787
+```
+
+```http
+POST /eval
+Content-Type: application/json
+
+{ "shape": "sphere", "point": [1, 0, 0], "params": { "radius": 1.0, "center": [0, 0, 0] } }
+```
+
+レスポンス: `{ "distance": 0.0 }`
 
 ---
 

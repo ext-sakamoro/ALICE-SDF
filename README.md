@@ -2465,12 +2465,90 @@ alice_sdf_maya.add_sphere(radius=1.5, resolution=64)
 
 ### Nuke Python Plugin (`bindings/nuke/`)
 
-Foundry Nuke 15+ Python module — exports `.asdf` to volume binary and 2D RGBA slices for compositing pipelines.
+Foundry Nuke 15 / 16+ Python module — exports `.asdf` to volume binary and 2D RGBA slices for compositing pipelines.
 
 ```python
 import alice_sdf_nuke
 alice_sdf_nuke.export_asdf_as_volume("/path/to/model.asdf", out_path="/tmp/model.alicevdb")
 ```
+
+### Cinema 4D Python Plugin (`bindings/cinema4d/`)
+
+Maxon Cinema 4D 2024 / 2025 / 2026+ Python module — generates `PolygonObject` from SDF primitives and imports `.asdf` directly into the C4D scene.
+
+```python
+import alice_sdf_c4d
+alice_sdf_c4d.add_sphere(radius=100.0, resolution=64)   # C4D units: cm
+alice_sdf_c4d.import_asdf("/path/to/model.asdf", bounds=(-300.0, 300.0), resolution=128)
+```
+
+### CAD Interchange — STEP / IGES
+
+ALICE-SDF can tessellate any SDF tree and export it as either STEP AP203 (ISO 10303-21 ASCII Faceted BREP) or IGES (Entity 134/136 finite-element mesh). Both formats are accepted by Fusion 360 / SolidWorks / OnShape / Rhino / AutoCAD / FreeCAD.
+
+```rust
+use alice_sdf::io::step::{export_step, StepConfig};
+use alice_sdf::io::iges::{export_iges, IgesConfig};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+export_step("sphere.step", &node, &StepConfig::default()).unwrap();
+export_iges("sphere.igs",  &node, &IgesConfig::default()).unwrap();
+```
+
+### `alice-sdf-openxr` — Native VR / AR Helpers (`bindings/openxr/`)
+
+A small Rust crate on top of the [`openxr`](https://crates.io/crates/openxr) bindings that turns ALICE-SDF distance queries into VR-friendly helpers. Works with Meta Quest standalone (Android APK), PC VR (SteamVR / Oculus PC), Microsoft Mixed Reality, and Apple Vision Pro via its OpenXR backend.
+
+```rust
+use alice_sdf_openxr::{XrPose, raymarch_sphere};
+use glam::Vec3;
+
+// inside an XRFrame callback
+let head_pose: XrPose = openxr_pose.into();
+let hit_dist = raymarch_sphere(head_pose, Vec3::new(0.0, 1.5, -1.0), 0.3, 5.0);
+if hit_dist > 0.0 {
+    // controller / head is looking at the sphere
+}
+```
+
+### `AliceSDFVisionOS` — Apple Vision Pro SwiftPM Package (`mobile/swift-package-visionos/`)
+
+A visionOS / RealityKit-flavoured Swift Package that wraps the same `AliceSDF.xcframework` used by the iOS / iPadOS / macOS targets and adds factory helpers for `ModelEntity`.
+
+```swift
+import SwiftUI
+import RealityKit
+import AliceSDFVisionOS
+
+struct ImmersiveView: View {
+    var body: some View {
+        RealityView { content in
+            let sphere = AliceSDFRealityKit.makeSphereEntity(radius: 0.1)
+            sphere.position = SIMD3(0, 1.5, -1.0)
+            content.add(sphere)
+        }
+    }
+}
+```
+
+### REST API Server (`server/`)
+
+An `axum` + `tokio` HTTP server that exposes ALICE-SDF primitive evaluation and operations over JSON — intended as the backend for cloud-served SDF UIs (e.g. `alicelaw.net/sdf-metaverse`).
+
+```bash
+cd server && cargo run --release
+# → ALICE-SDF server listening on http://0.0.0.0:8787
+```
+
+```http
+POST /eval
+Content-Type: application/json
+
+{ "shape": "sphere", "point": [1, 0, 0], "params": { "radius": 1.0, "center": [0, 0, 0] } }
+```
+
+Response: `{ "distance": 0.0 }`
 
 ---
 
