@@ -2,6 +2,67 @@
 
 All notable changes to ALICE-SDF are documented in this file.
 
+## [v1.5.0] - 2026-06-06
+
+### Added
+
+- **Mobile SDK (iOS / Android)** — `mobile/` 配下に [UniFFI](https://mozilla.github.io/uniffi-rs/) ベースの Swift / Kotlin 公開 SDK
+  - `mobile/uniffi-wrapper/` — UDL 定義 + Rust ラッパークレート (`sdfSphere` / `sdfBox` / `sdfTorus` / `sdfCylinder` / `sdfPlane` / `sdfRoundedBox` + 6 op + `sphereBatch` + version)
+  - `mobile/packaging/ios/build-xcframework.sh` — `AliceSDF.xcframework` (device 44MB + sim fat 88MB) 自動生成
+  - `mobile/packaging/android/build-aar.sh` — 4 ABI `libuniffi_alice_sdf.so` (250-400KB) + Kotlin bindings 自動生成
+  - `mobile/swift-package/Package.swift` — SwiftPM パッケージ (binaryTarget + Swift bindings 2層)
+  - `mobile/samples/ios-swiftui/` — SwiftUI サンプルアプリ (xcodegen + Bridging Header 方式)
+  - `mobile/samples/android-compose/` — Jetpack Compose サンプルアプリ (AGP 8.5.2 + Kotlin 2.0)
+  - 実機検証: iPhone 17 Pro Simulator (iOS 26.0) + Pixel 6 Emulator (Android 14 / API 34) で iOS と Android 数値完全一致 (sphere d=0.2806, smooth union=0.2056)
+- **Rendering metaverse features** — RenderConfig に分光レンダリング / 破壊 / VFX / マイクロ法線 / インテリアマッピング / dual SDF 還元
+- **`WgslShader::transpile_material()`** — WithMaterial サブツリーからマテリアル評価関数を WGSL 生成
+- **Terrain primitive** — 地形プリミティブ + フルレンダリングパイプライン
+- **`examples/sword.lol`** — LOL DSL で記述した剣のサンプル
+- **Unreal Engine 5.8 互換性確認** — `AliceSDF.uplugin` に `"EngineVersion": "5.7.0"` 明示、UE 5.7.0 〜 5.7.4 stable + 5.8.0-preview-1 で改修不要を実証 (Shader Parameter API: `FRHIBatchedShaderParameters` + `SetBatchedShaderParameters` + `FRHIBufferCreateDesc::CreateStructured` + `FRHIViewDesc::CreateBufferSRV/UAV`)
+- **README リンク**: ALICE SDF Metaverse demo (https://alicelaw.net/sdf-metaverse) + alicelaw.net repo を Related Projects に追加 (英日)
+
+### Changed
+
+- **CI/CD 大規模強化** (AI-Tencho 知見 Top 10 反映):
+  - `concurrency: cancel-in-progress` で連続 push 時の前 run 自動 cancel
+  - `dorny/paths-filter@v3` で README/docs only push の full CI skip
+  - `.github/actions/alice-stubs` composite action で dep stub 生成を DRY 化 (60行 × 2 jobs)
+  - `mobile` job 新規: iOS 3 target + Android 4 ABI cross-compile + Swift/Kotlin bindings 生成検証 + gpu (Metal) feature ビルド
+  - `clippy-strict` job: mobile/uniffi-wrapper のみ `RUSTFLAGS="-Dwarnings"` 厳格
+  - `nick-fields/retry@v3`: cargo build 3 リトライ (HTTP/2 framing layer 一過性失敗対策)
+  - `CARGO_NET_RETRY=5` + `CARGO_HTTP_MULTIPLEXING=false` env
+  - `fmt` job 拡張: core + mobile/uniffi-wrapper 両方
+- **Author email**: `Moroya Sakamoto <sakamoro@alicelaw.net>` に統一 (Cargo.toml authors)
+
+### Fixed
+
+- **`optimize.rs`**: 4 パスを値渡し化、未最適化ノードの deep clone 除去 (perf)
+- **BVH**: `split_off` 化、mipchain clone 除去、abm `read_to_end` 事前確保 (perf)
+- **`check_min_tests`**: 算術エラー修正、cargo 失敗時の安全な skip
+- **`ecosystem-tests` schedule**: 削除 (CI では兄弟クレート不在で動作不可)
+- **`transpile_material`** ヘルパー重複定義の排除
+- **cargo fmt** 差分修正 (CI rustfmt 互換)
+
+### Quality
+
+- **1,379 tests passing** (src/ 1,375 + mobile/uniffi-wrapper 4), 0 failed (+205 from v1.3.0)
+- 0 clippy pedantic+nursery warnings (core)
+- 0 clippy `-D warnings` (mobile wrapper、strict mode)
+- 0 fmt diffs (core + mobile)
+- CI matrix: macOS ARM64 + Linux x86_64 + Windows x86_64 + macOS Mobile cross-compile
+
+### Compatibility
+
+| Platform | Status |
+|----------|--------|
+| Linux x86_64 / aarch64 | 🟢 |
+| macOS Apple Silicon / Intel | 🟢 |
+| Windows x86_64 | 🟢 |
+| **iOS aarch64 / sim** | 🟢 v1.5.0 新規 |
+| **Android arm64-v8a / armv7 / x86_64 / x86** | 🟢 v1.5.0 新規 |
+| Unreal Engine 5.7.0 〜 5.7.4 (stable) | 🟢 |
+| Unreal Engine 5.8.0-preview-1 | 🟢 改修不要見込み |
+
 ## [v1.3.0] - 2026-03-14
 
 ### Added
