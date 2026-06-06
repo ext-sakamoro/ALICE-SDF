@@ -192,8 +192,32 @@ jobs:
         with:
           workspaces: ALICE-SDF
 
-      # --no-default-features --features physics のみ → alice-physics 以外の optional path dep は
-      # cfg で除外されるため、stub 作成は不要。alice-physics は ../ALICE-Physics で実体解決。
+      # alice-physics は実 clone、他の optional path dep (alice-codec/cache/font/libasp) は stub
+      # cargo は feature OFF でも path 存在を resolution 時に検証するため stub 必須
+      - name: Create non-physics bridge stubs
+        working-directory: ALICE-SDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in \
+              ALICE-Codec:alice-codec \
+              ALICE-Streaming-Protocol:libasp \
+              ALICE-Cache:alice-cache \
+              ALICE-Font:alice-font; do
+            dir="${entry%:*}"
+            crate="${entry#*:}"
+            mkdir -p "../${dir}/src"
+            cat > "../${dir}/Cargo.toml" <<TOML
+          [package]
+          name = "${crate}"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          path = "src/lib.rs"
+          TOML
+            : > "../${dir}/src/lib.rs"
+          done
+
       - name: Build (physics, strict)
         working-directory: ALICE-SDF
         run: cargo build --lib --no-default-features --features "physics"
