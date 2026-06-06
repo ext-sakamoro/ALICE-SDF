@@ -2399,6 +2399,36 @@ fn main() {
 
 See `bindings/bevy/alice-sdf-bevy/examples/sphere_demo.rs` for a full 3-shape demo with camera + light.
 
+### 3D Gaussian Splatting (`.splat`)
+
+Convert SDF surfaces into Inria 3DGS-compatible `.splat` files (32 bytes/splat: position + scale + RGBA + compressed quaternion). Drop-and-drop into any WebGL viewer (gsplat.tech / SuperSplat / antimatter15/splat).
+
+```rust
+use alice_sdf::io::splat::{sdf_to_splats, save_splat, SplatConfig};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+let cfg = SplatConfig { bounds: (-2.0, 2.0), resolution: 64, base_color: [220, 220, 240, 255] };
+let splats = sdf_to_splats(&node, &cfg);
+save_splat("sphere.splat", &splats).unwrap();
+```
+
+### Blender Add-on (`bindings/blender/`)
+
+Blender 4.0+ add-on. Imports `.asdf` directly and adds an "ALICE-SDF" N-panel with sphere/box/torus generators. Requires the `alice_sdf` Python module (built via `cargo build --release --features python`).
+
+Install: zip the `alice_sdf_blender/` folder and load via `Edit > Preferences > Add-ons > Install...`.
+
+### Houdini Python Plugin (`bindings/houdini/`)
+
+SideFX Houdini 20+ Python module + Python SOP code for `.asdf` loading and primitive generation. Auto-installer detects `$HSITE` / `$HOUDINI_USER_PREF_DIR`.
+
+```python
+import alice_sdf_hou
+sdf = alice_sdf_hou.sphere(1.0)
+alice_sdf_hou.sdf_to_hou_geo(sdf, hou.pwd().geometry(), bounds=(-2.0, 2.0), resolution=64)
+```
+
 ---
 
 ## Related Projects

@@ -21,6 +21,7 @@ mod json;
 pub mod nanite;
 pub mod obj;
 pub mod ply;
+pub mod splat;
 pub mod stl;
 pub mod threemf;
 pub mod ue5_asset;

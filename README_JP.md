@@ -2388,6 +2388,36 @@ fn main() {
 
 `bindings/bevy/alice-sdf-bevy/examples/sphere_demo.rs` にカメラ + ライト付きの 3 形状デモあり。
 
+### 3D Gaussian Splatting (`.splat`)
+
+SDF 表面を Inria 3DGS 互換 `.splat` ファイル (32 bytes/splat: position + scale + RGBA + 圧縮 quat) に変換。WebGL ベースのビューア (gsplat.tech / SuperSplat / antimatter15/splat) に drag&drop で即読込可能。
+
+```rust
+use alice_sdf::io::splat::{sdf_to_splats, save_splat, SplatConfig};
+use alice_sdf::prelude::*;
+
+let node = SdfNode::sphere(1.0);
+let cfg = SplatConfig { bounds: (-2.0, 2.0), resolution: 64, base_color: [220, 220, 240, 255] };
+let splats = sdf_to_splats(&node, &cfg);
+save_splat("sphere.splat", &splats).unwrap();
+```
+
+### Blender アドオン (`bindings/blender/`)
+
+Blender 4.0+ アドオン。`.asdf` を直接 import + N-panel に "ALICE-SDF" タブを追加して sphere / box / torus を生成。`alice_sdf` Python モジュール (`cargo build --release --features python`) が前提。
+
+インストール: `alice_sdf_blender/` を zip 化し、`Edit > Preferences > Add-ons > Install...` から有効化。
+
+### Houdini Python プラグイン (`bindings/houdini/`)
+
+SideFX Houdini 20+ 用 Python モジュール + Python SOP body (`.asdf` ローダー / プリミティブ生成)。`install.sh` が `$HSITE` / `$HOUDINI_USER_PREF_DIR` を自動検出してコピー。
+
+```python
+import alice_sdf_hou
+sdf = alice_sdf_hou.sphere(1.0)
+alice_sdf_hou.sdf_to_hou_geo(sdf, hou.pwd().geometry(), bounds=(-2.0, 2.0), resolution=64)
+```
+
 ---
 
 ## 関連プロジェクト

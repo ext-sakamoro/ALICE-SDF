@@ -2,6 +2,14 @@
 
 All notable changes to ALICE-SDF are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **3D Gaussian Splatting I/O** (`src/io/splat.rs`) — Inria 3DGS 互換 `.splat` バイナリ (32 bytes/splat: pos + scale + RGBA + compressed quat) の読書き、`sdf_to_splats()` で SDF 表面近傍を Gaussian Splat 化、4 tests
+- **Blender Add-on** (`bindings/blender/`) — Blender 4.0+ プラグイン: `.asdf` Import operator + sphere/box/torus 生成 operator + N-panel UI、PyO3 alice_sdf binding 経由
+- **Houdini Python plugin** (`bindings/houdini/`) — Houdini 20+ 用 Python module + Python SOP body (loader + primitive generator) + 自動 install.sh、HSITE/HOUDINI_USER_PREF_DIR/HFS 自動検出
+
 ## [v1.6.0] - 2026-06-06
 
 ### Added
