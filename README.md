@@ -2287,6 +2287,8 @@ For complex scenes, LOL typically uses **3-4x fewer tokens**, which reduces both
 | **ALICE-LOL** | Law-Oriented Language — `lol!` proc_macro DSL for declarative SDF scene authoring (76 constructs, GLSL/WGSL/HLSL transpile, law constraints, spatial pruning) | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
 | **ALICE Ecosystem** | 52-component edge-to-cloud data pipeline | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
 | **AI Modeler SaaS** | Browser-based 3D modeling powered by ALICE-SDF | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |
+| **ALICE SDF Metaverse** | Live browser demo — WebGL2 raymarching world with JS-side CCD physics, runs ALICE-SDF concepts in the browser | [Demo](https://alicelaw.net/sdf-metaverse) |
+| **alicelaw.net** | Personal site source — Cloudflare Pages + Pages Functions QR router (`/0x01`-`/0xFF`), hosts the SDF Metaverse demo | [GitHub](https://github.com/ext-sakamoro/alicelaw-net) |
 
 ---
 

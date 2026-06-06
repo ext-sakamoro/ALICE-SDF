@@ -2275,6 +2275,8 @@ let field = CompiledSdfField::new(scene);
 | **Open Source SDF Assets** | ALICE-SDFで変換した991個のCC0 3Dアセット（.asdf.json形式） | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
 | **ALICE Ecosystem** | 52コンポーネントのエッジtoクラウドデータパイプライン | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
 | **AI Modeler SaaS** | ALICE-SDFを搭載したブラウザベース3Dモデリング | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |
+| **ALICE SDF Metaverse** | ブラウザ実行デモ — WebGL2 レイマーチング世界 + JS 側 CCD 物理、ALICE-SDF の思想をブラウザで実証 | [Demo](https://alicelaw.net/sdf-metaverse) |
+| **alicelaw.net** | 個人サイトソース — Cloudflare Pages + Pages Functions QR ルーター (`/0x01`〜`/0xFF`)、SDF Metaverse デモのホスト | [GitHub](https://github.com/ext-sakamoro/alicelaw-net) |
 
 ---
 
