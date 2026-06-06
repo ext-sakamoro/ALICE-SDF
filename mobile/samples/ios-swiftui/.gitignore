@@ -1,0 +1,9 @@
+# Xcode build artifacts
+DerivedData/
+build/
+*.xcuserdatad
+*.xcuserstate
+.swiftpm/
+
+# xcodegen で生成される (.xcodeproj は再現可能、再生成推奨)
+AliceSDFDemo.xcodeproj/

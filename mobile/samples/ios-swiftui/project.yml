@@ -1,0 +1,51 @@
+name: AliceSDFDemo
+options:
+  bundleIdPrefix: net.alicelaw
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+packages:
+  AliceSDF:
+    path: ../../swift-package
+
+targets:
+  AliceSDFDemo:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: AliceSDFDemo
+        excludes:
+          - alice_sdf.swift
+    dependencies:
+      - package: AliceSDF
+        product: AliceSDF
+    info:
+      path: AliceSDFDemo/Info.plist
+      properties:
+        CFBundleDisplayName: "ALICE-SDF Demo"
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.alicelaw.AliceSDFDemo
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        ENABLE_BITCODE: "NO"
+
+schemes:
+  AliceSDFDemo:
+    build:
+      targets:
+        AliceSDFDemo: all
+    run:
+      config: Debug
