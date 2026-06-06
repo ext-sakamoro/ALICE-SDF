@@ -6,10 +6,6 @@ options:
   developmentLanguage: en
   createIntermediateGroups: true
 
-packages:
-  AliceSDF:
-    path: ../../swift-package
-
 targets:
   AliceSDFDemo:
     type: application
@@ -17,11 +13,9 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: AliceSDFDemo
-        excludes:
-          - alice_sdf.swift
     dependencies:
-      - package: AliceSDF
-        product: AliceSDF
+      - framework: ../../uniffi-wrapper/target/xcframework/AliceSDF.xcframework
+        embed: false
     info:
       path: AliceSDFDemo/Info.plist
       properties:
@@ -41,6 +35,13 @@ targets:
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGNING_ALLOWED: "NO"
         ENABLE_BITCODE: "NO"
+        # Bridging Header — alice_sdfFFI.h を Swift 側に直接 bridge
+        SWIFT_OBJC_BRIDGING_HEADER: "AliceSDFDemo/AliceSDFDemo-Bridging-Header.h"
+        # XCFramework の Headers/ を C プリプロセッサの探索パスに追加
+        HEADER_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/../../uniffi-wrapper/target/xcframework/AliceSDF.xcframework/ios-arm64/Headers"
+          - "$(SRCROOT)/../../uniffi-wrapper/target/xcframework/AliceSDF.xcframework/ios-arm64_x86_64-simulator/Headers"
 
 schemes:
   AliceSDFDemo:

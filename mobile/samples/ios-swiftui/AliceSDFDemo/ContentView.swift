@@ -1,5 +1,4 @@
 import SwiftUI
-import AliceSDF
 
 struct ContentView: View {
     @State private var sphereYOffset: Float = 0.8

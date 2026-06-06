@@ -30,29 +30,29 @@ xcodebuild -project AliceSDFDemo.xcodeproj \
   build
 ```
 
-## ⚠️ 既知の問題 (Lv3 残課題)
+## ✅ 動作確認済 (2026-06-06, iPhone 17 Pro Simulator)
 
-xcodegen + XCFramework 直接依存だと、UniFFI が生成する `alice_sdfFFI` モジュールが
-Swift compiler から見えず、
+`Bridging Header 方式` で完全動作。`screenshots/AliceSDF-demo.png` 参照。
+
+### 動作する設定の鍵
+
+1. `AliceSDFDemo-Bridging-Header.h` で `#import "alice_sdfFFI.h"` (C ヘッダ直接 import)
+2. `project.yml` の `SWIFT_OBJC_BRIDGING_HEADER` に bridging header path 指定
+3. `HEADER_SEARCH_PATHS` に xcframework の `ios-arm64/Headers` と `ios-arm64_x86_64-simulator/Headers` 両方追加
+4. xcframework 自体は `dependencies.framework` で参照 (`embed: false`、static lib なので)
+
+### 罠だった点
+
+xcodegen + XCFramework 直接依存だと、UniFFI が生成する `alice_sdfFFI.modulemap`
+は自動的に Swift compiler に認識されない。Swift bindings の
+`#if canImport(alice_sdfFFI)` チェックが false 倒れし、
 
 ```
 cannot find 'uniffi_alice_sdf_mobile_checksum_func_*' in scope
 ```
 
-エラーで失敗する。`#if canImport(alice_sdfFFI)` のチェックが false に倒れるため。
-
-### 暫定回避策 (検証中)
-
-1. SwiftPM パッケージ (`mobile/swift-package/`) 経由で取り込む — モジュール解決を SPM に委譲
-2. Bridging Header (`AliceSDFDemo-Bridging-Header.h`) で `#import "alice_sdfFFI.h"` 直接 import
-3. 手動で Xcode を開き、Drag & Drop で XCFramework を追加 (Xcode の自動セットアップ任せ)
-
-### 一方確実に動く構成
-
-- iOS 実機 / シミュレータ向けに xcframework ビルド: **OK** ✅
-- Swift bindings (alice_sdf.swift) 生成: **OK** ✅
-- SwiftPM package 構造定義 (`mobile/swift-package/Package.swift`): **OK** ✅
-- アプリ統合 / SwiftUI 起動: **検証中** (上記)
+エラーで失敗する。Bridging Header 経由で C ABI を bridge することで Swift 側に
+シンボルを露出させ、`canImport` 失敗時のフォールバック (C 関数の直接呼出) が動く。
 
 ## 期待される画面 (実装目標)
 
