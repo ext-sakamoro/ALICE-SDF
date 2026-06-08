@@ -5,7 +5,6 @@ use numpy::{IntoPyArray, PyArray1, PyArray2};
 use pyo3::prelude::*;
 
 use crate::mesh::MarchingCubesConfig;
-use crate::types::SdfNode;
 
 use super::helpers::{mesh_to_numpy, with_numpy_as_vec3};
 
@@ -13,8 +12,6 @@ use super::helpers::{mesh_to_numpy, with_numpy_as_vec3};
 #[pyclass(name = "CompiledSdf")]
 pub struct PyCompiledSdf {
     pub(crate) compiled: crate::compiled::CompiledSdf,
-    /// Original node retained for mesh generation (sdf_to_mesh needs SdfNode)
-    pub(crate) source_node: SdfNode,
 }
 
 #[pymethods]

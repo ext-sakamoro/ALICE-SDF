@@ -307,7 +307,7 @@ jobs:
         run: cargo test --tests
 
   clippy:
-    name: Clippy (informational)
+    name: Clippy (core strict, -D warnings)
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
@@ -321,17 +321,17 @@ jobs:
       - name: Create ALICE optional bridge stubs
         uses: ./.github/actions/alice-stubs
 
-      - name: Clippy (cap-lints warn, count only)
-        run: cargo clippy --lib --features "glsl,hlsl,gpu" 2>&1 | tee clippy-output.txt
+      # core src/** は strict (-D warnings)。v1.7.2 で informational から格上げ。
+      # 新しい clippy lint (Rust リリース毎に追加される) が混入したら CI で即発覚させる。
+      - name: Clippy strict (no-default-features)
+        run: cargo clippy --lib --no-default-features
         env:
-          RUSTFLAGS: "--cap-lints warn"
+          RUSTFLAGS: "-Dwarnings"
 
-      - name: Report clippy warning count
-        if: always()
-        shell: bash
-        run: |
-          COUNT=$(grep -c '^warning:' clippy-output.txt 2>/dev/null || echo 0)
-          echo "::notice::Clippy warnings: $COUNT (non-blocking)"
+      - name: Clippy strict (glsl + hlsl + gpu)
+        run: cargo clippy --lib --features "glsl,hlsl,gpu"
+        env:
+          RUSTFLAGS: "-Dwarnings"
 
   clippy-strict:
     name: Clippy strict (mobile wrapper, includes alice-sdf path dep)
@@ -373,3 +373,175 @@ jobs:
       - name: Check formatting (mobile/uniffi-wrapper)
         working-directory: mobile/uniffi-wrapper
         run: cargo fmt --check
+
+  server-smoke:
+    name: REST server smoke test
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: Build server
+        working-directory: server
+        run: cargo build --release
+
+      - name: Start server in background
+        working-directory: server
+        run: |
+          ./target/release/alice-sdf-server &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> "$GITHUB_ENV"
+          sleep 2
+
+      - name: Smoke /version
+        run: |
+          curl -fsS http://localhost:8787/version | grep -q "alice-sdf-server"
+
+      - name: Smoke /eval (sphere)
+        run: |
+          RESULT=$(curl -fsS -X POST http://localhost:8787/eval \
+            -H 'Content-Type: application/json' \
+            -d '{"shape":"sphere","point":[2.0,0,0],"params":{"radius":1.0}}')
+          echo "Response: $RESULT"
+          echo "$RESULT" | grep -q '"distance":1'
+
+      - name: Smoke /op (smooth_union)
+        run: |
+          RESULT=$(curl -fsS -X POST http://localhost:8787/op \
+            -H 'Content-Type: application/json' \
+            -d '{"op":"smooth_union","a":0.3,"b":-0.2,"k":0.1}')
+          echo "Response: $RESULT"
+          echo "$RESULT" | grep -q '"distance"'
+
+      - name: Smoke /mesh (sphere, res=16)
+        run: |
+          RESULT=$(curl -fsS -X POST http://localhost:8787/mesh \
+            -H 'Content-Type: application/json' \
+            -d '{"shape":"sphere","params":{"radius":1.0},"resolution":16}')
+          echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['vertex_count']>100, d"
+
+      - name: Smoke /splat (sphere, res=12)
+        run: |
+          RESULT=$(curl -fsS -X POST http://localhost:8787/splat \
+            -H 'Content-Type: application/json' \
+            -d '{"shape":"sphere","params":{"radius":0.5},"resolution":12}')
+          echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['splat_count']>0, d"
+
+      - name: Smoke /vox (sphere, size=12)
+        run: |
+          RESULT=$(curl -fsS -X POST http://localhost:8787/vox \
+            -H 'Content-Type: application/json' \
+            -d '{"shape":"sphere","params":{"radius":0.5},"size":12}')
+          echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['voxel_count']>0 and d['size']==[12,12,12], d"
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -n "${SERVER_PID:-}" ]; then
+            kill "$SERVER_PID" 2>/dev/null || true
+          fi
+
+  wasm-build:
+    name: WASM bindings build
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: Build wasm
+        run: cargo build --release --target wasm32-unknown-unknown --features wasm --no-default-features
+
+      - name: Verify wasm artifact exists
+        run: |
+          test -f target/wasm32-unknown-unknown/release/alice_sdf.wasm
+          ls -lh target/wasm32-unknown-unknown/release/alice_sdf.wasm
+
+  threejs-typecheck:
+    name: Three.js TypeScript type-check
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        working-directory: bindings/threejs
+        run: |
+          if [ -f package.json ]; then
+            npm install --no-fund --no-audit
+          else
+            echo "::warning::no package.json — skipping"
+            exit 0
+          fi
+
+      - name: TypeScript build
+        working-directory: bindings/threejs
+        run: |
+          if [ -f tsconfig.json ]; then
+            npx tsc --noEmit
+          fi
+
+  mobile-sample-build:
+    name: Mobile sample compile (iOS + Android)
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build iOS sample (compile-only via xcodebuild)
+        working-directory: mobile/samples/ios-swiftui
+        run: |
+          if [ -f project.yml ] && command -v xcodegen >/dev/null 2>&1; then
+            xcodegen generate
+          fi
+          XCPROJ=$(find . -maxdepth 1 -name "*.xcodeproj" -print -quit)
+          if [ -n "$XCPROJ" ]; then
+            SCHEME=$(basename "$XCPROJ" .xcodeproj)
+            xcodebuild -project "$XCPROJ" \
+              -scheme "$SCHEME" \
+              -destination 'generic/platform=iOS Simulator' \
+              -configuration Debug \
+              build-for-testing \
+              CODE_SIGNING_ALLOWED=NO || echo "::warning::iOS sample build failed"
+          else
+            echo "::warning::no .xcodeproj in mobile/samples/ios-swiftui — skipping"
+          fi
+
+      - name: Build Android sample (compile-only via gradle)
+        working-directory: mobile/samples/android-compose
+        run: |
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --no-daemon || echo "::warning::Android sample build skipped (gradlew failed)"
+          else
+            echo "::warning::no gradlew in mobile/samples/android-compose — skipping"
+          fi

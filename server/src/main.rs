@@ -10,16 +10,38 @@ use alice_sdf::io::vox::{sdf_to_vox, VoxConfig};
 use alice_sdf::mesh::MarchingCubesConfig;
 use alice_sdf::types::SdfNode;
 use axum::{
-    extract::Json,
-    http::StatusCode,
-    response::IntoResponse,
+    extract::{Json, Request, State},
+    http::{HeaderMap, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use tower_http::cors::CorsLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
+
+/// Resolution / size の許容範囲
+const MESH_RESOLUTION_MIN: usize = 8;
+const MESH_RESOLUTION_MAX: usize = 192;
+const SPLAT_RESOLUTION_MIN: u32 = 8;
+const SPLAT_RESOLUTION_MAX: u32 = 96;
+const VOX_SIZE_MIN: u32 = 4;
+const VOX_SIZE_MAX: u32 = 96;
+
+/// JSON body 上限 1 MiB
+const BODY_LIMIT_BYTES: usize = 1 * 1024 * 1024;
+
+/// アプリ全体で共有する設定
+#[derive(Clone)]
+struct AppState {
+    /// `ALICE_SDF_TOKEN` env が空でない場合に bearer 必須化
+    auth_token: Option<Arc<String>>,
+}
 
 #[derive(Serialize)]
 struct VersionResponse {
@@ -246,8 +268,18 @@ async fn handler_mesh(
     } else {
         (Vec3::splat(-2.0), Vec3::splat(2.0))
     };
+    let res = req.resolution.unwrap_or(64);
+    if !(MESH_RESOLUTION_MIN..=MESH_RESOLUTION_MAX).contains(&res) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "resolution {res} out of range [{}, {}]",
+                MESH_RESOLUTION_MIN, MESH_RESOLUTION_MAX
+            ),
+        ));
+    }
     let cfg = MarchingCubesConfig {
-        resolution: req.resolution.unwrap_or(64).clamp(8, 192),
+        resolution: res,
         iso_level: 0.0,
         compute_normals: true,
         compute_uvs: false,
@@ -345,9 +377,19 @@ async fn handler_splat(
     };
     let node = spec.to_node()?;
 
+    let res = req.resolution.unwrap_or(32);
+    if !(SPLAT_RESOLUTION_MIN..=SPLAT_RESOLUTION_MAX).contains(&res) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "resolution {res} out of range [{}, {}]",
+                SPLAT_RESOLUTION_MIN, SPLAT_RESOLUTION_MAX
+            ),
+        ));
+    }
     let cfg = SplatConfig {
         bounds: req.bounds.unwrap_or((-2.0, 2.0)),
-        resolution: req.resolution.unwrap_or(32).clamp(8, 96),
+        resolution: res,
         base_color: req.base_color.unwrap_or([255, 255, 255, 255]),
     };
     let splats = sdf_to_splats(&node, &cfg);
@@ -409,8 +451,18 @@ async fn handler_vox(
         params: req.params,
     };
     let node = spec.to_node()?;
+    let size = req.size.unwrap_or(32);
+    if !(VOX_SIZE_MIN..=VOX_SIZE_MAX).contains(&size) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "size {size} out of range [{}, {}]",
+                VOX_SIZE_MIN, VOX_SIZE_MAX
+            ),
+        ));
+    }
     let cfg = VoxConfig {
-        size: req.size.unwrap_or(32).clamp(4, 96),
+        size,
         bounds: req.bounds.unwrap_or((-1.5, 1.5)),
         color_index: req.color_index.unwrap_or(1).max(1),
     };
@@ -434,11 +486,64 @@ async fn handler_vox(
     }))
 }
 
+/// Bearer token middleware
+///
+/// `state.auth_token` が `Some(_)` の時のみ `Authorization: Bearer <token>` を要求する。
+/// `None` (= env 未設定) なら no-op。`GET /` と `GET /version` は常に通す。
+async fn auth_middleware(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    req: Request,
+    next: Next,
+) -> Response {
+    let Some(expected) = state.auth_token.as_deref() else {
+        return next.run(req).await;
+    };
+    let path = req.uri().path();
+    if path == "/" || path == "/version" {
+        return next.run(req).await;
+    }
+    let presented = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "));
+    if presented == Some(expected.as_str()) {
+        next.run(req).await
+    } else {
+        (StatusCode::UNAUTHORIZED, "missing or invalid Bearer token").into_response()
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    let state = AppState {
+        auth_token: std::env::var("ALICE_SDF_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(Arc::new),
+    };
+    let auth_enabled = state.auth_token.is_some();
+
+    // Rate limit: per-IP, 60 burst / 1 req/sec sustain (env で上書き可能)
+    let per_sec: u64 = std::env::var("ALICE_SDF_RPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20);
+    let burst: u32 = std::env::var("ALICE_SDF_BURST")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(60);
+    let governor_cfg = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(per_sec)
+            .burst_size(burst)
+            .finish()
+            .expect("governor config"),
+    );
 
     let app = Router::new()
         .route("/", get(handler_version))
@@ -448,6 +553,15 @@ async fn main() {
         .route("/mesh", post(handler_mesh))
         .route("/splat", post(handler_splat))
         .route("/vox", post(handler_vox))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
+        .with_state(state)
+        .layer(RequestBodyLimitLayer::new(BODY_LIMIT_BYTES))
+        .layer(GovernorLayer {
+            config: governor_cfg,
+        })
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
@@ -455,8 +569,17 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("bind failed");
-    tracing::info!("ALICE-SDF server listening on http://{addr}");
-    axum::serve(listener, app).await.expect("serve failed");
+    tracing::info!(
+        "ALICE-SDF server listening on http://{addr} (auth={}, rate={per_sec}/s burst={burst}, body_limit={}MB)",
+        if auth_enabled { "enabled" } else { "disabled" },
+        BODY_LIMIT_BYTES / (1024 * 1024)
+    );
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .expect("serve failed");
 }
 
 // ── tests ─────────────────────────────────────────────────────────────

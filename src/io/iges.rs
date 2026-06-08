@@ -111,9 +111,7 @@ fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::
     sseq += 1;
 
     // ==== GLOBAL SECTION ====
-    let global = format!(
-        "1H,,1H;,4HSDF1,8Halice.igs,12HALICE-SDF v16,12HALICE-SDF v16,32,38,6,308,15,4HSDF1,1.,2,2HMM,50,0.125,15H20260606.000000,1.E-007,1000.,12HALICE-SDF,9HSakamoto,11,0,15H20260606.000000;"
-    );
+    let global = "1H,,1H;,4HSDF1,8Halice.igs,12HALICE-SDF v16,12HALICE-SDF v16,32,38,6,308,15,4HSDF1,1.,2,2HMM,50,0.125,15H20260606.000000,1.E-007,1000.,12HALICE-SDF,9HSakamoto,11,0,15H20260606.000000;";
     let mut start = 0;
     while start < global.len() {
         let end = (start + 72).min(global.len());

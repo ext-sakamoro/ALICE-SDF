@@ -1,9 +1,17 @@
 #!/bin/bash
-# ALICE-SDF Mobile — iOS XCFramework build script
+# ALICE-SDF Mobile — iOS / visionOS XCFramework build script
 #
 # Output: ../../uniffi-wrapper/target/xcframework/AliceSDF.xcframework + Swift bindings
 #
-# Usage: ./build-xcframework.sh
+# Targets:
+#   - iOS device (aarch64-apple-ios)
+#   - iOS simulator (aarch64 + x86_64 via lipo)
+#   - visionOS device (aarch64-apple-visionos) — Xcode 15.2+ + nightly Rust 推奨
+#   - visionOS simulator (aarch64-apple-visionos-sim)
+#
+# Usage:
+#   ./build-xcframework.sh                  # iOS のみ
+#   ./build-xcframework.sh --with-visionos  # iOS + visionOS
 
 set -euo pipefail
 
@@ -13,28 +21,52 @@ TARGET_DIR="$WRAPPER_DIR/target"
 OUT_DIR="$TARGET_DIR/xcframework"
 LIB_NAME="libalice_sdf_mobile.a"
 
-echo "=== ALICE-SDF iOS XCFramework Build ==="
+WITH_VISIONOS=false
+for arg in "$@"; do
+  if [ "$arg" = "--with-visionos" ]; then
+    WITH_VISIONOS=true
+  fi
+done
+
+echo "=== ALICE-SDF iOS/visionOS XCFramework Build ==="
 echo "Wrapper: $WRAPPER_DIR"
 echo "Out:     $OUT_DIR"
+echo "visionOS: $WITH_VISIONOS"
 
-# 1. Build static libraries for 3 iOS targets
-TARGETS=("aarch64-apple-ios" "aarch64-apple-ios-sim" "x86_64-apple-ios")
-for target in "${TARGETS[@]}"; do
+# 1. iOS targets
+IOS_TARGETS=("aarch64-apple-ios" "aarch64-apple-ios-sim" "x86_64-apple-ios")
+for target in "${IOS_TARGETS[@]}"; do
   echo ""
   echo ">>> Building $target..."
   (cd "$WRAPPER_DIR" && cargo build --release --target "$target")
 done
 
-# 2. Combine simulator slices (arm64 + x86_64) via lipo
+# 2. visionOS targets (optional, nightly Rust 必要)
+if [ "$WITH_VISIONOS" = "true" ]; then
+  VISIONOS_TARGETS=("aarch64-apple-visionos" "aarch64-apple-visionos-sim")
+  for target in "${VISIONOS_TARGETS[@]}"; do
+    echo ""
+    echo ">>> Building $target (nightly + -Z build-std)..."
+    # visionOS の Rust target は Tier 3 で nightly + -Z build-std=panic_abort,std が必要
+    (cd "$WRAPPER_DIR" && \
+      rustup target list --installed | grep -q "$target" || rustup +nightly target add "$target" || true)
+    (cd "$WRAPPER_DIR" && \
+      cargo +nightly build --release --target "$target" \
+      -Z build-std=panic_abort,std \
+      --target-dir "$TARGET_DIR")
+  done
+fi
+
+# 3. lipo simulator slices (arm64 + x86_64) for iOS
 mkdir -p "$OUT_DIR/sim"
 echo ""
-echo ">>> lipo simulator slices..."
+echo ">>> lipo iOS simulator slices..."
 lipo -create \
   "$TARGET_DIR/aarch64-apple-ios-sim/release/$LIB_NAME" \
   "$TARGET_DIR/x86_64-apple-ios/release/$LIB_NAME" \
   -output "$OUT_DIR/sim/$LIB_NAME"
 
-# 3. Generate Swift bindings via UniFFI
+# 4. Generate Swift bindings via UniFFI
 echo ""
 echo ">>> Generating Swift bindings..."
 mkdir -p "$OUT_DIR/swift"
@@ -43,15 +75,29 @@ mkdir -p "$OUT_DIR/swift"
   --language swift \
   --out-dir "$OUT_DIR/swift")
 
-# 4. Build XCFramework (device + simulator)
+# 5. Build XCFramework (iOS device + simulator [+ visionOS])
 echo ""
 echo ">>> Building XCFramework..."
 rm -rf "$OUT_DIR/AliceSDF.xcframework"
+
+XCFRAMEWORK_ARGS=(
+  -library "$TARGET_DIR/aarch64-apple-ios/release/$LIB_NAME"
+  -headers "$OUT_DIR/swift"
+  -library "$OUT_DIR/sim/$LIB_NAME"
+  -headers "$OUT_DIR/swift"
+)
+
+if [ "$WITH_VISIONOS" = "true" ]; then
+  XCFRAMEWORK_ARGS+=(
+    -library "$TARGET_DIR/aarch64-apple-visionos/release/$LIB_NAME"
+    -headers "$OUT_DIR/swift"
+    -library "$TARGET_DIR/aarch64-apple-visionos-sim/release/$LIB_NAME"
+    -headers "$OUT_DIR/swift"
+  )
+fi
+
 xcodebuild -create-xcframework \
-  -library "$TARGET_DIR/aarch64-apple-ios/release/$LIB_NAME" \
-  -headers "$OUT_DIR/swift" \
-  -library "$OUT_DIR/sim/$LIB_NAME" \
-  -headers "$OUT_DIR/swift" \
+  "${XCFRAMEWORK_ARGS[@]}" \
   -output "$OUT_DIR/AliceSDF.xcframework"
 
 echo ""

@@ -18,12 +18,9 @@ use super::node::PySdfNode;
 /// Compile an SDF for fast evaluation (GIL released during bytecode generation)
 #[pyfunction]
 pub fn compile_sdf(py: Python<'_>, node: &PySdfNode) -> PyCompiledSdf {
-    let source_node = node.inner.clone();
-    let compiled = py.allow_threads(|| crate::compiled::CompiledSdf::compile(&source_node));
-    PyCompiledSdf {
-        compiled,
-        source_node,
-    }
+    let node_ref = &node.inner;
+    let compiled = py.allow_threads(|| crate::compiled::CompiledSdf::compile(node_ref));
+    PyCompiledSdf { compiled }
 }
 
 /// Evaluate compiled SDF at multiple points (NumPy array, GIL released)

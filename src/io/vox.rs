@@ -69,7 +69,7 @@ impl Default for VoxConfig {
 ///
 /// `eval(p) <= 0` の voxel を内部とみなして color_index を設定する。
 pub fn sdf_to_vox(node: &SdfNode, cfg: &VoxConfig) -> VoxModel {
-    let n = cfg.size.min(256).max(1);
+    let n = cfg.size.clamp(1, 256);
     let (lo, hi) = cfg.bounds;
     let step = (hi - lo) / n.max(1) as f32;
     let mut voxels = Vec::new();

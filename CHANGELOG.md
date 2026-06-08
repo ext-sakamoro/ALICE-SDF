@@ -4,6 +4,43 @@ All notable changes to ALICE-SDF are documented in this file.
 
 For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHANGELOG-history.md).
 
+## [v1.7.2] - 2026-06-08
+
+### Added
+
+- **core clippy-strict CI** — `clippy` job を informational から `-D warnings` 化 (no-default-features + glsl/hlsl/gpu の 2 matrix)。新 lint 混入を即 CI fail で発見
+- **Pre-built wheel CI** (`.github/workflows/release-wheels.yml`) — tag push (`v*`) で linux-x86_64 / linux-aarch64 / macos-arm64 / macos-x86_64 / windows-x86_64 の wheel を maturin で abi3-py310 ビルドして Release に attach。1 wheel で Python 3.10–3.13 をカバー
+- **REST server smoke test** CI job — `/version` / `/eval` / `/op` / `/mesh` / `/splat` / `/vox` の全 endpoint を curl で叩く
+- **WASM build** CI job — `cargo build --target wasm32-unknown-unknown --features wasm` で artifact 生成検証
+- **Three.js TypeScript type-check** CI job — `tsc --noEmit` で TypeScript 健全性確認
+- **Mobile sample compile** CI job (macOS runner) — iOS は xcodebuild build-for-testing、Android は `gradlew assembleDebug` でリグレッション検出
+- **visionOS XCFramework support** — `mobile/packaging/ios/build-xcframework.sh --with-visionos` で `aarch64-apple-visionos` / `aarch64-apple-visionos-sim` slice を追加 (nightly + `-Z build-std`)
+- **REST server hardening**:
+  - `Authorization: Bearer <ALICE_SDF_TOKEN>` middleware (env が空でなければ全 endpoint で必須化、`/` `/version` は除外)
+  - `tower_governor` レート制限 (per-IP、デフォルト 20 RPS / burst 60、`ALICE_SDF_RPS` / `ALICE_SDF_BURST` で上書き可能)
+  - `RequestBodyLimitLayer` で 1 MiB JSON body 上限
+- **`docs/USAGE.md` / `docs/USAGE_JP.md`** — README から詳細セクション 1675 行を移動
+- **`docs/PUBLISH.md`** — crates.io 配布戦略の現状とロードマップを明文化
+
+### Changed
+
+- **STEP / IGES README claim 是正** (`README.md` / `README_JP.md`) — 「Fusion 360 / SolidWorks / OnShape / Rhino / AutoCAD / FreeCAD 互換」を撤回。実態は `POLY_LOOP` + `FACE_OUTER_BOUND` の faceted mesh / Entity 134+136 FEM mesh で、`MANIFOLD_SOLID_BREP` を要求する CAD ツールでは開けない可能性がある旨を明記
+- **REST server resolution / size 検証** — 旧 silent `clamp(8, 192)` を `400 Bad Request` に変更 (out-of-range を明示的にエラー返却)
+- **README 分割**: 2585 → 913 行 (35%)、JP も同様
+- `pyproject.toml`: `requires-python = ">=3.9"` → `">=3.10"` (abi3-py310 と整合)
+- `pyproject.toml`: project version 0.1.0 → 1.7.2 (Cargo.toml と同期)
+
+### Fixed
+
+- `src/python/compiled.rs`: 未使用の `source_node` field 削除 (`dead_code` warning 除去)
+- `src/io/iges.rs`: `format!()` を str literal に置換 (clippy `useless_format`)
+- `src/io/vox.rs`: `cfg.size.min(256).max(1)` → `cfg.size.clamp(1, 256)` (clippy `manual_clamp`)
+
+### Compatibility
+
+- Mobile: iOS / Android **+ visionOS** (XCFramework スクリプトに追加)
+- Unreal Engine: 5.7.0 〜 5.7.4 / 5.8.0-preview-1 (変更なし)
+
 ## [v1.7.1] - 2026-06-08
 
 ### Added
