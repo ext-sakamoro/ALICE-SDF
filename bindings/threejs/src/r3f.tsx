@@ -16,6 +16,9 @@
 
 import { useEffect, useState } from "react";
 import type { Texture } from "three";
+// @react-three/fiber の module augmentation で `<mesh>` 等 JSX intrinsic を定義させる。
+// 型情報のみ読み込むので runtime には何も追加しない。
+import "@react-three/fiber";
 
 import { AliceSDF, type Vec3 } from "./index";
 

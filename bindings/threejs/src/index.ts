@@ -259,7 +259,12 @@ export class AliceSDF {
   ): Promise<Texture> {
     const three = await import("three");
     const rgba = this.renderSphereSlice(width, height, center, radius, halfRange);
-    const tex = new three.DataTexture(rgba, width, height, three.RGBAFormat, three.UnsignedByteType);
+    // TypeScript 5.7+ は Uint8Array<ArrayBufferLike> を `BufferSource` (ArrayBuffer-backed)
+    // と互換と認めない (SharedArrayBuffer 可能性のため)。明示的に ArrayBuffer に copy する。
+    const ab = new ArrayBuffer(rgba.byteLength);
+    new Uint8Array(ab).set(rgba);
+    const buf = new Uint8Array(ab);
+    const tex = new three.DataTexture(buf, width, height, three.RGBAFormat, three.UnsignedByteType);
     tex.needsUpdate = true;
     return tex;
   }

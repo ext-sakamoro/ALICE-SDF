@@ -60,6 +60,30 @@ jobs:
           args: --release --out dist --features python --interpreter 3.12
           manylinux: auto
           rust-toolchain: stable
+          # manylinux Docker は workspace のみマウントするので、parent dir に
+          # 置いた alice-stubs は不可視。container 内で再生成する。
+          before-script-linux: |
+            set -eu
+            for entry in \
+                ALICE-Physics:alice-physics \
+                ALICE-Codec:alice-codec \
+                ALICE-Streaming-Protocol:libasp \
+                ALICE-Cache:alice-cache \
+                ALICE-Font:alice-font; do
+              dir="${entry%:*}"
+              crate="${entry#*:}"
+              mkdir -p "../${dir}/src"
+              cat > "../${dir}/Cargo.toml" <<TOML
+            [package]
+            name = "${crate}"
+            version = "0.1.0"
+            edition = "2021"
+
+            [lib]
+            path = "src/lib.rs"
+            TOML
+              echo "// ALICE-SDF CI stub (wheel build)" > "../${dir}/src/lib.rs"
+            done
 
       - name: Build wheel (macOS / Windows)
         if: matrix.os != 'ubuntu-latest'
