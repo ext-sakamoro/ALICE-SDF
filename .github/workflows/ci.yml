@@ -299,6 +299,13 @@ jobs:
             --language kotlin \
             --out-dir /tmp/ci-kotlin
 
+      # Integration tests over the 12 publicly-exported wrapper functions.
+      # Release プロファイルは `panic = "abort"` のため integration test の
+      # 動的 unwind との互換が取れない → debug プロファイルで実行する。
+      - name: Run integration tests (debug)
+        working-directory: mobile/uniffi-wrapper
+        run: cargo test --tests
+
   clippy:
     name: Clippy (informational)
     needs: changes
@@ -327,9 +334,11 @@ jobs:
           echo "::notice::Clippy warnings: $COUNT (non-blocking)"
 
   clippy-strict:
-    name: Clippy strict (mobile wrapper only)
+    name: Clippy strict (mobile wrapper, includes alice-sdf path dep)
     needs: changes
-    if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
+    # mobile/uniffi-wrapper は alice-sdf core を path dep として再 clippy する。
+    # core (src/**) 変更時にも厳格化を効かせるため code もトリガに含める。
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

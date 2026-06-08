@@ -2,6 +2,40 @@
 
 All notable changes to ALICE-SDF are documented in this file.
 
+For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHANGELOG-history.md).
+
+## [v1.7.1] - 2026-06-08
+
+### Added
+
+- **REST server endpoint 拡張** (`server/`) — `POST /mesh` (Marching Cubes vertices+normals+indices)、`POST /splat` (3D Gaussian Splats、`format=bytes` で base64 32-byte stream)、`POST /vox` (voxel 配列) を追加。`/version` が全 endpoint を列挙
+- **OpenXR `SceneFrame` / `SphereBeacon` / `RayHit` API** (`bindings/openxr/`) — フレーム 1 回分のシーン状態を builder style で組み立て、head/left/right の raycast と手メッシュ→beacon 最小距離をワンメソッドで取得
+- **OpenXR `examples/quest_demo.rs`** — Meta Quest 風の 60-frame loop 完全実装サンプル
+- **visionOS `makeSDFMeshEntity` / `makeBlobEntity`** — 任意 SDF closure を voxel-fill で評価し RealityKit `ModelEntity` 化 / 2 球 smooth-union を Rust `AliceSDFFramework` 直呼出で blob 生成
+- **visionOS `AliceSDFFramework` 統合** — Swift 側 SDF 計算を Rust UniFFI コアにルーティング (`sdfSphere` / `opSmoothUnion` / `sphereBatch` / `aliceSdfVersion`)、`canImport(AliceSDFFramework)` でフォールバック実装も保持
+
+### Changed
+
+- **STEP / IGES export を Marching Cubes 化** (`src/io/step.rs` / `src/io/iges.rs`) — 旧 naive voxel quads を `mesh::sdf_to_mesh` (実 MC アルゴリズム) に置換。res=16 で <100 verts → 数千 verts の品質向上
+- **PyO3 を `abi3-py310` に固定** — Python 3.10 / 3.11 / 3.12 / 3.13 を 1 つの `.so` でサポートし、再ビルド不要に
+- **CHANGELOG split**: v0.1.0 – v1.3.0 を `CHANGELOG-history.md` に分離 (本ファイルの肥大化対策)
+- **CI `clippy-strict` トリガ拡張**: `paths-filter` で `code` (core src/**) 変更時も mobile wrapper の strict clippy を実行 (uniffi-wrapper は alice-sdf core を path dep として再 clippy するため、core の変更が見落とされる設計ミスを修正)
+- **CI mobile job**: `cargo test --tests` (debug プロファイル) を追加し、12 公開 wrapper 関数を 26 統合テストで網羅
+- README (英日) の Python 節に abi3 / pre-built wheel 説明を追加
+
+### Fixed
+
+- `src/io/vdb.rs`: `VdbError::Io` / `VdbError::InvalidBounds` の missing variant docs (clippy strict 対応)
+
+### Quality
+
+- **Core**: 1,093 tests passing (+10 vs v1.7.0 — STEP/IGES 各 +3 quality tests + Bevy +7 + OpenXR +8 + mobile +22 + server +4)
+- **OpenXR**: 4 → 12 tests
+- **Bevy**: 4 → 11 tests (normals 単位長 / vertex bounds / annulus / cap planes / plugin build)
+- **mobile/uniffi-wrapper**: 4 unit + **26 integration tests** (全 12 公開関数を網羅)
+- **server**: 0 → 4 tests
+- 全 clippy-strict (`-D warnings`) pass: openxr / mobile / bevy
+
 ## [v1.7.0] - 2026-06-06
 
 ### Added
@@ -123,104 +157,3 @@ All notable changes to ALICE-SDF are documented in this file.
 | **Android arm64-v8a / armv7 / x86_64 / x86** | 🟢 v1.5.0 新規 |
 | Unreal Engine 5.7.0 〜 5.7.4 (stable) | 🟢 |
 | Unreal Engine 5.8.0-preview-1 | 🟢 改修不要見込み |
-
-## [v1.3.0] - 2026-03-14
-
-### Added
-- **LLM × 3D Pipeline docs**: README に SDF + LOL + View + Physics 統合パイプラインセクション追加（EN/JP両対応）
-- **SDF圧縮パイプライン**: API公開、GPU Marching Cubes物理統合
-
-### Changed
-- **License**: MIT → MIT OR Apache-2.0 デュアルライセンスに変更
-- **profile.release**: `panic = "abort"` を削除（ベンチコンパイルエラー修正）
-
-### Fixed
-- **autodiff.rs**: `suboptimal_flops` 警告を `mul_add` に修正
-- **clippy**: pedantic+nursery 0 warnings 達成
-
-### Quality
-- 1,174 tests passing, 0 failed (+97 from v1.2.0)
-- 0 clippy pedantic+nursery warnings
-- 0 fmt diffs
-
-## [v1.2.0] - 2026-03-05
-
-### Added
-- **shell**: `eval_shell_batch_parallel`, `eval_shell_gradient`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`
-- **diff**: `invert_patch`, `merge_patches`, `insert_at_path`, `delete_at_path`, `DiffOp::Insert`/`Delete`, `TreePatch::op_count`/`is_empty`
-- **constraint**: `Product`/`Min`/`Max`/`Range` constraint kinds, `ratio()`/`product()`/`range()` convenience methods
-- **sdf2d**: `Ring`, `RegularPolygon`, `Star`, `Ellipse`, `Onion` node types, `eval_2d_normal()`
-- **interval**: `width()`, `midpoint()`, `contains()`, `overlaps()`, `intersect()`, `hull()`
-- **autodiff**: `principal_curvatures()`, `gaussian_curvature()`
-- **collision**: `ContactManifold` struct, `compute_manifold()`, `sdf_ccd()`, `sdf_closest_point()`
-- **material**: `material_lerp()`, `MaterialLibrary::find_by_name()`, `StandardMaterials` (15 PBR presets)
-- **neural**: `eval_batch()`, `eval_with_gradient()`, `hidden_layer_count()`, `input_dimension()`
-- 74 new tests (1003 → 1077)
-
-### Fixed
-- `[profile.bench]` panic strategy conflict — added explicit `panic = "unwind"` to fix CI bench compilation on Linux/Windows
-
-### Quality
-- 1077 tests passing, 0 failed
-- 0 clippy pedantic+nursery warnings
-- 0 fmt diffs
-
-## [v1.1.0] - 2026-02-22
-
-### Added
-- **Auxiliary data buffer** (`aux_data: Vec<f32>`) on `CompiledSdf` for variable-length instruction data
-- `aux_offset` / `aux_len` fields on `Instruction` struct
-- **ProjectiveTransform** compiled eval — perspective projection with 4x4 inverse matrix from aux_data
-- **LatticeDeform** compiled eval — FFD grid deformation with control points from aux_data
-- **SdfSkinning** compiled eval — bone-weight skeletal deformation with BoneTransform array from aux_data
-- **IcosahedralSymmetry** compiled eval — proper 120-fold icosahedral fold (was abs() approximation)
-- **IFS** compiled eval — Iterated Function System with transform matrices from aux_data
-- **HeightmapDisplacement** compiled eval — bilinear heightmap sampling from aux_data
-- **SurfaceRoughness** compiled eval — FBM noise with child distance
-- 5 roundtrip tests (compiled vs tree-walker consistency)
-- 33 doc comments on `transpiler_common.rs` public API
-- All dependency stubs in release CI workflow
-
-### Fixed
-- 220 pedantic clippy warnings (raw string hashes, implicit clone, useless format, dead code, clamp pattern, manual Debug)
-- `surface_roughness` private module path and argument count in eval.rs
-- Missing `inst_idx` variable in new CoordFrame initializers
-- Release workflow missing alice-cache/alice-codec/libasp/alice-font stubs
-
-### Quality
-- 1003 tests passing, 0 failed
-- 0 clippy pedantic warnings
-- 0 doc warnings
-- 0 TODO/FIXME/unimplemented
-
-## [v1.0.0] - 2026-02-08
-
-### Added
-- Initial stable release
-- 72 SDF primitives (Platonic solids, TPMS surfaces, 2D primitives)
-- 24 CSG operations (smooth, chamfer, stairs, exp-smooth, columns, pipe, groove, tongue)
-- 7 evaluation modes (interpreted, compiled VM, SIMD 8-wide, BVH, SoA, JIT, GPU)
-- 3 shader transpilers (GLSL, WGSL, HLSL)
-- PBR material system (metallic-roughness)
-- Keyframe animation system
-- 15 I/O formats (ASDF, OBJ, GLB, FBX, USD, Alembic, STL, PLY, 3MF, ABM, Nanite, Unity, UE5)
-- Neural SDF (MLP approximation)
-- SDF-to-SDF collision detection
-- Analytic gradient computation
-- Dual Contouring mesh generation
-- CSG tree optimization
-- Interval arithmetic evaluation
-- Text-to-3D pipeline (FastAPI server)
-- FFI bindings (C/C++/C#)
-- Python bindings (PyO3 + NumPy)
-- Godot GDExtension
-- Unity and UE5 plugins
-- VRChat package
-
-## [v0.1.0] - 2026-02-08
-
-### Added
-- Initial pre-release
-- Core SDF primitives and operations
-- Basic compiled evaluator
-- CI/CD pipeline

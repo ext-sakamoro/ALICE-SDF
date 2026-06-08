@@ -264,6 +264,28 @@ fn cylinder_mesh(radius: f32, half_height: f32, sectors: u32) -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::mesh::VertexAttributeValues;
+
+    fn positions_of(m: &Mesh) -> Vec<[f32; 3]> {
+        match m.attribute(Mesh::ATTRIBUTE_POSITION).unwrap() {
+            VertexAttributeValues::Float32x3(v) => v.clone(),
+            _ => panic!("unexpected position format"),
+        }
+    }
+
+    fn normals_of(m: &Mesh) -> Vec<[f32; 3]> {
+        match m.attribute(Mesh::ATTRIBUTE_NORMAL).unwrap() {
+            VertexAttributeValues::Float32x3(v) => v.clone(),
+            _ => panic!("unexpected normal format"),
+        }
+    }
+
+    fn index_count(m: &Mesh) -> usize {
+        match m.indices().unwrap() {
+            Indices::U32(v) => v.len(),
+            Indices::U16(v) => v.len(),
+        }
+    }
 
     #[test]
     fn build_sphere_mesh_has_indices() {
@@ -296,5 +318,100 @@ mod tests {
             half_height: 2.0,
         });
         assert!(m.attribute(Mesh::ATTRIBUTE_POSITION).is_some());
+    }
+
+    #[test]
+    fn sphere_normals_are_unit_length() {
+        let m = build_mesh_for(SdfShape::Sphere { radius: 1.5 });
+        let normals = normals_of(&m);
+        for n in &normals {
+            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            assert!((len - 1.0).abs() < 1e-3, "normal not unit: {len}");
+        }
+    }
+
+    #[test]
+    fn sphere_vertices_within_radius_bound() {
+        let r = 0.7_f32;
+        let m = build_mesh_for(SdfShape::Sphere { radius: r });
+        let positions = positions_of(&m);
+        for p in &positions {
+            let dist = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
+            assert!(dist <= r + 1e-4, "vertex outside radius: {dist} > {r}");
+        }
+    }
+
+    #[test]
+    fn box_vertices_inside_half_extents() {
+        let he = Vec3::new(2.0, 3.0, 4.0);
+        let m = build_mesh_for(SdfShape::Box { half_extents: he });
+        let positions = positions_of(&m);
+        for p in &positions {
+            assert!(p[0].abs() <= he.x + 1e-4);
+            assert!(p[1].abs() <= he.y + 1e-4);
+            assert!(p[2].abs() <= he.z + 1e-4);
+        }
+    }
+
+    #[test]
+    fn all_shapes_indices_are_multiple_of_three() {
+        for shape in &[
+            SdfShape::Sphere { radius: 1.0 },
+            SdfShape::Box {
+                half_extents: Vec3::splat(0.5),
+            },
+            SdfShape::Torus {
+                major_radius: 1.0,
+                minor_radius: 0.3,
+            },
+            SdfShape::Cylinder {
+                radius: 1.0,
+                half_height: 0.5,
+            },
+        ] {
+            let m = build_mesh_for(*shape);
+            let n = index_count(&m);
+            assert!(n > 0, "empty index buffer for {shape:?}");
+            assert_eq!(n % 3, 0, "non-triangle list for {shape:?}: {n} indices");
+        }
+    }
+
+    #[test]
+    fn torus_vertices_in_expected_annulus() {
+        let m = build_mesh_for(SdfShape::Torus {
+            major_radius: 2.0,
+            minor_radius: 0.4,
+        });
+        let positions = positions_of(&m);
+        for p in &positions {
+            let r_xy = (p[0] * p[0] + p[1] * p[1]).sqrt();
+            assert!(
+                (1.5..=2.5).contains(&r_xy),
+                "torus xy-radius {r_xy} out of band"
+            );
+            assert!(p[2].abs() <= 0.4 + 1e-4, "torus z {} outside minor", p[2]);
+        }
+    }
+
+    #[test]
+    fn cylinder_top_bottom_planes() {
+        let m = build_mesh_for(SdfShape::Cylinder {
+            radius: 1.0,
+            half_height: 2.5,
+        });
+        let positions = positions_of(&m);
+        for p in &positions {
+            assert!(p[1].abs() - 2.5 < 1e-4, "cylinder y out of caps: {}", p[1]);
+        }
+    }
+
+    #[test]
+    fn plugin_builds_without_panic() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Mesh>()
+            .add_plugins(AliceSdfPlugin);
+        app.update();
     }
 }

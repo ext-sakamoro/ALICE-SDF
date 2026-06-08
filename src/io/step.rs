@@ -22,7 +22,7 @@
 //! export_step("sphere.step", &node, &cfg).unwrap();
 //! ```
 
-use crate::eval::eval;
+use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use crate::types::SdfNode;
 use glam::Vec3;
 use std::io::Write;
@@ -33,7 +33,7 @@ use std::path::Path;
 pub struct StepConfig {
     /// グリッド範囲 (min, max)
     pub bounds: (f32, f32),
-    /// Marching-cubes 風 surface 抽出の voxel resolution
+    /// Marching-cubes surface 抽出の voxel resolution
     pub resolution: u32,
     /// STEP entity 名 (例: "AliceSdfPart")
     pub name: String,
@@ -49,37 +49,25 @@ impl Default for StepConfig {
     }
 }
 
-/// SDF 表面に近い voxel の中心点をピックして簡易 facet 化
+/// SDF を Marching Cubes で tessellate し (vertices, triangles) を返す
 fn sdf_to_facets(node: &SdfNode, cfg: &StepConfig) -> (Vec<Vec3>, Vec<[usize; 3]>) {
     let (lo, hi) = cfg.bounds;
-    let n = cfg.resolution.max(1);
-    let step = (hi - lo) / n as f32;
-    let eps = step;
-    let mut verts = Vec::new();
-    // 単純化: 表面近傍 voxel に 1 quadrilateral facet (2 triangles) を発生
-    for k in 0..n {
-        for j in 0..n {
-            for i in 0..n {
-                let cx = lo + (i as f32 + 0.5) * step;
-                let cy = lo + (j as f32 + 0.5) * step;
-                let cz = lo + (k as f32 + 0.5) * step;
-                let d = eval(node, Vec3::new(cx, cy, cz));
-                if d.abs() < eps {
-                    let s = step * 0.5;
-                    verts.push(Vec3::new(cx - s, cy - s, cz));
-                    verts.push(Vec3::new(cx + s, cy - s, cz));
-                    verts.push(Vec3::new(cx + s, cy + s, cz));
-                    verts.push(Vec3::new(cx - s, cy + s, cz));
-                }
-            }
-        }
-    }
-    let mut tris = Vec::new();
-    for quad in 0..(verts.len() / 4) {
-        let b = quad * 4;
-        tris.push([b, b + 1, b + 2]);
-        tris.push([b, b + 2, b + 3]);
-    }
+    let mc = MarchingCubesConfig {
+        resolution: (cfg.resolution as usize).max(4),
+        iso_level: 0.0,
+        compute_normals: false,
+        compute_uvs: false,
+        uv_scale: 1.0,
+        compute_tangents: false,
+        compute_materials: false,
+    };
+    let mesh = sdf_to_mesh(node, Vec3::splat(lo), Vec3::splat(hi), &mc);
+    let verts: Vec<Vec3> = mesh.vertices.iter().map(|v| v.position).collect();
+    let tris: Vec<[usize; 3]> = mesh
+        .indices
+        .chunks_exact(3)
+        .map(|t| [t[0] as usize, t[1] as usize, t[2] as usize])
+        .collect();
     (verts, tris)
 }
 
@@ -195,6 +183,49 @@ mod tests {
         export_step(&path, &n, &cfg).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("DATA;"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn marching_cubes_produces_dense_mesh() {
+        // 旧 naive voxel quads では数十 verts、Marching Cubes は数百〜数千 verts のはず
+        let n = SdfNode::sphere(1.0);
+        let cfg = StepConfig {
+            bounds: (-1.5, 1.5),
+            resolution: 16,
+            name: "QualityCheck".into(),
+        };
+        let (verts, tris) = super::sdf_to_facets(&n, &cfg);
+        assert!(
+            verts.len() > 100,
+            "expected >100 verts from MC at res=16, got {}",
+            verts.len()
+        );
+        assert!(
+            !tris.is_empty(),
+            "expected non-empty triangulation, got {} tris",
+            tris.len()
+        );
+    }
+
+    #[test]
+    fn step_export_contains_one_point_per_vertex() {
+        let path = std::env::temp_dir().join("alice_sdf_count.step");
+        let n = SdfNode::sphere(1.0);
+        let cfg = StepConfig {
+            bounds: (-1.5, 1.5),
+            resolution: 8,
+            name: "Count".into(),
+        };
+        export_step(&path, &n, &cfg).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        let pt_count = content.matches("CARTESIAN_POINT").count();
+        let (verts, _) = super::sdf_to_facets(&n, &cfg);
+        assert_eq!(
+            pt_count,
+            verts.len(),
+            "CARTESIAN_POINT count != vertex count"
+        );
         std::fs::remove_file(&path).ok();
     }
 }

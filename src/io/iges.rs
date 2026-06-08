@@ -19,7 +19,7 @@
 //! export_iges("sphere.igs", &node, &cfg).unwrap();
 //! ```
 
-use crate::eval::eval;
+use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use crate::types::SdfNode;
 use glam::Vec3;
 use std::io::Write;
@@ -45,32 +45,22 @@ impl Default for IgesConfig {
 
 fn sdf_to_facets(node: &SdfNode, cfg: &IgesConfig) -> (Vec<Vec3>, Vec<[usize; 3]>) {
     let (lo, hi) = cfg.bounds;
-    let n = cfg.resolution.max(1);
-    let step = (hi - lo) / n as f32;
-    let eps = step;
-    let mut verts = Vec::new();
-    for k in 0..n {
-        for j in 0..n {
-            for i in 0..n {
-                let cx = lo + (i as f32 + 0.5) * step;
-                let cy = lo + (j as f32 + 0.5) * step;
-                let cz = lo + (k as f32 + 0.5) * step;
-                if eval(node, Vec3::new(cx, cy, cz)).abs() < eps {
-                    let s = step * 0.5;
-                    verts.push(Vec3::new(cx - s, cy - s, cz));
-                    verts.push(Vec3::new(cx + s, cy - s, cz));
-                    verts.push(Vec3::new(cx + s, cy + s, cz));
-                    verts.push(Vec3::new(cx - s, cy + s, cz));
-                }
-            }
-        }
-    }
-    let mut tris = Vec::new();
-    for quad in 0..(verts.len() / 4) {
-        let b = quad * 4;
-        tris.push([b, b + 1, b + 2]);
-        tris.push([b, b + 2, b + 3]);
-    }
+    let mc = MarchingCubesConfig {
+        resolution: (cfg.resolution as usize).max(4),
+        iso_level: 0.0,
+        compute_normals: false,
+        compute_uvs: false,
+        uv_scale: 1.0,
+        compute_tangents: false,
+        compute_materials: false,
+    };
+    let mesh = sdf_to_mesh(node, Vec3::splat(lo), Vec3::splat(hi), &mc);
+    let verts: Vec<Vec3> = mesh.vertices.iter().map(|v| v.position).collect();
+    let tris: Vec<[usize; 3]> = mesh
+        .indices
+        .chunks_exact(3)
+        .map(|t| [t[0] as usize, t[1] as usize, t[2] as usize])
+        .collect();
     (verts, tris)
 }
 
@@ -240,5 +230,37 @@ mod tests {
         let l = iges_line("hello", 'S', 1);
         assert_eq!(l.len(), 80);
         assert_eq!(&l[72..73], "S");
+    }
+
+    #[test]
+    fn iges_marching_cubes_produces_dense_mesh() {
+        let n = SdfNode::sphere(1.0);
+        let cfg = IgesConfig {
+            bounds: (-1.5, 1.5),
+            resolution: 16,
+        };
+        let (verts, tris) = super::sdf_to_facets(&n, &cfg);
+        assert!(
+            verts.len() > 100,
+            "expected >100 verts, got {}",
+            verts.len()
+        );
+        assert!(!tris.is_empty());
+    }
+
+    #[test]
+    fn iges_export_includes_134_node_and_136_fe_entities() {
+        let path = std::env::temp_dir().join("alice_sdf_entities.igs");
+        let n = SdfNode::sphere(0.8);
+        let cfg = IgesConfig {
+            bounds: (-1.2, 1.2),
+            resolution: 8,
+        };
+        export_iges(&path, &n, &cfg).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        // PD section に entity type 134 (Node) と 136 (Finite Element) が現れる
+        assert!(content.contains("134,"), "missing Node entity 134");
+        assert!(content.contains("136,3,"), "missing FE entity 136 (3-node)");
+        std::fs::remove_file(&path).ok();
     }
 }

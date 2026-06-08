@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "1.7.0"
+version = "1.7.1"
 edition = "2021"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist - Store laws, not polygons"
@@ -71,7 +71,9 @@ log = "0.4"
 clap = { version = "4.5", features = ["derive"], optional = true }
 
 # Python bindings (optional)
-pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods"], optional = true }
+# `abi3-py310` で Python 3.10+ の安定 ABI に固定。1 つの `.so` で 3.10/3.11/3.12/3.13 を
+# サポートし、Python ABI ごとの再ビルドが不要になる (setup の煩雑さを解消)。
+pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods", "abi3-py310"], optional = true }
 numpy = { version = "0.23", optional = true }
 
 # Godot GDExtension (optional)

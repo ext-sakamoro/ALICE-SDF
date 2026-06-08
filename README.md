@@ -1315,11 +1315,22 @@ var (lodMeshes, lodDistances) = AliceSdf.LoadLodChain("Assets/LOD/sphere_lod");
 // lodMeshes[2] = lowest detail  (distance >= 50)
 ```
 
-### Python (PyO3)
+### Python (PyO3, abi3-py310)
+
+`abi3-py310` 安定 ABI でビルドされており、Python 3.10 / 3.11 / 3.12 / 3.13 を
+**1 つの `.so` で** サポート (再ビルド不要)。
 
 ```bash
-pip install alice-sdf  # or: maturin develop --features python
+# Option A — pip (recommended; pre-built wheels)
+pip install alice-sdf
+
+# Option B — build from source (any platform)
+maturin develop --features python --release
 ```
+
+Pre-built wheels are uploaded to GitHub Releases for each version:
+`linux-x86_64` / `linux-aarch64` / `macos-arm64` / `macos-x86_64` / `windows-x86_64`.
+See `https://github.com/ext-sakamoro/ALICE-SDF/releases` for direct downloads.
 
 ```python
 import alice_sdf as sdf

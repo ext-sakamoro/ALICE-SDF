@@ -23,8 +23,10 @@ use glam::Vec3;
 /// OpenVDB bake のエラー
 #[derive(Debug, thiserror::Error)]
 pub enum VdbError {
+    /// 下位 vdb-rs ライブラリからの I/O / シリアライズエラー
     #[error("vdb-rs IO error: {0}")]
     Io(String),
+    /// grid bounds が不正 (min >= max など)
     #[error("invalid grid bounds")]
     InvalidBounds,
 }
