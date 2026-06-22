@@ -3,28 +3,22 @@
 # 初回 wave で溜まった全更新が一気に PR 化されるのを防ぐため
 # semver-major bump は ignore する 必要時は手動で PR 化判断
 #
-# 対象:
-# - cargo (root crate)
-# - cargo (mobile/uniffi-wrapper)
-# - cargo (server)
-# - cargo (bindings/bevy/alice-sdf-bevy)
+# 注: root Cargo.toml の cargo entry は意図的に削除
+# 理由: root は ../ALICE-Codec / ../ALICE-Physics / ../ALICE-Streaming-Protocol /
+#       ../ALICE-Cache / ../ALICE-Font の sibling path dep を持ち、dependabot は
+#       sibling repo を checkout しないため path_dependencies_not_reachable で fail する
+#       (= [[feedback_dependabot_cargo_sibling_path_deps]])
+#       root 直接の cargo dep update は手動 `cargo update -p <name>` で対応
+#
+# 対象 (残った):
+# - cargo (mobile/uniffi-wrapper)  ※ path=../.. は同 repo 内なので OK
+# - cargo (server)                ※ path=..    は同 repo 内なので OK
+# - cargo (bindings/bevy/alice-sdf-bevy)  ※ path=../../.. は同 repo 内なので OK
 # - github-actions (workflow 内 action)
 # - npm (bindings/threejs)
 
 version: 2
 updates:
-  - package-ecosystem: cargo
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-      time: "09:00"
-      timezone: Asia/Tokyo
-    open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-
   - package-ecosystem: cargo
     directory: /mobile/uniffi-wrapper
     schedule:
