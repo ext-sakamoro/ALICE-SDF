@@ -19,14 +19,14 @@ path = "src/bin/uniffi_bindgen.rs"
 [dependencies]
 alice-sdf = { path = "../..", default-features = false }
 glam      = "0.29"
-uniffi    = { version = "0.28", features = ["cli"] }
+uniffi    = { version = "0.31", features = ["cli"] }
 
 [features]
 default = []
 gpu = ["alice-sdf/gpu"]  # wgpu Metal (iOS) / Vulkan (Android) ※実験的
 
 [build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.31", features = ["build"] }
 
 [profile.release]
 opt-level     = 3
