@@ -1,0 +1,76 @@
+# Dependabot 設定 (feedback_dependabot_major_bump_initial_wave 準拠)
+#
+# 初回 wave で溜まった全更新が一気に PR 化されるのを防ぐため
+# semver-major bump は ignore する 必要時は手動で PR 化判断
+#
+# 対象:
+# - cargo (root crate)
+# - cargo (mobile/uniffi-wrapper)
+# - cargo (server)
+# - cargo (bindings/bevy/alice-sdf-bevy)
+# - github-actions (workflow 内 action)
+# - npm (bindings/threejs)
+
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: cargo
+    directory: /mobile/uniffi-wrapper
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: cargo
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: cargo
+    directory: /bindings/bevy/alice-sdf-bevy
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /bindings/threejs
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

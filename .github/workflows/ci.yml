@@ -87,6 +87,11 @@ jobs:
       - name: Test (integration)
         run: cargo test --tests
 
+      # doctest (= rustdoc 内 ```rust ブロック) は --lib / --tests では走らない
+      # feedback_ci_errors_patterns B3: ``` 文字リテラル混入で doctest 落ちる罠予防
+      - name: Test (doctests)
+        run: cargo test --doc
+
       - name: Build (FFI + shaders)
         run: cargo build --features "ffi,hlsl,glsl"
 
@@ -373,6 +378,39 @@ jobs:
       - name: Check formatting (mobile/uniffi-wrapper)
         working-directory: mobile/uniffi-wrapper
         run: cargo fmt --check
+
+  doc:
+    name: Doc (RUSTDOCFLAGS=-Dwarnings)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      # karikari-review 推奨: rustdoc warning (broken link / missing example 等) を CI で deny
+      - name: cargo doc (core, no-deps)
+        run: cargo doc --lib --no-deps
+        env:
+          RUSTDOCFLAGS: "-Dwarnings"
+
+  actionlint:
+    name: actionlint (workflow YAML 検証)
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # feedback_workflow_yaml_pitfall: `run:` 末尾 `::` で 0 秒 failure 等の罠を予防
+      - name: Run actionlint
+        uses: reviewdog/action-actionlint@v1
+        with:
+          fail_level: error
+          reporter: github-check
 
   server-smoke:
     name: REST server smoke test

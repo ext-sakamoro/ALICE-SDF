@@ -11,7 +11,7 @@
 //! | 0      | 12   | f32×3   | position |
 //! | 12     | 12   | f32×3   | scale    |
 //! | 24     | 4    | u8×4    | color rgba |
-//! | 28     | 4    | u8×4    | rotation (compressed quat, [0,255] → [-1,1]) |
+//! | 28     | 4    | u8×4    | rotation (compressed quat, `[0,255]` → `[-1,1]`) |
 //!
 //! # 使用例
 //!

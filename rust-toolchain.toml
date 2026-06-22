@@ -1,0 +1,11 @@
+# Rust toolchain pin (feedback_clippy_rust_version_drift 準拠)
+# ローカルと CI で同一 toolchain を使い、Rust リリース毎に増える新規 clippy lint
+# が unexpected に CI 落ちさせるのを防ぐ
+#
+# 更新方針:
+# - 月次で stable 最新へ手動 bump (= rustup update stable && rustc --version で確認)
+# - bump 時は cargo clippy 全 feature pass 確認後にここを書き換え
+[toolchain]
+channel = "1.92.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
