@@ -129,8 +129,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+      # rust-toolchain.toml (= channel 1.92.0 pin) があると dtolnay action の
+      # targets: パラメータが stable に追加されるだけで、active toolchain 1.92.0 に
+      # は反映されない E0463 can't find crate for `core` 回避のため明示追加
+      - name: Ensure wasm32 target on pinned toolchain
+        run: rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: ./.github/actions/alice-stubs
       - name: Build (wasm feature, wasm32 target)
@@ -495,8 +498,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+      # rust-toolchain.toml pin (1.92.0) と action の targets 不整合回避
+      - name: Ensure wasm32 target on pinned toolchain
+        run: rustup target add wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
 
