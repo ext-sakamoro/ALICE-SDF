@@ -18,9 +18,9 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **無限解像度** - あらゆるスケールで数学的に完全な形状
 - **CSG演算** - メッシュオーバーヘッドなしの形状ブーリアン演算
 - **リアルタイムレイマーチング** - GPU加速レンダリング
-- **PBRマテリアル** - UE5/Unity/Godot互換のメタリック-ラフネスワークフロー
+- **PBRマテリアル** - UE5/UE6/Unity/Godot互換のメタリック-ラフネスワークフロー
 - **キーフレームアニメーション** - タイムライントラック付きパラメトリック変形
-- **アセットパイプライン** - OBJ、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、Unity、UE5エクスポート
+- **アセットパイプライン** - OBJ、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、Unity、UE5/UE6エクスポート
 - **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
 - **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中
 - **Dual Contouring** - QEFベースのメッシュ生成、シャープエッジとコーナーを保持
@@ -28,7 +28,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
 - **72プリミティブ、24演算、7トランスフォーム、23モディファイア**（126 total） - 業界最高水準のシェイプボキャブラリ
-- **5層メッシュ永続化** - ABMバイナリフォーマット、LODチェーン永続化、FIFO排出チャンクキャッシュ、Unity/UE5ネイティブエクスポート
+- **5層メッシュ永続化** - ABMバイナリフォーマット、LODチェーン永続化、FIFO排出チャンクキャッシュ、Unity/UE5/UE6ネイティブエクスポート
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
 - **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
 - **緩和球トレーシング（Relaxed Sphere Tracing）** - リプシッツ適応ステップサイズによるオーバーリラクゼーション
@@ -47,7 +47,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **自動タイトAABB** - 区間演算＋二分探索によるSDF表面を含む最小バウンディングボックス計算
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
-- **エンジン統合** - Unity、Unreal Engine 5、VRChat、Godot、WebAssembly
+- **エンジン統合** - Unity、Unreal Engine 5 / 6、VRChat、Godot、WebAssembly
 
 ## Text-to-3D パイプライン（サーバー）
 
@@ -494,7 +494,7 @@ positions, uvs, indices = sdf.uv_unwrap(vertices, indices)
 ```
 
 
-詳細な技術セクション (マテリアル / アニメーション / アーキテクチャ / メッシュモジュール / プラトン立体 / 区間演算 / ニューラル SDF / コリジョン / 解析的勾配 / Dual Contouring / CSG最適化 / 自動タイト AABB / テクスチャフィッティング / レイマーチング / FFI / フィーチャーフラグ / 物理ブリッジ / 3D プリントパイプライン / パフォーマンス / ベンチマーク / Unity / VRChat / UE5 / Godot / クロスクレートブリッジ / Asset Delivery Network / Nanite ハイブリッドパイプライン) は [`docs/USAGE_JP.md`](docs/USAGE_JP.md) を参照。
+詳細な技術セクション (マテリアル / アニメーション / アーキテクチャ / メッシュモジュール / プラトン立体 / 区間演算 / ニューラル SDF / コリジョン / 解析的勾配 / Dual Contouring / CSG最適化 / 自動タイト AABB / テクスチャフィッティング / レイマーチング / FFI / フィーチャーフラグ / 物理ブリッジ / 3D プリントパイプライン / パフォーマンス / ベンチマーク / Unity / VRChat / UE5・UE6 / Godot / クロスクレートブリッジ / Asset Delivery Network / Nanite ハイブリッドパイプライン) は [`docs/USAGE_JP.md`](docs/USAGE_JP.md) を参照。
 
 ## ライセンス
 

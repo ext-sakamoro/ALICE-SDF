@@ -1,7 +1,7 @@
-# ALICE-SDF — Unreal Engine 5 Plugin
+# ALICE-SDF — Unreal Engine 5 / 6 Plugin
 
 72 primitives, 24 CSG operations, 7 transforms, 23 modifiers (126 total), HLSL generation, mesh export.
-Drop into your UE5 project and start using SDFs immediately.
+Drop into your UE5 or UE6 project and start using SDFs immediately.
 
 ## Quick Start (No Rust Required)
 
@@ -20,7 +20,7 @@ YourProject/
       ThirdParty/      <-- Pre-built native library included
 ```
 
-### 3. Open UE5
+### 3. Open UE5 or UE6
 
 Open your `.uproject`. The plugin loads automatically.
 If prompted, click "Yes" to rebuild.
@@ -71,7 +71,7 @@ GenerateHlsl() → FString
 ```
 
 Paste into a **Custom** node in your Material graph.
-Connect `WorldPosition / 100.0` as input (UE5 uses cm, SDF uses m).
+Connect `WorldPosition / 100.0` as input (UE5/UE6 uses cm, SDF uses m).
 
 ---
 
@@ -132,7 +132,7 @@ Check **Output Log** for results.
 
 ## GPU Showcase Actors
 
-Five showcase actors recreate the full Unity SDF Universe demo using UE5's native rendering systems.
+Five showcase actors recreate the full Unity SDF Universe demo using UE5/UE6's native rendering systems.
 
 ### Rendering Pipelines
 
@@ -274,7 +274,7 @@ Steps:
 Ensure these are set in **Project Settings**:
 - **Global Illumination → Dynamic GI Method**: Lumen
 - **Reflections → Reflection Method**: Lumen
-- **Nanite → Enable Nanite**: True (default in UE5)
+- **Nanite → Enable Nanite**: True (default in UE5/UE6)
 - **Shader Model**: SM5 or SM6
 
 ### Performance Tips
@@ -370,7 +370,7 @@ SdfHandle rough = alice_sdf_surface_roughness(shape, 4.0f, 0.05f, 4);
 | OBJ | `ExportObj()` | DCC tools (Blender, Maya) |
 | GLB | `ExportGlb()` | Web, glTF viewers |
 | USDA | `ExportUsda()` | USD pipelines, Omniverse |
-| FBX | `ExportFbx()` | UE5 Static Mesh import |
+| FBX | `ExportFbx()` | UE5/UE6 Static Mesh import |
 
 ---
 

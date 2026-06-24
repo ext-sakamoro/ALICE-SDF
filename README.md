@@ -18,10 +18,10 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Infinite resolution** - shapes are mathematically perfect at any scale
 - **CSG operations** - boolean operations on shapes without mesh overhead
 - **Real-time raymarching** - GPU-accelerated rendering
-- **PBR materials** - metallic-roughness workflow compatible with UE5/Unity/Godot
+- **PBR materials** - metallic-roughness workflow compatible with UE5/UE6/Unity/Godot
 - **Keyframe animation** - parametric deformation with timeline tracks
 - **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM export
-- **5-layer mesh persistence** - ABM binary format, LOD chain persistence, chunked mesh cache with FIFO eviction, Unity/UE5 native export
+- **5-layer mesh persistence** - ABM binary format, LOD chain persistence, chunked mesh cache with FIFO eviction, Unity/UE5/UE6 native export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
 - **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters
 - **Dual Contouring** - QEF-based mesh generation that preserves sharp edges and corners
@@ -47,7 +47,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Auto Tight AABB** - interval arithmetic + binary search to find minimal bounding box containing the SDF surface
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
-- **Engine integrations** - Unity, Unreal Engine 5, VRChat, Godot, WebAssembly
+- **Engine integrations** - Unity, Unreal Engine 5 / 6, VRChat, Godot, WebAssembly
 
 ## Text-to-3D Pipeline (Server)
 
