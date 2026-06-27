@@ -1138,14 +1138,15 @@ pub enum SdfNode {
         strength: f32,
     },
 
-    /// Sin-based displacement with custom amplitude and frequency
+    /// Sin-based displacement with custom amplitude and per-axis frequency
+    /// (= Vec3 frequency for anisotropic patterns、 e.g. elongated diamond scales)
     SineDisplacement {
         /// Child node
         child: Arc<Self>,
         /// Displacement amplitude (= strength magnitude)
         amplitude: f32,
-        /// Sin wave frequency (= e.g. 5.0 default, 15-30 for fine scales)
-        frequency: f32,
+        /// Sin wave frequency per axis (= use `Vec3::splat(f)` for isotropic)
+        frequency: glam::Vec3,
     },
 
     /// Polar repetition around Y-axis

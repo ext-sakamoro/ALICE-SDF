@@ -160,11 +160,23 @@ impl SdfNode {
         }
     }
 
-    /// Sin-based displacement with custom amplitude + frequency
-    /// (= e.g. frequency 15-30 for fine scale-like patterns)
+    /// Sin-based displacement with custom amplitude + isotropic frequency
+    /// (= e.g. frequency 15-30 for fine scale-like patterns、 Vec3::splat 化)
     #[must_use]
     #[inline]
     pub fn sine_displacement(self, amplitude: f32, frequency: f32) -> Self {
+        Self::SineDisplacement {
+            child: Arc::new(self),
+            amplitude,
+            frequency: glam::Vec3::splat(frequency),
+        }
+    }
+
+    /// Sin-based displacement with anisotropic per-axis frequency
+    /// (= e.g. `Vec3::new(10.0, 40.0, 10.0)` で軸別周波数、 細長菱形鱗用)
+    #[must_use]
+    #[inline]
+    pub fn sine_displacement_aniso(self, amplitude: f32, frequency: glam::Vec3) -> Self {
         Self::SineDisplacement {
             child: Arc::new(self),
             amplitude,

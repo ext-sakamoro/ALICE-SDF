@@ -634,6 +634,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d = eval(child, point);
             crate::modifiers::modifier_sine_displacement(d, point, *amplitude, *frequency)
         }
+        // frequency は Vec3 で型一致、 上記呼び出しが Vec3 を受ける
         SdfNode::PolarRepeat { child, count } => {
             let p = modifier_polar_repeat(point, *count);
             eval(child, p)

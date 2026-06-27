@@ -19,13 +19,13 @@ pub fn modifier_displacement(d: f32, p: Vec3, strength: f32) -> f32 {
     d + disp * strength
 }
 
-/// Apply sin-based displacement with custom amplitude + frequency.
+/// Apply sin-based displacement with custom amplitude + per-axis frequency.
 ///
-/// Formula: `d + sin(f*p.x) * sin(f*p.y) * sin(f*p.z) * amplitude`
-/// (= e.g. frequency 15-30 for fine scale-like patterns)
+/// Formula: `d + sin(fx*p.x) * sin(fy*p.y) * sin(fz*p.z) * amplitude`
+/// (= 異方性 Vec3 frequency、 例: `Vec3::new(10, 40, 10)` で軸別周波数で細長菱形鱗)
 #[inline(always)]
-pub fn modifier_sine_displacement(d: f32, p: Vec3, amplitude: f32, frequency: f32) -> f32 {
-    let disp = (p.x * frequency).sin() * (p.y * frequency).sin() * (p.z * frequency).sin();
+pub fn modifier_sine_displacement(d: f32, p: Vec3, amplitude: f32, frequency: Vec3) -> f32 {
+    let disp = (p.x * frequency.x).sin() * (p.y * frequency.y).sin() * (p.z * frequency.z).sin();
     d + disp * amplitude
 }
 
