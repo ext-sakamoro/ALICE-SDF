@@ -317,6 +317,7 @@ impl WgslShader {
             | SdfNode::SweepBezier { child, .. }
             | SdfNode::Taper { child, .. }
             | SdfNode::Displacement { child, .. }
+            | SdfNode::SineDisplacement { child, .. }
             | SdfNode::PolarRepeat { child, .. }
             | SdfNode::OctantMirror { child, .. }
             | SdfNode::Shear { child, .. }

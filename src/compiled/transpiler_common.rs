@@ -2466,6 +2466,33 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
 
+            // Phase 28: SineDisplacement (= 軸別 frequency Vec3) を transpile
+            SdfNode::SineDisplacement {
+                child,
+                amplitude,
+                frequency,
+            } => {
+                let d = self.transpile_node_inner(child, point_var, code);
+                let var = self.next_var();
+                let a = self.param(*amplitude);
+                let fx = self.param(frequency.x);
+                let fy = self.param(frequency.y);
+                let fz = self.param(frequency.z);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "{} + {} * sin({p}.x * {}) * sin({p}.y * {}) * sin({p}.z * {})",
+                        d,
+                        a,
+                        fx,
+                        fy,
+                        fz,
+                        p = point_var
+                    ),
+                ));
+                var
+            }
+
             SdfNode::SweepBezier { child, p0, p1, p2 } => {
                 // p0, p1, p2 are Vec2 (XZ plane). We project p into XZ, find closest on bezier,
                 // then evaluate child in local frame.
