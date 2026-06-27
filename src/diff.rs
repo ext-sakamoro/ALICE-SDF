@@ -232,6 +232,7 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
         | SdfNode::Extrude { child, .. }
         | SdfNode::Taper { child, .. }
         | SdfNode::Displacement { child, .. }
+        | SdfNode::SineDisplacement { child, .. }
         | SdfNode::PolarRepeat { child, .. }
         | SdfNode::SweepBezier { child, .. }
         | SdfNode::IcosahedralSymmetry { child }
@@ -909,6 +910,15 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
         SdfNode::Displacement { strength, .. } => SdfNode::Displacement {
             child: new_child,
             strength: *strength,
+        },
+        SdfNode::SineDisplacement {
+            amplitude,
+            frequency,
+            ..
+        } => SdfNode::SineDisplacement {
+            child: new_child,
+            amplitude: *amplitude,
+            frequency: *frequency,
         },
         SdfNode::PolarRepeat { count, .. } => SdfNode::PolarRepeat {
             child: new_child,

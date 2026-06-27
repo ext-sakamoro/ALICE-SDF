@@ -160,6 +160,18 @@ impl SdfNode {
         }
     }
 
+    /// Sin-based displacement with custom amplitude + frequency
+    /// (= e.g. frequency 15-30 for fine scale-like patterns)
+    #[must_use]
+    #[inline]
+    pub fn sine_displacement(self, amplitude: f32, frequency: f32) -> Self {
+        Self::SineDisplacement {
+            child: Arc::new(self),
+            amplitude,
+            frequency,
+        }
+    }
+
     /// Polar repetition around Y-axis
     #[must_use]
     #[inline]

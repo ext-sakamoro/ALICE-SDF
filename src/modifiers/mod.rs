@@ -29,7 +29,7 @@ mod taper;
 mod twist;
 
 pub use bend::{modifier_bend, modifier_bend_cheap, modifier_bend_x, modifier_bend_z};
-pub use displacement::modifier_displacement;
+pub use displacement::{modifier_displacement, modifier_sine_displacement};
 pub use extrude::{modifier_extrude, modifier_extrude_point};
 pub use heightmap_displacement::{bilinear_sample, heightmap_displacement};
 pub use icosahedral::icosahedral_fold;

@@ -626,6 +626,14 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d = eval(child, point);
             modifier_displacement(d, point, *strength)
         }
+        SdfNode::SineDisplacement {
+            child,
+            amplitude,
+            frequency,
+        } => {
+            let d = eval(child, point);
+            crate::modifiers::modifier_sine_displacement(d, point, *amplitude, *frequency)
+        }
         SdfNode::PolarRepeat { child, count } => {
             let p = modifier_polar_repeat(point, *count);
             eval(child, p)
@@ -801,6 +809,7 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Extrude { child, .. } => eval_material(child, modifier_extrude_point(point)),
         SdfNode::Taper { child, factor } => eval_material(child, modifier_taper(point, *factor)),
         SdfNode::Displacement { child, .. } => eval_material(child, point),
+        SdfNode::SineDisplacement { child, .. } => eval_material(child, point),
         SdfNode::PolarRepeat { child, count } => {
             eval_material(child, modifier_polar_repeat(point, *count))
         }

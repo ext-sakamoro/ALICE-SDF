@@ -972,6 +972,20 @@ impl Compiler {
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
             }
 
+            // Phase 27: SineDisplacement (= bytecode 経路は未実装、 raymarch は eval/mod.rs 直接経路使用)
+            // 注: 現状 Displacement opcode (freq=5 固定) で fallback、 frequency 引数は無視される
+            // raymarch_batch_parallel は src/eval/mod.rs::eval を使うため bytecode 経路は不要
+            SdfNode::SineDisplacement {
+                child, amplitude, ..
+            } => {
+                let inst_idx = self.instructions.len();
+                self.instructions
+                    .push(Instruction::displacement(*amplitude));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
             SdfNode::PolarRepeat { child, count } => {
                 let inst_idx = self.instructions.len();
                 self.instructions
@@ -1369,6 +1383,7 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
         | SdfNode::SweepBezier { child, .. }
         | SdfNode::Taper { child, .. }
         | SdfNode::Displacement { child, .. }
+        | SdfNode::SineDisplacement { child, .. }
         | SdfNode::PolarRepeat { child, .. }
         | SdfNode::Animated { child, .. }
         | SdfNode::Shear { child, .. }
@@ -1452,6 +1467,7 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::SweepBezier { child, .. }
         | SdfNode::Taper { child, .. }
         | SdfNode::Displacement { child, .. }
+        | SdfNode::SineDisplacement { child, .. }
         | SdfNode::PolarRepeat { child, .. }
         | SdfNode::WithMaterial { child, .. }
         | SdfNode::Animated { child, .. }

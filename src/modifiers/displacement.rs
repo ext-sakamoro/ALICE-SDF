@@ -19,6 +19,16 @@ pub fn modifier_displacement(d: f32, p: Vec3, strength: f32) -> f32 {
     d + disp * strength
 }
 
+/// Apply sin-based displacement with custom amplitude + frequency.
+///
+/// Formula: `d + sin(f*p.x) * sin(f*p.y) * sin(f*p.z) * amplitude`
+/// (= e.g. frequency 15-30 for fine scale-like patterns)
+#[inline(always)]
+pub fn modifier_sine_displacement(d: f32, p: Vec3, amplitude: f32, frequency: f32) -> f32 {
+    let disp = (p.x * frequency).sin() * (p.y * frequency).sin() * (p.z * frequency).sin();
+    d + disp * amplitude
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

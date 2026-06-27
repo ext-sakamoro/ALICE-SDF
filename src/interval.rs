@@ -965,6 +965,9 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Displacement { child, strength } => {
             eval_interval(child, bounds).expand(strength.abs())
         }
+        SdfNode::SineDisplacement {
+            child, amplitude, ..
+        } => eval_interval(child, bounds).expand(amplitude.abs()),
         SdfNode::PolarRepeat { child, count } => {
             let sector = std::f32::consts::TAU / (*count as f32);
             let max_r = bounds.length_xz().hi;
@@ -1242,6 +1245,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::Taper { child, factor } => eval_lipschitz(child) * (1.0 + factor.abs()),
         // Displacement: procedural perturbation adds gradient
         SdfNode::Displacement { child, strength } => eval_lipschitz(child) + strength.abs(),
+        SdfNode::SineDisplacement {
+            child, amplitude, ..
+        } => eval_lipschitz(child) + amplitude.abs(),
         SdfNode::Shear { child, shear } => {
             let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
             eval_lipschitz(child) * (1.0 + max_shear)

@@ -255,6 +255,15 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
             child: Arc::new(optimize(child)),
             strength: *strength,
         },
+        SdfNode::SineDisplacement {
+            child,
+            amplitude,
+            frequency,
+        } => SdfNode::SineDisplacement {
+            child: Arc::new(optimize(child)),
+            amplitude: *amplitude,
+            frequency: *frequency,
+        },
         SdfNode::PolarRepeat { child, count } => SdfNode::PolarRepeat {
             child: Arc::new(optimize(child)),
             count: *count,
@@ -389,6 +398,11 @@ fn fold_identity_modifier(node: SdfNode) -> SdfNode {
             ref child,
             strength,
         } if strength.abs() < EPS => child.as_ref().clone(),
+        SdfNode::SineDisplacement {
+            ref child,
+            amplitude,
+            ..
+        } if amplitude.abs() < EPS => child.as_ref().clone(),
         SdfNode::Twist {
             ref child,
             strength,

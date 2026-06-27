@@ -1138,6 +1138,16 @@ pub enum SdfNode {
         strength: f32,
     },
 
+    /// Sin-based displacement with custom amplitude and frequency
+    SineDisplacement {
+        /// Child node
+        child: Arc<Self>,
+        /// Displacement amplitude (= strength magnitude)
+        amplitude: f32,
+        /// Sin wave frequency (= e.g. 5.0 default, 15-30 for fine scales)
+        frequency: f32,
+    },
+
     /// Polar repetition around Y-axis
     PolarRepeat {
         /// Child node
@@ -1361,6 +1371,7 @@ impl SdfNode {
             | Self::SweepBezier { .. }
             | Self::Taper { .. }
             | Self::Displacement { .. }
+            | Self::SineDisplacement { .. }
             | Self::PolarRepeat { .. }
             | Self::OctantMirror { .. }
             | Self::Shear { .. }
@@ -1490,6 +1501,7 @@ impl SdfNode {
             | Self::SweepBezier { child, .. }
             | Self::Taper { child, .. }
             | Self::Displacement { child, .. }
+            | Self::SineDisplacement { child, .. }
             | Self::PolarRepeat { child, .. }
             | Self::OctantMirror { child, .. }
             | Self::Shear { child, .. }
