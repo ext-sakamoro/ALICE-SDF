@@ -131,7 +131,7 @@ pub fn gpu_marching_cubes_from_shader(
     let pass3_source = gpu_mc_shaders::generate_vertex_shader(sdf_shader);
 
     // Initialize wgpu
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });

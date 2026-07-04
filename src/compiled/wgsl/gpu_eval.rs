@@ -121,7 +121,7 @@ impl GpuEvaluator {
     /// Create a GPU evaluator from raw WGSL source
     pub fn from_wgsl(wgsl_source: &str) -> Result<Self, GpuError> {
         // Initialize wgpu synchronously using pollster
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
@@ -502,7 +502,7 @@ impl GpuEvaluator {
 
     /// Create a GPU evaluator from raw WGSL source (async)
     pub async fn from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
@@ -738,7 +738,7 @@ impl GpuEvaluator {
         // Build distance+normals compute shader (4 bindings)
         let full_source = shader.to_compute_shader_with_normals();
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
@@ -1243,7 +1243,7 @@ mod tests {
     use crate::eval::eval;
 
     fn has_gpu() -> bool {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .is_some()
     }
