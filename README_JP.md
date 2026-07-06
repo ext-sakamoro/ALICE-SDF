@@ -334,6 +334,43 @@ pip install alice-sdf
 
 ## 使い方
 
+### パスを選ぶ
+
+役割ごとに最適な入り口を選んでください。全パスは同じ `SdfNode` 中間表現を共有するので、混ぜて使えます (例: LOL で組んで GLSL に transpile、Python で評価)。
+
+| あなたは… | パス | 用途 | セクション |
+|-----------|------|-----|-----------|
+| **Rust 開発者、宣言的に書きたい** | [ALICE-LOL DSL](#alice-lol-dsl-で書く推奨) | シーン構築、GPU shader transpile、コンパイル時 law チェック | ↓ |
+| **Rust 開発者、低レベル制御が要る** | [Rust 直接構築](#rust直接sdfnode構築) | カスタム modifier ノード、手動最適化 | ↓ |
+| **Python / データサイエンス** | [Python バインディング](#python) | NumPy バッチ評価、メッシュ export、ノートブック運用 | ↓ |
+| **Unity / UE5 / Godot 統合** | C-ABI FFI | ネイティブプラグイン、ゲームエンジンからのリアルタイム評価 | [docs/UNREAL_ENGINE.md](docs/UNREAL_ENGINE.md) / [docs/GODOT_GUIDE.md](docs/GODOT_GUIDE.md) |
+| **Web / WebGPU 開発者** | WASM build | ブラウザ側 SDF 評価 + WGSL shader コンパイル | [docs/WASM_GUIDE.md](docs/WASM_GUIDE.md) |
+| **モバイル (iOS / Android)** | XCFramework / AAR | Swift / Kotlin でのデバイス上評価 | [Mobile セクション](#mobile-ios--android) |
+| **3D アーティスト / VFX** | Cookbook レシピ | 手続き形状 / displacement / タイリングをコピペ | [docs/VFX_COOKBOOK.md](docs/VFX_COOKBOOK.md) |
+| **初めて触る** | 下の 30 秒サンプル ↓ | インストール確認 | ↓ |
+
+### Hello, First SDF (30 秒)
+
+最小の実用サンプル — 構築、評価、メッシュ化、完了:
+
+```rust
+use alice_sdf::prelude::*;
+
+let sphere = SdfNode::sphere(1.0);
+let d = eval(&sphere, glam::Vec3::new(0.5, 0.0, 0.0));
+assert!((d + 0.5).abs() < 1e-6);           // 中心から 0.5 の点 → distance -0.5 (内側)
+
+let mesh = sdf_to_mesh(
+    &sphere,
+    glam::Vec3::splat(-1.5),
+    glam::Vec3::splat(1.5),
+    &MarchingCubesConfig::default(),
+);
+println!("{} 頂点、{} 三角形", mesh.vertices.len(), mesh.indices.len() / 3);
+```
+
+これが動いたら、上の表で自分の役割に合ったパスに進んでください。
+
 ### ALICE-LOL DSL で書く（推奨）
 
 SDF シーンを作る最も簡単な方法は [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) です。`lol!` proc_macro で SDF ツリーを宣言的に記述でき、手動で `SdfNode` を組み立てる必要がありません。
@@ -392,6 +429,30 @@ let hlsl = alice_lol::to_hlsl(&scene);            // HLSL (DirectX)
 
 ```rust
 let dist = eval(&scene, glam::Vec3::new(0.0, 1.0, 0.0));
+```
+
+**LOL シーンからメッシュ書き出し:**
+
+```rust
+use alice_lol::lol;
+use alice_sdf::prelude::*;
+
+let scene = lol! {
+    smooth_union(0.3,
+        sphere(1.0),
+        translate(2.0, 0.0, 0.0, box3d(0.8, 0.8, 0.8))
+    )
+};
+
+let mesh = sdf_to_mesh(
+    &scene,
+    glam::Vec3::splat(-3.0),
+    glam::Vec3::splat(3.0),
+    &MarchingCubesConfig { resolution: 128, ..Default::default() },
+);
+
+alice_sdf::export::obj::write_obj("out.obj", &mesh)?;
+alice_sdf::export::glb::write_glb("out.glb", &mesh)?;
 ```
 
 **Rust の変数を実行時に注入:**
@@ -493,6 +554,113 @@ sdf.export_alembic(vertices, indices, "model.abc")
 positions, uvs, indices = sdf.uv_unwrap(vertices, indices)
 ```
 
+
+### Sine Displacement (v1.7.3、等方 + 異方対応)
+
+`SineDisplacement` は任意の子 SDF に sin 波の摂動を加える modifier。**v1.7.3 で per-axis `Vec3` frequency に対応**、XYZ 独立の細かいパターン (鱗、木目、布のドレープ) を 1 ノードで表現できる。
+
+2 種類のコンストラクタ:
+
+| メソッド | frequency 型 | 用途 |
+|----------|------------|-----|
+| `.sine_displacement(amplitude, freq: f32)` | 等方 (`Vec3::splat`) | 均一な波紋 / 表面荒れ / 細胞状の鱗 |
+| `.sine_displacement_aniso(amplitude, freq: Vec3)` | 軸ごと | 木目、布ドレープ、細長い鱗、単軸に沿う波面 |
+
+```rust
+use alice_sdf::prelude::*;
+use glam::Vec3;
+
+// 等方: 球体に細かい細胞状の摂動
+let scales = SdfNode::sphere(1.0).sine_displacement(0.03, 25.0);
+
+// 異方: 細長い鱗 (X 方向高周波、Y/Z 低周波)
+let fish_scales = SdfNode::sphere(1.0).sine_displacement_aniso(0.03, Vec3::new(40.0, 10.0, 10.0));
+
+// 異方: 木目 (Y 方向密、他は疎)
+let wood = SdfNode::box3d(1.0, 3.0, 1.0)
+    .sine_displacement_aniso(0.01, Vec3::new(4.0, 30.0, 4.0));
+```
+
+両 variant とも標準パイプライン (`to_glsl` / `to_wgsl` / `to_hlsl`) で GLSL / WGSL / HLSL に transpile 済み。transpiler は per-axis `sin(freq.x * p.x) * sin(freq.y * p.y) * sin(freq.z * p.z)` を吐き、CPU 側 `modifier_sine_displacement` reference と一致。**区間演算バウンドと勾配 (diff) サポートも既に配線済み**なので raymarching と勾配ベースサンプリングで安全に使える。
+
+### よく使うレシピ
+
+繰り返し出てくるパターンをコピペしやすい形で。全例で `use alice_sdf::prelude::*;` 前提。
+
+**1. 角丸ボックス**
+
+```rust
+let rounded = SdfNode::box3d(1.0, 1.0, 1.0).round(0.15);
+```
+
+**2. スムーズ blob (ソフトブレンド Union)**
+
+```rust
+let blob = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::sphere(0.7).translate(1.2, 0.0, 0.0), 0.4);
+// signature: smooth_union(self, other: Self, k: f32) — k はブレンド半径
+```
+
+**3. 中空シェル (onion)**
+
+```rust
+let shell = SdfNode::sphere(1.0).onion(0.05);   // 壁厚 5cm
+```
+
+**4. 無限タイリング (`repeat_infinite`)**
+
+```rust
+let tiles = SdfNode::box3d(0.4, 0.4, 0.4).repeat_infinite(1.0, 1.0, 1.0);
+// 有限版: .repeat_finite([count_x, count_y, count_z], spacing)
+```
+
+**5. Y 軸ねじり**
+
+```rust
+let twisted = SdfNode::box3d(0.4, 2.0, 0.4).twist(1.5);   // Y 周り 1.5 rad/unit
+```
+
+**6. Displacement (sin + noise)**
+
+```rust
+let rough = SdfNode::sphere(1.0).sine_displacement(0.03, 20.0);
+```
+
+**7. CSG 連鎖 (プレートに穴を空ける)**
+
+```rust
+let plate = SdfNode::box3d(2.0, 0.1, 2.0);
+let hole  = SdfNode::cylinder(2.0, 0.15);
+let drilled = plate
+    .subtract(hole.translate(-0.8, 0.0,  0.0))
+    .subtract(hole.translate( 0.8, 0.0,  0.0))
+    .subtract(hole.translate( 0.0, 0.0, -0.8));
+```
+
+**8. GPU transpile (WebGPU / Metal / DX12)**
+
+```rust
+use alice_lol::{lol, to_wgsl};
+
+let scene = lol! { smooth_union(0.3, sphere(1.0), box3d(0.8, 0.8, 0.8)) };
+let wgsl_source = to_wgsl(&scene);      // WGSL shader に貼り付け
+```
+
+**VFX 系パターン** (流体、mandelbulb、魔法エフェクト、リボン FX、プラズマ、ポータル、force field) は [`docs/VFX_COOKBOOK.md`](docs/VFX_COOKBOOK.md) を参照。
+
+**汎用レシピ集** (プロシージャル地形、カメラ相対 modifier、バウンディング volume trick、LOD 戦略) は [`docs/COOKBOOK.md`](docs/COOKBOOK.md) を参照。
+
+### 次に見るべきドキュメント
+
+| やりたいこと | 参照先 |
+|------------|-------|
+| 全 `SdfNode` variant を把握 | [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) |
+| 新規プロジェクト立ち上げ | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
+| コンパイラ / evaluator 内部を深掘り | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Unity / Unreal / Godot 統合 | [`docs/UNREAL_ENGINE.md`](docs/UNREAL_ENGINE.md) · [`docs/GODOT_GUIDE.md`](docs/GODOT_GUIDE.md) |
+| Python から使う | [`docs/PYTHON_GUIDE.md`](docs/PYTHON_GUIDE.md) |
+| ブラウザで動かす | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md) |
+| 3D プリント用パーツを作る | [ALICE-Bamboo](https://github.com/ext-sakamoro/ALICE-Bamboo) 参照 (LOL → SDF → 3MF パイプライン) |
 
 詳細な技術セクション (マテリアル / アニメーション / アーキテクチャ / メッシュモジュール / プラトン立体 / 区間演算 / ニューラル SDF / コリジョン / 解析的勾配 / Dual Contouring / CSG最適化 / 自動タイト AABB / テクスチャフィッティング / レイマーチング / FFI / フィーチャーフラグ / 物理ブリッジ / 3D プリントパイプライン / パフォーマンス / ベンチマーク / Unity / VRChat / UE5・UE6 / Godot / クロスクレートブリッジ / Asset Delivery Network / Nanite ハイブリッドパイプライン) は [`docs/USAGE_JP.md`](docs/USAGE_JP.md) を参照。
 

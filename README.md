@@ -334,6 +334,43 @@ pip install alice-sdf
 
 ## Usage
 
+### Choose Your Path
+
+Pick the path that matches your role. All paths share the same `SdfNode` intermediate representation, so you can mix them (e.g. build in LOL, transpile to GLSL, evaluate in Python).
+
+| You are… | Path | Best for | Section |
+|----------|------|----------|---------|
+| **Rust dev, want it declarative** | [ALICE-LOL DSL](#with-alice-lol-dsl-recommended) | Scene composition, GPU shader transpile, compile-time law checks | ↓ |
+| **Rust dev, need low-level control** | [Rust direct SdfNode](#rust-direct-sdfnode-construction) | Custom modifier nodes, hand-tuned code paths | ↓ |
+| **Python / data-science user** | [Python bindings](#python) | NumPy batch evaluation, mesh export, notebook workflows | ↓ |
+| **Unity / UE5 / Godot integrator** | C-ABI FFI | Native plugin, real-time evaluation from game engine | [docs/UNREAL_ENGINE.md](docs/UNREAL_ENGINE.md) / [docs/GODOT_GUIDE.md](docs/GODOT_GUIDE.md) |
+| **Web / WebGPU developer** | WASM build | Browser-side SDF evaluation + WGSL shader compile | [docs/WASM_GUIDE.md](docs/WASM_GUIDE.md) |
+| **Mobile (iOS / Android)** | XCFramework / AAR | On-device evaluation in Swift / Kotlin | [Mobile section](#mobile-ios--android) |
+| **3D artist / VFX** | Cookbook recipes | Copy-paste procedural forms, displacement, tiling | [docs/VFX_COOKBOOK.md](docs/VFX_COOKBOOK.md) |
+| **First time here** | 30-second sample below ↓ | Sanity check the install | ↓ |
+
+### Hello, First SDF (30 seconds)
+
+The smallest useful sample — construct, evaluate, mesh, done:
+
+```rust
+use alice_sdf::prelude::*;
+
+let sphere = SdfNode::sphere(1.0);
+let d = eval(&sphere, glam::Vec3::new(0.5, 0.0, 0.0));
+assert!((d + 0.5).abs() < 1e-6);           // point 0.5 away from center → distance -0.5 (inside)
+
+let mesh = sdf_to_mesh(
+    &sphere,
+    glam::Vec3::splat(-1.5),
+    glam::Vec3::splat(1.5),
+    &MarchingCubesConfig::default(),
+);
+println!("{} vertices, {} triangles", mesh.vertices.len(), mesh.indices.len() / 3);
+```
+
+Once this runs, jump to the path that matches your role above.
+
 ### With ALICE-LOL DSL (Recommended)
 
 The easiest way to create SDF scenes is [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) — a `lol!` proc_macro that lets you write SDF trees declaratively instead of constructing them by hand.
@@ -392,6 +429,30 @@ let hlsl = alice_lol::to_hlsl(&scene);            // HLSL (DirectX)
 
 ```rust
 let dist = eval(&scene, glam::Vec3::new(0.0, 1.0, 0.0));
+```
+
+**Mesh export from a LOL scene:**
+
+```rust
+use alice_lol::lol;
+use alice_sdf::prelude::*;
+
+let scene = lol! {
+    smooth_union(0.3,
+        sphere(1.0),
+        translate(2.0, 0.0, 0.0, box3d(0.8, 0.8, 0.8))
+    )
+};
+
+let mesh = sdf_to_mesh(
+    &scene,
+    glam::Vec3::splat(-3.0),
+    glam::Vec3::splat(3.0),
+    &MarchingCubesConfig { resolution: 128, ..Default::default() },
+);
+
+alice_sdf::export::obj::write_obj("out.obj", &mesh)?;
+alice_sdf::export::glb::write_glb("out.glb", &mesh)?;
 ```
 
 **Inject Rust variables at runtime:**
@@ -493,6 +554,113 @@ sdf.export_alembic(vertices, indices, "model.abc")
 positions, uvs, indices = sdf.uv_unwrap(vertices, indices)
 ```
 
+
+### Sine Displacement (v1.7.3, isotropic + anisotropic)
+
+`SineDisplacement` adds a sin-wave perturbation to any child SDF. As of **v1.7.3** it accepts a per-axis `Vec3` frequency, so you can drive fine XYZ-independent patterns (scales, wood grain, cloth drape) from a single node.
+
+Two ergonomic constructors:
+
+| Method | Frequency type | Use for |
+|--------|---------------|---------|
+| `.sine_displacement(amplitude, freq: f32)` | isotropic (`Vec3::splat`) | uniform ripples / roughness / cellular scales |
+| `.sine_displacement_aniso(amplitude, freq: Vec3)` | per-axis | wood grain, cloth drape, fish scales, wave-fronts along one axis |
+
+```rust
+use alice_sdf::prelude::*;
+use glam::Vec3;
+
+// Isotropic: sphere with fine cellular perturbation.
+let scales = SdfNode::sphere(1.0).sine_displacement(0.03, 25.0);
+
+// Anisotropic: long thin scales (high freq on X, low on Y and Z).
+let fish_scales = SdfNode::sphere(1.0).sine_displacement_aniso(0.03, Vec3::new(40.0, 10.0, 10.0));
+
+// Anisotropic: wood grain (rings dense along Y, sparse elsewhere).
+let wood = SdfNode::box3d(1.0, 3.0, 1.0)
+    .sine_displacement_aniso(0.01, Vec3::new(4.0, 30.0, 4.0));
+```
+
+Both variants transpile to GLSL / WGSL / HLSL through the standard pipeline (`to_glsl` / `to_wgsl` / `to_hlsl`). The transpiler emits per-axis `sin(freq.x * p.x) * sin(freq.y * p.y) * sin(freq.z * p.z)`, matching the CPU `modifier_sine_displacement` reference. **Interval-arithmetic bounds and diff (derivative) support are already wired**, so displaced SDFs remain safe for raymarching and gradient-based sampling.
+
+### Common Recipes
+
+Copy-paste patterns that come up over and over. All examples assume `use alice_sdf::prelude::*;`.
+
+**1. Rounded box (chamfer)**
+
+```rust
+let rounded = SdfNode::box3d(1.0, 1.0, 1.0).round(0.15);
+```
+
+**2. Smooth blob (union with soft blend)**
+
+```rust
+let blob = SdfNode::sphere(1.0)
+    .smooth_union(SdfNode::sphere(0.7).translate(1.2, 0.0, 0.0), 0.4);
+// signature: smooth_union(self, other: Self, k: f32) — k is the blend radius
+```
+
+**3. Hollow shell (onion)**
+
+```rust
+let shell = SdfNode::sphere(1.0).onion(0.05);   // 5cm thick wall
+```
+
+**4. Infinite tiling (`repeat_infinite`)**
+
+```rust
+let tiles = SdfNode::box3d(0.4, 0.4, 0.4).repeat_infinite(1.0, 1.0, 1.0);
+// finite variant: .repeat_finite([count_x, count_y, count_z], spacing)
+```
+
+**5. Twist along Y**
+
+```rust
+let twisted = SdfNode::box3d(0.4, 2.0, 0.4).twist(1.5);   // 1.5 rad/unit around Y
+```
+
+**6. Displacement (sine + noise)**
+
+```rust
+let rough = SdfNode::sphere(1.0).sine_displacement(0.03, 20.0);
+```
+
+**7. CSG chain (subtract holes from a plate)**
+
+```rust
+let plate = SdfNode::box3d(2.0, 0.1, 2.0);
+let hole  = SdfNode::cylinder(2.0, 0.15);
+let drilled = plate
+    .subtract(hole.translate(-0.8, 0.0,  0.0))
+    .subtract(hole.translate( 0.8, 0.0,  0.0))
+    .subtract(hole.translate( 0.0, 0.0, -0.8));
+```
+
+**8. GPU transpile (WebGPU / Metal / DX12)**
+
+```rust
+use alice_lol::{lol, to_wgsl};
+
+let scene = lol! { smooth_union(0.3, sphere(1.0), box3d(0.8, 0.8, 0.8)) };
+let wgsl_source = to_wgsl(&scene);      // paste into a WGSL shader
+```
+
+For **VFX-focused patterns** (fluid simulation, mandelbulb, magic effects, ribbon FX, plasma balls, portals, force fields) see [`docs/VFX_COOKBOOK.md`](docs/VFX_COOKBOOK.md).
+
+For **general recipe collection** (procedural terrain, camera-relative modifiers, bounding-volume tricks, LOD strategy) see [`docs/COOKBOOK.md`](docs/COOKBOOK.md).
+
+### Where to go next
+
+| I want to… | See |
+|------------|-----|
+| Understand every `SdfNode` variant | [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) |
+| Set up a fresh project | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
+| Deep dive into the compiler / evaluator internals | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Wire it into Unity / Unreal / Godot | [`docs/UNREAL_ENGINE.md`](docs/UNREAL_ENGINE.md) · [`docs/GODOT_GUIDE.md`](docs/GODOT_GUIDE.md) |
+| Use it from Python | [`docs/PYTHON_GUIDE.md`](docs/PYTHON_GUIDE.md) |
+| Ship it in a browser | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md) |
+| Build 3D-print-ready parts | See [ALICE-Bamboo](https://github.com/ext-sakamoro/ALICE-Bamboo) (LOL → SDF → 3MF pipeline) |
 
 For deep technical sections (Material / Animation / Architecture / Mesh / Platonic Solids / Interval Arithmetic / Neural SDF / Collision / Analytic Gradient / Dual Contouring / CSG Tree Optimization / Auto Tight AABB / Texture Fitting / Raymarching / FFI bindings / Feature Flags / Physics Bridge / 3D Print Pipeline / Performance / Benchmarking / Unity / VRChat / Unreal / Godot / Cross-Crate Bridges / Asset Delivery Network / Nanite hybrid pipeline) see [`docs/USAGE.md`](docs/USAGE.md).
 
