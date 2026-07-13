@@ -56,7 +56,7 @@
   },
   "devDependencies": {
     "typescript": "^5.4.0",
-    "@types/three": "^0.160.0",
+    "@types/three": "^0.185.1",
     "@types/react": "^18.0.0",
     "@react-three/fiber": "^8.0.0",
     "react": "^18.0.0",
