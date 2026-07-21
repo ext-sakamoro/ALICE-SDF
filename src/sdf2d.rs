@@ -66,7 +66,7 @@ pub enum Sdf2dNode {
     /// Glyph SDF from a precomputed 32x32 grid (ALICE-Font integration).
     FontGlyph {
         /// Flattened 32x32 distance values.
-        data: Box<[f32; 1024]>,
+        data: Box<[f32; 4096]>,
         /// Glyph advance width (in em units).
         advance: f32,
         /// Bounding box min corner.
@@ -398,19 +398,19 @@ fn smooth_min_2d(a: f32, b: f32, k: f32) -> f32 {
     (h * h * k).mul_add(-0.25, a.min(b))
 }
 
-/// Bilinear interpolation on a 32x32 grid.
+/// Bilinear interpolation on a 64x64 grid (matches `alice_font::glyph::GLYPH_SDF_SIZE`).
 #[inline]
-fn bilinear_sample(data: &[f32; 1024], u: f32, v: f32) -> f32 {
-    let fx = u * 31.0;
-    let fy = v * 31.0;
-    let ix = (fx as u32).min(30);
-    let iy = (fy as u32).min(30);
+fn bilinear_sample(data: &[f32; 4096], u: f32, v: f32) -> f32 {
+    let fx = u * 63.0;
+    let fy = v * 63.0;
+    let ix = (fx as u32).min(62);
+    let iy = (fy as u32).min(62);
     let tx = fx - ix as f32;
     let ty = fy - iy as f32;
 
-    let i00 = (iy * 32 + ix) as usize;
+    let i00 = (iy * 64 + ix) as usize;
     let i10 = i00 + 1;
-    let i01 = i00 + 32;
+    let i01 = i00 + 64;
     let i11 = i01 + 1;
 
     let d00 = data[i00];
@@ -693,11 +693,11 @@ mod tests {
 
     #[test]
     fn font_glyph_center() {
-        let mut data = Box::new([1.0f32; 1024]);
-        // Set center region to negative (inside glyph)
-        for y in 12..20 {
-            for x in 12..20 {
-                data[y * 32 + x] = -0.5;
+        let mut data = Box::new([1.0f32; 4096]);
+        // Set center region to negative (inside glyph). Grid is 64 × 64.
+        for y in 28..36 {
+            for x in 28..36 {
+                data[y * 64 + x] = -0.5;
             }
         }
         let glyph = Sdf2dNode::FontGlyph {
@@ -713,7 +713,7 @@ mod tests {
 
     #[test]
     fn font_glyph_outside_bbox() {
-        let data = Box::new([0.0f32; 1024]);
+        let data = Box::new([0.0f32; 4096]);
         let glyph = Sdf2dNode::FontGlyph {
             data,
             advance: 0.6,

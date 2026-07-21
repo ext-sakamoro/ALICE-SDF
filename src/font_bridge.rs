@@ -7,7 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use alice_font::{GlyphGenerator, GlyphSdf, MetaFontParams};
+use alice_font::{glyph_dispatcher, GlyphSdf, MetaFontParams};
 
 use crate::sdf2d::Sdf2dNode;
 use crate::types::SdfNode;
@@ -19,7 +19,8 @@ use std::sync::Arc;
 ///
 /// The resulting node uses bilinear interpolation on the grid for evaluation.
 pub fn glyph_to_sdf2d(glyph: &GlyphSdf) -> Sdf2dNode {
-    let mut data = Box::new([0.0f32; 1024]);
+    // 4096 = alice_font::glyph::GLYPH_SDF_SIZE.pow(2) (= 64 × 64).
+    let mut data = Box::new([0.0f32; 4096]);
     data.copy_from_slice(&glyph.data);
 
     Sdf2dNode::FontGlyph {
@@ -30,22 +31,22 @@ pub fn glyph_to_sdf2d(glyph: &GlyphSdf) -> Sdf2dNode {
     }
 }
 
-/// Convert a single ASCII character into a 2D SDF node using the given font parameters.
+/// Convert a single character (ASCII / hiragana / katakana / CJK unified) into a 2D SDF node.
 ///
-/// Non-ASCII characters are mapped to `b'?'`.
+/// Routes through `alice_font::glyph_dispatcher::generate` which selects the appropriate
+/// glyph generator (BIZ UDPGothic outline table / parametric skeleton) by Unicode
+/// code-point range. Characters outside covered ranges return an empty placeholder SDF.
 pub fn char_to_sdf2d(ch: char, params: &MetaFontParams) -> Sdf2dNode {
-    let gen = GlyphGenerator::new(params);
-    let byte = if ch.is_ascii() { ch as u8 } else { b'?' };
-    let glyph = gen.generate(byte);
+    let glyph = glyph_dispatcher::generate(ch, params);
     glyph_to_sdf2d(&glyph)
 }
 
 /// Layout and convert a text string into a 2D SDF scene.
 ///
-/// Each glyph is placed at its correct horizontal position using advance widths.
-/// Returns a union of all glyph SDFs.
+/// Each glyph is routed through `glyph_dispatcher::generate` (ASCII / hiragana /
+/// katakana / CJK unified), placed at its correct horizontal position using
+/// advance widths, and unioned into a single Sdf2dNode.
 pub fn text_to_sdf2d(text: &str, params: &MetaFontParams) -> Option<Sdf2dNode> {
-    let gen = GlyphGenerator::new(params);
     let mut result: Option<Sdf2dNode> = None;
     let mut cursor_x: f32 = 0.0;
 
@@ -55,8 +56,7 @@ pub fn text_to_sdf2d(text: &str, params: &MetaFontParams) -> Option<Sdf2dNode> {
             continue;
         }
 
-        let byte = if ch.is_ascii() { ch as u8 } else { b'?' };
-        let glyph = gen.generate(byte);
+        let glyph = glyph_dispatcher::generate(ch, params);
         let node = glyph_to_sdf2d(&glyph);
         let placed = node.translate(cursor_x, 0.0);
         cursor_x += glyph.advance;
@@ -89,14 +89,15 @@ pub fn glyph_to_3d(glyph: &GlyphSdf, depth: f32) -> SdfNode {
         return SdfNode::box3d(0.01, 0.01, half_depth);
     }
 
-    let cell_w = w / 32.0;
-    let cell_h = h / 32.0;
+    // Grid is 64 × 64 (matches alice_font::glyph::GLYPH_SDF_SIZE).
+    let cell_w = w / 64.0;
+    let cell_h = h / 64.0;
     let cell_r = cell_w.max(cell_h) * 0.6; // sphere radius per cell
 
     let mut spheres: Vec<SdfNode> = Vec::new();
-    for iy in 0..32u32 {
-        for ix in 0..32u32 {
-            let d = glyph.data[(iy * 32 + ix) as usize];
+    for iy in 0..64u32 {
+        for ix in 0..64u32 {
+            let d = glyph.data[(iy * 64 + ix) as usize];
             if d < 0.0 {
                 // Interior cell: place a sphere
                 let cx = (ix as f32 + 0.5).mul_add(cell_w, glyph.bbox_min.x);
@@ -142,9 +143,13 @@ fn balanced_smooth_union(mut nodes: Vec<SdfNode>, k: f32) -> SdfNode {
     nodes.into_iter().next().unwrap()
 }
 
-/// Convert a text string into a 3D extruded SDF.
+/// Convert a text string (ASCII / hiragana / katakana / CJK unified) into a 3D
+/// extruded SDF.
+///
+/// Each character is routed through `glyph_dispatcher::generate`, converted to
+/// a 3D extruded glyph via `glyph_to_3d`, placed at its horizontal position,
+/// and unioned into a single SdfNode.
 pub fn text_to_3d(text: &str, params: &MetaFontParams, depth: f32) -> Option<SdfNode> {
-    let gen = GlyphGenerator::new(params);
     let mut result: Option<SdfNode> = None;
     let mut cursor_x: f32 = 0.0;
 
@@ -154,8 +159,7 @@ pub fn text_to_3d(text: &str, params: &MetaFontParams, depth: f32) -> Option<Sdf
             continue;
         }
 
-        let byte = if ch.is_ascii() { ch as u8 } else { b'?' };
-        let glyph = gen.generate(byte);
+        let glyph = glyph_dispatcher::generate(ch, params);
         let node = glyph_to_3d(&glyph, depth);
         let placed = node.translate(cursor_x, 0.0, 0.0);
         cursor_x += glyph.advance;
@@ -203,6 +207,7 @@ pub struct FontMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alice_font::GlyphGenerator;
 
     fn test_params() -> MetaFontParams {
         MetaFontParams::sans_regular()
@@ -255,6 +260,34 @@ mod tests {
     fn text_to_sdf2d_empty() {
         let result = text_to_sdf2d("", &test_params());
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn char_to_sdf2d_routes_cjk_through_dispatcher() {
+        // Non-ASCII (CJK kanji covered by alice_font dispatcher) must not
+        // fall back to `?`. glyph_dispatcher::generate returns a real glyph
+        // for '日' and '本'; the resulting Sdf2dNode must not be empty.
+        let node_ni = char_to_sdf2d('日', &test_params());
+        let node_hon = char_to_sdf2d('本', &test_params());
+        // Sample near the origin; a real glyph produces a finite SDF value.
+        let d_ni = crate::sdf2d::eval_2d(&node_ni, [0.5, 0.5]);
+        let d_hon = crate::sdf2d::eval_2d(&node_hon, [0.5, 0.5]);
+        assert!(d_ni.is_finite());
+        assert!(d_hon.is_finite());
+    }
+
+    #[test]
+    fn text_to_3d_routes_cjk_and_ascii_mix() {
+        // Bilingual text: ASCII + kanji, all via dispatcher routing.
+        let result = text_to_3d("HELLO AI 日本", &test_params(), 0.2);
+        assert!(
+            result.is_some(),
+            "text_to_3d must produce Some for bilingual input"
+        );
+        let node = result.unwrap();
+        // SDF eval at origin must be finite (no NaN / panic).
+        let d = crate::eval::eval(&node, glam::Vec3::ZERO);
+        assert!(d.is_finite());
     }
 
     #[test]
