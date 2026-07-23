@@ -181,7 +181,14 @@ jobs:
   physics:
     name: Bridge — ALICE-Physics (strict)
     needs: changes
-    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    # 1.7.4 で physics feature を crates.io publish のため一時削除
+    # (alice-physics + transitive dep chain が crates.io に未 publish
+    # のため)。1.8.0 で復活予定、それまでこの job は skip。
+    # 復活手順: この condition を元の
+    #   `needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'`
+    # に戻す。github.event_name が literal "never" に一致することは無いので
+    # 常に false 評価 (actionlint 対策で literal false を避けている)。
+    if: github.event_name == 'never'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ALICE-SDF

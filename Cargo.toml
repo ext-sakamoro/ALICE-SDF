@@ -129,6 +129,16 @@ name = "gpu_vs_cpu"
 harness = false
 required-features = []
 
+# Declare the 5 bridge features as known even though the entries are
+# gone from [features] for the 1.7.4 crates.io publish. Without this
+# `cargo clippy -- -D warnings` and `cargo doc -Dwarnings` fail on
+# `#[cfg(feature = "physics")]` etc. left in src/lib.rs — the code is
+# retained on purpose for the 1.8.0 restoration.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(feature, values("codec", "physics", "asp", "sdf-cache", "font"))',
+] }
+
 [profile.release]
 opt-level = 3
 lto = "fat"
