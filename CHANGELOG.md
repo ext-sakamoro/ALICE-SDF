@@ -6,6 +6,36 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.7.4] - 2026-07-23
+
+### Removed (temporary, restoration scheduled in 1.8.0)
+
+- **5 optional path deps + associated features**: `alice-codec`,
+  `alice-physics`, `libasp` (ALICE-Streaming-Protocol), `alice-cache`,
+  `alice-font` were removed from `[dependencies]`, and the matching
+  features `codec` / `physics` / `asp` / `sdf-cache` / `font` from
+  `[features]`, so the crate can be published to crates.io without
+  waiting on the transitive dep chain (15+ crates deep). The
+  corresponding `src/*_bridge.rs` modules are unchanged and remain
+  `#[cfg(feature = "...")]`-gated — they simply never activate on
+  crates.io 1.7.4. Users who need the bridges keep using `path`/`git`
+  deps against the sibling repos as before.
+
+### Scheduled restoration (1.8.0)
+
+Once `alice-crypto` / `alice-analytics` / `alice-ml` / `alice-db` /
+`alice-cache` / `alice-codec` / `alice-physics` / `libasp` /
+`alice-font` (and their own transitive deps) reach crates.io, 1.8.0
+will restore the 5 features and dep entries with `version =` pins so
+`cargo add alice-sdf --features physics` starts working on
+downstream consumers.
+
+### Fixed
+
+- Keyword `signed-distance-function` (24 chars) → `distance-field`
+  (14 chars) to satisfy the crates.io 20-char limit.
+- Description expanded to note the temporary bridge removal.
+
 ## [v1.7.3] - 2026-07-04
 
 ### Changed
