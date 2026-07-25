@@ -27,6 +27,12 @@ keywords = ["sdf", "signed-distance-function", "3d", "procedural", "csg"]
 Repository = "https://github.com/ext-sakamoro/ALICE-SDF"
 
 [tool.maturin]
-features = ["python"]
+# Python wheel default feature set: enable all three CPU shader transpilers
+# (GLSL / HLSL / BlinkScript) so that `SdfNode.to_glsl()` / `.to_hlsl()` /
+# `.to_blinkscript()` all work out of the box against the crates.io / PyPI
+# wheel. `gpu` (for `.to_wgsl()`) / `volume` (for `bake_to_vdb`) remain
+# opt-in because they pull in wgpu (~15 MB) and platform-specific runtime
+# deps.
+features = ["python", "hlsl", "glsl", "blinkscript"]
 module-name = "alice_sdf"
 python-source = "python"
