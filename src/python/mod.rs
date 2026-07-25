@@ -7,6 +7,7 @@
 #![cfg(feature = "python")]
 
 mod compiled;
+mod dcc;
 mod functions;
 mod helpers;
 mod io;
@@ -37,6 +38,19 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(functions::decimate_mesh, m)?)?;
     m.add_function(wrap_pyfunction!(functions::version, m)?)?;
     m.add_class::<functions::PyMeshCache>()?;
+
+    // DCC-binding helpers (Maya / Cinema 4D / Nuke): module-level primitive
+    // constructors + mesh/volume/slice convenience wrappers, so that the
+    // DCC plugin scripts under `bindings/{maya,cinema4d,nuke}/` work
+    // directly against the crates.io wheel with no shim code.
+    m.add_function(wrap_pyfunction!(dcc::sphere, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc::make_box, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc::torus, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc::sdf_to_mesh, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc::load_asdf, m)?)?;
+    #[cfg(feature = "volume")]
+    m.add_function(wrap_pyfunction!(dcc::bake_to_vdb, m)?)?;
+    m.add_function(wrap_pyfunction!(dcc::render_slice_2d, m)?)?;
 
     // I/O functions
     m.add_function(wrap_pyfunction!(io::export_obj, m)?)?;
