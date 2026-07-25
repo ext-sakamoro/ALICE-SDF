@@ -70,7 +70,7 @@ pub fn gpu_bake_volume_from_shader(
     let compute_source = generate_volume_bake_shader(shader);
 
     // Initialize wgpu
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
@@ -272,7 +272,7 @@ pub fn gpu_bake_volume_with_normals(
     let compute_source = generate_volume_bake_shader_with_normals(&shader);
 
     // Initialize wgpu
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
