@@ -708,6 +708,33 @@ impl PySdfNode {
         shader.source
     }
 
+    /// Generate BlinkScript (Foundry Nuke Blink Framework) source.
+    ///
+    /// Returns the `float sdf_eval(float3 p) { ... }` function body only.
+    /// To get a complete `ImageComputationKernel`, use [`to_blinkscript_kernel`].
+    #[cfg(feature = "blinkscript")]
+    fn to_blinkscript(&self) -> String {
+        let shader = crate::compiled::BlinkScriptShader::transpile(
+            &self.inner,
+            crate::compiled::BlinkScriptTranspileMode::Hardcoded,
+        );
+        shader.source
+    }
+
+    /// Generate a complete BlinkScript `ImageComputationKernel` for Nuke.
+    ///
+    /// * `z` — world-space slice plane sampled at every pixel.
+    /// * `bounds` — `(min, max)` cubic world range mapped over the image.
+    #[cfg(feature = "blinkscript")]
+    #[pyo3(signature = (z = 0.0, bounds = (-2.0, 2.0)))]
+    fn to_blinkscript_kernel(&self, z: f32, bounds: (f32, f32)) -> String {
+        let shader = crate::compiled::BlinkScriptShader::transpile(
+            &self.inner,
+            crate::compiled::BlinkScriptTranspileMode::Hardcoded,
+        );
+        shader.to_kernel(z, bounds)
+    }
+
     // --- Operator overloads for Pythonic DSL ---
 
     /// `a | b` → union

@@ -35,6 +35,7 @@ terrain = []  # Terrain system (heightmap + erosion + caves)
 gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
+blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to HLSL body)
 # Bridge features (codec/physics/asp/sdf-cache/font) were removed
 # temporarily for the 1.7.4 crates.io publish because their optional
 # path deps (alice-codec/physics/libasp/cache/font) are not yet on
@@ -45,7 +46,7 @@ glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
-all-shaders = ["gpu", "hlsl", "glsl"]  # All shader transpilers
+all-shaders = ["gpu", "hlsl", "glsl", "blinkscript"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
 unreal = ["ffi", "hlsl"]  # Unreal Engine integration (FFI + HLSL)
 aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All AAA game features

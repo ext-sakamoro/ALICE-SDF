@@ -186,6 +186,9 @@ pub mod hlsl;
 #[cfg(feature = "glsl")]
 pub mod glsl;
 
+#[cfg(feature = "blinkscript")]
+pub mod blinkscript;
+
 #[cfg(feature = "gpu")]
 pub use wgsl::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator, TranspileMode, WgslShader};
 
@@ -194,6 +197,9 @@ pub use hlsl::{HlslShader, HlslTranspileMode};
 
 #[cfg(feature = "glsl")]
 pub use glsl::{GlslShader, GlslTranspileMode};
+
+#[cfg(feature = "blinkscript")]
+pub use blinkscript::{BlinkScriptShader, BlinkScriptTranspileMode};
 
 pub use aabb::AabbPacked;
 pub use compiler::{CompileError, CompiledSdf};
