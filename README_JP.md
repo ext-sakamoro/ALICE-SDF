@@ -27,7 +27,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **72プリミティブ、24演算、7トランスフォーム、23モディファイア**（126 total） - 業界最高水準のシェイプボキャブラリ
+- **73プリミティブ、24演算、7トランスフォーム、24モディファイア**（128 total） - 業界最高水準のシェイプボキャブラリ
 - **5層メッシュ永続化** - ABMバイナリフォーマット、LODチェーン永続化、FIFO排出チャンクキャッシュ、Unity/UE5/UE6ネイティブエクスポート
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
 - **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
@@ -43,7 +43,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **距離場ヒートマップ** - 4カラーマップ（coolwarm、binary、viridis、magma）による断面スライス
 - **Shell / Offset Surface** - 内側/外側オフセット制御付き可変厚シェルモディファイア
 - **体積・表面積** - 決定論的PRNGと標準誤差を用いたモンテカルロ推定
-- **ALICE-Fontブリッジ** - フォントグリフ → 2D/3D SDF変換、テキストレイアウト、3D押し出し（`--features font`）
+- **ALICE-Fontブリッジ** - フォントグリフ → 2D/3D SDF変換、テキストレイアウト、3D押し出し（`--features font`、crates.io v1.7.4 では一時的に無効化中 — [インストール](#インストール) の注意書き参照、v1.8.0 で復帰予定）
 - **自動タイトAABB** - 区間演算＋二分探索によるSDF表面を含む最小バウンディングボックス計算
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
@@ -278,7 +278,7 @@ SDFは任意の点から表面までの最短距離を返します:
 
 ```
 SdfNode
-  |-- プリミティブ (68): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- プリミティブ (73): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -293,7 +293,8 @@ SdfNode
   |                    DiamondSurface, Neovius, Lidinoid, IWP, FRD,              ← TPMS曲面
   |                    FischerKochS, PMY,                                          ← TPMS曲面
   |                    Circle2D, Rect2D, Segment2D, Polygon2D,                   ← 2Dプリミティブ（押し出し）
-  |                    RoundedRect2D, Annular2D                                    ← 2Dプリミティブ（押し出し）
+  |                    RoundedRect2D, Annular2D,                                   ← 2Dプリミティブ（押し出し）
+  |                    Terrain                                                     ← 手続き的バイオーム地形（FBM + Voronoi侵食）
   |-- 演算 (24): Union, Intersection, Subtraction,
   |              SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |              ChamferUnion, ChamferIntersection, ChamferSubtraction,
@@ -306,8 +307,8 @@ SdfNode
   |                        ProjectiveTransform,                                    ← 逆行列付き射影変換
   |                        LatticeDeform,                                          ← 自由形状変形（FFD）グリッド
   |                        SdfSkinning                                             ← ボーンウェイトスケルタル変形
-  |-- モディファイア (23): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
-  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
+  |-- モディファイア (24): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |                   Mirror, Revolution, Extrude, Taper, Displacement, SineDisplacement, PolarRepeat, SweepBezier,
   |                   Shear,                                                       ← 3軸せん断変形
   |                   OctantMirror,                                                ← 48重対称性
   |                   IcosahedralSymmetry,                                         ← 120重正二十面体対称性
@@ -319,6 +320,8 @@ SdfNode
 ```
 
 ## インストール
+
+> **注意 (v1.7.4)** — crates.io では、5 つのブリッジ feature が一時的に無効化されています: `codec` / `physics` / `asp` / `sdf-cache` / `font`。対応する `src/*_bridge.rs` モジュールは `#[cfg(feature = "...")]` で gate されているため、feature 無しでは単にコンパイル対象外になります。ブリッジが必要な場合は、隣接リポジトリ (`ALICE-Codec` / `ALICE-Physics` / `libasp` / `alice-cache` / `alice-font`) への `path`/`git` dep を使い続けてください。transitive dep chain の crates.io 公開が揃い次第、**v1.8.0** で復帰予定。詳細は [CHANGELOG.md](CHANGELOG.md) の `[v1.7.4] - 2026-07-23` エントリ参照。
 
 ### Rust
 
@@ -726,6 +729,8 @@ let wgsl_source = to_wgsl(&scene);      // WGSL shader に貼り付け
 | **[ALICE-Physics](https://github.com/ext-sakamoro/ALICE-Physics)** | 決定論的128bit固定小数点物理エンジン — `SdfField` トレイトでSDF形状がそのまま衝突ジオメトリに。SDF CCD、力場、破壊、布、流体シミュレーション |
 
 LLMで生成した形状は見た目だけではなく、**物理シミュレーション対応**です。`CompiledSdfField` ラッパーがSDFをO(1)衝突クエリ面として公開するため、凸分解なしで剛体・破壊・流体のインタラクションが可能です。
+
+> **v1.7.4 注意** — `physics` feature は crates.io で一時的に無効化されています。v1.8.0 までは本リポジトリへの `path`/`git` dep で `alice-sdf = { git = "https://github.com/ext-sakamoro/ALICE-SDF", features = ["physics"] }` として利用してください。詳細は [インストール](#インストール) 参照。
 
 ### クイックスタート
 

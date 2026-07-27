@@ -28,7 +28,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
-- **72 primitives, 24 operations, 7 transforms, 23 modifiers** (126 total) - industry-leading shape vocabulary
+- **73 primitives, 24 operations, 7 transforms, 24 modifiers** (128 total) - industry-leading shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
 - **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
@@ -43,7 +43,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Distance Field Heatmap** - cross-section slicing with 4 color maps (coolwarm, binary, viridis, magma)
 - **Shell / Offset Surface** - variable-thickness shell modifier with inner/outer offset control
 - **Volume & Surface Area** - Monte Carlo estimation with deterministic PRNG and standard error
-- **ALICE-Font Bridge** - font glyph → 2D/3D SDF conversion, text layout, 3D extrusion (`--features font`)
+- **ALICE-Font Bridge** - font glyph → 2D/3D SDF conversion, text layout, 3D extrusion (`--features font`, temporarily disabled on crates.io v1.7.4 — see [Installation](#installation) note, restoration planned for v1.8.0)
 - **Auto Tight AABB** - interval arithmetic + binary search to find minimal bounding box containing the SDF surface
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
@@ -278,7 +278,7 @@ An SDF returns the shortest distance from any point to the surface:
 
 ```
 SdfNode
-  |-- Primitive (68): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
+  |-- Primitive (73): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
   |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
   |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
   |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
@@ -293,7 +293,8 @@ SdfNode
   |                    DiamondSurface, Neovius, Lidinoid, IWP, FRD,              ← TPMS surfaces
   |                    FischerKochS, PMY,                                          ← TPMS surfaces
   |                    Circle2D, Rect2D, Segment2D, Polygon2D,                   ← 2D primitives (extruded)
-  |                    RoundedRect2D, Annular2D                                    ← 2D primitives (extruded)
+  |                    RoundedRect2D, Annular2D,                                   ← 2D primitives (extruded)
+  |                    Terrain                                                     ← procedural biome terrain (FBM + Voronoi erosion)
   |-- Operation (24): Union, Intersection, Subtraction,
   |                    SmoothUnion, SmoothIntersection, SmoothSubtraction,
   |                    ChamferUnion, ChamferIntersection, ChamferSubtraction,
@@ -306,8 +307,8 @@ SdfNode
   |                   ProjectiveTransform,                                         ← perspective projection with inv_matrix
   |                   LatticeDeform,                                               ← Free-Form Deformation (FFD) grid
   |                   SdfSkinning                                                  ← bone-weight skeletal deformation
-  |-- Modifier (23): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
-  |                   Mirror, Revolution, Extrude, Taper, Displacement, PolarRepeat, SweepBezier,
+  |-- Modifier (24): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |                   Mirror, Revolution, Extrude, Taper, Displacement, SineDisplacement, PolarRepeat, SweepBezier,
   |                   Shear,                                                       ← 3-axis shear deformation
   |                   OctantMirror,                                                ← 48-fold symmetry
   |                   IcosahedralSymmetry,                                         ← 120-fold icosahedral symmetry
@@ -319,6 +320,8 @@ SdfNode
 ```
 
 ## Installation
+
+> **Note (v1.7.4)** — On crates.io, 5 bridge features are temporarily disabled: `codec` / `physics` / `asp` / `sdf-cache` / `font`. Their `src/*_bridge.rs` modules are `#[cfg(feature = "...")]`-gated so they simply don't compile without the features. Users who need the bridges keep using `path`/`git` deps against sibling repos (`ALICE-Codec` / `ALICE-Physics` / `libasp` / `alice-cache` / `alice-font`). Scheduled restoration in **v1.8.0** once the transitive dep chain publishes to crates.io. See [CHANGELOG.md](CHANGELOG.md) `[v1.7.4] - 2026-07-23` entry for details.
 
 ### Rust
 
@@ -730,6 +733,8 @@ User: "A snowman with a top hat"
 | **[ALICE-Physics](https://github.com/ext-sakamoro/ALICE-Physics)** | Deterministic 128-bit fixed-point physics — SDF shapes become collision geometry via `SdfField` trait. SDF CCD, force fields, destruction, cloth, fluid simulation |
 
 LLM-generated shapes are not just visual — they are physics-ready. The `CompiledSdfField` wrapper exposes the SDF as an O(1) collision query surface, enabling rigid body, destruction, and fluid interactions without convex decomposition.
+
+> **v1.7.4 note** — The `physics` feature is temporarily disabled on crates.io. Until v1.8.0, use a `path`/`git` dep against this repo with `alice-sdf = { git = "https://github.com/ext-sakamoro/ALICE-SDF", features = ["physics"] }`. See [Installation](#installation).
 
 ### Quick Start
 
