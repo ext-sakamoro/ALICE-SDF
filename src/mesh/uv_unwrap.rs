@@ -117,6 +117,174 @@ pub fn apply_uvs(mesh: &mut Mesh, result: &UvUnwrapResult) {
     }
 }
 
+// ============================================================================
+// dotneet/image-to-3d §C UV テクセル密度計測
+// ============================================================================
+
+/// UV テクセル密度レポート
+///
+/// image-to-3d の実測知見に基づき、テクセル/面 が 30 未満の三角形は
+/// チャート境界が滲むため警告対象とする 事前計測して面数 / テクスチャ解像度の
+/// バランスを検証するために使用
+///
+/// 実測例 (image-to-3d):
+/// | 設定 | 面数 | テクセル/面 |
+/// |------|------|-------------|
+/// | 20 万面 / 1024² | 182,813 | 5.2 (悪) |
+/// | 20 万面 / 2048² | 182,944 | 23.0 |
+/// | 2 万面 / 1024² | 19,044 | 55.1 (良) |
+/// | 1024 / 2048² | 5,235 | 801 (メッシュ粗すぎ) |
+#[derive(Debug, Clone)]
+pub struct UvDensityReport {
+    /// 計測に使ったテクスチャ解像度 (px、正方形想定)
+    pub texture_size: u32,
+    /// 総三角形数
+    pub total_face_count: usize,
+    /// 最小 texels/face (退化三角形 or UV 未セット面は含まない)
+    pub min_texels_per_face: f32,
+    /// 最大 texels/face
+    pub max_texels_per_face: f32,
+    /// 平均 texels/face
+    pub avg_texels_per_face: f32,
+    /// 30 texels/face 未満の三角形数
+    pub low_density_face_count: usize,
+    /// 30 texels/face 未満の比率 (0.0 - 1.0)
+    pub low_density_ratio: f32,
+}
+
+impl UvDensityReport {
+    /// image-to-3d §C 実測に基づく警告閾値 (これ未満で滲みリスク)
+    pub const RECOMMENDED_MIN_TEXELS_PER_FACE: f32 = 30.0;
+
+    /// 警告レベル判定閾値 (低密度三角形の割合)
+    pub const WARN_LOW_DENSITY_RATIO: f32 = 0.05;
+
+    /// 低密度三角形が全体の `WARN_LOW_DENSITY_RATIO` を超えていれば警告対象
+    #[must_use]
+    pub fn has_warning(&self) -> bool {
+        self.low_density_ratio > Self::WARN_LOW_DENSITY_RATIO
+    }
+}
+
+impl std::fmt::Display for UvDensityReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "UV Density Report")?;
+        writeln!(f, "  Texture size: {}² px", self.texture_size)?;
+        writeln!(f, "  Total faces: {}", self.total_face_count)?;
+        writeln!(f, "  Texels/face min: {:.1}", self.min_texels_per_face)?;
+        writeln!(f, "  Texels/face avg: {:.1}", self.avg_texels_per_face)?;
+        writeln!(f, "  Texels/face max: {:.1}", self.max_texels_per_face)?;
+        writeln!(
+            f,
+            "  Low-density faces (< {:.0}): {} ({:.1}%)",
+            Self::RECOMMENDED_MIN_TEXELS_PER_FACE,
+            self.low_density_face_count,
+            self.low_density_ratio * 100.0
+        )?;
+        write!(
+            f,
+            "  Status: {}",
+            if self.has_warning() {
+                "WARN (below threshold)"
+            } else {
+                "OK"
+            }
+        )
+    }
+}
+
+/// UV テクセル密度を計測し、`UvDensityReport` を返す
+///
+/// - 各三角形について UV 空間での面積を計算
+/// - `texels_per_face = uv_area × texture_size²` で texel 数に換算
+/// - 総三角形数のうち `RECOMMENDED_MIN_TEXELS_PER_FACE` 未満のものを警告対象カウント
+///
+/// # 前提
+///
+/// - Vertex.uv は既に unwrap 済 (未 unwrap = all zero だと density 0 で警告になる)
+/// - UV 座標系は [0, 1]² 正規化 (uv_unwrap がこの前提で pack している)
+///
+/// # 引数
+///
+/// - `texture_size`: 正方形テクスチャの一辺の px 数 (1024 / 2048 等)
+///
+/// # 退化三角形の扱い
+///
+/// UV 面積 0 (position 空間で degenerate な三角形 or UV が collapse している) は
+/// min/max/avg には含めない (低密度カウントには含める、UV が壊れている合図として)
+#[must_use]
+#[allow(clippy::cast_precision_loss)]
+pub fn compute_uv_density(mesh: &Mesh, texture_size: u32) -> UvDensityReport {
+    let tri_count = mesh.indices.len() / 3;
+    if tri_count == 0 {
+        return UvDensityReport {
+            texture_size,
+            total_face_count: 0,
+            min_texels_per_face: 0.0,
+            max_texels_per_face: 0.0,
+            avg_texels_per_face: 0.0,
+            low_density_face_count: 0,
+            low_density_ratio: 0.0,
+        };
+    }
+
+    let tex_area_px = (texture_size as f32) * (texture_size as f32);
+
+    let mut sum_texels = 0.0_f32;
+    let mut min_texels = f32::INFINITY;
+    let mut max_texels = 0.0_f32;
+    let mut valid_count = 0_usize;
+    let mut low_count = 0_usize;
+
+    for t in 0..tri_count {
+        let base = t * 3;
+        let uv0 = mesh.vertices[mesh.indices[base] as usize].uv;
+        let uv1 = mesh.vertices[mesh.indices[base + 1] as usize].uv;
+        let uv2 = mesh.vertices[mesh.indices[base + 2] as usize].uv;
+
+        // 2D triangle area = 0.5 * |cross(uv1-uv0, uv2-uv0)|
+        let e1 = uv1 - uv0;
+        let e2 = uv2 - uv0;
+        let cross_z = e1.x * e2.y - e1.y * e2.x;
+        let uv_area = cross_z.abs() * 0.5;
+        let texels_per_face = uv_area * tex_area_px;
+
+        if texels_per_face > 0.0 {
+            sum_texels += texels_per_face;
+            if texels_per_face < min_texels {
+                min_texels = texels_per_face;
+            }
+            if texels_per_face > max_texels {
+                max_texels = texels_per_face;
+            }
+            valid_count += 1;
+        }
+
+        if texels_per_face < UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE {
+            low_count += 1;
+        }
+    }
+
+    // 全 三角形が退化 (UV area == 0) だと valid_count = 0、min は INF のままなので 0 に矯正
+    let min_texels_final = if valid_count > 0 { min_texels } else { 0.0 };
+    let avg_texels = if valid_count > 0 {
+        sum_texels / (valid_count as f32)
+    } else {
+        0.0
+    };
+    let low_density_ratio = (low_count as f32) / (tri_count as f32);
+
+    UvDensityReport {
+        texture_size,
+        total_face_count: tri_count,
+        min_texels_per_face: min_texels_final,
+        max_texels_per_face: max_texels,
+        avg_texels_per_face: avg_texels,
+        low_density_face_count: low_count,
+        low_density_ratio,
+    }
+}
+
 type EdgeKey = (u32, u32);
 
 const fn edge_key(a: u32, b: u32) -> EdgeKey {
@@ -596,5 +764,113 @@ mod tests {
         // Verify UVs were written to mesh
         let has_non_zero = mesh.vertices.iter().any(|v| v.uv.x != 0.0 || v.uv.y != 0.0);
         assert!(has_non_zero, "Some vertices should have non-zero UVs");
+    }
+
+    // ------------------------------------------------------------------------
+    // dotneet/image-to-3d §C UV テクセル密度計測テスト
+    // ------------------------------------------------------------------------
+
+    use crate::mesh::{Mesh, Vertex};
+
+    /// UV が単位正方形 [0,1]² を 2 三角形で完全カバーする mesh
+    fn make_uv_unit_quad_mesh() -> Mesh {
+        let mut mesh = Mesh::new();
+        // 4 頂点、UV = 正方形の 4 隅
+        let mut v0 = Vertex::new(Vec3::new(0.0, 0.0, 0.0), Vec3::Y);
+        v0.uv = Vec2::new(0.0, 0.0);
+        let mut v1 = Vertex::new(Vec3::new(1.0, 0.0, 0.0), Vec3::Y);
+        v1.uv = Vec2::new(1.0, 0.0);
+        let mut v2 = Vertex::new(Vec3::new(0.0, 0.0, 1.0), Vec3::Y);
+        v2.uv = Vec2::new(0.0, 1.0);
+        let mut v3 = Vertex::new(Vec3::new(1.0, 0.0, 1.0), Vec3::Y);
+        v3.uv = Vec2::new(1.0, 1.0);
+        mesh.vertices.extend([v0, v1, v2, v3]);
+        // 2 三角形 (0,1,2) と (1,3,2)、各 UV 面積 = 0.5
+        mesh.indices = vec![0, 1, 2, 1, 3, 2];
+        mesh
+    }
+
+    #[test]
+    fn test_uv_density_empty_mesh() {
+        let mesh = Mesh::new();
+        let report = compute_uv_density(&mesh, 1024);
+        assert_eq!(report.total_face_count, 0);
+        assert_eq!(report.low_density_face_count, 0);
+        assert!(!report.has_warning());
+    }
+
+    #[test]
+    fn test_uv_density_unit_quad_1024() {
+        // 2 三角形が [0,1]² を等分 → 各 UV 面積 0.5 → 1024² × 0.5 = 524288 texels/face
+        let mesh = make_uv_unit_quad_mesh();
+        let report = compute_uv_density(&mesh, 1024);
+        assert_eq!(report.total_face_count, 2);
+        // avg / min / max はすべて 524288 ± 誤差
+        let expected = 1024.0 * 1024.0 * 0.5;
+        assert!((report.avg_texels_per_face - expected).abs() < 1.0);
+        assert!((report.min_texels_per_face - expected).abs() < 1.0);
+        assert!((report.max_texels_per_face - expected).abs() < 1.0);
+        assert_eq!(report.low_density_face_count, 0);
+        assert!(!report.has_warning());
+    }
+
+    #[test]
+    fn test_uv_density_unit_quad_low_texture_size_warns() {
+        // 同じ mesh でも texture_size を 8² に落とすと 8² × 0.5 = 32 texels/face
+        // (境界すれすれで OK、has_warning は false)、6² だと 18 で warning
+        let mesh = make_uv_unit_quad_mesh();
+        let report_ok = compute_uv_density(&mesh, 8);
+        assert!(report_ok.min_texels_per_face >= 30.0);
+        assert_eq!(report_ok.low_density_face_count, 0);
+        assert!(!report_ok.has_warning());
+
+        let report_warn = compute_uv_density(&mesh, 6);
+        // 6² × 0.5 = 18 texels/face < 30 → 両三角形が low、比率 100% > 5%
+        assert!(report_warn.min_texels_per_face < 30.0);
+        assert_eq!(report_warn.low_density_face_count, 2);
+        assert!((report_warn.low_density_ratio - 1.0).abs() < 1e-6);
+        assert!(report_warn.has_warning());
+    }
+
+    #[test]
+    fn test_uv_density_uv_unset_all_zero() {
+        // Vertex.uv が全 zero (unwrap 未実行) → UV 面積すべて 0
+        // avg / min / max は 0.0、低密度カウントは全三角形 (退化含めて)
+        let mut mesh = Mesh::new();
+        for pos in [
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ] {
+            mesh.vertices.push(Vertex::new(pos, Vec3::Y)); // uv default (0,0)
+        }
+        mesh.indices = vec![0, 1, 2];
+
+        let report = compute_uv_density(&mesh, 1024);
+        assert_eq!(report.total_face_count, 1);
+        assert_eq!(report.min_texels_per_face, 0.0);
+        assert_eq!(report.max_texels_per_face, 0.0);
+        assert_eq!(report.avg_texels_per_face, 0.0);
+        // 0 texels < 30 → low count に入る
+        assert_eq!(report.low_density_face_count, 1);
+        assert!(report.has_warning());
+    }
+
+    #[test]
+    fn test_uv_density_report_display() {
+        // Display impl が panic せず、要素を含む
+        let mesh = make_uv_unit_quad_mesh();
+        let report = compute_uv_density(&mesh, 1024);
+        let s = format!("{report}");
+        assert!(s.contains("UV Density Report"));
+        assert!(s.contains("Total faces: 2"));
+        assert!(s.contains("Status:"));
+    }
+
+    #[test]
+    fn test_uv_density_constants() {
+        // 定数値の意図確認
+        assert!((UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE - 30.0).abs() < 1e-6);
+        assert!((UvDensityReport::WARN_LOW_DENSITY_RATIO - 0.05).abs() < 1e-6);
     }
 }
