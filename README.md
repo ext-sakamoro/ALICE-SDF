@@ -332,6 +332,10 @@ cargo add alice-sdf
 pip install alice-sdf
 ```
 
+### Claude Code / Codex Skill
+
+The `skills/implicit-cad/` directory bundles ALICE-SDF as an installable agent skill for Claude Code / Codex. It exposes SDF authoring, GLSL/WGSL/HLSL transpile, and mesh export (GLB/OBJ/STL/PLY/3MF) as thin CLI wrappers around this crate. See [`skills/implicit-cad/SKILL.md`](skills/implicit-cad/SKILL.md). Companion `alice-lol-sdf` skill (in the [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) repo) provides the DSL front-end with LLM constrained-decoding support.
+
 ## Usage
 
 ### Choose Your Path
