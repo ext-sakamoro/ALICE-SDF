@@ -376,7 +376,7 @@ pub fn optimize_vertex_fetch(mesh: &mut Mesh) {
 /// - 最適化後: ATVR ~1.0-1.1 (near-linear access)
 ///
 /// 本実装は「index → vertex_id の連続性」を測る簡易版:
-/// - 各 pair (index[i], index[i+1]) について、`|diff| = |index[i+1] - index[i]|` を集計
+/// - 各 pair `(index[i], index[i+1])` について、隣接差分を集計
 /// - 平均 diff が小さいほど cache line 利用が良い
 ///
 /// より正確に GPU の fetch cache を模す場合は cache_size (通常 8-16) を指定
