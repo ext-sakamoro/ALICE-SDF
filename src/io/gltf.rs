@@ -37,6 +37,16 @@ pub struct GltfConfig {
     pub embed_textures: bool,
     /// Export extended PBR material extensions (clearcoat, sheen, etc.)
     pub export_extensions: bool,
+    /// Force `"doubleSided":true` for all materials.
+    ///
+    /// glTF default is `false`, which causes back-face culling in Unity / Unreal /
+    /// Blender solid view / `three.js` default. When a mesh is generated (e.g.,
+    /// from Dual Contouring / Marching Cubes) with mixed face orientation,
+    /// the back-culled faces disappear and the model looks like it has
+    /// missing surfaces. Setting this to `true` guarantees both sides are drawn.
+    ///
+    /// Reference: dotneet/image-to-3d §5 「面が欠けて見える問題」
+    pub double_sided: bool,
 }
 
 impl Default for GltfConfig {
@@ -51,6 +61,7 @@ impl Default for GltfConfig {
             quantize_positions: false,
             embed_textures: false,
             export_extensions: false,
+            double_sided: false,
         }
     }
 }
@@ -68,6 +79,7 @@ impl GltfConfig {
             quantize_positions: false,
             embed_textures: true,
             export_extensions: true,
+            double_sided: true,
         }
     }
 }
@@ -477,6 +489,10 @@ fn build_glb_data(
 
                 if mat.opacity < 1.0 {
                     mat_str += r#","alphaMode":"BLEND""#;
+                }
+
+                if config.double_sided {
+                    mat_str += r#","doubleSided":true"#;
                 }
 
                 // --- Extended PBR extensions ---
@@ -1439,5 +1455,79 @@ mod tests {
         assert!(import_glb_bytes(&[]).is_err());
         assert!(import_glb_bytes(&[0u8; 12]).is_err());
         assert!(import_glb_bytes(b"not a glb file at all").is_err());
+    }
+
+    // ------------------------------------------------------------------------
+    // doubleSided / alphaMode カバレッジ (image-to-3d §5 対策)
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_gltf_double_sided_default_is_false() {
+        // GltfConfig::default() では double_sided = false、glTF 側にも
+        // "doubleSided":true が出力されない (glTF 仕様上 default は false)
+        let sphere = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 4,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        let mut mat_lib = MaterialLibrary::new();
+        mat_lib.add(crate::material::Material::metal("m", 0.5, 0.5, 0.5, 0.2));
+
+        let (json_bytes, _bin) =
+            build_glb_data(&mesh, &GltfConfig::default(), Some(&mat_lib)).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        assert!(
+            !json_str.contains(r#""doubleSided":true"#),
+            "default config should not emit doubleSided:true, got: {json_str}"
+        );
+    }
+
+    #[test]
+    fn test_gltf_double_sided_opt_in_emits_field() {
+        let sphere = SdfNode::sphere(1.0);
+        let mc_config = MarchingCubesConfig {
+            resolution: 4,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &mc_config);
+
+        let mut mat_lib = MaterialLibrary::new();
+        mat_lib.add(crate::material::Material::metal("m", 0.5, 0.5, 0.5, 0.2));
+
+        let config = GltfConfig {
+            double_sided: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, Some(&mat_lib)).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        assert!(
+            json_str.contains(r#""doubleSided":true"#),
+            "double_sided=true should emit doubleSided:true, got: {json_str}"
+        );
+    }
+
+    #[test]
+    fn test_gltf_aaa_config_enables_double_sided() {
+        // AAA config は doubleSided を有効化 (mesh 生成の Dual Contouring / MC で
+        // 面向き乱れが起きる可能性があるため、AAA 出力は defensive に両面描画)
+        let sphere = SdfNode::sphere(1.0);
+        let mc_config = MarchingCubesConfig::aaa(4);
+        let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &mc_config);
+
+        let mut mat_lib = MaterialLibrary::new();
+        mat_lib.add(crate::material::Material::metal("m", 0.5, 0.5, 0.5, 0.2));
+
+        let (json_bytes, _bin) = build_glb_data(&mesh, &GltfConfig::aaa(), Some(&mat_lib)).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        assert!(
+            json_str.contains(r#""doubleSided":true"#),
+            "aaa() config should emit doubleSided:true, got: {json_str}"
+        );
     }
 }
