@@ -227,10 +227,7 @@ const fn rotate_triangle(_a: u32, b: u32, c: u32, next: u32) -> i32 {
 /// meshopt C++ ライブラリの `meshopt_encodeIndexBuffer` と bit-exact 一致する
 #[must_use]
 pub fn encode_index_buffer(indices: &[u32]) -> Vec<u8> {
-    assert!(
-        indices.len() % 3 == 0,
-        "index count must be multiple of 3"
-    );
+    assert!(indices.len() % 3 == 0, "index count must be multiple of 3");
     let tri_count = indices.len() / 3;
 
     // 最悪ケース: 16 bytes per triangle + header + trailer
