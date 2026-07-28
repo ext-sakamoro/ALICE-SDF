@@ -342,6 +342,8 @@ pub fn generate_lod_chain_decimated(
             preserve_boundary: true,
             preserve_materials: config.preserve_materials,
             locked_materials: Vec::new(),
+            lock_vertices: Vec::new(),
+            error_absolute: true,
         };
 
         let mut lod_mesh = current_mesh.clone();

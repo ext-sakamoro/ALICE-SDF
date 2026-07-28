@@ -50,6 +50,23 @@ pub struct DecimateConfig {
     pub preserve_materials: bool,
     /// Lock vertices with specific material IDs (never collapse)
     pub locked_materials: Vec<u32>,
+    /// Per-vertex lock mask (`true` = never allow this vertex to collapse)
+    ///
+    /// Empty vector = no per-vertex locks (default) When non-empty, length
+    /// MUST equal `mesh.vertices.len()`; excess vertices past the mask are
+    /// treated as unlocked
+    ///
+    /// This is the meshopt `simplifier.cpp` `lockVertices` equivalent, useful
+    /// for LOD chains where cross-LOD vertex correspondence must be preserved
+    /// (typically the "seam" vertices between two LOD instances)
+    pub lock_vertices: Vec<bool>,
+    /// Interpret `max_error` as absolute geometric distance (default `true`)
+    ///
+    /// When `false`, `max_error` is scaled by the mesh AABB diagonal length so
+    /// that the threshold applies proportionally to the mesh size This matches
+    /// the meshopt `simplifier.cpp` `target_error` semantics when
+    /// `meshopt_SimplifyErrorAbsolute` is NOT set
+    pub error_absolute: bool,
 }
 
 impl Default for DecimateConfig {
@@ -60,6 +77,8 @@ impl Default for DecimateConfig {
             preserve_boundary: true,
             preserve_materials: true,
             locked_materials: Vec::new(),
+            lock_vertices: Vec::new(),
+            error_absolute: true,
         }
     }
 }
@@ -73,6 +92,8 @@ impl DecimateConfig {
             preserve_boundary: false,
             preserve_materials: false,
             locked_materials: Vec::new(),
+            lock_vertices: Vec::new(),
+            error_absolute: true,
         }
     }
 
@@ -84,6 +105,8 @@ impl DecimateConfig {
             preserve_boundary: true,
             preserve_materials: true,
             locked_materials: Vec::new(),
+            lock_vertices: Vec::new(),
+            error_absolute: true,
         }
     }
 }
@@ -329,6 +352,20 @@ impl Ord for CollapseCandidate {
 /// - Material boundary detection parallelized
 pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
     let vert_count = mesh.vertices.len();
+
+    // Compute effective max_error (scale by AABB diagonal when relative)
+    let error_threshold: f64 = if config.error_absolute || vert_count == 0 {
+        f64::from(config.max_error)
+    } else {
+        let mut min_p = glam::Vec3::splat(f32::MAX);
+        let mut max_p = glam::Vec3::splat(f32::MIN);
+        for v in &mesh.vertices {
+            min_p = min_p.min(v.position);
+            max_p = max_p.max(v.position);
+        }
+        let diag = (max_p - min_p).length();
+        f64::from(config.max_error) * f64::from(diag).max(1e-6)
+    };
     let tri_count = mesh.indices.len() / 3;
 
     if tri_count <= 4 {
@@ -445,8 +482,8 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
         HashSet::new()
     };
 
-    // Locked vertices (from locked_materials config)
-    let locked_verts: HashSet<u32> = if !config.locked_materials.is_empty() {
+    // Locked vertices (from locked_materials config + per-vertex lock_vertices mask)
+    let mut locked_verts: HashSet<u32> = if !config.locked_materials.is_empty() {
         mesh.vertices
             .iter()
             .enumerate()
@@ -456,6 +493,12 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
     } else {
         HashSet::new()
     };
+    // Merge per-vertex lock mask (meshopt lockVertices equivalent)
+    for (i, &locked) in config.lock_vertices.iter().enumerate() {
+        if locked && i < vert_count {
+            locked_verts.insert(i as u32);
+        }
+    }
 
     // Extract material IDs so the closure doesn't borrow mesh.vertices
     let mut mat_ids: Vec<u32> = mesh.vertices.iter().map(|v| v.material_id).collect();
@@ -499,7 +542,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
                     mesh.vertices[b as usize].position,
                 );
                 let error = q_sum.evaluate(optimal.x as f64, optimal.y as f64, optimal.z as f64);
-                if error <= config.max_error as f64 {
+                if error <= error_threshold {
                     heap.push(CollapseCandidate {
                         error,
                         v1: a,
@@ -606,7 +649,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
                 mesh.vertices[nb as usize].position,
             );
             let error = q_sum.evaluate(optimal.x as f64, optimal.y as f64, optimal.z as f64);
-            if error <= config.max_error as f64 {
+            if error <= error_threshold {
                 heap.push(CollapseCandidate {
                     error,
                     v1,
@@ -920,6 +963,87 @@ mod tests {
         assert!(
             locked_after > 0,
             "Locked material vertices should survive decimation"
+        );
+    }
+
+    #[test]
+    fn test_decimate_lock_vertices_mask() {
+        // meshopt lockVertices equivalent: per-vertex bool mask
+        let sphere = SdfNode::sphere(1.0);
+        let config = MarchingCubesConfig {
+            resolution: 16,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mut mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
+
+        // Lock the first 20 vertices via bool mask
+        let mut lock_mask = vec![false; mesh.vertices.len()];
+        for entry in lock_mask.iter_mut().take(20) {
+            *entry = true;
+        }
+        let expected_positions: Vec<Vec3> =
+            mesh.vertices[..20].iter().map(|v| v.position).collect();
+
+        let lock_config = DecimateConfig {
+            target_ratio: 0.3,
+            lock_vertices: lock_mask,
+            preserve_boundary: false,
+            preserve_materials: false,
+            ..Default::default()
+        };
+        decimate(&mut mesh, &lock_config);
+
+        // All originally-locked vertex positions must survive unchanged
+        for (i, expected) in expected_positions.iter().enumerate() {
+            let matched = mesh
+                .vertices
+                .iter()
+                .any(|v| v.position.abs_diff_eq(*expected, 1e-5));
+            assert!(
+                matched,
+                "locked vertex {i} at {expected:?} was lost during decimation"
+            );
+        }
+    }
+
+    #[test]
+    fn test_decimate_error_absolute_vs_relative() {
+        // Same mesh, absolute vs relative error thresholds should differ
+        // when max_error is small relative to mesh scale
+        let sphere = SdfNode::sphere(5.0); // radius 5
+        let config = MarchingCubesConfig {
+            resolution: 12,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let mesh_base = sdf_to_mesh(&sphere, Vec3::splat(-8.0), Vec3::splat(8.0), &config);
+        let mut mesh_abs = mesh_base.clone();
+        let mut mesh_rel = mesh_base;
+
+        let cfg_abs = DecimateConfig {
+            target_ratio: 0.3,
+            max_error: 0.01,
+            error_absolute: true,
+            ..Default::default()
+        };
+        let cfg_rel = DecimateConfig {
+            target_ratio: 0.3,
+            max_error: 0.01,
+            error_absolute: false, // scaled by AABB diagonal (~16)
+            ..Default::default()
+        };
+        decimate(&mut mesh_abs, &cfg_abs);
+        decimate(&mut mesh_rel, &cfg_rel);
+
+        // Relative mode should allow more aggressive collapses on a large mesh
+        assert!(
+            mesh_rel.indices.len() <= mesh_abs.indices.len(),
+            "relative-error decimation ({} indices) should reach the target more easily than absolute ({} indices)",
+            mesh_rel.indices.len(),
+            mesh_abs.indices.len(),
         );
     }
 }
