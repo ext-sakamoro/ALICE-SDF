@@ -19,6 +19,7 @@ pub mod fbx;
 pub mod gltf;
 pub mod iges;
 mod json;
+pub mod meshopt_gltf;
 pub mod nanite;
 pub mod obj;
 pub mod ply;

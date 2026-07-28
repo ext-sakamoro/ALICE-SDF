@@ -753,7 +753,9 @@ fn estimate_channel(
     k: usize,
     max_channel: u8,
 ) -> u8 {
-    let vertex_count_aligned = vertex_count.div_ceil(BYTE_GROUP_SIZE) * BYTE_GROUP_SIZE;
+    // Cap sample size to VERTEX_BLOCK_MAX_SIZE for estimation (fits in buffer)
+    let sample_count = vertex_count.min(VERTEX_BLOCK_MAX_SIZE);
+    let vertex_count_aligned = sample_count.div_ceil(BYTE_GROUP_SIZE) * BYTE_GROUP_SIZE;
     let mut buffer = vec![0u8; VERTEX_BLOCK_MAX_SIZE];
 
     let mut best_channel: u8 = 0;
@@ -766,7 +768,7 @@ fn estimate_channel(
             encode_deltas(
                 &mut buffer,
                 vertex_data,
-                vertex_count,
+                sample_count,
                 vertex_size,
                 last_vertex,
                 k + j,
