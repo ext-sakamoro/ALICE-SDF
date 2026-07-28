@@ -39,6 +39,7 @@ pub mod lod;
 pub mod lod_persist;
 pub mod manifold;
 mod mesh_to_sdf;
+pub mod meshlet;
 pub mod nanite;
 pub mod optimize;
 pub mod overdraw;
