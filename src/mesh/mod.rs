@@ -44,6 +44,7 @@ pub mod optimize;
 pub mod overdraw;
 pub mod point_cloud_sdf;
 pub mod primitive_fitting;
+pub mod quantization;
 mod sdf_to_mesh;
 pub mod spatial_order;
 pub mod uv_unwrap;

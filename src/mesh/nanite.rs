@@ -105,6 +105,109 @@ impl ClusterBounds {
     }
 }
 
+/// Normal cone bounds — cluster 内の全 face normal を 1 つの円錐で包む
+///
+/// # 用途
+///
+/// GPU の **back-face culling** 効率化 三角形群の normal が全て一定角度内に
+/// 収まる (円錐で包める) 場合、cluster 全体を back-face として reject 可能
+///
+/// # 数学
+///
+/// - `axis`: 円錐軸 (単位ベクトル、face normal の平均)
+/// - `cutoff_cos`: 円錐の開き角の cos (= `dot(axis, most_deviated_normal)`)
+/// - back-face 判定: `dot(view_dir, axis) < -cutoff_cos` なら全 face が back-face
+///
+/// # References
+///
+/// - zeux/meshoptimizer §clusterizer.cpp `meshopt_computeMeshletBounds` cone 部分
+/// - "Optimizing the Graphics Pipeline with Compute" (GDC 2016)
+#[derive(Debug, Clone, Copy)]
+pub struct NormalCone {
+    /// 円錐軸 (単位ベクトル、平均 face normal 方向)
+    pub axis: Vec3,
+    /// 円錐開き角の cos ([-1, 1]、1.0 = すべて同方向 = culling 最効率、-1.0 = 全方向 = culling 不可)
+    pub cutoff_cos: f32,
+}
+
+impl NormalCone {
+    /// 頂点法線群から NormalCone を計算
+    ///
+    /// # アルゴリズム
+    ///
+    /// 1. 全法線の平均を計算 → `axis` (正規化)
+    /// 2. 各法線について `dot(axis, normal)` を計算、最小値が `cutoff_cos`
+    /// 3. 空入力 or 縮退時は「culling 不可」を表す `axis = Vec3::Y, cutoff_cos = -1.0` fallback
+    ///
+    /// # 制約
+    ///
+    /// - 入力法線はすべて単位ベクトル前提 (未正規化なら結果崩壊)
+    /// - 平均長 < 1e-6 の場合は法線群が全方向に散っている状態、culling 不可 (fallback)
+    #[must_use]
+    pub fn from_normals(normals: &[Vec3]) -> Self {
+        if normals.is_empty() {
+            return Self::unbounded();
+        }
+        let mut sum = Vec3::ZERO;
+        for &n in normals {
+            sum += n;
+        }
+        let sum_len = sum.length();
+        if sum_len < 1e-6 {
+            return Self::unbounded();
+        }
+        let axis = sum / sum_len;
+        // 最大逸脱 = 最小 dot
+        let mut min_dot = 1.0_f32;
+        for &n in normals {
+            let d = axis.dot(n);
+            if d < min_dot {
+                min_dot = d;
+            }
+        }
+        Self {
+            axis,
+            cutoff_cos: min_dot,
+        }
+    }
+
+    /// Culling 不可能な NormalCone (全法線が全方向に散っている状態)
+    #[must_use]
+    #[inline]
+    pub const fn unbounded() -> Self {
+        Self {
+            axis: Vec3::Y,
+            cutoff_cos: -1.0,
+        }
+    }
+
+    /// Back-face culling 判定
+    ///
+    /// # 引数
+    ///
+    /// - `view_dir`: view から cluster への視線方向 (単位ベクトル、`cluster.center - view_pos` 正規化)
+    ///
+    /// # Returns
+    ///
+    /// `true` なら cluster 全体が back-face → 描画 skip 可能
+    /// `false` なら少なくとも 1 face が front-facing 可能性あり → 通常描画
+    ///
+    /// # 数学
+    ///
+    /// 全 face normal は cone `(axis, cutoff_cos)` 内 view direction を `v` (camera から
+    /// cluster への方向) とすると、face normal `n` が `n · v > 0` の時 back-facing
+    /// cone 内の全 face が back-facing となるのは `axis · v >= cutoff_cos` の時
+    /// (幾何学的に view が cone axis と同じ側 = 「後ろから見る」状態)
+    #[must_use]
+    #[inline]
+    pub fn is_backface_culled(&self, view_dir: Vec3) -> bool {
+        if self.cutoff_cos <= -1.0 + 1e-6 {
+            return false; // unbounded は culling 不可
+        }
+        self.axis.dot(view_dir) >= self.cutoff_cos
+    }
+}
+
 /// LOD level information
 #[derive(Debug, Clone, Copy)]
 pub struct LodLevel {
@@ -915,5 +1018,95 @@ mod tests {
         for cluster in &nanite.clusters {
             assert_eq!(cluster.material_id, 0);
         }
+    }
+
+    // ------------------------------------------------------------------------
+    // NormalCone tests (meshoptimizer §clusterizer.cpp `computeMeshletBounds` cone 相当)
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_normal_cone_empty() {
+        let cone = NormalCone::from_normals(&[]);
+        assert!((cone.cutoff_cos + 1.0).abs() < 1e-6);
+        // unbounded は culling 不可
+        assert!(!cone.is_backface_culled(Vec3::Z));
+    }
+
+    #[test]
+    fn test_normal_cone_all_same_normal() {
+        // 全部 +Y の法線 → cone は axis=Y, cutoff_cos=1.0 (完全一致)
+        let normals = vec![Vec3::Y; 5];
+        let cone = NormalCone::from_normals(&normals);
+        assert!((cone.axis.y - 1.0).abs() < 1e-4);
+        assert!((cone.cutoff_cos - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_normal_cone_scattered() {
+        // 6 軸方向 → 平均 0 に近く axis 決定不可 → unbounded
+        let normals = vec![
+            Vec3::X,
+            Vec3::NEG_X,
+            Vec3::Y,
+            Vec3::NEG_Y,
+            Vec3::Z,
+            Vec3::NEG_Z,
+        ];
+        let cone = NormalCone::from_normals(&normals);
+        // 平均 = 0 → unbounded fallback
+        assert!(cone.cutoff_cos <= -1.0 + 1e-6);
+    }
+
+    #[test]
+    fn test_normal_cone_hemispherical() {
+        // 半球状に散る法線 (Y ± X)、axis = Y、cutoff_cos = 0.7 前後
+        let normals = vec![
+            Vec3::Y,
+            Vec3::new(1.0, 1.0, 0.0).normalize(),
+            Vec3::new(-1.0, 1.0, 0.0).normalize(),
+            Vec3::new(0.0, 1.0, 1.0).normalize(),
+            Vec3::new(0.0, 1.0, -1.0).normalize(),
+        ];
+        let cone = NormalCone::from_normals(&normals);
+        // axis は +Y に近い
+        assert!(cone.axis.y > 0.9);
+        // cutoff_cos > 0 で有効な cone (culling 可能状態)
+        assert!(cone.cutoff_cos > 0.0);
+    }
+
+    #[test]
+    fn test_normal_cone_backface_culled() {
+        // 全法線 +Y (cluster の "上面")、view_dir = +Y (camera が cluster の下、
+        // 見上げると cluster の裏側 = back-face) → cull すべき
+        let normals = vec![Vec3::Y; 3];
+        let cone = NormalCone::from_normals(&normals);
+        // view_dir = +Y: axis.dot(view) = 1, cutoff = 1, 1 >= 1 → cull ✓
+        assert!(cone.is_backface_culled(Vec3::Y));
+        // view_dir = -Y: camera が cluster の上、見下ろす = 表側 (+Y face 見える) → cull しない
+        assert!(!cone.is_backface_culled(Vec3::NEG_Y));
+    }
+
+    #[test]
+    fn test_normal_cone_wide_no_cull() {
+        // 開き角広い cone (Y ± 60°) → 側面から見ても back とは断言できず culling 不可
+        let normals = vec![
+            Vec3::Y,
+            Vec3::new(0.866, 0.5, 0.0), // 60° in XY
+            Vec3::new(-0.866, 0.5, 0.0),
+        ];
+        let cone = NormalCone::from_normals(&normals);
+        // 側面 view_dir = X → cone axis Y から dot = 0
+        // cutoff_cos ≈ 0.5、0 >= 0.5 は false なので culling されない
+        assert!(!cone.is_backface_culled(Vec3::X));
+    }
+
+    #[test]
+    fn test_normal_cone_unbounded_never_culls() {
+        let cone = NormalCone::unbounded();
+        // どの view direction でも false
+        assert!(!cone.is_backface_culled(Vec3::X));
+        assert!(!cone.is_backface_culled(Vec3::NEG_X));
+        assert!(!cone.is_backface_culled(Vec3::Y));
+        assert!(!cone.is_backface_culled(Vec3::NEG_Y));
     }
 }
