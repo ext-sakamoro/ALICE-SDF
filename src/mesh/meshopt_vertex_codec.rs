@@ -344,41 +344,170 @@ fn decode_bytes(
 // Delta encoding (scalar u8 delta, zigzag)
 // ============================================================================
 
+/// Zigzag encode u16 delta
+#[inline]
+const fn zigzag16(delta: u16) -> u16 {
+    let high_bit = delta >> 15;
+    let mask = 0u16.wrapping_sub(high_bit);
+    delta.wrapping_shl(1) ^ mask
+}
+
+/// Unzigzag u16
+#[inline]
+const fn unzigzag16(z: u16) -> u16 {
+    let lo_bit = z & 1;
+    let mask = 0u16.wrapping_sub(lo_bit);
+    (z >> 1) ^ mask
+}
+
+/// Rotate u32 left by `r` bits (r in 0..32)
+#[inline]
+const fn rotate_u32(v: u32, r: u32) -> u32 {
+    v.rotate_left(r & 31)
+}
+
 /// Encode delta bytes for position k across all vertices in block
 ///
-/// `buffer[i]` = zigzag8(`vertex[i][k]` - `previous`)
-fn encode_deltas_u8(
+/// Dispatches by channel (0=u8, 1=u16, 2=u32 XOR+rot) writing byte at position
+/// k's sub-offset within the aligned group
+#[allow(clippy::needless_range_loop)]
+fn encode_deltas(
     buffer: &mut [u8],
     vertex_data: &[u8],
     vertex_count: usize,
     vertex_size: usize,
-    last_vertex_byte: u8,
+    last_vertex: &[u8; 256],
     k: usize,
+    channel: u8,
 ) {
-    let mut p = last_vertex_byte;
-    for i in 0..vertex_count {
-        let v = vertex_data[i * vertex_size + k];
-        let d = v.wrapping_sub(p);
-        buffer[i] = zigzag8(d);
-        p = v;
+    match channel & 3 {
+        0 => {
+            let mut p = last_vertex[k];
+            for i in 0..vertex_count {
+                let v = vertex_data[i * vertex_size + k];
+                let d = v.wrapping_sub(p);
+                buffer[i] = zigzag8(d);
+                p = v;
+            }
+        }
+        1 => {
+            // u16 zigzag delta, extract byte at (k & 1) position
+            let k0 = k & !1;
+            let ks = (k & 1) * 8;
+            let mut p = u16::from_le_bytes([last_vertex[k0], last_vertex[k0 + 1]]);
+            for i in 0..vertex_count {
+                let base = i * vertex_size + k0;
+                let v = u16::from_le_bytes([vertex_data[base], vertex_data[base + 1]]);
+                let d = zigzag16(v.wrapping_sub(p));
+                buffer[i] = (d >> ks) as u8;
+                p = v;
+            }
+        }
+        _ => {
+            // channel == 2: u32 XOR + rotate
+            let k0 = k & !3;
+            let ks = ((k & 3) * 8) as u32;
+            let rot = u32::from(channel >> 4);
+            let mut p = u32::from_le_bytes([
+                last_vertex[k0],
+                last_vertex[k0 + 1],
+                last_vertex[k0 + 2],
+                last_vertex[k0 + 3],
+            ]);
+            for i in 0..vertex_count {
+                let base = i * vertex_size + k0;
+                let v = u32::from_le_bytes([
+                    vertex_data[base],
+                    vertex_data[base + 1],
+                    vertex_data[base + 2],
+                    vertex_data[base + 3],
+                ]);
+                let d = rotate_u32(v ^ p, rot);
+                buffer[i] = (d >> ks) as u8;
+                p = v;
+            }
+        }
     }
 }
 
-/// Decode delta bytes, writing to `output` strided
-fn decode_deltas_u8(
-    buffer: &[u8],
+/// Decode delta from 4 byte columns based on channel
+///
+/// `columns[0..4]` = decoded byte columns (each `vertex_count` bytes)
+/// Writes reconstructed bytes to `output[i * vertex_size + k .. + 4]`
+#[allow(clippy::needless_range_loop)]
+fn decode_deltas_group(
+    columns: &[u8],
     output: &mut [u8],
-    output_offset: usize,
+    output_k: usize,
     vertex_count: usize,
     vertex_size: usize,
-    last_vertex_byte: u8,
+    last_vertex: &[u8; 256],
+    channel: u8,
 ) {
-    let mut p = last_vertex_byte;
-    for i in 0..vertex_count {
-        let d = unzigzag8(buffer[i]);
-        let v = p.wrapping_add(d);
-        output[output_offset + i * vertex_size] = v;
-        p = v;
+    match channel & 3 {
+        0 => {
+            // u8 scalar delta per byte
+            for j in 0..4 {
+                let col_start = j * vertex_count;
+                let mut p = last_vertex[output_k + j];
+                for i in 0..vertex_count {
+                    let d = unzigzag8(columns[col_start + i]);
+                    let v = p.wrapping_add(d);
+                    output[i * vertex_size + output_k + j] = v;
+                    p = v;
+                }
+            }
+        }
+        1 => {
+            // u16 zigzag delta, 2 sub-iterations
+            for sub in 0..2 {
+                let col_lo = sub * 2 * vertex_count;
+                let col_hi = col_lo + vertex_count;
+                let k0 = output_k + sub * 2;
+                let mut p = u16::from_le_bytes([last_vertex[k0], last_vertex[k0 + 1]]);
+                for i in 0..vertex_count {
+                    let stream = u16::from_le_bytes([columns[col_lo + i], columns[col_hi + i]]);
+                    let d = unzigzag16(stream);
+                    let v = p.wrapping_add(d);
+                    let bytes = v.to_le_bytes();
+                    let out_base = i * vertex_size + k0;
+                    output[out_base] = bytes[0];
+                    output[out_base + 1] = bytes[1];
+                    p = v;
+                }
+            }
+        }
+        _ => {
+            // channel == 2: u32 XOR + rotate
+            let rot = u32::from((channel >> 4).wrapping_neg() & 31);
+            let c0 = 0;
+            let c1 = vertex_count;
+            let c2 = 2 * vertex_count;
+            let c3 = 3 * vertex_count;
+            let k0 = output_k;
+            let mut p = u32::from_le_bytes([
+                last_vertex[k0],
+                last_vertex[k0 + 1],
+                last_vertex[k0 + 2],
+                last_vertex[k0 + 3],
+            ]);
+            for i in 0..vertex_count {
+                let stream = u32::from_le_bytes([
+                    columns[c0 + i],
+                    columns[c1 + i],
+                    columns[c2 + i],
+                    columns[c3 + i],
+                ]);
+                let v = rotate_u32(stream, rot) ^ p;
+                let bytes = v.to_le_bytes();
+                let out_base = i * vertex_size + k0;
+                output[out_base] = bytes[0];
+                output[out_base + 1] = bytes[1];
+                output[out_base + 2] = bytes[2];
+                output[out_base + 3] = bytes[3];
+                p = v;
+            }
+        }
     }
 }
 
@@ -444,6 +573,7 @@ fn encode_vertex_block(
     vertex_count: usize,
     vertex_size: usize,
     last_vertex: &mut [u8; 256],
+    channels: &[u8],
     version: u8,
 ) {
     debug_assert!(vertex_count > 0 && vertex_count <= VERTEX_BLOCK_MAX_SIZE);
@@ -459,15 +589,17 @@ fn encode_vertex_block(
     let mut buffer = vec![0u8; VERTEX_BLOCK_MAX_SIZE];
 
     for k in 0..vertex_size {
-        // Fill buffer with delta
+        // Fill buffer with delta based on channel
         buffer[..vertex_count_aligned].fill(0);
-        encode_deltas_u8(
+        let channel = if version == 0 { 0 } else { channels[k / 4] };
+        encode_deltas(
             &mut buffer,
             vertex_data,
             vertex_count,
             vertex_size,
-            last_vertex[k],
+            last_vertex,
             k,
+            channel,
         );
 
         let ctrl = if version == 0 {
@@ -509,6 +641,7 @@ fn encode_vertex_block(
         .copy_from_slice(&vertex_data[last_offset..last_offset + vertex_size]);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn decode_vertex_block(
     data: &[u8],
     cursor: &mut usize,
@@ -516,6 +649,7 @@ fn decode_vertex_block(
     vertex_count: usize,
     vertex_size: usize,
     last_vertex: &mut [u8; 256],
+    channels: &[u8],
     version: u8,
 ) -> Result<(), CodecError> {
     debug_assert!(vertex_count > 0 && vertex_count <= VERTEX_BLOCK_MAX_SIZE);
@@ -531,48 +665,62 @@ fn decode_vertex_block(
     let control_start = *cursor;
     *cursor += control_size;
 
-    let mut buffer = vec![0u8; VERTEX_BLOCK_MAX_SIZE];
+    // 4-byte group buffer: 4 columns × VERTEX_BLOCK_MAX_SIZE
+    let mut columns = vec![0u8; 4 * VERTEX_BLOCK_MAX_SIZE];
 
-    for k in 0..vertex_size {
-        let ctrl = if version == 0 {
-            0
-        } else {
-            (data[control_start + k / 4] >> ((k % 4) * 2)) & 3
-        };
+    for k in (0..vertex_size).step_by(4) {
+        // Decode 4 byte columns for this k-group
+        for j in 0..4 {
+            let ctrl = if version == 0 {
+                0
+            } else {
+                (data[control_start + k / 4] >> (j * 2)) & 3
+            };
+            let col_start = j * vertex_count;
 
-        match ctrl {
-            3 => {
-                // literal
-                if *cursor + vertex_count > data.len() {
-                    return Err(CodecError::UnexpectedEof);
+            match ctrl {
+                3 => {
+                    // literal
+                    if *cursor + vertex_count > data.len() {
+                        return Err(CodecError::UnexpectedEof);
+                    }
+                    columns[col_start..col_start + vertex_count]
+                        .copy_from_slice(&data[*cursor..*cursor + vertex_count]);
+                    *cursor += vertex_count;
                 }
-                buffer[..vertex_count].copy_from_slice(&data[*cursor..*cursor + vertex_count]);
-                *cursor += vertex_count;
-            }
-            2 => {
-                // zero
-                buffer[..vertex_count_aligned].fill(0);
-            }
-            _ => {
-                let bits: &[u8] = if version == 0 {
-                    &BITS_V0
-                } else if ctrl == 0 {
-                    &BITS_V1[0..4]
-                } else {
-                    &BITS_V1[1..5]
-                };
-                decode_bytes(data, cursor, &mut buffer, vertex_count_aligned, bits)?;
+                2 => {
+                    // zero
+                    columns[col_start..col_start + vertex_count_aligned].fill(0);
+                }
+                _ => {
+                    let bits: &[u8] = if version == 0 {
+                        &BITS_V0
+                    } else if ctrl == 0 {
+                        &BITS_V1[0..4]
+                    } else {
+                        &BITS_V1[1..5]
+                    };
+                    decode_bytes(
+                        data,
+                        cursor,
+                        &mut columns[col_start..],
+                        vertex_count_aligned,
+                        bits,
+                    )?;
+                }
             }
         }
 
-        // Delta reconstruct
-        decode_deltas_u8(
-            &buffer,
+        // Apply delta reconstruction for the 4-byte group
+        let channel = if version == 0 { 0 } else { channels[k / 4] };
+        decode_deltas_group(
+            &columns,
             output,
             k,
             vertex_count,
             vertex_size,
-            last_vertex[k],
+            last_vertex,
+            channel,
         );
     }
 
@@ -587,7 +735,63 @@ fn decode_vertex_block(
 // Public API
 // ============================================================================
 
-/// Encode vertex data to meshopt v1 binary format
+/// Estimate best channel (0/1/2) for a 4-byte group starting at k
+///
+/// Encodes the group with each candidate channel, measures compressed size,
+/// picks the smallest Level parameter caps `max_channel`:
+/// - level 0-1: max_channel=1 (channel 0 only, scalar u8)
+/// - level 2: max_channel=2 (channels 0-1: u8 / u16)
+/// - level 3+: max_channel=3 (channels 0-2: u8 / u16 / u32 XOR+rot)
+///
+/// For channel 2, tries rotation 0 only (simplification, meshopt-compat is
+/// preserved since decoder reads rotation from stored channel byte)
+fn estimate_channel(
+    vertex_data: &[u8],
+    vertex_count: usize,
+    vertex_size: usize,
+    last_vertex: &[u8; 256],
+    k: usize,
+    max_channel: u8,
+) -> u8 {
+    let vertex_count_aligned = vertex_count.div_ceil(BYTE_GROUP_SIZE) * BYTE_GROUP_SIZE;
+    let mut buffer = vec![0u8; VERTEX_BLOCK_MAX_SIZE];
+
+    let mut best_channel: u8 = 0;
+    let mut best_size = usize::MAX;
+
+    for channel in 0..=max_channel.min(2) {
+        let mut total = 0usize;
+        for j in 0..4 {
+            buffer[..vertex_count_aligned].fill(0);
+            encode_deltas(
+                &mut buffer,
+                vertex_data,
+                vertex_count,
+                vertex_size,
+                last_vertex,
+                k + j,
+                channel,
+            );
+            // best possible size per group
+            for gi in 0..(vertex_count_aligned / BYTE_GROUP_SIZE) {
+                let group = &buffer[gi * BYTE_GROUP_SIZE..];
+                let s1 = encode_bytes_group_measure(group, 1);
+                let s2 = encode_bytes_group_measure(group, 2);
+                let s4 = encode_bytes_group_measure(group, 4);
+                let s8 = encode_bytes_group_measure(group, 8);
+                total += s1.min(s2).min(s4).min(s8);
+            }
+        }
+        if total < best_size {
+            best_size = total;
+            best_channel = channel;
+        }
+    }
+
+    best_channel
+}
+
+/// Encode vertex data to meshopt v1 binary format (default level 0, scalar delta)
 ///
 /// # 引数
 ///
@@ -603,6 +807,22 @@ fn decode_vertex_block(
 /// If `vertex_size` is not a multiple of 4, or > 256, or vertex_data length doesn't match
 #[must_use]
 pub fn encode_vertex_buffer(vertex_data: &[u8], vertex_size: usize) -> Vec<u8> {
+    encode_vertex_buffer_level(vertex_data, vertex_size, 0)
+}
+
+/// Encode vertex data with explicit compression level
+///
+/// - `level` 0-1: scalar u8 delta only (all channels = 0)
+/// - `level` 2: choose between u8 / u16 delta per 4-byte group
+/// - `level` 3+: also allow u32 XOR delta (best for float data)
+///
+/// Higher levels give better compression at cost of encoding time
+///
+/// # Panics
+///
+/// Same as `encode_vertex_buffer`
+#[must_use]
+pub fn encode_vertex_buffer_level(vertex_data: &[u8], vertex_size: usize, level: u8) -> Vec<u8> {
     assert!(
         vertex_size > 0 && vertex_size <= 256,
         "vertex_size must be in (0, 256]"
@@ -648,6 +868,28 @@ pub fn encode_vertex_buffer(vertex_data: &[u8], vertex_size: usize) -> Vec<u8> {
 
     let mut last_vertex = first_vertex;
 
+    // Compute channels array (level 2+ estimates, level 0-1 all zeros)
+    let max_channel: u8 = if level >= 3 {
+        2
+    } else if level >= 2 {
+        1
+    } else {
+        0
+    };
+    let mut channels = vec![0u8; vertex_size / 4];
+    if version != 0 && max_channel > 0 && vertex_count > 1 {
+        for k in (0..vertex_size).step_by(4) {
+            channels[k / 4] = estimate_channel(
+                vertex_data,
+                vertex_count,
+                vertex_size,
+                &last_vertex,
+                k,
+                max_channel,
+            );
+        }
+    }
+
     let vertex_block_size = get_vertex_block_size(vertex_size);
     let mut vertex_offset = 0;
 
@@ -662,6 +904,7 @@ pub fn encode_vertex_buffer(vertex_data: &[u8], vertex_size: usize) -> Vec<u8> {
             block_size,
             vertex_size,
             &mut last_vertex,
+            &channels,
             version,
         );
 
@@ -683,9 +926,9 @@ pub fn encode_vertex_buffer(vertex_data: &[u8], vertex_size: usize) -> Vec<u8> {
     }
     // first_vertex
     out.extend_from_slice(&first_vertex[..vertex_size]);
-    // channels (all zero for scalar delta)
+    // channels
     if version != 0 {
-        out.resize(out.len() + vertex_size / 4, 0);
+        out.extend_from_slice(&channels);
     }
 
     out
@@ -744,7 +987,14 @@ pub fn decode_vertex_buffer(
     let tail_start = buffer.len() - tail_size;
     let mut last_vertex = [0u8; 256];
     last_vertex[..vertex_size].copy_from_slice(&buffer[tail_start..tail_start + vertex_size]);
-    // Note: channels (last vertex_size/4 bytes of tail) are ignored — scalar delta only
+
+    // Read channels array from tail (v1 only)
+    let channels: Vec<u8> = if version == 0 {
+        Vec::new()
+    } else {
+        let channels_start = tail_start + vertex_size;
+        buffer[channels_start..channels_start + vertex_size / 4].to_vec()
+    };
 
     let mut output = vec![0u8; vertex_count * vertex_size];
 
@@ -768,6 +1018,7 @@ pub fn decode_vertex_buffer(
             block_size,
             vertex_size,
             &mut last_vertex,
+            &channels,
             version,
         )?;
 
@@ -963,6 +1214,76 @@ mod tests {
         let encoded = encode_vertex_buffer(&vertex_data, 16);
         let ratio = vertex_data.len() as f32 / encoded.len() as f32;
         assert!(ratio > 3.0, "expected > 3x compression, got {ratio:.2}x");
+    }
+
+    #[test]
+    fn test_zigzag16_roundtrip() {
+        for v in [0u16, 1, 32767, 32768, 65535] {
+            let z = zigzag16(v);
+            let back = unzigzag16(z);
+            assert_eq!(v, back, "zigzag16 failed for {v}");
+        }
+    }
+
+    #[test]
+    fn test_rotate_u32() {
+        assert_eq!(rotate_u32(0x8000_0001, 1), 0x0000_0003);
+        assert_eq!(rotate_u32(0x0000_0001, 31), 0x8000_0000);
+        assert_eq!(rotate_u32(0xABCD_EF01, 0), 0xABCD_EF01);
+    }
+
+    #[test]
+    fn test_encode_decode_level_2_u16() {
+        // Level 2: allows u16 delta, should compress better for u16-aligned data
+        let vertex_size = 8;
+        let vertex_count = 100;
+        let mut vertex_data = Vec::with_capacity(vertex_count * vertex_size);
+        for i in 0..vertex_count {
+            // 4x u16 with small deltas
+            for j in 0..4 {
+                vertex_data.extend_from_slice(&((i * 3 + j) as u16).to_le_bytes());
+            }
+        }
+        let encoded = encode_vertex_buffer_level(&vertex_data, vertex_size, 2);
+        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        assert_eq!(decoded, vertex_data);
+    }
+
+    #[test]
+    fn test_encode_decode_level_3_u32_xor() {
+        // Level 3: allows u32 XOR delta, best for float data
+        let vertex_size = 12;
+        let vertex_count = 100;
+        let mut vertex_data = Vec::with_capacity(vertex_count * vertex_size);
+        for i in 0..vertex_count {
+            let x = (i as f32) * 0.05;
+            let y = (i as f32 * 0.03).sin();
+            let z = (i as f32 * 0.03).cos();
+            vertex_data.extend_from_slice(&x.to_le_bytes());
+            vertex_data.extend_from_slice(&y.to_le_bytes());
+            vertex_data.extend_from_slice(&z.to_le_bytes());
+        }
+        let encoded = encode_vertex_buffer_level(&vertex_data, vertex_size, 3);
+        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        assert_eq!(decoded, vertex_data);
+    }
+
+    #[test]
+    fn test_level_progression_all_correct() {
+        // Same data at 3 levels, all round-trip correctly
+        let vertex_size = 12;
+        let vertex_count = 50;
+        let mut vertex_data = Vec::new();
+        let mut state = 0xDEADBEEFu32;
+        for _ in 0..(vertex_count * vertex_size) {
+            state = state.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            vertex_data.push((state >> 16) as u8);
+        }
+        for level in 0..=3u8 {
+            let encoded = encode_vertex_buffer_level(&vertex_data, vertex_size, level);
+            let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+            assert_eq!(decoded, vertex_data, "level {level} round-trip failed");
+        }
     }
 
     #[test]
