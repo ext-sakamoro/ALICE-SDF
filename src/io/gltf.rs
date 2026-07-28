@@ -71,6 +71,28 @@ pub struct GltfConfig {
     /// 4th component (handedness sign, snorm [-1, 1] where -1 = flipped, +1 = normal).
     /// Reduces tangent storage from 16 bytes/vertex to 4 bytes/vertex (~75% savings).
     pub quantize_tangents: bool,
+    /// Apply `EXT_meshopt_compression` on all bufferViews (indices + attributes)
+    ///
+    /// When enabled, `export_glb` / `export_glb_bytes` internally delegate to
+    /// [`crate::io::meshopt_gltf::export_glb_meshopt_bytes`] which produces
+    /// a compact GLB compatible with meshopt-aware loaders (typical size
+    /// reduction: 30-60% of raw payload for real meshes).
+    ///
+    /// # Limitations when enabled
+    ///
+    /// - PBR material extensions (clearcoat/sheen/anisotropy) are NOT applied
+    /// - Vertex quantization (`quantize_*`) is NOT combined with meshopt
+    /// - Only POSITION / NORMAL / TEXCOORD_0 / indices are emitted
+    /// - `MaterialLibrary` textures are NOT embedded
+    ///
+    /// For AAA workflows requiring both PBR and compression, apply meshopt
+    /// compression as a separate pipeline step after gltf export
+    pub meshopt_compress: bool,
+    /// Meshopt compression level (0=scalar / 2=u16 estimate / 3=u32 XOR estimate)
+    ///
+    /// Only used when `meshopt_compress` is `true` Default: 2 (good balance
+    /// between compression ratio and encoding time)
+    pub meshopt_level: u8,
 }
 
 impl Default for GltfConfig {
@@ -90,6 +112,8 @@ impl Default for GltfConfig {
             quantize_uvs: false,
             quantize_colors: false,
             quantize_tangents: false,
+            meshopt_compress: false,
+            meshopt_level: 2,
         }
     }
 }
@@ -112,6 +136,8 @@ impl GltfConfig {
             quantize_uvs: false,
             quantize_colors: false,
             quantize_tangents: false,
+            meshopt_compress: false,
+            meshopt_level: 2,
         }
     }
 }
@@ -141,6 +167,19 @@ pub fn export_glb(
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
 ) -> Result<(), IoError> {
+    // meshopt compression path: delegate to meshopt_gltf module
+    // (see GltfConfig::meshopt_compress docs for limitations)
+    if config.meshopt_compress {
+        use crate::io::meshopt_gltf::{export_glb_meshopt, MeshoptGltfConfig};
+        let mo_config = MeshoptGltfConfig {
+            export_normals: config.export_normals,
+            export_uvs: config.export_uvs,
+            level: config.meshopt_level,
+            double_sided: config.double_sided,
+        };
+        return export_glb_meshopt(mesh, path, &mo_config);
+    }
+
     let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials)?;
 
     let file = std::fs::File::create(path)?;
@@ -187,6 +226,19 @@ pub fn export_glb_bytes(
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
 ) -> Result<Vec<u8>, IoError> {
+    // meshopt compression path: delegate to meshopt_gltf module
+    // (see GltfConfig::meshopt_compress docs for limitations)
+    if config.meshopt_compress {
+        use crate::io::meshopt_gltf::{export_glb_meshopt_bytes, MeshoptGltfConfig};
+        let mo_config = MeshoptGltfConfig {
+            export_normals: config.export_normals,
+            export_uvs: config.export_uvs,
+            level: config.meshopt_level,
+            double_sided: config.double_sided,
+        };
+        return export_glb_meshopt_bytes(mesh, &mo_config);
+    }
+
     let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials)?;
 
     let json_padded_len = (json_bytes.len() + 3) & !3;
@@ -1839,5 +1891,27 @@ mod tests {
         assert!(json_str.contains(r#""componentType":5123"#), "UV USHORT");
         assert!(json_str.contains(r#""componentType":5121"#), "color UBYTE");
         assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+    }
+
+    #[test]
+    fn test_gltf_meshopt_compress_option_delegates() {
+        // meshopt_compress=true → meshopt_gltf 出力に切替
+        let mesh = make_test_mesh();
+        let cfg_std = GltfConfig::default();
+        let cfg_moc = GltfConfig {
+            meshopt_compress: true,
+            meshopt_level: 2,
+            ..Default::default()
+        };
+
+        let std_bytes = export_glb_bytes(&mesh, &cfg_std, None).unwrap();
+        let moc_bytes = export_glb_bytes(&mesh, &cfg_moc, None).unwrap();
+
+        // Standard 出力は EXT_meshopt_compression を含まない
+        assert!(!String::from_utf8_lossy(&std_bytes).contains("EXT_meshopt_compression"));
+        // meshopt_compress=true は EXT_meshopt_compression を含む
+        assert!(String::from_utf8_lossy(&moc_bytes).contains("EXT_meshopt_compression"));
+        assert!(String::from_utf8_lossy(&moc_bytes)
+            .contains(r#""extensionsRequired":["EXT_meshopt_compression"]"#));
     }
 }
