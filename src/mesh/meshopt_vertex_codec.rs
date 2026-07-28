@@ -737,14 +737,96 @@ fn decode_vertex_block(
 
 /// Estimate best channel (0/1/2) for a 4-byte group starting at k
 ///
+/// Estimate encoded bits for a single byte (meshopt heuristic)
+///
+/// v == 0 → 0 bits, v <= 3 → 2 bits, v <= 15 → 4 bits, else → 8 bits
+#[inline]
+const fn estimate_bits(v: u8) -> usize {
+    if v <= 15 {
+        if v <= 3 {
+            if v == 0 {
+                0
+            } else {
+                2
+            }
+        } else {
+            4
+        }
+    } else {
+        8
+    }
+}
+
+/// Estimate best rotation (0-7) for XOR channel encoding
+///
+/// For u32 delta = v XOR prev, tries 8 rotations of the bit-consistency
+/// mask (OR of all deltas in a group), scoring each by estimated bits per
+/// byte The rotation with smallest total score is chosen
+///
+/// Corresponds to meshopt `estimateRotate`
+#[allow(clippy::needless_range_loop)]
+fn estimate_rotate(
+    vertex_data: &[u8],
+    vertex_count: usize,
+    vertex_size: usize,
+    k: usize,
+    group_size: usize,
+) -> u8 {
+    let mut sizes = [0usize; 8];
+
+    let mut last = u32::from_le_bytes([
+        vertex_data[k],
+        vertex_data[k + 1],
+        vertex_data[k + 2],
+        vertex_data[k + 3],
+    ]);
+
+    let mut i = 0;
+    while i < vertex_count {
+        let mut bitg = 0u32;
+
+        let end = (i + group_size).min(vertex_count);
+        for j in i..end {
+            let base = j * vertex_size + k;
+            let v = u32::from_le_bytes([
+                vertex_data[base],
+                vertex_data[base + 1],
+                vertex_data[base + 2],
+                vertex_data[base + 3],
+            ]);
+            let d = v ^ last;
+            bitg |= d;
+            last = v;
+        }
+
+        for j in 0..8 {
+            let bitr = bitg.rotate_left(j as u32);
+            sizes[j] += estimate_bits((bitr) as u8);
+            sizes[j] += estimate_bits((bitr >> 8) as u8);
+            sizes[j] += estimate_bits((bitr >> 16) as u8);
+            sizes[j] += estimate_bits((bitr >> 24) as u8);
+        }
+
+        i += group_size;
+    }
+
+    let mut best_rot: usize = 0;
+    for rot in 1..8 {
+        if sizes[rot] < sizes[best_rot] {
+            best_rot = rot;
+        }
+    }
+    best_rot as u8
+}
+
 /// Encodes the group with each candidate channel, measures compressed size,
 /// picks the smallest Level parameter caps `max_channel`:
-/// - level 0-1: max_channel=1 (channel 0 only, scalar u8)
-/// - level 2: max_channel=2 (channels 0-1: u8 / u16)
-/// - level 3+: max_channel=3 (channels 0-2: u8 / u16 / u32 XOR+rot)
+/// - level 0-1: max_channel=0 (channel 0 only, scalar u8)
+/// - level 2: max_channel=1 (channels 0-1: u8 / u16)
+/// - level 3+: max_channel=2 (channels 0-2: u8 / u16 / u32 XOR+rot)
 ///
-/// For channel 2, tries rotation 0 only (simplification, meshopt-compat is
-/// preserved since decoder reads rotation from stored channel byte)
+/// For channel 2, `xor_rot` (0-7) is passed as the rotation value; the returned
+/// channel byte encodes `(rot << 4) | 2`
 fn estimate_channel(
     vertex_data: &[u8],
     vertex_count: usize,
@@ -752,6 +834,7 @@ fn estimate_channel(
     last_vertex: &[u8; 256],
     k: usize,
     max_channel: u8,
+    xor_rot: u8,
 ) -> u8 {
     // Cap sample size to VERTEX_BLOCK_MAX_SIZE for estimation (fits in buffer)
     let sample_count = vertex_count.min(VERTEX_BLOCK_MAX_SIZE);
@@ -763,6 +846,11 @@ fn estimate_channel(
 
     for channel in 0..=max_channel.min(2) {
         let mut total = 0usize;
+        let channel_byte = if channel == 2 {
+            (xor_rot << 4) | 2
+        } else {
+            channel
+        };
         for j in 0..4 {
             buffer[..vertex_count_aligned].fill(0);
             encode_deltas(
@@ -772,7 +860,7 @@ fn estimate_channel(
                 vertex_size,
                 last_vertex,
                 k + j,
-                channel,
+                channel_byte,
             );
             // best possible size per group
             for gi in 0..(vertex_count_aligned / BYTE_GROUP_SIZE) {
@@ -790,7 +878,11 @@ fn estimate_channel(
         }
     }
 
-    best_channel
+    if best_channel == 2 {
+        (xor_rot << 4) | 2
+    } else {
+        best_channel
+    }
 }
 
 /// Encode vertex data to meshopt v1 binary format (default level 0, scalar delta)
@@ -880,7 +972,15 @@ pub fn encode_vertex_buffer_level(vertex_data: &[u8], vertex_size: usize, level:
     };
     let mut channels = vec![0u8; vertex_size / 4];
     if version != 0 && max_channel > 0 && vertex_count > 1 {
+        // Cap sample size for estimation (matches estimate_channel)
+        let sample_count = vertex_count.min(VERTEX_BLOCK_MAX_SIZE);
         for k in (0..vertex_size).step_by(4) {
+            // Level 3+: estimate best rotation; else rot=0
+            let xor_rot = if level >= 3 {
+                estimate_rotate(vertex_data, sample_count, vertex_size, k, BYTE_GROUP_SIZE)
+            } else {
+                0
+            };
             channels[k / 4] = estimate_channel(
                 vertex_data,
                 vertex_count,
@@ -888,6 +988,7 @@ pub fn encode_vertex_buffer_level(vertex_data: &[u8], vertex_size: usize, level:
                 &last_vertex,
                 k,
                 max_channel,
+                xor_rot,
             );
         }
     }
@@ -1051,6 +1152,84 @@ mod tests {
             let back = unzigzag8(z);
             assert_eq!(v, back, "zigzag failed for {v}");
         }
+    }
+
+    #[test]
+    fn test_estimate_bits() {
+        assert_eq!(estimate_bits(0), 0);
+        assert_eq!(estimate_bits(1), 2);
+        assert_eq!(estimate_bits(3), 2);
+        assert_eq!(estimate_bits(4), 4);
+        assert_eq!(estimate_bits(15), 4);
+        assert_eq!(estimate_bits(16), 8);
+        assert_eq!(estimate_bits(255), 8);
+    }
+
+    #[test]
+    fn test_estimate_rotate_float_sequence() {
+        // 100 sequential floats — XOR delta should have consistent bit pattern
+        let vertex_size = 8;
+        let vertex_count = 100;
+        let mut vertex_data = Vec::with_capacity(vertex_count * vertex_size);
+        for i in 0..vertex_count {
+            let x = (i as f32) * 0.1;
+            vertex_data.extend_from_slice(&x.to_le_bytes());
+            vertex_data.extend_from_slice(&[0u8; 4]);
+        }
+        // Not asserting the actual value (data-dependent), just that it's in [0, 7]
+        let rot = estimate_rotate(&vertex_data, vertex_count, vertex_size, 0, BYTE_GROUP_SIZE);
+        assert!(rot < 8, "estimate_rotate returned {rot}");
+    }
+
+    #[test]
+    fn test_level_3_rotation_improves_float_compression() {
+        // For float data, level 3 with rot-auto should compress smaller than
+        // level 2 (u16 fallback) — this validates the estimate_rotate benefit
+        let vertex_size = 12;
+        let vertex_count = 500;
+        let mut vertex_data = Vec::with_capacity(vertex_count * vertex_size);
+        for i in 0..vertex_count {
+            let x = (i as f32) * 0.02;
+            let y = (i as f32 * 0.01).sin();
+            let z = (i as f32 * 0.01).cos();
+            vertex_data.extend_from_slice(&x.to_le_bytes());
+            vertex_data.extend_from_slice(&y.to_le_bytes());
+            vertex_data.extend_from_slice(&z.to_le_bytes());
+        }
+
+        let level_0 = encode_vertex_buffer_level(&vertex_data, vertex_size, 0);
+        let level_2 = encode_vertex_buffer_level(&vertex_data, vertex_size, 2);
+        let level_3 = encode_vertex_buffer_level(&vertex_data, vertex_size, 3);
+
+        // All 3 must round-trip
+        for (level_name, encoded) in [
+            ("level_0", &level_0),
+            ("level_2", &level_2),
+            ("level_3", &level_3),
+        ] {
+            let decoded = decode_vertex_buffer(encoded, vertex_count, vertex_size).unwrap();
+            assert_eq!(decoded, vertex_data, "{level_name} round-trip failed");
+        }
+
+        eprintln!(
+            "float mesh: raw {} bytes, level_0 {} ({:.2}x), level_2 {} ({:.2}x), level_3 {} ({:.2}x)",
+            vertex_data.len(),
+            level_0.len(),
+            vertex_data.len() as f32 / level_0.len() as f32,
+            level_2.len(),
+            vertex_data.len() as f32 / level_2.len() as f32,
+            level_3.len(),
+            vertex_data.len() as f32 / level_3.len() as f32,
+        );
+
+        // Level 3 should be at least as good as level 2 for float data (allows equal
+        // because estimate might pick channel 0/1 if XOR isn't the winner)
+        assert!(
+            level_3.len() <= level_2.len(),
+            "level 3 ({} bytes) should not be worse than level 2 ({} bytes) for float data",
+            level_3.len(),
+            level_2.len(),
+        );
     }
 
     #[test]
