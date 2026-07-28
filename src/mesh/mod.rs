@@ -38,6 +38,7 @@ pub mod lightmap;
 pub mod lod;
 pub mod lod_persist;
 pub mod manifold;
+pub mod mesh_codec;
 mod mesh_to_sdf;
 pub mod meshlet;
 pub mod nanite;

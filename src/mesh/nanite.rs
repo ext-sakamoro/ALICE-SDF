@@ -116,18 +116,27 @@ impl ClusterBounds {
 ///
 /// - `axis`: 円錐軸 (単位ベクトル、face normal の平均)
 /// - `cutoff_cos`: 円錐の開き角の cos (= `dot(axis, most_deviated_normal)`)
-/// - back-face 判定: `dot(view_dir, axis) < -cutoff_cos` なら全 face が back-face
+/// - `apex`: (optional) 円錐頂点、Vulkan meshlet culling shader での tighter culling test 用
+/// - back-face 判定 (basic): `dot(view_dir, axis) >= cutoff_cos` なら全 face が back-face
+/// - back-face 判定 (with apex): `dot(view_pos - apex, axis) >= 0` なら全 face が back-face
 ///
 /// # References
 ///
 /// - zeux/meshoptimizer §clusterizer.cpp `meshopt_computeMeshletBounds` cone 部分
 /// - "Optimizing the Graphics Pipeline with Compute" (GDC 2016)
+/// - Vulkan VK_EXT_mesh_shader `meshletCullingShader` spec
 #[derive(Debug, Clone, Copy)]
 pub struct NormalCone {
     /// 円錐軸 (単位ベクトル、平均 face normal 方向)
     pub axis: Vec3,
     /// 円錐開き角の cos ([-1, 1]、1.0 = すべて同方向 = culling 最効率、-1.0 = 全方向 = culling 不可)
     pub cutoff_cos: f32,
+    /// 円錐頂点 (optional、tighter culling test 用)
+    ///
+    /// `Some(apex)` の場合、`dot(view_pos - apex, axis) >= 0` で全 face が back-face 判定可能
+    /// (basic cone より正確、culling 効率化)
+    /// `None` の場合、basic cone (axis + cutoff_cos) のみで判定
+    pub apex: Option<Vec3>,
 }
 
 impl NormalCone {
@@ -168,6 +177,67 @@ impl NormalCone {
         Self {
             axis,
             cutoff_cos: min_dot,
+            apex: None,
+        }
+    }
+
+    /// Cone apex 付きで NormalCone を計算
+    ///
+    /// # 引数
+    ///
+    /// - `normals`: 各三角形の face normal (単位ベクトル)
+    /// - `face_centers`: 各三角形の重心 (world position)
+    ///
+    /// # アルゴリズム (meshoptimizer §clusterizer.cpp `computeMeshletBounds` 準拠)
+    ///
+    /// 1. basic cone (axis + cutoff_cos) を計算
+    /// 2. cone の apex を求める:
+    ///    - 各 face plane を `dot(x, n_i) = dot(c_i, n_i)` として、apex は全 plane の背後 (dot ≤ offset)
+    ///    - `apex = cluster_center - max_offset × axis` (単純な closed-form 近似)
+    /// 3. unbounded の場合 apex は None
+    ///
+    /// # 制約
+    ///
+    /// - `normals.len() == face_centers.len()` 前提、不一致時は basic cone (apex=None) にフォールバック
+    #[must_use]
+    pub fn from_normals_and_positions(normals: &[Vec3], face_centers: &[Vec3]) -> Self {
+        // basic cone は from_normals と同ロジック
+        let basic = Self::from_normals(normals);
+        if basic.cutoff_cos <= -1.0 + 1e-6 || normals.len() != face_centers.len() {
+            return basic;
+        }
+
+        // cluster center (face centers の平均)
+        let mut center_sum = Vec3::ZERO;
+        for &c in face_centers {
+            center_sum += c;
+        }
+        let cluster_center = center_sum / (face_centers.len() as f32);
+
+        // 各 face plane に対する cluster_center からの signed distance (axis 方向)
+        // apex は max_offset を axis 方向に「後退」させた点
+        // dot(apex - center, n_i) ≤ 0 for all i を満たすように
+        // apex = center - t × axis where t = max over i of dot(center - c_i, n_i) / dot(axis, n_i)
+        let mut max_t = 0.0_f32;
+        for i in 0..normals.len() {
+            let n = normals[i];
+            let c = face_centers[i];
+            let denom = basic.axis.dot(n);
+            if denom <= 1e-6 {
+                continue; // face 法線と axis がほぼ直交 or 逆向き → skip
+            }
+            let numer = (cluster_center - c).dot(n);
+            let t = numer / denom;
+            if t > max_t {
+                max_t = t;
+            }
+        }
+
+        let apex = cluster_center - basic.axis * max_t;
+        Self {
+            axis: basic.axis,
+            cutoff_cos: basic.cutoff_cos,
+            apex: Some(apex),
         }
     }
 
@@ -178,6 +248,7 @@ impl NormalCone {
         Self {
             axis: Vec3::Y,
             cutoff_cos: -1.0,
+            apex: None,
         }
     }
 
@@ -1108,5 +1179,80 @@ mod tests {
         assert!(!cone.is_backface_culled(Vec3::NEG_X));
         assert!(!cone.is_backface_culled(Vec3::Y));
         assert!(!cone.is_backface_culled(Vec3::NEG_Y));
+    }
+
+    // ------------------------------------------------------------------------
+    // cone_apex tests (2026-07-28 追加、Vulkan meshlet culling shader 用)
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_normal_cone_apex_default_none() {
+        // from_normals は apex = None
+        let normals = vec![Vec3::Y; 3];
+        let cone = NormalCone::from_normals(&normals);
+        assert!(cone.apex.is_none());
+    }
+
+    #[test]
+    fn test_normal_cone_from_normals_and_positions_populates_apex() {
+        // 平面 (Y=0) 上の 3 三角形、全 normal +Y → apex は cluster center から
+        // -Y 方向にオフセットされた点 (max_t 分後退)
+        let normals = vec![Vec3::Y; 3];
+        let face_centers = vec![
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ];
+        let cone = NormalCone::from_normals_and_positions(&normals, &face_centers);
+        assert!(cone.apex.is_some());
+        let apex = cone.apex.unwrap();
+        // 全 face が Y=0 の平面上なので cluster center も Y=0
+        // apex は cluster center から -Y 方向 (axis 逆) にオフセットされているはず
+        assert!(apex.y <= 0.0, "apex.y should be <= 0, got {}", apex.y);
+    }
+
+    #[test]
+    fn test_normal_cone_apex_unbounded_returns_none() {
+        // 全方向散乱 → basic cone unbounded → apex も None
+        let normals = vec![Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y];
+        let centers = vec![Vec3::ZERO; 4];
+        let cone = NormalCone::from_normals_and_positions(&normals, &centers);
+        assert!(cone.cutoff_cos <= -1.0 + 1e-6);
+        assert!(cone.apex.is_none());
+    }
+
+    #[test]
+    fn test_normal_cone_apex_length_mismatch_fallback() {
+        // normals.len() != face_centers.len() → basic cone のみ (apex=None)
+        let normals = vec![Vec3::Y; 3];
+        let centers = vec![Vec3::ZERO; 2]; // mismatch
+        let cone = NormalCone::from_normals_and_positions(&normals, &centers);
+        assert!(cone.apex.is_none());
+        // basic cone は正常
+        assert!((cone.axis.y - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_normal_cone_apex_finite() {
+        // 一般的な curved surface (半球の一部) → apex が有限値
+        let normals = vec![
+            Vec3::Y,
+            Vec3::new(0.5, 0.866, 0.0).normalize(),
+            Vec3::new(-0.5, 0.866, 0.0).normalize(),
+            Vec3::new(0.0, 0.866, 0.5).normalize(),
+        ];
+        let face_centers = vec![
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.5, 0.866, 0.0),
+            Vec3::new(-0.5, 0.866, 0.0),
+            Vec3::new(0.0, 0.866, 0.5),
+        ];
+        let cone = NormalCone::from_normals_and_positions(&normals, &face_centers);
+        let apex = cone.apex.expect("apex should be Some");
+        assert!(
+            apex.x.is_finite() && apex.y.is_finite() && apex.z.is_finite(),
+            "apex must be finite, got {:?}",
+            apex
+        );
     }
 }

@@ -65,6 +65,12 @@ pub struct GltfConfig {
     /// same as typical 8-bit texture colors. Reduces color storage from
     /// 16 bytes/vertex to 4 bytes/vertex (~75% savings).
     pub quantize_colors: bool,
+    /// Quantize tangents to `SBYTE snorm` (i8, 4 bytes/vertex).
+    ///
+    /// Requires `KHR_mesh_quantization` extension. Same pattern as normals but with
+    /// 4th component (handedness sign, snorm [-1, 1] where -1 = flipped, +1 = normal).
+    /// Reduces tangent storage from 16 bytes/vertex to 4 bytes/vertex (~75% savings).
+    pub quantize_tangents: bool,
 }
 
 impl Default for GltfConfig {
@@ -83,6 +89,7 @@ impl Default for GltfConfig {
             quantize_normals: false,
             quantize_uvs: false,
             quantize_colors: false,
+            quantize_tangents: false,
         }
     }
 }
@@ -104,6 +111,7 @@ impl GltfConfig {
             quantize_normals: false,
             quantize_uvs: false,
             quantize_colors: false,
+            quantize_tangents: false,
         }
     }
 }
@@ -438,23 +446,47 @@ fn build_glb_data(
     // --- Tangents ---
     if config.export_tangents {
         let offset = bin.len();
-        for v in &mesh.vertices {
-            bin.extend_from_slice(&v.tangent.x.to_le_bytes());
-            bin.extend_from_slice(&v.tangent.y.to_le_bytes());
-            bin.extend_from_slice(&v.tangent.z.to_le_bytes());
-            bin.extend_from_slice(&v.tangent.w.to_le_bytes());
+        if config.quantize_tangents {
+            // SBYTE snorm (i8): 4 bytes/vertex (VEC4)
+            needs_quantization_ext = true;
+            for v in &mesh.vertices {
+                let qx = crate::mesh::quantization::snorm_i8_encode(v.tangent.x);
+                let qy = crate::mesh::quantization::snorm_i8_encode(v.tangent.y);
+                let qz = crate::mesh::quantization::snorm_i8_encode(v.tangent.z);
+                let qw = crate::mesh::quantization::snorm_i8_encode(v.tangent.w);
+                bin.extend_from_slice(&qx.to_le_bytes());
+                bin.extend_from_slice(&qy.to_le_bytes());
+                bin.extend_from_slice(&qz.to_le_bytes());
+                bin.extend_from_slice(&qw.to_le_bytes());
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":4,"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4","normalized":true}}"#,
+                buffer_views.len() - 1, BYTE, vert_count
+            ));
+        } else {
+            for v in &mesh.vertices {
+                bin.extend_from_slice(&v.tangent.x.to_le_bytes());
+                bin.extend_from_slice(&v.tangent.y.to_le_bytes());
+                bin.extend_from_slice(&v.tangent.z.to_le_bytes());
+                bin.extend_from_slice(&v.tangent.w.to_le_bytes());
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4"}}"#,
+                buffer_views.len() - 1,
+                FLOAT,
+                vert_count
+            ));
         }
-        let len = bin.len() - offset;
-        buffer_views.push(format!(
-            r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
-            offset, len, ARRAY_BUFFER
-        ));
-        accessors.push(format!(
-            r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4"}}"#,
-            buffer_views.len() - 1,
-            FLOAT,
-            vert_count
-        ));
         attributes.push(format!(r#""TANGENT":{}"#, accessors.len() - 1));
     }
 
@@ -1754,6 +1786,56 @@ mod tests {
             "position SHORT"
         );
         assert!(json_str.contains(r#""componentType":5120"#), "normal BYTE");
+        assert!(json_str.contains(r#""componentType":5123"#), "UV USHORT");
+        assert!(json_str.contains(r#""componentType":5121"#), "color UBYTE");
+        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+    }
+
+    #[test]
+    fn test_gltf_quantize_tangents_sbyte() {
+        // Tangents export 有効化 + quantize_tangents 有効化 → SBYTE snorm VEC4
+        let mesh = make_test_mesh();
+        let config = GltfConfig {
+            export_tangents: true,
+            quantize_tangents: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        // BYTE (5120) componentType (SBYTE snorm)
+        assert!(
+            json_str.contains(r#""componentType":5120"#),
+            "tangent quantization: expected BYTE (5120)"
+        );
+        // VEC4 type (tangent は 4 component: xyz + handedness w)
+        assert!(json_str.contains(r#""type":"VEC4""#), "tangent VEC4");
+        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+    }
+
+    #[test]
+    fn test_gltf_all_5_quantizations_with_tangents() {
+        // 全 5 attribute 量子化 (position + normal + UV + color + tangent)
+        let mesh = make_test_mesh();
+        let config = GltfConfig {
+            export_colors: true,
+            export_tangents: true,
+            quantize_positions: true,
+            quantize_normals: true,
+            quantize_uvs: true,
+            quantize_colors: true,
+            quantize_tangents: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        assert!(
+            json_str.contains(r#""componentType":5122"#),
+            "position SHORT"
+        );
+        assert!(
+            json_str.contains(r#""componentType":5120"#),
+            "normal or tangent BYTE"
+        );
         assert!(json_str.contains(r#""componentType":5123"#), "UV USHORT");
         assert!(json_str.contains(r#""componentType":5121"#), "color UBYTE");
         assert!(json_str.contains(r#"KHR_mesh_quantization"#));
