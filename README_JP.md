@@ -26,7 +26,13 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **Dual Contouring** - QEFベースのメッシュ生成、シャープエッジとコーナーを保持
 - **V-HACD凸分解** - 物理用自動凸包分解
 - **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
+- **簡略化アドバンストオプション** - LODシーム保持用の頂点単位ロックマスク（`lock_vertices`）、絶対/相対誤差しきい値（`error_absolute`）
 - **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
+- **meshopt互換コーデック** - バイナリ互換のインデックス/頂点バッファ圧縮（indexcodec v1 + vertexcodec v0/v1）、zeux/meshoptimizer C++ ライブラリが生成する参照ベクタで検証済
+- **glTF `EXT_meshopt_compression`** - `io::meshopt_gltf` モジュール + `GltfConfig::meshopt_compress` オプション。POSITION / NORMAL / TEXCOORD_0 / JOINTS_0 / WEIGHTS_0 / インデックスを属性別チャンネル推定（u8 / u16 / u32 XOR + 8回転ヒューリスティック）で圧縮
+- **頂点フィルタ** - Octahedral（法線/タンジェント、角度誤差 1% 未満で 50〜75% 削減）、Quaternion（回転、最大成分＋循環スウィズル）、Exponential（浮動小数の仮数＋共有指数）
+- **トライアングルストリップ化** - Evans-Skiena-Varshney 貪欲ストリップアルゴリズム（8トライアングル先読みバッファ、閉じたメッシュでインデックス数を約 48% 削減）、プリミティブリスタート／退化三角形結合の両モード対応
+- **Naniteスタイル meshlet クラスタ** - V2 隣接情報 + `cone_weight` 拡張と `NormalCone`（basic + `cone_apex`）による Vulkan `VK_EXT_mesh_shader` / DirectX 12 mesh shader カリング対応
 - **73プリミティブ、24演算、7トランスフォーム、24モディファイア**（128 total） - 業界最高水準のシェイプボキャブラリ
 - **5層メッシュ永続化** - ABMバイナリフォーマット、LODチェーン永続化、FIFO排出チャンクキャッシュ、Unity/UE5/UE6ネイティブエクスポート
 - **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移

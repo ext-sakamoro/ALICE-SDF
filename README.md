@@ -27,7 +27,13 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Dual Contouring** - QEF-based mesh generation that preserves sharp edges and corners
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
+- **Advanced simplifier options** - per-vertex lock mask (`lock_vertices`) for LOD seam preservation, absolute/relative error thresholds (`error_absolute`)
 - **Decimation-based LOD** - progressive LOD chain from high-res base mesh
+- **meshopt-compatible codec** - binary-compatible index / vertex buffer compression (indexcodec v1 + vertexcodec v0/v1), verified against reference vectors produced by the zeux/meshoptimizer C++ library
+- **glTF `EXT_meshopt_compression`** - `io::meshopt_gltf` module + `GltfConfig::meshopt_compress` option; POSITION / NORMAL / TEXCOORD_0 / JOINTS_0 / WEIGHTS_0 / indices all compressible with per-attribute channel estimation (u8 / u16 / u32 XOR + 8-rotation heuristic)
+- **Vertex filters** - Octahedral (normal / tangent, 50-75% smaller with <1% angular error), Quaternion (rotation, largest-component + cyclic swizzle), Exponential (float mantissa + shared exponent)
+- **Triangle stripifier** - Evans-Skiena-Varshney greedy strip algorithm with 8-triangle lookahead (~48% index reduction on closed meshes), supports primitive-restart or degenerate-triangle joining
+- **Nanite-style meshlet clusters** - V2 adjacency + `cone_weight` grow with `NormalCone` (basic + `cone_apex`) for Vulkan `VK_EXT_mesh_shader` / DirectX 12 mesh shader culling
 - **73 primitives, 24 operations, 7 transforms, 24 modifiers** (128 total) - industry-leading shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
