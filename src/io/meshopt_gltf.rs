@@ -34,8 +34,27 @@ const GLB_CHUNK_BIN: u32 = 0x004E_4942; // "BIN\0"
 
 const FLOAT: u32 = 5126;
 const UNSIGNED_INT: u32 = 5125;
+const UNSIGNED_BYTE: u32 = 5121;
 const ARRAY_BUFFER: u32 = 34962;
 const ELEMENT_ARRAY_BUFFER: u32 = 34963;
+
+/// Optional per-vertex skinning data (JOINTS_0 + WEIGHTS_0)
+///
+/// Both arrays MUST have the same length as `mesh.vertices` Weights should
+/// sum to 255 per vertex for correct skinning (glTF `normalized: true`
+/// interprets `u8` as `f32 / 255`)
+///
+/// # Fields
+///
+/// - `joints[i]`: 4 bone indices affecting vertex `i` (up to 256 bones total)
+/// - `weights[i]`: 4 weights (u8, normalized) for the joints in `joints[i]`
+#[derive(Debug, Clone, Default)]
+pub struct MeshoptSkinning {
+    /// Per-vertex bone indices (4 per vertex)
+    pub joints: Vec<[u8; 4]>,
+    /// Per-vertex bone weights (4 per vertex, u8 normalized)
+    pub weights: Vec<[u8; 4]>,
+}
 
 /// Configuration for meshopt-compressed glTF export
 #[derive(Debug, Clone)]
@@ -100,7 +119,22 @@ pub fn export_glb_meshopt<P: AsRef<Path>>(
     path: P,
     config: &MeshoptGltfConfig,
 ) -> Result<(), IoError> {
-    let bytes = export_glb_meshopt_bytes(mesh, config)?;
+    export_glb_meshopt_skinned(mesh, None, path, config)
+}
+
+/// Export mesh with optional skinning data to a meshopt-compressed GLB file
+///
+/// # Errors
+///
+/// Returns `IoError` on file I/O failure, invalid mesh, or skinning length
+/// mismatch
+pub fn export_glb_meshopt_skinned<P: AsRef<Path>>(
+    mesh: &Mesh,
+    skinning: Option<&MeshoptSkinning>,
+    path: P,
+    config: &MeshoptGltfConfig,
+) -> Result<(), IoError> {
+    let bytes = export_glb_meshopt_bytes_skinned(mesh, skinning, config)?;
     let mut file = std::fs::File::create(path.as_ref())?;
     file.write_all(&bytes)?;
     Ok(())
@@ -115,6 +149,20 @@ pub fn export_glb_meshopt_bytes(
     mesh: &Mesh,
     config: &MeshoptGltfConfig,
 ) -> Result<Vec<u8>, IoError> {
+    export_glb_meshopt_bytes_skinned(mesh, None, config)
+}
+
+/// Export mesh with optional skinning data to meshopt-compressed GLB bytes
+///
+/// # Errors
+///
+/// Returns `IoError` if the mesh has no vertices/triangles, or if skinning
+/// joint/weight length doesn't match vertex count
+pub fn export_glb_meshopt_bytes_skinned(
+    mesh: &Mesh,
+    skinning: Option<&MeshoptSkinning>,
+    config: &MeshoptGltfConfig,
+) -> Result<Vec<u8>, IoError> {
     if mesh.vertices.is_empty() {
         return Err(IoError::InvalidFormat("empty mesh".into()));
     }
@@ -122,6 +170,13 @@ pub fn export_glb_meshopt_bytes(
         return Err(IoError::InvalidFormat(
             "mesh indices must be non-empty triangles".into(),
         ));
+    }
+    if let Some(skin) = skinning {
+        if skin.joints.len() != mesh.vertices.len() || skin.weights.len() != mesh.vertices.len() {
+            return Err(IoError::InvalidFormat(
+                "skinning joints/weights length must match vertex count".into(),
+            ));
+        }
     }
 
     let vert_count = mesh.vertices.len();
@@ -165,6 +220,12 @@ pub fn export_glb_meshopt_bytes(
             .collect()
     });
 
+    // Skinning attributes (VEC4 UNSIGNED_BYTE for both JOINTS_0 and WEIGHTS_0)
+    let joints_raw: Option<Vec<u8>> =
+        skinning.map(|s| s.joints.iter().flat_map(|j| j.iter().copied()).collect());
+    let weights_raw: Option<Vec<u8>> =
+        skinning.map(|s| s.weights.iter().flat_map(|w| w.iter().copied()).collect());
+
     let indices_raw: Vec<u8> = mesh.indices.iter().flat_map(|&i| i.to_le_bytes()).collect();
 
     // Compress each
@@ -175,6 +236,13 @@ pub fn export_glb_meshopt_bytes(
     let uvs_compressed = uvs_raw
         .as_ref()
         .map(|raw| encode_vertex_buffer_level(raw, 8, config.level));
+    // Skinning: 4 bytes/vertex, use level 0 (scalar delta, common for indices/weights)
+    let joints_compressed = joints_raw
+        .as_ref()
+        .map(|raw| encode_vertex_buffer_level(raw, 4, 0));
+    let weights_compressed = weights_raw
+        .as_ref()
+        .map(|raw| encode_vertex_buffer_level(raw, 4, 0));
     // Index buffer uses meshopt index codec (VEC3 triangles)
     let indices_compressed = encode_index_buffer(&mesh.indices);
 
@@ -213,6 +281,16 @@ pub fn export_glb_meshopt_bytes(
         bin.resize(bin.len() + raw.len(), 0);
         o
     });
+    let fb_joints_off = joints_raw.as_ref().map(|raw| {
+        let o = bin.len();
+        bin.resize(bin.len() + raw.len(), 0);
+        o
+    });
+    let fb_weights_off = weights_raw.as_ref().map(|raw| {
+        let o = bin.len();
+        bin.resize(bin.len() + raw.len(), 0);
+        o
+    });
     let fb_idx_off = bin.len();
     bin.resize(bin.len() + indices_raw.len(), 0);
 
@@ -225,6 +303,16 @@ pub fn export_glb_meshopt_bytes(
         o
     });
     let cmp_uv_off = uvs_compressed.as_ref().map(|c| {
+        let o = bin.len();
+        bin.extend_from_slice(c);
+        o
+    });
+    let cmp_joints_off = joints_compressed.as_ref().map(|c| {
+        let o = bin.len();
+        bin.extend_from_slice(c);
+        o
+    });
+    let cmp_weights_off = weights_compressed.as_ref().map(|c| {
         let o = bin.len();
         bin.extend_from_slice(c);
         o
@@ -317,6 +405,58 @@ pub fn export_glb_meshopt_bytes(
             vert_count,
         ));
         attributes.push(format!(r#""TEXCOORD_0":{}"#, accessors.len() - 1));
+    }
+
+    // JOINTS_0 (VEC4 UNSIGNED_BYTE, byteStride 4)
+    if let (Some(off), Some(cmp), Some(raw)) = (fb_joints_off, &joints_compressed, &joints_raw) {
+        let view = MeshoptView {
+            original_length: raw.len(),
+            stride: 4,
+            count: vert_count,
+            compressed_offset: cmp_joints_off.unwrap(),
+            compressed_length: cmp.len(),
+            mode: "ATTRIBUTES",
+        };
+        buffer_views.push(format!(
+            r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":4,"target":{},"extensions":{{"EXT_meshopt_compression":{}}}}}"#,
+            off,
+            view.original_length,
+            ARRAY_BUFFER,
+            view.ext_json(),
+        ));
+        accessors.push(format!(
+            r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4"}}"#,
+            buffer_views.len() - 1,
+            UNSIGNED_BYTE,
+            vert_count,
+        ));
+        attributes.push(format!(r#""JOINTS_0":{}"#, accessors.len() - 1));
+    }
+
+    // WEIGHTS_0 (VEC4 UNSIGNED_BYTE normalized, byteStride 4)
+    if let (Some(off), Some(cmp), Some(raw)) = (fb_weights_off, &weights_compressed, &weights_raw) {
+        let view = MeshoptView {
+            original_length: raw.len(),
+            stride: 4,
+            count: vert_count,
+            compressed_offset: cmp_weights_off.unwrap(),
+            compressed_length: cmp.len(),
+            mode: "ATTRIBUTES",
+        };
+        buffer_views.push(format!(
+            r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":4,"target":{},"extensions":{{"EXT_meshopt_compression":{}}}}}"#,
+            off,
+            view.original_length,
+            ARRAY_BUFFER,
+            view.ext_json(),
+        ));
+        accessors.push(format!(
+            r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4","normalized":true}}"#,
+            buffer_views.len() - 1,
+            UNSIGNED_BYTE,
+            vert_count,
+        ));
+        attributes.push(format!(r#""WEIGHTS_0":{}"#, accessors.len() - 1));
     }
 
     // Indices
@@ -485,6 +625,37 @@ mod tests {
         let json_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
         let json = std::str::from_utf8(&bytes[20..20 + json_len]).unwrap();
         assert!(!json.contains(r#""NORMAL":"#));
+    }
+
+    #[test]
+    fn test_export_glb_meshopt_with_skinning() {
+        let mesh = sphere_mesh(4);
+        let vc = mesh.vertices.len();
+        let skin = MeshoptSkinning {
+            joints: vec![[0, 1, 2, 3]; vc],
+            weights: vec![[64, 64, 64, 63]; vc], // sum 255
+        };
+        let bytes =
+            export_glb_meshopt_bytes_skinned(&mesh, Some(&skin), &MeshoptGltfConfig::default())
+                .unwrap();
+
+        let json_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+        let json = std::str::from_utf8(&bytes[20..20 + json_len]).unwrap();
+        assert!(json.contains(r#""JOINTS_0":"#));
+        assert!(json.contains(r#""WEIGHTS_0":"#));
+        assert!(json.contains(r#""normalized":true"#));
+    }
+
+    #[test]
+    fn test_export_glb_meshopt_skinning_length_mismatch_errors() {
+        let mesh = sphere_mesh(4);
+        let skin = MeshoptSkinning {
+            joints: vec![[0u8, 1, 2, 3]; 5], // wrong length
+            weights: vec![[64u8, 64, 64, 63]; 5],
+        };
+        let result =
+            export_glb_meshopt_bytes_skinned(&mesh, Some(&skin), &MeshoptGltfConfig::default());
+        assert!(result.is_err());
     }
 
     #[test]
