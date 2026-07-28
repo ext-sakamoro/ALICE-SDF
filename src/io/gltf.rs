@@ -47,6 +47,24 @@ pub struct GltfConfig {
     ///
     /// Reference: dotneet/image-to-3d §5 「面が欠けて見える問題」
     pub double_sided: bool,
+    /// Quantize normals to `SBYTE snorm` (i8, 3 bytes/vertex).
+    ///
+    /// Requires `KHR_mesh_quantization` extension. Precision ~0.8% (1/127),
+    /// acceptable for game / real-time use where normal accuracy is not critical.
+    /// Reduces normal storage from 12 bytes/vertex to 3 bytes/vertex (~75% savings).
+    pub quantize_normals: bool,
+    /// Quantize UVs to `USHORT unorm` (u16, 4 bytes/vertex).
+    ///
+    /// Requires `KHR_mesh_quantization` extension. Precision ~0.0015% (1/65535),
+    /// nearly imperceptible for texture sampling. Reduces UV storage from
+    /// 8 bytes/vertex to 4 bytes/vertex (~50% savings).
+    pub quantize_uvs: bool,
+    /// Quantize vertex colors to `UBYTE unorm` (u8, 4 bytes/vertex).
+    ///
+    /// Requires `KHR_mesh_quantization` extension. Precision ~0.4% (1/255),
+    /// same as typical 8-bit texture colors. Reduces color storage from
+    /// 16 bytes/vertex to 4 bytes/vertex (~75% savings).
+    pub quantize_colors: bool,
 }
 
 impl Default for GltfConfig {
@@ -62,6 +80,9 @@ impl Default for GltfConfig {
             embed_textures: false,
             export_extensions: false,
             double_sided: false,
+            quantize_normals: false,
+            quantize_uvs: false,
+            quantize_colors: false,
         }
     }
 }
@@ -80,6 +101,9 @@ impl GltfConfig {
             embed_textures: true,
             export_extensions: true,
             double_sided: true,
+            quantize_normals: false,
+            quantize_uvs: false,
+            quantize_colors: false,
         }
     }
 }
@@ -94,6 +118,9 @@ const GLB_CHUNK_BIN: u32 = 0x004E4942; // "BIN\0"
 const FLOAT: u32 = 5126;
 const UNSIGNED_INT: u32 = 5125;
 const UNSIGNED_SHORT: u32 = 5123;
+const SHORT: u32 = 5122;
+const UNSIGNED_BYTE: u32 = 5121;
+const BYTE: u32 = 5120;
 
 // Buffer view targets
 const ARRAY_BUFFER: u32 = 34962;
@@ -225,27 +252,43 @@ fn build_glb_data(
 
     let pos_offset = bin.len();
     if config.quantize_positions {
-        // Quantize positions to SHORT (16-bit signed integer)
-        // Dequantization is done via node transform: pos = quantized * scale + translation
+        // Position quantization: snorm i16 (SHORT) with center-based mapping
+        // Uses full i16 range [-32767, 32767] via `snorm_i16_encode` for
+        // 2x precision compared to the legacy [0, 32767] half-range mapping
+        //
+        // Dequantization: pos_world = (q_norm) * half_extent + center
+        //   where q_norm = q / 32767 in [-1, 1]
+        // Node transform: scale = half_extent, translation = center
         needs_quantization_ext = true;
-        let range = [
-            max_pos[0] - min_pos[0],
-            max_pos[1] - min_pos[1],
-            max_pos[2] - min_pos[2],
+        let half_ext = [
+            (max_pos[0] - min_pos[0]) * 0.5,
+            (max_pos[1] - min_pos[1]) * 0.5,
+            (max_pos[2] - min_pos[2]) * 0.5,
+        ];
+        let center = [
+            (max_pos[0] + min_pos[0]) * 0.5,
+            (max_pos[1] + min_pos[1]) * 0.5,
+            (max_pos[2] + min_pos[2]) * 0.5,
         ];
         for v in &mesh.vertices {
-            let qx = if range[0] > 1e-6 {
-                (((v.position.x - min_pos[0]) / range[0]) * 32767.0) as i16
+            let qx = if half_ext[0] > 1e-6 {
+                crate::mesh::quantization::snorm_i16_encode(
+                    (v.position.x - center[0]) / half_ext[0],
+                )
             } else {
                 0
             };
-            let qy = if range[1] > 1e-6 {
-                (((v.position.y - min_pos[1]) / range[1]) * 32767.0) as i16
+            let qy = if half_ext[1] > 1e-6 {
+                crate::mesh::quantization::snorm_i16_encode(
+                    (v.position.y - center[1]) / half_ext[1],
+                )
             } else {
                 0
             };
-            let qz = if range[2] > 1e-6 {
-                (((v.position.z - min_pos[2]) / range[2]) * 32767.0) as i16
+            let qz = if half_ext[2] > 1e-6 {
+                crate::mesh::quantization::snorm_i16_encode(
+                    (v.position.z - center[2]) / half_ext[2],
+                )
             } else {
                 0
             };
@@ -259,10 +302,10 @@ fn build_glb_data(
             r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":6,"target":{}}}"#,
             pos_offset, pos_len, ARRAY_BUFFER
         ));
-        // SHORT = 5122
+        // SHORT (5122) normalized:true → dequantized to [-1, 1] float on load
         accessors.push(format!(
-            r#"{{"bufferView":{},"componentType":5122,"count":{},"type":"VEC3","min":[0,0,0],"max":[32767,32767,32767]}}"#,
-            buffer_views.len() - 1, vert_count
+            r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC3","normalized":true,"min":[-1,-1,-1],"max":[1,1,1]}}"#,
+            buffer_views.len() - 1, SHORT, vert_count
         ));
     } else {
         for v in &mesh.vertices {
@@ -287,43 +330,87 @@ fn build_glb_data(
     // --- Normals ---
     if config.export_normals {
         let offset = bin.len();
-        for v in &mesh.vertices {
-            bin.extend_from_slice(&v.normal.x.to_le_bytes());
-            bin.extend_from_slice(&v.normal.y.to_le_bytes());
-            bin.extend_from_slice(&v.normal.z.to_le_bytes());
+        if config.quantize_normals {
+            // SBYTE snorm (i8): 3 bytes/vertex + 1 padding for 4-byte alignment
+            // glTF spec: SBYTE VEC3 padded to 4 bytes (byteStride 4)
+            needs_quantization_ext = true;
+            for v in &mesh.vertices {
+                let qx = crate::mesh::quantization::snorm_i8_encode(v.normal.x);
+                let qy = crate::mesh::quantization::snorm_i8_encode(v.normal.y);
+                let qz = crate::mesh::quantization::snorm_i8_encode(v.normal.z);
+                bin.extend_from_slice(&qx.to_le_bytes());
+                bin.extend_from_slice(&qy.to_le_bytes());
+                bin.extend_from_slice(&qz.to_le_bytes());
+                bin.push(0); // padding to 4-byte stride
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":4,"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC3","normalized":true}}"#,
+                buffer_views.len() - 1, BYTE, vert_count
+            ));
+        } else {
+            for v in &mesh.vertices {
+                bin.extend_from_slice(&v.normal.x.to_le_bytes());
+                bin.extend_from_slice(&v.normal.y.to_le_bytes());
+                bin.extend_from_slice(&v.normal.z.to_le_bytes());
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC3"}}"#,
+                buffer_views.len() - 1,
+                FLOAT,
+                vert_count
+            ));
         }
-        let len = bin.len() - offset;
-        buffer_views.push(format!(
-            r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
-            offset, len, ARRAY_BUFFER
-        ));
-        accessors.push(format!(
-            r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC3"}}"#,
-            buffer_views.len() - 1,
-            FLOAT,
-            vert_count
-        ));
         attributes.push(format!(r#""NORMAL":{}"#, accessors.len() - 1));
     }
 
     // --- UVs (TEXCOORD_0) ---
     if config.export_uvs {
         let offset = bin.len();
-        for v in &mesh.vertices {
-            bin.extend_from_slice(&v.uv.x.to_le_bytes());
-            bin.extend_from_slice(&v.uv.y.to_le_bytes());
+        if config.quantize_uvs {
+            // USHORT unorm (u16): 4 bytes/vertex
+            needs_quantization_ext = true;
+            for v in &mesh.vertices {
+                let qu = crate::mesh::quantization::unorm_u16_encode(v.uv.x);
+                let qv = crate::mesh::quantization::unorm_u16_encode(v.uv.y);
+                bin.extend_from_slice(&qu.to_le_bytes());
+                bin.extend_from_slice(&qv.to_le_bytes());
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":4,"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC2","normalized":true}}"#,
+                buffer_views.len() - 1, UNSIGNED_SHORT, vert_count
+            ));
+        } else {
+            for v in &mesh.vertices {
+                bin.extend_from_slice(&v.uv.x.to_le_bytes());
+                bin.extend_from_slice(&v.uv.y.to_le_bytes());
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC2"}}"#,
+                buffer_views.len() - 1,
+                FLOAT,
+                vert_count
+            ));
         }
-        let len = bin.len() - offset;
-        buffer_views.push(format!(
-            r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
-            offset, len, ARRAY_BUFFER
-        ));
-        accessors.push(format!(
-            r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC2"}}"#,
-            buffer_views.len() - 1,
-            FLOAT,
-            vert_count
-        ));
         attributes.push(format!(r#""TEXCOORD_0":{}"#, accessors.len() - 1));
     }
 
@@ -374,23 +461,47 @@ fn build_glb_data(
     // --- Vertex Colors ---
     if config.export_colors {
         let offset = bin.len();
-        for v in &mesh.vertices {
-            bin.extend_from_slice(&v.color[0].to_le_bytes());
-            bin.extend_from_slice(&v.color[1].to_le_bytes());
-            bin.extend_from_slice(&v.color[2].to_le_bytes());
-            bin.extend_from_slice(&v.color[3].to_le_bytes());
+        if config.quantize_colors {
+            // UBYTE unorm (u8): 4 bytes/vertex
+            needs_quantization_ext = true;
+            for v in &mesh.vertices {
+                let qr = crate::mesh::quantization::unorm_u8_encode(v.color[0]);
+                let qg = crate::mesh::quantization::unorm_u8_encode(v.color[1]);
+                let qb = crate::mesh::quantization::unorm_u8_encode(v.color[2]);
+                let qa = crate::mesh::quantization::unorm_u8_encode(v.color[3]);
+                bin.push(qr);
+                bin.push(qg);
+                bin.push(qb);
+                bin.push(qa);
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":4,"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4","normalized":true}}"#,
+                buffer_views.len() - 1, UNSIGNED_BYTE, vert_count
+            ));
+        } else {
+            for v in &mesh.vertices {
+                bin.extend_from_slice(&v.color[0].to_le_bytes());
+                bin.extend_from_slice(&v.color[1].to_le_bytes());
+                bin.extend_from_slice(&v.color[2].to_le_bytes());
+                bin.extend_from_slice(&v.color[3].to_le_bytes());
+            }
+            let len = bin.len() - offset;
+            buffer_views.push(format!(
+                r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
+                offset, len, ARRAY_BUFFER
+            ));
+            accessors.push(format!(
+                r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4"}}"#,
+                buffer_views.len() - 1,
+                FLOAT,
+                vert_count
+            ));
         }
-        let len = bin.len() - offset;
-        buffer_views.push(format!(
-            r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":{}}}"#,
-            offset, len, ARRAY_BUFFER
-        ));
-        accessors.push(format!(
-            r#"{{"bufferView":{},"componentType":{},"count":{},"type":"VEC4"}}"#,
-            buffer_views.len() - 1,
-            FLOAT,
-            vert_count
-        ));
         attributes.push(format!(r#""COLOR_0":{}"#, accessors.len() - 1));
     }
 
@@ -724,31 +835,28 @@ fn build_glb_data(
     // Meshes
     json += &format!(r#","meshes":[{{"primitives":[{}]}}]"#, primitives.join(","));
 
-    // Nodes (with dequantization transform if quantized)
+    // Nodes (with dequantization transform if positions were quantized)
+    // For snorm i16 with normalized:true, accessor loads to [-1, 1] float.
+    // World position = local * scale + translation
+    //   scale = half_extent (per axis)
+    //   translation = center (per axis)
     if config.quantize_positions {
-        let range = [
-            max_pos[0] - min_pos[0],
-            max_pos[1] - min_pos[1],
-            max_pos[2] - min_pos[2],
+        let half_ext = [
+            (max_pos[0] - min_pos[0]) * 0.5,
+            (max_pos[1] - min_pos[1]) * 0.5,
+            (max_pos[2] - min_pos[2]) * 0.5,
         ];
-        let sx = if range[0] > 1e-6 {
-            range[0] / 32767.0
-        } else {
-            1.0
-        };
-        let sy = if range[1] > 1e-6 {
-            range[1] / 32767.0
-        } else {
-            1.0
-        };
-        let sz = if range[2] > 1e-6 {
-            range[2] / 32767.0
-        } else {
-            1.0
-        };
+        let center = [
+            (max_pos[0] + min_pos[0]) * 0.5,
+            (max_pos[1] + min_pos[1]) * 0.5,
+            (max_pos[2] + min_pos[2]) * 0.5,
+        ];
+        let sx = if half_ext[0] > 1e-6 { half_ext[0] } else { 1.0 };
+        let sy = if half_ext[1] > 1e-6 { half_ext[1] } else { 1.0 };
+        let sz = if half_ext[2] > 1e-6 { half_ext[2] } else { 1.0 };
         json += &format!(
             r#","nodes":[{{"mesh":0,"translation":[{},{},{}],"scale":[{},{},{}]}}]"#,
-            min_pos[0], min_pos[1], min_pos[2], sx, sy, sz
+            center[0], center[1], center[2], sx, sy, sz
         );
     } else {
         json += r#","nodes":[{"mesh":0}]"#;
@@ -1529,5 +1637,125 @@ mod tests {
             json_str.contains(r#""doubleSided":true"#),
             "aaa() config should emit doubleSided:true, got: {json_str}"
         );
+    }
+
+    // ------------------------------------------------------------------------
+    // meshoptimizer §quantization 統合テスト (2026-07-28 追加)
+    // ------------------------------------------------------------------------
+
+    fn make_test_mesh() -> Mesh {
+        let sphere = SdfNode::sphere(1.0);
+        sdf_to_mesh(
+            &sphere,
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+            &MarchingCubesConfig {
+                resolution: 4,
+                iso_level: 0.0,
+                compute_normals: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    #[test]
+    fn test_gltf_position_snorm_i16_full_range() {
+        // 新実装: snorm i16 で center-based mapping、SHORT (5122) + normalized:true
+        let mesh = make_test_mesh();
+        let config = GltfConfig {
+            quantize_positions: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        // componentType 5122 = SHORT
+        assert!(
+            json_str.contains(r#""componentType":5122"#),
+            "position quantization: expected SHORT (5122)"
+        );
+        // normalized:true で load 時に [-1, 1] float 復元される
+        assert!(
+            json_str.contains(r#""normalized":true"#),
+            "position quantization: expected normalized:true"
+        );
+        // KHR_mesh_quantization extension 使用
+        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+    }
+
+    #[test]
+    fn test_gltf_quantize_normals_sbyte() {
+        let mesh = make_test_mesh();
+        let config = GltfConfig {
+            quantize_normals: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        // BYTE (5120) componentType (SBYTE snorm)
+        assert!(
+            json_str.contains(r#""componentType":5120"#),
+            "normal quantization: expected BYTE (5120), got: {json_str}"
+        );
+        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+    }
+
+    #[test]
+    fn test_gltf_quantize_uvs_ushort() {
+        let mesh = make_test_mesh();
+        let config = GltfConfig {
+            quantize_uvs: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        // UNSIGNED_SHORT (5123) componentType, normalized:true
+        assert!(
+            json_str.contains(r#""componentType":5123"#),
+            "UV quantization: expected UNSIGNED_SHORT (5123)"
+        );
+        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+    }
+
+    #[test]
+    fn test_gltf_quantize_colors_ubyte() {
+        // Vertex colors export 有効化 + quantize_colors 有効化
+        let mesh = make_test_mesh();
+        let config = GltfConfig {
+            export_colors: true,
+            quantize_colors: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        // UNSIGNED_BYTE (5121) componentType
+        assert!(
+            json_str.contains(r#""componentType":5121"#),
+            "color quantization: expected UNSIGNED_BYTE (5121)"
+        );
+        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+    }
+
+    #[test]
+    fn test_gltf_all_quantization_combined() {
+        // 全 attribute 量子化 + colors export
+        let mesh = make_test_mesh();
+        let config = GltfConfig {
+            export_colors: true,
+            quantize_positions: true,
+            quantize_normals: true,
+            quantize_uvs: true,
+            quantize_colors: true,
+            ..Default::default()
+        };
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let json_str = String::from_utf8(json_bytes).unwrap();
+        assert!(
+            json_str.contains(r#""componentType":5122"#),
+            "position SHORT"
+        );
+        assert!(json_str.contains(r#""componentType":5120"#), "normal BYTE");
+        assert!(json_str.contains(r#""componentType":5123"#), "UV USHORT");
+        assert!(json_str.contains(r#""componentType":5121"#), "color UBYTE");
+        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
     }
 }
