@@ -41,6 +41,7 @@ pub mod manifold;
 pub mod mesh_codec;
 mod mesh_to_sdf;
 pub mod meshlet;
+pub mod meshopt_filter;
 pub mod meshopt_index_codec;
 pub mod meshopt_vertex_codec;
 pub mod nanite;
