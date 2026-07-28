@@ -223,7 +223,10 @@ mod tests {
         for &v in &[-1.0_f32, -0.5, -0.1, 0.0, 0.1, 0.5, 1.0] {
             let q = snorm_i8_encode(v);
             let back = snorm_i8_decode(q);
-            assert!((v - back).abs() < 0.01, "roundtrip failed: {v} → {q} → {back}");
+            assert!(
+                (v - back).abs() < 0.01,
+                "roundtrip failed: {v} → {q} → {back}"
+            );
         }
     }
 
@@ -321,9 +324,7 @@ mod tests {
     #[test]
     fn test_half_roundtrip_precision() {
         // FP16 精度 ~0.1%、typical value でチェック
-        for &v in &[
-            0.5_f32, 1.5, 3.14159, 100.0, -50.0, 0.0001, 65000.0,
-        ] {
+        for &v in &[0.5_f32, 1.5, 3.14159, 100.0, -50.0, 0.0001, 65000.0] {
             let bits = half_encode(v);
             let back = half_decode(bits);
             let rel_err = ((v - back) / v).abs();
