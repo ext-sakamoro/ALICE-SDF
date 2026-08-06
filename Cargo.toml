@@ -52,6 +52,11 @@ all-shaders = ["gpu", "hlsl", "glsl", "blinkscript"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
 unreal = ["ffi", "hlsl"]  # Unreal Engine integration (FFI + HLSL)
 aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All AAA game features
+# 2D polygon → 3D watertight mesh via earcutr triangulation Shapely+trimesh (Python) の
+# extrude 相当を Rust workspace 化 薄物 (<= 5mm) を SDF+MC の非多様体問題なしで生成する
+# LOL / alice-print / text-to-print が薄物 pattern (coin / skadis panel 等) を Print 経路
+# 完全担保するために必要 opt-in で default 変更なし (semver 影響なし)
+mesh-extrude = ["dep:earcutr"]
 
 [dependencies]
 # SIMD math
@@ -96,6 +101,10 @@ crc32fast = "1.4"
 
 # Physics bridge (optional, path dep only until alice-physics publishes)
 alice-physics = { path = "../ALICE-Physics", optional = true }
+
+# 2D polygon triangulation (opt-in via `mesh-extrude` feature)
+# MIT license Mapbox 由来 (Rust port)、crates.io 公開済 軽量
+earcutr = { version = "0.4", optional = true }
 
 # FFI support (optional)
 lazy_static = { version = "1.5", optional = true }
