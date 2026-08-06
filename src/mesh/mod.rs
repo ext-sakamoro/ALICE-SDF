@@ -48,8 +48,6 @@ pub mod nanite;
 pub mod optimize;
 pub mod overdraw;
 pub mod point_cloud_sdf;
-#[cfg(feature = "mesh-extrude")]
-pub mod polygon_extrude;
 pub mod primitive_fitting;
 pub mod quantization;
 mod sdf_to_mesh;
