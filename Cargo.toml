@@ -43,6 +43,7 @@ blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to 
 # against this repo — the src/*_bridge.rs modules are cfg-gated so
 # they simply don't compile without the features. Scheduled for
 # restoration in 1.8.0 once the transitive dep chain publishes.
+font = []  # Font bridge (alice-font glyph → Sdf2dNode)、path dep 経由で consumer が有効化
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
