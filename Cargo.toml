@@ -44,6 +44,7 @@ blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to 
 # they simply don't compile without the features. Scheduled for
 # restoration in 1.8.0 once the transitive dep chain publishes.
 font = []  # Font bridge (alice-font glyph → Sdf2dNode)、path dep 経由で consumer が有効化
+physics = ["dep:alice-physics"]  # Physics bridge (SdfField trait impl + sim_modifier chain) 1.8.0 復帰
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
@@ -92,6 +93,9 @@ crc32fast = "1.4"
 # activate. Restore in 1.8.0 once the transitive dep chain is on
 # crates.io. Users who need bridges today can still `path`-dep this
 # repo against the sibling checkouts.
+
+# Physics bridge (optional, path dep only until alice-physics publishes)
+alice-physics = { path = "../ALICE-Physics", optional = true }
 
 # FFI support (optional)
 lazy_static = { version = "1.5", optional = true }
