@@ -329,6 +329,8 @@ SdfNode
 
 > **Note (v1.7.4)** — On crates.io, 5 bridge features are temporarily disabled: `codec` / `physics` / `asp` / `sdf-cache` / `font`. Their `src/*_bridge.rs` modules are `#[cfg(feature = "...")]`-gated so they simply don't compile without the features. Users who need the bridges keep using `path`/`git` deps against sibling repos (`ALICE-Codec` / `ALICE-Physics` / `libasp` / `alice-cache` / `alice-font`). Scheduled restoration in **v1.8.0** once the transitive dep chain publishes to crates.io. See [CHANGELOG.md](CHANGELOG.md) `[v1.7.4] - 2026-07-23` entry for details.
 
+> **Update (2026-08-06)** — `physics` feature が **path dep 経由で復帰** (Milestone A.1.0)。`src/physics_bridge.rs` (`CompiledSdfField` + `SdfField` trait impl) + `src/sim_bridge.rs` (`SimulatedSdf` + thermal/pressure/erosion/fracture/phase-change modifier chain) 活性化。crates.io publish 対応は別 sprint (`alice-physics` の publish 化待ち)。`font = []` marker feature も同日追加 (consumer 側で `alice-font/sdf` feature 経由の bridge を有効化する pattern、`ALICE-Font` v0.7.5+ で対応)。
+
 ### Rust
 
 ```bash
