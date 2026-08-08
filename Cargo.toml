@@ -136,6 +136,15 @@ name = "gpu_vs_cpu"
 harness = false
 required-features = []
 
+# The `text_to_3d_demo` example imports `alice_font::glyph_dispatcher` and
+# `alice_sdf::font_bridge`; both live behind the `font` feature (which pulls
+# in the `alice-font` path dep — currently disabled for the 1.7.4 crates.io
+# publish per the note above). Gating the example here keeps
+# `cargo check --all-targets` (default features) green.
+[[example]]
+name = "text_to_3d_demo"
+required-features = ["font"]
+
 # Declare the 5 bridge features as known even though the entries are
 # gone from [features] for the 1.7.4 crates.io publish. Without this
 # `cargo clippy -- -D warnings` and `cargo doc -Dwarnings` fail on
