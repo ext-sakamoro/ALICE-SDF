@@ -1178,14 +1178,8 @@ mod tests {
                 rb: 0.2,
             }),
             b: Arc::new(SdfNode::StairsUnion {
-                a: Arc::new(SdfNode::Cylinder {
-                    radius: 0.5,
-                    half_height: 1.0,
-                }),
-                b: Arc::new(SdfNode::Torus {
-                    major_radius: 1.0,
-                    minor_radius: 0.2,
-                }),
+                a: Arc::new(SdfNode::cylinder(0.5, 2.0)),
+                b: Arc::new(SdfNode::torus(1.0, 0.2)),
                 r: 0.3,
                 n: 4.0,
             }),
@@ -1200,14 +1194,8 @@ mod tests {
                 rb: 0.2,
             }),
             b: Arc::new(SdfNode::StairsUnion {
-                a: Arc::new(SdfNode::Cylinder {
-                    radius: 0.5,
-                    half_height: 1.0,
-                }),
-                b: Arc::new(SdfNode::Torus {
-                    major_radius: 1.0,
-                    minor_radius: 0.5,
-                }), // changed
+                a: Arc::new(SdfNode::cylinder(0.5, 2.0)),
+                b: Arc::new(SdfNode::torus(1.0, 0.5)), // changed
                 r: 0.3,
                 n: 4.0,
             }),

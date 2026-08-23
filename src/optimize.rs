@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn test_identity_round_removed() {
-        let shape = SdfNode::Sphere { radius: 1.0 };
+        let shape = SdfNode::sphere(1.0);
         let rounded = SdfNode::Round {
             child: Arc::new(shape),
             radius: 0.0,

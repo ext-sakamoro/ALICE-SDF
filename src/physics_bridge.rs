@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_compiled_sdf_as_physics_field() {
-        let node = SdfNode::Sphere { radius: 1.0 };
+        let node = SdfNode::sphere(1.0);
         let field = sdf_to_physics_field(&node);
 
         // Distance at origin should be -1.0 (inside unit sphere)
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn test_sphere_collider_via_bridge() {
         // Create a complex SDF: sphere with box subtracted
-        let node = SdfNode::Sphere { radius: 2.0 };
+        let node = SdfNode::sphere(2.0);
         let field = sdf_to_physics_field(&node);
 
         let collider = SdfCollider::new_static(Box::new(field), Vec3Fix::ZERO, QuatFix::IDENTITY);
