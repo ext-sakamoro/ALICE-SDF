@@ -93,13 +93,27 @@ pub fn branchless_abs(x: f32) -> f32 {
 /// bulk logical operations (AND/OR/NOT) and population count
 /// via hardware `popcnt` instruction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BitMask64(pub u64);
+pub struct BitMask64(u64);
 
 impl BitMask64 {
     /// A mask with all 64 bits cleared (no elements selected).
     pub const EMPTY: Self = Self(0);
     /// A mask with all 64 bits set (all elements selected).
     pub const FULL: Self = Self(!0u64);
+
+    /// Construct from raw `u64` bits.
+    #[inline(always)]
+    #[must_use]
+    pub const fn from_raw(bits: u64) -> Self {
+        Self(bits)
+    }
+
+    /// Raw `u64` (serialization / FFI 用).
+    #[inline(always)]
+    #[must_use]
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
 
     /// Bitwise AND of two masks.
     #[inline(always)]
@@ -149,6 +163,19 @@ impl std::ops::Not for BitMask64 {
     #[inline(always)]
     fn not(self) -> Self::Output {
         Self(!self.0)
+    }
+}
+
+impl std::fmt::Display for BitMask64 {
+    /// 64-bit binary representation, `0b` prefix + 64 digits.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#066b}", self.0)
+    }
+}
+
+impl From<u64> for BitMask64 {
+    fn from(bits: u64) -> Self {
+        Self(bits)
     }
 }
 
@@ -327,15 +354,15 @@ mod tests {
 
     #[test]
     fn test_bitmask64_ops() {
-        let a = BitMask64(0b1010);
-        let b = BitMask64(0b1100);
-        assert_eq!(a.and(b), BitMask64(0b1000));
-        assert_eq!(a.or(b), BitMask64(0b1110));
+        let a = BitMask64::from_raw(0b1010);
+        let b = BitMask64::from_raw(0b1100);
+        assert_eq!(a.and(b), BitMask64::from_raw(0b1000));
+        assert_eq!(a.or(b), BitMask64::from_raw(0b1110));
         assert_eq!(a.count_ones(), 2);
         assert!(a.test(1));
         assert!(!a.test(0));
-        assert_eq!(BitMask64::EMPTY.set(3), BitMask64(0b1000));
-        assert_eq!(a.clear(1), BitMask64(0b1000));
+        assert_eq!(BitMask64::EMPTY.set(3), BitMask64::from_raw(0b1000));
+        assert_eq!(a.clear(1), BitMask64::from_raw(0b1000));
         assert!(!a.is_empty());
         assert!(BitMask64::EMPTY.is_empty());
     }

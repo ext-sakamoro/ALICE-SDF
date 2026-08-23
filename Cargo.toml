@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "1.7.4"
+version = "1.7.5"
 edition = "2021"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Bridges to alice-codec/physics/asp/cache/font are available via GitHub path dep only in 1.7.4 (scheduled restoration in 1.8.0 once transitive deps publish)."
