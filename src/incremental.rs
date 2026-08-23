@@ -25,17 +25,29 @@
 //! - `invalidate_chunked_cache` — glue that computes `dirty_aabb`, forwards
 //!   it to `ChunkedMeshCache::invalidate_region`, and clears the dirty set.
 //!
-//! Deferred: subtree eval auto-skip (not sound per-point) and partial BVH
-//! AABB refit (case B.4 — currently the caller must re-run
-//! `CompiledSdfBvh::compile` when they need fresh AABBs after `apply`).
+//! Case B.4 wrapper (SdfNode-based full refit, 2026-08-23):
+//!
+//! - `refit_bvh(&mut bvh, &sdf_node)` — replaces the BVH in place by
+//!   re-running `CompiledSdfBvh::try_compile(sdf_node)`. **Important**: this
+//!   reads AABB source values from the `SdfNode`, not from
+//!   `Instruction.params[]`. If the caller mutated bytecode via `apply` /
+//!   `apply_all` they must independently synchronise the `SdfNode` (there is
+//!   no built-in `ParamId → SdfNode` field binding) before calling this
+//!   wrapper, otherwise the refit produces AABBs that reflect the *original*
+//!   SdfNode values.
+//!
+//! Deferred: true partial refit (bytecode-driven, O(dirty × depth) with
+//! per-opcode AABB compute reused from the BVH compiler) and subtree eval
+//! auto-skip (not sound per-point).
 //!
 //! ## Author
 //!
 //! Moroya Sakamoto
 
 use crate::cache::ChunkedMeshCache;
-use crate::compiled::{AabbPacked, CompiledSdf, CompiledSdfBvh};
+use crate::compiled::{AabbPacked, CompileError, CompiledSdf, CompiledSdfBvh};
 use crate::constraint::{ConstraintSolver, ParamId};
+use crate::types::SdfNode;
 use std::collections::{HashMap, HashSet};
 
 /// A single binding site inside `CompiledSdf.instructions[i].params[slot]`.
@@ -297,6 +309,38 @@ impl ParamDependencyIndex {
         self.mark_clean();
         aabb
     }
+
+    /// Rebuild `bvh` in place from `sdf_node` using `CompiledSdfBvh::try_compile`.
+    ///
+    /// This is the case B.4 wrapper: a stable API surface over full BVH
+    /// recompilation. It always produces AABBs consistent with `sdf_node` —
+    /// which is the intended semantics when the caller drives updates
+    /// SdfNode-first (mutate a field, then refit).
+    ///
+    /// **Interaction with `apply` / `apply_all`**: the wrapper reads AABB
+    /// source values from `sdf_node`, **not** from `Instruction.params[]`.
+    /// If bytecode was updated via `apply`, the caller must independently
+    /// synchronise `sdf_node` — this module intentionally does not maintain a
+    /// `ParamId → SdfNode` field binding, and doing so would duplicate the
+    /// canonical DSL front-end's responsibility.
+    ///
+    /// True partial refit (bytecode-driven, O(dirty × depth)) is future work
+    /// and would remove the SdfNode dependency entirely.
+    ///
+    /// # Errors
+    ///
+    /// Forwards any [`CompileError`] returned by
+    /// [`CompiledSdfBvh::try_compile`] (unsupported primitive, stack overflow).
+    /// On error the original `bvh` is left untouched.
+    pub fn refit_bvh(
+        &self,
+        bvh: &mut CompiledSdfBvh,
+        sdf_node: &SdfNode,
+    ) -> Result<(), CompileError> {
+        let fresh = CompiledSdfBvh::try_compile(sdf_node)?;
+        *bvh = fresh;
+        Ok(())
+    }
 }
 
 fn union_of_instruction_aabbs<I: IntoIterator<Item = usize>>(
@@ -324,6 +368,7 @@ mod tests {
     use super::*;
     use crate::cache::ChunkedCacheConfig;
     use crate::types::SdfNode;
+    use glam::Vec3;
 
     fn build_simple_scene() -> CompiledSdf {
         // Union(Sphere(1.0), Translate(2, 0, 0)(Box(0.5, 0.5, 0.5)))
@@ -604,5 +649,69 @@ mod tests {
         let result = index.invalidate_chunked_cache(&cache, &bvh);
         assert!(result.is_none());
         assert!(!index.is_dirty());
+    }
+
+    // ── case B.4: SdfNode-based full refit wrapper ──
+
+    #[test]
+    fn refit_bvh_produces_same_aabbs_as_fresh_compile() {
+        let (scene, _, mut bvh) = build_simple_scene_with_bvh();
+        let index = ParamDependencyIndex::new();
+        let baseline = CompiledSdfBvh::compile(&scene);
+        index
+            .refit_bvh(&mut bvh, &scene)
+            .expect("refit must succeed on a valid scene");
+        assert_eq!(bvh.instructions.len(), baseline.instructions.len());
+        assert_eq!(bvh.aabbs.len(), baseline.aabbs.len());
+        for (a, b) in bvh.aabbs.iter().zip(baseline.aabbs.iter()) {
+            assert!((a.min() - b.min()).length() < 1e-6);
+            assert!((a.max() - b.max()).length() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn refit_bvh_reflects_updated_sdf_node_values() {
+        let scene_small = SdfNode::sphere(1.0);
+        let mut bvh = CompiledSdfBvh::compile(&scene_small);
+        let sphere_idx = bvh
+            .instructions
+            .iter()
+            .position(|i| i.opcode == crate::compiled::OpCode::Sphere)
+            .unwrap();
+        let baseline_max = bvh.aabbs[sphere_idx].max();
+        assert!((baseline_max - Vec3::splat(1.0)).length() < 1e-4);
+
+        let scene_large = SdfNode::sphere(3.5);
+        let index = ParamDependencyIndex::new();
+        index.refit_bvh(&mut bvh, &scene_large).unwrap();
+        let after_max = bvh.aabbs[sphere_idx].max();
+        assert!((after_max - Vec3::splat(3.5)).length() < 1e-4);
+    }
+
+    #[test]
+    fn refit_bvh_leaves_bvh_untouched_on_compile_error() {
+        // Triangle primitive is intentionally not supported by BVH compile
+        // (see validate_for_bvh_compile in src/compiled/eval_bvh.rs). We
+        // start from a supported scene, then attempt to refit with an
+        // unsupported one and verify the original bvh is unchanged.
+        let (scene, _, mut bvh) = build_simple_scene_with_bvh();
+        let original_len = bvh.aabbs.len();
+        let original_first = bvh.aabbs[0];
+
+        let bad_scene = SdfNode::Triangle {
+            point_a: Vec3::new(0.0, 0.0, 0.0),
+            point_b: Vec3::new(1.0, 0.0, 0.0),
+            point_c: Vec3::new(0.0, 1.0, 0.0),
+        };
+        let index = ParamDependencyIndex::new();
+        let err = index.refit_bvh(&mut bvh, &bad_scene);
+        assert!(err.is_err(), "unsupported primitive must error");
+
+        assert_eq!(bvh.aabbs.len(), original_len, "aabbs length unchanged");
+        assert!((bvh.aabbs[0].min() - original_first.min()).length() < 1e-6);
+        assert!((bvh.aabbs[0].max() - original_first.max()).length() < 1e-6);
+
+        // Silence unused warning
+        let _ = scene;
     }
 }

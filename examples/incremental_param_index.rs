@@ -31,7 +31,7 @@ fn main() {
     let cube = SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0);
     let scene = sphere.union(cube);
     let mut compiled = CompiledSdf::compile(&scene);
-    let bvh = CompiledSdfBvh::compile(&scene);
+    let mut bvh = CompiledSdfBvh::compile(&scene);
 
     let sphere_idx = first_of(&compiled, OpCode::Sphere);
     let box_idx = first_of(&compiled, OpCode::Box3d);
@@ -123,5 +123,23 @@ fn main() {
         "invalidate_chunked_cache() → aabb={:?}, dirty_now={}",
         invalidated.is_some(),
         index.is_dirty()
+    );
+
+    // Frame 4: SdfNode-first update + refit_bvh (case B.4 wrapper).
+    // The apply()-based path above only touches bytecode `params[]`; the BVH
+    // AABBs stay frozen at compile time. When the caller drives updates by
+    // mutating the SdfNode instead, `refit_bvh` recompiles the BVH so
+    // downstream pruning sees the fresh geometry.
+    let grown_sphere = SdfNode::sphere(2.5);
+    let grown_box = SdfNode::box3d(0.5, 1.25, 0.5).translate(2.0, 0.0, 0.0);
+    let grown_scene = grown_sphere.union(grown_box);
+    let old_sphere_max = bvh.aabbs[sphere_idx].max();
+    index
+        .refit_bvh(&mut bvh, &grown_scene)
+        .expect("refit must succeed on a valid scene");
+    let new_sphere_max = bvh.aabbs[sphere_idx].max();
+    println!(
+        "\nframe 4: refit_bvh(grown_scene) → sphere AABB max: {:?} → {:?}",
+        old_sphere_max, new_sphere_max
     );
 }
