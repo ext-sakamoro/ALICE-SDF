@@ -45,7 +45,7 @@
 //! Moroya Sakamoto
 
 use crate::cache::ChunkedMeshCache;
-use crate::compiled::{AabbPacked, CompileError, CompiledSdf, CompiledSdfBvh};
+use crate::compiled::{AabbPacked, CompileError, CompiledSdf, CompiledSdfBvh, RefitError};
 use crate::constraint::{ConstraintSolver, ParamId};
 use crate::types::SdfNode;
 use std::collections::{HashMap, HashSet};
@@ -340,6 +340,63 @@ impl ParamDependencyIndex {
         let fresh = CompiledSdfBvh::try_compile(sdf_node)?;
         *bvh = fresh;
         Ok(())
+    }
+
+    /// Bytecode-driven partial refit (case B P2). Recomputes AABBs only for
+    /// currently dirty instructions and their ancestor chain, then clears
+    /// the dirty parameter set.
+    ///
+    /// The bindings in `ParamDependencyIndex` target `CompiledSdf` (the
+    /// bytecode passed into `apply` / `apply_all`), so this method takes
+    /// both `compiled` and `bvh` and first synchronises the dirty
+    /// instruction params from `compiled` into `bvh`. This is safe when
+    /// `bvh` was compiled from the same `SdfNode` as `compiled` — both
+    /// compilers emit identical instruction layouts for BVH-supported
+    /// primitives. A `RefitError::LengthMismatch` is returned when the two
+    /// instruction vectors disagree in length or opcode at any dirty index.
+    ///
+    /// After the sync, uses [`CompiledSdfBvh::refit_partial_from_bytecode`]
+    /// — no `SdfNode` required.
+    ///
+    /// # Errors
+    ///
+    /// Forwards [`RefitError`] from the refit walker (unsupported opcode,
+    /// malformed bytecode, out-of-bounds dirty index, length mismatch).
+    ///
+    /// # Returns
+    ///
+    /// Number of AABBs recomputed. On success the dirty parameter set is
+    /// cleared regardless of count.
+    pub fn refit_bvh_partial(
+        &mut self,
+        bvh: &mut CompiledSdfBvh,
+        compiled: &CompiledSdf,
+    ) -> Result<usize, RefitError> {
+        if bvh.instructions.len() != compiled.instructions.len() {
+            return Err(RefitError::LengthMismatch {
+                aabbs: bvh.instructions.len(),
+                instructions: compiled.instructions.len(),
+            });
+        }
+        let dirty: Vec<usize> = self.dirty_instructions().collect();
+        for &i in &dirty {
+            if i >= bvh.instructions.len() {
+                return Err(RefitError::DirtyIndexOutOfBounds {
+                    index: i,
+                    len: bvh.instructions.len(),
+                });
+            }
+            if bvh.instructions[i].opcode != compiled.instructions[i].opcode {
+                return Err(RefitError::LengthMismatch {
+                    aabbs: bvh.instructions.len(),
+                    instructions: compiled.instructions.len(),
+                });
+            }
+            bvh.instructions[i].params = compiled.instructions[i].params;
+        }
+        let count = bvh.refit_partial_from_bytecode(&dirty)?;
+        self.mark_clean();
+        Ok(count)
     }
 }
 
@@ -713,5 +770,38 @@ mod tests {
 
         // Silence unused warning
         let _ = scene;
+    }
+
+    // ── case B P2 glue: refit_bvh_partial ──
+
+    #[test]
+    fn refit_bvh_partial_reflects_apply_and_clears_dirty() {
+        let (_, mut compiled, mut bvh) = build_simple_scene_with_bvh();
+        let sphere_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Sphere);
+        let mut index = ParamDependencyIndex::new();
+        let radius = ParamId::from_raw(0);
+        index.bind(radius, &compiled, sphere_idx, 0).unwrap();
+        // Cache the original AABB, then apply a larger radius.
+        let original_max = bvh.aabbs[sphere_idx].max();
+        index.apply(&mut compiled, radius, 4.0).unwrap();
+        assert!(index.is_dirty());
+        let count = index.refit_bvh_partial(&mut bvh, &compiled).unwrap();
+        assert!(count > 0);
+        let new_max = bvh.aabbs[sphere_idx].max();
+        assert!(
+            (new_max - Vec3::splat(4.0)).length() < 1e-4,
+            "sphere AABB max must reflect r=4.0 after partial refit"
+        );
+        assert!((original_max - Vec3::splat(1.0)).length() < 1e-4);
+        assert!(!index.is_dirty(), "dirty set must be cleared");
+    }
+
+    #[test]
+    fn refit_bvh_partial_is_noop_when_dirty_set_is_empty() {
+        let (_, compiled, mut bvh) = build_simple_scene_with_bvh();
+        let mut index = ParamDependencyIndex::new();
+        let count = index.refit_bvh_partial(&mut bvh, &compiled).unwrap();
+        assert_eq!(count, 0, "no dirty → no recomputes");
+        assert!(!index.is_dirty());
     }
 }

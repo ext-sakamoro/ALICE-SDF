@@ -165,6 +165,8 @@ mod eval_soa;
 pub mod instanced;
 mod instruction;
 mod opcode;
+/// Bytecode-driven BVH AABB refit (case B P1 / P2).
+pub mod refit;
 mod simd;
 
 /// Shared shader transpiler framework (ShaderLang trait + GenericTranspiler)
@@ -219,4 +221,5 @@ pub use eval_soa::{
 pub use instanced::InstancedSdf;
 pub use instruction::Instruction;
 pub use opcode::OpCode;
+pub use refit::RefitError;
 pub use simd::{Quatx8, Vec3x8};

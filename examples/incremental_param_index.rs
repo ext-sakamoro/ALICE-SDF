@@ -142,4 +142,27 @@ fn main() {
         "\nframe 4: refit_bvh(grown_scene) → sphere AABB max: {:?} → {:?}",
         old_sphere_max, new_sphere_max
     );
+
+    // Frame 5: apply → refit_bvh_partial (case B P1+P2 bytecode-driven).
+    // Reset the workflow with a fresh scene, mutate the bytecode via apply,
+    // then use the bytecode-driven partial refit so `bvh.aabbs` reflect the
+    // mutated `Instruction.params[]` without needing an updated SdfNode.
+    let fresh_scene = SdfNode::sphere(1.0).union(SdfNode::sphere(0.5).translate(3.0, 0.0, 0.0));
+    let mut compiled2 = CompiledSdf::compile(&fresh_scene);
+    let mut bvh2 = CompiledSdfBvh::compile(&fresh_scene);
+    let mut index2 = ParamDependencyIndex::new();
+    let s2_idx = first_of(&compiled2, OpCode::Sphere);
+    let r2 = ParamId::from_raw(0);
+    index2.bind(r2, &compiled2, s2_idx, 0).unwrap();
+
+    let old_max = bvh2.aabbs[s2_idx].max();
+    index2.apply(&mut compiled2, r2, 3.0).unwrap();
+    let refit_count = index2
+        .refit_bvh_partial(&mut bvh2, &compiled2)
+        .expect("partial refit must succeed");
+    let new_max = bvh2.aabbs[s2_idx].max();
+    println!(
+        "\nframe 5: apply(r=3.0) + refit_bvh_partial(bvh, compiled) → sphere AABB max: {:?} → {:?}, {} instructions recomputed",
+        old_max, new_max, refit_count
+    );
 }

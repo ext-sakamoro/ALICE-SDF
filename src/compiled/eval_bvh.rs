@@ -33,6 +33,17 @@ pub struct CompiledSdfBvh {
     pub node_count: usize,
     /// AABB encompassing the entire scene
     pub scene_aabb: AabbPacked,
+    /// Parent instruction index per instruction (same length as `instructions`).
+    /// `Some(idx)` when the instruction is consumed by another instruction
+    /// (child of a CSG binary op, or wrapped by a transform / modifier).
+    /// `None` for the root instruction and structural markers.
+    ///
+    /// Populated by `try_compile` and used by
+    /// `crate::compiled::refit::refit_partial` to walk the ancestor chain
+    /// of dirty instructions. Empty when the BVH was constructed by a
+    /// path that predates parent tracking (in which case `refit_partial`
+    /// will treat the whole BVH as affected).
+    pub parent_indices: Vec<Option<u32>>,
 }
 
 impl CompiledSdfBvh {
@@ -75,12 +86,44 @@ impl CompiledSdfBvh {
         compiler.instructions.push(Instruction::end());
         compiler.aabbs.push(AabbPacked::infinite());
 
-        Ok(Self {
+        let mut bvh = Self {
             instructions: compiler.instructions,
             aabbs: compiler.aabbs,
             node_count: compiler.node_count,
             scene_aabb,
-        })
+            parent_indices: Vec::new(),
+        };
+        // Try to populate parent indices for future partial refit. Silent
+        // fallback to an empty vector for scenes containing opcodes not yet
+        // covered by refit::build_parent_indices — `refit_partial` handles
+        // the empty case defensively.
+        bvh.parent_indices =
+            super::refit::build_parent_indices(&bvh).unwrap_or_else(|_| Vec::new());
+        Ok(bvh)
+    }
+
+    /// Recompute every AABB from `Instruction.params[]` in place. See
+    /// [`crate::compiled::refit::refit_all`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`crate::compiled::refit::RefitError`] for unsupported
+    /// opcodes or malformed bytecode.
+    pub fn refit_all_from_bytecode(&mut self) -> Result<usize, super::refit::RefitError> {
+        super::refit::refit_all(self)
+    }
+
+    /// Recompute AABBs only for `dirty` instructions and their ancestor
+    /// chain. See [`crate::compiled::refit::refit_partial`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`crate::compiled::refit::RefitError`].
+    pub fn refit_partial_from_bytecode(
+        &mut self,
+        dirty: &[usize],
+    ) -> Result<usize, super::refit::RefitError> {
+        super::refit::refit_partial(self, dirty)
     }
 
     /// Get the number of instructions
