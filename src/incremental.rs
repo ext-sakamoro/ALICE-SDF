@@ -7,24 +7,34 @@
 //! change should only recompute the affected subtree instead of the whole
 //! SDF tree.
 //!
-//! ## Scope (case A: foundation only)
+//! ## Scope
+//!
+//! Case A (foundation, 2026-08-23):
 //!
 //! - Manual binding registration (`bind`) — the caller declares which
 //!   `Instruction.params[slot]` belongs to which `ParamId`.
 //! - Value application (`apply` / `apply_all`) — write updated parameter
 //!   values into the bytecode in place.
 //! - Dirty tracking (`dirty_params` / `dirty_instructions`) — the caller can
-//!   iterate affected instruction indices to hook cache invalidation,
-//!   e.g. [`ChunkedMeshCache::invalidate_region`].
+//!   iterate affected instruction indices to hook cache invalidation.
 //!
-//! Automatic subtree eval skipping, BVH AABB re-computation, and
-//! `MeshCache` auto-invalidation are intentionally out of scope for case A.
+//! Case B (cache glue, 2026-08-23):
+//!
+//! - `affected_aabb` / `dirty_aabb` — union AABBs from `CompiledSdfBvh` for a
+//!   single parameter or the current dirty set.
+//! - `invalidate_chunked_cache` — glue that computes `dirty_aabb`, forwards
+//!   it to `ChunkedMeshCache::invalidate_region`, and clears the dirty set.
+//!
+//! Deferred: subtree eval auto-skip (not sound per-point) and partial BVH
+//! AABB refit (case B.4 — currently the caller must re-run
+//! `CompiledSdfBvh::compile` when they need fresh AABBs after `apply`).
 //!
 //! ## Author
 //!
 //! Moroya Sakamoto
 
-use crate::compiled::CompiledSdf;
+use crate::cache::ChunkedMeshCache;
+use crate::compiled::{AabbPacked, CompiledSdf, CompiledSdfBvh};
 use crate::constraint::{ConstraintSolver, ParamId};
 use std::collections::{HashMap, HashSet};
 
@@ -234,11 +244,85 @@ impl ParamDependencyIndex {
     pub fn is_dirty(&self) -> bool {
         !self.dirty.is_empty()
     }
+
+    /// Return the union of per-instruction AABBs covering every binding of `pid`.
+    ///
+    /// The returned AABB is the union of `bvh.aabbs[i]` for each bound
+    /// instruction. For primitives nested inside transforms, `bvh.aabbs[i]`
+    /// stores the **local** primitive AABB (before the parent transform), so
+    /// this method understates the world-space region a downstream cache
+    /// needs to invalidate. Callers that require world-space bounds for a
+    /// transformed subtree should either bind the enclosing transform
+    /// instruction as well or fall back to `bvh.scene_aabb`. Removing this
+    /// caveat is tracked as case B.4 (partial BVH refit).
+    ///
+    /// Returns `None` if `pid` is unbound, has zero valid instruction indices,
+    /// or every referenced AABB is empty. Instruction indices beyond
+    /// `bvh.aabbs.len()` are silently skipped so stale bindings do not panic.
+    #[must_use]
+    pub fn affected_aabb(&self, pid: ParamId, bvh: &CompiledSdfBvh) -> Option<AabbPacked> {
+        let slots = self.bindings.get(&pid)?;
+        union_of_instruction_aabbs(slots.iter().map(|s| s.instruction_index), bvh)
+    }
+
+    /// Return the union of per-instruction AABBs covering every currently
+    /// dirty `ParamId`.
+    ///
+    /// Returns `None` when no dirty parameter maps to a valid, non-empty AABB.
+    #[must_use]
+    pub fn dirty_aabb(&self, bvh: &CompiledSdfBvh) -> Option<AabbPacked> {
+        let indices = self
+            .dirty
+            .iter()
+            .filter_map(|pid| self.bindings.get(pid))
+            .flat_map(|slots| slots.iter().map(|s| s.instruction_index));
+        union_of_instruction_aabbs(indices, bvh)
+    }
+
+    /// Mark every `ChunkedMeshCache` chunk overlapping the current dirty AABB
+    /// as dirty, then clear the dirty parameter set.
+    ///
+    /// Returns the AABB that was used for invalidation, or `None` when the
+    /// dirty set is empty or points at no valid AABB (in which case the cache
+    /// is untouched and the dirty set is cleared to keep bookkeeping in sync).
+    pub fn invalidate_chunked_cache(
+        &mut self,
+        cache: &ChunkedMeshCache,
+        bvh: &CompiledSdfBvh,
+    ) -> Option<AabbPacked> {
+        let aabb = self.dirty_aabb(bvh);
+        if let Some(a) = aabb.as_ref() {
+            cache.invalidate_region(a.min(), a.max());
+        }
+        self.mark_clean();
+        aabb
+    }
+}
+
+fn union_of_instruction_aabbs<I: IntoIterator<Item = usize>>(
+    indices: I,
+    bvh: &CompiledSdfBvh,
+) -> Option<AabbPacked> {
+    let mut acc: Option<AabbPacked> = None;
+    for idx in indices {
+        let Some(aabb) = bvh.aabbs.get(idx) else {
+            continue;
+        };
+        if !aabb.is_valid() {
+            continue;
+        }
+        acc = Some(match acc {
+            None => *aabb,
+            Some(prev) => prev.union(aabb),
+        });
+    }
+    acc
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::ChunkedCacheConfig;
     use crate::types::SdfNode;
 
     fn build_simple_scene() -> CompiledSdf {
@@ -246,6 +330,15 @@ mod tests {
         let sphere = SdfNode::sphere(1.0);
         let cube = SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0);
         CompiledSdf::compile(&sphere.union(cube))
+    }
+
+    fn build_simple_scene_with_bvh() -> (SdfNode, CompiledSdf, CompiledSdfBvh) {
+        let sphere = SdfNode::sphere(1.0);
+        let cube = SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0);
+        let scene = sphere.union(cube);
+        let compiled = CompiledSdf::compile(&scene);
+        let bvh = CompiledSdfBvh::compile(&scene);
+        (scene, compiled, bvh)
     }
 
     fn find_first_opcode_index(compiled: &CompiledSdf, opcode: crate::compiled::OpCode) -> usize {
@@ -407,5 +500,109 @@ mod tests {
         index.mark_clean();
         assert!(!index.is_dirty());
         assert_eq!(index.dirty_instructions().count(), 0);
+    }
+
+    // ── case B: affected_aabb / dirty_aabb / invalidate_chunked_cache ──
+
+    #[test]
+    fn affected_aabb_returns_none_for_unbound_param() {
+        let (_, _compiled, bvh) = build_simple_scene_with_bvh();
+        let index = ParamDependencyIndex::new();
+        assert!(index.affected_aabb(ParamId::from_raw(0), &bvh).is_none());
+    }
+
+    #[test]
+    fn affected_aabb_covers_single_primitive() {
+        let (_, compiled, bvh) = build_simple_scene_with_bvh();
+        let sphere_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Sphere);
+        let mut index = ParamDependencyIndex::new();
+        let radius = ParamId::from_raw(0);
+        index.bind(radius, &compiled, sphere_idx, 0).unwrap();
+
+        let aabb = index
+            .affected_aabb(radius, &bvh)
+            .expect("sphere binding must yield a valid AABB");
+        let expected = bvh.aabbs[sphere_idx];
+        assert!((aabb.min() - expected.min()).length() < 1e-4);
+        assert!((aabb.max() - expected.max()).length() < 1e-4);
+    }
+
+    #[test]
+    fn affected_aabb_unions_multiple_bindings() {
+        let (_, compiled, bvh) = build_simple_scene_with_bvh();
+        let sphere_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Sphere);
+        let box_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Box3d);
+        let mut index = ParamDependencyIndex::new();
+        let shared = ParamId::from_raw(0);
+        index.bind(shared, &compiled, sphere_idx, 0).unwrap();
+        index.bind(shared, &compiled, box_idx, 0).unwrap();
+
+        let aabb = index.affected_aabb(shared, &bvh).unwrap();
+        let expected = bvh.aabbs[sphere_idx].union(&bvh.aabbs[box_idx]);
+        assert!((aabb.min() - expected.min()).length() < 1e-4);
+        assert!((aabb.max() - expected.max()).length() < 1e-4);
+    }
+
+    #[test]
+    fn dirty_aabb_is_none_when_no_param_is_dirty() {
+        let (_, compiled, bvh) = build_simple_scene_with_bvh();
+        let sphere_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Sphere);
+        let mut index = ParamDependencyIndex::new();
+        index
+            .bind(ParamId::from_raw(0), &compiled, sphere_idx, 0)
+            .unwrap();
+        assert!(index.dirty_aabb(&bvh).is_none());
+    }
+
+    #[test]
+    fn dirty_aabb_reflects_apply_calls() {
+        let (_, mut compiled, bvh) = build_simple_scene_with_bvh();
+        let sphere_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Sphere);
+        let box_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Box3d);
+        let mut index = ParamDependencyIndex::new();
+        let radius = ParamId::from_raw(0);
+        let box_h = ParamId::from_raw(1);
+        index.bind(radius, &compiled, sphere_idx, 0).unwrap();
+        index.bind(box_h, &compiled, box_idx, 1).unwrap();
+
+        index.apply(&mut compiled, radius, 1.5).unwrap();
+        let after_first = index.dirty_aabb(&bvh).unwrap();
+        let expected_first = bvh.aabbs[sphere_idx];
+        assert!((after_first.min() - expected_first.min()).length() < 1e-4);
+
+        index.apply(&mut compiled, box_h, 0.6).unwrap();
+        let after_second = index.dirty_aabb(&bvh).unwrap();
+        let expected_second = bvh.aabbs[sphere_idx].union(&bvh.aabbs[box_idx]);
+        assert!((after_second.min() - expected_second.min()).length() < 1e-4);
+        assert!((after_second.max() - expected_second.max()).length() < 1e-4);
+    }
+
+    #[test]
+    fn invalidate_chunked_cache_returns_dirty_aabb_and_clears_dirty_set() {
+        let (_, mut compiled, bvh) = build_simple_scene_with_bvh();
+        let sphere_idx = find_first_opcode_index(&compiled, crate::compiled::OpCode::Sphere);
+        let mut index = ParamDependencyIndex::new();
+        let radius = ParamId::from_raw(0);
+        index.bind(radius, &compiled, sphere_idx, 0).unwrap();
+        index.apply(&mut compiled, radius, 1.5).unwrap();
+        assert!(index.is_dirty());
+
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
+        let invalidated = index
+            .invalidate_chunked_cache(&cache, &bvh)
+            .expect("dirty aabb must be present");
+        let expected = bvh.aabbs[sphere_idx];
+        assert!((invalidated.min() - expected.min()).length() < 1e-4);
+        assert!(!index.is_dirty(), "dirty set must be cleared");
+    }
+
+    #[test]
+    fn invalidate_chunked_cache_is_noop_when_dirty_set_is_empty() {
+        let (_, _compiled, bvh) = build_simple_scene_with_bvh();
+        let mut index = ParamDependencyIndex::new();
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
+        let result = index.invalidate_chunked_cache(&cache, &bvh);
+        assert!(result.is_none());
+        assert!(!index.is_dirty());
     }
 }

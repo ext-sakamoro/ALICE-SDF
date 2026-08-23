@@ -12,6 +12,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use alice_sdf::cache::{ChunkedCacheConfig, ChunkedMeshCache};
 use alice_sdf::compiled::OpCode;
 use alice_sdf::prelude::*;
 use glam::Vec3;
@@ -28,7 +29,9 @@ fn main() {
     // Scene: Union(Sphere(r=1.0), Translate(2,0,0) . Box(hx=0.5, hy=0.5, hz=0.5))
     let sphere = SdfNode::sphere(1.0);
     let cube = SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0);
-    let mut compiled = CompiledSdf::compile(&sphere.union(cube));
+    let scene = sphere.union(cube);
+    let mut compiled = CompiledSdf::compile(&scene);
+    let bvh = CompiledSdfBvh::compile(&scene);
 
     let sphere_idx = first_of(&compiled, OpCode::Sphere);
     let box_idx = first_of(&compiled, OpCode::Box3d);
@@ -95,5 +98,30 @@ fn main() {
     println!(
         "dirty instruction indices (after mark_clean + 1 apply): {:?}",
         index.dirty_instructions().collect::<Vec<_>>()
+    );
+
+    // Frame 3: query per-param AABB and invalidate a chunked mesh cache.
+    let radius_aabb = index
+        .affected_aabb(radius_param, &bvh)
+        .expect("radius param must cover a real AABB");
+    println!(
+        "\naffected_aabb(radius_param) = min={:?} max={:?}",
+        radius_aabb.min(),
+        radius_aabb.max()
+    );
+
+    let dirty_aabb = index.dirty_aabb(&bvh).expect("height_param is still dirty");
+    println!(
+        "dirty_aabb() (only height_param dirty) = min={:?} max={:?}",
+        dirty_aabb.min(),
+        dirty_aabb.max()
+    );
+
+    let cache = ChunkedMeshCache::new(ChunkedCacheConfig::default());
+    let invalidated = index.invalidate_chunked_cache(&cache, &bvh);
+    println!(
+        "invalidate_chunked_cache() → aabb={:?}, dirty_now={}",
+        invalidated.is_some(),
+        index.is_dirty()
     );
 }
