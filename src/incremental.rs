@@ -2,7 +2,7 @@
 //!
 //! This module provides a *binding layer* between [`ParamId`] (parametric
 //! variable identifier managed by [`ConstraintSolver`]) and the raw `f32`
-//! parameter slots inside [`Instruction`]. It enables incremental workflows
+//! parameter slots inside [`crate::compiled::Instruction`]. It enables incremental workflows
 //! such as animation and constraint-driven update, where a single parameter
 //! change should only recompute the affected subtree instead of the whole
 //! SDF tree.
