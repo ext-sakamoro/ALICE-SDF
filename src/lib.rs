@@ -127,6 +127,7 @@ pub mod autodiff;
 pub mod constraint;
 pub mod diff;
 pub mod heatmap;
+pub mod incremental;
 pub mod measure;
 pub mod sdf2d;
 pub mod shell;
@@ -232,6 +233,7 @@ pub mod prelude {
     pub use crate::heatmap::{
         generate_heatmap, heatmap_to_rgba, ColorMap, Heatmap, HeatmapConfig, SlicePlane,
     };
+    pub use crate::incremental::{IncrementalError, InstructionSlot, ParamDependencyIndex};
     pub use crate::io::{
         export_alembic, export_fbx, export_glb, export_glb_bytes, export_gltf_json, export_nanite,
         export_nanite_json, export_nanite_with_config, export_obj, export_usda, get_info,
