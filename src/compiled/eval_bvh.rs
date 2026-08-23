@@ -44,6 +44,20 @@ pub struct CompiledSdfBvh {
     /// path that predates parent tracking (in which case `refit_partial`
     /// will treat the whole BVH as affected).
     pub parent_indices: Vec<Option<u32>>,
+    /// End index of the subtree rooted at each instruction, inclusive.
+    ///
+    /// - Leaves (primitives): `subtree_end[i] == i`.
+    /// - Postfix binary CSG at `i`: `subtree_end[i] == i` (children come
+    ///   before in bytecode order and are covered via `parent_indices`).
+    /// - Prefix transforms / modifiers at `i` (with matching `PopTransform`
+    ///   at `k`): `subtree_end[i] == k`, so the whole `[i, k]` range can be
+    ///   skipped when no dirty index falls in it.
+    /// - `PopTransform` / `End` markers: `subtree_end[i] == i`.
+    ///
+    /// Populated by `try_compile`. Empty when population failed (e.g.
+    /// unsupported opcode) — the refit walker then falls back to the
+    /// no-skip path.
+    pub subtree_end: Vec<u32>,
 }
 
 impl CompiledSdfBvh {
@@ -92,13 +106,17 @@ impl CompiledSdfBvh {
             node_count: compiler.node_count,
             scene_aabb,
             parent_indices: Vec::new(),
+            subtree_end: Vec::new(),
         };
-        // Try to populate parent indices for future partial refit. Silent
-        // fallback to an empty vector for scenes containing opcodes not yet
-        // covered by refit::build_parent_indices — `refit_partial` handles
-        // the empty case defensively.
-        bvh.parent_indices =
-            super::refit::build_parent_indices(&bvh).unwrap_or_else(|_| Vec::new());
+        // Populate parent_indices + subtree_end. Silent fallback to empty
+        // vectors for scenes containing opcodes not covered by the refit
+        // walker — `refit_partial` handles the empty case defensively.
+        if let Ok(parents) = super::refit::build_parent_indices(&bvh) {
+            bvh.parent_indices = parents;
+        }
+        if let Ok(ends) = super::refit::build_subtree_ends(&bvh) {
+            bvh.subtree_end = ends;
+        }
         Ok(bvh)
     }
 
