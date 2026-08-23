@@ -651,11 +651,11 @@ impl PySdfNode {
         coarse_subdivisions: u32,
     ) -> ((f32, f32, f32), (f32, f32, f32)) {
         use crate::tight_aabb::{compute_tight_aabb_with_config, TightAabbConfig};
-        let config = TightAabbConfig {
-            initial_half_size,
-            bisection_iterations,
-            coarse_subdivisions,
-        };
+        // Python 引数の validation 失敗時は silent に preset_small へ fallback
+        // (Python 側は valid 値のみ渡す前提、fallback は防御的)
+        let config =
+            TightAabbConfig::try_new(initial_half_size, bisection_iterations, coarse_subdivisions)
+                .unwrap_or_else(|_| TightAabbConfig::preset_small());
         let inner = &self.inner;
         let aabb = py.allow_threads(|| compute_tight_aabb_with_config(inner, &config));
         (

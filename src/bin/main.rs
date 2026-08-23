@@ -391,11 +391,7 @@ fn cmd_print(
         (Vec3::splat(-b), Vec3::splat(b))
     } else {
         // Use large initial search for 3D printing scale (up to 500mm)
-        let aabb_config = alice_sdf::tight_aabb::TightAabbConfig {
-            initial_half_size: 500.0,
-            bisection_iterations: 24,
-            coarse_subdivisions: 16,
-        };
+        let aabb_config = alice_sdf::tight_aabb::TightAabbConfig::preset_large();
         let aabb = alice_sdf::tight_aabb::compute_tight_aabb_with_config(&tree.root, &aabb_config);
         if aabb.min == Vec3::ZERO && aabb.max == Vec3::ZERO {
             eprintln!("Warning: Could not detect bounds. Using default [-200, 200]³");

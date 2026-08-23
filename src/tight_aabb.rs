@@ -21,35 +21,135 @@ use crate::types::{Aabb, SdfNode};
 use glam::Vec3;
 use rayon::prelude::*;
 
-/// Configuration for tight AABB computation
+/// Configuration for tight AABB computation.
+///
+/// Construct via [`TightAabbConfig::preset_small`] / [`preset_medium`](Self::preset_medium) /
+/// [`preset_large`](Self::preset_large) for canonical use cases, or
+/// [`try_new`](Self::try_new) for validated arbitrary values.
+///
+/// `impl Default` was intentionally removed in 1.7.7 to prevent silent
+/// load-bearing use of the historical default (`initial_half_size: 10.0`) which
+/// caused large patterns (SKADIS panel / gridfinity 200mm+ bbox) to fall outside
+/// the search range and produce empty AABB. See `rust-config-struct-guard` skill.
 #[derive(Debug, Clone, Copy)]
 pub struct TightAabbConfig {
-    /// Initial conservative half-size to start the search from (default: 10.0)
+    /// Initial conservative half-size to start the search from.
     ///
     /// The search starts with a cube `[-initial_half_size, +initial_half_size]³`
     /// and shrinks inward. Must be large enough to contain the shape.
-    pub initial_half_size: f32,
+    initial_half_size: f32,
 
-    /// Number of binary search iterations per axis (default: 20)
+    /// Number of binary search iterations per axis.
     ///
     /// Each iteration halves the remaining uncertainty, so 20 iterations
     /// gives ~1e-6 precision on a size-10 initial box.
-    pub bisection_iterations: u32,
+    bisection_iterations: u32,
 
-    /// Number of coarse scan subdivisions for early-out (default: 8)
+    /// Number of coarse scan subdivisions for early-out.
     ///
     /// Before binary search, the axis is divided into this many slabs.
     /// Empty slabs are skipped entirely, reducing the search range.
-    pub coarse_subdivisions: u32,
+    coarse_subdivisions: u32,
 }
 
-impl Default for TightAabbConfig {
-    fn default() -> Self {
+/// Error variants for [`TightAabbConfig::try_new`].
+#[derive(Debug, thiserror::Error)]
+pub enum TightAabbConfigError {
+    /// `initial_half_size` must be strictly positive.
+    #[error("initial_half_size must be > 0, got {0}")]
+    InvalidHalfSize(f32),
+    /// `bisection_iterations` must be strictly positive.
+    #[error("bisection_iterations must be > 0")]
+    ZeroIterations,
+    /// `coarse_subdivisions` must be strictly positive.
+    #[error("coarse_subdivisions must be > 0")]
+    ZeroSubdivisions,
+}
+
+impl TightAabbConfig {
+    /// Preset for shapes ≤ 20mm bbox (`initial_half_size: 10.0, iters: 20, subdivisions: 8`).
+    ///
+    /// Historical `Default::default()` values. Coin / badge / small mechanical parts.
+    #[must_use]
+    pub const fn preset_small() -> Self {
         Self {
             initial_half_size: 10.0,
             bisection_iterations: 20,
             coarse_subdivisions: 8,
         }
+    }
+
+    /// Preset for shapes 20-200mm bbox (`initial_half_size: 100.0, iters: 22, subdivisions: 12`).
+    ///
+    /// Intermediate: bracket / holder / desktop organizer.
+    #[must_use]
+    pub const fn preset_medium() -> Self {
+        Self {
+            initial_half_size: 100.0,
+            bisection_iterations: 22,
+            coarse_subdivisions: 12,
+        }
+    }
+
+    /// Preset for shapes 200mm+ bbox (`initial_half_size: 500.0, iters: 24, subdivisions: 16`).
+    ///
+    /// Bamboo canonical (matches `alice_bamboo::sdf_to_bambu_3mf` internal config).
+    /// SKADIS panel / gridfinity / large wall organizer.
+    #[must_use]
+    pub const fn preset_large() -> Self {
+        Self {
+            initial_half_size: 500.0,
+            bisection_iterations: 24,
+            coarse_subdivisions: 16,
+        }
+    }
+
+    /// Construct with custom values, validating each field.
+    ///
+    /// # Errors
+    /// - [`TightAabbConfigError::InvalidHalfSize`] if `initial_half_size <= 0`
+    /// - [`TightAabbConfigError::ZeroIterations`] if `bisection_iterations == 0`
+    /// - [`TightAabbConfigError::ZeroSubdivisions`] if `coarse_subdivisions == 0`
+    pub fn try_new(
+        initial_half_size: f32,
+        bisection_iterations: u32,
+        coarse_subdivisions: u32,
+    ) -> Result<Self, TightAabbConfigError> {
+        if initial_half_size.is_nan() || initial_half_size <= 0.0 {
+            return Err(TightAabbConfigError::InvalidHalfSize(initial_half_size));
+        }
+        if bisection_iterations == 0 {
+            return Err(TightAabbConfigError::ZeroIterations);
+        }
+        if coarse_subdivisions == 0 {
+            return Err(TightAabbConfigError::ZeroSubdivisions);
+        }
+        Ok(Self {
+            initial_half_size,
+            bisection_iterations,
+            coarse_subdivisions,
+        })
+    }
+
+    /// Initial half-size accessor.
+    #[must_use]
+    #[inline]
+    pub const fn initial_half_size(&self) -> f32 {
+        self.initial_half_size
+    }
+
+    /// Bisection iterations accessor.
+    #[must_use]
+    #[inline]
+    pub const fn bisection_iterations(&self) -> u32 {
+        self.bisection_iterations
+    }
+
+    /// Coarse subdivisions accessor.
+    #[must_use]
+    #[inline]
+    pub const fn coarse_subdivisions(&self) -> u32 {
+        self.coarse_subdivisions
     }
 }
 
@@ -79,12 +179,12 @@ impl Default for TightAabbConfig {
 /// assert!(aabb.max.x > 2.9 && aabb.max.x < 3.5);
 /// ```
 pub fn compute_tight_aabb(node: &SdfNode) -> Aabb {
-    compute_tight_aabb_with_config(node, &TightAabbConfig::default())
+    compute_tight_aabb_with_config(node, &TightAabbConfig::preset_small())
 }
 
 /// Compute a tight AABB with custom configuration.
 pub fn compute_tight_aabb_with_config(node: &SdfNode, config: &TightAabbConfig) -> Aabb {
-    let h = config.initial_half_size;
+    let h = config.initial_half_size();
     let initial_min = Vec3::splat(-h);
     let initial_max = Vec3::splat(h);
 
@@ -137,7 +237,7 @@ fn find_tight_bound(
         hi,
         initial_min,
         initial_max,
-        config.coarse_subdivisions,
+        config.coarse_subdivisions(),
     );
 
     // Phase 2: Binary search within the narrowed range
@@ -149,7 +249,7 @@ fn find_tight_bound(
         search_hi,
         initial_min,
         initial_max,
-        config.bisection_iterations,
+        config.bisection_iterations(),
     )
 }
 
@@ -460,11 +560,7 @@ mod tests {
 
         // Default initial_half_size=10 should not be enough for larger shapes
         // but radius 5 fits in [-10, 10]³
-        let config = TightAabbConfig {
-            initial_half_size: 8.0,
-            bisection_iterations: 15,
-            coarse_subdivisions: 4,
-        };
+        let config = TightAabbConfig::try_new(8.0, 15, 4).expect("valid config");
 
         let aabb = compute_tight_aabb_with_config(&sphere, &config);
 
