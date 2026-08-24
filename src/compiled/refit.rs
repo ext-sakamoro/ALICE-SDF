@@ -1070,6 +1070,132 @@ mod tests {
     }
 
     #[test]
+    fn refit_all_matches_baseline_for_extended_opcodes() {
+        // Exhaustive parity check: for a scene that exercises every P3-
+        // added CSG variant, modifier and transform, refit_all(scene)
+        // must produce byte-for-byte equivalent AABBs vs a fresh
+        // CompiledSdfBvh::compile(scene). This is stricter than the
+        // per-opcode smoke tests, which only check "valid AABB".
+        let leaf = SdfNode::sphere(1.0);
+        let cube = SdfNode::box3d(0.5, 0.5, 0.5).translate(2.0, 0.0, 0.0);
+
+        let cases: Vec<(&str, SdfNode)> = vec![
+            (
+                "chamfer_union",
+                leaf.clone().chamfer_union(cube.clone(), 0.2),
+            ),
+            (
+                "chamfer_intersection",
+                leaf.clone().chamfer_intersection(cube.clone(), 0.2),
+            ),
+            (
+                "chamfer_subtraction",
+                leaf.clone().chamfer_subtract(cube.clone(), 0.2),
+            ),
+            (
+                "stairs_union",
+                leaf.clone().stairs_union(cube.clone(), 0.15, 3.0),
+            ),
+            (
+                "columns_union",
+                leaf.clone().columns_union(cube.clone(), 0.2, 3.0),
+            ),
+            ("pipe", leaf.clone().pipe(cube.clone(), 0.1)),
+            ("engrave", leaf.clone().engrave(cube.clone(), 0.15)),
+            ("groove", leaf.clone().groove(cube.clone(), 0.1, 0.05)),
+            ("tongue", leaf.clone().tongue(cube.clone(), 0.1, 0.05)),
+            (
+                "exp_smooth_union",
+                leaf.clone().exp_smooth_union(cube.clone(), 0.2),
+            ),
+            ("twist", leaf.clone().twist(0.5)),
+            ("bend", leaf.clone().bend(0.3)),
+            ("onion", leaf.clone().onion(0.1)),
+            ("displacement", leaf.clone().displacement(0.2)),
+            ("noise", leaf.clone().noise(0.1, 2.0, 42)),
+            ("elongate", leaf.clone().elongate(1.0, 0.0, 0.0)),
+            (
+                "mirror",
+                leaf.clone()
+                    .translate(2.0, 0.0, 0.0)
+                    .mirror(true, false, false),
+            ),
+            (
+                "repeat_finite",
+                leaf.clone().repeat_finite([2, 2, 2], Vec3::splat(1.5)),
+            ),
+            ("shear", leaf.clone().shear(0.1, 0.0, 0.0)),
+            ("taper", leaf.clone().taper(0.3)),
+            ("extrude", leaf.clone().extrude(1.0)),
+            ("revolution", leaf.clone().revolution(2.0)),
+            (
+                "polar_repeat",
+                leaf.clone().translate(1.5, 0.0, 0.0).polar_repeat(6),
+            ),
+        ];
+
+        for (name, scene) in cases {
+            let baseline = CompiledSdfBvh::compile(&scene);
+            let mut refit = baseline.clone();
+            refit_all(&mut refit).unwrap_or_else(|e| {
+                panic!("refit_all failed for {name}: {e:?}");
+            });
+            for (i, (a, b)) in refit.aabbs.iter().zip(baseline.aabbs.iter()).enumerate() {
+                let dmin = (a.min() - b.min()).length();
+                let dmax = (a.max() - b.max()).length();
+                assert!(
+                    dmin < 1e-3 && dmax < 1e-3,
+                    "case {name}: instruction {i} AABB drift min={dmin} max={dmax} \
+                     (refit min={:?} baseline min={:?})",
+                    a.min(),
+                    b.min(),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn refit_partial_deeply_nested_skips_intermediate_subtrees() {
+        // Deep tree: Union(Union(Union(A, B), C), TransformSubtree(D))
+        // where only A is dirty. Every sibling subtree (B, C, D) should be
+        // skipped and the ancestor chain (Union × 3) recomputed.
+        let a = SdfNode::sphere(1.0);
+        let b = SdfNode::sphere(0.5).translate(3.0, 0.0, 0.0);
+        let c = SdfNode::sphere(0.4).translate(0.0, 4.0, 0.0);
+        let d = SdfNode::box3d(0.3, 0.3, 0.3).translate(0.0, 0.0, 5.0);
+        let scene = a.union(b).union(c).union(d);
+
+        let mut bvh_partial = CompiledSdfBvh::compile(&scene);
+        let mut bvh_full = CompiledSdfBvh::compile(&scene);
+        let sphere_idx = bvh_partial
+            .instructions
+            .iter()
+            .position(|i| i.opcode == OpCode::Sphere)
+            .unwrap();
+        bvh_partial.instructions[sphere_idx].params[0] = 2.5;
+        bvh_full.instructions[sphere_idx].params[0] = 2.5;
+
+        let partial_count = refit_partial(&mut bvh_partial, &[sphere_idx]).unwrap();
+        let full_count = refit_all(&mut bvh_full).unwrap();
+
+        // Sphere + 3 Union ancestors == 4. Full walks every instruction
+        // (Sphere ×4 + Union ×3 + Translate ×3 = 10+).
+        assert_eq!(
+            partial_count, 4,
+            "deep partial should recompute only ancestor chain (Sphere + 3 Union), got {}",
+            partial_count
+        );
+        assert!(
+            full_count > partial_count,
+            "full refit ({full_count}) must recompute more than partial ({partial_count})"
+        );
+        assert!(
+            (bvh_partial.scene_aabb.max() - bvh_full.scene_aabb.max()).length() < 1e-4,
+            "scene AABB agreement across deeply nested partial vs full"
+        );
+    }
+
+    #[test]
     fn refit_partial_still_produces_correct_scene_aabb() {
         // Compare partial-with-skip vs full refit: identical results.
         let a = SdfNode::sphere(1.0);
