@@ -18,7 +18,7 @@ path = "src/bin/uniffi_bindgen.rs"
 
 [dependencies]
 alice-sdf = { path = "../..", default-features = false }
-glam      = "0.29"
+glam      = "0.33"
 uniffi    = { version = "0.28", features = ["cli"] }
 
 [features]
