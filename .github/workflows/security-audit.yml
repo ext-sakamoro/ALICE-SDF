@@ -18,6 +18,10 @@ on:
       - 'src/**'
       - 'deny.toml'
       - '.github/workflows/security-audit.yml'
+      - '.github/actions/**'
+      - 'examples/*/Cargo.toml'
+      - 'bindings/*/Cargo.toml'
+      - 'bindings/*/*/Cargo.toml'
   pull_request:
     branches: [main]
     paths:
@@ -26,6 +30,10 @@ on:
       - 'src/**'
       - 'deny.toml'
       - '.github/workflows/security-audit.yml'
+      - '.github/actions/**'
+      - 'examples/*/Cargo.toml'
+      - 'bindings/*/Cargo.toml'
+      - 'bindings/*/*/Cargo.toml'
   schedule:
     # 毎週月曜 09:00 UTC = 18:00 JST
     # commit 間で新規公表された CVE を weekly で catch
