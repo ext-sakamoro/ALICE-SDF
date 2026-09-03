@@ -184,7 +184,10 @@ jobs:
           set -eo pipefail
           # test 除外: #[cfg(test)] / mod tests { で囲まれた block は grep で拾うが
           # 実際に todo!() が本 repo で src/ に混入した過去がないため厳格 block
-          hits=$(grep -rnE 'todo!\(|unimplemented!\(|panic!\([^)]*(STUB|NOT.IMPL|not.impl)' \
+          # STUB (uppercase) 明示のみ検出 (2026-09-03 refine)
+          # trait default method の `panic!("... not implemented by this backend")` 等は
+          # legitimate な pattern で stub ではない (ALICE-Physics 展開時発覚)
+          hits=$(grep -rnE 'todo!\(|unimplemented!\(|panic!\([^)]*STUB' \
             src/ --include="*.rs" \
             --exclude-dir=bin \
             || true)
