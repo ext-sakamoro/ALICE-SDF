@@ -29,6 +29,18 @@ pub const ASDF_MAGIC: [u8; 4] = *b"ASDF";
 /// Current format version
 pub const ASDF_VERSION: u16 = 1;
 
+/// bincode deserialize allocation upper bound (256 MB)
+///
+/// malformed .asdf ファイルで length prefix が過大値の場合、bincode 2 の
+/// decode_from_slice は Vec::with_capacity(huge) で `capacity overflow` panic を
+/// 起こす (実 fuzz 検出、fuzz_asdf_decode で発覚)
+///
+/// `bincode::config::legacy().with_limit::<N>()` の N でこれを上限 cap し、
+/// 越える input は Err で reject する (panic → Err に変換、DoS 予防)
+///
+/// 現行 tree の実サイズは 大規模 scene でも 100 MB 未満、256 MB あれば実用範囲内
+const ASDF_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
+
 /// ASDF file header
 #[derive(Debug, Clone, Copy)]
 pub struct AsdfHeader {
@@ -185,10 +197,14 @@ pub fn save_asdf(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> 
 
     // 2. Stream write body and calculate CRC on-the-fly
     // bincode 2 API: encode_into_std_write returns Result<usize, _> — usize は捨てる
-    // config::legacy() で bincode 1 wire format 互換
+    // config::legacy().with_limit() で bincode 1 wire format 互換 + DoS 予防 size cap
     let mut crc_writer = CrcWriter::new(&mut writer);
-    bincode::serde::encode_into_std_write(tree, &mut crc_writer, bincode::config::legacy())
-        .map_err(|e| IoError::Serialization(e.to_string()))?;
+    bincode::serde::encode_into_std_write(
+        tree,
+        &mut crc_writer,
+        bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
+    )
+    .map_err(|e| IoError::Serialization(e.to_string()))?;
 
     let crc = crc_writer.finalize();
 
@@ -228,11 +244,15 @@ pub fn load_asdf(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
         });
     }
 
-    // 4. Deserialize (safe because CRC verified)
+    // 4. Deserialize (safe because CRC verified + size cap で DoS 予防)
     // bincode 2 API: decode_from_slice returns (T, bytes_consumed) — bytes_consumed は捨てる
-    let (tree, _consumed): (SdfTree, usize) =
-        bincode::serde::decode_from_slice(&body, bincode::config::legacy())
-            .map_err(|e| IoError::Serialization(e.to_string()))?;
+    // with_limit::<ASDF_BINCODE_LIMIT>: 256 MB を超える length prefix は Err で reject
+    // (fuzz_asdf_decode で発覚した capacity overflow panic の予防)
+    let (tree, _consumed): (SdfTree, usize) = bincode::serde::decode_from_slice(
+        &body,
+        bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
+    )
+    .map_err(|e| IoError::Serialization(e.to_string()))?;
 
     Ok(tree)
 }
@@ -325,6 +345,32 @@ mod tests {
         let bytes = [b'X', b'X', b'X', b'X', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let result = AsdfHeader::from_bytes(&bytes);
         assert!(matches!(result, Err(IoError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_malformed_body_no_panic() {
+        // Regression test for fuzz_asdf_decode 発見 bug (2026-09-03)
+        // valid ASDF magic + malformed body で bincode 2 decode が
+        // Vec `capacity overflow` panic を起こす (potential DoS)
+        // with_limit::<ASDF_BINCODE_LIMIT> で Err 返却に矯正
+        let path = temp_path("malformed_body.asdf");
+        // fuzz artifact をベースにした 28-byte payload
+        // (base64: QVNERgAAAAAQKN8oN+TnLSgAABAo3yjSKCgyKA==)
+        let bytes = [
+            0x41, 0x53, 0x44, 0x46, // magic: "ASDF"
+            0x00, 0x00, // version
+            0x00, 0x00, // flags
+            0x10, 0x28, 0xdf, 0x28, // node_count (huge)
+            0x37, 0xe4, 0xe7, 0x2d, // CRC32
+            0x28, 0x00, 0x00, 0x10, 0x28, 0xdf, 0x28, 0xd2, 0x28, 0x28, 0x32, 0x28,
+        ];
+        fs::write(&path, bytes).unwrap();
+
+        // panic せず Err を返せば OK (CrcMismatch or Serialization どちらも許容)
+        let result = load_asdf(&path);
+        assert!(result.is_err(), "malformed body should return Err");
+
+        fs::remove_file(&path).ok();
     }
 
     #[test]

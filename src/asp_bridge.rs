@@ -29,11 +29,19 @@ use crate::types::SdfTree;
 ///
 /// The SDF tree is serialized to ASDF binary format and embedded
 /// in the I-packet's region descriptors as a `Complex` pattern.
+/// bincode allocation upper bound (256 MB) fuzz 検出の capacity overflow panic 予防
+/// [[karikari-review]] : src/io/asdf.rs::ASDF_BINCODE_LIMIT と同期
+const ASP_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
+
 pub fn create_sdf_i_packet(tree: &SdfTree, sequence: u32) -> AspResult<AspPacket> {
     // Serialize SDF tree to binary via bincode (same format as ASDF files)
     // bincode 2 API: serde compat + legacy config で bincode 1 wire format 互換
-    let asdf_bytes = bincode::serde::encode_to_vec(tree, bincode::config::legacy())
-        .map_err(|e| libasp::AspError::SerializationError(e.to_string()))?;
+    // with_limit で DoS 予防 (fuzz_asdf_decode で発覚した panic の同 root cause)
+    let asdf_bytes = bincode::serde::encode_to_vec(
+        tree,
+        bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
+    )
+    .map_err(|e| libasp::AspError::SerializationError(e.to_string()))?;
 
     // Build I-packet with ASDF payload embedded as DCT coefficients
     // (reusing the sparse coefficient field for binary data)
@@ -132,17 +140,23 @@ pub fn decode_sdf_i_packet(packet: &AspPacket) -> Result<SdfTree, String> {
         }
     }
 
-    bincode::serde::decode_from_slice(&asdf_bytes, bincode::config::legacy())
-        .map(|(tree, _)| tree)
-        .map_err(|e| format!("ASDF decode failed: {}", e))
+    bincode::serde::decode_from_slice(
+        &asdf_bytes,
+        bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
+    )
+    .map(|(tree, _)| tree)
+    .map_err(|e| format!("ASDF decode failed: {}", e))
 }
 
 /// Compute the ASP packet overhead for an SDF scene.
 ///
 /// Returns `(asdf_bytes, total_packet_bytes)`.
 pub fn estimate_packet_size(tree: &SdfTree) -> (usize, usize) {
-    let asdf_bytes =
-        bincode::serde::encode_to_vec(tree, bincode::config::legacy()).unwrap_or_default();
+    let asdf_bytes = bincode::serde::encode_to_vec(
+        tree,
+        bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
+    )
+    .unwrap_or_default();
     let asdf_len = asdf_bytes.len();
     // ASP overhead: 16-byte header + FlatBuffers framing + CRC32
     // Each byte stored as (u32, u32, f32) = 12 bytes in DCT field
