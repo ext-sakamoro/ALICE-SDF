@@ -21,11 +21,15 @@ runs:
           dir="${entry%:*}"
           crate="${entry#*:}"
           mkdir -p "../${dir}/src"
+          # license field 追加: cargo-deny (security-audit workflow) が
+          # stub crate を "unlicensed" として reject するのを予防
+          # 本 stub は CI 内でのみ生成される空実装、配布物には含まれない
           cat > "../${dir}/Cargo.toml" <<TOML
         [package]
         name = "${crate}"
         version = "0.1.0"
         edition = "2021"
+        license = "MIT OR Apache-2.0"
 
         [lib]
         path = "src/lib.rs"
