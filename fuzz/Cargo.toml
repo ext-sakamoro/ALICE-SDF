@@ -1,0 +1,43 @@
+[package]
+name = "alice-sdf-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+# fuzz target で使う: primitive coord = glam::Vec3、serialize = bincode 2 with serde feature
+glam = "0.29"
+bincode = { version = "2.0", features = ["serde"] }
+
+[dependencies.alice-sdf]
+path = ".."
+
+# Prevent cargo-machete false-positive detection (fuzz は本体 dep 除外)
+[package.metadata.cargo-machete]
+ignored = ["libfuzzer-sys"]
+
+[[bin]]
+name = "fuzz_sdf_eval"
+path = "fuzz_targets/fuzz_sdf_eval.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_asdf_decode"
+path = "fuzz_targets/fuzz_asdf_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_bincode_roundtrip"
+path = "fuzz_targets/fuzz_bincode_roundtrip.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,101 @@
+name: Fuzz
+
+# 目的:
+# - SDF eval / asdf decode / bincode roundtrip の 3 target を time-boxed fuzz
+# - PR / push 毎に短時間 (30-60s/target) 実行、long-run は別途 batch fuzzing infra 想定
+#
+# 罠 catalog:
+# - cargo-fuzz は nightly toolchain 必須 (rust-toolchain.toml pin と別)
+# - libfuzzer-sys は AddressSanitizer 前提 → linker flags 自動注入
+# - fuzz/ 配下は cargo workspace の一部ではない (別 Cargo.toml)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'fuzz/**'
+      - '.github/workflows/fuzz.yml'
+      - '.github/actions/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'fuzz/**'
+      - '.github/workflows/fuzz.yml'
+      - '.github/actions/**'
+  schedule:
+    # 毎日 03:00 UTC = 12:00 JST (idle 時間帯)
+    # 長時間 batch fuzzing の 1 段目、PR 検知漏れの safety net
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: 'Per-target fuzz duration (seconds)'
+        required: false
+        default: '60'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: Fuzz — ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    # fuzz 検知失敗は informational (long-run infra への lead time が必要)
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_sdf_eval
+          - fuzz_asdf_decode
+          - fuzz_bincode_roundtrip
+    steps:
+      - uses: actions/checkout@v5
+
+      # cargo-fuzz は nightly toolchain 必須 (rust-toolchain.toml 1.92.0 pin を上書き)
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      # duration: workflow_dispatch input or default 60s
+      - name: Set fuzz duration
+        id: dur
+        run: |
+          DURATION="${{ github.event.inputs.duration_seconds }}"
+          if [ -z "$DURATION" ]; then
+            DURATION=60
+          fi
+          echo "seconds=$DURATION" >> "$GITHUB_OUTPUT"
+
+      - name: Run fuzz target (time-boxed)
+        run: |
+          cd fuzz
+          # sanitizer=address (default)、-max_total_time でタイムボックス
+          cargo +nightly fuzz run "${{ matrix.target }}" -- \
+            -max_total_time=${{ steps.dur.outputs.seconds }}
+
+      # crash 検出時のみ artifact upload (通常 pass では skip)
+      - name: Upload crash artifacts (if any)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 14
