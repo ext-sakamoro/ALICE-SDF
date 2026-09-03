@@ -27,7 +27,7 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -62,7 +62,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -127,7 +127,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       # rust-toolchain.toml (= channel 1.92.0 pin) があると dtolnay action の
       # targets: パラメータが stable に追加されるだけで、active toolchain 1.92.0 に
@@ -147,7 +147,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: ./.github/actions/alice-stubs
@@ -162,7 +162,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -192,12 +192,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ALICE-SDF
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: ALICE-SDF
 
       - name: Checkout ALICE-Physics (path dep target)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ext-sakamoro/ALICE-Physics
           path: ALICE-Physics
@@ -247,7 +247,7 @@ jobs:
     if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -327,7 +327,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -356,7 +356,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -377,7 +377,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -395,7 +395,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -414,7 +414,7 @@ jobs:
     if: needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # feedback_workflow_yaml_pitfall: `run:` 末尾 `::` で 0 秒 failure 等の罠を予防
       - name: Run actionlint
         uses: reviewdog/action-actionlint@v1
@@ -428,7 +428,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -503,7 +503,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       # rust-toolchain.toml pin (1.92.0) と action の targets 不整合回避
       - name: Ensure wasm32 target on pinned toolchain
@@ -528,7 +528,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -556,7 +556,7 @@ jobs:
     if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios-sim

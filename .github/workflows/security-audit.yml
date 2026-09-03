@@ -54,7 +54,7 @@ jobs:
     name: cargo audit (RustSec CVE scan)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -80,7 +80,7 @@ jobs:
     name: cargo-deny (license + advisories + bans + sources)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -100,7 +100,7 @@ jobs:
     name: cargo-machete (unused dependencies)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
 
       # alice-stubs step 必要 (Cargo.toml の path dep 解決のため cargo metadata が動く)
@@ -112,11 +112,69 @@ jobs:
       # 現状の ignored: log / js-sys / vdb-rs (feature-gated 予備 dep、将来使用予定)
       - uses: bnjbvr/cargo-machete@main
 
+  coverage:
+    name: Coverage (cargo-llvm-cov、informational)
+    runs-on: ubuntu-latest
+    # coverage は informational only、threshold で fail させない
+    # 初期値把握が目的、将来的に threshold 導入判断
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # --lib のみ (test の doctest / integration test は clippy / test job で担保)
+      # --summary-only で行 coverage % + region coverage % を PR log に表示
+      - name: Run coverage
+        run: |
+          cargo llvm-cov --lib --summary-only --workspace \
+            --no-default-features 2>&1 | tee coverage-summary.txt
+          echo ""
+          echo "=== Coverage summary (default features) ==="
+          cargo llvm-cov --lib --summary-only 2>&1 | tail -20
+
+      - name: Upload coverage summary as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage-summary.txt
+          retention-days: 30
+
+  semver-checks:
+    name: cargo-semver-checks (API compat vs crates.io、informational)
+    runs-on: ubuntu-latest
+    # ALICE-SDF 1.8.0 で physics / font bridge 復帰予定 = 予定された major bump
+    # break 検知しても block しない (informational only、user 側で version bump 判断)
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@cargo-semver-checks
+
+      # check-release: 最新 crates.io publish 版と HEAD の API 差分を検出
+      # --baseline-version で明示指定も可 (現状は自動: 最新 published)
+      - name: Run cargo semver-checks
+        run: cargo semver-checks check-release --package alice-sdf
+
   stub-guard:
     name: Stub / mock / dbg guard (grep)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # CLAUDE.md「仮実装完了偽装の禁止ルール」準拠
       # src/ 配下の production path に todo! / unimplemented! / panic!(STUB) が
