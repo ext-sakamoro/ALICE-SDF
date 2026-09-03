@@ -6,7 +6,10 @@ use pyo3::prelude::*;
 use crate::types::SdfNode;
 
 /// Python-visible SdfNode wrapper
-#[pyclass(name = "SdfNode")]
+// pyo3 0.29+: `#[pyclass]` on Clone types で自動導出される `FromPyObject` は
+// 将来 opt-in 化予定 (`from_py_object` 属性で明示、[[karikari-review]] deprecation gate 準拠)
+// 既存の Python callsite が引き続き SdfNode を関数引数で受けられるよう明示 opt-in
+#[pyclass(name = "SdfNode", from_py_object)]
 #[derive(Clone)]
 pub struct PySdfNode {
     pub(crate) inner: SdfNode,
@@ -627,7 +630,7 @@ impl PySdfNode {
     /// Evaluate at a single point (GIL released)
     fn eval(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
         let inner = &self.inner;
-        py.allow_threads(|| crate::eval::eval(inner, Vec3::new(x, y, z)))
+        py.detach(|| crate::eval::eval(inner, Vec3::new(x, y, z)))
     }
 
     /// Compute analytic gradient at a point (GIL released)
@@ -635,7 +638,7 @@ impl PySdfNode {
     /// Returns (gx, gy, gz) gradient vector. For exact SDFs, |g| ≈ 1.
     fn gradient(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
         let inner = &self.inner;
-        let g = py.allow_threads(|| crate::eval::eval_gradient(inner, Vec3::new(x, y, z)));
+        let g = py.detach(|| crate::eval::eval_gradient(inner, Vec3::new(x, y, z)));
         (g.x, g.y, g.z)
     }
 
@@ -657,7 +660,7 @@ impl PySdfNode {
             TightAabbConfig::try_new(initial_half_size, bisection_iterations, coarse_subdivisions)
                 .unwrap_or_else(|_| TightAabbConfig::preset_small());
         let inner = &self.inner;
-        let aabb = py.allow_threads(|| compute_tight_aabb_with_config(inner, &config));
+        let aabb = py.detach(|| compute_tight_aabb_with_config(inner, &config));
         (
             (aabb.min.x, aabb.min.y, aabb.min.z),
             (aabb.max.x, aabb.max.y, aabb.max.z),
@@ -669,7 +672,7 @@ impl PySdfNode {
     /// Returns a new optimized SdfNode.
     fn optimize(&self, py: Python<'_>) -> Self {
         let inner = &self.inner;
-        let optimized = py.allow_threads(|| crate::optimize::optimize(inner));
+        let optimized = py.detach(|| crate::optimize::optimize(inner));
         PySdfNode { inner: optimized }
     }
 

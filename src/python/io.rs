@@ -15,7 +15,7 @@ use super::node::PySdfNode;
 pub fn save_sdf(py: Python<'_>, node: &PySdfNode, path: &str) -> PyResult<()> {
     let tree = SdfTree::new(node.inner.clone());
     let path = path.to_string();
-    py.allow_threads(|| save(&tree, &path))
+    py.detach(|| save(&tree, &path))
         .map_err(|e| PyValueError::new_err(format!("Save error: {}", e)))
 }
 
@@ -24,7 +24,7 @@ pub fn save_sdf(py: Python<'_>, node: &PySdfNode, path: &str) -> PyResult<()> {
 pub fn load_sdf(py: Python<'_>, path: &str) -> PyResult<PySdfNode> {
     let path = path.to_string();
     let tree = py
-        .allow_threads(|| load(&path))
+        .detach(|| load(&path))
         .map_err(|e| PyValueError::new_err(format!("Load error: {}", e)))?;
     Ok(PySdfNode { inner: tree.root })
 }
@@ -57,7 +57,7 @@ pub fn export_obj(
 ) -> PyResult<()> {
     use crate::io::{export_obj as io_export_obj, ObjConfig};
     let mesh = numpy_to_mesh(vertices, indices)?;
-    py.allow_threads(|| io_export_obj(&mesh, path, &ObjConfig::default(), None))
+    py.detach(|| io_export_obj(&mesh, path, &ObjConfig::default(), None))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -72,7 +72,7 @@ pub fn export_glb(
 ) -> PyResult<()> {
     use crate::io::{export_glb as io_export_glb, GltfConfig};
     let mesh = numpy_to_mesh(vertices, indices)?;
-    py.allow_threads(|| io_export_glb(&mesh, path, &GltfConfig::default(), None))
+    py.detach(|| io_export_glb(&mesh, path, &GltfConfig::default(), None))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -86,7 +86,7 @@ pub fn export_glb_bytes<'py>(
 ) -> PyResult<Vec<u8>> {
     use crate::io::{export_glb_bytes as io_export_glb_bytes, GltfConfig};
     let mesh = numpy_to_mesh(vertices, indices)?;
-    py.allow_threads(|| io_export_glb_bytes(&mesh, &GltfConfig::default(), None))
+    py.detach(|| io_export_glb_bytes(&mesh, &GltfConfig::default(), None))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -101,7 +101,7 @@ pub fn export_fbx(
 ) -> PyResult<()> {
     use crate::io::{export_fbx as io_export_fbx, FbxConfig};
     let mesh = numpy_to_mesh(vertices, indices)?;
-    py.allow_threads(|| io_export_fbx(&mesh, path, &FbxConfig::default(), None))
+    py.detach(|| io_export_fbx(&mesh, path, &FbxConfig::default(), None))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -116,7 +116,7 @@ pub fn export_usda(
 ) -> PyResult<()> {
     use crate::io::{export_usda as io_export_usda, UsdConfig};
     let mesh = numpy_to_mesh(vertices, indices)?;
-    py.allow_threads(|| io_export_usda(&mesh, path, &UsdConfig::default(), None))
+    py.detach(|| io_export_usda(&mesh, path, &UsdConfig::default(), None))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -131,7 +131,7 @@ pub fn export_alembic(
 ) -> PyResult<()> {
     use crate::io::{export_alembic as io_export_alembic, AlembicConfig};
     let mesh = numpy_to_mesh(vertices, indices)?;
-    py.allow_threads(|| io_export_alembic(&mesh, path, &AlembicConfig::default()))
+    py.detach(|| io_export_alembic(&mesh, path, &AlembicConfig::default()))
         .map_err(|e| PyValueError::new_err(format!("Export error: {}", e)))
 }
 
@@ -153,7 +153,7 @@ pub fn uv_unwrap<'py>(
 
     let mut mesh = numpy_to_mesh(vertices, indices)?;
 
-    py.allow_threads(|| {
+    py.detach(|| {
         let result = mesh_uv_unwrap(&mesh, &UvUnwrapConfig::default());
         apply_uvs(&mut mesh, &result);
     });
@@ -197,7 +197,7 @@ pub fn save_abm(
     use crate::io::save_abm as io_save_abm;
     let mesh = numpy_to_mesh(vertices, indices)?;
     let path = path.to_string();
-    py.allow_threads(move || io_save_abm(&mesh, &path))
+    py.detach(move || io_save_abm(&mesh, &path))
         .map_err(|e| PyValueError::new_err(format!("ABM save error: {}", e)))
 }
 
@@ -211,7 +211,7 @@ pub fn load_abm<'py>(
     use crate::io::load_abm as io_load_abm;
     let path = path.to_string();
     let mesh = py
-        .allow_threads(move || io_load_abm(&path))
+        .detach(move || io_load_abm(&path))
         .map_err(|e| PyValueError::new_err(format!("ABM load error: {}", e)))?;
     mesh_to_numpy(py, &mesh)
 }
@@ -237,7 +237,7 @@ pub fn export_unity(
         flip_winding,
         name: "AliceSdfMesh".to_string(),
     };
-    py.allow_threads(move || io_export_unity(&mesh, &path, &config))
+    py.detach(move || io_export_unity(&mesh, &path, &config))
         .map_err(|e| PyValueError::new_err(format!("Unity export error: {}", e)))
 }
 
@@ -259,7 +259,7 @@ pub fn export_ue5(
         name: "SM_AliceSdf".to_string(),
         lod_index: 0,
     };
-    py.allow_threads(move || io_export_ue5(&mesh, &path, &config))
+    py.detach(move || io_export_ue5(&mesh, &path, &config))
         .map_err(|e| PyValueError::new_err(format!("UE5 export error: {}", e)))
 }
 
@@ -274,7 +274,7 @@ pub fn import_glb_bytes<'py>(
     use crate::io::import_glb_bytes as io_import_glb_bytes;
     let data = data.to_vec();
     let mesh = py
-        .allow_threads(move || io_import_glb_bytes(&data))
+        .detach(move || io_import_glb_bytes(&data))
         .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?;
     mesh_to_numpy(py, &mesh)
 }
@@ -290,7 +290,7 @@ pub fn import_glb<'py>(
     use crate::io::import_glb as io_import_glb;
     let path = path.to_string();
     let mesh = py
-        .allow_threads(move || io_import_glb(&path))
+        .detach(move || io_import_glb(&path))
         .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?;
     mesh_to_numpy(py, &mesh)
 }
@@ -329,6 +329,6 @@ pub fn mesh_to_sdf(
         ..MeshToSdfConfig::fast()
     };
 
-    let node = py.allow_threads(|| rust_mesh_to_sdf(&verts, &idx, &config));
+    let node = py.detach(|| rust_mesh_to_sdf(&verts, &idx, &config));
     Ok(PySdfNode { inner: node })
 }

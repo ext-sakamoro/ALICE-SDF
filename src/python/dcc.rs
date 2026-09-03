@@ -96,7 +96,7 @@ pub fn sdf_to_mesh<'py>(
     let min = Vec3::splat(bounds.0);
     let max = Vec3::splat(bounds.1);
     let node_ref = &node.inner;
-    let mesh = py.allow_threads(|| core_sdf_to_mesh(node_ref, min, max, &config));
+    let mesh = py.detach(|| core_sdf_to_mesh(node_ref, min, max, &config));
 
     let verts = PyList::empty(py);
     for v in &mesh.vertices {
@@ -121,7 +121,7 @@ pub fn sdf_to_mesh<'py>(
 pub fn load_asdf(py: Python<'_>, path: &str) -> PyResult<PySdfNode> {
     let path = path.to_string();
     let tree = py
-        .allow_threads(|| load(&path))
+        .detach(|| load(&path))
         .map_err(|e| PyValueError::new_err(format!("Load error: {}", e)))?;
     Ok(PySdfNode { inner: tree.root })
 }
@@ -177,7 +177,7 @@ pub fn bake_to_vdb<'py>(
         ..Default::default()
     };
     let node_ref = &node.inner;
-    let volume = py.allow_threads(|| cpu_bake(node_ref, &cfg));
+    let volume = py.detach(|| cpu_bake(node_ref, &cfg));
 
     let payload_bytes = volume.data.len() * 4;
     let mut buf: Vec<u8> = Vec::with_capacity(40 + payload_bytes);
@@ -241,7 +241,7 @@ pub fn render_slice_2d<'py>(
             points.push(Vec3::new(x, y, z));
         }
     }
-    let distances = py.allow_threads(|| eval_batch_parallel(node_ref, &points));
+    let distances = py.detach(|| eval_batch_parallel(node_ref, &points));
 
     let contour_eps = span / (width.max(height) as f32);
     let mut rgba: Vec<u8> = Vec::with_capacity(width * height * 4);

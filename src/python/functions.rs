@@ -19,7 +19,7 @@ use super::node::PySdfNode;
 #[pyfunction]
 pub fn compile_sdf(py: Python<'_>, node: &PySdfNode) -> PyCompiledSdf {
     let node_ref = &node.inner;
-    let compiled = py.allow_threads(|| crate::compiled::CompiledSdf::compile(node_ref));
+    let compiled = py.detach(|| crate::compiled::CompiledSdf::compile(node_ref));
     PyCompiledSdf { compiled }
 }
 
@@ -32,7 +32,7 @@ pub fn eval_compiled_batch<'py>(
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
     let compiled_ref = &compiled.compiled;
     let distances = with_numpy_as_vec3(points, |pts| {
-        py.allow_threads(|| crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts))
+        py.detach(|| crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts))
     })?;
     Ok(distances.into_pyarray(py))
 }
@@ -50,7 +50,7 @@ pub fn eval_compiled_batch_soa<'py>(
     let compiled_ref = &compiled.compiled;
     let distances = with_numpy_as_vec3(points, |pts| {
         let soa = crate::soa::SoAPoints::from_vec3_slice(pts);
-        py.allow_threads(|| {
+        py.detach(|| {
             crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa).to_vec()
         })
     })?;
@@ -66,7 +66,7 @@ pub fn eval_batch<'py>(
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
     let node_ref = &node.inner;
     let distances = with_numpy_as_vec3(points, |pts| {
-        py.allow_threads(|| eval_batch_parallel(node_ref, pts))
+        py.detach(|| eval_batch_parallel(node_ref, pts))
     })?;
     Ok(distances.into_pyarray(py))
 }
@@ -93,7 +93,7 @@ pub fn to_mesh<'py>(
 
     // Release GIL during mesh generation
     let node_ref = &node.inner;
-    let mesh = py.allow_threads(|| sdf_to_mesh(node_ref, min, max, &config));
+    let mesh = py.detach(|| sdf_to_mesh(node_ref, min, max, &config));
     mesh_to_numpy(py, &mesh)
 }
 
@@ -126,7 +126,7 @@ pub fn to_mesh_adaptive<'py>(
     // Release GIL during mesh generation
     let node_ref = &node.inner;
     let mesh =
-        py.allow_threads(|| crate::mesh::adaptive_marching_cubes(node_ref, min, max, &config));
+        py.detach(|| crate::mesh::adaptive_marching_cubes(node_ref, min, max, &config));
     mesh_to_numpy(py, &mesh)
 }
 
@@ -152,7 +152,7 @@ pub fn to_mesh_dual_contouring<'py>(
     let max = Vec3::new(bounds_max.0, bounds_max.1, bounds_max.2);
 
     let node_ref = &node.inner;
-    let mesh = py.allow_threads(|| dual_contouring(node_ref, min, max, &config));
+    let mesh = py.detach(|| dual_contouring(node_ref, min, max, &config));
     mesh_to_numpy(py, &mesh)
 }
 
@@ -175,7 +175,7 @@ pub fn decimate_mesh<'py>(
         ..Default::default()
     };
 
-    py.allow_threads(|| {
+    py.detach(|| {
         decimate(&mut mesh, &config);
     });
     mesh_to_numpy(py, &mesh)
@@ -210,7 +210,7 @@ pub fn bake_volume<'py>(
     };
 
     let node_ref = &node.inner;
-    let volume = py.allow_threads(|| cpu_bake(node_ref, &config));
+    let volume = py.detach(|| cpu_bake(node_ref, &config));
     Ok(volume.data.into_pyarray(py))
 }
 
@@ -236,7 +236,7 @@ pub fn gpu_bake_volume<'py>(
 
     let node_ref = &node.inner;
     let volume = py
-        .allow_threads(|| gpu_bake(node_ref, &config))
+        .detach(|| gpu_bake(node_ref, &config))
         .map_err(|e| PyValueError::new_err(format!("GPU bake error: {}", e)))?;
     Ok(volume.data.into_pyarray(py))
 }
@@ -267,7 +267,7 @@ pub fn gpu_marching_cubes<'py>(
 
     let node_ref = &node.inner;
     let mesh = py
-        .allow_threads(|| gpu_mc(node_ref, min, max, &config))
+        .detach(|| gpu_mc(node_ref, min, max, &config))
         .map_err(|e| PyValueError::new_err(format!("GPU MC error: {}", e)))?;
     mesh_to_numpy(py, &mesh)
 }
@@ -297,7 +297,7 @@ pub fn build_svo(
 
     let node_ref = &node.inner;
     let compiled = crate::compiled::CompiledSdf::compile(node_ref);
-    let svo = py.allow_threads(|| SparseVoxelOctree::build_compiled(&compiled, &config));
+    let svo = py.detach(|| SparseVoxelOctree::build_compiled(&compiled, &config));
 
     Ok(PySvo { inner: svo })
 }
@@ -315,7 +315,7 @@ impl PySvo {
     /// Query distance at a point (GIL released)
     fn query_point(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
         let inner = &self.inner;
-        py.allow_threads(|| inner.query_point(Vec3::new(x, y, z)))
+        py.detach(|| inner.query_point(Vec3::new(x, y, z)))
     }
 
     /// Get node count
@@ -360,7 +360,7 @@ pub fn svo_query_batch<'py>(
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
     let svo_ref = &svo.inner;
     let results = with_numpy_as_vec3(points, |pts| {
-        py.allow_threads(|| {
+        py.detach(|| {
             use rayon::prelude::*;
             pts.par_iter()
                 .map(|p| svo_ref.query_point(*p))
@@ -384,7 +384,7 @@ impl PyHeightmap {
     /// Get height at world coordinates (GIL released)
     fn sample(&self, py: Python<'_>, x: f32, z: f32) -> f32 {
         let inner = &self.inner;
-        py.allow_threads(|| inner.sample(x, z))
+        py.detach(|| inner.sample(x, z))
     }
 
     /// Get the height range (min, max)
@@ -430,7 +430,7 @@ pub fn generate_terrain(
     height_scale: f32,
     seed: u64,
 ) -> PyHeightmap {
-    let hm = py.allow_threads(|| {
+    let hm = py.detach(|| {
         let mut hm = crate::terrain::Heightmap::new(width, depth, world_width, world_depth);
         hm.generate_fbm(octaves, 0.5, 2.0, seed);
         hm.normalize();
@@ -459,7 +459,7 @@ pub fn erode_terrain(
         ..Default::default()
     };
 
-    py.allow_threads(|| {
+    py.detach(|| {
         crate::terrain::erode(&mut heightmap.inner, &config);
     });
 }
@@ -485,7 +485,7 @@ pub fn heightmap_sample_batch<'py>(
     let vec_points: Vec<(f32, f32)> = pts.rows().into_iter().map(|row| (row[0], row[1])).collect();
 
     let hm_ref = &heightmap.inner;
-    let results = py.allow_threads(|| {
+    let results = py.detach(|| {
         use rayon::prelude::*;
         vec_points
             .par_iter()
@@ -525,7 +525,7 @@ impl PyVoxelGrid {
     /// Get distance at a world position (GIL released)
     fn get_distance(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
         let inner = &self.inner;
-        py.allow_threads(|| {
+        py.detach(|| {
             if let Some([gx, gy, gz]) = inner.world_to_grid(Vec3::new(x, y, z)) {
                 inner.get_distance(gx, gy, gz)
             } else {
@@ -562,7 +562,7 @@ pub fn create_voxel_grid(
     let max = Vec3::new(bounds_max.0, bounds_max.1, bounds_max.2);
     let node_ref = &node.inner;
 
-    let grid = py.allow_threads(|| {
+    let grid = py.detach(|| {
         crate::destruction::MutableVoxelGrid::from_sdf(
             node_ref,
             [resolution, resolution, resolution],
@@ -589,7 +589,7 @@ pub fn carve_sphere(
         radius,
     };
 
-    let result = py.allow_threads(|| crate::destruction::carve(&mut grid.inner, &shape));
+    let result = py.detach(|| crate::destruction::carve(&mut grid.inner, &shape));
 
     (result.modified_voxels, result.removed_volume)
 }
@@ -617,7 +617,7 @@ pub fn voxel_fracture<'py>(
     let grid_ref = &grid.inner;
 
     let pieces =
-        py.allow_threads(|| crate::destruction::voronoi_fracture(grid_ref, c, radius, &config));
+        py.detach(|| crate::destruction::voronoi_fracture(grid_ref, c, radius, &config));
 
     let mut results = Vec::new();
     for piece in &pieces {
@@ -654,7 +654,7 @@ pub fn bake_gi<'py>(
     };
 
     let svo_ref = &svo.inner;
-    let grid = py.allow_threads(|| bake_irradiance_grid(svo_ref, &config));
+    let grid = py.detach(|| bake_irradiance_grid(svo_ref, &config));
 
     // Return positions (N,3) and SH coefficients (N,12) for RGB L1 SH
     let n = grid.probes.len();

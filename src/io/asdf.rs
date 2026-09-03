@@ -184,8 +184,10 @@ pub fn save_asdf(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> 
     writer.write_all(&placeholder.to_bytes())?;
 
     // 2. Stream write body and calculate CRC on-the-fly
+    // bincode 2 API: encode_into_std_write returns Result<usize, _> — usize は捨てる
+    // config::legacy() で bincode 1 wire format 互換
     let mut crc_writer = CrcWriter::new(&mut writer);
-    bincode::serialize_into(&mut crc_writer, tree)
+    bincode::serde::encode_into_std_write(tree, &mut crc_writer, bincode::config::legacy())
         .map_err(|e| IoError::Serialization(e.to_string()))?;
 
     let crc = crc_writer.finalize();
@@ -227,8 +229,10 @@ pub fn load_asdf(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
     }
 
     // 4. Deserialize (safe because CRC verified)
-    let tree: SdfTree =
-        bincode::deserialize(&body).map_err(|e| IoError::Serialization(e.to_string()))?;
+    // bincode 2 API: decode_from_slice returns (T, bytes_consumed) — bytes_consumed は捨てる
+    let (tree, _consumed): (SdfTree, usize) =
+        bincode::serde::decode_from_slice(&body, bincode::config::legacy())
+            .map_err(|e| IoError::Serialization(e.to_string()))?;
 
     Ok(tree)
 }

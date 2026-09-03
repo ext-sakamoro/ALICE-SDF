@@ -64,7 +64,10 @@ rayon = "1.10"
 # Serialization
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-bincode = "1.3"
+# bincode 2.x: `serde` feature で既存 serde derive 活用、`config::legacy()` で
+# bincode 1 wire format 互換維持 (既存 .asdf file 読み込み可能)
+# RUSTSEC-2025-0141 (bincode 1 unmaintained) 解消のため 2 系へ移行
+bincode = { version = "2.0", features = ["serde"] }
 
 # Error handling
 thiserror = "2.0"
@@ -78,8 +81,10 @@ clap = { version = "4.5", features = ["derive"], optional = true }
 # Python bindings (optional)
 # `abi3-py310` で Python 3.10+ の安定 ABI に固定。1 つの `.so` で 3.10/3.11/3.12/3.13 を
 # サポートし、Python ABI ごとの再ビルドが不要になる (setup の煩雑さを解消)。
-pyo3 = { version = "0.23", features = ["extension-module", "multiple-pymethods", "abi3-py310"], optional = true }
-numpy = { version = "0.23", optional = true }
+# pyo3 0.29+: RUSTSEC-2025-0020 / RUSTSEC-2026-0177 解消のため 0.23 → 0.29 へ major bump
+# `Bound<'_, T>` API が default 化、`#[pyfunction]` / `#[pymethods]` は多くが互換
+pyo3 = { version = "0.29", features = ["extension-module", "multiple-pymethods", "abi3-py310"], optional = true }
+numpy = { version = "0.29", optional = true }
 
 # Godot GDExtension (optional)
 godot = { version = "0.2", optional = true }

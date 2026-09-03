@@ -4,7 +4,11 @@
 //!
 //! Author: Moroya Sakamoto
 
-#![cfg(feature = "python")]
+// pyo3 0.29+: lib.rs 側で `#[cfg(feature = "python")] pub mod python;` 済のため
+// module 内での `#![cfg(feature = "python")]` は clippy::duplicated_attribute で block される
+// pyo3 boilerplate は type_complexity / too_many_arguments が pyo3 側 API structure 起因で頻発するため
+// 本 module 全体で allow (production path でなく Python 引き剥がし境界)
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod compiled;
 mod dcc;

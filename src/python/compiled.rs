@@ -19,7 +19,7 @@ impl PyCompiledSdf {
     /// Evaluate at a single point (GIL released)
     fn eval(&self, py: Python<'_>, x: f32, y: f32, z: f32) -> f32 {
         let compiled = &self.compiled;
-        py.allow_threads(|| crate::compiled::eval_compiled(compiled, Vec3::new(x, y, z)))
+        py.detach(|| crate::compiled::eval_compiled(compiled, Vec3::new(x, y, z)))
     }
 
     /// Evaluate compiled SDF at multiple points (GIL released, SIMD + Rayon)
@@ -33,7 +33,7 @@ impl PyCompiledSdf {
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
         let compiled_ref = &self.compiled;
         let distances = with_numpy_as_vec3(points, |pts| {
-            py.allow_threads(|| crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts))
+            py.detach(|| crate::compiled::eval_compiled_batch_parallel(compiled_ref, pts))
         })?;
         Ok(distances.into_pyarray(py))
     }
@@ -61,7 +61,7 @@ impl PyCompiledSdf {
 
         let compiled_ref = &self.compiled;
         let mesh =
-            py.allow_threads(|| crate::mesh::sdf_to_mesh_compiled(compiled_ref, min, max, &config));
+            py.detach(|| crate::mesh::sdf_to_mesh_compiled(compiled_ref, min, max, &config));
         mesh_to_numpy(py, &mesh)
     }
 
