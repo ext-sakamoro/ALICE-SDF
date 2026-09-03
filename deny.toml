@@ -1,0 +1,106 @@
+# cargo-deny 設定 (v0.14+ schema)
+# https://embarkstudios.github.io/cargo-deny/
+#
+# 目的: license 逸脱 (GPL 侵入等) と CVE / yanked / duplicate crate の CI gate
+# 実行: cargo deny check all --all-features (CI で自動、ローカルは `cargo deny check`)
+
+[graph]
+# 全 target を確認 (unix / windows / wasm 依存 crate も対象)
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+# ---------------------------------------------------------------------------
+# Advisories (RustSec CVE + yanked)
+# cargo-audit と重複するが、cargo-deny の advisory check は より厳格な設定可
+# ---------------------------------------------------------------------------
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+version = 2
+yanked = "deny"
+ignore = [
+    # unmaintained warnings (informational only、CVE ではない)
+    "RUSTSEC-2025-0141",  # bincode 2.x unmaintained: 代替 postcard は wire format 別、asdf/.asdf 互換維持のため据置
+    "RUSTSEC-2024-0436",  # paste 1.0.15 unmaintained: pyo3-macros 経由 transitive dep、除去不能
+]
+
+# ---------------------------------------------------------------------------
+# Licenses (allow-list 方式、記載外 = deny)
+# ALICE-SDF は MIT OR Apache-2.0 デュアルライセンス
+# 依存 crate の license は SPDX 識別子で allow-list に列挙
+# ---------------------------------------------------------------------------
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",       # unicode-ident 1.13+
+    "Unicode-DFS-2016",  # unicode-ident 旧 version
+    "CC0-1.0",           # public domain 相当
+    "0BSD",
+    "BSL-1.0",           # Boost Software License
+    "MPL-2.0",           # weak copyleft (file-level)、静的リンク OK
+    "OpenSSL",           # ring 等
+]
+exceptions = []
+
+# ring は SPDX 識別子で表現しづらいため clarify で明示
+[[licenses.clarify]]
+name = "ring"
+version = "*"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 },
+]
+
+# webpki も同様
+[[licenses.clarify]]
+name = "webpki"
+version = "*"
+expression = "ISC"
+license-files = [
+    { path = "LICENSE", hash = 0x001c7e6c },
+]
+
+# ---------------------------------------------------------------------------
+# Bans (banned crate / duplicate / wildcard)
+# ---------------------------------------------------------------------------
+[bans]
+# 同 crate の複数 version 依存は warn (block しない、tokio 系で頻発)
+multiple-versions = "warn"
+# path dep は wildcard version になるので allow (alice-physics 等)
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+# banned crate list (GPL 系 / unmaintained / dangerous)
+deny = [
+    # 例: { name = "openssl", reason = "use rustls instead" }
+]
+
+# multiple-versions を許容する crate (system dep で複数 version 混在が仕方ない)
+skip = []
+skip-tree = []
+
+# ---------------------------------------------------------------------------
+# Sources (crate registry / git source 制限)
+# ---------------------------------------------------------------------------
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+# github org からの git dep を allow したい場合はここに追加
+# 例: github = ["EmbarkStudios"]

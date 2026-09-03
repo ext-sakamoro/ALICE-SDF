@@ -1,0 +1,152 @@
+name: Security & Hygiene
+
+# 目的:
+# - RustSec advisory (CVE) の週次検知
+# - dep license 逸脱 (GPL 侵入等) の block
+# - 未使用依存の炙り出し (menso bloat 予防)
+# - 仮実装 (todo! / unimplemented! / panic!(STUB) / dbg!) の CI gate
+#
+# main-CI (ci.yml) は build / test / clippy / doc に集中させ、本 workflow は
+# セキュリティと衛生に特化 push + PR + 週次 cron の 3 trigger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+      - 'deny.toml'
+      - '.github/workflows/security-audit.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+      - 'deny.toml'
+      - '.github/workflows/security-audit.yml'
+  schedule:
+    # 毎週月曜 09:00 UTC = 18:00 JST
+    # commit 間で新規公表された CVE を weekly で catch
+    - cron: '0 9 * * 1'
+  workflow_dispatch:  # 手動 kick 可
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
+jobs:
+  audit:
+    name: cargo audit (RustSec CVE scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # advisory-db は audit 実行時に自動取得
+      # yanked crate は deny (--deny yanked)、unmaintained warning は個別 ignore で管理
+      # 現在の ignore 対象:
+      # - RUSTSEC-2025-0141: bincode 2.x unmaintained (代替 postcard は wire format 別、移行コスト高)
+      # - RUSTSEC-2024-0436: paste 1.0.15 unmaintained (pyo3-macros 経由 transitive、除去不能)
+      - name: Run cargo audit
+        run: |
+          cargo audit \
+            --deny yanked \
+            --ignore RUSTSEC-2025-0141 \
+            --ignore RUSTSEC-2024-0436
+
+  deny:
+    name: cargo-deny (license + advisories + bans + sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      # EmbarkStudios の action は cargo-deny の install + run を一括
+      # check all: advisories + licenses + bans + sources 全て確認
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check all
+          arguments: --all-features
+
+  unused-deps:
+    name: cargo-machete (unused dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # machete は Cargo.toml 静的解析、build 不要
+      # 誤検知の場合は [package.metadata.cargo-machete] ignored = [...] で除外
+      - uses: bnjbvr/cargo-machete@main
+
+  stub-guard:
+    name: Stub / mock / dbg guard (grep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # CLAUDE.md「仮実装完了偽装の禁止ルール」準拠
+      # src/ 配下の production path に todo! / unimplemented! / panic!(STUB) が
+      # 混入していないか grep で block src/bin/ は CLI 意図的 panic 許容のため除外
+      - name: Detect todo! / unimplemented! / panic!(STUB) in src/**
+        run: |
+          set -eo pipefail
+          # test 除外: #[cfg(test)] / mod tests { で囲まれた block は grep で拾うが
+          # 実際に todo!() が本 repo で src/ に混入した過去がないため厳格 block
+          hits=$(grep -rnE 'todo!\(|unimplemented!\(|panic!\([^)]*(STUB|NOT.IMPL|not.impl)' \
+            src/ --include="*.rs" \
+            --exclude-dir=bin \
+            || true)
+          if [ -n "$hits" ]; then
+            echo "❌ Stub / unimplemented / STUB panic detected in src/ (production path):"
+            echo "$hits"
+            echo ""
+            echo "Fix: use ? operator, Result<T, E>, or remove the stub."
+            echo "  See CLAUDE.md § 仮実装完了偽装の禁止ルール"
+            exit 1
+          fi
+          echo "✓ No todo! / unimplemented! / panic!(STUB) in src/ (excluding src/bin/)"
+
+      - name: Detect dbg!() residual in src/**
+        run: |
+          set -eo pipefail
+          hits=$(grep -rn 'dbg!(' src/ --include="*.rs" || true)
+          if [ -n "$hits" ]; then
+            echo "❌ dbg!() macro left in src/:"
+            echo "$hits"
+            echo ""
+            echo "Fix: remove dbg!() before merging (debug residual)."
+            exit 1
+          fi
+          echo "✓ No dbg!() in src/"
+
+      # TODO/FIXME/XXX/HACK は informational (block しない)
+      # PR reviewer が判断するための可視化のみ
+      - name: Detect TODO / FIXME / XXX / HACK (informational)
+        run: |
+          set -eo pipefail
+          hits=$(grep -rnE 'TODO|FIXME|XXX|HACK' src/ --include="*.rs" || true)
+          if [ -n "$hits" ]; then
+            echo "::warning::TODO/FIXME/XXX/HACK found in src/ (informational, not blocking):"
+            echo "$hits" | head -50
+          else
+            echo "✓ No TODO/FIXME/XXX/HACK in src/"
+          fi
