@@ -12,11 +12,11 @@ rust-version = "1.83"
 
 [dependencies]
 alice-sdf = { path = "../../..", default-features = false }
-bevy      = { version = "0.18", default-features = false, features = ["bevy_asset", "bevy_pbr", "bevy_render"] }
+bevy      = { version = "0.19", default-features = false, features = ["bevy_asset", "bevy_pbr", "bevy_render"] }
 glam      = "0.29"
 
 [dev-dependencies]
-bevy = { version = "0.18" }
+bevy = { version = "0.19" }
 
 [[example]]
 name = "sphere_demo"
