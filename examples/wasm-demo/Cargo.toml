@@ -54,6 +54,12 @@ serde_json = "1.0"
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 
+# cargo-machete false-positive suppression
+# WebGPU compute / JSON scene 経路の実装予定 dep が current lib.rs で未使用
+# (現状は SdfType enum + minimal wasm-bindgen extern のみ)
+[package.metadata.cargo-machete]
+ignored = ["bytemuck", "js-sys", "pollster", "serde", "serde_json", "wasm-bindgen-futures", "wasm-bindgen-test", "wgpu"]
+
 [profile.release]
 opt-level = "s"
 lto = true

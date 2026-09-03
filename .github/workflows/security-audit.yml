@@ -79,12 +79,14 @@ jobs:
       - name: Create ALICE optional bridge stubs
         uses: ./.github/actions/alice-stubs
 
-      # EmbarkStudios の action は cargo-deny の install + run を一括
-      # check all: advisories + licenses + bans + sources 全て確認
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check all
-          arguments: --all-features
+      # EmbarkStudios/cargo-deny-action@v2 は Docker container 内で稼働し、
+      # /github/workspace のみ mount するため sibling path dep (../ALICE-Physics 等) が
+      # 見えず fail する 直接 install で回避 (Docker 制約回避、alice-stubs step は host 側で有効)
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny
+
+      - name: Run cargo deny check all
+        run: cargo deny --all-features check all
 
   unused-deps:
     name: cargo-machete (unused dependencies)
@@ -93,8 +95,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      # machete は Cargo.toml 静的解析、build 不要
-      # 誤検知の場合は [package.metadata.cargo-machete] ignored = [...] で除外
+      # alice-stubs step 必要 (Cargo.toml の path dep 解決のため cargo metadata が動く)
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      # machete は Cargo.toml 静的解析、feature-gated 未使用 dep も検知
+      # false-positive は各 Cargo.toml の [package.metadata.cargo-machete] ignored = [...] で除外
+      # 現状の ignored: log / js-sys / vdb-rs (feature-gated 予備 dep、将来使用予定)
       - uses: bnjbvr/cargo-machete@main
 
   stub-guard:

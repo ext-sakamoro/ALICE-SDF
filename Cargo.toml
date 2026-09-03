@@ -160,6 +160,14 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(feature, values("codec", "physics", "asp", "sdf-cache", "font"))',
 ] }
 
+# cargo-machete false-positive suppression
+# 以下は現状 direct use は無いが将来使用予定 or feature-gated planned dep として保持
+# - log: 現状 shader 生成文字列内のみ、将来 log::info!/warn! 導入予定
+# - js-sys: wasm bindings 追加時に使用予定
+# - vdb-rs: openvdb feature 有効時の bake pipeline 実装予定
+[package.metadata.cargo-machete]
+ignored = ["log", "js-sys", "vdb-rs"]
+
 [profile.release]
 opt-level = 3
 lto = "fat"

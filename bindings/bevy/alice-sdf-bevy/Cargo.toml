@@ -27,3 +27,9 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 needless_pass_by_value = "allow"
+
+# cargo-machete false-positive suppression
+# alice-sdf / glam は現状 plugin 内 SDF 評価未実装
+# (bevy::prelude 経由 Vec3 再エクスポートで代用、direct alice_sdf::eval() 呼び出しは pending)
+[package.metadata.cargo-machete]
+ignored = ["alice-sdf", "glam"]

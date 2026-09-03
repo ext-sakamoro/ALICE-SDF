@@ -51,7 +51,14 @@ allow = [
     "MPL-2.0",           # weak copyleft (file-level)、静的リンク OK
     "OpenSSL",           # ring 等
 ]
-exceptions = []
+
+# 個別 crate 単位の license 例外
+# alice-physics (ALICE エコシステム内 sibling crate、physics feature 有効時のみ) は
+# AGPL-3.0 だが distribution 経路が異なる (optional feature、default OFF、内部利用)
+# 全外部依存を許容するのでなく、この 1 crate に限定した exception として明示
+[[licenses.exceptions]]
+name = "alice-physics"
+allow = ["AGPL-3.0", "AGPL-3.0-only"]
 
 # ring は SPDX 識別子で表現しづらいため clarify で明示
 [[licenses.clarify]]
