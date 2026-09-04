@@ -60,8 +60,7 @@ impl PyCompiledSdf {
         let max = Vec3::new(bounds_max.0, bounds_max.1, bounds_max.2);
 
         let compiled_ref = &self.compiled;
-        let mesh =
-            py.detach(|| crate::mesh::sdf_to_mesh_compiled(compiled_ref, min, max, &config));
+        let mesh = py.detach(|| crate::mesh::sdf_to_mesh_compiled(compiled_ref, min, max, &config));
         mesh_to_numpy(py, &mesh)
     }
 

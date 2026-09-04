@@ -50,9 +50,7 @@ pub fn eval_compiled_batch_soa<'py>(
     let compiled_ref = &compiled.compiled;
     let distances = with_numpy_as_vec3(points, |pts| {
         let soa = crate::soa::SoAPoints::from_vec3_slice(pts);
-        py.detach(|| {
-            crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa).to_vec()
-        })
+        py.detach(|| crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa).to_vec())
     })?;
     Ok(distances.into_pyarray(py))
 }
@@ -125,8 +123,7 @@ pub fn to_mesh_adaptive<'py>(
 
     // Release GIL during mesh generation
     let node_ref = &node.inner;
-    let mesh =
-        py.detach(|| crate::mesh::adaptive_marching_cubes(node_ref, min, max, &config));
+    let mesh = py.detach(|| crate::mesh::adaptive_marching_cubes(node_ref, min, max, &config));
     mesh_to_numpy(py, &mesh)
 }
 
@@ -616,8 +613,7 @@ pub fn voxel_fracture<'py>(
     let c = Vec3::new(center.0, center.1, center.2);
     let grid_ref = &grid.inner;
 
-    let pieces =
-        py.detach(|| crate::destruction::voronoi_fracture(grid_ref, c, radius, &config));
+    let pieces = py.detach(|| crate::destruction::voronoi_fracture(grid_ref, c, radius, &config));
 
     let mut results = Vec::new();
     for piece in &pieces {
