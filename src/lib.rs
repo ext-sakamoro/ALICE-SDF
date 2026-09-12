@@ -112,6 +112,7 @@ pub mod llm_schema;
 pub mod material;
 pub mod mesh;
 pub mod modifiers;
+pub mod morphology;
 pub mod neural;
 pub mod operations;
 pub mod optimize;
