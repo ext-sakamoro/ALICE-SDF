@@ -6,6 +6,26 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added
+
+- **`npr` module** — Procedural NPR (Non-Photorealistic Rendering) primitives across 9 categories, all closed-form and texture-free (Phase 2 Law-only compliant)
+  - `npr::toon` — `toon_ramp`, `soft_toon_ramp`, `two_tone`, `posterize_color`
+  - `npr::outline` — `distance_field_outline{,_soft}`, `curvature_outline`, `depth_step_outline`, `composite_outline`
+  - `npr::sky` — `sky_gradient_bands`, `puffy_cloud_layer`, `distance_color_quantize`, `light_shaft_beam`, `sun_disc`
+  - `npr::rim` — `fresnel_rim`, `procedural_matcap` (2x2 palette bilinear, no texture), `stylized_specular`
+  - `npr::hatch` — `hatch_lines`, `cross_hatch`, `paper_grain`, `pencil_shade`
+  - `npr::distortion` — `hand_drawn_jitter`, `sketch_wobble`, `line_boil`
+  - `npr::palette` — `palette_gradient`, `time_of_day`, `season_palette`
+  - `npr::composition` — `vignette`, `bloom_toon`, `chromatic_offsets`
+  - `npr::motion` — `speed_line`, `impact_flash`
+  - `npr::noise` — `NoiseField` trait + `HashNoise` deterministic hash-based value noise
+  - `npr::sdf_integration` — Adapters that consume `SdfNode` via `eval`, `eval_normal`, and `autodiff::mean_curvature`: `curvature_outline_from_node`, `distance_outline_from_node`, `toon_shade_from_node`, `soft_toon_shade_from_node`
+  - `npr::dsl` — `NprColorNode` expression tree + `NprColorContext` for composing NPR primitives into a color pipeline
+  - `npr::shader_glue` — GLSL / WGSL / HLSL helper string constants (`NPR_GLSL_HELPERS`, `NPR_WGSL_HELPERS`, `NPR_HLSL_HELPERS`) + `helpers_for(ShaderLanguage)` dispatch
+- All NPR items re-exported from the `prelude` module
+- `examples/npr_toon_demo.rs` — 9-category primitive tour
+- `examples/npr_background_scene.rs` — Shadertoy-style raymarching background scene composing multiple NPR primitives
+
 ## [v1.7.7] - 2026-09-12
 
 **crates.io landing** — first release published to https://crates.io/crates/alice-sdf Absorbs the Unreleased mesh-optimization batch plus the 1.7.4-1.7.6 preparation work (bridge trim + security fixes + fuzz + CI hardening)

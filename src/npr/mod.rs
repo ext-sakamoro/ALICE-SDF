@@ -15,11 +15,15 @@
 
 pub mod composition;
 pub mod distortion;
+pub mod dsl;
 pub mod hatch;
 pub mod motion;
+pub mod noise;
 pub mod outline;
 pub mod palette;
 pub mod rim;
+pub mod sdf_integration;
+pub mod shader_glue;
 pub mod sky;
 pub mod toon;
 

@@ -336,6 +336,30 @@ pub mod prelude {
         gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig,
     };
     pub use crate::modifiers::*;
+    pub use crate::npr::composition::{bloom_toon, chromatic_offsets, vignette};
+    pub use crate::npr::distortion::{hand_drawn_jitter, line_boil, sketch_wobble};
+    pub use crate::npr::dsl::{NprColorContext, NprColorNode};
+    pub use crate::npr::hatch::{cross_hatch, hatch_lines, paper_grain, pencil_shade};
+    pub use crate::npr::motion::{impact_flash, speed_line};
+    pub use crate::npr::noise::{HashNoise, NoiseField};
+    pub use crate::npr::outline::{
+        composite_outline, curvature_outline, depth_step_outline, distance_field_outline,
+        distance_field_outline_soft,
+    };
+    pub use crate::npr::palette::{palette_gradient, season_palette, time_of_day};
+    pub use crate::npr::rim::{fresnel_rim, procedural_matcap, stylized_specular};
+    pub use crate::npr::sdf_integration::{
+        curvature_outline_from_node, distance_outline_from_node, soft_toon_shade_from_node,
+        toon_shade_from_node,
+    };
+    pub use crate::npr::shader_glue::{
+        helpers_for, ShaderLanguage, NPR_GLSL_HELPERS, NPR_HLSL_HELPERS, NPR_WGSL_HELPERS,
+    };
+    pub use crate::npr::sky::{
+        distance_color_quantize, light_shaft_beam, puffy_cloud_layer, sky_gradient_bands, sun_disc,
+    };
+    pub use crate::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp, two_tone};
+    pub use crate::npr::{NprColor, NprInput};
     pub use crate::operations::*;
     pub use crate::primitives::*;
     pub use crate::raycast::{
