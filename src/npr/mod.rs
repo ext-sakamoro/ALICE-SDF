@@ -13,7 +13,13 @@
 //!
 //! Author: Moroya Sakamoto
 
+pub mod composition;
+pub mod distortion;
+pub mod hatch;
+pub mod motion;
 pub mod outline;
+pub mod palette;
+pub mod rim;
 pub mod sky;
 pub mod toon;
 
