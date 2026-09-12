@@ -18,13 +18,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   - `npr::palette` — `palette_gradient`, `time_of_day`, `season_palette`
   - `npr::composition` — `vignette`, `bloom_toon`, `chromatic_offsets`
   - `npr::motion` — `speed_line`, `impact_flash`
-  - `npr::noise` — `NoiseField` trait + `HashNoise` deterministic hash-based value noise
+  - `npr::noise` — `NoiseField` trait + `HashNoise` deterministic hash-based value noise + `PerlinNoise` gradient noise + `WorleyNoise` cellular noise + `fbm` multi-octave composer
   - `npr::sdf_integration` — Adapters that consume `SdfNode` via `eval`, `eval_normal`, and `autodiff::mean_curvature`: `curvature_outline_from_node`, `distance_outline_from_node`, `toon_shade_from_node`, `soft_toon_shade_from_node`
   - `npr::dsl` — `NprColorNode` expression tree + `NprColorContext` for composing NPR primitives into a color pipeline
-  - `npr::shader_glue` — GLSL / WGSL / HLSL helper string constants (`NPR_GLSL_HELPERS`, `NPR_WGSL_HELPERS`, `NPR_HLSL_HELPERS`) + `helpers_for(ShaderLanguage)` dispatch
+  - `npr::shader_glue` — Core (14 primitives) + palette (`sky_gradient_bands_3`, `palette_gradient_5`, `time_of_day`, `season_palette`) GLSL / WGSL / HLSL helper string constants + `helpers_for` / `palette_helpers_for` / `full_helpers_for(ShaderLanguage)` dispatch
 - All NPR items re-exported from the `prelude` module
 - `examples/npr_toon_demo.rs` — 9-category primitive tour
 - `examples/npr_background_scene.rs` — Shadertoy-style raymarching background scene composing multiple NPR primitives
+- `benches/npr_primitives.rs` — Criterion benchmarks across all 9 categories plus noise and DSL evaluation
 
 ## [v1.7.7] - 2026-09-12
 

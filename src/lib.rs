@@ -341,7 +341,7 @@ pub mod prelude {
     pub use crate::npr::dsl::{NprColorContext, NprColorNode};
     pub use crate::npr::hatch::{cross_hatch, hatch_lines, paper_grain, pencil_shade};
     pub use crate::npr::motion::{impact_flash, speed_line};
-    pub use crate::npr::noise::{HashNoise, NoiseField};
+    pub use crate::npr::noise::{fbm, HashNoise, NoiseField, PerlinNoise, WorleyNoise};
     pub use crate::npr::outline::{
         composite_outline, curvature_outline, depth_step_outline, distance_field_outline,
         distance_field_outline_soft,
@@ -353,7 +353,9 @@ pub mod prelude {
         toon_shade_from_node,
     };
     pub use crate::npr::shader_glue::{
-        helpers_for, ShaderLanguage, NPR_GLSL_HELPERS, NPR_HLSL_HELPERS, NPR_WGSL_HELPERS,
+        full_helpers_for, helpers_for, palette_helpers_for, ShaderLanguage, NPR_GLSL_HELPERS,
+        NPR_GLSL_PALETTE_HELPERS, NPR_HLSL_HELPERS, NPR_HLSL_PALETTE_HELPERS, NPR_WGSL_HELPERS,
+        NPR_WGSL_PALETTE_HELPERS,
     };
     pub use crate::npr::sky::{
         distance_color_quantize, light_shaft_beam, puffy_cloud_layer, sky_gradient_bands, sun_disc,

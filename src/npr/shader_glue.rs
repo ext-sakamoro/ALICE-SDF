@@ -4,12 +4,17 @@
 //! Rust NPR primitives on the GPU. Callers concatenate the appropriate
 //! constant with their own shader source to make the helpers available.
 //!
-//! Coverage in this module is the subset of primitives whose signatures
-//! translate directly to shader code (no `&[Vec3]` palette arrays).
-//! Palette-driven primitives (`palette_gradient`, `time_of_day`,
-//! `season_palette`, `sky_gradient_bands`) can be recreated in shader
-//! code by the caller using the fixed-arity mix / step patterns shown
-//! for the other primitives.
+//! Two sets of helpers are provided:
+//! - **Core** (`NPR_*_HELPERS`): the 14 fixed-arity scalar / vector
+//!   primitives (`toon_ramp`, `distance_field_outline_soft`, `fresnel_rim`,
+//!   `vignette`, etc.)
+//! - **Palette** (`NPR_*_PALETTE_HELPERS`): fixed-anchor palette variants
+//!   that replace the Rust `&[Vec3]` slice API with explicit `N` color
+//!   arguments: `sky_gradient_bands_3`, `palette_gradient_5`,
+//!   `time_of_day`, `season_palette`
+//!
+//! Callers may `format!("{}{}", NPR_GLSL_HELPERS, NPR_GLSL_PALETTE_HELPERS)`
+//! to inject the full set at once.
 //!
 //! Author: Moroya Sakamoto
 
@@ -345,8 +350,143 @@ float alice_impact_flash(float t, float decay, float intensity) {
 }
 "#;
 
-/// Return the helper snippet for the requested shader language, or `None`
-/// if the language is not supported
+// ============================================================================
+// Fixed-anchor palette variants (GLSL)
+// ============================================================================
+
+/// GLSL palette variants matching `sky_gradient_bands` (3 anchors),
+/// `palette_gradient_5`, `time_of_day`, and `season_palette`
+pub const NPR_GLSL_PALETTE_HELPERS: &str = r#"
+// ALICE-SDF NPR palette helpers (GLSL 330+)
+
+vec3 alice_sky_gradient_bands_3(vec3 dir, vec3 c0, vec3 c1, vec3 c2) {
+    float t = clamp((dir.y + 1.0) * 0.5, 0.0, 1.0) * 2.0;
+    float idx_f = floor(t);
+    float frac_ = clamp(t - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) return mix(c0, c1, frac_);
+    return mix(c1, c2, frac_);
+}
+
+vec3 alice_palette_gradient_5(float t, vec3 c0, vec3 c1, vec3 c2, vec3 c3, vec3 c4) {
+    float scaled = clamp(t, 0.0, 1.0) * 4.0;
+    float idx_f = floor(scaled);
+    float frac_ = clamp(scaled - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) return mix(c0, c1, frac_);
+    if (idx_f < 1.5) return mix(c1, c2, frac_);
+    if (idx_f < 2.5) return mix(c2, c3, frac_);
+    return mix(c3, c4, frac_);
+}
+
+vec3 alice_time_of_day(float sun_altitude, vec3 night, vec3 dawn_dusk, vec3 noon) {
+    float alt = clamp(sun_altitude, -1.0, 1.0);
+    if (alt <= 0.0) return mix(night, dawn_dusk, clamp(alt + 1.0, 0.0, 1.0));
+    return mix(dawn_dusk, noon, clamp(alt, 0.0, 1.0));
+}
+
+vec3 alice_season_palette(float t, vec3 spring, vec3 summer, vec3 autumn, vec3 winter) {
+    float scaled = clamp(t, 0.0, 1.0) * 4.0;
+    float idx_f = floor(scaled);
+    float frac_ = clamp(scaled - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) return mix(spring, summer, frac_);
+    if (idx_f < 1.5) return mix(summer, autumn, frac_);
+    if (idx_f < 2.5) return mix(autumn, winter, frac_);
+    return mix(winter, spring, frac_);
+}
+"#;
+
+// ============================================================================
+// Fixed-anchor palette variants (WGSL)
+// ============================================================================
+
+/// WGSL palette variants matching the GLSL set
+pub const NPR_WGSL_PALETTE_HELPERS: &str = r#"
+// ALICE-SDF NPR palette helpers (WGSL)
+
+fn alice_sky_gradient_bands_3(dir: vec3<f32>, c0: vec3<f32>, c1: vec3<f32>, c2: vec3<f32>) -> vec3<f32> {
+    let t = clamp((dir.y + 1.0) * 0.5, 0.0, 1.0) * 2.0;
+    let idx_f = floor(t);
+    let frac_val = clamp(t - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) { return mix(c0, c1, vec3<f32>(frac_val)); }
+    return mix(c1, c2, vec3<f32>(frac_val));
+}
+
+fn alice_palette_gradient_5(
+    t: f32,
+    c0: vec3<f32>, c1: vec3<f32>, c2: vec3<f32>, c3: vec3<f32>, c4: vec3<f32>,
+) -> vec3<f32> {
+    let scaled = clamp(t, 0.0, 1.0) * 4.0;
+    let idx_f = floor(scaled);
+    let frac_val = clamp(scaled - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) { return mix(c0, c1, vec3<f32>(frac_val)); }
+    if (idx_f < 1.5) { return mix(c1, c2, vec3<f32>(frac_val)); }
+    if (idx_f < 2.5) { return mix(c2, c3, vec3<f32>(frac_val)); }
+    return mix(c3, c4, vec3<f32>(frac_val));
+}
+
+fn alice_time_of_day(sun_altitude: f32, night: vec3<f32>, dawn_dusk: vec3<f32>, noon: vec3<f32>) -> vec3<f32> {
+    let alt = clamp(sun_altitude, -1.0, 1.0);
+    if (alt <= 0.0) { return mix(night, dawn_dusk, vec3<f32>(clamp(alt + 1.0, 0.0, 1.0))); }
+    return mix(dawn_dusk, noon, vec3<f32>(clamp(alt, 0.0, 1.0)));
+}
+
+fn alice_season_palette(
+    t: f32,
+    spring: vec3<f32>, summer: vec3<f32>, autumn: vec3<f32>, winter: vec3<f32>,
+) -> vec3<f32> {
+    let scaled = clamp(t, 0.0, 1.0) * 4.0;
+    let idx_f = floor(scaled);
+    let frac_val = clamp(scaled - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) { return mix(spring, summer, vec3<f32>(frac_val)); }
+    if (idx_f < 1.5) { return mix(summer, autumn, vec3<f32>(frac_val)); }
+    if (idx_f < 2.5) { return mix(autumn, winter, vec3<f32>(frac_val)); }
+    return mix(winter, spring, vec3<f32>(frac_val));
+}
+"#;
+
+// ============================================================================
+// Fixed-anchor palette variants (HLSL)
+// ============================================================================
+
+/// HLSL palette variants matching the GLSL set
+pub const NPR_HLSL_PALETTE_HELPERS: &str = r#"
+// ALICE-SDF NPR palette helpers (HLSL SM 5.0+)
+
+float3 alice_sky_gradient_bands_3(float3 dir, float3 c0, float3 c1, float3 c2) {
+    float t = saturate((dir.y + 1.0) * 0.5) * 2.0;
+    float idx_f = floor(t);
+    float frac_val = saturate(t - idx_f);
+    if (idx_f < 0.5) return lerp(c0, c1, frac_val);
+    return lerp(c1, c2, frac_val);
+}
+
+float3 alice_palette_gradient_5(float t, float3 c0, float3 c1, float3 c2, float3 c3, float3 c4) {
+    float scaled = saturate(t) * 4.0;
+    float idx_f = floor(scaled);
+    float frac_val = saturate(scaled - idx_f);
+    if (idx_f < 0.5) return lerp(c0, c1, frac_val);
+    if (idx_f < 1.5) return lerp(c1, c2, frac_val);
+    if (idx_f < 2.5) return lerp(c2, c3, frac_val);
+    return lerp(c3, c4, frac_val);
+}
+
+float3 alice_time_of_day(float sun_altitude, float3 night, float3 dawn_dusk, float3 noon) {
+    float alt = clamp(sun_altitude, -1.0, 1.0);
+    if (alt <= 0.0) return lerp(night, dawn_dusk, saturate(alt + 1.0));
+    return lerp(dawn_dusk, noon, saturate(alt));
+}
+
+float3 alice_season_palette(float t, float3 spring, float3 summer, float3 autumn, float3 winter) {
+    float scaled = saturate(t) * 4.0;
+    float idx_f = floor(scaled);
+    float frac_val = saturate(scaled - idx_f);
+    if (idx_f < 0.5) return lerp(spring, summer, frac_val);
+    if (idx_f < 1.5) return lerp(summer, autumn, frac_val);
+    if (idx_f < 2.5) return lerp(autumn, winter, frac_val);
+    return lerp(winter, spring, frac_val);
+}
+"#;
+
+/// Return the helper snippet for the requested shader language
 #[must_use]
 pub const fn helpers_for(language: ShaderLanguage) -> &'static str {
     match language {
@@ -354,6 +494,22 @@ pub const fn helpers_for(language: ShaderLanguage) -> &'static str {
         ShaderLanguage::Wgsl => NPR_WGSL_HELPERS,
         ShaderLanguage::Hlsl => NPR_HLSL_HELPERS,
     }
+}
+
+/// Return the palette helper snippet for the requested shader language
+#[must_use]
+pub const fn palette_helpers_for(language: ShaderLanguage) -> &'static str {
+    match language {
+        ShaderLanguage::Glsl => NPR_GLSL_PALETTE_HELPERS,
+        ShaderLanguage::Wgsl => NPR_WGSL_PALETTE_HELPERS,
+        ShaderLanguage::Hlsl => NPR_HLSL_PALETTE_HELPERS,
+    }
+}
+
+/// Concatenate core + palette helpers for a language into an owned String
+#[must_use]
+pub fn full_helpers_for(language: ShaderLanguage) -> String {
+    format!("{}{}", helpers_for(language), palette_helpers_for(language))
 }
 
 /// Selector for the shader language dispatched by [`helpers_for`]
@@ -416,5 +572,52 @@ mod tests {
         assert!(NPR_GLSL_HELPERS.len() > 200);
         assert!(NPR_WGSL_HELPERS.len() > 200);
         assert!(NPR_HLSL_HELPERS.len() > 200);
+    }
+
+    #[test]
+    fn palette_helpers_have_expected_functions() {
+        for name in [
+            "alice_sky_gradient_bands_3",
+            "alice_palette_gradient_5",
+            "alice_time_of_day",
+            "alice_season_palette",
+        ] {
+            assert!(
+                NPR_GLSL_PALETTE_HELPERS.contains(name),
+                "missing GLSL palette: {name}"
+            );
+            assert!(
+                NPR_WGSL_PALETTE_HELPERS.contains(name),
+                "missing WGSL palette: {name}"
+            );
+            assert!(
+                NPR_HLSL_PALETTE_HELPERS.contains(name),
+                "missing HLSL palette: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn palette_helpers_for_dispatch_returns_expected_source() {
+        assert_eq!(
+            palette_helpers_for(ShaderLanguage::Glsl),
+            NPR_GLSL_PALETTE_HELPERS
+        );
+        assert_eq!(
+            palette_helpers_for(ShaderLanguage::Wgsl),
+            NPR_WGSL_PALETTE_HELPERS
+        );
+        assert_eq!(
+            palette_helpers_for(ShaderLanguage::Hlsl),
+            NPR_HLSL_PALETTE_HELPERS
+        );
+    }
+
+    #[test]
+    fn full_helpers_concatenates_core_and_palette() {
+        let full = full_helpers_for(ShaderLanguage::Glsl);
+        assert!(full.contains("alice_toon_ramp"));
+        assert!(full.contains("alice_sky_gradient_bands_3"));
+        assert!(full.contains("alice_season_palette"));
     }
 }

@@ -169,6 +169,10 @@ name = "gpu_vs_cpu"
 harness = false
 required-features = []
 
+[[bench]]
+name = "npr_primitives"
+harness = false
+
 # The `text_to_3d_demo` example imports `alice_font::glyph_dispatcher` and
 # `alice_sdf::font_bridge`; both live behind the `font` feature (which pulls
 # in the `alice-font` path dep — currently disabled for the 1.7.7 crates.io
