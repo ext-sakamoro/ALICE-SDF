@@ -9,6 +9,36 @@ repository = "https://github.com/ext-sakamoro/ALICE-SDF"
 keywords = ["sdf", "distance-field", "3d", "procedural", "csg"]
 categories = ["graphics", "game-development", "mathematics"]
 rust-version = "1.75"
+# crates.io publish から除外する dir / file 群
+# (Rust crate 配布物として本質的に不要、別 channel で配布 or CI 内部専用)
+# - vrchat-package / unreal-plugin / mobile / unity-sdf-universe: 他 engine 統合成果物
+#   (それぞれ独立 distribution channel: GitHub Release / Unity Asset Store / Fab)
+# - skills: Claude Code skill files (docs.rs 不要)
+# - npm: Three.js npm package (npmjs.com 配布)
+# - python: pyproject.toml + wheel build script (PyPI 配布)
+# - .github / scripts: CI workflow / release scripts (docs.rs 不要)
+# 1.7.7 で publish size を 579 → 削減して crates.io WAF による upload 503 を回避
+exclude = [
+    "/vrchat-package",
+    "/unreal-plugin",
+    "/mobile",
+    "/unity-sdf-universe",
+    "/skills",
+    "/npm",
+    "/python",
+    "/.github",
+    "/scripts",
+    "*.mp4",
+    "*.png",
+    "*.jpg",
+    "*.blend",
+    "*.zip",
+    "*.stl",
+    "*.obj",
+    "*.glb",
+    "*.gltf",
+    "Cargo.toml.orig",
+]
 
 [lib]
 name = "alice_sdf"
