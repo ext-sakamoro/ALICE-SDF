@@ -114,6 +114,7 @@ pub mod mesh;
 pub mod modifiers;
 pub mod morphology;
 pub mod neural;
+pub mod npr;
 pub mod operations;
 pub mod optimize;
 pub mod primitives;
