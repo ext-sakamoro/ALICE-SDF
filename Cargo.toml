@@ -159,6 +159,7 @@ vdb-rs = { version = "0.6", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in"] }
 
 [[bench]]
 name = "sdf_eval"

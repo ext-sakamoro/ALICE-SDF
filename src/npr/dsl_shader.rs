@@ -21,11 +21,14 @@ use glam::Vec3;
 /// Names of the shader-side variables holding the shading context
 ///
 /// Callers set these to whatever variable names their emitted `main()`
-/// uses for the diffuse dot and signed distance at the shading point.
+/// uses for the diffuse dot, view dot, and signed distance at the
+/// shading point.
 #[derive(Debug, Clone, Copy)]
 pub struct NprShaderContext<'a> {
     /// Name of the `n . l` scalar variable
     pub n_dot_l: &'a str,
+    /// Name of the `n . v` scalar variable (view direction from surface to camera)
+    pub n_dot_v: &'a str,
     /// Name of the signed-distance scalar variable at the hit point
     pub sdf: &'a str,
 }
@@ -36,6 +39,7 @@ impl NprShaderContext<'_> {
     pub const fn canonical() -> NprShaderContext<'static> {
         NprShaderContext {
             n_dot_l: "ndl",
+            n_dot_v: "ndv",
             sdf: "d",
         }
     }
@@ -81,7 +85,7 @@ impl Walker {
     }
 
     fn next_var(&mut self) -> String {
-        let name = format!("__npr_color_{}", self.var_counter);
+        let name = format!("alice_col_{}", self.var_counter);
         self.var_counter += 1;
         name
     }
@@ -167,6 +171,45 @@ impl Walker {
                     outline_expr,
                     format_f32(*alpha)
                 )
+            }
+            NprColorNode::Multiply { a, b } => {
+                // Materialize both sides so nested expressions are only evaluated once
+                let a_expr = self.walk(a, ctx);
+                let a_var = self.next_var();
+                self.statements.push_str(&self.decl_vec3(&a_var, &a_expr));
+                let b_expr = self.walk(b, ctx);
+                let b_var = self.next_var();
+                self.statements.push_str(&self.decl_vec3(&b_var, &b_expr));
+                format!("({a_var} * {b_var})")
+            }
+            NprColorNode::Add { a, b } => {
+                let a_expr = self.walk(a, ctx);
+                let a_var = self.next_var();
+                self.statements.push_str(&self.decl_vec3(&a_var, &a_expr));
+                let b_expr = self.walk(b, ctx);
+                let b_var = self.next_var();
+                self.statements.push_str(&self.decl_vec3(&b_var, &b_expr));
+                format!("({a_var} + {b_var})")
+            }
+            NprColorNode::Scale { child, factor } => {
+                let child_expr = self.walk(child, ctx);
+                let child_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&child_var, &child_expr));
+                format!("({child_var} * {})", format_f32(*factor))
+            }
+            NprColorNode::Fresnel { base, edge, power } => {
+                let base_expr = self.walk(base, ctx);
+                let base_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&base_var, &base_expr));
+                let edge_expr = self.vec3_literal(*edge);
+                let mask = format!(
+                    "alice_fresnel_rim({}, {}, 1.0)",
+                    ctx.n_dot_v,
+                    format_f32(*power)
+                );
+                self.mix_call(&base_var, &edge_expr, &mask)
             }
         }
     }
@@ -286,11 +329,11 @@ mod tests {
         let node = base.with_outline(Vec3::ZERO, 0.7);
         let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
         // Should have declared a temp var and used it in composite_outline
-        assert!(snip.statements.contains("__npr_color_0"));
+        assert!(snip.statements.contains("alice_col_0"));
         assert!(snip.statements.contains("vec3"));
         assert!(snip
             .color_expression
-            .starts_with("alice_composite_outline(__npr_color_0,"));
+            .starts_with("alice_composite_outline(alice_col_0,"));
         assert!(snip.color_expression.contains("0.700000"));
     }
 
@@ -300,8 +343,8 @@ mod tests {
         let inner = NprColorNode::Constant(Vec3::ZERO).with_outline(Vec3::X, 0.3);
         let outer = inner.with_outline(Vec3::Y, 0.6);
         let snip = transpile_npr_color_node(&outer, ShaderLanguage::Glsl, ctx());
-        assert!(snip.statements.contains("__npr_color_0"));
-        assert!(snip.statements.contains("__npr_color_1"));
+        assert!(snip.statements.contains("alice_col_0"));
+        assert!(snip.statements.contains("alice_col_1"));
     }
 
     #[test]
@@ -331,6 +374,63 @@ mod tests {
     fn canonical_context_uses_expected_names() {
         let c = NprShaderContext::canonical();
         assert_eq!(c.n_dot_l, "ndl");
+        assert_eq!(c.n_dot_v, "ndv");
         assert_eq!(c.sdf, "d");
+    }
+
+    #[test]
+    fn multiply_emits_product() {
+        let node = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5))
+            .multiply(NprColorNode::Constant(Vec3::new(0.4, 0.4, 0.4)));
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip.statements.contains("alice_col_0"));
+        assert!(snip.statements.contains("alice_col_1"));
+        assert!(snip.color_expression.contains("alice_col_0 * alice_col_1"));
+    }
+
+    #[test]
+    fn add_emits_sum() {
+        let node = NprColorNode::Constant(Vec3::new(0.3, 0.1, 0.0))
+            .plus(NprColorNode::Constant(Vec3::new(0.2, 0.4, 0.5)));
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip.color_expression.contains("alice_col_0 + alice_col_1"));
+    }
+
+    #[test]
+    fn scale_emits_scalar_multiply() {
+        let node = NprColorNode::Constant(Vec3::new(0.6, 0.6, 0.6)).scale(0.5);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip.color_expression.contains("* 0.500000"));
+    }
+
+    #[test]
+    fn fresnel_emits_mix_with_fresnel_rim() {
+        let base = NprColorNode::Constant(Vec3::ZERO);
+        let node = base.with_fresnel(Vec3::ONE, 2.0);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip
+            .color_expression
+            .contains("alice_fresnel_rim(ndv, 2.0, 1.0)"));
+        assert!(snip.color_expression.starts_with("mix("));
+    }
+
+    #[test]
+    fn fresnel_in_wgsl_wraps_mask_as_vec3() {
+        let base = NprColorNode::Constant(Vec3::ZERO);
+        let node = base.with_fresnel(Vec3::ONE, 2.0);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
+        // WGSL mix needs vec3<f32>(scalar_mask)
+        assert!(snip
+            .color_expression
+            .contains("vec3<f32>(alice_fresnel_rim(ndv"));
+    }
+
+    #[test]
+    fn fresnel_in_hlsl_uses_lerp() {
+        let base = NprColorNode::Constant(Vec3::ZERO);
+        let node = base.with_fresnel(Vec3::ONE, 2.0);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Hlsl, ctx());
+        assert!(snip.color_expression.starts_with("lerp("));
+        assert!(snip.color_expression.contains("alice_fresnel_rim(ndv"));
     }
 }

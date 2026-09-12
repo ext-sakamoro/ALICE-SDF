@@ -97,6 +97,36 @@ pub enum NprColorNode {
         /// Precomputed outline mask (typically from `distance_field_outline_soft`)
         alpha: f32,
     },
+    /// Component-wise multiply two colour subtrees
+    Multiply {
+        /// Left-hand subtree
+        a: Box<NprColorNode>,
+        /// Right-hand subtree
+        b: Box<NprColorNode>,
+    },
+    /// Component-wise add two colour subtrees
+    Add {
+        /// Left-hand subtree
+        a: Box<NprColorNode>,
+        /// Right-hand subtree
+        b: Box<NprColorNode>,
+    },
+    /// Uniformly scale a subtree by a scalar factor
+    Scale {
+        /// Subtree to scale
+        child: Box<NprColorNode>,
+        /// Scalar multiplier applied to every channel
+        factor: f32,
+    },
+    /// Overlay an edge colour on top of a base subtree using a Fresnel mask
+    Fresnel {
+        /// Base child evaluated for the interior color
+        base: Box<NprColorNode>,
+        /// Edge colour blended in at grazing view angles
+        edge: NprColor,
+        /// Fresnel exponent (higher = tighter rim)
+        power: f32,
+    },
 }
 
 impl NprColorNode {
@@ -135,6 +165,15 @@ impl NprColorNode {
                 let base_color = base.eval(ctx);
                 composite_outline(base_color, *outline, *alpha)
             }
+            Self::Multiply { a, b } => a.eval(ctx) * b.eval(ctx),
+            Self::Add { a, b } => a.eval(ctx) + b.eval(ctx),
+            Self::Scale { child, factor } => child.eval(ctx) * *factor,
+            Self::Fresnel { base, edge, power } => {
+                let base_color = base.eval(ctx);
+                let ndv = ctx.n_dot_v();
+                let fresnel = (1.0 - ndv.clamp(0.0, 1.0)).max(0.0).powf(power.max(0.0));
+                base_color.lerp(*edge, fresnel.clamp(0.0, 1.0))
+            }
         }
     }
 
@@ -145,6 +184,43 @@ impl NprColorNode {
             base: Box::new(self),
             outline,
             alpha,
+        }
+    }
+
+    /// Builder helper: component-wise multiply `self` by another subtree
+    #[must_use]
+    pub fn multiply(self, other: NprColorNode) -> Self {
+        Self::Multiply {
+            a: Box::new(self),
+            b: Box::new(other),
+        }
+    }
+
+    /// Builder helper: component-wise add another subtree to `self`
+    #[must_use]
+    pub fn plus(self, other: NprColorNode) -> Self {
+        Self::Add {
+            a: Box::new(self),
+            b: Box::new(other),
+        }
+    }
+
+    /// Builder helper: uniformly scale `self` by `factor`
+    #[must_use]
+    pub fn scale(self, factor: f32) -> Self {
+        Self::Scale {
+            child: Box::new(self),
+            factor,
+        }
+    }
+
+    /// Builder helper: overlay a Fresnel edge colour on `self`
+    #[must_use]
+    pub fn with_fresnel(self, edge: NprColor, power: f32) -> Self {
+        Self::Fresnel {
+            base: Box::new(self),
+            edge,
+            power,
         }
     }
 }
@@ -225,6 +301,59 @@ mod tests {
         let node = base.with_outline(Vec3::ONE, 0.0);
         let c = node.eval(&lit_context());
         assert_eq!(c, Vec3::new(0.5, 0.5, 0.5));
+    }
+
+    #[test]
+    fn multiply_combines_children() {
+        let a = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5));
+        let b = NprColorNode::Constant(Vec3::new(0.4, 0.4, 0.4));
+        let c = a.multiply(b).eval(&lit_context());
+        assert!((c - Vec3::splat(0.2)).length() < 1e-4);
+    }
+
+    #[test]
+    fn add_sums_children() {
+        let a = NprColorNode::Constant(Vec3::new(0.3, 0.1, 0.0));
+        let b = NprColorNode::Constant(Vec3::new(0.2, 0.4, 0.5));
+        let c = a.plus(b).eval(&lit_context());
+        assert!((c - Vec3::new(0.5, 0.5, 0.5)).length() < 1e-4);
+    }
+
+    #[test]
+    fn scale_multiplies_by_factor() {
+        let node = NprColorNode::Constant(Vec3::new(0.4, 0.4, 0.4)).scale(0.5);
+        let c = node.eval(&lit_context());
+        assert!((c - Vec3::splat(0.2)).length() < 1e-4);
+    }
+
+    #[test]
+    fn fresnel_head_on_returns_base() {
+        // Normal towards view: n.v = 1, fresnel = 0, returns base
+        let ctx = NprColorContext {
+            sdf: 0.0,
+            normal: Vec3::new(0.0, 0.0, 1.0),
+            view: Vec3::new(0.0, 0.0, 1.0),
+            light: Vec3::new(0.0, 1.0, 0.0),
+        };
+        let base = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5));
+        let node = base.with_fresnel(Vec3::ZERO, 2.0);
+        let c = node.eval(&ctx);
+        assert!((c - Vec3::splat(0.5)).length() < 1e-4);
+    }
+
+    #[test]
+    fn fresnel_grazing_returns_edge() {
+        // Normal perpendicular to view: n.v = 0, fresnel = 1, returns edge
+        let ctx = NprColorContext {
+            sdf: 0.0,
+            normal: Vec3::new(1.0, 0.0, 0.0),
+            view: Vec3::new(0.0, 0.0, 1.0),
+            light: Vec3::new(0.0, 1.0, 0.0),
+        };
+        let base = NprColorNode::Constant(Vec3::ZERO);
+        let node = base.with_fresnel(Vec3::ONE, 2.0);
+        let c = node.eval(&ctx);
+        assert!((c - Vec3::ONE).length() < 1e-4);
     }
 
     #[test]

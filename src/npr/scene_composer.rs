@@ -159,7 +159,12 @@ impl<'a> SceneShaderBuilder<'a> {
         let helpers = full_helpers_for(self.language);
         let sdf_fn = self.transpile_sdf()?;
         let main_fn = self.main_source();
-        Some(format!("{}\n{}\n{}", helpers, sdf_fn, main_fn))
+        let header = match self.language {
+            ShaderLanguage::Glsl => "#version 460 core\n\n",
+            ShaderLanguage::Wgsl => "",
+            ShaderLanguage::Hlsl => "",
+        };
+        Some(format!("{header}{helpers}\n{sdf_fn}\n{main_fn}"))
     }
 
     /// Compose and return the final shader source
@@ -328,7 +333,10 @@ impl<'a> SceneShaderBuilder<'a> {
         let cam = format_vec3_glsl(self.camera_position);
         format!(
             r"
-uniform vec2 iResolution;
+layout(binding = 0) uniform SceneUniforms {{
+    vec2 iResolution;
+}};
+layout(location = 0) out vec4 alice_out_color;
 
 vec3 alice_scene_normal(vec3 p) {{
     float e = 1e-3;
@@ -364,6 +372,7 @@ void main() {{
     if (hit) {{
         vec3 n = alice_scene_normal(hit_point);
         float ndl = dot(n, to_sun);
+        float ndv = -dot(n, ray_dir);
         float d = sdf_eval(hit_point);
 {hit_block}
     }} else {{
@@ -373,7 +382,7 @@ void main() {{
     }}
 
     color *= alice_vignette(uv, {vig_r}, {vig_s});
-    gl_FragColor = vec4(color, 1.0);
+    alice_out_color = vec4(color, 1.0);
 }}
 ",
             hit_block = self.hit_block_glsl(),
@@ -445,6 +454,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     if (hit) {{
         let n = alice_scene_normal(hit_point);
         let ndl = dot(n, to_sun);
+        let ndv = -dot(n, ray_dir);
         let d = sdf_eval(hit_point);
 {hit_block}
     }} else {{
@@ -521,6 +531,7 @@ float4 PS(float4 pos : SV_POSITION) : SV_TARGET {{
     if (hit) {{
         float3 n = alice_scene_normal(hit_point);
         float ndl = dot(n, to_sun);
+        float ndv = -dot(n, ray_dir);
         float d = sdf_eval(hit_point);
 {hit_block}
     }} else {{
@@ -609,7 +620,10 @@ mod tests {
         );
         assert!(source.contains("sdf_eval"), "missing sdf function");
         assert!(source.contains("void main"), "missing main entry");
-        assert!(source.contains("gl_FragColor"), "missing GLSL output");
+        assert!(
+            source.contains("alice_out_color"),
+            "missing GLSL output binding"
+        );
     }
 
     #[test]
@@ -745,7 +759,7 @@ mod tests {
             .with_pipeline(pipeline)
             .build();
         assert!(source.contains("alice_composite_outline"));
-        assert!(source.contains("__npr_color_0"));
-        assert!(source.contains("float3 __npr_color_0"));
+        assert!(source.contains("alice_col_0"));
+        assert!(source.contains("float3 alice_col_0"));
     }
 }
