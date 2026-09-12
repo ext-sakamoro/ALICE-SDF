@@ -24,6 +24,8 @@ use crate::compiled::glsl::{GlslShader, GlslTranspileMode};
 use crate::compiled::hlsl::{HlslShader, HlslTranspileMode};
 #[cfg(feature = "gpu")]
 use crate::compiled::wgsl::{TranspileMode as WgslTranspileMode, WgslShader};
+use crate::npr::dsl::NprColorNode;
+use crate::npr::dsl_shader::{transpile_npr_color_node, NprShaderContext};
 use crate::npr::shader_glue::{full_helpers_for, ShaderLanguage};
 use crate::types::SdfNode;
 use glam::Vec3;
@@ -53,6 +55,7 @@ pub struct SceneShaderBuilder<'a> {
     camera_position: Vec3,
     sun_disc_radius: f32,
     sun_disc_softness: f32,
+    pipeline: Option<NprColorNode>,
 }
 
 impl<'a> SceneShaderBuilder<'a> {
@@ -82,7 +85,20 @@ impl<'a> SceneShaderBuilder<'a> {
             camera_position: Vec3::new(0.0, 0.0, -3.0),
             sun_disc_radius: 0.03,
             sun_disc_softness: 0.05,
+            pipeline: None,
         }
+    }
+
+    /// Replace the built-in soft-toon + outline colour block with the
+    /// caller's [`NprColorNode`] pipeline
+    ///
+    /// The pipeline sees the shading context via [`NprShaderContext::canonical`]
+    /// (`ndl` scalar and `d` scalar). When set, `with_shading` and
+    /// `with_outline` parameters are ignored on the hit branch.
+    #[must_use]
+    pub fn with_pipeline(mut self, pipeline: NprColorNode) -> Self {
+        self.pipeline = Some(pipeline);
+        self
     }
 
     /// Override the 3-anchor sky gradient (horizon / mid / zenith)
@@ -207,15 +223,108 @@ impl<'a> SceneShaderBuilder<'a> {
         }
     }
 
+    fn hit_block_glsl(&self) -> String {
+        if let Some(pipeline) = &self.pipeline {
+            let snip = transpile_npr_color_node(
+                pipeline,
+                ShaderLanguage::Glsl,
+                NprShaderContext::canonical(),
+            );
+            format!(
+                "{statements}        color = {expr};",
+                statements = snip.statements,
+                expr = snip.color_expression
+            )
+        } else {
+            let shadow = format_vec3_glsl(self.shadow_color);
+            let light = format_vec3_glsl(self.light_color);
+            let outline = format_vec3_glsl(self.outline_color);
+            format!(
+                "        float brightness = alice_soft_toon_ramp(ndl, {bands}.0, {smooth});\n\
+                 \x20       vec3 shaded = mix({shadow}, {light}, brightness);\n\
+                 \x20       float outline_mask = alice_distance_field_outline_soft(d, {out_i}, {out_o});\n\
+                 \x20       color = alice_composite_outline(shaded, {outline}, outline_mask);",
+                bands = self.toon_bands,
+                smooth = format_f32(self.toon_smoothness),
+                shadow = shadow,
+                light = light,
+                out_i = format_f32(self.outline_inner),
+                out_o = format_f32(self.outline_outer),
+                outline = outline,
+            )
+        }
+    }
+
+    fn hit_block_wgsl(&self) -> String {
+        if let Some(pipeline) = &self.pipeline {
+            let snip = transpile_npr_color_node(
+                pipeline,
+                ShaderLanguage::Wgsl,
+                NprShaderContext::canonical(),
+            );
+            format!(
+                "{statements}        color = {expr};",
+                statements = snip.statements,
+                expr = snip.color_expression
+            )
+        } else {
+            let shadow = format_vec3_wgsl(self.shadow_color);
+            let light = format_vec3_wgsl(self.light_color);
+            let outline = format_vec3_wgsl(self.outline_color);
+            format!(
+                "        let brightness = alice_soft_toon_ramp(ndl, f32({bands}), {smooth});\n\
+                 \x20       let shaded = mix({shadow}, {light}, vec3<f32>(brightness));\n\
+                 \x20       let outline_mask = alice_distance_field_outline_soft(d, {out_i}, {out_o});\n\
+                 \x20       color = alice_composite_outline(shaded, {outline}, outline_mask);",
+                bands = self.toon_bands,
+                smooth = format_f32(self.toon_smoothness),
+                shadow = shadow,
+                light = light,
+                out_i = format_f32(self.outline_inner),
+                out_o = format_f32(self.outline_outer),
+                outline = outline,
+            )
+        }
+    }
+
+    fn hit_block_hlsl(&self) -> String {
+        if let Some(pipeline) = &self.pipeline {
+            let snip = transpile_npr_color_node(
+                pipeline,
+                ShaderLanguage::Hlsl,
+                NprShaderContext::canonical(),
+            );
+            format!(
+                "{statements}        color = {expr};",
+                statements = snip.statements,
+                expr = snip.color_expression
+            )
+        } else {
+            let shadow = format_vec3_hlsl(self.shadow_color);
+            let light = format_vec3_hlsl(self.light_color);
+            let outline = format_vec3_hlsl(self.outline_color);
+            format!(
+                "        float brightness = alice_soft_toon_ramp(ndl, (float){bands}, {smooth});\n\
+                 \x20       float3 shaded = lerp({shadow}, {light}, brightness);\n\
+                 \x20       float outline_mask = alice_distance_field_outline_soft(d, {out_i}, {out_o});\n\
+                 \x20       color = alice_composite_outline(shaded, {outline}, outline_mask);",
+                bands = self.toon_bands,
+                smooth = format_f32(self.toon_smoothness),
+                shadow = shadow,
+                light = light,
+                out_i = format_f32(self.outline_inner),
+                out_o = format_f32(self.outline_outer),
+                outline = outline,
+            )
+        }
+    }
+
     fn main_glsl(&self) -> String {
         let sky_h = format_vec3_glsl(self.sky_horizon);
         let sky_m = format_vec3_glsl(self.sky_mid);
         let sky_z = format_vec3_glsl(self.sky_zenith);
         let sun = format_vec3_glsl(self.sun_direction);
         let sun_c = format_vec3_glsl(self.sun_color);
-        let shadow = format_vec3_glsl(self.shadow_color);
-        let light = format_vec3_glsl(self.light_color);
-        let outline = format_vec3_glsl(self.outline_color);
         let cam = format_vec3_glsl(self.camera_position);
         format!(
             r"
@@ -255,10 +364,8 @@ void main() {{
     if (hit) {{
         vec3 n = alice_scene_normal(hit_point);
         float ndl = dot(n, to_sun);
-        float brightness = alice_soft_toon_ramp(ndl, {bands}.0, {smooth});
-        vec3 shaded = mix({shadow}, {light}, brightness);
-        float outline_mask = alice_distance_field_outline_soft(sdf_eval(hit_point), {out_i}, {out_o});
-        color = alice_composite_outline(shaded, {outline}, outline_mask);
+        float d = sdf_eval(hit_point);
+{hit_block}
     }} else {{
         vec3 sky = alice_sky_gradient_bands_3(ray_dir, {sky_h}, {sky_m}, {sky_z});
         float sun_i = alice_sun_disc(ray_dir, to_sun, {sd_r}, {sd_s});
@@ -269,18 +376,12 @@ void main() {{
     gl_FragColor = vec4(color, 1.0);
 }}
 ",
+            hit_block = self.hit_block_glsl(),
             cam = cam,
             sun = sun,
             max_steps = self.max_steps,
             surface_eps = format_f32(self.surface_eps),
             max_dist = format_f32(self.max_dist),
-            bands = self.toon_bands,
-            smooth = format_f32(self.toon_smoothness),
-            shadow = shadow,
-            light = light,
-            out_i = format_f32(self.outline_inner),
-            out_o = format_f32(self.outline_outer),
-            outline = outline,
             sky_h = sky_h,
             sky_m = sky_m,
             sky_z = sky_z,
@@ -298,9 +399,6 @@ void main() {{
         let sky_z = format_vec3_wgsl(self.sky_zenith);
         let sun = format_vec3_wgsl(self.sun_direction);
         let sun_c = format_vec3_wgsl(self.sun_color);
-        let shadow = format_vec3_wgsl(self.shadow_color);
-        let light = format_vec3_wgsl(self.light_color);
-        let outline = format_vec3_wgsl(self.outline_color);
         let cam = format_vec3_wgsl(self.camera_position);
         format!(
             r"
@@ -347,10 +445,8 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     if (hit) {{
         let n = alice_scene_normal(hit_point);
         let ndl = dot(n, to_sun);
-        let brightness = alice_soft_toon_ramp(ndl, f32({bands}), {smooth});
-        let shaded = mix({shadow}, {light}, vec3<f32>(brightness));
-        let outline_mask = alice_distance_field_outline_soft(sdf_eval(hit_point), {out_i}, {out_o});
-        color = alice_composite_outline(shaded, {outline}, outline_mask);
+        let d = sdf_eval(hit_point);
+{hit_block}
     }} else {{
         let sky = alice_sky_gradient_bands_3(ray_dir, {sky_h}, {sky_m}, {sky_z});
         let sun_i = alice_sun_disc(ray_dir, to_sun, {sd_r}, {sd_s});
@@ -361,18 +457,12 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     return vec4<f32>(color, 1.0);
 }}
 ",
+            hit_block = self.hit_block_wgsl(),
             cam = cam,
             sun = sun,
             max_steps = self.max_steps,
             surface_eps = format_f32(self.surface_eps),
             max_dist = format_f32(self.max_dist),
-            bands = self.toon_bands,
-            smooth = format_f32(self.toon_smoothness),
-            shadow = shadow,
-            light = light,
-            out_i = format_f32(self.outline_inner),
-            out_o = format_f32(self.outline_outer),
-            outline = outline,
             sky_h = sky_h,
             sky_m = sky_m,
             sky_z = sky_z,
@@ -390,9 +480,6 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
         let sky_z = format_vec3_hlsl(self.sky_zenith);
         let sun = format_vec3_hlsl(self.sun_direction);
         let sun_c = format_vec3_hlsl(self.sun_color);
-        let shadow = format_vec3_hlsl(self.shadow_color);
-        let light = format_vec3_hlsl(self.light_color);
-        let outline = format_vec3_hlsl(self.outline_color);
         let cam = format_vec3_hlsl(self.camera_position);
         format!(
             r"
@@ -434,10 +521,8 @@ float4 PS(float4 pos : SV_POSITION) : SV_TARGET {{
     if (hit) {{
         float3 n = alice_scene_normal(hit_point);
         float ndl = dot(n, to_sun);
-        float brightness = alice_soft_toon_ramp(ndl, (float){bands}, {smooth});
-        float3 shaded = lerp({shadow}, {light}, brightness);
-        float outline_mask = alice_distance_field_outline_soft(sdf_eval(hit_point), {out_i}, {out_o});
-        color = alice_composite_outline(shaded, {outline}, outline_mask);
+        float d = sdf_eval(hit_point);
+{hit_block}
     }} else {{
         float3 sky = alice_sky_gradient_bands_3(ray_dir, {sky_h}, {sky_m}, {sky_z});
         float sun_i = alice_sun_disc(ray_dir, to_sun, {sd_r}, {sd_s});
@@ -448,18 +533,12 @@ float4 PS(float4 pos : SV_POSITION) : SV_TARGET {{
     return float4(color, 1.0);
 }}
 ",
+            hit_block = self.hit_block_hlsl(),
             cam = cam,
             sun = sun,
             max_steps = self.max_steps,
             surface_eps = format_f32(self.surface_eps),
             max_dist = format_f32(self.max_dist),
-            bands = self.toon_bands,
-            smooth = format_f32(self.toon_smoothness),
-            shadow = shadow,
-            light = light,
-            out_i = format_f32(self.outline_inner),
-            out_o = format_f32(self.outline_outer),
-            outline = outline,
             sky_h = sky_h,
             sky_m = sky_m,
             sky_z = sky_z,
@@ -595,5 +674,78 @@ mod tests {
         let a = SceneShaderBuilder::new(&node, ShaderLanguage::Glsl).build();
         let b = SceneShaderBuilder::new(&node, ShaderLanguage::Glsl).build();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn with_pipeline_replaces_hardcoded_hit_block() {
+        use crate::npr::dsl::NprColorNode;
+        let node = unit_sphere();
+        let pipeline = NprColorNode::TwoTone {
+            shadow: Vec3::new(0.1, 0.1, 0.3),
+            light: Vec3::new(0.9, 0.9, 0.7),
+            threshold: 0.5,
+        };
+        let with = SceneShaderBuilder::new(&node, ShaderLanguage::Glsl)
+            .with_pipeline(pipeline)
+            .build();
+        let without = SceneShaderBuilder::new(&node, ShaderLanguage::Glsl).build();
+        // Both shaders always contain the helper function definitions;
+        // the pipeline swap only affects which helpers `main()` invokes.
+        // Look inside `if (hit)` blocks for the invocation contrast.
+        let with_hit = extract_hit_block_glsl(&with);
+        let without_hit = extract_hit_block_glsl(&without);
+        assert!(
+            with_hit.contains("alice_two_tone("),
+            "with_pipeline hit block should call alice_two_tone, got:\n{with_hit}"
+        );
+        assert!(
+            !with_hit.contains("alice_soft_toon_ramp("),
+            "with_pipeline hit block should not call alice_soft_toon_ramp, got:\n{with_hit}"
+        );
+        assert!(
+            without_hit.contains("alice_soft_toon_ramp("),
+            "default hit block should call alice_soft_toon_ramp, got:\n{without_hit}"
+        );
+    }
+
+    fn extract_hit_block_glsl(source: &str) -> String {
+        let start = source
+            .find("if (hit) {")
+            .expect("scene shader missing `if (hit) {` marker");
+        let rest = &source[start..];
+        let end = rest
+            .find("} else {")
+            .expect("scene shader missing `} else {` marker");
+        rest[..end].to_string()
+    }
+
+    #[test]
+    fn with_pipeline_supports_wgsl() {
+        use crate::npr::dsl::NprColorNode;
+        let node = unit_sphere();
+        let pipeline = NprColorNode::Toon {
+            shadow: Vec3::ZERO,
+            light: Vec3::ONE,
+            bands: 4,
+        };
+        let source = SceneShaderBuilder::new(&node, ShaderLanguage::Wgsl)
+            .with_pipeline(pipeline)
+            .build();
+        assert!(source.contains("alice_toon_ramp(ndl, 4.0)"));
+        assert!(source.contains("vec3<f32>("));
+    }
+
+    #[test]
+    fn with_pipeline_supports_hlsl_outline_over() {
+        use crate::npr::dsl::NprColorNode;
+        let node = unit_sphere();
+        let base = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5));
+        let pipeline = base.with_outline(Vec3::ZERO, 0.7);
+        let source = SceneShaderBuilder::new(&node, ShaderLanguage::Hlsl)
+            .with_pipeline(pipeline)
+            .build();
+        assert!(source.contains("alice_composite_outline"));
+        assert!(source.contains("__npr_color_0"));
+        assert!(source.contains("float3 __npr_color_0"));
     }
 }

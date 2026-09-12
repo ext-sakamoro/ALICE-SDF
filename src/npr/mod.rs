@@ -16,6 +16,7 @@
 pub mod composition;
 pub mod distortion;
 pub mod dsl;
+pub mod dsl_shader;
 pub mod hatch;
 pub mod motion;
 pub mod noise;

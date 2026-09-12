@@ -37,13 +37,17 @@ fn main() {
 
 #[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
 fn emit_shader(label: &str, scene: &SdfNode, language: ShaderLanguage) {
+    // Custom NPR pipeline via NprColorNode + with_pipeline
+    // Two-tone base color + hard outline over the top
+    let pipeline = NprColorNode::TwoTone {
+        shadow: Vec3::new(0.15, 0.13, 0.30),
+        light: Vec3::new(0.92, 0.85, 0.70),
+        threshold: 0.5,
+    }
+    .with_outline(Vec3::new(0.03, 0.03, 0.06), 0.85);
+
     let source = SceneShaderBuilder::new(scene, language)
-        .with_shading(
-            Vec3::new(0.20, 0.18, 0.35),
-            Vec3::new(0.95, 0.88, 0.75),
-            3,
-        )
-        .with_outline(Vec3::new(0.02, 0.02, 0.05), 0.005, 0.03)
+        .with_pipeline(pipeline)
         .with_sky(
             Vec3::new(0.90, 0.60, 0.40),
             Vec3::new(0.65, 0.70, 0.85),

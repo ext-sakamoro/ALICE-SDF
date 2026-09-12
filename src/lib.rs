@@ -339,6 +339,9 @@ pub mod prelude {
     pub use crate::npr::composition::{bloom_toon, chromatic_offsets, vignette};
     pub use crate::npr::distortion::{hand_drawn_jitter, line_boil, sketch_wobble};
     pub use crate::npr::dsl::{NprColorContext, NprColorNode};
+    pub use crate::npr::dsl_shader::{
+        transpile_npr_color_node, NprShaderContext, NprShaderSnippet,
+    };
     pub use crate::npr::hatch::{cross_hatch, hatch_lines, paper_grain, pencil_shade};
     pub use crate::npr::motion::{impact_flash, speed_line};
     pub use crate::npr::noise::{
