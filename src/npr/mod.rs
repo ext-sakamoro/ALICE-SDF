@@ -22,6 +22,8 @@ pub mod noise;
 pub mod outline;
 pub mod palette;
 pub mod rim;
+#[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
+pub mod scene_composer;
 pub mod sdf_integration;
 pub mod shader_glue;
 pub mod sky;

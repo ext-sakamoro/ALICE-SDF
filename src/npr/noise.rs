@@ -325,6 +325,186 @@ impl NoiseField for WorleyNoise {
 }
 
 // ============================================================================
+// Simplex gradient noise
+// ============================================================================
+
+/// 3D simplex gradient noise with fewer directional artifacts than Perlin
+///
+/// Uses a skewed integer lattice of tetrahedra ("simplices") and sums the
+/// contribution of the four closest lattice points, weighted by a radial
+/// falloff. Similar visual role to `PerlinNoise` but with more isotropic
+/// output and only four gradient dot products per sample instead of eight.
+#[derive(Debug, Clone, Copy)]
+pub struct SimplexNoise {
+    /// Seed offset applied before hashing lattice corners
+    pub seed: u32,
+    /// Spatial frequency
+    pub frequency: f32,
+}
+
+impl SimplexNoise {
+    /// Construct with unit frequency
+    #[inline]
+    #[must_use]
+    pub const fn new(seed: u32) -> Self {
+        Self {
+            seed,
+            frequency: 1.0,
+        }
+    }
+
+    /// Set spatial frequency
+    #[inline]
+    #[must_use]
+    pub const fn with_frequency(mut self, frequency: f32) -> Self {
+        self.frequency = frequency;
+        self
+    }
+}
+
+impl Default for SimplexNoise {
+    fn default() -> Self {
+        Self {
+            seed: 0,
+            frequency: 1.0,
+        }
+    }
+}
+
+/// Skew factor F3 = 1/3 for 3D simplex noise
+const SIMPLEX_F3: f32 = 1.0 / 3.0;
+/// Unskew factor G3 = 1/6 for 3D simplex noise
+const SIMPLEX_G3: f32 = 1.0 / 6.0;
+
+/// One of twelve edge-midpoint gradients as a 3D vector
+#[inline]
+fn simplex_grad_vec(hash: u32) -> (f32, f32, f32) {
+    match hash & 15 {
+        0 => (1.0, 1.0, 0.0),
+        1 => (-1.0, 1.0, 0.0),
+        2 => (1.0, -1.0, 0.0),
+        3 => (-1.0, -1.0, 0.0),
+        4 => (1.0, 0.0, 1.0),
+        5 => (-1.0, 0.0, 1.0),
+        6 => (1.0, 0.0, -1.0),
+        7 => (-1.0, 0.0, -1.0),
+        8 => (0.0, 1.0, 1.0),
+        9 => (0.0, -1.0, 1.0),
+        10 => (0.0, 1.0, -1.0),
+        11 => (0.0, -1.0, -1.0),
+        12 => (1.0, 1.0, 0.0),
+        13 => (-1.0, 1.0, 0.0),
+        14 => (0.0, -1.0, 1.0),
+        _ => (0.0, -1.0, -1.0),
+    }
+}
+
+/// Radial-falloff-weighted gradient dot for one simplex corner
+#[inline]
+fn simplex_contrib(x: f32, y: f32, z: f32, hash: u32) -> f32 {
+    let t = 0.6 - x * x - y * y - z * z;
+    if t < 0.0 {
+        0.0
+    } else {
+        let (gx, gy, gz) = simplex_grad_vec(hash);
+        let t2 = t * t;
+        t2 * t2 * (gx * x + gy * y + gz * z)
+    }
+}
+
+impl NoiseField for SimplexNoise {
+    fn sample_scalar(&self, point: Vec3) -> f32 {
+        let p = point * self.frequency;
+
+        // Skew input space so simplex cells align with the integer lattice
+        let s = (p.x + p.y + p.z) * SIMPLEX_F3;
+        let i = (p.x + s).floor();
+        let j = (p.y + s).floor();
+        let k = (p.z + s).floor();
+
+        let tp = (i + j + k) * SIMPLEX_G3;
+        let x0 = p.x - (i - tp);
+        let y0 = p.y - (j - tp);
+        let z0 = p.z - (k - tp);
+
+        // Pick which of the six simplex tetrahedra we sit inside
+        let (i1, j1, k1, i2, j2, k2): (i32, i32, i32, i32, i32, i32);
+        if x0 >= y0 {
+            if y0 >= z0 {
+                i1 = 1;
+                j1 = 0;
+                k1 = 0;
+                i2 = 1;
+                j2 = 1;
+                k2 = 0;
+            } else if x0 >= z0 {
+                i1 = 1;
+                j1 = 0;
+                k1 = 0;
+                i2 = 1;
+                j2 = 0;
+                k2 = 1;
+            } else {
+                i1 = 0;
+                j1 = 0;
+                k1 = 1;
+                i2 = 1;
+                j2 = 0;
+                k2 = 1;
+            }
+        } else if y0 < z0 {
+            i1 = 0;
+            j1 = 0;
+            k1 = 1;
+            i2 = 0;
+            j2 = 1;
+            k2 = 1;
+        } else if x0 < z0 {
+            i1 = 0;
+            j1 = 1;
+            k1 = 0;
+            i2 = 0;
+            j2 = 1;
+            k2 = 1;
+        } else {
+            i1 = 0;
+            j1 = 1;
+            k1 = 0;
+            i2 = 1;
+            j2 = 1;
+            k2 = 0;
+        }
+
+        let x1 = x0 - i1 as f32 + SIMPLEX_G3;
+        let y1 = y0 - j1 as f32 + SIMPLEX_G3;
+        let z1 = z0 - k1 as f32 + SIMPLEX_G3;
+        let x2 = x0 - i2 as f32 + 2.0 * SIMPLEX_G3;
+        let y2 = y0 - j2 as f32 + 2.0 * SIMPLEX_G3;
+        let z2 = z0 - k2 as f32 + 2.0 * SIMPLEX_G3;
+        let x3 = x0 - 1.0 + 3.0 * SIMPLEX_G3;
+        let y3 = y0 - 1.0 + 3.0 * SIMPLEX_G3;
+        let z3 = z0 - 1.0 + 3.0 * SIMPLEX_G3;
+
+        let ii = i as i32;
+        let jj = j as i32;
+        let kk = k as i32;
+        let h0 = pcg_hash3(ii, jj, kk, self.seed);
+        let h1 = pcg_hash3(ii + i1, jj + j1, kk + k1, self.seed);
+        let h2 = pcg_hash3(ii + i2, jj + j2, kk + k2, self.seed);
+        let h3 = pcg_hash3(ii + 1, jj + 1, kk + 1, self.seed);
+
+        let n0 = simplex_contrib(x0, y0, z0, h0);
+        let n1 = simplex_contrib(x1, y1, z1, h1);
+        let n2 = simplex_contrib(x2, y2, z2, h2);
+        let n3 = simplex_contrib(x3, y3, z3, h3);
+
+        // Empirical scale factor (~32) brings 3D simplex output to roughly [-1, 1]
+        let raw = 32.0 * (n0 + n1 + n2 + n3);
+        (raw.clamp(-1.0, 1.0) * 0.5 + 0.5).clamp(0.0, 1.0)
+    }
+}
+
+// ============================================================================
 // Fractional Brownian motion (fbm) over any NoiseField
 // ============================================================================
 
@@ -527,5 +707,45 @@ mod tests {
     fn fbm_zero_octaves_panics() {
         let base = PerlinNoise::new(0);
         let _ = fbm(&base, Vec3::ZERO, 0, 2.0, 0.5);
+    }
+
+    // ------------------------------------------------------------------
+    // Simplex
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn simplex_output_bounded() {
+        let noise = SimplexNoise::new(0);
+        for i in 0..100 {
+            let p = Vec3::new(i as f32 * 0.07, i as f32 * 0.11, i as f32 * 0.13);
+            let s = noise.sample_scalar(p);
+            assert!((0.0..=1.0).contains(&s), "out of range at i={i}: {s}");
+        }
+    }
+
+    #[test]
+    fn simplex_deterministic() {
+        let noise = SimplexNoise::new(7);
+        let a = noise.sample_scalar(Vec3::new(1.3, 2.4, 3.5));
+        let b = noise.sample_scalar(Vec3::new(1.3, 2.4, 3.5));
+        assert!((a - b).abs() < 1e-6);
+    }
+
+    #[test]
+    fn simplex_smooth_across_small_steps() {
+        let noise = SimplexNoise::new(0);
+        let a = noise.sample_scalar(Vec3::new(0.5, 0.5, 0.5));
+        let b = noise.sample_scalar(Vec3::new(0.501, 0.5, 0.5));
+        assert!((a - b).abs() < 0.05, "expected smooth, got {a} vs {b}");
+    }
+
+    #[test]
+    fn simplex_frequency_changes_output() {
+        let low = SimplexNoise::new(0).with_frequency(1.0);
+        let high = SimplexNoise::new(0).with_frequency(8.0);
+        // Non-integer point so different frequencies land in different cells
+        let a = low.sample_scalar(Vec3::new(0.37, 0.61, 0.83));
+        let b = high.sample_scalar(Vec3::new(0.37, 0.61, 0.83));
+        assert!((a - b).abs() > 1e-3);
     }
 }

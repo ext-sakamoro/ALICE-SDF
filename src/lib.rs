@@ -341,13 +341,17 @@ pub mod prelude {
     pub use crate::npr::dsl::{NprColorContext, NprColorNode};
     pub use crate::npr::hatch::{cross_hatch, hatch_lines, paper_grain, pencil_shade};
     pub use crate::npr::motion::{impact_flash, speed_line};
-    pub use crate::npr::noise::{fbm, HashNoise, NoiseField, PerlinNoise, WorleyNoise};
+    pub use crate::npr::noise::{
+        fbm, HashNoise, NoiseField, PerlinNoise, SimplexNoise, WorleyNoise,
+    };
     pub use crate::npr::outline::{
         composite_outline, curvature_outline, depth_step_outline, distance_field_outline,
         distance_field_outline_soft,
     };
     pub use crate::npr::palette::{palette_gradient, season_palette, time_of_day};
     pub use crate::npr::rim::{fresnel_rim, procedural_matcap, stylized_specular};
+    #[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
+    pub use crate::npr::scene_composer::SceneShaderBuilder;
     pub use crate::npr::sdf_integration::{
         curvature_outline_from_node, distance_outline_from_node, soft_toon_shade_from_node,
         toon_shade_from_node,

@@ -5,9 +5,9 @@
 //! constant with their own shader source to make the helpers available.
 //!
 //! Two sets of helpers are provided:
-//! - **Core** (`NPR_*_HELPERS`): the 14 fixed-arity scalar / vector
-//!   primitives (`toon_ramp`, `distance_field_outline_soft`, `fresnel_rim`,
-//!   `vignette`, etc.)
+//! - **Core** (`NPR_*_HELPERS`): 15 fixed-arity scalar / vector primitives
+//!   (`toon_ramp`, `distance_field_outline_soft`, `fresnel_rim`,
+//!   `vignette`, `sun_disc`, etc.)
 //! - **Palette** (`NPR_*_PALETTE_HELPERS`): fixed-anchor palette variants
 //!   that replace the Rust `&[Vec3]` slice API with explicit `N` color
 //!   arguments: `sky_gradient_bands_3`, `palette_gradient_5`,
@@ -125,6 +125,20 @@ float alice_impact_flash(float t, float decay, float intensity) {
     if (t < 0.0) return 0.0;
     return intensity * exp(-t / max(decay, 1e-4));
 }
+
+float alice_sun_disc(vec3 view, vec3 to_sun, float radius, float softness) {
+    vec3 v = normalize(view + vec3(1e-8));
+    vec3 s = normalize(to_sun + vec3(1e-8));
+    float cos_theta = dot(v, s);
+    float r = max(radius, 0.0);
+    float soft = max(softness, 0.0);
+    float cos_inner = cos(r);
+    float cos_outer = cos(r + soft);
+    if (cos_theta >= cos_inner) return 1.0;
+    if (cos_theta <= cos_outer) return 0.0;
+    float denom = max(cos_inner - cos_outer, 1e-6);
+    return clamp((cos_theta - cos_outer) / denom, 0.0, 1.0);
+}
 "#;
 
 // ============================================================================
@@ -239,6 +253,20 @@ fn alice_impact_flash(t: f32, decay: f32, intensity: f32) -> f32 {
     if (t < 0.0) { return 0.0; }
     return intensity * exp(-t / max(decay, 1e-4));
 }
+
+fn alice_sun_disc(view: vec3<f32>, to_sun: vec3<f32>, radius: f32, softness: f32) -> f32 {
+    let v = normalize(view + vec3<f32>(1e-8));
+    let s = normalize(to_sun + vec3<f32>(1e-8));
+    let cos_theta = dot(v, s);
+    let r = max(radius, 0.0);
+    let soft = max(softness, 0.0);
+    let cos_inner = cos(r);
+    let cos_outer = cos(r + soft);
+    if (cos_theta >= cos_inner) { return 1.0; }
+    if (cos_theta <= cos_outer) { return 0.0; }
+    let denom = max(cos_inner - cos_outer, 1e-6);
+    return clamp((cos_theta - cos_outer) / denom, 0.0, 1.0);
+}
 "#;
 
 // ============================================================================
@@ -347,6 +375,20 @@ float alice_light_shaft_beam(float3 view_dir, float3 to_sun, float density) {
 float alice_impact_flash(float t, float decay, float intensity) {
     if (t < 0.0) return 0.0;
     return intensity * exp(-t / max(decay, 1e-4));
+}
+
+float alice_sun_disc(float3 view, float3 to_sun, float radius, float softness) {
+    float3 v = normalize(view + float3(1e-8, 1e-8, 1e-8));
+    float3 s = normalize(to_sun + float3(1e-8, 1e-8, 1e-8));
+    float cos_theta = dot(v, s);
+    float r = max(radius, 0.0);
+    float soft = max(softness, 0.0);
+    float cos_inner = cos(r);
+    float cos_outer = cos(r + soft);
+    if (cos_theta >= cos_inner) return 1.0;
+    if (cos_theta <= cos_outer) return 0.0;
+    float denom = max(cos_inner - cos_outer, 1e-6);
+    return clamp((cos_theta - cos_outer) / denom, 0.0, 1.0);
 }
 "#;
 
@@ -544,6 +586,7 @@ mod tests {
             "alice_puffy_cloud_layer",
             "alice_light_shaft_beam",
             "alice_impact_flash",
+            "alice_sun_disc",
         ] {
             assert!(
                 NPR_GLSL_HELPERS.contains(name),

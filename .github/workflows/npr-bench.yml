@@ -1,0 +1,86 @@
+name: NPR Benchmark Regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/npr/**"
+      - "benches/npr_primitives.rs"
+      - ".github/workflows/npr-bench.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
+jobs:
+  npr-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: npr-bench
+
+      - name: Run NPR benchmark on PR head
+        run: |
+          cargo bench --bench npr_primitives -- \
+            --sample-size 20 \
+            --warm-up-time 1 \
+            --measurement-time 2 \
+            --save-baseline pr-head 2>&1 | tee pr-bench.log
+
+      - name: Checkout main baseline
+        run: |
+          git fetch origin main
+          git checkout origin/main -- src/npr benches/npr_primitives.rs || true
+
+      - name: Run NPR benchmark on main baseline
+        run: |
+          cargo bench --bench npr_primitives -- \
+            --sample-size 20 \
+            --warm-up-time 1 \
+            --measurement-time 2 \
+            --save-baseline main-baseline 2>&1 | tee main-bench.log
+          # Restore PR head sources
+          git checkout HEAD -- src/npr benches/npr_primitives.rs
+
+      - name: Compare PR head vs main baseline
+        run: |
+          cargo bench --bench npr_primitives -- \
+            --sample-size 20 \
+            --warm-up-time 1 \
+            --measurement-time 2 \
+            --baseline main-baseline 2>&1 | tee comparison.log
+
+      - name: Upload benchmark logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npr-bench-logs
+          path: |
+            pr-bench.log
+            main-bench.log
+            comparison.log
+            target/criterion/**/report/index.html
+          retention-days: 14
+
+      - name: Detect performance regression
+        run: |
+          if grep -E "Performance has regressed|regressed" comparison.log; then
+            echo "::warning::NPR primitive benchmark regression detected — inspect comparison.log"
+            exit 0  # Warn only, do not fail the PR
+          fi
+          echo "No NPR benchmark regressions detected"
