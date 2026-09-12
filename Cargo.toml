@@ -3,7 +3,7 @@ name = "alice-sdf"
 version = "1.7.7"
 edition = "2021"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
-description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Bridges to alice-codec/physics/asp/cache/font are available via GitHub path dep only in 1.7.4 (scheduled restoration in 1.8.0 once transitive deps publish)."
+description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Bridges to alice-codec/physics/asp/cache/font are available via GitHub path dep only in 1.7.7 (scheduled restoration in 1.8.0 once transitive deps publish)."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ext-sakamoro/ALICE-SDF"
 keywords = ["sdf", "distance-field", "3d", "procedural", "csg"]
@@ -37,14 +37,16 @@ hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
 blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to HLSL body)
 # Bridge features (codec/physics/asp/sdf-cache/font) were removed
-# temporarily for the 1.7.4 crates.io publish because their optional
+# temporarily for the 1.7.7 crates.io publish because their optional
 # path deps (alice-codec/physics/libasp/cache/font) are not yet on
 # crates.io. Users who need the bridges keep using `git`/`path` deps
 # against this repo — the src/*_bridge.rs modules are cfg-gated so
 # they simply don't compile without the features. Scheduled for
 # restoration in 1.8.0 once the transitive dep chain publishes.
-font = []  # Font bridge (alice-font glyph → Sdf2dNode)、path dep 経由で consumer が有効化
-physics = ["dep:alice-physics"]  # Physics bridge (SdfField trait impl + sim_modifier chain) 1.8.0 復帰
+# The `font` empty feature is retained to gate the `text_to_3d_demo`
+# example; enabling it on crates.io does nothing until the
+# corresponding `alice-font` path dep is wired locally.
+font = []  # Font bridge gate — path dep only until 1.8.0
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
@@ -93,15 +95,11 @@ godot = { version = "0.2", optional = true }
 crc32fast = "1.4"
 
 # Bridges (alice-codec / alice-physics / libasp / alice-cache /
-# alice-font) — removed in 1.7.4 for crates.io publish; the bridge
+# alice-font) — removed in 1.7.7 for crates.io publish; the bridge
 # modules live behind #[cfg(feature = "...")] gates that no longer
 # activate. Restore in 1.8.0 once the transitive dep chain is on
 # crates.io. Users who need bridges today can still `path`-dep this
 # repo against the sibling checkouts.
-
-# Physics bridge (optional, path dep only until alice-physics publishes)
-alice-physics = { path = "../ALICE-Physics", optional = true }
-
 
 # FFI support (optional)
 lazy_static = { version = "1.5", optional = true }
@@ -143,7 +141,7 @@ required-features = []
 
 # The `text_to_3d_demo` example imports `alice_font::glyph_dispatcher` and
 # `alice_sdf::font_bridge`; both live behind the `font` feature (which pulls
-# in the `alice-font` path dep — currently disabled for the 1.7.4 crates.io
+# in the `alice-font` path dep — currently disabled for the 1.7.7 crates.io
 # publish per the note above). Gating the example here keeps
 # `cargo check --all-targets` (default features) green.
 [[example]]
@@ -151,7 +149,7 @@ name = "text_to_3d_demo"
 required-features = ["font"]
 
 # Declare the 5 bridge features as known even though the entries are
-# gone from [features] for the 1.7.4 crates.io publish. Without this
+# gone from [features] for the 1.7.7 crates.io publish. Without this
 # `cargo clippy -- -D warnings` and `cargo doc -Dwarnings` fail on
 # `#[cfg(feature = "physics")]` etc. left in src/lib.rs — the code is
 # retained on purpose for the 1.8.0 restoration.
