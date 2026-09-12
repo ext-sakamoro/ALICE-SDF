@@ -49,7 +49,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **距離場ヒートマップ** - 4カラーマップ（coolwarm、binary、viridis、magma）による断面スライス
 - **Shell / Offset Surface** - 内側/外側オフセット制御付き可変厚シェルモディファイア
 - **体積・表面積** - 決定論的PRNGと標準誤差を用いたモンテカルロ推定
-- **ALICE-Fontブリッジ** - フォントグリフ → 2D/3D SDF変換、テキストレイアウト、3D押し出し（`--features font`、crates.io v1.7.4 では一時的に無効化中 — [インストール](#インストール) の注意書き参照、v1.8.0 で復帰予定）
+- **ALICE-Fontブリッジ** - フォントグリフ → 2D/3D SDF変換、テキストレイアウト、3D押し出し（`--features font`、crates.io v1.7.7 リリースには含まれない — [インストール](#インストール) の注意書き参照、v1.8.0 で復帰予定）
 - **自動タイトAABB** - 区間演算＋二分探索によるSDF表面を含む最小バウンディングボックス計算
 - **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
@@ -327,7 +327,7 @@ SdfNode
 
 ## インストール
 
-> **注意 (v1.7.4)** — crates.io では、5 つのブリッジ feature が一時的に無効化されています: `codec` / `physics` / `asp` / `sdf-cache` / `font`。対応する `src/*_bridge.rs` モジュールは `#[cfg(feature = "...")]` で gate されているため、feature 無しでは単にコンパイル対象外になります。ブリッジが必要な場合は、隣接リポジトリ (`ALICE-Codec` / `ALICE-Physics` / `libasp` / `alice-cache` / `alice-font`) への `path`/`git` dep を使い続けてください。transitive dep chain の crates.io 公開が揃い次第、**v1.8.0** で復帰予定。詳細は [CHANGELOG.md](CHANGELOG.md) の `[v1.7.4] - 2026-07-23` エントリ参照。
+> **注意 (v1.7.7、crates.io 初回公開 2026-09-12)** — 5 つのブリッジ feature は現在 `[features]` から削除されています: `codec` / `physics` / `asp` / `sdf-cache` / `font`。対応する `src/*_bridge.rs` モジュールは `#[cfg(feature = "...")]` で gate されているため、crates.io 1.7.7 ではコンパイル対象外になります。ブリッジが必要な場合は、隣接リポジトリ (`ALICE-Codec` / `ALICE-Physics` / `libasp` / `alice-cache` / `alice-font`) への `path`/`git` dep を使い続けてください。transitive dep chain の crates.io 公開が揃い次第、**v1.8.0** で復帰予定。詳細は [CHANGELOG.md](CHANGELOG.md) の `[v1.7.7] - 2026-09-12` エントリを参照 (RUSTSEC-2025-0020 pyo3 と RUSTSEC-2025-0141 bincode のセキュリティ修正、pyo3 `0.23 → 0.29` / bincode `1.3 → 2.0` の major bump を含む)。
 
 ### Rust
 
@@ -736,7 +736,7 @@ let wgsl_source = to_wgsl(&scene);      // WGSL shader に貼り付け
 
 LLMで生成した形状は見た目だけではなく、**物理シミュレーション対応**です。`CompiledSdfField` ラッパーがSDFをO(1)衝突クエリ面として公開するため、凸分解なしで剛体・破壊・流体のインタラクションが可能です。
 
-> **v1.7.4 注意** — `physics` feature は crates.io で一時的に無効化されています。v1.8.0 までは本リポジトリへの `path`/`git` dep で `alice-sdf = { git = "https://github.com/ext-sakamoro/ALICE-SDF", features = ["physics"] }` として利用してください。詳細は [インストール](#インストール) 参照。
+> **v1.7.7 注意** — `physics` feature は crates.io 1.7.7 リリースには含まれません。v1.8.0 までは本リポジトリへの `path`/`git` dep で `alice-sdf = { git = "https://github.com/ext-sakamoro/ALICE-SDF", features = ["physics"] }` として利用してください。詳細は [インストール](#インストール) 参照。
 
 ### クイックスタート
 
