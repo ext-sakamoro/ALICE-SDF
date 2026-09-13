@@ -211,6 +211,35 @@ impl Walker {
                 );
                 self.mix_call(&base_var, &edge_expr, &mask)
             }
+            NprColorNode::Saturate { child, factor } => {
+                let child_expr = self.walk(child, ctx);
+                let child_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&child_var, &child_expr));
+                format!("alice_saturate({child_var}, {})", format_f32(*factor))
+            }
+            NprColorNode::Bloom {
+                child,
+                threshold,
+                intensity,
+            } => {
+                let child_expr = self.walk(child, ctx);
+                let child_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&child_var, &child_expr));
+                format!(
+                    "alice_bloom_toon({child_var}, {}, {})",
+                    format_f32(*threshold),
+                    format_f32(*intensity)
+                )
+            }
+            NprColorNode::PosterizeColor { child, levels } => {
+                let child_expr = self.walk(child, ctx);
+                let child_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&child_var, &child_expr));
+                format!("alice_posterize_color({child_var}, {}.0)", (*levels).max(2))
+            }
         }
     }
 }
@@ -423,6 +452,38 @@ mod tests {
         assert!(snip
             .color_expression
             .contains("vec3<f32>(alice_fresnel_rim(ndv"));
+    }
+
+    #[test]
+    fn saturate_emits_alice_saturate() {
+        let node = NprColorNode::Constant(Vec3::new(0.7, 0.4, 0.2)).saturate(0.5);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip.color_expression.contains("alice_saturate("));
+        assert!(snip.color_expression.contains("0.5"));
+    }
+
+    #[test]
+    fn bloom_emits_alice_bloom_toon() {
+        let node = NprColorNode::Constant(Vec3::new(0.9, 0.9, 0.9)).bloom(0.5, 1.0);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
+        assert!(snip.color_expression.contains("alice_bloom_toon("));
+        assert!(snip.color_expression.contains("0.500000, 1.0"));
+    }
+
+    #[test]
+    fn posterize_emits_alice_posterize_color() {
+        let node = NprColorNode::Constant(Vec3::new(0.25, 0.5, 0.75)).posterize(4);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Hlsl, ctx());
+        assert!(snip.color_expression.contains("alice_posterize_color("));
+        assert!(snip.color_expression.contains("4.0"));
+    }
+
+    #[test]
+    fn posterize_clamps_low_levels_in_shader() {
+        let node = NprColorNode::Constant(Vec3::ZERO).posterize(1);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        // levels < 2 clamped to 2
+        assert!(snip.color_expression.contains("2.0"));
     }
 
     #[test]

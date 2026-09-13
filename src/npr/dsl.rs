@@ -17,8 +17,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::npr::composition::bloom_toon;
 use crate::npr::outline::composite_outline;
-use crate::npr::toon::{soft_toon_ramp, toon_ramp, two_tone};
+use crate::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp, two_tone};
 use crate::npr::NprColor;
 use glam::Vec3;
 
@@ -127,6 +128,33 @@ pub enum NprColorNode {
         /// Fresnel exponent (higher = tighter rim)
         power: f32,
     },
+    /// Adjust saturation of a subtree by blending toward luminance grey
+    ///
+    /// `factor == 0` collapses the colour to greyscale, `factor == 1` keeps
+    /// the original saturation, `factor > 1` over-saturates.
+    Saturate {
+        /// Subtree whose saturation is adjusted
+        child: Box<NprColorNode>,
+        /// Saturation blend factor
+        factor: f32,
+    },
+    /// Toon-style bloom: pass a subtree's colour through only when its
+    /// brightest channel exceeds `threshold`, then scale by `intensity`
+    Bloom {
+        /// Subtree evaluated for the source colour
+        child: Box<NprColorNode>,
+        /// Threshold on the maximum channel
+        threshold: f32,
+        /// Multiplier applied to the passing colour
+        intensity: f32,
+    },
+    /// Posterise a subtree's colour into `levels` discrete steps per channel
+    PosterizeColor {
+        /// Subtree evaluated for the source colour
+        child: Box<NprColorNode>,
+        /// Number of discrete levels per channel (>= 2)
+        levels: u32,
+    },
 }
 
 impl NprColorNode {
@@ -173,6 +201,19 @@ impl NprColorNode {
                 let ndv = ctx.n_dot_v();
                 let fresnel = (1.0 - ndv.clamp(0.0, 1.0)).max(0.0).powf(power.max(0.0));
                 base_color.lerp(*edge, fresnel.clamp(0.0, 1.0))
+            }
+            Self::Saturate { child, factor } => {
+                let color = child.eval(ctx);
+                let lum = color.dot(Vec3::new(0.2126, 0.7152, 0.0722));
+                Vec3::splat(lum).lerp(color, *factor)
+            }
+            Self::Bloom {
+                child,
+                threshold,
+                intensity,
+            } => bloom_toon(child.eval(ctx), *threshold, *intensity),
+            Self::PosterizeColor { child, levels } => {
+                posterize_color(child.eval(ctx), (*levels).max(2))
             }
         }
     }
@@ -221,6 +262,34 @@ impl NprColorNode {
             base: Box::new(self),
             edge,
             power,
+        }
+    }
+
+    /// Builder helper: adjust saturation by blending toward luminance grey
+    #[must_use]
+    pub fn saturate(self, factor: f32) -> Self {
+        Self::Saturate {
+            child: Box::new(self),
+            factor,
+        }
+    }
+
+    /// Builder helper: pass through only bright pixels for a bloom pass
+    #[must_use]
+    pub fn bloom(self, threshold: f32, intensity: f32) -> Self {
+        Self::Bloom {
+            child: Box::new(self),
+            threshold,
+            intensity,
+        }
+    }
+
+    /// Builder helper: posterise into `levels` discrete steps per channel
+    #[must_use]
+    pub fn posterize(self, levels: u32) -> Self {
+        Self::PosterizeColor {
+            child: Box::new(self),
+            levels: levels.max(2),
         }
     }
 }
@@ -354,6 +423,61 @@ mod tests {
         let node = base.with_fresnel(Vec3::ONE, 2.0);
         let c = node.eval(&ctx);
         assert!((c - Vec3::ONE).length() < 1e-4);
+    }
+
+    #[test]
+    fn saturate_zero_returns_grey() {
+        let color = Vec3::new(1.0, 0.0, 0.0);
+        let node = NprColorNode::Constant(color).saturate(0.0);
+        let c = node.eval(&lit_context());
+        // Red channel weight is 0.2126, so grey = 0.2126
+        let expected = Vec3::splat(0.2126);
+        assert!(
+            (c - expected).length() < 1e-4,
+            "expected grey ~ {expected:?}, got {c:?}"
+        );
+    }
+
+    #[test]
+    fn saturate_one_returns_original() {
+        let color = Vec3::new(0.7, 0.4, 0.2);
+        let node = NprColorNode::Constant(color).saturate(1.0);
+        let c = node.eval(&lit_context());
+        assert!((c - color).length() < 1e-4);
+    }
+
+    #[test]
+    fn bloom_passes_bright_colors() {
+        let color = Vec3::new(0.9, 0.9, 0.9);
+        let node = NprColorNode::Constant(color).bloom(0.5, 0.5);
+        let c = node.eval(&lit_context());
+        assert!((c - color * 0.5).length() < 1e-4);
+    }
+
+    #[test]
+    fn bloom_rejects_dim_colors() {
+        let color = Vec3::new(0.3, 0.3, 0.3);
+        let node = NprColorNode::Constant(color).bloom(0.5, 1.0);
+        let c = node.eval(&lit_context());
+        assert!((c - Vec3::ZERO).length() < 1e-4);
+    }
+
+    #[test]
+    fn posterize_reduces_levels() {
+        let node = NprColorNode::Constant(Vec3::new(0.25, 0.5, 0.75)).posterize(2);
+        let c = node.eval(&lit_context());
+        // 2-level posterize -> binary per channel
+        for ch in [c.x, c.y, c.z] {
+            assert!(ch == 0.0 || ch == 1.0, "expected binary, got {ch}");
+        }
+    }
+
+    #[test]
+    fn posterize_clamps_low_levels() {
+        // levels < 2 clamped to 2, so 1 should behave same as 2
+        let a = NprColorNode::Constant(Vec3::new(0.6, 0.6, 0.6)).posterize(1);
+        let b = NprColorNode::Constant(Vec3::new(0.6, 0.6, 0.6)).posterize(2);
+        assert!((a.eval(&lit_context()) - b.eval(&lit_context())).length() < 1e-4);
     }
 
     #[test]

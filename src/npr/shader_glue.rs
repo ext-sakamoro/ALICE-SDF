@@ -139,6 +139,12 @@ float alice_sun_disc(vec3 view, vec3 to_sun, float radius, float softness) {
     float denom = max(cos_inner - cos_outer, 1e-6);
     return clamp((cos_theta - cos_outer) / denom, 0.0, 1.0);
 }
+
+vec3 alice_saturate(vec3 color, float factor) {
+    float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    vec3 grey = vec3(lum);
+    return mix(grey, color, factor);
+}
 "#;
 
 // ============================================================================
@@ -267,6 +273,12 @@ fn alice_sun_disc(view: vec3<f32>, to_sun: vec3<f32>, radius: f32, softness: f32
     let denom = max(cos_inner - cos_outer, 1e-6);
     return clamp((cos_theta - cos_outer) / denom, 0.0, 1.0);
 }
+
+fn alice_saturate(color: vec3<f32>, factor: f32) -> vec3<f32> {
+    let lum = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let grey = vec3<f32>(lum, lum, lum);
+    return mix(grey, color, vec3<f32>(factor));
+}
 "#;
 
 // ============================================================================
@@ -389,6 +401,12 @@ float alice_sun_disc(float3 view, float3 to_sun, float radius, float softness) {
     if (cos_theta <= cos_outer) return 0.0;
     float denom = max(cos_inner - cos_outer, 1e-6);
     return clamp((cos_theta - cos_outer) / denom, 0.0, 1.0);
+}
+
+float3 alice_saturate(float3 color, float factor) {
+    float lum = dot(color, float3(0.2126, 0.7152, 0.0722));
+    float3 grey = float3(lum, lum, lum);
+    return lerp(grey, color, factor);
 }
 "#;
 
@@ -587,6 +605,7 @@ mod tests {
             "alice_light_shaft_beam",
             "alice_impact_flash",
             "alice_sun_disc",
+            "alice_saturate",
         ] {
             assert!(
                 NPR_GLSL_HELPERS.contains(name),
