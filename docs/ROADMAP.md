@@ -54,10 +54,10 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 | P12-A | ✅ | `e36d82a` | Time context: `NprColorContext.time` / `NprShaderContext.time` + `iTime` uniform + `TimeCycle` palette source |
 | P12-B | ✅ | `76c0232` | `v1.7.7 → v1.8.0` release cut + CHANGELOG polish |
 | P12-C | ✅ | `18c84da` | `CompiledColorPipeline` stack machine — 5 native opcodes + `Fallback` tree eval delegation + bench |
-| P12-D | ✅ | pending | Native opcode coverage extended to all 17 current `NprColorNode` variants (`Multiply` / `Add` / `OutlineOver` / `Fresnel` / `Saturate` / `Bloom` / `PosterizeColor` / `Vignette` / `Palette3` / `Palette5` / `Hatch` / `Tonemap` / `SpeedLine`); `Fallback` retained as forward-compat seam only. Deep-composition bench: 32.5 ns compiled vs 18.8 ns tree (~1.73× on 6-level tree, down from ~5-6× on shallow) |
+| P12-D | ✅ | `d7f30cf` | Native opcode coverage extended to all 17 current `NprColorNode` variants (`Multiply` / `Add` / `OutlineOver` / `Fresnel` / `Saturate` / `Bloom` / `PosterizeColor` / `Vignette` / `Palette3` / `Palette5` / `Hatch` / `Tonemap` / `SpeedLine`); `Fallback` retained as forward-compat seam only. Deep-composition bench: 32.5 ns compiled vs 18.8 ns tree (~1.73× on 6-level tree, down from ~5-6× on shallow) |
+| P13 | ✅ | pending | 8-lane SIMD batch evaluator (`wide::f32x8`, SoA `NprColorBatch8` + `NprBatchContext8`, `CompiledColorPipeline::eval_batch8`). 14 opcodes SIMD-native; 3 (`Fresnel` / `SpeedLine` / `Palette5`) fall back to per-lane scalar over the SoA batch. Deep 6-level composition: **11.4 ns/lane batched** vs 18.2 ns tree — first regime where the compiled pipeline beats tree eval outright |
 
 ### Post-1.8.0 candidates
-| P13 | ⏳ | SIMD batch evaluator (`wide::f32x8` or `packed_simd`) — amortise bytecode fetch across 8-lane RGB batches, close the current tree-eval gap (~5-6× on `toon`) and start delivering on the bytecode payoff pattern |
 | P14 | ⏳ | GPU-side bytecode serialisation — emit `ColorOp` stream into a uniform / storage buffer that the shader interpreter walks, enabling arbitrary DSL trees without per-tree shader recompile |
 | P15 | ⏳ | Bridge dep restoration — re-add `alice-codec` / `alice-physics` / `alice-cache` / `alice-font` / `alice-asp` once each is on crates.io. Corresponding features (`codec` / `physics` / `asp` / `sdf-cache` / `font`) return to `[features]` |
 

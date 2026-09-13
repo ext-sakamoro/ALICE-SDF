@@ -336,7 +336,9 @@ pub mod prelude {
         gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig,
     };
     pub use crate::modifiers::*;
-    pub use crate::npr::compiled_color::{ColorOp, CompiledColorPipeline};
+    pub use crate::npr::compiled_color::{
+        ColorOp, CompiledColorPipeline, NprBatchContext8, NprColorBatch8,
+    };
     pub use crate::npr::composition::{bloom_toon, chromatic_offsets, vignette};
     pub use crate::npr::distortion::{hand_drawn_jitter, line_boil, sketch_wobble};
     pub use crate::npr::dsl::{NprColorContext, NprColorNode, PaletteSource};

@@ -230,6 +230,21 @@ fn bench_color_pipeline(c: &mut Criterion) {
     group.bench_function("deep_composition_compiled_eval", |b| {
         b.iter(|| compiled_deep.eval(black_box(&ctx)));
     });
+
+    // Phase 13 — SIMD batch evaluator: bench the 8-lane batched path.
+    // The reported per-iter time is the cost of one 8-lane call; a rough
+    // per-lane figure is `time / 8`.
+    let ctxs_8 = [ctx; 8];
+    let batch = NprBatchContext8::from_contexts(&ctxs_8);
+    group.bench_function("toon_batch8_eval", |b| {
+        b.iter(|| compiled_toon.eval_batch8(black_box(&batch)));
+    });
+    group.bench_function("toon_with_outline_batch8_eval", |b| {
+        b.iter(|| compiled_composed.eval_batch8(black_box(&batch)));
+    });
+    group.bench_function("deep_composition_batch8_eval", |b| {
+        b.iter(|| compiled_deep.eval_batch8(black_box(&batch)));
+    });
     group.finish();
 }
 

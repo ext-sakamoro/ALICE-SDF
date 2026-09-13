@@ -9,12 +9,30 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ### Added
 
 - **Phase 12-D** — `CompiledColorPipeline` native opcode coverage extended to all 17 current `NprColorNode` variants. New `ColorOp` variants: `Multiply` / `Add` / `OutlineOver` / `Fresnel` / `Saturate` / `Bloom` / `PosterizeColor` / `Vignette` / `Palette3` / `Palette5` / `Hatch` / `Tonemap` / `SpeedLine`. A well-formed pipeline compiled from any current DSL surface now contains zero `Fallback` opcodes; the `Fallback` opcode is preserved as a forward-compat seam for future variants.
-- Benchmarks: `bench_color_pipeline` gains `deep_composition_eval` / `deep_composition_compiled_eval` (6-level composition touching `Toon` + `OutlineOver` + `Fresnel` + `Vignette` + `Saturate` + `Tonemap`) so the tree-vs-compiled gap on deeper trees is monitored.
-- Tests: `npr::compiled_color::tests` gains 16 native-opcode coverage tests plus `all_current_variants_compile_without_fallback` regression guard asserting `fallback_op_count() == 0` for every current variant.
+- **Phase 13** — 8-lane SIMD batch evaluator via `wide::f32x8`. New public API:
+  - `npr::compiled_color::NprColorBatch8` — SoA 8-lane RGB colour batch with `splat` / `from_vec3s` / `to_vec3s` / `lerp` / `scale` / `mul_componentwise` / `add_vec3x8` / `dot_scalar` / `max_channel`
+  - `npr::compiled_color::NprBatchContext8` — SoA 8-lane shading context (derived scalars only: `n_dot_l` / `n_dot_v` / `sdf` / `uv_x` / `uv_y` / `time`), built from `[NprColorContext; 8]` via `from_contexts`
+  - `CompiledColorPipeline::eval_batch8(&NprBatchContext8) -> NprColorBatch8` — evaluates the same bytecode across 8 lanes in parallel
+  - SIMD-native path for 14 opcodes (`PushConstant` / `Toon` / `SoftToon` / `TwoTone` / `Multiply` / `Add` / `Scale` / `OutlineOver` / `Saturate` / `Bloom` / `PosterizeColor` / `Vignette` / `Palette3` / `Hatch` / `Tonemap`); per-lane scalar over the SoA batch for the remaining 3 (`Fresnel` uses `powf`, `SpeedLine` uses `atan2`, `Palette5` walks a 4-segment palette).
+- Benchmarks: `bench_color_pipeline` gains `deep_composition_eval` / `deep_composition_compiled_eval` (6-level composition touching `Toon` + `OutlineOver` + `Fresnel` + `Vignette` + `Saturate` + `Tonemap`) plus P13's `toon_batch8_eval` / `toon_with_outline_batch8_eval` / `deep_composition_batch8_eval` per-call figures.
+- Tests: `npr::compiled_color::tests` gains 16 native-opcode coverage tests plus `all_current_variants_compile_without_fallback` regression guard, and 19 batched tests (`vec3x8_from_vec3s_roundtrip` + `batch_matches_scalar_for_*` for every current variant + full-variant composition regression) asserting `eval_batch8` == 8 x `eval` per lane.
 
 ### Changed
 
 - `npr::dsl::palette_source_scalar` promoted to `pub(crate)` so `compiled_color::ColorOp::{Palette3, Palette5}` can share the tree-eval scalar-source semantics.
+- `prelude` re-exports `NprBatchContext8` and `NprColorBatch8` from `npr::compiled_color`.
+
+### Performance (Apple Silicon, Phase 13)
+
+Per-lane cost of the batched path (total time / 8):
+
+| Pipeline | Tree eval (scalar) | Compiled scalar | Batch8 per-lane | Batch8 vs tree |
+|----------|--------------------|-----------------|-----------------|----------------|
+| `toon` shallow | 4.98 ns | 21.3 ns | 5.2 ns | ~1.04× (parity) |
+| `toon` + outline | ~5.0 ns | 21.7 ns | 5.5 ns | ~1.10× |
+| Deep 6-level composition | 18.2 ns | 28.9 ns | **11.4 ns** | **0.63×** |
+
+The deep-composition case is the first regime where the compiled pipeline beats the tree walker outright. Shallow `toon` remains parity because opcode-fetch overhead dominates trivial arithmetic.
 
 ## [v1.8.0] - 2026-09-13
 
