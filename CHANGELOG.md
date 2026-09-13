@@ -8,6 +8,16 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Added
 
+- **Phase 14** — GPU bytecode serialisation and WGSL evaluator emitter. New public API:
+  - `npr::compiled_color::gpu_opcode_tag` — stable `u32` tag constants for all 17 native opcodes (public so the WGSL evaluator's constants stay in lockstep with Rust)
+  - `npr::compiled_color::gpu_palette_source_tag` — stable `u32` tag constants for `PaletteSource`
+  - `npr::compiled_color::GpuColorProgram` — upload-ready flat `[u32]` bytecode stream with `as_words` / `byte_len` / `deserialize` (round-trip check that decodes the stream back into a `CompiledColorPipeline`)
+  - `npr::compiled_color::SerializeError` / `DeserializeError` — non-panicking error surface (`Fallback` rejected up front; unknown opcode / truncated payload / unknown palette source detected on decode)
+  - `npr::compiled_color::opcode_word_count` — payload-word count lookup keyed by opcode tag
+  - `CompiledColorPipeline::serialize() -> Result<GpuColorProgram, SerializeError>` — encode the CPU-side opcode stream into a GPU-uploadable buffer
+  - `npr::compiled_color::emit_wgsl_bytecode_evaluator() -> String` — canonical WGSL source that defines `AliceNprBytecodeCtx` + `alice_npr_eval_bytecode(program_len, ctx) -> vec3<f32>` (stack depth 32). The caller supplies `fn alice_npr_load(index: u32) -> u32`, decoupling the evaluator from any specific bind-group layout and avoiding the `unrestricted_pointer_parameters` WGSL extension.
+- Round-trip tests: `serialize_all_native_variants_roundtrip` covers every native opcode; `serialize_deep_composition_roundtrip` covers a nine-level composition tree. Encode → decode → scalar `eval` matches the original pipeline lane-for-lane.
+- Naga validation tests (new `tests/npr_bytecode_wgsl_validate.rs`): the emitted evaluator wrapped in a minimal fragment-shader entry point parses (`naga::front::wgsl::parse_str`) and passes full semantic validation (`naga::valid::Validator` with `ValidationFlags::all()`).
 - **Phase 12-D** — `CompiledColorPipeline` native opcode coverage extended to all 17 current `NprColorNode` variants. New `ColorOp` variants: `Multiply` / `Add` / `OutlineOver` / `Fresnel` / `Saturate` / `Bloom` / `PosterizeColor` / `Vignette` / `Palette3` / `Palette5` / `Hatch` / `Tonemap` / `SpeedLine`. A well-formed pipeline compiled from any current DSL surface now contains zero `Fallback` opcodes; the `Fallback` opcode is preserved as a forward-compat seam for future variants.
 - **Phase 13** — 8-lane SIMD batch evaluator via `wide::f32x8`. New public API:
   - `npr::compiled_color::NprColorBatch8` — SoA 8-lane RGB colour batch with `splat` / `from_vec3s` / `to_vec3s` / `lerp` / `scale` / `mul_componentwise` / `add_vec3x8` / `dot_scalar` / `max_channel`

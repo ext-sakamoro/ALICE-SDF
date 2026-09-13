@@ -1179,6 +1179,985 @@ fn fallback_reconstruct_ctx(batch: &NprBatchContext8, lane: usize) -> NprColorCo
     }
 }
 
+// =====================================================================
+// Phase 14 — GPU bytecode serialisation
+// =====================================================================
+//
+// `CompiledColorPipeline::serialize` encodes the opcode stream into a
+// `Vec<u32>` bytecode that a shader-side stack machine can execute.
+// The GPU cannot call back into the CPU tree walker, so pipelines that
+// still contain [`ColorOp::Fallback`] are rejected up front.
+// Well-formed pipelines produced by [`CompiledColorPipeline::compile`]
+// on today's DSL surface (Phase 12-D onward) never contain `Fallback`.
+//
+// Layout: a flat `[u32]` stream where each instruction is
+// `[tag, ..payload_words]`. Payloads store `f32` and `Vec3` values via
+// `to_bits` / `from_bits`, `u32` values directly, and `PaletteSource`
+// as a small `u32` tag. Instruction sizes are fixed per opcode tag; see
+// [`GPU_OPCODE_TAG`] for the tag numbering and [`opcode_word_count`]
+// for the exact word count consumed after the tag.
+
+/// Opcode tag values used by the GPU bytecode format
+///
+/// Kept in a dedicated `mod` so the WGSL evaluator generator can emit
+/// matching constants. Values are stable across releases; adding a new
+/// variant must append to the end of the range.
+pub mod gpu_opcode_tag {
+    /// PushConstant(Vec3) — 3 payload words
+    pub const PUSH_CONSTANT: u32 = 0;
+    /// Toon { bands } — 1 payload word
+    pub const TOON: u32 = 1;
+    /// SoftToon { bands, smoothness } — 2 payload words
+    pub const SOFT_TOON: u32 = 2;
+    /// TwoTone { threshold } — 1 payload word
+    pub const TWO_TONE: u32 = 3;
+    /// Multiply — 0 payload words
+    pub const MULTIPLY: u32 = 4;
+    /// Add — 0 payload words
+    pub const ADD: u32 = 5;
+    /// Scale { factor } — 1 payload word
+    pub const SCALE: u32 = 6;
+    /// OutlineOver { outline, alpha } — 4 payload words
+    pub const OUTLINE_OVER: u32 = 7;
+    /// Fresnel { edge, power } — 4 payload words
+    pub const FRESNEL: u32 = 8;
+    /// Saturate { factor } — 1 payload word
+    pub const SATURATE: u32 = 9;
+    /// Bloom { threshold, intensity } — 2 payload words
+    pub const BLOOM: u32 = 10;
+    /// PosterizeColor { levels } — 1 payload word
+    pub const POSTERIZE_COLOR: u32 = 11;
+    /// Vignette { radius, softness } — 2 payload words
+    pub const VIGNETTE: u32 = 12;
+    /// Palette3 { source, c0, c1, c2 } — 10 payload words
+    pub const PALETTE3: u32 = 13;
+    /// Palette5 { source, c0..c4 } — 16 payload words
+    pub const PALETTE5: u32 = 14;
+    /// Hatch { angle_rad, density, thickness, ink } — 6 payload words
+    pub const HATCH: u32 = 15;
+    /// Tonemap { exposure } — 1 payload word
+    pub const TONEMAP: u32 = 16;
+    /// SpeedLine { focus, count, thickness, ink } — 7 payload words
+    pub const SPEED_LINE: u32 = 17;
+}
+
+/// Tag values for [`PaletteSource`] in the GPU bytecode
+pub mod gpu_palette_source_tag {
+    /// `PaletteSource::NDotL`
+    pub const N_DOT_L: u32 = 0;
+    /// `PaletteSource::NDotV`
+    pub const N_DOT_V: u32 = 1;
+    /// `PaletteSource::Sdf`
+    pub const SDF: u32 = 2;
+    /// `PaletteSource::UvY`
+    pub const UV_Y: u32 = 3;
+    /// `PaletteSource::TimeCycle`
+    pub const TIME_CYCLE: u32 = 4;
+}
+
+/// Errors returned by [`CompiledColorPipeline::serialize`]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SerializeError {
+    /// The pipeline contains a [`ColorOp::Fallback`] opcode, which
+    /// cannot be executed on the GPU (the shader has no way to call
+    /// back into the CPU tree walker).
+    UnsupportedFallback {
+        /// Zero-based instruction index of the first Fallback encountered
+        instruction_index: usize,
+    },
+}
+
+impl core::fmt::Display for SerializeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnsupportedFallback { instruction_index } => write!(
+                f,
+                "GPU serialisation not supported: pipeline contains \
+                 ColorOp::Fallback at instruction {instruction_index}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SerializeError {}
+
+/// Errors returned by [`GpuColorProgram::deserialize`]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeserializeError {
+    /// Unknown opcode tag encountered at the given word offset
+    UnknownOpcode {
+        /// Word offset in the input `[u32]` stream
+        word_offset: usize,
+        /// The unknown tag that was read
+        tag: u32,
+    },
+    /// The stream ended mid-instruction (payload words missing)
+    Truncated {
+        /// Word offset where the truncation was detected
+        word_offset: usize,
+        /// Number of payload words expected after the tag
+        expected_payload: usize,
+    },
+    /// Unknown palette-source tag in a `Palette3` / `Palette5` opcode
+    UnknownPaletteSource {
+        /// Word offset in the input stream
+        word_offset: usize,
+        /// The unknown tag that was read
+        tag: u32,
+    },
+}
+
+impl core::fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnknownOpcode { word_offset, tag } => write!(
+                f,
+                "unknown GPU bytecode opcode tag {tag} at word offset {word_offset}"
+            ),
+            Self::Truncated {
+                word_offset,
+                expected_payload,
+            } => write!(
+                f,
+                "GPU bytecode truncated at word offset {word_offset}: \
+                 expected {expected_payload} payload words"
+            ),
+            Self::UnknownPaletteSource { word_offset, tag } => write!(
+                f,
+                "unknown PaletteSource tag {tag} at word offset {word_offset}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DeserializeError {}
+
+/// GPU-side bytecode program derived from a [`CompiledColorPipeline`]
+///
+/// The `words` buffer is the flat `[u32]` stream described in the
+/// module header. Upload as a uniform or storage buffer and dispatch
+/// against the WGSL evaluator emitted by
+/// [`emit_wgsl_bytecode_evaluator`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GpuColorProgram {
+    /// The instruction stream, one `[tag, ..payload]` block per opcode
+    pub words: Vec<u32>,
+}
+
+impl GpuColorProgram {
+    /// The full stream as a `&[u32]` slice (upload-ready)
+    #[must_use]
+    pub fn as_words(&self) -> &[u32] {
+        &self.words
+    }
+
+    /// Total byte length of the stream (`words.len() * 4`)
+    #[must_use]
+    pub fn byte_len(&self) -> usize {
+        self.words.len() * core::mem::size_of::<u32>()
+    }
+
+    /// Decode a bytecode stream back into a [`CompiledColorPipeline`]
+    ///
+    /// Provided as a round-trip check: `pipeline.serialize()?.deserialize()?`
+    /// evaluates identically to the original pipeline. `Fallback` cannot
+    /// appear in a valid stream (it is rejected at serialisation time).
+    ///
+    /// # Errors
+    /// Returns [`DeserializeError`] on unknown opcode tag, truncated
+    /// payload, or unknown `PaletteSource` tag.
+    pub fn deserialize(&self) -> Result<CompiledColorPipeline, DeserializeError> {
+        let mut ops = Vec::new();
+        let mut pc = 0usize;
+        while pc < self.words.len() {
+            let tag = self.words[pc];
+            pc += 1;
+            let (op, consumed) = decode_opcode(tag, &self.words, pc)?;
+            pc += consumed;
+            ops.push(op);
+        }
+        Ok(CompiledColorPipeline { ops })
+    }
+}
+
+/// Payload word count consumed *after* the tag word for a given opcode
+///
+/// The tag itself is not included. Total instruction size is
+/// `1 + opcode_word_count(tag)?`.
+///
+/// Returns `None` for unknown tags.
+#[must_use]
+pub fn opcode_word_count(tag: u32) -> Option<usize> {
+    use gpu_opcode_tag as t;
+    let n = match tag {
+        t::PUSH_CONSTANT => 3,
+        t::TOON => 1,
+        t::SOFT_TOON => 2,
+        t::TWO_TONE => 1,
+        t::MULTIPLY | t::ADD => 0,
+        t::SCALE => 1,
+        t::OUTLINE_OVER => 4,
+        t::FRESNEL => 4,
+        t::SATURATE => 1,
+        t::BLOOM => 2,
+        t::POSTERIZE_COLOR => 1,
+        t::VIGNETTE => 2,
+        t::PALETTE3 => 10,
+        t::PALETTE5 => 16,
+        t::HATCH => 6,
+        t::TONEMAP => 1,
+        t::SPEED_LINE => 7,
+        _ => return None,
+    };
+    Some(n)
+}
+
+fn palette_source_to_tag(src: PaletteSource) -> u32 {
+    use gpu_palette_source_tag as g;
+    match src {
+        PaletteSource::NDotL => g::N_DOT_L,
+        PaletteSource::NDotV => g::N_DOT_V,
+        PaletteSource::Sdf => g::SDF,
+        PaletteSource::UvY => g::UV_Y,
+        PaletteSource::TimeCycle => g::TIME_CYCLE,
+    }
+}
+
+fn palette_source_from_tag(
+    tag: u32,
+    word_offset: usize,
+) -> Result<PaletteSource, DeserializeError> {
+    use gpu_palette_source_tag as g;
+    match tag {
+        g::N_DOT_L => Ok(PaletteSource::NDotL),
+        g::N_DOT_V => Ok(PaletteSource::NDotV),
+        g::SDF => Ok(PaletteSource::Sdf),
+        g::UV_Y => Ok(PaletteSource::UvY),
+        g::TIME_CYCLE => Ok(PaletteSource::TimeCycle),
+        _ => Err(DeserializeError::UnknownPaletteSource { word_offset, tag }),
+    }
+}
+
+#[inline]
+fn push_f32(words: &mut Vec<u32>, v: f32) {
+    words.push(v.to_bits());
+}
+
+#[inline]
+fn push_vec3(words: &mut Vec<u32>, v: Vec3) {
+    words.push(v.x.to_bits());
+    words.push(v.y.to_bits());
+    words.push(v.z.to_bits());
+}
+
+#[inline]
+fn read_f32(words: &[u32], offset: usize) -> f32 {
+    f32::from_bits(words[offset])
+}
+
+#[inline]
+fn read_vec3(words: &[u32], offset: usize) -> Vec3 {
+    Vec3::new(
+        f32::from_bits(words[offset]),
+        f32::from_bits(words[offset + 1]),
+        f32::from_bits(words[offset + 2]),
+    )
+}
+
+fn decode_opcode(
+    tag: u32,
+    words: &[u32],
+    payload_start: usize,
+) -> Result<(ColorOp, usize), DeserializeError> {
+    use gpu_opcode_tag as t;
+    let expected = opcode_word_count(tag).ok_or(DeserializeError::UnknownOpcode {
+        word_offset: payload_start - 1,
+        tag,
+    })?;
+    if payload_start + expected > words.len() {
+        return Err(DeserializeError::Truncated {
+            word_offset: payload_start - 1,
+            expected_payload: expected,
+        });
+    }
+    let op = match tag {
+        t::PUSH_CONSTANT => ColorOp::PushConstant(read_vec3(words, payload_start)),
+        t::TOON => ColorOp::Toon {
+            bands: words[payload_start],
+        },
+        t::SOFT_TOON => ColorOp::SoftToon {
+            bands: words[payload_start],
+            smoothness: read_f32(words, payload_start + 1),
+        },
+        t::TWO_TONE => ColorOp::TwoTone {
+            threshold: read_f32(words, payload_start),
+        },
+        t::MULTIPLY => ColorOp::Multiply,
+        t::ADD => ColorOp::Add,
+        t::SCALE => ColorOp::Scale {
+            factor: read_f32(words, payload_start),
+        },
+        t::OUTLINE_OVER => ColorOp::OutlineOver {
+            outline: read_vec3(words, payload_start),
+            alpha: read_f32(words, payload_start + 3),
+        },
+        t::FRESNEL => ColorOp::Fresnel {
+            edge: read_vec3(words, payload_start),
+            power: read_f32(words, payload_start + 3),
+        },
+        t::SATURATE => ColorOp::Saturate {
+            factor: read_f32(words, payload_start),
+        },
+        t::BLOOM => ColorOp::Bloom {
+            threshold: read_f32(words, payload_start),
+            intensity: read_f32(words, payload_start + 1),
+        },
+        t::POSTERIZE_COLOR => ColorOp::PosterizeColor {
+            levels: words[payload_start],
+        },
+        t::VIGNETTE => ColorOp::Vignette {
+            radius: read_f32(words, payload_start),
+            softness: read_f32(words, payload_start + 1),
+        },
+        t::PALETTE3 => ColorOp::Palette3 {
+            source: palette_source_from_tag(words[payload_start], payload_start)?,
+            c0: read_vec3(words, payload_start + 1),
+            c1: read_vec3(words, payload_start + 4),
+            c2: read_vec3(words, payload_start + 7),
+        },
+        t::PALETTE5 => ColorOp::Palette5 {
+            source: palette_source_from_tag(words[payload_start], payload_start)?,
+            c0: read_vec3(words, payload_start + 1),
+            c1: read_vec3(words, payload_start + 4),
+            c2: read_vec3(words, payload_start + 7),
+            c3: read_vec3(words, payload_start + 10),
+            c4: read_vec3(words, payload_start + 13),
+        },
+        t::HATCH => ColorOp::Hatch {
+            angle_rad: read_f32(words, payload_start),
+            density: read_f32(words, payload_start + 1),
+            thickness: read_f32(words, payload_start + 2),
+            ink: read_vec3(words, payload_start + 3),
+        },
+        t::TONEMAP => ColorOp::Tonemap {
+            exposure: read_f32(words, payload_start),
+        },
+        t::SPEED_LINE => ColorOp::SpeedLine {
+            focus: Vec2::new(
+                read_f32(words, payload_start),
+                read_f32(words, payload_start + 1),
+            ),
+            count: words[payload_start + 2],
+            thickness: read_f32(words, payload_start + 3),
+            ink: read_vec3(words, payload_start + 4),
+        },
+        // opcode_word_count above already returned None for unknown tags,
+        // so this arm is unreachable in practice.
+        _ => {
+            return Err(DeserializeError::UnknownOpcode {
+                word_offset: payload_start - 1,
+                tag,
+            })
+        }
+    };
+    Ok((op, expected))
+}
+
+impl CompiledColorPipeline {
+    /// Serialise the opcode stream into a GPU-uploadable [`GpuColorProgram`]
+    ///
+    /// The resulting `Vec<u32>` is a flat instruction stream in the format
+    /// documented in this module's header. Upload the buffer via `wgpu` /
+    /// `naga` and dispatch against the WGSL evaluator returned by
+    /// [`emit_wgsl_bytecode_evaluator`].
+    ///
+    /// # Errors
+    /// Returns [`SerializeError::UnsupportedFallback`] if the pipeline
+    /// contains a [`ColorOp::Fallback`] opcode. Well-formed pipelines
+    /// produced by [`Self::compile`] on the Phase 12-D+ DSL surface
+    /// never contain `Fallback`, so this is only reachable if a caller
+    /// hand-builds a pipeline that wraps a future DSL variant.
+    pub fn serialize(&self) -> Result<GpuColorProgram, SerializeError> {
+        use gpu_opcode_tag as t;
+        let mut words: Vec<u32> = Vec::with_capacity(self.ops.len() * 4);
+        for (i, op) in self.ops.iter().enumerate() {
+            match op {
+                ColorOp::PushConstant(c) => {
+                    words.push(t::PUSH_CONSTANT);
+                    push_vec3(&mut words, *c);
+                }
+                ColorOp::Toon { bands } => {
+                    words.push(t::TOON);
+                    words.push(*bands);
+                }
+                ColorOp::SoftToon { bands, smoothness } => {
+                    words.push(t::SOFT_TOON);
+                    words.push(*bands);
+                    push_f32(&mut words, *smoothness);
+                }
+                ColorOp::TwoTone { threshold } => {
+                    words.push(t::TWO_TONE);
+                    push_f32(&mut words, *threshold);
+                }
+                ColorOp::Multiply => words.push(t::MULTIPLY),
+                ColorOp::Add => words.push(t::ADD),
+                ColorOp::Scale { factor } => {
+                    words.push(t::SCALE);
+                    push_f32(&mut words, *factor);
+                }
+                ColorOp::OutlineOver { outline, alpha } => {
+                    words.push(t::OUTLINE_OVER);
+                    push_vec3(&mut words, *outline);
+                    push_f32(&mut words, *alpha);
+                }
+                ColorOp::Fresnel { edge, power } => {
+                    words.push(t::FRESNEL);
+                    push_vec3(&mut words, *edge);
+                    push_f32(&mut words, *power);
+                }
+                ColorOp::Saturate { factor } => {
+                    words.push(t::SATURATE);
+                    push_f32(&mut words, *factor);
+                }
+                ColorOp::Bloom {
+                    threshold,
+                    intensity,
+                } => {
+                    words.push(t::BLOOM);
+                    push_f32(&mut words, *threshold);
+                    push_f32(&mut words, *intensity);
+                }
+                ColorOp::PosterizeColor { levels } => {
+                    words.push(t::POSTERIZE_COLOR);
+                    words.push(*levels);
+                }
+                ColorOp::Vignette { radius, softness } => {
+                    words.push(t::VIGNETTE);
+                    push_f32(&mut words, *radius);
+                    push_f32(&mut words, *softness);
+                }
+                ColorOp::Palette3 { source, c0, c1, c2 } => {
+                    words.push(t::PALETTE3);
+                    words.push(palette_source_to_tag(*source));
+                    push_vec3(&mut words, *c0);
+                    push_vec3(&mut words, *c1);
+                    push_vec3(&mut words, *c2);
+                }
+                ColorOp::Palette5 {
+                    source,
+                    c0,
+                    c1,
+                    c2,
+                    c3,
+                    c4,
+                } => {
+                    words.push(t::PALETTE5);
+                    words.push(palette_source_to_tag(*source));
+                    push_vec3(&mut words, *c0);
+                    push_vec3(&mut words, *c1);
+                    push_vec3(&mut words, *c2);
+                    push_vec3(&mut words, *c3);
+                    push_vec3(&mut words, *c4);
+                }
+                ColorOp::Hatch {
+                    angle_rad,
+                    density,
+                    thickness,
+                    ink,
+                } => {
+                    words.push(t::HATCH);
+                    push_f32(&mut words, *angle_rad);
+                    push_f32(&mut words, *density);
+                    push_f32(&mut words, *thickness);
+                    push_vec3(&mut words, *ink);
+                }
+                ColorOp::Tonemap { exposure } => {
+                    words.push(t::TONEMAP);
+                    push_f32(&mut words, *exposure);
+                }
+                ColorOp::SpeedLine {
+                    focus,
+                    count,
+                    thickness,
+                    ink,
+                } => {
+                    words.push(t::SPEED_LINE);
+                    push_f32(&mut words, focus.x);
+                    push_f32(&mut words, focus.y);
+                    words.push(*count);
+                    push_f32(&mut words, *thickness);
+                    push_vec3(&mut words, *ink);
+                }
+                ColorOp::Fallback(_) => {
+                    return Err(SerializeError::UnsupportedFallback {
+                        instruction_index: i,
+                    });
+                }
+            }
+        }
+        Ok(GpuColorProgram { words })
+    }
+}
+
+/// Emit the canonical WGSL source for the GPU bytecode evaluator
+///
+/// The returned string defines two host-visible entities:
+///
+/// - `struct AliceNprBytecodeCtx` — shading context (n_dot_l / n_dot_v /
+///   sdf / uv / time)
+/// - `fn alice_npr_eval_bytecode(program_len, ctx)` — stack-machine
+///   evaluator returning the final `vec3<f32>` colour
+///
+/// # Caller contract
+///
+/// The evaluator is decoupled from any specific bind-group layout. The
+/// caller must supply a helper function with the signature:
+///
+/// ```wgsl
+/// fn alice_npr_load(index: u32) -> u32
+/// ```
+///
+/// that returns the `u32` word at the given index of the bytecode
+/// program. Typical implementation:
+///
+/// ```wgsl
+/// @group(0) @binding(0) var<storage, read> alice_npr_program: array<u32>;
+/// fn alice_npr_load(index: u32) -> u32 {
+///     return alice_npr_program[index];
+/// }
+/// ```
+///
+/// This layer isolates the evaluator from `ptr<storage, ...>` function
+/// parameters (which require the `unrestricted_pointer_parameters` WGSL
+/// extension) and lets callers back the bytecode with a uniform, a
+/// baked `array<u32, N>` constant, or any other source.
+///
+/// # Stack depth
+///
+/// Fixed at 32 (observed maximum for today's DSL surface is under 10;
+/// 32 leaves ample headroom without wasting register pressure).
+///
+/// # Coverage
+///
+/// The evaluator implements all 17 native opcodes from
+/// [`gpu_opcode_tag`]. Opcodes that need transcendental math (`Fresnel`
+/// `pow`, `SpeedLine` `atan2`) invoke the corresponding WGSL builtins
+/// directly. `Fallback` is not supported (rejected at serialisation
+/// time) so no opcode-dispatch arm exists for it.
+#[must_use]
+pub fn emit_wgsl_bytecode_evaluator() -> String {
+    use gpu_opcode_tag as t;
+    use gpu_palette_source_tag as p;
+    format!(
+        r#"// ALICE-SDF NPR bytecode evaluator (WGSL) — Phase 14
+//
+// Generated by `alice_sdf::npr::compiled_color::emit_wgsl_bytecode_evaluator`.
+// Do not edit by hand; regenerate to pick up new opcodes.
+
+const ALICE_NPR_STACK_DEPTH: u32 = 32u;
+
+// Opcode tags (must match `gpu_opcode_tag` on the Rust side)
+const ALICE_OP_PUSH_CONSTANT: u32 = {push_constant}u;
+const ALICE_OP_TOON: u32 = {toon}u;
+const ALICE_OP_SOFT_TOON: u32 = {soft_toon}u;
+const ALICE_OP_TWO_TONE: u32 = {two_tone}u;
+const ALICE_OP_MULTIPLY: u32 = {multiply}u;
+const ALICE_OP_ADD: u32 = {add}u;
+const ALICE_OP_SCALE: u32 = {scale}u;
+const ALICE_OP_OUTLINE_OVER: u32 = {outline_over}u;
+const ALICE_OP_FRESNEL: u32 = {fresnel}u;
+const ALICE_OP_SATURATE: u32 = {saturate}u;
+const ALICE_OP_BLOOM: u32 = {bloom}u;
+const ALICE_OP_POSTERIZE_COLOR: u32 = {posterize_color}u;
+const ALICE_OP_VIGNETTE: u32 = {vignette}u;
+const ALICE_OP_PALETTE3: u32 = {palette3}u;
+const ALICE_OP_PALETTE5: u32 = {palette5}u;
+const ALICE_OP_HATCH: u32 = {hatch}u;
+const ALICE_OP_TONEMAP: u32 = {tonemap}u;
+const ALICE_OP_SPEED_LINE: u32 = {speed_line}u;
+
+// PaletteSource tags
+const ALICE_PS_N_DOT_L: u32 = {ps_ndotl}u;
+const ALICE_PS_N_DOT_V: u32 = {ps_ndotv}u;
+const ALICE_PS_SDF: u32 = {ps_sdf}u;
+const ALICE_PS_UV_Y: u32 = {ps_uvy}u;
+const ALICE_PS_TIME_CYCLE: u32 = {ps_time}u;
+
+struct AliceNprBytecodeCtx {{
+    n_dot_l: f32,
+    n_dot_v: f32,
+    sdf: f32,
+    uv: vec2<f32>,
+    time: f32,
+}};
+
+fn alice_npr_palette_source_scalar(source: u32, ctx: AliceNprBytecodeCtx) -> f32 {{
+    if (source == ALICE_PS_N_DOT_L) {{
+        return clamp(ctx.n_dot_l, 0.0, 1.0);
+    }}
+    if (source == ALICE_PS_N_DOT_V) {{
+        return clamp(ctx.n_dot_v, 0.0, 1.0);
+    }}
+    if (source == ALICE_PS_SDF) {{
+        return clamp(abs(ctx.sdf), 0.0, 1.0);
+    }}
+    if (source == ALICE_PS_UV_Y) {{
+        return clamp(ctx.uv.y, 0.0, 1.0);
+    }}
+    // TIME_CYCLE: fract(time)
+    return ctx.time - floor(ctx.time);
+}}
+
+fn alice_npr_toon_ramp(n_dot_l: f32, bands: u32) -> f32 {{
+    let b = max(f32(bands), 1.0);
+    let t = clamp(n_dot_l, 0.0, 1.0);
+    return floor(t * b) / b;
+}}
+
+fn alice_npr_soft_toon_ramp(n_dot_l: f32, bands: u32, smoothness: f32) -> f32 {{
+    let b = max(f32(bands), 1.0);
+    let t = clamp(n_dot_l, 0.0, 1.0);
+    let scaled = t * b;
+    let idx = floor(scaled);
+    let frac = scaled - idx;
+    let s = clamp(smoothness, 0.0, 0.5);
+    let step = smoothstep(0.5 - s, 0.5 + s, frac);
+    return (idx + step) / b;
+}}
+
+fn alice_npr_palette3(t: f32, c0: vec3<f32>, c1: vec3<f32>, c2: vec3<f32>) -> vec3<f32> {{
+    if (t <= 0.5) {{
+        return mix(c0, c1, t * 2.0);
+    }}
+    return mix(c1, c2, (t - 0.5) * 2.0);
+}}
+
+fn alice_npr_palette5(
+    t: f32,
+    c0: vec3<f32>,
+    c1: vec3<f32>,
+    c2: vec3<f32>,
+    c3: vec3<f32>,
+    c4: vec3<f32>,
+) -> vec3<f32> {{
+    if (t <= 0.25) {{
+        return mix(c0, c1, t * 4.0);
+    }}
+    if (t <= 0.5) {{
+        return mix(c1, c2, (t - 0.25) * 4.0);
+    }}
+    if (t <= 0.75) {{
+        return mix(c2, c3, (t - 0.5) * 4.0);
+    }}
+    return mix(c3, c4, (t - 0.75) * 4.0);
+}}
+
+fn alice_npr_vignette_mask(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> f32 {{
+    let dx = uv_x - 0.5;
+    let dy = uv_y - 0.5;
+    let d = sqrt(dx * dx + dy * dy);
+    return 1.0 - smoothstep(radius, radius + max(softness, 1e-4), d);
+}}
+
+fn alice_npr_hatch_mask(
+    uv_x: f32,
+    uv_y: f32,
+    angle_rad: f32,
+    density: f32,
+    thickness: f32,
+) -> f32 {{
+    let c = cos(angle_rad);
+    let s = sin(angle_rad);
+    let u = uv_x * c + uv_y * s;
+    let phase = u * density;
+    let f = phase - floor(phase);
+    let t = clamp(thickness, 0.0, 0.5);
+    return 1.0 - smoothstep(t, t + 1e-3, abs(f - 0.5) - (0.5 - t));
+}}
+
+fn alice_npr_speed_line_mask(
+    uv_x: f32,
+    uv_y: f32,
+    fx: f32,
+    fy: f32,
+    count: u32,
+    thickness: f32,
+) -> f32 {{
+    let dx = uv_x - fx;
+    let dy = uv_y - fy;
+    let angle = atan2(dy, dx);
+    let two_pi = 6.283185307179586;
+    let phase = (angle / two_pi + 0.5) * f32(max(count, 1u));
+    let f = phase - floor(phase);
+    let t = clamp(thickness, 0.0, 0.5);
+    return 1.0 - smoothstep(t, t + 1e-3, abs(f - 0.5) - (0.5 - t));
+}}
+
+fn alice_npr_composite_outline(base: vec3<f32>, outline: vec3<f32>, alpha: f32) -> vec3<f32> {{
+    return mix(base, outline, clamp(alpha, 0.0, 1.0));
+}}
+
+fn alice_npr_saturate_toward_luma(color: vec3<f32>, factor: f32) -> vec3<f32> {{
+    let luma = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+    return mix(vec3<f32>(luma), color, factor);
+}}
+
+fn alice_npr_bloom(color: vec3<f32>, threshold: f32, intensity: f32) -> vec3<f32> {{
+    let mx = max(max(color.x, color.y), color.z);
+    if (mx > threshold) {{
+        return color * intensity;
+    }}
+    return color;
+}}
+
+fn alice_npr_posterize(color: vec3<f32>, levels: u32) -> vec3<f32> {{
+    let l = f32(max(levels, 2u));
+    return floor(color * l) / l;
+}}
+
+// Stack-machine evaluator.
+//
+// `program_len` is the number of `u32` words available (not the number
+// of opcodes). The caller must define:
+//
+//     fn alice_npr_load(index: u32) -> u32
+//
+// which returns the word at the given index from whatever binding the
+// caller chose (`var<storage, read>`, `var<uniform>`, `array<u32, N>`
+// baked into the shader, etc). This decouples the evaluator from any
+// specific bind-group layout and avoids pointer-parameter WGSL
+// extensions that are not universally enabled.
+fn alice_npr_eval_bytecode(
+    program_len: u32,
+    ctx: AliceNprBytecodeCtx,
+) -> vec3<f32> {{
+    var stack: array<vec3<f32>, 32>;
+    var sp: u32 = 0u;
+    var pc: u32 = 0u;
+
+    loop {{
+        if (pc >= program_len) {{ break; }}
+        let tag = alice_npr_load(pc);
+        pc = pc + 1u;
+
+        if (tag == ALICE_OP_PUSH_CONSTANT) {{
+            let c = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc)),
+                bitcast<f32>(alice_npr_load(pc + 1u)),
+                bitcast<f32>(alice_npr_load(pc + 2u)),
+            );
+            stack[sp] = c;
+            sp = sp + 1u;
+            pc = pc + 3u;
+        }} else if (tag == ALICE_OP_TOON) {{
+            let bands = alice_npr_load(pc);
+            pc = pc + 1u;
+            let light = stack[sp - 1u];
+            let shadow = stack[sp - 2u];
+            let t = alice_npr_toon_ramp(ctx.n_dot_l, bands);
+            sp = sp - 2u;
+            stack[sp] = mix(shadow, light, t);
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_SOFT_TOON) {{
+            let bands = alice_npr_load(pc);
+            let smoothness = bitcast<f32>(alice_npr_load(pc + 1u));
+            pc = pc + 2u;
+            let light = stack[sp - 1u];
+            let shadow = stack[sp - 2u];
+            let t = alice_npr_soft_toon_ramp(ctx.n_dot_l, bands, smoothness);
+            sp = sp - 2u;
+            stack[sp] = mix(shadow, light, t);
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_TWO_TONE) {{
+            let threshold = bitcast<f32>(alice_npr_load(pc));
+            pc = pc + 1u;
+            let light = stack[sp - 1u];
+            let shadow = stack[sp - 2u];
+            let n = clamp(ctx.n_dot_l, 0.0, 1.0);
+            sp = sp - 2u;
+            if (n >= threshold) {{
+                stack[sp] = light;
+            }} else {{
+                stack[sp] = shadow;
+            }}
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_MULTIPLY) {{
+            let b = stack[sp - 1u];
+            let a = stack[sp - 2u];
+            sp = sp - 2u;
+            stack[sp] = a * b;
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_ADD) {{
+            let b = stack[sp - 1u];
+            let a = stack[sp - 2u];
+            sp = sp - 2u;
+            stack[sp] = a + b;
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_SCALE) {{
+            let factor = bitcast<f32>(alice_npr_load(pc));
+            pc = pc + 1u;
+            stack[sp - 1u] = stack[sp - 1u] * factor;
+        }} else if (tag == ALICE_OP_OUTLINE_OVER) {{
+            let outline = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc)),
+                bitcast<f32>(alice_npr_load(pc + 1u)),
+                bitcast<f32>(alice_npr_load(pc + 2u)),
+            );
+            let alpha = bitcast<f32>(alice_npr_load(pc + 3u));
+            pc = pc + 4u;
+            stack[sp - 1u] = alice_npr_composite_outline(stack[sp - 1u], outline, alpha);
+        }} else if (tag == ALICE_OP_FRESNEL) {{
+            let edge = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc)),
+                bitcast<f32>(alice_npr_load(pc + 1u)),
+                bitcast<f32>(alice_npr_load(pc + 2u)),
+            );
+            let power = bitcast<f32>(alice_npr_load(pc + 3u));
+            pc = pc + 4u;
+            let ndv = clamp(ctx.n_dot_v, 0.0, 1.0);
+            let f = pow(max(1.0 - ndv, 0.0), max(power, 0.0));
+            stack[sp - 1u] = mix(stack[sp - 1u], edge, clamp(f, 0.0, 1.0));
+        }} else if (tag == ALICE_OP_SATURATE) {{
+            let factor = bitcast<f32>(alice_npr_load(pc));
+            pc = pc + 1u;
+            stack[sp - 1u] = alice_npr_saturate_toward_luma(stack[sp - 1u], factor);
+        }} else if (tag == ALICE_OP_BLOOM) {{
+            let threshold = bitcast<f32>(alice_npr_load(pc));
+            let intensity = bitcast<f32>(alice_npr_load(pc + 1u));
+            pc = pc + 2u;
+            stack[sp - 1u] = alice_npr_bloom(stack[sp - 1u], threshold, intensity);
+        }} else if (tag == ALICE_OP_POSTERIZE_COLOR) {{
+            let levels = alice_npr_load(pc);
+            pc = pc + 1u;
+            stack[sp - 1u] = alice_npr_posterize(stack[sp - 1u], levels);
+        }} else if (tag == ALICE_OP_VIGNETTE) {{
+            let radius = bitcast<f32>(alice_npr_load(pc));
+            let softness = bitcast<f32>(alice_npr_load(pc + 1u));
+            pc = pc + 2u;
+            let mask = alice_npr_vignette_mask(ctx.uv.x, ctx.uv.y, radius, softness);
+            stack[sp - 1u] = stack[sp - 1u] * mask;
+        }} else if (tag == ALICE_OP_PALETTE3) {{
+            let source = alice_npr_load(pc);
+            let c0 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 1u)),
+                bitcast<f32>(alice_npr_load(pc + 2u)),
+                bitcast<f32>(alice_npr_load(pc + 3u)),
+            );
+            let c1 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 4u)),
+                bitcast<f32>(alice_npr_load(pc + 5u)),
+                bitcast<f32>(alice_npr_load(pc + 6u)),
+            );
+            let c2 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 7u)),
+                bitcast<f32>(alice_npr_load(pc + 8u)),
+                bitcast<f32>(alice_npr_load(pc + 9u)),
+            );
+            pc = pc + 10u;
+            let t = alice_npr_palette_source_scalar(source, ctx);
+            stack[sp] = alice_npr_palette3(t, c0, c1, c2);
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_PALETTE5) {{
+            let source = alice_npr_load(pc);
+            let c0 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 1u)),
+                bitcast<f32>(alice_npr_load(pc + 2u)),
+                bitcast<f32>(alice_npr_load(pc + 3u)),
+            );
+            let c1 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 4u)),
+                bitcast<f32>(alice_npr_load(pc + 5u)),
+                bitcast<f32>(alice_npr_load(pc + 6u)),
+            );
+            let c2 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 7u)),
+                bitcast<f32>(alice_npr_load(pc + 8u)),
+                bitcast<f32>(alice_npr_load(pc + 9u)),
+            );
+            let c3 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 10u)),
+                bitcast<f32>(alice_npr_load(pc + 11u)),
+                bitcast<f32>(alice_npr_load(pc + 12u)),
+            );
+            let c4 = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 13u)),
+                bitcast<f32>(alice_npr_load(pc + 14u)),
+                bitcast<f32>(alice_npr_load(pc + 15u)),
+            );
+            pc = pc + 16u;
+            let t = alice_npr_palette_source_scalar(source, ctx);
+            stack[sp] = alice_npr_palette5(t, c0, c1, c2, c3, c4);
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_HATCH) {{
+            let angle_rad = bitcast<f32>(alice_npr_load(pc));
+            let density = bitcast<f32>(alice_npr_load(pc + 1u));
+            let thickness = bitcast<f32>(alice_npr_load(pc + 2u));
+            let ink = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 3u)),
+                bitcast<f32>(alice_npr_load(pc + 4u)),
+                bitcast<f32>(alice_npr_load(pc + 5u)),
+            );
+            pc = pc + 6u;
+            let mask = alice_npr_hatch_mask(ctx.uv.x, ctx.uv.y, angle_rad, density, thickness);
+            stack[sp - 1u] = mix(stack[sp - 1u], ink, mask);
+        }} else if (tag == ALICE_OP_TONEMAP) {{
+            let exposure = bitcast<f32>(alice_npr_load(pc));
+            pc = pc + 1u;
+            let scaled = stack[sp - 1u] * max(exposure, 0.0);
+            stack[sp - 1u] = scaled / (vec3<f32>(1.0) + scaled);
+        }} else if (tag == ALICE_OP_SPEED_LINE) {{
+            let fx = bitcast<f32>(alice_npr_load(pc));
+            let fy = bitcast<f32>(alice_npr_load(pc + 1u));
+            let count = alice_npr_load(pc + 2u);
+            let thickness = bitcast<f32>(alice_npr_load(pc + 3u));
+            let ink = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 4u)),
+                bitcast<f32>(alice_npr_load(pc + 5u)),
+                bitcast<f32>(alice_npr_load(pc + 6u)),
+            );
+            pc = pc + 7u;
+            let mask = alice_npr_speed_line_mask(ctx.uv.x, ctx.uv.y, fx, fy, count, thickness);
+            stack[sp - 1u] = mix(stack[sp - 1u], ink, mask);
+        }} else {{
+            // Unknown opcode: abort by breaking the loop. A well-formed
+            // program never hits this branch (opcodes are validated on
+            // the CPU by `CompiledColorPipeline::serialize`).
+            break;
+        }}
+    }}
+
+    if (sp == 0u) {{
+        return vec3<f32>(0.0);
+    }}
+    return stack[sp - 1u];
+}}
+"#,
+        push_constant = t::PUSH_CONSTANT,
+        toon = t::TOON,
+        soft_toon = t::SOFT_TOON,
+        two_tone = t::TWO_TONE,
+        multiply = t::MULTIPLY,
+        add = t::ADD,
+        scale = t::SCALE,
+        outline_over = t::OUTLINE_OVER,
+        fresnel = t::FRESNEL,
+        saturate = t::SATURATE,
+        bloom = t::BLOOM,
+        posterize_color = t::POSTERIZE_COLOR,
+        vignette = t::VIGNETTE,
+        palette3 = t::PALETTE3,
+        palette5 = t::PALETTE5,
+        hatch = t::HATCH,
+        tonemap = t::TONEMAP,
+        speed_line = t::SPEED_LINE,
+        ps_ndotl = p::N_DOT_L,
+        ps_ndotv = p::N_DOT_V,
+        ps_sdf = p::SDF,
+        ps_uvy = p::UV_Y,
+        ps_time = p::TIME_CYCLE,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1776,5 +2755,282 @@ mod tests {
             .with_speed_lines(Vec2::new(0.5, 0.5), 12, 0.05, Vec3::ZERO)
             .scale(0.95);
         assert_batch_matches_scalar(&node, &eight_varied_contexts());
+    }
+
+    // =================================================================
+    // Phase 14 — GPU bytecode serialisation
+    // =================================================================
+
+    fn assert_roundtrip_matches(node: &NprColorNode, contexts: &[NprColorContext]) {
+        let pipeline = node.compile();
+        let program = pipeline.serialize().expect("serialise");
+        let decoded = program.deserialize().expect("deserialise");
+        assert_eq!(pipeline.ops.len(), decoded.ops.len(), "ops count differs");
+        for c in contexts {
+            let original = pipeline.eval(c);
+            let round = decoded.eval(c);
+            assert_close(round, original);
+        }
+    }
+
+    #[test]
+    fn serialize_constant_encodes_tag_and_three_floats() {
+        let node = NprColorNode::Constant(Vec3::new(0.25, 0.5, 0.75));
+        let program = node.compile().serialize().expect("serialise");
+        assert_eq!(program.words.len(), 4);
+        assert_eq!(program.words[0], gpu_opcode_tag::PUSH_CONSTANT);
+        assert_eq!(f32::from_bits(program.words[1]), 0.25);
+        assert_eq!(f32::from_bits(program.words[2]), 0.5);
+        assert_eq!(f32::from_bits(program.words[3]), 0.75);
+    }
+
+    #[test]
+    fn serialize_toon_pipeline_word_layout() {
+        let node = NprColorNode::Toon {
+            shadow: Vec3::ZERO,
+            light: Vec3::ONE,
+            bands: 3,
+        };
+        let program = node.compile().serialize().expect("serialise");
+        // PushConstant(shadow) 4 + PushConstant(light) 4 + Toon 2 = 10 words
+        assert_eq!(program.words.len(), 10);
+        assert_eq!(program.words[0], gpu_opcode_tag::PUSH_CONSTANT);
+        assert_eq!(program.words[4], gpu_opcode_tag::PUSH_CONSTANT);
+        assert_eq!(program.words[8], gpu_opcode_tag::TOON);
+        assert_eq!(program.words[9], 3);
+    }
+
+    #[test]
+    fn serialize_all_native_variants_roundtrip() {
+        let contexts = [ctx(), ctx_grazing()];
+        // Cover all 17 native opcodes across several trees.
+        let nodes: Vec<NprColorNode> = vec![
+            NprColorNode::Constant(Vec3::new(0.3, 0.6, 0.9)),
+            NprColorNode::Toon {
+                shadow: Vec3::new(0.1, 0.1, 0.2),
+                light: Vec3::new(0.9, 0.85, 0.7),
+                bands: 4,
+            },
+            NprColorNode::SoftToon {
+                shadow: Vec3::new(0.05, 0.05, 0.1),
+                light: Vec3::new(0.95, 0.9, 0.8),
+                bands: 5,
+                smoothness: 0.07,
+            },
+            NprColorNode::TwoTone {
+                shadow: Vec3::new(0.2, 0.15, 0.3),
+                light: Vec3::new(0.85, 0.8, 0.65),
+                threshold: 0.55,
+            },
+            NprColorNode::Constant(Vec3::splat(0.5))
+                .multiply(NprColorNode::Constant(Vec3::new(0.4, 0.6, 0.8))),
+            NprColorNode::Constant(Vec3::splat(0.3))
+                .plus(NprColorNode::Constant(Vec3::new(0.1, 0.2, 0.4))),
+            NprColorNode::Constant(Vec3::splat(0.6)).scale(0.85),
+            NprColorNode::Constant(Vec3::splat(0.4)).with_outline(Vec3::ZERO, 0.7),
+            NprColorNode::Constant(Vec3::splat(0.5)).with_fresnel(Vec3::new(1.0, 0.9, 0.6), 2.5),
+            NprColorNode::Constant(Vec3::new(0.6, 0.4, 0.7)).saturate(1.3),
+            NprColorNode::Constant(Vec3::new(0.7, 0.5, 0.6)).bloom(0.4, 1.15),
+            NprColorNode::Constant(Vec3::new(0.55, 0.65, 0.75)).posterize(5),
+            NprColorNode::Constant(Vec3::splat(0.8)).vignetted(0.35, 0.25),
+            NprColorNode::Palette3 {
+                source: PaletteSource::NDotL,
+                c0: Vec3::new(0.1, 0.15, 0.3),
+                c1: Vec3::new(0.5, 0.55, 0.6),
+                c2: Vec3::new(0.9, 0.85, 0.7),
+            },
+            NprColorNode::Palette5 {
+                source: PaletteSource::TimeCycle,
+                c0: Vec3::new(0.10, 0.05, 0.20),
+                c1: Vec3::new(0.50, 0.10, 0.30),
+                c2: Vec3::new(0.90, 0.40, 0.20),
+                c3: Vec3::new(0.95, 0.85, 0.50),
+                c4: Vec3::new(0.80, 0.95, 0.95),
+            },
+            NprColorNode::Constant(Vec3::splat(0.4)).with_hatch(
+                0.4,
+                40.0,
+                0.15,
+                Vec3::new(0.05, 0.05, 0.1),
+            ),
+            NprColorNode::Constant(Vec3::splat(0.9)).tonemap_reinhard(1.2),
+            NprColorNode::Constant(Vec3::splat(0.4)).with_speed_lines(
+                Vec2::new(0.5, 0.5),
+                24,
+                0.03,
+                Vec3::new(0.02, 0.02, 0.05),
+            ),
+        ];
+        for node in &nodes {
+            assert_roundtrip_matches(node, &contexts);
+        }
+    }
+
+    #[test]
+    fn serialize_deep_composition_roundtrip() {
+        // Nine-level composition tree exercised end-to-end.
+        let node = NprColorNode::TwoTone {
+            shadow: Vec3::new(0.15, 0.13, 0.30),
+            light: Vec3::new(0.92, 0.85, 0.70),
+            threshold: 0.5,
+        }
+        .with_fresnel(Vec3::new(0.9, 0.8, 0.6), 2.0)
+        .with_outline(Vec3::new(0.03, 0.03, 0.06), 0.85)
+        .saturate(1.1)
+        .bloom(0.35, 1.1)
+        .posterize(5)
+        .vignetted(0.4, 0.25)
+        .with_hatch(0.35, 32.0, 0.12, Vec3::new(0.04, 0.04, 0.08))
+        .tonemap_reinhard(1.15)
+        .with_speed_lines(Vec2::new(0.5, 0.5), 20, 0.03, Vec3::new(0.02, 0.02, 0.04))
+        .scale(0.95);
+        assert_roundtrip_matches(&node, &[ctx(), ctx_grazing()]);
+    }
+
+    #[test]
+    fn serialize_rejects_fallback() {
+        // Hand-build a pipeline containing a Fallback opcode.
+        let pipeline = CompiledColorPipeline {
+            ops: vec![
+                ColorOp::PushConstant(Vec3::splat(0.5)),
+                ColorOp::Fallback(Box::new(NprColorNode::Constant(Vec3::splat(0.3)))),
+            ],
+        };
+        let err = pipeline.serialize().expect_err("fallback must be rejected");
+        assert_eq!(
+            err,
+            SerializeError::UnsupportedFallback {
+                instruction_index: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_detects_unknown_opcode() {
+        let program = GpuColorProgram {
+            words: vec![9999, 0, 0, 0],
+        };
+        let err = program.deserialize().expect_err("unknown tag");
+        assert_eq!(
+            err,
+            DeserializeError::UnknownOpcode {
+                word_offset: 0,
+                tag: 9999,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_detects_truncated_payload() {
+        // PUSH_CONSTANT expects 3 payload words; provide only 2.
+        let program = GpuColorProgram {
+            words: vec![gpu_opcode_tag::PUSH_CONSTANT, 0, 0],
+        };
+        let err = program.deserialize().expect_err("truncated");
+        assert_eq!(
+            err,
+            DeserializeError::Truncated {
+                word_offset: 0,
+                expected_payload: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_detects_unknown_palette_source() {
+        // PALETTE3 with an invalid PaletteSource tag.
+        let mut words = vec![gpu_opcode_tag::PALETTE3, 9999];
+        words.extend(std::iter::repeat_n(0u32, 9));
+        let program = GpuColorProgram { words };
+        let err = program.deserialize().expect_err("unknown palette source");
+        assert_eq!(
+            err,
+            DeserializeError::UnknownPaletteSource {
+                word_offset: 1,
+                tag: 9999,
+            }
+        );
+    }
+
+    #[test]
+    fn gpu_program_byte_len_matches_word_count() {
+        let node = NprColorNode::Constant(Vec3::splat(0.5));
+        let program = node.compile().serialize().expect("serialise");
+        assert_eq!(program.byte_len(), program.words.len() * 4);
+        assert_eq!(program.as_words().len(), program.words.len());
+    }
+
+    #[test]
+    fn opcode_word_count_covers_all_tags() {
+        use gpu_opcode_tag as t;
+        // Exhaustively cover every known tag; add a case here when a new
+        // opcode is introduced so the map stays in lockstep with the enum.
+        for tag in [
+            t::PUSH_CONSTANT,
+            t::TOON,
+            t::SOFT_TOON,
+            t::TWO_TONE,
+            t::MULTIPLY,
+            t::ADD,
+            t::SCALE,
+            t::OUTLINE_OVER,
+            t::FRESNEL,
+            t::SATURATE,
+            t::BLOOM,
+            t::POSTERIZE_COLOR,
+            t::VIGNETTE,
+            t::PALETTE3,
+            t::PALETTE5,
+            t::HATCH,
+            t::TONEMAP,
+            t::SPEED_LINE,
+        ] {
+            assert!(opcode_word_count(tag).is_some(), "missing tag {tag}");
+        }
+        assert!(opcode_word_count(9999).is_none());
+    }
+
+    #[test]
+    fn palette_source_tags_roundtrip() {
+        for src in [
+            PaletteSource::NDotL,
+            PaletteSource::NDotV,
+            PaletteSource::Sdf,
+            PaletteSource::UvY,
+            PaletteSource::TimeCycle,
+        ] {
+            let tag = palette_source_to_tag(src);
+            let back = palette_source_from_tag(tag, 0).expect("roundtrip");
+            assert_eq!(back, src);
+        }
+    }
+
+    #[test]
+    fn emit_wgsl_bytecode_evaluator_includes_all_opcode_constants() {
+        let src = emit_wgsl_bytecode_evaluator();
+        for name in [
+            "ALICE_OP_PUSH_CONSTANT",
+            "ALICE_OP_TOON",
+            "ALICE_OP_SOFT_TOON",
+            "ALICE_OP_TWO_TONE",
+            "ALICE_OP_MULTIPLY",
+            "ALICE_OP_ADD",
+            "ALICE_OP_SCALE",
+            "ALICE_OP_OUTLINE_OVER",
+            "ALICE_OP_FRESNEL",
+            "ALICE_OP_SATURATE",
+            "ALICE_OP_BLOOM",
+            "ALICE_OP_POSTERIZE_COLOR",
+            "ALICE_OP_VIGNETTE",
+            "ALICE_OP_PALETTE3",
+            "ALICE_OP_PALETTE5",
+            "ALICE_OP_HATCH",
+            "ALICE_OP_TONEMAP",
+            "ALICE_OP_SPEED_LINE",
+            "alice_npr_eval_bytecode",
+            "AliceNprBytecodeCtx",
+        ] {
+            assert!(src.contains(name), "WGSL missing {name}");
+        }
     }
 }

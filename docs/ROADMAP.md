@@ -58,23 +58,25 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 | P13 | ✅ | pending | 8-lane SIMD batch evaluator (`wide::f32x8`, SoA `NprColorBatch8` + `NprBatchContext8`, `CompiledColorPipeline::eval_batch8`). 14 opcodes SIMD-native; 3 (`Fresnel` / `SpeedLine` / `Palette5`) fall back to per-lane scalar over the SoA batch. Deep 6-level composition: **11.4 ns/lane batched** vs 18.2 ns tree — first regime where the compiled pipeline beats tree eval outright |
 
 ### Post-1.8.0 candidates
-| P14 | ⏳ | GPU-side bytecode serialisation — emit `ColorOp` stream into a uniform / storage buffer that the shader interpreter walks, enabling arbitrary DSL trees without per-tree shader recompile |
+| P14 | ✅ | pending | GPU bytecode serialisation — `CompiledColorPipeline::serialize()` emits a flat `[u32]` `GpuColorProgram` (variable-length `[tag, ..payload]` instructions, 17 native opcodes, `PaletteSource` tag map). `emit_wgsl_bytecode_evaluator()` returns canonical WGSL that defines `AliceNprBytecodeCtx` + `alice_npr_eval_bytecode(program_len, ctx)` (stack depth 32). Caller supplies `fn alice_npr_load(index: u32) -> u32` so the evaluator is decoupled from any specific bind-group layout. `Fallback` rejected at serialise time via `SerializeError::UnsupportedFallback`; `deserialize` provides a round-trip check with `DeserializeError` for unknown-opcode / truncated-payload / unknown-palette-source. Naga parses + fully semantic-validates the emitted evaluator (`tests/npr_bytecode_wgsl_validate.rs`) |
 | P15 | ⏳ | Bridge dep restoration — re-add `alice-codec` / `alice-physics` / `alice-cache` / `alice-font` / `alice-asp` once each is on crates.io. Corresponding features (`codec` / `physics` / `asp` / `sdf-cache` / `font`) return to `[features]` |
 
 ### Deeper follow-ups (not scheduled)
 
+- **P14-C — Real GPU execution parity** — build a wgpu headless test harness that uploads the `GpuColorProgram` to a storage buffer, dispatches the emitted evaluator against a synthetic context UBO, reads back the output framebuffer, and asserts numerical parity against the CPU scalar `eval` within a small epsilon (e.g. `1e-5`). Currently only naga parse + semantic validation is exercised; drop-in for a wgpu-enabled CI runner.
 - **CSG bytecode unification** — merge `npr::compiled_color::CompiledColorPipeline` with the existing `SdfNode` bytecode compiler in `src/compiled/`. Requires adding colour variants to `Instruction` / `Opcode` and extending the SIMD / stack-based interpreters.
-- **`.wgsl` compute-shader offload of NPR** — evaluate the compiled colour bytecode inside the same compute pass that raymarches the scene, avoiding CPU / GPU boundary crossings entirely.
+- **`.wgsl` compute-shader offload of NPR** — with P14 the CPU can already ship bytecode to the GPU; the follow-up is to evaluate that bytecode inside the same compute pass that raymarches the scene, avoiding CPU / GPU boundary crossings for the raymarch → shade handoff.
 - **Autodiff / gradient path over `NprColorNode`** — currently the DSL is a forward-only evaluator; a gradient pass would let colour-composition parameters participate in optimisation loops.
 
 ---
 
 ## Open questions (ADR-pending)
 
-1. **P12-D vs P13 first?** — Native opcode expansion (P12-D) is mechanical and improves fallback percentage; SIMD (P13) is where bytecode starts to beat tree eval. If a downstream consumer needs SIMD immediately, P13 could jump the queue.
-2. **Bytecode format stability** — the `ColorOp` enum is currently `pub` and part of the public API. Before P14 (GPU serialisation) we should decide whether to freeze the bytecode format (dedicated wire encoding, versioned) or keep it as an internal ABI.
-3. **Naga validation coverage** — `tests/npr_shader_validate.rs` currently validates the default pipeline plus a full-variant custom tree. Expanding to fuzz-driven random DSL trees would surface transpile bugs in rarely-exercised composition paths.
+1. **P12-D vs P13 first?** — Resolved (P12-D → P13 order chosen). Native opcode expansion was mechanical and improved fallback percentage; SIMD was where bytecode started to beat tree eval on deep trees.
+2. **Bytecode format stability** — Resolved with P14. See ADR-004: the format is a versionless variable-length `[u32]` stream with dedicated `gpu_opcode_tag` / `gpu_palette_source_tag` constants. Any new opcode appends to the tag range; existing tags are stable.
+3. **Naga validation coverage** — `tests/npr_shader_validate.rs` currently validates the default pipeline plus a full-variant custom tree; `tests/npr_bytecode_wgsl_validate.rs` (new P14) parses + semantic-validates the emitted bytecode evaluator. Expanding to fuzz-driven random DSL trees would surface transpile bugs in rarely-exercised composition paths.
 4. **Bridge dep restoration order** — once upstream crates publish, restore them one-by-one (verify each bridge builds) rather than in a single `v1.9.0` batch.
+5. **P14-C timing** — Real GPU execution parity (wgpu headless dispatch + framebuffer readback) requires a wgpu-enabled CI runner. Defer until either (a) a CI runner with a working GPU is available, or (b) a downstream consumer requests numerical GPU parity guarantees beyond naga's semantic check.
 
 ---
 
@@ -120,6 +122,43 @@ Users needing bridges continue with `path` / `git` deps against sibling repos.
 
 **Consequences**: `v1.8.0` publishes cleanly; bridge restoration deferred to
 P15 once upstream crates are published.
+
+### ADR-004 — GPU bytecode format: variable-length `[u32]` stream with caller-provided loader (2026-09-13, P14)
+
+**Context**: The GPU-side evaluator needs a stable wire format for
+uploading a `CompiledColorPipeline` opcode stream, and a WGSL shader
+function that consumes it. Two axes of choice: (a) fixed-width vs
+variable-length instructions, (b) `ptr<storage, ...>` function
+parameter vs caller-provided helper function for buffer access.
+
+**Decision**:
+
+1. Variable-length `[u32]` stream: each instruction is `[tag, ..payload_words]`.
+   Payloads store `f32` and `Vec3` values via `to_bits` / `from_bits`;
+   `PaletteSource` is encoded as a small `u32` tag. Total instruction
+   size is `1 + opcode_word_count(tag)`. `Fallback` is rejected at
+   serialise time (the GPU has no path back to the CPU tree walker).
+2. Caller-provided helper `fn alice_npr_load(index: u32) -> u32`. The
+   evaluator is decoupled from any specific bind-group layout; callers
+   back the bytecode with a storage buffer, a uniform, a baked
+   `array<u32, N>` constant, or anything else, and expose word-level
+   loads through the helper.
+
+**Consequences**:
+
+- Bytecode is compact (no wasted padding per instruction) and forward-
+  compatible: adding a new opcode appends to the tag range and is
+  transparently rejected by older evaluators via the `else { break; }`
+  arm.
+- Round-trip is provided as a correctness check: `pipeline.serialize()?.deserialize()?`
+  produces a pipeline that `eval`s identically to the original.
+- The caller-helper indirection avoids the `unrestricted_pointer_parameters`
+  WGSL extension, so the evaluator parses and validates on stock naga
+  frontends. Tested end-to-end in `tests/npr_bytecode_wgsl_validate.rs`
+  (naga parse + `Validator::validate` with `ValidationFlags::all()`).
+- Real GPU execution parity (P14-C) is deferred: naga semantic
+  validation is sufficient to catch shader-side type / binding errors
+  today, and a wgpu-enabled CI runner is not yet available.
 
 ---
 
