@@ -324,7 +324,15 @@ mod tests {
     #[test]
     fn test_half_roundtrip_precision() {
         // FP16 精度 ~0.1%、typical value でチェック
-        for &v in &[0.5_f32, 1.5, 3.14159, 100.0, -50.0, 0.0001, 65000.0] {
+        for &v in &[
+            0.5_f32,
+            1.5,
+            std::f32::consts::PI,
+            100.0,
+            -50.0,
+            0.0001,
+            65000.0,
+        ] {
             let bits = half_encode(v);
             let back = half_decode(bits);
             let rel_err = ((v - back) / v).abs();

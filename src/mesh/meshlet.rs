@@ -544,7 +544,7 @@ mod tests {
         let config = MeshletConfig::default();
         let meshlets = build_meshlets(&mesh, &config);
         assert!(
-            meshlets.len() >= 1,
+            !meshlets.is_empty(),
             "expected at least 1 meshlet, got 0 (mesh has {} tris)",
             mesh.triangle_count()
         );

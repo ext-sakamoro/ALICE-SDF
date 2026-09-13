@@ -221,9 +221,9 @@ mod tests {
         let mut before_tri_positions: Vec<[[i32; 3]; 3]> = (0..tri_count)
             .map(|t| {
                 let mut positions = [[0i32; 3]; 3];
-                for k in 0..3 {
+                for (k, position) in positions.iter_mut().enumerate() {
                     let v = &mesh.vertices[mesh.indices[t * 3 + k] as usize];
-                    positions[k] = [
+                    *position = [
                         (v.position.x * 1000.0) as i32,
                         (v.position.y * 1000.0) as i32,
                         (v.position.z * 1000.0) as i32,
@@ -244,9 +244,9 @@ mod tests {
         let mut after_tri_positions: Vec<[[i32; 3]; 3]> = (0..tri_count)
             .map(|t| {
                 let mut positions = [[0i32; 3]; 3];
-                for k in 0..3 {
+                for (k, position) in positions.iter_mut().enumerate() {
                     let v = &mesh.vertices[mesh.indices[t * 3 + k] as usize];
-                    positions[k] = [
+                    *position = [
                         (v.position.x * 1000.0) as i32,
                         (v.position.y * 1000.0) as i32,
                         (v.position.z * 1000.0) as i32,

@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn test_exp_encode_positive_float() {
         // Test that positive floats survive one encode + decode cycle
-        let inputs = vec![1.0f32, 3.14, 100.0, 0.001];
+        let inputs = vec![1.0f32, std::f32::consts::PI, 100.0, 0.001];
         let mut encoded = encode_filter_exp_u32(&inputs, 16);
         decode_filter_exp_u32_in_place(&mut encoded);
 
