@@ -145,6 +145,18 @@ vec3 alice_saturate(vec3 color, float factor) {
     vec3 grey = vec3(lum);
     return mix(grey, color, factor);
 }
+
+float alice_hatch_lines(vec2 uv, float angle_rad, float density, float thickness) {
+    float s = sin(angle_rad);
+    float c = cos(angle_rad);
+    float projected = uv.x * (-s) + uv.y * c;
+    float d = max(density, 1e-6);
+    float raw = projected * d;
+    float phase = raw - floor(raw);
+    float dist = abs(phase - 0.5);
+    float t = clamp(thickness, 0.0, 0.5);
+    return (dist > 0.5 - t) ? 1.0 : 0.0;
+}
 "#;
 
 // ============================================================================
@@ -279,6 +291,19 @@ fn alice_saturate(color: vec3<f32>, factor: f32) -> vec3<f32> {
     let grey = vec3<f32>(lum, lum, lum);
     return mix(grey, color, vec3<f32>(factor));
 }
+
+fn alice_hatch_lines(uv: vec2<f32>, angle_rad: f32, density: f32, thickness: f32) -> f32 {
+    let s = sin(angle_rad);
+    let c = cos(angle_rad);
+    let projected = uv.x * (-s) + uv.y * c;
+    let d = max(density, 1e-6);
+    let raw = projected * d;
+    let phase = raw - floor(raw);
+    let dist = abs(phase - 0.5);
+    let t = clamp(thickness, 0.0, 0.5);
+    if (dist > 0.5 - t) { return 1.0; }
+    return 0.0;
+}
 "#;
 
 // ============================================================================
@@ -407,6 +432,18 @@ float3 alice_saturate(float3 color, float factor) {
     float lum = dot(color, float3(0.2126, 0.7152, 0.0722));
     float3 grey = float3(lum, lum, lum);
     return lerp(grey, color, factor);
+}
+
+float alice_hatch_lines(float2 uv, float angle_rad, float density, float thickness) {
+    float s = sin(angle_rad);
+    float c = cos(angle_rad);
+    float projected = uv.x * (-s) + uv.y * c;
+    float d = max(density, 1e-6);
+    float raw = projected * d;
+    float phase = raw - floor(raw);
+    float dist = abs(phase - 0.5);
+    float t = clamp(thickness, 0.0, 0.5);
+    return (dist > 0.5 - t) ? 1.0 : 0.0;
 }
 "#;
 
@@ -630,6 +667,7 @@ mod tests {
             "alice_impact_flash",
             "alice_sun_disc",
             "alice_saturate",
+            "alice_hatch_lines",
         ] {
             assert!(
                 NPR_GLSL_HELPERS.contains(name),

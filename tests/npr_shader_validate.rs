@@ -55,6 +55,16 @@ fn build_pipeline_uv() -> NprColorNode {
     .vignetted(0.4, 0.3)
 }
 
+fn build_pipeline_hatch() -> NprColorNode {
+    // Exercise Phase 10 Hatch variant on top of two-tone base
+    NprColorNode::TwoTone {
+        shadow: glam::Vec3::new(0.15, 0.13, 0.30),
+        light: glam::Vec3::new(0.92, 0.85, 0.70),
+        threshold: 0.5,
+    }
+    .with_hatch(0.4, 40.0, 0.15, glam::Vec3::new(0.05, 0.05, 0.1))
+}
+
 #[test]
 fn wgsl_default_pipeline_parses() {
     let scene = build_scene();
@@ -191,6 +201,62 @@ fn glsl_uv_pipeline_parses() {
     assert!(
         result.is_ok(),
         "GLSL parse failed: {:?}\n---source---\n{source}",
+        result.err()
+    );
+}
+
+#[test]
+fn wgsl_hatch_pipeline_parses() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_pipeline(build_pipeline_hatch())
+        .build();
+    let result = naga::front::wgsl::parse_str(&source);
+    assert!(
+        result.is_ok(),
+        "WGSL parse failed:\n{}\n---source---\n{source}",
+        result
+            .err()
+            .map(|e| e.emit_to_string(&source))
+            .unwrap_or_default()
+    );
+}
+
+#[test]
+fn glsl_hatch_pipeline_parses() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Glsl)
+        .with_pipeline(build_pipeline_hatch())
+        .build();
+    let mut frontend = naga::front::glsl::Frontend::default();
+    let options = naga::front::glsl::Options {
+        stage: naga::ShaderStage::Fragment,
+        defines: Default::default(),
+    };
+    let result = frontend.parse(&options, &source);
+    assert!(
+        result.is_ok(),
+        "GLSL parse failed: {:?}\n---source---\n{source}",
+        result.err()
+    );
+}
+
+#[test]
+fn wgsl_hatch_pipeline_semantic_validates() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_pipeline(build_pipeline_hatch())
+        .build();
+    let module =
+        naga::front::wgsl::parse_str(&source).expect("WGSL parse must succeed before validation");
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::empty(),
+    );
+    let result = validator.validate(&module);
+    assert!(
+        result.is_ok(),
+        "WGSL validation failed: {:?}\n---source---\n{source}",
         result.err()
     );
 }

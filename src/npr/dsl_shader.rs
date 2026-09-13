@@ -266,6 +266,27 @@ impl Walker {
                 let t = palette_source_expression(*source, ctx);
                 format!("alice_palette_gradient_3({t}, {c0_expr}, {c1_expr}, {c2_expr})")
             }
+            NprColorNode::Hatch {
+                base,
+                angle_rad,
+                density,
+                thickness,
+                ink,
+            } => {
+                let base_expr = self.walk(base, ctx);
+                let base_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&base_var, &base_expr));
+                let ink_expr = self.vec3_literal(*ink);
+                let mask = format!(
+                    "alice_hatch_lines({}, {}, {}, {})",
+                    ctx.uv,
+                    format_f32(*angle_rad),
+                    format_f32(*density),
+                    format_f32(*thickness)
+                );
+                self.mix_call(&base_var, &ink_expr, &mask)
+            }
         }
     }
 }
@@ -552,6 +573,35 @@ mod tests {
         };
         let snip = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
         assert!(snip.color_expression.contains("clamp(uv.y, 0.0, 1.0)"));
+    }
+
+    #[test]
+    fn hatch_emits_alice_hatch_lines_mask_glsl() {
+        let base = NprColorNode::Constant(Vec3::ONE);
+        let node = base.with_hatch(0.4, 12.0, 0.1, Vec3::ZERO);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip.color_expression.starts_with("mix("));
+        assert!(snip.color_expression.contains("alice_hatch_lines(uv,"));
+        assert!(snip.color_expression.contains("12.0"));
+    }
+
+    #[test]
+    fn hatch_wraps_mask_as_vec3_in_wgsl() {
+        let base = NprColorNode::Constant(Vec3::ONE);
+        let node = base.with_hatch(0.4, 12.0, 0.1, Vec3::ZERO);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
+        assert!(snip
+            .color_expression
+            .contains("vec3<f32>(alice_hatch_lines"));
+    }
+
+    #[test]
+    fn hatch_uses_lerp_in_hlsl() {
+        let base = NprColorNode::Constant(Vec3::ONE);
+        let node = base.with_hatch(0.4, 12.0, 0.1, Vec3::ZERO);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Hlsl, ctx());
+        assert!(snip.color_expression.starts_with("lerp("));
+        assert!(snip.color_expression.contains("alice_hatch_lines(uv,"));
     }
 
     #[test]

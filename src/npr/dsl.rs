@@ -18,6 +18,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::npr::composition::{bloom_toon, vignette};
+use crate::npr::hatch::hatch_lines;
 use crate::npr::outline::composite_outline;
 use crate::npr::palette::palette_gradient;
 use crate::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp, two_tone};
@@ -178,6 +179,19 @@ pub enum NprColorNode {
         /// Colour at `t = 1`
         c2: NprColor,
     },
+    /// Overlay hatch line ink on top of a base subtree using UV
+    Hatch {
+        /// Base child evaluated for the interior colour
+        base: Box<NprColorNode>,
+        /// Line direction in radians (0 = horizontal)
+        angle_rad: f32,
+        /// Lines per UV unit
+        density: f32,
+        /// Line half-width in normalised phase (`[0, 0.5]`)
+        thickness: f32,
+        /// Ink colour blended in where the mask is high
+        ink: NprColor,
+    },
 }
 
 /// Which context scalar drives a palette-style variant
@@ -264,6 +278,17 @@ impl NprColorNode {
                 let palette = [*c0, *c1, *c2];
                 palette_gradient(t, &palette)
             }
+            Self::Hatch {
+                base,
+                angle_rad,
+                density,
+                thickness,
+                ink,
+            } => {
+                let base_color = base.eval(ctx);
+                let mask = hatch_lines(ctx.uv.x, ctx.uv.y, *angle_rad, *density, *thickness);
+                base_color.lerp(*ink, mask)
+            }
         }
     }
 
@@ -349,6 +374,18 @@ impl NprColorNode {
             child: Box::new(self),
             radius,
             softness,
+        }
+    }
+
+    /// Builder helper: overlay hatch lines using UV
+    #[must_use]
+    pub fn with_hatch(self, angle_rad: f32, density: f32, thickness: f32, ink: NprColor) -> Self {
+        Self::Hatch {
+            base: Box::new(self),
+            angle_rad,
+            density,
+            thickness,
+            ink,
         }
     }
 }
@@ -581,6 +618,32 @@ mod tests {
         assert!((node.eval(&lit_context()) - Vec3::new(0.0, 0.0, 1.0)).length() < 1e-3);
         // Fully dark (n.l = -1 clamped to 0) -> c0
         assert!((node.eval(&dark_context()) - Vec3::new(1.0, 0.0, 0.0)).length() < 1e-3);
+    }
+
+    #[test]
+    fn hatch_off_line_returns_base() {
+        // At angle=0 the projected coord is uv_y; density=4 puts lines at
+        // multiples of 0.25 (phase boundaries). uv_y=0.375 sits mid-cell.
+        let base = NprColorNode::Constant(Vec3::ONE);
+        let node = base.with_hatch(0.0, 4.0, 0.02, Vec3::ZERO);
+        let ctx = NprColorContext {
+            sdf: 0.0,
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            view: Vec3::new(0.0, 0.0, 1.0),
+            light: Vec3::new(0.0, 1.0, 0.0),
+            uv: Vec2::new(0.5, 0.375),
+        };
+        let c = node.eval(&ctx);
+        assert!((c - Vec3::ONE).length() < 1e-4);
+    }
+
+    #[test]
+    fn hatch_on_line_returns_ink() {
+        // uv_y=0.5 with density=4 gives phase=0, dist=0.5, thick=0.2 -> mask=1
+        let base = NprColorNode::Constant(Vec3::ONE);
+        let node = base.with_hatch(0.0, 4.0, 0.2, Vec3::ZERO);
+        let c = node.eval(&lit_context()); // uv = (0.5, 0.5)
+        assert!((c - Vec3::ZERO).length() < 1e-4);
     }
 
     #[test]
