@@ -47,6 +47,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `NprColorContext.time: f32` + `NprShaderContext.time: &str` (canonical `"iTime"`) for animation
 - `PaletteSource::TimeCycle` — `fract(time)` driver for cyclic palettes
 - `SceneShaderBuilder` shader output now declares an `iTime` uniform (`layout(binding=0) uniform SceneUniforms.iTime` in GLSL, `SceneUniforms.iTime` in WGSL aliased as `iTime` in `fs_main`, `cbuffer SceneCB.iTime` in HLSL)
+- `npr::compiled_color::CompiledColorPipeline` — Host-side bytecode compilation of `NprColorNode` trees into a flat `ColorOp` stream evaluated by a small stack machine. Currently natively supports `Constant` / `Toon` / `SoftToon` / `TwoTone` / `Scale`; other variants use a transparent `Fallback` opcode that delegates to the recursive tree walker. Ships now to lock in the API ahead of SIMD / GPU integration; on shallow trees scalar bytecode is presently slower than tree eval (measured on Apple Silicon: 3.5 ns vs 19 ns for `toon`)
+- `benches/npr_primitives.rs::bench_color_pipeline` gains `toon_compiled_eval` and `toon_with_outline_compiled_eval` benchmarks that compare the compiled pipeline against tree evaluation
 - `NprShaderContext.n_dot_v` field for Fresnel-driven pipelines; canonical scene shader now declares `ndv = -dot(n, ray_dir)` in the hit branch
 - `tests/npr_shader_validate.rs` — Naga-based validation of `SceneShaderBuilder` GLSL and WGSL output (default pipeline + `.with_pipeline` custom trees), plus `naga::valid::Validator` semantic validation on the full-variant WGSL pipeline
 - `alice_sun_disc` added to `NPR_GLSL_HELPERS` / `NPR_WGSL_HELPERS` / `NPR_HLSL_HELPERS`

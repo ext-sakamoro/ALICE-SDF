@@ -13,6 +13,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+pub mod compiled_color;
 pub mod composition;
 pub mod distortion;
 pub mod dsl;

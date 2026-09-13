@@ -192,6 +192,8 @@ fn bench_color_pipeline(c: &mut Criterion) {
         normal: Vec3::new(0.0, 1.0, 0.0),
         view: Vec3::new(0.0, 0.0, 1.0),
         light: Vec3::new(0.4, 0.8, 0.4).normalize(),
+        uv: glam::Vec2::new(0.5, 0.5),
+        time: 0.0,
     };
     let toon = NprColorNode::Toon {
         shadow: Vec3::new(0.2, 0.18, 0.35),
@@ -199,11 +201,19 @@ fn bench_color_pipeline(c: &mut Criterion) {
         bands: 3,
     };
     let composed = toon.clone().with_outline(Vec3::ZERO, 0.7);
+    let compiled_toon = toon.compile();
+    let compiled_composed = composed.compile();
     group.bench_function("toon_eval", |b| {
         b.iter(|| toon.eval(black_box(&ctx)));
     });
     group.bench_function("toon_with_outline_eval", |b| {
         b.iter(|| composed.eval(black_box(&ctx)));
+    });
+    group.bench_function("toon_compiled_eval", |b| {
+        b.iter(|| compiled_toon.eval(black_box(&ctx)));
+    });
+    group.bench_function("toon_with_outline_compiled_eval", |b| {
+        b.iter(|| compiled_composed.eval(black_box(&ctx)));
     });
     group.finish();
 }
