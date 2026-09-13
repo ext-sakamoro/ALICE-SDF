@@ -33,6 +33,8 @@ pub struct NprShaderContext<'a> {
     pub sdf: &'a str,
     /// Name of the 2D UV variable (`vec2` / `vec2<f32>` / `float2`)
     pub uv: &'a str,
+    /// Name of the animation time scalar variable (typically `iTime`)
+    pub time: &'a str,
 }
 
 impl NprShaderContext<'_> {
@@ -44,6 +46,7 @@ impl NprShaderContext<'_> {
             n_dot_v: "ndv",
             sdf: "d",
             uv: "uv",
+            time: "iTime",
         }
     }
 }
@@ -358,6 +361,7 @@ fn palette_source_expression(source: PaletteSource, ctx: NprShaderContext) -> St
         PaletteSource::NDotV => format!("clamp({}, 0.0, 1.0)", ctx.n_dot_v),
         PaletteSource::Sdf => format!("clamp(abs({}), 0.0, 1.0)", ctx.sdf),
         PaletteSource::UvY => format!("clamp({}.y, 0.0, 1.0)", ctx.uv),
+        PaletteSource::TimeCycle => format!("({time} - floor({time}))", time = ctx.time),
     }
 }
 
@@ -523,6 +527,7 @@ mod tests {
         assert_eq!(c.n_dot_v, "ndv");
         assert_eq!(c.sdf, "d");
         assert_eq!(c.uv, "uv");
+        assert_eq!(c.time, "iTime");
     }
 
     #[test]

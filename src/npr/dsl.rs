@@ -39,6 +39,8 @@ pub struct NprColorContext {
     pub light: Vec3,
     /// UV coordinate in `[0, 1]` for the current pixel
     pub uv: Vec2,
+    /// Elapsed time in seconds since the animation started
+    pub time: f32,
 }
 
 impl NprColorContext {
@@ -241,6 +243,8 @@ pub enum PaletteSource {
     Sdf,
     /// UV-Y coordinate (`uv.y`)
     UvY,
+    /// Repeating time cycle: `fract(time)`, useful for animated palettes
+    TimeCycle,
 }
 
 impl NprColorNode {
@@ -483,6 +487,7 @@ fn palette_source_scalar(source: PaletteSource, ctx: &NprColorContext) -> f32 {
         PaletteSource::NDotV => ctx.n_dot_v().clamp(0.0, 1.0),
         PaletteSource::Sdf => ctx.sdf.abs().clamp(0.0, 1.0),
         PaletteSource::UvY => ctx.uv.y.clamp(0.0, 1.0),
+        PaletteSource::TimeCycle => ctx.time - ctx.time.floor(),
     }
 }
 
@@ -497,6 +502,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
+            time: 0.0,
         }
     }
 
@@ -507,6 +513,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, -1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
+            time: 0.0,
         }
     }
 
@@ -598,6 +605,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
+            time: 0.0,
         };
         let base = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5));
         let node = base.with_fresnel(Vec3::ZERO, 2.0);
@@ -614,6 +622,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
+            time: 0.0,
         };
         let base = NprColorNode::Constant(Vec3::ZERO);
         let node = base.with_fresnel(Vec3::ONE, 2.0);
@@ -686,6 +695,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.0, 0.0),
+            time: 0.0,
         };
         let c = node.eval(&ctx);
         assert!((c - Vec3::ZERO).length() < 1e-4);
@@ -717,6 +727,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.375),
+            time: 0.0,
         };
         let c = node.eval(&ctx);
         assert!((c - Vec3::ONE).length() < 1e-4);
@@ -788,6 +799,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 1.0),
+            time: 0.0,
         };
         assert!((node.eval(&ctx_top) - Vec3::new(0.0, 0.0, 1.0)).length() < 1e-3);
     }
@@ -816,6 +828,7 @@ mod tests {
                 view: Vec3::new(0.0, 0.0, 1.0),
                 light: Vec3::new(0.0, 1.0, 0.0),
                 uv: Vec2::new(0.5, 0.5),
+                time: 0.0,
             };
             let c = node.eval(&ctx);
             for ch in [c.x, c.y, c.z] {

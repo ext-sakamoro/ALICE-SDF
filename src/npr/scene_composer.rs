@@ -335,6 +335,7 @@ impl<'a> SceneShaderBuilder<'a> {
             r"
 layout(binding = 0) uniform SceneUniforms {{
     vec2 iResolution;
+    float iTime;
 }};
 layout(location = 0) out vec4 alice_out_color;
 
@@ -413,6 +414,7 @@ void main() {{
             r"
 struct SceneUniforms {{
     resolution: vec2<f32>,
+    iTime: f32,
 }}
 @group(0) @binding(0) var<uniform> u_scene: SceneUniforms;
 
@@ -428,6 +430,7 @@ fn alice_scene_normal(p: vec3<f32>) -> vec3<f32> {{
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {{
     let uv = vec2<f32>(frag_coord.x / u_scene.resolution.x, frag_coord.y / u_scene.resolution.y);
+    let iTime = u_scene.iTime;
     let aspect = u_scene.resolution.x / max(u_scene.resolution.y, 1.0);
     var sxy = uv * 2.0 - vec2<f32>(1.0, 1.0);
     sxy.x = sxy.x * aspect;
@@ -495,6 +498,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             r"
 cbuffer SceneCB : register(b0) {{
     float2 resolution;
+    float iTime;
 }};
 
 float3 alice_scene_normal(float3 p) {{

@@ -85,6 +85,17 @@ fn build_pipeline_phase11() -> NprColorNode {
     )
 }
 
+fn build_pipeline_time_cycle() -> NprColorNode {
+    // Exercise Phase 12: PaletteSource::TimeCycle animated palette
+    use alice_sdf::npr::dsl::PaletteSource;
+    NprColorNode::Palette3 {
+        source: PaletteSource::TimeCycle,
+        c0: glam::Vec3::new(0.1, 0.15, 0.35),
+        c1: glam::Vec3::new(0.85, 0.65, 0.35),
+        c2: glam::Vec3::new(0.35, 0.75, 0.60),
+    }
+}
+
 #[test]
 fn wgsl_default_pipeline_parses() {
     let scene = build_scene();
@@ -293,6 +304,62 @@ fn glsl_phase11_pipeline_parses() {
     assert!(
         result.is_ok(),
         "GLSL parse failed: {:?}\n---source---\n{source}",
+        result.err()
+    );
+}
+
+#[test]
+fn wgsl_time_cycle_pipeline_parses() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_pipeline(build_pipeline_time_cycle())
+        .build();
+    let result = naga::front::wgsl::parse_str(&source);
+    assert!(
+        result.is_ok(),
+        "WGSL parse failed:\n{}\n---source---\n{source}",
+        result
+            .err()
+            .map(|e| e.emit_to_string(&source))
+            .unwrap_or_default()
+    );
+}
+
+#[test]
+fn glsl_time_cycle_pipeline_parses() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Glsl)
+        .with_pipeline(build_pipeline_time_cycle())
+        .build();
+    let mut frontend = naga::front::glsl::Frontend::default();
+    let options = naga::front::glsl::Options {
+        stage: naga::ShaderStage::Fragment,
+        defines: Default::default(),
+    };
+    let result = frontend.parse(&options, &source);
+    assert!(
+        result.is_ok(),
+        "GLSL parse failed: {:?}\n---source---\n{source}",
+        result.err()
+    );
+}
+
+#[test]
+fn wgsl_time_cycle_pipeline_semantic_validates() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_pipeline(build_pipeline_time_cycle())
+        .build();
+    let module =
+        naga::front::wgsl::parse_str(&source).expect("WGSL parse must succeed before validation");
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::empty(),
+    );
+    let result = validator.validate(&module);
+    assert!(
+        result.is_ok(),
+        "WGSL validation failed: {:?}\n---source---\n{source}",
         result.err()
     );
 }
