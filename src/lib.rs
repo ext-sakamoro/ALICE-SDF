@@ -338,7 +338,7 @@ pub mod prelude {
     pub use crate::modifiers::*;
     pub use crate::npr::composition::{bloom_toon, chromatic_offsets, vignette};
     pub use crate::npr::distortion::{hand_drawn_jitter, line_boil, sketch_wobble};
-    pub use crate::npr::dsl::{NprColorContext, NprColorNode};
+    pub use crate::npr::dsl::{NprColorContext, NprColorNode, PaletteSource};
     pub use crate::npr::dsl_shader::{
         transpile_npr_color_node, NprShaderContext, NprShaderSnippet,
     };

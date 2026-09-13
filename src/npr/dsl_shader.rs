@@ -14,7 +14,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::npr::dsl::NprColorNode;
+use crate::npr::dsl::{NprColorNode, PaletteSource};
 use crate::npr::shader_glue::ShaderLanguage;
 use glam::Vec3;
 
@@ -31,6 +31,8 @@ pub struct NprShaderContext<'a> {
     pub n_dot_v: &'a str,
     /// Name of the signed-distance scalar variable at the hit point
     pub sdf: &'a str,
+    /// Name of the 2D UV variable (`vec2` / `vec2<f32>` / `float2`)
+    pub uv: &'a str,
 }
 
 impl NprShaderContext<'_> {
@@ -41,6 +43,7 @@ impl NprShaderContext<'_> {
             n_dot_l: "ndl",
             n_dot_v: "ndv",
             sdf: "d",
+            uv: "uv",
         }
     }
 }
@@ -240,7 +243,41 @@ impl Walker {
                     .push_str(&self.decl_vec3(&child_var, &child_expr));
                 format!("alice_posterize_color({child_var}, {}.0)", (*levels).max(2))
             }
+            NprColorNode::Vignette {
+                child,
+                radius,
+                softness,
+            } => {
+                let child_expr = self.walk(child, ctx);
+                let child_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&child_var, &child_expr));
+                format!(
+                    "({child_var} * alice_vignette({}, {}, {}))",
+                    ctx.uv,
+                    format_f32(*radius),
+                    format_f32(*softness)
+                )
+            }
+            NprColorNode::Palette3 { source, c0, c1, c2 } => {
+                let c0_expr = self.vec3_literal(*c0);
+                let c1_expr = self.vec3_literal(*c1);
+                let c2_expr = self.vec3_literal(*c2);
+                let t = palette_source_expression(*source, ctx);
+                format!("alice_palette_gradient_3({t}, {c0_expr}, {c1_expr}, {c2_expr})")
+            }
         }
+    }
+}
+
+/// Emit the shader expression for a [`PaletteSource`] against a context
+#[inline]
+fn palette_source_expression(source: PaletteSource, ctx: NprShaderContext) -> String {
+    match source {
+        PaletteSource::NDotL => format!("clamp({}, 0.0, 1.0)", ctx.n_dot_l),
+        PaletteSource::NDotV => format!("clamp({}, 0.0, 1.0)", ctx.n_dot_v),
+        PaletteSource::Sdf => format!("clamp(abs({}), 0.0, 1.0)", ctx.sdf),
+        PaletteSource::UvY => format!("clamp({}.y, 0.0, 1.0)", ctx.uv),
     }
 }
 
@@ -405,6 +442,7 @@ mod tests {
         assert_eq!(c.n_dot_l, "ndl");
         assert_eq!(c.n_dot_v, "ndv");
         assert_eq!(c.sdf, "d");
+        assert_eq!(c.uv, "uv");
     }
 
     #[test]
@@ -476,6 +514,57 @@ mod tests {
         let snip = transpile_npr_color_node(&node, ShaderLanguage::Hlsl, ctx());
         assert!(snip.color_expression.contains("alice_posterize_color("));
         assert!(snip.color_expression.contains("4.0"));
+    }
+
+    #[test]
+    fn vignette_emits_alice_vignette_scalar_multiply() {
+        let node = NprColorNode::Constant(Vec3::ONE).vignetted(0.3, 0.2);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip.color_expression.contains("alice_vignette(uv,"));
+        assert!(snip.color_expression.contains("0.300000"));
+        assert!(snip.color_expression.contains(" * alice_vignette"));
+    }
+
+    #[test]
+    fn palette3_ndotl_emits_gradient_call() {
+        use crate::npr::dsl::PaletteSource;
+        let node = NprColorNode::Palette3 {
+            source: PaletteSource::NDotL,
+            c0: Vec3::new(1.0, 0.0, 0.0),
+            c1: Vec3::new(0.0, 1.0, 0.0),
+            c2: Vec3::new(0.0, 0.0, 1.0),
+        };
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip
+            .color_expression
+            .starts_with("alice_palette_gradient_3("));
+        assert!(snip.color_expression.contains("clamp(ndl, 0.0, 1.0)"));
+    }
+
+    #[test]
+    fn palette3_uv_y_emits_uv_dot_y_source() {
+        use crate::npr::dsl::PaletteSource;
+        let node = NprColorNode::Palette3 {
+            source: PaletteSource::UvY,
+            c0: Vec3::ZERO,
+            c1: Vec3::ZERO,
+            c2: Vec3::ONE,
+        };
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
+        assert!(snip.color_expression.contains("clamp(uv.y, 0.0, 1.0)"));
+    }
+
+    #[test]
+    fn palette3_sdf_emits_abs_source() {
+        use crate::npr::dsl::PaletteSource;
+        let node = NprColorNode::Palette3 {
+            source: PaletteSource::Sdf,
+            c0: Vec3::ZERO,
+            c1: Vec3::ZERO,
+            c2: Vec3::ONE,
+        };
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Hlsl, ctx());
+        assert!(snip.color_expression.contains("clamp(abs(d), 0.0, 1.0)"));
     }
 
     #[test]

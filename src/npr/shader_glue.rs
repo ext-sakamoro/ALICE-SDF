@@ -452,6 +452,14 @@ vec3 alice_season_palette(float t, vec3 spring, vec3 summer, vec3 autumn, vec3 w
     if (idx_f < 2.5) return mix(autumn, winter, frac_);
     return mix(winter, spring, frac_);
 }
+
+vec3 alice_palette_gradient_3(float t, vec3 c0, vec3 c1, vec3 c2) {
+    float scaled = clamp(t, 0.0, 1.0) * 2.0;
+    float idx_f = floor(scaled);
+    float frac_ = clamp(scaled - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) return mix(c0, c1, frac_);
+    return mix(c1, c2, frac_);
+}
 "#;
 
 // ============================================================================
@@ -501,6 +509,14 @@ fn alice_season_palette(
     if (idx_f < 2.5) { return mix(autumn, winter, vec3<f32>(frac_val)); }
     return mix(winter, spring, vec3<f32>(frac_val));
 }
+
+fn alice_palette_gradient_3(t: f32, c0: vec3<f32>, c1: vec3<f32>, c2: vec3<f32>) -> vec3<f32> {
+    let scaled = clamp(t, 0.0, 1.0) * 2.0;
+    let idx_f = floor(scaled);
+    let frac_val = clamp(scaled - idx_f, 0.0, 1.0);
+    if (idx_f < 0.5) { return mix(c0, c1, vec3<f32>(frac_val)); }
+    return mix(c1, c2, vec3<f32>(frac_val));
+}
 "#;
 
 // ============================================================================
@@ -543,6 +559,14 @@ float3 alice_season_palette(float t, float3 spring, float3 summer, float3 autumn
     if (idx_f < 1.5) return lerp(summer, autumn, frac_val);
     if (idx_f < 2.5) return lerp(autumn, winter, frac_val);
     return lerp(winter, spring, frac_val);
+}
+
+float3 alice_palette_gradient_3(float t, float3 c0, float3 c1, float3 c2) {
+    float scaled = saturate(t) * 2.0;
+    float idx_f = floor(scaled);
+    float frac_val = saturate(scaled - idx_f);
+    if (idx_f < 0.5) return lerp(c0, c1, frac_val);
+    return lerp(c1, c2, frac_val);
 }
 "#;
 
@@ -643,6 +667,7 @@ mod tests {
             "alice_palette_gradient_5",
             "alice_time_of_day",
             "alice_season_palette",
+            "alice_palette_gradient_3",
         ] {
             assert!(
                 NPR_GLSL_PALETTE_HELPERS.contains(name),

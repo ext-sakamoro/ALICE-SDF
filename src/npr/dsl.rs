@@ -17,11 +17,12 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::npr::composition::bloom_toon;
+use crate::npr::composition::{bloom_toon, vignette};
 use crate::npr::outline::composite_outline;
+use crate::npr::palette::palette_gradient;
 use crate::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp, two_tone};
 use crate::npr::NprColor;
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 /// Inputs available to every color node during evaluation
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +35,8 @@ pub struct NprColorContext {
     pub view: Vec3,
     /// Direction from surface to light (assumed unit)
     pub light: Vec3,
+    /// UV coordinate in `[0, 1]` for the current pixel
+    pub uv: Vec2,
 }
 
 impl NprColorContext {
@@ -155,6 +158,39 @@ pub enum NprColorNode {
         /// Number of discrete levels per channel (>= 2)
         levels: u32,
     },
+    /// Multiply a subtree by a UV-centred vignette mask
+    Vignette {
+        /// Subtree evaluated for the source colour
+        child: Box<NprColorNode>,
+        /// Radius (in UV units) at which the mask starts to fall off
+        radius: f32,
+        /// Half-width of the falloff transition
+        softness: f32,
+    },
+    /// Three-anchor palette gradient driven by a context scalar
+    Palette3 {
+        /// Which context scalar to use as the interpolation parameter
+        source: PaletteSource,
+        /// Colour at `t = 0`
+        c0: NprColor,
+        /// Colour at `t = 0.5`
+        c1: NprColor,
+        /// Colour at `t = 1`
+        c2: NprColor,
+    },
+}
+
+/// Which context scalar drives a palette-style variant
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteSource {
+    /// `clamp(n . l, 0, 1)`
+    NDotL,
+    /// `clamp(n . v, 0, 1)`
+    NDotV,
+    /// Absolute signed-distance value clamped to `[0, 1]`
+    Sdf,
+    /// UV-Y coordinate (`uv.y`)
+    UvY,
 }
 
 impl NprColorNode {
@@ -214,6 +250,19 @@ impl NprColorNode {
             } => bloom_toon(child.eval(ctx), *threshold, *intensity),
             Self::PosterizeColor { child, levels } => {
                 posterize_color(child.eval(ctx), (*levels).max(2))
+            }
+            Self::Vignette {
+                child,
+                radius,
+                softness,
+            } => {
+                let mask = vignette(ctx.uv.x, ctx.uv.y, *radius, *softness);
+                child.eval(ctx) * mask
+            }
+            Self::Palette3 { source, c0, c1, c2 } => {
+                let t = palette_source_scalar(*source, ctx).clamp(0.0, 1.0);
+                let palette = [*c0, *c1, *c2];
+                palette_gradient(t, &palette)
             }
         }
     }
@@ -292,6 +341,27 @@ impl NprColorNode {
             levels: levels.max(2),
         }
     }
+
+    /// Builder helper: multiply by a UV vignette mask
+    #[must_use]
+    pub fn vignetted(self, radius: f32, softness: f32) -> Self {
+        Self::Vignette {
+            child: Box::new(self),
+            radius,
+            softness,
+        }
+    }
+}
+
+/// Compute the scalar interpolation parameter for a `PaletteSource`
+#[must_use]
+fn palette_source_scalar(source: PaletteSource, ctx: &NprColorContext) -> f32 {
+    match source {
+        PaletteSource::NDotL => ctx.n_dot_l().clamp(0.0, 1.0),
+        PaletteSource::NDotV => ctx.n_dot_v().clamp(0.0, 1.0),
+        PaletteSource::Sdf => ctx.sdf.abs().clamp(0.0, 1.0),
+        PaletteSource::UvY => ctx.uv.y.clamp(0.0, 1.0),
+    }
 }
 
 #[cfg(test)]
@@ -304,6 +374,7 @@ mod tests {
             normal: Vec3::new(0.0, 1.0, 0.0),
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
+            uv: Vec2::new(0.5, 0.5),
         }
     }
 
@@ -313,6 +384,7 @@ mod tests {
             normal: Vec3::new(0.0, 1.0, 0.0),
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, -1.0, 0.0),
+            uv: Vec2::new(0.5, 0.5),
         }
     }
 
@@ -403,6 +475,7 @@ mod tests {
             normal: Vec3::new(0.0, 0.0, 1.0),
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
+            uv: Vec2::new(0.5, 0.5),
         };
         let base = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5));
         let node = base.with_fresnel(Vec3::ZERO, 2.0);
@@ -418,6 +491,7 @@ mod tests {
             normal: Vec3::new(1.0, 0.0, 0.0),
             view: Vec3::new(0.0, 0.0, 1.0),
             light: Vec3::new(0.0, 1.0, 0.0),
+            uv: Vec2::new(0.5, 0.5),
         };
         let base = NprColorNode::Constant(Vec3::ZERO);
         let node = base.with_fresnel(Vec3::ONE, 2.0);
@@ -473,6 +547,61 @@ mod tests {
     }
 
     #[test]
+    fn vignette_at_center_returns_full_child() {
+        let child = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5));
+        let node = child.vignetted(0.5, 0.3);
+        let c = node.eval(&lit_context()); // uv = (0.5, 0.5)
+        assert!((c - Vec3::splat(0.5)).length() < 1e-4);
+    }
+
+    #[test]
+    fn vignette_at_corner_returns_dark() {
+        let child = NprColorNode::Constant(Vec3::ONE);
+        let node = child.vignetted(0.3, 0.2);
+        let ctx = NprColorContext {
+            sdf: 0.0,
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            view: Vec3::new(0.0, 0.0, 1.0),
+            light: Vec3::new(0.0, 1.0, 0.0),
+            uv: Vec2::new(0.0, 0.0),
+        };
+        let c = node.eval(&ctx);
+        assert!((c - Vec3::ZERO).length() < 1e-4);
+    }
+
+    #[test]
+    fn palette3_ndotl_ends_pick_endpoints() {
+        let node = NprColorNode::Palette3 {
+            source: PaletteSource::NDotL,
+            c0: Vec3::new(1.0, 0.0, 0.0),
+            c1: Vec3::new(0.0, 1.0, 0.0),
+            c2: Vec3::new(0.0, 0.0, 1.0),
+        };
+        // Fully lit (n.l = 1) -> c2
+        assert!((node.eval(&lit_context()) - Vec3::new(0.0, 0.0, 1.0)).length() < 1e-3);
+        // Fully dark (n.l = -1 clamped to 0) -> c0
+        assert!((node.eval(&dark_context()) - Vec3::new(1.0, 0.0, 0.0)).length() < 1e-3);
+    }
+
+    #[test]
+    fn palette3_uv_y_selects_by_uv() {
+        let node = NprColorNode::Palette3 {
+            source: PaletteSource::UvY,
+            c0: Vec3::new(1.0, 0.0, 0.0),
+            c1: Vec3::new(0.0, 1.0, 0.0),
+            c2: Vec3::new(0.0, 0.0, 1.0),
+        };
+        let ctx_top = NprColorContext {
+            sdf: 0.0,
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            view: Vec3::new(0.0, 0.0, 1.0),
+            light: Vec3::new(0.0, 1.0, 0.0),
+            uv: Vec2::new(0.5, 1.0),
+        };
+        assert!((node.eval(&ctx_top) - Vec3::new(0.0, 0.0, 1.0)).length() < 1e-3);
+    }
+
+    #[test]
     fn posterize_clamps_low_levels() {
         // levels < 2 clamped to 2, so 1 should behave same as 2
         let a = NprColorNode::Constant(Vec3::new(0.6, 0.6, 0.6)).posterize(1);
@@ -495,6 +624,7 @@ mod tests {
                 normal: Vec3::new(a.cos(), a.sin(), 0.0),
                 view: Vec3::new(0.0, 0.0, 1.0),
                 light: Vec3::new(0.0, 1.0, 0.0),
+                uv: Vec2::new(0.5, 0.5),
             };
             let c = node.eval(&ctx);
             for ch in [c.x, c.y, c.z] {
