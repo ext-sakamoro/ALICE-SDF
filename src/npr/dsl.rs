@@ -481,7 +481,7 @@ impl NprColorNode {
 
 /// Compute the scalar interpolation parameter for a `PaletteSource`
 #[must_use]
-fn palette_source_scalar(source: PaletteSource, ctx: &NprColorContext) -> f32 {
+pub(crate) fn palette_source_scalar(source: PaletteSource, ctx: &NprColorContext) -> f32 {
     match source {
         PaletteSource::NDotL => ctx.n_dot_l().clamp(0.0, 1.0),
         PaletteSource::NDotV => ctx.n_dot_v().clamp(0.0, 1.0),

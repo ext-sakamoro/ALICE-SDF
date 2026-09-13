@@ -201,8 +201,17 @@ fn bench_color_pipeline(c: &mut Criterion) {
         bands: 3,
     };
     let composed = toon.clone().with_outline(Vec3::ZERO, 0.7);
+    // Deep composition: 6-level tree touching hit-branch primitives
+    let deep = toon
+        .clone()
+        .with_outline(Vec3::ZERO, 0.15)
+        .with_fresnel(Vec3::new(0.9, 0.9, 1.0), 2.0)
+        .vignetted(0.6, 0.25)
+        .saturate(0.9)
+        .tonemap_reinhard(1.0);
     let compiled_toon = toon.compile();
     let compiled_composed = composed.compile();
+    let compiled_deep = deep.compile();
     group.bench_function("toon_eval", |b| {
         b.iter(|| toon.eval(black_box(&ctx)));
     });
@@ -214,6 +223,12 @@ fn bench_color_pipeline(c: &mut Criterion) {
     });
     group.bench_function("toon_with_outline_compiled_eval", |b| {
         b.iter(|| compiled_composed.eval(black_box(&ctx)));
+    });
+    group.bench_function("deep_composition_eval", |b| {
+        b.iter(|| deep.eval(black_box(&ctx)));
+    });
+    group.bench_function("deep_composition_compiled_eval", |b| {
+        b.iter(|| compiled_deep.eval(black_box(&ctx)));
     });
     group.finish();
 }
