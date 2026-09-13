@@ -19,6 +19,7 @@
 
 use crate::npr::composition::{bloom_toon, vignette};
 use crate::npr::hatch::hatch_lines;
+use crate::npr::motion::speed_line;
 use crate::npr::outline::composite_outline;
 use crate::npr::palette::palette_gradient;
 use crate::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp, two_tone};
@@ -192,6 +193,41 @@ pub enum NprColorNode {
         /// Ink colour blended in where the mask is high
         ink: NprColor,
     },
+    /// Five-anchor palette gradient driven by a context scalar
+    Palette5 {
+        /// Which context scalar to use as the interpolation parameter
+        source: PaletteSource,
+        /// Colour at `t = 0`
+        c0: NprColor,
+        /// Colour at `t = 0.25`
+        c1: NprColor,
+        /// Colour at `t = 0.5`
+        c2: NprColor,
+        /// Colour at `t = 0.75`
+        c3: NprColor,
+        /// Colour at `t = 1`
+        c4: NprColor,
+    },
+    /// Reinhard tone-mapping applied to a subtree
+    Tonemap {
+        /// Subtree evaluated for the source colour
+        child: Box<NprColorNode>,
+        /// Exposure multiplier applied before tone-mapping
+        exposure: f32,
+    },
+    /// Radial speed-line ink overlay from a focal UV
+    SpeedLine {
+        /// Base child evaluated for the interior colour
+        base: Box<NprColorNode>,
+        /// Focus UV (typical: `Vec2::new(0.5, 0.5)`)
+        focus: Vec2,
+        /// Number of radial lines around the full circle
+        count: u32,
+        /// Line half-width in normalised phase (`[0, 0.5]`)
+        thickness: f32,
+        /// Ink colour blended in where the mask is high
+        ink: NprColor,
+    },
 }
 
 /// Which context scalar drives a palette-style variant
@@ -289,6 +325,34 @@ impl NprColorNode {
                 let mask = hatch_lines(ctx.uv.x, ctx.uv.y, *angle_rad, *density, *thickness);
                 base_color.lerp(*ink, mask)
             }
+            Self::Palette5 {
+                source,
+                c0,
+                c1,
+                c2,
+                c3,
+                c4,
+            } => {
+                let t = palette_source_scalar(*source, ctx).clamp(0.0, 1.0);
+                let palette = [*c0, *c1, *c2, *c3, *c4];
+                palette_gradient(t, &palette)
+            }
+            Self::Tonemap { child, exposure } => {
+                let color = child.eval(ctx);
+                let scaled = color * exposure.max(0.0);
+                scaled / (Vec3::ONE + scaled)
+            }
+            Self::SpeedLine {
+                base,
+                focus,
+                count,
+                thickness,
+                ink,
+            } => {
+                let base_color = base.eval(ctx);
+                let mask = speed_line(ctx.uv.x, ctx.uv.y, focus.x, focus.y, *count, *thickness);
+                base_color.lerp(*ink, mask)
+            }
         }
     }
 
@@ -384,6 +448,27 @@ impl NprColorNode {
             base: Box::new(self),
             angle_rad,
             density,
+            thickness,
+            ink,
+        }
+    }
+
+    /// Builder helper: apply Reinhard tone-mapping
+    #[must_use]
+    pub fn tonemap_reinhard(self, exposure: f32) -> Self {
+        Self::Tonemap {
+            child: Box::new(self),
+            exposure,
+        }
+    }
+
+    /// Builder helper: overlay radial speed lines from a focal UV
+    #[must_use]
+    pub fn with_speed_lines(self, focus: Vec2, count: u32, thickness: f32, ink: NprColor) -> Self {
+        Self::SpeedLine {
+            base: Box::new(self),
+            focus,
+            count,
             thickness,
             ink,
         }
@@ -634,6 +719,49 @@ mod tests {
             uv: Vec2::new(0.5, 0.375),
         };
         let c = node.eval(&ctx);
+        assert!((c - Vec3::ONE).length() < 1e-4);
+    }
+
+    #[test]
+    fn palette5_endpoints_pick_c0_c4() {
+        let node = NprColorNode::Palette5 {
+            source: PaletteSource::NDotL,
+            c0: Vec3::new(1.0, 0.0, 0.0),
+            c1: Vec3::new(0.0, 1.0, 0.0),
+            c2: Vec3::new(0.0, 0.0, 1.0),
+            c3: Vec3::new(1.0, 1.0, 0.0),
+            c4: Vec3::new(1.0, 0.0, 1.0),
+        };
+        // Fully lit (n.l = 1) picks c4
+        assert!((node.eval(&lit_context()) - Vec3::new(1.0, 0.0, 1.0)).length() < 1e-3);
+        // Fully dark (n.l clamped to 0) picks c0
+        assert!((node.eval(&dark_context()) - Vec3::new(1.0, 0.0, 0.0)).length() < 1e-3);
+    }
+
+    #[test]
+    fn tonemap_reinhard_maps_hdr_into_unit() {
+        let child = NprColorNode::Constant(Vec3::splat(10.0));
+        let node = child.tonemap_reinhard(1.0);
+        let c = node.eval(&lit_context());
+        for ch in [c.x, c.y, c.z] {
+            assert!(ch < 1.0 && ch > 0.9, "expected close-to-1, got {ch}");
+        }
+    }
+
+    #[test]
+    fn tonemap_reinhard_black_stays_black() {
+        let child = NprColorNode::Constant(Vec3::ZERO);
+        let node = child.tonemap_reinhard(2.0);
+        let c = node.eval(&lit_context());
+        assert!((c - Vec3::ZERO).length() < 1e-6);
+    }
+
+    #[test]
+    fn speed_line_at_focus_returns_base() {
+        // uv == focus -> mask 0 -> returns base
+        let base = NprColorNode::Constant(Vec3::ONE);
+        let node = base.with_speed_lines(Vec2::new(0.5, 0.5), 12, 0.05, Vec3::ZERO);
+        let c = node.eval(&lit_context()); // uv = (0.5, 0.5)
         assert!((c - Vec3::ONE).length() < 1e-4);
     }
 

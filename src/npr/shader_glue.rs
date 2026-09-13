@@ -157,6 +157,24 @@ float alice_hatch_lines(vec2 uv, float angle_rad, float density, float thickness
     float t = clamp(thickness, 0.0, 0.5);
     return (dist > 0.5 - t) ? 1.0 : 0.0;
 }
+
+vec3 alice_tonemap_reinhard(vec3 color, float exposure) {
+    vec3 c = color * max(exposure, 0.0);
+    return c / (vec3(1.0) + c);
+}
+
+float alice_speed_line(vec2 uv, vec2 focus, float count, float thickness) {
+    vec2 d = uv - focus;
+    if (abs(d.x) < 1e-6 && abs(d.y) < 1e-6) return 0.0;
+    if (count <= 0.0) return 0.0;
+    float angle = atan(d.y, d.x);
+    float TAU = 6.28318530718;
+    float phase_raw = (angle + 3.14159265359) * count / TAU;
+    float phase = phase_raw - floor(phase_raw);
+    float dist = abs(phase - 0.5);
+    float t = clamp(thickness, 0.0, 0.5);
+    return (dist > 0.5 - t) ? 1.0 : 0.0;
+}
 "#;
 
 // ============================================================================
@@ -304,6 +322,25 @@ fn alice_hatch_lines(uv: vec2<f32>, angle_rad: f32, density: f32, thickness: f32
     if (dist > 0.5 - t) { return 1.0; }
     return 0.0;
 }
+
+fn alice_tonemap_reinhard(color: vec3<f32>, exposure: f32) -> vec3<f32> {
+    let c = color * max(exposure, 0.0);
+    return c / (vec3<f32>(1.0, 1.0, 1.0) + c);
+}
+
+fn alice_speed_line(uv: vec2<f32>, focus: vec2<f32>, count: f32, thickness: f32) -> f32 {
+    let d = uv - focus;
+    if (abs(d.x) < 1e-6 && abs(d.y) < 1e-6) { return 0.0; }
+    if (count <= 0.0) { return 0.0; }
+    let angle = atan2(d.y, d.x);
+    let TAU = 6.28318530718;
+    let phase_raw = (angle + 3.14159265359) * count / TAU;
+    let phase = phase_raw - floor(phase_raw);
+    let dist = abs(phase - 0.5);
+    let t = clamp(thickness, 0.0, 0.5);
+    if (dist > 0.5 - t) { return 1.0; }
+    return 0.0;
+}
 "#;
 
 // ============================================================================
@@ -441,6 +478,24 @@ float alice_hatch_lines(float2 uv, float angle_rad, float density, float thickne
     float d = max(density, 1e-6);
     float raw = projected * d;
     float phase = raw - floor(raw);
+    float dist = abs(phase - 0.5);
+    float t = clamp(thickness, 0.0, 0.5);
+    return (dist > 0.5 - t) ? 1.0 : 0.0;
+}
+
+float3 alice_tonemap_reinhard(float3 color, float exposure) {
+    float3 c = color * max(exposure, 0.0);
+    return c / (float3(1.0, 1.0, 1.0) + c);
+}
+
+float alice_speed_line(float2 uv, float2 focus, float count, float thickness) {
+    float2 d = uv - focus;
+    if (abs(d.x) < 1e-6 && abs(d.y) < 1e-6) return 0.0;
+    if (count <= 0.0) return 0.0;
+    float angle = atan2(d.y, d.x);
+    float TAU = 6.28318530718;
+    float phase_raw = (angle + 3.14159265359) * count / TAU;
+    float phase = phase_raw - floor(phase_raw);
     float dist = abs(phase - 0.5);
     float t = clamp(thickness, 0.0, 0.5);
     return (dist > 0.5 - t) ? 1.0 : 0.0;
@@ -668,6 +723,8 @@ mod tests {
             "alice_sun_disc",
             "alice_saturate",
             "alice_hatch_lines",
+            "alice_tonemap_reinhard",
+            "alice_speed_line",
         ] {
             assert!(
                 NPR_GLSL_HELPERS.contains(name),

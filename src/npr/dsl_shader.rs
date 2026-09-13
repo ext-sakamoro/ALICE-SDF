@@ -287,7 +287,66 @@ impl Walker {
                 );
                 self.mix_call(&base_var, &ink_expr, &mask)
             }
+            NprColorNode::Palette5 {
+                source,
+                c0,
+                c1,
+                c2,
+                c3,
+                c4,
+            } => {
+                let c0_expr = self.vec3_literal(*c0);
+                let c1_expr = self.vec3_literal(*c1);
+                let c2_expr = self.vec3_literal(*c2);
+                let c3_expr = self.vec3_literal(*c3);
+                let c4_expr = self.vec3_literal(*c4);
+                let t = palette_source_expression(*source, ctx);
+                format!(
+                    "alice_palette_gradient_5({t}, {c0_expr}, {c1_expr}, {c2_expr}, {c3_expr}, {c4_expr})"
+                )
+            }
+            NprColorNode::Tonemap { child, exposure } => {
+                let child_expr = self.walk(child, ctx);
+                let child_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&child_var, &child_expr));
+                format!(
+                    "alice_tonemap_reinhard({child_var}, {})",
+                    format_f32(*exposure)
+                )
+            }
+            NprColorNode::SpeedLine {
+                base,
+                focus,
+                count,
+                thickness,
+                ink,
+            } => {
+                let base_expr = self.walk(base, ctx);
+                let base_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&base_var, &base_expr));
+                let ink_expr = self.vec3_literal(*ink);
+                let focus_expr = format_vec2(self.language, focus.x, focus.y);
+                let mask = format!(
+                    "alice_speed_line({}, {}, {}.0, {})",
+                    ctx.uv,
+                    focus_expr,
+                    count,
+                    format_f32(*thickness)
+                );
+                self.mix_call(&base_var, &ink_expr, &mask)
+            }
         }
+    }
+}
+
+#[inline]
+fn format_vec2(language: ShaderLanguage, x: f32, y: f32) -> String {
+    match language {
+        ShaderLanguage::Glsl => format!("vec2({}, {})", format_f32(x), format_f32(y)),
+        ShaderLanguage::Wgsl => format!("vec2<f32>({}, {})", format_f32(x), format_f32(y)),
+        ShaderLanguage::Hlsl => format!("float2({}, {})", format_f32(x), format_f32(y)),
     }
 }
 
@@ -593,6 +652,60 @@ mod tests {
         assert!(snip
             .color_expression
             .contains("vec3<f32>(alice_hatch_lines"));
+    }
+
+    #[test]
+    fn palette5_emits_gradient_call() {
+        use crate::npr::dsl::PaletteSource;
+        let node = NprColorNode::Palette5 {
+            source: PaletteSource::UvY,
+            c0: Vec3::ZERO,
+            c1: Vec3::new(0.25, 0.25, 0.25),
+            c2: Vec3::new(0.5, 0.5, 0.5),
+            c3: Vec3::new(0.75, 0.75, 0.75),
+            c4: Vec3::ONE,
+        };
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip
+            .color_expression
+            .starts_with("alice_palette_gradient_5("));
+        assert!(snip.color_expression.contains("clamp(uv.y, 0.0, 1.0)"));
+    }
+
+    #[test]
+    fn tonemap_emits_reinhard_call() {
+        let node = NprColorNode::Constant(Vec3::splat(5.0)).tonemap_reinhard(1.5);
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
+        assert!(snip.color_expression.contains("alice_tonemap_reinhard("));
+        assert!(snip.color_expression.contains("1.500000"));
+    }
+
+    #[test]
+    fn speed_line_emits_alice_speed_line_glsl() {
+        let node = NprColorNode::Constant(Vec3::ONE).with_speed_lines(
+            glam::Vec2::new(0.5, 0.5),
+            16,
+            0.05,
+            Vec3::ZERO,
+        );
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(snip.color_expression.starts_with("mix("));
+        assert!(snip.color_expression.contains("alice_speed_line(uv,"));
+        assert!(snip.color_expression.contains("vec2(0.500000, 0.500000)"));
+        assert!(snip.color_expression.contains("16.0"));
+    }
+
+    #[test]
+    fn speed_line_uses_float2_in_hlsl() {
+        let node = NprColorNode::Constant(Vec3::ONE).with_speed_lines(
+            glam::Vec2::new(0.5, 0.5),
+            8,
+            0.05,
+            Vec3::ZERO,
+        );
+        let snip = transpile_npr_color_node(&node, ShaderLanguage::Hlsl, ctx());
+        assert!(snip.color_expression.contains("float2(0.500000, 0.500000)"));
+        assert!(snip.color_expression.starts_with("lerp("));
     }
 
     #[test]

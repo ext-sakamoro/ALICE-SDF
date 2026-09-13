@@ -65,6 +65,26 @@ fn build_pipeline_hatch() -> NprColorNode {
     .with_hatch(0.4, 40.0, 0.15, glam::Vec3::new(0.05, 0.05, 0.1))
 }
 
+fn build_pipeline_phase11() -> NprColorNode {
+    // Exercise Phase 11: Palette5 base + Tonemap + SpeedLine
+    use alice_sdf::npr::dsl::PaletteSource;
+    NprColorNode::Palette5 {
+        source: PaletteSource::NDotL,
+        c0: glam::Vec3::new(0.10, 0.05, 0.20),
+        c1: glam::Vec3::new(0.50, 0.10, 0.30),
+        c2: glam::Vec3::new(0.90, 0.40, 0.20),
+        c3: glam::Vec3::new(0.95, 0.85, 0.50),
+        c4: glam::Vec3::new(0.80, 0.95, 0.95),
+    }
+    .tonemap_reinhard(1.2)
+    .with_speed_lines(
+        glam::Vec2::new(0.5, 0.5),
+        24,
+        0.03,
+        glam::Vec3::new(0.02, 0.02, 0.05),
+    )
+}
+
 #[test]
 fn wgsl_default_pipeline_parses() {
     let scene = build_scene();
@@ -237,6 +257,62 @@ fn glsl_hatch_pipeline_parses() {
     assert!(
         result.is_ok(),
         "GLSL parse failed: {:?}\n---source---\n{source}",
+        result.err()
+    );
+}
+
+#[test]
+fn wgsl_phase11_pipeline_parses() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_pipeline(build_pipeline_phase11())
+        .build();
+    let result = naga::front::wgsl::parse_str(&source);
+    assert!(
+        result.is_ok(),
+        "WGSL parse failed:\n{}\n---source---\n{source}",
+        result
+            .err()
+            .map(|e| e.emit_to_string(&source))
+            .unwrap_or_default()
+    );
+}
+
+#[test]
+fn glsl_phase11_pipeline_parses() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Glsl)
+        .with_pipeline(build_pipeline_phase11())
+        .build();
+    let mut frontend = naga::front::glsl::Frontend::default();
+    let options = naga::front::glsl::Options {
+        stage: naga::ShaderStage::Fragment,
+        defines: Default::default(),
+    };
+    let result = frontend.parse(&options, &source);
+    assert!(
+        result.is_ok(),
+        "GLSL parse failed: {:?}\n---source---\n{source}",
+        result.err()
+    );
+}
+
+#[test]
+fn wgsl_phase11_pipeline_semantic_validates() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_pipeline(build_pipeline_phase11())
+        .build();
+    let module =
+        naga::front::wgsl::parse_str(&source).expect("WGSL parse must succeed before validation");
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::empty(),
+    );
+    let result = validator.validate(&module);
+    assert!(
+        result.is_ok(),
+        "WGSL validation failed: {:?}\n---source---\n{source}",
         result.err()
     );
 }
