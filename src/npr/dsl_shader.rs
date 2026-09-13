@@ -4,7 +4,7 @@
 //! - a list of variable declaration statements
 //! - a final expression that evaluates to the composed colour
 //!
-//! Callers (typically [`crate::npr::scene_composer::SceneShaderBuilder`])
+//! Callers (typically `crate::npr::scene_composer::SceneShaderBuilder`, feature-gated)
 //! embed the statements at the call site and use the expression as the
 //! resulting `vec3` / `float3` colour.
 //!

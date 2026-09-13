@@ -6,6 +6,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.9.0] - 2026-09-13
+
+**NPR compiled pipeline + SIMD batch + GPU bytecode** — Phase 12-D / 13 / 14 landing as additive minor bump on top of 1.8.0 NPR module foundation. Plus rustdoc broken-intra-doc-link fix and 6-issue clippy cleanup in test code.
+
 ### Added
 
 - **Phase 14** — GPU bytecode serialisation and WGSL evaluator emitter. New public API:

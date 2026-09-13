@@ -3,7 +3,7 @@
 //! `SdfNode` produces signed distances; NPR primitives produce colors.
 //! The two pipelines are distinct, so this module introduces a small
 //! `NprColorNode` tree that describes how NPR primitives compose into a
-//! final `NprColor`. The tree is evaluated against an [`NprInput`] and
+//! final `NprColor`. The tree is evaluated against an [`NprColorContext`] and
 //! yields a color; it is deliberately kept small (no bytecode, no
 //! transpile) so callers can experiment before committing to a fuller
 //! integration with the `SdfNode` bytecode compiler.
