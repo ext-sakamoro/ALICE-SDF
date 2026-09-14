@@ -3,74 +3,86 @@
 //! Adds micro-detail noise to SDF surfaces without mesh generation.
 //! Uses multi-octave value noise for natural-looking roughness.
 //!
+//! The noise law lives here once ([`hash_noise_3d`] / [`fbm`]) and the GLSL /
+//! WGSL / HLSL transpilers emit the same function, so CPU, SIMD, JIT and
+//! shader evaluations of `SurfaceRoughness` agree (portable PCG hash; the
+//! previous `fract(sin(·) · 43758)` hash differed between GPU and CPU `sin`).
+//!
 //! Author: Moroya Sakamoto
 
 use glam::Vec3;
 
-/// Hash function for 3D noise
+/// PCG integer hash (Jarzynski & Olano), bit-exact on CPU and GPU.
 #[inline(always)]
-fn hash(p: Vec3) -> f32 {
-    let h = p.dot(Vec3::new(127.1, 311.7, 74.7));
-    // GLSL `fract(sin(h) * 43758.5453)`: non-negative fract of the *scaled* value.
-    // (Previously `fract(sin(h)) * 43758` = ±43758, which `value_noise` then
-    // folded with a trailing `fract()` into a discontinuous sawtooth in (-1, 1);
-    // the 2026-09-14 interval oracle caught the resulting out-of-range fbm.)
-    let x = h.sin() * 43_758.547;
-    x - x.floor()
+pub const fn pcg(v: u32) -> u32 {
+    let v = v.wrapping_mul(747_796_405).wrapping_add(2_891_336_453);
+    let w = ((v >> ((v >> 28) + 4)) ^ v).wrapping_mul(277_803_737);
+    (w >> 22) ^ w
 }
 
-/// Smooth value noise
+/// Lattice-corner hash in `[0, 1)`: PCG over the raw bits of the (integer
+/// valued) corner coordinates and `seed`. Only integer ops and a `u32 → f32`
+/// conversion, so every evaluation path — CPU, SIMD, JIT and the GLSL / WGSL /
+/// HLSL `hash_noise_3d` helpers — produces the same value.
 #[inline(always)]
-fn value_noise(p: Vec3) -> f32 {
-    let i = Vec3::new(p.x.floor(), p.y.floor(), p.z.floor());
-    let f = p - i;
+fn hash3(i: Vec3, seed: u32) -> f32 {
+    let h = pcg(i.x.to_bits() ^ pcg(i.y.to_bits() ^ pcg(i.z.to_bits() ^ seed)));
+    (h as f32) * (1.0 / 4_294_967_295.0)
+}
 
-    // Smoothstep
+/// Value noise in `[-1, 1]`: trilinear (smoothstep-weighted) blend of the
+/// eight lattice-corner hashes, mapped with `2v - 1`.
+///
+/// This is the single definition of the noise law; the shader transpilers
+/// emit exactly this function as `hash_noise_3d(p, seed)`.
+#[inline(always)]
+pub fn hash_noise_3d(p: Vec3, seed: u32) -> f32 {
+    let i = p.floor();
+    let f = p - i;
     let u = f * f * (Vec3::splat(3.0) - f * 2.0);
 
-    let n000 = hash(i);
-    let n100 = hash(i + Vec3::X);
-    let n010 = hash(i + Vec3::Y);
-    let n110 = hash(i + Vec3::new(1.0, 1.0, 0.0));
-    let n001 = hash(i + Vec3::Z);
-    let n101 = hash(i + Vec3::new(1.0, 0.0, 1.0));
-    let n011 = hash(i + Vec3::new(0.0, 1.0, 1.0));
-    let n111 = hash(i + Vec3::ONE);
+    let n000 = hash3(i, seed);
+    let n100 = hash3(i + Vec3::X, seed);
+    let n010 = hash3(i + Vec3::Y, seed);
+    let n110 = hash3(i + Vec3::new(1.0, 1.0, 0.0), seed);
+    let n001 = hash3(i + Vec3::Z, seed);
+    let n101 = hash3(i + Vec3::new(1.0, 0.0, 1.0), seed);
+    let n011 = hash3(i + Vec3::new(0.0, 1.0, 1.0), seed);
+    let n111 = hash3(i + Vec3::ONE, seed);
 
-    // Trilinear interpolation
-    let a = n000.mul_add(1.0 - u.x, n100 * u.x);
-    let b = n010.mul_add(1.0 - u.x, n110 * u.x);
-    let c = n001.mul_add(1.0 - u.x, n101 * u.x);
-    let d = n011 * (1.0 - u.x) + n111 * u.x;
-
-    let e = a * (1.0 - u.y) + b * u.y;
-    let f_val = c * (1.0 - u.y) + d * u.y;
-
-    // Trilinear blend of [0, 1) hashes stays in [0, 1) — no wrap needed.
-    e * (1.0 - u.z) + f_val * u.z
+    let c00 = n000 + (n100 - n000) * u.x;
+    let c10 = n010 + (n110 - n010) * u.x;
+    let c01 = n001 + (n101 - n001) * u.x;
+    let c11 = n011 + (n111 - n011) * u.x;
+    let c0 = c00 + (c10 - c00) * u.y;
+    let c1 = c01 + (c11 - c01) * u.y;
+    (c0 + (c1 - c0) * u.z) * 2.0 - 1.0
 }
 
-/// Fractal Brownian Motion
+/// Seed the transpilers hard-code for `SurfaceRoughness`.
+pub const SURFACE_ROUGHNESS_SEED: u32 = 42;
+
+/// Fractal Brownian Motion: `Σ_{i<octaves} 0.5^i · hash_noise_3d(p · 2^i, 42)`.
+///
+/// Same structure as the transpiled shader expansion (amplitude starts at 1
+/// and halves, frequency doubles, no per-octave rotation), so
+/// `|fbm| ≤ 2 - 2^(1 - octaves)`.
 #[inline(always)]
 pub fn fbm(p: Vec3, octaves: u32) -> f32 {
     let mut value = 0.0_f32;
-    let mut amplitude = 0.5_f32;
-    let mut frequency = 1.0_f32;
-    let mut p = p;
-
-    for _ in 0..octaves {
-        value += amplitude * value_noise(p * frequency).mul_add(2.0, -1.0);
+    let mut amplitude = 1.0_f32;
+    for i in 0..octaves {
+        let scale = (1u32 << i) as f32;
+        value += amplitude * hash_noise_3d(p * scale, SURFACE_ROUGHNESS_SEED);
         amplitude *= 0.5;
-        frequency *= 2.0;
-        // Rotate to break axis alignment
-        p = Vec3::new(
-            p.x.mul_add(0.8, -(p.z * 0.6)),
-            p.y,
-            p.x.mul_add(0.6, p.z * 0.8),
-        );
     }
-
     value
+}
+
+/// Upper bound of `|fbm(_, octaves)|`.
+#[inline(always)]
+pub fn fbm_bound(octaves: u32) -> f32 {
+    2.0 - 0.5_f32.powi(octaves as i32 - 1)
 }
 
 /// Apply surface roughness to an SDF distance value

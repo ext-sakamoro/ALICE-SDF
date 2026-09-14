@@ -45,7 +45,7 @@ pub use repeat::{
 };
 pub use revolution::modifier_revolution;
 pub use shear::modifier_shear;
-pub use surface_roughness::{fbm, surface_roughness};
+pub use surface_roughness::{fbm, fbm_bound, hash_noise_3d, surface_roughness};
 pub use sweep::{modifier_sweep_bezier, sweep_bezier_dist_y};
 pub use taper::modifier_taper;
 pub use twist::{modifier_twist, modifier_twist_x, modifier_twist_z};

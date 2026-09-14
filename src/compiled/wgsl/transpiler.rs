@@ -816,26 +816,35 @@ fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
     return smooth_max_fast(a, b, k, 1.0 / k);
 }";
 
-const HELPER_HASH_NOISE: &str = r"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
-    let f = fract(p);
+const HELPER_HASH_NOISE: &str = r"fn alice_pcg(v0: u32) -> u32 {
+    let v = v0 * 747796405u + 2891336453u;
+    let w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+fn alice_hash3(i: vec3<f32>, seed: u32) -> f32 {
+    let q = bitcast<vec3<u32>>(i);
+    return f32(alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed)))) * (1.0 / 4294967295.0);
+}
+// Same law as `alice_sdf::modifiers::surface_roughness::hash_noise_3d` (PCG lattice hash, bit-exact with the CPU).
+fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
     let i = floor(p);
+    let f = p - i;
     let u = f * f * (3.0 - 2.0 * f);
-    let s = f32(seed);
-    let n000 = fract(sin(dot(i, vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n100 = fract(sin(dot(i + vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n010 = fract(sin(dot(i + vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n110 = fract(sin(dot(i + vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n001 = fract(sin(dot(i + vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n101 = fract(sin(dot(i + vec3<f32>(1.0, 0.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n011 = fract(sin(dot(i + vec3<f32>(0.0, 1.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n111 = fract(sin(dot(i + vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let c00 = mix(n000, n100, u.x);
-    let c10 = mix(n010, n110, u.x);
-    let c01 = mix(n001, n101, u.x);
-    let c11 = mix(n011, n111, u.x);
-    let c0 = mix(c00, c10, u.y);
-    let c1 = mix(c01, c11, u.y);
-    return mix(c0, c1, u.z) * 2.0 - 1.0;
+    let n000 = alice_hash3(i, seed);
+    let n100 = alice_hash3(i + vec3<f32>(1.0, 0.0, 0.0), seed);
+    let n010 = alice_hash3(i + vec3<f32>(0.0, 1.0, 0.0), seed);
+    let n110 = alice_hash3(i + vec3<f32>(1.0, 1.0, 0.0), seed);
+    let n001 = alice_hash3(i + vec3<f32>(0.0, 0.0, 1.0), seed);
+    let n101 = alice_hash3(i + vec3<f32>(1.0, 0.0, 1.0), seed);
+    let n011 = alice_hash3(i + vec3<f32>(0.0, 1.0, 1.0), seed);
+    let n111 = alice_hash3(i + vec3<f32>(1.0, 1.0, 1.0), seed);
+    let c00 = n000 + (n100 - n000) * u.x;
+    let c10 = n010 + (n110 - n010) * u.x;
+    let c01 = n001 + (n101 - n001) * u.x;
+    let c11 = n011 + (n111 - n011) * u.x;
+    let c0 = c00 + (c10 - c00) * u.y;
+    let c1 = c01 + (c11 - c01) * u.y;
+    return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
 }";
 
 const HELPER_QUAT_ROTATE: &str = r"fn quat_rotate(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {

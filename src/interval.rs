@@ -1196,7 +1196,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let amp = *amplitude;
             Interval::new(child_iv.lo - amp.abs(), child_iv.hi + amp.abs())
         }
-        // fbm of [0, 1) value noise mapped to [-1, 1]: |fbm| ≤ Σ 0.5^(i+1) = 1 - 0.5^octaves
+        // |fbm| ≤ Σ_{i<octaves} 0.5^i = 2 - 2^(1 - octaves) (`modifiers::surface_roughness::fbm_bound`)
         SdfNode::SurfaceRoughness {
             child,
             amplitude,
@@ -1204,7 +1204,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             ..
         } => {
             let child_iv = eval_interval(child, bounds);
-            let amp = amplitude.abs() * (1.0 - 0.5_f32.powi(*octaves as i32));
+            let amp = amplitude.abs() * crate::modifiers::fbm_bound(*octaves);
             Interval::new(child_iv.lo - amp, child_iv.hi + amp)
         }
 
