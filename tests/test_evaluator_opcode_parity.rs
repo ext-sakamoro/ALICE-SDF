@@ -5,9 +5,11 @@
 //!
 //! - `eval_compiled`      — scalar bytecode (shared exhaustive stack machine)
 //! - `eval_compiled_simd` — 8-lane SIMD, lane 0 of a splatted point
-//! - `eval_compiled_bvh`  — BVH bytecode (same stack machine) **or** a loud
-//!   `CompileError::UnsupportedPrimitive` from `try_compile` — never a silent
-//!   fallback distance
+//! - `eval_compiled_bvh`  — BVH bytecode (same stack machine; since 1.9.2 the
+//!   BVH accepts every tree the main compiler does)
+//! - `JitCompiledSdf` / `JitSimdSdf` (feature `jit`) — Cranelift scalar JIT and
+//!   the SIMD JIT, **or** a loud `Err` from `compile` — never a silent MAX
+//!   distance
 //!
 //! A final test asserts that the corpus below reaches every `OpCode` the
 //! compiler can emit, so a new opcode that is not covered here fails CI.
@@ -48,7 +50,12 @@ fn sample_points() -> Vec<Vec3> {
 fn check_parity(name: &str, node: &SdfNode) -> (Vec<String>, BTreeSet<String>) {
     let compiled = CompiledSdf::try_compile(node)
         .unwrap_or_else(|e| panic!("{name}: CompiledSdf::try_compile failed: {e}"));
-    let bvh = CompiledSdfBvh::try_compile(node);
+    let bvh = CompiledSdfBvh::try_compile(node)
+        .unwrap_or_else(|e| panic!("{name}: CompiledSdfBvh::try_compile failed: {e}"));
+    #[cfg(feature = "jit")]
+    let jit_scalar = alice_sdf::compiled::jit::JitCompiledSdf::compile(node).ok();
+    #[cfg(feature = "jit")]
+    let jit_simd = alice_sdf::compiled::jit::JitSimdSdf::compile(&compiled).ok();
     let mut failures = Vec::new();
     for p in sample_points() {
         let tree = eval(node, p);
@@ -59,21 +66,27 @@ fn check_parity(name: &str, node: &SdfNode) -> (Vec<String>, BTreeSet<String>) {
         }
         let scalar = eval_compiled(&compiled, p);
         let simd = simd_lane0(&compiled, p);
-        let mut paths = vec![("scalar", scalar), ("simd", simd)];
-        if let Ok(bvh) = &bvh {
-            paths.push(("bvh", eval_compiled_bvh(bvh, p)));
+        #[allow(unused_mut)]
+        let mut paths = vec![
+            ("scalar", scalar),
+            ("simd", simd),
+            ("bvh", eval_compiled_bvh(&bvh, p)),
+        ];
+        #[cfg(feature = "jit")]
+        {
+            if let Some(j) = &jit_scalar {
+                paths.push(("jit", j.eval(p)));
+            }
+            if let Some(j) = &jit_simd {
+                let out = j.eval_batch(&[p.x; 8], &[p.y; 8], &[p.z; 8]);
+                paths.push(("jit_simd", out[0]));
+            }
         }
         for (path, v) in paths {
             if (v - tree).abs() > TOL * tree.abs().max(1.0) {
                 failures.push(format!("{name} @ {p:?}: tree={tree:.6} {path}={v:.6}"));
             }
         }
-    }
-    if let Err(e) = &bvh {
-        assert!(
-            matches!(e, CompileError::UnsupportedPrimitive(_)),
-            "{name}: BVH must reject with UnsupportedPrimitive, got {e}"
-        );
     }
     let ops = compiled
         .instructions
@@ -179,7 +192,7 @@ fn corpus() -> Vec<(&'static str, SdfNode)> {
         ("blobby_cross", SdfNode::blobby_cross(0.6, 0.2)),
         ("parabola_segment", SdfNode::parabola_segment(0.5, 0.4, 0.2)),
         ("regular_polygon", SdfNode::regular_polygon(0.6, 6, 0.2)),
-        ("star_polygon", SdfNode::star_polygon(0.6, 5, 2.5, 0.2)),
+        ("star_polygon", SdfNode::star_polygon(0.6, 5, 0.3, 0.2)),
         ("stairs", SdfNode::stairs(0.3, 0.2, 4, 0.3)),
         ("helix", SdfNode::helix(0.6, 0.1, 0.5, 0.8)),
         ("tetrahedron", SdfNode::tetrahedron(0.6)),
@@ -448,31 +461,87 @@ fn unsupported_nodes_are_rejected_loudly_not_silently() {
         Err(CompileError::UnsupportedPrimitive(_))
     ));
 
-    // BVH compiler: these used to compile to a silent `sphere(0.001)`.
+    // Both compilers reject the same set (no bytecode law): Terrain, Triangle, Bezier.
     let rejected: Vec<(&str, SdfNode)> = vec![
+        ("terrain", terrain),
+        ("triangle", SdfNode::triangle(Vec3::ZERO, Vec3::X, Vec3::Y)),
+        ("bezier", SdfNode::bezier(Vec3::ZERO, Vec3::X, Vec3::Y, 0.1)),
+    ];
+    for (name, node) in rejected {
+        assert!(
+            matches!(
+                CompiledSdf::try_compile(&node),
+                Err(CompileError::UnsupportedPrimitive(_))
+            ),
+            "{name}: CompiledSdf must reject with UnsupportedPrimitive"
+        );
+        assert!(
+            matches!(
+                CompiledSdfBvh::try_compile(&node),
+                Err(CompileError::UnsupportedPrimitive(_))
+            ),
+            "{name}: CompiledSdfBvh must reject with UnsupportedPrimitive"
+        );
+    }
+    // Since 1.9.2 the BVH accepts what used to be silently replaced by sphere(0.001).
+    for (name, node) in [
         ("ifs", sphere().ifs(vec![identity_mat()], 2)),
         (
             "projective",
             unit_box().projective_transform(identity_mat(), 1.0),
         ),
         ("icosahedral", unit_box().icosahedral_symmetry()),
-        (
-            "surface_roughness",
-            sphere().surface_roughness(3.0, 0.05, 2),
-        ),
-        ("sine_displacement", sphere().sine_displacement(0.1, 3.0)),
-        ("terrain", terrain),
         ("circle_2d", SdfNode::circle_2d(0.25, 0.5)),
-    ];
-    for (name, node) in rejected {
+    ] {
         assert!(
-            matches!(
-                CompiledSdfBvh::try_compile(&node),
-                Err(CompileError::UnsupportedPrimitive(_))
-            ),
-            "{name}: BVH must reject with UnsupportedPrimitive"
+            CompiledSdfBvh::try_compile(&node).is_ok(),
+            "{name}: BVH must compile"
         );
     }
+}
+
+/// Every primitive's AABB must contain every point where the SDF is ≤ 0.
+/// Sampled on a grid so a too-tight conservative bound in `refit::primitive_aabb`
+/// fails here instead of silently culling geometry downstream.
+#[test]
+fn primitive_and_scene_aabbs_are_conservative() {
+    let mut failures = Vec::new();
+    for (name, node) in corpus() {
+        let bvh = CompiledSdfBvh::compile(&node);
+        let aabb = get_scene_aabb(&bvh);
+        if !aabb.is_valid() {
+            failures.push(format!("{name}: scene AABB is empty/invalid"));
+            continue;
+        }
+        if !aabb.min().is_finite() || !aabb.max().is_finite() {
+            continue; // unbounded shape: infinite AABB is trivially conservative
+        }
+        let steps = 25;
+        let extent = 3.0f32;
+        for ix in 0..steps {
+            for iy in 0..steps {
+                for iz in 0..steps {
+                    let f = |i: usize| -extent + 2.0 * extent * (i as f32) / ((steps - 1) as f32);
+                    let p = Vec3::new(f(ix), f(iy), f(iz));
+                    let d = eval(&node, p);
+                    if d <= 0.0 && aabb.distance_to_point(p) > 1e-4 {
+                        failures.push(format!(
+                            "{name}: inside point {p:?} (d={d:.4}) outside AABB [{:?}, {:?}]",
+                            aabb.min(),
+                            aabb.max()
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} AABB violations:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]

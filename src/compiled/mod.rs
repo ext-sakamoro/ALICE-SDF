@@ -221,6 +221,6 @@ pub use eval_soa::{
 };
 pub use instanced::InstancedSdf;
 pub use instruction::Instruction;
-pub use opcode::OpCode;
+pub use opcode::{OpCode, OpKind};
 pub use refit::RefitError;
 pub use simd::{Quatx8, Vec3x8};

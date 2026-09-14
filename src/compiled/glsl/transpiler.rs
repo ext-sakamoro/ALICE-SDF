@@ -1271,15 +1271,16 @@ const HELPER_SDF_PARABOLA_SEGMENT: &str = r"float sdf_parabola_segment(vec3 p, f
 ";
 
 const HELPER_SDF_REGULAR_POLYGON: &str = r"float sdf_regular_polygon(vec3 p, float radius, float n, float hh) {
-    float qx = abs(p.x);
-    float qz = p.z;
-    float nn = max(n, 3.0);
+    // IQ regular polygon (exact), XZ plane, radius = circumradius (1.9.2)
+    float nn = trunc(max(n, 3.0));
     float an = 3.14159265358979 / nn;
-    float he = radius * cos(an);
-    float angle = atan(qx, qz);
-    float bn = an * floor((angle + an) / (2.0 * an));
-    float rx = cos(bn) * qx + sin(bn) * qz;
-    float d2d = rx - he;
+    vec2 acs = vec2(cos(an), sin(an));
+    float bn = mod(atan(p.x, p.z), 2.0 * an) - an;
+    float r = length(p.xz);
+    vec2 q = vec2(r * cos(bn), abs(r * sin(bn)));
+    q -= radius * acs;
+    q.y += clamp(-q.y, 0.0, radius * acs.y);
+    float d2d = length(q) * sign(q.x);
     float dy = abs(p.y) - hh;
     vec2 w = max(vec2(d2d, dy), vec2(0.0));
     return min(max(d2d, dy), 0.0) + length(w);

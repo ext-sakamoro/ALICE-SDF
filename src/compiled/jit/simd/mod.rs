@@ -24,6 +24,7 @@
 
 mod platform;
 
+use cranelift_codegen::ir::condcodes::FloatCC;
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, Value};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -99,40 +100,81 @@ fn simd_select_neg(
         .bitcast(types::F32X4, MemFlags::new(), selected)
 }
 
-/// SIMD Taylor-series sin/cos approximation for F32X4 vectors.
-/// sin(x) ≈ x - x³/6 + x⁵/120, cos(x) ≈ 1 - x²/2 + x⁴/24
+/// SIMD sin/cos with range reduction + degree-9/8 Taylor on [-π/2, π/2].
+///
+/// Max abs error ≈ 4e-6 (sin) / 3e-5 (cos). Before 1.9.2 this was an
+/// unreduced degree-5 series (>10% off for |x| > 2).
 fn simd_sincos_approx(
     builder: &mut FunctionBuilder,
     angle: Value,
     vec_type: types::Type,
 ) -> (Value, Value) {
-    let one_s = builder.ins().f32const(1.0);
-    let half_s = builder.ins().f32const(0.5);
-    let sixth_s = builder.ins().f32const(1.0 / 6.0);
-    let tf_s = builder.ins().f32const(1.0 / 24.0);
-    let ot_s = builder.ins().f32const(1.0 / 120.0);
-    let one_v = builder.ins().splat(vec_type, one_s);
-    let half_v = builder.ins().splat(vec_type, half_s);
-    let sixth_v = builder.ins().splat(vec_type, sixth_s);
-    let tf_v = builder.ins().splat(vec_type, tf_s);
-    let ot_v = builder.ins().splat(vec_type, ot_s);
+    let splat = |b: &mut FunctionBuilder, v: f32| {
+        let s = b.ins().f32const(v);
+        b.ins().splat(vec_type, s)
+    };
+    let two_pi = splat(builder, std::f32::consts::TAU);
+    let inv_two_pi = splat(builder, 1.0 / std::f32::consts::TAU);
+    let pi = splat(builder, std::f32::consts::PI);
+    let neg_pi = splat(builder, -std::f32::consts::PI);
+    let half_pi = splat(builder, std::f32::consts::FRAC_PI_2);
+    let zero = splat(builder, 0.0);
+    let one = splat(builder, 1.0);
+    let neg_one = splat(builder, -1.0);
 
-    let x2 = builder.ins().fmul(angle, angle);
-    let x3 = builder.ins().fmul(x2, angle);
-    let x4 = builder.ins().fmul(x2, x2);
-    let x5 = builder.ins().fmul(x4, angle);
+    // x1 = x - 2π·round(x / 2π)  ∈ [-π, π]
+    let k = builder.ins().fmul(angle, inv_two_pi);
+    let k = builder.ins().nearest(k);
+    let k2pi = builder.ins().fmul(k, two_pi);
+    let x1 = builder.ins().fsub(angle, k2pi);
 
-    // sin(x) = x - x³/6 + x⁵/120
-    let st1 = builder.ins().fmul(x3, sixth_v);
-    let st2 = builder.ins().fmul(x5, ot_v);
-    let sin_r = builder.ins().fsub(angle, st1);
-    let sin_r = builder.ins().fadd(sin_r, st2);
+    // fold |x1| > π/2 onto [-π/2, π/2]: x2 = ±π - x1, cos flips sign
+    let ax = builder.ins().fabs(x1);
+    let big = builder.ins().fcmp(FloatCC::GreaterThan, ax, half_pi);
+    let pos = builder.ins().fcmp(FloatCC::GreaterThan, x1, zero);
+    let pi_signed = builder.ins().bitselect(pos, pi, neg_pi);
+    let folded = builder.ins().fsub(pi_signed, x1);
+    let x2 = builder.ins().bitselect(big, folded, x1);
+    let cos_sign = builder.ins().bitselect(big, neg_one, one);
 
-    // cos(x) = 1 - x²/2 + x⁴/24
-    let ct1 = builder.ins().fmul(x2, half_v);
-    let ct2 = builder.ins().fmul(x4, tf_v);
-    let cos_r = builder.ins().fsub(one_v, ct1);
-    let cos_r = builder.ins().fadd(cos_r, ct2);
+    let c3 = splat(builder, 1.0 / 6.0);
+    let c5 = splat(builder, 1.0 / 120.0);
+    let c7 = splat(builder, 1.0 / 5040.0);
+    let c9 = splat(builder, 1.0 / 362_880.0);
+    let d2 = splat(builder, 0.5);
+    let d4 = splat(builder, 1.0 / 24.0);
+    let d6 = splat(builder, 1.0 / 720.0);
+    let d8 = splat(builder, 1.0 / 40_320.0);
+
+    let x2sq = builder.ins().fmul(x2, x2);
+    let x3 = builder.ins().fmul(x2sq, x2);
+    let x4 = builder.ins().fmul(x2sq, x2sq);
+    let x5 = builder.ins().fmul(x4, x2);
+    let x6 = builder.ins().fmul(x4, x2sq);
+    let x7 = builder.ins().fmul(x6, x2);
+    let x8 = builder.ins().fmul(x4, x4);
+    let x9 = builder.ins().fmul(x8, x2);
+
+    // sin = x - x³/6 + x⁵/120 - x⁷/5040 + x⁹/362880
+    let t3 = builder.ins().fmul(x3, c3);
+    let t5 = builder.ins().fmul(x5, c5);
+    let t7 = builder.ins().fmul(x7, c7);
+    let t9 = builder.ins().fmul(x9, c9);
+    let sin_r = builder.ins().fsub(x2, t3);
+    let sin_r = builder.ins().fadd(sin_r, t5);
+    let sin_r = builder.ins().fsub(sin_r, t7);
+    let sin_r = builder.ins().fadd(sin_r, t9);
+
+    // cos = 1 - x²/2 + x⁴/24 - x⁶/720 + x⁸/40320
+    let u2 = builder.ins().fmul(x2sq, d2);
+    let u4 = builder.ins().fmul(x4, d4);
+    let u6 = builder.ins().fmul(x6, d6);
+    let u8 = builder.ins().fmul(x8, d8);
+    let cos_r = builder.ins().fsub(one, u2);
+    let cos_r = builder.ins().fadd(cos_r, u4);
+    let cos_r = builder.ins().fsub(cos_r, u6);
+    let cos_r = builder.ins().fadd(cos_r, u8);
+    let cos_r = builder.ins().fmul(cos_r, cos_sign);
 
     (cos_r, sin_r)
 }
@@ -295,6 +337,9 @@ impl JitSimdSdf {
             )
             .map_err(|e| e.to_string())?;
 
+        // Opcodes without a native SIMD codegen arm. Recorded during codegen and
+        // surfaced as `Err` after the builder block: never a silent MAX distance.
+        let mut unsupported: Option<OpCode> = None;
         {
             let mut builder = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
             let entry_block = builder.create_block();
@@ -476,13 +521,13 @@ impl JitSimdSdf {
                         let z_nz0 = builder.ins().fmul(curr_z.0, nz);
                         let y_ny0 = builder.ins().fma(curr_y.0, ny, z_nz0);
                         let dot0 = builder.ins().fma(curr_x.0, nx, y_ny0);
-                        let d0 = builder.ins().fadd(dot0, dist);
+                        let d0 = builder.ins().fsub(dot0, dist); // sdf_plane law: dot - distance
                         let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
 
                         let z_nz1 = builder.ins().fmul(curr_z.1, nz);
                         let y_ny1 = builder.ins().fma(curr_y.1, ny, z_nz1);
                         let dot1 = builder.ins().fma(curr_x.1, nx, y_ny1);
-                        let d1 = builder.ins().fadd(dot1, dist);
+                        let d1 = builder.ins().fsub(dot1, dist);
                         let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
 
                         value_stack.push((d0_scaled, d1_scaled));
@@ -716,6 +761,12 @@ impl JitSimdSdf {
                         let inv_rz2 = builder.ins().splat(vec_type, inv_rz2_s);
 
                         let eps_s = builder.ins().f32const(1e-10);
+                        let centre_s = builder.ins().f32const(
+                            -(inst.params[0].max(1e-10))
+                                .min(inst.params[1].max(1e-10))
+                                .min(inst.params[2].max(1e-10)),
+                        );
+                        let centre_vec = builder.ins().splat(vec_type, centre_s);
                         let eps = builder.ins().splat(vec_type, eps_s);
 
                         // Lane 0: k0 = length(p / radii)
@@ -733,6 +784,8 @@ impl JitSimdSdf {
                         let k0_m1_0 = builder.ins().fsub(k0_0, one_vec);
                         let num0 = builder.ins().fmul(k0_0, k0_m1_0);
                         let d0 = builder.ins().fdiv(num0, k1_safe0);
+                        let at_centre0 = builder.ins().fcmp(FloatCC::LessThan, k1_0, eps);
+                        let d0 = builder.ins().bitselect(at_centre0, centre_vec, d0);
 
                         // Lane 1
                         let px1 = builder.ins().fmul(curr_x.1, inv_rx);
@@ -747,6 +800,8 @@ impl JitSimdSdf {
                         let k0_m1_1 = builder.ins().fsub(k0_1, one_vec);
                         let num1 = builder.ins().fmul(k0_1, k0_m1_1);
                         let d1 = builder.ins().fdiv(num1, k1_safe1);
+                        let at_centre1 = builder.ins().fcmp(FloatCC::LessThan, k1_1, eps);
+                        let d1 = builder.ins().bitselect(at_centre1, centre_vec, d1);
 
                         let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
                         let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
@@ -2096,6 +2151,8 @@ impl JitSimdSdf {
                     }
 
                     OpCode::Noise => {
+                        // No Perlin noise codegen: surface as Err after the builder block
+                        unsupported.get_or_insert(OpCode::Noise);
                         // Store noise params for PopTransform (nop in JIT - perlin not available)
                         coord_stack.push(SimdCoordState {
                             x: curr_x,
@@ -2200,7 +2257,8 @@ impl JitSimdSdf {
                     OpCode::End => break,
 
                     _ => {
-                        // Unimplemented / fallback
+                        // No codegen arm: record and keep the value stack balanced
+                        unsupported.get_or_insert(inst.opcode);
                         let max_s = builder.ins().f32const(f32::MAX);
                         let max_v = builder.ins().splat(vec_type, max_s);
                         value_stack.push((max_v, max_v));
@@ -2216,6 +2274,12 @@ impl JitSimdSdf {
 
             builder.ins().return_(&[]);
             builder.finalize();
+        }
+
+        if let Some(op) = unsupported {
+            return Err(format!(
+                "JIT SIMD: no codegen arm for opcode {op:?} — use CompiledSdf::eval / eval_compiled_simd for this tree"
+            ));
         }
 
         module
@@ -2464,6 +2528,9 @@ impl JitSimdSdfDynamic {
 
         let initial_params;
 
+        // Opcodes without a native SIMD codegen arm. Recorded during codegen and
+        // surfaced as `Err` after the builder block: never a silent MAX distance.
+        let mut unsupported: Option<OpCode> = None;
         {
             let mut builder = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
             let entry_block = builder.create_block();
@@ -2620,13 +2687,13 @@ impl JitSimdSdfDynamic {
                         let z_nz0 = builder.ins().fmul(curr_z.0, nz);
                         let y_ny0 = builder.ins().fma(curr_y.0, ny, z_nz0);
                         let dot0 = builder.ins().fma(curr_x.0, nx, y_ny0);
-                        let d0 = builder.ins().fadd(dot0, dist);
+                        let d0 = builder.ins().fsub(dot0, dist); // sdf_plane law: dot - distance
                         let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
 
                         let z_nz1 = builder.ins().fmul(curr_z.1, nz);
                         let y_ny1 = builder.ins().fma(curr_y.1, ny, z_nz1);
                         let dot1 = builder.ins().fma(curr_x.1, nx, y_ny1);
-                        let d1 = builder.ins().fadd(dot1, dist);
+                        let d1 = builder.ins().fsub(dot1, dist);
                         let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
 
                         value_stack.push((d0_scaled, d1_scaled));
@@ -2830,6 +2897,13 @@ impl JitSimdSdfDynamic {
                         let inv_rz2 = emitter
                             .emit_splat(&mut builder, 1.0 / (inst.params[2] * inst.params[2]));
                         let eps_s = builder.ins().f32const(1e-10);
+                        // sdf_ellipsoid law: -min(radii) at the centre (dynamic param slot)
+                        let centre_vec = emitter.emit_splat(
+                            &mut builder,
+                            -(inst.params[0].max(1e-10))
+                                .min(inst.params[1].max(1e-10))
+                                .min(inst.params[2].max(1e-10)),
+                        );
                         let eps = builder.ins().splat(vec_type, eps_s);
 
                         // Lane 0
@@ -2845,6 +2919,8 @@ impl JitSimdSdfDynamic {
                         let k0_m1_0 = builder.ins().fsub(k0_0, one_vec);
                         let num0 = builder.ins().fmul(k0_0, k0_m1_0);
                         let d0 = builder.ins().fdiv(num0, k1_safe0);
+                        let at_centre0 = builder.ins().fcmp(FloatCC::LessThan, k1_0, eps);
+                        let d0 = builder.ins().bitselect(at_centre0, centre_vec, d0);
 
                         // Lane 1
                         let px1 = builder.ins().fmul(curr_x.1, inv_rx);
@@ -2859,6 +2935,8 @@ impl JitSimdSdfDynamic {
                         let k0_m1_1 = builder.ins().fsub(k0_1, one_vec);
                         let num1 = builder.ins().fmul(k0_1, k0_m1_1);
                         let d1 = builder.ins().fdiv(num1, k1_safe1);
+                        let at_centre1 = builder.ins().fcmp(FloatCC::LessThan, k1_1, eps);
+                        let d1 = builder.ins().bitselect(at_centre1, centre_vec, d1);
 
                         let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
                         let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
@@ -4017,6 +4095,8 @@ impl JitSimdSdfDynamic {
                     }
 
                     OpCode::Noise => {
+                        // No Perlin noise codegen: surface as Err after the builder block
+                        unsupported.get_or_insert(OpCode::Noise);
                         // Noise is nop in JIT (perlin not available)
                         coord_stack.push(DynSimdCoordState {
                             x: curr_x,
@@ -4111,6 +4191,8 @@ impl JitSimdSdfDynamic {
                     OpCode::End => break,
 
                     _ => {
+                        // No codegen arm: record and keep the value stack balanced
+                        unsupported.get_or_insert(inst.opcode);
                         let max_s = builder.ins().f32const(f32::MAX);
                         let max_v = builder.ins().splat(vec_type, max_s);
                         value_stack.push((max_v, max_v));
@@ -4125,6 +4207,12 @@ impl JitSimdSdfDynamic {
             builder.finalize();
 
             initial_params = emitter.params;
+        }
+
+        if let Some(op) = unsupported {
+            return Err(format!(
+                "JIT SIMD: no codegen arm for opcode {op:?} — use CompiledSdf::eval / eval_compiled_simd for this tree"
+            ));
         }
 
         module
@@ -4343,6 +4431,8 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
                 params.push(1.0 / (rx * rx));
                 params.push(1.0 / (ry * ry));
                 params.push(1.0 / (rz * rz));
+                // centre value slot (must match the dynamic Ellipsoid codegen order)
+                params.push(-(rx.max(1e-10)).min(ry.max(1e-10)).min(rz.max(1e-10)));
             }
             OpCode::RoundedCone => {
                 let r1 = inst.params[0];

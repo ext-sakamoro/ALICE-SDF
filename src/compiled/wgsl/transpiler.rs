@@ -1415,15 +1415,17 @@ const HELPER_SDF_PARABOLA_SEGMENT: &str = r"fn sdf_parabola_segment(p: vec3<f32>
 ";
 
 const HELPER_SDF_REGULAR_POLYGON: &str = r"fn sdf_regular_polygon(p: vec3<f32>, radius: f32, n: f32, hh: f32) -> f32 {
-    let qx = abs(p.x);
-    let qz = p.z;
-    let nn = max(n, 3.0);
+    // IQ regular polygon (exact), XZ plane, radius = circumradius (1.9.2)
+    let nn = trunc(max(n, 3.0));
     let an = 3.14159265358979 / nn;
-    let he = radius * cos(an);
-    let angle = atan2(qx, qz);
-    let bn = an * floor((angle + an) / (2.0 * an));
-    let rx = cos(bn) * qx + sin(bn) * qz;
-    let d2d = rx - he;
+    let acs = vec2<f32>(cos(an), sin(an));
+    let a0 = atan2(p.x, p.z);
+    let bn = a0 - 2.0 * an * floor(a0 / (2.0 * an)) - an;
+    let r = length(p.xz);
+    var q = vec2<f32>(r * cos(bn), abs(r * sin(bn)));
+    q = q - radius * acs;
+    q.y = q.y + clamp(-q.y, 0.0, radius * acs.y);
+    let d2d = length(q) * sign(q.x);
     let dy = abs(p.y) - hh;
     let w = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
     return min(max(d2d, dy), 0.0) + length(w);

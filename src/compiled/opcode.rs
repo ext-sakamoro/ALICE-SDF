@@ -283,30 +283,26 @@ pub enum OpCode {
 impl OpCode {
     /// Returns true if this opcode is a primitive (pushes to value stack)
     #[inline]
-    pub fn is_primitive(self) -> bool {
-        let v = self as u8;
-        v < 16 || (64..=120).contains(&v)
+    pub const fn is_primitive(self) -> bool {
+        matches!(self.kind(), OpKind::Primitive)
     }
 
     /// Returns true if this opcode is a binary operation
     #[inline]
-    pub fn is_binary_op(self) -> bool {
-        let v = self as u8;
-        (16..32).contains(&v) || (128..144).contains(&v)
+    pub const fn is_binary_op(self) -> bool {
+        matches!(self.kind(), OpKind::Binary)
     }
 
     /// Returns true if this opcode is a transform
     #[inline]
-    pub fn is_transform(self) -> bool {
-        let v = self as u8;
-        (32..48).contains(&v) || (200..=202).contains(&v)
+    pub const fn is_transform(self) -> bool {
+        matches!(self.kind(), OpKind::Transform)
     }
 
     /// Returns true if this opcode is a modifier
     #[inline]
-    pub fn is_modifier(self) -> bool {
-        let v = self as u8;
-        (48..64).contains(&v) || (144..164).contains(&v)
+    pub const fn is_modifier(self) -> bool {
+        matches!(self.kind(), OpKind::Modifier)
     }
 
     /// Returns true if this opcode modifies the evaluation point
@@ -343,6 +339,161 @@ impl OpCode {
                 | Self::Extrude
                 | Self::Displacement
         )
+    }
+}
+
+/// Stack-machine role of an opcode.
+///
+/// Exhaustive over every `OpCode` variant: adding a variant without
+/// classifying it here is a compile error, so every evaluator / AABB walker
+/// that dispatches on [`OpCode::kind`] stays in lockstep with the enum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpKind {
+    /// Leaf: pushes one distance onto the value stack
+    Primitive,
+    /// Pops two distances, pushes one
+    Binary,
+    /// Prefix transform: pushes a coordinate frame, paired with `PopTransform`
+    Transform,
+    /// Prefix modifier: pushes a coordinate frame, paired with `PopTransform`
+    Modifier,
+    /// Pops a coordinate frame (and applies any post-processing)
+    PopTransform,
+    /// Terminates evaluation
+    End,
+}
+
+impl OpCode {
+    /// Classify this opcode (see [`OpKind`]). Exhaustive by construction.
+    #[inline]
+    pub const fn kind(self) -> OpKind {
+        match self {
+            Self::Sphere
+            | Self::Box3d
+            | Self::Cylinder
+            | Self::Torus
+            | Self::Plane
+            | Self::Capsule
+            | Self::Cone
+            | Self::Ellipsoid
+            | Self::RoundedCone
+            | Self::Pyramid
+            | Self::Octahedron
+            | Self::HexPrism
+            | Self::Link
+            | Self::RoundedBox
+            | Self::CappedCone
+            | Self::CappedTorus
+            | Self::RoundedCylinder
+            | Self::TriangularPrism
+            | Self::CutSphere
+            | Self::CutHollowSphere
+            | Self::DeathStar
+            | Self::SolidAngle
+            | Self::Rhombus
+            | Self::Horseshoe
+            | Self::Vesica
+            | Self::InfiniteCylinder
+            | Self::InfiniteCone
+            | Self::Gyroid
+            | Self::Heart
+            | Self::Tube
+            | Self::Barrel
+            | Self::Diamond
+            | Self::ChamferedCube
+            | Self::SchwarzP
+            | Self::Superellipsoid
+            | Self::RoundedX
+            | Self::Pie
+            | Self::Trapezoid
+            | Self::Parallelogram
+            | Self::Tunnel
+            | Self::UnevenCapsule
+            | Self::Egg
+            | Self::ArcShape
+            | Self::Moon
+            | Self::CrossShape
+            | Self::BlobbyCross
+            | Self::ParabolaSegment
+            | Self::RegularPolygon
+            | Self::StarPolygon
+            | Self::Stairs
+            | Self::Helix
+            | Self::Tetrahedron
+            | Self::Dodecahedron
+            | Self::Icosahedron
+            | Self::TruncatedOctahedron
+            | Self::TruncatedIcosahedron
+            | Self::BoxFrame
+            | Self::DiamondSurface
+            | Self::Neovius
+            | Self::Lidinoid
+            | Self::IWP
+            | Self::FRD
+            | Self::FischerKochS
+            | Self::PMY
+            | Self::Circle2D
+            | Self::Rect2D
+            | Self::Segment2D
+            | Self::Polygon2D
+            | Self::RoundedRect2D
+            | Self::Annular2D => OpKind::Primitive,
+            Self::Union
+            | Self::Intersection
+            | Self::Subtraction
+            | Self::SmoothUnion
+            | Self::SmoothIntersection
+            | Self::SmoothSubtraction
+            | Self::ChamferUnion
+            | Self::ChamferIntersection
+            | Self::ChamferSubtraction
+            | Self::StairsUnion
+            | Self::StairsIntersection
+            | Self::StairsSubtraction
+            | Self::XOR
+            | Self::Morph
+            | Self::ColumnsUnion
+            | Self::ColumnsIntersection
+            | Self::ColumnsSubtraction
+            | Self::Pipe
+            | Self::Engrave
+            | Self::Groove
+            | Self::Tongue
+            | Self::ExpSmoothUnion
+            | Self::ExpSmoothIntersection
+            | Self::ExpSmoothSubtraction => OpKind::Binary,
+            Self::Translate
+            | Self::Rotate
+            | Self::Scale
+            | Self::ScaleNonUniform
+            | Self::ProjectiveTransform
+            | Self::LatticeDeform
+            | Self::SdfSkinning => OpKind::Transform,
+            Self::Twist
+            | Self::Bend
+            | Self::RepeatInfinite
+            | Self::RepeatFinite
+            | Self::Round
+            | Self::Onion
+            | Self::Elongate
+            | Self::Noise
+            | Self::Mirror
+            | Self::Revolution
+            | Self::Extrude
+            | Self::Taper
+            | Self::Displacement
+            | Self::PolarRepeat
+            | Self::SweepBezier
+            | Self::OctantMirror
+            | Self::Shear
+            | Self::Animated
+            | Self::IcosahedralSymmetry
+            | Self::IFS
+            | Self::HeightmapDisplacement
+            | Self::SurfaceRoughness => OpKind::Modifier,
+            Self::PopTransform => OpKind::PopTransform,
+            Self::End => OpKind::End,
+        }
     }
 }
 

@@ -15,20 +15,23 @@ use glam::{Vec2, Vec3};
 /// - `half_height`: half the extrusion height along Y
 #[inline(always)]
 pub fn sdf_regular_polygon(p: Vec3, radius: f32, n_sides: f32, half_height: f32) -> f32 {
-    let qx = p.x.abs();
-    let qz = p.z;
-    let n = n_sides.max(3.0);
+    // Inigo Quilez "Regular Polygon" (exact), in the XZ plane with `radius` as the
+    // circumradius. Before 1.9.2 the sector fold only handled z >= 0 and the 2D
+    // term was a half-plane distance, which made the shape unbounded.
+    let n = n_sides.max(3.0).trunc();
     let an = std::f32::consts::PI / n;
-    let he = radius * an.cos();
+    let (acs_s, acs_c) = an.sin_cos();
 
-    // Rotate to first sector
-    let angle = qx.atan2(qz);
-    let bn = an * ((angle + an) / (2.0 * an)).floor();
-    let cos_b = bn.cos();
-    let sin_b = bn.sin();
-    let rx = cos_b * qx + sin_b * qz;
+    // Reduce to the first sector: angle in [-an, an)
+    let bn = (p.x.atan2(p.z)).rem_euclid(2.0 * an) - an;
+    let r = p.x.hypot(p.z);
+    let (bs, bc) = bn.sin_cos();
+    let mut q = Vec2::new(r * bc, (r * bs).abs());
 
-    let d_2d = rx - he;
+    // Distance to the edge line through the vertex at angle `an`
+    q -= Vec2::new(radius * acs_c, radius * acs_s);
+    q.y += (-q.y).clamp(0.0, radius * acs_s);
+    let d_2d = q.length() * q.x.signum();
 
     // Extrude along Y
     let d_y = p.y.abs() - half_height;
@@ -50,6 +53,43 @@ mod tests {
     fn test_regular_polygon_far_outside() {
         let d = sdf_regular_polygon(Vec3::new(5.0, 0.0, 0.0), 1.0, 6.0, 0.5);
         assert!(d > 0.0, "Far point should be outside, got {}", d);
+    }
+
+    #[test]
+    fn test_regular_polygon_bounded_in_every_sector() {
+        // Regression: the pre-1.9.2 sector fold left z < 0 unbounded
+        for (x, z) in [
+            (-3.0, -3.0),
+            (0.0, -3.0),
+            (3.0, -3.0),
+            (-3.0, 3.0),
+            (0.0, 3.0),
+        ] {
+            let d = sdf_regular_polygon(Vec3::new(x, 0.0, z), 1.0, 6.0, 0.5);
+            assert!(d > 1.5, "({x}, {z}) must be far outside, got {d}");
+        }
+    }
+
+    #[test]
+    fn test_regular_polygon_vertex_and_apothem() {
+        // Hexagon circumradius 1: vertex on surface, apothem cos(30°) on surface
+        let d_v = sdf_regular_polygon(Vec3::new(0.0, 0.0, 1.0), 1.0, 6.0, 0.5);
+        assert!(d_v.abs() < 1e-4, "vertex should be on surface, got {d_v}");
+        let ap = (std::f32::consts::PI / 6.0).cos();
+        let d_a = sdf_regular_polygon(
+            Vec3::new(
+                ap * (std::f32::consts::PI / 6.0).sin(),
+                0.0,
+                ap * (std::f32::consts::PI / 6.0).cos(),
+            ),
+            1.0,
+            6.0,
+            0.5,
+        );
+        assert!(
+            d_a.abs() < 1e-4,
+            "apothem point should be on surface, got {d_a}"
+        );
     }
 
     #[test]

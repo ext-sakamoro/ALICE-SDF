@@ -9,46 +9,25 @@
 //! for instructions that (a) are dirty themselves or (b) are ancestors of a
 //! dirty instruction. Non-affected subtrees keep their cached AABBs.
 //!
-//! ## Opcode coverage (P1 + P3, ~54)
+//! ## Opcode coverage
 //!
-//! Primitives (13): `Sphere`, `Box3d`, `Cylinder`, `Torus`, `Plane`,
-//! `Capsule`, `Cone`, `Ellipsoid`, `RoundedCone`, `Pyramid`, `Octahedron`,
-//! `HexPrism`, `Link`.
+//! Every `OpCode` (dispatch is on [`OpCode::kind`], which is exhaustive).
+//! Primitives without a tight analytic bound use a conservative box derived
+//! from their parameters; genuinely unbounded shapes (`Plane`, infinite
+//! cylinder / cone, TPMS surfaces) and unbounded modifiers (`RepeatInfinite`,
+//! `IFS`, `ProjectiveTransform`, `LatticeDeform`, `SdfSkinning`) are
+//! `AabbPacked::infinite()`. `tests/test_evaluator_opcode_parity.rs`
+//! samples every primitive against its AABB to enforce conservativeness.
 //!
-//! CSG binary (23): `Union`, `Intersection`, `Subtraction`, `SmoothUnion`,
-//! `SmoothIntersection`, `SmoothSubtraction`, `ChamferUnion`,
-//! `ChamferIntersection`, `ChamferSubtraction`, `StairsUnion`,
-//! `StairsIntersection`, `StairsSubtraction`, `ColumnsUnion`,
-//! `ColumnsIntersection`, `ColumnsSubtraction`, `XOR`, `Morph`, `Pipe`,
-//! `Engrave`, `Groove`, `Tongue`, `ExpSmoothUnion`, `ExpSmoothIntersection`,
-//! `ExpSmoothSubtraction`.
-//!
-//! Transforms (4): `Translate`, `Rotate`, `Scale`, `ScaleNonUniform`.
-//!
-//! Modifiers (16): `Twist`, `Bend`, `RepeatInfinite`, `RepeatFinite`,
-//! `Round`, `Onion`, `Elongate`, `Noise`, `Mirror`, `Displacement`, `Shear`,
-//! `Revolution`, `Extrude`, `SweepBezier`, `Taper`, `PolarRepeat`.
-//!
-//! Structural markers (2): `PopTransform`, `End`.
-//!
-//! Unsupported opcodes return [`RefitError::UnsupportedOpcode`] so callers
-//! can fall back to the [`crate::incremental::ParamDependencyIndex::refit_bvh`]
-//! wrapper (SdfNode-based full recompile). The remaining `~10` opcodes
-//! (advanced modifiers `ProjectiveTransform` / `LatticeDeform` /
-//! `SdfSkinning` / `IcosahedralSymmetry` / `IFS` / `HeightmapDisplacement`
-//! / `SurfaceRoughness`) are silently rendered as tiny-sphere fallbacks by
-//! the BVH compiler itself, so they never appear in the bytecode. The
-//! transparent modifiers (`Animated`, `OctantMirror`, `WithMaterial`) emit
-//! no instruction and likewise are absent.
-//!
-//! ## Author
-//!
-//! Moroya Sakamoto
+//! Since 1.9.2 this module is also the AABB pass of
+//! [`crate::compiled::CompiledSdfBvh::try_compile`] (there is no separate BVH
+//! compiler any more).
 
 use super::aabb::{primitives as aabb_prims, AabbPacked};
 use super::eval_bvh::CompiledSdfBvh;
-use super::opcode::OpCode;
-use glam::{Quat, Vec3};
+use super::instruction::Instruction;
+use super::opcode::{OpCode, OpKind};
+use glam::{Quat, Vec2, Vec3};
 use std::collections::HashSet;
 
 /// Errors returned by the bytecode refit walker.
@@ -128,21 +107,9 @@ pub fn build_parent_indices(bvh: &CompiledSdfBvh) -> Result<Vec<Option<u32>>, Re
 
     for (i, inst) in bvh.instructions.iter().enumerate() {
         let opcode = inst.opcode;
-        match opcode {
+        match opcode.kind() {
             // Leaves — primitives push themselves onto the value stack.
-            OpCode::Sphere
-            | OpCode::Box3d
-            | OpCode::Cylinder
-            | OpCode::Torus
-            | OpCode::Plane
-            | OpCode::Capsule
-            | OpCode::Cone
-            | OpCode::Ellipsoid
-            | OpCode::RoundedCone
-            | OpCode::Pyramid
-            | OpCode::Octahedron
-            | OpCode::HexPrism
-            | OpCode::Link => {
+            OpKind::Primitive => {
                 // If inside a transform, the top of transform_stack becomes
                 // parent for this primitive.
                 if let Some(&t) = transform_stack.last() {
@@ -151,7 +118,7 @@ pub fn build_parent_indices(bvh: &CompiledSdfBvh) -> Result<Vec<Option<u32>>, Re
                 value_stack.push(i);
             }
             // CSG binary — pop 2 children, record parent as this instruction.
-            op if is_supported_binary(op) => {
+            OpKind::Binary => {
                 let b = value_stack.pop().ok_or(RefitError::ValueStackUnderflow {
                     instruction_index: i,
                     opcode,
@@ -169,13 +136,13 @@ pub fn build_parent_indices(bvh: &CompiledSdfBvh) -> Result<Vec<Option<u32>>, Re
             }
             // Transforms / modifiers — push onto transform_stack; the child
             // will follow in the bytecode.
-            op if is_supported_transform_or_modifier(op) => {
+            OpKind::Transform | OpKind::Modifier => {
                 if let Some(&t) = transform_stack.last() {
                     parent[i] = Some(t as u32);
                 }
                 transform_stack.push(i);
             }
-            OpCode::PopTransform => {
+            OpKind::PopTransform => {
                 let t = transform_stack
                     .pop()
                     .ok_or(RefitError::TransformStackUnderflow {
@@ -191,13 +158,7 @@ pub fn build_parent_indices(bvh: &CompiledSdfBvh) -> Result<Vec<Option<u32>>, Re
                 // stack — the transform instruction takes its place.
                 value_stack.push(t);
             }
-            OpCode::End => break,
-            other => {
-                return Err(RefitError::UnsupportedOpcode {
-                    opcode: other,
-                    instruction_index: i,
-                });
-            }
+            OpKind::End => break,
         }
     }
     Ok(parent)
@@ -219,11 +180,11 @@ pub fn build_subtree_ends(bvh: &CompiledSdfBvh) -> Result<Vec<u32>, RefitError> 
 
     for (i, inst) in bvh.instructions.iter().enumerate() {
         let opcode = inst.opcode;
-        match opcode {
-            op if is_supported_transform_or_modifier(op) => {
+        match opcode.kind() {
+            OpKind::Transform | OpKind::Modifier => {
                 transform_stack.push(i);
             }
-            OpCode::PopTransform => {
+            OpKind::PopTransform => {
                 let t = transform_stack
                     .pop()
                     .ok_or(RefitError::TransformStackUnderflow {
@@ -232,15 +193,9 @@ pub fn build_subtree_ends(bvh: &CompiledSdfBvh) -> Result<Vec<u32>, RefitError> 
                 // The transform's subtree ends at this PopTransform.
                 ends[t] = i as u32;
             }
-            OpCode::End => break,
-            op if is_supported_binary(op) || op.is_primitive() => {
+            OpKind::End => break,
+            OpKind::Primitive | OpKind::Binary => {
                 // Nothing to do — end == self was the initial value.
-            }
-            other => {
-                return Err(RefitError::UnsupportedOpcode {
-                    opcode: other,
-                    instruction_index: i,
-                });
             }
         }
     }
@@ -350,7 +305,10 @@ fn walk_and_recompute(
         let inst = bvh.instructions[i];
         let opcode = inst.opcode;
         // Try to skip a transform / modifier subtree wholesale.
-        if has_subtree_ends && is_supported_transform_or_modifier(opcode) && !should_recompute(i) {
+        if has_subtree_ends
+            && matches!(opcode.kind(), OpKind::Transform | OpKind::Modifier)
+            && !should_recompute(i)
+        {
             let end = bvh.subtree_end[i] as usize;
             if end > i {
                 let aabb = bvh.aabbs[i];
@@ -363,22 +321,10 @@ fn walk_and_recompute(
                 continue;
             }
         }
-        match opcode {
-            OpCode::Sphere
-            | OpCode::Box3d
-            | OpCode::Cylinder
-            | OpCode::Torus
-            | OpCode::Plane
-            | OpCode::Capsule
-            | OpCode::Cone
-            | OpCode::Ellipsoid
-            | OpCode::RoundedCone
-            | OpCode::Pyramid
-            | OpCode::Octahedron
-            | OpCode::HexPrism
-            | OpCode::Link => {
+        match opcode.kind() {
+            OpKind::Primitive => {
                 let aabb = if should_recompute(i) {
-                    let new_aabb = primitive_aabb(opcode, &inst.params);
+                    let new_aabb = primitive_aabb(opcode, &inst, &bvh.aux_data);
                     bvh.aabbs[i] = new_aabb;
                     recomputed += 1;
                     new_aabb
@@ -391,7 +337,7 @@ fn walk_and_recompute(
                     Some(prev) => prev.union(&aabb),
                 });
             }
-            op if is_supported_binary(op) => {
+            OpKind::Binary => {
                 let b = value_stack.pop().ok_or(RefitError::ValueStackUnderflow {
                     instruction_index: i,
                     opcode,
@@ -414,10 +360,10 @@ fn walk_and_recompute(
                     Some(prev) => prev.union(&aabb),
                 });
             }
-            op if is_supported_transform_or_modifier(op) => {
+            OpKind::Transform | OpKind::Modifier => {
                 transform_stack.push(i);
             }
-            OpCode::PopTransform => {
+            OpKind::PopTransform => {
                 let t = transform_stack
                     .pop()
                     .ok_or(RefitError::TransformStackUnderflow {
@@ -442,86 +388,31 @@ fn walk_and_recompute(
                     Some(prev) => prev.union(&aabb),
                 });
             }
-            OpCode::End => break,
-            other => {
-                return Err(RefitError::UnsupportedOpcode {
-                    opcode: other,
-                    instruction_index: i,
-                });
-            }
+            OpKind::End => break,
         }
         i += 1;
     }
 
-    if let Some(aabb) = scene_aabb {
+    // The scene bound is the root's AABB (top of the value stack at `End`), not the
+    // union of every intermediate push — an inner child's untransformed bound must
+    // not leak into the scene bound (e.g. `sphere.translate(5,3,0)`).
+    if let Some(root) = value_stack.last() {
+        bvh.scene_aabb = *root;
+    } else if let Some(aabb) = scene_aabb {
         bvh.scene_aabb = aabb;
     }
     Ok(recomputed)
 }
 
-/// Whether `opcode` is one of the binary CSG operators handled by
-/// [`csg_binary_aabb`]. Excludes any unsupported binary ops.
-fn is_supported_binary(opcode: OpCode) -> bool {
-    matches!(
-        opcode,
-        OpCode::Union
-            | OpCode::Intersection
-            | OpCode::Subtraction
-            | OpCode::SmoothUnion
-            | OpCode::SmoothIntersection
-            | OpCode::SmoothSubtraction
-            | OpCode::ChamferUnion
-            | OpCode::ChamferIntersection
-            | OpCode::ChamferSubtraction
-            | OpCode::StairsUnion
-            | OpCode::StairsIntersection
-            | OpCode::StairsSubtraction
-            | OpCode::ColumnsUnion
-            | OpCode::ColumnsIntersection
-            | OpCode::ColumnsSubtraction
-            | OpCode::XOR
-            | OpCode::Morph
-            | OpCode::Pipe
-            | OpCode::Engrave
-            | OpCode::Groove
-            | OpCode::Tongue
-            | OpCode::ExpSmoothUnion
-            | OpCode::ExpSmoothIntersection
-            | OpCode::ExpSmoothSubtraction
-    )
-}
-
-/// Whether `opcode` is a transform / modifier that the refit walker knows
-/// how to propagate through `PopTransform`. Excludes transparent modifiers
-/// (`Animated`, `OctantMirror`, `WithMaterial`) — the BVH compiler emits
-/// no instruction for those so they never appear in bytecode.
-fn is_supported_transform_or_modifier(opcode: OpCode) -> bool {
-    matches!(
-        opcode,
-        OpCode::Translate
-            | OpCode::Rotate
-            | OpCode::Scale
-            | OpCode::ScaleNonUniform
-            | OpCode::Twist
-            | OpCode::Bend
-            | OpCode::RepeatInfinite
-            | OpCode::RepeatFinite
-            | OpCode::Round
-            | OpCode::Onion
-            | OpCode::Elongate
-            | OpCode::Noise
-            | OpCode::Mirror
-            | OpCode::Displacement
-            | OpCode::Shear
-            | OpCode::Revolution
-            | OpCode::Extrude
-            | OpCode::SweepBezier
-            | OpCode::Taper
-            | OpCode::PolarRepeat
-    )
-}
-
-fn primitive_aabb(opcode: OpCode, params: &[f32; 7]) -> AabbPacked {
+/// Conservative axis-aligned bound of a primitive instruction.
+///
+/// Exhaustive over every primitive opcode. Shapes whose orientation or exact
+/// extent is not worth encoding use a centred cube of a generous radius;
+/// `tests/test_evaluator_opcode_parity.rs::primitive_aabbs_are_conservative`
+/// samples the SDF against the bound.
+fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbPacked {
+    let params = &inst.params;
+    let cube = |r: f32| AabbPacked::new(Vec3::splat(-r.abs()), Vec3::splat(r.abs()));
     match opcode {
         OpCode::Sphere => aabb_prims::sphere_aabb(params[0]),
         OpCode::Box3d => aabb_prims::box_aabb(Vec3::new(params[0], params[1], params[2])),
@@ -543,18 +434,19 @@ fn primitive_aabb(opcode: OpCode, params: &[f32; 7]) -> AabbPacked {
             AabbPacked::new(-radii, radii)
         }
         OpCode::RoundedCone => {
-            let max_r = params[0].max(params[1]);
-            let hh = params[2];
-            AabbPacked::new(Vec3::new(-max_r, -hh, -max_r), Vec3::new(max_r, hh, max_r))
+            // Capsule-like: spheres of r1 / r2 centred at y = -hh / +hh
+            let (r1, r2, hh) = (params[0], params[1], params[2]);
+            let max_r = r1.max(r2);
+            AabbPacked::new(
+                Vec3::new(-max_r, -hh - r1, -max_r),
+                Vec3::new(max_r, hh + r2, max_r),
+            )
         }
         OpCode::Pyramid => {
             let hh = params[0];
             AabbPacked::new(Vec3::new(-0.5, -hh, -0.5), Vec3::new(0.5, hh, 0.5))
         }
-        OpCode::Octahedron => {
-            let s = params[0];
-            AabbPacked::new(Vec3::new(-s, -s, -s), Vec3::new(s, s, s))
-        }
+        OpCode::Octahedron => cube(params[0]),
         OpCode::HexPrism => {
             let hex_r = params[0];
             let hh = params[1];
@@ -570,7 +462,171 @@ fn primitive_aabb(opcode: OpCode, params: &[f32; 7]) -> AabbPacked {
                 Vec3::new(extent, half_length + extent, r2),
             )
         }
-        _ => AabbPacked::empty(),
+        // === Extended primitives: box where the axes are explicit, generous cube otherwise ===
+        OpCode::RoundedBox | OpCode::ChamferedCube | OpCode::Superellipsoid => {
+            let he = Vec3::new(params[0], params[1], params[2]);
+            let r = if opcode == OpCode::RoundedBox {
+                params[3]
+            } else {
+                0.0
+            };
+            AabbPacked::new(-(he + r), he + r)
+        }
+        OpCode::BoxFrame => {
+            let he = Vec3::new(params[0], params[1], params[2]) + params[3];
+            AabbPacked::new(-he, he)
+        }
+        OpCode::CappedCone => cube(params[0].max(params[1]).max(params[2])),
+        OpCode::CappedTorus => cube(params[0] + params[1]),
+        // sdf_rounded_cylinder follows IQ's formula where the radial term is `2*radius`
+        OpCode::RoundedCylinder => cube((2.0 * params[0]).max(params[2] + params[1])),
+        OpCode::TriangularPrism => cube(params[0] + params[1]),
+        OpCode::CutSphere | OpCode::CutHollowSphere => cube(params[0]),
+        OpCode::DeathStar => cube(params[0] + params[1] + params[2]),
+        OpCode::SolidAngle => cube(params[1]),
+        OpCode::Rhombus => cube(params[0] + params[1] + params[2] + params[3]),
+        OpCode::Horseshoe => cube(params[1] + params[2] + params[3] + params[4]),
+        OpCode::Vesica => cube(params[0] + params[1]),
+        OpCode::Heart => cube(params[0] * 2.0),
+        OpCode::Tube => cube(params[0].max(params[2])),
+        OpCode::Barrel => cube((params[0] + params[2]).max(params[1])),
+        OpCode::Diamond => cube(params[0].max(params[1])),
+        OpCode::RoundedX => cube(params[0] + params[1] + params[2]),
+        OpCode::Pie => cube(params[1].max(params[2])),
+        OpCode::Trapezoid => cube(params[0].max(params[1]) + params[2] + params[3]),
+        OpCode::Parallelogram => cube(params[0] + params[1] + params[2].abs() + params[3]),
+        OpCode::Tunnel => cube(params[0] + params[1] + params[2]),
+        OpCode::UnevenCapsule => cube(params[0].max(params[1]) + params[2] + params[3]),
+        OpCode::Egg => cube((params[0] + params[1]) * 2.0),
+        OpCode::ArcShape => cube(params[1] + params[2] + params[3]),
+        OpCode::Moon => cube(params[0].abs() + params[1] + params[2] + params[3]),
+        OpCode::CrossShape => cube(params[0] + params[1] + params[2] + params[3]),
+        OpCode::BlobbyCross => cube(params[0] * 2.0 + params[1]),
+        OpCode::ParabolaSegment => cube(params[0] + params[1] + params[2]),
+        OpCode::RegularPolygon => cube(params[0] + params[2]),
+        OpCode::StarPolygon => cube(params[0].max(params[2]) + params[3]),
+        OpCode::Stairs => cube((params[0] + params[1]) * params[2].max(1.0) + params[3]),
+        OpCode::Helix => cube(params[0] + params[1] + params[2].abs() + params[3]),
+        OpCode::Tetrahedron => cube(params[0] * 2.0),
+        OpCode::Dodecahedron
+        | OpCode::Icosahedron
+        | OpCode::TruncatedOctahedron
+        | OpCode::TruncatedIcosahedron => cube(params[0] * 2.0),
+        // === Unbounded shapes ===
+        OpCode::InfiniteCylinder
+        | OpCode::InfiniteCone
+        | OpCode::Gyroid
+        | OpCode::SchwarzP
+        | OpCode::DiamondSurface
+        | OpCode::Neovius
+        | OpCode::Lidinoid
+        | OpCode::IWP
+        | OpCode::FRD
+        | OpCode::FischerKochS
+        | OpCode::PMY => AabbPacked::infinite(),
+        // === 2D primitives extruded along Z ===
+        OpCode::Circle2D => {
+            let r = params[0];
+            AabbPacked::new(Vec3::new(-r, -r, -params[1]), Vec3::new(r, r, params[1]))
+        }
+        OpCode::Rect2D => {
+            let he = Vec3::new(params[0], params[1], params[2]);
+            AabbPacked::new(-he, he)
+        }
+        OpCode::RoundedRect2D => {
+            let he = Vec3::new(params[0], params[1], params[3]);
+            AabbPacked::new(-he, he)
+        }
+        OpCode::Segment2D => {
+            let r = params[0]
+                .abs()
+                .max(params[1].abs())
+                .max(params[2].abs())
+                .max(params[3].abs())
+                + params[4];
+            AabbPacked::new(Vec3::new(-r, -r, -params[5]), Vec3::new(r, r, params[5]))
+        }
+        OpCode::Annular2D => {
+            let r = params[0] + params[1];
+            AabbPacked::new(Vec3::new(-r, -r, -params[2]), Vec3::new(r, r, params[2]))
+        }
+        OpCode::Polygon2D => {
+            // Vertices live in aux_data as flat [x0, y0, x1, y1, ...]
+            let off = inst.aux_offset as usize;
+            let flat = aux_data
+                .get(off..off + inst.aux_len as usize)
+                .unwrap_or(&[]);
+            let mut mn = Vec2::splat(f32::INFINITY);
+            let mut mx = Vec2::splat(f32::NEG_INFINITY);
+            for v in flat.chunks_exact(2) {
+                mn = mn.min(Vec2::new(v[0], v[1]));
+                mx = mx.max(Vec2::new(v[0], v[1]));
+            }
+            if flat.len() < 6 {
+                return AabbPacked::empty();
+            }
+            AabbPacked::new(
+                Vec3::new(mn.x, mn.y, -params[0]),
+                Vec3::new(mx.x, mx.y, params[0]),
+            )
+        }
+        // Not primitives — unreachable by `OpKind::Primitive` dispatch, listed so the
+        // match stays exhaustive when the enum grows.
+        OpCode::Union
+        | OpCode::Intersection
+        | OpCode::Subtraction
+        | OpCode::SmoothUnion
+        | OpCode::SmoothIntersection
+        | OpCode::SmoothSubtraction
+        | OpCode::ChamferUnion
+        | OpCode::ChamferIntersection
+        | OpCode::ChamferSubtraction
+        | OpCode::StairsUnion
+        | OpCode::StairsIntersection
+        | OpCode::StairsSubtraction
+        | OpCode::XOR
+        | OpCode::Morph
+        | OpCode::ColumnsUnion
+        | OpCode::ColumnsIntersection
+        | OpCode::ColumnsSubtraction
+        | OpCode::Pipe
+        | OpCode::Engrave
+        | OpCode::Groove
+        | OpCode::Tongue
+        | OpCode::ExpSmoothUnion
+        | OpCode::ExpSmoothIntersection
+        | OpCode::ExpSmoothSubtraction
+        | OpCode::Translate
+        | OpCode::Rotate
+        | OpCode::Scale
+        | OpCode::ScaleNonUniform
+        | OpCode::ProjectiveTransform
+        | OpCode::LatticeDeform
+        | OpCode::SdfSkinning
+        | OpCode::Twist
+        | OpCode::Bend
+        | OpCode::RepeatInfinite
+        | OpCode::RepeatFinite
+        | OpCode::Round
+        | OpCode::Onion
+        | OpCode::Elongate
+        | OpCode::Noise
+        | OpCode::Mirror
+        | OpCode::Revolution
+        | OpCode::Extrude
+        | OpCode::Taper
+        | OpCode::Displacement
+        | OpCode::PolarRepeat
+        | OpCode::SweepBezier
+        | OpCode::OctantMirror
+        | OpCode::Shear
+        | OpCode::Animated
+        | OpCode::IcosahedralSymmetry
+        | OpCode::IFS
+        | OpCode::HeightmapDisplacement
+        | OpCode::SurfaceRoughness
+        | OpCode::PopTransform
+        | OpCode::End => unreachable!("primitive_aabb called with non-primitive {opcode:?}"),
     }
 }
 
@@ -601,7 +657,7 @@ fn csg_binary_aabb(opcode: OpCode, params: &[f32; 7], a: AabbPacked, b: AabbPack
         | OpCode::Engrave
         | OpCode::Groove
         | OpCode::Tongue => a,
-        _ => a.union(&b),
+        _ => unreachable!("csg_binary_aabb called with non-binary {opcode:?}"),
     }
 }
 
@@ -729,7 +785,37 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
                 Vec3::new(bmax_x + max_perp, child.max().y, bmax_z + max_perp),
             )
         }
-        _ => child,
+        // === Symmetry folds: result is symmetric in every axis / permutation ===
+        OpCode::OctantMirror | OpCode::IcosahedralSymmetry => {
+            let cmin = child.min();
+            let cmax = child.max();
+            let m = cmax
+                .x
+                .abs()
+                .max(cmin.x.abs())
+                .max(cmax.y.abs())
+                .max(cmin.y.abs())
+                .max(cmax.z.abs())
+                .max(cmin.z.abs());
+            // Icosahedral fold is a composition of reflections (norm-preserving):
+            // bound by the sphere of the farthest corner.
+            let r = if opcode == OpCode::IcosahedralSymmetry {
+                m * 3f32.sqrt()
+            } else {
+                m
+            };
+            AabbPacked::new(Vec3::splat(-r), Vec3::splat(r))
+        }
+        // === Surface displacement: radial expand by amplitude ===
+        OpCode::HeightmapDisplacement => child.expand(params[0].abs()),
+        OpCode::SurfaceRoughness => child.expand(params[1].abs()),
+        // === Transparent ===
+        OpCode::Animated => child,
+        // === Unbounded deformations (control points / matrices live in aux_data) ===
+        OpCode::ProjectiveTransform | OpCode::LatticeDeform | OpCode::SdfSkinning | OpCode::IFS => {
+            AabbPacked::infinite()
+        }
+        _ => unreachable!("transform_or_modifier_aabb called with non-prefix {opcode:?}"),
     }
 }
 
@@ -777,20 +863,21 @@ mod tests {
     }
 
     #[test]
-    fn refit_all_rejects_unsupported_opcode() {
-        // ProjectiveTransform never appears in real BVH bytecode (the BVH
-        // compiler falls it back to a tiny sphere), but we can inject the
-        // opcode manually to exercise the UnsupportedOpcode path.
+    fn refit_all_rejects_malformed_bytecode() {
+        // Every opcode has an AABB law since 1.9.2, so "unsupported opcode" no
+        // longer exists; malformed stack shape must still fail loudly. Turning a
+        // leaf into a prefix transform without its PopTransform starves the
+        // following binary op.
         let (_, mut bvh) = build_two_sphere_union();
         bvh.instructions[0].opcode = OpCode::ProjectiveTransform;
-        let err = refit_all(&mut bvh)
-            .expect_err("ProjectiveTransform must fail refit (outside P1/P3 slice)");
-        match err {
-            RefitError::UnsupportedOpcode { opcode, .. } => {
-                assert_eq!(opcode, OpCode::ProjectiveTransform);
-            }
-            other => panic!("expected UnsupportedOpcode, got {other:?}"),
-        }
+        let err = refit_all(&mut bvh).expect_err("dangling prefix transform must fail refit");
+        assert!(
+            matches!(
+                err,
+                RefitError::ValueStackUnderflow { .. } | RefitError::TransformStackUnderflow { .. }
+            ),
+            "expected a stack-shape error, got {err:?}"
+        );
     }
 
     #[test]

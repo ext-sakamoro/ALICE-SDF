@@ -267,8 +267,9 @@ fn compile_node(
             let nz = emitter.emit(builder, normal.z);
             let dist = emitter.emit(builder, *distance);
 
+            // sdf_plane law: dot(p, n) - distance
             let dot = emit_dot3(builder, x, y, z, nx, ny, nz);
-            Ok(builder.ins().fadd(dot, dist))
+            Ok(builder.ins().fsub(dot, dist))
         }
 
         SdfNode::Capsule {
@@ -420,7 +421,11 @@ fn compile_node(
             let one = builder.ins().f32const(1.0);
             let k0_minus_1 = builder.ins().fsub(k0, one);
             let num = builder.ins().fmul(k0, k0_minus_1);
-            Ok(builder.ins().fdiv(num, k1_safe)) // data-dependent, can't precompute
+            let d = builder.ins().fdiv(num, k1_safe); // data-dependent, can't precompute
+                                                      // sdf_ellipsoid law: at the centre (k1 ≈ 0) return -min(radii)
+            let centre = builder.ins().f32const(-radii.x.min(radii.y).min(radii.z));
+            let at_centre = builder.ins().fcmp(FloatCC::LessThan, k1, eps);
+            Ok(builder.ins().select(at_centre, centre, d))
         }
 
         SdfNode::RoundedCone {
@@ -884,12 +889,13 @@ fn compile_node(
 
             let (cos_a, sin_a) = emit_sincos_approx(builder, angle);
 
-            let cos_y = builder.ins().fmul(cos_a, y);
-            let sin_x = builder.ins().fmul(sin_a, x);
-            let ny = builder.ins().fsub(cos_y, sin_x);
-            let sin_y = builder.ins().fmul(sin_a, y);
+            // modifier_bend law: x' = c*x - s*y, y' = s*x + c*y
             let cos_x = builder.ins().fmul(cos_a, x);
-            let nx = builder.ins().fadd(sin_y, cos_x);
+            let sin_y = builder.ins().fmul(sin_a, y);
+            let nx = builder.ins().fsub(cos_x, sin_y);
+            let sin_x = builder.ins().fmul(sin_a, x);
+            let cos_y = builder.ins().fmul(cos_a, y);
+            let ny = builder.ins().fadd(sin_x, cos_y);
 
             compile_node(builder, child, nx, ny, z, emitter)
         }
@@ -968,9 +974,10 @@ fn compile_node(
             let px = emitter.emit(builder, spacing.x);
             let py = emitter.emit(builder, spacing.y);
             let pz = emitter.emit(builder, spacing.z);
-            let cx = emitter.emit(builder, count[0] as f32);
-            let cy = emitter.emit(builder, count[1] as f32);
-            let cz = emitter.emit(builder, count[2] as f32);
+            // modifier_repeat_finite law: limit = count * 0.5
+            let cx = emitter.emit(builder, count[0] as f32 * 0.5);
+            let cy = emitter.emit(builder, count[1] as f32 * 0.5);
+            let cz = emitter.emit(builder, count[2] as f32 * 0.5);
             let ncx = builder.ins().fneg(cx);
             let ncy = builder.ins().fneg(cy);
             let ncz = builder.ins().fneg(cz);
@@ -1088,9 +1095,10 @@ fn compile_node(
             let abs_db = builder.ins().fabs(db);
             let sum = builder.ins().fadd(da, r_val);
             let diff = builder.ins().fsub(sum, abs_db);
-            let half = builder.ins().f32const(0.5);
-            let half_val = builder.ins().fmul(diff, half);
-            Ok(builder.ins().fmax(da, half_val))
+            // sdf_engrave law: max(a, (a + r - |b|) / sqrt(2))
+            let s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
+            let scaled = builder.ins().fmul(diff, s);
+            Ok(builder.ins().fmax(da, scaled))
         }
 
         SdfNode::Groove { a, b, ra, rb } => {
@@ -1413,32 +1421,76 @@ fn emit_quat_rotate(
     (rx, ry, rz)
 }
 
-/// Emit approximate sin/cos using Taylor series
+/// Emit sin/cos with range reduction + degree-9/8 Taylor on [-π/2, π/2].
+///
+/// Max abs error ≈ 4e-6 (sin) / 3e-5 (cos). Before 1.9.2 this was an
+/// unreduced degree-5 series, which was >10% off for |x| > 2 (Twist / Bend /
+/// PolarRepeat with moderate strengths).
 fn emit_sincos_approx(builder: &mut FunctionBuilder, angle: Value) -> (Value, Value) {
+    let two_pi = builder.ins().f32const(std::f32::consts::TAU);
+    let inv_two_pi = builder.ins().f32const(1.0 / std::f32::consts::TAU);
+    let pi = builder.ins().f32const(std::f32::consts::PI);
+    let neg_pi = builder.ins().f32const(-std::f32::consts::PI);
+    let half_pi = builder.ins().f32const(std::f32::consts::FRAC_PI_2);
+    let zero = builder.ins().f32const(0.0);
     let one = builder.ins().f32const(1.0);
-    let half = builder.ins().f32const(0.5);
-    let sixth = builder.ins().f32const(1.0 / 6.0);
-    let twentyfourth = builder.ins().f32const(1.0 / 24.0);
-    let one_twenty = builder.ins().f32const(1.0 / 120.0);
+    let neg_one = builder.ins().f32const(-1.0);
 
-    let x2 = builder.ins().fmul(angle, angle);
-    let x3 = builder.ins().fmul(x2, angle);
-    let x4 = builder.ins().fmul(x2, x2);
-    let x5 = builder.ins().fmul(x4, angle);
+    // x1 = x - 2π·round(x / 2π)  ∈ [-π, π]
+    let k = builder.ins().fmul(angle, inv_two_pi);
+    let k = builder.ins().nearest(k);
+    let k2pi = builder.ins().fmul(k, two_pi);
+    let x1 = builder.ins().fsub(angle, k2pi);
 
-    // sin(x) = x - x³/6 + x⁵/120
-    let sin_term1 = builder.ins().fmul(x3, sixth);
-    let sin_term2 = builder.ins().fmul(x5, one_twenty);
-    let sin_result = builder.ins().fsub(angle, sin_term1);
-    let sin_result = builder.ins().fadd(sin_result, sin_term2);
+    // fold |x1| > π/2 onto [-π/2, π/2]: x2 = ±π - x1, cos flips sign
+    let ax = builder.ins().fabs(x1);
+    let big = builder.ins().fcmp(FloatCC::GreaterThan, ax, half_pi);
+    let pos = builder.ins().fcmp(FloatCC::GreaterThan, x1, zero);
+    let pi_signed = builder.ins().select(pos, pi, neg_pi);
+    let folded = builder.ins().fsub(pi_signed, x1);
+    let x2 = builder.ins().select(big, folded, x1);
+    let cos_sign = builder.ins().select(big, neg_one, one);
 
-    // cos(x) = 1 - x²/2 + x⁴/24
-    let cos_term1 = builder.ins().fmul(x2, half);
-    let cos_term2 = builder.ins().fmul(x4, twentyfourth);
-    let cos_result = builder.ins().fsub(one, cos_term1);
-    let cos_result = builder.ins().fadd(cos_result, cos_term2);
+    let c3 = builder.ins().f32const(1.0 / 6.0);
+    let c5 = builder.ins().f32const(1.0 / 120.0);
+    let c7 = builder.ins().f32const(1.0 / 5040.0);
+    let c9 = builder.ins().f32const(1.0 / 362_880.0);
+    let d2 = builder.ins().f32const(0.5);
+    let d4 = builder.ins().f32const(1.0 / 24.0);
+    let d6 = builder.ins().f32const(1.0 / 720.0);
+    let d8 = builder.ins().f32const(1.0 / 40_320.0);
 
-    (cos_result, sin_result)
+    let x2sq = builder.ins().fmul(x2, x2);
+    let x3 = builder.ins().fmul(x2sq, x2);
+    let x4 = builder.ins().fmul(x2sq, x2sq);
+    let x5 = builder.ins().fmul(x4, x2);
+    let x6 = builder.ins().fmul(x4, x2sq);
+    let x7 = builder.ins().fmul(x6, x2);
+    let x8 = builder.ins().fmul(x4, x4);
+    let x9 = builder.ins().fmul(x8, x2);
+
+    // sin = x - x³/6 + x⁵/120 - x⁷/5040 + x⁹/362880
+    let t3 = builder.ins().fmul(x3, c3);
+    let t5 = builder.ins().fmul(x5, c5);
+    let t7 = builder.ins().fmul(x7, c7);
+    let t9 = builder.ins().fmul(x9, c9);
+    let sin_r = builder.ins().fsub(x2, t3);
+    let sin_r = builder.ins().fadd(sin_r, t5);
+    let sin_r = builder.ins().fsub(sin_r, t7);
+    let sin_r = builder.ins().fadd(sin_r, t9);
+
+    // cos = 1 - x²/2 + x⁴/24 - x⁶/720 + x⁸/40320
+    let u2 = builder.ins().fmul(x2sq, d2);
+    let u4 = builder.ins().fmul(x4, d4);
+    let u6 = builder.ins().fmul(x6, d6);
+    let u8 = builder.ins().fmul(x8, d8);
+    let cos_r = builder.ins().fsub(one, u2);
+    let cos_r = builder.ins().fadd(cos_r, u4);
+    let cos_r = builder.ins().fsub(cos_r, u6);
+    let cos_r = builder.ins().fadd(cos_r, u8);
+    let cos_r = builder.ins().fmul(cos_r, cos_sign);
+
+    (cos_r, sin_r)
 }
 
 /// Emit modulo with Division Exorcism: a mod b = a - b * floor(a * inv_b)

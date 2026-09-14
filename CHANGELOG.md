@@ -6,6 +6,36 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.9.2] - 2026-09-14
+
+**One law per opcode, every path** — closes the follow-ups left open by 1.9.1: the shader / JIT backends now share the CPU sign convention, the BVH is an annotation pass over the main compiler instead of a third hand-copied compiler, the JIT SIMD compilers fail loudly instead of emitting `f32::MAX`, and the parity corpus covers six evaluation paths plus an AABB-conservativeness oracle. First crates.io release since 1.9.0 (1.9.1 was never published; its notes below are included).
+
+### Fixed
+
+- **`Plane` sign in GLSL / WGSL / HLSL / BlinkScript transpilers and the Cranelift JITs** (`dot(p, n) + d`) now matches `sdf_plane` and every CPU evaluator (`dot(p, n) - d`, "distance from origin"). **Shader output changes for scenes using `Plane`** — flip the sign of `distance` if you relied on the old convention.
+- **`sdf_regular_polygon` was unbounded**: the sector fold only handled `z >= 0` and the 2D term was a half-plane distance, so half the plane evaluated as "inside". Replaced with the exact regular-polygon law (circumradius `radius`, XZ plane) in Rust and in all three shader helper libraries. Caught by the new AABB-conservativeness test.
+- **`LatticeDeform` outside its bounding box**: points were clamped to the boundary (every outside point mapped to the same deformed point) and the `0.1` Jacobian floor inflated distances 10x. Outside points now pass through unchanged with correction `1.0` (standard FFD). Tree result changes for scenes evaluating `LatticeDeform` outside the lattice.
+- **BVH compiler was a third hand-copy of the compile law** (68 arms, no AABB laws for 60+ primitives, so it rejected them). `CompiledSdfBvh::try_compile` now reuses `CompiledSdf::try_compile` and computes AABBs with the instruction-driven walker in `compiled::refit` — every tree the main compiler accepts, the BVH accepts (the nine kinds 1.9.1 rejected included). `refit::primitive_aabb` / `csg_binary_aabb` / `transform_or_modifier_aabb` are exhaustive over `OpCode`.
+- **`refit` scene AABB** was the union of every intermediate push (an inner child's untransformed bound leaked into the scene bound after `refit_all`); it is now the root's AABB.
+- **`refit` `RoundedCone` AABB** ignored the end-cap spheres (`y` range is `[-hh - r1, hh + r2]`).
+- **JIT SIMD (`jit::JitSimdSdf` / `JitSimdSdfDynamic`) silently pushed `f32::MAX` for the 82 opcodes without a codegen arm** and treated `Noise` as a no-op. `compile` now returns `Err("JIT SIMD: no codegen arm for opcode …")` so callers fall back to the interpreter instead of rendering nothing.
+- **Cranelift JIT law drift** caught by the extended corpus: `Ellipsoid` centre (`0` instead of `-min(radii)`), `Engrave` (`0.5` instead of `1/√2`), `RepeatFinite` (clamped to `±count` instead of `±count/2`), `Bend` rotation sign, and unreduced degree-5 Taylor sin/cos (>10% error for `|x| > 2` in `Twist` / `Bend` / `PolarRepeat`) — both JITs now use range reduction to `[-π/2, π/2]` plus degree-9/8 series (≤ 3e-5 abs error).
+
+### Added
+
+- `compiled::OpKind` + `OpCode::kind()` — exhaustive stack-machine classification (`Primitive` / `Binary` / `Transform` / `Modifier` / `PopTransform` / `End`); `is_primitive` / `is_binary_op` / `is_transform` / `is_modifier` are now derived from it instead of numeric ranges.
+- `CompiledSdfBvh::aux_data` — the BVH now carries the side buffer (heightmaps, lattices, bones, IFS matrices, polygon vertices). **Struct-literal constructors of `CompiledSdfBvh` outside the crate must add the field.**
+- `tests/test_evaluator_opcode_parity.rs` now compares six paths (tree / scalar / SIMD / BVH / Cranelift JIT / JIT SIMD, the last two under `--features jit`) and adds `primitive_and_scene_aabbs_are_conservative` (grid-samples every corpus node: `sdf(p) ≤ 0 ⇒ p ∈ scene AABB`).
+
+### Changed
+
+- `compiled::jit_simd::JitSimd` is **deprecated** and is now a thin wrapper over `compiled::jit::JitSimdSdf` (it was a 2,500-line divergent copy). `compile` / `eval` / `eval_soa` keep their signatures.
+- `refit::RefitError::UnsupportedOpcode` is no longer produced (every opcode has an AABB law); the variant is kept for API compatibility.
+
+### Known limitations
+
+- `examples/gpu_eval.rs` does not build with `--features gpu` (`WgslShader::transpile` gained a `mode` argument earlier); not exercised by CI, unchanged in this release.
+
 ## [v1.9.1] - 2026-09-14
 
 **Compiled evaluator parity** — every compiled evaluation path now executes the same law as the tree evaluator, and the opcode dispatch is exhaustive by construction.
@@ -42,8 +72,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Known limitations
 
-- The GLSL / WGSL / HLSL transpilers and the Cranelift JIT still emit `dot(p, n) + distance` for `Plane`, i.e. the opposite sign convention from `sdf_plane` and every CPU evaluator. Left unchanged in this release because it alters shader output for existing scenes; tracked for a decision.
-- `LatticeDeform`'s tree law divides by a finite-difference Jacobian magnitude clamped to `0.1`, which inflates distances 10x outside the lattice bbox. Compiled paths now match the tree exactly; the law itself is unchanged.
+- (both resolved in 1.9.2) The shader / JIT `Plane` sign and the `LatticeDeform` outside-bbox law.
 
 ## [v1.9.0] - 2026-09-13
 

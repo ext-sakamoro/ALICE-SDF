@@ -69,9 +69,11 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 | Loud rejection instead of silent fallback | ✅ | `CompiledSdf` rejects `Terrain`; `CompiledSdfBvh` rejects 9 aux / no-AABB node kinds; `BvhCompiler::compile_node` exhaustive; BVH `OctantMirror` emitted |
 | SIMD parity | ✅ | `Plane` sign, `Ellipsoid` centre, `RepeatFinite` clamp, `Heightmap` sign, `SurfaceRoughness` / `Segment2D` / `Polygon2D` / `ExpSmooth*` per-lane shared law, `wide` sin / cos / atan2 instead of Bhaskara / minimax |
 | 4-path parity corpus | ✅ | `tests/test_evaluator_opcode_parity.rs` — every compilable `SdfNode` × {tree, scalar, SIMD, BVH} + emitted-opcode coverage guard (124 / 124) |
-| `BvhCompiler` → `compiler.rs` unification | ⏳ | Third hand-copy of the compile law (68 arms + AABB). Fold AABB computation into a pass over `CompiledSdf` so BVH accepts every opcode the main compiler does |
-| SIMD `T: SdfScalar` generic | ⏳ | Fold `eval_simd.rs` into `eval_scalar_core` via a scalar-type trait; blocked until P14-C / CSG bytecode unification settle the SIMD surface |
-| `Plane` sign in transpilers / JIT | ⏳ | GLSL / WGSL / HLSL / Cranelift emit `dot(p, n) + d`; CPU law is `dot(p, n) - d`. Behaviour change for shader consumers — needs a decision |
+| `BvhCompiler` → `compiler.rs` unification | ✅ 1.9.2 | `CompiledSdfBvh::try_compile` = `CompiledSdf::try_compile` + `refit` AABB pass (exhaustive over `OpKind`); BVH accepts every opcode, carries `aux_data` |
+| SIMD `T: SdfScalar` generic | ⏳ | Fold `eval_simd.rs` into `eval_scalar_core` via a scalar-type trait; blocked until P14-C / CSG bytecode unification settle the SIMD surface (1.10 系) |
+| 6-path parity + AABB oracle | ✅ 1.9.2 | Corpus compares tree / scalar / SIMD / BVH / Cranelift JIT / JIT SIMD; `primitive_and_scene_aabbs_are_conservative` grid-samples every node (caught the unbounded `sdf_regular_polygon`) |
+| JIT SIMD loud failure | ✅ 1.9.2 | `JitSimdSdf::compile` returns `Err` for opcodes without codegen (was silent `f32::MAX`); legacy `jit_simd::JitSimd` deprecated → thin wrapper |
+| `Plane` sign in transpilers / JIT | ✅ 1.9.2 | Unified on the CPU law `dot(p, n) - d` (shader output change, CHANGELOG Fixed) |
 
 ### Deeper follow-ups (not scheduled)
 

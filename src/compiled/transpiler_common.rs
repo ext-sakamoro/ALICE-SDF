@@ -357,8 +357,9 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let d = self.param(*distance);
                 code.push_str(&L::decl_float(
                     &var,
+                    // sdf_plane law: dot(p, n) - distance ("distance from origin")
                     &format!(
-                        "dot({}, {}) + {}",
+                        "dot({}, {}) - {}",
                         point_var,
                         L::vec3_ctor(&nx, &ny, &nz),
                         d
