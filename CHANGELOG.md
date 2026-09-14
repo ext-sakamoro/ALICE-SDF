@@ -6,6 +6,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.10.2] - 2026-09-14
+
+### Fixed
+
+- `SdfNode` now drops iteratively (`src/types/drop.rs`): children are moved onto an explicit heap stack and released one `Arc` at a time, so freeing a tree no longer recurses once per level. A 2,400-deep `subtract` nest (the shape ALICE-LOL's stdlib products produce) overflowed a 2 MB thread stack on drop; the regression test now builds and drops 100,000-deep chains in a 256 KB thread. Shared subtrees (`Arc::clone`) are left to their last owner as before. Recursive `clone` / `node_count` / evaluators are unchanged.
+
 ## [v1.10.1] - 2026-09-14
 
 ### Changed — 1.10 Phase 2 (G1 + G2): one law per basic primitive and CSG operator
