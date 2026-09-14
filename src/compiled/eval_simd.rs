@@ -14,7 +14,7 @@ use wide::f32x8;
 
 /// Evaluate compiled SDF at 8 points simultaneously
 ///
-/// Instantiation of the shared stack machine ([`super::eval_core`]) with
+/// Instantiation of the shared stack machine (`eval_core`) with
 /// `R = wide::f32x8`: every transform / modifier / post-processing law is the
 /// same code the scalar evaluator runs.
 ///

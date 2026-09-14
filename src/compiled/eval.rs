@@ -1,7 +1,7 @@
 //! Stack-based SDF evaluation for compiled bytecode
 //!
 //! Thin entry points over the unified stack machine in
-//! [`super::eval_core`] (instantiated with `R = f32`). Batch / normal helpers live here.
+//! `eval_core` (instantiated with `R = f32`). Batch / normal helpers live here.
 //!
 //! Author: Moroya Sakamoto
 
