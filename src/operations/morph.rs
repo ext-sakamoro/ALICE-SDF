@@ -4,6 +4,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Morph between two SDFs
 ///
 /// Linear interpolation: `a * (1 - t) + b * t`
@@ -12,7 +14,13 @@
 /// - `t = 0.5` gives midpoint blend
 #[inline(always)]
 pub fn sdf_morph(a: f32, b: f32, t: f32) -> f32 {
-    a.mul_add(1.0 - t, b * t)
+    sdf_morph_r::<f32>(a, b, t)
+}
+
+/// Linear morph `a*(1-t) + b*t` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_morph_r<R: Real>(a: R, b: R, t: f32) -> R {
+    a * R::splat(1.0 - t) + b * R::splat(t)
 }
 
 #[cfg(test)]

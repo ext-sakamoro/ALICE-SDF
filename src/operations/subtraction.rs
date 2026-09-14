@@ -5,12 +5,20 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Subtraction of B from A (A minus B)
 ///
 /// # Returns
 /// max(d1, -d2)
 #[inline(always)]
 pub fn sdf_subtraction(d1: f32, d2: f32) -> f32 {
+    d1.max(-d2)
+}
+
+/// Subtraction of B from A (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_subtraction_r<R: Real>(d1: R, d2: R) -> R {
     d1.max(-d2)
 }
 

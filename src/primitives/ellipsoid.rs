@@ -5,26 +5,31 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Approximate SDF for an ellipsoid centered at origin
-///
-/// Uses Inigo Quilez's formula which provides a very good approximation.
-/// The error is negligible for most practical uses.
-///
-/// # Arguments
-/// * `p` - Point to evaluate
-/// * `radii` - Semi-axes lengths (x, y, z)
+/// Ellipsoid with `radii` (generic over [`Real`]); returns `-min(radii)` at the centre.
+#[inline(always)]
+pub fn sdf_ellipsoid_r<R: Real>(p: Vec3R<R>, radii: Vec3) -> R {
+    let safe = Vec3::new(radii.x.max(1e-10), radii.y.max(1e-10), radii.z.max(1e-10));
+    let inv = Vec3R::<R>::splat(Vec3::new(1.0 / safe.x, 1.0 / safe.y, 1.0 / safe.z));
+    let inv2 = Vec3R::<R>::splat(Vec3::new(
+        1.0 / (safe.x * safe.x),
+        1.0 / (safe.y * safe.y),
+        1.0 / (safe.z * safe.z),
+    ));
+    let k0 = p.mul_vec(inv).length();
+    let k1 = p.mul_vec(inv2).length();
+    let eps = R::splat(1e-10);
+    let d = k0 * (k0 - R::one()) / k1.max(eps);
+    let centre = R::splat(-safe.x.min(safe.y).min(safe.z));
+    R::select(k1.lt(eps), centre, d)
+}
+
+/// Ellipsoid with `radii`; returns `-min(radii)` at the centre.
 #[inline(always)]
 pub fn sdf_ellipsoid(p: Vec3, radii: Vec3) -> f32 {
-    // Guard against zero radii (prevents division by zero in p/radii)
-    let safe_radii = Vec3::new(radii.x.max(1e-10), radii.y.max(1e-10), radii.z.max(1e-10));
-    let k0 = (p / safe_radii).length();
-    let k1 = (p / (safe_radii * safe_radii)).length();
-    if k1 < 1e-10 {
-        return -safe_radii.x.min(safe_radii.y).min(safe_radii.z);
-    }
-    k0 * (k0 - 1.0) / k1
+    sdf_ellipsoid_r::<f32>(p.into(), radii)
 }
 
 #[cfg(test)]

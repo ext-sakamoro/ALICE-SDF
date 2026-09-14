@@ -5,19 +5,19 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Signed distance to a sphere centered at origin
-///
-/// # Arguments
-/// * `point` - Point to evaluate
-/// * `radius` - Sphere radius
-///
-/// # Returns
-/// Signed distance (negative inside, positive outside)
+/// Sphere of `radius` centred at the origin (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_sphere_r<R: Real>(p: Vec3R<R>, radius: f32) -> R {
+    p.length() - R::splat(radius)
+}
+
+/// Sphere of `radius` centred at the origin.
 #[inline(always)]
 pub fn sdf_sphere(point: Vec3, radius: f32) -> f32 {
-    point.length() - radius
+    sdf_sphere_r::<f32>(point.into(), radius)
 }
 
 /// Signed distance to a sphere at arbitrary center

@@ -6,29 +6,36 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Exact SDF for a regular octahedron centered at origin
-///
-/// - Vertices at (±s, 0, 0), (0, ±s, 0), (0, 0, ±s)
-/// - Parameter `s` controls the size (distance from center to vertex)
+/// Octahedron of size `s` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_octahedron_r<R: Real>(p: Vec3R<R>, s: f32) -> R {
+    let rs = R::splat(s);
+    let three = R::splat(3.0);
+    let (ax, ay, az) = (p.x.abs(), p.y.abs(), p.z.abs());
+    let m = ax + ay + az - rs;
+    let d_flat = m * R::splat(0.57735027);
+    let m1 = (three * ax).lt(m);
+    let m2 = (three * ay).lt(m);
+    let m3 = (three * az).lt(m);
+    // Priority: m1, then m2, then m3, else flat (same as the branch chain)
+    let qx = R::select(m1, ax, R::select(m2, ay, az));
+    let qy = R::select(m1, ay, R::select(m2, az, ax));
+    let qz = R::select(m1, az, R::select(m2, ax, ay));
+    let k = (R::splat(0.5) * (qz - qy + rs)).clamp(R::zero(), rs);
+    let vy = qy - rs + k;
+    let vz = qz - k;
+    let d_edge = (qx * qx + vy * vy + vz * vz).sqrt();
+    let any = R::mask_or(m1, R::mask_or(m2, m3));
+    R::select(any, d_edge, d_flat)
+}
+
+/// Octahedron of size `s`.
 #[inline(always)]
 pub fn sdf_octahedron(p: Vec3, s: f32) -> f32 {
-    let p = Vec3::new(p.x.abs(), p.y.abs(), p.z.abs());
-    let m = p.x + p.y + p.z - s;
-
-    let q = if 3.0 * p.x < m {
-        p
-    } else if 3.0 * p.y < m {
-        Vec3::new(p.y, p.z, p.x)
-    } else if 3.0 * p.z < m {
-        Vec3::new(p.z, p.x, p.y)
-    } else {
-        return m * 0.57735027; // 1/sqrt(3)
-    };
-
-    let k = (0.5 * (q.z - q.y + s)).clamp(0.0, s);
-    Vec3::new(q.x, q.y - s + k, q.z - k).length()
+    sdf_octahedron_r::<f32>(p.into(), s)
 }
 
 #[cfg(test)]

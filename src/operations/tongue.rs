@@ -4,6 +4,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Tongue operation on two SDFs
 ///
 /// Adds a tongue-shaped protrusion of shape b onto shape a.
@@ -12,7 +14,13 @@
 /// - `rb`: tongue height
 #[inline(always)]
 pub fn sdf_tongue(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
-    a.min((a - ra).max(b.abs() - rb))
+    sdf_tongue_r::<f32>(a, b, ra, rb)
+}
+
+/// Tongue (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_tongue_r<R: Real>(a: R, b: R, ra: f32, rb: f32) -> R {
+    a.min((a - R::splat(ra)).max(b.abs() - R::splat(rb)))
 }
 
 #[cfg(test)]

@@ -7,39 +7,35 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Exact SDF for a hexagonal prism centered at origin
-///
-/// - Regular hexagon of given radius in XY plane
-/// - Extruded along Z-axis by half_height
+/// Hexagonal prism along Z (generic over [`Real`]).
 #[inline(always)]
-pub fn sdf_hex_prism(p: Vec3, hex_radius: f32, half_height: f32) -> f32 {
-    // k = vec3(-sqrt(3)/2, 0.5, 1/sqrt(3))
-    let kx: f32 = -0.8660254;
-    let ky: f32 = 0.5;
-    let kz: f32 = 0.57735027;
-
+pub fn sdf_hex_prism_r<R: Real>(p: Vec3R<R>, hex_radius: f32, half_height: f32) -> R {
+    let kx = R::splat(-0.8660254);
+    let ky = R::splat(0.5);
+    let kz = 0.57735027 * hex_radius;
     let mut px = p.x.abs();
     let mut py = p.y.abs();
     let pz = p.z.abs();
-
-    // Reflect across hex symmetry
-    let dot_kxy = kx.mul_add(px, ky * py);
-    let reflect = 2.0 * dot_kxy.min(0.0);
-    px -= reflect * kx;
-    py -= reflect * ky;
-
-    // Distance in XY
-    let clamped_x = px.clamp(-kz * hex_radius, kz * hex_radius);
+    let reflect = R::splat(2.0) * (kx * px + ky * py).min(R::zero());
+    px = px - reflect * kx;
+    py = py - reflect * ky;
+    let clamped_x = px.clamp(R::splat(-kz), R::splat(kz));
     let dx = px - clamped_x;
-    let dy = py - hex_radius;
-    let d_xy = dx.hypot(dy) * dy.signum();
+    let dy = py - R::splat(hex_radius);
+    let d_xy = (dx * dx + dy * dy).sqrt() * dy.signum();
+    let d_z = pz - R::splat(half_height);
+    let ox = d_xy.max(R::zero());
+    let oz = d_z.max(R::zero());
+    d_xy.max(d_z).min(R::zero()) + (ox * ox + oz * oz).sqrt()
+}
 
-    // Distance along Z
-    let d_z = pz - half_height;
-
-    d_xy.max(d_z).min(0.0) + glam::Vec2::new(d_xy.max(0.0), d_z.max(0.0)).length()
+/// Hexagonal prism along Z.
+#[inline(always)]
+pub fn sdf_hex_prism(p: Vec3, hex_radius: f32, half_height: f32) -> f32 {
+    sdf_hex_prism_r::<f32>(p.into(), hex_radius, half_height)
 }
 
 #[cfg(test)]

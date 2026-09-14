@@ -5,6 +5,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Intersection of two SDFs (maximum distance)
 ///
 /// # Returns
@@ -22,6 +24,12 @@ pub fn sdf_intersection_multi(distances: &[f32]) -> f32 {
         .copied()
         .reduce(|a, b| a.max(b))
         .unwrap_or(f32::MIN)
+}
+
+/// Intersection (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_intersection_r<R: Real>(d1: R, d2: R) -> R {
+    d1.max(d2)
 }
 
 #[cfg(test)]

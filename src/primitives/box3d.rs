@@ -6,21 +6,20 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Signed distance to an axis-aligned box centered at origin
-///
-/// # Arguments
-/// * `point` - Point to evaluate
-/// * `half_extents` - Half-size in each dimension (width/2, height/2, depth/2)
-///
-/// # Returns
-/// Signed distance (negative inside, positive outside)
+/// Axis-aligned box with `half_extents` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_box3d_r<R: Real>(p: Vec3R<R>, half_extents: Vec3) -> R {
+    let q = p.abs() - Vec3R::splat(half_extents);
+    q.max(Vec3R::zero()).length() + q.x.max(q.y.max(q.z)).min(R::zero())
+}
+
+/// Axis-aligned box with `half_extents`.
 #[inline(always)]
 pub fn sdf_box3d(point: Vec3, half_extents: Vec3) -> f32 {
-    let q = point.abs() - half_extents;
-    // Branchless combine of interior (negative) and exterior (positive) distance
-    q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0)
+    sdf_box3d_r::<f32>(point.into(), half_extents)
 }
 
 /// Signed distance to a box at arbitrary center

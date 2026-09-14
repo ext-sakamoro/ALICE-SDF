@@ -5,12 +5,20 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// XOR of two SDFs (symmetric difference)
 ///
 /// Returns the region that is inside exactly one shape but not both.
 /// Formula: max(min(a, b), -max(a, b))
 #[inline(always)]
 pub fn sdf_xor(a: f32, b: f32) -> f32 {
+    sdf_xor_r::<f32>(a, b)
+}
+
+/// XOR (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_xor_r<R: Real>(a: R, b: R) -> R {
     a.min(b).max(-a.max(b))
 }
 

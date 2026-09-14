@@ -5,6 +5,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Union of two SDFs (minimum distance)
 ///
 /// # Returns
@@ -23,6 +25,12 @@ pub fn sdf_union_multi(distances: &[f32]) -> f32 {
         .copied()
         .reduce(|a, b| a.min(b))
         .unwrap_or(f32::MAX)
+}
+
+/// Union (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_union_r<R: Real>(d1: R, d2: R) -> R {
+    d1.min(d2)
 }
 
 #[cfg(test)]

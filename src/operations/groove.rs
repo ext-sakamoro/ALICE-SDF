@@ -4,6 +4,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Groove operation on two SDFs
 ///
 /// Cuts a groove of shape b into the surface of shape a.
@@ -12,7 +14,13 @@
 /// - `rb`: groove depth
 #[inline(always)]
 pub fn sdf_groove(a: f32, b: f32, ra: f32, rb: f32) -> f32 {
-    a.max((a + ra).min(rb - b.abs()))
+    sdf_groove_r::<f32>(a, b, ra, rb)
+}
+
+/// Groove (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_groove_r<R: Real>(a: R, b: R, ra: f32, rb: f32) -> R {
+    a.max((a + R::splat(ra)).min(R::splat(rb) - b.abs()))
 }
 
 #[cfg(test)]

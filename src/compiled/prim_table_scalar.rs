@@ -22,22 +22,11 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_sphere(p, inst.params[0]);
-        out = d * scale_correction;
-        out
+        sdf_sphere_r(p, inst.params[0]) * scale_correction
     }
     #[inline(always)]
     fn box3d(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let half_extents = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-        let d = sdf_box3d(p, half_extents);
-        out = d * scale_correction;
-        out
+        sdf_box3d_r(p, Vec3::new(inst.params[0], inst.params[1], inst.params[2])) * scale_correction
     }
     #[inline(always)]
     fn cylinder(
@@ -46,31 +35,19 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_cylinder(p, inst.params[0], inst.params[1]);
-        out = d * scale_correction;
-        out
+        sdf_cylinder_r(p, inst.params[0], inst.params[1]) * scale_correction
     }
     #[inline(always)]
     fn torus(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_torus(p, inst.params[0], inst.params[1]);
-        out = d * scale_correction;
-        out
+        sdf_torus_r(p, inst.params[0], inst.params[1]) * scale_correction
     }
     #[inline(always)]
     fn plane(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let normal = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-        let d = sdf_plane(p, normal, inst.params[3]);
-        out = d * scale_correction;
-        out
+        sdf_plane_r(
+            p,
+            Vec3::new(inst.params[0], inst.params[1], inst.params[2]),
+            inst.params[3],
+        ) * scale_correction
     }
     #[inline(always)]
     fn capsule(
@@ -79,24 +56,16 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let point_a = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-        let point_b = Vec3::new(inst.params[3], inst.params[4], inst.params[5]);
-        let radius = inst.get_capsule_radius();
-        let d = sdf_capsule(p, point_a, point_b, radius);
-        out = d * scale_correction;
-        out
+        sdf_capsule_r(
+            p,
+            Vec3::new(inst.params[0], inst.params[1], inst.params[2]),
+            Vec3::new(inst.params[3], inst.params[4], inst.params[5]),
+            inst.get_capsule_radius(),
+        ) * scale_correction
     }
     #[inline(always)]
     fn cone(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_cone(p, inst.params[0], inst.params[1]);
-        out = d * scale_correction;
-        out
+        sdf_cone_r(p, inst.params[0], inst.params[1]) * scale_correction
     }
     #[inline(always)]
     fn ellipsoid(
@@ -105,13 +74,8 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let radii = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
-        let d = sdf_ellipsoid(p, radii);
-        out = d * scale_correction;
-        out
+        sdf_ellipsoid_r(p, Vec3::new(inst.params[0], inst.params[1], inst.params[2]))
+            * scale_correction
     }
     #[inline(always)]
     fn rounded_cone(
@@ -120,12 +84,7 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_rounded_cone(p, inst.params[0], inst.params[1], inst.params[2]);
-        out = d * scale_correction;
-        out
+        sdf_rounded_cone_r(p, inst.params[0], inst.params[1], inst.params[2]) * scale_correction
     }
     #[inline(always)]
     fn pyramid(
@@ -134,12 +93,7 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_pyramid(p, inst.params[0]);
-        out = d * scale_correction;
-        out
+        sdf_pyramid_r(p, inst.params[0]) * scale_correction
     }
     #[inline(always)]
     fn octahedron(
@@ -148,12 +102,7 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_octahedron(p, inst.params[0]);
-        out = d * scale_correction;
-        out
+        sdf_octahedron_r(p, inst.params[0]) * scale_correction
     }
     #[inline(always)]
     fn hex_prism(
@@ -162,21 +111,11 @@ impl PrimTable for f32 {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_hex_prism(p, inst.params[0], inst.params[1]);
-        out = d * scale_correction;
-        out
+        sdf_hex_prism_r(p, inst.params[0], inst.params[1]) * scale_correction
     }
     #[inline(always)]
     fn link(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self {
-        let p: Vec3 = p.into();
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        let d = sdf_link(p, inst.params[0], inst.params[1], inst.params[2]);
-        out = d * scale_correction;
-        out
+        sdf_link_r(p, inst.params[0], inst.params[1], inst.params[2]) * scale_correction
     }
     #[inline(always)]
     fn rounded_box(
@@ -1011,171 +950,98 @@ impl PrimTable for f32 {
     }
     #[inline(always)]
     fn union(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_union(a, b);
-        out
+        sdf_union_r(a, b)
     }
     #[inline(always)]
     fn intersection(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_intersection(a, b);
-        out
+        sdf_intersection_r(a, b)
     }
     #[inline(always)]
     fn subtraction(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_subtraction(a, b);
-        out
+        sdf_subtraction_r(a, b)
     }
     #[inline(always)]
     fn smooth_union(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        // Division Exorcism: params[1] = precomputed 1/k
-        out = sdf_smooth_union_rk(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_smooth_union_rk_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn smooth_intersection(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_smooth_intersection_rk(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_smooth_intersection_rk_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn smooth_subtraction(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_smooth_subtraction_rk(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_smooth_subtraction_rk_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn chamfer_union(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_chamfer_union(a, b, inst.params[0]);
-        out
+        sdf_chamfer_union_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn chamfer_intersection(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_chamfer_intersection(a, b, inst.params[0]);
-        out
+        sdf_chamfer_intersection_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn chamfer_subtraction(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_chamfer_subtraction(a, b, inst.params[0]);
-        out
+        sdf_chamfer_subtraction_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn stairs_union(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_stairs_union(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_stairs_union_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn stairs_intersection(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_stairs_intersection(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_stairs_intersection_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn stairs_subtraction(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_stairs_subtraction(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_stairs_subtraction_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn xor(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_xor(a, b);
-        out
+        sdf_xor_r(a, b)
     }
     #[inline(always)]
     fn morph(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_morph(a, b, inst.params[0]);
-        out
+        sdf_morph_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn columns_union(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_columns_union(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_columns_union_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn columns_intersection(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_columns_intersection(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_columns_intersection_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn columns_subtraction(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_columns_subtraction(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_columns_subtraction_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn pipe(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_pipe(a, b, inst.params[0]);
-        out
+        sdf_pipe_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn engrave(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_engrave(a, b, inst.params[0]);
-        out
+        sdf_engrave_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn groove(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_groove(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_groove_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn tongue(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_tongue(a, b, inst.params[0], inst.params[1]);
-        out
+        sdf_tongue_r(a, b, inst.params[0], inst.params[1])
     }
     #[inline(always)]
     fn exp_smooth_union(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_exp_smooth_union(a, b, inst.params[0]);
-        out
+        sdf_exp_smooth_union_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn exp_smooth_intersection(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_exp_smooth_intersection(a, b, inst.params[0]);
-        out
+        sdf_exp_smooth_intersection_r(a, b, inst.params[0])
     }
     #[inline(always)]
     fn exp_smooth_subtraction(inst: &Instruction, a: Self, b: Self) -> Self {
-        #[allow(clippy::needless_late_init, unused_variables)]
-        let out;
-        out = sdf_exp_smooth_subtraction(a, b, inst.params[0]);
-        out
+        sdf_exp_smooth_subtraction_r(a, b, inst.params[0])
     }
 }

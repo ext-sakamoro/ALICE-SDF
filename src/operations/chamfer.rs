@@ -20,6 +20,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
 use std::f32::consts::FRAC_1_SQRT_2;
 
 /// Chamfer minimum: 45-degree beveled blend (Deep Fried)
@@ -29,7 +30,7 @@ use std::f32::consts::FRAC_1_SQRT_2;
 /// docs for how this relates to hg_sdf's `fOpUnionChamfer`).
 #[inline(always)]
 pub fn chamfer_min(a: f32, b: f32, r: f32) -> f32 {
-    a.min(b).min((a + b).mul_add(FRAC_1_SQRT_2, -r))
+    chamfer_min_r::<f32>(a, b, r)
 }
 
 /// Chamfer maximum: 45-degree beveled blend (Deep Fried)
@@ -56,6 +57,37 @@ pub fn sdf_chamfer_intersection(d1: f32, d2: f32, r: f32) -> f32 {
 #[inline(always)]
 pub fn sdf_chamfer_subtraction(d1: f32, d2: f32, r: f32) -> f32 {
     chamfer_max(d1, -d2, r)
+}
+
+/// Chamfer minimum (generic over [`Real`]).
+#[inline(always)]
+pub fn chamfer_min_r<R: Real>(a: R, b: R, r: f32) -> R {
+    a.min(b)
+        .min((a + b) * R::splat(FRAC_1_SQRT_2) - R::splat(r))
+}
+
+/// Chamfer maximum (generic over [`Real`]).
+#[inline(always)]
+pub fn chamfer_max_r<R: Real>(a: R, b: R, r: f32) -> R {
+    -chamfer_min_r(-a, -b, r)
+}
+
+/// Chamfer union (generic).
+#[inline(always)]
+pub fn sdf_chamfer_union_r<R: Real>(d1: R, d2: R, r: f32) -> R {
+    chamfer_min_r(d1, d2, r)
+}
+
+/// Chamfer intersection (generic).
+#[inline(always)]
+pub fn sdf_chamfer_intersection_r<R: Real>(d1: R, d2: R, r: f32) -> R {
+    chamfer_max_r(d1, d2, r)
+}
+
+/// Chamfer subtraction (generic).
+#[inline(always)]
+pub fn sdf_chamfer_subtraction_r<R: Real>(d1: R, d2: R, r: f32) -> R {
+    chamfer_max_r(d1, -d2, r)
 }
 
 #[cfg(test)]

@@ -61,6 +61,9 @@ pub trait Real:
     fn exp(self) -> Self;
     /// Natural logarithm.
     fn ln(self) -> Self;
+    /// Sign: `-1` for negative lanes, `+1` otherwise (like `f32::signum` for non-NaN,
+    /// except `-0.0` maps to `+1` on the SIMD instantiation).
+    fn signum(self) -> Self;
 
     /// `self < other`
     fn lt(self, other: Self) -> Self::Mask;
@@ -175,6 +178,10 @@ impl Real for f32 {
     #[inline(always)]
     fn ln(self) -> Self {
         f32::ln(self)
+    }
+    #[inline(always)]
+    fn signum(self) -> Self {
+        f32::signum(self)
     }
     #[inline(always)]
     fn lt(self, other: Self) -> bool {
@@ -295,6 +302,11 @@ impl Real for f32x8 {
     #[inline(always)]
     fn ln(self) -> Self {
         f32x8::ln(self)
+    }
+    #[inline(always)]
+    fn signum(self) -> Self {
+        self.cmp_lt(f32x8::ZERO)
+            .blend(f32x8::splat(-1.0), f32x8::ONE)
     }
     #[inline(always)]
     fn lt(self, other: Self) -> f32x8 {
@@ -742,30 +754,6 @@ pub fn sweep_bezier<R: Real>(p: Vec3R<R>, p0: Vec2, p1: Vec2, p2: Vec2) -> Vec3R
     let (cx, cz) = eval(t);
     let (dx, dz) = (qx - cx, qz - cz);
     Vec3R::new((dx * dx + dz * dz).sqrt(), p.y, R::zero())
-}
-
-/// Exponential smooth union with blend width `k` (`d/k` convention).
-#[inline(always)]
-pub fn exp_smooth_union<R: Real>(a: R, b: R, k: f32) -> R {
-    let k = R::splat(k.max(1e-6));
-    let res = (-a / k).exp() + (-b / k).exp();
-    -res.ln() * k
-}
-
-/// Exponential smooth intersection with blend width `k`.
-#[inline(always)]
-pub fn exp_smooth_intersection<R: Real>(a: R, b: R, k: f32) -> R {
-    let k = R::splat(k.max(1e-6));
-    let res = (a / k).exp() + (b / k).exp();
-    res.ln() * k
-}
-
-/// Exponential smooth subtraction with blend width `k`.
-#[inline(always)]
-pub fn exp_smooth_subtraction<R: Real>(a: R, b: R, k: f32) -> R {
-    let k = R::splat(k.max(1e-6));
-    let res = (a / k).exp() + (-b / k).exp();
-    res.ln() * k
 }
 
 #[cfg(test)]

@@ -6,6 +6,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.10.1] - 2026-09-14
+
+### Changed — 1.10 Phase 2 (G1 + G2): one law per basic primitive and CSG operator
+
+- The 13 basic primitives (`sphere` / `box3d` / `cylinder` / `torus` / `plane` / `capsule` / `cone` / `ellipsoid` / `rounded_cone` / `pyramid` / `octahedron` / `hex_prism` / `link`) and all 24 CSG binary operators (`union` … `tongue`, smooth / chamfer / stairs / columns families, `exp_smooth_*`) now have a single generic body `sdf_x_r<R: Real>` in `primitives::*` / `operations::*`. The existing scalar functions (`sdf_sphere(Vec3, f32)` etc.) are unchanged in signature and delegate to the generic law; the scalar and SIMD evaluator tables call the same generic function. Branches became `Real::select` (`cone`, `rounded_cone`, `pyramid`, `octahedron`, `ellipsoid` centre, `columns` early-out), `hypot` became `sqrt(x²+y²)` (≤ 1 ulp difference).
+- Removed the SIMD-only `smooth_min_simd_rk` / `chamfer_min_simd` / `stairs_min_simd` / `eval_per_lane_binary` helpers (the generic laws replace them; `columns_*` and `exp_smooth_*` are now SIMD-native instead of per-lane).
+- Added `Real::signum`.
+
 ## [v1.10.0] - 2026-09-14
 
 ### Changed — 1.10 Phase 1: one stack machine for scalar and SIMD

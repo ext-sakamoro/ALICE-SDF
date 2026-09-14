@@ -9,32 +9,34 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Exact SDF for a rounded cone along Y-axis
-///
-/// - Bottom sphere at y = -half_height with radius r1
-/// - Top sphere at y = half_height with radius r2
-/// - Smooth interpolation between the two radii
+/// Rounded cone: spheres of `r1` / `r2` at `y = ∓half_height` (generic over [`Real`]).
 #[inline(always)]
-pub fn sdf_rounded_cone(p: Vec3, r1: f32, r2: f32, half_height: f32) -> f32 {
+pub fn sdf_rounded_cone_r<R: Real>(p: Vec3R<R>, r1: f32, r2: f32, half_height: f32) -> R {
     let h = half_height * 2.0;
-    let q_x = p.x.hypot(p.z);
-    let q_y = p.y + half_height; // shift origin to base
-
+    let q_x = (p.x * p.x + p.z * p.z).sqrt();
+    let q_y = p.y + R::splat(half_height);
     let b = (r1 - r2) / h;
     let a = (1.0 - b * b).sqrt();
-    let k = q_x.mul_add(-b, q_y * a);
+    let (ra, rb, rh) = (R::splat(a), R::splat(b), R::splat(h));
+    let k = q_y * ra - q_x * rb;
+    let d_bottom = (q_x * q_x + q_y * q_y).sqrt() - R::splat(r1);
+    let dy = q_y - rh;
+    let d_top = (q_x * q_x + dy * dy).sqrt() - R::splat(r2);
+    let d_mantle = q_x * ra + q_y * rb - R::splat(r1);
+    R::select(
+        k.lt(R::zero()),
+        d_bottom,
+        R::select(k.gt(ra * rh), d_top, d_mantle),
+    )
+}
 
-    if k < 0.0 {
-        return q_x.hypot(q_y) - r1;
-    }
-    if k > a * h {
-        let dy = q_y - h;
-        return q_x.hypot(dy) - r2;
-    }
-
-    q_x.mul_add(a, q_y * b) - r1
+/// Rounded cone: spheres of `r1` / `r2` at `y = ∓half_height`.
+#[inline(always)]
+pub fn sdf_rounded_cone(p: Vec3, r1: f32, r2: f32, half_height: f32) -> f32 {
+    sdf_rounded_cone_r::<f32>(p.into(), r1, r2, half_height)
 }
 
 #[cfg(test)]

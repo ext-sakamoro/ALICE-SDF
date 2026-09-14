@@ -7,25 +7,23 @@
 //!
 //! Author: Moroya Sakamoto
 
-use glam::{Vec2, Vec3};
+use crate::compiled::real::{Real, Vec3R};
+use glam::Vec3;
 
-/// Signed distance to a vertical cylinder (Deep Fried)
-///
-/// # Arguments
-/// * `point` - Point to evaluate
-/// * `radius` - Cylinder radius
-/// * `half_height` - Half of the cylinder height
-///
-/// # Returns
-/// Signed distance (negative inside, positive outside)
+/// Capped cylinder along Y (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_cylinder_r<R: Real>(p: Vec3R<R>, radius: f32, half_height: f32) -> R {
+    let dx = (p.x * p.x + p.z * p.z).sqrt() - R::splat(radius);
+    let dy = p.y.abs() - R::splat(half_height);
+    let ox = dx.max(R::zero());
+    let oy = dy.max(R::zero());
+    dx.max(dy).min(R::zero()) + (ox * ox + oy * oy).sqrt()
+}
+
+/// Capped cylinder along Y.
 #[inline(always)]
 pub fn sdf_cylinder(point: Vec3, radius: f32, half_height: f32) -> f32 {
-    let d = Vec2::new(
-        Vec2::new(point.x, point.z).length() - radius,
-        point.y.abs() - half_height,
-    );
-    // Branchless: combine interior (negative) and exterior (positive)
-    d.x.max(d.y).min(0.0) + d.max(Vec2::ZERO).length()
+    sdf_cylinder_r::<f32>(point.into(), radius, half_height)
 }
 
 /// Signed distance to a capped cylinder between two points (Deep Fried Branchless)

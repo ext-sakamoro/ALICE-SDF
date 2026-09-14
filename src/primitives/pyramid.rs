@@ -8,47 +8,37 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Exact SDF for a 4-sided pyramid centered at origin
-///
-/// - Square base (side = 1) at y = -half_height
-/// - Tip at y = half_height
-/// - Use Scale/ScaleNonUniform to change base size
+/// Square pyramid, unit base, `half_height` (generic over [`Real`]).
 #[inline(always)]
-pub fn sdf_pyramid(p: Vec3, half_height: f32) -> f32 {
+pub fn sdf_pyramid_r<R: Real>(p: Vec3R<R>, half_height: f32) -> R {
     let h = half_height * 2.0;
     let m2 = h * h + 0.25;
-
-    // Shift to base at y=0
-    let py = p.y + half_height;
-
-    let mut px = p.x.abs();
-    let mut pz = p.z.abs();
-    if pz > px {
-        std::mem::swap(&mut px, &mut pz);
-    }
-    px -= 0.5;
-    pz -= 0.5;
-
+    let (rh, rm2, half) = (R::splat(h), R::splat(m2), R::splat(0.5));
+    let py = p.y + R::splat(half_height);
+    let ax = p.x.abs();
+    let az = p.z.abs();
+    let swap = az.gt(ax);
+    let px = R::select(swap, az, ax) - half;
+    let pz = R::select(swap, ax, az) - half;
     let qx = pz;
-    let qy = h * py - 0.5 * px;
-    let qz = h * px + 0.5 * py;
+    let qy = rh * py - half * px;
+    let qz = rh * px + half * py;
+    let s = (-qx).max(R::zero());
+    let t = ((qy - half * pz) / R::splat(m2 + 0.25)).clamp(R::zero(), R::one());
+    let a = rm2 * (qx + s) * (qx + s) + qy * qy;
+    let b = rm2 * (qx + half * t) * (qx + half * t) + (qy - rm2 * t) * (qy - rm2 * t);
+    let inner = qy.min(-qx * rm2 - qy * half);
+    let d2 = R::select(inner.gt(R::zero()), R::zero(), a.min(b));
+    ((d2 + qz * qz) / rm2).sqrt() * qz.max(-py).signum()
+}
 
-    let s = (-qx).max(0.0);
-    let t = (0.5f32.mul_add(-pz, qy) / (m2 + 0.25)).clamp(0.0, 1.0);
-
-    let a = (m2 * (qx + s)).mul_add(qx + s, qy * qy);
-    let b =
-        (m2 * 0.5f32.mul_add(t, qx)).mul_add(0.5f32.mul_add(t, qx), (qy - m2 * t) * (qy - m2 * t));
-
-    let d2 = if qy.min((-qx).mul_add(m2, -(qy * 0.5))) > 0.0 {
-        0.0
-    } else {
-        a.min(b)
-    };
-
-    ((d2 + qz * qz) / m2).sqrt() * qz.max(-py).signum()
+/// Square pyramid, unit base, `half_height`.
+#[inline(always)]
+pub fn sdf_pyramid(p: Vec3, half_height: f32) -> f32 {
+    sdf_pyramid_r::<f32>(p.into(), half_height)
 }
 
 #[cfg(test)]

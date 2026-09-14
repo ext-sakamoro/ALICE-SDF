@@ -44,3 +44,28 @@ pub use subtraction::sdf_subtraction;
 pub use tongue::sdf_tongue;
 pub use union::{sdf_union, sdf_union_multi};
 pub use xor::sdf_xor;
+
+// Generic ([`crate::compiled::real::Real`]) forms — one law for scalar and SIMD evaluators
+pub use chamfer::{
+    chamfer_max_r, chamfer_min_r, sdf_chamfer_intersection_r, sdf_chamfer_subtraction_r,
+    sdf_chamfer_union_r,
+};
+pub use columns::{sdf_columns_intersection_r, sdf_columns_subtraction_r, sdf_columns_union_r};
+pub use engrave::sdf_engrave_r;
+pub use groove::sdf_groove_r;
+pub use intersection::sdf_intersection_r;
+pub use morph::sdf_morph_r;
+pub use pipe::sdf_pipe_r;
+pub use smooth::{
+    sdf_exp_smooth_intersection_r, sdf_exp_smooth_subtraction_r, sdf_exp_smooth_union_r,
+    sdf_smooth_intersection_rk_r, sdf_smooth_subtraction_rk_r, sdf_smooth_union_rk_r,
+    smooth_max_rk_r, smooth_min_rk_r,
+};
+pub use stairs::{
+    sdf_stairs_intersection_r, sdf_stairs_subtraction_r, sdf_stairs_union_r, stairs_max_r,
+    stairs_min_r,
+};
+pub use subtraction::sdf_subtraction_r;
+pub use tongue::sdf_tongue_r;
+pub use union::sdf_union_r;
+pub use xor::sdf_xor_r;

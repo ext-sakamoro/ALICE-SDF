@@ -19,13 +19,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
 use std::f32::consts::{FRAC_1_SQRT_2, SQRT_2};
-
-/// GLSL-compatible modulo: always returns positive remainder
-#[inline(always)]
-fn glsl_mod(a: f32, b: f32) -> f32 {
-    b.mul_add(-(a / b).floor(), a)
-}
 
 /// Stairs minimum: stepped/terraced blend (Mercury hg_sdf)
 ///
@@ -38,40 +33,7 @@ fn glsl_mod(a: f32, b: f32) -> f32 {
 /// - `n`: step count (n-1 visible steps, clamped to >= 1)
 #[inline(always)]
 pub fn stairs_min(a: f32, b: f32, r: f32, n: f32) -> f32 {
-    let n = n.max(1.0);
-    let d = a.min(b);
-
-    // Rotate (a,b) by 45 degrees: pR45
-    let mut px = (a + b) * FRAC_1_SQRT_2;
-    let mut py = (b - a) * FRAC_1_SQRT_2;
-
-    // Swap p.yx
-    std::mem::swap(&mut px, &mut py);
-
-    // Offset
-    let rn = r / n;
-    let off = (r - rn) * 0.5 * SQRT_2;
-    px -= off;
-    py -= off;
-
-    // Shift x
-    px += 0.5 * SQRT_2 * rn;
-
-    // Modular repetition: pMod1(p.x, step)
-    let step = r * SQRT_2 / n;
-    let hs = step * 0.5;
-    px = glsl_mod(px + hs, step) - hs;
-
-    // Combine with py
-    let d = d.min(py);
-
-    // Second 45-degree rotation
-    let npx = (px + py) * FRAC_1_SQRT_2;
-    let npy = (py - px) * FRAC_1_SQRT_2;
-
-    // vmax(p - edge)
-    let edge = 0.5 * rn;
-    d.min((npx - edge).max(npy - edge))
+    stairs_min_r::<f32>(a, b, r, n)
 }
 
 /// Stairs maximum: dual of stairs_min
@@ -96,6 +58,59 @@ pub fn sdf_stairs_intersection(d1: f32, d2: f32, r: f32, n: f32) -> f32 {
 #[inline(always)]
 pub fn sdf_stairs_subtraction(d1: f32, d2: f32, r: f32, n: f32) -> f32 {
     -stairs_min(-d1, d2, r, n)
+}
+
+/// GLSL-style modulo `a - b * floor(a / b)` (generic over [`Real`]).
+#[inline(always)]
+fn glsl_mod_r<R: Real>(a: R, b: f32) -> R {
+    a - R::splat(b) * (a / R::splat(b)).floor()
+}
+
+/// Stairs (stepped) minimum (generic over [`Real`]).
+#[inline(always)]
+pub fn stairs_min_r<R: Real>(a: R, b: R, r: f32, n: f32) -> R {
+    let n = n.max(1.0);
+    let s = R::splat(FRAC_1_SQRT_2);
+    let d = a.min(b);
+    // rotate 45°, then swap (same as the scalar law)
+    let py = (a + b) * s;
+    let px = (b - a) * s;
+    let rn = r / n;
+    let off = (r - rn) * 0.5 * SQRT_2;
+    let px = px - R::splat(off) + R::splat(0.5 * SQRT_2 * rn);
+    let py = py - R::splat(off);
+    let step = r * SQRT_2 / n;
+    let hs = step * 0.5;
+    let px = glsl_mod_r(px + R::splat(hs), step) - R::splat(hs);
+    let d = d.min(py);
+    let npx = (px + py) * s;
+    let npy = (py - px) * s;
+    let edge = R::splat(0.5 * rn);
+    d.min((npx - edge).max(npy - edge))
+}
+
+/// Stairs maximum (generic).
+#[inline(always)]
+pub fn stairs_max_r<R: Real>(a: R, b: R, r: f32, n: f32) -> R {
+    -stairs_min_r(-a, -b, r, n)
+}
+
+/// Stairs union (generic).
+#[inline(always)]
+pub fn sdf_stairs_union_r<R: Real>(d1: R, d2: R, r: f32, n: f32) -> R {
+    stairs_min_r(d1, d2, r, n)
+}
+
+/// Stairs intersection (generic).
+#[inline(always)]
+pub fn sdf_stairs_intersection_r<R: Real>(d1: R, d2: R, r: f32, n: f32) -> R {
+    stairs_max_r(d1, d2, r, n)
+}
+
+/// Stairs subtraction (generic).
+#[inline(always)]
+pub fn sdf_stairs_subtraction_r<R: Real>(d1: R, d2: R, r: f32, n: f32) -> R {
+    -stairs_min_r(-d1, d2, r, n)
 }
 
 #[cfg(test)]

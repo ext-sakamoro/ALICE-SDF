@@ -7,43 +7,36 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Exact SDF for a capped cone along Y-axis
-///
-/// - Base circle at y = -half_height with given radius
-/// - Tip at y = half_height
-///
-/// # Deep Fried: branchless min/max, no sqrt until final
+/// Cone with base `radius` and `half_height`, apex up (generic over [`Real`]).
 #[inline(always)]
-pub fn sdf_cone(p: Vec3, radius: f32, half_height: f32) -> f32 {
-    let q_x = p.x.hypot(p.z);
+pub fn sdf_cone_r<R: Real>(p: Vec3R<R>, radius: f32, half_height: f32) -> R {
+    let q_x = (p.x * p.x + p.z * p.z).sqrt();
     let q_y = p.y;
-
-    let h = half_height;
-
-    // k1 = tip position in 2D (0, h)
-    // k2 = direction from tip to base edge (-radius, 2*h)
+    let h = R::splat(half_height);
+    let radius = R::splat(radius);
     let k2x = -radius;
-    let k2y = 2.0 * h;
-
-    // ca: closest point on caps
-    let ca_r = if q_y < 0.0 { radius } else { 0.0 };
+    let k2y = h + h;
+    let ca_r = R::select(q_y.lt(R::zero()), radius, R::zero());
     let ca_x = q_x - q_x.min(ca_r);
     let ca_y = q_y.abs() - h;
-
-    // cb: closest point on mantle
-    // cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0, 1)
-    let diff_x = -q_x; // k1.x - q.x = 0 - q_x
+    let diff_x = -q_x;
     let diff_y = h - q_y;
-    let t = (diff_x.mul_add(k2x, diff_y * k2y) / k2x.mul_add(k2x, k2y * k2y)).clamp(0.0, 1.0);
-    let cb_x = k2x.mul_add(t, q_x); // q.x - k1.x + k2.x * t = q_x + k2x * t
+    let t = ((diff_x * k2x + diff_y * k2y) / (k2x * k2x + k2y * k2y)).clamp(R::zero(), R::one());
+    let cb_x = q_x + k2x * t;
     let cb_y = q_y - h + k2y * t;
-
-    let s = if cb_x < 0.0 && ca_y < 0.0 { -1.0 } else { 1.0 };
+    let both_neg = R::mask_and(cb_x.lt(R::zero()), ca_y.lt(R::zero()));
+    let s = R::select(both_neg, R::splat(-1.0), R::one());
     let d2 = (ca_x * ca_x + ca_y * ca_y).min(cb_x * cb_x + cb_y * cb_y);
-
     s * d2.sqrt()
+}
+
+/// Cone with base `radius` and `half_height`, apex up.
+#[inline(always)]
+pub fn sdf_cone(p: Vec3, radius: f32, half_height: f32) -> f32 {
+    sdf_cone_r::<f32>(p.into(), radius, half_height)
 }
 
 #[cfg(test)]

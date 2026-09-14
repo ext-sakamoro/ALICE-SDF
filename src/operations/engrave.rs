@@ -4,6 +4,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Engrave operation on two SDFs
 ///
 /// Engraves shape b into the surface of shape a.
@@ -11,8 +13,13 @@
 /// - `r`: engrave depth
 #[inline(always)]
 pub fn sdf_engrave(a: f32, b: f32, r: f32) -> f32 {
-    let s = std::f32::consts::FRAC_1_SQRT_2;
-    a.max((a + r - b.abs()) * s)
+    sdf_engrave_r::<f32>(a, b, r)
+}
+
+/// Engrave (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_engrave_r<R: Real>(a: R, b: R, r: f32) -> R {
+    a.max((a + R::splat(r) - b.abs()) * R::splat(std::f32::consts::FRAC_1_SQRT_2))
 }
 
 #[cfg(test)]

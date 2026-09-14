@@ -7,21 +7,23 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Exact SDF for a chain link shape centered at origin
-///
-/// - `half_length`: half the straight section length along Y
-/// - `r1`: major radius (distance from center to tube center)
-/// - `r2`: minor radius (tube thickness)
+/// Chain link (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_link_r<R: Real>(p: Vec3R<R>, half_length: f32, r1: f32, r2: f32) -> R {
+    let qx = p.x;
+    let qy = (p.y.abs() - R::splat(half_length)).max(R::zero());
+    let qz = p.z;
+    let xy_len = (qx * qx + qy * qy).sqrt() - R::splat(r1);
+    (xy_len * xy_len + qz * qz).sqrt() - R::splat(r2)
+}
+
+/// Chain link.
 #[inline(always)]
 pub fn sdf_link(p: Vec3, half_length: f32, r1: f32, r2: f32) -> f32 {
-    let qx = p.x;
-    let qy = (p.y.abs() - half_length).max(0.0);
-    let qz = p.z;
-
-    let xy_len = qx.hypot(qy) - r1;
-    xy_len.hypot(qz) - r2
+    sdf_link_r::<f32>(p.into(), half_length, r1, r2)
 }
 
 #[cfg(test)]

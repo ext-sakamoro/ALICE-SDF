@@ -6,6 +6,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Polynomial smooth minimum (Deep Fried)
 ///
 /// Branchless k=0 safety: clamps k to epsilon via max(),
@@ -25,8 +27,7 @@ pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
 /// instead of `(k - abs_diff) / k`.
 #[inline(always)]
 pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    let h = (a - b).abs().mul_add(-rk, 1.0).max(0.0);
-    (h * h * k).mul_add(-0.25, a.min(b))
+    smooth_min_rk_r::<f32>(a, b, k, rk)
 }
 
 /// Polynomial smooth maximum (Deep Fried)
@@ -44,8 +45,7 @@ pub fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
 /// Takes precomputed `rk = 1.0 / k` to eliminate division from the hot path.
 #[inline(always)]
 pub fn smooth_max_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    let h = (a - b).abs().mul_add(-rk, 1.0).max(0.0);
-    (h * h * k).mul_add(0.25, a.max(b))
+    smooth_max_rk_r::<f32>(a, b, k, rk)
 }
 
 /// Smooth union of two SDFs
@@ -108,25 +108,19 @@ pub fn smooth_min_exp_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 /// Single source of truth for tree / compiled scalar / SIMD per-lane paths.
 #[inline(always)]
 pub fn sdf_exp_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
-    let k = k.max(1e-6);
-    let res = (-d1 / k).exp() + (-d2 / k).exp();
-    -res.ln() * k
+    sdf_exp_smooth_union_r::<f32>(d1, d2, k)
 }
 
 /// Exponential smooth intersection with blend width `k` (`SdfNode::ExpSmoothIntersection` law).
 #[inline(always)]
 pub fn sdf_exp_smooth_intersection(d1: f32, d2: f32, k: f32) -> f32 {
-    let k = k.max(1e-6);
-    let res = (d1 / k).exp() + (d2 / k).exp();
-    res.ln() * k
+    sdf_exp_smooth_intersection_r::<f32>(d1, d2, k)
 }
 
 /// Exponential smooth subtraction of B from A with blend width `k` (`SdfNode::ExpSmoothSubtraction` law).
 #[inline(always)]
 pub fn sdf_exp_smooth_subtraction(d1: f32, d2: f32, k: f32) -> f32 {
-    let k = k.max(1e-6);
-    let res = (d1 / k).exp() + (-d2 / k).exp();
-    res.ln() * k
+    sdf_exp_smooth_subtraction_r::<f32>(d1, d2, k)
 }
 
 /// Cubic smooth minimum (Deep Fried)
@@ -157,6 +151,66 @@ pub fn smooth_min_cubic_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 pub fn smooth_min_root(a: f32, b: f32, k: f32) -> f32 {
     let x = b - a;
     0.5 * (a + b - x.hypot(k))
+}
+
+// ---------------------------------------------------------------------------
+// Generic ([`Real`]) forms — the single law behind the scalar and SIMD evaluators
+// ---------------------------------------------------------------------------
+
+/// Polynomial smooth minimum with precomputed `rk = 1/k` (generic over [`Real`]).
+#[inline(always)]
+pub fn smooth_min_rk_r<R: Real>(a: R, b: R, k: f32, rk: f32) -> R {
+    let h = (R::one() - (a - b).abs() * R::splat(rk)).max(R::zero());
+    a.min(b) - h * h * R::splat(k * 0.25)
+}
+
+/// Polynomial smooth maximum with precomputed `rk = 1/k` (generic over [`Real`]).
+#[inline(always)]
+pub fn smooth_max_rk_r<R: Real>(a: R, b: R, k: f32, rk: f32) -> R {
+    let h = (R::one() - (a - b).abs() * R::splat(rk)).max(R::zero());
+    a.max(b) + h * h * R::splat(k * 0.25)
+}
+
+/// Smooth union (generic, `rk = 1/k`).
+#[inline(always)]
+pub fn sdf_smooth_union_rk_r<R: Real>(d1: R, d2: R, k: f32, rk: f32) -> R {
+    smooth_min_rk_r(d1, d2, k, rk)
+}
+
+/// Smooth intersection (generic, `rk = 1/k`).
+#[inline(always)]
+pub fn sdf_smooth_intersection_rk_r<R: Real>(d1: R, d2: R, k: f32, rk: f32) -> R {
+    smooth_max_rk_r(d1, d2, k, rk)
+}
+
+/// Smooth subtraction of B from A (generic, `rk = 1/k`).
+#[inline(always)]
+pub fn sdf_smooth_subtraction_rk_r<R: Real>(d1: R, d2: R, k: f32, rk: f32) -> R {
+    smooth_max_rk_r(d1, -d2, k, rk)
+}
+
+/// Exponential smooth union, blend width `k` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_exp_smooth_union_r<R: Real>(d1: R, d2: R, k: f32) -> R {
+    let k = R::splat(k.max(1e-6));
+    let res = (-d1 / k).exp() + (-d2 / k).exp();
+    -res.ln() * k
+}
+
+/// Exponential smooth intersection, blend width `k` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_exp_smooth_intersection_r<R: Real>(d1: R, d2: R, k: f32) -> R {
+    let k = R::splat(k.max(1e-6));
+    let res = (d1 / k).exp() + (d2 / k).exp();
+    res.ln() * k
+}
+
+/// Exponential smooth subtraction, blend width `k` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_exp_smooth_subtraction_r<R: Real>(d1: R, d2: R, k: f32) -> R {
+    let k = R::splat(k.max(1e-6));
+    let res = (d1 / k).exp() + (-d2 / k).exp();
+    res.ln() * k
 }
 
 #[cfg(test)]

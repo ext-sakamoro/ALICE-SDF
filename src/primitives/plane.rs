@@ -6,20 +6,19 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Signed distance to an infinite plane
-///
-/// # Arguments
-/// * `point` - Point to evaluate
-/// * `normal` - Plane normal (should be normalized)
-/// * `distance` - Distance from origin to plane along normal
-///
-/// # Returns
-/// Signed distance (negative below plane, positive above)
+/// Half-space `dot(p, normal) - distance` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_plane_r<R: Real>(p: Vec3R<R>, normal: Vec3, distance: f32) -> R {
+    p.dot(Vec3R::splat(normal)) - R::splat(distance)
+}
+
+/// Half-space `dot(p, normal) - distance` ("distance from origin").
 #[inline(always)]
 pub fn sdf_plane(point: Vec3, normal: Vec3, distance: f32) -> f32 {
-    point.dot(normal) - distance
+    sdf_plane_r::<f32>(point.into(), normal, distance)
 }
 
 /// Signed distance to the XY plane (Z = 0)

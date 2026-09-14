@@ -7,25 +7,22 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
-/// Signed distance to a capsule (line segment with radius)
-///
-/// # Arguments
-/// * `point` - Point to evaluate
-/// * `a` - Start point of capsule axis
-/// * `b` - End point of capsule axis
-/// * `radius` - Capsule radius
-///
-/// # Returns
-/// Signed distance (negative inside, positive outside)
+/// Capsule between `a` and `b` (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_capsule_r<R: Real>(p: Vec3R<R>, a: Vec3, b: Vec3, radius: f32) -> R {
+    let pa = p - Vec3R::splat(a);
+    let ba = Vec3R::<R>::splat(b - a);
+    let h = (pa.dot(ba) / ba.dot(ba)).clamp(R::zero(), R::one());
+    (pa - ba * h).length() - R::splat(radius)
+}
+
+/// Capsule between `a` and `b`.
 #[inline(always)]
 pub fn sdf_capsule(point: Vec3, a: Vec3, b: Vec3, radius: f32) -> f32 {
-    let pa = point - a;
-    let ba = b - a;
-    // Project point onto line segment, clamp t to [0, 1]
-    let h = (pa.dot(ba) / ba.dot(ba)).clamp(0.0, 1.0);
-    (pa - ba * h).length() - radius
+    sdf_capsule_r::<f32>(point.into(), a, b, radius)
 }
 
 /// Signed distance to a vertical capsule centered at origin (Deep Fried)

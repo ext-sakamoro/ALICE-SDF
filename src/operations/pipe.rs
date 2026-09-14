@@ -5,6 +5,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::Real;
+
 /// Pipe operation on two SDFs
 ///
 /// Creates a cylindrical surface along the intersection of two shapes.
@@ -12,7 +14,13 @@
 /// - `r`: pipe radius
 #[inline(always)]
 pub fn sdf_pipe(a: f32, b: f32, r: f32) -> f32 {
-    a.hypot(b) - r
+    sdf_pipe_r::<f32>(a, b, r)
+}
+
+/// Pipe along the intersection curve (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_pipe_r<R: Real>(a: R, b: R, r: f32) -> R {
+    (a * a + b * b).sqrt() - R::splat(r)
 }
 
 #[cfg(test)]

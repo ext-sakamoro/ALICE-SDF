@@ -6,21 +6,20 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{Real, Vec3R};
 use glam::{Vec2, Vec3};
 
-/// Signed distance to a torus in the XZ plane centered at origin
-///
-/// # Arguments
-/// * `point` - Point to evaluate
-/// * `major_radius` - Distance from center of torus to center of tube
-/// * `minor_radius` - Radius of the tube
-///
-/// # Returns
-/// Signed distance (negative inside, positive outside)
+/// Torus in the XZ plane (generic over [`Real`]).
+#[inline(always)]
+pub fn sdf_torus_r<R: Real>(p: Vec3R<R>, major_radius: f32, minor_radius: f32) -> R {
+    let qx = (p.x * p.x + p.z * p.z).sqrt() - R::splat(major_radius);
+    (qx * qx + p.y * p.y).sqrt() - R::splat(minor_radius)
+}
+
+/// Torus in the XZ plane.
 #[inline(always)]
 pub fn sdf_torus(point: Vec3, major_radius: f32, minor_radius: f32) -> f32 {
-    let q = Vec2::new(Vec2::new(point.x, point.z).length() - major_radius, point.y);
-    q.length() - minor_radius
+    sdf_torus_r::<f32>(point.into(), major_radius, minor_radius)
 }
 
 /// Signed distance to a torus with arbitrary orientation
