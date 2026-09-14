@@ -564,3 +564,159 @@ fn polygon_2d_vertices_survive_compilation() {
     assert!((d_sq - eval(&sq, p)).abs() < TOL);
     assert!((d_tri - d_sq).abs() > 0.05, "tri={d_tri} sq={d_sq}");
 }
+
+// ============================================================================
+// Interval / analytic-gradient representations vs point evaluation
+// ============================================================================
+//
+// `interval::eval_interval` and `eval::gradient::eval_gradient` are two more
+// hand-written representations of the same 128-variant law (interval
+// arithmetic and derivatives). They are pinned to `eval` here with the same
+// corpus: an interval that fails to contain a sampled value, or an analytic
+// gradient that disagrees with the central difference, is a law drift.
+
+/// Deterministic LCG in [0, 1).
+fn lcg(seed: u64) -> impl FnMut() -> f32 {
+    let mut state = seed;
+    move || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((state >> 40) as f32) / ((1u64 << 24) as f32)
+    }
+}
+
+#[test]
+fn interval_eval_contains_point_values() {
+    use alice_sdf::interval::{eval_interval, Vec3Interval};
+    let mut failures = Vec::new();
+    for (name, node) in corpus() {
+        let mut rnd = lcg(0x1a7e_0001 ^ name.len() as u64);
+        for _ in 0..24 {
+            // Random box: centre in ±2.5, half-size 0.05..0.8
+            let c = Vec3::new(
+                rnd().mul_add(5.0, -2.5),
+                rnd().mul_add(5.0, -2.5),
+                rnd().mul_add(5.0, -2.5),
+            );
+            let h = Vec3::new(
+                rnd().mul_add(0.75, 0.05),
+                rnd().mul_add(0.75, 0.05),
+                rnd().mul_add(0.75, 0.05),
+            );
+            let bounds = Vec3Interval::from_bounds(c - h, c + h);
+            let iv = eval_interval(&node, bounds);
+            if !(iv.lo.is_finite() || iv.lo == f32::NEG_INFINITY)
+                || !(iv.hi.is_finite() || iv.hi == f32::INFINITY)
+            {
+                failures.push(format!(
+                    "{name}: non-finite interval {iv:?} for box {c:?}±{h:?}"
+                ));
+                continue;
+            }
+            // 8 corners + 8 interior samples
+            let mut pts: Vec<Vec3> = (0..8)
+                .map(|k| {
+                    Vec3::new(
+                        if k & 1 == 0 { c.x - h.x } else { c.x + h.x },
+                        if k & 2 == 0 { c.y - h.y } else { c.y + h.y },
+                        if k & 4 == 0 { c.z - h.z } else { c.z + h.z },
+                    )
+                })
+                .collect();
+            for _ in 0..8 {
+                pts.push(Vec3::new(
+                    (c.x - h.x) + rnd() * 2.0 * h.x,
+                    (c.y - h.y) + rnd() * 2.0 * h.y,
+                    (c.z - h.z) + rnd() * 2.0 * h.z,
+                ));
+            }
+            for p in pts {
+                let d = eval(&node, p);
+                if !d.is_finite() {
+                    continue;
+                }
+                let tol = 1e-4 * d.abs().max(1.0);
+                if d < iv.lo - tol || d > iv.hi + tol {
+                    failures.push(format!(
+                        "{name}: eval={d} outside interval [{}, {}] at p={p:?} (box {c:?}±{h:?})",
+                        iv.lo, iv.hi
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} interval containment violations:\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .take(5000)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn analytic_gradient_matches_numerical() {
+    use alice_sdf::eval::gradient::eval_gradient;
+    let mut failures = Vec::new();
+    let mut checked = 0usize;
+    for (name, node) in corpus() {
+        let mut rnd = lcg(0x9a4d_0001 ^ name.len() as u64);
+        for _ in 0..40 {
+            let p = Vec3::new(
+                rnd().mul_add(5.0, -2.5),
+                rnd().mul_add(5.0, -2.5),
+                rnd().mul_add(5.0, -2.5),
+            );
+            // Two-step central difference: keep only points where the field is
+            // locally smooth (both step sizes agree), which excludes CSG creases,
+            // repetition cell borders and other non-differentiable loci.
+            let cd = |e: f32| {
+                Vec3::new(
+                    eval(&node, p + Vec3::X * e) - eval(&node, p - Vec3::X * e),
+                    eval(&node, p + Vec3::Y * e) - eval(&node, p - Vec3::Y * e),
+                    eval(&node, p + Vec3::Z * e) - eval(&node, p - Vec3::Z * e),
+                ) / (2.0 * e)
+            };
+            let g1 = cd(1e-3);
+            let g2 = cd(4e-3);
+            if !g1.is_finite()
+                || !g2.is_finite()
+                || (g1 - g2).length() > 2e-2 * g1.length().max(1.0)
+            {
+                continue;
+            }
+            let ga = eval_gradient(&node, p);
+            if !ga.is_finite() {
+                failures.push(format!("{name}: non-finite analytic gradient at {p:?}"));
+                continue;
+            }
+            checked += 1;
+            let err = (ga - g1).length();
+            if err > 2e-2 * g1.length().max(1.0) {
+                failures.push(format!(
+                    "{name}: analytic {ga:?} vs numerical {g1:?} (err {err:.3e}) at p={p:?}"
+                ));
+            }
+        }
+    }
+    assert!(
+        checked > 1000,
+        "too few smooth sample points checked: {checked}"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} gradient mismatches:\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .take(5000)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}

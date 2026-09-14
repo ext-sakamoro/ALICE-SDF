@@ -11,7 +11,12 @@ use glam::Vec3;
 #[inline(always)]
 fn hash(p: Vec3) -> f32 {
     let h = p.dot(Vec3::new(127.1, 311.7, 74.7));
-    h.sin().fract() * 43_758.547
+    // GLSL `fract(sin(h) * 43758.5453)`: non-negative fract of the *scaled* value.
+    // (Previously `fract(sin(h)) * 43758` = ±43758, which `value_noise` then
+    // folded with a trailing `fract()` into a discontinuous sawtooth in (-1, 1);
+    // the 2026-09-14 interval oracle caught the resulting out-of-range fbm.)
+    let x = h.sin() * 43_758.547;
+    x - x.floor()
 }
 
 /// Smooth value noise
@@ -41,7 +46,8 @@ fn value_noise(p: Vec3) -> f32 {
     let e = a * (1.0 - u.y) + b * u.y;
     let f_val = c * (1.0 - u.y) + d * u.y;
 
-    (e * (1.0 - u.z) + f_val * u.z).fract()
+    // Trilinear blend of [0, 1) hashes stays in [0, 1) — no wrap needed.
+    e * (1.0 - u.z) + f_val * u.z
 }
 
 /// Fractal Brownian Motion
