@@ -23,6 +23,7 @@ mod octant_mirror;
 mod polar_repeat;
 mod repeat;
 mod revolution;
+mod shear;
 mod surface_roughness;
 mod sweep;
 mod taper;
@@ -43,6 +44,7 @@ pub use repeat::{
     modifier_repeat_polar, modifier_repeat_x, modifier_repeat_y, modifier_repeat_z,
 };
 pub use revolution::modifier_revolution;
+pub use shear::modifier_shear;
 pub use surface_roughness::{fbm, surface_roughness};
 pub use sweep::{modifier_sweep_bezier, sweep_bezier_dist_y};
 pub use taper::modifier_taper;

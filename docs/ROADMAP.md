@@ -61,6 +61,18 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 | P14 | ✅ | pending | GPU bytecode serialisation — `CompiledColorPipeline::serialize()` emits a flat `[u32]` `GpuColorProgram` (variable-length `[tag, ..payload]` instructions, 17 native opcodes, `PaletteSource` tag map). `emit_wgsl_bytecode_evaluator()` returns canonical WGSL that defines `AliceNprBytecodeCtx` + `alice_npr_eval_bytecode(program_len, ctx)` (stack depth 32). Caller supplies `fn alice_npr_load(index: u32) -> u32` so the evaluator is decoupled from any specific bind-group layout. `Fallback` rejected at serialise time via `SerializeError::UnsupportedFallback`; `deserialize` provides a round-trip check with `DeserializeError` for unknown-opcode / truncated-payload / unknown-palette-source. Naga parses + fully semantic-validates the emitted evaluator (`tests/npr_bytecode_wgsl_validate.rs`) |
 | P15 | ⏳ | Bridge dep restoration — re-add `alice-codec` / `alice-physics` / `alice-cache` / `alice-font` / `alice-asp` once each is on crates.io. Corresponding features (`codec` / `physics` / `asp` / `sdf-cache` / `font`) return to `[features]` |
 
+### Compiled evaluator hygiene (1.9.1, 2026-09-14)
+
+| Item | Status | Summary |
+|---|---|---|
+| Exhaustive scalar / BVH dispatch | ✅ | `eval_compiled` + `eval_compiled_bvh` unified into `compiled::eval_scalar_core` (125-opcode exhaustive `match`, no `_ =>`); 11 / 18 previously-missing opcodes fixed, `Polygon2D` vertices + `SineDisplacement` frequency + `LatticeDeform` correction preserved through compilation |
+| Loud rejection instead of silent fallback | ✅ | `CompiledSdf` rejects `Terrain`; `CompiledSdfBvh` rejects 9 aux / no-AABB node kinds; `BvhCompiler::compile_node` exhaustive; BVH `OctantMirror` emitted |
+| SIMD parity | ✅ | `Plane` sign, `Ellipsoid` centre, `RepeatFinite` clamp, `Heightmap` sign, `SurfaceRoughness` / `Segment2D` / `Polygon2D` / `ExpSmooth*` per-lane shared law, `wide` sin / cos / atan2 instead of Bhaskara / minimax |
+| 4-path parity corpus | ✅ | `tests/test_evaluator_opcode_parity.rs` — every compilable `SdfNode` × {tree, scalar, SIMD, BVH} + emitted-opcode coverage guard (124 / 124) |
+| `BvhCompiler` → `compiler.rs` unification | ⏳ | Third hand-copy of the compile law (68 arms + AABB). Fold AABB computation into a pass over `CompiledSdf` so BVH accepts every opcode the main compiler does |
+| SIMD `T: SdfScalar` generic | ⏳ | Fold `eval_simd.rs` into `eval_scalar_core` via a scalar-type trait; blocked until P14-C / CSG bytecode unification settle the SIMD surface |
+| `Plane` sign in transpilers / JIT | ⏳ | GLSL / WGSL / HLSL / Cranelift emit `dot(p, n) + d`; CPU law is `dot(p, n) - d`. Behaviour change for shader consumers — needs a decision |
+
 ### Deeper follow-ups (not scheduled)
 
 - **P14-C — Real GPU execution parity** — build a wgpu headless test harness that uploads the `GpuColorProgram` to a storage buffer, dispatches the emitted evaluator against a synthetic context UBO, reads back the output framebuffer, and asserts numerical parity against the CPU scalar `eval` within a small epsilon (e.g. `1e-5`). Currently only naga parse + semantic validation is exercised; drop-in for a wgpu-enabled CI runner.

@@ -6,6 +6,39 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.9.1] - 2026-09-14
+
+**Compiled evaluator parity** — every compiled evaluation path now executes the same law as the tree evaluator, and the opcode dispatch is exhaustive by construction.
+
+### Fixed
+
+- **Scalar / BVH evaluators silently mis-evaluated 11 / 18 opcodes.** `eval_compiled` lacked arms for `Circle2D` / `Rect2D` / `RoundedRect2D` / `Segment2D` / `Polygon2D` / `Annular2D` / `ExpSmoothUnion` / `ExpSmoothIntersection` / `ExpSmoothSubtraction` / `Shear` / `Animated`; `eval_compiled_bvh` additionally lacked `IFS` / `SdfSkinning` / `LatticeDeform` / `HeightmapDisplacement` / `IcosahedralSymmetry` / `ProjectiveTransform` / `SurfaceRoughness`. A `_ =>` fallback evaluated unknown primitives as a unit sphere, unknown binary ops as plain `min`, and unknown modifiers as a no-op (which for `Shear` then underflowed the coordinate stack at `PopTransform`). Both evaluators are now thin wrappers over a single exhaustive stack machine (`compiled::eval_scalar_core`), so a new `OpCode` without an evaluator arm is a compile error.
+- **`Polygon2D` lost its vertices at compile time** and evaluated as a unit sphere on every compiled path. The compiler now serialises vertices into `aux_data` and all paths evaluate the real polygon.
+- **`SineDisplacement` lost its frequency at compile time** (collapsed to the legacy `Displacement` law with frequency 5). `Instruction::displacement` now carries `[amplitude, fx, fy, fz]` and a new `Instruction::sine_displacement` preserves the per-axis frequency.
+- **`LatticeDeform` ignored the Jacobian correction** on compiled paths; the tree law `eval(child, q) / correction` is now applied at `PopTransform` (per lane on SIMD).
+- **BVH compiler silently replaced unsupported nodes with `sphere(0.001)`** (`IFS` / `SdfSkinning` / `LatticeDeform` / `HeightmapDisplacement` / `IcosahedralSymmetry` / `ProjectiveTransform` / `SurfaceRoughness` / `SineDisplacement` / `Terrain`). `CompiledSdfBvh::try_compile` now rejects them with `CompileError::UnsupportedPrimitive`; `BvhCompiler::compile_node` is exhaustive.
+- **BVH compiler dropped `OctantMirror`** (compiled the child only). It now emits the modifier with a symmetric cube AABB.
+- **`CompiledSdf` compiled `Terrain` to a silent sphere**; `try_compile` now rejects it with `UnsupportedPrimitive("Terrain")`.
+- **SIMD (`eval_compiled_simd`) diverged from the scalar law** on: `Plane` (`dot + d` instead of `dot - d`), `Ellipsoid` (0 instead of `-min(radii)` at the centre), `RepeatFinite` (clamped to `±count` instead of `±count/2`), `HeightmapDisplacement` (added instead of subtracted the displacement, sine fallback when aux missing), `SurfaceRoughness` (ad-hoc FBM instead of `modifiers::surface_roughness`), `Segment2D` / `Polygon2D` (bounding-sphere fallback), `ExpSmooth*` (Schraudolph exp + a Padé ln whose linear term was ~2x off → up to 35% error), and every trig-based opcode (Bhaskara I sin/cos with 1.6e-3 abs error, 3.8e-3 rad atan2 — amplified to >10% on TPMS / `Twist` / `Bend` / `PolarRepeat`). SIMD now uses `wide`'s `sin` / `cos` / `atan2` and calls the shared scalar law per lane where no exact SIMD form exists.
+
+### Added
+
+- `primitives::{sdf_circle_2d, sdf_rect_2d, sdf_rounded_rect_2d, sdf_segment_2d, sdf_annular_2d, sdf_polygon_2d, sdf_polygon_2d_xy, sdf_polygon_2d_flat, extrude_2d}` — single-source 2D-extruded primitive laws used by tree / scalar / BVH / SIMD.
+- `operations::{sdf_exp_smooth_union, sdf_exp_smooth_intersection, sdf_exp_smooth_subtraction}` — blend-width (`d/k`) exponential smooth laws (distinct from the rate-based `smooth_min_exp`).
+- `modifiers::modifier_shear` — inverse shear law shared by all evaluators.
+- `Instruction::sine_displacement(amplitude, fx, fy, fz)`.
+- `tests/test_evaluator_opcode_parity.rs` — 120-node corpus covering every compilable `SdfNode` variant, compared across tree / scalar / SIMD / BVH at 8 sample points, plus a guard that the corpus reaches all 124 emitted opcodes and that unsupported nodes are rejected loudly.
+
+### Changed
+
+- `compiled::eval` and `compiled::eval_bvh` are now thin wrappers; the stack machine lives in `compiled::eval_scalar_core` (~2,300 lines of duplicated dispatch removed).
+- `CompiledSdfBvh::try_compile` rejects the nine node kinds listed under Fixed (previously accepted and mis-compiled).
+
+### Known limitations
+
+- The GLSL / WGSL / HLSL transpilers and the Cranelift JIT still emit `dot(p, n) + distance` for `Plane`, i.e. the opposite sign convention from `sdf_plane` and every CPU evaluator. Left unchanged in this release because it alters shader output for existing scenes; tracked for a decision.
+- `LatticeDeform`'s tree law divides by a finite-difference Jacobian magnitude clamped to `0.1`, which inflates distances 10x outside the lattice bbox. Compiled paths now match the tree exactly; the law itself is unchanged.
+
 ## [v1.9.0] - 2026-09-13
 
 **NPR compiled pipeline + SIMD batch + GPU bytecode** — Phase 12-D / 13 / 14 landing as additive minor bump on top of 1.8.0 NPR module foundation. Plus rustdoc broken-intra-doc-link fix and 6-issue clippy cleanup in test code.

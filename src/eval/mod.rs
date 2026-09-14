@@ -260,91 +260,31 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::Circle2D {
             radius,
             half_height,
-        } => {
-            let d2d = Vec2::new(point.x, point.y).length() - radius;
-            let dz = point.z.abs() - half_height;
-            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
-        }
+        } => sdf_circle_2d(point, *radius, *half_height),
         SdfNode::Rect2D {
             half_extents,
             half_height,
-        } => {
-            let d = Vec2::new(
-                point.x.abs() - half_extents.x,
-                point.y.abs() - half_extents.y,
-            );
-            let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0);
-            let dz = point.z.abs() - half_height;
-            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
-        }
+        } => sdf_rect_2d(point, *half_extents, *half_height),
         SdfNode::Segment2D {
             a,
             b,
             thickness,
             half_height,
-        } => {
-            let p2 = Vec2::new(point.x, point.y);
-            let pa = p2 - *a;
-            let ba = *b - *a;
-            let h = (pa.dot(ba) / ba.dot(ba)).clamp(0.0, 1.0);
-            let d2d = (pa - ba * h).length() - thickness;
-            let dz = point.z.abs() - half_height;
-            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
-        }
+        } => sdf_segment_2d(point, *a, *b, *thickness, *half_height),
         SdfNode::Polygon2D {
             vertices,
             half_height,
-        } => {
-            let p2 = Vec2::new(point.x, point.y);
-            let n = vertices.len();
-            if n < 3 {
-                return 1e10;
-            }
-            let mut d = (p2 - vertices[0]).length_squared();
-            let mut s = 1.0_f32;
-            let mut j = n - 1;
-            for i in 0..n {
-                let e = vertices[j] - vertices[i];
-                let w = p2 - vertices[i];
-                let b_proj = w - e * (w.dot(e) / e.dot(e)).clamp(0.0, 1.0);
-                d = d.min(b_proj.dot(b_proj));
-                let c = [
-                    p2.y >= vertices[i].y,
-                    p2.y < vertices[j].y,
-                    e.x * w.y > e.y * w.x,
-                ];
-                if c.iter().all(|x| *x) || c.iter().all(|x| !*x) {
-                    s = -s;
-                }
-                j = i;
-            }
-            let d2d = s * d.sqrt();
-            let dz = point.z.abs() - half_height;
-            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
-        }
+        } => sdf_polygon_2d(point, vertices, *half_height),
         SdfNode::RoundedRect2D {
             half_extents,
             round_radius,
             half_height,
-        } => {
-            let d = Vec2::new(
-                point.x.abs() - half_extents.x + round_radius,
-                point.y.abs() - half_extents.y + round_radius,
-            );
-            let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0)
-                - round_radius;
-            let dz = point.z.abs() - half_height;
-            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
-        }
+        } => sdf_rounded_rect_2d(point, *half_extents, *round_radius, *half_height),
         SdfNode::Annular2D {
             outer_radius,
             thickness,
             half_height,
-        } => {
-            let d2d = (Vec2::new(point.x, point.y).length() - outer_radius).abs() - thickness;
-            let dz = point.z.abs() - half_height;
-            d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
-        }
+        } => sdf_annular_2d(point, *outer_radius, *thickness, *half_height),
 
         SdfNode::Terrain { scale, amplitude } => {
             // FBM-based terrain: y - terrainHeight(xz)
@@ -489,25 +429,13 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             sdf_tongue(d1, d2, *ra, *rb)
         }
         SdfNode::ExpSmoothUnion { a, b, k } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            let k = k.max(1e-6);
-            let res = (-d1 / k).exp() + (-d2 / k).exp();
-            -res.ln() * k
+            sdf_exp_smooth_union(eval(a, point), eval(b, point), *k)
         }
         SdfNode::ExpSmoothIntersection { a, b, k } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            let k = k.max(1e-6);
-            let res = (d1 / k).exp() + (d2 / k).exp();
-            res.ln() * k
+            sdf_exp_smooth_intersection(eval(a, point), eval(b, point), *k)
         }
         SdfNode::ExpSmoothSubtraction { a, b, k } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            let k = k.max(1e-6);
-            let res = (d1 / k).exp() + (-d2 / k).exp();
-            res.ln() * k
+            sdf_exp_smooth_subtraction(eval(a, point), eval(b, point), *k)
         }
 
         // === Transforms ===
@@ -643,17 +571,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let p = modifier_sweep_bezier(point, *p0, *p1, *p2);
             eval(child, p)
         }
-        SdfNode::Shear { child, shear } => {
-            // Inverse shear: subtract shear contributions
-            let p = Vec3::new(
-                point.x,
-                shear.x.mul_add(-point.x, point.y),
-                shear
-                    .z
-                    .mul_add(-point.y, shear.y.mul_add(-point.x, point.z)),
-            );
-            eval(child, p)
-        }
+        SdfNode::Shear { child, shear } => eval(child, modifier_shear(point, *shear)),
         SdfNode::Animated { child, .. } => {
             // Static evaluation: animation is time-dependent, evaluate child as-is
             eval(child, point)

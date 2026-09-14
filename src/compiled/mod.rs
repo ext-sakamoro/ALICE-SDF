@@ -159,6 +159,7 @@ mod aabb;
 mod compiler;
 mod eval;
 mod eval_bvh;
+mod eval_scalar_core;
 mod eval_simd;
 mod eval_soa;
 /// Instanced SDF rendering (1 shape × N transforms)

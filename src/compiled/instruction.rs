@@ -1110,8 +1110,21 @@ impl Instruction {
     /// Create a displacement instruction
     #[inline]
     pub const fn displacement(strength: f32) -> Self {
+        // Legacy `Displacement` law = sine displacement with frequency (5, 5, 5)
+        Self::sine_displacement(strength, 5.0, 5.0, 5.0)
+    }
+
+    /// Sine displacement: `params[0]` = amplitude, `params[1..4]` = per-axis frequency.
+    ///
+    /// Shares `OpCode::Displacement`; evaluators apply
+    /// `crate::modifiers::modifier_sine_displacement` with these parameters.
+    #[inline]
+    pub const fn sine_displacement(amplitude: f32, fx: f32, fy: f32, fz: f32) -> Self {
         let mut inst = Self::new(OpCode::Displacement);
-        inst.params[0] = strength;
+        inst.params[0] = amplitude;
+        inst.params[1] = fx;
+        inst.params[2] = fy;
+        inst.params[3] = fz;
         inst.child_count = 1;
         inst
     }

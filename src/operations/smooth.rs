@@ -101,6 +101,34 @@ pub fn smooth_min_exp_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
     -res.ln() * rk
 }
 
+/// Exponential smooth union with blend *width* `k` (`SdfNode::ExpSmoothUnion` law).
+///
+/// `-k * ln(exp(-d1/k) + exp(-d2/k))` — note the `d/k` convention (width),
+/// unlike [`smooth_min_exp`] which takes `k` as a rate (`k*d`).
+/// Single source of truth for tree / compiled scalar / SIMD per-lane paths.
+#[inline(always)]
+pub fn sdf_exp_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
+    let k = k.max(1e-6);
+    let res = (-d1 / k).exp() + (-d2 / k).exp();
+    -res.ln() * k
+}
+
+/// Exponential smooth intersection with blend width `k` (`SdfNode::ExpSmoothIntersection` law).
+#[inline(always)]
+pub fn sdf_exp_smooth_intersection(d1: f32, d2: f32, k: f32) -> f32 {
+    let k = k.max(1e-6);
+    let res = (d1 / k).exp() + (d2 / k).exp();
+    res.ln() * k
+}
+
+/// Exponential smooth subtraction of B from A with blend width `k` (`SdfNode::ExpSmoothSubtraction` law).
+#[inline(always)]
+pub fn sdf_exp_smooth_subtraction(d1: f32, d2: f32, k: f32) -> f32 {
+    let k = k.max(1e-6);
+    let res = (d1 / k).exp() + (-d2 / k).exp();
+    res.ln() * k
+}
+
 /// Cubic smooth minimum (Deep Fried)
 #[inline(always)]
 pub fn smooth_min_cubic(a: f32, b: f32, k: f32) -> f32 {

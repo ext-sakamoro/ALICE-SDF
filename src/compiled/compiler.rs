@@ -976,11 +976,17 @@ impl Compiler {
             // 注: 現状 Displacement opcode (freq=5 固定) で fallback、 frequency 引数は無視される
             // raymarch_batch_parallel は src/eval/mod.rs::eval を使うため bytecode 経路は不要
             SdfNode::SineDisplacement {
-                child, amplitude, ..
+                child,
+                amplitude,
+                frequency,
             } => {
                 let inst_idx = self.instructions.len();
-                self.instructions
-                    .push(Instruction::displacement(*amplitude));
+                self.instructions.push(Instruction::sine_displacement(
+                    *amplitude,
+                    frequency.x,
+                    frequency.y,
+                    frequency.z,
+                ));
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
@@ -1027,9 +1033,17 @@ impl Compiler {
                     .push(Instruction::segment_2d(*a, *b, *thickness, *half_height));
             }
 
-            SdfNode::Polygon2D { half_height, .. } => {
-                self.instructions
-                    .push(Instruction::polygon_2d(*half_height));
+            SdfNode::Polygon2D {
+                vertices,
+                half_height,
+            } => {
+                // Serialize vertices as flat [x0, y0, x1, y1, ...] into aux_data
+                let flat: Vec<f32> = vertices.iter().flat_map(|v| [v.x, v.y]).collect();
+                let (aux_off, aux_len) = self.push_aux(&flat);
+                let mut inst = Instruction::polygon_2d(*half_height);
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
             }
 
             SdfNode::RoundedRect2D {
@@ -1056,10 +1070,10 @@ impl Compiler {
                 ));
             }
 
-            SdfNode::Terrain { scale, amplitude } => {
-                // Terrain は eval 側で処理、コンパイラでは Sphere に fallback
-                self.instructions
-                    .push(Instruction::sphere(*amplitude * *scale));
+            // Terrain has no bytecode law yet (FBM heightfield lives only in the tree
+            // evaluator); rejected by `validate_for_compile` so this arm is unreachable.
+            SdfNode::Terrain { .. } => {
+                unreachable!("Terrain rejected by validate_for_compile()");
             }
 
             // === ExpSmooth operations ===
@@ -1419,6 +1433,10 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         SdfNode::Bezier { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Bezier".into()));
         }
+        // Unsupported: no bytecode law (previously compiled to a silent sphere)
+        SdfNode::Terrain { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("Terrain".into()));
+        }
         // Binary operations — validate both children
         SdfNode::Union { a, b }
         | SdfNode::Intersection { a, b }
@@ -1551,8 +1569,7 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
-        | SdfNode::Annular2D { .. }
-        | SdfNode::Terrain { .. } => {}
+        | SdfNode::Annular2D { .. } => {}
     }
     Ok(())
 }

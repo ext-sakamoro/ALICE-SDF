@@ -12,7 +12,10 @@ use glam::Vec3;
 use wide::{f32x8, CmpGt, CmpLt};
 
 use crate::modifiers::perlin_noise_3d;
-use crate::operations::{sdf_columns_intersection, sdf_columns_subtraction, sdf_columns_union};
+use crate::operations::{
+    sdf_columns_intersection, sdf_columns_subtraction, sdf_columns_union,
+    sdf_exp_smooth_intersection, sdf_exp_smooth_subtraction, sdf_exp_smooth_union,
+};
 use crate::primitives::*;
 
 /// Maximum stack depth for value stack (SIMD)
@@ -29,6 +32,8 @@ struct CoordFrameSimd {
     params: [f32; 4],
     aux_offset: u32,
     aux_len: u32,
+    /// Per-lane distance divisor applied at PopTransform (LatticeDeform Jacobian)
+    lane_correction: f32x8,
 }
 
 impl Default for CoordFrameSimd {
@@ -40,6 +45,7 @@ impl Default for CoordFrameSimd {
             params: [0.0; 4],
             aux_offset: 0,
             aux_len: 0,
+            lane_correction: f32x8::ONE,
         }
     }
 }
@@ -137,7 +143,8 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let nz = f32x8::splat(inst.params[2]);
                 let dist = f32x8::splat(inst.params[3]);
 
-                let d = p.x * nx + p.y * ny + p.z * nz + dist;
+                // dot(p, n) - distance: same law as `sdf_plane` (tree / scalar / BVH)
+                let d = p.x * nx + p.y * ny + p.z * nz - dist;
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -239,6 +246,9 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 let k1 = (px_rr * px_rr + py_rr * py_rr + pz_rr * pz_rr).sqrt();
 
                 let d = k0 * (k0 - f32x8::ONE) / k1.max(f32x8::splat(1e-10));
+                // sdf_ellipsoid law: at the centre (k1 ≈ 0) return -min(radii)
+                let centre = f32x8::splat(-rx.min(ry).min(rz));
+                let d = k1.cmp_lt(f32x8::splat(1e-10)).blend(centre, d);
                 value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
@@ -1457,6 +1467,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1476,6 +1487,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1499,6 +1511,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [factor, 0.0, 0.0, 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1520,6 +1533,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [min_factor, 0.0, 0.0, 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1541,6 +1555,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1565,6 +1580,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1589,6 +1605,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1617,12 +1634,14 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
-                let cx = f32x8::splat(inst.params[0]);
-                let cy = f32x8::splat(inst.params[1]);
-                let cz = f32x8::splat(inst.params[2]);
+                // modifier_repeat_finite law: limit = count * 0.5
+                let cx = f32x8::splat(inst.params[0] * 0.5);
+                let cy = f32x8::splat(inst.params[1] * 0.5);
+                let cz = f32x8::splat(inst.params[2] * 0.5);
                 let sx = f32x8::splat(inst.params[3]);
                 let sy = f32x8::splat(inst.params[4]);
                 let sz = f32x8::splat(inst.params[5]);
@@ -1652,6 +1671,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], 0.0, 0.0, 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
             }
@@ -1664,6 +1684,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], 0.0, 0.0, 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
             }
@@ -1676,6 +1697,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1699,6 +1721,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
                 // Noise doesn't modify point, only post-processes distance
@@ -1712,6 +1735,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1742,6 +1766,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1773,6 +1798,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1793,6 +1819,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], 0.0, 0.0, 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1811,6 +1838,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1828,9 +1856,16 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     point: p,
                     scale_correction,
                     opcode: OpCode::Displacement,
-                    params: [inst.params[0], 0.0, 0.0, 0.0],
+                    // amplitude + per-axis frequency (legacy Displacement = 5,5,5)
+                    params: [
+                        inst.params[0],
+                        inst.params[1],
+                        inst.params[2],
+                        inst.params[3],
+                    ],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
                 // Displacement doesn't modify point, only post-processes distance
@@ -1844,6 +1879,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -1927,19 +1963,18 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
                 // Division Exorcism: params[1]=sector, params[2]=recip_sector
                 let sector = f32x8::splat(inst.params[1]);
                 let inv_sector = f32x8::splat(inst.params[2]);
-                let half = f32x8::splat(0.5);
-
                 let angle = atan2_approx(p.z, p.x);
                 let r = (p.x * p.x + p.z * p.z).sqrt();
 
-                // remainder = angle - round(angle / sector) * sector
-                let remainder = angle - ((angle * inv_sector + half).floor()) * sector;
+                // remainder = angle - round(angle / sector) * sector (same as scalar law)
+                let remainder = angle - (angle * inv_sector).round() * sector;
 
                 p = Vec3x8 {
                     x: r * cos_approx(remainder),
@@ -2012,47 +2047,54 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                 vsp += 1;
             }
 
-            // Segment2D and Polygon2D: use bounding sphere fallback
-            OpCode::Segment2D | OpCode::Polygon2D => {
-                value_stack[vsp] = p.length() * scale_correction;
+            OpCode::Segment2D => {
+                let a = glam::Vec2::new(inst.params[0], inst.params[1]);
+                let b = glam::Vec2::new(inst.params[2], inst.params[3]);
+                let (thickness, half_h) = (inst.params[4], inst.params[5]);
+                let d = eval_per_lane(&p, |q| sdf_segment_2d(q, a, b, thickness, half_h));
+                value_stack[vsp] = d * scale_correction;
+                vsp += 1;
+            }
+
+            OpCode::Polygon2D => {
+                // Vertices live in aux_data as flat [x0, y0, x1, y1, ...]
+                let aux_off = inst.aux_offset as usize;
+                let flat = &sdf.aux_data[aux_off..aux_off + inst.aux_len as usize];
+                let half_h = inst.params[0];
+                let d = eval_per_lane(&p, |q| sdf_polygon_2d_flat(q, flat, half_h));
+                value_stack[vsp] = d * scale_correction;
                 vsp += 1;
             }
 
             // === Exponential Smooth Operations ===
+            // Per-lane scalar via the shared law in `crate::operations` (exact parity
+            // with the tree / scalar evaluators). The previous Schraudolph exp + Padé ln
+            // approximation was already per-lane scalar and its ln term was off by ~2x.
             OpCode::ExpSmoothUnion => {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                let k = f32x8::splat(inst.params[0]);
-                let neg_inv_k = f32x8::splat(-1.0 / inst.params[0].max(1e-10));
-                let ea = exp_approx_simd(a * neg_inv_k);
-                let eb = exp_approx_simd(b * neg_inv_k);
-                let sum = (ea + eb).max(f32x8::splat(1e-10));
-                value_stack[vsp - 1] = -ln_approx_simd(sum) * k;
+                let k = inst.params[0];
+                value_stack[vsp - 1] =
+                    eval_per_lane_binary(a, b, |x, y| sdf_exp_smooth_union(x, y, k));
             }
 
             OpCode::ExpSmoothIntersection => {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                let k = f32x8::splat(inst.params[0]);
-                let inv_k = f32x8::splat(1.0 / inst.params[0].max(1e-10));
-                let ea = exp_approx_simd(a * inv_k);
-                let eb = exp_approx_simd(b * inv_k);
-                let sum = (ea + eb).max(f32x8::splat(1e-10));
-                value_stack[vsp - 1] = ln_approx_simd(sum) * k;
+                let k = inst.params[0];
+                value_stack[vsp - 1] =
+                    eval_per_lane_binary(a, b, |x, y| sdf_exp_smooth_intersection(x, y, k));
             }
 
             OpCode::ExpSmoothSubtraction => {
                 vsp -= 1;
                 let b = value_stack[vsp];
                 let a = value_stack[vsp - 1];
-                let k = f32x8::splat(inst.params[0]);
-                let inv_k = f32x8::splat(1.0 / inst.params[0].max(1e-10));
-                let ea = exp_approx_simd(a * inv_k);
-                let enb = exp_approx_simd(-b * inv_k);
-                let sum = (ea + enb).max(f32x8::splat(1e-10));
-                value_stack[vsp - 1] = ln_approx_simd(sum) * k;
+                let k = inst.params[0];
+                value_stack[vsp - 1] =
+                    eval_per_lane_binary(a, b, |x, y| sdf_exp_smooth_subtraction(x, y, k));
             }
 
             // === New Modifiers ===
@@ -2064,6 +2106,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -2086,6 +2129,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
             }
@@ -2099,6 +2143,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], 0.0, 0.0, 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -2133,6 +2178,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -2153,13 +2199,15 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         })
                         .collect();
                     let mut result = Vec3x8::zero();
+                    let mut corrections = [1.0f32; 8];
+                    #[allow(clippy::needless_range_loop)]
                     for lane in 0..8 {
                         let pt = glam::Vec3::new(
                             p.x.as_array_ref()[lane],
                             p.y.as_array_ref()[lane],
                             p.z.as_array_ref()[lane],
                         );
-                        let (q, _) = crate::transforms::lattice::lattice_deform(
+                        let (q, correction) = crate::transforms::lattice::lattice_deform(
                             pt,
                             &control_points,
                             nx,
@@ -2171,8 +2219,11 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         result.x.as_array_mut()[lane] = q.x;
                         result.y.as_array_mut()[lane] = q.y;
                         result.z.as_array_mut()[lane] = q.z;
+                        corrections[lane] = correction;
                     }
                     p = result;
+                    // Tree law: eval(child, q) / correction — applied at PopTransform
+                    coord_stack[csp - 1].lane_correction = f32x8::new(corrections);
                 }
             }
 
@@ -2184,6 +2235,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -2236,6 +2288,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [0.0; 4],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -2262,6 +2315,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], 0.0, 0.0, 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
 
@@ -2320,6 +2374,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], inst.params[1], 0.0, 0.0],
                     aux_offset: inst.aux_offset,
                     aux_len: inst.aux_len,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
             }
@@ -2334,6 +2389,7 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                     params: [inst.params[0], inst.params[1], inst.params[2], 0.0],
                     aux_offset: 0,
                     aux_len: 0,
+                    lane_correction: f32x8::ONE,
                 };
                 csp += 1;
                 // No point transformation - roughness is applied after distance eval
@@ -2381,24 +2437,36 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                         value_stack[vsp - 1] = outside + inside;
                     }
                     OpCode::Displacement => {
-                        let strength = f32x8::splat(frame.params[0]);
-                        let five = f32x8::splat(5.0);
-                        let sx = sin_approx(five * frame.point.x);
-                        let sy = sin_approx(five * frame.point.y);
-                        let sz = sin_approx(five * frame.point.z);
-                        value_stack[vsp - 1] += sx * sy * sz * strength;
+                        let amplitude = frame.params[0];
+                        let frequency =
+                            glam::Vec3::new(frame.params[1], frame.params[2], frame.params[3]);
+                        let d = value_stack[vsp - 1];
+                        let da = d.as_array_ref();
+                        let mut out = [0.0f32; 8];
+                        #[allow(clippy::needless_range_loop)]
+                        for i in 0..8 {
+                            let pt = glam::Vec3::new(
+                                frame.point.x.as_array_ref()[i],
+                                frame.point.y.as_array_ref()[i],
+                                frame.point.z.as_array_ref()[i],
+                            );
+                            out[i] = crate::modifiers::modifier_sine_displacement(
+                                da[i], pt, amplitude, frequency,
+                            );
+                        }
+                        value_stack[vsp - 1] = f32x8::new(out);
                     }
                     OpCode::HeightmapDisplacement => {
                         let amplitude = frame.params[0];
                         let scale = frame.params[1];
                         let aux_off = frame.aux_offset as usize;
-                        let mut displacement_vals = [0.0f32; 8];
+                        // Same law as the scalar evaluator: d -= heightmap_displacement(...)
                         if frame.aux_len >= 2 {
-                            // Use actual heightmap from aux_data
                             let aux = &sdf.aux_data[aux_off..aux_off + frame.aux_len as usize];
                             let w = aux[0] as u32;
                             let h = aux[1] as u32;
                             let hmap = &aux[2..];
+                            let mut displacement_vals = [0.0f32; 8];
                             #[allow(clippy::needless_range_loop)]
                             for i in 0..8 {
                                 let pt = glam::Vec3::new(
@@ -2410,46 +2478,38 @@ pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
                                     pt, hmap, w, h, amplitude, scale,
                                 );
                             }
-                        } else {
-                            // Fallback: sine pattern
-                            #[allow(clippy::needless_range_loop)]
-                            for i in 0..8 {
-                                let px = frame.point.x.as_array_ref()[i] * scale;
-                                let pz = frame.point.z.as_array_ref()[i] * scale;
-                                displacement_vals[i] =
-                                    (px * 3.0).sin() * (pz * 3.0).sin() * amplitude;
-                            }
+                            value_stack[vsp - 1] -= f32x8::new(displacement_vals);
                         }
-                        value_stack[vsp - 1] += f32x8::new(displacement_vals);
                     }
                     OpCode::SurfaceRoughness => {
                         // FBM noise for surface roughness
                         let frequency = frame.params[0];
                         let amplitude = frame.params[1];
                         let octaves = frame.params[2] as u32;
-                        let mut roughness_vals = [0.0f32; 8];
+                        // Same law as the scalar evaluator (crate::modifiers::surface_roughness)
+                        let d = value_stack[vsp - 1];
+                        let da = d.as_array_ref();
+                        let mut out = [0.0f32; 8];
                         #[allow(clippy::needless_range_loop)]
                         for i in 0..8 {
-                            let px = frame.point.x.as_array_ref()[i] * frequency;
-                            let py = frame.point.y.as_array_ref()[i] * frequency;
-                            let pz = frame.point.z.as_array_ref()[i] * frequency;
-                            // Simple FBM approximation
-                            let mut fbm = 0.0;
-                            let mut amp = amplitude;
-                            let mut freq = 1.0;
-                            for oct in 0..octaves {
-                                fbm += perlin_noise_3d(px * freq, py * freq, pz * freq, oct) * amp;
-                                amp *= 0.5;
-                                freq *= 2.0;
-                            }
-                            roughness_vals[i] = fbm;
+                            let pt = glam::Vec3::new(
+                                frame.point.x.as_array_ref()[i],
+                                frame.point.y.as_array_ref()[i],
+                                frame.point.z.as_array_ref()[i],
+                            );
+                            out[i] = crate::modifiers::surface_roughness(
+                                pt, da[i], frequency, amplitude, octaves,
+                            );
                         }
-                        value_stack[vsp - 1] += f32x8::new(roughness_vals);
+                        value_stack[vsp - 1] = f32x8::new(out);
                     }
                     OpCode::ProjectiveTransform => {
                         // Lipschitz correction for projective transform
                         let lipschitz_bound = f32x8::splat(frame.params[0]);
                         value_stack[vsp - 1] *= lipschitz_bound;
+                    }
+                    OpCode::LatticeDeform => {
+                        value_stack[vsp - 1] /= frame.lane_correction;
                     }
                     _ => {}
                 }
@@ -2530,153 +2590,28 @@ fn stairs_min_simd(a: f32x8, b: f32x8, r: f32, n: f32) -> f32x8 {
     d.min((npx - edge_v).max(npy - edge_v))
 }
 
-/// ★ Deep Fried: Fast SIMD reciprocal (per-lane, ~0.02% error)
+/// SIMD cosine (`wide` polynomial with range reduction, ~1e-6 abs error).
 ///
-/// Uses Quake III-style initial guess + Newton-Raphson refinement.
-/// 3-4x faster than SIMD division for non-critical-precision paths.
-#[inline(always)]
-fn fast_rcp_simd(x: f32x8) -> f32x8 {
-    let a = x.as_array_ref();
-    f32x8::new([
-        fast_rcp_scalar(a[0]),
-        fast_rcp_scalar(a[1]),
-        fast_rcp_scalar(a[2]),
-        fast_rcp_scalar(a[3]),
-        fast_rcp_scalar(a[4]),
-        fast_rcp_scalar(a[5]),
-        fast_rcp_scalar(a[6]),
-        fast_rcp_scalar(a[7]),
-    ])
-}
-
-/// Fast reciprocal via IEEE 754 bit trick + Newton-Raphson (~0.02% error)
-#[inline(always)]
-fn fast_rcp_scalar(x: f32) -> f32 {
-    // Initial approximation: 1/x ≈ bit_cast(0x7EF127EA - bit_cast(x))
-    let bits = x.to_bits();
-    let y = f32::from_bits(0x7EF1_27EA_u32.wrapping_sub(bits));
-    // One Newton-Raphson refinement: y = y * (2 - x * y)
-    y * x.mul_add(-y, 2.0)
-}
-
-/// Fast cosine approximation for SIMD
+/// Replaced the Bhaskara I approximation (1.6e-3 abs error) in 1.9.1: TPMS
+/// primitives and twist/bend amplified that error to >10% vs the tree law.
 #[inline(always)]
 fn cos_approx(x: f32x8) -> f32x8 {
-    // Normalize to [-pi, pi]
-    let pi = f32x8::splat(std::f32::consts::PI);
-    let two_pi = f32x8::splat(std::f32::consts::TAU);
-    let x = x - (x / two_pi).round() * two_pi;
-
-    // Bhaskara I approximation
-    let x2 = x * x;
-    let pi2 = pi * pi;
-    (pi2 - f32x8::splat(4.0) * x2) / (pi2 + x2)
+    x.cos()
 }
 
-/// Fast sine approximation for SIMD
+/// SIMD sine (`wide` polynomial with range reduction, ~1e-6 abs error).
 #[inline(always)]
 fn sin_approx(x: f32x8) -> f32x8 {
-    cos_approx(x - f32x8::splat(std::f32::consts::FRAC_PI_2))
+    x.sin()
 }
 
-/// ★ Deep Fried: Fast atan2 approximation for SIMD
+/// SIMD atan2 (`wide` implementation, ~1e-6 rad).
 ///
-/// Minimax polynomial approximation of atan2(y, x).
-/// Max error ~0.0038 radians (~0.22 degrees) — sufficient for SDF polar repeat.
+/// Replaced the minimax polynomial (3.8e-3 rad) in 1.9.1 for parity with the
+/// scalar `modifier_polar_repeat_rk` law.
 #[inline(always)]
 fn atan2_approx(y: f32x8, x: f32x8) -> f32x8 {
-    let pi = f32x8::splat(std::f32::consts::PI);
-    let half_pi = f32x8::splat(std::f32::consts::FRAC_PI_2);
-    let abs_x = x.abs();
-    let abs_y = y.abs();
-
-    // min/max ratio for range reduction to [0, 1]
-    let a = abs_x.min(abs_y);
-    let b = abs_x.max(abs_y);
-    // Division Exorcism: multiply by approximate reciprocal instead of divide
-    let safe_b = b.max(f32x8::splat(1e-20));
-    let r = a * fast_rcp_simd(safe_b);
-
-    // Polynomial approximation of atan(r) for r in [0, 1]
-    // atan(r) ≈ r * (0.9998660 - r² * (0.3302995 - r² * 0.1801410))
-    let r2 = r * r;
-    let atan_r = r
-        * (f32x8::splat(0.999_866) - r2 * (f32x8::splat(0.3302995) - r2 * f32x8::splat(0.180_141)));
-
-    // If |y| > |x|, result = pi/2 - atan_r, else atan_r
-    let swap_mask = abs_y.cmp_gt(abs_x);
-    let result = swap_mask.blend(half_pi - atan_r, atan_r);
-
-    // Negate for x < 0: pi - result
-    let neg_x_mask = x.cmp_lt(f32x8::ZERO);
-    let result = neg_x_mask.blend(pi - result, result);
-
-    // Negate for y < 0
-    let neg_y_mask = y.cmp_lt(f32x8::ZERO);
-    neg_y_mask.blend(-result, result)
-}
-
-/// ★ Deep Fried: Fast exp approximation for SIMD (Schraudolph + correction)
-///
-/// Uses IEEE 754 bit manipulation per lane for ~0.3% relative error.
-/// 5-8x faster than libm expf() per lane.
-#[inline(always)]
-fn exp_approx_simd(x: f32x8) -> f32x8 {
-    let a = x.as_array_ref();
-    f32x8::new([
-        fast_exp_scalar(a[0]),
-        fast_exp_scalar(a[1]),
-        fast_exp_scalar(a[2]),
-        fast_exp_scalar(a[3]),
-        fast_exp_scalar(a[4]),
-        fast_exp_scalar(a[5]),
-        fast_exp_scalar(a[6]),
-        fast_exp_scalar(a[7]),
-    ])
-}
-
-/// ★ Deep Fried: Fast ln approximation for SIMD
-///
-/// Uses IEEE 754 bit manipulation per lane for ~0.3% relative error.
-#[inline(always)]
-fn ln_approx_simd(x: f32x8) -> f32x8 {
-    let a = x.as_array_ref();
-    f32x8::new([
-        fast_ln_scalar(a[0]),
-        fast_ln_scalar(a[1]),
-        fast_ln_scalar(a[2]),
-        fast_ln_scalar(a[3]),
-        fast_ln_scalar(a[4]),
-        fast_ln_scalar(a[5]),
-        fast_ln_scalar(a[6]),
-        fast_ln_scalar(a[7]),
-    ])
-}
-
-/// Schraudolph fast exp with polynomial correction (~0.3% error, ~3 cycles)
-#[inline(always)]
-fn fast_exp_scalar(x: f32) -> f32 {
-    // Clamp to avoid IEEE overflow/underflow
-    let x = x.clamp(-87.3, 88.7);
-    // Schraudolph: reinterpret (2^23/ln2 * x + 127*2^23) as float
-    // = 12102203.16 * x + 1065353216
-    let v = 12102203.0f32.mul_add(x, 1065353216.0f32) as i32;
-    // Correction: reduce error from ~4% to ~0.3%
-    let bits = (v as u32).wrapping_add(0x0003_8000);
-    f32::from_bits(bits)
-}
-
-/// Fast ln via IEEE 754 exponent extraction + Padé (~0.4% error, ~4 cycles)
-#[inline(always)]
-fn fast_ln_scalar(x: f32) -> f32 {
-    let bits = x.to_bits() as i32;
-    let e = ((bits >> 23) & 0xFF) - 127;
-    // Extract mantissa into [1, 2)
-    let m = f32::from_bits(((bits as u32) & 0x007F_FFFF) | 0x3F80_0000);
-    // ln(m) ≈ (m-1) * (2.0 - (m-1)/3) — Padé [1/1] on [1,2)
-    let mf = m - 1.0;
-    let ln_m = mf * (2.0 - mf * 0.33333333);
-    (e as f32).mul_add(std::f32::consts::LN_2, ln_m)
+    y.atan2(x)
 }
 
 /// Per-lane scalar evaluation helper for binary operations
