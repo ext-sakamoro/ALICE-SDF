@@ -316,7 +316,7 @@ pub fn decode_positions(buf: &[u8]) -> Result<Vec<Vec3>, CodecError> {
         for b in 0..12 {
             let encoded = read_varint_u32(buf, &mut cursor)?;
             let delta = zigzag_decode_u32(encoded);
-            let cur = (i32::from(prev_bytes[b]) + delta) as i32;
+            let cur = i32::from(prev_bytes[b]) + delta;
             // byte 範囲外 (delta が異常大) → error にせず低位 8-bit だけ採用 (garbage in)
             cur_bytes[b] = cur as u8;
         }

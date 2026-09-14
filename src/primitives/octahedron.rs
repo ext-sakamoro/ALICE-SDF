@@ -17,16 +17,15 @@ pub fn sdf_octahedron(p: Vec3, s: f32) -> f32 {
     let p = Vec3::new(p.x.abs(), p.y.abs(), p.z.abs());
     let m = p.x + p.y + p.z - s;
 
-    let q;
-    if 3.0 * p.x < m {
-        q = p;
+    let q = if 3.0 * p.x < m {
+        p
     } else if 3.0 * p.y < m {
-        q = Vec3::new(p.y, p.z, p.x);
+        Vec3::new(p.y, p.z, p.x)
     } else if 3.0 * p.z < m {
-        q = Vec3::new(p.z, p.x, p.y);
+        Vec3::new(p.z, p.x, p.y)
     } else {
         return m * 0.57735027; // 1/sqrt(3)
-    }
+    };
 
     let k = (0.5 * (q.z - q.y + s)).clamp(0.0, s);
     Vec3::new(q.x, q.y - s + k, q.z - k).length()
