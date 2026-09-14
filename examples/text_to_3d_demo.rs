@@ -7,7 +7,8 @@
 //! Run with:
 //!
 //! ```bash
-//! cargo run --features font --example text_to_3d_demo --release
+//! RUSTFLAGS="--cfg alice_font_bridge" cargo run --features font --example text_to_3d_demo --release
+//! (needs a local ALICE-Font checkout wired as a path dep; the `font` feature alone is inert)
 //! ```
 //!
 //! Output: prints SDF sign map (`X` = inside surface, ` ` = outside) on
@@ -16,18 +17,37 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[cfg(alice_font_bridge)]
 use alice_font::{glyph_dispatcher, MetaFontParams};
+#[cfg(alice_font_bridge)]
 use alice_sdf::eval::eval;
+#[cfg(alice_font_bridge)]
 use alice_sdf::font_bridge::text_to_3d;
+#[cfg(alice_font_bridge)]
 use glam::Vec3;
 
+/// The font bridge needs a local `alice-font` path dep + `--cfg alice_font_bridge`;
+/// on crates.io the `font` feature alone is inert, so this example just explains that.
+#[cfg(not(alice_font_bridge))]
+fn main() {
+    eprintln!(
+        "text_to_3d_demo requires a local ALICE-Font checkout: \
+         RUSTFLAGS=\"--cfg alice_font_bridge\" cargo run --example text_to_3d_demo --features font"
+    );
+}
+
+#[cfg(alice_font_bridge)]
 const TEXT: &str = "HELLO AI 日本";
+#[cfg(alice_font_bridge)]
 const DEPTH: f32 = 0.3;
 
 // Slice resolution for the ASCII visualization on the Z = 0 plane.
+#[cfg(alice_font_bridge)]
 const COLS: usize = 96;
+#[cfg(alice_font_bridge)]
 const ROWS: usize = 16;
 
+#[cfg(alice_font_bridge)]
 fn main() {
     let params = MetaFontParams::sans_regular();
 

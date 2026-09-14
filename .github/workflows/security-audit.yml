@@ -175,8 +175,21 @@ jobs:
 
       # check-release: 最新 crates.io publish 版と HEAD の API 差分を検出
       # --baseline-version で明示指定も可 (現状は自動: 最新 published)
+      #
+      # feature 集合は cargo metadata から動的に取り、以下を除外する:
+      #   font   — 1.9.0 (baseline) では alice_font 未宣言のまま module を gate していて
+      #            rustdoc 不能 (1.9.1 で cfg flag gate に修正済) 1.9.1 publish 後に除外解除可
+      #   godot  — 1.9.0 では存在しない transpile_glsl を呼んでいて rustdoc 不能 (1.9.1 で修正済)、同上
+      #   python — PyO3 は rustdoc では不要だが CI runner の Python 依存を避ける
+      # 除外なし (= 全 feature) だと baseline 側の build で落ちて HEAD の API 検査に到達しない
       - name: Run cargo semver-checks
-        run: cargo semver-checks check-release --package alice-sdf
+        run: |
+          feats=$(cargo metadata --format-version 1 --no-deps \
+            | jq -r '.packages[] | select(.name=="alice-sdf") | .features | keys[]' \
+            | grep -vE '^(default|font|godot|python)$' | paste -sd, -)
+          echo "features: $feats"
+          cargo semver-checks check-release --package alice-sdf \
+            --only-explicit-features --features "$feats"
 
   stub-guard:
     name: Stub / mock / dbg guard (grep)

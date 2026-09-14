@@ -134,7 +134,9 @@ pub mod measure;
 pub mod sdf2d;
 pub mod shell;
 
-#[cfg(feature = "font")]
+// `font` alone is inert on crates.io (no `alice-font` dep declared);
+// the bridge needs `--cfg alice_font_bridge` + a local path dep.
+#[cfg(all(feature = "font", alice_font_bridge))]
 pub mod font_bridge;
 
 #[cfg(feature = "python")]

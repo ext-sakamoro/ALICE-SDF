@@ -73,10 +73,15 @@ blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to 
 # against this repo — the src/*_bridge.rs modules are cfg-gated so
 # they simply don't compile without the features. Scheduled for
 # restoration in 1.8.0 once the transitive dep chain publishes.
-# The `font` empty feature is retained to gate the `text_to_3d_demo`
-# example; enabling it on crates.io does nothing until the
-# corresponding `alice-font` path dep is wired locally.
-font = []  # Font bridge gate — path dep only until 1.8.0
+# The `font` empty feature is retained (removing it is a semver-major
+# break) but it no longer compiles anything by itself: `font_bridge` and
+# the `text_to_3d_demo` example additionally require the cfg flag
+# `alice_font_bridge` (`RUSTFLAGS="--cfg alice_font_bridge"`) together
+# with a local `alice-font` path dep. Previously `--features font` gated a
+# module importing the undeclared `alice_font` crate, so `--all-features`
+# failed for every crates.io user and cargo-semver-checks could not build
+# rustdoc. (2026-09-14)
+font = []  # Font bridge gate — inert on crates.io, see above
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
@@ -191,6 +196,7 @@ required-features = ["font"]
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(feature, values("codec", "physics", "asp", "sdf-cache", "font"))',
+    'cfg(alice_font_bridge)',
 ] }
 
 # cargo-machete false-positive suppression

@@ -448,13 +448,10 @@ impl AliceSdfNode {
     fn to_glsl(&self) -> GString {
         #[cfg(feature = "glsl")]
         {
+            use crate::compiled::glsl::{GlslShader, GlslTranspileMode};
             match &self.sdf_node {
                 Some(node) => {
-                    let compiled = CompiledSdf::compile(node);
-                    match crate::compiled::glsl::transpile_glsl(&compiled) {
-                        Ok(code) => GString::from(code),
-                        Err(_) => GString::new(),
-                    }
+                    GString::from(GlslShader::transpile(node, GlslTranspileMode::Hardcoded).source)
                 }
                 None => GString::new(),
             }
