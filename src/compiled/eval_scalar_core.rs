@@ -23,13 +23,13 @@ use glam::{Quat, Vec2, Vec3};
 use crate::modifiers::perlin_noise_3d;
 
 /// Maximum stack depth for value stack
-pub(crate) const MAX_VALUE_STACK: usize = 64;
+pub(super) const MAX_VALUE_STACK: usize = 64;
 /// Maximum stack depth for coordinate transforms
-pub(crate) const MAX_COORD_STACK: usize = 32;
+pub(super) const MAX_COORD_STACK: usize = 32;
 
 /// Coordinate frame on the transform stack
 #[derive(Clone, Copy)]
-pub(crate) struct CoordFrame {
+pub(super) struct CoordFrame {
     /// Original point (before transform)
     point: Vec3,
     /// Scale correction factor (for uniform scale)
@@ -67,7 +67,7 @@ impl Default for CoordFrame {
 /// `aux_len` (heightmaps, lattices, skinning bones, IFS matrices, polygon
 /// vertices). Producers that never emit aux-dependent opcodes may pass `&[]`.
 #[inline]
-pub(crate) fn eval_bytecode(instructions: &[Instruction], aux_data: &[f32], point: Vec3) -> f32 {
+pub(super) fn eval_bytecode(instructions: &[Instruction], aux_data: &[f32], point: Vec3) -> f32 {
     // Value stack (for intermediate SDF distances)
     let mut value_stack: [f32; MAX_VALUE_STACK] = [0.0; MAX_VALUE_STACK];
     let mut vsp: usize = 0;

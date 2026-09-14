@@ -16,12 +16,43 @@ impl SdfNode {
         Self::Sphere { radius }
     }
 
-    /// Create an axis-aligned box with the given dimensions
+    /// Create an axis-aligned box with the given **full** dimensions
+    /// (`width` × `height` × `depth`; the node stores half of each).
+    ///
+    /// # Naming hazard
+    ///
+    /// This is the one box constructor that takes full extents. Both
+    /// [`SdfNode::rounded_box`] and the LOL DSL `box3d(hx, hy, hz)` take
+    /// **half-extents** — `box3d(20, 20, 3)` in LOL is a 40 × 40 × 6 mm box,
+    /// while `SdfNode::box3d(20.0, 20.0, 3.0)` in Rust is 20 × 20 × 3 mm.
+    /// Use [`SdfNode::box3d_half_extents`] when you hold half-extents (for
+    /// example when porting a LOL expression to Rust) so the intent is
+    /// visible at the call site. Neither spelling can change without
+    /// breaking published callers, so the difference is documented rather
+    /// than unified.
     #[must_use]
     #[inline]
     pub fn box3d(width: f32, height: f32, depth: f32) -> Self {
         Self::Box3d {
             half_extents: Vec3::new(width * 0.5, height * 0.5, depth * 0.5),
+        }
+    }
+
+    /// Create an axis-aligned box from **half-extents** — the same
+    /// convention as [`SdfNode::rounded_box`] and the LOL DSL `box3d`.
+    ///
+    /// ```
+    /// use alice_sdf::types::SdfNode;
+    /// // LOL `box3d(20, 10, 1.5)` (40 × 20 × 3 mm) ported to Rust:
+    /// let a = SdfNode::box3d_half_extents(20.0, 10.0, 1.5);
+    /// let b = SdfNode::box3d(40.0, 20.0, 3.0);
+    /// assert_eq!(a, b);
+    /// ```
+    #[must_use]
+    #[inline]
+    pub const fn box3d_half_extents(hx: f32, hy: f32, hz: f32) -> Self {
+        Self::Box3d {
+            half_extents: Vec3::new(hx, hy, hz),
         }
     }
 
@@ -156,7 +187,12 @@ impl SdfNode {
         }
     }
 
-    /// Create a rounded box
+    /// Create a rounded box from **half-extents** (`hx`, `hy`, `hz`) and an
+    /// edge rounding radius.
+    ///
+    /// Note the asymmetry with [`SdfNode::box3d`], which takes full
+    /// dimensions; see [`SdfNode::box3d_half_extents`] for the half-extent
+    /// spelling of the plain box.
     #[must_use]
     #[inline]
     pub const fn rounded_box(hx: f32, hy: f32, hz: f32, round_radius: f32) -> Self {
