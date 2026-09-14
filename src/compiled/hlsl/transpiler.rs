@@ -103,6 +103,7 @@ impl ShaderLang for HlslLang {
         match name {
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
             "hash_noise" => Some(HELPER_HASH_NOISE),
+            "perlin_noise" => Some(HELPER_PERLIN_NOISE),
             "sdf_rounded_cone" => Some(HELPER_SDF_ROUNDED_CONE),
             "sdf_pyramid" => Some(HELPER_SDF_PYRAMID),
             "sdf_octahedron" => Some(HELPER_SDF_OCTAHEDRON),
@@ -400,6 +401,10 @@ impl HlslTranspiler {
                     shader.push_str(HELPER_HASH_NOISE);
                     shader.push('\n');
                 }
+                "perlin_noise" => {
+                    shader.push_str(HELPER_PERLIN_NOISE);
+                    shader.push('\n');
+                }
                 "sdf_rounded_cone" => {
                     shader.push_str(HELPER_SDF_ROUNDED_CONE);
                     shader.push('\n');
@@ -607,6 +612,56 @@ float hash_noise_3d(float3 p, uint seed) {
     float c0 = c00 + (c10 - c00) * u.y;
     float c1 = c01 + (c11 - c01) * u.y;
     return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+}";
+
+const HELPER_PERLIN_NOISE: &str = r"uint alice_perlin_hash(int x, int y, int z, uint seed) {
+    uint h = seed;
+    h ^= asuint(x);
+    h *= 0x85EBCA6Bu;
+    h ^= asuint(y);
+    h *= 0xC2B2AE35u;
+    h ^= asuint(z);
+    h *= 0x27D4EB2Du;
+    h ^= h >> 16u;
+    return h;
+}
+float alice_perlin_grad(uint h, float3 c) {
+    const uint LUT[16] = { 4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u, 24u, 25u, 26u, 27u, 16u, 10u, 18u, 9u };
+    uint e = LUT[h & 15u];
+    uint u_src = (e >> 4u) & 3u;
+    uint v_src = (e >> 2u) & 3u;
+    float u_sign = 1.0 - 2.0 * (float)((e >> 1u) & 1u);
+    float v_sign = 1.0 - 2.0 * (float)(e & 1u);
+    return c[u_src] * u_sign + c[v_src] * v_sign;
+}
+float alice_perlin_fade(float t) {
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+// Same law as `alice_sdf::modifiers::perlin_noise_3d` (integer lattice hash + 16-gradient LUT + quintic fade).
+float perlin_noise_3d(float3 p, uint seed) {
+    float3 fl = floor(p);
+    int xi = (int)fl.x;
+    int yi = (int)fl.y;
+    int zi = (int)fl.z;
+    float3 f = p - fl;
+    float u = alice_perlin_fade(f.x);
+    float v = alice_perlin_fade(f.y);
+    float w = alice_perlin_fade(f.z);
+    float aaa = alice_perlin_grad(alice_perlin_hash(xi, yi, zi, seed), f);
+    float aba = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi, seed), float3(f.x, f.y - 1.0, f.z));
+    float aab = alice_perlin_grad(alice_perlin_hash(xi, yi, zi + 1, seed), float3(f.x, f.y, f.z - 1.0));
+    float abb = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi + 1, seed), float3(f.x, f.y - 1.0, f.z - 1.0));
+    float baa = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi, seed), float3(f.x - 1.0, f.y, f.z));
+    float bba = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi, seed), float3(f.x - 1.0, f.y - 1.0, f.z));
+    float bab = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi + 1, seed), float3(f.x - 1.0, f.y, f.z - 1.0));
+    float bbb = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi + 1, seed), float3(f.x - 1.0, f.y - 1.0, f.z - 1.0));
+    float x0 = aaa + u * (baa - aaa);
+    float x1 = aba + u * (bba - aba);
+    float x2 = aab + u * (bab - aab);
+    float x3 = abb + u * (bbb - abb);
+    float y0 = x0 + v * (x1 - x0);
+    float y1 = x2 + v * (x3 - x2);
+    return y0 + w * (y1 - y0);
 }";
 
 const HELPER_QUAT_ROTATE: &str = r"float3 quat_rotate(float3 v, float4 q) {

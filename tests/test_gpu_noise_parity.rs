@@ -1,4 +1,5 @@
-//! GPU ↔ CPU parity for the procedural-noise law (`SurfaceRoughness`).
+//! GPU ↔ CPU parity for the procedural-noise laws (`SurfaceRoughness` value
+//! noise fbm and `Noise` Perlin).
 //!
 //! The noise law is defined once in `modifiers::surface_roughness`
 //! (`hash_noise_3d` / `fbm`, PCG lattice hash) and the WGSL transpiler emits
@@ -87,6 +88,36 @@ fn surface_roughness_gpu_matches_cpu() {
             SdfNode::sphere(0.7)
                 .translate(0.3, -0.2, 0.5)
                 .surface_roughness(2.0, 0.1, 3),
+            1e-4,
+        ),
+    ] {
+        assert_gpu_matches_cpu(name, &node, tol);
+    }
+}
+
+#[test]
+fn perlin_noise_node_gpu_matches_cpu() {
+    for (name, node, tol) in [
+        (
+            "sphere noise a0.1 f2 seed0",
+            SdfNode::sphere(1.0).noise(0.1, 2.0, 0),
+            1e-4,
+        ),
+        (
+            "box noise a0.3 f0.7 seed7",
+            SdfNode::box3d(1.4, 0.9, 1.1).noise(0.3, 0.7, 7),
+            1e-4,
+        ),
+        (
+            "torus noise a0.05 f5 seed12345",
+            SdfNode::torus(0.9, 0.25).noise(0.05, 5.0, 12_345),
+            1e-4,
+        ),
+        (
+            "translated noise a0.2 f1.3 seed99",
+            SdfNode::sphere(0.7)
+                .translate(-0.4, 0.2, 0.6)
+                .noise(0.2, 1.3, 99),
             1e-4,
         ),
     ] {

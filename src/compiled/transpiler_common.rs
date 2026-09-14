@@ -2282,7 +2282,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 frequency,
                 seed,
             } => {
-                self.ensure_helper("hash_noise");
+                // Same Perlin law as `modifiers::perlin_noise_3d` (CPU / SIMD / bytecode)
+                self.ensure_helper("perlin_noise");
                 let d = self.transpile_node_inner(child, point_var, code);
                 let n_var = self.next_var();
                 let var = self.next_var();
@@ -2290,7 +2291,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let amp = self.param(*amplitude);
                 code.push_str(&L::decl_float(
                     &n_var,
-                    &format!("hash_noise_3d({} * {}, {}u)", point_var, freq, seed),
+                    &format!("perlin_noise_3d({} * {}, {}u)", point_var, freq, seed),
                 ));
                 code.push_str(&L::decl_float(
                     &var,

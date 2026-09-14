@@ -103,6 +103,7 @@ impl ShaderLang for WgslLang {
             "smooth_max" => Some(HELPER_SMOOTH_MAX),
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
             "hash_noise" => Some(HELPER_HASH_NOISE),
+            "perlin_noise" => Some(HELPER_PERLIN_NOISE),
             "sdf_rounded_cone" => Some(HELPER_SDF_ROUNDED_CONE),
             "sdf_pyramid" => Some(HELPER_SDF_PYRAMID),
             "sdf_octahedron" => Some(HELPER_SDF_OCTAHEDRON),
@@ -616,6 +617,10 @@ impl WgslTranspiler {
                     shader.push_str(HELPER_HASH_NOISE);
                     shader.push('\n');
                 }
+                "perlin_noise" => {
+                    shader.push_str(HELPER_PERLIN_NOISE);
+                    shader.push('\n');
+                }
                 "sdf_rounded_cone" => {
                     shader.push_str(HELPER_SDF_ROUNDED_CONE);
                     shader.push('\n');
@@ -845,6 +850,57 @@ fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
     let c0 = c00 + (c10 - c00) * u.y;
     let c1 = c01 + (c11 - c01) * u.y;
     return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+}";
+
+const HELPER_PERLIN_NOISE: &str = r"fn alice_perlin_hash(x: i32, y: i32, z: i32, seed: u32) -> u32 {
+    var h = seed;
+    h ^= bitcast<u32>(x);
+    h *= 0x85EBCA6Bu;
+    h ^= bitcast<u32>(y);
+    h *= 0xC2B2AE35u;
+    h ^= bitcast<u32>(z);
+    h *= 0x27D4EB2Du;
+    h ^= h >> 16u;
+    return h;
+}
+fn alice_perlin_grad(h: u32, c0: vec3<f32>) -> f32 {
+    var lut = array<u32, 16>(4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u, 24u, 25u, 26u, 27u, 16u, 10u, 18u, 9u);
+    var c = c0;
+    let e = lut[h & 15u];
+    let u_src = (e >> 4u) & 3u;
+    let v_src = (e >> 2u) & 3u;
+    let u_sign = 1.0 - 2.0 * f32((e >> 1u) & 1u);
+    let v_sign = 1.0 - 2.0 * f32(e & 1u);
+    return c[u_src] * u_sign + c[v_src] * v_sign;
+}
+fn alice_perlin_fade(t: f32) -> f32 {
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+// Same law as `alice_sdf::modifiers::perlin_noise_3d` (integer lattice hash + 16-gradient LUT + quintic fade).
+fn perlin_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
+    let fl = floor(p);
+    let xi = i32(fl.x);
+    let yi = i32(fl.y);
+    let zi = i32(fl.z);
+    let f = p - fl;
+    let u = alice_perlin_fade(f.x);
+    let v = alice_perlin_fade(f.y);
+    let w = alice_perlin_fade(f.z);
+    let aaa = alice_perlin_grad(alice_perlin_hash(xi, yi, zi, seed), f);
+    let aba = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi, seed), vec3<f32>(f.x, f.y - 1.0, f.z));
+    let aab = alice_perlin_grad(alice_perlin_hash(xi, yi, zi + 1, seed), vec3<f32>(f.x, f.y, f.z - 1.0));
+    let abb = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi + 1, seed), vec3<f32>(f.x, f.y - 1.0, f.z - 1.0));
+    let baa = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi, seed), vec3<f32>(f.x - 1.0, f.y, f.z));
+    let bba = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi, seed), vec3<f32>(f.x - 1.0, f.y - 1.0, f.z));
+    let bab = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi + 1, seed), vec3<f32>(f.x - 1.0, f.y, f.z - 1.0));
+    let bbb = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi + 1, seed), vec3<f32>(f.x - 1.0, f.y - 1.0, f.z - 1.0));
+    let x0 = aaa + u * (baa - aaa);
+    let x1 = aba + u * (bba - aba);
+    let x2 = aab + u * (bab - aab);
+    let x3 = abb + u * (bbb - abb);
+    let y0 = x0 + v * (x1 - x0);
+    let y1 = x2 + v * (x3 - x2);
+    return y0 + w * (y1 - y0);
 }";
 
 const HELPER_QUAT_ROTATE: &str = r"fn quat_rotate(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
