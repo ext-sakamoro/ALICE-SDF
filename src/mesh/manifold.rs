@@ -346,7 +346,48 @@ impl MeshRepair {
     pub fn repair_all(mesh: &Mesh, vertex_merge_epsilon: f32) -> Mesh {
         let mesh = Self::remove_degenerate_triangles(mesh);
         let mesh = Self::merge_duplicate_vertices(&mesh, vertex_merge_epsilon);
+        // Vertex merging can collapse two distinct vertices of a triangle into
+        // one (new zero-area triangle) and can make two triangles reference the
+        // same vertex set (duplicate face → an edge shared by 4 triangles =
+        // non-manifold). Clean both *after* merging, before normal fixing.
+        let mesh = Self::remove_degenerate_triangles(&mesh);
+        let mesh = Self::remove_duplicate_triangles(&mesh);
         Self::fix_normals(&mesh)
+    }
+
+    /// Remove triangles that reference the same vertex set as an earlier
+    /// triangle (winding-insensitive). Keeps the first occurrence.
+    ///
+    /// Duplicate faces typically appear after `merge_duplicate_vertices`
+    /// when two nearby sliver triangles collapse onto the same three
+    /// vertices; each such pair turns its shared edges into edges with
+    /// 4 incident triangles, which `validate_mesh` reports as non-manifold.
+    pub fn remove_duplicate_triangles(mesh: &Mesh) -> Mesh {
+        let tri_count = mesh.indices.len() / 3;
+        let mut seen: HashSet<[u32; 3]> = HashSet::with_capacity(tri_count);
+        let mut new_indices = Vec::with_capacity(mesh.indices.len());
+
+        for i in 0..tri_count {
+            let base = i * 3;
+            let (a, b, c) = (
+                mesh.indices[base],
+                mesh.indices[base + 1],
+                mesh.indices[base + 2],
+            );
+            if a == b || b == c || a == c {
+                continue;
+            }
+            let mut key = [a, b, c];
+            key.sort_unstable();
+            if seen.insert(key) {
+                new_indices.extend_from_slice(&[a, b, c]);
+            }
+        }
+
+        Mesh {
+            vertices: mesh.vertices.clone(),
+            indices: new_indices,
+        }
     }
 
     // ========================================================================
@@ -773,6 +814,73 @@ pub fn compute_quality(mesh: &Mesh) -> MeshQuality {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn repair_all_leaves_no_non_manifold_edges_on_mc_sphere_and_table() {
+        // text-to-print Preview 経路 (MC res 96 + repair_all(5e-3)) で sphere(10) に
+        // 非多様体辺 96、table 形状に 352 + 境界辺 4 が残っていた実測 (2026-09-14)
+        // の再現 + 修正確認
+        use crate::mesh::{sdf_to_mesh, validate_mesh, MarchingCubesConfig, MeshRepair};
+        use crate::types::SdfNode;
+        use glam::Vec3;
+        let cfg = MarchingCubesConfig {
+            resolution: 96,
+            ..MarchingCubesConfig::default()
+        };
+        let cases: Vec<(&str, SdfNode, Vec3, Vec3)> = vec![
+            (
+                "sphere",
+                SdfNode::sphere(10.0),
+                Vec3::splat(-11.0),
+                Vec3::splat(11.0),
+            ),
+            (
+                "table",
+                SdfNode::box3d(40.0, 20.0, 3.0)
+                    .translate(0.0, 0.0, 8.5)
+                    .union(SdfNode::box3d(4.0, 20.0, 10.0).translate(-18.0, 0.0, 5.0))
+                    .union(SdfNode::box3d(4.0, 20.0, 10.0).translate(18.0, 0.0, 5.0)),
+                Vec3::new(-21.0, -11.0, -1.0),
+                Vec3::new(21.0, 11.0, 11.0),
+            ),
+        ];
+        for (name, sdf, lo, hi) in cases {
+            let raw = sdf_to_mesh(&sdf, lo, hi, &cfg);
+            let before = validate_mesh(&MeshRepair::merge_duplicate_vertices(
+                &MeshRepair::remove_degenerate_triangles(&raw),
+                5e-3,
+            ));
+            let repaired = MeshRepair::repair_all(&raw, 5e-3);
+            let after = validate_mesh(&repaired);
+            eprintln!(
+                "{name}: before(old order) nm={} b={} | after nm={} b={} tris={}",
+                before.non_manifold_edges,
+                before.boundary_edges,
+                after.non_manifold_edges,
+                after.boundary_edges,
+                repaired.indices.len() / 3
+            );
+            assert_eq!(
+                after.non_manifold_edges, 0,
+                "{name}: non-manifold edges remain"
+            );
+            assert_eq!(after.boundary_edges, 0, "{name}: boundary edges remain");
+        }
+    }
+
+    #[test]
+    fn remove_duplicate_triangles_keeps_first_and_drops_index_collapsed() {
+        use crate::mesh::{Mesh, MeshRepair, Vertex};
+        use glam::Vec3;
+        let v = |x: f32, y: f32| Vertex::new(Vec3::new(x, y, 0.0), Vec3::Z);
+        let mesh = Mesh {
+            vertices: vec![v(0.0, 0.0), v(1.0, 0.0), v(0.0, 1.0), v(1.0, 1.0)],
+            // tri0, tri0 rewound, tri1, collapsed (0,0,1)
+            indices: vec![0, 1, 2, 2, 1, 0, 1, 3, 2, 0, 0, 1],
+        };
+        let out = MeshRepair::remove_duplicate_triangles(&mesh);
+        assert_eq!(out.indices, vec![0, 1, 2, 1, 3, 2]);
+    }
+
     use super::*;
     use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
     use crate::types::SdfNode;
