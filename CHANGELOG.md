@@ -11,6 +11,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ### Fixed
 
 - `SdfNode` now drops iteratively (`src/types/drop.rs`): children are moved onto an explicit heap stack and released one `Arc` at a time, so freeing a tree no longer recurses once per level. A 2,400-deep `subtract` nest (the shape ALICE-LOL's stdlib products produce) overflowed a 2 MB thread stack on drop; the regression test now builds and drops 100,000-deep chains in a 256 KB thread. Shared subtrees (`Arc::clone`) are left to their last owner as before. Recursive `clone` / `node_count` / evaluators are unchanged.
+- crates.io metadata: `homepage` / `documentation` (docs.rs) added to `Cargo.toml` — the crates.io page had no Documentation link before 1.10.2 (published 2026-09-15 together with 1.10.0 / 1.10.1 changes).
+- README: bridge-feature notes no longer reference "v1.7.7 / v1.8.0"; bridges remain unavailable on crates.io releases (1.7.7 → 1.10.x).
 
 ## [v1.10.1] - 2026-09-14
 
