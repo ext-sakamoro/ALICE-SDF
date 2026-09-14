@@ -6,6 +6,16 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.10.0] - 2026-09-14
+
+### Changed — 1.10 Phase 1: one stack machine for scalar and SIMD
+
+- **`compiled::real::Real`** — new scalar abstraction implemented for `f32` and `wide::f32x8` (`sqrt` / `abs` / `floor` / `round` / `min` / `max` / `sin_cos` / `atan2` / `exp` / `ln` / comparisons + `select` / per-lane `map` escape hatches) with `Vec3R<R>`. Every transform, modifier and post-processing law of the bytecode evaluator now exists once, as a generic function in `compiled::real` (`rotate_inverse` / `twist` / `bend` / `repeat_*` / `elongate` / `mirror` / `octant_mirror` / `revolution` / `extrude_*` / `taper` / `polar_repeat` / `shear` / `sweep_bezier` / `exp_smooth_*`), unit-tested against the canonical `modifiers::*` laws on both instantiations.
+- **`compiled::eval_core::eval_bytecode<R>`** — the stack machine is generic; `eval_compiled` is `eval_bytecode::<f32>`, `eval_compiled_simd` is `eval_bytecode::<f32x8>`, `eval_compiled_bvh` shares the `f32` instantiation. The 2,250-line hand-written SIMD evaluator and the 1,400-line scalar evaluator are gone; the only per-instantiation code left is the leaf-primitive / CSG-binary law table (`compiled::prim_table::PrimTable`, bodies moved verbatim into `prim_table_scalar.rs` / `prim_table_simd.rs`). Phase 2 folds those into generic `sdf_x<R: Real>` laws.
+- SIMD `LatticeDeform` now evaluates the lattice once per lane instead of twice (the per-lane escape returns point and Jacobian together).
+- Performance (Apple Silicon, A/B against 1.9.2, min of 3 interleaved rounds): the generic evaluator is faster on every compiled path — `sphere` 38.4 → 30.2 ns (−21%), `translate×5` −17%, `rotate×5` −11%, `round×5` −13%, `twist×5` −9%, BVH sparse scene −5…−11%, 8-lane SIMD `translate×5` −9%, `twist×5` −23%, SoA 10k −5%. Getting there required three fixes worth recording: push frames as a direct struct literal (no temporary), leave the value stack untouched at `PopTransform` for point-only frames, and keep per-lane frame data (Extrude's z, LatticeDeform's Jacobian) in a side array instead of inflating every frame by two `R`s. New `benches/frame_cost.rs` guards exactly this.
+- Public API unchanged: `eval_compiled*`, `eval_compiled_simd`, `eval_compiled_batch_simd(_parallel)`, `eval_gradient_simd`, `eval_distance_and_gradient_simd`, `Vec3x8`, `Quatx8`, the SoA entry points and the BVH entry points keep their signatures. `compiled::real` is public so downstream code can write `Real`-generic SDF laws.
+
 ### Fixed
 
 - `Noise` evaluated Perlin gradient noise on the CPU / SIMD / bytecode paths but the shader transpilers emitted `hash_noise_3d` value noise. The transpilers now emit `perlin_noise_3d` — a verbatim port of `modifiers::perlin_noise_3d` (xor-multiply lattice hash of the `i32` cell coordinates and seed, 16-entry gradient LUT, quintic fade) — in GLSL / WGSL / HLSL, so every path renders the same Perlin field. `tests/test_gpu_noise_parity.rs` (feature `gpu`) measures |GPU − CPU| ≤ 7.2e-7 for `Noise` as well; `tests/noise_shader_validate.rs` (feature `glsl`) parses the generated WGSL and GLSL with naga. Shader-rendered `Noise` patterns change from value noise to the intended Perlin.

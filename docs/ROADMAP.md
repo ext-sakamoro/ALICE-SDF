@@ -70,7 +70,8 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 | SIMD parity | ✅ | `Plane` sign, `Ellipsoid` centre, `RepeatFinite` clamp, `Heightmap` sign, `SurfaceRoughness` / `Segment2D` / `Polygon2D` / `ExpSmooth*` per-lane shared law, `wide` sin / cos / atan2 instead of Bhaskara / minimax |
 | 4-path parity corpus | ✅ | `tests/test_evaluator_opcode_parity.rs` — every compilable `SdfNode` × {tree, scalar, SIMD, BVH} + emitted-opcode coverage guard (124 / 124) |
 | `BvhCompiler` → `compiler.rs` unification | ✅ 1.9.2 | `CompiledSdfBvh::try_compile` = `CompiledSdf::try_compile` + `refit` AABB pass (exhaustive over `OpKind`); BVH accepts every opcode, carries `aux_data` |
-| SIMD `T: SdfScalar` generic | ⏳ | Fold `eval_simd.rs` into `eval_scalar_core` via a scalar-type trait; blocked until P14-C / CSG bytecode unification settle the SIMD surface (1.10 系) |
+| SIMD generic (1.10 P1) | ✅ | `compiled::real::Real` (f32 / f32x8) + generic `eval_core::eval_bytecode<R>`: transforms / modifiers / post-processing are one body; leaf primitives + CSG binaries stay per-instantiation behind `PrimTable` |
+| Primitive laws generic (1.10 P2) | ⏳ | Fold `prim_table_scalar.rs` / `prim_table_simd.rs` into `sdf_x<R: Real>` laws group by group (basic 13 → binary 24 → extended 30); data-dependent loops stay per-lane via `Real::map` |
 | 6-path parity + AABB oracle | ✅ 1.9.2 | Corpus compares tree / scalar / SIMD / BVH / Cranelift JIT / JIT SIMD; `primitive_and_scene_aabbs_are_conservative` grid-samples every node (caught the unbounded `sdf_regular_polygon`) |
 | JIT SIMD loud failure | ✅ 1.9.2 | `JitSimdSdf::compile` returns `Err` for opcodes without codegen (was silent `f32::MAX`); legacy `jit_simd::JitSimd` deprecated → thin wrapper |
 | `Plane` sign in transpilers / JIT | ✅ 1.9.2 | Unified on the CPU law `dot(p, n) - d` (shader output change, CHANGELOG Fixed) |

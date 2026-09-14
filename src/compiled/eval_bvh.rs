@@ -144,14 +144,14 @@ fn refit_to_compile_error(e: RefitError) -> CompileError {
 ///
 /// The BVH bytecode uses the same instruction set as [`super::compiler::CompiledSdf`]
 /// and is executed by the shared exhaustive stack machine in
-/// `eval_scalar_core`. The per-instruction AABBs (`sdf.aabbs`) are
+/// `eval_core`. The per-instruction AABBs (`sdf.aabbs`) are
 /// retained for raymarching / refit consumers; this point evaluator does not
 /// prune with them (pruning by AABB is unsafe for a single-point SDF query
 /// because the distance to a culled subtree still contributes to the result).
 ///
 #[inline]
 pub fn eval_compiled_bvh(sdf: &CompiledSdfBvh, point: Vec3) -> f32 {
-    super::eval_scalar_core::eval_bytecode(&sdf.instructions, &sdf.aux_data, point)
+    super::eval_core::eval_bytecode::<f32>(&sdf.instructions, &sdf.aux_data, point.into())
 }
 
 /// Get the AABB for the entire compiled SDF

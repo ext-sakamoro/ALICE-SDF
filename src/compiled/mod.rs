@@ -159,13 +159,17 @@ mod aabb;
 mod compiler;
 mod eval;
 mod eval_bvh;
-mod eval_scalar_core;
+mod eval_core;
 mod eval_simd;
 mod eval_soa;
 /// Instanced SDF rendering (1 shape × N transforms)
 pub mod instanced;
 mod instruction;
 mod opcode;
+mod prim_table;
+mod prim_table_scalar;
+mod prim_table_simd;
+pub mod real;
 /// Bytecode-driven BVH AABB refit (case B P1 / P2).
 pub mod refit;
 mod simd;

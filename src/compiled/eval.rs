@@ -1,12 +1,12 @@
 //! Stack-based SDF evaluation for compiled bytecode
 //!
 //! Thin entry points over the unified stack machine in
-//! [`super::eval_scalar_core`]. Batch / normal helpers live here.
+//! [`super::eval_core`] (instantiated with `R = f32`). Batch / normal helpers live here.
 //!
 //! Author: Moroya Sakamoto
 
 use super::compiler::CompiledSdf;
-use super::eval_scalar_core::eval_bytecode;
+use super::eval_core::eval_bytecode;
 use glam::Vec3;
 
 /// Evaluate a compiled SDF at a point
@@ -15,7 +15,7 @@ use glam::Vec3;
 /// It uses a stack-based approach instead of recursion.
 #[inline]
 pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
-    eval_bytecode(&sdf.instructions, &sdf.aux_data, point)
+    eval_bytecode::<f32>(&sdf.instructions, &sdf.aux_data, point.into())
 }
 
 /// Evaluate compiled SDF and compute normal using finite differences
