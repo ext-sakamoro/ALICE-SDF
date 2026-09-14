@@ -4,6 +4,11 @@
   <img src="asset/logo-on-light.jpeg" alt="ALICE-SDF ロゴ" width="720">
 </p>
 
+[![crates.io](https://img.shields.io/crates/v/alice-sdf.svg)](https://crates.io/crates/alice-sdf)
+[![docs.rs](https://img.shields.io/docsrs/alice-sdf)](https://docs.rs/alice-sdf)
+[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/alice-sdf.svg)](#license)
+[![CI](https://github.com/ext-sakamoro/ALICE-SDF/actions/workflows/ci.yml/badge.svg)](https://github.com/ext-sakamoro/ALICE-SDF/actions/workflows/ci.yml)
+
 [English](README.md) | **日本語**
 
 **A.L.I.C.E. - Adaptive Lightweight Implicit Compression Engine**
