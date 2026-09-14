@@ -133,8 +133,11 @@ jobs:
 
       # --lib のみ (test の doctest / integration test は clippy / test job で担保)
       # --summary-only で行 coverage % + region coverage % を PR log に表示
+      # set -o pipefail: `| tee` / `| tail` が cargo の exit code を mask して
+      # build error を green 偽装する (canonical 罠 #22)
       - name: Run coverage
         run: |
+          set -o pipefail
           cargo llvm-cov --lib --summary-only --workspace \
             --no-default-features 2>&1 | tee coverage-summary.txt
           echo ""
