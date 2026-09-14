@@ -39,9 +39,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      # rust-toolchain.toml pins the toolchain; installing `stable` here left the
+      # pinned toolchain without the cross target (macOS-Intel: "can't find crate
+      # for core", every Release since v1.7.3). Let rustup honour the pin, then
+      # add the matrix target to that toolchain.
+      - name: Install pinned toolchain + target
+        shell: bash
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
 
       - name: Create dependency stubs
         shell: bash
