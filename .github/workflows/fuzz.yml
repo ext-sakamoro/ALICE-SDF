@@ -47,8 +47,6 @@ jobs:
   fuzz:
     name: Fuzz — ${{ matrix.target }}
     runs-on: ubuntu-latest
-    # fuzz 検知失敗は informational (long-run infra への lead time が必要)
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +71,13 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 
+      # build は blocking: compile error を continue-on-error で隠さない
+      # (canonical 罠 #22、2026-09-14 ALICE-Bamboo 12 日間 silent fail 事案)
+      - name: Build fuzz target
+        run: |
+          cd fuzz
+          cargo +nightly fuzz build "${{ matrix.target }}"
+
       # duration: workflow_dispatch input or default 60s
       - name: Set fuzz duration
         id: dur
@@ -83,7 +88,10 @@ jobs:
           fi
           echo "seconds=$DURATION" >> "$GITHUB_OUTPUT"
 
+      # run は informational: crash 発見は block せず artifact で triage
       - name: Run fuzz target (time-boxed)
+        id: run
+        continue-on-error: true
         run: |
           cd fuzz
           # sanitizer=address (default)、-max_total_time でタイムボックス
@@ -92,10 +100,14 @@ jobs:
 
       # crash 検出時のみ artifact upload (通常 pass では skip)
       - name: Upload crash artifacts (if any)
-        if: failure()
+        if: steps.run.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Report crash (informational)
+        if: steps.run.outcome == 'failure'
+        run: echo "::warning::fuzz target ${{ matrix.target }} found a crash — see fuzz-crash-${{ matrix.target }} artifact"
