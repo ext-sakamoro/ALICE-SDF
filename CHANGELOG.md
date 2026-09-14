@@ -6,6 +6,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed
+
+- `examples/gpu_eval.rs` did not build with `--features gpu` (`WgslShader::transpile` gained a `mode` argument). CI now builds the feature-gated examples (`cargo build --examples --features "glsl,hlsl,gpu"`) so example API drift fails fast.
+
 ## [v1.9.2] - 2026-09-14
 
 **One law per opcode, every path** — closes the follow-ups left open by 1.9.1: the shader / JIT backends now share the CPU sign convention, the BVH is an annotation pass over the main compiler instead of a third hand-copied compiler, the JIT SIMD compilers fail loudly instead of emitting `f32::MAX`, and the parity corpus covers six evaluation paths plus an AABB-conservativeness oracle. First crates.io release since 1.9.0 (1.9.1 was never published; its notes below are included).
@@ -31,10 +35,6 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 - `compiled::jit_simd::JitSimd` is **deprecated** and is now a thin wrapper over `compiled::jit::JitSimdSdf` (it was a 2,500-line divergent copy). `compile` / `eval` / `eval_soa` keep their signatures.
 - `refit::RefitError::UnsupportedOpcode` is no longer produced (every opcode has an AABB law); the variant is kept for API compatibility.
-
-### Known limitations
-
-- `examples/gpu_eval.rs` does not build with `--features gpu` (`WgslShader::transpile` gained a `mode` argument earlier); not exercised by CI, unchanged in this release.
 
 ## [v1.9.1] - 2026-09-14
 

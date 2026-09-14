@@ -20,7 +20,7 @@ use alice_sdf::prelude::*;
 use std::time::Instant;
 
 #[cfg(feature = "gpu")]
-use alice_sdf::compiled::{GpuEvaluator, WgslShader};
+use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
 
 fn main() {
     #[cfg(not(feature = "gpu"))]
@@ -50,7 +50,7 @@ fn run_gpu_example() {
 
     // === Method 1: View Generated WGSL ===
     println!("--- Generated WGSL Shader ---");
-    let shader = WgslShader::transpile(&shape);
+    let shader = WgslShader::transpile(&shape, TranspileMode::Hardcoded);
     println!("WGSL source length: {} bytes", shader.source.len());
     println!(
         "First 500 chars:\n{}\n...\n",

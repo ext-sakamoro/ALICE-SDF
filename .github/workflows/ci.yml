@@ -348,6 +348,13 @@ jobs:
         env:
           RUSTFLAGS: "-Dwarnings"
 
+      # examples/gpu_eval.rs は required-features = ["gpu"] なので default CI では
+      # compile されない (1.9.2 まで API drift で壊れたまま気付かなかった)
+      - name: Build feature-gated examples (gpu / glsl / hlsl)
+        run: cargo build --examples --features "glsl,hlsl,gpu"
+        env:
+          RUSTFLAGS: "-Dwarnings"
+
   clippy-strict:
     name: Clippy strict (mobile wrapper, includes alice-sdf path dep)
     needs: changes
