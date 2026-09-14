@@ -3,6 +3,16 @@
 //! Stepped/terraced blends using Mercury's hg_sdf stairs formula.
 //! Creates n-1 discrete steps in the blend region between two SDFs.
 //!
+//! # Canonical form (decided 2026-09-14)
+//!
+//! This is the full Mercury construction (45° rotation, offset, `mod`
+//! repetition, second rotation). The single-expression variant found in some
+//! hg_sdf ports — `min(a, b, 0.5·(u + a + |mod(u − a + s, 2s) − s|))` with
+//! `u = b − r`, `s = r / n` — is a *different* blend (max difference ≈ 2·r on
+//! random inputs) and is what ALICE-SDF-Effect's `hg_sdf` module keeps for
+//! shader-library parity. ALICE-SDF keeps the full construction; do not swap
+//! one for the other without re-baking every `Stairs*` asset.
+//!
 //! # Deep Fried Optimizations
 //! - **Forced Inlining**: `#[inline(always)]` guarantees no call overhead.
 //! - **Precomputed constants**: SQRT_2 and FRAC_1_SQRT_2 are compile-time.

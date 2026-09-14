@@ -1,7 +1,17 @@
 //! Chamfer CSG operations for SDFs (Deep Fried Edition)
 //!
-//! 45-degree beveled blends using IQ's chamfer formula:
-//! `max(max(a,b), (a+b)*FRAC_1_SQRT_2 + r)`
+//! 45-degree beveled blends. Union: `min(a, b, (a + b)·√½ − r)`, intersection
+//! and subtraction are the duals (`max(a, b, (a + b)·√½ + r)` etc.).
+//!
+//! # Canonical form (decided 2026-09-14)
+//!
+//! This is **not** the hg_sdf `fOpUnionChamfer` formula, which is
+//! `min(a, b, (a − r + b)·√½)`; the two differ by `r·(1 − √½) ≈ 0.29·r`
+//! (ALICE-SDF cuts the full `r`, hg_sdf only `r·√½`). Both are valid chamfers.
+//! ALICE-SDF keeps its form because every evaluation path (tree / bytecode /
+//! SIMD / JIT / GLSL / WGSL / HLSL) and the published crates.io API already
+//! agree on it; ALICE-SDF-Effect's `hg_sdf` module deliberately keeps the
+//! hg_sdf form for shader-library parity. Do not "fix" one to match the other.
 //!
 //! # Deep Fried Optimizations
 //! - **Branchless**: No conditionals in hot path.
@@ -15,7 +25,8 @@ use std::f32::consts::FRAC_1_SQRT_2;
 /// Chamfer minimum: 45-degree beveled blend (Deep Fried)
 ///
 /// Creates a flat 45-degree chamfer at the junction of two SDFs.
-/// Formula: `max(max(a,b), (a + b) * FRAC_1_SQRT_2 + r)`
+/// Formula: `min(min(a, b), (a + b) * FRAC_1_SQRT_2 - r)` (see the module
+/// docs for how this relates to hg_sdf's `fOpUnionChamfer`).
 #[inline(always)]
 pub fn chamfer_min(a: f32, b: f32, r: f32) -> f32 {
     a.min(b).min((a + b).mul_add(FRAC_1_SQRT_2, -r))
