@@ -46,7 +46,8 @@ impl SdfNode {
     /// // LOL `box3d(20, 10, 1.5)` (40 × 20 × 3 mm) ported to Rust:
     /// let a = SdfNode::box3d_half_extents(20.0, 10.0, 1.5);
     /// let b = SdfNode::box3d(40.0, 20.0, 3.0);
-    /// assert_eq!(a, b);
+    /// let p = glam::Vec3::new(19.0, 9.0, 1.0);
+    /// assert_eq!(alice_sdf::eval::eval(&a, p), alice_sdf::eval::eval(&b, p));
     /// ```
     #[must_use]
     #[inline]

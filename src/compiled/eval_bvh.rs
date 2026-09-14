@@ -1082,7 +1082,7 @@ impl BvhCompiler {
 ///
 /// The BVH bytecode uses the same instruction set as [`super::compiler::CompiledSdf`]
 /// and is executed by the shared exhaustive stack machine in
-/// [`super::eval_scalar_core`]. The per-instruction AABBs (`sdf.aabbs`) are
+/// `eval_scalar_core`. The per-instruction AABBs (`sdf.aabbs`) are
 /// retained for raymarching / refit consumers; this point evaluator does not
 /// prune with them (pruning by AABB is unsafe for a single-point SDF query
 /// because the distance to a culled subtree still contributes to the result).

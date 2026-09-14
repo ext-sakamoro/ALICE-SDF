@@ -26,6 +26,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ### Added
 
 - `MeshRepair::remove_duplicate_triangles` — drops winding-insensitive duplicate faces and index-collapsed triangles (keeps the first occurrence).
+- `SdfNode::box3d_half_extents(hx, hy, hz)` — half-extent spelling of the plain box, matching `rounded_box` and the LOL DSL `box3d`. `box3d` (full dimensions) and `rounded_box` (half-extents) docs now state the asymmetry explicitly; neither signature changes.
 - `primitives::{sdf_circle_2d, sdf_rect_2d, sdf_rounded_rect_2d, sdf_segment_2d, sdf_annular_2d, sdf_polygon_2d, sdf_polygon_2d_xy, sdf_polygon_2d_flat, extrude_2d}` — single-source 2D-extruded primitive laws used by tree / scalar / BVH / SIMD.
 - `operations::{sdf_exp_smooth_union, sdf_exp_smooth_intersection, sdf_exp_smooth_subtraction}` — blend-width (`d/k`) exponential smooth laws (distinct from the rate-based `smooth_min_exp`).
 - `modifiers::modifier_shear` — inverse shear law shared by all evaluators.
