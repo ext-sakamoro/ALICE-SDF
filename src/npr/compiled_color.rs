@@ -212,7 +212,106 @@ pub struct CompiledColorPipeline {
     pub ops: Vec<ColorOp>,
 }
 
+impl ColorOp {
+    /// `(pops, pushes)` of this instruction on the colour stack — the single
+    /// table both evaluators and [`CompiledColorPipeline::validate`] follow.
+    #[must_use]
+    pub const fn stack_effect(&self) -> (usize, usize) {
+        match self {
+            Self::PushConstant(_)
+            | Self::Palette3 { .. }
+            | Self::Palette5 { .. }
+            | Self::Fallback(_) => (0, 1),
+            Self::Toon { .. }
+            | Self::SoftToon { .. }
+            | Self::TwoTone { .. }
+            | Self::Multiply
+            | Self::Add => (2, 1),
+            Self::Scale { .. }
+            | Self::OutlineOver { .. }
+            | Self::Fresnel { .. }
+            | Self::Saturate { .. }
+            | Self::Bloom { .. }
+            | Self::PosterizeColor { .. }
+            | Self::Vignette { .. }
+            | Self::Hatch { .. }
+            | Self::Tonemap { .. }
+            | Self::SpeedLine { .. } => (1, 1),
+        }
+    }
+}
+
+/// Why a [`CompiledColorPipeline`] cannot be evaluated: its stack program is
+/// unbalanced (an instruction pops more than is on the stack, or the program
+/// does not leave exactly one result).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StackError {
+    /// Instruction `index` pops `needs` values with only `depth` on the stack
+    Underflow {
+        /// Index of the offending instruction in `ops`
+        index: usize,
+        /// Values the instruction pops
+        needs: usize,
+        /// Stack depth before it
+        depth: usize,
+    },
+    /// The program ends with `depth` values on the stack instead of 1
+    Unbalanced {
+        /// Final stack depth
+        depth: usize,
+    },
+}
+
+impl core::fmt::Display for StackError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Underflow {
+                index,
+                needs,
+                depth,
+            } => write!(
+                f,
+                "instruction {index} pops {needs} values but the stack holds {depth}"
+            ),
+            Self::Unbalanced { depth } => {
+                write!(f, "program leaves {depth} values on the stack, expected 1")
+            }
+        }
+    }
+}
+
+impl std::error::Error for StackError {}
+
 impl CompiledColorPipeline {
+    /// Check that the program is a balanced stack program (every instruction
+    /// finds its operands, exactly one result remains). [`Self::compile`]
+    /// always produces a balanced program; run this on anything else —
+    /// [`GpuColorProgram::deserialize`] does — before [`Self::eval`], which
+    /// panics on an unbalanced program.
+    ///
+    /// # Errors
+    ///
+    /// The first underflow, or the final depth when it is not 1.
+    pub fn validate(&self) -> Result<(), StackError> {
+        let mut depth = 0usize;
+        for (index, op) in self.ops.iter().enumerate() {
+            let (pops, pushes) = op.stack_effect();
+            if depth < pops {
+                return Err(StackError::Underflow {
+                    index,
+                    needs: pops,
+                    depth,
+                });
+            }
+            depth = depth - pops + pushes;
+        }
+        if depth == 1 {
+            Ok(())
+        } else {
+            Err(StackError::Unbalanced { depth })
+        }
+    }
+
     /// Compile an [`NprColorNode`] tree into a bytecode pipeline
     #[must_use]
     pub fn compile(node: &NprColorNode) -> Self {
@@ -228,6 +327,11 @@ impl CompiledColorPipeline {
     /// opcode's stack pop underflows). A well-formed pipeline produced
     /// by [`Self::compile`] never panics.
     #[must_use]
+    ///
+    /// # Panics
+    ///
+    /// On an unbalanced program (see [`Self::validate`]); programs from
+    /// [`Self::compile`] and [`GpuColorProgram::deserialize`] are balanced.
     pub fn eval(&self, ctx: &NprColorContext) -> Vec3 {
         let mut stack: Vec<Vec3> = Vec::with_capacity(self.ops.len());
         for op in &self.ops {
@@ -1305,6 +1409,9 @@ pub enum DeserializeError {
         /// The unknown tag that was read
         tag: u32,
     },
+    /// Every instruction decoded but the program is not a balanced stack
+    /// program (it would panic in `eval`)
+    Stack(StackError),
 }
 
 impl core::fmt::Display for DeserializeError {
@@ -1326,6 +1433,7 @@ impl core::fmt::Display for DeserializeError {
                 f,
                 "unknown PaletteSource tag {tag} at word offset {word_offset}"
             ),
+            Self::Stack(e) => write!(f, "unbalanced colour program: {e}"),
         }
     }
 }
@@ -1376,7 +1484,9 @@ impl GpuColorProgram {
             pc += consumed;
             ops.push(op);
         }
-        Ok(CompiledColorPipeline { ops })
+        let pipeline = CompiledColorPipeline { ops };
+        pipeline.validate().map_err(DeserializeError::Stack)?;
+        Ok(pipeline)
     }
 }
 
@@ -3032,5 +3142,51 @@ mod tests {
         ] {
             assert!(src.contains(name), "WGSL missing {name}");
         }
+    }
+}
+
+#[cfg(test)]
+mod stack_validation_tests {
+    use super::*;
+
+    #[test]
+    fn compiled_programs_are_balanced() {
+        let node = NprColorNode::Toon {
+            light: Vec3::ONE,
+            shadow: Vec3::ZERO,
+            bands: 3,
+        };
+        assert_eq!(CompiledColorPipeline::compile(&node).validate(), Ok(()));
+    }
+
+    #[test]
+    fn unbalanced_programs_are_rejected_not_panicked() {
+        // Multiply with nothing on the stack
+        let p = CompiledColorPipeline {
+            ops: vec![ColorOp::Multiply],
+        };
+        assert_eq!(
+            p.validate(),
+            Err(StackError::Underflow {
+                index: 0,
+                needs: 2,
+                depth: 0
+            })
+        );
+        // two results left
+        let p = CompiledColorPipeline {
+            ops: vec![
+                ColorOp::PushConstant(Vec3::ONE),
+                ColorOp::PushConstant(Vec3::ZERO),
+            ],
+        };
+        assert_eq!(p.validate(), Err(StackError::Unbalanced { depth: 2 }));
+        // and the serialized form of an unbalanced program fails to deserialize
+        let words = p.serialize().expect("serialize").words;
+        let err = GpuColorProgram { words }.deserialize().unwrap_err();
+        assert!(matches!(
+            err,
+            DeserializeError::Stack(StackError::Unbalanced { depth: 2 })
+        ));
     }
 }

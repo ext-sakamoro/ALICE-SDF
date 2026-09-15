@@ -61,7 +61,7 @@ where
 
         // Sort vertices by cost
         let mut indices: Vec<usize> = (0..np1).collect();
-        indices.sort_by(|&a, &b| costs[a].partial_cmp(&costs[b]).unwrap());
+        indices.sort_by(|&a, &b| costs[a].total_cmp(&costs[b]));
 
         let best_idx = indices[0];
         let worst_idx = indices[np1 - 1];

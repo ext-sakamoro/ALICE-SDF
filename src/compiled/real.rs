@@ -14,6 +14,13 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use wide::{f32x8, CmpGe, CmpGt, CmpLe, CmpLt};
 
 /// Scalar (or SIMD lane bundle) with the operations the evaluator needs.
+///
+/// **Implemented for `f32` and `f32x8` only; not intended for external
+/// implementations.** The trait exists so every law is written once and
+/// instantiated for the scalar and 8-lane evaluators; required methods are
+/// added whenever a law needs one (`signum` in 1.10.1), which would break a
+/// downstream `impl Real`. It will gain a private `Sealed` supertrait in
+/// 2.0 — until then, treat it as sealed.
 pub trait Real:
     Copy
     + Send

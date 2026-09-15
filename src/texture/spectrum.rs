@@ -114,7 +114,7 @@ pub fn analyze_frequencies(
         }
     }
 
-    bands.sort_by(|a, b| b.energy.partial_cmp(&a.energy).unwrap());
+    bands.sort_by(|a, b| b.energy.total_cmp(&a.energy));
     bands.truncate(max_bands);
     bands
 }

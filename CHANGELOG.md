@@ -6,6 +6,23 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — panics reachable from untrusted input
+
+- `GpuColorProgram::deserialize` accepted an unbalanced stack program
+  (every opcode decoded, operands missing), which then panicked in
+  `CompiledColorPipeline::eval`. `ColorOp::stack_effect` is the single
+  `(pops, pushes)` table, `CompiledColorPipeline::validate` simulates the
+  stack, and `deserialize` returns `DeserializeError::Stack` for an
+  unbalanced program; `eval` documents that it panics on one (programs from
+  `compile` / `deserialize` never are). The remaining `unwrap` / `expect`
+  sites in production paths were audited: infallible `write!` to `String`,
+  slices with a checked length, documented-panic APIs with `try_` twins.
+- Texture optimiser / spectrum sorts use `total_cmp` (a NaN cost no longer
+  panics the sort).
+- `Real` is documented as implemented for `f32` / `f32x8` only (required
+  methods are added as laws need them; a private `Sealed` supertrait comes
+  with 2.0).
+
 ### Changed — clippy policy: pedantic + nursery for the whole crate
 
 - `Cargo.toml [lints.clippy]` now sets `pedantic` and `nursery` to warn
