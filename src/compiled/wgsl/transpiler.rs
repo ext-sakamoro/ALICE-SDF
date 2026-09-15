@@ -78,7 +78,10 @@ impl ShaderLang for WgslLang {
         format!("select({}, {}, {})", false_val, true_val, cond)
     }
     fn modulo_expr(a: &str, b: &str) -> String {
-        format!("({} % {})", a, b)
+        // Floor modulo like the CPU law (`p_mod1_r`) and GLSL `mod()`; WGSL
+        // `%` is truncated (sign of the dividend) and drifted by a whole
+        // column period for negative operands.
+        format!("(({a}) - ({b}) * floor(({a}) / ({b})))")
     }
     fn cast_float(expr: &str) -> String {
         format!("f32({})", expr)
@@ -148,6 +151,11 @@ impl ShaderLang for WgslLang {
             "sdf_star_polygon" => Some(HELPER_SDF_STAR_POLYGON),
             "sdf_stairs" => Some(HELPER_SDF_STAIRS),
             "sdf_helix" => Some(HELPER_SDF_HELIX),
+            "sdf_tetrahedron" => Some(HELPER_SDF_TETRAHEDRON),
+            "sdf_dodecahedron" => Some(HELPER_SDF_DODECAHEDRON),
+            "sdf_icosahedron" => Some(HELPER_SDF_ICOSAHEDRON),
+            "sdf_truncated_octahedron" => Some(HELPER_SDF_TRUNCATED_OCTAHEDRON),
+            "sdf_truncated_icosahedron" => Some(HELPER_SDF_TRUNCATED_ICOSAHEDRON),
             _ => None,
         }
     }
@@ -601,195 +609,17 @@ impl WgslTranspiler {
     fn generate_shader(&self, body: &str) -> String {
         let mut shader = String::new();
 
-        // Add helper functions
+        // Helper sources come from `ShaderLang::helper_source` — the single
+        // table per language. A helper the walker referenced but the table
+        // does not know is a transpiler bug that would surface as a shader
+        // compile error at runtime: fail here instead (until 1.10.3 the
+        // five GDF polyhedra were skipped silently by a duplicated table).
         for helper in &self.helper_functions {
-            match *helper {
-                "smooth_min" => {
-                    shader.push_str(HELPER_SMOOTH_MIN);
-                    shader.push('\n');
-                }
-                "smooth_max" => {
-                    shader.push_str(HELPER_SMOOTH_MAX);
-                    shader.push('\n');
-                }
-                "quat_rotate" => {
-                    shader.push_str(HELPER_QUAT_ROTATE);
-                    shader.push('\n');
-                }
-                "hash_noise" => {
-                    shader.push_str(HELPER_HASH_NOISE);
-                    shader.push('\n');
-                }
-                "perlin_noise" => {
-                    shader.push_str(HELPER_PERLIN_NOISE);
-                    shader.push('\n');
-                }
-                "sdf_rounded_cone" => {
-                    shader.push_str(HELPER_SDF_ROUNDED_CONE);
-                    shader.push('\n');
-                }
-                "sdf_pyramid" => {
-                    shader.push_str(HELPER_SDF_PYRAMID);
-                    shader.push('\n');
-                }
-                "sdf_octahedron" => {
-                    shader.push_str(HELPER_SDF_OCTAHEDRON);
-                    shader.push('\n');
-                }
-                "sdf_hex_prism" => {
-                    shader.push_str(HELPER_SDF_HEX_PRISM);
-                    shader.push('\n');
-                }
-                "sdf_link" => {
-                    shader.push_str(HELPER_SDF_LINK);
-                    shader.push('\n');
-                }
-                "sdf_triangle" => {
-                    shader.push_str(HELPER_SDF_TRIANGLE);
-                    shader.push('\n');
-                }
-                "sdf_bezier" => {
-                    shader.push_str(HELPER_SDF_BEZIER);
-                    shader.push('\n');
-                }
-                "sdf_capped_cone" => {
-                    shader.push_str(HELPER_SDF_CAPPED_CONE);
-                    shader.push('\n');
-                }
-                "sdf_capped_torus" => {
-                    shader.push_str(HELPER_SDF_CAPPED_TORUS);
-                    shader.push('\n');
-                }
-                "sdf_rounded_cylinder" => {
-                    shader.push_str(HELPER_SDF_ROUNDED_CYLINDER);
-                    shader.push('\n');
-                }
-                "sdf_triangular_prism" => {
-                    shader.push_str(HELPER_SDF_TRIANGULAR_PRISM);
-                    shader.push('\n');
-                }
-                "sdf_cut_sphere" => {
-                    shader.push_str(HELPER_SDF_CUT_SPHERE);
-                    shader.push('\n');
-                }
-                "sdf_cut_hollow_sphere" => {
-                    shader.push_str(HELPER_SDF_CUT_HOLLOW_SPHERE);
-                    shader.push('\n');
-                }
-                "sdf_death_star" => {
-                    shader.push_str(HELPER_SDF_DEATH_STAR);
-                    shader.push('\n');
-                }
-                "sdf_solid_angle" => {
-                    shader.push_str(HELPER_SDF_SOLID_ANGLE);
-                    shader.push('\n');
-                }
-                "sdf_rhombus" => {
-                    shader.push_str(HELPER_SDF_RHOMBUS);
-                    shader.push('\n');
-                }
-                "sdf_horseshoe" => {
-                    shader.push_str(HELPER_SDF_HORSESHOE);
-                    shader.push('\n');
-                }
-                "sdf_vesica" => {
-                    shader.push_str(HELPER_SDF_VESICA);
-                    shader.push('\n');
-                }
-                "sdf_infinite_cone" => {
-                    shader.push_str(HELPER_SDF_INFINITE_CONE);
-                    shader.push('\n');
-                }
-                "sdf_heart" => {
-                    shader.push_str(HELPER_SDF_HEART);
-                    shader.push('\n');
-                }
-                "sdf_tube" => {
-                    shader.push_str(HELPER_SDF_TUBE);
-                    shader.push('\n');
-                }
-                "sdf_barrel" => {
-                    shader.push_str(HELPER_SDF_BARREL);
-                    shader.push('\n');
-                }
-                "sdf_diamond" => {
-                    shader.push_str(HELPER_SDF_DIAMOND);
-                    shader.push('\n');
-                }
-                "sdf_chamfered_cube" => {
-                    shader.push_str(HELPER_SDF_CHAMFERED_CUBE);
-                    shader.push('\n');
-                }
-                "sdf_superellipsoid" => {
-                    shader.push_str(HELPER_SDF_SUPERELLIPSOID);
-                    shader.push('\n');
-                }
-                "sdf_rounded_x" => {
-                    shader.push_str(HELPER_SDF_ROUNDED_X);
-                    shader.push('\n');
-                }
-                "sdf_pie" => {
-                    shader.push_str(HELPER_SDF_PIE);
-                    shader.push('\n');
-                }
-                "sdf_trapezoid" => {
-                    shader.push_str(HELPER_SDF_TRAPEZOID);
-                    shader.push('\n');
-                }
-                "sdf_parallelogram" => {
-                    shader.push_str(HELPER_SDF_PARALLELOGRAM);
-                    shader.push('\n');
-                }
-                "sdf_tunnel" => {
-                    shader.push_str(HELPER_SDF_TUNNEL);
-                    shader.push('\n');
-                }
-                "sdf_uneven_capsule" => {
-                    shader.push_str(HELPER_SDF_UNEVEN_CAPSULE);
-                    shader.push('\n');
-                }
-                "sdf_egg" => {
-                    shader.push_str(HELPER_SDF_EGG);
-                    shader.push('\n');
-                }
-                "sdf_arc_shape" => {
-                    shader.push_str(HELPER_SDF_ARC_SHAPE);
-                    shader.push('\n');
-                }
-                "sdf_moon" => {
-                    shader.push_str(HELPER_SDF_MOON);
-                    shader.push('\n');
-                }
-                "sdf_cross_shape" => {
-                    shader.push_str(HELPER_SDF_CROSS_SHAPE);
-                    shader.push('\n');
-                }
-                "sdf_blobby_cross" => {
-                    shader.push_str(HELPER_SDF_BLOBBY_CROSS);
-                    shader.push('\n');
-                }
-                "sdf_parabola_segment" => {
-                    shader.push_str(HELPER_SDF_PARABOLA_SEGMENT);
-                    shader.push('\n');
-                }
-                "sdf_regular_polygon" => {
-                    shader.push_str(HELPER_SDF_REGULAR_POLYGON);
-                    shader.push('\n');
-                }
-                "sdf_star_polygon" => {
-                    shader.push_str(HELPER_SDF_STAR_POLYGON);
-                    shader.push('\n');
-                }
-                "sdf_stairs" => {
-                    shader.push_str(HELPER_SDF_STAIRS);
-                    shader.push('\n');
-                }
-                "sdf_helix" => {
-                    shader.push_str(HELPER_SDF_HELIX);
-                    shader.push('\n');
-                }
-                _ => {}
-            }
+            let src = <WgslLang as ShaderLang>::helper_source(helper).unwrap_or_else(|| {
+                panic!("wgsl transpiler: no helper source registered for `{helper}`")
+            });
+            shader.push_str(src);
+            shader.push('\n');
         }
 
         // Add main SDF function
@@ -1548,6 +1378,79 @@ fn sdf_stairs(p: vec3<f32>, sw: f32, sh: f32, ns: f32, hd: f32) -> f32 {
     let dz = abs(p.z) - hd;
     let w = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(w);
+}
+";
+
+/// Regular tetrahedron: max of 4 face-plane distances (mirrors `primitives::tetrahedron`).
+const HELPER_SDF_TETRAHEDRON: &str = r"fn sdf_tetrahedron(p: vec3<f32>, s: f32) -> f32 {
+    var d = dot(p, vec3<f32>(0.57735026, 0.57735026, 0.57735026));
+    d = max(d, dot(p, vec3<f32>(-0.57735026, -0.57735026, 0.57735026)));
+    d = max(d, dot(p, vec3<f32>(-0.57735026, 0.57735026, -0.57735026)));
+    d = max(d, dot(p, vec3<f32>(0.57735026, -0.57735026, -0.57735026)));
+    return d - s;
+}
+";
+
+/// Dodecahedron: GDF over the 6 dodecahedron normals (mirrors `gdf_eval`).
+const HELPER_SDF_DODECAHEDRON: &str = r"fn sdf_dodecahedron(p: vec3<f32>, r: f32) -> f32 {
+    var d = abs(dot(p, vec3<f32>(0.0, 0.8506508, 0.5257311)));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.8506508, -0.5257311))));
+    d = max(d, abs(dot(p, vec3<f32>(0.8506508, 0.5257311, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(-0.8506508, 0.5257311, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.0, 0.8506508))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.0, -0.8506508))));
+    return d - r;
+}
+";
+
+/// Icosahedron: GDF over octahedron + icosahedron normals (mirrors `primitives::icosahedron`).
+const HELPER_SDF_ICOSAHEDRON: &str = r"fn sdf_icosahedron(p: vec3<f32>, r: f32) -> f32 {
+    var d = abs(dot(p, vec3<f32>(0.57735026, 0.57735026, 0.57735026)));
+    d = max(d, abs(dot(p, vec3<f32>(-0.57735026, 0.57735026, 0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.57735026, -0.57735026, 0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.57735026, 0.57735026, -0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.5257311, 0.8506508))));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.5257311, -0.8506508))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.8506508, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, -0.8506508, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.8506508, 0.0, 0.5257311))));
+    d = max(d, abs(dot(p, vec3<f32>(-0.8506508, 0.0, 0.5257311))));
+    return d - r;
+}
+";
+
+/// Truncated octahedron: GDF over cube + octahedron normals.
+const HELPER_SDF_TRUNCATED_OCTAHEDRON: &str = r"fn sdf_truncated_octahedron(p: vec3<f32>, r: f32) -> f32 {
+    var d = abs(dot(p, vec3<f32>(1.0, 0.0, 0.0)));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 1.0, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.0, 1.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.57735026, 0.57735026, 0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(-0.57735026, 0.57735026, 0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.57735026, -0.57735026, 0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.57735026, 0.57735026, -0.57735026))));
+    return d - r;
+}
+";
+
+/// Truncated icosahedron: GDF over octahedron + icosahedron + dodecahedron normals.
+const HELPER_SDF_TRUNCATED_ICOSAHEDRON: &str = r"fn sdf_truncated_icosahedron(p: vec3<f32>, r: f32) -> f32 {
+    var d = abs(dot(p, vec3<f32>(0.57735026, 0.57735026, 0.57735026)));
+    d = max(d, abs(dot(p, vec3<f32>(-0.57735026, 0.57735026, 0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.57735026, -0.57735026, 0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.57735026, 0.57735026, -0.57735026))));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.5257311, 0.8506508))));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.5257311, -0.8506508))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.8506508, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, -0.8506508, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.8506508, 0.0, 0.5257311))));
+    d = max(d, abs(dot(p, vec3<f32>(-0.8506508, 0.0, 0.5257311))));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.8506508, 0.5257311))));
+    d = max(d, abs(dot(p, vec3<f32>(0.0, 0.8506508, -0.5257311))));
+    d = max(d, abs(dot(p, vec3<f32>(0.8506508, 0.5257311, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(-0.8506508, 0.5257311, 0.0))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.0, 0.8506508))));
+    d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.0, -0.8506508))));
+    return d - r;
 }
 ";
 

@@ -55,8 +55,13 @@ pub trait ShaderLang: 'static {
     // ---- Expressions ----
     /// select(false_val, true_val, cond) or (cond) ? true_val : false_val
     fn select_expr(cond: &str, true_val: &str, false_val: &str) -> String;
-    /// a % b or fmod(a, b)
+    /// Floor modulo `a - b * floor(a / b)` (GLSL `mod`); never the truncated
+    /// `%` / `fmod`, which differ for negative operands.
     fn modulo_expr(a: &str, b: &str) -> String;
+    /// Two-argument arctangent `atan2(y, x)`: GLSL spells it `atan(y, x)`.
+    fn atan2_expr(y: &str, x: &str) -> String {
+        format!("atan2({y}, {x})")
+    }
     /// "f32(x)" / "float(x)"
     fn cast_float(expr: &str) -> String;
     /// Scalar select: `cond ? a : b`, used where the CPU law is a branch-free
@@ -1811,59 +1816,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_m", var),
-                    &format!("min({}, {})", d_a, d_b),
-                ));
-                writeln!(
-                    code,
-                    "    {}  = min({}, {});",
-                    L::decl_mut_float(&format!("{}_a2", var), &format!("min({}, {})", d_a, d_b))
-                        .trim_start(),
-                    d_a,
-                    d_b
-                )
-                .ok();
-                // Actually, the above is getting complex. Let me use a simpler writeln approach for these complex arms.
-                // We need: var _m, _a2, _b2, _cs, _ra, _rb, then modulo, then select/ternary.
-                // Let me rewrite using direct writeln.
-                // Clear the partial writes and redo:
-                let code_len = code.len(); // Save for rollback if needed
-                                           // Actually let's not complicate. Let me just emit directly with writeln.
-                                           // Remove the decl_mut_float we just added
-                code.truncate(
-                    code_len
-                        - L::decl_mut_float(
-                            &format!("{}_m", var),
-                            &format!("min({}, {})", d_a, d_b),
-                        )
-                        .len(),
-                );
-
-                // Emit ColumnsUnion with direct string formatting
-                writeln!(
-                    code,
-                    "{}",
-                    L::decl_mut_float(&format!("{}_m", var), &format!("min({}, {})", d_a, d_b))
-                        .trim_end()
-                )
-                .unwrap();
-                writeln!(
-                    code,
-                    "    {} {}_b2 = max({}, {});",
-                    L::decl_mut_float(&format!("{}_a2", var), &format!("min({}, {})", d_a, d_b))
-                        .trim_end(),
-                    var,
-                    d_a,
-                    d_b
-                )
-                .ok();
-                // This is getting too messy with the decl_ approach for complex multi-statement arms.
-                // Let me use a different strategy: for ColumnsUnion and similar complex arms,
-                // emit raw writeln! with language-specific tokens from the trait.
-                code.truncate(code_len);
-
-                // Start fresh for ColumnsUnion - use trait methods for just the syntax differences
                 let mod_expr = L::modulo_expr(
                     &format!("{v}_ra + {v}_cs * 0.5", v = var),
                     &format!("{v}_cs", v = var),
@@ -2640,7 +2592,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let pi2 = self.param(std::f32::consts::TAU);
                 code.push_str(&L::decl_float(
                     &angle_var,
-                    &format!("atan2({p}.z, {p}.x)", p = point_var),
+                    &L::atan2_expr(&format!("{point_var}.z"), &format!("{point_var}.x")),
                 ));
                 code.push_str(&L::decl_float(&sector_var, &format!("{} / {}", pi2, n)));
                 // `angle * (n / TAU)` with the same operands as the CPU law

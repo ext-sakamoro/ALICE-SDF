@@ -115,6 +115,31 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   rays that way even with the correct bound). With `min_step ≤ epsilon` plain
   tracing can no longer overshoot at all.
 
+### Fixed — external review 2026-09-15 (transpiler validation, found by the new naga oracle)
+
+- The five GDF polyhedra (`Tetrahedron`, `Dodecahedron`, `Icosahedron`,
+  `TruncatedOctahedron`, `TruncatedIcosahedron`) transpiled to a call of
+  `sdf_<name>(...)` that no transpiler defined — every WGSL / GLSL / HLSL
+  shader containing one failed to compile on the GPU. The helpers are now
+  emitted in all three languages, mirroring `primitives::gdf_vectors`
+  (GPU ↔ CPU ≤ 3.4e-7 on Metal).
+- `ColumnsUnion` emitted a truncated declaration (`var d3_a2 = mi    var
+  d3_m = …`) left behind by an abandoned string-building attempt; the arm
+  now emits the law once. Its modulo was WGSL `%` / HLSL `fmod` (truncated,
+  sign of the dividend) while the CPU law and GLSL `mod` are floor modulo —
+  a whole column period of drift for negative operands; `modulo_expr` is
+  floor modulo in every language.
+- GLSL `PolarRepeat` emitted `atan2(y, x)`, which GLSL does not have
+  (`atan(y, x)`); the walker now goes through `ShaderLang::atan2_expr`.
+- Each transpiler's `generate_shader` kept a second, hand-copied table of
+  helper sources that silently skipped unknown names (`_ => {}`) — that is
+  how the polyhedra went missing. The single `helper_source` table is now
+  the only source and an unregistered helper panics at transpile time.
+- Oracle: `tests/test_transpiler_naga_validate.rs` parses **and validates**
+  (`naga::valid::Validator`) the WGSL and GLSL of every corpus node
+  (features `gpu` / `gpu,glsl`); the corpus moved to `tests/common/corpus.rs`
+  so every integration test can share it.
+
 ### Fixed — external review 2026-09-15 (round 2: marching cubes output)
 
 - **Every marching-cubes triangle was wound inward** (CPU `marching_cubes` /

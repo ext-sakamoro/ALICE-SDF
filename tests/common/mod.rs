@@ -2,6 +2,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+pub mod corpus;
+
 use alice_sdf::prelude::*;
 
 // ============================================================================
@@ -9,6 +11,7 @@ use alice_sdf::prelude::*;
 // ============================================================================
 
 /// Unit sphere at origin
+#[allow(dead_code)]
 pub const fn test_sphere() -> SdfNode {
     SdfNode::sphere(1.0)
 }

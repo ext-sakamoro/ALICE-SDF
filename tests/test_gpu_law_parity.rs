@@ -152,3 +152,29 @@ fn exp_smooth_far_gpu_matches_cpu() {
         1e-4,
     );
 }
+
+/// The five GDF polyhedra had no shader helper at all until 1.10.3 (the
+/// walker emitted `sdf_tetrahedron(...)` but no transpiler defined it), and
+/// `ColumnsUnion` emitted a truncated declaration. Both were found by
+/// `tests/test_transpiler_naga_validate.rs`; this pins the ported laws.
+#[test]
+fn polyhedra_and_columns_gpu_match_cpu() {
+    assert_gpu_matches_cpu("tetrahedron", &SdfNode::tetrahedron(0.7), 1e-5);
+    assert_gpu_matches_cpu("dodecahedron", &SdfNode::dodecahedron(0.7), 1e-5);
+    assert_gpu_matches_cpu("icosahedron", &SdfNode::icosahedron(0.7), 1e-5);
+    assert_gpu_matches_cpu(
+        "truncated_octahedron",
+        &SdfNode::truncated_octahedron(0.7),
+        1e-5,
+    );
+    assert_gpu_matches_cpu(
+        "truncated_icosahedron",
+        &SdfNode::truncated_icosahedron(0.7),
+        1e-5,
+    );
+    assert_gpu_matches_cpu(
+        "columns_union",
+        &SdfNode::sphere(0.8).columns_union(SdfNode::box3d(1.0, 0.5, 0.5), 0.3, 3.0),
+        1e-4,
+    );
+}
