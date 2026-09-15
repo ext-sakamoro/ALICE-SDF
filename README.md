@@ -707,7 +707,7 @@ For deep technical sections (Material / Animation / Architecture / Mesh / Platon
 - Infrastructure providers
 - Competing products
 
-See [LICENSE](LICENSE) (MIT) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for details.
+See [LICENSE-MIT](LICENSE-MIT) / [LICENSE-APACHE](LICENSE-APACHE) (MIT OR Apache-2.0) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for details.
 
 **Content you create (.asdf files, worlds, games) is 100% yours. No royalties.**
 

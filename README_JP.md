@@ -703,7 +703,7 @@ let wgsl_source = to_wgsl(&scene);      // WGSL shader に貼り付け
 - インフラプロバイダー
 - 競合製品
 
-詳細は[LICENSE](LICENSE)（MIT）および[LICENSE-COMMUNITY](LICENSE-COMMUNITY)を参照。
+詳細は[LICENSE-MIT](LICENSE-MIT) / [LICENSE-APACHE](LICENSE-APACHE)（MIT OR Apache-2.0）および[LICENSE-COMMUNITY](LICENSE-COMMUNITY)を参照。
 
 **あなたが作成するコンテンツ（.asdfファイル、ワールド、ゲーム）は100%あなたのものです。ロイヤリティはありません。**
 
