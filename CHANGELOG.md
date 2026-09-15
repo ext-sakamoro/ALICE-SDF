@@ -17,6 +17,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   `compile` / `deserialize` never are). The remaining `unwrap` / `expect`
   sites in production paths were audited: infallible `write!` to `String`,
   slices with a checked length, documented-panic APIs with `try_` twins.
+- `DeserializeError` and the new `StackError` are `#[non_exhaustive]`
+  (error enums grow as validation improves). Adding `Stack` to the exhaustive
+  `DeserializeError` is the one-time break this release accepts; the two
+  corresponding cargo-semver-checks lints are downgraded to warnings in
+  `Cargo.toml` (removed after the 1.12.0 publish) so the CI gate stays hard
+  for everything else.
 - Texture optimiser / spectrum sorts use `total_cmp` (a NaN cost no longer
   panics the sort).
 - `Real` is documented as implemented for `f32` / `f32x8` only (required

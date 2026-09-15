@@ -1205,7 +1205,7 @@ unsafe impl Sync for GpuEvalFuture {}
 impl GpuEvalFuture {
     const fn new(evaluator: &GpuEvaluator, points: Vec<Vec3>) -> Self {
         Self {
-            evaluator: evaluator as *const _,
+            evaluator: std::ptr::from_ref(evaluator),
             points,
         }
     }

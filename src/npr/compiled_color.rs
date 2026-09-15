@@ -245,6 +245,7 @@ impl ColorOp {
 /// unbalanced (an instruction pops more than is on the stack, or the program
 /// does not leave exactly one result).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StackError {
     /// Instruction `index` pops `needs` values with only `depth` on the stack
     Underflow {
@@ -1387,6 +1388,9 @@ impl std::error::Error for SerializeError {}
 
 /// Errors returned by [`GpuColorProgram::deserialize`]
 #[derive(Debug, Clone, PartialEq, Eq)]
+// Error enums grow as validation improves (`Stack` in 1.12.0): non-exhaustive
+// so a new variant is a minor change from here on.
+#[non_exhaustive]
 pub enum DeserializeError {
     /// Unknown opcode tag encountered at the given word offset
     UnknownOpcode {

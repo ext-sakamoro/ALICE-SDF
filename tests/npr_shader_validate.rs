@@ -85,7 +85,7 @@ fn build_pipeline_phase11() -> NprColorNode {
     )
 }
 
-fn build_pipeline_time_cycle() -> NprColorNode {
+const fn build_pipeline_time_cycle() -> NprColorNode {
     // Exercise Phase 12: PaletteSource::TimeCycle animated palette
     use alice_sdf::npr::dsl::PaletteSource;
     NprColorNode::Palette3 {
@@ -135,7 +135,7 @@ fn glsl_default_pipeline_parses() {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage: naga::ShaderStage::Fragment,
-        defines: Default::default(),
+        defines: naga::FastHashMap::default(),
     };
     let result = frontend.parse(&options, &source);
     assert!(
@@ -154,7 +154,7 @@ fn glsl_pipeline_driven_parses() {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage: naga::ShaderStage::Fragment,
-        defines: Default::default(),
+        defines: naga::FastHashMap::default(),
     };
     let result = frontend.parse(&options, &source);
     assert!(
@@ -190,7 +190,7 @@ fn glsl_full_variant_pipeline_parses() {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage: naga::ShaderStage::Fragment,
-        defines: Default::default(),
+        defines: naga::FastHashMap::default(),
     };
     let result = frontend.parse(&options, &source);
     assert!(
@@ -226,7 +226,7 @@ fn glsl_uv_pipeline_parses() {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage: naga::ShaderStage::Fragment,
-        defines: Default::default(),
+        defines: naga::FastHashMap::default(),
     };
     let result = frontend.parse(&options, &source);
     assert!(
@@ -262,7 +262,7 @@ fn glsl_hatch_pipeline_parses() {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage: naga::ShaderStage::Fragment,
-        defines: Default::default(),
+        defines: naga::FastHashMap::default(),
     };
     let result = frontend.parse(&options, &source);
     assert!(
@@ -298,7 +298,7 @@ fn glsl_phase11_pipeline_parses() {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage: naga::ShaderStage::Fragment,
-        defines: Default::default(),
+        defines: naga::FastHashMap::default(),
     };
     let result = frontend.parse(&options, &source);
     assert!(
@@ -334,7 +334,7 @@ fn glsl_time_cycle_pipeline_parses() {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage: naga::ShaderStage::Fragment,
-        defines: Default::default(),
+        defines: naga::FastHashMap::default(),
     };
     let result = frontend.parse(&options, &source);
     assert!(

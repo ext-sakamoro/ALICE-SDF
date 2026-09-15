@@ -65,7 +65,7 @@ fn every_corpus_node_transpiles_to_valid_glsl() {
         let mut frontend = naga::front::glsl::Frontend::default();
         let options = naga::front::glsl::Options {
             stage: naga::ShaderStage::Fragment,
-            defines: Default::default(),
+            defines: naga::FastHashMap::default(),
         };
         // The transpiler emits an `sdf_eval` function library; wrap it in a
         // minimal fragment entry point so naga has something to validate.

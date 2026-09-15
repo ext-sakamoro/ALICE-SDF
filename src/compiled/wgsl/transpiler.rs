@@ -358,7 +358,7 @@ impl WgslShader {
         // Clamp to power-of-2 <= device limit, between 64..=1024
         let clamped = max_workgroup_x.clamp(64, 1024);
         // Round down to nearest power of 2
-        self.workgroup_size = 1 << (31 - clamped.leading_zeros());
+        self.workgroup_size = 1 << clamped.ilog2();
         self
     }
 
