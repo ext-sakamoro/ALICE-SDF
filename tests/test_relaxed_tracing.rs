@@ -451,3 +451,87 @@ fn default_entry_points_apply_the_lipschitz_bound() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// Laws that `eval_lipschitz` declares non-Lipschitz (`INFINITY`): the
+/// marchers step by `d` there, which is sound only when the field is still
+/// a distance bound. Domain repetition of a child that is symmetric inside
+/// its cell *is* a distance field — every ray must agree with the oracle.
+/// An off-centre child makes the repeated field jump on the cell borders,
+/// and taper over-estimates on its shrinking side (`x / s` with `s < 1`
+/// stretches child-space distances, so `d` is not a bound there); those
+/// miss rates are pinned as documented numbers (regression detectors), not
+/// claimed as correct.
+#[test]
+fn non_lipschitz_laws_default_tracing() {
+    use alice_sdf::raycast::raymarch;
+    let mut failures = Vec::new();
+    let exact: Vec<(&str, SdfNode)> = vec![
+        (
+            "repeat_infinite_centred",
+            SdfNode::sphere(0.35).repeat_infinite(1.2, 1.2, 1.2),
+        ),
+        (
+            "repeat_finite_centred",
+            SdfNode::box3d(0.5, 0.5, 0.5).repeat_finite([3, 3, 3], Vec3::splat(1.1)),
+        ),
+        (
+            "polar_repeat_centred_child",
+            SdfNode::sphere(0.3)
+                .translate(0.9, 0.0, 0.0)
+                .polar_repeat(6),
+        ),
+    ];
+    for (name, node) in &exact {
+        let rays: Vec<(Vec3, Vec3)> = rays()
+            .into_iter()
+            .filter(|&(o, _)| eval(node, o) > 0.02)
+            .collect();
+        let oracle = oracle_hits(node, &rays);
+        let s = compare(node, &rays, &oracle, 1e-4, |o, d| {
+            raymarch(node, o, d, MAX_DIST).map(|h| (h.distance, h.steps))
+        });
+        if s.hit_mismatch > 0 || s.t_mismatch > 0 {
+            failures.push(format!(
+                "{name}: {} hit-miss, {} t mismatches / {}",
+                s.hit_mismatch, s.t_mismatch, s.rays
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+
+    // Pinned miss rates — documented ceilings, not correctness claims;
+    // lowering one is progress, raising one is a regression.
+    let pinned: Vec<(&str, SdfNode, f32)> = vec![
+        (
+            "repeat_infinite_offset",
+            SdfNode::sphere(0.3)
+                .translate(0.45, 0.0, 0.0)
+                .repeat_infinite(1.2, 1.2, 1.2),
+            0.10,
+        ),
+        // 28 / 576 rays (4.9 %) miss on the shrinking side of the taper
+        ("taper_box", SdfNode::box3d(1.0, 1.0, 1.0).taper(0.3), 0.06),
+    ];
+    for (name, node, ceiling) in &pinned {
+        let rays: Vec<(Vec3, Vec3)> = rays()
+            .into_iter()
+            .filter(|&(o, _)| eval(node, o) > 0.02)
+            .collect();
+        let oracle = oracle_hits(node, &rays);
+        let s = compare(node, &rays, &oracle, 1e-4, |o, d| {
+            raymarch(node, o, d, MAX_DIST).map(|h| (h.distance, h.steps))
+        });
+        let rate = (s.hit_mismatch + s.t_mismatch) as f32 / s.rays as f32;
+        eprintln!(
+            "{name}: {} hit-miss + {} t mismatches / {} rays ({:.1} %)",
+            s.hit_mismatch,
+            s.t_mismatch,
+            s.rays,
+            100.0 * rate
+        );
+        assert!(
+            rate <= *ceiling,
+            "{name}: miss rate {rate:.3} exceeds the pinned {ceiling}"
+        );
+    }
+}

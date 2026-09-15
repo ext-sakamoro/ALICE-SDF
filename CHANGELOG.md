@@ -23,6 +23,17 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   Known residue: ~0.5 %-of-a-cell slivers where a surface is tangent to a
   grid plane (documented in the test, QEF clamping is backlog).
 
+### Added — tracing oracle for the non-Lipschitz laws
+
+- `tests/test_relaxed_tracing.rs::non_lipschitz_laws_default_tracing`:
+  domain repetition (`RepeatInfinite` / `RepeatFinite` / `PolarRepeat`) of a
+  child symmetric inside its cell traces with 0 mismatches against the scan
+  oracle (the common case is a distance field even though `eval_lipschitz`
+  cannot prove it); an off-centre repeated child and a tapered box are
+  pinned at documented miss-rate ceilings (taper over-estimates on its
+  shrinking side, 4.9 % of rays — making the taper law a bound by dividing
+  by the local Jacobian norm is backlog).
+
 ## [v1.12.0] - 2026-09-15
 
 Bridge features back on crates.io (P15), crate-wide clippy pedantic + nursery policy, every CI test step a hard gate (blocking fuzz seed replay, semver-checks), colour-program stack validation, and the evaluator / marcher / law work that followed the 2026-09-15 external review.
