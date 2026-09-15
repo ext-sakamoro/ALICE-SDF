@@ -936,6 +936,10 @@ let splats = sdf_to_splats(&node, &cfg);
 save_splat("sphere.splat", &splats).unwrap();
 ```
 
+### DCC 統合は reference integration
+
+以下の Blender / Houdini / Maya / Nuke / Cinema 4D プラグインは **reference integration** (各 200〜700 行) です `.asdf` の読込経路と数個の primitive 生成をホスト内で示すもので、本番プラグインの出発点であって完成品ではありません Bevy (`bindings/bevy/`) / Three.js (`bindings/threejs/`) / OpenXR が比較的厚い統合で、CI で compile / type-check されています
+
 ### Blender アドオン (`bindings/blender/`)
 
 Blender 4.0+ アドオン。`.asdf` を直接 import + N-panel に "ALICE-SDF" タブを追加して sphere / box / torus を生成。`alice_sdf` Python モジュール (`cargo build --release --features python`) が前提。

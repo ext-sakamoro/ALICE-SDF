@@ -940,6 +940,10 @@ let splats = sdf_to_splats(&node, &cfg);
 save_splat("sphere.splat", &splats).unwrap();
 ```
 
+### DCC integrations are reference integrations
+
+The Blender / Houdini / Maya / Nuke / Cinema 4D plugins below are **reference integrations** (200–700 lines each): they show the `.asdf` load path and a few primitive generators inside each host, and are the starting point for a production plugin rather than one. The Bevy (`bindings/bevy/`), Three.js (`bindings/threejs/`) and OpenXR bindings are the fuller integrations and are compiled / type-checked in CI.
+
 ### Blender Add-on (`bindings/blender/`)
 
 Blender 4.0+ add-on. Imports `.asdf` directly and adds an "ALICE-SDF" N-panel with sphere/box/torus generators. Requires the `alice_sdf` Python module (built via `cargo build --release --features python`).
