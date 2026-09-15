@@ -192,4 +192,9 @@ fn polyhedra_and_columns_gpu_match_cpu() {
 #[test]
 fn iq_exact_ports_gpu_match_cpu() {
     assert_gpu_matches_cpu("egg", &SdfNode::egg(1.0, 0.4), 1e-5);
+    assert_gpu_matches_cpu(
+        "horseshoe",
+        &SdfNode::horseshoe(0.8, 0.9, 0.6, 0.2, 0.3),
+        1e-5,
+    );
 }

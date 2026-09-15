@@ -147,6 +147,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   again and the interval bounding sphere covers the apex. **Shape change**:
   the apex moved from `y = ra` to `y = √3(ra − rb) + ra`.
 
+- `Horseshoe` mixed an `abs(qx)` leg mirror with the width / thickness
+  terms and was not a distance field (difference quotients up to √2). It
+  is now IQ's exact `sdHorseshoe` (band of half-width `width` around an
+  arc of `radius` opened by `angle`, legs of `half_length`) extruded by
+  `thickness`, mirrored in the three shader helpers (GPU ↔ CPU 3.0e-7);
+  `eval_lipschitz` is 1 again. **Shape change**: legs now end flat at
+  `half_length` and the band is symmetric about its centre line.
+
 ### Changed — compiled evaluator speed (review SDF-R2-4)
 
 - `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,

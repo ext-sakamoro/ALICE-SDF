@@ -978,12 +978,12 @@ const HELPER_SDF_HORSESHOE: &str = r"fn sdf_horseshoe(pos: vec3<f32>, an: f32, r
     var qx = -c.x * px + c.y * pos.y;
     var qy = c.y * px + c.x * pos.y;
     if (!(qy > 0.0 || qx > 0.0)) { qx = l * sign(-c.x); }
-    if (qx <= 0.0) { qy = l; }
-    qx = abs(qx) - le;
-    qy = abs(qy - r);
-    let e = length(max(vec2<f32>(qx, qy), vec2<f32>(0.0))) + min(max(qx, qy), 0.0);
-    let d = abs(vec2<f32>(e, pos.z)) - vec2<f32>(w, t);
-    return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0)));
+    if (!(qx > 0.0)) { qy = l; }
+    let bx = qx - le;
+    let by = abs(qy - r) - w;
+    let d2 = length(max(vec2<f32>(bx, by), vec2<f32>(0.0))) + min(max(bx, by), 0.0);
+    let dz = abs(pos.z) - t;
+    return length(max(vec2<f32>(d2, dz), vec2<f32>(0.0))) + min(max(d2, dz), 0.0);
 }
 ";
 

@@ -731,13 +731,13 @@ const HELPER_SDF_HORSESHOE: &str = r"float sdf_horseshoe(float3 pos, float an, f
     float l = length(float2(px, pos.y));
     float qx = -c.x * px + c.y * pos.y;
     float qy = c.y * px + c.x * pos.y;
-    if (!(qy > 0.0 || qx > 0.0)) qx = l * sign(-c.x);
-    if (qx <= 0.0) qy = l;
-    qx = abs(qx) - le;
-    qy = abs(qy - r);
-    float e = length(max(float2(qx, qy), float2(0.0, 0.0))) + min(max(qx, qy), 0.0);
-    float2 d = abs(float2(e, pos.z)) - float2(w, t);
-    return min(max(d.x, d.y), 0.0) + length(max(d, float2(0.0, 0.0)));
+    if (!(qy > 0.0 || qx > 0.0)) { qx = l * sign(-c.x); }
+    if (!(qx > 0.0)) { qy = l; }
+    float bx = qx - le;
+    float by = abs(qy - r) - w;
+    float d2 = length(max(float2(bx, by), float2(0.0, 0.0))) + min(max(bx, by), 0.0);
+    float dz = abs(pos.z) - t;
+    return length(max(float2(d2, dz), float2(0.0, 0.0))) + min(max(d2, dz), 0.0);
 }
 ";
 

@@ -1363,7 +1363,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. }
-        | SdfNode::Egg { .. } => 1.0,
+        | SdfNode::Egg { .. }
+        | SdfNode::Horseshoe { .. } => 1.0,
 
         // Triply periodic minimal surfaces: `|F(p·s)| / s − t` with F an
         // implicit trigonometric function, so L = sup|∇F| independent of
@@ -1395,11 +1396,10 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
 
         // Laws that are not Lipschitz on the exterior: the IQ ellipsoid
         // approximation's gradient grows like (max r / min r)⁴ in the far
-        // field; horseshoe / blobby cross deviate from the IQ exact forms
-        // and jump; the stairs primitive and the helix select a nearest
+        // field; blobby cross is a home-grown blend that jumps; the stairs
+        // primitive and the helix select a nearest
         // candidate (step index / wrap) and jump where the choice changes.
         SdfNode::Ellipsoid { .. }
-        | SdfNode::Horseshoe { .. }
         | SdfNode::BlobbyCross { .. }
         | SdfNode::Stairs { .. }
         | SdfNode::Helix { .. } => f32::INFINITY,
