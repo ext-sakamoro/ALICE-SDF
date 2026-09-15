@@ -29,6 +29,26 @@
 //!
 //! Author: Moroya Sakamoto
 
+/// Caller-supplied input rejected by a mesh codec / stripifier `try_*` entry point.
+///
+/// The panicking counterparts (`stripify`, `encode_index_buffer`,
+/// `encode_filter_oct_i16`, ...) keep their 1.x signature and forward to the
+/// `try_*` form; FFI / engine hosts should call the `try_*` form so that bad
+/// input is an error code rather than a process abort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MeshInputError {
+    /// Why the input was rejected.
+    pub reason: &'static str,
+}
+
+impl std::fmt::Display for MeshInputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.reason)
+    }
+}
+
+impl std::error::Error for MeshInputError {}
+
 pub mod bvh;
 pub mod collision;
 pub mod decimate;

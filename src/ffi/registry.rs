@@ -9,6 +9,11 @@
 //! - Short lock durations (only for insert/remove, not during evaluation)
 //! - `RwLock` allows concurrent reads without blocking
 //!
+//! Locks are poison-tolerant: a panic while a registry lock is held (caught by
+//! `ffi_guard`) must not turn every later FFI call into an error, and the maps
+//! are always consistent between operations, so `PoisonError::into_inner` is
+//! sound here.
+//!
 //! Author: Moroya Sakamoto
 
 use super::types::{CompiledHandle, MeshHandle, SdfHandle};
@@ -44,7 +49,7 @@ pub fn register_node(node: SdfNode) -> SdfHandle {
     {
         let mut registry = NODE_REGISTRY
             .write()
-            .expect("NODE_REGISTRY: RwLock poisoned in register_node()");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         registry.insert(id, arc_node);
     }
 
@@ -61,7 +66,7 @@ pub fn get_node(handle: SdfHandle) -> Option<Arc<SdfNode>> {
     let id = handle as u64;
     let registry = NODE_REGISTRY
         .read()
-        .expect("NODE_REGISTRY: RwLock poisoned in get_node()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.get(&id).cloned()
 }
 
@@ -75,7 +80,7 @@ pub fn remove_node(handle: SdfHandle) {
     let id = handle as u64;
     let mut registry = NODE_REGISTRY
         .write()
-        .expect("NODE_REGISTRY: RwLock poisoned in remove_node()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.remove(&id);
 }
 
@@ -101,7 +106,7 @@ pub fn register_compiled(compiled: CompiledSdf) -> CompiledHandle {
     {
         let mut registry = COMPILED_REGISTRY
             .write()
-            .expect("COMPILED_REGISTRY: RwLock poisoned in register_compiled()");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         registry.insert(id, arc_compiled);
     }
 
@@ -118,7 +123,7 @@ pub fn get_compiled(handle: CompiledHandle) -> Option<Arc<CompiledSdf>> {
     let id = handle as u64;
     let registry = COMPILED_REGISTRY
         .read()
-        .expect("COMPILED_REGISTRY: RwLock poisoned in get_compiled()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.get(&id).cloned()
 }
 
@@ -132,7 +137,7 @@ pub fn remove_compiled(handle: CompiledHandle) {
     let id = handle as u64;
     let mut registry = COMPILED_REGISTRY
         .write()
-        .expect("COMPILED_REGISTRY: RwLock poisoned in remove_compiled()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.remove(&id);
 }
 
@@ -157,7 +162,7 @@ pub fn register_mesh(mesh: Mesh) -> MeshHandle {
     {
         let mut registry = MESH_REGISTRY
             .write()
-            .expect("MESH_REGISTRY: RwLock poisoned in register_mesh()");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         registry.insert(id, arc_mesh);
     }
 
@@ -174,7 +179,7 @@ pub fn get_mesh(handle: MeshHandle) -> Option<Arc<Mesh>> {
     let id = handle as u64;
     let registry = MESH_REGISTRY
         .read()
-        .expect("MESH_REGISTRY: RwLock poisoned in get_mesh()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.get(&id).cloned()
 }
 
@@ -188,7 +193,7 @@ pub fn remove_mesh(handle: MeshHandle) {
     let id = handle as u64;
     let mut registry = MESH_REGISTRY
         .write()
-        .expect("MESH_REGISTRY: RwLock poisoned in remove_mesh()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.remove(&id);
 }
 
@@ -201,7 +206,7 @@ pub fn remove_mesh(handle: MeshHandle) {
 pub fn node_count() -> usize {
     let registry = NODE_REGISTRY
         .read()
-        .expect("NODE_REGISTRY: RwLock poisoned in node_count()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.len()
 }
 
@@ -210,7 +215,7 @@ pub fn node_count() -> usize {
 pub fn compiled_count() -> usize {
     let registry = COMPILED_REGISTRY
         .read()
-        .expect("COMPILED_REGISTRY: RwLock poisoned in compiled_count()");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.len()
 }
 
@@ -220,19 +225,19 @@ pub fn clear_all() {
     {
         let mut registry = NODE_REGISTRY
             .write()
-            .expect("NODE_REGISTRY: RwLock poisoned in clear_all()");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         registry.clear();
     }
     {
         let mut registry = COMPILED_REGISTRY
             .write()
-            .expect("COMPILED_REGISTRY: RwLock poisoned in clear_all()");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         registry.clear();
     }
     {
         let mut registry = MESH_REGISTRY
             .write()
-            .expect("MESH_REGISTRY: RwLock poisoned in clear_all()");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         registry.clear();
     }
 }
@@ -292,5 +297,26 @@ mod tests {
 
         remove_compiled(handle);
         assert!(get_compiled(handle).is_none());
+    }
+
+    /// A panic while the registry lock is held (caught by `ffi_guard`) must
+    /// not poison every later call: the map is consistent between operations.
+    #[test]
+    fn poisoned_lock_is_tolerated() {
+        let node = SdfNode::Sphere { radius: 2.0 };
+        let handle = register_node(node);
+        let poison = std::panic::catch_unwind(|| {
+            let _guard = NODE_REGISTRY
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            panic!("simulated panic while holding the registry lock");
+        });
+        assert!(poison.is_err());
+        // Still readable and writable afterwards.
+        assert!(get_node(handle).is_some(), "registry unusable after poison");
+        let other = register_node(SdfNode::Sphere { radius: 3.0 });
+        assert!(get_node(other).is_some());
+        remove_node(handle);
+        remove_node(other);
     }
 }

@@ -145,7 +145,8 @@ pub enum SdfResult {
     IoError = 5,
     /// Compilation failed
     CompileError = 6,
-    /// Unknown error
+    /// Unknown error — also returned when a Rust panic was caught inside the
+    /// call (the message is available from `alice_sdf_last_error`)
     Unknown = 99,
 }
 

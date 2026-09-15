@@ -6,6 +6,30 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added
+
+- FFI: every exported `extern "C"` function (175) now runs through
+  `ffi_guard`, which catches a Rust panic inside the call and returns the
+  function's sentinel (null handle, `f32::MAX`, `0`, `false`,
+  `SdfResult_Unknown`) instead of unwinding into the host — on Rust 1.81+ that
+  unwind aborts Unity / Unreal / the Python interpreter. The message is kept
+  per thread and read with the new `alice_sdf_last_error()` /
+  `alice_sdf_clear_last_error()` (`include/alice_sdf.h` updated; no new
+  `SdfResult` variant, the enum is exhaustive and 1.x stays semver-minor).
+- `mesh::MeshInputError` and non-panicking `try_stripify`,
+  `try_encode_index_buffer`, `try_encode_filter_oct_i16`,
+  `try_decode_filter_oct_i16_in_place`, `try_encode_filter_quat_i16`; the
+  existing functions keep their signature and forward to the `try_*` form
+  (their `# Panics` contract is unchanged).
+
+### Changed
+
+- FFI handle registries tolerate a poisoned lock (`PoisonError::into_inner`):
+  a caught panic while a registry lock was held no longer turns every later
+  FFI call into an error.
+- CI: the `unity` / `unreal` meta-feature builds are hard gates
+  (`continue-on-error` removed).
+
 ## [v1.10.3] - 2026-09-15
 
 ### Fixed

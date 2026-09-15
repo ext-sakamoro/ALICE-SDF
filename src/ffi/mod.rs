@@ -104,6 +104,7 @@
 
 mod compilation;
 mod eval;
+mod guard;
 mod info;
 mod io_ffi;
 mod memory;
@@ -116,4 +117,5 @@ mod shader;
 mod transforms;
 mod types;
 
+pub use guard::{clear_last_error, ffi_guard, set_last_error, take_last_error};
 pub use types::*;

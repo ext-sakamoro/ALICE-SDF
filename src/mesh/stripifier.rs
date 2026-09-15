@@ -17,6 +17,8 @@
 /// The greedy stripifier maintains a rolling buffer of up to 8 unprocessed
 /// triangles (from the input) and picks the next triangle to append based on
 /// edge continuity with the current strip
+use crate::mesh::MeshInputError;
+
 const BUFFER_CAPACITY: usize = 8;
 
 /// Find the triangle in `buffer` whose minimum vertex valence is smallest
@@ -94,10 +96,31 @@ pub const fn stripify_bound(index_count: usize) -> usize {
 ///
 /// meshopt `meshopt_stripify`
 pub fn stripify(indices: &[u32], vertex_count: usize, restart_index: Option<u32>) -> Vec<u32> {
-    assert!(
-        indices.len() % 3 == 0,
-        "index count must be a multiple of 3"
-    );
+    try_stripify(indices, vertex_count, restart_index).unwrap_or_else(|e| panic!("stripify: {e}"))
+}
+
+/// Non-panicking [`stripify`]: rejects an index count that is not a multiple
+/// of 3 (or an index outside `vertex_count`) with [`MeshInputError`] instead
+/// of aborting the caller. Prefer this from FFI / engine hosts.
+///
+/// # Errors
+///
+/// `indices.len() % 3 != 0`, or any index `>= vertex_count`.
+pub fn try_stripify(
+    indices: &[u32],
+    vertex_count: usize,
+    restart_index: Option<u32>,
+) -> Result<Vec<u32>, MeshInputError> {
+    if indices.len() % 3 != 0 {
+        return Err(MeshInputError {
+            reason: "index count must be a multiple of 3",
+        });
+    }
+    if indices.iter().any(|&i| i as usize >= vertex_count) {
+        return Err(MeshInputError {
+            reason: "index out of range for vertex_count",
+        });
+    }
     let restart = restart_index.unwrap_or(0);
     let use_restart = restart_index.is_some();
 
@@ -257,7 +280,7 @@ pub fn stripify(indices: &[u32], vertex_count: usize, restart_index: Option<u32>
         }
     }
 
-    destination
+    Ok(destination)
 }
 
 /// Upper bound on the triangle-list length for a strip of `index_count` indices
@@ -448,5 +471,12 @@ mod tests {
         let strip = stripify(&indices, 5, Some(u32::MAX));
         let back = unstripify(&strip, Some(u32::MAX));
         assert!(back.len() <= unstripify_bound(strip.len()));
+    }
+
+    #[test]
+    fn try_stripify_rejects_bad_input_without_panicking() {
+        assert!(try_stripify(&[0, 1], 3, None).is_err());
+        assert!(try_stripify(&[0, 1, 7], 3, None).is_err());
+        assert!(try_stripify(&[0, 1, 2], 3, None).is_ok());
     }
 }

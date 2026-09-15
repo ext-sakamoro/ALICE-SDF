@@ -27,6 +27,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::mesh::MeshInputError;
+
 /// Quantize `v` in `[-1, 1]` to a signed integer with `bits` precision
 ///
 /// Uses round-half-away-from-zero to match meshopt semantics
@@ -76,10 +78,24 @@ pub fn encode_filter_oct_one(nx: f32, ny: f32, nz: f32, nw: f32, bits: u32, outp
 /// values (2 bytes each, 8 bytes/vertex)
 #[must_use]
 pub fn encode_filter_oct_i16(normals: &[[f32; 4]], bits: u32) -> Vec<i16> {
-    assert!(
-        (2..=16).contains(&bits),
-        "oct filter bits must be in [2, 16]"
-    );
+    try_encode_filter_oct_i16(normals, bits)
+        .unwrap_or_else(|e| panic!("encode_filter_oct_i16: {e}"))
+}
+
+/// Non-panicking [`encode_filter_oct_i16`].
+///
+/// # Errors
+///
+/// `bits` outside `2..=16`.
+pub fn try_encode_filter_oct_i16(
+    normals: &[[f32; 4]],
+    bits: u32,
+) -> Result<Vec<i16>, MeshInputError> {
+    if !(2..=16).contains(&bits) {
+        return Err(MeshInputError {
+            reason: "oct filter bits must be in [2, 16]",
+        });
+    }
     let mut out = Vec::with_capacity(normals.len() * 4);
     let mut tmp = [0i32; 4];
     for n in normals {
@@ -88,7 +104,7 @@ pub fn encode_filter_oct_i16(normals: &[[f32; 4]], bits: u32) -> Vec<i16> {
             out.push(v as i16);
         }
     }
-    out
+    Ok(out)
 }
 
 /// Decode i16 x 4 octahedral filter back to a unit vector + handedness
@@ -99,7 +115,21 @@ pub fn encode_filter_oct_i16(normals: &[[f32; 4]], bits: u32) -> Vec<i16> {
 ///
 /// Corresponds to `meshopt_decodeFilterOct<short>`
 pub fn decode_filter_oct_i16_in_place(data: &mut [i16]) {
-    assert!(data.len() % 4 == 0);
+    try_decode_filter_oct_i16_in_place(data)
+        .unwrap_or_else(|e| panic!("decode_filter_oct_i16_in_place: {e}"));
+}
+
+/// Non-panicking [`decode_filter_oct_i16_in_place`].
+///
+/// # Errors
+///
+/// `data.len() % 4 != 0` (nothing is modified).
+pub fn try_decode_filter_oct_i16_in_place(data: &mut [i16]) -> Result<(), MeshInputError> {
+    if data.len() % 4 != 0 {
+        return Err(MeshInputError {
+            reason: "oct filter data length must be a multiple of 4",
+        });
+    }
     let max_v = f32::from(i16::MAX);
 
     for chunk in data.chunks_exact_mut(4) {
@@ -127,6 +157,7 @@ pub fn decode_filter_oct_i16_in_place(data: &mut [i16]) {
         chunk[2] = round(z);
         // chunk[3] (handedness) already in i16 range
     }
+    Ok(())
 }
 
 // ============================================================================
@@ -165,17 +196,31 @@ pub fn encode_filter_quat_one(q: [f32; 4], bits: u32, output: &mut [i16; 4]) {
 /// Encode a `Vec<Quat>` (as `[f32; 4]`) into i16 x 4 storage
 #[must_use]
 pub fn encode_filter_quat_i16(quaternions: &[[f32; 4]], bits: u32) -> Vec<i16> {
-    assert!(
-        (4..=16).contains(&bits),
-        "quat filter bits must be in [4, 16]"
-    );
+    try_encode_filter_quat_i16(quaternions, bits)
+        .unwrap_or_else(|e| panic!("encode_filter_quat_i16: {e}"))
+}
+
+/// Non-panicking [`encode_filter_quat_i16`].
+///
+/// # Errors
+///
+/// `bits` outside `4..=16`.
+pub fn try_encode_filter_quat_i16(
+    quaternions: &[[f32; 4]],
+    bits: u32,
+) -> Result<Vec<i16>, MeshInputError> {
+    if !(4..=16).contains(&bits) {
+        return Err(MeshInputError {
+            reason: "quat filter bits must be in [4, 16]",
+        });
+    }
     let mut out = Vec::with_capacity(quaternions.len() * 4);
     let mut tmp = [0i16; 4];
     for q in quaternions {
         encode_filter_quat_one(*q, bits, &mut tmp);
         out.extend_from_slice(&tmp);
     }
-    out
+    Ok(out)
 }
 
 /// Decode i16 x 4 quaternion filter back to a normalized quaternion
@@ -393,5 +438,17 @@ mod tests {
                 "exp roundtrip too lossy: orig={orig}, decoded={decoded}, rel_err={rel_err}"
             );
         }
+    }
+
+    #[test]
+    fn try_variants_reject_bad_input_without_panicking() {
+        assert!(try_encode_filter_oct_i16(&[[0.0, 0.0, 1.0, 1.0]], 1).is_err());
+        assert!(try_encode_filter_oct_i16(&[[0.0, 0.0, 1.0, 1.0]], 8).is_ok());
+        assert!(try_encode_filter_quat_i16(&[[0.0, 0.0, 0.0, 1.0]], 3).is_err());
+        assert!(try_encode_filter_quat_i16(&[[0.0, 0.0, 0.0, 1.0]], 12).is_ok());
+        let mut odd = [0i16; 6];
+        assert!(try_decode_filter_oct_i16_in_place(&mut odd).is_err());
+        let mut ok = [0i16; 8];
+        assert!(try_decode_filter_oct_i16_in_place(&mut ok).is_ok());
     }
 }

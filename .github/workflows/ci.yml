@@ -106,13 +106,13 @@ jobs:
         run: cargo build --lib --no-default-features --features "codec,asp,sdf-cache"
         continue-on-error: true
 
+      # unity / unreal = ffi + shader: every extern "C" fn is panic-isolated
+      # (ffi_guard), so these are hard gates (continue-on-error removed 1.11.0)
       - name: Build (Unity meta) [T2]
         run: cargo build --lib --no-default-features --features "unity"
-        continue-on-error: true
 
       - name: Build (Unreal meta) [T2]
         run: cargo build --lib --no-default-features --features "unreal"
-        continue-on-error: true
 
       - name: Test (AAA meta) [T4]
         run: cargo test --lib --no-default-features --features "aaa"

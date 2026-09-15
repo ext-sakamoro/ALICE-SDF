@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use super::guard::{clear_last_error, ffi_guard, take_last_error};
 use super::types::*;
 use crate::prelude::*;
 use std::ffi::{c_char, CString};
@@ -20,13 +21,39 @@ pub const extern "C" fn alice_sdf_version() -> VersionInfo {
 /// Get version string (caller must free with alice_sdf_free_string)
 #[no_mangle]
 pub extern "C" fn alice_sdf_version_string() -> *mut c_char {
-    let version = format!(
-        "ALICE-SDF v{}.{}.{} (Deep Fried)",
-        VersionInfo::current().major,
-        VersionInfo::current().minor,
-        VersionInfo::current().patch
-    );
-    CString::new(version).map_or_else(|_| ptr::null_mut(), CString::into_raw)
+    ffi_guard(std::ptr::null_mut(), || {
+        let version = format!(
+            "ALICE-SDF v{}.{}.{} (Deep Fried)",
+            VersionInfo::current().major,
+            VersionInfo::current().minor,
+            VersionInfo::current().patch
+        );
+        CString::new(version).map_or_else(|_| ptr::null_mut(), CString::into_raw)
+    })
+}
+
+// ============================================================================
+// Error reporting
+// ============================================================================
+
+/// Message of the most recent panic / error raised by an FFI call on this
+/// thread, or null if there is none. Every exported function catches panics
+/// internally (returning its sentinel: null handle, `f32::MAX`, `0`, `false`
+/// or `SdfResult_Unknown`) and records the message here; the message is
+/// consumed by this call. Caller must free with `alice_sdf_free_string`.
+#[no_mangle]
+pub extern "C" fn alice_sdf_last_error() -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        take_last_error()
+            .and_then(|m| CString::new(m).ok())
+            .map_or_else(ptr::null_mut, CString::into_raw)
+    })
+}
+
+/// Discard the most recent error message on this thread.
+#[no_mangle]
+pub extern "C" fn alice_sdf_clear_last_error() {
+    clear_last_error();
 }
 
 // ============================================================================

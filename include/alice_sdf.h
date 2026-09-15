@@ -98,7 +98,7 @@ typedef enum {
     SdfResult_OutOfMemory = 4,
     SdfResult_IoError = 5,
     SdfResult_CompileError = 6,
-    SdfResult_Unknown = 99
+    SdfResult_Unknown = 99      /**< Unknown error, also a caught Rust panic (see alice_sdf_last_error()) */
 } SdfResult;
 
 /**
@@ -153,6 +153,21 @@ VersionInfo alice_sdf_version(void);
  * @return Null-terminated version string (caller must free with alice_sdf_free_string)
  */
 char* alice_sdf_version_string(void);
+
+/**
+ * @brief Message of the most recent panic / error raised by an FFI call on this thread.
+ *
+ * Every function in this API catches Rust panics internally and returns its sentinel
+ * (NULL handle, FLT_MAX, 0, false or SdfResult_Unknown) instead of aborting the host;
+ * the message is stored per thread and consumed by this call.
+ * @return Null-terminated UTF-8 string or NULL if there is none (caller must free with alice_sdf_free_string)
+ */
+char* alice_sdf_last_error(void);
+
+/**
+ * @brief Discard the most recent error message on this thread.
+ */
+void alice_sdf_clear_last_error(void);
 
 /* ============================================================================
  * Category Counts

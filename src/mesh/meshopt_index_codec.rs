@@ -46,6 +46,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::mesh::mesh_codec::CodecError;
+use crate::mesh::MeshInputError;
 
 const INDEX_HEADER: u8 = 0xE0;
 const CURRENT_VERSION: u8 = 1;
@@ -227,7 +228,21 @@ const fn rotate_triangle(_a: u32, b: u32, c: u32, next: u32) -> i32 {
 /// meshopt C++ ライブラリの `meshopt_encodeIndexBuffer` と bit-exact 一致する
 #[must_use]
 pub fn encode_index_buffer(indices: &[u32]) -> Vec<u8> {
-    assert!(indices.len() % 3 == 0, "index count must be multiple of 3");
+    try_encode_index_buffer(indices).unwrap_or_else(|e| panic!("encode_index_buffer: {e}"))
+}
+
+/// Non-panicking [`encode_index_buffer`]: an index count that is not a
+/// multiple of 3 is a [`MeshInputError`] instead of a panic.
+///
+/// # Errors
+///
+/// `indices.len() % 3 != 0`.
+pub fn try_encode_index_buffer(indices: &[u32]) -> Result<Vec<u8>, MeshInputError> {
+    if indices.len() % 3 != 0 {
+        return Err(MeshInputError {
+            reason: "index count must be multiple of 3",
+        });
+    }
     let tri_count = indices.len() / 3;
 
     // 最悪ケース: 16 bytes per triangle + header + trailer
@@ -406,7 +421,7 @@ pub fn encode_index_buffer(indices: &[u32]) -> Vec<u8> {
     buffer.extend_from_slice(&data_stream);
     buffer.extend_from_slice(codeaux_table);
 
-    buffer
+    Ok(buffer)
 }
 
 /// Decode meshopt v1 binary format to triangle indices
@@ -867,5 +882,11 @@ mod tests {
         let encoded = encode_index_buffer(&indices);
         let decoded = decode_index_buffer(&encoded, indices.len()).unwrap();
         assert!(triangles_equivalent(&indices, &decoded));
+    }
+
+    #[test]
+    fn try_encode_index_buffer_rejects_non_triangle_count() {
+        assert!(try_encode_index_buffer(&[0, 1]).is_err());
+        assert!(try_encode_index_buffer(&[0, 1, 2]).is_ok());
     }
 }

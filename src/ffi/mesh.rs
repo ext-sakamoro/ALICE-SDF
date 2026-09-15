@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use super::guard::ffi_guard;
 use super::registry::{get_mesh, get_node, register_mesh, remove_mesh};
 use super::types::*;
 use crate::prelude::*;
@@ -21,42 +22,48 @@ pub extern "C" fn alice_sdf_generate_mesh(
     resolution: u32,
     bounds: f32,
 ) -> MeshHandle {
-    let sdf_node = match get_node(node) {
-        Some(n) => n,
-        None => return MESH_HANDLE_NULL,
-    };
+    ffi_guard(MESH_HANDLE_NULL, || {
+        let sdf_node = match get_node(node) {
+            Some(n) => n,
+            None => return MESH_HANDLE_NULL,
+        };
 
-    let config = MarchingCubesConfig {
-        resolution: resolution as usize,
-        iso_level: 0.0,
-        compute_normals: true,
-        ..Default::default()
-    };
-    let min = glam::Vec3::splat(-bounds);
-    let max = glam::Vec3::splat(bounds);
+        let config = MarchingCubesConfig {
+            resolution: resolution as usize,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        let min = glam::Vec3::splat(-bounds);
+        let max = glam::Vec3::splat(bounds);
 
-    let mesh = sdf_to_mesh(&sdf_node, min, max, &config);
-    register_mesh(mesh)
+        let mesh = sdf_to_mesh(&sdf_node, min, max, &config);
+        register_mesh(mesh)
+    })
 }
 
 /// Get vertex count of a mesh
 #[no_mangle]
 pub extern "C" fn alice_sdf_mesh_vertex_count(mesh: MeshHandle) -> u32 {
-    get_mesh(mesh).map_or(0, |m| m.vertex_count() as u32)
+    ffi_guard(0, || get_mesh(mesh).map_or(0, |m| m.vertex_count() as u32))
 }
 
 /// Get triangle count of a mesh
 #[no_mangle]
 pub extern "C" fn alice_sdf_mesh_triangle_count(mesh: MeshHandle) -> u32 {
-    get_mesh(mesh).map_or(0, |m| m.triangle_count() as u32)
+    ffi_guard(0, || {
+        get_mesh(mesh).map_or(0, |m| m.triangle_count() as u32)
+    })
 }
 
 /// Free a mesh handle
 #[no_mangle]
 pub extern "C" fn alice_sdf_free_mesh(mesh: MeshHandle) {
-    if !mesh.is_null() {
-        remove_mesh(mesh);
-    }
+    ffi_guard((), || {
+        if !mesh.is_null() {
+            remove_mesh(mesh);
+        }
+    })
 }
 
 /// Helper: extract path string from C pointer
@@ -127,18 +134,20 @@ pub unsafe extern "C" fn alice_sdf_export_obj(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    match crate::io::export_obj(&mesh, path_str, &ObjConfig::default(), None) {
-        Ok(()) => SdfResult::Ok,
-        Err(_) => SdfResult::IoError,
-    }
+    ffi_guard(SdfResult::Unknown, || {
+        let path_str = match path_from_c(path) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
+            Ok(m) => m,
+            Err(e) => return e,
+        };
+        match crate::io::export_obj(&mesh, path_str, &ObjConfig::default(), None) {
+            Ok(()) => SdfResult::Ok,
+            Err(_) => SdfResult::IoError,
+        }
+    })
 }
 
 /// Export mesh to GLB (binary glTF) file
@@ -155,18 +164,20 @@ pub unsafe extern "C" fn alice_sdf_export_glb(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    match crate::io::export_glb(&mesh, path_str, &GltfConfig::default(), None) {
-        Ok(()) => SdfResult::Ok,
-        Err(_) => SdfResult::IoError,
-    }
+    ffi_guard(SdfResult::Unknown, || {
+        let path_str = match path_from_c(path) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
+            Ok(m) => m,
+            Err(e) => return e,
+        };
+        match crate::io::export_glb(&mesh, path_str, &GltfConfig::default(), None) {
+            Ok(()) => SdfResult::Ok,
+            Err(_) => SdfResult::IoError,
+        }
+    })
 }
 
 /// Export mesh to USDA (Universal Scene Description) file
@@ -183,18 +194,20 @@ pub unsafe extern "C" fn alice_sdf_export_usda(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    match crate::io::export_usda(&mesh, path_str, &UsdConfig::default(), None) {
-        Ok(()) => SdfResult::Ok,
-        Err(_) => SdfResult::IoError,
-    }
+    ffi_guard(SdfResult::Unknown, || {
+        let path_str = match path_from_c(path) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
+            Ok(m) => m,
+            Err(e) => return e,
+        };
+        match crate::io::export_usda(&mesh, path_str, &UsdConfig::default(), None) {
+            Ok(()) => SdfResult::Ok,
+            Err(_) => SdfResult::IoError,
+        }
+    })
 }
 
 /// Export mesh to Alembic (.abc) file
@@ -211,18 +224,20 @@ pub unsafe extern "C" fn alice_sdf_export_alembic(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    match crate::io::export_alembic(&mesh, path_str, &AlembicConfig::default()) {
-        Ok(()) => SdfResult::Ok,
-        Err(_) => SdfResult::IoError,
-    }
+    ffi_guard(SdfResult::Unknown, || {
+        let path_str = match path_from_c(path) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
+            Ok(m) => m,
+            Err(e) => return e,
+        };
+        match crate::io::export_alembic(&mesh, path_str, &AlembicConfig::default()) {
+            Ok(()) => SdfResult::Ok,
+            Err(_) => SdfResult::IoError,
+        }
+    })
 }
 
 /// Export mesh to FBX file
@@ -239,16 +254,18 @@ pub unsafe extern "C" fn alice_sdf_export_fbx(
     resolution: u32,
     bounds: f32,
 ) -> SdfResult {
-    let path_str = match path_from_c(path) {
-        Ok(s) => s,
-        Err(e) => return e,
-    };
-    let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
-        Ok(m) => m,
-        Err(e) => return e,
-    };
-    match crate::io::export_fbx(&mesh, path_str, &FbxConfig::default(), None) {
-        Ok(()) => SdfResult::Ok,
-        Err(_) => SdfResult::IoError,
-    }
+    ffi_guard(SdfResult::Unknown, || {
+        let path_str = match path_from_c(path) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let mesh = match resolve_mesh(mesh_handle, sdf_handle, resolution, bounds) {
+            Ok(m) => m,
+            Err(e) => return e,
+        };
+        match crate::io::export_fbx(&mesh, path_str, &FbxConfig::default(), None) {
+            Ok(()) => SdfResult::Ok,
+            Err(_) => SdfResult::IoError,
+        }
+    })
 }
