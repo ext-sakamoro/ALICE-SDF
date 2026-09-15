@@ -1204,16 +1204,19 @@ const HELPER_SDF_UNEVEN_CAPSULE: &str = r"fn sdf_uneven_capsule(p: vec3<f32>, r1
 ";
 
 const HELPER_SDF_EGG: &str = r"fn sdf_egg(p: vec3<f32>, ra: f32, rb: f32) -> f32 {
+    let k = 1.7320508;
     let px = length(p.xz);
     let py = p.y;
     let r = ra - rb;
+    var d: f32;
     if (py < 0.0) {
-        return length(vec2<f32>(px, py)) - r;
-    } else if (px * ra < py * rb) {
-        return length(vec2<f32>(px, py - ra));
+        d = length(vec2<f32>(px, py)) - r;
+    } else if (k * (px + r) < py) {
+        d = length(vec2<f32>(px, py - k * r)) - r;
     } else {
-        return length(vec2<f32>(px + rb, py)) - ra;
+        d = length(vec2<f32>(px + r, py)) - 2.0 * r;
     }
+    return d - rb;
 }
 ";
 

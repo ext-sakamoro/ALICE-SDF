@@ -136,6 +136,17 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   per call (a tree walk; twist / bend children cost an AABB pass) — the batch
   / render functions compute it once and the compiled marchers not at all.
 
+### Fixed — laws that were not distance fields (found by the Lipschitz property test)
+
+- `Egg` was a three-branch approximation that reported **positive**
+  distances for interior points on the axis (`egg(1, 0.5)` at (0, 0.1, 0) =
+  +0.9) and jumped by `ra − rb` across the origin. It is now Inigo Quilez's
+  exact `sdEgg` (disc of radius `ra` below y = 0, arcs of radius
+  `2(ra − rb)`, apex cap `rb` at `y = √3(ra − rb) + ra`) on the CPU and in
+  the WGSL / GLSL / HLSL helpers (GPU ↔ CPU 4.2e-7); `eval_lipschitz` is 1
+  again and the interval bounding sphere covers the apex. **Shape change**:
+  the apex moved from `y = ra` to `y = √3(ra − rb) + ra`.
+
 ### Changed — compiled evaluator speed (review SDF-R2-4)
 
 - `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,

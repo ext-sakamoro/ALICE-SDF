@@ -620,7 +620,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             cap_height,
             half_depth,
         } => ia_bsphere(bounds, r1.max(*r2) + cap_height + half_depth),
-        SdfNode::Egg { ra, rb } => ia_bsphere(bounds, *ra + *rb),
+        // apex at y = √3·(ra − rb) + ra (IQ sdEgg), base radius ra
+        SdfNode::Egg { ra, rb } => ia_bsphere(bounds, 1.732_050_8f32.mul_add(ra - rb, *ra)),
         SdfNode::ArcShape {
             radius,
             thickness,
@@ -1361,7 +1362,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
-        | SdfNode::Annular2D { .. } => 1.0,
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Egg { .. } => 1.0,
 
         // Triply periodic minimal surfaces: `|F(p·s)| / s − t` with F an
         // implicit trigonometric function, so L = sup|∇F| independent of
@@ -1393,11 +1395,10 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
 
         // Laws that are not Lipschitz on the exterior: the IQ ellipsoid
         // approximation's gradient grows like (max r / min r)⁴ in the far
-        // field; egg / horseshoe / blobby cross deviate from the IQ exact
-        // forms and jump; the stairs primitive and the helix select a nearest
+        // field; horseshoe / blobby cross deviate from the IQ exact forms
+        // and jump; the stairs primitive and the helix select a nearest
         // candidate (step index / wrap) and jump where the choice changes.
         SdfNode::Ellipsoid { .. }
-        | SdfNode::Egg { .. }
         | SdfNode::Horseshoe { .. }
         | SdfNode::BlobbyCross { .. }
         | SdfNode::Stairs { .. }

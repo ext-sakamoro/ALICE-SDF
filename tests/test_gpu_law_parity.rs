@@ -185,3 +185,11 @@ fn polyhedra_and_columns_gpu_match_cpu() {
         1e-4,
     );
 }
+
+/// Laws re-ported from Inigo Quilez's exact forms in 1.11.0 (the previous
+/// versions jumped or were not distance fields; found by the Lipschitz
+/// property test). Shader helpers are mirrored line by line.
+#[test]
+fn iq_exact_ports_gpu_match_cpu() {
+    assert_gpu_matches_cpu("egg", &SdfNode::egg(1.0, 0.4), 1e-5);
+}

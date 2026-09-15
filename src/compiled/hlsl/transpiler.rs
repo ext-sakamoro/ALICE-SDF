@@ -950,16 +950,19 @@ const HELPER_SDF_UNEVEN_CAPSULE: &str = r"float sdf_uneven_capsule(float3 p, flo
 ";
 
 const HELPER_SDF_EGG: &str = r"float sdf_egg(float3 p, float ra, float rb) {
+    const float k = 1.7320508;
     float px = length(p.xz);
     float py = p.y;
     float r = ra - rb;
+    float d;
     if (py < 0.0) {
-        return length(float2(px, py)) - r;
-    } else if (px * ra < py * rb) {
-        return length(float2(px, py - ra));
+        d = length(float2(px, py)) - r;
+    } else if (k * (px + r) < py) {
+        d = length(float2(px, py - k * r)) - r;
     } else {
-        return length(float2(px + rb, py)) - ra;
+        d = length(float2(px + r, py)) - 2.0 * r;
     }
+    return d - rb;
 }
 ";
 
