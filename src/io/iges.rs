@@ -140,11 +140,9 @@ fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::
         p_line_per_entity.push(1u32);
     }
     // Finite element entities (triangles)
-    let mut tri_de_ids: Vec<u32> = Vec::with_capacity(tris.len());
-    let node_de_count = (verts.len() * 2) as u32;
-    for (i, tri) in tris.iter().enumerate() {
-        let de_id = node_de_count + (i * 2 + 1) as u32;
-        tri_de_ids.push(de_id);
+    // (the DE sequence numbers of the triangle entities are assigned when the
+    // DE section is written below; nothing here needs them)
+    for tri in tris {
         let line = format!(
             "136,3,{},{},{};",
             node_de_ids.get(tri[0]).copied().unwrap_or(0),

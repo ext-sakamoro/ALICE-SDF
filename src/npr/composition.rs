@@ -13,7 +13,7 @@ use glam::Vec3;
 pub fn vignette(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> f32 {
     let dx = uv_x - 0.5;
     let dy = uv_y - 0.5;
-    let d = (dx * dx + dy * dy).sqrt();
+    let d = dx.hypot(dy);
     let inner = radius.max(0.0);
     let outer = (inner + softness.max(0.0)).max(inner + 1e-6);
     if d <= inner {
@@ -22,7 +22,7 @@ pub fn vignette(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> f32 {
         0.0
     } else {
         let t = ((d - inner) / (outer - inner)).clamp(0.0, 1.0);
-        1.0 - (t * t * (3.0 - 2.0 * t))
+        (t * t).mul_add(-2.0f32.mul_add(-t, 3.0), 1.0)
     }
 }
 

@@ -224,7 +224,7 @@ fn compute_vertex_score(cache_pos: i32, active_tri_count: u32) -> f32 {
 
     // Valence boost
     let valence_boost = (active_tri_count as f32).powf(-VALENCE_BOOST_POWER);
-    score += VALENCE_BOOST_SCALE * valence_boost;
+    score = VALENCE_BOOST_SCALE.mul_add(valence_boost, score);
 
     score
 }
@@ -415,9 +415,7 @@ pub fn compute_atvr(mesh: &Mesh, cache_size: usize) -> f32 {
         if cache.contains(&idx) {
             // hit: cache 順序は保持 (LRU 化しない、fetch は前方 window の連続性を測る)
         } else {
-            if !unique_seen.contains(&idx) {
-                unique_seen.insert(idx);
-            }
+            unique_seen.insert(idx);
             misses += 1;
             cache.push_front(idx);
             if cache.len() > cache_size {

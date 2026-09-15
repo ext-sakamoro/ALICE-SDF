@@ -214,7 +214,7 @@ impl SoAPoints {
     }
 
     /// Clear all points
-    pub fn clear(&mut self) {
+    pub const fn clear(&mut self) {
         self.x.clear();
         self.y.clear();
         self.z.clear();

@@ -25,7 +25,7 @@ fn helix_curve_dist2(r: f32, theta: f32, py: f32, major_r: f32, pitch: f32) -> f
     let tau = std::f32::consts::TAU;
     let c = pitch / tau;
     let two_rr = 2.0 * r * major_r;
-    let k = round_half_up((py - theta * c) / pitch);
+    let k = round_half_up(theta.mul_add(-c, py) / pitch);
     let mut best = f32::MAX;
     for dk in [-1.0_f32, 0.0, 1.0] {
         let mut phi = (k + dk).mul_add(tau, theta);

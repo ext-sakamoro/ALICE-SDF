@@ -332,8 +332,7 @@ impl Real for f32x8 {
     }
     #[inline(always)]
     fn signum(self) -> Self {
-        self.cmp_lt(Self::ZERO)
-            .blend(Self::splat(-1.0), Self::ONE)
+        self.cmp_lt(Self::ZERO).blend(Self::splat(-1.0), Self::ONE)
     }
     #[inline(always)]
     fn lt(self, other: Self) -> Self {

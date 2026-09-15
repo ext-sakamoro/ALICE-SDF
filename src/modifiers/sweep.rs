@@ -38,19 +38,19 @@ pub fn bezier_distance_2d(q: Vec2, p0: Vec2, p1: Vec2, p2: Vec2) -> f32 {
     }
     let kk = 1.0 / bb;
     let kx = kk * a.dot(b);
-    let ky = kk * (2.0 * a.dot(a) + d.dot(b)) / 3.0;
+    let ky = kk * 2.0f32.mul_add(a.dot(a), d.dot(b)) / 3.0;
     let kz = kk * d.dot(a);
     let p = ky - kx * kx;
     let p3 = p * p * p;
-    let qq = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
-    let h = qq * qq + 4.0 * p3;
+    let qq = kx * 3.0f32.mul_add(-ky, 2.0 * kx * kx) + kz;
+    let h = 4.0f32.mul_add(p3, qq * qq);
     let dot2 = |v: Vec2| v.dot(v);
     let res = if h >= 0.0 {
         let h = h.sqrt();
         let x0 = (h - qq) * 0.5;
         let x1 = (-h - qq) * 0.5;
-        let u = x0.signum() * x0.abs().powf(1.0 / 3.0);
-        let v = x1.signum() * x1.abs().powf(1.0 / 3.0);
+        let u = x0.signum() * x0.abs().cbrt();
+        let v = x1.signum() * x1.abs().cbrt();
         let t = (u + v - kx).clamp(0.0, 1.0);
         dot2(d + (c + b * t) * t)
     } else {
@@ -58,8 +58,8 @@ pub fn bezier_distance_2d(q: Vec2, p0: Vec2, p1: Vec2, p2: Vec2) -> f32 {
         let v = (qq / (p * z * 2.0)).clamp(-1.0, 1.0).acos() / 3.0;
         let m = v.cos();
         let n = v.sin() * 1.732_050_8;
-        let t0 = ((m + m) * z - kx).clamp(0.0, 1.0);
-        let t1 = ((-n - m) * z - kx).clamp(0.0, 1.0);
+        let t0 = (m + m).mul_add(z, -kx).clamp(0.0, 1.0);
+        let t1 = (-n - m).mul_add(z, -kx).clamp(0.0, 1.0);
         // the third root cannot be the closest
         dot2(d + (c + b * t0) * t0).min(dot2(d + (c + b * t1) * t1))
     };

@@ -468,7 +468,7 @@ pub fn fit_plane(points: &[Vec3], config: &FittingConfig) -> Option<FittingResul
         let d = p - centroid;
         for i in 0..3 {
             for j in 0..3 {
-                cov[i][j] += d[i] * d[j];
+                cov[i][j] = d[i].mul_add(d[j], cov[i][j]);
             }
         }
     }

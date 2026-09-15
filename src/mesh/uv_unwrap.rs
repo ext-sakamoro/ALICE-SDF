@@ -245,7 +245,7 @@ pub fn compute_uv_density(mesh: &Mesh, texture_size: u32) -> UvDensityReport {
         // 2D triangle area = 0.5 * |cross(uv1-uv0, uv2-uv0)|
         let e1 = uv1 - uv0;
         let e2 = uv2 - uv0;
-        let cross_z = e1.x * e2.y - e1.y * e2.x;
+        let cross_z = e1.y.mul_add(-e2.x, e1.x * e2.y);
         let uv_area = cross_z.abs() * 0.5;
         let texels_per_face = uv_area * tex_area_px;
 
@@ -678,7 +678,7 @@ fn pack_charts(charts: &mut [UvChart], margin: f32) -> f32 {
         charts[ci].bounds_min += offset;
         charts[ci].bounds_max += offset;
 
-        total_used_area += w * h;
+        total_used_area = w.mul_add(h, total_used_area);
         shelf_height = shelf_height.max(h);
         cursor_x += w + margin;
     }

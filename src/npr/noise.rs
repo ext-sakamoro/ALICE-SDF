@@ -147,12 +147,12 @@ impl Default for PerlinNoise {
 /// Fifth-order smoothstep (`6t^5 - 15t^4 + 10t^3`), C² continuous
 #[inline]
 fn perlin_fade(t: f32) -> f32 {
-    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    t * t * t * t.mul_add(t.mul_add(6.0, -15.0), 10.0)
 }
 
 #[inline]
 fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
-    a + t * (b - a)
+    t.mul_add(b - a, a)
 }
 
 /// Twelve edge-midpoint gradients selected by a hash's low bits
@@ -231,7 +231,7 @@ impl NoiseField for PerlinNoise {
 
         // grad values sit in [-sqrt(2)/2 * 2, sqrt(2)/2 * 2] roughly [-1.4, 1.4]
         // clamp then remap [-1, 1] -> [0, 1]
-        (raw.clamp(-1.0, 1.0) * 0.5 + 0.5).clamp(0.0, 1.0)
+        raw.clamp(-1.0, 1.0).mul_add(0.5, 0.5).clamp(0.0, 1.0)
     }
 }
 
@@ -310,7 +310,7 @@ impl NoiseField for WorleyNoise {
                     let dx_f = p.x - fp_x;
                     let dy_f = p.y - fp_y;
                     let dz_f = p.z - fp_z;
-                    let sq = dx_f * dx_f + dy_f * dy_f + dz_f * dz_f;
+                    let sq = dx_f.mul_add(dx_f, dy_f * dy_f) + dz_f * dz_f;
                     if sq < nearest_sq {
                         nearest_sq = sq;
                     }
@@ -402,13 +402,17 @@ const fn simplex_grad_vec(hash: u32) -> (f32, f32, f32) {
 /// Radial-falloff-weighted gradient dot for one simplex corner
 #[inline]
 fn simplex_contrib(x: f32, y: f32, z: f32, hash: u32) -> f32 {
-    let t = 0.6 - x * x - y * y - z * z;
+    let t = z.mul_add(-z, y.mul_add(-y, x.mul_add(-x, 0.6)));
     if t < 0.0 {
         0.0
     } else {
         let (gx, gy, gz) = simplex_grad_vec(hash);
         let t2 = t * t;
-        t2 * t2 * (gx * x + gy * y + gz * z)
+        // t⁴ · (g · p): the repeated factor is the simplex kernel, not a typo
+        #[allow(clippy::suspicious_operation_groupings)]
+        {
+            t2 * t2 * gz.mul_add(z, gy.mul_add(y, gx * x))
+        }
     }
 }
 
@@ -478,12 +482,12 @@ impl NoiseField for SimplexNoise {
         let x1 = x0 - i1 as f32 + SIMPLEX_G3;
         let y1 = y0 - j1 as f32 + SIMPLEX_G3;
         let z1 = z0 - k1 as f32 + SIMPLEX_G3;
-        let x2 = x0 - i2 as f32 + 2.0 * SIMPLEX_G3;
-        let y2 = y0 - j2 as f32 + 2.0 * SIMPLEX_G3;
-        let z2 = z0 - k2 as f32 + 2.0 * SIMPLEX_G3;
-        let x3 = x0 - 1.0 + 3.0 * SIMPLEX_G3;
-        let y3 = y0 - 1.0 + 3.0 * SIMPLEX_G3;
-        let z3 = z0 - 1.0 + 3.0 * SIMPLEX_G3;
+        let x2 = 2.0f32.mul_add(SIMPLEX_G3, x0 - i2 as f32);
+        let y2 = 2.0f32.mul_add(SIMPLEX_G3, y0 - j2 as f32);
+        let z2 = 2.0f32.mul_add(SIMPLEX_G3, z0 - k2 as f32);
+        let x3 = 3.0f32.mul_add(SIMPLEX_G3, x0 - 1.0);
+        let y3 = 3.0f32.mul_add(SIMPLEX_G3, y0 - 1.0);
+        let z3 = 3.0f32.mul_add(SIMPLEX_G3, z0 - 1.0);
 
         let ii = i as i32;
         let jj = j as i32;
@@ -500,7 +504,7 @@ impl NoiseField for SimplexNoise {
 
         // Empirical scale factor (~32) brings 3D simplex output to roughly [-1, 1]
         let raw = 32.0 * (n0 + n1 + n2 + n3);
-        (raw.clamp(-1.0, 1.0) * 0.5 + 0.5).clamp(0.0, 1.0)
+        raw.clamp(-1.0, 1.0).mul_add(0.5, 0.5).clamp(0.0, 1.0)
     }
 }
 
@@ -524,7 +528,7 @@ pub fn fbm<N: NoiseField>(base: &N, point: Vec3, octaves: u32, lacunarity: f32, 
     let mut sum = 0.0_f32;
     let mut norm = 0.0_f32;
     for _ in 0..octaves {
-        sum += base.sample_scalar(point * freq) * amp;
+        sum = base.sample_scalar(point * freq).mul_add(amp, sum);
         norm += amp;
         freq *= lacunarity;
         amp *= gain;

@@ -112,11 +112,11 @@ pub fn sdf_to_splats(node: &SdfNode, cfg: &SplatConfig) -> Vec<Splat> {
     let surface_eps = step;
     let mut out = Vec::new();
     for k in 0..n {
-        let z = min + (k as f32 + 0.5) * step;
+        let z = (k as f32 + 0.5).mul_add(step, min);
         for j in 0..n {
-            let y = min + (j as f32 + 0.5) * step;
+            let y = (j as f32 + 0.5).mul_add(step, min);
             for i in 0..n {
-                let x = min + (i as f32 + 0.5) * step;
+                let x = (i as f32 + 0.5).mul_add(step, min);
                 let p = Vec3::new(x, y, z);
                 let d = eval(node, p);
                 if d.abs() < surface_eps {
@@ -157,7 +157,7 @@ fn encode_rotation_from_normal(n: Vec3) -> [u8; 4] {
         let axis = axis.normalize();
         (axis.x * s, axis.y * s, axis.z * s, c)
     };
-    let enc = |v: f32| ((v * 127.5 + 127.5).clamp(0.0, 255.0)) as u8;
+    let enc = |v: f32| (v.mul_add(127.5, 127.5).clamp(0.0, 255.0)) as u8;
     [enc(qx), enc(qy), enc(qz), enc(qw)]
 }
 

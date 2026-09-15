@@ -103,9 +103,9 @@ fn qef_solve(intersections: &[(Vec3, Vec3)], cell_min: Vec3, cell_max: Vec3, cla
 
         for i in 0..3 {
             for j in 0..3 {
-                ata[i][j] += n[i] * n[j];
+                ata[i][j] = n[i].mul_add(n[j], ata[i][j]);
             }
-            atb[i] += n[i] * rhs;
+            atb[i] = n[i].mul_add(rhs, atb[i]);
         }
     }
 

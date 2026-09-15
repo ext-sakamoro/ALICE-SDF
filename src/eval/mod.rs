@@ -300,20 +300,22 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
                 let iz = freq_z.floor();
                 let fx = freq_x - ix;
                 let fz = freq_z - iz;
-                let sx = fx * fx * (3.0 - 2.0 * fx);
-                let sz = fz * fz * (3.0 - 2.0 * fz);
+                let sx = fx * fx * 2.0f32.mul_add(-fx, 3.0);
+                let sz = fz * fz * 2.0f32.mul_add(-fz, 3.0);
                 let h = |x: f32, z: f32| -> f32 {
-                    ((x * 127.1 + z * 311.7).sin() * 43758.547).fract().abs()
+                    (z.mul_add(311.7, x * 127.1).sin() * 43758.547)
+                        .fract()
+                        .abs()
                 };
                 let a00 = h(ix, iz);
                 let a10 = h(ix + 1.0, iz);
                 let a01 = h(ix, iz + 1.0);
                 let a11 = h(ix + 1.0, iz + 1.0);
-                let n =
-                    a00 + (a10 - a00) * sx + (a01 - a00) * sz + (a00 - a10 - a01 + a11) * sx * sz;
-                v += a_fbm * n;
-                let nx = 0.8 * freq_x + 0.6 * freq_z;
-                let nz = -0.6 * freq_x + 0.8 * freq_z;
+                let n = ((a00 - a10 - a01 + a11) * sx)
+                    .mul_add(sz, (a01 - a00).mul_add(sz, (a10 - a00).mul_add(sx, a00)));
+                v = a_fbm.mul_add(n, v);
+                let nx = 0.6f32.mul_add(freq_z, 0.8 * freq_x);
+                let nz = 0.8f32.mul_add(freq_z, -0.6 * freq_x);
                 freq_x = nx * 2.1;
                 freq_z = nz * 2.1;
                 a_fbm *= 0.48;

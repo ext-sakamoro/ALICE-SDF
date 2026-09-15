@@ -67,7 +67,7 @@ impl Interval {
 
     /// Midpoint of the interval
     #[inline(always)]
-    pub fn midpoint(self) -> f32 {
+    pub const fn midpoint(self) -> f32 {
         f32::midpoint(self.lo, self.hi)
     }
 
@@ -843,15 +843,24 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // union form in [min(a, b) - k·ln 2, min(a, b)]).
         SdfNode::ExpSmoothUnion { a, b, k } => {
             let sharp = eval_interval(a, bounds).min(eval_interval(b, bounds));
-            Interval::new(sharp.lo - k.max(1e-6) * std::f32::consts::LN_2, sharp.hi)
+            Interval::new(
+                k.max(1e-6).mul_add(-std::f32::consts::LN_2, sharp.lo),
+                sharp.hi,
+            )
         }
         SdfNode::ExpSmoothIntersection { a, b, k } => {
             let sharp = eval_interval(a, bounds).max(eval_interval(b, bounds));
-            Interval::new(sharp.lo, sharp.hi + k.max(1e-6) * std::f32::consts::LN_2)
+            Interval::new(
+                sharp.lo,
+                k.max(1e-6).mul_add(std::f32::consts::LN_2, sharp.hi),
+            )
         }
         SdfNode::ExpSmoothSubtraction { a, b, k } => {
             let sharp = eval_interval(a, bounds).max(-eval_interval(b, bounds));
-            Interval::new(sharp.lo, sharp.hi + k.max(1e-6) * std::f32::consts::LN_2)
+            Interval::new(
+                sharp.lo,
+                k.max(1e-6).mul_add(std::f32::consts::LN_2, sharp.hi),
+            )
         }
         // Affine domain map (`modifier_shear`): interval image is exact
         SdfNode::Shear { child, shear } => {
@@ -1217,7 +1226,7 @@ fn ia_lipschitz(node: &SdfNode, bounds: Vec3Interval, l: f32) -> Interval {
     if !d.is_finite() {
         return Interval::EVERYTHING;
     }
-    Interval::new(d - l * rho, d + l * rho)
+    Interval::new(l.mul_add(-rho, d), l.mul_add(rho, d))
 }
 
 /// `x.powf(m)` on a non-negative interval (monotone for `m > 0`).
@@ -1392,9 +1401,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // Pipe `√(a² + b²) − r`: |(a∇a + b∇b)| / √(a² + b²) ≤ √(La² + Lb²).
         SdfNode::Pipe { a, b, .. } => eval_lipschitz(a).hypot(eval_lipschitz(b)),
         // Morph `a(1 − t) + b·t`.
-        SdfNode::Morph { a, b, t } => {
-            (1.0 - t).abs() * eval_lipschitz(a) + t.abs() * eval_lipschitz(b)
-        }
+        SdfNode::Morph { a, b, t } => t
+            .abs()
+            .mul_add(eval_lipschitz(b), (1.0 - t).abs() * eval_lipschitz(a)),
         // Columns (hg_sdf fOp*Columns): polar modulo of the (a, b) plane
         // — the field jumps between columns, no finite bound.
         SdfNode::ColumnsUnion { .. }
@@ -1546,7 +1555,7 @@ const UNBOUNDED_CHILD_SENTINEL: f32 = 1e6;
 /// Larger singular value of the shear `[[1, 0], [v, 1]]`: `v/2 + √(1 + v²/4)`.
 #[inline]
 fn shear_singular_value(v: f32) -> f32 {
-    (v * 0.25).mul_add(v, 1.0).sqrt() + 0.5 * v
+    0.5f32.mul_add(v, (v * 0.25).mul_add(v, 1.0).sqrt())
 }
 
 /// Axis a deformation rotates about; the radius is measured in the

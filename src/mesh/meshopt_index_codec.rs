@@ -380,7 +380,7 @@ pub fn try_encode_index_buffer(indices: &[u32]) -> Result<Vec<u8>, MeshInputErro
                 code_stream.push((15u8 << 4) | (codeaux_index as u8));
             } else {
                 // slow path: full codeaux byte
-                code_stream.push((15u8 << 4) | 14 | (fea as u8));
+                code_stream.push((15u8 << 4) | 0x0E | (fea as u8));
                 data_stream.push(codeaux);
             }
 

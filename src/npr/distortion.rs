@@ -43,9 +43,9 @@ pub fn sketch_wobble(position: Vec3, amplitude: f32, frequency: f32) -> Vec3 {
 pub fn line_boil(position: Vec3, time: f32, amplitude: f32, frequency: f32) -> Vec3 {
     let f = frequency.max(0.0);
     let offset = Vec3::new(
-        (position.y * f + time * 3.0).sin(),
-        (position.z * f + time * 3.7).sin(),
-        (position.x * f + time * 4.1).sin(),
+        time.mul_add(3.0, position.y * f).sin(),
+        time.mul_add(3.7, position.z * f).sin(),
+        time.mul_add(4.1, position.x * f).sin(),
     );
     position + offset * amplitude
 }

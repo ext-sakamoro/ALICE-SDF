@@ -961,7 +961,7 @@ impl PrimTable for f32x8 {
         let radius = Self::splat(inst.params[0]);
         let a = Self::splat(0.850_650_8_f32); // ICO_B
         let b = Self::splat(0.525_731_1_f32); // ICO_A
-                                               // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
+                                              // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
         let d0 = (p.y * a + p.z * b).abs();
         let d1 = (p.y * a - p.z * b).abs();
         let d2 = (p.x * a + p.y * b).abs();
@@ -987,7 +987,7 @@ impl PrimTable for f32x8 {
         let s = Self::splat(0.577_350_26_f32); // 1/sqrt(3)
         let ia = Self::splat(0.525_731_1_f32); // ICO_A
         let ib = Self::splat(0.850_650_8_f32); // ICO_B
-                                                // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
+                                               // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
         let d0 = (p.x * s + p.y * s + p.z * s).abs();
         let d1 = (-p.x * s + p.y * s + p.z * s).abs();
         let d2 = (p.x * s - p.y * s + p.z * s).abs();

@@ -208,7 +208,7 @@ impl Track {
                 let h11 = t3 - t2;
                 (h11 * span).mul_add(
                     in_tangent,
-                    h00 * k0.value + h10 * span * out_tangent + h01 * k1.value,
+                    (h10 * span).mul_add(out_tangent, h00 * k0.value) + h01 * k1.value,
                 )
             }
         }

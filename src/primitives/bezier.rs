@@ -44,7 +44,7 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
     let p2 = ky - kx * kx;
     let p3 = p2 * p2 * p2;
     let q2 = kx * (2.0 * kx).mul_add(kx, -(3.0 * ky)) + kz;
-    let h = q2 * q2 + 4.0 * p3;
+    let h = 4.0f32.mul_add(p3, q2 * q2);
 
     let res = if h >= 0.0 {
         // One real root

@@ -145,11 +145,11 @@ pub fn tolerance_max_violation(
     let worst = AtomicU64::new(f32::NEG_INFINITY.to_bits() as u64);
 
     (0..per_axis).into_par_iter().for_each(|i| {
-        let x = -bounds_half_extent + (i as f32) * step;
+        let x = (i as f32).mul_add(step, -bounds_half_extent);
         for j in 0..per_axis {
-            let y = -bounds_half_extent + (j as f32) * step;
+            let y = (j as f32).mul_add(step, -bounds_half_extent);
             for k in 0..per_axis {
-                let z = -bounds_half_extent + (k as f32) * step;
+                let z = (k as f32).mul_add(step, -bounds_half_extent);
                 let p = Vec3::new(x, y, z);
                 let d_inner = eval(inner, p);
                 if d_inner <= 0.0 {

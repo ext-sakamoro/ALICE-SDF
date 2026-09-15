@@ -48,10 +48,8 @@ pub fn sdf_stairs(
     // missed the nearest box for points above or beside the staircase and
     // jumped where the candidates changed (Lipschitz property test).
     let mut d_2d = f32::MAX;
-    let mut si = 0.0f32;
-    while si < n {
-        d_2d = d_2d.min(step_box(lx, ly, si, sw, sh));
-        si += 1.0;
+    for si in 0..n as u32 {
+        d_2d = d_2d.min(step_box(lx, ly, si as f32, sw, sh));
     }
 
     // Extrude along Z

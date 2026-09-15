@@ -11,7 +11,7 @@
 #[must_use]
 pub fn hatch_lines(uv_x: f32, uv_y: f32, angle_rad: f32, density: f32, thickness: f32) -> f32 {
     let (s, c) = angle_rad.sin_cos();
-    let projected = uv_x * (-s) + uv_y * c;
+    let projected = uv_y.mul_add(c, uv_x * (-s));
     let d = density.max(1e-6);
     let raw = projected * d;
     let phase = raw - raw.floor();
@@ -49,7 +49,7 @@ pub fn cross_hatch(
 pub fn paper_grain(noise_sample: f32, intensity: f32) -> f32 {
     let n = noise_sample.clamp(0.0, 1.0);
     let i = intensity.clamp(0.0, 1.0);
-    1.0 + (n * 2.0 - 1.0) * i
+    (n * 2.0 - 1.0).mul_add(i, 1.0)
 }
 
 /// Pencil shading density: high on dark side, low on bright side

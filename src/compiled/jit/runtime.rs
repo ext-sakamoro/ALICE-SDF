@@ -182,6 +182,7 @@ impl std::fmt::Debug for JitCompiledSdf {
         f.debug_struct("JitCompiledSdf")
             .field("_module", &"<JITModule>")
             .field("eval_fn", &format!("{:p}", self.eval_fn as *const ()))
+            .field("lipschitz", &self.lipschitz)
             .finish()
     }
 }

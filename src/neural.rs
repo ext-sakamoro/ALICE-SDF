@@ -266,7 +266,7 @@ impl NeuralSdf {
             for r in 0..layer.out_dim {
                 let row_off = r * layer.in_dim;
                 for c in 0..layer.in_dim {
-                    grad_w[i][row_off + c] += d_pre_act[r] * input[c];
+                    grad_w[i][row_off + c] = d_pre_act[r].mul_add(input[c], grad_w[i][row_off + c]);
                 }
                 grad_b[i][r] += d_pre_act[r];
             }
@@ -278,7 +278,7 @@ impl NeuralSdf {
                 for r in 0..layer.out_dim {
                     let row_off = r * layer.in_dim;
                     for c in 0..layer.in_dim {
-                        d_act[c] += d_pre_act[r] * layer.w[row_off + c];
+                        d_act[c] = d_pre_act[r].mul_add(layer.w[row_off + c], d_act[c]);
                     }
                 }
             }
@@ -543,7 +543,7 @@ fn layer_forward(layer: &Layer, input: &[f32], output: &mut [f32], relu: bool) {
         let mut sum = layer.b[r];
         let row = &layer.w[r * layer.in_dim..(r + 1) * layer.in_dim];
         for c in 0..layer.in_dim {
-            sum += row[c] * input[c];
+            sum = row[c].mul_add(input[c], sum);
         }
         output[r] = if relu { sum.max(0.0) } else { sum };
     }

@@ -48,7 +48,7 @@ pub fn soft_toon_ramp(n_dot_l: f32, bands: u32, smoothness: f32) -> f32 {
 fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let denom = (edge1 - edge0).abs().max(1e-6);
     let t = ((x - edge0) / denom).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
+    t * t * 2.0f32.mul_add(-t, 3.0)
 }
 
 /// Two-tone shading: `shadow` when `n_dot_l < threshold`, otherwise `light`

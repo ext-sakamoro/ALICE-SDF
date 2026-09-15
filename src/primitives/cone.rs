@@ -24,6 +24,8 @@ pub fn sdf_cone_r<R: Real>(p: Vec3R<R>, radius: f32, half_height: f32) -> R {
     let ca_y = q_y.abs() - h;
     let diff_x = -q_x;
     let diff_y = h - q_y;
+    // (diff · k2) / (k2 · k2): projection parameter, both products are dot products
+    #[allow(clippy::suspicious_operation_groupings)]
     let t = ((diff_x * k2x + diff_y * k2y) / (k2x * k2x + k2y * k2y)).clamp(R::zero(), R::one());
     let cb_x = q_x + k2x * t;
     let cb_y = q_y - h + k2y * t;

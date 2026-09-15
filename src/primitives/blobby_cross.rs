@@ -45,13 +45,16 @@ pub fn blobby_cross_2d(pos: Vec2, he: f32) -> f32 {
     let x = if h >= 0.0 {
         // one real root (`h = 0`: double root, avoids the 0/0 of the trig form)
         let r = h.sqrt();
-        (q + r).powf(1.0 / 3.0) - (q - r).abs().powf(1.0 / 3.0) * (r - q).signum()
+        (q - r)
+            .abs()
+            .cbrt()
+            .mul_add(-(r - q).signum(), (q + r).cbrt())
     } else {
         let r = p.sqrt();
         2.0 * r * ((q / (p * r)).acos() / 3.0).cos()
     };
     let x = x.min(std::f32::consts::FRAC_1_SQRT_2);
-    let z = Vec2::new(x, he * (1.0 - 2.0 * x * x)) - pos;
+    let z = Vec2::new(x, he * (2.0 * x).mul_add(-x, 1.0)) - pos;
     z.length() * z.y.signum()
 }
 

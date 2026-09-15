@@ -74,11 +74,11 @@ pub fn sdf_to_vox(node: &SdfNode, cfg: &VoxConfig) -> VoxModel {
     let step = (hi - lo) / n.max(1) as f32;
     let mut voxels = Vec::new();
     for k in 0..n {
-        let z = lo + (k as f32 + 0.5) * step;
+        let z = (k as f32 + 0.5).mul_add(step, lo);
         for j in 0..n {
-            let y = lo + (j as f32 + 0.5) * step;
+            let y = (j as f32 + 0.5).mul_add(step, lo);
             for i in 0..n {
-                let x = lo + (i as f32 + 0.5) * step;
+                let x = (i as f32 + 0.5).mul_add(step, lo);
                 let d = eval(node, Vec3::new(x, y, z));
                 if d <= 0.0 {
                     voxels.push(Voxel {

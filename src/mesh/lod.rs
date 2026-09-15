@@ -507,7 +507,8 @@ impl ContinuousLod {
         let diff = target_lod - self.current_lod;
 
         if diff.abs() > 0.01 {
-            self.current_lod += diff.signum() * self.transition_speed * delta_time;
+            self.current_lod =
+                (diff.signum() * self.transition_speed).mul_add(delta_time, self.current_lod);
             self.current_lod = self
                 .current_lod
                 .clamp(0.0, (self.chain.levels.len() - 1) as f32);

@@ -28,8 +28,8 @@ pub fn procedural_matcap(
     top_left: Vec3,
     top_right: Vec3,
 ) -> Vec3 {
-    let u = (normal_view.x * 0.5 + 0.5).clamp(0.0, 1.0);
-    let v = (normal_view.y * 0.5 + 0.5).clamp(0.0, 1.0);
+    let u = normal_view.x.mul_add(0.5, 0.5).clamp(0.0, 1.0);
+    let v = normal_view.y.mul_add(0.5, 0.5).clamp(0.0, 1.0);
     let bottom = bottom_left.lerp(bottom_right, u);
     let top = top_left.lerp(top_right, u);
     bottom.lerp(top, v)
@@ -57,7 +57,7 @@ pub fn stylized_specular(n_dot_h: f32, sharpness: f32, soft_edge: f32) -> f32 {
         let edge0 = 0.5 - s;
         let edge1 = 0.5 + s;
         let t = ((raw - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-        t * t * (3.0 - 2.0 * t)
+        t * t * 2.0f32.mul_add(-t, 3.0)
     }
 }
 

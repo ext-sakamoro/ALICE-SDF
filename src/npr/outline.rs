@@ -34,7 +34,7 @@ pub fn distance_field_outline_soft(sdf: f32, width_inner: f32, width_outer: f32)
         0.0
     } else {
         let t = ((d - inner) / (outer - inner)).clamp(0.0, 1.0);
-        1.0 - (t * t * (3.0 - 2.0 * t))
+        (t * t).mul_add(-2.0f32.mul_add(-t, 3.0), 1.0)
     }
 }
 
