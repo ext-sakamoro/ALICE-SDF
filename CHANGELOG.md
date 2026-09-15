@@ -52,6 +52,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - Cargo.toml `description` no longer references 1.7.7 / 1.8.0 for the bridge
   features (they remain path / git only).
 - CI: strict clippy runs with `--all-targets` (tests, benches, examples).
+- `resolver = "3"` (MSRV-aware dependency resolution, cargo 1.84+): `cargo
+  update` no longer selects dependencies whose `rust-version` exceeds the
+  crate's, so the lockfile cannot drift away from the declared MSRV again.
 - Two `Option::map_or(true, ..)` sites rewritten as `is_none_or` — clippy's
   `unnecessary_map_or` had been silenced by the false 1.75 MSRV.
 

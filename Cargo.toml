@@ -2,6 +2,10 @@
 name = "alice-sdf"
 version = "1.10.3"
 edition = "2021"
+# MSRV-aware 依存解決 (cargo 1.84+): `cargo update` が `rust-version` を超える dep を
+# 選ばない = lockfile が宣言 MSRV から silent に乖離しない (1.10.3 で 1.75 宣言のまま
+# clap_lex 1.1.0 (edition 2024) を掴んでいた事案の根絶、CI `msrv` job と対)
+resolver = "3"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Bridges to alice-codec/physics/asp/cache/font are not part of the crates.io release (path / git dependency only)."
 license = "MIT OR Apache-2.0"
