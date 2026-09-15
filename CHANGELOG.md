@@ -108,6 +108,11 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   `tests/test_evaluator_opcode_parity.rs`; `tests/test_relaxed_tracing.rs::
   tpms_trace_correctly_with_lipschitz_bound` (six TPMS, 0 mismatches with the
   bound, Neovius / IWP demonstrably lose rays without it).
+- `interval::eval_interval` returned `EVERYTHING` for the nine TPMS
+  surfaces, so interval-based pruning silently did nothing on any scene
+  containing one (review SDF-R2-5); they now use the centre sample ± L·ρ
+  with the Lipschitz constants above (finite and sound, pinned by
+  `tpms_intervals_are_finite_and_sound`).
 - `RaymarchConfig::min_step` is now applied in field units (divided by
   `lipschitz` like the step itself). A floor in ray units moved a sample by up
   to `L·min_step` in field value and, for `L·min_step > ε`, carried it across

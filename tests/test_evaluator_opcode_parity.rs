@@ -564,3 +564,50 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
     assert!(eval_lipschitz(&twisted_plane).is_finite());
     assert!(eval_lipschitz(&SdfNode::sphere(1.0).repeat_infinite(3.0, 3.0, 3.0)).is_infinite());
 }
+
+/// TPMS intervals must be finite (they were `EVERYTHING`, which disabled
+/// interval pruning for every scene containing one) and still enclose the
+/// point values.
+#[test]
+fn tpms_intervals_are_finite_and_sound() {
+    use alice_sdf::interval::{eval_interval, Vec3Interval};
+    let tpms = [
+        ("gyroid", SdfNode::gyroid(2.0, 0.1)),
+        ("schwarz_p", SdfNode::schwarz_p(2.0, 0.1)),
+        ("diamond_surface", SdfNode::diamond_surface(2.0, 0.1)),
+        ("neovius", SdfNode::neovius(2.0, 0.1)),
+        ("lidinoid", SdfNode::lidinoid(2.0, 0.1)),
+        ("iwp", SdfNode::iwp(2.0, 0.1)),
+        ("frd", SdfNode::frd(2.0, 0.1)),
+        ("fischer_koch_s", SdfNode::fischer_koch_s(2.0, 0.1)),
+        ("pmy", SdfNode::pmy(2.0, 0.1)),
+    ];
+    let mut rnd = lcg(0x7fee_d00d);
+    for (name, node) in tpms {
+        for _ in 0..200 {
+            let lo = Vec3::new(
+                rnd().mul_add(6.0, -3.0),
+                rnd().mul_add(6.0, -3.0),
+                rnd().mul_add(6.0, -3.0),
+            );
+            let hi = lo + Vec3::splat(0.5);
+            let iv = eval_interval(&node, Vec3Interval::from_bounds(lo, hi));
+            assert!(
+                iv.lo.is_finite() && iv.hi.is_finite(),
+                "{name}: non-finite interval [{}, {}] on {lo:?}",
+                iv.lo,
+                iv.hi
+            );
+            for _ in 0..8 {
+                let p = lo + Vec3::new(rnd(), rnd(), rnd()) * 0.5;
+                let d = eval(&node, p);
+                assert!(
+                    d >= iv.lo - 1e-4 && d <= iv.hi + 1e-4,
+                    "{name}: {d} not in [{}, {}] at {p:?}",
+                    iv.lo,
+                    iv.hi
+                );
+            }
+        }
+    }
+}

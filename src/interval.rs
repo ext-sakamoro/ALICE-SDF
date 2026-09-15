@@ -512,9 +512,21 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             ..
         } => ia_bsphere(bounds, radius + half_length + width + thickness),
         SdfNode::Vesica { radius, .. } => ia_bsphere(bounds, *radius),
-        SdfNode::InfiniteCone { .. } | SdfNode::Gyroid { .. } | SdfNode::SchwarzP { .. } => {
-            Interval::EVERYTHING
-        }
+        SdfNode::InfiniteCone { .. } => Interval::EVERYTHING,
+        // Triply periodic minimal surfaces: not distance fields, but Lipschitz
+        // with the constants `eval_lipschitz` pins (√3 … 7), so the centre
+        // sample ± L·ρ is a sound, finite enclosure. Until 1.10.3 these
+        // returned EVERYTHING and interval-based pruning silently did nothing
+        // for TPMS scenes (external review 2026-09-15, SDF-R2-5).
+        SdfNode::Gyroid { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. } => ia_lipschitz(node, bounds, eval_lipschitz(node)),
         SdfNode::Heart { size } => ia_bsphere(bounds, *size * 2.0),
         SdfNode::Tube { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::Barrel {
@@ -707,13 +719,6 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         | SdfNode::TruncatedOctahedron { .. }
         | SdfNode::TruncatedIcosahedron { .. }
         | SdfNode::BoxFrame { .. } => ia_lipschitz(node, bounds, 1.0),
-        SdfNode::DiamondSurface { .. } => Interval::EVERYTHING,
-        SdfNode::Neovius { .. } => Interval::EVERYTHING,
-        SdfNode::Lidinoid { .. } => Interval::EVERYTHING,
-        SdfNode::IWP { .. } => Interval::EVERYTHING,
-        SdfNode::FRD { .. } => Interval::EVERYTHING,
-        SdfNode::FischerKochS { .. } => Interval::EVERYTHING,
-        SdfNode::PMY { .. } => Interval::EVERYTHING,
 
         // ============ 2D Primitives ============
         // Extruded 2D SDFs: 1-Lipschitz (the old arms mis-modelled the extrusion)
