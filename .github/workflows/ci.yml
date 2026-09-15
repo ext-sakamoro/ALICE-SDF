@@ -80,8 +80,9 @@ jobs:
       - name: Test (core)
         run: cargo test --lib
 
+      # Hard gate since 1.11.0: this used to be continue-on-error, which
+      # made the transpiler unit tests a dead gate (external review 2026-09-15).
       - name: Test (shader transpilers)
-        continue-on-error: true
         run: cargo test --lib --features "glsl,hlsl,gpu"
 
       - name: Test (integration)
@@ -423,6 +424,46 @@ jobs:
 
       - name: Check (docs.rs feature set)
         run: cargo check --lib --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi"
+
+  # The transpilers' only correctness oracle runs the generated WGSL on a real
+  # wgpu device (tests/test_gpu_law_parity.rs etc.). GitHub runners have no
+  # GPU, so this job installs Mesa's software Vulkan driver (lavapipe) and
+  # requires an adapter (ALICE_SDF_REQUIRE_GPU=1 turns "no adapter → skip"
+  # into a failure). Until 1.11.0 these tests had never run in CI
+  # (external review 2026-09-15, SDF-3 / SDF-R2-7).
+  gpu-parity:
+    name: GPU parity (lavapipe)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ALICE_SDF_REQUIRE_GPU: "1"
+      WGPU_BACKEND: vulkan
+      VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Mesa software Vulkan (lavapipe)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools
+          vulkaninfo --summary | head -40
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: GPU ↔ CPU law parity, shader validation, GPU marching cubes
+        run: >
+          cargo test --features "gpu,glsl,gpu-mesh"
+          --test test_gpu_law_parity
+          --test test_gpu_noise_parity
+          --test test_round_tie_parity
+          --test test_transpiler_naga_validate
+          --test noise_shader_validate
+          --test test_mesh_orientation
+          -- --nocapture
 
   doc:
     name: Doc (RUSTDOCFLAGS=-Dwarnings)

@@ -176,6 +176,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   FFI call into an error.
 - CI: the `unity` / `unreal` meta-feature builds are hard gates
   (`continue-on-error` removed).
+- CI: new `gpu-parity` job (ubuntu + Mesa lavapipe software Vulkan) runs
+  the GPU ↔ CPU law / noise parity tests, the naga shader validation and
+  the GPU marching-cubes orientation test with `ALICE_SDF_REQUIRE_GPU=1`,
+  which turns "no adapter → skip" into a failure. Until now the only
+  correctness oracle for the transpilers had never executed in CI; the
+  `Test (shader transpilers)` step is also a hard gate (its
+  `continue-on-error` is removed).
 
 ## [v1.10.3] - 2026-09-15
 

@@ -39,6 +39,13 @@ fn gpu_or_skip(node: &SdfNode) -> Option<GpuEvaluator> {
     match GpuEvaluator::new(node) {
         Ok(g) => Some(g),
         Err(e) => {
+            // CI's gpu-parity job (software Vulkan / lavapipe) sets
+            // ALICE_SDF_REQUIRE_GPU=1 so that "no adapter" is a failure, not a
+            // silent skip — this test is the only oracle for the transpilers.
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but no GPU adapter was found: {e}"
+            );
             eprintln!("skipping GPU law parity: {e}");
             None
         }

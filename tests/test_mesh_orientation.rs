@@ -220,9 +220,16 @@ fn gpu_marching_cubes_faces_outward() {
         resolution: 32,
         ..Default::default()
     };
-    let Ok(m) = gpu_marching_cubes(&node, Vec3::splat(-1.6), Vec3::splat(1.6), &cfg) else {
-        eprintln!("no GPU adapter: skipped");
-        return;
+    let m = match gpu_marching_cubes(&node, Vec3::splat(-1.6), Vec3::splat(1.6), &cfg) {
+        Ok(m) => m,
+        Err(e) => {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but GPU marching cubes failed: {e}"
+            );
+            eprintln!("no GPU adapter: skipped ({e})");
+            return;
+        }
     };
     let (out, inw) = winding(&node, &m, 3.2 / 32.0);
     assert!(inw == 0 && out > 0, "GPU MC: {out} outward / {inw} inward");
