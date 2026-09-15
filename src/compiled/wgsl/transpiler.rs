@@ -1374,12 +1374,10 @@ fn sdf_stairs(p: vec3<f32>, sw: f32, sh: f32, ns: f32, hd: f32) -> f32 {
     let th = n * sh;
     let lx = p.x + tw * 0.5;
     let ly = p.y + th * 0.5;
-    let si = clamp(floor(lx / sw), 0.0, n - 1.0);
-    let sj = clamp(ceil(ly / sh) - 1.0, 0.0, n - 1.0);
-    var d2d = _stair_box(lx, ly, si, sw, sh);
-    if (si > 0.0) { d2d = min(d2d, _stair_box(lx, ly, si - 1.0, sw, sh)); }
-    if (si < n - 1.0) { d2d = min(d2d, _stair_box(lx, ly, si + 1.0, sw, sh)); }
-    if (sj != si && sj != si - 1.0 && sj != si + 1.0) { d2d = min(d2d, _stair_box(lx, ly, sj, sw, sh)); }
+    var d2d = 1e30;
+    for (var si = 0.0; si < n; si = si + 1.0) {
+        d2d = min(d2d, _stair_box(lx, ly, si, sw, sh));
+    }
     let dz = abs(p.z) - hd;
     let w = max(vec2<f32>(d2d, dz), vec2<f32>(0.0));
     return min(max(d2d, dz), 0.0) + length(w);

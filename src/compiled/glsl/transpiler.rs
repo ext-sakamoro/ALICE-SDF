@@ -1226,7 +1226,7 @@ const HELPER_SDF_STAIRS: &str = r"float _stair_box(float lx, float ly, float s, 
     float hy = (s + 1.0) * sh * 0.5;
     float dx = abs(lx - cx) - sw * 0.5;
     float dy = abs(ly - hy) - hy;
-    return length(max(vec2(dx, dy), vec2(0.0))) + min(max(dx, dy), 0.0);
+    return length(max(vec2(dx, dy), vec2(0.0, 0.0))) + min(max(dx, dy), 0.0);
 }
 float sdf_stairs(vec3 p, float sw, float sh, float ns, float hd) {
     float n = max(ns, 1.0);
@@ -1234,14 +1234,12 @@ float sdf_stairs(vec3 p, float sw, float sh, float ns, float hd) {
     float th = n * sh;
     float lx = p.x + tw * 0.5;
     float ly = p.y + th * 0.5;
-    float si = clamp(floor(lx / sw), 0.0, n - 1.0);
-    float sj = clamp(ceil(ly / sh) - 1.0, 0.0, n - 1.0);
-    float d2d = _stair_box(lx, ly, si, sw, sh);
-    if (si > 0.0) d2d = min(d2d, _stair_box(lx, ly, si - 1.0, sw, sh));
-    if (si < n - 1.0) d2d = min(d2d, _stair_box(lx, ly, si + 1.0, sw, sh));
-    if (sj != si && sj != si - 1.0 && sj != si + 1.0) d2d = min(d2d, _stair_box(lx, ly, sj, sw, sh));
+    float d2d = 1e30;
+    for (float si = 0.0; si < n; si += 1.0) {
+        d2d = min(d2d, _stair_box(lx, ly, si, sw, sh));
+    }
     float dz = abs(p.z) - hd;
-    vec2 w = max(vec2(d2d, dz), vec2(0.0));
+    vec2 w = max(vec2(d2d, dz), vec2(0.0, 0.0));
     return min(max(d2d, dz), 0.0) + length(w);
 }
 ";

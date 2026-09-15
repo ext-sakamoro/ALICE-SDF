@@ -172,6 +172,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   by the SIMD path and emitted as one `bezier_distance_2d` helper per shader
   language (GPU ↔ CPU 4.3e-5); `eval_lipschitz` is the child's bound.
 
+- `Stairs` compared only the step boxes {si − 1, si, si + 1, sj} and so
+  missed the nearest step for points above or beside the staircase, jumping
+  by up to 84× the sample spacing where the candidate set changed. It now
+  takes the exact minimum over all `n_steps` boxes (CPU and the three
+  shader helpers, GPU ↔ CPU 2.4e-7); `eval_lipschitz` is 1.
+
 ### Changed — compiled evaluator speed (review SDF-R2-4)
 
 - `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,

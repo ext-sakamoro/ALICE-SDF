@@ -208,4 +208,5 @@ fn iq_exact_ports_gpu_match_cpu() {
         ),
         1e-4,
     );
+    assert_gpu_matches_cpu("stairs", &SdfNode::stairs(0.4, 0.3, 5, 0.5), 1e-5);
 }

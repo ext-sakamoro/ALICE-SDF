@@ -43,21 +43,15 @@ pub fn sdf_stairs(
     let lx = p.x + tw * 0.5;
     let ly = p.y + th * 0.5;
 
-    // Find candidate step indices from x and y
-    let si = (lx / sw).floor().clamp(0.0, n - 1.0);
-    let sj = ((ly / sh).ceil() - 1.0).clamp(0.0, n - 1.0);
-
-    // Check the nearest candidate steps (si-1, si, si+1, sj)
-    let mut d_2d = step_box(lx, ly, si, sw, sh);
-
-    if si > 0.0 {
-        d_2d = d_2d.min(step_box(lx, ly, si - 1.0, sw, sh));
-    }
-    if si < n - 1.0 {
-        d_2d = d_2d.min(step_box(lx, ly, si + 1.0, sw, sh));
-    }
-    if sj != si && sj != si - 1.0 && sj != si + 1.0 {
-        d_2d = d_2d.min(step_box(lx, ly, sj, sw, sh));
+    // Union of the n step boxes: the exact exterior distance is the minimum
+    // over every box. The pre-1.11.0 candidate set {si − 1, si, si + 1, sj}
+    // missed the nearest box for points above or beside the staircase and
+    // jumped where the candidates changed (Lipschitz property test).
+    let mut d_2d = f32::MAX;
+    let mut si = 0.0f32;
+    while si < n {
+        d_2d = d_2d.min(step_box(lx, ly, si, sw, sh));
+        si += 1.0;
     }
 
     // Extrude along Z
