@@ -206,7 +206,7 @@ fn bisect_edge(
             return mid;
         }
 
-        if (dlo > 0.0) == (dm > 0.0) {
+        if (dlo < 0.0) == (dm < 0.0) {
             lo = mid;
             dlo = dm;
         } else {
@@ -315,8 +315,10 @@ fn dual_contouring_impl(
             ];
 
             // Check if any edge has a sign change
-            let sign0 = corners[0] > 0.0;
-            let has_crossing = corners[1..].iter().any(|&v| (v > 0.0) != sign0);
+            // inside = d < 0 (a sample exactly on the surface counts as outside,
+            // consistently with the edge tests below)
+            let sign0 = corners[0] < 0.0;
+            let has_crossing = corners[1..].iter().any(|&v| (v < 0.0) != sign0);
             if !has_crossing {
                 return None;
             }
@@ -345,7 +347,7 @@ fn dual_contouring_impl(
             for &(c0, c1, off_a, off_b) in &EDGES {
                 let da = corners[c0];
                 let db = corners[c1];
-                if (da > 0.0) == (db > 0.0) {
+                if (da < 0.0) == (db < 0.0) {
                     continue; // no sign change
                 }
 
@@ -398,9 +400,46 @@ fn dual_contouring_impl(
 
     // 4. Generate quads → triangles from shared sign-change edges
     //    For each internal edge, the 4 cells sharing that edge form a quad.
+    //    Orientation: the quad's cells are listed counter-clockwise about the
+    //    +axis direction, so the winding must be reversed when the *start*
+    //    of the edge is outside (outward is −axis). Until 1.12.0 the branches
+    //    were the other way round and every DC triangle faced inward (found by
+    //    `tests/test_dual_contouring_invariants.rs`). "Inside" is `d < 0`
+    //    everywhere: a sample exactly on the surface (a face on a grid plane)
+    //    is outside, so no edge lying *in* the surface counts as a crossing —
+    //    such in-plane quads have no meaningful orientation.
     let mut indices: Vec<u32> = Vec::new();
 
     let cell_idx = |cx: usize, cy: usize, cz: usize| -> usize { cz * res * res + cy * res + cx };
+
+    // A dual quad is generally non-planar (saddle cells on the inner ring of
+    // a torus): splitting along a fixed diagonal can fold one of the two
+    // triangles against the surface. Split along the diagonal whose two
+    // triangles both face the quad's mean vertex normal; the (0, 2)
+    // diagonal wins ties.
+    let emit_quad = |indices: &mut Vec<u32>, q: [u32; 4]| {
+        let p = [
+            vertices[q[0] as usize].position,
+            vertices[q[1] as usize].position,
+            vertices[q[2] as usize].position,
+            vertices[q[3] as usize].position,
+        ];
+        // reference = mean of the four dual-vertex normals (each sampled on
+        // the surface); a field sample at the quad centre is wrong across a
+        // CSG crease, where the centre can fall on the other operand
+        let n_ref = vertices[q[0] as usize].normal
+            + vertices[q[1] as usize].normal
+            + vertices[q[2] as usize].normal
+            + vertices[q[3] as usize].normal;
+        let facing = |a: usize, b: usize, c: usize| (p[b] - p[a]).cross(p[c] - p[a]).dot(n_ref);
+        let split_02 = facing(0, 1, 2).min(facing(0, 2, 3));
+        let split_13 = facing(1, 2, 3).min(facing(1, 3, 0));
+        if split_13 > split_02 {
+            indices.extend_from_slice(&[q[1], q[2], q[3], q[1], q[3], q[0]]);
+        } else {
+            indices.extend_from_slice(&[q[0], q[1], q[2], q[0], q[2], q[3]]);
+        }
+    };
 
     // X-edges: edge along X between grid vertices (x, y, z) and (x+1, y, z)
     // Shared by cells: (x, y-1, z-1), (x, y, z-1), (x, y-1, z), (x, y, z)
@@ -412,7 +451,7 @@ fn dual_contouring_impl(
                 // X-edge: (x,y,z) → (x+1,y,z), shared by 4 cells if y>0 and z>0
                 if x < res - 1 && y > 0 && z > 0 {
                     let d1 = values[idx(x + 1, y, z)];
-                    if (d0 > 0.0) != (d1 > 0.0) {
+                    if (d0 < 0.0) != (d1 < 0.0) {
                         let c0 = cell_idx(x, y - 1, z - 1);
                         let c1 = cell_idx(x, y, z - 1);
                         let c2 = cell_idx(x, y, z);
@@ -424,10 +463,10 @@ fn dual_contouring_impl(
                         let v3 = vertex_index_map[c3];
 
                         if v0 != u32::MAX && v1 != u32::MAX && v2 != u32::MAX && v3 != u32::MAX {
-                            if d0 > 0.0 {
-                                indices.extend_from_slice(&[v0, v1, v2, v0, v2, v3]);
+                            if d0 < 0.0 {
+                                emit_quad(&mut indices, [v0, v1, v2, v3]);
                             } else {
-                                indices.extend_from_slice(&[v0, v2, v1, v0, v3, v2]);
+                                emit_quad(&mut indices, [v0, v3, v2, v1]);
                             }
                         }
                     }
@@ -436,7 +475,7 @@ fn dual_contouring_impl(
                 // Y-edge: (x,y,z) → (x,y+1,z), shared by 4 cells if x>0 and z>0
                 if y < res - 1 && x > 0 && z > 0 {
                     let d1 = values[idx(x, y + 1, z)];
-                    if (d0 > 0.0) != (d1 > 0.0) {
+                    if (d0 < 0.0) != (d1 < 0.0) {
                         let c0 = cell_idx(x - 1, y, z - 1);
                         let c1 = cell_idx(x, y, z - 1);
                         let c2 = cell_idx(x, y, z);
@@ -448,10 +487,10 @@ fn dual_contouring_impl(
                         let v3 = vertex_index_map[c3];
 
                         if v0 != u32::MAX && v1 != u32::MAX && v2 != u32::MAX && v3 != u32::MAX {
-                            if d0 > 0.0 {
-                                indices.extend_from_slice(&[v0, v2, v1, v0, v3, v2]);
+                            if d0 < 0.0 {
+                                emit_quad(&mut indices, [v0, v3, v2, v1]);
                             } else {
-                                indices.extend_from_slice(&[v0, v1, v2, v0, v2, v3]);
+                                emit_quad(&mut indices, [v0, v1, v2, v3]);
                             }
                         }
                     }
@@ -460,7 +499,7 @@ fn dual_contouring_impl(
                 // Z-edge: (x,y,z) → (x,y,z+1), shared by 4 cells if x>0 and y>0
                 if z < res - 1 && x > 0 && y > 0 {
                     let d1 = values[idx(x, y, z + 1)];
-                    if (d0 > 0.0) != (d1 > 0.0) {
+                    if (d0 < 0.0) != (d1 < 0.0) {
                         let c0 = cell_idx(x - 1, y - 1, z);
                         let c1 = cell_idx(x, y - 1, z);
                         let c2 = cell_idx(x, y, z);
@@ -472,10 +511,10 @@ fn dual_contouring_impl(
                         let v3 = vertex_index_map[c3];
 
                         if v0 != u32::MAX && v1 != u32::MAX && v2 != u32::MAX && v3 != u32::MAX {
-                            if d0 > 0.0 {
-                                indices.extend_from_slice(&[v0, v1, v2, v0, v2, v3]);
+                            if d0 < 0.0 {
+                                emit_quad(&mut indices, [v0, v1, v2, v3]);
                             } else {
-                                indices.extend_from_slice(&[v0, v2, v1, v0, v3, v2]);
+                                emit_quad(&mut indices, [v0, v3, v2, v1]);
                             }
                         }
                     }
