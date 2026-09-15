@@ -131,18 +131,18 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // q = abs(p) - half_extents; max(q, 0).length() + min(max(q.x, q.y, q.z), 0) - r
-        let hx = f32x8::splat(inst.params[0]);
-        let hy = f32x8::splat(inst.params[1]);
-        let hz = f32x8::splat(inst.params[2]);
-        let rr = f32x8::splat(inst.params[3]);
+        let hx = Self::splat(inst.params[0]);
+        let hy = Self::splat(inst.params[1]);
+        let hz = Self::splat(inst.params[2]);
+        let rr = Self::splat(inst.params[3]);
         let qx = p.x.abs() - hx;
         let qy = p.y.abs() - hy;
         let qz = p.z.abs() - hz;
-        let qx_pos = qx.max(f32x8::ZERO);
-        let qy_pos = qy.max(f32x8::ZERO);
-        let qz_pos = qz.max(f32x8::ZERO);
+        let qx_pos = qx.max(Self::ZERO);
+        let qy_pos = qy.max(Self::ZERO);
+        let qz_pos = qz.max(Self::ZERO);
         let outer = (qx_pos * qx_pos + qy_pos * qy_pos + qz_pos * qz_pos).sqrt();
-        let inner = qx.max(qy).max(qz).min(f32x8::ZERO);
+        let inner = qx.max(qy).max(qz).min(Self::ZERO);
         let d = outer + inner - rr;
         out = d * scale_correction;
         out
@@ -158,17 +158,17 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // 2D profile in (length(p.xz), p.y) space
-        let h = f32x8::splat(inst.params[0]);
-        let r1 = f32x8::splat(inst.params[1]);
-        let r2 = f32x8::splat(inst.params[2]);
+        let h = Self::splat(inst.params[0]);
+        let r1 = Self::splat(inst.params[1]);
+        let r2 = Self::splat(inst.params[2]);
         let qx = (p.x * p.x + p.z * p.z).sqrt();
         let qy = p.y;
         // k2 = (r2 - r1, 2*h)
         let k2x = r2 - r1;
-        let k2y = h * f32x8::splat(2.0);
+        let k2y = h * Self::splat(2.0);
         let k2_dot = k2x * k2x + k2y * k2y;
         // ca = (qx - min(qx, if qy<0 {r1} else {r2}), abs(qy) - h)
-        let neg_mask = qy.cmp_lt(f32x8::ZERO);
+        let neg_mask = qy.cmp_lt(Self::ZERO);
         let min_r = neg_mask.blend(r1, r2);
         let ca_x = qx - qx.min(min_r);
         let ca_y = qy.abs() - h;
@@ -176,16 +176,16 @@ impl PrimTable for f32x8 {
         let d_to_k1_x = r2 - qx;
         let d_to_k1_y = h - qy;
         let num = d_to_k1_x * k2x + d_to_k1_y * k2y;
-        let safe_k2_dot = k2_dot.max(f32x8::splat(0.0001));
-        let t = (num / safe_k2_dot).max(f32x8::ZERO).min(f32x8::ONE);
+        let safe_k2_dot = k2_dot.max(Self::splat(0.0001));
+        let t = (num / safe_k2_dot).max(Self::ZERO).min(Self::ONE);
         // cb = q - k1 + k2*t
         let cb_x = qx - r2 + k2x * t;
         let cb_y = qy - h + k2y * t;
         let ca_d2 = ca_x * ca_x + ca_y * ca_y;
         let cb_d2 = cb_x * cb_x + cb_y * cb_y;
         // s = -1 if cb.x<0 && ca.y<0, else 1
-        let both_neg = cb_x.cmp_lt(f32x8::ZERO) & ca_y.cmp_lt(f32x8::ZERO);
-        let s = both_neg.blend(f32x8::splat(-1.0), f32x8::ONE);
+        let both_neg = cb_x.cmp_lt(Self::ZERO) & ca_y.cmp_lt(Self::ZERO);
+        let s = both_neg.blend(Self::splat(-1.0), Self::ONE);
         let d = s * ca_d2.min(cb_d2).sqrt();
         out = d * scale_correction;
         out
@@ -200,10 +200,10 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let major_r = f32x8::splat(inst.params[0]);
-        let minor_r = f32x8::splat(inst.params[1]);
-        let sc_sin = f32x8::splat(inst.params[2].sin());
-        let sc_cos = f32x8::splat(inst.params[2].cos());
+        let major_r = Self::splat(inst.params[0]);
+        let minor_r = Self::splat(inst.params[1]);
+        let sc_sin = Self::splat(inst.params[2].sin());
+        let sc_cos = Self::splat(inst.params[2].cos());
         let px = p.x.abs();
         // k = sc.cos*px > sc.sin*py ? sc.sin*px + sc.cos*py : sqrt(px² + py²)
         let dot_val = sc_sin * px + sc_cos * p.y;
@@ -212,8 +212,8 @@ impl PrimTable for f32x8 {
         let k = mask.blend(dot_val, len_val);
         // sqrt(px² + py² + pz² + R² - 2*R*k) - r
         let inner =
-            px * px + p.y * p.y + p.z * p.z + major_r * major_r - f32x8::splat(2.0) * major_r * k;
-        let d = inner.max(f32x8::ZERO).sqrt() - minor_r;
+            px * px + p.y * p.y + p.z * p.z + major_r * major_r - Self::splat(2.0) * major_r * k;
+        let d = inner.max(Self::ZERO).sqrt() - minor_r;
         out = d * scale_correction;
         out
     }
@@ -227,14 +227,14 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let radius = f32x8::splat(inst.params[0]);
-        let round_r = f32x8::splat(inst.params[1]);
-        let half_h = f32x8::splat(inst.params[2]);
-        let dx = (p.x * p.x + p.z * p.z).sqrt() - f32x8::splat(2.0) * radius + round_r;
+        let radius = Self::splat(inst.params[0]);
+        let round_r = Self::splat(inst.params[1]);
+        let half_h = Self::splat(inst.params[2]);
+        let dx = (p.x * p.x + p.z * p.z).sqrt() - Self::splat(2.0) * radius + round_r;
         let dy = p.y.abs() - half_h;
-        let dx_pos = dx.max(f32x8::ZERO);
-        let dy_pos = dy.max(f32x8::ZERO);
-        let d = dx.max(dy).min(f32x8::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() - round_r;
+        let dx_pos = dx.max(Self::ZERO);
+        let dy_pos = dy.max(Self::ZERO);
+        let d = dx.max(dy).min(Self::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() - round_r;
         out = d * scale_correction;
         out
     }
@@ -248,14 +248,14 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let width = f32x8::splat(inst.params[0]);
-        let half_depth = f32x8::splat(inst.params[1]);
+        let width = Self::splat(inst.params[0]);
+        let half_depth = Self::splat(inst.params[1]);
         let qx = p.x.abs();
         let qy = p.y; // not abs for y
         let qz = p.z.abs();
         // 0.866025 = sqrt(3)/2
-        let sqrt3_half = f32x8::splat(0.866025);
-        let half = f32x8::splat(0.5);
+        let sqrt3_half = Self::splat(0.866025);
+        let half = Self::splat(0.5);
         let d = (qz - half_depth).max((qx * sqrt3_half + qy * half).max(-qy) - width * half);
         out = d * scale_correction;
         out
@@ -270,14 +270,14 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let radius = f32x8::splat(inst.params[0]);
-        let ch = f32x8::splat(inst.params[1]); // cut_height
-        let w = (radius * radius - ch * ch).max(f32x8::ZERO).sqrt();
+        let radius = Self::splat(inst.params[0]);
+        let ch = Self::splat(inst.params[1]); // cut_height
+        let w = (radius * radius - ch * ch).max(Self::ZERO).sqrt();
         let qx = (p.x * p.x + p.z * p.z).sqrt();
         let qy = p.y;
         let q_len = (qx * qx + qy * qy).sqrt();
         // Three regions via branchless blend
-        let s1 = (ch - radius) * qx * qx + w * w * (ch + radius - f32x8::splat(2.0) * qy);
+        let s1 = (ch - radius) * qx * qx + w * w * (ch + radius - Self::splat(2.0) * qy);
         let s2 = ch * qx - w * qy;
         let s = s1.max(s2);
         // d_sphere = length(q) - r
@@ -289,7 +289,7 @@ impl PrimTable for f32x8 {
         let ey = qy - ch;
         let d_edge = (ex * ex + ey * ey).sqrt();
         // if s < 0 -> d_sphere; elif qx < w -> d_plane; else -> d_edge
-        let mask_s_neg = s.cmp_lt(f32x8::ZERO);
+        let mask_s_neg = s.cmp_lt(Self::ZERO);
         let mask_qx_lt_w = qx.cmp_lt(w);
         let d = mask_s_neg.blend(d_sphere, mask_qx_lt_w.blend(d_plane, d_edge));
         out = d * scale_correction;
@@ -305,10 +305,10 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let radius = f32x8::splat(inst.params[0]);
-        let ch = f32x8::splat(inst.params[1]);
-        let thickness = f32x8::splat(inst.params[2]);
-        let w = (radius * radius - ch * ch).max(f32x8::ZERO).sqrt();
+        let radius = Self::splat(inst.params[0]);
+        let ch = Self::splat(inst.params[1]);
+        let thickness = Self::splat(inst.params[2]);
+        let w = (radius * radius - ch * ch).max(Self::ZERO).sqrt();
         let qx = (p.x * p.x + p.z * p.z).sqrt();
         let qy = p.y;
         // if h*qx < w*qy -> length(q - (w,h)) - t; else -> abs(length(q) - r) - t
@@ -332,19 +332,19 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let ra = f32x8::splat(inst.params[0]);
-        let rb = f32x8::splat(inst.params[1]);
-        let dd = f32x8::splat(inst.params[2]);
-        let two = f32x8::splat(2.0);
+        let ra = Self::splat(inst.params[0]);
+        let rb = Self::splat(inst.params[1]);
+        let dd = Self::splat(inst.params[2]);
+        let two = Self::splat(2.0);
         // a = (ra² - rb² + d²) / (2d)
         #[allow(clippy::suspicious_operation_groupings)]
         let a = (ra * ra - rb * rb + dd * dd) / (two * dd);
-        let b = (ra * ra - a * a).max(f32x8::ZERO).sqrt();
+        let b = (ra * ra - a * a).max(Self::ZERO).sqrt();
         let p2x = p.x;
         let p2y = (p.y * p.y + p.z * p.z).sqrt();
         // Condition: p2.x*b - p2.y*a > d*max(b - p2.y, 0)
         let lhs = p2x * b - p2y * a;
-        let rhs = dd * (b - p2y).max(f32x8::ZERO);
+        let rhs = dd * (b - p2y).max(Self::ZERO);
         let mask = lhs.cmp_gt(rhs);
         // d_edge = length(p2 - (a, b))
         let ex = p2x - a;
@@ -370,23 +370,23 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let c_sin = f32x8::splat(inst.params[0].sin());
-        let c_cos = f32x8::splat(inst.params[0].cos());
-        let radius = f32x8::splat(inst.params[1]);
+        let c_sin = Self::splat(inst.params[0].sin());
+        let c_cos = Self::splat(inst.params[0].cos());
+        let radius = Self::splat(inst.params[1]);
         let qx = (p.x * p.x + p.z * p.z).sqrt();
         let qy = p.y;
         let q_len = (qx * qx + qy * qy).sqrt();
         let l = q_len - radius;
         // dot(q, c) clamped to [0, radius]
-        let q_dot_c = (qx * c_sin + qy * c_cos).max(f32x8::ZERO).min(radius);
+        let q_dot_c = (qx * c_sin + qy * c_cos).max(Self::ZERO).min(radius);
         // m = length(q - c * clamp(dot(q,c), 0, r))
         let proj_x = qx - c_sin * q_dot_c;
         let proj_y = qy - c_cos * q_dot_c;
         let m = (proj_x * proj_x + proj_y * proj_y).sqrt();
         // sign = c.y*q.x - c.x*q.y < 0 ? -1 : 1
         let sign_val = c_cos * qx - c_sin * qy;
-        let neg_mask = sign_val.cmp_lt(f32x8::ZERO);
-        let sign = neg_mask.blend(f32x8::splat(-1.0), f32x8::ONE);
+        let neg_mask = sign_val.cmp_lt(Self::ZERO);
+        let sign = neg_mask.blend(Self::splat(-1.0), Self::ONE);
         let d = l.max(m * sign);
         out = d * scale_correction;
         out
@@ -401,33 +401,33 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let la = f32x8::splat(inst.params[0]);
-        let lb = f32x8::splat(inst.params[1]);
-        let half_h = f32x8::splat(inst.params[2]);
-        let rr = f32x8::splat(inst.params[3]);
+        let la = Self::splat(inst.params[0]);
+        let lb = Self::splat(inst.params[1]);
+        let half_h = Self::splat(inst.params[2]);
+        let rr = Self::splat(inst.params[3]);
         let ax = p.x.abs();
         let ay = p.y.abs();
         let az = p.z.abs();
         // ndot(b, b - 2*(px,pz)) = la*(la-2*px) - lb*(lb-2*pz)
         //                        = la² - 2*la*px - lb² + 2*lb*pz
         let b_dot_b = la * la + lb * lb;
-        let ndot_val = la * (la - f32x8::splat(2.0) * ax) - lb * (lb - f32x8::splat(2.0) * az);
-        let f = (ndot_val / b_dot_b).max(f32x8::splat(-1.0)).min(f32x8::ONE);
+        let ndot_val = la * (la - Self::splat(2.0) * ax) - lb * (lb - Self::splat(2.0) * az);
+        let f = (ndot_val / b_dot_b).max(Self::splat(-1.0)).min(Self::ONE);
         // q_xz = length((px,pz) - 0.5*b*(1-f, 1+f))
-        let half = f32x8::splat(0.5);
-        let proj_x = ax - half * la * (f32x8::ONE - f);
-        let proj_z = az - half * lb * (f32x8::ONE + f);
+        let half = Self::splat(0.5);
+        let proj_x = ax - half * la * (Self::ONE - f);
+        let proj_z = az - half * lb * (Self::ONE + f);
         let qxz_len = (proj_x * proj_x + proj_z * proj_z).sqrt();
         // sign(px*lb + pz*la - la*lb)
         let sign_input = ax * lb + az * la - la * lb;
-        let pos = sign_input.cmp_gt(f32x8::ZERO);
-        let neg = sign_input.cmp_lt(f32x8::ZERO);
-        let sign = pos.blend(f32x8::ONE, neg.blend(f32x8::splat(-1.0), f32x8::ZERO));
+        let pos = sign_input.cmp_gt(Self::ZERO);
+        let neg = sign_input.cmp_lt(Self::ZERO);
+        let sign = pos.blend(Self::ONE, neg.blend(Self::splat(-1.0), Self::ZERO));
         let dx = qxz_len * sign - rr;
         let dy = ay - half_h;
-        let dx_pos = dx.max(f32x8::ZERO);
-        let dy_pos = dy.max(f32x8::ZERO);
-        let d = dx.max(dy).min(f32x8::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt();
+        let dx_pos = dx.max(Self::ZERO);
+        let dy_pos = dy.max(Self::ZERO);
+        let d = dx.max(dy).min(Self::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt();
         out = d * scale_correction;
         out
     }
@@ -479,7 +479,7 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // Simple SIMD: length(p.xz) - r
-        let r = f32x8::splat(inst.params[0]);
+        let r = Self::splat(inst.params[0]);
         let d = (p.x * p.x + p.z * p.z).sqrt() - r;
         out = d * scale_correction;
         out
@@ -509,9 +509,9 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
@@ -540,15 +540,15 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // SIMD: hollow cylinder
-        let outer_r = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let half_h = f32x8::splat(inst.params[2]);
+        let outer_r = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let half_h = Self::splat(inst.params[2]);
         let xz_len = (p.x * p.x + p.z * p.z).sqrt();
         let dx = (xz_len - outer_r).abs() - thickness;
         let dy = p.y.abs() - half_h;
-        let dx_pos = dx.max(f32x8::ZERO);
-        let dy_pos = dy.max(f32x8::ZERO);
-        let d = (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() + dx.max(dy).min(f32x8::ZERO);
+        let dx_pos = dx.max(Self::ZERO);
+        let dy_pos = dy.max(Self::ZERO);
+        let d = (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() + dx.max(dy).min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -610,9 +610,9 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: cos(x) + cos(y) + cos(z)
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
         let d = (cos_approx(p.x * scale) + cos_approx(p.y * scale) + cos_approx(p.z * scale)).abs()
             * inv_scale
             - thickness;
@@ -935,9 +935,9 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: 4 dot products + max (no abs — tetrahedron normals are signed)
-        let radius = f32x8::splat(inst.params[0]);
-        let s = f32x8::splat(0.577_350_26_f32); // 1/sqrt(3)
-        let ns = f32x8::splat(-0.577_350_26_f32);
+        let radius = Self::splat(inst.params[0]);
+        let s = Self::splat(0.577_350_26_f32); // 1/sqrt(3)
+        let ns = Self::splat(-0.577_350_26_f32);
         // n0=(s,s,s) n1=(-s,-s,s) n2=(-s,s,-s) n3=(s,-s,-s)
         let d0 = p.x * s + p.y * s + p.z * s;
         let d1 = p.x * ns + p.y * ns + p.z * s;
@@ -958,9 +958,9 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: 6 abs-dot products (GDF_DODECAHEDRON normals)
-        let radius = f32x8::splat(inst.params[0]);
-        let a = f32x8::splat(0.850_650_8_f32); // ICO_B
-        let b = f32x8::splat(0.525_731_1_f32); // ICO_A
+        let radius = Self::splat(inst.params[0]);
+        let a = Self::splat(0.850_650_8_f32); // ICO_B
+        let b = Self::splat(0.525_731_1_f32); // ICO_A
                                                // n0=(0,a,b) n1=(0,a,-b) n2=(a,b,0) n3=(-a,b,0) n4=(b,0,a) n5=(b,0,-a)
         let d0 = (p.y * a + p.z * b).abs();
         let d1 = (p.y * a - p.z * b).abs();
@@ -983,10 +983,10 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: 10 abs-dot products (octahedron[4] + icosahedron[6])
-        let radius = f32x8::splat(inst.params[0]);
-        let s = f32x8::splat(0.577_350_26_f32); // 1/sqrt(3)
-        let ia = f32x8::splat(0.525_731_1_f32); // ICO_A
-        let ib = f32x8::splat(0.850_650_8_f32); // ICO_B
+        let radius = Self::splat(inst.params[0]);
+        let s = Self::splat(0.577_350_26_f32); // 1/sqrt(3)
+        let ia = Self::splat(0.525_731_1_f32); // ICO_A
+        let ib = Self::splat(0.850_650_8_f32); // ICO_B
                                                 // Octahedron normals (4): abs(dot) with (±s,±s,±s) variants
         let d0 = (p.x * s + p.y * s + p.z * s).abs();
         let d1 = (-p.x * s + p.y * s + p.z * s).abs();
@@ -1024,8 +1024,8 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: 7 abs-dot products (cube[3] + octahedron[4])
-        let radius = f32x8::splat(inst.params[0]);
-        let s = f32x8::splat(0.577_350_26_f32);
+        let radius = Self::splat(inst.params[0]);
+        let s = Self::splat(0.577_350_26_f32);
         // Cube normals (3): abs of each axis
         let d0 = p.x.abs();
         let d1 = p.y.abs();
@@ -1050,10 +1050,10 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: 16 abs-dot products (oct[4] + ico[6] + dodec[6])
-        let radius = f32x8::splat(inst.params[0]);
-        let s = f32x8::splat(0.577_350_26_f32);
-        let ia = f32x8::splat(0.525_731_1_f32);
-        let ib = f32x8::splat(0.850_650_8_f32);
+        let radius = Self::splat(inst.params[0]);
+        let s = Self::splat(0.577_350_26_f32);
+        let ia = Self::splat(0.525_731_1_f32);
+        let ib = Self::splat(0.850_650_8_f32);
         // Octahedron (4)
         let d0 = (p.x * s + p.y * s + p.z * s).abs();
         let d1 = (-p.x * s + p.y * s + p.z * s).abs();
@@ -1104,11 +1104,11 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: abs, max, min, sqrt — all native ops
-        let bx = f32x8::splat(inst.params[0]);
-        let by = f32x8::splat(inst.params[1]);
-        let bz = f32x8::splat(inst.params[2]);
-        let e = f32x8::splat(inst.params[3]);
-        let zero = f32x8::ZERO;
+        let bx = Self::splat(inst.params[0]);
+        let by = Self::splat(inst.params[1]);
+        let bz = Self::splat(inst.params[2]);
+        let e = Self::splat(inst.params[3]);
+        let zero = Self::ZERO;
         // p = abs(p) - half_extents
         let px = p.x.abs() - bx;
         let py = p.y.abs() - by;
@@ -1147,9 +1147,9 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: sin(x)*sin(y)*sin(z) + sin(x)*cos(y)*cos(z) + cos(x)*sin(y)*cos(z) + cos(x)*cos(y)*sin(z)
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
@@ -1175,11 +1175,11 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD: 3*(cos(x)+cos(y)+cos(z)) + 4*cos(x)*cos(y)*cos(z)
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-        let three = f32x8::splat(3.0);
-        let four = f32x8::splat(4.0);
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
+        let three = Self::splat(3.0);
+        let four = Self::splat(4.0);
         let cx = cos_approx(p.x * scale);
         let cy = cos_approx(p.y * scale);
         let cz = cos_approx(p.z * scale);
@@ -1199,12 +1199,12 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD + double-angle identities (0 extra trig calls)
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-        let two = f32x8::splat(2.0);
-        let one = f32x8::ONE;
-        let half = f32x8::splat(0.5);
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
+        let two = Self::splat(2.0);
+        let one = Self::ONE;
+        let half = Self::splat(0.5);
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
@@ -1223,7 +1223,7 @@ impl PrimTable for f32x8 {
         let c2z = two * cz * cz - one;
         let term1 = half * (s2x * cy * sz + sx * s2y * cz + cx * sy * s2z);
         let term2 = half * (c2x * c2y + c2y * c2z + c2z * c2x);
-        let d = (term1 - term2 + f32x8::splat(0.15)).abs() * inv_scale - thickness;
+        let d = (term1 - term2 + Self::splat(0.15)).abs() * inv_scale - thickness;
         out = d * scale_correction;
         out
     }
@@ -1233,11 +1233,11 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD + double-angle: cos(2x) = 2*cos²(x)-1
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-        let two = f32x8::splat(2.0);
-        let one = f32x8::ONE;
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
+        let two = Self::splat(2.0);
+        let one = Self::ONE;
         let cx = cos_approx(p.x * scale);
         let cy = cos_approx(p.y * scale);
         let cz = cos_approx(p.z * scale);
@@ -1255,11 +1255,11 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD + double-angle: cos(2x) = 2*cos²(x)-1
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-        let two = f32x8::splat(2.0);
-        let one = f32x8::ONE;
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
+        let two = Self::splat(2.0);
+        let one = Self::ONE;
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
@@ -1288,11 +1288,11 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD + double-angle (same as FRD with -0.4 offset)
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-        let two = f32x8::splat(2.0);
-        let one = f32x8::ONE;
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
+        let two = Self::splat(2.0);
+        let one = Self::ONE;
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
@@ -1305,7 +1305,7 @@ impl PrimTable for f32x8 {
         let c2x = two * cx * cx - one;
         let c2y = two * cy * cy - one;
         let c2z = two * cz * cz - one;
-        let d = c2x * sy * cz + cx * c2y * sz + sx * cy * c2z - f32x8::splat(0.4);
+        let d = c2x * sy * cz + cx * c2y * sz + sx * cy * c2z - Self::splat(0.4);
         let d = d.abs() * inv_scale - thickness;
         out = d * scale_correction;
         out
@@ -1316,10 +1316,10 @@ impl PrimTable for f32x8 {
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
         // ★ Native SIMD + double-angle: sin(2x) = 2*sin(x)*cos(x)
-        let scale = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let inv_scale = f32x8::splat(1.0 / inst.params[0]);
-        let two = f32x8::splat(2.0);
+        let scale = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let inv_scale = Self::splat(1.0 / inst.params[0]);
+        let two = Self::splat(2.0);
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
@@ -1347,13 +1347,13 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let r = f32x8::splat(inst.params[0]);
-        let half_h = f32x8::splat(inst.params[1]);
+        let r = Self::splat(inst.params[0]);
+        let half_h = Self::splat(inst.params[1]);
         let d2d = (p.x * p.x + p.y * p.y).sqrt() - r;
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(f32x8::ZERO);
-        let wy = dz.max(f32x8::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(f32x8::ZERO);
+        let wx = d2d.max(Self::ZERO);
+        let wy = dz.max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -1367,19 +1367,19 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let hx = f32x8::splat(inst.params[0]);
-        let hy = f32x8::splat(inst.params[1]);
-        let half_h = f32x8::splat(inst.params[2]);
+        let hx = Self::splat(inst.params[0]);
+        let hy = Self::splat(inst.params[1]);
+        let half_h = Self::splat(inst.params[2]);
         let dx = p.x.abs() - hx;
         let dy = p.y.abs() - hy;
-        let d2d = (dx.max(f32x8::ZERO) * dx.max(f32x8::ZERO)
-            + dy.max(f32x8::ZERO) * dy.max(f32x8::ZERO))
+        let d2d = (dx.max(Self::ZERO) * dx.max(Self::ZERO)
+            + dy.max(Self::ZERO) * dy.max(Self::ZERO))
         .sqrt()
-            + dx.max(dy).min(f32x8::ZERO);
+            + dx.max(dy).min(Self::ZERO);
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(f32x8::ZERO);
-        let wy = dz.max(f32x8::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(f32x8::ZERO);
+        let wx = d2d.max(Self::ZERO);
+        let wy = dz.max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -1428,21 +1428,21 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let hx = f32x8::splat(inst.params[0]);
-        let hy = f32x8::splat(inst.params[1]);
-        let round_r = f32x8::splat(inst.params[2]);
-        let half_h = f32x8::splat(inst.params[3]);
+        let hx = Self::splat(inst.params[0]);
+        let hy = Self::splat(inst.params[1]);
+        let round_r = Self::splat(inst.params[2]);
+        let half_h = Self::splat(inst.params[3]);
         let dx = p.x.abs() - hx + round_r;
         let dy = p.y.abs() - hy + round_r;
-        let d2d = (dx.max(f32x8::ZERO) * dx.max(f32x8::ZERO)
-            + dy.max(f32x8::ZERO) * dy.max(f32x8::ZERO))
+        let d2d = (dx.max(Self::ZERO) * dx.max(Self::ZERO)
+            + dy.max(Self::ZERO) * dy.max(Self::ZERO))
         .sqrt()
-            + dx.max(dy).min(f32x8::ZERO)
+            + dx.max(dy).min(Self::ZERO)
             - round_r;
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(f32x8::ZERO);
-        let wy = dz.max(f32x8::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(f32x8::ZERO);
+        let wx = d2d.max(Self::ZERO);
+        let wy = dz.max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -1456,14 +1456,14 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let outer_r = f32x8::splat(inst.params[0]);
-        let thickness = f32x8::splat(inst.params[1]);
-        let half_h = f32x8::splat(inst.params[2]);
+        let outer_r = Self::splat(inst.params[0]);
+        let thickness = Self::splat(inst.params[1]);
+        let half_h = Self::splat(inst.params[2]);
         let d2d = ((p.x * p.x + p.y * p.y).sqrt() - outer_r).abs() - thickness;
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(f32x8::ZERO);
-        let wy = dz.max(f32x8::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(f32x8::ZERO);
+        let wx = d2d.max(Self::ZERO);
+        let wy = dz.max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
         out = d * scale_correction;
         out
     }

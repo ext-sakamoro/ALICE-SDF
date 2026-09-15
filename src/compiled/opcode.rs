@@ -307,7 +307,7 @@ impl OpCode {
 
     /// Returns true if this opcode modifies the evaluation point
     #[inline]
-    pub fn modifies_point(self) -> bool {
+    pub const fn modifies_point(self) -> bool {
         self.is_transform()
             || matches!(
                 self,

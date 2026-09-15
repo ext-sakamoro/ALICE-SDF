@@ -12,7 +12,7 @@ use crate::compiled::real::Real;
 /// # Returns
 /// Minimum of the two distances
 #[inline(always)]
-pub fn sdf_union(d1: f32, d2: f32) -> f32 {
+pub const fn sdf_union(d1: f32, d2: f32) -> f32 {
     d1.min(d2)
 }
 

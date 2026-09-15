@@ -23,7 +23,7 @@ use glam::Vec3;
 use std::path::Path;
 
 /// 単一 voxel (x, y, z, color_index)
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Voxel {
     /// X 座標 (0..=255)
     pub x: u8,

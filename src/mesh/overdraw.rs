@@ -126,7 +126,7 @@ pub fn optimize_overdraw_with_views(mesh: &mut Mesh, _threshold: f32, view_direc
 
 /// 6 軸方向 (±X/±Y/±Z) を default view directions として返す
 #[must_use]
-pub fn default_view_directions() -> [Vec3; 6] {
+pub const fn default_view_directions() -> [Vec3; 6] {
     [
         Vec3::X,
         Vec3::NEG_X,

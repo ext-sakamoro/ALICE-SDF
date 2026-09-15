@@ -160,7 +160,7 @@ pub fn shell_node(child: Arc<SdfNode>, config: ShellConfig) -> SdfNode {
     //
     // Approximate via Onion: |sdf(p)| - thickness
     // where thickness = (inner + outer) / 2, then offset by (outer - inner) / 2
-    let half_thick = (config.inner_offset + config.outer_offset) * 0.5;
+    let half_thick = f32::midpoint(config.inner_offset, config.outer_offset);
     let center_offset = (config.outer_offset - config.inner_offset) * 0.5;
 
     if center_offset.abs() < 1e-6 {

@@ -75,7 +75,7 @@ pub struct SdfVolume {
 impl SdfVolume {
     /// Total number of voxels.
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.width * self.height * self.depth
     }
 
@@ -144,7 +144,7 @@ impl Default for EncodeConfig {
 
 impl EncodeConfig {
     /// High quality preset (quality 95).
-    pub fn high_quality() -> Self {
+    pub const fn high_quality() -> Self {
         Self {
             quality: 95,
             fixed_point_scale: 4096.0,
@@ -153,7 +153,7 @@ impl EncodeConfig {
     }
 
     /// Fast / small preset (quality 50).
-    pub fn fast() -> Self {
+    pub const fn fast() -> Self {
         Self {
             quality: 50,
             fixed_point_scale: 512.0,
@@ -162,7 +162,7 @@ impl EncodeConfig {
     }
 
     /// Lossless wavelet preset (CDF 5/3).
-    pub fn lossless() -> Self {
+    pub const fn lossless() -> Self {
         Self {
             quality: 100,
             fixed_point_scale: 4096.0,
@@ -240,11 +240,11 @@ impl EncodedHeader {
         }
     }
 
-    fn lossless_wavelet(&self) -> bool {
+    const fn lossless_wavelet(&self) -> bool {
         self.flags & Self::FLAG_LOSSLESS_WAVELET != 0
     }
 
-    fn rans_compressed(&self) -> bool {
+    const fn rans_compressed(&self) -> bool {
         self.flags & Self::FLAG_RANS_COMPRESSED != 0
     }
 }
@@ -426,7 +426,7 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
         encoder.finish()
     } else {
         // Store raw (rANS can overflow with extreme histograms on small data)
-        raw_bytes.clone()
+        raw_bytes
     };
 
     // 6. Assemble output: header + quantizer params + histogram + payload

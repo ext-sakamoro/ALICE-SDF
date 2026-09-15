@@ -23,7 +23,7 @@
 // ============================================================================
 
 /// GLSL 330+ helpers for the NPR primitives with fixed-arity signatures
-pub const NPR_GLSL_HELPERS: &str = r#"
+pub const NPR_GLSL_HELPERS: &str = r"
 // ALICE-SDF NPR helpers (GLSL 330+)
 
 float alice_toon_ramp(float n_dot_l, float bands) {
@@ -175,14 +175,14 @@ float alice_speed_line(vec2 uv, vec2 focus, float count, float thickness) {
     float t = clamp(thickness, 0.0, 0.5);
     return (dist > 0.5 - t) ? 1.0 : 0.0;
 }
-"#;
+";
 
 // ============================================================================
 // WGSL (WebGPU)
 // ============================================================================
 
 /// WGSL helpers matching the GLSL set above
-pub const NPR_WGSL_HELPERS: &str = r#"
+pub const NPR_WGSL_HELPERS: &str = r"
 // ALICE-SDF NPR helpers (WGSL)
 
 fn alice_toon_ramp(n_dot_l: f32, bands: f32) -> f32 {
@@ -341,14 +341,14 @@ fn alice_speed_line(uv: vec2<f32>, focus: vec2<f32>, count: f32, thickness: f32)
     if (dist > 0.5 - t) { return 1.0; }
     return 0.0;
 }
-"#;
+";
 
 // ============================================================================
 // HLSL (Direct3D)
 // ============================================================================
 
 /// HLSL Shader Model 5.0+ helpers matching the GLSL set
-pub const NPR_HLSL_HELPERS: &str = r#"
+pub const NPR_HLSL_HELPERS: &str = r"
 // ALICE-SDF NPR helpers (HLSL SM 5.0+)
 
 float alice_toon_ramp(float n_dot_l, float bands) {
@@ -500,7 +500,7 @@ float alice_speed_line(float2 uv, float2 focus, float count, float thickness) {
     float t = clamp(thickness, 0.0, 0.5);
     return (dist > 0.5 - t) ? 1.0 : 0.0;
 }
-"#;
+";
 
 // ============================================================================
 // Fixed-anchor palette variants (GLSL)
@@ -508,7 +508,7 @@ float alice_speed_line(float2 uv, float2 focus, float count, float thickness) {
 
 /// GLSL palette variants matching `sky_gradient_bands` (3 anchors),
 /// `palette_gradient_5`, `time_of_day`, and `season_palette`
-pub const NPR_GLSL_PALETTE_HELPERS: &str = r#"
+pub const NPR_GLSL_PALETTE_HELPERS: &str = r"
 // ALICE-SDF NPR palette helpers (GLSL 330+)
 
 vec3 alice_sky_gradient_bands_3(vec3 dir, vec3 c0, vec3 c1, vec3 c2) {
@@ -552,14 +552,14 @@ vec3 alice_palette_gradient_3(float t, vec3 c0, vec3 c1, vec3 c2) {
     if (idx_f < 0.5) return mix(c0, c1, frac_);
     return mix(c1, c2, frac_);
 }
-"#;
+";
 
 // ============================================================================
 // Fixed-anchor palette variants (WGSL)
 // ============================================================================
 
 /// WGSL palette variants matching the GLSL set
-pub const NPR_WGSL_PALETTE_HELPERS: &str = r#"
+pub const NPR_WGSL_PALETTE_HELPERS: &str = r"
 // ALICE-SDF NPR palette helpers (WGSL)
 
 fn alice_sky_gradient_bands_3(dir: vec3<f32>, c0: vec3<f32>, c1: vec3<f32>, c2: vec3<f32>) -> vec3<f32> {
@@ -609,14 +609,14 @@ fn alice_palette_gradient_3(t: f32, c0: vec3<f32>, c1: vec3<f32>, c2: vec3<f32>)
     if (idx_f < 0.5) { return mix(c0, c1, vec3<f32>(frac_val)); }
     return mix(c1, c2, vec3<f32>(frac_val));
 }
-"#;
+";
 
 // ============================================================================
 // Fixed-anchor palette variants (HLSL)
 // ============================================================================
 
 /// HLSL palette variants matching the GLSL set
-pub const NPR_HLSL_PALETTE_HELPERS: &str = r#"
+pub const NPR_HLSL_PALETTE_HELPERS: &str = r"
 // ALICE-SDF NPR palette helpers (HLSL SM 5.0+)
 
 float3 alice_sky_gradient_bands_3(float3 dir, float3 c0, float3 c1, float3 c2) {
@@ -660,7 +660,7 @@ float3 alice_palette_gradient_3(float t, float3 c0, float3 c1, float3 c2) {
     if (idx_f < 0.5) return lerp(c0, c1, frac_val);
     return lerp(c1, c2, frac_val);
 }
-"#;
+";
 
 /// Return the helper snippet for the requested shader language
 #[must_use]

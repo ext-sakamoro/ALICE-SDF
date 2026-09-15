@@ -169,7 +169,7 @@ pub fn compute_bounding_sphere(mesh: &Mesh) -> BoundingSphere {
     for v in &mesh.vertices {
         let dist = (v.position - center).length();
         if dist > radius {
-            let new_radius = (radius + dist) * 0.5;
+            let new_radius = f32::midpoint(radius, dist);
             let delta = dist - radius;
             center += (v.position - center).normalize() * (delta * 0.5);
             radius = new_radius;

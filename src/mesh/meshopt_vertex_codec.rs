@@ -160,7 +160,7 @@ fn encode_bytes_group(out: &mut Vec<u8>, buffer: &[u8], bits: u8) {
     }
 
     let byte_size = 8 / (bits as usize);
-    debug_assert!(BYTE_GROUP_SIZE % byte_size == 0);
+    debug_assert_eq!(BYTE_GROUP_SIZE % byte_size, 0);
 
     let sentinel = ((1u16 << bits) - 1) as u8;
 
@@ -267,7 +267,7 @@ fn decode_bytes_group(
 /// Header size = ceil(N/16 / 4) bytes, 2 bits per group indicating bits[k] choice
 /// Returns None if would overflow
 fn encode_bytes(out: &mut Vec<u8>, buffer: &[u8], buffer_size: usize, bits: [u8; 4]) {
-    debug_assert!(buffer_size % BYTE_GROUP_SIZE == 0);
+    debug_assert_eq!(buffer_size % BYTE_GROUP_SIZE, 0);
 
     let group_count = buffer_size / BYTE_GROUP_SIZE;
     let header_size = group_count.div_ceil(4);
@@ -314,7 +314,7 @@ fn decode_bytes(
     buffer_size: usize,
     bits: &[u8],
 ) -> Result<(), CodecError> {
-    debug_assert!(buffer_size % BYTE_GROUP_SIZE == 0);
+    debug_assert_eq!(buffer_size % BYTE_GROUP_SIZE, 0);
     debug_assert!(bits.len() >= 4);
 
     let group_count = buffer_size / BYTE_GROUP_SIZE;
@@ -577,7 +577,7 @@ fn encode_vertex_block(
     version: u8,
 ) {
     debug_assert!(vertex_count > 0 && vertex_count <= VERTEX_BLOCK_MAX_SIZE);
-    debug_assert!(vertex_size % 4 == 0);
+    debug_assert_eq!(vertex_size % 4, 0);
 
     let vertex_count_aligned = vertex_count.div_ceil(BYTE_GROUP_SIZE) * BYTE_GROUP_SIZE;
 
@@ -653,7 +653,7 @@ fn decode_vertex_block(
     version: u8,
 ) -> Result<(), CodecError> {
     debug_assert!(vertex_count > 0 && vertex_count <= VERTEX_BLOCK_MAX_SIZE);
-    debug_assert!(vertex_size % 4 == 0);
+    debug_assert_eq!(vertex_size % 4, 0);
 
     let vertex_count_aligned = vertex_count.div_ceil(BYTE_GROUP_SIZE) * BYTE_GROUP_SIZE;
 

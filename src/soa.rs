@@ -333,7 +333,7 @@ impl AlignedVec {
 
     /// Clear all elements (capacity retained)
     #[inline]
-    pub fn clear(&mut self) {
+    pub const fn clear(&mut self) {
         self.len = 0;
     }
 
@@ -345,7 +345,7 @@ impl AlignedVec {
 
     /// Get mutable raw pointer
     #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut f32 {
+    pub const fn as_mut_ptr(&mut self) -> *mut f32 {
         self.ptr
     }
 
@@ -361,7 +361,7 @@ impl AlignedVec {
 
     /// Get mutable slice
     #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [f32] {
+    pub const fn as_mut_slice(&mut self) -> &mut [f32] {
         if self.len == 0 {
             return &mut [];
         }

@@ -115,9 +115,9 @@ fn compute_bounds(mesh: &Mesh, scale: f32) -> ([f32; 3], [f32; 3]) {
     }
 
     let origin = [
-        (min[0] + max[0]) * 0.5,
-        (min[1] + max[1]) * 0.5,
-        (min[2] + max[2]) * 0.5,
+        f32::midpoint(min[0], max[0]),
+        f32::midpoint(min[1], max[1]),
+        f32::midpoint(min[2], max[2]),
     ];
     let extent = [
         (max[0] - min[0]) * 0.5,

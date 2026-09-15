@@ -673,7 +673,7 @@ impl MeshRepair {
 
         // Union-Find (path compression)
         let mut parent: Vec<usize> = (0..tri_count).collect();
-        fn find(parent: &mut [usize], mut i: usize) -> usize {
+        const fn find(parent: &mut [usize], mut i: usize) -> usize {
             while parent[i] != i {
                 parent[i] = parent[parent[i]];
                 i = parent[i];
@@ -733,7 +733,7 @@ impl MeshRepair {
 
 /// 三角形 index t の 3 頂点 index を返す
 #[inline]
-fn tri_verts(indices: &[u32], t: usize) -> (u32, u32, u32) {
+const fn tri_verts(indices: &[u32], t: usize) -> (u32, u32, u32) {
     let base = t * 3;
     (indices[base], indices[base + 1], indices[base + 2])
 }

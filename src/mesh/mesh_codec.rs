@@ -96,7 +96,7 @@ fn write_varint_u32(out: &mut Vec<u8>, mut v: u32) {
 }
 
 /// varint decode from cursor position、cursor 進行させる
-fn read_varint_u32(buf: &[u8], cursor: &mut usize) -> Result<u32, CodecError> {
+const fn read_varint_u32(buf: &[u8], cursor: &mut usize) -> Result<u32, CodecError> {
     let mut result: u32 = 0;
     let mut shift: u32 = 0;
     loop {

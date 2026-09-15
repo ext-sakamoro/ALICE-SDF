@@ -172,14 +172,14 @@ fn get_vertex_fifo(fifo: &VertexFifo, v: u32, offset: usize) -> i32 {
 }
 
 /// Edge FIFO に (a, b) を push
-fn push_edge_fifo(fifo: &mut EdgeFifo, a: u32, b: u32, offset: &mut usize) {
+const fn push_edge_fifo(fifo: &mut EdgeFifo, a: u32, b: u32, offset: &mut usize) {
     fifo[*offset][0] = a;
     fifo[*offset][1] = b;
     *offset = (*offset + 1) & (FIFO_SIZE - 1);
 }
 
 /// Vertex FIFO に v を push、cond=0 なら offset 不進 (encoder/decoder 同期用)
-fn push_vertex_fifo(fifo: &mut VertexFifo, v: u32, offset: &mut usize, cond: usize) {
+const fn push_vertex_fifo(fifo: &mut VertexFifo, v: u32, offset: &mut usize, cond: usize) {
     fifo[*offset] = v;
     *offset = (*offset + cond) & (FIFO_SIZE - 1);
 }

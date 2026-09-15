@@ -172,7 +172,7 @@ impl JitCompiledSdf {
     /// Lipschitz bound recorded at compile time (see
     /// [`CompiledSdf::lipschitz`](crate::compiled::CompiledSdf::lipschitz)).
     #[inline]
-    pub fn lipschitz(&self) -> f32 {
+    pub const fn lipschitz(&self) -> f32 {
         self.lipschitz
     }
 }
@@ -313,7 +313,7 @@ impl JitCompiledSdfDynamic {
     /// Lipschitz bound recorded at compile time (see
     /// [`CompiledSdf::lipschitz`](crate::compiled::CompiledSdf::lipschitz)).
     #[inline]
-    pub fn lipschitz(&self) -> f32 {
+    pub const fn lipschitz(&self) -> f32 {
         self.lipschitz
     }
 }

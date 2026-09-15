@@ -163,43 +163,43 @@ impl Real for f32 {
     }
     #[inline(always)]
     fn sqrt(self) -> Self {
-        f32::sqrt(self)
+        Self::sqrt(self)
     }
     #[inline(always)]
     fn abs(self) -> Self {
-        f32::abs(self)
+        Self::abs(self)
     }
     #[inline(always)]
     fn floor(self) -> Self {
-        f32::floor(self)
+        Self::floor(self)
     }
     #[inline(always)]
     fn round(self) -> Self {
-        f32::round(self)
+        Self::round(self)
     }
     #[inline(always)]
     fn min(self, other: Self) -> Self {
-        f32::min(self, other)
+        Self::min(self, other)
     }
     #[inline(always)]
     fn max(self, other: Self) -> Self {
-        f32::max(self, other)
+        Self::max(self, other)
     }
     #[inline(always)]
     fn sin_cos(self) -> (Self, Self) {
-        f32::sin_cos(self)
+        Self::sin_cos(self)
     }
     #[inline(always)]
     fn atan2(self, x: Self) -> Self {
-        f32::atan2(self, x)
+        Self::atan2(self, x)
     }
     #[inline(always)]
     fn exp(self) -> Self {
-        f32::exp(self)
+        Self::exp(self)
     }
     #[inline(always)]
     fn ln(self) -> Self {
-        f32::ln(self)
+        Self::ln(self)
     }
     #[inline(always)]
     fn signum(self) -> Self {
@@ -242,15 +242,15 @@ impl Real for f32 {
         a || b
     }
     #[inline(always)]
-    fn map(self, f: impl Fn(f32) -> f32) -> Self {
+    fn map(self, f: impl Fn(Self) -> Self) -> Self {
         f(self)
     }
     #[inline(always)]
-    fn map2(self, other: Self, f: impl Fn(f32, f32) -> f32) -> Self {
+    fn map2(self, other: Self, f: impl Fn(Self, Self) -> Self) -> Self {
         f(self, other)
     }
     #[inline(always)]
-    fn map3(x: Self, y: Self, z: Self, f: impl Fn(Vec3) -> f32) -> Self {
+    fn map3(x: Self, y: Self, z: Self, f: impl Fn(Vec3) -> Self) -> Self {
         f(Vec3::new(x, y, z))
     }
     #[inline(always)]
@@ -259,17 +259,17 @@ impl Real for f32 {
         Vec3R::new(v.x, v.y, v.z)
     }
     #[inline(always)]
-    fn map3vs(x: Self, y: Self, z: Self, f: impl Fn(Vec3) -> (Vec3, f32)) -> (Vec3R<Self>, Self) {
+    fn map3vs(x: Self, y: Self, z: Self, f: impl Fn(Vec3) -> (Vec3, Self)) -> (Vec3R<Self>, Self) {
         let (v, s) = f(Vec3::new(x, y, z));
         (Vec3R::new(v.x, v.y, v.z), s)
     }
     #[inline(always)]
-    fn map_dp(d: Self, p: Vec3R<Self>, f: impl Fn(f32, Vec3) -> f32) -> Self {
+    fn map_dp(d: Self, p: Vec3R<Self>, f: impl Fn(Self, Vec3) -> Self) -> Self {
         f(d, Vec3::new(p.x, p.y, p.z))
     }
     #[inline(always)]
     fn mul_add(self, m: Self, a: Self) -> Self {
-        f32::mul_add(self, m, a)
+        Self::mul_add(self, m, a)
     }
     #[inline(always)]
     fn twist(p: Vec3R<Self>, strength: f32) -> Vec3R<Self> {
@@ -278,40 +278,40 @@ impl Real for f32 {
 }
 
 impl Real for f32x8 {
-    type Mask = f32x8;
+    type Mask = Self;
     const LANES: usize = 8;
 
     #[inline(always)]
     fn splat(v: f32) -> Self {
-        f32x8::splat(v)
+        Self::splat(v)
     }
     #[inline(always)]
     fn sqrt(self) -> Self {
-        f32x8::sqrt(self)
+        Self::sqrt(self)
     }
     #[inline(always)]
     fn abs(self) -> Self {
-        f32x8::abs(self)
+        Self::abs(self)
     }
     #[inline(always)]
     fn floor(self) -> Self {
-        f32x8::floor(self)
+        Self::floor(self)
     }
     #[inline(always)]
     fn round(self) -> Self {
-        f32x8::round(self)
+        Self::round(self)
     }
     #[inline(always)]
     fn min(self, other: Self) -> Self {
-        f32x8::min(self, other)
+        Self::min(self, other)
     }
     #[inline(always)]
     fn max(self, other: Self) -> Self {
-        f32x8::max(self, other)
+        Self::max(self, other)
     }
     #[inline(always)]
     fn sin_cos(self) -> (Self, Self) {
-        f32x8::sin_cos(self)
+        Self::sin_cos(self)
     }
     #[inline(always)]
     fn atan2(self, x: Self) -> Self {
@@ -324,49 +324,49 @@ impl Real for f32x8 {
     }
     #[inline(always)]
     fn exp(self) -> Self {
-        f32x8::exp(self)
+        Self::exp(self)
     }
     #[inline(always)]
     fn ln(self) -> Self {
-        f32x8::ln(self)
+        Self::ln(self)
     }
     #[inline(always)]
     fn signum(self) -> Self {
-        self.cmp_lt(f32x8::ZERO)
-            .blend(f32x8::splat(-1.0), f32x8::ONE)
+        self.cmp_lt(Self::ZERO)
+            .blend(Self::splat(-1.0), Self::ONE)
     }
     #[inline(always)]
-    fn lt(self, other: Self) -> f32x8 {
+    fn lt(self, other: Self) -> Self {
         self.cmp_lt(other)
     }
     #[inline(always)]
-    fn gt(self, other: Self) -> f32x8 {
+    fn gt(self, other: Self) -> Self {
         self.cmp_gt(other)
     }
     #[inline(always)]
-    fn le(self, other: Self) -> f32x8 {
+    fn le(self, other: Self) -> Self {
         self.cmp_le(other)
     }
     #[inline(always)]
-    fn ge(self, other: Self) -> f32x8 {
+    fn ge(self, other: Self) -> Self {
         self.cmp_ge(other)
     }
     #[inline(always)]
-    fn select(mask: f32x8, a: Self, b: Self) -> Self {
+    fn select(mask: Self, a: Self, b: Self) -> Self {
         mask.blend(a, b)
     }
     #[inline(always)]
-    fn mask_and(a: f32x8, b: f32x8) -> f32x8 {
+    fn mask_and(a: Self, b: Self) -> Self {
         a & b
     }
     #[inline(always)]
-    fn mask_or(a: f32x8, b: f32x8) -> f32x8 {
+    fn mask_or(a: Self, b: Self) -> Self {
         a | b
     }
     #[inline(always)]
     fn map(self, f: impl Fn(f32) -> f32) -> Self {
         let a = self.as_array_ref();
-        f32x8::new([
+        Self::new([
             f(a[0]),
             f(a[1]),
             f(a[2]),
@@ -381,7 +381,7 @@ impl Real for f32x8 {
     fn map2(self, other: Self, f: impl Fn(f32, f32) -> f32) -> Self {
         let a = self.as_array_ref();
         let b = other.as_array_ref();
-        f32x8::new([
+        Self::new([
             f(a[0], b[0]),
             f(a[1], b[1]),
             f(a[2], b[2]),
@@ -399,7 +399,7 @@ impl Real for f32x8 {
         for i in 0..8 {
             out[i] = f(Vec3::new(xa[i], ya[i], za[i]));
         }
-        f32x8::new(out)
+        Self::new(out)
     }
     #[inline(always)]
     fn map3v(x: Self, y: Self, z: Self, f: impl Fn(Vec3) -> Vec3) -> Vec3R<Self> {
@@ -411,7 +411,7 @@ impl Real for f32x8 {
             oy[i] = v.y;
             oz[i] = v.z;
         }
-        Vec3R::new(f32x8::new(ox), f32x8::new(oy), f32x8::new(oz))
+        Vec3R::new(Self::new(ox), Self::new(oy), Self::new(oz))
     }
     #[inline(always)]
     fn map3vs(x: Self, y: Self, z: Self, f: impl Fn(Vec3) -> (Vec3, f32)) -> (Vec3R<Self>, Self) {
@@ -425,8 +425,8 @@ impl Real for f32x8 {
             os[i] = s;
         }
         (
-            Vec3R::new(f32x8::new(ox), f32x8::new(oy), f32x8::new(oz)),
-            f32x8::new(os),
+            Vec3R::new(Self::new(ox), Self::new(oy), Self::new(oz)),
+            Self::new(os),
         )
     }
     #[inline(always)]
@@ -441,11 +441,11 @@ impl Real for f32x8 {
         for i in 0..8 {
             out[i] = f(da[i], Vec3::new(xa[i], ya[i], za[i]));
         }
-        f32x8::new(out)
+        Self::new(out)
     }
     #[inline(always)]
     fn mul_add(self, m: Self, a: Self) -> Self {
-        f32x8::mul_add(self, m, a)
+        Self::mul_add(self, m, a)
     }
 }
 
@@ -463,7 +463,7 @@ pub struct Vec3R<R: Real> {
 impl<R: Real> Vec3R<R> {
     /// Construct from components.
     #[inline(always)]
-    pub fn new(x: R, y: R, z: R) -> Self {
+    pub const fn new(x: R, y: R, z: R) -> Self {
         Self { x, y, z }
     }
     /// Broadcast a `glam::Vec3`.
@@ -605,7 +605,7 @@ impl From<Vec3> for Vec3R<f32> {
 impl From<Vec3R<f32>> for Vec3 {
     #[inline(always)]
     fn from(v: Vec3R<f32>) -> Self {
-        Vec3::new(v.x, v.y, v.z)
+        Self::new(v.x, v.y, v.z)
     }
 }
 impl From<super::simd::Vec3x8> for Vec3R<f32x8> {
@@ -617,7 +617,7 @@ impl From<super::simd::Vec3x8> for Vec3R<f32x8> {
 impl From<Vec3R<f32x8>> for super::simd::Vec3x8 {
     #[inline(always)]
     fn from(v: Vec3R<f32x8>) -> Self {
-        super::simd::Vec3x8 {
+        Self {
             x: v.x,
             y: v.y,
             z: v.z,

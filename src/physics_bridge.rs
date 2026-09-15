@@ -61,7 +61,7 @@ impl CompiledSdfField {
     }
 
     /// Create from an existing `Arc<CompiledSdf>` (zero-cost sharing).
-    pub fn from_arc(sdf: Arc<CompiledSdf>) -> Self {
+    pub const fn from_arc(sdf: Arc<CompiledSdf>) -> Self {
         Self {
             sdf,
             epsilon: 0.001,
@@ -69,7 +69,7 @@ impl CompiledSdfField {
     }
 
     /// Set the epsilon used for gradient computation.
-    pub fn with_epsilon(mut self, epsilon: f32) -> Self {
+    pub const fn with_epsilon(mut self, epsilon: f32) -> Self {
         self.epsilon = epsilon;
         self
     }

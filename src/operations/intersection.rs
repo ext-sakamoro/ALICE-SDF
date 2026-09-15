@@ -12,7 +12,7 @@ use crate::compiled::real::Real;
 /// # Returns
 /// Maximum of the two distances
 #[inline(always)]
-pub fn sdf_intersection(d1: f32, d2: f32) -> f32 {
+pub const fn sdf_intersection(d1: f32, d2: f32) -> f32 {
     d1.max(d2)
 }
 

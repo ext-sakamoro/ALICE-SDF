@@ -228,7 +228,7 @@ pub fn try_encode_filter_quat_i16(
 ///
 /// Corresponds to `meshopt_decodeFilterQuat`
 pub fn decode_filter_quat_i16_in_place(data: &mut [i16]) {
-    assert!(data.len() % 4 == 0);
+    assert_eq!(data.len() % 4, 0);
     let scale = f32::from(i16::MAX) / std::f32::consts::SQRT_2;
 
     for chunk in data.chunks_exact_mut(4) {

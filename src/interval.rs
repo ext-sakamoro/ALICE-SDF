@@ -68,7 +68,7 @@ impl Interval {
     /// Midpoint of the interval
     #[inline(always)]
     pub fn midpoint(self) -> f32 {
-        (self.lo + self.hi) * 0.5
+        f32::midpoint(self.lo, self.hi)
     }
 
     /// Check if a scalar value is within the interval
@@ -85,7 +85,7 @@ impl Interval {
 
     /// Intersection of two intervals (narrowest overlap)
     #[inline(always)]
-    pub fn intersect(self, other: Self) -> Self {
+    pub const fn intersect(self, other: Self) -> Self {
         Self {
             lo: self.lo.max(other.lo),
             hi: self.hi.min(other.hi),
@@ -94,7 +94,7 @@ impl Interval {
 
     /// Hull (union) of two intervals (widest encompassing)
     #[inline(always)]
-    pub fn hull(self, other: Self) -> Self {
+    pub const fn hull(self, other: Self) -> Self {
         Self {
             lo: self.lo.min(other.lo),
             hi: self.hi.max(other.hi),
@@ -151,7 +151,7 @@ impl Interval {
 
     /// Minimum of two intervals
     #[inline(always)]
-    pub fn min(self, other: Self) -> Self {
+    pub const fn min(self, other: Self) -> Self {
         Self {
             lo: self.lo.min(other.lo),
             hi: self.hi.min(other.hi),
@@ -160,7 +160,7 @@ impl Interval {
 
     /// Maximum of two intervals
     #[inline(always)]
-    pub fn max(self, other: Self) -> Self {
+    pub const fn max(self, other: Self) -> Self {
         Self {
             lo: self.lo.max(other.lo),
             hi: self.hi.max(other.hi),
@@ -169,7 +169,7 @@ impl Interval {
 
     /// Clamp to scalar range
     #[inline(always)]
-    pub fn clamp(self, lo: f32, hi: f32) -> Self {
+    pub const fn clamp(self, lo: f32, hi: f32) -> Self {
         Self {
             lo: self.lo.clamp(lo, hi),
             hi: self.hi.clamp(lo, hi),

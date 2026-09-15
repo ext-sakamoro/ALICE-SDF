@@ -508,7 +508,7 @@ pub fn principal_curvatures(node: &SdfNode, point: Vec3, epsilon: f32) -> (f32, 
     // k1*k2 = (mean_h² - proj_frobenius) / 2
     let discriminant = mean_h.mul_add(mean_h, -proj_frobenius).max(0.0);
     let sqrt_disc = discriminant.sqrt();
-    let k1 = 0.5 * (mean_h + sqrt_disc);
+    let k1 = f32::midpoint(mean_h, sqrt_disc);
     let k2 = 0.5 * (mean_h - sqrt_disc);
     if k1 >= k2 {
         (k1, k2)

@@ -180,14 +180,14 @@ impl Material {
 
     /// Set metallic factor
     #[inline]
-    pub fn with_metallic(mut self, metallic: f32) -> Self {
+    pub const fn with_metallic(mut self, metallic: f32) -> Self {
         self.metallic = metallic.clamp(0.0, 1.0);
         self
     }
 
     /// Set roughness factor
     #[inline]
-    pub fn with_roughness(mut self, roughness: f32) -> Self {
+    pub const fn with_roughness(mut self, roughness: f32) -> Self {
         self.roughness = roughness.clamp(0.0, 1.0);
         self
     }
@@ -253,7 +253,7 @@ impl Material {
 
     /// Set clearcoat properties (car paint, lacquer, etc.)
     #[inline]
-    pub fn with_clearcoat(mut self, factor: f32, roughness: f32) -> Self {
+    pub const fn with_clearcoat(mut self, factor: f32, roughness: f32) -> Self {
         self.clearcoat = factor.clamp(0.0, 1.0);
         self.clearcoat_roughness = roughness.clamp(0.0, 1.0);
         self
@@ -261,7 +261,7 @@ impl Material {
 
     /// Set sheen properties (fabric, velvet, etc.)
     #[inline]
-    pub fn with_sheen(mut self, r: f32, g: f32, b: f32, roughness: f32) -> Self {
+    pub const fn with_sheen(mut self, r: f32, g: f32, b: f32, roughness: f32) -> Self {
         self.sheen_color = [r, g, b];
         self.sheen_roughness = roughness.clamp(0.0, 1.0);
         self
@@ -269,7 +269,7 @@ impl Material {
 
     /// Set transmission factor (glass, water, etc.)
     #[inline]
-    pub fn with_transmission(mut self, factor: f32) -> Self {
+    pub const fn with_transmission(mut self, factor: f32) -> Self {
         self.transmission = factor.clamp(0.0, 1.0);
         self
     }
@@ -292,7 +292,7 @@ impl Material {
 
     /// Set anisotropy (brushed metal, hair, etc.)
     #[inline]
-    pub fn with_anisotropy(mut self, strength: f32, rotation: f32) -> Self {
+    pub const fn with_anisotropy(mut self, strength: f32, rotation: f32) -> Self {
         self.anisotropy = strength.clamp(-1.0, 1.0);
         self.anisotropy_rotation = rotation;
         self
@@ -300,7 +300,7 @@ impl Material {
 
     /// Set subsurface scattering (skin, wax, marble, etc.)
     #[inline]
-    pub fn with_subsurface(mut self, factor: f32, r: f32, g: f32, b: f32) -> Self {
+    pub const fn with_subsurface(mut self, factor: f32, r: f32, g: f32, b: f32) -> Self {
         self.subsurface = factor.clamp(0.0, 1.0);
         self.subsurface_color = [r, g, b];
         self

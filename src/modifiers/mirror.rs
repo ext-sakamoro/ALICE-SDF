@@ -28,19 +28,19 @@ pub fn modifier_mirror(p: Vec3, axes: Vec3) -> Vec3 {
 
 /// Mirror point along X axis only
 #[inline(always)]
-pub fn modifier_mirror_x(p: Vec3) -> Vec3 {
+pub const fn modifier_mirror_x(p: Vec3) -> Vec3 {
     Vec3::new(p.x.abs(), p.y, p.z)
 }
 
 /// Mirror point along Y axis only
 #[inline(always)]
-pub fn modifier_mirror_y(p: Vec3) -> Vec3 {
+pub const fn modifier_mirror_y(p: Vec3) -> Vec3 {
     Vec3::new(p.x, p.y.abs(), p.z)
 }
 
 /// Mirror point along Z axis only
 #[inline(always)]
-pub fn modifier_mirror_z(p: Vec3) -> Vec3 {
+pub const fn modifier_mirror_z(p: Vec3) -> Vec3 {
     Vec3::new(p.x, p.y, p.z.abs())
 }
 

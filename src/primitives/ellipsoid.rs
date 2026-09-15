@@ -28,7 +28,7 @@ fn ellipsoid_bisector(n: usize, r: [f32; 3], z: [f32; 3], g: f32) -> f32 {
     let mut s1 = if g < 0.0 { 0.0 } else { norm2.sqrt() - 1.0 };
     let mut s = 0.0f32;
     for _ in 0..ELLIPSOID_BISECT_STEPS {
-        s = 0.5 * (s0 + s1);
+        s = f32::midpoint(s0, s1);
         if s == s0 || s == s1 {
             break;
         }

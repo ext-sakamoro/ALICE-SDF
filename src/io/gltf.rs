@@ -326,9 +326,9 @@ fn build_glb_data(
             (max_pos[2] - min_pos[2]) * 0.5,
         ];
         let center = [
-            (max_pos[0] + min_pos[0]) * 0.5,
-            (max_pos[1] + min_pos[1]) * 0.5,
-            (max_pos[2] + min_pos[2]) * 0.5,
+            f32::midpoint(max_pos[0], min_pos[0]),
+            f32::midpoint(max_pos[1], min_pos[1]),
+            f32::midpoint(max_pos[2], min_pos[2]),
         ];
         for v in &mesh.vertices {
             let qx = if half_ext[0] > 1e-6 {
@@ -931,9 +931,9 @@ fn build_glb_data(
             (max_pos[2] - min_pos[2]) * 0.5,
         ];
         let center = [
-            (max_pos[0] + min_pos[0]) * 0.5,
-            (max_pos[1] + min_pos[1]) * 0.5,
-            (max_pos[2] + min_pos[2]) * 0.5,
+            f32::midpoint(max_pos[0], min_pos[0]),
+            f32::midpoint(max_pos[1], min_pos[1]),
+            f32::midpoint(max_pos[2], min_pos[2]),
         ];
         let sx = if half_ext[0] > 1e-6 { half_ext[0] } else { 1.0 };
         let sy = if half_ext[1] > 1e-6 { half_ext[1] } else { 1.0 };

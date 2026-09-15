@@ -99,7 +99,7 @@ pub enum NprColorNode {
     /// Blend a base child with an outline color by an alpha mask
     OutlineOver {
         /// Base child evaluated for the interior color
-        base: Box<NprColorNode>,
+        base: Box<Self>,
         /// Outline color to paint when the mask is high
         outline: NprColor,
         /// Precomputed outline mask (typically from `distance_field_outline_soft`)
@@ -108,28 +108,28 @@ pub enum NprColorNode {
     /// Component-wise multiply two colour subtrees
     Multiply {
         /// Left-hand subtree
-        a: Box<NprColorNode>,
+        a: Box<Self>,
         /// Right-hand subtree
-        b: Box<NprColorNode>,
+        b: Box<Self>,
     },
     /// Component-wise add two colour subtrees
     Add {
         /// Left-hand subtree
-        a: Box<NprColorNode>,
+        a: Box<Self>,
         /// Right-hand subtree
-        b: Box<NprColorNode>,
+        b: Box<Self>,
     },
     /// Uniformly scale a subtree by a scalar factor
     Scale {
         /// Subtree to scale
-        child: Box<NprColorNode>,
+        child: Box<Self>,
         /// Scalar multiplier applied to every channel
         factor: f32,
     },
     /// Overlay an edge colour on top of a base subtree using a Fresnel mask
     Fresnel {
         /// Base child evaluated for the interior color
-        base: Box<NprColorNode>,
+        base: Box<Self>,
         /// Edge colour blended in at grazing view angles
         edge: NprColor,
         /// Fresnel exponent (higher = tighter rim)
@@ -141,7 +141,7 @@ pub enum NprColorNode {
     /// the original saturation, `factor > 1` over-saturates.
     Saturate {
         /// Subtree whose saturation is adjusted
-        child: Box<NprColorNode>,
+        child: Box<Self>,
         /// Saturation blend factor
         factor: f32,
     },
@@ -149,7 +149,7 @@ pub enum NprColorNode {
     /// brightest channel exceeds `threshold`, then scale by `intensity`
     Bloom {
         /// Subtree evaluated for the source colour
-        child: Box<NprColorNode>,
+        child: Box<Self>,
         /// Threshold on the maximum channel
         threshold: f32,
         /// Multiplier applied to the passing colour
@@ -158,14 +158,14 @@ pub enum NprColorNode {
     /// Posterise a subtree's colour into `levels` discrete steps per channel
     PosterizeColor {
         /// Subtree evaluated for the source colour
-        child: Box<NprColorNode>,
+        child: Box<Self>,
         /// Number of discrete levels per channel (>= 2)
         levels: u32,
     },
     /// Multiply a subtree by a UV-centred vignette mask
     Vignette {
         /// Subtree evaluated for the source colour
-        child: Box<NprColorNode>,
+        child: Box<Self>,
         /// Radius (in UV units) at which the mask starts to fall off
         radius: f32,
         /// Half-width of the falloff transition
@@ -185,7 +185,7 @@ pub enum NprColorNode {
     /// Overlay hatch line ink on top of a base subtree using UV
     Hatch {
         /// Base child evaluated for the interior colour
-        base: Box<NprColorNode>,
+        base: Box<Self>,
         /// Line direction in radians (0 = horizontal)
         angle_rad: f32,
         /// Lines per UV unit
@@ -213,14 +213,14 @@ pub enum NprColorNode {
     /// Reinhard tone-mapping applied to a subtree
     Tonemap {
         /// Subtree evaluated for the source colour
-        child: Box<NprColorNode>,
+        child: Box<Self>,
         /// Exposure multiplier applied before tone-mapping
         exposure: f32,
     },
     /// Radial speed-line ink overlay from a focal UV
     SpeedLine {
         /// Base child evaluated for the interior colour
-        base: Box<NprColorNode>,
+        base: Box<Self>,
         /// Focus UV (typical: `Vec2::new(0.5, 0.5)`)
         focus: Vec2,
         /// Number of radial lines around the full circle
@@ -372,7 +372,7 @@ impl NprColorNode {
 
     /// Builder helper: component-wise multiply `self` by another subtree
     #[must_use]
-    pub fn multiply(self, other: NprColorNode) -> Self {
+    pub fn multiply(self, other: Self) -> Self {
         Self::Multiply {
             a: Box::new(self),
             b: Box::new(other),
@@ -381,7 +381,7 @@ impl NprColorNode {
 
     /// Builder helper: component-wise add another subtree to `self`
     #[must_use]
-    pub fn plus(self, other: NprColorNode) -> Self {
+    pub fn plus(self, other: Self) -> Self {
         Self::Add {
             a: Box::new(self),
             b: Box::new(other),

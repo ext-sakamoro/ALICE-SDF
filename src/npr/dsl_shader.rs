@@ -82,7 +82,7 @@ struct Walker {
 }
 
 impl Walker {
-    fn new(language: ShaderLanguage) -> Self {
+    const fn new(language: ShaderLanguage) -> Self {
         Self {
             language,
             var_counter: 0,

@@ -97,7 +97,7 @@ impl SimulatedSdf {
     }
 
     /// Set custom simulation bounds.
-    pub fn with_bounds(mut self, min: (f32, f32, f32), max: (f32, f32, f32)) -> Self {
+    pub const fn with_bounds(mut self, min: (f32, f32, f32), max: (f32, f32, f32)) -> Self {
         self.bounds_min = min;
         self.bounds_max = max;
         self
@@ -109,7 +109,7 @@ impl SimulatedSdf {
     }
 
     /// Get simulation bounds.
-    pub fn bounds(&self) -> ((f32, f32, f32), (f32, f32, f32)) {
+    pub const fn bounds(&self) -> ((f32, f32, f32), (f32, f32, f32)) {
         (self.bounds_min, self.bounds_max)
     }
 

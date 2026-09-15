@@ -58,7 +58,7 @@ pub fn fast_normalize_2d(gx: f32, gz: f32) -> (f32, f32) {
 /// Returns `a` if `condition` is true, `b` otherwise.
 /// Compiles to a single cmov instruction on x86.
 #[inline(always)]
-pub fn select_f32(condition: bool, a: f32, b: f32) -> f32 {
+pub const fn select_f32(condition: bool, a: f32, b: f32) -> f32 {
     let mask = -(condition as i32) as u32; // 0xFFFFFFFF or 0x00000000
     f32::from_bits((f32::to_bits(a) & mask) | (f32::to_bits(b) & !mask))
 }
@@ -83,7 +83,7 @@ pub fn branchless_clamp(x: f32, lo: f32, hi: f32) -> f32 {
 
 /// Branchless absolute value — clear sign bit directly.
 #[inline(always)]
-pub fn branchless_abs(x: f32) -> f32 {
+pub const fn branchless_abs(x: f32) -> f32 {
     f32::from_bits(f32::to_bits(x) & 0x7FFF_FFFF)
 }
 
@@ -257,7 +257,7 @@ impl BloomFilter {
     pub const fn test_hash(filter: &[u8; 4096], hash: u64) -> bool {
         let (h1, h2) = Self::double_hash(hash);
         // Branchless AND — no short-circuit, single bitwise &
-        (filter[h1 >> 3] & (1 << (h1 & 7)) != 0) & (filter[h2 >> 3] & (1 << (h2 & 7)) != 0)
+        (filter[h1 >> 3] & (1 << (h1 & 7)) != 0) && (filter[h2 >> 3] & (1 << (h2 & 7)) != 0)
     }
 
     #[inline(always)]

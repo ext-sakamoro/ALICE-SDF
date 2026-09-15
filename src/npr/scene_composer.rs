@@ -103,7 +103,7 @@ impl<'a> SceneShaderBuilder<'a> {
 
     /// Override the 3-anchor sky gradient (horizon / mid / zenith)
     #[must_use]
-    pub fn with_sky(mut self, horizon: Vec3, mid: Vec3, zenith: Vec3) -> Self {
+    pub const fn with_sky(mut self, horizon: Vec3, mid: Vec3, zenith: Vec3) -> Self {
         self.sky_horizon = horizon;
         self.sky_mid = mid;
         self.sky_zenith = zenith;
@@ -147,7 +147,7 @@ impl<'a> SceneShaderBuilder<'a> {
 
     /// Override the camera position (image plane sits at world origin)
     #[must_use]
-    pub fn with_camera(mut self, position: Vec3) -> Self {
+    pub const fn with_camera(mut self, position: Vec3) -> Self {
         self.camera_position = position;
         self
     }

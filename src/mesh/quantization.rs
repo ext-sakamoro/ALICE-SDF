@@ -118,7 +118,7 @@ pub fn unorm_u16_decode(q: u16) -> f32 {
 /// - GPU で float attribute の memory bandwidth 半減
 /// - EXT_meshopt_compression でも使用
 #[must_use]
-pub fn half_encode(v: f32) -> u16 {
+pub const fn half_encode(v: f32) -> u16 {
     let bits = v.to_bits();
     let sign = ((bits >> 16) & 0x8000) as u16;
     let exp_biased = (bits >> 23) & 0xFF;

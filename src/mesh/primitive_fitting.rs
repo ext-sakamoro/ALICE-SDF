@@ -420,7 +420,7 @@ fn fit_cylinder_along_axis(
         .map(|(_, h)| *h)
         .fold(f32::NEG_INFINITY, f32::max);
 
-    let center_h = (min_h + max_h) * 0.5;
+    let center_h = f32::midpoint(min_h, max_h);
     let half_height = (max_h - min_h) * 0.5;
 
     let center = center_2d + axis * center_h;

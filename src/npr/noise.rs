@@ -75,7 +75,7 @@ impl Default for HashNoise {
 
 /// PCG-like 32-bit hash for three integer coordinates
 #[inline]
-fn pcg_hash3(x: i32, y: i32, z: i32, seed: u32) -> u32 {
+const fn pcg_hash3(x: i32, y: i32, z: i32, seed: u32) -> u32 {
     let mut state = seed
         .wrapping_add((x as u32).wrapping_mul(0x9E37_79B1))
         .wrapping_add((y as u32).wrapping_mul(0x85EB_CA6B))
@@ -378,7 +378,7 @@ const SIMPLEX_G3: f32 = 1.0 / 6.0;
 
 /// One of twelve edge-midpoint gradients as a 3D vector
 #[inline]
-fn simplex_grad_vec(hash: u32) -> (f32, f32, f32) {
+const fn simplex_grad_vec(hash: u32) -> (f32, f32, f32) {
     match hash & 15 {
         0 => (1.0, 1.0, 0.0),
         1 => (-1.0, 1.0, 0.0),

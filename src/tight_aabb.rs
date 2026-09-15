@@ -318,7 +318,7 @@ fn bisect_bound(
     let mut hi = search_hi;
 
     for _ in 0..iterations {
-        let mid = (lo + hi) * 0.5;
+        let mid = f32::midpoint(lo, hi);
 
         if is_max {
             // For max bound: test slab [mid, hi] of full cross-section

@@ -174,14 +174,14 @@ fn distance_to_color(t: f32, colormap: ColorMap) -> [u8; 4] {
             [v, v, v, 255]
         }
         ColorMap::Viridis => {
-            let s = (t + 1.0) * 0.5; // [0, 1]
+            let s = f32::midpoint(t, 1.0); // [0, 1]
             let r = (68.0 + s * (187.0)) as u8;
             let g = (1.0 + s * (254.0)) as u8;
             let b = (s * s).mul_add(-100.0, 84.0 + s * (80.0)).clamp(0.0, 255.0) as u8;
             [r, g, b, 255]
         }
         ColorMap::Magma => {
-            let s = (t + 1.0) * 0.5; // [0, 1]
+            let s = f32::midpoint(t, 1.0); // [0, 1]
             let r = (s * 255.0).min(255.0) as u8;
             let g = (s * s * 200.0).min(255.0) as u8;
             let b = (80.0 + s * 100.0).min(255.0) as u8;

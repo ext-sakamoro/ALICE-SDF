@@ -707,7 +707,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
 
 /// Resolve remap chain to final vertex
 #[inline]
-fn resolve_remap(remap: &[u32], mut v: u32) -> u32 {
+const fn resolve_remap(remap: &[u32], mut v: u32) -> u32 {
     let mut steps = 0;
     while remap[v as usize] != v && steps < 1000 {
         v = remap[v as usize];

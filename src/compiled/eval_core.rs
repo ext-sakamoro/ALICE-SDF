@@ -43,7 +43,7 @@ impl<T: Copy, const N: usize> Slots<T, N> {
     const _FITS_MASK: () = assert!(N <= 64, "debug init mask is a u64");
 
     #[inline(always)]
-    fn new() -> Self {
+    const fn new() -> Self {
         let () = Self::_FITS_MASK;
         Self {
             buf: [const { MaybeUninit::uninit() }; N],
@@ -53,7 +53,7 @@ impl<T: Copy, const N: usize> Slots<T, N> {
     }
 
     #[inline(always)]
-    fn set(&mut self, i: usize, v: T) {
+    const fn set(&mut self, i: usize, v: T) {
         self.buf[i].write(v);
         #[cfg(debug_assertions)]
         {
