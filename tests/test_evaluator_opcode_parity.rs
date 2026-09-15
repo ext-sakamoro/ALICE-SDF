@@ -542,11 +542,25 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
         finite >= 100,
         "only {finite} finite claims; infinite: {infinite:?}"
     );
-    assert!(
-        infinite.len() <= 24,
-        "{} infinite claims (expected ≤ 24): {infinite:?}",
-        infinite.len()
+    // Exactly the by-design non-Lipschitz laws: columns ×3, lattice deform,
+    // domain repetition ×8 (repeat / polar repeat corpus variants), taper,
+    // heightmap displacement. Every primitive has a finite claim since 1.11.0.
+    assert_eq!(
+        infinite.len(),
+        14,
+        "infinite claims changed (expected the 14 by-design laws): {infinite:?}"
     );
+    for name in &infinite {
+        assert!(
+            name.starts_with("columns_")
+                || name.starts_with("repeat_")
+                || name.starts_with("polar_repeat")
+                || *name == "lattice_deform"
+                || *name == "taper"
+                || *name == "heightmap_displacement",
+            "unexpected INFINITY claim on {name}"
+        );
+    }
     assert_eq!(eval_lipschitz(&SdfNode::sphere(1.0)), 1.0);
     assert!((eval_lipschitz(&SdfNode::gyroid(2.0, 0.1)) - 3f32.sqrt()).abs() < 1e-3);
     assert!((eval_lipschitz(&SdfNode::neovius(0.5, 0.1)) - 7.05).abs() < 1e-3);
