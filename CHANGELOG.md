@@ -155,6 +155,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   `eval_lipschitz` is 1 again. **Shape change**: legs now end flat at
   `half_length` and the band is symmetric about its centre line.
 
+- `BlobbyCross` was a home-grown "sqrt blend" that jumped by up to 23× the
+  sample spacing between its two regions. It is now IQ's exact
+  `sdBlobbyCross` (nearest parameter on the parabola arms from the
+  depressed cubic, `he = 0.5`) on `|xz| / size`, extruded along Y; CPU and
+  the three shader helpers are mirrored (GPU ↔ CPU 8e-5, `pow` / `acos`
+  domain), the interval arm is the exact-SDF form and `eval_lipschitz` is
+  1. **Shape change**: arms are parabola segments reaching `±size`.
+
 ### Changed — compiled evaluator speed (review SDF-R2-4)
 
 - `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,

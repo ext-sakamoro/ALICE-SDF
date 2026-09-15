@@ -635,39 +635,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             ..
         } => ia_bsphere(bounds, ra.max(*rb).hypot(*half_height)),
         SdfNode::CrossShape { .. } => ia_lipschitz(node, bounds, 1.0),
-        // Interval arithmetic on both branches of the 2D blobby cross, hulled.
-        SdfNode::BlobbyCross { size, half_height } => {
-            let inv = Interval::point(1.0 / size);
-            let qx = bounds.x.abs() * inv;
-            let qz = bounds.z.abs() * inv;
-            let n = qx + qz;
-            let one = Interval::point(1.0);
-            let branch_a = {
-                let t = one - n;
-                let b = qx * qz;
-                let inner = (t.sqr() - b * Interval::point(2.0))
-                    .max(Interval::ZERO)
-                    .sqrt();
-                (Interval::ZERO - inner + n - one) * Interval::point(size * 0.5_f32.sqrt())
-            };
-            let branch_b = {
-                let d1 = (qx - one).max(Interval::ZERO);
-                let d2 = (qz - one).max(Interval::ZERO);
-                let dxl = len2(qx - one, qz);
-                let dzl = len2(qx, qz - one);
-                dxl.min(dzl).min(len2(d1, d2)) * Interval::point(*size)
-            };
-            let d_2d = if n.hi < 1.0 {
-                branch_a
-            } else if n.lo >= 1.0 {
-                branch_b
-            } else {
-                branch_a.hull(branch_b)
-            };
-            let d_y = bounds.y.abs() - Interval::point(*half_height);
-            d_2d.max(d_y).min(Interval::ZERO)
-                + len2(d_2d.max(Interval::ZERO), d_y.max(Interval::ZERO))
-        }
+        // Exact SDF (IQ sdBlobbyCross): centre sample ± ρ
+        SdfNode::BlobbyCross { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::ParabolaSegment {
             width,
             para_height,
@@ -1364,7 +1333,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. }
         | SdfNode::Egg { .. }
-        | SdfNode::Horseshoe { .. } => 1.0,
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::BlobbyCross { .. } => 1.0,
 
         // Triply periodic minimal surfaces: `|F(p·s)| / s − t` with F an
         // implicit trigonometric function, so L = sup|∇F| independent of
@@ -1396,13 +1366,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
 
         // Laws that are not Lipschitz on the exterior: the IQ ellipsoid
         // approximation's gradient grows like (max r / min r)⁴ in the far
-        // field; blobby cross is a home-grown blend that jumps; the stairs
-        // primitive and the helix select a nearest
+        // field; the stairs primitive and the helix select a nearest
         // candidate (step index / wrap) and jump where the choice changes.
-        SdfNode::Ellipsoid { .. }
-        | SdfNode::BlobbyCross { .. }
-        | SdfNode::Stairs { .. }
-        | SdfNode::Helix { .. } => f32::INFINITY,
+        SdfNode::Ellipsoid { .. } | SdfNode::Stairs { .. } | SdfNode::Helix { .. } => f32::INFINITY,
 
         // min / max and every convex blend (smooth, exp-smooth: the weights
         // on ∇a and ∇b sum to 1) are 1-Lipschitz in (a, b).

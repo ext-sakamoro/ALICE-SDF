@@ -1262,26 +1262,27 @@ const HELPER_SDF_CROSS_SHAPE: &str = r"fn sdf_cross_shape(p: vec3<f32>, len: f32
 }
 ";
 
-const HELPER_SDF_BLOBBY_CROSS: &str = r"fn sdf_blobby_cross(p: vec3<f32>, size: f32, h: f32) -> f32 {
-    let qx = abs(p.x) / size;
-    let qz = abs(p.z) / size;
-    let n = qx + qz;
-    var d2d: f32;
-    if (n < 1.0) {
-        let t = 1.0 - n;
-        let b = qx * qz;
-        d2d = (-(max(t * t - 2.0 * b, 0.0))) * sqrt(0.5) * size;
-        d2d = d2d + (n - 1.0) * sqrt(0.5) * size;
+const HELPER_SDF_BLOBBY_CROSS: &str = r"fn sdf_blobby_cross(p: vec3<f32>, size: f32, hh: f32) -> f32 {
+    let he = 0.5;
+    var pos = abs(vec2<f32>(p.x, p.z) / size);
+    pos = vec2<f32>(abs(pos.x - pos.y), 1.0 - pos.x - pos.y) * 0.70710678;
+    let pp = (he - pos.y - 0.25 / he) / (6.0 * he);
+    let q = pos.x / (he * he * 16.0);
+    let h = q * q - pp * pp * pp;
+    var x: f32;
+    if (h >= 0.0) {
+        let r = sqrt(h);
+        x = pow(q + r, 1.0 / 3.0) - pow(abs(q - r), 1.0 / 3.0) * sign(r - q);
     } else {
-        let dx = vec2<f32>(qx - 1.0, qz);
-        let dz = vec2<f32>(qx, qz - 1.0);
-        let d1 = max(qx - 1.0, 0.0);
-        let d22 = max(qz - 1.0, 0.0);
-        d2d = min(length(dx), min(length(dz), sqrt(d1 * d1 + d22 * d22))) * size;
+        let r = sqrt(pp);
+        x = 2.0 * r * cos(acos(q / (pp * r)) / 3.0);
     }
-    let dy = abs(p.y) - h;
-    let ww = max(vec2<f32>(d2d, dy), vec2<f32>(0.0));
-    return min(max(d2d, dy), 0.0) + length(ww);
+    x = min(x, 0.70710678);
+    let z = vec2<f32>(x, he * (1.0 - 2.0 * x * x)) - pos;
+    let d_2d = length(z) * sign(z.y) * size;
+    let d_y = abs(p.y) - hh;
+    let w = vec2<f32>(max(d_2d, 0.0), max(d_y, 0.0));
+    return min(max(d_2d, d_y), 0.0) + length(w);
 }
 ";
 

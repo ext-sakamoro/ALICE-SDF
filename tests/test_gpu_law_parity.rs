@@ -197,4 +197,6 @@ fn iq_exact_ports_gpu_match_cpu() {
         &SdfNode::horseshoe(0.8, 0.9, 0.6, 0.2, 0.3),
         1e-5,
     );
+    // pow(x, 1/3) / acos on the GPU are not libm: 1e-4 relative
+    assert_gpu_matches_cpu("blobby_cross", &SdfNode::blobby_cross(1.2, 0.5), 1e-4);
 }

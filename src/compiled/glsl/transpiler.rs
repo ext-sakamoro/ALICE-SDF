@@ -1127,25 +1127,27 @@ const HELPER_SDF_CROSS_SHAPE: &str = r"float sdf_cross_shape(vec3 p, float len, 
 }
 ";
 
-const HELPER_SDF_BLOBBY_CROSS: &str = r"float sdf_blobby_cross(vec3 p, float size, float h) {
-    float qx = abs(p.x) / size;
-    float qz = abs(p.z) / size;
-    float n = qx + qz;
-    float d2d;
-    if (n < 1.0) {
-        float t = 1.0 - n;
-        float b = qx * qz;
-        d2d = (-sqrt(max(t * t - 2.0 * b, 0.0)) + n - 1.0) * sqrt(0.5) * size;
+const HELPER_SDF_BLOBBY_CROSS: &str = r"float sdf_blobby_cross(vec3 p, float size, float hh) {
+    const float he = 0.5;
+    vec2 pos = abs(vec2(p.x, p.z) / size);
+    pos = vec2(abs(pos.x - pos.y), 1.0 - pos.x - pos.y) * 0.70710678;
+    float pp = (he - pos.y - 0.25 / he) / (6.0 * he);
+    float q = pos.x / (he * he * 16.0);
+    float h = q * q - pp * pp * pp;
+    float x;
+    if (h >= 0.0) {
+        float r = sqrt(h);
+        x = pow(q + r, 1.0 / 3.0) - pow(abs(q - r), 1.0 / 3.0) * sign(r - q);
     } else {
-        vec2 dx = vec2(qx - 1.0, qz);
-        vec2 dz = vec2(qx, qz - 1.0);
-        float d1 = max(qx - 1.0, 0.0);
-        float d2 = max(qz - 1.0, 0.0);
-        d2d = min(length(dx), min(length(dz), sqrt(d1 * d1 + d2 * d2))) * size;
+        float r = sqrt(pp);
+        x = 2.0 * r * cos(acos(q / (pp * r)) / 3.0);
     }
-    float dy = abs(p.y) - h;
-    vec2 ww = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(ww);
+    x = min(x, 0.70710678);
+    vec2 z = vec2(x, he * (1.0 - 2.0 * x * x)) - pos;
+    float d_2d = length(z) * sign(z.y) * size;
+    float d_y = abs(p.y) - hh;
+    vec2 w = vec2(max(d_2d, 0.0), max(d_y, 0.0));
+    return min(max(d_2d, d_y), 0.0) + length(w);
 }
 ";
 
