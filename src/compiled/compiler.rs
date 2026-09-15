@@ -42,6 +42,12 @@ pub struct CompiledSdf {
     pub aux_data: Vec<f32>,
     /// Original node count (for statistics)
     pub node_count: usize,
+    /// Lipschitz bound of the field on its exterior
+    /// ([`crate::interval::eval_lipschitz`] at compile time). The marchers
+    /// step by `d / lipschitz`, so a compiled TPMS (√3 … 7) traces correctly
+    /// with the default config; `f32::INFINITY` when the tree has no finite
+    /// bound (domain repetition, taper, …), in which case they step by `d`.
+    pub lipschitz: f32,
 }
 
 impl CompiledSdf {
@@ -89,6 +95,7 @@ impl CompiledSdf {
             instructions: compiler.instructions,
             aux_data: compiler.aux_data,
             node_count: compiler.node_count,
+            lipschitz: crate::interval::eval_lipschitz(node),
         })
     }
 

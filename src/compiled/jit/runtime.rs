@@ -45,6 +45,10 @@ pub struct JitCompiledSdf {
 
     /// Function pointer to the compiled evaluation function
     eval_fn: SdfEvalFn,
+
+    /// Lipschitz bound of the field on its exterior (see
+    /// [`CompiledSdf::lipschitz`](crate::compiled::CompiledSdf::lipschitz)).
+    lipschitz: f32,
 }
 
 // SAFETY: JitCompiledSdf holds a read-only function pointer to JIT-compiled machine code.
@@ -114,6 +118,7 @@ impl JitCompiledSdf {
         Ok(Self {
             _module: module,
             eval_fn,
+            lipschitz: crate::interval::eval_lipschitz(node),
         })
     }
 
@@ -163,6 +168,15 @@ impl JitCompiledSdf {
     }
 }
 
+impl JitCompiledSdf {
+    /// Lipschitz bound recorded at compile time (see
+    /// [`CompiledSdf::lipschitz`](crate::compiled::CompiledSdf::lipschitz)).
+    #[inline]
+    pub fn lipschitz(&self) -> f32 {
+        self.lipschitz
+    }
+}
+
 impl std::fmt::Debug for JitCompiledSdf {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JitCompiledSdf")
@@ -204,6 +218,10 @@ pub struct JitCompiledSdfDynamic {
     _module: JITModule,
     eval_fn: SdfEvalDynamicFn,
     params: Vec<f32>,
+
+    /// Lipschitz bound of the field on its exterior (see
+    /// [`CompiledSdf::lipschitz`](crate::compiled::CompiledSdf::lipschitz)).
+    lipschitz: f32,
 }
 
 // SAFETY: JitCompiledSdfDynamic holds a read-only function pointer to JIT-compiled machine code
@@ -251,6 +269,7 @@ impl JitCompiledSdfDynamic {
         Ok(Self {
             _module: module,
             eval_fn,
+            lipschitz: crate::interval::eval_lipschitz(node),
             params,
         })
     }
@@ -287,6 +306,15 @@ impl JitCompiledSdfDynamic {
     pub fn eval_batch_parallel(&self, points: &[Vec3]) -> Vec<f32> {
         use rayon::prelude::*;
         points.par_iter().map(|p| self.eval(*p)).collect()
+    }
+}
+
+impl JitCompiledSdfDynamic {
+    /// Lipschitz bound recorded at compile time (see
+    /// [`CompiledSdf::lipschitz`](crate::compiled::CompiledSdf::lipschitz)).
+    #[inline]
+    pub fn lipschitz(&self) -> f32 {
+        self.lipschitz
     }
 }
 

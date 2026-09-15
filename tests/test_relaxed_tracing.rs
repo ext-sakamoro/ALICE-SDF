@@ -326,3 +326,131 @@ fn tpms_trace_correctly_with_lipschitz_bound() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// The config-less entry points (`raymarch`, `raymarch_compiled`,
+/// `raymarch_simd_8` with the default config, JIT) apply the field's
+/// Lipschitz bound themselves — the tree's `eval_lipschitz` or the value
+/// recorded at compile time — so a TPMS traces correctly without the caller
+/// knowing it is not a distance field. Every reported hit must be the
+/// oracle's first crossing; a `None` is only tolerated when the 128-step
+/// default budget runs out (L = 7 makes steps small), never as a skipped
+/// surface.
+#[test]
+fn default_entry_points_apply_the_lipschitz_bound() {
+    use alice_sdf::compiled::Vec3x8;
+    use alice_sdf::raycast::{raymarch, raymarch_compiled, raymarch_simd_8};
+    use wide::f32x8;
+    let mut failures = Vec::new();
+    for (name, node) in [
+        ("gyroid", SdfNode::gyroid(2.0, 0.08)),
+        ("neovius", SdfNode::neovius(2.0, 0.08)),
+        ("iwp", SdfNode::iwp(2.0, 0.08)),
+    ] {
+        let rays: Vec<(Vec3, Vec3)> = rays()
+            .into_iter()
+            .filter(|&(o, _)| eval(&node, o) > 0.02)
+            .collect();
+        let oracle = oracle_hits(&node, &rays);
+        let compiled = CompiledSdf::compile(&node);
+        assert!(
+            compiled.lipschitz > 1.5,
+            "{name}: compiled bound {}",
+            compiled.lipschitz
+        );
+
+        // SIMD: 8 rays per packet, padded with copies of the last ray
+        let mut simd_hits: Vec<Option<(f32, u32)>> = Vec::with_capacity(rays.len());
+        for chunk in rays.chunks(8) {
+            let mut ox = [0.0f32; 8];
+            let mut oy = [0.0f32; 8];
+            let mut oz = [0.0f32; 8];
+            let mut dx = [0.0f32; 8];
+            let mut dy = [0.0f32; 8];
+            let mut dz = [0.0f32; 8];
+            for i in 0..8 {
+                let (o, d) = chunk[i.min(chunk.len() - 1)];
+                ox[i] = o.x;
+                oy[i] = o.y;
+                oz[i] = o.z;
+                dx[i] = d.x;
+                dy[i] = d.y;
+                dz[i] = d.z;
+            }
+            let res = raymarch_simd_8(
+                &compiled,
+                Vec3x8 {
+                    x: f32x8::from(ox),
+                    y: f32x8::from(oy),
+                    z: f32x8::from(oz),
+                },
+                Vec3x8 {
+                    x: f32x8::from(dx),
+                    y: f32x8::from(dy),
+                    z: f32x8::from(dz),
+                },
+                MAX_DIST,
+                &RaymarchConfig::default(),
+            );
+            for r in res.iter().take(chunk.len()) {
+                simd_hits.push(r.map(|(t, _, steps)| (t, steps)));
+            }
+        }
+
+        // The Cranelift JIT has no codegen for TPMS yet (`UnsupportedNode`):
+        // cover it where it compiles, skip loudly otherwise.
+        #[cfg(feature = "jit")]
+        let jit = alice_sdf::compiled::jit::JitCompiledSdf::compile(&node)
+            .map_err(|e| eprintln!("{name}: JIT skipped ({e:?})"))
+            .ok();
+        type March<'a> = Box<dyn Fn(usize, Vec3, Vec3) -> Option<(f32, u32)> + 'a>;
+        #[allow(unused_mut)]
+        let mut paths: Vec<(&str, March)> = vec![
+            (
+                "raymarch",
+                Box::new(|_, o, d| raymarch(&node, o, d, MAX_DIST).map(|h| (h.distance, h.steps))),
+            ),
+            (
+                "raymarch_compiled",
+                Box::new(|_, o, d| {
+                    raymarch_compiled(&compiled, o, d, MAX_DIST).map(|h| (h.distance, h.steps))
+                }),
+            ),
+            ("raymarch_simd_8", Box::new(|i, _, _| simd_hits[i])),
+        ];
+        #[cfg(feature = "jit")]
+        if let Some(jit) = &jit {
+            paths.push((
+                "raymarch_jit",
+                Box::new(move |_, o, d| {
+                    alice_sdf::raycast::raymarch_jit(jit, o, d, MAX_DIST)
+                        .map(|h| (h.distance, h.steps))
+                }),
+            ));
+        }
+        for (path, march) in &paths {
+            let (mut false_hit, mut budget_miss, mut agree) = (0usize, 0usize, 0usize);
+            for (i, (&(o, d), &want)) in rays.iter().zip(&oracle).enumerate() {
+                match (want, march(i, o, d)) {
+                    (Some(tw), Some((tg, _))) => {
+                        if (tw - tg).abs() > t_tolerance(&node, o + d * tw, d, 1e-4) {
+                            false_hit += 1;
+                        } else {
+                            agree += 1;
+                        }
+                    }
+                    (None, Some(_)) => false_hit += 1,
+                    (Some(_), None) => budget_miss += 1,
+                    (None, None) => agree += 1,
+                }
+            }
+            eprintln!("{name}/{path}: agree {agree}, budget miss {budget_miss}, false hit {false_hit} / {}", rays.len());
+            if false_hit > 0 || budget_miss * 10 > rays.len() {
+                failures.push(format!(
+                    "{name}/{path}: {false_hit} false hits, {budget_miss} misses of {}",
+                    rays.len()
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

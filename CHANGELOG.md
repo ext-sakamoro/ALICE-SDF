@@ -120,6 +120,22 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   rays that way even with the correct bound). With `min_step ≤ epsilon` plain
   tracing can no longer overshoot at all.
 
+### Added — Lipschitz bound applied by every marcher
+
+- `CompiledSdf::lipschitz` / `JitCompiledSdf::lipschitz()` record
+  `eval_lipschitz(node)` at compile time, and `RaymarchConfig::with_bound`
+  raises a configuration's `lipschitz` to a finite bound. The config-less
+  entry points (`raymarch`, `raymarch_batch*`, `render_depth`,
+  `render_normals`, `raymarch_compiled`, `raymarch_simd_8`, `raymarch_jit*`,
+  the `*_with_config` compiled / JIT variants) now step by `d / L`, so a
+  TPMS surface (L = √3 … 7) traces correctly without the caller knowing it
+  is not a distance field: Neovius / IWP / Gyroid report 0 false hits
+  against the scan oracle on every path (`default_entry_points_apply_the_
+  lipschitz_bound`), where the plain `t += d` lost most rays. Trees with no
+  finite bound keep stepping by `d`. `raymarch` on a tree computes the bound
+  per call (a tree walk; twist / bend children cost an AABB pass) — the batch
+  / render functions compute it once and the compiled marchers not at all.
+
 ### Fixed — external review 2026-09-15 (transpiler validation, found by the new naga oracle)
 
 - The five GDF polyhedra (`Tetrahedron`, `Dodecahedron`, `Icosahedron`,

@@ -79,6 +79,23 @@ impl RaymarchConfig {
         }
     }
 
+    /// This configuration with the Lipschitz bound raised to `bound` when
+    /// `bound` is finite and larger than the current one.
+    ///
+    /// Every marcher applies the bound of the field it traces — the tree's
+    /// `eval_lipschitz` or the value a `CompiledSdf` / `JitCompiledSdf`
+    /// recorded at compile time — so a TPMS surface (L up to 7) traces
+    /// correctly with `RaymarchConfig::default()`. An infinite bound (no
+    /// provable step size) leaves the configuration unchanged.
+    #[inline]
+    #[must_use]
+    pub fn with_bound(mut self, bound: f32) -> Self {
+        if bound.is_finite() && bound > self.lipschitz {
+            self.lipschitz = bound;
+        }
+        self
+    }
+
     /// Relaxed sphere tracing configuration.
     ///
     /// Auto-computes the Lipschitz bound from the SDF tree
@@ -212,32 +229,15 @@ pub struct RaymarchResult {
 /// Uses `eval()` interpreter to traverse the SDF tree. This is the simplest
 /// path but slowest. Prefer `raymarch_compiled()` or `raymarch_jit()` for
 /// production use.
+///
+/// Steps by `d / L` with `L = eval_lipschitz(node)` computed per call (a
+/// tree walk; a twist / bend child costs an AABB pass) — for many rays use
+/// [`raymarch_batch`] / [`render_depth`], which compute it once, or the
+/// compiled marchers, which record it at compile time.
 #[inline(always)]
 pub fn raymarch(node: &SdfNode, origin: Vec3, direction: Vec3, max_distance: f32) -> Option<Hit> {
-    const EPSILON: f32 = 0.0001;
-    const MAX_STEPS: u32 = 128;
-
-    let mut t = 0.0;
-    let mut steps = 0;
-
-    while t < max_distance && steps < MAX_STEPS {
-        let point = origin + direction * t;
-        let d = eval(node, point);
-
-        if d.abs() < EPSILON {
-            return Some(Hit {
-                distance: t,
-                point,
-                normal: normal(node, point, EPSILON),
-                steps,
-            });
-        }
-
-        t += d;
-        steps += 1;
-    }
-
-    None
+    let config = RaymarchConfig::default().with_bound(eval_lipschitz(node));
+    raymarch_with_config(node, origin, direction, max_distance, &config)
 }
 
 /// Perform sphere tracing with custom configuration
@@ -349,8 +349,9 @@ pub fn raymarch_detailed(
 
 /// Batch raymarch (single-threaded)
 pub fn raymarch_batch(node: &SdfNode, rays: &[Ray], max_distance: f32) -> Vec<Option<Hit>> {
+    let config = RaymarchConfig::default().with_bound(eval_lipschitz(node));
     rays.iter()
-        .map(|ray| raymarch(node, ray.origin, ray.direction, max_distance))
+        .map(|ray| raymarch_with_config(node, ray.origin, ray.direction, max_distance, &config))
         .collect()
 }
 
@@ -360,8 +361,9 @@ pub fn raymarch_batch_parallel(
     rays: &[Ray],
     max_distance: f32,
 ) -> Vec<Option<Hit>> {
+    let config = RaymarchConfig::default().with_bound(eval_lipschitz(node));
     rays.par_iter()
-        .map(|ray| raymarch(node, ray.origin, ray.direction, max_distance))
+        .map(|ray| raymarch_with_config(node, ray.origin, ray.direction, max_distance, &config))
         .collect()
 }
 
@@ -381,6 +383,7 @@ pub fn render_depth(
         camera_basis(camera_dir, camera_up, width, height, fov);
 
     let mut buffer = vec![0.0f32; width * height];
+    let config = RaymarchConfig::default().with_bound(eval_lipschitz(node));
 
     buffer
         .par_chunks_mut(width)
@@ -395,7 +398,7 @@ pub fn render_depth(
                 let u = (x as f32 * inv_width).mul_add(2.0, -1.0);
                 let ray_dir = (row_vec + right_scaled * u).normalize();
 
-                *pixel = raymarch(node, camera_pos, ray_dir, max_distance)
+                *pixel = raymarch_with_config(node, camera_pos, ray_dir, max_distance, &config)
                     .map_or(f32::MAX, |hit| hit.distance);
             }
         });
@@ -419,7 +422,7 @@ pub fn render_normals(
         camera_basis(camera_dir, camera_up, width, height, fov);
 
     let mut buffer = vec![[0u8; 3]; width * height];
-    let config = RaymarchConfig::default();
+    let config = RaymarchConfig::default().with_bound(eval_lipschitz(node));
 
     buffer
         .par_chunks_mut(width)
@@ -459,36 +462,21 @@ pub fn render_normals(
 /// Eliminates Arc pointer chasing and branch misprediction from tree traversal.
 /// The CompiledSdf flat instruction array is much more cache-friendly.
 #[inline(always)]
+///
+/// Steps by `d / L` with the bound the `CompiledSdf` recorded at compile time.
 pub fn raymarch_compiled(
     sdf: &CompiledSdf,
     origin: Vec3,
     direction: Vec3,
     max_distance: f32,
 ) -> Option<Hit> {
-    const EPSILON: f32 = 0.0001;
-    const MAX_STEPS: u32 = 128;
-
-    let mut t = 0.0;
-    let mut steps = 0;
-
-    while t < max_distance && steps < MAX_STEPS {
-        let point = origin + direction * t;
-        let d = eval_compiled(sdf, point);
-
-        if d.abs() < EPSILON {
-            return Some(Hit {
-                distance: t,
-                point,
-                normal: eval_compiled_normal(sdf, point, EPSILON),
-                steps,
-            });
-        }
-
-        t += d;
-        steps += 1;
-    }
-
-    None
+    raymarch_compiled_with_config(
+        sdf,
+        origin,
+        direction,
+        max_distance,
+        &RaymarchConfig::default(),
+    )
 }
 
 /// Sphere tracing with config using CompiledSdf
@@ -503,6 +491,7 @@ pub fn raymarch_compiled_with_config(
     let dir = direction.normalize();
     let mut t = 0.0;
     let mut steps = 0;
+    let config = &config.with_bound(sdf.lipschitz);
     let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
@@ -650,6 +639,8 @@ pub fn raymarch_simd_8(
     let eps = f32x8::splat(config.epsilon);
     let max_d = f32x8::splat(max_distance);
     let zero = f32x8::splat(0.0);
+    // step = d / L with the compiled bound (see `RaymarchConfig::with_bound`)
+    let inv_lip = f32x8::splat(1.0 / config.with_bound(sdf.lipschitz).lipschitz.max(1.0));
 
     let mut t = f32x8::splat(0.0);
 
@@ -707,7 +698,7 @@ pub fn raymarch_simd_8(
 
         // Advance t for active lanes only (finished lanes get zero advance)
         let active = one - finished;
-        t += d * active;
+        t += d * inv_lip * active;
     }
 
     // Extract results
@@ -828,30 +819,13 @@ pub fn raymarch_jit(
     direction: Vec3,
     max_distance: f32,
 ) -> Option<Hit> {
-    const EPSILON: f32 = 0.0001;
-    const MAX_STEPS: u32 = 128;
-
-    let mut t = 0.0;
-    let mut steps = 0;
-
-    while t < max_distance && steps < MAX_STEPS {
-        let point = origin + direction * t;
-        let d = sdf.eval(point);
-
-        if d.abs() < EPSILON {
-            return Some(Hit {
-                distance: t,
-                point,
-                normal: calc_normal_jit(sdf, point, EPSILON),
-                steps,
-            });
-        }
-
-        t += d;
-        steps += 1;
-    }
-
-    None
+    raymarch_jit_with_config(
+        sdf,
+        origin,
+        direction,
+        max_distance,
+        &RaymarchConfig::default(),
+    )
 }
 
 /// Sphere tracing with config using JIT
@@ -867,6 +841,7 @@ pub fn raymarch_jit_with_config(
     let dir = direction.normalize();
     let mut t = 0.0;
     let mut steps = 0;
+    let config = &config.with_bound(sdf.lipschitz());
     let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
@@ -977,7 +952,7 @@ pub fn render_depth_jit(
 #[cfg(feature = "jit")]
 pub fn raymarch_jit_simd_8(
     sdf: &crate::compiled::jit::JitSimdSdf,
-    _compiled: &CompiledSdf,
+    compiled: &CompiledSdf,
     origins: Vec3x8,
     directions: Vec3x8,
     max_distance: f32,
@@ -987,6 +962,8 @@ pub fn raymarch_jit_simd_8(
     let max_d = f32x8::splat(max_distance);
     let zero = f32x8::splat(0.0);
     let one = f32x8::splat(1.0);
+    // step = d / L with the compiled bound (see `RaymarchConfig::with_bound`)
+    let inv_lip = f32x8::splat(1.0 / config.with_bound(compiled.lipschitz).lipschitz.max(1.0));
 
     let mut t = f32x8::splat(0.0);
     let mut finished = f32x8::splat(0.0);
@@ -1033,7 +1010,7 @@ pub fn raymarch_jit_simd_8(
         }
 
         let active = one - finished;
-        t += d * active;
+        t += d * inv_lip * active;
     }
 
     // Extract results
