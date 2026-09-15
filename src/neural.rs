@@ -40,7 +40,9 @@ pub struct NeuralSdfConfig {
     pub hidden_width: usize,
     /// Positional encoding frequencies (default 6, 0 = disabled)
     pub pos_encoding_freqs: usize,
-    /// Learning rate for Adam optimizer (default 1e-3)
+    /// Learning rate for Adam optimizer (default 1e-2 since 1.13.0; 1e-3
+    /// left a unit sphere at RMSE 0.26 after the default 100 epochs, 1e-2
+    /// reaches 0.08 in the same time — `tests/test_neural_oracle.rs`)
     pub learning_rate: f32,
     /// Training batch size (default 4096)
     pub batch_size: usize,
@@ -56,7 +58,7 @@ impl Default for NeuralSdfConfig {
             hidden_layers: 3,
             hidden_width: 64,
             pos_encoding_freqs: 6,
-            learning_rate: 1e-3,
+            learning_rate: 1e-2,
             batch_size: 4096,
             epochs: 100,
             seed: 42,

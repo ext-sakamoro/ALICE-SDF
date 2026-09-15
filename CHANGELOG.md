@@ -42,6 +42,21 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   crate-wide policy only covered the default + shader set before); the
   feature-gated SVO oracle runs in the test matrix.
 
+### Changed — neural SDF default learning rate (found by the new oracle)
+
+- `NeuralSdfConfig::default().learning_rate` is 1e-2 (was 1e-3). Measured
+  against the analytic unit sphere on held-out points, the old default left
+  the network at RMSE 0.26 after its 100 epochs (a quarter of the radius,
+  11 % of points far from the surface with the wrong sign); 1e-2 reaches
+  0.08 in the same time and 0.03 at 300 epochs. Oracle:
+  `tests/test_neural_oracle.rs` (RMSE vs analytic, sign agreement, more
+  epochs not worse, seed determinism, lossless save / load, `eval_batch` ≡
+  `eval`).
+- NPR colour laws: `tests/test_npr_analytic.rs` — exact toon band levels,
+  ramp / rim / vignette / outline endpoints and monotonicity, posterize
+  idempotence, palette endpoints, compiled pipeline ≡ closed-form
+  composition (all laws were already correct).
+
 ### Added — tracing oracle for the non-Lipschitz laws
 
 - `tests/test_relaxed_tracing.rs::non_lipschitz_laws_default_tracing`:
