@@ -1438,9 +1438,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::OctantMirror { child, .. }
         | SdfNode::Revolution { child, .. }
         | SdfNode::Extrude { child, .. } => eval_lipschitz(child),
-        // Sweep along a Bézier: the nearest parameter is found by a coarse
-        // search + Newton and jumps between local minima.
-        SdfNode::SweepBezier { .. } => f32::INFINITY,
+        // Sweep along a Bézier: (distance to the curve, y) is 1-Lipschitz in p
+        // (closed-form nearest point since 1.11.0).
+        SdfNode::SweepBezier { child, .. } => eval_lipschitz(child),
 
         // Domain repetition evaluates one copy per cell / sector; unless the
         // child is symmetric inside its cell (not knowable here) the field

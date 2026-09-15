@@ -2489,88 +2489,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let p1y = self.param(p1.y);
                 let p2x = self.param(p2.x);
                 let p2y = self.param(p2.y);
-                // Compute closest point on 2D Bezier in XZ plane
-                let a_var = self.next_var();
-                let b_var = self.next_var();
-                let c_var = self.next_var();
-                let d_var = self.next_var();
-                code.push_str(&L::decl_vec2(
-                    &a_var,
-                    &format!(
-                        "{} - {}",
-                        L::vec2_ctor(&p1x, &p1y),
-                        L::vec2_ctor(&p0x, &p0y)
-                    ),
-                ));
-                code.push_str(&L::decl_vec2(
-                    &b_var,
-                    &format!(
-                        "{} - 2.0 * {} + {}",
-                        L::vec2_ctor(&p0x, &p0y),
-                        L::vec2_ctor(&p1x, &p1y),
-                        L::vec2_ctor(&p2x, &p2y)
-                    ),
-                ));
-                code.push_str(&L::decl_vec2(&c_var, &format!("{} * 2.0", a_var)));
-                code.push_str(&L::decl_vec2(
-                    &d_var,
-                    &format!(
-                        "{} - {}",
-                        L::vec2_ctor(&p0x, &p0y),
-                        L::vec2_ctor(&format!("{}.x", point_var), &format!("{}.z", point_var))
-                    ),
-                ));
-                // Newton iteration to find closest t
-                let t_var = self.next_var();
-                code.push_str(&L::decl_mut_float(&t_var, "0.5"));
-                for _ in 0..4 {
-                    let q_var = self.next_var();
-                    let qp_var = self.next_var();
-                    let qd_var = self.next_var();
-                    code.push_str(&L::decl_vec2(
-                        &q_var,
-                        &format!(
-                            "{d} + ({c} + {b} * {t}) * {t}",
-                            d = d_var,
-                            c = c_var,
-                            b = b_var,
-                            t = t_var
-                        ),
-                    ));
-                    code.push_str(&L::decl_vec2(
-                        &qd_var,
-                        &format!("{c} + 2.0 * {b} * {t}", c = c_var, b = b_var, t = t_var),
-                    ));
-                    code.push_str(&L::decl_float(
-                        &qp_var,
-                        &format!("dot({}, {})", q_var, qd_var),
-                    ));
-                    writeln!(code, "    {t} = clamp({t} - {qp} / max(dot({qd}, {qd}) + dot({q}, {b}) * 2.0, 1e-10), 0.0, 1.0);",
-                        t = t_var, qp = qp_var, qd = qd_var, q = q_var, b = b_var
-                    ).unwrap();
-                }
-                // Compute bezier point at t (2D in XZ)
-                let bp_var = self.next_var();
-                let omt = self.next_var();
-                code.push_str(&L::decl_float(&omt, &format!("1.0 - {}", t_var)));
-                code.push_str(&L::decl_vec2(
-                    &bp_var,
-                    &format!(
-                        "{p0} * {omt} * {omt} + {p1} * 2.0 * {omt} * {t} + {p2} * {t} * {t}",
-                        p0 = L::vec2_ctor(&p0x, &p0y),
-                        p1 = L::vec2_ctor(&p1x, &p1y),
-                        p2 = L::vec2_ctor(&p2x, &p2y),
-                        omt = omt,
-                        t = t_var
-                    ),
-                ));
-                // Local 3D point: (distance from bezier path, y, 0)
+                // Closed-form distance to the curve (IQ sdBezier), one helper
+                // per language mirroring `modifiers::sweep::bezier_distance_2d`.
+                self.ensure_helper("bezier_distance_2d");
                 let local_p = self.next_var();
                 code.push_str(&L::decl_vec3(
                     &local_p,
                     &L::vec3_ctor(
-                        &format!("length({} - {}.xz)", bp_var, point_var),
-                        &format!("{}.y", point_var),
+                        &format!(
+                            "bezier_distance_2d({}, {}, {}, {})",
+                            L::vec2_ctor(&format!("{point_var}.x"), &format!("{point_var}.z")),
+                            L::vec2_ctor(&p0x, &p0y),
+                            L::vec2_ctor(&p1x, &p1y),
+                            L::vec2_ctor(&p2x, &p2y)
+                        ),
+                        &format!("{point_var}.y"),
                         "0.0",
                     ),
                 ));

@@ -752,53 +752,14 @@ pub fn shear<R: Real>(p: Vec3R<R>, sh: Vec3) -> Vec3R<R> {
 
 /// Sweep along a quadratic Bézier in the XZ plane: `(perp distance, y, 0)`.
 ///
-/// Coarse 5-sample search + 5 Newton steps (same law as `modifiers::sweep`).
+/// One law with the tree path: `modifiers::sweep::bezier_distance_2d`
+/// (closed-form nearest parameter), applied per lane.
 #[inline]
 pub fn sweep_bezier<R: Real>(p: Vec3R<R>, p0: Vec2, p1: Vec2, p2: Vec2) -> Vec3R<R> {
-    let (p0x, p0z) = (R::splat(p0.x), R::splat(p0.y));
-    let (p1x, p1z) = (R::splat(p1.x), R::splat(p1.y));
-    let (p2x, p2z) = (R::splat(p2.x), R::splat(p2.y));
-    let two = R::splat(2.0);
-    let (qx, qz) = (p.x, p.z);
-
-    let eval = |t: R| {
-        let omt = R::one() - t;
-        let (a, b, c) = (omt * omt, two * omt * t, t * t);
-        (p0x * a + p1x * b + p2x * c, p0z * a + p1z * b + p2z * c)
-    };
-
-    let mut best_t = R::zero();
-    let mut best_d2 = R::splat(f32::MAX);
-    for i in 0..5u32 {
-        let t = R::splat(i as f32 * 0.25);
-        let (bx, bz) = eval(t);
-        let (dx, dz) = (qx - bx, qz - bz);
-        let d2 = dx * dx + dz * dz;
-        let better = d2.lt(best_d2);
-        best_d2 = R::select(better, d2, best_d2);
-        best_t = R::select(better, t, best_t);
-    }
-
-    let bddx = two * (p0x - two * p1x + p2x);
-    let bddz = two * (p0z - two * p1z + p2z);
-    let eps = R::splat(1e-10);
-    let mut t = best_t;
-    for _ in 0..5 {
-        let omt = R::one() - t;
-        let (bx, bz) = eval(t);
-        let tdx = (p1x - p0x) * (two * omt) + (p2x - p1x) * (two * t);
-        let tdz = (p1z - p0z) * (two * omt) + (p2z - p1z) * (two * t);
-        let (diffx, diffz) = (bx - qx, bz - qz);
-        let num = diffx * tdx + diffz * tdz;
-        let den = tdx * tdx + tdz * tdz + diffx * bddx + diffz * bddz;
-        let tiny = den.abs().lt(eps);
-        let stepped = (t - num / R::select(tiny, R::one(), den)).clamp(R::zero(), R::one());
-        // scalar law breaks out of the loop on a tiny denominator: keep t unchanged
-        t = R::select(tiny, t, stepped);
-    }
-    let (cx, cz) = eval(t);
-    let (dx, dz) = (qx - cx, qz - cz);
-    Vec3R::new((dx * dx + dz * dz).sqrt(), p.y, R::zero())
+    let d = p.x.map2(p.z, |x, z| {
+        crate::modifiers::bezier_distance_2d(Vec2::new(x, z), p0, p1, p2)
+    });
+    Vec3R::new(d, p.y, R::zero())
 }
 
 #[cfg(test)]

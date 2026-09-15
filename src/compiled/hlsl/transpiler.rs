@@ -147,6 +147,7 @@ impl ShaderLang for HlslLang {
             "sdf_star_polygon" => Some(HELPER_SDF_STAR_POLYGON),
             "sdf_stairs" => Some(HELPER_SDF_STAIRS),
             "sdf_helix" => Some(HELPER_SDF_HELIX),
+            "bezier_distance_2d" => Some(HELPER_BEZIER_DISTANCE_2D),
             "sdf_tetrahedron" => Some(HELPER_SDF_TETRAHEDRON),
             "sdf_dodecahedron" => Some(HELPER_SDF_DODECAHEDRON),
             "sdf_icosahedron" => Some(HELPER_SDF_ICOSAHEDRON),
@@ -1197,6 +1198,52 @@ const HELPER_SDF_TRUNCATED_ICOSAHEDRON: &str = r"float sdf_truncated_icosahedron
     d = max(d, abs(dot(p, float3(0.5257311, 0.0, 0.8506508))));
     d = max(d, abs(dot(p, float3(0.5257311, 0.0, -0.8506508))));
     return d - r;
+}
+";
+
+/// IQ `sdBezier`: closed-form distance to a quadratic Bézier (mirrors
+/// `modifiers::sweep::bezier_distance_2d`, degenerate curve → segment).
+const HELPER_BEZIER_DISTANCE_2D: &str = r"float bezier_distance_2d(float2 q, float2 p0, float2 p1, float2 p2) {
+    float2 a = p1 - p0;
+    float2 b = p0 - p1 * 2.0 + p2;
+    float2 c = a * 2.0;
+    float2 d = p0 - q;
+    float bb = dot(b, b);
+    if (bb < 1e-12) {
+        float2 ac = p2 - p0;
+        float t = clamp(-dot(d, ac) / max(dot(ac, ac), 1e-12), 0.0, 1.0);
+        return length(d + ac * t);
+    }
+    float kk = 1.0 / bb;
+    float kx = kk * dot(a, b);
+    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    float kz = kk * dot(d, a);
+    float p = ky - kx * kx;
+    float p3 = p * p * p;
+    float qq = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    float h = qq * qq + 4.0 * p3;
+    float res;
+    if (h >= 0.0) {
+        float hs = sqrt(h);
+        float x0 = (hs - qq) * 0.5;
+        float x1 = (-hs - qq) * 0.5;
+        float u = sign(x0) * pow(abs(x0), 1.0 / 3.0);
+        float v = sign(x1) * pow(abs(x1), 1.0 / 3.0);
+        float t = clamp(u + v - kx, 0.0, 1.0);
+        float2 e = d + (c + b * t) * t;
+        res = dot(e, e);
+    } else {
+        float z = sqrt(-p);
+        float v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
+        float m = cos(v);
+        float n = sin(v) * 1.7320508;
+        float t0 = clamp((m + m) * z - kx, 0.0, 1.0);
+        float t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
+        float2 e0 = d + (c + b * t0) * t0;
+        float2 e1 = d + (c + b * t1) * t1;
+        res = min(dot(e0, e0), dot(e1, e1));
+    }
+    return sqrt(res);
 }
 ";
 

@@ -199,4 +199,13 @@ fn iq_exact_ports_gpu_match_cpu() {
     );
     // pow(x, 1/3) / acos on the GPU are not libm: 1e-4 relative
     assert_gpu_matches_cpu("blobby_cross", &SdfNode::blobby_cross(1.2, 0.5), 1e-4);
+    assert_gpu_matches_cpu(
+        "sweep_bezier",
+        &SdfNode::sphere(0.3).sweep_bezier(
+            glam::Vec2::new(-1.5, -0.5),
+            glam::Vec2::new(0.0, 1.5),
+            glam::Vec2::new(1.5, -0.5),
+        ),
+        1e-4,
+    );
 }

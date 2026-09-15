@@ -163,6 +163,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   domain), the interval arm is the exact-SDF form and `eval_lipschitz` is
   1. **Shape change**: arms are parabola segments reaching `±size`.
 
+- `SweepBezier` found the nearest curve parameter with 5 samples + Newton on
+  the CPU / SIMD paths and with 4 Newton steps from `t = 0.5` in the
+  shaders — three different laws, all jumping between local minima
+  (difference quotients 800× the sample spacing). The distance is now IQ's
+  closed-form `sdBezier` (Cardano / trigonometric cubic roots, degenerate
+  curve → segment) in `modifiers::sweep::bezier_distance_2d`, used per lane
+  by the SIMD path and emitted as one `bezier_distance_2d` helper per shader
+  language (GPU ↔ CPU 4.3e-5); `eval_lipschitz` is the child's bound.
+
 ### Changed — compiled evaluator speed (review SDF-R2-4)
 
 - `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,

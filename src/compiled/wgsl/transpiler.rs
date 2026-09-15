@@ -151,6 +151,7 @@ impl ShaderLang for WgslLang {
             "sdf_star_polygon" => Some(HELPER_SDF_STAR_POLYGON),
             "sdf_stairs" => Some(HELPER_SDF_STAIRS),
             "sdf_helix" => Some(HELPER_SDF_HELIX),
+            "bezier_distance_2d" => Some(HELPER_BEZIER_DISTANCE_2D),
             "sdf_tetrahedron" => Some(HELPER_SDF_TETRAHEDRON),
             "sdf_dodecahedron" => Some(HELPER_SDF_DODECAHEDRON),
             "sdf_icosahedron" => Some(HELPER_SDF_ICOSAHEDRON),
@@ -1455,6 +1456,52 @@ const HELPER_SDF_TRUNCATED_ICOSAHEDRON: &str = r"fn sdf_truncated_icosahedron(p:
     d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.0, 0.8506508))));
     d = max(d, abs(dot(p, vec3<f32>(0.5257311, 0.0, -0.8506508))));
     return d - r;
+}
+";
+
+/// IQ `sdBezier`: closed-form distance to a quadratic Bézier (mirrors
+/// `modifiers::sweep::bezier_distance_2d`, degenerate curve → segment).
+const HELPER_BEZIER_DISTANCE_2D: &str = r"fn bezier_distance_2d(q: vec2<f32>, p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>) -> f32 {
+    let a = p1 - p0;
+    let b = p0 - p1 * 2.0 + p2;
+    let c = a * 2.0;
+    let d = p0 - q;
+    let bb = dot(b, b);
+    if (bb < 1e-12) {
+        let ac = p2 - p0;
+        let t = clamp(-dot(d, ac) / max(dot(ac, ac), 1e-12), 0.0, 1.0);
+        return length(d + ac * t);
+    }
+    let kk = 1.0 / bb;
+    let kx = kk * dot(a, b);
+    let ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    let kz = kk * dot(d, a);
+    let p = ky - kx * kx;
+    let p3 = p * p * p;
+    let qq = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    let h = qq * qq + 4.0 * p3;
+    var res: f32;
+    if (h >= 0.0) {
+        let hs = sqrt(h);
+        let x0 = (hs - qq) * 0.5;
+        let x1 = (-hs - qq) * 0.5;
+        let u = sign(x0) * pow(abs(x0), 1.0 / 3.0);
+        let v = sign(x1) * pow(abs(x1), 1.0 / 3.0);
+        let t = clamp(u + v - kx, 0.0, 1.0);
+        let e = d + (c + b * t) * t;
+        res = dot(e, e);
+    } else {
+        let z = sqrt(-p);
+        let v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
+        let m = cos(v);
+        let n = sin(v) * 1.7320508;
+        let t0 = clamp((m + m) * z - kx, 0.0, 1.0);
+        let t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
+        let e0 = d + (c + b * t0) * t0;
+        let e1 = d + (c + b * t1) * t1;
+        res = min(dot(e0, e0), dot(e1, e1));
+    }
+    return sqrt(res);
 }
 ";
 
