@@ -53,7 +53,9 @@ pub extern "C" fn alice_sdf_last_error() -> *mut c_char {
 /// Discard the most recent error message on this thread.
 #[no_mangle]
 pub extern "C" fn alice_sdf_clear_last_error() {
-    clear_last_error();
+    // cannot panic in practice; guarded so the "every extern fn is guarded"
+    // invariant holds without an allowlist
+    ffi_guard((), clear_last_error);
 }
 
 // ============================================================================
