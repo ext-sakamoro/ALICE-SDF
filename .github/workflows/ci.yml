@@ -439,17 +439,25 @@ jobs:
     env:
       ALICE_SDF_REQUIRE_GPU: "1"
       WGPU_BACKEND: vulkan
-      VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      # The lavapipe ICD file name depends on the Mesa build
+      # (`lvp_icd.x86_64.json` up to 24.x, `lvp_icd.json` from 25.x on
+      # noble-updates): locate it instead of hard-coding, and prove the loader
+      # sees llvmpipe before spending a build on the tests.
       - name: Install Mesa software Vulkan (lavapipe)
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools
-          vulkaninfo --summary | head -40
+          icd=$(find /usr/share/vulkan/icd.d -name "lvp_icd*.json" | head -1)
+          echo "lavapipe ICD: $icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -60
+          grep -qi llvmpipe /tmp/vulkaninfo.txt
 
       - name: Create ALICE optional bridge stubs
         uses: ./.github/actions/alice-stubs

@@ -409,7 +409,16 @@ pub fn gpu_marching_cubes_from_shader(
             bgl_entry(3, wgpu::BufferBindingType::Storage { read_only: true }),
             // output_vertices: storage RW
             bgl_entry(4, wgpu::BufferBindingType::Storage { read_only: false }),
+            // TRI_TABLE: storage read (buffer, not a shader constant — FXC limit)
+            bgl_entry(5, wgpu::BufferBindingType::Storage { read_only: true }),
         ],
+    });
+
+    let tri_table = gpu_mc_shaders::tri_table_flat();
+    let tri_table_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("MC Tri Table"),
+        contents: bytemuck::cast_slice(&tri_table),
+        usage: wgpu::BufferUsages::STORAGE,
     });
 
     let pass3_pipeline = create_pipeline(&device, &pass3_bgl, &pass3_shader, "MC Pass 3");
@@ -437,6 +446,10 @@ pub fn gpu_marching_cubes_from_shader(
             wgpu::BindGroupEntry {
                 binding: 4,
                 resource: output_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: tri_table_buffer.as_entire_binding(),
             },
         ],
     });

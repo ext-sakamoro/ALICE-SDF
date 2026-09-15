@@ -170,10 +170,13 @@ struct GpuVertex {{
 @group(0) @binding(2) var<storage, read> cell_offsets: array<u32>;
 @group(0) @binding(3) var<storage, read> cell_cube_indices: array<u32>;
 @group(0) @binding(4) var<storage, read_write> output_vertices: array<GpuVertex>;
+// Triangle table (256 x 16, -1 terminated) as a buffer rather than a WGSL
+// const array<i32, 4096>: naga's HLSL backend lowers a dynamically indexed
+// module constant into indexable temporaries and FXC rejects the shader
+// (X4505: sum of temp registers exceeds limit of 4096) on DX12 / WARP.
+@group(0) @binding(5) var<storage, read> TRI_TABLE: array<i32>;
 
 {sdf_func}
-
-{tri_table}
 
 fn grid_to_world(gx: f32, gy: f32, gz: f32) -> vec3<f32> {{
     let fres = f32(uniforms.resolution);
@@ -317,8 +320,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }}
 ",
         sdf_func = sdf_shader.source,
-        tri_table = generate_tri_table_flat_wgsl(),
     )
+}
+
+/// The flat triangle table Pass 3 reads through its `TRI_TABLE` storage
+/// binding (256 rows × 16, `-1` terminated).
+pub fn tri_table_flat() -> Vec<i32> {
+    get_tri_table()
+        .iter()
+        .flat_map(|row| row.iter().map(|&v| i32::from(v)))
+        .collect()
 }
 
 /// Generate EDGE_TABLE as WGSL const array
@@ -374,23 +385,6 @@ fn generate_vertex_count_table_wgsl() -> String {
     let entries: Vec<String> = counts.iter().map(|&v| format!("{}u", v)).collect();
     format!(
         "const VERTEX_COUNT_TABLE: array<u32, 256> = array<u32, 256>(\n    {}\n);",
-        entries.join(", ")
-    )
-}
-
-/// Generate TRI_TABLE as flat WGSL i32 array (256*16 = 4096 entries)
-fn generate_tri_table_flat_wgsl() -> String {
-    let table = get_tri_table();
-    let mut entries = Vec::with_capacity(4096);
-
-    for row in &table {
-        for &val in row {
-            entries.push(format!("{}", val as i32));
-        }
-    }
-
-    format!(
-        "const TRI_TABLE: array<i32, 4096> = array<i32, 4096>(\n    {}\n);",
         entries.join(", ")
     )
 }

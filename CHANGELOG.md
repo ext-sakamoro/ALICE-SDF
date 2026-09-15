@@ -140,6 +140,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   helper sources that silently skipped unknown names (`_ => {}`) — that is
   how the polyhedra went missing. The single `helper_source` table is now
   the only source and an unregistered helper panics at transpile time.
+- GPU marching cubes failed to build its Pass 3 pipeline on DX12 (Windows,
+  FXC `X4505: Sum of temp registers and indexable temp registers exceeds
+  limit of 4096`): the 4096-entry triangle table was a WGSL module `const`
+  that naga's HLSL backend lowers into indexable temporaries. It is now a
+  read-only storage buffer (`TRI_TABLE`, binding 5). Hidden until now by
+  the `continue-on-error` on the shader test step.
 - Oracle: `tests/test_transpiler_naga_validate.rs` parses **and validates**
   (`naga::valid::Validator`) the WGSL and GLSL of every corpus node
   (features `gpu` / `gpu,glsl`); the corpus moved to `tests/common/corpus.rs`
