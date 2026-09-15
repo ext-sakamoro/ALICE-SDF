@@ -605,6 +605,10 @@ fn format_vec3_hlsl(v: Vec3) -> String {
     )
 }
 
+// Each test is gated on the transpiler feature it builds with: the module
+// exists for any of glsl / hlsl / gpu, and `build()` panics for a language
+// whose transpiler is compiled out (found by making the `aaa` CI step a
+// hard gate: gpu without glsl / hlsl).
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,6 +617,7 @@ mod tests {
         SdfNode::sphere(1.0)
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn glsl_build_contains_expected_sections() {
         let node = unit_sphere();
@@ -641,6 +646,7 @@ mod tests {
         assert!(source.contains("fs_main"), "missing WGSL entry");
     }
 
+    #[cfg(feature = "hlsl")]
     #[test]
     fn hlsl_build_contains_expected_sections() {
         let node = unit_sphere();
@@ -651,6 +657,7 @@ mod tests {
         assert!(source.contains("float4 PS"), "missing HLSL PS entry");
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn build_reflects_configured_toon_bands() {
         let node = unit_sphere();
@@ -663,6 +670,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn build_reflects_configured_sun_direction() {
         let node = unit_sphere();
@@ -677,6 +685,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn build_reflects_raymarch_budget() {
         let node = unit_sphere();
@@ -687,6 +696,7 @@ mod tests {
         assert!(source.contains("50.0"), "max_dist 50.0 should appear");
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn shader_source_is_deterministic() {
         let node = unit_sphere();
@@ -695,6 +705,7 @@ mod tests {
         assert_eq!(a, b);
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn with_pipeline_replaces_hardcoded_hit_block() {
         use crate::npr::dsl::NprColorNode;
@@ -727,6 +738,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "glsl")]
     fn extract_hit_block_glsl(source: &str) -> String {
         let start = source
             .find("if (hit) {")
@@ -755,6 +767,7 @@ mod tests {
         assert!(source.contains("vec3<f32>("));
     }
 
+    #[cfg(feature = "hlsl")]
     #[test]
     fn with_pipeline_supports_hlsl_outline_over() {
         use crate::npr::dsl::NprColorNode;

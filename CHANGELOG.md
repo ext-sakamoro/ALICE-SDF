@@ -6,6 +6,19 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — CI gates (review R2-7 follow-up)
+
+- `Test (AAA meta)` and `cargo-semver-checks` are hard gates (both were
+  `continue-on-error`). The AAA step had been hiding `npr::scene_composer`
+  tests that built GLSL / HLSL sources without those transpiler features;
+  each test is now gated on the feature it needs.
+- Fuzz: the committed regression seeds are replayed in a dedicated blocking
+  step (a known crash regressing fails the job). Until now the seed branch
+  never ran in CI — the path was spelled `fuzz/seeds/…` from inside
+  `fuzz/`, so the directory test was always false. The time-boxed
+  exploration run and the coverage job stay informational by design
+  (documented in the workflows).
+
 ### Added — bridge features restored (roadmap P15)
 
 - `physics` (alice-physics 1.1), `codec` (alice-codec 0.1.2), `asp`

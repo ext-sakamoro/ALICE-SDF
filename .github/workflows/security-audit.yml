@@ -104,8 +104,9 @@ jobs:
   coverage:
     name: Coverage (cargo-llvm-cov、informational)
     runs-on: ubuntu-latest
-    # coverage は informational only、threshold で fail させない
-    # 初期値把握が目的、将来的に threshold 導入判断
+    # Informational by design (not a test gate): coverage is a number to
+    # watch, no threshold is enforced. `alice-strict-eval` 16 counts only
+    # test / build steps.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v5
@@ -140,9 +141,10 @@ jobs:
   semver-checks:
     name: cargo-semver-checks (API compat vs crates.io、informational)
     runs-on: ubuntu-latest
-    # ALICE-SDF 1.8.0 で physics / font bridge 復帰予定 = 予定された major bump
-    # break 検知しても block しない (informational only、user 側で version bump 判断)
-    continue-on-error: true
+    # Hard gate since 1.12.0: the bridge features are back on crates.io deps
+    # (a planned major bump was the reason this was informational). A real
+    # breaking change must come with a major bump and an explicit
+    # `--baseline-version` decision, not a red job that nobody reads.
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable

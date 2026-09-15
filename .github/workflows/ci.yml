@@ -112,9 +112,10 @@ jobs:
       - name: Build (Unreal meta) [T2]
         run: cargo build --lib --no-default-features --features "unreal"
 
+      # Hard gate since 1.12.0 (was continue-on-error; it hid scene_composer
+      # tests that built GLSL / HLSL without those transpilers enabled).
       - name: Test (AAA meta) [T4]
         run: cargo test --lib --no-default-features --features "aaa"
-        continue-on-error: true
 
       - name: Benchmark compilation check
         run: cargo bench --no-run

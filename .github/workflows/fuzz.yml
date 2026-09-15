@@ -86,18 +86,40 @@ jobs:
           fi
           echo "seconds=$DURATION" >> "$GITHUB_OUTPUT"
 
-      # run は informational: crash 発見は block せず artifact で triage
+      # Every crash a target ever found is committed under fuzz/seeds/<target>/;
+      # replaying those single inputs is a hard gate (a regression of a known
+      # finding fails the job). libFuzzer runs file arguments once and exits.
+      - name: Replay committed seeds (blocking)
+        run: |
+          cd fuzz
+          # paths are relative to fuzz/ (the crate dir cargo-fuzz runs in)
+          seeds="seeds/${{ matrix.target }}"
+          if [ -d "$seeds" ] && [ -n "$(ls -A "$seeds")" ]; then
+            for f in "$seeds"/*; do
+              echo "replay: $f"
+              cargo +nightly fuzz run "${{ matrix.target }}" "$f"
+            done
+          else
+            echo "no committed seeds for ${{ matrix.target }}"
+          fi
+
+      # The time-boxed exploration run is informational by design (not a
+      # test gate): a *new* crash uploads its input as an artifact for triage
+      # and, once committed to fuzz/seeds/, becomes part of the blocking
+      # replay above.
       - name: Run fuzz target (time-boxed)
         id: run
         continue-on-error: true
         run: |
           cd fuzz
           # sanitizer=address (default)、-max_total_time でタイムボックス
-          # fuzz/seeds/<target>/ = committed regression inputs (every crash a
-          # target ever found, replayed first); fuzz/corpus/ is the working set
-          seeds="fuzz/seeds/${{ matrix.target }}"
+          # seeds/<target>/ = committed regression inputs (also fed as a corpus
+          # dir here); corpus/<target>/ is the working set. Paths are relative
+          # to fuzz/ — until 1.12.0 they were spelled "fuzz/seeds/…" from inside
+          # fuzz/, so the seed branch never ran in CI.
+          seeds="seeds/${{ matrix.target }}"
           if [ -d "$seeds" ]; then
-            cargo +nightly fuzz run "${{ matrix.target }}" "fuzz/corpus/${{ matrix.target }}" "$seeds" -- \
+            cargo +nightly fuzz run "${{ matrix.target }}" "corpus/${{ matrix.target }}" "$seeds" -- \
               -max_total_time=${{ steps.dur.outputs.seconds }}
           else
             cargo +nightly fuzz run "${{ matrix.target }}" -- \
