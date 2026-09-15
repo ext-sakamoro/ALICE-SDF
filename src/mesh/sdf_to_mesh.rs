@@ -480,6 +480,18 @@ fn process_cell(
 /// Branchless NaN-safe: copysign ensures |denom| >= epsilon without branching.
 #[inline(always)]
 fn interpolate_vertex(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) -> Vec3 {
+    // A grid edge is shared by up to four cells, each of which reaches it
+    // through a different local edge (and endpoint order). Evaluating from a
+    // canonical endpoint — the lexicographically smaller corner — makes the
+    // result bit-identical in every cell, so vertex deduplication merges the
+    // copies exactly and the mesh is closed. Until 1.10.3 the endpoint order
+    // was the local one, the last bits differed between neighbours and
+    // `sdf_to_mesh` left 16–64 open edges at res ≥ 64 (external review).
+    let (p0, p1, v0, v1) = if (p1.x, p1.y, p1.z) < (p0.x, p0.y, p0.z) {
+        (p1, p0, v1, v0)
+    } else {
+        (p0, p1, v0, v1)
+    };
     let denom = v1 - v0;
     let safe_denom = f32::copysign(denom.abs().max(1e-10), denom);
     let t = ((iso_level - v0) / safe_denom).clamp(0.0, 1.0);
@@ -776,14 +788,19 @@ fn process_cell_compiled(
     }
 }
 
-// Corner offsets for the 8 corners of a cube
+// Corner offsets for the 8 corners of a cube, in the numbering of the
+// Bourke / Lorensen tables below: corners 0–3 walk the y = 0 face
+// (x, then z), corners 4–7 the y = 1 face. Until 1.10.3 the second and
+// third axes were swapped (0–3 on the z = 0 face), a mirror image of the
+// table's cube, so every triangle came out wound inward (negative signed
+// volume, STL facets contradicting their normals).
 const CORNER_OFFSETS: [[usize; 3]; 8] = [
     [0, 0, 0],
     [1, 0, 0],
-    [1, 1, 0],
-    [0, 1, 0],
-    [0, 0, 1],
     [1, 0, 1],
+    [0, 0, 1],
+    [0, 1, 0],
+    [1, 1, 0],
     [1, 1, 1],
     [0, 1, 1],
 ];

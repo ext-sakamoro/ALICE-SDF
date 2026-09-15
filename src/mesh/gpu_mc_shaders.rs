@@ -105,12 +105,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let i011 = gid.x       + (gid.y + 1u) * grid_res + (gid.z + 1u) * grid_res * grid_res;
     let i111 = (gid.x + 1u) + (gid.y + 1u) * grid_res + (gid.z + 1u) * grid_res * grid_res;
 
+    // Table corner numbering (Bourke): 0-3 on the y = 0 face (x, then z),
+    // 4-7 on the y = 1 face — same as CORNER_OFFSETS on the CPU path.
     let d0 = sdf_grid[i000];
     let d1 = sdf_grid[i100];
-    let d2 = sdf_grid[i110];
-    let d3 = sdf_grid[i010];
-    let d4 = sdf_grid[i001];
-    let d5 = sdf_grid[i101];
+    let d2 = sdf_grid[i101];
+    let d3 = sdf_grid[i001];
+    let d4 = sdf_grid[i010];
+    let d5 = sdf_grid[i110];
     let d6 = sdf_grid[i111];
     let d7 = sdf_grid[i011];
 
@@ -224,10 +226,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     // Grid corner positions
     let p0 = grid_to_world(f32(cx), f32(cy), f32(cz));
     let p1 = grid_to_world(f32(cx + 1u), f32(cy), f32(cz));
-    let p2 = grid_to_world(f32(cx + 1u), f32(cy + 1u), f32(cz));
-    let p3 = grid_to_world(f32(cx), f32(cy + 1u), f32(cz));
-    let p4 = grid_to_world(f32(cx), f32(cy), f32(cz + 1u));
-    let p5 = grid_to_world(f32(cx + 1u), f32(cy), f32(cz + 1u));
+    let p2 = grid_to_world(f32(cx + 1u), f32(cy), f32(cz + 1u));
+    let p3 = grid_to_world(f32(cx), f32(cy), f32(cz + 1u));
+    let p4 = grid_to_world(f32(cx), f32(cy + 1u), f32(cz));
+    let p5 = grid_to_world(f32(cx + 1u), f32(cy + 1u), f32(cz));
     let p6 = grid_to_world(f32(cx + 1u), f32(cy + 1u), f32(cz + 1u));
     let p7 = grid_to_world(f32(cx), f32(cy + 1u), f32(cz + 1u));
 
@@ -241,12 +243,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let i111 = (cx + 1u) + (cy + 1u) * grid_res + (cz + 1u) * grid_res * grid_res;
     let i011 = cx       + (cy + 1u) * grid_res + (cz + 1u) * grid_res * grid_res;
 
+    // Table corner numbering (Bourke): 0-3 on the y = 0 face (x, then z),
+    // 4-7 on the y = 1 face — same as CORNER_OFFSETS on the CPU path.
     let d0 = sdf_grid[i000];
     let d1 = sdf_grid[i100];
-    let d2 = sdf_grid[i110];
-    let d3 = sdf_grid[i010];
-    let d4 = sdf_grid[i001];
-    let d5 = sdf_grid[i101];
+    let d2 = sdf_grid[i101];
+    let d3 = sdf_grid[i001];
+    let d4 = sdf_grid[i010];
+    let d5 = sdf_grid[i110];
     let d6 = sdf_grid[i111];
     let d7 = sdf_grid[i011];
 

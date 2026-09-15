@@ -115,6 +115,35 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   rays that way even with the correct bound). With `min_step ≤ epsilon` plain
   tracing can no longer overshoot at all.
 
+### Fixed — external review 2026-09-15 (round 2: marching cubes output)
+
+- **Every marching-cubes triangle was wound inward** (CPU `marching_cubes` /
+  `sdf_to_mesh`, the compiled and adaptive variants, and the GPU compute
+  path): `CORNER_OFFSETS` numbered the cube with its second and third axes
+  swapped relative to the Bourke / Lorensen edge and triangle tables, a
+  mirror image of the table's cube. A unit sphere at res 32 had 3608 of 3608
+  triangles facing inward and a signed volume of −4.088 (truth +4.189); STL
+  facets stored the (correct) averaged vertex normal next to a contradicting
+  vertex order, so slicers that use the winding read every export as an
+  inside-out solid. The corner numbering now matches the tables (0–3 on the
+  y = 0 face, 4–7 on y = 1) on both CPU and GPU. **Breaking for consumers
+  that compensated for the flip** (e.g. rendered with front-face culling set
+  to CW, or negated normals from `(b − a) × (c − a)`): mesh topology and
+  vertex positions are unchanged, only the index order per triangle.
+- `sdf_to_mesh` was not closed on grids aligned with the surface: a grid
+  edge shared by four cells was interpolated from each cell's local endpoint
+  order, so the four copies differed in their last bits and vertex
+  deduplication could not merge them (16–64 open edges at res ≥ 64). Edge
+  vertices are now interpolated from the lexicographically smaller corner in
+  every cell (bit-identical), and triangles that collapse when a grid corner
+  sits exactly on the iso-level are dropped after deduplication
+  (`mesh::remove_degenerate_triangles`, also exported). Oracle:
+  `tests/test_mesh_orientation.rs` — all triangles outward against ∇f,
+  signed volume positive and within 5 % of the analytic sphere / torus,
+  zero open edges, vertex count = distinct positions, STL round trip facet
+  normal ∥ winding; the GPU variant runs under `--features gpu-mesh`
+  (Metal-verified).
+
 ### Changed
 
 - FFI handle registries tolerate a poisoned lock (`PoisonError::into_inner`):

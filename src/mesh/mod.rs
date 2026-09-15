@@ -113,7 +113,9 @@ pub use nanite::{
     generate_nanite_mesh, ClusterBounds, ClusterGroup, LodLevel, NaniteCluster, NaniteConfig,
     NaniteMesh, CLUSTER_MAX_TRIANGLES, CLUSTER_MAX_VERTICES,
 };
-pub use optimize::{compute_acmr, deduplicate_vertices, optimize_vertex_cache};
+pub use optimize::{
+    compute_acmr, deduplicate_vertices, optimize_vertex_cache, remove_degenerate_triangles,
+};
 pub use point_cloud_sdf::{point_cloud_to_sdf, PointCloudSdf, PointCloudSdfConfig};
 pub use primitive_fitting::{
     detect_primitive, fit_box, fit_cylinder, fit_plane, fit_sphere, primitives_to_csg,

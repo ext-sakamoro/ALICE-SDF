@@ -292,6 +292,24 @@ pub fn deduplicate_vertices(mesh: &mut Mesh) {
     }
 
     mesh.vertices = new_vertices;
+    remove_degenerate_triangles(mesh);
+}
+
+/// Drop triangles that reference the same vertex twice.
+///
+/// Marching cubes emits them when a grid corner sits exactly on the
+/// iso-level: the edge vertices on every edge leaving that corner collapse
+/// onto the corner, and after deduplication the triangle has two equal
+/// indices. Such a triangle has no area, but its `(a, a)` edge is counted
+/// as a boundary by any edge-pairing check, so the mesh reads as open.
+pub fn remove_degenerate_triangles(mesh: &mut Mesh) {
+    let mut kept = Vec::with_capacity(mesh.indices.len());
+    for t in mesh.indices.chunks_exact(3) {
+        if t[0] != t[1] && t[1] != t[2] && t[0] != t[2] {
+            kept.extend_from_slice(t);
+        }
+    }
+    mesh.indices = kept;
 }
 
 // ============================================================================
