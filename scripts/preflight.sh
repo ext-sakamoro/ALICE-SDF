@@ -86,8 +86,9 @@ rustup target list --installed | grep -q wasm32-unknown-unknown || rustup target
 cargo build --lib --no-default-features --features wasm --target wasm32-unknown-unknown
 cargo build --lib --no-default-features --features wasm
 
-step "doc: cargo doc --lib --no-deps (RUSTDOCFLAGS=-Dwarnings)"
+step "doc: cargo doc --lib --no-deps (RUSTDOCFLAGS=-Dwarnings), default + docs.rs set + texture-fit"
 RUSTDOCFLAGS="-Dwarnings" cargo doc --lib --no-deps
+RUSTDOCFLAGS="-Dwarnings" cargo doc --lib --no-deps --features "$DOCSRS,texture-fit"
 
 step "bench: cargo bench --no-run"
 cargo bench --no-run

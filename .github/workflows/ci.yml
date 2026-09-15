@@ -86,7 +86,7 @@ jobs:
         run: cargo test --tests
 
       # feature-gated integration oracles (svo: tests/test_svo_query_oracle.rs)
-      - name: Test (integration, feature-gated oracles: svo / texture-fit)
+      - name: Test (integration, feature-gated oracles — svo / texture-fit)
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
       # doctest (= rustdoc 内 ```rust ブロック) は --lib / --tests では走らない
@@ -440,6 +440,13 @@ jobs:
       # karikari-review 推奨: rustdoc warning (broken link / missing example 等) を CI で deny
       - name: cargo doc (core, no-deps)
         run: cargo doc --lib --no-deps
+        env:
+          RUSTDOCFLAGS: "-Dwarnings"
+
+      # docs.rs builds with this feature set (+ texture-fit, whose intra-doc
+      # links to private SIMD items were only visible with the feature on).
+      - name: cargo doc (docs.rs feature set + texture-fit)
+        run: cargo doc --lib --no-deps --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,texture-fit"
         env:
           RUSTDOCFLAGS: "-Dwarnings"
 
