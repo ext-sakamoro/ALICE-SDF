@@ -7,7 +7,7 @@ edition = "2021"
 # clap_lex 1.1.0 (edition 2024) を掴んでいた事案の根絶、CI `msrv` job と対)
 resolver = "3"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
-description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Bridges to alice-codec/physics/asp/cache/font are not part of the crates.io release (path / git dependency only)."
+description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Optional bridges to alice-physics / alice-codec / libasp / alice-cache behind features."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ext-sakamoro/ALICE-SDF"
 homepage = "https://github.com/ext-sakamoro/ALICE-SDF"
@@ -75,21 +75,17 @@ gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
 blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to HLSL body)
-# Bridge features (codec/physics/asp/sdf-cache/font) were removed
-# temporarily for the 1.7.7 crates.io publish because their optional
-# path deps (alice-codec/physics/libasp/cache/font) are not yet on
-# crates.io. Users who need the bridges keep using `git`/`path` deps
-# against this repo — the src/*_bridge.rs modules are cfg-gated so
-# they simply don't compile without the features. Scheduled for
-# restoration in 1.8.0 once the transitive dep chain publishes.
-# The `font` empty feature is retained (removing it is a semver-major
-# break) but it no longer compiles anything by itself: `font_bridge` and
-# the `text_to_3d_demo` example additionally require the cfg flag
-# `alice_font_bridge` (`RUSTFLAGS="--cfg alice_font_bridge"`) together
-# with a local `alice-font` path dep. Previously `--features font` gated a
-# module importing the undeclared `alice_font` crate, so `--all-features`
-# failed for every crates.io user and cargo-semver-checks could not build
-# rustdoc. (2026-09-14)
+# Bridge features. codec / physics / asp / sdf-cache resolve to the sibling
+# crates on crates.io since 1.12.0 (they were removed for the 1.7.7 publish
+# while those crates were path-only). `font` stays an inert gate until
+# alice-font publishes: `font_bridge` and the `text_to_3d_demo` example
+# additionally require `RUSTFLAGS="--cfg alice_font_bridge"` with a local
+# `alice-font` path dep (a plain `--features font` must not import an
+# undeclared crate, or `--all-features` breaks for every crates.io user).
+physics = ["dep:alice-physics"]  # SdfField impl + sim_modifier chain (alice-physics)
+codec = ["dep:alice-codec"]  # wavelet + rANS SDF volume codec (alice-codec)
+asp = ["dep:libasp"]  # ALICE Streaming Protocol packets (libasp)
+sdf-cache = ["dep:alice-cache"]  # evaluation cache (alice-cache)
 font = []  # Font bridge gate — inert on crates.io, see above
 ffi = ["lazy_static"]  # C/C++/C# FFI bindings
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
@@ -138,12 +134,11 @@ godot = { version = "0.2", optional = true }
 # CRC for file integrity
 crc32fast = "1.4"
 
-# Bridges (alice-codec / alice-physics / libasp / alice-cache /
-# alice-font) — removed in 1.7.7 for crates.io publish; the bridge
-# modules live behind #[cfg(feature = "...")] gates that no longer
-# activate. Restore in 1.8.0 once the transitive dep chain is on
-# crates.io. Users who need bridges today can still `path`-dep this
-# repo against the sibling checkouts.
+# Bridge deps (optional, crates.io since 1.12.0; alice-font pending publish)
+alice-physics = { version = "1.1", optional = true }
+alice-codec = { version = "0.1.2", optional = true }
+libasp = { version = "1.0", optional = true }
+alice-cache = { version = "0.2", optional = true }
 
 # FFI support (optional)
 lazy_static = { version = "1.5", optional = true }

@@ -385,7 +385,10 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
     };
 
     let mut quantized = vec![0i32; total];
-    quantizer.quantize_buffer(&coeffs, &mut quantized);
+    // `InvalidBufferSize` is impossible: both buffers are `total` long.
+    quantizer
+        .quantize_buffer(&coeffs, &mut quantized)
+        .expect("quantized buffer is sized to the coefficient buffer");
 
     // 4. Serialize quantized coefficients as i16 little-endian bytes, then
     //    compress those bytes with rANS. This avoids the u8-symbol clamping
@@ -551,7 +554,10 @@ pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
 
     // 7. Dequantize
     let mut coeffs = vec![0i32; total];
-    quantizer.dequantize_buffer(&quantized, &mut coeffs);
+    // `InvalidBufferSize` is impossible: both buffers are `total` long.
+    quantizer
+        .dequantize_buffer(&quantized, &mut coeffs)
+        .expect("coefficient buffer is sized to the quantized buffer");
 
     // 8. Inverse wavelet transform
     let wavelet = if header.lossless_wavelet() {

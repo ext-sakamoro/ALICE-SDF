@@ -66,9 +66,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
-
       # 主要ビルド (retry あり、本番 HTTP/2 errror 耐性)
       - name: Build (default)
         uses: nick-fields/retry@v3
@@ -102,10 +99,10 @@ jobs:
       - name: Build (JIT) [T3]
         run: cargo build --lib --no-default-features --features "jit"
 
-      - name: Build (codec / asp / sdf-cache bridges) [T3]
-        # physics は別 job で実 ALICE-Physics 経由で厳格化、それ以外の bridge はスタブ依存のため continue
-        run: cargo build --lib --no-default-features --features "codec,asp,sdf-cache"
-        continue-on-error: true
+      # Bridges resolve to crates.io siblings since 1.12.0 — hard gate
+      # (this step was continue-on-error against non-existent features).
+      - name: Build + test (bridges physics / codec / asp / sdf-cache) [T3]
+        run: cargo test --lib --no-default-features --features "physics,codec,asp,sdf-cache"
 
       # unity / unreal = ffi + shader: every extern "C" fn is panic-isolated
       # (ffi_guard), so these are hard gates (continue-on-error removed 1.11.0)
@@ -136,7 +133,6 @@ jobs:
       - name: Ensure wasm32 target on pinned toolchain
         run: rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - uses: ./.github/actions/alice-stubs
       - name: Build (wasm feature, wasm32 target)
         run: cargo build --lib --no-default-features --features wasm --target wasm32-unknown-unknown
       - name: Test wasm (host, lib-only)
@@ -151,7 +147,6 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: ./.github/actions/alice-stubs
       - name: Build (openvdb feature)
         run: cargo build --lib --no-default-features --features openvdb
       - name: Test (openvdb feature)
@@ -179,68 +174,28 @@ jobs:
         working-directory: bindings/bevy/alice-sdf-bevy
         run: cargo test --lib
 
-  physics:
-    name: Bridge — ALICE-Physics (strict)
+  bridges:
+    name: Bridges (each feature alone, no stubs)
     needs: changes
-    # 1.7.4 で physics feature を crates.io publish のため一時削除
-    # (alice-physics + transitive dep chain が crates.io に未 publish
-    # のため)。1.8.0 で復活予定、それまでこの job は skip。
-    # 復活手順: この condition を元の
-    #   `needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'`
-    # に戻す。github.event_name が literal "never" に一致することは無いので
-    # 常に false 評価 (actionlint 対策で literal false を避けている)。
-    if: github.event_name == 'never'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout ALICE-SDF
-        uses: actions/checkout@v5
-        with:
-          path: ALICE-SDF
-
-      - name: Checkout ALICE-Physics (path dep target)
-        uses: actions/checkout@v5
-        with:
-          repository: ext-sakamoro/ALICE-Physics
-          path: ALICE-Physics
-
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ALICE-SDF
 
-      # alice-physics は実 clone、他の optional path dep (alice-codec/cache/font/libasp) は stub
-      # cargo は feature OFF でも path 存在を resolution 時に検証するため stub 必須
-      - name: Create non-physics bridge stubs
-        working-directory: ALICE-SDF
-        shell: bash
-        run: |
-          set -euo pipefail
-          for entry in \
-              ALICE-Codec:alice-codec \
-              ALICE-Streaming-Protocol:libasp \
-              ALICE-Cache:alice-cache \
-              ALICE-Font:alice-font; do
-            dir="${entry%:*}"
-            crate="${entry#*:}"
-            mkdir -p "../${dir}/src"
-            cat > "../${dir}/Cargo.toml" <<TOML
-          [package]
-          name = "${crate}"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          path = "src/lib.rs"
-          TOML
-            : > "../${dir}/src/lib.rs"
-          done
-
-      - name: Build (physics, strict)
-        working-directory: ALICE-SDF
-        run: cargo build --lib --no-default-features --features "physics"
-
-      - name: Test (physics, strict)
-        working-directory: ALICE-SDF
+      # Every bridge on its own (a feature must not depend on another one
+      # being enabled) with the real crates.io deps — no alice-stubs action.
+      - name: physics
         run: cargo test --lib --no-default-features --features "physics"
+      - name: codec
+        run: cargo test --lib --no-default-features --features "codec"
+      - name: asp
+        run: cargo test --lib --no-default-features --features "asp"
+      - name: sdf-cache
+        run: cargo test --lib --no-default-features --features "sdf-cache"
+      - name: clippy (all bridges, -D warnings)
+        run: cargo clippy --lib --features "physics,codec,asp,sdf-cache" -- -D warnings
 
   mobile:
     name: Mobile — iOS / Android cross-compile
@@ -334,9 +289,6 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
 
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
-
       # core src/** は strict (-D warnings)。v1.7.2 で informational から格上げ。
       # 新しい clippy lint (Rust リリース毎に追加される) が混入したら CI で即発覚させる。
       - name: Clippy strict (no-default-features)
@@ -416,9 +368,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
 
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
-
       - name: Check (default features)
         run: cargo check --lib
 
@@ -459,9 +408,6 @@ jobs:
           VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -60
           grep -qi llvmpipe /tmp/vulkaninfo.txt
 
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
-
       - name: GPU ↔ CPU law parity, shader validation, GPU marching cubes
         run: >
           cargo test --features "gpu,glsl,gpu-mesh"
@@ -482,9 +428,6 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
 
       # karikari-review 推奨: rustdoc warning (broken link / missing example 等) を CI で deny
       - name: cargo doc (core, no-deps)
@@ -517,9 +460,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
-
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
 
       - name: Build server
         working-directory: server
@@ -594,9 +534,6 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
-
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
 
       - name: Build wasm
         run: cargo build --release --target wasm32-unknown-unknown --features wasm --no-default-features

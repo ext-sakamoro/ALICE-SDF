@@ -85,13 +85,9 @@ impl CompiledSdfField {
     }
 }
 
-// SAFETY: `CompiledSdfField` holds an `Arc<CompiledSdf>` which is immutable
-// after construction (no interior mutability, no `Cell`/`RefCell`/`UnsafeCell`).
-// All fields are read-only during `SdfField::distance` / `normal` calls, so
-// concurrent reads from multiple threads are data-race-free. The `Arc` itself
-// provides atomic reference counting, which is already `Send + Sync`.
-unsafe impl Send for CompiledSdfField {}
-unsafe impl Sync for CompiledSdfField {}
+// `CompiledSdfField` only holds an `Arc<CompiledSdf>` (Vec fields, no
+// interior mutability), so `Send + Sync` are derived automatically — the
+// `unsafe impl`s that used to assert this were redundant.
 
 impl SdfField for CompiledSdfField {
     #[inline]

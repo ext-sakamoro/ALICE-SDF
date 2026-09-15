@@ -33,6 +33,13 @@ use crate::types::SdfTree;
 /// [[karikari-review]] : src/io/asdf.rs::ASDF_BINCODE_LIMIT と同期
 const ASP_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
 
+/// Serialise `tree` (ASDF bincode wire format) into an ASP I-packet with the
+/// given `sequence` number.
+///
+/// # Errors
+///
+/// Returns the `libasp` error when the tree does not fit the packet or the
+/// serialisation exceeds the 256 MiB bincode limit.
 pub fn create_sdf_i_packet(tree: &SdfTree, sequence: u32) -> AspResult<AspPacket> {
     // Serialize SDF tree to binary via bincode (same format as ASDF files)
     // bincode 2 API: serde compat + legacy config で bincode 1 wire format 互換
@@ -163,4 +170,28 @@ pub fn estimate_packet_size(tree: &SdfTree) -> (usize, usize) {
     // Total overhead is significant but acceptable for small SDF scenes
     let packet_overhead = 16 + 4 + 64; // header + CRC + FlatBuffers framing
     (asdf_len, asdf_len * 12 + packet_overhead)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval::eval;
+    use crate::types::SdfNode;
+    use glam::Vec3;
+
+    /// I-packet round trip: the tree that comes back evaluates identically.
+    #[test]
+    fn i_packet_round_trip_preserves_the_tree() {
+        let node = SdfNode::sphere(0.7)
+            .smooth_union(SdfNode::box3d(0.8, 0.4, 0.6).translate(0.5, 0.2, 0.0), 0.15)
+            .twist(0.3);
+        let tree = SdfTree::new(node.clone());
+        let packet = create_sdf_i_packet(&tree, 7).expect("packet");
+        let back = decode_sdf_i_packet(&packet).expect("decode");
+        for p in [Vec3::ZERO, Vec3::new(0.4, -0.3, 0.9), Vec3::new(-1.2, 0.8, 0.1)] {
+            assert_eq!(eval(&back.root, p).to_bits(), eval(&node, p).to_bits());
+        }
+        let (asdf, total) = estimate_packet_size(&tree);
+        assert!(asdf > 0 && total >= asdf);
+    }
 }

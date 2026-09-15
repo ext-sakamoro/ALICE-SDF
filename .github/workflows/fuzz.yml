@@ -66,9 +66,6 @@ jobs:
         with:
           workspaces: fuzz
 
-      - name: Create ALICE optional bridge stubs
-        uses: ./.github/actions/alice-stubs
-
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 

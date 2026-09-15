@@ -6,6 +6,24 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — bridge features restored (roadmap P15)
+
+- `physics` (alice-physics 1.1), `codec` (alice-codec 0.1.2), `asp`
+  (libasp 1.0) and `sdf-cache` (alice-cache 0.2) resolve to the sibling
+  crates on crates.io again — they were removed for the 1.7.7 publish while
+  those crates were path-only. API drift since then was two `Result`s in
+  the codec quantiser (buffers are sized to each other, so the error is
+  impossible and is `expect`ed with that invariant) and a missing doc
+  comment; the redundant `unsafe impl Send / Sync for CompiledSdfField` is
+  gone (the type derives both). `font` stays an inert gate until alice-font
+  publishes. New: ASP I-packet round-trip test.
+- CI: a `bridges` job builds and tests each bridge feature on its own with
+  the real crates.io dependencies, and the main test job runs all four
+  together as a hard gate (that step was `continue-on-error` against
+  features that did not exist). The `alice-stubs` action and every stub
+  workaround in the workflows are removed — there are no path
+  dependencies left to satisfy.
+
 ## [v1.11.0] - 2026-09-15
 
 External review landing (two rounds, 2026-09-15): every finding fixed with an oracle test on its path; the Lipschitz bound is applied by every marcher; seven primitive laws are now exact. Shape changes (Egg apex, Horseshoe legs, BlobbyCross arms) and the marching-cubes index order flip are listed under Fixed.
