@@ -207,7 +207,7 @@ jobs:
           merge-multiple: true
 
       - name: List release assets
-        run: ls -la *.zip
+        run: ls -la -- *.zip
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

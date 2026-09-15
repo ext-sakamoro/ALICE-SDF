@@ -6,6 +6,21 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — `lazy_static` compatibility feature, local CI preflight
+
+- The FFI registries use `std::sync::LazyLock`; the `lazy_static` optional
+  dependency is gone. Because an optional dependency is an implicit public
+  feature, the name stays as an empty `lazy_static` feature that `ffi`
+  still enables (cargo-semver-checks `feature_missing` /
+  `feature_no_longer_enables_feature` are major breaks). Removed in 2.0.
+- `scripts/preflight.sh`: every hard gate of ci.yml / security-audit.yml
+  / fuzz.yml as the commands CI runs (actionlint, fmt, the three strict
+  clippy sets plus an x86_64 cross-lint, MSRV 1.85 checks, feature builds,
+  wasm32, rustdoc, semver-checks against crates.io, cargo-deny, machete,
+  stub guard, fuzz build; `--quick` skips only the test suites). The
+  pre-push hook runs it and blocks the push on failure; the semver break
+  above reached CI because this file did not exist yet.
+
 ### Fixed — dual contouring (found by the new invariant oracle)
 
 - **Every dual-contouring triangle was wound inward** (sphere res 32:

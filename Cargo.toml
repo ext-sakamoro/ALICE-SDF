@@ -87,7 +87,14 @@ codec = ["dep:alice-codec"]  # wavelet + rANS SDF volume codec (alice-codec)
 asp = ["dep:libasp"]  # ALICE Streaming Protocol packets (libasp)
 sdf-cache = ["dep:alice-cache"]  # evaluation cache (alice-cache)
 font = []  # Font bridge gate — inert on crates.io, see above
-ffi = []  # C/C++/C# FFI bindings (registries use std::sync::LazyLock since 1.13.0)
+# C/C++/C# FFI bindings. The registries use std::sync::LazyLock since 1.13.0;
+# `lazy_static` was the optional dependency (and so an implicit public
+# feature that `ffi` enabled) until then. cargo-semver-checks treats a
+# removed feature, and a feature that stops enabling another, as major
+# breaks, so the name stays as an empty feature that `ffi` still enables
+# until 2.0.
+ffi = ["lazy_static"]
+lazy_static = []
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
 all-shaders = ["gpu", "hlsl", "glsl", "blinkscript"]  # All shader transpilers
@@ -95,6 +102,10 @@ unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
 unreal = ["ffi", "hlsl"]  # Unreal Engine integration (FFI + HLSL)
 aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All AAA game features
 
+# Every `optional = true` dependency below is also an implicit public feature
+# (`--features <dep>`); removing one is a semver-major change that the
+# semver-checks job rejects. To drop an optional dependency, keep its name as
+# an empty feature (see `lazy_static`) until the next major.
 [dependencies]
 # SIMD math
 glam = { version = "0.29", features = ["serde"] }
