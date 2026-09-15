@@ -4,7 +4,7 @@ Canonical roadmap tracking phases, current state, and open decisions for the
 ALICE-SDF crate. Primary source of truth — the `MEMORY.md` index and per-session
 memory files reference this document rather than duplicating the phase list.
 
-- **Current version**: `v1.12.0` (crates.io; bridge features restored, `font` pending alice-font)
+- **Current version**: `v1.13.0` (crates.io; oracle coverage for every evaluation / output path, `font` pending alice-font)
 - **Repo**: `ext-sakamoro/ALICE-SDF`
 - **License**: Dual (see `LICENSE`, `LICENSE-COMMUNITY`)
 - **MSRV**: `1.85`
@@ -90,10 +90,11 @@ Two-round external review of 1.10.2 ([memory: `project_alice_sdf_external_review
 | SDF-R2-1/2 marching cubes wound inward, STL inside-out | ✅ | `CORNER_OFFSETS` aligned with the tables (CPU + WGSL); `tests/test_mesh_orientation.rs` (winding, signed volume, STL round trip) |
 | SDF-R2-3 open edges on aligned grids / duplicate vertices | ✅ | Canonical edge interpolation + degenerate-triangle removal |
 | SDF-R2-5 `eval_interval` = EVERYTHING for TPMS | ✅ | `ia_lipschitz` with the pinned constants |
-| SDF-R2-4 `eval_compiled` scalar 1.95× slower than the tree walker | ⏳ | Backlog: scalar VM hot loop or SIMD batch as the documented primary path; MC onto the SIMD batch path |
-| Laws that jump (egg, horseshoe, blobby cross, stairs, helix axis, ellipsoid far field, sweep Bézier) | ⏳ | Backlog: port the IQ exact forms / bound-safe variants, then restore their Lipschitz claims |
+| SDF-R2-4 `eval_compiled` scalar 1.95× slower than the tree walker | ✅ 1.12.0 | Root cause was zeroing three stacks per call (~21 ns); `MaybeUninit` slots with a debug init mask (sphere 30 → 4 ns), MC grid on the SIMD batch path |
+| Laws that jump (egg, horseshoe, blobby cross, stairs, helix axis, ellipsoid far field, sweep Bézier) | ✅ 1.12.0 | IQ exact forms (egg / horseshoe / blobby cross / Bézier), min over every stair box, Newton nearest point for the helix, Eberly bisection for the ellipsoid — CPU + SIMD + three shaders + GPU parity; the remaining `INFINITY` set is 14 by-design nodes pinned by test |
 | README `[LICENSE]` link | ✅ | `LICENSE-MIT` / `LICENSE-APACHE` |
-| Follow-ups (1.12.0): clippy pedantic + nursery policy in `[lints.clippy]` / CI hard gates (AAA meta, semver-checks, blocking fuzz seed replay) / colour-program stack validation / `Real` sealed-by-convention (Sealed supertrait in 2.0) | ✅ | see CHANGELOG `[Unreleased]` |
+| Follow-ups (1.12.0): clippy pedantic + nursery policy in `[lints.clippy]` / CI hard gates (AAA meta, semver-checks, blocking fuzz seed replay) / colour-program stack validation / `Real` sealed-by-convention (Sealed supertrait in 2.0) | ✅ | CHANGELOG 1.12.0 |
+| Oracle expansion (1.13.0): every path without an oracle got one — dual contouring (was wound inward), non-Lipschitz law tracing (offset repeat / taper miss rates pinned), SVO ray query (59/256 rays lost), NPR colour laws (all correct), neural SDF (default learning rate 1e-3 → 1e-2), texture fitting (scalar noise had drifted from SIMD; multi-start fit), Python binding smoke in CI | ✅ | CHANGELOG 1.13.0; `tests/test_{dual_contouring_invariants,svo_query_oracle,npr_analytic,neural_oracle,texture_fit_oracle}.rs`, `python/tests/smoke.py`, `scripts/preflight.sh` |
 
 ### Deeper follow-ups (not scheduled)
 

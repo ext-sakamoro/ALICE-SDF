@@ -6,6 +6,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.13.0] - 2026-09-16
+
+Oracle tests for the paths that had none (dual contouring, non-Lipschitz tracing, SVO ray query, NPR colour laws, neural SDF, texture fitting, the Python binding) and the fixes they found, plus a local `scripts/preflight.sh` that reproduces every CI gate before a push.
+
 ### Fixed — texture-fit (found by the new oracle; the feature had no CI test step)
 
 - The scalar noise (`hash_noise_3d_cpu`, `eval_octave`) had drifted from
