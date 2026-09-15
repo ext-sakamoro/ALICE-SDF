@@ -408,38 +408,11 @@ fn dual_contouring_impl(
     //    everywhere: a sample exactly on the surface (a face on a grid plane)
     //    is outside, so no edge lying *in* the surface counts as a crossing —
     //    such in-plane quads have no meaningful orientation.
-    let mut indices: Vec<u32> = Vec::new();
+    let mut quads: Vec<[u32; 4]> = Vec::new();
 
     let cell_idx = |cx: usize, cy: usize, cz: usize| -> usize { cz * res * res + cy * res + cx };
 
-    // A dual quad is generally non-planar (saddle cells on the inner ring of
-    // a torus): splitting along a fixed diagonal can fold one of the two
-    // triangles against the surface. Split along the diagonal whose two
-    // triangles both face the quad's mean vertex normal; the (0, 2)
-    // diagonal wins ties.
-    let emit_quad = |indices: &mut Vec<u32>, q: [u32; 4]| {
-        let p = [
-            vertices[q[0] as usize].position,
-            vertices[q[1] as usize].position,
-            vertices[q[2] as usize].position,
-            vertices[q[3] as usize].position,
-        ];
-        // reference = mean of the four dual-vertex normals (each sampled on
-        // the surface); a field sample at the quad centre is wrong across a
-        // CSG crease, where the centre can fall on the other operand
-        let n_ref = vertices[q[0] as usize].normal
-            + vertices[q[1] as usize].normal
-            + vertices[q[2] as usize].normal
-            + vertices[q[3] as usize].normal;
-        let facing = |a: usize, b: usize, c: usize| (p[b] - p[a]).cross(p[c] - p[a]).dot(n_ref);
-        let split_02 = facing(0, 1, 2).min(facing(0, 2, 3));
-        let split_13 = facing(1, 2, 3).min(facing(1, 3, 0));
-        if split_13 > split_02 {
-            indices.extend_from_slice(&[q[1], q[2], q[3], q[1], q[3], q[0]]);
-        } else {
-            indices.extend_from_slice(&[q[0], q[1], q[2], q[0], q[2], q[3]]);
-        }
-    };
+    let emit_quad = |quads: &mut Vec<[u32; 4]>, q: [u32; 4]| quads.push(q);
 
     // X-edges: edge along X between grid vertices (x, y, z) and (x+1, y, z)
     // Shared by cells: (x, y-1, z-1), (x, y, z-1), (x, y-1, z), (x, y, z)
@@ -464,9 +437,9 @@ fn dual_contouring_impl(
 
                         if v0 != u32::MAX && v1 != u32::MAX && v2 != u32::MAX && v3 != u32::MAX {
                             if d0 < 0.0 {
-                                emit_quad(&mut indices, [v0, v1, v2, v3]);
+                                emit_quad(&mut quads, [v0, v1, v2, v3]);
                             } else {
-                                emit_quad(&mut indices, [v0, v3, v2, v1]);
+                                emit_quad(&mut quads, [v0, v3, v2, v1]);
                             }
                         }
                     }
@@ -488,9 +461,9 @@ fn dual_contouring_impl(
 
                         if v0 != u32::MAX && v1 != u32::MAX && v2 != u32::MAX && v3 != u32::MAX {
                             if d0 < 0.0 {
-                                emit_quad(&mut indices, [v0, v3, v2, v1]);
+                                emit_quad(&mut quads, [v0, v3, v2, v1]);
                             } else {
-                                emit_quad(&mut indices, [v0, v1, v2, v3]);
+                                emit_quad(&mut quads, [v0, v1, v2, v3]);
                             }
                         }
                     }
@@ -512,9 +485,9 @@ fn dual_contouring_impl(
 
                         if v0 != u32::MAX && v1 != u32::MAX && v2 != u32::MAX && v3 != u32::MAX {
                             if d0 < 0.0 {
-                                emit_quad(&mut indices, [v0, v1, v2, v3]);
+                                emit_quad(&mut quads, [v0, v1, v2, v3]);
                             } else {
-                                emit_quad(&mut indices, [v0, v3, v2, v1]);
+                                emit_quad(&mut quads, [v0, v3, v2, v1]);
                             }
                         }
                     }
@@ -523,7 +496,120 @@ fn dual_contouring_impl(
         }
     }
 
+    let indices = triangulate_quads(&mut vertices, quads);
+
     Mesh { vertices, indices }
+}
+
+/// Split the dual quads into triangles.
+///
+/// A dual quad is generally non-planar (saddle cells on the inner ring of a
+/// torus): splitting along a fixed diagonal can fold one of the two triangles
+/// against the surface. Each quad is split along the diagonal whose two
+/// triangles both face the quad's mean vertex normal; the (0, 2) diagonal
+/// wins ties. The reference is the mean of the four dual-vertex normals (each
+/// sampled on the surface); a field sample at the quad centre is wrong across
+/// a CSG crease, where the centre can fall on the other operand.
+///
+/// Where the surface is tangent to a grid plane (the inner equator of a torus
+/// on a grid plane) the cells on both sides of that plane see a sign change
+/// and both get a dual vertex, so the two rows of vertices are a fraction of a
+/// cell apart and the quads between them are fins: thin, and folded whichever
+/// diagonal is chosen. Such a quad (both diagonals fold) is collapsed along
+/// its two short edges — the vertex pairs are merged, which is a local edge
+/// collapse well inside the cell — and drops out as degenerate. Until 1.14.0
+/// these fins were emitted and pointed inward.
+fn triangulate_quads(vertices: &mut [Vertex], quads: Vec<[u32; 4]>) -> Vec<u32> {
+    let mut remap: Vec<u32> = (0..vertices.len() as u32).collect();
+    const fn find(remap: &mut [u32], mut i: u32) -> u32 {
+        while remap[i as usize] != i {
+            let next = remap[i as usize];
+            remap[i as usize] = remap[next as usize];
+            i = next;
+        }
+        i
+    }
+    let facing = |p: &[Vec3; 4], n_ref: Vec3, a: usize, b: usize, c: usize| {
+        (p[b] - p[a]).cross(p[c] - p[a]).dot(n_ref)
+    };
+    let splits = |p: &[Vec3; 4], n_ref: Vec3| {
+        let split_02 = facing(p, n_ref, 0, 1, 2).min(facing(p, n_ref, 0, 2, 3));
+        let split_13 = facing(p, n_ref, 1, 2, 3).min(facing(p, n_ref, 1, 3, 0));
+        (split_02, split_13)
+    };
+
+    // Pass 1: fins. Both diagonals fold ⇒ merge the shorter pair of opposite
+    // edges (endpoints snap to the pair's mean).
+    for q in &quads {
+        let p = [
+            vertices[q[0] as usize].position,
+            vertices[q[1] as usize].position,
+            vertices[q[2] as usize].position,
+            vertices[q[3] as usize].position,
+        ];
+        let n_ref = vertices[q[0] as usize].normal
+            + vertices[q[1] as usize].normal
+            + vertices[q[2] as usize].normal
+            + vertices[q[3] as usize].normal;
+        let (split_02, split_13) = splits(&p, n_ref);
+        if split_02 >= 0.0 || split_13 >= 0.0 {
+            continue;
+        }
+        let len_01_23 = (p[1] - p[0]).length() + (p[3] - p[2]).length();
+        let len_12_30 = (p[2] - p[1]).length() + (p[0] - p[3]).length();
+        let pairs: [(usize, usize); 2] = if len_01_23 < len_12_30 {
+            [(0, 1), (2, 3)]
+        } else {
+            [(1, 2), (3, 0)]
+        };
+        for (a, b) in pairs {
+            let ra = find(&mut remap, q[a]);
+            let rb = find(&mut remap, q[b]);
+            if ra == rb {
+                continue;
+            }
+            let (keep, drop) = if ra < rb { (ra, rb) } else { (rb, ra) };
+            let mid = (vertices[keep as usize].position + vertices[drop as usize].position) * 0.5;
+            let n = (vertices[keep as usize].normal + vertices[drop as usize].normal)
+                .normalize_or_zero();
+            vertices[keep as usize].position = mid;
+            vertices[keep as usize].normal = n;
+            remap[drop as usize] = keep;
+        }
+    }
+
+    // Pass 2: triangulate the surviving quads with the remapped indices.
+    let mut indices: Vec<u32> = Vec::with_capacity(quads.len() * 6);
+    for q in &quads {
+        let q = [
+            find(&mut remap, q[0]),
+            find(&mut remap, q[1]),
+            find(&mut remap, q[2]),
+            find(&mut remap, q[3]),
+        ];
+        let p = [
+            vertices[q[0] as usize].position,
+            vertices[q[1] as usize].position,
+            vertices[q[2] as usize].position,
+            vertices[q[3] as usize].position,
+        ];
+        let n_ref = vertices[q[0] as usize].normal
+            + vertices[q[1] as usize].normal
+            + vertices[q[2] as usize].normal
+            + vertices[q[3] as usize].normal;
+        let (split_02, split_13) = splits(&p, n_ref);
+        let tris: [[u32; 3]; 2] = if split_13 > split_02 {
+            [[q[1], q[2], q[3]], [q[1], q[3], q[0]]]
+        } else {
+            [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]
+        };
+        for t in tris {
+            if t[0] != t[1] && t[1] != t[2] && t[2] != t[0] {
+                indices.extend_from_slice(&t);
+            }
+        }
+    }
+    indices
 }
 
 // ── Public API ──────────────────────────────────────────────────────

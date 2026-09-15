@@ -41,21 +41,25 @@ fn signed_volume(m: &Mesh) -> f32 {
         .sum()
 }
 
-/// Triangles below 1 % of a cell face are skipped: where the surface is
-/// tangent to a grid plane (torus inner equator at radius R − r = 0.5 on the
-/// 0.1 grid) DC emits folded slivers of ~0.5 % cell area next to the tangent
-/// vertex; a QEF-clamped / manifold DC would remove them (backlog).
-fn winding(node: &SdfNode, m: &Mesh, cell: f32) -> (usize, usize) {
+/// Every triangle, whatever its area: where the surface is tangent to a grid
+/// plane (torus inner equator at radius R − r = 0.5 on the 0.1 grid) DC used
+/// to emit folded fins of ~0.5 % cell area between the two rows of dual
+/// vertices on either side of the plane; 1.14.0 collapses them, so nothing
+/// is skipped here any more.
+fn winding(node: &SdfNode, m: &Mesh, _cell: f32) -> (usize, usize) {
     let (mut out, mut inw) = (0, 0);
-    let min_area = 1e-2 * cell * cell;
     for t in m.indices.chunks_exact(3) {
         let a = m.vertices[t[0] as usize].position;
         let b = m.vertices[t[1] as usize].position;
         let c = m.vertices[t[2] as usize].position;
         let geo = (b - a).cross(c - a);
-        if 0.5 * geo.length() < min_area {
-            continue;
-        }
+        assert!(
+            geo.length() > 0.0,
+            "zero-area triangle {:?} {:?} {:?}",
+            a,
+            b,
+            c
+        );
         let grad = normal(node, (a + b + c) / 3.0, 1e-3);
         if geo.dot(grad) > 0.0 {
             out += 1;
@@ -175,6 +179,35 @@ fn dual_contouring_preserves_sharp_features() {
                     );
                 }
             }
+        }
+    }
+}
+
+/// Tangent configurations depend on where the grid planes fall: the torus
+/// inner equator (radius 0.5) and the sphere (radius 1) sit exactly on grid
+/// planes at some resolutions and between them at others. All of them must
+/// come out closed, outward and free of fins.
+#[test]
+fn dual_contouring_is_fin_free_across_resolutions() {
+    for res in [16usize, 24, 32, 40, 64] {
+        let cell = 2.0 * BOUND / res as f32;
+        for (name, node) in [
+            ("torus", SdfNode::torus(0.8, 0.3)),
+            ("sphere", SdfNode::sphere(1.0)),
+            ("cylinder", SdfNode::cylinder(0.5, 1.0)),
+        ] {
+            let m = dc(&node, res);
+            let (out, inw) = winding(&node, &m, cell);
+            assert!(
+                inw == 0 && out > 0,
+                "{name} res {res}: {out} outward / {inw} inward"
+            );
+            assert_eq!(open_edges(&m), 0, "{name} res {res}: open edges");
+            let worst = max_abs_f_at_vertices(&node, &m);
+            assert!(
+                worst < cell,
+                "{name} res {res}: vertex {worst} off the surface"
+            );
         }
     }
 }

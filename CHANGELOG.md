@@ -6,6 +6,17 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — dual contouring fins at grid-tangent surfaces
+
+- Where the surface is tangent to a grid plane (torus inner equator, sphere
+  or cylinder radius on a plane) the cells on both sides see a sign change
+  and both get a dual vertex; the quads between the two rows were thin fins
+  folded whichever diagonal was chosen, and pointed inward.
+  `triangulate_quads` now collapses a quad that folds on both diagonals
+  along its shorter pair of opposite edges (a local edge collapse inside the
+  cell). `tests/test_dual_contouring_invariants.rs` no longer skips small
+  triangles and checks torus / sphere / cylinder at five resolutions.
+
 ## [v1.13.0] - 2026-09-16
 
 Oracle tests for the paths that had none (dual contouring, non-Lipschitz tracing, SVO ray query, NPR colour laws, neural SDF, texture fitting, the Python binding) and the fixes they found, plus a local `scripts/preflight.sh` that reproduces every CI gate before a push.
