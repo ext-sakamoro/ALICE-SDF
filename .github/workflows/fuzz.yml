@@ -1,7 +1,7 @@
 name: Fuzz
 
 # 目的:
-# - SDF eval / asdf decode / bincode roundtrip の 3 target を time-boxed fuzz
+# - SDF eval / asdf decode / bincode roundtrip / eval parity (tree vs compiled vs SIMD) の 4 target を time-boxed fuzz
 # - PR / push 毎に短時間 (30-60s/target) 実行、long-run は別途 batch fuzzing infra 想定
 #
 # 罠 catalog:
@@ -54,6 +54,7 @@ jobs:
           - fuzz_sdf_eval
           - fuzz_asdf_decode
           - fuzz_bincode_roundtrip
+          - fuzz_eval_parity
     steps:
       - uses: actions/checkout@v5
 
@@ -95,8 +96,16 @@ jobs:
         run: |
           cd fuzz
           # sanitizer=address (default)、-max_total_time でタイムボックス
-          cargo +nightly fuzz run "${{ matrix.target }}" -- \
-            -max_total_time=${{ steps.dur.outputs.seconds }}
+          # fuzz/seeds/<target>/ = committed regression inputs (every crash a
+          # target ever found, replayed first); fuzz/corpus/ is the working set
+          seeds="fuzz/seeds/${{ matrix.target }}"
+          if [ -d "$seeds" ]; then
+            cargo +nightly fuzz run "${{ matrix.target }}" "fuzz/corpus/${{ matrix.target }}" "$seeds" -- \
+              -max_total_time=${{ steps.dur.outputs.seconds }}
+          else
+            cargo +nightly fuzz run "${{ matrix.target }}" -- \
+              -max_total_time=${{ steps.dur.outputs.seconds }}
+          fi
 
       # crash 検出時のみ artifact upload (通常 pass では skip)
       - name: Upload crash artifacts (if any)

@@ -18,10 +18,7 @@ use std::io::Write;
 fuzz_target!(|bytes: &[u8]| {
     // 一時 file 経由 (load_asdf は Path を受け取る API)
     let mut path = std::env::temp_dir();
-    path.push(format!(
-        "alice_sdf_fuzz_asdf_{}.asdf",
-        std::process::id()
-    ));
+    path.push(format!("alice_sdf_fuzz_asdf_{}.asdf", std::process::id()));
 
     // 書き込み失敗時は skip (test harness の問題であって fuzz target の問題ではない)
     let Ok(mut file) = std::fs::File::create(&path) else {

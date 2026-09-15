@@ -41,3 +41,10 @@ path = "fuzz_targets/fuzz_bincode_roundtrip.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_eval_parity"
+path = "fuzz_targets/fuzz_eval_parity.rs"
+test = false
+doc = false
+bench = false
