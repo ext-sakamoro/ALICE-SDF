@@ -46,11 +46,11 @@ pub fn bake_dense_grid(node: &SdfNode, bounds: (f32, f32), resolution: u32) -> V
     let step = (max - min) / (resolution - 1).max(1) as f32;
     let mut grid = Vec::with_capacity(n * n * n);
     for k in 0..n {
-        let z = min + k as f32 * step;
+        let z = (k as f32).mul_add(step, min);
         for j in 0..n {
-            let y = min + j as f32 * step;
+            let y = (j as f32).mul_add(step, min);
             for i in 0..n {
-                let x = min + i as f32 * step;
+                let x = (i as f32).mul_add(step, min);
                 let d = eval(node, Vec3::new(x, y, z));
                 grid.push(d);
             }
@@ -91,8 +91,11 @@ pub fn bake_to_vdb(
     Ok(buf)
 }
 
+/// A dense grid read back from `bake_to_vdb`: `(values, resolution, (bounds_min, bounds_max))`.
+pub type DenseGrid = (Vec<f32>, u32, (f32, f32));
+
 /// `bake_to_vdb` で生成したバイナリから密 voxel 配列を復元
-pub fn load_dense_grid_from_vdb(bytes: &[u8]) -> Result<(Vec<f32>, u32, (f32, f32)), VdbError> {
+pub fn load_dense_grid_from_vdb(bytes: &[u8]) -> Result<DenseGrid, VdbError> {
     if bytes.len() < 9 + 4 + 4 + 4 {
         return Err(VdbError::Io("buffer too small".into()));
     }

@@ -946,7 +946,7 @@ mod tests {
         // SAFETY: params is a valid, initialized AnimationParams local struct. compiled is a
         // valid handle. The reference &params lives for the duration of the call.
         unsafe {
-            let d = alice_sdf_eval_animated_compiled(compiled, &params, 0.0, 0.0, 0.0);
+            let d = alice_sdf_eval_animated_compiled(compiled, &raw const params, 0.0, 0.0, 0.0);
             assert!((d + 1.0).abs() < 0.01);
         }
 
@@ -959,7 +959,7 @@ mod tests {
         // SAFETY: params is a valid, initialized AnimationParams local struct. compiled is a
         // valid handle. The reference &params lives for the duration of the call.
         unsafe {
-            let d = alice_sdf_eval_animated_compiled(compiled, &params, 0.0, 0.0, 0.0);
+            let d = alice_sdf_eval_animated_compiled(compiled, &raw const params, 0.0, 0.0, 0.0);
             assert!(d > 0.0);
         }
 
@@ -989,7 +989,7 @@ mod tests {
         unsafe {
             let result = alice_sdf_eval_animated_batch_soa(
                 compiled,
-                &params,
+                &raw const params,
                 x.as_ptr(),
                 y.as_ptr(),
                 z.as_ptr(),

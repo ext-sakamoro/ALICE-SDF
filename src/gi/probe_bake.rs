@@ -112,7 +112,7 @@ fn bake_single_probe(
 /// Uses Fibonacci sphere distribution for even coverage.
 fn generate_uniform_directions(count: u32) -> Vec<(Vec3, f32)> {
     let mut dirs = Vec::with_capacity(count as usize);
-    let golden_ratio = (1.0 + 5.0f32.sqrt()) / 2.0;
+    let golden_ratio = f32::midpoint(1.0, 5.0f32.sqrt());
     let inv_golden = 1.0 / golden_ratio;
     let inv_count = 1.0 / count as f32;
     let weight = 1.0; // Uniform weight for spherical sampling

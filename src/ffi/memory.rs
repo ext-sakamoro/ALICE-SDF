@@ -18,7 +18,7 @@ pub extern "C" fn alice_sdf_free(node: SdfHandle) {
         if !node.is_null() {
             remove_node(node);
         }
-    })
+    });
 }
 
 /// Free a string returned by shader generation functions
@@ -33,7 +33,7 @@ pub extern "C" fn alice_sdf_free_string(s: *mut c_char) {
                 let _ = CString::from_raw(s);
             }
         }
-    })
+    });
 }
 
 /// Clone an SDF handle (creates a new reference)

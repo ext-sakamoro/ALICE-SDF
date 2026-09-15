@@ -63,12 +63,7 @@ mod tests {
     #[test]
     fn panic_becomes_default_and_message() {
         clear_last_error();
-        let v = ffi_guard(-1i32, || {
-            if true {
-                panic!("boom {}", 42);
-            }
-            7
-        });
+        let v = ffi_guard(-1i32, || -> i32 { panic!("boom {}", 42) });
         assert_eq!(v, -1);
         let msg = take_last_error().expect("message recorded");
         assert!(msg.contains("boom 42"), "{msg}");

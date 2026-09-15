@@ -23,6 +23,25 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   Known residue: ~0.5 %-of-a-cell slivers where a surface is tangent to a
   grid plane (documented in the test, QEF clamping is backlog).
 
+### Fixed — sparse voxel octree ray query (found by the new oracle)
+
+- `SparseVoxelOctree::ray_query` sphere-traced with the raw node distance
+  (sampled at the node centre, so up to a half diagonal too large inside
+  the node) and declared a hit only at `|dist| < 0.001` on a
+  piecewise-constant field — 59 of 256 rays through a CSG scene overshot
+  and were lost. It now steps by `dist − half_diag(leaf)` (a safe bound for
+  a 1-Lipschitz field), treats "within a half diagonal" as the surface
+  lying in this leaf and locates the crossing by bisecting the sign of the
+  query: 0 misses, every hit within two finest leaves of the analytic
+  crossing. Oracle: `tests/test_svo_query_oracle.rs` (query error bounded
+  by the leaf size derived from the subdivision rule, error decreasing with
+  depth, ray query vs scan, linearisation preserving every node).
+- `ffi` registries use `std::sync::LazyLock`; the `lazy_static` dependency
+  is gone (the `ffi` feature keeps its name).
+- CI: the strict clippy job lints every feature that builds on Linux (the
+  crate-wide policy only covered the default + shader set before); the
+  feature-gated SVO oracle runs in the test matrix.
+
 ### Added — tracing oracle for the non-Lipschitz laws
 
 - `tests/test_relaxed_tracing.rs::non_lipschitz_laws_default_tracing`:

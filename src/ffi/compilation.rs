@@ -39,7 +39,7 @@ pub extern "C" fn alice_sdf_free_compiled(compiled: CompiledHandle) {
         if !compiled.is_null() {
             remove_compiled(compiled);
         }
-    })
+    });
 }
 
 /// Get instruction count of a compiled SDF (for profiling)

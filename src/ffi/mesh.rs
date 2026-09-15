@@ -63,7 +63,7 @@ pub extern "C" fn alice_sdf_free_mesh(mesh: MeshHandle) {
         if !mesh.is_null() {
             remove_mesh(mesh);
         }
-    })
+    });
 }
 
 /// Helper: extract path string from C pointer

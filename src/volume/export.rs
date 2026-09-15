@@ -425,7 +425,7 @@ fn write_dds_header_dxt10(w: &mut impl Write, h: &DdsHeaderDxt10) -> io::Result<
 /// Convert f32 to IEEE 754 half-precision (f16)
 ///
 /// Software implementation for portability (no `half` crate dependency).
-fn f32_to_f16(value: f32) -> u16 {
+const fn f32_to_f16(value: f32) -> u16 {
     let bits = value.to_bits();
     let sign = (bits >> 16) & 0x8000;
     let exponent = ((bits >> 23) & 0xFF) as i32;

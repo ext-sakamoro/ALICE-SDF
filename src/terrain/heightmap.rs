@@ -121,7 +121,7 @@ impl Heightmap {
             for dx in -1..=2i32 {
                 let x = (ix + dx).clamp(0, self.width as i32 - 1) as u32;
                 let wx = cubic_weight(tx - dx as f32);
-                result += self.get_height(x, z) * wx * wz;
+                result = (self.get_height(x, z) * wx).mul_add(wz, result);
             }
         }
         result
@@ -426,7 +426,7 @@ mod tests {
             let mut h = Heightmap::new(8, 8, 8.0, 8.0);
             for z in 0..8 {
                 for x in 0..8 {
-                    h.set_height(x, z, (x as f32 + z as f32) * 0.5);
+                    h.set_height(x, z, f32::midpoint(x as f32, z as f32));
                 }
             }
             h

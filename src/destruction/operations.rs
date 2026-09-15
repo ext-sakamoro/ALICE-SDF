@@ -165,7 +165,8 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
                 if (new_d - old_d).abs() > 1e-6 {
                     // Track volume removed (was inside, now outside or less inside)
                     if old_d < 0.0 && new_d > old_d {
-                        removed_volume += voxel_volume * (new_d - old_d).min(1.0);
+                        removed_volume =
+                            voxel_volume.mul_add((new_d - old_d).min(1.0), removed_volume);
                     }
 
                     grid.distances[idx] = new_d;

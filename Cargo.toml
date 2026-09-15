@@ -87,7 +87,7 @@ codec = ["dep:alice-codec"]  # wavelet + rANS SDF volume codec (alice-codec)
 asp = ["dep:libasp"]  # ALICE Streaming Protocol packets (libasp)
 sdf-cache = ["dep:alice-cache"]  # evaluation cache (alice-cache)
 font = []  # Font bridge gate — inert on crates.io, see above
-ffi = ["lazy_static"]  # C/C++/C# FFI bindings
+ffi = []  # C/C++/C# FFI bindings (registries use std::sync::LazyLock since 1.13.0)
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
 all-shaders = ["gpu", "hlsl", "glsl", "blinkscript"]  # All shader transpilers
@@ -140,8 +140,6 @@ alice-codec = { version = "0.1.2", optional = true }
 libasp = { version = "1.0", optional = true }
 alice-cache = { version = "0.2", optional = true }
 
-# FFI support (optional)
-lazy_static = { version = "1.5", optional = true }
 
 # JIT compilation (optional)
 cranelift-codegen = { version = "0.113", optional = true }

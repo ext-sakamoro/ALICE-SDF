@@ -30,10 +30,9 @@ use std::sync::{
 // Node Registry
 // ============================================================================
 
-lazy_static::lazy_static! {
-    /// Global registry of SDF nodes
-    static ref NODE_REGISTRY: RwLock<HashMap<u64, Arc<SdfNode>>> = RwLock::new(HashMap::new());
-}
+/// Global registry of SDF nodes
+static NODE_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<SdfNode>>>> =
+    std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Counter for generating unique handle IDs (nodes)
 static NODE_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -88,10 +87,9 @@ pub fn remove_node(handle: SdfHandle) {
 // Compiled SDF Registry (Deep Fried)
 // ============================================================================
 
-lazy_static::lazy_static! {
-    /// Global registry of compiled SDFs
-    static ref COMPILED_REGISTRY: RwLock<HashMap<u64, Arc<CompiledSdf>>> = RwLock::new(HashMap::new());
-}
+/// Global registry of compiled SDFs
+static COMPILED_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<CompiledSdf>>>> =
+    std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Counter for generating unique compiled handle IDs
 /// Uses high bits to distinguish from node handles
@@ -145,10 +143,9 @@ pub fn remove_compiled(handle: CompiledHandle) {
 // Mesh Registry
 // ============================================================================
 
-lazy_static::lazy_static! {
-    /// Global registry of generated meshes
-    static ref MESH_REGISTRY: RwLock<HashMap<u64, Arc<Mesh>>> = RwLock::new(HashMap::new());
-}
+/// Global registry of generated meshes
+static MESH_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<Mesh>>>> =
+    std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Counter for generating unique mesh handle IDs
 static MESH_COUNTER: AtomicU64 = AtomicU64::new(0x4000_0000_0000_0001);

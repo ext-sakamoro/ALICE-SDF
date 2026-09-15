@@ -85,6 +85,10 @@ jobs:
       - name: Test (integration)
         run: cargo test --tests
 
+      # feature-gated integration oracles (svo: tests/test_svo_query_oracle.rs)
+      - name: Test (integration, svo)
+        run: cargo test --features svo --test test_svo_query_oracle
+
       # doctest (= rustdoc 内 ```rust ブロック) は --lib / --tests では走らない
       # feedback_ci_errors_patterns B3: ``` 文字リテラル混入で doctest 落ちる罠予防
       - name: Test (doctests)
@@ -303,8 +307,11 @@ jobs:
         env:
           RUSTFLAGS: "-Dwarnings"
 
-      - name: Clippy strict (glsl + hlsl + gpu, all targets)
-        run: cargo clippy --all-targets --features "glsl,hlsl,gpu"
+      # Every feature-gated module is linted (the crate-wide pedantic /
+      # nursery policy in Cargo.toml applies to whatever is compiled): the
+      # docs.rs set + AAA + bridges + openvdb.
+      - name: Clippy strict (all features that build on Linux, all targets)
+        run: cargo clippy --all-targets --features "glsl,hlsl,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache"
         env:
           RUSTFLAGS: "-Dwarnings"
 

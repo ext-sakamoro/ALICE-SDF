@@ -110,35 +110,84 @@ pub fn svo_ray_query(
         return None;
     }
 
-    // Sphere trace through the SVO
+    // Sphere trace through the SVO. A node's distance is sampled at its
+    // centre, so at a point inside the node the true distance can be smaller
+    // by up to the node's half diagonal (the field is 1-Lipschitz): step by
+    // `dist − half_diag`, never by the raw value, and treat "within a half
+    // diagonal" as the surface being inside this leaf, located by bisecting
+    // the sign of the query between the last outside sample and here. Until
+    // 1.13.0 the loop stepped by the raw node value and required
+    // `|dist| < 0.001` on a piecewise-constant field — 23 % of rays through
+    // a CSG scene overshot and were lost (`tests/test_svo_query_oracle.rs`).
     let center = svo.bounds.center();
     let half_size = svo.bounds.half_size();
+    let root_half_diag = half_size.length();
+    let finest_half_diag = root_half_diag / (1u32 << svo.max_depth) as f32;
     let mut t = t_start + 0.001; // Small offset to get inside bounds
-    let max_steps = 256u32;
+    let mut t_prev = t;
+    let max_steps = 4096u32;
+    let t_end = max_distance.min(t_exit);
 
     for _ in 0..max_steps {
-        if t > max_distance.min(t_exit) {
+        if t > t_end {
             break;
         }
 
         let p = origin + dir * t;
-
-        // Query distance at current point
         let (dist, depth) = query_descent_with_depth(svo, 0, center, half_size, p, 0);
+        let half_diag = root_half_diag / (1u32 << depth) as f32;
 
-        // Hit surface
-        if dist.abs() < 0.001 {
-            let n = estimate_svo_normal(svo, p, center, half_size);
+        if dist < half_diag {
+            // The surface passes through this leaf (or we are inside): bisect
+            // the sign of the query between the last outside sample and here.
+            let (mut lo, mut hi) = (t_prev, t);
+            if dist >= 0.0 {
+                // still outside but within the leaf: the crossing is ahead,
+                // bracket it by walking one leaf at a time
+                let mut probe = t;
+                let mut found = false;
+                for _ in 0..64 {
+                    probe += finest_half_diag;
+                    if probe > t_end {
+                        break;
+                    }
+                    if query_descent(svo, 0, center, half_size, origin + dir * probe) < 0.0 {
+                        hi = probe;
+                        found = true;
+                        break;
+                    }
+                    lo = probe;
+                }
+                if !found {
+                    // no sign change within this leaf: keep marching
+                    t_prev = probe.min(t_end);
+                    t = finest_half_diag.mul_add(0.5, t_prev);
+                    continue;
+                }
+            }
+            for _ in 0..12 {
+                let mid = f32::midpoint(lo, hi);
+                if query_descent(svo, 0, center, half_size, origin + dir * mid) < 0.0 {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            let t_hit = f32::midpoint(lo, hi);
+            let p_hit = origin + dir * t_hit;
+            let (_, depth) = query_descent_with_depth(svo, 0, center, half_size, p_hit, 0);
+            let n = estimate_svo_normal(svo, p_hit, center, half_size);
             return Some(SvoRayHit {
-                distance: t,
-                position: p,
+                distance: t_hit,
+                position: p_hit,
                 normal: n,
                 depth,
             });
         }
 
-        // Advance by distance (sphere tracing)
-        t += dist.abs().max(0.001);
+        // Safe advance: the surface is at least `dist − half_diag` away
+        t_prev = t;
+        t += (dist - half_diag).max(finest_half_diag * 0.5);
     }
 
     None
