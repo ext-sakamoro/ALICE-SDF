@@ -13,7 +13,9 @@ use rayon::prelude::*;
 /// Dominant frequency band extracted from the image
 #[derive(Debug, Clone)]
 pub struct FrequencyBand {
-    /// Frequency in cycles per image width
+    /// DCT-II coefficient index `k` of the band (`k / 2` cycles across the
+    /// image, so a lattice noise with `f` cells across the image peaks around
+    /// `k ≈ f / 2` … `f`); a starting point for the fit, not a measurement.
     pub frequency: f32,
     /// Relative energy (amplitude estimate)
     pub energy: f32,
@@ -54,7 +56,7 @@ pub fn analyze_frequencies(
                 for (n, &val) in row.iter().enumerate() {
                     let angle = std::f64::consts::PI * 2.0f64.mul_add(n as f64, 1.0) * k as f64
                         / (2.0 * width as f64);
-                    sum += (val as f64 - mean) * angle.cos();
+                    sum = (val as f64 - mean).mul_add(angle.cos(), sum);
                 }
                 let coeff = sum / width as f64;
                 *energy = coeff * coeff;
@@ -85,7 +87,7 @@ pub fn analyze_frequencies(
                 for (n, chunk) in data.chunks(width).enumerate() {
                     let angle = std::f64::consts::PI * 2.0f64.mul_add(n as f64, 1.0) * k as f64
                         / (2.0 * height as f64);
-                    sum += (chunk[x] as f64 - mean) * angle.cos();
+                    sum = (chunk[x] as f64 - mean).mul_add(angle.cos(), sum);
                 }
                 let coeff = sum / height as f64;
                 *energy = coeff * coeff;

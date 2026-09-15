@@ -79,15 +79,15 @@ jobs:
 
       # Hard gate since 1.11.0: this used to be continue-on-error, which
       # made the transpiler unit tests a dead gate (external review 2026-09-15).
-      - name: Test (shader transpilers)
-        run: cargo test --lib --features "glsl,hlsl,gpu"
+      - name: Test (shader transpilers + texture-fit lib tests)
+        run: cargo test --lib --features "glsl,hlsl,gpu,texture-fit"
 
       - name: Test (integration)
         run: cargo test --tests
 
       # feature-gated integration oracles (svo: tests/test_svo_query_oracle.rs)
-      - name: Test (integration, svo)
-        run: cargo test --features svo --test test_svo_query_oracle
+      - name: Test (integration, feature-gated oracles: svo / texture-fit)
+        run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
       # doctest (= rustdoc 内 ```rust ブロック) は --lib / --tests では走らない
       # feedback_ci_errors_patterns B3: ``` 文字リテラル混入で doctest 落ちる罠予防
@@ -311,7 +311,7 @@ jobs:
       # nursery policy in Cargo.toml applies to whatever is compiled): the
       # docs.rs set + AAA + bridges + openvdb.
       - name: Clippy strict (all features that build on Linux, all targets)
-        run: cargo clippy --all-targets --features "glsl,hlsl,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache"
+        run: cargo clippy --all-targets --features "glsl,hlsl,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit"
         env:
           RUSTFLAGS: "-Dwarnings"
 

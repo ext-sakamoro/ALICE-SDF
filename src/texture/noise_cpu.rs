@@ -18,6 +18,13 @@ use wide::f32x8;
 /// CPU-side hash noise matching GPU `hash_noise_3d` exactly.
 ///
 /// Takes a 3D position and seed, returns value in [-1, 1].
+///
+/// Plain multiply / add in the same order as `hash_noise_3d_simd` and the
+/// shader, deliberately not `mul_add`: `fract(sin(dot) · 43758.5)` amplifies
+/// a 1-ulp difference in `dot` into a different corner value, and the SIMD
+/// lanes have no fused multiply-add on every target. The scalar / SIMD
+/// parity tests below are the guard.
+#[allow(clippy::suboptimal_flops)]
 #[inline]
 pub fn hash_noise_3d_cpu(px: f32, py: f32, pz: f32, seed: u32) -> f32 {
     let s = seed as f32;
@@ -29,9 +36,9 @@ pub fn hash_noise_3d_cpu(px: f32, py: f32, pz: f32, seed: u32) -> f32 {
     let fy = py - iy;
     let fz = pz - iz;
 
-    let ux = fx * fx * 2.0f32.mul_add(-fx, 3.0);
-    let uy = fy * fy * 2.0f32.mul_add(-fy, 3.0);
-    let uz = fz * fz * 2.0f32.mul_add(-fz, 3.0);
+    let ux = fx * fx * (3.0 - 2.0 * fx);
+    let uy = fy * fy * (3.0 - 2.0 * fy);
+    let uz = fz * fz * (3.0 - 2.0 * fz);
 
     let n000 = hash_corner(ix, iy, iz, s);
     let n100 = hash_corner(ix + 1.0, iy, iz, s);
@@ -52,9 +59,10 @@ pub fn hash_noise_3d_cpu(px: f32, py: f32, pz: f32, seed: u32) -> f32 {
     lerp(c0, c1, uz) * 2.0 - 1.0
 }
 
+#[allow(clippy::suboptimal_flops)] // same operation order as hash_corner_simd
 #[inline(always)]
 fn hash_corner(ix: f32, iy: f32, iz: f32, seed: f32) -> f32 {
-    let dot = iz.mul_add(74.7, ix.mul_add(127.1, iy * 311.7)) + seed;
+    let dot = ix * 127.1 + iy * 311.7 + iz * 74.7 + seed;
     fract_scalar(dot.sin() * 43_758.547)
 }
 
@@ -63,9 +71,10 @@ fn fract_scalar(x: f32) -> f32 {
     x - x.floor()
 }
 
+#[allow(clippy::suboptimal_flops)] // same operation order as lerp_simd
 #[inline(always)]
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    (b - a).mul_add(t, a)
+    a + (b - a) * t
 }
 
 /// Evaluate noise for 2D UV with z=0 (texture fitting shortcut)
@@ -75,6 +84,9 @@ pub fn hash_noise_2d(u: f32, v: f32, seed: u32) -> f32 {
 }
 
 /// Evaluate a single octave: amplitude * noise(uv * frequency + phase, seed)
+///
+/// Same operation order as `eval_octave_simd` (see [`hash_noise_3d_cpu`]).
+#[allow(clippy::suboptimal_flops)]
 #[inline]
 pub fn eval_octave(
     u: f32,
@@ -86,14 +98,9 @@ pub fn eval_octave(
     rotation: f32,
 ) -> f32 {
     let (sin_r, cos_r) = rotation.sin_cos();
-    let ru = u.mul_add(cos_r, -(v * sin_r));
-    let rv = u.mul_add(sin_r, v * cos_r);
-    amplitude
-        * hash_noise_2d(
-            ru.mul_add(frequency, phase[0]),
-            rv.mul_add(frequency, phase[1]),
-            seed,
-        )
+    let ru = u * cos_r - v * sin_r;
+    let rv = u * sin_r + v * cos_r;
+    amplitude * hash_noise_2d(ru * frequency + phase[0], rv * frequency + phase[1], seed)
 }
 
 // ──────────────────────────── SIMD (Deep Fried) ────────────────────────────

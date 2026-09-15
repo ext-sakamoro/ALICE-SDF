@@ -22,7 +22,7 @@ quick=0
 [[ "${1:-}" == "--quick" ]] && quick=1
 
 # Feature sets, verbatim from the workflows.
-LINUX_ALL='glsl,hlsl,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache'
+LINUX_ALL='glsl,hlsl,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit'
 DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi'
 BRIDGES='physics,codec,asp,sdf-cache'
 MSRV=1.85
@@ -131,14 +131,14 @@ fi
 step "test: cargo test --lib"
 cargo test --lib
 
-step "test: cargo test --lib --features glsl,hlsl,gpu (shader transpilers)"
-cargo test --lib --features "glsl,hlsl,gpu"
+step "test: cargo test --lib --features glsl,hlsl,gpu,texture-fit (shader transpilers + texture-fit)"
+cargo test --lib --features "glsl,hlsl,gpu,texture-fit"
 
 step "test: cargo test --tests (integration)"
 cargo test --tests
 
-step "test: svo oracle"
-cargo test --features svo --test test_svo_query_oracle
+step "test: feature-gated oracles (svo / texture-fit)"
+cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
 step "test: cargo test --doc"
 cargo test --doc

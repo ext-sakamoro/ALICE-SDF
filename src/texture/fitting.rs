@@ -20,7 +20,7 @@ use std::path::Path;
 use wide::f32x8;
 
 use super::noise_cpu::{eval_octave, eval_octave_simd, f32x8_sum};
-use super::optimizer::nelder_mead;
+use super::optimizer::{nelder_mead, OptimizeResult};
 use super::spectrum::analyze_frequencies;
 use super::{FittedOctave, TextureFitConfig, TextureFitResult};
 
@@ -37,6 +37,8 @@ struct SubsampleGrid {
     src_y: Vec<usize>,
     /// Actual (non-padded) pixel count
     count: usize,
+    /// 1.0 for real samples, 0.0 for padding lanes (padded to multiple of 8)
+    mask: Vec<f32>,
 }
 
 impl SubsampleGrid {
@@ -63,12 +65,15 @@ impl SubsampleGrid {
             }
         }
 
-        // Pad with zeros (won't affect cost since residual is also 0)
+        // Pad to a multiple of 8. The padded lanes evaluate the octave at
+        // (0, 0), which is not zero, so the cost masks them out.
+        let mut mask = vec![1.0f32; count];
         while u.len() < padded {
             u.push(0.0);
             v.push(0.0);
             src_x.push(0);
             src_y.push(0);
+            mask.push(0.0);
         }
 
         Self {
@@ -77,6 +82,7 @@ impl SubsampleGrid {
             src_x,
             src_y,
             count,
+            mask,
         }
     }
 
@@ -118,8 +124,9 @@ fn fit_channel(
 ) -> Result<(f32, Vec<FittedOctave>, f32, f32), String> {
     let n = pixels.len();
 
-    // 1. DC bias (mean)
-    let mean: f32 = pixels.iter().sum::<f32>() / n as f32;
+    // 1. DC bias (mean), accumulated in f64: a naive f32 sum over a
+    //    4096 × 4096 image is off in the third decimal.
+    let mean = (pixels.iter().map(|&p| f64::from(p)).sum::<f64>() / n as f64) as f32;
 
     // 2. Residual
     let mut residual: Vec<f32> = pixels.iter().map(|&p| p - mean).collect();
@@ -152,93 +159,133 @@ fn fit_channel(
 
         let seed = octave_idx;
 
-        let initial = [init_amp, init_freq, 0.0f32, 0.0, 0.0];
-        let step_sizes = [init_amp * 0.5, init_freq * 0.3, 0.5, 0.5, 0.3];
-
         // References for closure
         let grid_u = &grid.u;
         let grid_v = &grid.v;
+        let grid_mask = &grid.mask;
         let sub_res = &sub_residual;
-        let actual_count = grid.count;
 
         // [Deep Fried] SIMD + parallel cost function
+        let cost = |params: &[f32]| -> f64 {
+            let amp = params[0];
+            let freq = params[1].abs();
+            let phase = [params[2], params[3]];
+            let rot = params[4];
+
+            // Process in chunks of 2048 pixels (rayon parallelism)
+            // Each chunk uses SIMD 8-wide evaluation
+            let total_err: f64 = grid_u
+                .par_chunks(2048)
+                .zip(grid_v.par_chunks(2048))
+                .zip(sub_res.par_chunks(2048))
+                .zip(grid_mask.par_chunks(2048))
+                .map(|(((u_chunk, v_chunk), res_chunk), mask_chunk)| {
+                    let mut chunk_err = 0.0f64;
+
+                    // [Deep Fried] Process 8 pixels at a time with SIMD
+                    let simd_chunks = u_chunk.len() / 8;
+                    for i in 0..simd_chunks {
+                        let base = i * 8;
+                        let u8 = f32x8::new([
+                            u_chunk[base],
+                            u_chunk[base + 1],
+                            u_chunk[base + 2],
+                            u_chunk[base + 3],
+                            u_chunk[base + 4],
+                            u_chunk[base + 5],
+                            u_chunk[base + 6],
+                            u_chunk[base + 7],
+                        ]);
+                        let v8 = f32x8::new([
+                            v_chunk[base],
+                            v_chunk[base + 1],
+                            v_chunk[base + 2],
+                            v_chunk[base + 3],
+                            v_chunk[base + 4],
+                            v_chunk[base + 5],
+                            v_chunk[base + 6],
+                            v_chunk[base + 7],
+                        ]);
+                        let r8 = f32x8::new([
+                            res_chunk[base],
+                            res_chunk[base + 1],
+                            res_chunk[base + 2],
+                            res_chunk[base + 3],
+                            res_chunk[base + 4],
+                            res_chunk[base + 5],
+                            res_chunk[base + 6],
+                            res_chunk[base + 7],
+                        ]);
+
+                        let m8 = f32x8::new([
+                            mask_chunk[base],
+                            mask_chunk[base + 1],
+                            mask_chunk[base + 2],
+                            mask_chunk[base + 3],
+                            mask_chunk[base + 4],
+                            mask_chunk[base + 5],
+                            mask_chunk[base + 6],
+                            mask_chunk[base + 7],
+                        ]);
+
+                        let val = eval_octave_simd(u8, v8, amp, freq, phase, seed, rot);
+                        let diff = (r8 - val) * m8;
+                        let diff2 = diff * diff;
+                        chunk_err += f32x8_sum(diff2) as f64;
+                    }
+
+                    // Scalar remainder
+                    let remainder_start = simd_chunks * 8;
+                    for j in remainder_start..u_chunk.len() {
+                        let val = eval_octave(u_chunk[j], v_chunk[j], amp, freq, phase, seed, rot);
+                        let diff = ((res_chunk[j] - val) * mask_chunk[j]) as f64;
+                        chunk_err = diff.mul_add(diff, chunk_err);
+                    }
+
+                    chunk_err
+                })
+                .sum();
+
+            total_err
+        };
+
+        // The cost is multimodal in frequency (the DCT band is a half-cycle
+        // index of a row / column projection, a coarse estimate of the
+        // lattice frequency) and periodic in phase, and Nelder-Mead is a
+        // local method: from a single start it settled in a wrong basin for
+        // a texture that *is* one octave of this law (NMSE 0.63 instead of
+        // 0). Scan a small grid of frequency octaves × phase quadrants with
+        // a short budget, then refine the best start with the full budget.
+        let max_freq = width.max(height) as f32 / 2.0;
+        let scan_iters = (config.iterations_per_octave / 5).max(50);
+        let mut best: Option<OptimizeResult> = None;
+        for freq_scale in [0.5f32, 1.0, 2.0, 4.0] {
+            let f0 = (init_freq * freq_scale).clamp(1.0, max_freq);
+            for phase_u in [0.0f32, 0.5] {
+                for phase_v in [0.0f32, 0.5] {
+                    let initial = [init_amp, f0, phase_u, phase_v, 0.0];
+                    let step_sizes = [init_amp * 0.5, f0 * 0.3, 0.5, 0.5, 0.3];
+                    let r = nelder_mead(&initial, &step_sizes, scan_iters, cost);
+                    if best.as_ref().is_none_or(|b| r.cost < b.cost) {
+                        best = Some(r);
+                    }
+                }
+            }
+        }
+        let start = best.expect("scan grid is non-empty");
+        let f0 = start.params[1].abs().max(1e-3);
+        let step_sizes = [
+            start.params[0].abs().max(1e-3) * 0.25,
+            f0 * 0.1,
+            0.25,
+            0.25,
+            0.15,
+        ];
         let result = nelder_mead(
-            &initial,
+            &start.params,
             &step_sizes,
             config.iterations_per_octave,
-            |params| {
-                let amp = params[0];
-                let freq = params[1].abs();
-                let phase = [params[2], params[3]];
-                let rot = params[4];
-
-                // Process in chunks of 2048 pixels (rayon parallelism)
-                // Each chunk uses SIMD 8-wide evaluation
-                let total_err: f64 = grid_u
-                    .par_chunks(2048)
-                    .zip(grid_v.par_chunks(2048))
-                    .zip(sub_res.par_chunks(2048))
-                    .map(|((u_chunk, v_chunk), res_chunk)| {
-                        let mut chunk_err = 0.0f64;
-
-                        // [Deep Fried] Process 8 pixels at a time with SIMD
-                        let simd_chunks = u_chunk.len() / 8;
-                        for i in 0..simd_chunks {
-                            let base = i * 8;
-                            let u8 = f32x8::new([
-                                u_chunk[base],
-                                u_chunk[base + 1],
-                                u_chunk[base + 2],
-                                u_chunk[base + 3],
-                                u_chunk[base + 4],
-                                u_chunk[base + 5],
-                                u_chunk[base + 6],
-                                u_chunk[base + 7],
-                            ]);
-                            let v8 = f32x8::new([
-                                v_chunk[base],
-                                v_chunk[base + 1],
-                                v_chunk[base + 2],
-                                v_chunk[base + 3],
-                                v_chunk[base + 4],
-                                v_chunk[base + 5],
-                                v_chunk[base + 6],
-                                v_chunk[base + 7],
-                            ]);
-                            let r8 = f32x8::new([
-                                res_chunk[base],
-                                res_chunk[base + 1],
-                                res_chunk[base + 2],
-                                res_chunk[base + 3],
-                                res_chunk[base + 4],
-                                res_chunk[base + 5],
-                                res_chunk[base + 6],
-                                res_chunk[base + 7],
-                            ]);
-
-                            let val = eval_octave_simd(u8, v8, amp, freq, phase, seed, rot);
-                            let diff = r8 - val;
-                            let diff2 = diff * diff;
-                            chunk_err += f32x8_sum(diff2) as f64;
-                        }
-
-                        // Scalar remainder
-                        let remainder_start = simd_chunks * 8;
-                        for j in remainder_start..u_chunk.len() {
-                            let val =
-                                eval_octave(u_chunk[j], v_chunk[j], amp, freq, phase, seed, rot);
-                            let diff = (res_chunk[j] - val) as f64;
-                            chunk_err += diff * diff;
-                        }
-
-                        chunk_err
-                    })
-                    .sum();
-
-                // Only count actual pixels (not padding)
-                let _ = actual_count;
-                total_err
-            },
+            cost,
         );
 
         let amp = result.params[0];
@@ -354,8 +401,12 @@ fn compute_nmse(original: &[f32], residual: &[f32], mean: f32) -> f32 {
     (mse / variance) as f32
 }
 
-/// [Deep Fried] Reconstruct texture with SIMD + rayon at arbitrary resolution
-#[allow(dead_code)]
+/// Reconstruct the fitted texture at an arbitrary resolution (SIMD + rayon).
+///
+/// Evaluates `bias + Σ octave(u, v)` at pixel centres `u = x / width`,
+/// `v = y / height` and clamps to `[0, 1]`. At the source resolution this is
+/// exactly the signal whose residual `psnr_db` / `nmse` were measured on
+/// (up to the clamp).
 pub fn reconstruct(result: &TextureFitResult, width: usize, height: usize) -> Vec<f32> {
     let mut buffer = vec![0.0f32; width * height];
 

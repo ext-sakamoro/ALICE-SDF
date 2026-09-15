@@ -6,6 +6,36 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — texture-fit (found by the new oracle; the feature had no CI test step)
+
+- The scalar noise (`hash_noise_3d_cpu`, `eval_octave`) had drifted from
+  the SIMD lanes: the 1.12.0 clippy pass rewrote it with `mul_add`, and
+  `fract(sin(dot) · 43758.5)` turns a 1-ulp difference in `dot` into a
+  different corner value (`test_simd_matches_scalar` had been failing;
+  no CI step ran the `texture-fit` tests). Scalar and SIMD now share one
+  operation order, `#[allow(clippy::suboptimal_flops)]` with the reason.
+- The fitter could not recover a texture that *is* one octave of its own
+  law (NMSE 0.63 from a single Nelder-Mead start: the DCT band index is a
+  coarse frequency estimate and the cost is periodic in phase). Each
+  octave now scans 4 frequency scales × 4 phase quadrants with a short
+  budget and refines the best start with the full budget; the same
+  texture fits to NMSE 0.08 / 29 dB in one octave.
+- Padded SIMD lanes of the subsampled cost (sample counts that are not a
+  multiple of 8) contributed `amp² · noise(phase)²` each; masked out.
+- DC bias accumulated in f32 (third decimal off on large images); f64.
+- `TextureFitConfig::tileable` is documented as having no effect (the
+  hash lattice does not wrap); `FrequencyBand::frequency` is documented
+  as the DCT-II index, not cycles per image.
+- Public: `texture::{reconstruct, eval_octave, nelder_mead, OptimizeResult}`.
+- Oracle `tests/test_texture_fit_oracle.rs`: Nelder-Mead on a quadratic
+  bowl / Rosenbrock / monotonicity, `eval_octave` vs an independent
+  evaluation, noise range and continuity, flat image → bias only,
+  synthesized octave recovered with reported PSNR ≡ PSNR of `reconstruct`
+  and NMSE ≡ MSE / Var, more octaves never worse, determinism, padded vs
+  aligned grid, and naga validation of the emitted WGSL / GLSL. CI runs
+  the `texture-fit` lib tests and this oracle; clippy covers the module.
+  Pending: a GPU parity run of the emitted shader against `reconstruct`.
+
 ### Changed — `lazy_static` compatibility feature, local CI preflight
 
 - The FFI registries use `std::sync::LazyLock`; the `lazy_static` optional

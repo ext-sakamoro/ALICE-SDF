@@ -3,14 +3,13 @@
 //! Minimizes a cost function `f: &[f32] -> f64` over a parameter vector.
 
 /// Nelder-Mead simplex optimizer result
+#[derive(Debug, Clone)]
 pub struct OptimizeResult {
     /// Best parameter vector found
     pub params: Vec<f32>,
     /// Cost at the best point
-    #[allow(dead_code)]
     pub cost: f64,
     /// Number of iterations performed
-    #[allow(dead_code)]
     pub iterations: u32,
 }
 

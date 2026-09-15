@@ -5,8 +5,12 @@
 //!
 //! `texture(u,v) ≈ bias + Σᵢ aᵢ · noise(uv · fᵢ + φᵢ, seedᵢ)`
 //!
-//! The CPU noise implementation exactly matches the GPU `hash_noise_3d`
-//! used in WGSL/HLSL/GLSL shaders, guaranteeing CPU fitting = GPU rendering.
+//! The CPU noise (`hash_noise_3d_cpu`, scalar and SIMD) is the same law in
+//! the same operation order as the `hash_noise_3d` helper the generated
+//! WGSL / HLSL / GLSL shaders embed. Scalar ≡ SIMD is tested bit-for-bit;
+//! CPU vs GPU depends on the backend's `sin` and is not yet measured
+//! (`tests/test_texture_fit_oracle.rs` validates the emitted shaders with
+//! naga; a GPU parity run is pending).
 
 mod fitting;
 mod noise_cpu;
@@ -14,8 +18,9 @@ mod optimizer;
 mod shader;
 mod spectrum;
 
-pub use fitting::fit_texture;
-pub use noise_cpu::hash_noise_3d_cpu;
+pub use fitting::{fit_texture, reconstruct};
+pub use noise_cpu::{eval_octave, hash_noise_3d_cpu};
+pub use optimizer::{nelder_mead, OptimizeResult};
 pub use shader::{generate_shader, ShaderLanguage};
 
 use serde::{Deserialize, Serialize};
@@ -63,6 +68,11 @@ pub struct TextureFitConfig {
     /// Nelder-Mead iterations per octave (default: 500)
     pub iterations_per_octave: u32,
     /// Whether the texture should tile seamlessly (default: true)
+    ///
+    /// Currently has no effect: the hash-lattice noise the fit is expressed
+    /// in does not wrap, so no choice of parameters makes the reconstruction
+    /// seamless. Kept so that the field can be honoured once the noise
+    /// lattice is made periodic (see CHANGELOG).
     pub tileable: bool,
 }
 
