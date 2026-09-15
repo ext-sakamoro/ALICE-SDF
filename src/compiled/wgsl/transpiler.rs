@@ -1504,21 +1504,30 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"fn bezier_distance_2d(q: vec2<f32>, p0
 ";
 
 const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_r: f32, pitch: f32, hh: f32) -> f32 {
-    let r_xz = length(vec2<f32>(p.x, p.z));
-    let theta = atan2(p.z, p.x);
-    let py = p.y;
     let tau = 6.28318530717959;
-    let d_radial = r_xz - major_r;
-    let y_at_theta = theta * pitch / tau;
-    let k = floor((py - y_at_theta) / pitch + 0.5);
-    var d_tube = 1e20;
+    let r = length(vec2<f32>(p.x, p.z));
+    let theta = select(0.0, atan2(p.z, p.x), r > 0.0);
+    let py = p.y;
+    let c = pitch / tau;
+    let two_rr = 2.0 * r * major_r;
+    let k = floor((py - theta * c) / pitch + 0.5);
+    var best = 1e30;
     for (var dk = -1.0; dk <= 1.0; dk = dk + 1.0) {
-        let kk = k + dk;
-        let y_helix = y_at_theta + kk * pitch;
-        let dy = py - y_helix;
-        let d = length(vec2<f32>(d_radial, dy)) - minor_r;
-        d_tube = min(d_tube, d);
+        var phi = theta + (k + dk) * tau;
+        for (var it = 0; it < 6; it = it + 1) {
+            let s = sin(phi - theta);
+            let co = cos(phi - theta);
+            let dy = py - c * phi;
+            let f1 = two_rr * s - 2.0 * c * dy;
+            let f2 = max(two_rr * co + 2.0 * c * c, 1e-6);
+            phi = phi - clamp(f1 / f2, -1.5707963, 1.5707963);
+        }
+        let co = cos(phi - theta);
+        let dy = py - c * phi;
+        let d2 = r * r + major_r * major_r - two_rr * co + dy * dy;
+        best = min(best, d2);
     }
+    let d_tube = sqrt(best) - minor_r;
     let d_cap = abs(py) - hh;
     return max(d_tube, d_cap);
 }

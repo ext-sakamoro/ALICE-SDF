@@ -1335,7 +1335,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Egg { .. }
         | SdfNode::Horseshoe { .. }
         | SdfNode::BlobbyCross { .. }
-        | SdfNode::Stairs { .. } => 1.0,
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. } => 1.0,
 
         // Triply periodic minimal surfaces: `|F(p·s)| / s − t` with F an
         // implicit trigonometric function, so L = sup|∇F| independent of
@@ -1365,11 +1366,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             TERRAIN_FBM_GRAD.mul_add((scale * amplitude).abs(), 1.0)
         }
 
-        // Laws that are not Lipschitz on the exterior: the IQ ellipsoid
-        // approximation's gradient grows like (max r / min r)⁴ in the far
-        // field; the helix selects a nearest wrap per angle and is undefined
-        // on its axis.
-        SdfNode::Ellipsoid { .. } | SdfNode::Helix { .. } => f32::INFINITY,
+        // Not Lipschitz on the exterior: the IQ ellipsoid approximation's
+        // gradient grows like (max r / min r)⁴ in the far field.
+        SdfNode::Ellipsoid { .. } => f32::INFINITY,
 
         // min / max and every convex blend (smooth, exp-smooth: the weights
         // on ∇a and ∇b sum to 1) are 1-Lipschitz in (a, b).

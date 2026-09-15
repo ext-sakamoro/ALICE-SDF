@@ -178,6 +178,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   takes the exact minimum over all `n_steps` boxes (CPU and the three
   shader helpers, GPU ↔ CPU 2.4e-7); `eval_lipschitz` is 1.
 
+- `Helix` measured the distance to the helix point at the query's own
+  azimuth (an over-estimate, and undefined on the axis, where the field
+  jumped by 15× the sample spacing). It now finds the true nearest curve
+  point by Newton from the same-azimuth candidates of the three nearest
+  wraps (brute-force agreement 2e-3 over three pitch / radius ratios,
+  continuous on the axis, azimuth pinned to 0 there because GPU `atan2(0, 0)`
+  is NaN); the three shader helpers mirror it (GPU ↔ CPU 1.7e-6) and
+  `eval_lipschitz` is 1.
+
 ### Changed — compiled evaluator speed (review SDF-R2-4)
 
 - `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,
