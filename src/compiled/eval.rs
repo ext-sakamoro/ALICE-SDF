@@ -13,6 +13,11 @@ use glam::Vec3;
 ///
 /// This is the main entry point for compiled SDF evaluation.
 /// It uses a stack-based approach instead of recursion.
+///
+/// For many points prefer [`eval_compiled_batch_simd`](super::eval_compiled_batch_simd)
+/// (8 lanes per instruction stream, ~2.5–4× this per point); the scalar VM
+/// itself is faster than the tree walker from ~5 nodes up (1.11.0: the
+/// evaluator stacks are no longer zero-filled per call).
 #[inline]
 pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
     eval_bytecode::<f32>(&sdf.instructions, &sdf.aux_data, point.into())

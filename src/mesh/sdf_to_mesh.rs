@@ -271,27 +271,34 @@ pub fn marching_cubes(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCub
     let size = max - min;
     let cell_size = size / resolution as f32;
 
-    // Evaluate SDF on grid (parallel)
+    // Evaluate SDF on grid. The grid is the hot loop of mesh generation
+    // ((res + 1)³ evaluations, 2.1 M at res 128): compile once and run the
+    // 8-lane SIMD batch evaluator (tree ≡ compiled ≡ SIMD by the parity
+    // corpus); trees the compiler rejects (Terrain, Triangle, Bezier) fall
+    // back to the tree walker. Review SDF-R2-4: the tree path ran at
+    // 6.7 M evals/s where the SIMD batch does ~4× that.
     let grid_size = resolution + 1;
     let total_points = grid_size * grid_size * grid_size;
-
-    let values: Vec<f32> = (0..total_points)
-        .into_par_iter()
-        .map(|i| {
-            let x = i % grid_size;
-            let y = (i / grid_size) % grid_size;
-            let z = i / (grid_size * grid_size);
-
-            let point = min
-                + Vec3::new(
-                    x as f32 * cell_size.x,
-                    y as f32 * cell_size.y,
-                    z as f32 * cell_size.z,
-                );
-
-            eval(node, point)
-        })
-        .collect();
+    let grid_point = |i: usize| {
+        let x = i % grid_size;
+        let y = (i / grid_size) % grid_size;
+        let z = i / (grid_size * grid_size);
+        min + Vec3::new(
+            x as f32 * cell_size.x,
+            y as f32 * cell_size.y,
+            z as f32 * cell_size.z,
+        )
+    };
+    let values: Vec<f32> = match CompiledSdf::try_compile(node) {
+        Ok(compiled) => {
+            let points: Vec<Vec3> = (0..total_points).into_par_iter().map(grid_point).collect();
+            eval_compiled_batch_simd_parallel(&compiled, &points)
+        }
+        Err(_) => (0..total_points)
+            .into_par_iter()
+            .map(|i| eval(node, grid_point(i)))
+            .collect(),
+    };
 
     // Z-slab parallelization: each Z processes independently, then merge
     let sub_meshes: Vec<Mesh> = (0..resolution)

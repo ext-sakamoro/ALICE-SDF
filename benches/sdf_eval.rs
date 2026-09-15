@@ -244,6 +244,34 @@ fn bench_marching_cubes(c: &mut Criterion) {
         });
     }
 
+    // ~20-node CSG (the external review's scene class): grid evaluation
+    // dominates here, not cell processing.
+    let complex = SdfNode::sphere(1.0)
+        .smooth_union(SdfNode::box3d(0.8, 0.8, 0.8), 0.1)
+        .smooth_subtract(SdfNode::cylinder(0.3, 2.0), 0.05)
+        .smooth_union(
+            SdfNode::cylinder(0.3, 2.0).rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0),
+            0.1,
+        )
+        .smooth_union(
+            SdfNode::cylinder(0.3, 2.0).rotate_euler(0.0, 0.0, std::f32::consts::FRAC_PI_2),
+            0.1,
+        )
+        .twist(0.1)
+        .round(0.02)
+        .translate(0.0, 0.5, 0.0);
+    for res in [64, 128] {
+        let config = MarchingCubesConfig {
+            resolution: res,
+            iso_level: 0.0,
+            compute_normals: true,
+            ..Default::default()
+        };
+        group.bench_with_input(BenchmarkId::new("complex", res), &config, |b, config| {
+            b.iter(|| sdf_to_mesh(black_box(&complex), min, max, config));
+        });
+    }
+
     group.finish();
 }
 

@@ -136,6 +136,20 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   per call (a tree walk; twist / bend children cost an AABB pass) — the batch
   / render functions compute it once and the compiled marchers not at all.
 
+### Changed — compiled evaluator speed (review SDF-R2-4)
+
+- `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,
+  ≈ 6 KB for the SIMD lanes) on every call, a ≈ 21 ns fixed cost that made
+  the "recommended" scalar VM slower than the tree walker for anything
+  under ~30 nodes (sphere 30 ns vs 8.6 ns, 20-node CSG 82 ns vs 63 ns). The
+  stacks are now uninitialised slots written before they are read (the
+  stack discipline of the bytecode; debug builds assert every read):
+  sphere 4.0 ns, 20-node CSG 58 ns. The SIMD batch path shares the gain.
+- `sdf_to_mesh` / `marching_cubes` evaluate the grid through the compiled
+  SIMD batch evaluator (tree ≡ compiled by the parity corpus), falling back
+  to the tree walker only for trees the compiler rejects: the 20-node scene
+  at res 128 goes from 60 ms to 38 ms (bench `marching_cubes/complex`).
+
 ### Fixed — external review 2026-09-15 (transpiler validation, found by the new naga oracle)
 
 - The five GDF polyhedra (`Tetrahedron`, `Dodecahedron`, `Icosahedron`,

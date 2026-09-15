@@ -19,11 +19,60 @@ use super::prim_table::PrimTable;
 use super::real::{self, Real, Vec3R};
 use crate::modifiers::perlin_noise_3d;
 use glam::{Quat, Vec2, Vec3};
+use std::mem::MaybeUninit;
 
 /// Maximum stack depth for value stack
 pub(super) const MAX_VALUE_STACK: usize = 64;
 /// Maximum stack depth for coordinate transforms
 pub(super) const MAX_COORD_STACK: usize = 32;
+
+/// Fixed-capacity, uninitialised slot array for the evaluator stacks.
+///
+/// The bytecode is a post-order stack program: a value is read at index `i`
+/// only after `prim!` / `bin!` wrote it there, a frame at `csp` only after
+/// `push_frame!` stored it, and the per-frame lane only after the pushing
+/// opcode set it. Debug builds record every initialised slot and assert it
+/// on read; release builds pay nothing for the discipline.
+struct Slots<T: Copy, const N: usize> {
+    buf: [MaybeUninit<T>; N],
+    #[cfg(debug_assertions)]
+    init: u64,
+}
+
+impl<T: Copy, const N: usize> Slots<T, N> {
+    const _FITS_MASK: () = assert!(N <= 64, "debug init mask is a u64");
+
+    #[inline(always)]
+    fn new() -> Self {
+        let () = Self::_FITS_MASK;
+        Self {
+            buf: [const { MaybeUninit::uninit() }; N],
+            #[cfg(debug_assertions)]
+            init: 0,
+        }
+    }
+
+    #[inline(always)]
+    fn set(&mut self, i: usize, v: T) {
+        self.buf[i].write(v);
+        #[cfg(debug_assertions)]
+        {
+            self.init |= 1u64 << i;
+        }
+    }
+
+    #[inline(always)]
+    fn get(&self, i: usize) -> T {
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            self.init & (1u64 << i) != 0,
+            "evaluator stack slot {i} read before it was written"
+        );
+        // SAFETY: `set` wrote slot `i` before any read of it — the bytecode
+        // is a stack program (see the type doc); debug builds assert it.
+        unsafe { self.buf[i].assume_init() }
+    }
+}
 
 /// Coordinate frame on the transform stack
 #[derive(Clone, Copy)]
@@ -51,20 +100,19 @@ pub(super) fn eval_bytecode<R: PrimTable>(
     aux_data: &[f32],
     point: Vec3R<R>,
 ) -> R {
-    let mut value_stack: [R; MAX_VALUE_STACK] = [R::zero(); MAX_VALUE_STACK];
+    // Uninitialised slots: zero-filling ~3.4 KB (f32) / ~6 KB (f32x8) of
+    // stack per call cost ≈ 21 ns, which made `eval_compiled` slower than
+    // the tree walker for anything under ~30 nodes (external review
+    // 2026-09-15, SDF-R2-4). Every read is preceded by a write at the same
+    // index by the stack discipline below; debug builds check it.
+    let mut value_stack: Slots<R, MAX_VALUE_STACK> = Slots::new();
     let mut vsp: usize = 0;
 
-    let mut coord_stack: [Frame<R>; MAX_COORD_STACK] = [Frame {
-        point: Vec3R::zero(),
-        opcode: OpCode::End,
-        params: [0.0; 4],
-        aux_offset: 0,
-        aux_len: 0,
-    }; MAX_COORD_STACK];
+    let mut coord_stack: Slots<Frame<R>, MAX_COORD_STACK> = Slots::new();
     // Per-frame lane value written only by the opcodes that need it at PopTransform:
     // Extrude (original z) and LatticeDeform (Jacobian correction). Kept out of
     // `Frame` so the common push stays as small as a pre-1.10 frame.
-    let mut frame_lane: [R; MAX_COORD_STACK] = [R::zero(); MAX_COORD_STACK];
+    let mut frame_lane: Slots<R, MAX_COORD_STACK> = Slots::new();
     let mut csp: usize = 0;
 
     let mut p = point;
@@ -77,33 +125,36 @@ pub(super) fn eval_bytecode<R: PrimTable>(
         ($inst:expr, $op:expr) => {{
             // Direct struct-literal store (no temporary): keeps the push at ~one
             // store per field like the pre-1.10 evaluators.
-            coord_stack[csp] = Frame {
-                point: p,
-                opcode: $op,
-                params: [
-                    $inst.params[0],
-                    $inst.params[1],
-                    $inst.params[2],
-                    $inst.params[3],
-                ],
-                aux_offset: $inst.aux_offset,
-                aux_len: $inst.aux_len,
-            };
+            coord_stack.set(
+                csp,
+                Frame {
+                    point: p,
+                    opcode: $op,
+                    params: [
+                        $inst.params[0],
+                        $inst.params[1],
+                        $inst.params[2],
+                        $inst.params[3],
+                    ],
+                    aux_offset: $inst.aux_offset,
+                    aux_len: $inst.aux_len,
+                },
+            );
             csp += 1;
         }};
     }
     macro_rules! prim {
         ($inst:expr, $law:ident) => {{
-            value_stack[vsp] = R::$law($inst, aux_data, p, scale_correction);
+            value_stack.set(vsp, R::$law($inst, aux_data, p, scale_correction));
             vsp += 1;
         }};
     }
     macro_rules! bin {
         ($inst:expr, $law:ident) => {{
             vsp -= 1;
-            let b = value_stack[vsp];
-            let a = value_stack[vsp - 1];
-            value_stack[vsp - 1] = R::$law($inst, a, b);
+            let b = value_stack.get(vsp);
+            let a = value_stack.get(vsp - 1);
+            value_stack.set(vsp - 1, R::$law($inst, a, b));
         }};
     }
 
@@ -183,9 +234,9 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                     });
                     p = q;
                     // Tree law: eval(child, q) / correction — applied at PopTransform
-                    frame_lane[csp - 1] = correction;
+                    frame_lane.set(csp - 1, correction);
                 } else {
-                    frame_lane[csp - 1] = R::one();
+                    frame_lane.set(csp - 1, R::one());
                 }
             }
             OpCode::SdfSkinning => {
@@ -256,7 +307,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             }
             OpCode::Extrude => {
                 push_frame!(inst, op);
-                frame_lane[csp - 1] = p.z; // original z for the post-process
+                frame_lane.set(csp - 1, p.z); // original z for the post-process
                 p = real::extrude_point(p);
             }
             OpCode::Taper => {
@@ -326,25 +377,36 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
-                let frame = coord_stack[csp];
+                let frame = coord_stack.get(csp);
 
                 // Post-processing keyed on the opcode that pushed the frame; point-only
                 // transforms / modifiers fall through without touching the value stack.
                 match frame.opcode {
                     OpCode::Scale => {
                         // params[1] = factor: d = factor * f(p / factor)
-                        value_stack[vsp - 1] = value_stack[vsp - 1] * R::splat(frame.params[1]);
+                        value_stack.set(
+                            vsp - 1,
+                            value_stack.get(vsp - 1) * R::splat(frame.params[1]),
+                        );
                     }
                     OpCode::ScaleNonUniform => {
                         // params[3] = min(sx, sy, sz): conservative Lipschitz bound
-                        value_stack[vsp - 1] = value_stack[vsp - 1] * R::splat(frame.params[3]);
+                        value_stack.set(
+                            vsp - 1,
+                            value_stack.get(vsp - 1) * R::splat(frame.params[3]),
+                        );
                     }
                     OpCode::Round => {
-                        value_stack[vsp - 1] = value_stack[vsp - 1] - R::splat(frame.params[0]);
+                        value_stack.set(
+                            vsp - 1,
+                            value_stack.get(vsp - 1) - R::splat(frame.params[0]),
+                        );
                     }
                     OpCode::Onion => {
-                        value_stack[vsp - 1] =
-                            value_stack[vsp - 1].abs() - R::splat(frame.params[0]);
+                        value_stack.set(
+                            vsp - 1,
+                            value_stack.get(vsp - 1).abs() - R::splat(frame.params[0]),
+                        );
                     }
                     OpCode::Noise => {
                         let amplitude = frame.params[0];
@@ -354,13 +416,17 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                             let q = q * frequency;
                             perlin_noise_3d(q.x, q.y, q.z, seed)
                         });
-                        value_stack[vsp - 1] = value_stack[vsp - 1] + n * R::splat(amplitude);
+                        value_stack
+                            .set(vsp - 1, value_stack.get(vsp - 1) + n * R::splat(amplitude));
                     }
                     OpCode::Extrude => {
-                        value_stack[vsp - 1] = real::extrude_distance(
-                            value_stack[vsp - 1],
-                            frame_lane[csp],
-                            frame.params[0],
+                        value_stack.set(
+                            vsp - 1,
+                            real::extrude_distance(
+                                value_stack.get(vsp - 1),
+                                frame_lane.get(csp),
+                                frame.params[0],
+                            ),
                         );
                     }
                     OpCode::Displacement => {
@@ -368,18 +434,23 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                         let amplitude = frame.params[0];
                         let frequency =
                             Vec3::new(frame.params[1], frame.params[2], frame.params[3]);
-                        value_stack[vsp - 1] =
-                            R::map_dp(value_stack[vsp - 1], frame.point, |d, q| {
+                        value_stack.set(
+                            vsp - 1,
+                            R::map_dp(value_stack.get(vsp - 1), frame.point, |d, q| {
                                 crate::modifiers::modifier_sine_displacement(
                                     d, q, amplitude, frequency,
                                 )
-                            });
+                            }),
+                        );
                     }
                     OpCode::ProjectiveTransform => {
-                        value_stack[vsp - 1] = value_stack[vsp - 1] * R::splat(frame.params[0]);
+                        value_stack.set(
+                            vsp - 1,
+                            value_stack.get(vsp - 1) * R::splat(frame.params[0]),
+                        );
                     }
                     OpCode::LatticeDeform => {
-                        value_stack[vsp - 1] = value_stack[vsp - 1] / frame_lane[csp];
+                        value_stack.set(vsp - 1, value_stack.get(vsp - 1) / frame_lane.get(csp));
                     }
                     OpCode::HeightmapDisplacement => {
                         let amplitude = frame.params[0];
@@ -395,19 +466,21 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                                     q, hmap, w, h, amplitude, hm_scale,
                                 )
                             });
-                            value_stack[vsp - 1] = value_stack[vsp - 1] - disp;
+                            value_stack.set(vsp - 1, value_stack.get(vsp - 1) - disp);
                         }
                     }
                     OpCode::SurfaceRoughness => {
                         let frequency = frame.params[0];
                         let amplitude = frame.params[1];
                         let octaves = frame.params[2] as u32;
-                        value_stack[vsp - 1] =
-                            R::map_dp(value_stack[vsp - 1], frame.point, |d, q| {
+                        value_stack.set(
+                            vsp - 1,
+                            R::map_dp(value_stack.get(vsp - 1), frame.point, |d, q| {
                                 crate::modifiers::surface_roughness(
                                     q, d, frequency, amplitude, octaves,
                                 )
-                            });
+                            }),
+                        );
                     }
                     // Point-only transforms / modifiers: nothing to post-process
                     _ => {}
@@ -521,7 +594,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
     }
 
     if vsp > 0 {
-        value_stack[0]
+        value_stack.get(0)
     } else {
         R::splat(f32::MAX)
     }
