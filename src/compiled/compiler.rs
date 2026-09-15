@@ -32,8 +32,12 @@ pub enum CompileError {
 /// Compiled SDF representation
 ///
 /// A flat array of instructions that can be evaluated without
-/// recursion or pointer chasing.
+/// recursion or pointer chasing. Construct it with [`CompiledSdf::compile`]
+/// / [`CompiledSdf::try_compile`] (the fields are readable; the struct is
+/// `#[non_exhaustive]` so later additions such as `lipschitz` stay
+/// semver-minor).
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct CompiledSdf {
     /// The instruction bytecode
     pub instructions: Vec<Instruction>,

@@ -6,6 +6,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.11.0] - 2026-09-15
+
+External review landing (two rounds, 2026-09-15): every finding fixed with an oracle test on its path; the Lipschitz bound is applied by every marcher; seven primitive laws are now exact. Shape changes (Egg apex, Horseshoe legs, BlobbyCross arms) and the marching-cubes index order flip are listed under Fixed.
+
 ### Added
 
 - `fuzz/fuzz_targets/fuzz_eval_parity.rs`: builds arbitrary primitive / CSG /
@@ -121,6 +125,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   tracing can no longer overshoot at all.
 
 ### Added — Lipschitz bound applied by every marcher
+
+- `CompiledSdf` is now `#[non_exhaustive]` (construct it with `compile` /
+  `try_compile`; its fields stay readable). The new `lipschitz` field would
+  otherwise have broken an exhaustive struct literal — no known consumer
+  builds one, since `instructions` comes from the compiler — and the
+  attribute keeps later fields semver-minor. Related: `Real` staying
+  unsealed until 2.0 is tracked in the roadmap.
 
 - `CompiledSdf::lipschitz` / `JitCompiledSdf::lipschitz()` record
   `eval_lipschitz(node)` at compile time, and `RaymarchConfig::with_bound`
