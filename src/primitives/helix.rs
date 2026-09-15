@@ -48,7 +48,8 @@ fn helix_curve_dist2(r: f32, theta: f32, py: f32, major_r: f32, pitch: f32) -> f
 ///
 /// Tube of radius `minor_r` around the helix curve of radius `major_r`
 /// and `pitch` per revolution, capped at `±half_height`. The distance to the
-/// curve is the true nearest point (see [`helix_curve_dist2`]), so the
+/// curve is the true nearest point (Newton from the same-azimuth candidates
+/// of the three nearest wraps), so the
 /// field is a distance bound with Lipschitz constant 1.
 ///
 /// - `major_r`: major radius (distance from Y-axis to helix center)
