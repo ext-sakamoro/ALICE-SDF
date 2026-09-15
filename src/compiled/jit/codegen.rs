@@ -17,6 +17,17 @@ use cranelift_module::{FuncId, Linkage, Module};
 use super::runtime::JitError;
 use crate::types::SdfNode;
 
+/// `floor(v + 0.5)` — the law-canonical rounding (see `crate::crispy::round_half_up`).
+///
+/// Cranelift `nearest` ties to even, `f32::round` ties away from zero; only
+/// `floor(v + 0.5)` matches the tree / SIMD / shader evaluators at cell
+/// boundaries.
+fn round_half_up(builder: &mut FunctionBuilder, v: Value) -> Value {
+    let half = builder.ins().f32const(0.5);
+    let shifted = builder.ins().fadd(v, half);
+    builder.ins().floor(shifted)
+}
+
 // ============ Parameter Emitter ============
 
 /// Parameter source for JIT code generation.
@@ -982,13 +993,13 @@ fn compile_node(
             let ncy = builder.ins().fneg(cy);
             let ncz = builder.ins().fneg(cz);
 
-            // round(p * inv_spacing)  — Division Exorcism
+            // round_half_up(p * inv_spacing)  — Division Exorcism
             let rx = builder.ins().fmul(x, inv_px);
             let ry = builder.ins().fmul(y, inv_py);
             let rz = builder.ins().fmul(z, inv_pz);
-            let rx = builder.ins().nearest(rx);
-            let ry = builder.ins().nearest(ry);
-            let rz = builder.ins().nearest(rz);
+            let rx = round_half_up(builder, rx);
+            let ry = round_half_up(builder, ry);
+            let rz = round_half_up(builder, rz);
 
             // clamp to count
             let rx1 = builder.ins().fmin(rx, cx);
@@ -1437,6 +1448,8 @@ fn emit_sincos_approx(builder: &mut FunctionBuilder, angle: Value) -> (Value, Va
     let neg_one = builder.ins().f32const(-1.0);
 
     // x1 = x - 2π·round(x / 2π)  ∈ [-π, π]
+    // (`nearest` is fine here: a tie flips k by one, and sin / cos are
+    // 2π-periodic so the reduced polynomial input differs by a full period)
     let k = builder.ins().fmul(angle, inv_two_pi);
     let k = builder.ins().nearest(k);
     let k2pi = builder.ins().fmul(k, two_pi);

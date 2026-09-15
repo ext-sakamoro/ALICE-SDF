@@ -631,6 +631,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")]
     fn wgsl_build_contains_expected_sections() {
         let node = unit_sphere();
         let source = SceneShaderBuilder::new(&node, ShaderLanguage::Wgsl).build();
@@ -738,6 +739,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")]
     fn with_pipeline_supports_wgsl() {
         use crate::npr::dsl::NprColorNode;
         let node = unit_sphere();

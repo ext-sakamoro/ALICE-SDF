@@ -5,21 +5,25 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::crispy::round_half_up;
 use glam::Vec3;
 
 /// Repeat point around Y-axis by `count` copies.
 ///
 /// Returns the transformed point (pass to child SDF).
-/// Uses atan2 + modulo to fold the angle into one sector.
+/// Uses atan2 + the round trick to fold the angle into one sector
+/// (delegates to [`modifier_polar_repeat_rk`]).
 #[inline(always)]
 pub fn modifier_polar_repeat(p: Vec3, count: u32) -> Vec3 {
+    // Same `sector` / `recip_sector` the compiler bakes into the PolarRepeat
+    // instruction (`Instruction::polar_repeat`), so the tree evaluator and
+    // the compiled / SIMD / JIT paths evaluate one law with identical
+    // operands — the old `%`-based fold here picked a different sector at
+    // exact sector boundaries.
     let count_f = count as f32;
-    let angle = std::f32::consts::TAU / count_f;
-    let a = angle.mul_add(0.5, p.z.atan2(p.x));
-    let r = p.x.hypot(p.z);
-    // Stable modulo: add large multiple to avoid negative values
-    let a_mod = angle.mul_add(-0.5, 100.0f32.mul_add(angle, a) % angle);
-    Vec3::new(r * a_mod.cos(), p.y, r * a_mod.sin())
+    let sector = std::f32::consts::TAU / count_f;
+    let recip_sector = count_f / std::f32::consts::TAU;
+    modifier_polar_repeat_rk(p, sector, recip_sector)
 }
 
 /// Polar repeat — Division Exorcism edition.
@@ -34,7 +38,7 @@ pub fn modifier_polar_repeat_rk(p: Vec3, sector: f32, recip_sector: f32) -> Vec3
 
     // Round trick: a - sector * round(a / sector)
     // = a - sector * round(a * recip_sector)
-    let sector_angle = sector.mul_add(-(a * recip_sector).round(), a);
+    let sector_angle = sector.mul_add(-round_half_up(a * recip_sector), a);
 
     let (s, c) = sector_angle.sin_cos();
     Vec3::new(r * c, p.y, r * s)

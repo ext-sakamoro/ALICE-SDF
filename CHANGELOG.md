@@ -6,6 +6,37 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed
+
+- Cell-boundary rounding now agrees on every evaluation path. The repeat /
+  polar-repeat / helix laws snapped with `round`, whose tie direction differs
+  per path (`f32::round` ties away from zero; `wide::f32x8::round` ties to even
+  on AVX / NEON but away from zero on the SSE2 fallback; Cranelift `nearest`,
+  WGSL `round` tie to even; GLSL `round` is implementation-defined; HLSL
+  `round` ties away). A point on a cell boundary — every marching-cubes grid
+  whose step divides the spacing has them — was folded into a different cell
+  per path, changing the distance by a whole cell (1.2 for
+  `sphere(0.3).translate(0.6,0,0).repeat_infinite(2,2,2)` at x = ±1: scalar
+  1.3 / SIMD 0.1 / JIT 1.3). The canonical rule is now `floor(x + 0.5)`
+  (`crispy::round_half_up`, `Real::round_half_up`) in the tree evaluator, the
+  generic scalar / SIMD stack machine, the interval evaluator, both JITs and
+  the GLSL / WGSL / HLSL transpilers. `Real::round` is unchanged but documented
+  as not path-safe at ties.
+- `PolarRepeat` tree evaluation used a different law from the compiled paths
+  (`%` fold with a `+100·sector` offset) and picked a different sector at exact
+  sector boundaries; it now delegates to the same `sector` / `count / TAU`
+  round-trick law the compiler bakes into the instruction, and the shader
+  transpilers snap with `angle * (n / TAU)` (same operands) instead of
+  `angle / sector`.
+- Parity corpus: tie sample points and offset (asymmetric) repeat children
+  added (`tests/test_evaluator_opcode_parity.rs`); new
+  `tests/test_round_tie_parity.rs` pins tree / compiled / SIMD / JIT agreement
+  at cell boundaries and asserts the shader text uses `floor(x + 0.5)`.
+- Test gating: `tests/noise_shader_validate.rs` and the two WGSL
+  `npr::scene_composer` tests require the `gpu` feature (they use
+  `WgslShader`) and are now gated on it, so `--features glsl,hlsl` without
+  `gpu` compiles and passes.
+
 ## [v1.10.2] - 2026-09-14
 
 ### Fixed

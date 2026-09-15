@@ -10,6 +10,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::crispy::round_half_up;
 use crate::types::SdfNode;
 use glam::{Quat, Vec3};
 use std::ops::{Add, Mul, Neg, Sub};
@@ -1002,8 +1003,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                     return iv;
                 }
                 let limit = cnt as f32 * 0.5;
-                let cmin = (iv.lo / s).round().clamp(-limit, limit);
-                let cmax = (iv.hi / s).round().clamp(-limit, limit);
+                let cmin = round_half_up(iv.lo / s).clamp(-limit, limit);
+                let cmax = round_half_up(iv.hi / s).clamp(-limit, limit);
                 Interval::new(iv.lo - cmax * s, iv.hi - cmin * s)
             };
             eval_interval(

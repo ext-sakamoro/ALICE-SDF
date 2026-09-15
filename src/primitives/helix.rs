@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::crispy::round_half_up;
 use glam::{Vec2, Vec3};
 
 /// SDF for a helix (spiral tube) along Y-axis
@@ -25,7 +26,7 @@ pub fn sdf_helix(p: Vec3, major_r: f32, minor_r: f32, pitch: f32, half_height: f
     // Find nearest helix wrap
     // At angle theta, helix y = (theta + 2*PI*k) * pitch / (2*PI) = theta*pitch/tau + k*pitch
     let y_at_theta = theta * pitch / tau;
-    let k = ((py - y_at_theta) / pitch).round();
+    let k = round_half_up((py - y_at_theta) / pitch);
 
     // Check k-1, k, k+1 for closest
     let mut d_tube = f32::MAX;

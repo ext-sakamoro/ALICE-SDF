@@ -2244,7 +2244,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_vec3(
                     &new_p,
                     &format!(
-                        "{p} - {s} * round({p} / {s})",
+                        "{p} - {s} * floor({p} / {s} + 0.5)",
                         p = point_var,
                         s = L::vec3_ctor(&sx, &sy, &sz),
                     ),
@@ -2267,7 +2267,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_vec3(
                     &new_p,
                     &format!(
-                        "{p} - {s} * clamp(round({p} / {s}), -{c}, {c})",
+                        "{p} - {s} * clamp(floor({p} / {s} + 0.5), -{c}, {c})",
                         p = point_var,
                         s = L::vec3_ctor(&sx, &sy, &sz),
                         c = L::vec3_ctor(&cx, &cy, &cz),
@@ -2600,6 +2600,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let n = self.param(*count as f32);
                 let angle_var = self.next_var();
                 let sector_var = self.next_var();
+                let recip_var = self.next_var();
                 let snapped_var = self.next_var();
                 let c_var = self.next_var();
                 let s_var = self.next_var();
@@ -2610,9 +2611,16 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &format!("atan2({p}.z, {p}.x)", p = point_var),
                 ));
                 code.push_str(&L::decl_float(&sector_var, &format!("{} / {}", pi2, n)));
+                // `angle * (n / TAU)` with the same operands as the CPU law
+                // (`real::polar_repeat`), so a boundary angle snaps to the same
+                // sector on every path (`angle / sector` differs by an ulp).
+                code.push_str(&L::decl_float(&recip_var, &format!("{} / {}", n, pi2)));
                 code.push_str(&L::decl_float(
                     &snapped_var,
-                    &format!("round({} / {}) * {}", angle_var, sector_var, sector_var),
+                    &format!(
+                        "floor({} * {} + 0.5) * {}",
+                        angle_var, recip_var, sector_var
+                    ),
                 ));
                 code.push_str(&L::decl_float(&c_var, &format!("cos({})", snapped_var)));
                 code.push_str(&L::decl_float(&s_var, &format!("sin({})", snapped_var)));

@@ -42,6 +42,10 @@ fn sample_points() -> Vec<Vec3> {
         Vec3::new(0.3, -0.7, 1.1),
         Vec3::new(1.5, 1.5, 1.5),
         Vec3::new(-2.0, 0.4, -0.9),
+        // Cell-boundary ties for the repeat laws (spacing 2 → p / s = ±0.5, 1.5):
+        // every evaluator must round the same way (`floor(x + 0.5)`).
+        Vec3::new(-1.0, 0.0, 0.0),
+        Vec3::new(3.0, -1.0, 1.0),
     ]
 }
 
@@ -334,6 +338,21 @@ fn corpus() -> Vec<(&'static str, SdfNode)> {
         (
             "repeat_finite",
             sphere().repeat_finite([2, 1, 2], Vec3::splat(1.5)),
+        ),
+        // Asymmetric children: a symmetric sphere hides a wrong cell choice at
+        // the tie points above (same distance from every cell), an offset one
+        // does not.
+        (
+            "repeat_infinite_offset",
+            sphere()
+                .translate(0.6, 0.0, 0.0)
+                .repeat_infinite(2.0, 2.0, 2.0),
+        ),
+        (
+            "repeat_finite_offset",
+            sphere()
+                .translate(0.6, 0.2, 0.0)
+                .repeat_finite([3, 2, 3], Vec3::splat(2.0)),
         ),
         ("noise", sphere().noise(0.1, 2.0, 42)),
         ("round", unit_box().round(0.1)),

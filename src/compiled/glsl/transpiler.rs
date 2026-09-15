@@ -1409,7 +1409,7 @@ const HELPER_SDF_HELIX: &str = r"float sdf_helix(vec3 p, float major_r, float mi
     float tau = 6.28318530717959;
     float d_radial = r_xz - major_r;
     float y_at_theta = theta * pitch / tau;
-    float k = round((py - y_at_theta) / pitch);
+    float k = floor((py - y_at_theta) / pitch + 0.5);
     float d_tube = 1e20;
     for (float dk = -1.0; dk <= 1.0; dk += 1.0) {
         float kk = k + dk;

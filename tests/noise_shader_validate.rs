@@ -3,7 +3,7 @@
 //! `naga::front::glsl`. (HLSL has no naga frontend; its helper is the same
 //! text with `asuint` / `(int)` casts.)
 
-#![cfg(feature = "glsl")]
+#![cfg(all(feature = "glsl", feature = "gpu"))]
 
 use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
 use alice_sdf::compiled::{TranspileMode, WgslShader};

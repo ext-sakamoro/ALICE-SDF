@@ -87,6 +87,28 @@ pub fn branchless_abs(x: f32) -> f32 {
     f32::from_bits(f32::to_bits(x) & 0x7FFF_FFFF)
 }
 
+/// Round to nearest integer with ties toward `+∞`: `floor(x + 0.5)`.
+///
+/// This is the **only** rounding rule used by the repeat / polar / helix laws.
+/// `f32::round` (ties away from zero), `wide::f32x8::round` (ties to even on
+/// AVX / NEON, away from zero on the SSE2 fallback), Cranelift `nearest`
+/// (ties to even), GLSL `round` (implementation-defined), WGSL `round`
+/// (ties to even) and HLSL `round` (ties away from zero) all disagree at
+/// exact `.5` inputs, and a marching-cubes grid whose step divides the
+/// repeat spacing lands on those inputs systematically. `floor` is
+/// bit-identical on every path, so every evaluator (tree, compiled scalar,
+/// SIMD, JIT, GLSL / WGSL / HLSL) must call this or emit `floor(x + 0.5)`.
+#[inline(always)]
+pub fn round_half_up(x: f32) -> f32 {
+    (x + 0.5).floor()
+}
+
+/// Component-wise [`round_half_up`].
+#[inline(always)]
+pub fn round_half_up_vec3(v: glam::Vec3) -> glam::Vec3 {
+    glam::Vec3::new(round_half_up(v.x), round_half_up(v.y), round_half_up(v.z))
+}
+
 /// 64-element batch mask for branchless filtering.
 ///
 /// Represents 64 elements as a single `u64` bitmask, enabling
@@ -268,6 +290,27 @@ pub fn fnv1a_hash(data: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn round_half_up_ties_toward_positive_infinity() {
+        // Exact .5 inputs: the whole point of the helper.
+        for (x, want) in [
+            (0.5f32, 1.0f32),
+            (-0.5, 0.0),
+            (1.5, 2.0),
+            (-1.5, -1.0),
+            (2.5, 3.0),
+            (-2.5, -2.0),
+        ] {
+            assert_eq!(round_half_up(x), want, "round_half_up({x})");
+        }
+        // Away from ties it agrees with `f32::round`.
+        for x in [0.0f32, 0.25, 0.75, -0.25, -0.75, 3.1, -3.9, 1e5 + 0.3] {
+            assert_eq!(round_half_up(x), x.round(), "round_half_up({x})");
+        }
+        let v = round_half_up_vec3(glam::Vec3::new(0.5, -0.5, 2.5));
+        assert_eq!(v, glam::Vec3::new(1.0, 0.0, 3.0));
+    }
 
     #[test]
     fn test_fast_inv_sqrt_accuracy() {

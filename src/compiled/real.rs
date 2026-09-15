@@ -47,7 +47,11 @@ pub trait Real:
     fn abs(self) -> Self;
     /// Round toward negative infinity.
     fn floor(self) -> Self;
-    /// Round to nearest (ties away from zero, like `f32::round`).
+    /// Round to nearest (ties away from zero for `f32`; the `f32x8` impl
+    /// follows the hardware and ties to even on AVX / NEON).
+    ///
+    /// Not path-safe at exact `.5` inputs — laws must use
+    /// [`Real::round_half_up`] instead.
     fn round(self) -> Self;
     /// Lane-wise minimum.
     fn min(self, other: Self) -> Self;
@@ -102,6 +106,17 @@ pub trait Real:
     #[inline(always)]
     fn mul_add(self, m: Self, a: Self) -> Self {
         self * m + a
+    }
+    /// Round to nearest with ties toward `+∞`: `floor(self + 0.5)`.
+    ///
+    /// The canonical rounding rule of the repeat / polar / helix laws, shared
+    /// with the tree evaluator ([`crate::crispy::round_half_up`]), the JIT and
+    /// the three shader transpilers so that every path agrees at cell
+    /// boundaries. See [`crate::crispy::round_half_up`] for why `round` is
+    /// not usable here.
+    #[inline(always)]
+    fn round_half_up(self) -> Self {
+        (self + Self::splat(0.5)).floor()
     }
     /// Linear interpolation `a + (b - a) * t`
     #[inline(always)]
@@ -497,10 +512,19 @@ impl<R: Real> Vec3R<R> {
     pub fn clamp(self, lo: Self, hi: Self) -> Self {
         self.max(lo).min(hi)
     }
-    /// Component-wise round.
+    /// Component-wise round (see [`Real::round`] for the tie caveat).
     #[inline(always)]
     pub fn round(self) -> Self {
         Self::new(self.x.round(), self.y.round(), self.z.round())
+    }
+    /// Component-wise [`Real::round_half_up`] (the law-canonical rounding).
+    #[inline(always)]
+    pub fn round_half_up(self) -> Self {
+        Self::new(
+            self.x.round_half_up(),
+            self.y.round_half_up(),
+            self.z.round_half_up(),
+        )
     }
     /// Largest component.
     #[inline(always)]
@@ -615,7 +639,7 @@ pub fn bend<R: Real>(p: Vec3R<R>, curvature: f32) -> Vec3R<R> {
 /// Infinite repetition with precomputed reciprocal spacing.
 #[inline(always)]
 pub fn repeat_infinite<R: Real>(p: Vec3R<R>, spacing: Vec3, recip: Vec3) -> Vec3R<R> {
-    let cell = p.mul_vec(Vec3R::splat(recip)).round();
+    let cell = p.mul_vec(Vec3R::splat(recip)).round_half_up();
     p - cell.mul_vec(Vec3R::splat(spacing))
 }
 
@@ -624,7 +648,7 @@ pub fn repeat_infinite<R: Real>(p: Vec3R<R>, spacing: Vec3, recip: Vec3) -> Vec3
 pub fn repeat_finite<R: Real>(p: Vec3R<R>, count: Vec3, spacing: Vec3) -> Vec3R<R> {
     let limit = Vec3R::splat(count * 0.5);
     let inv = Vec3R::splat(Vec3::new(1.0 / spacing.x, 1.0 / spacing.y, 1.0 / spacing.z));
-    let cell = p.mul_vec(inv).round().clamp(-limit, limit);
+    let cell = p.mul_vec(inv).round_half_up().clamp(-limit, limit);
     p - cell.mul_vec(Vec3R::splat(spacing))
 }
 
@@ -690,7 +714,7 @@ pub fn taper<R: Real>(p: Vec3R<R>, factor: f32) -> Vec3R<R> {
 pub fn polar_repeat<R: Real>(p: Vec3R<R>, sector: f32, recip_sector: f32) -> Vec3R<R> {
     let a = p.z.atan2(p.x);
     let r = (p.x * p.x + p.z * p.z).sqrt();
-    let sector_angle = a - (a * R::splat(recip_sector)).round() * R::splat(sector);
+    let sector_angle = a - (a * R::splat(recip_sector)).round_half_up() * R::splat(sector);
     let (s, c) = sector_angle.sin_cos();
     Vec3R::new(r * c, p.y, r * s)
 }

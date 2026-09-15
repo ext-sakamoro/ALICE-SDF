@@ -69,6 +69,16 @@ struct SimdCoordState {
 const FOLD_EPSILON: f32 = 1e-6;
 
 /// FMA-optimized SIMD 2D length: sqrt(x² + y²)
+/// `floor(v + 0.5)` per lane — the law-canonical rounding (see
+/// `crate::crispy::round_half_up`). Cranelift `nearest` ties to even and would
+/// disagree with the scalar / tree / shader evaluators at cell boundaries.
+fn simd_round_half_up(builder: &mut FunctionBuilder, v: Value, vec_type: types::Type) -> Value {
+    let half = builder.ins().f32const(0.5);
+    let half_v = builder.ins().splat(vec_type, half);
+    let shifted = builder.ins().fadd(v, half_v);
+    builder.ins().floor(shifted)
+}
+
 fn simd_length2_fma(builder: &mut FunctionBuilder, x: Value, y: Value) -> Value {
     let yy = builder.ins().fmul(y, y);
     let len_sq = builder.ins().fma(x, x, yy);
@@ -124,6 +134,8 @@ fn simd_sincos_approx(
 
     // x1 = x - 2π·round(x / 2π)  ∈ [-π, π]
     let k = builder.ins().fmul(angle, inv_two_pi);
+    // `nearest` is fine here: a tie flips k by one and the reduced input
+    // differs by a full 2π period, so sin / cos are unchanged.
     let k = builder.ins().nearest(k);
     let k2pi = builder.ins().fmul(k, two_pi);
     let x1 = builder.ins().fsub(angle, k2pi);
@@ -1911,9 +1923,9 @@ impl JitSimdSdf {
                         let rx0 = builder.ins().fmul(curr_x.0, isx_v);
                         let ry0 = builder.ins().fmul(curr_y.0, isy_v);
                         let rz0 = builder.ins().fmul(curr_z.0, isz_v);
-                        let rx0 = builder.ins().nearest(rx0);
-                        let ry0 = builder.ins().nearest(ry0);
-                        let rz0 = builder.ins().nearest(rz0);
+                        let rx0 = simd_round_half_up(&mut builder, rx0, vec_type);
+                        let ry0 = simd_round_half_up(&mut builder, ry0, vec_type);
+                        let rz0 = simd_round_half_up(&mut builder, rz0, vec_type);
                         let ox0 = builder.ins().fmul(sx_v, rx0);
                         let oy0 = builder.ins().fmul(sy_v, ry0);
                         let oz0 = builder.ins().fmul(sz_v, rz0);
@@ -1925,9 +1937,9 @@ impl JitSimdSdf {
                         let rx1 = builder.ins().fmul(curr_x.1, isx_v);
                         let ry1 = builder.ins().fmul(curr_y.1, isy_v);
                         let rz1 = builder.ins().fmul(curr_z.1, isz_v);
-                        let rx1 = builder.ins().nearest(rx1);
-                        let ry1 = builder.ins().nearest(ry1);
-                        let rz1 = builder.ins().nearest(rz1);
+                        let rx1 = simd_round_half_up(&mut builder, rx1, vec_type);
+                        let ry1 = simd_round_half_up(&mut builder, ry1, vec_type);
+                        let rz1 = simd_round_half_up(&mut builder, rz1, vec_type);
                         let ox1 = builder.ins().fmul(sx_v, rx1);
                         let oy1 = builder.ins().fmul(sy_v, ry1);
                         let oz1 = builder.ins().fmul(sz_v, rz1);
@@ -1991,11 +2003,11 @@ impl JitSimdSdf {
 
                         // Lane 0: clamp(round(p * inv_s), -limit, limit), then p - cell * s
                         let _tm29 = builder.ins().fmul(curr_x.0, isx_v);
-                        let rx0 = builder.ins().nearest(_tm29);
+                        let rx0 = simd_round_half_up(&mut builder, _tm29, vec_type);
                         let _tm30 = builder.ins().fmul(curr_y.0, isy_v);
-                        let ry0 = builder.ins().nearest(_tm30);
+                        let ry0 = simd_round_half_up(&mut builder, _tm30, vec_type);
                         let _tm31 = builder.ins().fmul(curr_z.0, isz_v);
-                        let rz0 = builder.ins().nearest(_tm31);
+                        let rz0 = simd_round_half_up(&mut builder, _tm31, vec_type);
                         let _tn32 = builder.ins().fmin(rx0, lx_v);
                         let rx0 = builder.ins().fmax(nlx_v, _tn32);
                         let _tn33 = builder.ins().fmin(ry0, ly_v);
@@ -2011,11 +2023,11 @@ impl JitSimdSdf {
 
                         // Lane 1
                         let _tm38 = builder.ins().fmul(curr_x.1, isx_v);
-                        let rx1 = builder.ins().nearest(_tm38);
+                        let rx1 = simd_round_half_up(&mut builder, _tm38, vec_type);
                         let _tm39 = builder.ins().fmul(curr_y.1, isy_v);
-                        let ry1 = builder.ins().nearest(_tm39);
+                        let ry1 = simd_round_half_up(&mut builder, _tm39, vec_type);
                         let _tm40 = builder.ins().fmul(curr_z.1, isz_v);
-                        let rz1 = builder.ins().nearest(_tm40);
+                        let rz1 = simd_round_half_up(&mut builder, _tm40, vec_type);
                         let _tn41 = builder.ins().fmin(rx1, lx_v);
                         let rx1 = builder.ins().fmax(nlx_v, _tn41);
                         let _tn42 = builder.ins().fmin(ry1, ly_v);
@@ -3872,11 +3884,11 @@ impl JitSimdSdfDynamic {
 
                         // Lane 0
                         let _tm65 = builder.ins().fmul(curr_x.0, isx_v);
-                        let rx0 = builder.ins().nearest(_tm65);
+                        let rx0 = simd_round_half_up(&mut builder, _tm65, vec_type);
                         let _tm66 = builder.ins().fmul(curr_y.0, isy_v);
-                        let ry0 = builder.ins().nearest(_tm66);
+                        let ry0 = simd_round_half_up(&mut builder, _tm66, vec_type);
                         let _tm67 = builder.ins().fmul(curr_z.0, isz_v);
-                        let rz0 = builder.ins().nearest(_tm67);
+                        let rz0 = simd_round_half_up(&mut builder, _tm67, vec_type);
                         let _tm68 = builder.ins().fmul(sx_v, rx0);
                         let nx0 = builder.ins().fsub(curr_x.0, _tm68);
                         let _tm69 = builder.ins().fmul(sy_v, ry0);
@@ -3886,11 +3898,11 @@ impl JitSimdSdfDynamic {
 
                         // Lane 1
                         let _tm71 = builder.ins().fmul(curr_x.1, isx_v);
-                        let rx1 = builder.ins().nearest(_tm71);
+                        let rx1 = simd_round_half_up(&mut builder, _tm71, vec_type);
                         let _tm72 = builder.ins().fmul(curr_y.1, isy_v);
-                        let ry1 = builder.ins().nearest(_tm72);
+                        let ry1 = simd_round_half_up(&mut builder, _tm72, vec_type);
                         let _tm73 = builder.ins().fmul(curr_z.1, isz_v);
-                        let rz1 = builder.ins().nearest(_tm73);
+                        let rz1 = simd_round_half_up(&mut builder, _tm73, vec_type);
                         let _tm74 = builder.ins().fmul(sx_v, rx1);
                         let nx1 = builder.ins().fsub(curr_x.1, _tm74);
                         let _tm75 = builder.ins().fmul(sy_v, ry1);
@@ -3942,11 +3954,11 @@ impl JitSimdSdfDynamic {
 
                         // Lane 0
                         let _tm77 = builder.ins().fmul(curr_x.0, isx_v);
-                        let rx0 = builder.ins().nearest(_tm77);
+                        let rx0 = simd_round_half_up(&mut builder, _tm77, vec_type);
                         let _tm78 = builder.ins().fmul(curr_y.0, isy_v);
-                        let ry0 = builder.ins().nearest(_tm78);
+                        let ry0 = simd_round_half_up(&mut builder, _tm78, vec_type);
                         let _tm79 = builder.ins().fmul(curr_z.0, isz_v);
-                        let rz0 = builder.ins().nearest(_tm79);
+                        let rz0 = simd_round_half_up(&mut builder, _tm79, vec_type);
                         let _tn80 = builder.ins().fmin(rx0, lx_v);
                         let rx0 = builder.ins().fmax(nlx_v, _tn80);
                         let _tn81 = builder.ins().fmin(ry0, ly_v);
@@ -3962,11 +3974,11 @@ impl JitSimdSdfDynamic {
 
                         // Lane 1
                         let _tm86 = builder.ins().fmul(curr_x.1, isx_v);
-                        let rx1 = builder.ins().nearest(_tm86);
+                        let rx1 = simd_round_half_up(&mut builder, _tm86, vec_type);
                         let _tm87 = builder.ins().fmul(curr_y.1, isy_v);
-                        let ry1 = builder.ins().nearest(_tm87);
+                        let ry1 = simd_round_half_up(&mut builder, _tm87, vec_type);
                         let _tm88 = builder.ins().fmul(curr_z.1, isz_v);
-                        let rz1 = builder.ins().nearest(_tm88);
+                        let rz1 = simd_round_half_up(&mut builder, _tm88, vec_type);
                         let _tn89 = builder.ins().fmin(rx1, lx_v);
                         let rx1 = builder.ins().fmax(nlx_v, _tn89);
                         let _tn90 = builder.ins().fmin(ry1, ly_v);

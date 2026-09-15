@@ -1,12 +1,14 @@
 //! Repetition modifiers for SDFs (Deep Fried Edition)
 //!
 //! # Deep Fried Optimizations
-//! - **Fast Modulo**: Replaced general modulo with `x - s * round(x/s)` logic.
-//!   This relies on `round` (single instruction) vs multiple ops for floor/mod.
+//! - **Fast Modulo**: Replaced general modulo with `x - s * round(x/s)` logic,
+//!   where `round` is [`round_half_up`] (`floor(x + 0.5)`) so that the tree
+//!   evaluator ties the same way as SIMD / JIT / shaders at cell boundaries.
 //! - **Forced Inlining**: `#[inline(always)]`.
 //!
 //! Author: Moroya Sakamoto
 
+use crate::crispy::{round_half_up, round_half_up_vec3};
 use glam::Vec3;
 
 /// Infinite repetition along all axes (Deep Fried)
@@ -15,9 +17,15 @@ pub fn modifier_repeat_infinite(point: Vec3, spacing: Vec3) -> Vec3 {
     // p - s * round(p / s) maps to [-s/2, s/2] range
     // Much faster than standard euclidean modulo logic
     Vec3::new(
-        spacing.x.mul_add(-(point.x / spacing.x).round(), point.x),
-        spacing.y.mul_add(-(point.y / spacing.y).round(), point.y),
-        spacing.z.mul_add(-(point.z / spacing.z).round(), point.z),
+        spacing
+            .x
+            .mul_add(-round_half_up(point.x / spacing.x), point.x),
+        spacing
+            .y
+            .mul_add(-round_half_up(point.y / spacing.y), point.y),
+        spacing
+            .z
+            .mul_add(-round_half_up(point.z / spacing.z), point.z),
     )
 }
 
@@ -30,13 +38,13 @@ pub fn modifier_repeat_infinite_rk(point: Vec3, spacing: Vec3, recip_spacing: Ve
     Vec3::new(
         spacing
             .x
-            .mul_add(-(point.x * recip_spacing.x).round(), point.x),
+            .mul_add(-round_half_up(point.x * recip_spacing.x), point.x),
         spacing
             .y
-            .mul_add(-(point.y * recip_spacing.y).round(), point.y),
+            .mul_add(-round_half_up(point.y * recip_spacing.y), point.y),
         spacing
             .z
-            .mul_add(-(point.z * recip_spacing.z).round(), point.z),
+            .mul_add(-round_half_up(point.z * recip_spacing.z), point.z),
     )
 }
 
@@ -45,7 +53,7 @@ pub fn modifier_repeat_infinite_rk(point: Vec3, spacing: Vec3, recip_spacing: Ve
 pub fn modifier_repeat_finite(point: Vec3, count: [u32; 3], spacing: Vec3) -> Vec3 {
     let limit = Vec3::new(count[0] as f32, count[1] as f32, count[2] as f32) * 0.5;
     // clamp(round(p/s), -limit, limit)
-    let cell = (point / spacing).round().clamp(-limit, limit);
+    let cell = round_half_up_vec3(point / spacing).clamp(-limit, limit);
     point - cell * spacing
 }
 
@@ -53,7 +61,7 @@ pub fn modifier_repeat_finite(point: Vec3, count: [u32; 3], spacing: Vec3) -> Ve
 #[inline(always)]
 pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
-        spacing.mul_add(-(point.x / spacing).round(), point.x),
+        spacing.mul_add(-round_half_up(point.x / spacing), point.x),
         point.y,
         point.z,
     )
@@ -64,7 +72,7 @@ pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
 pub fn modifier_repeat_y(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
-        spacing.mul_add(-(point.y / spacing).round(), point.y),
+        spacing.mul_add(-round_half_up(point.y / spacing), point.y),
         point.z,
     )
 }
@@ -75,24 +83,15 @@ pub fn modifier_repeat_z(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
         point.y,
-        spacing.mul_add(-(point.z / spacing).round(), point.z),
+        spacing.mul_add(-round_half_up(point.z / spacing), point.z),
     )
 }
 
 /// Polar repetition around Y axis
 #[inline(always)]
 pub fn modifier_repeat_polar(point: Vec3, count: u32) -> Vec3 {
-    // Polar repeat is inherently somewhat heavy (atan2, sin/cos)
-    // We minimize overheads around it.
-    let angle = point.z.atan2(point.x);
-    let radius = point.x.hypot(point.z);
-
-    let sector = std::f32::consts::TAU / count as f32;
-    // Align to sector center: a - s * round(a/s)
-    let sector_angle = sector.mul_add(-(angle / sector).round(), angle);
-
-    let (s, c) = sector_angle.sin_cos();
-    Vec3::new(radius * c, point.y, radius * s)
+    // One law: same operands as the compiled PolarRepeat instruction.
+    super::polar_repeat::modifier_polar_repeat(point, count)
 }
 
 #[cfg(test)]

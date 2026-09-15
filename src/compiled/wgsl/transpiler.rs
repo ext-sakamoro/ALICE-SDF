@@ -1555,7 +1555,7 @@ const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_
     let tau = 6.28318530717959;
     let d_radial = r_xz - major_r;
     let y_at_theta = theta * pitch / tau;
-    let k = round((py - y_at_theta) / pitch);
+    let k = floor((py - y_at_theta) / pitch + 0.5);
     var d_tube = 1e20;
     for (var dk = -1.0; dk <= 1.0; dk = dk + 1.0) {
         let kk = k + dk;
