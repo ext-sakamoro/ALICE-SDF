@@ -52,7 +52,7 @@ mod tests {
         // interior points on the axis are negative (the old law returned +0.9 here)
         assert!(sdf_egg(Vec3::new(0.0, 0.1, 0.0), 1.0, 0.5) < 0.0);
         // apex is on the surface: y = √3·(ra − rb) + ra
-        let apex = 1.732_050_8 * 0.5 + 1.0;
+        let apex = 1.732_050_8f32.mul_add(0.5, 1.0);
         assert!(sdf_egg(Vec3::new(0.0, apex, 0.0), 1.0, 0.5).abs() < 1e-5);
         // base circle radius ra
         assert!(sdf_egg(Vec3::new(1.0, 0.0, 0.0), 1.0, 0.5).abs() < 1e-5);

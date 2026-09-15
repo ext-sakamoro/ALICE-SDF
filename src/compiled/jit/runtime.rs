@@ -325,6 +325,7 @@ impl std::fmt::Debug for JitCompiledSdfDynamic {
             .field("_module", &"<JITModule>")
             .field("eval_fn", &format!("{:p}", self.eval_fn as *const ()))
             .field("params", &self.params)
+            .field("lipschitz", &self.lipschitz)
             .finish()
     }
 }

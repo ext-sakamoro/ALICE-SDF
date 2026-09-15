@@ -209,7 +209,7 @@ mod tests {
         let radius = 0.05_f32;
         let softness = 0.03_f32;
         // Rotate view slightly off sun in XY plane
-        let angle = radius + softness * 0.5;
+        let angle = softness.mul_add(0.5, radius);
         let (s, c) = angle.sin_cos();
         let view = Vec3::new(s, c, 0.0);
         let intensity = sun_disc(view, sun, radius, softness);

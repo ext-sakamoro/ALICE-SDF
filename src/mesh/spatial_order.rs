@@ -229,11 +229,11 @@ mod tests {
                         (v.position.z * 1000.0) as i32,
                     ];
                 }
-                positions.sort();
+                positions.sort_unstable();
                 positions
             })
             .collect();
-        before_tri_positions.sort();
+        before_tri_positions.sort_unstable();
 
         optimize_spatial_order(&mut mesh);
 
@@ -252,11 +252,11 @@ mod tests {
                         (v.position.z * 1000.0) as i32,
                     ];
                 }
-                positions.sort();
+                positions.sort_unstable();
                 positions
             })
             .collect();
-        after_tri_positions.sort();
+        after_tri_positions.sort_unstable();
 
         assert_eq!(
             before_tri_positions, after_tri_positions,

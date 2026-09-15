@@ -228,7 +228,12 @@ mod tests {
         // 各 splat の位置は半径 1 付近にあるはず (許容 voxel size)
         let voxel = (4.0_f32) / 32.0;
         for s in &splats {
-            let r = (s.position[0].powi(2) + s.position[1].powi(2) + s.position[2].powi(2)).sqrt();
+            let r = s.position[2]
+                .mul_add(
+                    s.position[2],
+                    s.position[1].mul_add(s.position[1], s.position[0].powi(2)),
+                )
+                .sqrt();
             assert!(
                 (r - 1.0).abs() < voxel * 2.0,
                 "splat off surface: r={r}, voxel={voxel}"

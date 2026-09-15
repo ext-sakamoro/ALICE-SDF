@@ -15,7 +15,7 @@ use alice_sdf::npr::compiled_color::emit_wgsl_bytecode_evaluator;
 fn wrap_evaluator_in_fragment_shader() -> String {
     let evaluator = emit_wgsl_bytecode_evaluator();
     format!(
-        r#"{evaluator}
+        r"{evaluator}
 
 @group(0) @binding(0) var<storage, read> alice_npr_program: array<u32>;
 
@@ -52,7 +52,7 @@ fn fs_main(_in: FragInput) -> @location(0) vec4<f32> {{
     let color = alice_npr_eval_bytecode(alice_npr_uniforms.program_len, ctx);
     return vec4<f32>(color, 1.0);
 }}
-"#
+"
     )
 }
 

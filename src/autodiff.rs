@@ -740,7 +740,7 @@ mod tests {
         assert!(k1 > -0.1, "k1={} should be non-negative", k1);
         assert!(k2 > -0.1, "k2={} should be non-negative", k2);
         // Mean curvature H = (k1+k2)/2 should be positive
-        let mean = (k1 + k2) * 0.5;
+        let mean = f32::midpoint(k1, k2);
         assert!(mean > 0.0, "mean curvature={} should be positive", mean);
     }
 

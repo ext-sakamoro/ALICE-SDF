@@ -11,7 +11,7 @@ use alice_sdf::prelude::*;
 use alice_sdf::transforms::skinning::BoneTransform;
 use glam::Vec2;
 
-pub fn sphere() -> SdfNode {
+pub const fn sphere() -> SdfNode {
     SdfNode::sphere(0.6)
 }
 
@@ -19,7 +19,7 @@ pub fn unit_box() -> SdfNode {
     SdfNode::box3d(0.5, 0.4, 0.3)
 }
 
-pub fn identity_mat() -> [f32; 16] {
+pub const fn identity_mat() -> [f32; 16] {
     let mut m = [0.0; 16];
     m[0] = 1.0;
     m[5] = 1.0;
@@ -402,8 +402,7 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         // --- nesting: transform inside op inside modifier ---
         (
             "nested",
-            a.clone()
-                .smooth_union(b.clone().rotate(Quat::from_rotation_z(0.3)), 0.2)
+            a.smooth_union(b.rotate(Quat::from_rotation_z(0.3)), 0.2)
                 .twist(0.5)
                 .translate(0.1, 0.1, 0.1)
                 .round(0.05),

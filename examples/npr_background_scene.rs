@@ -31,7 +31,7 @@ fn sample_pixel(
     cam_pos: Vec3,
     to_sun: Vec3,
     palette: &[Vec3],
-    noise: &HashNoise,
+    noise: HashNoise,
 ) -> Vec3 {
     // Camera ray: image plane at z = 0, camera at z = -3 looking down +z
     let aspect = WIDTH as f32 / HEIGHT as f32 * 0.5; // ASCII cells are ~2x tall
@@ -95,12 +95,15 @@ fn render_ascii() -> String {
         for x in 0..WIDTH {
             let uv_x = (x as f32 + 0.5) / WIDTH as f32;
             let uv_y = (y as f32 + 0.5) / HEIGHT as f32;
-            let color = sample_pixel(uv_x, uv_y, &sphere, cam_pos, to_sun, &palette, &noise);
+            let color = sample_pixel(uv_x, uv_y, &sphere, cam_pos, to_sun, &palette, noise);
             // Apply vignette to composite
             let vig = vignette(uv_x, uv_y, 0.42, 0.35);
             let final_color = color * vig;
             // Luminance to ramp index
-            let lum = final_color.x * 0.2126 + final_color.y * 0.7152 + final_color.z * 0.0722;
+            let lum = final_color.z.mul_add(
+                0.0722,
+                final_color.y.mul_add(0.7152, final_color.x * 0.2126),
+            );
             let lum_c = lum.clamp(0.0, 1.0);
             let idx = (lum_c * (RAMP.len() as f32 - 1.0)).round() as usize;
             out.push(RAMP[idx.min(RAMP.len() - 1)] as char);
@@ -128,7 +131,7 @@ fn sampled_stats() {
         for x in 0..WIDTH {
             let uv_x = (x as f32 + 0.5) / WIDTH as f32;
             let uv_y = (y as f32 + 0.5) / HEIGHT as f32;
-            let color = sample_pixel(uv_x, uv_y, &sphere, cam_pos, to_sun, &palette, &noise);
+            let color = sample_pixel(uv_x, uv_y, &sphere, cam_pos, to_sun, &palette, noise);
             // Rough hit detection: dark foreground vs bright sky
             if color.x < 0.6 && color.y < 0.6 && color.z < 0.6 {
                 hit_count += 1;

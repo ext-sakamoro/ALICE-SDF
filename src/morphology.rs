@@ -244,7 +244,7 @@ mod tests {
     fn offset_batch_parallel_matches_scalar() {
         let s = sphere(1.0);
         let points: Vec<Vec3> = (0..64)
-            .map(|i| Vec3::new((i as f32) * 0.05 - 1.5, 0.0, 0.0))
+            .map(|i| Vec3::new((i as f32).mul_add(0.05, -1.5), 0.0, 0.0))
             .collect();
         let parallel = eval_offset_batch_parallel(&s, &points, 0.1);
         for (i, &p) in points.iter().enumerate() {

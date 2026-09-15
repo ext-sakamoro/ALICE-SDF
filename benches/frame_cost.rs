@@ -36,11 +36,11 @@ fn bench(c: &mut Criterion) {
     for (name, node) in cases.iter() {
         let compiled = CompiledSdf::compile(node);
         g.bench_function(*name, |b| {
-            b.iter(|| eval_compiled(black_box(&compiled), black_box(p)))
+            b.iter(|| eval_compiled(black_box(&compiled), black_box(p)));
         });
         let ps = Vec3x8::splat(p);
         g.bench_function(format!("{name}/simd"), |b| {
-            b.iter(|| eval_compiled_simd(black_box(&compiled), black_box(ps)))
+            b.iter(|| eval_compiled_simd(black_box(&compiled), black_box(ps)));
         });
     }
     g.finish();

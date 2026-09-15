@@ -103,9 +103,9 @@ fn main() {
         let a = offset_deg.to_radians();
         let (s, c) = a.sin_cos();
         let view = Vec3::new(
-            to_sun.x * c - to_sun.z * s,
+            to_sun.z.mul_add(-s, to_sun.x * c),
             to_sun.y,
-            to_sun.x * s + to_sun.z * c,
+            to_sun.z.mul_add(c, to_sun.x * s),
         );
         let i = light_shaft_beam(view, to_sun, 8.0);
         println!("  offset = {offset_deg:>4.1}deg  intensity = {i:.4}");
@@ -116,9 +116,9 @@ fn main() {
         let a = offset_deg.to_radians();
         let (s, c) = a.sin_cos();
         let view = Vec3::new(
-            to_sun.x * c - to_sun.z * s,
+            to_sun.z.mul_add(-s, to_sun.x * c),
             to_sun.y,
-            to_sun.x * s + to_sun.z * c,
+            to_sun.z.mul_add(c, to_sun.x * s),
         );
         let i = sun_disc(view, to_sun, 0.02, 0.03);
         println!("  offset = {offset_deg:>4.1}deg  intensity = {i:.4}");

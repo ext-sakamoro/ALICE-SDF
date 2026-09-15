@@ -1929,7 +1929,7 @@ mod tests {
             seed: 0,
         };
         // L = 1.0 + 0.2 * 3.0 * PERLIN_GRAD (|∇perlin| ≤ 3.5)
-        assert!((eval_lipschitz(&node) - (1.0 + 0.6 * PERLIN_GRAD)).abs() < 1e-5);
+        assert!((eval_lipschitz(&node) - 0.6f32.mul_add(PERLIN_GRAD, 1.0)).abs() < 1e-5);
     }
 
     #[test]
@@ -1941,7 +1941,7 @@ mod tests {
         // Unit sphere: XZ reach of its AABB corner is √2, v = 0.5·√2, the
         // shear singular value is v/2 + √(1 + v²/4).
         let v = 0.5 * 2.0_f32.sqrt();
-        let expected = 0.5 * v + (1.0 + 0.25 * v * v).sqrt();
+        let expected = 0.5f32.mul_add(v, (0.25 * v).mul_add(v, 1.0).sqrt());
         assert!((eval_lipschitz(&node) - expected).abs() < 1e-3);
     }
 

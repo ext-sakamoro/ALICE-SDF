@@ -340,9 +340,9 @@ fn interval_eval_contains_point_values() {
                 .collect();
             for _ in 0..8 {
                 pts.push(Vec3::new(
-                    (c.x - h.x) + rnd() * 2.0 * h.x,
-                    (c.y - h.y) + rnd() * 2.0 * h.y,
-                    (c.z - h.z) + rnd() * 2.0 * h.z,
+                    (rnd() * 2.0).mul_add(h.x, c.x - h.x),
+                    (rnd() * 2.0).mul_add(h.y, c.y - h.y),
+                    (rnd() * 2.0).mul_add(h.z, c.z - h.z),
                 ));
             }
             for p in pts {
@@ -507,7 +507,7 @@ fn lipschitz_claim_bounds_every_difference_quotient() {
             }
         }
         // 0.5 % slack for finite-difference rounding
-        if worst > claimed * 1.005 + 1e-4 {
+        if worst > claimed.mul_add(1.005, 1e-4) {
             failures.push(format!(
                 "{name}: eval_lipschitz claims {claimed:.3}, measured difference quotient {worst:.3} ({:.2}×) near {worst_at:?}",
                 worst / claimed
@@ -567,7 +567,7 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
     // Twist of a unit box (XZ corner radius √2): v = 2·√2, σ = v/2 + √(1 + v²/4)
     let twisted = SdfNode::box3d(2.0, 2.0, 2.0).twist(2.0);
     let v = 2.0 * 2f32.sqrt();
-    let expect = v * 0.5 + (1.0 + v * v * 0.25).sqrt();
+    let expect = v * 0.5 + (v * v).mul_add(0.25, 1.0).sqrt();
     assert!(
         (eval_lipschitz(&twisted) - expect).abs() < 1e-3,
         "twist bound {} vs {expect}",

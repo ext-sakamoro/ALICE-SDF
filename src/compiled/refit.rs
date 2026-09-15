@@ -83,8 +83,9 @@ pub enum RefitError {
     },
 }
 
-/// Compile-time helper: build `parent_indices` for every instruction in a
-/// prebuilt BVH by simulating the same tape walk. `parent_indices[i]` is
+/// Compile-time helper: build `parent_indices` for a prebuilt BVH.
+///
+/// Simulates the same tape walk as the evaluator. `parent_indices[i]` is
 /// `Some(parent_index)` when instruction `i` is a child in a CSG binary op
 /// (parent is the op instruction that consumes it) or an inner instruction
 /// of a transform / modifier (parent is the transform instruction). Root
@@ -313,10 +314,7 @@ fn walk_and_recompute(
             if end > i {
                 let aabb = bvh.aabbs[i];
                 value_stack.push(aabb);
-                scene_aabb = Some(match scene_aabb {
-                    None => aabb,
-                    Some(prev) => prev.union(&aabb),
-                });
+                scene_aabb = Some(scene_aabb.map_or(aabb, |prev| prev.union(&aabb)));
                 i = end + 1;
                 continue;
             }
@@ -332,10 +330,7 @@ fn walk_and_recompute(
                     bvh.aabbs[i]
                 };
                 value_stack.push(aabb);
-                scene_aabb = Some(match scene_aabb {
-                    None => aabb,
-                    Some(prev) => prev.union(&aabb),
-                });
+                scene_aabb = Some(scene_aabb.map_or(aabb, |prev| prev.union(&aabb)));
             }
             OpKind::Binary => {
                 let b = value_stack.pop().ok_or(RefitError::ValueStackUnderflow {
@@ -355,10 +350,7 @@ fn walk_and_recompute(
                     bvh.aabbs[i]
                 };
                 value_stack.push(aabb);
-                scene_aabb = Some(match scene_aabb {
-                    None => aabb,
-                    Some(prev) => prev.union(&aabb),
-                });
+                scene_aabb = Some(scene_aabb.map_or(aabb, |prev| prev.union(&aabb)));
             }
             OpKind::Transform | OpKind::Modifier => {
                 transform_stack.push(i);
@@ -383,10 +375,7 @@ fn walk_and_recompute(
                     bvh.aabbs[t]
                 };
                 value_stack.push(aabb);
-                scene_aabb = Some(match scene_aabb {
-                    None => aabb,
-                    Some(prev) => prev.union(&aabb),
-                });
+                scene_aabb = Some(scene_aabb.map_or(aabb, |prev| prev.union(&aabb)));
             }
             OpKind::End => break,
         }
@@ -1191,10 +1180,7 @@ mod tests {
             ("engrave", leaf.clone().engrave(cube.clone(), 0.15)),
             ("groove", leaf.clone().groove(cube.clone(), 0.1, 0.05)),
             ("tongue", leaf.clone().tongue(cube.clone(), 0.1, 0.05)),
-            (
-                "exp_smooth_union",
-                leaf.clone().exp_smooth_union(cube.clone(), 0.2),
-            ),
+            ("exp_smooth_union", leaf.clone().exp_smooth_union(cube, 0.2)),
             ("twist", leaf.clone().twist(0.5)),
             ("bend", leaf.clone().bend(0.3)),
             ("onion", leaf.clone().onion(0.1)),
@@ -1217,7 +1203,7 @@ mod tests {
             ("revolution", leaf.clone().revolution(2.0)),
             (
                 "polar_repeat",
-                leaf.clone().translate(1.5, 0.0, 0.0).polar_repeat(6),
+                leaf.translate(1.5, 0.0, 0.0).polar_repeat(6),
             ),
         ];
 

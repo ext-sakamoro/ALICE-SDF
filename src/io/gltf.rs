@@ -1763,7 +1763,7 @@ mod tests {
             "position quantization: expected normalized:true"
         );
         // KHR_mesh_quantization extension 使用
-        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+        assert!(json_str.contains(r"KHR_mesh_quantization"));
     }
 
     #[test]
@@ -1780,7 +1780,7 @@ mod tests {
             json_str.contains(r#""componentType":5120"#),
             "normal quantization: expected BYTE (5120), got: {json_str}"
         );
-        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+        assert!(json_str.contains(r"KHR_mesh_quantization"));
     }
 
     #[test]
@@ -1797,7 +1797,7 @@ mod tests {
             json_str.contains(r#""componentType":5123"#),
             "UV quantization: expected UNSIGNED_SHORT (5123)"
         );
-        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+        assert!(json_str.contains(r"KHR_mesh_quantization"));
     }
 
     #[test]
@@ -1816,7 +1816,7 @@ mod tests {
             json_str.contains(r#""componentType":5121"#),
             "color quantization: expected UNSIGNED_BYTE (5121)"
         );
-        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+        assert!(json_str.contains(r"KHR_mesh_quantization"));
     }
 
     #[test]
@@ -1840,7 +1840,7 @@ mod tests {
         assert!(json_str.contains(r#""componentType":5120"#), "normal BYTE");
         assert!(json_str.contains(r#""componentType":5123"#), "UV USHORT");
         assert!(json_str.contains(r#""componentType":5121"#), "color UBYTE");
-        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+        assert!(json_str.contains(r"KHR_mesh_quantization"));
     }
 
     #[test]
@@ -1861,7 +1861,7 @@ mod tests {
         );
         // VEC4 type (tangent は 4 component: xyz + handedness w)
         assert!(json_str.contains(r#""type":"VEC4""#), "tangent VEC4");
-        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+        assert!(json_str.contains(r"KHR_mesh_quantization"));
     }
 
     #[test]
@@ -1890,7 +1890,7 @@ mod tests {
         );
         assert!(json_str.contains(r#""componentType":5123"#), "UV USHORT");
         assert!(json_str.contains(r#""componentType":5121"#), "color UBYTE");
-        assert!(json_str.contains(r#"KHR_mesh_quantization"#));
+        assert!(json_str.contains(r"KHR_mesh_quantization"));
     }
 
     #[test]

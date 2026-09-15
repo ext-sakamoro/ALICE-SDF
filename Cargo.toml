@@ -214,6 +214,76 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(docsrs)',
 ] }
 
+# Crate-wide clippy policy (1.12.0): pedantic + nursery are the bar for the
+# whole crate, CI runs clippy with -D warnings, so every entry below is a
+# deliberate, documented exception — not a per-site silencer.
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Doc-shape lints: the API surface is documented per module; requiring an
+# "# Errors" / "# Panics" section and #[must_use] on ~2000 functions adds
+# noise without changing behaviour. Panicking APIs do document it.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+doc_markdown = "allow"
+# nursery style lints that trade readability for nothing in this code base:
+# `if let Some(x) = .. { x } else { push; .. }` with side effects in the else
+# branch, and `for v in [a, b]` over a destructured tuple.
+option_if_let_else = "allow"
+tuple_array_conversions = "allow"
+# `pow(x, 1/3)` is kept where a shader helper mirrors the CPU law (WGSL /
+# GLSL / HLSL have no cbrt); `cbrt()` would open a parity gap.
+imprecise_flops = "allow"
+# Naming: math / SDF code uses px, py, pz, ra, rb …
+similar_names = "allow"
+many_single_char_names = "allow"
+module_name_repetitions = "allow"
+# Casts: SDF code converts freely between f32 / u32 / usize / i32 (grid
+# indices, resolutions, counts); the values are small by construction.
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_lossless = "allow"
+cast_possible_wrap = "allow"
+return_self_not_must_use = "allow"
+# Style accepted in a math-heavy code base
+uninlined_format_args = "allow"
+match_same_arms = "allow"
+wildcard_imports = "allow"
+items_after_statements = "allow"
+format_push_string = "allow"
+explicit_iter_loop = "allow"
+needless_pass_by_value = "allow"
+redundant_closure_for_method_calls = "allow"
+bool_to_int_with_if = "allow"
+if_not_else = "allow"
+needless_bool = "allow"
+let_unit_value = "allow"
+# inline(always) is intentional on SIMD / evaluator hot paths
+inline_always = "allow"
+# Large match-based evaluators are inherent to an SDF VM
+too_many_lines = "allow"
+struct_excessive_bools = "allow"
+# Exact float comparison is intentional in SDF math and its tests
+float_cmp = "allow"
+case_sensitive_file_extension_comparisons = "allow"
+# Pointer casts in FFI / SIMD code
+ptr_as_ptr = "allow"
+# Misc
+map_unwrap_or = "allow"
+used_underscore_binding = "allow"
+single_match_else = "allow"
+unnecessary_wraps = "allow"
+match_wildcard_for_single_variants = "allow"
+cloned_instead_of_copied = "allow"
+let_underscore_untyped = "allow"
+pub_underscore_fields = "allow"
+no_effect_underscore_binding = "allow"
+cast_ptr_alignment = "allow"
+manual_let_else = "allow"
+unreadable_literal = "allow"
+
 # cargo-machete false-positive suppression
 # 以下は現状 direct use は無いが将来使用予定 or feature-gated planned dep として保持
 # - log: 現状 shader 生成文字列内のみ、将来 log::info!/warn! 導入予定

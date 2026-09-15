@@ -113,10 +113,11 @@ fn ellipsoid_sqr_distance(n: usize, e: [f32; 3], y: [f32; 3]) -> f32 {
     ellipsoid_sqr_distance(last, e, y)
 }
 
-/// Exact signed distance to an axis-aligned ellipsoid with semi-axes
-/// `radii` (Eberly's robust nearest-point algorithm: sort the axes, fold
-/// the point into the first orthant, bisect for the Lagrange parameter).
-/// Exact SDF inside and out, Lipschitz 1.
+/// Exact signed distance to an axis-aligned ellipsoid with semi-axes `radii`.
+///
+/// Eberly's robust nearest-point algorithm: sort the axes, fold the point
+/// into the first orthant, bisect for the Lagrange parameter. Exact SDF
+/// inside and out, Lipschitz 1.
 ///
 /// Until 1.10.3 this was Inigo Quilez's `k0·(k0 − 1)/k1` approximation,
 /// whose gradient grows like `(max r / min r)⁴` far from the surface and
@@ -219,7 +220,10 @@ mod tests {
                 best = best.min((p - s).length());
             }
         }
-        let inside = (p.x / r.x).powi(2) + (p.y / r.y).powi(2) + (p.z / r.z).powi(2) < 1.0;
+        let inside = (p.z / r.z).mul_add(
+            p.z / r.z,
+            (p.y / r.y).mul_add(p.y / r.y, (p.x / r.x).powi(2)),
+        ) < 1.0;
         if inside {
             -best
         } else {

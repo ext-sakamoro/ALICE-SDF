@@ -6,6 +6,18 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — clippy policy: pedantic + nursery for the whole crate
+
+- `Cargo.toml [lints.clippy]` now sets `pedantic` and `nursery` to warn
+  with every exception listed and justified there (the former `lib.rs`
+  allow list moved into it, so tests / benches / examples share the bar),
+  and CI's clippy jobs run with `-D warnings`. Landing the policy fixed
+  ~480 lib findings: `use_self`, `const fn`, `midpoint`, `mul_add` at 100
+  sites (演算の掟 §2-4), a never-read Vec in the IGES writer, contains +
+  insert, a decimal bitmask, `hypot`, an integer loop for the stairs step
+  index, complete `Debug` impls; two `suspicious_operation_groupings` sites
+  are documented false positives.
+
 ### Changed — CI gates (review R2-7 follow-up)
 
 - `Test (AAA meta)` and `cargo-semver-checks` are hard gates (both were

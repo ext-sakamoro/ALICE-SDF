@@ -128,8 +128,8 @@ mod tests {
         let offs = chromatic_offsets(uvx, uvy, strength);
         let red = offs[0];
         let blue = offs[2];
-        let mid_x = (red.0 + blue.0) * 0.5;
-        let mid_y = (red.1 + blue.1) * 0.5;
+        let mid_x = f32::midpoint(red.0, blue.0);
+        let mid_y = f32::midpoint(red.1, blue.1);
         assert!((mid_x - uvx).abs() < 1e-6 && (mid_y - uvy).abs() < 1e-6);
     }
 }

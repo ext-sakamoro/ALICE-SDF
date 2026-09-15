@@ -291,7 +291,7 @@ mod tests {
                 tri
             })
             .collect();
-        tris_before.sort();
+        tris_before.sort_unstable();
 
         optimize_overdraw(&mut mesh, 1.0);
 
@@ -306,7 +306,7 @@ mod tests {
                 tri
             })
             .collect();
-        tris_after.sort();
+        tris_after.sort_unstable();
 
         assert_eq!(
             tris_before, tris_after,

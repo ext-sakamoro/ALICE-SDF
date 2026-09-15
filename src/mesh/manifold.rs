@@ -1036,7 +1036,7 @@ mod tests {
         );
 
         // 全 flip
-        let mut flipped = mesh.clone();
+        let mut flipped = mesh;
         for t in 0..(flipped.indices.len() / 3) {
             let base = t * 3;
             flipped.indices.swap(base + 1, base + 2);

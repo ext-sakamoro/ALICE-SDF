@@ -2486,7 +2486,7 @@ mod tests {
         let leaf = NprColorNode::Constant(Vec3::splat(0.5));
         let node = leaf
             .clone()
-            .plus(leaf.clone())
+            .plus(leaf)
             .multiply(NprColorNode::TwoTone {
                 shadow: Vec3::ZERO,
                 light: Vec3::ONE,
@@ -2521,7 +2521,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             // Direct construction from n_dot_l so light.y == n_dot_l with
             // normal fixed to +Y. Zero out other components.
-            light: Vec3::new(0.0, ndl, (1.0 - ndl * ndl).max(0.0).sqrt()),
+            light: Vec3::new(0.0, ndl, ndl.mul_add(-ndl, 1.0).max(0.0).sqrt()),
             uv,
             time,
         };
@@ -2738,7 +2738,7 @@ mod tests {
         let leaf = NprColorNode::Constant(Vec3::splat(0.5));
         let node = leaf
             .clone()
-            .plus(leaf.clone())
+            .plus(leaf)
             .multiply(NprColorNode::TwoTone {
                 shadow: Vec3::ZERO,
                 light: Vec3::ONE,

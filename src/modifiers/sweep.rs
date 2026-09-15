@@ -14,10 +14,11 @@ fn bezier_eval(p0: Vec2, p1: Vec2, p2: Vec2, t: f32) -> Vec2 {
     p0 * (omt * omt) + p1 * (2.0 * omt * t) + p2 * (t * t)
 }
 
-/// Distance from `q` to the quadratic Bézier `A B C` — Inigo Quilez's
-/// `sdBezier`: the nearest parameter is a root of a depressed cubic, solved
-/// in closed form (one real root via Cardano, or three via the trigonometric
-/// form, of which the two candidates are compared). Exact and continuous;
+/// Distance from `q` to the quadratic Bézier `A B C` (Inigo Quilez's `sdBezier`).
+///
+/// The nearest parameter is a root of a depressed cubic, solved in closed
+/// form (one real root via Cardano, or three via the trigonometric form, of
+/// which the two candidates are compared). Exact and continuous;
 /// the pre-1.11.0 "5 samples + Newton" search jumped between local minima
 /// (difference quotients 800× the sample spacing, Lipschitz property test).
 ///

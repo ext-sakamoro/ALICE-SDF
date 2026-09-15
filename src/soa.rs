@@ -686,7 +686,7 @@ mod tests {
         assert_eq!(v2.len(), 2);
         assert_eq!(v2[0], 10.0);
         assert_eq!(v2[1], 20.0);
-        assert!(v2.as_ptr() as usize % 32 == 0);
+        assert_eq!(v2.as_ptr() as usize % 32, 0);
     }
 
     #[test]

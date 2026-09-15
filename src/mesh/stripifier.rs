@@ -99,9 +99,11 @@ pub fn stripify(indices: &[u32], vertex_count: usize, restart_index: Option<u32>
     try_stripify(indices, vertex_count, restart_index).unwrap_or_else(|e| panic!("stripify: {e}"))
 }
 
-/// Non-panicking [`stripify`]: rejects an index count that is not a multiple
-/// of 3 (or an index outside `vertex_count`) with [`MeshInputError`] instead
-/// of aborting the caller. Prefer this from FFI / engine hosts.
+/// Non-panicking [`stripify`].
+///
+/// Rejects an index count that is not a multiple of 3 (or an index outside
+/// `vertex_count`) with [`MeshInputError`] instead of aborting the caller.
+/// Prefer this from FFI / engine hosts.
 ///
 /// # Errors
 ///
@@ -366,8 +368,8 @@ mod tests {
                 t
             })
             .collect();
-        ta.sort();
-        tb.sort();
+        ta.sort_unstable();
+        tb.sort_unstable();
         ta == tb
     }
 

@@ -272,7 +272,7 @@ mod tests {
         let mut normals = Vec::with_capacity(n);
 
         // Fibonacci sphere distribution
-        let golden_ratio = (1.0 + 5.0f32.sqrt()) / 2.0;
+        let golden_ratio = f32::midpoint(1.0, 5.0f32.sqrt());
         for i in 0..n {
             let theta = 2.0 * std::f32::consts::PI * (i as f32) / golden_ratio;
             let phi = (1.0 - 2.0 * (i as f32 + 0.5) / n as f32).acos();

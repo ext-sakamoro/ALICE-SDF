@@ -412,10 +412,7 @@ fn union_of_instruction_aabbs<I: IntoIterator<Item = usize>>(
         if !aabb.is_valid() {
             continue;
         }
-        acc = Some(match acc {
-            None => *aabb,
-            Some(prev) => prev.union(aabb),
-        });
+        acc = Some(acc.map_or(*aabb, |prev| prev.union(aabb)));
     }
     acc
 }

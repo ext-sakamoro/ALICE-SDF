@@ -19,30 +19,27 @@ const T_TOL: f32 = 2e-3;
 
 /// First surface crossing along the ray by exhaustive scan + bisection.
 fn oracle_hit(node: &SdfNode, origin: Vec3, dir: Vec3) -> Option<f32> {
-    let mut t = 0.0f32;
-    let mut prev = eval(node, origin);
-    if prev <= 0.0 {
+    if eval(node, origin) <= 0.0 {
         return Some(0.0);
     }
-    while t < MAX_DIST {
+    let steps = (MAX_DIST / ORACLE_STEP) as usize;
+    for i in 0..steps {
+        let t = i as f32 * ORACLE_STEP;
         let next_t = t + ORACLE_STEP;
         let d = eval(node, origin + dir * next_t);
         if d <= 0.0 {
             let (mut lo, mut hi) = (t, next_t);
             for _ in 0..24 {
-                let mid = 0.5 * (lo + hi);
+                let mid = f32::midpoint(lo, hi);
                 if eval(node, origin + dir * mid) <= 0.0 {
                     hi = mid;
                 } else {
                     lo = mid;
                 }
             }
-            return Some(0.5 * (lo + hi));
+            return Some(f32::midpoint(lo, hi));
         }
-        prev = d;
-        t = next_t;
     }
-    let _ = prev;
     None
 }
 
@@ -185,8 +182,8 @@ fn relaxed_tracing_takes_fewer_steps_than_default() {
     let mut grazing = Vec::new();
     for i in 0..10 {
         for j in 0..10 {
-            let height = 0.2 + 0.08 * i as f32;
-            let deg = 4.0 + 0.8 * j as f32;
+            let height = 0.08f32.mul_add(i as f32, 0.2);
+            let deg = 0.8f32.mul_add(j as f32, 4.0);
             let (s, c) = deg.to_radians().sin_cos();
             grazing.push((Vec3::new(-3.0, height, 0.0), Vec3::new(c, -s, 0.0)));
         }
@@ -221,7 +218,7 @@ fn review_reproducer_unit_sphere_rows() {
         let o = Vec3::new(0.0, y, -6.0);
         let hit = raymarch_with_config(&node, o, Vec3::Z, MAX_DIST, &cfg)
             .unwrap_or_else(|| panic!("y = {y}: relaxed tracing missed the unit sphere"));
-        let expect = 6.0 - (1.0 - y * y).sqrt();
+        let expect = 6.0 - y.mul_add(-y, 1.0).sqrt();
         assert!(
             (hit.distance - expect).abs() < T_TOL,
             "y = {y}: t = {} expected {expect}",
