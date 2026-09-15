@@ -513,36 +513,20 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
 
-            // Division Exorcism for Ellipsoid
+            // Exact ellipsoid (Eberly nearest point), one helper per language
             SdfNode::Ellipsoid { radii } => {
+                self.ensure_helper("sdf_ellipsoid");
                 let var = self.next_var();
-                let k0_var = self.next_var();
-                let k1_var = self.next_var();
-                let inv_rx = self.param(1.0 / radii.x.max(1e-10));
-                let inv_ry = self.param(1.0 / radii.y.max(1e-10));
-                let inv_rz = self.param(1.0 / radii.z.max(1e-10));
-                let inv_rx2 = self.param(1.0 / (radii.x * radii.x).max(1e-10));
-                let inv_ry2 = self.param(1.0 / (radii.y * radii.y).max(1e-10));
-                let inv_rz2 = self.param(1.0 / (radii.z * radii.z).max(1e-10));
-                code.push_str(&L::decl_float(
-                    &k0_var,
-                    &format!(
-                        "length({} * {})",
-                        point_var,
-                        L::vec3_ctor(&inv_rx, &inv_ry, &inv_rz)
-                    ),
-                ));
-                code.push_str(&L::decl_float(
-                    &k1_var,
-                    &format!(
-                        "length({} * {})",
-                        point_var,
-                        L::vec3_ctor(&inv_rx2, &inv_ry2, &inv_rz2)
-                    ),
-                ));
+                let rx = self.param(radii.x);
+                let ry = self.param(radii.y);
+                let rz = self.param(radii.z);
                 code.push_str(&L::decl_float(
                     &var,
-                    &format!("{} * ({} - 1.0) / max({}, 1e-10)", k0_var, k0_var, k1_var),
+                    &format!(
+                        "sdf_ellipsoid({}, {})",
+                        point_var,
+                        L::vec3_ctor(&rx, &ry, &rz)
+                    ),
                 ));
                 var
             }

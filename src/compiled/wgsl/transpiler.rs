@@ -151,6 +151,7 @@ impl ShaderLang for WgslLang {
             "sdf_star_polygon" => Some(HELPER_SDF_STAR_POLYGON),
             "sdf_stairs" => Some(HELPER_SDF_STAIRS),
             "sdf_helix" => Some(HELPER_SDF_HELIX),
+            "sdf_ellipsoid" => Some(HELPER_SDF_ELLIPSOID),
             "bezier_distance_2d" => Some(HELPER_BEZIER_DISTANCE_2D),
             "sdf_tetrahedron" => Some(HELPER_SDF_TETRAHEDRON),
             "sdf_dodecahedron" => Some(HELPER_SDF_DODECAHEDRON),
@@ -1500,6 +1501,96 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"fn bezier_distance_2d(q: vec2<f32>, p0
         res = min(dot(e0, e0), dot(e1, e1));
     }
     return sqrt(res);
+}
+";
+
+/// Exact ellipsoid signed distance (Eberly nearest point; mirrors
+/// `primitives::ellipsoid::sdf_ellipsoid_exact`, dimension reductions unrolled).
+const HELPER_SDF_ELLIPSOID: &str = r"fn _ell_bisect(n: i32, r0: f32, r1: f32, r2: f32, z0: f32, z1: f32, z2: f32, g: f32) -> f32 {
+    let n0 = r0 * z0;
+    let n1 = select(0.0, r1 * z1, n > 1);
+    let n2 = select(0.0, r2 * z2, n > 2);
+    let zl = select(select(z0, z1, n == 2), z2, n == 3);
+    var s0 = zl - 1.0;
+    var s1 = select(sqrt(n0 * n0 + n1 * n1 + n2 * n2) - 1.0, 0.0, g < 0.0);
+    var s = 0.0;
+    for (var it = 0; it < 64; it = it + 1) {
+        s = 0.5 * (s0 + s1);
+        if (s == s0 || s == s1) { break; }
+        var gs = -1.0;
+        let q0 = n0 / (s + r0);
+        gs = gs + q0 * q0;
+        if (n > 1) { let q1 = n1 / (s + r1); gs = gs + q1 * q1; }
+        if (n > 2) { let q2 = n2 / (s + r2); gs = gs + q2 * q2; }
+        if (gs > 0.0) { s0 = s; } else if (gs < 0.0) { s1 = s; } else { break; }
+    }
+    return s;
+}
+fn _ell_sqr_dist_n(n: i32, e0: f32, e1: f32, e2: f32, y0: f32, y1: f32, y2: f32) -> f32 {
+    // Eberly SqrDistanceSpecial for the first n sorted axes, assuming y[n-1] > 0
+    let el = select(select(e0, e1, n == 2), e2, n == 3);
+    let z0 = y0 / e0;
+    let z1 = select(0.0, y1 / e1, n > 1);
+    let z2 = select(0.0, y2 / e2, n > 2);
+    let g = z0 * z0 + z1 * z1 + z2 * z2 - 1.0;
+    if (g == 0.0) { return 0.0; }
+    let r0 = (e0 / el) * (e0 / el);
+    let r1 = (e1 / el) * (e1 / el);
+    let r2 = (e2 / el) * (e2 / el);
+    let sb = _ell_bisect(n, r0, r1, r2, z0, z1, z2, g);
+    let x0 = r0 * y0 / (sb + r0) - y0;
+    let x1 = select(0.0, r1 * y1 / (sb + r1) - y1, n > 1);
+    let x2 = select(0.0, r2 * y2 / (sb + r2) - y2, n > 2);
+    return x0 * x0 + x1 * x1 + x2 * x2;
+}
+fn sdf_ellipsoid(p: vec3<f32>, radii: vec3<f32>) -> f32 {
+    var e = max(radii, vec3<f32>(1e-10));
+    var y = abs(p);
+    if (e.x < e.y) { let t = e.x; e.x = e.y; e.y = t; let u = y.x; y.x = y.y; y.y = u; }
+    if (e.y < e.z) { let t = e.y; e.y = e.z; e.z = t; let u = y.y; y.y = y.z; y.z = u; }
+    if (e.x < e.y) { let t = e.x; e.x = e.y; e.y = t; let u = y.x; y.x = y.y; y.y = u; }
+    var d2: f32;
+    if (y.z > 0.0) {
+        d2 = _ell_sqr_dist_n(3, e.x, e.y, e.z, y.x, y.y, y.z);
+    } else {
+        // y.z == 0: nearest point may leave the plane (Eberly reduction)
+        let n0 = e.x * y.x; let n1 = e.y * y.y;
+        let d0 = e.x * e.x - e.z * e.z; let d1 = e.y * e.y - e.z * e.z;
+        var done = false;
+        d2 = 0.0;
+        if (n0 < d0 && n1 < d1) {
+            let x0 = n0 / d0; let x1 = n1 / d1;
+            let discr = 1.0 - x0 * x0 - x1 * x1;
+            if (discr > 0.0) {
+                let a = e.x * x0 - y.x; let b = e.y * x1 - y.y; let c = e.z * sqrt(discr);
+                d2 = a * a + b * b + c * c;
+                done = true;
+            }
+        }
+        if (!done) {
+            if (y.y > 0.0) {
+                d2 = _ell_sqr_dist_n(2, e.x, e.y, e.z, y.x, y.y, 0.0);
+            } else {
+                // y.y == 0 too: 2-D reduction with y[1] = 0
+                let m0 = e.x * y.x;
+                let q0 = e.x * e.x - e.y * e.y;
+                var done2 = false;
+                if (m0 < q0) {
+                    let x0 = m0 / q0;
+                    let discr = 1.0 - x0 * x0;
+                    if (discr > 0.0) {
+                        let a = e.x * x0 - y.x; let b = e.y * sqrt(discr);
+                        d2 = a * a + b * b;
+                        done2 = true;
+                    }
+                }
+                if (!done2) { let a = y.x - e.x; d2 = a * a; }
+            }
+        }
+    }
+    let inside = (y.x / e.x) * (y.x / e.x) + (y.y / e.y) * (y.y / e.y) + (y.z / e.z) * (y.z / e.z) < 1.0;
+    let d = sqrt(max(d2, 0.0));
+    return select(d, -d, inside);
 }
 ";
 

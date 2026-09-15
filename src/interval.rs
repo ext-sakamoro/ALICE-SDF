@@ -459,11 +459,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         } => ia_bsphere(bounds, (2.0 * half_height).hypot(*radius)),
         // iq's ellipsoid bound `k0 (k0 - 1) / k1` scales the unit-sphere distance
         // by at most max(r) / min(r), so its gradient is bounded by that ratio.
-        SdfNode::Ellipsoid { radii } => {
-            let rmax = radii.x.max(radii.y).max(radii.z);
-            let rmin = radii.x.min(radii.y).min(radii.z).max(1e-10);
-            ia_lipschitz(node, bounds, rmax / rmin)
-        }
+        // Exact SDF since 1.11.0 (Eberly nearest point)
+        SdfNode::Ellipsoid { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::RoundedCone {
             r1,
             r2,
@@ -1336,7 +1333,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Horseshoe { .. }
         | SdfNode::BlobbyCross { .. }
         | SdfNode::Stairs { .. }
-        | SdfNode::Helix { .. } => 1.0,
+        | SdfNode::Helix { .. }
+        | SdfNode::Ellipsoid { .. } => 1.0,
 
         // Triply periodic minimal surfaces: `|F(p·s)| / s − t` with F an
         // implicit trigonometric function, so L = sup|∇F| independent of
@@ -1365,10 +1363,6 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::Terrain { scale, amplitude } => {
             TERRAIN_FBM_GRAD.mul_add((scale * amplitude).abs(), 1.0)
         }
-
-        // Not Lipschitz on the exterior: the IQ ellipsoid approximation's
-        // gradient grows like (max r / min r)⁴ in the far field.
-        SdfNode::Ellipsoid { .. } => f32::INFINITY,
 
         // min / max and every convex blend (smooth, exp-smooth: the weights
         // on ∇a and ∇b sum to 1) are 1-Lipschitz in (a, b).

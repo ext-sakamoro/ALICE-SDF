@@ -96,7 +96,7 @@ pub use diamond::sdf_diamond;
 pub use diamond_surface::sdf_diamond_surface;
 pub use dodecahedron::sdf_dodecahedron;
 pub use egg::sdf_egg;
-pub use ellipsoid::{sdf_ellipsoid, sdf_ellipsoid_r};
+pub use ellipsoid::{sdf_ellipsoid, sdf_ellipsoid_exact, sdf_ellipsoid_r};
 pub use fischer_koch_s::sdf_fischer_koch_s;
 pub use frd::sdf_frd;
 pub use gyroid::sdf_gyroid;

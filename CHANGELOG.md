@@ -187,6 +187,19 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   is NaN); the three shader helpers mirror it (GPU ↔ CPU 1.7e-6) and
   `eval_lipschitz` is 1.
 
+- `Ellipsoid` was Inigo Quilez's `k0·(k0 − 1)/k1` approximation: not a
+  distance bound (its gradient grows like `(max r / min r)⁴` far from the
+  surface, so sphere tracing could skip an anisotropic ellipsoid) and
+  discontinuous at the centre. It is now the exact signed distance
+  (Eberly's robust nearest-point algorithm: axes sorted, point folded into
+  the first orthant, bisection for the Lagrange parameter with the
+  lower-dimensional reductions for axis-plane queries), on the CPU, per
+  lane in the SIMD path, and as one `sdf_ellipsoid` helper per shader
+  language (GPU ↔ CPU 3.3e-7 including on-axis queries and a 10:1 flat
+  ellipsoid); brute-force agreement 4e-3 (sampling-limited) and
+  `eval_lipschitz` is 1. Cost: up to 64 bisection steps per evaluation on
+  this primitive only.
+
 ### Changed — compiled evaluator speed (review SDF-R2-4)
 
 - `eval_compiled` zero-filled its three evaluator stacks (≈ 3.4 KB for f32,
