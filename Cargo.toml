@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "1.11.0"
+version = "1.12.0"
 edition = "2021"
 # MSRV-aware 依存解決 (cargo 1.84+): `cargo update` が `rust-version` を超える dep を
 # 選ばない = lockfile が宣言 MSRV から silent に乖離しない (1.10.3 で 1.75 宣言のまま

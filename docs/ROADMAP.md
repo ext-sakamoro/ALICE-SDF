@@ -4,7 +4,7 @@ Canonical roadmap tracking phases, current state, and open decisions for the
 ALICE-SDF crate. Primary source of truth — the `MEMORY.md` index and per-session
 memory files reference this document rather than duplicating the phase list.
 
-- **Current version**: `v1.11.0` (crates.io; bridge features still pending, see P15)
+- **Current version**: `v1.12.0` (crates.io; bridge features restored, `font` pending alice-font)
 - **Repo**: `ext-sakamoro/ALICE-SDF`
 - **License**: Dual (see `LICENSE`, `LICENSE-COMMUNITY`)
 - **MSRV**: `1.85`

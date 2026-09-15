@@ -6,6 +6,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.12.0] - 2026-09-15
+
+Bridge features back on crates.io (P15), crate-wide clippy pedantic + nursery policy, every CI test step a hard gate (blocking fuzz seed replay, semver-checks), colour-program stack validation, and the evaluator / marcher / law work that followed the 2026-09-15 external review.
+
 ### Fixed — panics reachable from untrusted input
 
 - `GpuColorProgram::deserialize` accepted an unbalanced stack program
