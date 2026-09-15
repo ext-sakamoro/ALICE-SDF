@@ -25,6 +25,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       mobile: ${{ steps.filter.outputs.mobile }}
+      python: ${{ steps.filter.outputs.python }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v5
@@ -42,6 +43,9 @@ jobs:
               - 'rust-toolchain.toml'
             mobile:
               - 'mobile/**'
+            python:
+              - 'python/**'
+              - 'pyproject.toml'
             ci:
               - '.github/**'
 
@@ -535,6 +539,36 @@ jobs:
           if [ -n "${SERVER_PID:-}" ]; then
             kill "$SERVER_PID" 2>/dev/null || true
           fi
+
+  # The PyO3 binding had no CI coverage (release-wheels only builds it).
+  # Builds the extension with maturin and runs python/tests/smoke.py, whose
+  # every assertion has a closed-form answer (unit sphere / box distances,
+  # eval_batch == |p| - 1, compiled == tree, mesh vertices on the sphere with
+  # outward winding and volume within 5 % of 4/3 pi, asdf / json round trips).
+  python-smoke:
+    name: Python binding smoke (maturin develop + analytic oracle)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.python == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and install the binding into a venv
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --quiet maturin numpy
+          maturin develop --features python
+
+      - name: Run the analytic smoke test
+        run: |
+          . .venv/bin/activate
+          python python/tests/smoke.py
 
   wasm-build:
     name: WASM bindings build

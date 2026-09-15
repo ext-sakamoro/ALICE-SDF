@@ -167,6 +167,20 @@ step "wasm-build: release wasm artifact"
 cargo build --release --target wasm32-unknown-unknown --features wasm --no-default-features
 test -f target/wasm32-unknown-unknown/release/alice_sdf.wasm
 
+step "python-smoke: maturin develop --features python + python/tests/smoke.py"
+if command -v maturin >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  venv=$(mktemp -d)/venv
+  python3 -m venv "$venv"
+  # shellcheck disable=SC1091
+  . "$venv/bin/activate"
+  pip install --quiet maturin numpy
+  maturin develop --features python
+  python python/tests/smoke.py
+  deactivate
+else
+  echo "skip: maturin / python3 not installed" >&2
+fi
+
 step "audit: cargo audit (RustSec)"
 if command -v cargo-audit >/dev/null 2>&1; then
   cargo audit --deny yanked --ignore RUSTSEC-2025-0141 --ignore RUSTSEC-2024-0436

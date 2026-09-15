@@ -36,6 +36,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   the `texture-fit` lib tests and this oracle; clippy covers the module.
   Pending: a GPU parity run of the emitted shader against `reconstruct`.
 
+### Added — Python binding smoke oracle in CI
+
+- `python/tests/smoke.py` + ci.yml `python-smoke` job (`maturin develop
+  --features python`, no pytest): every assertion has a closed-form
+  answer — unit sphere / box distances, `eval_batch` ≡ |p| − 1,
+  compiled ≡ tree, mesh vertices on the sphere with outward winding and
+  volume within 5 % of 4/3 π, JSON / `.asdf` round trips. The binding had
+  no CI coverage before (release-wheels only builds it).
+
 ### Changed — `lazy_static` compatibility feature, local CI preflight
 
 - The FFI registries use `std::sync::LazyLock`; the `lazy_static` optional
