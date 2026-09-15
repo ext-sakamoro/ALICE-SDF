@@ -343,8 +343,14 @@ jobs:
         env:
           RUSTFLAGS: "-Dwarnings"
 
-      - name: Clippy strict (glsl + hlsl + gpu)
-        run: cargo clippy --lib --features "glsl,hlsl,gpu"
+      # --all-targets: tests / benches / examples も lint 対象 (template 罠 #26)
+      - name: Clippy strict (default, all targets)
+        run: cargo clippy --all-targets
+        env:
+          RUSTFLAGS: "-Dwarnings"
+
+      - name: Clippy strict (glsl + hlsl + gpu, all targets)
+        run: cargo clippy --all-targets --features "glsl,hlsl,gpu"
         env:
           RUSTFLAGS: "-Dwarnings"
 
@@ -395,6 +401,28 @@ jobs:
       - name: Check formatting (mobile/uniffi-wrapper)
         working-directory: mobile/uniffi-wrapper
         run: cargo fmt --check
+
+  msrv:
+    name: MSRV (rust-version = 1.85)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Cargo.toml `rust-version` を実証する (canonical template 罠 #27)。
+      # 宣言値と同じ toolchain を pin し、default feature + docs.rs feature set
+      # で `cargo check` が通ることを確認する。宣言を上げる時はここも上げる。
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create ALICE optional bridge stubs
+        uses: ./.github/actions/alice-stubs
+
+      - name: Check (default features)
+        run: cargo check --lib
+
+      - name: Check (docs.rs feature set)
+        run: cargo check --lib --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi"
 
   doc:
     name: Doc (RUSTDOCFLAGS=-Dwarnings)

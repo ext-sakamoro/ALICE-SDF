@@ -375,7 +375,7 @@ pub fn fit_cylinder(points: &[Vec3], config: &FittingConfig) -> Option<FittingRe
 
     for axis in axes {
         if let Some(result) = fit_cylinder_along_axis(points, axis, config) {
-            if best_result.as_ref().map_or(true, |b| result.mse < b.mse) {
+            if best_result.as_ref().is_none_or(|b| result.mse < b.mse) {
                 best_result = Some(result);
             }
         }

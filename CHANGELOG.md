@@ -6,6 +6,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v1.10.3] - 2026-09-15
+
 ### Fixed
 
 - Cell-boundary rounding now agrees on every evaluation path. The repeat /
@@ -36,6 +38,22 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   `npr::scene_composer` tests require the `gpu` feature (they use
   `WgslShader`) and are now gated on it, so `--features glsl,hlsl` without
   `gpu` compiles and passes.
+
+### Changed
+
+- `rust-version` corrected from `1.75` to `1.85`: the declared MSRV had been
+  false since the lockfile picked up `clap_lex 1.1.0` (edition 2024), so
+  `cargo check` on 1.75 failed at manifest parsing for the default `cli`
+  feature. 1.85 is verified for the default and docs.rs feature sets; a CI
+  `msrv` job now pins the declared toolchain.
+- docs.rs builds with `glsl, hlsl, jit, svo, terrain, destruction, gi, ffi`
+  (`[package.metadata.docs.rs]`); previously only the default feature was
+  documented, hiding the transpilers, the JIT and the AAA modules.
+- Cargo.toml `description` no longer references 1.7.7 / 1.8.0 for the bridge
+  features (they remain path / git only).
+- CI: strict clippy runs with `--all-targets` (tests, benches, examples).
+- Two `Option::map_or(true, ..)` sites rewritten as `is_none_or` — clippy's
+  `unnecessary_map_or` had been silenced by the false 1.75 MSRV.
 
 ## [v1.10.2] - 2026-09-14
 

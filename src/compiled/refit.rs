@@ -290,7 +290,7 @@ fn walk_and_recompute(
     let mut recomputed = 0usize;
     let mut scene_aabb: Option<AabbPacked> = None;
 
-    let should_recompute = |i: usize| affected.map_or(true, |set| set.contains(&i));
+    let should_recompute = |i: usize| affected.is_none_or(|set| set.contains(&i));
     // Fast subtree skip: if we're about to enter a transform whose subtree
     // contains no dirty instruction (i.e. the transform itself is not in
     // the affected set — since affected includes all ancestors of dirty,
