@@ -28,7 +28,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM export
 - **5-layer mesh persistence** - ABM binary format, LOD chain persistence, chunked mesh cache with FIFO eviction, Unity/UE5/UE6 native export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
-- **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters
+- **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters (outward CCW winding, closed meshes; 1.11.0 flipped the index order — see CHANGELOG)
 - **Dual Contouring** - QEF-based mesh generation that preserves sharp edges and corners
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
 - **Attribute-preserving decimation** - QEM with UV/tangent/material boundary protection
@@ -42,7 +42,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **73 primitives, 24 operations, 7 transforms, 24 modifiers** (128 total) - industry-leading shape vocabulary
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
-- **Relaxed Sphere Tracing** - over-relaxation with Lipschitz-adaptive step sizing
+- **Relaxed Sphere Tracing** - over-relaxation (Keinert 2014, with overshoot retreat) and Lipschitz-adaptive step sizing; `RaymarchConfig::relaxed(&node)` is required for TPMS surfaces (Gyroid, Neovius, …), whose fields are not distance-bounded
 - **Neural SDF** - pure-Rust MLP that approximates an SDF tree ~10-100x faster for complex scenes
 - **SDF-to-SDF Collision** - grid-based contact detection with interval arithmetic AABB pruning
 - **CSG Tree Optimization** - identity transform/modifier removal, nested transform merging, smooth→standard demotion

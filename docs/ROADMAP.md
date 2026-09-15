@@ -76,6 +76,24 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 | JIT SIMD loud failure | ✅ 1.9.2 | `JitSimdSdf::compile` returns `Err` for opcodes without codegen (was silent `f32::MAX`); legacy `jit_simd::JitSimd` deprecated → thin wrapper |
 | `Plane` sign in transpilers / JIT | ✅ 1.9.2 | Unified on the CPU law `dot(p, n) - d` (shader output change, CHANGELOG Fixed) |
 
+### External review landing (1.11.0, 2026-09-15)
+
+Two-round external review of 1.10.2 ([memory: `project_alice_sdf_external_review_2026_09_15`]). Pattern in both rounds: the foundation (128 laws, Eikonal, analytic agreement) measured correct; the optimisation layer and the output stage above it were broken and had no test on their path. Landing = fix + an oracle test per finding.
+
+| Finding | Status | Fix / oracle |
+|---|---|---|
+| SDF-1 over-relaxation never retreated (unit sphere lost 76 % of rays at ω = 1.6) | ✅ | One `RelaxedStepper` (Keinert 2014) for tree / compiled / JIT; `tests/test_relaxed_tracing.rs` vs fixed-step oracle |
+| SDF-2 `eval_lipschitz` unsound (TPMS / ellipsoid claimed 1) | ✅ | Analytic / pinned bounds on the exterior, `INFINITY` for non-Lipschitz laws; `lipschitz_claim_bounds_every_difference_quotient` over the corpus |
+| Twist / Bend radius-10 heuristic | ✅ | Shear singular value with the child's AABB radius |
+| SDF-3 naga only on NPR shaders | ✅ | `tests/test_transpiler_naga_validate.rs` (parse + validate, WGSL + GLSL, every corpus node) — found 5 polyhedra without a shader helper, a truncated `ColumnsUnion`, `%`/`fmod` vs floor modulo, GLSL `atan2` |
+| GPU parity never in CI | ✅ | `gpu-parity` job on lavapipe, `ALICE_SDF_REQUIRE_GPU=1` |
+| SDF-R2-1/2 marching cubes wound inward, STL inside-out | ✅ | `CORNER_OFFSETS` aligned with the tables (CPU + WGSL); `tests/test_mesh_orientation.rs` (winding, signed volume, STL round trip) |
+| SDF-R2-3 open edges on aligned grids / duplicate vertices | ✅ | Canonical edge interpolation + degenerate-triangle removal |
+| SDF-R2-5 `eval_interval` = EVERYTHING for TPMS | ✅ | `ia_lipschitz` with the pinned constants |
+| SDF-R2-4 `eval_compiled` scalar 1.95× slower than the tree walker | ⏳ | Backlog: scalar VM hot loop or SIMD batch as the documented primary path; MC onto the SIMD batch path |
+| Laws that jump (egg, horseshoe, blobby cross, stairs, helix axis, ellipsoid far field, sweep Bézier) | ⏳ | Backlog: port the IQ exact forms / bound-safe variants, then restore their Lipschitz claims |
+| README `[LICENSE]` link | ✅ | `LICENSE-MIT` / `LICENSE-APACHE` |
+
 ### Deeper follow-ups (not scheduled)
 
 - **P14-C — Real GPU execution parity** — build a wgpu headless test harness that uploads the `GpuColorProgram` to a storage buffer, dispatches the emitted evaluator against a synthetic context UBO, reads back the output framebuffer, and asserts numerical parity against the CPU scalar `eval` within a small epsilon (e.g. `1e-5`). Currently only naga parse + semantic validation is exercised; drop-in for a wgpu-enabled CI runner.
