@@ -188,7 +188,11 @@ mod tests {
         let tree = SdfTree::new(node.clone());
         let packet = create_sdf_i_packet(&tree, 7).expect("packet");
         let back = decode_sdf_i_packet(&packet).expect("decode");
-        for p in [Vec3::ZERO, Vec3::new(0.4, -0.3, 0.9), Vec3::new(-1.2, 0.8, 0.1)] {
+        for p in [
+            Vec3::ZERO,
+            Vec3::new(0.4, -0.3, 0.9),
+            Vec3::new(-1.2, 0.8, 0.1),
+        ] {
             assert_eq!(eval(&back.root, p).to_bits(), eval(&node, p).to_bits());
         }
         let (asdf, total) = estimate_packet_size(&tree);
