@@ -8,24 +8,19 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::crispy::{round_half_up, round_half_up_vec3};
+use crate::crispy::round_half_up;
 use glam::Vec3;
 
 /// Infinite repetition along all axes (Deep Fried)
 #[inline(always)]
 pub fn modifier_repeat_infinite(point: Vec3, spacing: Vec3) -> Vec3 {
-    // p - s * round(p / s) maps to [-s/2, s/2] range
-    // Much faster than standard euclidean modulo logic
-    Vec3::new(
-        spacing
-            .x
-            .mul_add(-round_half_up(point.x / spacing.x), point.x),
-        spacing
-            .y
-            .mul_add(-round_half_up(point.y / spacing.y), point.y),
-        spacing
-            .z
-            .mul_add(-round_half_up(point.z / spacing.z), point.z),
+    // `p * (1 / s)`, not `p / s`: the compiled / SIMD / JIT paths multiply by a
+    // precomputed reciprocal, and the two forms differ by an ulp — enough to
+    // cross a cell boundary at an exact tie (found by `fuzz_eval_parity`).
+    modifier_repeat_infinite_rk(
+        point,
+        spacing,
+        Vec3::new(1.0 / spacing.x, 1.0 / spacing.y, 1.0 / spacing.z),
     )
 }
 
@@ -35,33 +30,24 @@ pub fn modifier_repeat_infinite(point: Vec3, spacing: Vec3) -> Vec3 {
 /// from the hot path. `p * recip` replaces `p / spacing`.
 #[inline(always)]
 pub fn modifier_repeat_infinite_rk(point: Vec3, spacing: Vec3, recip_spacing: Vec3) -> Vec3 {
-    Vec3::new(
-        spacing
-            .x
-            .mul_add(-round_half_up(point.x * recip_spacing.x), point.x),
-        spacing
-            .y
-            .mul_add(-round_half_up(point.y * recip_spacing.y), point.y),
-        spacing
-            .z
-            .mul_add(-round_half_up(point.z * recip_spacing.z), point.z),
-    )
+    // One law with the compiled / SIMD paths (`real::repeat_infinite`), same
+    // operand order, so cell-boundary ties resolve identically everywhere.
+    crate::compiled::real::repeat_infinite::<f32>(point.into(), spacing, recip_spacing).into()
 }
 
 /// Finite repetition along all axes (Deep Fried)
 #[inline(always)]
 pub fn modifier_repeat_finite(point: Vec3, count: [u32; 3], spacing: Vec3) -> Vec3 {
-    let limit = Vec3::new(count[0] as f32, count[1] as f32, count[2] as f32) * 0.5;
-    // clamp(round(p/s), -limit, limit)
-    let cell = round_half_up_vec3(point / spacing).clamp(-limit, limit);
-    point - cell * spacing
+    // One law with the compiled / SIMD paths (`real::repeat_finite`).
+    let count = Vec3::new(count[0] as f32, count[1] as f32, count[2] as f32);
+    crate::compiled::real::repeat_finite::<f32>(point.into(), count, spacing).into()
 }
 
 /// Infinite repetition along a single axis (X)
 #[inline(always)]
 pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
-        spacing.mul_add(-round_half_up(point.x / spacing), point.x),
+        spacing.mul_add(-round_half_up(point.x * (1.0 / spacing)), point.x),
         point.y,
         point.z,
     )
@@ -72,7 +58,7 @@ pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
 pub fn modifier_repeat_y(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
-        spacing.mul_add(-round_half_up(point.y / spacing), point.y),
+        spacing.mul_add(-round_half_up(point.y * (1.0 / spacing)), point.y),
         point.z,
     )
 }
@@ -83,7 +69,7 @@ pub fn modifier_repeat_z(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
         point.y,
-        spacing.mul_add(-round_half_up(point.z / spacing), point.z),
+        spacing.mul_add(-round_half_up(point.z * (1.0 / spacing)), point.z),
     )
 }
 

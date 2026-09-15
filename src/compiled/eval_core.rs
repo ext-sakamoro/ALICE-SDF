@@ -31,7 +31,6 @@ struct Frame<R: Real> {
     /// Point before the transform (restored at PopTransform)
     point: Vec3R<R>,
     /// Scale correction before the transform
-    scale_correction: R,
     /// Opcode that pushed this frame (selects post-processing)
     opcode: OpCode,
     /// Scalar parameters for post-processing
@@ -57,7 +56,6 @@ pub(super) fn eval_bytecode<R: PrimTable>(
 
     let mut coord_stack: [Frame<R>; MAX_COORD_STACK] = [Frame {
         point: Vec3R::zero(),
-        scale_correction: R::one(),
         opcode: OpCode::End,
         params: [0.0; 4],
         aux_offset: 0,
@@ -70,7 +68,10 @@ pub(super) fn eval_bytecode<R: PrimTable>(
     let mut csp: usize = 0;
 
     let mut p = point;
-    let mut scale_correction = R::one();
+    // Leaf laws still take a scale multiplier (always one since 1.11.0: the
+    // scale is applied when the Scale frame pops, see PopTransform). Dropping
+    // the parameter from the ~125 leaf laws is a separate mechanical change.
+    let scale_correction = R::one();
 
     macro_rules! push_frame {
         ($inst:expr, $op:expr) => {{
@@ -78,7 +79,6 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             // store per field like the pre-1.10 evaluators.
             coord_stack[csp] = Frame {
                 point: p,
-                scale_correction,
                 opcode: $op,
                 params: [
                     $inst.params[0],
@@ -127,9 +127,14 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             }
             OpCode::Scale => {
                 // params[0] = 1/factor, params[1] = factor
+                // The distance is scaled when the frame pops (see PopTransform),
+                // not at the leaves: `s * f(p / s)` is only equal to "scale every
+                // primitive distance by s" when everything between the leaves and
+                // this node is linear. Smooth / exp / chamfer / stairs blends, round,
+                // onion and displacement all carry an absolute width and are not
+                // (found by `fuzz_eval_parity`: Scale(ExpSmoothUnion) was 21% off).
                 push_frame!(inst, op);
                 p = p * R::splat(inst.params[0]);
-                scale_correction = scale_correction * R::splat(inst.params[1]);
             }
             OpCode::ScaleNonUniform => {
                 // params[0..3] = 1/s, params[3] = min(sx, sy, sz)
@@ -139,7 +144,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                     inst.params[1],
                     inst.params[2],
                 )));
-                scale_correction = scale_correction * R::splat(inst.params[3]);
+                // Lipschitz-bound correction applied when the frame pops (see Scale)
             }
             OpCode::ProjectiveTransform => {
                 push_frame!(inst, op);
@@ -326,6 +331,14 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 // Post-processing keyed on the opcode that pushed the frame; point-only
                 // transforms / modifiers fall through without touching the value stack.
                 match frame.opcode {
+                    OpCode::Scale => {
+                        // params[1] = factor: d = factor * f(p / factor)
+                        value_stack[vsp - 1] = value_stack[vsp - 1] * R::splat(frame.params[1]);
+                    }
+                    OpCode::ScaleNonUniform => {
+                        // params[3] = min(sx, sy, sz): conservative Lipschitz bound
+                        value_stack[vsp - 1] = value_stack[vsp - 1] * R::splat(frame.params[3]);
+                    }
                     OpCode::Round => {
                         value_stack[vsp - 1] = value_stack[vsp - 1] - R::splat(frame.params[0]);
                     }
@@ -402,7 +415,6 @@ pub(super) fn eval_bytecode<R: PrimTable>(
 
                 // Restore coordinate state
                 p = frame.point;
-                scale_correction = frame.scale_correction;
             }
 
             OpCode::End => break,

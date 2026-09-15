@@ -392,6 +392,9 @@ impl JitSimdSdf {
             let mut curr_x = (x0, x1);
             let mut curr_y = (y0, y1);
             let mut curr_z = (z0, z1);
+            // Leaf-time scale multiplier: always one since 1.11.0 (the Scale frame
+            // multiplies the distance when it pops, see PopTransform). The leaf
+            // `fmul(d, curr_scale)` sites are kept as a mechanical follow-up.
             let mut curr_scale = (one_vec, one_vec);
 
             for inst in &sdf.instructions {
@@ -1623,22 +1626,24 @@ impl JitSimdSdf {
                             continue;
                         }
 
+                        // The distance is multiplied by `factor` when this frame pops
+                        // (PopTransform), not at the leaves: leaf-time scaling is only
+                        // correct when every op above the leaves is linear, and the
+                        // smooth / exp / chamfer / stairs blends, round, onion and
+                        // displacement are not (found by `fuzz_eval_parity`).
                         coord_stack.push(SimdCoordState {
                             x: curr_x,
                             y: curr_y,
                             z: curr_z,
                             scale: curr_scale,
                             opcode: OpCode::Scale,
-                            params: [0.0; 4],
+                            params: [factor, 0.0, 0.0, 0.0],
                             folded: false,
                         });
 
                         // Division Exorcism: p *= inv_factor (no division)
                         let inv_s = builder.ins().f32const(inv_factor);
                         let inv_v = builder.ins().splat(vec_type, inv_s);
-
-                        let f_s = builder.ins().f32const(factor);
-                        let f_v = builder.ins().splat(vec_type, f_s);
 
                         let nx0 = builder.ins().fmul(curr_x.0, inv_v);
                         let ny0 = builder.ins().fmul(curr_y.0, inv_v);
@@ -1647,14 +1652,9 @@ impl JitSimdSdf {
                         let ny1 = builder.ins().fmul(curr_y.1, inv_v);
                         let nz1 = builder.ins().fmul(curr_z.1, inv_v);
 
-                        // scale_correction *= factor
-                        let ns0 = builder.ins().fmul(curr_scale.0, f_v);
-                        let ns1 = builder.ins().fmul(curr_scale.1, f_v);
-
                         curr_x = (nx0, nx1);
                         curr_y = (ny0, ny1);
                         curr_z = (nz0, nz1);
-                        curr_scale = (ns0, ns1);
                     }
 
                     OpCode::Rotate => {
@@ -1743,13 +1743,14 @@ impl JitSimdSdf {
                         let inv_sz = inst.params[2];
                         let min_factor = inst.params[3];
 
+                        // min(sx, sy, sz) is applied when the frame pops (see Scale)
                         coord_stack.push(SimdCoordState {
                             x: curr_x,
                             y: curr_y,
                             z: curr_z,
                             scale: curr_scale,
                             opcode: OpCode::ScaleNonUniform,
-                            params: [0.0; 4],
+                            params: [min_factor, 0.0, 0.0, 0.0],
                             folded: false,
                         });
 
@@ -1759,8 +1760,6 @@ impl JitSimdSdf {
                         let isy = builder.ins().splat(vec_type, _ts11);
                         let _ts12 = builder.ins().f32const(inv_sz);
                         let isz = builder.ins().splat(vec_type, _ts12);
-                        let _ts13 = builder.ins().f32const(min_factor);
-                        let mf = builder.ins().splat(vec_type, _ts13);
 
                         curr_x = (
                             builder.ins().fmul(curr_x.0, isx),
@@ -1773,10 +1772,6 @@ impl JitSimdSdf {
                         curr_z = (
                             builder.ins().fmul(curr_z.0, isz),
                             builder.ins().fmul(curr_z.1, isz),
-                        );
-                        curr_scale = (
-                            builder.ins().fmul(curr_scale.0, mf),
-                            builder.ins().fmul(curr_scale.1, mf),
                         );
                     }
 
@@ -2207,6 +2202,17 @@ impl JitSimdSdf {
                         if let Some(state) = coord_stack.pop() {
                             if !state.folded {
                                 match state.opcode {
+                                    OpCode::Scale | OpCode::ScaleNonUniform => {
+                                        // d = factor * f(p / factor)  (params[0] = factor,
+                                        // or min(sx, sy, sz) for the non-uniform bound)
+                                        let d = value_stack.pop().unwrap_or((zero_vec, zero_vec));
+                                        let f_s = builder.ins().f32const(state.params[0]);
+                                        let f_v = builder.ins().splat(vec_type, f_s);
+                                        value_stack.push((
+                                            builder.ins().fmul(d.0, f_v),
+                                            builder.ins().fmul(d.1, f_v),
+                                        ));
+                                    }
                                     OpCode::Round => {
                                         let d = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                                         let r_s = builder.ins().f32const(state.params[0]);
@@ -2581,6 +2587,9 @@ impl JitSimdSdfDynamic {
             let mut curr_x = (x0, x1);
             let mut curr_y = (y0, y1);
             let mut curr_z = (z0, z1);
+            // Leaf-time scale multiplier: always one since 1.11.0 (the Scale frame
+            // multiplies the distance when it pops, see PopTransform). The leaf
+            // `fmul(d, curr_scale)` sites are kept as a mechanical follow-up.
             let mut curr_scale = (one_vec, one_vec);
 
             for inst in &sdf.instructions {
@@ -3652,21 +3661,24 @@ impl JitSimdSdfDynamic {
                     // Division Exorcism: Scale uses mul(inv_factor)
                     // params[0] = inv_factor, params[1] = factor
                     OpCode::Scale => {
+                        let inv_factor = inst.params[0];
+                        let factor = inst.params[1];
+
+                        // emit order must match `update_params` (inv_factor, factor)
+                        let inv_v = emitter.emit_splat(&mut builder, inv_factor);
+                        let f_v = emitter.emit_splat(&mut builder, factor);
+
+                        // `factor` is applied when the frame pops (PopTransform), not at
+                        // the leaves — see the static compiler's Scale arm.
                         coord_stack.push(DynSimdCoordState {
                             x: curr_x,
                             y: curr_y,
                             z: curr_z,
                             scale: curr_scale,
                             opcode: OpCode::Scale,
-                            param_vec: zero_vec,
+                            param_vec: f_v,
                             _params: [0.0; 4],
                         });
-
-                        let inv_factor = inst.params[0];
-                        let factor = inst.params[1];
-
-                        let inv_v = emitter.emit_splat(&mut builder, inv_factor);
-                        let f_v = emitter.emit_splat(&mut builder, factor);
 
                         // p *= inv_factor (Division Exorcism)
                         let nx0 = builder.ins().fmul(curr_x.0, inv_v);
@@ -3676,14 +3688,9 @@ impl JitSimdSdfDynamic {
                         let ny1 = builder.ins().fmul(curr_y.1, inv_v);
                         let nz1 = builder.ins().fmul(curr_z.1, inv_v);
 
-                        // scale_correction *= factor
-                        let ns0 = builder.ins().fmul(curr_scale.0, f_v);
-                        let ns1 = builder.ins().fmul(curr_scale.1, f_v);
-
                         curr_x = (nx0, nx1);
                         curr_y = (ny0, ny1);
                         curr_z = (nz0, nz1);
-                        curr_scale = (ns0, ns1);
                     }
 
                     OpCode::Rotate => {
@@ -3750,20 +3757,21 @@ impl JitSimdSdfDynamic {
                     }
 
                     OpCode::ScaleNonUniform => {
+                        let isx = emitter.emit_splat(&mut builder, inst.params[0]);
+                        let isy = emitter.emit_splat(&mut builder, inst.params[1]);
+                        let isz = emitter.emit_splat(&mut builder, inst.params[2]);
+                        let mf = emitter.emit_splat(&mut builder, inst.params[3]);
+
+                        // min(sx, sy, sz) is applied when the frame pops (see Scale)
                         coord_stack.push(DynSimdCoordState {
                             x: curr_x,
                             y: curr_y,
                             z: curr_z,
                             scale: curr_scale,
                             opcode: OpCode::ScaleNonUniform,
-                            param_vec: zero_vec,
+                            param_vec: mf,
                             _params: [0.0; 4],
                         });
-
-                        let isx = emitter.emit_splat(&mut builder, inst.params[0]);
-                        let isy = emitter.emit_splat(&mut builder, inst.params[1]);
-                        let isz = emitter.emit_splat(&mut builder, inst.params[2]);
-                        let mf = emitter.emit_splat(&mut builder, inst.params[3]);
 
                         curr_x = (
                             builder.ins().fmul(curr_x.0, isx),
@@ -3776,10 +3784,6 @@ impl JitSimdSdfDynamic {
                         curr_z = (
                             builder.ins().fmul(curr_z.0, isz),
                             builder.ins().fmul(curr_z.1, isz),
-                        );
-                        curr_scale = (
-                            builder.ins().fmul(curr_scale.0, mf),
-                            builder.ins().fmul(curr_scale.1, mf),
                         );
                     }
 
@@ -4150,6 +4154,15 @@ impl JitSimdSdfDynamic {
                     OpCode::PopTransform => {
                         if let Some(state) = coord_stack.pop() {
                             match state.opcode {
+                                OpCode::Scale | OpCode::ScaleNonUniform => {
+                                    // d = factor * f(p / factor); param_vec = factor (or the
+                                    // min(sx, sy, sz) bound for the non-uniform case)
+                                    let d = value_stack.pop().unwrap_or((zero_vec, zero_vec));
+                                    value_stack.push((
+                                        builder.ins().fmul(d.0, state.param_vec),
+                                        builder.ins().fmul(d.1, state.param_vec),
+                                    ));
+                                }
                                 OpCode::Round => {
                                     let d = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                                     value_stack.push((

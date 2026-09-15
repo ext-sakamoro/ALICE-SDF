@@ -65,8 +65,12 @@ pub trait Real:
     fn exp(self) -> Self;
     /// Natural logarithm.
     fn ln(self) -> Self;
-    /// Sign: `-1` for negative lanes, `+1` otherwise (like `f32::signum` for non-NaN,
-    /// except `-0.0` maps to `+1` on the SIMD instantiation).
+    /// Sign: `-1` for negative lanes, `+1` otherwise (`±0.0` and NaN give `+1`).
+    ///
+    /// This is the branchless `x < 0 ? -1 : 1` that the SIMD instantiation,
+    /// both JITs and the shader transpilers use — *not* `f32::signum`, whose
+    /// `-0.0 → -1` made the tree / compiled scalar path disagree with SIMD by
+    /// a sign flip at the pyramid base centre (found by `fuzz_eval_parity`).
     fn signum(self) -> Self;
 
     /// `self < other`
@@ -133,8 +137,11 @@ pub trait Real:
 
     /// Rotate `p` by the inverse of unit quaternion `q`.
     ///
-    /// Generic default uses the two-cross-product form; `f32` overrides it with
-    /// `glam` (NEON / SSE backed) so the scalar path keeps its throughput.
+    /// One formula for every instantiation (two cross products). `f32` used to
+    /// go through `glam` here, but `glam`'s quaternion multiply rounds
+    /// differently by an ulp, and laws with a sign discontinuity (pyramid base)
+    /// flip on that ulp — the tree evaluator calls this too so all Rust paths
+    /// rotate bit-identically (found by `fuzz_eval_parity`).
     #[inline(always)]
     fn rotate_inverse(q: Quat, p: Vec3R<Self>) -> Vec3R<Self> {
         // inverse of unit quaternion = conjugate: (-v, w)
@@ -196,7 +203,11 @@ impl Real for f32 {
     }
     #[inline(always)]
     fn signum(self) -> Self {
-        f32::signum(self)
+        if self < 0.0 {
+            -1.0
+        } else {
+            1.0
+        }
     }
     #[inline(always)]
     fn lt(self, other: Self) -> bool {
@@ -261,10 +272,6 @@ impl Real for f32 {
         f32::mul_add(self, m, a)
     }
     #[inline(always)]
-    fn rotate_inverse(q: Quat, p: Vec3R<Self>) -> Vec3R<Self> {
-        (q.inverse() * Vec3::from(p)).into()
-    }
-    #[inline(always)]
     fn twist(p: Vec3R<Self>, strength: f32) -> Vec3R<Self> {
         crate::modifiers::modifier_twist(Vec3::from(p), strength).into()
     }
@@ -308,7 +315,12 @@ impl Real for f32x8 {
     }
     #[inline(always)]
     fn atan2(self, x: Self) -> Self {
-        f32x8::atan2(self, x)
+        // Per-lane libm, not `f32x8::atan2`: the polar-repeat / helix laws snap
+        // the angle to a sector, and the SIMD polynomial is a few ulp off libm,
+        // which is enough to cross an exact sector boundary (atan2(0, -x) = π
+        // with an odd sector count lands on k + 0.5) and disagree with the
+        // scalar path by a whole sector (found by `fuzz_eval_parity`).
+        self.map2(x, f32::atan2)
     }
     #[inline(always)]
     fn exp(self) -> Self {
@@ -705,7 +717,16 @@ pub fn extrude_distance<R: Real>(d: R, original_z: R, half_height: f32) -> R {
 /// Taper: scale XZ by `1 / (1 - factor * y)` (same law as `modifier_taper`).
 #[inline(always)]
 pub fn taper<R: Real>(p: Vec3R<R>, factor: f32) -> Vec3R<R> {
-    let s = R::one() / (R::one() - p.y * R::splat(factor));
+    // `1 - f * y` reaches 0 on the plane y = 1 / f; keep the denominator away
+    // from it (same sign, |den| ≥ 1e-6) so no path produces inf / NaN there
+    // (the tree evaluator used to give NaN and the SIMD one a finite value,
+    // found by `fuzz_eval_parity`). Shared by the tree evaluator, the compiled
+    // scalar / SIMD paths and mirrored by the shader transpilers.
+    let den = R::one() - p.y * R::splat(factor);
+    let eps = R::splat(1e-6);
+    let mag = den.abs().max(eps);
+    let den = R::select(den.lt(R::zero()), -mag, mag);
+    let s = R::one() / den;
     Vec3R::new(p.x * s, p.y, p.z * s)
 }
 

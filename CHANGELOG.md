@@ -8,6 +8,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Added
 
+- `fuzz/fuzz_targets/fuzz_eval_parity.rs`: builds arbitrary primitive / CSG /
+  modifier trees and asserts tree ≡ compiled scalar ≡ compiled SIMD at random
+  points plus cell / sector / base-plane ties; `fuzz/seeds/<target>/` keeps
+  every crash it found as a committed regression input that CI replays first.
 - FFI: every exported `extern "C"` function (175) now runs through
   `ffi_guard`, which catches a Rust panic inside the call and returns the
   function's sentinel (null handle, `f32::MAX`, `0`, `false`,
@@ -21,6 +25,42 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   `try_decode_filter_oct_i16_in_place`, `try_encode_filter_quat_i16`; the
   existing functions keep their signature and forward to the `try_*` form
   (their `# Panics` contract is unchanged).
+
+### Fixed — evaluation-path parity (found by the new `fuzz_eval_parity` target, 9 findings in its first hour)
+
+- `Scale` / `ScaleNonUniform` in the compiled scalar, SIMD, BVH and JIT-SIMD
+  paths multiplied every *leaf* distance by the factor; the tree, JIT-scalar
+  and shader paths scale the blended result. The two agree only when every
+  operator above the leaves is linear — `Scale(ExpSmoothUnion)` was 21% off,
+  `Scale(SmoothUnion / Chamfer / Stairs / Round / Onion)` likewise. The scale
+  is now applied when the `Scale` frame pops on every path.
+- `Real::signum` is `x < 0 ? -1 : 1` on every path (`f32` used `f32::signum`,
+  whose `-0.0 → -1` flipped the pyramid distance sign at its base centre
+  against SIMD / JIT); the GLSL / WGSL / HLSL pyramid and hex-prism helpers
+  emit the same conditional instead of `sign()` (0 at 0).
+- Exponential smooth union / intersection / subtraction use the stable form
+  `min(a, b) ∓ k·ln(1 + e^{-|a-b|/k})` on the CPU paths and in the shader
+  text: the textbook `-k·ln(e^{-a/k} + e^{-b/k})` underflowed to `ln(0)` for
+  `d ≫ k` (`+inf` on libm, NaN on the SIMD polynomial, `-ln(1e-10)·k` in the
+  shaders' clamp).
+- SIMD `atan2` is per-lane libm: the `wide` polynomial is a few ulp off and
+  an odd polar-repeat count puts `atan2(0, -x) = π` exactly on a sector tie.
+- Every repeat / polar / helix law is one function: the tree evaluator's
+  `modifier_repeat_infinite` / `modifier_repeat_finite` / `modifier_polar_repeat`
+  / `modifier_taper` and its `Rotate` arm now call the generic
+  `compiled::real` laws (`p * (1 / s)` operand form, two-cross-product
+  rotation) instead of keeping scalar copies that rounded differently by an
+  ulp and crossed a cell / sector boundary (four nested polar repeats
+  amplified it to a whole sector).
+- `Taper` denominator `1 - f·y` is kept away from its singular plane
+  (`|den| ≥ 1e-6`, sign preserved) on every path (the tree gave NaN, SIMD a
+  finite value); the transpilers emitted `1 + f·y` — a *mirrored* taper — and
+  multiplied the child distance by `den`, neither of which any CPU path does.
+- Shader `RepeatFinite` clamped the cell index to `±count` instead of the CPU
+  `±count/2` (twice the extent).
+- `tests/test_gpu_law_parity.rs` (feature `gpu`, Metal-verified): taper,
+  repeat, polar, pyramid / hex sign, scale-after-blend and exp-smooth laws
+  agree with `eval` to 5e-7 relative on the GPU.
 
 ### Changed
 

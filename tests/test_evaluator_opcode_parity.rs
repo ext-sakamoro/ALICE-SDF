@@ -46,6 +46,12 @@ fn sample_points() -> Vec<Vec3> {
         // every evaluator must round the same way (`floor(x + 0.5)`).
         Vec3::new(-1.0, 0.0, 0.0),
         Vec3::new(3.0, -1.0, 1.0),
+        // pyramid(1.5) base centre (-0.0 sign argument), and a far point where
+        // a leaf-scaled blend width is visibly wrong
+        Vec3::new(0.0, -1.5, 0.0),
+        Vec3::new(-3.0, 0.0, 0.0),
+        Vec3::new(-3.0, -3.0, 3.0),
+        Vec3::new(0.0, -2.25, 0.0),
     ]
 }
 
@@ -339,6 +345,93 @@ fn corpus() -> Vec<(&'static str, SdfNode)> {
             "repeat_finite",
             sphere().repeat_finite([2, 1, 2], Vec3::splat(1.5)),
         ),
+        // Non-linear ops *inside* a Scale: `s * f(p / s)` must be applied after
+        // the blend, not to each leaf (1.11.0, found by fuzz_eval_parity:
+        // Scale(ExpSmoothUnion) was 21% off on the compiled / SIMD / JIT-SIMD
+        // paths). Every op with an absolute width is covered.
+        (
+            "scale_exp_smooth_union",
+            sphere().exp_smooth_union(sphere(), 0.8625).scale(0.25),
+        ),
+        (
+            "scale_smooth_union",
+            sphere()
+                .translate(0.6, 0.0, 0.0)
+                .smooth_union(unit_box(), 0.4)
+                .scale(0.5),
+        ),
+        (
+            "scale_chamfer_union",
+            sphere()
+                .translate(0.6, 0.0, 0.0)
+                .chamfer_union(unit_box(), 0.3)
+                .scale(2.0),
+        ),
+        (
+            "scale_stairs_union",
+            sphere()
+                .translate(0.6, 0.0, 0.0)
+                .stairs_union(unit_box(), 0.3, 3.0)
+                .scale(0.5),
+        ),
+        ("scale_round", unit_box().round(0.2).scale(0.5)),
+        ("scale_onion", sphere().onion(0.1).scale(3.0)),
+        (
+            "scale_xyz_smooth_union",
+            sphere()
+                .smooth_union(unit_box(), 0.3)
+                .scale_xyz(0.5, 2.0, 1.0),
+        ),
+        (
+            "scale_nested",
+            sphere()
+                .smooth_union(unit_box(), 0.3)
+                .scale(0.5)
+                .round(0.1)
+                .scale(2.0),
+        ),
+        // fuzz_eval_parity findings 3-7 (1.11.0), each a whole-cell / sector /
+        // sign disagreement between paths on the pre-fix code:
+        // 3: exp smooth with d ≫ k underflowed to ln(0) (inf vs NaN)
+        (
+            "exp_smooth_union_far",
+            SdfNode::cone(0.05, 0.7625)
+                .exp_smooth_union(SdfNode::rounded_box(1.5, 1.5, 0.05, 0.01), 0.125)
+                .scale(0.25),
+        ),
+        // 4: odd sector count, atan2 = π lands on k + 0.5 (SIMD atan2 was polynomial)
+        (
+            "polar_repeat_7_offset",
+            SdfNode::capsule(Vec3::new(0.0, -3.0, 0.0), Vec3::new(0.0, 3.0, 0.0), 3.0)
+                .translate(-3.0, 0.0, 3.0)
+                .polar_repeat(7),
+        ),
+        // 5: repeat_finite tie, `p / s` vs `p * (1 / s)` differ by an ulp
+        (
+            "repeat_finite_tie_translate",
+            SdfNode::pyramid(1.5)
+                .repeat_finite([3, 3, 3], Vec3::splat(3.5))
+                .translate(0.0, 3.0, 0.0),
+        ),
+        // 6: rotation rounding (glam vs generic) at the pyramid sign discontinuity
+        (
+            "rotate_pyramid",
+            SdfNode::pyramid(1.5).rotate(glam::Quat::from_xyzw(0.0, -0.9995736, 0.0, -0.029199546)),
+        ),
+        // 7: four nested polar repeats amplify an ulp across a sector boundary
+        (
+            "polar_repeat_nested",
+            SdfNode::octahedron(0.5)
+                .polar_repeat(13)
+                .polar_repeat(13)
+                .translate(3.0, 3.0, 3.0)
+                .polar_repeat(13)
+                .translate(3.0, 3.0, 3.0)
+                .polar_repeat(13),
+        ),
+        // Pyramid base centre: `sign(max(qz, -py))` sees -0.0 there; f32::signum
+        // gives -1, the SIMD / JIT / shader convention gives +1 (1.11.0, fuzz).
+        ("pyramid_base", SdfNode::pyramid(1.5)),
         // Asymmetric children: a symmetric sphere hides a wrong cell choice at
         // the tie points above (same distance from every cell), an offset one
         // does not.

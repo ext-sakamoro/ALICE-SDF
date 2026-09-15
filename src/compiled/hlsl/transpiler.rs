@@ -699,7 +699,7 @@ const HELPER_SDF_PYRAMID: &str = r"float sdf_pyramid(float3 p, float h) {
     float a = m2 * (qx + s) * (qx + s) + qy * qy;
     float b = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
     float d2 = (min(-qx * m2 - qy * 0.5, qy) > 0.0) ? 0.0 : min(a, b);
-    return sqrt((d2 + qz * qz) / m2) * sign(max(qz, -py));
+    return sqrt((d2 + qz * qz) / m2) * (max(qz, -py) < 0.0 ? -1.0 : 1.0);
 }
 ";
 
@@ -730,7 +730,7 @@ const HELPER_SDF_HEX_PRISM: &str = r"float sdf_hex_prism(float3 p, float hex_r, 
     float clamped_x = clamp(px, -kz * hex_r, kz * hex_r);
     float dx = px - clamped_x;
     float dy = py - hex_r;
-    float d_xy = sqrt(dx * dx + dy * dy) * sign(dy);
+    float d_xy = sqrt(dx * dx + dy * dy) * (dy < 0.0 ? -1.0 : 1.0);
     float d_z = pz - h;
     return min(max(d_xy, d_z), 0.0) + length(max(float2(d_xy, d_z), float2(0.0, 0.0)));
 }

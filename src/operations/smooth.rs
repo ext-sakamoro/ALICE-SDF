@@ -192,25 +192,32 @@ pub fn sdf_smooth_subtraction_rk_r<R: Real>(d1: R, d2: R, k: f32, rk: f32) -> R 
 /// Exponential smooth union, blend width `k` (generic over [`Real`]).
 #[inline(always)]
 pub fn sdf_exp_smooth_union_r<R: Real>(d1: R, d2: R, k: f32) -> R {
+    // Stable form of `-k ln(e^{-a/k} + e^{-b/k})`: factor out the minimum so
+    // the remaining exponent is ≤ 0. The textbook form underflows both
+    // exponentials to 0 when d ≫ k and then `ln(0)` is -inf on libm but NaN
+    // on the SIMD polynomial (found by `fuzz_eval_parity`); this form is
+    // finite for every finite input and identical elsewhere.
     let k = R::splat(k.max(1e-6));
-    let res = (-d1 / k).exp() + (-d2 / k).exp();
-    -res.ln() * k
+    let m = d1.min(d2);
+    let delta = (d1 - d2).abs();
+    m - (R::one() + (-delta / k).exp()).ln() * k
 }
 
 /// Exponential smooth intersection, blend width `k` (generic over [`Real`]).
 #[inline(always)]
 pub fn sdf_exp_smooth_intersection_r<R: Real>(d1: R, d2: R, k: f32) -> R {
+    // `k ln(e^{a/k} + e^{b/k})` with the maximum factored out (see union).
     let k = R::splat(k.max(1e-6));
-    let res = (d1 / k).exp() + (d2 / k).exp();
-    res.ln() * k
+    let m = d1.max(d2);
+    let delta = (d1 - d2).abs();
+    m + (R::one() + (-delta / k).exp()).ln() * k
 }
 
 /// Exponential smooth subtraction, blend width `k` (generic over [`Real`]).
 #[inline(always)]
 pub fn sdf_exp_smooth_subtraction_r<R: Real>(d1: R, d2: R, k: f32) -> R {
-    let k = R::splat(k.max(1e-6));
-    let res = (d1 / k).exp() + (-d2 / k).exp();
-    res.ln() * k
+    // Intersection of `d1` with `-d2` (same stable form).
+    sdf_exp_smooth_intersection_r(d1, -d2, k)
 }
 
 #[cfg(test)]

@@ -5,7 +5,6 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::crispy::round_half_up;
 use glam::Vec3;
 
 /// Repeat point around Y-axis by `count` copies.
@@ -33,15 +32,11 @@ pub fn modifier_polar_repeat(p: Vec3, count: u32) -> Vec3 {
 /// `a - sector * round(a * recip_sector)` instead of `a % sector`.
 #[inline(always)]
 pub fn modifier_polar_repeat_rk(p: Vec3, sector: f32, recip_sector: f32) -> Vec3 {
-    let a = p.z.atan2(p.x);
-    let r = p.x.hypot(p.z);
-
-    // Round trick: a - sector * round(a / sector)
-    // = a - sector * round(a * recip_sector)
-    let sector_angle = sector.mul_add(-round_half_up(a * recip_sector), a);
-
-    let (s, c) = sector_angle.sin_cos();
-    Vec3::new(r * c, p.y, r * s)
+    // One law: the compiled / SIMD generic `real::polar_repeat`, instantiated
+    // for f32. A separate scalar copy (hypot + mul_add) rounded differently by
+    // an ulp, and four nested polar repeats amplified that across a sector
+    // boundary (found by `fuzz_eval_parity`).
+    crate::compiled::real::polar_repeat::<f32>(p.into(), sector, recip_sector).into()
 }
 
 #[cfg(test)]

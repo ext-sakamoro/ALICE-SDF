@@ -445,8 +445,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             eval(child, point - *offset)
         }
         SdfNode::Rotate { child, rotation } => {
-            // Conjugate multiplication for inverse rotation (Deep Fried)
-            let p = rotation.conjugate() * point;
+            // Same formula as the compiled / SIMD paths (`Real::rotate_inverse`),
+            // not `glam`: bit-identical rotation keeps sign-discontinuous laws
+            // (pyramid base) on the same side on every path.
+            let p = crate::compiled::real::rotate_inverse::<f32>(*rotation, point.into()).into();
             eval(child, p)
         }
         SdfNode::Scale { child, factor } => {
@@ -693,7 +695,10 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
 
         // Transforms: transform point, recurse
         SdfNode::Translate { child, offset } => eval_material(child, point - *offset),
-        SdfNode::Rotate { child, rotation } => eval_material(child, rotation.conjugate() * point),
+        SdfNode::Rotate { child, rotation } => eval_material(
+            child,
+            crate::compiled::real::rotate_inverse::<f32>(*rotation, point.into()).into(),
+        ),
         SdfNode::Scale { child, factor } => eval_material(child, point / *factor),
         SdfNode::ScaleNonUniform { child, factors } => {
             let p = point / *factors;

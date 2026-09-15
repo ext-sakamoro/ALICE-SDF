@@ -83,6 +83,9 @@ impl ShaderLang for WgslLang {
     fn cast_float(expr: &str) -> String {
         format!("f32({})", expr)
     }
+    fn select_float(cond: &str, a: &str, b: &str) -> String {
+        format!("select({b}, {a}, {cond})")
+    }
     fn for_loop_int(name: &str, init: i32, cond: &str, _incr: &str) -> String {
         format!(
             "    var {} = {}i;\n    loop {{\n        if !({}) {{ break; }}\n",
@@ -939,7 +942,7 @@ const HELPER_SDF_PYRAMID: &str = r"fn sdf_pyramid(p: vec3<f32>, h: f32) -> f32 {
     let b = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
     var d2: f32;
     if (min(-qx * m2 - qy * 0.5, qy) > 0.0) { d2 = 0.0; } else { d2 = min(a, b); }
-    return sqrt((d2 + qz * qz) / m2) * sign(max(qz, -py));
+    return sqrt((d2 + qz * qz) / m2) * select(1.0, -1.0, max(qz, -py) < 0.0);
 }
 ";
 
@@ -970,7 +973,7 @@ const HELPER_SDF_HEX_PRISM: &str = r"fn sdf_hex_prism(p: vec3<f32>, hex_r: f32, 
     let clamped_x = clamp(px, -kz * hex_r, kz * hex_r);
     let dx = px - clamped_x;
     let dy = py - hex_r;
-    let d_xy = sqrt(dx * dx + dy * dy) * sign(dy);
+    let d_xy = sqrt(dx * dx + dy * dy) * select(1.0, -1.0, dy < 0.0);
     let d_z = pz - h;
     return min(max(d_xy, d_z), 0.0) + length(max(vec2<f32>(d_xy, d_z), vec2<f32>(0.0)));
 }

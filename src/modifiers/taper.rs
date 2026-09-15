@@ -15,8 +15,8 @@ use glam::Vec3;
 /// Formula: `s = 1 / (1 - p.y * factor); return (p.x * s, p.y, p.z * s)`
 #[inline(always)]
 pub fn modifier_taper(p: Vec3, factor: f32) -> Vec3 {
-    let s = 1.0 / p.y.mul_add(-factor, 1.0);
-    Vec3::new(p.x * s, p.y, p.z * s)
+    // One law with the compiled / SIMD paths (`real::taper`, singularity-guarded).
+    crate::compiled::real::taper::<f32>(p.into(), factor).into()
 }
 
 #[cfg(test)]

@@ -59,6 +59,12 @@ pub trait ShaderLang: 'static {
     fn modulo_expr(a: &str, b: &str) -> String;
     /// "f32(x)" / "float(x)"
     fn cast_float(expr: &str) -> String;
+    /// Scalar select: `cond ? a : b`, used where the CPU law is a branch-free
+    /// `select` so the tie / sign convention matches. Default is the C-style
+    /// ternary (GLSL / HLSL); WGSL overrides with `select(b, a, cond)`.
+    fn select_float(cond: &str, a: &str, b: &str) -> String {
+        format!("(({cond}) ? ({a}) : ({b}))")
+    }
     /// For loop: "for(var i: i32 = 0" / "for(int i = 0"
     fn for_loop_int(name: &str, init: i32, cond: &str, incr: &str) -> String;
 
@@ -2241,12 +2247,19 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &half_s,
                     &format!("{} * 0.5", L::vec3_ctor(&sx, &sy, &sz)),
                 ));
+                // `p * (1 / s)` with the reciprocal baked as an f32 constant: the
+                // CPU paths multiply by the same reciprocal, so a cell-boundary tie
+                // resolves identically (`p / s` differs by an ulp).
+                let isx = self.param(1.0 / spacing.x);
+                let isy = self.param(1.0 / spacing.y);
+                let isz = self.param(1.0 / spacing.z);
                 code.push_str(&L::decl_vec3(
                     &new_p,
                     &format!(
-                        "{p} - {s} * floor({p} / {s} + 0.5)",
+                        "{p} - {s} * floor({p} * {inv} + 0.5)",
                         p = point_var,
                         s = L::vec3_ctor(&sx, &sy, &sz),
+                        inv = L::vec3_ctor(&isx, &isy, &isz),
                     ),
                 ));
                 self.transpile_node_inner(child, &new_p, code)
@@ -2261,15 +2274,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let sx = self.param(spacing.x);
                 let sy = self.param(spacing.y);
                 let sz = self.param(spacing.z);
-                let cx = self.param(count[0] as f32);
-                let cy = self.param(count[1] as f32);
-                let cz = self.param(count[2] as f32);
+                // clamp to ±count/2 like `real::repeat_finite` (the shader used to
+                // clamp to ±count, twice the CPU extent)
+                let cx = self.param(count[0] as f32 * 0.5);
+                let cy = self.param(count[1] as f32 * 0.5);
+                let cz = self.param(count[2] as f32 * 0.5);
+                let isx = self.param(1.0 / spacing.x);
+                let isy = self.param(1.0 / spacing.y);
+                let isz = self.param(1.0 / spacing.z);
                 code.push_str(&L::decl_vec3(
                     &new_p,
                     &format!(
-                        "{p} - {s} * clamp(floor({p} / {s} + 0.5), -{c}, {c})",
+                        "{p} - {s} * clamp(floor({p} * {inv} + 0.5), -{c}, {c})",
                         p = point_var,
                         s = L::vec3_ctor(&sx, &sy, &sz),
+                        inv = L::vec3_ctor(&isx, &isy, &isz),
                         c = L::vec3_ctor(&cx, &cy, &cz),
                     ),
                 ));
@@ -2430,26 +2449,39 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             SdfNode::Taper { child, factor } => {
                 let new_p = self.next_var();
                 let f = self.param(*factor);
+                // CPU law (`real::taper`): den = 1 - y * f, |den| >= 1e-6 with the
+                // sign kept. The transpilers used to emit `1 + y * f` (mirrored
+                // taper) with a `max(den, 0.001)` clamp — a different law.
                 let taper_var = self.next_var();
+                let mag_var = self.next_var();
+                let den_var = self.next_var();
                 code.push_str(&L::decl_float(
                     &taper_var,
-                    &format!("1.0 + {}.y * {}", point_var, f),
+                    &format!("1.0 - {}.y * {}", point_var, f),
+                ));
+                code.push_str(&L::decl_float(
+                    &mag_var,
+                    &format!("max(abs({}), 1e-6)", taper_var),
+                ));
+                code.push_str(&L::decl_float(
+                    &den_var,
+                    &L::select_float(
+                        &format!("{} < 0.0", taper_var),
+                        &format!("-{}", mag_var),
+                        &mag_var,
+                    ),
                 ));
                 code.push_str(&L::decl_vec3(
                     &new_p,
                     &L::vec3_ctor(
-                        &format!("{}.x / max({}, 0.001)", point_var, taper_var),
+                        &format!("{}.x / {}", point_var, den_var),
                         &format!("{}.y", point_var),
-                        &format!("{}.z / max({}, 0.001)", point_var, taper_var),
+                        &format!("{}.z / {}", point_var, den_var),
                     ),
                 ));
-                let d = self.transpile_node_inner(child, &new_p, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{} * max({}, 0.001)", d, taper_var),
-                ));
-                var
+                // point transform only, like every CPU path (`real::taper`): the
+                // transpilers used to multiply the child distance by `den` too
+                self.transpile_node_inner(child, &new_p, code)
             }
 
             SdfNode::Displacement { child, strength } => {
@@ -3007,16 +3039,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
                     return var;
                 }
-                let inv_k = self.param(1.0 / k.max(1e-10));
-                let ea = self.next_var();
-                let eb = self.next_var();
+                // stable form: min(a, b) - k * log(1 + exp(-|a - b| / k)), same as
+                // `sdf_exp_smooth_union_r` (no underflow to log(0), no clamp)
+                let inv_k = self.param(1.0 / k.max(1e-6));
+                let m = self.next_var();
+                let delta = self.next_var();
                 let s = self.next_var();
-                code.push_str(&L::decl_float(&ea, &format!("exp(-{} * {})", inv_k, d_a)));
-                code.push_str(&L::decl_float(&eb, &format!("exp(-{} * {})", inv_k, d_b)));
-                code.push_str(&L::decl_float(&s, &format!("{} + {}", ea, eb)));
+                code.push_str(&L::decl_float(&m, &format!("min({}, {})", d_a, d_b)));
+                code.push_str(&L::decl_float(&delta, &format!("abs({} - {})", d_a, d_b)));
+                code.push_str(&L::decl_float(
+                    &s,
+                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
+                ));
                 code.push_str(&L::decl_float(
                     &var,
-                    &format!("-log(max({}, 1e-10)) * {}", s, self.param(*k)),
+                    &format!("{} - log({}) * {}", m, s, self.param(k.max(1e-6))),
                 ));
                 var
             }
@@ -3029,16 +3066,20 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
                     return var;
                 }
-                let inv_k = self.param(1.0 / k.max(1e-10));
-                let ea = self.next_var();
-                let eb = self.next_var();
+                // stable form: max(a, b) + k * log(1 + exp(-|a - b| / k))
+                let inv_k = self.param(1.0 / k.max(1e-6));
+                let m = self.next_var();
+                let delta = self.next_var();
                 let s = self.next_var();
-                code.push_str(&L::decl_float(&ea, &format!("exp({} * {})", inv_k, d_a)));
-                code.push_str(&L::decl_float(&eb, &format!("exp({} * {})", inv_k, d_b)));
-                code.push_str(&L::decl_float(&s, &format!("{} + {}", ea, eb)));
+                code.push_str(&L::decl_float(&m, &format!("max({}, {})", d_a, d_b)));
+                code.push_str(&L::decl_float(&delta, &format!("abs({} - {})", d_a, d_b)));
+                code.push_str(&L::decl_float(
+                    &s,
+                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
+                ));
                 code.push_str(&L::decl_float(
                     &var,
-                    &format!("log(max({}, 1e-10)) * {}", s, self.param(*k)),
+                    &format!("{} + log({}) * {}", m, s, self.param(k.max(1e-6))),
                 ));
                 var
             }
@@ -3051,18 +3092,20 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
                     return var;
                 }
-                let inv_k = self.param(1.0 / k.max(1e-10));
-                let neg_b = self.next_var();
-                let ea = self.next_var();
-                let eb = self.next_var();
+                // stable form of the intersection with -b: max(a, -b) + k * log(1 + exp(-|a + b| / k))
+                let inv_k = self.param(1.0 / k.max(1e-6));
+                let m = self.next_var();
+                let delta = self.next_var();
                 let s = self.next_var();
-                code.push_str(&L::decl_float(&neg_b, &format!("-{}", d_b)));
-                code.push_str(&L::decl_float(&ea, &format!("exp({} * {})", inv_k, d_a)));
-                code.push_str(&L::decl_float(&eb, &format!("exp({} * {})", inv_k, neg_b)));
-                code.push_str(&L::decl_float(&s, &format!("{} + {}", ea, eb)));
+                code.push_str(&L::decl_float(&m, &format!("max({}, -{})", d_a, d_b)));
+                code.push_str(&L::decl_float(&delta, &format!("abs({} + {})", d_a, d_b)));
+                code.push_str(&L::decl_float(
+                    &s,
+                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
+                ));
                 code.push_str(&L::decl_float(
                     &var,
-                    &format!("log(max({}, 1e-10)) * {}", s, self.param(*k)),
+                    &format!("{} + log({}) * {}", m, s, self.param(k.max(1e-6))),
                 ));
                 var
             }
