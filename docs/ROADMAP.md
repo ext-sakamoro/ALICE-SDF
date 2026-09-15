@@ -59,7 +59,7 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 
 ### Post-1.8.0 candidates
 | P14 | ✅ | pending | GPU bytecode serialisation — `CompiledColorPipeline::serialize()` emits a flat `[u32]` `GpuColorProgram` (variable-length `[tag, ..payload]` instructions, 17 native opcodes, `PaletteSource` tag map). `emit_wgsl_bytecode_evaluator()` returns canonical WGSL that defines `AliceNprBytecodeCtx` + `alice_npr_eval_bytecode(program_len, ctx)` (stack depth 32). Caller supplies `fn alice_npr_load(index: u32) -> u32` so the evaluator is decoupled from any specific bind-group layout. `Fallback` rejected at serialise time via `SerializeError::UnsupportedFallback`; `deserialize` provides a round-trip check with `DeserializeError` for unknown-opcode / truncated-payload / unknown-palette-source. Naga parses + fully semantic-validates the emitted evaluator (`tests/npr_bytecode_wgsl_validate.rs`) |
-| P15 | ⏳ | Bridge dep restoration — re-add `alice-codec` / `alice-physics` / `alice-cache` / `alice-font` / `alice-asp` once each is on crates.io. Corresponding features (`codec` / `physics` / `asp` / `sdf-cache` / `font`) return to `[features]` |
+| P15 | ✅ 1.12.0 (font ⏳) | Bridge dep restoration — `physics` (alice-physics 1.1) / `codec` (alice-codec 0.1.2) / `asp` (libasp 1.0) / `sdf-cache` (alice-cache 0.2) resolve to crates.io again; CI `bridges` job tests each alone and the `alice-stubs` action is gone. `font` stays an inert gate until alice-font publishes |
 
 ### Compiled evaluator hygiene (1.9.1, 2026-09-14)
 
@@ -93,6 +93,7 @@ Two-round external review of 1.10.2 ([memory: `project_alice_sdf_external_review
 | SDF-R2-4 `eval_compiled` scalar 1.95× slower than the tree walker | ⏳ | Backlog: scalar VM hot loop or SIMD batch as the documented primary path; MC onto the SIMD batch path |
 | Laws that jump (egg, horseshoe, blobby cross, stairs, helix axis, ellipsoid far field, sweep Bézier) | ⏳ | Backlog: port the IQ exact forms / bound-safe variants, then restore their Lipschitz claims |
 | README `[LICENSE]` link | ✅ | `LICENSE-MIT` / `LICENSE-APACHE` |
+| Follow-ups (1.12.0): clippy pedantic + nursery policy in `[lints.clippy]` / CI hard gates (AAA meta, semver-checks, blocking fuzz seed replay) / colour-program stack validation / `Real` sealed-by-convention (Sealed supertrait in 2.0) | ✅ | see CHANGELOG `[Unreleased]` |
 
 ### Deeper follow-ups (not scheduled)
 
