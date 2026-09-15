@@ -93,6 +93,81 @@ impl RaymarchConfig {
     }
 }
 
+/// Over-relaxed sphere tracing step law (Keinert et al. 2014, "Enhanced
+/// Sphere Tracing", §3.1) — the single implementation shared by the tree,
+/// compiled and JIT marchers so the three paths cannot drift.
+///
+/// Plain sphere tracing steps by `d / L`. Over-relaxation steps by `ω·d / L`
+/// (ω ∈ [1, 2)) and checks at the next sample whether the two unbounding
+/// spheres still overlap: if `|d| + |d_prev| < step_prev` (scaled by `1/L`)
+/// they do not, so the relaxed step may have skipped the surface. The only
+/// sound response is to **go back** to the last provably safe position
+/// `t_prev + |d_prev| / L` (the boundary of the previous unbounding sphere)
+/// and continue with ω = 1 for the rest of the ray. Advancing from the
+/// overshot position instead (what 1.10.x did) leaves the ray behind the
+/// surface with `d < 0`, where every step collapses to `min_step` and the
+/// march exhausts `max_steps` — a unit sphere lost 76 % of its rays at ω = 1.6.
+struct RelaxedStepper {
+    /// Current relaxation factor; drops to 1 after the first detected overshoot.
+    omega: f32,
+    inv_lip: f32,
+    min_step: f32,
+    prev_t: f32,
+    /// `|d_prev| / L`: radius of the previous unbounding sphere.
+    prev_radius: f32,
+    /// Length of the previous (possibly relaxed) step; 0 before the first step.
+    prev_step: f32,
+}
+
+impl RelaxedStepper {
+    #[inline(always)]
+    fn new(config: &RaymarchConfig) -> Self {
+        Self {
+            omega: config.omega.max(1.0),
+            inv_lip: 1.0 / config.lipschitz.max(1.0),
+            min_step: config.min_step,
+            prev_t: 0.0,
+            prev_radius: 0.0,
+            prev_step: 0.0,
+        }
+    }
+
+    /// Overshoot check for the signed distance `d` sampled after the previous
+    /// step. Returns the ray parameter to retreat to when the relaxed step was
+    /// not covered — the unbounding spheres of the two samples do not overlap,
+    /// or the sign of `d` flipped (the ray is now behind the surface; with an
+    /// exact SDF the spheres then touch exactly at the surface, which `<`
+    /// alone misses) — and switches the rest of the ray to plain tracing.
+    ///
+    /// Must run **before** the `|d| < ε` hit test: a relaxed step can land
+    /// just past a thin feature with `|d| < ε` on the far side, which is not
+    /// a hit (Keinert et al. 2014: `if (!sorFail && radius < ε) break;`).
+    #[inline(always)]
+    fn overshoot(&mut self, d: f32) -> Option<f32> {
+        let radius = d.abs() * self.inv_lip;
+        if self.omega > 1.0
+            && self.prev_step > 0.0
+            && (radius + self.prev_radius < self.prev_step || d < 0.0)
+        {
+            self.omega = 1.0;
+            self.prev_step = 0.0;
+            return Some(self.prev_t + self.prev_radius);
+        }
+        None
+    }
+
+    /// Next ray parameter given the signed distance `d` sampled at `t`
+    /// (call after [`Self::overshoot`] returned `None`).
+    #[inline(always)]
+    fn advance(&mut self, t: f32, d: f32) -> f32 {
+        let step = (d * self.inv_lip * self.omega).max(self.min_step);
+        self.prev_t = t;
+        self.prev_radius = d.abs() * self.inv_lip;
+        self.prev_step = step;
+        t + step
+    }
+}
+
 /// Raymarch result with detailed information
 #[derive(Debug, Clone, Copy)]
 pub struct RaymarchResult {
@@ -147,8 +222,10 @@ pub fn raymarch(node: &SdfNode, origin: Vec3, direction: Vec3, max_distance: f32
 
 /// Perform sphere tracing with custom configuration
 ///
-/// Supports relaxed sphere tracing via `omega` and `lipschitz` fields.
-/// Step = d * ω / L with safety check: if d < prev_step - prev_d, fall back to d / L.
+/// Supports relaxed sphere tracing via `omega` and `lipschitz` fields:
+/// step = `ω·d / L`; when the unbounding spheres of two consecutive samples
+/// stop overlapping the ray retreats to the last safe point and continues
+/// unrelaxed (Keinert et al. 2014).
 #[inline(always)]
 pub fn raymarch_with_config(
     node: &SdfNode,
@@ -160,16 +237,17 @@ pub fn raymarch_with_config(
     let dir = direction.normalize();
     let mut t = 0.0;
     let mut steps = 0;
-    let omega = config.omega;
-    let inv_lip = 1.0 / config.lipschitz.max(1.0);
-    let use_relaxation = omega > 1.0;
-
-    let mut prev_dist = 0.0;
-    let mut prev_step = 0.0;
+    let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
         let point = origin + dir * t;
         let d = eval(node, point);
+
+        if let Some(back) = stepper.overshoot(d) {
+            t = back;
+            steps += 1;
+            continue;
+        }
 
         if d.abs() < config.epsilon {
             return Some(Hit {
@@ -180,21 +258,7 @@ pub fn raymarch_with_config(
             });
         }
 
-        let safe_d = d * inv_lip;
-        let step = if use_relaxation && steps > 0 {
-            let expected_min = prev_step - prev_dist;
-            if d < expected_min {
-                safe_d
-            } else {
-                safe_d * omega
-            }
-        } else {
-            safe_d
-        };
-
-        prev_dist = d;
-        prev_step = step;
-        t += step.max(config.min_step);
+        t = stepper.advance(t, d);
         steps += 1;
     }
 
@@ -205,7 +269,6 @@ pub fn raymarch_with_config(
 ///
 /// Uses ω=1.6 over-relaxation with Lipschitz-safe step sizes.
 /// Typically converges in ~40% fewer steps than standard tracing for exact SDFs.
-#[allow(dead_code)]
 #[inline(always)]
 pub fn raymarch_relaxed(
     node: &SdfNode,
@@ -218,7 +281,6 @@ pub fn raymarch_relaxed(
 }
 
 /// Raymarch returning detailed result
-#[allow(dead_code)]
 #[inline(always)]
 pub fn raymarch_detailed(
     node: &SdfNode,
@@ -230,11 +292,17 @@ pub fn raymarch_detailed(
     let dir = direction.normalize();
     let mut t = 0.0;
     let mut steps = 0;
-    let inv_lip = 1.0 / config.lipschitz.max(1.0);
+    let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
         let point = origin + dir * t;
         let d = eval(node, point);
+
+        if let Some(back) = stepper.overshoot(d) {
+            t = back;
+            steps += 1;
+            continue;
+        }
 
         if d.abs() < config.epsilon {
             return RaymarchResult {
@@ -246,7 +314,7 @@ pub fn raymarch_detailed(
             };
         }
 
-        t += (d * inv_lip).max(config.min_step);
+        t = stepper.advance(t, d);
         steps += 1;
     }
 
@@ -415,16 +483,17 @@ pub fn raymarch_compiled_with_config(
     let dir = direction.normalize();
     let mut t = 0.0;
     let mut steps = 0;
-    let omega = config.omega;
-    let inv_lip = 1.0 / config.lipschitz.max(1.0);
-    let use_relaxation = omega > 1.0;
-
-    let mut prev_dist = 0.0;
-    let mut prev_step = 0.0;
+    let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
         let point = origin + dir * t;
         let d = eval_compiled(sdf, point);
+
+        if let Some(back) = stepper.overshoot(d) {
+            t = back;
+            steps += 1;
+            continue;
+        }
 
         if d.abs() < config.epsilon {
             return Some(Hit {
@@ -435,21 +504,7 @@ pub fn raymarch_compiled_with_config(
             });
         }
 
-        let safe_d = d * inv_lip;
-        let step = if use_relaxation && steps > 0 {
-            let expected_min = prev_step - prev_dist;
-            if d < expected_min {
-                safe_d
-            } else {
-                safe_d * omega
-            }
-        } else {
-            safe_d
-        };
-
-        prev_dist = d;
-        prev_step = step;
-        t += step.max(config.min_step);
+        t = stepper.advance(t, d);
         steps += 1;
     }
 
@@ -792,16 +847,17 @@ pub fn raymarch_jit_with_config(
     let dir = direction.normalize();
     let mut t = 0.0;
     let mut steps = 0;
-    let omega = config.omega;
-    let inv_lip = 1.0 / config.lipschitz.max(1.0);
-    let use_relaxation = omega > 1.0;
-
-    let mut prev_dist = 0.0;
-    let mut prev_step = 0.0;
+    let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
         let point = origin + dir * t;
         let d = sdf.eval(point);
+
+        if let Some(back) = stepper.overshoot(d) {
+            t = back;
+            steps += 1;
+            continue;
+        }
 
         if d.abs() < config.epsilon {
             return Some(Hit {
@@ -812,21 +868,7 @@ pub fn raymarch_jit_with_config(
             });
         }
 
-        let safe_d = d * inv_lip;
-        let step = if use_relaxation && steps > 0 {
-            let expected_min = prev_step - prev_dist;
-            if d < expected_min {
-                safe_d
-            } else {
-                safe_d * omega
-            }
-        } else {
-            safe_d
-        };
-
-        prev_dist = d;
-        prev_step = step;
-        t += step.max(config.min_step);
+        t = stepper.advance(t, d);
         steps += 1;
     }
 
@@ -1269,12 +1311,28 @@ mod tests {
 
         assert!(result_std.hit);
         assert!(result_rel.hit);
-        // Relaxed should use fewer steps (omega=1.6 means ~1.6x larger steps)
+        assert!((result_rel.distance - result_std.distance).abs() < 1e-3);
+        // Head-on the relaxed ray overshoots once and retreats (+1 step); the
+        // saving shows at grazing incidence, where plain tracing crawls.
+        let plane = SdfNode::plane(Vec3::Y, 0.0);
+        let origin = Vec3::new(-3.0, 0.5, 0.0);
+        let (s, c) = 6.0f32.to_radians().sin_cos();
+        let direction = Vec3::new(c, -s, 0.0);
+        let std = raymarch_detailed(&plane, origin, direction, 20.0, &config_std);
+        let rel = raymarch_detailed(
+            &plane,
+            origin,
+            direction,
+            20.0,
+            &RaymarchConfig::relaxed(&plane),
+        );
+        assert!(std.hit && rel.hit);
+        assert!((std.distance - rel.distance).abs() < 1e-3);
         assert!(
-            result_rel.steps <= result_std.steps,
-            "Relaxed steps={} should be <= standard steps={}",
-            result_rel.steps,
-            result_std.steps
+            rel.steps < std.steps,
+            "Relaxed steps={} should be < standard steps={} at grazing incidence",
+            rel.steps,
+            std.steps
         );
         // Hit distance should be very similar
         assert!(

@@ -19,8 +19,8 @@ mod march;
 
 // === Interpreter Backend (original) ===
 pub use march::{
-    raymarch, raymarch_batch, raymarch_batch_parallel, raymarch_with_config, render_depth,
-    render_normals, RaymarchConfig, RaymarchResult,
+    raymarch, raymarch_batch, raymarch_batch_parallel, raymarch_detailed, raymarch_relaxed,
+    raymarch_with_config, render_depth, render_normals, RaymarchConfig, RaymarchResult,
 };
 
 // === Compiled Backend ===

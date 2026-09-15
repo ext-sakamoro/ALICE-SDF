@@ -62,6 +62,25 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   repeat, polar, pyramid / hex sign, scale-after-blend and exp-smooth laws
   agree with `eval` to 5e-7 relative on the GPU.
 
+### Fixed — external review 2026-09-15 (round 1: sphere tracing / Lipschitz / CI oracle)
+
+- Over-relaxed sphere tracing (`RaymarchConfig::fast()` ω = 1.2,
+  `RaymarchConfig::relaxed()` ω = 1.6, any `omega > 1`) never retreated: on an
+  overshoot it advanced from the overshot position, left the ray behind the
+  surface with `d < 0` and crawled `min_step` until `max_steps` — a unit
+  sphere lost 76 % of its rays at ω = 1.6, a torus 86 %. The tree, compiled
+  and JIT marchers (and `raymarch_detailed`, which ignored `omega`) now share
+  one `RelaxedStepper` implementing Keinert et al. 2014: when the unbounding
+  spheres of two consecutive samples do not overlap, or the sign of `d`
+  flips, the ray retreats to the last safe point `t_prev + |d_prev| / L` and
+  continues unrelaxed; the overshoot check runs before the `|d| < ε` hit test
+  so a relaxed step that lands just past a thin feature is not reported as a
+  hit. `raymarch_relaxed` / `raymarch_detailed` are now re-exported from
+  `raycast` (they were unreachable dead code). Oracle:
+  `tests/test_relaxed_tracing.rs` (24 × 24 rays vs a 0.5 mm scan + bisection,
+  6 shapes × 4 configs × 3 paths, 0 hit/miss mismatches; relaxed tracing
+  takes fewer steps than plain tracing at grazing incidence).
+
 ### Changed
 
 - FFI handle registries tolerate a poisoned lock (`PoisonError::into_inner`):
