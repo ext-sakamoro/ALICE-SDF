@@ -1278,12 +1278,29 @@ fn ia_bsphere(bounds: Vec3Interval, radius: f32) -> Interval {
 
 /// Compute an upper bound on the Lipschitz constant of the SDF.
 ///
-/// The Lipschitz constant L satisfies `|∇SDF(p)| ≤ L` for all p.
-/// For exact SDFs, L = 1.0. Modifiers like twist/bend increase L.
-/// Used for relaxed sphere tracing step size: `step = distance / L`.
+/// `L` bounds every difference quotient of the field on the closed exterior
+/// `{f ≥ 0}`: `|f(p) − f(q)| ≤ L·|p − q|` whenever `f(p) ≥ 0` or `f(q) ≥ 0`.
+/// That is exactly what sphere tracing needs — a step of `d / L` from a point
+/// with `d = f(p) > 0` cannot cross the surface — and it lets a field be
+/// discontinuous strictly inside the solid (the IQ ellipsoid at its centre)
+/// without poisoning the bound.
+///
+/// Every bound here is either analytic (exact SDFs: 1; boolean ops: the
+/// hg_sdf forms below; barrel / twist / bend: the larger singular value of
+/// the shear Jacobian) or a numerically established supremum pinned with a
+/// margin (TPMS implicit functions, Perlin noise). Variants whose law is
+/// **not** Lipschitz on the exterior — domain repetition with an arbitrary
+/// child, the taper singular plane, laws with a candidate-selection jump —
+/// return [`f32::INFINITY`] rather than a guess: `RaymarchConfig::relaxed`
+/// then falls back to plain sphere tracing. The claim is checked for every
+/// corpus node by `tests/test_evaluator_opcode_parity.rs::lipschitz_claim_bounds_every_difference_quotient`.
+///
+/// Until 1.10.3 TPMS surfaces and the ellipsoid claimed `L = 1` (measured
+/// 1.7–7.0×), so `RaymarchConfig::relaxed` skipped their surface: Neovius
+/// and IWP could not be rendered at all (external review, 2026-09-15).
 pub fn eval_lipschitz(node: &SdfNode) -> f32 {
     match node {
-        // All primitives are exact SDFs with L = 1.0
+        // Exact SDFs (|∇f| = 1 almost everywhere, L = 1)
         SdfNode::Sphere { .. }
         | SdfNode::Box3d { .. }
         | SdfNode::Cylinder { .. }
@@ -1291,7 +1308,6 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Plane { .. }
         | SdfNode::Capsule { .. }
         | SdfNode::Cone { .. }
-        | SdfNode::Ellipsoid { .. }
         | SdfNode::RoundedCone { .. }
         | SdfNode::Pyramid { .. }
         | SdfNode::Octahedron { .. }
@@ -1309,17 +1325,13 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::DeathStar { .. }
         | SdfNode::SolidAngle { .. }
         | SdfNode::Rhombus { .. }
-        | SdfNode::Horseshoe { .. }
         | SdfNode::Vesica { .. }
         | SdfNode::InfiniteCylinder { .. }
         | SdfNode::InfiniteCone { .. }
-        | SdfNode::Gyroid { .. }
         | SdfNode::Heart { .. }
         | SdfNode::Tube { .. }
-        | SdfNode::Barrel { .. }
         | SdfNode::Diamond { .. }
         | SdfNode::ChamferedCube { .. }
-        | SdfNode::SchwarzP { .. }
         | SdfNode::Superellipsoid { .. }
         | SdfNode::RoundedX { .. }
         | SdfNode::Pie { .. }
@@ -1327,62 +1339,101 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Parallelogram { .. }
         | SdfNode::Tunnel { .. }
         | SdfNode::UnevenCapsule { .. }
-        | SdfNode::Egg { .. }
         | SdfNode::ArcShape { .. }
         | SdfNode::Moon { .. }
         | SdfNode::CrossShape { .. }
-        | SdfNode::BlobbyCross { .. }
         | SdfNode::ParabolaSegment { .. }
         | SdfNode::RegularPolygon { .. }
         | SdfNode::StarPolygon { .. }
-        | SdfNode::Stairs { .. }
-        | SdfNode::Helix { .. }
         | SdfNode::Tetrahedron { .. }
         | SdfNode::Dodecahedron { .. }
         | SdfNode::Icosahedron { .. }
         | SdfNode::TruncatedOctahedron { .. }
         | SdfNode::TruncatedIcosahedron { .. }
         | SdfNode::BoxFrame { .. }
-        | SdfNode::DiamondSurface { .. }
-        | SdfNode::Neovius { .. }
-        | SdfNode::Lidinoid { .. }
-        | SdfNode::IWP { .. }
-        | SdfNode::FRD { .. }
-        | SdfNode::FischerKochS { .. }
-        | SdfNode::PMY { .. }
         | SdfNode::Circle2D { .. }
         | SdfNode::Rect2D { .. }
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
-        | SdfNode::Annular2D { .. }
-        | SdfNode::Terrain { .. } => 1.0,
+        | SdfNode::Annular2D { .. } => 1.0,
 
-        // Boolean ops: smooth min/max is 1-Lipschitz in (a,b)
+        // Triply periodic minimal surfaces: `|F(p·s)| / s − t` with F an
+        // implicit trigonometric function, so L = sup|∇F| independent of
+        // `scale` (the chain rule cancels it). Suprema located numerically
+        // (200k samples + hill climb over ±7, two scales) and pinned with
+        // the property test; the closed forms match to 4 digits.
+        SdfNode::Gyroid { .. } | SdfNode::SchwarzP { .. } | SdfNode::DiamondSurface { .. } => {
+            TPMS_SQRT3
+        }
+        SdfNode::Neovius { .. } => TPMS_NEOVIUS,
+        SdfNode::Lidinoid { .. } => TPMS_LIDINOID,
+        SdfNode::IWP { .. } => TPMS_IWP,
+        SdfNode::FRD { .. } | SdfNode::FischerKochS { .. } => TPMS_FRD,
+        SdfNode::PMY { .. } => TPMS_PMY,
+
+        // Barrel: `r − (radius + bulge·(1 − (y/h)²))` is a shear of the
+        // radial coordinate by `k = 2·bulge/h`; the box-corner combination
+        // with `|y| − h` has the singular value of [[1, 0], [k, 1]].
+        SdfNode::Barrel {
+            half_height, bulge, ..
+        } => shear_singular_value(2.0 * bulge.abs() / half_height.abs().max(1e-6)),
+
+        // Terrain: `y − amplitude·fbm(scale·xz)`, 3 octaves of 2-D value
+        // noise (values in [0, 1], smoothstep weights, gain 0.48, lacunarity
+        // 2.1 with a rotation). |∇fbm| ≤ Σ aᵢ·2.1ⁱ · 1.5·√2 = 3.208.
+        SdfNode::Terrain { scale, amplitude } => {
+            TERRAIN_FBM_GRAD.mul_add((scale * amplitude).abs(), 1.0)
+        }
+
+        // Laws that are not Lipschitz on the exterior: the IQ ellipsoid
+        // approximation's gradient grows like (max r / min r)⁴ in the far
+        // field; egg / horseshoe / blobby cross deviate from the IQ exact
+        // forms and jump; the stairs primitive and the helix select a nearest
+        // candidate (step index / wrap) and jump where the choice changes.
+        SdfNode::Ellipsoid { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. } => f32::INFINITY,
+
+        // min / max and every convex blend (smooth, exp-smooth: the weights
+        // on ∇a and ∇b sum to 1) are 1-Lipschitz in (a, b).
         SdfNode::Union { a, b }
         | SdfNode::Intersection { a, b }
         | SdfNode::Subtraction { a, b }
         | SdfNode::SmoothUnion { a, b, .. }
         | SdfNode::SmoothIntersection { a, b, .. }
         | SdfNode::SmoothSubtraction { a, b, .. }
-        | SdfNode::ChamferUnion { a, b, .. }
-        | SdfNode::ChamferIntersection { a, b, .. }
-        | SdfNode::ChamferSubtraction { a, b, .. }
-        | SdfNode::StairsUnion { a, b, .. }
-        | SdfNode::StairsIntersection { a, b, .. }
-        | SdfNode::StairsSubtraction { a, b, .. }
         | SdfNode::XOR { a, b }
-        | SdfNode::Morph { a, b, .. }
-        | SdfNode::ColumnsUnion { a, b, .. }
-        | SdfNode::ColumnsIntersection { a, b, .. }
-        | SdfNode::ColumnsSubtraction { a, b, .. }
-        | SdfNode::Pipe { a, b, .. }
-        | SdfNode::Engrave { a, b, .. }
         | SdfNode::Groove { a, b, .. }
         | SdfNode::Tongue { a, b, .. }
         | SdfNode::ExpSmoothUnion { a, b, .. }
         | SdfNode::ExpSmoothIntersection { a, b, .. }
         | SdfNode::ExpSmoothSubtraction { a, b, .. } => eval_lipschitz(a).max(eval_lipschitz(b)),
+        // Chamfer `(a + b)/√2 − r`, stairs (its 45° branch), engrave
+        // `(a + r − |b|)/√2`: |∇a + ∇b| / √2 ≤ √2·max(La, Lb).
+        SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::Engrave { a, b, .. } => {
+            std::f32::consts::SQRT_2 * eval_lipschitz(a).max(eval_lipschitz(b))
+        }
+        // Pipe `√(a² + b²) − r`: |(a∇a + b∇b)| / √(a² + b²) ≤ √(La² + Lb²).
+        SdfNode::Pipe { a, b, .. } => eval_lipschitz(a).hypot(eval_lipschitz(b)),
+        // Morph `a(1 − t) + b·t`.
+        SdfNode::Morph { a, b, t } => {
+            (1.0 - t).abs() * eval_lipschitz(a) + t.abs() * eval_lipschitz(b)
+        }
+        // Columns (hg_sdf fOp*Columns): polar modulo of the (a, b) plane
+        // — the field jumps between columns, no finite bound.
+        SdfNode::ColumnsUnion { .. }
+        | SdfNode::ColumnsIntersection { .. }
+        | SdfNode::ColumnsSubtraction { .. } => f32::INFINITY,
 
         // Distance-preserving transforms
         SdfNode::Translate { child, .. } | SdfNode::Rotate { child, .. } => eval_lipschitz(child),
@@ -1401,8 +1452,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             lipschitz_bound,
             ..
         } => eval_lipschitz(child) * lipschitz_bound,
-        // Lattice deform: conservative estimate (Jacobian can be large near control points)
-        SdfNode::LatticeDeform { child, .. } => eval_lipschitz(child) * 2.0,
+        // Lattice deform is the identity outside the lattice box and the
+        // deformed field inside: the two disagree on the box faces.
+        SdfNode::LatticeDeform { .. } => f32::INFINITY,
         // SDF Skinning: LBS preserves distance (approximately)
         SdfNode::SdfSkinning { child, .. } => eval_lipschitz(child),
 
@@ -1413,40 +1465,62 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Mirror { child, .. }
         | SdfNode::OctantMirror { child, .. }
         | SdfNode::Revolution { child, .. }
-        | SdfNode::Extrude { child, .. }
-        | SdfNode::SweepBezier { child, .. } => eval_lipschitz(child),
+        | SdfNode::Extrude { child, .. } => eval_lipschitz(child),
+        // Sweep along a Bézier: the nearest parameter is found by a coarse
+        // search + Newton and jumps between local minima.
+        SdfNode::SweepBezier { .. } => f32::INFINITY,
 
-        // Repeat: Lipschitz preserved per cell
-        SdfNode::RepeatInfinite { child, .. }
-        | SdfNode::RepeatFinite { child, .. }
-        | SdfNode::PolarRepeat { child, .. } => eval_lipschitz(child),
+        // Domain repetition evaluates one copy per cell / sector; unless the
+        // child is symmetric inside its cell (not knowable here) the field
+        // jumps on the cell borders.
+        SdfNode::RepeatInfinite { .. }
+        | SdfNode::RepeatFinite { .. }
+        | SdfNode::PolarRepeat { .. } => f32::INFINITY,
 
-        // Twist: Jacobian spectral norm = sqrt(1 + strength² * r²)
-        // Conservative estimate assumes max XZ radius ≈ 10 units
+        // Twist about Y: q = R(s·y)·p, ∂q/∂y = s·R'(s·y)·p_xz with |·| = s·r.
+        // The Jacobian is a shear by v = s·r whose larger singular value is
+        // v/2 + √(1 + v²/4); r is the child's largest XZ radius (its AABB
+        // corner), the far-field derivative of a distance field through this
+        // map is bounded by the same s·r_max.
         SdfNode::Twist { child, strength } => {
-            eval_lipschitz(child) * (strength * strength).mul_add(100.0, 1.0).sqrt()
+            eval_lipschitz(child)
+                * shear_singular_value(strength.abs() * child_radius(child, Axis::Y))
         }
-        // Bend: similar deformation
-        SdfNode::Bend {
-            child, curvature, ..
-        } => eval_lipschitz(child) * (curvature * curvature).mul_add(100.0, 1.0).sqrt(),
+        // Bend about Z: q = R(k·x)·p_xy, ∂q/∂x = R + k·(−q_y, q_x), so
+        // ‖J‖ ≤ 1 + k·r with r the child's largest XY radius.
+        SdfNode::Bend { child, curvature } => {
+            eval_lipschitz(child) * curvature.abs().mul_add(child_radius(child, Axis::Z), 1.0)
+        }
 
-        // Noise: adds noise gradient (bounded by amplitude * frequency)
+        // Displacements add the gradient of the offset field.
+        // Perlin: |∇perlin| ≤ PERLIN_GRAD (numerical supremum, 4 seeds).
         SdfNode::Noise {
             child,
             amplitude,
             frequency,
             ..
-        } => amplitude
+        } => (amplitude * frequency)
             .abs()
-            .mul_add(frequency.abs(), eval_lipschitz(child)),
-        // Taper: scale varies along Y, gradient stretches
-        SdfNode::Taper { child, factor } => eval_lipschitz(child) * (1.0 + factor.abs()),
-        // Displacement: procedural perturbation adds gradient
-        SdfNode::Displacement { child, strength } => eval_lipschitz(child) + strength.abs(),
+            .mul_add(PERLIN_GRAD, eval_lipschitz(child)),
+        // Taper divides XZ by `1 − f·y`, singular on the plane y = 1/f.
+        SdfNode::Taper { .. } => f32::INFINITY,
+        // `d + s·sin(5x)·sin(5y)·sin(5z)`: |∇(sin·sin·sin)| ≤ 1, times 5.
+        SdfNode::Displacement { child, strength } => {
+            strength.abs().mul_add(5.0, eval_lipschitz(child))
+        }
+        // `d + a·sin(fx·x)·sin(fy·y)·sin(fz·z)`: ≤ a·max|f|.
         SdfNode::SineDisplacement {
-            child, amplitude, ..
-        } => eval_lipschitz(child) + amplitude.abs(),
+            child,
+            amplitude,
+            frequency,
+        } => {
+            let f = frequency
+                .x
+                .abs()
+                .max(frequency.y.abs())
+                .max(frequency.z.abs());
+            (amplitude * f).abs() + eval_lipschitz(child)
+        }
         SdfNode::Shear { child, shear } => {
             let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
             eval_lipschitz(child) * (1.0 + max_shear)
@@ -1457,25 +1531,90 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             // IFS can have arbitrary scale factors, conservative estimate
             eval_lipschitz(child) * 2.0
         }
-        SdfNode::HeightmapDisplacement {
-            child,
-            amplitude,
-            scale,
-            ..
-        } => amplitude.abs().mul_add(scale.abs(), eval_lipschitz(child)),
+        // Heightmap displacement projects on the dominant axis (a jump where
+        // the axis changes) and samples texels bilinearly (slope ∝ resolution).
+        SdfNode::HeightmapDisplacement { .. } => f32::INFINITY,
+        // fbm of value noise: each octave contributes 0.5ⁱ·2ⁱ·|∇hash_noise|
+        // with |∇hash_noise_3d| ≤ 2·1.5·√3 (range 2, smoothstep slope 1.5).
         SdfNode::SurfaceRoughness {
             child,
             amplitude,
             frequency,
-            ..
-        } => amplitude
+            octaves,
+        } => (amplitude * frequency * *octaves as f32)
             .abs()
-            .mul_add(frequency.abs(), eval_lipschitz(child)),
+            .mul_add(VALUE_NOISE_GRAD, eval_lipschitz(child)),
 
         SdfNode::WithMaterial { child, .. } => eval_lipschitz(child),
+    }
+}
 
-        #[allow(unreachable_patterns)]
-        _ => 1.0,
+/// `√3`: Gyroid, Schwarz P and the diamond surface (`sup|∇F|`, attained at
+/// the lattice points where every trig factor is ±1).
+const TPMS_SQRT3: f32 = 1.732_051;
+/// Neovius `3(cx + cy + cz) + 4·cx·cy·cz`: sup 7.0006 → 7.05.
+const TPMS_NEOVIUS: f32 = 7.05;
+/// Lidinoid: sup 2.5980 = 3√3/2 → 2.62.
+const TPMS_LIDINOID: f32 = 2.62;
+/// IWP: sup 5.1966 = 3√3 → 5.25.
+const TPMS_IWP: f32 = 5.25;
+/// FRD and Fischer–Koch S: sup 2.4439 → 2.47.
+const TPMS_FRD: f32 = 2.47;
+/// PMY: sup 4.1232 = √17 → 4.17.
+const TPMS_PMY: f32 = 4.17;
+/// `|∇perlin_noise_3d|` supremum: 3.266 over 4 seeds × 300k samples + hill
+/// climb (the analytic bound through the quintic fade, 17.6, is 5× looser).
+const PERLIN_GRAD: f32 = 3.5;
+/// `|∇hash_noise_3d|` analytic bound: per axis 2 (range) × 1.5 (smoothstep
+/// slope), three axes → 3√3. Measured 2.95.
+const VALUE_NOISE_GRAD: f32 = 5.196_153;
+/// Terrain fbm gradient factor: `(0.5 + 0.5·0.48·2.1 + 0.5·0.48²·2.1²) · 1.5 · √2`.
+const TERRAIN_FBM_GRAD: f32 = 3.208;
+/// Radius assumed for a twisted / bent child whose extent is unbounded
+/// (plane, infinite cylinder, uncompilable tree): the pre-1.10.3 heuristic.
+const UNBOUNDED_CHILD_RADIUS: f32 = 10.0;
+/// AABB reach beyond which a child counts as unbounded (`AabbPacked::infinite()`
+/// uses ±`f32::MAX`; real scenes stay far below 1e6 units).
+const UNBOUNDED_CHILD_SENTINEL: f32 = 1e6;
+
+/// Larger singular value of the shear `[[1, 0], [v, 1]]`: `v/2 + √(1 + v²/4)`.
+#[inline]
+fn shear_singular_value(v: f32) -> f32 {
+    (v * 0.25).mul_add(v, 1.0).sqrt() + 0.5 * v
+}
+
+/// Axis a deformation rotates about; the radius is measured in the
+/// perpendicular plane.
+#[derive(Clone, Copy)]
+enum Axis {
+    Y,
+    Z,
+}
+
+/// Largest distance from `axis` reached by the child's bounding box
+/// (twist / bend Jacobian growth is proportional to it). Falls back to
+/// [`UNBOUNDED_CHILD_RADIUS`] when the child has no finite AABB.
+fn child_radius(child: &SdfNode, axis: Axis) -> f32 {
+    use crate::compiled::{get_scene_aabb, CompiledSdfBvh};
+    let Ok(bvh) = CompiledSdfBvh::try_compile(child) else {
+        return UNBOUNDED_CHILD_RADIUS;
+    };
+    let aabb = get_scene_aabb(&bvh);
+    let (lo, hi) = (aabb.min(), aabb.max());
+    // `AabbPacked::infinite()` is ±f32::MAX (finite): treat anything past the
+    // unbounded-shape sentinel as unbounded rather than overflowing to inf.
+    if !aabb.is_valid() || !lo.is_finite() || !hi.is_finite() {
+        return UNBOUNDED_CHILD_RADIUS;
+    }
+    let reach = |a: f32, b: f32| a.abs().max(b.abs());
+    let r = match axis {
+        Axis::Y => reach(lo.x, hi.x).hypot(reach(lo.z, hi.z)),
+        Axis::Z => reach(lo.x, hi.x).hypot(reach(lo.y, hi.y)),
+    };
+    if r > UNBOUNDED_CHILD_SENTINEL {
+        UNBOUNDED_CHILD_RADIUS
+    } else {
+        r
     }
 }
 
@@ -1814,8 +1953,8 @@ mod tests {
             frequency: 3.0,
             seed: 0,
         };
-        // L = 1.0 + 0.2 * 3.0 = 1.6
-        assert!((eval_lipschitz(&node) - 1.6).abs() < 1e-5);
+        // L = 1.0 + 0.2 * 3.0 * PERLIN_GRAD (|∇perlin| ≤ 3.5)
+        assert!((eval_lipschitz(&node) - (1.0 + 0.6 * PERLIN_GRAD)).abs() < 1e-5);
     }
 
     #[test]
@@ -1824,8 +1963,10 @@ mod tests {
             child: std::sync::Arc::new(SdfNode::sphere(1.0)),
             strength: 0.5,
         };
-        // L = 1.0 * sqrt(1 + 0.25 * 100) = sqrt(26)
-        let expected = 26.0_f32.sqrt();
+        // Unit sphere: XZ reach of its AABB corner is √2, v = 0.5·√2, the
+        // shear singular value is v/2 + √(1 + v²/4).
+        let v = 0.5 * 2.0_f32.sqrt();
+        let expected = 0.5 * v + (1.0 + 0.25 * v * v).sqrt();
         assert!((eval_lipschitz(&node) - expected).abs() < 1e-3);
     }
 

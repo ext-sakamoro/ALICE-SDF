@@ -254,3 +254,75 @@ fn relaxed_tracing_matches_oracle_jit() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// TPMS surfaces are implicit trigonometric functions, not distance fields:
+/// `eval_lipschitz` reports √3 … 7 for them (1.0 until 1.10.3, which made
+/// Neovius and IWP unrenderable). With the bound applied every ray must hit
+/// where the oracle does — plain L = 1 tracing is expected to miss.
+#[test]
+fn tpms_trace_correctly_with_lipschitz_bound() {
+    use alice_sdf::interval::eval_lipschitz;
+    let mut failures = Vec::new();
+    for (name, node) in [
+        ("gyroid", SdfNode::gyroid(2.0, 0.08)),
+        ("schwarz_p", SdfNode::schwarz_p(2.0, 0.08)),
+        ("neovius", SdfNode::neovius(2.0, 0.08)),
+        ("iwp", SdfNode::iwp(2.0, 0.08)),
+        ("lidinoid", SdfNode::lidinoid(2.0, 0.08)),
+        ("pmy", SdfNode::pmy(2.0, 0.08)),
+    ] {
+        // TPMS fill space periodically: keep the rays that start outside.
+        let rays: Vec<(Vec3, Vec3)> = rays()
+            .into_iter()
+            .filter(|&(o, _)| eval(&node, o) > 0.02)
+            .collect();
+        let oracle = oracle_hits(&node, &rays);
+        let hits = oracle.iter().filter(|h| h.is_some()).count();
+        assert!(
+            hits > rays.len() / 2 && rays.len() > 100,
+            "{name}: {hits} hits / {} rays",
+            rays.len()
+        );
+        // Steps are d / L with L up to 7: give the budget the bound needs so
+        // the comparison exercises the bound, not `max_steps`.
+        let mut relaxed = RaymarchConfig::relaxed(&node);
+        assert!(
+            relaxed.omega > 1.0 && relaxed.lipschitz > 1.5,
+            "{name}: {relaxed:?}"
+        );
+        relaxed.max_steps = 4096;
+        let plain_bounded = RaymarchConfig {
+            lipschitz: eval_lipschitz(&node),
+            max_steps: 4096,
+            ..Default::default()
+        };
+        for (cfg_name, cfg) in [("relaxed", relaxed), ("plain_L", plain_bounded)] {
+            let s = compare(&node, &rays, &oracle, cfg.epsilon, |o, d| {
+                raymarch_with_config(&node, o, d, MAX_DIST, &cfg).map(|h| (h.distance, h.steps))
+            });
+            if s.hit_mismatch > 0 || s.t_mismatch > 0 {
+                failures.push(format!(
+                    "{name}/{cfg_name}: {}/{} hit-miss mismatches, {} t mismatches (worst Δt {:.2e})",
+                    s.hit_mismatch, s.rays, s.t_mismatch, s.worst_dt
+                ));
+            }
+        }
+        // Documented failure of the unbounded default: at least one ray of
+        // Neovius / IWP is lost with L = 1 (this is what the bound fixes).
+        if name == "neovius" || name == "iwp" {
+            let unbounded = RaymarchConfig {
+                max_steps: 4096,
+                ..Default::default()
+            };
+            let s = compare(&node, &rays, &oracle, 1e-4, |o, d| {
+                raymarch_with_config(&node, o, d, MAX_DIST, &unbounded)
+                    .map(|h| (h.distance, h.steps))
+            });
+            assert!(
+                s.hit_mismatch > 0,
+                "{name}: L = 1 tracing unexpectedly hit every ray"
+            );
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

@@ -80,6 +80,40 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   `tests/test_relaxed_tracing.rs` (24 × 24 rays vs a 0.5 mm scan + bisection,
   6 shapes × 4 configs × 3 paths, 0 hit/miss mismatches; relaxed tracing
   takes fewer steps than plain tracing at grazing incidence).
+- `interval::eval_lipschitz` was unsound: the nine triply periodic minimal
+  surfaces (Gyroid, Schwarz P, diamond, Neovius, Lidinoid, IWP, FRD,
+  Fischer–Koch S, PMY) sat in the "exact SDF, L = 1" arm although they are
+  implicit trigonometric functions with |∇F| up to 7 (Neovius) — so
+  `RaymarchConfig::relaxed` stepped past their surface and Neovius / IWP could
+  not be rendered; the noise / displacement bounds ignored the gradient of the
+  offset field (`sin(5x)…` is ×5, sine displacement dropped its frequency,
+  Perlin |∇| ≤ 3.5, value-noise fbm ≤ 3√3 per octave); chamfer / stairs /
+  engrave (`(a + b)/√2`) and pipe (`√(a² + b²)`) are √2-Lipschitz, not 1; and
+  the twist / bend factor assumed a radius of 10 with the wrong norm
+  (`√(1 + v²)` instead of the shear singular value `v/2 + √(1 + v²/4)`) — it is
+  now taken from the child's AABB (the plane / unbounded-child fallback keeps
+  10). The bound is now defined on the exterior `{f ≥ 0}` (what sphere tracing
+  needs) and every claim is analytic or a pinned numerical supremum; laws that
+  are not Lipschitz there — domain repetition (`RepeatInfinite` / `RepeatFinite`
+  / `PolarRepeat`) with an arbitrary child, `Taper` (singular plane),
+  `ColumnsUnion` family and `LatticeDeform` (jumps), `HeightmapDisplacement`
+  (dominant-axis switch), `SweepBezier` (nearest-parameter jumps), and the
+  `Ellipsoid` / `Egg` / `Horseshoe` / `BlobbyCross` / `Stairs` / `Helix`
+  primitives (their laws jump or grow unboundedly, see the follow-up entries)
+  — return `f32::INFINITY` instead of a guess, and `RaymarchConfig::relaxed`
+  falls back to plain tracing for them. Oracles:
+  `lipschitz_claim_bounds_every_difference_quotient` (every corpus node,
+  13 directions × 2 step sizes × 2600 points, difference quotient ≤ claim) and
+  `lipschitz_claims_are_finite_where_the_law_is_lipschitz` in
+  `tests/test_evaluator_opcode_parity.rs`; `tests/test_relaxed_tracing.rs::
+  tpms_trace_correctly_with_lipschitz_bound` (six TPMS, 0 mismatches with the
+  bound, Neovius / IWP demonstrably lose rays without it).
+- `RaymarchConfig::min_step` is now applied in field units (divided by
+  `lipschitz` like the step itself). A floor in ray units moved a sample by up
+  to `L·min_step` in field value and, for `L·min_step > ε`, carried it across
+  the `|d| < ε` hit band into the interior (Neovius at L = 7 lost 16 % of its
+  rays that way even with the correct bound). With `min_step ≤ epsilon` plain
+  tracing can no longer overshoot at all.
 
 ### Changed
 

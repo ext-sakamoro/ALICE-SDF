@@ -32,7 +32,9 @@ pub struct RaymarchConfig {
     pub max_steps: u32,
     /// Distance threshold for surface hit
     pub epsilon: f32,
-    /// Minimum step distance (prevents infinite loops)
+    /// Minimum step in field units (divided by `lipschitz` like `d`);
+    /// prevents infinite loops. Keep `min_step ≤ epsilon` so the floor
+    /// cannot carry a sample across the `|d| < epsilon` hit band.
     pub min_step: f32,
     /// Step relaxation factor (omega for over-relaxation, ω ∈ [1, 2))
     pub omega: f32,
@@ -79,16 +81,27 @@ impl RaymarchConfig {
 
     /// Relaxed sphere tracing configuration.
     ///
-    /// Auto-computes Lipschitz constant from the SDF tree and uses ω=1.6 over-relaxation.
-    /// Safe step = d * ω / L. Typically converges in ~40% fewer steps than standard tracing.
+    /// Auto-computes the Lipschitz bound from the SDF tree
+    /// ([`eval_lipschitz`]) and uses ω = 1.6 over-relaxation with safe step
+    /// `d · ω / L`; fewer steps than plain tracing at grazing incidence.
+    ///
+    /// When the tree has no finite Lipschitz bound (`eval_lipschitz` returns
+    /// `INFINITY`: domain repetition, taper, columns, …) no step size is
+    /// provably safe, so this falls back to plain sphere tracing (ω = 1,
+    /// L = 1) — the same best-effort behaviour as [`raymarch`].
     pub fn relaxed(node: &SdfNode) -> Self {
-        let lip = eval_lipschitz(node).max(1.0);
+        let lip = eval_lipschitz(node);
+        let (omega, lipschitz) = if lip.is_finite() {
+            (1.6, lip.max(1.0))
+        } else {
+            (1.0, 1.0)
+        };
         Self {
             max_steps: 128,
             epsilon: 0.0001,
             min_step: 0.0001,
-            omega: 1.6,
-            lipschitz: lip,
+            omega,
+            lipschitz,
         }
     }
 }
@@ -122,10 +135,17 @@ struct RelaxedStepper {
 impl RelaxedStepper {
     #[inline(always)]
     fn new(config: &RaymarchConfig) -> Self {
+        let inv_lip = 1.0 / config.lipschitz.max(1.0);
         Self {
             omega: config.omega.max(1.0),
-            inv_lip: 1.0 / config.lipschitz.max(1.0),
-            min_step: config.min_step,
+            inv_lip,
+            // The floor lives in field units like `d`: a floor of `min_step`
+            // in ray units would move the sample by up to `L·min_step` in
+            // field value and, for `L·min_step > ε`, jump over the `|d| < ε`
+            // hit band into the interior (Neovius, L = 7, lost 16 % of its
+            // rays that way). With `min_step ≤ ε` the next sample satisfies
+            // `d' ≥ d − min_step > 0`, so plain tracing never overshoots.
+            min_step: config.min_step * inv_lip,
             prev_t: 0.0,
             prev_radius: 0.0,
             prev_step: 0.0,

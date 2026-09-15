@@ -832,3 +832,133 @@ fn analytic_gradient_matches_numerical() {
             .join("\n")
     );
 }
+
+/// `eval_lipschitz(node)` must bound every difference quotient of `eval` on
+/// the exterior: `|f(p + h·u) − f(p − h·u)| / 2h ≤ L` for every unit direction
+/// `u` whenever at least one of the two samples is outside (`f ≥ 0`),
+/// differentiable or not. Sphere tracing steps by `d / L`, so an
+/// under-claimed L (external review 2026-09-15: TPMS 9 variants and Ellipsoid
+/// claimed 1.0, measured 1.7–7.0×) makes rays skip the surface. Variants
+/// that declare `INFINITY` are skipped (no claim to check).
+#[test]
+fn lipschitz_claim_bounds_every_difference_quotient() {
+    use alice_sdf::interval::eval_lipschitz;
+    let dirs: Vec<Vec3> = {
+        let mut v = vec![Vec3::X, Vec3::Y, Vec3::Z];
+        for sx in [-1.0f32, 1.0] {
+            for sy in [-1.0f32, 1.0] {
+                v.push(Vec3::new(sx, sy, 1.0).normalize());
+            }
+        }
+        let mut rnd = lcg(0x1f2e_3d4c);
+        for _ in 0..6 {
+            v.push(
+                Vec3::new(
+                    rnd().mul_add(2.0, -1.0),
+                    rnd().mul_add(2.0, -1.0),
+                    rnd().mul_add(2.0, -1.0),
+                )
+                .normalize(),
+            );
+        }
+        v
+    };
+    let mut failures = Vec::new();
+    for (name, node) in corpus() {
+        let claimed = eval_lipschitz(&node);
+        if !claimed.is_finite() {
+            continue; // unbounded by declaration (e.g. twist of an unbounded child)
+        }
+        let mut worst = 0.0f32;
+        let mut worst_at = Vec3::ZERO;
+        let mut rnd = lcg(0x5a5a_0001 ^ name.len() as u64);
+        let steps = 13;
+        let mut points: Vec<Vec3> = Vec::with_capacity(steps * steps * steps + 400);
+        for ix in 0..steps {
+            for iy in 0..steps {
+                for iz in 0..steps {
+                    let f = |i: usize| -3.0 + 6.0 * (i as f32) / ((steps - 1) as f32);
+                    points.push(Vec3::new(f(ix), f(iy), f(iz)));
+                }
+            }
+        }
+        for _ in 0..400 {
+            points.push(Vec3::new(
+                rnd().mul_add(6.0, -3.0),
+                rnd().mul_add(6.0, -3.0),
+                rnd().mul_add(6.0, -3.0),
+            ));
+        }
+        for p in points {
+            for &u in &dirs {
+                for h in [1e-3f32, 1e-2] {
+                    let (fa, fb) = (eval(&node, p + u * h), eval(&node, p - u * h));
+                    if fa < 0.0 && fb < 0.0 {
+                        continue; // strictly interior pair: outside the bound's domain
+                    }
+                    let q = (fa - fb).abs() / (2.0 * h);
+                    if q.is_finite() && q > worst {
+                        worst = q;
+                        worst_at = p;
+                    }
+                }
+            }
+        }
+        // 0.5 % slack for finite-difference rounding
+        if worst > claimed * 1.005 + 1e-4 {
+            failures.push(format!(
+                "{name}: eval_lipschitz claims {claimed:.3}, measured difference quotient {worst:.3} ({:.2}×) near {worst_at:?}",
+                worst / claimed
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} unsound Lipschitz claims:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// The bound must stay informative: exact primitives claim 1, the TPMS and
+/// deformation bounds are finite, and only the documented non-Lipschitz laws
+/// declare `INFINITY` (a blanket `INFINITY` would also pass the soundness
+/// test above).
+#[test]
+fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
+    use alice_sdf::interval::eval_lipschitz;
+    let mut infinite = Vec::new();
+    let mut finite = 0usize;
+    for (name, node) in corpus() {
+        if eval_lipschitz(&node).is_finite() {
+            finite += 1;
+        } else {
+            infinite.push(name);
+        }
+    }
+    assert!(
+        finite >= 100,
+        "only {finite} finite claims; infinite: {infinite:?}"
+    );
+    assert!(
+        infinite.len() <= 24,
+        "{} infinite claims (expected ≤ 24): {infinite:?}",
+        infinite.len()
+    );
+    assert_eq!(eval_lipschitz(&SdfNode::sphere(1.0)), 1.0);
+    assert!((eval_lipschitz(&SdfNode::gyroid(2.0, 0.1)) - 3f32.sqrt()).abs() < 1e-3);
+    assert!((eval_lipschitz(&SdfNode::neovius(0.5, 0.1)) - 7.05).abs() < 1e-3);
+    // Twist of a unit box (XZ corner radius √2): v = 2·√2, σ = v/2 + √(1 + v²/4)
+    let twisted = SdfNode::box3d(2.0, 2.0, 2.0).twist(2.0);
+    let v = 2.0 * 2f32.sqrt();
+    let expect = v * 0.5 + (1.0 + v * v * 0.25).sqrt();
+    assert!(
+        (eval_lipschitz(&twisted) - expect).abs() < 1e-3,
+        "twist bound {} vs {expect}",
+        eval_lipschitz(&twisted)
+    );
+    // Same twist of a plane: unbounded child, documented fallback radius 10
+    let twisted_plane = SdfNode::plane(Vec3::Y, 0.0).twist(2.0);
+    assert!(eval_lipschitz(&twisted_plane).is_finite());
+    assert!(eval_lipschitz(&SdfNode::sphere(1.0).repeat_infinite(3.0, 3.0, 3.0)).is_infinite());
+}
