@@ -6,6 +6,23 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — dual contouring (found by the new invariant oracle)
+
+- **Every dual-contouring triangle was wound inward** (sphere res 32:
+  0 outward / 3714 inward, signed volume −4.23): the orientation branch per
+  edge axis was inverted, the mirror image of the marching-cubes finding.
+  Non-planar quads are now split along the diagonal whose two triangles both
+  face the quad's mean vertex normal (a fixed diagonal folded triangles on
+  the inner ring of a torus), and "inside" is `d < 0` everywhere so a face
+  lying exactly on a grid plane no longer produces in-plane quads with an
+  arbitrary orientation (the CSG-subtract box lost triangles that way).
+  Oracle: `tests/test_dual_contouring_invariants.rs` — outward winding,
+  closed, vertices on the surface, signed volume within 5 % of the analytic
+  sphere / torus, and the sharp-feature property (box vertices on its faces,
+  corners within a quarter cell, volume error below marching cubes').
+  Known residue: ~0.5 %-of-a-cell slivers where a surface is tangent to a
+  grid plane (documented in the test, QEF clamping is backlog).
+
 ## [v1.12.0] - 2026-09-15
 
 Bridge features back on crates.io (P15), crate-wide clippy pedantic + nursery policy, every CI test step a hard gate (blocking fuzz seed replay, semver-checks), colour-program stack validation, and the evaluator / marcher / law work that followed the 2026-09-15 external review.
