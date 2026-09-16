@@ -28,6 +28,8 @@ const FOLD_EPSILON: f32 = 1e-6;
 /// Marker type for WGSL shader language syntax
 pub struct WgslLang;
 
+impl crate::compiled::transpiler_common::private::Sealed for WgslLang {}
+
 impl ShaderLang for WgslLang {
     fn vec2_ctor(x: &str, y: &str) -> String {
         format!("vec2<f32>({}, {})", x, y)

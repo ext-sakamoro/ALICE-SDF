@@ -6,6 +6,24 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v3.0.0] - 2026-09-16
+
+Every node kind is transpiled, `ShaderLang` is sealed (the reason for the
+major bump), IFS / skinning made sound on the CPU.
+
+### Changed — breaking: `ShaderLang` is sealed
+
+- `compiled::transpiler_common::ShaderLang` is now sealed, like `Real`
+  since 2.0: only `WgslLang`, `GlslLang` and `HlslLang` implement it. It
+  was left unsealed in 2.0 by oversight; it gains a required method every
+  time a node kind needs new syntax (four in this release), and an
+  implementation has to supply every helper the emitted laws reference,
+  so external implementations were never workable. cargo-semver-checks
+  flags both the new required methods and the sealing as major, hence
+  3.0.0 rather than 2.2.0. No dependent on crates.io or in the ALICE
+  repositories implements the trait; consumers of `to_wgsl` /
+  `to_glsl` / `to_hlsl` / `GpuEvaluator` are unaffected.
+
 ### Added — every node kind is transpiled (IFS, skinning, lattice, heightmap)
 
 - The four kinds the shaders used to pass through unchanged are now emitted

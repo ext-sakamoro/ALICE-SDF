@@ -33,6 +33,8 @@ const FOLD_EPSILON: f32 = 1e-6;
 /// Marker type for GLSL shader language syntax
 pub struct GlslLang;
 
+impl crate::compiled::transpiler_common::private::Sealed for GlslLang {}
+
 impl ShaderLang for GlslLang {
     fn vec2_ctor(x: &str, y: &str) -> String {
         format!("vec2({}, {})", x, y)

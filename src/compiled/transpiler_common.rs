@@ -87,8 +87,21 @@ fn transform_point3_expr<L: ShaderLang>(m: &[f32; 16], v: &str) -> String {
     )
 }
 
+pub(in crate::compiled) mod private {
+    /// Seals [`super::ShaderLang`]: only the three language markers
+    /// (`WgslLang`, `GlslLang`, `HlslLang`) implement it.
+    pub trait Sealed {}
+}
+
 /// Trait that captures the syntactic differences between WGSL, GLSL, and HLSL.
-pub trait ShaderLang: 'static {
+///
+/// **Sealed** (since 3.0): implemented for `WgslLang`, `GlslLang` and
+/// `HlslLang` only. Every node kind that needs new syntax adds a required
+/// method (`cast_int` and the module-scope declarations in 3.0), and an
+/// implementation also has to supply every helper function the emitted
+/// laws reference (`helper_source`), so external implementations are not
+/// supported.
+pub trait ShaderLang: private::Sealed + 'static {
     // ---- Type constructors ----
     /// Construct a 2-component vector from scalar strings.
     fn vec2_ctor(x: &str, y: &str) -> String;

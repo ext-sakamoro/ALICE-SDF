@@ -33,6 +33,8 @@ const FOLD_EPSILON: f32 = 1e-6;
 /// Marker type for HLSL shader language syntax
 pub struct HlslLang;
 
+impl crate::compiled::transpiler_common::private::Sealed for HlslLang {}
+
 impl ShaderLang for HlslLang {
     fn vec2_ctor(x: &str, y: &str) -> String {
         format!("float2({}, {})", x, y)
