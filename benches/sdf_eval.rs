@@ -573,6 +573,72 @@ fn bench_bvh_complex(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmark: laws that call transcendental functions (sin/cos, atan2, exp/ln),
+/// per evaluator path — the cost centre for the det_math (bit-exact) migration.
+///
+/// 4096 points per iteration so scalar / SIMD / JIT report comparable ns/point.
+#[allow(clippy::cast_precision_loss)]
+fn bench_transcendental_laws(c: &mut Criterion) {
+    let mut group = c.benchmark_group("transcendental_laws");
+
+    const N: usize = 4096;
+    let points: Vec<Vec3> = (0..N)
+        .map(|i| {
+            let t = i as f32 / N as f32;
+            Vec3::new(
+                (t * 12.34).sin() * 2.0,
+                (t * 23.45).sin() * 2.0,
+                (t * 34.56).sin() * 2.0,
+            )
+        })
+        .collect();
+    let soa = SoAPoints::from_vec3_slice(&points);
+    group.throughput(Throughput::Elements(N as u64));
+
+    let base = SdfNode::box3d(1.0, 2.0, 1.0);
+    let laws: [(&str, SdfNode); 6] = [
+        ("gyroid", SdfNode::gyroid(1.0, 0.1)),
+        ("twist", base.clone().twist(0.5)),
+        ("bend", base.clone().bend(0.3)),
+        ("polar_repeat", base.clone().polar_repeat(7)),
+        ("helix", SdfNode::helix(1.0, 0.2, 0.5, 2.0)),
+        (
+            "exp_smooth_union",
+            SdfNode::sphere(1.0).exp_smooth_union(SdfNode::box3d(0.8, 0.8, 0.8), 0.2),
+        ),
+    ];
+
+    for (name, node) in &laws {
+        let compiled = CompiledSdf::compile(node);
+        // JIT has no codegen arm for every law (e.g. Gyroid); bench only what it covers.
+        #[cfg(feature = "jit")]
+        let jit = JitSimdSdf::compile(&compiled).ok();
+
+        group.bench_with_input(BenchmarkId::new("scalar", name), &points, |b, points| {
+            b.iter(|| {
+                let mut acc = 0.0_f32;
+                for &p in points {
+                    acc += eval_compiled(black_box(&compiled), black_box(p));
+                }
+                acc
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("simd", name), &points, |b, points| {
+            b.iter(|| eval_compiled_batch_simd(black_box(&compiled), black_box(points)));
+        });
+
+        #[cfg(feature = "jit")]
+        if let Some(jit) = &jit {
+            group.bench_with_input(BenchmarkId::new("jit", name), &soa, |b, soa| {
+                b.iter(|| jit.eval_soa(black_box(soa)));
+            });
+        }
+    }
+
+    group.finish();
+}
+
 /// Benchmark: `SoA` throughput (Deep Fried Edition)
 #[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
 fn bench_soa_throughput(c: &mut Criterion) {
@@ -677,6 +743,7 @@ criterion_group!(
     bench_batch_all,
     bench_bvh_sparse_scene,
     bench_bvh_complex,
+    bench_transcendental_laws,
     bench_soa_throughput,
     bench_jit_compile,
 );
@@ -698,6 +765,7 @@ criterion_group!(
     bench_batch_all,
     bench_bvh_sparse_scene,
     bench_bvh_complex,
+    bench_transcendental_laws,
     bench_soa_throughput,
 );
 
