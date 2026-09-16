@@ -28,6 +28,11 @@ BRIDGES='physics,codec,asp,sdf-cache'
 MSRV=1.85
 
 step() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
+# `cargo clippy` reuses fresh `cargo check` artifacts and then lints nothing
+# (2026-09-16: four clippy errors reached CI through a green preflight after a
+# manual `cargo check`). Touching the crate root invalidates only this
+# crate's fingerprint, so every clippy step below re-lints it.
+relint() { touch src/lib.rs; }
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1 ($2)" >&2; exit 1; }; }
 
 need actionlint "brew install actionlint"
@@ -48,25 +53,25 @@ step "fmt: cargo fmt --check (mobile/uniffi-wrapper)"
 (cd mobile/uniffi-wrapper && cargo fmt --check)
 
 step "clippy: strict (no-default-features)"
-RUSTFLAGS="-Dwarnings" cargo clippy --lib --no-default-features
+relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --no-default-features
 
 step "clippy: strict (default, all targets)"
-RUSTFLAGS="-Dwarnings" cargo clippy --all-targets
+relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets
 
 step "clippy: strict (all features that build on Linux, all targets)"
-RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --features "$LINUX_ALL"
+relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --features "$LINUX_ALL"
 
 # Linux / Windows runners are x86_64; arch-gated bodies (SIMD dispatch) lint
 # differently there (missing_const_for_fn, dead_code on aarch64-only paths).
 step "clippy: strict on x86_64 (Linux / Windows runner arch, default + gpu)"
 rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
-RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
+relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
 
 step "clippy: feature-gated examples build (gpu / glsl / hlsl)"
 RUSTFLAGS="-Dwarnings" cargo build --examples --features "glsl,hlsl,gpu"
 
 step "clippy-strict: mobile/uniffi-wrapper (path dep re-lint)"
-(cd mobile/uniffi-wrapper && RUSTFLAGS="-Dwarnings" cargo clippy --lib --all-targets)
+relint; (cd mobile/uniffi-wrapper && RUSTFLAGS="-Dwarnings" cargo clippy --lib --all-targets)
 
 step "msrv: cargo +${MSRV} check --lib (default)"
 cargo "+${MSRV}" check --lib
@@ -146,7 +151,7 @@ cargo test --doc
 
 step "test: bridges (lib, no default)"
 cargo test --lib --no-default-features --features "$BRIDGES"
-RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$BRIDGES"
+relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$BRIDGES"
 
 step "test: AAA meta"
 cargo test --lib --no-default-features --features "aaa"

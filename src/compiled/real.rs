@@ -743,10 +743,11 @@ pub fn taper<R: Real>(p: Vec3R<R>, factor: f32) -> Vec3R<R> {
     Vec3R::new(p.x * s, p.y, p.z * s)
 }
 
-/// Taper distance bound: turn the child distance at the tapered point into
-/// a value that is safe to step by in the parent space (same law for the
-/// tree evaluator, the compiled scalar / SIMD paths and the three shader
-/// helpers `alice_taper_bound`).
+/// Taper distance bound: the child distance at the tapered point, made safe
+/// to step by in the parent space.
+///
+/// Same law for the tree evaluator, the compiled scalar / SIMD paths and
+/// the three shader helpers `alice_taper_bound`.
 ///
 /// `q = (x, y, z) / den`, `den = 1 − f·y`, is a perspective map with centre
 /// `c = (0, 1/f, 0)`: every line through `c` collapses to one `q`, so the
@@ -808,7 +809,7 @@ pub fn taper_bound<R: Real>(d: R, p: Vec3R<R>, factor: f32, reach: [f32; 2]) -> 
 
     // Bound 2: distance to the cone ∩ slab that contains the shape.
     let k = reach[0] * f_abs;
-    let inv_n = 1.0 / (1.0 + k * k).sqrt();
+    let inv_n = 1.0 / k.mul_add(k, 1.0).sqrt();
     let big_y = p.y - R::splat(1.0 / factor);
     let d_cone = (rho - R::splat(k) * big_y.abs()) * R::splat(inv_n);
     let d_slab = p.y.abs() - R::splat(reach[1]);

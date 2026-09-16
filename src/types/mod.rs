@@ -51,7 +51,7 @@ impl SdfCategory {
 }
 
 /// serde default for `SdfNode::Taper::reach` (files written before 2.0).
-fn taper_reach_unknown() -> [f32; 2] {
+const fn taper_reach_unknown() -> [f32; 2] {
     [f32::INFINITY; 2]
 }
 

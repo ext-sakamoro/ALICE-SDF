@@ -1639,7 +1639,7 @@ fn taper_bound_interval(d: Interval, p: Vec3Interval, factor: f32, reach: [f32; 
         return d_j;
     }
     let k = reach[0] * f_abs;
-    let inv_n = 1.0 / (1.0 + k * k).sqrt();
+    let inv_n = 1.0 / k.mul_add(k, 1.0).sqrt();
     let big_y = p.y - 1.0 / factor;
     let d_cone = (rho - big_y.abs() * k) * inv_n;
     let d_slab = p.y.abs() - reach[1];
