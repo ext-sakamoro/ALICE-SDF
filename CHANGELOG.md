@@ -6,6 +6,17 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — VRChat package: Mochi sample
+
+- Same features, tighter code: ground / mochi shading blends by the
+  smooth-union factor (no seam at the neck), LOD-scaled normal epsilon,
+  value-noise ground, soft contact shadow, light / fog as material
+  properties; the collider owns `blendK` / `groundK` and pushes them to
+  the material, hand state is indexed by hand, settle is frame-rate
+  independent. Host-verified (glslang HLSL, .NET compile, `EvaluateSdf`
+  vs `alice_sdf::eval` parity 6e-8 on 1521 points); not compiled in
+  Unity here (see `vrchat-package/CHANGELOG.md`).
+
 ## [v3.0.0] - 2026-09-16
 
 Every node kind is transpiled, `ShaderLang` is sealed (the reason for the
