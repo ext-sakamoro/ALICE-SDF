@@ -120,6 +120,24 @@ impl GpuEvaluator {
 
     /// Create a GPU evaluator from raw WGSL source
     pub fn from_wgsl(wgsl_source: &str) -> Result<Self, GpuError> {
+        Self::from_source(wgpu::ShaderSource::Wgsl(wgsl_source.into()))
+    }
+
+    /// Create a GPU evaluator from a GLSL compute shader (`#version 450`,
+    /// `main` entry, the same three bindings as the WGSL compute wrapper).
+    /// wgpu compiles it through naga's GLSL front end, so the GLSL
+    /// transpiler's output can be run on the GPU and compared with the CPU
+    /// — the parity oracle for the GLSL path (`tests/test_gpu_law_parity.rs`).
+    #[cfg(feature = "glsl")]
+    pub fn from_glsl_compute(glsl_source: &str) -> Result<Self, GpuError> {
+        Self::from_source(wgpu::ShaderSource::Glsl {
+            shader: glsl_source.into(),
+            stage: wgpu::naga::ShaderStage::Compute,
+            defines: wgpu::naga::FastHashMap::default(),
+        })
+    }
+
+    fn from_source(source: wgpu::ShaderSource<'_>) -> Result<Self, GpuError> {
         // Initialize wgpu synchronously using pollster
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -147,7 +165,7 @@ impl GpuEvaluator {
         // Create shader module
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ALICE-SDF Shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl_source.into()),
+            source,
         });
 
         // Create bind group layout

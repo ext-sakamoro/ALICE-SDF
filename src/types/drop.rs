@@ -29,7 +29,7 @@ impl SdfNode {
     /// 子を持たない variant では何もしない 子を持つ variant を追加した時は
     /// ここにも arm を足す (`tests` の `take_children_covers_every_family`
     /// が代表 variant で検知する)
-    fn take_children_into(&mut self, out: &mut Vec<Arc<Self>>) {
+    pub(crate) fn take_children_into(&mut self, out: &mut Vec<Arc<Self>>) {
         match self {
             // 二項 operation (24)
             Self::Union { a, b, .. }

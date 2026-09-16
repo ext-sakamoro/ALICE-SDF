@@ -10,13 +10,19 @@ use glam::{Vec2, Vec3};
 
 /// Exact SDF for a rounded cylinder centered at origin
 ///
-/// - `radius`: main cylinder radius
+/// - `radius`: main cylinder radius (the outer radius, rounding included)
 /// - `round_radius`: edge rounding radius
 /// - `half_height`: half the cylinder height
+///
+/// `ρ − radius + round_radius` in the cross section: IQ's `sdRoundedCylinder`
+/// writes `− 2·ra` for its own parametrisation, and the CPU paths carried
+/// that literally until 2.1.0 (a cylinder of radius 0.4 rendered as 0.8 on
+/// the CPU while the shaders drew 0.4). The shader helpers and the AABB use
+/// this form.
 #[inline(always)]
 pub fn sdf_rounded_cylinder(p: Vec3, radius: f32, round_radius: f32, half_height: f32) -> f32 {
     let d = Vec2::new(
-        2.0f32.mul_add(-radius, p.x.hypot(p.z)) + round_radius,
+        p.x.hypot(p.z) - radius + round_radius,
         p.y.abs() - half_height,
     );
     d.x.max(d.y).min(0.0) + d.max(Vec2::ZERO).length() - round_radius

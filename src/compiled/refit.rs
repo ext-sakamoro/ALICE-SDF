@@ -468,7 +468,7 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         OpCode::CappedCone => cube(params[0].max(params[1]).max(params[2])),
         OpCode::CappedTorus => cube(params[0] + params[1]),
         // sdf_rounded_cylinder follows IQ's formula where the radial term is `2*radius`
-        OpCode::RoundedCylinder => cube((2.0 * params[0]).max(params[2] + params[1])),
+        OpCode::RoundedCylinder => cube(params[0].max(params[2] + params[1])),
         OpCode::TriangularPrism => cube(params[0] + params[1]),
         OpCode::CutSphere | OpCode::CutHollowSphere => cube(params[0]),
         OpCode::DeathStar => cube(params[0] + params[1] + params[2]),

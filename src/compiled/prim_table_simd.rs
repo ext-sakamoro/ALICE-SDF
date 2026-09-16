@@ -230,7 +230,7 @@ impl PrimTable for f32x8 {
         let radius = Self::splat(inst.params[0]);
         let round_r = Self::splat(inst.params[1]);
         let half_h = Self::splat(inst.params[2]);
-        let dx = (p.x * p.x + p.z * p.z).sqrt() - Self::splat(2.0) * radius + round_r;
+        let dx = (p.x * p.x + p.z * p.z).sqrt() - radius + round_r;
         let dy = p.y.abs() - half_h;
         let dx_pos = dx.max(Self::ZERO);
         let dy_pos = dy.max(Self::ZERO);

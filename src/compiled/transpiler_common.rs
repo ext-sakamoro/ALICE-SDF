@@ -16,6 +16,51 @@ pub const FOLD_EPSILON: f32 = 1e-6;
 // ShaderLang trait
 // ============================================================================
 
+/// Node kinds the shader transpilers do not express.
+///
+/// Their child is evaluated as-is and a comment is emitted. This is the
+/// single list — the GPU parity oracles skip exactly these, so implementing
+/// one of them (and removing it here) puts it under the oracle.
+///
+/// `LatticeDeform` / `HeightmapDisplacement` / `SdfSkinning` / `IFS` carry
+/// per-node data (control points, height field, bones, matrices) that the
+/// hardcoded shader has no binding for.
+pub const SHADER_UNSUPPORTED: [&str; 4] = [
+    "LatticeDeform",
+    "HeightmapDisplacement",
+    "SdfSkinning",
+    "IFS",
+];
+
+const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
+    match node {
+        SdfNode::LatticeDeform { .. } => Some("LatticeDeform"),
+        SdfNode::HeightmapDisplacement { .. } => Some("HeightmapDisplacement"),
+        SdfNode::SdfSkinning { .. } => Some("SdfSkinning"),
+        SdfNode::IFS { .. } => Some("IFS"),
+        _ => None,
+    }
+}
+
+/// Names of the nodes in `node`'s tree that the transpilers pass through
+/// unchanged (see [`SHADER_UNSUPPORTED`]); empty when the shader is a
+/// faithful port of the tree.
+#[must_use]
+pub fn shader_unsupported_nodes(node: &SdfNode) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    let mut stack: Vec<std::sync::Arc<SdfNode>> = vec![std::sync::Arc::new(node.clone())];
+    while let Some(n) = stack.pop() {
+        if let Some(name) = unsupported_name(&n) {
+            out.push(name);
+        }
+        let mut owned = (*n).clone();
+        let mut kids = Vec::new();
+        owned.take_children_into(&mut kids);
+        stack.extend(kids);
+    }
+    out
+}
+
 /// Trait that captures the syntactic differences between WGSL, GLSL, and HLSL.
 pub trait ShaderLang: 'static {
     // ---- Type constructors ----
@@ -1436,9 +1481,9 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 );
                 let expr = format!(
                     "min(min(\
-                    length(max({v1}, {z})) + min(max({p}.x, max({q}.y, {p}.z)), 0.0), \
-                    length(max({v2}, {z})) + min(max({p}.x, max({q}.y, {q}.z)), 0.0)), \
-                    length(max({v3}, {z})) + min(max({q}.x, max({p}.y, {q}.z)), 0.0))",
+                    length(max({v1}, {z})) + min(max({p}.x, max({q}.y, {q}.z)), 0.0), \
+                    length(max({v2}, {z})) + min(max({q}.x, max({p}.y, {q}.z)), 0.0)), \
+                    length(max({v3}, {z})) + min(max({q}.x, max({q}.y, {p}.z)), 0.0))",
                     v1 = v1,
                     v2 = v2,
                     v3 = v3,
@@ -1484,7 +1529,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let var = self.next_var();
                 code.push_str(&L::decl_vec3(&sp, &format!("{} * {}", point_var, sc)));
                 code.push_str(&L::decl_float(&var, &format!(
-                    "abs(sin(2.0*{sp}.x)*cos({sp}.y)*sin({sp}.z) + sin(2.0*{sp}.y)*cos({sp}.z)*sin({sp}.x) + sin(2.0*{sp}.z)*cos({sp}.x)*sin({sp}.y) - cos(2.0*{sp}.x)*cos(2.0*{sp}.y) - cos(2.0*{sp}.y)*cos(2.0*{sp}.z) - cos(2.0*{sp}.z)*cos(2.0*{sp}.x) + 0.3) / {sc} - {th}",
+                    // `sdf_lidinoid` on the CPU: 0.5 (sin2x cos y sin z + sin x sin2y cos z + cos x sin y sin2z) - 0.5 (cos2x cos2y + cos2y cos2z + cos2z cos2x) + 0.15
+                    "abs(0.5 * (sin(2.0*{sp}.x)*cos({sp}.y)*sin({sp}.z) + sin({sp}.x)*sin(2.0*{sp}.y)*cos({sp}.z) + cos({sp}.x)*sin({sp}.y)*sin(2.0*{sp}.z)) - 0.5 * (cos(2.0*{sp}.x)*cos(2.0*{sp}.y) + cos(2.0*{sp}.y)*cos(2.0*{sp}.z) + cos(2.0*{sp}.z)*cos(2.0*{sp}.x)) + 0.15) / {sc} - {th}",
                     sp = sp, sc = sc, th = th
                 )));
                 var
@@ -1497,7 +1543,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let var = self.next_var();
                 code.push_str(&L::decl_vec3(&sp, &format!("{} * {}", point_var, sc)));
                 code.push_str(&L::decl_float(&var, &format!(
-                    "abs(cos({sp}.x)*cos({sp}.y) + cos({sp}.y)*cos({sp}.z) + cos({sp}.z)*cos({sp}.x) - cos({sp}.x)*cos({sp}.y)*cos({sp}.z)) / {sc} - {th}",
+                    // `sdf_iwp` on the CPU: 2 (cx cy + cy cz + cz cx) - (cos2x + cos2y + cos2z)
+                    "abs(2.0 * (cos({sp}.x)*cos({sp}.y) + cos({sp}.y)*cos({sp}.z) + cos({sp}.z)*cos({sp}.x)) - (cos(2.0*{sp}.x) + cos(2.0*{sp}.y) + cos(2.0*{sp}.z))) / {sc} - {th}",
                     sp = sp, sc = sc, th = th
                 )));
                 var
@@ -1510,7 +1557,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let var = self.next_var();
                 code.push_str(&L::decl_vec3(&sp, &format!("{} * {}", point_var, sc)));
                 code.push_str(&L::decl_float(&var, &format!(
-                    "abs(4.0*cos({sp}.x)*cos({sp}.y)*cos({sp}.z) - cos(2.0*{sp}.x)*cos(2.0*{sp}.y) - cos(2.0*{sp}.y)*cos(2.0*{sp}.z) - cos(2.0*{sp}.z)*cos(2.0*{sp}.x)) / {sc} - {th}",
+                    // `sdf_frd` on the CPU: sx cy cos2z + cos2x sy cz + cx cos2y sz
+                    "abs(sin({sp}.x)*cos({sp}.y)*cos(2.0*{sp}.z) + cos(2.0*{sp}.x)*sin({sp}.y)*cos({sp}.z) + cos({sp}.x)*cos(2.0*{sp}.y)*sin({sp}.z)) / {sc} - {th}",
                     sp = sp, sc = sc, th = th
                 )));
                 var
@@ -1793,180 +1841,46 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
 
-            // Columns operations use modulo (language-specific: % vs fmod)
+            // Columns operations: one helper per language, same law as the CPU
             SdfNode::ColumnsUnion { a, b, r, n } => {
+                self.ensure_helper("columns");
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
-                let mod_expr = L::modulo_expr(
-                    &format!("{v}_ra + {v}_cs * 0.5", v = var),
-                    &format!("{v}_cs", v = var),
-                );
-                let select_columns = L::select_expr(
-                    &format!("{v}_m > {r}", v = var, r = r_s),
-                    &format!("{v}_m", v = var),
-                    &format!("min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m)", v = var),
-                );
-
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_m", var),
-                    &format!("min({}, {})", d_a, d_b),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_a2", var),
-                    &format!("min({}, {})", d_a, d_b),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_b2", var),
-                    &format!("max({}, {})", d_a, d_b),
-                ));
                 code.push_str(&L::decl_float(
-                    &format!("{}_cs", var),
-                    &format!("{} * 2.0 / {}", r_s, n_s),
+                    &var,
+                    &format!("alice_columns_union({d_a}, {d_b}, {r_s}, {n_s})"),
                 ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_ra", var),
-                    &format!(
-                        "0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678",
-                        v = var,
-                        r = r_s
-                    ),
-                ));
-                code.push_str(&L::decl_float(
-                    &format!("{}_rb", var),
-                    &format!("0.70710678 * ({v}_b2 - {v}_a2)", v = var),
-                ));
-                writeln!(
-                    code,
-                    "    {v}_ra = {mod_e} - {v}_cs * 0.5;",
-                    v = var,
-                    mod_e = mod_expr
-                )
-                .unwrap();
-                code.push_str(&L::decl_float(&var, &select_columns));
                 var
             }
-
             SdfNode::ColumnsIntersection { a, b, r, n } => {
+                self.ensure_helper("columns");
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
-                let mod_expr = L::modulo_expr(
-                    &format!("{v}_ra + {v}_cs * 0.5", v = var),
-                    &format!("{v}_cs", v = var),
-                );
-                let select_columns = L::select_expr(
-                    &format!("{v}_m > {r}", v = var, r = r_s),
-                    &format!("-{v}_m", v = var),
-                    &format!("-min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m)", v = var),
-                );
-
                 code.push_str(&L::decl_float(
-                    &format!("{}_na", var),
-                    &format!("-({})", d_a),
+                    &var,
+                    &format!("alice_columns_intersection({d_a}, {d_b}, {r_s}, {n_s})"),
                 ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_m", var),
-                    &format!("min({v}_na, {})", d_b, v = var),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_a2", var),
-                    &format!("min({v}_na, {})", d_b, v = var),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_b2", var),
-                    &format!("max({v}_na, {})", d_b, v = var),
-                ));
-                code.push_str(&L::decl_float(
-                    &format!("{}_cs", var),
-                    &format!("{} * 2.0 / {}", r_s, n_s),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_ra", var),
-                    &format!(
-                        "0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678",
-                        v = var,
-                        r = r_s
-                    ),
-                ));
-                code.push_str(&L::decl_float(
-                    &format!("{}_rb", var),
-                    &format!("0.70710678 * ({v}_b2 - {v}_a2)", v = var),
-                ));
-                writeln!(
-                    code,
-                    "    {v}_ra = {mod_e} - {v}_cs * 0.5;",
-                    v = var,
-                    mod_e = mod_expr
-                )
-                .unwrap();
-                code.push_str(&L::decl_float(&var, &select_columns));
                 var
             }
-
             SdfNode::ColumnsSubtraction { a, b, r, n } => {
+                self.ensure_helper("columns");
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
-                let mod_expr = L::modulo_expr(
-                    &format!("{v}_ra + {v}_cs * 0.5", v = var),
-                    &format!("{v}_cs", v = var),
-                );
-                let select_columns = L::select_expr(
-                    &format!("{v}_m > {r}", v = var, r = r_s),
-                    &format!("-{v}_m", v = var),
-                    &format!("-min(min(0.70710678 * ({v}_ra + {v}_rb), 0.70710678 * ({v}_rb - {v}_ra)), {v}_m)", v = var),
-                );
-
                 code.push_str(&L::decl_float(
-                    &format!("{}_na", var),
-                    &format!("-({})", d_a),
+                    &var,
+                    &format!("alice_columns_subtraction({d_a}, {d_b}, {r_s}, {n_s})"),
                 ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_m", var),
-                    &format!("min({v}_na, {})", d_b, v = var),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_a2", var),
-                    &format!("min({v}_na, {})", d_b, v = var),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_b2", var),
-                    &format!("max({v}_na, {})", d_b, v = var),
-                ));
-                code.push_str(&L::decl_float(
-                    &format!("{}_cs", var),
-                    &format!("{} * 2.0 / {}", r_s, n_s),
-                ));
-                code.push_str(&L::decl_mut_float(
-                    &format!("{}_ra", var),
-                    &format!(
-                        "0.70710678 * ({v}_a2 + {v}_b2) - {r} * 0.70710678",
-                        v = var,
-                        r = r_s
-                    ),
-                ));
-                code.push_str(&L::decl_float(
-                    &format!("{}_rb", var),
-                    &format!("0.70710678 * ({v}_b2 - {v}_a2)", v = var),
-                ));
-                writeln!(
-                    code,
-                    "    {v}_ra = {mod_e} - {v}_cs * 0.5;",
-                    v = var,
-                    mod_e = mod_expr
-                )
-                .unwrap();
-                code.push_str(&L::decl_float(&var, &select_columns));
                 var
             }
-
             SdfNode::Pipe { a, b, r } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
                 let d_b = self.transpile_node_inner(b, point_var, code);
@@ -2126,8 +2040,9 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_vec3(
                     &new_p,
                     &L::vec3_ctor(
-                        &format!("{} * {}.x + {} * {}.y", c_var, point_var, s_var, point_var),
-                        &format!("{} * {}.y - {} * {}.x", c_var, point_var, s_var, point_var),
+                        // `real::bend`: (c x - s y, s x + c y, z)
+                        &format!("{} * {}.x - {} * {}.y", c_var, point_var, s_var, point_var),
+                        &format!("{} * {}.x + {} * {}.y", s_var, point_var, c_var, point_var),
                         &format!("{}.z", point_var),
                     ),
                 ));
@@ -2277,8 +2192,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             SdfNode::OctantMirror { child } => {
+                self.ensure_helper("octant_mirror");
                 let new_p = self.next_var();
-                code.push_str(&L::decl_vec3(&new_p, &format!("abs({})", point_var)));
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!("alice_octant_mirror({})", point_var),
+                ));
                 self.transpile_node_inner(child, &new_p, code)
             }
 
@@ -2288,18 +2207,38 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             SdfNode::LatticeDeform { child, .. } => {
+                code.push_str(
+                    "    // alice-sdf: LatticeDeform is not transpiled (child evaluated as-is)\n",
+                );
                 self.transpile_node_inner(child, point_var, code)
             }
 
-            SdfNode::SdfSkinning { child, .. } => self.transpile_node_inner(child, point_var, code),
+            SdfNode::SdfSkinning { child, .. } => {
+                code.push_str(
+                    "    // alice-sdf: SdfSkinning is not transpiled (child evaluated as-is)\n",
+                );
+                self.transpile_node_inner(child, point_var, code)
+            }
 
             SdfNode::IcosahedralSymmetry { child } => {
+                self.ensure_helper("icosahedral_fold");
+                let new_p = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!("alice_icosahedral_fold({})", point_var),
+                ));
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::IFS { child, .. } => {
+                code.push_str("    // alice-sdf: IFS is not transpiled (child evaluated as-is)\n");
                 self.transpile_node_inner(child, point_var, code)
             }
 
-            SdfNode::IFS { child, .. } => self.transpile_node_inner(child, point_var, code),
-
             SdfNode::HeightmapDisplacement { child, .. } => {
+                code.push_str(
+                    "    // alice-sdf: HeightmapDisplacement is not transpiled (child evaluated as-is)\n",
+                );
                 self.transpile_node_inner(child, point_var, code)
             }
 
@@ -2354,12 +2293,14 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             SdfNode::Extrude { child, half_height } => {
+                // `real::extrude_point` / `extrude_distance`: the 2-D child lives in
+                // XY (z = 0) and the slab is |z| ≤ half_height
                 let new_p_2d = self.next_var();
                 code.push_str(&L::decl_vec3(
                     &new_p_2d,
                     &L::vec3_ctor(
                         &format!("{}.x", point_var),
-                        &format!("{}.z", point_var),
+                        &format!("{}.y", point_var),
                         "0.0",
                     ),
                 ));
@@ -2369,7 +2310,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let w_var = self.next_var();
                 code.push_str(&L::decl_vec2(
                     &w_var,
-                    &L::vec2_ctor(&d, &format!("abs({}.y) - {}", point_var, hh)),
+                    &L::vec2_ctor(&d, &format!("abs({}.z) - {}", point_var, hh)),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
@@ -2443,7 +2384,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(
                     &var,
                     &format!(
-                        "{} + {} * sin({p}.x * 10.0) * sin({p}.y * 10.0) * sin({p}.z * 10.0)",
+                        // `modifier_displacement`: sin(5x) sin(5y) sin(5z)
+                        "{} + {} * sin({p}.x * 5.0) * sin({p}.y * 5.0) * sin({p}.z * 5.0)",
                         d,
                         s,
                         p = point_var

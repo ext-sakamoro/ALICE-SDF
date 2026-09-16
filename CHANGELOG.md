@@ -6,6 +6,33 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — 15 shader laws that differed from the CPU (found by the new corpus GPU oracle)
+
+- `tests/test_gpu_law_parity.rs` now runs **every corpus node** through the
+  WGSL path *and* through the GLSL path (`GpuEvaluator::from_glsl_compute`,
+  wgpu's `glsl` feature / naga glsl-in), on 1024 random points each. The
+  hand-picked WGSL tests had covered the laws touched by specific fixes;
+  the blanket run found 16 of 142 nodes drifting on WGSL (up to 3.4) and
+  18 on GLSL. Fixed to the CPU law in all three transpilers: heart (the
+  shaders had a different implicit-cubic heart), pie, vesica (axis and
+  sign), box frame (typos in the `max` operands), lidinoid / IWP / FRD
+  (different surfaces), columns union / intersection / subtraction (one
+  helper per language, `hg_sdf` law; the GLSL helper also used `half`,
+  a reserved word), bend (rotation sign), extrude (2-D child in XY, slab
+  on Z), displacement (frequency 5, not 10), octant mirror (abs *and*
+  sort), icosahedral symmetry (was a pass-through; now the fold).
+- **Rounded cylinder was wrong on the CPU**: `sdf_rounded_cylinder` and
+  the SIMD table carried IQ's `− 2·ra` literally, so `radius = 0.4`
+  rendered as 0.8 on the CPU while the shaders (and the docs) meant 0.4.
+  CPU and BVH AABB now use `ρ − radius + round_radius`.
+- `compiled::shader_unsupported_nodes(&node)` / `SHADER_UNSUPPORTED`: the
+  four node kinds the transpilers pass through unchanged (LatticeDeform,
+  HeightmapDisplacement, SdfSkinning, IFS — per-node data with no shader
+  binding); the emitted shader carries a comment, the oracles skip them.
+- Exact ties (a sector boundary at `atan2 = π`, a columns cell boundary)
+  are platform-dependent on the GPU: the corpus oracles use random points,
+  `repeat_laws_gpu_match_cpu_at_ties` keeps pinning the WGSL tie behaviour.
+
 ### Changed — scalar VM transform frame slimmed
 
 - `eval_compiled` (scalar) pushed opcode + 4 params + aux window on every

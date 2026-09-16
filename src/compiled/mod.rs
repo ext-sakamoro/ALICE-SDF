@@ -177,6 +177,8 @@ mod simd;
 /// Shared shader transpiler framework (ShaderLang trait + GenericTranspiler)
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 pub mod transpiler_common;
+#[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
+pub use transpiler_common::{shader_unsupported_nodes, SHADER_UNSUPPORTED};
 
 #[cfg(feature = "jit")]
 pub mod jit;

@@ -12,6 +12,8 @@
 //! Author: Moroya Sakamoto
 #![cfg(feature = "gpu")]
 
+mod common;
+
 use alice_sdf::compiled::GpuEvaluator;
 use alice_sdf::prelude::*;
 
@@ -218,4 +220,130 @@ fn iq_exact_ports_gpu_match_cpu() {
         &SdfNode::ellipsoid(3.0, 1.0, 0.5).translate(0.5, 0.0, 0.0),
         1e-5,
     );
+}
+
+/// The GLSL transpiler's output on the GPU (wgpu compiles it through naga's
+/// GLSL front end) against the CPU, over the whole corpus. Until 2.1.0 the
+/// GLSL path was only parsed and validated (`test_transpiler_naga_validate`);
+/// this is its execution oracle, the same standing as the WGSL one.
+#[cfg(feature = "glsl")]
+mod glsl_execution {
+    use super::*;
+    use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
+
+    fn compute_wrapper(library: &str) -> String {
+        format!(
+            r"#version 450
+layout(local_size_x = 256) in;
+struct InputPoint {{ float x; float y; float z; float pad; }};
+struct OutputDistance {{ float distance; float pad1; float pad2; float pad3; }};
+layout(std430, set = 0, binding = 0) readonly buffer InputPoints {{ InputPoint input_points[]; }};
+layout(std430, set = 0, binding = 1) buffer OutputDistances {{ OutputDistance output_distances[]; }};
+layout(std140, set = 0, binding = 2) uniform PointCount {{ uint point_count; }};
+
+{library}
+
+void main() {{
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= point_count) {{ return; }}
+    InputPoint pt = input_points[idx];
+    output_distances[idx].distance = sdf_eval(vec3(pt.x, pt.y, pt.z));
+}}
+"
+        )
+    }
+
+    #[test]
+    fn every_corpus_node_matches_cpu_through_glsl() {
+        use alice_sdf::compiled::shader_unsupported_nodes;
+        // `corpus()` lives in tests/common; the WGSL tests above use hand-picked
+        // laws, the GLSL oracle covers every node the transpilers accept.
+        let corpus = crate::common::corpus::corpus();
+        // Random points only: the appended ties (`atan2(0, -1) = π` on a sector
+        // boundary) are where naga's GLSL `atan(y, x)` lowering and the CPU
+        // disagree on the sign of π — a documented platform-dependent tie
+        // (`repeat_laws_gpu_match_cpu_at_ties` pins the WGSL side).
+        let pts: Vec<Vec3> = points(1024).into_iter().take(1024).collect();
+        let mut failures = Vec::new();
+        let mut checked = 0usize;
+        for (name, node) in corpus {
+            // Nodes the transpilers cannot express evaluate their child as-is
+            // (`shader_unsupported_nodes` is the single list); they are not a
+            // parity question until they are implemented.
+            if !shader_unsupported_nodes(&node).is_empty() {
+                continue;
+            }
+            let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
+            let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source)) {
+                Ok(g) => g,
+                Err(e) => {
+                    assert!(
+                        std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                        "{name}: ALICE_SDF_REQUIRE_GPU is set but the GLSL module failed: {e}"
+                    );
+                    eprintln!("skipping GLSL execution parity ({name}): {e}");
+                    return;
+                }
+            };
+            let got = gpu.eval_batch(&pts).expect("gpu eval");
+            let mut worst = 0.0f32;
+            for (p, g) in pts.iter().zip(&got) {
+                let c = eval(&node, *p);
+                let tol = 1e-4 * c.abs().max(1.0);
+                let diff = (g - c).abs();
+                if diff > tol && diff > worst {
+                    worst = diff;
+                }
+            }
+            checked += 1;
+            if worst > 0.0 {
+                failures.push(format!("{name}: GLSL/CPU drift {worst:.3e}"));
+            }
+        }
+        eprintln!("GLSL execution parity: {checked} corpus nodes");
+        assert!(checked > 100, "corpus too small: {checked}");
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+}
+
+/// Every corpus node through the WGSL path. The hand-picked tests above
+/// cover the laws touched by specific fixes; this one is the blanket oracle
+/// (16 of 142 nodes drifted when it was first run in 2.1.0 — heart / pie /
+/// vesica / box frame / three TPMS / columns / bend / extrude / displacement
+/// / octant mirror were different laws in the shaders, and rounded cylinder
+/// was wrong on the CPU).
+#[test]
+fn every_corpus_node_matches_cpu_through_wgsl() {
+    use alice_sdf::compiled::shader_unsupported_nodes;
+    // Random points only — exact ties (a sector boundary at atan2 = π, a
+    // columns cell boundary) are platform-dependent on the GPU and are
+    // pinned separately by `repeat_laws_gpu_match_cpu_at_ties`.
+    let pts: Vec<Vec3> = points(1024).into_iter().take(1024).collect();
+    let mut failures = Vec::new();
+    let mut checked = 0usize;
+    for (name, node) in common::corpus::corpus() {
+        if !shader_unsupported_nodes(&node).is_empty() {
+            continue;
+        }
+        let Some(gpu) = gpu_or_skip(&node) else {
+            return;
+        };
+        let got = gpu.eval_batch(&pts).expect("gpu eval");
+        let mut worst = 0.0f32;
+        for (p, g) in pts.iter().zip(&got) {
+            let c = eval(&node, *p);
+            let tol = 1e-4 * c.abs().max(1.0);
+            let diff = (g - c).abs();
+            if diff > tol && diff > worst {
+                worst = diff;
+            }
+        }
+        checked += 1;
+        if worst > 0.0 {
+            failures.push(format!("{name}: WGSL/CPU drift {worst:.3e}"));
+        }
+    }
+    eprintln!("WGSL execution parity: {checked} corpus nodes");
+    assert!(checked > 100, "corpus too small: {checked}");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

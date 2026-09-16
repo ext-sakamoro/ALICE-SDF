@@ -155,7 +155,9 @@ cranelift-module = { version = "0.113", optional = true }
 cranelift-native = { version = "0.113", optional = true }
 
 # GPU compute (optional)
-wgpu = { version = "24", optional = true }
+# `glsl` (naga glsl-in) so the GLSL transpiler output can run on the GPU for
+# the parity oracle; `naga` is re-exported by wgpu
+wgpu = { version = "24", optional = true, features = ["glsl"] }
 pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1.21", features = ["derive"], optional = true }
 futures-channel = { version = "0.3", optional = true }

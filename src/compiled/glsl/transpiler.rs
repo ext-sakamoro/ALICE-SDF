@@ -135,6 +135,9 @@ impl ShaderLang for GlslLang {
             "sdf_superellipsoid" => Some(HELPER_SDF_SUPERELLIPSOID),
             "sdf_rounded_x" => Some(HELPER_SDF_ROUNDED_X),
             "sdf_pie" => Some(HELPER_SDF_PIE),
+            "columns" => Some(HELPER_COLUMNS),
+            "icosahedral_fold" => Some(HELPER_ICOSAHEDRAL_FOLD),
+            "octant_mirror" => Some(HELPER_OCTANT_MIRROR),
             "sdf_trapezoid" => Some(HELPER_SDF_TRAPEZOID),
             "sdf_parallelogram" => Some(HELPER_SDF_PARALLELOGRAM),
             "sdf_tunnel" => Some(HELPER_SDF_TUNNEL),
@@ -860,11 +863,11 @@ const HELPER_SDF_HORSESHOE: &str = r"float sdf_horseshoe(vec3 pos, float an, flo
 ";
 
 const HELPER_SDF_VESICA: &str = r"float sdf_vesica(vec3 p, float r, float d) {
-    float px = abs(p.x);
-    float py = length(p.yz);
+    // Lens of revolution about Y: 2-D vesica in (length(p.xz), |y|) — same law as `sdf_vesica` on the CPU.
+    vec2 q = vec2(length(p.xz), abs(p.y));
     float b = sqrt(max(r * r - d * d, 0.0));
-    if ((py - b) * d > px * b) return length(vec2(px, py - b));
-    return length(vec2(px - d, py)) - r;
+    if ((q.y - b) * d > q.x * b) return length(vec2(q.x, q.y - b));
+    return length(vec2(q.x + d, q.y)) - r;
 }
 ";
 
@@ -877,16 +880,19 @@ const HELPER_SDF_INFINITE_CONE: &str = r"float sdf_infinite_cone(vec3 p, float a
 ";
 
 const HELPER_SDF_HEART: &str = r"float sdf_heart(vec3 p, float s) {
-    vec3 q = p / s;
-    float x = length(q.xz);
-    float y = -(q.y - 0.5);
-    float x2 = x * x;
-    float y2 = y * y;
-    float y3 = y2 * y;
-    float cubic = x2 + y2 - 1.0;
-    float iv = cubic * cubic * cubic - x2 * y3;
-    if (iv <= 0.0) return -0.02 * s;
-    return (pow(iv, 1.0 / 6.0) * 0.5 - 0.02) * s;
+    // IQ sdHeart (2-D) revolved about Y, shifted so the centre is at the origin — same law as `sdf_heart` on the CPU.
+    vec3 sp = p / s;
+    float qx = length(sp.xz);
+    float qy = sp.y - 0.5;
+    if (qx + qy > 1.0) {
+        vec2 e = vec2(qx - 0.25, qy - 0.75);
+        return (sqrt(dot(e, e)) - 0.35355339) * s;
+    }
+    vec2 e1 = vec2(qx, qy - 1.0);
+    float t = max(qx + qy, 0.0) * 0.5;
+    vec2 e2 = vec2(qx - t, qy - t);
+    float d = sqrt(min(dot(e1, e1), dot(e2, e2)));
+    return (qx > qy ? d : -d) * s;
 }
 ";
 
@@ -958,14 +964,88 @@ const HELPER_SDF_ROUNDED_X: &str = r"float sdf_rounded_x(vec3 p, float w, float 
 ";
 
 const HELPER_SDF_PIE: &str = r"float sdf_pie(vec3 p, float angle, float radius, float h) {
-    vec2 q = vec2(p.x, p.z);
-    float l = length(q) - radius;
+    // IQ sdPie in the XZ plane (|x|, z), extruded along Y — same law as `sdf_pie` on the CPU.
+    vec2 q = vec2(abs(p.x), p.z);
     vec2 sc = vec2(sin(angle), cos(angle));
-    float m = length(q) * clamp(sc.y * abs(q.x) - sc.x * q.y, -radius, 0.0);
-    float d2d = max(l, m / max(radius, 1e-10));
+    float l = length(q) - radius;
+    float m = length(q - sc * clamp(dot(q, sc), 0.0, radius));
+    float cr = sc.y * q.x - sc.x * q.y;
+    float sgn = cr > 0.0 ? 1.0 : (cr < 0.0 ? -1.0 : 0.0);
+    float d2d = max(l, m * sgn);
     float dy = abs(p.y) - h;
-    vec2 ww = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(ww);
+    vec2 w = max(vec2(d2d, dy), vec2(0.0));
+    return min(max(d2d, dy), 0.0) + length(w);
+}
+";
+
+const HELPER_COLUMNS: &str = r"// Columns (hg_sdf fOpUnionColumns family) — same law as `sdf_columns_*_r` on the CPU: 45° rotate, shift by r/√2, wrap into r·2/n cells, rotate back.
+float alice_columns_union(float a, float b, float r, float n) {
+    float m = min(a, b);
+    float a2 = min(a, b);
+    float b2 = max(a, b);
+    float cs = r * (2.0 / n);
+    float s = 0.70710678;
+    float ra = s * (a2 + b2) - r * 0.70710678;
+    float rb = s * (b2 - a2);
+    float hc = cs * 0.5;
+    float y = ra + hc;
+    ra = y - cs * floor(y / cs) - hc;
+    float a3 = s * (ra + rb);
+    float b3 = s * (rb - ra);
+    float inner = min(min(a3, b3), m);
+    return m > r ? m : inner;
+}
+float alice_columns_subtraction(float a0, float b, float r, float n) {
+    float a = -a0;
+    float m = min(a, b);
+    float a2 = min(a, b);
+    float b2 = max(a, b);
+    float cs = r * (2.0 / n);
+    float s = 0.70710678;
+    float ra = s * (a2 + b2) - r * 0.70710678;
+    float rb = s * (b2 - a2);
+    float hc = cs * 0.5;
+    float y = ra + hc;
+    ra = y - cs * floor(y / cs) - hc;
+    float a3 = s * (ra + rb);
+    float b3 = s * (rb - ra);
+    float inner = -min(min(a3, b3), m);
+    return m > r ? -m : inner;
+}
+float alice_columns_intersection(float a, float b, float r, float n) {
+    return alice_columns_subtraction(a, -b, r, n);
+}
+";
+
+const HELPER_ICOSAHEDRAL_FOLD: &str = r"// Icosahedral fold — same law as `icosahedral_fold` on the CPU (octant fold, 8 × sort + 3 plane reflections).
+vec3 alice_icosahedral_fold(vec3 p0) {
+    vec3 p = abs(p0);
+    vec3 n0 = normalize(vec3(0.0, 1.0, 1.618034));
+    vec3 n1 = normalize(vec3(1.0, 1.618034, 0.0));
+    vec3 n2 = normalize(vec3(1.618034, 0.0, 1.0));
+    for (int i = 0; i < 8; i++) {
+        if (p.y > p.x) p = vec3(p.y, p.x, p.z);
+        if (p.z > p.y) p = vec3(p.x, p.z, p.y);
+        if (p.y > p.x) p = vec3(p.y, p.x, p.z);
+        float d0 = dot(p, n0);
+        if (d0 < 0.0) p -= n0 * (2.0 * d0);
+        float d1 = dot(p, n1);
+        if (d1 < 0.0) p -= n1 * (2.0 * d1);
+        float d2 = dot(p, n2);
+        if (d2 < 0.0) p -= n2 * (2.0 * d2);
+    }
+    return p;
+}
+";
+
+const HELPER_OCTANT_MIRROR: &str = r"// Octant mirror — same law as `octant_mirror` on the CPU: abs then sort descending (x ≥ y ≥ z).
+vec3 alice_octant_mirror(vec3 p0) {
+    vec3 a = abs(p0);
+    float x = max(a.x, a.y);
+    float y = min(a.x, a.y);
+    float y1 = max(y, a.z);
+    float z = min(y, a.z);
+    return vec3(max(x, y1), min(x, y1), z);
 }
 ";
 
