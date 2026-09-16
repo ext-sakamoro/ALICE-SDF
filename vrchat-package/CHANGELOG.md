@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- `HostTests~/MochiParity`: the Mochi collider is now compiled on every push
+  without Unity (C# 7.3, warnings as errors, against a ~60-line
+  `UnityEngineStub.cs`), its `EvaluateSdf` is compared with
+  `alice_sdf::eval` of the same scene (`examples/vrchat_mochi_golden.rs`,
+  1521 points, 1e-5) and a grab → split → release → settle → merge scenario
+  is replayed. `scripts/vrchat-host-parity.sh` runs it locally
+  (`brew install dotnet`); CI job `vrchat-host`. Unity never imports the
+  folder (trailing `~`). This is the first host-side check of any UdonSharp
+  code in the package; the 53-primitive `AliceSDF_Primitives.cs` is next.
+
 ### Changed
 - Mochi sample, same features, tightened:
   - Shader: the ground / mochi material weight comes from the blend factor

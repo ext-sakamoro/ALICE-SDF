@@ -27,6 +27,7 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
       python: ${{ steps.filter.outputs.python }}
       ci: ${{ steps.filter.outputs.ci }}
+      vrchat: ${{ steps.filter.outputs.vrchat }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -48,6 +49,10 @@ jobs:
               - 'pyproject.toml'
             ci:
               - '.github/**'
+            vrchat:
+              - 'vrchat-package/**'
+              - 'examples/vrchat_*'
+              - 'scripts/vrchat-host-parity.sh'
 
   test:
     name: Test — ${{ matrix.name }}
@@ -454,6 +459,25 @@ jobs:
         run: cargo doc --lib --no-deps --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,texture-fit"
         env:
           RUSTDOCFLAGS: "-Dwarnings"
+
+  vrchat-host:
+    name: VRChat host parity (C# collider vs alice_sdf golden)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.vrchat == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      # SampleMochi_Collider.cs は UdonSharp 向けで Unity でしか compile されない
+      # → UnityEngine stub 相手に C# 7.3 -warnaserror で compile し、EvaluateSdf を
+      # examples/vrchat_mochi_golden.rs (alice_sdf::eval) と 1521 点突合 + grab /
+      # split / merge シナリオ (vrchat-package/HostTests~/README.md)
+      - name: Mochi parity + behaviour
+        run: scripts/vrchat-host-parity.sh
 
   actionlint:
     name: actionlint (workflow YAML 検証)

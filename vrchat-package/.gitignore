@@ -22,3 +22,8 @@ ProjectSettings/
 # OS
 .DS_Store
 Thumbs.db
+
+# Host tests (HostTests~ is hand-written, not Unity-generated)
+!HostTests~/**/*.csproj
+HostTests~/**/bin/
+HostTests~/**/obj/

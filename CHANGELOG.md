@@ -6,6 +6,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — VRChat package: host-side parity of the Mochi collider
+
+- `examples/vrchat_mochi_golden.rs` prints the Mochi scene from
+  `alice_sdf::eval`; `vrchat-package/HostTests~/MochiParity` compiles the
+  UdonSharp collider against a UnityEngine stub and checks its
+  `EvaluateSdf` against that golden (1521 points, 1e-5) plus a
+  grab / split / merge scenario. `scripts/vrchat-host-parity.sh`, CI job
+  `vrchat-host` (setup-dotnet), preflight step.
+
 ### Changed — VRChat package: Mochi sample
 
 - Same features, tighter code: ground / mochi shading blends by the
