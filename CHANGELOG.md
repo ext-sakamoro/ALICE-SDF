@@ -261,7 +261,7 @@ Oracle tests for the paths that had none (dual contouring, non-Lipschitz tracing
 
 ## [v1.12.0] - 2026-09-15
 
-Bridge features back on crates.io (P15), crate-wide clippy pedantic + nursery policy, every CI test step a hard gate (blocking fuzz seed replay, semver-checks), colour-program stack validation, and the evaluator / marcher / law work that followed the 2026-09-15 external review.
+Bridge features back on crates.io (P15), crate-wide clippy pedantic + nursery policy, every CI test step a hard gate (blocking fuzz seed replay, semver-checks), colour-program stack validation, and the evaluator / marcher / law work that followed the 2026-09-15 maintainer self-review.
 
 ### Fixed — panics reachable from untrusted input
 
@@ -331,7 +331,7 @@ Bridge features back on crates.io (P15), crate-wide clippy pedantic + nursery po
 
 ## [v1.11.0] - 2026-09-15
 
-External review landing (two rounds, 2026-09-15): every finding fixed with an oracle test on its path; the Lipschitz bound is applied by every marcher; seven primitive laws are now exact. Shape changes (Egg apex, Horseshoe legs, BlobbyCross arms) and the marching-cubes index order flip are listed under Fixed.
+Maintainer self-review landing (two rounds, independent Linux x86_64 environment, 2026-09-15): every finding fixed with an oracle test on its path; the Lipschitz bound is applied by every marcher; seven primitive laws are now exact. Shape changes (Egg apex, Horseshoe legs, BlobbyCross arms) and the marching-cubes index order flip are listed under Fixed.
 
 ### Added
 
@@ -389,7 +389,7 @@ External review landing (two rounds, 2026-09-15): every finding fixed with an or
   repeat, polar, pyramid / hex sign, scale-after-blend and exp-smooth laws
   agree with `eval` to 5e-7 relative on the GPU.
 
-### Fixed — external review 2026-09-15 (round 1: sphere tracing / Lipschitz / CI oracle)
+### Fixed — self-review 2026-09-15 (round 1: sphere tracing / Lipschitz / CI oracle)
 
 - Over-relaxed sphere tracing (`RaymarchConfig::fast()` ω = 1.2,
   `RaymarchConfig::relaxed()` ω = 1.6, any `omega > 1`) never retreated: on an
@@ -548,7 +548,7 @@ External review landing (two rounds, 2026-09-15): every finding fixed with an or
   to the tree walker only for trees the compiler rejects: the 20-node scene
   at res 128 goes from 60 ms to 38 ms (bench `marching_cubes/complex`).
 
-### Fixed — external review 2026-09-15 (transpiler validation, found by the new naga oracle)
+### Fixed — self-review 2026-09-15 (transpiler validation, found by the new naga oracle)
 
 - The five GDF polyhedra (`Tetrahedron`, `Dodecahedron`, `Icosahedron`,
   `TruncatedOctahedron`, `TruncatedIcosahedron`) transpiled to a call of
@@ -579,7 +579,7 @@ External review landing (two rounds, 2026-09-15): every finding fixed with an or
   (features `gpu` / `gpu,glsl`); the corpus moved to `tests/common/corpus.rs`
   so every integration test can share it.
 
-### Fixed — external review 2026-09-15 (round 2: marching cubes output)
+### Fixed — self-review 2026-09-15 (round 2: marching cubes output)
 
 - **Every marching-cubes triangle was wound inward** (CPU `marching_cubes` /
   `sdf_to_mesh`, the compiled and adaptive variants, and the GPU compute

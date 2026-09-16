@@ -76,9 +76,9 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 | JIT SIMD loud failure | ✅ 1.9.2 | `JitSimdSdf::compile` returns `Err` for opcodes without codegen (was silent `f32::MAX`); legacy `jit_simd::JitSimd` deprecated → thin wrapper |
 | `Plane` sign in transpilers / JIT | ✅ 1.9.2 | Unified on the CPU law `dot(p, n) - d` (shader output change, CHANGELOG Fixed) |
 
-### External review landing (1.11.0, 2026-09-15)
+### Maintainer self-review landing (1.11.0, 2026-09-15)
 
-Two-round external review of 1.10.2 ([memory: `project_alice_sdf_external_review_2026_09_15`]). Pattern in both rounds: the foundation (128 laws, Eikonal, analytic agreement) measured correct; the optimisation layer and the output stage above it were broken and had no test on their path. Landing = fix + an oracle test per finding.
+Two-round maintainer self-review of 1.10.2 (independent Linux x86_64 environment) ([memory: `project_alice_sdf_external_review_2026_09_15`]). Pattern in both rounds: the foundation (128 laws, Eikonal, analytic agreement) measured correct; the optimisation layer and the output stage above it were broken and had no test on their path. Landing = fix + an oracle test per finding.
 
 | Finding | Status | Fix / oracle |
 |---|---|---|
