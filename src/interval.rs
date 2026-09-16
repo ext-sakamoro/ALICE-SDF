@@ -299,6 +299,46 @@ impl Vec3Interval {
         }
     }
 
+    /// Image of the box under `q = A p + b` (`a` is the 3×3 in glam column
+    /// order: a[0..3] = column x, …): bounding box of the 8 transformed corners.
+    pub fn affine(self, a: &[f32; 9], b: Vec3) -> Self {
+        let corners = [
+            Vec3::new(self.x.lo, self.y.lo, self.z.lo),
+            Vec3::new(self.x.lo, self.y.lo, self.z.hi),
+            Vec3::new(self.x.lo, self.y.hi, self.z.lo),
+            Vec3::new(self.x.lo, self.y.hi, self.z.hi),
+            Vec3::new(self.x.hi, self.y.lo, self.z.lo),
+            Vec3::new(self.x.hi, self.y.lo, self.z.hi),
+            Vec3::new(self.x.hi, self.y.hi, self.z.lo),
+            Vec3::new(self.x.hi, self.y.hi, self.z.hi),
+        ];
+        let map = |c: Vec3| {
+            Vec3::new(
+                a[6].mul_add(c.z, a[3].mul_add(c.y, a[0] * c.x)) + b.x,
+                a[7].mul_add(c.z, a[4].mul_add(c.y, a[1] * c.x)) + b.y,
+                a[8].mul_add(c.z, a[5].mul_add(c.y, a[2] * c.x)) + b.z,
+            )
+        };
+        let first = map(corners[0]);
+        let mut min = first;
+        let mut max = first;
+        for &c in &corners[1..] {
+            let r = map(c);
+            min = min.min(r);
+            max = max.max(r);
+        }
+        Self::from_bounds(min, max)
+    }
+
+    /// Smallest box containing both.
+    pub const fn hull(&self, other: &Self) -> Self {
+        Self {
+            x: self.x.hull(other.x),
+            y: self.y.hull(other.y),
+            z: self.z.hull(other.z),
+        }
+    }
+
     /// Rotate by quaternion (conservative: bounding box of rotated corners)
     #[inline]
     pub fn rotate(self, rotation: Quat) -> Self {
@@ -927,10 +967,12 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 Interval::EVERYTHING
             }
         }
-        SdfNode::SdfSkinning { child, .. } => {
-            // LBS is approximately distance-preserving
-            eval_interval(child, bounds)
-        }
+        // LBS with fixed bones is one affine map q = A p + b (Σ w_i · bind_i ·
+        // current_i / Σ w); push the box through it exactly (`affine_map`).
+        SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
+            Some((a, b)) => eval_interval(child, bounds.affine(&a, b)),
+            None => eval_interval(child, bounds),
+        },
 
         // ============ Modifiers ============
         SdfNode::Twist { child, strength: _ } => {
@@ -1175,9 +1217,37 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 },
             )
         }
-        SdfNode::IFS { child, .. } => {
-            // Conservative: IFS may contract, so interval is child's interval
-            eval_interval(child, bounds)
+        // Each iteration keeps the transform whose image is nearest the origin
+        // (or the point itself): the reachable set after `iterations` steps is
+        // inside the hull of the box and its images, iterated. The child is
+        // evaluated over that hull and divided by the accumulated X-axis
+        // scale, which lies between the smallest and largest of {1, |x_i|}^n.
+        SdfNode::IFS {
+            child,
+            transforms,
+            iterations,
+        } => {
+            let mut hull = bounds;
+            let (mut s_lo, mut s_hi) = (1.0f32, 1.0f32);
+            for t in transforms {
+                let sx = t[2].mul_add(t[2], t[1].mul_add(t[1], t[0] * t[0])).sqrt();
+                s_lo = s_lo.min(sx);
+                s_hi = s_hi.max(sx);
+            }
+            for _ in 0..*iterations {
+                let mut next = hull;
+                for t in transforms {
+                    let a = [t[0], t[1], t[2], t[4], t[5], t[6], t[8], t[9], t[10]];
+                    let img = hull.affine(&a, Vec3::new(t[12], t[13], t[14]));
+                    next = next.hull(&img);
+                }
+                hull = next;
+            }
+            let d = eval_interval(child, hull);
+            let n = *iterations as i32;
+            let scale = Interval::new(s_lo.powi(n).max(1e-6), s_hi.powi(n).max(1e-6));
+            let recip = Interval::new(1.0 / scale.hi, 1.0 / scale.lo);
+            d * recip
         }
         SdfNode::HeightmapDisplacement {
             child, amplitude, ..
@@ -1438,7 +1508,11 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // deformed field inside: the two disagree on the box faces.
         SdfNode::LatticeDeform { .. } => f32::INFINITY,
         // SDF Skinning: LBS preserves distance (approximately)
-        SdfNode::SdfSkinning { child, .. } => eval_lipschitz(child),
+        // One affine map: L(child) · ‖A‖ (Frobenius ≥ spectral norm).
+        SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
+            Some((a, _)) => eval_lipschitz(child) * a.iter().map(|v| v * v).sum::<f32>().sqrt(),
+            None => eval_lipschitz(child),
+        },
 
         // Modifiers with Jacobian norm ≤ 1
         SdfNode::Round { child, .. }
@@ -1511,10 +1585,11 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         }
         SdfNode::Animated { child, .. } => eval_lipschitz(child),
         SdfNode::IcosahedralSymmetry { child } => eval_lipschitz(child),
-        SdfNode::IFS { child, .. } => {
-            // IFS can have arbitrary scale factors, conservative estimate
-            eval_lipschitz(child) * 2.0
-        }
+        // The nearest-image choice switches between transforms: the folded
+        // point jumps across the switching surfaces, so there is no finite
+        // global constant (like domain repetition). `2 · L(child)` until 2.2.0
+        // was unsound by 280× on a scale / rotate IFS.
+        SdfNode::IFS { .. } => f32::INFINITY,
         // Heightmap displacement projects on the dominant axis (a jump where
         // the axis changes) and samples texels bilinearly (slope ∝ resolution).
         SdfNode::HeightmapDisplacement { .. } => f32::INFINITY,
@@ -1652,6 +1727,31 @@ fn taper_bound_interval(d: Interval, p: Vec3Interval, factor: f32, reach: [f32; 
     } else {
         d_j.hull(d_j.max(d_region))
     }
+}
+
+/// The single affine map `q = A p + b` a fixed-pose skinning node applies
+/// (`sdf_skinning`: Σ w_i · bind_i(current_i(p)) / Σ w over bones with
+/// w ≥ 1e-6); `None` when no bone carries weight (identity).
+fn skinning_affine(
+    bones: &[crate::transforms::skinning::BoneTransform],
+) -> Option<([f32; 9], Vec3)> {
+    use glam::Mat4;
+    let active: Vec<_> = bones.iter().filter(|b| b.weight >= 1e-6).collect();
+    let total: f32 = active.iter().map(|b| b.weight).sum();
+    if active.is_empty() || total <= 1e-6 {
+        return None;
+    }
+    let mut m = Mat4::ZERO;
+    for b in &active {
+        let combined =
+            Mat4::from_cols_array(&b.inv_bind_pose) * Mat4::from_cols_array(&b.current_pose);
+        m += combined * (b.weight / total);
+    }
+    let c = m.to_cols_array();
+    Some((
+        [c[0], c[1], c[2], c[4], c[5], c[6], c[8], c[9], c[10]],
+        Vec3::new(c[12], c[13], c[14]),
+    ))
 }
 
 /// Reach of a taper child in its own (q) space, `[r_xz, r_y]`: `|q_xz| ≤ r_xz`

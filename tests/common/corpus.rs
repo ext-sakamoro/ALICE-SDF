@@ -242,6 +242,23 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
                 weight: 1.0,
             }]),
         ),
+        (
+            "sdf_skinning_two_bones",
+            unit_box().sdf_skinning(vec![
+                BoneTransform {
+                    inv_bind_pose: glam::Mat4::from_translation(glam::Vec3::new(0.2, -0.1, 0.0))
+                        .to_cols_array(),
+                    current_pose: glam::Mat4::from_rotation_z(0.6).to_cols_array(),
+                    weight: 0.3,
+                },
+                BoneTransform {
+                    inv_bind_pose: glam::Mat4::from_scale(glam::Vec3::new(1.2, 0.9, 1.0))
+                        .to_cols_array(),
+                    current_pose: glam::Mat4::from_rotation_x(-0.4).to_cols_array(),
+                    weight: 0.7,
+                },
+            ]),
+        ),
         // --- modifiers ---
         ("twist", unit_box().twist(1.5)),
         ("bend", unit_box().bend(0.8)),
@@ -391,6 +408,28 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             unit_box().translate(0.3, 0.0, 0.0).icosahedral_symmetry(),
         ),
         ("ifs", sphere().ifs(vec![identity_mat()], 2)),
+        // non-trivial transforms (column-major): the identity entries above
+        // would pass a shader that ignores the matrices
+        (
+            "ifs_scale_rotate",
+            sphere().ifs(
+                vec![
+                    glam::Mat4::from_scale_rotation_translation(
+                        glam::Vec3::splat(0.5),
+                        glam::Quat::IDENTITY,
+                        glam::Vec3::new(0.8, 0.0, 0.0),
+                    )
+                    .to_cols_array(),
+                    glam::Mat4::from_scale_rotation_translation(
+                        glam::Vec3::new(0.7, 0.5, 0.6),
+                        glam::Quat::from_rotation_y(0.9),
+                        glam::Vec3::new(-0.3, 0.4, 0.2),
+                    )
+                    .to_cols_array(),
+                ],
+                3,
+            ),
+        ),
         (
             "surface_roughness",
             sphere().surface_roughness(3.0, 0.05, 2),

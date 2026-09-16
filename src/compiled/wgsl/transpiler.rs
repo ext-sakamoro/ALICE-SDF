@@ -86,6 +86,26 @@ impl ShaderLang for WgslLang {
     fn cast_float(expr: &str) -> String {
         format!("f32({})", expr)
     }
+    fn cast_int(expr: &str) -> String {
+        format!("i32({})", expr)
+    }
+    fn decl_int(name: &str, expr: &str) -> String {
+        format!("    let {name}: i32 = {expr};\n")
+    }
+    fn global_float_array(name: &str, values: &[f32]) -> String {
+        let n = values.len();
+        let items: Vec<String> = values
+            .iter()
+            .map(|v| super::super::transpiler_common::lit(*v))
+            .collect();
+        format!(
+            "var<private> {name}: array<f32, {n}> = array<f32, {n}>({});\n",
+            items.join(", ")
+        )
+    }
+    fn global_vec3_fn(name: &str, body: &str) -> String {
+        format!("fn {name}(p: vec3<f32>) -> vec3<f32> {{\n{body}}}\n")
+    }
     fn select_float(cond: &str, a: &str, b: &str) -> String {
         format!("select({b}, {a}, {cond})")
     }
@@ -548,6 +568,8 @@ struct WgslTranspiler {
     mode: TranspileMode,
     /// Collected parameter values (Dynamic mode)
     params: Vec<f32>,
+    /// Module-scope data / functions emitted before the entry point
+    globals: String,
 }
 
 #[allow(dead_code)]
@@ -558,6 +580,7 @@ impl WgslTranspiler {
             helper_functions: Vec::new(),
             mode,
             params: Vec::new(),
+            globals: String::new(),
         }
     }
 
@@ -605,7 +628,9 @@ impl WgslTranspiler {
         generic.var_counter = self.var_counter;
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
+        generic.globals = std::mem::take(&mut self.globals);
         let body = generic.transpile_node(node, point_var);
+        self.globals = generic.globals;
         self.var_counter = generic.var_counter;
         self.params = generic.params;
         self.helper_functions = generic.helper_functions;
@@ -627,6 +652,9 @@ impl WgslTranspiler {
             shader.push_str(src);
             shader.push('\n');
         }
+
+        // Per-node data arrays / functions (lattice, heightmap)
+        shader.push_str(&self.globals);
 
         // Add main SDF function
         writeln!(shader, "fn sdf_eval(p: vec3<f32>) -> f32 {{").unwrap();

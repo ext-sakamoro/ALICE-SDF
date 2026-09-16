@@ -33,13 +33,11 @@ pub const SHADER_UNSUPPORTED: [&str; 4] = [
 ];
 
 const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
-    match node {
-        SdfNode::LatticeDeform { .. } => Some("LatticeDeform"),
-        SdfNode::HeightmapDisplacement { .. } => Some("HeightmapDisplacement"),
-        SdfNode::SdfSkinning { .. } => Some("SdfSkinning"),
-        SdfNode::IFS { .. } => Some("IFS"),
-        _ => None,
-    }
+    // Every node kind is transpiled since 2.2.0 (IFS / SdfSkinning unrolled
+    // as literals, LatticeDeform / HeightmapDisplacement as module-scope
+    // data); the list stays as the hook for a future node that cannot be.
+    let _ = node;
+    None
 }
 
 /// Names of the nodes in `node`'s tree that the transpilers pass through
@@ -59,6 +57,34 @@ pub fn shader_unsupported_nodes(node: &SdfNode) -> Vec<&'static str> {
         stack.extend(kids);
     }
     out
+}
+
+/// glam column-major `Mat4::transform_point3` (no perspective divide) as a
+/// vec3 constructor expression with literal matrix entries.
+fn transform_point3_expr<L: ShaderLang>(m: &[f32; 16], v: &str) -> String {
+    L::vec3_ctor(
+        &format!(
+            "{} * {v}.x + {} * {v}.y + {} * {v}.z + {}",
+            lit(m[0]),
+            lit(m[4]),
+            lit(m[8]),
+            lit(m[12])
+        ),
+        &format!(
+            "{} * {v}.x + {} * {v}.y + {} * {v}.z + {}",
+            lit(m[1]),
+            lit(m[5]),
+            lit(m[9]),
+            lit(m[13])
+        ),
+        &format!(
+            "{} * {v}.x + {} * {v}.y + {} * {v}.z + {}",
+            lit(m[2]),
+            lit(m[6]),
+            lit(m[10]),
+            lit(m[14])
+        ),
+    )
 }
 
 /// Trait that captures the syntactic differences between WGSL, GLSL, and HLSL.
@@ -135,6 +161,27 @@ pub trait ShaderLang: 'static {
     // ---- Helper functions ----
     /// Return the source code for a named helper function, if known.
     fn helper_source(name: &str) -> Option<&'static str>;
+
+    // ---- Module-scope data (per-node arrays / functions) ----
+    /// "i32(x)" / "int(x)" / "(int)(x)"
+    fn cast_int(expr: &str) -> String;
+    /// Declare an immutable int variable.
+    fn decl_int(name: &str, expr: &str) -> String;
+    /// A module-scope float array with an initializer (dynamically indexable).
+    fn global_float_array(name: &str, values: &[f32]) -> String;
+    /// A module-scope `vec3 name(vec3 p)` function with the given body lines.
+    fn global_vec3_fn(name: &str, body: &str) -> String;
+}
+
+/// Float literal for shader source: shortest round-trip form with a decimal
+/// point (`2.0`, `0.33333334`), so the GPU sees the same f32 the CPU has.
+pub fn lit(v: f32) -> String {
+    let s = format!("{v}");
+    if s.contains('.') || s.contains('e') || s.contains("inf") || s.contains("NaN") {
+        s
+    } else {
+        format!("{s}.0")
+    }
 }
 
 // ============================================================================
@@ -164,6 +211,9 @@ pub struct GenericTranspiler<L: ShaderLang> {
     pub mode: TranspileModeLang,
     /// Collected float parameters for dynamic mode.
     pub params: Vec<f32>,
+    /// Module-scope declarations the body needs (per-node data arrays and
+    /// functions for lattice / heightmap nodes), emitted before `sdf_eval`.
+    pub globals: String,
     _phantom: std::marker::PhantomData<L>,
 }
 
@@ -175,6 +225,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             helper_functions: Vec::new(),
             mode,
             params: Vec::new(),
+            globals: String::new(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -2206,18 +2257,132 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_node_inner(child, point_var, code)
             }
 
-            SdfNode::LatticeDeform { child, .. } => {
-                code.push_str(
-                    "    // alice-sdf: LatticeDeform is not transpiled (child evaluated as-is)\n",
-                );
-                self.transpile_node_inner(child, point_var, code)
+            SdfNode::LatticeDeform {
+                child,
+                control_points,
+                nx,
+                ny,
+                nz,
+                bbox_min,
+                bbox_max,
+            } => {
+                // `lattice_deform`: outside the box → identity (correction 1);
+                // inside → tricubic Bernstein sum over the control points, the
+                // correction |∂q/∂x| by central difference (ε = 0.001, ≥ 0.1)
+                // divides the child distance. Control points are a module-scope
+                // array, the FFD a module-scope function (called three times).
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_ffd_cp_{id}");
+                let func = format!("alice_ffd_{id}");
+                let flat: Vec<f32> = control_points
+                    .iter()
+                    .flat_map(|c| [c.x, c.y, c.z])
+                    .collect();
+                self.globals.push_str(&L::global_float_array(&arr, &flat));
+                let cpx = (nx + 1) as usize;
+                let cpy = (ny + 1) as usize;
+                let cpz = (nz + 1) as usize;
+                let size = *bbox_max - *bbox_min;
+                let bmin = L::vec3_ctor(&lit(bbox_min.x), &lit(bbox_min.y), &lit(bbox_min.z));
+                let bmax = L::vec3_ctor(&lit(bbox_max.x), &lit(bbox_max.y), &lit(bbox_max.z));
+                let inv = L::vec3_ctor(&lit(1.0 / size.x), &lit(1.0 / size.y), &lit(1.0 / size.z));
+                let mut body = String::new();
+                body.push_str(&L::decl_vec3(
+                    "s",
+                    &format!(
+                        "clamp((p - {bmin}) * {inv}, {}, {})",
+                        L::vec3_zero(),
+                        L::vec3_splat("1.0")
+                    ),
+                ));
+                body.push_str(&L::decl_mut_vec3("r", L::vec3_zero()));
+                let bern = |t: &str, i: usize| -> String {
+                    match i {
+                        0 => format!("((1.0 - {t}) * (1.0 - {t}) * (1.0 - {t}))"),
+                        1 => format!("(3.0 * {t} * (1.0 - {t}) * (1.0 - {t}))"),
+                        2 => format!("(3.0 * {t} * {t} * (1.0 - {t}))"),
+                        _ => format!("({t} * {t} * {t})"),
+                    }
+                };
+                for i in 0..cpx.min(4) {
+                    for j in 0..cpy.min(4) {
+                        for k in 0..cpz.min(4) {
+                            let idx = i * cpy * cpz + j * cpz + k;
+                            if idx >= control_points.len() {
+                                continue;
+                            }
+                            let cp = L::vec3_ctor(
+                                &format!("{arr}[{}]", idx * 3),
+                                &format!("{arr}[{}]", idx * 3 + 1),
+                                &format!("{arr}[{}]", idx * 3 + 2),
+                            );
+                            writeln!(
+                                body,
+                                "    r = r + {cp} * ({} * {} * {});",
+                                bern("s.x", i),
+                                bern("s.y", j),
+                                bern("s.z", k)
+                            )
+                            .unwrap();
+                        }
+                    }
+                }
+                body.push_str("    return r;\n");
+                self.globals.push_str(&L::global_vec3_fn(&func, &body));
+
+                let q = self.next_var();
+                let corr = self.next_var();
+                let p = point_var;
+                code.push_str(&L::decl_mut_vec3(&q, p));
+                code.push_str(&L::decl_mut_float(&corr, "1.0"));
+                let ex = L::vec3_ctor("0.001", "0.0", "0.0");
+                writeln!(
+                    code,
+                    "    if (!({p}.x < {bmin}.x || {p}.y < {bmin}.y || {p}.z < {bmin}.z || {p}.x > {bmax}.x || {p}.y > {bmax}.y || {p}.z > {bmax}.z)) {{"
+                )
+                .unwrap();
+                writeln!(code, "        {q} = {func}({p});").unwrap();
+                writeln!(
+                    code,
+                    "        {corr} = max(length({func}({p} + {ex}) - {func}({p} - {ex})) / 0.002, 0.1);"
+                )
+                .unwrap();
+                code.push_str("    }\n");
+                let d = self.transpile_node_inner(child, &q, code);
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("{d} / {corr}")));
+                var
             }
 
-            SdfNode::SdfSkinning { child, .. } => {
-                code.push_str(
-                    "    // alice-sdf: SdfSkinning is not transpiled (child evaluated as-is)\n",
-                );
-                self.transpile_node_inner(child, point_var, code)
+            SdfNode::SdfSkinning { child, bones } => {
+                // `sdf_skinning`: Σ w · bind(current(p)) / Σ w over bones with
+                // w ≥ 1e-6 (glam column-major `transform_point3` twice);
+                // no bone or no weight → identity.
+                let active: Vec<&crate::transforms::skinning::BoneTransform> =
+                    bones.iter().filter(|b| b.weight >= 1e-6).collect();
+                let total: f32 = active.iter().map(|b| b.weight).sum();
+                if active.is_empty() || total <= 1e-6 {
+                    return self.transpile_node_inner(child, point_var, code);
+                }
+                let acc = self.next_var();
+                code.push_str(&L::decl_mut_vec3(&acc, L::vec3_zero()));
+                for bone in &active {
+                    let skinned = self.next_var();
+                    let rest = self.next_var();
+                    code.push_str(&L::decl_vec3(
+                        &skinned,
+                        &transform_point3_expr::<L>(&bone.current_pose, point_var),
+                    ));
+                    code.push_str(&L::decl_vec3(
+                        &rest,
+                        &transform_point3_expr::<L>(&bone.inv_bind_pose, &skinned),
+                    ));
+                    writeln!(code, "    {acc} = {acc} + {rest} * {};", lit(bone.weight)).unwrap();
+                }
+                let q = self.next_var();
+                code.push_str(&L::decl_vec3(&q, &format!("{acc} / {}", lit(total))));
+                self.transpile_node_inner(child, &q, code)
             }
 
             SdfNode::IcosahedralSymmetry { child } => {
@@ -2230,16 +2395,142 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_node_inner(child, &new_p, code)
             }
 
-            SdfNode::IFS { child, .. } => {
-                code.push_str("    // alice-sdf: IFS is not transpiled (child evaluated as-is)\n");
-                self.transpile_node_inner(child, point_var, code)
+            SdfNode::IFS {
+                child,
+                transforms,
+                iterations,
+            } => {
+                // `ifs_fold_with_scale`: per iteration keep the transform whose
+                // image is nearest the origin; the scale accumulates that
+                // matrix's X-axis length; the child distance is divided by it.
+                // Transforms and iterations are data, unrolled as literals.
+                let q = self.next_var();
+                let sc = self.next_var();
+                code.push_str(&L::decl_mut_vec3(&q, point_var));
+                code.push_str(&L::decl_mut_float(&sc, "1.0"));
+                for _ in 0..*iterations {
+                    let best = self.next_var();
+                    let bestd = self.next_var();
+                    let bests = self.next_var();
+                    code.push_str(&L::decl_mut_vec3(&best, &q));
+                    code.push_str(&L::decl_mut_float(&bestd, &format!("dot({q}, {q})")));
+                    code.push_str(&L::decl_mut_float(&bests, "1.0"));
+                    for m in transforms {
+                        let t = self.next_var();
+                        let td = self.next_var();
+                        code.push_str(&L::decl_vec3(&t, &transform_point3_expr::<L>(m, &q)));
+                        code.push_str(&L::decl_float(&td, &format!("dot({t}, {t})")));
+                        let x_axis_len = m[2].mul_add(m[2], m[1].mul_add(m[1], m[0] * m[0])).sqrt();
+                        writeln!(
+                            code,
+                            "    if ({td} < {bestd}) {{ {bestd} = {td}; {best} = {t}; {bests} = {}; }}",
+                            lit(x_axis_len)
+                        )
+                        .unwrap();
+                    }
+                    writeln!(code, "    {q} = {best};").unwrap();
+                    writeln!(code, "    {sc} = {sc} * {bests};").unwrap();
+                }
+                let d = self.transpile_node_inner(child, &q, code);
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("{d} / max({sc}, 1e-6)")));
+                var
             }
 
-            SdfNode::HeightmapDisplacement { child, .. } => {
-                code.push_str(
-                    "    // alice-sdf: HeightmapDisplacement is not transpiled (child evaluated as-is)\n",
+            SdfNode::HeightmapDisplacement {
+                child,
+                heightmap,
+                width,
+                height,
+                amplitude,
+                scale,
+            } => {
+                // `heightmap_displacement`: dominant-axis projection to (u, v),
+                // mapped to [0, w-1] × [0, h-1], bilinear sample × amplitude,
+                // subtracted from the child distance. The map is a module-scope
+                // array.
+                let d = self.transpile_node_inner(child, point_var, code);
+                if heightmap.is_empty() || *width == 0 || *height == 0 {
+                    return d;
+                }
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_hm_{id}");
+                self.globals
+                    .push_str(&L::global_float_array(&arr, heightmap));
+                let (wm1, hm1) = (lit(*width as f32 - 1.0), lit(*height as f32 - 1.0));
+                let sc = self.param(*scale);
+                let amp = self.param(*amplitude);
+                let p = point_var;
+                let ap = self.next_var();
+                let u = self.next_var();
+                let v = self.next_var();
+                code.push_str(&L::decl_vec3(&ap, &format!("abs({p})")));
+                let x_dom = format!("{ap}.x > {ap}.y && {ap}.x > {ap}.z");
+                let y_dom = format!("{ap}.y > {ap}.z");
+                code.push_str(&L::decl_float(
+                    &u,
+                    &L::select_float(
+                        &x_dom,
+                        &format!("{p}.y"),
+                        &L::select_float(&y_dom, &format!("{p}.x"), &format!("{p}.x")),
+                    ),
+                ));
+                code.push_str(&L::decl_float(
+                    &v,
+                    &L::select_float(
+                        &x_dom,
+                        &format!("{p}.z"),
+                        &L::select_float(&y_dom, &format!("{p}.z"), &format!("{p}.y")),
+                    ),
+                ));
+                let uu = self.next_var();
+                let vv = self.next_var();
+                code.push_str(&L::decl_float(
+                    &uu,
+                    &format!("clamp(({u} * {sc} * 0.5 + 0.5) * {wm1}, 0.0, {wm1})"),
+                ));
+                code.push_str(&L::decl_float(
+                    &vv,
+                    &format!("clamp(({v} * {sc} * 0.5 + 0.5) * {hm1}, 0.0, {hm1})"),
+                ));
+                let (u0, v0, u1, v1) = (
+                    self.next_var(),
+                    self.next_var(),
+                    self.next_var(),
+                    self.next_var(),
                 );
-                self.transpile_node_inner(child, point_var, code)
+                let (fu, fv) = (self.next_var(), self.next_var());
+                let wi = *width as i64;
+                code.push_str(&L::decl_int(&u0, &L::cast_int(&format!("floor({uu})"))));
+                code.push_str(&L::decl_int(&v0, &L::cast_int(&format!("floor({vv})"))));
+                code.push_str(&L::decl_int(&u1, &format!("min({u0} + 1, {})", wi - 1)));
+                code.push_str(&L::decl_int(
+                    &v1,
+                    &format!("min({v0} + 1, {})", *height as i64 - 1),
+                ));
+                code.push_str(&L::decl_float(&fu, &format!("{uu} - floor({uu})")));
+                code.push_str(&L::decl_float(&fv, &format!("{vv} - floor({vv})")));
+                let a = self.next_var();
+                let b = self.next_var();
+                code.push_str(&L::decl_float(
+                    &a,
+                    &format!(
+                        "{arr}[{v0} * {wi} + {u0}] * (1.0 - {fu}) + {arr}[{v0} * {wi} + {u1}] * {fu}"
+                    ),
+                ));
+                code.push_str(&L::decl_float(
+                    &b,
+                    &format!(
+                        "{arr}[{v1} * {wi} + {u0}] * (1.0 - {fu}) + {arr}[{v1} * {wi} + {u1}] * {fu}"
+                    ),
+                ));
+                let var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("{d} - ({a} * (1.0 - {fv}) + {b} * {fv}) * {amp}"),
+                ));
+                var
             }
 
             SdfNode::SurfaceRoughness {

@@ -6,6 +6,34 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — every node kind is transpiled (IFS, skinning, lattice, heightmap)
+
+- The four kinds the shaders used to pass through unchanged are now emitted
+  in WGSL / GLSL / HLSL: `IFS` (transforms and iterations unrolled as
+  literals, `ifs_fold_with_scale` law, child ÷ accumulated scale),
+  `SdfSkinning` (each bone's two column-major transforms, weighted mean),
+  `LatticeDeform` (control points as a module-scope array, the FFD as a
+  module-scope function called three times for the central-difference
+  correction), `HeightmapDisplacement` (the map as a module-scope array,
+  dominant-axis projection, bilinear sample). `shader_unsupported_nodes`
+  now returns an empty list; the corpus oracles cover all 144 nodes.
+- `ShaderLang` gained `cast_int` / `decl_int` / `global_float_array` /
+  `global_vec3_fn`; `GenericTranspiler::globals` collects module-scope
+  declarations that each language emits before `sdf_eval`.
+
+### Fixed — IFS / skinning on the CPU (found by non-identity corpus entries)
+
+- The corpus IFS and skinning entries used identity matrices, so nothing
+  had checked the laws with real transforms. With a scale / rotate IFS and
+  a two-bone skin: the scalar / SIMD / BVH VM dropped the IFS scale
+  correction the tree applies (`/ max(scale, 1e-6)`, now applied at
+  `PopTransform`); the interval evaluator treated both as identity maps
+  (skinning is one affine map `A p + b` — pushed through exactly; IFS
+  uses the hull of the box and its images, divided by the scale range);
+  `eval_lipschitz` claimed `2 · L(child)` for IFS (unsound by 280× — the
+  nearest-image choice jumps, so it is `INFINITY` like domain repetition,
+  pinned set 14 → 16) and `L(child)` for skinning (now `L(child) · ‖A‖`).
+
 ## [v2.1.0] - 2026-09-16
 
 Corpus-wide GPU execution oracle (WGSL + GLSL) and the 15 shader laws it

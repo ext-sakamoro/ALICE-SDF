@@ -338,9 +338,16 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                         mat.copy_from_slice(&aux[base..base + 16]);
                         transforms.push(mat);
                     }
-                    p = p.map(|q| {
-                        crate::modifiers::ifs_fold_with_scale(q, &transforms, iterations).0
+                    // Tree law: eval(child, q) / max(scale, 1e-6) — applied at
+                    // PopTransform (until 2.2.0 the VM dropped the scale, found by
+                    // the corpus oracle once it had a non-identity IFS entry).
+                    let (q, scale) = R::map3vs(p.x, p.y, p.z, |q| {
+                        crate::modifiers::ifs_fold_with_scale(q, &transforms, iterations)
                     });
+                    p = q;
+                    frame_lane.set(csp - 1, scale.max(R::splat(1e-6)));
+                } else {
+                    frame_lane.set(csp - 1, R::one());
                 }
             }
 
@@ -438,7 +445,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                             value_stack.get(vsp - 1) * R::splat(finst.params[0]),
                         );
                     }
-                    OpCode::LatticeDeform => {
+                    OpCode::LatticeDeform | OpCode::IFS => {
                         value_stack.set(vsp - 1, value_stack.get(vsp - 1) / frame_lane.get(csp));
                     }
                     OpCode::Taper => {
