@@ -14,8 +14,14 @@
 //
 // SDF formula: SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k), groundK)
 //
+// Surface material follows the same SmoothUnion: the blend factor of the
+// ground/mochi union drives the colour mix, so the "neck" where a mochi
+// squishes onto the floor shades continuously instead of switching.
+//
 // This shader is self-contained — no external include dependencies.
 // Works with manual file copy (no UPM package installation required).
+// The SDF laws (sdSphere / opSmoothUnion) and the LOD tables are verbatim
+// copies of AliceSDF_Include.cginc / AliceSDF_LOD.cginc; keep them in sync.
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -34,11 +40,20 @@ Shader "AliceSDF/Samples/Mochi"
         _MaxDist ("Max Distance", Float) = 80.0
 
         [Header(Mochi Physics)]
+        // Driven by SampleMochi_Collider every frame (single source of truth);
+        // the Inspector values only matter without the Udon script.
         _BlendK ("Mochi Blend (higher = stickier)", Float) = 0.5
         _GroundK ("Ground Stickiness", Float) = 0.15
 
+        [Header(Lighting)]
+        _LightDir ("Light Direction", Vector) = (1.0, 1.0, -0.5, 0.0)
+        _ShadowEnabled ("Enable Soft Shadow", Int) = 1
+        _ShadowSoftness ("Shadow Softness", Range(1, 128)) = 16.0
+        _ShadowMaxDist ("Shadow Max Distance", Float) = 10.0
+
         [Header(Fog)]
         _FogColor ("Fog Color", Color) = (0.83, 0.80, 0.76, 1.0)
+        _FogDensity ("Fog Density", Float) = 0.005
     }
     SubShader
     {
@@ -54,6 +69,11 @@ Shader "AliceSDF/Samples/Mochi"
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
 
+            // Upper bound of the _MochiData uniform array. Must match
+            // SampleMochi_Collider.MaxMochi (Material.SetVectorArray fixes
+            // the array length on first use).
+            #define MOCHI_MAX 16
+
             // =================================================================
             // Inlined SDF Primitives (from AliceSDF_Include.cginc)
             // =================================================================
@@ -63,12 +83,28 @@ Shader "AliceSDF/Samples/Mochi"
                 return length(p) - radius;
             }
 
+            // Smooth Union (Deep Fried: division exorcism, pre-computed inv_k)
+            // Guarded: k <= 0 falls back to hard union (no division by zero)
             float opSmoothUnion(float d1, float d2, float k)
             {
                 if (k < 0.0001) return min(d1, d2);
                 float inv_k = 1.0 / k;
                 float h = max(k - abs(d1 - d2), 0.0) * inv_k;
                 return min(d1, d2) - h * h * k * 0.25;
+            }
+
+            // Smooth Union with blend factor (Inigo Quilez, "smooth minimum
+            // with material"). Returns (distance, weight of d2 in [0, 1]).
+            // The distance is bit-identical to opSmoothUnion; the weight is
+            // 0.5 exactly on the d1 == d2 seam and reaches 0 / 1 at |d1 - d2| >= k.
+            float2 opSmoothUnionBlend(float d1, float d2, float k)
+            {
+                if (k < 0.0001) return (d1 < d2) ? float2(d1, 0.0) : float2(d2, 1.0);
+                float inv_k = 1.0 / k;
+                float h = max(k - abs(d1 - d2), 0.0) * inv_k;
+                float m = h * h * 0.5;
+                float s = h * h * k * 0.25;
+                return (d1 < d2) ? float2(d1 - s, m) : float2(d2 - s, 1.0 - m);
             }
 
             // =================================================================
@@ -107,6 +143,25 @@ Shader "AliceSDF/Samples/Mochi"
                 return 1.2;
             }
 
+            // Central-difference half-width for the normal. Wider than the
+            // surface epsilon so the normal averages over the hit tolerance
+            // instead of resolving the raymarch error as noise.
+            float aliceLodNormalEps(int tier)
+            {
+                if (tier == ALICE_LOD_TIER_HIGH) return 0.001;
+                if (tier == ALICE_LOD_TIER_MED)  return 0.003;
+                return 0.01;
+            }
+
+            // Soft-shadow steps per tier (standalone budget: below the
+            // 48 / 24 / 12 of AliceSDF_LOD.cginc, the scene is a few metres)
+            int aliceLodShadowSteps(int tier)
+            {
+                if (tier == ALICE_LOD_TIER_HIGH) return 32;
+                if (tier == ALICE_LOD_TIER_MED)  return 16;
+                return 8;
+            }
+
             // =================================================================
             // Inspector properties
             // =================================================================
@@ -114,10 +169,15 @@ Shader "AliceSDF/Samples/Mochi"
             float4 _MochiColor, _MochiColor2, _GroundColor, _GroundColor2, _FogColor;
             float _MaxDist;
             float _BlendK, _GroundK;
+            float4 _LightDir;
+            int _ShadowEnabled;
+            float _ShadowSoftness;
+            float _ShadowMaxDist;
+            float _FogDensity;
 
             // Dynamic mochi data (set from UdonSharp)
             // xyz = world position, w = radius
-            float4 _MochiData[16];
+            float4 _MochiData[MOCHI_MAX];
             float _MochiCount;
 
             struct appdata {
@@ -135,25 +195,26 @@ Shader "AliceSDF/Samples/Mochi"
             // =================================================================
             // SDF: Ground + Dynamic Mochi Blobs
             // =================================================================
-            float map(float3 p)
-            {
-                // Ground plane at Y=0
-                float ground = p.y;
 
-                // Combine all mochis with SmoothUnion
-                // Note: opSmoothUnion(1e10, d, k) = d (math works out)
+            // Smooth union of every active mochi sphere (no ground)
+            // Note: opSmoothUnion(1e10, d, k) = d, so the fold starts at 1e10
+            float mapMochi(float3 p)
+            {
+                int count = min((int)_MochiCount, MOCHI_MAX);
                 float mochi = 1e10;
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < MOCHI_MAX; i++)
                 {
-                    if (i >= (int)_MochiCount) break;
-                    float3 mp = _MochiData[i].xyz;
-                    float mr = _MochiData[i].w;
-                    float d = sdSphere(p - mp, mr);
+                    if (i >= count) break;
+                    float d = sdSphere(p - _MochiData[i].xyz, _MochiData[i].w);
                     mochi = opSmoothUnion(mochi, d, _BlendK);
                 }
+                return mochi;
+            }
 
-                // SmoothUnion with ground: mochi "squishes" onto floor
-                return opSmoothUnion(ground, mochi, _GroundK);
+            // Full scene: ground plane at Y=0, mochis "squish" onto it
+            float map(float3 p)
+            {
+                return opSmoothUnion(p.y, mapMochi(p), _GroundK);
             }
 
             // Inlined AO with LOD
@@ -174,9 +235,31 @@ Shader "AliceSDF/Samples/Mochi"
                 return saturate(1.0 - 3.0 * occ);
             }
 
-            // Normal via central differences
-            float3 calcN(float3 p) {
-                float e = 0.001;
+            // Inlined soft shadow with LOD (penumbra estimate, IQ improved)
+            float aliceSoftShadow_LOD(float3 ro, float3 rd, float mint, float maxt, float softness, int tier)
+            {
+                int maxSteps = aliceLodShadowSteps(tier);
+                float res = 1.0;
+                float t = mint;
+                float ph = 1e20;
+                for (int i = 0; i < 32; i++)
+                {
+                    if (i >= maxSteps) break;
+                    float h = map(ro + rd * t);
+                    if (h < 0.0001)
+                        return 0.0;
+                    float y = h * h / (2.0 * ph);
+                    float d = sqrt(h * h - y * y);
+                    res = min(res, softness * d / max(0.0, t - y));
+                    ph = h;
+                    t += h;
+                    if (t > maxt) break;
+                }
+                return saturate(res);
+            }
+
+            // Normal via central differences (half-width from the LOD tier)
+            float3 calcN(float3 p, float e) {
                 return normalize(float3(
                     map(p + float3(e,0,0)) - map(p - float3(e,0,0)),
                     map(p + float3(0,e,0)) - map(p - float3(0,e,0)),
@@ -184,21 +267,22 @@ Shader "AliceSDF/Samples/Mochi"
                 ));
             }
 
-            // Find distance to nearest mochi sphere (raw, no SmoothUnion)
-            float nearestMochiDist(float3 p) {
-                float d = 1e10;
-                for (int i = 0; i < 16; i++) {
-                    if (i >= (int)_MochiCount) break;
-                    d = min(d, sdSphere(p - _MochiData[i].xyz, _MochiData[i].w));
-                }
-                return d;
-            }
-
-            // Simple noise for ground texture
+            // Ground texture: interpolated value noise (a raw hash per pixel
+            // aliases into sparkle in VR; the smoothstep lattice does not)
             float hash2d(float2 p) {
                 p = frac(p * float2(0.3183, 0.3671));
                 p *= 17.0;
                 return frac(p.x * p.y * (p.x + p.y));
+            }
+
+            float noise2d(float2 p) {
+                float2 i = floor(p);
+                float2 f = frac(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return lerp(
+                    lerp(hash2d(i + float2(0,0)), hash2d(i + float2(1,0)), f.x),
+                    lerp(hash2d(i + float2(0,1)), hash2d(i + float2(1,1)), f.x),
+                    f.y);
             }
 
             v2f vert(appdata v) {
@@ -234,41 +318,46 @@ Shader "AliceSDF/Samples/Mochi"
                     float d = map(p);
 
                     if (d < eps) {
-                        float3 n = calcN(p);
-                        float3 lightDir = normalize(float3(1, 1, -0.5));
+                        float3 n = calcN(p, aliceLodNormalEps(tier));
+                        float3 lightDir = normalize(_LightDir.xyz);
                         float ao = aliceAO_LOD(p, n, tier);
 
-                        // Determine surface: ground vs mochi
-                        float mochiRaw = nearestMochiDist(p);
-                        float groundRaw = p.y;
-
-                        float3 fc;
-                        if (mochiRaw < groundRaw)
+                        // Direct-light visibility (mochi -> ground contact shadow)
+                        float shadow = 1.0;
+                        if (_ShadowEnabled > 0)
                         {
-                            // === MOCHI SURFACE ===
-                            // Warm wrap lighting (subsurface scattering approx)
-                            float3 col = lerp(_MochiColor.rgb, _MochiColor2.rgb,
-                                              n.y * 0.5 + 0.5);
-                            float wrap = max(dot(n, lightDir) + 0.4, 0.0) / 1.4;
-
-                            // Fresnel rim for soft translucent look
-                            float3 viewDir = normalize(ro - p);
-                            float fresnel = pow(1.0 - abs(dot(n, viewDir)), 3.0);
-                            float3 sss = float3(1.0, 0.88, 0.72) * fresnel * 0.25;
-
-                            fc = col * (0.3 + wrap * 0.7) * ao + sss;
+                            shadow = aliceSoftShadow_LOD(p + n * 0.02, lightDir, 0.02,
+                                                         _ShadowMaxDist, _ShadowSoftness, tier);
                         }
-                        else
-                        {
-                            // === GROUND SURFACE ===
-                            float3 col = lerp(_GroundColor.rgb, _GroundColor2.rgb,
-                                              hash2d(p.xz * 2.0) * 0.3 + 0.35);
-                            float diff = max(dot(n, lightDir), 0.0);
-                            fc = col * (0.2 + diff * 0.8) * ao;
-                        }
+
+                        // Material weight from the same union that shaped the
+                        // surface: 0 = ground, 1 = mochi, continuous across the neck
+                        float mochiW = opSmoothUnionBlend(p.y, mapMochi(p), _GroundK).y;
+
+                        // === MOCHI SURFACE ===
+                        // Warm wrap lighting (subsurface scattering approx)
+                        float3 mochiCol = lerp(_MochiColor.rgb, _MochiColor2.rgb,
+                                               n.y * 0.5 + 0.5);
+                        float wrap = max(dot(n, lightDir) + 0.4, 0.0) / 1.4;
+
+                        // Fresnel rim for soft translucent look
+                        float3 viewDir = normalize(ro - p);
+                        float fresnel = pow(1.0 - abs(dot(n, viewDir)), 3.0);
+                        float3 sss = float3(1.0, 0.88, 0.72) * fresnel * 0.25;
+
+                        float3 mochiShade = mochiCol * (0.3 + wrap * 0.7 * shadow) * ao + sss;
+
+                        // === GROUND SURFACE ===
+                        float grain = noise2d(p.xz * 2.0) * 0.7 + noise2d(p.xz * 9.0) * 0.3;
+                        float3 groundCol = lerp(_GroundColor.rgb, _GroundColor2.rgb,
+                                                grain * 0.6 + 0.2);
+                        float diff = max(dot(n, lightDir), 0.0);
+                        float3 groundShade = groundCol * (0.2 + diff * 0.8 * shadow) * ao;
+
+                        float3 fc = lerp(groundShade, mochiShade, mochiW);
 
                         // Fog
-                        fc = lerp(_FogColor.rgb, fc, exp(-t * 0.005));
+                        fc = lerp(_FogColor.rgb, fc, exp(-t * _FogDensity));
 
                         float4 cp = UnityWorldToClipPos(p);
                         o.color = fixed4(fc, 1.0);

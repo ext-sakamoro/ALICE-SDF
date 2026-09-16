@@ -3,6 +3,34 @@
 ## [Unreleased]
 
 ### Changed
+- Mochi sample, same features, tightened:
+  - Shader: the ground / mochi material weight comes from the blend factor
+    of the same `opSmoothUnion` that shapes the surface (IQ smooth-min with
+    material), so the neck where a mochi squishes onto the floor shades
+    continuously instead of switching at `mochiRaw < groundRaw`; normal
+    half-width follows the LOD tier (0.001 / 0.003 / 0.01) instead of a
+    fixed 0.001 finer than the LOW surface epsilon; ground grain is
+    interpolated value noise instead of a per-pixel hash (no sparkle in
+    VR); soft contact shadow (32 / 16 / 8 steps by tier, `_ShadowEnabled`
+    default on); light direction and fog density are material properties
+    (`_LightDir`, `_FogDensity`, defaults equal to the former constants).
+  - Collider: `blendK` / `groundK` are pushed to the material every frame
+    (one source of truth for collision and rendering, the "match shader"
+    tooltips are gone); the per-hand grab / origin / split / dwell state is
+    indexed by hand instead of duplicated `if (isLeft)` branches (same
+    logic, one `ProcessHand`); gravity settle is `1 - exp(-g dt)` instead of
+    `Lerp(..., g dt)` (frame-rate independent); a merged mochi is clamped
+    to `y >= r` so it does not spend a frame under the floor; tracking
+    validity rejects the exact zero vector instead of a 10 cm radius
+    around the world origin, where the mochis sit; `MaxMochi` constant
+    documents the shader's `MOCHI_MAX = 16` coupling.
+  - Verified on the host: the CGPROGRAM block compiles under glslang
+    (HLSL mode, stub UnityCG.cginc) for both stages; the collider compiles
+    under .NET 10 / C# 7.3 with warnings as errors against a UnityEngine
+    stub, `EvaluateSdf` matches `alice_sdf::eval` of the same scene on a
+    1521-point grid (max |Δ| 6e-8), and a grab → split → release → settle →
+    merge scenario holds volume conservation. Not verified in Unity or
+    VRChat in this environment.
 - One shader source: `Runtime/Shaders/` (the VPM path the Baker and the
   Samples include) is the only copy. The legacy `Assets/AliceSDF/Shaders/`
   layout had forked in February and carried the PBR surface (GGX /

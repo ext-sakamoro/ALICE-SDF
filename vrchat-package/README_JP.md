@@ -181,13 +181,23 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|
-| Blend K | 0.5 | 餅同士のSmoothUnion係数（大きいほど粘着） |
-| Ground K | 0.15 | 地面とのSmoothUnion係数（ぷにぷに接地感） |
+| Blend K | 0.5 | 餅同士のSmoothUnion係数（大きいほど粘着）— 毎フレーム Material に送るので当たり判定と描画が常に一致 |
+| Ground K | 0.15 | 地面とのSmoothUnion係数（ぷにぷに接地感）— 毎フレーム Material に送る |
 | Min Radius | 0.1 | 最小餅サイズ（これ以下には分裂しない） |
 | Grab Threshold | 0.8 | 掴むために手が半径の何割以内に入る必要があるか |
 | Grab Dwell Time | 0.08秒 | 掴み発動までの滞在時間（誤掴み防止） |
 | Split Distance | 2.5 | 分裂を発動する引っ張り距離（半径の倍率） |
 | Merge Threshold | 0.7 | 自動合体が発生する距離（合計半径の割合） |
+
+**Materialパラメータ**（シェーダーのみ）:
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| Light Direction | (1, 1, -0.5) | wrap / diffuse 陰影の平行光源方向 |
+| Enable Soft Shadow | 1 | 餅が地面に落とす接地影（LOD tier 別 32 / 16 / 8 step） |
+| Shadow Softness | 16 | 半影の幅（大きいほど鋭い） |
+| Shadow Max Distance | 10 | 影レイの長さ |
+| Fog Density | 0.005 | 指数距離フォグ |
 
 #### TerrainSculpt — 掘れる・積める地形
 

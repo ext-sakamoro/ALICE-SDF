@@ -156,13 +156,23 @@ Soft mochi (rice cake) blobs sitting on a ground plane. In VR, you can grab them
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| Blend K | 0.5 | SmoothUnion factor between mochis (higher = stickier) |
-| Ground K | 0.15 | SmoothUnion factor with ground (squishy floor contact) |
+| Blend K | 0.5 | SmoothUnion factor between mochis (higher = stickier) — pushed to the material every frame, so collision and rendering always agree |
+| Ground K | 0.15 | SmoothUnion factor with ground (squishy floor contact) — pushed to the material every frame |
 | Min Radius | 0.1 | Smallest allowed mochi (won't split below this) |
 | Grab Threshold | 0.8 | Hand must be within this fraction of radius to grab |
 | Grab Dwell Time | 0.08s | Hold time before grab activates (prevents accidental grabs) |
 | Split Distance | 2.5 | Pull distance (x radius) to trigger split |
 | Merge Threshold | 0.7 | Distance (x combined radii) for auto-merge |
+
+**Material Parameters** (shader only):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Light Direction | (1, 1, -0.5) | Directional light for the wrap / diffuse shading |
+| Enable Soft Shadow | 1 | Contact shadow from mochi onto the ground (32 / 16 / 8 steps by LOD tier) |
+| Shadow Softness | 16 | Penumbra width (higher = sharper) |
+| Shadow Max Distance | 10 | Shadow ray length |
+| Fog Density | 0.005 | Exponential distance fog |
 
 #### TerrainSculpt — Dig Holes & Build Hills
 
