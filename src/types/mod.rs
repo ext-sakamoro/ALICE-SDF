@@ -50,6 +50,11 @@ impl SdfCategory {
     }
 }
 
+/// serde default for `SdfNode::Taper::reach` (files written before 2.0).
+fn taper_reach_unknown() -> [f32; 2] {
+    [f32::INFINITY; 2]
+}
+
 /// Signed Distance Function Node
 ///
 /// Represents a node in the SDF tree. Each node can be:
@@ -57,11 +62,6 @@ impl SdfCategory {
 /// - An operation combining two shapes (union, intersection, etc.)
 /// - A transform applied to a child node
 /// - A modifier deforming a child node
-/// serde default for `SdfNode::Taper::reach` (files written before 2.0).
-fn taper_reach_unknown() -> [f32; 2] {
-    [f32::INFINITY; 2]
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SdfNode {
     // === Primitives ===
