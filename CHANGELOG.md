@@ -6,6 +6,21 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — step budget scales with the Lipschitz bound
+
+- `RaymarchConfig::with_bound` multiplies `max_steps` by the bound (steps
+  are `d / L`, so the same count covers `1 / L` of the distance) and the
+  default budget is 256 (was 128); `high_quality` 512; `relaxed` uses the
+  same scaled budget. The 9/16 self-review's "gyroid: 8.3 % of rays lost,
+  unchanged in 2.0.0" was budget exhaustion, not a law problem: on 3000
+  random rays through `gyroid(1.0, 0.1)` the 1.x default (128 steps at
+  L = √3) lost 0.7 %, 444 steps lose 0, and the only case left
+  (`gyroid(2.0, 0.1)`: 2 / 2540) is a ray grazing the shell and creeping by
+  ≈ ε per step, which 4096 steps resolve. Pinned by
+  `tpms_default_budget_random_rays`. A ray that stops inside the ε band
+  while grazing (`f = 7e-6`) is a hit by definition even when the first
+  sign change is further along.
+
 ## [v2.0.0] - 2026-09-16
 
 Taper is a distance bound (with a phantom-free singular plane), the four

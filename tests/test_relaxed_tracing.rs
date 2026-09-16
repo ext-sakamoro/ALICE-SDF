@@ -329,8 +329,8 @@ fn tpms_trace_correctly_with_lipschitz_bound() {
 /// Lipschitz bound themselves — the tree's `eval_lipschitz` or the value
 /// recorded at compile time — so a TPMS traces correctly without the caller
 /// knowing it is not a distance field. Every reported hit must be the
-/// oracle's first crossing; a `None` is only tolerated when the 128-step
-/// default budget runs out (L = 7 makes steps small), never as a skipped
+/// oracle's first crossing; a `None` is only tolerated when the default
+/// budget (256 · L steps since 2.1.0) runs out, never as a skipped
 /// surface.
 #[test]
 fn default_entry_points_apply_the_lipschitz_bound() {
@@ -588,4 +588,107 @@ fn taper_singular_plane_is_not_a_surface() {
         phantom_without > rays_total / 2,
         "{phantom_without} / {rays_total}"
     );
+}
+
+/// Random-direction rays through thin TPMS shells with the config-less
+/// `raymarch` (the 9/16 self-review measured 8.3 % misses on a gyroid with
+/// the 1.x defaults). Every miss was budget exhaustion: steps are `d / √3`
+/// and 128 of them do not carry a ray across several empty cells, and a ray
+/// grazing the shell creeps by ≈ ε per step. Since 2.1.0 the budget scales
+/// with the bound and the default is 256; what is left (≲ 0.1 %) is the
+/// grazing creep, which `max_steps = 4096` resolves completely — pinned
+/// here as the documented ceiling.
+///
+/// A hit is "a point within ε of the surface": a ray that grazes the shell
+/// at `f = 7e-6` stops there while the fixed-step oracle reports the first
+/// sign change (which can be units further along); such hits are accepted
+/// when `|f| ≤ ε` at the reported point.
+#[test]
+fn tpms_default_budget_random_rays() {
+    use alice_sdf::interval::eval_lipschitz;
+    use alice_sdf::raycast::raymarch;
+    let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut next = move || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((state >> 40) as f32) / ((1u64 << 24) as f32)
+    };
+    let random_rays: Vec<(Vec3, Vec3)> = (0..3000)
+        .map(|_| {
+            let o = Vec3::new(
+                next().mul_add(6.0, -3.0),
+                next().mul_add(6.0, -3.0),
+                next().mul_add(6.0, -3.0),
+            );
+            let d = Vec3::new(
+                next().mul_add(2.0, -1.0),
+                next().mul_add(2.0, -1.0),
+                next().mul_add(2.0, -1.0),
+            )
+            .normalize();
+            (o, d)
+        })
+        .collect();
+    // (hit-miss mismatches, t mismatches) of a marcher against the oracle
+    let judge = |node: &SdfNode,
+                 rays: &[(Vec3, Vec3)],
+                 oracle: &[Option<f32>],
+                 march: &dyn Fn(Vec3, Vec3) -> Option<f32>| {
+        let (mut hm, mut tm) = (0usize, 0usize);
+        for (&(o, d), want) in rays.iter().zip(oracle) {
+            match (want, march(o, d)) {
+                (Some(tw), Some(tg)) => {
+                    let on_surface = eval(node, o + d * tg).abs() <= 1e-4;
+                    if (tw - tg).abs() > t_tolerance(node, o + d * tg, d, 1e-4) && !on_surface {
+                        tm += 1;
+                    }
+                }
+                (None, None) => {}
+                _ => hm += 1,
+            }
+        }
+        (hm, tm)
+    };
+    let mut failures = Vec::new();
+    for (name, node) in [
+        ("gyroid s1 t0.1", SdfNode::gyroid(1.0, 0.1)),
+        ("gyroid s2 t0.1", SdfNode::gyroid(2.0, 0.1)),
+        ("gyroid s2 t0.08", SdfNode::gyroid(2.0, 0.08)),
+    ] {
+        let rays: Vec<(Vec3, Vec3)> = random_rays
+            .iter()
+            .copied()
+            .filter(|&(o, _)| eval(&node, o) > 0.02)
+            .collect();
+        let oracle = oracle_hits(&node, &rays);
+        let default_cfg = RaymarchConfig::default().with_bound(eval_lipschitz(&node));
+        let (hm, tm) = judge(&node, &rays, &oracle, &|o, d| {
+            raymarch(&node, o, d, MAX_DIST).map(|h| h.distance)
+        });
+        let budget = RaymarchConfig {
+            max_steps: 4096,
+            ..default_cfg
+        };
+        let (hm_big, tm_big) = judge(&node, &rays, &oracle, &|o, d| {
+            raymarch_with_config(&node, o, d, MAX_DIST, &budget).map(|h| h.distance)
+        });
+        eprintln!(
+            "{name}: default (max_steps {}) {hm} hit-miss + {tm} t / {} rays; 4096 steps {hm_big} hit-miss + {tm_big} t",
+            default_cfg.max_steps,
+            rays.len()
+        );
+        if hm as f32 > 0.001 * rays.len() as f32 || tm > 0 {
+            failures.push(format!(
+                "{name}: default budget {hm} hit-miss + {tm} t / {} rays",
+                rays.len()
+            ));
+        }
+        if hm_big > 0 || tm_big > 0 {
+            failures.push(format!(
+                "{name}: 4096 steps still {hm_big} hit-miss + {tm_big} t"
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

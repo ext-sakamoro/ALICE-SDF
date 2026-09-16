@@ -28,7 +28,13 @@ use wide::{f32x8, CmpGe, CmpGt, CmpLt};
 /// Raymarch configuration
 #[derive(Debug, Clone, Copy)]
 pub struct RaymarchConfig {
-    /// Maximum number of marching steps
+    /// Maximum number of marching steps. A ray that exhausts the budget is
+    /// reported as a miss, so the budget is a distance budget: with steps of
+    /// `d / lipschitz`, [`with_bound`](Self::with_bound) scales it by the
+    /// bound (a TPMS at L = √3 gets √3 × the steps of a unit-Lipschitz
+    /// field). The default (256) leaves ≲ 0.1 % of random rays through a
+    /// thin TPMS shell unresolved — rays that graze the shell and creep by
+    /// `≈ ε` per step; raise it or use `high_quality` for those.
     pub max_steps: u32,
     /// Distance threshold for surface hit
     pub epsilon: f32,
@@ -45,7 +51,7 @@ pub struct RaymarchConfig {
 impl Default for RaymarchConfig {
     fn default() -> Self {
         Self {
-            max_steps: 128,
+            max_steps: 256,
             epsilon: 0.0001,
             min_step: 0.0001,
             omega: 1.0,
@@ -58,7 +64,7 @@ impl RaymarchConfig {
     /// High quality configuration
     pub const fn high_quality() -> Self {
         Self {
-            max_steps: 256,
+            max_steps: 512,
             epsilon: 0.00001,
             min_step: 0.00001,
             omega: 1.0,
@@ -87,10 +93,18 @@ impl RaymarchConfig {
     /// recorded at compile time — so a TPMS surface (L up to 7) traces
     /// correctly with `RaymarchConfig::default()`. An infinite bound (no
     /// provable step size) leaves the configuration unchanged.
+    ///
+    /// The step budget grows with the bound (`max_steps · bound / lipschitz`,
+    /// rounded up): steps are `d / L`, so the same number of steps covers
+    /// `1 / L` of the distance. Until 2.1.0 the budget stayed at 128 and a
+    /// gyroid with the default configuration lost ~0.5 % of random rays to
+    /// budget exhaustion.
     #[inline]
     #[must_use]
     pub fn with_bound(mut self, bound: f32) -> Self {
         if bound.is_finite() && bound > self.lipschitz {
+            let scale = bound / self.lipschitz;
+            self.max_steps = ((self.max_steps as f32) * scale).ceil() as u32;
             self.lipschitz = bound;
         }
         self
@@ -114,7 +128,8 @@ impl RaymarchConfig {
             (1.0, 1.0)
         };
         Self {
-            max_steps: 128,
+            // same distance budget as `default().with_bound(lipschitz)`
+            max_steps: (256.0 * lipschitz).ceil() as u32,
             epsilon: 0.0001,
             min_step: 0.0001,
             omega,
