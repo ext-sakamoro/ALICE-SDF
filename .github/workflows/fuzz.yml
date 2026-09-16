@@ -129,7 +129,7 @@ jobs:
       # crash 検出時のみ artifact upload (通常 pass では skip)
       - name: Upload crash artifacts (if any)
         if: steps.run.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}
