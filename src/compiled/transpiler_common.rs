@@ -2382,9 +2382,19 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
 
-            SdfNode::Taper { child, factor } => {
+            SdfNode::Taper {
+                child,
+                factor,
+                reach,
+            } => {
+                self.ensure_helper("taper_bound");
                 let new_p = self.next_var();
                 let f = self.param(*factor);
+                // `reach` may be INFINITY (unbounded child); shaders have no
+                // inf literal, so ≥ 1e30 is the "no cone bound" sentinel on
+                // every path (`real::taper_bound` uses the same test).
+                let rx = self.param(if reach[0] < 1e30 { reach[0] } else { 1e30 });
+                let ry = self.param(if reach[1] < 1e30 { reach[1] } else { 1e30 });
                 // CPU law (`real::taper`): den = 1 - y * f, |den| >= 1e-6 with the
                 // sign kept. The transpilers used to emit `1 + y * f` (mirrored
                 // taper) with a `max(den, 0.001)` clamp — a different law.
@@ -2415,9 +2425,15 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("{}.z / {}", point_var, den_var),
                     ),
                 ));
-                // point transform only, like every CPU path (`real::taper`): the
-                // transpilers used to multiply the child distance by `den` too
-                self.transpile_node_inner(child, &new_p, code)
+                // Child distance at the tapered point → parent-space bound
+                // (`real::taper_bound`, same law as every CPU path).
+                let d = self.transpile_node_inner(child, &new_p, code);
+                let var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("alice_taper_bound({d}, {point_var}, {f}, {rx}, {ry})"),
+                ));
+                var
             }
 
             SdfNode::Displacement { child, strength } => {

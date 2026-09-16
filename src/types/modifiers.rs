@@ -140,13 +140,22 @@ impl SdfNode {
         }
     }
 
-    /// Taper along Y-axis
+    /// Taper along Y-axis: the child is evaluated at
+    /// `(x, y, z) / (1 − y·factor)`, narrower at +Y for `factor > 0`.
+    ///
+    /// The child's reach (`[r_xz, r_y]` from its AABB) is computed here and
+    /// stored in the node; it lets the evaluators bound the parent-space
+    /// shape by a cone so that the singular plane `y = 1/factor` is not a
+    /// phantom surface (see `real::taper_bound`). Rebuild the node with this
+    /// constructor after changing the child.
     #[must_use]
     #[inline]
     pub fn taper(self, factor: f32) -> Self {
+        let reach = crate::interval::taper_reach(&self);
         Self::Taper {
             child: Arc::new(self),
             factor,
+            reach,
         }
     }
 

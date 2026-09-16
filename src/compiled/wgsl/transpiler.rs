@@ -109,6 +109,7 @@ impl ShaderLang for WgslLang {
             "smooth_max" => Some(HELPER_SMOOTH_MAX),
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
             "hash_noise" => Some(HELPER_HASH_NOISE),
+            "taper_bound" => Some(HELPER_TAPER_BOUND),
             "perlin_noise" => Some(HELPER_PERLIN_NOISE),
             "sdf_rounded_cone" => Some(HELPER_SDF_ROUNDED_CONE),
             "sdf_pyramid" => Some(HELPER_SDF_PYRAMID),
@@ -654,6 +655,31 @@ fn smooth_max_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
 
 fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
     return smooth_max_fast(a, b, k, 1.0 / k);
+}";
+
+const HELPER_TAPER_BOUND: &str = r"// Same law as `alice_sdf::compiled::real::taper_bound` (Jacobian ball + cone ∩ slab).
+fn alice_taper_bound(d: f32, p: vec3<f32>, factor: f32, rx: f32, ry: f32) -> f32 {
+    let fa = abs(factor);
+    if (fa == 0.0) { return d; }
+    let den_abs = max(abs(1.0 - p.y * factor), 1e-6);
+    let s = 1.0 / den_abs;
+    let rho = sqrt(p.x * p.x + p.z * p.z);
+    let d_abs = abs(d);
+    let j0 = max(s, 1.0) + fa * s * s * rho;
+    let r = min(d_abs / j0, den_abs / (fa + fa));
+    let den1 = max(den_abs - fa * r, 1e-6);
+    let s1 = 1.0 / den1;
+    let j1 = max(s1, 1.0) + fa * s1 * s1 * (rho + r);
+    let mag = min(d_abs / j1, r);
+    let d_j = select(mag, -mag, d < 0.0);
+    if (rx >= 1e30 || ry >= 1e30) { return d_j; }
+    let k = rx * fa;
+    let inv_n = 1.0 / sqrt(1.0 + k * k);
+    let big_y = p.y - 1.0 / factor;
+    let d_cone = (rho - k * abs(big_y)) * inv_n;
+    let d_slab = abs(p.y) - ry;
+    let d_region = max(d_cone, d_slab);
+    return select(max(d_j, d_region), d_j, d < 0.0);
 }";
 
 const HELPER_HASH_NOISE: &str = crate::modifiers::HASH_NOISE_WGSL;

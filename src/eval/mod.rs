@@ -550,9 +550,13 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d = eval(child, p_flat);
             modifier_extrude(d, point.z, *half_height)
         }
-        SdfNode::Taper { child, factor } => {
-            let p = modifier_taper(point, *factor);
-            eval(child, p)
+        SdfNode::Taper {
+            child,
+            factor,
+            reach,
+        } => {
+            let d = eval(child, modifier_taper(point, *factor));
+            crate::compiled::real::taper_bound::<f32>(d, point.into(), *factor, *reach)
         }
         SdfNode::Displacement { child, strength } => {
             let d = eval(child, point);
@@ -733,7 +737,9 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
             eval_material(child, modifier_revolution(point, *offset))
         }
         SdfNode::Extrude { child, .. } => eval_material(child, modifier_extrude_point(point)),
-        SdfNode::Taper { child, factor } => eval_material(child, modifier_taper(point, *factor)),
+        SdfNode::Taper { child, factor, .. } => {
+            eval_material(child, modifier_taper(point, *factor))
+        }
         SdfNode::Displacement { child, .. } => eval_material(child, point),
         SdfNode::SineDisplacement { child, .. } => eval_material(child, point),
         SdfNode::PolarRepeat { child, count } => {

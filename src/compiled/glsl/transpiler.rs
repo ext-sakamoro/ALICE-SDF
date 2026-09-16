@@ -106,6 +106,7 @@ impl ShaderLang for GlslLang {
         match name {
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
             "hash_noise" => Some(HELPER_HASH_NOISE),
+            "taper_bound" => Some(HELPER_TAPER_BOUND),
             "perlin_noise" => Some(HELPER_PERLIN_NOISE),
             "sdf_rounded_cone" => Some(HELPER_SDF_ROUNDED_CONE),
             "sdf_pyramid" => Some(HELPER_SDF_PYRAMID),
@@ -542,6 +543,31 @@ impl GlslTranspiler {
 }
 
 // Helper function definitions for GLSL
+const HELPER_TAPER_BOUND: &str = r"// Same law as `alice_sdf::compiled::real::taper_bound` (Jacobian ball + cone ∩ slab).
+float alice_taper_bound(float d, vec3 p, float factor, float rx, float ry) {
+    float fa = abs(factor);
+    if (fa == 0.0) { return d; }
+    float den_abs = max(abs(1.0 - p.y * factor), 1e-6);
+    float s = 1.0 / den_abs;
+    float rho = sqrt(p.x * p.x + p.z * p.z);
+    float d_abs = abs(d);
+    float j0 = max(s, 1.0) + fa * s * s * rho;
+    float r = min(d_abs / j0, den_abs / (fa + fa));
+    float den1 = max(den_abs - fa * r, 1e-6);
+    float s1 = 1.0 / den1;
+    float j1 = max(s1, 1.0) + fa * s1 * s1 * (rho + r);
+    float mag = min(d_abs / j1, r);
+    float d_j = (d < 0.0) ? -mag : mag;
+    if (rx >= 1e30 || ry >= 1e30) { return d_j; }
+    float k = rx * fa;
+    float inv_n = 1.0 / sqrt(1.0 + k * k);
+    float big_y = p.y - 1.0 / factor;
+    float d_cone = (rho - k * abs(big_y)) * inv_n;
+    float d_slab = abs(p.y) - ry;
+    float d_region = max(d_cone, d_slab);
+    return (d < 0.0) ? d_j : max(d_j, d_region);
+}";
+
 const HELPER_HASH_NOISE: &str = crate::modifiers::HASH_NOISE_GLSL;
 
 const HELPER_PERLIN_NOISE: &str = r"uint alice_perlin_hash(int x, int y, int z, uint seed) {

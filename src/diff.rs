@@ -903,9 +903,10 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
             child: new_child,
             half_height: *half_height,
         },
-        SdfNode::Taper { factor, .. } => SdfNode::Taper {
+        SdfNode::Taper { factor, reach, .. } => SdfNode::Taper {
             child: new_child,
             factor: *factor,
+            reach: *reach,
         },
         SdfNode::Displacement { strength, .. } => SdfNode::Displacement {
             child: new_child,

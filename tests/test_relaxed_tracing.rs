@@ -350,9 +350,9 @@ fn default_entry_points_apply_the_lipschitz_bound() {
         let oracle = oracle_hits(&node, &rays);
         let compiled = CompiledSdf::compile(&node);
         assert!(
-            compiled.lipschitz > 1.5,
+            compiled.lipschitz() > 1.5,
             "{name}: compiled bound {}",
-            compiled.lipschitz
+            compiled.lipschitz()
         );
 
         // SIMD: 8 rays per packet, padded with copies of the last ray
@@ -456,11 +456,12 @@ fn default_entry_points_apply_the_lipschitz_bound() {
 /// marchers step by `d` there, which is sound only when the field is still
 /// a distance bound. Domain repetition of a child that is symmetric inside
 /// its cell *is* a distance field — every ray must agree with the oracle.
-/// An off-centre child makes the repeated field jump on the cell borders,
-/// and taper over-estimates on its shrinking side (`x / s` with `s < 1`
-/// stretches child-space distances, so `d` is not a bound there); those
-/// miss rates are pinned as documented numbers (regression detectors), not
-/// claimed as correct.
+/// An off-centre child makes the repeated field jump on the cell borders;
+/// that miss rate is pinned as a documented number (regression detector),
+/// not claimed as correct. Taper returns a distance bound since 2.0
+/// (`real::taper_bound`: Jacobian ball + cone ∩ slab), so it is in the
+/// exact set — including rays that cross the singular plane `y = 1/f`,
+/// which the Jacobian term alone would report as a surface.
 #[test]
 fn non_lipschitz_laws_default_tracing() {
     use alice_sdf::raycast::raymarch;
@@ -479,6 +480,18 @@ fn non_lipschitz_laws_default_tracing() {
             SdfNode::sphere(0.3)
                 .translate(0.9, 0.0, 0.0)
                 .polar_repeat(6),
+        ),
+        // 2.0: was pinned at 6 % (28 / 576 rays missed on the shrinking side)
+        ("taper_box", SdfNode::box3d(1.0, 1.0, 1.0).taper(0.3)),
+        // singular plane y = 1/f = 2 inside the ray box (±3): crossing rays
+        // must pass, not hit a phantom
+        ("taper_sphere_f05", SdfNode::sphere(0.8).taper(0.5)),
+        ("taper_torus_neg", SdfNode::torus(0.7, 0.2).taper(-0.6)),
+        (
+            "taper_offset_box",
+            SdfNode::box3d(0.6, 1.2, 0.8)
+                .translate(0.3, 0.2, -0.2)
+                .taper(0.35),
         ),
     ];
     for (name, node) in &exact {
@@ -501,17 +514,13 @@ fn non_lipschitz_laws_default_tracing() {
 
     // Pinned miss rates — documented ceilings, not correctness claims;
     // lowering one is progress, raising one is a regression.
-    let pinned: Vec<(&str, SdfNode, f32)> = vec![
-        (
-            "repeat_infinite_offset",
-            SdfNode::sphere(0.3)
-                .translate(0.45, 0.0, 0.0)
-                .repeat_infinite(1.2, 1.2, 1.2),
-            0.10,
-        ),
-        // 28 / 576 rays (4.9 %) miss on the shrinking side of the taper
-        ("taper_box", SdfNode::box3d(1.0, 1.0, 1.0).taper(0.3), 0.06),
-    ];
+    let pinned: Vec<(&str, SdfNode, f32)> = vec![(
+        "repeat_infinite_offset",
+        SdfNode::sphere(0.3)
+            .translate(0.45, 0.0, 0.0)
+            .repeat_infinite(1.2, 1.2, 1.2),
+        0.10,
+    )];
     for (name, node, ceiling) in &pinned {
         let rays: Vec<(Vec3, Vec3)> = rays()
             .into_iter()
@@ -534,4 +543,49 @@ fn non_lipschitz_laws_default_tracing() {
             "{name}: miss rate {rate:.3} exceeds the pinned {ceiling}"
         );
     }
+}
+
+/// The taper map is singular on the plane `y = 1/f`; the Jacobian bound
+/// alone goes to 0 there and every ray crossing the plane away from the
+/// shape would stop on it. The cone ∩ slab term from the child's reach is
+/// what prevents that — pinned here by evaluating the same node with the
+/// reach removed (`[INFINITY; 2]`, the pre-2.0 / unbounded-child form).
+#[test]
+fn taper_singular_plane_is_not_a_surface() {
+    use alice_sdf::raycast::raymarch;
+    use std::sync::Arc;
+    let child = SdfNode::sphere(0.8);
+    let with_reach = child.clone().taper(0.5);
+    let without_reach = SdfNode::Taper {
+        child: Arc::new(child),
+        factor: 0.5,
+        reach: [f32::INFINITY; 2],
+    };
+    let (mut phantom_without, mut rays_total) = (0, 0);
+    for i in 0..24 {
+        for j in 0..24 {
+            let x = -3.0 + 6.0 * i as f32 / 23.0;
+            let z = -3.0 + 6.0 * j as f32 / 23.0;
+            if x.hypot(z) < 1.2 {
+                continue; // near the axis the cone is close: not a phantom test
+            }
+            rays_total += 1;
+            let o = Vec3::new(x, -3.0, z);
+            let hit = raymarch(&with_reach, o, Vec3::Y, MAX_DIST);
+            assert!(
+                hit.is_none(),
+                "ray from {o:?} up through y = 2 hit a phantom at t = {:?}",
+                hit.map(|h| h.distance)
+            );
+            if raymarch(&without_reach, o, Vec3::Y, MAX_DIST).is_some() {
+                phantom_without += 1;
+            }
+        }
+    }
+    eprintln!("taper singular plane: {phantom_without} / {rays_total} rays stop on it without the reach, 0 with");
+    // the test is only meaningful if the plane really is a phantom without the bound
+    assert!(
+        phantom_without > rays_total / 2,
+        "{phantom_without} / {rays_total}"
+    );
 }

@@ -1098,11 +1098,14 @@ impl Instruction {
         inst
     }
 
-    /// Create a taper instruction
+    /// Create a taper instruction: `params[0]` = factor, `params[1..3]` =
+    /// child reach `[r_xz, r_y]` (see `SdfNode::Taper::reach`).
     #[inline]
-    pub const fn taper(factor: f32) -> Self {
+    pub const fn taper(factor: f32, reach: [f32; 2]) -> Self {
         let mut inst = Self::new(OpCode::Taper);
         inst.params[0] = factor;
+        inst.params[1] = reach[0];
+        inst.params[2] = reach[1];
         inst.child_count = 1;
         inst
     }

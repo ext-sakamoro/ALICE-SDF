@@ -452,6 +452,20 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                     OpCode::LatticeDeform => {
                         value_stack.set(vsp - 1, value_stack.get(vsp - 1) / frame_lane.get(csp));
                     }
+                    OpCode::Taper => {
+                        // Child distance at the tapered point → parent-space bound
+                        // (same law as the tree evaluator, `real::taper_bound`).
+                        let d = value_stack.get(vsp - 1);
+                        value_stack.set(
+                            vsp - 1,
+                            real::taper_bound(
+                                d,
+                                frame.point,
+                                frame.params[0],
+                                [frame.params[1], frame.params[2]],
+                            ),
+                        );
+                    }
                     OpCode::HeightmapDisplacement => {
                         let amplitude = frame.params[0];
                         let hm_scale = frame.params[1];

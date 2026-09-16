@@ -57,6 +57,11 @@ impl SdfCategory {
 /// - An operation combining two shapes (union, intersection, etc.)
 /// - A transform applied to a child node
 /// - A modifier deforming a child node
+/// serde default for `SdfNode::Taper::reach` (files written before 2.0).
+fn taper_reach_unknown() -> [f32; 2] {
+    [f32::INFINITY; 2]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SdfNode {
     // === Primitives ===
@@ -1123,12 +1128,23 @@ pub enum SdfNode {
         p2: Vec2,
     },
 
-    /// Taper: scale XZ by inverse of (1 - y*factor)
+    /// Taper: the child is evaluated at `(x, y, z) / (1 − y·factor)` (a
+    /// perspective map with centre `(0, 1/factor, 0)`), and its distance is
+    /// turned into a parent-space bound by `real::taper_bound`.
     Taper {
         /// Child node
         child: Arc<Self>,
         /// Taper factor
         factor: f32,
+        /// Reach of the child in its own space, `[r_xz, r_y]` (`|q_xz| ≤ r_xz`,
+        /// `|q_y| ≤ r_y`), computed by [`SdfNode::taper`] from the child's
+        /// AABB. It bounds the parent-space shape by a cone ∩ slab so that the
+        /// singular plane `y = 1/factor` is not reported as a surface.
+        /// `[INFINITY; 2]` (unbounded child, or a file written before 2.0)
+        /// keeps only the Jacobian bound. Must be recomputed
+        /// (`SdfNode::taper`) if the child changes.
+        #[serde(default = "taper_reach_unknown")]
+        reach: [f32; 2],
     },
 
     /// Sin-based displacement (post-processing modifier)

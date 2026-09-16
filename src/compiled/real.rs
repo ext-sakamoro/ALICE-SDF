@@ -13,16 +13,23 @@ use glam::{Quat, Vec2, Vec3};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use wide::{f32x8, CmpGe, CmpGt, CmpLe, CmpLt};
 
+mod private {
+    /// Seals [`super::Real`]: only `f32` and `f32x8` implement it.
+    pub trait Sealed {}
+    impl Sealed for f32 {}
+    impl Sealed for wide::f32x8 {}
+}
+
 /// Scalar (or SIMD lane bundle) with the operations the evaluator needs.
 ///
-/// **Implemented for `f32` and `f32x8` only; not intended for external
-/// implementations.** The trait exists so every law is written once and
-/// instantiated for the scalar and 8-lane evaluators; required methods are
-/// added whenever a law needs one (`signum` in 1.10.1), which would break a
-/// downstream `impl Real`. It will gain a private `Sealed` supertrait in
-/// 2.0 — until then, treat it as sealed.
+/// **Sealed** (since 2.0): implemented for `f32` and `f32x8` only. The trait
+/// exists so every law is written once and instantiated for the scalar and
+/// 8-lane evaluators; required methods are added whenever a law needs one
+/// (`signum` in 1.10.1), which is why external implementations are not
+/// supported.
 pub trait Real:
-    Copy
+    private::Sealed
+    + Copy
     + Send
     + Sync
     + 'static
@@ -734,6 +741,80 @@ pub fn taper<R: Real>(p: Vec3R<R>, factor: f32) -> Vec3R<R> {
     let den = R::select(den.lt(R::zero()), -mag, mag);
     let s = R::one() / den;
     Vec3R::new(p.x * s, p.y, p.z * s)
+}
+
+/// Taper distance bound: turn the child distance at the tapered point into
+/// a value that is safe to step by in the parent space (same law for the
+/// tree evaluator, the compiled scalar / SIMD paths and the three shader
+/// helpers `alice_taper_bound`).
+///
+/// `q = (x, y, z) / den`, `den = 1 − f·y`, is a perspective map with centre
+/// `c = (0, 1/f, 0)`: every line through `c` collapses to one `q`, so the
+/// parent-space shape is a double cone from `c` over the child. Two bounds
+/// are combined:
+///
+/// 1. **Jacobian ball.** `J = diag(s, 1, s) + f s² (x, 0, z)ᵀ e_yᵀ` with
+///    `s = 1 / den`, so `‖J‖ ≤ max(|s|, 1) + |f| s² ρ`, `ρ = √(x² + z²)`.
+///    The child's distance is a distance in `q` space; a parent-space ball
+///    of radius `r` maps into a `q` ball of radius `r · max‖J‖` over the
+///    ball. `‖J‖` grows towards the plane `y = 1/f`, so the bound is taken
+///    over a ball of radius `r = min(|d| / ‖J(p)‖, |den| / 2|f|)` (at most
+///    half way to the plane, where `|s|` at most doubles):
+///    `d_J = sign(d) · min(|d| / ‖J‖_ball, r)`.
+/// 2. **Cone ∩ slab.** With the child inside `|q_xz| ≤ r_xz`, `|y| ≤ r_y`
+///    (`reach`, computed by `SdfNode::taper` from the child's AABB), the
+///    parent-space shape lies in `{ρ ≤ r_xz |f| |y − 1/f|} ∩ {|y| ≤ r_y}`,
+///    whose signed distance `max((ρ − k|Y|) / √(1 + k²), |y| − r_y)`
+///    (`k = r_xz |f|`, `Y = y − 1/f`) is a lower bound outside the shape.
+///    This is what keeps the plane `y = 1/f` from becoming a phantom
+///    surface: bound 1 alone goes to 0 there (the map is singular), bound 2
+///    stays positive away from the apex. `reach = [INFINITY; 2]` (unknown /
+///    unbounded child, files written before 2.0) disables it.
+///
+/// Inside the shape only bound 1 applies (the region bound says nothing
+/// about the distance to the shape's own boundary from within). `f = 0` is
+/// the identity: `d` is returned unchanged.
+#[inline(always)]
+pub fn taper_bound<R: Real>(d: R, p: Vec3R<R>, factor: f32, reach: [f32; 2]) -> R {
+    let f_abs = factor.abs();
+    if f_abs == 0.0 {
+        return d;
+    }
+    let fa = R::splat(f_abs);
+    let one = R::one();
+    let eps = R::splat(1e-6);
+
+    // Same clamped denominator as `taper` (|den| ≥ 1e-6, sign kept).
+    let den = one - p.y * R::splat(factor);
+    let den_abs = den.abs().max(eps);
+    let s = one / den_abs;
+    let rho = (p.x * p.x + p.z * p.z).sqrt();
+    let d_abs = d.abs();
+
+    // Bound 1: Jacobian over a ball.
+    let j0 = s.max(one) + fa * s * s * rho;
+    let r = (d_abs / j0).min(den_abs / (fa + fa));
+    let den1 = (den_abs - fa * r).max(eps);
+    let s1 = one / den1;
+    let j1 = s1.max(one) + fa * s1 * s1 * (rho + r);
+    let mag = (d_abs / j1).min(r);
+    let d_j = R::select(d.lt(R::zero()), R::zero() - mag, mag);
+
+    // ≥ 1e30 (or INFINITY) = unknown / unbounded child: no cone bound. The
+    // shaders carry the same sentinel because they have no inf literal.
+    if reach[0] >= 1e30 || reach[1] >= 1e30 {
+        return d_j;
+    }
+
+    // Bound 2: distance to the cone ∩ slab that contains the shape.
+    let k = reach[0] * f_abs;
+    let inv_n = 1.0 / (1.0 + k * k).sqrt();
+    let big_y = p.y - R::splat(1.0 / factor);
+    let d_cone = (rho - R::splat(k) * big_y.abs()) * R::splat(inv_n);
+    let d_slab = p.y.abs() - R::splat(reach[1]);
+    let d_region = d_cone.max(d_slab);
+
+    R::select(d.lt(R::zero()), d_j, d_j.max(d_region))
 }
 
 /// Polar repeat around Y with precomputed sector / reciprocal.

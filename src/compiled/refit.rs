@@ -686,9 +686,17 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
             let max_extent = child.half_size().max_element();
             child.expand(max_extent * params[0].abs())
         }
+        // Taper is a perspective map: |p_xz| = |q_xz| · |1 − f·y| ≤ r_xz (1 + |f| r_y)
+        // over the child's y range, y unchanged. (Until 2.0 this expanded by
+        // `max_extent · |f|`, which undershoots for shapes larger than 1.)
         OpCode::Taper => {
-            let max_extent = child.half_size().max_element();
-            child.expand(max_extent * params[0].abs())
+            let f = params[0].abs();
+            let (lo, hi) = (child.min(), child.max());
+            let reach = |a: f32, b: f32| a.abs().max(b.abs());
+            let r_xz = reach(lo.x, hi.x).max(reach(lo.z, hi.z));
+            let r_y = reach(lo.y, hi.y);
+            let e = r_xz * f.mul_add(r_y, 1.0);
+            AabbPacked::new(Vec3::new(-e, lo.y, -e), Vec3::new(e, hi.y, e))
         }
         OpCode::Shear => {
             let max_shear = params[0].abs().max(params[1].abs()).max(params[2].abs());

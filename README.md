@@ -54,7 +54,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Distance Field Heatmap** - cross-section slicing with 4 color maps (coolwarm, binary, viridis, magma)
 - **Shell / Offset Surface** - variable-thickness shell modifier with inner/outer offset control
 - **Volume & Surface Area** - Monte Carlo estimation with deterministic PRNG and standard error
-- **ALICE-Font Bridge** - font glyph → 2D/3D SDF conversion, text layout, 3D extrusion (`--features font`, not available on crates.io releases (1.7.7 → 1.10.x) — see [Installation](#installation) note; use a `git` dep for the bridge)
+- **ALICE-Font Bridge** - font glyph → 2D/3D SDF conversion, text layout, 3D extrusion (`--features font` is an inert gate on crates.io until alice-font publishes — see [Installation](#installation) note; use a `git` dep for the bridge)
 - **Auto Tight AABB** - interval arithmetic + binary search to find minimal bounding box containing the SDF surface
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
 - **3 shader targets** - GLSL, WGSL, HLSL transpilation
@@ -332,7 +332,7 @@ SdfNode
 
 ## Installation
 
-> **Note (crates.io releases 1.7.7 → 1.10.x)** — 5 bridge features are currently removed from `[features]`: `codec` / `physics` / `asp` / `sdf-cache` / `font`. Their `src/*_bridge.rs` modules remain `#[cfg(feature = "...")]`-gated so they simply do not compile on the crates.io releases. Users who need the bridges keep using `path`/`git` deps against the sibling repos (`ALICE-Codec` / `ALICE-Physics` / `libasp` / `alice-cache` / `alice-font`). Restoration is tracked for a future minor release once the transitive dep chain (alice-codec / libasp / alice-cache / alice-font) publishes to crates.io; alice-physics is published (1.1.0) so that bridge is the first candidate. See [CHANGELOG.md](CHANGELOG.md) `[v1.7.7] - 2026-09-12` entry for details, including the RUSTSEC-2025-0020 (pyo3) and RUSTSEC-2025-0141 (bincode) security fixes and the pyo3 `0.23 → 0.29` / bincode `1.3 → 2.0` bumps.
+> **Bridge features on crates.io** — since 1.12.0 `physics` (alice-physics 1.1) / `codec` (alice-codec 0.1.2) / `asp` (libasp 1.0) / `sdf-cache` (alice-cache 0.2) resolve to the sibling crates on crates.io and are tested by the CI `bridges` job. `font` is still an inert gate: the `font_bridge` module needs a local `alice-font` path dep plus `RUSTFLAGS="--cfg alice_font_bridge"` until alice-font publishes. (Between 1.7.7 and 1.11.0 all five were removed from `[features]`; see the `[v1.7.7]` and `[v1.12.0]` CHANGELOG entries.)
 
 ### Rust
 
@@ -745,7 +745,7 @@ User: "A snowman with a top hat"
 
 LLM-generated shapes are not just visual — they are physics-ready. The `CompiledSdfField` wrapper exposes the SDF as an O(1) collision query surface, enabling rigid body, destruction, and fluid interactions without convex decomposition.
 
-> **Bridge note** — The `physics` feature is not available on the crates.io releases (1.7.7 → 1.10.x). Until it is restored, use a `path`/`git` dep against this repo with `alice-sdf = { git = "https://github.com/ext-sakamoro/ALICE-SDF", features = ["physics"] }`. See [Installation](#installation).
+> **Bridge note** — `alice-sdf = { version = "2", features = ["physics"] }` pulls alice-physics from crates.io (since 1.12.0). See [Installation](#installation).
 
 ### Quick Start
 

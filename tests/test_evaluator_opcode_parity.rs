@@ -101,7 +101,7 @@ fn check_parity(name: &str, node: &SdfNode) -> (Vec<String>, BTreeSet<String>) {
         }
     }
     let ops = compiled
-        .instructions
+        .instructions()
         .iter()
         .map(|i| format!("{:?}", i.opcode))
         .collect();

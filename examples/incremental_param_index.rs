@@ -19,7 +19,7 @@ use glam::Vec3;
 
 fn first_of(compiled: &CompiledSdf, opcode: OpCode) -> usize {
     compiled
-        .instructions
+        .instructions()
         .iter()
         .position(|i| i.opcode == opcode)
         .expect("opcode not present in compiled scene")

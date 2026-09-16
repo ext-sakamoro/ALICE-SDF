@@ -6,6 +6,53 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v2.0.0] - 2026-09-16
+
+Taper is a distance bound (with a phantom-free singular plane), the four
+breaking changes deferred through 1.x (sealed `Real`, private `CompiledSdf`
+fields, `dep:` features, no `lazy_static` feature), dual contouring without
+fins, one noise law for texture fitting with GPU parity.
+
+### Changed — **breaking**
+
+- `SdfNode::Taper` gained `reach: [f32; 2]` (the child's `[r_xz, r_y]`
+  from its AABB, computed by `SdfNode::taper`); hand-written `Taper { .. }`
+  literals must add it (`[f32::INFINITY; 2]` = no cone bound). Serialized
+  trees from 1.x load with that default.
+- `compiled::real::Real` is sealed (`f32` / `f32x8` only, as documented
+  since 1.12.0).
+- `CompiledSdf` fields are private: `instructions()`, `aux_data()`,
+  `node_count()`, `lipschitz()`; `#[non_exhaustive]` removed.
+- Optional dependencies are enabled with `dep:` — `--features wgpu` /
+  `clap` / `pyo3` / `numpy` / `cranelift-*` / `pollster` / `bytemuck` /
+  `futures-channel` no longer exist (use `gpu` / `cli` / `python` / `jit`);
+  `image` stays a named feature (heightmap import). The `lazy_static`
+  compatibility feature is gone.
+- `optimize`: a taper with factor 0 is dropped as the identity (it used to
+  drop factor **1**, which is not the identity).
+
+### Changed — taper is a distance bound (law change, same shape)
+
+- `Taper` returned the child's distance at the tapered point, which is
+  not a parent-space distance: default tracing lost 4.9 % of the rays on
+  the shrinking side. It now returns `real::taper_bound`: the child
+  distance divided by the Jacobian norm over a ball (the map is a
+  perspective projection with centre `(0, 1/f, 0)`; the norm grows
+  towards that plane, so the ball is capped at half the distance to it),
+  combined with the signed distance to the cone ∩ slab that contains the
+  shape (from the child's reach). The second term is what keeps the plane
+  `y = 1/f` from becoming a phantom surface — the Jacobian term alone goes
+  to 0 there and *every* ray crossing the plane stopped on it (508 / 508 in
+  the new `taper_singular_plane_is_not_a_surface`). Same law on the tree
+  evaluator, compiled scalar / SIMD, interval arithmetic and the three
+  shader helpers (`alice_taper_bound`); GPU parity and naga validation
+  cover it. `tests/test_relaxed_tracing.rs`: taper moved from the pinned
+  (6 %) to the exact set with four scenes, including ones whose singular
+  plane lies inside the ray box. `eval_lipschitz` stays `INFINITY` for
+  taper (no finite global constant). The BVH AABB of a taper is the cone's
+  box (`r_xz (1 + |f| r_y)`), which the old `expand(extent · |f|)`
+  undershot for shapes larger than 1.
+
 ### Changed — texture-fit uses the crate's PCG noise; GPU parity of the emitted shader
 
 - The texture module had its own value noise (`fract(sin(dot) · 43758.5)`)

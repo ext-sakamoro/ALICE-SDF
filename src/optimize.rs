@@ -247,9 +247,14 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
             p1: *p1,
             p2: *p2,
         },
-        SdfNode::Taper { child, factor } => SdfNode::Taper {
+        SdfNode::Taper {
+            child,
+            factor,
+            reach,
+        } => SdfNode::Taper {
             child: Arc::new(optimize(child)),
             factor: *factor,
+            reach: *reach,
         },
         SdfNode::Displacement { child, strength } => SdfNode::Displacement {
             child: Arc::new(optimize(child)),
@@ -411,9 +416,11 @@ fn fold_identity_modifier(node: SdfNode) -> SdfNode {
             ref child,
             curvature,
         } if curvature.abs() < EPS => child.as_ref().clone(),
-        SdfNode::Taper { ref child, factor } if (factor - 1.0).abs() < EPS => {
-            child.as_ref().clone()
-        }
+        // Taper is the identity at factor 0 (`1 − 0·y`); until 2.0 this
+        // dropped tapers with factor 1 instead.
+        SdfNode::Taper {
+            ref child, factor, ..
+        } if factor.abs() < EPS => child.as_ref().clone(),
         node => node,
     }
 }

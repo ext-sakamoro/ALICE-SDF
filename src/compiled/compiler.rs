@@ -33,28 +33,59 @@ pub enum CompileError {
 ///
 /// A flat array of instructions that can be evaluated without
 /// recursion or pointer chasing. Construct it with [`CompiledSdf::compile`]
-/// / [`CompiledSdf::try_compile`] (the fields are readable; the struct is
-/// `#[non_exhaustive]` so later additions such as `lipschitz` stay
-/// semver-minor).
+/// / [`CompiledSdf::try_compile`]; the bytecode is read through
+/// [`instructions`](Self::instructions) / [`aux_data`](Self::aux_data) and
+/// the compile-time facts through [`node_count`](Self::node_count) /
+/// [`lipschitz`](Self::lipschitz) (fields are private since 2.0, so new
+/// compile-time data can be added without a major bump).
 #[derive(Clone, Debug)]
-#[non_exhaustive]
 pub struct CompiledSdf {
     /// The instruction bytecode
-    pub instructions: Vec<Instruction>,
+    pub(crate) instructions: Vec<Instruction>,
     /// Auxiliary data buffer for operations whose data exceeds `Instruction::params`.
     /// Indexed by `Instruction::aux_offset` / `Instruction::aux_len`.
-    pub aux_data: Vec<f32>,
+    pub(crate) aux_data: Vec<f32>,
     /// Original node count (for statistics)
-    pub node_count: usize,
+    pub(crate) node_count: usize,
+    /// Lipschitz bound of the field on its exterior, see [`Self::lipschitz`].
+    pub(crate) lipschitz: f32,
+}
+
+impl CompiledSdf {
+    /// The instruction bytecode (postfix, with `PopTransform` frames).
+    #[inline]
+    #[must_use]
+    pub fn instructions(&self) -> &[Instruction] {
+        &self.instructions
+    }
+
+    /// Auxiliary data for operations whose data exceeds `Instruction::params`
+    /// (heightmaps, lattices, bones, polygon vertices), indexed by
+    /// `Instruction::aux_offset` / `aux_len`.
+    #[inline]
+    #[must_use]
+    pub fn aux_data(&self) -> &[f32] {
+        &self.aux_data
+    }
+
+    /// Number of `SdfNode`s the bytecode was compiled from.
+    #[inline]
+    #[must_use]
+    pub const fn node_count(&self) -> usize {
+        self.node_count
+    }
+
     /// Lipschitz bound of the field on its exterior
     /// ([`crate::interval::eval_lipschitz`] at compile time). The marchers
     /// step by `d / lipschitz`, so a compiled TPMS (√3 … 7) traces correctly
     /// with the default config; `f32::INFINITY` when the tree has no finite
     /// bound (domain repetition, taper, …), in which case they step by `d`.
-    pub lipschitz: f32,
-}
+    #[inline]
+    #[must_use]
+    pub const fn lipschitz(&self) -> f32 {
+        self.lipschitz
+    }
 
-impl CompiledSdf {
     /// Compile an SdfNode tree into bytecode.
     ///
     /// # Panics
@@ -967,9 +998,13 @@ impl Compiler {
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
             }
 
-            SdfNode::Taper { child, factor } => {
+            SdfNode::Taper {
+                child,
+                factor,
+                reach,
+            } => {
                 let inst_idx = self.instructions.len();
-                self.instructions.push(Instruction::taper(*factor));
+                self.instructions.push(Instruction::taper(*factor, *reach));
                 self.compile_node(child);
                 self.instructions.push(Instruction::pop_transform());
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;

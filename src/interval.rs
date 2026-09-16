@@ -1062,7 +1062,13 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         }
         // q = (x·s, y, z·s) with s = 1 / (1 - factor·y): if the denominator can
         // reach 0 on the box the map is singular (the evaluation itself blows up).
-        SdfNode::Taper { child, factor } => {
+        // The child interval is then pushed through `real::taper_bound`
+        // (Jacobian ball + cone ∩ slab) in interval arithmetic.
+        SdfNode::Taper {
+            child,
+            factor,
+            reach,
+        } => {
             let denom = Interval::point(1.0) - bounds.y * Interval::point(*factor);
             if denom.lo <= 0.0 && denom.hi >= 0.0 {
                 return Interval::EVERYTHING;
@@ -1071,14 +1077,15 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 (1.0 / denom.lo).min(1.0 / denom.hi),
                 (1.0 / denom.lo).max(1.0 / denom.hi),
             );
-            eval_interval(
+            let d = eval_interval(
                 child,
                 Vec3Interval {
                     x: bounds.x * s,
                     y: bounds.y,
                     z: bounds.z * s,
                 },
-            )
+            );
+            taper_bound_interval(d, bounds, *factor, *reach)
         }
         SdfNode::Displacement { child, strength } => {
             eval_interval(child, bounds).expand(strength.abs())
@@ -1477,7 +1484,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         } => (amplitude * frequency)
             .abs()
             .mul_add(PERLIN_GRAD, eval_lipschitz(child)),
-        // Taper divides XZ by `1 − f·y`, singular on the plane y = 1/f.
+        // Taper divides XZ by `1 − f·y`, singular on the plane y = 1/f. The
+        // value is a distance *bound* (`real::taper_bound`) safe for plain
+        // sphere tracing, but it has no finite global Lipschitz constant.
         SdfNode::Taper { .. } => f32::INFINITY,
         // `d + s·sin(5x)·sin(5y)·sin(5z)`: |∇(sin·sin·sin)| ≤ 1, times 5.
         SdfNode::Displacement { child, strength } => {
@@ -1590,6 +1599,82 @@ fn child_radius(child: &SdfNode, axis: Axis) -> f32 {
         UNBOUNDED_CHILD_RADIUS
     } else {
         r
+    }
+}
+
+/// Interval form of `real::taper_bound` (same steps, each in interval
+/// arithmetic; `d` is the child interval over the tapered box).
+fn taper_bound_interval(d: Interval, p: Vec3Interval, factor: f32, reach: [f32; 2]) -> Interval {
+    let f_abs = factor.abs();
+    if f_abs == 0.0 || d.lo == f32::NEG_INFINITY || d.hi == f32::INFINITY {
+        return d;
+    }
+    let one = Interval::point(1.0);
+    let eps = Interval::point(1e-6);
+    // Reciprocal / quotient for positive intervals (all denominators here are
+    // ≥ 1e-6 or ≥ 1).
+    let recip = |a: Interval| Interval::new(1.0 / a.hi, 1.0 / a.lo);
+    let div = |a: Interval, b: Interval| a * recip(b);
+
+    let den_abs = (one - p.y * Interval::point(factor)).abs().max(eps);
+    let s = recip(den_abs);
+    let rho = (p.x.sqr() + p.z.sqr()).sqrt();
+    let d_abs = d.abs();
+
+    let j0 = s.max(one) + s.sqr() * rho * f_abs;
+    let r = div(d_abs, j0).min(den_abs * (0.5 / f_abs));
+    let den1 = (den_abs - r * f_abs).max(eps);
+    let s1 = recip(den1);
+    let j1 = s1.max(one) + s1.sqr() * (rho + r) * f_abs;
+    let mag = div(d_abs, j1).min(r);
+    let d_j = if d.hi < 0.0 {
+        -mag
+    } else if d.lo >= 0.0 {
+        mag
+    } else {
+        (-mag).hull(mag)
+    };
+
+    if reach[0] >= 1e30 || reach[1] >= 1e30 {
+        return d_j;
+    }
+    let k = reach[0] * f_abs;
+    let inv_n = 1.0 / (1.0 + k * k).sqrt();
+    let big_y = p.y - 1.0 / factor;
+    let d_cone = (rho - big_y.abs() * k) * inv_n;
+    let d_slab = p.y.abs() - reach[1];
+    let d_region = d_cone.max(d_slab);
+
+    if d.hi < 0.0 {
+        d_j
+    } else if d.lo >= 0.0 {
+        d_j.max(d_region)
+    } else {
+        d_j.hull(d_j.max(d_region))
+    }
+}
+
+/// Reach of a taper child in its own (q) space, `[r_xz, r_y]`: `|q_xz| ≤ r_xz`
+/// and `|q_y| ≤ r_y` over the child's AABB. `[INFINITY; 2]` when the child has
+/// no finite AABB (a plane, an infinite repeat, …), which disables the cone
+/// bound in `real::taper_bound`.
+pub(crate) fn taper_reach(child: &SdfNode) -> [f32; 2] {
+    use crate::compiled::{get_scene_aabb, CompiledSdfBvh};
+    let Ok(bvh) = CompiledSdfBvh::try_compile(child) else {
+        return [f32::INFINITY; 2];
+    };
+    let aabb = get_scene_aabb(&bvh);
+    let (lo, hi) = (aabb.min(), aabb.max());
+    if !aabb.is_valid() || !lo.is_finite() || !hi.is_finite() {
+        return [f32::INFINITY; 2];
+    }
+    let reach = |a: f32, b: f32| a.abs().max(b.abs());
+    let r_xz = reach(lo.x, hi.x).hypot(reach(lo.z, hi.z));
+    let r_y = reach(lo.y, hi.y);
+    if r_xz > UNBOUNDED_CHILD_SENTINEL || r_y > UNBOUNDED_CHILD_SENTINEL {
+        [f32::INFINITY; 2]
+    } else {
+        [r_xz, r_y]
     }
 }
 
