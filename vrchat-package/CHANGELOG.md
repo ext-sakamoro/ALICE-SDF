@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- One shader source: `Runtime/Shaders/` (the VPM path the Baker and the
+  Samples include) is the only copy. The legacy `Assets/AliceSDF/Shaders/`
+  layout had forked in February and carried the PBR surface (GGX /
+  Schlick / Smith, per-material colour / roughness / metallic,
+  material-id aware `op*Mat` ops) that `Runtime/` lacked, while `Runtime/`
+  had 40 more primitives; the PBR surface and the material ops are now in
+  `Runtime/` and the fork is deleted. The June `ALICE-SDF-VRChat.unitypackage`
+  (a snapshot of the old layout) is removed with the "Legacy" install
+  section; install via VPM / Package Manager.
+- Not verified in Unity yet: the merged `AliceSDF_Raymarcher.shader` and
+  `AliceSDF_Include.cginc` were merged by hand without a Unity compile in
+  this environment — open a sample scene and check the console.
+
+
 ## [0.4.0] - 2026-02-07
 
 ### Added

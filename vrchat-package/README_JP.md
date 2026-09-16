@@ -38,12 +38,6 @@ ALICE-SDFは、**数式（SDF）で定義された無限に滑らかな曲面** 
 }
 ```
 
-### .unitypackage 経由 (レガシー)
-
-1. `ALICE-SDF-VRChat.unitypackage` をダウンロード
-2. Unityで **Assets > Import Package > Custom Package...** を選択
-3. 全てを選択してインポート
-
 ### 動作環境
 
 - Unity 2022.3.x (VRChat 推奨バージョン)

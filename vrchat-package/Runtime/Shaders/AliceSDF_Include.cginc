@@ -961,4 +961,95 @@ float3 quatRotate(float3 v, float4 q)
     return v + q.w * t + cross(q.xyz, t);
 }
 
+// Squared length (shared by the material-aware ops below)
+float _dot2(float3 v) { return dot(v, v); }
+
+// =============================================================================
+// Material-aware Boolean Operations (float2: x=distance, y=materialID)
+// =============================================================================
+
+float2 opUnionMat(float2 a, float2 b)
+{
+    return (a.x < b.x) ? a : b;
+}
+
+float2 opIntersectionMat(float2 a, float2 b)
+{
+    return (a.x > b.x) ? a : b;
+}
+
+float2 opSubtractionMat(float2 a, float2 b)
+{
+    return float2(max(a.x, -b.x), a.y);
+}
+
+float2 opSmoothUnionMat(float2 a, float2 b, float k)
+{
+    float inv_k = 1.0 / k;
+    float h = max(k - abs(a.x - b.x), 0.0) * inv_k;
+    float d = min(a.x, b.x) - h * h * k * 0.25;
+    float m = lerp(b.y, a.y, saturate((b.x - a.x) * inv_k * 0.5 + 0.5));
+    return float2(d, m);
+}
+
+float2 opSmoothIntersectionMat(float2 a, float2 b, float k)
+{
+    float inv_k = 1.0 / k;
+    float h = max(k - abs(a.x - b.x), 0.0) * inv_k;
+    float d = max(a.x, b.x) + h * h * k * 0.25;
+    float m = lerp(a.y, b.y, saturate((a.x - b.x) * inv_k * 0.5 + 0.5));
+    return float2(d, m);
+}
+
+float2 opSmoothSubtractionMat(float2 a, float2 b, float k)
+{
+    float inv_k = 1.0 / k;
+    float h = max(k - abs(a.x + b.x), 0.0) * inv_k;
+    float d = max(a.x, -b.x) + h * h * k * 0.25;
+    return float2(d, a.y);
+}
+
+// =============================================================================
+// PBR Lighting Helpers
+// =============================================================================
+
+// GGX Normal Distribution Function
+float distributionGGX(float3 N, float3 H, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    float denom = NdotH2 * (a2 - 1.0) + 1.0;
+    return a2 / (3.14159265 * denom * denom + 0.0001);
+}
+
+// Schlick-GGX Geometry Function
+float geometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+float geometrySmith(float3 N, float3 V, float3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
+}
+
+// Fresnel-Schlick
+float3 fresnelSchlick(float cosTheta, float3 F0)
+{
+    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
+// Fresnel-Schlick with roughness (for environment/reflection)
+float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
+{
+    float3 oneMinusR = float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness);
+    return F0 + (max(oneMinusR, F0) - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
 #endif // ALICE_SDF_INCLUDE

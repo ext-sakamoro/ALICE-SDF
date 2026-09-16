@@ -22,12 +22,6 @@ Or add via git URL in `Packages/manifest.json`:
 }
 ```
 
-### Via .unitypackage (Legacy)
-
-1. Download `ALICE-SDF-VRChat.unitypackage`
-2. In Unity: **Assets > Import Package > Custom Package...**
-3. Select all and import
-
 ### Requirements
 
 - Unity 2022.3.x (VRChat recommended version)

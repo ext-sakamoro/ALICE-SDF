@@ -6,6 +6,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — VRChat package: one shader source
+
+- `vrchat-package/Runtime/Shaders/` is the only copy; the legacy
+  `Assets/AliceSDF/Shaders/` fork (which alone had the PBR surface and the
+  material-id ops) is merged into it and deleted, together with the June
+  `.unitypackage` snapshot. Merged by hand, not yet compiled in Unity
+  (see `vrchat-package/CHANGELOG.md`).
+
 ### Fixed — 15 shader laws that differed from the CPU (found by the new corpus GPU oracle)
 
 - `tests/test_gpu_law_parity.rs` now runs **every corpus node** through the
