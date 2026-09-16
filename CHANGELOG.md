@@ -6,6 +6,17 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — scalar VM transform frame slimmed
+
+- `eval_compiled` (scalar) pushed opcode + 4 params + aux window on every
+  transform; the frame is now the point plus the pushing instruction's
+  index, read back at `PopTransform`. Against the tree walker on CSG
+  scenes (release, single point): 5 primitives 1.02×, 10 → 1.19×
+  (was 1.35×), 20 → 1.17×, 40 → 0.91× (was 1.05×). The 9/16 self-review's
+  "still 30 % slower" is this push / pop pair per transform; the scalar VM
+  is the front of the SIMD batch path (`eval_compiled_batch_simd`, ~4×
+  the tree), which is where compiled evaluation pays.
+
 ### Changed — step budget scales with the Lipschitz bound
 
 - `RaymarchConfig::with_bound` multiplies `max_steps` by the bound (steps

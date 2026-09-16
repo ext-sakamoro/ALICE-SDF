@@ -74,19 +74,17 @@ impl<T: Copy, const N: usize> Slots<T, N> {
     }
 }
 
-/// Coordinate frame on the transform stack
+/// Coordinate frame on the transform stack: the point before the transform
+/// and the index of the instruction that pushed it. `PopTransform` reads the
+/// opcode / params / aux window back from the instruction slice, so a push
+/// is four stores (until 2.1.0 it copied opcode + 4 params + aux = ten, and
+/// the scalar VM was 5-35 % slower than the tree walker on CSG scenes).
 #[derive(Clone, Copy)]
 struct Frame<R: Real> {
     /// Point before the transform (restored at PopTransform)
     point: Vec3R<R>,
-    /// Scale correction before the transform
-    /// Opcode that pushed this frame (selects post-processing)
-    opcode: OpCode,
-    /// Scalar parameters for post-processing
-    params: [f32; 4],
-    /// Auxiliary data window
-    aux_offset: u32,
-    aux_len: u32,
+    /// Index of the pushing instruction
+    inst: u32,
 }
 
 /// Execute a compiled instruction stream at `point` and return the signed distance.
@@ -122,22 +120,12 @@ pub(super) fn eval_bytecode<R: PrimTable>(
     let scale_correction = R::one();
 
     macro_rules! push_frame {
-        ($inst:expr, $op:expr) => {{
-            // Direct struct-literal store (no temporary): keeps the push at ~one
-            // store per field like the pre-1.10 evaluators.
+        ($pc:expr) => {{
             coord_stack.set(
                 csp,
                 Frame {
                     point: p,
-                    opcode: $op,
-                    params: [
-                        $inst.params[0],
-                        $inst.params[1],
-                        $inst.params[2],
-                        $inst.params[3],
-                    ],
-                    aux_offset: $inst.aux_offset,
-                    aux_len: $inst.aux_len,
+                    inst: $pc as u32,
                 },
             );
             csp += 1;
@@ -158,16 +146,16 @@ pub(super) fn eval_bytecode<R: PrimTable>(
         }};
     }
 
-    for inst in instructions.iter() {
+    for (pc, inst) in instructions.iter().enumerate() {
         let op = inst.opcode;
         match op {
             // === Transforms ===
             OpCode::Translate => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = p - Vec3R::splat(Vec3::new(inst.params[0], inst.params[1], inst.params[2]));
             }
             OpCode::Rotate => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 let q = Quat::from_xyzw(
                     inst.params[0],
                     inst.params[1],
@@ -184,12 +172,12 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 // this node is linear. Smooth / exp / chamfer / stairs blends, round,
                 // onion and displacement all carry an absolute width and are not
                 // (found by `fuzz_eval_parity`: Scale(ExpSmoothUnion) was 21% off).
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = p * R::splat(inst.params[0]);
             }
             OpCode::ScaleNonUniform => {
                 // params[0..3] = 1/s, params[3] = min(sx, sy, sz)
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = p.mul_vec(Vec3R::splat(Vec3::new(
                     inst.params[0],
                     inst.params[1],
@@ -198,7 +186,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 // Lipschitz-bound correction applied when the frame pops (see Scale)
             }
             OpCode::ProjectiveTransform => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 let aux_off = inst.aux_offset as usize;
                 if inst.aux_len >= 16 {
                     let mut inv_m = [0.0f32; 16];
@@ -207,7 +195,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 }
             }
             OpCode::LatticeDeform => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 let aux_off = inst.aux_offset as usize;
                 if inst.aux_len >= 9 {
                     let aux = &aux_data[aux_off..aux_off + inst.aux_len as usize];
@@ -240,7 +228,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 }
             }
             OpCode::SdfSkinning => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 let aux_off = inst.aux_offset as usize;
                 if inst.aux_len >= 1 {
                     let aux = &aux_data[aux_off..aux_off + inst.aux_len as usize];
@@ -268,59 +256,59 @@ pub(super) fn eval_bytecode<R: PrimTable>(
 
             // === Modifiers (point-modifying, prefix) ===
             OpCode::Twist => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::twist(p, inst.params[0]);
             }
             OpCode::Bend => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::bend(p, inst.params[0]);
             }
             OpCode::RepeatInfinite => {
                 // params[0..3] = spacing, params[3..6] = 1/spacing
-                push_frame!(inst, op);
+                push_frame!(pc);
                 let spacing = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
                 let recip = Vec3::new(inst.params[3], inst.params[4], inst.params[5]);
                 p = real::repeat_infinite(p, spacing, recip);
             }
             OpCode::RepeatFinite => {
                 // params[0..3] = counts, params[3..6] = spacing
-                push_frame!(inst, op);
+                push_frame!(pc);
                 let count = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
                 let spacing = Vec3::new(inst.params[3], inst.params[4], inst.params[5]);
                 p = real::repeat_finite(p, count, spacing);
             }
             OpCode::Elongate => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::elongate(p, Vec3::new(inst.params[0], inst.params[1], inst.params[2]));
             }
             OpCode::Mirror => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::mirror(p, Vec3::new(inst.params[0], inst.params[1], inst.params[2]));
             }
             OpCode::OctantMirror => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::octant_mirror(p);
             }
             OpCode::Revolution => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::revolution(p, inst.params[0]);
             }
             OpCode::Extrude => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 frame_lane.set(csp - 1, p.z); // original z for the post-process
                 p = real::extrude_point(p);
             }
             OpCode::Taper => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::taper(p, inst.params[0]);
             }
             OpCode::PolarRepeat => {
                 // params[1] = sector, params[2] = 1/sector
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::polar_repeat(p, inst.params[1], inst.params[2]);
             }
             OpCode::SweepBezier => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::sweep_bezier(
                     p,
                     Vec2::new(inst.params[0], inst.params[1]),
@@ -329,15 +317,15 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 );
             }
             OpCode::Shear => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = real::shear(p, Vec3::new(inst.params[0], inst.params[1], inst.params[2]));
             }
             OpCode::IcosahedralSymmetry => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 p = p.map(crate::modifiers::icosahedral_fold);
             }
             OpCode::IFS => {
-                push_frame!(inst, op);
+                push_frame!(pc);
                 let iterations = inst.params[0] as u32;
                 let aux_off = inst.aux_offset as usize;
                 if inst.aux_len >= 1 {
@@ -363,7 +351,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             | OpCode::Displacement
             | OpCode::HeightmapDisplacement
             | OpCode::SurfaceRoughness => {
-                push_frame!(inst, op);
+                push_frame!(pc);
             }
 
             // === Animated (static evaluation: pass-through) ===
@@ -371,47 +359,48 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             // emits this opcode. If a bytecode producer does emit it, it must be paired
             // with `PopTransform`.
             OpCode::Animated => {
-                push_frame!(inst, op);
+                push_frame!(pc);
             }
 
             // === Control ===
             OpCode::PopTransform => {
                 csp -= 1;
                 let frame = coord_stack.get(csp);
+                let finst = &instructions[frame.inst as usize];
 
                 // Post-processing keyed on the opcode that pushed the frame; point-only
                 // transforms / modifiers fall through without touching the value stack.
-                match frame.opcode {
+                match finst.opcode {
                     OpCode::Scale => {
                         // params[1] = factor: d = factor * f(p / factor)
                         value_stack.set(
                             vsp - 1,
-                            value_stack.get(vsp - 1) * R::splat(frame.params[1]),
+                            value_stack.get(vsp - 1) * R::splat(finst.params[1]),
                         );
                     }
                     OpCode::ScaleNonUniform => {
                         // params[3] = min(sx, sy, sz): conservative Lipschitz bound
                         value_stack.set(
                             vsp - 1,
-                            value_stack.get(vsp - 1) * R::splat(frame.params[3]),
+                            value_stack.get(vsp - 1) * R::splat(finst.params[3]),
                         );
                     }
                     OpCode::Round => {
                         value_stack.set(
                             vsp - 1,
-                            value_stack.get(vsp - 1) - R::splat(frame.params[0]),
+                            value_stack.get(vsp - 1) - R::splat(finst.params[0]),
                         );
                     }
                     OpCode::Onion => {
                         value_stack.set(
                             vsp - 1,
-                            value_stack.get(vsp - 1).abs() - R::splat(frame.params[0]),
+                            value_stack.get(vsp - 1).abs() - R::splat(finst.params[0]),
                         );
                     }
                     OpCode::Noise => {
-                        let amplitude = frame.params[0];
-                        let frequency = frame.params[1];
-                        let seed = frame.params[2] as u32;
+                        let amplitude = finst.params[0];
+                        let frequency = finst.params[1];
+                        let seed = finst.params[2] as u32;
                         let n = frame.point.map_scalar(|q| {
                             let q = q * frequency;
                             perlin_noise_3d(q.x, q.y, q.z, seed)
@@ -425,15 +414,15 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                             real::extrude_distance(
                                 value_stack.get(vsp - 1),
                                 frame_lane.get(csp),
-                                frame.params[0],
+                                finst.params[0],
                             ),
                         );
                     }
                     OpCode::Displacement => {
                         // amplitude + per-axis frequency (legacy Displacement = 5,5,5)
-                        let amplitude = frame.params[0];
+                        let amplitude = finst.params[0];
                         let frequency =
-                            Vec3::new(frame.params[1], frame.params[2], frame.params[3]);
+                            Vec3::new(finst.params[1], finst.params[2], finst.params[3]);
                         value_stack.set(
                             vsp - 1,
                             R::map_dp(value_stack.get(vsp - 1), frame.point, |d, q| {
@@ -446,7 +435,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                     OpCode::ProjectiveTransform => {
                         value_stack.set(
                             vsp - 1,
-                            value_stack.get(vsp - 1) * R::splat(frame.params[0]),
+                            value_stack.get(vsp - 1) * R::splat(finst.params[0]),
                         );
                     }
                     OpCode::LatticeDeform => {
@@ -461,17 +450,17 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                             real::taper_bound(
                                 d,
                                 frame.point,
-                                frame.params[0],
-                                [frame.params[1], frame.params[2]],
+                                finst.params[0],
+                                [finst.params[1], finst.params[2]],
                             ),
                         );
                     }
                     OpCode::HeightmapDisplacement => {
-                        let amplitude = frame.params[0];
-                        let hm_scale = frame.params[1];
-                        let aux_off = frame.aux_offset as usize;
-                        if frame.aux_len >= 2 {
-                            let aux = &aux_data[aux_off..aux_off + frame.aux_len as usize];
+                        let amplitude = finst.params[0];
+                        let hm_scale = finst.params[1];
+                        let aux_off = finst.aux_offset as usize;
+                        if finst.aux_len >= 2 {
+                            let aux = &aux_data[aux_off..aux_off + finst.aux_len as usize];
                             let w = aux[0] as u32;
                             let h = aux[1] as u32;
                             let hmap = &aux[2..];
@@ -484,9 +473,9 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                         }
                     }
                     OpCode::SurfaceRoughness => {
-                        let frequency = frame.params[0];
-                        let amplitude = frame.params[1];
-                        let octaves = frame.params[2] as u32;
+                        let frequency = finst.params[0];
+                        let amplitude = finst.params[1];
+                        let octaves = finst.params[2] as u32;
                         value_stack.set(
                             vsp - 1,
                             R::map_dp(value_stack.get(vsp - 1), frame.point, |d, q| {
