@@ -6,6 +6,20 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — texture-fit uses the crate's PCG noise; GPU parity of the emitted shader
+
+- The texture module had its own value noise (`fract(sin(dot) · 43758.5)`)
+  duplicated in the emitted WGSL / HLSL / GLSL under the same
+  `hash_noise_3d` name as the SDF transpilers' helper — a second law that
+  no GPU reproduces exactly and that clashed when both shaders were pasted
+  together. It now uses `modifiers::hash_noise_3d` (PCG lattice hash) on
+  the CPU (scalar and SIMD) and embeds the transpilers' own helper text
+  (`modifiers::HASH_NOISE_{WGSL,GLSL,HLSL}`, now public). **Fits made
+  before this version reconstruct differently and must be regenerated.**
+- Oracle `tests/test_texture_shader_gpu_parity.rs` (CI `gpu-parity` job):
+  the emitted WGSL rendered through `GpuEvaluator` matches `reconstruct`
+  to 3e-7 over a 4-octave result with rotated and axis-aligned octaves.
+
 ### Fixed — dual contouring fins at grid-tangent surfaces
 
 - Where the surface is tangent to a grid plane (torus inner equator, sphere

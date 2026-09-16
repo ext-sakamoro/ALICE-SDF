@@ -5,12 +5,14 @@
 //!
 //! `texture(u,v) ≈ bias + Σᵢ aᵢ · noise(uv · fᵢ + φᵢ, seedᵢ)`
 //!
-//! The CPU noise (`hash_noise_3d_cpu`, scalar and SIMD) is the same law in
-//! the same operation order as the `hash_noise_3d` helper the generated
-//! WGSL / HLSL / GLSL shaders embed. Scalar ≡ SIMD is tested bit-for-bit;
-//! CPU vs GPU depends on the backend's `sin` and is not yet measured
-//! (`tests/test_texture_fit_oracle.rs` validates the emitted shaders with
-//! naga; a GPU parity run is pending).
+//! The noise is the crate's one value-noise law (`modifiers::hash_noise_3d`,
+//! PCG lattice hash: integer ops up to the final `u32 → f32`), on the CPU
+//! (scalar and SIMD) and in the `hash_noise_3d` helper the generated WGSL /
+//! HLSL / GLSL shaders embed — the same text the SDF transpilers emit, so a
+//! fitted texture can live in the same shader as an SDF. CPU ≡ GPU is
+//! measured: `tests/test_texture_shader_gpu_parity.rs` renders the emitted
+//! WGSL on the GPU and matches `reconstruct` to 3e-7 (CI `gpu-parity` job).
+//! Fits made before 1.14.0 used a sin hash and must be regenerated.
 
 mod fitting;
 mod noise_cpu;

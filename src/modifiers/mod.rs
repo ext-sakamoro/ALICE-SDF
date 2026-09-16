@@ -45,7 +45,12 @@ pub use repeat::{
 };
 pub use revolution::modifier_revolution;
 pub use shear::modifier_shear;
-pub use surface_roughness::{fbm, fbm_bound, hash_noise_3d, surface_roughness};
+#[cfg(feature = "texture-fit")]
+pub(crate) use surface_roughness::hash3_xyz as surface_roughness_hash3;
+pub use surface_roughness::{
+    fbm, fbm_bound, hash_noise_3d, surface_roughness, HASH_NOISE_GLSL, HASH_NOISE_HLSL,
+    HASH_NOISE_WGSL,
+};
 pub use sweep::{bezier_distance_2d, modifier_sweep_bezier, sweep_bezier_dist_y};
 pub use taper::modifier_taper;
 pub use twist::{modifier_twist, modifier_twist_x, modifier_twist_z};

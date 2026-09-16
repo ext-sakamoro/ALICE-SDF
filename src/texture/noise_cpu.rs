@@ -1,80 +1,28 @@
-//! CPU implementation of GPU `hash_noise_3d` — Deep Fried Edition
+//! CPU side of the texture noise — the crate's one value-noise law
+//! (`modifiers::hash_noise_3d`, PCG lattice hash) in scalar and 8-lane form.
 //!
-//! This is a faithful Rust port of the sin-hash value noise used in
-//! WGSL/HLSL/GLSL shaders. The algorithm:
-//! 1. Hash: `fract(sin(dot(i, vec3(127.1, 311.7, 74.7)) + seed) * 43758.5453)`
-//! 2. Interpolation: smoothstep `3t² - 2t³`
-//! 3. Trilinear interpolation of 8 corner values
-//! 4. Output range: [-1, 1]
+//! Until 1.13.0 this file carried a second law (`fract(sin(dot) · 43758.5)`)
+//! that the emitted shaders duplicated under the same `hash_noise_3d` name;
+//! the sin hash is not reproducible across GPUs (it amplifies 1 ulp of `sin`
+//! into a different corner value) and it clashed with the transpilers'
+//! helper of the same name. The PCG law is integer-only up to the final
+//! `u32 → f32`, so CPU, SIMD and the WGSL / HLSL / GLSL helpers agree.
 //!
 //! ## Deep Fried
-//! - `hash_noise_3d_simd`: 8-lane `wide::f32x8` SIMD evaluation
+//! - `hash_noise_3d_simd`: 8-lane `wide::f32x8` evaluation (the corner hash
+//!   is scalar per lane — 64 integer hashes per 8 pixels — the blend is SIMD)
 //! - `eval_octave_simd`: 8-pixel simultaneous octave evaluation
 
+use glam::Vec3;
 use wide::f32x8;
 
 // ──────────────────────────── Scalar ────────────────────────────
 
-/// CPU-side hash noise matching GPU `hash_noise_3d` exactly.
-///
-/// Takes a 3D position and seed, returns value in [-1, 1].
-///
-/// Plain multiply / add in the same order as `hash_noise_3d_simd` and the
-/// shader, deliberately not `mul_add`: `fract(sin(dot) · 43758.5)` amplifies
-/// a 1-ulp difference in `dot` into a different corner value, and the SIMD
-/// lanes have no fused multiply-add on every target. The scalar / SIMD
-/// parity tests below are the guard.
-#[allow(clippy::suboptimal_flops)]
+/// The crate's value noise (`modifiers::hash_noise_3d`) at `(px, py, pz)`,
+/// in `[-1, 1]`. Kept as a free function over three floats for the fitter.
 #[inline]
 pub fn hash_noise_3d_cpu(px: f32, py: f32, pz: f32, seed: u32) -> f32 {
-    let s = seed as f32;
-
-    let ix = px.floor();
-    let iy = py.floor();
-    let iz = pz.floor();
-    let fx = px - ix;
-    let fy = py - iy;
-    let fz = pz - iz;
-
-    let ux = fx * fx * (3.0 - 2.0 * fx);
-    let uy = fy * fy * (3.0 - 2.0 * fy);
-    let uz = fz * fz * (3.0 - 2.0 * fz);
-
-    let n000 = hash_corner(ix, iy, iz, s);
-    let n100 = hash_corner(ix + 1.0, iy, iz, s);
-    let n010 = hash_corner(ix, iy + 1.0, iz, s);
-    let n110 = hash_corner(ix + 1.0, iy + 1.0, iz, s);
-    let n001 = hash_corner(ix, iy, iz + 1.0, s);
-    let n101 = hash_corner(ix + 1.0, iy, iz + 1.0, s);
-    let n011 = hash_corner(ix, iy + 1.0, iz + 1.0, s);
-    let n111 = hash_corner(ix + 1.0, iy + 1.0, iz + 1.0, s);
-
-    let c00 = lerp(n000, n100, ux);
-    let c10 = lerp(n010, n110, ux);
-    let c01 = lerp(n001, n101, ux);
-    let c11 = lerp(n011, n111, ux);
-    let c0 = lerp(c00, c10, uy);
-    let c1 = lerp(c01, c11, uy);
-
-    lerp(c0, c1, uz) * 2.0 - 1.0
-}
-
-#[allow(clippy::suboptimal_flops)] // same operation order as hash_corner_simd
-#[inline(always)]
-fn hash_corner(ix: f32, iy: f32, iz: f32, seed: f32) -> f32 {
-    let dot = ix * 127.1 + iy * 311.7 + iz * 74.7 + seed;
-    fract_scalar(dot.sin() * 43_758.547)
-}
-
-#[inline(always)]
-fn fract_scalar(x: f32) -> f32 {
-    x - x.floor()
-}
-
-#[allow(clippy::suboptimal_flops)] // same operation order as lerp_simd
-#[inline(always)]
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
+    crate::modifiers::hash_noise_3d(Vec3::new(px, py, pz), seed)
 }
 
 /// Evaluate noise for 2D UV with z=0 (texture fitting shortcut)
@@ -105,48 +53,25 @@ pub fn eval_octave(
 
 // ──────────────────────────── SIMD (Deep Fried) ────────────────────────────
 
-/// [Deep Fried] 8-lane SIMD sin approximation for hash noise.
-///
-/// Uses scalar fallback per lane since `wide` lacks native sin().
-/// Still faster than 8 separate function calls due to data locality
-/// and reduced branch overhead.
-#[inline(always)]
-fn sin_f32x8(x: f32x8) -> f32x8 {
-    let arr: [f32; 8] = x.into();
-    f32x8::new([
-        arr[0].sin(),
-        arr[1].sin(),
-        arr[2].sin(),
-        arr[3].sin(),
-        arr[4].sin(),
-        arr[5].sin(),
-        arr[6].sin(),
-        arr[7].sin(),
-    ])
-}
-
-/// [Deep Fried] SIMD fract: x - floor(x)
-#[inline(always)]
-fn fract_simd(x: f32x8) -> f32x8 {
-    x - x.floor()
-}
-
 /// [Deep Fried] SIMD lerp: a + (b - a) * t
 #[inline(always)]
 fn lerp_simd(a: f32x8, b: f32x8, t: f32x8) -> f32x8 {
     a + (b - a) * t
 }
 
-/// [Deep Fried] SIMD hash for 8 lattice corners simultaneously
+/// [Deep Fried] Lattice-corner hash for 8 lanes: the scalar PCG hash per
+/// lane (integer ops, `wide` has no per-lane variable shift), same law as
+/// `modifiers::hash_noise_3d`.
 #[inline(always)]
-fn hash_corner_simd(ix: f32x8, iy: f32x8, iz: f32x8, seed: f32x8) -> f32x8 {
-    let k1 = f32x8::splat(127.1);
-    let k2 = f32x8::splat(311.7);
-    let k3 = f32x8::splat(74.7);
-    let k4 = f32x8::splat(43_758.547);
-
-    let dot = ix * k1 + iy * k2 + iz * k3 + seed;
-    fract_simd(sin_f32x8(dot) * k4)
+fn hash_corner_simd(ix: f32x8, iy: f32x8, iz: f32x8, seed: u32) -> f32x8 {
+    let x: [f32; 8] = ix.into();
+    let y: [f32; 8] = iy.into();
+    let z: [f32; 8] = iz.into();
+    let mut out = [0.0f32; 8];
+    for lane in 0..8 {
+        out[lane] = crate::modifiers::surface_roughness_hash3(x[lane], y[lane], z[lane], seed);
+    }
+    f32x8::new(out)
 }
 
 /// [Deep Fried] 8-lane SIMD hash noise evaluation.
@@ -156,7 +81,6 @@ fn hash_corner_simd(ix: f32x8, iy: f32x8, iz: f32x8, seed: f32x8) -> f32x8 {
 /// Output: 8 values in [-1, 1].
 #[inline]
 pub fn hash_noise_3d_simd(px: f32x8, py: f32x8, pz: f32x8, seed: u32) -> f32x8 {
-    let s = f32x8::splat(seed as f32);
     let one = f32x8::splat(1.0);
     let two = f32x8::splat(2.0);
     let three = f32x8::splat(3.0);
@@ -178,14 +102,14 @@ pub fn hash_noise_3d_simd(px: f32x8, py: f32x8, pz: f32x8, seed: u32) -> f32x8 {
     let iy1 = iy + one;
     let iz1 = iz + one;
 
-    let n000 = hash_corner_simd(ix, iy, iz, s);
-    let n100 = hash_corner_simd(ix1, iy, iz, s);
-    let n010 = hash_corner_simd(ix, iy1, iz, s);
-    let n110 = hash_corner_simd(ix1, iy1, iz, s);
-    let n001 = hash_corner_simd(ix, iy, iz1, s);
-    let n101 = hash_corner_simd(ix1, iy, iz1, s);
-    let n011 = hash_corner_simd(ix, iy1, iz1, s);
-    let n111 = hash_corner_simd(ix1, iy1, iz1, s);
+    let n000 = hash_corner_simd(ix, iy, iz, seed);
+    let n100 = hash_corner_simd(ix1, iy, iz, seed);
+    let n010 = hash_corner_simd(ix, iy1, iz, seed);
+    let n110 = hash_corner_simd(ix1, iy1, iz, seed);
+    let n001 = hash_corner_simd(ix, iy, iz1, seed);
+    let n101 = hash_corner_simd(ix1, iy, iz1, seed);
+    let n011 = hash_corner_simd(ix, iy1, iz1, seed);
+    let n111 = hash_corner_simd(ix1, iy1, iz1, seed);
 
     // Trilinear interpolation
     let c00 = lerp_simd(n000, n100, ux);

@@ -422,13 +422,14 @@ jobs:
 
       - name: GPU ↔ CPU law parity, shader validation, GPU marching cubes
         run: >
-          cargo test --features "gpu,glsl,gpu-mesh"
+          cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
           --test test_gpu_law_parity
           --test test_gpu_noise_parity
           --test test_round_tie_parity
           --test test_transpiler_naga_validate
           --test noise_shader_validate
           --test test_mesh_orientation
+          --test test_texture_shader_gpu_parity
           -- --nocapture
 
   doc:

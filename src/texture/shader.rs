@@ -4,6 +4,7 @@
 //! that reproduce the fitted texture using hash_noise_3d.
 
 use super::TextureFitResult;
+use crate::modifiers::{HASH_NOISE_GLSL, HASH_NOISE_HLSL, HASH_NOISE_WGSL};
 use std::fmt::Write;
 
 /// Target shader language
@@ -64,7 +65,7 @@ fn generate_wgsl(result: &TextureFitResult, source_name: &str) -> String {
     writeln!(s).unwrap();
 
     // hash_noise_3d function
-    s.push_str(WGSL_HASH_NOISE);
+    s.push_str(HASH_NOISE_WGSL);
     writeln!(s).unwrap();
     writeln!(s).unwrap();
 
@@ -124,7 +125,7 @@ fn generate_hlsl(result: &TextureFitResult, source_name: &str) -> String {
     .unwrap();
     writeln!(s).unwrap();
 
-    s.push_str(HLSL_HASH_NOISE);
+    s.push_str(HASH_NOISE_HLSL);
     writeln!(s).unwrap();
     writeln!(s).unwrap();
 
@@ -177,7 +178,7 @@ fn generate_glsl(result: &TextureFitResult, source_name: &str) -> String {
     .unwrap();
     writeln!(s).unwrap();
 
-    s.push_str(GLSL_HASH_NOISE);
+    s.push_str(HASH_NOISE_GLSL);
     writeln!(s).unwrap();
     writeln!(s).unwrap();
 
@@ -211,73 +212,6 @@ fn generate_glsl(result: &TextureFitResult, source_name: &str) -> String {
     writeln!(s, "}}").unwrap();
     s
 }
-
-// Noise function constants — identical to existing transpiler helpers
-
-const WGSL_HASH_NOISE: &str = r"fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
-    let f = fract(p);
-    let i = floor(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    let s = f32(seed);
-    let n000 = fract(sin(dot(i, vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n100 = fract(sin(dot(i + vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n010 = fract(sin(dot(i + vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n110 = fract(sin(dot(i + vec3<f32>(1.0, 1.0, 0.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n001 = fract(sin(dot(i + vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n101 = fract(sin(dot(i + vec3<f32>(1.0, 0.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n011 = fract(sin(dot(i + vec3<f32>(0.0, 1.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let n111 = fract(sin(dot(i + vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    let c00 = mix(n000, n100, u.x);
-    let c10 = mix(n010, n110, u.x);
-    let c01 = mix(n001, n101, u.x);
-    let c11 = mix(n011, n111, u.x);
-    let c0 = mix(c00, c10, u.y);
-    let c1 = mix(c01, c11, u.y);
-    return mix(c0, c1, u.z) * 2.0 - 1.0;
-}";
-
-const HLSL_HASH_NOISE: &str = r"float hash_noise_3d(float3 p, uint seed) {
-    float3 f = frac(p);
-    float3 i = floor(p);
-    float3 u = f * f * (3.0 - 2.0 * f);
-    float s = (float)seed;
-    float n000 = frac(sin(dot(i, float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float n100 = frac(sin(dot(i + float3(1,0,0), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float n010 = frac(sin(dot(i + float3(0,1,0), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float n110 = frac(sin(dot(i + float3(1,1,0), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float n001 = frac(sin(dot(i + float3(0,0,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float n101 = frac(sin(dot(i + float3(1,0,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float n011 = frac(sin(dot(i + float3(0,1,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float n111 = frac(sin(dot(i + float3(1,1,1), float3(127.1, 311.7, 74.7)) + s) * 43758.5453);
-    float c00 = lerp(n000, n100, u.x);
-    float c10 = lerp(n010, n110, u.x);
-    float c01 = lerp(n001, n101, u.x);
-    float c11 = lerp(n011, n111, u.x);
-    float c0 = lerp(c00, c10, u.y);
-    float c1 = lerp(c01, c11, u.y);
-    return lerp(c0, c1, u.z) * 2.0 - 1.0;
-}";
-
-const GLSL_HASH_NOISE: &str = r"float hash_noise_3d(vec3 p, uint seed) {
-    vec3 f = fract(p);
-    vec3 i = floor(p);
-    vec3 u = f * f * (3.0 - 2.0 * f);
-    float n000 = fract(sin(dot(i, vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float n100 = fract(sin(dot(i + vec3(1,0,0), vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float n010 = fract(sin(dot(i + vec3(0,1,0), vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float n110 = fract(sin(dot(i + vec3(1,1,0), vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float n001 = fract(sin(dot(i + vec3(0,0,1), vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float n101 = fract(sin(dot(i + vec3(1,0,1), vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float n011 = fract(sin(dot(i + vec3(0,1,1), vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float n111 = fract(sin(dot(i + vec3(1,1,1), vec3(127.1, 311.7, 74.7)) + float(seed)) * 43758.5453);
-    float c00 = mix(n000, n100, u.x);
-    float c10 = mix(n010, n110, u.x);
-    float c01 = mix(n001, n101, u.x);
-    float c11 = mix(n011, n111, u.x);
-    float c0 = mix(c00, c10, u.y);
-    float c1 = mix(c01, c11, u.y);
-    return mix(c0, c1, u.z) * 2.0 - 1.0;
-}";
 
 #[cfg(test)]
 mod tests {

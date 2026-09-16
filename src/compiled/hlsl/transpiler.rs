@@ -422,36 +422,7 @@ impl HlslTranspiler {
 }
 
 // Helper function definitions for HLSL
-const HELPER_HASH_NOISE: &str = r"uint alice_pcg(uint v) {
-    v = v * 747796405u + 2891336453u;
-    uint w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
-    return (w >> 22u) ^ w;
-}
-float alice_hash3(float3 i, uint seed) {
-    uint3 q = asuint(i);
-    return (float)alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed))) * (1.0 / 4294967295.0);
-}
-// Same law as `alice_sdf::modifiers::surface_roughness::hash_noise_3d` (PCG lattice hash, bit-exact with the CPU).
-float hash_noise_3d(float3 p, uint seed) {
-    float3 i = floor(p);
-    float3 f = p - i;
-    float3 u = f * f * (3.0 - 2.0 * f);
-    float n000 = alice_hash3(i, seed);
-    float n100 = alice_hash3(i + float3(1.0, 0.0, 0.0), seed);
-    float n010 = alice_hash3(i + float3(0.0, 1.0, 0.0), seed);
-    float n110 = alice_hash3(i + float3(1.0, 1.0, 0.0), seed);
-    float n001 = alice_hash3(i + float3(0.0, 0.0, 1.0), seed);
-    float n101 = alice_hash3(i + float3(1.0, 0.0, 1.0), seed);
-    float n011 = alice_hash3(i + float3(0.0, 1.0, 1.0), seed);
-    float n111 = alice_hash3(i + float3(1.0, 1.0, 1.0), seed);
-    float c00 = n000 + (n100 - n000) * u.x;
-    float c10 = n010 + (n110 - n010) * u.x;
-    float c01 = n001 + (n101 - n001) * u.x;
-    float c11 = n011 + (n111 - n011) * u.x;
-    float c0 = c00 + (c10 - c00) * u.y;
-    float c1 = c01 + (c11 - c01) * u.y;
-    return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
-}";
+const HELPER_HASH_NOISE: &str = crate::modifiers::HASH_NOISE_HLSL;
 
 const HELPER_PERLIN_NOISE: &str = r"uint alice_perlin_hash(int x, int y, int z, uint seed) {
     uint h = seed;

@@ -30,6 +30,14 @@ fn hash3(i: Vec3, seed: u32) -> f32 {
     (h as f32) * (1.0 / 4_294_967_295.0)
 }
 
+/// The lattice-corner hash as three floats (for the texture module's SIMD
+/// lanes); same law as the private `hash3`.
+#[cfg(feature = "texture-fit")]
+#[inline(always)]
+pub fn hash3_xyz(x: f32, y: f32, z: f32, seed: u32) -> f32 {
+    hash3(Vec3::new(x, y, z), seed)
+}
+
 /// Value noise in `[-1, 1]`: trilinear (smoothstep-weighted) blend of the
 /// eight lattice-corner hashes, mapped with `2v - 1`.
 ///
@@ -58,6 +66,103 @@ pub fn hash_noise_3d(p: Vec3, seed: u32) -> f32 {
     let c1 = (c11 - c01).mul_add(u.y, c01);
     (c1 - c0).mul_add(u.z, c0).mul_add(2.0, -1.0)
 }
+
+/// WGSL source of `hash_noise_3d` — the same law as [`hash_noise_3d`],
+/// emitted by the WGSL transpiler and by `texture::generate_shader`.
+pub const HASH_NOISE_WGSL: &str = r"fn alice_pcg(v0: u32) -> u32 {
+    let v = v0 * 747796405u + 2891336453u;
+    let w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+fn alice_hash3(i: vec3<f32>, seed: u32) -> f32 {
+    let q = bitcast<vec3<u32>>(i);
+    return f32(alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed)))) * (1.0 / 4294967295.0);
+}
+// Same law as `alice_sdf::modifiers::surface_roughness::hash_noise_3d` (PCG lattice hash, bit-exact with the CPU).
+fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * (3.0 - 2.0 * f);
+    let n000 = alice_hash3(i, seed);
+    let n100 = alice_hash3(i + vec3<f32>(1.0, 0.0, 0.0), seed);
+    let n010 = alice_hash3(i + vec3<f32>(0.0, 1.0, 0.0), seed);
+    let n110 = alice_hash3(i + vec3<f32>(1.0, 1.0, 0.0), seed);
+    let n001 = alice_hash3(i + vec3<f32>(0.0, 0.0, 1.0), seed);
+    let n101 = alice_hash3(i + vec3<f32>(1.0, 0.0, 1.0), seed);
+    let n011 = alice_hash3(i + vec3<f32>(0.0, 1.0, 1.0), seed);
+    let n111 = alice_hash3(i + vec3<f32>(1.0, 1.0, 1.0), seed);
+    let c00 = n000 + (n100 - n000) * u.x;
+    let c10 = n010 + (n110 - n010) * u.x;
+    let c01 = n001 + (n101 - n001) * u.x;
+    let c11 = n011 + (n111 - n011) * u.x;
+    let c0 = c00 + (c10 - c00) * u.y;
+    let c1 = c01 + (c11 - c01) * u.y;
+    return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+}";
+
+/// GLSL source of `hash_noise_3d` (see [`HASH_NOISE_WGSL`]).
+pub const HASH_NOISE_GLSL: &str = r"uint alice_pcg(uint v) {
+    v = v * 747796405u + 2891336453u;
+    uint w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+float alice_hash3(vec3 i, uint seed) {
+    uvec3 q = floatBitsToUint(i);
+    return float(alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed)))) * (1.0 / 4294967295.0);
+}
+// Same law as `alice_sdf::modifiers::surface_roughness::hash_noise_3d` (PCG lattice hash, bit-exact with the CPU).
+float hash_noise_3d(vec3 p, uint seed) {
+    vec3 i = floor(p);
+    vec3 f = p - i;
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    float n000 = alice_hash3(i, seed);
+    float n100 = alice_hash3(i + vec3(1.0, 0.0, 0.0), seed);
+    float n010 = alice_hash3(i + vec3(0.0, 1.0, 0.0), seed);
+    float n110 = alice_hash3(i + vec3(1.0, 1.0, 0.0), seed);
+    float n001 = alice_hash3(i + vec3(0.0, 0.0, 1.0), seed);
+    float n101 = alice_hash3(i + vec3(1.0, 0.0, 1.0), seed);
+    float n011 = alice_hash3(i + vec3(0.0, 1.0, 1.0), seed);
+    float n111 = alice_hash3(i + vec3(1.0, 1.0, 1.0), seed);
+    float c00 = n000 + (n100 - n000) * u.x;
+    float c10 = n010 + (n110 - n010) * u.x;
+    float c01 = n001 + (n101 - n001) * u.x;
+    float c11 = n011 + (n111 - n011) * u.x;
+    float c0 = c00 + (c10 - c00) * u.y;
+    float c1 = c01 + (c11 - c01) * u.y;
+    return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+}";
+
+/// HLSL source of `hash_noise_3d` (see [`HASH_NOISE_WGSL`]).
+pub const HASH_NOISE_HLSL: &str = r"uint alice_pcg(uint v) {
+    v = v * 747796405u + 2891336453u;
+    uint w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+float alice_hash3(float3 i, uint seed) {
+    uint3 q = asuint(i);
+    return (float)alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed))) * (1.0 / 4294967295.0);
+}
+// Same law as `alice_sdf::modifiers::surface_roughness::hash_noise_3d` (PCG lattice hash, bit-exact with the CPU).
+float hash_noise_3d(float3 p, uint seed) {
+    float3 i = floor(p);
+    float3 f = p - i;
+    float3 u = f * f * (3.0 - 2.0 * f);
+    float n000 = alice_hash3(i, seed);
+    float n100 = alice_hash3(i + float3(1.0, 0.0, 0.0), seed);
+    float n010 = alice_hash3(i + float3(0.0, 1.0, 0.0), seed);
+    float n110 = alice_hash3(i + float3(1.0, 1.0, 0.0), seed);
+    float n001 = alice_hash3(i + float3(0.0, 0.0, 1.0), seed);
+    float n101 = alice_hash3(i + float3(1.0, 0.0, 1.0), seed);
+    float n011 = alice_hash3(i + float3(0.0, 1.0, 1.0), seed);
+    float n111 = alice_hash3(i + float3(1.0, 1.0, 1.0), seed);
+    float c00 = n000 + (n100 - n000) * u.x;
+    float c10 = n010 + (n110 - n010) * u.x;
+    float c01 = n001 + (n101 - n001) * u.x;
+    float c11 = n011 + (n111 - n011) * u.x;
+    float c0 = c00 + (c10 - c00) * u.y;
+    float c1 = c01 + (c11 - c01) * u.y;
+    return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+}";
 
 /// Seed the transpilers hard-code for `SurfaceRoughness`.
 pub const SURFACE_ROUGHNESS_SEED: u32 = 42;
