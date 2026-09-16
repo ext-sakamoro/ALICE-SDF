@@ -6,6 +6,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v2.1.0] - 2026-09-16
+
+Corpus-wide GPU execution oracle (WGSL + GLSL) and the 15 shader laws it
+caught, rounded cylinder fixed on the CPU, step budget scaled with the
+Lipschitz bound (the gyroid "8.3 % miss"), a slimmer scalar-VM frame, one
+VRChat shader source.
+
 ### Changed — VRChat package: one shader source
 
 - `vrchat-package/Runtime/Shaders/` is the only copy; the legacy
