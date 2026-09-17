@@ -44,6 +44,11 @@ Shader "AliceSDF/Samples/Mochi"
         // the Inspector values only matter without the Udon script.
         _BlendK ("Mochi Blend (higher = stickier)", Float) = 0.5
         _GroundK ("Ground Stickiness", Float) = 0.15
+        // Player body, driven every frame by the collider: a capsule from
+        // A to B (w of A = radius, 0 = no player) pressed into the mochis
+        _PlayerCapA ("Player Capsule A (xyz, w = radius)", Vector) = (0, 0, 0, 0)
+        _PlayerCapB ("Player Capsule B (xyz)", Vector) = (0, 0, 0, 0)
+        _PlayerDentK ("Player Dent Smoothness", Float) = 0.12
 
         [Header(Lighting)]
         _LightDir ("Light Direction", Vector) = (1.0, 1.0, -0.5, 0.0)
@@ -91,6 +96,25 @@ Shader "AliceSDF/Samples/Mochi"
                 float inv_k = 1.0 / k;
                 float h = max(k - abs(d1 - d2), 0.0) * inv_k;
                 return min(d1, d2) - h * h * k * 0.25;
+            }
+
+            // Capsule: line segment with radius
+            float sdCapsule(float3 p, float3 a, float3 b, float radius)
+            {
+                float3 pa = p - a;
+                float3 ba = b - a;
+                float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+                return length(pa - ba * h) - radius;
+            }
+
+            // Smooth Subtraction (d1 minus d2)
+            // Guarded: k <= 0 falls back to hard subtraction
+            float opSmoothSubtraction(float d1, float d2, float k)
+            {
+                if (k < 0.0001) return max(d1, -d2);
+                float inv_k = 1.0 / k;
+                float h = max(k - abs(d1 + d2), 0.0) * inv_k;
+                return max(d1, -d2) + h * h * k * 0.25;
             }
 
             // Smooth Union with blend factor (Inigo Quilez, "smooth minimum
@@ -182,6 +206,8 @@ Shader "AliceSDF/Samples/Mochi"
             // xyz = world position, w = radius
             float4 _MochiData[MOCHI_MAX];
             float _MochiCount;
+            float4 _PlayerCapA, _PlayerCapB;
+            float _PlayerDentK;
 
             struct appdata {
                 float4 vertex : POSITION;
@@ -210,6 +236,15 @@ Shader "AliceSDF/Samples/Mochi"
                     if (i >= count) break;
                     float d = sdSphere(p - _MochiData[i].xyz, _MochiData[i].w);
                     mochi = opSmoothUnion(mochi, d, _BlendK);
+                }
+                // The player's body presses into the mochis: the collider keeps
+                // the body axis collisionMargin outside the undented surface, so
+                // the capsule (radius > margin) carves a dent where the player
+                // leans in, and it springs back the moment they step away
+                if (_PlayerCapA.w > 0.0)
+                {
+                    float body = sdCapsule(p, _PlayerCapA.xyz, _PlayerCapB.xyz, _PlayerCapA.w);
+                    mochi = opSmoothSubtraction(mochi, body, _PlayerDentK);
                 }
                 return mochi;
             }

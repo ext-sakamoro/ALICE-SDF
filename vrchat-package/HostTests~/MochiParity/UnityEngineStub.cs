@@ -44,6 +44,7 @@ namespace UnityEngine
     {
         public void SetVectorArray(string n, Vector4[] v) { }
         public void SetFloat(string n, float v) { }
+        public void SetVector(string n, Vector4 v) { }
     }
     public class Component { public T GetComponent<T>() where T : class => null; }
     public class MeshRenderer : Component { public Material material = new Material(); }

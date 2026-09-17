@@ -84,6 +84,21 @@ static class Behaviour
         Check(frames < 600, $"push reached exactly zero in {frames} frames (dead band, no endless teleport)");
         Check(xz >= r0m - 0.02f, $"pushed clear of the mochi (xz {xz:F3} >= r {r0m:F2})");
         Check(q.y == 0f && Math.Abs(q.z - m0.z) < 0.02f, "stayed on the floor and on the approach line");
+        // The mochi gives way by the mass ratio (r 0.35, water density: 180 kg vs 60 kg player)
+        var yc = new SampleMochi_Collider();
+        Call(yc, "Start");
+        var ypos = (Vector3[])Get(yc, "mochiPos");
+        var before = ypos[0];
+        var ypush = yc.PlayerPushOut(stand, eye, dt);
+        float share = yc.YieldMochi(stand, eye, ypush);
+        float expect = 60f / (60f + 1000f * 4.18879f * 0.35f * 0.35f * 0.35f);
+        Check(Math.Abs(share - expect) < 1e-4f, $"mochi share of the push is the mass ratio ({share:F3})");
+        var moved = before - ypos[0];
+        Check(moved.x > 0f && Math.Abs(moved.x - ypush.x * share) < 1e-6f && moved.y == 0f, "mochi slid away from the player by its share, on the floor");
+        // Held in a hand, it does not yield
+        ((int[])Get(yc, "grab"))[0] = 0;
+        var held = ypos[0];
+        Check(yc.YieldMochi(stand, eye, ypush) == 0f && ypos[0] == held, "a grabbed mochi does not yield");
         // Directly on the mochi's column: the only way out is up, never down into the floor
         var under = pc.PlayerPushOut(new Vector3(m0.x, 0f, m0.z), eye, dt);
         Check(under != Vector3.zero && under.y >= 0f, "under the centre: push is not downward");

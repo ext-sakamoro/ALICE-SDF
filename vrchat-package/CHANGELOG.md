@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+- Mochi sample: the player's body presses into the mochis. The collider
+  sends a body capsule (feet to eyes, `playerRadius` 0.3 m) to the shader
+  (`_PlayerCapA` / `_PlayerCapB` / `_PlayerDentK`) and the shader
+  smooth-subtracts it from the mochi union, so a dent forms where the player
+  leans in and springs back when they step away (the collider still resolves
+  against the undented surface: the dent is where the player already is).
+  The pushed mochi also gives way: the separation is split by mass
+  (`playerMass` 60 kg vs 4/3 pi r^3 x `mochiDensity`), the mochi slides on
+  the floor by its share (0.25 for r = 0.35) and the player takes the rest;
+  a mochi held in a hand does not yield. Host scenario: mass share, slide
+  on the floor, held mochi. ClientSim: player 0.25 m from a mochi's centre
+  moved +0.142 m, the mochi -0.047 m, capsule following the player, dent
+  visible with the avatar hidden.
+
 ## [0.5.0] - 2026-09-17
 
 `package.json` had stayed at 0.2.0 through the 0.3.0 and 0.4.0 entries

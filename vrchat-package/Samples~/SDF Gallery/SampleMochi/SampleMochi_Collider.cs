@@ -11,7 +11,9 @@
 //   - Merged mochis grow: r_new = cbrt(r1^3 + r2^3)
 //   - Release hand far from mochi -> mochi drops with soft gravity
 //   - Walk into a mochi -> the player is pushed out sideways (body sampled
-//     from the feet to the eyes, the deepest sample decides the direction)
+//     from the feet to the eyes, the deepest sample decides the direction),
+//     the mochi gives way by the mass ratio and the shader dents it around
+//     the player's body capsule
 //
 // The SDF evaluated here (EvaluateSdf) is the same formula the shader
 // renders: SmoothUnion(ground, SmoothUnion(mochi_i, blendK), groundK).
@@ -86,6 +88,16 @@ namespace AliceSDF.Samples
         [Tooltip("Eye height used when the avatar's cannot be read (m)")]
         public float fallbackEyeHeight = 1.6f;
 
+        [Header("Player Body")]
+        [Tooltip("Radius of the body capsule the shader dents the mochis with (m)")]
+        public float playerRadius = 0.3f;
+        [Tooltip("Player mass for the push split with the mochi (kg)")]
+        public float playerMass = 60f;
+        [Tooltip("Mochi density for its mass, 4/3 pi r^3 * density (kg/m^3)")]
+        public float mochiDensity = 1000f;
+        [Tooltip("Smooth-subtraction factor of the body dent (sent to shader _PlayerDentK)")]
+        public float dentK = 0.12f;
+
         // Mochi state arrays (indices 0..mochiCount-1 are live)
         private Vector3[] mochiPos;
         private float[] mochiR;
@@ -101,6 +113,8 @@ namespace AliceSDF.Samples
         // Shader data
         private Vector4[] shaderData;
         private Material mat;
+        private Vector4 playerCapA;   // xyz = feet end of the body capsule, w = radius (0 = none)
+        private Vector4 playerCapB;   // xyz = head end
 
 #if UDONSHARP
         private VRCPlayerApi localPlayer;
@@ -129,6 +143,10 @@ namespace AliceSDF.Samples
             SpawnMochi(new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
             SpawnMochi(new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
             SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
+
+            // No player yet: w = 0 tells the shader not to dent
+            playerCapA = Vector4.zero;
+            playerCapB = Vector4.zero;
 
             MeshRenderer rend = GetComponent<MeshRenderer>();
             if (rend != null)
@@ -175,7 +193,17 @@ namespace AliceSDF.Samples
             if (eyeHeight <= 0f) eyeHeight = fallbackEyeHeight;
             Vector3 push = PlayerPushOut(playerPos, eyeHeight, Time.deltaTime);
             if (push != Vector3.zero)
-                localPlayer.TeleportTo(playerPos + push, localPlayer.GetRotation());
+            {
+                // The mochi takes its share of the separation, the player the rest
+                float yielded = YieldMochi(playerPos, eyeHeight, push);
+                localPlayer.TeleportTo(playerPos + push * (1f - yielded), localPlayer.GetRotation());
+            }
+
+            // Body capsule for the shader dent (feet to eyes, radius playerRadius)
+            float capTop = eyeHeight - playerRadius;
+            if (capTop < playerRadius) capTop = playerRadius;
+            playerCapA = new Vector4(playerPos.x, playerPos.y + playerRadius, playerPos.z, playerRadius);
+            playerCapB = new Vector4(playerPos.x, playerPos.y + capTop, playerPos.z, 0f);
 
             // --- Shader Sync ---
             SyncShader();
@@ -342,22 +370,9 @@ namespace AliceSDF.Samples
         // Returns the displacement to apply this frame, zero when clear.
         public Vector3 PlayerPushOut(Vector3 playerPos, float eyeHeight, float dt)
         {
-            int n = bodySamples < 2 ? 2 : bodySamples;
-            float minDist = collisionMargin;
-            Vector3 minP = playerPos;
-            bool hit = false;
-            for (int i = 0; i < n; i++)
-            {
-                Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
-                float d = EvaluateMochiSdf(s);
-                if (d < minDist)
-                {
-                    minDist = d;
-                    minP = s;
-                    hit = true;
-                }
-            }
-            if (!hit) return Vector3.zero;
+            Vector3 minP = DeepestBodySample(playerPos, eyeHeight);
+            float minDist = EvaluateMochiSdf(minP);
+            if (minDist >= collisionMargin) return Vector3.zero;
 
             // The push shrinks geometrically as the margin is approached and
             // never reaches exactly zero: without a dead band the player is
@@ -379,7 +394,43 @@ namespace AliceSDF.Samples
             return normal * pen * pushStrength * smooth;
         }
 
+        // The body-axis sample (feet = playerPos, eyes = playerPos + eyeHeight)
+        // deepest inside the mochis
+        public Vector3 DeepestBodySample(Vector3 playerPos, float eyeHeight)
+        {
+            int n = bodySamples < 2 ? 2 : bodySamples;
+            float minDist = 1e10f;
+            Vector3 minP = playerPos;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
+                float d = EvaluateMochiSdf(s);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    minP = s;
+                }
+            }
+            return minP;
+        }
+
+        // The mochi gives way: the separation the push asks for is split by
+        // mass, the mochi (4/3 pi r^3 * density) slides on the floor by its
+        // share and the player takes the rest. Returns the mochi's share in
+        // [0, 1); 0 when nothing yields (no mochi, or it is held in a hand).
+        public float YieldMochi(Vector3 playerPos, float eyeHeight, Vector3 push)
+        {
+            int i = FindClosestMochi(DeepestBodySample(playerPos, eyeHeight));
+            if (i < 0 || IsGrabbed(i)) return 0f;
+            float r = mochiR[i];
+            float mochiMass = mochiDensity * 4.18879f * r * r * r;
+            float share = playerMass / (playerMass + mochiMass);
+            mochiPos[i] = mochiPos[i] - new Vector3(push.x, 0f, push.z) * share;
+            return share;
+        }
+
         // The mochis alone (no ground plane): what the player collides with.
+        // No body dent here: the dent is where the player already is.
         public float EvaluateMochiSdf(Vector3 p)
         {
             float mochi = 1e10f;
@@ -507,6 +558,12 @@ namespace AliceSDF.Samples
             // collides with is exactly what is rendered
             mat.SetFloat("_BlendK", blendK);
             mat.SetFloat("_GroundK", groundK);
+
+            // Body capsule the shader dents the mochis with (w = 0 until the
+            // first PostLateUpdate: no player, no dent)
+            mat.SetVector("_PlayerCapA", playerCapA);
+            mat.SetVector("_PlayerCapB", playerCapB);
+            mat.SetFloat("_PlayerDentK", dentK);
         }
     }
 }
