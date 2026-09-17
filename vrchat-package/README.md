@@ -149,13 +149,13 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 |--------|-----|--------------|
 | **Grab** | Hold hand inside a mochi for 0.08s | Mochi sticks to your hand |
 | **Move** | Move hand while grabbing | Mochi follows your hand |
-| **Split** | Pull hand far from grab origin (2.5x radius) | Mochi splits into two pieces (volume conserved: `r_new = r * cbrt(0.5)`) |
-| **Release** | Move hand very far (4x radius) | Mochi drops and settles to the ground |
+| **Split** | Grip (VR) / right click (desktop) while holding | Mochi splits into two pieces (volume conserved: `r_new = r * cbrt(0.5)`), the other half stays where it was grabbed |
+| **Release** | VR: carry it 4x radius, then flick the hand out (a slow hand grabs it again at once) / desktop: button up | Mochi drops and settles to the ground |
 | **Merge** | Push two free mochis close together | They merge into one bigger mochi (`r = cbrt(r1^3 + r2^3)`) |
 | **Grow** | Keep merging mochis | The merged mochi gets bigger and bigger |
 | **Walk in** | Walk into a mochi | Your body dents it and it slides away by the mass ratio; you are pushed back |
 
-**Desktop:** hold Use (left click) on a mochi — the point on your view ray nearest its centre becomes a virtual right hand, so Grab / Move / Split / Release / Merge above work by moving the view; releasing the button drops the mochi. The Grab button (right click; grip in VR) splits the mochi you hold without pulling. With Log Events on, a release line says how far you pulled and how far a split needed.
+**Desktop:** hold Use (left click) on a mochi — the point on your view ray nearest its centre becomes a virtual right hand, so Grab / Move / Split / Release / Merge above work by moving the view; releasing the button drops the mochi. The Grab button (right click; grip in VR) splits the mochi you hold. With Log Events on, a release line says whether it was split while held and how far it was carried.
 
 **Inspector Parameters:**
 
@@ -166,7 +166,9 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 | Min Radius | 0.1 | Smallest allowed mochi (won't split below this) |
 | Grab Threshold | 0.8 | Hand must be within this fraction of radius to grab |
 | Grab Dwell Time | 0.08s | Hold time before grab activates (prevents accidental grabs) |
-| Split Distance | 2.5 | Pull distance (x radius) to trigger split |
+| Split On Pull | off | The old tear-on-pull: pulling 2.5x radius from the grab point also splits (off, because carrying with the desktop cursor crosses that in a glance) |
+| Split Distance | 2.5 | Pull distance (x radius) for Split On Pull |
+| Release Distance | 4.0 | Carry distance (x radius) at which a VR hand drops the mochi; the desktop cursor drops on button up only |
 | Merge Threshold | 0.7 | Distance (x combined radii) for auto-merge |
 | Log Events | off | One `Debug.Log` line per grab / split / release / merge / click / push as `[Mochi] ...` — grep the VRChat client `output_log_*.txt` to see what happened without a debugger |
 

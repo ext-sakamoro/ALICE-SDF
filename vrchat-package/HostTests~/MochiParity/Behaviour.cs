@@ -40,7 +40,8 @@ static class Behaviour
         // Other hand cannot take the same mochi
         for (int i = 0; i < 10; i++) Call(c, "ProcessHand", origin, 1);
         Check(grab()[1] == -1, "hand 1 refused the held mochi");
-        // Pull to 3 r: split (>2.5 r), not released (<4 r)
+        // Pull to 3 r: split (>2.5 r), not released (<4 r) — the old tear-on-pull, opt-in
+        typeof(SampleMochi_Collider).GetField("splitOnPull").SetValue(c, true);
         float r0 = r()[0];
         var pulled = origin + new Vector3(3f * r0, 0, 0);
         Call(c, "ProcessHand", pulled, 0);
@@ -123,6 +124,21 @@ static class Behaviour
         Check(dpos[1] == dragged, "dragging the cursor moves the mochi");
         Call(dc, "ReleaseHand", 1);
         Check(dgrab[1] == -1, "releasing the button drops it");
+        // Carrying (default: no split on pull): the held mochi follows 1 m without splitting
+        var cc = new SampleMochi_Collider();
+        Call(cc, "Start");
+        var cpos = (Vector3[])Get(cc, "mochiPos"); var cgrab = (int[])Get(cc, "grab");
+        var c0 = cpos[0]; float cr0 = ((float[])Get(cc, "mochiR"))[0];
+        for (int i = 0; i < 10; i++) Call(cc, "ProcessHand", c0, 0);
+        Check(cgrab[0] == 0, "VR hand grabbed mochi 0");
+        var carried = c0 + new Vector3(3.5f * cr0, 0f, 0f);   // > 2.5 r, < 4 r
+        Call(cc, "ProcessHand", carried, 0);
+        Check((int)Get(cc, "mochiCount") == 5 && cgrab[0] == 0 && cpos[0] == carried, "carried 3.5 r: no split, still held, follows the hand");
+        var far2 = c0 + new Vector3(4.5f * cr0, 0f, 0f);
+        Call(cc, "ProcessHand", far2, 0);
+        Check(cgrab[0] == -1 && cpos[0] == far2, "VR hand drops it past 4 r, where the hand is");
+        for (int i = 0; i < 10; i++) Call(cc, "ProcessHand", far2, 0);
+        Check(cgrab[0] == 0, "hand still inside: grabbed again after the dwell (continuous carry)");
         // Grab button: split the held mochi without pulling
         for (int i = 0; i < 10; i++) Call(dc, "ProcessHand", cursor, 1);
         int before6 = (int)Get(dc, "mochiCount");

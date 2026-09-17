@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+- Mochi sample: splitting is an explicit action. Pulling a held mochi no
+  longer tears it (`splitOnPull`, off by default; the old 2.5 r rule was
+  meant for a VR hand, and the desktop cursor crosses it with a glance, so
+  every carried mochi split "at a certain height" and, its radius now
+  smaller, dropped at the shrunken 4 r a moment later — both seen in the
+  client log). Grip / right click splits. The desktop cursor drops only on
+  button up; a VR hand still drops the mochi after carrying it 4 r and,
+  being inside it, grabs it again after the dwell, so a slow hand carries
+  and a flick lets go. Host scenario: carry 3.5 r without a split, drop
+  past 4 r, immediate re-grab; the tear-on-pull scenario runs with
+  `splitOnPull` on.
+
 ### Added
 - Mochi sample is networked: `mochiPos` / `mochiR` / `mochiCount` are
   `[UdonSynced]` (manual sync), the owner runs gravity and merging and

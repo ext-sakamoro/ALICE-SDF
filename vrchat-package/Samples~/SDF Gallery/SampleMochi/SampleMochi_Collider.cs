@@ -6,10 +6,13 @@
 //
 // Interaction model (VR):
 //   - Hand enters a mochi sphere -> mochi sticks to hand (grab)
-//   - Pull hand away -> mochi stretches (SmoothUnion neck) then splits
+//   - Grip (VR) / right click (desktop) while holding -> it splits
+//     (splitOnPull re-enables the old "pull far enough and it tears")
 //   - Push two free mochis together -> they merge (volume conservation)
 //   - Merged mochis grow: r_new = cbrt(r1^3 + r2^3)
-//   - Release hand far from mochi -> mochi drops with soft gravity
+//   - VR: carried 4 r from where it was grabbed the mochi is dropped and,
+//     with the hand still inside, grabbed again at once, so a slow hand
+//     carries it and a fast flick lets it go. Desktop: the button up drops it.
 //   - Desktop: click (Use) on a mochi -> the point on the view ray nearest
 //     its centre becomes a virtual right hand, so grab / drag / split /
 //     merge run through the same ProcessHand; release the button to drop
@@ -82,9 +85,11 @@ namespace AliceSDF.Samples
         public float grabThreshold = 0.8f;
         [Tooltip("Dwell time before grab activates (sec)")]
         public float grabDwellTime = 0.08f;
-        [Tooltip("Pull distance (x radius) to trigger split")]
+        [Tooltip("Pull distance (x radius) to trigger split, when Split On Pull is on")]
         public float splitDistance = 2.5f;
-        [Tooltip("Distance (x radius) for auto-release")]
+        [Tooltip("Pulling a held mochi this far from where it was grabbed also splits it (off: only the grab button / grip splits)")]
+        public bool splitOnPull = false;
+        [Tooltip("Distance (x radius) at which a VR hand drops the mochi (the desktop cursor drops on button up only)")]
         public float releaseDistance = 4.0f;
         [Tooltip("Merge threshold: fraction of combined radii")]
         public float mergeThreshold = 0.7f;
@@ -140,9 +145,11 @@ namespace AliceSDF.Samples
 
 #if UDONSHARP
         // Desktop cursor: Use button state and the fixed distance of the
-        // virtual hand along the view ray (-1 = no cursor)
+        // virtual hand along the view ray (-1 = no cursor); cursorDriving is
+        // true while ProcessHand runs for the cursor (no distance release)
         private bool useHeld;
         private float cursorDist;
+        private bool cursorDriving;
         private float lastSyncTime;
         private bool pushing;   // in contact this frame chain (ownership taken at its start)
         private int receivedCount;   // mochiCount at the last logged deserialization
@@ -409,7 +416,9 @@ namespace AliceSDF.Samples
             int held = grab[HandRight];
             if (held >= 0 && held < mochiCount && cursor.y < mochiR[held])
                 cursor = new Vector3(cursor.x, mochiR[held], cursor.z);
+            cursorDriving = true;
             ProcessHand(cursor, HandRight);
+            cursorDriving = false;
         }
 #endif
 
@@ -447,11 +456,9 @@ namespace AliceSDF.Samples
         {
             if (grab[hand] >= 0 && grab[hand] < mochiCount)
             {
-                float r = mochiR[grab[hand]];
-                string pull = splitDone[hand]
-                    ? "already split"
-                    : "max pull " + F(maxPull[hand]) + " m, split at " + F(r * splitDistance) + " m";
-                LogEvent("release #" + grab[hand] + " hand " + hand + " (button up, " + pull + ")");
+                string pull = splitDone[hand] ? "split while held" : "not split";
+                LogEvent("release #" + grab[hand] + " hand " + hand + " (button up, " + pull + ", carried "
+                         + F(maxPull[hand]) + " m)");
             }
             grab[hand] = -1;
             dwellTarget[hand] = -1;
@@ -482,19 +489,23 @@ namespace AliceSDF.Samples
                 if (pullDist > maxPull[hand]) maxPull[hand] = pullDist;
                 float radius = mochiR[grabbed];
 
-                // Split: pulled far enough (once per grab)
-                if (!splitDone[hand] && pullDist > radius * splitDistance
+                // Split: pulled far enough (once per grab), only when enabled
+                if (splitOnPull && !splitDone[hand] && pullDist > radius * splitDistance
                     && SplitHeld(hand, "pulled " + F(pullDist) + " m"))
                 {
                     splitDone[hand] = true;
                     radius = mochiR[grabbed];
                 }
 
-                // Release when the hand has pulled too far (radius may have just shrunk)
-                if (pullDist > radius * releaseDistance)
+                // A VR hand drops the mochi once it has carried it releaseDistance
+                // radii; the hand is still inside, so a slow hand grabs it again
+                // after the dwell (continuous carry) and a fast flick does not.
+                // The desktop cursor moves metres with a glance and drops on the
+                // button up instead.
+                if (!DesktopCursorHand() && pullDist > radius * releaseDistance)
                 {
                     grab[hand] = -1;
-                    LogEvent("release #" + grabbed + " hand " + hand + " (pulled " + F(pullDist) + " m)");
+                    LogEvent("release #" + grabbed + " hand " + hand + " (carried " + F(pullDist) + " m)");
                 }
                 return;
             }
@@ -532,6 +543,15 @@ namespace AliceSDF.Samples
             maxPull[hand] = 0f;
             dwell[hand] = 0f;
             LogEvent("grab #" + closest + " r=" + F(mochiR[closest]) + " hand " + hand + " at " + F(handPos));
+        }
+
+        private bool DesktopCursorHand()
+        {
+#if UDONSHARP
+            return cursorDriving;
+#else
+            return false;
+#endif
         }
 
         // Split the mochi a hand holds: the held piece shrinks to r*cbrt(0.5)
