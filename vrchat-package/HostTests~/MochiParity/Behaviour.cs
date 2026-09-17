@@ -22,6 +22,12 @@ static class Behaviour
         void Check(bool ok, string what) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + what); if (!ok) fails++; }
 
         Check(count() == 5, "5 initial mochis");
+        // Player collision must ignore the ground plane: standing on the floor
+        // (feet 5 cm under y=0) away from every mochi is not a penetration.
+        float margin = (float)typeof(SampleMochi_Collider).GetField("collisionMargin").GetValue(c);
+        Check(c.EvaluateMochiSdf(new Vector3(2f, -0.05f, 2f)) >= margin, "floor away from mochis: no collision push");
+        Check(c.EvaluateSdf(new Vector3(2f, -0.05f, 2f)) < 0f, "rendered SDF still contains the ground");
+        Check(c.EvaluateMochiSdf(pos()[0]) < 0f, "inside mochi 0 is still a penetration");
         // Hand 0 rests inside mochi 0 (r=0.35 at (-0.6,0.35,0.5)); dwell 0.08 s at 90 fps = 8 frames
         var origin = pos()[0];
         for (int i = 0; i < 10; i++) Call(c, "ProcessHand", origin, 0);

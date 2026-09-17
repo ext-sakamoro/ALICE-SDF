@@ -161,9 +161,14 @@ namespace AliceSDF.Samples
             ApplyGravity();
 
             // --- Player Collision ---
+            // Against the mochis only: the ground plane is part of the rendered
+            // SDF (EvaluateSdf) but the player already stands on the world's
+            // floor collider at the same height. Including it here made every
+            // frame on the floor a penetration (feet 5 cm below y=0), so the
+            // player was teleported up and fell back, endlessly.
             Vector3 playerPos = localPlayer.GetPosition();
             Vector3 feetPos = playerPos + Vector3.down * 0.05f;
-            float dist = EvaluateSdf(feetPos);
+            float dist = EvaluateMochiSdf(feetPos);
 
             if (dist < collisionMargin)
             {
@@ -323,7 +328,12 @@ namespace AliceSDF.Samples
         // =================================================================
         public float EvaluateSdf(Vector3 p)
         {
-            float ground = p.y;
+            return OpSmoothUnion(p.y, EvaluateMochiSdf(p), groundK);
+        }
+
+        // The mochis alone (no ground plane): what the player collides with.
+        public float EvaluateMochiSdf(Vector3 p)
+        {
             float mochi = 1e10f;
 
             for (int i = 0; i < mochiCount; i++)
@@ -332,18 +342,18 @@ namespace AliceSDF.Samples
                 mochi = OpSmoothUnion(mochi, d, blendK);
             }
 
-            return OpSmoothUnion(ground, mochi, groundK);
+            return mochi;
         }
 
         private Vector3 EstimateGradient(Vector3 p)
         {
             float e = 0.02f;
-            float dx = EvaluateSdf(new Vector3(p.x + e, p.y, p.z))
-                     - EvaluateSdf(new Vector3(p.x - e, p.y, p.z));
-            float dy = EvaluateSdf(new Vector3(p.x, p.y + e, p.z))
-                     - EvaluateSdf(new Vector3(p.x, p.y - e, p.z));
-            float dz = EvaluateSdf(new Vector3(p.x, p.y, p.z + e))
-                     - EvaluateSdf(new Vector3(p.x, p.y, p.z - e));
+            float dx = EvaluateMochiSdf(new Vector3(p.x + e, p.y, p.z))
+                     - EvaluateMochiSdf(new Vector3(p.x - e, p.y, p.z));
+            float dy = EvaluateMochiSdf(new Vector3(p.x, p.y + e, p.z))
+                     - EvaluateMochiSdf(new Vector3(p.x, p.y - e, p.z));
+            float dz = EvaluateMochiSdf(new Vector3(p.x, p.y, p.z + e))
+                     - EvaluateMochiSdf(new Vector3(p.x, p.y, p.z - e));
             Vector3 grad = new Vector3(dx, dy, dz);
             float len = grad.magnitude;
             return (len > 0.0001f) ? grad / len : Vector3.up;

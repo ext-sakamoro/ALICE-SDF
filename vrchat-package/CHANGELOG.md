@@ -14,6 +14,10 @@
   code in the package; the 53-primitive `AliceSDF_Primitives.cs` is next.
 
 ### Fixed
+- Mochi sample: the player-collision test used the rendered SDF (ground
+  plane included), so standing on the floor was a permanent penetration and
+  the player bobbed up and down every frame. Player collision now uses the
+  mochis alone (`EvaluateMochiSdf`); `EvaluateSdf` is unchanged.
 - `Runtime/AliceSDF.Runtime.asmdef` now references `UdonSharp.Runtime`,
   `VRC.Udon` and `VRC.SDKBase`. It defined `UDONSHARP` but referenced
   nothing, so `AliceSDF_Collider.cs` did not compile in a VRChat project.

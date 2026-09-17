@@ -98,6 +98,20 @@ Distances move in the last ulp everywhere a law calls a transcendental
   un-renormalised direction (the marcher normalises), which crossed the 1e-4
   band on a grazing gyroid ray by 2e-9.
 
+### Fixed — VRChat package: Mochi sample pushed the player off the floor every frame
+
+- `SampleMochi_Collider.PostLateUpdate` tested the player's feet (5 cm under
+  the player position) against `EvaluateSdf`, which includes the ground
+  plane `y = 0`. Standing on the world floor was therefore a permanent
+  penetration: the collider teleported the player up, gravity brought them
+  back, and the view bobbed for as long as they stood still — in every
+  version of the sample. The player now collides with the mochis only
+  (`EvaluateMochiSdf`, the same smooth union without the ground); the floor
+  is the world's own collider at the same height, and `EvaluateSdf` is
+  unchanged for the shader / golden parity. `HostTests~/MochiParity` checks a
+  floor point away from the mochis is not a penetration. Found in the VRChat
+  client after the first Build & Test.
+
 ### Fixed — VRChat package: Runtime assembly could not compile inside a VRChat project
 
 - `vrchat-package/Runtime/AliceSDF.Runtime.asmdef` defines `UDONSHARP` when
