@@ -202,8 +202,8 @@ impl PrimTable for f32x8 {
         let out;
         let major_r = Self::splat(inst.params[0]);
         let minor_r = Self::splat(inst.params[1]);
-        let sc_sin = Self::splat(inst.params[2].sin());
-        let sc_cos = Self::splat(inst.params[2].cos());
+        let sc_sin = Self::splat(alice_det_math::sin(inst.params[2]));
+        let sc_cos = Self::splat(alice_det_math::cos(inst.params[2]));
         let px = p.x.abs();
         // k = sc.cos*px > sc.sin*py ? sc.sin*px + sc.cos*py : sqrt(px² + py²)
         let dot_val = sc_sin * px + sc_cos * p.y;
@@ -370,8 +370,8 @@ impl PrimTable for f32x8 {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]
         let out;
-        let c_sin = Self::splat(inst.params[0].sin());
-        let c_cos = Self::splat(inst.params[0].cos());
+        let c_sin = Self::splat(alice_det_math::sin(inst.params[0]));
+        let c_cos = Self::splat(alice_det_math::cos(inst.params[0]));
         let radius = Self::splat(inst.params[1]);
         let qx = (p.x * p.x + p.z * p.z).sqrt();
         let qy = p.y;
@@ -515,12 +515,9 @@ impl PrimTable for f32x8 {
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
-        let sx = sin_approx(spx);
-        let cx = cos_approx(spx);
-        let sy = sin_approx(spy);
-        let cy = cos_approx(spy);
-        let sz = sin_approx(spz);
-        let cz = cos_approx(spz);
+        let (sx, cx) = alice_det_math::simd::sin_cos(spx);
+        let (sy, cy) = alice_det_math::simd::sin_cos(spy);
+        let (sz, cz) = alice_det_math::simd::sin_cos(spz);
         let d = (sx * cy + sy * cz + sz * cx).abs() * inv_scale - thickness;
         out = d * scale_correction;
         out
@@ -1153,12 +1150,9 @@ impl PrimTable for f32x8 {
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
-        let sx = sin_approx(spx);
-        let cx = cos_approx(spx);
-        let sy = sin_approx(spy);
-        let cy = cos_approx(spy);
-        let sz = sin_approx(spz);
-        let cz = cos_approx(spz);
+        let (sx, cx) = alice_det_math::simd::sin_cos(spx);
+        let (sy, cy) = alice_det_math::simd::sin_cos(spy);
+        let (sz, cz) = alice_det_math::simd::sin_cos(spz);
         let d = sx * sy * sz + sx * cy * cz + cx * sy * cz + cx * cy * sz;
         let d = d.abs() * inv_scale - thickness;
         out = d * scale_correction;
@@ -1208,12 +1202,9 @@ impl PrimTable for f32x8 {
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
-        let sx = sin_approx(spx);
-        let cx = cos_approx(spx);
-        let sy = sin_approx(spy);
-        let cy = cos_approx(spy);
-        let sz = sin_approx(spz);
-        let cz = cos_approx(spz);
+        let (sx, cx) = alice_det_math::simd::sin_cos(spx);
+        let (sy, cy) = alice_det_math::simd::sin_cos(spy);
+        let (sz, cz) = alice_det_math::simd::sin_cos(spz);
         // sin(2x) = 2*sx*cx, cos(2x) = 2*cx*cx - 1
         let s2x = two * sx * cx;
         let s2y = two * sy * cy;
@@ -1263,12 +1254,9 @@ impl PrimTable for f32x8 {
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
-        let sx = sin_approx(spx);
-        let cx = cos_approx(spx);
-        let sy = sin_approx(spy);
-        let cy = cos_approx(spy);
-        let sz = sin_approx(spz);
-        let cz = cos_approx(spz);
+        let (sx, cx) = alice_det_math::simd::sin_cos(spx);
+        let (sy, cy) = alice_det_math::simd::sin_cos(spy);
+        let (sz, cz) = alice_det_math::simd::sin_cos(spz);
         let c2x = two * cx * cx - one;
         let c2y = two * cy * cy - one;
         let c2z = two * cz * cz - one;
@@ -1296,12 +1284,9 @@ impl PrimTable for f32x8 {
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
-        let sx = sin_approx(spx);
-        let cx = cos_approx(spx);
-        let sy = sin_approx(spy);
-        let cy = cos_approx(spy);
-        let sz = sin_approx(spz);
-        let cz = cos_approx(spz);
+        let (sx, cx) = alice_det_math::simd::sin_cos(spx);
+        let (sy, cy) = alice_det_math::simd::sin_cos(spy);
+        let (sz, cz) = alice_det_math::simd::sin_cos(spz);
         let c2x = two * cx * cx - one;
         let c2y = two * cy * cy - one;
         let c2z = two * cz * cz - one;
@@ -1323,12 +1308,9 @@ impl PrimTable for f32x8 {
         let spx = p.x * scale;
         let spy = p.y * scale;
         let spz = p.z * scale;
-        let sx = sin_approx(spx);
-        let cx = cos_approx(spx);
-        let sy = sin_approx(spy);
-        let cy = cos_approx(spy);
-        let sz = sin_approx(spz);
-        let cz = cos_approx(spz);
+        let (sx, cx) = alice_det_math::simd::sin_cos(spx);
+        let (sy, cy) = alice_det_math::simd::sin_cos(spy);
+        let (sz, cz) = alice_det_math::simd::sin_cos(spz);
         let s2x = two * sx * cx;
         let s2y = two * sy * cy;
         let s2z = two * sz * cz;
@@ -1583,17 +1565,12 @@ fn eval_per_lane(p: &Vec3x8, f: impl Fn(Vec3) -> f32) -> f32x8 {
     f32x8::new(results)
 }
 
-/// SIMD cosine (`wide` polynomial with range reduction, ~1e-6 abs error).
+/// SIMD cosine: `alice_det_math::simd::cos`, lane-for-lane bit-identical to
+/// the scalar `alice_det_math::cos` the tree / scalar laws use (3.1.0).
 ///
-/// Replaced the Bhaskara I approximation (1.6e-3 abs error) in 1.9.1: TPMS
-/// primitives and twist/bend amplified that error to >10% vs the tree law.
+/// History: Bhaskara I (1.6e-3 abs error) → `wide` polynomial (1.9.1, ~1e-6,
+/// but a different law from the scalar side) → det_math (3.1.0, same bits).
 #[inline(always)]
 fn cos_approx(x: f32x8) -> f32x8 {
-    x.cos()
-}
-
-/// SIMD sine (`wide` polynomial with range reduction, ~1e-6 abs error).
-#[inline(always)]
-fn sin_approx(x: f32x8) -> f32x8 {
-    x.sin()
+    alice_det_math::simd::cos(x)
 }

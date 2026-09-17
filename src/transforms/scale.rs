@@ -23,7 +23,8 @@ use glam::Vec3;
 /// (transformed_point, distance_multiplier)
 #[inline(always)]
 pub fn transform_scale(point: Vec3, factor: f32) -> (Vec3, f32) {
-    (point / factor, factor)
+    // `p * (1/s)`: the same bits as the compiled evaluators (3.1.0)
+    (point * (1.0 / factor), factor)
 }
 
 /// Transform a point by scale (forward transform)
@@ -55,9 +56,10 @@ pub fn transform_scale_inverse(point: Vec3, factor: f32) -> Vec3 {
 /// (transformed_point, approximate_distance_multiplier)
 #[inline(always)]
 pub fn transform_scale_nonuniform(point: Vec3, factors: Vec3) -> (Vec3, f32) {
-    // Deep Fried: vector division instead of component-wise scalar division
-    // Compiles to single vdivps SIMD instruction
-    let transformed = point / factors;
+    // `p * (1/s)` per component: the compiled evaluators precompute the
+    // reciprocals (`Instruction::scale_nonuniform`), and the tree must be
+    // bit-identical to them (3.1.0)
+    let transformed = point * Vec3::new(1.0 / factors.x, 1.0 / factors.y, 1.0 / factors.z);
     let min_factor = factors.x.min(factors.y.min(factors.z));
     (transformed, min_factor)
 }

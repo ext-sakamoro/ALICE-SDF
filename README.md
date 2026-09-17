@@ -22,6 +22,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **10-1000x compression** compared to traditional mesh formats
 - **Infinite resolution** - shapes are mathematically perfect at any scale
 - **CSG operations** - boolean operations on shapes without mesh overhead
+- **Cross-platform bit-exact evaluation** (3.1.0) - every transcendental in the laws and evaluators goes through [`alice-det-math`](https://crates.io/crates/alice-det-math) (the crate `alice-physics` uses) and `a * b + c` is never fused, so the tree, compiled scalar, `f32x8` SIMD, BVH and Cranelift SIMD-JIT evaluators return the *same bits* on x86_64, aarch64 and wasm32 (`tests/test_det_parity.rs`, `tests/test_det_golden.rs`); the GPU shaders stay a tolerance domain except the axis ties of `atan2`, which `alice_atan2` pins to the CPU law
 - **Real-time raymarching** - GPU-accelerated rendering
 - **PBR materials** - metallic-roughness workflow compatible with UE5/UE6/Unity/Godot
 - **Keyframe animation** - parametric deformation with timeline tracks

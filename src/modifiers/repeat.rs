@@ -47,7 +47,7 @@ pub fn modifier_repeat_finite(point: Vec3, count: [u32; 3], spacing: Vec3) -> Ve
 #[inline(always)]
 pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
-        spacing.mul_add(-round_half_up(point.x * (1.0 / spacing)), point.x),
+        spacing * -round_half_up(point.x * (1.0 / spacing)) + point.x,
         point.y,
         point.z,
     )
@@ -58,7 +58,7 @@ pub fn modifier_repeat_x(point: Vec3, spacing: f32) -> Vec3 {
 pub fn modifier_repeat_y(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
-        spacing.mul_add(-round_half_up(point.y * (1.0 / spacing)), point.y),
+        spacing * -round_half_up(point.y * (1.0 / spacing)) + point.y,
         point.z,
     )
 }
@@ -69,7 +69,7 @@ pub fn modifier_repeat_z(point: Vec3, spacing: f32) -> Vec3 {
     Vec3::new(
         point.x,
         point.y,
-        spacing.mul_add(-round_half_up(point.z * (1.0 / spacing)), point.z),
+        spacing * -round_half_up(point.z * (1.0 / spacing)) + point.z,
     )
 }
 

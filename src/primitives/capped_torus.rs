@@ -16,18 +16,18 @@ use glam::Vec3;
 /// - `cap_angle`: half opening angle in radians (0 = point, PI = full torus)
 #[inline(always)]
 pub fn sdf_capped_torus(p: Vec3, major_radius: f32, minor_radius: f32, cap_angle: f32) -> f32 {
-    let sc = (cap_angle.sin(), cap_angle.cos());
+    let sc = (
+        alice_det_math::sin(cap_angle),
+        alice_det_math::cos(cap_angle),
+    );
     let px = p.x.abs();
     let k = if sc.1 * px > sc.0 * p.y {
-        px.mul_add(sc.0, p.y * sc.1)
+        px * sc.0 + (p.y * sc.1)
     } else {
-        px.hypot(p.y)
+        alice_det_math::hypot(px, p.y)
     };
-    (2.0 * major_radius)
-        .mul_add(
-            -k,
-            major_radius.mul_add(major_radius, p.z.mul_add(p.z, p.x.mul_add(p.x, p.y * p.y))),
-        )
+    ((2.0 * major_radius) * -k
+        + (major_radius * major_radius + (p.z * p.z + (p.x * p.x + (p.y * p.y)))))
         .sqrt()
         - minor_radius
 }

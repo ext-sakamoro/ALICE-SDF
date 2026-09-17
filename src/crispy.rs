@@ -37,7 +37,7 @@ pub fn fast_inv_sqrt(x: f32) -> f32 {
     let half = 0.5 * x;
     let i = 0x5f375a86u32.wrapping_sub(f32::to_bits(x) >> 1);
     let y = f32::from_bits(i);
-    y * (half * y).mul_add(-y, 1.5)
+    y * ((half * y) * -y + 1.5)
 }
 
 /// Normalize a 2D gradient (gx, gz) using fast inverse square root.
@@ -45,7 +45,7 @@ pub fn fast_inv_sqrt(x: f32) -> f32 {
 /// Returns `(gx * inv_len, gz * inv_len)`. Returns `(0.0, 0.0)` if near zero.
 #[inline(always)]
 pub fn fast_normalize_2d(gx: f32, gz: f32) -> (f32, f32) {
-    let len_sq = gx.mul_add(gx, gz * gz);
+    let len_sq = gx * gx + (gz * gz);
     if len_sq < 1e-12 {
         return (0.0, 0.0);
     }

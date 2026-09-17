@@ -124,6 +124,42 @@ fn repeat_laws_gpu_match_cpu_at_ties() {
     );
 }
 
+/// 3.1.0: the shaders' `alice_atan2` returns the CPU law's exact constants on
+/// the axes (`atan2(±0, x < 0) = ±π`, `atan2(y, ±0) = ±π/2`), so a sector
+/// boundary that lies on an axis (odd counts at π, count 4 at ±π/2) snaps to
+/// the same sector as the CPU. The diagonal ties of count 4 depend on the
+/// GPU's `atan` last ulp and stay in the tolerance domain.
+#[test]
+fn polar_axis_ties_gpu_match_cpu() {
+    let Some(_) = gpu_or_skip(&SdfNode::sphere(1.0)) else {
+        return;
+    };
+    let base = SdfNode::sphere(0.3).translate(0.8, 0.0, 0.2);
+    for count in [3u32, 5, 7] {
+        let node = base.clone().polar_repeat(count);
+        let gpu = GpuEvaluator::new(&node).expect("gpu");
+        let mut pts = Vec::new();
+        for i in 1..=12 {
+            let v = i as f32 * 0.25;
+            // on the -x axis (angle π), +x axis (0) and both z half-axes (±π/2)
+            pts.push(Vec3::new(-v, 0.1, 0.0));
+            pts.push(Vec3::new(-v, 0.1, -0.0));
+            pts.push(Vec3::new(v, 0.1, 0.0));
+            pts.push(Vec3::new(0.0, 0.1, v));
+            pts.push(Vec3::new(0.0, 0.1, -v));
+            pts.push(Vec3::new(-0.0, 0.1, -v));
+        }
+        let got = gpu.eval_batch(&pts).expect("gpu eval");
+        for (p, g) in pts.iter().zip(&got) {
+            let c = eval(&node, *p);
+            assert!(
+                (g - c).abs() <= 1e-4 * c.abs().max(1.0),
+                "polar_repeat({count}) @ {p:?}: gpu {g} vs cpu {c}"
+            );
+        }
+    }
+}
+
 #[test]
 fn sign_convention_gpu_matches_cpu() {
     assert_gpu_matches_cpu("pyramid", &SdfNode::pyramid(1.5), 1e-4);
@@ -231,7 +267,7 @@ mod glsl_execution {
     use super::*;
     use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
 
-    fn compute_wrapper(library: &str) -> String {
+    pub fn compute_wrapper(library: &str) -> String {
         format!(
             r"#version 450
 layout(local_size_x = 256) in;
@@ -346,4 +382,54 @@ fn every_corpus_node_matches_cpu_through_wgsl() {
     eprintln!("WGSL execution parity: {checked} corpus nodes");
     assert!(checked > 100, "corpus too small: {checked}");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[cfg(feature = "glsl")]
+mod glsl_axis_ties {
+    use super::*;
+    use alice_sdf::compiled::{GlslShader, GlslTranspileMode};
+
+    /// GLSL twin of `polar_axis_ties_gpu_match_cpu`: naga's GLSL `atan(y, x)`
+    /// lowering disagreed with the CPU on the sign of π at `atan2(0, -x)`
+    /// (why `every_corpus_node_matches_cpu_through_glsl` samples random
+    /// points only); `alice_atan2` pins those ties.
+    #[test]
+    fn polar_axis_ties_glsl_match_cpu() {
+        let base = SdfNode::sphere(0.3).translate(0.8, 0.0, 0.2);
+        for count in [3u32, 5, 7] {
+            let node = base.clone().polar_repeat(count);
+            let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
+            let gpu = match GpuEvaluator::from_glsl_compute(
+                &super::glsl_execution::compute_wrapper(&shader.source),
+            ) {
+                Ok(g) => g,
+                Err(e) => {
+                    assert!(
+                        std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                        "ALICE_SDF_REQUIRE_GPU is set but the GLSL module failed: {e}"
+                    );
+                    eprintln!("skipping GLSL axis ties: {e}");
+                    return;
+                }
+            };
+            let mut pts = Vec::new();
+            for i in 1..=12 {
+                let v = i as f32 * 0.25;
+                pts.push(Vec3::new(-v, 0.1, 0.0));
+                pts.push(Vec3::new(-v, 0.1, -0.0));
+                pts.push(Vec3::new(v, 0.1, 0.0));
+                pts.push(Vec3::new(0.0, 0.1, v));
+                pts.push(Vec3::new(0.0, 0.1, -v));
+                pts.push(Vec3::new(-0.0, 0.1, -v));
+            }
+            let got = gpu.eval_batch(&pts).expect("gpu eval");
+            for (p, g) in pts.iter().zip(&got) {
+                let c = eval(&node, *p);
+                assert!(
+                    (g - c).abs() <= 1e-4 * c.abs().max(1.0),
+                    "polar_repeat({count}) @ {p:?}: glsl {g} vs cpu {c}"
+                );
+            }
+        }
+    }
 }

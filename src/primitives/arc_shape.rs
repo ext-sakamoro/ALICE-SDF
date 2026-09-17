@@ -19,7 +19,7 @@ pub fn sdf_arc_shape(p: Vec3, aperture: f32, radius: f32, thickness: f32, half_h
     // 2D arc in XZ plane (IQ's sdArc)
     let qx = p.x.abs();
     let qz = p.z;
-    let sc = Vec2::new(aperture.sin(), aperture.cos());
+    let sc = Vec2::new(alice_det_math::sin(aperture), alice_det_math::cos(aperture));
 
     let d_2d = if sc.y * qx > sc.x * qz {
         // Inside the angular span

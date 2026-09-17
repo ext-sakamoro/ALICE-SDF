@@ -14,10 +14,10 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_neovius(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let sp = p * scale;
-    let cx = sp.x.cos();
-    let cy = sp.y.cos();
-    let cz = sp.z.cos();
-    let d = 3.0f32.mul_add(cx + cy + cz, 4.0 * cx * cy * cz);
+    let cx = alice_det_math::cos(sp.x);
+    let cy = alice_det_math::cos(sp.y);
+    let cz = alice_det_math::cos(sp.z);
+    let d = 3.0f32 * (cx + cy + cz) + (4.0 * cx * cy * cz);
     d.abs() / scale - thickness
 }
 

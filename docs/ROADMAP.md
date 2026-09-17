@@ -97,6 +97,23 @@ Two-round maintainer self-review of 1.10.2 (independent Linux x86_64 environment
 | 2.0.0: `Real` sealed / `CompiledSdf` private fields / `dep:` features / taper distance bound with the child's reach (phantom-free singular plane) / DC fins / one noise law for texture-fit with GPU parity | ✅ | CHANGELOG 2.0.0 |
 | Oracle expansion (1.13.0): every path without an oracle got one — dual contouring (was wound inward), non-Lipschitz law tracing (offset repeat / taper miss rates pinned), SVO ray query (59/256 rays lost), NPR colour laws (all correct), neural SDF (default learning rate 1e-3 → 1e-2), texture fitting (scalar noise had drifted from SIMD; multi-start fit), Python binding smoke in CI | ✅ | CHANGELOG 1.13.0; `tests/test_{dual_contouring_invariants,svo_query_oracle,npr_analytic,neural_oracle,texture_fit_oracle}.rs`, `python/tests/smoke.py`, `scripts/preflight.sh` |
 
+### Cross-platform bit-exact evaluation (3.1.0, 2026-09-17)
+
+- ✅ Every transcendental in the laws / evaluators goes through
+  `alice-det-math` 0.2 (the crate `alice-physics` 1.4 uses); `mul_add`
+  removed. Tree / compiled scalar / SIMD / BVH / SIMD-JIT bit-identical
+  (`test_det_parity`, 144 nodes × 266 points), pinned per platform
+  (`test_det_golden`, aarch64 = x86_64 = wasm32).
+- ✅ SIMD JIT: det_math `sin_cos` as IR, twist / bend compile again (Cranelift
+  verifier error since 0.113), arms aligned to the law's operation order,
+  Ellipsoid arm dropped (IQ approximation ≠ Eberly law).
+- ✅ Shaders: `alice_atan2` pins axis ties, constants printed round-trip.
+- ⏳ 3.2.0: the remaining directories (`npr` / `mesh` / `texture` / `gi` /
+  `io` / `terrain`, ~30 files of `f32::sin` etc.) + crate-wide
+  `clippy.toml` `disallowed-methods`; scalar tree JIT (`JitCompiledSdf`)
+  operation-order audit (tolerance 1e-5 today); `SdfNode::rotate_euler` and
+  the other construction helpers still build quaternions with glam's libm.
+
 ### Deeper follow-ups (not scheduled)
 
 - **P14-C — Real GPU execution parity** — build a wgpu headless test harness that uploads the `GpuColorProgram` to a storage buffer, dispatches the emitted evaluator against a synthetic context UBO, reads back the output framebuffer, and asserts numerical parity against the CPU scalar `eval` within a small epsilon (e.g. `1e-5`). Currently only naga parse + semantic validation is exercised; drop-in for a wgpu-enabled CI runner.

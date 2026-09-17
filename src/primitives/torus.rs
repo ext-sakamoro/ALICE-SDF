@@ -48,7 +48,7 @@ pub fn sdf_torus_oriented(point: Vec3, axis: Vec3, major_radius: f32, minor_radi
 /// * `angle` - Half-angle of the cap in radians (0 to PI)
 #[inline(always)]
 pub fn sdf_torus_capped(point: Vec3, major_radius: f32, minor_radius: f32, angle: f32) -> f32 {
-    let sc = Vec2::new(angle.sin(), angle.cos());
+    let sc = Vec2::new(alice_det_math::sin(angle), alice_det_math::cos(angle));
     let p_xz = Vec2::new(point.x.abs(), point.z);
 
     // Branchless selection would require select intrinsic
@@ -60,12 +60,7 @@ pub fn sdf_torus_capped(point: Vec3, major_radius: f32, minor_radius: f32, angle
     };
 
     let q = Vec2::new(
-        (2.0 * major_radius)
-            .mul_add(
-                -k,
-                major_radius.mul_add(major_radius, p_xz.length_squared()),
-            )
-            .sqrt(),
+        ((2.0 * major_radius) * -k + (major_radius * major_radius + p_xz.length_squared())).sqrt(),
         point.y,
     );
     q.length() - minor_radius

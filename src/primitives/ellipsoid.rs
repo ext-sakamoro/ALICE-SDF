@@ -22,7 +22,7 @@ fn ellipsoid_bisector(n: usize, r: [f32; 3], z: [f32; 3], g: f32) -> f32 {
     let mut norm2 = 0.0f32;
     for i in 0..n {
         nn[i] = r[i] * z[i];
-        norm2 = nn[i].mul_add(nn[i], norm2);
+        norm2 += nn[i] * nn[i];
     }
     let mut s0 = z[n - 1] - 1.0;
     let mut s1 = if g < 0.0 { 0.0 } else { norm2.sqrt() - 1.0 };
@@ -35,7 +35,7 @@ fn ellipsoid_bisector(n: usize, r: [f32; 3], z: [f32; 3], g: f32) -> f32 {
         let mut gs = -1.0f32;
         for i in 0..n {
             let ratio = nn[i] / (s + r[i]);
-            gs = ratio.mul_add(ratio, gs);
+            gs += ratio * ratio;
         }
         if gs > 0.0 {
             s0 = s;
@@ -63,7 +63,7 @@ fn ellipsoid_sqr_distance(n: usize, e: [f32; 3], y: [f32; 3]) -> f32 {
         let mut g = -1.0f32;
         for i in 0..n {
             z[i] = y[i] / e[i];
-            g = z[i].mul_add(z[i], g);
+            g += z[i] * z[i];
         }
         if g == 0.0 {
             return 0.0;
@@ -78,7 +78,7 @@ fn ellipsoid_sqr_distance(n: usize, e: [f32; 3], y: [f32; 3]) -> f32 {
         for i in 0..n {
             let x = r[i] * y[i] / (sbar + r[i]);
             let d = x - y[i];
-            d2 = d.mul_add(d, d2);
+            d2 += d * d;
         }
         return d2;
     }
@@ -88,7 +88,7 @@ fn ellipsoid_sqr_distance(n: usize, e: [f32; 3], y: [f32; 3]) -> f32 {
     let mut inside = true;
     for i in 0..last {
         numer[i] = e[i] * y[i];
-        denom[i] = e[last].mul_add(-e[last], e[i] * e[i]);
+        denom[i] = e[last] * -e[last] + (e[i] * e[i]);
         if numer[i] >= denom[i] {
             inside = false;
         }
@@ -98,16 +98,16 @@ fn ellipsoid_sqr_distance(n: usize, e: [f32; 3], y: [f32; 3]) -> f32 {
         let mut xde = [0.0f32; 3];
         for i in 0..last {
             xde[i] = numer[i] / denom[i];
-            discr = xde[i].mul_add(-xde[i], discr);
+            discr += xde[i] * -xde[i];
         }
         if discr > 0.0 {
             let mut d2 = 0.0f32;
             for i in 0..last {
-                let d = e[i].mul_add(xde[i], -y[i]);
-                d2 = d.mul_add(d, d2);
+                let d = e[i] * xde[i] + -y[i];
+                d2 += d * d;
             }
             let xl = e[last] * discr.sqrt();
-            return xl.mul_add(xl, d2);
+            return xl * xl + d2;
         }
     }
     ellipsoid_sqr_distance(last, e, y)
@@ -142,10 +142,9 @@ pub fn sdf_ellipsoid_exact(p: Vec3, radii: Vec3) -> f32 {
         y.swap(0, 1);
     }
     let d = ellipsoid_sqr_distance(3, e, y).sqrt();
-    let inside = (y[2] / e[2]).mul_add(
-        y[2] / e[2],
-        (y[1] / e[1]).mul_add(y[1] / e[1], (y[0] / e[0]).powi(2)),
-    ) < 1.0;
+    let inside = ((y[2] / e[2]) * (y[2] / e[2])
+        + ((y[1] / e[1]) * (y[1] / e[1]) + alice_det_math::powi(y[0] / e[0], 2)))
+        < 1.0;
     if inside {
         -d
     } else {

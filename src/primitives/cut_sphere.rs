@@ -14,14 +14,13 @@ use glam::{Vec2, Vec3};
 /// - `cut_height`: Y height of the cut plane (must be in -radius..radius)
 #[inline(always)]
 pub fn sdf_cut_sphere(p: Vec3, radius: f32, cut_height: f32) -> f32 {
-    let w = radius
-        .mul_add(radius, -(cut_height * cut_height))
+    let w = (radius * radius + -(cut_height * cut_height))
         .max(0.0)
         .sqrt();
-    let q = Vec2::new(p.x.hypot(p.z), p.y);
-    let s1 = ((cut_height - radius) * q.x)
-        .mul_add(q.x, w * w * 2.0f32.mul_add(-q.y, cut_height + radius));
-    let s2 = cut_height.mul_add(q.x, -(w * q.y));
+    let q = Vec2::new(alice_det_math::hypot(p.x, p.z), p.y);
+    let s1 =
+        ((cut_height - radius) * q.x) * q.x + (w * w * (2.0f32 * -q.y + (cut_height + radius)));
+    let s2 = cut_height * q.x + -(w * q.y);
     let s = s1.max(s2);
 
     if s < 0.0 {

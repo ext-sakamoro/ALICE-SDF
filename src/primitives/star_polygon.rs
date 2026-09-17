@@ -21,19 +21,22 @@ pub fn sdf_star_polygon(p: Vec3, radius: f32, n_points: f32, m: f32, half_height
 
     // Fold to one half-sector [0, an]
     let r = Vec2::new(qx, qz).length();
-    let mut angle = qx.atan2(qz);
+    let mut angle = alice_det_math::atan2(qx, qz);
     // Modulo to [0, 2*an], then reflect to [0, an]
-    angle = 2.0f32.mul_add(an, angle % (2.0 * an)) % (2.0 * an);
+    angle = (2.0f32 * an + (angle % (2.0 * an))) % (2.0 * an);
     if angle > an {
-        angle = 2.0f32.mul_add(an, -angle);
+        angle = 2.0f32 * an + -angle;
     }
 
     // Point in folded polar-to-Cartesian
-    let pt = Vec2::new(r * angle.cos(), r * angle.sin());
+    let pt = Vec2::new(
+        r * alice_det_math::cos(angle),
+        r * alice_det_math::sin(angle),
+    );
 
     // Edge from outer vertex A=(radius, 0) to inner vertex B=(m*cos(an), m*sin(an))
     let a = Vec2::new(radius, 0.0);
-    let b = Vec2::new(m * an.cos(), m * an.sin());
+    let b = Vec2::new(m * alice_det_math::cos(an), m * alice_det_math::sin(an));
     let ab = b - a;
     let ap = pt - a;
 
@@ -43,7 +46,7 @@ pub fn sdf_star_polygon(p: Vec3, radius: f32, n_points: f32, m: f32, half_height
     let dist = (pt - closest).length();
 
     // Sign via cross product: AB × AP
-    let cross = ab.x.mul_add(ap.y, -(ab.y * ap.x));
+    let cross = ab.x * ap.y + -(ab.y * ap.x);
     let d_2d = if cross > 0.0 { -dist } else { dist };
 
     // Extrude along Y

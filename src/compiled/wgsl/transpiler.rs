@@ -130,6 +130,7 @@ impl ShaderLang for WgslLang {
             "smooth_min" => Some(HELPER_SMOOTH_MIN),
             "smooth_max" => Some(HELPER_SMOOTH_MAX),
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
+            "alice_atan2" => Some(HELPER_ALICE_ATAN2),
             "hash_noise" => Some(HELPER_HASH_NOISE),
             "taper_bound" => Some(HELPER_TAPER_BOUND),
             "perlin_noise" => Some(HELPER_PERLIN_NOISE),
@@ -604,7 +605,7 @@ impl WgslTranspiler {
     /// - Dynamic: pushes to param buffer and returns `"sdf_params.data[i].comp"`
     fn param(&mut self, value: f32) -> String {
         match self.mode {
-            TranspileMode::Hardcoded => format!("{:.6}", value),
+            TranspileMode::Hardcoded => super::super::transpiler_common::lit(value),
             TranspileMode::Dynamic => {
                 let idx = self.params.len();
                 self.params.push(value);
@@ -767,6 +768,17 @@ fn perlin_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
     let y1 = x2 + v * (x3 - x2);
     return y0 + w * (y1 - y0);
 }";
+
+/// `atan2` with the CPU law's exact axis cases (see the GLSL twin).
+const HELPER_ALICE_ATAN2: &str = r"fn alice_atan2(y: f32, x: f32) -> f32 {
+    let sy = bitcast<i32>(y) < 0;
+    let sx = bitcast<i32>(x) < 0;
+    var r = atan2(y, x);
+    r = select(r, select(1.5707964, -1.5707964, sy), x == 0.0);
+    r = select(r, select(y, select(3.1415927, -3.1415927, sy), sx), y == 0.0);
+    return r;
+}
+";
 
 const HELPER_QUAT_ROTATE: &str = r"fn quat_rotate(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
     let t = 2.0 * cross(q.xyz, v);
@@ -1433,7 +1445,7 @@ const HELPER_SDF_REGULAR_POLYGON: &str = r"fn sdf_regular_polygon(p: vec3<f32>, 
     let nn = trunc(max(n, 3.0));
     let an = 3.14159265358979 / nn;
     let acs = vec2<f32>(cos(an), sin(an));
-    let a0 = atan2(p.x, p.z);
+    let a0 = alice_atan2(p.x, p.z);
     let bn = a0 - 2.0 * an * floor(a0 / (2.0 * an)) - an;
     let r = length(p.xz);
     var q = vec2<f32>(r * cos(bn), abs(r * sin(bn)));
@@ -1452,7 +1464,7 @@ const HELPER_SDF_STAR_POLYGON: &str = r"fn sdf_star_polygon(p: vec3<f32>, radius
     let n = max(np, 3.0);
     let an = 3.14159265358979 / n;
     let r = length(vec2<f32>(qx, qz));
-    var angle = atan2(qx, qz);
+    var angle = alice_atan2(qx, qz);
     angle = ((angle % (2.0 * an)) + 2.0 * an) % (2.0 * an);
     if (angle > an) { angle = 2.0 * an - angle; }
     let pt = vec2<f32>(r * cos(angle), r * sin(angle));
@@ -1707,7 +1719,7 @@ fn sdf_ellipsoid(p: vec3<f32>, radii: vec3<f32>) -> f32 {
 const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_r: f32, pitch: f32, hh: f32) -> f32 {
     let tau = 6.28318530717959;
     let r = length(vec2<f32>(p.x, p.z));
-    let theta = select(0.0, atan2(p.z, p.x), r > 0.0);
+    let theta = select(0.0, alice_atan2(p.z, p.x), r > 0.0);
     let py = p.y;
     let c = pitch / tau;
     let two_rr = 2.0 * r * major_r;

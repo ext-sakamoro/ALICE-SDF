@@ -14,10 +14,8 @@ use glam::Vec3;
 pub fn modifier_shear(point: Vec3, shear: Vec3) -> Vec3 {
     Vec3::new(
         point.x,
-        shear.x.mul_add(-point.x, point.y),
-        shear
-            .z
-            .mul_add(-point.y, shear.y.mul_add(-point.x, point.z)),
+        shear.x * -point.x + point.y,
+        shear.z * -point.y + (shear.y * -point.x + point.z),
     )
 }
 

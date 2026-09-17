@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "3.0.0"
+version = "3.1.0"
 edition = "2021"
 # MSRV-aware 依存解決 (cargo 1.84+): `cargo update` が `rust-version` を超える dep を
 # 選ばない = lockfile が宣言 MSRV から silent に乖離しない (1.10.3 で 1.75 宣言のまま
@@ -105,6 +105,10 @@ aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All A
 # SIMD math
 glam = { version = "0.29", features = ["serde"] }
 wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
+# 3.1.0: every transcendental in the evaluator and the laws goes through
+# alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
+# alice-physics 1.3 uses, which is what makes the SdfField boundary bit-exact.
+alice-det-math = { version = "0.2", features = ["simd"] }
 
 # Parallel processing
 rayon = "1.10"
@@ -175,6 +179,8 @@ vdb-rs = { version = "0.6", optional = true }
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in"] }
+# tests/test_det_golden.rs: cross-platform bit pins (one SHA-256 per corpus node)
+sha2 = "0.10"
 
 [[bench]]
 name = "sdf_eval"
@@ -241,6 +247,11 @@ tuple_array_conversions = "allow"
 # `pow(x, 1/3)` is kept where a shader helper mirrors the CPU law (WGSL /
 # GLSL / HLSL have no cbrt); `cbrt()` would open a parity gap.
 imprecise_flops = "allow"
+# 3.1.0: `a * b + c` must stay two roundings. `mul_add` fuses on FMA hardware
+# (aarch64, x86 with +fma) and not elsewhere, so the same law would evaluate
+# to different bits per target and per path (scalar / f32x8 / JIT / shader);
+# the cross-platform bit-exact guarantee (alice-det-math) forbids it.
+suboptimal_flops = "allow"
 # Naming: math / SDF code uses px, py, pz, ra, rb …
 similar_names = "allow"
 many_single_char_names = "allow"

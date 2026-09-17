@@ -143,8 +143,11 @@ pub trait ShaderLang: private::Sealed + 'static {
     /// `%` / `fmod`, which differ for negative operands.
     fn modulo_expr(a: &str, b: &str) -> String;
     /// Two-argument arctangent `atan2(y, x)`: GLSL spells it `atan(y, x)`.
+    /// `atan2(y, x)` with the CPU law's exact axis cases (`alice_atan2`
+    /// helper, 3.1.0): `atan2(±0, x < 0) = ±π`, `atan2(y, ±0) = ±π/2` as
+    /// exact constants, the builtin elsewhere. Callers register the helper.
     fn atan2_expr(y: &str, x: &str) -> String {
-        format!("atan2({y}, {x})")
+        format!("alice_atan2({y}, {x})")
     }
     /// "f32(x)" / "float(x)"
     fn cast_float(expr: &str) -> String;
@@ -251,7 +254,17 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     }
 
     /// Register a helper function by name, deduplicating.
+    ///
+    /// Helpers that take a polar angle go through `alice_atan2` (3.1.0), which
+    /// is emitted first so it is defined before its users.
     pub fn ensure_helper(&mut self, name: &'static str) {
+        if matches!(
+            name,
+            "sdf_regular_polygon" | "sdf_star_polygon" | "sdf_helix"
+        ) && !self.helper_functions.contains(&"alice_atan2")
+        {
+            self.helper_functions.push("alice_atan2");
+        }
         if !self.helper_functions.contains(&name) {
             self.helper_functions.push(name);
         }
@@ -260,7 +273,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// Register a float parameter and return its shader expression.
     pub fn param(&mut self, value: f32) -> String {
         match self.mode {
-            TranspileModeLang::Hardcoded => format!("{:.6}", value),
+            TranspileModeLang::Hardcoded => lit(value),
             TranspileModeLang::Dynamic => {
                 let idx = self.params.len();
                 self.params.push(value);
@@ -563,7 +576,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let p_r = self.param(*radius);
                 let p_k2x = self.param(k2x);
                 let p_k2y = self.param(k2y);
-                let p_k2sq = self.param(k2x.mul_add(k2x, k2y * k2y));
+                let p_k2sq = self.param(k2x * k2x + (k2y * k2y));
 
                 let qx_var = self.next_var();
                 let h_var = self.next_var();
@@ -2433,7 +2446,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         let td = self.next_var();
                         code.push_str(&L::decl_vec3(&t, &transform_point3_expr::<L>(m, &q)));
                         code.push_str(&L::decl_float(&td, &format!("dot({t}, {t})")));
-                        let x_axis_len = m[2].mul_add(m[2], m[1].mul_add(m[1], m[0] * m[0])).sqrt();
+                        let x_axis_len = (m[2] * m[2] + (m[1] * m[1] + (m[0] * m[0]))).sqrt();
                         writeln!(
                             code,
                             "    if ({td} < {bestd}) {{ {bestd} = {td}; {best} = {t}; {bests} = {}; }}",
@@ -2769,6 +2782,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let s_var = self.next_var();
                 let new_p = self.next_var();
                 let pi2 = self.param(std::f32::consts::TAU);
+                self.ensure_helper("alice_atan2");
                 code.push_str(&L::decl_float(
                     &angle_var,
                     &L::atan2_expr(&format!("{point_var}.z"), &format!("{point_var}.x")),

@@ -27,9 +27,9 @@ pub fn sdf_superellipsoid(p: Vec3, half_extents: Vec3, e1: f32, e2: f32) -> f32 
     );
     let m1 = 2.0 / e2;
     let m2 = 2.0 / e1;
-    let w = q.x.powf(m1) + q.z.powf(m1);
-    let v = w.powf(e2 / e1) + q.y.powf(m2);
-    let f = v.powf(e1 * 0.5);
+    let w = alice_det_math::powf(q.x, m1) + alice_det_math::powf(q.z, m1);
+    let v = alice_det_math::powf(w, e2 / e1) + alice_det_math::powf(q.y, m2);
+    let f = alice_det_math::powf(v, e1 * 0.5);
     let min_extent = half_extents.x.min(half_extents.y.min(half_extents.z));
     (f - 1.0) * min_extent * 0.5
 }

@@ -38,32 +38,32 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
 
     let kk = 1.0 / ba2c_dot;
     let kx = kk * ab.dot(ba2c);
-    let ky = kk * 2.0f32.mul_add(ab.dot(ab), dv.dot(ba2c)) / 3.0;
+    let ky = kk * (2.0f32 * ab.dot(ab) + dv.dot(ba2c)) / 3.0;
     let kz = kk * dv.dot(ab);
 
     let p2 = ky - kx * kx;
     let p3 = p2 * p2 * p2;
-    let q2 = kx * (2.0 * kx).mul_add(kx, -(3.0 * ky)) + kz;
-    let h = 4.0f32.mul_add(p3, q2 * q2);
+    let q2 = kx * ((2.0 * kx) * kx + -(3.0 * ky)) + kz;
+    let h = 4.0f32 * p3 + (q2 * q2);
 
     let res = if h >= 0.0 {
         // One real root
         let h_sqrt = h.sqrt();
         let x0 = (h_sqrt - q2) * 0.5;
         let x1 = (-h_sqrt - q2) * 0.5;
-        let uv_x = x0.signum() * x0.abs().cbrt();
-        let uv_y = x1.signum() * x1.abs().cbrt();
+        let uv_x = x0.signum() * alice_det_math::cbrt(x0.abs());
+        let uv_y = x1.signum() * alice_det_math::cbrt(x1.abs());
         let t = (uv_x + uv_y - kx).clamp(0.0, 1.0);
         (dv + (cv + ba2c * t) * t).length()
     } else {
         // Three real roots — take closest
         let z = (-p2).sqrt();
-        let v = (q2 / (p2 * z * 2.0)).acos() / 3.0;
-        let m = v.cos();
-        let n = v.sin() * 1.732_050_8;
+        let v = alice_det_math::acos(q2 / (p2 * z * 2.0)) / 3.0;
+        let m = alice_det_math::cos(v);
+        let n = alice_det_math::sin(v) * 1.732_050_8;
 
-        let t0 = (m + m).mul_add(z, -kx).clamp(0.0, 1.0);
-        let t1 = (-n - m).mul_add(z, -kx).clamp(0.0, 1.0);
+        let t0 = ((m + m) * z + -kx).clamp(0.0, 1.0);
+        let t1 = ((-n - m) * z + -kx).clamp(0.0, 1.0);
 
         let d0 = (dv + (cv + ba2c * t0) * t0).length();
         let d1 = (dv + (cv + ba2c * t1) * t1).length();

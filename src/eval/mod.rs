@@ -300,10 +300,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
                 let iz = freq_z.floor();
                 let fx = freq_x - ix;
                 let fz = freq_z - iz;
-                let sx = fx * fx * 2.0f32.mul_add(-fx, 3.0);
-                let sz = fz * fz * 2.0f32.mul_add(-fz, 3.0);
+                let sx = fx * fx * (2.0f32 * -fx + 3.0);
+                let sz = fz * fz * (2.0f32 * -fz + 3.0);
                 let h = |x: f32, z: f32| -> f32 {
-                    (z.mul_add(311.7, x * 127.1).sin() * 43758.547)
+                    (alice_det_math::sin(z * 311.7 + (x * 127.1)) * 43758.547)
                         .fract()
                         .abs()
                 };
@@ -311,11 +311,11 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
                 let a10 = h(ix + 1.0, iz);
                 let a01 = h(ix, iz + 1.0);
                 let a11 = h(ix + 1.0, iz + 1.0);
-                let n = ((a00 - a10 - a01 + a11) * sx)
-                    .mul_add(sz, (a01 - a00).mul_add(sz, (a10 - a00).mul_add(sx, a00)));
-                v = a_fbm.mul_add(n, v);
-                let nx = 0.6f32.mul_add(freq_z, 0.8 * freq_x);
-                let nz = 0.8f32.mul_add(freq_z, -0.6 * freq_x);
+                let n = ((a00 - a10 - a01 + a11) * sx) * sz
+                    + ((a01 - a00) * sz + ((a10 - a00) * sx + a00));
+                v += a_fbm * n;
+                let nx = 0.6f32 * freq_z + (0.8 * freq_x);
+                let nz = 0.8f32 * freq_z + (-0.6 * freq_x);
                 freq_x = nx * 2.1;
                 freq_z = nz * 2.1;
                 a_fbm *= 0.48;
@@ -454,8 +454,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             eval(child, p)
         }
         SdfNode::Scale { child, factor } => {
-            // Division then multiply result
-            eval(child, point / *factor) * factor
+            // `p * (1/s)`, the compiled evaluators' law (`Instruction::scale`
+            // precomputes the reciprocal); `p / s` differs by an ulp and the
+            // tree must be bit-identical to them (`tests/test_det_parity.rs`)
+            eval(child, point * (1.0 / *factor)) * factor
         }
         SdfNode::ScaleNonUniform { child, factors } => {
             let (p, mult) = transform_scale_nonuniform(point, *factors);
@@ -705,9 +707,9 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
             child,
             crate::compiled::real::rotate_inverse::<f32>(*rotation, point.into()).into(),
         ),
-        SdfNode::Scale { child, factor } => eval_material(child, point / *factor),
+        SdfNode::Scale { child, factor } => eval_material(child, point * (1.0 / *factor)),
         SdfNode::ScaleNonUniform { child, factors } => {
-            let p = point / *factors;
+            let (p, _) = transform_scale_nonuniform(point, *factors);
             eval_material(child, p)
         }
 
@@ -751,10 +753,8 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Shear { child, shear } => {
             let p = Vec3::new(
                 point.x,
-                shear.x.mul_add(-point.x, point.y),
-                shear
-                    .z
-                    .mul_add(-point.y, shear.y.mul_add(-point.x, point.z)),
+                shear.x * -point.x + point.y,
+                shear.z * -point.y + (shear.y * -point.x + point.z),
             );
             eval_material(child, p)
         }

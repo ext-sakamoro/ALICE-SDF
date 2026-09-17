@@ -34,12 +34,12 @@ pub fn sdf_horseshoe(
     width: f32,
     thickness: f32,
 ) -> f32 {
-    let c = Vec2::new(angle.cos(), angle.sin());
+    let c = Vec2::new(alice_det_math::cos(angle), alice_det_math::sin(angle));
     let px = p.x.abs();
-    let l = px.hypot(p.y);
+    let l = alice_det_math::hypot(px, p.y);
     // rotate into the arc frame: mat2(-c.x, c.y, c.y, c.x) * p
-    let qx = (-c.x).mul_add(px, c.y * p.y);
-    let qy = c.y.mul_add(px, c.x * p.y);
+    let qx = (-c.x) * px + (c.y * p.y);
+    let qy = c.y * px + (c.x * p.y);
     let qx = if qy > 0.0 || qx > 0.0 {
         qx
     } else {

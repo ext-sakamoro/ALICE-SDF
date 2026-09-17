@@ -126,6 +126,7 @@ impl ShaderLang for HlslLang {
     fn helper_source(name: &str) -> Option<&'static str> {
         match name {
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
+            "alice_atan2" => Some(HELPER_ALICE_ATAN2),
             "hash_noise" => Some(HELPER_HASH_NOISE),
             "taper_bound" => Some(HELPER_TAPER_BOUND),
             "perlin_noise" => Some(HELPER_PERLIN_NOISE),
@@ -392,7 +393,7 @@ impl HlslTranspiler {
     /// - Dynamic: pushes to param buffer and returns `"params[i].comp"`
     fn param(&mut self, value: f32) -> String {
         match self.mode {
-            HlslTranspileMode::Hardcoded => format!("{:.6}", value),
+            HlslTranspileMode::Hardcoded => super::super::transpiler_common::lit(value),
             HlslTranspileMode::Dynamic => {
                 let idx = self.params.len();
                 self.params.push(value);
@@ -532,6 +533,17 @@ float perlin_noise_3d(float3 p, uint seed) {
     float y1 = x2 + v * (x3 - x2);
     return y0 + w * (y1 - y0);
 }";
+
+/// `atan2` with the CPU law's exact axis cases (see the GLSL twin).
+const HELPER_ALICE_ATAN2: &str = r"float alice_atan2(float y, float x) {
+    bool sy = asint(y) < 0;
+    bool sx = asint(x) < 0;
+    float r = atan2(y, x);
+    r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
+    r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
+    return r;
+}
+";
 
 const HELPER_QUAT_ROTATE: &str = r"float3 quat_rotate(float3 v, float4 q) {
     float3 t = 2.0 * cross(q.xyz, v);
@@ -1173,7 +1185,7 @@ const HELPER_SDF_REGULAR_POLYGON: &str = r"float sdf_regular_polygon(float3 p, f
     float nn = trunc(max(n, 3.0));
     float an = 3.14159265358979 / nn;
     float2 acs = float2(cos(an), sin(an));
-    float a0 = atan2(p.x, p.z);
+    float a0 = alice_atan2(p.x, p.z);
     float bn = a0 - 2.0 * an * floor(a0 / (2.0 * an)) - an;
     float r = length(p.xz);
     float2 q = float2(r * cos(bn), abs(r * sin(bn)));
@@ -1192,7 +1204,7 @@ const HELPER_SDF_STAR_POLYGON: &str = r"float sdf_star_polygon(float3 p, float r
     float n = max(np, 3.0);
     float an = 3.14159265358979 / n;
     float r = length(float2(qx, qz));
-    float angle = atan2(qx, qz);
+    float angle = alice_atan2(qx, qz);
     angle = fmod(fmod(angle, 2.0 * an) + 2.0 * an, 2.0 * an);
     if (angle > an) angle = 2.0 * an - angle;
     float2 pt = float2(r * cos(angle), r * sin(angle));
@@ -1442,7 +1454,7 @@ float sdf_ellipsoid(float3 p, float3 radii) {
 const HELPER_SDF_HELIX: &str = r"float sdf_helix(float3 p, float major_r, float minor_r, float pitch, float hh) {
     const float tau = 6.28318530717959;
     float r = length(float2(p.x, p.z));
-    float theta = (r > 0.0) ? atan2(p.z, p.x) : 0.0;
+    float theta = (r > 0.0) ? alice_atan2(p.z, p.x) : 0.0;
     float py = p.y;
     float c = pitch / tau;
     float two_rr = 2.0 * r * major_r;

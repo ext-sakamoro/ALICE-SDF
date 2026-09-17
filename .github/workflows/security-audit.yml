@@ -207,6 +207,17 @@ jobs:
           fi
           echo "✓ No todo! / unimplemented! / panic!(STUB) in src/ (excluding src/bin/)"
 
+      # 3.1.0: the evaluator and the laws are cross-platform bit-exact through
+      # alice-det-math; a platform libm call (`x.sin()`) or a fused `mul_add`
+      # anywhere in these directories silently reintroduces per-target bits.
+      # Test modules (after `#[cfg(test)] mod`) may call libm as the reference.
+      # The remaining directories (npr / mesh / texture / gi / io / terrain)
+      # move over in 3.2.0.
+      - name: Detect platform libm / mul_add in the evaluator and law directories
+        run: |
+          set -eo pipefail
+          python3 scripts/det_math_guard.py
+
       - name: Detect dbg!() residual in src/**
         run: |
           set -eo pipefail

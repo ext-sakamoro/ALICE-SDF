@@ -20,12 +20,12 @@ pub fn sdf_regular_polygon(p: Vec3, radius: f32, n_sides: f32, half_height: f32)
     // term was a half-plane distance, which made the shape unbounded.
     let n = n_sides.max(3.0).trunc();
     let an = std::f32::consts::PI / n;
-    let (acs_s, acs_c) = an.sin_cos();
+    let (acs_s, acs_c) = alice_det_math::sin_cos(an);
 
     // Reduce to the first sector: angle in [-an, an)
-    let bn = (p.x.atan2(p.z)).rem_euclid(2.0 * an) - an;
-    let r = p.x.hypot(p.z);
-    let (bs, bc) = bn.sin_cos();
+    let bn = (alice_det_math::atan2(p.x, p.z)).rem_euclid(2.0 * an) - an;
+    let r = alice_det_math::hypot(p.x, p.z);
+    let (bs, bc) = alice_det_math::sin_cos(bn);
     let mut q = Vec2::new(r * bc, (r * bs).abs());
 
     // Distance to the edge line through the vertex at angle `an`

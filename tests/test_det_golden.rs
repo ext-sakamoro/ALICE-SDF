@@ -1,0 +1,665 @@
+//! Cross-platform bit pins for the evaluator (3.1.0, alice-det-math).
+//!
+//! `test_det_parity.rs` proves every CPU path agrees with the tree evaluator
+//! on this machine; this test pins the tree evaluator's *bits* so CI's
+//! macOS-ARM / Linux-x86 / Windows / wasm32 lanes prove they agree with each
+//! other. One SHA-256 per corpus node over a fixed, libm-free point grid
+//! (a grid built with the platform `powf` / `sin` would itself differ per
+//! target). A mismatch on one lane means an operation in that law is not
+//! IEEE-basic there — never a reason to relax the pin.
+//!
+//! `ALICE_SDF_PRINT_DET_GOLDEN=1 cargo test --test test_det_golden -- --nocapture`
+//! prints the table for re-pinning after an intentional law change (the
+//! CHANGELOG must then say which laws moved).
+//!
+//! Author: Moroya Sakamoto
+
+mod common;
+
+use alice_sdf::prelude::*;
+use common::corpus::corpus;
+use sha2::{Digest, Sha256};
+
+/// 512 LCG points in a ±3 box plus the axis / cell / sector ties.
+fn grid() -> Vec<Vec3> {
+    let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut next = move || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((state >> 40) as f32) / ((1u64 << 24) as f32) * 6.0 - 3.0
+    };
+    let mut pts: Vec<Vec3> = (0..512)
+        .map(|_| Vec3::new(next(), next(), next()))
+        .collect();
+    for i in -6..=6 {
+        let v = i as f32 * 0.5;
+        pts.push(Vec3::new(v, 0.0, 0.0));
+        pts.push(Vec3::new(0.0, v, 0.0));
+        pts.push(Vec3::new(0.0, 0.0, v));
+        pts.push(Vec3::new(v, v, -v));
+        pts.push(Vec3::new(-v, 0.25, 0.0));
+    }
+    pts
+}
+
+fn hash_node(node: &SdfNode, pts: &[Vec3]) -> String {
+    let mut h = Sha256::new();
+    for &p in pts {
+        h.update(eval(node, p).to_bits().to_le_bytes());
+    }
+    format!("{:x}", h.finalize())
+}
+
+#[test]
+fn tree_evaluator_bits_match_recorded_hashes() {
+    let pts = grid();
+    let print = std::env::var_os("ALICE_SDF_PRINT_DET_GOLDEN").is_some();
+    let mut mismatches = Vec::new();
+    let mut missing = Vec::new();
+    for (name, node) in corpus() {
+        let got = hash_node(&node, &pts);
+        if print {
+            println!("    (\"{name}\", \"{got}\"),");
+            continue;
+        }
+        match GOLDEN.iter().find(|(n, _)| *n == name) {
+            Some((_, want)) if *want == got => {}
+            Some((_, want)) => mismatches.push(format!("{name}: got {got} want {want}")),
+            None => missing.push(name.to_string()),
+        }
+    }
+    if print {
+        return;
+    }
+    assert!(
+        missing.is_empty(),
+        "corpus nodes without a golden entry (re-pin): {}",
+        missing.join(", ")
+    );
+    assert!(
+        mismatches.is_empty(),
+        "{} golden mismatches:\n{}",
+        mismatches.len(),
+        mismatches.join("\n")
+    );
+}
+
+const GOLDEN: &[(&str, &str)] = &[
+    (
+        "sphere",
+        "95671da687da423b84989c3a4f5b14f2ff7aecf4f8c29c05a070489dfea89a07",
+    ),
+    (
+        "box3d",
+        "43b86a346c5a72263761b0fabac74070e7997e9468f9481fc38daa6210d9bad0",
+    ),
+    (
+        "cylinder",
+        "e3fdeacbbd73c2037217e458d214d325522384b349276bfe3b3c0b6aad32351e",
+    ),
+    (
+        "torus",
+        "0e86169462f01a53fb296a289917ccf51fe448a7d86039d1aa6ba8045f44c1a7",
+    ),
+    (
+        "plane",
+        "51da8b0ea90bb3d46502b0b20c8413b4c446e1ee5462f0dde7bff237cd25ecb8",
+    ),
+    (
+        "capsule",
+        "80f30777eb03d4d7af296e9348cfe49a1be5c7240386407a45d4493853733876",
+    ),
+    (
+        "cone",
+        "2b075e2c0cc42a32e2d73a13387e8b275f43e0509140147dfc2db0f3ee948cb6",
+    ),
+    (
+        "ellipsoid",
+        "36b81d6f2e5f6c019d6fa4ed6331b52ae953ec1bd4473696730f8c7b4ebfd9b6",
+    ),
+    (
+        "rounded_cone",
+        "ed953c74749bfcf9681ace1add8ea06f48ecac152ae9f0ddea4ca57bcddb60bc",
+    ),
+    (
+        "pyramid",
+        "80e4d699f7f37bdaf0521763cb19985b6ae309a07885a6234aa0d5c57d5bcfef",
+    ),
+    (
+        "octahedron",
+        "5e8a09c50e037a5276bdbf7a32b716708ac10e649c5800d581ce85cf4ef62529",
+    ),
+    (
+        "hex_prism",
+        "a48ff35c765eaf19d0e8125347a206794874dc27a14e2558b9f7b3ed46e771b6",
+    ),
+    (
+        "link",
+        "4d85476c3e037fa96258821bc32076011fd54fdc9bb904249ac617758dfede23",
+    ),
+    (
+        "rounded_box",
+        "1e734b8cb70f6e16ea1d5d0ba43e487ae5ec8c44a5a88f2b10ed6c5c64977caf",
+    ),
+    (
+        "capped_cone",
+        "c3865efda23996324d6ff63f447dbdcce453ee3e030e8b7857b7151940d6daac",
+    ),
+    (
+        "capped_torus",
+        "0758c39ae574ff3727172490209df6a8029b3bb1562aa8de4623aff694a24057",
+    ),
+    (
+        "rounded_cylinder",
+        "a2b3cfe9701cac5ee51cda15c8d006eb40e16d7bc022a45b929f276eab6de295",
+    ),
+    (
+        "triangular_prism",
+        "662882dfc3a1a71bdbf62899597501958270567ae62f5d3734d57407497e3867",
+    ),
+    (
+        "cut_sphere",
+        "2265f5d5b1067984d940e3959dbdd42e0a5fcc2648a655d4d095b0fce8acadcb",
+    ),
+    (
+        "cut_hollow_sphere",
+        "e2a902a394068550c4e4e0709b9a91d0da018d251e06d5888b1d201889b05646",
+    ),
+    (
+        "death_star",
+        "68967919248821854dc11e7d492b57e11acec4c1fc65c10d86bc87e8f3347ed8",
+    ),
+    (
+        "solid_angle",
+        "57cae34999d8f15844def0db80f9a9cb28dad994c43faf173f153fd48af762a5",
+    ),
+    (
+        "rhombus",
+        "4d73a1137f409c0c54662f746a88cc3a3f0c425b775c19ad5a943d69ab10aa88",
+    ),
+    (
+        "horseshoe",
+        "f1c8edecd5f98553195a6a365e52503d371fd749ca408836f093331df02d157b",
+    ),
+    (
+        "vesica",
+        "85b7cb7de45ce1b5df46e7e9130656dd10b79afb76256c416cdfc11e000fffa6",
+    ),
+    (
+        "infinite_cylinder",
+        "77e2d6a8ed71e4cc94c31de253bb82504dc3337654d2dfb9a8de7855f4145086",
+    ),
+    (
+        "infinite_cone",
+        "bdf4e4c3328d2780a0334171908caedf346efca0f30c970fd1d329ff5580369c",
+    ),
+    (
+        "gyroid",
+        "49dd641085744bd4625035b3915044775639709ec613f9b7fd620e1c805bf130",
+    ),
+    (
+        "heart",
+        "a67b187d36dd9f427377a9dc272868df3c321448849b543cf3f7436e9d3704a1",
+    ),
+    (
+        "tube",
+        "1fa7803d3ec8b1c6ce737e11ee6381a9353c5c2e9372f72bc3cab015b17e41a1",
+    ),
+    (
+        "barrel",
+        "3cffb02ab1b74de4cffa268fe5a337c881a294afc00ad430e09df0d8047c14df",
+    ),
+    (
+        "diamond",
+        "eb39a2de5fc187ea931787b107edbf34f1c40faa6ad767a0cbe39fd7208b0e6f",
+    ),
+    (
+        "chamfered_cube",
+        "c56745560cb0437da12aa459ef998fc4c9f16bf69ce3f2b0395c9f90e7fa04e0",
+    ),
+    (
+        "schwarz_p",
+        "b24e2bca040c51dd12a36b4ef3bb820e1106bab904ff476b1eac5fffeea4f6f4",
+    ),
+    (
+        "superellipsoid",
+        "ee4eafa6f8694b19035974bb4687898f6960d0392de1973ffb52a486e3d0e595",
+    ),
+    (
+        "rounded_x",
+        "5fd8084d8da7ae11ec85e5ab4b732dda8abf12733d75788f50a14f8b1c5948de",
+    ),
+    (
+        "pie",
+        "1c6f49ca5ab479d8b53fec709aa29acff25f80abd245df6f05c442abedf3b3d3",
+    ),
+    (
+        "trapezoid",
+        "c4651f1c2a0dda3397f4368a94e80a7f673118447d01d1a45db075d539978418",
+    ),
+    (
+        "parallelogram",
+        "82a7bc5ec3ef08777d5401238e375b476dc36946b64eb2e9373c3ca514aa3db3",
+    ),
+    (
+        "tunnel",
+        "1bf5519b0e7decaffe32ec62bf56d5a51feedef3a563e25e9e2a7595537c0327",
+    ),
+    (
+        "uneven_capsule",
+        "a9464819876366aa00cae174aff76bea76f5c270829aed4fcfd144929d3e5c27",
+    ),
+    (
+        "egg",
+        "c9f2ca92eb08e5bc4023ccd65284677999fe49ef075c9b12695d156224736ede",
+    ),
+    (
+        "arc_shape",
+        "1624f424767bd4da0056c205ad0c4eb8e20ae80f1a9f45aee48ae5b3ea48734d",
+    ),
+    (
+        "moon",
+        "ee25b26a21854800e9a3e2a64b5b57ba2c97bdd7ab9451338e39736db01dab98",
+    ),
+    (
+        "cross_shape",
+        "33aba9a8d248373788ed56a5bc1d874cd7254be1d889eaae482d2cf866ce24c2",
+    ),
+    (
+        "blobby_cross",
+        "55160ecb2dad3122acdb48ccc6797374002b8cbafbb524621de3501cf30d9077",
+    ),
+    (
+        "parabola_segment",
+        "d50caf335ea24d510b72e2d239299e00ccdae2992f3f4cecaa6aefc1be5ff55c",
+    ),
+    (
+        "regular_polygon",
+        "45ffd8298c9d28fe96f943e067da27ba64842685a55338e56283855dfb2449db",
+    ),
+    (
+        "star_polygon",
+        "c94743d37195ce65bd0283412e1fc06f1729f7d541ca24d2987277da28a1c10a",
+    ),
+    (
+        "stairs",
+        "e932b908e384a0b72f9e617d7e61c6eb142de0924e7bb55c8a37210c3fc5dfbf",
+    ),
+    (
+        "helix",
+        "1ffa278889d2fbe0af505056a94e047f2d1c62fb6e063c349db967696bdf182f",
+    ),
+    (
+        "tetrahedron",
+        "a22f351ad188015125c4181baa4492c352f0092cf4de025830cb08e8ac86e66d",
+    ),
+    (
+        "dodecahedron",
+        "15ce6fb7c34b040af7bcd6900b04870af660b0202727d45f297c5ada4a7a47ab",
+    ),
+    (
+        "icosahedron",
+        "9819a3ab282d19c5bdfed657816d1c25b4f60cbf0908976dcc734903eef0a0c9",
+    ),
+    (
+        "truncated_octahedron",
+        "4aef838e0f459031e80ba456fcffd7a8cacacb923754c979053532b9ccd3a09d",
+    ),
+    (
+        "truncated_icosahedron",
+        "8ab9db52bdb86719cb43e3d712a93728852e6255d54af7b4eaa79e5128b625b4",
+    ),
+    (
+        "box_frame",
+        "4d72fdcfca1cb69a789c818dca6e323b060387592f7c44ad3d9be1264a1d9c11",
+    ),
+    (
+        "diamond_surface",
+        "b8826c533721e3c6fe8d9301d3a7510162638f3f5de1d95117f1eddbf1193085",
+    ),
+    (
+        "neovius",
+        "6377ac406ae00bc2fa467dbd2185c45efeef017c1b5c06182abf0b81470eb6ed",
+    ),
+    (
+        "lidinoid",
+        "e00200c0d4b178d4a8e5e03171c4bd72b42b69b8cb012c4da236ea2210b6e8f6",
+    ),
+    (
+        "iwp",
+        "91a03ee9b69344d3470440654dc974c41586a9f00617115e10966c9e729617fb",
+    ),
+    (
+        "frd",
+        "9f4237fe0e9f2c93bec8eb00480f842c23ea395acd9c96ed4fbb6952895fa05d",
+    ),
+    (
+        "fischer_koch_s",
+        "6b86df32134fec45d2ab523415fa97caf331f762694f8049bd907f93b5de1d3b",
+    ),
+    (
+        "pmy",
+        "2fd6e5edc89436d741b241ddcee5dbecac31a2e8ee5f781e086d49256bdda327",
+    ),
+    (
+        "circle_2d",
+        "42b0ea9ae425ba183bef4c58c7ce46b88eef07d07149bf52188eac0f6f0456e1",
+    ),
+    (
+        "rect_2d",
+        "a9862db5c3cbd81f28a228e02b1f61025717ed4982cb12507e5cc0980b30ef4b",
+    ),
+    (
+        "rounded_rect_2d",
+        "ebce17563e623ab06e23ccb19079951be5f03a26d5b16152de3a169d92069b87",
+    ),
+    (
+        "segment_2d",
+        "61019c46aa1a375ccdf1f68e80cfefde74e820d8c639fe511b01e5677af1b4bf",
+    ),
+    (
+        "polygon_2d",
+        "67c7e75519deb3b0b4108a96d57984d679ff8c869457f9980e2905a5b5b8c62d",
+    ),
+    (
+        "annular_2d",
+        "9faa98ad04fe5f7261cf717146000b9bc994f11dd898bd131cd7b9a789a737db",
+    ),
+    (
+        "union",
+        "c0a01e660b79e7f23d94b40909bb0e59c916f50eb2802cae57a1013a6fd9754f",
+    ),
+    (
+        "intersection",
+        "6de0ff023f971e1227c0a71b21e579ed9f9f7a5bfb72908262257cc70da2d89e",
+    ),
+    (
+        "subtract",
+        "c54f783ed76016ee36bb6ab9f0134c4c473825a6c44196d7b7ab883aa16a3188",
+    ),
+    (
+        "smooth_union",
+        "c56c2d94553f4cbe6515f19c53fe06be27407752187f293b7f9dcdb6fa2fbf10",
+    ),
+    (
+        "smooth_intersection",
+        "df03fb064bb501adafac36b0cbacee2987832b91758011eb9620c4522681306d",
+    ),
+    (
+        "smooth_subtract",
+        "e6cadac11599bf651175387ccffecb281838c848bb6b402004aecf557f7146fd",
+    ),
+    (
+        "chamfer_union",
+        "02af369b18704c0801e2250638121da0c15aab6dc8a6dd90268488fc6f7358f8",
+    ),
+    (
+        "chamfer_intersection",
+        "f7bdc205635eeff83e15de6806754b3072b63470f8c0204924db8911c49737be",
+    ),
+    (
+        "chamfer_subtract",
+        "a96f54e0be885c8fc69367cfe780b7960f459b4d0757853f55d0252be3c97e4e",
+    ),
+    (
+        "stairs_union",
+        "ed3776e9e7caf68142c13835251ea1b89b66f98984072a36609c398591e3c09b",
+    ),
+    (
+        "stairs_intersection",
+        "0813c4a5f16e01fca9c2c7abab758d2e3ebaaf1eb78b3643aa22e4eb8fabdbaa",
+    ),
+    (
+        "stairs_subtract",
+        "0f2930fdf5e85a0eeef4caf15577b7b0e52349497d4e61e56629674d4aec8ae5",
+    ),
+    (
+        "xor",
+        "3a04fb3b774241cf5448e168bd08a1c9f141024df8906747dc5794d108014ba1",
+    ),
+    (
+        "morph",
+        "ca424ea3735c33523665a1985d97533b61c32b5a8b7352afb839495b50242d21",
+    ),
+    (
+        "columns_union",
+        "51119ec4021218ba7f5849d646c7f753393bd31e767cf10fbed148ffb004f942",
+    ),
+    (
+        "columns_intersection",
+        "8b9383f369431b5df59e0b67af92bf0234d59d80b82d24b0baed796ec614695b",
+    ),
+    (
+        "columns_subtract",
+        "74d75023b6baabc866c8a359228c0034a0eb66e07ca80ef06c04f3588b4a02a7",
+    ),
+    (
+        "pipe",
+        "0dbc7a89d7bfbf27215808d8dde85b4b6f05138530b7d02c7555a1eea3d77d52",
+    ),
+    (
+        "engrave",
+        "2d19d9df4149596837a5cced685edf7a5f76cac69e40dc5babcac5f2c9ca2aec",
+    ),
+    (
+        "groove",
+        "4d6fa259ed8d24bf56ef7f3d1344e83a09579a92cdc18d4a80c7956042b4251c",
+    ),
+    (
+        "tongue",
+        "2066447f735204276b24197af40a9254ec2190371ebf2f079cdab2a07e89ecf9",
+    ),
+    (
+        "exp_smooth_union",
+        "233ae62afb6e4c96421f26ec7cd42cebe0b150ab66a165eba4984cee65410327",
+    ),
+    (
+        "exp_smooth_intersection",
+        "ffdd80e42eba857624efe3223d6037b3a7585f15ba20cddc59532cd2e11fb12f",
+    ),
+    (
+        "exp_smooth_subtract",
+        "657193dc3aec2b05d0289ea7016a483a77f9f965085a703c79be915471fc5261",
+    ),
+    (
+        "translate",
+        "0cc45d8562b4c872bf3ff6e9dba6cc54bb1442c5eb63f37066aba261587e33ef",
+    ),
+    (
+        "rotate",
+        "3eb60144fe37ad5f9a89039657f39c2fb0bb0ae547c6d0001f768b7bd667d431",
+    ),
+    (
+        "scale",
+        "b28922d54fcf9bb192a928008f957cb917fecc494d588422628e49f4010cbbfd",
+    ),
+    (
+        "scale_xyz",
+        "af77db57ccc8d30fdb3872490ef9bef55504d4e87729774f8cf4879694131b4e",
+    ),
+    (
+        "projective_transform",
+        "43b86a346c5a72263761b0fabac74070e7997e9468f9481fc38daa6210d9bad0",
+    ),
+    (
+        "lattice_deform",
+        "41bbdf881feb357c120c4986cd16f214515b9ce5921cee9067b3342b8d80b5cc",
+    ),
+    (
+        "sdf_skinning",
+        "43b86a346c5a72263761b0fabac74070e7997e9468f9481fc38daa6210d9bad0",
+    ),
+    (
+        "sdf_skinning_two_bones",
+        "b6ecdcaa34bd4cfcfde568a2f4be1849960e23f4712d8561e97bc0e835bb9be3",
+    ),
+    (
+        "twist",
+        "9d468c4206d439098ed0eccaac2dceefb0972f2ae08e7ce96f26e38859ea0ba7",
+    ),
+    (
+        "bend",
+        "733d510c1990c12857c1a5be66480d8306e309865fd9507a807d2b863741592a",
+    ),
+    (
+        "repeat_infinite",
+        "02a339ec31cffceff7fdcdafbecd0de9394f8d22680c6354cfe746d49402a901",
+    ),
+    (
+        "repeat_finite",
+        "fa7823d2ce3fe10f023d8b7569155d1402ca4f04b5e2386c587f291c63e39301",
+    ),
+    (
+        "scale_exp_smooth_union",
+        "0c0edd396ff4b84701c4e009832390dfbee26c25d13784005e3c14ef09c13f98",
+    ),
+    (
+        "scale_smooth_union",
+        "671559daea2bc70b5f4bccf8715e9b1e374743e39b9bc871cbf0f0f544703e4f",
+    ),
+    (
+        "scale_chamfer_union",
+        "652ffa4318e6a45110b2234796d57e02b52a0bdbaa9f9c489e50ab64b6f41b52",
+    ),
+    (
+        "scale_stairs_union",
+        "2f424f3b6e32097fe4d80dd2a1cc997aad9dcc0f63012c39492fadae3fa738f0",
+    ),
+    (
+        "scale_round",
+        "f0dbb185347156feae84e98ebe0f084ab972832e74fb23ba50312be7bf7744a2",
+    ),
+    (
+        "scale_onion",
+        "b3b21b3c7e0a2b764dd916d58eb5ddae2cd111a213c16dd3351d441d430e7265",
+    ),
+    (
+        "scale_xyz_smooth_union",
+        "c2f16c72433e70323525d286731c64756748afd702cece6d0647593c8482c70e",
+    ),
+    (
+        "scale_nested",
+        "b5fea2360458130c44b1d1963f47e142f1fc4545fb45c140df1a01d0c45ff2f6",
+    ),
+    (
+        "exp_smooth_union_far",
+        "d100e5537bb9473badbf732c7bcbd37a2f3b2522b7d00233770329c58fc5fd12",
+    ),
+    (
+        "polar_repeat_7_offset",
+        "d2a4f250b35e496afcc4b2d8d5238dd27e666c318aa6663e5f55742393a04811",
+    ),
+    (
+        "repeat_finite_tie_translate",
+        "edf9aa7adee9e4629a5fd5a7d1b9046a22ace79e04cf617609b9635378c399b1",
+    ),
+    (
+        "rotate_pyramid",
+        "e0362087fc4005252e43bd53f103643678d4fd3df1818a0a11c3c1e784cbbccc",
+    ),
+    (
+        "polar_repeat_nested",
+        "bd21ca2a9a140842ab8437893a1aedb13cb079f9aa62f4151918c679fc2f4668",
+    ),
+    (
+        "pyramid_base",
+        "66f00dbc9a740ead43e6807c3000775cb43dc1c5ee347e5153d62d17a25b655b",
+    ),
+    (
+        "repeat_infinite_offset",
+        "729f6501f9423e0e71819c5dedafbeeb4c27a488226ce028b2ee217346fc7636",
+    ),
+    (
+        "repeat_finite_offset",
+        "acd98d6c0894cd2f19831a1d9f17b577b189850d682115915f4597847698a162",
+    ),
+    (
+        "noise",
+        "25bbd6a8d0d9717634bc7a6c8f14bc1d248af688dbfda10a3288a42d69ab75fc",
+    ),
+    (
+        "round",
+        "be72ffa619d14b1a5d5011ed99f6d085162e851adb1596ec5ac8b705d8b0dad6",
+    ),
+    (
+        "onion",
+        "ff7661743203712c69d76d1b05e0a1028f7a36ef48ce0dd7b5d63b2051ef122e",
+    ),
+    (
+        "elongate",
+        "ec4c9c563d272bd4a1bde5f6490c06f0c865b3a31b9fd7daf9f020147c3fa35a",
+    ),
+    (
+        "mirror",
+        "b9ba3fb686e352af2be73d4b8e9eab8bdffb339b4b19efe6fc4f92758a912045",
+    ),
+    (
+        "revolution",
+        "c01b138c78d81f29c89ca343e32ca879a3e642709d53505d2aea14f808333754",
+    ),
+    (
+        "extrude",
+        "098837de9e694b793945ad3a898379b4c79b84a7c658d8ea48dac47afc218fdb",
+    ),
+    (
+        "sweep_bezier",
+        "dcc34097d512b7bcf759c3f983da09bf896f30cb5257e491dec04010dc0b7d98",
+    ),
+    (
+        "taper",
+        "b92cb6745b90ec58b79488cdb452a84e0b3553574728bec428e45154fab147a3",
+    ),
+    (
+        "displacement",
+        "8d988be63f5e4e9f75a456a4dcfcfbf49b4f1787d8443ce8359169753062bc7f",
+    ),
+    (
+        "sine_displacement",
+        "2d1b1d2256c172ff9f8b9be005fea5d95c2201c3890f9c18f8d0fa74cb3c33a9",
+    ),
+    (
+        "polar_repeat",
+        "1df618eac60e782a98b502776e89af278a0f6afba2bcf39fc978dbde1ccbcc88",
+    ),
+    (
+        "octant_mirror",
+        "3586d80c0be02987484d3d6c4589436afe7685081bd36e65db9ce9881666902f",
+    ),
+    (
+        "shear",
+        "403051a7ffc3a667081710828c3c8e587854e7989d659ab110f99ef2a5ffcf16",
+    ),
+    (
+        "animated",
+        "95671da687da423b84989c3a4f5b14f2ff7aecf4f8c29c05a070489dfea89a07",
+    ),
+    (
+        "with_material",
+        "95671da687da423b84989c3a4f5b14f2ff7aecf4f8c29c05a070489dfea89a07",
+    ),
+    (
+        "icosahedral_symmetry",
+        "d80b202897518937ba26e74f6dd17855835ddab212996bd3a48ecb999667a5b9",
+    ),
+    (
+        "ifs",
+        "95671da687da423b84989c3a4f5b14f2ff7aecf4f8c29c05a070489dfea89a07",
+    ),
+    (
+        "ifs_scale_rotate",
+        "f1cc285452542b2152442bda1eed4a0785659ec7a85e582f327a34c18764752b",
+    ),
+    (
+        "surface_roughness",
+        "684eb6377f1fe9c4f055077858bf188d6e55f3d87404171ec6b0b3dfe6d7ac9d",
+    ),
+    (
+        "heightmap_displacement",
+        "ed9247293c2854118bdc2d56615ba5efdf65dadcfeaa9160ef767b27a03cd600",
+    ),
+    (
+        "nested",
+        "089b3dcf56d888d11497ad6f61e4b744124ddd1cd7cae252f6bd956b715e3a9b",
+    ),
+];

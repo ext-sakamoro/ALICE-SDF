@@ -14,14 +14,14 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_pmy(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let sp = p * scale;
-    let (sx, cx) = sp.x.sin_cos();
-    let (sy, cy) = sp.y.sin_cos();
-    let (sz, cz) = sp.z.sin_cos();
+    let (sx, cx) = alice_det_math::sin_cos(sp.x);
+    let (sy, cy) = alice_det_math::sin_cos(sp.y);
+    let (sz, cz) = alice_det_math::sin_cos(sp.z);
     // Double-angle identity: sin(2x) = 2*sin(x)*cos(x) — eliminates 3 trig calls
     let s2x = 2.0 * sx * cx;
     let s2y = 2.0 * sy * cy;
     let s2z = 2.0 * sz * cz;
-    let d = sx.mul_add(s2z, (2.0 * cx * cy).mul_add(cz, s2x * sy)) + s2y * sz;
+    let d = (sx * s2z + ((2.0 * cx * cy) * cz + (s2x * sy))) + s2y * sz;
     d.abs() / scale - thickness
 }
 

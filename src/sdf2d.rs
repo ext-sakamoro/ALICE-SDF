@@ -173,7 +173,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         Sdf2dNode::Circle { center, radius } => {
             let dx = point[0] - center[0];
             let dy = point[1] - center[1];
-            dx.hypot(dy) - radius
+            alice_det_math::hypot(dx, dy) - radius
         }
 
         Sdf2dNode::Rect {
@@ -182,10 +182,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         } => {
             let dx = (point[0] - center[0]).abs() - half_extents[0];
             let dy = (point[1] - center[1]).abs() - half_extents[1];
-            let outside = dx
-                .max(0.0)
-                .mul_add(dx.max(0.0), dy.max(0.0) * dy.max(0.0))
-                .sqrt();
+            let outside = (dx.max(0.0) * dx.max(0.0) + (dy.max(0.0) * dy.max(0.0))).sqrt();
             let inside = dx.max(dy).min(0.0);
             outside + inside
         }
@@ -197,10 +194,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         } => {
             let dx = (point[0] - center[0]).abs() - half_extents[0] + corner_radius;
             let dy = (point[1] - center[1]).abs() - half_extents[1] + corner_radius;
-            let outside = dx
-                .max(0.0)
-                .mul_add(dx.max(0.0), dy.max(0.0) * dy.max(0.0))
-                .sqrt();
+            let outside = (dx.max(0.0) * dx.max(0.0) + (dy.max(0.0) * dy.max(0.0))).sqrt();
             let inside = dx.max(dy).min(0.0);
             outside + inside - corner_radius
         }
@@ -208,15 +202,15 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         Sdf2dNode::Line { a, b, thickness } => {
             let pa = [point[0] - a[0], point[1] - a[1]];
             let ba = [b[0] - a[0], b[1] - a[1]];
-            let ba_sq = ba[0].mul_add(ba[0], ba[1] * ba[1]);
+            let ba_sq = ba[0] * ba[0] + (ba[1] * ba[1]);
             let t = if ba_sq > 1e-10 {
-                (pa[0].mul_add(ba[0], pa[1] * ba[1]) / ba_sq).clamp(0.0, 1.0)
+                ((pa[0] * ba[0] + (pa[1] * ba[1])) / ba_sq).clamp(0.0, 1.0)
             } else {
                 0.0
             };
-            let dx = ba[0].mul_add(-t, pa[0]);
-            let dy = ba[1].mul_add(-t, pa[1]);
-            dx.hypot(dy) - thickness
+            let dx = ba[0] * -t + pa[0];
+            let dy = ba[1] * -t + pa[1];
+            alice_det_math::hypot(dx, dy) - thickness
         }
 
         Sdf2dNode::Bezier {
@@ -259,7 +253,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
                 } else {
                     0.0
                 };
-                return dx.hypot(dy);
+                return alice_det_math::hypot(dx, dy);
             }
             bilinear_sample(data, u, v)
         }
@@ -271,7 +265,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         } => {
             let dx = point[0] - center[0];
             let dy = point[1] - center[1];
-            (dx.hypot(dy) - outer_radius).abs() - thickness
+            (alice_det_math::hypot(dx, dy) - outer_radius).abs() - thickness
         }
 
         Sdf2dNode::RegularPolygon {
@@ -282,20 +276,20 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let n = (*sides).max(3) as f32;
             let px = point[0] - center[0];
             let py = point[1] - center[1];
-            let angle = py.atan2(px);
+            let angle = alice_det_math::atan2(py, px);
             let sector = std::f32::consts::TAU / n;
             let half_sector = sector * 0.5;
             // Angle within the nearest sector
             let a = (angle % sector + sector) % sector - half_sector;
-            let r = px.hypot(py);
-            let cos_a = a.cos();
-            let sin_a = a.sin();
+            let r = alice_det_math::hypot(px, py);
+            let cos_a = alice_det_math::cos(a);
+            let sin_a = alice_det_math::sin(a);
             // Distance from point to nearest polygon edge
-            let edge_dist = radius * half_sector.cos();
-            let dx = r.mul_add(cos_a, -edge_dist);
-            let dy = (r * sin_a).abs() - radius * half_sector.sin();
+            let edge_dist = radius * alice_det_math::cos(half_sector);
+            let dx = r * cos_a + -edge_dist;
+            let dy = (r * sin_a).abs() - radius * alice_det_math::sin(half_sector);
             if dx > 0.0 && dy > 0.0 {
-                dx.hypot(dy)
+                alice_det_math::hypot(dx, dy)
             } else {
                 dx.max(dy)
             }
@@ -310,10 +304,10 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let n = (*points).max(3) as f32;
             let px = point[0] - center[0];
             let py = point[1] - center[1];
-            let r = px.hypot(py);
-            let angle = py.atan2(px);
+            let r = alice_det_math::hypot(px, py);
+            let angle = alice_det_math::atan2(py, px);
             let sector = std::f32::consts::PI / n;
-            let a = 2.0f32.mul_add(sector, angle % (2.0 * sector)) % (2.0 * sector);
+            let a = (2.0f32 * sector + (angle % (2.0 * sector))) % (2.0 * sector);
             // Interpolate between inner and outer radius based on angle
             let t = (a / sector).min(2.0 - a / sector);
             let boundary = inner_radius + (outer_radius - inner_radius) * t;
@@ -332,7 +326,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let scale = a.max(b);
             let nx = px / a;
             let ny = py / b;
-            let r = nx.hypot(ny);
+            let r = alice_det_math::hypot(nx, ny);
             if r < 1e-10 {
                 return -a.min(b);
             }
@@ -354,10 +348,10 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             eval_2d(child, [point[0] - offset[0], point[1] - offset[1]])
         }
         Sdf2dNode::Rotate { child, angle } => {
-            let (s, c) = angle.sin_cos();
+            let (s, c) = alice_det_math::sin_cos(*angle);
             let p = [
-                point[0].mul_add(c, point[1] * s),
-                (-point[0]).mul_add(s, point[1] * c),
+                (point[0] * c + (point[1] * s)),
+                ((-point[0]) * s + (point[1] * c)),
             ];
             eval_2d(child, p)
         }
@@ -378,7 +372,7 @@ pub fn eval_2d_normal(node: &Sdf2dNode, point: [f32; 2]) -> [f32; 2] {
     let eps = 1e-4_f32;
     let dx = eval_2d(node, [point[0] + eps, point[1]]) - eval_2d(node, [point[0] - eps, point[1]]);
     let dy = eval_2d(node, [point[0], point[1] + eps]) - eval_2d(node, [point[0], point[1] - eps]);
-    let len = dx.hypot(dy);
+    let len = alice_det_math::hypot(dx, dy);
     if len < 1e-10 {
         [0.0, 0.0]
     } else {
@@ -395,7 +389,7 @@ fn smooth_min_2d(a: f32, b: f32, k: f32) -> f32 {
         return a.min(b);
     }
     let h = ((k - (a - b).abs()) / k).clamp(0.0, 1.0);
-    (h * h * k).mul_add(-0.25, a.min(b))
+    (h * h * k) * -0.25 + a.min(b)
 }
 
 /// Bilinear interpolation on a 64x64 grid (matches `alice_font::glyph::GLYPH_SDF_SIZE`).
@@ -418,9 +412,9 @@ fn bilinear_sample(data: &[f32; 4096], u: f32, v: f32) -> f32 {
     let d01 = data[i01];
     let d11 = data[i11];
 
-    let top = (d10 - d00).mul_add(tx, d00);
-    let bottom = (d11 - d01).mul_add(tx, d01);
-    (bottom - top).mul_add(ty, top)
+    let top = (d10 - d00) * tx + d00;
+    let bottom = (d11 - d01) * tx + d01;
+    (bottom - top) * ty + top
 }
 
 /// Approximate distance to a cubic Bezier curve via uniform sampling.
@@ -439,14 +433,10 @@ fn eval_bezier_distance(
         let it = 1.0 - t;
         let it2 = it * it;
         let t2 = t * t;
-        let bx = (t2 * t).mul_add(
-            p3[0],
-            (3.0 * it * t2).mul_add(p2[0], (it2 * it).mul_add(p0[0], 3.0 * it2 * t * p1[0])),
-        );
-        let by = (t2 * t).mul_add(
-            p3[1],
-            (3.0 * it * t2).mul_add(p2[1], (it2 * it).mul_add(p0[1], 3.0 * it2 * t * p1[1])),
-        );
+        let bx = (t2 * t) * p3[0]
+            + ((3.0 * it * t2) * p2[0] + ((it2 * it) * p0[0] + (3.0 * it2 * t * p1[0])));
+        let by = (t2 * t) * p3[1]
+            + ((3.0 * it * t2) * p2[1] + ((it2 * it) * p0[1] + (3.0 * it2 * t * p1[1])));
         let dx = point[0] - bx;
         let dy = point[1] - by;
         let d2 = dx * dx + dy * dy;

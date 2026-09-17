@@ -88,7 +88,7 @@ impl ShaderLang for GlslLang {
         format!("mod({}, {})", a, b)
     }
     fn atan2_expr(y: &str, x: &str) -> String {
-        format!("atan({y}, {x})")
+        format!("alice_atan2({y}, {x})")
     }
     fn cast_float(expr: &str) -> String {
         format!("float({})", expr)
@@ -127,6 +127,7 @@ impl ShaderLang for GlslLang {
     fn helper_source(name: &str) -> Option<&'static str> {
         match name {
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
+            "alice_atan2" => Some(HELPER_ALICE_ATAN2),
             "hash_noise" => Some(HELPER_HASH_NOISE),
             "taper_bound" => Some(HELPER_TAPER_BOUND),
             "perlin_noise" => Some(HELPER_PERLIN_NOISE),
@@ -509,7 +510,7 @@ impl GlslTranspiler {
     /// - Dynamic: pushes to param buffer and returns `"params[i].comp"` (std140 vec4 packing)
     fn param(&mut self, value: f32) -> String {
         match self.mode {
-            GlslTranspileMode::Hardcoded => format!("{:.6}", value),
+            GlslTranspileMode::Hardcoded => super::super::transpiler_common::lit(value),
             GlslTranspileMode::Dynamic => {
                 let idx = self.params.len();
                 self.params.push(value);
@@ -652,6 +653,23 @@ float perlin_noise_3d(vec3 p, uint seed) {
     float y1 = x2 + v * (x3 - x2);
     return y0 + w * (y1 - y0);
 }";
+
+/// `atan2` with the CPU law's exact axis cases (alice-det-math `atan2`,
+/// fdlibm rules): the GPU builtin is the tolerance domain, but an exact tie on
+/// an axis (`atan2(±0, x < 0) = ±π`, `atan2(y, ±0) = ±π/2`) must snap to the
+/// same sector as the CPU, so those return the same `f32` constants. The sign
+/// of zero is read from the bits (`sign(-0.0)` is 0 in GLSL). Single exit,
+/// no early `return`: naga's GLSL front end miscompiled the nested-return
+/// form (the function returned 0 for every negative `y`).
+const HELPER_ALICE_ATAN2: &str = r"float alice_atan2(float y, float x) {
+    bool sy = floatBitsToInt(y) < 0;
+    bool sx = floatBitsToInt(x) < 0;
+    float r = atan(y, x);
+    r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
+    r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
+    return r;
+}
+";
 
 const HELPER_QUAT_ROTATE: &str = r"vec3 quat_rotate(vec3 v, vec4 q) {
     vec3 t = 2.0 * cross(q.xyz, v);
@@ -1292,7 +1310,7 @@ const HELPER_SDF_REGULAR_POLYGON: &str = r"float sdf_regular_polygon(vec3 p, flo
     float nn = trunc(max(n, 3.0));
     float an = 3.14159265358979 / nn;
     vec2 acs = vec2(cos(an), sin(an));
-    float bn = mod(atan(p.x, p.z), 2.0 * an) - an;
+    float bn = mod(alice_atan2(p.x, p.z), 2.0 * an) - an;
     float r = length(p.xz);
     vec2 q = vec2(r * cos(bn), abs(r * sin(bn)));
     q -= radius * acs;
@@ -1310,7 +1328,7 @@ const HELPER_SDF_STAR_POLYGON: &str = r"float sdf_star_polygon(vec3 p, float rad
     float n = max(np, 3.0);
     float an = 3.14159265358979 / n;
     float r = length(vec2(qx, qz));
-    float angle = atan(qx, qz);
+    float angle = alice_atan2(qx, qz);
     angle = mod(mod(angle, 2.0 * an) + 2.0 * an, 2.0 * an);
     if (angle > an) angle = 2.0 * an - angle;
     vec2 pt = vec2(r * cos(angle), r * sin(angle));
@@ -1560,7 +1578,7 @@ float sdf_ellipsoid(vec3 p, vec3 radii) {
 const HELPER_SDF_HELIX: &str = r"float sdf_helix(vec3 p, float major_r, float minor_r, float pitch, float hh) {
     const float tau = 6.28318530717959;
     float r = length(vec2(p.x, p.z));
-    float theta = (r > 0.0) ? atan(p.z, p.x) : 0.0;
+    float theta = (r > 0.0) ? alice_atan2(p.z, p.x) : 0.0;
     float py = p.y;
     float c = pitch / tau;
     float two_rr = 2.0 * r * major_r;

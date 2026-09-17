@@ -15,13 +15,10 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_diamond_surface(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let sp = p * scale;
-    let (sx, cx) = sp.x.sin_cos();
-    let (sy, cy) = sp.y.sin_cos();
-    let (sz, cz) = sp.z.sin_cos();
-    let d = (cx * cy).mul_add(
-        sz,
-        (cx * sy).mul_add(cz, (sx * sy).mul_add(sz, sx * cy * cz)),
-    );
+    let (sx, cx) = alice_det_math::sin_cos(sp.x);
+    let (sy, cy) = alice_det_math::sin_cos(sp.y);
+    let (sz, cz) = alice_det_math::sin_cos(sp.z);
+    let d = (cx * cy) * sz + ((cx * sy) * cz + ((sx * sy) * sz + (sx * cy * cz)));
     d.abs() / scale - thickness
 }
 

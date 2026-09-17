@@ -15,14 +15,14 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_fischer_koch_s(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let sp = p * scale;
-    let (sx, cx) = sp.x.sin_cos();
-    let (sy, cy) = sp.y.sin_cos();
-    let (sz, cz) = sp.z.sin_cos();
+    let (sx, cx) = alice_det_math::sin_cos(sp.x);
+    let (sy, cy) = alice_det_math::sin_cos(sp.y);
+    let (sz, cz) = alice_det_math::sin_cos(sp.z);
     // Double-angle identity: cos(2x) = 2*cos²(x) - 1 — eliminates 3 trig calls
-    let c2x = (2.0 * cx).mul_add(cx, -1.0);
-    let c2y = (2.0 * cy).mul_add(cy, -1.0);
-    let c2z = (2.0 * cz).mul_add(cz, -1.0);
-    let d = (sx * cy).mul_add(c2z, (c2x * sy).mul_add(cz, cx * c2y * sz)) - 0.4;
+    let c2x = (2.0 * cx) * cx + -1.0;
+    let c2y = (2.0 * cy) * cy + -1.0;
+    let c2z = (2.0 * cz) * cz + -1.0;
+    let d = ((sx * cy) * c2z + ((c2x * sy) * cz + (cx * c2y * sz))) - 0.4;
     d.abs() / scale - thickness
 }
 

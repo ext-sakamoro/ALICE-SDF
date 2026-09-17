@@ -25,20 +25,21 @@ fn helix_curve_dist2(r: f32, theta: f32, py: f32, major_r: f32, pitch: f32) -> f
     let tau = std::f32::consts::TAU;
     let c = pitch / tau;
     let two_rr = 2.0 * r * major_r;
-    let k = round_half_up(theta.mul_add(-c, py) / pitch);
+    let k = round_half_up((theta * -c + py) / pitch);
     let mut best = f32::MAX;
     for dk in [-1.0_f32, 0.0, 1.0] {
-        let mut phi = (k + dk).mul_add(tau, theta);
+        let mut phi = (k + dk) * tau + theta;
         for _ in 0..HELIX_NEWTON_STEPS {
-            let (s, co) = (phi - theta).sin_cos();
-            let dy = c.mul_add(-phi, py);
-            let f1 = two_rr.mul_add(s, -2.0 * c * dy);
-            let f2 = two_rr.mul_add(co, 2.0 * c * c).max(1e-6);
+            let (s, co) = alice_det_math::sin_cos(phi - theta);
+            let dy = c * -phi + py;
+            let f1 = two_rr * s + (-2.0 * c * dy);
+            let f2 = (two_rr * co + (2.0 * c * c)).max(1e-6);
             phi -= (f1 / f2).clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
         }
-        let co = (phi - theta).cos();
-        let dy = c.mul_add(-phi, py);
-        let d2 = dy.mul_add(dy, r.mul_add(r, major_r * major_r) - two_rr * co);
+        let co = alice_det_math::cos(phi - theta);
+        let dy = c * -phi + py;
+        let rr = r * r + (major_r * major_r);
+        let d2 = dy * dy + (rr - two_rr * co);
         best = best.min(d2);
     }
     best
@@ -61,7 +62,11 @@ pub fn sdf_helix(p: Vec3, major_r: f32, minor_r: f32, pitch: f32, half_height: f
     let r_xz = Vec2::new(p.x, p.z).length();
     // atan2(0, 0) is NaN on some GPUs (0 in libm): the azimuth is irrelevant
     // on the axis, pin it to 0 on every path
-    let theta = if r_xz > 0.0 { p.z.atan2(p.x) } else { 0.0 };
+    let theta = if r_xz > 0.0 {
+        alice_det_math::atan2(p.z, p.x)
+    } else {
+        0.0
+    };
     let d_tube = helix_curve_dist2(r_xz, theta, p.y, major_r, pitch).sqrt() - minor_r;
     let d_cap = p.y.abs() - half_height;
     d_tube.max(d_cap)

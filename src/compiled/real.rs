@@ -61,11 +61,12 @@ pub trait Real:
     fn abs(self) -> Self;
     /// Round toward negative infinity.
     fn floor(self) -> Self;
-    /// Round to nearest (ties away from zero for `f32`; the `f32x8` impl
-    /// follows the hardware and ties to even on AVX / NEON).
+    /// Round to nearest, ties away from zero (`alice_det_math::round`, the
+    /// same bits on every path and platform since 3.1.0; before that the
+    /// `f32x8` impl followed the hardware and tied to even on AVX / NEON).
     ///
-    /// Not path-safe at exact `.5` inputs — laws must use
-    /// [`Real::round_half_up`] instead.
+    /// Laws still use [`Real::round_half_up`]: a tie at exact `.5` is a cell
+    /// boundary and `floor(x + 0.5)` is what the shaders emit.
     fn round(self) -> Self;
     /// Lane-wise minimum.
     fn min(self, other: Self) -> Self;
@@ -189,7 +190,7 @@ impl Real for f32 {
     }
     #[inline(always)]
     fn round(self) -> Self {
-        Self::round(self)
+        alice_det_math::round(self)
     }
     #[inline(always)]
     fn min(self, other: Self) -> Self {
@@ -201,19 +202,19 @@ impl Real for f32 {
     }
     #[inline(always)]
     fn sin_cos(self) -> (Self, Self) {
-        Self::sin_cos(self)
+        alice_det_math::sin_cos(self)
     }
     #[inline(always)]
     fn atan2(self, x: Self) -> Self {
-        Self::atan2(self, x)
+        alice_det_math::atan2(self, x)
     }
     #[inline(always)]
     fn exp(self) -> Self {
-        Self::exp(self)
+        alice_det_math::exp(self)
     }
     #[inline(always)]
     fn ln(self) -> Self {
-        Self::ln(self)
+        alice_det_math::ln(self)
     }
     #[inline(always)]
     fn signum(self) -> Self {
@@ -313,7 +314,7 @@ impl Real for f32x8 {
     }
     #[inline(always)]
     fn round(self) -> Self {
-        Self::round(self)
+        alice_det_math::simd::round(self)
     }
     #[inline(always)]
     fn min(self, other: Self) -> Self {
@@ -325,24 +326,24 @@ impl Real for f32x8 {
     }
     #[inline(always)]
     fn sin_cos(self) -> (Self, Self) {
-        Self::sin_cos(self)
+        alice_det_math::simd::sin_cos(self)
     }
     #[inline(always)]
     fn atan2(self, x: Self) -> Self {
-        // Per-lane libm, not `f32x8::atan2`: the polar-repeat / helix laws snap
-        // the angle to a sector, and the SIMD polynomial is a few ulp off libm,
-        // which is enough to cross an exact sector boundary (atan2(0, -x) = π
-        // with an odd sector count lands on k + 0.5) and disagree with the
-        // scalar path by a whole sector (found by `fuzz_eval_parity`).
-        self.map2(x, f32::atan2)
+        // Per-lane det_math (the f64 fdlibm kernel), not a SIMD polynomial: the
+        // polar-repeat / helix laws snap the angle to a sector, and a few ulp
+        // is enough to cross an exact sector boundary (atan2(0, -x) = π with
+        // an odd sector count lands on k + 0.5) and disagree with the scalar
+        // path by a whole sector (found by `fuzz_eval_parity` in 1.10.3).
+        alice_det_math::simd::atan2(self, x)
     }
     #[inline(always)]
     fn exp(self) -> Self {
-        Self::exp(self)
+        alice_det_math::simd::exp(self)
     }
     #[inline(always)]
     fn ln(self) -> Self {
-        Self::ln(self)
+        alice_det_math::simd::ln(self)
     }
     #[inline(always)]
     fn signum(self) -> Self {
@@ -456,9 +457,12 @@ impl Real for f32x8 {
         }
         Self::new(out)
     }
+    /// Two roundings, like the scalar impl: `wide::f32x8::mul_add` fuses on
+    /// `avx+fma` builds and not elsewhere, which would make the SIMD path
+    /// differ from itself across targets and from the scalar path.
     #[inline(always)]
     fn mul_add(self, m: Self, a: Self) -> Self {
-        Self::mul_add(self, m, a)
+        self * m + a
     }
 }
 
@@ -809,7 +813,7 @@ pub fn taper_bound<R: Real>(d: R, p: Vec3R<R>, factor: f32, reach: [f32; 2]) -> 
 
     // Bound 2: distance to the cone ∩ slab that contains the shape.
     let k = reach[0] * f_abs;
-    let inv_n = 1.0 / k.mul_add(k, 1.0).sqrt();
+    let inv_n = 1.0 / (k * k + 1.0).sqrt();
     let big_y = p.y - R::splat(1.0 / factor);
     let d_cone = (rho - R::splat(k) * big_y.abs()) * R::splat(inv_n);
     let d_slab = p.y.abs() - R::splat(reach[1]);

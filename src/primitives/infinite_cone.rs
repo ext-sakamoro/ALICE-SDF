@@ -13,10 +13,10 @@ use glam::{Vec2, Vec3};
 /// - `angle`: half-angle of the cone in radians
 #[inline(always)]
 pub fn sdf_infinite_cone(p: Vec3, angle: f32) -> f32 {
-    let c = Vec2::new(angle.sin(), angle.cos());
-    let q = Vec2::new(p.x.hypot(p.z), -p.y);
+    let c = Vec2::new(alice_det_math::sin(angle), alice_det_math::cos(angle));
+    let q = Vec2::new(alice_det_math::hypot(p.x, p.z), -p.y);
     let d = (q - c * q.dot(c).max(0.0)).length();
-    d * if q.x.mul_add(c.y, -(q.y * c.x)) < 0.0 {
+    d * if (q.x * c.y + -(q.y * c.x)) < 0.0 {
         -1.0
     } else {
         1.0

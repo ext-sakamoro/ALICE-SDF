@@ -30,9 +30,9 @@ pub fn sdf_egg(p: Vec3, ra: f32, rb: f32) -> f32 {
     let d = if py < 0.0 {
         Vec2::new(px, py).length() - r
     } else if K * (px + r) < py {
-        Vec2::new(px, K.mul_add(-r, py)).length() - r
+        Vec2::new(px, K * -r + py).length() - r
     } else {
-        2.0f32.mul_add(-r, Vec2::new(px + r, py).length())
+        2.0f32 * -r + Vec2::new(px + r, py).length()
     };
     d - rb
 }

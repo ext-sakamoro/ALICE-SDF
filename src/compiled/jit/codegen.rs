@@ -17,6 +17,16 @@ use cranelift_module::{FuncId, Linkage, Module};
 use super::runtime::JitError;
 use crate::types::SdfNode;
 
+/// `a * b + c` as two roundings. Cranelift's `fma` is a fused multiply-add
+/// (one rounding); the scalar and `f32x8` evaluators do not fuse (the
+/// cross-platform bit-exact guarantee via alice-det-math forbids `mul_add`),
+/// so the JIT must not either or its bits would differ from theirs.
+#[inline]
+fn mul_add_2r(builder: &mut FunctionBuilder, a: Value, b: Value, c: Value) -> Value {
+    let t = builder.ins().fmul(a, b);
+    builder.ins().fadd(t, c)
+}
+
 /// `floor(v + 0.5)` — the law-canonical rounding (see `crate::crispy::round_half_up`).
 ///
 /// Cranelift `nearest` ties to even, `f32::round` ties away from zero; only
@@ -357,8 +367,7 @@ fn compile_node(
             let k2y = builder.ins().fmul(two, h);
             // Division Exorcism: pre-compute 1/k2_dot
             let inv_k2_dot = {
-                let k2d_val =
-                    (*radius).mul_add(*radius, (2.0 * *half_height) * (2.0 * *half_height));
+                let k2d_val = (*radius) * (*radius) + ((2.0 * *half_height) * (2.0 * *half_height));
                 let inv = if k2d_val.abs() < 1e-10 {
                     1.0
                 } else {
@@ -380,15 +389,15 @@ fn compile_node(
             let neg_qx = builder.ins().fneg(q_x);
             let diff_y = builder.ins().fsub(h, q_y);
             let dy_k2y = builder.ins().fmul(diff_y, k2y);
-            let dot_val = builder.ins().fma(neg_qx, k2x, dy_k2y);
+            let dot_val = mul_add_2r(builder, neg_qx, k2x, dy_k2y);
             let t_raw = builder.ins().fmul(dot_val, inv_k2_dot);
             let t_min = builder.ins().fmin(t_raw, one);
             let t = builder.ins().fmax(zero, t_min);
 
             // cb = (q_x + k2x*t, q_y - h + k2y*t)
-            let cb_x = builder.ins().fma(k2x, t, q_x);
+            let cb_x = mul_add_2r(builder, k2x, t, q_x);
             let qy_h = builder.ins().fsub(q_y, h);
-            let cb_y = builder.ins().fma(k2y, t, qy_h);
+            let cb_y = mul_add_2r(builder, k2y, t, qy_h);
 
             // s = (cb_x < 0 && ca_y < 0) ? -1 : 1
             let cmp_cbx = builder.ins().fcmp(FloatCC::LessThan, cb_x, zero);
@@ -398,46 +407,18 @@ fn compile_node(
 
             // d2 = min(ca_x²+ca_y², cb_x²+cb_y²)
             let ca_yy = builder.ins().fmul(ca_y, ca_y);
-            let ca_sq = builder.ins().fma(ca_x, ca_x, ca_yy);
+            let ca_sq = mul_add_2r(builder, ca_x, ca_x, ca_yy);
             let cb_yy = builder.ins().fmul(cb_y, cb_y);
-            let cb_sq = builder.ins().fma(cb_x, cb_x, cb_yy);
+            let cb_sq = mul_add_2r(builder, cb_x, cb_x, cb_yy);
             let d2 = builder.ins().fmin(ca_sq, cb_sq);
 
             let d = builder.ins().sqrt(d2);
             Ok(builder.ins().fmul(s, d))
         }
 
-        SdfNode::Ellipsoid { radii } => {
-            // Division Exorcism: pre-compute reciprocals
-            let inv_rx = emitter.emit(builder, 1.0 / radii.x);
-            let inv_ry = emitter.emit(builder, 1.0 / radii.y);
-            let inv_rz = emitter.emit(builder, 1.0 / radii.z);
-            let inv_rx2 = emitter.emit(builder, 1.0 / (radii.x * radii.x));
-            let inv_ry2 = emitter.emit(builder, 1.0 / (radii.y * radii.y));
-            let inv_rz2 = emitter.emit(builder, 1.0 / (radii.z * radii.z));
-
-            let px = builder.ins().fmul(x, inv_rx);
-            let py = builder.ins().fmul(y, inv_ry);
-            let pz = builder.ins().fmul(z, inv_rz);
-            let k0 = emit_length3(builder, px, py, pz);
-
-            let qx = builder.ins().fmul(x, inv_rx2);
-            let qy = builder.ins().fmul(y, inv_ry2);
-            let qz = builder.ins().fmul(z, inv_rz2);
-            let k1 = emit_length3(builder, qx, qy, qz);
-
-            let eps = builder.ins().f32const(1e-10);
-            let k1_safe = builder.ins().fadd(k1, eps);
-
-            let one = builder.ins().f32const(1.0);
-            let k0_minus_1 = builder.ins().fsub(k0, one);
-            let num = builder.ins().fmul(k0, k0_minus_1);
-            let d = builder.ins().fdiv(num, k1_safe); // data-dependent, can't precompute
-                                                      // sdf_ellipsoid law: at the centre (k1 ≈ 0) return -min(radii)
-            let centre = builder.ins().f32const(-radii.x.min(radii.y).min(radii.z));
-            let at_centre = builder.ins().fcmp(FloatCC::LessThan, k1, eps);
-            Ok(builder.ins().select(at_centre, centre, d))
-        }
+        // 3.1.0: the law is the exact Eberly distance (iterative); the JIT arm was
+        // the IQ `k0 (k0 - 1) / k1` approximation — a different law, up to 30% off
+        SdfNode::Ellipsoid { .. } => Err(JitError::UnsupportedNode("Ellipsoid".to_string())),
 
         SdfNode::RoundedCone {
             r1,
@@ -472,7 +453,7 @@ fn compile_node(
             // k = q_x * (-b) + q_y * a
             let neg_b = builder.ins().fneg(b);
             let qy_a = builder.ins().fmul(q_y, a);
-            let k = builder.ins().fma(q_x, neg_b, qy_a);
+            let k = mul_add_2r(builder, q_x, neg_b, qy_a);
 
             // Case 1 (k < 0): length(q_x, q_y) - r1
             let len1 = emit_length2(builder, q_x, q_y);
@@ -485,8 +466,8 @@ fn compile_node(
 
             // Case 3: q_x * a + q_y * b - r1
             let neg_r1 = builder.ins().fneg(r1_val);
-            let qy_b_nr1 = builder.ins().fma(q_y, b, neg_r1);
-            let d3 = builder.ins().fma(q_x, a, qy_b_nr1);
+            let qy_b_nr1 = mul_add_2r(builder, q_y, b, neg_r1);
+            let d3 = mul_add_2r(builder, q_x, a, qy_b_nr1);
 
             // Branchless select
             let cmp_neg = builder.ins().fcmp(FloatCC::LessThan, k, zero);
@@ -530,9 +511,9 @@ fn compile_node(
             let qx = pz_adj;
             let neg_half = builder.ins().fneg(half);
             let nhalf_px = builder.ins().fmul(neg_half, px_adj);
-            let qy = builder.ins().fma(h, py, nhalf_px);
+            let qy = mul_add_2r(builder, h, py, nhalf_px);
             let half_py = builder.ins().fmul(half, py);
-            let qz = builder.ins().fma(h, px_adj, half_py);
+            let qz = mul_add_2r(builder, h, px_adj, half_py);
 
             // s = max(-qx, 0)
             let neg_qx = builder.ins().fneg(qx);
@@ -549,7 +530,7 @@ fn compile_node(
             let qx_s = builder.ins().fadd(qx, s);
             let qx_s_sq = builder.ins().fmul(qx_s, qx_s);
             let qy_sq = builder.ins().fmul(qy, qy);
-            let a_val = builder.ins().fma(m2, qx_s_sq, qy_sq);
+            let a_val = mul_add_2r(builder, m2, qx_s_sq, qy_sq);
 
             // b = m2 * (qx + 0.5*t)² + (qy - m2*t)²
             let half_t = builder.ins().fmul(half, t);
@@ -558,7 +539,7 @@ fn compile_node(
             let m2_t = builder.ins().fmul(m2, t);
             let qy_m2t = builder.ins().fsub(qy, m2_t);
             let qy_m2t_sq = builder.ins().fmul(qy_m2t, qy_m2t);
-            let b_val = builder.ins().fma(m2, qx_ht_sq, qy_m2t_sq);
+            let b_val = mul_add_2r(builder, m2, qx_ht_sq, qy_m2t_sq);
 
             // d2 = (qy.min(-qx*m2 - qy*0.5) > 0) ? 0 : min(a, b)  — branchless
             let neg_qx_m2 = builder.ins().fmul(neg_qx, m2);
@@ -660,7 +641,7 @@ fn compile_node(
 
             // Hex symmetry reflection
             let ky_py = builder.ins().fmul(ky, abs_py);
-            let dot_kxy = builder.ins().fma(kx, abs_px, ky_py);
+            let dot_kxy = mul_add_2r(builder, kx, abs_px, ky_py);
             let dot_min = builder.ins().fmin(dot_kxy, zero);
             let reflect = builder.ins().fmul(two, dot_min);
 
@@ -1226,15 +1207,15 @@ fn compile_node(
 /// Emit 3D vector length with FMA
 fn emit_length3(builder: &mut FunctionBuilder, x: Value, y: Value, z: Value) -> Value {
     let zz = builder.ins().fmul(z, z);
-    let yy_zz = builder.ins().fma(y, y, zz);
-    let len_sq = builder.ins().fma(x, x, yy_zz);
+    let yy_zz = mul_add_2r(builder, y, y, zz);
+    let len_sq = mul_add_2r(builder, x, x, yy_zz);
     builder.ins().sqrt(len_sq)
 }
 
 /// Emit 2D vector length with FMA
 fn emit_length2(builder: &mut FunctionBuilder, x: Value, y: Value) -> Value {
     let yy = builder.ins().fmul(y, y);
-    let len_sq = builder.ins().fma(x, x, yy);
+    let len_sq = mul_add_2r(builder, x, x, yy);
     builder.ins().sqrt(len_sq)
 }
 
@@ -1249,8 +1230,8 @@ fn emit_dot3(
     bz: Value,
 ) -> Value {
     let zz = builder.ins().fmul(az, bz);
-    let yy_zz = builder.ins().fma(ay, by, zz);
-    builder.ins().fma(ax, bx, yy_zz)
+    let yy_zz = mul_add_2r(builder, ay, by, zz);
+    mul_add_2r(builder, ax, bx, yy_zz)
 }
 
 /// Emit smooth minimum with Division Exorcism (uses pre-computed inv_k)
@@ -1580,14 +1561,8 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(if dbb.abs() < 1e-10 { 1.0 } else { 1.0 / dbb });
         }
 
-        SdfNode::Ellipsoid { radii } => {
-            params.push(1.0 / radii.x);
-            params.push(1.0 / radii.y);
-            params.push(1.0 / radii.z);
-            params.push(1.0 / (radii.x * radii.x));
-            params.push(1.0 / (radii.y * radii.y));
-            params.push(1.0 / (radii.z * radii.z));
-        }
+        // Ellipsoid: no JIT arm since 3.1.0 (see the codegen match), nothing to pack
+        SdfNode::Ellipsoid { .. } => {}
 
         SdfNode::Link {
             half_length,
@@ -1755,7 +1730,7 @@ fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
             params.push(*radius);
             params.push(*half_height);
             // Division Exorcism: pre-compute inv_k2_dot
-            let k2d = (2.0 * half_height).mul_add(2.0 * half_height, radius * radius);
+            let k2d = (2.0 * half_height) * (2.0 * half_height) + (radius * radius);
             params.push(if k2d.abs() < 1e-10 { 1.0 } else { 1.0 / k2d });
         }
 

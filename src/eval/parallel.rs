@@ -71,16 +71,16 @@ pub fn eval_grid(node: &SdfNode, min: Vec3, max: Vec3, resolution: usize) -> Vec
         .par_chunks_mut(slice_size)
         .enumerate()
         .for_each(|(z, slice)| {
-            let z_pos = (z as f32).mul_add(step.z, min.z);
+            let z_pos = (z as f32) * step.z + min.z;
 
             // Iterate Y rows within the Z slice
             for y in 0..resolution {
-                let y_pos = (y as f32).mul_add(step.y, min.y);
+                let y_pos = (y as f32) * step.y + min.y;
                 let row_offset = y * resolution;
 
                 // Inner loop X (hot path - no division)
                 for x in 0..resolution {
-                    let x_pos = (x as f32).mul_add(step.x, min.x);
+                    let x_pos = (x as f32) * step.x + min.x;
                     let p = Vec3::new(x_pos, y_pos, z_pos);
 
                     // Direct slice access (bounds already checked by loop)
@@ -127,14 +127,14 @@ pub fn eval_grid_with_normals(
         .zip(normals.par_chunks_mut(slice_size))
         .enumerate()
         .for_each(|(z, (dist_slice, norm_slice))| {
-            let z_pos = (z as f32).mul_add(step.z, min.z);
+            let z_pos = (z as f32) * step.z + min.z;
 
             for y in 0..resolution {
-                let y_pos = (y as f32).mul_add(step.y, min.y);
+                let y_pos = (y as f32) * step.y + min.y;
                 let row_offset = y * resolution;
 
                 for x in 0..resolution {
-                    let x_pos = (x as f32).mul_add(step.x, min.x);
+                    let x_pos = (x as f32) * step.x + min.x;
                     let p = Vec3::new(x_pos, y_pos, z_pos);
 
                     let idx = row_offset + x;

@@ -58,13 +58,13 @@ pub fn hash_noise_3d(p: Vec3, seed: u32) -> f32 {
     let n011 = hash3(i + Vec3::new(0.0, 1.0, 1.0), seed);
     let n111 = hash3(i + Vec3::ONE, seed);
 
-    let c00 = (n100 - n000).mul_add(u.x, n000);
-    let c10 = (n110 - n010).mul_add(u.x, n010);
-    let c01 = (n101 - n001).mul_add(u.x, n001);
-    let c11 = (n111 - n011).mul_add(u.x, n011);
-    let c0 = (c10 - c00).mul_add(u.y, c00);
-    let c1 = (c11 - c01).mul_add(u.y, c01);
-    (c1 - c0).mul_add(u.z, c0).mul_add(2.0, -1.0)
+    let c00 = (n100 - n000) * u.x + n000;
+    let c10 = (n110 - n010) * u.x + n010;
+    let c01 = (n101 - n001) * u.x + n001;
+    let c11 = (n111 - n011) * u.x + n011;
+    let c0 = (c10 - c00) * u.y + c00;
+    let c1 = (c11 - c01) * u.y + c01;
+    ((c1 - c0) * u.z + c0) * 2.0 + -1.0
 }
 
 /// WGSL source of `hash_noise_3d` — the same law as [`hash_noise_3d`],
@@ -178,7 +178,7 @@ pub fn fbm(p: Vec3, octaves: u32) -> f32 {
     let mut amplitude = 1.0_f32;
     for i in 0..octaves {
         let scale = (1u32 << i) as f32;
-        value = amplitude.mul_add(hash_noise_3d(p * scale, SURFACE_ROUGHNESS_SEED), value);
+        value += amplitude * hash_noise_3d(p * scale, SURFACE_ROUGHNESS_SEED);
         amplitude *= 0.5;
     }
     value
@@ -187,7 +187,7 @@ pub fn fbm(p: Vec3, octaves: u32) -> f32 {
 /// Upper bound of `|fbm(_, octaves)|`.
 #[inline(always)]
 pub fn fbm_bound(octaves: u32) -> f32 {
-    2.0 - 0.5_f32.powi(octaves as i32 - 1)
+    2.0 - alice_det_math::powi(0.5_f32, octaves as i32 - 1)
 }
 
 /// Apply surface roughness to an SDF distance value
@@ -200,7 +200,7 @@ pub fn surface_roughness(
     octaves: u32,
 ) -> f32 {
     let noise = fbm(p * frequency, octaves);
-    noise.mul_add(amplitude, distance)
+    noise * amplitude + distance
 }
 
 #[cfg(test)]

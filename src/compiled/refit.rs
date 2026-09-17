@@ -490,11 +490,11 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         OpCode::ArcShape => cube(params[1] + params[2] + params[3]),
         OpCode::Moon => cube(params[0].abs() + params[1] + params[2] + params[3]),
         OpCode::CrossShape => cube(params[0] + params[1] + params[2] + params[3]),
-        OpCode::BlobbyCross => cube(params[0].mul_add(2.0, params[1])),
+        OpCode::BlobbyCross => cube(params[0] * 2.0 + params[1]),
         OpCode::ParabolaSegment => cube(params[0] + params[1] + params[2]),
         OpCode::RegularPolygon => cube(params[0] + params[2]),
         OpCode::StarPolygon => cube(params[0].max(params[2]) + params[3]),
-        OpCode::Stairs => cube((params[0] + params[1]).mul_add(params[2].max(1.0), params[3])),
+        OpCode::Stairs => cube((params[0] + params[1]) * params[2].max(1.0) + params[3]),
         OpCode::Helix => cube(params[0] + params[1] + params[2].abs() + params[3]),
         OpCode::Tetrahedron => cube(params[0] * 2.0),
         OpCode::Dodecahedron
@@ -695,7 +695,7 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
             let reach = |a: f32, b: f32| a.abs().max(b.abs());
             let r_xz = reach(lo.x, hi.x).max(reach(lo.z, hi.z));
             let r_y = reach(lo.y, hi.y);
-            let e = r_xz * f.mul_add(r_y, 1.0);
+            let e = r_xz * (f * r_y + 1.0);
             AabbPacked::new(Vec3::new(-e, lo.y, -e), Vec3::new(e, hi.y, e))
         }
         OpCode::Shear => {

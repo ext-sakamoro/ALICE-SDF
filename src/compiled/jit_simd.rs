@@ -230,7 +230,11 @@ mod tests {
         let points: Vec<Vec3> = (0..1000)
             .map(|i| {
                 let t = i as f32 / 1000.0 * std::f32::consts::TAU;
-                Vec3::new(t.cos() * 2.0, t.sin() * 2.0, 0.0)
+                Vec3::new(
+                    alice_det_math::cos(t) * 2.0,
+                    alice_det_math::sin(t) * 2.0,
+                    0.0,
+                )
             })
             .collect();
 

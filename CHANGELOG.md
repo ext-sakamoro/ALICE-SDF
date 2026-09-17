@@ -6,6 +6,58 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v3.1.0] - 2026-09-17
+
+### Changed — cross-platform bit-exact evaluation (alice-det-math)
+
+Distances move in the last ulp everywhere a law calls a transcendental
+(twist / bend / TPMS / polar / helix / smooth-exp / …) and wherever
+`mul_add` was used; no law changed its meaning. Goldens re-pinned.
+
+- Every transcendental in the evaluator and law directories (`primitives` /
+  `modifiers` / `operations` / `eval` / `compiled` / `raycast` / `sdf2d`) goes
+  through [`alice-det-math`](https://crates.io/crates/alice-det-math) 0.2
+  (scalar and `f32x8`, the crate `alice-physics` 1.4 uses), and `a * b + c`
+  is two roundings everywhere (`mul_add` removed — it fuses on FMA hardware
+  and not elsewhere). `Real` for `f32` / `f32x8` (`sin_cos` / `atan2` / `exp`
+  / `ln` / `round` / `mul_add`) dispatches to it; the SIMD table's own `wide`
+  sin / cos are gone.
+- The tree evaluator, compiled scalar, `f32x8` SIMD, BVH and Cranelift SIMD
+  JIT are **bit-identical** to each other (`tests/test_det_parity.rs`, 144
+  corpus nodes × 266 points, `to_bits()` equality) and across x86_64 /
+  aarch64 / wasm32 (`tests/test_det_golden.rs`, one SHA-256 per corpus node
+  on a libm-free grid; verified on aarch64 and x86_64 via Rosetta locally,
+  CI lanes pin it). `Scale` in the tree evaluator uses `p * (1/s)` like the
+  compiled evaluators (was `p / s`).
+- SIMD JIT: `simd_sincos_approx` (unreduced Taylor, 4e-6 abs error, and its
+  `bitselect` masks were never bitcast — twist / bend did not compile on
+  Cranelift 0.113, which the tolerance test skipped silently) is replaced by
+  the det_math law emitted as IR; `fma` → `fmul` + `fadd`; the length,
+  smooth-blend, rotate, cone, rounded-cone and pyramid arms follow the law's
+  operation order (`(x*x + y*y) + z*z`, `h = max(1 - |a-b|·rk, 0)`,
+  quaternion rotation, division by `k2·k2` / `m2`). Ellipsoid has no JIT arm
+  any more: the scalar law is the exact Eberly distance, the JIT arm was the
+  IQ approximation (up to 30% off). The scalar tree JIT (`JitCompiledSdf`)
+  is held to 1e-5 only (3.2.0).
+- Shaders: `alice_atan2` helper (WGSL / GLSL / HLSL) returns the CPU law's
+  exact constants on the axes (`atan2(±0, x<0) = ±π`, `atan2(y, ±0) = ±π/2`),
+  so polar / polygon / helix sector ties on an axis snap like the CPU
+  (`polar_axis_ties_gpu_match_cpu`, WGSL and GLSL). Hardcoded constants are
+  printed with round-trip precision (`6.2831855`, was `{:.6}` → `6.283185`,
+  which alone flipped a sector at π).
+- `security-audit.yml` / preflight: `scripts/det_math_guard.py` fails on any
+  libm method call or `mul_add` in the bit-exact directories.
+- `benches/sdf_eval.rs`: `transcendental_laws` group (6 laws × scalar / SIMD /
+  JIT). SIMD is faster than 3.0.0 (gyroid 121 → 20 µs / 4096 pts, twist 22 →
+  12, exp-smooth 23 → 24); scalar is 1.3–2.4× slower (libm 1.5 ns vs det_math
+  3.6 ns per `sin`) — the price of the guarantee.
+
+### Fixed
+
+- `tests/test_relaxed_tracing.rs`: the judge re-evaluated a hit with the
+  un-renormalised direction (the marcher normalises), which crossed the 1e-4
+  band on a grazing gyroid ray by 2e-9.
+
 ### Added — VRChat package: host-side parity of the Mochi collider
 
 - `examples/vrchat_mochi_golden.rs` prints the Mochi scene from

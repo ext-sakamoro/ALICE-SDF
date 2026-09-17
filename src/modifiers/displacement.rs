@@ -15,7 +15,9 @@ use glam::Vec3;
 /// Formula: `d + sin(5*p.x) * sin(5*p.y) * sin(5*p.z) * strength`
 #[inline(always)]
 pub fn modifier_displacement(d: f32, p: Vec3, strength: f32) -> f32 {
-    let disp = (p.x * 5.0).sin() * (p.y * 5.0).sin() * (p.z * 5.0).sin();
+    let disp = alice_det_math::sin(p.x * 5.0)
+        * alice_det_math::sin(p.y * 5.0)
+        * alice_det_math::sin(p.z * 5.0);
     d + disp * strength
 }
 
@@ -25,8 +27,10 @@ pub fn modifier_displacement(d: f32, p: Vec3, strength: f32) -> f32 {
 /// (= 異方性 Vec3 frequency、 例: `Vec3::new(10, 40, 10)` で軸別周波数で細長菱形鱗)
 #[inline(always)]
 pub fn modifier_sine_displacement(d: f32, p: Vec3, amplitude: f32, frequency: Vec3) -> f32 {
-    let disp = (p.x * frequency.x).sin() * (p.y * frequency.y).sin() * (p.z * frequency.z).sin();
-    disp.mul_add(amplitude, d)
+    let disp = alice_det_math::sin(p.x * frequency.x)
+        * alice_det_math::sin(p.y * frequency.y)
+        * alice_det_math::sin(p.z * frequency.z);
+    disp * amplitude + d
 }
 
 #[cfg(test)]

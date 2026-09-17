@@ -11,7 +11,7 @@ use glam::Vec3;
 /// - `radius`: cylinder radius
 #[inline(always)]
 pub fn sdf_infinite_cylinder(p: Vec3, radius: f32) -> f32 {
-    p.x.hypot(p.z) - radius
+    alice_det_math::hypot(p.x, p.z) - radius
 }
 
 #[cfg(test)]

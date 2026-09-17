@@ -234,7 +234,17 @@ fn relaxed_tracing_matches_oracle_jit() {
     use alice_sdf::raycast::raymarch_jit_with_config;
     let mut failures = Vec::new();
     for (shape, node) in shapes() {
-        let jit = JitCompiledSdf::compile(&node).expect("jit compile");
+        // 3.1.0: the JIT rejects the nodes whose law it cannot reproduce
+        // (Ellipsoid = exact Eberly distance); those fall back to the
+        // evaluator paths covered by the other tests
+        let jit = match JitCompiledSdf::compile(&node) {
+            Ok(j) => j,
+            Err(alice_sdf::compiled::jit::JitError::UnsupportedNode(n)) => {
+                eprintln!("{shape}: scalar JIT has no arm for {n}, skipped");
+                continue;
+            }
+            Err(e) => panic!("jit compile: {e}"),
+        };
         let rays = rays();
         let oracle = oracle_hits(&node, &rays);
         for (cfg_name, cfg) in configs(&node) {
@@ -637,10 +647,14 @@ fn tpms_default_budget_random_rays() {
                  march: &dyn Fn(Vec3, Vec3) -> Option<f32>| {
         let (mut hm, mut tm) = (0usize, 0usize);
         for (&(o, d), want) in rays.iter().zip(oracle) {
+            // the marcher re-normalises the direction; re-evaluating the hit
+            // with the un-renormalised `d` moves the point by an ulp, which is
+            // enough to cross the 1e-4 hit band on a grazing ray
+            let dir = d.normalize();
             match (want, march(o, d)) {
                 (Some(tw), Some(tg)) => {
-                    let on_surface = eval(node, o + d * tg).abs() <= 1e-4;
-                    if (tw - tg).abs() > t_tolerance(node, o + d * tg, d, 1e-4) && !on_surface {
+                    let on_surface = eval(node, o + dir * tg).abs() <= 1e-4;
+                    if (tw - tg).abs() > t_tolerance(node, o + dir * tg, dir, 1e-4) && !on_surface {
                         tm += 1;
                     }
                 }

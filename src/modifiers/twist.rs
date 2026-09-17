@@ -11,32 +11,32 @@ use glam::Vec3;
 /// Twist space around the Y-axis
 #[inline(always)]
 pub fn modifier_twist(point: Vec3, strength: f32) -> Vec3 {
-    let (s, c) = (point.y * strength).sin_cos();
+    let (s, c) = alice_det_math::sin_cos(point.y * strength);
     Vec3::new(
-        point.x.mul_add(c, -(point.z * s)),
+        point.x * c + -(point.z * s),
         point.y,
-        point.x.mul_add(s, point.z * c),
+        point.x * s + (point.z * c),
     )
 }
 
 /// Twist space around the X-axis
 #[inline(always)]
 pub fn modifier_twist_x(point: Vec3, strength: f32) -> Vec3 {
-    let (s, c) = (point.x * strength).sin_cos();
+    let (s, c) = alice_det_math::sin_cos(point.x * strength);
     Vec3::new(
         point.x,
-        point.y.mul_add(c, -(point.z * s)),
-        point.y.mul_add(s, point.z * c),
+        point.y * c + -(point.z * s),
+        point.y * s + (point.z * c),
     )
 }
 
 /// Twist space around the Z-axis
 #[inline(always)]
 pub fn modifier_twist_z(point: Vec3, strength: f32) -> Vec3 {
-    let (s, c) = (point.z * strength).sin_cos();
+    let (s, c) = alice_det_math::sin_cos(point.z * strength);
     Vec3::new(
-        point.x.mul_add(c, -(point.y * s)),
-        point.x.mul_add(s, point.y * c),
+        point.x * c + -(point.y * s),
+        point.x * s + (point.y * c),
         point.z,
     )
 }

@@ -22,11 +22,11 @@ pub fn sdf_pie(p: Vec3, angle: f32, radius: f32, half_height: f32) -> f32 {
     let qx = p.x.abs();
     let qz = p.z;
     let q = Vec2::new(qx, qz);
-    let sc = Vec2::new(angle.sin(), angle.cos());
+    let sc = Vec2::new(alice_det_math::sin(angle), alice_det_math::cos(angle));
     let l = q.length() - radius;
     let dot_qc = q.dot(sc).clamp(0.0, radius);
     let m = (q - sc * dot_qc).length();
-    let cross_val = sc.y.mul_add(qx, -(sc.x * qz));
+    let cross_val = sc.y * qx + -(sc.x * qz);
     let s = if cross_val > 0.0 {
         1.0
     } else if cross_val < 0.0 {

@@ -16,7 +16,7 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_schwarz_p(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let sp = p * scale;
-    let d = sp.x.cos() + sp.y.cos() + sp.z.cos();
+    let d = alice_det_math::cos(sp.x) + alice_det_math::cos(sp.y) + alice_det_math::cos(sp.z);
     d.abs() / scale - thickness
 }
 

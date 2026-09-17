@@ -592,6 +592,7 @@ fn bench_transcendental_laws(c: &mut Criterion) {
             )
         })
         .collect();
+    #[cfg(feature = "jit")]
     let soa = SoAPoints::from_vec3_slice(&points);
     group.throughput(Throughput::Elements(N as u64));
 
@@ -600,7 +601,7 @@ fn bench_transcendental_laws(c: &mut Criterion) {
         ("gyroid", SdfNode::gyroid(1.0, 0.1)),
         ("twist", base.clone().twist(0.5)),
         ("bend", base.clone().bend(0.3)),
-        ("polar_repeat", base.clone().polar_repeat(7)),
+        ("polar_repeat", base.polar_repeat(7)),
         ("helix", SdfNode::helix(1.0, 0.2, 0.5, 2.0)),
         (
             "exp_smooth_union",

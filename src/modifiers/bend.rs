@@ -15,10 +15,10 @@ use glam::Vec3;
 pub fn modifier_bend(point: Vec3, curvature: f32) -> Vec3 {
     // k = 0 case is handled naturally by cos(0)=1, sin(0)=0
     // k * x -> 0, so c=1, s=0 -> x'=x, y'=y
-    let (s, c) = (curvature * point.x).sin_cos();
+    let (s, c) = alice_det_math::sin_cos(curvature * point.x);
     Vec3::new(
-        c.mul_add(point.x, -(s * point.y)),
-        s.mul_add(point.x, c * point.y),
+        c * point.x + -(s * point.y),
+        s * point.x + (c * point.y),
         point.z,
     )
 }
@@ -26,22 +26,22 @@ pub fn modifier_bend(point: Vec3, curvature: f32) -> Vec3 {
 /// Bend space around the Y-axis (bending in the XZ plane)
 #[inline(always)]
 pub fn modifier_bend_x(point: Vec3, curvature: f32) -> Vec3 {
-    let (s, c) = (curvature * point.y).sin_cos();
+    let (s, c) = alice_det_math::sin_cos(curvature * point.y);
     Vec3::new(
-        c.mul_add(point.x, -(s * point.z)),
+        c * point.x + -(s * point.z),
         point.y,
-        s.mul_add(point.x, c * point.z),
+        s * point.x + (c * point.z),
     )
 }
 
 /// Bend space around the X-axis (bending in the YZ plane)
 #[inline(always)]
 pub fn modifier_bend_z(point: Vec3, curvature: f32) -> Vec3 {
-    let (s, c) = (curvature * point.y).sin_cos();
+    let (s, c) = alice_det_math::sin_cos(curvature * point.y);
     Vec3::new(
         point.x,
-        c.mul_add(point.y, -(s * point.z)),
-        s.mul_add(point.y, c * point.z),
+        c * point.y + -(s * point.z),
+        s * point.y + (c * point.z),
     )
 }
 

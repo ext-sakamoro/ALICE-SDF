@@ -15,11 +15,10 @@ use glam::{Vec2, Vec3};
 /// - `thickness`: shell thickness
 #[inline(always)]
 pub fn sdf_cut_hollow_sphere(p: Vec3, radius: f32, cut_height: f32, thickness: f32) -> f32 {
-    let w = radius
-        .mul_add(radius, -(cut_height * cut_height))
+    let w = (radius * radius + -(cut_height * cut_height))
         .max(0.0)
         .sqrt();
-    let q = Vec2::new(p.x.hypot(p.z), p.y);
+    let q = Vec2::new(alice_det_math::hypot(p.x, p.z), p.y);
 
     if cut_height * q.x < w * q.y {
         (q - Vec2::new(w, cut_height)).length() - thickness

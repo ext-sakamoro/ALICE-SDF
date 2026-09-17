@@ -14,14 +14,14 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_iwp(p: Vec3, scale: f32, thickness: f32) -> f32 {
     let sp = p * scale;
-    let cx = sp.x.cos();
-    let cy = sp.y.cos();
-    let cz = sp.z.cos();
+    let cx = alice_det_math::cos(sp.x);
+    let cy = alice_det_math::cos(sp.y);
+    let cz = alice_det_math::cos(sp.z);
     // Double-angle identity: cos(2x) = 2*cos²(x) - 1 — eliminates 3 trig calls
-    let c2x = (2.0 * cx).mul_add(cx, -1.0);
-    let c2y = (2.0 * cy).mul_add(cy, -1.0);
-    let c2z = (2.0 * cz).mul_add(cz, -1.0);
-    let d = 2.0f32.mul_add(cz.mul_add(cx, cx.mul_add(cy, cy * cz)), -(c2x + c2y + c2z));
+    let c2x = (2.0 * cx) * cx + -1.0;
+    let c2y = (2.0 * cy) * cy + -1.0;
+    let c2z = (2.0 * cz) * cz + -1.0;
+    let d = 2.0f32 * (cz * cx + (cx * cy + (cy * cz))) + -(c2x + c2y + c2z);
     d.abs() / scale - thickness
 }
 
