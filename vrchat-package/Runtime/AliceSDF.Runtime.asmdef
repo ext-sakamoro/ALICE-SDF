@@ -1,7 +1,11 @@
 {
   "name": "AliceSDF.Runtime",
   "rootNamespace": "AliceSDF",
-  "references": [],
+  "references": [
+    "UdonSharp.Runtime",
+    "VRC.Udon",
+    "VRC.SDKBase"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

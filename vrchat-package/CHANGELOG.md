@@ -13,6 +13,12 @@
   folder (trailing `~`). This is the first host-side check of any UdonSharp
   code in the package; the 53-primitive `AliceSDF_Primitives.cs` is next.
 
+### Fixed
+- `Runtime/AliceSDF.Runtime.asmdef` now references `UdonSharp.Runtime`,
+  `VRC.Udon` and `VRC.SDKBase`. It defined `UDONSHARP` but referenced
+  nothing, so `AliceSDF_Collider.cs` did not compile in a VRChat project.
+  Verified in Unity 2022.3.22f1 + VRChat SDK 3.10.1 (ClientSim).
+
 ### Changed
 - Mochi sample, same features, tightened:
   - Shader: the ground / mochi material weight comes from the blend factor

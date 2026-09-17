@@ -98,6 +98,19 @@ Distances move in the last ulp everywhere a law calls a transcendental
   un-renormalised direction (the marcher normalises), which crossed the 1e-4
   band on a grazing gyroid ray by 2e-9.
 
+### Fixed — VRChat package: Runtime assembly could not compile inside a VRChat project
+
+- `vrchat-package/Runtime/AliceSDF.Runtime.asmdef` defines `UDONSHARP` when
+  `com.vrchat.worlds` is present but referenced no assemblies, so
+  `using UdonSharp; using VRC.SDKBase; using VRC.Udon;` in
+  `Runtime/Udon/AliceSDF_Collider.cs` did not resolve and the package failed
+  to compile in every VRChat world project. `references` now lists
+  `UdonSharp.Runtime`, `VRC.Udon`, `VRC.SDKBase`. The host-side parity
+  harness could not see this because it compiles without `UDONSHARP`.
+  Verified in Unity 2022.3.22f1 + VRChat SDK 3.10.1 (`AliceSDF.Runtime.dll`
+  builds, Mochi sample renders in ClientSim, `PostLateUpdate` pushes the
+  uniforms every frame).
+
 ### Added — VRChat package: host-side parity of the Mochi collider
 
 - `examples/vrchat_mochi_golden.rs` prints the Mochi scene from
