@@ -99,6 +99,25 @@ static class Behaviour
         ((int[])Get(yc, "grab"))[0] = 0;
         var held = ypos[0];
         Check(yc.YieldMochi(stand, eye, ypush) == 0f && ypos[0] == held, "a grabbed mochi does not yield");
+        // Desktop cursor: a click along -z at mochi 1 (r 0.30 at (0.5,0.30,0.3)) from z = 2
+        var dc = new SampleMochi_Collider();
+        Call(dc, "Start");
+        var dpos = (Vector3[])Get(dc, "mochiPos");
+        var dgrab = (int[])Get(dc, "grab");
+        var o = new Vector3(0.5f, 0.3f, 2f); var fwd = new Vector3(0f, 0f, -1f);
+        float th = dc.RaymarchMochi(o, fwd, 4f);
+        Check(Math.Abs(th - 1.4f) < 0.01f, $"ray hits the mochi surface at t = {th:F3} (2 - 0.3 - 0.3)");
+        float cd = dc.CursorDistance(o, fwd);
+        Check(Math.Abs(cd - 1.7f) < 1e-4f, $"cursor sits at the centre's depth along the ray ({cd:F3})");
+        Check(dc.CursorDistance(new Vector3(5f, 0.3f, 2f), fwd) < 0f, "a click past every mochi has no cursor");
+        var cursor = o + fwd * cd;
+        for (int i = 0; i < 10; i++) Call(dc, "ProcessHand", cursor, 1);
+        Check(dgrab[1] == 1, "the cursor grabbed mochi 1 after the dwell");
+        var dragged = cursor + new Vector3(0.2f, 0f, 0f);
+        Call(dc, "ProcessHand", dragged, 1);
+        Check(dpos[1] == dragged, "dragging the cursor moves the mochi");
+        Call(dc, "ReleaseHand", 1);
+        Check(dgrab[1] == -1, "releasing the button drops it");
         // Directly on the mochi's column: the only way out is up, never down into the floor
         var under = pc.PlayerPushOut(new Vector3(m0.x, 0f, m0.z), eye, dt);
         Check(under != Vector3.zero && under.y >= 0f, "under the centre: push is not downward");

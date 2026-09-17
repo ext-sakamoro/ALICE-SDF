@@ -70,3 +70,5 @@ examples/wasm-demo/target/
 python/alice_sdf/*.so
 python/alice_sdf/*.dylib
 python/alice_sdf/*.pyd
+# Unity writes a .meta for the ignored ProjectSettings/ dir of the file:-linked package
+vrchat-package/ProjectSettings.meta

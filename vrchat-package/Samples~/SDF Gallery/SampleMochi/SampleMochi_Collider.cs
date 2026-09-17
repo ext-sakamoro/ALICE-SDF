@@ -10,6 +10,9 @@
 //   - Push two free mochis together -> they merge (volume conservation)
 //   - Merged mochis grow: r_new = cbrt(r1^3 + r2^3)
 //   - Release hand far from mochi -> mochi drops with soft gravity
+//   - Desktop: click (Use) on a mochi -> the point on the view ray nearest
+//     its centre becomes a virtual right hand, so grab / drag / split /
+//     merge run through the same ProcessHand; release the button to drop
 //   - Walk into a mochi -> the player is pushed out sideways (body sampled
 //     from the feet to the eyes, the deepest sample decides the direction),
 //     the mochi gives way by the mass ratio and the shader dents it around
@@ -31,6 +34,7 @@ using UnityEngine;
 
 #if UDONSHARP
 using VRC.SDKBase;
+using VRC.Udon.Common;
 using UdonSharp;
 #endif
 
@@ -79,6 +83,10 @@ namespace AliceSDF.Samples
         [Tooltip("Merge threshold: fraction of combined radii")]
         public float mergeThreshold = 0.7f;
 
+        [Header("Desktop")]
+        [Tooltip("How far the view ray looks for a mochi on click (m)")]
+        public float cursorMaxDist = 4.0f;
+
         [Header("Player Collision")]
         public float collisionMargin = 0.1f;
         [Range(0.5f, 1.5f)]
@@ -109,6 +117,13 @@ namespace AliceSDF.Samples
         private bool[] splitDone;      // one split per grab
         private float[] dwell;         // seconds the hand has been inside dwellTarget
         private int[] dwellTarget;     // mochi the hand is dwelling in, -1 = none
+
+#if UDONSHARP
+        // Desktop cursor: Use button state and the fixed distance of the
+        // virtual hand along the view ray (-1 = no cursor)
+        private bool useHeld;
+        private float cursorDist;
+#endif
 
         // Shader data
         private Vector4[] shaderData;
@@ -143,6 +158,11 @@ namespace AliceSDF.Samples
             SpawnMochi(new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
             SpawnMochi(new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
             SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
+
+#if UDONSHARP
+            useHeld = false;
+            cursorDist = -1f;
+#endif
 
             // No player yet: w = 0 tells the shader not to dent
             playerCapA = Vector4.zero;
@@ -180,6 +200,10 @@ namespace AliceSDF.Samples
                 if (IsTrackingValid(rPos))
                     ProcessHand(rPos, HandRight);
             }
+            else
+            {
+                ProcessDesktopCursor();
+            }
 
             // --- Auto-Merge free mochis ---
             CheckMerge();
@@ -209,6 +233,85 @@ namespace AliceSDF.Samples
             SyncShader();
         }
 #endif
+
+        // =================================================================
+        // Desktop cursor (no hand tracking): the Use button and the view ray
+        // =================================================================
+#if UDONSHARP
+        public override void InputUse(bool value, UdonInputEventArgs args)
+        {
+            useHeld = value;
+            if (!value)
+            {
+                cursorDist = -1f;
+                ReleaseHand(HandRight);
+            }
+        }
+
+        // While Use is held, the point on the view ray at the distance fixed
+        // on the click is the right hand: ProcessHand grabs it after the
+        // dwell, drags it as the view turns, splits it on a fast turn
+        private void ProcessDesktopCursor()
+        {
+            if (!useHeld) return;
+            VRCPlayerApi.TrackingData head = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
+            Vector3 o = head.position;
+            Vector3 dir = head.rotation * Vector3.forward;
+            if (cursorDist < 0f)
+            {
+                cursorDist = CursorDistance(o, dir);
+                if (cursorDist < 0f)
+                {
+                    // Clicked past every mochi: this press does nothing
+                    useHeld = false;
+                    return;
+                }
+            }
+            Vector3 cursor = o + dir * cursorDist;
+            // A steep view ray would drag the held mochi under the floor
+            int held = grab[HandRight];
+            if (held >= 0 && held < mochiCount && cursor.y < mochiR[held])
+                cursor = new Vector3(cursor.x, mochiR[held], cursor.z);
+            ProcessHand(cursor, HandRight);
+        }
+#endif
+
+        // Distance along the ray of the virtual hand for a click: the point
+        // nearest the centre of the mochi the ray hits (inside it, so the
+        // grab threshold is met), or -1 when the ray misses. Clicking near a
+        // mochi's rim (outside grabThreshold x r) grabs nothing, like a hand
+        // resting on the rim would.
+        public float CursorDistance(Vector3 o, Vector3 dir)
+        {
+            float t = RaymarchMochi(o, dir, cursorMaxDist);
+            if (t < 0f) return -1f;
+            int i = FindClosestMochi(o + dir * t);
+            if (i < 0) return -1f;
+            float along = Vector3.Dot(mochiPos[i] - o, dir);
+            return along > 0f ? along : -1f;
+        }
+
+        // Sphere-traced hit distance of the ray against the mochis (no ground),
+        // -1 beyond maxDist
+        public float RaymarchMochi(Vector3 o, Vector3 dir, float maxDist)
+        {
+            float t = 0f;
+            for (int i = 0; i < 64; i++)
+            {
+                float d = EvaluateMochiSdf(o + dir * t);
+                if (d < 0.001f) return t;
+                t += d;
+                if (t > maxDist) return -1f;
+            }
+            return -1f;
+        }
+
+        private void ReleaseHand(int hand)
+        {
+            grab[hand] = -1;
+            dwellTarget[hand] = -1;
+            dwell[hand] = 0f;
+        }
 
         // =================================================================
         // Hand Interaction

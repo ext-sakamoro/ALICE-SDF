@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- Mochi sample on desktop: hold Use (left click) on a mochi and the point
+  on the view ray nearest its centre becomes a virtual right hand, so grab /
+  drag / split / merge run through the same `ProcessHand` as VR; the
+  distance is fixed on the click (`CursorDistance` = sphere-traced hit,
+  then the depth of that mochi's centre, so the grab threshold is met; a
+  click past every mochi does nothing), releasing the button drops the
+  mochi (`ReleaseHand`), and a held mochi is kept above the floor when the
+  view ray is steep. Host scenario: hit distance, cursor depth, miss, grab
+  after the dwell, drag, release. ClientSim: `_inputUse` via
+  `RunInputEvent` grabbed mochi 1 at the cursor, followed a pitch change,
+  dropped on release.
 - Mochi sample: the player's body presses into the mochis. The collider
   sends a body capsule (feet to eyes, `playerRadius` 0.3 m) to the shader
   (`_PlayerCapA` / `_PlayerCapB` / `_PlayerDentK`) and the shader

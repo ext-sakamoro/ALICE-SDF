@@ -151,6 +151,9 @@ Soft mochi (rice cake) blobs sitting on a ground plane. In VR, you can grab them
 | **Release** | Move hand very far (4x radius) | Mochi drops and settles to the ground |
 | **Merge** | Push two free mochis close together | They merge into one bigger mochi (`r = cbrt(r1^3 + r2^3)`) |
 | **Grow** | Keep merging mochis | The merged mochi gets bigger and bigger |
+| **Walk in** | Walk into a mochi | Your body dents it and it slides away by the mass ratio; you are pushed back |
+
+**Desktop:** hold Use (left click) on a mochi — the point on your view ray nearest its centre becomes a virtual right hand, so Grab / Move / Split / Release / Merge above work by moving the view; releasing the button drops the mochi.
 
 **Inspector Parameters:**
 
@@ -228,7 +231,7 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 5. Add the corresponding `*_Collider.cs` script to the same GameObject
 6. **Build & Test** in VRChat — use your VR hands to interact
 
-**Desktop mode:** The interactive features require VR hand tracking. In desktop mode, the SDF rendering and player collision still work, but you cannot trigger sculpting, dents, or mochi grabs.
+**Desktop mode:** DeformableWall and TerrainSculpt need VR hand tracking; in desktop mode their SDF rendering and player collision still work, but you cannot sculpt or dent. Mochi works on desktop too: click (Use) on a mochi to grab it, move the view to drag it, turn fast to split it, release the button to drop it.
 
 **Multiplayer note:** All interactive samples run in local-only mode (each player sees their own state). To sync across players, add `[UdonSynced]` to the data arrays and call `RequestSerialization()` on state changes.
 

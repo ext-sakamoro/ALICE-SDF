@@ -13,6 +13,7 @@ namespace UnityEngine
         public static readonly Vector3 down = new Vector3(0, -1, 0);
         public float magnitude => (float)Math.Sqrt(x * x + y * y + z * z);
         public float sqrMagnitude => x * x + y * y + z * z;
+        public static float Dot(Vector3 a, Vector3 b) => a.x * b.x + a.y * b.y + a.z * b.z;
         public static Vector3 operator +(Vector3 a, Vector3 b) => new Vector3(a.x + b.x, a.y + b.y, a.z + b.z);
         public static Vector3 operator -(Vector3 a, Vector3 b) => new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
         public static Vector3 operator *(Vector3 a, float s) => new Vector3(a.x * s, a.y * s, a.z * s);
