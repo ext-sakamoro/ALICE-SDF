@@ -2,7 +2,11 @@
   "name": "AliceSDF.Editor",
   "rootNamespace": "AliceSDF.Editor",
   "references": [
-    "AliceSDF.Runtime"
+    "AliceSDF.Runtime",
+    "UdonSharp.Runtime",
+    "UdonSharp.Editor",
+    "VRC.Udon",
+    "VRC.Udon.Editor"
   ],
   "includePlatforms": [
     "Editor"
@@ -13,6 +17,12 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.vrchat.worlds",
+      "expression": "",
+      "define": "UDONSHARP"
+    }
+  ],
   "noEngineReferences": false
 }

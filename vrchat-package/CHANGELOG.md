@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Fixed
+- `SampleSceneGenerator`: a generated DeformableWall / TerrainSculpt scene
+  had the `*_Collider` component but no backing `UdonBehaviour`, so nothing
+  ran at Play. UdonSharp backs a proxy only when a `UdonSharpProgramAsset`
+  exists for its script, and it does not create one inside the unsaved
+  scene the generator builds in (Mochi worked only because an earlier scene
+  had made its asset). The generator now creates the program asset next to
+  the scenes (`SDF_<Sample>_UdonProgram.asset`), compiles it, and after all
+  scenes are saved opens each interactive scene again so UdonSharp creates
+  the backing, then saves; the log says `1/1 UdonSharp behaviours have a
+  backing UdonBehaviour.` per scene. `AliceSDF.Editor.asmdef` references
+  `UdonSharp.Runtime` / `UdonSharp.Editor` / `VRC.Udon` / `VRC.Udon.Editor`
+  under the same `UDONSHARP` version define as the runtime assembly.
+  Verified in the Editor and headless (`GenerateAllBatch`) on 2022.3.22f1 +
+  SDK 3.10.1.
+- `AGENTS.md`: strings and checks aligned with the real logs (`click
+  missed`, the backing-behaviour log line, the headless expectations and
+  exit codes, the GUID-preserving way to move an old sample folder,
+  T12 SDK-panel `IndexOutOfRangeException` on scenes without a descriptor,
+  T13 collider without `UdonBehaviour`).
+
 ### Added
 - The Mochi sample is published as the VRChat world **Mochi**
   (`wrld_0cb72970-948e-4212-b955-fd3dd567aa42`, private while testing, PC

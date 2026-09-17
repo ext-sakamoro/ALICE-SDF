@@ -214,6 +214,7 @@ namespace AliceSDF.Editor
 
             int created = 0;
             skipped = 0;
+            var interactive = new System.Collections.Generic.List<string>();
 
             foreach (var sample in Samples)
             {
@@ -230,11 +231,50 @@ namespace AliceSDF.Editor
                 string scenePath = $"{OutputFolder}/SDF_{sample.name}.unity";
                 BuildScene(sample, shader, scenePath);
                 created++;
+                if (!string.IsNullOrEmpty(sample.colliderType))
+                    interactive.Add(scenePath);
             }
 
             AssetDatabase.Refresh();
+            FinalizeUdonScenes(interactive);
             Debug.Log($"[ALICE-SDF] Scene generation complete: {created} created, {skipped} skipped.");
             return created;
+        }
+
+        // UdonSharp gives a UdonSharpBehaviour its backing UdonBehaviour only
+        // when a UdonSharpProgramAsset for the script exists and the proxy's
+        // script version is current, and it refreshes that on its own editor
+        // ticks and when a scene is opened ("has not been fully setup, running
+        // setup"). Inside one synchronous menu call a freshly imported sample
+        // therefore ended up with the proxy component and no program
+        // (2022.3.22f1 + SDK 3.10.1: Mochi had its asset from an earlier scene
+        // and worked, DeformableWall / TerrainSculpt did not). So the program
+        // asset is created and compiled while the scene is built
+        // (EnsureUdonProgramAsset), and here, after every scene is saved, each
+        // interactive scene is opened again, which runs UdonSharp's setup, and
+        // saved with its backing behaviour.
+        private static void FinalizeUdonScenes(System.Collections.Generic.List<string> scenePaths)
+        {
+#if UDONSHARP
+            foreach (var path in scenePaths)
+            {
+                var scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
+                foreach (var proxy in Object.FindObjectsOfType<UdonSharp.UdonSharpBehaviour>())
+                {
+                    if (UdonSharpEditor.UdonSharpEditorUtility.GetBackingUdonBehaviour(proxy) != null) continue;
+                    try { UdonSharpEditor.UdonSharpEditorUtility.CreateBehaviourForProxy(proxy); }
+                    catch (System.Exception e) { Debug.LogWarning($"[ALICE-SDF] {path}: backing UdonBehaviour not created yet ({e.Message}); UdonSharp will create it when the scene is opened in the Editor."); }
+                }
+                EditorSceneManager.SaveScene(scene);
+                int backed = 0, total = 0;
+                foreach (var proxy in Object.FindObjectsOfType<UdonSharp.UdonSharpBehaviour>())
+                {
+                    total++;
+                    if (UdonSharpEditor.UdonSharpEditorUtility.GetBackingUdonBehaviour(proxy) != null) backed++;
+                }
+                Debug.Log($"[ALICE-SDF] {path}: {backed}/{total} UdonSharp behaviours have a backing UdonBehaviour.");
+            }
+#endif
         }
 
         // In batch mode the process exit code is the only thing the caller sees.
@@ -296,9 +336,14 @@ namespace AliceSDF.Editor
             {
                 var type = FindType(sample.colliderType);
                 if (type == null)
+                {
                     Debug.LogWarning($"[ALICE-SDF] {sample.colliderType} not found; add the *_Collider.cs component to SDF_{sample.name} by hand.");
+                }
                 else
-                    cubeObj.AddComponent(type);
+                {
+                    var component = cubeObj.AddComponent(type);
+                    EnsureUdonProgramAsset(component, sample.name);
+                }
             }
 
             // --- Info label (world-space canvas) ---
@@ -307,6 +352,25 @@ namespace AliceSDF.Editor
             // Save scene
             EditorSceneManager.SaveScene(scene, scenePath);
             Debug.Log($"[ALICE-SDF] Created scene: {scenePath}");
+        }
+
+        // The UdonSharpProgramAsset UdonSharp needs for this script, created
+        // next to the scenes and compiled if the type has none (see
+        // FinalizeUdonScenes for why the backing behaviour comes later).
+        private static void EnsureUdonProgramAsset(Component component, string sampleName)
+        {
+#if UDONSHARP
+            var proxy = component as UdonSharp.UdonSharpBehaviour;
+            if (proxy == null) return;
+            if (UdonSharpEditor.UdonSharpEditorUtility.GetUdonSharpProgramAsset(proxy.GetType()) != null) return;
+            var asset = ScriptableObject.CreateInstance<UdonSharp.UdonSharpProgramAsset>();
+            asset.sourceCsScript = MonoScript.FromMonoBehaviour(proxy);
+            string assetPath = $"{OutputFolder}/SDF_{sampleName}_UdonProgram.asset";
+            AssetDatabase.CreateAsset(asset, assetPath);
+            AssetDatabase.SaveAssets();
+            UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync(new UdonSharp.Compiler.UdonSharpCompileOptions());
+            Debug.Log($"[ALICE-SDF] Created Udon program asset: {assetPath}");
+#endif
         }
 
         private static System.Type FindType(string fullName)
