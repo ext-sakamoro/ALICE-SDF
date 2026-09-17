@@ -136,7 +136,9 @@ A flat wall standing on a ground plane. When a VR player's hand touches the wall
 
 #### Mochi — Grab, Merge, Split & Grow
 
-![Mochi on desktop: walk in and the body dents it, click to grab, turn to split, carry to merge](Documentation~/mochi_desktop.gif)
+![Mochi on desktop: walk in and the body dents it, click to grab, right-click to split, carry to merge](Documentation~/mochi_desktop.gif)
+
+**Play it in VRChat:** the sample is published as the world **Mochi** — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42). While it is private (testing) only the author and invited friends can enter: on the web page press **Launch** (creates an instance and opens VRChat), or in VRChat open the menu → **Worlds** → the author's worlds → **Mochi** → **Launch**; on PC `vrchat://launch?ref=vrchat.com&id=wrld_0cb72970-948e-4212-b955-fd3dd567aa42:<any number>~private(<your user id>)~region(jp)` started through Steam does the same. Once it reaches Community Labs / public it is searchable by name. PC only (the raymarcher is not built for Quest).
 
 Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apart, push them together, and watch them grow — in VR with your hands, on desktop with the mouse (11 s from the VRChat client above: walking in dents the mochi around your body, a click grabs, a fast turn splits, carrying one onto another merges).
 

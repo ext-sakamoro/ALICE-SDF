@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- The Mochi sample is published as the VRChat world **Mochi**
+  (`wrld_0cb72970-948e-4212-b955-fd3dd567aa42`, private while testing, PC
+  only); both READMEs say how to get in.
+
 ### Changed
 - Mochi sample: splitting is an explicit action. Pulling a held mochi no
   longer tears it (`splitOnPull`, off by default; the old 2.5 r rule was

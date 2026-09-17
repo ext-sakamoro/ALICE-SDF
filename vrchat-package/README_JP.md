@@ -160,7 +160,9 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 
 #### Mochi — 掴む・合体・分裂・巨大化
 
-![デスクトップでの Mochi: 歩いて入ると体の形に凹み、クリックで掴み、振って分裂、運んで合体](Documentation~/mochi_desktop.gif)
+![デスクトップでの Mochi: 歩いて入ると体の形に凹み、クリックで掴み、右クリックで分裂、運んで合体](Documentation~/mochi_desktop.gif)
+
+**VRChat で遊ぶ:** このサンプルは world **Mochi** として公開しています — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42) private (テスト中) の間は作者と招待したフレンドだけ入れます: web の world ページで **Launch** (インスタンスを作って VRChat が開く)、または VRChat のメニュー → **Worlds** → 作者の world 一覧 → **Mochi** → **Launch** PC では Steam 経由で `vrchat://launch?ref=vrchat.com&id=wrld_0cb72970-948e-4212-b955-fd3dd567aa42:<任意の数字>~private(<自分の user id>)~region(jp)` でも同じ Community Labs / public になれば名前で検索できます PC 専用 (レイマーチャーは Quest 向けにビルドしていません)
 
 地面の上に置かれた柔らかい餅（もち）ブロブ。掴んで引っ張って分裂させたり、押し合わせて合体させたり、どんどん大きくしたりできます — VR では手で、デスクトップではマウスで（上の GIF は VRChat client の 11 秒: 歩いて入ると体の形に凹み、クリックで掴み、素早く振ると分裂、別の餅に運ぶと合体）。
 
