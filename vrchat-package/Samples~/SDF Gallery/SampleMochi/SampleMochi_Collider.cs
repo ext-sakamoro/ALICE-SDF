@@ -10,6 +10,8 @@
 //   - Push two free mochis together -> they merge (volume conservation)
 //   - Merged mochis grow: r_new = cbrt(r1^3 + r2^3)
 //   - Release hand far from mochi -> mochi drops with soft gravity
+//   - Walk into a mochi -> the player is pushed out sideways (body sampled
+//     from the feet to the eyes, the deepest sample decides the direction)
 //
 // The SDF evaluated here (EvaluateSdf) is the same formula the shader
 // renders: SmoothUnion(ground, SmoothUnion(mochi_i, blendK), groundK).
@@ -50,6 +52,9 @@ namespace AliceSDF.Samples
         // cbrt(0.5): radius of each half when a mochi splits with volume conserved
         private const float SplitRadiusScale = 0.7937005f;
 
+        // Remaining penetration (m) under which the player is left alone
+        private const float PushDeadBand = 0.005f;
+
         [Header("Mochi Settings")]
         [Tooltip("SmoothUnion blend factor between mochis (sent to shader _BlendK)")]
         public float blendK = 0.5f;
@@ -76,6 +81,10 @@ namespace AliceSDF.Samples
         public float collisionMargin = 0.1f;
         [Range(0.5f, 1.5f)]
         public float pushStrength = 1.0f;
+        [Tooltip("Samples along the body axis, feet to eyes (a single foot sample only sees the underside of a mochi)")]
+        public int bodySamples = 5;
+        [Tooltip("Eye height used when the avatar's cannot be read (m)")]
+        public float fallbackEyeHeight = 1.6f;
 
         // Mochi state arrays (indices 0..mochiCount-1 are live)
         private Vector3[] mochiPos;
@@ -161,25 +170,12 @@ namespace AliceSDF.Samples
             ApplyGravity();
 
             // --- Player Collision ---
-            // Against the mochis only: the ground plane is part of the rendered
-            // SDF (EvaluateSdf) but the player already stands on the world's
-            // floor collider at the same height. Including it here made every
-            // frame on the floor a penetration (feet 5 cm below y=0), so the
-            // player was teleported up and fell back, endlessly.
             Vector3 playerPos = localPlayer.GetPosition();
-            Vector3 feetPos = playerPos + Vector3.down * 0.05f;
-            float dist = EvaluateMochiSdf(feetPos);
-
-            if (dist < collisionMargin)
-            {
-                Vector3 normal = EstimateGradient(feetPos);
-                float pen = Mathf.Min(collisionMargin - dist, 2.0f);
-                float smooth = Mathf.Min(Time.deltaTime * 10f, 1f);
-                localPlayer.TeleportTo(
-                    playerPos + normal * pen * pushStrength * smooth,
-                    localPlayer.GetRotation()
-                );
-            }
+            float eyeHeight = localPlayer.GetAvatarEyeHeightAsMeters();
+            if (eyeHeight <= 0f) eyeHeight = fallbackEyeHeight;
+            Vector3 push = PlayerPushOut(playerPos, eyeHeight, Time.deltaTime);
+            if (push != Vector3.zero)
+                localPlayer.TeleportTo(playerPos + push, localPlayer.GetRotation());
 
             // --- Shader Sync ---
             SyncShader();
@@ -329,6 +325,58 @@ namespace AliceSDF.Samples
         public float EvaluateSdf(Vector3 p)
         {
             return OpSmoothUnion(p.y, EvaluateMochiSdf(p), groundK);
+        }
+
+        // =================================================================
+        // Player Collision — the mochis only, sampled along the body
+        // =================================================================
+        // The ground plane is part of the rendered SDF (EvaluateSdf) but the
+        // player already stands on the world's floor collider at the same
+        // height: colliding with it made every frame on the floor a
+        // penetration and the player bobbed. The body is sampled from the
+        // feet (playerPos) to the eyes: a single foot sample sits below every
+        // mochi's centre, so walking in from the side barely registered and
+        // what push there was pointed up (onto the mochi). The deepest sample
+        // decides the direction; a downward component is dropped because the
+        // floor is VRChat's and a downward teleport only fights it.
+        // Returns the displacement to apply this frame, zero when clear.
+        public Vector3 PlayerPushOut(Vector3 playerPos, float eyeHeight, float dt)
+        {
+            int n = bodySamples < 2 ? 2 : bodySamples;
+            float minDist = collisionMargin;
+            Vector3 minP = playerPos;
+            bool hit = false;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
+                float d = EvaluateMochiSdf(s);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    minP = s;
+                    hit = true;
+                }
+            }
+            if (!hit) return Vector3.zero;
+
+            // The push shrinks geometrically as the margin is approached and
+            // never reaches exactly zero: without a dead band the player is
+            // teleported every frame forever (ClientSim log: same position,
+            // hundreds of times)
+            float pen = Mathf.Min(collisionMargin - minDist, 2.0f);
+            if (pen < PushDeadBand) return Vector3.zero;
+
+            // Sideways whenever the surface allows it: lifting the player only
+            // hands them to gravity, which drops them back into the next push
+            // (the bobbing loop). Straight up only on top of a mochi, never down.
+            Vector3 normal = EstimateGradient(minP);
+            Vector3 flat = new Vector3(normal.x, 0f, normal.z);
+            float flatLen = flat.magnitude;
+            if (flatLen > 0.3f) normal = flat / flatLen;
+            else if (normal.y < 0f) normal = Vector3.up;
+
+            float smooth = Mathf.Min(dt * 10f, 1f);
+            return normal * pen * pushStrength * smooth;
         }
 
         // The mochis alone (no ground plane): what the player collides with.

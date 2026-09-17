@@ -61,6 +61,32 @@ static class Behaviour
         float rm = r()[3];
         Check(Math.Abs(rm * rm * rm - v) < 1e-5f, "merged volume conserved");
         Check(pos()[3].y >= rm - 1e-6f, "merged mochi not under the floor");
+        // Player collision on a fresh scene: body sampled from feet to eyes,
+        // the floor is VRChat's (y clamped to 0 like its floor collider would)
+        var pc = new SampleMochi_Collider();
+        Call(pc, "Start");
+        float eye = 1.6f, dt = 1f / 90f;
+        Check(pc.PlayerPushOut(new Vector3(2f, 0f, 2f), eye, dt) == Vector3.zero, "floor away from mochis: no push");
+        // Standing 0.25 m to +x of mochi 0 (r=0.35 at (-0.6,0.35,0.5)): the knee-high
+        // sample is inside, the foot sample only 8 cm from the underside
+        var m0 = ((Vector3[])Get(pc, "mochiPos"))[0]; float r0m = ((float[])Get(pc, "mochiR"))[0];
+        var stand = new Vector3(m0.x + 0.25f, 0f, m0.z);
+        var first = pc.PlayerPushOut(stand, eye, dt);
+        Check(first.x > 0f && first.y == 0f && Math.Abs(first.z) < first.x * 0.2f, "walked in from +x: pushed back along +x, never lifted");
+        var q = stand; int frames = 0;
+        for (; frames < 600; frames++)
+        {
+            var d = pc.PlayerPushOut(q, eye, dt);
+            if (d == Vector3.zero) break;
+            q = q + d; q = new Vector3(q.x, 0f, q.z); // floor
+        }
+        float xz = (float)Math.Sqrt((q.x - m0.x) * (q.x - m0.x) + (q.z - m0.z) * (q.z - m0.z));
+        Check(frames < 600, $"push reached exactly zero in {frames} frames (dead band, no endless teleport)");
+        Check(xz >= r0m - 0.02f, $"pushed clear of the mochi (xz {xz:F3} >= r {r0m:F2})");
+        Check(q.y == 0f && Math.Abs(q.z - m0.z) < 0.02f, "stayed on the floor and on the approach line");
+        // Directly on the mochi's column: the only way out is up, never down into the floor
+        var under = pc.PlayerPushOut(new Vector3(m0.x, 0f, m0.z), eye, dt);
+        Check(under != Vector3.zero && under.y >= 0f, "under the centre: push is not downward");
         Console.WriteLine(fails == 0 ? "behaviour: all ok" : $"behaviour: {fails} FAIL");
         return fails;
     }
