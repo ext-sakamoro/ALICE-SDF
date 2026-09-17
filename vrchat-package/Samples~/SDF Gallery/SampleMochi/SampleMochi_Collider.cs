@@ -13,6 +13,8 @@
 //   - Desktop: click (Use) on a mochi -> the point on the view ray nearest
 //     its centre becomes a virtual right hand, so grab / drag / split /
 //     merge run through the same ProcessHand; release the button to drop
+//   - Grab button (right click on desktop, grip in VR) while holding ->
+//     split it right there, no pull needed
 //   - Walk into a mochi -> the player is pushed out sideways (body sampled
 //     from the feet to the eyes, the deepest sample decides the direction),
 //     the mochi gives way by the mass ratio and the shader dents it around
@@ -23,9 +25,13 @@
 // blendK / groundK are pushed to the material every frame, so this script
 // is the single source of truth for both rendering and collision.
 //
-// Network: Local-only (each player sees their own mochi state).
-//   For multiplayer sync, add [UdonSynced] to mochiPos / mochiR / mochiCount
-//   and call RequestSerialization() on state changes.
+// Network: owner-authoritative, manual sync. mochiPos / mochiR / mochiCount
+//   are [UdonSynced]; the owner runs gravity and merging and serializes at
+//   10 Hz while anything changed. Grabbing or walking into a mochi takes
+//   ownership (once per grab / contact, never every frame), so the last
+//   player to act drives the state; everyone else renders what they
+//   receive and is still pushed out by it. Late joiners spawn nothing and
+//   wait for the owner's state. Each player's body dent is local.
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -41,7 +47,7 @@ using UdonSharp;
 namespace AliceSDF.Samples
 {
 #if UDONSHARP
-    [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
+    [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class SampleMochi_Collider : UdonSharpBehaviour
 #else
     public class SampleMochi_Collider : MonoBehaviour
@@ -110,15 +116,25 @@ namespace AliceSDF.Samples
         [Tooltip("Smooth-subtraction factor of the body dent (sent to shader _PlayerDentK)")]
         public float dentK = 0.12f;
 
-        // Mochi state arrays (indices 0..mochiCount-1 are live)
+        // Mochi state arrays (indices 0..mochiCount-1 are live), the synced state
+#if UDONSHARP
+        [UdonSynced] private Vector3[] mochiPos;
+        [UdonSynced] private float[] mochiR;
+        [UdonSynced] private int mochiCount = 0;
+#else
         private Vector3[] mochiPos;
         private float[] mochiR;
         private int mochiCount = 0;
+#endif
+        // Set by every state change; the owner serializes at SyncInterval
+        private bool stateDirty;
+        private const float SyncInterval = 0.1f;
 
         // Per-hand state, indexed by HandLeft / HandRight
         private int[] grab;            // mochi index held, -1 = not grabbing
         private Vector3[] grabOrigin;  // where the held mochi was grabbed
         private bool[] splitDone;      // one split per grab
+        private float[] maxPull;       // farthest the hand went from the grab origin, for the release log
         private float[] dwell;         // seconds the hand has been inside dwellTarget
         private int[] dwellTarget;     // mochi the hand is dwelling in, -1 = none
 
@@ -127,6 +143,9 @@ namespace AliceSDF.Samples
         // virtual hand along the view ray (-1 = no cursor)
         private bool useHeld;
         private float cursorDist;
+        private float lastSyncTime;
+        private bool pushing;   // in contact this frame chain (ownership taken at its start)
+        private int receivedCount;   // mochiCount at the last logged deserialization
         // Mochi the player is currently pushing (-1 = none) and when that was
         // last logged: one line per contact, and a change of target no more
         // than every PushLogInterval (standing in the neck between two mochis
@@ -148,13 +167,16 @@ namespace AliceSDF.Samples
 
         void Start()
         {
-            mochiPos = new Vector3[MaxMochi];
-            mochiR = new float[MaxMochi];
+            // A late joiner may have received the owner's arrays already
+            if (mochiPos == null) mochiPos = new Vector3[MaxMochi];
+            if (mochiR == null) mochiR = new float[MaxMochi];
             shaderData = new Vector4[MaxMochi];
+            stateDirty = false;
 
             grab = new int[HandCount];
             grabOrigin = new Vector3[HandCount];
             splitDone = new bool[HandCount];
+            maxPull = new float[HandCount];
             dwell = new float[HandCount];
             dwellTarget = new int[HandCount];
             for (int h = 0; h < HandCount; h++)
@@ -163,19 +185,28 @@ namespace AliceSDF.Samples
                 dwellTarget[h] = -1;
             }
 
-            // Place initial mochis (same layout as mochi.asdf.json)
-            SpawnMochi(new Vector3(-0.6f, 0.35f, 0.5f), 0.35f);
-            SpawnMochi(new Vector3( 0.5f, 0.30f, 0.3f), 0.30f);
-            SpawnMochi(new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
-            SpawnMochi(new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
-            SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
-
 #if UDONSHARP
+            localPlayer = Networking.LocalPlayer;
             useHeld = false;
             cursorDist = -1f;
             pushingMochi = -1;
             pushLogTime = -1f;
+            lastSyncTime = -1f;
+            pushing = false;
+            receivedCount = -1;
 #endif
+
+            // Place initial mochis (same layout as mochi.asdf.json). Only the
+            // owner (the first player in the instance): a late joiner would
+            // overwrite the state it is about to receive.
+            if (IsAuthority())
+            {
+                SpawnMochi(new Vector3(-0.6f, 0.35f, 0.5f), 0.35f);
+                SpawnMochi(new Vector3( 0.5f, 0.30f, 0.3f), 0.30f);
+                SpawnMochi(new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
+                SpawnMochi(new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
+                SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
+            }
 
             // No player yet: w = 0 tells the shader not to dent
             playerCapA = Vector4.zero;
@@ -186,10 +217,6 @@ namespace AliceSDF.Samples
                 mat = rend.material;
             else
                 Debug.LogWarning("[ALICE-SDF] SampleMochi_Collider: No MeshRenderer found. Shader sync disabled.");
-
-#if UDONSHARP
-            localPlayer = Networking.LocalPlayer;
-#endif
 
             SyncShader();
         }
@@ -218,11 +245,13 @@ namespace AliceSDF.Samples
                 ProcessDesktopCursor();
             }
 
-            // --- Auto-Merge free mochis ---
-            CheckMerge();
-
-            // --- Gravity for free mochis ---
-            ApplyGravity();
+            // --- Auto-Merge + Gravity: the owner simulates, everyone else
+            // receives the result ---
+            if (IsAuthority())
+            {
+                CheckMerge();
+                ApplyGravity();
+            }
 
             // --- Player Collision ---
             Vector3 playerPos = localPlayer.GetPosition();
@@ -231,6 +260,13 @@ namespace AliceSDF.Samples
             Vector3 push = PlayerPushOut(playerPos, eyeHeight, Time.deltaTime);
             if (push != Vector3.zero)
             {
+                // Pushing a mochi moves it for everyone: take ownership at the
+                // start of the contact
+                if (!pushing)
+                {
+                    pushing = true;
+                    TakeAuthority();
+                }
                 // The mochi takes its share of the separation, the player the rest
                 int target = FindClosestMochi(DeepestBodySample(playerPos, eyeHeight));
                 float yielded = YieldMochi(playerPos, eyeHeight, push);
@@ -246,6 +282,7 @@ namespace AliceSDF.Samples
             }
             else
             {
+                pushing = false;
                 pushingMochi = -1;
             }
 
@@ -255,10 +292,66 @@ namespace AliceSDF.Samples
             playerCapA = new Vector4(playerPos.x, playerPos.y + playerRadius, playerPos.z, playerRadius);
             playerCapB = new Vector4(playerPos.x, playerPos.y + capTop, playerPos.z, 0f);
 
+            // --- Network: the owner sends what changed, at most every SyncInterval ---
+            if (stateDirty && IsAuthority() && Time.time - lastSyncTime >= SyncInterval)
+            {
+                RequestSerialization();
+                stateDirty = false;
+                lastSyncTime = Time.time;
+            }
+
             // --- Shader Sync ---
             SyncShader();
         }
+
+        // A hand may hold an index that the owner's state no longer has
+        public override void OnDeserialization()
+        {
+            for (int h = 0; h < HandCount; h++)
+            {
+                if (grab[h] >= mochiCount) grab[h] = -1;
+                if (dwellTarget[h] >= mochiCount) { dwellTarget[h] = -1; dwell[h] = 0f; }
+            }
+            if (mochiCount != receivedCount)
+            {
+                VRCPlayerApi owner = Networking.GetOwner(gameObject);
+                LogEvent("received " + mochiCount + " mochis (was " + receivedCount + ") from "
+                         + (owner != null ? owner.displayName : "?"));
+                receivedCount = mochiCount;
+            }
+        }
 #endif
+
+        // =================================================================
+        // Authority: who simulates and serializes (the object's owner)
+        // =================================================================
+        public bool IsAuthority()
+        {
+#if UDONSHARP
+            return Networking.IsOwner(localPlayer, gameObject);
+#else
+            return true;
+#endif
+        }
+
+        private void TakeAuthority()
+        {
+#if UDONSHARP
+            if (!Networking.IsOwner(localPlayer, gameObject))
+                Networking.SetOwner(localPlayer, gameObject);
+#endif
+        }
+
+        private void MarkDirty()
+        {
+            stateDirty = true;
+        }
+
+        // State changed since the owner last serialized
+        public bool HasUnsentChanges()
+        {
+            return stateDirty;
+        }
 
         // =================================================================
         // Desktop cursor (no hand tracking): the Use button and the view ray
@@ -272,6 +365,22 @@ namespace AliceSDF.Samples
                 cursorDist = -1f;
                 ReleaseHand(HandRight);
             }
+        }
+
+        // Grab button (right click on desktop, grip in VR): split what the
+        // hand holds, no pull needed. In VR the grip of either hand splits
+        // that hand's mochi; on desktop it is always the cursor hand.
+        public override void InputGrab(bool value, UdonInputEventArgs args)
+        {
+            if (!value) return;
+            int hand = HandRight;
+            if (localPlayer != null && localPlayer.IsUserInVR() && args.handType == HandType.LEFT) hand = HandLeft;
+            if (grab[hand] < 0 || grab[hand] >= mochiCount) return;
+            int g = grab[hand];
+            if (SplitHeld(hand, "grab button"))
+                splitDone[hand] = true;
+            else
+                LogEvent("split refused #" + g + " r=" + F(mochiR[g]) + " (min r " + F(minRadius * 1.5f) + " or " + MaxMochi + " mochis)");
         }
 
         // While Use is held, the point on the view ray at the distance fixed
@@ -336,8 +445,14 @@ namespace AliceSDF.Samples
 
         private void ReleaseHand(int hand)
         {
-            if (grab[hand] >= 0)
-                LogEvent("release #" + grab[hand] + " hand " + hand + " (button up)");
+            if (grab[hand] >= 0 && grab[hand] < mochiCount)
+            {
+                float r = mochiR[grab[hand]];
+                string pull = splitDone[hand]
+                    ? "already split"
+                    : "max pull " + F(maxPull[hand]) + " m, split at " + F(r * splitDistance) + " m";
+                LogEvent("release #" + grab[hand] + " hand " + hand + " (button up, " + pull + ")");
+            }
             grab[hand] = -1;
             dwellTarget[hand] = -1;
             dwell[hand] = 0f;
@@ -361,20 +476,18 @@ namespace AliceSDF.Samples
 
                 // Currently grabbing: move mochi to hand
                 mochiPos[grabbed] = handPos;
+                MarkDirty();
 
                 float pullDist = (handPos - grabOrigin[hand]).magnitude;
+                if (pullDist > maxPull[hand]) maxPull[hand] = pullDist;
                 float radius = mochiR[grabbed];
 
-                // Split: shrink the held piece, leave the other half at the grab origin
+                // Split: pulled far enough (once per grab)
                 if (!splitDone[hand] && pullDist > radius * splitDistance
-                    && radius > minRadius * 1.5f && mochiCount < MaxMochi)
+                    && SplitHeld(hand, "pulled " + F(pullDist) + " m"))
                 {
-                    radius *= SplitRadiusScale;
-                    mochiR[grabbed] = radius;
-                    SpawnMochi(grabOrigin[hand], radius);
                     splitDone[hand] = true;
-                    LogEvent("split #" + grabbed + " -> #" + (mochiCount - 1) + " r=" + F(radius) + " each, hand " + hand
-                             + " pulled " + F(pullDist) + " m");
+                    radius = mochiR[grabbed];
                 }
 
                 // Release when the hand has pulled too far (radius may have just shrunk)
@@ -412,11 +525,30 @@ namespace AliceSDF.Samples
             // Don't grab a mochi the other hand already holds
             if (grab[1 - hand] == closest) return;
 
+            TakeAuthority();
             grab[hand] = closest;
             grabOrigin[hand] = mochiPos[closest];
             splitDone[hand] = false;
+            maxPull[hand] = 0f;
             dwell[hand] = 0f;
             LogEvent("grab #" + closest + " r=" + F(mochiR[closest]) + " hand " + hand + " at " + F(handPos));
+        }
+
+        // Split the mochi a hand holds: the held piece shrinks to r*cbrt(0.5)
+        // and the other half is left at the grab origin (volume conserved).
+        // False when it is already at the minimum size or the array is full.
+        private bool SplitHeld(int hand, string how)
+        {
+            int grabbed = grab[hand];
+            if (grabbed < 0 || grabbed >= mochiCount) return false;
+            float radius = mochiR[grabbed];
+            if (radius <= minRadius * 1.5f || mochiCount >= MaxMochi) return false;
+            radius *= SplitRadiusScale;
+            mochiR[grabbed] = radius;
+            SpawnMochi(grabOrigin[hand], radius);
+            LogEvent("split #" + grabbed + " -> #" + (mochiCount - 1) + " r=" + F(radius) + " each, hand " + hand
+                     + " (" + how + ")");
+            return true;
         }
 
         // =================================================================
@@ -443,6 +575,7 @@ namespace AliceSDF.Samples
                     float totalV = vi + vj;
                     float newR = CubeRoot(totalV);
                     mochiR[i] = newR;
+                    MarkDirty();
 
                     // Volume-weighted centre, kept on or above the ground so the
                     // bigger mochi does not spend a frame sunk into the floor
@@ -479,11 +612,13 @@ namespace AliceSDF.Samples
                         Mathf.Lerp(currentY, targetY, settle),
                         mochiPos[i].z
                     );
+                    MarkDirty();
                 }
                 else if (currentY < targetY)
                 {
                     // Slightly below ground, push up
                     mochiPos[i] = new Vector3(mochiPos[i].x, targetY, mochiPos[i].z);
+                    MarkDirty();
                 }
             }
         }
@@ -567,6 +702,7 @@ namespace AliceSDF.Samples
             float mochiMass = mochiDensity * 4.18879f * r * r * r;
             float share = playerMass / (playerMass + mochiMass);
             mochiPos[i] = mochiPos[i] - new Vector3(push.x, 0f, push.z) * share;
+            MarkDirty();
             return share;
         }
 
@@ -608,6 +744,7 @@ namespace AliceSDF.Samples
             mochiPos[mochiCount] = pos;
             mochiR[mochiCount] = radius;
             mochiCount++;
+            MarkDirty();
         }
 
         private void RemoveMochi(int index)
@@ -621,6 +758,7 @@ namespace AliceSDF.Samples
                 mochiR[i] = mochiR[i + 1];
             }
             mochiCount--;
+            MarkDirty();
 
             // Fix hand references into the shifted array
             for (int h = 0; h < HandCount; h++)

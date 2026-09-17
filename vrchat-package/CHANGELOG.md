@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Mochi sample is networked: `mochiPos` / `mochiR` / `mochiCount` are
+  `[UdonSynced]` (manual sync), the owner runs gravity and merging and
+  serializes at 10 Hz while anything changed, grabbing or walking into a
+  mochi takes ownership once per grab / contact, late joiners spawn nothing
+  and receive the owner's state (`[Mochi] received N mochis (was M) from
+  <owner>` in the log when the count changes), each player's body dent is
+  local. One player sculpts at a time in practice. Host scenario: the owner
+  spawns, spawning and moving mark the state dirty. Two VRChat clients on
+  one PC (Steam + `--profile=1`, same local room URL): the second logged
+  `received 5 mochis (was -1) from sakamoro` on join.
+- Mochi sample: the Grab button (right click on desktop, grip in VR) splits
+  the mochi you hold without pulling (`SplitHeld`, same volume-conserving
+  split as the pull, the other half stays at the grab origin; refused at
+  the minimum size or 16 mochis, logged). With Log Events on, a release
+  says how far you pulled and how far a split needed (`max pull 0.42 m,
+  split at 0.75 m`).
 - `Documentation~/mochi_desktop.gif` (11 s from the VRChat client, 3.5 MB)
   at the top of the Mochi section of both READMEs: body dent, click grab,
   split, merge on desktop. Unity skips the `~` folder.

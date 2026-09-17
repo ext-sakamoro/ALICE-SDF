@@ -21,7 +21,10 @@ static class Behaviour
         int fails = 0;
         void Check(bool ok, string what) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + what); if (!ok) fails++; }
 
-        Check(count() == 5, "5 initial mochis");
+        Check(count() == 5, "5 initial mochis (the owner spawns them)");
+        bool dirty() => c.HasUnsentChanges();
+        Check(dirty(), "spawning marked the state dirty for the first serialization");
+        typeof(SampleMochi_Collider).GetField("stateDirty", F).SetValue(c, false);
         typeof(SampleMochi_Collider).GetField("logEvents").SetValue(c, true); // event lines in the run output
         // Player collision must ignore the ground plane: standing on the floor
         // (feet 5 cm under y=0) away from every mochi is not a penetration.
@@ -33,6 +36,7 @@ static class Behaviour
         var origin = pos()[0];
         for (int i = 0; i < 10; i++) Call(c, "ProcessHand", origin, 0);
         Check(grab()[0] == 0, "hand 0 grabbed mochi 0 after dwell");
+        Check(dirty(), "moving the held mochi marks the state dirty");
         // Other hand cannot take the same mochi
         for (int i = 0; i < 10; i++) Call(c, "ProcessHand", origin, 1);
         Check(grab()[1] == -1, "hand 1 refused the held mochi");
@@ -119,6 +123,19 @@ static class Behaviour
         Check(dpos[1] == dragged, "dragging the cursor moves the mochi");
         Call(dc, "ReleaseHand", 1);
         Check(dgrab[1] == -1, "releasing the button drops it");
+        // Grab button: split the held mochi without pulling
+        for (int i = 0; i < 10; i++) Call(dc, "ProcessHand", cursor, 1);
+        int before6 = (int)Get(dc, "mochiCount");
+        float r1 = ((float[])Get(dc, "mochiR"))[1];
+        bool did = (bool)typeof(SampleMochi_Collider).GetMethod("SplitHeld", F).Invoke(dc, new object[] { 1, "grab button" });
+        Check(did && (int)Get(dc, "mochiCount") == before6 + 1, "grab button split the held mochi without a pull");
+        Check(Math.Abs(((float[])Get(dc, "mochiR"))[1] - r1 * 0.7937005f) < 1e-6f, "held piece shrank to r*cbrt(0.5)");
+        Check(dpos[before6] == ((Vector3[])Get(dc, "grabOrigin"))[1], "other half is left at the grab origin");
+        // A piece at the minimum size refuses
+        ((float[])Get(dc, "mochiR"))[1] = 0.12f;
+        did = (bool)typeof(SampleMochi_Collider).GetMethod("SplitHeld", F).Invoke(dc, new object[] { 1, "grab button" });
+        Check(!did, "a mochi at the minimum size does not split");
+        Call(dc, "ReleaseHand", 1);
         // Directly on the mochi's column: the only way out is up, never down into the floor
         var under = pc.PlayerPushOut(new Vector3(m0.x, 0f, m0.z), eye, dt);
         Check(under != Vector3.zero && under.y >= 0f, "under the centre: push is not downward");

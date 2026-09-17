@@ -155,7 +155,7 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 | **Grow** | Keep merging mochis | The merged mochi gets bigger and bigger |
 | **Walk in** | Walk into a mochi | Your body dents it and it slides away by the mass ratio; you are pushed back |
 
-**Desktop:** hold Use (left click) on a mochi — the point on your view ray nearest its centre becomes a virtual right hand, so Grab / Move / Split / Release / Merge above work by moving the view; releasing the button drops the mochi.
+**Desktop:** hold Use (left click) on a mochi — the point on your view ray nearest its centre becomes a virtual right hand, so Grab / Move / Split / Release / Merge above work by moving the view; releasing the button drops the mochi. The Grab button (right click; grip in VR) splits the mochi you hold without pulling. With Log Events on, a release line says how far you pulled and how far a split needed.
 
 **Inspector Parameters:**
 
@@ -236,7 +236,7 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 
 **Desktop mode:** DeformableWall and TerrainSculpt need VR hand tracking; in desktop mode their SDF rendering and player collision still work, but you cannot sculpt or dent. Mochi works on desktop too: click (Use) on a mochi to grab it, move the view to drag it, turn fast to split it, release the button to drop it.
 
-**Multiplayer note:** All interactive samples run in local-only mode (each player sees their own state). To sync across players, add `[UdonSynced]` to the data arrays and call `RequestSerialization()` on state changes.
+**Multiplayer note:** Mochi is synced (owner-authoritative manual sync: the mochi arrays are `[UdonSynced]`, the owner runs gravity and merging and serializes at 10 Hz while anything changed; grabbing or walking into a mochi takes ownership once per grab / contact, so the last player to act drives the state and everyone else sees it and is pushed by it; late joiners receive the current state; each player's body dent is drawn locally only). In practice one player sculpts at a time — two players holding different mochis at once will see the other's mochi freeze until they grab again. DeformableWall and TerrainSculpt are still local-only (each player sees their own state); to sync them, add `[UdonSynced]` to their data arrays and call `RequestSerialization()` on state changes.
 
 ### Generate Sample Scenes
 
