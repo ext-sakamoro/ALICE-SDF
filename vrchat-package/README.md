@@ -4,6 +4,8 @@
 
 [Japanese / 日本語版](README_JP.md)
 
+Using a coding agent (Claude Code, Codex, Cursor) to set this up? Point it at [`AGENTS.md`](AGENTS.md): one install path with a check per step, what it can verify without Unity, the Mochi law / binding split for re-use on avatars or props, and known errors with fixes.
+
 ## Install
 
 ### Via Unity Package Manager (Recommended)
@@ -17,7 +19,7 @@ Or add via git URL in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.alice.sdf": "https://github.com/sakamoro/ALICE-SDF.git?path=vrchat-package"
+    "com.alice.sdf": "https://github.com/ext-sakamoro/ALICE-SDF.git?path=vrchat-package"
   }
 }
 ```
@@ -25,7 +27,8 @@ Or add via git URL in `Packages/manifest.json`:
 ### Requirements
 
 - Unity 2022.3.x (VRChat recommended version)
-- VRChat SDK3 + UdonSharp (for collision — shader works without it)
+- A VRChat **Worlds** project from the Creator Companion (SDK3 with UdonSharp — needed for collision; the shader works without it)
+- A project path with ASCII characters only (a non-ASCII path breaks the VRChat SDK's `UnityEventFilter` at Play, see Troubleshooting)
 
 ## Three Components
 
@@ -244,9 +247,17 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 
 After importing samples, generate ready-to-play scenes:
 
-1. **ALICE-SDF > Generate Sample Scenes** (Unity menu)
-2. Scenes are created in `Assets/AliceSDF_SampleScenes/`
-3. Open any `SDF_*.unity` scene and press **Play**
+1. **ALICE-SDF > Import All Samples** (Unity menu) — imports every sample that is not yet in `Assets/Samples/`; the Package Manager Samples tab does the same one by one
+2. **ALICE-SDF > Generate Sample Scenes**
+3. Scenes are created in `Assets/AliceSDF_SampleScenes/`
+4. Open any `SDF_*.unity` scene and press **Play**
+
+Both menus have headless entry points for scripts and agents (two invocations, the imported scripts compile in between; exit code 1 on failure):
+
+```
+Unity -batchmode -quit -nographics -projectPath <project> -executeMethod AliceSDF.Editor.SampleSceneGenerator.ImportAllSamplesBatch
+Unity -batchmode -quit -nographics -projectPath <project> -executeMethod AliceSDF.Editor.SampleSceneGenerator.GenerateAllBatch
+```
 
 The generator auto-detects which samples have been imported and creates a scene with Camera, Light, and a Cube with the SDF shader applied. For DeformableWall / Mochi / TerrainSculpt it also sizes the Cube as in the setup above and adds the `*_Collider` UdonSharp behaviour, so the manual steps 1-5 are done for you; the mochis / dents / sculpting appear at Play.
 
@@ -274,6 +285,7 @@ com.alice.sdf/
 ├── package.json                     # UPM manifest
 ├── CHANGELOG.md
 ├── README.md / README_JP.md
+├── AGENTS.md                        # For coding agents: verifiable install path, law/binding split, known errors
 ├── Runtime/
 │   ├── AliceSDF.Runtime.asmdef      # Assembly Definition
 │   ├── Shaders/
@@ -287,7 +299,7 @@ com.alice.sdf/
 ├── Editor/
 │   ├── AliceSDF.Editor.asmdef       # Editor Assembly Definition
 │   ├── AliceSDF_Baker.cs            # Baker v0.3 (Deep Fried)
-│   └── SampleSceneGenerator.cs      # Menu: ALICE-SDF > Generate Sample Scenes
+│   └── SampleSceneGenerator.cs      # Menus: ALICE-SDF > Import All Samples / Generate Sample Scenes (+ *Batch for -executeMethod)
 ├── Samples~/                        # UPM Samples (import via Package Manager)
 │   └── SDF Gallery/
 │       ├── SampleBasic/             # Ground + Sphere
@@ -297,7 +309,8 @@ com.alice.sdf/
 │       ├── SampleDeformableWall/    # Interactive: touch wall → dent → recover
 │       ├── SampleMochi/            # Interactive: grab, merge, split, grow
 │       └── SampleTerrainSculpt/   # Interactive: dig holes, build hills, fall in
-└── Prefabs~/                        # Hidden from Unity import
+├── HostTests~/                      # Runs without Unity: Mochi collider vs alice_sdf golden (scripts/vrchat-host-parity.sh)
+└── Documentation~/                  # README media (Unity skips ~ folders)
 ```
 
 ## Supported Primitives (53)
@@ -402,6 +415,20 @@ ALICE-SDF v1.1.0 added 7 advanced operations to the native Rust compiled evaluat
 | SurfaceRoughness | Yes | No | FBM noise with child distance |
 
 These operations rely on the compiled bytecode VM with auxiliary data buffers and are not available in the VRChat UdonSharp sandbox. All existing primitives (53), CSG operations (17), and basic transforms/modifiers remain fully functional in VRChat.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Illegal byte sequence` from `UnityEventFilter` / `Assembly.GetCodeBase` at Play | Non-ASCII characters in the project path | Move the project to an ASCII path and re-add it in the Creator Companion |
+| `The type or namespace name 'UdonSharp' could not be found` | Not a VRChat Worlds project, or the package was copied into `Assets/` | Create the project with the Creator Companion (Worlds) and install through `Packages/manifest.json` |
+| `[ALICE-SDF] Shader 'AliceSDF/Samples/Mochi' not found` | Sample not imported | **ALICE-SDF > Import All Samples**, then generate again |
+| After a package update the sample behaves like the old version | Package Manager never overwrites `Assets/Samples/ALICE-SDF for VRChat/<old version>/` | Delete that folder, import again, generate the scene again (re-import assigns new shader GUIDs) |
+| `EPERM` while resolving packages, then many `UnityEditor.TestTools` errors | A registry package download was locked mid-rename, `com.unity.test-framework` is missing | Back up `Packages/packages-lock.json`, delete the broken entry, focus Unity, Ctrl+R |
+| **Build & Test** disabled | The VRChat client is not installed on this machine | Install the client |
+| Desktop click never grabs a mochi (`[Mochi] click miss`) | The view ray misses every mochi, or the hold is shorter than Grab Dwell Time | Aim at the mochi's centre and hold the button |
+
+More (with `grep`-able strings and the reasoning) in [`AGENTS.md`](AGENTS.md) §5.
 
 ## License
 

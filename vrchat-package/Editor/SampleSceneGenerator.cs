@@ -97,38 +97,78 @@ namespace AliceSDF.Editor
             },
         };
 
-        [MenuItem("ALICE-SDF/Generate Sample Scenes")]
-        public static void GenerateAll()
+        // Copies every sample of this package into Assets/Samples/<displayName>/<version>/
+        // (what the Package Manager "Import" button does), so the shaders and
+        // *_Collider.cs scripts exist before Generate Sample Scenes runs.
+        // Already-imported samples are left alone.
+        [MenuItem("ALICE-SDF/Import All Samples")]
+        public static void ImportAllSamples()
         {
-            if (!AssetDatabase.IsValidFolder(OutputFolder))
+            ImportAllSamplesCore();
+        }
+
+        [MenuItem("ALICE-SDF/Import All Samples", true)]
+        public static bool ImportAllSamplesValidation()
+        {
+            return !EditorApplication.isPlaying;
+        }
+
+        // Headless: Unity -batchmode -quit -projectPath <p>
+        //   -executeMethod AliceSDF.Editor.SampleSceneGenerator.ImportAllSamplesBatch
+        // Exit code 1 when the package cannot be found or nothing could be imported.
+        // Run this and GenerateAllBatch as two Unity invocations: the imported
+        // scripts compile (domain reload) between them.
+        public static void ImportAllSamplesBatch()
+        {
+            int imported = ImportAllSamplesCore();
+            if (imported < 0)
+                Fail("[ALICE-SDF] Import All Samples failed; see the log above.");
+        }
+
+        // Returns the number of samples imported by this call, or -1 on failure.
+        private static int ImportAllSamplesCore()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(
+                typeof(SampleSceneGenerator).Assembly);
+            if (package == null)
             {
-                AssetDatabase.CreateFolder("Assets", "AliceSDF_SampleScenes");
+                Debug.LogError("[ALICE-SDF] PackageInfo not found for the AliceSDF.Editor assembly; is com.alice.sdf installed as a package (not copied into Assets/)?");
+                return -1;
             }
 
-            int created = 0;
-            int skipped = 0;
-
-            foreach (var sample in Samples)
+            int imported = 0;
+            int present = 0;
+            int failed = 0;
+            foreach (var sample in UnityEditor.PackageManager.UI.Sample.FindByPackage(package.name, package.version))
             {
-                var shader = Shader.Find(sample.shaderName);
-                if (shader == null)
+                if (sample.isImported)
                 {
-                    Debug.LogWarning(
-                        $"[ALICE-SDF] Shader '{sample.shaderName}' not found. " +
-                        $"Import the '{sample.name}' sample from Package Manager first.");
-                    skipped++;
+                    present++;
                     continue;
                 }
-
-                string scenePath = $"{OutputFolder}/SDF_{sample.name}.unity";
-                BuildScene(sample, shader, scenePath);
-                created++;
+                if (sample.Import())
+                {
+                    Debug.Log($"[ALICE-SDF] Imported sample: {sample.displayName}");
+                    imported++;
+                }
+                else
+                {
+                    Debug.LogError($"[ALICE-SDF] Failed to import sample: {sample.displayName}");
+                    failed++;
+                }
             }
 
             AssetDatabase.Refresh();
+            Debug.Log($"[ALICE-SDF] Import All Samples: {imported} imported, {present} already present, {failed} failed ({package.name} {package.version}).");
+            return failed == 0 && (imported + present) > 0 ? imported : -1;
+        }
+
+        [MenuItem("ALICE-SDF/Generate Sample Scenes")]
+        public static void GenerateAll()
+        {
+            int created = GenerateAllCore(out int skipped);
 
             string msg = $"[ALICE-SDF] Scene generation complete: {created} created, {skipped} skipped.";
-            Debug.Log(msg);
             EditorUtility.DisplayDialog("ALICE-SDF Sample Scenes", msg, "OK");
 
             // Open the first created scene
@@ -150,6 +190,59 @@ namespace AliceSDF.Editor
         public static bool GenerateAllValidation()
         {
             return !EditorApplication.isPlaying;
+        }
+
+        // Headless: Unity -batchmode -quit -projectPath <p>
+        //   -executeMethod AliceSDF.Editor.SampleSceneGenerator.GenerateAllBatch
+        // No dialog, no scene is opened. Exit code 1 when no scene was created
+        // (no sample imported) so a script or an agent can tell it went wrong.
+        // Samples that are not imported are skipped with a warning, as in the menu.
+        public static void GenerateAllBatch()
+        {
+            int created = GenerateAllCore(out int skipped);
+            if (created == 0)
+                Fail($"[ALICE-SDF] No sample scene created ({skipped} skipped). Run ImportAllSamplesBatch (or Package Manager > Samples > Import) first.");
+        }
+
+        // Builds one scene per imported sample. Returns the number created.
+        private static int GenerateAllCore(out int skipped)
+        {
+            if (!AssetDatabase.IsValidFolder(OutputFolder))
+            {
+                AssetDatabase.CreateFolder("Assets", "AliceSDF_SampleScenes");
+            }
+
+            int created = 0;
+            skipped = 0;
+
+            foreach (var sample in Samples)
+            {
+                var shader = Shader.Find(sample.shaderName);
+                if (shader == null)
+                {
+                    Debug.LogWarning(
+                        $"[ALICE-SDF] Shader '{sample.shaderName}' not found. " +
+                        $"Import the '{sample.name}' sample from Package Manager first.");
+                    skipped++;
+                    continue;
+                }
+
+                string scenePath = $"{OutputFolder}/SDF_{sample.name}.unity";
+                BuildScene(sample, shader, scenePath);
+                created++;
+            }
+
+            AssetDatabase.Refresh();
+            Debug.Log($"[ALICE-SDF] Scene generation complete: {created} created, {skipped} skipped.");
+            return created;
+        }
+
+        // In batch mode the process exit code is the only thing the caller sees.
+        private static void Fail(string message)
+        {
+            Debug.LogError(message);
+            if (Application.isBatchMode)
+                EditorApplication.Exit(1);
         }
 
         private static void BuildScene(SampleDef sample, Shader shader, string scenePath)

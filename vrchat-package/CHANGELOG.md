@@ -32,6 +32,32 @@
   the minimum size or 16 mochis, logged). With Log Events on, a release
   says how far you pulled and how far a split needed (`max pull 0.42 m,
   split at 0.75 m`).
+- `AGENTS.md`: for coding agents a user points at this package. One install
+  path with a file- or log-level check per step, the headless commands, the
+  logs to read per platform, what can be verified without Unity
+  (`scripts/vrchat-host-parity.sh`) and what only the user's client can, the
+  Mochi sample split into law (shape, split / merge volume conservation,
+  settle, mass share — identical in every host) and binding (data channel,
+  input, player collision, bounding volume — rewritten per host), the seven
+  invariants to re-check after an edit, design guidance for moving Mochi to
+  an avatar accessory (no Udon: N explicit `Vector` properties driven by the
+  Animator, march in object space, no body dent, PC only) or a pickup, the
+  request text to send the user for a Build & Test, and eleven known errors
+  with the string to grep, the cause and the fix. Both READMEs link to it.
+- Menu **ALICE-SDF > Import All Samples** (`SampleSceneGenerator.ImportAllSamples`):
+  imports every sample of this package that is not yet in `Assets/Samples/`
+  (`PackageManager.UI.Sample.FindByPackage` + `Import()`), so Generate Sample
+  Scenes has its shaders and colliders without visiting the Package Manager.
+- Headless entry points for scripts and agents:
+  `SampleSceneGenerator.ImportAllSamplesBatch` and `GenerateAllBatch`
+  (`Unity -batchmode -quit -executeMethod …`, two invocations so the imported
+  scripts compile in between). No dialog, no scene opened, exit code 1 when
+  nothing was imported / no scene created. Not verified in Unity in this
+  environment (no editor on the machine); the menu path is unchanged apart
+  from the shared core.
+- README / README_JP: Requirements state the Creator Companion Worlds
+  project and the ASCII-only project path; a Troubleshooting table (seven
+  rows) and the agent pointer.
 - `Documentation~/mochi_desktop.gif` (11 s from the VRChat client, 3.5 MB)
   at the top of the Mochi section of both READMEs: body dent, click grab,
   split, merge on desktop. Unity skips the `~` folder.
@@ -65,6 +91,16 @@
   on the floor, held mochi. ClientSim: player 0.25 m from a mochi's centre
   moved +0.142 m, the mochi -0.047 m, capsule following the player, dent
   visible with the avatar hidden.
+
+### Fixed
+- README / README_JP install: the git URL pointed at `sakamoro/ALICE-SDF`,
+  which does not exist; the repository is `ext-sakamoro/ALICE-SDF`.
+
+### Removed
+- `Packages/manifest.json` + `packages-lock.json` (and their `.meta`) that
+  had been committed inside the package since the first commit: they were a
+  Unity project's manifest, not part of a UPM package, and Unity imported
+  them as assets.
 
 ## [0.5.0] - 2026-09-17
 

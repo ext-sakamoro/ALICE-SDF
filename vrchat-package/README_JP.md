@@ -7,6 +7,8 @@ ALICE-SDFは、**数式（SDF）で定義された無限に滑らかな曲面** 
 
 [English / 英語版](README.md)
 
+コーディングエージェント (Claude Code / Codex / Cursor) に導入させる場合は [`AGENTS.md`](AGENTS.md) (英語) を読ませてください 手順ごとの確認方法、Unity なしで検証できる範囲、Mochi をアバター / 小道具に転用する時の「法則 / 結線」の分離、既知エラーと対処が書いてあります
+
 ---
 
 ## なぜ ALICE-SDF なのか？
@@ -33,7 +35,7 @@ ALICE-SDFは、**数式（SDF）で定義された無限に滑らかな曲面** 
 ```json
 {
   "dependencies": {
-    "com.alice.sdf": "https://github.com/sakamoro/ALICE-SDF.git?path=vrchat-package"
+    "com.alice.sdf": "https://github.com/ext-sakamoro/ALICE-SDF.git?path=vrchat-package"
   }
 }
 ```
@@ -41,8 +43,8 @@ ALICE-SDFは、**数式（SDF）で定義された無限に滑らかな曲面** 
 ### 動作環境
 
 - Unity 2022.3.x (VRChat 推奨バージョン)
-- VRChat SDK3 - Worlds
-- **UdonSharp** (必須: 物理判定のため)
+- VRChat Creator Companion で作った **Worlds** プロジェクト (SDK3 + UdonSharp、物理判定に必須 シェーダーだけなら無くても動く)
+- プロジェクトのパスは ASCII のみ (日本語などを含むパスでは VRChat SDK の `UnityEventFilter` が Play 時に落ちる、トラブルシューティング参照)
 
 ---
 
@@ -269,9 +271,17 @@ Y=0の平面地形をVRの手でリアルタイムにスカルプトできます
 
 サンプルをインポートした後、すぐに試せるシーンを自動生成できます。
 
-1. Unityメニュー: **ALICE-SDF > Generate Sample Scenes**
-2. `Assets/AliceSDF_SampleScenes/` にシーンが生成されます
-3. 任意の `SDF_*.unity` を開いて **Play** するだけ
+1. Unityメニュー: **ALICE-SDF > Import All Samples** — 未インポートのサンプルを全部 `Assets/Samples/` に入れます (Package Manager の Samples タブで 1 つずつ Import しても同じ)
+2. **ALICE-SDF > Generate Sample Scenes**
+3. `Assets/AliceSDF_SampleScenes/` にシーンが生成されます
+4. 任意の `SDF_*.unity` を開いて **Play** するだけ
+
+どちらのメニューにもスクリプト / エージェント向けのヘッドレス入口があります (2 回に分けて起動、間でインポートしたスクリプトがコンパイルされる、失敗時は exit code 1):
+
+```
+Unity -batchmode -quit -nographics -projectPath <project> -executeMethod AliceSDF.Editor.SampleSceneGenerator.ImportAllSamplesBatch
+Unity -batchmode -quit -nographics -projectPath <project> -executeMethod AliceSDF.Editor.SampleSceneGenerator.GenerateAllBatch
+```
 
 インポート済みのサンプルを自動検出し、Camera + Light + SDFシェーダー適用済みCube + 情報UIを配置したシーンを生成します。DeformableWall / Mochi / TerrainSculpt については上記セットアップと同じ大きさの Cube に `*_Collider` UdonSharp ビヘイビアも追加されるので、手順 1〜5 は不要です (餅・凹み・地形は Play 時に現れます)。マテリアルも `.mat` として保存されるので、インスペクタからパラメータを変更しながらリアルタイムで確認できます。
 
@@ -316,6 +326,7 @@ com.alice.sdf/
 ├── package.json                     # UPMマニフェスト
 ├── CHANGELOG.md
 ├── README.md / README_JP.md
+├── AGENTS.md                        # コーディングエージェント向け: 検証可能な導入手順・法則/結線の分離・既知エラー
 ├── Runtime/
 │   ├── AliceSDF.Runtime.asmdef      # Assembly Definition
 │   ├── Shaders/
@@ -329,7 +340,7 @@ com.alice.sdf/
 ├── Editor/
 │   ├── AliceSDF.Editor.asmdef       # Editor Assembly Definition
 │   ├── AliceSDF_Baker.cs            # Baker v0.3 (Deep Fried)
-│   └── SampleSceneGenerator.cs      # メニュー: ALICE-SDF > Generate Sample Scenes
+│   └── SampleSceneGenerator.cs      # メニュー: ALICE-SDF > Import All Samples / Generate Sample Scenes (+ -executeMethod 用 *Batch)
 ├── Samples~/                        # UPMサンプル (Package Managerからインポート)
 │   └── SDF Gallery/
 │       ├── SampleBasic/             # 地面 + 球体
@@ -339,7 +350,8 @@ com.alice.sdf/
 │       ├── SampleDeformableWall/    # インタラクティブ: 壁を触る→凹む→回復
 │       ├── SampleMochi/            # インタラクティブ: 掴む・合体・分裂・巨大化
 │       └── SampleTerrainSculpt/   # インタラクティブ: 掘る・積む・穴に落ちる
-└── Prefabs~/                        # Unity Importから隠蔽
+├── HostTests~/                      # Unity なしで走る検証: Mochi collider と alice_sdf golden の突合 (scripts/vrchat-host-parity.sh)
+└── Documentation~/                  # README 用メディア (~ フォルダは Unity が無視)
 ```
 
 ## 対応プリミティブ (53種)
@@ -431,6 +443,20 @@ com.alice.sdf/
 - **VRChat更新**: VRChatの仕様変更により、Udonの挙動が変わる可能性があります。
 
 ---
+
+## トラブルシューティング
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| Play 時に `UnityEventFilter` / `Assembly.GetCodeBase` から `Illegal byte sequence` | プロジェクトのパスに非 ASCII 文字 (日本語のユーザー名など) | ASCII のみのパスへ移動して Creator Companion に再登録 |
+| `The type or namespace name 'UdonSharp' could not be found` | VRChat Worlds プロジェクトでない、または package を `Assets/` にコピーした | Creator Companion (Worlds) でプロジェクトを作り `Packages/manifest.json` 経由でインストール |
+| `[ALICE-SDF] Shader 'AliceSDF/Samples/Mochi' not found` | サンプル未インポート | **ALICE-SDF > Import All Samples** の後にもう一度生成 |
+| package を更新したのにサンプルが古いまま | Package Manager は `Assets/Samples/ALICE-SDF for VRChat/<旧バージョン>/` を上書きしない | そのフォルダを削除 → 再インポート → シーン再生成 (再インポートでシェーダーの GUID が変わる) |
+| package 解決中に `EPERM`、その後 `UnityEditor.TestTools` のエラーが大量に出る | レジストリ package のダウンロードが rename 途中でロックされ `com.unity.test-framework` が欠けた | `Packages/packages-lock.json` をバックアップ → 壊れた entry を削除 → Unity を前面にして Ctrl+R |
+| **Build & Test** が押せない | この PC に VRChat クライアントが無い | クライアントをインストール |
+| デスクトップでクリックしても掴めない (`[Mochi] click miss`) | 視線が餅に当たっていない、または Grab Dwell Time より短い押下 | 餅の中心を狙って押し続ける |
+
+grep できる文字列と理由付きの一覧は [`AGENTS.md`](AGENTS.md) §5
 
 ## ライセンス
 
