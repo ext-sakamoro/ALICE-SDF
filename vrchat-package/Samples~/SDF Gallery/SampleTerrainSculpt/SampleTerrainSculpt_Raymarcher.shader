@@ -1,8 +1,9 @@
 // =============================================================================
 // ALICE-SDF Sample: Terrain Sculpting (Dig & Build)
 // =============================================================================
-// A flat ground that players can sculpt in real-time with VR hands.
-// Left hand adds terrain (SmoothUnion), right hand digs (SmoothSubtraction).
+// A flat ground that players can sculpt in real-time. VR: left hand adds
+// terrain (SmoothUnion), right hand digs (SmoothSubtraction). Desktop: the
+// left button raises, the right button digs, at the view cursor.
 // Both rendering and collision use the exact same SDF — dig a hole and you
 // actually fall in. Build a hill and you can climb it.
 //
@@ -12,6 +13,15 @@
 //
 // Sculpt data is sent from UdonSharp via Material.SetVectorArray.
 // Up to 48 simultaneous sculpt operations (circular buffer).
+//
+// Rendering notes (same fixes as the Mochi sample):
+//   - Cull Off: the player walks inside the volume cube, so its back faces
+//     must run the raymarch too
+//   - closest-approach acceptance: a ray grazing a hill's silhouette runs
+//     out of steps a hair short of the surface; treated as a miss it wrote
+//     the far depth and the world behind showed through as a thin line
+//   - AO samples the hard (k = 0) union: the smooth blend zone under-reports
+//     distance and read as a dark ring around every hill and hole
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -26,11 +36,20 @@ Shader "AliceSDF/Samples/TerrainSculpt"
         _RockColor ("Rock (Underground)", Color) = (0.40, 0.38, 0.35, 1.0)
 
         [Header(Cursor)]
-        _AddCursorColor ("Add Cursor (Left Hand)", Color) = (0.3, 0.6, 1.0, 1.0)
-        _SubCursorColor ("Dig Cursor (Right Hand)", Color) = (1.0, 0.3, 0.2, 1.0)
+        _AddCursorColor ("Add Cursor (Left Hand / Left Click)", Color) = (0.3, 0.6, 1.0, 1.0)
+        _SubCursorColor ("Dig Cursor (Right Hand / Right Click)", Color) = (1.0, 0.3, 0.2, 1.0)
+        // Driven every frame by SampleTerrainSculpt_Collider (xyz = position, w = 1 visible)
+        _LeftHand ("Add Cursor Position", Vector) = (0, 0, 0, 0)
+        _RightHand ("Dig Cursor Position", Vector) = (0, 0, 0, 0)
 
         [Header(Raymarching)]
         _MaxDist ("Max Distance", Float) = 100.0
+
+        [Header(Lighting)]
+        _LightDir ("Light Direction", Vector) = (1.0, 1.5, -0.5, 0.0)
+        _ShadowEnabled ("Enable Soft Shadow", Int) = 1
+        _ShadowSoftness ("Shadow Softness", Range(1, 128)) = 16.0
+        _ShadowMaxDist ("Shadow Max Distance", Float) = 10.0
 
         [Header(Sculpting)]
         _AddSmooth ("Add Smoothness", Float) = 0.25
@@ -39,12 +58,15 @@ Shader "AliceSDF/Samples/TerrainSculpt"
 
         [Header(Fog)]
         _FogColor ("Fog Color", Color) = (0.70, 0.80, 0.90, 1.0)
+        _FogDensity ("Fog Density", Float) = 0.004
     }
     SubShader
     {
         Tags { "RenderType"="Opaque" "Queue"="Geometry" }
         Pass
         {
+            Cull Off
+            ZWrite On
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -58,6 +80,13 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             float4 _AddCursorColor, _SubCursorColor;
             float _MaxDist;
             float _AddSmooth, _SubSmooth, _SculptRadius;
+            float4 _LightDir;
+            int _ShadowEnabled;
+            float _ShadowSoftness, _ShadowMaxDist, _FogDensity;
+
+            // Closest-approach acceptance, metres per metre of ray length
+            // (~1 px at a 60 deg / 1000 px view)
+            #define NEAR_MISS_PER_M 0.002
 
             // Dynamic sculpt data (set from UdonSharp)
             // xyz = world position, w = radius (positive = add, negative = dig)
@@ -124,11 +153,41 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 return terrain;
             }
 
+            // The same terrain with hard (k = 0) operations: exact outside the
+            // spheres and the plane, so only real geometry occludes. The smooth
+            // blend zone reports distances up to k/4 short, which the AO
+            // integral (h - d) read as occlusion: a dark ring at the foot of
+            // every hill and around every hole.
+            float mapOccluder(float3 p)
+            {
+                float terrain = p.y;
+                int count = (int)_SculptCount;
+                for (int i = 0; i < 48; i++)
+                {
+                    if (i >= count) break;
+                    float3 sp = _SculptData[i].xyz;
+                    float rw = _SculptData[i].w;
+                    float3 delta = p - sp;
+                    if (rw > 0.001)
+                        terrain = min(terrain, sdSphere(delta, rw));
+                    else if (rw < -0.001)
+                        terrain = max(terrain, -sdSphere(delta, -rw));
+                }
+                return terrain;
+            }
+
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_LOD.cginc"
 
+            // Central-difference half-width for the normal, wider than the
+            // surface epsilon so it averages over the hit tolerance
+            float normalEps(int tier) {
+                if (tier == ALICE_LOD_TIER_HIGH) return 0.001;
+                if (tier == ALICE_LOD_TIER_MED)  return 0.003;
+                return 0.01;
+            }
+
             // Normal via central differences
-            float3 calcN(float3 p) {
-                float e = 0.001;
+            float3 calcN(float3 p, float e) {
                 return normalize(float3(
                     map(p + float3(e,0,0)) - map(p - float3(e,0,0)),
                     map(p + float3(0,e,0)) - map(p - float3(0,e,0)),
@@ -136,14 +195,17 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 ));
             }
 
-            // AO
-            float calcAO(float3 p, float3 n) {
+            // AO against the hard union, sample count by LOD tier
+            float terrainAO(float3 p, float3 n, int tier) {
+                int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 5 :
+                              (tier == ALICE_LOD_TIER_MED)  ? 3 : 2;
                 float occ = 0.0;
                 float sca = 1.0;
                 for (int i = 0; i < 5; i++) {
-                    float h = 0.01 + 0.08 * float(i);
-                    occ += (h - map(p + h * n)) * sca;
-                    sca *= 0.9;
+                    if (i >= aoSteps) break;
+                    float h = 0.01 + 0.12 * float(i) / float(max(aoSteps - 1, 1));
+                    occ += (h - mapOccluder(p + h * n)) * sca;
+                    sca *= 0.95;
                 }
                 return saturate(1.0 - 3.0 * occ);
             }
@@ -221,41 +283,66 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 float t = 0.0;
                 FragOutput o;
 
+                // Closest approach along the ray: a ray grazing a hill's
+                // silhouette takes ever smaller steps and runs out of budget
+                // a hair short of the surface. Dropped as a miss it wrote the
+                // far depth and whatever the world had behind the volume showed
+                // through as a thin line along every contour. If the budget
+                // runs out within one pixel footprint, the closest point is the hit.
+                float bestD = 1e10;
+                float bestT = 0.0;
+                bool hit = false;
+
                 for (int k = 0; k < 128; k++) {
                     if (k >= maxSteps) break;
-                    float3 p = ro + rd * t;
-                    float d = map(p);
+                    float d = map(ro + rd * t);
 
-                    if (d < eps) {
-                        float3 n = calcN(p);
-                        float3 lightDir = normalize(float3(1, 1.5, -0.5));
-                        float ao = aliceAO_LOD(p, n, tier);
-
-                        // Terrain color
-                        float3 baseCol = terrainColor(p, n);
-
-                        // Lighting
-                        float diff = max(dot(n, lightDir), 0.0);
-                        float3 fc = baseCol * (0.25 + diff * 0.75) * ao;
-
-                        // Hand cursor overlay
-                        fc += cursorOverlay(p);
-
-                        // Fog
-                        fc = lerp(_FogColor.rgb, fc, exp(-t * 0.004));
-
-                        float4 cp = UnityWorldToClipPos(p);
-                        o.color = fixed4(fc, 1.0);
-                        #if defined(UNITY_REVERSED_Z)
-                            o.depth = cp.z / cp.w;
-                        #else
-                            o.depth = (cp.z / cp.w) * 0.5 + 0.5;
-                        #endif
-                        return o;
-                    }
+                    if (d < eps) { hit = true; break; }
+                    if (d < bestD) { bestD = d; bestT = t; }
 
                     t += d * ss;
                     if (t > _MaxDist) break;
+                }
+                if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
+                    t = bestT;
+                    hit = true;
+                }
+
+                if (hit) {
+                    float3 p = ro + rd * t;
+                    float3 n = calcN(p, normalEps(tier));
+                    float3 lightDir = normalize(_LightDir.xyz);
+                    float ao = terrainAO(p, n, tier);
+
+                    // Direct-light visibility (hill -> ground contact shadow)
+                    float shadow = 1.0;
+                    if (_ShadowEnabled > 0)
+                    {
+                        shadow = aliceSoftShadow_LOD(p + n * 0.02, lightDir, 0.02,
+                                                     _ShadowMaxDist, _ShadowSoftness, tier);
+                    }
+
+                    // Terrain color
+                    float3 baseCol = terrainColor(p, n);
+
+                    // Lighting
+                    float diff = max(dot(n, lightDir), 0.0);
+                    float3 fc = baseCol * (0.25 + diff * 0.75 * shadow) * ao;
+
+                    // Hand / cursor overlay
+                    fc += cursorOverlay(p);
+
+                    // Fog
+                    fc = lerp(_FogColor.rgb, fc, exp(-t * _FogDensity));
+
+                    float4 cp = UnityWorldToClipPos(p);
+                    o.color = fixed4(fc, 1.0);
+                    #if defined(UNITY_REVERSED_Z)
+                        o.depth = cp.z / cp.w;
+                    #else
+                        o.depth = (cp.z / cp.w) * 0.5 + 0.5;
+                    #endif
+                    return o;
                 }
 
                 o.color = fixed4(_FogColor.rgb, 1.0);

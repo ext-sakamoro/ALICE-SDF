@@ -79,13 +79,18 @@ Logs to read, per platform:
 scripts/vrchat-host-parity.sh        # from the repository root; CI job "vrchat-host"
 ```
 
-It compiles `Samples~/SDF Gallery/SampleMochi/SampleMochi_Collider.cs` as C# 7.3
-with warnings as errors against `HostTests~/MochiParity/UnityEngineStub.cs`,
-compares its `EvaluateSdf` with `alice_sdf::eval` of the same scene
-(`examples/vrchat_mochi_golden.rs`, 1521 grid points, tolerance 1e-5) and
-replays grab → split → release → settle → merge, desktop click and player
-push scenarios. Green means: the C# is valid, and the collider's law equals
-the Rust law. It says nothing about Udon, the shader or VR.
+It compiles each interactive sample's `*_Collider.cs` as C# 7.3 with warnings
+as errors against `HostTests~/Shared/UnityEngineStub.cs`, compares its
+`EvaluateSdf` with `alice_sdf::eval` of the same scene (tolerance 1e-5) and
+replays a behaviour scenario:
+
+| Project | Golden | Scenario |
+|---------|--------|----------|
+| `HostTests~/MochiParity` | `examples/vrchat_mochi_golden.rs`, 1521 points | grab → split → release → settle → merge, desktop click, player push |
+| `HostTests~/TerrainSculptParity` | `examples/vrchat_terrain_sculpt_golden.rs`, 4335 points | sculpt (cooldown / stroke / buffer wrap), surface search over a hole and a stacked hill, step / wall / buried contact, desktop cursor ray |
+
+Green means: the C# is valid, and the collider's law equals the Rust law. It
+says nothing about Udon, the shader or VR.
 
 **Cannot (Unity is the only compiler / runtime):**
 

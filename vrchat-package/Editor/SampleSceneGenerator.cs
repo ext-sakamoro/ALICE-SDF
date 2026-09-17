@@ -26,6 +26,12 @@ namespace AliceSDF.Editor
             // samples compile into Assembly-CSharp, which this editor
             // assembly does not reference, so it is resolved by name)
             public string colliderType;
+            // Playable samples: a VRCSceneDescriptor with one spawn, so the
+            // scene runs in ClientSim / Build & Test as it is (a scene without
+            // a descriptor cannot start ClientSim). Static space scenes have
+            // no floor to stand on and get none.
+            public bool world;
+            public Vector3 spawnPos;
         }
 
         private static readonly SampleDef[] Samples = new SampleDef[]
@@ -74,6 +80,8 @@ namespace AliceSDF.Editor
                 camLookAt    = new Vector3(0, 1.5f, 0),
                 bgColor      = new Color(0.65f, 0.7f, 0.78f),
                 colliderType = "AliceSDF.Samples.SampleDeformableWall_Collider",
+                world        = true,
+                spawnPos     = new Vector3(0, 0.5f, 4),
             },
             new SampleDef {
                 name         = "Mochi",
@@ -84,6 +92,8 @@ namespace AliceSDF.Editor
                 camLookAt    = new Vector3(0, 0.3f, 0),
                 bgColor      = new Color(0.83f, 0.80f, 0.76f),
                 colliderType = "AliceSDF.Samples.SampleMochi_Collider",
+                world        = true,
+                spawnPos     = new Vector3(0, 0.5f, 1.5f),
             },
             new SampleDef {
                 name         = "TerrainSculpt",
@@ -94,6 +104,8 @@ namespace AliceSDF.Editor
                 camLookAt    = new Vector3(0, 0.5f, 0),
                 bgColor      = new Color(0.6f, 0.75f, 0.9f),
                 colliderType = "AliceSDF.Samples.SampleTerrainSculpt_Collider",
+                world        = true,
+                spawnPos     = new Vector3(0, 0.5f, 2),
             },
         };
 
@@ -343,8 +355,13 @@ namespace AliceSDF.Editor
                 {
                     var component = cubeObj.AddComponent(type);
                     EnsureUdonProgramAsset(component, sample.name);
+                    if (sample.name == "TerrainSculpt")
+                        AddTerrainSupport(cubeObj, component);
                 }
             }
+
+            if (sample.world)
+                AddWorldDescriptor(sample.spawnPos);
 
             // --- Info label (world-space canvas) ---
             CreateInfoCanvas(sample.name);
@@ -352,6 +369,52 @@ namespace AliceSDF.Editor
             // Save scene
             EditorSceneManager.SaveScene(scene, scenePath);
             Debug.Log($"[ALICE-SDF] Created scene: {scenePath}");
+        }
+
+        // VRCWorld: scene descriptor + one spawn (only with the worlds SDK).
+        // Respawn height above the SDF volumes' bottom so a fall out of a
+        // TerrainSculpt hole (volume floor at y = -2) respawns promptly.
+        private static void AddWorldDescriptor(Vector3 spawnPos)
+        {
+#if UDONSHARP
+            var world = new GameObject("VRCWorld");
+            world.transform.position = spawnPos;
+            var desc = world.AddComponent<VRC.SDK3.Components.VRCSceneDescriptor>();
+            var spawn = new GameObject("Spawn");
+            spawn.transform.SetParent(world.transform, false);
+            desc.spawns = new Transform[] { spawn.transform };
+            desc.RespawnHeightY = -20f;
+#endif
+        }
+
+        // TerrainSculpt: the terrain is the floor, so the scene has no floor
+        // collider; the collider script moves this box every frame to the SDF
+        // surface under the player (see SampleTerrainSculpt_Collider). A
+        // kinematic Rigidbody keeps the physics scene from rebuilding a static
+        // collider each frame. Assigned to the script's `support` field by
+        // name (the sample assembly is not referenced here).
+        private static void AddTerrainSupport(GameObject cubeObj, Component collider)
+        {
+            // At the scene root, not under the cube: the cube's (20, 10, 20)
+            // scale would shear a tilted child
+            var support = new GameObject("TerrainSupport");
+            support.transform.localScale = new Vector3(1.5f, 0.2f, 1.5f);
+            support.transform.position = new Vector3(0f, -0.1f, 0f);
+            support.AddComponent<BoxCollider>();
+            var rb = support.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            var so = new SerializedObject(collider);
+            var prop = so.FindProperty("support");
+            if (prop != null)
+            {
+                prop.objectReferenceValue = support.transform;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            else
+            {
+                Debug.LogWarning("[ALICE-SDF] SampleTerrainSculpt_Collider has no `support` field; the script falls back to the scene object named TerrainSupport.");
+            }
         }
 
         // The UdonSharpProgramAsset UdonSharp needs for this script, created

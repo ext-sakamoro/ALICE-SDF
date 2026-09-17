@@ -3,6 +3,24 @@
 ## [Unreleased]
 
 ### Fixed
+- TerrainSculpt: the player could not stand on the terrain. The collider
+  pushed the feet out of the SDF every frame (the same bobbing loop Mochi
+  had) and the scene still needed a flat floor collider, so a dug hole was
+  drawn but never entered. The script now moves a small invisible box
+  (`TerrainSupport`, created by the scene generator at the scene root) onto
+  the SDF surface directly below the player every frame, tilted to the
+  normal, so VRChat's controller stands on the terrain as it is now: dig
+  under yourself and you fall, build under yourself and you are lifted onto
+  the top, walk into the steep flank of a tall hill and it pushes you back
+  like a wall (with the Mochi dead band, so the push stops), anything under
+  a 0.3 m step you walk up. No floor collider in a TerrainSculpt scene.
+- TerrainSculpt shader: `Cull Off` (the player walks inside the volume
+  cube; with back-face culling the terrain vanished from inside), the
+  closest-approach acceptance of the Mochi raymarcher (no dark seam along
+  hill silhouettes), ambient occlusion against the hard union (no dark ring
+  at the foot of a hill), `_LightDir` / soft contact shadow / `_FogDensity`
+  properties instead of constants; `_AddSmooth` / `_SubSmooth` are pushed
+  from the collider every frame so collision and rendering cannot drift.
 - `SampleSceneGenerator`: a generated DeformableWall / TerrainSculpt scene
   had the `*_Collider` component but no backing `UdonBehaviour`, so nothing
   ran at Play. UdonSharp backs a proxy only when a `UdonSharpProgramAsset`
@@ -24,6 +42,19 @@
   T13 collider without `UdonBehaviour`).
 
 ### Added
+- TerrainSculpt on desktop: hold the left button (Use) to build and the
+  right button (Drop) to dig at the point where the view meets the terrain
+  (`Cursor Max Dist`, 6 m); the cursor glow shows what a click would do.
+- TerrainSculpt multiplayer: the sculpt buffer is `[UdonSynced]` (manual,
+  owner-authoritative, 10 Hz while changed; the sculpting player takes
+  ownership at the start of a stroke), so everyone stands on the same
+  terrain and late joiners receive it. `Log Events` writes one
+  `[Terrain] ...` line per add / dig / click / lift / wall push.
+- `HostTests~/TerrainSculptParity` + `examples/vrchat_terrain_sculpt_golden.rs`:
+  the terrain collider is compiled on the host and its `EvaluateSdf`
+  compared with `alice_sdf::eval` (4335 points) plus a sculpt / stand /
+  wall / buried scenario; `scripts/vrchat-host-parity.sh` now runs every
+  sample project. `UnityEngineStub.cs` moved to `HostTests~/Shared/`.
 - The Mochi sample is published as the VRChat world **Mochi**
   (`wrld_0cb72970-948e-4212-b955-fd3dd567aa42`, private while testing, PC
   only); both READMEs say how to get in.

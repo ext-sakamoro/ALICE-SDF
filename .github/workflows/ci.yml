@@ -472,11 +472,12 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
-      # SampleMochi_Collider.cs は UdonSharp 向けで Unity でしか compile されない
+      # Sample*_Collider.cs は UdonSharp 向けで Unity でしか compile されない
       # → UnityEngine stub 相手に C# 7.3 -warnaserror で compile し、EvaluateSdf を
-      # examples/vrchat_mochi_golden.rs (alice_sdf::eval) と 1521 点突合 + grab /
-      # split / merge シナリオ (vrchat-package/HostTests~/README.md)
-      - name: Mochi parity + behaviour
+      # examples/vrchat_*_golden.rs (alice_sdf::eval) と突合 (Mochi 1521 点 +
+      # TerrainSculpt 4335 点) + 各 sample の behaviour シナリオ
+      # (vrchat-package/HostTests~/README.md)
+      - name: Mochi / TerrainSculpt parity + behaviour
         run: scripts/vrchat-host-parity.sh
 
   actionlint:

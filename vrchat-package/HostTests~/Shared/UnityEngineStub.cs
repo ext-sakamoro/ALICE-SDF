@@ -1,6 +1,7 @@
-// Minimal UnityEngine surface for host-side compile + parity of the Mochi collider.
-// Only what SampleMochi_Collider touches on the non-UDONSHARP path; extend it
-// when a new sample needs more, never add Unity behaviour it does not have.
+// Minimal UnityEngine surface for host-side compile + parity of the sample
+// colliders (Mochi, TerrainSculpt). Only what they touch on the non-UDONSHARP
+// path; extend it when a new sample needs more, never add Unity behaviour it
+// does not have.
 using System;
 namespace UnityEngine
 {
@@ -11,6 +12,7 @@ namespace UnityEngine
         public static readonly Vector3 zero = new Vector3(0, 0, 0);
         public static readonly Vector3 up = new Vector3(0, 1, 0);
         public static readonly Vector3 down = new Vector3(0, -1, 0);
+        public static readonly Vector3 forward = new Vector3(0, 0, 1);
         public float magnitude => (float)Math.Sqrt(x * x + y * y + z * z);
         public float sqrMagnitude => x * x + y * y + z * z;
         public static float Dot(Vector3 a, Vector3 b) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -38,8 +40,37 @@ namespace UnityEngine
         public static float Pow(float a, float b) => (float)Math.Pow(a, b);
         public static float Exp(float a) => (float)Math.Exp(a);
         public static float Lerp(float a, float b, float t) => a + (b - a) * (t < 0 ? 0 : t > 1 ? 1 : t);
+        public static float Sqrt(float a) => (float)Math.Sqrt(a);
     }
-    public static class Time { public static float deltaTime = 1f / 90f; }
+    // time is settable so a host scenario can step the clock past a cooldown
+    public static class Time { public static float deltaTime = 1f / 90f; public static float time = 0f; }
+    public struct Quaternion
+    {
+        public float x, y, z, w;
+        public Quaternion(float x, float y, float z, float w) { this.x = x; this.y = y; this.z = z; this.w = w; }
+        public static readonly Quaternion identity = new Quaternion(0, 0, 0, 1);
+        // Rotation taking a onto b (both unit), as Unity does; a = -b gives a half turn about any perpendicular
+        public static Quaternion FromToRotation(Vector3 a, Vector3 b)
+        {
+            float cx = a.y * b.z - a.z * b.y, cy = a.z * b.x - a.x * b.z, cz = a.x * b.y - a.y * b.x;
+            float d = Vector3.Dot(a, b);
+            float w = 1f + d;
+            if (w < 1e-6f) return new Quaternion(1, 0, 0, 0);
+            float len = (float)Math.Sqrt(cx * cx + cy * cy + cz * cz + w * w);
+            return new Quaternion(cx / len, cy / len, cz / len, w / len);
+        }
+    }
+    public class Transform
+    {
+        public Vector3 position;
+        public Quaternion rotation = Quaternion.identity;
+        public Transform Find(string name) => null;
+    }
+    public class GameObject
+    {
+        public Transform transform = new Transform();
+        public static GameObject Find(string name) => null;
+    }
     public static class Debug
     {
         public static void LogWarning(object m) { Console.Error.WriteLine("[warn] " + m); }
@@ -51,7 +82,11 @@ namespace UnityEngine
         public void SetFloat(string n, float v) { }
         public void SetVector(string n, Vector4 v) { }
     }
-    public class Component { public T GetComponent<T>() where T : class => null; }
+    public class Component
+    {
+        public T GetComponent<T>() where T : class => null;
+        public Transform transform = new Transform();
+    }
     public class MeshRenderer : Component { public Material material = new Material(); }
     public class MonoBehaviour : Component { }
     [AttributeUsage(AttributeTargets.Field)] public class HeaderAttribute : Attribute { public HeaderAttribute(string h) { } }

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Host-side parity of the VRChat Mochi sample: Rust golden -> C# collider.
+# Host-side parity of the VRChat interactive samples: Rust golden -> C# collider,
+# one (example, HostTests~ project, golden line count) triple per sample.
 # Mirrors the `vrchat-host` job of .github/workflows/ci.yml; preflight.sh
 # calls this, so it must stay runnable with only cargo + dotnet installed.
 set -euo pipefail
@@ -16,13 +17,24 @@ if ! command -v dotnet >/dev/null 2>&1; then
     exit 1
 fi
 
-golden="$(mktemp -t mochi-golden.XXXXXX)"
+golden="$(mktemp -t vrchat-golden.XXXXXX)"
 trap 'rm -f "$golden"' EXIT
 
-cargo run -q --release --example vrchat_mochi_golden > "$golden"
-lines=$(wc -l < "$golden")
-[[ "$lines" -eq 1521 ]] || { echo "golden has $lines lines, expected 1521" >&2; exit 1; }
+# example : HostTests~ project : lines the golden must have (the grid size; a
+# silently truncated golden would otherwise pass)
+samples=(
+    "vrchat_mochi_golden:MochiParity:1521"
+    "vrchat_terrain_sculpt_golden:TerrainSculptParity:4335"
+)
 
-proj="vrchat-package/HostTests~/MochiParity"
-dotnet build "$proj" -c Release --nologo -v q
-dotnet run --no-build -c Release --project "$proj" -- "$golden"
+for entry in "${samples[@]}"; do
+    IFS=: read -r example project expected <<< "$entry"
+    echo "== $project ($example)"
+    cargo run -q --release --example "$example" > "$golden"
+    lines=$(wc -l < "$golden")
+    [[ "$lines" -eq "$expected" ]] || { echo "$example golden has $lines lines, expected $expected" >&2; exit 1; }
+
+    proj="vrchat-package/HostTests~/$project"
+    dotnet build "$proj" -c Release --nologo -v q
+    dotnet run --no-build -c Release --project "$proj" -- "$golden"
+done

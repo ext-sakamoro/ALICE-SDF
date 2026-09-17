@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Host-side check of the Mochi UdonSharp collider: compiles it against
-       UnityEngineStub.cs (no Unity), then compares EvaluateSdf with the
-       alice_sdf golden and replays a grab / split / release / merge scenario.
-       Run via scripts/vrchat-host-parity.sh. -->
+  <!-- Host-side check of the TerrainSculpt UdonSharp collider: compiles it
+       against ../Shared/UnityEngineStub.cs (no Unity), records the sculpt
+       operations of examples/vrchat_terrain_sculpt_golden.rs and compares
+       EvaluateSdf with that golden, then replays a sculpt / stand / dig /
+       bury / wall scenario. Run via scripts/vrchat-host-parity.sh. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -13,7 +14,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../Samples~/SDF Gallery/SampleMochi/SampleMochi_Collider.cs" Link="SampleMochi_Collider.cs" />
+    <Compile Include="../../Samples~/SDF Gallery/SampleTerrainSculpt/SampleTerrainSculpt_Collider.cs" Link="SampleTerrainSculpt_Collider.cs" />
     <Compile Include="../Shared/UnityEngineStub.cs" Link="UnityEngineStub.cs" />
   </ItemGroup>
 </Project>

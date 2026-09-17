@@ -96,7 +96,7 @@ Seven ready-to-play samples are included. Import via **Package Manager > Samples
 | **Mix** | Cosmic x Fractal fusion — fractal planet + torus ring + onion shell. | `SmoothUnion(Intersect(Sphere, Menger), Torus, Onion(Sphere))` |
 | **DeformableWall** | Touch/hit the wall and it dents. Dents recover over time. VR hand interaction. | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
 | **Mochi** | Squishy mochi blobs. Grab, merge, split, and grow. SmoothUnion soft-body physics. | `SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k))` |
-| **TerrainSculpt** | Dig holes & build hills with VR hands. You fall into holes you dig. **Only possible with SDF.** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
+| **TerrainSculpt** | Dig holes & build hills with VR hands or the mouse. You fall into holes you dig. **Only possible with SDF.** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
 
 Each sample includes:
 - `*_Raymarcher.shader` — Raymarching shader with SV_Depth, LOD, AO, fog
@@ -191,31 +191,32 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 
 **The first VRChat experience where you can dig a hole and actually fall into it.**
 
-A flat ground plane that players can sculpt in real-time. Left hand adds terrain, right hand digs. Both rendering and collision use the exact same SDF formula — what you see is what you collide with, even as the terrain changes.
+A flat ground plane that players can sculpt in real-time — with VR hands or with the mouse. Both rendering and collision use the exact same SDF formula: what you see is what you stand on, even as the terrain changes.
 
 This is fundamentally impossible with VRChat's mesh-based approach because MeshColliders cannot be recalculated at runtime. ALICE-SDF evaluates the same math for both pixels and physics.
 
 **How it works:**
 1. Base terrain is a ground plane at Y=0
-2. Left hand near surface → `opSmoothUnion(terrain, sphere)` — adds a hill at hand position
-3. Right hand near surface → `opSmoothSubtraction(terrain, sphere)` — digs a hole at hand position
+2. Add → `opSmoothUnion(terrain, sphere)` — a hill at the hand / cursor
+3. Dig → `opSmoothSubtraction(terrain, sphere)` — a hole at the hand / cursor
 4. Operations are stored in a circular buffer (max 48). When full, oldest operations are overwritten
 5. UdonSharp sends the operation array to the shader every frame
-6. Player collision evaluates the same formula — fall into holes, climb hills
+6. Standing on it: VRChat's player controller needs a Unity collider under its feet, so the script moves a small invisible box (`TerrainSupport`) every frame onto the SDF surface directly below the player, tilted to the surface normal. Dig under yourself and the box drops with the terrain — you fall. Build under yourself and you are lifted onto the new top. The steep flank of a tall hill pushes you back like a wall; anything lower than a 0.3 m step you simply walk up
 
-**VR Interaction:**
+**Interaction:**
 
-| Action | Hand | What Happens |
-|--------|------|--------------|
-| **Dig** | Right hand near ground | A hemispherical hole is carved. You can fall in |
-| **Build** | Left hand near ground | A hill/mound appears. You can climb it |
-| **Sculpt deeper** | Keep right hand in the hole | Dig deeper with each operation |
-| **Build higher** | Keep left hand on the mound | Stack more terrain on top |
+| Action | VR | Desktop | What Happens |
+|--------|----|---------|--------------|
+| **Dig** | Right hand near ground | Hold right click, look at the ground | A hemispherical hole is carved. You can fall in |
+| **Build** | Left hand near ground | Hold left click, look at the ground | A hill appears. You can climb it |
+| **Sculpt deeper** | Keep the right hand in the hole | Right click again on the hole | Dig deeper with each operation |
+| **Build higher** | Keep the left hand on the mound | Left click again on the mound | Stack more terrain on top |
+| **Paint** | Sweep the hand along the ground | Hold the button and look around | A trench or a ridge follows the hand / view (one operation every 0.12 s, on desktop only once the cursor has moved 0.75 r on) |
 
 **Visual feedback:**
-- Blue glow around left hand = add mode
-- Red glow around right hand = dig mode
-- Glows only appear when hand is near the terrain surface
+- Blue glow = add (left hand, or the view cursor while the left button is held or nothing is held)
+- Red glow = dig (right hand, or the view cursor while the right button is held)
+- In VR the glow only appears when the hand is near the terrain surface; on desktop the cursor is the point where the view meets the terrain (within `Cursor Max Dist`)
 
 **Terrain coloring:**
 - Green grass on flat surfaces
@@ -227,10 +228,18 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | Sculpt Radius | 0.3 | Size of each sculpt brush stroke |
-| Sculpt Distance | 0.15 | How close hand must be to terrain surface to sculpt |
-| Sculpt Cooldown | 0.12s | Minimum time between operations (prevents buffer spam) |
-| Add Smooth | 0.25 | SmoothUnion blend for hills (higher = smoother) |
+| Sculpt Distance | 0.15 | How close the hand / cursor must be to the terrain surface to sculpt |
+| Sculpt Cooldown | 0.12s | Minimum time between operations of one hand (prevents buffer spam) |
+| Add Smooth | 0.25 | SmoothUnion blend for hills (higher = smoother) — pushed to the material every frame, so collision and rendering always agree |
 | Sub Smooth | 0.15 | SmoothSubtraction blend for holes (higher = smoother edges) |
+| Cursor Max Dist | 6.0 | Desktop: how far the view ray looks for terrain |
+| Support | (scene) | The invisible collider that follows the player (the generator creates `TerrainSupport`; by hand: any box collider, assign it here or name it `TerrainSupport`) |
+| Support Height | 0.2 | Thickness of that box; its top is placed on the surface |
+| Log Events | off | One `Debug.Log` line per add / dig / click / lift / wall push as `[Terrain] ...` — grep the VRChat client `output_log_*.txt` |
+
+**Shader parameters:** `Light Direction` (match your scene light), `Enable Soft Shadow` (hills cast contact shadows on the ground, 48 / 24 / 12 steps by LOD tier), `Fog Density`. The raymarcher accepts the closest approach of a ray that runs out of steps within a pixel of the surface, so hill silhouettes have no dark seam, and its ambient occlusion samples the hard union so the smooth blend at the foot of a hill does not read as a dark ring.
+
+**Scene requirements:** the terrain *is* the floor — do not put a floor collider at y = 0 in a TerrainSculpt world (you could never fall into a hole). Spawn players a little above the terrain (y ≈ 0.5). The sample scene generator sets this up; the volume cube is (20, 10, 20), so holes are limited to 2 m deep and hills to 8 m high.
 
 #### Setup (All Interactive Samples)
 
@@ -239,11 +248,11 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 3. Create a **Material** from `AliceSDF/Samples/DeformableWall`, `AliceSDF/Samples/Mochi`, or `AliceSDF/Samples/TerrainSculpt`
 4. Assign the material to the Cube's **MeshRenderer**
 5. Add the corresponding `*_Collider.cs` script to the same GameObject
-6. **Build & Test** in VRChat — use your VR hands to interact
+6. **Build & Test** in VRChat — VR hands or, on desktop, the mouse
 
-**Desktop mode:** DeformableWall and TerrainSculpt need VR hand tracking; in desktop mode their SDF rendering and player collision still work, but you cannot sculpt or dent. Mochi works on desktop too: click (Use) on a mochi to grab it, move the view to drag it, turn fast to split it, release the button to drop it.
+**Desktop mode:** Mochi and TerrainSculpt work on desktop: Mochi — click (Use) on a mochi to grab it, move the view to drag it, right click to split it, release the button to drop it; TerrainSculpt — hold left click to build and right click to dig where you look. DeformableWall still needs VR hand tracking; in desktop mode its rendering and player collision work, but you cannot dent it.
 
-**Multiplayer note:** Mochi is synced (owner-authoritative manual sync: the mochi arrays are `[UdonSynced]`, the owner runs gravity and merging and serializes at 10 Hz while anything changed; grabbing or walking into a mochi takes ownership once per grab / contact, so the last player to act drives the state and everyone else sees it and is pushed by it; late joiners receive the current state; each player's body dent is drawn locally only). In practice one player sculpts at a time — two players holding different mochis at once will see the other's mochi freeze until they grab again. DeformableWall and TerrainSculpt are still local-only (each player sees their own state); to sync them, add `[UdonSynced]` to their data arrays and call `RequestSerialization()` on state changes.
+**Multiplayer note:** Mochi is synced (owner-authoritative manual sync: the mochi arrays are `[UdonSynced]`, the owner runs gravity and merging and serializes at 10 Hz while anything changed; grabbing or walking into a mochi takes ownership once per grab / contact, so the last player to act drives the state and everyone else sees it and is pushed by it; late joiners receive the current state; each player's body dent is drawn locally only). In practice one player sculpts at a time — two players holding different mochis at once will see the other's mochi freeze until they grab again. TerrainSculpt is synced the same way (the sculpt buffer is `[UdonSynced]`; whoever sculpts takes ownership at the start of a stroke and serializes at 10 Hz while anything changed; everyone stands on the same terrain). DeformableWall is still local-only (each player sees their own dents); to sync it, add `[UdonSynced]` to its impact array and call `RequestSerialization()` on impact.
 
 ### Generate Sample Scenes
 

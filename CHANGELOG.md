@@ -6,6 +6,21 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — VRChat package: TerrainSculpt sample brought to the Mochi level
+
+- The player stands on the sculpted terrain: an invisible support box follows
+  the player onto the SDF surface every frame (dig under yourself and you
+  fall, build under yourself and you are lifted), desktop sculpting with the
+  mouse, `[UdonSynced]` sculpt buffer, `Log Events`, shader `Cull Off` /
+  closest-approach acceptance / hard-union AO / soft shadow. Details in
+  `vrchat-package/CHANGELOG.md`.
+- `examples/vrchat_terrain_sculpt_golden.rs` prints the terrain after six
+  fixed sculpts from `alice_sdf::eval`; `vrchat-package/HostTests~/TerrainSculptParity`
+  compiles the UdonSharp collider against the shared UnityEngine stub and
+  checks its `EvaluateSdf` against that golden (4335 points, 1e-5) plus a
+  sculpt / stand / wall / buried scenario. `scripts/vrchat-host-parity.sh`
+  runs every sample project.
+
 ### Fixed — `Terrain` shader emit was invalid GLSL/WGSL/HLSL, and its law drifted from the CPU
 
 The `Terrain` arm in `transpiler_common.rs` wrote raw GLSL (`float`, `vec2`,
