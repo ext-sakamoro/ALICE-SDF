@@ -2,7 +2,28 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-17
+
+`package.json` had stayed at 0.2.0 through the 0.3.0 and 0.4.0 entries
+below, so a project that imported the samples in February kept its
+February copy in `Assets/Samples/ALICE-SDF for VRChat/0.2.0/` and the
+Package Manager saw nothing to update. This release bumps it so the
+samples re-import.
+
 ### Added
+- `Editor/SampleSceneGenerator.cs` also builds the three interactive
+  samples (DeformableWall / Mochi / TerrainSculpt): bounding cube at the
+  README size with its bottom face on the SDF ground, the sample material,
+  and the `*_Collider` UdonSharp behaviour on the cube (UdonSharp creates
+  the backing `UdonBehaviour`). Before, only Basic / Cosmic / Fractal / Mix
+  were generated and the interactive ones were a manual setup. In edit mode
+  the Mochi scene shows the ground only: the mochis are placed by the
+  behaviour at Play.
+- `.meta` files for every asset in `Editor/`, `Runtime/`, `Packages/` and the
+  package root are in the repository, as a VPM package ships them. They
+  were never tracked, so every `file:`-linked project generated its own
+  GUIDs (different per machine) and left 21 untracked files in the working
+  tree.
 - `HostTests~/MochiParity`: the Mochi collider is now compiled on every push
   without Unity (C# 7.3, warnings as errors, against a ~60-line
   `UnityEngineStub.cs`), its `EvaluateSdf` is compared with
@@ -14,6 +35,37 @@
   code in the package; the 53-primitive `AliceSDF_Primitives.cs` is next.
 
 ### Fixed
+- Mochi sample, player collision: a single sample at the feet (5 cm under
+  the floor) sat below every mochi's centre, so walking into a mochi from
+  the side barely registered and what push there was pointed up — the
+  player ended up standing on the mochi (seen in the VRChat client). The
+  body is now sampled from the feet to the eyes
+  (`GetAvatarEyeHeightAsMeters`, `bodySamples` = 5) and the deepest sample
+  decides the push, sideways whenever the surface allows it (lifting the
+  player only hands them to gravity and the next frame's push); a 5 mm dead
+  band stops the geometric approach from teleporting the player every
+  frame forever. `PlayerPushOut` is a public pure function; the host
+  scenario checks a sideways walk-in (pushed back along the approach line,
+  never lifted, push reaches exactly zero, clear of the mochi), the floor
+  away from mochis, and the mochi's own column (never pushed down).
+  ClientSim: player at 0.25 m from a mochi's centre pushed to 0.45 m in
+  0.5 s with y = 0 throughout, then no further teleport.
+- Mochi sample, shader: a thin dark line followed every mochi / ground
+  contour. Not lighting: it survived `_ShadowEnabled = 0` and AO = 1. A ray
+  grazing a silhouette takes ever smaller steps (smaller still inside a
+  smooth union's blend zone, where |grad| < 1) and ran out of the 128-step
+  budget a hair short of the surface; treated as a miss, it wrote the far
+  depth and the world's floor behind the volume showed through (confirmed
+  by colouring the miss path magenta). The march now keeps its closest
+  approach and, when the budget runs out within one pixel footprint of the
+  surface (`NEAR_MISS_PER_M` = 0.002 × ray length), shades that point.
+- Mochi sample, shader: a sharp dark ring around every mochi's base, ending
+  abruptly at the edge of the ground blend zone. The AO integral (h − d)
+  sampled the polynomial smooth union, which under-reports distance inside
+  its blend zone (up to k/4 short), and read the shortfall as occlusion.
+  AO now samples the hard union (`min(ground, mochis)`, exact outside the
+  geometry), so only real geometry occludes; the contact shading is a
+  smooth gradient.
 - Mochi sample: the player-collision test used the rendered SDF (ground
   plane included), so standing on the floor was a permanent penetration and
   the player bobbed up and down every frame. Player collision now uses the

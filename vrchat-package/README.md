@@ -240,7 +240,7 @@ After importing samples, generate ready-to-play scenes:
 2. Scenes are created in `Assets/AliceSDF_SampleScenes/`
 3. Open any `SDF_*.unity` scene and press **Play**
 
-The generator auto-detects which samples have been imported and creates a scene with Camera, Light, and a Cube with the SDF shader applied.
+The generator auto-detects which samples have been imported and creates a scene with Camera, Light, and a Cube with the SDF shader applied. For DeformableWall / Mochi / TerrainSculpt it also sizes the Cube as in the setup above and adds the `*_Collider` UdonSharp behaviour, so the manual steps 1-5 are done for you; the mochis / dents / sculpting appear at Play.
 
 ## Quick Start
 

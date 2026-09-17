@@ -1,6 +1,6 @@
 {
   "name": "com.alice.sdf",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "displayName": "ALICE-SDF for VRChat",
   "description": "Stand on math. SDF raymarching + UdonSharp collision for VRChat worlds. Deep Fried optimized.",
   "unity": "2022.3",

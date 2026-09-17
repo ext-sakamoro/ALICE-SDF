@@ -16,10 +16,16 @@ namespace AliceSDF.Editor
         {
             public string name;
             public string shaderName;
+            public Vector3 cubePos;
             public Vector3 cubeScale;
             public Vector3 camPos;
             public Vector3 camLookAt;
             public Color bgColor;
+            // Interactive samples: the UdonSharp behaviour that drives the
+            // shader every frame, added to the cube (full type name; the
+            // samples compile into Assembly-CSharp, which this editor
+            // assembly does not reference, so it is resolved by name)
+            public string colliderType;
         }
 
         private static readonly SampleDef[] Samples = new SampleDef[]
@@ -55,6 +61,39 @@ namespace AliceSDF.Editor
                 camPos     = new Vector3(20, 10, 25),
                 camLookAt  = Vector3.zero,
                 bgColor    = new Color(0.02f, 0.01f, 0.03f),
+            },
+            // Interactive samples (README "Setup (All Interactive Samples)"):
+            // the cube is the raymarching bounding volume, its bottom face
+            // sits on or under the SDF ground plane at y = 0
+            new SampleDef {
+                name         = "DeformableWall",
+                shaderName   = "AliceSDF/Samples/DeformableWall",
+                cubePos      = new Vector3(0, 4, 0),
+                cubeScale    = new Vector3(12, 8, 12),
+                camPos       = new Vector3(0, 1.6f, 6),
+                camLookAt    = new Vector3(0, 1.5f, 0),
+                bgColor      = new Color(0.65f, 0.7f, 0.78f),
+                colliderType = "AliceSDF.Samples.SampleDeformableWall_Collider",
+            },
+            new SampleDef {
+                name         = "Mochi",
+                shaderName   = "AliceSDF/Samples/Mochi",
+                cubePos      = new Vector3(0, 1, 0),
+                cubeScale    = new Vector3(4, 2, 4),
+                camPos       = new Vector3(0, 1.6f, 2.5f),
+                camLookAt    = new Vector3(0, 0.3f, 0),
+                bgColor      = new Color(0.83f, 0.80f, 0.76f),
+                colliderType = "AliceSDF.Samples.SampleMochi_Collider",
+            },
+            new SampleDef {
+                name         = "TerrainSculpt",
+                shaderName   = "AliceSDF/Samples/TerrainSculpt",
+                cubePos      = new Vector3(0, 3, 0),
+                cubeScale    = new Vector3(20, 10, 20),
+                camPos       = new Vector3(0, 1.6f, 6),
+                camLookAt    = new Vector3(0, 0.5f, 0),
+                bgColor      = new Color(0.6f, 0.75f, 0.9f),
+                colliderType = "AliceSDF.Samples.SampleTerrainSculpt_Collider",
             },
         };
 
@@ -141,7 +180,7 @@ namespace AliceSDF.Editor
             // --- SDF Raymarching Surface (Cube) ---
             var cubeObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cubeObj.name = $"SDF_{sample.name}";
-            cubeObj.transform.position = Vector3.zero;
+            cubeObj.transform.position = sample.cubePos;
             cubeObj.transform.localScale = sample.cubeScale;
 
             // Remove default collider (SDF handles collision)
@@ -158,12 +197,33 @@ namespace AliceSDF.Editor
             AssetDatabase.CreateAsset(mat, matPath);
             cubeObj.GetComponent<MeshRenderer>().sharedMaterial = mat;
 
+            // --- Interactive samples: the UdonSharp collider on the cube ---
+            // (UdonSharp's editor hooks create the backing UdonBehaviour)
+            if (!string.IsNullOrEmpty(sample.colliderType))
+            {
+                var type = FindType(sample.colliderType);
+                if (type == null)
+                    Debug.LogWarning($"[ALICE-SDF] {sample.colliderType} not found; add the *_Collider.cs component to SDF_{sample.name} by hand.");
+                else
+                    cubeObj.AddComponent(type);
+            }
+
             // --- Info label (world-space canvas) ---
             CreateInfoCanvas(sample.name);
 
             // Save scene
             EditorSceneManager.SaveScene(scene, scenePath);
             Debug.Log($"[ALICE-SDF] Created scene: {scenePath}");
+        }
+
+        private static System.Type FindType(string fullName)
+        {
+            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var t = asm.GetType(fullName);
+                if (t != null) return t;
+            }
+            return null;
         }
 
         private static void CreateInfoCanvas(string sampleName)
