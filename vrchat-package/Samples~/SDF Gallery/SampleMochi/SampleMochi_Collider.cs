@@ -16,8 +16,8 @@
 //   - Desktop: click (Use) on a mochi -> the point on the view ray nearest
 //     its centre becomes a virtual right hand, so grab / drag / split /
 //     merge run through the same ProcessHand; release the button to drop
-//   - Grab button (right click on desktop, grip in VR) while holding ->
-//     split it right there, no pull needed
+//   - Right click (desktop) / grip (VR) while holding -> split it right
+//     there, no pull needed
 //   - Walk into a mochi -> the player is pushed out sideways (body sampled
 //     from the feet to the eyes, the deepest sample decides the direction),
 //     the mochi gives way by the mass ratio and the shader dents it around
@@ -87,7 +87,7 @@ namespace AliceSDF.Samples
         public float grabDwellTime = 0.08f;
         [Tooltip("Pull distance (x radius) to trigger split, when Split On Pull is on")]
         public float splitDistance = 2.5f;
-        [Tooltip("Pulling a held mochi this far from where it was grabbed also splits it (off: only the grab button / grip splits)")]
+        [Tooltip("Pulling a held mochi this far from where it was grabbed also splits it (off: only the right click / grip splits)")]
         public bool splitOnPull = false;
         [Tooltip("Distance (x radius) at which a VR hand drops the mochi (the desktop cursor drops on button up only)")]
         public float releaseDistance = 4.0f;
@@ -374,17 +374,34 @@ namespace AliceSDF.Samples
             }
         }
 
-        // Grab button (right click on desktop, grip in VR): split what the
-        // hand holds, no pull needed. In VR the grip of either hand splits
-        // that hand's mochi; on desktop it is always the cursor hand.
+        // Split what a hand holds, no pull needed. VRChat's bindings
+        // (creators.vrchat.com/worlds/udon/input-events): on desktop InputGrab
+        // is the left click like InputUse and InputDrop is the right click;
+        // in VR InputGrab is the grip press and InputDrop its release on most
+        // controllers. So: right click (InputDrop) splits on desktop, the grip
+        // (InputGrab, either hand) splits in VR, and each ignores the other
+        // mode's event.
         public override void InputGrab(bool value, UdonInputEventArgs args)
         {
-            if (!value) return;
-            int hand = HandRight;
-            if (localPlayer != null && localPlayer.IsUserInVR() && args.handType == HandType.LEFT) hand = HandLeft;
-            if (grab[hand] < 0 || grab[hand] >= mochiCount) return;
+            if (!value || localPlayer == null || !localPlayer.IsUserInVR()) return;
+            SplitByButton(args.handType == HandType.LEFT ? HandLeft : HandRight, "grip");
+        }
+
+        public override void InputDrop(bool value, UdonInputEventArgs args)
+        {
+            if (!value || localPlayer == null || localPlayer.IsUserInVR()) return;
+            SplitByButton(HandRight, "right click");
+        }
+
+        private void SplitByButton(int hand, string button)
+        {
+            if (grab[hand] < 0 || grab[hand] >= mochiCount)
+            {
+                LogEvent(button + " with nothing held (hand " + hand + ")");
+                return;
+            }
             int g = grab[hand];
-            if (SplitHeld(hand, "grab button"))
+            if (SplitHeld(hand, button))
                 splitDone[hand] = true;
             else
                 LogEvent("split refused #" + g + " r=" + F(mochiR[g]) + " (min r " + F(minRadius * 1.5f) + " or " + MaxMochi + " mochis)");

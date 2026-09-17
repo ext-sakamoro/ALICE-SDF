@@ -26,7 +26,7 @@
   spawns, spawning and moving mark the state dirty. Two VRChat clients on
   one PC (Steam + `--profile=1`, same local room URL): the second logged
   `received 5 mochis (was -1) from sakamoro` on join.
-- Mochi sample: the Grab button (right click on desktop, grip in VR) splits
+- Mochi sample: right click on desktop (`InputDrop`) / the grip in VR (`InputGrab`) splits
   the mochi you hold without pulling (`SplitHeld`, same volume-conserving
   split as the pull, the other half stays at the grab origin; refused at
   the minimum size or 16 mochis, logged). With Log Events on, a release

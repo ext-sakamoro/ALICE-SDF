@@ -155,7 +155,7 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 | **Grow** | Keep merging mochis | The merged mochi gets bigger and bigger |
 | **Walk in** | Walk into a mochi | Your body dents it and it slides away by the mass ratio; you are pushed back |
 
-**Desktop:** hold Use (left click) on a mochi — the point on your view ray nearest its centre becomes a virtual right hand, so Grab / Move / Split / Release / Merge above work by moving the view; releasing the button drops the mochi. The Grab button (right click; grip in VR) splits the mochi you hold. With Log Events on, a release line says whether it was split while held and how far it was carried.
+**Desktop:** hold Use (left click) on a mochi — the point on your view ray nearest its centre becomes a virtual right hand, so Grab / Move / Split / Release / Merge above work by moving the view; releasing the button drops the mochi. Right click (InputDrop on desktop; the grip, InputGrab, in VR) splits the mochi you hold. With Log Events on, a release line says whether it was split while held and how far it was carried.
 
 **Inspector Parameters:**
 
