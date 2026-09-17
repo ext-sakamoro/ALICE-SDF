@@ -87,6 +87,10 @@ namespace AliceSDF.Samples
         [Tooltip("How far the view ray looks for a mochi on click (m)")]
         public float cursorMaxDist = 4.0f;
 
+        [Header("Debug")]
+        [Tooltip("Debug.Log one line per event (grab / split / release / merge / click / push) as [Mochi] ..., readable in the VRChat client output_log")]
+        public bool logEvents = false;
+
         [Header("Player Collision")]
         public float collisionMargin = 0.1f;
         [Range(0.5f, 1.5f)]
@@ -123,6 +127,8 @@ namespace AliceSDF.Samples
         // virtual hand along the view ray (-1 = no cursor)
         private bool useHeld;
         private float cursorDist;
+        // Mochi the player is currently pushing (-1 = none), for one log line per contact
+        private int pushingMochi;
 #endif
 
         // Shader data
@@ -162,6 +168,7 @@ namespace AliceSDF.Samples
 #if UDONSHARP
             useHeld = false;
             cursorDist = -1f;
+            pushingMochi = -1;
 #endif
 
             // No player yet: w = 0 tells the shader not to dent
@@ -219,8 +226,20 @@ namespace AliceSDF.Samples
             if (push != Vector3.zero)
             {
                 // The mochi takes its share of the separation, the player the rest
+                int target = FindClosestMochi(DeepestBodySample(playerPos, eyeHeight));
                 float yielded = YieldMochi(playerPos, eyeHeight, push);
+                if (target != pushingMochi)
+                {
+                    pushingMochi = target;
+                    if (target >= 0)
+                        LogEvent("push #" + target + " r=" + F(mochiR[target]) + " player at " + F(playerPos)
+                                 + " mochi share " + F(yielded));
+                }
                 localPlayer.TeleportTo(playerPos + push * (1f - yielded), localPlayer.GetRotation());
+            }
+            else
+            {
+                pushingMochi = -1;
             }
 
             // Body capsule for the shader dent (feet to eyes, radius playerRadius)
@@ -263,9 +282,11 @@ namespace AliceSDF.Samples
                 if (cursorDist < 0f)
                 {
                     // Clicked past every mochi: this press does nothing
+                    LogEvent("click missed (view from " + F(o) + " toward " + F(dir) + ")");
                     useHeld = false;
                     return;
                 }
+                LogEvent("click hit, cursor " + F(cursorDist) + " m along the view ray");
             }
             Vector3 cursor = o + dir * cursorDist;
             // A steep view ray would drag the held mochi under the floor
@@ -308,6 +329,8 @@ namespace AliceSDF.Samples
 
         private void ReleaseHand(int hand)
         {
+            if (grab[hand] >= 0)
+                LogEvent("release #" + grab[hand] + " hand " + hand + " (button up)");
             grab[hand] = -1;
             dwellTarget[hand] = -1;
             dwell[hand] = 0f;
@@ -343,11 +366,16 @@ namespace AliceSDF.Samples
                     mochiR[grabbed] = radius;
                     SpawnMochi(grabOrigin[hand], radius);
                     splitDone[hand] = true;
+                    LogEvent("split #" + grabbed + " -> #" + (mochiCount - 1) + " r=" + F(radius) + " each, hand " + hand
+                             + " pulled " + F(pullDist) + " m");
                 }
 
                 // Release when the hand has pulled too far (radius may have just shrunk)
                 if (pullDist > radius * releaseDistance)
+                {
                     grab[hand] = -1;
+                    LogEvent("release #" + grabbed + " hand " + hand + " (pulled " + F(pullDist) + " m)");
+                }
                 return;
             }
 
@@ -381,6 +409,7 @@ namespace AliceSDF.Samples
             grabOrigin[hand] = mochiPos[closest];
             splitDone[hand] = false;
             dwell[hand] = 0f;
+            LogEvent("grab #" + closest + " r=" + F(mochiR[closest]) + " hand " + hand + " at " + F(handPos));
         }
 
         // =================================================================
@@ -413,6 +442,8 @@ namespace AliceSDF.Samples
                     Vector3 c = (mochiPos[i] * vi + mochiPos[j] * vj) / totalV;
                     mochiPos[i] = new Vector3(c.x, Mathf.Max(c.y, newR), c.z);
 
+                    LogEvent("merge #" + j + " into #" + i + " r=" + F(newR) + " at " + F(mochiPos[i])
+                             + ", " + (mochiCount - 1) + " mochis left");
                     RemoveMochi(j);
                     j--; // Re-check this index
                 }
@@ -628,6 +659,22 @@ namespace AliceSDF.Samples
             // the world origin, so only the exact zero is rejected (a radius
             // test would carve a dead zone out of the play area).
             return pos != Vector3.zero;
+        }
+
+        // One line per event in the client log (grep "[Mochi]"), off by default
+        private void LogEvent(string what)
+        {
+            if (logEvents) Debug.Log("[Mochi] " + what);
+        }
+
+        private string F(float v)
+        {
+            return v.ToString("F2");
+        }
+
+        private string F(Vector3 v)
+        {
+            return "(" + F(v.x) + ", " + F(v.y) + ", " + F(v.z) + ")";
         }
 
         // Polynomial smooth minimum, identical to opSmoothUnion in the shader

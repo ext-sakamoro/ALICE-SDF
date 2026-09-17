@@ -22,6 +22,7 @@ static class Behaviour
         void Check(bool ok, string what) { Console.WriteLine((ok ? "  ok   " : "  FAIL ") + what); if (!ok) fails++; }
 
         Check(count() == 5, "5 initial mochis");
+        typeof(SampleMochi_Collider).GetField("logEvents").SetValue(c, true); // event lines in the run output
         // Player collision must ignore the ground plane: standing on the floor
         // (feet 5 cm under y=0) away from every mochi is not a penetration.
         float margin = (float)typeof(SampleMochi_Collider).GetField("collisionMargin").GetValue(c);

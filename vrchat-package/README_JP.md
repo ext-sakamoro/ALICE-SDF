@@ -191,6 +191,7 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 | Grab Dwell Time | 0.08秒 | 掴み発動までの滞在時間（誤掴み防止） |
 | Split Distance | 2.5 | 分裂を発動する引っ張り距離（半径の倍率） |
 | Merge Threshold | 0.7 | 自動合体が発生する距離（合計半径の割合） |
+| Log Events | off | 掴む / 分裂 / リリース / 合体 / クリック / 押し の event ごとに `[Mochi] ...` を1行 `Debug.Log` — VRChat client の `output_log_*.txt` を grep すれば何が起きたか分かる |
 
 **Materialパラメータ**（シェーダーのみ）:
 

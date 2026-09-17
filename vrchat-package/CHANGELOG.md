@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- Mochi sample: `Log Events` (Inspector, off by default) writes one
+  `Debug.Log` line per grab / split / release / merge / desktop click
+  (hit or miss) / push (once per contact, with the mochi's mass share) as
+  `[Mochi] ...`, so the VRChat client `output_log_*.txt` shows what
+  happened without a debugger. Nothing is logged per frame. The host
+  scenario runs with it on and prints the four VR events.
 - Mochi sample on desktop: hold Use (left click) on a mochi and the point
   on the view ray nearest its centre becomes a virtual right hand, so grab /
   drag / split / merge run through the same `ProcessHand` as VR; the

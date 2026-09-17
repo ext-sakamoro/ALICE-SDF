@@ -166,6 +166,7 @@ Soft mochi (rice cake) blobs sitting on a ground plane. In VR, you can grab them
 | Grab Dwell Time | 0.08s | Hold time before grab activates (prevents accidental grabs) |
 | Split Distance | 2.5 | Pull distance (x radius) to trigger split |
 | Merge Threshold | 0.7 | Distance (x combined radii) for auto-merge |
+| Log Events | off | One `Debug.Log` line per grab / split / release / merge / click / push as `[Mochi] ...` — grep the VRChat client `output_log_*.txt` to see what happened without a debugger |
 
 **Material Parameters** (shader only):
 

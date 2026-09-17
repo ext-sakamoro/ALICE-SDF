@@ -40,7 +40,11 @@ namespace UnityEngine
         public static float Lerp(float a, float b, float t) => a + (b - a) * (t < 0 ? 0 : t > 1 ? 1 : t);
     }
     public static class Time { public static float deltaTime = 1f / 90f; }
-    public static class Debug { public static void LogWarning(object m) { Console.Error.WriteLine("[warn] " + m); } }
+    public static class Debug
+    {
+        public static void LogWarning(object m) { Console.Error.WriteLine("[warn] " + m); }
+        public static void Log(object m) { Console.WriteLine(m); }
+    }
     public class Material
     {
         public void SetVectorArray(string n, Vector4[] v) { }
