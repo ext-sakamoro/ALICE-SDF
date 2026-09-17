@@ -91,7 +91,7 @@ namespace AliceSDF.Samples
         public float surfaceSearchUp = 0.6f;
 
         [Header("Debug")]
-        [Tooltip("Debug.Log one line per event (sculpt / click / lift / wall push) as [Terrain] ..., readable in the VRChat client output_log")]
+        [Tooltip("Debug.Log one line per event (sculpt / click / ownership / floor drop / rise / lift / wall push) as [Terrain] ..., readable in the VRChat client output_log")]
         public bool logEvents = false;
 
         // Sculpt buffer (xyz = position, w = radius: positive = add, negative = dig), the synced state
@@ -134,6 +134,8 @@ namespace AliceSDF.Samples
         private float lastSyncTime;
         private int receivedCount;
         private bool lifting;      // feet were buried last frame (one log line per burial)
+        private float lastSupportY;  // where the support top was last frame, for the floor log
+        private bool supportPlaced;
         private bool wallPushing;  // in a wall contact chain (one log line per contact)
 #endif
 
@@ -194,6 +196,8 @@ namespace AliceSDF.Samples
             receivedCount = -1;
             lifting = false;
             wallPushing = false;
+            supportPlaced = false;
+            lastSupportY = 0f;
 #endif
 
             SyncShader();
@@ -375,6 +379,7 @@ namespace AliceSDF.Samples
             if (!stroking[hand])
             {
                 stroking[hand] = true;
+                if (!IsAuthority()) LogEvent("stroke by " + how + ": taking ownership");
                 TakeAuthority();
             }
 
@@ -546,6 +551,14 @@ namespace AliceSDF.Samples
         {
             if (support == null) return;
             float h = SupportHeight(feet);
+#if UDONSHARP
+            // The floor under the player moved by a step or more: a hole was dug
+            // or a hill built under them, or they walked onto / off one
+            if (supportPlaced && Mathf.Abs(h - lastSupportY) > 0.15f)
+                LogEvent("floor " + (h > lastSupportY ? "rose" : "dropped") + " " + F(Mathf.Abs(h - lastSupportY)) + " m to y=" + F(h) + " under " + F(feet));
+            lastSupportY = h;
+            supportPlaced = true;
+#endif
             Vector3 top = new Vector3(feet.x, h, feet.z);
             Vector3 n = EstimateGradient(top);
             if (n.y < 0.2f) n = Vector3.up;   // a near-vertical flank is a wall (handled by the push), keep the floor level

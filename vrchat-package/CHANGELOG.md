@@ -21,6 +21,12 @@
   at the foot of a hill), `_LightDir` / soft contact shadow / `_FogDensity`
   properties instead of constants; `_AddSmooth` / `_SubSmooth` are pushed
   from the collider every frame so collision and rendering cannot drift.
+- TerrainSculpt shader: the per-sphere distance cull (skip a sculpt farther
+  than r + 2k) returned the plane distance, which above a tall stack is
+  larger than the true distance; rays overshot into the column and stopped
+  inside it (a black cavity, a floating cap, a dark dot on every apex — seen
+  in the VRChat client the first time a column was built). Every sculpt is
+  now folded, as in the collider.
 - `SampleSceneGenerator`: a generated DeformableWall / TerrainSculpt scene
   had the `*_Collider` component but no backing `UdonBehaviour`, so nothing
   ran at Play. UdonSharp backs a proxy only when a `UdonSharpProgramAsset`
@@ -49,7 +55,8 @@
   owner-authoritative, 10 Hz while changed; the sculpting player takes
   ownership at the start of a stroke), so everyone stands on the same
   terrain and late joiners receive it. `Log Events` writes one
-  `[Terrain] ...` line per add / dig / click / lift / wall push.
+  `[Terrain] ...` line per add / dig / click / ownership / floor drop or
+  rise under the player / lift / wall push.
 - `HostTests~/TerrainSculptParity` + `examples/vrchat_terrain_sculpt_golden.rs`:
   the terrain collider is compiled on the host and its `EvaluateSdf`
   compared with `alice_sdf::eval` (4335 points) plus a sculpt / stand /

@@ -111,7 +111,12 @@ Shader "AliceSDF/Samples/TerrainSculpt"
 
             // =================================================================
             // SDF: Ground Plane + Dynamic Sculpt Operations
-            // Deep Fried: early distance culling skips far-away sculpts
+            // Every stored sculpt is folded, in slot order, exactly as the
+            // collider does. No distance culling: an earlier version skipped a
+            // sphere farther than r + 2k from the point and returned the plane
+            // distance instead, which above a tall stack is larger than the
+            // true distance, so rays overshot into the terrain and stopped
+            // inside it (black cavities and a floating cap on every column).
             // =================================================================
             float map(float3 p)
             {
@@ -127,14 +132,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
 
                     float3 sp = _SculptData[i].xyz;
                     float rw = _SculptData[i].w;
-                    float absR = abs(rw);
-
-                    // Early cull: if point is far beyond sculpt influence, skip
-                    // Smooth ops affect up to ~2*k beyond the sphere radius
-                    float maxInfluence = absR + max(_AddSmooth, _SubSmooth) * 2.0;
                     float3 delta = p - sp;
-                    float distSq = dot(delta, delta);
-                    if (distSq > maxInfluence * maxInfluence) continue;
 
                     if (rw > 0.001)
                     {
