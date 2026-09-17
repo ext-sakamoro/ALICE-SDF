@@ -127,8 +127,13 @@ namespace AliceSDF.Samples
         // virtual hand along the view ray (-1 = no cursor)
         private bool useHeld;
         private float cursorDist;
-        // Mochi the player is currently pushing (-1 = none), for one log line per contact
+        // Mochi the player is currently pushing (-1 = none) and when that was
+        // last logged: one line per contact, and a change of target no more
+        // than every PushLogInterval (standing in the neck between two mochis
+        // flips the nearest one every frame)
         private int pushingMochi;
+        private float pushLogTime;
+        private const float PushLogInterval = 0.5f;
 #endif
 
         // Shader data
@@ -169,6 +174,7 @@ namespace AliceSDF.Samples
             useHeld = false;
             cursorDist = -1f;
             pushingMochi = -1;
+            pushLogTime = -1f;
 #endif
 
             // No player yet: w = 0 tells the shader not to dent
@@ -228,12 +234,13 @@ namespace AliceSDF.Samples
                 // The mochi takes its share of the separation, the player the rest
                 int target = FindClosestMochi(DeepestBodySample(playerPos, eyeHeight));
                 float yielded = YieldMochi(playerPos, eyeHeight, push);
-                if (target != pushingMochi)
+                if (target >= 0 && target != pushingMochi
+                    && (pushingMochi < 0 || Time.time - pushLogTime >= PushLogInterval))
                 {
+                    LogEvent("push #" + target + " r=" + F(mochiR[target]) + " player at " + F(playerPos)
+                             + " mochi share " + F(yielded));
                     pushingMochi = target;
-                    if (target >= 0)
-                        LogEvent("push #" + target + " r=" + F(mochiR[target]) + " player at " + F(playerPos)
-                                 + " mochi share " + F(yielded));
+                    pushLogTime = Time.time;
                 }
                 localPlayer.TeleportTo(playerPos + push * (1f - yielded), localPlayer.GetRotation());
             }
