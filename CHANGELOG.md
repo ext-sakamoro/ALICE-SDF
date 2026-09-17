@@ -34,6 +34,18 @@ hash) before this.
   no bytecode law — `CompileError::UnsupportedPrimitive` — instead of
   assuming every corpus entry compiles.
 
+### Fixed — `Elongate` shader law disagreed with every other evaluator
+
+The tree evaluator, VM bytecode (`real::elongate`) and both Cranelift JITs
+all implement IQ's cheap elongate — `q = p - clamp(p, -a, a)`, the child
+evaluated as-is at `q` — but the GLSL/WGSL/HLSL transpilers emitted IQ's
+*exact* elongate (`q = max(abs(p) - a, 0)` plus a `min(max(q), 0)` box
+correction on the returned distance), a different law that disagreed by up
+to 1.0 on interior points (`elongate(1,2,3, sphere(1))` at
+`(0.011, 0.666, 0.515)`: cpu `-1.0`, shader `-1.99`). The shader emit now
+matches the other four evaluators; `every_grammar_construct_matches_cpu_on_gpu`
+(alice-lol) and the corpus GPU-parity tests confirm it.
+
 ## [v3.1.0] - 2026-09-17
 
 ### Changed — cross-platform bit-exact evaluation (alice-det-math)

@@ -2144,26 +2144,24 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             SdfNode::Elongate { child, amount } => {
-                let new_p = self.next_var();
+                // Same law as `crate::eval::mod::eval`'s `SdfNode::Elongate`
+                // arm and `real::elongate` (tree, VM bytecode, scalar/SIMD
+                // JIT): `q = p - clamp(p, -a, a)`, the child evaluated
+                // as-is at `q` (IQ's cheap elongate, no box correction —
+                // the previous "exact" shader law disagreed by up to 1.0 on
+                // an interior point, e.g. `elongate(1,2,3, sphere(1))` at
+                // (0.011, 0.666, 0.515): cpu -1.0 vs the old shader -1.99).
+                let bound = self.next_var();
                 let q_var = self.next_var();
                 let ax = self.param(amount.x);
                 let ay = self.param(amount.y);
                 let az = self.param(amount.z);
+                code.push_str(&L::decl_vec3(&bound, &L::vec3_ctor(&ax, &ay, &az)));
                 code.push_str(&L::decl_vec3(
                     &q_var,
-                    &format!("abs({}) - {}", point_var, L::vec3_ctor(&ax, &ay, &az)),
+                    &format!("{p} - clamp({p}, -{b}, {b})", p = point_var, b = bound),
                 ));
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!("max({}, {})", q_var, L::vec3_zero()),
-                ));
-                let d = self.transpile_node_inner(child, &new_p, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{} + min(max({q}.x, max({q}.y, {q}.z)), 0.0)", d, q = q_var),
-                ));
-                var
+                self.transpile_node_inner(child, &q_var, code)
             }
 
             SdfNode::RepeatInfinite { child, spacing } => {
