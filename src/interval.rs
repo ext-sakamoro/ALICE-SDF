@@ -1443,9 +1443,12 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             half_height, bulge, ..
         } => shear_singular_value(2.0 * bulge.abs() / half_height.abs().max(1e-6)),
 
-        // Terrain: `y − amplitude·fbm(scale·xz)`, 3 octaves of 2-D value
-        // noise (values in [0, 1], smoothstep weights, gain 0.48, lacunarity
-        // 2.1 with a rotation). |∇fbm| ≤ Σ aᵢ·2.1ⁱ · 1.5·√2 = 3.208.
+        // Terrain: `y − amplitude·fbm(scale·xz)`, 3 octaves of `hash_noise_3d`
+        // sampled on the xz plane (values in [-1, 1], smoothstep weights,
+        // gain 0.48, lacunarity 2.1 with a rotation). Per-axis bound is
+        // range(2)·slope(1.5) = 3, two active axes (x, z; y held at 0
+        // contributes no gradient) combine as `3·√2`.
+        // |∇fbm| ≤ Σ aᵢ·2.1ⁱ · 3·√2 = 6.415 → 6.42.
         SdfNode::Terrain { scale, amplitude } => {
             TERRAIN_FBM_GRAD.mul_add((scale * amplitude).abs(), 1.0)
         }
@@ -1627,8 +1630,10 @@ const PERLIN_GRAD: f32 = 3.5;
 /// `|∇hash_noise_3d|` analytic bound: per axis 2 (range) × 1.5 (smoothstep
 /// slope), three axes → 3√3. Measured 2.95.
 const VALUE_NOISE_GRAD: f32 = 5.196_153;
-/// Terrain fbm gradient factor: `(0.5 + 0.5·0.48·2.1 + 0.5·0.48²·2.1²) · 1.5 · √2`.
-const TERRAIN_FBM_GRAD: f32 = 3.208;
+/// Terrain fbm gradient factor: `(0.5 + 0.5·0.48·2.1 + 0.5·0.48²·2.1²) · 3 · √2`
+/// (range-2 `hash_noise_3d`, not the old range-1 sin hash — see the
+/// `SdfNode::Terrain` arm above).
+const TERRAIN_FBM_GRAD: f32 = 6.42;
 /// Radius assumed for a twisted / bent child whose extent is unbounded
 /// (plane, infinite cylinder, uncompilable tree): the pre-1.10.3 heuristic.
 const UNBOUNDED_CHILD_RADIUS: f32 = 10.0;

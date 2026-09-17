@@ -58,10 +58,16 @@ fn sample_points() -> Vec<Vec3> {
 }
 
 /// Compare tree vs scalar vs SIMD; BVH is compared when it compiles and must
-/// otherwise reject loudly. Returns (mismatch lines, opcodes the bytecode emitted).
-fn check_parity(name: &str, node: &SdfNode) -> (Vec<String>, BTreeSet<String>) {
-    let compiled = CompiledSdf::try_compile(node)
-        .unwrap_or_else(|e| panic!("{name}: CompiledSdf::try_compile failed: {e}"));
+/// otherwise reject loudly. Returns (mismatch lines, opcodes the bytecode
+/// emitted), or `None` for a node with no bytecode law (Terrain, Triangle,
+/// Bezier — `unsupported_nodes_are_rejected_loudly_not_silently` pins the
+/// rejection; there is no compiled evaluator here to compare against).
+fn check_parity(name: &str, node: &SdfNode) -> Option<(Vec<String>, BTreeSet<String>)> {
+    let compiled = match CompiledSdf::try_compile(node) {
+        Ok(c) => c,
+        Err(CompileError::UnsupportedPrimitive(_)) => return None,
+        Err(e) => panic!("{name}: CompiledSdf::try_compile failed: {e}"),
+    };
     let bvh = CompiledSdfBvh::try_compile(node)
         .unwrap_or_else(|e| panic!("{name}: CompiledSdfBvh::try_compile failed: {e}"));
     #[cfg(feature = "jit")]
@@ -105,14 +111,16 @@ fn check_parity(name: &str, node: &SdfNode) -> (Vec<String>, BTreeSet<String>) {
         .iter()
         .map(|i| format!("{:?}", i.opcode))
         .collect();
-    (failures, ops)
+    Some((failures, ops))
 }
 
 #[test]
 fn every_compilable_node_matches_tree_eval() {
     let mut failures = Vec::new();
     for (name, node) in corpus() {
-        failures.extend(check_parity(name, &node).0);
+        if let Some((mismatches, _)) = check_parity(name, &node) {
+            failures.extend(mismatches);
+        }
     }
     assert!(
         failures.is_empty(),
@@ -128,7 +136,9 @@ fn every_compilable_node_matches_tree_eval() {
 fn corpus_covers_every_emitted_opcode() {
     let mut seen = BTreeSet::new();
     for (name, node) in corpus() {
-        seen.extend(check_parity(name, &node).1);
+        if let Some((_, ops)) = check_parity(name, &node) {
+            seen.extend(ops);
+        }
     }
     // 125 OpCode variants minus `Animated` (compiler inlines the child) = 124.
     // `End` and `PopTransform` are emitted and counted.
@@ -221,7 +231,12 @@ fn unsupported_nodes_are_rejected_loudly_not_silently() {
 fn primitive_and_scene_aabbs_are_conservative() {
     let mut failures = Vec::new();
     for (name, node) in corpus() {
-        let bvh = CompiledSdfBvh::compile(&node);
+        // Terrain / Triangle / Bezier have no bytecode law (no BVH to check).
+        let bvh = match CompiledSdfBvh::try_compile(&node) {
+            Ok(b) => b,
+            Err(CompileError::UnsupportedPrimitive(_)) => continue,
+            Err(e) => panic!("{name}: CompiledSdfBvh::try_compile failed: {e}"),
+        };
         let aabb = get_scene_aabb(&bvh);
         if !aabb.is_valid() {
             failures.push(format!("{name}: scene AABB is empty/invalid"));

@@ -20,7 +20,8 @@
 mod common;
 
 use alice_sdf::compiled::{
-    eval_compiled, eval_compiled_batch_simd, eval_compiled_bvh, CompiledSdf, CompiledSdfBvh,
+    eval_compiled, eval_compiled_batch_simd, eval_compiled_bvh, CompileError, CompiledSdf,
+    CompiledSdfBvh,
 };
 use alice_sdf::prelude::*;
 use common::corpus::corpus;
@@ -71,9 +72,19 @@ fn every_cpu_evaluator_is_bit_identical() {
     let mut failures = Vec::new();
     #[allow(unused_mut)]
     let mut jit_unsupported: Vec<String> = Vec::new();
+    let mut bytecode_unsupported: Vec<String> = Vec::new();
     for (name, node) in corpus() {
-        let compiled = CompiledSdf::try_compile(&node)
-            .unwrap_or_else(|e| panic!("{name}: CompiledSdf::try_compile failed: {e}"));
+        // Nodes with no bytecode law (Terrain, Triangle, Bezier) have only
+        // the tree evaluator to compare against itself — not a parity
+        // question. `test_evaluator_opcode_parity.rs` pins the rejection.
+        let compiled = match CompiledSdf::try_compile(&node) {
+            Ok(c) => c,
+            Err(CompileError::UnsupportedPrimitive(p)) => {
+                bytecode_unsupported.push(format!("{name}: {p}"));
+                continue;
+            }
+            Err(e) => panic!("{name}: CompiledSdf::try_compile failed: {e}"),
+        };
         let bvh = CompiledSdfBvh::try_compile(&node)
             .unwrap_or_else(|e| panic!("{name}: CompiledSdfBvh::try_compile failed: {e}"));
         let simd_all = eval_compiled_batch_simd(&compiled, &pts);
@@ -151,6 +162,11 @@ fn every_cpu_evaluator_is_bit_identical() {
     eprintln!(
         "JIT: {} corpus nodes have no codegen arm (skipped by design)",
         jit_unsupported.len()
+    );
+    eprintln!(
+        "bytecode: {} corpus nodes have no bytecode law (skipped by design): {}",
+        bytecode_unsupported.len(),
+        bytecode_unsupported.join(", ")
     );
     if !failures.is_empty() {
         // `DET_PARITY_DUMP=<file>` writes every mismatch line for triage

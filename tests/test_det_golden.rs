@@ -655,6 +655,10 @@ const GOLDEN: &[(&str, &str)] = &[
         "684eb6377f1fe9c4f055077858bf188d6e55f3d87404171ec6b0b3dfe6d7ac9d",
     ),
     (
+        "terrain",
+        "2368282c5b971c2fc1759bb428b1326c46e092dd35a6ad95a8d8b4b4387218e9",
+    ),
+    (
         "heightmap_displacement",
         "ed9247293c2854118bdc2d56615ba5efdf65dadcfeaa9160ef767b27a03cd600",
     ),

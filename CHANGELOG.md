@@ -6,6 +6,34 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — `Terrain` shader emit was invalid GLSL/WGSL/HLSL, and its law drifted from the CPU
+
+The `Terrain` arm in `transpiler_common.rs` wrote raw GLSL (`float`, `vec2`,
+`for(int`, an undefined `vnoise`) regardless of the target language; naga
+rejected it in GLSL (unknown function) and WGSL (invalid syntax). The CPU
+law separately hashed with `fract(sin(·)·43758)`, the same GPU/CPU-divergent
+pattern `SurfaceRoughness` moved away from for `hash_noise_3d` (PCG lattice
+hash) before this.
+
+- `SdfNode::Terrain`'s 3-octave fbm now samples `hash_noise_3d` on the xz
+  plane (y held at 0, degenerating the trilinear blend to bilinear) on the
+  CPU (`eval/mod.rs`) **and** through `ensure_helper("hash_noise")` +
+  portable `ShaderLang` ops in the shader emit — same law, one source, no
+  language-specific string left in `transpiler_common.rs`.
+- `TERRAIN_FBM_GRAD` (the `eval_lipschitz` bound) updated 3.208 → 6.42: the
+  new noise's range is `[-1, 1]` (was `[0, 1]`), doubling the per-axis
+  gradient bound; `lipschitz_claim_bounds_every_difference_quotient`
+  verifies it empirically.
+- `Terrain` added to the shared GPU-oracle corpus
+  (`tests/common/corpus.rs`) — it was the one node in the "144 nodes
+  transpile, corpus oracle covers them" (3.0.0) claim the corpus never
+  actually exercised. `every_corpus_node_matches_cpu_through_wgsl` /
+  `_through_glsl` now cover it; `test_det_golden.rs` gained its pin.
+  `test_det_parity.rs` and `test_evaluator_opcode_parity.rs` (which iterate
+  the same corpus but exercise the bytecode compiler) now skip nodes with
+  no bytecode law — `CompileError::UnsupportedPrimitive` — instead of
+  assuming every corpus entry compiles.
+
 ## [v3.1.0] - 2026-09-17
 
 ### Changed — cross-platform bit-exact evaluation (alice-det-math)

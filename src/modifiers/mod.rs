@@ -49,7 +49,7 @@ pub use shear::modifier_shear;
 pub(crate) use surface_roughness::hash3_xyz as surface_roughness_hash3;
 pub use surface_roughness::{
     fbm, fbm_bound, hash_noise_3d, surface_roughness, HASH_NOISE_GLSL, HASH_NOISE_HLSL,
-    HASH_NOISE_WGSL,
+    HASH_NOISE_WGSL, TERRAIN_NOISE_SEED,
 };
 pub use sweep::{bezier_distance_2d, modifier_sweep_bezier, sweep_bezier_dist_y};
 pub use taper::modifier_taper;

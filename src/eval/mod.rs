@@ -20,7 +20,6 @@ use crate::operations::*;
 use crate::primitives::*;
 use crate::transforms::*;
 use crate::types::SdfNode;
-use glam::Vec2;
 use glam::Vec3;
 
 /// Evaluate an SDF tree at a single point (Deep Fried)
@@ -287,32 +286,18 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         } => sdf_annular_2d(point, *outer_radius, *thickness, *half_height),
 
         SdfNode::Terrain { scale, amplitude } => {
-            // FBM-based terrain: y - terrainHeight(xz)
-            // 簡易実装: 3オクターブ FBM
-            let xz = Vec2::new(point.x * scale, point.z * scale);
+            // FBM-based terrain: y - terrainHeight(xz), 3 octaves of the
+            // portable `hash_noise_3d` lattice noise sampled on the xz plane
+            // (y held at 0, so the trilinear blend degenerates to bilinear —
+            // see the shader emit in transpiler_common.rs for the identity).
+            // Bit-exact with GLSL/WGSL/HLSL (PCG hash), unlike the previous
+            // `fract(sin(·)·43758)` law the shader could not reproduce.
             let mut v = 0.0_f32;
             let mut a_fbm = 0.5_f32;
-            let mut freq_x = xz.x;
-            let mut freq_z = xz.y;
+            let mut freq_x = point.x * scale;
+            let mut freq_z = point.z * scale;
             for _ in 0..3 {
-                // vnoise2D 近似 (sin hash)
-                let ix = freq_x.floor();
-                let iz = freq_z.floor();
-                let fx = freq_x - ix;
-                let fz = freq_z - iz;
-                let sx = fx * fx * (2.0f32 * -fx + 3.0);
-                let sz = fz * fz * (2.0f32 * -fz + 3.0);
-                let h = |x: f32, z: f32| -> f32 {
-                    (alice_det_math::sin(z * 311.7 + (x * 127.1)) * 43758.547)
-                        .fract()
-                        .abs()
-                };
-                let a00 = h(ix, iz);
-                let a10 = h(ix + 1.0, iz);
-                let a01 = h(ix, iz + 1.0);
-                let a11 = h(ix + 1.0, iz + 1.0);
-                let n = ((a00 - a10 - a01 + a11) * sx) * sz
-                    + ((a01 - a00) * sz + ((a10 - a00) * sx + a00));
+                let n = hash_noise_3d(Vec3::new(freq_x, 0.0, freq_z), TERRAIN_NOISE_SEED);
                 v += a_fbm * n;
                 let nx = 0.6f32 * freq_z + (0.8 * freq_x);
                 let nz = 0.8f32 * freq_z + (-0.6 * freq_x);

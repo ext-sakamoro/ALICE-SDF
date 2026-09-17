@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::modifiers::TERRAIN_NOISE_SEED;
 use crate::types::SdfNode;
 use std::fmt::Write;
 
@@ -3160,17 +3161,57 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             SdfNode::Terrain { scale, amplitude } => {
+                // Same law as `crate::eval::mod::eval`'s `SdfNode::Terrain`
+                // arm: 3 octaves of `hash_noise_3d` on the xz plane (y held
+                // at 0), gain 0.48, lacunarity 2.1 with a rotation. Portable
+                // across GLSL/WGSL/HLSL via `ensure_helper` + `L::decl_*`
+                // (the previous raw-GLSL `format!` emitted an undefined
+                // `vnoise` and was invalid WGSL/HLSL syntax).
+                self.ensure_helper("hash_noise");
                 let sc = self.param(*scale);
                 let amp = self.param(*amplitude);
-                let v = self.next_var();
-                // terrainHeight の GLSL インライン展開 (3-octave FBM)
-                code.push_str(&format!(
-                    "    float {v}_th = 0.0; float {v}_a = 0.5;\n    vec2 {v}_fp = {p}.xz * {sc};\n    for(int {v}_i=0;{v}_i<3;{v}_i++) {{\n        {v}_th += {v}_a * vnoise({v}_fp);\n        vec2 {v}_nfp = vec2(0.8*{v}_fp.x+0.6*{v}_fp.y, -0.6*{v}_fp.x+0.8*{v}_fp.y);\n        {v}_fp = {v}_nfp * 2.1; {v}_a *= 0.48;\n    }}\n",
-                    v = v, p = point_var, sc = sc
+                let v_acc = self.next_var();
+                let a_fbm = self.next_var();
+                let fx = self.next_var();
+                let fz = self.next_var();
+                code.push_str(&L::decl_mut_float(&v_acc, "0.0"));
+                code.push_str(&L::decl_mut_float(&a_fbm, "0.5"));
+                code.push_str(&L::decl_mut_float(
+                    &fx,
+                    &format!("{}.x * {}", point_var, sc),
                 ));
+                code.push_str(&L::decl_mut_float(
+                    &fz,
+                    &format!("{}.z * {}", point_var, sc),
+                ));
+                for _ in 0..3 {
+                    let sample_p = self.next_var();
+                    let n = self.next_var();
+                    code.push_str(&L::decl_vec3(&sample_p, &L::vec3_ctor(&fx, "0.0", &fz)));
+                    code.push_str(&L::decl_float(
+                        &n,
+                        &format!("hash_noise_3d({}, {}u)", sample_p, TERRAIN_NOISE_SEED),
+                    ));
+                    writeln!(
+                        code,
+                        "    {v} = {v} + {a} * {n};",
+                        v = v_acc,
+                        a = a_fbm,
+                        n = n
+                    )
+                    .unwrap();
+                    let nx = self.next_var();
+                    let nz = self.next_var();
+                    code.push_str(&L::decl_float(&nx, &format!("0.6 * {} + 0.8 * {}", fz, fx)));
+                    code.push_str(&L::decl_float(&nz, &format!("0.8 * {} - 0.6 * {}", fz, fx)));
+                    writeln!(code, "    {fx} = {nx} * 2.1;", fx = fx, nx = nx).unwrap();
+                    writeln!(code, "    {fz} = {nz} * 2.1;", fz = fz, nz = nz).unwrap();
+                    writeln!(code, "    {a} = {a} * 0.48;", a = a_fbm).unwrap();
+                }
+                let v = self.next_var();
                 code.push_str(&L::decl_float(
                     &v,
-                    &format!("{}.y - {}_th * {}", point_var, v, amp),
+                    &format!("{}.y - {} * {}", point_var, v_acc, amp),
                 ));
                 v
             }

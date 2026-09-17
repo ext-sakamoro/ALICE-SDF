@@ -38,6 +38,13 @@ pub fn hash3_xyz(x: f32, y: f32, z: f32, seed: u32) -> f32 {
     hash3(Vec3::new(x, y, z), seed)
 }
 
+/// Seed shared by CPU and shader `SdfNode::Terrain`.
+///
+/// Both call `hash_noise_3d` with y held at 0, degenerating the trilinear
+/// blend to bilinear on the xz plane — see `crate::eval::mod::eval` and
+/// `crate::compiled::transpiler_common`'s `Terrain` arms.
+pub const TERRAIN_NOISE_SEED: u32 = 7;
+
 /// Value noise in `[-1, 1]`: trilinear (smoothstep-weighted) blend of the
 /// eight lattice-corner hashes, mapped with `2v - 1`.
 ///

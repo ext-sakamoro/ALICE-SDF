@@ -435,6 +435,13 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             sphere().surface_roughness(3.0, 0.05, 2),
         ),
         (
+            "terrain",
+            SdfNode::Terrain {
+                scale: 1.3,
+                amplitude: 0.4,
+            },
+        ),
+        (
             "heightmap_displacement",
             sphere().heightmap_displacement(vec![0.0, 0.5, 1.0, 0.5], 2, 2, 0.1, 1.0),
         ),
