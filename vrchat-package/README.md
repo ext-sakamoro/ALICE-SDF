@@ -133,7 +133,9 @@ A flat wall standing on a ground plane. When a VR player's hand touches the wall
 
 #### Mochi — Grab, Merge, Split & Grow
 
-Soft mochi (rice cake) blobs sitting on a ground plane. In VR, you can grab them, pull them apart, push them together, and watch them grow.
+![Mochi on desktop: walk in and the body dents it, click to grab, turn to split, carry to merge](Documentation~/mochi_desktop.gif)
+
+Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apart, push them together, and watch them grow — in VR with your hands, on desktop with the mouse (11 s from the VRChat client above: walking in dents the mochi around your body, a click grabs, a fast turn splits, carrying one onto another merges).
 
 **How it works:**
 1. Up to 16 mochi spheres are tracked as `(position, radius)` pairs

@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- `Documentation~/mochi_desktop.gif` (11 s from the VRChat client, 3.5 MB)
+  at the top of the Mochi section of both READMEs: body dent, click grab,
+  split, merge on desktop. Unity skips the `~` folder.
 - Mochi sample: `Log Events` (Inspector, off by default) writes one
   `Debug.Log` line per grab / split / release / merge / desktop click
   (hit or miss) / push (once per contact, with the mochi's mass share) as
