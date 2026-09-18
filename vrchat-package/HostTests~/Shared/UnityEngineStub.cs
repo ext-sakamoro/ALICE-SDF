@@ -123,7 +123,8 @@ namespace UnityEngine
         public T GetComponent<T>() where T : class => null;
         public Transform transform = new Transform();
     }
-    public class MeshRenderer : Component { public Material material = new Material(); }
+    public struct Bounds { public Vector3 min, max; }
+    public class MeshRenderer : Component { public Material material = new Material(); public Bounds bounds; }
     public class MonoBehaviour : Component { }
     [AttributeUsage(AttributeTargets.Field)] public class HeaderAttribute : Attribute { public HeaderAttribute(string h) { } }
     [AttributeUsage(AttributeTargets.Field)] public class TooltipAttribute : Attribute { public TooltipAttribute(string t) { } }

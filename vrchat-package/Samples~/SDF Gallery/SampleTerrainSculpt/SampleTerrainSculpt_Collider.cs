@@ -22,6 +22,12 @@
 // Sculpt operations are stored in a circular buffer (Sculpt Capacity, up to
 // 128). When the buffer is full, the oldest operation is overwritten.
 //
+// Placement: the ground plane sits at transform.position + groundOffset
+// (read once in Start); turning the object is fine (the plane is the
+// same), tilting it is not supported. Player collision (support box, lift,
+// wall push) acts only while the player is inside the volume cube's
+// footprint, so several terrains and the world's own floor coexist.
+//
 // Network: owner-authoritative, manual sync. sculptData / sculptCount /
 //   nextSlot are [UdonSynced]; whoever sculpts takes ownership (once per
 //   stroke, not every frame) and serializes at 10 Hz while anything
@@ -63,6 +69,25 @@ namespace AliceSDF.Samples
         private const float WallSlope = 0.7f;
         // Remaining penetration (m) under which the player is left alone
         private const float PushDeadBand = 0.005f;
+
+        [Header("Look (pushed to the material every frame when Apply Colors is on)")]
+        [Tooltip("Push the colours and texture below to the material every frame (off = the material's own values)")]
+        public bool applyColors = true;
+        public Color grassColor = new Color(0.35f, 0.55f, 0.25f, 1f);
+        public Color dirtColor = new Color(0.55f, 0.40f, 0.25f, 1f);
+        public Color rockColor = new Color(0.40f, 0.38f, 0.35f, 1f);
+        [Tooltip("Glow where the left hand / left click will add terrain")]
+        public Color addCursorColor = new Color(0.3f, 0.6f, 1.0f, 1f);
+        [Tooltip("Glow where the right hand / right click will dig")]
+        public Color digCursorColor = new Color(1.0f, 0.3f, 0.2f, 1f);
+        [Tooltip("Optional texture on the surface (triplanar, tiles per metre * scale); the rock colour stays underground")]
+        public Texture2D groundTexture;
+        public float groundTextureScale = 0.5f;
+        [Range(0f, 1f)] public float groundTextureStrength = 1.0f;
+
+        [Header("Placement")]
+        [Tooltip("Ground plane relative to this object: the prefab's cube is 10 m tall with the ground 3 m under its centre (2 m of digging room below, 7 m of building room above)")]
+        public Vector3 groundOffset = new Vector3(0f, -3f, 0f);
 
         [Header("Sculpting")]
         [Tooltip("Radius of the sculpt brush (sent to shader _SculptRadius)")]
@@ -150,6 +175,9 @@ namespace AliceSDF.Samples
 
         // Cached references
         private Material mat;
+        private Vector3 origin;      // ground plane, world (only y matters)
+        private Bounds volume;       // the cube's world bounds: collision acts inside its footprint
+        private bool hasVolume;
         private Vector4 leftCursor;    // sent to the shader as _LeftHand (xyz, w = visible)
         private Vector4 rightCursor;   // sent to the shader as _RightHand
 
@@ -187,11 +215,14 @@ namespace AliceSDF.Samples
             if (support == null)
                 Debug.LogWarning("[ALICE-SDF] SampleTerrainSculpt_Collider: no support collider (assign Support or add a scene object TerrainSupport with a BoxCollider). Players cannot stand on the terrain.");
 
+            origin = transform.position + groundOffset;
             MeshRenderer rend = GetComponent<MeshRenderer>();
             if (rend != null)
                 mat = rend.material;
             else
                 Debug.LogWarning("[ALICE-SDF] SampleTerrainSculpt_Collider: No MeshRenderer found. Shader sync disabled.");
+            hasVolume = rend != null;
+            if (hasVolume) volume = rend.bounds;
 
 #if UDONSHARP
             localPlayer = Networking.LocalPlayer;
@@ -535,6 +566,7 @@ namespace AliceSDF.Samples
         //   - buried: straight up onto the surface
         public Vector3 PlayerPushOut(Vector3 feet, float dt)
         {
+            if (!InFootprint(feet)) return Vector3.zero;
             int kind = ContactKind(feet);
             if (kind == 0) return Vector3.zero;
 
@@ -593,6 +625,15 @@ namespace AliceSDF.Samples
         private void PlaceSupport(Vector3 feet)
         {
             if (support == null) return;
+            if (!InFootprint(feet))
+            {
+                // Outside this terrain: park the box out of the way and let
+                // the world's own floor (or another terrain) carry the player
+                if (supportPlaced) LogEvent("left the terrain footprint at " + F(feet));
+                supportPlaced = false;
+                support.position = new Vector3(feet.x, feet.y - 100f, feet.z);
+                return;
+            }
             float h = SupportHeight(feet);
             // The floor under the player moved by a step or more: a hole was dug
             // or a hill built under them, or they walked onto / off one
@@ -621,7 +662,7 @@ namespace AliceSDF.Samples
         // terrain was before a desktop press started
         public float EvaluateSdfSkipping(Vector3 p, int skipRecent)
         {
-            float terrain = p.y;
+            float terrain = p.y - origin.y;
             if (skipRecent > sculptCount) skipRecent = sculptCount;
             // Skipped slots are [nextSlot - skipRecent, nextSlot) modulo the capacity
             int skipFrom = nextSlot - skipRecent;
@@ -651,6 +692,14 @@ namespace AliceSDF.Samples
             }
 
             return terrain;
+        }
+
+        // Inside the volume cube's footprint (x / z of its world bounds; the
+        // height is the SDF's business). Without a renderer everything counts.
+        public bool InFootprint(Vector3 p)
+        {
+            if (!hasVolume) return true;
+            return p.x >= volume.min.x && p.x <= volume.max.x && p.z >= volume.min.z && p.z <= volume.max.z;
         }
 
         private Vector3 EstimateGradient(Vector3 p)
@@ -728,6 +777,21 @@ namespace AliceSDF.Samples
 
             mat.SetVector("_LeftHand", leftCursor);
             mat.SetVector("_RightHand", rightCursor);
+
+            // Placement: the shader's ground plane is this object's
+            mat.SetVector("_Origin", new Vector4(origin.x, origin.y, origin.z, 0f));
+
+            if (applyColors)
+            {
+                mat.SetColor("_GrassColor", grassColor);
+                mat.SetColor("_DirtColor", dirtColor);
+                mat.SetColor("_RockColor", rockColor);
+                mat.SetColor("_AddCursorColor", addCursorColor);
+                mat.SetColor("_SubCursorColor", digCursorColor);
+                if (groundTexture != null) mat.SetTexture("_GroundTex", groundTexture);
+                mat.SetFloat("_GroundTexScale", groundTextureScale);
+                mat.SetFloat("_GroundTexStrength", groundTexture != null ? groundTextureStrength : 0f);
+            }
         }
     }
 }

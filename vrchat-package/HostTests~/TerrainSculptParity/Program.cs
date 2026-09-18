@@ -25,6 +25,7 @@ static class Program
     static int Main(string[] args)
     {
         var c = new SampleTerrainSculpt_Collider();
+        typeof(SampleTerrainSculpt_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         // Start() is private (Unity message); invoke it like Unity would
         typeof(SampleTerrainSculpt_Collider).GetMethod("Start", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(c, null);
         var record = typeof(SampleTerrainSculpt_Collider).GetMethod("RecordSculpt", BindingFlags.NonPublic | BindingFlags.Instance);

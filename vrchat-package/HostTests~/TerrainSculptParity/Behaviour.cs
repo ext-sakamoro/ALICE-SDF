@@ -16,6 +16,7 @@ static class Behaviour
     static SampleTerrainSculpt_Collider Fresh()
     {
         var c = new SampleTerrainSculpt_Collider();
+        typeof(SampleTerrainSculpt_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         Call(c, "Start");
         typeof(SampleTerrainSculpt_Collider).GetField("logEvents").SetValue(c, true); // event lines in the run output
         return c;

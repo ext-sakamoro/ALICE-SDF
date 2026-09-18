@@ -22,6 +22,13 @@
 //     the far depth and the world behind showed through as a thin line
 //   - AO samples the hard (k = 0) union: the smooth blend zone under-reports
 //     distance and read as a dark ring around every hill and hole
+//   - the ground plane is at _Origin.y (set by the collider from
+//     transform.position + groundOffset); the march stops where the ray
+//     leaves the volume cube, so the ground is drawn only under the cube
+//   - far-ground fast path (exact where it applies): a ray that stays
+//     farther than the blend inflation from every sculpt sphere can only
+//     meet the plane, so it takes the analytic plane hit (+y normal, AO 1)
+//     and marches the shadow ray only if it can pass near a sculpt
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -34,6 +41,16 @@ Shader "AliceSDF/Samples/TerrainSculpt"
         _GrassColor ("Grass", Color) = (0.35, 0.55, 0.25, 1.0)
         _DirtColor ("Dirt", Color) = (0.55, 0.40, 0.25, 1.0)
         _RockColor ("Rock (Underground)", Color) = (0.40, 0.38, 0.35, 1.0)
+
+        [Header(Texture)]
+        // Driven by the collider's Look section; triplanar in world space
+        [NoScaleOffset] _GroundTex ("Surface Texture", 2D) = "white" {}
+        _GroundTexScale ("Surface Texture Tiles per Metre", Float) = 0.5
+        _GroundTexStrength ("Surface Texture Strength", Range(0, 1)) = 0.0
+
+        [Header(Placement)]
+        // Driven by the collider: the ground plane is at _Origin.y
+        _Origin ("Ground Origin (xyz)", Vector) = (0, 0, 0, 0)
 
         [Header(Cursor)]
         _AddCursorColor ("Add Cursor (Left Hand / Left Click)", Color) = (0.3, 0.6, 1.0, 1.0)
@@ -78,6 +95,9 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             // Inspector properties
             float4 _GrassColor, _DirtColor, _RockColor, _FogColor;
             float4 _AddCursorColor, _SubCursorColor;
+            sampler2D _GroundTex;
+            float _GroundTexScale, _GroundTexStrength;
+            float4 _Origin;
             float _MaxDist;
             float _AddSmooth, _SubSmooth, _SculptRadius;
             float4 _LightDir;
@@ -120,8 +140,8 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             // =================================================================
             float map(float3 p)
             {
-                // Base terrain: flat ground at Y=0
-                float terrain = p.y;
+                // Base terrain: flat ground at _Origin.y
+                float terrain = p.y - _Origin.y;
 
                 // Apply sculpt operations in order
                 // Deep Fried: skip sculpts whose sphere of influence is too far
@@ -158,7 +178,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             // every hill and around every hole.
             float mapOccluder(float3 p)
             {
-                float terrain = p.y;
+                float terrain = p.y - _Origin.y;
                 int count = (int)_SculptCount;
                 for (int i = 0; i < 128; i++)
                 {
@@ -195,8 +215,12 @@ Shader "AliceSDF/Samples/TerrainSculpt"
 
             // AO against the hard union, sample count by LOD tier
             float terrainAO(float3 p, float3 n, int tier) {
+                #ifdef ALICE_MOBILE_BUDGET
+                int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 2 : 1;
+                #else
                 int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 5 :
                               (tier == ALICE_LOD_TIER_MED)  ? 3 : 2;
+                #endif
                 float occ = 0.0;
                 float sca = 1.0;
                 for (int i = 0; i < 5; i++) {
@@ -215,9 +239,21 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 return frac(p.x * p.y * (p.x + p.y));
             }
 
+            // Triplanar sample: the three axis projections of q blended by the
+            // normal, so hills and holes show the texture without UVs
+            float3 triplanar(sampler2D tex, float3 q, float3 n)
+            {
+                float3 w = abs(n);
+                w = w / max(w.x + w.y + w.z, 1e-4);
+                float3 cx = tex2D(tex, q.yz).rgb;
+                float3 cy = tex2D(tex, q.xz).rgb;
+                float3 cz = tex2D(tex, q.xy).rgb;
+                return cx * w.x + cy * w.y + cz * w.z;
+            }
+
             // Height + normal based terrain coloring
             float3 terrainColor(float3 p, float3 n) {
-                float h = p.y;
+                float h = p.y - _Origin.y;
                 float top = saturate(n.y); // 1 = flat top, 0 = vertical/underside
 
                 // Texture variation
@@ -229,6 +265,8 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 float3 rock = _RockColor.rgb * (0.92 + noise);
 
                 float3 surfaceCol = lerp(dirt, grass, top);
+                if (_GroundTexStrength > 0.0)
+                    surfaceCol = lerp(surfaceCol, triplanar(_GroundTex, (p - _Origin.xyz) * _GroundTexScale, n), _GroundTexStrength);
 
                 // Underground blend: deeper = more rock
                 float underground = smoothstep(0.0, -0.5, h);
@@ -252,6 +290,77 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 }
 
                 return overlay;
+            }
+
+            // =================================================================
+            // Far-ground fast path (exact where it applies, see the header)
+            // =================================================================
+            // Blend inflation: a chain of polynomial smooth unions lowers the
+            // nearest-sphere distance by well under one k in practice (k / 4
+            // for the first blend, geometrically less for each further one)
+            float sculptInflation()
+            {
+                return max(_AddSmooth, _SubSmooth) * 1.5 + 0.2;
+            }
+
+            // True if the segment ro + rd * [0, len] passes within (|r_i| + infl)
+            // of any sculpt centre
+            bool segmentNearSculpts(float3 ro, float3 rd, float len, float infl)
+            {
+                int count = (int)_SculptCount;
+                for (int i = 0; i < 128; i++)
+                {
+                    if (i >= count) break;
+                    float3 c = _SculptData[i].xyz;
+                    float tc = clamp(dot(c - ro, rd), 0.0, len);
+                    float3 q = ro + rd * tc - c;
+                    float R = abs(_SculptData[i].w) + infl;
+                    if (dot(q, q) < R * R) return true;
+                }
+                return false;
+            }
+
+            // Soft shadow of the bare plane: the same loop as
+            // aliceSoftShadow_LOD with map replaced by the plane distance
+            float planeSoftShadow_LOD(float3 ro, float3 rd, float mint, float maxt, float softness, int tier)
+            {
+                int maxSteps = (tier == ALICE_LOD_TIER_HIGH) ? ALICE_SHADOW_STEPS_HIGH :
+                               (tier == ALICE_LOD_TIER_MED)  ? ALICE_SHADOW_STEPS_MED :
+                                                               ALICE_SHADOW_STEPS_LOW;
+                if (maxSteps <= 0) return 1.0;
+                float res = 1.0;
+                float t = mint;
+                float ph = 1e20;
+                for (int i = 0; i < 48; i++)
+                {
+                    if (i >= maxSteps) break;
+                    float h = (ro + rd * t).y - _Origin.y;
+                    if (h < 0.0001)
+                        return 0.0;
+                    float y = h * h / (2.0 * ph);
+                    float d = sqrt(h * h - y * y);
+                    res = min(res, softness * d / max(0.0, t - y));
+                    ph = h;
+                    t += h;
+                    if (t > maxt) break;
+                }
+                return saturate(res);
+            }
+
+            // Distance along the ray to where it leaves this object's unit
+            // cube (object space slab test, mapped back to a world distance)
+            float exitDistance(float3 ro, float3 rd)
+            {
+                float3 roObj = mul(unity_WorldToObject, float4(ro, 1.0)).xyz;
+                float3 rdObj = mul((float3x3)unity_WorldToObject, rd);
+                float3 inv = 1.0 / (abs(rdObj) < 1e-6 ? (rdObj < 0.0 ? -1e-6 : 1e-6) : rdObj);
+                float3 t0 = (-0.5 - roObj) * inv;
+                float3 t1 = ( 0.5 - roObj) * inv;
+                float3 tmax = max(t0, t1);
+                float tObj = min(tmax.x, min(tmax.y, tmax.z));
+                float3 exitObj = roObj + rdObj * tObj;
+                float3 exitWorld = mul(unity_ObjectToWorld, float4(exitObj, 1.0)).xyz;
+                return length(exitWorld - ro);
             }
 
             v2f vert(appdata v) {
@@ -279,6 +388,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 float eps = aliceLodEpsilon(tier);
                 float ss = aliceLodStepScale(tier);
                 float t = 0.0;
+                float tExit = exitDistance(ro, rd);
                 FragOutput o;
 
                 // Closest approach along the ray: a ray grazing a hill's
@@ -290,7 +400,20 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 float bestD = 1e10;
                 float bestT = 0.0;
                 bool hit = false;
+                bool farGround = false;
 
+                float infl = sculptInflation();
+                bool nearSculpt = (ro.y - _Origin.y) < eps
+                               || segmentNearSculpts(ro, rd, min(tExit, _MaxDist), infl);
+                if (!nearSculpt) {
+                    if (rd.y < -1e-6) {
+                        // Stop eps short of the plane like the march does (its
+                        // hit is the first sample with d < eps): a coplanar floor
+                        // mesh would otherwise z-fight the exact plane
+                        float tp = (_Origin.y - ro.y) / rd.y - eps;
+                        if (tp > 0.0 && tp <= tExit && tp <= _MaxDist) { t = tp; hit = true; farGround = true; }
+                    }
+                } else {
                 for (int k = 0; k < 128; k++) {
                     if (k >= maxSteps) break;
                     float d = map(ro + rd * t);
@@ -299,25 +422,31 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                     if (d < bestD) { bestD = d; bestT = t; }
 
                     t += d * ss;
-                    if (t > _MaxDist) break;
+                    if (t > _MaxDist || t > tExit) break;
                 }
                 if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
                     t = bestT;
                     hit = true;
                 }
+                }
 
                 if (hit) {
                     float3 p = ro + rd * t;
-                    float3 n = calcN(p, normalEps(tier));
+                    float3 n = farGround ? float3(0.0, 1.0, 0.0) : calcN(p, normalEps(tier));
                     float3 lightDir = normalize(_LightDir.xyz);
-                    float ao = terrainAO(p, n, tier);
+                    float ao = farGround ? 1.0 : terrainAO(p, n, tier);
 
                     // Direct-light visibility (hill -> ground contact shadow)
                     float shadow = 1.0;
                     if (_ShadowEnabled > 0)
                     {
-                        shadow = aliceSoftShadow_LOD(p + n * 0.02, lightDir, 0.02,
-                                                     _ShadowMaxDist, _ShadowSoftness, tier);
+                        float3 sro = p + n * 0.02;
+                        if (farGround && !segmentNearSculpts(sro, lightDir, _ShadowMaxDist,
+                                                             infl + _ShadowMaxDist / max(_ShadowSoftness, 1.0)))
+                            shadow = planeSoftShadow_LOD(sro, lightDir, 0.02, _ShadowMaxDist, _ShadowSoftness, tier);
+                        else
+                            shadow = aliceSoftShadow_LOD(sro, lightDir, 0.02,
+                                                         _ShadowMaxDist, _ShadowSoftness, tier);
                     }
 
                     // Terrain color
