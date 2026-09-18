@@ -123,9 +123,10 @@ namespace AliceSDF
         }
 
         // Read once, in Start: a prefab that is moved at runtime is not followed
-        private Vector3 _lawOrigin;
-        private Quaternion _lawRotInv;
-        private bool _anchored;
+        // (initialised here: on a host without Udon, Start never runs)
+        private Vector3 _lawOrigin = Vector3.zero;
+        private Quaternion _lawRotInv = Quaternion.identity;
+        private bool _anchored = false;
 
         // =====================================================================
         // Core Logic
