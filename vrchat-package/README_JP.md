@@ -110,7 +110,7 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 
 ## 製品版: AliceSDF Kit (BOOTH)
 
-7 sample 全部を 1 つの単体製品にもできます (この package を入れたくない world 制作者向け): **ALICE-SDF > Build Kit Product** が `Assets/AliceSDFKit/` (基底 collider + script 7 本 = namespace `AliceSDFKit`、shader 7 本 + 同梱 cginc 2 本、prefab 9 個、日英 README) を生成して `Product~/AliceSDFKit_<version>.unitypackage` を export します prefab は root (地面 / 法則の原点) + 子の `Volume` cube: root を好きな場所に置いて回して、cube を欲しい広さに scale してビルド 法則は prefab に追従 (位置 + 回転)、march は自分の cube で止まるので、複数の prefab を 1 つの world に置いても地面同士が喧嘩しません PC と Quest 両対応 (Quest 向け build では画面内の volume を 1-2 個に、飾り prefab はモバイル GPU には重い) law の source は sample のまま、sample を変えたら menu を再実行 **ALICE-SDF > Build Mochi Product** は Mochi 単体 package を引き続き作ります
+7 sample 全部を 1 つの単体製品にもできます (この package を入れたくない world 制作者向け): **ALICE-SDF > Build Kit Product** が `Assets/AliceSDFKit/` (基底 collider + script 7 本 = namespace `AliceSDFKit`、shader 7 本 + 同梱 cginc 2 本、prefab 9 個、日英 README) を生成して `Product~/AliceSDFKit_<version>.unitypackage` を export します prefab は root (地面 / 法則の原点) + 子の `Volume` cube: root を好きな場所に置いて回して、cube を欲しい広さに scale してビルド 法則は prefab に追従 (位置 + 回転)、march は自分の cube で止まるので、複数の prefab を 1 つの world に置いても地面同士が喧嘩しません PC と Quest 両対応 (Quest 向け build では画面内の volume を 1-2 個に、飾り prefab はモバイル GPU には重い) law の source は sample のまま、sample を変えたら menu を再実行 **ALICE-SDF > Build Mochi Product** は Mochi 単体 package を引き続き作ります デモ world: **AliceSDF Kit Demo** — [vrchat.com/home/world/wrld_37c78539-e6e7-406a-aa32-6fae6143144d](https://vrchat.com/home/world/wrld_37c78539-e6e7-406a-aa32-6fae6143144d) (テスト中は private、PC build は prefab 9 個全部、Quest build はインタラクティブ 5 個)
 
 ## サンプル (SDF Gallery)
 
