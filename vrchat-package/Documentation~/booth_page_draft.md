@@ -50,18 +50,20 @@
 
 **Requirements**: PC VRChat worlds only (no Quest / Android), SDK 3.7+, Unity 2022.3. Try it: search "Mochi" in Community Labs.
 
-## 画像 (順番案)
+## 画像 (順番案、6 枚撮影済 09-18、実体は Unity project `Mochi/Assets/Screenshots/`)
 1. `mochi_desktop.gif` (11 s、掴む / 千切る / くっつく / 体当たり) — 1 枚目は動く物
-2. Labs world のスクショ (餅 5 個 + 看板)
-3. preset 3 種を並べた 1 枚 (今日の ProductTest scene: 白 / 緑 / 青、Build & Test 中に撮る)
-4. Inspector のスクショ (Look / Mochis の knob が見える)
-5. 「Polygons: 0 | Resolution: INFINITE」の看板アップ
-6. checker テクスチャを貼った Slime (今日の `vrchat_product_texture_20260918.png`) — 「自分の画像が貼れる」の証拠
+2. Labs world のスクショ `vrchat_mochi_published_20260917.png` (餅 + 実 client)
+3. preset 3 種を並べた 1 枚 `booth_presets_clientsim_20260918.png` (左から Water / Slime / Mochi、ClientSim 1920x1080、各 prefab の cube 底面が地面パッチ)
+4. Inspector のスクショ `booth_inspector_20260918.png` (Look / Placement / Mochis / Mochi Settings / Interaction / Desktop / Debug の全 knob、Slime に checker texture 割当状態、560x1000)
+5. 「Polygons: 0 | Resolution: INFINITE」HUD 入りの餅 3 個 (合体中) `booth_sign_polygons0_20260918.png` (sample scene の HUD 帯、2042x1310) — 看板は screen-space HUD で world-space 看板ではない (Labs world の 3D sign は MOCHI / 操作説明のみ)
+6. checker テクスチャを貼った Slime `vrchat_product_texture_20260918.png` (実 client) — 「自分の画像が貼れる」の証拠
 
-## 価格 (案、user 判断)
-- **AliceMochi**: 1,500 円 (VRChat ワールドギミックの相場 1,000〜3,000 円の中位、prefab 3 + サポート)
-- **無料 lite** (餅 3 個固定・色固定・サポート無し) を別商品で置くと導線になる — 2 段にするか単一有料かは user
-- 上位 SKU (TerrainSculpt / DeformableWall を足した「SDF Interactive Set」) は後日、3,000〜4,000 円帯
+## 価格 (案、user 判断 — 09-18 user「1,500 円は安くない?」に対する私の再提案)
+- 初案 1,500 円は BOOTH ワールドギミック相場 (1,000〜3,000 円) の中位に置いただけで、本品の固有性を織り込んでいない
+- **推奨 2,980 円** (税込、単一有料 SKU) 根拠: (1) 同種品が BOOTH に無い (ポリゴン餅 / スライム系 asset は mesh + Rigidbody / cloth で「千切れる・合体」が無い) (2) prefab 3 + 日英 README + サポート付き (3) PC only は Quest 層を落とすので 4,000 円台は売れ行きが鈍る (4) 2,980 は「ギミック 1 個」の心理上限 3,000 円の直下
+- 無料 lite (餅 3 個固定 / 色固定 / texture 無し / サポート無し) を別商品で置いて導線にする — 有料版との差分を Inspector で見せられる
+- 上位 SKU (TerrainSculpt / DeformableWall を足した「SDF Interactive Set」) は後日 4,980 円帯、単品購入者には差額 upgrade を BOOTH メッセージで案内
+- 初期 2 週間は 2,480 円の発売記念価格で reviews を集めてから 2,980 に戻す運用も可 (BOOTH は価格変更自由)
 
 ## タグ案
 VRChat / ワールド / ギミック / Udon / UdonSharp / シェーダー / SDF / レイマーチング / 餅 / スライム / インタラクティブ / PC only
