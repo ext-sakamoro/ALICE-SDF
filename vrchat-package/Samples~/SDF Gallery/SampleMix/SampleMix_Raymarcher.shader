@@ -14,8 +14,11 @@ Shader "AliceSDF/Samples/Mix"
         _OnionRadius ("Onion Radius", Float) = 3.0
         _OnionLayers ("Onion Layers", Range(1, 5)) = 3
         _OnionThickness ("Onion Thickness", Float) = 0.15
+        _OnionOrbit ("Onion Orbit Radius", Float) = 16.0
         _Smoothness ("Smooth Blend", Range(0.1, 3.0)) = 0.8
         _MaxDist ("Max Distance", Float) = 150.0
+        [Header(Lighting)]
+        _LightDir ("Light Direction", Vector) = (1.0, 1.0, -0.5, 0.0)
         _FogDensity ("Fog Density", Float) = 0.004
         _FogColor ("Fog Color", Color) = (0.02, 0.01, 0.03, 1.0)
     }
@@ -24,6 +27,8 @@ Shader "AliceSDF/Samples/Mix"
         Tags { "RenderType"="Opaque" "Queue"="Geometry" }
         Pass
         {
+            Cull Off
+            ZWrite On
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -32,10 +37,14 @@ Shader "AliceSDF/Samples/Mix"
             #include "UnityCG.cginc"
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_Include.cginc"
 
+            float4 _LightDir;
+            // Closest-approach acceptance, metres per metre of ray length
+            #define NEAR_MISS_PER_M 0.002
+
             float4 _Color; float4 _Color2;
             float _PlanetRadius; float _HoleSize; float _RepeatScale;
             float _RingMajor; float _RingMinor;
-            float _OnionRadius; float _OnionLayers; float _OnionThickness;
+            float _OnionRadius; float _OnionLayers; float _OnionThickness; float _OnionOrbit;
             float _Smoothness;
             float _MaxDist; float _FogDensity; float4 _FogColor;
 
@@ -94,7 +103,7 @@ Shader "AliceSDF/Samples/Mix"
 
                 // --- Onion Shell (offset, orbiting) ---
                 float orbitAngle = time * 0.2;
-                float3 onionPos = float3(cos(orbitAngle) * 16.0, sin(orbitAngle) * 2.0, sin(orbitAngle) * 16.0);
+                float3 onionPos = float3(cos(orbitAngle) * _OnionOrbit, sin(orbitAngle) * _OnionOrbit * 0.125, sin(orbitAngle) * _OnionOrbit);
                 float onion = sdOnion(p - onionPos, _OnionRadius, (int)_OnionLayers, _OnionThickness);
 
                 // --- Combine with smooth union ---
@@ -104,10 +113,51 @@ Shader "AliceSDF/Samples/Mix"
                 return d;
             }
 
+            // The same scene with hard unions: exact outside every part, so the
+            // ambient occlusion sees only real geometry (the smooth blend zone
+            // under-reports distance and read as a dark ring at every junction)
+            float mapOccluder(float3 p)
+            {
+                float time = _Time.y;
+
+                // --- Fractal Planet (Sphere ∩ Menger Sponge) ---
+                // Slow rotation
+                float rotAngle = time * 0.1;
+                float cr = cos(rotAngle); float sr = sin(rotAngle);
+                float3 pp = float3(cr*p.x - sr*p.z, p.y, sr*p.x + cr*p.z);
+
+                float planet = sdSphere(pp, _PlanetRadius);
+                float3 rp = opRepeatInfinite(pp, float3(_RepeatScale, _RepeatScale, _RepeatScale));
+                float cross = sdCross(rp, _HoleSize);
+                float fractalPlanet = max(-cross, planet); // Subtract holes from sphere
+
+                // --- Torus Ring (tilted, orbiting) ---
+                float ringTilt = time * 0.05;
+                float ct = cos(ringTilt); float st = sin(ringTilt);
+                float3 ringP = float3(p.x, ct*p.y - st*p.z, st*p.y + ct*p.z);
+                float ring = sdTorus(ringP, _RingMajor, _RingMinor);
+
+                // --- Onion Shell (offset, orbiting) ---
+                float orbitAngle = time * 0.2;
+                float3 onionPos = float3(cos(orbitAngle) * _OnionOrbit, sin(orbitAngle) * _OnionOrbit * 0.125, sin(orbitAngle) * _OnionOrbit);
+                float onion = sdOnion(p - onionPos, _OnionRadius, (int)_OnionLayers, _OnionThickness);
+
+                // --- Combine with smooth union ---
+                float d = fractalPlanet;
+                d = min(d, ring);
+                d = min(d, onion);
+                return d;
+            }
+
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_LOD.cginc"
 
-            float3 calcN(float3 p) {
-                float e = 0.001;
+            float normalEps(int tier) {
+                if (tier == ALICE_LOD_TIER_HIGH) return 0.001;
+                if (tier == ALICE_LOD_TIER_MED)  return 0.003;
+                return 0.01;
+            }
+
+            float3 calcN(float3 p, float e) {
                 return normalize(float3(
                     map(p+float3(e,0,0))-map(p-float3(e,0,0)),
                     map(p+float3(0,e,0))-map(p-float3(0,e,0)),
@@ -161,18 +211,34 @@ Shader "AliceSDF/Samples/Mix"
                 float ss = aliceLodStepScale(tier);
                 float t = 0.0;
                 FragOutput o;
+                // Closest approach along the ray: a ray grazing a silhouette that
+                // runs out of steps within a pixel of the surface is a hit, not
+                // the far depth (a dark seam otherwise)
+                float bestD = 1e10;
+                float bestT = 0.0;
+                bool hit = false;
                 for (int k = 0; k < 128; k++) {
                     if (k >= maxSteps) break;
+                    float d = map(ro + rd * t);
+                    if (d < eps) { hit = true; break; }
+                    if (d < bestD) { bestD = d; bestT = t; }
+                    t += d * ss;
+                    if (t > _MaxDist) break;
+                }
+                if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
+                    t = bestT;
+                    hit = true;
+                }
+                if (hit) {
                     float3 p = ro + rd * t;
-                    float d = map(p);
-                    if (d < eps) {
-                        float3 n = calcN(p);
+                    {
+                        float3 n = calcN(p, normalEps(tier));
                         float3 col = getColor(p, n);
-                        float diff = max(dot(n, normalize(float3(1,1,-0.5))), 0.0);
+                        float diff = max(dot(n, normalize(_LightDir.xyz)), 0.0);
                         float ao = 1.0;
                         { // Simple AO
                             float occ=0.0; float sc=1.0;
-                            for(int j=0;j<4;j++){float h=0.01+0.12*float(j)/3.0;occ+=(h-map(p+h*n))*sc;sc*=0.95;}
+                            for(int j=0;j<4;j++){float h=0.01+0.12*float(j)/3.0;occ+=(h-mapOccluder(p+h*n))*sc;sc*=0.95;}
                             ao=saturate(1.0-3.0*occ);
                         }
                         float3 fc = col * (0.15 + diff*0.85) * ao;
@@ -187,8 +253,6 @@ Shader "AliceSDF/Samples/Mix"
                         #endif
                         return o;
                     }
-                    t += d * ss;
-                    if (t > _MaxDist) break;
                 }
                 // Space background
                 float stars = step(0.998, hash3d(rd * 500.0));

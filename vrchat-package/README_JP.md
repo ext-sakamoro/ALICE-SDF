@@ -116,22 +116,27 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 |---------|------|-------|
 | **Basic** | 地面 + 浮遊する球体。最もシンプルなSDFワールド。 | `min(plane, sphere)` |
 | **Cosmic** | アニメーション付き太陽系 — 太陽、軌道惑星、傾斜リング、月、小惑星帯。 | `SmoothUnion(sun, planet, ring, moon, asteroids)` |
-| **Fractal** | メンガーのスポンジ迷宮の内部を歩けます。ねじり変形付き。 | `Subtract(Box, Repeat(Cross))` — 1つの式で無限の複雑さ |
+| **Fractal** | 展望 platform から眺めるメンガーのスポンジ迷宮。ねじり変形付き。 | `Subtract(Box, Repeat(Cross))` — 1つの式で無限の複雑さ |
 | **Mix** | Cosmic × Fractal 融合 — フラクタル惑星 + トーラスリング + 玉ねぎシェル。 | `SmoothUnion(Intersect(Sphere, Menger), Torus, Onion(Sphere))` |
 | **DeformableWall** | 触る・マウスで殴る・突っ込むと壁が凹む。凹みは時間で回復。 | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
 | **Mochi** | ぷにぷに餅ブロブ。掴む・合体・分裂・巨大化。SmoothUnion軟体物理。 | `SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k))` |
 | **TerrainSculpt** | VRの手やマウスで地形を掘る・盛る。掘った穴に本当に落ちる。**SDFでしか不可能。** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
 
 各サンプルには以下が含まれます：
-- `*_Raymarcher.shader` — SV_Depth / LOD / AO / フォグ対応レイマーチングシェーダー
-- `*_Collider.cs` — UdonSharpコライダー（`#if UDONSHARP` ガード付き）
+- `*_Raymarcher.shader` — SV_Depth / LOD / AO / フォグ対応レイマーチングシェーダー 全 sample に `Cull Off`（volume の内側から描ける）、最接近点採用（輪郭の暗い筋なし）、`Light Direction` プロパティ、地面があるものは soft contact shadow
+- `*_Collider.cs` — UdonSharpコライダー（`#if UDONSHARP` ガード付き）静的 4 sample は package の `AliceSDF_Collider` を継承: 体を足元から目まで sample し、最も深い壁状の接触が横に押し戻す（床状の接触は scene の床 / platform collider に任せるので揺れない）Cosmic と Mix はアニメーションし、collider は `animTime`（`Time.timeSinceLevelLoad` = shader の `_Time.y`）で shader に追従するので、公転中の惑星は描かれている場所で押してくる
 - `*.asdf.json` — Baker用の定義ファイル
+- Rust golden（`examples/vrchat_<sample>_golden.rs`）と host parity check（`HostTests~`）— collider の law が crate の law であること
+
+scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF に地面がある sample（Basic / Mochi / DeformableWall）には床 collider を、宇宙 scene（Cosmic / Fractal / Mix）には spawn の下に展望 platform を置きます（skybox は外して、raymarch の miss は黒）platform から歩き出すと respawn 高さまで落ちます — SDF そのものに立てるのは TerrainSculpt だけです
 
 ### インタラクティブサンプル (VR)
 
 **DeformableWall**、**Mochi**、**TerrainSculpt** は、VRハンドトラッキングによるリアルタイムSDF変形を実演するサンプルです。上記の静的サンプルとは異なり、毎フレーム UdonSharp から `Material.SetVectorArray` でシェーダーに動的データを送信します。
 
 #### DeformableWall — 触って凹む壁
+
+![デスクトップでの DeformableWall: 見ている場所を殴ると凹み、叩き続けた所は凹みが戻り、端面も凹む](Documentation~/wall_desktop.gif)
 
 地面の上に立つ平面の壁。VRの手で触る、マウスで殴る、歩いて突っ込む — 接触点に凹みが発生し、時間の経過とともに徐々に回復します。凹みは本物の形状で、当たり判定も凹んだ壁に対して行われます。
 

@@ -26,6 +26,10 @@ samples=(
     "vrchat_mochi_golden:MochiParity:1521"
     "vrchat_terrain_sculpt_golden:TerrainSculptParity:4335"
     "vrchat_deformable_wall_golden:DeformableWallParity:5100"
+    "vrchat_basic_golden:StaticParity:2535"
+    "vrchat_cosmic_golden:StaticParity:2907"
+    "vrchat_fractal_golden:StaticParity:3375"
+    "vrchat_mix_golden:StaticParity:1989"
 )
 
 for entry in "${samples[@]}"; do
@@ -37,5 +41,6 @@ for entry in "${samples[@]}"; do
 
     proj="vrchat-package/HostTests~/$project"
     dotnet build "$proj" -c Release --nologo -v q
-    dotnet run --no-build -c Release --project "$proj" -- "$golden"
+    # the example name lets a project that hosts several samples pick one
+    dotnet run --no-build -c Release --project "$proj" -- "$golden" "$example"
 done

@@ -26,6 +26,12 @@ namespace UnityEngine
         public override bool Equals(object o) => o is Vector3 v && this == v;
         public override int GetHashCode() => x.GetHashCode() ^ y.GetHashCode() << 2 ^ z.GetHashCode() >> 2;
     }
+    public struct Vector2
+    {
+        public float x, y;
+        public Vector2(float x, float y) { this.x = x; this.y = y; }
+        public float magnitude => (float)Math.Sqrt(x * x + y * y);
+    }
     public struct Vector4
     {
         public float x, y, z, w;
@@ -41,6 +47,9 @@ namespace UnityEngine
         public static float Exp(float a) => (float)Math.Exp(a);
         public static float Lerp(float a, float b, float t) => a + (b - a) * (t < 0 ? 0 : t > 1 ? 1 : t);
         public static float Sqrt(float a) => (float)Math.Sqrt(a);
+        public static float Cos(float a) => (float)Math.Cos(a);
+        public static float Sin(float a) => (float)Math.Sin(a);
+        public static float Floor(float a) => (float)Math.Floor(a);
     }
     // time is settable so a host scenario can step the clock past a cooldown
     public static class Time { public static float deltaTime = 1f / 90f; public static float time = 0f; }

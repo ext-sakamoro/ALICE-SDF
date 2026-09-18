@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Host-side check of the four static samples (Basic / Cosmic / Fractal /
+       Mix): compiles AliceSDF_Collider and the four subclasses against
+       ../Shared/UnityEngineStub.cs (no Unity), compares the sample named on
+       the command line with its alice_sdf golden (examples/vrchat_<name>_golden.rs,
+       animTime = 0), then replays the base collider's push scenario on the
+       Basic sample. Run via scripts/vrchat-host-parity.sh. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <!-- UdonSharp accepts C# 7.3; anything newer here would not compile in Unity -->
+    <LangVersion>7.3</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Runtime/Udon/AliceSDF_Collider.cs" Link="AliceSDF_Collider.cs" />
+    <Compile Include="../../Samples~/SDF Gallery/SampleBasic/SampleBasic_Collider.cs" Link="SampleBasic_Collider.cs" />
+    <Compile Include="../../Samples~/SDF Gallery/SampleCosmic/SampleCosmic_Collider.cs" Link="SampleCosmic_Collider.cs" />
+    <Compile Include="../../Samples~/SDF Gallery/SampleFractal/SampleFractal_Collider.cs" Link="SampleFractal_Collider.cs" />
+    <Compile Include="../../Samples~/SDF Gallery/SampleMix/SampleMix_Collider.cs" Link="SampleMix_Collider.cs" />
+    <Compile Include="../Shared/UnityEngineStub.cs" Link="UnityEngineStub.cs" />
+  </ItemGroup>
+</Project>

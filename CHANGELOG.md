@@ -6,6 +6,18 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — VRChat package: the four static samples (Basic / Cosmic / Fractal / Mix)
+
+- Working collision in VRChat for the first time (the base `AliceSDF_Collider`
+  gets a UdonSharp assembly definition, the samples override `Evaluate`, the
+  body is sampled and the deepest wall pushes sideways), Cosmic / Mix colliders
+  carry the full animated shader law (`animTime`), shaders get `Cull Off` /
+  closest-approach acceptance / `_LightDir`, generator scenes are playable
+  (descriptor, floor or viewing platform). Details in `vrchat-package/CHANGELOG.md`.
+- `examples/vrchat_{basic,cosmic,fractal,mix}_golden.rs` and
+  `vrchat-package/HostTests~/StaticParity`; `scripts/vrchat-host-parity.sh`
+  runs all seven samples.
+
 ### Added — VRChat package: DeformableWall sample brought to the Mochi level
 
 - The player collides with the dented wall (not the flat box), the body is

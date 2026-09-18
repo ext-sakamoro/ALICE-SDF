@@ -11,6 +11,8 @@ Shader "AliceSDF/Samples/Fractal"
         _RepeatScale ("Repeat Scale", Float) = 15.0
         _TwistAmount ("Twist", Range(0, 0.2)) = 0.02
         _MaxDist ("Max Distance", Float) = 200.0
+        [Header(Lighting)]
+        _LightDir ("Light Direction", Vector) = (1.0, 1.0, -0.5, 0.0)
         _FogDensity ("Fog Density", Float) = 0.005
         _FogColor ("Fog Color", Color) = (0.01, 0.01, 0.02, 1.0)
     }
@@ -19,6 +21,8 @@ Shader "AliceSDF/Samples/Fractal"
         Tags { "RenderType"="Opaque" "Queue"="Geometry" }
         Pass
         {
+            Cull Off
+            ZWrite On
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -26,6 +30,10 @@ Shader "AliceSDF/Samples/Fractal"
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_Include.cginc"
+
+            float4 _LightDir;
+            // Closest-approach acceptance, metres per metre of ray length
+            #define NEAR_MISS_PER_M 0.002
 
             float4 _Color; float4 _Color2;
             float _BoxSize; float _HoleSize; float _RepeatScale; float _TwistAmount;
@@ -75,8 +83,13 @@ Shader "AliceSDF/Samples/Fractal"
 
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_LOD.cginc"
 
-            float3 calcN(float3 p) {
-                float e = 0.001;
+            float normalEps(int tier) {
+                if (tier == ALICE_LOD_TIER_HIGH) return 0.001;
+                if (tier == ALICE_LOD_TIER_MED)  return 0.003;
+                return 0.01;
+            }
+
+            float3 calcN(float3 p, float e) {
                 return normalize(float3(
                     map(p+float3(e,0,0))-map(p-float3(e,0,0)),
                     map(p+float3(0,e,0))-map(p-float3(0,e,0)),
@@ -132,14 +145,30 @@ Shader "AliceSDF/Samples/Fractal"
                 float ss = aliceLodStepScale(tier);
                 float t = 0.0;
                 FragOutput o;
+                // Closest approach along the ray: a ray grazing a silhouette that
+                // runs out of steps within a pixel of the surface is a hit, not
+                // the far depth (a dark seam otherwise)
+                float bestD = 1e10;
+                float bestT = 0.0;
+                bool hit = false;
                 for (int k = 0; k < 128; k++) {
                     if (k >= maxSteps) break;
+                    float d = map(ro + rd * t);
+                    if (d < eps) { hit = true; break; }
+                    if (d < bestD) { bestD = d; bestT = t; }
+                    t += d * ss;
+                    if (t > _MaxDist) break;
+                }
+                if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
+                    t = bestT;
+                    hit = true;
+                }
+                if (hit) {
                     float3 p = ro + rd * t;
-                    float d = map(p);
-                    if (d < eps) {
-                        float3 n = calcN(p);
+                    {
+                        float3 n = calcN(p, normalEps(tier));
                         float3 col = getColor(p, n);
-                        float diff = max(dot(n, normalize(float3(1,1,-0.5))), 0.0);
+                        float diff = max(dot(n, normalize(_LightDir.xyz)), 0.0);
                         float ao = 1.0;
                         { // Simple AO
                             float occ=0.0; float sc=1.0;
@@ -158,8 +187,6 @@ Shader "AliceSDF/Samples/Fractal"
                         #endif
                         return o;
                     }
-                    t += d * ss;
-                    if (t > _MaxDist) break;
                 }
                 o.color = fixed4(_FogColor.rgb, 1.0);
                 #if defined(UNITY_REVERSED_Z)

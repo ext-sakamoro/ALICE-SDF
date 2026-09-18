@@ -22,13 +22,10 @@ namespace AliceSDF.Samples
         public float repeatScale = 15.0f;
         public float twistAmount = 0.02f;
 
-        public
-#if UDONSHARP
-        new
-#else
-        override
-#endif
-        float Evaluate(Vector3 p)
+        // override, not new: UdonSharp resolves a virtual call to the most
+        // derived method, so the base collider pushes against this SDF (with
+        // new it pushed against the base class demo sphere)
+        public override float Evaluate(Vector3 p)
         {
             // Optional twist
             if (twistAmount > 0.001f)

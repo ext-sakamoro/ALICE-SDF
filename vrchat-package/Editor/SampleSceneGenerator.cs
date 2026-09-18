@@ -32,6 +32,10 @@ namespace AliceSDF.Editor
             // no floor to stand on and get none.
             public bool world;
             public Vector3 spawnPos;
+            // Space scenes (no ground in the SDF): a small invisible platform
+            // under the spawn instead of a floor, so the player can stand and
+            // look (walking off it is a long fall to the respawn height)
+            public bool platform;
         }
 
         private static readonly SampleDef[] Samples = new SampleDef[]
@@ -43,6 +47,9 @@ namespace AliceSDF.Editor
                 camPos     = new Vector3(5, 4, 8),
                 camLookAt  = new Vector3(0, 1, 0),
                 bgColor    = new Color(0.01f, 0.01f, 0.02f),
+                colliderType = "AliceSDF.Samples.SampleBasic_Collider",
+                world      = true,
+                spawnPos   = new Vector3(0, 0.5f, 5),
             },
             new SampleDef {
                 name       = "Cosmic",
@@ -51,6 +58,10 @@ namespace AliceSDF.Editor
                 camPos     = new Vector3(40, 20, 40),
                 camLookAt  = Vector3.zero,
                 bgColor    = new Color(0.01f, 0.005f, 0.02f),
+                colliderType = "AliceSDF.Samples.SampleCosmic_Collider",
+                world      = true,
+                spawnPos   = new Vector3(40, 20, 40),
+                platform   = true,
             },
             new SampleDef {
                 name       = "Fractal",
@@ -59,6 +70,10 @@ namespace AliceSDF.Editor
                 camPos     = new Vector3(30, 15, 30),
                 camLookAt  = Vector3.zero,
                 bgColor    = new Color(0.005f, 0.005f, 0.015f),
+                colliderType = "AliceSDF.Samples.SampleFractal_Collider",
+                world      = true,
+                spawnPos   = new Vector3(70, 15, 70),
+                platform   = true,
             },
             new SampleDef {
                 name       = "Mix",
@@ -67,6 +82,10 @@ namespace AliceSDF.Editor
                 camPos     = new Vector3(20, 10, 25),
                 camLookAt  = Vector3.zero,
                 bgColor    = new Color(0.02f, 0.01f, 0.03f),
+                colliderType = "AliceSDF.Samples.SampleMix_Collider",
+                world      = true,
+                spawnPos   = new Vector3(20, 10, 25),
+                platform   = true,
             },
             // Interactive samples (README "Setup (All Interactive Samples)"):
             // the cube is the raymarching bounding volume, its bottom face
@@ -363,10 +382,20 @@ namespace AliceSDF.Editor
             if (sample.world)
             {
                 AddWorldDescriptor(sample.spawnPos);
-                // The SDF ground of Mochi / DeformableWall is drawn, not walked
-                // on: an invisible floor collider at y = 0 carries the player.
-                // TerrainSculpt has none: its terrain is the floor (TerrainSupport).
-                if (sample.name != "TerrainSculpt")
+                // The SDF ground of Basic / Mochi / DeformableWall is drawn, not
+                // walked on: an invisible floor collider at y = 0 carries the
+                // player. TerrainSculpt has none: its terrain is the floor
+                // (TerrainSupport). Space scenes get a platform under the spawn.
+                if (sample.platform)
+                {
+                    AddPlatformCollider(sample.spawnPos);
+                    // A raymarch miss writes the far depth, so the world's skybox
+                    // shows through the volume: space scenes want black there
+                    RenderSettings.skybox = null;
+                    RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+                    RenderSettings.ambientLight = sample.bgColor;
+                }
+                else if (sample.name != "TerrainSculpt")
                     AddFloorCollider();
             }
 
@@ -376,6 +405,14 @@ namespace AliceSDF.Editor
             // Save scene
             EditorSceneManager.SaveScene(scene, scenePath);
             Debug.Log($"[ALICE-SDF] Created scene: {scenePath}");
+        }
+
+        private static void AddPlatformCollider(Vector3 spawnPos)
+        {
+            var platform = new GameObject("ViewingPlatform");
+            platform.transform.position = new Vector3(spawnPos.x, spawnPos.y - 0.6f, spawnPos.z);
+            platform.transform.localScale = new Vector3(6f, 0.2f, 6f);
+            platform.AddComponent<BoxCollider>();
         }
 
         private static void AddFloorCollider()
@@ -440,15 +477,46 @@ namespace AliceSDF.Editor
 #if UDONSHARP
             var proxy = component as UdonSharp.UdonSharpBehaviour;
             if (proxy == null) return;
-            if (UdonSharpEditor.UdonSharpEditorUtility.GetUdonSharpProgramAsset(proxy.GetType()) != null) return;
-            var asset = ScriptableObject.CreateInstance<UdonSharp.UdonSharpProgramAsset>();
-            asset.sourceCsScript = MonoScript.FromMonoBehaviour(proxy);
-            string assetPath = $"{OutputFolder}/SDF_{sampleName}_UdonProgram.asset";
-            AssetDatabase.CreateAsset(asset, assetPath);
+            bool created = false;
+            // The base classes too (the static samples derive from the package's
+            // AliceSDF_Collider): UdonSharp resolves the inheritance chain through
+            // program assets and throws an internal ArgumentNullException when a
+            // base UdonSharpBehaviour has none. A package script cannot carry
+            // its asset (read-only), so it is created here, next to the scenes.
+            for (var t = proxy.GetType(); t != null && t != typeof(UdonSharp.UdonSharpBehaviour) && typeof(UdonSharp.UdonSharpBehaviour).IsAssignableFrom(t); t = t.BaseType)
+            {
+                if (UdonSharpEditor.UdonSharpEditorUtility.GetUdonSharpProgramAsset(t) != null) continue;
+                var script = FindMonoScript(t);
+                if (script == null)
+                {
+                    Debug.LogWarning($"[ALICE-SDF] No MonoScript for {t.FullName}; create its UdonSharpProgramAsset by hand.");
+                    continue;
+                }
+                var asset = ScriptableObject.CreateInstance<UdonSharp.UdonSharpProgramAsset>();
+                asset.sourceCsScript = script;
+                string assetPath = t == proxy.GetType()
+                    ? $"{OutputFolder}/SDF_{sampleName}_UdonProgram.asset"
+                    : $"{OutputFolder}/{t.Name}_UdonProgram.asset";
+                if (AssetDatabase.LoadAssetAtPath<UdonSharp.UdonSharpProgramAsset>(assetPath) != null) continue;
+                AssetDatabase.CreateAsset(asset, assetPath);
+                created = true;
+                Debug.Log($"[ALICE-SDF] Created Udon program asset: {assetPath}");
+            }
+            if (!created) return;
             AssetDatabase.SaveAssets();
             UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync(new UdonSharp.Compiler.UdonSharpCompileOptions());
-            Debug.Log($"[ALICE-SDF] Created Udon program asset: {assetPath}");
 #endif
+        }
+
+        // The MonoScript of a type, wherever it lives (Assets or a package)
+        private static MonoScript FindMonoScript(System.Type type)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:MonoScript " + type.Name))
+            {
+                var script = AssetDatabase.LoadAssetAtPath<MonoScript>(AssetDatabase.GUIDToAssetPath(guid));
+                if (script != null && script.GetClass() == type) return script;
+            }
+            return null;
         }
 
         private static System.Type FindType(string fullName)

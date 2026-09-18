@@ -1,5 +1,11 @@
 // ALICE-SDF Sample: Basic (Ground + Sphere)
-// The simplest possible SDF world: a floor to stand on and a sphere.
+// The simplest possible SDF world: a floor and a sphere. The same law as
+// SampleBasic_Collider.Evaluate (examples/vrchat_basic_golden.rs).
+//
+// Rendering notes (same fixes as the Mochi sample): Cull Off so the volume
+// renders from inside; closest-approach acceptance so a ray grazing the
+// sphere's silhouette that runs out of steps is a hit, not the far depth;
+// soft contact shadow of the sphere on the ground.
 Shader "AliceSDF/Samples/Basic"
 {
     Properties
@@ -7,13 +13,22 @@ Shader "AliceSDF/Samples/Basic"
         _Color ("Color", Color) = (0.3, 0.85, 1.0, 1.0)
         _Color2 ("Color 2", Color) = (0.15, 0.5, 0.3, 1.0)
         _MaxDist ("Max Distance", Float) = 100.0
+        [Header(Lighting)]
+        _LightDir ("Light Direction", Vector) = (1.0, 1.0, -0.5, 0.0)
+        _ShadowEnabled ("Enable Soft Shadow", Int) = 1
+        _ShadowSoftness ("Shadow Softness", Range(1, 128)) = 16.0
+        _ShadowMaxDist ("Shadow Max Distance", Float) = 10.0
+        [Header(Fog)]
         _FogColor ("Fog Color", Color) = (0.01, 0.01, 0.02, 1.0)
+        _FogDensity ("Fog Density", Float) = 0.01
     }
     SubShader
     {
         Tags { "RenderType"="Opaque" "Queue"="Geometry" }
         Pass
         {
+            Cull Off
+            ZWrite On
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -23,7 +38,13 @@ Shader "AliceSDF/Samples/Basic"
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_Include.cginc"
 
             float4 _Color; float4 _Color2;
-            float _MaxDist; float4 _FogColor;
+            float _MaxDist; float4 _FogColor; float _FogDensity;
+            float4 _LightDir;
+            int _ShadowEnabled;
+            float _ShadowSoftness, _ShadowMaxDist;
+
+            // Closest-approach acceptance, metres per metre of ray length
+            #define NEAR_MISS_PER_M 0.002
 
             struct appdata {
                 float4 vertex : POSITION;
@@ -47,8 +68,13 @@ Shader "AliceSDF/Samples/Basic"
 
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_LOD.cginc"
 
-            float3 calcN(float3 p) {
-                float e = 0.001;
+            float normalEps(int tier) {
+                if (tier == ALICE_LOD_TIER_HIGH) return 0.001;
+                if (tier == ALICE_LOD_TIER_MED)  return 0.003;
+                return 0.01;
+            }
+
+            float3 calcN(float3 p, float e) {
                 return normalize(float3(
                     map(p+float3(e,0,0))-map(p-float3(e,0,0)),
                     map(p+float3(0,e,0))-map(p-float3(0,e,0)),
@@ -74,7 +100,6 @@ Shader "AliceSDF/Samples/Basic"
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float3 ro = _WorldSpaceCameraPos;
                 float3 rd = normalize(i.rayDir);
-                // LOD: Basic needs objectCenter, use ray origin as fallback
                 float camDist = length(i.objectCenter - ro);
                 int tier = aliceLodTier(camDist);
                 int maxSteps = aliceLodSteps(tier);
@@ -82,28 +107,42 @@ Shader "AliceSDF/Samples/Basic"
                 float ss = aliceLodStepScale(tier);
                 float t = 0.0;
                 FragOutput o;
+
+                float bestD = 1e10;
+                float bestT = 0.0;
+                bool hit = false;
                 for (int k = 0; k < 128; k++) {
                     if (k >= maxSteps) break;
-                    float3 p = ro + rd * t;
-                    float d = map(p);
-                    if (d < eps) {
-                        float3 n = calcN(p);
-                        float3 col = lerp(_Color.rgb, _Color2.rgb, n.y*0.5+0.5);
-                        float diff = max(dot(n, normalize(float3(1,1,-0.5))), 0.0);
-                        float3 fc = col * (0.2 + diff * 0.8);
-                        float fog = exp(-t * 0.01);
-                        fc = lerp(_FogColor.rgb, fc, fog);
-                        float4 cp = UnityWorldToClipPos(p);
-                        o.color = fixed4(fc, 1.0);
-                        #if defined(UNITY_REVERSED_Z)
-                            o.depth = cp.z / cp.w;
-                        #else
-                            o.depth = (cp.z / cp.w) * 0.5 + 0.5;
-                        #endif
-                        return o;
-                    }
+                    float d = map(ro + rd * t);
+                    if (d < eps) { hit = true; break; }
+                    if (d < bestD) { bestD = d; bestT = t; }
                     t += d * ss;
                     if (t > _MaxDist) break;
+                }
+                if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
+                    t = bestT;
+                    hit = true;
+                }
+
+                if (hit) {
+                    float3 p = ro + rd * t;
+                    float3 n = calcN(p, normalEps(tier));
+                    float3 lightDir = normalize(_LightDir.xyz);
+                    float shadow = 1.0;
+                    if (_ShadowEnabled > 0)
+                        shadow = aliceSoftShadow_LOD(p + n * 0.02, lightDir, 0.02, _ShadowMaxDist, _ShadowSoftness, tier);
+                    float3 col = lerp(_Color.rgb, _Color2.rgb, n.y*0.5+0.5);
+                    float diff = max(dot(n, lightDir), 0.0);
+                    float3 fc = col * (0.2 + diff * 0.8 * shadow);
+                    fc = lerp(_FogColor.rgb, fc, exp(-t * _FogDensity));
+                    float4 cp = UnityWorldToClipPos(p);
+                    o.color = fixed4(fc, 1.0);
+                    #if defined(UNITY_REVERSED_Z)
+                        o.depth = cp.z / cp.w;
+                    #else
+                        o.depth = (cp.z / cp.w) * 0.5 + 0.5;
+                    #endif
+                    return o;
                 }
                 o.color = fixed4(_FogColor.rgb, 1.0);
                 #if defined(UNITY_REVERSED_Z)

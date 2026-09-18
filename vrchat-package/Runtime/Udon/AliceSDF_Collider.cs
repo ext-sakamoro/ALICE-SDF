@@ -1,27 +1,31 @@
 // =============================================================================
 // AliceSDF_Collider.cs - SDF Collision for VRChat (UdonSharp)
 // =============================================================================
-// Evaluates SDF at the player's position and pushes them out of solid geometry.
-// This makes players able to STAND ON and COLLIDE WITH mathematical surfaces.
+// Evaluates an SDF along the player's body and pushes the player out of
+// solid geometry, so players collide with mathematical surfaces.
 //
-// How it works:
-//   1. Get player position P
-//   2. Compute d = SDF(P)
-//   3. If d < 0 (inside), compute gradient ∇SDF(P)
-//   4. Push player along ∇SDF by |d| to reach surface
+// How it works (the Mochi rule):
+//   1. Sample the body from the feet to the eyes (bodySamples points)
+//   2. Of the samples inside the margin, the deepest WALL contact decides
+//      (the feet resting on an SDF floor would otherwise mask the chest)
+//   3. A wall-like surface (gradient mostly horizontal) pushes sideways,
+//      geometrically smoothed, with a dead band so the push stops exactly
+//   4. A floor-like surface (gradient mostly up) is left alone: standing on
+//      an SDF needs a Unity collider under the feet (see the TerrainSculpt
+//      sample's TerrainSupport); pushing up every frame only fights gravity
+//      and the player bobs
 //
 // Usage:
-//   1. Attach this script to a GameObject in your VRChat world
-//   2. Override the Evaluate() method with your SDF (or use ALICE-Baker)
-//   3. Set collision margin and push strength in Inspector
+//   1. Attach a subclass to the GameObject that renders the SDF
+//   2. Override Evaluate() with the SDF the shader draws (UdonSharp resolves
+//      virtual calls to the most derived override)
+//   3. Set the collision margin and push strength in the Inspector
 //
-// Performance:
-//   - Runs at FixedUpdate (50Hz), not every frame
-//   - Single SDF eval + 6 gradient samples = 7 evaluations per tick
-//   - Typical cost: < 0.01ms per player
+// Cost: bodySamples evaluations + 6 for the gradient per frame.
 //
 // Requires: VRChat SDK + UdonSharp
-// If VRC SDK is not installed, this file compiles as a stub (MonoBehaviour).
+// If the VRC SDK is not installed, this file compiles as a MonoBehaviour
+// so the law can be checked on a host (HostTests~).
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -44,8 +48,13 @@ namespace AliceSDF
     public class AliceSDF_Collider : MonoBehaviour
 #endif
     {
+        // Horizontal gradient share above which a contact is a wall
+        private const float WallSlope = 0.7f;
+        // Remaining penetration (m) under which the player is left alone
+        private const float PushDeadBand = 0.005f;
+
         [Header("Collision Settings")]
-        [Tooltip("Distance margin around the SDF surface. Player stops this far from the surface.")]
+        [Tooltip("Distance margin around the SDF surface. The player stops this far from a wall.")]
         public float collisionMargin = 0.1f;
 
         [Tooltip("How strongly to push the player out. 1.0 = exact correction.")]
@@ -58,20 +67,25 @@ namespace AliceSDF
         [Tooltip("Maximum push distance per frame to prevent teleporting through walls.")]
         public float maxPushDistance = 2.0f;
 
-        [Header("Performance")]
-        [Tooltip("Only check collision every N fixed updates (1 = every tick, 2 = half rate).")]
-        [Range(1, 4)]
-        public int updateInterval = 1;
+        [Tooltip("Samples along the body axis, feet to eyes (a single foot sample only sees what is below the knees)")]
+        public int bodySamples = 5;
+
+        [Tooltip("Eye height used when the avatar's cannot be read (m)")]
+        public float fallbackEyeHeight = 1.6f;
+
+        [Header("Animation")]
+        [Tooltip("Seconds fed to a time-varying SDF, set every frame from Time.timeSinceLevelLoad (what the shader's _Time.y is); 0 on a host")]
+        public float animTime = 0f;
 
         [Header("Debug")]
-        [Tooltip("Enable debug logging in console.")]
-        public bool debugMode = false;
+        [Tooltip("Debug.Log one line per contact (push) as [SDF] ..., readable in the VRChat client output_log")]
+        public bool logEvents = false;
 
         // Internal state
 #if UDONSHARP
         private VRCPlayerApi _localPlayer;
+        private bool _pushing;
 #endif
-        private int _tickCounter = 0;
 
         // =====================================================================
         // USER SDF DEFINITION
@@ -91,7 +105,7 @@ namespace AliceSDF
             // Sphere at (0, 1.5, 0) with radius 1.5
             float sphere = (p - new Vector3(0f, 1.5f, 0f)).magnitude - 1.5f;
 
-            // Union = stand on ground OR on sphere
+            // Union = ground and a sphere
             return Mathf.Min(ground, sphere);
         }
 
@@ -103,45 +117,83 @@ namespace AliceSDF
         void Start()
         {
             _localPlayer = Networking.LocalPlayer;
+            _pushing = false;
         }
 
         public override void PostLateUpdate()
         {
             if (_localPlayer == null) return;
 
-            _tickCounter++;
-            if (_tickCounter % updateInterval != 0) return;
+            animTime = Time.timeSinceLevelLoad;
 
             Vector3 playerPos = _localPlayer.GetPosition();
+            float eyeHeight = _localPlayer.GetAvatarEyeHeightAsMeters();
+            if (eyeHeight <= 0f) eyeHeight = fallbackEyeHeight;
 
-            // Evaluate SDF at player feet (slightly below center)
-            Vector3 feetPos = playerPos + Vector3.down * 0.05f;
-            float dist = Evaluate(feetPos);
-
-            // Check if player is inside the SDF surface
-            float threshold = collisionMargin;
-            if (dist < threshold)
+            Vector3 push = PlayerPushOut(playerPos, eyeHeight, Time.deltaTime);
+            if (push != Vector3.zero)
             {
-                // Compute gradient (surface normal direction)
-                Vector3 normal = EstimateGradient(feetPos);
-
-                // Push distance: how far inside we are
-                float penetration = threshold - dist;
-                penetration = Mathf.Min(penetration, maxPushDistance);
-
-                // Push player out along the gradient
-                Vector3 correction = normal * penetration * pushStrength;
-                Vector3 newPos = playerPos + correction;
-
-                _localPlayer.TeleportTo(newPos, _localPlayer.GetRotation());
-
-                if (debugMode)
-                {
-                    Debug.Log($"[AliceSDF] Push: d={dist:F3}, n={normal}, corr={correction.magnitude:F3}");
-                }
+                if (!_pushing && logEvents)
+                    Debug.Log("[SDF] push at " + playerPos.ToString("F2") + " by " + push.ToString("F3"));
+                _pushing = true;
+                _localPlayer.TeleportTo(playerPos + push, _localPlayer.GetRotation());
+            }
+            else
+            {
+                _pushing = false;
             }
         }
 #endif
+
+        // Displacement to apply to the player this frame, zero when clear or
+        // when every contact is a floor (see the header). Among the body
+        // samples inside the margin, the deepest WALL contact decides: the
+        // feet resting on an SDF floor (d = 0) would otherwise mask a chest
+        // in a sphere
+        public Vector3 PlayerPushOut(Vector3 playerPos, float eyeHeight, float dt)
+        {
+            int n = bodySamples < 2 ? 2 : bodySamples;
+            float bestPen = 0f;
+            Vector3 bestDir = Vector3.zero;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
+                float d = Evaluate(s);
+                if (d >= collisionMargin) continue;
+                float pen = Mathf.Min(collisionMargin - d, maxPushDistance);
+                if (pen <= bestPen) continue;
+                Vector3 normal = EstimateGradient(s);
+                Vector3 flat = new Vector3(normal.x, 0f, normal.z);
+                float flatLen = flat.magnitude;
+                if (flatLen <= WallSlope) continue;   // floor or ceiling: not ours
+                bestPen = pen;
+                bestDir = flat / flatLen;
+            }
+            if (bestPen < PushDeadBand) return Vector3.zero;
+
+            float smooth = Mathf.Min(dt * 10f, 1f);
+            return bestDir * bestPen * pushStrength * smooth;
+        }
+
+        // The body-axis sample (feet = playerPos, eyes = playerPos + eyeHeight)
+        // deepest inside the SDF
+        public Vector3 DeepestBodySample(Vector3 playerPos, float eyeHeight)
+        {
+            int n = bodySamples < 2 ? 2 : bodySamples;
+            float minDist = 1e10f;
+            Vector3 minP = playerPos;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
+                float d = Evaluate(s);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    minP = s;
+                }
+            }
+            return minP;
+        }
 
         /// <summary>
         /// Estimate the SDF gradient (surface normal) at point p

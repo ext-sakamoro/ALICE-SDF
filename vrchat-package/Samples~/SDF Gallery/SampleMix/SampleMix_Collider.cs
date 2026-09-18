@@ -1,4 +1,10 @@
 // ALICE-SDF Sample: Mix Collider (Fractal Planet + Ring + Onion Shell)
+//
+// The same law as SampleMix_Raymarcher.shader's map(), including the
+// animation (planet spin, ring tilt, onion orbit): animTime is what the
+// shader's _Time.y is (set by the base collider every frame; 0 on a host),
+// so the player collides with the shapes where they are drawn. The Rust
+// golden (examples/vrchat_mix_golden.rs) is the t = 0 snapshot.
 // Static snapshot (no animation) for collision detection.
 using UnityEngine;
 
@@ -29,24 +35,28 @@ namespace AliceSDF.Samples
         public float onionRadius = 3.0f;
         public int onionLayers = 3;
         public float onionThickness = 0.15f;
-        public Vector3 onionPosition = new Vector3(16f, 0f, 0f);
+        [Tooltip("Orbit radius of the onion shell around the planet (m); it rises and falls by an eighth of it")]
+        public float onionOrbit = 16f;
 
         [Header("Blend")]
         public float smoothness = 0.8f;
 
-        public
-#if UDONSHARP
-        new
-#else
-        override
-#endif
-        float Evaluate(Vector3 p)
+        // override, not new: UdonSharp resolves a virtual call to the most
+        // derived method, so the base collider pushes against this SDF (with
+        // new it pushed against the base class demo sphere)
+        public override float Evaluate(Vector3 p)
         {
-            // --- Fractal Planet (Sphere ∩ Menger Sponge) ---
-            float planet = p.magnitude - planetRadius;
+            float time = animTime;
+
+            // --- Fractal Planet (Sphere ∩ Menger Sponge), slowly spinning about Y ---
+            float rotAngle = time * 0.1f;
+            float cr = Mathf.Cos(rotAngle);
+            float sr = Mathf.Sin(rotAngle);
+            Vector3 pp = new Vector3(cr * p.x - sr * p.z, p.y, sr * p.x + cr * p.z);
+            float planet = pp.magnitude - planetRadius;
 
             // Infinite cross via repetition
-            Vector3 rp = RepeatInfinite(p, new Vector3(repeatScale, repeatScale, repeatScale));
+            Vector3 rp = RepeatInfinite(pp, new Vector3(repeatScale, repeatScale, repeatScale));
             float inf = 1000f;
             float barX = SdfBox(rp, new Vector3(inf, holeSize, holeSize));
             float barY = SdfBox(rp, new Vector3(holeSize, inf, holeSize));
@@ -55,12 +65,18 @@ namespace AliceSDF.Samples
 
             float fractalPlanet = Mathf.Max(-cross, planet);
 
-            // --- Torus Ring ---
-            float qx = new Vector2(p.x, p.z).magnitude - ringMajor;
-            float ring = new Vector2(qx, p.y).magnitude - ringMinor;
+            // --- Torus Ring, slowly tilting about X ---
+            float ringTilt = time * 0.05f;
+            float ct = Mathf.Cos(ringTilt);
+            float st = Mathf.Sin(ringTilt);
+            Vector3 ringP = new Vector3(p.x, ct * p.y - st * p.z, st * p.y + ct * p.z);
+            float qx = new Vector2(ringP.x, ringP.z).magnitude - ringMajor;
+            float ring = new Vector2(qx, ringP.y).magnitude - ringMinor;
 
-            // --- Onion Shell (static position for collision) ---
-            Vector3 op = p - onionPosition;
+            // --- Onion Shell, orbiting the planet ---
+            float orbitAngle = time * 0.2f;
+            Vector3 onionPos = new Vector3(Mathf.Cos(orbitAngle) * onionOrbit, Mathf.Sin(orbitAngle) * onionOrbit * 0.125f, Mathf.Sin(orbitAngle) * onionOrbit);
+            Vector3 op = p - onionPos;
             float onion = op.magnitude - onionRadius;
             for (int i = 0; i < onionLayers; i++)
             {

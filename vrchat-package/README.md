@@ -92,22 +92,27 @@ Seven ready-to-play samples are included. Import via **Package Manager > Samples
 |--------|-------------|-------------|
 | **Basic** | Ground plane + floating sphere. The simplest SDF world. | `min(plane, sphere)` |
 | **Cosmic** | Animated solar system — Sun, orbiting planet, tilted ring, moon, asteroid belt. | `SmoothUnion(sun, planet, ring, moon, asteroids)` |
-| **Fractal** | Walk inside a Menger Sponge labyrinth with twist deformation. | `Subtract(Box, Repeat(Cross))` — one formula, infinite complexity |
+| **Fractal** | A Menger Sponge labyrinth with twist deformation, seen from a viewing platform. | `Subtract(Box, Repeat(Cross))` — one formula, infinite complexity |
 | **Mix** | Cosmic x Fractal fusion — fractal planet + torus ring + onion shell. | `SmoothUnion(Intersect(Sphere, Menger), Torus, Onion(Sphere))` |
 | **DeformableWall** | Touch, punch (mouse) or walk into the wall and it dents. Dents recover over time. | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
 | **Mochi** | Squishy mochi blobs. Grab, merge, split, and grow. SmoothUnion soft-body physics. | `SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k))` |
 | **TerrainSculpt** | Dig holes & build hills with VR hands or the mouse. You fall into holes you dig. **Only possible with SDF.** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
 
 Each sample includes:
-- `*_Raymarcher.shader` — Raymarching shader with SV_Depth, LOD, AO, fog
-- `*_Collider.cs` — UdonSharp collider (with `#if UDONSHARP` guard)
-- `*.asdf.json` — Source definition for the Baker
+- `*_Raymarcher.shader` â Raymarching shader with SV_Depth, LOD, AO, fog; every sample has `Cull Off` (the volume renders from inside), the closest-approach acceptance (no dark seam on silhouettes), a `Light Direction` property and, where there is a ground, a soft contact shadow
+- `*_Collider.cs` â UdonSharp collider (with `#if UDONSHARP` guard). The four static samples derive from the package's `AliceSDF_Collider`: the body is sampled from the feet to the eyes and the deepest wall-like contact pushes the player back sideways (a floor-like contact is left to the scene's floor / platform collider, so nothing bobs). Cosmic and Mix animate; their colliders follow the shader through `animTime` (`Time.timeSinceLevelLoad`, the shader's `_Time.y`), so the orbiting planet pushes you where it is drawn
+- `*.asdf.json` â Source definition for the Baker
+- a Rust golden (`examples/vrchat_<sample>_golden.rs`) and a host parity check (`HostTests~`) that the collider's law is the crate's law
+
+The scene generator gives every sample a `VRCSceneDescriptor` with a spawn, a floor collider where the SDF has a ground (Basic, Mochi, DeformableWall) and a viewing platform under the spawn in the space scenes (Cosmic, Fractal, Mix; their skybox is cleared so a raymarch miss is black). Walking off the platform is a long fall to the respawn height â standing on the SDF itself is only implemented for TerrainSculpt.
 
 ### Interactive Samples (VR)
 
 The **DeformableWall**, **Mochi**, and **TerrainSculpt** samples demonstrate real-time SDF deformation driven by VR hand tracking. Unlike the static samples above, these send dynamic data from UdonSharp to the shader every frame via `Material.SetVectorArray`.
 
 #### DeformableWall — Touch & Dent
+
+![DeformableWall on desktop: punch the wall where you look, dents refresh where you keep hitting, the end face dents too](Documentation~/wall_desktop.gif)
 
 A flat wall standing on a ground plane. Touch it with a VR hand, punch it with the mouse, or walk into it: a dent appears at the contact and gradually recovers. The dents are real geometry — you collide with the dented wall, not the flat one.
 

@@ -3,6 +3,26 @@
 ## [Unreleased]
 
 ### Fixed
+- The four static samples (Basic / Cosmic / Fractal / Mix) had no working
+  collision in VRChat. Their colliders derive from the package's
+  `AliceSDF_Collider`, but that assembly had no UdonSharp assembly
+  definition (`AliceSDF.Runtime.UdonSharp.asset`, now shipped), so the base
+  class could not run as Udon, and the samples hid `Evaluate` with `new`
+  instead of overriding it, so a base that did run would have pushed against
+  the base-class demo sphere. Now: the U# assembly definition, `override`
+  (UdonSharp resolves virtual calls), and the base collider samples the body
+  feet to eyes and pushes the deepest wall-like contact sideways with a dead
+  band, leaving floor-like contacts to the scene's colliders (no bobbing).
+  The scene generator also creates the base class's program asset (UdonSharp
+  throws an internal `ArgumentNullException` without it).
+- Cosmic and Mix colliders were static snapshots (and Cosmic lacked the
+  ring's tilt and twist and the asteroids) while the shaders animate:
+  rendering and collision disagreed. The colliders now carry the full shader
+  law with `animTime` (`Time.timeSinceLevelLoad`, the shader's `_Time.y`);
+  the shader's 15-degree ring tilt uses exact constants (0.9659 → 0.96592582).
+- Static sample shaders: `Cull Off`, closest-approach acceptance,
+  `_LightDir`, Basic gets a soft contact shadow and a `_FogDensity`, Mix's
+  AO samples the hard union (no dark ring at the ring / planet junction).
 - DeformableWall: the player collided with the flat box while the shader
   drew dents (the collider "simplified" the wall for speed), and the same
   foot-only push as Mochi's first version. The collider now evaluates the
@@ -68,6 +88,15 @@
   T13 collider without `UdonBehaviour`).
 
 ### Added
+- Static sample scenes are playable: the generator adds the `VRCSceneDescriptor`
+  + spawn to all seven, a floor collider to Basic, a viewing platform under
+  the spawn of Cosmic / Fractal / Mix (skybox cleared: a raymarch miss is
+  black space, not the world's sky).
+- `HostTests~/StaticParity` + four goldens (`examples/vrchat_{basic,cosmic,fractal,mix}_golden.rs`,
+  2535 / 2907 / 3375 / 1989 points, the animated ones at t = 0) + the base
+  collider's push scenario; `scripts/vrchat-host-parity.sh` runs all seven
+  samples (the example name is passed to each project).
+- `Log Events` on the base collider (`[SDF] push ...`).
 - DeformableWall on desktop: hold the left button (Use) to punch the wall
   where you look (`Cursor Max Dist` 4 m); walking into the wall presses
   your body capsule into it (`_PlayerCapA/B`, local) while it pushes you
