@@ -12,6 +12,7 @@ static class Program
     static int Main(string[] args)
     {
         var c = new SampleMochi_Collider();
+        typeof(SampleMochi_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         // Start() is private (Unity message); invoke it like Unity would
         typeof(SampleMochi_Collider).GetMethod("Start", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(c, null);
 

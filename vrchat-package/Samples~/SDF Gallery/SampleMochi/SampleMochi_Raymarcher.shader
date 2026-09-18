@@ -49,6 +49,9 @@ Shader "AliceSDF/Samples/Mochi"
         _PlayerCapA ("Player Capsule A (xyz, w = radius)", Vector) = (0, 0, 0, 0)
         _PlayerCapB ("Player Capsule B (xyz)", Vector) = (0, 0, 0, 0)
         _PlayerDentK ("Player Dent Smoothness", Float) = 0.12
+        // Ground point, driven every frame by the collider (transform + groundOffset):
+        // the ground plane passes through it, so the prefab can sit anywhere
+        _Origin ("Origin (ground point)", Vector) = (0, 0, 0, 0)
 
         [Header(Lighting)]
         _LightDir ("Light Direction", Vector) = (1.0, 1.0, -0.5, 0.0)
@@ -207,6 +210,7 @@ Shader "AliceSDF/Samples/Mochi"
             float4 _MochiData[MOCHI_MAX];
             float _MochiCount;
             float4 _PlayerCapA, _PlayerCapB;
+            float4 _Origin;
             float _PlayerDentK;
 
             struct appdata {
@@ -252,7 +256,7 @@ Shader "AliceSDF/Samples/Mochi"
             // Full scene: ground plane at Y=0, mochis "squish" onto it
             float map(float3 p)
             {
-                return opSmoothUnion(p.y, mapMochi(p), _GroundK);
+                return opSmoothUnion(p.y - _Origin.y, mapMochi(p), _GroundK);
             }
 
             // Occluder distance for AO: the hard union. The polynomial smooth
@@ -263,7 +267,7 @@ Shader "AliceSDF/Samples/Mochi"
             // outside the sphere / ground, so only real geometry occludes.
             float mapOccluder(float3 p)
             {
-                return min(p.y, mapMochi(p));
+                return min(p.y - _Origin.y, mapMochi(p));
             }
 
             // Inlined AO with LOD
@@ -404,7 +408,7 @@ Shader "AliceSDF/Samples/Mochi"
 
                     // Material weight from the same union that shaped the
                     // surface: 0 = ground, 1 = mochi, continuous across the neck
-                    float mochiW = opSmoothUnionBlend(p.y, mapMochi(p), _GroundK).y;
+                    float mochiW = opSmoothUnionBlend(p.y - _Origin.y, mapMochi(p), _GroundK).y;
 
                     // === MOCHI SURFACE ===
                     // Warm wrap lighting (subsurface scattering approx)

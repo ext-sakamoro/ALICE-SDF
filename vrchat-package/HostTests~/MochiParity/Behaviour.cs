@@ -13,6 +13,7 @@ static class Behaviour
     public static int Run()
     {
         var c = new SampleMochi_Collider();
+        typeof(SampleMochi_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         Call(c, "Start");
         int count() => (int)Get(c, "mochiCount");
         float[] r() => (float[])Get(c, "mochiR");
@@ -70,6 +71,7 @@ static class Behaviour
         // Player collision on a fresh scene: body sampled from feet to eyes,
         // the floor is VRChat's (y clamped to 0 like its floor collider would)
         var pc = new SampleMochi_Collider();
+        typeof(SampleMochi_Collider).GetField("groundOffset").SetValue(pc, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         Call(pc, "Start");
         float eye = 1.6f, dt = 1f / 90f;
         Check(pc.PlayerPushOut(new Vector3(2f, 0f, 2f), eye, dt) == Vector3.zero, "floor away from mochis: no push");
@@ -92,6 +94,7 @@ static class Behaviour
         Check(q.y == 0f && Math.Abs(q.z - m0.z) < 0.02f, "stayed on the floor and on the approach line");
         // The mochi gives way by the mass ratio (r 0.35, water density: 180 kg vs 60 kg player)
         var yc = new SampleMochi_Collider();
+        typeof(SampleMochi_Collider).GetField("groundOffset").SetValue(yc, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         Call(yc, "Start");
         var ypos = (Vector3[])Get(yc, "mochiPos");
         var before = ypos[0];
@@ -107,6 +110,7 @@ static class Behaviour
         Check(yc.YieldMochi(stand, eye, ypush) == 0f && ypos[0] == held, "a grabbed mochi does not yield");
         // Desktop cursor: a click along -z at mochi 1 (r 0.30 at (0.5,0.30,0.3)) from z = 2
         var dc = new SampleMochi_Collider();
+        typeof(SampleMochi_Collider).GetField("groundOffset").SetValue(dc, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         Call(dc, "Start");
         var dpos = (Vector3[])Get(dc, "mochiPos");
         var dgrab = (int[])Get(dc, "grab");
@@ -126,6 +130,7 @@ static class Behaviour
         Check(dgrab[1] == -1, "releasing the button drops it");
         // Carrying (default: no split on pull): the held mochi follows 1 m without splitting
         var cc = new SampleMochi_Collider();
+        typeof(SampleMochi_Collider).GetField("groundOffset").SetValue(cc, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         Call(cc, "Start");
         var cpos = (Vector3[])Get(cc, "mochiPos"); var cgrab = (int[])Get(cc, "grab");
         var c0 = cpos[0]; float cr0 = ((float[])Get(cc, "mochiR"))[0];
@@ -155,6 +160,17 @@ static class Behaviour
         // Directly on the mochi's column: the only way out is up, never down into the floor
         var under = pc.PlayerPushOut(new Vector3(m0.x, 0f, m0.z), eye, dt);
         Check(under != Vector3.zero && under.y >= 0f, "under the centre: push is not downward");
+        // Placement: the law follows transform + groundOffset (the product prefab can sit anywhere)
+        var oc = new SampleMochi_Collider();
+        var off = new Vector3(2f, 0.5f, -1f);
+        typeof(SampleMochi_Collider).GetField("groundOffset").SetValue(oc, off);
+        Call(oc, "Start");
+        var opos = (Vector3[])Get(oc, "mochiPos");
+        Check(opos[0] == off + new Vector3(-0.6f, 0.35f, 0.5f), "with a ground offset the mochis spawn around it");
+        Check(Math.Abs(oc.EvaluateSdf(off + new Vector3(5f, 0f, 5f))) < 1e-6f, "the ground plane passes through the offset point");
+        Check(Math.Abs(oc.EvaluateSdf(off + new Vector3(5f, 1f, 5f)) - 1f) < 1e-6f, "1 m above it is 1 m from the ground");
+        for (int i = 0; i < 900; i++) Call(oc, "ApplyGravity");
+        Check(Math.Abs(opos[0].y - (off.y + 0.35f)) < 2e-3f, "a mochi settles one radius above the offset ground");
         Console.WriteLine(fails == 0 ? "behaviour: all ok" : $"behaviour: {fails} FAIL");
         return fails;
     }

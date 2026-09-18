@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Fixed
+- Mochi: the law was anchored to the world origin (ground `y = 0`, the
+  initial mochis around `(0, 0)`), so three product prefabs placed 6 m apart
+  all spawned their mochis at the origin (first Build & Test of the
+  product: "only green"). The collider now anchors everything to
+  `transform + Ground Offset` (the cube's bottom centre) and pushes it to
+  the shader as `_Origin`: spawn ring, resting height, merge floor, the
+  desktop cursor floor clamp and the rendered ground plane all follow the
+  prefab. The golden layout is unchanged at the origin (host tests anchor
+  there); a placement scenario checks an offset.
 - The four static samples (Basic / Cosmic / Fractal / Mix) had no working
   collision in VRChat. Their colliders derive from the package's
   `AliceSDF_Collider`, but that assembly had no UdonSharp assembly

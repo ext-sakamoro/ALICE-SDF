@@ -83,6 +83,10 @@ namespace AliceSDF.Samples
         [Tooltip("Ground detail colour (grain) / 地面の模様色")]
         public Color groundDetail = new Color(0.50f, 0.42f, 0.33f, 1f);
 
+        [Header("Placement")]
+        [Tooltip("Ground point relative to this transform: the bottom centre of the volume cube (scale y 2 -> -1). The mochis rest on it and the ring is centred on it, so the prefab can go anywhere / この transform から見た地面の点 (cube 底面の中心)、餅はここに乗り、輪はここを中心に並ぶ")]
+        public Vector3 groundOffset = new Vector3(0f, -1f, 0f);
+
         [Header("Mochis (initial layout)")]
         [Tooltip("Off: the five-mochi layout of the sample (what the golden test checks). On: Initial Count mochis of Initial Radius on a ring of Ring Radius / off = sample の 5 個固定、on = 下の個数・半径・輪で並べる")]
         public bool useCustomLayout = false;
@@ -186,6 +190,10 @@ namespace AliceSDF.Samples
         private const float PushLogInterval = 0.5f;
 #endif
 
+        // World point the law is anchored to (transform + groundOffset): the
+        // ground plane passes through it and the ring is centred on it
+        private Vector3 origin;
+
         // Shader data
         private Vector4[] shaderData;
         private Material mat;
@@ -198,6 +206,8 @@ namespace AliceSDF.Samples
 
         void Start()
         {
+            origin = transform.position + groundOffset;
+
             // A late joiner may have received the owner's arrays already
             if (mochiPos == null) mochiPos = new Vector3[MaxMochi];
             if (mochiR == null) mochiR = new float[MaxMochi];
@@ -239,16 +249,16 @@ namespace AliceSDF.Samples
                     for (int i = 0; i < n; i++)
                     {
                         float a = 6.2831853f * i / n;
-                        SpawnMochi(new Vector3(Mathf.Cos(a) * ringRadius, r, Mathf.Sin(a) * ringRadius), r);
+                        SpawnMochi(origin + new Vector3(Mathf.Cos(a) * ringRadius, r, Mathf.Sin(a) * ringRadius), r);
                     }
                 }
                 else
                 {
-                    SpawnMochi(new Vector3(-0.6f, 0.35f, 0.5f), 0.35f);
-                    SpawnMochi(new Vector3( 0.5f, 0.30f, 0.3f), 0.30f);
-                    SpawnMochi(new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
-                    SpawnMochi(new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
-                    SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
+                    SpawnMochi(origin + new Vector3(-0.6f, 0.35f, 0.5f), 0.35f);
+                    SpawnMochi(origin + new Vector3( 0.5f, 0.30f, 0.3f), 0.30f);
+                    SpawnMochi(origin + new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
+                    SpawnMochi(origin + new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
+                    SpawnMochi(origin + new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
                 }
             }
 
@@ -468,8 +478,8 @@ namespace AliceSDF.Samples
             Vector3 cursor = o + dir * cursorDist;
             // A steep view ray would drag the held mochi under the floor
             int held = grab[HandRight];
-            if (held >= 0 && held < mochiCount && cursor.y < mochiR[held])
-                cursor = new Vector3(cursor.x, mochiR[held], cursor.z);
+            if (held >= 0 && held < mochiCount && cursor.y < origin.y + mochiR[held])
+                cursor = new Vector3(cursor.x, origin.y + mochiR[held], cursor.z);
             cursorDriving = true;
             ProcessHand(cursor, HandRight);
             cursorDriving = false;
@@ -654,7 +664,7 @@ namespace AliceSDF.Samples
                     // Volume-weighted centre, kept on or above the ground so the
                     // bigger mochi does not spend a frame sunk into the floor
                     Vector3 c = (mochiPos[i] * vi + mochiPos[j] * vj) / totalV;
-                    mochiPos[i] = new Vector3(c.x, Mathf.Max(c.y, newR), c.z);
+                    mochiPos[i] = new Vector3(c.x, Mathf.Max(c.y, origin.y + newR), c.z);
 
                     LogEvent("merge #" + j + " into #" + i + " r=" + F(newR) + " at " + F(mochiPos[i])
                              + ", " + (mochiCount - 1) + " mochis left");
@@ -676,8 +686,8 @@ namespace AliceSDF.Samples
             {
                 if (IsGrabbed(i)) continue;
 
-                // Resting height: centre at Y = radius (sphere touching the ground)
-                float targetY = mochiR[i];
+                // Resting height: centre one radius above the ground (sphere touching it)
+                float targetY = origin.y + mochiR[i];
                 float currentY = mochiPos[i].y;
                 if (currentY > targetY + 0.001f)
                 {
@@ -702,7 +712,7 @@ namespace AliceSDF.Samples
         // =================================================================
         public float EvaluateSdf(Vector3 p)
         {
-            return OpSmoothUnion(p.y, EvaluateMochiSdf(p), groundK);
+            return OpSmoothUnion(p.y - origin.y, EvaluateMochiSdf(p), groundK);
         }
 
         // =================================================================
@@ -933,6 +943,7 @@ namespace AliceSDF.Samples
             mat.SetVector("_PlayerCapA", playerCapA);
             mat.SetVector("_PlayerCapB", playerCapB);
             mat.SetFloat("_PlayerDentK", dentK);
+            mat.SetVector("_Origin", new Vector4(origin.x, origin.y, origin.z, 0f));
 
             if (applyColors)
             {

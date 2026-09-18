@@ -35,13 +35,13 @@ namespace AliceSDF.Editor
         private static void Resume()
         {
             if (!EditorPrefs.GetBool(PendingKey, false)) return;
-            EditorApplication.delayCall += () =>
+            NextTick(() =>
             {
                 if (EditorApplication.isCompiling) { Resume(); return; }
                 EditorPrefs.SetBool(PendingKey, false);
                 string path = BuildCore();
                 if (!string.IsNullOrEmpty(path)) Debug.Log("[ALICE-SDF] Mochi product phase 2 done: " + path);
-            };
+            });
         }
 
         private const string PackageRoot = "Packages/com.alice.sdf";
@@ -67,6 +67,15 @@ namespace AliceSDF.Editor
                          ground = new Color(0.75f, 0.72f, 0.62f), detail = new Color(0.70f, 0.66f, 0.56f),
                          blendK = 0.3f, groundK = 0.1f, density = 1000f, gravity = 5f },
         };
+
+        // Run once on the next editor update (delayCall proved unreliable across
+        // a UdonSharp compile)
+        private static void NextTick(System.Action action)
+        {
+            EditorApplication.CallbackFunction once = null;
+            once = () => { EditorApplication.update -= once; action(); };
+            EditorApplication.update += once;
+        }
 
         [MenuItem("ALICE-SDF/Build Mochi Product")]
         public static void Build()
@@ -99,7 +108,9 @@ namespace AliceSDF.Editor
                    .Replace("SampleMochi_Collider", "AliceMochi")
                    .Replace("// ALICE-SDF Sample: Mochi Collider & Interaction (UdonSharp)",
                             "// AliceMochi - generated from the ALICE-SDF Mochi sample by MochiProductBuilder; do not edit here");
-            File.WriteAllText(Out + "/Scripts/AliceMochi.cs", cs);
+            string csPath = Out + "/Scripts/AliceMochi.cs";
+            bool scriptChanged = !File.Exists(csPath) || File.ReadAllText(csPath) != cs;
+            File.WriteAllText(csPath, cs);
 
             // --- Shader: rename; it is stand-alone (no package include) ---
             string sh = File.ReadAllText(Path.Combine(sampleFull, "SampleMochi_Raymarcher.shader"));
@@ -115,7 +126,7 @@ namespace AliceSDF.Editor
             if (File.Exists(lic)) File.Copy(lic, Out + "/LICENSE.txt", true);
 
             var type = FindType("AliceMochi.AliceMochi");
-            if (type == null)
+            if (type == null || scriptChanged)
             {
                 // Phase 1: the script is new, let Unity compile it; Resume continues
                 EditorPrefs.SetBool(PendingKey, true);
@@ -142,11 +153,11 @@ namespace AliceSDF.Editor
                 // (CopyProxyToUdon throws "outdated script version" in this one):
                 // phase 2 ends here, phase 3 (materials / prefabs / export) follows
                 Debug.Log("[ALICE-SDF] Mochi product phase 2: program asset compiled, prefabs follow");
-                EditorApplication.delayCall += () => EditorApplication.delayCall += () =>
+                NextTick(() =>
                 {
                     string p = BuildCore();
                     if (p != null) Debug.Log("[ALICE-SDF] Mochi product phase 3 done: " + p);
-                };
+                });
                 return null;
             }
 #endif
@@ -198,33 +209,26 @@ namespace AliceSDF.Editor
             AssetDatabase.SaveAssets();
 
 #if UDONSHARP
-            // UdonSharp gives a scene proxy its backing UdonBehaviour on its own
-            // editor tick ("has not been fully setup, running setup"); creating
-            // it here throws (outdated script version / null key). So the
-            // prefabs are saved on a later tick, once every proxy is backed.
-            EditorApplication.CallbackFunction finish = null;
-            finish = () =>
+            // A UdonSharp compile right before asking for the backing behaviours:
+            // in the call that created or rewrote the program asset,
+            // CreateBehaviourForProxy throws (outdated script version / null
+            // key) until a compile has registered the script version
+            UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync(new UdonSharp.Compiler.UdonSharpCompileOptions());
+            foreach (var go in pending)
             {
-                foreach (var go in pending)
+                var proxy = go.GetComponent<UdonSharp.UdonSharpBehaviour>();
+                if (proxy != null)
                 {
-                    var proxy = go.GetComponent<UdonSharp.UdonSharpBehaviour>();
-                    if (proxy != null && UdonSharpEditor.UdonSharpEditorUtility.GetBackingUdonBehaviour(proxy) == null) return; // wait another tick
+                    if (UdonSharpEditor.UdonSharpEditorUtility.GetBackingUdonBehaviour(proxy) == null)
+                        UdonSharpEditor.UdonSharpEditorUtility.CreateBehaviourForProxy(proxy);
+                    UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(proxy);
                 }
-                EditorApplication.update -= finish;
-                foreach (var go in pending)
-                {
-                    var proxy = go.GetComponent<UdonSharp.UdonSharpBehaviour>();
-                    if (proxy != null) UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(proxy);
-                    PrefabUtility.SaveAsPrefabAsset(go, Out + "/Prefabs/" + go.name + ".prefab");
-                    Object.DestroyImmediate(go);
-                }
-                AssetDatabase.SaveAssets();
-                AssetDatabase.Refresh();
-                string exported = Export(packageFull);
-                Debug.Log("[ALICE-SDF] Mochi product phase 3 done: " + exported);
-            };
-            EditorApplication.update += finish;
-            return null;
+                PrefabUtility.SaveAsPrefabAsset(go, Out + "/Prefabs/" + go.name + ".prefab");
+                Object.DestroyImmediate(go);
+            }
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            return Export(packageFull);
 #else
             foreach (var go in pending)
             {
@@ -277,7 +281,8 @@ One prefab, no other packages: drop it in and build.
 ## Install (3 steps)
 1. Import `AliceMochi_<version>.unitypackage` into a VRChat **Worlds** project (SDK 3.7 or newer, UdonSharp is part of the SDK).
 2. Drag `Assets/AliceMochi/Prefabs/AliceMochi Mochi.prefab` (or Slime / Water) into your scene.
-   The cube is the volume the mochis live in; scale it to the area you want. Keep a floor collider under it.
+   Put it where you want the mochis: the bottom face of the cube is their ground (the prefab can sit at any position or height).
+   The cube is the volume they can move in; scale it to the area you want. Keep a floor collider at that ground level.
 3. Build & Test. PC only (the raymarching shader is not built for Quest).
 
 ## Play
@@ -319,7 +324,8 @@ prefab 1 個、他の package 不要: 置いてビルドするだけ
 ## 導入 (3 step)
 1. VRChat **Worlds** project (SDK 3.7 以降、UdonSharp は SDK 同梱) に `AliceMochi_<version>.unitypackage` を import
 2. `Assets/AliceMochi/Prefabs/AliceMochi Mochi.prefab` (または Slime / Water) を scene に drag
-   Cube は餅が存在できる範囲 (volume) なので置きたい広さに scale してください 下には床 collider を置いてください
+   餅を出したい場所に置いてください: Cube の底面が餅の地面です (prefab はどの位置・高さでも可)
+   Cube は餅が動ける範囲 (volume) なので置きたい広さに scale、その地面の高さに床 collider を置いてください
 3. Build & Test PC 専用 (レイマーチングシェーダーは Quest 向けにビルドしていません)
 
 ## 遊び方
