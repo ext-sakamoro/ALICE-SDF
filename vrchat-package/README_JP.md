@@ -213,6 +213,10 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|
 | Blend K | 0.5 | 餅同士のSmoothUnion係数（大きいほど粘着）— 毎フレーム Material に送るので当たり判定と描画が常に一致 |
+| Look: Apply Colors / Mochi Color / Highlight / Ground Color / Detail | off | 色を毎フレーム material に送る (material を手で触らない) |
+| Look: Mochi Texture / Scale / Strength, Ground Texture / Scale / Strength | なし | 任意のテクスチャ、triplanar 投影 (餅は餅ごとの座標で動いても付いてくる、地面は Ground Offset 基準の world 座標) Strength 1 でテクスチャそのまま |
+| Mochis: Use Custom Layout / Initial Count / Radius / Ring Radius | off / 5 / 0.3 / 0.7 | 初期配置 (off = sample の 5 個固定、golden test が見る) |
+| Placement: Ground Offset | (0, -1, 0) | transform から見た地面の点 (cube 底面の中心)、law はここに固定されるのでどこに置いてもよい |
 | Ground K | 0.15 | 地面とのSmoothUnion係数（ぷにぷに接地感）— 毎フレーム Material に送る |
 | Min Radius | 0.1 | 最小餅サイズ（これ以下には分裂しない） |
 | Grab Threshold | 0.8 | 掴むために手が半径の何割以内に入る必要があるか |

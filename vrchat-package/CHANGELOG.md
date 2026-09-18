@@ -97,6 +97,12 @@
   T13 collider without `UdonBehaviour`).
 
 ### Added
+- Mochi: optional textures from the Inspector (`Mochi Texture` / `Ground
+  Texture` + scale + strength, pushed to `_MochiTex` / `_GroundTex` with
+  `Apply Colors`). The shader projects them triplanar: the mochi texture in
+  the nearest mochi's own frame scaled by its radius (it moves, splits and
+  grows with the mochi), the ground texture in world space around the
+  ground point. Strength 1 shows the texture as is, lower tints it.
 - **AliceMochi product** (`ALICE-SDF/Build Mochi Product`, `Editor/MochiProductBuilder.cs`):
   generates a stand-alone `Assets/AliceMochi/` (script, shader, three preset
   materials + prefabs Mochi / Slime / Water, program asset, README EN / JP,

@@ -36,6 +36,18 @@ Shader "AliceSDF/Samples/Mochi"
         _GroundColor ("Ground Color", Color) = (0.55, 0.46, 0.36, 1.0)
         _GroundColor2 ("Ground Detail", Color) = (0.50, 0.42, 0.33, 1.0)
 
+        [Header(Textures (optional, triplanar))]
+        // The mochis have no UVs: a texture is projected from three axes in the
+        // local frame of the nearest mochi (scaled by its radius), so it moves
+        // and grows with the mochi; the ground texture is projected in world
+        // space around the origin. Strength 0 keeps the plain colours.
+        [NoScaleOffset] _MochiTex ("Mochi Texture", 2D) = "white" {}
+        _MochiTexScale ("Mochi Texture Tiles per Radius", Float) = 1.0
+        _MochiTexStrength ("Mochi Texture Strength", Range(0, 1)) = 0.0
+        [NoScaleOffset] _GroundTex ("Ground Texture", 2D) = "white" {}
+        _GroundTexScale ("Ground Texture Tiles per Metre", Float) = 0.5
+        _GroundTexStrength ("Ground Texture Strength", Range(0, 1)) = 0.0
+
         [Header(Raymarching)]
         _MaxDist ("Max Distance", Float) = 80.0
 
@@ -197,6 +209,8 @@ Shader "AliceSDF/Samples/Mochi"
             // =================================================================
 
             float4 _MochiColor, _MochiColor2, _GroundColor, _GroundColor2, _FogColor;
+            sampler2D _MochiTex, _GroundTex;
+            float _MochiTexScale, _MochiTexStrength, _GroundTexScale, _GroundTexStrength;
             float _MaxDist;
             float _BlendK, _GroundK;
             float4 _LightDir;
@@ -251,6 +265,33 @@ Shader "AliceSDF/Samples/Mochi"
                     mochi = opSmoothSubtraction(mochi, body, _PlayerDentK);
                 }
                 return mochi;
+            }
+
+            // Index of the mochi whose surface is nearest to p (the texture frame)
+            int nearestMochi(float3 p)
+            {
+                int count = min((int)_MochiCount, MOCHI_MAX);
+                int best = 0;
+                float bestD = 1e10;
+                for (int i = 0; i < MOCHI_MAX; i++)
+                {
+                    if (i >= count) break;
+                    float d = sdSphere(p - _MochiData[i].xyz, _MochiData[i].w);
+                    if (d < bestD) { bestD = d; best = i; }
+                }
+                return best;
+            }
+
+            // Triplanar sample: the three axis projections of q blended by the
+            // normal, so a curved surface shows the texture without UVs
+            float3 triplanar(sampler2D tex, float3 q, float3 n)
+            {
+                float3 w = abs(n);
+                w = w / max(w.x + w.y + w.z, 1e-4);
+                float3 cx = tex2D(tex, q.yz).rgb;
+                float3 cy = tex2D(tex, q.xz).rgb;
+                float3 cz = tex2D(tex, q.xy).rgb;
+                return cx * w.x + cy * w.y + cz * w.z;
             }
 
             // Full scene: ground plane at Y=0, mochis "squish" onto it
@@ -414,6 +455,14 @@ Shader "AliceSDF/Samples/Mochi"
                     // Warm wrap lighting (subsurface scattering approx)
                     float3 mochiCol = lerp(_MochiColor.rgb, _MochiColor2.rgb,
                                            n.y * 0.5 + 0.5);
+                    if (_MochiTexStrength > 0.0)
+                    {
+                        // Local frame of the nearest mochi, one tile per radius
+                        int mi = nearestMochi(p);
+                        float3 q = (p - _MochiData[mi].xyz) / max(_MochiData[mi].w, 1e-3) * _MochiTexScale;
+                        float3 tex = triplanar(_MochiTex, q, n);
+                        mochiCol = lerp(mochiCol, tex, _MochiTexStrength);   // 1 = the texture as is, in between = tinted
+                    }
                     float wrap = max(dot(n, lightDir) + 0.4, 0.0) / 1.4;
 
                     // Fresnel rim for soft translucent look
@@ -427,6 +476,12 @@ Shader "AliceSDF/Samples/Mochi"
                     float grain = noise2d(p.xz * 2.0) * 0.7 + noise2d(p.xz * 9.0) * 0.3;
                     float3 groundCol = lerp(_GroundColor.rgb, _GroundColor2.rgb,
                                             grain * 0.6 + 0.2);
+                    if (_GroundTexStrength > 0.0)
+                    {
+                        float3 gq = (p - _Origin.xyz) * _GroundTexScale;
+                        float3 gtex = triplanar(_GroundTex, gq, n);
+                        groundCol = lerp(groundCol, gtex, _GroundTexStrength);
+                    }
                     float diff = max(dot(n, lightDir), 0.0);
                     float3 groundShade = groundCol * (0.2 + diff * 0.8 * shadow) * ao;
 

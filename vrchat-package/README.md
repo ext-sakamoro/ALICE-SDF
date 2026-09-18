@@ -189,6 +189,10 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | Blend K | 0.5 | SmoothUnion factor between mochis (higher = stickier) — pushed to the material every frame, so collision and rendering always agree |
+| Look: Apply Colors / Mochi Color / Highlight / Ground Color / Detail | off | Colours pushed to the material every frame (the material is never touched by hand) |
+| Look: Mochi Texture / Scale / Strength, Ground Texture / Scale / Strength | none | Optional textures, projected triplanar (the mochi one in each mochi's own frame so it follows and scales with the mochi; the ground one in world space around Ground Offset); Strength 1 = the texture as is |
+| Mochis: Use Custom Layout / Initial Count / Radius / Ring Radius | off / 5 / 0.3 / 0.7 | Starting layout (off = the sample's five, which the golden test checks) |
+| Placement: Ground Offset | (0, -1, 0) | The ground point relative to the transform (the cube's bottom centre): the law is anchored there, so the object can sit anywhere |
 | Ground K | 0.15 | SmoothUnion factor with ground (squishy floor contact) — pushed to the material every frame |
 | Min Radius | 0.1 | Smallest allowed mochi (won't split below this) |
 | Grab Threshold | 0.8 | Hand must be within this fraction of radius to grab |

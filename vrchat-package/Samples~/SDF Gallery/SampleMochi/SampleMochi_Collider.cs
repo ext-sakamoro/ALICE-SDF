@@ -82,6 +82,19 @@ namespace AliceSDF.Samples
         public Color groundColor = new Color(0.55f, 0.46f, 0.36f, 1f);
         [Tooltip("Ground detail colour (grain) / 地面の模様色")]
         public Color groundDetail = new Color(0.50f, 0.42f, 0.33f, 1f);
+        [Tooltip("Optional texture on the mochis (projected from three axes in each mochi's own frame, so it moves and grows with it); empty = plain colour / 餅に貼るテクスチャ (餅ごとの座標で 3 方向投影、動いても付いてくる)、空なら単色")]
+        public Texture2D mochiTexture;
+        [Tooltip("Tiles per mochi radius / 半径あたりの繰り返し数")]
+        public float mochiTextureScale = 1f;
+        [Tooltip("0 = colour only, 1 = the texture as is / 0 = 色のみ、1 = テクスチャそのまま")]
+        [Range(0f, 1f)]
+        public float mochiTextureStrength = 1f;
+        [Tooltip("Optional texture on the ground (world space around the ground point); empty = plain colour / 地面に貼るテクスチャ、空なら単色")]
+        public Texture2D groundTexture;
+        [Tooltip("Tiles per metre / 1 m あたりの繰り返し数")]
+        public float groundTextureScale = 0.5f;
+        [Range(0f, 1f)]
+        public float groundTextureStrength = 1f;
 
         [Header("Placement")]
         [Tooltip("Ground point relative to this transform: the bottom centre of the volume cube (scale y 2 -> -1). The mochis rest on it and the ring is centred on it, so the prefab can go anywhere / この transform から見た地面の点 (cube 底面の中心)、餅はここに乗り、輪はここを中心に並ぶ")]
@@ -951,6 +964,14 @@ namespace AliceSDF.Samples
                 mat.SetColor("_MochiColor2", mochiHighlight);
                 mat.SetColor("_GroundColor", groundColor);
                 mat.SetColor("_GroundColor2", groundDetail);
+                // Textures: the Inspector fields win over the material (an empty
+                // field = strength 0 = plain colour, whatever the material holds)
+                if (mochiTexture != null) mat.SetTexture("_MochiTex", mochiTexture);
+                mat.SetFloat("_MochiTexScale", mochiTextureScale);
+                mat.SetFloat("_MochiTexStrength", mochiTexture != null ? mochiTextureStrength : 0f);
+                if (groundTexture != null) mat.SetTexture("_GroundTex", groundTexture);
+                mat.SetFloat("_GroundTexScale", groundTextureScale);
+                mat.SetFloat("_GroundTexStrength", groundTexture != null ? groundTextureStrength : 0f);
             }
         }
     }

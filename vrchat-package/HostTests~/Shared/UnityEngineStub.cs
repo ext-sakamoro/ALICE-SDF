@@ -91,8 +91,10 @@ namespace UnityEngine
         public static void LogWarning(object m) { Console.Error.WriteLine("[warn] " + m); }
         public static void Log(object m) { Console.WriteLine(m); }
     }
+    public class Texture2D { }
     public class Material
     {
+        public void SetTexture(string n, Texture2D t) { }
         public void SetVectorArray(string n, Vector4[] v) { }
         public void SetFloat(string n, float v) { }
         public void SetVector(string n, Vector4 v) { }

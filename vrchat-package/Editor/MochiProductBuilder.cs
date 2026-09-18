@@ -297,6 +297,7 @@ One prefab, no other packages: drop it in and build.
 | Section | Knob | What it does |
 |---|---|---|
 | Look | Mochi Color / Highlight / Ground Color / Ground Detail | colours (Apply Colors on) |
+| Look | Mochi Texture / Scale / Strength, Ground Texture / Scale / Strength | your own images: drop a texture in, it is projected onto the mochis (in each mochi's own frame, so it moves and grows with it) and the ground; Strength 1 shows it as is, lower tints it with the colour; empty = plain colour |
 | Mochis | Initial Count / Initial Radius / Ring Radius | how many, how big, how they start |
 | Mochi Settings | Blend K (stickiness) / Ground K / Min Radius / Gravity | feel of the blobs |
 | Player Body | Player Radius / Player Mass / Mochi Density / Dent K | how your body presses in and how much a mochi gives way |
@@ -340,6 +341,7 @@ prefab 1 個、他の package 不要: 置いてビルドするだけ
 | 区分 | つまみ | 効果 |
 |---|---|---|
 | Look | Mochi Color / Highlight / Ground Color / Ground Detail | 色 (Apply Colors on) |
+| Look | Mochi Texture / Scale / Strength, Ground Texture / Scale / Strength | 自分の画像: テクスチャを drop すると餅 (餅ごとの座標で投影、動いても付いてくる) と地面に貼られる Strength 1 でそのまま、下げると色で染まる、空なら単色 |
 | Mochis | Initial Count / Initial Radius / Ring Radius | 最初の個数・大きさ・並び |
 | Mochi Settings | Blend K (粘り) / Ground K / Min Radius / Gravity | 餅の手触り |
 | Player Body | Player Radius / Player Mass / Mochi Density / Dent K | 体の食い込みと餅の逃げ方 |
