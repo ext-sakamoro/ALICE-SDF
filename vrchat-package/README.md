@@ -135,7 +135,7 @@ A flat wall standing on a ground plane. Touch it with a VR hand, punch it with t
 | Wall Width / Height / Thickness | 5 / 2.5 / 0.2 | Half extents of the wall (sent to the shader every frame) |
 | Impact Distance | 0.08 | How close the hand / cursor must be to the undented face to register |
 | Impact Cooldown | 0.15s | Minimum time between impacts from the same hand |
-| Decay Speed | 0.5 | Recovery: strength decays as exp(-speed * t) |
+| Decay Speed | 0.15 | Recovery: strength decays as exp(-speed * t) — half strength after 4.6 s, gone after ~30 s (0.5 was gone in 3 s) |
 | Dent Radius | 0.35 | Dent radius at full strength |
 | Dent Smooth | 0.08 | SmoothSubtraction blend of a dent — pushed to the material every frame |
 | Cursor Max Dist | 4.0 | Desktop: how far the view ray looks for the wall |

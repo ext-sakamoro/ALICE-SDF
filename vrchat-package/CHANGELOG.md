@@ -16,6 +16,9 @@
   hard-union AO, `_LightDir` / soft shadow / `_FogDensity`, wall size and
   blend factors pushed from the collider; the duplicate `_WallWidth`
   declaration is gone.
+- DeformableWall `Decay Speed` default 0.5 → 0.15: at 0.5 a dent was
+  visually gone in 3 s (user, first Build & Test: "it heals too fast");
+  now half strength after 4.6 s, gone after ~30 s.
 - TerrainSculpt: the player could not stand on the terrain. The collider
   pushed the feet out of the SDF every frame (the same bobbing loop Mochi
   had) and the scene still needed a flat floor collider, so a dug hole was

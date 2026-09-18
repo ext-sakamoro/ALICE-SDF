@@ -71,7 +71,7 @@ namespace AliceSDF.Samples
         [Tooltip("Minimum time between impacts from the same hand (sec)")]
         public float impactCooldown = 0.15f;
         [Tooltip("Dent recovery: strength decays as exp(-speed * t) (1/sec)")]
-        public float decaySpeed = 0.5f;
+        public float decaySpeed = 0.15f;
         [Tooltip("Dent radius at full strength (sent to shader _DentRadius)")]
         public float dentRadius = 0.35f;
         [Tooltip("SmoothSubtraction factor of a dent (sent to shader _DentSmooth)")]

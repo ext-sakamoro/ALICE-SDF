@@ -54,19 +54,20 @@ static class Behaviour
         // against the undented face; hitting the same spot again refreshes it
         Time.time += 0.2f;
         Check(!c.TryImpact(new Vector3(1f, 1.2f, 0.2f - 0.35f), 0, "test") && count() == 2, "a hand on the floor of the dent (0.35 m in) does not dent again: no drilling");
-        for (int i = 0; i < 90; i++) c.Decay(dt);
-        Check(pts()[0].w < 0.7f, "the first dent has recovered a little");
+        for (int i = 0; i < 90 * 3; i++) c.Decay(dt);
+        Check(pts()[0].w < 0.7f, "the first dent has recovered a little (3 s)");
         Check(c.TryImpact(new Vector3(1.05f, 1.2f, 0.2f), 0, "test") && count() == 2 && pts()[0].w == 1f, "hitting within half a radius of it refreshes it to full strength, no new slot");
         Time.time += 0.2f;
         Check(c.TryImpact(new Vector3(2.5f, 1.2f, 0.2f), 0, "test") && count() == 3, "a hit elsewhere is a third dent");
 
         // --- Recovery: strengths decay, dead trailing slots shrink the count ---
         Set(c, "stateDirty", false);
+        float ds = (float)typeof(SampleDeformableWall_Collider).GetField("decaySpeed").GetValue(c);
         for (int i = 0; i < 90; i++) c.Decay(dt);   // 1 s
-        Check(Math.Abs(pts()[0].w - (float)Math.Exp(-0.5)) < 1e-3f, $"after 1 s a dent is at exp(-0.5) = {pts()[0].w:F3}");
+        Check(Math.Abs(pts()[0].w - (float)Math.Exp(-ds)) < 1e-3f, $"after 1 s a dent is at exp(-{ds:F2}) = {pts()[0].w:F3}");
         Check(c.HasUnsentChanges(), "recovery marks the state for serialization");
-        for (int i = 0; i < 90 * 12; i++) c.Decay(dt);   // 12 more s: exp(-6.5) < 0.01
-        Check(count() == 0 && c.LiveDents() == 0, "13 s later every dent has recovered and the count is 0");
+        for (int i = 0; i < 90 * 34; i++) c.Decay(dt);   // 34 more s: exp(-0.15 * 35) < 0.01
+        Check(count() == 0 && c.LiveDents() == 0, "35 s later every dent has recovered and the count is 0");
         Check(Math.Abs(c.EvaluateWallSdf(face) - 0f) < 1e-6f, "the face is flat again");
 
         // --- Slot reuse: 16 dents fill the buffer, the 17th replaces the weakest ---

@@ -159,7 +159,7 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 | Wall Width / Height / Thickness | 5 / 2.5 / 0.2 | 壁の半サイズ（毎フレーム shader に送る） |
 | Impact Distance | 0.08 | 凹みが発生する手 / カーソルと（凹む前の）壁面の距離 |
 | Impact Cooldown | 0.15秒 | 同じ手からの連続衝撃の最小間隔 |
-| Decay Speed | 0.5 | 回復: 強度が exp(-speed * t) で減衰 |
+| Decay Speed | 0.15 | 回復: 強度が exp(-speed * t) で減衰 — 4.6 s で半分、約 30 s で消える（0.5 では 3 s で消えていた） |
 | Dent Radius | 0.35 | 強度 1 の時の凹みの半径 |
 | Dent Smooth | 0.08 | 凹みの SmoothSubtraction ブレンド係数、毎フレーム material に送る |
 | Cursor Max Dist | 4.0 | デスクトップ: 視線で壁を探す距離 |
