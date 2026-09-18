@@ -73,6 +73,10 @@ namespace AliceSDF
         [Tooltip("Eye height used when the avatar's cannot be read (m)")]
         public float fallbackEyeHeight = 1.6f;
 
+        [Header("Placement")]
+        [Tooltip("Evaluate the law in this object's frame (position and rotation, not scale): move or turn the object and the SDF comes along, exactly as the shader draws it. Off = the law is in world space as written")]
+        public bool anchorToObject = true;
+
         [Header("Animation")]
         [Tooltip("Seconds fed to a time-varying SDF, set every frame from Time.timeSinceLevelLoad (what the shader's _Time.y is); 0 on a host")]
         public float animTime = 0f;
@@ -92,7 +96,8 @@ namespace AliceSDF
         // =====================================================================
 
         /// <summary>
-        /// Evaluate the SDF at world position p.
+        /// Evaluate the SDF at a point of the law's own frame (the object's
+        /// frame when Anchor To Object is on, else world space).
         /// Returns signed distance: negative = inside, positive = outside.
         /// OVERRIDE THIS with your world's SDF formula.
         /// </summary>
@@ -109,6 +114,19 @@ namespace AliceSDF
             return Mathf.Min(ground, sphere);
         }
 
+        // The law at a WORLD point: the object's frame is applied first when
+        // anchored (the shader's toLaw does the same with unity_WorldToObject)
+        public float EvaluateWorld(Vector3 p)
+        {
+            if (!_anchored) return Evaluate(p);
+            return Evaluate(_lawRotInv * (p - _lawOrigin));
+        }
+
+        // Read once, in Start: a prefab that is moved at runtime is not followed
+        private Vector3 _lawOrigin;
+        private Quaternion _lawRotInv;
+        private bool _anchored;
+
         // =====================================================================
         // Core Logic
         // =====================================================================
@@ -118,6 +136,9 @@ namespace AliceSDF
         {
             _localPlayer = Networking.LocalPlayer;
             _pushing = false;
+            _anchored = anchorToObject;
+            _lawOrigin = transform.position;
+            _lawRotInv = Quaternion.Inverse(transform.rotation);
         }
 
         public override void PostLateUpdate()
@@ -158,7 +179,7 @@ namespace AliceSDF
             for (int i = 0; i < n; i++)
             {
                 Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
-                float d = Evaluate(s);
+                float d = EvaluateWorld(s);
                 if (d >= collisionMargin) continue;
                 float pen = Mathf.Min(collisionMargin - d, maxPushDistance);
                 if (pen <= bestPen) continue;
@@ -185,7 +206,7 @@ namespace AliceSDF
             for (int i = 0; i < n; i++)
             {
                 Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
-                float d = Evaluate(s);
+                float d = EvaluateWorld(s);
                 if (d < minDist)
                 {
                     minDist = d;
@@ -203,9 +224,9 @@ namespace AliceSDF
         {
             float e = gradientEps;
 
-            float dx = Evaluate(p + new Vector3(e, 0, 0)) - Evaluate(p - new Vector3(e, 0, 0));
-            float dy = Evaluate(p + new Vector3(0, e, 0)) - Evaluate(p - new Vector3(0, e, 0));
-            float dz = Evaluate(p + new Vector3(0, 0, e)) - Evaluate(p - new Vector3(0, 0, e));
+            float dx = EvaluateWorld(p + new Vector3(e, 0, 0)) - EvaluateWorld(p - new Vector3(e, 0, 0));
+            float dy = EvaluateWorld(p + new Vector3(0, e, 0)) - EvaluateWorld(p - new Vector3(0, e, 0));
+            float dz = EvaluateWorld(p + new Vector3(0, 0, e)) - EvaluateWorld(p - new Vector3(0, 0, e));
 
             Vector3 grad = new Vector3(dx, dy, dz);
             float len = grad.magnitude;

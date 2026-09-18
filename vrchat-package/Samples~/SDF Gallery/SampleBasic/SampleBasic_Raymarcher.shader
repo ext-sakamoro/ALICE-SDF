@@ -59,11 +59,40 @@ Shader "AliceSDF/Samples/Basic"
             };
 
             // === SDF: Ground plane + Sphere ===
-            float map(float3 p)
+            float mapLaw(float3 p)
             {
                 float ground = p.y;
                 float sphere = sdSphere(p - float3(0, 1.5, 0), 1.5);
                 return min(ground, sphere);
+            }
+
+            // The law above is written in the object's frame (position and
+            // rotation; the scale is the volume cube's size, not the law's):
+            // move or turn the prefab and the SDF comes along. The collider
+            // does the same (AliceSDF_Collider.EvaluateWorld).
+            float3 toLaw(float3 p)
+            {
+                float3 s = float3(length(unity_ObjectToWorld._m00_m10_m20),
+                                  length(unity_ObjectToWorld._m01_m11_m21),
+                                  length(unity_ObjectToWorld._m02_m12_m22));
+                return mul(unity_WorldToObject, float4(p, 1.0)).xyz * s;
+            }
+            float map(float3 p) { return mapLaw(toLaw(p)); }
+
+            // Distance along the ray to where it leaves this object's unit
+            // cube (object space slab test, mapped back to a world distance)
+            float exitDistance(float3 ro, float3 rd)
+            {
+                float3 roObj = mul(unity_WorldToObject, float4(ro, 1.0)).xyz;
+                float3 rdObj = mul((float3x3)unity_WorldToObject, rd);
+                float3 inv = 1.0 / (abs(rdObj) < 1e-6 ? (rdObj < 0.0 ? -1e-6 : 1e-6) : rdObj);
+                float3 t0 = (-0.5 - roObj) * inv;
+                float3 t1 = ( 0.5 - roObj) * inv;
+                float3 tmax = max(t0, t1);
+                float tObj = min(tmax.x, min(tmax.y, tmax.z));
+                float3 exitObj = roObj + rdObj * tObj;
+                float3 exitWorld = mul(unity_ObjectToWorld, float4(exitObj, 1.0)).xyz;
+                return length(exitWorld - ro);
             }
 
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_LOD.cginc"
@@ -106,6 +135,7 @@ Shader "AliceSDF/Samples/Basic"
                 float eps = aliceLodEpsilon(tier);
                 float ss = aliceLodStepScale(tier);
                 float t = 0.0;
+                float tExit = exitDistance(ro, rd);
                 FragOutput o;
 
                 float bestD = 1e10;
@@ -117,7 +147,7 @@ Shader "AliceSDF/Samples/Basic"
                     if (d < eps) { hit = true; break; }
                     if (d < bestD) { bestD = d; bestT = t; }
                     t += d * ss;
-                    if (t > _MaxDist) break;
+                    if (t > _MaxDist || t > tExit) break;
                 }
                 if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
                     t = bestT;
