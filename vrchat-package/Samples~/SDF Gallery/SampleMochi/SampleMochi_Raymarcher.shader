@@ -391,6 +391,25 @@ Shader "AliceSDF/Samples/Mochi"
                 return o;
             }
 
+            // Where the world-space ray leaves the volume cube: the march stops
+            // there, so the ground is drawn only under the cube (its footprint is
+            // the ground patch) and two volumes never fight over the same plane.
+            // Slab test in object space (the cube is the unit cube scaled by the
+            // transform), then the exit point is mapped back to a world distance.
+            float exitDistance(float3 ro, float3 rd)
+            {
+                float3 roObj = mul(unity_WorldToObject, float4(ro, 1.0)).xyz;
+                float3 rdObj = mul((float3x3)unity_WorldToObject, rd);
+                float3 inv = 1.0 / (abs(rdObj) < 1e-6 ? (rdObj < 0.0 ? -1e-6 : 1e-6) : rdObj);
+                float3 t0 = (-0.5 - roObj) * inv;
+                float3 t1 = ( 0.5 - roObj) * inv;
+                float3 tmax = max(t0, t1);
+                float tObj = min(tmax.x, min(tmax.y, tmax.z));
+                float3 exitObj = roObj + rdObj * tObj;
+                float3 exitWorld = mul(unity_ObjectToWorld, float4(exitObj, 1.0)).xyz;
+                return length(exitWorld - ro);
+            }
+
             struct FragOutput { fixed4 color : SV_Target; float depth : SV_Depth; };
 
             FragOutput frag(v2f i) {
@@ -404,6 +423,7 @@ Shader "AliceSDF/Samples/Mochi"
                 float eps = aliceLodEpsilon(tier);
                 float ss = aliceLodStepScale(tier);
                 float t = 0.0;
+                float tExit = exitDistance(ro, rd);
                 FragOutput o;
 
                 // Closest approach along the ray. A ray grazing a silhouette
@@ -426,7 +446,7 @@ Shader "AliceSDF/Samples/Mochi"
                     if (d < bestD) { bestD = d; bestT = t; }
 
                     t += d * ss;
-                    if (t > _MaxDist) break;
+                    if (t > _MaxDist || t > tExit) break;
                 }
                 if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
                     t = bestT;

@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Fixed
+- Mochi shader: the march now stops where the ray leaves the volume cube
+  (object-space slab test, mapped back to a world distance), so the ground
+  plane is drawn only under the cube. Two AliceMochi prefabs in one world
+  had their infinite ground planes fighting at a distance (jagged boundary
+  in the client); the cube's footprint is now the ground patch, as the
+  README says.
 - Mochi: the law was anchored to the world origin (ground `y = 0`, the
   initial mochis around `(0, 0)`), so three product prefabs placed 6 m apart
   all spawned their mochis at the origin (first Build & Test of the
