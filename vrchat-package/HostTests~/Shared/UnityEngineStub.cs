@@ -40,6 +40,7 @@ namespace UnityEngine
     }
     public static class Mathf
     {
+        public const float PI = 3.14159274f;
         public static float Min(float a, float b) => a < b ? a : b;
         public static float Max(float a, float b) => a > b ? a : b;
         public static float Abs(float a) => Math.Abs(a);
