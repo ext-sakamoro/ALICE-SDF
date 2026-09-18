@@ -116,10 +116,13 @@ namespace AliceSDF.Editor
             new PrefabDef { name = "AliceSDF Terrain", productClass = "AliceTerrain", shaderName = "AliceSDFKit/Terrain",
                             cubePos = new Vector3(0, 3, 0), cubeScale = new Vector3(20, 10, 20), terrainSupport = true,
                             preset = (mat, so) => { so.FindProperty("groundOffset").vector3Value = new Vector3(0, -3, 0); } },
-            new PrefabDef { name = "AliceSDF Decor Basic",   productClass = "AliceDecorBasic",   shaderName = "AliceSDFKit/DecorBasic",   cubePos = Vector3.zero, cubeScale = Vector3.one * 100f },
-            new PrefabDef { name = "AliceSDF Decor Cosmic",  productClass = "AliceDecorCosmic",  shaderName = "AliceSDFKit/DecorCosmic",  cubePos = Vector3.zero, cubeScale = Vector3.one * 200f },
-            new PrefabDef { name = "AliceSDF Decor Fractal", productClass = "AliceDecorFractal", shaderName = "AliceSDFKit/DecorFractal", cubePos = Vector3.zero, cubeScale = Vector3.one * 200f },
-            new PrefabDef { name = "AliceSDF Decor Mix",     productClass = "AliceDecorMix",     shaderName = "AliceSDFKit/DecorMix",     cubePos = Vector3.zero, cubeScale = Vector3.one * 200f },
+            new PrefabDef { name = "AliceSDF Decor Basic",   productClass = "AliceDecorBasic",   shaderName = "AliceSDFKit/DecorBasic",   cubePos = Vector3.zero, cubeScale = Vector3.one * 30f },
+            new PrefabDef { name = "AliceSDF Decor Cosmic",  productClass = "AliceDecorCosmic",  shaderName = "AliceSDFKit/DecorCosmic",  cubePos = Vector3.zero, cubeScale = Vector3.one * 60f },
+            new PrefabDef { name = "AliceSDF Decor Fractal", productClass = "AliceDecorFractal", shaderName = "AliceSDFKit/DecorFractal", cubePos = Vector3.zero, cubeScale = Vector3.one * 30f,
+                            // The sample sponge is a 100 m box; the decor is a 24 m one (same proportions)
+                            preset = (mat, so) => { mat.SetFloat("_BoxSize", 12f); mat.SetFloat("_HoleSize", 0.5f); mat.SetFloat("_RepeatScale", 3.6f); mat.SetFloat("_TwistAmount", 0f);   // the twist is not a true distance (Backlog: raymarch artifacts)
+                                                    so.FindProperty("boxSize").floatValue = 12f; so.FindProperty("holeSize").floatValue = 0.5f; so.FindProperty("repeatScale").floatValue = 3.6f; so.FindProperty("twistAmount").floatValue = 0f; } },
+            new PrefabDef { name = "AliceSDF Decor Mix",     productClass = "AliceDecorMix",     shaderName = "AliceSDFKit/DecorMix",     cubePos = Vector3.zero, cubeScale = Vector3.one * 60f },
         };
 
         [InitializeOnLoadMethod]
