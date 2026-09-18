@@ -28,8 +28,16 @@ const BAR_HALF: f32 = 1000.0;
 
 fn main() {
     let cross = SdfNode::box3d(BAR_HALF * 2.0, HOLE_HALF * 2.0, HOLE_HALF * 2.0)
-        .union(SdfNode::box3d(HOLE_HALF * 2.0, BAR_HALF * 2.0, HOLE_HALF * 2.0))
-        .union(SdfNode::box3d(HOLE_HALF * 2.0, HOLE_HALF * 2.0, BAR_HALF * 2.0))
+        .union(SdfNode::box3d(
+            HOLE_HALF * 2.0,
+            BAR_HALF * 2.0,
+            HOLE_HALF * 2.0,
+        ))
+        .union(SdfNode::box3d(
+            HOLE_HALF * 2.0,
+            HOLE_HALF * 2.0,
+            BAR_HALF * 2.0,
+        ))
         .repeat_infinite(REPEAT, REPEAT, REPEAT);
     let planet = SdfNode::sphere(PLANET_RADIUS).subtract(cross);
     let ring = SdfNode::torus(RING_MAJOR, RING_MINOR);

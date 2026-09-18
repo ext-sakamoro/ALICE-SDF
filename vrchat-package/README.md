@@ -106,9 +106,9 @@ Each sample includes:
 
 The scene generator gives every sample a `VRCSceneDescriptor` with a spawn, a floor collider where the SDF has a ground (Basic, Mochi, DeformableWall) and a viewing platform under the spawn in the space scenes (Cosmic, Fractal, Mix; their skybox is cleared so a raymarch miss is black). Walking off the platform is a long fall to the respawn height â standing on the SDF itself is only implemented for TerrainSculpt.
 
-### Interactive Samples (VR)
+### Interactive Samples (VR and desktop)
 
-The **DeformableWall**, **Mochi**, and **TerrainSculpt** samples demonstrate real-time SDF deformation driven by VR hand tracking. Unlike the static samples above, these send dynamic data from UdonSharp to the shader every frame via `Material.SetVectorArray`.
+The **DeformableWall**, **Mochi**, and **TerrainSculpt** samples demonstrate real-time SDF deformation driven by VR hand tracking or the mouse. Unlike the static samples above, these send dynamic data from UdonSharp to the shader every frame via `Material.SetVectorArray`.
 
 #### DeformableWall — Touch & Dent
 

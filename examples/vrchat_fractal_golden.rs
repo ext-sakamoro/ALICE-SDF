@@ -23,8 +23,16 @@ const BAR_HALF: f32 = 1000.0;
 
 fn main() {
     let cross = SdfNode::box3d(BAR_HALF * 2.0, HOLE_HALF * 2.0, HOLE_HALF * 2.0)
-        .union(SdfNode::box3d(HOLE_HALF * 2.0, BAR_HALF * 2.0, HOLE_HALF * 2.0))
-        .union(SdfNode::box3d(HOLE_HALF * 2.0, HOLE_HALF * 2.0, BAR_HALF * 2.0))
+        .union(SdfNode::box3d(
+            HOLE_HALF * 2.0,
+            BAR_HALF * 2.0,
+            HOLE_HALF * 2.0,
+        ))
+        .union(SdfNode::box3d(
+            HOLE_HALF * 2.0,
+            HOLE_HALF * 2.0,
+            BAR_HALF * 2.0,
+        ))
         .repeat_infinite(REPEAT, REPEAT, REPEAT);
     let scene = SdfNode::box3d(BOX_HALF * 2.0, BOX_HALF * 2.0, BOX_HALF * 2.0)
         .subtract(cross)

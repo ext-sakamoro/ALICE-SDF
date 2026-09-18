@@ -352,9 +352,15 @@ namespace AliceSDF.Editor
             if (boxCollider != null)
                 Object.DestroyImmediate(boxCollider);
 
-            // Apply SDF shader
+            // Apply SDF shader; its light follows the scene light so the raymarched
+            // shading and shadows agree with everything else in the world
             var mat = new Material(shader);
             mat.name = $"SDF_{sample.name}_Mat";
+            if (mat.HasProperty("_LightDir"))
+            {
+                var toLight = -lightObj.transform.forward;
+                mat.SetVector("_LightDir", new Vector4(toLight.x, toLight.y, toLight.z, 0f));
+            }
 
             // Save material as asset
             string matPath = $"{OutputFolder}/SDF_{sample.name}_Mat.mat";

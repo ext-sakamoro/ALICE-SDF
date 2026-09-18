@@ -38,7 +38,7 @@ fn main() {
     let belt_r = PLANET_DISTANCE * 0.75;
     let mut asteroids: Option<SdfNode> = None;
     for i in 0..6 {
-        let angle = i as f32 * 1.0472;
+        let angle = i as f32 * std::f32::consts::FRAC_PI_3;
         let y = if i % 2 == 0 { 0.5 } else { -0.5 };
         let a = SdfNode::sphere((i as f32).mul_add(0.1, 0.3)).translate(
             angle.cos() * belt_r,

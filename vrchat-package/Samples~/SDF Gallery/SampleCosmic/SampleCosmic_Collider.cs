@@ -69,7 +69,7 @@ namespace AliceSDF.Samples
             float beltR = planetDistance * 0.75f;
             for (int i = 0; i < 6; i++)
             {
-                float angle = i * 1.0472f + time * (0.1f + i * 0.02f);
+                float angle = i * (Mathf.PI / 3f) + time * (0.1f + i * 0.02f);
                 Vector3 aPos = new Vector3(Mathf.Cos(angle) * beltR, (i % 2 == 0) ? 0.5f : -0.5f, Mathf.Sin(angle) * beltR);
                 asteroids = Mathf.Min(asteroids, (p - aPos).magnitude - (0.3f + i * 0.1f));
             }

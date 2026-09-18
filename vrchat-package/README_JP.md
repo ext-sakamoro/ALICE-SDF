@@ -130,9 +130,9 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 
 scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF に地面がある sample（Basic / Mochi / DeformableWall）には床 collider を、宇宙 scene（Cosmic / Fractal / Mix）には spawn の下に展望 platform を置きます（skybox は外して、raymarch の miss は黒）platform から歩き出すと respawn 高さまで落ちます — SDF そのものに立てるのは TerrainSculpt だけです
 
-### インタラクティブサンプル (VR)
+### インタラクティブサンプル (VR とデスクトップ)
 
-**DeformableWall**、**Mochi**、**TerrainSculpt** は、VRハンドトラッキングによるリアルタイムSDF変形を実演するサンプルです。上記の静的サンプルとは異なり、毎フレーム UdonSharp から `Material.SetVectorArray` でシェーダーに動的データを送信します。
+**DeformableWall**、**Mochi**、**TerrainSculpt** は、VRハンドトラッキングまたはマウスによるリアルタイムSDF変形を実演するサンプルです。上記の静的サンプルとは異なり、毎フレーム UdonSharp から `Material.SetVectorArray` でシェーダーに動的データを送信します。
 
 #### DeformableWall — 触って凹む壁
 

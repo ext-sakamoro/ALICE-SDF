@@ -192,6 +192,23 @@ holds it.
 
 ---
 
+### 3.4 The other interactive samples: the same split
+
+TerrainSculpt and DeformableWall follow the Mochi layout exactly (law in
+`Evaluate*Sdf` = the shader's `map()`, binding in `PostLateUpdate` /
+`SyncShader` / the input overrides, `[UdonSynced]` state, `Log Events`).
+Their laws, for the same re-use:
+
+| Sample | Law (identical in shader and collider, golden-checked) | Host-specific part |
+|--------|--------------------------------------------------------|--------------------|
+| TerrainSculpt | plane `y`, folded in slot order with `smin(., sphere, addSmooth)` for an add and `smax(., -sphere, subSmooth)` for a dig (`EvaluateSdf`, `examples/vrchat_terrain_sculpt_golden.rs`); the surface under a point is a downward sphere trace (`SurfaceHeight`) | standing on the SDF: a Unity box collider (`TerrainSupport`, scene root) placed every frame on the highest surface under the foot (`SupportHeight`, five samples, level, step / wall / buried classification in `ContactKind`); desktop sculpting casts against the terrain as it was at the press (`EvaluateSdfSkipping`) |
+| DeformableWall | box (half `wallWidth/Height/Thickness`) on the plane, folded with `smax(., -sphere(dentRadius · strength), dentSmooth)` per live dent (`EvaluateWallSdf`, `examples/vrchat_deformable_wall_golden.rs`); strength recovers as `exp(−decaySpeed · t)` (`Decay`) | impacts measured against the undented face and refused inside a live dent's hollow (`TryImpact`); the body capsule pressed in by the shader only (`_PlayerCapA/B`) |
+| Basic / Cosmic / Fractal / Mix | `Evaluate` override of the package's `AliceSDF_Collider` (`examples/vrchat_{basic,cosmic,fractal,mix}_golden.rs`); Cosmic / Mix take `animTime` = the shader's `_Time.y` | the base collider's body push (wall contacts only); the scene's floor or viewing platform |
+
+Invariants 1–6 hold for each of them with the names above (`MaxSculpts` /
+`_SculptData[128]`, `MaxImpacts` / `_ImpactPoints[16]`); the host parity
+projects in `HostTests~` are the check for every collider.
+
 ## 4. What to ask the user to do (they have the client; you do not)
 
 Copy, fill in, send:

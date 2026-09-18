@@ -90,7 +90,7 @@ Shader "AliceSDF/Samples/Cosmic"
                 float asteroids = 1e10;
                 float beltR = _PlanetDistance * 0.75;
                 for (int i = 0; i < 6; i++) {
-                    float angle = float(i) * 1.0472 + time * (0.1 + float(i)*0.02);
+                    float angle = float(i) * (UNITY_PI / 3.0) + time * (0.1 + float(i)*0.02);
                     float3 aPos = float3(cos(angle)*beltR, (i%2==0?0.5:-0.5), sin(angle)*beltR);
                     asteroids = min(asteroids, sdSphere(p - aPos, 0.3 + float(i)*0.1));
                 }
