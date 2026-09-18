@@ -25,6 +25,7 @@ trap 'rm -f "$golden"' EXIT
 samples=(
     "vrchat_mochi_golden:MochiParity:1521"
     "vrchat_terrain_sculpt_golden:TerrainSculptParity:4335"
+    "vrchat_deformable_wall_golden:DeformableWallParity:5100"
 )
 
 for entry in "${samples[@]}"; do

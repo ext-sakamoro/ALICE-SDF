@@ -88,6 +88,7 @@ replays a behaviour scenario:
 |---------|--------|----------|
 | `HostTests~/MochiParity` | `examples/vrchat_mochi_golden.rs`, 1521 points | grab → split → release → settle → merge, desktop click, player push |
 | `HostTests~/TerrainSculptParity` | `examples/vrchat_terrain_sculpt_golden.rs`, 4335 points | sculpt (cooldown / stroke / buffer wrap), surface search over a hole and a stacked hill, step / wall / buried contact, desktop cursor ray |
+| `HostTests~/DeformableWallParity` | `examples/vrchat_deformable_wall_golden.rs`, 5100 points | impact (undented face, cooldown, hollow refusal, refresh, slot reuse), recovery, dented law, body push, desktop ray |
 
 Green means: the C# is valid, and the collider's law equals the Rust law. It
 says nothing about Udon, the shader or VR.

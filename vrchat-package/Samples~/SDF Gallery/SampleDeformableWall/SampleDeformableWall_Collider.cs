@@ -1,19 +1,28 @@
 // =============================================================================
 // ALICE-SDF Sample: DeformableWall Collider (UdonSharp)
 // =============================================================================
-// Detects hand proximity to wall, records impact points, and sends them
-// to the shader for visual deformation. Also handles player collision.
+// A wall that dents where it is hit and recovers over time. VR: touch or
+// hit it with either hand. Desktop: hold the left button (Use) to punch
+// the point you look at. Walk into it and your body presses a dent into it
+// while it pushes you back.
 //
-// Features:
-//   - VR hand tracking: left/right hand impact detection
-//   - Up to 16 impacts with circular buffer recycling
-//   - Time-based decay (old impacts auto-expire)
-//   - Shader sync via Material.SetVectorArray each frame
-//   - Player push-back via SDF gradient
+// The SDF evaluated here (EvaluateSdf) is the same formula the shader
+// renders: min(ground, SmoothSubtract(wall, dent_i)) with the dent radius
+// dentRadius * strength_i. dentSmooth / dentRadius are pushed to the
+// material every frame, so this script is the single source of truth for
+// both rendering and collision, and a dent you can see is a dent you can
+// stand in.
 //
-// Network: Local-only (each player sees their own dents).
-//   To sync dents across players, add [UdonSynced] to impactPoints
-//   and call RequestSerialization() on impact.
+// Impacts: up to 16, each (position, strength); strength starts at 1 and
+// decays by exp(-decaySpeed * t); a slot under 0.01 is free. A new impact
+// takes a free slot, else the weakest.
+//
+// Network: owner-authoritative, manual sync. impactPoints / impactCount
+//   are [UdonSynced]; whoever hits the wall takes ownership (once per
+//   contact, not every frame); the owner decays the strengths and
+//   serializes at 10 Hz while any dent is alive. Everyone else decays what
+//   they received locally between packets so the recovery looks smooth.
+//   Each player's body dent is local.
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -22,54 +31,105 @@ using UnityEngine;
 
 #if UDONSHARP
 using VRC.SDKBase;
+using VRC.Udon.Common;
 using UdonSharp;
 #endif
 
 namespace AliceSDF.Samples
 {
 #if UDONSHARP
-    [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
+    [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class SampleDeformableWall_Collider : UdonSharpBehaviour
 #else
     public class SampleDeformableWall_Collider : MonoBehaviour
 #endif
     {
-        [Header("Wall Dimensions (match shader properties)")]
-        [Tooltip("Must match shader _WallWidth")]
+        /// <summary>Upper bound of tracked dents. Must match the shader's _ImpactPoints[16].</summary>
+        public const int MaxImpacts = 16;
+
+        // Hand slots (the desktop cursor punches with HandRight)
+        private const int HandLeft = 0;
+        private const int HandRight = 1;
+        private const int HandCount = 2;
+
+        // A dent weaker than this is gone (slot free, shader skips it)
+        private const float DeadStrength = 0.01f;
+        // Remaining penetration (m) under which the player is left alone
+        private const float PushDeadBand = 0.005f;
+
+        [Header("Wall Dimensions (sent to the shader)")]
+        [Tooltip("Half-width of the wall (m)")]
         public float wallWidth = 5.0f;
-        [Tooltip("Must match shader _WallHeight")]
+        [Tooltip("Half-height of the wall (m); it stands on the ground")]
         public float wallHeight = 2.5f;
-        [Tooltip("Must match shader _WallThick")]
+        [Tooltip("Half-thickness of the wall (m)")]
         public float wallThickness = 0.2f;
 
         [Header("Impact Settings")]
-        [Tooltip("Hand must be within this distance of wall surface to register")]
+        [Tooltip("Hand / cursor must be within this distance of the wall surface to register")]
         public float impactDistance = 0.08f;
         [Tooltip("Minimum time between impacts from the same hand (sec)")]
         public float impactCooldown = 0.15f;
-        [Tooltip("Must match shader _DecaySpeed")]
+        [Tooltip("Dent recovery: strength decays as exp(-speed * t) (1/sec)")]
         public float decaySpeed = 0.5f;
-        [Tooltip("Must match shader _DentRadius")]
+        [Tooltip("Dent radius at full strength (sent to shader _DentRadius)")]
         public float dentRadius = 0.35f;
+        [Tooltip("SmoothSubtraction factor of a dent (sent to shader _DentSmooth)")]
+        public float dentSmooth = 0.08f;
+
+        [Header("Desktop")]
+        [Tooltip("How far the view ray looks for the wall on a click (m)")]
+        public float cursorMaxDist = 4.0f;
+
+        [Header("Debug")]
+        [Tooltip("Debug.Log one line per event (impact / click / push / ownership / received) as [Wall] ..., readable in the VRChat client output_log")]
+        public bool logEvents = false;
 
         [Header("Player Collision")]
         public float collisionMargin = 0.1f;
         [Range(0.5f, 1.5f)]
         public float pushStrength = 1.0f;
-        public float maxPushDistance = 2.0f;
+        [Tooltip("Samples along the body axis, feet to eyes")]
+        public int bodySamples = 5;
+        [Tooltip("Eye height used when the avatar's cannot be read (m)")]
+        public float fallbackEyeHeight = 1.6f;
 
-        // Impact circular buffer
+        [Header("Player Body")]
+        [Tooltip("Radius of the body capsule the shader presses into the wall (m)")]
+        public float playerRadius = 0.3f;
+        [Tooltip("Smooth-subtraction factor of the body dent (sent to shader _PlayerDentK)")]
+        public float bodyDentK = 0.12f;
+
+        // Dents (xyz = position, w = strength 0..1), the synced state
+#if UDONSHARP
+        [UdonSynced] private Vector4[] impactPoints;
+        [UdonSynced] private int impactCount = 0;
+#else
         private Vector4[] impactPoints;
         private int impactCount = 0;
+#endif
+        // Set by every state change; the owner serializes at SyncInterval
+        private bool stateDirty;
+        private const float SyncInterval = 0.1f;
 
-        // Hand cooldown state
-        private float lastLeftTime = -10f;
-        private float lastRightTime = -10f;
+        // Per-hand cooldown and contact (ownership once per contact)
+        private float[] lastImpactTime;
+        private bool[] touching;
+
+#if UDONSHARP
+        private bool useHeld;
+        private bool missLogged;
+        private float lastSyncTime;
+        private int receivedCount;
+        private bool pushing;
+#endif
 
         // Cached references
         private Material mat;
         private Vector3 wallCenter;
         private Vector3 wallHalf;
+        private Vector4 playerCapA;   // xyz = feet end of the body capsule, w = radius (0 = none)
+        private Vector4 playerCapB;   // xyz = head end
 
 #if UDONSHARP
         private VRCPlayerApi localPlayer;
@@ -80,9 +140,25 @@ namespace AliceSDF.Samples
             wallCenter = new Vector3(0f, wallHeight, 0f);
             wallHalf = new Vector3(wallWidth, wallHeight, wallThickness);
 
-            impactPoints = new Vector4[16];
-            for (int i = 0; i < 16; i++)
-                impactPoints[i] = Vector4.zero;
+            // A late joiner may have received the owner's dents already
+            if (impactPoints == null)
+            {
+                impactPoints = new Vector4[MaxImpacts];
+                for (int i = 0; i < MaxImpacts; i++)
+                    impactPoints[i] = Vector4.zero;
+            }
+            stateDirty = false;
+
+            lastImpactTime = new float[HandCount];
+            touching = new bool[HandCount];
+            for (int h = 0; h < HandCount; h++)
+            {
+                lastImpactTime[h] = -10f;
+                touching[h] = false;
+            }
+
+            playerCapA = Vector4.zero;
+            playerCapB = Vector4.zero;
 
             MeshRenderer rend = GetComponent<MeshRenderer>();
             if (rend != null)
@@ -92,7 +168,14 @@ namespace AliceSDF.Samples
 
 #if UDONSHARP
             localPlayer = Networking.LocalPlayer;
+            useHeld = false;
+            missLogged = false;
+            lastSyncTime = -1f;
+            receivedCount = -1;
+            pushing = false;
 #endif
+
+            SyncShader();
         }
 
 #if UDONSHARP
@@ -100,147 +183,370 @@ namespace AliceSDF.Samples
         {
             if (localPlayer == null) return;
 
-            // --- Hand Impact Detection (VR only) ---
+            // --- Impacts: VR hands, or the desktop cursor while Use is held ---
             if (localPlayer.IsUserInVR())
             {
-                VRCPlayerApi.TrackingData lh =
-                    localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.LeftHand);
-                Vector3 lPos = lh.position;
+                Vector3 lPos = localPlayer.GetTrackingData(
+                    VRCPlayerApi.TrackingDataType.LeftHand).position;
+                Vector3 rPos = localPlayer.GetTrackingData(
+                    VRCPlayerApi.TrackingDataType.RightHand).position;
                 if (IsTrackingValid(lPos))
-                    TryRegisterImpact(lPos, true);
-
-                VRCPlayerApi.TrackingData rh =
-                    localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.RightHand);
-                Vector3 rPos = rh.position;
+                    TryImpact(lPos, HandLeft, "left hand");
                 if (IsTrackingValid(rPos))
-                    TryRegisterImpact(rPos, false);
+                    TryImpact(rPos, HandRight, "right hand");
             }
-
-            // --- Player Collision (smoothed push-back) ---
-            Vector3 playerPos = localPlayer.GetPosition();
-            Vector3 feetPos = playerPos + Vector3.down * 0.05f;
-            float dist = EvaluateSdf(feetPos);
-
-            if (dist < collisionMargin)
+            else
             {
-                Vector3 normal = EstimateGradient(feetPos);
-                float pen = Mathf.Min(collisionMargin - dist, maxPushDistance);
-                // Smooth: lerp push strength by deltaTime to prevent jitter
-                float smooth = Mathf.Min(Time.deltaTime * 10f, 1f);
-                localPlayer.TeleportTo(
-                    playerPos + normal * pen * pushStrength * smooth,
-                    localPlayer.GetRotation()
-                );
+                ProcessDesktopCursor();
             }
 
-            // --- Shader Update ---
+            // --- Recovery: everyone decays locally (smooth between packets),
+            // the owner's values are the ones that get sent ---
+            Decay(Time.deltaTime);
+
+            // --- Player Collision: pushed out of the dented wall, body pressed in ---
+            Vector3 playerPos = localPlayer.GetPosition();
+            float eyeHeight = localPlayer.GetAvatarEyeHeightAsMeters();
+            if (eyeHeight <= 0f) eyeHeight = fallbackEyeHeight;
+            Vector3 push = PlayerPushOut(playerPos, eyeHeight, Time.deltaTime);
+            if (push != Vector3.zero)
+            {
+                if (!pushing)
+                    LogEvent("push at " + F(playerPos) + " by " + F(push));
+                pushing = true;
+                localPlayer.TeleportTo(playerPos + push, localPlayer.GetRotation());
+            }
+            else
+            {
+                pushing = false;
+            }
+
+            // Body capsule for the shader dent (feet to eyes, radius playerRadius)
+            float capTop = eyeHeight - playerRadius;
+            if (capTop < playerRadius) capTop = playerRadius;
+            playerCapA = new Vector4(playerPos.x, playerPos.y + playerRadius, playerPos.z, playerRadius);
+            playerCapB = new Vector4(playerPos.x, playerPos.y + capTop, playerPos.z, 0f);
+
+            // --- Network: the owner sends what changed, at most every SyncInterval ---
+            if (stateDirty && IsAuthority() && Time.time - lastSyncTime >= SyncInterval)
+            {
+                RequestSerialization();
+                stateDirty = false;
+                lastSyncTime = Time.time;
+            }
+
+            // --- Shader Sync ---
             SyncShader();
+        }
+
+        public override void OnDeserialization()
+        {
+            if (impactCount != receivedCount)
+            {
+                VRCPlayerApi owner = Networking.GetOwner(gameObject);
+                LogEvent("received " + impactCount + " dents (was " + receivedCount + ") from "
+                         + (owner != null ? owner.displayName : "?"));
+                receivedCount = impactCount;
+            }
+        }
+
+        // =================================================================
+        // Desktop: hold Use (left click) to punch the wall where you look
+        // =================================================================
+        public override void InputUse(bool value, UdonInputEventArgs args)
+        {
+            if (localPlayer != null && localPlayer.IsUserInVR()) return;
+            useHeld = value;
+            if (value) missLogged = false;
+            else touching[HandRight] = false;
+        }
+
+        private void ProcessDesktopCursor()
+        {
+            if (!useHeld) return;
+            VRCPlayerApi.TrackingData head = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
+            Vector3 o = head.position;
+            Vector3 dir = head.rotation * Vector3.forward;
+            float t = RaymarchWall(o, dir, cursorMaxDist);
+            if (t < 0f)
+            {
+                if (!missLogged)
+                {
+                    LogEvent("click missed (no wall within " + F(cursorMaxDist) + " m of the view)");
+                    missLogged = true;
+                }
+                return;
+            }
+            TryImpact(o + dir * t, HandRight, "left click");
         }
 #endif
 
-        private void TryRegisterImpact(Vector3 handPos, bool isLeft)
+        // =================================================================
+        // Impacts (VR hands and the desktop cursor)
+        // =================================================================
+        // Register a dent at pos if it is within impactDistance of the wall's
+        // undented face, outside the hollow of every live dent, and the hand's
+        // cooldown has passed. A hand (or the view cursor) following a fresh
+        // dent inward would otherwise drill through the 0.4 m wall in half a
+        // second. A hit within half a radius of a live dent refreshes that dent.
+        // Returns true when a dent was recorded or refreshed.
+        public bool TryImpact(Vector3 pos, int hand, string how)
         {
-            float handDist = SdfBox(handPos - wallCenter, wallHalf);
-
-            if (handDist < impactDistance)
+            float d = SdfBox(pos - wallCenter, wallHalf);
+            if (Mathf.Abs(d) > impactDistance)
             {
-                float lastTime = isLeft ? lastLeftTime : lastRightTime;
-                if (Time.time - lastTime < impactCooldown) return;
-
-                RecordImpact(handPos);
-
-                if (isLeft) lastLeftTime = Time.time;
-                else lastRightTime = Time.time;
+                touching[hand] = false;
+                return false;
             }
+            if (Time.time - lastImpactTime[hand] < impactCooldown) return false;
+
+            // Inside the hollow of a live dent (but not at its centre, which
+            // refreshes it): the hand has followed the dent in, no new dent
+            for (int i = 0; i < impactCount; i++)
+            {
+                float w = impactPoints[i].w;
+                if (w < DeadStrength) continue;
+                Vector3 c = new Vector3(impactPoints[i].x, impactPoints[i].y, impactPoints[i].z);
+                float dist = (pos - c).magnitude;
+                if (dist >= dentRadius * 0.5f && dist <= dentRadius * w) return false;
+            }
+
+            // Denting the wall changes it for everyone: take ownership at
+            // the start of the contact
+            if (!touching[hand])
+            {
+                touching[hand] = true;
+                if (!IsAuthority()) LogEvent("contact by " + how + ": taking ownership");
+                TakeAuthority();
+            }
+
+            int slot = RecordImpact(pos);
+            lastImpactTime[hand] = Time.time;
+            LogEvent("impact #" + slot + " at " + F(pos) + " by " + how + " (" + impactCount + " dents)");
+            return true;
         }
 
-        private void RecordImpact(Vector3 pos)
+        // A live dent within half a radius is refreshed in place; else a free
+        // slot, else the weakest dent (the one nearest to recovered)
+        private int RecordImpact(Vector3 pos)
         {
-            // Find best slot: prefer empty, then recycle oldest
-            int slot = -1;
-            float oldestAge = 0f;
-            int oldestIdx = 0;
-
-            for (int i = 0; i < 16; i++)
+            for (int i = 0; i < impactCount; i++)
             {
-                // Empty slot (never used or fully decayed)
-                if (impactPoints[i].w < 0.001f)
+                if (impactPoints[i].w < DeadStrength) continue;
+                Vector3 c = new Vector3(impactPoints[i].x, impactPoints[i].y, impactPoints[i].z);
+                if ((pos - c).magnitude < dentRadius * 0.5f)
+                {
+                    impactPoints[i] = new Vector4(c.x, c.y, c.z, 1f);
+                    MarkDirty();
+                    return i;
+                }
+            }
+            int slot = -1;
+            float weakest = 2f;
+            int weakestIdx = 0;
+            for (int i = 0; i < MaxImpacts; i++)
+            {
+                if (impactPoints[i].w < DeadStrength)
                 {
                     slot = i;
                     break;
                 }
-                float age = Time.time - impactPoints[i].w;
-                if (age > oldestAge)
+                if (impactPoints[i].w < weakest)
                 {
-                    oldestAge = age;
-                    oldestIdx = i;
+                    weakest = impactPoints[i].w;
+                    weakestIdx = i;
                 }
             }
+            if (slot < 0) slot = weakestIdx;
 
-            if (slot < 0) slot = oldestIdx;
-
-            impactPoints[slot] = new Vector4(pos.x, pos.y, pos.z, Time.time);
-            if (impactCount < 16) impactCount++;
+            impactPoints[slot] = new Vector4(pos.x, pos.y, pos.z, 1f);
+            if (slot >= impactCount) impactCount = slot + 1;
+            MarkDirty();
+            return slot;
         }
 
-        private void SyncShader()
+        // Strengths decay; impactCount shrinks past trailing dead slots
+        public void Decay(float dt)
         {
-            if (mat == null) return;
-            // Recalculate active count (reset fully decayed slots)
-            int activeCount = 0;
-            for (int i = 0; i < 16; i++)
+            if (impactCount == 0) return;
+            float k = Mathf.Exp(-decaySpeed * dt);
+            bool any = false;
+            for (int i = 0; i < impactCount; i++)
             {
-                if (impactPoints[i].w > 0.001f)
-                {
-                    float age = Time.time - impactPoints[i].w;
-                    float r = dentRadius * Mathf.Exp(-age * decaySpeed);
-                    if (r < 0.005f)
-                    {
-                        impactPoints[i] = Vector4.zero;
-                    }
-                    else
-                    {
-                        activeCount++;
-                    }
-                }
+                float w = impactPoints[i].w;
+                if (w < DeadStrength) continue;
+                w *= k;
+                if (w < DeadStrength) w = 0f;
+                impactPoints[i] = new Vector4(impactPoints[i].x, impactPoints[i].y, impactPoints[i].z, w);
+                any = true;
             }
-            impactCount = activeCount;
+            while (impactCount > 0 && impactPoints[impactCount - 1].w < DeadStrength)
+                impactCount--;
+            if (any) MarkDirty();
+        }
 
-            mat.SetVectorArray("_ImpactPoints", impactPoints);
-            mat.SetFloat("_ImpactCount", (float)impactCount);
+        // Live dents (strength >= DeadStrength)
+        public int LiveDents()
+        {
+            int n = 0;
+            for (int i = 0; i < impactCount; i++)
+                if (impactPoints[i].w >= DeadStrength) n++;
+            return n;
+        }
+
+        // Sphere-traced hit distance of a ray against the undented wall (no
+        // ground), -1 beyond maxDist: where a click lands, see TryImpact
+        public float RaymarchWall(Vector3 o, Vector3 dir, float maxDist)
+        {
+            float t = 0f;
+            for (int i = 0; i < 64; i++)
+            {
+                float d = SdfBox(o + dir * t - wallCenter, wallHalf);
+                if (d < 0.001f) return t;
+                t += d;
+                if (t > maxDist) return -1f;
+            }
+            return -1f;
         }
 
         // =================================================================
-        // SDF Evaluation (simplified - no dents for collision performance)
+        // Authority: who serializes (the object's owner)
+        // =================================================================
+        public bool IsAuthority()
+        {
+#if UDONSHARP
+            return Networking.IsOwner(localPlayer, gameObject);
+#else
+            return true;
+#endif
+        }
+
+        private void TakeAuthority()
+        {
+#if UDONSHARP
+            if (!Networking.IsOwner(localPlayer, gameObject))
+                Networking.SetOwner(localPlayer, gameObject);
+#endif
+        }
+
+        private void MarkDirty()
+        {
+            stateDirty = true;
+        }
+
+        // State changed since the owner last serialized
+        public bool HasUnsentChanges()
+        {
+            return stateDirty;
+        }
+
+        // =================================================================
+        // Player Collision — the dented wall only, sampled along the body
+        // =================================================================
+        // The ground is VRChat's floor collider; the body is sampled from the
+        // feet to the eyes and the deepest sample decides the direction, which
+        // is kept horizontal (a wall pushes sideways; lifting only hands the
+        // player to gravity). Returns the displacement for this frame, zero
+        // when clear.
+        public Vector3 PlayerPushOut(Vector3 playerPos, float eyeHeight, float dt)
+        {
+            Vector3 minP = DeepestBodySample(playerPos, eyeHeight);
+            float minDist = EvaluateWallSdf(minP);
+            if (minDist >= collisionMargin) return Vector3.zero;
+
+            float pen = Mathf.Min(collisionMargin - minDist, 2.0f);
+            if (pen < PushDeadBand) return Vector3.zero;
+
+            Vector3 normal = EstimateGradient(minP);
+            Vector3 flat = new Vector3(normal.x, 0f, normal.z);
+            float flatLen = flat.magnitude;
+            if (flatLen > 0.3f) normal = flat / flatLen;
+            else if (normal.y < 0f) normal = Vector3.up;
+
+            float smooth = Mathf.Min(dt * 10f, 1f);
+            return normal * pen * pushStrength * smooth;
+        }
+
+        public Vector3 DeepestBodySample(Vector3 playerPos, float eyeHeight)
+        {
+            int n = bodySamples < 2 ? 2 : bodySamples;
+            float minDist = 1e10f;
+            Vector3 minP = playerPos;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 s = playerPos + Vector3.up * (eyeHeight * i / (n - 1));
+                float d = EvaluateWallSdf(s);
+                if (d < minDist)
+                {
+                    minDist = d;
+                    minP = s;
+                }
+            }
+            return minP;
+        }
+
+        // =================================================================
+        // SDF Evaluation — mirrors the shader map()
         // =================================================================
         public float EvaluateSdf(Vector3 p)
         {
-            float ground = p.y;
+            return Mathf.Min(p.y, EvaluateWallSdf(p));
+        }
+
+        // The dented wall alone (no ground, no body dent): what the player
+        // collides with and what a hand touches
+        public float EvaluateWallSdf(Vector3 p)
+        {
             float wall = SdfBox(p - wallCenter, wallHalf);
-            return Mathf.Min(ground, wall);
+            for (int i = 0; i < impactCount; i++)
+            {
+                float w = impactPoints[i].w;
+                if (w < DeadStrength) continue;
+                Vector3 c = new Vector3(impactPoints[i].x, impactPoints[i].y, impactPoints[i].z);
+                float dent = (p - c).magnitude - dentRadius * w;
+                wall = OpSmoothSubtraction(wall, dent, dentSmooth);
+            }
+            return wall;
         }
 
         private Vector3 EstimateGradient(Vector3 p)
         {
             float e = 0.02f;
-            float dx = EvaluateSdf(new Vector3(p.x + e, p.y, p.z))
-                     - EvaluateSdf(new Vector3(p.x - e, p.y, p.z));
-            float dy = EvaluateSdf(new Vector3(p.x, p.y + e, p.z))
-                     - EvaluateSdf(new Vector3(p.x, p.y - e, p.z));
-            float dz = EvaluateSdf(new Vector3(p.x, p.y, p.z + e))
-                     - EvaluateSdf(new Vector3(p.x, p.y, p.z - e));
+            float dx = EvaluateWallSdf(new Vector3(p.x + e, p.y, p.z))
+                     - EvaluateWallSdf(new Vector3(p.x - e, p.y, p.z));
+            float dy = EvaluateWallSdf(new Vector3(p.x, p.y + e, p.z))
+                     - EvaluateWallSdf(new Vector3(p.x, p.y - e, p.z));
+            float dz = EvaluateWallSdf(new Vector3(p.x, p.y, p.z + e))
+                     - EvaluateWallSdf(new Vector3(p.x, p.y, p.z - e));
             Vector3 grad = new Vector3(dx, dy, dz);
             float len = grad.magnitude;
             return (len > 0.0001f) ? grad / len : Vector3.up;
         }
 
         // =================================================================
-        // Inlined SDF (UdonSharp compatible - no static class calls)
+        // Helpers (inlined SDF, UdonSharp compatible)
         // =================================================================
         private bool IsTrackingValid(Vector3 pos)
         {
-            // Tracking returns (0,0,0) when lost — reject positions near world origin
-            return pos.sqrMagnitude > 0.01f;
+            // Tracking returns exactly (0,0,0) when lost; the wall is at the
+            // origin, so only the exact zero is rejected
+            return pos != Vector3.zero;
+        }
+
+        // One line per event in the client log (grep "[Wall]"), off by default
+        private void LogEvent(string what)
+        {
+            if (logEvents) Debug.Log("[Wall] " + what);
+        }
+
+        private string F(float v)
+        {
+            return v.ToString("F2");
+        }
+
+        private string F(Vector3 v)
+        {
+            return "(" + F(v.x) + ", " + F(v.y) + ", " + F(v.z) + ")";
         }
 
         private float SdfBox(Vector3 p, Vector3 half)
@@ -254,6 +560,39 @@ namespace AliceSDF.Samples
             float outside = Mathf.Sqrt(ox * ox + oy * oy + oz * oz);
             float inside = Mathf.Min(Mathf.Max(qx, Mathf.Max(qy, qz)), 0f);
             return outside + inside;
+        }
+
+        // Subtracts d2 FROM d1, identical to opSmoothSubtraction in the shader
+        private float OpSmoothSubtraction(float d1, float d2, float k)
+        {
+            if (k < 0.0001f) return Mathf.Max(d1, -d2);
+            float invK = 1f / k;
+            float h = Mathf.Max(k - Mathf.Abs(d1 + d2), 0f) * invK;
+            return Mathf.Max(d1, -d2) + h * h * k * 0.25f;
+        }
+
+        // =================================================================
+        // Shader Sync
+        // =================================================================
+        private void SyncShader()
+        {
+            if (mat == null) return;
+            mat.SetVectorArray("_ImpactPoints", impactPoints);
+            mat.SetFloat("_ImpactCount", (float)impactCount);
+
+            // Geometry and blend factors live here, not in the material: what
+            // the player collides with is exactly what is rendered
+            mat.SetFloat("_WallWidth", wallWidth);
+            mat.SetFloat("_WallHeight", wallHeight);
+            mat.SetFloat("_WallThick", wallThickness);
+            mat.SetFloat("_DentRadius", dentRadius);
+            mat.SetFloat("_DentSmooth", dentSmooth);
+
+            // Body capsule the shader presses into the wall (w = 0 until the
+            // first PostLateUpdate: no player, no dent)
+            mat.SetVector("_PlayerCapA", playerCapA);
+            mat.SetVector("_PlayerCapB", playerCapB);
+            mat.SetFloat("_PlayerDentK", bodyDentK);
         }
     }
 }

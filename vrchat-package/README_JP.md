@@ -118,7 +118,7 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 | **Cosmic** | アニメーション付き太陽系 — 太陽、軌道惑星、傾斜リング、月、小惑星帯。 | `SmoothUnion(sun, planet, ring, moon, asteroids)` |
 | **Fractal** | メンガーのスポンジ迷宮の内部を歩けます。ねじり変形付き。 | `Subtract(Box, Repeat(Cross))` — 1つの式で無限の複雑さ |
 | **Mix** | Cosmic × Fractal 融合 — フラクタル惑星 + トーラスリング + 玉ねぎシェル。 | `SmoothUnion(Intersect(Sphere, Menger), Torus, Onion(Sphere))` |
-| **DeformableWall** | 壁を触ると凹む。時間経過で回復。VRハンドインタラクション。 | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
+| **DeformableWall** | 触る・マウスで殴る・突っ込むと壁が凹む。凹みは時間で回復。 | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
 | **Mochi** | ぷにぷに餅ブロブ。掴む・合体・分裂・巨大化。SmoothUnion軟体物理。 | `SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k))` |
 | **TerrainSculpt** | VRの手やマウスで地形を掘る・盛る。掘った穴に本当に落ちる。**SDFでしか不可能。** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
 
@@ -133,30 +133,41 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 
 #### DeformableWall — 触って凹む壁
 
-地面の上に立つ平面の壁。VRプレイヤーの手が壁の表面に触れると、接触点に凹みが発生し、時間の経過とともに徐々に回復します。
+地面の上に立つ平面の壁。VRの手で触る、マウスで殴る、歩いて突っ込む — 接触点に凹みが発生し、時間の経過とともに徐々に回復します。凹みは本物の形状で、当たり判定も凹んだ壁に対して行われます。
 
 **仕組み:**
-1. UdonSharp が `SdfBox()` による距離チェックで手の壁面への近接を検出
-2. 接触時、衝撃位置とタイムスタンプを記録（循環バッファ、最大16個）
-3. 毎フレーム、配列を `Material.SetVectorArray("_ImpactPoints", ...)` でシェーダーに送信
-4. シェーダーが `opSmoothSubtraction(wall, sphere)` で各凹みを刻む。球の半径は指数関数的に減衰: `r = DentRadius * exp(-age * DecaySpeed)`
-5. 完全に減衰した凹み（半径 < 0.005）は自動的にリサイクル
+1. 手（デスクトップは左ボタン押下中の視線カーソル）が **凹む前の壁面** から `Impact Distance` 以内で、かつ生きている凹みの空洞の中でない時に衝撃を登録 — 出来たての凹みに手を追従させても 0.4 m の壁を貫通しない 生きている凹みの中心から半径の半分以内を叩くと slot を消費せずその凹みを回復前に戻す
+2. 各凹みは (位置, 強度)。強度は 1 から `exp(-Decay Speed * t)` で回復、0.01 未満で slot 解放（同時に最大 16、満杯なら最も弱いものを置換）
+3. 毎フレーム、配列を壁の寸法 / `Dent Radius` / `Dent Smoothness` と共に `Material.SetVectorArray("_ImpactPoints", ...)` でシェーダーに送信 — 当たり判定と描画がずれない
+4. シェーダーが `opSmoothSubtraction(wall, sphere(Dent Radius * strength))` で各凹みを刻み、同じ方法で自分の体の capsule も壁に押し込む
+5. collider はプレイヤーの体を足元から目まで sample し、最も深い点を横方向に押し出す（上には持ち上げない、dead band で押しが止まる）
 
-**VR操作:**
-- 壁の表面に手を近づける → 凹みが出現
-- 何度も叩く → 最大16個の凹みが同時に存在
-- 待つ → 凹みが滑らかに元の平面に回復
-- 壁に歩いて突っ込む → プレイヤーコリジョンが押し戻す
+**操作:**
+
+| 操作 | VR | デスクトップ | 結果 |
+|------|----|------------|------|
+| **凹ませる** | 手を壁面に近づける | 左クリックを押したまま壁を見る | 接触点に凹み、新しいうちは光る |
+| **叩き続ける** | 同じ場所を叩き続ける | ボタンを押したまま | 凹みが最大深さに戻る（slot 1 個、半径以上は深くならない） |
+| **たくさん** | あちこち叩く | ボタンを押したまま視線を動かす | 同時に最大 16、最も弱いものから再利用 |
+| **回復** | 待つ | 待つ | 凹みが平面に戻る |
+| **もたれる** | 壁に歩いて突っ込む | 壁に歩いて突っ込む | 体の capsule 形の溝が壁に入り、押し戻される |
 
 **Inspectorパラメータ:**
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|
-| Impact Distance | 0.08 | 凹みが発生する手と壁面の距離 |
+| Wall Width / Height / Thickness | 5 / 2.5 / 0.2 | 壁の半サイズ（毎フレーム shader に送る） |
+| Impact Distance | 0.08 | 凹みが発生する手 / カーソルと（凹む前の）壁面の距離 |
 | Impact Cooldown | 0.15秒 | 同じ手からの連続衝撃の最小間隔 |
-| Dent Radius | 0.35 | 各凹みのサイズ |
-| Decay Speed | 0.5 | 回復速度（大きいほど速く回復） |
-| Dent Smoothness | 0.08 | SmoothSubtractionのブレンド係数 |
+| Decay Speed | 0.5 | 回復: 強度が exp(-speed * t) で減衰 |
+| Dent Radius | 0.35 | 強度 1 の時の凹みの半径 |
+| Dent Smooth | 0.08 | 凹みの SmoothSubtraction ブレンド係数、毎フレーム material に送る |
+| Cursor Max Dist | 4.0 | デスクトップ: 視線で壁を探す距離 |
+| Collision Margin / Push Strength / Body Samples | 0.1 / 1.0 / 5 | プレイヤー押出: 体を足元から目まで sample |
+| Player Radius / Body Dent K | 0.3 / 0.12 | shader が壁に押し込む体の capsule（自分だけに見える） |
+| Log Events | off | 衝撃 / クリック miss / 押出 / owner 取得 / 受信ごとに `[Wall] ...` を `Debug.Log` 1 行 — VRChat client の `output_log_*.txt` を grep |
+
+**シェーダーパラメータ:** `Light Direction`、`Enable Soft Shadow`（壁が地面に落とす影）、`Fog Density` レイマーチャは Mochi と同じ最接近点採用と hard union AO（壁の縁に暗い筋が出ず、凹みの周りに暗いリングが出ない）
 
 #### Mochi — 掴む・合体・分裂・巨大化
 
@@ -276,9 +287,9 @@ Y=0の平面地形をリアルタイムにスカルプトできます — VRの�
 5. 同じGameObjectに対応する `*_Collider.cs` スクリプトをアタッチ
 6. VRChatで **Build & Test** — VRの手、デスクトップならマウスでインタラクション
 
-**デスクトップモード:** Mochi と TerrainSculpt はデスクトップでも操作できます: Mochi — 餅をクリック（Use）して掴み、視点を動かして運び、右クリックで分裂、ボタンを離して落とす TerrainSculpt — 見ている場所に左クリック押しっぱなしで盛る、右クリック押しっぱなしで掘る DeformableWall はVRハンドトラッキングが必要です（デスクトップでも描画とプレイヤーコリジョンは機能しますが、凹ませることはできません）
+**デスクトップモード:** インタラクティブ sample は全てデスクトップでも操作できます: Mochi — 餅をクリック（Use）して掴み、視点を動かして運び、右クリックで分裂、ボタンを離して落とす TerrainSculpt — 見ている場所に左クリック押しっぱなしで盛る、右クリック押しっぱなしで掘る DeformableWall — 左クリック押しっぱなしで見ている場所を殴る、または壁に突っ込む
 
-**マルチプレイヤー:** Mochi は同期されます（owner 権威の manual sync: 餅の配列が `[UdonSynced]`、owner が重力と合体を回して変更がある間 10 Hz で serialize、掴む / 歩いて押すと掴み・接触ごとに 1 回 owner を取るので、最後に操作した人が状態を動かし、他の人はそれを見て押されます 途中参加者は現在の状態を受信、体の凹みは各自ローカル描画のみ）実質「一度に彫れるのは 1 人」で、2 人が同時に別の餅を持つと相手の餅は掴み直すまで止まって見えます TerrainSculpt も同じ方式で同期されます（スカルプトバッファが `[UdonSynced]`、彫った人がストロークの開始時に owner を取り、変更がある間 10 Hz で serialize、全員が同じ地形の上に立ちます）DeformableWall はローカル専用のままです（各自の凹みは各自だけに見える 同期するには impact 配列に `[UdonSynced]` を追加し、impact 時に `RequestSerialization()` を呼び出してください）
+**マルチプレイヤー:** Mochi は同期されます（owner 権威の manual sync: 餅の配列が `[UdonSynced]`、owner が重力と合体を回して変更がある間 10 Hz で serialize、掴む / 歩いて押すと掴み・接触ごとに 1 回 owner を取るので、最後に操作した人が状態を動かし、他の人はそれを見て押されます 途中参加者は現在の状態を受信、体の凹みは各自ローカル描画のみ）実質「一度に彫れるのは 1 人」で、2 人が同時に別の餅を持つと相手の餅は掴み直すまで止まって見えます TerrainSculpt も同じ方式で同期されます（スカルプトバッファが `[UdonSynced]`、彫った人がストロークの開始時に owner を取り、変更がある間 10 Hz で serialize、全員が同じ地形の上に立ちます）DeformableWall も同期されます（凹み配列が `[UdonSynced]`、叩いた人がその接触の間 owner を取り、凹みが生きている間 10 Hz で serialize、他の人は packet 間を各自ローカルで回復させるので滑らかに戻る 体の溝は各自ローカル）
 
 ### サンプルシーンの自動生成
 

@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Fixed
+- DeformableWall: the player collided with the flat box while the shader
+  drew dents (the collider "simplified" the wall for speed), and the same
+  foot-only push as Mochi's first version. The collider now evaluates the
+  dented wall (16 spheres per sample is cheap), samples the body from the
+  feet to the eyes and pushes the deepest point out sideways with a dead
+  band. Dent strengths are stored instead of `Time.time` stamps, so they
+  can be synced; a hand or the cursor following a fresh dent inward no
+  longer drills through the 0.4 m wall (impacts are measured against the
+  undented face and refused inside a live dent's hollow; a hit at a live
+  dent refreshes it). Shader: `Cull Off`, closest-approach acceptance,
+  hard-union AO, `_LightDir` / soft shadow / `_FogDensity`, wall size and
+  blend factors pushed from the collider; the duplicate `_WallWidth`
+  declaration is gone.
 - TerrainSculpt: the player could not stand on the terrain. The collider
   pushed the feet out of the SDF every frame (the same bobbing loop Mochi
   had) and the scene still needed a flat floor collider, so a dug hole was
@@ -52,6 +65,18 @@
   T13 collider without `UdonBehaviour`).
 
 ### Added
+- DeformableWall on desktop: hold the left button (Use) to punch the wall
+  where you look (`Cursor Max Dist` 4 m); walking into the wall presses
+  your body capsule into it (`_PlayerCapA/B`, local) while it pushes you
+  back. Multiplayer: the dent array is `[UdonSynced]` (manual, the hitting
+  player takes ownership per contact, 10 Hz while any dent is alive,
+  everyone recovers locally between packets). `Log Events` writes
+  `[Wall] ...` per impact / click miss / push / ownership / received.
+- `HostTests~/DeformableWallParity` + `examples/vrchat_deformable_wall_golden.rs`
+  (5100 points, four dents of mixed strength) + a 29-check impact / decay /
+  slot / push / click scenario; the parity script and CI job run it.
+- Scene generator: the Mochi / DeformableWall scenes get an invisible floor
+  collider at y = 0 (their SDF ground is drawn, not walked on).
 - TerrainSculpt on desktop: hold the left button (Use) to build and the
   right button (Drop) to dig at the point where the view meets the terrain
   (`Cursor Max Dist`, 6 m); the cursor glow shows what a click would do.

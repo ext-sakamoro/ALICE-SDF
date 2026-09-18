@@ -361,7 +361,14 @@ namespace AliceSDF.Editor
             }
 
             if (sample.world)
+            {
                 AddWorldDescriptor(sample.spawnPos);
+                // The SDF ground of Mochi / DeformableWall is drawn, not walked
+                // on: an invisible floor collider at y = 0 carries the player.
+                // TerrainSculpt has none: its terrain is the floor (TerrainSupport).
+                if (sample.name != "TerrainSculpt")
+                    AddFloorCollider();
+            }
 
             // --- Info label (world-space canvas) ---
             CreateInfoCanvas(sample.name);
@@ -369,6 +376,14 @@ namespace AliceSDF.Editor
             // Save scene
             EditorSceneManager.SaveScene(scene, scenePath);
             Debug.Log($"[ALICE-SDF] Created scene: {scenePath}");
+        }
+
+        private static void AddFloorCollider()
+        {
+            var floor = new GameObject("Floor");
+            floor.transform.position = new Vector3(0f, -0.5f, 0f);
+            floor.transform.localScale = new Vector3(200f, 1f, 200f);
+            floor.AddComponent<BoxCollider>();
         }
 
         // VRCWorld: scene descriptor + one spawn (only with the worlds SDK).

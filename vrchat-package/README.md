@@ -94,7 +94,7 @@ Seven ready-to-play samples are included. Import via **Package Manager > Samples
 | **Cosmic** | Animated solar system — Sun, orbiting planet, tilted ring, moon, asteroid belt. | `SmoothUnion(sun, planet, ring, moon, asteroids)` |
 | **Fractal** | Walk inside a Menger Sponge labyrinth with twist deformation. | `Subtract(Box, Repeat(Cross))` — one formula, infinite complexity |
 | **Mix** | Cosmic x Fractal fusion — fractal planet + torus ring + onion shell. | `SmoothUnion(Intersect(Sphere, Menger), Torus, Onion(Sphere))` |
-| **DeformableWall** | Touch/hit the wall and it dents. Dents recover over time. VR hand interaction. | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
+| **DeformableWall** | Touch, punch (mouse) or walk into the wall and it dents. Dents recover over time. | `min(ground, SmoothSubtract(wall, dent_spheres...))` |
 | **Mochi** | Squishy mochi blobs. Grab, merge, split, and grow. SmoothUnion soft-body physics. | `SmoothUnion(ground, SmoothUnion(mochi1, mochi2, ..., k))` |
 | **TerrainSculpt** | Dig holes & build hills with VR hands or the mouse. You fall into holes you dig. **Only possible with SDF.** | `SmoothUnion(SmoothSub(plane, digs...), hills...)` |
 
@@ -109,30 +109,41 @@ The **DeformableWall**, **Mochi**, and **TerrainSculpt** samples demonstrate rea
 
 #### DeformableWall — Touch & Dent
 
-A flat wall standing on a ground plane. When a VR player's hand touches the wall surface, a dent appears at the contact point and gradually recovers over time.
+A flat wall standing on a ground plane. Touch it with a VR hand, punch it with the mouse, or walk into it: a dent appears at the contact and gradually recovers. The dents are real geometry — you collide with the dented wall, not the flat one.
 
 **How it works:**
-1. UdonSharp detects hand proximity to the wall via `SdfBox()` distance check
-2. On contact, the impact position and timestamp are recorded (circular buffer, max 16)
-3. Each frame, the array is sent to the shader via `Material.SetVectorArray("_ImpactPoints", ...)`
-4. The shader carves each dent using `opSmoothSubtraction(wall, sphere)`, where the sphere radius decays exponentially: `r = DentRadius * exp(-age * DecaySpeed)`
-5. Fully decayed dents (radius < 0.005) are automatically recycled
+1. An impact is registered when a hand (or the view cursor with the left button held) is within `Impact Distance` of the wall's undented face and outside the hollow of every live dent — so a hand following a fresh dent inward does not drill through the 0.4 m wall; hitting within half a radius of a live dent refreshes it instead of using another slot
+2. Each dent is (position, strength); strength starts at 1 and recovers as `exp(-Decay Speed * t)`; below 0.01 the slot is free (up to 16 live dents, the weakest is replaced when full)
+3. Each frame the array is sent to the shader via `Material.SetVectorArray("_ImpactPoints", ...)` together with the wall size, `Dent Radius` and `Dent Smoothness`, so collision and rendering cannot drift
+4. The shader carves each dent with `opSmoothSubtraction(wall, sphere(Dent Radius * strength))`, then presses the local player's body capsule in the same way
+5. The collider samples the player's body from the feet to the eyes against the dented wall and pushes the deepest point out sideways (never up), with a dead band so the push stops
 
-**VR Interaction:**
-- Move your hand close to the wall surface — a dent appears
-- Hit the wall repeatedly — up to 16 dents at once
-- Wait — dents smoothly recover back to the flat wall
-- Walk into the wall — player collision pushes you back
+**Interaction:**
+
+| Action | VR | Desktop | What Happens |
+|--------|----|---------|--------------|
+| **Dent** | Hand near the face | Hold left click, look at the wall | A dent at the contact, glowing while fresh |
+| **Hammer** | Keep hitting the same spot | Keep the button held | The dent is refreshed to full depth (one slot), never deeper than one radius |
+| **Many** | Hit around | Look around with the button held | Up to 16 dents at once, the weakest is recycled |
+| **Recover** | Wait | Wait | Dents shrink back into the flat wall |
+| **Lean in** | Walk into the wall | Walk into the wall | Your body presses a capsule-shaped groove into it and you are pushed back |
 
 **Inspector Parameters:**
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| Impact Distance | 0.08 | How close the hand must be to register a dent |
+| Wall Width / Height / Thickness | 5 / 2.5 / 0.2 | Half extents of the wall (sent to the shader every frame) |
+| Impact Distance | 0.08 | How close the hand / cursor must be to the undented face to register |
 | Impact Cooldown | 0.15s | Minimum time between impacts from the same hand |
-| Dent Radius | 0.35 | Size of each dent |
-| Decay Speed | 0.5 | Recovery speed (higher = faster recovery) |
-| Dent Smoothness | 0.08 | SmoothSubtraction blend factor |
+| Decay Speed | 0.5 | Recovery: strength decays as exp(-speed * t) |
+| Dent Radius | 0.35 | Dent radius at full strength |
+| Dent Smooth | 0.08 | SmoothSubtraction blend of a dent — pushed to the material every frame |
+| Cursor Max Dist | 4.0 | Desktop: how far the view ray looks for the wall |
+| Collision Margin / Push Strength / Body Samples | 0.1 / 1.0 / 5 | Player push-out: the body is sampled from the feet to the eyes |
+| Player Radius / Body Dent K | 0.3 / 0.12 | The body capsule the shader presses into the wall (local only) |
+| Log Events | off | One `Debug.Log` line per impact / click miss / push / ownership / received as `[Wall] ...` — grep the VRChat client `output_log_*.txt` |
+
+**Shader parameters:** `Light Direction`, `Enable Soft Shadow` (the wall's shadow on the ground), `Fog Density`; the raymarcher has the same closest-approach acceptance and hard-union ambient occlusion as Mochi (no dark seam on the wall's edges, no dark ring around a dent).
 
 #### Mochi — Grab, Merge, Split & Grow
 
@@ -252,9 +263,9 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 5. Add the corresponding `*_Collider.cs` script to the same GameObject
 6. **Build & Test** in VRChat — VR hands or, on desktop, the mouse
 
-**Desktop mode:** Mochi and TerrainSculpt work on desktop: Mochi — click (Use) on a mochi to grab it, move the view to drag it, right click to split it, release the button to drop it; TerrainSculpt — hold left click to build and right click to dig where you look. DeformableWall still needs VR hand tracking; in desktop mode its rendering and player collision work, but you cannot dent it.
+**Desktop mode:** every interactive sample works on desktop: Mochi — click (Use) on a mochi to grab it, move the view to drag it, right click to split it, release the button to drop it; TerrainSculpt — hold left click to build and right click to dig where you look; DeformableWall — hold left click to punch the wall where you look, or walk into it.
 
-**Multiplayer note:** Mochi is synced (owner-authoritative manual sync: the mochi arrays are `[UdonSynced]`, the owner runs gravity and merging and serializes at 10 Hz while anything changed; grabbing or walking into a mochi takes ownership once per grab / contact, so the last player to act drives the state and everyone else sees it and is pushed by it; late joiners receive the current state; each player's body dent is drawn locally only). In practice one player sculpts at a time — two players holding different mochis at once will see the other's mochi freeze until they grab again. TerrainSculpt is synced the same way (the sculpt buffer is `[UdonSynced]`; whoever sculpts takes ownership at the start of a stroke and serializes at 10 Hz while anything changed; everyone stands on the same terrain). DeformableWall is still local-only (each player sees their own dents); to sync it, add `[UdonSynced]` to its impact array and call `RequestSerialization()` on impact.
+**Multiplayer note:** Mochi is synced (owner-authoritative manual sync: the mochi arrays are `[UdonSynced]`, the owner runs gravity and merging and serializes at 10 Hz while anything changed; grabbing or walking into a mochi takes ownership once per grab / contact, so the last player to act drives the state and everyone else sees it and is pushed by it; late joiners receive the current state; each player's body dent is drawn locally only). In practice one player sculpts at a time — two players holding different mochis at once will see the other's mochi freeze until they grab again. TerrainSculpt is synced the same way (the sculpt buffer is `[UdonSynced]`; whoever sculpts takes ownership at the start of a stroke and serializes at 10 Hz while anything changed; everyone stands on the same terrain). DeformableWall is synced too (the dent array is `[UdonSynced]`; whoever hits the wall takes ownership for that contact and serializes at 10 Hz while any dent is alive; everyone else recovers the dents locally between packets so they shrink smoothly; each player's body groove is local).
 
 ### Generate Sample Scenes
 

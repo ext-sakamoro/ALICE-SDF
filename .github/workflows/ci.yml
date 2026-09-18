@@ -475,9 +475,9 @@ jobs:
       # Sample*_Collider.cs は UdonSharp 向けで Unity でしか compile されない
       # → UnityEngine stub 相手に C# 7.3 -warnaserror で compile し、EvaluateSdf を
       # examples/vrchat_*_golden.rs (alice_sdf::eval) と突合 (Mochi 1521 点 +
-      # TerrainSculpt 4335 点) + 各 sample の behaviour シナリオ
+      # TerrainSculpt 4335 点 + DeformableWall 5100 点) + 各 sample の behaviour シナリオ
       # (vrchat-package/HostTests~/README.md)
-      - name: Mochi / TerrainSculpt parity + behaviour
+      - name: Mochi / TerrainSculpt / DeformableWall parity + behaviour
         run: scripts/vrchat-host-parity.sh
 
   actionlint:

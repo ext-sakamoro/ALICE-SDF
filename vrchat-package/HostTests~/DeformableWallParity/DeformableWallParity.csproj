@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Host-side check of the DeformableWall UdonSharp collider: compiles it
+       against ../Shared/UnityEngineStub.cs (no Unity), loads the dents of
+       examples/vrchat_deformable_wall_golden.rs and compares EvaluateSdf
+       with that golden, then replays an impact / decay / push / click
+       scenario. Run via scripts/vrchat-host-parity.sh. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <!-- UdonSharp accepts C# 7.3; anything newer here would not compile in Unity -->
+    <LangVersion>7.3</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Samples~/SDF Gallery/SampleDeformableWall/SampleDeformableWall_Collider.cs" Link="SampleDeformableWall_Collider.cs" />
+    <Compile Include="../Shared/UnityEngineStub.cs" Link="UnityEngineStub.cs" />
+  </ItemGroup>
+</Project>

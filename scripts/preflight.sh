@@ -91,7 +91,7 @@ rustup target list --installed | grep -q wasm32-unknown-unknown || rustup target
 cargo build --lib --no-default-features --features wasm --target wasm32-unknown-unknown
 cargo build --lib --no-default-features --features wasm
 
-step "vrchat-host: Mochi / TerrainSculpt C# colliders vs alice_sdf goldens (dotnet)"
+step "vrchat-host: Mochi / TerrainSculpt / DeformableWall C# colliders vs alice_sdf goldens (dotnet)"
 scripts/vrchat-host-parity.sh
 
 step "doc: cargo doc --lib --no-deps (RUSTDOCFLAGS=-Dwarnings), default + docs.rs set + texture-fit"

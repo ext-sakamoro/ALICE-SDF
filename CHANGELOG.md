@@ -6,6 +6,19 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — VRChat package: DeformableWall sample brought to the Mochi level
+
+- The player collides with the dented wall (not the flat box), the body is
+  sampled feet to eyes and pushed out sideways, walking in presses a body
+  groove into the wall, desktop punching with the mouse, `[UdonSynced]`
+  dents with strength (not `Time.time`) so they sync, no drilling through
+  the thin wall, `Log Events`, shader `Cull Off` / closest-approach
+  acceptance / hard-union AO / soft shadow. Details in
+  `vrchat-package/CHANGELOG.md`.
+- `examples/vrchat_deformable_wall_golden.rs` (5100 points, four dents) and
+  `vrchat-package/HostTests~/DeformableWallParity` (29-check scenario);
+  `scripts/vrchat-host-parity.sh` runs it.
+
 ### Added — VRChat package: TerrainSculpt sample brought to the Mochi level
 
 - The player stands on the sculpted terrain: an invisible support box follows
