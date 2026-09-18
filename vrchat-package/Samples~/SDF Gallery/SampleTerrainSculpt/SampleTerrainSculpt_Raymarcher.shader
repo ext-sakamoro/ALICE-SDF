@@ -12,7 +12,7 @@
 // both pixels and physics, so visual = collision at all times.
 //
 // Sculpt data is sent from UdonSharp via Material.SetVectorArray.
-// Up to 48 simultaneous sculpt operations (circular buffer).
+// Up to 128 stored sculpt operations (circular buffer, Sculpt Capacity on the collider).
 //
 // Rendering notes (same fixes as the Mochi sample):
 //   - Cull Off: the player walks inside the volume cube, so its back faces
@@ -90,7 +90,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
 
             // Dynamic sculpt data (set from UdonSharp)
             // xyz = world position, w = radius (positive = add, negative = dig)
-            float4 _SculptData[48];
+            float4 _SculptData[128];
             float _SculptCount;
 
             // Hand cursor positions (xyz = pos, w = 1 if near terrain, 0 if not)
@@ -126,7 +126,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                 // Apply sculpt operations in order
                 // Deep Fried: skip sculpts whose sphere of influence is too far
                 int count = (int)_SculptCount;
-                for (int i = 0; i < 48; i++)
+                for (int i = 0; i < 128; i++)
                 {
                     if (i >= count) break;
 
@@ -160,7 +160,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             {
                 float terrain = p.y;
                 int count = (int)_SculptCount;
-                for (int i = 0; i < 48; i++)
+                for (int i = 0; i < 128; i++)
                 {
                     if (i >= count) break;
                     float3 sp = _SculptData[i].xyz;

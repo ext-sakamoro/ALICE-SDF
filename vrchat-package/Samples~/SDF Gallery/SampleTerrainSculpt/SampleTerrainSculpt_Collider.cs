@@ -14,13 +14,13 @@
 // This script therefore drives a small invisible collider ("support",
 // assigned in the Inspector or a scene object named TerrainSupport) that follows
 // the player every frame: its top is placed on the SDF surface directly
-// below the player, tilted to the surface normal, so the ground the player
-// stands on is always the terrain as it is now. The SDF itself handles
+// below the player (level, the highest point under the foot), so the
+// ground the player stands on is always the terrain as it is now. The SDF itself handles
 // the rest: buried feet (terrain built where you stand) are lifted onto
 // the surface, and the steep flank of a hill pushes you back sideways.
 //
-// Sculpt operations are stored in a circular buffer (max 48). When the
-// buffer is full, the oldest operation is overwritten.
+// Sculpt operations are stored in a circular buffer (Sculpt Capacity, up to
+// 128). When the buffer is full, the oldest operation is overwritten.
 //
 // Network: owner-authoritative, manual sync. sculptData / sculptCount /
 //   nextSlot are [UdonSynced]; whoever sculpts takes ownership (once per
@@ -48,8 +48,8 @@ namespace AliceSDF.Samples
     public class SampleTerrainSculpt_Collider : MonoBehaviour
 #endif
     {
-        /// <summary>Upper bound of stored sculpt operations. Must match the shader's _SculptData[48].</summary>
-        public const int MaxSculpts = 48;
+        /// <summary>Array size of the sculpt buffer. Must match the shader's _SculptData[128].</summary>
+        public const int MaxSculpts = 128;
 
         // Hand slots (VR hands; the desktop cursor uses HandLeft to add and HandRight to dig)
         private const int HandLeft = 0;
@@ -75,6 +75,9 @@ namespace AliceSDF.Samples
         public float addSmooth = 0.25f;
         [Tooltip("SmoothSubtraction factor for digging (sent to shader _SubSmooth)")]
         public float subSmooth = 0.15f;
+        [Tooltip("Operations kept (1-128); the oldest is overwritten beyond this. Every ray step and every collision sample folds them all, so this is the GPU / Udon cost knob")]
+        [Range(1, 128)]
+        public int sculptCapacity = 96;
 
         [Header("Desktop")]
         [Tooltip("How far the view ray looks for terrain (m)")]
@@ -89,6 +92,8 @@ namespace AliceSDF.Samples
         public float pushStrength = 1.0f;
         [Tooltip("How far above the feet the surface search starts (m); terrain deeper than this over the player is climbed out of")]
         public float surfaceSearchUp = 0.6f;
+        [Tooltip("Half-width of the foot (m): the support takes the highest surface under 5 points across it, so the player stays on a ridge until their feet fully leave it instead of the floor flicking at the edge")]
+        public float footRadius = 0.12f;
 
         [Header("Debug")]
         [Tooltip("Debug.Log one line per event (sculpt / click / ownership / floor drop / rise / lift / wall push) as [Terrain] ..., readable in the VRChat client output_log")]
@@ -134,10 +139,14 @@ namespace AliceSDF.Samples
         private float lastSyncTime;
         private int receivedCount;
         private bool lifting;      // feet were buried last frame (one log line per burial)
-        private float lastSupportY;  // where the support top was last frame, for the floor log
-        private bool supportPlaced;
         private bool wallPushing;  // in a wall contact chain (one log line per contact)
 #endif
+
+        // Where the support top was last frame: the floor log, and the edge
+        // rule of SupportHeight (a sample level with the last floor is a ridge
+        // the player is still on, not a wall beside them)
+        private float lastSupportY;
+        private bool supportPlaced;
 
         // Cached references
         private Material mat;
@@ -196,9 +205,9 @@ namespace AliceSDF.Samples
             receivedCount = -1;
             lifting = false;
             wallPushing = false;
+#endif
             supportPlaced = false;
             lastSupportY = 0f;
-#endif
 
             SyncShader();
         }
@@ -386,16 +395,24 @@ namespace AliceSDF.Samples
             float r = isAdd ? sculptRadius : -sculptRadius;
             RecordSculpt(pos, r);
             lastSculptTime[hand] = Time.time;
-            LogEvent((isAdd ? "add" : "dig") + " #" + ((nextSlot + MaxSculpts - 1) % MaxSculpts) + " r=" + F(sculptRadius)
+            LogEvent((isAdd ? "add" : "dig") + " #" + ((nextSlot + Capacity() - 1) % Capacity()) + " r=" + F(sculptRadius)
                      + " at " + F(pos) + " by " + how + " (" + sculptCount + " stored)");
             return true;
+        }
+
+        // The ring size in use (Inspector, clamped to the array)
+        public int Capacity()
+        {
+            if (sculptCapacity < 1) return 1;
+            if (sculptCapacity > MaxSculpts) return MaxSculpts;
+            return sculptCapacity;
         }
 
         private void RecordSculpt(Vector3 pos, float radius)
         {
             sculptData[nextSlot] = new Vector4(pos.x, pos.y, pos.z, radius);
-            nextSlot = (nextSlot + 1) % MaxSculpts;
-            if (sculptCount < MaxSculpts) sculptCount++;
+            nextSlot = (nextSlot + 1) % Capacity();
+            if (sculptCount < Capacity()) sculptCount++;
             MarkDirty();
         }
 
@@ -535,36 +552,60 @@ namespace AliceSDF.Samples
             return new Vector3(0f, depth + 0.01f, 0f);
         }
 
-        // Where the support top goes: the surface below the feet, except
-        // against a wall (the sideways push is handling that) where the
-        // surface above would put the box into the legs and the controller
-        // would fight it; then the floor stays at the feet
+        // Where the support top goes: the highest surface under the foot
+        // (centre and four points footRadius out, so a ridge carries the
+        // player until their feet really leave it; sampled at the centre
+        // only, the floor flicked between the ridge and the ground at every
+        // edge), except against a wall (the sideways push is handling that)
+        // where the surface above would put the box into the legs and the
+        // controller would fight it; then the floor stays at the feet
         public float SupportHeight(Vector3 feet)
         {
             if (ContactKind(feet) == 1) return feet.y;
-            return SurfaceHeight(feet);
+            float h = SurfaceHeight(feet);
+            if (footRadius > 0f)
+            {
+                float r = footRadius;
+                h = FootSample(h, new Vector3(feet.x + r, feet.y, feet.z));
+                h = FootSample(h, new Vector3(feet.x - r, feet.y, feet.z));
+                h = FootSample(h, new Vector3(feet.x, feet.y, feet.z + r));
+                h = FootSample(h, new Vector3(feet.x, feet.y, feet.z - r));
+            }
+            return h;
+        }
+
+        // A foot-width sample raises the support only if it is a step above
+        // the centre, or level with the floor of the last frame (the ridge the
+        // player is walking off). A surface a wall's height above both is the
+        // wall the push just cleared them from: taking it would lift the
+        // player onto it.
+        private float FootSample(float h, Vector3 p)
+        {
+            float hs = SurfaceHeight(p);
+            if (hs <= h) return h;
+            if (hs - h <= StepLimit) return hs;
+            if (supportPlaced && Mathf.Abs(hs - lastSupportY) <= StepLimit) return hs;
+            return h;
         }
 
         // Place the support box so its top face lies on the surface below
-        // the feet, tilted to the surface normal there
+        // the feet
         private void PlaceSupport(Vector3 feet)
         {
             if (support == null) return;
             float h = SupportHeight(feet);
-#if UDONSHARP
             // The floor under the player moved by a step or more: a hole was dug
             // or a hill built under them, or they walked onto / off one
             if (supportPlaced && Mathf.Abs(h - lastSupportY) > 0.15f)
                 LogEvent("floor " + (h > lastSupportY ? "rose" : "dropped") + " " + F(Mathf.Abs(h - lastSupportY)) + " m to y=" + F(h) + " under " + F(feet));
             lastSupportY = h;
             supportPlaced = true;
-#endif
-            Vector3 top = new Vector3(feet.x, h, feet.z);
-            Vector3 n = EstimateGradient(top);
-            if (n.y < 0.2f) n = Vector3.up;   // a near-vertical flank is a wall (handled by the push), keep the floor level
-            Quaternion rot = Quaternion.FromToRotation(Vector3.up, n);
-            support.rotation = rot;
-            support.position = top - n * (supportHeight * 0.5f);
+            // Level, never tilted to the surface normal: the box is re-placed
+            // every frame so a slope is a staircase of millimetre steps the
+            // controller walks up, whereas a box tilted at a ridge's edge
+            // (steep normal) had the player sliding off it
+            support.rotation = Quaternion.identity;
+            support.position = new Vector3(feet.x, h - supportHeight * 0.5f, feet.z);
         }
 
         // =================================================================
@@ -582,14 +623,14 @@ namespace AliceSDF.Samples
         {
             float terrain = p.y;
             if (skipRecent > sculptCount) skipRecent = sculptCount;
-            // Skipped slots are [nextSlot - skipRecent, nextSlot) modulo MaxSculpts
+            // Skipped slots are [nextSlot - skipRecent, nextSlot) modulo the capacity
             int skipFrom = nextSlot - skipRecent;
 
             for (int i = 0; i < sculptCount; i++)
             {
                 if (skipRecent > 0)
                 {
-                    int rel = ((i - skipFrom) % MaxSculpts + MaxSculpts) % MaxSculpts;
+                    int rel = ((i - skipFrom) % Capacity() + Capacity()) % Capacity();
                     if (rel < skipRecent) continue;
                 }
                 float rw = sculptData[i].w;

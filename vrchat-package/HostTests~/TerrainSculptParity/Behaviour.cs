@@ -71,6 +71,10 @@ static class Behaviour
         float bump = s.SupportHeight(new Vector3(0.25f, 0f, 0f));
         // sphere flank 0.166 plus the k = 0.25 fillet with the plane
         Check(bump > 0.166f && bump < 0.3f, $"the support rises onto the bump under the feet (y = {bump:F3})");
+        // At the edge: the foot centre is off the bump but a foot-width sample is on it
+        var edge = new Vector3(0.40f, 0f, 0f);
+        Check(s.SurfaceHeight(edge) < 0.06f && s.SupportHeight(edge) > 0.10f, $"foot centre past the edge (surface {s.SurfaceHeight(edge):F3}) still stands on the bump (support {s.SupportHeight(edge):F3})");
+        Check(Math.Abs(s.SupportHeight(new Vector3(0.6f, 0f, 0f))) < 0.02f, "a foot-width further out the support is the ground");
 
         // --- Wall: a 0.9 m column of three spheres ---
         var w = Fresh();
@@ -92,7 +96,11 @@ static class Behaviour
         Check(frames < 600, $"push reached exactly zero in {frames} frames (dead band, no endless teleport)");
         // The stop is the fillet at the column's foot (sdf slightly negative,
         // a few cm of blend above the feet): a step for the support, not a wall
-        Check(q.x < 1.75f && w.ContactKind(q) == 0 && w.SupportHeight(q) - q.y < 0.3f, $"pushed clear of the wall (x {q.x:F3}, sdf {w.EvaluateSdf(q):F3}, {w.SupportHeight(q) - q.y:F3} m of fillet above the feet)");
+        Check(q.x < 1.75f && w.ContactKind(q) == 0 && w.SupportHeight(q) - q.y < 0.3f, $"pushed clear of the wall (x {q.x:F3}, sdf {w.EvaluateSdf(q):F3}, {w.SupportHeight(q) - q.y:F3} m of fillet above the feet; the column top under the foot edge is not taken)");
+        // Walking off the column top: the foot edge still on it keeps the floor there
+        Set(w, "supportPlaced", true); Set(w, "lastSupportY", 0.9f);
+        Check(w.SupportHeight(q) > 0.7f, $"with the last floor at the column top, the same foot edge keeps the player on it (sphere top at that x: {w.SupportHeight(q):F3})");
+        Set(w, "supportPlaced", false);
 
         // --- Desktop cursor ray ---
         var r = Fresh();
@@ -103,8 +111,12 @@ static class Behaviour
         Check(Math.Abs(tHill - 1.5f) < 5e-3f, $"looking down at the hill the cursor stops on its top ({tHill:F3})");
         Check(r.RaymarchTerrain(new Vector3(0.3f, 5f, 0f), Vector3.down, 3f) < 0f, "terrain beyond cursorMaxDist: no cursor");
 
-        // --- Buffer wrap: 50 sculpts keep the newest 48 ---
+        // --- Buffer wrap: at capacity 48, 50 sculpts keep the newest 48 ---
         var b = Fresh();
+        typeof(SampleTerrainSculpt_Collider).GetField("sculptCapacity").SetValue(b, 48);
+        Check(b.Capacity() == 48, "capacity follows the Inspector value");
+        typeof(SampleTerrainSculpt_Collider).GetField("sculptCapacity").SetValue(s, 500);
+        Check(s.Capacity() == SampleTerrainSculpt_Collider.MaxSculpts && SampleTerrainSculpt_Collider.MaxSculpts == 128, "capacity is clamped to the 128-slot array");
         for (int i = 0; i < 50; i++)
             rec.Invoke(b, new object[] { new Vector3(i, 0f, 0f), 0.3f });
         Check((int)Get(b, "sculptCount") == 48 && (int)Get(b, "nextSlot") == 2, "50 sculpts: 48 stored, next slot wrapped to 2");

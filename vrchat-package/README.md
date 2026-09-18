@@ -199,9 +199,9 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 1. Base terrain is a ground plane at Y=0
 2. Add → `opSmoothUnion(terrain, sphere)` — a hill at the hand / cursor
 3. Dig → `opSmoothSubtraction(terrain, sphere)` — a hole at the hand / cursor
-4. Operations are stored in a circular buffer (max 48). When full, oldest operations are overwritten
+4. Operations are stored in a circular buffer (`Sculpt Capacity`, default 96, up to 128). When full, oldest operations are overwritten
 5. UdonSharp sends the operation array to the shader every frame
-6. Standing on it: VRChat's player controller needs a Unity collider under its feet, so the script moves a small invisible box (`TerrainSupport`) every frame onto the SDF surface directly below the player, tilted to the surface normal. Dig under yourself and the box drops with the terrain — you fall. Build under yourself and you are lifted onto the new top. The steep flank of a tall hill pushes you back like a wall; anything lower than a 0.3 m step you simply walk up
+6. Standing on it: VRChat's player controller needs a Unity collider under its feet, so the script moves a small invisible box (`TerrainSupport`) every frame onto the highest SDF surface under the foot (five points across `Foot Radius`, so a ridge carries you until your feet really leave it). Dig under yourself and the box drops with the terrain — you fall. Build under yourself and you are lifted onto the new top. The steep flank of a tall hill pushes you back like a wall; anything lower than a 0.3 m step you simply walk up
 
 **Interaction:**
 
@@ -232,9 +232,11 @@ This is fundamentally impossible with VRChat's mesh-based approach because MeshC
 | Sculpt Cooldown | 0.12s | Minimum time between operations of one hand (prevents buffer spam) |
 | Add Smooth | 0.25 | SmoothUnion blend for hills (higher = smoother) — pushed to the material every frame, so collision and rendering always agree |
 | Sub Smooth | 0.15 | SmoothSubtraction blend for holes (higher = smoother edges) |
+| Sculpt Capacity | 96 | Operations kept (1-128); beyond it the oldest is overwritten. Every ray step and every collision sample folds them all, so this is the GPU / Udon cost knob |
 | Cursor Max Dist | 6.0 | Desktop: how far the view ray looks for terrain |
 | Support | (scene) | The invisible collider that follows the player (the generator creates `TerrainSupport`; by hand: any box collider, assign it here or name it `TerrainSupport`) |
 | Support Height | 0.2 | Thickness of that box; its top is placed on the surface |
+| Foot Radius | 0.12 | Half-width of the foot: the support takes the highest surface under five points across it (centre and ±x / ±z), so a ridge holds you until your feet fully leave it instead of the floor flicking at its edge |
 | Log Events | off | One `Debug.Log` line per add / dig / click / lift / wall push as `[Terrain] ...` — grep the VRChat client `output_log_*.txt` |
 
 **Shader parameters:** `Light Direction` (match your scene light), `Enable Soft Shadow` (hills cast contact shadows on the ground, 48 / 24 / 12 steps by LOD tier), `Fog Density`. The raymarcher accepts the closest approach of a ray that runs out of steps within a pixel of the surface, so hill silhouettes have no dark seam, and its ambient occlusion samples the hard union so the smooth blend at the foot of a hill does not read as a dark ring.

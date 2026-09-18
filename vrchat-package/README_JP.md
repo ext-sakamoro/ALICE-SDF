@@ -223,9 +223,9 @@ Y=0の平面地形をリアルタイムにスカルプトできます — VRの�
 1. ベース地形はY=0の地面（平面）
 2. 盛る → `opSmoothUnion(terrain, sphere)` — 手 / カーソルの位置に丘を追加
 3. 掘る → `opSmoothSubtraction(terrain, sphere)` — 手 / カーソルの位置に穴を掘削
-4. 操作は循環バッファに記録（最大48個）。満杯になると最古の操作を上書き
+4. 操作は循環バッファに記録（`Sculpt Capacity`、既定 96、最大 128）。満杯になると最古の操作を上書き
 5. UdonSharp が毎フレーム操作配列をシェーダーに送信
-6. 立つ: VRChat のプレイヤーコントローラは足元に Unity のコライダーが無いと接地できないため、スクリプトが小さな見えない箱 (`TerrainSupport`) を毎フレーム、プレイヤー真下の SDF 表面に法線に沿って傾けて置きます 足元を掘れば箱ごと地形と一緒に下がって落ち、足元に盛れば新しい頂上に持ち上げられます 高い丘の急な側面は壁として押し返し、0.3 m 以下の段差はそのまま歩いて登れます
+6. 立つ: VRChat のプレイヤーコントローラは足元に Unity のコライダーが無いと接地できないため、スクリプトが小さな見えない箱 (`TerrainSupport`) を毎フレーム、足の幅 (`Foot Radius` の 5 点) の中で最も高い SDF 表面に水平に置きます (尾根は足が完全に外れるまで乗っていられる) 足元を掘れば箱ごと地形と一緒に下がって落ち、足元に盛れば新しい頂上に持ち上げられます 高い丘の急な側面は壁として押し返し、0.3 m 以下の段差はそのまま歩いて登れます
 
 **操作:**
 
@@ -256,9 +256,11 @@ Y=0の平面地形をリアルタイムにスカルプトできます — VRの�
 | Sculpt Cooldown | 0.12秒 | 同じ手の操作間の最小間隔（バッファ溢れ防止） |
 | Add Smooth | 0.25 | 丘のSmoothUnionブレンド係数（大きいほど滑らか）毎フレーム material に送るので当たり判定と描画が常に一致 |
 | Sub Smooth | 0.15 | 穴のSmoothSubtractionブレンド係数（大きいほど滑らかな縁） |
+| Sculpt Capacity | 96 | 保持する操作数 (1-128)、超えると最古を上書き ray の各 step と衝突 sample が全部畳むので GPU / Udon コストのつまみ |
 | Cursor Max Dist | 6.0 | デスクトップ: 視線で地形を探す距離 |
 | Support | (scene) | プレイヤーに追従する見えないコライダー（generator が `TerrainSupport` を作成、手動なら任意の BoxCollider をここに割当 or `TerrainSupport` と命名） |
 | Support Height | 0.2 | その箱の厚み、上面が地表面に置かれる |
+| Foot Radius | 0.12 | 足の半幅: 中心と ±x / ±z の 5 点の中で最も高い表面に support を置く、尾根の縁で床がパタつかず足が完全に外れるまで乗れる |
 | Log Events | off | 盛る / 掘る / クリック / 持ち上げ / 壁押しごとに `[Terrain] ...` を `Debug.Log` 1 行 — VRChat client の `output_log_*.txt` を grep |
 
 **シェーダーパラメータ:** `Light Direction`（シーンのライトに合わせる）、`Enable Soft Shadow`（丘が地面に接触影を落とす、LOD tier 別 48 / 24 / 12 step）、`Fog Density` レイマーチャは表面の 1 px 以内で step を使い切った ray の最接近点を hit として採用するので丘の輪郭に暗い筋が出ず、AO は hard union を sample するので丘の裾の smooth blend が暗いリングに見えません

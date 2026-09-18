@@ -8,12 +8,16 @@
   had) and the scene still needed a flat floor collider, so a dug hole was
   drawn but never entered. The script now moves a small invisible box
   (`TerrainSupport`, created by the scene generator at the scene root) onto
-  the SDF surface directly below the player every frame, tilted to the
-  normal, so VRChat's controller stands on the terrain as it is now: dig
+  the highest SDF surface under the foot every frame (level; five points
+  across the foot so a ridge holds until the feet leave it), so VRChat's
+  controller stands on the terrain as it is now: dig
   under yourself and you fall, build under yourself and you are lifted onto
   the top, walk into the steep flank of a tall hill and it pushes you back
   like a wall (with the Mochi dead band, so the push stops), anything under
   a 0.3 m step you walk up. No floor collider in a TerrainSculpt scene.
+  Sculpt buffer 48 → `Sculpt Capacity` (Inspector, default 96, array 128):
+  in a 7-minute session the 48-slot ring wrapped eight times and the first
+  hills vanished under the player's feet.
 - TerrainSculpt shader: `Cull Off` (the player walks inside the volume
   cube; with back-face culling the terrain vanished from inside), the
   closest-approach acceptance of the Mochi raymarcher (no dark seam along
