@@ -3,6 +3,25 @@
 ## [Unreleased]
 
 ### Added
+- AliceSDF Kit product (`ALICE-SDF > Build Kit Product`, `KitProductBuilder`):
+  all seven samples as one stand-alone unitypackage (base collider + 7
+  scripts in namespace `AliceSDFKit`, 7 shaders with the includes beside them,
+  9 prefabs with a root at the ground / law origin and a child `Volume` cube,
+  Terrain with its own `TerrainSupport`, README EN / JP). Verified headless in
+  a fresh Worlds project and in the client (PC: all nine in one world; Quest 2:
+  the same world without the decor).
+- DeformableWall / TerrainSculpt / static samples: the law follows the prefab.
+  Wall: `groundOffset` + the object's rotation give the wall frame
+  (`_WorldToWall`). Terrain: `groundOffset` (yaw free), and the support box /
+  lift / wall push act only inside the cube's footprint so several terrains
+  and the world floor coexist. Static samples: `AliceSDF_Collider` evaluates
+  the law in the object's frame (`Anchor To Object`, `EvaluateWorld`) and the
+  shaders do the same (`toLaw` from `unity_WorldToObject`).
+- DeformableWall / TerrainSculpt: Look section (colours, triplanar textures)
+  pushed from the collider like Mochi; every sample's march stops at its own
+  volume cube; Wall and Terrain take the exact far-ground fast path.
+- `AliceSDF_LOD.cginc`: `ALICE_MOBILE_BUDGET` under `SHADER_API_MOBILE`
+  (steps 32/24/16, shadow 4/2/0, AO 2/1) for every sample that includes it.
 - Mochi shader: Quest / Android support. Under `SHADER_API_MOBILE` the
   same law runs with a smaller per-tier budget (march 32 / 24 / 16,
   soft shadow 4 / 2 / 0, AO 2 / 1 / 1). The Mochi world now carries an

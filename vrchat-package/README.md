@@ -84,9 +84,9 @@ Paste `.asdf.json` and auto-generate optimized Shader + Udon + Prefab.
 | Smart Float Format | Both | `0.000000` becomes `0.0`, `1.500000` becomes `1.5` |
 | Live Preview | Editor | JSON changes detected via hash — preview updates automatically |
 
-## Product: AliceMochi (BOOTH)
+## Product: AliceSDF Kit (BOOTH)
 
-The Mochi sample is also packaged as a stand-alone product for world creators who do not want this package: **ALICE-SDF > Build Mochi Product** generates `Assets/AliceMochi/` (one script, one shader, Mochi / Slime / Water prefabs, README in English and Japanese) from the sample and exports `Product~/AliceMochi_<version>.unitypackage`. Drop a prefab into any VRChat Worlds project and build. The sample stays the single source of the law; re-run the menu after changing it.
+All seven samples are also packaged as one stand-alone product for world creators who do not want this package: **ALICE-SDF > Build Kit Product** generates `Assets/AliceSDFKit/` (the base collider + seven scripts in namespace `AliceSDFKit`, the seven shaders with the two includes beside them, nine prefabs, README in English and Japanese) and exports `Product~/AliceSDFKit_<version>.unitypackage`. Every prefab is a root at the ground / law origin with a child `Volume` cube: place the root anywhere, turn it, scale the cube, build. The laws follow the prefab (position and rotation), each march stops at its own cube, so several prefabs share one world without their ground planes fighting. PC and Quest (the Quest build of a world should keep one or two volumes in view; the decor prefabs are heavy on a mobile GPU). The samples stay the single source of the laws; re-run the menu after changing one. **ALICE-SDF > Build Mochi Product** still builds the Mochi-only package.
 
 ## Samples (SDF Gallery)
 

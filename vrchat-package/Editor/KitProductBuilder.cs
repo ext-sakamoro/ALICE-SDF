@@ -264,7 +264,14 @@ namespace AliceSDF.Editor
                 cube.transform.localPosition = p.cubePos;
                 cube.transform.localScale = p.cubeScale;
                 Object.DestroyImmediate(cube.GetComponent<BoxCollider>());
-                cube.GetComponent<MeshRenderer>().sharedMaterial = mat;
+                var cr = cube.GetComponent<MeshRenderer>();
+                cr.sharedMaterial = mat;
+                // The cube is a raymarch canvas: its mesh must not cast a box shadow
+                // (the shader's Fallback has a ShadowCaster pass) nor receive one
+                cr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                cr.receiveShadows = false;
+                cr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+                cr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
                 var type = FindType("AliceSDFKit." + p.productClass);
                 var comp = cube.AddComponent(type);
                 var so = new SerializedObject(comp);
