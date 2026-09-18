@@ -88,6 +88,17 @@
   T13 collider without `UdonBehaviour`).
 
 ### Added
+- **AliceMochi product** (`ALICE-SDF/Build Mochi Product`, `Editor/MochiProductBuilder.cs`):
+  generates a stand-alone `Assets/AliceMochi/` (script, shader, three preset
+  materials + prefabs Mochi / Slime / Water, program asset, README EN / JP,
+  LICENSE) from the Mochi sample and exports `Product~/AliceMochi_<version>.unitypackage`
+  for BOOTH. No dependency on this package: verified by importing it into a
+  fresh VCC World project (0 compile errors, UdonSharp compiled, prefab backed,
+  shader 0 errors). Three phases across the script compile (write → program
+  asset → prefabs on a later tick, UdonSharp backs scene proxies on its own
+  tick). The sample gains the product's knobs: `Look` (colours pushed to the
+  material when `Apply Colors` is on) and `Mochis` (`Use Custom Layout`:
+  count / radius / ring; off keeps the five-mochi golden layout).
 - The TerrainSculpt and DeformableWall samples are published as the VRChat
   worlds **TerrainSculpt** (`wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061`) and
   **DeformableWall** (`wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9`), private

@@ -27,3 +27,6 @@ Thumbs.db
 !HostTests~/**/*.csproj
 HostTests~/**/bin/
 HostTests~/**/obj/
+
+# BOOTH product export (ALICE-SDF/Build Mochi Product), an artifact of the sample
+Product~/

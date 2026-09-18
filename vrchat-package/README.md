@@ -84,6 +84,10 @@ Paste `.asdf.json` and auto-generate optimized Shader + Udon + Prefab.
 | Smart Float Format | Both | `0.000000` becomes `0.0`, `1.500000` becomes `1.5` |
 | Live Preview | Editor | JSON changes detected via hash — preview updates automatically |
 
+## Product: AliceMochi (BOOTH)
+
+The Mochi sample is also packaged as a stand-alone product for world creators who do not want this package: **ALICE-SDF > Build Mochi Product** generates `Assets/AliceMochi/` (one script, one shader, Mochi / Slime / Water prefabs, README in English and Japanese) from the sample and exports `Product~/AliceMochi_<version>.unitypackage`. Drop a prefab into any VRChat Worlds project and build. The sample stays the single source of the law; re-run the menu after changing it.
+
 ## Samples (SDF Gallery)
 
 Seven ready-to-play samples are included. Import via **Package Manager > Samples** tab.
@@ -158,7 +162,7 @@ A flat wall standing on a ground plane. Touch it with a VR hand, punch it with t
 
 **Play it in VRChat:** the sample is published as the world **Mochi** — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42), in **Community Labs** since 2026-09-18 (search for "Mochi" with Labs enabled in your settings, or open the link and press **Launch**). PC only (the raymarcher is not built for Quest).
 
-Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apart, push them together, and watch them grow — in VR with your hands, on desktop with the mouse (11 s from the VRChat client above: walking in dents the mochi around your body, a click grabs, a fast turn splits, carrying one onto another merges).
+Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apart, push them together, and watch them grow — in VR with your hands, on desktop with the mouse (11 s from the VRChat client above: walking in dents the mochi around your body, a click grabs, a right click splits, carrying one onto another merges).
 
 **How it works:**
 1. Up to 16 mochi spheres are tracked as `(position, radius)` pairs

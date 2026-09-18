@@ -108,6 +108,10 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 
 ---
 
+## 製品版: AliceMochi (BOOTH)
+
+Mochi sample は、この package を入れたくない world 制作者向けに単体製品にもなります: **ALICE-SDF > Build Mochi Product** が sample から `Assets/AliceMochi/` (script 1 本、shader 1 本、Mochi / Slime / Water の prefab、日英 README) を生成して `Product~/AliceMochi_<version>.unitypackage` を export します 任意の VRChat Worlds project に prefab を置いてビルドするだけ law の source は sample 1 箇所のまま、sample を変えたら menu を再実行
+
 ## サンプル (SDF Gallery)
 
 7種類のサンプルワールドを同梱しています。**Package Manager > Samples** タブからインポートしてください。
@@ -182,7 +186,7 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 
 **VRChat で遊ぶ:** このサンプルは world **Mochi** として公開しています — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42)、2026-09-18 から **Community Labs** (設定で Labs を有効にして「Mochi」を検索、または link の **Launch**) PC 専用 (レイマーチャーは Quest 向けにビルドしていません)
 
-地面の上に置かれた柔らかい餅（もち）ブロブ。掴んで引っ張って分裂させたり、押し合わせて合体させたり、どんどん大きくしたりできます — VR では手で、デスクトップではマウスで（上の GIF は VRChat client の 11 秒: 歩いて入ると体の形に凹み、クリックで掴み、素早く振ると分裂、別の餅に運ぶと合体）。
+地面の上に置かれた柔らかい餅（もち）ブロブ。掴んで引っ張って分裂させたり、押し合わせて合体させたり、どんどん大きくしたりできます — VR では手で、デスクトップではマウスで（上の GIF は VRChat client の 11 秒: 歩いて入ると体の形に凹み、クリックで掴み、右クリックで分裂、別の餅に運ぶと合体）。
 
 **仕組み:**
 1. 最大16個の餅球を `(位置, 半径)` のペアで管理

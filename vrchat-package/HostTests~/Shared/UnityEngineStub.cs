@@ -32,6 +32,11 @@ namespace UnityEngine
         public Vector2(float x, float y) { this.x = x; this.y = y; }
         public float magnitude => (float)Math.Sqrt(x * x + y * y);
     }
+    public struct Color
+    {
+        public float r, g, b, a;
+        public Color(float r, float g, float b, float a) { this.r = r; this.g = g; this.b = b; this.a = a; }
+    }
     public struct Vector4
     {
         public float x, y, z, w;
@@ -91,6 +96,7 @@ namespace UnityEngine
         public void SetVectorArray(string n, Vector4[] v) { }
         public void SetFloat(string n, float v) { }
         public void SetVector(string n, Vector4 v) { }
+        public void SetColor(string n, Color c) { }
     }
     public class Component
     {

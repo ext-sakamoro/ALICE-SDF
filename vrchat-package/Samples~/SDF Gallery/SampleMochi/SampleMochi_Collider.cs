@@ -70,6 +70,30 @@ namespace AliceSDF.Samples
         // Remaining penetration (m) under which the player is left alone
         private const float PushDeadBand = 0.005f;
 
+        // ---- Easy knobs (the product prefab exposes these; everything below is the law) ----
+        [Header("Look (pushed to the material every frame when Apply Colors is on)")]
+        [Tooltip("Apply the colours below to the material (off: the material's own colours) / 下の色を material に反映 (off なら material の色)")]
+        public bool applyColors = false;
+        [Tooltip("Mochi colour / 餅の色")]
+        public Color mochiColor = new Color(0.96f, 0.93f, 0.88f, 1f);
+        [Tooltip("Mochi highlight (lit from above) / 餅のハイライト")]
+        public Color mochiHighlight = new Color(0.99f, 0.96f, 0.92f, 1f);
+        [Tooltip("Ground colour / 地面の色")]
+        public Color groundColor = new Color(0.55f, 0.46f, 0.36f, 1f);
+        [Tooltip("Ground detail colour (grain) / 地面の模様色")]
+        public Color groundDetail = new Color(0.50f, 0.42f, 0.33f, 1f);
+
+        [Header("Mochis (initial layout)")]
+        [Tooltip("Off: the five-mochi layout of the sample (what the golden test checks). On: Initial Count mochis of Initial Radius on a ring of Ring Radius / off = sample の 5 個固定、on = 下の個数・半径・輪で並べる")]
+        public bool useCustomLayout = false;
+        [Tooltip("How many mochis to start with (1-16) / 最初の餅の個数")]
+        [Range(1, 16)]
+        public int initialCount = 5;
+        [Tooltip("Radius of each starting mochi (m) / 最初の餅の半径")]
+        public float initialRadius = 0.3f;
+        [Tooltip("Radius of the ring they are placed on (m); 0 = all at the centre / 並べる輪の半径")]
+        public float ringRadius = 0.7f;
+
         [Header("Mochi Settings")]
         [Tooltip("SmoothUnion blend factor between mochis (sent to shader _BlendK)")]
         public float blendK = 0.5f;
@@ -208,11 +232,24 @@ namespace AliceSDF.Samples
             // overwrite the state it is about to receive.
             if (IsAuthority())
             {
-                SpawnMochi(new Vector3(-0.6f, 0.35f, 0.5f), 0.35f);
-                SpawnMochi(new Vector3( 0.5f, 0.30f, 0.3f), 0.30f);
-                SpawnMochi(new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
-                SpawnMochi(new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
-                SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
+                if (useCustomLayout)
+                {
+                    int n = initialCount < 1 ? 1 : (initialCount > MaxMochi ? MaxMochi : initialCount);
+                    float r = initialRadius < minRadius ? minRadius : initialRadius;
+                    for (int i = 0; i < n; i++)
+                    {
+                        float a = 6.2831853f * i / n;
+                        SpawnMochi(new Vector3(Mathf.Cos(a) * ringRadius, r, Mathf.Sin(a) * ringRadius), r);
+                    }
+                }
+                else
+                {
+                    SpawnMochi(new Vector3(-0.6f, 0.35f, 0.5f), 0.35f);
+                    SpawnMochi(new Vector3( 0.5f, 0.30f, 0.3f), 0.30f);
+                    SpawnMochi(new Vector3( 0.0f, 0.28f,-0.4f), 0.28f);
+                    SpawnMochi(new Vector3(-0.9f, 0.40f,-0.2f), 0.40f);
+                    SpawnMochi(new Vector3( 0.4f, 0.25f,-0.8f), 0.25f);
+                }
             }
 
             // No player yet: w = 0 tells the shader not to dent
@@ -409,7 +446,7 @@ namespace AliceSDF.Samples
 
         // While Use is held, the point on the view ray at the distance fixed
         // on the click is the right hand: ProcessHand grabs it after the
-        // dwell, drags it as the view turns, splits it on a fast turn
+        // dwell, drags it as the view turns; the right click (InputDrop) splits it
         private void ProcessDesktopCursor()
         {
             if (!useHeld) return;
@@ -896,6 +933,14 @@ namespace AliceSDF.Samples
             mat.SetVector("_PlayerCapA", playerCapA);
             mat.SetVector("_PlayerCapB", playerCapB);
             mat.SetFloat("_PlayerDentK", dentK);
+
+            if (applyColors)
+            {
+                mat.SetColor("_MochiColor", mochiColor);
+                mat.SetColor("_MochiColor2", mochiHighlight);
+                mat.SetColor("_GroundColor", groundColor);
+                mat.SetColor("_GroundColor2", groundDetail);
+            }
         }
     }
 }
