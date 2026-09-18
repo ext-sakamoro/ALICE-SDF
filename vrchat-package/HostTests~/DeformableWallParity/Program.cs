@@ -23,6 +23,7 @@ static class Program
     static int Main(string[] args)
     {
         var c = new SampleDeformableWall_Collider();
+        typeof(SampleDeformableWall_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         // Start() is private (Unity message); invoke it like Unity would
         typeof(SampleDeformableWall_Collider).GetMethod("Start", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(c, null);
         var F = BindingFlags.NonPublic | BindingFlags.Instance;

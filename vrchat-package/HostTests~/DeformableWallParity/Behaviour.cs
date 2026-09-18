@@ -15,6 +15,7 @@ static class Behaviour
     static SampleDeformableWall_Collider Fresh()
     {
         var c = new SampleDeformableWall_Collider();
+        typeof(SampleDeformableWall_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
         Call(c, "Start");
         typeof(SampleDeformableWall_Collider).GetField("logEvents").SetValue(c, true); // event lines in the run output
         return c;

@@ -19,10 +19,24 @@
 #define ALICE_LOD_TIER_MED    1
 #define ALICE_LOD_TIER_LOW    2
 
+// Quest / Android (SHADER_API_MOBILE): the same laws with a smaller
+// per-tier budget (steps, soft-shadow steps, AO taps). Standalone keeps
+// the full budget. A sample that inlines its own copy of these tables
+// (Mochi) carries the same ALICE_MOBILE_BUDGET switch.
+#if defined(SHADER_API_MOBILE)
+    #define ALICE_MOBILE_BUDGET 1
+#endif
+
 // Step count presets per LOD tier
+#ifdef ALICE_MOBILE_BUDGET
+#define ALICE_STEPS_HIGH      32
+#define ALICE_STEPS_MED       24
+#define ALICE_STEPS_LOW       16
+#else
 #define ALICE_STEPS_HIGH     128
 #define ALICE_STEPS_MED       64
 #define ALICE_STEPS_LOW       32
+#endif
 
 // Epsilon presets per LOD tier
 #define ALICE_EPS_HIGH    0.0001
@@ -112,8 +126,12 @@ float4 aliceRaymarchLOD(float3 rayOrigin, float3 rayDir, float maxDist)
 
 float aliceAO_LOD(float3 pos, float3 nor, int tier)
 {
+#ifdef ALICE_MOBILE_BUDGET
+    int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 2 : 1;
+#else
     int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 5 :
                   (tier == ALICE_LOD_TIER_MED)  ? 3 : 2;
+#endif
 
     float occ = 0.0;
     float sca = 1.0;
@@ -131,15 +149,22 @@ float aliceAO_LOD(float3 pos, float3 nor, int tier)
 // Soft Shadow with LOD (fewer steps when far)
 // =============================================================================
 
+#ifdef ALICE_MOBILE_BUDGET
+#define ALICE_SHADOW_STEPS_HIGH   4
+#define ALICE_SHADOW_STEPS_MED    2
+#define ALICE_SHADOW_STEPS_LOW    0
+#else
 #define ALICE_SHADOW_STEPS_HIGH  48
 #define ALICE_SHADOW_STEPS_MED   24
 #define ALICE_SHADOW_STEPS_LOW   12
+#endif
 
 float aliceSoftShadow_LOD(float3 ro, float3 rd, float mint, float maxt, float softness, int tier)
 {
     int maxSteps = (tier == ALICE_LOD_TIER_HIGH) ? ALICE_SHADOW_STEPS_HIGH :
                    (tier == ALICE_LOD_TIER_MED)  ? ALICE_SHADOW_STEPS_MED :
                                                    ALICE_SHADOW_STEPS_LOW;
+    if (maxSteps <= 0) return 1.0;
     float res = 1.0;
     float t = mint;
     float ph = 1e20;

@@ -11,12 +11,25 @@
 //   dent_i: sphere of radius _DentRadius * strength_i (strength decays 1 -> 0)
 //   body:   the local player's capsule, pressed into the wall (local only)
 //
+// Frame: the wall and the ground live in the wall frame given by
+//   _WorldToWall (set by the collider from transform.position + groundOffset
+//   and transform.rotation): ground = local y, wall along local X / Y facing
+//   local Z. Dents and the body are world-space spheres / capsules, which
+//   need no frame. The march stops where the ray leaves the volume cube, so
+//   the ground is drawn only under the cube (two walls in one world do not
+//   fight over an infinite plane).
+//
 // Rendering notes (same fixes as the Mochi sample):
 //   - Cull Off: the player walks inside the volume cube
 //   - closest-approach acceptance: a ray grazing the wall's edge that runs
 //     out of steps a hair short of the surface is a hit, not the far depth
 //   - AO samples the hard (k = 0) subtraction: the smooth rim of a dent
 //     under-reports distance and read as a dark ring around every dent
+//   - far-ground fast path (exact): outside the wall's box the wall
+//     distance is positive, so a ray that misses the (slightly inflated)
+//     box can only hit the ground plane. Those pixels take the analytic
+//     plane hit with the +y normal and AO 1, and march the shadow ray only
+//     if it can pass near the wall.
 //
 // Author: Moroya Sakamoto
 // =============================================================================
@@ -29,6 +42,15 @@ Shader "AliceSDF/Samples/DeformableWall"
         _WallColor ("Wall Color", Color) = (0.82, 0.78, 0.72, 1.0)
         _GroundColor ("Ground Color", Color) = (0.35, 0.42, 0.3, 1.0)
         _DentColor ("Dent Glow Color", Color) = (1.0, 0.6, 0.3, 1.0)
+
+        [Header(Textures)]
+        // Driven by the collider's Look section; triplanar in the wall frame
+        [NoScaleOffset] _WallTex ("Wall Texture", 2D) = "white" {}
+        _WallTexScale ("Wall Texture Tiles per Metre", Float) = 1.0
+        _WallTexStrength ("Wall Texture Strength", Range(0, 1)) = 0.0
+        [NoScaleOffset] _GroundTex ("Ground Texture", 2D) = "white" {}
+        _GroundTexScale ("Ground Texture Tiles per Metre", Float) = 0.5
+        _GroundTexStrength ("Ground Texture Strength", Range(0, 1)) = 0.0
 
         [Header(Raymarching)]
         _MaxDist ("Max Distance", Float) = 100.0
@@ -76,6 +98,8 @@ Shader "AliceSDF/Samples/DeformableWall"
 
             // Inspector properties
             float4 _WallColor, _GroundColor, _DentColor, _FogColor;
+            sampler2D _WallTex, _GroundTex;
+            float _WallTexScale, _WallTexStrength, _GroundTexScale, _GroundTexStrength;
             float _MaxDist;
             float _WallWidth, _WallHeight, _WallThick;
             float _DentRadius, _DentSmooth;
@@ -84,6 +108,9 @@ Shader "AliceSDF/Samples/DeformableWall"
             float4 _LightDir;
             int _ShadowEnabled;
             float _ShadowSoftness, _ShadowMaxDist, _FogDensity;
+
+            // Placement (set by the collider): world -> wall frame, rigid
+            float4x4 _WorldToWall;
 
             // Closest-approach acceptance, metres per metre of ray length
             // (~1 px at a 60 deg / 1000 px view)
@@ -106,6 +133,26 @@ Shader "AliceSDF/Samples/DeformableWall"
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
+            // A material without the collider has no matrix (all zero): the
+            // wall frame is then the world frame, as before
+            bool wallFrameUnset()
+            {
+                return abs(_WorldToWall._m00) + abs(_WorldToWall._m11) + abs(_WorldToWall._m22) < 1e-6;
+            }
+            float3 toWall(float3 p)
+            {
+                return wallFrameUnset() ? p : mul(_WorldToWall, float4(p, 1.0)).xyz;
+            }
+            float3 toWallDir(float3 d)
+            {
+                return wallFrameUnset() ? d : mul((float3x3)_WorldToWall, d);
+            }
+            // Wall +y in world (row 1 of the rotation = column 1 of its inverse)
+            float3 wallUp()
+            {
+                return wallFrameUnset() ? float3(0, 1, 0) : normalize(mul(float3(0, 1, 0), (float3x3)_WorldToWall));
+            }
+
             // =================================================================
             // SDF: Ground + Wall with dynamic dents + the player's body
             // =================================================================
@@ -114,7 +161,7 @@ Shader "AliceSDF/Samples/DeformableWall"
             {
                 float3 wc = float3(0, _WallHeight, 0);
                 float3 wh = float3(_WallWidth, _WallHeight, _WallThick);
-                float wall = sdBox(p - wc, wh);
+                float wall = sdBox(toWall(p) - wc, wh);
 
                 int count = (int)_ImpactCount;
                 for (int i = 0; i < 16; i++)
@@ -138,7 +185,7 @@ Shader "AliceSDF/Samples/DeformableWall"
                     float body = sdCapsule(p, _PlayerCapA.xyz, _PlayerCapB.xyz, _PlayerCapA.w);
                     wall = opSmoothSubtraction(wall, body, _PlayerDentK);
                 }
-                return min(p.y, wall);
+                return min(toWall(p).y, wall);
             }
 
             // Hard (k = 0) version for the ambient occlusion: exact outside
@@ -147,7 +194,8 @@ Shader "AliceSDF/Samples/DeformableWall"
             {
                 float3 wc = float3(0, _WallHeight, 0);
                 float3 wh = float3(_WallWidth, _WallHeight, _WallThick);
-                float wall = sdBox(p - wc, wh);
+                float3 q = toWall(p);
+                float wall = sdBox(q - wc, wh);
                 int count = (int)_ImpactCount;
                 for (int i = 0; i < 16; i++)
                 {
@@ -158,7 +206,7 @@ Shader "AliceSDF/Samples/DeformableWall"
                 }
                 if (_PlayerCapA.w > 0.0)
                     wall = max(wall, -sdCapsule(p, _PlayerCapA.xyz, _PlayerCapB.xyz, _PlayerCapA.w));
-                return min(p.y, wall);
+                return min(q.y, wall);
             }
 
             #include "Packages/com.alice.sdf/Runtime/Shaders/AliceSDF_LOD.cginc"
@@ -181,8 +229,12 @@ Shader "AliceSDF/Samples/DeformableWall"
 
             // AO against the hard union, sample count by LOD tier
             float wallAO(float3 p, float3 n, int tier) {
+                #ifdef ALICE_MOBILE_BUDGET
+                int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 2 : 1;
+                #else
                 int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 5 :
                               (tier == ALICE_LOD_TIER_MED)  ? 3 : 2;
+                #endif
                 float occ = 0.0;
                 float sca = 1.0;
                 for (int i = 0; i < 5; i++) {
@@ -207,6 +259,80 @@ Shader "AliceSDF/Samples/DeformableWall"
                     f = max(f, w * smoothstep(_DentRadius * 1.5, 0.0, dist));
                 }
                 return f;
+            }
+
+            // Triplanar sample: the three axis projections of q blended by the
+            // normal, so a dented surface shows the texture without UVs
+            float3 triplanar(sampler2D tex, float3 q, float3 n)
+            {
+                float3 w = abs(n);
+                w = w / max(w.x + w.y + w.z, 1e-4);
+                float3 cx = tex2D(tex, q.yz).rgb;
+                float3 cy = tex2D(tex, q.xz).rgb;
+                float3 cz = tex2D(tex, q.xy).rgb;
+                return cx * w.x + cy * w.y + cz * w.z;
+            }
+
+            // =================================================================
+            // Far-ground fast path (exact, see the header)
+            // =================================================================
+            // True if the segment q0 + qd * [0, len] (wall frame) enters the
+            // wall's box inflated by infl
+            bool segmentNearWall(float3 q0, float3 qd, float len, float infl)
+            {
+                float3 wc = float3(0, _WallHeight, 0);
+                float3 wh = float3(_WallWidth, _WallHeight, _WallThick) + infl;
+                float3 inv = 1.0 / (abs(qd) < 1e-6 ? (qd < 0.0 ? -1e-6 : 1e-6) : qd);
+                float3 t0 = (wc - wh - q0) * inv;
+                float3 t1 = (wc + wh - q0) * inv;
+                float3 tmin3 = min(t0, t1);
+                float3 tmax3 = max(t0, t1);
+                float tmin = max(max(tmin3.x, tmin3.y), tmin3.z);
+                float tmax = min(min(tmax3.x, tmax3.y), tmax3.z);
+                return tmax >= max(tmin, 0.0) && tmin <= len;
+            }
+
+            // Soft shadow of the bare plane: the same loop as
+            // aliceSoftShadow_LOD with map replaced by the plane distance
+            float planeSoftShadow_LOD(float3 q0, float3 qd, float mint, float maxt, float softness, int tier)
+            {
+                int maxSteps = (tier == ALICE_LOD_TIER_HIGH) ? ALICE_SHADOW_STEPS_HIGH :
+                               (tier == ALICE_LOD_TIER_MED)  ? ALICE_SHADOW_STEPS_MED :
+                                                               ALICE_SHADOW_STEPS_LOW;
+                if (maxSteps <= 0) return 1.0;
+                float res = 1.0;
+                float t = mint;
+                float ph = 1e20;
+                for (int i = 0; i < 48; i++)
+                {
+                    if (i >= maxSteps) break;
+                    float h = q0.y + qd.y * t;
+                    if (h < 0.0001)
+                        return 0.0;
+                    float y = h * h / (2.0 * ph);
+                    float d = sqrt(h * h - y * y);
+                    res = min(res, softness * d / max(0.0, t - y));
+                    ph = h;
+                    t += h;
+                    if (t > maxt) break;
+                }
+                return saturate(res);
+            }
+
+            // Distance along the ray to where it leaves this object's unit
+            // cube (object space slab test, mapped back to a world distance)
+            float exitDistance(float3 ro, float3 rd)
+            {
+                float3 roObj = mul(unity_WorldToObject, float4(ro, 1.0)).xyz;
+                float3 rdObj = mul((float3x3)unity_WorldToObject, rd);
+                float3 inv = 1.0 / (abs(rdObj) < 1e-6 ? (rdObj < 0.0 ? -1e-6 : 1e-6) : rdObj);
+                float3 t0 = (-0.5 - roObj) * inv;
+                float3 t1 = ( 0.5 - roObj) * inv;
+                float3 tmax = max(t0, t1);
+                float tObj = min(tmax.x, min(tmax.y, tmax.z));
+                float3 exitObj = roObj + rdObj * tObj;
+                float3 exitWorld = mul(unity_ObjectToWorld, float4(exitObj, 1.0)).xyz;
+                return length(exitWorld - ro);
             }
 
             v2f vert(appdata v) {
@@ -234,13 +360,32 @@ Shader "AliceSDF/Samples/DeformableWall"
                 float eps = aliceLodEpsilon(tier);
                 float ss = aliceLodStepScale(tier);
                 float t = 0.0;
+                float tExit = exitDistance(ro, rd);
                 FragOutput o;
 
                 // Closest approach along the ray (see the header)
                 float bestD = 1e10;
                 float bestT = 0.0;
                 bool hit = false;
+                bool farGround = false;
 
+                // Ray in the wall frame (rigid, so lengths are preserved)
+                float3 q0 = toWall(ro);
+                float3 qd = toWallDir(rd);
+                // Inflation covers the closest-approach acceptance and the
+                // normal / AO probe reach around a hit
+                float infl = 0.3;
+                bool nearWall = q0.y < eps
+                             || segmentNearWall(q0, qd, min(tExit, _MaxDist), infl);
+                if (!nearWall) {
+                    if (qd.y < -1e-6) {
+                        // Stop eps short of the plane like the march does (its
+                        // hit is the first sample with d < eps): a coplanar floor
+                        // mesh would otherwise z-fight the exact plane
+                        float tp = -q0.y / qd.y - eps;
+                        if (tp > 0.0 && tp <= tExit && tp <= _MaxDist) { t = tp; hit = true; farGround = true; }
+                    }
+                } else {
                 for (int k = 0; k < 128; k++) {
                     if (k >= maxSteps) break;
                     float d = map(ro + rd * t);
@@ -249,36 +394,51 @@ Shader "AliceSDF/Samples/DeformableWall"
                     if (d < bestD) { bestD = d; bestT = t; }
 
                     t += d * ss;
-                    if (t > _MaxDist) break;
+                    if (t > _MaxDist || t > tExit) break;
                 }
                 if (!hit && bestD < max(eps, bestT * NEAR_MISS_PER_M)) {
                     t = bestT;
                     hit = true;
                 }
+                }
 
                 if (hit) {
                     float3 p = ro + rd * t;
-                    float3 n = calcN(p, normalEps(tier));
+                    float3 q = toWall(p);
+                    float3 up = wallUp();
+                    float3 n = farGround ? up : calcN(p, normalEps(tier));
                     float3 lightDir = normalize(_LightDir.xyz);
-                    float ao = wallAO(p, n, tier);
+                    float ao = farGround ? 1.0 : wallAO(p, n, tier);
 
                     // Direct-light visibility (the wall's shadow on the ground)
                     float shadow = 1.0;
                     if (_ShadowEnabled > 0)
                     {
-                        shadow = aliceSoftShadow_LOD(p + n * 0.02, lightDir, 0.02,
-                                                     _ShadowMaxDist, _ShadowSoftness, tier);
+                        float3 sro = p + n * 0.02;
+                        float3 sq0 = toWall(sro);
+                        float3 sqd = toWallDir(lightDir);
+                        if (farGround && !segmentNearWall(sq0, sqd, _ShadowMaxDist,
+                                                          infl + _DentRadius + _ShadowMaxDist / max(_ShadowSoftness, 1.0)))
+                            shadow = planeSoftShadow_LOD(sq0, sqd, 0.02, _ShadowMaxDist, _ShadowSoftness, tier);
+                        else
+                            shadow = aliceSoftShadow_LOD(sro, lightDir, 0.02,
+                                                         _ShadowMaxDist, _ShadowSoftness, tier);
                     }
 
                     // Surface: ground or wall (whichever the hit belongs to)
                     float3 baseColor;
-                    if (p.y < mapWall(p) + 0.01)
+                    if (farGround || q.y < mapWall(p) + 0.01)
                     {
                         baseColor = _GroundColor.rgb;
+                        if (_GroundTexStrength > 0.0)
+                            baseColor = lerp(baseColor, triplanar(_GroundTex, q * _GroundTexScale, n), _GroundTexStrength);
                     }
                     else
                     {
-                        baseColor = lerp(_WallColor.rgb, _DentColor.rgb, saturate(dentFreshness(p)));
+                        baseColor = _WallColor.rgb;
+                        if (_WallTexStrength > 0.0)
+                            baseColor = lerp(baseColor, triplanar(_WallTex, q * _WallTexScale, n), _WallTexStrength);
+                        baseColor = lerp(baseColor, _DentColor.rgb, saturate(dentFreshness(p)));
                     }
 
                     // Lighting

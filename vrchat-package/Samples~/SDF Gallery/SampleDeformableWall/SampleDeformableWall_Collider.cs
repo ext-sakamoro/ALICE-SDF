@@ -17,6 +17,12 @@
 // decays by exp(-decaySpeed * t); a slot under 0.01 is free. A new impact
 // takes a free slot, else the weakest.
 //
+// Placement: the law is anchored to this object. The ground plane and the
+// wall's foot sit at transform.position + groundOffset and the wall faces
+// the object's local Z axis (rotate the object to turn the wall); both are
+// read once in Start. Dents and the body capsule stay in world space (a
+// sphere / capsule is rotation invariant).
+//
 // Network: owner-authoritative, manual sync. impactPoints / impactCount
 //   are [UdonSynced]; whoever hits the wall takes ownership (once per
 //   contact, not every frame); the owner decays the strengths and
@@ -56,6 +62,26 @@ namespace AliceSDF.Samples
         private const float DeadStrength = 0.01f;
         // Remaining penetration (m) under which the player is left alone
         private const float PushDeadBand = 0.005f;
+
+        [Header("Look (pushed to the material every frame when Apply Colors is on)")]
+        [Tooltip("Push the colours and textures below to the material every frame (off = the material's own values)")]
+        public bool applyColors = true;
+        public Color wallColor = new Color(0.82f, 0.78f, 0.72f, 1f);
+        [Tooltip("Colour a fresh dent glows with, fading as it recovers")]
+        public Color dentGlowColor = new Color(1.0f, 0.6f, 0.3f, 1f);
+        public Color groundColor = new Color(0.35f, 0.42f, 0.3f, 1f);
+        [Tooltip("Optional texture on the wall (triplanar in the wall's frame, tiles per metre * scale)")]
+        public Texture2D wallTexture;
+        public float wallTextureScale = 1.0f;
+        [Range(0f, 1f)] public float wallTextureStrength = 1.0f;
+        [Tooltip("Optional texture on the ground patch under the volume")]
+        public Texture2D groundTexture;
+        public float groundTextureScale = 0.5f;
+        [Range(0f, 1f)] public float groundTextureStrength = 1.0f;
+
+        [Header("Placement")]
+        [Tooltip("Ground plane and wall foot relative to this object (the prefab's cube is 8 m tall with the ground at its bottom face). The wall faces the local Z axis")]
+        public Vector3 groundOffset = new Vector3(0f, -4f, 0f);
 
         [Header("Wall Dimensions (sent to the shader)")]
         [Tooltip("Half-width of the wall (m)")]
@@ -126,7 +152,10 @@ namespace AliceSDF.Samples
 
         // Cached references
         private Material mat;
-        private Vector3 wallCenter;
+        private Vector3 origin;          // ground plane / wall foot, world
+        private Quaternion toLocal;      // world -> wall frame (rotation only)
+        private Matrix4x4 worldToWall;   // same, with the translation, for the shader
+        private Vector3 wallCenter;      // in the wall frame
         private Vector3 wallHalf;
         private Vector4 playerCapA;   // xyz = feet end of the body capsule, w = radius (0 = none)
         private Vector4 playerCapB;   // xyz = head end
@@ -137,6 +166,9 @@ namespace AliceSDF.Samples
 
         void Start()
         {
+            origin = transform.position + groundOffset;
+            toLocal = Quaternion.Inverse(transform.rotation);
+            worldToWall = Matrix4x4.TRS(origin, transform.rotation, Vector3.one).inverse;
             wallCenter = new Vector3(0f, wallHeight, 0f);
             wallHalf = new Vector3(wallWidth, wallHeight, wallThickness);
 
@@ -292,7 +324,7 @@ namespace AliceSDF.Samples
         // Returns true when a dent was recorded or refreshed.
         public bool TryImpact(Vector3 pos, int hand, string how)
         {
-            float d = SdfBox(pos - wallCenter, wallHalf);
+            float d = SdfBox(ToLocal(pos) - wallCenter, wallHalf);
             if (Mathf.Abs(d) > impactDistance)
             {
                 touching[hand] = false;
@@ -401,7 +433,7 @@ namespace AliceSDF.Samples
             float t = 0f;
             for (int i = 0; i < 64; i++)
             {
-                float d = SdfBox(o + dir * t - wallCenter, wallHalf);
+                float d = SdfBox(ToLocal(o + dir * t) - wallCenter, wallHalf);
                 if (d < 0.001f) return t;
                 t += d;
                 if (t > maxDist) return -1f;
@@ -490,14 +522,14 @@ namespace AliceSDF.Samples
         // =================================================================
         public float EvaluateSdf(Vector3 p)
         {
-            return Mathf.Min(p.y, EvaluateWallSdf(p));
+            return Mathf.Min(ToLocal(p).y, EvaluateWallSdf(p));
         }
 
         // The dented wall alone (no ground, no body dent): what the player
         // collides with and what a hand touches
         public float EvaluateWallSdf(Vector3 p)
         {
-            float wall = SdfBox(p - wallCenter, wallHalf);
+            float wall = SdfBox(ToLocal(p) - wallCenter, wallHalf);
             for (int i = 0; i < impactCount; i++)
             {
                 float w = impactPoints[i].w;
@@ -528,8 +560,8 @@ namespace AliceSDF.Samples
         // =================================================================
         private bool IsTrackingValid(Vector3 pos)
         {
-            // Tracking returns exactly (0,0,0) when lost; the wall is at the
-            // origin, so only the exact zero is rejected
+            // Tracking returns exactly (0,0,0) when lost; only the exact zero
+            // is rejected (a real hand is never bit-exactly at the world origin)
             return pos != Vector3.zero;
         }
 
@@ -547,6 +579,12 @@ namespace AliceSDF.Samples
         private string F(Vector3 v)
         {
             return "(" + F(v.x) + ", " + F(v.y) + ", " + F(v.z) + ")";
+        }
+
+        // World point -> the wall's frame (origin at the wall foot, wall along local X/Y)
+        private Vector3 ToLocal(Vector3 p)
+        {
+            return toLocal * (p - origin);
         }
 
         private float SdfBox(Vector3 p, Vector3 half)
@@ -593,6 +631,22 @@ namespace AliceSDF.Samples
             mat.SetVector("_PlayerCapA", playerCapA);
             mat.SetVector("_PlayerCapB", playerCapB);
             mat.SetFloat("_PlayerDentK", bodyDentK);
+
+            // Placement: the shader evaluates the wall in the same frame
+            mat.SetMatrix("_WorldToWall", worldToWall);
+
+            if (applyColors)
+            {
+                mat.SetColor("_WallColor", wallColor);
+                mat.SetColor("_DentColor", dentGlowColor);
+                mat.SetColor("_GroundColor", groundColor);
+                if (wallTexture != null) mat.SetTexture("_WallTex", wallTexture);
+                mat.SetFloat("_WallTexScale", wallTextureScale);
+                mat.SetFloat("_WallTexStrength", wallTexture != null ? wallTextureStrength : 0f);
+                if (groundTexture != null) mat.SetTexture("_GroundTex", groundTexture);
+                mat.SetFloat("_GroundTexScale", groundTextureScale);
+                mat.SetFloat("_GroundTexStrength", groundTexture != null ? groundTextureStrength : 0f);
+            }
         }
     }
 }

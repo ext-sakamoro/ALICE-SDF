@@ -10,6 +10,7 @@ namespace UnityEngine
         public float x, y, z;
         public Vector3(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }
         public static readonly Vector3 zero = new Vector3(0, 0, 0);
+        public static readonly Vector3 one = new Vector3(1, 1, 1);
         public static readonly Vector3 up = new Vector3(0, 1, 0);
         public static readonly Vector3 down = new Vector3(0, -1, 0);
         public static readonly Vector3 forward = new Vector3(0, 0, 1);
@@ -74,6 +75,22 @@ namespace UnityEngine
             float len = (float)Math.Sqrt(cx * cx + cy * cy + cz * cz + w * w);
             return new Quaternion(cx / len, cy / len, cz / len, w / len);
         }
+        public static Quaternion Inverse(Quaternion q) => new Quaternion(-q.x, -q.y, -q.z, q.w);   // unit quaternion
+        // Rotate v by q (Unity semantics): v + 2w(u x v) + 2 u x (u x v)
+        public static Vector3 operator *(Quaternion q, Vector3 v)
+        {
+            float ux = q.y * v.z - q.z * v.y, uy = q.z * v.x - q.x * v.z, uz = q.x * v.y - q.y * v.x;
+            float vx = q.y * uz - q.z * uy, vy = q.z * ux - q.x * uz, vz = q.x * uy - q.y * ux;
+            return new Vector3(v.x + 2f * (q.w * ux + vx), v.y + 2f * (q.w * uy + vy), v.z + 2f * (q.w * uz + vz));
+        }
+    }
+    // Enough of Matrix4x4 for the samples to build their world -> local frame;
+    // the shader-side value is never read on the host
+    public struct Matrix4x4
+    {
+        public static Matrix4x4 identity => new Matrix4x4();
+        public static Matrix4x4 TRS(Vector3 pos, Quaternion q, Vector3 s) => new Matrix4x4();
+        public Matrix4x4 inverse => this;
     }
     public class Transform
     {
@@ -99,6 +116,7 @@ namespace UnityEngine
         public void SetFloat(string n, float v) { }
         public void SetVector(string n, Vector4 v) { }
         public void SetColor(string n, Color c) { }
+        public void SetMatrix(string n, Matrix4x4 m) { }
     }
     public class Component
     {

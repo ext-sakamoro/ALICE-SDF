@@ -537,8 +537,11 @@ Shader "AliceSDF/Samples/Mochi"
                 if (!nearMochi) {
                     // Exact plane hit (see the far-ground note above)
                     if (rd.y < -1e-6) {
-                        float tp = (_Origin.y - ro.y) / rd.y;
-                        if (tp <= tExit && tp <= _MaxDist) { t = tp; hit = true; farGround = true; }
+                        // Stop eps short of the plane like the march does (its
+                        // hit is the first sample with d < eps): a coplanar floor
+                        // mesh would otherwise z-fight the exact plane
+                        float tp = (_Origin.y - ro.y) / rd.y - eps;
+                        if (tp > 0.0 && tp <= tExit && tp <= _MaxDist) { t = tp; hit = true; farGround = true; }
                     }
                 } else {
                 for (int k = 0; k < 128; k++) {
