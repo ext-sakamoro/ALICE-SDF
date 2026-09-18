@@ -233,6 +233,8 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 
 **VRChat史上初、掘った穴に本当に落ちる体験。**
 
+![デスクトップでの TerrainSculpt: 左クリックで盛り、右クリックで掘り、作った地形の上を歩く](Documentation~/terrain_desktop.gif)
+
 **VRChat で遊ぶ:** world **TerrainSculpt** として公開 — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061)（テスト中は private: 作者と招待したフレンドのみ、ページの **Launch** か client 起動中に **Invite Me**）PC 専用
 
 Y=0の平面地形をリアルタイムにスカルプトできます — VRの手でも、マウスでも。描画もコリジョンも全く同じSDF数式で評価されるため、**掘った穴に実際に落ち、積んだ丘に実際に登れます**。

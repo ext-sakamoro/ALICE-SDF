@@ -209,6 +209,8 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 
 **The first VRChat experience where you can dig a hole and actually fall into it.**
 
+![TerrainSculpt on desktop: build hills with the left button, dig into them with the right, walk on what you made](Documentation~/terrain_desktop.gif)
+
 **Play it in VRChat:** published as the world **TerrainSculpt** — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061) (private while testing: the author and invited friends; press **Launch** on the page or **Invite Me** with the client open). PC only.
 
 A flat ground plane that players can sculpt in real-time — with VR hands or with the mouse. Both rendering and collision use the exact same SDF formula: what you see is what you stand on, even as the terrain changes.
