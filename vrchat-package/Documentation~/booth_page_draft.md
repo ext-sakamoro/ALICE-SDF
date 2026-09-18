@@ -22,7 +22,7 @@
 - 全員同じ餅を見る (同期)、最大 16 個
 
 **調整は Inspector 1 箇所** (material を触る必要なし)
-色 (餅 / ハイライト / 地面) / 最初の個数・大きさ・並び / 粘り (Blend K) / 重さ / 分裂の可否 / VR の掴みルール
+色 (餅 / ハイライト / 地面) / **好きな画像を貼る** (餅・地面それぞれにテクスチャを drop、餅の模様は動いても付いてきて、千切ると小さく、合体で大きくなる) / 最初の個数・大きさ・並び / 粘り (Blend K) / 重さ / 分裂の可否 / VR の掴みルール
 
 **preset 3 種** — Mochi (白い餅) / Slime (緑、よく伸びる) / Water (青、さらさら) を prefab で同梱、色と粘りを変えれば何にでもなります
 
@@ -44,7 +44,7 @@
 
 **Play**: grab (hand in VR, hold left click on desktop), split (grip / right click, volume conserved), merge (push two together), walk in (your body dents it and it slides away). Synced for everyone, up to 16 mochis.
 
-**Tune from one Inspector**: colours, starting count / size / layout, stickiness, weight, whether they split, VR grab rules. Three presets: Mochi, Slime, Water.
+**Tune from one Inspector**: colours, **your own textures** on the mochis and the ground (drop an image in; the mochi pattern follows, shrinks and grows with each mochi), starting count / size / layout, stickiness, weight, whether they split, VR grab rules. Three presets: Mochi, Slime, Water.
 
 **Tech**: raymarched SDF, one formula for rendering and collision, zero polygons. Productised from the open-source ALICE-SDF Mochi sample with configured prefabs, presets, EN / JP docs and support.
 
@@ -56,6 +56,7 @@
 3. preset 3 種を並べた 1 枚 (今日の ProductTest scene: 白 / 緑 / 青、Build & Test 中に撮る)
 4. Inspector のスクショ (Look / Mochis の knob が見える)
 5. 「Polygons: 0 | Resolution: INFINITE」の看板アップ
+6. checker テクスチャを貼った Slime (今日の `vrchat_product_texture_20260918.png`) — 「自分の画像が貼れる」の証拠| Resolution: INFINITE」の看板アップ
 
 ## 価格 (案、user 判断)
 - **AliceMochi**: 1,500 円 (VRChat ワールドギミックの相場 1,000〜3,000 円の中位、prefab 3 + サポート)
