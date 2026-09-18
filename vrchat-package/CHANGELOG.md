@@ -88,6 +88,14 @@
   T13 collider without `UdonBehaviour`).
 
 ### Added
+- The TerrainSculpt and DeformableWall samples are published as the VRChat
+  worlds **TerrainSculpt** (`wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061`) and
+  **DeformableWall** (`wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9`), private
+  while testing; **Mochi** is in Community Labs (2026-09-18). Both READMEs
+  link them. The scene generator adds the `PipelineManager` to `VRCWorld`
+  (the SDK adds it in the Inspector, not via `AddComponent`; without it
+  there is no blueprint id to upload) and sets each material's `_LightDir`
+  from the scene light.
 - Static sample scenes are playable: the generator adds the `VRCSceneDescriptor`
   + spawn to all seven, a floor collider to Basic, a viewing platform under
   the spawn of Cosmic / Fractal / Mix (skybox cleared: a raymarch miss is

@@ -114,6 +114,8 @@ The **DeformableWall**, **Mochi**, and **TerrainSculpt** samples demonstrate rea
 
 ![DeformableWall on desktop: punch the wall where you look, dents refresh where you keep hitting, the end face dents too](Documentation~/wall_desktop.gif)
 
+**Play it in VRChat:** published as the world **DeformableWall** — [vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9](https://vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9) (private while testing: the author and invited friends; press **Launch** on the page or **Invite Me** with the client open). PC only.
+
 A flat wall standing on a ground plane. Touch it with a VR hand, punch it with the mouse, or walk into it: a dent appears at the contact and gradually recovers. The dents are real geometry — you collide with the dented wall, not the flat one.
 
 **How it works:**
@@ -154,7 +156,7 @@ A flat wall standing on a ground plane. Touch it with a VR hand, punch it with t
 
 ![Mochi on desktop: walk in and the body dents it, click to grab, right-click to split, carry to merge](Documentation~/mochi_desktop.gif)
 
-**Play it in VRChat:** the sample is published as the world **Mochi** — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42). While it is private (testing) only the author and invited friends can enter: on the web page press **Launch** (creates an instance and opens VRChat), or in VRChat open the menu → **Worlds** → the author's worlds → **Mochi** → **Launch**; on PC `vrchat://launch?ref=vrchat.com&id=wrld_0cb72970-948e-4212-b955-fd3dd567aa42:<any number>~private(<your user id>)~region(jp)` started through Steam does the same. Once it reaches Community Labs / public it is searchable by name. PC only (the raymarcher is not built for Quest).
+**Play it in VRChat:** the sample is published as the world **Mochi** — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42), in **Community Labs** since 2026-09-18 (search for "Mochi" with Labs enabled in your settings, or open the link and press **Launch**). PC only (the raymarcher is not built for Quest).
 
 Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apart, push them together, and watch them grow — in VR with your hands, on desktop with the mouse (11 s from the VRChat client above: walking in dents the mochi around your body, a click grabs, a fast turn splits, carrying one onto another merges).
 
@@ -206,6 +208,8 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 #### TerrainSculpt — Dig Holes & Build Hills
 
 **The first VRChat experience where you can dig a hole and actually fall into it.**
+
+**Play it in VRChat:** published as the world **TerrainSculpt** — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061) (private while testing: the author and invited friends; press **Launch** on the page or **Invite Me** with the client open). PC only.
 
 A flat ground plane that players can sculpt in real-time — with VR hands or with the mouse. Both rendering and collision use the exact same SDF formula: what you see is what you stand on, even as the terrain changes.
 

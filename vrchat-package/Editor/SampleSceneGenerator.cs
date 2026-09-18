@@ -438,6 +438,10 @@ namespace AliceSDF.Editor
             var world = new GameObject("VRCWorld");
             world.transform.position = spawnPos;
             var desc = world.AddComponent<VRC.SDK3.Components.VRCSceneDescriptor>();
+            // The SDK's upload pipeline (blueprint id, Build & Publish) lives on
+            // this component; the SDK adds it in the Inspector, not via AddComponent
+            if (world.GetComponent<VRC.Core.PipelineManager>() == null)
+                world.AddComponent<VRC.Core.PipelineManager>();
             var spawn = new GameObject("Spawn");
             spawn.transform.SetParent(world.transform, false);
             desc.spawns = new Transform[] { spawn.transform };

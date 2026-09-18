@@ -138,6 +138,8 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 
 ![デスクトップでの DeformableWall: 見ている場所を殴ると凹み、叩き続けた所は凹みが戻り、端面も凹む](Documentation~/wall_desktop.gif)
 
+**VRChat で遊ぶ:** world **DeformableWall** として公開 — [vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9](https://vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9)（テスト中は private: 作者と招待したフレンドのみ、ページの **Launch** か client 起動中に **Invite Me**）PC 専用
+
 地面の上に立つ平面の壁。VRの手で触る、マウスで殴る、歩いて突っ込む — 接触点に凹みが発生し、時間の経過とともに徐々に回復します。凹みは本物の形状で、当たり判定も凹んだ壁に対して行われます。
 
 **仕組み:**
@@ -178,7 +180,7 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 
 ![デスクトップでの Mochi: 歩いて入ると体の形に凹み、クリックで掴み、右クリックで分裂、運んで合体](Documentation~/mochi_desktop.gif)
 
-**VRChat で遊ぶ:** このサンプルは world **Mochi** として公開しています — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42) private (テスト中) の間は作者と招待したフレンドだけ入れます: web の world ページで **Launch** (インスタンスを作って VRChat が開く)、または VRChat のメニュー → **Worlds** → 作者の world 一覧 → **Mochi** → **Launch** PC では Steam 経由で `vrchat://launch?ref=vrchat.com&id=wrld_0cb72970-948e-4212-b955-fd3dd567aa42:<任意の数字>~private(<自分の user id>)~region(jp)` でも同じ Community Labs / public になれば名前で検索できます PC 専用 (レイマーチャーは Quest 向けにビルドしていません)
+**VRChat で遊ぶ:** このサンプルは world **Mochi** として公開しています — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42)、2026-09-18 から **Community Labs** (設定で Labs を有効にして「Mochi」を検索、または link の **Launch**) PC 専用 (レイマーチャーは Quest 向けにビルドしていません)
 
 地面の上に置かれた柔らかい餅（もち）ブロブ。掴んで引っ張って分裂させたり、押し合わせて合体させたり、どんどん大きくしたりできます — VR では手で、デスクトップではマウスで（上の GIF は VRChat client の 11 秒: 歩いて入ると体の形に凹み、クリックで掴み、素早く振ると分裂、別の餅に運ぶと合体）。
 
@@ -230,6 +232,8 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 #### TerrainSculpt — 掘れる・積める地形
 
 **VRChat史上初、掘った穴に本当に落ちる体験。**
+
+**VRChat で遊ぶ:** world **TerrainSculpt** として公開 — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061)（テスト中は private: 作者と招待したフレンドのみ、ページの **Launch** か client 起動中に **Invite Me**）PC 専用
 
 Y=0の平面地形をリアルタイムにスカルプトできます — VRの手でも、マウスでも。描画もコリジョンも全く同じSDF数式で評価されるため、**掘った穴に実際に落ち、積んだ丘に実際に登れます**。
 
