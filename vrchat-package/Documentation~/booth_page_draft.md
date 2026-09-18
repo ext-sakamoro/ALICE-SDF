@@ -56,7 +56,7 @@
 3. preset 3 種を並べた 1 枚 (今日の ProductTest scene: 白 / 緑 / 青、Build & Test 中に撮る)
 4. Inspector のスクショ (Look / Mochis の knob が見える)
 5. 「Polygons: 0 | Resolution: INFINITE」の看板アップ
-6. checker テクスチャを貼った Slime (今日の `vrchat_product_texture_20260918.png`) — 「自分の画像が貼れる」の証拠| Resolution: INFINITE」の看板アップ
+6. checker テクスチャを貼った Slime (今日の `vrchat_product_texture_20260918.png`) — 「自分の画像が貼れる」の証拠
 
 ## 価格 (案、user 判断)
 - **AliceMochi**: 1,500 円 (VRChat ワールドギミックの相場 1,000〜3,000 円の中位、prefab 3 + サポート)
