@@ -160,7 +160,7 @@ A flat wall standing on a ground plane. Touch it with a VR hand, punch it with t
 
 ![Mochi on desktop: walk in and the body dents it, click to grab, right-click to split, carry to merge](Documentation~/mochi_desktop.gif)
 
-**Play it in VRChat:** the sample is published as the world **Mochi** — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42), in **Community Labs** since 2026-09-18 (search for "Mochi" with Labs enabled in your settings, or open the link and press **Launch**). PC only (the raymarcher is not built for Quest).
+**Play it in VRChat:** the sample is published as the world **Mochi** — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42), in **Community Labs** since 2026-09-18 (search for "Mochi" with Labs enabled in your settings, or open the link and press **Launch**). PC and Quest (an Android build is uploaded to the same world; on Quest the shader uses a smaller march / shadow / AO budget selected by `SHADER_API_MOBILE`, the law is the same).
 
 Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apart, push them together, and watch them grow — in VR with your hands, on desktop with the mouse (11 s from the VRChat client above: walking in dents the mochi around your body, a click grabs, a right click splits, carrying one onto another merges).
 

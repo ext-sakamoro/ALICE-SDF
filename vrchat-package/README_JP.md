@@ -184,7 +184,7 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 
 ![デスクトップでの Mochi: 歩いて入ると体の形に凹み、クリックで掴み、右クリックで分裂、運んで合体](Documentation~/mochi_desktop.gif)
 
-**VRChat で遊ぶ:** このサンプルは world **Mochi** として公開しています — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42)、2026-09-18 から **Community Labs** (設定で Labs を有効にして「Mochi」を検索、または link の **Launch**) PC 専用 (レイマーチャーは Quest 向けにビルドしていません)
+**VRChat で遊ぶ:** このサンプルは world **Mochi** として公開しています — [vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42](https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42)、2026-09-18 から **Community Labs** (設定で Labs を有効にして「Mochi」を検索、または link の **Launch**) PC と Quest の両対応 (同じ world に Android build を upload 済、Quest では `SHADER_API_MOBILE` で march / 影 / AO の予算だけ小さくなり、法則は同じ)
 
 地面の上に置かれた柔らかい餅（もち）ブロブ。掴んで引っ張って分裂させたり、押し合わせて合体させたり、どんどん大きくしたりできます — VR では手で、デスクトップではマウスで（上の GIF は VRChat client の 11 秒: 歩いて入ると体の形に凹み、クリックで掴み、右クリックで分裂、別の餅に運ぶと合体）。
 

@@ -157,6 +157,14 @@ Shader "AliceSDF/Samples/Mochi"
             #define ALICE_LOD_TIER_MED   1
             #define ALICE_LOD_TIER_LOW   2
 
+            // Quest / Android (SHADER_API_MOBILE): same law, smaller per-pixel
+            // budget. The distance tiers are unchanged; only the step, AO and
+            // shadow counts per tier shrink so the cube-bounded march fits the
+            // tiled GPU. Standalone keeps the full budget below.
+            #if defined(SHADER_API_MOBILE)
+                #define ALICE_MOBILE_BUDGET 1
+            #endif
+
             int aliceLodTier(float cameraDist)
             {
                 if (cameraDist < 20.0) return ALICE_LOD_TIER_HIGH;
@@ -166,6 +174,11 @@ Shader "AliceSDF/Samples/Mochi"
 
             int aliceLodSteps(int tier)
             {
+                #ifdef ALICE_MOBILE_BUDGET
+                if (tier == ALICE_LOD_TIER_HIGH) return 32;
+                if (tier == ALICE_LOD_TIER_MED)  return 24;
+                return 16;
+                #endif
                 if (tier == ALICE_LOD_TIER_HIGH) return 128;
                 if (tier == ALICE_LOD_TIER_MED)  return 64;
                 return 32;
@@ -199,6 +212,11 @@ Shader "AliceSDF/Samples/Mochi"
             // 48 / 24 / 12 of AliceSDF_LOD.cginc, the scene is a few metres)
             int aliceLodShadowSteps(int tier)
             {
+                #ifdef ALICE_MOBILE_BUDGET
+                if (tier == ALICE_LOD_TIER_HIGH) return 4;
+                if (tier == ALICE_LOD_TIER_MED)  return 2;
+                return 0;
+                #endif
                 if (tier == ALICE_LOD_TIER_HIGH) return 32;
                 if (tier == ALICE_LOD_TIER_MED)  return 16;
                 return 8;
@@ -314,8 +332,19 @@ Shader "AliceSDF/Samples/Mochi"
             // Inlined AO with LOD
             float aliceAO_LOD(float3 pos, float3 nor, int tier)
             {
+                #ifdef ALICE_MOBILE_BUDGET
+
+                int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 2 :
+
+                              (tier == ALICE_LOD_TIER_MED)  ? 1 : 1;
+
+                #else
+
                 int aoSteps = (tier == ALICE_LOD_TIER_HIGH) ? 5 :
+
                               (tier == ALICE_LOD_TIER_MED)  ? 3 : 2;
+
+                #endif
                 float occ = 0.0;
                 float sca = 1.0;
                 for (int i = 0; i < 5; i++)
@@ -333,6 +362,7 @@ Shader "AliceSDF/Samples/Mochi"
             float aliceSoftShadow_LOD(float3 ro, float3 rd, float mint, float maxt, float softness, int tier)
             {
                 int maxSteps = aliceLodShadowSteps(tier);
+                if (maxSteps <= 0) return 1.0;
                 float res = 1.0;
                 float t = mint;
                 float ph = 1e20;
@@ -340,6 +370,68 @@ Shader "AliceSDF/Samples/Mochi"
                 {
                     if (i >= maxSteps) break;
                     float h = map(ro + rd * t);
+                    if (h < 0.0001)
+                        return 0.0;
+                    float y = h * h / (2.0 * ph);
+                    float d = sqrt(h * h - y * y);
+                    res = min(res, softness * d / max(0.0, t - y));
+                    ph = h;
+                    t += h;
+                    if (t > maxt) break;
+                }
+                return saturate(res);
+            }
+
+            // =================================================================
+            // Far-ground fast path (exact). The smooth union changes the plane
+            // only within _GroundK of a mochi, and the polynomial smooth min of
+            // n spheres lies at most (n - 1) * _BlendK / 4 below the nearest
+            // sphere distance. A view ray that stays farther than that
+            // inflation from every mochi meets the plane exactly where the
+            // march would (map == p.y - _Origin.y there, so the first zero is
+            // the plane, the normal is +y and the AO probes see only the
+            // plane). Such pixels skip the 16-sphere march, normal and AO.
+            // =================================================================
+
+            float mochiInflation()
+            {
+                int count = min((int)_MochiCount, MOCHI_MAX);
+                return _BlendK * float(max(count - 1, 0)) * 0.25 + _GroundK + 0.2;
+            }
+
+            // True if the segment ro + rd * [0, len] passes within (r_i + infl)
+            // of any mochi centre
+            bool segmentNearMochis(float3 ro, float3 rd, float len, float infl)
+            {
+                int count = min((int)_MochiCount, MOCHI_MAX);
+                for (int i = 0; i < MOCHI_MAX; i++)
+                {
+                    if (i >= count) break;
+                    float3 c = _MochiData[i].xyz;
+                    float tc = clamp(dot(c - ro, rd), 0.0, len);
+                    float3 q = ro + rd * tc - c;
+                    float R = _MochiData[i].w + infl;
+                    if (dot(q, q) < R * R) return true;
+                }
+                return false;
+            }
+
+            // Soft shadow of the bare plane: the same loop as
+            // aliceSoftShadow_LOD with map replaced by the plane distance.
+            // Used when the shadow segment stays farther than
+            // _ShadowMaxDist / _ShadowSoftness (+ inflation) from every mochi,
+            // where no mochi sample can bring the penumbra term below 1.
+            float aliceSoftShadowGround_LOD(float3 ro, float3 rd, float mint, float maxt, float softness, int tier)
+            {
+                int maxSteps = aliceLodShadowSteps(tier);
+                if (maxSteps <= 0) return 1.0;
+                float res = 1.0;
+                float t = mint;
+                float ph = 1e20;
+                for (int i = 0; i < 32; i++)
+                {
+                    if (i >= maxSteps) break;
+                    float h = (ro + rd * t).y - _Origin.y;
                     if (h < 0.0001)
                         return 0.0;
                     float y = h * h / (2.0 * ph);
@@ -437,7 +529,18 @@ Shader "AliceSDF/Samples/Mochi"
                 float bestD = 1e10;
                 float bestT = 0.0;
                 bool hit = false;
+                bool farGround = false;
 
+                float infl = mochiInflation();
+                bool nearMochi = (ro.y - _Origin.y) < eps
+                              || segmentNearMochis(ro, rd, min(tExit, _MaxDist), infl);
+                if (!nearMochi) {
+                    // Exact plane hit (see the far-ground note above)
+                    if (rd.y < -1e-6) {
+                        float tp = (_Origin.y - ro.y) / rd.y;
+                        if (tp <= tExit && tp <= _MaxDist) { t = tp; hit = true; farGround = true; }
+                    }
+                } else {
                 for (int k = 0; k < 128; k++) {
                     if (k >= maxSteps) break;
                     float d = map(ro + rd * t);
@@ -452,24 +555,34 @@ Shader "AliceSDF/Samples/Mochi"
                     t = bestT;
                     hit = true;
                 }
+                }
 
                 if (hit) {
                     float3 p = ro + rd * t;
-                    float3 n = calcN(p, aliceLodNormalEps(tier));
+                    float3 n = farGround ? float3(0.0, 1.0, 0.0) : calcN(p, aliceLodNormalEps(tier));
                     float3 lightDir = normalize(_LightDir.xyz);
-                    float ao = aliceAO_LOD(p, n, tier);
+                    float ao = farGround ? 1.0 : aliceAO_LOD(p, n, tier);
 
                     // Direct-light visibility (mochi -> ground contact shadow)
                     float shadow = 1.0;
                     if (_ShadowEnabled > 0)
                     {
-                        shadow = aliceSoftShadow_LOD(p + n * 0.02, lightDir, 0.02,
-                                                     _ShadowMaxDist, _ShadowSoftness, tier);
+                        float3 sro = p + n * 0.02;
+                        if (farGround && !segmentNearMochis(sro, lightDir, _ShadowMaxDist,
+                                                            infl + _ShadowMaxDist / max(_ShadowSoftness, 1.0)))
+                            shadow = aliceSoftShadowGround_LOD(sro, lightDir, 0.02,
+                                                               _ShadowMaxDist, _ShadowSoftness, tier);
+                        else
+                            shadow = aliceSoftShadow_LOD(sro, lightDir, 0.02,
+                                                         _ShadowMaxDist, _ShadowSoftness, tier);
                     }
 
                     // Material weight from the same union that shaped the
                     // surface: 0 = ground, 1 = mochi, continuous across the neck
-                    float mochiW = opSmoothUnionBlend(p.y - _Origin.y, mapMochi(p), _GroundK).y;
+                    // (exactly 0 on the far ground: the plane is >= _GroundK
+                    // from every mochi there)
+                    float mochiW = farGround ? 0.0
+                                 : opSmoothUnionBlend(p.y - _Origin.y, mapMochi(p), _GroundK).y;
 
                     // === MOCHI SURFACE ===
                     // Warm wrap lighting (subsurface scattering approx)

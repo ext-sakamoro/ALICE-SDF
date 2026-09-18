@@ -28,7 +28,7 @@
 
 **技術**: レイマーチング SDF (距離関数) で描画と当たり判定が同じ数式 = 見た目通りに触れる、Polygons: 0 オープンソースの ALICE-SDF (github.com/ext-sakamoro/ALICE-SDF) の Mochi sample を、設定済み prefab + preset + 日英ドキュメント + サポート付きで製品化したものです
 
-**動作環境**: PC (Windows) の VRChat ワールド Quest / Android 非対応 (レイマーチングシェーダー) SDK 3.7 以降推奨、Unity 2022.3
+**動作環境**: PC (Windows) と Quest の VRChat ワールド (Quest は自動で軽量描画: march / 影 / AO の予算を落とす、見た目の法則は同じ、Quest 2 実機で確認済) SDK 3.7 以降推奨、Unity 2022.3
 
 **実物を見る**: VRChat で「Mochi」を検索 (Community Labs) → `https://vrchat.com/home/world/wrld_0cb72970-948e-4212-b955-fd3dd567aa42`
 
@@ -48,7 +48,7 @@
 
 **Tech**: raymarched SDF, one formula for rendering and collision, zero polygons. Productised from the open-source ALICE-SDF Mochi sample with configured prefabs, presets, EN / JP docs and support.
 
-**Requirements**: PC VRChat worlds only (no Quest / Android), SDK 3.7+, Unity 2022.3. Try it: search "Mochi" in Community Labs.
+**Requirements**: PC and Quest VRChat worlds (Quest gets a lighter march / shadow / AO budget automatically, same look; tested on a Quest 2), SDK 3.7+, Unity 2022.3. Try it: search "Mochi" in Community Labs.
 
 ## 画像 (順番案、6 枚撮影済 09-18、実体は Unity project `Mochi/Assets/Screenshots/`)
 1. `mochi_desktop.gif` (11 s、掴む / 千切る / くっつく / 体当たり) — 1 枚目は動く物
@@ -60,7 +60,7 @@
 
 ## 価格 (案、user 判断 — 09-18 user「1,500 円は安くない?」に対する私の再提案)
 - 初案 1,500 円は BOOTH ワールドギミック相場 (1,000〜3,000 円) の中位に置いただけで、本品の固有性を織り込んでいない
-- **推奨 2,980 円** (税込、単一有料 SKU) 根拠: (1) 同種品が BOOTH に無い (ポリゴン餅 / スライム系 asset は mesh + Rigidbody / cloth で「千切れる・合体」が無い) (2) prefab 3 + 日英 README + サポート付き (3) PC only は Quest 層を落とすので 4,000 円台は売れ行きが鈍る (4) 2,980 は「ギミック 1 個」の心理上限 3,000 円の直下
+- **推奨 2,980 円** (税込、単一有料 SKU) 根拠: (1) 同種品が BOOTH に無い (ポリゴン餅 / スライム系 asset は mesh + Rigidbody / cloth で「千切れる・合体」が無い) (2) prefab 3 + 日英 README + サポート付き (3) Quest 対応済なので Quest 層も買える (09-18 実機確認、これは 1,500 → 2,980 の追加根拠) (4) 2,980 は「ギミック 1 個」の心理上限 3,000 円の直下
 - 無料 lite (餅 3 個固定 / 色固定 / texture 無し / サポート無し) を別商品で置いて導線にする — 有料版との差分を Inspector で見せられる
 - 上位 SKU (TerrainSculpt / DeformableWall を足した「SDF Interactive Set」) は後日 4,980 円帯、単品購入者には差額 upgrade を BOOTH メッセージで案内
 - 初期 2 週間は 2,480 円の発売記念価格で reviews を集めてから 2,980 に戻す運用も可 (BOOTH は価格変更自由)

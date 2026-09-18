@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+- Mochi shader: Quest / Android support. Under `SHADER_API_MOBILE` the
+  same law runs with a smaller per-tier budget (march 32 / 24 / 16,
+  soft shadow 4 / 2 / 0, AO 2 / 1 / 1). The Mochi world now carries an
+  Android build next to the PC one (Quest 2: grab / split / merge verified).
+
+### Changed
+- Mochi shader: rays that stay farther than the blend inflation from every
+  mochi skip the march and take the analytic plane hit (+y normal, AO 1,
+  plane-only soft shadow). Exact where it applies, and it removes the
+  stair-stepped horizon on Quest where the far grazing ground ran out of
+  march steps. The Mochi world sign now reads "hand in (VR) / click
+  (desktop) to grab, grip / right click to split".
+
 ### Fixed
 - Mochi shader: the march now stops where the ray leaves the volume cube
   (object-space slab test, mapped back to a world distance), so the ground

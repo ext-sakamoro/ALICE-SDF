@@ -283,7 +283,7 @@ One prefab, no other packages: drop it in and build.
 2. Drag `Assets/AliceMochi/Prefabs/AliceMochi Mochi.prefab` (or Slime / Water) into your scene.
    Put it where you want the mochis: the bottom face of the cube is their ground (the prefab can sit at any position or height).
    The cube is the volume they can move in; scale it to the area you want. Keep a floor collider at that ground level.
-3. Build & Test. PC only (the raymarching shader is not built for Quest).
+3. Build & Test. PC and Quest (on Quest the shader picks a lighter march / shadow / AO budget by itself; same look, tested on a Quest 2).
 
 ## Play
 | Action | VR | Desktop |
@@ -327,7 +327,7 @@ prefab 1 個、他の package 不要: 置いてビルドするだけ
 2. `Assets/AliceMochi/Prefabs/AliceMochi Mochi.prefab` (または Slime / Water) を scene に drag
    餅を出したい場所に置いてください: Cube の底面が餅の地面です (prefab はどの位置・高さでも可)
    Cube は餅が動ける範囲 (volume) なので置きたい広さに scale、その地面の高さに床 collider を置いてください
-3. Build & Test PC 専用 (レイマーチングシェーダーは Quest 向けにビルドしていません)
+3. Build & Test PC と Quest 両対応 (Quest では shader が自動で march / 影 / AO の予算を落とす、見た目は同じ、Quest 2 実機で確認済)
 
 ## 遊び方
 | 操作 | VR | デスクトップ |
