@@ -118,7 +118,7 @@ The **DeformableWall**, **Mochi**, and **TerrainSculpt** samples demonstrate rea
 
 ![DeformableWall on desktop: punch the wall where you look, dents refresh where you keep hitting, the end face dents too](Documentation~/wall_desktop.gif)
 
-**Play it in VRChat:** published as the world **DeformableWall** — [vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9](https://vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9) (private while testing: the author and invited friends; press **Launch** on the page or **Invite Me** with the client open). PC only.
+**Play it in VRChat:** published as the world **DeformableWall** — [vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9](https://vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9) (private while testing: the author and invited friends; press **Launch** on the page or **Invite Me** with the client open). PC and Quest.
 
 A flat wall standing on a ground plane. Touch it with a VR hand, punch it with the mouse, or walk into it: a dent appears at the contact and gradually recovers. The dents are real geometry — you collide with the dented wall, not the flat one.
 
@@ -219,7 +219,7 @@ Soft mochi (rice cake) blobs sitting on a ground plane. Grab them, pull them apa
 
 ![TerrainSculpt on desktop: build hills with the left button, dig into them with the right, walk on what you made](Documentation~/terrain_desktop.gif)
 
-**Play it in VRChat:** published as the world **TerrainSculpt** — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061) (private while testing: the author and invited friends; press **Launch** on the page or **Invite Me** with the client open). PC only.
+**Play it in VRChat:** published as the world **TerrainSculpt** — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061) (private while testing: the author and invited friends; press **Launch** on the page or **Invite Me** with the client open). PC and Quest.
 
 A flat ground plane that players can sculpt in real-time — with VR hands or with the mouse. Both rendering and collision use the exact same SDF formula: what you see is what you stand on, even as the terrain changes.
 

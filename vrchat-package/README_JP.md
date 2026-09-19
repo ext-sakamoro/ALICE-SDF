@@ -142,7 +142,7 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 
 ![デスクトップでの DeformableWall: 見ている場所を殴ると凹み、叩き続けた所は凹みが戻り、端面も凹む](Documentation~/wall_desktop.gif)
 
-**VRChat で遊ぶ:** world **DeformableWall** として公開 — [vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9](https://vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9)（テスト中は private: 作者と招待したフレンドのみ、ページの **Launch** か client 起動中に **Invite Me**）PC 専用
+**VRChat で遊ぶ:** world **DeformableWall** として公開 — [vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9](https://vrchat.com/home/world/wrld_3fd67c2b-f712-4d6c-be7f-202eb2ecb2b9)（テスト中は private: 作者と招待したフレンドのみ、ページの **Launch** か client 起動中に **Invite Me**）PC と Quest 両対応
 
 地面の上に立つ平面の壁。VRの手で触る、マウスで殴る、歩いて突っ込む — 接触点に凹みが発生し、時間の経過とともに徐々に回復します。凹みは本物の形状で、当たり判定も凹んだ壁に対して行われます。
 
@@ -243,7 +243,7 @@ scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF �
 
 ![デスクトップでの TerrainSculpt: 左クリックで盛り、右クリックで掘り、作った地形の上を歩く](Documentation~/terrain_desktop.gif)
 
-**VRChat で遊ぶ:** world **TerrainSculpt** として公開 — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061)（テスト中は private: 作者と招待したフレンドのみ、ページの **Launch** か client 起動中に **Invite Me**）PC 専用
+**VRChat で遊ぶ:** world **TerrainSculpt** として公開 — [vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061](https://vrchat.com/home/world/wrld_6c134920-6d49-4d66-8b5d-11bbf79ef061)（テスト中は private: 作者と招待したフレンドのみ、ページの **Launch** か client 起動中に **Invite Me**）PC と Quest 両対応
 
 Y=0の平面地形をリアルタイムにスカルプトできます — VRの手でも、マウスでも。描画もコリジョンも全く同じSDF数式で評価されるため、**掘った穴に実際に落ち、積んだ丘に実際に登れます**。
 
