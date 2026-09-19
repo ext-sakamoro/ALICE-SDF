@@ -17,6 +17,11 @@ static class Behaviour
     {
         var c = new SampleTerrainSculpt_Collider();
         typeof(SampleTerrainSculpt_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
+        // The golden and these scenarios are the sphere brush with the original blend factors (the Inspector default is the block brush)
+        typeof(SampleTerrainSculpt_Collider).GetField("blockBrush").SetValue(c, false);
+        typeof(SampleTerrainSculpt_Collider).GetField("sculptRadius").SetValue(c, 0.3f);
+        typeof(SampleTerrainSculpt_Collider).GetField("addSmooth").SetValue(c, 0.25f);
+        typeof(SampleTerrainSculpt_Collider).GetField("subSmooth").SetValue(c, 0.15f);
         Call(c, "Start");
         typeof(SampleTerrainSculpt_Collider).GetField("logEvents").SetValue(c, true); // event lines in the run output
         return c;
@@ -142,6 +147,25 @@ static class Behaviour
         Set(b, "stateDirty", false);
         rec.Invoke(b, new object[] { new Vector3(0f, 0f, 0f), 0.3f });
         Check(b.HasUnsentChanges(), "a sculpt marks the state dirty again");
+
+        // --- Block brush (the Inspector default): 1 m cubes on a grid ---
+        var bb = Fresh();
+        typeof(SampleTerrainSculpt_Collider).GetField("blockBrush").SetValue(bb, true);
+        typeof(SampleTerrainSculpt_Collider).GetField("sculptRadius").SetValue(bb, 0.5f);
+        typeof(SampleTerrainSculpt_Collider).GetField("addSmooth").SetValue(bb, 0.03f);
+        typeof(SampleTerrainSculpt_Collider).GetField("subSmooth").SetValue(bb, 0.03f);
+        Time.time += 10f;
+        Check(bb.TrySculpt(new Vector3(0.3f, 0f, 0.7f), false, 1, "dig"), "block dig at a surface point is recorded");
+        var bbData = (Vector4[])typeof(SampleTerrainSculpt_Collider).GetField("sculptData", F).GetValue(bb);
+        Check(Math.Abs(bbData[0].x - 0.5f) < 1e-4f && Math.Abs(bbData[0].y + 0.5f) < 1e-4f && Math.Abs(bbData[0].z - 0.5f) < 1e-4f,
+              $"the dig snapped to the cell just under the surface ({bbData[0].x:F2}, {bbData[0].y:F2}, {bbData[0].z:F2}) = (0.50, -0.50, 0.50)");
+        Check(bb.EvaluateSdf(new Vector3(0.5f, -0.5f, 0.5f)) > 0.4f, "the cell centre is open air (a 1 m hole, not a bowl)");
+        Check(bb.EvaluateSdf(new Vector3(0.5f, -0.5f, 1.6f)) < -0.05f, "the next cell over is still ground");
+        Check(Math.Abs(bb.SupportHeight(new Vector3(0.5f, 0f, 0.5f)) + 1f) < 0.02f, $"the support goes to the hole floor (y = {bb.SupportHeight(new Vector3(0.5f, 0f, 0.5f)):F2})");
+        Time.time += 10f;
+        Check(bb.TrySculpt(new Vector3(2.3f, 0f, 2.7f), true, 0, "add"), "block add at a surface point is recorded");
+        Check(Math.Abs(bbData[1].y - 0.5f) < 1e-4f, $"the add snapped to the cell just above the surface (y = {bbData[1].y:F2})");
+        Check(Math.Abs(bb.SupportHeight(new Vector3(2.5f, 0f, 2.5f)) - 1f) < 0.02f, $"standing on the block puts the support on its top (y = {bb.SupportHeight(new Vector3(2.5f, 0f, 2.5f)):F2})");
 
         Console.WriteLine(fails == 0 ? "behaviour: all ok" : $"behaviour: {fails} FAIL");
         return fails;

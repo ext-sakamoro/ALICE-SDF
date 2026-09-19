@@ -90,16 +90,18 @@ namespace AliceSDF.Samples
         public Vector3 groundOffset = new Vector3(0f, -3f, 0f);
 
         [Header("Sculpting")]
-        [Tooltip("Radius of the sculpt brush (sent to shader _SculptRadius)")]
-        public float sculptRadius = 0.3f;
+        [Tooltip("Block brush (Minecraft-like): every operation is a cube of side 2 * Sculpt Radius snapped to a grid of that size; digging removes the block just inside the face you point at, building adds the block just outside. Off = spheres placed where you point")]
+        public bool blockBrush = true;
+        [Tooltip("Brush size: half-side of a block (Block Brush) or radius of the sphere (sent to shader _SculptRadius)")]
+        public float sculptRadius = 0.5f;
         [Tooltip("Hand must be within this distance of the terrain surface to sculpt")]
         public float sculptDistance = 0.15f;
         [Tooltip("Minimum time between sculpt operations of one hand (sec)")]
         public float sculptCooldown = 0.12f;
         [Tooltip("SmoothUnion factor for adding terrain (sent to shader _AddSmooth)")]
-        public float addSmooth = 0.25f;
+        public float addSmooth = 0.03f;
         [Tooltip("SmoothSubtraction factor for digging (sent to shader _SubSmooth)")]
-        public float subSmooth = 0.15f;
+        public float subSmooth = 0.03f;
         [Tooltip("Operations kept (1-128); the oldest is overwritten beyond this. Every ray step and every collision sample folds them all, so this is the GPU / Udon cost knob")]
         [Range(1, 128)]
         public int sculptCapacity = 96;
@@ -109,6 +111,8 @@ namespace AliceSDF.Samples
         public float cursorMaxDist = 6.0f;
 
         [Header("Player Collision")]
+        [Tooltip("Jump strength given to the player on start so 1 m blocks can be climbed (VRChat worlds start with no jump); 0 = leave the world's own setting")]
+        public float jumpImpulse = 3f;
         [Tooltip("Invisible collider that follows the player on the SDF surface (scene object TerrainSupport if empty)")]
         public Transform support;
         [Tooltip("Height of the support box (its top is placed on the surface)")]
@@ -226,6 +230,7 @@ namespace AliceSDF.Samples
 
 #if UDONSHARP
             localPlayer = Networking.LocalPlayer;
+            if (localPlayer != null && jumpImpulse > 0f) localPlayer.SetJumpImpulse(jumpImpulse);
             addHeld = false;
             digHeld = false;
             missLogged = new bool[HandCount];
@@ -355,6 +360,16 @@ namespace AliceSDF.Samples
             if (!addHeld && !digHeld) heldOps = 0;
             float t = RaymarchTerrainSkipping(o, dir, cursorMaxDist, heldOps);
             cursorValid = t >= 0f;
+            // The law's plane is infinite but this terrain lives in its cube:
+            // a hit on the floor elsewhere is not this terrain (nothing is
+            // drawn there and nothing would collide)
+            if (cursorValid && !InFootprint(o + dir * t))
+            {
+                cursorValid = false;
+                if (addHeld && !missLogged[HandLeft]) { LogEvent("click outside this terrain's footprint at " + F(o + dir * t)); missLogged[HandLeft] = true; }
+                if (digHeld && !missLogged[HandRight]) { LogEvent("right click outside this terrain's footprint at " + F(o + dir * t)); missLogged[HandRight] = true; }
+                return;
+            }
             if (!cursorValid)
             {
                 if (addHeld && !missLogged[HandLeft]) { LogEvent("click missed (no terrain within " + F(cursorMaxDist) + " m of the view)"); missLogged[HandLeft] = true; }
@@ -403,6 +418,14 @@ namespace AliceSDF.Samples
         // recently recorded operations (the desktop press, see heldOps)
         public bool TrySculptSkipping(Vector3 pos, bool isAdd, int hand, string how, int skipRecent)
         {
+            // Only inside this terrain's cube footprint (the plane is infinite,
+            // the terrain is not)
+            if (!InFootprint(pos))
+            {
+                stroking[hand] = false;
+                return false;
+            }
+
             float dist = EvaluateSdfSkipping(pos, skipRecent);
 
             // The hand / cursor must be near the terrain surface; leaving it ends the stroke
@@ -424,11 +447,28 @@ namespace AliceSDF.Samples
             }
 
             float r = isAdd ? sculptRadius : -sculptRadius;
+            if (blockBrush) pos = SnapToBlock(pos, isAdd);
             RecordSculpt(pos, r);
             lastSculptTime[hand] = Time.time;
             LogEvent((isAdd ? "add" : "dig") + " #" + ((nextSlot + Capacity() - 1) % Capacity()) + " r=" + F(sculptRadius)
                      + " at " + F(pos) + " by " + how + " (" + sculptCount + " stored)");
             return true;
+        }
+
+        // Block brush: the grid cell the point falls in, nudged along the
+        // surface normal so digging takes the block just inside the face and
+        // building the block just outside it (a hit point sits exactly on a
+        // grid plane after the first block). Returns the cell centre.
+        public Vector3 SnapToBlock(Vector3 pos, bool isAdd)
+        {
+            float cell = sculptRadius * 2f;
+            if (cell < 0.001f) return pos;
+            Vector3 n = EstimateGradient(pos);
+            Vector3 q = isAdd ? pos + n * (cell * 0.1f) : pos - n * (cell * 0.1f);
+            return new Vector3(
+                (Mathf.Floor(q.x / cell) + 0.5f) * cell,
+                (Mathf.Floor(q.y / cell) + 0.5f) * cell,
+                (Mathf.Floor(q.z / cell) + 0.5f) * cell);
         }
 
         // The ring size in use (Inspector, clamped to the array)
@@ -448,10 +488,11 @@ namespace AliceSDF.Samples
         }
 
         // Cursor glow for a VR hand: visible while the hand is near the surface
+        // (and inside this terrain's footprint)
         private Vector4 CursorFor(Vector3 handPos)
         {
             float d = EvaluateSdf(handPos);
-            float visible = Mathf.Abs(d) < sculptRadius * 2f ? 1f : 0f;
+            float visible = (InFootprint(handPos) && Mathf.Abs(d) < sculptRadius * 2f) ? 1f : 0f;
             return new Vector4(handPos.x, handPos.y, handPos.z, visible);
         }
 
@@ -679,14 +720,14 @@ namespace AliceSDF.Samples
                 {
                     // Add: SmoothUnion
                     Vector3 sp = new Vector3(sculptData[i].x, sculptData[i].y, sculptData[i].z);
-                    float hill = (p - sp).magnitude - rw;
+                    float hill = Brush(p - sp, rw);
                     terrain = OpSmoothUnion(terrain, hill, addSmooth);
                 }
                 else if (rw < -0.001f)
                 {
                     // Dig: SmoothSubtraction
                     Vector3 sp = new Vector3(sculptData[i].x, sculptData[i].y, sculptData[i].z);
-                    float hole = (p - sp).magnitude - (-rw);
+                    float hole = Brush(p - sp, -rw);
                     terrain = OpSmoothSubtraction(terrain, hole, subSmooth);
                 }
             }
@@ -700,6 +741,20 @@ namespace AliceSDF.Samples
         {
             if (!hasVolume) return true;
             return p.x >= volume.min.x && p.x <= volume.max.x && p.z >= volume.min.z && p.z <= volume.max.z;
+        }
+
+        // One sculpt operation's distance: a cube of half-side r (block brush)
+        // or a sphere of radius r, identical to the shader's brush()
+        private float Brush(Vector3 d, float r)
+        {
+            if (!blockBrush) return d.magnitude - r;
+            float qx = Mathf.Abs(d.x) - r;
+            float qy = Mathf.Abs(d.y) - r;
+            float qz = Mathf.Abs(d.z) - r;
+            float ox = Mathf.Max(qx, 0f);
+            float oy = Mathf.Max(qy, 0f);
+            float oz = Mathf.Max(qz, 0f);
+            return Mathf.Sqrt(ox * ox + oy * oy + oz * oz) + Mathf.Min(Mathf.Max(qx, Mathf.Max(qy, qz)), 0f);
         }
 
         private Vector3 EstimateGradient(Vector3 p)
@@ -769,6 +824,7 @@ namespace AliceSDF.Samples
             mat.SetVectorArray("_SculptData", sculptData);
             mat.SetFloat("_SculptCount", (float)sculptCount);
             mat.SetFloat("_SculptRadius", sculptRadius);
+            mat.SetFloat("_BrushShape", blockBrush ? 1f : 0f);
 
             // Blend factors live here, not in the material: what the player
             // stands on is exactly what is rendered

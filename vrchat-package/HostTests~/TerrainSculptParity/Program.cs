@@ -26,6 +26,11 @@ static class Program
     {
         var c = new SampleTerrainSculpt_Collider();
         typeof(SampleTerrainSculpt_Collider).GetField("groundOffset").SetValue(c, Vector3.zero);   // no transform on the host: the law anchored at the world origin, as the golden
+        // The golden and these scenarios are the sphere brush with the original blend factors (the Inspector default is the block brush)
+        typeof(SampleTerrainSculpt_Collider).GetField("blockBrush").SetValue(c, false);
+        typeof(SampleTerrainSculpt_Collider).GetField("sculptRadius").SetValue(c, 0.3f);
+        typeof(SampleTerrainSculpt_Collider).GetField("addSmooth").SetValue(c, 0.25f);
+        typeof(SampleTerrainSculpt_Collider).GetField("subSmooth").SetValue(c, 0.15f);
         // Start() is private (Unity message); invoke it like Unity would
         typeof(SampleTerrainSculpt_Collider).GetMethod("Start", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(c, null);
         var record = typeof(SampleTerrainSculpt_Collider).GetMethod("RecordSculpt", BindingFlags.NonPublic | BindingFlags.Instance);

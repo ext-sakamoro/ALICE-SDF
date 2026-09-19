@@ -71,7 +71,9 @@ Shader "AliceSDF/Samples/TerrainSculpt"
         [Header(Sculpting)]
         _AddSmooth ("Add Smoothness", Float) = 0.25
         _SubSmooth ("Dig Smoothness", Float) = 0.15
-        _SculptRadius ("Sculpt Radius (for cursor)", Float) = 0.3
+        _SculptRadius ("Sculpt Radius (for cursor)", Float) = 0.5
+        // Driven by the collider: 1 = block brush (cubes), 0 = spheres
+        _BrushShape ("Brush Shape (0 sphere, 1 block)", Float) = 1
 
         [Header(Fog)]
         _FogColor ("Fog Color", Color) = (0.70, 0.80, 0.90, 1.0)
@@ -99,7 +101,7 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             float _GroundTexScale, _GroundTexStrength;
             float4 _Origin;
             float _MaxDist;
-            float _AddSmooth, _SubSmooth, _SculptRadius;
+            float _AddSmooth, _SubSmooth, _SculptRadius, _BrushShape;
             float4 _LightDir;
             int _ShadowEnabled;
             float _ShadowSoftness, _ShadowMaxDist, _FogDensity;
@@ -138,6 +140,13 @@ Shader "AliceSDF/Samples/TerrainSculpt"
             // true distance, so rays overshot into the terrain and stopped
             // inside it (black cavities and a floating cap on every column).
             // =================================================================
+            // One sculpt operation's distance: a cube of half-side r (block
+            // brush) or a sphere of radius r, identical to the collider's Brush()
+            float brush(float3 d, float r)
+            {
+                return _BrushShape > 0.5 ? sdBox(d, float3(r, r, r)) : sdSphere(d, r);
+            }
+
             float map(float3 p)
             {
                 // Base terrain: flat ground at _Origin.y
@@ -157,13 +166,13 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                     if (rw > 0.001)
                     {
                         // Add terrain (left hand): SmoothUnion
-                        float hill = sdSphere(delta, rw);
+                        float hill = brush(delta, rw);
                         terrain = opSmoothUnion(terrain, hill, _AddSmooth);
                     }
                     else if (rw < -0.001)
                     {
                         // Dig terrain (right hand): SmoothSubtraction
-                        float hole = sdSphere(delta, -rw);
+                        float hole = brush(delta, -rw);
                         terrain = opSmoothSubtraction(terrain, hole, _SubSmooth);
                     }
                 }
@@ -187,9 +196,9 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                     float rw = _SculptData[i].w;
                     float3 delta = p - sp;
                     if (rw > 0.001)
-                        terrain = min(terrain, sdSphere(delta, rw));
+                        terrain = min(terrain, brush(delta, rw));
                     else if (rw < -0.001)
-                        terrain = max(terrain, -sdSphere(delta, -rw));
+                        terrain = max(terrain, -brush(delta, -rw));
                 }
                 return terrain;
             }
@@ -314,7 +323,8 @@ Shader "AliceSDF/Samples/TerrainSculpt"
                     float3 c = _SculptData[i].xyz;
                     float tc = clamp(dot(c - ro, rd), 0.0, len);
                     float3 q = ro + rd * tc - c;
-                    float R = abs(_SculptData[i].w) + infl;
+                    // a block's bounding sphere is sqrt(3) times its half-side
+                    float R = abs(_SculptData[i].w) * (_BrushShape > 0.5 ? 1.7321 : 1.0) + infl;
                     if (dot(q, q) < R * R) return true;
                 }
                 return false;
