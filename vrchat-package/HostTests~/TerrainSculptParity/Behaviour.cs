@@ -166,6 +166,12 @@ static class Behaviour
         Check(bb.TrySculpt(new Vector3(2.3f, 0f, 2.7f), true, 0, "add"), "block add at a surface point is recorded");
         Check(Math.Abs(bbData[1].y - 0.5f) < 1e-4f, $"the add snapped to the cell just above the surface (y = {bbData[1].y:F2})");
         Check(Math.Abs(bb.SupportHeight(new Vector3(2.5f, 0f, 2.5f)) - 1f) < 0.02f, $"standing on the block puts the support on its top (y = {bb.SupportHeight(new Vector3(2.5f, 0f, 2.5f)):F2})");
+        Time.time += 10f;
+        Check(bb.TrySculpt(new Vector3(4.3f, 0.4f, 4.7f), true, 0, "hover add"), "a VR hand hovering 0.4 m over the ground still sculpts (sculptDistance 0.5)");
+        Check(Math.Abs(bbData[2].x - 4.5f) < 1e-4f && Math.Abs(bbData[2].y - 0.5f) < 1e-4f && Math.Abs(bbData[2].z - 4.5f) < 1e-4f, $"the hovering add lands on the ground under the hand ({bbData[2].x:F2}, {bbData[2].y:F2}, {bbData[2].z:F2}) = (4.50, 0.50, 4.50)");
+        Time.time += 10f;
+        Check(bb.TrySculpt(new Vector3(6.3f, 0.4f, 6.7f), false, 1, "hover dig"), "a hovering dig is recorded");
+        Check(Math.Abs(bbData[3].y + 0.5f) < 1e-4f, $"the hovering dig takes the cell under the surface, not the one around the hand (y = {bbData[3].y:F2})");
 
         Console.WriteLine(fails == 0 ? "behaviour: all ok" : $"behaviour: {fails} FAIL");
         return fails;

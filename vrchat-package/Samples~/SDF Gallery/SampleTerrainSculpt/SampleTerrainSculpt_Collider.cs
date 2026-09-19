@@ -94,8 +94,8 @@ namespace AliceSDF.Samples
         public bool blockBrush = true;
         [Tooltip("Brush size: half-side of a block (Block Brush) or radius of the sphere (sent to shader _SculptRadius)")]
         public float sculptRadius = 0.5f;
-        [Tooltip("Hand must be within this distance of the terrain surface to sculpt")]
-        public float sculptDistance = 0.15f;
+        [Tooltip("A VR hand within this distance of the terrain surface sculpts (the block goes on / comes out of the surface right under the hand); the desktop cursor is always on the surface")]
+        public float sculptDistance = 0.5f;
         [Tooltip("Minimum time between sculpt operations of one hand (sec)")]
         public float sculptCooldown = 0.12f;
         [Tooltip("SmoothUnion factor for adding terrain (sent to shader _AddSmooth)")]
@@ -463,8 +463,12 @@ namespace AliceSDF.Samples
         {
             float cell = sculptRadius * 2f;
             if (cell < 0.001f) return pos;
+            // A VR hand hovers up to sculptDistance off the surface: project it
+            // onto the surface first (along the gradient by the distance), so
+            // the block sits on / comes out of the ground right under the hand
             Vector3 n = EstimateGradient(pos);
-            Vector3 q = isAdd ? pos + n * (cell * 0.1f) : pos - n * (cell * 0.1f);
+            Vector3 surface = pos - n * EvaluateSdf(pos);
+            Vector3 q = isAdd ? surface + n * (cell * 0.1f) : surface - n * (cell * 0.1f);
             return new Vector3(
                 (Mathf.Floor(q.x / cell) + 0.5f) * cell,
                 (Mathf.Floor(q.y / cell) + 0.5f) * cell,
