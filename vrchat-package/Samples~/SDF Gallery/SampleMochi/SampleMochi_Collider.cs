@@ -291,7 +291,10 @@ namespace AliceSDF.Samples
 #if UDONSHARP
         public override void PostLateUpdate()
         {
-            if (localPlayer == null) return;
+            // The player object dies before the last PostLateUpdate when the
+            // local player leaves the world: GetPosition on it throws and halts
+            // the behaviour (seen in a Quest client log)
+            if (localPlayer == null || !Utilities.IsValid(localPlayer)) return;
 
             // --- Hand Tracking (VR only) ---
             if (localPlayer.IsUserInVR())

@@ -144,7 +144,8 @@ namespace AliceSDF
 
         public override void PostLateUpdate()
         {
-            if (_localPlayer == null) return;
+            // Invalid once the local player is leaving the world (see the samples)
+            if (_localPlayer == null || !Utilities.IsValid(_localPlayer)) return;
 
             animTime = Time.timeSinceLevelLoad;
 
