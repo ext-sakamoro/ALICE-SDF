@@ -108,6 +108,12 @@ Each sample includes:
 - `*.asdf.json` â Source definition for the Baker
 - a Rust golden (`examples/vrchat_<sample>_golden.rs`) and a host parity check (`HostTests~`) that the collider's law is the crate's law
 
+**Every sample is published as a VRChat world (PC and Quest).** The interactive three and the Kit demo are linked in their sections below; the four static samples are private while testing (the author and invited friends: press **Launch** on the page or **Invite Me** with the client open):
+- **AliceSDF Basic** — [vrchat.com/home/world/wrld_66f2bf46-cc81-489e-98db-09b374f40a76](https://vrchat.com/home/world/wrld_66f2bf46-cc81-489e-98db-09b374f40a76)
+- **AliceSDF Cosmic** — [vrchat.com/home/world/wrld_84795f20-df12-4b76-93c8-060eb427a247](https://vrchat.com/home/world/wrld_84795f20-df12-4b76-93c8-060eb427a247)
+- **AliceSDF Fractal** — [vrchat.com/home/world/wrld_ef63fb2d-74aa-47b9-b689-d10a58e9d533](https://vrchat.com/home/world/wrld_ef63fb2d-74aa-47b9-b689-d10a58e9d533) (the world scene runs the sponge without the twist; the twisted march has known artifacts)
+- **AliceSDF Mix** — [vrchat.com/home/world/wrld_3123e9ef-6741-46a7-8195-10994cc923b5](https://vrchat.com/home/world/wrld_3123e9ef-6741-46a7-8195-10994cc923b5)
+
 The scene generator gives every sample a `VRCSceneDescriptor` with a spawn, a floor collider where the SDF has a ground (Basic, Mochi, DeformableWall) and a viewing platform under the spawn in the space scenes (Cosmic, Fractal, Mix; their skybox is cleared so a raymarch miss is black). Walking off the platform is a long fall to the respawn height â standing on the SDF itself is only implemented for TerrainSculpt.
 
 ### Interactive Samples (VR and desktop)

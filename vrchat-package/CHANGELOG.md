@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Every sample now has a VRChat world (PC + Android): AliceSDF Basic / Cosmic /
+  Fractal / Mix uploaded private next to Mochi / TerrainSculpt / DeformableWall
+  and the Kit demo; links in the README.
 - AliceSDF Kit product (`ALICE-SDF > Build Kit Product`, `KitProductBuilder`):
   all seven samples as one stand-alone unitypackage (base collider + 7
   scripts in namespace `AliceSDFKit`, 7 shaders with the includes beside them,

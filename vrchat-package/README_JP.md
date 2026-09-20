@@ -132,6 +132,12 @@ HLSLとUdonSharpの両方で「全く同じ挙動」をするように設計さ�
 - `*.asdf.json` — Baker用の定義ファイル
 - Rust golden（`examples/vrchat_<sample>_golden.rs`）と host parity check（`HostTests~`）— collider の law が crate の law であること
 
+**全 sample を VRChat world として公開しています (PC と Quest)** インタラクティブ 3 種と Kit デモは各節に link、静的 4 種はテスト中 private (作者と招待した人のみ、page の **Launch** か client を開いた状態で **Invite Me**):
+- **AliceSDF Basic** — [vrchat.com/home/world/wrld_66f2bf46-cc81-489e-98db-09b374f40a76](https://vrchat.com/home/world/wrld_66f2bf46-cc81-489e-98db-09b374f40a76)
+- **AliceSDF Cosmic** — [vrchat.com/home/world/wrld_84795f20-df12-4b76-93c8-060eb427a247](https://vrchat.com/home/world/wrld_84795f20-df12-4b76-93c8-060eb427a247)
+- **AliceSDF Fractal** — [vrchat.com/home/world/wrld_ef63fb2d-74aa-47b9-b689-d10a58e9d533](https://vrchat.com/home/world/wrld_ef63fb2d-74aa-47b9-b689-d10a58e9d533) (world scene は twist 無しで動かしています、twist 付きの march には既知の破綻あり)
+- **AliceSDF Mix** — [vrchat.com/home/world/wrld_3123e9ef-6741-46a7-8195-10994cc923b5](https://vrchat.com/home/world/wrld_3123e9ef-6741-46a7-8195-10994cc923b5)
+
 scene generator は全 sample に spawn 付き `VRCSceneDescriptor` を、SDF に地面がある sample（Basic / Mochi / DeformableWall）には床 collider を、宇宙 scene（Cosmic / Fractal / Mix）には spawn の下に展望 platform を置きます（skybox は外して、raymarch の miss は黒）platform から歩き出すと respawn 高さまで落ちます — SDF そのものに立てるのは TerrainSculpt だけです
 
 ### インタラクティブサンプル (VR とデスクトップ)
