@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compiles the renamed Kit scripts KitCompile wrote to ../gen against the
+       UnityEngine stub (the same compile the Unity project performs on
+       Assets/AliceSDFKit/Scripts, minus UdonSharp) and checks the product
+       type names by reflection. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>7.3</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../gen/*.cs" />
+    <Compile Include="../../Shared/UnityEngineStub.cs" Link="UnityEngineStub.cs" />
+  </ItemGroup>
+</Project>

@@ -172,6 +172,12 @@ namespace AliceSDF.Editor
             if (path != null) EditorUtility.DisplayDialog("ALICE-SDF Kit Product", "Exported:\n" + path, "OK");
         }
 
+        // Batch runs (one Unity invocation per phase, see AliceSDF_CiChecks) drive
+        // the phases themselves: the resume flag must not fire in the next
+        // editor session, which may be a different project (EditorPrefs are
+        // per user, not per project).
+        public static void ClearPending() { EditorPrefs.SetBool(PendingKey, false); }
+
         // Headless: -executeMethod AliceSDF.Editor.KitProductBuilder.BuildBatch
         public static void BuildBatch()
         {

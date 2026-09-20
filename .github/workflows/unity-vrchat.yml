@@ -1,0 +1,90 @@
+# The Unity side of vrchat-package — what the Rust and dotnet jobs of ci.yml
+# cannot see: do the shaders compile (Standalone + Android GLES3), do the
+# scripts and UdonSharp programs compile, do the seven sample scenes come out
+# with a descriptor / spawn / backing UdonBehaviour, does the Kit product build
+# and export with every prefab / program / shader / texture. Same stages as
+# scripts/unity-preflight.ps1 (local, installed Unity), run through
+# scripts/unity-ci-stages.sh in the GameCI editor image.
+#
+# Needs the repository secret UNITY_LICENSE: the contents of a Unity_lic.ulf
+# (Personal licence activated for 2022.3.22f1). Without it the job reports a
+# notice and passes, so forks and a fresh setup stay green; nothing else is
+# checked in that case (the run summary says so).
+name: Unity (VRChat)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vrchat-package/**'
+      - 'scripts/unity-*'
+      - '.github/workflows/unity-vrchat.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'vrchat-package/**'
+      - 'scripts/unity-*'
+      - '.github/workflows/unity-vrchat.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unity-vrchat:
+    name: Unity 2022.3.22f1 — shaders / UdonSharp / scenes / Kit (PC + Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Licence gate
+        id: gate
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Unity checks skipped::UNITY_LICENSE secret not set; add a Unity_lic.ulf (Personal, 2022.3.22f1) as UNITY_LICENSE to run the shader / UdonSharp / scene / Kit checks"
+            echo "### Unity checks skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "UNITY_LICENSE secret not set (vrchat-package/HostTests~/README.md § Unity CI)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Library/ of the throw-away project: the SDK import + first script
+      # compile is most of a stage's time; keyed on the SDK pin + package files
+      - name: Cache Unity Library
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ci-unity/Library
+          key: unity-library-${{ hashFiles('scripts/unity-ci-project.sh', 'vrchat-package/CI~/**', 'vrchat-package/package.json') }}
+          restore-keys: unity-library-
+
+      - name: VRChat Worlds project (vrc-get, com.alice.sdf file link)
+        if: steps.gate.outputs.run == 'true'
+        run: scripts/unity-ci-project.sh ci-unity
+
+      - name: Unity stages (setup, compile, samples, scenes, kit, verify, android)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: scripts/unity-ci-stages.sh ci-unity
+
+      - name: Kit unitypackage
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AliceSDFKit-unitypackage
+          path: vrchat-package/Product~/*.unitypackage
+          if-no-files-found: error
+
+      - name: Unity logs
+        if: always() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-logs
+          path: ci-unity-*.log
+          if-no-files-found: ignore

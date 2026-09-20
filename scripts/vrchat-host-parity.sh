@@ -44,3 +44,14 @@ for entry in "${samples[@]}"; do
     # the example name lets a project that hosts several samples pick one
     dotnet run --no-build -c Release --project "$proj" -- "$golden" "$example"
 done
+
+# The Kit product scripts: the eight sample / base colliders renamed the way
+# KitProductBuilder renames them, compiled together against the stub and
+# checked by reflection (HostTests~/KitCompile/Compiled). Catches a rename
+# that leaves a dangling reference without a Unity licence.
+echo "== KitCompile (Kit-renamed scripts)"
+kit="vrchat-package/HostTests~/KitCompile"
+dotnet build "$kit" -c Release --nologo -v q
+dotnet run --no-build -c Release --project "$kit"
+dotnet build "$kit/Compiled" -c Release --nologo -v q
+dotnet run --no-build -c Release --project "$kit/Compiled"

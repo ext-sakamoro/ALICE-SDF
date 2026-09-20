@@ -389,7 +389,9 @@ com.alice.sdf/
 ├── Editor/
 │   ├── AliceSDF.Editor.asmdef       # Editor Assembly Definition
 │   ├── AliceSDF_Baker.cs            # Baker v0.3 (Deep Fried)
-│   └── SampleSceneGenerator.cs      # メニュー: ALICE-SDF > Import All Samples / Generate Sample Scenes (+ -executeMethod 用 *Batch)
+│   ├── SampleSceneGenerator.cs      # メニュー: ALICE-SDF > Import All Samples / Generate Sample Scenes (+ -executeMethod 用 *Batch)
+│   ├── KitProductBuilder.cs         # ALICE-SDF > Build Kit Product (BOOTH 用 unitypackage)
+│   └── AliceSDF_CiChecks.cs         # ALICE-SDF > Run CI Checks、scripts/unity-preflight.ps1 と Unity workflow が回す RunBatch stage
 ├── Samples~/                        # UPMサンプル (Package Managerからインポート)
 │   └── SDF Gallery/
 │       ├── SampleBasic/             # 地面 + 球体
@@ -399,7 +401,8 @@ com.alice.sdf/
 │       ├── SampleDeformableWall/    # インタラクティブ: 壁を触る→凹む→回復
 │       ├── SampleMochi/            # インタラクティブ: 掴む・合体・分裂・巨大化
 │       └── SampleTerrainSculpt/   # インタラクティブ: 掘る・積む・穴に落ちる
-├── HostTests~/                      # Unity なしで走る検証: Mochi collider と alice_sdf golden の突合 (scripts/vrchat-host-parity.sh)
+├── HostTests~/                      # Unity なしで走る検証: collider と alice_sdf golden の突合、Kit 改名 compile (scripts/vrchat-host-parity.sh)
+├── CI~/                             # Unity CI (.github/workflows/unity-vrchat.yml) が使う使い捨て project の雛形
 └── Documentation~/                  # README 用メディア (~ フォルダは Unity が無視)
 ```
 

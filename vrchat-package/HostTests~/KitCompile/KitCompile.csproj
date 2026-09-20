@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Host-side check of the AliceSDF Kit product scripts: applies the same
+       renames KitProductBuilder applies (namespace AliceSDF / AliceSDF.Samples
+       -> AliceSDFKit, Sample*_Collider -> Alice*), writes the eight results to
+       gen/, which Compiled/KitCompiled.csproj then compiles against
+       UnityEngineStub.cs and checks by reflection. A rename that leaves a
+       dangling reference (a class renamed in a sample but not in the builder's
+       table, a new cross-sample reference) fails here without Unity.
+       Run via scripts/vrchat-host-parity.sh. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>7.3</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Compiled/ and gen/ are the second project and its input, not this one -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Compiled/**;gen/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

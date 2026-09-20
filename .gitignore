@@ -72,3 +72,7 @@ python/alice_sdf/*.dylib
 python/alice_sdf/*.pyd
 # Unity writes a .meta for the ignored ProjectSettings/ dir of the file:-linked package
 vrchat-package/ProjectSettings.meta
+
+# Unity CI throw-away project (scripts/unity-ci-project.sh) and its stage logs
+/ci-unity/
+/ci-unity-*.log

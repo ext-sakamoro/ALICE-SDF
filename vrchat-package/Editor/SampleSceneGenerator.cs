@@ -309,6 +309,18 @@ namespace AliceSDF.Editor
         }
 
         // In batch mode the process exit code is the only thing the caller sees.
+        // For AliceSDF_CiChecks: the batch entry points without EditorApplication.Exit
+        public static void ImportAllSamplesBatchNoExit()
+        {
+            if (ImportAllSamplesCore() < 0) throw new System.InvalidOperationException("Import All Samples failed; see the log above.");
+        }
+
+        public static void GenerateAllBatchNoExit()
+        {
+            int created = GenerateAllCore(out int skipped);
+            if (created == 0 && skipped == 0) throw new System.InvalidOperationException("No sample scene created; run ImportAllSamplesBatch first.");
+        }
+
         private static void Fail(string message)
         {
             Debug.LogError(message);

@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- Unity CI: `Editor/AliceSDF_CiChecks.cs` (batch stages setup / compile /
+  samples / scenes / kit / verify / android — shader compilation for PC and
+  Android, UdonSharp compilation with its error count, the seven generated
+  scenes with descriptor / spawn / backing UdonBehaviour, the Kit build with
+  every prefab / program / shader / texture), run locally by
+  `scripts/unity-preflight.ps1` (plus a `Samples~` vs `Assets/Samples` drift
+  check) and on GitHub by `.github/workflows/unity-vrchat.yml`
+  (`scripts/unity-ci-project.sh` + `scripts/unity-ci-stages.sh`, GameCI
+  image, `UNITY_LICENSE` secret; the Kit unitypackage becomes an artifact).
+  `HostTests~/KitCompile` compiles the Kit-renamed scripts without Unity
+  (`scripts/vrchat-host-parity.sh`).
 - Every sample now has a VRChat world (PC + Android): AliceSDF Basic / Cosmic /
   Fractal / Mix uploaded private next to Mochi / TerrainSculpt / DeformableWall
   and the Kit demo; links in the README.

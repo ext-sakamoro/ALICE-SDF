@@ -348,7 +348,9 @@ com.alice.sdf/
 ├── Editor/
 │   ├── AliceSDF.Editor.asmdef       # Editor Assembly Definition
 │   ├── AliceSDF_Baker.cs            # Baker v0.3 (Deep Fried)
-│   └── SampleSceneGenerator.cs      # Menus: ALICE-SDF > Import All Samples / Generate Sample Scenes (+ *Batch for -executeMethod)
+│   ├── SampleSceneGenerator.cs      # Menus: ALICE-SDF > Import All Samples / Generate Sample Scenes (+ *Batch for -executeMethod)
+│   ├── KitProductBuilder.cs         # ALICE-SDF > Build Kit Product (the BOOTH unitypackage)
+│   └── AliceSDF_CiChecks.cs         # ALICE-SDF > Run CI Checks; RunBatch stages for scripts/unity-preflight.ps1 and the Unity workflow
 ├── Samples~/                        # UPM Samples (import via Package Manager)
 │   └── SDF Gallery/
 │       ├── SampleBasic/             # Ground + Sphere
@@ -358,7 +360,8 @@ com.alice.sdf/
 │       ├── SampleDeformableWall/    # Interactive: touch wall → dent → recover
 │       ├── SampleMochi/            # Interactive: grab, merge, split, grow
 │       └── SampleTerrainSculpt/   # Interactive: dig holes, build hills, fall in
-├── HostTests~/                      # Runs without Unity: Mochi collider vs alice_sdf golden (scripts/vrchat-host-parity.sh)
+├── HostTests~/                      # Runs without Unity: colliders vs alice_sdf goldens, Kit rename compile (scripts/vrchat-host-parity.sh)
+├── CI~/                             # Throw-away project template for the Unity CI (.github/workflows/unity-vrchat.yml)
 └── Documentation~/                  # README media (Unity skips ~ folders)
 ```
 

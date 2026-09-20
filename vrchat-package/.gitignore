@@ -30,3 +30,5 @@ HostTests~/**/obj/
 
 # BOOTH product export (ALICE-SDF/Build Mochi Product), an artifact of the sample
 Product~/
+# KitCompile writes the renamed Kit scripts here (scripts/vrchat-host-parity.sh)
+HostTests~/KitCompile/gen/
