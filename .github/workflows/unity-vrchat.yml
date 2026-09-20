@@ -57,7 +57,7 @@ jobs:
       # compile is most of a stage's time; keyed on the SDK pin + package files
       - name: Cache Unity Library
         if: steps.gate.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ci-unity/Library
           key: unity-library-${{ hashFiles('scripts/unity-ci-project.sh', 'vrchat-package/CI~/**', 'vrchat-package/package.json') }}
@@ -75,7 +75,7 @@ jobs:
 
       - name: Kit unitypackage
         if: steps.gate.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: AliceSDFKit-unitypackage
           path: vrchat-package/Product~/*.unitypackage
@@ -83,7 +83,7 @@ jobs:
 
       - name: Unity logs
         if: always() && steps.gate.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: unity-logs
           path: ci-unity-*.log
