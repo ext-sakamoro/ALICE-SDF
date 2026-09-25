@@ -113,10 +113,8 @@ fn main() {
                         // Background: a dark vertical gradient (an opaque icon
                         // reads better in the plugin browser than a cut-out).
                         let g = (v * 0.5 + 0.5).clamp(0.0, 1.0);
-                        colour += Vec3::new(0.035, 0.040, 0.075).lerp(
-                            Vec3::new(0.085, 0.075, 0.150),
-                            g,
-                        );
+                        colour +=
+                            Vec3::new(0.035, 0.040, 0.075).lerp(Vec3::new(0.085, 0.075, 0.150), g);
                         alpha += 1.0;
                         continue;
                     };

@@ -539,7 +539,7 @@ jobs:
         run: pwsh -File scripts/unreal-ue5-ci.ps1 -EngineRoot "${{ matrix.engine }}" -WorkDir "E:\alice-ci\ue5-${{ github.run_id }}"
       - name: Upload editor / UAT logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: unreal-ue5-logs-${{ strategy.job-index }}
           path: E:\alice-ci\ue5-${{ github.run_id }}\logs
