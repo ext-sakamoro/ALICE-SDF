@@ -1,0 +1,52 @@
+# One-shot helper for the Unity (VRChat) workflow's UNITY_LICENSE secret.
+#
+# A Personal licence file (.ulf) is bound to the machine that requested it, so
+# a Unity_lic.ulf copied from a desktop is rejected in CI ("Machine bindings
+# don't match" -> "No valid Unity Editor license found"). The licence therefore
+# has to be requested from the same editor image CI runs:
+#
+#   1. Run this workflow (Actions -> Unity licence request -> Run workflow).
+#   2. Download the `unity-activation-file` artifact and upload the .alf it
+#      contains to https://license.unity3d.com/manual (sign in, pick Unity
+#      Personal), which hands back a .ulf.
+#   3. Put the .ulf contents in the repository secret UNITY_LICENSE and re-run
+#      "Unity (VRChat)".
+#
+# Nothing here needs a licence, and the .alf carries no credentials.
+name: Unity licence request
+
+on:
+  workflow_dispatch:
+
+jobs:
+  request:
+    name: Request a manual activation file (.alf) from the CI editor image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Create the activation file
+        run: |
+          mkdir -p alf
+          # -createManualActivationFile writes <editor>.alf into the working
+          # directory and exits non-zero on some versions, so the file's
+          # presence is what counts
+          docker run --rm -v "$PWD/alf:/alf" -w /alf \
+            unityci/editor:ubuntu-2022.3.22f1-android-3 \
+            unity-editor -batchmode -nographics -quit -logFile /alf/request.log \
+            -createManualActivationFile || true
+          sudo chown -R "$(id -u):$(id -g)" alf
+          ls -la alf
+          if ! ls alf/*.alf >/dev/null 2>&1; then
+            echo "no .alf produced; the editor log follows" >&2
+            tail -n 40 alf/request.log >&2 || true
+            exit 1
+          fi
+
+      - name: Activation file
+        uses: actions/upload-artifact@v6
+        with:
+          name: unity-activation-file
+          path: |
+            alf/*.alf
+            alf/request.log
+          if-no-files-found: error
