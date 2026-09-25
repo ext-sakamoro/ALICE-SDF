@@ -86,5 +86,5 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: unity-logs
-          path: ci-unity-*.log
+          path: ci-unity-logs/
           if-no-files-found: ignore

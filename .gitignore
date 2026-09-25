@@ -75,4 +75,4 @@ vrchat-package/ProjectSettings.meta
 
 # Unity CI throw-away project (scripts/unity-ci-project.sh) and its stage logs
 /ci-unity/
-/ci-unity-*.log
+/ci-unity-logs/

@@ -6,6 +6,8 @@
 #
 #   UNITY_LICENSE=<contents of a Unity_lic.ulf> scripts/unity-ci-stages.sh <project dir>
 #
+# Each stage's Unity log lands in ci-unity-logs/<stage>.log.
+#
 # The licence file is a Personal licence activated for the editor version
 # (Unity Hub / the GameCI activation page); it is written into the container
 # only. Exit 0 = every stage passed, 1 = a stage failed (its log is the
@@ -17,8 +19,13 @@ image="unityci/editor:ubuntu-2022.3.22f1-android-3"
 [[ -n "${UNITY_LICENSE:-}" ]] || { echo "unity-ci-stages: UNITY_LICENSE is empty" >&2; exit 1; }
 [[ -f "$proj/Packages/vpm-manifest.json" ]] || { echo "unity-ci-stages: $proj is not set up (scripts/unity-ci-project.sh)" >&2; exit 1; }
 
+# Unity rejects a -logFile path containing ".." ("... is not a valid directory
+# name"), so the stage logs get their own directory next to the project
+logdir="ci-unity-logs"
+mkdir -p "$logdir"
+
 run_stage() {  # stage, build target
-    local stage="$1" target="$2" log="$proj/../ci-unity-${1}.log"
+    local stage="$1" target="$2" log="$logdir/${1}.log"
     echo "== stage $stage ($target)"
     # the editor writes as root inside the container; the checkout is chowned back below
     docker run --rm \
@@ -31,7 +38,7 @@ run_stage() {  # stage, build target
             unity-editor -batchmode -nographics -quit \
                 -projectPath "/work/'"$proj"'" -buildTarget "'"$target"'" \
                 -executeMethod AliceSDF.Editor.AliceSDF_CiChecks.RunBatch \
-                -logFile "/work/'"$proj"'/../ci-unity-'"$stage"'.log"' \
+                -logFile "/work/'"$logdir"'/'"$stage"'.log"' \
         && rc=0 || rc=$?
     grep -E '\[ALICE-CI\]|error CS|Shader error' "$log" || true
     if [[ $rc -ne 0 ]]; then echo "unity-ci-stages: stage $stage FAILED (exit $rc), log $log" >&2; return 1; fi
