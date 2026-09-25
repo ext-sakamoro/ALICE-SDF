@@ -11,7 +11,10 @@
   `scripts/unity-preflight.ps1` (plus a `Samples~` vs `Assets/Samples` drift
   check) and on GitHub by `.github/workflows/unity-vrchat.yml`
   (`scripts/unity-ci-project.sh` + `scripts/unity-ci-stages.sh`, GameCI
-  image, `UNITY_LICENSE` secret; the Kit unitypackage becomes an artifact).
+  self-hosted Windows runner with Unity installed; the Kit unitypackage and the
+  stage logs become artifacts). Unity no longer issues `.ulf` files for Personal
+  seats, so a GitHub-hosted editor container cannot be licensed; the container
+  scripts stay for machines that have a suitable licence.
   `HostTests~/KitCompile` compiles the Kit-renamed scripts without Unity
   (`scripts/vrchat-host-parity.sh`).
 - Every sample now has a VRChat world (PC + Android): AliceSDF Basic / Cosmic /

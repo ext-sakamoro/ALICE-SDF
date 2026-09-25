@@ -2,14 +2,21 @@
 # cannot see: do the shaders compile (Standalone + Android GLES3), do the
 # scripts and UdonSharp programs compile, do the seven sample scenes come out
 # with a descriptor / spawn / backing UdonBehaviour, does the Kit product build
-# and export with every prefab / program / shader / texture. Same stages as
-# scripts/unity-preflight.ps1 (local, installed Unity), run through
-# scripts/unity-ci-stages.sh in the GameCI editor image.
+# and export with every prefab / program / shader / texture. The stages live in
+# vrchat-package/Editor/AliceSDF_CiChecks.cs and are driven by
+# scripts/unity-preflight.ps1 — the same script a developer runs before a push.
 #
-# Needs the repository secret UNITY_LICENSE: the contents of a Unity_lic.ulf
-# (Personal licence activated for 2022.3.22f1). Without it the job reports a
-# notice and passes, so forks and a fresh setup stay green; nothing else is
-# checked in that case (the run summary says so).
+# Runner: self-hosted Windows with Unity 2022.3.22f1 installed and its licence
+# activated (label `unity`). GitHub-hosted runners cannot do this any more:
+# Unity dropped offline activation for Personal seats, so a .ulf cannot be
+# obtained at all, and the credential path (Unity.Licensing.Client
+# --include-personal) would put the account password in a secret and leaks a
+# seat when a run is cancelled. The machine's own licence has neither problem.
+#
+# The repository is public and the runner is a personal machine, so this
+# workflow never runs for pull requests (a fork PR could otherwise execute
+# arbitrary code here). Push to main and manual dispatch only; a PR's Unity
+# state is checked by the author running scripts/unity-preflight.ps1.
 name: Unity (VRChat)
 
 on:
@@ -19,62 +26,47 @@ on:
       - 'vrchat-package/**'
       - 'scripts/unity-*'
       - '.github/workflows/unity-vrchat.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'vrchat-package/**'
-      - 'scripts/unity-*'
-      - '.github/workflows/unity-vrchat.yml'
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    shell: powershell
 
 jobs:
   unity-vrchat:
     name: Unity 2022.3.22f1 — shaders / UdonSharp / scenes / Kit (PC + Android)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows, unity]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
 
-      - name: Licence gate
-        id: gate
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      # The editor is the machine's, not a container's: fail with a clear
+      # message instead of a missing-file error deep inside the stages
+      - name: Unity 2022.3.22f1
+        id: unity
         run: |
-          if [ -n "$UNITY_LICENSE" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Unity checks skipped::UNITY_LICENSE secret not set; add a Unity_lic.ulf (Personal, 2022.3.22f1) as UNITY_LICENSE to run the shader / UdonSharp / scene / Kit checks"
-            echo "### Unity checks skipped" >> "$GITHUB_STEP_SUMMARY"
-            echo "UNITY_LICENSE secret not set (vrchat-package/HostTests~/README.md § Unity CI)" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      # Library/ of the throw-away project: the SDK import + first script
-      # compile is most of a stage's time; keyed on the SDK pin + package files
-      - name: Cache Unity Library
-        if: steps.gate.outputs.run == 'true'
-        uses: actions/cache@v6
-        with:
-          path: ci-unity/Library
-          key: unity-library-${{ hashFiles('scripts/unity-ci-project.sh', 'vrchat-package/CI~/**', 'vrchat-package/package.json') }}
-          restore-keys: unity-library-
+          $unity = "E:\2022.3.22f1\Editor\Unity.exe"
+          if (-not (Test-Path $unity)) {
+            Write-Host "::error title=Unity missing::$unity not found on this runner; install 2022.3.22f1 or point the workflow at the installed editor"
+            exit 1
+          }
+          "path=$unity" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          & $unity -version 2>$null | Select-Object -First 1
 
       - name: VRChat Worlds project (vrc-get, com.alice.sdf file link)
-        if: steps.gate.outputs.run == 'true'
-        run: scripts/unity-ci-project.sh ci-unity
+        run: pwsh -NoProfile -File scripts/unity-ci-project.ps1 -Project ci-unity
 
+      # setup / compile / samples / scenes / kit (looped over its domain
+      # reloads) / verify / android. -SkipDrift: the project is created from
+      # CI~ here, so there are no developer Assets/Samples copies to compare.
       - name: Unity stages (setup, compile, samples, scenes, kit, verify, android)
-        if: steps.gate.outputs.run == 'true'
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-        run: scripts/unity-ci-stages.sh ci-unity
+        run: pwsh -NoProfile -File scripts/unity-preflight.ps1 -Project "$env:GITHUB_WORKSPACE\ci-unity" -Unity "${{ steps.unity.outputs.path }}" -SkipDrift
 
       - name: Kit unitypackage
-        if: steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: AliceSDFKit-unitypackage
@@ -82,9 +74,9 @@ jobs:
           if-no-files-found: error
 
       - name: Unity logs
-        if: always() && steps.gate.outputs.run == 'true'
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: unity-logs
-          path: ci-unity-logs/
+          path: target/unity-preflight/*.log
           if-no-files-found: ignore

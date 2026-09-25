@@ -1,0 +1,10 @@
+# actionlint: labels of the self-hosted runners the workflows may target
+# (unknown labels are an error otherwise). `ue5` = the Windows machine with
+# Unreal Engine installed at E:\UE_5.x (scripts/unreal-ue5-ci.ps1).
+# `unity` / `windows-unity` = the Windows machine with Unity 2022.3.22f1
+# installed and licensed (.github/workflows/unity-vrchat.yml).
+self-hosted-runner:
+  labels:
+    - ue5
+    - unity
+    - windows-unity

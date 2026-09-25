@@ -49,16 +49,32 @@ Two drivers run the same stages:
   `Assets/Samples/…` copies of the samples in the developer project match
   `Samples~` (Unity compiles the copy, an unsynced edit ships a stale
   sample), then clears the generated folders and runs the stages, logs under
-  `target/unity-preflight/`.
-- **GitHub Actions** (`.github/workflows/unity-vrchat.yml`, on changes under
-  `vrchat-package/`): `scripts/unity-ci-project.sh` builds a throw-away
-  project (`vrchat-package/CI~/` template, `com.vrchat.worlds` pinned in the
-  script and resolved with [vrc-get](https://github.com/vrc-get/vrc-get)),
-  `scripts/unity-ci-stages.sh` runs the stages in the GameCI image
-  `unityci/editor:ubuntu-2022.3.22f1-android-3`, and the exported
-  `AliceSDFKit_<version>.unitypackage` is uploaded as an artifact. The job
-  needs the repository secret **`UNITY_LICENSE`**: the contents of a
-  `Unity_lic.ulf` (a Personal licence activated for 2022.3.22f1 — Unity Hub
-  writes it to `%PROGRAMDATA%\Unity\Unity_lic.ulf` on Windows,
-  `/Library/Application Support/Unity/Unity_lic.ulf` on macOS). Without the
-  secret the job prints a notice and passes without checking anything.
+  `target/unity-preflight/`. A stage whose log goes silent for `-StallMinutes`
+  (8 by default) is killed and retried once: a batch editor can hang before it
+  does any work (the ILPP gRPC host comes up and Unity never receives its
+  Ping), and without the watchdog such a run holds the job until its timeout.
+- **GitHub Actions** (`.github/workflows/unity-vrchat.yml`, on pushes that touch
+  `vrchat-package/` and on manual dispatch): a **self-hosted Windows runner**
+  with the label `unity`, Unity 2022.3.22f1 installed and its licence already
+  activated. `scripts/unity-ci-project.ps1` builds a throw-away project in the
+  workspace (`vrchat-package/CI~/` template, `com.vrchat.worlds` pinned in the
+  script and resolved with [vrc-get](https://github.com/vrc-get/vrc-get)), then
+  the job runs the same `scripts/unity-preflight.ps1` a developer runs, and the
+  exported `AliceSDFKit_<version>.unitypackage` plus the stage logs are
+  uploaded as artifacts.
+
+  GitHub-hosted runners cannot do this any more: Unity removed offline
+  activation for Personal seats (`license.unity3d.com/manual` answers "Offline
+  activation is available only for Enterprise and Industry seats"), so no `.ulf`
+  can be obtained for a free seat, and a desktop `.ulf` is rejected in a
+  container anyway ("Machine bindings don't match"). The credential path
+  (`Unity.Licensing.Client --activate-all --include-personal` with `UNITY_EMAIL`
+  / `UNITY_PASSWORD`) exists but puts an account password in a secret, cannot
+  answer a 2FA challenge, and leaks a Personal seat when a run is cancelled.
+  `scripts/unity-ci-project.sh` / `unity-ci-stages.sh` (the container variant)
+  are kept for a machine that has a suitable licence.
+
+  The repository is public, so the workflow deliberately has no `pull_request`
+  trigger: a fork PR must never execute on a personal machine. A PR's Unity
+  state is checked by the author running `scripts/unity-preflight.ps1` before
+  pushing.

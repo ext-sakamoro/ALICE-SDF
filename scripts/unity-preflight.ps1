@@ -6,7 +6,7 @@
 #
 #   pwsh scripts/unity-preflight.ps1 [-Project <VRChat Worlds project>]
 #        [-Unity <Unity.exe>] [-Stages setup,compile,samples,scenes,kit,verify,android]
-#        [-SkipDrift] [-DriftOnly]
+#        [-SkipDrift] [-DriftOnly] [-StallMinutes 8]
 #
 # The project must be a VRChat Worlds project (SDK 3.7+) whose
 # Packages/manifest.json links this checkout as
@@ -20,7 +20,9 @@ param(
     [string]$Unity = "E:\2022.3.22f1\Editor\Unity.exe",
     [string[]]$Stages = @("setup", "compile", "samples", "scenes", "kit", "verify", "android"),
     [switch]$SkipDrift,
-    [switch]$DriftOnly
+    [switch]$DriftOnly,
+    # a stage whose log is silent this long is treated as hung (see Invoke-Stage)
+    [int]$StallMinutes = 8
 )
 $ErrorActionPreference = "Stop"
 # -File passes "a,b" as one string; accept both forms
@@ -86,16 +88,47 @@ if ($Stages -contains "samples") {
     Write-Host "unity-preflight: cleared generated folders in $Project"
 }
 
+# One Unity invocation, with a watchdog: a batch editor can hang before it does
+# any work (observed: the ILPP gRPC host comes up, Unity never gets its Ping, the
+# log stops growing and the process idles forever). A hung editor is killed once
+# the log has been silent for -StallMinutes and the stage is retried once; a
+# second stall fails the stage instead of holding the job until its timeout.
 function Invoke-Stage([string]$stage, [string]$target, [string]$logName) {
     $log = Join-Path $logDir "$logName.log"
     $env:ALICE_CI_STAGE = $stage
-    $args = @("-batchmode", "-nographics", "-quit", "-projectPath", $Project, "-buildTarget", $target,
-              "-executeMethod", "AliceSDF.Editor.AliceSDF_CiChecks.RunBatch", "-logFile", $log)
-    # the working directory must be the Editor folder or the shader compiler
-    # cannot find HLSLSupport.cginc (every shader then fails)
-    $p = Start-Process -FilePath $Unity -ArgumentList $args -WorkingDirectory (Split-Path -Parent $Unity) -Wait -PassThru -NoNewWindow
-    Get-Content $log | Where-Object { $_ -match '\[ALICE-CI\]|error CS|Shader error' } | ForEach-Object { Write-Host "  $_" }
-    if ($p.ExitCode -ne 0) { Write-Host "unity-preflight: stage $stage FAILED (exit $($p.ExitCode)), log $log"; exit 1 }
+    $unityArgs = @("-batchmode", "-nographics", "-quit", "-projectPath", $Project, "-buildTarget", $target,
+                   "-executeMethod", "AliceSDF.Editor.AliceSDF_CiChecks.RunBatch", "-logFile", $log)
+    foreach ($attempt in 1, 2) {
+        if (Test-Path $log) { Remove-Item $log -Force }
+        # the working directory must be the Editor folder or the shader compiler
+        # cannot find HLSLSupport.cginc (every shader then fails)
+        $p = Start-Process -FilePath $Unity -ArgumentList $unityArgs -WorkingDirectory (Split-Path -Parent $Unity) -PassThru -NoNewWindow
+        $stalled = $false
+        $lastSize = -1
+        $lastChange = Get-Date
+        while (-not $p.HasExited) {
+            Start-Sleep -Seconds 15
+            $size = if (Test-Path $log) { (Get-Item $log).Length } else { 0 }
+            if ($size -ne $lastSize) { $lastSize = $size; $lastChange = Get-Date }
+            elseif (((Get-Date) - $lastChange).TotalMinutes -ge $StallMinutes) {
+                Write-Host "  stage ${stage}: no log output for $StallMinutes min, killing the editor (attempt $attempt)"
+                try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch {}
+                $stalled = $true
+                break
+            }
+        }
+        $p.WaitForExit()
+        if (Test-Path $log) {
+            Get-Content $log | Where-Object { $_ -match '\[ALICE-CI\]|error CS|Shader error' } | ForEach-Object { Write-Host "  $_" }
+        }
+        if (-not $stalled -and $p.ExitCode -eq 0) { return }
+        if (-not $stalled) { Write-Host "unity-preflight: stage $stage FAILED (exit $($p.ExitCode)), log $log"; exit 1 }
+        if ($attempt -eq 2) {
+            Write-Host "unity-preflight: stage $stage stalled twice, log $log (tail):"
+            Get-Content $log -Tail 15 | ForEach-Object { Write-Host "    $_" }
+            exit 1
+        }
+    }
 }
 
 foreach ($stage in $Stages) {
