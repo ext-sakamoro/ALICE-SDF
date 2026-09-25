@@ -3,7 +3,7 @@
 72 primitives, 24 CSG operations, 7 transforms, 23 modifiers (126 total), HLSL generation, mesh export.
 Drop into your UE5 project and start using SDFs immediately.
 
-Built and tested against **Unreal Engine 5.7** on every push: the CI compiles the
+Built and tested against **Unreal Engine 5.7 and 5.8** on every push: the CI compiles the
 plugin (editor + game targets), compiles every shader, and runs two automation
 tests inside the editor — `AliceSDF.Unreal.FfiCorpusParity` (the native library
 vs the Rust evaluator, bit-exact, 145 SDF laws) and `AliceSDF.Unreal.HlslGpuOracle`

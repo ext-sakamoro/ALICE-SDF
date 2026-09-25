@@ -29,6 +29,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   (`VersionName` == crate version, `EngineVersion` 5.x), shader includes
   resolve, generated corpus files current. `docs/UNREAL_ENGINE.md` § CI.
 
+### Added — UE 5.8 in the CI matrix
+
+- `unreal-ue5` runs once per entry in the `UE5_ENGINE_ROOTS` repository
+  variable; it now holds 5.7.3 and 5.8.3. Both pass with the same sources
+  (BuildPlugin for editor and game targets, every shader compiled, both
+  automation tests, the sample material) — no version gate was needed.
+
 ### Fixed — smooth union / intersection / subtraction: one operation order everywhere
 
 - `smooth_min` / `smooth_max` computed `max(k - |a-b|, 0) / k` while the

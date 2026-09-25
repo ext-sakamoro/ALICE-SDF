@@ -54,7 +54,7 @@ UE5 Project
 
 | Requirement | Version |
 |-------------|---------|
-| Unreal Engine | 5.7 (built and tested by CI on every push — see [CI: engine compatibility](#ci-engine-compatibility)); 5.3–5.6 untested since 3.2.0 |
+| Unreal Engine | **5.7 and 5.8** — CI builds and tests the plugin on both on every push (see [CI: engine compatibility](#ci-engine-compatibility)); 5.3–5.6 untested since 3.2.0 |
 | Rust | 1.85+ (`rust-toolchain.toml`) |
 | Visual Studio | 2022 (Windows) |
 | Xcode | 15+ (macOS) |
@@ -783,7 +783,7 @@ Two CI jobs keep the plugin building against a real engine (`.github/workflows/c
 | Job | Runner | What it proves |
 |-----|--------|----------------|
 | `unreal-abi` | GitHub-hosted Linux | `ThirdParty/AliceSDF/include/alice_sdf.h` == `include/alice_sdf.h`; every prototype in the header is exported by the cdylib built with `--features unreal` and vice versa; `AliceSDF.uplugin` is valid (`VersionName` == crate version, `EngineVersion` 5.x); every `/Plugin/AliceSDF/...` shader include resolves; the generated corpus files are current. Script: `scripts/unreal-abi-check.sh`. |
-| `unreal-ue5` | self-hosted Windows (`ue5` label, UE at `E:\UE_5.x`, RTX GPU) | `RunUAT BuildPlugin` (editor + game targets, Win64) compiles and links the C++; the editor starts, so every `.usf` / `.ush` compiles; then `Automation RunTests AliceSDF.Unreal` runs the two tests below on DX12. Script: `scripts/unreal-ue5-ci.ps1` (same command locally: `pwsh scripts/unreal-ue5-ci.ps1 -EngineRoot E:\UE_5.7 -WorkDir E:\alice-ci\ue5`). |
+| `unreal-ue5` | self-hosted Windows (`ue5` label, RTX GPU), one job per engine in `UE5_ENGINE_ROOTS` (currently 5.7 and 5.8) | `RunUAT BuildPlugin` (editor + game targets, Win64) compiles and links the C++; the editor starts, so every `.usf` / `.ush` compiles; then `Automation RunTests AliceSDF.Unreal` runs the two tests below on DX12. Script: `scripts/unreal-ue5-ci.ps1` (same command locally: `pwsh scripts/unreal-ue5-ci.ps1 -EngineRoot E:\UE_5.7 -WorkDir E:\alice-ci\ue5`). |
 
 ### Automation tests (`Source/AliceSDF/Private/Tests/AliceSdfCorpusOracleTest.cpp`)
 
@@ -812,6 +812,14 @@ shader map — off by default so a user's editor does not compile them),
 fail instead of warn + skip; CI sets both). The generated shader files and
 `Private/Generated/AliceSdfCorpusManifest.h` are committed; `unreal-abi`
 fails when they no longer match the corpus.
+
+### Engine versions
+
+The matrix comes from the repository variable `UE5_ENGINE_ROOTS`, a JSON list
+of engine roots (default `["E:\\UE_5.7"]`). Both 5.7.3 and 5.8.3 pass with
+the same sources — nothing in the plugin is version-gated today. To cover
+another engine, add its root to that variable; the job then runs once per
+entry (one self-hosted runner means they run in sequence).
 
 ### Running the tests in your own editor
 
