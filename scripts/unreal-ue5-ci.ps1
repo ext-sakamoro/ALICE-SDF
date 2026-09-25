@@ -167,7 +167,14 @@ $Uproject = Join-Path $Host_ "AliceSdfHost.uproject"
     Plugins           = @(
         @{ Name = "AliceSDF"; Enabled = $true },
         # The sample material is built by an editor Python script.
-        @{ Name = "PythonScriptPlugin"; Enabled = $true }
+        @{ Name = "PythonScriptPlugin"; Enabled = $true },
+        # Fab / Quixel Bridge open a CEF web view as the editor starts, and
+        # CEF asserts on `BUseSupportedRHIRenderer()` under D3D12 in this
+        # session (the runner reached FfiCorpusParity and then died there).
+        # Nothing in these tests needs a browser.
+        @{ Name = "Fab"; Enabled = $false },
+        @{ Name = "Bridge"; Enabled = $false },
+        @{ Name = "WebBrowserWidget"; Enabled = $false }
     )
 } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 $Uproject
 
