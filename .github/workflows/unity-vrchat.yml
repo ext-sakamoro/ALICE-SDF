@@ -55,7 +55,9 @@ jobs:
             exit 1
           }
           "path=$unity" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
-          & $unity -version 2>$null | Select-Object -First 1
+          # not `& $unity -version`: Unity prints the version and exits 1, and a
+          # PowerShell step fails on a non-zero last exit code
+          (Get-Item $unity).VersionInfo.ProductVersion
 
       - name: VRChat Worlds project (vrc-get, com.alice.sdf file link)
         run: pwsh -NoProfile -File scripts/unity-ci-project.ps1 -Project ci-unity
