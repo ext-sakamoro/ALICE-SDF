@@ -1,7 +1,14 @@
 # ALICE-SDF — Unreal Engine 5 / 6 Plugin
 
 72 primitives, 24 CSG operations, 7 transforms, 23 modifiers (126 total), HLSL generation, mesh export.
-Drop into your UE5 or UE6 project and start using SDFs immediately.
+Drop into your UE5 project and start using SDFs immediately.
+
+Built and tested against **Unreal Engine 5.7** on every push: the CI compiles the
+plugin (editor + game targets), compiles every shader, and runs two automation
+tests inside the editor — `AliceSDF.Unreal.FfiCorpusParity` (the native library
+vs the Rust evaluator, bit-exact, 145 SDF laws) and `AliceSDF.Unreal.HlslGpuOracle`
+(the generated HLSL executed on the GPU vs the native library). Details:
+[docs/UNREAL_ENGINE.md § CI](../docs/UNREAL_ENGINE.md#ci-engine-compatibility).
 
 ## Quick Start (No Rust Required)
 

@@ -2,6 +2,7 @@
 // Author: Moroya Sakamoto
 
 #include "AliceSdfNaniteShowcase.h"
+#include "AliceSdfEditorUtils.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
@@ -98,7 +99,7 @@ void AAliceSdfNaniteShowcase::BuildAllShapes()
 			AActor::StaticClass(), ShapeLocation, FRotator::ZeroRotator);
 		if (PedestalActor)
 		{
-			PedestalActor->SetActorLabel(FString::Printf(TEXT("Pedestal_%d"), i));
+			AliceSdfSetActorLabel(PedestalActor, FString::Printf(TEXT("Pedestal_%d"), i));
 
 			UStaticMeshComponent* PedestalMesh =
 				NewObject<UStaticMeshComponent>(PedestalActor);
@@ -152,7 +153,7 @@ void AAliceSdfNaniteShowcase::BuildAllShapes()
 
 		if (ShapeActor)
 		{
-			ShapeActor->SetActorLabel(FString::Printf(TEXT("AliceSDF_%s"),
+			AliceSdfSetActorLabel(ShapeActor, FString::Printf(TEXT("AliceSDF_%s"),
 				ShapeNames[i]));
 			ShapeActor->ShapeType = ShapeTypes[i];
 			ShapeActor->MeshResolution = ShapeResolution;

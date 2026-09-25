@@ -17,6 +17,10 @@
 // =============================================================================
 
 float4x4 LocalToWorld;
+// Inverse of LocalToWorld, set by AAliceSdfRaymarchActor. `Primitive` is
+// only bound for mesh / material shaders, so a global shader cannot read
+// Primitive.WorldToLocal (these shaders did until 3.2.0 and never compiled).
+float4x4 WorldToLocal;
 float4x4 WorldToClip;
 float3 CameraWorldPos;
 
@@ -305,7 +309,6 @@ void MainPS(
 	float3 rd = normalize(Input.WorldPos - ro);
 
 	// Transform to local space
-	float4x4 WorldToLocal = Primitive.WorldToLocal;
 	float3 localRo = mul(float4(ro, 1.0), WorldToLocal).xyz;
 	float3 localRd = normalize(mul(float4(rd, 0.0), WorldToLocal).xyz);
 

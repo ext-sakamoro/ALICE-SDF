@@ -748,6 +748,58 @@ SdfResult alice_sdf_save(SdfHandle node, const char* path);
  */
 SdfHandle alice_sdf_load(const char* path);
 
+/* ----------------------------------------------------------------------------
+ * Mesh I/O (ABM binary mesh, Unity / UE5 mesh export, LOD chains)
+ *
+ * Exported by the cdylib since 1.7.x but never declared here until 3.2.0
+ * (scripts/unreal-abi-check.sh now fails on any export without a prototype).
+ * `mesh` may be MESH_HANDLE_NULL with a valid `node` to generate on the fly
+ * at `resolution` / `bounds`; a valid `mesh` ignores `node`.
+ * -------------------------------------------------------------------------- */
+
+/** @brief Save a mesh as ABM (ALICE Binary Mesh) */
+SdfResult alice_sdf_save_abm(MeshHandle mesh, SdfHandle node, const char* path,
+                             uint32_t resolution, float bounds);
+
+/** @brief Load an ABM mesh (free with alice_sdf_free_mesh); MESH_HANDLE_NULL on error */
+MeshHandle alice_sdf_load_abm(const char* path);
+
+/** @brief Export a mesh as Unity JSON (.unity_mesh) */
+SdfResult alice_sdf_export_unity(MeshHandle mesh, SdfHandle node, const char* path,
+                                 uint32_t resolution, float bounds,
+                                 bool flip_z, bool flip_winding, float scale);
+
+/** @brief Export a mesh as Unity binary (.unity_mesh_bin) */
+SdfResult alice_sdf_export_unity_binary(MeshHandle mesh, SdfHandle node, const char* path,
+                                        uint32_t resolution, float bounds,
+                                        bool flip_z, bool flip_winding, float scale);
+
+/** @brief Export a mesh as UE5 JSON (.ue5_mesh) */
+SdfResult alice_sdf_export_ue5(MeshHandle mesh, SdfHandle node, const char* path,
+                               uint32_t resolution, float bounds, float scale);
+
+/** @brief Export a mesh as UE5 binary (.ue5_mesh_bin) */
+SdfResult alice_sdf_export_ue5_binary(MeshHandle mesh, SdfHandle node, const char* path,
+                                      uint32_t resolution, float bounds, float scale);
+
+/**
+ * @brief Save a LOD chain (lod_count meshes + transition distances) as ABM + JSON sidecar
+ * @param mesh_handles Array of lod_count MeshHandle (all non-null)
+ * @param transition_distances Array of lod_count floats
+ */
+SdfResult alice_sdf_save_lod_chain(const MeshHandle* mesh_handles,
+                                   const float* transition_distances,
+                                   uint32_t lod_count, const char* path);
+
+/**
+ * @brief Load a LOD chain saved by alice_sdf_save_lod_chain
+ * @param out_mesh_handles Writable array of max_lod_count MeshHandle (free each with alice_sdf_free_mesh)
+ * @param out_transition_distances Writable array of max_lod_count floats
+ * @return Number of LODs written (0 on error)
+ */
+uint32_t alice_sdf_load_lod_chain(const char* path, MeshHandle* out_mesh_handles,
+                                  float* out_transition_distances, uint32_t max_lod_count);
+
 /* ============================================================================
  * Memory Management
  * ============================================================================ */

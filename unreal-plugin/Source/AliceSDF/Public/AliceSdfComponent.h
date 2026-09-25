@@ -4,7 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
 #include "alice_sdf.h"
 #include "AliceSdfComponent.generated.h"
 
@@ -22,7 +22,7 @@
  *   5. Use EvalDistance() for collision or GenerateHlsl() for materials
  */
 UCLASS(ClassGroup=(Rendering), meta=(BlueprintSpawnableComponent))
-class ALICESDF_API UAliceSdfComponent : public UActorComponent
+class ALICESDF_API UAliceSdfComponent : public USceneComponent
 {
 	GENERATED_BODY()
 
@@ -465,19 +465,19 @@ public:
 
 	/** Generate mesh and export to OBJ */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
-	bool ExportObj(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
+	bool ExportObj(const FString& FilePath, int32 Resolution = 128, float HalfExtent = 2.0f);
 
 	/** Generate mesh and export to GLB (binary glTF) */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
-	bool ExportGlb(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
+	bool ExportGlb(const FString& FilePath, int32 Resolution = 128, float HalfExtent = 2.0f);
 
 	/** Generate mesh and export to USDA (Universal Scene Description) */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
-	bool ExportUsda(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
+	bool ExportUsda(const FString& FilePath, int32 Resolution = 128, float HalfExtent = 2.0f);
 
 	/** Generate mesh and export to FBX */
 	UFUNCTION(BlueprintCallable, Category = "ALICE SDF|Mesh")
-	bool ExportFbx(const FString& FilePath, int32 Resolution = 128, float Bounds = 2.0f);
+	bool ExportFbx(const FString& FilePath, int32 Resolution = 128, float HalfExtent = 2.0f);
 
 	// ========================================================================
 	// File I/O

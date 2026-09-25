@@ -6,6 +6,103 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — Unreal Engine compatibility gate (CI builds and tests the plugin on UE 5.7)
+
+- `unreal-ue5` CI job (self-hosted Windows runner, label `ue5`): `RunUAT
+  BuildPlugin` compiles and links `unreal-plugin/` for the editor and game
+  targets, the editor compiles every `.usf` / `.ush`, and
+  `Automation RunTests AliceSDF.Unreal` runs two new automation tests on the
+  real DX12 device — `AliceSDF.Unreal.FfiCorpusParity` (every corpus node
+  loaded from `.asdf` through `alice_sdf.dll`, `alice_sdf_eval` /
+  `eval_compiled` / `eval_compiled_batch` bit-exact against the Rust tree
+  evaluator on the `test_det_golden` grid) and `AliceSDF.Unreal.HlslGpuOracle`
+  (every corpus node's transpiled HLSL executed as a compute shader and
+  compared with the DLL at `1e-4 · max(|d|, 1)` — the crate's first HLSL
+  *execution* oracle; naga has no HLSL front end). Script:
+  `scripts/unreal-ue5-ci.ps1`, inputs from `examples/unreal_corpus_oracle.rs`
+  (`Shaders/CorpusOracle/Corpus/*.ush`, `CorpusOracle/SdfCorpusOracle.usf` and
+  `Private/Generated/AliceSdfCorpusManifest.h` are committed and drift-gated).
+- `unreal-abi` CI job (GitHub-hosted, `scripts/unreal-abi-check.sh`): the
+  shipped `ThirdParty/AliceSDF/include/alice_sdf.h` must equal
+  `include/alice_sdf.h`, every header prototype must be exported by the
+  cdylib built with `--features unreal` and vice versa, `.uplugin` metadata
+  (`VersionName` == crate version, `EngineVersion` 5.x), shader includes
+  resolve, generated corpus files current. `docs/UNREAL_ENGINE.md` § CI.
+
+### Fixed — smooth union / intersection / subtraction: one operation order everywhere
+
+- `smooth_min` / `smooth_max` computed `max(k - |a-b|, 0) / k` while the
+  compiled, SIMD, BVH and JIT evaluators computed `max(1 - |a-b| * (1/k), 0)`
+  from a precomputed reciprocal. The same law, a different f32 rounding: the
+  tree and the bytecode disagreed by 1 ulp on five corpus nodes
+  (`smooth_intersection`, `smooth_subtract`, `scale_smooth_union`,
+  `scale_nested`, `nested`), which breaks the bit-exactness every evaluator
+  has owed since 3.1.0. The tree now computes the same reciprocal and calls
+  the same law; the SIMD hot path is unchanged. The scalar JIT codegen and
+  the GLSL / WGSL / HLSL emit follow the same operation order.
+- `tests/test_det_golden.rs` re-pins those five nodes (bits change on every
+  platform; the law does not).
+- New `tests/test_asdf_roundtrip_parity.rs`: save → load → compile → evaluate
+  must be bit-identical to the in-memory tree for every corpus node. Nothing
+  covered that path, which is exactly what the UE5 plugin runs.
+- `AliceSDF.Unreal.FfiCorpusParity` found this; `test_det_parity`'s sample
+  points never hit an affected point.
+
+### Fixed — HLSL transpiler emitted `mix`
+
+- `Morph` emitted GLSL's `mix`, which does not exist in HLSL — the generated
+  shader did not compile in Unreal. `ShaderLang` gains `mix_expr` (HLSL:
+  `lerp`), like the existing `modulo_expr` / `atan2_expr`.
+
+### Added — UE5 plugin: icon, sample material, working install
+
+- `Resources/Icon128.png`: the plugin browser icon, raymarched by this crate
+  (`examples/unreal_plugin_icon.rs`, `--features image`) — a smooth union
+  with a ring cut out of it.
+- `Shaders/Public/AliceSdfSample.ush` + `Content/Python/create_alice_sdf_sample_material.py`:
+  a Custom-node shader and the editor script that builds
+  `/Game/AliceSDF/M_AliceSDF_Sample` around it (unlit, two-sided). CI runs
+  the script headless and fails if the material does not compile.
+- `Config/FilterPlugin.ini`: `ThirdParty/` and `Content/Python/` are kept when
+  UAT packages the plugin (the filter drops `/ThirdParty` by default, so a
+  packaged plugin had no native library and its module failed to load with
+  `GetLastError=126`).
+- `AliceSDF.Build.cs` delay-loads `alice_sdf.dll` and stages it next to the
+  module; `FAliceSdfModule` looks in `Binaries/<platform>` then
+  `ThirdParty/.../<platform>` and logs which one it loaded.
+- `release.yml` packages the UE5 zip with `--features unreal`, ships
+  `Shaders/`, `Config/` and — on Windows — the import library
+  `alice_sdf.lib`, and fails if any of them is missing. Without those a user
+  could not build the plugin at all.
+- `docs/UNREAL_ENGINE.md`: install section rewritten to the real layout
+  (the zip, `ThirdParty/`, delay load, the log line to check), Blueprint
+  section replaced with the component's actual 124 nodes and palette groups.
+
+### Fixed — Unreal plugin (it had never compiled on UE 5.7; the DLL in the repo was 1.7.2)
+
+- Runtime (game) target: `SetActorLabel` (editor-only) behind a
+  `WITH_EDITOR` helper; `UStaticMesh::SetNumSourceModels` /
+  `CreateMeshDescription` / `CommitMeshDescription` / `Build` are editor-only,
+  so `AAliceSdfNaniteActor` now builds a plain static mesh with
+  `BuildFromMeshDescriptions` in cooked games (Nanite still needs the editor
+  pipeline); `NaniteSettings` through the 5.7 accessors.
+- `UAliceSdfComponent` derives from `USceneComponent` (it evaluated with
+  `GetComponentTransform()`, which `UActorComponent` does not have).
+- `FSceneViewExtensions::NewExtension`, `FRHIBufferCreateDesc::CreateVertex`
+  2-argument overload, `SceneViewExtension.h` instead of the private
+  `SceneRendering.h`, missing `Misc/Paths.h`, `ExportObj/Glb/Usda/Fbx`
+  parameter `Bounds` shadowed `USceneComponent::Bounds` (now `HalfExtent`).
+- Cargo feature `unreal` = `ffi` + `hlsl` + `glsl` + `gpu`: the plugin calls
+  `alice_sdf_to_glsl` / `alice_sdf_to_wgsl` (`GenerateGlsl` / `GenerateWgsl`)
+  which `ffi` + `hlsl` did not export (link error). This is what
+  `scripts/build_ue5_plugin.sh` always built.
+- `include/alice_sdf.h` declares the eight exported functions it was missing
+  (`alice_sdf_save_abm` / `load_abm` / `export_unity[_binary]` /
+  `export_ue5[_binary]` / `save_lod_chain` / `load_lod_chain`); the plugin
+  copy of the header was 15 lines behind and is now identical.
+- `AliceSDF.uplugin`: `VersionName` 1.7.2 → crate version, `EngineVersion`
+  "6.0.0" → 5.7.0.
+
 ### Added — VRChat package: the four static samples (Basic / Cosmic / Fractal / Mix)
 
 - Working collision in VRChat for the first time (the base `AliceSDF_Collider`

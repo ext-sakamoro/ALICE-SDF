@@ -19,20 +19,53 @@ public:
 		AddShaderSourceDirectoryMapping(TEXT("/Plugin/AliceSDF"), ShaderDir);
 
 #if PLATFORM_MAC
-		FString LibPath = FPaths::Combine(*BaseDir, TEXT("ThirdParty/AliceSDF/lib/Mac/libalice_sdf.dylib"));
+		const FString LibName = TEXT("libalice_sdf.dylib");
+		const FString LibSubDir = TEXT("Mac");
 #elif PLATFORM_WINDOWS
-		FString LibPath = FPaths::Combine(*BaseDir, TEXT("ThirdParty/AliceSDF/lib/Win64/alice_sdf.dll"));
+		const FString LibName = TEXT("alice_sdf.dll");
+		const FString LibSubDir = TEXT("Win64");
 #elif PLATFORM_LINUX
-		FString LibPath = FPaths::Combine(*BaseDir, TEXT("ThirdParty/AliceSDF/lib/Linux/libalice_sdf.so"));
+		const FString LibName = TEXT("libalice_sdf.so");
+		const FString LibSubDir = TEXT("Linux");
 #endif
 
-		FPlatformProcess::PushDllDirectory(*FPaths::GetPath(LibPath));
-		LibHandle = FPlatformProcess::GetDllHandle(*LibPath);
-		FPlatformProcess::PopDllDirectory(*FPaths::GetPath(LibPath));
+		// A UAT-packaged plugin has no ThirdParty/ — the library is staged
+		// next to the module binary (AliceSDF.Build.cs RuntimeDependencies).
+		// A source plugin (the distributed zip) has it in ThirdParty/. Try
+		// both before giving up; the Win64 import is delay-loaded, so the
+		// first alice_sdf_* call is what would fault if neither worked.
+		const TArray<FString> Candidates = {
+			FPaths::Combine(*BaseDir, TEXT("Binaries"), *LibSubDir, *LibName),
+			FPaths::Combine(*BaseDir, TEXT("ThirdParty"), TEXT("AliceSDF"), TEXT("lib"), *LibSubDir, *LibName),
+		};
 
-		if (!LibHandle)
+		FString LoadedFrom;
+		for (const FString& LibPath : Candidates)
 		{
-			UE_LOG(LogTemp, Error, TEXT("ALICE-SDF: Failed to load native library: %s"), *LibPath);
+			if (!FPaths::FileExists(LibPath))
+			{
+				continue;
+			}
+			const FString LibDir = FPaths::GetPath(LibPath);
+			FPlatformProcess::PushDllDirectory(*LibDir);
+			LibHandle = FPlatformProcess::GetDllHandle(*LibPath);
+			FPlatformProcess::PopDllDirectory(*LibDir);
+			if (LibHandle)
+			{
+				LoadedFrom = LibPath;
+				break;
+			}
+			UE_LOG(LogTemp, Warning, TEXT("ALICE-SDF: found but could not load %s"), *LibPath);
+		}
+
+		if (LibHandle)
+		{
+			UE_LOG(LogTemp, Log, TEXT("ALICE-SDF: native library loaded from %s"), *LoadedFrom);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("ALICE-SDF: native library %s not found (looked in %s)"),
+				*LibName, *FString::Join(Candidates, TEXT(", ")));
 		}
 	}
 

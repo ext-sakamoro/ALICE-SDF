@@ -2,6 +2,7 @@
 // Author: Moroya Sakamoto
 
 #include "AliceSdfDemoActor.h"
+#include "Misc/Paths.h"
 
 AAliceSdfDemoActor::AAliceSdfDemoActor()
 {

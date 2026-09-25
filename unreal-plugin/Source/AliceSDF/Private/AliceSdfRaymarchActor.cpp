@@ -16,7 +16,9 @@
 #include "RHIStaticStates.h"
 #include "PipelineStateCache.h"
 #include "SceneView.h"
-#include "SceneRendering.h"
+#include "SceneViewExtension.h"
+// GTileVertexDeclaration: reached through the editor PCH but not the game one
+#include "GlobalRenderResources.h"
 #include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
 
@@ -58,6 +60,7 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		LocalToWorldParam.Bind(Initializer.ParameterMap, TEXT("LocalToWorld"));
+		WorldToLocalParam.Bind(Initializer.ParameterMap, TEXT("WorldToLocal"));
 		WorldToClipParam.Bind(Initializer.ParameterMap, TEXT("WorldToClip"));
 		CameraWorldPosParam.Bind(Initializer.ParameterMap, TEXT("CameraWorldPos"));
 		BoxSizeParam.Bind(Initializer.ParameterMap, TEXT("BoxSize"));
@@ -72,6 +75,7 @@ public:
 	}
 
 	LAYOUT_FIELD(FShaderParameter, LocalToWorldParam);
+	LAYOUT_FIELD(FShaderParameter, WorldToLocalParam);
 	LAYOUT_FIELD(FShaderParameter, WorldToClipParam);
 	LAYOUT_FIELD(FShaderParameter, CameraWorldPosParam);
 	LAYOUT_FIELD(FShaderParameter, BoxSizeParam);
@@ -130,6 +134,7 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		LocalToWorldParam.Bind(Initializer.ParameterMap, TEXT("LocalToWorld"));
+		WorldToLocalParam.Bind(Initializer.ParameterMap, TEXT("WorldToLocal"));
 		WorldToClipParam.Bind(Initializer.ParameterMap, TEXT("WorldToClip"));
 		CameraWorldPosParam.Bind(Initializer.ParameterMap, TEXT("CameraWorldPos"));
 		TimeParam.Bind(Initializer.ParameterMap, TEXT("Time"));
@@ -148,6 +153,7 @@ public:
 	}
 
 	LAYOUT_FIELD(FShaderParameter, LocalToWorldParam);
+	LAYOUT_FIELD(FShaderParameter, WorldToLocalParam);
 	LAYOUT_FIELD(FShaderParameter, WorldToClipParam);
 	LAYOUT_FIELD(FShaderParameter, CameraWorldPosParam);
 	LAYOUT_FIELD(FShaderParameter, TimeParam);
@@ -227,6 +233,9 @@ void FAliceSdfRaymarchViewExtension::RenderRaymarch_RenderThread(
 
 	// Actor transform
 	const FMatrix44f LocalToWorld44f(Owner->GetActorTransform().ToMatrixWithScale());
+	// The pixel shaders march in local space; a global shader has no Primitive
+	// uniform buffer, so the inverse travels as its own parameter.
+	const FMatrix44f WorldToLocal44f(Owner->GetActorTransform().ToInverseMatrixWithScale());
 	const FMatrix44f ViewProj44f(InView.ViewMatrices.GetViewProjectionMatrix());
 	const FVector3f CamPos(InView.ViewMatrices.GetViewOrigin());
 
@@ -269,6 +278,7 @@ void FAliceSdfRaymarchViewExtension::RenderRaymarch_RenderThread(
 			{
 				FRHIBatchedShaderParameters& BatchedParams = RHICmdList.GetScratchShaderParameters();
 				SetShaderValue(BatchedParams, PS->LocalToWorldParam, LocalToWorld44f);
+				SetShaderValue(BatchedParams, PS->WorldToLocalParam, WorldToLocal44f);
 				SetShaderValue(BatchedParams, PS->WorldToClipParam, ViewProj44f);
 				SetShaderValue(BatchedParams, PS->CameraWorldPosParam, CamPos);
 				SetShaderValue(BatchedParams, PS->BoxSizeParam, Owner->BoxSize);
@@ -317,6 +327,7 @@ void FAliceSdfRaymarchViewExtension::RenderRaymarch_RenderThread(
 			{
 				FRHIBatchedShaderParameters& BatchedParams = RHICmdList.GetScratchShaderParameters();
 				SetShaderValue(BatchedParams, PS->LocalToWorldParam, LocalToWorld44f);
+				SetShaderValue(BatchedParams, PS->WorldToLocalParam, WorldToLocal44f);
 				SetShaderValue(BatchedParams, PS->WorldToClipParam, ViewProj44f);
 				SetShaderValue(BatchedParams, PS->CameraWorldPosParam, CamPos);
 				SetShaderValue(BatchedParams, PS->TimeParam, CurrentTime);
@@ -372,7 +383,7 @@ void AAliceSdfRaymarchActor::BeginPlay()
 	CreateBoundingBoxBuffers();
 
 	// Register view extension for custom rendering
-	ViewExtension = FSceneViewExtensionBase::NewExtension<FAliceSdfRaymarchViewExtension>(this);
+	ViewExtension = FSceneViewExtensions::NewExtension<FAliceSdfRaymarchViewExtension>(this);
 
 	bRenderingActive = true;
 
@@ -444,7 +455,7 @@ void AAliceSdfRaymarchActor::CreateBoundingBoxBuffers()
 	{
 		// Vertex buffer
 		FRHIBufferCreateDesc VBDesc =
-			FRHIBufferCreateDesc::CreateVertex(TEXT("AliceSdfRaymarchVB"), sizeof(Verts), sizeof(FVector3f));
+			FRHIBufferCreateDesc::CreateVertex(TEXT("AliceSdfRaymarchVB"), sizeof(Verts));
 		VBDesc.DetermineInitialState();
 		VertexBuffer = RHICmdList.CreateBuffer(VBDesc);
 		void* VBData = RHICmdList.LockBuffer(VertexBuffer, 0, sizeof(Verts), RLM_WriteOnly);

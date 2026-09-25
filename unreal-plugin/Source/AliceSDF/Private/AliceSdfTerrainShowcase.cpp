@@ -2,6 +2,7 @@
 // Author: Moroya Sakamoto
 
 #include "AliceSdfTerrainShowcase.h"
+#include "AliceSdfEditorUtils.h"
 #include "Engine/World.h"
 
 AAliceSdfTerrainShowcase::AAliceSdfTerrainShowcase()
@@ -45,7 +46,7 @@ static AAliceSdfNaniteActor* SpawnTerrainShape(
 
 	if (Actor)
 	{
-		Actor->SetActorLabel(Label);
+		AliceSdfSetActorLabel(Actor, Label);
 		Actor->ShapeType = Shape;
 		Actor->MeshResolution = Resolution;
 		Actor->WorldScale = Scale;

@@ -2,6 +2,7 @@
 // Author: Moroya Sakamoto
 
 #include "AliceSdfComponent.h"
+#include "Misc/Paths.h"
 
 UAliceSdfComponent::UAliceSdfComponent()
 {
@@ -692,32 +693,32 @@ FString UAliceSdfComponent::GenerateWgsl() const
 // Mesh Export
 // ============================================================================
 
-bool UAliceSdfComponent::ExportObj(const FString& FilePath, int32 Resolution, float Bounds)
+bool UAliceSdfComponent::ExportObj(const FString& FilePath, int32 Resolution, float HalfExtent)
 {
 	if (!SdfNodeHandle) return false;
 	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
-	return alice_sdf_export_obj(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+	return alice_sdf_export_obj(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, HalfExtent) == SdfResult_Ok;
 }
 
-bool UAliceSdfComponent::ExportGlb(const FString& FilePath, int32 Resolution, float Bounds)
+bool UAliceSdfComponent::ExportGlb(const FString& FilePath, int32 Resolution, float HalfExtent)
 {
 	if (!SdfNodeHandle) return false;
 	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
-	return alice_sdf_export_glb(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+	return alice_sdf_export_glb(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, HalfExtent) == SdfResult_Ok;
 }
 
-bool UAliceSdfComponent::ExportUsda(const FString& FilePath, int32 Resolution, float Bounds)
+bool UAliceSdfComponent::ExportUsda(const FString& FilePath, int32 Resolution, float HalfExtent)
 {
 	if (!SdfNodeHandle) return false;
 	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
-	return alice_sdf_export_usda(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+	return alice_sdf_export_usda(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, HalfExtent) == SdfResult_Ok;
 }
 
-bool UAliceSdfComponent::ExportFbx(const FString& FilePath, int32 Resolution, float Bounds)
+bool UAliceSdfComponent::ExportFbx(const FString& FilePath, int32 Resolution, float HalfExtent)
 {
 	if (!SdfNodeHandle) return false;
 	FString AbsPath = FPaths::ConvertRelativePathToFull(FilePath);
-	return alice_sdf_export_fbx(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, Bounds) == SdfResult_Ok;
+	return alice_sdf_export_fbx(nullptr, SdfNodeHandle, TCHAR_TO_UTF8(*AbsPath), Resolution, HalfExtent) == SdfResult_Ok;
 }
 
 // ============================================================================

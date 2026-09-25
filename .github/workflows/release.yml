@@ -107,8 +107,11 @@ jobs:
           TOML
           echo "" > ../ALICE-Font/src/lib.rs
 
+      # `unreal` = ffi + hlsl + glsl + gpu: the plugin calls alice_sdf_to_wgsl
+      # (GenerateWgsl) too, and a narrower set makes every user's build fail in
+      # the linker (3.2.0).
       - name: Build release library
-        run: cargo build --release --features "ffi,hlsl,glsl" --target ${{ matrix.target }}
+        run: cargo build --release --features unreal --target ${{ matrix.target }}
 
       # ── UE5 Plugin ──
       - name: Package UE5 plugin
@@ -118,9 +121,14 @@ jobs:
           mkdir -p "$PLUGIN_DIR/ThirdParty/AliceSDF/lib/${{ matrix.lib_dir }}"
           mkdir -p "$PLUGIN_DIR/ThirdParty/AliceSDF/include"
 
-          # Copy plugin sources
+          # Copy plugin sources. Shaders/ and Config/ are not optional: the
+          # module maps /Plugin/AliceSDF to Shaders/ at startup, and
+          # Config/FilterPlugin.ini is what keeps ThirdParty/ in a UAT-packaged
+          # plugin. Both were missing from this zip until 3.2.0.
           cp unreal-plugin/AliceSDF.uplugin "$PLUGIN_DIR/"
           cp -r unreal-plugin/Source "$PLUGIN_DIR/"
+          cp -r unreal-plugin/Shaders "$PLUGIN_DIR/"
+          cp -r unreal-plugin/Config "$PLUGIN_DIR/"
           cp -r unreal-plugin/Resources "$PLUGIN_DIR/" 2>/dev/null || true
           cp unreal-plugin/README.md "$PLUGIN_DIR/"
 
@@ -128,6 +136,20 @@ jobs:
           cp include/alice_sdf.h "$PLUGIN_DIR/ThirdParty/AliceSDF/include/"
           cp "target/${{ matrix.target }}/release/${{ matrix.lib_name }}" \
              "$PLUGIN_DIR/ThirdParty/AliceSDF/lib/${{ matrix.lib_dir }}/"
+          # Windows links against the import library; without it the plugin does
+          # not build in the user's project at all.
+          if [ "${{ matrix.platform }}" = "Win64" ]; then
+            cp "target/${{ matrix.target }}/release/alice_sdf.dll.lib" \
+               "$PLUGIN_DIR/ThirdParty/AliceSDF/lib/Win64/alice_sdf.lib"
+          fi
+
+          # What the zip must contain for "drop it in Plugins/ and open the
+          # project" to work.
+          for f in AliceSDF.uplugin Source Shaders Config \
+                   ThirdParty/AliceSDF/include/alice_sdf.h \
+                   "ThirdParty/AliceSDF/lib/${{ matrix.lib_dir }}/${{ matrix.lib_name }}"; do
+            [ -e "$PLUGIN_DIR/$f" ] || { echo "missing from the UE5 zip: $f"; exit 1; }
+          done
 
       - name: Create UE5 ZIP
         shell: bash

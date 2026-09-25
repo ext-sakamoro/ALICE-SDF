@@ -2,6 +2,7 @@
 // Author: Moroya Sakamoto
 
 #include "AliceSdfLumenShowcase.h"
+#include "AliceSdfEditorUtils.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -65,7 +66,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 			AActor::StaticClass(), Base + Pos, FRotator::ZeroRotator);
 		if (!WallActor || !CubeMesh) return;
 
-		WallActor->SetActorLabel(Name);
+		AliceSdfSetActorLabel(WallActor, Name);
 
 		UStaticMeshComponent* MeshComp =
 			NewObject<UStaticMeshComponent>(WallActor);
@@ -86,7 +87,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 			AActor::StaticClass(), Base, FRotator::ZeroRotator);
 		if (FloorActor && PlaneMesh)
 		{
-			FloorActor->SetActorLabel(TEXT("Lumen_Floor"));
+			AliceSdfSetActorLabel(FloorActor, TEXT("Lumen_Floor"));
 
 			UStaticMeshComponent* FloorMesh =
 				NewObject<UStaticMeshComponent>(FloorActor);
@@ -132,7 +133,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 			FRotator::ZeroRotator);
 		if (CeilActor && PlaneMesh)
 		{
-			CeilActor->SetActorLabel(TEXT("Lumen_Ceiling"));
+			AliceSdfSetActorLabel(CeilActor, TEXT("Lumen_Ceiling"));
 
 			UStaticMeshComponent* CeilMesh =
 				NewObject<UStaticMeshComponent>(CeilActor);
@@ -184,7 +185,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 			AActor::StaticClass(), ShapePos, FRotator::ZeroRotator);
 		if (PedestalActor && CylinderMesh)
 		{
-			PedestalActor->SetActorLabel(
+			AliceSdfSetActorLabel(PedestalActor,
 				FString::Printf(TEXT("Lumen_Pedestal_%d"), i));
 
 			UStaticMeshComponent* PedMesh =
@@ -232,7 +233,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 
 		if (ShapeActor)
 		{
-			ShapeActor->SetActorLabel(
+			AliceSdfSetActorLabel(ShapeActor,
 				FString::Printf(TEXT("Lumen_%s"), ShapeNames[i]));
 			ShapeActor->ShapeType = ShapeTypes[i];
 			ShapeActor->MeshResolution = ShapeResolution;
@@ -289,7 +290,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 			FRotator::ZeroRotator);
 		if (LightActor)
 		{
-			LightActor->SetActorLabel(Def.Name);
+			AliceSdfSetActorLabel(LightActor, Def.Name);
 
 			UPointLightComponent* LightComp =
 				NewObject<UPointLightComponent>(LightActor);
@@ -317,7 +318,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 			FRotator::ZeroRotator);
 		if (SkyActor)
 		{
-			SkyActor->SetActorLabel(TEXT("Lumen_SkyLight"));
+			AliceSdfSetActorLabel(SkyActor, TEXT("Lumen_SkyLight"));
 
 			USkyLightComponent* SkyComp =
 				NewObject<USkyLightComponent>(SkyActor);
@@ -344,7 +345,7 @@ void AAliceSdfLumenShowcase::BuildGallery()
 			FRotator::ZeroRotator);
 		if (PPV)
 		{
-			PPV->SetActorLabel(TEXT("Lumen_PostProcess"));
+			AliceSdfSetActorLabel(PPV, TEXT("Lumen_PostProcess"));
 			PPV->bUnbound = true;
 
 			FPostProcessSettings& Settings = PPV->Settings;

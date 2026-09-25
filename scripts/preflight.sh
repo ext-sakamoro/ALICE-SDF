@@ -94,6 +94,12 @@ cargo build --lib --no-default-features --features wasm
 step "vrchat-host: 7 sample C# colliders vs alice_sdf goldens (dotnet)"
 scripts/vrchat-host-parity.sh
 
+# The engine itself (BuildPlugin + automation tests) only runs on the
+# self-hosted ue5 runner (scripts/unreal-ue5-ci.ps1); this is the part of
+# the Unreal contract that needs no Unreal.
+step "unreal-abi: plugin header == include/alice_sdf.h, prototypes ⇔ cdylib exports, uplugin, shader includes, generated corpus"
+scripts/unreal-abi-check.sh
+
 step "doc: cargo doc --lib --no-deps (RUSTDOCFLAGS=-Dwarnings), default + docs.rs set + texture-fit"
 RUSTDOCFLAGS="-Dwarnings" cargo doc --lib --no-deps
 RUSTDOCFLAGS="-Dwarnings" cargo doc --lib --no-deps --features "$DOCSRS,texture-fit"

@@ -1,0 +1,114 @@
+// ALICE-SDF — ready-made SDF surface for a UE5 Material Custom node.
+// Author: Moroya Sakamoto
+//
+// Include this from a Custom expression and call `AliceSdfSample_Shade`:
+//
+//     #include "/Plugin/AliceSDF/Public/AliceSdfSample.ush"
+//     return AliceSdfSample_Shade(WorldPosition, ObjectPosition, CameraPosition);
+//
+// `Content/Python/create_alice_sdf_sample_material.py` builds exactly that
+// material for you (M_AliceSDF_Sample).
+//
+// To show *your* SDF instead of the sample scene, replace the body of
+// `AliceSdfSample_Scene` with the output of
+// `UAliceSdfComponent::GenerateHlsl()` (Blueprint: **Generate HLSL**) — it
+// emits a `float sdf_eval(float3 p)` you can paste in and call.
+
+#pragma once
+
+// The sample scene: a sphere and a box blended with a smooth union, with a
+// ring carved out by a smooth subtraction — the same scene as the plugin
+// icon (examples/unreal_plugin_icon.rs), in centimetres (1 unit = 1 cm, so
+// the shape is ~120 cm across).
+float AliceSdfSample_Scene(float3 p)
+{
+	const float Scale = 60.0;
+	float3 q = p / Scale;
+
+	// sphere(0.60)
+	float dSphere = length(q) - 0.60;
+
+	// box(0.40) translated
+	float3 b = abs(q - float3(0.46, -0.30, 0.12)) - 0.40;
+	float dBox = length(max(b, 0.0)) + min(max(b.x, max(b.y, b.z)), 0.0);
+
+	// smooth union (k = 0.26), the reciprocal law the CPU and the
+	// transpilers share (alice_sdf::operations::smooth)
+	const float k = 0.26;
+	float h = max(1.0 - abs(dSphere - dBox) * (1.0 / k), 0.0);
+	float dBody = min(dSphere, dBox) - h * h * (k * 0.25);
+
+	// torus(0.42, 0.11), axis turned towards +Z and pushed to the front
+	float3 t = q - float3(-0.04, 0.02, 0.30);
+	t = float3(t.x, t.z, -t.y); // quarter turn about X
+	float2 tq = float2(length(t.xz) - 0.42, t.y);
+	float dRing = length(tq) - 0.11;
+
+	// smooth subtraction (k = 0.05)
+	const float ks = 0.05;
+	float hs = max(1.0 - abs(dBody + dRing) * (1.0 / ks), 0.0);
+	float d = max(dBody, -dRing) + hs * hs * (ks * 0.25);
+
+	return d * Scale;
+}
+
+float3 AliceSdfSample_Normal(float3 p)
+{
+	const float2 e = float2(0.35, -0.35); // centimetres
+	return normalize(
+		e.xyy * AliceSdfSample_Scene(p + e.xyy) +
+		e.yyx * AliceSdfSample_Scene(p + e.yyx) +
+		e.yxy * AliceSdfSample_Scene(p + e.yxy) +
+		e.xxx * AliceSdfSample_Scene(p + e.xxx));
+}
+
+// Raymarch the scene around the object's origin and return an unlit colour.
+// `WorldPosition` is the pixel's world position (the material's
+// WorldPosition input), `ObjectPosition` the actor origin, `CameraPosition`
+// the view origin; all in world space.
+float3 AliceSdfSample_Shade(float3 WorldPosition, float3 ObjectPosition, float3 CameraPosition)
+{
+	float3 ro = CameraPosition - ObjectPosition;
+	float3 rd = normalize((WorldPosition - ObjectPosition) - ro);
+
+	float t = 0.0;
+	bool hit = false;
+	// 128 steps is plenty for a shape this size; raise it for deeper scenes.
+	for (int i = 0; i < 128; i++)
+	{
+		float3 p = ro + rd * t;
+		float d = AliceSdfSample_Scene(p);
+		if (d < 0.05)
+		{
+			hit = true;
+			break;
+		}
+		t += max(d, 0.05);
+		if (t > 2000.0)
+		{
+			break;
+		}
+	}
+
+	if (!hit)
+	{
+		// Nothing hit: a dark value so the sample reads on any background.
+		// Use opacity / clip in your own material for a real cut-out.
+		return float3(0.02, 0.02, 0.04);
+	}
+
+	float3 p = ro + rd * t;
+	float3 n = AliceSdfSample_Normal(p);
+	float3 lightDir = normalize(float3(-0.45, 0.82, 0.36));
+
+	float diffuse = saturate(dot(n, lightDir));
+	float rim = pow(saturate(1.0 + dot(n, rd)), 2.6);
+	float3 half_ = normalize(lightDir - rd);
+	float spec = pow(saturate(dot(n, half_)), 46.0);
+
+	float3 key = float3(0.62, 0.42, 0.98);
+	float3 fill = float3(0.10, 0.13, 0.28);
+	float3 rimCol = float3(0.25, 0.85, 0.95);
+
+	return key * diffuse + fill + rimCol * rim * 0.70 + spec * 0.70;
+}

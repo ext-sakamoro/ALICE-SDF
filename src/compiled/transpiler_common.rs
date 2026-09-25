@@ -150,6 +150,12 @@ pub trait ShaderLang: private::Sealed + 'static {
     fn atan2_expr(y: &str, x: &str) -> String {
         format!("alice_atan2({y}, {x})")
     }
+    /// Linear interpolation `a + (b - a) * t`: GLSL / WGSL spell it `mix`,
+    /// HLSL `lerp` (a `mix` in HLSL is a compile error — the Morph node
+    /// emitted one until 3.2.0, which nothing compiled until the UE5 job).
+    fn mix_expr(a: &str, b: &str, t: &str) -> String {
+        format!("mix({a}, {b}, {t})")
+    }
     /// "f32(x)" / "float(x)"
     fn cast_float(expr: &str) -> String;
     /// Scalar select: `cond ? a : b`, used where the CPU law is a branch-free
@@ -1707,15 +1713,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let h_var = self.next_var();
                 code.push_str(&L::decl_float(
                     &h_var,
-                    &format!(
-                        "max({} - abs({} - {}), 0.0) * {}",
-                        k_str, d_a, d_b, inv_k_str
-                    ),
+                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, d_b, inv_k_str),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
                     &format!(
-                        "min({}, {}) - {} * {} * {} * 0.25",
+                        "min({}, {}) - {} * {} * ({} * 0.25)",
                         d_a, d_b, h_var, h_var, k_str
                     ),
                 ));
@@ -1735,15 +1738,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let h_var = self.next_var();
                 code.push_str(&L::decl_float(
                     &h_var,
-                    &format!(
-                        "max({} - abs({} - {}), 0.0) * {}",
-                        k_str, d_a, d_b, inv_k_str
-                    ),
+                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, d_b, inv_k_str),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
                     &format!(
-                        "max({}, {}) + {} * {} * {} * 0.25",
+                        "max({}, {}) + {} * {} * ({} * 0.25)",
                         d_a, d_b, h_var, h_var, k_str
                     ),
                 ));
@@ -1765,15 +1765,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&neg_b, &format!("-{}", d_b)));
                 code.push_str(&L::decl_float(
                     &h_var,
-                    &format!(
-                        "max({} - abs({} - {}), 0.0) * {}",
-                        k_str, d_a, neg_b, inv_k_str
-                    ),
+                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, neg_b, inv_k_str),
                 ));
                 code.push_str(&L::decl_float(
                     &var,
                     &format!(
-                        "max({}, {}) + {} * {} * {} * 0.25",
+                        "max({}, {}) + {} * {} * ({} * 0.25)",
                         d_a, neg_b, h_var, h_var, k_str
                     ),
                 ));
@@ -1912,10 +1909,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 let t_s = self.param(*t);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("mix({}, {}, {})", d_a, d_b, t_s),
-                ));
+                code.push_str(&L::decl_float(&var, &L::mix_expr(&d_a, &d_b, &t_s)));
                 var
             }
 

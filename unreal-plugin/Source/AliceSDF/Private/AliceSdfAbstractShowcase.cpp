@@ -10,6 +10,7 @@
 //   8 Floating Cubes (orbiting, self-rotating)
 
 #include "AliceSdfAbstractShowcase.h"
+#include "AliceSdfEditorUtils.h"
 #include "Engine/World.h"
 
 AAliceSdfAbstractShowcase::AAliceSdfAbstractShowcase()
@@ -53,7 +54,7 @@ static AAliceSdfNaniteActor* SpawnAbstractShape(
 
 	if (Actor)
 	{
-		Actor->SetActorLabel(Label);
+		AliceSdfSetActorLabel(Actor, Label);
 		Actor->ShapeType = Shape;
 		Actor->MeshResolution = Resolution;
 		Actor->WorldScale = Scale;

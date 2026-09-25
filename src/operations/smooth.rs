@@ -16,15 +16,20 @@ use crate::compiled::real::Real;
 pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
     // Branchless k=0 guard: maxss on x86, fmax on ARM
     let k = k.max(1e-10);
-    let h = (k - (a - b).abs()).max(0.0) / k;
-    (h * h * k) * -0.25 + a.min(b)
+    // The reciprocal form, operation for operation, is what the compiled
+    // evaluators run (`Instruction::smooth_union` precomputes `1.0 / k`).
+    // `(k - d) / k` and `1 - d * (1 / k)` are the same law but not the same
+    // f32 rounding, and since 3.1.0 every evaluator must agree to the bit
+    // (3.2.0: the UE5 corpus oracle caught five corpus nodes drifting by
+    // 1 ulp, which `test_det_parity`'s point set had never hit).
+    smooth_min_rk(a, b, k, 1.0 / k)
 }
 
 /// Polynomial smooth minimum — Division Exorcism edition.
 ///
-/// Takes precomputed `rk = 1.0 / k` to eliminate division from the hot path.
-/// Mathematically equivalent to `smooth_min` but uses `(1.0 - abs_diff * rk)`
-/// instead of `(k - abs_diff) / k`.
+/// Takes precomputed `rk = 1.0 / k` to keep division out of the hot path.
+/// This is *the* law: `smooth_min` computes the same reciprocal and calls
+/// here, so the tree and the bytecode round identically.
 #[inline(always)]
 pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
     smooth_min_rk_r::<f32>(a, b, k, rk)
@@ -36,8 +41,8 @@ pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 #[inline(always)]
 pub fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
     let k = k.max(1e-10);
-    let h = (k - (a - b).abs()).max(0.0) / k;
-    (h * h * k) * 0.25 + a.max(b)
+    // Same reciprocal law as the compiled evaluators — see `smooth_min`.
+    smooth_max_rk(a, b, k, 1.0 / k)
 }
 
 /// Polynomial smooth maximum — Division Exorcism edition.

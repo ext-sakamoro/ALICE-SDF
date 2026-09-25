@@ -89,6 +89,10 @@ impl ShaderLang for HlslLang {
         // `fmod` is truncated (sign of the dividend).
         format!("(({a}) - ({b}) * floor(({a}) / ({b})))")
     }
+    fn mix_expr(a: &str, b: &str, t: &str) -> String {
+        // HLSL has no `mix`.
+        format!("lerp({a}, {b}, {t})")
+    }
     fn cast_float(expr: &str) -> String {
         format!("(float)({})", expr)
     }

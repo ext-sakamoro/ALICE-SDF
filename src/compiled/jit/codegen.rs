@@ -1242,21 +1242,24 @@ fn emit_smooth_min(
     k: Value,
     inv_k: Value,
 ) -> Value {
-    // h = max(k - abs(a - b), 0) * inv_k  — Division Exorcism!
-    // return min(a, b) - h² * k * 0.25
+    // h = max(1 - abs(a - b) * inv_k, 0)
+    // return min(a, b) - h² * (k * 0.25)
+    // Operation for operation the law in `operations::smooth::smooth_min_rk_r`
+    // (3.2.0): `max(k - d, 0) * inv_k` rounds differently from `1 - d * inv_k`.
     let zero = builder.ins().f32const(0.0);
+    let one = builder.ins().f32const(1.0);
     let quarter = builder.ins().f32const(0.25);
 
     let diff = builder.ins().fsub(a, b);
     let abs_diff = builder.ins().fabs(diff);
-    let k_minus = builder.ins().fsub(k, abs_diff);
-    let h_num = builder.ins().fmax(k_minus, zero);
-    let h = builder.ins().fmul(h_num, inv_k); // Division Exorcism!
+    let scaled = builder.ins().fmul(abs_diff, inv_k);
+    let h_num = builder.ins().fsub(one, scaled);
+    let h = builder.ins().fmax(h_num, zero);
 
     let min_ab = builder.ins().fmin(a, b);
     let h2 = builder.ins().fmul(h, h);
-    let h2k = builder.ins().fmul(h2, k);
-    let correction = builder.ins().fmul(h2k, quarter);
+    let k_quarter = builder.ins().fmul(k, quarter);
+    let correction = builder.ins().fmul(h2, k_quarter);
 
     builder.ins().fsub(min_ab, correction)
 }

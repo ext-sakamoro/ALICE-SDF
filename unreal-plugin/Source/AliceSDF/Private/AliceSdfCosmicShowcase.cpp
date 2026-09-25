@@ -2,6 +2,7 @@
 // Author: Moroya Sakamoto
 
 #include "AliceSdfCosmicShowcase.h"
+#include "AliceSdfEditorUtils.h"
 #include "Engine/World.h"
 
 AAliceSdfCosmicShowcase::AAliceSdfCosmicShowcase()
@@ -45,7 +46,7 @@ static AAliceSdfNaniteActor* SpawnShape(
 
 	if (Actor)
 	{
-		Actor->SetActorLabel(Label);
+		AliceSdfSetActorLabel(Actor, Label);
 		Actor->ShapeType = Shape;
 		Actor->MeshResolution = Resolution;
 		Actor->WorldScale = Scale;

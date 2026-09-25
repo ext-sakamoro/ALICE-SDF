@@ -2,6 +2,7 @@
 // Author: Moroya Sakamoto
 
 #include "AliceSdfFractalShowcase.h"
+#include "AliceSdfEditorUtils.h"
 #include "Engine/World.h"
 
 AAliceSdfFractalShowcase::AAliceSdfFractalShowcase()
@@ -52,7 +53,7 @@ void AAliceSdfFractalShowcase::BuildFractal()
 
 	if (FractalActor)
 	{
-		FractalActor->SetActorLabel(TEXT("Fractal_MengerSponge"));
+		AliceSdfSetActorLabel(FractalActor, TEXT("Fractal_MengerSponge"));
 		FractalActor->ShapeType = EAliceSdfNaniteShape::MengerSponge;
 		FractalActor->MeshResolution = ShapeResolution;
 		FractalActor->WorldScale = FractalScale;

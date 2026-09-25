@@ -672,8 +672,8 @@ impl WgslTranspiler {
 const HELPER_SMOOTH_MIN: &str = r"// Deep Fried Edition: Division-free smooth_min
 // inv_k should be pre-computed as 1.0/k
 fn smooth_min_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
-    let h = max(k - abs(a - b), 0.0) * inv_k;  // MUL instead of DIV!
-    return min(a, b) - h * h * k * 0.25;
+    let h = max(1.0 - abs(a - b) * inv_k, 0.0);  // same rounding as the CPU law
+    return min(a, b) - h * h * (k * 0.25);
 }
 
 // Legacy smooth_min (slower, uses division)
@@ -683,8 +683,8 @@ fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
 
 const HELPER_SMOOTH_MAX: &str = r"// Deep Fried Edition: Division-free smooth_max
 fn smooth_max_fast(a: f32, b: f32, k: f32, inv_k: f32) -> f32 {
-    let h = max(k - abs(a - b), 0.0) * inv_k;
-    return max(a, b) + h * h * k * 0.25;
+    let h = max(1.0 - abs(a - b) * inv_k, 0.0);
+    return max(a, b) + h * h * (k * 0.25);
 }
 
 fn smooth_max(a: f32, b: f32, k: f32) -> f32 {

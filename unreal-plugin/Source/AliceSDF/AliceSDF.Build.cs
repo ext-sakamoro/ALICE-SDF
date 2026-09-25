@@ -41,9 +41,18 @@ public class AliceSDF : ModuleRules
 
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
+			string Dll = Path.Combine(LibDir, "Win64", "alice_sdf.dll");
 			PublicAdditionalLibraries.Add(Path.Combine(LibDir, "Win64", "alice_sdf.lib"));
-			RuntimeDependencies.Add("$(BinaryOutputDir)/alice_sdf.dll",
-				Path.Combine(LibDir, "Win64", "alice_sdf.dll"));
+			// Delay load, or the Windows loader resolves every alice_sdf_*
+			// import while loading UnrealEditor-AliceSDF.dll and fails with
+			// error 126 when the native library is not next to it — which is
+			// what a UAT-packaged plugin looked like until 3.2.0 (the module
+			// loads it itself in StartupModule).
+			PublicDelayLoadDLLs.Add("alice_sdf.dll");
+			// Next to the module (packaged plugin) and in ThirdParty (source
+			// plugin / the distributed zip): FAliceSdfModule looks in both.
+			RuntimeDependencies.Add("$(BinaryOutputDir)/alice_sdf.dll", Dll);
+			RuntimeDependencies.Add(Dll, StagedFileType.NonUFS);
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{

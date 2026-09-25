@@ -15,6 +15,7 @@ Complete guide for integrating ALICE-SDF with Unreal Engine 5.
 - [Collision Setup](#collision-setup)
 - [Performance Tuning](#performance-tuning)
 - [Troubleshooting](#troubleshooting)
+- [CI: Engine Compatibility](#ci-engine-compatibility)
 
 ---
 
@@ -53,11 +54,16 @@ UE5 Project
 
 | Requirement | Version |
 |-------------|---------|
-| Unreal Engine | 5.3+ |
-| Rust | 1.75+ |
+| Unreal Engine | 5.7 (built and tested by CI on every push — see [CI: engine compatibility](#ci-engine-compatibility)); 5.3–5.6 untested since 3.2.0 |
+| Rust | 1.85+ (`rust-toolchain.toml`) |
 | Visual Studio | 2022 (Windows) |
 | Xcode | 15+ (macOS) |
-| Target | Win64, Linux, macOS |
+| Target | Win64 (CI), Linux, macOS (build only) |
+
+The `unreal` cargo feature is what the plugin links against: `ffi` + `hlsl`
++ `glsl` + `gpu` — every function `alice_sdf.h` declares (HLSL, GLSL and
+WGSL generation included). Until 3.2.0 it was `ffi` + `hlsl` and
+`UAliceSdfComponent::GenerateGlsl` / `GenerateWgsl` did not link.
 
 ---
 
@@ -105,55 +111,95 @@ cargo build --release --features unreal --target x86_64-pc-windows-msvc
 
 ## Plugin Installation
 
-### 1. Copy Plugin Structure
+There are two ways in: the release zip (no Rust needed) or this repository.
 
-Copy `unreal-plugin/AliceSDF/` to your UE5 project:
+### From the release zip (recommended)
+
+1. Download `AliceSDF-UE5-Plugin-{Win64,macOS,Linux}.zip` from
+   [Releases](https://github.com/ext-sakamoro/ALICE-SDF/releases).
+2. Extract it into your project so you get `YourProject/Plugins/AliceSDF/`.
+3. Open the `.uproject`. For a C++ project UE offers to rebuild the plugin —
+   say yes. For a Blueprint-only project, add a C++ class once (`Tools > New
+   C++ Class`) so the project can compile plugins, or use a build of the
+   plugin that matches your engine version.
+
+The zip is the whole plugin, already arranged:
 
 ```
-YourProject/
-  Plugins/
-    AliceSDF/
-      AliceSDF.uplugin
-      Source/
-        AliceSDF/
-          AliceSDF.Build.cs
-          Public/
-            AliceSdfBlueprintLibrary.h
-          Private/
-            AliceSdfBlueprintLibrary.cpp
-      Binaries/
-        Win64/
-          alice_sdf.dll
-      include/
-        alice_sdf.h
+YourProject/Plugins/AliceSDF/
+  AliceSDF.uplugin
+  Config/FilterPlugin.ini        packaging rules
+  Resources/Icon128.png          plugin browser icon
+  Content/Python/                sample-material script
+  Shaders/
+    Private/*.usf                particle / raymarch global shaders
+    Public/AliceSdfSample.ush    the Custom-node shader for materials
+    CorpusOracle/                generated corpus (used by the automation tests)
+  Source/AliceSDF/               the C++ module
+  ThirdParty/AliceSDF/
+    include/alice_sdf.h          C API
+    lib/Win64/alice_sdf.{dll,lib}    (Mac/Linux: libalice_sdf.{dylib,so})
 ```
 
-### 2. Copy the Built Library
+Nothing has to be copied by hand: `AliceSDF.Build.cs` links
+`ThirdParty/.../alice_sdf.lib`, delay-loads the DLL, and the module loads it
+at startup from `Binaries/Win64` or `ThirdParty/.../Win64` — whichever the
+install has. The editor log says which one it used:
+
+```
+LogTemp: ALICE-SDF: native library loaded from .../ThirdParty/AliceSDF/lib/Win64/alice_sdf.dll
+```
+
+### From this repository
+
+```bash
+# 1. build the native library (the `unreal` feature = FFI + HLSL + GLSL + WGSL)
+cargo build --release --features unreal
+
+# 2. drop it into the plugin tree
+cp target/release/alice_sdf.dll      unreal-plugin/ThirdParty/AliceSDF/lib/Win64/
+cp target/release/alice_sdf.dll.lib  unreal-plugin/ThirdParty/AliceSDF/lib/Win64/alice_sdf.lib
+cp include/alice_sdf.h               unreal-plugin/ThirdParty/AliceSDF/include/
+#    macOS: target/release/libalice_sdf.dylib -> lib/Mac/
+#    Linux: target/release/libalice_sdf.so    -> lib/Linux/
+
+# 3. copy the plugin into your project (or symlink it)
+cp -r unreal-plugin "YourProject/Plugins/AliceSDF"
+```
+
+`scripts/build_ue5_plugin.sh [--zip]` does steps 1-2 for the host platform.
+
+### Regenerate project files (C++ projects)
 
 ```bash
 # Windows
-copy target\release\alice_sdf.dll YourProject\Plugins\AliceSDF\Binaries\Win64\
-
+"E:\UE_5.7\Engine\Build\BatchFiles\GenerateProjectFiles.bat" YourProject.uproject
 # macOS
-cp target/release/libalice_sdf.dylib YourProject/Plugins/AliceSDF/Binaries/Mac/
-
-# Linux
-cp target/release/libalice_sdf.so YourProject/Plugins/AliceSDF/Binaries/Linux/
+"/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/Mac/GenerateProjectFiles.sh" YourProject.uproject
 ```
 
-### 3. Regenerate Project Files
+Then `Edit > Plugins`, search **ALICE-SDF**, tick it and restart the editor.
 
-```bash
-# Windows (from UE5 installation)
-"C:\Program Files\Epic Games\UE_5.4\Engine\Build\BatchFiles\GenerateProjectFiles.bat" YourProject.uproject
+### The sample material
 
-# macOS
-/Users/Shared/Epic\ Games/UE_5.4/Engine/Build/BatchFiles/Mac/GenerateProjectFiles.sh YourProject.uproject
-```
+The plugin ships a ready SDF surface and a script that builds the material
+around it:
 
-### 4. Enable Plugin
+1. Enable `Python Editor Script Plugin` (`Edit > Plugins`, once per project).
+2. `Tools > Execute Python Script…` and pick
+   `Plugins/AliceSDF/Content/Python/create_alice_sdf_sample_material.py`.
+3. It creates **`/Game/AliceSDF/M_AliceSDF_Sample`** — unlit, two-sided, a
+   Custom expression that includes
+   `/Plugin/AliceSDF/Public/AliceSdfSample.ush` and raymarches the sample
+   scene. Assign it to any mesh (a cube works); the shape is drawn around the
+   actor origin.
 
-In UE5 Editor: `Edit > Plugins > Search "AliceSDF" > Enable > Restart Editor`
+To show your own shape, replace the body of `AliceSdfSample_Scene` in that
+`.ush` with what `UAliceSdfComponent::GenerateHlsl()` (Blueprint: **Generate
+HLSL**) prints — it emits a `float sdf_eval(float3 p)` ready to paste.
+
+CI builds this material on every push (`scripts/unreal-ue5-ci.ps1`), so the
+script and the shader stay working.
 
 ---
 
@@ -332,26 +378,29 @@ return t;
 
 ## Blueprint Integration
 
-The plugin provides Blueprint-callable functions via `UAliceSdfBlueprintLibrary`:
+Every function below is a method on **`UAliceSdfComponent`** (add it to any
+Actor — it is a `BlueprintSpawnableComponent`). There are 124 Blueprint nodes;
+they are grouped under `ALICE SDF|…` in the node palette.
 
-### Available Blueprint Functions
+### Node groups (as they appear in the palette)
 
-| Function | Description |
-|----------|-------------|
-| `CreateSphere(Radius)` | Create sphere SDF |
-| `CreateBox(HalfExtents)` | Create box SDF |
-| `CreateCylinder(Radius, HalfHeight)` | Create cylinder SDF |
-| `Union(A, B)` | Boolean union |
-| `SmoothUnion(A, B, K)` | Smooth union |
-| `Subtract(A, B)` | Boolean subtraction |
-| `Translate(Node, Offset)` | Translate SDF |
-| `Rotate(Node, Rotation)` | Rotate SDF |
-| `Scale(Node, Factor)` | Uniform scale |
-| `Compile(Node)` | Compile to bytecode |
-| `EvalCompiled(Compiled, Position)` | Evaluate distance |
-| `SaveToFile(Node, Path)` | Save to .asdf |
-| `LoadFromFile(Path)` | Load from .asdf |
-| `GenerateHLSL(Node)` | Generate HLSL code |
+| Palette group | Nodes | Examples |
+|---------------|------:|----------|
+| `ALICE SDF\|Primitives` | 34 | **Create Sphere**, **Create Box**, **Create Torus**, **Create Capsule**, **Create Rounded Box**, **Create Death Star** |
+| `ALICE SDF\|Primitives\|2D` | 18 | **Create Circle**, **Create Hexagon**, **Create Star**, **Create Vesica** |
+| `ALICE SDF\|Primitives\|TPMS` | 9 | **Create Gyroid**, **Create Schwarz P**, **Create Diamond** |
+| `ALICE SDF\|Primitives\|Platonic` | 5 | **Create Tetrahedron**, **Create Dodecahedron**, **Create Icosahedron** |
+| `ALICE SDF\|Modifiers` | 17 | **Round**, **Onion**, **Twist**, **Bend**, **Displace**, **Surface Roughness** |
+| `ALICE SDF\|Operations` | 9 + 12 | **Union With**, **Subtract From**, **Intersect With**, and the `Smooth` / `Chamfer` / `Stairs` / `Columns` sub-groups (3 each) |
+| `ALICE SDF\|Transforms` | 6 | **Translate**, **Rotate**, **Scale**, **Mirror**, **Repeat** |
+| `ALICE SDF\|Evaluation` | 5 | **Compile**, **Eval Distance**, **Eval Distance Local**, **Eval Distance Batch** |
+| `ALICE SDF\|Mesh` | 4 | **Export Obj**, **Export Glb**, **Export Fbx**, **Export Usda** |
+| `ALICE SDF\|Shaders` | 3 | **Generate HLSL**, **Generate GLSL**, **Generate WGSL** |
+| `ALICE SDF\|IO` | 2 | **Save To File** (`.asdf`), **Load From File** |
+
+Distances are returned in the component's local space unless the node says
+*World*; **Eval Distance** takes a world position and converts it for you
+(the component is a `USceneComponent`, so the actor transform applies).
 
 ### Blueprint Example
 
@@ -726,6 +775,49 @@ void AProceduralTerrain::CleanupSdf()
 ```
 
 ---
+
+## CI: Engine Compatibility
+
+Two CI jobs keep the plugin building against a real engine (`.github/workflows/ci.yml`):
+
+| Job | Runner | What it proves |
+|-----|--------|----------------|
+| `unreal-abi` | GitHub-hosted Linux | `ThirdParty/AliceSDF/include/alice_sdf.h` == `include/alice_sdf.h`; every prototype in the header is exported by the cdylib built with `--features unreal` and vice versa; `AliceSDF.uplugin` is valid (`VersionName` == crate version, `EngineVersion` 5.x); every `/Plugin/AliceSDF/...` shader include resolves; the generated corpus files are current. Script: `scripts/unreal-abi-check.sh`. |
+| `unreal-ue5` | self-hosted Windows (`ue5` label, UE at `E:\UE_5.x`, RTX GPU) | `RunUAT BuildPlugin` (editor + game targets, Win64) compiles and links the C++; the editor starts, so every `.usf` / `.ush` compiles; then `Automation RunTests AliceSDF.Unreal` runs the two tests below on DX12. Script: `scripts/unreal-ue5-ci.ps1` (same command locally: `pwsh scripts/unreal-ue5-ci.ps1 -EngineRoot E:\UE_5.7 -WorkDir E:\alice-ci\ue5`). |
+
+### Automation tests (`Source/AliceSDF/Private/Tests/AliceSdfCorpusOracleTest.cpp`)
+
+Both use the same corpus as every other parity test in the crate
+(`tests/common/corpus.rs`, 145 laws), generated into engine-readable form by
+`cargo run --example unreal_corpus_oracle --features hlsl`:
+
+- **`AliceSDF.Unreal.FfiCorpusParity`** — each node is loaded from `.asdf`
+  through `alice_sdf_load`, evaluated with `alice_sdf_eval`,
+  `alice_sdf_eval_compiled` and `alice_sdf_eval_compiled_batch` on the
+  `test_det_golden` grid (577 points) and compared **bit for bit** with the
+  Rust tree evaluator. A stale DLL, an ABI drift or a broken `.asdf` codec
+  fails here.
+- **`AliceSDF.Unreal.HlslGpuOracle`** — each node's transpiled HLSL
+  (`Shaders/CorpusOracle/Corpus/<name>.ush`, one permutation of the
+  `CorpusOracle/SdfCorpusOracle.usf` compute shader per node) is dispatched on the GPU
+  and compared with the DLL at `1e-4 · max(|d|, 1)` — the tolerance of
+  `tests/test_gpu_law_parity.rs`. This is the crate's only HLSL *execution*
+  oracle (naga has no HLSL front end, so the wgpu lanes cover WGSL and GLSL).
+
+Environment variables the tests read: `ALICE_SDF_GOLDEN_DIR` (the `.asdf` /
+golden directory; default `<Project>/Saved/AliceSdfGolden`),
+`ALICE_SDF_CORPUS_ORACLE=1` (put the 145 oracle permutations in the global
+shader map — off by default so a user's editor does not compile them),
+`ALICE_SDF_REQUIRE_GOLDEN=1` / `ALICE_SDF_REQUIRE_GPU=1` (missing inputs
+fail instead of warn + skip; CI sets both). The generated shader files and
+`Private/Generated/AliceSdfCorpusManifest.h` are committed; `unreal-abi`
+fails when they no longer match the corpus.
+
+### Running the tests in your own editor
+
+With the plugin enabled, `Window > Test Automation` lists both under
+`AliceSDF.Unreal`. Without the golden directory they report *skipped* with
+the command to generate it.
 
 ## Related Documentation
 

@@ -384,11 +384,11 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "smooth_intersection",
-        "df03fb064bb501adafac36b0cbacee2987832b91758011eb9620c4522681306d",
+        "21b0068b022130c436f29c55a3aad4146a4928cd058eefcc7a3cbc64c76591c4",
     ),
     (
         "smooth_subtract",
-        "e6cadac11599bf651175387ccffecb281838c848bb6b402004aecf557f7146fd",
+        "dacb8177daabac943b22308e524fca37e7f78bf29f19eadb12c800d34f180a5e",
     ),
     (
         "chamfer_union",
@@ -516,7 +516,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "scale_smooth_union",
-        "671559daea2bc70b5f4bccf8715e9b1e374743e39b9bc871cbf0f0f544703e4f",
+        "e8d0818de5571fea0f62ab44ef1aa9fa516638732915c0f33fc48ef45f48a2e8",
     ),
     (
         "scale_chamfer_union",
@@ -540,7 +540,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "scale_nested",
-        "b5fea2360458130c44b1d1963f47e142f1fc4545fb45c140df1a01d0c45ff2f6",
+        "abe7eed855a0e4c534f257aa4bcf33240c765e809bdf7595b58adfe56a965541",
     ),
     (
         "exp_smooth_union_far",
@@ -664,6 +664,6 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "nested",
-        "089b3dcf56d888d11497ad6f61e4b744124ddd1cd7cae252f6bd956b715e3a9b",
+        "7b73b19c40cdace128e3d373bb8a334e072dcb464955818748b3fbcda0422c75",
     ),
 ];

@@ -93,7 +93,7 @@ wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
 all-shaders = ["gpu", "hlsl", "glsl", "blinkscript"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
-unreal = ["ffi", "hlsl"]  # Unreal Engine integration (FFI + HLSL)
+unreal = ["ffi", "hlsl", "glsl", "gpu"]  # Unreal Engine integration: everything unreal-plugin/ calls through alice_sdf.h (HLSL + GLSL + WGSL generation), = scripts/build_ue5_plugin.sh
 aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All AAA game features
 
 # Every optional dependency is enabled through a named feature with the
@@ -207,6 +207,17 @@ harness = false
 [[example]]
 name = "text_to_3d_demo"
 required-features = ["font"]
+
+# Generates the UE5 plugin's corpus oracle (Shaders/Generated + manifest
+# header, committed) and the .asdf / golden files its automation tests load.
+[[example]]
+name = "unreal_corpus_oracle"
+required-features = ["hlsl"]
+
+# Renders unreal-plugin/Resources/Icon128.png with this crate's evaluator.
+[[example]]
+name = "unreal_plugin_icon"
+required-features = ["image"]
 
 # Declare the 5 bridge features as known even though the entries are
 # gone from [features] for the 1.7.7 crates.io publish. Without this

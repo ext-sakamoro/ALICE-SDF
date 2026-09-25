@@ -1,0 +1,9 @@
+# The plugin icon is generated (examples/unreal_plugin_icon.rs); never let a
+# checkout with core.autocrlf=true rewrite bytes inside it.
+*.png binary
+*.jpg binary
+*.uasset binary
+
+# Shader sources are read by UE's shader compiler on every platform.
+*.usf text eol=lf
+*.ush text eol=lf
