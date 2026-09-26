@@ -195,6 +195,13 @@ pub mod hlsl;
 #[cfg(feature = "glsl")]
 pub mod glsl;
 
+/// MSL emit for Metal / Apple platforms.
+///
+/// Derived from the WGSL emit through naga rather than hand-written as a fourth
+/// `ShaderLang`, so the 56 shader helpers keep a single source of law.
+#[cfg(feature = "msl")]
+pub mod msl;
+
 #[cfg(feature = "blinkscript")]
 pub mod blinkscript;
 

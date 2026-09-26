@@ -6,6 +6,38 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — MSL (Metal Shading Language) emit, verified on a real Metal device
+
+- `compiled::msl::MslShader` (feature `msl`, implies `gpu`) turns an `SdfNode`
+  into a Metal compute kernel. **MSL is derived, not hand-written**: the WGSL
+  emit — already checked against the CPU for every corpus node by the GPU parity
+  oracle — is the single source of law and `naga` (`wgsl-in` → `msl-out`)
+  translates it. A fourth `ShaderLang` implementation would have meant a fourth
+  hand-maintained copy of the 56 `helper_source` laws, which is the drift this
+  crate keeps paying for (the mirrored taper that survived in all three
+  transpilers until the GPU oracle caught it, `Terrain` emitting GLSL syntax from
+  the language-neutral walker, `Elongate` disagreeing with the CPU). `ShaderLang`
+  stays sealed at three implementations.
+- `tests/test_msl_metal_oracle.rs` (macOS, feature `msl`) is the oracle: every
+  corpus node's MSL is compiled by the **Metal runtime compiler**
+  (`MTLDevice::newLibraryWithSource`, so no Xcode Metal Toolchain component is
+  required) and executed as a compute kernel, then compared with the CPU law on
+  the same 2048-point LCG set and the same `1e-4 · max(|d|, 1)` relative
+  tolerance the WGSL oracle uses. Measured on an M3: **145 / 145 corpus nodes
+  compile and match, worst drift 8.744e-5 (`lattice_deform`)**.
+  `ALICE_SDF_REQUIRE_METAL=1` turns "no Metal device" from a skip into a failure,
+  mirroring `ALICE_SDF_REQUIRE_GPU`.
+- Binding contract: WGSL `@group(0) @binding(N)` maps to Metal `buffer(N)`, and
+  `MslShader::sizes_buffer_slot` (one past the highest binding) must hold the
+  byte lengths naga needs for the runtime-sized arrays. `fake_missing_bindings`
+  is forced off so an unmapped binding is an error instead of silently valid MSL
+  that reads the wrong buffer.
+- `MslShader::entry_point` is naga's **renamed** function, not the WGSL `main`
+  (`main` is reserved in MSL). Using the WGSL name made `getFunction` fail with
+  "Function 'main' does not exist" — found by the oracle, which is the point of
+  running the kernel rather than only compiling it.
+
+
 ### Added — Unreal Engine compatibility gate (CI builds and tests the plugin on UE 5.7)
 
 - `unreal-ue5` CI job (self-hosted Windows runner, label `ue5`): `RunUAT

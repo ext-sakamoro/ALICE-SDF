@@ -91,6 +91,10 @@ fn transform_point3_expr<L: ShaderLang>(m: &[f32; 16], v: &str) -> String {
 pub(in crate::compiled) mod private {
     /// Seals [`super::ShaderLang`]: only the three language markers
     /// (`WgslLang`, `GlslLang`, `HlslLang`) implement it.
+    ///
+    /// MSL is deliberately **not** a fourth marker: it is derived from the WGSL
+    /// emit through naga (`compiled::msl`) so the 56 `helper_source` laws keep a
+    /// single source and cannot drift a fourth way.
     pub trait Sealed {}
 }
 
@@ -102,6 +106,10 @@ pub(in crate::compiled) mod private {
 /// implementation also has to supply every helper function the emitted
 /// laws reference (`helper_source`), so external implementations are not
 /// supported.
+///
+/// Metal is reached without a fourth implementation: `compiled::msl` translates
+/// the WGSL emit with naga, which keeps one copy of every law instead of four
+/// (see that module's docs).
 pub trait ShaderLang: private::Sealed + 'static {
     // ---- Type constructors ----
     /// Construct a 2-component vector from scalar strings.

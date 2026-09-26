@@ -58,7 +58,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **ALICE-Font Bridge** - font glyph → 2D/3D SDF conversion, text layout, 3D extrusion (`--features font` is an inert gate on crates.io until alice-font publishes — see [Installation](#installation) note; use a `git` dep for the bridge)
 - **Auto Tight AABB** - interval arithmetic + binary search to find minimal bounding box containing the SDF surface
 - **7 evaluation modes** - interpreted, compiled VM, SIMD 8-wide, BVH, SoA batch, JIT, GPU
-- **3 shader targets** - GLSL, WGSL, HLSL transpilation
+- **4 shader targets** - GLSL, WGSL, HLSL transpilation, plus MSL for Metal / Apple (derived from the WGSL emit through naga, so all four share one law source)
 - **Engine integrations** - Unity, Unreal Engine 5 / 6, VRChat, Godot, WebAssembly
 
 ## Text-to-3D Pipeline (Server)
@@ -349,7 +349,7 @@ pip install alice-sdf
 
 ### Claude Code / Codex Skill
 
-The `skills/implicit-cad/` directory bundles ALICE-SDF as an installable agent skill for Claude Code / Codex. It exposes SDF authoring, GLSL/WGSL/HLSL transpile, and mesh export (GLB/OBJ/STL/PLY/3MF) as thin CLI wrappers around this crate. See [`skills/implicit-cad/SKILL.md`](skills/implicit-cad/SKILL.md). Companion `alice-lol-sdf` skill (in the [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) repo) provides the DSL front-end with LLM constrained-decoding support.
+The `skills/implicit-cad/` directory bundles ALICE-SDF as an installable agent skill for Claude Code / Codex. It exposes SDF authoring, GLSL/WGSL/HLSL/MSL transpile, and mesh export (GLB/OBJ/STL/PLY/3MF) as thin CLI wrappers around this crate. See [`skills/implicit-cad/SKILL.md`](skills/implicit-cad/SKILL.md). Companion `alice-lol-sdf` skill (in the [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) repo) provides the DSL front-end with LLM constrained-decoding support.
 
 ## Usage
 

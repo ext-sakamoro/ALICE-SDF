@@ -75,6 +75,7 @@ terrain = []  # Terrain system (heightmap + erosion + caves)
 gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
+msl = ["gpu", "dep:naga"]  # MSL emit for Metal/Apple (WGSL -> naga -> MSL、法則は WGSL 単一 source)
 blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to HLSL body)
 # Bridge features. codec / physics / asp / sdf-cache resolve to the sibling
 # crates on crates.io since 1.12.0 (they were removed for the 1.7.7 publish
@@ -91,7 +92,7 @@ font = []  # Font bridge gate — inert on crates.io, see above
 ffi = []  # C/C++/C# FFI bindings (registries use std::sync::LazyLock)
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
-all-shaders = ["gpu", "hlsl", "glsl", "blinkscript"]  # All shader transpilers
+all-shaders = ["gpu", "hlsl", "glsl", "blinkscript", "msl"]  # All shader transpilers
 unity = ["ffi", "glsl"]  # Unity integration (FFI + GLSL)
 unreal = ["ffi", "hlsl", "glsl", "gpu"]  # Unreal Engine integration: everything unreal-plugin/ calls through alice_sdf.h (HLSL + GLSL + WGSL generation), = scripts/build_ue5_plugin.sh
 aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All AAA game features
@@ -166,6 +167,15 @@ pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1.21", features = ["derive"], optional = true }
 futures-channel = { version = "0.3", optional = true }
 
+# MSL (Metal Shading Language) emit, optional
+# WGSL の emit を単一 source にして naga が MSL に落とす (src/compiled/msl)
+# 法則の写しを 4 本目に増やさないための設計判断: transpiler_common に
+# 手書きの MslLang は足さない (ShaderLang は sealed のまま 3 実装)
+naga = { version = "24", default-features = false, features = [
+    "wgsl-in",
+    "msl-out",
+], optional = true }
+
 # Image loading (optional, for texture-fit)
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 
@@ -181,6 +191,12 @@ criterion = { version = "0.5", features = ["html_reports"] }
 naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in"] }
 # tests/test_det_golden.rs: cross-platform bit pins (one SHA-256 per corpus node)
 sha2 = "0.10"
+
+# tests/test_msl_metal_oracle.rs: compile and run the emitted MSL on the real
+# Metal runtime compiler (MTLDevice::newLibraryWithSource), so no Xcode Metal
+# Toolchain component is needed. Same version wgpu-hal already pulls in.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+metal = "0.31"
 
 [[bench]]
 name = "sdf_eval"

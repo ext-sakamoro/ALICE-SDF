@@ -104,6 +104,15 @@ jobs:
       - name: Test (integration, feature-gated oracles — svo / texture-fit)
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
+      # MSL は WGSL emit を naga で翻訳したもの (compiled::msl)。翻訳と binding map
+      # の誤りはここでしか出ないので、macOS runner で Metal runtime compiler
+      # (MTLDevice::newLibraryWithSource) に通して corpus 全 node を実行する。
+      # ALICE_SDF_REQUIRE_METAL は設定しない: runner に Metal device が無い場合は
+      # skip させ、権威ある実行は Apple Silicon 実機側 (worst 8.744e-5 を実測)。
+      - name: Test (MSL → Metal oracle, macOS only)
+        if: matrix.os == 'macos-latest'
+        run: cargo test --features msl --test test_msl_metal_oracle -- --nocapture
+
       # doctest (= rustdoc 内 ```rust ブロック) は --lib / --tests では走らない
       # feedback_ci_errors_patterns B3: ``` 文字リテラル混入で doctest 落ちる罠予防
       - name: Test (doctests)

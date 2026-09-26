@@ -158,6 +158,16 @@ cargo test --tests
 step "test: feature-gated oracles (svo / texture-fit)"
 cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
+# MSL は WGSL emit を naga で翻訳したもの (compiled::msl)。翻訳と binding map の
+# 誤りはこの oracle でしか出ない。Metal runtime compiler を使うので Xcode の
+# Metal Toolchain component は不要。Linux / Windows には Metal が無いので skip。
+if [ "$(uname -s)" = "Darwin" ]; then
+  step "test: MSL -> Metal oracle (corpus compile + CPU parity, macOS のみ)"
+  ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_msl_metal_oracle -- --nocapture
+else
+  step "skip: MSL -> Metal oracle (Metal は macOS のみ)"
+fi
+
 step "test: cargo test --doc"
 cargo test --doc
 
