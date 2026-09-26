@@ -91,3 +91,38 @@ pub const extern "C" fn alice_sdf_modifier_count() -> u32 {
 pub const extern "C" fn alice_sdf_total_count() -> u32 {
     SdfCategory::total()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `alice_sdf_version()` is what a C caller (the UE5 plugin, the Unity
+    /// bindings) uses to decide whether the library matches what it was built
+    /// against. It reported 1.1.0 through the whole 2.x and 3.0/3.1 line
+    /// because the numbers were hand-written.
+    #[test]
+    fn version_is_the_crate_version() {
+        let v = alice_sdf_version();
+        assert_eq!(
+            (u32::from(v.major), u32::from(v.minor), u32::from(v.patch)),
+            (
+                env!("CARGO_PKG_VERSION_MAJOR").parse::<u32>().unwrap(),
+                env!("CARGO_PKG_VERSION_MINOR").parse::<u32>().unwrap(),
+                env!("CARGO_PKG_VERSION_PATCH").parse::<u32>().unwrap()
+            ),
+            "alice_sdf_version() must follow Cargo.toml"
+        );
+    }
+
+    #[test]
+    fn version_string_matches_version() {
+        let ptr = alice_sdf_version_string();
+        assert!(!ptr.is_null());
+        let text = unsafe { CString::from_raw(ptr) }.into_string().unwrap();
+        assert!(
+            text.contains(env!("CARGO_PKG_VERSION")),
+            "`{text}` does not contain {}",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+}

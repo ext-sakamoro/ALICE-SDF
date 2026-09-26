@@ -29,6 +29,30 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
   (`VersionName` == crate version, `EngineVersion` 5.x), shader includes
   resolve, generated corpus files current. `docs/UNREAL_ENGINE.md` § CI.
 
+### Fixed — `alice_sdf_version()` reported 1.1.0 since 2.0
+
+- `VersionInfo::current()` held hand-written constants that nobody updated:
+  every C caller (the UE5 plugin, the Unity bindings, any FFI user) was told
+  the library was 1.1.0 through all of 2.x and 3.0 / 3.1. It now comes from
+  `CARGO_PKG_VERSION_*`, and `src/ffi/info.rs` has the two tests that were
+  missing — the version had no test at all, which is why the lie kept.
+- Found by the UE5 plugin's new startup check (below), on its first run.
+
+### Added — UE5 plugin: the native library is no longer committed, and its version is checked
+
+- `unreal-plugin/ThirdParty/AliceSDF/lib/**` holds only `README.txt` now. The
+  `alice_sdf.dll` / `.lib` / `.dylib` in the repository were from 1.7.2
+  (2026-02-28): CI always staged a fresh build, so nothing failed, while
+  anyone building the plugin from a clone linked against a seven-month-old
+  library. `scripts/unreal-abi-check.sh` rejects a committed binary, and the
+  release zip ships the real ones.
+- `FAliceSdfModule` logs the library's version at startup and reports an error
+  when its major / minor differs from the `.uplugin` `VersionName`
+  (`AliceSDF.Build.cs` passes that through as `ALICE_SDF_EXPECTED_VERSION`):
+  `LogTemp: ALICE-SDF: native library 3.1.0 loaded from ...`.
+- `scripts/unreal-ue5-ci.ps1` fails with the PID when an editor from the same
+  engine still holds the work directory, instead of dying inside `Remove-Item`.
+
 ### Added — UE 5.8 in the CI matrix
 
 - `unreal-ue5` runs once per entry in the `UE5_ENGINE_ROOTS` repository

@@ -76,3 +76,11 @@ vrchat-package/ProjectSettings.meta
 # Unity CI throw-away project (scripts/unity-ci-project.sh) and its stage logs
 /ci-unity/
 /ci-unity-logs/
+
+# The UE5 plugin's native library is a build product (scripts/build_ue5_plugin.sh
+# fills these in, and the release zip ships them). A committed copy goes stale
+# without anything failing — scripts/unreal-abi-check.sh rejects one.
+unreal-plugin/ThirdParty/AliceSDF/lib/**/*.dll
+unreal-plugin/ThirdParty/AliceSDF/lib/**/*.lib
+unreal-plugin/ThirdParty/AliceSDF/lib/**/*.dylib
+unreal-plugin/ThirdParty/AliceSDF/lib/**/*.so

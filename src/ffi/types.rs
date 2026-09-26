@@ -206,14 +206,35 @@ pub struct VersionInfo {
 }
 
 impl VersionInfo {
-    /// Return the current ALICE-SDF version
+    /// The crate's version, as `Cargo.toml` states it.
+    ///
+    /// These were hand-written constants stuck at 1.1.0 while the crate went
+    /// to 3.1.0, so `alice_sdf_version()` told every C caller the wrong
+    /// version for two major releases (the UE5 plugin's startup check found
+    /// it in 3.2.0). Parsing `CARGO_PKG_VERSION` keeps them honest.
     pub const fn current() -> Self {
         Self {
-            major: 1,
-            minor: 1,
-            patch: 0,
+            major: parse_u16(env!("CARGO_PKG_VERSION_MAJOR")),
+            minor: parse_u16(env!("CARGO_PKG_VERSION_MINOR")),
+            patch: parse_u16(env!("CARGO_PKG_VERSION_PATCH")),
         }
     }
+}
+
+/// `str::parse` is not const; the cargo version components are plain decimals.
+const fn parse_u16(s: &str) -> u16 {
+    let bytes = s.as_bytes();
+    let mut value: u16 = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        assert!(
+            bytes[i] >= b'0' && bytes[i] <= b'9',
+            "CARGO_PKG_VERSION component is not a decimal number"
+        );
+        value = value * 10 + (bytes[i] - b'0') as u16;
+        i += 1;
+    }
+    value
 }
 
 /// SoA (Structure of Arrays) batch evaluation configuration

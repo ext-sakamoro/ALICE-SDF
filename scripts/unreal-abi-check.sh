@@ -51,6 +51,20 @@ echo "declared: $(echo "$declared" | wc -l), exported: $(echo "$exported" | wc -
 [[ -z "$missing" ]]    || fail "declared in alice_sdf.h but not exported by the cdylib (link error in Unreal):"$'\n'"$missing"
 [[ -z "$undeclared" ]] || fail "exported by the cdylib but not declared in alice_sdf.h (add the prototype):"$'\n'"$undeclared"
 
+# ── 2b. no native library in the repository ────────────────────────────────
+step "unreal-plugin/ThirdParty: no committed binaries"
+committed=$(git ls-files 'unreal-plugin/ThirdParty/AliceSDF/lib/**'     | grep -E '\.(dll|lib|dylib|so|a)$' || true)
+[[ -z "$committed" ]] || fail "native libraries are committed:
+$committed
+They are build products; a committed copy goes stale without anything failing
+(the one removed in 3.2.0 was seven months and one law change behind). Remove
+them (git rm --cached) — the release zip ships the real ones and
+scripts/build_ue5_plugin.sh fills the directory locally."
+for d in Win64 Mac Linux; do
+    [[ -f "unreal-plugin/ThirdParty/AliceSDF/lib/$d/README.txt" ]]         || fail "unreal-plugin/ThirdParty/AliceSDF/lib/$d/README.txt is missing (it tells a user where the library comes from)"
+done
+echo "ok: only README.txt in lib/{Win64,Mac,Linux}"
+
 # ── 3. .uplugin metadata ───────────────────────────────────────────────────
 step "AliceSDF.uplugin metadata"
 crate_version=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')

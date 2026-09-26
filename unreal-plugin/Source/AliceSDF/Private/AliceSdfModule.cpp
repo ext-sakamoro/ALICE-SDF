@@ -6,6 +6,7 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformProcess.h"
 #include "ShaderCore.h"
+#include "alice_sdf.h"
 
 class FAliceSdfModule : public IModuleInterface
 {
@@ -60,7 +61,29 @@ public:
 
 		if (LibHandle)
 		{
-			UE_LOG(LogTemp, Log, TEXT("ALICE-SDF: native library loaded from %s"), *LoadedFrom);
+			// What the library actually is. A plugin installed next to a stale
+			// library used to load fine and behave like an older release (the
+			// repository shipped a 1.7.2 binary until 3.2.0), so say the version
+			// out loud and complain when it is not the one this code expects.
+			const VersionInfo Version = alice_sdf_version();
+			const FString Reported = FString::Printf(TEXT("%u.%u.%u"),
+				Version.major, Version.minor, Version.patch);
+			const FString Expected = TEXT(ALICE_SDF_EXPECTED_VERSION);
+			UE_LOG(LogTemp, Log, TEXT("ALICE-SDF: native library %s loaded from %s"), *Reported, *LoadedFrom);
+
+			TArray<FString> ExpectedParts;
+			Expected.ParseIntoArray(ExpectedParts, TEXT("."));
+			const bool bMajorMinorMatch = ExpectedParts.Num() >= 2
+				&& FCString::Atoi(*ExpectedParts[0]) == static_cast<int32>(Version.major)
+				&& FCString::Atoi(*ExpectedParts[1]) == static_cast<int32>(Version.minor);
+			if (!bMajorMinorMatch)
+			{
+				UE_LOG(LogTemp, Error,
+					TEXT("ALICE-SDF: the native library is %s but this plugin was built against %s. ")
+					TEXT("Rebuild it (cargo build --release --features unreal) or take the one from the ")
+					TEXT("matching release zip — laws and the C API change between versions."),
+					*Reported, *Expected);
+			}
 		}
 		else
 		{

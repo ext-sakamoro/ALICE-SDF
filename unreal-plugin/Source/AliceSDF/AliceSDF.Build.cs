@@ -68,5 +68,21 @@ public class AliceSDF : ModuleRules
 		}
 
 		PublicDefinitions.Add("WITH_ALICE_SDF=1");
+
+		// The version the plugin was authored against, read from the .uplugin so
+		// the two cannot drift. FAliceSdfModule compares it with what the native
+		// library reports and says so when a stale library is loaded.
+		string UPluginPath = Path.Combine(ModuleDirectory, "..", "..", "AliceSDF.uplugin");
+		string ExpectedVersion = "unknown";
+		if (File.Exists(UPluginPath))
+		{
+			var Match = System.Text.RegularExpressions.Regex.Match(
+				File.ReadAllText(UPluginPath), @"""VersionName""\s*:\s*""([^""]+)""");
+			if (Match.Success)
+			{
+				ExpectedVersion = Match.Groups[1].Value;
+			}
+		}
+		PublicDefinitions.Add("ALICE_SDF_EXPECTED_VERSION=\"" + ExpectedVersion + "\"");
 	}
 }

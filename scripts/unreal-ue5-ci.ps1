@@ -117,8 +117,21 @@ if ((Get-Item $GoldenStamp).LastWriteTimeUtc -lt (Get-Item $Dll).LastWriteTimeUt
 
 # ── 3. stage the plugin with the fresh binary + header ─────────────────────
 Step "stage plugin → $Staged"
+# An editor left open on the previous host project (a developer's, or one
+# started to serve MCP) keeps its DerivedDataCache files locked and the
+# cleanup below fails half way. Say so instead of dying inside Remove-Item.
+$Stale = Get-Process UnrealEditor, UnrealEditor-Cmd -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith($EngineRoot, [StringComparison]::OrdinalIgnoreCase) }
+if ($Stale) {
+    Fail ("an Unreal editor from $EngineRoot is still running (PID " +
+        (($Stale | ForEach-Object { $_.Id }) -join ", ") +
+        ") and holds files under $WorkDir — close it and run again")
+}
 foreach ($d in @($Staged, $Packaged, $Host_, $Report)) {
-    if (Test-Path $d) { Remove-Item -Recurse -Force $d }
+    if (Test-Path $d) {
+        try { Remove-Item -Recurse -Force $d -ErrorAction Stop }
+        catch { Fail "could not clear $d ($($_.Exception.Message)). Something still holds a file there." }
+    }
 }
 Copy-Item -Recurse (Join-Path $RepoRoot "unreal-plugin") $Staged
 $Win64 = Join-Path $Staged "ThirdParty\AliceSDF\lib\Win64"
