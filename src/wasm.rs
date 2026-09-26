@@ -134,7 +134,9 @@ pub fn render_sphere_slice_rgba(
 
 #[wasm_bindgen]
 pub fn alice_sdf_version() -> String {
-    "1.6.0".to_string()
+    // 版数は Cargo.toml から取る (literal は bump 時に drift して JS 側に嘘を返す
+    // 実測: crate 3.1.0 に対して "1.6.0" を返していた)
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 // === WebXR (VR/AR) helpers ===

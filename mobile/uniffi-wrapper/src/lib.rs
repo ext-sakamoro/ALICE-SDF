@@ -99,8 +99,10 @@ pub fn sphere_batch(points: Vec<Vec3>, center: Vec3, radius: f32) -> Vec<f32> {
 
 // === Meta ===
 
+/// 呼び出し元 (Swift / Kotlin) に返すのは **本 wrapper ではなく alice-sdf 本体** の版数
+/// (関数名が示す対象と一致させる literal は bump で drift する、実測 3.1.0 に対し "1.4.0")
 pub fn alice_sdf_version() -> String {
-    "1.4.0".to_string()
+    alice_sdf::VERSION.to_string()
 }
 
 #[cfg(test)]
@@ -158,5 +160,11 @@ mod tests {
         for (i, p) in pts.iter().enumerate() {
             assert!((batch[i] - sdf_sphere(*p, c, r)).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn version_matches_alice_sdf_crate() {
+        // mobile host に返す版数は alice-sdf 本体と常に一致する
+        assert_eq!(alice_sdf_version(), alice_sdf::VERSION);
     }
 }
