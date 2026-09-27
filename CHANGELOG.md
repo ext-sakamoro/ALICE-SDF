@@ -10,9 +10,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 - `scripts/unreal-ue5-ci.ps1` は `Engine\Build\BatchFiles\RunUAT.bat` 1 個の有無で
   engine の有無を決めていたが、`Engine\Build\BatchFiles` は Epic Launcher の DL の
-  早い段階で展開される。2026-09-27 に **DL 途中 (29.5 GB、完全 install は 60-100 GB)
-  で `RunUAT.bat` だけが存在する状態**を実機で実測した。この状態を通すと UBT /
-  shader compile の段で真因の分かりにくい red になる。`Build.version` /
+  早い段階で展開される。2026-09-27 に **DL 途中 29.5 GB で `RunUAT.bat` だけが存在する
+  状態**を実機で実測した。この状態を通すと UBT / shader compile の段で真因の分かり
+  にくい red になる。**size 閾値では判定できない**ことも同時に分かっている: その
+  0.4 GB 後 (29.9 GB) には `UnrealEditor.exe` が出現して判定を通過し、install の総量は
+  Launcher の「エンジンのみ」構成で 26-30 GB (実測 5.7.4 = 26.4 GB / 5.8.3 = 29.9 GB)
+  しかない。判定は file の存在で行う。`Build.version` /
   `UnrealEditor.exe` / `UnrealEditor-Cmd.exe` を加えた 4 点判定にして、不足分を列挙
   した `engine at <root> is absent or incomplete (missing: …)` で弾くようにした
   (editor 本体は DL 後半に来るので完了の代理指標になる)
