@@ -78,6 +78,26 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         ("infinite_cylinder", SdfNode::infinite_cylinder(0.4)),
         ("infinite_cone", SdfNode::infinite_cone(0.6)),
         ("gyroid", SdfNode::gyroid(2.0, 0.1)),
+        (
+            "metric_ball_cube",
+            SdfNode::metric_ball(0.6, alice_det_math::metric::MetricWeights::LINF),
+        ),
+        (
+            "metric_ball_octahedron",
+            SdfNode::metric_ball(0.6, alice_det_math::metric::MetricWeights::L1),
+        ),
+        (
+            "metric_ball_mix",
+            SdfNode::metric_ball(
+                0.6,
+                alice_det_math::metric::MetricWeights::new(0.3, 0.5, 0.2)
+                    .expect("non-negative weights are a metric"),
+            ),
+        ),
+        (
+            "metric_blend",
+            SdfNode::metric_blend(sphere(), unit_box(), glam::Vec3::ZERO, 0.7, 0.4),
+        ),
         ("heart", SdfNode::heart(0.6)),
         ("tube", SdfNode::tube(0.5, 0.1, 0.4)),
         ("barrel", SdfNode::barrel(0.5, 0.6, 0.2)),

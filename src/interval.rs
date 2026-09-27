@@ -399,6 +399,34 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // ============ Exact-IA Primitives ============
         SdfNode::Sphere { radius } => bounds.length() - Interval::point(*radius),
 
+        SdfNode::MetricBall {
+            radius,
+            w_l1,
+            w_l2,
+            w_linf,
+        } => {
+            // a non-negative combination of the three norm intervals; each
+            // basis norm is monotone in |x|, |y|, |z|
+            let ax = bounds.x.abs();
+            let ay = bounds.y.abs();
+            let az = bounds.z.abs();
+            let l1 = ax + ay + az;
+            let l2 = bounds.length();
+            let linf = ax.max(ay).max(az);
+            l1 * Interval::point(*w_l1)
+                + l2 * Interval::point(*w_l2)
+                + linf * Interval::point(*w_linf)
+                - Interval::point(*radius)
+        }
+
+        SdfNode::MetricBlend { inner, outer, .. } => {
+            // the result is a convex combination of the two fields, so it
+            // lies between their pointwise extremes
+            let a = eval_interval(inner, bounds);
+            let b = eval_interval(outer, bounds);
+            Interval::new(a.lo.min(b.lo), a.hi.max(b.hi))
+        }
+
         SdfNode::Box3d { half_extents } => {
             let h = *half_extents;
             let qx = bounds.x.abs() - Interval::point(h.x);
@@ -1465,6 +1493,24 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::Gyroid { .. } | SdfNode::SchwarzP { .. } | SdfNode::DiamondSurface { .. } => {
             TPMS_SQRT3
         }
+        // The weighted norm's Lipschitz constant over the Euclidean unit
+        // sphere is exact (alice-det-math derives it and checks it against a
+        // brute-force sweep): `sqrt((w1+winf)^2 + 2*w1^2) + w2`. Weights that
+        // are not a metric cannot reach here — `SdfNode::metric_ball` takes a
+        // validated `MetricWeights` — but a hand-built node or a decoded
+        // bytecode could, and then no bound is claimed.
+        SdfNode::MetricBall {
+            w_l1, w_l2, w_linf, ..
+        } => alice_det_math::metric::MetricWeights::new(*w_l1, *w_l2, *w_linf)
+            .map_or(f32::INFINITY, |w| w.lipschitz()),
+
+        // Blending two unrelated fields across a skin adds
+        // `|f_in - f_out| * |grad w|` to the gradient, and the first factor is
+        // a property of the two fields over that skin, not of this node. No
+        // finite bound follows from the law, so none is claimed; measure it
+        // with `crate::measure::measure_tension`.
+        SdfNode::MetricBlend { .. } => f32::INFINITY,
+
         SdfNode::Neovius { .. } => TPMS_NEOVIUS,
         SdfNode::Lidinoid { .. } => TPMS_LIDINOID,
         SdfNode::IWP { .. } => TPMS_IWP,

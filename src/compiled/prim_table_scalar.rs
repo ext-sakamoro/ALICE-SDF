@@ -342,6 +342,26 @@ impl PrimTable for f32 {
         out
     }
     #[inline(always)]
+    fn metric_ball(
+        inst: &Instruction,
+        aux_data: &[f32],
+        p: Vec3R<Self>,
+        scale_correction: Self,
+    ) -> Self {
+        let p: Vec3 = p.into();
+        #[allow(clippy::needless_late_init, unused_variables)]
+        let out;
+        let d = sdf_metric_ball(
+            p,
+            inst.params[0],
+            inst.params[1],
+            inst.params[2],
+            inst.params[3],
+        );
+        out = d * scale_correction;
+        out
+    }
+    #[inline(always)]
     fn heart(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self {
         let p: Vec3 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]

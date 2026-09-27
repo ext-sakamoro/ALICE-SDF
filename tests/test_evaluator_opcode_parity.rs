@@ -140,9 +140,9 @@ fn corpus_covers_every_emitted_opcode() {
             seen.extend(ops);
         }
     }
-    // 125 OpCode variants minus `Animated` (compiler inlines the child) = 124.
+    // 127 OpCode variants minus `Animated` (compiler inlines the child) = 126.
     // `End` and `PopTransform` are emitted and counted.
-    let expected = 124;
+    let expected = 126;
     assert!(
         !seen.contains("Animated"),
         "compiler started emitting Animated; update the expected count"
@@ -561,11 +561,15 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
     // domain repetition ×10 (repeat / polar repeat corpus variants, including
     // the half- and full-turn wedges added in 3.1.1), taper, heightmap
     // displacement, IFS ×2 (the nearest-image choice jumps between
-    // transforms; 2.2.0). Every primitive has a finite claim since 1.11.0.
+    // transforms; 2.2.0), and the metric blend (the gradient it adds across
+    // the skin is `|f_in - f_out| * |grad w|`, a property of the two fields
+    // rather than of the node, so no finite bound follows from the law).
+    // Every primitive has a finite claim since 1.11.0 — including the metric
+    // ball, whose bound is the exact closed form of its weighted norm.
     assert_eq!(
         infinite.len(),
-        18,
-        "infinite claims changed (expected the 18 by-design laws): {infinite:?}"
+        19,
+        "infinite claims changed (expected the 19 by-design laws): {infinite:?}"
     );
     for name in &infinite {
         assert!(
@@ -575,12 +579,31 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
                 || *name == "lattice_deform"
                 || *name == "taper"
                 || *name == "heightmap_displacement"
-                || name.starts_with("ifs"),
+                || name.starts_with("ifs")
+                || *name == "metric_blend",
             "unexpected INFINITY claim on {name}"
         );
     }
     assert_eq!(eval_lipschitz(&SdfNode::sphere(1.0)), 1.0);
     assert!((eval_lipschitz(&SdfNode::gyroid(2.0, 0.1)) - 3f32.sqrt()).abs() < 1e-3);
+    // The metric ball's bound is the closed form of its norm, not a guess:
+    // the cube metric is 1-Lipschitz, the octahedral one √3.
+    assert!(
+        (eval_lipschitz(&SdfNode::metric_ball(
+            1.0,
+            alice_det_math::metric::MetricWeights::LINF
+        )) - 1.0)
+            .abs()
+            < 1e-6
+    );
+    assert!(
+        (eval_lipschitz(&SdfNode::metric_ball(
+            1.0,
+            alice_det_math::metric::MetricWeights::L1
+        )) - 3f32.sqrt())
+        .abs()
+            < 1e-5
+    );
     assert!((eval_lipschitz(&SdfNode::neovius(0.5, 0.1)) - 7.05).abs() < 1e-3);
     // Twist of a unit box (XZ corner radius √2): v = 2·√2, σ = v/2 + √(1 + v²/4)
     let twisted = SdfNode::box3d(2.0, 2.0, 2.0).twist(2.0);

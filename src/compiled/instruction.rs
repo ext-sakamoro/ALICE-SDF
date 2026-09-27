@@ -384,6 +384,31 @@ impl Instruction {
         inst
     }
 
+    /// Create a metric-ball instruction: the ball of the weighted norm
+    /// `w_l1‖p‖₁ + w_l2‖p‖₂ + w_linf‖p‖∞` at the given radius.
+    #[inline]
+    pub const fn metric_ball(radius: f32, w_l1: f32, w_l2: f32, w_linf: f32) -> Self {
+        let mut inst = Self::new(OpCode::MetricBall);
+        inst.params[0] = radius;
+        inst.params[1] = w_l1;
+        inst.params[2] = w_l2;
+        inst.params[3] = w_linf;
+        inst
+    }
+
+    /// Create a metric-blend instruction: inner field within `radius` of
+    /// `centre`, outer beyond `radius + skin`, blended across the skin.
+    #[inline]
+    pub const fn metric_blend(cx: f32, cy: f32, cz: f32, radius: f32, skin: f32) -> Self {
+        let mut inst = Self::new(OpCode::MetricBlend);
+        inst.params[0] = cx;
+        inst.params[1] = cy;
+        inst.params[2] = cz;
+        inst.params[3] = radius;
+        inst.params[4] = skin;
+        inst
+    }
+
     /// Create a heart shape instruction.
     #[inline]
     pub const fn heart(size: f32) -> Self {

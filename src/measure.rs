@@ -351,3 +351,139 @@ mod tests {
         assert!(e_high.std_error < e_low.std_error);
     }
 }
+// ── to append to src/measure.rs ──────────────────────────────
+
+/// Result of a tension measurement — what the field actually does over a
+/// region, as opposed to what its Lipschitz bound allows.
+#[derive(Debug, Clone)]
+pub struct TensionEstimate {
+    /// Largest measured `|f(p) − f(q)| / |p − q|`. Above `1` the field
+    /// over-reports distance somewhere in the region and a sphere-tracing
+    /// step of `f` can cross the surface there.
+    pub max_quotient: f32,
+    /// Smallest measured quotient. Below `1` the field is slack: correct,
+    /// but a marcher spends more steps covering the same ground.
+    pub min_quotient: f32,
+    /// The sample point where `max_quotient` occurred.
+    pub at: Vec3,
+    /// Its partner, so the pair can be replayed.
+    pub toward: Vec3,
+    /// Pairs that contributed (pairs entirely inside the solid are skipped —
+    /// the Lipschitz claim is an exterior one).
+    pub sample_count: u64,
+    /// The separation used between the two points of a pair.
+    pub probe: f32,
+}
+
+impl TensionEstimate {
+    /// The factor by which the field exceeds a 1-Lipschitz law — the number
+    /// to put on screen. `1` or below is safe, above `1` tears.
+    #[must_use]
+    pub const fn tension(&self) -> f32 {
+        self.max_quotient
+    }
+
+    /// True when the measurement found over-reporting.
+    #[must_use]
+    pub fn tears(&self) -> bool {
+        self.max_quotient > 1.0
+    }
+}
+
+/// Measure the largest and smallest difference quotient of a field over a
+/// region.
+///
+/// This is the measured counterpart of
+/// [`distance_fidelity`](crate::fidelity::distance_fidelity): the bound says
+/// what the law allows anywhere, this says what the field does *here*. Two
+/// things only the measurement can see:
+///
+/// * the slack (`min_quotient`), which no Lipschitz bound reports, and which
+///   is what makes a correct field slow rather than wrong;
+/// * the actual tension of a *blended* region, where two laws meet over a
+///   transition and the bound of neither one describes the seam.
+///
+/// Difference quotients rather than gradients, because a gradient sampled by
+/// central differences smooths over exactly the discontinuities that break a
+/// marcher. Pairs where both points are strictly inside the solid are
+/// skipped: the Lipschitz claim is about the exterior, and a field is allowed
+/// to be discontinuous deep inside.
+///
+/// # Arguments
+/// * `node` — SDF tree to measure
+/// * `aabb` — region to sample within
+/// * `samples` — number of point pairs
+/// * `seed` — random seed, for reproducibility
+/// * `probe` — separation between the two points of a pair. Small enough to
+///   be local, large enough that `f`'s own precision does not dominate;
+///   `1e-3` of the region's size is a reasonable default.
+#[must_use]
+pub fn measure_tension(
+    node: &SdfNode,
+    aabb: Aabb,
+    samples: u64,
+    seed: u64,
+    probe: f32,
+) -> TensionEstimate {
+    let mut rng = Rng64::new(seed);
+    let mut max_quotient = 0.0_f32;
+    let mut min_quotient = f32::INFINITY;
+    let mut at = Vec3::ZERO;
+    let mut toward = Vec3::ZERO;
+    let mut counted: u64 = 0;
+
+    for _ in 0..samples {
+        let p = Vec3::new(
+            rng.next_range(aabb.min.x, aabb.max.x),
+            rng.next_range(aabb.min.y, aabb.max.y),
+            rng.next_range(aabb.min.z, aabb.max.z),
+        );
+        // a direction on the sphere, rejection sampled so the distribution
+        // does not favour the cube's corners
+        let dir = loop {
+            let c = Vec3::new(
+                rng.next_range(-1.0, 1.0),
+                rng.next_range(-1.0, 1.0),
+                rng.next_range(-1.0, 1.0),
+            );
+            let len_sq = c.length_squared();
+            if len_sq > 1e-6 && len_sq <= 1.0 {
+                break c / len_sq.sqrt();
+            }
+        };
+        let q = p + dir * probe;
+
+        let fp = eval(node, p);
+        let fq = eval(node, q);
+        // exterior claim only
+        if fp < 0.0 && fq < 0.0 {
+            continue;
+        }
+        if !fp.is_finite() || !fq.is_finite() {
+            continue;
+        }
+        let quotient = (fp - fq).abs() / probe;
+        counted += 1;
+        if quotient > max_quotient {
+            max_quotient = quotient;
+            at = p;
+            toward = q;
+        }
+        if quotient < min_quotient {
+            min_quotient = quotient;
+        }
+    }
+
+    if counted == 0 {
+        min_quotient = 0.0;
+    }
+
+    TensionEstimate {
+        max_quotient,
+        min_quotient,
+        at,
+        toward,
+        sample_count: counted,
+        probe,
+    }
+}

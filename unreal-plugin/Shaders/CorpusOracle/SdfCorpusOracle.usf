@@ -63,244 +63,252 @@
 #elif ALICE_CORPUS_NODE == 27
 #include "/Plugin/AliceSDF/CorpusOracle/Corpus/gyroid.ush"
 #elif ALICE_CORPUS_NODE == 28
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/heart.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/metric_ball_cube.ush"
 #elif ALICE_CORPUS_NODE == 29
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tube.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/metric_ball_octahedron.ush"
 #elif ALICE_CORPUS_NODE == 30
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/barrel.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/metric_ball_mix.ush"
 #elif ALICE_CORPUS_NODE == 31
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/diamond.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/metric_blend.ush"
 #elif ALICE_CORPUS_NODE == 32
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfered_cube.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/heart.ush"
 #elif ALICE_CORPUS_NODE == 33
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/schwarz_p.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tube.ush"
 #elif ALICE_CORPUS_NODE == 34
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/superellipsoid.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/barrel.ush"
 #elif ALICE_CORPUS_NODE == 35
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rounded_x.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/diamond.ush"
 #elif ALICE_CORPUS_NODE == 36
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pie.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfered_cube.ush"
 #elif ALICE_CORPUS_NODE == 37
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/trapezoid.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/schwarz_p.ush"
 #elif ALICE_CORPUS_NODE == 38
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/parallelogram.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/superellipsoid.ush"
 #elif ALICE_CORPUS_NODE == 39
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tunnel.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rounded_x.ush"
 #elif ALICE_CORPUS_NODE == 40
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/uneven_capsule.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pie.ush"
 #elif ALICE_CORPUS_NODE == 41
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/egg.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/trapezoid.ush"
 #elif ALICE_CORPUS_NODE == 42
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/arc_shape.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/parallelogram.ush"
 #elif ALICE_CORPUS_NODE == 43
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/moon.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tunnel.ush"
 #elif ALICE_CORPUS_NODE == 44
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/cross_shape.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/uneven_capsule.ush"
 #elif ALICE_CORPUS_NODE == 45
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/blobby_cross.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/egg.ush"
 #elif ALICE_CORPUS_NODE == 46
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/parabola_segment.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/arc_shape.ush"
 #elif ALICE_CORPUS_NODE == 47
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/regular_polygon.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/moon.ush"
 #elif ALICE_CORPUS_NODE == 48
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/star_polygon.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/cross_shape.ush"
 #elif ALICE_CORPUS_NODE == 49
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/blobby_cross.ush"
 #elif ALICE_CORPUS_NODE == 50
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/helix.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/parabola_segment.ush"
 #elif ALICE_CORPUS_NODE == 51
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tetrahedron.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/regular_polygon.ush"
 #elif ALICE_CORPUS_NODE == 52
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/dodecahedron.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/star_polygon.ush"
 #elif ALICE_CORPUS_NODE == 53
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/icosahedron.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs.ush"
 #elif ALICE_CORPUS_NODE == 54
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/truncated_octahedron.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/helix.ush"
 #elif ALICE_CORPUS_NODE == 55
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/truncated_icosahedron.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tetrahedron.ush"
 #elif ALICE_CORPUS_NODE == 56
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/box_frame.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/dodecahedron.ush"
 #elif ALICE_CORPUS_NODE == 57
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/diamond_surface.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/icosahedron.ush"
 #elif ALICE_CORPUS_NODE == 58
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/neovius.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/truncated_octahedron.ush"
 #elif ALICE_CORPUS_NODE == 59
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/lidinoid.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/truncated_icosahedron.ush"
 #elif ALICE_CORPUS_NODE == 60
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/iwp.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/box_frame.ush"
 #elif ALICE_CORPUS_NODE == 61
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/frd.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/diamond_surface.ush"
 #elif ALICE_CORPUS_NODE == 62
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/fischer_koch_s.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/neovius.ush"
 #elif ALICE_CORPUS_NODE == 63
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pmy.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/lidinoid.ush"
 #elif ALICE_CORPUS_NODE == 64
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/circle_2d.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/iwp.ush"
 #elif ALICE_CORPUS_NODE == 65
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rect_2d.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/frd.ush"
 #elif ALICE_CORPUS_NODE == 66
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rounded_rect_2d.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/fischer_koch_s.ush"
 #elif ALICE_CORPUS_NODE == 67
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/segment_2d.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pmy.ush"
 #elif ALICE_CORPUS_NODE == 68
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polygon_2d.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/circle_2d.ush"
 #elif ALICE_CORPUS_NODE == 69
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/annular_2d.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rect_2d.ush"
 #elif ALICE_CORPUS_NODE == 70
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rounded_rect_2d.ush"
 #elif ALICE_CORPUS_NODE == 71
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/intersection.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/segment_2d.ush"
 #elif ALICE_CORPUS_NODE == 72
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/subtract.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polygon_2d.ush"
 #elif ALICE_CORPUS_NODE == 73
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/smooth_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/annular_2d.ush"
 #elif ALICE_CORPUS_NODE == 74
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/smooth_intersection.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/union.ush"
 #elif ALICE_CORPUS_NODE == 75
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/smooth_subtract.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/intersection.ush"
 #elif ALICE_CORPUS_NODE == 76
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfer_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/subtract.ush"
 #elif ALICE_CORPUS_NODE == 77
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfer_intersection.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/smooth_union.ush"
 #elif ALICE_CORPUS_NODE == 78
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfer_subtract.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/smooth_intersection.ush"
 #elif ALICE_CORPUS_NODE == 79
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/smooth_subtract.ush"
 #elif ALICE_CORPUS_NODE == 80
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs_intersection.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfer_union.ush"
 #elif ALICE_CORPUS_NODE == 81
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs_subtract.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfer_intersection.ush"
 #elif ALICE_CORPUS_NODE == 82
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/xor.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/chamfer_subtract.ush"
 #elif ALICE_CORPUS_NODE == 83
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/morph.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs_union.ush"
 #elif ALICE_CORPUS_NODE == 84
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/columns_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs_intersection.ush"
 #elif ALICE_CORPUS_NODE == 85
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/columns_intersection.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/stairs_subtract.ush"
 #elif ALICE_CORPUS_NODE == 86
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/columns_subtract.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/xor.ush"
 #elif ALICE_CORPUS_NODE == 87
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pipe.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/morph.ush"
 #elif ALICE_CORPUS_NODE == 88
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/engrave.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/columns_union.ush"
 #elif ALICE_CORPUS_NODE == 89
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/groove.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/columns_intersection.ush"
 #elif ALICE_CORPUS_NODE == 90
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tongue.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/columns_subtract.ush"
 #elif ALICE_CORPUS_NODE == 91
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pipe.ush"
 #elif ALICE_CORPUS_NODE == 92
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_intersection.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/engrave.ush"
 #elif ALICE_CORPUS_NODE == 93
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_subtract.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/groove.ush"
 #elif ALICE_CORPUS_NODE == 94
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/translate.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/tongue.ush"
 #elif ALICE_CORPUS_NODE == 95
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rotate.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_union.ush"
 #elif ALICE_CORPUS_NODE == 96
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_intersection.ush"
 #elif ALICE_CORPUS_NODE == 97
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_xyz.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_subtract.ush"
 #elif ALICE_CORPUS_NODE == 98
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_xyz_interior.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/translate.ush"
 #elif ALICE_CORPUS_NODE == 99
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/projective_transform.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rotate.ush"
 #elif ALICE_CORPUS_NODE == 100
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/lattice_deform.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale.ush"
 #elif ALICE_CORPUS_NODE == 101
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sdf_skinning.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_xyz.ush"
 #elif ALICE_CORPUS_NODE == 102
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sdf_skinning_two_bones.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_xyz_interior.ush"
 #elif ALICE_CORPUS_NODE == 103
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/twist.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/projective_transform.ush"
 #elif ALICE_CORPUS_NODE == 104
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/bend.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/lattice_deform.ush"
 #elif ALICE_CORPUS_NODE == 105
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_infinite.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sdf_skinning.ush"
 #elif ALICE_CORPUS_NODE == 106
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_finite.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sdf_skinning_two_bones.ush"
 #elif ALICE_CORPUS_NODE == 107
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_exp_smooth_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/twist.ush"
 #elif ALICE_CORPUS_NODE == 108
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_smooth_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/bend.ush"
 #elif ALICE_CORPUS_NODE == 109
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_chamfer_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_infinite.ush"
 #elif ALICE_CORPUS_NODE == 110
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_stairs_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_finite.ush"
 #elif ALICE_CORPUS_NODE == 111
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_round.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_exp_smooth_union.ush"
 #elif ALICE_CORPUS_NODE == 112
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_onion.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_smooth_union.ush"
 #elif ALICE_CORPUS_NODE == 113
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_xyz_smooth_union.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_chamfer_union.ush"
 #elif ALICE_CORPUS_NODE == 114
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_nested.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_stairs_union.ush"
 #elif ALICE_CORPUS_NODE == 115
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_union_far.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_round.ush"
 #elif ALICE_CORPUS_NODE == 116
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_7_offset.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_onion.ush"
 #elif ALICE_CORPUS_NODE == 117
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_finite_tie_translate.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_xyz_smooth_union.ush"
 #elif ALICE_CORPUS_NODE == 118
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rotate_pyramid.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/scale_nested.ush"
 #elif ALICE_CORPUS_NODE == 119
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_nested.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/exp_smooth_union_far.ush"
 #elif ALICE_CORPUS_NODE == 120
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pyramid_base.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_7_offset.ush"
 #elif ALICE_CORPUS_NODE == 121
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_infinite_offset.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_finite_tie_translate.ush"
 #elif ALICE_CORPUS_NODE == 122
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_finite_offset.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/rotate_pyramid.ush"
 #elif ALICE_CORPUS_NODE == 123
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/noise.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_nested.ush"
 #elif ALICE_CORPUS_NODE == 124
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/round.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/pyramid_base.ush"
 #elif ALICE_CORPUS_NODE == 125
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/onion.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_infinite_offset.ush"
 #elif ALICE_CORPUS_NODE == 126
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/elongate.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/repeat_finite_offset.ush"
 #elif ALICE_CORPUS_NODE == 127
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/mirror.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/noise.ush"
 #elif ALICE_CORPUS_NODE == 128
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/revolution.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/round.ush"
 #elif ALICE_CORPUS_NODE == 129
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/extrude.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/onion.ush"
 #elif ALICE_CORPUS_NODE == 130
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sweep_bezier.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/elongate.ush"
 #elif ALICE_CORPUS_NODE == 131
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/taper.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/mirror.ush"
 #elif ALICE_CORPUS_NODE == 132
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/displacement.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/revolution.ush"
 #elif ALICE_CORPUS_NODE == 133
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sine_displacement.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/extrude.ush"
 #elif ALICE_CORPUS_NODE == 134
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sweep_bezier.ush"
 #elif ALICE_CORPUS_NODE == 135
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_2.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/taper.ush"
 #elif ALICE_CORPUS_NODE == 136
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_1.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/displacement.ush"
 #elif ALICE_CORPUS_NODE == 137
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/octant_mirror.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/sine_displacement.ush"
 #elif ALICE_CORPUS_NODE == 138
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/shear.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat.ush"
 #elif ALICE_CORPUS_NODE == 139
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/animated.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_2.ush"
 #elif ALICE_CORPUS_NODE == 140
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/with_material.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/polar_repeat_1.ush"
 #elif ALICE_CORPUS_NODE == 141
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/icosahedral_symmetry.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/octant_mirror.ush"
 #elif ALICE_CORPUS_NODE == 142
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/ifs.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/shear.ush"
 #elif ALICE_CORPUS_NODE == 143
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/ifs_scale_rotate.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/animated.ush"
 #elif ALICE_CORPUS_NODE == 144
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/surface_roughness.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/with_material.ush"
 #elif ALICE_CORPUS_NODE == 145
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/terrain.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/icosahedral_symmetry.ush"
 #elif ALICE_CORPUS_NODE == 146
-#include "/Plugin/AliceSDF/CorpusOracle/Corpus/heightmap_displacement.ush"
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/ifs.ush"
 #elif ALICE_CORPUS_NODE == 147
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/ifs_scale_rotate.ush"
+#elif ALICE_CORPUS_NODE == 148
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/surface_roughness.ush"
+#elif ALICE_CORPUS_NODE == 149
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/terrain.ush"
+#elif ALICE_CORPUS_NODE == 150
+#include "/Plugin/AliceSDF/CorpusOracle/Corpus/heightmap_displacement.ush"
+#elif ALICE_CORPUS_NODE == 151
 #include "/Plugin/AliceSDF/CorpusOracle/Corpus/nested.ush"
 #else
 #error "ALICE_CORPUS_NODE out of range — regenerate with examples/unreal_corpus_oracle.rs"

@@ -398,6 +398,31 @@ impl Compiler {
                     .push(Instruction::gyroid(*scale, *thickness));
             }
 
+            SdfNode::MetricBall {
+                radius,
+                w_l1,
+                w_l2,
+                w_linf,
+            } => {
+                self.instructions
+                    .push(Instruction::metric_ball(*radius, *w_l1, *w_l2, *w_linf));
+            }
+
+            SdfNode::MetricBlend {
+                inner,
+                outer,
+                center,
+                radius,
+                skin,
+            } => {
+                // stack order matches the binary ops: inner first, outer second
+                self.compile_node(inner);
+                self.compile_node(outer);
+                self.instructions.push(Instruction::metric_blend(
+                    center.x, center.y, center.z, *radius, *skin,
+                ));
+            }
+
             SdfNode::Heart { size } => {
                 self.instructions.push(Instruction::heart(*size));
             }
@@ -1472,6 +1497,13 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
 /// Recursively validate that all nodes in the tree are supported by the bytecode compiler.
 fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
     match node {
+        // Metric nodes: four and five params respectively, both within the
+        // instruction's seven slots, and both have a VM law.
+        SdfNode::MetricBall { .. } => {}
+        SdfNode::MetricBlend { inner, outer, .. } => {
+            validate_for_compile(inner)?;
+            validate_for_compile(outer)?;
+        }
         // Unsupported primitives (exceed params[6] limit)
         SdfNode::Triangle { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Triangle".into()));

@@ -4,7 +4,65 @@ All notable changes to ALICE-SDF are documented in this file.
 
 For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHANGELOG-history.md).
 
-## [Unreleased]
+## [4.0.0] - 2026-09-27
+
+### Changed (breaking) — `SdfNode` / `OpCode` を `#[non_exhaustive]` に
+
+variant の追加は破壊的変更なので、この 2 つの enum に variant を足すたびに
+major が必要だった。4.0.0 で `#[non_exhaustive]` を宣言し、**これ以降の
+primitive / opcode 追加を minor で出せる**ようにする。
+
+downstream への影響は **`match` に wildcard arm (`_ => ...`) が必要になること
+だけ**。enum 単位の `#[non_exhaustive]` が禁じるのは exhaustive match であって
+variant の構築ではないので、`SdfNode::Sphere { radius }` のような struct
+literal も `SdfNode::sphere(r)` のような constructor も従来どおり使える
+(構築を禁じるのは variant 単位に付けた場合)。`alice-lol` は `emit.rs` の
+`match` が既に `_ => return None` を持ち、構築側は struct literal と
+constructor の併用なのでいずれも影響なし。
+
+同 release で `SdfNode::MetricBall` / `MetricBlend`、`OpCode::MetricBall` /
+`MetricBlend` を追加している (下記)。この 2 つが `#[non_exhaustive]` を入れる
+きっかけになった最後の「major を要求する variant 追加」。
+
+### Added — 計量そのものを値にする 2 node と、場の主張を測る 2 API (2026-09-27)
+
+距離場はどれもユークリッドノルムで書かれている `‖p‖₂ − r` が球、
+`‖p‖∞ − r` が立方体、`‖p‖₁ − r` が八面体で、**式は同じでノルムだけが違う**
+その「ノルム」を parameter にしたのが今回の追加。
+
+- **`SdfNode::MetricBall`** — 重み付きノルム `w₁‖p‖₁ + w₂‖p‖₂ + w∞‖p‖∞` の球。
+  重みは検証済みの `alice_det_math::metric::MetricWeights` 経由でしか渡せない
+  (負の重みは単位球が凸でなくなり計量でなくなる) `eval_lipschitz` が返す上界は
+  **推定でなく閉形式** `√((w₁+w∞)² + 2w₁²) + w₂` で、corpus の差分商 property
+  test がそれを実測で裏取りする。立方計量は 1-Lipschitz、八面体計量は √3
+  (= 距離を過大申告する = 薄い面を踏み抜く側)。
+- **`SdfNode::MetricBlend`** — 2 つの場を球状の皮で混ぜる。`radius` の内側は
+  内側の場が **bit 一致で**そのまま、`radius + skin` の外側は外側の場が
+  **bit 一致で**そのまま (重みは端で厳密に 0 / 1、補間は端点厳密)。つまり
+  バブルを置いても外の世界は 1 bit も動かない。皮の上では勾配に
+  `|f_in − f_out| · |∇w|` が乗り、この第 1 項はこの node の性質ではないので
+  `eval_lipschitz` は **推測せず INFINITY を返す**。
+- **`measure::measure_tension`** — 領域上の差分商の最大と最小を実測する。
+  静的上界が「法として何を許すか」を言うのに対し、これは「ここで実際に
+  何が起きているか」を言う。`max > 1` は距離の過大申告 (踏み抜き)、
+  `min < 1` は緩み (marcher の step 数が増えるだけで正しさは保たれる)。
+  皮の張力のように **2 つの法が出会う継ぎ目**は、どちらの静的上界でも
+  記述できないのでここでしか測れない。
+- **`fidelity::distance_fidelity`** — `eval_lipschitz` の float を
+  `NeverOverReports` / `OverReportsBy` / `Unbounded` の 3 値にし、
+  `safe_step_scale()` で marcher の除数を直接返す。`L > 1` が踏み抜きを
+  意味することは doc にしか書かれていなかったのを型にした。
+
+corpus に 4 node (`metric_ball_cube` / `metric_ball_octahedron` /
+`metric_ball_mix` / `metric_blend`) を追加したので、5 経路 parity・Lipschitz
+主張・AABB 保守性・区間包含・naga validate・det golden の既存 gate が
+そのまま新 node にも効く。
+
+### Changed
+
+- `alice-det-math` 0.2 → 0.3 (`metric` module を使うため、追加のみで既存
+  function の bit は不変)
+
 
 ### Fixed — 区間包含と helix の場が壊れていた 3 件 (2026-09-27)
 

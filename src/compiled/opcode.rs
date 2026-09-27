@@ -9,6 +9,8 @@
 /// (modifies the evaluation point).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
+// 4.0.0: `SdfNode` と同じ理由で宣言する (opcode の追加を minor で出せるように)。
+#[non_exhaustive]
 pub enum OpCode {
     // === Primitives (push distance to stack) ===
     /// Sphere: `params[0]` = radius
@@ -153,6 +155,8 @@ pub enum OpCode {
     RoundedRect2D = 119,
     /// Annular2D: `params[0]` = outer_radius, `params[1]` = thickness, `params[2]` = half_height
     Annular2D = 120,
+    /// MetricBall: `params[0]` = radius, `params[1..4]` = weights (l1, l2, linf)
+    MetricBall = 121,
 
     // === Binary Operations (pop 2, push 1) ===
     /// Union: min(a, b)
@@ -258,6 +262,8 @@ pub enum OpCode {
     SweepBezier = 62,
     /// OctantMirror: abs + sort (x >= y >= z)
     OctantMirror = 63,
+    /// MetricBlend: `params[0..3]` = centre, `params[3]` = radius, `params[4]` = skin
+    MetricBlend = 140,
     /// Shear: `params[0..3]` = shear factors (xy, xz, yz)
     Shear = 144,
     /// Animated: `params[0]` = speed, `params[1]` = amplitude
@@ -437,8 +443,10 @@ impl OpCode {
             | Self::Segment2D
             | Self::Polygon2D
             | Self::RoundedRect2D
+            | Self::MetricBall
             | Self::Annular2D => OpKind::Primitive,
             Self::Union
+            | Self::MetricBlend
             | Self::Intersection
             | Self::Subtraction
             | Self::SmoothUnion

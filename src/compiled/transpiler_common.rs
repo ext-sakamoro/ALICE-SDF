@@ -1053,6 +1053,92 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
 
+            SdfNode::MetricBall {
+                radius,
+                w_l1,
+                w_l2,
+                w_linf,
+            } => {
+                // Same left-to-right sum as `sdf_metric_ball` / the VM law.
+                let var = self.next_var();
+                let p_r = self.param(*radius);
+                let p_w1 = self.param(*w_l1);
+                let p_w2 = self.param(*w_l2);
+                let p_wi = self.param(*w_linf);
+                let a = self.next_var();
+                code.push_str(&L::decl_vec3(&a, &format!("abs({point_var})")));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "{w1} * ({a}.x + {a}.y + {a}.z) + {w2} * length({p}) \
+                         + {wi} * max(max({a}.x, {a}.y), {a}.z) - {r}",
+                        w1 = p_w1,
+                        w2 = p_w2,
+                        wi = p_wi,
+                        a = a,
+                        p = point_var,
+                        r = p_r
+                    ),
+                ));
+                var
+            }
+
+            SdfNode::MetricBlend {
+                inner,
+                outer,
+                center,
+                radius,
+                skin,
+            } => {
+                let d_in = self.transpile_node_inner(inner, point_var, code);
+                let d_out = self.transpile_node_inner(outer, point_var, code);
+                let p_cx = self.param(center.x);
+                let p_cy = self.param(center.y);
+                let p_cz = self.param(center.z);
+                let p_r = self.param(*radius);
+                let p_w = self.param(*skin);
+                // The cubic is written out rather than calling the builtin
+                // `smoothstep`, whose last ulp is not specified across
+                // drivers; this is the same expression the CPU law uses.
+                // `skin` must be positive here — the CPU treats a zero skin
+                // as a step, which this expression cannot reproduce.
+                let len = self.next_var();
+                code.push_str(&L::decl_float(
+                    &len,
+                    &format!(
+                        "length({p} - {ctor})",
+                        p = point_var,
+                        ctor = L::vec3_ctor(&p_cx, &p_cy, &p_cz)
+                    ),
+                ));
+                let tt = self.next_var();
+                code.push_str(&L::decl_float(
+                    &tt,
+                    &format!(
+                        "clamp(({len} - {r}) / {w}, 0.0, 1.0)",
+                        len = len,
+                        r = p_r,
+                        w = p_w
+                    ),
+                ));
+                let t = self.next_var();
+                code.push_str(&L::decl_float(
+                    &t,
+                    &format!("{tt} * {tt} * (3.0 - 2.0 * {tt})", tt = tt),
+                ));
+                let var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "(1.0 - {t}) * {din} + {t} * {dout}",
+                        t = t,
+                        din = d_in,
+                        dout = d_out
+                    ),
+                ));
+                var
+            }
+
             SdfNode::Heart { size } => {
                 self.ensure_helper("sdf_heart");
                 let var = self.next_var();

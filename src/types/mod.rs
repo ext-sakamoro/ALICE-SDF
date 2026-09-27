@@ -63,6 +63,9 @@ const fn taper_reach_unknown() -> [f32; 2] {
 /// - A transform applied to a child node
 /// - A modifier deforming a child node
 #[derive(Debug, Clone, Serialize, Deserialize)]
+// 4.0.0: variant の追加は破壊的変更なので、これ以降の primitive 追加を minor
+// で出せるように宣言する。downstream の `match` には wildcard arm が必要。
+#[non_exhaustive]
 pub enum SdfNode {
     // === Primitives ===
     /// Sphere with radius
@@ -321,6 +324,51 @@ pub enum SdfNode {
         scale: f32,
         /// Shell half-thickness
         thickness: f32,
+    },
+
+    /// Ball of a weighted norm — `w₁‖p‖₁ + w₂‖p‖₂ + w∞‖p‖∞ − radius`.
+    ///
+    /// The three weights choose the shape: `(0, 1, 0)` is a sphere,
+    /// `(0, 0, 1)` a cube, `(1, 0, 0)` an octahedron, and anything in
+    /// between a convex blend of those unit balls. They are non-negative and
+    /// not all zero — [`SdfNode::metric_ball`] takes a validated
+    /// `MetricWeights`, which is the only way to build one.
+    MetricBall {
+        /// Radius in the ball's own metric.
+        radius: f32,
+        /// Weight of `‖·‖₁` (octahedral).
+        w_l1: f32,
+        /// Weight of `‖·‖₂` (Euclidean).
+        w_l2: f32,
+        /// Weight of `‖·‖∞` (cubic).
+        w_linf: f32,
+    },
+
+    /// Two fields blended over a spherical skin — the inner field inside a
+    /// bubble, the outer one beyond it, smoothly joined across the skin.
+    ///
+    /// Inside `radius` the result is the inner field *exactly*, beyond
+    /// `radius + skin` the outer one *exactly* (the blend weight is exactly
+    /// 0 and 1 there, and the interpolation is endpoint-exact), so placing a
+    /// bubble never perturbs the world outside it.
+    ///
+    /// The blend of two unrelated fields is not a distance function: across
+    /// the skin the gradient picks up `|f_in − f_out| · |∇w|`, which no
+    /// static bound can know, so
+    /// [`eval_lipschitz`](crate::interval::eval_lipschitz) reports infinity
+    /// for it. Use [`measure_tension`](crate::measure::measure_tension) over
+    /// the skin to find out what it actually does.
+    MetricBlend {
+        /// Field inside the bubble.
+        inner: Arc<Self>,
+        /// Field outside it.
+        outer: Arc<Self>,
+        /// Bubble centre.
+        center: Vec3,
+        /// Radius at which the skin starts.
+        radius: f32,
+        /// Skin width; the blend spans `[radius, radius + skin]`.
+        skin: f32,
     },
 
     /// 3D heart shape (revolved contour)
@@ -1295,6 +1343,7 @@ impl SdfNode {
             | Self::InfiniteCylinder { .. }
             | Self::InfiniteCone { .. }
             | Self::Gyroid { .. }
+            | Self::MetricBall { .. }
             | Self::Heart { .. }
             | Self::Tube { .. }
             | Self::Barrel { .. }
@@ -1341,6 +1390,7 @@ impl SdfNode {
 
             // === Operations ===
             Self::Union { .. }
+            | Self::MetricBlend { .. }
             | Self::Intersection { .. }
             | Self::Subtraction { .. }
             | Self::SmoothUnion { .. }
@@ -1529,6 +1579,8 @@ impl SdfNode {
             | Self::IFS { child, .. }
             | Self::HeightmapDisplacement { child, .. }
             | Self::SurfaceRoughness { child, .. } => 1 + child.node_count(),
+
+            Self::MetricBlend { inner, outer, .. } => 1 + inner.node_count() + outer.node_count(),
 
             #[allow(unreachable_patterns)]
             _ => 1,

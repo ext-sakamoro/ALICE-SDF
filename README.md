@@ -22,6 +22,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **10-1000x compression** compared to traditional mesh formats
 - **Infinite resolution** - shapes are mathematically perfect at any scale
 - **CSG operations** - boolean operations on shapes without mesh overhead
+- **The metric as a value** (4.0.0) - `MetricBall` takes the norm itself as a parameter (`‖p‖₂ − r` is a sphere, `‖p‖∞ − r` a cube, `‖p‖₁ − r` an octahedron: the same expression, a different norm), with an *exact closed form* for its Lipschitz bound rather than an estimate; `MetricBlend` puts one field inside a bubble and another outside it, leaving the world beyond the skin untouched bit for bit. `measure_tension` reports what a field's gradient actually does over a region — the seam where two laws meet is the one place no static bound can describe
 - **Cross-platform bit-exact evaluation** (3.1.0) - every transcendental in the laws and evaluators goes through [`alice-det-math`](https://crates.io/crates/alice-det-math) (the crate `alice-physics` uses) and `a * b + c` is never fused, so the tree, compiled scalar, `f32x8` SIMD, BVH and Cranelift SIMD-JIT evaluators return the *same bits* on x86_64, aarch64 and wasm32 (`tests/test_det_parity.rs`, `tests/test_det_golden.rs`); the GPU shaders stay a tolerance domain except the axis ties of `atan2`, which `alice_atan2` pins to the CPU law
 - **Real-time raymarching** - GPU-accelerated rendering
 - **PBR materials** - metallic-roughness workflow compatible with UE5/UE6/Unity/Godot

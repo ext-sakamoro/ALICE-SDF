@@ -22,6 +22,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **10〜1000倍の圧縮** - 従来のメッシュフォーマットと比較
 - **無限解像度** - あらゆるスケールで数学的に完全な形状
 - **CSG演算** - メッシュオーバーヘッドなしの形状ブーリアン演算
+- **計量を値として持つ** (4.0.0) - `MetricBall` はノルム自体を parameter にする (`‖p‖₂ − r` が球、`‖p‖∞ − r` が立方体、`‖p‖₁ − r` が八面体 = 式は同じでノルムだけが違う) Lipschitz 上界は推定でなく**閉形式** `MetricBlend` はバブルの内と外で別の場を使い、皮の外の世界を bit 一致で保つ `measure_tension` は領域上で場の勾配が実際に何をしているかを測る (2 つの法が出会う継ぎ目は、どちらの静的上界でも記述できない)
 - **プラットフォーム横断の bit-exact 評価** (3.1.0) - 法則と評価器の超越関数を全て [`alice-det-math`](https://crates.io/crates/alice-det-math) (`alice-physics` と同じ crate) 経由にし `a * b + c` を fuse しないため、tree / compiled scalar / `f32x8` SIMD / BVH / Cranelift SIMD-JIT の各評価器が x86_64 / aarch64 / wasm32 で *同じ bit* を返す (`tests/test_det_parity.rs`、`tests/test_det_golden.rs`) GPU shader は tolerance 領域のまま、ただし `atan2` の軸上 tie は `alice_atan2` で CPU 法則に固定
 - **リアルタイムレイマーチング** - GPU加速レンダリング
 - **PBRマテリアル** - UE5/UE6/Unity/Godot互換のメタリック-ラフネスワークフロー

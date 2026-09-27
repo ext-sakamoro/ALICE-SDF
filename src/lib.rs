@@ -52,6 +52,7 @@ pub mod collision;
 pub mod compiled;
 pub mod crispy;
 pub mod eval;
+pub mod fidelity;
 pub mod interval;
 pub mod io;
 pub mod llm_schema;

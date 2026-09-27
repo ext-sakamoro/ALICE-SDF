@@ -523,6 +523,33 @@ impl PrimTable for f32x8 {
         out
     }
     #[inline(always)]
+    fn metric_ball(
+        inst: &Instruction,
+        aux_data: &[f32],
+        p: Vec3R<Self>,
+        scale_correction: Self,
+    ) -> Self {
+        let p: Vec3x8 = p.into();
+        #[allow(clippy::needless_late_init, unused_variables)]
+        let out;
+        // Per-lane rather than native SIMD: the law is three cheap norms and
+        // a weighted sum, and calling the scalar function makes the lane
+        // parity true by construction instead of by inspection. A native
+        // path exists in `alice_det_math::simd::metric_norm` (lane-parity
+        // tested there) if this ever shows up in a profile.
+        let d = eval_per_lane(&p, |pt| {
+            sdf_metric_ball(
+                pt,
+                inst.params[0],
+                inst.params[1],
+                inst.params[2],
+                inst.params[3],
+            )
+        });
+        out = d * scale_correction;
+        out
+    }
+    #[inline(always)]
     fn heart(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self {
         let p: Vec3x8 = p.into();
         #[allow(clippy::needless_late_init, unused_variables)]

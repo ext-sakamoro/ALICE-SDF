@@ -4,6 +4,8 @@
 
 use glam::{Vec2, Vec3};
 
+use std::sync::Arc;
+
 use super::SdfNode;
 
 impl SdfNode {
@@ -332,6 +334,42 @@ impl SdfNode {
     #[inline]
     pub const fn gyroid(scale: f32, thickness: f32) -> Self {
         Self::Gyroid { scale, thickness }
+    }
+
+    /// Create the ball of a weighted norm.
+    ///
+    /// `(0, 1, 0)` gives a sphere, `(0, 0, 1)` a cube, `(1, 0, 0)` an
+    /// octahedron. Taking a validated
+    /// [`MetricWeights`](alice_det_math::metric::MetricWeights) is what keeps
+    /// a non-metric (a negative weight, whose unit ball is not convex) out of
+    /// the tree.
+    #[must_use]
+    #[inline]
+    pub const fn metric_ball(radius: f32, weights: alice_det_math::metric::MetricWeights) -> Self {
+        let (w_l1, w_l2, w_linf) = weights.weights();
+        Self::MetricBall {
+            radius,
+            w_l1,
+            w_l2,
+            w_linf,
+        }
+    }
+
+    /// Blend two fields over a spherical skin: `inner` within `radius` of
+    /// `center`, `outer` beyond `radius + skin`, smoothly joined between.
+    ///
+    /// Outside the bubble the result is `outer` bit for bit, so a bubble is
+    /// a local edit of the world and nothing else.
+    #[must_use]
+    #[inline]
+    pub fn metric_blend(inner: Self, outer: Self, center: Vec3, radius: f32, skin: f32) -> Self {
+        Self::MetricBlend {
+            inner: Arc::new(inner),
+            outer: Arc::new(outer),
+            center,
+            radius,
+            skin,
+        }
     }
 
     /// Create a 3D heart

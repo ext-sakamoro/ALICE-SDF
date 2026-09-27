@@ -199,6 +199,22 @@ const GOLDEN: &[(&str, &str)] = &[
         "49dd641085744bd4625035b3915044775639709ec613f9b7fd620e1c805bf130",
     ),
     (
+        "metric_ball_cube",
+        "2bd2d0cbb982cad88fb13aa90b4a90a0321cfc83ac074d70fca778a791817509",
+    ),
+    (
+        "metric_ball_octahedron",
+        "d8d7bbf923d9853c1545c0e275ab75efa1b49a04ae5e5742788bacd19b8437f7",
+    ),
+    (
+        "metric_ball_mix",
+        "865c3236825be98605bcbb1743924a9dd44ce6ed19a33a48d2514123bd464b9c",
+    ),
+    (
+        "metric_blend",
+        "c072fb77ad023604e1251888c06a4a02cf8165686e277ec30af81ad433c545d4",
+    ),
+    (
         "heart",
         "a67b187d36dd9f427377a9dc272868df3c321448849b543cf3f7436e9d3704a1",
     ),

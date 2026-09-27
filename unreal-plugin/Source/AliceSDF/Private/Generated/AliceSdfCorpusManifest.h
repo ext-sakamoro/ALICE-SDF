@@ -8,8 +8,8 @@
 
 #include "CoreMinimal.h"
 
-#define ALICE_SDF_CORPUS_COUNT 148
-#define ALICE_SDF_CORPUS_SHADER_COUNT 148
+#define ALICE_SDF_CORPUS_COUNT 152
+#define ALICE_SDF_CORPUS_SHADER_COUNT 152
 #define ALICE_SDF_CORPUS_GRID_POINTS 577
 #define ALICE_SDF_CORPUS_RANDOM_POINTS 512
 
@@ -42,6 +42,10 @@ static const TCHAR* const GAliceSdfCorpusNames[ALICE_SDF_CORPUS_COUNT] = {
 	TEXT("infinite_cylinder"),
 	TEXT("infinite_cone"),
 	TEXT("gyroid"),
+	TEXT("metric_ball_cube"),
+	TEXT("metric_ball_octahedron"),
+	TEXT("metric_ball_mix"),
+	TEXT("metric_blend"),
 	TEXT("heart"),
 	TEXT("tube"),
 	TEXT("barrel"),
@@ -194,6 +198,10 @@ static const bool GAliceSdfCorpusCompilable[ALICE_SDF_CORPUS_COUNT] = {
 	true, // infinite_cylinder
 	true, // infinite_cone
 	true, // gyroid
+	true, // metric_ball_cube
+	true, // metric_ball_octahedron
+	true, // metric_ball_mix
+	true, // metric_blend
 	true, // heart
 	true, // tube
 	true, // barrel
@@ -345,6 +353,10 @@ static const TCHAR* const GAliceSdfCorpusShaderNames[ALICE_SDF_CORPUS_SHADER_COU
 	TEXT("infinite_cylinder"),
 	TEXT("infinite_cone"),
 	TEXT("gyroid"),
+	TEXT("metric_ball_cube"),
+	TEXT("metric_ball_octahedron"),
+	TEXT("metric_ball_mix"),
+	TEXT("metric_blend"),
 	TEXT("heart"),
 	TEXT("tube"),
 	TEXT("barrel"),

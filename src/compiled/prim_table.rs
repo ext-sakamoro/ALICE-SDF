@@ -147,6 +147,12 @@ pub trait PrimTable: Real {
     ) -> Self;
     fn gyroid(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self)
         -> Self;
+    fn metric_ball(
+        inst: &Instruction,
+        aux_data: &[f32],
+        p: Vec3R<Self>,
+        scale_correction: Self,
+    ) -> Self;
     fn heart(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self;
     fn tube(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self) -> Self;
     fn barrel(inst: &Instruction, aux_data: &[f32], p: Vec3R<Self>, scale_correction: Self)

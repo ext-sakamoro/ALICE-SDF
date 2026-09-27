@@ -531,6 +531,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             OpCode::InfiniteCylinder => prim!(inst, infinite_cylinder),
             OpCode::InfiniteCone => prim!(inst, infinite_cone),
             OpCode::Gyroid => prim!(inst, gyroid),
+            OpCode::MetricBall => prim!(inst, metric_ball),
             OpCode::Heart => prim!(inst, heart),
             OpCode::Tube => prim!(inst, tube),
             OpCode::Barrel => prim!(inst, barrel),
@@ -575,6 +576,24 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             OpCode::Annular2D => prim!(inst, annular_2d),
 
             // === CSG binary operators ===
+            // Blend two fields across a spherical skin. Unlike the other
+            // binary ops this one reads the current point, so it cannot go
+            // through `bin!`: the weight comes from the distance to the
+            // bubble centre, and the interpolation is the same
+            // endpoint-exact `(1-t)a + tb` the tree path uses.
+            OpCode::MetricBlend => {
+                let centre = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                let radius = inst.params[3];
+                let skin = inst.params[4];
+                let t = R::map3(p.x, p.y, p.z, |q| {
+                    alice_det_math::metric::smoothstep(radius, radius + skin, (q - centre).length())
+                });
+                vsp -= 1;
+                let outer = value_stack.get(vsp);
+                let inner = value_stack.get(vsp - 1);
+                value_stack.set(vsp - 1, (R::one() - t) * inner + t * outer);
+            }
+
             OpCode::Union => bin!(inst, union),
             OpCode::Intersection => bin!(inst, intersection),
             OpCode::Subtraction => bin!(inst, subtraction),

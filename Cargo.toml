@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "3.1.0"
+version = "4.0.0"
 edition = "2021"
 # MSRV-aware 依存解決 (cargo 1.84+): `cargo update` が `rust-version` を超える dep を
 # 選ばない = lockfile が宣言 MSRV から silent に乖離しない (1.10.3 で 1.75 宣言のまま
@@ -109,7 +109,7 @@ wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 # 3.1.0: every transcendental in the evaluator and the laws goes through
 # alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
 # alice-physics 1.3 uses, which is what makes the SdfField boundary bit-exact.
-alice-det-math = { version = "0.2", features = ["simd"] }
+alice-det-math = { version = "0.3.1", features = ["simd"] }
 
 # Parallel processing
 rayon = "1.10"

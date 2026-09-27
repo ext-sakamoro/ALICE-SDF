@@ -133,6 +133,30 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::InfiniteCylinder { radius } => sdf_infinite_cylinder(point, *radius),
         SdfNode::InfiniteCone { angle } => sdf_infinite_cone(point, *angle),
         SdfNode::Gyroid { scale, thickness } => sdf_gyroid(point, *scale, *thickness),
+
+        SdfNode::MetricBall {
+            radius,
+            w_l1,
+            w_l2,
+            w_linf,
+        } => sdf_metric_ball(point, *radius, *w_l1, *w_l2, *w_linf),
+
+        SdfNode::MetricBlend {
+            inner,
+            outer,
+            center,
+            radius,
+            skin,
+        } => {
+            // exactly `outer` beyond the skin and exactly `inner` within it:
+            // the weight saturates and the interpolation is endpoint-exact
+            let t = alice_det_math::metric::smoothstep(
+                *radius,
+                *radius + *skin,
+                (point - *center).length(),
+            );
+            alice_det_math::metric::lerp(eval(inner, point), eval(outer, point), t)
+        }
         SdfNode::Heart { size } => sdf_heart(point, *size),
         SdfNode::Tube {
             outer_radius,

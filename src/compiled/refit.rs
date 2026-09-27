@@ -477,6 +477,17 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         OpCode::Horseshoe => cube(params[1] + params[2] + params[3] + params[4]),
         OpCode::Vesica => cube(params[0] + params[1]),
         OpCode::Heart => cube(params[0] * 2.0),
+        // The metric ball's tight box is `radius / (w1 + w2 + winf)` per axis
+        // (exact, see alice_det_math::metric::MetricWeights::axis_extent);
+        // degenerate weights fall back to a generous cube rather than 0.
+        OpCode::MetricBall => {
+            let sum = params[1] + params[2] + params[3];
+            if sum > 0.0 {
+                cube(params[0] / sum)
+            } else {
+                cube(params[0])
+            }
+        }
         OpCode::Tube => cube(params[0].max(params[2])),
         OpCode::Barrel => cube((params[0] + params[2]).max(params[1])),
         OpCode::Diamond => cube(params[0].max(params[1])),
@@ -562,6 +573,7 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         // Not primitives — unreachable by `OpKind::Primitive` dispatch, listed so the
         // match stays exhaustive when the enum grows.
         OpCode::Union
+        | OpCode::MetricBlend
         | OpCode::Intersection
         | OpCode::Subtraction
         | OpCode::SmoothUnion
@@ -622,7 +634,11 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
 fn csg_binary_aabb(opcode: OpCode, params: &[f32; 7], a: AabbPacked, b: AabbPacked) -> AabbPacked {
     match opcode {
         // Union-shape ops that don't expand the union bound.
-        OpCode::Union | OpCode::XOR | OpCode::Morph | OpCode::Pipe => a.union(&b),
+        // A convex combination of two fields is at least their pointwise
+        // minimum, so the blended solid is inside the union of the two.
+        OpCode::Union | OpCode::MetricBlend | OpCode::XOR | OpCode::Morph | OpCode::Pipe => {
+            a.union(&b)
+        }
         // Smooth blends expand the union AABB by their radius / k.
         OpCode::SmoothUnion => a.union(&b).expand(params[0]),
         OpCode::ChamferUnion => a.union(&b).expand(params[0]),
