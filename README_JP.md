@@ -1014,7 +1014,8 @@ alice_sdf_c4d.import_asdf("/path/to/model.asdf", bounds=(-300.0, 300.0), resolut
 
 SDF tree を Marching Cubes で tessellate して以下のいずれかを書き出し可能:
 
-- **STEP AP203** (ISO 10303-21 ASCII) — `CARTESIAN_POINT` + `POLY_LOOP` + `FACE_OUTER_BOUND` の三角形メッシュ。**注:** これは faceted mesh 表現であり、本格的な `ADVANCED_FACE` / `MANIFOLD_SOLID_BREP` BREP ではない。faceted STEP を受け入れるツール (FreeCAD、一部 Rhino plugin、mesh-aware CAD viewer) は開けるが、`MANIFOLD_SOLID_BREP` を厳格に要求するツールは拒否する場合あり。BREP wrap 化は今後 (`docs/PUBLISH.md` 参照)
+- **STEP AP214** (ISO 10303-21 ASCII、`AUTOMOTIVE_DESIGN`) — **faceted BREP**。三角形 1 枚が `PLANE` 上の `ADVANCED_FACE` で、`ORIENTED_EDGE`/`EDGE_CURVE` の `EDGE_LOOP` が境界、全面を `CLOSED_SHELL` → `MANIFOLD_SOLID_BREP` → `ADVANCED_BREP_SHAPE_REPRESENTATION` にまとめ、単位は mm。**注:** 面は平面なので、球は `SPHERICAL_SURFACE` ではなく三角形分割として届く。独立な読み戻し oracle (`tests/test_step_export_oracle.rs`) が (1) `#id` 参照の未解決なし (2) AP214 必須 root の存在 (3) shell が閉じている (各エッジが 2 回使われる) (4) 復元した体積が解析値と 5% 以内 を検証する。2026-09-27 以前は点と loop だけで shell / solid / 表現 / 単位が無く、未定義の `#0` を参照していたため CAD では開けなかった
+- **箱は厳密** — 原点中心の軸平行箱 (`SdfNode::Box3d`) は tessellate せず 4 角形 6 枚の `ADVANCED_FACE` として書くので、`resolution` に依らず寸法が厳密 (oracle が体積を `w·h·d` と 1e-6 以内で照合)。球 / 円柱は従来通り tessellate する。
 - **IGES** (Entity 134 Node + Entity 136 Finite Element) — FEM mesh entity。FEM ソルバや該当 entity 対応 viewer 向け。Entity 144 (Trimmed Surface) を期待する標準 CAD では未対応
 
 両方とも unit test で round-trip 検証済みだが、実 CAD ツールでの相互運用は個別検証が必要。

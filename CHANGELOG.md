@@ -6,6 +6,40 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — STEP export が STEP として成立していなかった
+
+- `io::step` は `CARTESIAN_POINT` + `POLY_LOOP` + `FACE_OUTER_BOUND` を並べるだけで
+  `CLOSED_SHELL` / `MANIFOLD_SOLID_BREP` / 形状表現 / 単位系を持たず、さらに存在しない
+  `#0` を 2 箇所から参照していた (= どの CAD でも開けない)。AP214
+  (`AUTOMOTIVE_DESIGN`) の faceted BREP として書き直した: 三角形 1 枚 = `PLANE` 上の
+  `ADVANCED_FACE`、境界は `ORIENTED_EDGE`/`EDGE_CURVE` の `EDGE_LOOP` (無向エッジ 1 本を
+  隣接 2 面で共有)、`CLOSED_SHELL` → `MANIFOLD_SOLID_BREP` →
+  `ADVANCED_BREP_SHAPE_REPRESENTATION` → `SHAPE_DEFINITION_REPRESENTATION`、単位は
+  mm (`LENGTH_UNIT`)。tessellate 後に `MeshRepair::repair_all` を通して退化 facet を除去
+  (退化 facet は平面を持てず、落とすと shell が開く)。README / README_JP の記述も更新。
+  面は依然として平面なので、球は `SPHERICAL_SURFACE` ではなく三角形分割として届く
+  (曲面の Phase 2 化は別途)。
+
+### Added — 箱は tessellate せず 6 面で厳密に出す (三相原理 Phase 2)
+
+- 原点中心の軸平行箱 (`SdfNode::Box3d`) は面が厳密に平面なので、Marching Cubes を
+  通さず 4 角形 6 枚の `ADVANCED_FACE` として書く。voxel 解像度に関係なく寸法が
+  厳密になる (`resolution` の値に依らず体積が `w·h·d` と 1e-6 以内で一致)。
+  寸法が機能そのものの部品 (治具 / 嵌合部) を CAD に渡す経路が tessellation 誤差から
+  外れる。`StepConfig` に field は追加していない (semver 互換を保つため自動判定)。
+  球 / 円柱の解析曲面 (`SPHERICAL_SURFACE` / `CYLINDRICAL_SURFACE`) は seam の扱いが
+  reader 依存で壊れやすいので今回は入れていない。
+
+### Added — STEP の独立読み戻し oracle
+
+- `tests/test_step_export_oracle.rs` 4 件。書き出した file を実装を通さずに Part21
+  として読み戻し、(1) 全 `#id` 参照が解決する (2) AP214 必須 root 15 種が揃っている
+  (3) `CLOSED_SHELL` の面を loop から復元した符号付き体積が `4/3 π r³` と 5% 以内
+  (4) 各エッジがちょうど 2 回使われる (閉じている) を検証する。complex entity instance
+  (`(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))`) も解釈する。
+- `io::step` の既存 unit test を更新: `CARTESIAN_POINT` 数 = 頂点数 + 形状表現の原点 1、
+  `VERTEX_POINT` 数 = 頂点数 (位相頂点は mesh 頂点と 1:1)。
+
 ### Added — MSL (Metal Shading Language) emit, verified on a real Metal device
 
 - `compiled::msl::MslShader` (feature `msl`, implies `gpu`) turns an `SdfNode`
