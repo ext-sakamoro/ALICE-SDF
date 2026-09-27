@@ -558,13 +558,14 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
         "only {finite} finite claims; infinite: {infinite:?}"
     );
     // Exactly the by-design non-Lipschitz laws: columns ×3, lattice deform,
-    // domain repetition ×8 (repeat / polar repeat corpus variants), taper,
-    // heightmap displacement, IFS ×2 (the nearest-image choice jumps between
+    // domain repetition ×10 (repeat / polar repeat corpus variants, including
+    // the half- and full-turn wedges added in 3.1.1), taper, heightmap
+    // displacement, IFS ×2 (the nearest-image choice jumps between
     // transforms; 2.2.0). Every primitive has a finite claim since 1.11.0.
     assert_eq!(
         infinite.len(),
-        16,
-        "infinite claims changed (expected the 16 by-design laws): {infinite:?}"
+        18,
+        "infinite claims changed (expected the 18 by-design laws): {infinite:?}"
     );
     for name in &infinite {
         assert!(

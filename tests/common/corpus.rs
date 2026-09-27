@@ -211,6 +211,13 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         ("rotate", unit_box().rotate(Quat::from_rotation_y(0.7))),
         ("scale", sphere().scale(1.7)),
         ("scale_xyz", sphere().scale_xyz(1.5, 0.8, 1.2)),
+        // Large enough that the sampled boxes land *inside* it: the interval
+        // arm scaled `lo` and `hi` by different factors, which inverts the
+        // bounds once the child interval is wholly negative (2026-09-27).
+        (
+            "scale_xyz_interior",
+            SdfNode::sphere(1.6).scale_xyz(0.8, 1.7, 2.4),
+        ),
         (
             "projective_transform",
             unit_box().projective_transform(identity_mat(), 1.0),
@@ -395,6 +402,17 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         (
             "polar_repeat",
             sphere().translate(0.8, 0.0, 0.0).polar_repeat(6),
+        ),
+        // Wedges of a half turn and a full turn: the interval arm folded the
+        // sector with `sin(ha)`, which collapses the z extent at `ha ≥ π/2`
+        // and made the enclosure too tight for `count ≤ 2` (2026-09-27).
+        (
+            "polar_repeat_2",
+            sphere().translate(0.8, 0.0, 0.0).polar_repeat(2),
+        ),
+        (
+            "polar_repeat_1",
+            sphere().translate(0.8, 0.0, 0.0).polar_repeat(1),
         ),
         (
             "octant_mirror",

@@ -1737,7 +1737,7 @@ const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_
         }
         let co = cos(phi - theta);
         let dy = py - c * phi;
-        let d2 = r * r + major_r * major_r - two_rr * co + dy * dy;
+        let d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
         best = min(best, d2);
     }
     let d_tube = sqrt(best) - minor_r;

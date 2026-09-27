@@ -8,8 +8,8 @@
 
 #include "CoreMinimal.h"
 
-#define ALICE_SDF_CORPUS_COUNT 145
-#define ALICE_SDF_CORPUS_SHADER_COUNT 145
+#define ALICE_SDF_CORPUS_COUNT 148
+#define ALICE_SDF_CORPUS_SHADER_COUNT 148
 #define ALICE_SDF_CORPUS_GRID_POINTS 577
 #define ALICE_SDF_CORPUS_RANDOM_POINTS 512
 
@@ -112,6 +112,7 @@ static const TCHAR* const GAliceSdfCorpusNames[ALICE_SDF_CORPUS_COUNT] = {
 	TEXT("rotate"),
 	TEXT("scale"),
 	TEXT("scale_xyz"),
+	TEXT("scale_xyz_interior"),
 	TEXT("projective_transform"),
 	TEXT("lattice_deform"),
 	TEXT("sdf_skinning"),
@@ -148,6 +149,8 @@ static const TCHAR* const GAliceSdfCorpusNames[ALICE_SDF_CORPUS_COUNT] = {
 	TEXT("displacement"),
 	TEXT("sine_displacement"),
 	TEXT("polar_repeat"),
+	TEXT("polar_repeat_2"),
+	TEXT("polar_repeat_1"),
 	TEXT("octant_mirror"),
 	TEXT("shear"),
 	TEXT("animated"),
@@ -261,6 +264,7 @@ static const bool GAliceSdfCorpusCompilable[ALICE_SDF_CORPUS_COUNT] = {
 	true, // rotate
 	true, // scale
 	true, // scale_xyz
+	true, // scale_xyz_interior
 	true, // projective_transform
 	true, // lattice_deform
 	true, // sdf_skinning
@@ -297,6 +301,8 @@ static const bool GAliceSdfCorpusCompilable[ALICE_SDF_CORPUS_COUNT] = {
 	true, // displacement
 	true, // sine_displacement
 	true, // polar_repeat
+	true, // polar_repeat_2
+	true, // polar_repeat_1
 	true, // octant_mirror
 	true, // shear
 	true, // animated
@@ -409,6 +415,7 @@ static const TCHAR* const GAliceSdfCorpusShaderNames[ALICE_SDF_CORPUS_SHADER_COU
 	TEXT("rotate"),
 	TEXT("scale"),
 	TEXT("scale_xyz"),
+	TEXT("scale_xyz_interior"),
 	TEXT("projective_transform"),
 	TEXT("lattice_deform"),
 	TEXT("sdf_skinning"),
@@ -445,6 +452,8 @@ static const TCHAR* const GAliceSdfCorpusShaderNames[ALICE_SDF_CORPUS_SHADER_COU
 	TEXT("displacement"),
 	TEXT("sine_displacement"),
 	TEXT("polar_repeat"),
+	TEXT("polar_repeat_2"),
+	TEXT("polar_repeat_1"),
 	TEXT("octant_mirror"),
 	TEXT("shear"),
 	TEXT("animated"),

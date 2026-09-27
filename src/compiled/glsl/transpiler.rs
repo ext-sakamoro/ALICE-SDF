@@ -1596,7 +1596,7 @@ const HELPER_SDF_HELIX: &str = r"float sdf_helix(vec3 p, float major_r, float mi
         }
         float co = cos(phi - theta);
         float dy = py - c * phi;
-        float d2 = r * r + major_r * major_r - two_rr * co + dy * dy;
+        float d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
         best = min(best, d2);
     }
     float d_tube = sqrt(best) - minor_r;

@@ -39,7 +39,13 @@ fn helix_curve_dist2(r: f32, theta: f32, py: f32, major_r: f32, pitch: f32) -> f
         let co = alice_det_math::cos(phi - theta);
         let dy = c * -phi + py;
         let rr = r * r + (major_r * major_r);
-        let d2 = dy * dy + (rr - two_rr * co);
+        // `rr − 2rR·cos` is the squared radial gap: exactly 0 on the curve, so
+        // in f32 it cancels to a small negative near r = R. Unclamped it made
+        // `sqrt` NaN, and `NaN.max(d_cap)` silently returned the *cap*
+        // distance — the field read −0.309 where the tube law gives −0.0999
+        // (a 0.21 error at the curve, and GPU `max` does not have to swallow
+        // NaN the same way the CPU does).
+        let d2 = dy * dy + (rr - two_rr * co).max(0.0);
         best = best.min(d2);
     }
     best

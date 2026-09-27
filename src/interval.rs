@@ -535,12 +535,15 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::CutHollowSphere { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::DeathStar { ra, rb, .. } => ia_bsphere(bounds, ra.max(*rb)),
         SdfNode::SolidAngle { radius, .. } => ia_bsphere(bounds, *radius),
+        // `round_radius` inflates the 2D (x, z) distance, so it grows the
+        // bounding sphere too — dropping it made the enclosure too tight by
+        // exactly `round_radius` (0.05 in the corpus).
         SdfNode::Rhombus {
             la,
             lb,
             half_height,
-            ..
-        } => ia_bsphere(bounds, la.max(*lb).hypot(*half_height)),
+            round_radius,
+        } => ia_bsphere(bounds, (la.max(*lb) + round_radius).hypot(*half_height)),
         SdfNode::Horseshoe {
             radius,
             half_length,
@@ -651,12 +654,19 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             d_2d.max(d_z).min(Interval::ZERO)
                 + len2(d_2d.max(Interval::ZERO), d_z.max(Interval::ZERO))
         }
+        // The law doubles `cap_height` (`h = cap_height * 2`) and anchors the
+        // lower cap at y = 0, so the shape reaches y = h + r2 — the old
+        // `max(r1, r2) + cap_height + half_depth` under-bounded that by
+        // `cap_height` (0.057 too tight in the corpus).
         SdfNode::UnevenCapsule {
             r1,
             r2,
             cap_height,
             half_depth,
-        } => ia_bsphere(bounds, r1.max(*r2) + cap_height + half_depth),
+        } => ia_bsphere(
+            bounds,
+            r1.max(2.0f32.mul_add(*cap_height, *r2)).hypot(*half_depth),
+        ),
         // apex at y = √3·(ra − rb) + ra (IQ sdEgg), base radius ra
         SdfNode::Egg { ra, rb } => ia_bsphere(bounds, 1.732_050_8f32.mul_add(ra - rb, *ra)),
         SdfNode::ArcShape {
@@ -925,14 +935,26 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         }
         SdfNode::ScaleNonUniform { child, factors } => {
             let min_f = factors.x.min(factors.y).min(factors.z);
-            let max_f = factors.x.max(factors.y).max(factors.z);
             let scaled = Vec3Interval {
                 x: bounds.x * (1.0 / factors.x),
                 y: bounds.y * (1.0 / factors.y),
                 z: bounds.z * (1.0 / factors.z),
             };
             let d = eval_interval(child, scaled);
-            Interval::new(d.lo * min_f, d.hi * max_f)
+            // `eval` multiplies by exactly `min_f`
+            // ([`crate::transforms::scale::transform_scale_nonuniform`]), so the
+            // enclosure is the child's interval times that one factor. Scaling
+            // `hi` by `max_f` instead was looser and, on a wholly negative child
+            // interval, **inverted** the bounds (`lo > hi`, e.g. `[−0.5, −0.25]`
+            // with factors 0.8 / 2.5 → `[−0.4, −0.625]`): the debug assert in
+            // `Interval::new` fired and release builds carried an interval whose
+            // `hi` sat below the values it was supposed to enclose.
+            let (lo, hi) = if min_f >= 0.0 {
+                (d.lo * min_f, d.hi * min_f)
+            } else {
+                (d.hi * min_f, d.lo * min_f)
+            };
+            Interval::new(lo, hi)
         }
         SdfNode::ProjectiveTransform {
             child,
@@ -1135,16 +1157,29 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::SineDisplacement {
             child, amplitude, ..
         } => eval_interval(child, bounds).expand(amplitude.abs()),
+        // The fold sends `p` to the wedge `|atan2(z, x)| ≤ ha` at the same
+        // radius, so `x = r·cos a`, `z = r·sin a` with `|a| ≤ ha`. Below
+        // `ha = π/2` that is `x ∈ [0, max_r]`, `|z| ≤ max_r·sin ha`; from
+        // `ha ≥ π/2` (count ≤ 2) the wedge reaches behind the axis and past
+        // the ±z extremes, so both only bound by `max_r`. Using `sin ha`
+        // unconditionally collapsed the count = 1 wedge to `z = 0`
+        // (`sin π ≈ 0`): the enclosure then claimed `+0.05` on a cell where
+        // the field is `−0.71`, and `alice-lol` proved "no overlap" there.
         SdfNode::PolarRepeat { child, count } => {
             let sector = std::f32::consts::TAU / (*count as f32);
-            let max_r = bounds.length_xz().hi;
             let ha = sector * 0.5;
+            let max_r = bounds.length_xz().hi;
+            let (x_lo, z_abs) = if ha >= std::f32::consts::FRAC_PI_2 {
+                (-max_r, max_r)
+            } else {
+                (0.0, max_r * ha.sin())
+            };
             eval_interval(
                 child,
                 Vec3Interval {
-                    x: Interval::new(0.0, max_r),
+                    x: Interval::new(x_lo, max_r),
                     y: bounds.y,
-                    z: Interval::new(-max_r * ha.sin(), max_r * ha.sin()),
+                    z: Interval::new(-z_abs, z_abs),
                 },
             )
         }

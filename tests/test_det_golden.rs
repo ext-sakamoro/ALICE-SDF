@@ -479,6 +479,10 @@ const GOLDEN: &[(&str, &str)] = &[
         "af77db57ccc8d30fdb3872490ef9bef55504d4e87729774f8cf4879694131b4e",
     ),
     (
+        "scale_xyz_interior",
+        "7d84b2615bc0c9ec9616c8243f7deace0d51953a78d86fef3cbaaa039ffb4b39",
+    ),
+    (
         "projective_transform",
         "43b86a346c5a72263761b0fabac74070e7997e9468f9481fc38daa6210d9bad0",
     ),
@@ -621,6 +625,14 @@ const GOLDEN: &[(&str, &str)] = &[
     (
         "polar_repeat",
         "1df618eac60e782a98b502776e89af278a0f6afba2bcf39fc978dbde1ccbcc88",
+    ),
+    (
+        "polar_repeat_2",
+        "3f82a885abd1d5dccabb4178cfd75a9d3b078a2c8fc5d567d84e7de30d7a07e5",
+    ),
+    (
+        "polar_repeat_1",
+        "e53315ab7af8b369874c5fbec803aa2a25d676c4a1dc2c1e409b1efa40ea4a51",
     ),
     (
         "octant_mirror",
