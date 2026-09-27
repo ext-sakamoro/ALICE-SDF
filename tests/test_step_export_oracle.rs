@@ -128,10 +128,12 @@ fn refs(args: &str) -> Vec<u64> {
     out
 }
 
-fn write_sphere_step(r: f32, resolution: u32) -> (String, std::path::PathBuf) {
+/// `tag` は test ごとに固有にする (同 file を 2 test が並列に書くと内容が混ざり、
+/// 参照が解決しない形で落ちる = 2026-09-27 に Linux CI だけで踏んだ)
+fn write_sphere_step(tag: &str, r: f32, resolution: u32) -> (String, std::path::PathBuf) {
     let dir = std::env::temp_dir().join("alice-sdf-step-oracle");
     std::fs::create_dir_all(&dir).expect("temp dir");
-    let path = dir.join(format!("sphere_{resolution}.step"));
+    let path = dir.join(format!("sphere_{tag}_{resolution}.step"));
     let cfg = StepConfig {
         bounds: (-(r + 1.0), r + 1.0),
         resolution,
@@ -144,7 +146,7 @@ fn write_sphere_step(r: f32, resolution: u32) -> (String, std::path::PathBuf) {
 
 #[test]
 fn step_file_has_no_dangling_references() {
-    let (text, path) = write_sphere_step(10.0, 24);
+    let (text, path) = write_sphere_step("refs", 10.0, 24);
     let entities = parse_step(&text);
     assert!(!entities.is_empty(), "DATA section にレコードが無い");
 
@@ -174,7 +176,7 @@ fn step_file_has_no_dangling_references() {
 
 #[test]
 fn step_declares_the_ap203_required_roots() {
-    let (text, path) = write_sphere_step(10.0, 24);
+    let (text, path) = write_sphere_step("roots", 10.0, 24);
     let entities = parse_step(&text);
     let have: std::collections::HashSet<&str> = entities
         .values()
@@ -283,7 +285,7 @@ fn shell_triangles(entities: &HashMap<u64, Entity>) -> Vec<[[f64; 3]; 3]> {
 #[test]
 fn step_solid_volume_matches_the_analytic_sphere() {
     let r = 10.0_f64;
-    let (text, path) = write_sphere_step(r as f32, 48);
+    let (text, path) = write_sphere_step("volume", r as f32, 48);
     let entities = parse_step(&text);
     let tris = shell_triangles(&entities);
     assert!(!tris.is_empty(), "shell に面が無い");
@@ -315,7 +317,7 @@ fn step_solid_volume_matches_the_analytic_sphere() {
 
 #[test]
 fn step_shell_is_closed() {
-    let (text, path) = write_sphere_step(10.0, 32);
+    let (text, path) = write_sphere_step("closed", 10.0, 32);
     let entities = parse_step(&text);
 
     // EDGE_CURVE の端点 (VERTEX_POINT id) でエッジを同定し、ORIENTED_EDGE の
