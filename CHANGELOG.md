@@ -6,6 +6,17 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — Unreal CI の engine 存在判定が DL 途中を「ある」と誤認していた
+
+- `scripts/unreal-ue5-ci.ps1` は `Engine\Build\BatchFiles\RunUAT.bat` 1 個の有無で
+  engine の有無を決めていたが、`Engine\Build\BatchFiles` は Epic Launcher の DL の
+  早い段階で展開される。2026-09-27 に **DL 途中 (29.5 GB、完全 install は 60-100 GB)
+  で `RunUAT.bat` だけが存在する状態**を実機で実測した。この状態を通すと UBT /
+  shader compile の段で真因の分かりにくい red になる。`Build.version` /
+  `UnrealEditor.exe` / `UnrealEditor-Cmd.exe` を加えた 4 点判定にして、不足分を列挙
+  した `engine at <root> is absent or incomplete (missing: …)` で弾くようにした
+  (editor 本体は DL 後半に来るので完了の代理指標になる)
+
 ### Fixed — STEP export が STEP として成立していなかった
 
 - `io::step` は `CARTESIAN_POINT` + `POLY_LOOP` + `FACE_OUTER_BOUND` を並べるだけで

@@ -42,8 +42,20 @@ Set-StrictMode -Version Latest
 function Step([string] $Msg) { Write-Host "`n== $Msg" -ForegroundColor Cyan }
 function Fail([string] $Msg) { Write-Host "FAIL: $Msg" -ForegroundColor Red; exit 1 }
 
-if (-not (Test-Path (Join-Path $EngineRoot "Engine\Build\BatchFiles\RunUAT.bat"))) {
-    Fail "no engine at $EngineRoot (Engine\Build\BatchFiles\RunUAT.bat missing)"
+# DL / 更新途中の engine を「ある」と誤認しないよう 4 点を見る Engine\Build\BatchFiles
+# は早い段階で展開されるので RunUAT.bat 単独では不十分 (2026-09-27 に Epic Launcher の
+# DL 途中 29.5 GB 時点で RunUAT.bat だけ存在する状態を実測した engine 不在なら 40 秒で
+# 落ちるが、不完全な engine を通すと UBT / shader compile の段で真因の分かりにくい red
+# になる) editor 本体は DL 後半に来るので完了の代理指標になる
+$RequiredEngineFiles = @(
+    "Engine\Build\BatchFiles\RunUAT.bat",
+    "Engine\Build\Build.version",
+    "Engine\Binaries\Win64\UnrealEditor.exe",
+    "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+)
+$MissingEngineFiles = $RequiredEngineFiles | Where-Object { -not (Test-Path (Join-Path $EngineRoot $_)) }
+if ($MissingEngineFiles) {
+    Fail "engine at $EngineRoot is absent or incomplete (missing: $($MissingEngineFiles -join ', '))"
 }
 $BuildVersion = Get-Content (Join-Path $EngineRoot "Engine\Build\Build.version") | ConvertFrom-Json
 $EngineAssoc = "$($BuildVersion.MajorVersion).$($BuildVersion.MinorVersion)"
