@@ -6,6 +6,90 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — 区間包含と helix の場が壊れていた 3 件 (2026-09-27)
+
+`tests/test_interval_soundness.rs` を足して見つけた。既存の
+`interval_eval_contains_point_values` は箱ごとに 8 頂点 + 8 内点を見るので、
+**標本の隙間にある破れ**は通り抜けていた。新しい oracle は点の当たり外れに
+依存しない 2 つの性質を見る:
+
+1. **八分木の包含単調性** — 箱 `B` を 8 分割した子 `B'` について
+   `eval_interval(B') ⊆ eval_interval(B)` が成り立たなければ、証拠点を
+   探すまでもなくどちらかが誤り。これは `alice-lol` の判定器が実際に行う
+   細分 (`box_children` + `BALL_PROBE_DEPTH`) そのものなので、破れは判定器の
+   hot path の破れになる。
+2. **勾配に沿った敵対的な極値探索** — 箱の中を `eval_gradient` で下り / 上り、
+   見つけた極値が区間に入っているかを見る。無作為標本が見逃す witness を
+   狙って探す。
+
+修正した破れ:
+
+- **`PolarRepeat` の扇形が `count ≤ 2` で潰れていた** — 折り返し後の z 幅を
+  常に `max_r · sin(ha)` としていたため、`ha ≥ π/2` (count 1 / 2) で
+  `sin π ≈ 0` となり z が 1 点に縮み、x の下限も 0 のままだった。`alice-lol`
+  側ではこれが **「重なりなし」の偽の証明**になっていた (`flange_mount` の
+  cell で区間 `[0.05, 1.10]`、実際の場は `−0.71`)。`ha ≥ π/2` では
+  `x, z ∈ [−max_r, max_r]` に切り替える。
+- **`ScaleNonUniform` の区間が負値で上下反転していた** — `lo` に最小係数、
+  `hi` に最大係数を掛けていたので、子の区間が全て負だと `lo > hi` になる
+  (例 `[−0.5, −0.25]` × 0.8 / 2.5 → `[−0.4, −0.625]`)。`eval` は最小係数
+  1 つを掛けるだけなので、区間もその 1 係数でスケールする (符号も処理)。
+  debug build では `Interval::new` の assert が発火し、release では `hi` が
+  本来包むべき値より下にある区間がそのまま流れていた。
+- **`Rhombus` の外接球半径が `round_radius` を落としていた** — 丸めの分だけ
+  形は大きいので、包含が丸め半径ぶん狭かった。
+
+同時に `Helix` の場そのものを修正した: 曲線までの二乗距離
+`r² + R² − 2rR·cos` が曲線上で f32 の桁落ちにより微小な負になり、`sqrt` が
+NaN、`NaN.max(d_cap)` が **cap 側の距離を返していた** (曲線上で `−0.309`、
+tube の法では `−0.0999`)。GPU の `max` は NaN をそう扱う保証がないので、
+CPU / GPU 一致の観点でも危うい。WGSL / GLSL / HLSL の helper も同じ形に
+揃えた (演算順序も CPU に合わせた)。
+
+corpus に退行 test を追加 (`polar_repeat_1` / `polar_repeat_2` /
+`scale_xyz_interior`) — 修正前の実装に戻すと新 oracle が落ちることを確認済み。
+距離が動くのは helix の曲線上のみで、`test_det_golden` の既存 entry は不変
+(新 3 entry のみ pin を追加)。
+
+### Added — 第三者表記 (`THIRD-PARTY-NOTICES.md`)
+
+距離関数の**数式の形**の出典 (Inigo Quilez 34 file / Mercury hg_sdf 15 file /
+Perlin の勾配表) を 1 箇所に集約し、README / README_JP から参照。実装は本
+repo 独自の Rust code である旨と、上流のライセンス条項は本 repo 内で未検証
+である旨を明記した。
+
+### Added — printability validation (`validity` module)
+
+- `validity` module を新設。「この形状は印刷できるか」に対して **どう確かめたかを
+  明示して**答える。`Undecided` を合格に丸めないのが設計の中心。
+  - **A: erosion による大域証明** — `prove_erosion` が `Round { radius: -t/2 }`
+    (SDF の offset なので厳密) で削った形状を octree + `eval_interval` で調べ、
+    三値 `ErosionVerdict` を返す: 削った後も残る材料の witness が取れれば
+    `HasThickEnoughRegion`、bound 全体で残らないと証明できれば `EntirelyTooThin`、
+    深さが尽きたら `Undecided` (**合格ではない**)。
+  - **B: 三角形ごとの局所厚さ実測** — `local_thickness` が重心から `-n` に
+    sphere tracing する。内側では `-d(p)` が最近表面までの厳密な距離なので
+    step が行き過ぎず、固体を抜けた距離がその点の肉厚になる。1 点 1 点は厳密で、
+    標本になるのは *どこで測るか* (= mesh の細かさ) だけ。
+  - **overhang は閉形式** — `overhang_stats` が `asin(-n · b)` を返す
+    (垂直壁 0 / 水平な下向き面 π/2 / 上向きは負にせず 0)。接地判定は持たないので
+    「サポートが要るか」は呼び手の方針に委ねる (箱の底面は π/2 になる)。
+  - `validate_for_printing` が A + B + overhang + `MeshValidation` を束ね、
+    `ValidityReport::is_printable` は **A が証明であること**も要求する。
+  - `export_step_validated` は検証を通らなければ **file を書かず**
+    `ValidatedExportError::NotPrintable` を返す。既存の `io::step::export_step` は
+    検証しないので、印刷に回す形状はこちらを通す (4.0.0 で既存 API 側を
+    validated 経由に統合するかは別途判断)。
+  - oracle 12 本 (`tests/test_validity_oracle.rs`) は閉形式のみから期待値を作った:
+    板厚 2.0 / 球殻 0.5 / 斜面 π/4 / 水平面 π/2 / 厚板は `HasThickEnoughRegion` /
+    0.5 mm 板は `EntirelyTooThin` / 深さ 0 は `Undecided` かつ不合格 /
+    薄板の export は拒否されて file が残らない。実装前に red を確認してから書いた。
+  - **採らなかった設計を doc に残した**: 「箱が形状の内部と証明され、かつ erode 後の
+    外と証明されたら肉厚 < t」は **あらゆる形状で成立してしまう**ので誤り (表面から
+    t/2 以内の材料は、後ろがどれだけ厚くても必ず削れる)。局所肉厚は medial axis の
+    量で、判定には連結性解析が要る — `alice_lol::law` が `Continuity` を
+    「格子解像度依存」として sound 化対象外にしたのと同じ壁。
+
 ### Fixed — Unreal CI の engine 存在判定が DL 途中を「ある」と誤認していた
 
 - `scripts/unreal-ue5-ci.ps1` は `Engine\Build\BatchFiles\RunUAT.bat` 1 個の有無で

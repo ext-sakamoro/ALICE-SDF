@@ -28,6 +28,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **キーフレームアニメーション** - タイムライントラック付きパラメトリック変形
 - **アセットパイプライン** - OBJ、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、Unity、UE5/UE6エクスポート
 - **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
+- **印刷可能性の検証** (`validity`) - 「これは印刷できるか」に**どう判定したかを添えて**答える 大域判定は `eval_interval` による erosion の証明で三値 `ErosionVerdict` (`HasThickEnoughRegion` / `EntirelyTooThin` / `Undecided`、**`Undecided` は合格ではない**)、局所肉厚は三角形ごとの sphere tracing で厳密実測、overhang は閉形式 `asin(-n · b)` `export_step_validated` は要件を満たさない形状の file を書かない
 - **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中 (外向き CCW 巻き順 + 水密、1.11.0 で index 順を反転 — CHANGELOG 参照)
 - **Dual Contouring** - QEFベースのメッシュ生成、シャープエッジとコーナーを保持
 - **V-HACD凸分解** - 物理用自動凸包分解
@@ -707,6 +708,20 @@ let wgsl_source = to_wgsl(&scene);      // WGSL shader に貼り付け
 詳細は[LICENSE-MIT](LICENSE-MIT) / [LICENSE-APACHE](LICENSE-APACHE)（MIT OR Apache-2.0）および[LICENSE-COMMUNITY](LICENSE-COMMUNITY)を参照。
 
 **あなたが作成するコンテンツ（.asdfファイル、ワールド、ゲーム）は100%あなたのものです。ロイヤリティはありません。**
+
+### クレジット
+
+距離関数の実装は本リポジトリ独自の Rust 実装ですが、その多くは公開された
+数式の形に従っています
+
+- **Inigo Quilez** — プリミティブの大部分の数式の形 (doc comment で言及している
+  file は 34 個)、および GLSL transpiler が使う Shadertoy 慣習 (`iTime`、
+  `mainImage` ラッパー)
+- **Mercury (hg_sdf)** — stairs / columns / chamfer 系のブーリアン演算子と
+  octant mirror (15 file)
+- **Ken Perlin** — improved noise の勾配テーブル
+
+一覧と範囲: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
 
 ## LLM × 3D制作パイプライン（SDF + LOL + View + Physics）
 

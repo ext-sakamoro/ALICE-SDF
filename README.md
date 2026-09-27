@@ -29,6 +29,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM export
 - **5-layer mesh persistence** - ABM binary format, LOD chain persistence, chunked mesh cache with FIFO eviction, Unity/UE5/UE6 native export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
+- **Printability validation** (`validity`) - answers "can this be printed" *and states how it was decided*. A global erosion proof over `eval_interval` returns a three-valued `ErosionVerdict` (`HasThickEnoughRegion` / `EntirelyTooThin` / `Undecided`, where `Undecided` is **not** a pass), per-triangle sphere tracing measures exact local wall thickness, and overhang comes from the closed form `asin(-n · b)`. `export_step_validated` refuses to write a file that fails the requirements
 - **Adaptive Marching Cubes** - octree-based mesh generation, detail where it matters (outward CCW winding, closed meshes; 1.11.0 flipped the index order — see CHANGELOG)
 - **Dual Contouring** - QEF-based mesh generation that preserves sharp edges and corners
 - **V-HACD convex decomposition** - automatic convex hull decomposition for physics
@@ -711,6 +712,20 @@ For deep technical sections (Material / Animation / Architecture / Mesh / Platon
 See [LICENSE-MIT](LICENSE-MIT) / [LICENSE-APACHE](LICENSE-APACHE) (MIT OR Apache-2.0) and [LICENSE-COMMUNITY](LICENSE-COMMUNITY) for details.
 
 **Content you create (.asdf files, worlds, games) is 100% yours. No royalties.**
+
+### Credits
+
+The distance functions are our own Rust implementations, but many of them
+follow published mathematical forms:
+
+- **Inigo Quilez** — the form of a large part of the primitive set (34 files
+  name him in a doc comment), and the Shadertoy conventions (`iTime`, the
+  `mainImage` wrapper) used by the GLSL transpiler
+- **Mercury (hg_sdf)** — the stepped / columned / chamfered boolean operators
+  and the octant mirror (15 files)
+- **Ken Perlin** — the improved-noise gradient table
+
+Full list and scope: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## LLM × 3D Creation Pipeline (SDF + LOL + View + Physics)
 

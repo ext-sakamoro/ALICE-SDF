@@ -79,6 +79,7 @@ pub mod incremental;
 pub mod measure;
 pub mod sdf2d;
 pub mod shell;
+pub mod validity;
 
 // `font` alone is inert on crates.io (no `alice-font` dep declared);
 // the bridge needs `--cfg alice_font_bridge` + a local path dep.
