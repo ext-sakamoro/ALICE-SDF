@@ -1,0 +1,95 @@
+name: Unreal
+
+# BuildPlugin は 35-50 分かかる。ci.yml と同じ concurrency group に居ると、
+# **doc だけの push でも** cancel-in-progress で完走前に消え、しかも新 run は
+# paths-filter がこの job を skip するので検証が一切進まない。2026-09-27 にこれを
+# 2 回踏んだ (1 回目は CHANGELOG の 1 行訂正、2 回目は並走 session の
+# `ci: node20 → node24`)。group を分けたので ci.yml 側の push はこの run を消さない。
+# 詳細: ~/claude-config/memory/feedback_concurrency_cancels_long_running_ci.md
+#
+# 実体は UAT BuildPlugin (editor + game targets)、editor が compile する全 .usf /
+# .ush、automation 2 本 (AliceSDF.Unreal.FfiCorpusParity = alice_sdf.dll 越しの
+# bit-exact、AliceSDF.Unreal.HlslGpuOracle = 転写した HLSL を DX12 で実行して DLL と
+# 突合 — この crate で唯一の HLSL 実行 oracle)。GitHub-hosted runner に Unreal は
+# 無いので、label `ue5` の self-hosted Windows runner で走る (E:\UE_5.x、RTX GPU、
+# D3D12 のため interactive session)。repository variable UE5_RUNNER=true で gate し、
+# runner 不在なら queue に積まず skip。fork PR では走らせない (self-hosted + public)。
+# engine root は UE5_ENGINE_ROOTS (JSON list) から。
+
+# paths は push / pull_request で同じ集合を **展開して** 書いている。YAML anchor
+# (&x / *x) は GitHub Actions の parser では動く報告があるものの公式に保証されて
+# おらず、効かなかった時に気付けるのが PR を作った時だけになるため。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'benches/**'
+      - 'examples/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'unreal-plugin/**'
+      - 'include/alice_sdf.h'
+      - 'scripts/unreal-*'
+      - '.github/workflows/unreal.yml'
+      - '.github/actions/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'benches/**'
+      - 'examples/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'unreal-plugin/**'
+      - 'include/alice_sdf.h'
+      - 'scripts/unreal-*'
+      - '.github/workflows/unreal.yml'
+      - '.github/actions/**'
+  # 今日のように engine を入れ直した後で「commit を作らずに検証だけしたい」場合の入口
+  workflow_dispatch:
+
+concurrency:
+  group: unreal-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  unreal-ue5:
+    name: Unreal Engine — BuildPlugin + automation (${{ matrix.engine }})
+    if: >-
+      vars.UE5_RUNNER == 'true'
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: ${{ fromJSON(vars.UE5_ENGINE_ROOTS || '["E:\\UE_5.7"]') }}
+    runs-on: [self-hosted, windows, ue5]
+    timeout-minutes: 90
+    env:
+      # ASCII, short: UE / UBT and the editor's DDC choke on the non-ASCII
+      # user profile path; E:\ is the engine drive.
+      CARGO_TARGET_DIR: E:\alice-ci\target-sdf
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v5
+      - name: BuildPlugin + shaders + automation tests
+        shell: pwsh
+        run: pwsh -File scripts/unreal-ue5-ci.ps1 -EngineRoot "${{ matrix.engine }}" -WorkDir "E:\alice-ci\ue5-${{ github.run_id }}"
+      - name: Upload editor / UAT logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: unreal-ue5-logs-${{ strategy.job-index }}
+          path: E:\alice-ci\ue5-${{ github.run_id }}\logs
+          if-no-files-found: ignore
+      - name: Clean work dir
+        if: always()
+        shell: pwsh
+        run: if (Test-Path "E:\alice-ci\ue5-${{ github.run_id }}") { Remove-Item -Recurse -Force "E:\alice-ci\ue5-${{ github.run_id }}" }

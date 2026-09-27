@@ -513,50 +513,10 @@ jobs:
       - name: unreal-abi-check
         run: scripts/unreal-abi-check.sh
 
-  # The real engine: UAT BuildPlugin (editor + game targets), every .usf /
-  # .ush compiled by the editor, and the two automation tests
-  # (AliceSDF.Unreal.FfiCorpusParity bit-exact through alice_sdf.dll,
-  # AliceSDF.Unreal.HlslGpuOracle = transpiled HLSL executed on DX12 vs the
-  # DLL — the crate's only HLSL execution oracle). GitHub-hosted runners have
-  # no Unreal, so this runs on a self-hosted Windows runner with the label
-  # `ue5` (E:\UE_5.x installed, RTX GPU, interactive session for D3D12).
-  # Gated on the repository variable UE5_RUNNER=true so a missing runner
-  # skips instead of queueing forever; never on fork PRs (self-hosted runner
-  # + public repo). Engine roots come from UE5_ENGINE_ROOTS (JSON list).
-  unreal-ue5:
-    name: Unreal Engine — BuildPlugin + automation (${{ matrix.engine }})
-    needs: changes
-    if: >-
-      vars.UE5_RUNNER == 'true'
-      && (needs.changes.outputs.code == 'true' || needs.changes.outputs.unreal == 'true' || needs.changes.outputs.ci == 'true')
-      && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
-    strategy:
-      fail-fast: false
-      matrix:
-        engine: ${{ fromJSON(vars.UE5_ENGINE_ROOTS || '["E:\\UE_5.7"]') }}
-    runs-on: [self-hosted, windows, ue5]
-    timeout-minutes: 90
-    env:
-      # ASCII, short: UE / UBT and the editor's DDC choke on the non-ASCII
-      # user profile path; E:\ is the engine drive.
-      CARGO_TARGET_DIR: E:\alice-ci\target-sdf
-      CARGO_INCREMENTAL: "0"
-    steps:
-      - uses: actions/checkout@v5
-      - name: BuildPlugin + shaders + automation tests
-        shell: pwsh
-        run: pwsh -File scripts/unreal-ue5-ci.ps1 -EngineRoot "${{ matrix.engine }}" -WorkDir "E:\alice-ci\ue5-${{ github.run_id }}"
-      - name: Upload editor / UAT logs
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: unreal-ue5-logs-${{ strategy.job-index }}
-          path: E:\alice-ci\ue5-${{ github.run_id }}\logs
-          if-no-files-found: ignore
-      - name: Clean work dir
-        if: always()
-        shell: pwsh
-        run: if (Test-Path "E:\alice-ci\ue5-${{ github.run_id }}") { Remove-Item -Recurse -Force "E:\alice-ci\ue5-${{ github.run_id }}" }
+  # BuildPlugin (35-50 分) は `.github/workflows/unreal.yml` に分離した。ここに置くと
+  # doc だけの push でも concurrency: cancel-in-progress で完走前に消え、新 run は
+  # paths-filter で skip されて検証が進まない (2026-09-27 に 2 回踏んだ)。
+  # `unreal-abi` (上) は ubuntu で短時間なので ci.yml に残している。
 
   actionlint:
     name: actionlint (workflow YAML 検証)
