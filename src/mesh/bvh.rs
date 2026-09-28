@@ -124,61 +124,110 @@ impl Triangle {
         }
     }
 
-    /// Signed distance to triangle
-    /// Uses Inigo Quilez's method for exact unsigned distance,
-    /// then determines sign using pseudo-normal method
+    /// Closest point on the triangle (including its edges and vertices).
+    ///
+    /// Voronoi-region form (Ericson, *Real-Time Collision Detection* §5.1.5):
+    /// exact for every query point, including the edge and vertex regions where
+    /// a plane projection would answer a point that is not on the triangle.
+    /// Uses only add / sub / mul / div / compare, so the result is bit-identical
+    /// across targets.
+    #[inline]
+    pub fn closest_point(&self, point: Vec3) -> Vec3 {
+        let (a, b, c) = (self.v0, self.v1, self.v2);
+        let ab = b - a;
+        let ac = c - a;
+
+        // vertex region A
+        let ap = point - a;
+        let d1 = ab.dot(ap);
+        let d2 = ac.dot(ap);
+        if d1 <= 0.0 && d2 <= 0.0 {
+            return a;
+        }
+
+        // vertex region B
+        let bp = point - b;
+        let d3 = ab.dot(bp);
+        let d4 = ac.dot(bp);
+        if d3 >= 0.0 && d4 <= d3 {
+            return b;
+        }
+
+        // edge region AB
+        let vc = d1 * d4 - d3 * d2;
+        if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+            let denom = d1 - d3;
+            if denom != 0.0 {
+                return a + ab * (d1 / denom);
+            }
+            return a;
+        }
+
+        // vertex region C
+        let cp = point - c;
+        let d5 = ab.dot(cp);
+        let d6 = ac.dot(cp);
+        if d6 >= 0.0 && d5 <= d6 {
+            return c;
+        }
+
+        // edge region AC
+        let vb = d5 * d2 - d1 * d6;
+        if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+            let denom = d2 - d6;
+            if denom != 0.0 {
+                return a + ac * (d2 / denom);
+            }
+            return a;
+        }
+
+        // edge region BC
+        let va = d3 * d6 - d5 * d4;
+        let bc_num = d4 - d3;
+        let bc_den = d5 - d6;
+        if va <= 0.0 && bc_num >= 0.0 && bc_den >= 0.0 {
+            let denom = bc_num + bc_den;
+            if denom != 0.0 {
+                return b + (c - b) * (bc_num / denom);
+            }
+            return b;
+        }
+
+        // face region — barycentric interior
+        let denom = va + vb + vc;
+        if denom == 0.0 {
+            // Degenerate (zero-area) triangle: the Voronoi regions above do not
+            // partition the plane, so answer the best of the three segments.
+            return closest_on_segment(point, a, b)
+                .into_iter()
+                .chain(closest_on_segment(point, b, c))
+                .chain(closest_on_segment(point, c, a))
+                .fold((f32::INFINITY, a), |(best, q), cand| {
+                    let d = (point - cand).length_squared();
+                    if d < best {
+                        (d, cand)
+                    } else {
+                        (best, q)
+                    }
+                })
+                .1;
+        }
+        let inv = 1.0 / denom;
+        a + ab * (vb * inv) + ac * (vc * inv)
+    }
+
+    /// Signed distance to triangle.
+    ///
+    /// The magnitude is the exact distance to the triangle; the sign comes from
+    /// the face normal, so it is a function of the triangle's **winding**. For a
+    /// mesh, prefer [`crate::mesh::ExteriorField`], whose sign does not depend
+    /// on winding at all.
     #[inline]
     pub fn signed_distance(&self, point: Vec3) -> f32 {
-        let v0 = self.v0;
-        let v1 = self.v1;
-        let v2 = self.v2;
+        let unsigned_dist = self.unsigned_distance(point);
 
-        let v10 = v1 - v0;
-        let v21 = v2 - v1;
-        let v02 = v0 - v2;
-
-        let p0 = point - v0;
-        let p1 = point - v1;
-        let p2 = point - v2;
-
-        let n = v10.cross(v02);
-
-        // Determine if point projects inside triangle
-        let sign_p0 = v10.cross(n).dot(p0);
-        let sign_p1 = v21.cross(n).dot(p1);
-        let sign_p2 = v02.cross(n).dot(p2);
-
-        let unsigned_dist = if sign_p0 >= 0.0 && sign_p1 >= 0.0 && sign_p2 >= 0.0 {
-            // Point projects inside triangle - distance to plane
-            let h = n.dot(p0);
-            let n_len_sq = n.length_squared();
-            if n_len_sq > 1e-10 {
-                (h * h / n_len_sq).sqrt()
-            } else {
-                0.0
-            }
-        } else {
-            // Point projects outside - find closest point on edges
-            let clamp01 = |t: f32| t.clamp(0.0, 1.0);
-
-            // Edge 0-1
-            let t0 = clamp01(v10.dot(p0) / v10.length_squared().max(1e-10));
-            let d0 = (p0 - v10 * t0).length_squared();
-
-            // Edge 1-2
-            let t1 = clamp01(v21.dot(p1) / v21.length_squared().max(1e-10));
-            let d1 = (p1 - v21 * t1).length_squared();
-
-            // Edge 2-0
-            let t2 = clamp01((-v02).dot(p2) / v02.length_squared().max(1e-10));
-            let d2 = (p2 + v02 * t2).length_squared();
-
-            d0.min(d1).min(d2).sqrt()
-        };
-
-        // Determine sign using triangle normal
         // Positive = outside (same side as normal), Negative = inside
-        let sign = if self.normal.dot(point - v0) >= 0.0 {
+        let sign = if self.normal.dot(point - self.v0) >= 0.0 {
             1.0
         } else {
             -1.0
@@ -190,8 +239,20 @@ impl Triangle {
     /// Unsigned distance to triangle (always positive)
     #[inline]
     pub fn unsigned_distance(&self, point: Vec3) -> f32 {
-        self.signed_distance(point).abs()
+        (point - self.closest_point(point)).length()
     }
+}
+
+/// Closest point on the segment `a`..`b`, as a one-element iterator so the
+/// degenerate branch above can chain the three edges without allocating.
+#[inline]
+fn closest_on_segment(point: Vec3, a: Vec3, b: Vec3) -> [Vec3; 1] {
+    let ab = b - a;
+    let len_sq = ab.length_squared();
+    if len_sq == 0.0 {
+        return [a];
+    }
+    [a + ab * (ab.dot(point - a) / len_sq).clamp(0.0, 1.0)]
 }
 
 /// BVH Node
@@ -400,10 +461,76 @@ impl MeshBvh {
         }
     }
 
-    /// Query unsigned distance to mesh at a point
+    /// Query unsigned distance to mesh at a point.
+    ///
+    /// Independent of triangle winding, and therefore the part of the mesh
+    /// field that is always well defined. [`Self::signed_distance`] only adds a
+    /// sign to this value.
     #[inline]
     pub fn unsigned_distance(&self, point: Vec3) -> f32 {
-        self.signed_distance(point).abs()
+        self.closest_point_and_dist_sq(point)
+            .map_or(f32::INFINITY, |(_, d_sq)| d_sq.sqrt())
+    }
+
+    /// Closest point on the mesh surface, or `None` for an empty mesh.
+    #[inline]
+    pub fn closest_point(&self, point: Vec3) -> Option<Vec3> {
+        self.closest_point_and_dist_sq(point).map(|(q, _)| q)
+    }
+
+    fn closest_point_and_dist_sq(&self, point: Vec3) -> Option<(Vec3, f32)> {
+        let root = self.root.as_ref()?;
+        let mut best = (Vec3::ZERO, f32::INFINITY);
+        Self::closest_recursive(&self.triangles, root, point, &mut best);
+        if best.1.is_finite() {
+            Some(best)
+        } else {
+            None
+        }
+    }
+
+    /// Nearest-child-first traversal with an exact lower bound (the AABB
+    /// distance) as the pruning test.
+    fn closest_recursive(
+        triangles: &[Triangle],
+        node: &BvhNode,
+        point: Vec3,
+        best: &mut (Vec3, f32),
+    ) {
+        match node {
+            BvhNode::Leaf {
+                triangles: idxs, ..
+            } => {
+                for &idx in idxs {
+                    let q = triangles[idx].closest_point(point);
+                    let d_sq = (point - q).length_squared();
+                    if d_sq < best.1 {
+                        *best = (q, d_sq);
+                    }
+                }
+            }
+            BvhNode::Internal { left, right, .. } => {
+                // `Aabb::signed_distance` is negative inside, so clamping at 0
+                // turns it into a lower bound on the distance to any triangle
+                // held below this node.
+                let bound = |n: &BvhNode| {
+                    let d = n.aabb().signed_distance(point).max(0.0);
+                    d * d
+                };
+                let (l_bound, r_bound) = (bound(left), bound(right));
+                let (first, first_bound, second, second_bound) = if l_bound <= r_bound {
+                    (left, l_bound, right, r_bound)
+                } else {
+                    (right, r_bound, left, l_bound)
+                };
+                if first_bound < best.1 {
+                    Self::closest_recursive(triangles, first, point, best);
+                }
+                if second_bound < best.1 {
+                    Self::closest_recursive(triangles, second, point, best);
+                }
+            }
+        }
     }
 
     /// Batch query signed distances (parallel)

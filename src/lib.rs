@@ -262,6 +262,7 @@ pub mod prelude {
         MeshQuality,
         MeshRepair,
         MeshSdf,
+        MeshSignMode,
         MeshToSdfConfig,
         MeshToSdfStrategy,
         // Manifold mesh validation & repair

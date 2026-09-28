@@ -59,6 +59,7 @@ pub mod lod;
 pub mod lod_persist;
 pub mod manifold;
 pub mod mesh_codec;
+pub mod mesh_sign;
 mod mesh_to_sdf;
 pub mod meshlet;
 pub mod meshopt_filter;
@@ -106,8 +107,10 @@ pub use lod_persist::{
     LodChainConfig, LodChainPersist, LodChainSummary, LodLevelPersist,
 };
 pub use manifold::{compute_quality, validate_mesh, MeshQuality, MeshRepair, MeshValidation};
+pub use mesh_sign::{ExteriorField, MeshSignMode};
 pub use mesh_to_sdf::{
     mesh_to_sdf, mesh_to_sdf_exact, MeshSdf, MeshToSdfConfig, MeshToSdfStrategy,
+    DEFAULT_SIGN_FLOOD_FILL_RESOLUTION,
 };
 pub use nanite::{
     generate_nanite_mesh, ClusterBounds, ClusterGroup, LodLevel, NaniteCluster, NaniteConfig,

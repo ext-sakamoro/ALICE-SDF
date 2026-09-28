@@ -14,10 +14,17 @@
 //! Author: Moroya Sakamoto
 
 use crate::mesh::bvh::MeshBvh;
+use crate::mesh::mesh_sign::{ExteriorField, MeshSignMode};
+use crate::mesh::MeshInputError;
 use crate::types::SdfNode;
 use glam::Vec3;
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::sync::Arc;
+
+/// Cells along the longest bounding box axis used by
+/// [`MeshSignMode::ExteriorFloodFill`] unless the caller overrides it.
+pub const DEFAULT_SIGN_FLOOD_FILL_RESOLUTION: u32 = 64;
 
 /// Conversion strategy for mesh_to_sdf
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -44,6 +51,19 @@ pub struct MeshToSdfConfig {
     pub capsule_radius_factor: f32,
     /// Whether to compute vertex normals for sign determination
     pub compute_normals: bool,
+    /// How the sign of the resulting field is decided.
+    ///
+    /// Defaults to [`MeshSignMode::NearestFaceNormal`], which needs a closed,
+    /// consistently wound mesh. Use [`MeshSignMode::ExteriorFloodFill`] for
+    /// meshes you did not author — open surfaces, mixed winding and separate
+    /// components all come out right.
+    pub sign_mode: MeshSignMode,
+    /// Cells along the longest bounding box axis for
+    /// [`MeshSignMode::ExteriorFloodFill`]. Ignored by the other modes.
+    ///
+    /// The thinnest feature that keeps its interior spans a few cells, so raise
+    /// this for thin-walled meshes.
+    pub sign_flood_fill_resolution: u32,
 }
 
 impl Default for MeshToSdfConfig {
@@ -54,6 +74,8 @@ impl Default for MeshToSdfConfig {
             max_triangles_per_leaf: 4,
             capsule_radius_factor: 0.05,
             compute_normals: true,
+            sign_mode: MeshSignMode::NearestFaceNormal,
+            sign_flood_fill_resolution: DEFAULT_SIGN_FLOOD_FILL_RESOLUTION,
         }
     }
 }
@@ -87,6 +109,23 @@ impl MeshToSdfConfig {
             ..Default::default()
         }
     }
+
+    /// Exact BVH distance with a sign that does not depend on triangle winding.
+    ///
+    /// The right config for meshes you did not author (scans, generative models,
+    /// assemblies of independently wound parts): open surfaces report no
+    /// interior, reversing the winding changes nothing, and each closed
+    /// component gets its own interior. See [`MeshSignMode::ExteriorFloodFill`]
+    /// for the resolution caveat.
+    pub fn topology_robust() -> Self {
+        Self {
+            strategy: MeshToSdfStrategy::BvhExact,
+            use_bvh: true,
+            max_triangles_per_leaf: 4,
+            sign_mode: MeshSignMode::ExteriorFloodFill,
+            ..Default::default()
+        }
+    }
 }
 
 /// BVH-accelerated mesh SDF
@@ -97,28 +136,73 @@ impl MeshToSdfConfig {
 pub struct MeshSdf {
     bvh: Arc<MeshBvh>,
     bounds: crate::mesh::bvh::Aabb,
+    sign_mode: MeshSignMode,
+    /// `Some` exactly when `sign_mode` is [`MeshSignMode::ExteriorFloodFill`];
+    /// construction fails rather than silently falling back to the winding rule.
+    exterior: Option<Arc<ExteriorField>>,
 }
 
 impl MeshSdf {
-    /// Create MeshSdf from vertices and indices
+    /// Create MeshSdf from vertices and indices.
+    ///
+    /// Returns `None` on the errors [`MeshSdf::try_new`] reports; use that form
+    /// when you need to know which one.
     pub fn new(vertices: &[Vec3], indices: &[u32], config: &MeshToSdfConfig) -> Option<Self> {
+        Self::try_new(vertices, indices, config).ok()
+    }
+
+    /// Create MeshSdf from vertices and indices.
+    ///
+    /// # Errors
+    ///
+    /// Empty input, a mesh with no bounding box, or — for
+    /// [`MeshSignMode::ExteriorFloodFill`] — a degenerate extent or a
+    /// `sign_flood_fill_resolution` over the cell budget.
+    pub fn try_new(
+        vertices: &[Vec3],
+        indices: &[u32],
+        config: &MeshToSdfConfig,
+    ) -> Result<Self, MeshInputError> {
         if vertices.is_empty() || indices.is_empty() {
-            return None;
+            return Err(MeshInputError {
+                reason: "mesh_to_sdf needs at least one triangle",
+            });
         }
 
         let bvh = MeshBvh::build(vertices, indices, config.max_triangles_per_leaf);
-        let bounds = bvh.bounds()?;
+        let bounds = bvh.bounds().ok_or(MeshInputError {
+            reason: "mesh has no bounding box",
+        })?;
 
-        Some(Self {
+        let exterior = match config.sign_mode {
+            MeshSignMode::ExteriorFloodFill => Some(Arc::new(ExteriorField::build(
+                &bvh,
+                config.sign_flood_fill_resolution,
+            )?)),
+            _ => None,
+        };
+
+        Ok(Self {
             bvh: Arc::new(bvh),
             bounds,
+            sign_mode: config.sign_mode,
+            exterior,
         })
+    }
+
+    /// Which rule decides the sign of [`Self::eval`].
+    #[inline]
+    pub const fn sign_mode(&self) -> MeshSignMode {
+        self.sign_mode
     }
 
     /// Evaluate signed distance at a point
     #[inline]
     pub fn eval(&self, point: Vec3) -> f32 {
-        self.bvh.signed_distance(point)
+        self.exterior.as_ref().map_or_else(
+            || self.bvh.signed_distance(point),
+            |field| field.signed_distance(&self.bvh, point),
+        )
     }
 
     /// Evaluate unsigned distance at a point
@@ -129,7 +213,15 @@ impl MeshSdf {
 
     /// Batch evaluate signed distances (parallel)
     pub fn eval_batch(&self, points: &[Vec3]) -> Vec<f32> {
-        self.bvh.signed_distance_batch(points)
+        self.exterior.as_ref().map_or_else(
+            || self.bvh.signed_distance_batch(points),
+            |field| {
+                points
+                    .par_iter()
+                    .map(|&p| field.signed_distance(&self.bvh, p))
+                    .collect()
+            },
+        )
     }
 
     /// Batch evaluate unsigned distances (parallel)
