@@ -55,7 +55,7 @@
 
 ## 画像 (順番案)
 1. `mochi_desktop.gif` (11 s、掴む / 千切る / くっつく / 体当たり) — 1 枚目は動く物
-2. `wall_desktop.gif` (壁殴り) 3. `terrain_desktop.gif` (09-28 再録、ブロック版: 真四角の穴 + 面に積む + 上を歩く)
+2. `wall_desktop.gif` (壁殴り) 3. `terrain_desktop.gif` (09-28 再録、ブロック版: 真四角の穴を広げる → 出来た穴を見せる、t=46-57 s)
 4. 統合 scene の実機スクショ `vrchat_kit_demo_20260919.png` (餅 + 壁、PC) — 「1 world に全部」
 5. preset 3 種 `booth_presets_clientsim_20260918.png` 6. Inspector `booth_inspector_20260918.png`
 7. 「Polygons: 0 | Resolution: INFINITE」 `booth_sign_polygons0_20260918.png` 8. checker テクスチャ `vrchat_product_texture_20260918.png`
