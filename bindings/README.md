@@ -127,11 +127,13 @@ AliceSdf.FreeCompiled(compiled);
 Generate shader code for Unity Shader Graph Custom Function nodes:
 
 ```csharp
-// GLSL for Unity Shader Graph (HDRP/URP)
-string glsl = AliceSdf.ToGlsl(shape);
-
-// HLSL for Custom Function nodes
+// HLSL for Shader Graph Custom Function nodes and .compute files
+// (Unity compiles HLSL on every backend, including Metal and Vulkan —
+//  Shader Graph does not accept GLSL)
 string hlsl = AliceSdf.ToHlsl(shape);
+
+// GLSL for OpenGL / Vulkan consumers outside Unity
+string glsl = AliceSdf.ToGlsl(shape);
 
 // WGSL for WebGPU
 string wgsl = AliceSdf.ToWgsl(shape);

@@ -4,6 +4,60 @@ All notable changes to ALICE-SDF are documented in this file.
 
 For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHANGELOG-history.md).
 
+## [Unreleased]
+
+### Fixed — `alice_sdf_mirror` / `alice_sdf_repeat_finite` の宣言が Rust の署名と食い違っていた
+
+`include/alice_sdf.h` と `bindings/AliceSdf.cs` が `alice_sdf_mirror` を
+`float mx, float my, float mz` と宣言していたが、Rust の export は
+`fn(SdfHandle, u8, u8, u8)` である。整数引数と浮動小数引数は AArch64
+(x0-x7 / v0-v7) でも x86-64 SysV (rdi-r9 / xmm0-7) でも別のレジスタ群で渡る
+ので、`float` として呼ぶと Rust 側は整数レジスタの残留値を mirror フラグとして
+読む。crash しないため気付きにくい。
+
+arm64 / release で実測した値 (半径 1 の球を (2,2,0) へ移動 → X 軸だけ mirror
+指定 → 点 (-2,-2,0) を評価、3 通りが分離する):
+
+| 呼び方 | 距離 | 実際に立った軸 |
+|---|---|---|
+| mirror なし | 4.656854 | — |
+| `uint8_t` 宣言 (修正後) | 3.000000 | X のみ = 指定どおり |
+| `float` 宣言 (修正前) | -1.000000 | X と Y |
+
+残留レジスタの値は呼び出し文脈で決まるので結果は文脈依存だが、**「毎回変わる」
+わけではない**。上記の測定では 3 回連続で同じ -1.000000 が出た。つまり
+「たまたま動いているように見えて、呼び出し位置を変えると軸が変わる」種類の
+壊れ方であり、テストが 1 箇所でも通ってしまえば見逃される。
+
+影響していた経路は 2 つで、どちらも宣言を直すだけで閉じる:
+
+- Unity — `bindings/README.md` が `bindings/AliceSdf.cs` を Unity へコピーさせて
+  いるので、`AliceSdf.Mirror()` がそのまま不定動作だった
+- UE5 — `AliceSdfComponent.cpp` の呼び出しは `1u` / `0u` と整数で書かれていたが、
+  可視のプロトタイプが `float` なので C++ が暗黙に `1.0f` へ変換していた
+  (呼び出し側は変更不要)
+
+`alice_sdf_repeat_finite` はヘッダが `int32_t`、Rust が `u32` で幅は同じだが
+符号が違うので `uint32_t` に揃えた。C# 側は負の count が約 40 億回の反復に
+回り込む代わりに `ArgumentOutOfRangeException` で落ちるようにしてある。
+
+### Added — `unreal-abi-check.sh` に引数型の突合 (step 2a)
+
+この食い違いが 1.7.2 から 4.0.0 まで残った理由は gate の側にある。
+`scripts/unreal-abi-check.sh` の step 2 はヘッダの宣言と cdylib の export を
+**名前集合でのみ**照合しているので、型が何であっても通る。step 1 の byte 一致も
+複製ヘッダ同士の比較なので、両方が同じ間違いを持っていると検出できない。
+
+step 2a を追加し、`include/alice_sdf.h` の各宣言の**引数型**を `src/ffi/**` の
+`extern "C"` 署名と突合するようにした (現在 175 関数で不一致 0)。C の `float *`
+と Rust の `*const f32` のような表記差は正規化し、`float m[16]` のような配列
+記法はポインタと同一視する。名前集合の照合は引き続き step 2 の担当 (実際の
+cdylib を見るのでソース解析より強く、feature gate された export も扱える)。
+
+追加後にわざと壊して red を実測した: mirror を `float` に戻す / 引数の数を
+減らす / ポインタを値にする / 符号だけ変える (`uint32_t` → `int32_t`) の 4 つは
+いずれも fail し、配列記法への書き換えは green のまま (誤検出なし)。
+
 ## [4.0.0] - 2026-09-27
 
 ### Changed (breaking) — `SdfNode` / `OpCode` を `#[non_exhaustive]` に

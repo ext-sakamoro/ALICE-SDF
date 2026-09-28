@@ -564,8 +564,11 @@ namespace AliceSdfUnity
         public static IntPtr Repeat(IntPtr node, Vector3 spacing) =>
             alice_sdf_repeat(node, spacing.x, spacing.y, spacing.z);
 
-        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_repeat_finite(IntPtr node, int cx, int cy, int cz, float sx, float sy, float sz);
-        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_mirror(IntPtr node, float mx, float my, float mz);
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_repeat_finite(IntPtr node, uint cx, uint cy, uint cz, float sx, float sy, float sz);
+        // mx/my/mz are byte, not float: the Rust export takes u8, and an integer
+        // argument is passed in a different register bank than a float one, so a
+        // float declaration makes the callee read unrelated registers.
+        [DllImport(LibraryName)] private static extern IntPtr alice_sdf_mirror(IntPtr node, byte mx, byte my, byte mz);
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_elongate(IntPtr node, float ex, float ey, float ez);
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_revolution(IntPtr node, float offset);
         [DllImport(LibraryName)] private static extern IntPtr alice_sdf_extrude(IntPtr node, float half_height);
@@ -582,10 +585,16 @@ namespace AliceSdfUnity
         public static IntPtr Shear(IntPtr node, float xy, float xz, float yz) => alice_sdf_shear(node, xy, xz, yz);
         public static IntPtr Animated(IntPtr node, float speed, float amplitude) => alice_sdf_animated(node, speed, amplitude);
 
-        public static IntPtr RepeatFinite(IntPtr node, Vector3Int count, Vector3 spacing) =>
-            alice_sdf_repeat_finite(node, count.x, count.y, count.z, spacing.x, spacing.y, spacing.z);
+        public static IntPtr RepeatFinite(IntPtr node, Vector3Int count, Vector3 spacing)
+        {
+            // The law takes [u32; 3]; a negative count would wrap to ~4 billion
+            // repetitions instead of being rejected, so refuse it here.
+            if (count.x < 0 || count.y < 0 || count.z < 0)
+                throw new ArgumentOutOfRangeException(nameof(count), count, "repeat counts must be >= 0");
+            return alice_sdf_repeat_finite(node, (uint)count.x, (uint)count.y, (uint)count.z, spacing.x, spacing.y, spacing.z);
+        }
         public static IntPtr Mirror(IntPtr node, bool x, bool y, bool z) =>
-            alice_sdf_mirror(node, x ? 1f : 0f, y ? 1f : 0f, z ? 1f : 0f);
+            alice_sdf_mirror(node, x ? (byte)1 : (byte)0, y ? (byte)1 : (byte)0, z ? (byte)1 : (byte)0);
         public static IntPtr Elongate(IntPtr node, Vector3 amount) =>
             alice_sdf_elongate(node, amount.x, amount.y, amount.z);
         public static IntPtr Revolution(IntPtr node, float offset) => alice_sdf_revolution(node, offset);

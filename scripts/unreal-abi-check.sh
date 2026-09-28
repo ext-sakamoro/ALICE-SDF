@@ -11,6 +11,11 @@
 #      cdylib built with `--features unreal`, and every exported one is
 #      declared (an undeclared export is unusable from C++, a declared
 #      non-export is a link error inside Unreal)
+#  2a. the header's argument TYPES match the `extern "C"` signatures in
+#      src/ffi (step 2 compares name sets only, which let alice_sdf_mirror
+#      ship as `float mx, float my, float mz` against `fn(_, u8, u8, u8)`
+#      from 1.7.2 to 4.0.0 — it links, and the flags arrive in the wrong
+#      register bank)
 #   3. AliceSDF.uplugin is valid JSON, VersionName == the crate version,
 #      EngineVersion names a 5.x engine (it said "6.0.0")
 #   4. every `#include "/Plugin/AliceSDF/..."` in Shaders/ resolves to a file
@@ -50,6 +55,107 @@ undeclared=$(comm -13 <(echo "$declared") <(echo "$exported") || true)
 echo "declared: $(echo "$declared" | wc -l), exported: $(echo "$exported" | wc -l)"
 [[ -z "$missing" ]]    || fail "declared in alice_sdf.h but not exported by the cdylib (link error in Unreal):"$'\n'"$missing"
 [[ -z "$undeclared" ]] || fail "exported by the cdylib but not declared in alice_sdf.h (add the prototype):"$'\n'"$undeclared"
+
+# ── 2a. header declarations ⇔ Rust signatures, by TYPE ─────────────────────
+# Step 2 compares name sets only. A prototype whose argument TYPES disagree
+# with the Rust export links fine and passes every name check, so it shipped
+# undetected from 1.7.2 to 4.0.0: alice_sdf_mirror was declared
+# `float mx, float my, float mz` against `fn(SdfHandle, u8, u8, u8)`. An
+# integer argument travels in a different register bank than a float one on
+# every ABI we support (AArch64 x0-x7 / v0-v7, x86-64 SysV rdi-r9 / xmm0-7),
+# so the callee read unrelated registers instead of the flags — deterministically
+# on a given call path, which is why a passing test never revealed it.
+# Step 1 could not catch it either: it compares the two header copies to each
+# other, so an error present in both is invisible.
+#
+# This step is about types only. Name-set drift stays step 2's job, which
+# checks the real cdylib rather than parsing source, so a name present on one
+# side alone is reported here but does not fail (a cfg-gated export is legal).
+step "header argument types ⇔ src/ffi extern \"C\" signatures"
+py=python3; python3 -c 'import sys' >/dev/null 2>&1 || py=python
+"$py" - <<'EOF'
+import pathlib, re, sys
+
+NORM = {
+    "uint8_t": "u8", "uint16_t": "u16", "uint32_t": "u32", "uint64_t": "u64",
+    "int8_t": "i8", "int16_t": "i16", "int32_t": "i32", "int64_t": "i64",
+    "float": "f32", "double": "f64", "size_t": "usize",
+    "c_char": "char", "c_uint": "u32", "c_int": "i32", "c_float": "f32",
+}
+
+
+def norm(t, extra_ptr=False):
+    t = re.sub(r"\b(const|mut)\b", " ", t).replace("*", " ptr ")
+    parts = [NORM.get(p, p) for p in t.split()]
+    ptrs = ["ptr"] * (parts.count("ptr") + (1 if extra_ptr else 0))
+    # C writes `float *`, Rust writes `*const f32`; put ptr first on both.
+    return " ".join(ptrs + [p for p in parts if p != "ptr"])
+
+
+def header_sigs(path):
+    text = re.sub(r"/\*.*?\*/", " ", re.sub(r"//[^\n]*", " ", path.read_text()), flags=re.S)
+    out = {}
+    for m in re.finditer(r"\b(\w[\w *]*?)\s+(alice_sdf_\w+)\s*\(([^;]*?)\)\s*;", text, flags=re.S):
+        name, args = m.group(2), m.group(3)
+        if args.strip() in ("void", ""):
+            out[name] = []
+            continue
+        params = []
+        for a in args.split(","):
+            a = a.strip()
+            # drop the parameter name; `float m[16]` decays to a pointer
+            stripped = re.sub(r"\b\w+\s*(\[\s*\d*\s*\])?$", "", a).strip()
+            params.append(norm(stripped or a, extra_ptr="[" in a))
+        out[name] = params
+    return out
+
+
+def rust_sigs(root):
+    out = {}
+    pat = re.compile(
+        r'(?:pub\s+)?(?:const\s+|unsafe\s+)*extern\s+"C"\s+fn\s+(alice_sdf_\w+)\s*\((.*?)\)\s*(?:->|\{)',
+        re.S,
+    )
+    for f in sorted(root.rglob("*.rs")):
+        for m in pat.finditer(f.read_text()):
+            out[m.group(1)] = [
+                norm(a.split(":", 1)[1]) for a in m.group(2).split(",") if ":" in a
+            ]
+    return out
+
+
+header = header_sigs(pathlib.Path("include/alice_sdf.h"))
+rust = rust_sigs(pathlib.Path("src/ffi"))
+if not header:
+    sys.exit("no alice_sdf_* prototypes parsed from include/alice_sdf.h (regex drift?)")
+if not rust:
+    sys.exit('no extern "C" fns parsed from src/ffi (regex drift?)')
+
+problems = []
+for name in sorted(set(header) & set(rust)):
+    h, r = header[name], rust[name]
+    if len(h) != len(r):
+        problems.append(f"  {name}: header takes {len(h)} args, Rust takes {len(r)}\n"
+                        f"    header={h}\n    rust  ={r}")
+        continue
+    for i, (a, b) in enumerate(zip(h, r)):
+        if a != b:
+            problems.append(f"  {name} arg{i}: header declares {a!r}, Rust takes {b!r}")
+
+only_h = sorted(set(header) - set(rust))
+only_r = sorted(set(rust) - set(header))
+print(f"compared {len(set(header) & set(rust))} functions "
+      f"(header {len(header)}, src/ffi {len(rust)})")
+for label, names in (("header only", only_h), ("src/ffi only", only_r)):
+    if names:
+        print(f"note: {label} (types not compared, step 2 owns name drift): {names}")
+
+if problems:
+    sys.exit("argument types disagree between include/alice_sdf.h and src/ffi "
+             "(the header is what C++/C# callers compile against, so the "
+             "declaration must match the Rust export exactly):\n" + "\n".join(problems))
+print("ok: every shared function has identical argument types")
+EOF
 
 # ── 2b. no native library in the repository ────────────────────────────────
 step "unreal-plugin/ThirdParty: no committed binaries"
