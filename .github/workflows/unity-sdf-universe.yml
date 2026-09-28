@@ -76,11 +76,18 @@ jobs:
       - name: Compile + CiSmokeTest (native FFI batch eval + physics step)
         run: |
           $log = "unity-sdf-universe-ci.log"
-          & "${{ steps.unity.outputs.path }}" -batchmode -nographics -quit `
-              -projectPath unity-sdf-universe `
-              -executeMethod CiSmokeTest.Run `
-              -logFile $log
-          $exit = $LASTEXITCODE
+          $unityArgs = @("-batchmode", "-nographics", "-quit", "-projectPath", "unity-sdf-universe",
+                         "-executeMethod", "CiSmokeTest.Run", "-logFile", $log)
+          # Start-Process -Wait, not `&`: Unity.exe is a GUI-subsystem process, and
+          # scripts/unity-preflight.ps1 uses the same pattern on this runner for the
+          # same reason — `&` can return before the process actually exits, which
+          # otherwise races the Get-Content below against Unity still starting up.
+          $p = Start-Process -FilePath "${{ steps.unity.outputs.path }}" -ArgumentList $unityArgs -NoNewWindow -PassThru -Wait
+          $exit = $p.ExitCode
+          if (-not (Test-Path $log)) {
+            Write-Host "::error title=unity-sdf-universe::$log was never created (Unity exited $exit before writing it)"
+            exit 1
+          }
           Get-Content $log | Select-String -Pattern "\[CiSmokeTest\]|error CS|Exception"
           if ($exit -ne 0) {
             Write-Host "::error title=unity-sdf-universe::CiSmokeTest exited $exit — see uploaded log"
