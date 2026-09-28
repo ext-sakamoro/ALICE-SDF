@@ -90,12 +90,22 @@ impl MeshToSdfConfig {
         }
     }
 
-    /// Create config for accurate BVH-based SDF
+    /// Create config for accurate BVH-based SDF.
+    ///
+    /// Uses [`MeshSignMode::ExteriorFloodFill`], so the sign is a function of the
+    /// geometry rather than of the triangle winding: an open surface reports no
+    /// interior, reversing the winding changes nothing, and each closed component
+    /// gets its own interior. Pair with [`Self::sign_flood_fill_resolution`] when
+    /// the mesh has features thinner than a few grid cells.
+    ///
+    /// For the pre-4.0 behaviour, set `sign_mode` back to
+    /// [`MeshSignMode::NearestFaceNormal`].
     pub fn accurate() -> Self {
         Self {
             strategy: MeshToSdfStrategy::BvhExact,
             use_bvh: true,
             max_triangles_per_leaf: 4,
+            sign_mode: MeshSignMode::ExteriorFloodFill,
             ..Default::default()
         }
     }
@@ -112,19 +122,13 @@ impl MeshToSdfConfig {
 
     /// Exact BVH distance with a sign that does not depend on triangle winding.
     ///
-    /// The right config for meshes you did not author (scans, generative models,
-    /// assemblies of independently wound parts): open surfaces report no
-    /// interior, reversing the winding changes nothing, and each closed
-    /// component gets its own interior. See [`MeshSignMode::ExteriorFloodFill`]
-    /// for the resolution caveat.
+    /// Identical to [`Self::accurate`] — delegates to it so the two cannot
+    /// drift — and spelled out for call sites where the reason for the choice is
+    /// the mesh's provenance rather than the accuracy: scans, generative models,
+    /// assemblies of independently wound parts. See
+    /// [`MeshSignMode::ExteriorFloodFill`] for the resolution caveat.
     pub fn topology_robust() -> Self {
-        Self {
-            strategy: MeshToSdfStrategy::BvhExact,
-            use_bvh: true,
-            max_triangles_per_leaf: 4,
-            sign_mode: MeshSignMode::ExteriorFloodFill,
-            ..Default::default()
-        }
+        Self::accurate()
     }
 }
 
@@ -572,12 +576,20 @@ mod tests {
         let d_surface = mesh_sdf.eval(Vec3::ZERO);
         assert!(d_surface.abs() < 0.01, "Expected ~0, got {}", d_surface);
 
-        // Point above
+        // Point above. The quad is an open sheet, so it encloses nothing and the
+        // signed distance is +1 on *both* sides — this used to be asserted on
+        // `.abs()` because the winding rule made the sign arbitrary.
         let d_above = mesh_sdf.eval(Vec3::new(0.0, 0.0, 1.0));
         assert!(
-            (d_above.abs() - 1.0).abs() < 0.01,
-            "Expected ~1, got {}",
+            (d_above - 1.0).abs() < 0.01,
+            "Expected ~+1 above an open sheet, got {}",
             d_above
+        );
+        let d_below = mesh_sdf.eval(Vec3::new(0.0, 0.0, -1.0));
+        assert!(
+            (d_below - 1.0).abs() < 0.01,
+            "Expected ~+1 below an open sheet too, got {}",
+            d_below
         );
 
         // Batch evaluation
@@ -615,6 +627,23 @@ mod tests {
         let accurate = MeshToSdfConfig::accurate();
         assert_eq!(accurate.strategy, MeshToSdfStrategy::BvhExact);
         assert!(accurate.use_bvh);
+        assert_eq!(accurate.sign_mode, MeshSignMode::ExteriorFloodFill);
+
+        // documented as an alias, so pin that rather than repeating the fields
+        assert_eq!(
+            MeshToSdfConfig::topology_robust().sign_mode,
+            accurate.sign_mode
+        );
+        assert_eq!(
+            MeshToSdfConfig::topology_robust().strategy,
+            accurate.strategy
+        );
+
+        // the default stays on the winding rule so existing callers are unaffected
+        assert_eq!(
+            MeshToSdfConfig::default().sign_mode,
+            MeshSignMode::NearestFaceNormal
+        );
 
         let hybrid = MeshToSdfConfig::hybrid();
         assert_eq!(hybrid.strategy, MeshToSdfStrategy::Hybrid);

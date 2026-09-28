@@ -42,10 +42,21 @@ let d2 = (p2 + v02 * t2).length_squared();
   面法線を一切読まないので巻き順・閉曲面かどうか・連結成分数のいずれにも依存
   しない。表面帯のセルは最近接点から離れる向きへ 1 セルずつ歩いて分類済セルの
   label を取るので、セル未満の分解能で符号が決まる。
-- `MeshToSdfConfig` に `sign_mode` / `sign_flood_fill_resolution` と preset
-  `MeshToSdfConfig::topology_robust()` を追加。既定は従来どおり
-  `MeshSignMode::NearestFaceNormal` なので、既存の呼び出しの挙動は変わらない
-  (符号の大きさは (2) の修正ぶん正しくなる)。
+- `MeshToSdfConfig` に `sign_mode` / `sign_flood_fill_resolution` を追加。
+  `MeshToSdfConfig::default()` は従来どおり `MeshSignMode::NearestFaceNormal`
+  なので、既定の呼び出しの符号規則は変わらない (符号の大きさは (2) の修正ぶん
+  正しくなる)。
+- **`MeshToSdfConfig::accurate()` の符号規則を `ExteriorFloodFill` に変更**。
+  「accurate」が名乗るとおり、巻き順ではなく幾何から符号を決めるようになった。
+  4.0.0 は crates.io 未 publish (最新の公開版は 3.1.0) なので、既存の利用者に
+  挙動変更は届かない ─ **breaking 扱いにしない**。3.x の挙動が要る呼び出しは
+  `cfg.sign_mode = MeshSignMode::NearestFaceNormal` で戻せる。
+  副作用として、`accurate()` は退化 mesh (bounding box の全辺が 0 / 非有限) で
+  `MeshSdf::new` が `None` を返すようになった。理由が要る場合は
+  `MeshSdf::try_new` を使う。
+- `MeshToSdfConfig::topology_robust()` を追加。`accurate()` への委譲で、
+  「精度」ではなく「mesh の出所が信用できない」ことが選択理由である呼び出し側の
+  ための明示的な別名。
 - `MeshSdf::try_new` を追加。flood fill の構築失敗を従来規則へ黙って落とさず
   `MeshInputError` で返す。
 
