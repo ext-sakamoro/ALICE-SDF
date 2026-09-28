@@ -161,7 +161,8 @@ impl ExteriorField {
         // contain surface, so block it. Every cell the surface actually crosses
         // satisfies this, which is what makes the fill leak-proof.
         let half_diag = cell * 0.5 * 3.0_f32.sqrt();
-        let skeleton = Self {
+        // geometry-only value: the two label vectors are filled in below
+        let grid = Self {
             origin,
             cell,
             dims,
@@ -170,7 +171,7 @@ impl ExteriorField {
         };
         let blocked: Vec<bool> = (0..total)
             .into_par_iter()
-            .map(|idx| bvh.unsigned_distance(skeleton.cell_center(idx)) <= half_diag)
+            .map(|idx| bvh.unsigned_distance(grid.cell_center(idx)) <= half_diag)
             .collect();
 
         let exterior = Self::fill_from_boundary(&blocked, dims);
@@ -178,7 +179,7 @@ impl ExteriorField {
         Ok(Self {
             blocked,
             exterior,
-            ..skeleton
+            ..grid
         })
     }
 

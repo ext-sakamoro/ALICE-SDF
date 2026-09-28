@@ -6,6 +6,68 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — mesh → SDF の符号が三角形の巻き順に依存し、三角形距離の edge clamp も誤っていた
+
+外部で生成された mesh を SDF として取り込む経路が 2 つの独立した理由で壊れていた。
+
+**(1) 符号が巻き順依存**。`MeshBvh::signed_distance` は `|d|` 最小の三角形を選び、
+その面法線との内積で符号を決めていた。面法線は頂点の並び順で向きが変わるので、
+場が幾何ではなく入力の書き方の関数になっていた。結果として
+
+- 開曲面 (囲む体積を持たない板) の片側に架空の内部ができる、
+- index を逆順にすると場全体が反転する、
+- 独立に巻かれた部品を連結した mesh では、巻き方が食い違う部品だけ内外が裏返る。
+
+**(2) `Triangle::signed_distance` の edge 2-0 の clamp が符号反転後に適用されていた**。
+
+```rust
+let t2 = clamp01((-v02).dot(p2) / v02.length_squared().max(1e-10));
+let d2 = (p2 + v02 * t2).length_squared();
+```
+
+真のパラメータ `t*` に対して `clamp01(-t*)` を取ってから符号を戻すので、
+`t* ∈ [0,1]` (投影が辺の内側) では `v2` までの距離に落ちて**過大**、`t* < 0`
+では無限直線上の点までの距離になり**過小**になる。この結果、閉じていて巻き順も
+正しい箱ですら符号が壊れていた ─ 半径 (0.7, 0.5, 0.9) の箱を格子 3165 点で
+解析解と突き合わせると **207 点 (6.5%) の符号が食い違い**、最大誤差 2.299。
+
+#### 対応
+
+- `Triangle::closest_point` を Voronoi 領域形 (Ericson, *Real-Time Collision
+  Detection* §5.1.5) で追加し、`signed_distance` / `unsigned_distance` の大きさを
+  そこから導くようにした。`MeshBvh::closest_point` / `MeshBvh::unsigned_distance`
+  も符号ロジックを経由しない専用探索にした。
+- `src/mesh/mesh_sign.rs` を追加。`SDF(x) = (1 − 2·T(x)) · UDF(x)` で、`T` は
+  padding 付き bounding box の外周から 6 近傍 flood fill して得る到達可能性。
+  面法線を一切読まないので巻き順・閉曲面かどうか・連結成分数のいずれにも依存
+  しない。表面帯のセルは最近接点から離れる向きへ 1 セルずつ歩いて分類済セルの
+  label を取るので、セル未満の分解能で符号が決まる。
+- `MeshToSdfConfig` に `sign_mode` / `sign_flood_fill_resolution` と preset
+  `MeshToSdfConfig::topology_robust()` を追加。既定は従来どおり
+  `MeshSignMode::NearestFaceNormal` なので、既存の呼び出しの挙動は変わらない
+  (符号の大きさは (2) の修正ぶん正しくなる)。
+- `MeshSdf::try_new` を追加。flood fill の構築失敗を従来規則へ黙って落とさず
+  `MeshInputError` で返す。
+
+分解能が精度の唯一のつまみで、およそ 2 セルより薄い壁や隙間は潰れる。
+`sign_flood_fill_resolution` (既定 64) を最も薄い形状が数セルにまたがるまで上げる。
+
+#### 検証
+
+`tests/test_mesh_sign_topology.rs` は期待値を解析解 (厳密な箱 SDF / 矩形までの
+厳密距離) だけから作り、実装を呼んで期待値を組み立てていない。
+
+| oracle | 実装前 | 実装後 |
+|---|---|---|
+| 開曲面に内部が無い | 符号不一致 1014/2116 (47.9%) | 0 (0.0%)、最大誤差 0.000e0 |
+| 巻き反転で場が不変 | 2135/2197 点が相違 (最大 2.691) | 0/2197、bit 一致 |
+| 分離部品 + 巻き不一致 | 符号不一致 1797/3325 (54.0%) | 0 (0.0%)、最大誤差 0.000e0 |
+| 閉じた箱 = 解析解 | 符号不一致 207/3165 (6.5%) | 0 (0.0%)、最大誤差 0.000e0 |
+| 厚さ 0.1 板の内部が負 | (通過) | 通過 |
+
+決定論は保たれる。セル占有は独立な per-cell 距離クエリ (リダクション無し)、
+flood fill は整数 index のみ、浮動小数は加減乗除・比較・`sqrt` だけを使う。
+
 ### Fixed — `alice_sdf_mirror` / `alice_sdf_repeat_finite` の宣言が Rust の署名と食い違っていた
 
 `include/alice_sdf.h` と `bindings/AliceSdf.cs` が `alice_sdf_mirror` を
