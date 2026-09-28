@@ -24,6 +24,11 @@ on:
     branches: [main]
     paths:
       - 'vrchat-package/**'
+      # docs / images do not change what Unity compiles, and a run costs the
+      # runner ~10 minutes of editor time
+      - '!vrchat-package/**.md'
+      - '!vrchat-package/Documentation~/**'
+      - '!vrchat-package/Product~/**'
       - 'scripts/unity-*'
       - '.github/workflows/unity-vrchat.yml'
   workflow_dispatch:
