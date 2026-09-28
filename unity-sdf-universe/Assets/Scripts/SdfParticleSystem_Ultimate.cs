@@ -268,7 +268,7 @@ namespace SdfUniverse
 
             if (!result.IsOk)
             {
-                Debug.LogWarning($"[Ultimate] SDF eval failed: {result.result}");
+                Debug.LogWarning($"[Ultimate] SDF eval failed: {result.Result}");
                 return;
             }
 

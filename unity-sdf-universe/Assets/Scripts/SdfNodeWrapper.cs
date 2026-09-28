@@ -161,6 +161,7 @@ namespace AliceSdf
         // ================================================================
 
         public SdfNode Translate(Vector3 offset) => Wrap(Ffi.Translate(_handle, offset));
+        public SdfNode Translate(float x, float y, float z) => Translate(new Vector3(x, y, z));
         public SdfNode Rotate(Quaternion rotation) => Wrap(Ffi.Rotate(_handle, rotation));
         public SdfNode RotateEuler(Vector3 euler) => Wrap(Ffi.RotateEuler(_handle, euler));
         public SdfNode Scale(float factor) => Wrap(Ffi.Scale(_handle, factor));

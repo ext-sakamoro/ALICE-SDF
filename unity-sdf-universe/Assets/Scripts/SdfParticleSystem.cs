@@ -13,6 +13,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 using AliceSdf;
@@ -66,10 +67,10 @@ namespace SdfUniverse
 
         // Core data - SoA layout for SIMD
         private SdfWorld _sdfWorld;
-        private float[] _posX, _posY, _posZ;
+        private NativeArray<float> _posX, _posY, _posZ;
         private float[] _velX, _velY, _velZ;
-        private float[] _normX, _normY, _normZ;  // Gradients from SIMD
-        private float[] _distances;
+        private NativeArray<float> _normX, _normY, _normZ;  // Gradients from SIMD
+        private NativeArray<float> _distances;
         private float[] _lifetimes;
         private Color[] _colors;
         private int _activeCount;
@@ -143,7 +144,18 @@ namespace SdfUniverse
 
         void OnDestroy()
         {
-            // Cleanup
+            DisposeSoaArrays();
+        }
+
+        private void DisposeSoaArrays()
+        {
+            if (_posX.IsCreated) _posX.Dispose();
+            if (_posY.IsCreated) _posY.Dispose();
+            if (_posZ.IsCreated) _posZ.Dispose();
+            if (_normX.IsCreated) _normX.Dispose();
+            if (_normY.IsCreated) _normY.Dispose();
+            if (_normZ.IsCreated) _normZ.Dispose();
+            if (_distances.IsCreated) _distances.Dispose();
         }
 
         // =====================================================================
@@ -152,17 +164,19 @@ namespace SdfUniverse
 
         private void InitializeParticles()
         {
-            // Allocate SoA arrays
-            _posX = new float[particleCount];
-            _posY = new float[particleCount];
-            _posZ = new float[particleCount];
+            // Allocate SoA arrays (NativeArray for the ones passed to EvalGradientSoA,
+            // which needs a stable unsafe pointer that a managed float[] cannot give)
+            DisposeSoaArrays();
+            _posX = new NativeArray<float>(particleCount, Allocator.Persistent);
+            _posY = new NativeArray<float>(particleCount, Allocator.Persistent);
+            _posZ = new NativeArray<float>(particleCount, Allocator.Persistent);
             _velX = new float[particleCount];
             _velY = new float[particleCount];
             _velZ = new float[particleCount];
-            _normX = new float[particleCount];
-            _normY = new float[particleCount];
-            _normZ = new float[particleCount];
-            _distances = new float[particleCount];
+            _normX = new NativeArray<float>(particleCount, Allocator.Persistent);
+            _normY = new NativeArray<float>(particleCount, Allocator.Persistent);
+            _normZ = new NativeArray<float>(particleCount, Allocator.Persistent);
+            _distances = new NativeArray<float>(particleCount, Allocator.Persistent);
             _lifetimes = new float[particleCount];
             _colors = new Color[particleCount];
 
@@ -268,7 +282,7 @@ namespace SdfUniverse
 
             if (!result.IsOk)
             {
-                Debug.LogWarning($"[SdfParticleSystem] Gradient eval failed: {result.result}");
+                Debug.LogWarning($"[SdfParticleSystem] Gradient eval failed: {result.Result}");
                 return;
             }
 
