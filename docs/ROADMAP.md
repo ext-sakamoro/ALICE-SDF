@@ -114,6 +114,33 @@ Two-round maintainer self-review of 1.10.2 (independent Linux x86_64 environment
   operation-order audit (tolerance 1e-5 today); `SdfNode::rotate_euler` and
   the other construction helpers still build quaternions with glam's libm.
 
+### Mesh → SDF sign decoupled from winding (4.0.0, 2026-09-28)
+
+- ✅ `MeshBvh::signed_distance` returned the sign of the nearest triangle's
+  face normal, so the field flipped with vertex order and meant nothing for
+  open surfaces or separated parts. `mesh::mesh_sign` now computes
+  `SDF = (1 − 2·T)·UDF`, where `T` is a flood fill from a padded bounding
+  box, making the sign topological instead of orientational.
+- ✅ A second, independent defect surfaced only because the oracle used a
+  closed form: `Triangle::signed_distance` applied the edge 2-0 clamp
+  **after** negating, so the distance itself was wrong — 207 of 3165 samples
+  (6.5 %) disagreed with the analytic box, max error 2.299, on a mesh that
+  was closed *and* correctly wound. `unsigned_distance` was
+  `signed_distance().abs()` and inherited it. Both go through
+  `Triangle::closest_point` (Ericson §5.1.5 Voronoi regions) now.
+- ✅ `MeshToSdfConfig::accurate()` switched to `ExteriorFloodFill`;
+  `topology_robust()` delegates to it; `default()` keeps
+  `NearestFaceNormal`. Not breaking for published users — crates.io is at
+  3.1.0.
+- ✅ Oracle first: `tests/test_mesh_sign_topology.rs` draws its expectations
+  only from closed forms (exact box, exact rectangle distance) and was
+  **measured red before the fix** (47.9 % / 54.0 % / 6.5 % sign mismatch;
+  2135 of 2197 points differing under a winding flip), green after
+  (0.000e0 max error, 2197 points bit-identical under the flip).
+- ✅ Determinism held: CI run 36409141420, 22 jobs green, including macOS
+  ARM64, Linux x86_64, Windows x86_64 and GPU parity — the flood fill and
+  UDF paths agree across platforms.
+
 ### Deeper follow-ups (not scheduled)
 
 - **P14-C — Real GPU execution parity** — build a wgpu headless test harness that uploads the `GpuColorProgram` to a storage buffer, dispatches the emitted evaluator against a synthetic context UBO, reads back the output framebuffer, and asserts numerical parity against the CPU scalar `eval` within a small epsilon (e.g. `1e-5`). Currently only naga parse + semantic validation is exercised; drop-in for a wgpu-enabled CI runner.
