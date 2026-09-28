@@ -1,10 +1,11 @@
 TRADEMARK NOTICE
 
 "ALICE", "Project A.L.I.C.E.", and the "ALICE-*" naming pattern are
-trademarks of Moroya Sakamoto / Extoria. The AGPL-3.0 license grants
-permission to use, modify, and distribute this software but does not
-grant permission to use these trademarks except as required for
-reasonable and customary use in describing the origin of the software.
+trademarks of Moroya Sakamoto / Extoria. Nothing in the licence under which this software is distributed (see
+LICENSE and the `license` field in Cargo.toml) grants permission to use
+these trademarks, except as required for reasonable and customary use in
+describing the origin of the software. This holds whatever that licence is,
+so this notice does not need updating when the licence changes.
 
 If you fork this project, you must remove or replace the "ALICE" prefix
 in your fork's name and clearly indicate that your fork is not an
