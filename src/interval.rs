@@ -93,6 +93,7 @@ impl Interval {
     #[inline(always)]
     #[must_use]
     pub fn outward(lo: f32, hi: f32) -> Self {
+        // ALLOW-RAW-INTERVAL: this *is* the widening; the ulp step is applied here
         Self {
             lo: next_down(lo),
             hi: next_up(hi),
@@ -102,16 +103,19 @@ impl Interval {
     /// Create a point interval [v, v]
     #[inline(always)]
     pub const fn point(v: f32) -> Self {
+        // ALLOW-RAW-INTERVAL: [v, v] is exact — v is the value, not a rounding of one
         Self { lo: v, hi: v }
     }
 
     /// The entire real line
+    // ALLOW-RAW-INTERVAL: the infinities are already the widest possible bounds
     pub const EVERYTHING: Self = Self {
         lo: f32::NEG_INFINITY,
         hi: f32::INFINITY,
     };
 
     /// Zero interval
+    // ALLOW-RAW-INTERVAL: 0 is exact in f32; widening it would lose the sign test
     pub const ZERO: Self = Self { lo: 0.0, hi: 0.0 };
 
     /// Check if the interval is entirely positive
@@ -153,6 +157,7 @@ impl Interval {
     /// Intersection of two intervals (narrowest overlap)
     #[inline(always)]
     pub const fn intersect(self, other: Self) -> Self {
+        // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: self.lo.max(other.lo),
             hi: self.hi.min(other.hi),
@@ -162,6 +167,7 @@ impl Interval {
     /// Hull (union) of two intervals (widest encompassing)
     #[inline(always)]
     pub const fn hull(self, other: Self) -> Self {
+        // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: self.lo.min(other.lo),
             hi: self.hi.max(other.hi),
@@ -174,11 +180,14 @@ impl Interval {
         if self.lo >= 0.0 {
             self
         } else if self.hi <= 0.0 {
+            // ALLOW-RAW-INTERVAL: f32 negation is exact, so the swapped endpoints are too
             Self {
                 lo: -self.hi,
                 hi: -self.lo,
             }
         } else {
+            // ALLOW-RAW-INTERVAL: 0 is an exact lower bound for |x| over a straddling
+            // interval, and the upper bound selects an exactly negated endpoint
             Self {
                 lo: 0.0,
                 hi: self.hi.max(-self.lo),
@@ -200,7 +209,8 @@ impl Interval {
         } else if self.hi <= 0.0 {
             Self::outward(self.hi * self.hi, self.lo * self.lo)
         } else {
-            // 0 は厳密な下界 (二乗は非負) なので下側は広げない
+            // ALLOW-RAW-INTERVAL: 0 is an exact lower bound (a square is non-negative),
+            // so only the computed upper bound is widened
             Self {
                 lo: 0.0,
                 hi: next_up((self.lo * self.lo).max(self.hi * self.hi)),
@@ -211,6 +221,7 @@ impl Interval {
     /// Minimum of two intervals
     #[inline(always)]
     pub const fn min(self, other: Self) -> Self {
+        // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: self.lo.min(other.lo),
             hi: self.hi.min(other.hi),
@@ -220,6 +231,7 @@ impl Interval {
     /// Maximum of two intervals
     #[inline(always)]
     pub const fn max(self, other: Self) -> Self {
+        // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: self.lo.max(other.lo),
             hi: self.hi.max(other.hi),
@@ -229,6 +241,8 @@ impl Interval {
     /// Clamp to scalar range
     #[inline(always)]
     pub const fn clamp(self, lo: f32, hi: f32) -> Self {
+        // ALLOW-RAW-INTERVAL: selection only — each bound is either an existing
+        // endpoint or one of the caller's exact limits
         Self {
             lo: self.lo.clamp(lo, hi),
             hi: self.hi.clamp(lo, hi),
@@ -274,6 +288,7 @@ impl Neg for Interval {
     type Output = Self;
     #[inline(always)]
     fn neg(self) -> Self {
+        // ALLOW-RAW-INTERVAL: f32 negation is exact, so the swapped endpoints are too
         Self {
             lo: -self.hi,
             hi: -self.lo,

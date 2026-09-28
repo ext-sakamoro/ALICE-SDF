@@ -17,6 +17,7 @@ on:
       - 'Cargo.lock'
       - 'src/**'
       - 'deny.toml'
+      - 'scripts/**'
       - '.github/workflows/security-audit.yml'
       - '.github/actions/**'
       - 'examples/*/Cargo.toml'
@@ -29,6 +30,7 @@ on:
       - 'Cargo.lock'
       - 'src/**'
       - 'deny.toml'
+      - 'scripts/**'
       - '.github/workflows/security-audit.yml'
       - '.github/actions/**'
       - 'examples/*/Cargo.toml'
@@ -217,6 +219,18 @@ jobs:
         run: |
           set -eo pipefail
           python3 scripts/det_math_guard.py
+
+      # 4.0.1: interval arithmetic is only a valid enclosure because every
+      # computed bound goes through `Interval::new` / `Interval::outward`, which
+      # round outward by one ulp. A raw `Interval { lo, hi }` literal skips that
+      # silently, and the inclusion oracle cannot see it (it samples points, so
+      # an enclosure one ulp too narrow at an unsampled corner still reads
+      # 0.000e0). Selection-only and exact-by-construction sites carry a written
+      # `ALLOW-RAW-INTERVAL:` reason.
+      - name: Detect raw Interval literals bypassing the outward rounding
+        run: |
+          set -eo pipefail
+          python3 scripts/interval_outward_guard.py
 
       - name: Detect dbg!() residual in src/**
         run: |

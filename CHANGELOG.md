@@ -109,6 +109,48 @@ corpus に退行 test を追加 (`polar_repeat_1` / `polar_repeat_2` /
 距離が動くのは helix の曲線上のみで、`test_det_golden` の既存 entry は不変
 (新 3 entry のみ pin を追加)。
 
+### Changed — 区間演算を外側丸めにした (2026-09-28)
+
+Rust に丸めモード制御が無いので、round-to-nearest の結果を 1 ulp 外側にずらす
+形で外側丸めを実装した (単一 IEEE 演算は厳密値の半 ulp 以内なので健全)。
+`next_down` / `next_up` は MSRV の都合で bit 操作の自前実装。
+
+- 値を**計算する** op を全て外側丸めに: `sqrt` / `sqr` / `expand` / `Add` /
+  `Sub` / `Mul` (interval × interval, × f32) / `length` / `length_xz`
+- `Interval::new` 自体を `Interval::outward` 経由にしたので、未監査の call site
+  も「1 ulp 緩む」側に倒れる (soundness を落とさない default)
+- 値を**選択するだけ**の op (`min` / `max` / `hull` / `clamp` / `abs` / `neg` /
+  `intersect`) は厳密のまま
+
+併せて `stairs` の 3 arm が「(a, b) 空間で 1-Lipschitz」と仮定して中心標本 ±
+半対角で包んでいたのを撤去した (`glsl_mod` は周期境界で跳ぶので仮定が成立しない)。
+
+`test_det_golden` の pin は不変、`alice-lol` の判定器の未決定率も変化なし。
+
+### Added — 外側丸めを迂回できなくする guard (`scripts/interval_outward_guard.py`)
+
+上の健全性は「値を計算する arm は全て `Interval::new` / `Interval::outward` を
+通る」という不変条件に依存していて、それを機械が見ていなかった。新しい arm を
+`Interval { lo, hi }` と書けば widening を素通りするが、包含 oracle は点を標本
+するので**標本していない隅で 1 ulp 足りない区間**を見つけられず 0.000e0 のまま
+になる。
+
+そこで `src/` 内の raw literal を検出し、許す場所には理由を書かせる:
+
+```rust
+// ALLOW-RAW-INTERVAL: <なぜこの境界は広げなくてよいか>
+```
+
+を literal の開始行か直前 3 行に置く。現状の許可は 13 箇所 (選択のみの op と、
+`point` / `ZERO` / `EVERYTHING` / `sqr` の 0 下界のように構成上厳密なもの)。
+理由が 12 字未満のものと、literal が無くなったのに残った marker も fail にする
+(allowlist が、正当化している code から離れていくのを防ぐ)。
+
+`scripts/preflight.sh` と `security-audit.yml` の両方に入れた。`scripts/**` が
+workflow の path filter に無く guard を直しても CI が再実行されない状態だったので
+併せて追加した。guard が壊れた時に落ちることは、raw literal / 短い理由 / 残留
+marker の 3 通りを実際に仕込んで red を確認している。
+
 ### Added — 第三者表記 (`THIRD-PARTY-NOTICES.md`)
 
 距離関数の**数式の形**の出典 (Inigo Quilez 34 file / Mercury hg_sdf 15 file /

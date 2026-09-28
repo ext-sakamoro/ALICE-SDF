@@ -131,6 +131,9 @@ if [ -n "$hits" ]; then echo "$hits"; echo "dbg!() in src/" >&2; exit 1; fi
 step "stub-guard: platform libm / mul_add in the evaluator and law directories (security-audit.yml, 3.1.0)"
 python3 scripts/det_math_guard.py
 
+step "stub-guard: raw Interval { lo, hi } bypassing the outward rounding (security-audit.yml, 4.0.1)"
+python3 scripts/interval_outward_guard.py
+
 # ── fuzz.yml (build only; the replay needs the nightly fuzz build) ────────
 
 step "fuzz: cargo +nightly fuzz build (all targets)"
