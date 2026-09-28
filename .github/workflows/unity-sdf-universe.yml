@@ -1,0 +1,96 @@
+# The Unity side of unity-sdf-universe — the demo has no committed .unity
+# scene (it is source you assemble yourself, see unity-sdf-universe/README.md)
+# and was never wired into CI, so its copy of bindings/AliceSdf.cs silently
+# drifted behind the crate for a long time (found + fixed 2026-09-28, see
+# memory/feedback_unity_sdf_universe_demo_drift_2026_09_28.md in claude-config).
+# This job builds the native library fresh from source, drops it into the
+# project, and runs Assets/Editor/CiSmokeTest.cs — a reflection-driven smoke
+# test that calls SdfWorld/SdfParticleSystem's Awake/Start/Update manually
+# (Unity does not call them without a scene or play mode) to exercise the
+# native FFI batch-eval path and the physics integrator, not just compile.
+#
+# Runner: the same self-hosted Windows box as unity-vrchat.yml (label
+# `unity`), which already has a licensed Unity 2022.3.22f1 — this project's
+# own minimum ("2022.3+", see SETUP_GUIDE.md) — and, per unreal.yml, a working
+# Rust toolchain.
+#
+# The repository is public and the runner is a personal machine, so this
+# workflow never runs for pull requests (a fork PR could otherwise execute
+# arbitrary code here). Push to main and manual dispatch only.
+name: Unity (unity-sdf-universe)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'unity-sdf-universe/**'
+      - '!unity-sdf-universe/**.md'
+      - 'bindings/AliceSdf.cs'
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.github/workflows/unity-sdf-universe.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: unity-sdf-universe-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: powershell
+
+jobs:
+  unity-sdf-universe:
+    name: Unity 2022.3.22f1 — compile + native FFI smoke test
+    runs-on: [self-hosted, windows, unity]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Unity 2022.3.22f1
+        id: unity
+        run: |
+          $unity = "E:\2022.3.22f1\Editor\Unity.exe"
+          if (-not (Test-Path $unity)) {
+            Write-Host "::error title=Unity missing::$unity not found on this runner"
+            exit 1
+          }
+          "path=$unity" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          (Get-Item $unity).VersionInfo.ProductVersion
+
+      - name: cargo build --release --features unity
+        run: |
+          cargo build --release --features unity
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Place native library (Assets/Plugins/alice_sdf.dll)
+        run: |
+          New-Item -ItemType Directory -Force -Path unity-sdf-universe\Assets\Plugins | Out-Null
+          Copy-Item target\release\alice_sdf.dll unity-sdf-universe\Assets\Plugins\alice_sdf.dll -Force
+
+      - name: Compile + CiSmokeTest (native FFI batch eval + physics step)
+        run: |
+          $log = "unity-sdf-universe-ci.log"
+          & "${{ steps.unity.outputs.path }}" -batchmode -nographics -quit `
+              -projectPath unity-sdf-universe `
+              -executeMethod CiSmokeTest.Run `
+              -logFile $log
+          $exit = $LASTEXITCODE
+          Get-Content $log | Select-String -Pattern "\[CiSmokeTest\]|error CS|Exception"
+          if ($exit -ne 0) {
+            Write-Host "::error title=unity-sdf-universe::CiSmokeTest exited $exit — see uploaded log"
+            exit $exit
+          }
+
+      - name: Unity log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: unity-sdf-universe-log
+          path: unity-sdf-universe-ci.log
+          if-no-files-found: ignore
