@@ -103,6 +103,43 @@ jobs:
       # 現状の ignored: log / js-sys / vdb-rs (feature-gated 予備 dep、将来使用予定)
       - uses: bnjbvr/cargo-machete@main
 
+  package-integrity:
+    name: Package integrity (publish される .crate が build できるか)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+
+      # publish される .crate に必要な file が全部入っているかを見る
+      #
+      # include_str! / include_bytes! が package 境界を越える、exclude を効かせ過ぎる、
+      # 必要 file が漏れる — これらは repo / workspace に file がある限り
+      # cargo build も cargo test も clippy も preflight も全部通り、
+      # crates.io から取得した利用者だけが compile 不能になる
+      # (2026-09-28 ALICE-LOL lol.gbnf、canonical template 罠 #51)
+      #
+      # semver-checks は baseline を build するので結果的に検出するが、
+      # (a) 壊れた版を publish した後にしか分からない
+      # (b) 未 publish crate は baseline が無く発火しない ので予防にならない
+      - name: cargo package (.crate を作る)
+        # --no-verify: 未 publish の sibling に path dep がある repo では verify step が
+        #   registry 解決で落ちる 展開後の隔離 build が本体なので verify は不要
+        run: cargo package --no-verify --allow-dirty
+
+      - name: 展開して隔離 build
+        run: |
+          set -euo pipefail
+          crate=$(find target/package -maxdepth 1 -name '*.crate' | head -1)
+          [ -n "$crate" ] || { echo "::error::.crate が生成されていない"; exit 1; }
+          echo "packaged: $(basename "$crate") ($(du -h "$crate" | cut -f1))"
+          tmp=$(mktemp -d)
+          tar xzf "$crate" -C "$tmp"
+          cd "$tmp"/*/
+          # 親 workspace を継承すると member 扱いになり、境界を越えた file が
+          # 再び見えてしまう (検査の意味が消える) ので単独 package として build
+          printf '\n[workspace]\n' >> Cargo.toml
+          cargo check --all-features
+
   coverage:
     name: Coverage (cargo-llvm-cov、informational)
     runs-on: ubuntu-latest
