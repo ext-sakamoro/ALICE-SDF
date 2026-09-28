@@ -49,14 +49,29 @@ fn lcg(seed: u64) -> impl FnMut() -> f32 {
 
 /// Absolute slack for a bound of magnitude `v`.
 ///
-/// The interval ops evaluate in plain f32 without directed (outward) rounding,
-/// so a long chain (stairs blends, revolution, sqrt) drifts well past one ulp:
-/// the worst inclusion drift measured over the corpus is ~2·10⁻⁴ relative,
-/// printed by the tests below. The envelope here is 10⁻³ relative — loose
-/// enough that accumulated f32 error is not reported as a bug, tight enough to
-/// catch a structurally wrong enclosure (the three fixed in 3.1.1 were
-/// 5.8·10⁻³, 1.8·10⁻² and 2.1·10⁻¹). Tightening this needs outward rounding in
-/// `Interval`, not a smaller number here.
+/// **Why this is not ulp-level.** The interval ops round outward by one ulp
+/// (3.1.1), and with that the *enclosure* check below measures **exactly 0**
+/// drift over the corpus — the enclosure is rigorous with respect to the
+/// evaluated expression. The *inclusion isotonicity* check still measures
+/// ~1.3·10⁻⁴ relative, and that residue is **not a rounding artefact**:
+///
+/// - Arms built on a centre sample (`ia_lipschitz`: `f(centre) ± L·ρ`) are
+///   sound for each box on its own, but they are isotonic only when the child
+///   box's bounding ball sits inside the parent's. Octree children satisfy
+///   that (`|c′ − c| + ρ′ = ρ`); a box **reshaped by a transform** does not.
+///   The worst case measured is `revolution` (a `Circle2D` under
+///   `length_xz` reshaping), where the child's derived box is a general
+///   sub-box of the parent's derived box.
+/// - So isotonicity is a *heuristic* invariant here, not a theorem. It is
+///   still worth checking: it is what caught the stairs arms assuming a
+///   Lipschitz constant that `glsl_mod`'s jump does not give them (fixed in
+///   3.1.1 by evaluating the stairs law op by op on intervals).
+///
+/// The envelope stays at 10⁻³ relative: loose enough for the centre-sample
+/// residue, tight enough for a structurally wrong enclosure (the ones fixed in
+/// 3.1.1 were 5.8·10⁻³, 1.8·10⁻² and 2.1·10⁻¹). Tightening it further needs
+/// the centre-sample arms replaced by interval-composed ones, not a smaller
+/// number here.
 const ENVELOPE: f32 = 1e-3;
 
 fn tol(v: f32) -> f32 {

@@ -63,6 +63,42 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
 - **エンジン統合** - Unity、Unreal Engine 5 / 6、VRChat、Godot、WebAssembly
 
+## 2 つの入口: 本 crate の API と LOL 言語
+
+ALICE-SDF は **評価器** です。法則 (距離関数)、compile 済 backend (scalar /
+SIMD / BVH / JIT)、shader transpiler、mesh pipeline を持ちますが、その tree が
+どう書かれたかには関与しません。
+
+[**ALICE-LOL**](https://github.com/ext-sakamoro/ALICE-LOL) は **その法則を書く
+ための言語** です。同じ `SdfNode` tree に parse される DSL に加えて、「この形は
+制約を満たすか」を三値 (充足 / 違反 / **未決定**) で答える法則検証器を持ちます。
+未決定が黙って合格に繰り上がることはありません。
+
+同じ形を 2 通りで:
+
+```rust
+// A: 本 crate の builder API
+use alice_sdf::prelude::*;
+let a = SdfNode::sphere(1.0).subtract(SdfNode::box3d(1.0, 1.0, 1.0));
+
+// B: LOL DSL を実行時に parse (LLM が出力するのはこちら)
+use alice_lol::runtime_parser::parse_lol;
+let b = parse_lol("subtract(sphere(1.0), box3d(0.5, 0.5, 0.5))").unwrap();
+
+// 同じ場: どちらも alice_sdf::eval を通る
+assert_eq!(eval(&a, Vec3::new(0.7, 0.2, 0.1)), alice_lol::eval(&b, Vec3::new(0.7, 0.2, 0.1)));
+```
+
+箱の引数に注意: **本 crate の `SdfNode::box3d` は全長**を取り (内部で半分に
+する)、**LOL の `box3d` は半幅**を取ります (DSL は variant の field を直接
+書く)。読み方を揃えたい場合は本 crate 側の `SdfNode::box3d_half_extents` を使います
+(この 2 例が一致することは ALICE-LOL の `tests/readme_parity.rs` が固定しています)。
+
+**LOL を選ぶ場面**: text を入れて geometry を出したい (LLM 生成、GBNF
+constrained decoding、prompt から印刷可能な STL/3MF)、または法則検証器が
+必要な時。**本 crate を直接使う場面**: Rust で tree を組み、評価器 / meshing /
+shader 出力が目的の時。
+
 ## Text-to-3D パイプライン（サーバー）
 
 ALICE-SDFには、LLM生成のSDFツリーを通じて**自然言語テキストを実際の3Dジオメトリに変換する**FastAPIサーバーが含まれています。
@@ -1106,7 +1142,7 @@ Content-Type: application/json
 
 | プロジェクト | 説明 | リンク |
 |-------------|------|--------|
-| **ALICE-LOL** | Law-Oriented Language — `lol!` proc_macro DSL で SDF シーンを宣言的に記述（76 構文、GLSL/WGSL/HLSL トランスパイル、法則制約、空間枝刈り） | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
+| **ALICE-LOL** | **本 crate が評価する法則を書くための言語** 同じ `SdfNode` tree を作る DSL (`lol!` proc-macro + 実行時 parser)、三値の法則検証器 (充足 / 違反 / 未決定)、LLM constrained decoding 用の GBNF grammar、印刷 / レーザー / Roblox の export 入口 → [2 つの入口](#2-つの入口-本-crate-の-api-と-lol-言語) | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
 | **Open Source SDF Assets** | ALICE-SDFで変換した991個のCC0 3Dアセット（.asdf.json形式） | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
 | **ALICE Ecosystem** | 52コンポーネントのエッジtoクラウドデータパイプライン | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
 | **AI Modeler SaaS** | ALICE-SDFを搭載したブラウザベース3Dモデリング | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |

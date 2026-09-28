@@ -63,6 +63,44 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **4 shader targets** - GLSL, WGSL, HLSL transpilation, plus MSL for Metal / Apple (derived from the WGSL emit through naga, so all four share one law source)
 - **Engine integrations** - Unity, Unreal Engine 5 / 6, VRChat, Godot, WebAssembly
 
+## Two front ends: this crate's API, or the LOL language
+
+ALICE-SDF is the **evaluator**: it holds the laws (the distance functions), the
+compiled backends (scalar / SIMD / BVH / JIT), the shader transpilers and the
+mesh pipeline. It does not care how the tree was written.
+
+[**ALICE-LOL**](https://github.com/ext-sakamoro/ALICE-LOL) is the **language for
+writing those laws** — a DSL that parses to the very same `SdfNode` tree, plus a
+law verifier that answers "does this shape satisfy the constraints" in three
+values (satisfied / violated / *undecided*, where undecided is never silently
+promoted to a pass).
+
+The same shape, both ways:
+
+```rust
+// A: this crate's builder API
+use alice_sdf::prelude::*;
+let a = SdfNode::sphere(1.0).subtract(SdfNode::box3d(1.0, 1.0, 1.0));
+
+// B: the LOL DSL, parsed at runtime (what an LLM emits)
+use alice_lol::runtime_parser::parse_lol;
+let b = parse_lol("subtract(sphere(1.0), box3d(0.5, 0.5, 0.5))").unwrap();
+
+// Same field: both evaluate through alice_sdf::eval
+assert_eq!(eval(&a, Vec3::new(0.7, 0.2, 0.1)), alice_lol::eval(&b, Vec3::new(0.7, 0.2, 0.1)));
+```
+
+Note the box arguments: **this crate's `SdfNode::box3d` takes full extents**
+(it halves them internally), while **LOL's `box3d` takes half-extents** — the
+DSL writes the variant's field directly. `SdfNode::box3d_half_extents` is the
+half-extent constructor on this side if you want the two to read alike
+(`tests/readme_parity.rs` in ALICE-LOL pins both examples against each other).
+
+Reach for LOL when you want text in and geometry out (LLM authoring, GBNF
+constrained decoding, print-ready STL/3MF from a prompt), or when you want the
+law verifier. Reach for this crate directly when you are building the tree in
+Rust and want the evaluators, meshing and shader output.
+
 ## Text-to-3D Pipeline (Server)
 
 ALICE-SDF includes a FastAPI server that converts **natural language text into real 3D geometry** via LLM-generated SDF trees.
@@ -1112,7 +1150,7 @@ Response: `{ "distance": 0.0 }`
 |---------|-------------|------|
 | **ALICE-View** | Real-time GPU raymarching viewer for SDF files (wgpu + WGSL) | [GitHub](https://github.com/ext-sakamoro/ALICE-View) |
 | **Open Source SDF Assets** | 991 free CC0 3D assets in .asdf.json format, converted via ALICE-SDF | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
-| **ALICE-LOL** | Law-Oriented Language — `lol!` proc_macro DSL for declarative SDF scene authoring (76 constructs, GLSL/WGSL/HLSL transpile, law constraints, spatial pruning) | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
+| **ALICE-LOL** | **The language for the laws this crate evaluates.** A DSL (`lol!` proc-macro + runtime parser) that produces the same `SdfNode` tree, a three-valued law verifier (satisfied / violated / undecided), a GBNF grammar for LLM constrained decoding, and print / laser / Roblox export front ends — see [Two front ends](#two-front-ends-this-crates-api-or-the-lol-language) | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
 | **ALICE Ecosystem** | 52-component edge-to-cloud data pipeline | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
 | **AI Modeler SaaS** | Browser-based 3D modeling powered by ALICE-SDF | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |
 | **ALICE SDF Metaverse** | Live browser demo — WebGL2 raymarching world with JS-side CCD physics, runs ALICE-SDF concepts in the browser | [Demo](https://alicelaw.net/sdf-metaverse) |

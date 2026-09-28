@@ -24,12 +24,79 @@ pub struct Interval {
     pub hi: f32,
 }
 
+/// The next representable `f32` below `x` (toward −∞).
+///
+/// Rust has no stable rounding-mode control, so the outward rounding below is
+/// done by nudging the result of a round-to-nearest operation by one ulp. That
+/// is sound because a single IEEE-754 operation is within half an ulp of the
+/// exact result. `next_down`/`next_up` in std are newer than this crate's MSRV,
+/// hence the bit arithmetic.
+#[inline(always)]
+#[must_use]
+pub fn next_down(x: f32) -> f32 {
+    if x.is_nan() || x == f32::NEG_INFINITY {
+        return x;
+    }
+    if x == 0.0 {
+        // both zeros step to the smallest negative subnormal
+        return -f32::from_bits(1);
+    }
+    let bits = x.to_bits();
+    f32::from_bits(if x > 0.0 { bits - 1 } else { bits + 1 })
+}
+
+/// The next representable `f32` above `x` (toward +∞).
+#[inline(always)]
+#[must_use]
+pub fn next_up(x: f32) -> f32 {
+    if x.is_nan() || x == f32::INFINITY {
+        return x;
+    }
+    if x == 0.0 {
+        return f32::from_bits(1);
+    }
+    let bits = x.to_bits();
+    f32::from_bits(if x > 0.0 { bits + 1 } else { bits - 1 })
+}
+
 impl Interval {
-    /// Create a new interval
+    /// Create a new interval from computed bounds.
+    ///
+    /// The bounds are rounded **outward** by one ulp ([`Interval::outward`]).
+    /// This is the safe default: a call site that was not audited still widens
+    /// rather than narrows, so an unaudited site costs an ulp of tightness
+    /// instead of soundness. Operations that only *select* existing values
+    /// (`min` / `max` / `hull` / `clamp` / `abs` / `neg`) build `Self { .. }`
+    /// directly and stay exact.
     #[inline(always)]
     pub fn new(lo: f32, hi: f32) -> Self {
         debug_assert!(lo <= hi + 1e-6, "lo ({}) > hi ({})", lo, hi);
-        Self { lo, hi }
+        Self::outward(lo, hi)
+    }
+
+    /// Create an interval from *computed* bounds, rounded **outward** by one
+    /// ulp on each side.
+    ///
+    /// Every operation that computes a new value must go through this. Without
+    /// it the enclosure is only as good as round-to-nearest, and the error
+    /// amplifies: the inclusion drift measured over the corpus before this
+    /// landed was 2.086·10⁻⁴ relative (`stairs_intersection`, where a child
+    /// box's interval escaped its parent's) — roughly a thousand ulps, because
+    /// the stairs blend divides by small numbers and takes `floor`.
+    ///
+    /// Selection-only operations (`min`, `max`, `hull`, `clamp`, `abs`, `neg`)
+    /// return existing values unchanged and must **not** be widened.
+    ///
+    /// What this does *not* cover: the rounding of the point evaluator itself.
+    /// Arms built on a centre sample (see `ia_lipschitz`) add an explicit
+    /// margin for that instead.
+    #[inline(always)]
+    #[must_use]
+    pub fn outward(lo: f32, hi: f32) -> Self {
+        Self {
+            lo: next_down(lo),
+            hi: next_up(hi),
+        }
     }
 
     /// Create a point interval [v, v]
@@ -122,29 +189,21 @@ impl Interval {
     /// Square root (clamped to non-negative)
     #[inline(always)]
     pub fn sqrt(self) -> Self {
-        Self {
-            lo: self.lo.max(0.0).sqrt(),
-            hi: self.hi.max(0.0).sqrt(),
-        }
+        Self::outward(self.lo.max(0.0).sqrt(), self.hi.max(0.0).sqrt())
     }
 
     /// Square of an interval
     #[inline(always)]
     pub fn sqr(self) -> Self {
         if self.lo >= 0.0 {
-            Self {
-                lo: self.lo * self.lo,
-                hi: self.hi * self.hi,
-            }
+            Self::outward(self.lo * self.lo, self.hi * self.hi)
         } else if self.hi <= 0.0 {
-            Self {
-                lo: self.hi * self.hi,
-                hi: self.lo * self.lo,
-            }
+            Self::outward(self.hi * self.hi, self.lo * self.lo)
         } else {
+            // 0 は厳密な下界 (二乗は非負) なので下側は広げない
             Self {
                 lo: 0.0,
-                hi: (self.lo * self.lo).max(self.hi * self.hi),
+                hi: next_up((self.lo * self.lo).max(self.hi * self.hi)),
             }
         }
     }
@@ -179,10 +238,7 @@ impl Interval {
     /// Expand interval by a constant in both directions
     #[inline(always)]
     pub fn expand(self, amount: f32) -> Self {
-        Self {
-            lo: self.lo - amount,
-            hi: self.hi + amount,
-        }
+        Self::outward(self.lo - amount, self.hi + amount)
     }
 }
 
@@ -190,10 +246,7 @@ impl Add for Interval {
     type Output = Self;
     #[inline(always)]
     fn add(self, rhs: Self) -> Self {
-        Self {
-            lo: self.lo + rhs.lo,
-            hi: self.hi + rhs.hi,
-        }
+        Self::outward(self.lo + rhs.lo, self.hi + rhs.hi)
     }
 }
 
@@ -201,10 +254,7 @@ impl Sub for Interval {
     type Output = Self;
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self {
-        Self {
-            lo: self.lo - rhs.hi,
-            hi: self.hi - rhs.lo,
-        }
+        Self::outward(self.lo - rhs.hi, self.hi - rhs.lo)
     }
 }
 
@@ -216,10 +266,7 @@ impl Mul for Interval {
         let b = self.lo * rhs.hi;
         let c = self.hi * rhs.lo;
         let d = self.hi * rhs.hi;
-        Self {
-            lo: a.min(b).min(c).min(d),
-            hi: a.max(b).max(c).max(d),
-        }
+        Self::outward(a.min(b).min(c).min(d), a.max(b).max(c).max(d))
     }
 }
 
@@ -239,15 +286,9 @@ impl Mul<f32> for Interval {
     #[inline(always)]
     fn mul(self, rhs: f32) -> Self {
         if rhs >= 0.0 {
-            Self {
-                lo: self.lo * rhs,
-                hi: self.hi * rhs,
-            }
+            Self::outward(self.lo * rhs, self.hi * rhs)
         } else {
-            Self {
-                lo: self.hi * rhs,
-                hi: self.lo * rhs,
-            }
+            Self::outward(self.hi * rhs, self.lo * rhs)
         }
     }
 }
@@ -256,10 +297,7 @@ impl Sub<f32> for Interval {
     type Output = Self;
     #[inline(always)]
     fn sub(self, rhs: f32) -> Self {
-        Self {
-            lo: self.lo - rhs,
-            hi: self.hi - rhs,
-        }
+        Self::outward(self.lo - rhs, self.hi - rhs)
     }
 }
 
@@ -817,44 +855,37 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 (ia + ib) * Interval::point(std::f32::consts::FRAC_1_SQRT_2) + Interval::point(*r),
             )
         }
-        // stairs_*(a, b) is 1-Lipschitz in (a, b) (rotation + mod + min/abs of unit
-        // slopes), so evaluate at the (a, b) rectangle centre and widen by its half-diagonal.
+        // The stairs laws are **not** Lipschitz in `(a, b)`: `glsl_mod` jumps by a
+        // full tooth at each period boundary, so the old midpoint + half-diagonal
+        // form could claim a narrower range than the law actually takes (measured:
+        // a child box's interval escaping its parent's by 2.086·10⁻⁴ relative).
+        // Evaluate the law op by op on intervals instead ([`ia_stairs_min`]).
         SdfNode::StairsUnion { a, b, r, n } => {
             let ia = eval_interval(a, bounds);
             let ib = eval_interval(b, bounds);
             if !(ia.lo.is_finite() && ia.hi.is_finite() && ib.lo.is_finite() && ib.hi.is_finite()) {
                 return Interval::EVERYTHING;
             }
-            let (ac, bc) = (ia.midpoint(), ib.midpoint());
-            let rho = (ia.width() * 0.5).hypot(ib.width() * 0.5);
-            let d = crate::operations::sdf_stairs_union(ac, bc, *r, *n);
-            Interval::new(d - rho, d + rho)
+            ia_stairs_min(ia, ib, *r, *n)
         }
-        // stairs_*(a, b) is 1-Lipschitz in (a, b) (rotation + mod + min/abs of unit
-        // slopes), so evaluate at the (a, b) rectangle centre and widen by its half-diagonal.
+        // `stairs_max(a, b) = −stairs_min(−a, −b)`; negation on intervals is exact
         SdfNode::StairsIntersection { a, b, r, n } => {
             let ia = eval_interval(a, bounds);
             let ib = eval_interval(b, bounds);
             if !(ia.lo.is_finite() && ia.hi.is_finite() && ib.lo.is_finite() && ib.hi.is_finite()) {
                 return Interval::EVERYTHING;
             }
-            let (ac, bc) = (ia.midpoint(), ib.midpoint());
-            let rho = (ia.width() * 0.5).hypot(ib.width() * 0.5);
-            let d = crate::operations::sdf_stairs_intersection(ac, bc, *r, *n);
-            Interval::new(d - rho, d + rho)
+            -ia_stairs_min(-ia, -ib, *r, *n)
         }
-        // stairs_*(a, b) is 1-Lipschitz in (a, b) (rotation + mod + min/abs of unit
-        // slopes), so evaluate at the (a, b) rectangle centre and widen by its half-diagonal.
+        // `stairs_subtraction(a, b) = −stairs_min(−a, b)` (the point law negates the
+        // first argument only; the arm below keeps the same shape on intervals)
         SdfNode::StairsSubtraction { a, b, r, n } => {
             let ia = eval_interval(a, bounds);
-            let ib = Interval::ZERO - eval_interval(b, bounds);
+            let ib = eval_interval(b, bounds);
             if !(ia.lo.is_finite() && ia.hi.is_finite() && ib.lo.is_finite() && ib.hi.is_finite()) {
                 return Interval::EVERYTHING;
             }
-            let (ac, bc) = (ia.midpoint(), ib.midpoint());
-            let rho = (ia.width() * 0.5).hypot(ib.width() * 0.5);
-            let d = crate::operations::sdf_stairs_intersection(ac, bc, *r, *n);
-            Interval::new(d - rho, d + rho)
+            -ia_stairs_min(-ia, ib, *r, *n)
         }
         SdfNode::XOR { a, b } => {
             let ia = eval_interval(a, bounds);
@@ -1383,6 +1414,58 @@ fn len2(a: Interval, b: Interval) -> Interval {
     (a.sqr() + b.sqr()).sqrt()
 }
 
+/// `glsl_mod(x, step)` over an interval: `x − step·floor(x / step)`.
+///
+/// The sawtooth is exact while the interval stays inside one period (a shift by
+/// a multiple of `step`), and spans the whole `[0, step]` the moment it crosses
+/// a period boundary. That crossing is a **jump**, which is why the stairs arms
+/// can no longer assume a Lipschitz constant: the midpoint form
+/// `d(centre) ± ρ` is invalid across it, and the corpus measured the resulting
+/// inclusion violation (2.086·10⁻⁴ relative on `stairs_intersection`, child
+/// interval escaping its parent, 2026-09-27).
+#[inline]
+fn mod_interval(x: Interval, step: f32) -> Interval {
+    if step <= 0.0 || !step.is_finite() || !(x.lo.is_finite() && x.hi.is_finite()) {
+        return Interval::new(0.0, step.max(0.0));
+    }
+    let k_lo = (x.lo / step).floor();
+    let k_hi = (x.hi / step).floor();
+    if k_lo == k_hi {
+        // same period: a shift, so the width is preserved
+        Interval::outward(x.lo - step * k_lo, x.hi - step * k_lo)
+    } else {
+        // crosses at least one jump: the range is the full tooth
+        Interval::new(0.0, step)
+    }
+}
+
+/// Stairs (stepped) minimum over intervals — the interval form of
+/// [`crate::operations::stairs_min_r`], op by op.
+///
+/// Interval arithmetic loses the correlation between `px` and `py` (both are
+/// rotations of the same `(a, b)`), so the result is wider than the point law's
+/// range. It is *sound* though, which the midpoint + Lipschitz form was not.
+fn ia_stairs_min(ia: Interval, ib: Interval, r: f32, n: f32) -> Interval {
+    let n = n.max(1.0);
+    let s = std::f32::consts::FRAC_1_SQRT_2;
+    let sqrt2 = std::f32::consts::SQRT_2;
+    let d = ia.min(ib);
+    let py = (ia + ib) * s;
+    let px = (ib - ia) * s;
+    let rn = r / n;
+    let off = (r - rn) * 0.5 * sqrt2;
+    let px = px - (off - 0.5 * sqrt2 * rn);
+    let py = py - off;
+    let step = r * sqrt2 / n;
+    let hs = step * 0.5;
+    let px = mod_interval(px + Interval::point(hs), step) - hs;
+    let d = d.min(py);
+    let npx = (px + py) * s;
+    let npy = (py - px) * s;
+    let edge = 0.5 * rn;
+    d.min((npx - edge).max(npy - edge))
+}
+
 /// Bounding sphere conservative interval: `length(p) - radius`
 ///
 /// Sound only when the shape lies inside the sphere of `radius` **and** the
@@ -1868,6 +1951,7 @@ pub(crate) fn taper_reach(child: &SdfNode) -> [f32; 2] {
 mod tests {
     use super::*;
     use crate::eval::eval;
+    use std::cmp::Ordering;
 
     /// Verify that scalar eval at sampled points falls within interval bounds
     fn check(node: &SdfNode, min: Vec3, max: Vec3, n: usize) {
@@ -1889,30 +1973,59 @@ mod tests {
         }
     }
 
+    /// Computed bounds must **contain** the exact value and sit within a few
+    /// ulps of it — the contract of [`Interval::outward`] (3.1.1). Asserting
+    /// exact equality would pin round-to-nearest, which is what made the
+    /// enclosure non-rigorous in the first place.
+    ///
+    /// The slack is 8 ulps, not 1: the inputs are built with `Interval::new`,
+    /// which already rounds outward, so a two-operation chain accumulates a
+    /// handful (measured: `[1, 3] − [2, 5]` gives an upper bound of 1.0000005,
+    /// i.e. 4 ulps above 1).
+    #[track_caller]
+    fn encloses(bound: f32, exact: f32, side: Ordering) {
+        let ulps = 8.0 * f32::EPSILON * exact.abs().max(1.0);
+        match side {
+            Ordering::Less => assert!(
+                bound <= exact && bound >= exact - ulps,
+                "lower bound {bound} must be at or just below {exact}"
+            ),
+            _ => assert!(
+                bound >= exact && bound <= exact + ulps,
+                "upper bound {bound} must be at or just above {exact}"
+            ),
+        }
+    }
+
     #[test]
     fn test_interval_ops() {
         let a = Interval::new(1.0, 3.0);
         let b = Interval::new(2.0, 5.0);
-        assert_eq!((a + b).lo, 3.0);
-        assert_eq!((a + b).hi, 8.0);
-        assert_eq!((a - b).lo, -4.0);
-        assert_eq!((a - b).hi, 1.0);
-        assert_eq!((-a).lo, -3.0);
-        assert_eq!((-a).hi, -1.0);
+        encloses((a + b).lo, 3.0, Ordering::Less);
+        encloses((a + b).hi, 8.0, Ordering::Greater);
+        encloses((a - b).lo, -4.0, Ordering::Less);
+        encloses((a - b).hi, 1.0, Ordering::Greater);
+        // negation only swaps and flips signs, so it stays exact
+        assert_eq!((-a).lo, -a.hi);
+        assert_eq!((-a).hi, -a.lo);
     }
 
     #[test]
     fn test_interval_abs() {
-        assert_eq!(Interval::new(1.0, 3.0).abs().lo, 1.0);
-        assert_eq!(Interval::new(-3.0, -1.0).abs().hi, 3.0);
+        // `abs` selects existing bounds (or 0), so it is exact
+        let a = Interval::new(1.0, 3.0);
+        assert_eq!(a.abs().lo, a.lo);
+        let b = Interval::new(-3.0, -1.0);
+        assert_eq!(b.abs().hi, -b.lo);
         assert_eq!(Interval::new(-2.0, 3.0).abs().lo, 0.0);
     }
 
     #[test]
     fn test_interval_sqr() {
         let s = Interval::new(-2.0, 3.0).sqr();
+        // 0 is an exact lower bound for a square; the upper bound is computed
         assert_eq!(s.lo, 0.0);
-        assert_eq!(s.hi, 9.0);
+        encloses(s.hi, 9.0, Ordering::Greater);
     }
 
     #[test]
