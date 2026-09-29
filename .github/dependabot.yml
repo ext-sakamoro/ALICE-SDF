@@ -55,7 +55,15 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    # `dtolnay/rust-toolchain@<Rust 版>` の tag は action の version ではなく
+    # 「その Rust 版を入れろ」という選択子で、`Cargo.toml` の `rust-version` と対で動く
+    # upstream は各 Rust 版を branch として持つので dependabot が version と誤認して
+    # 「最新」へ書き換える (実測 1.87 -> 1.120) `update-types` の major ignore では
+    # 止まらない (dependabot の目には minor bump に見える)
+    # 実在しない版に書き換われば rustup が 404 で落ち、実在する版なら CI は green の
+    # まま MSRV 検証だけが無効化される (後者は error 文字列が出ないので検出できない)
     ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
