@@ -33,6 +33,14 @@ So an argument-order error in a declaration is invisible on SysV by
 construction. Only a comparison of the ordered type lists catches it, which is
 what this script does. Comparing the *set* of types is not enough.
 
+Portability note
+---------------
+Every read passes `encoding="utf-8"` explicitly. `Path.read_text()` without it
+uses `locale.getpreferredencoding()`, which is cp1252 / cp932 on Windows, and
+the sources here carry non-ASCII comments — the gate then dies with
+`UnicodeDecodeError` on windows-latest while passing on macOS and Linux
+(measured 2026-09-30, run for 71dc2ee).
+
 Usage
 -----
     python3 scripts/abi_decl_check.py            # repo root
@@ -106,7 +114,7 @@ def main() -> int:
     # definitions
     defs: dict[str, list[str]] = {}
     for p in sorted((root / "src" / "ffi").rglob("*.rs")):
-        for m in DEF_RE.finditer(p.read_text()):
+        for m in DEF_RE.finditer(p.read_text(encoding="utf-8")):
             defs[m.group(1)] = arg_types(m.group(2))
     if not defs:
         print(f"{MARKER}: no exports found under src/ffi — the scan is broken")
@@ -121,7 +129,7 @@ def main() -> int:
         if not d.is_dir():
             continue
         for p in sorted(d.rglob("*.rs")):
-            text = p.read_text()
+            text = p.read_text(encoding="utf-8")
             if 'extern "C"' not in text:
                 continue
             for body in extern_blocks(text):

@@ -29,7 +29,7 @@ quick=0
 [[ "${1:-}" == "--quick" ]] && quick=1
 
 # Feature sets, verbatim from the workflows.
-LINUX_ALL='glsl,hlsl,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit'
+LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit'
 DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi'
 BRIDGES='physics,codec,asp,sdf-cache'
 MSRV=1.85

@@ -54,7 +54,7 @@ const fn words(v: Fix128) -> (i64, u64) {
     (v.hi, v.lo)
 }
 
-fn vec_words(v: Vec3Fix) -> [(i64, u64); 3] {
+const fn vec_words(v: Vec3Fix) -> [(i64, u64); 3] {
     [words(v.x), words(v.y), words(v.z)]
 }
 
@@ -100,7 +100,11 @@ fn repeated_queries_return_bit_identical_results() {
     for (x, y, z) in probes {
         let first_d = field.distance(x, y, z).to_bits();
         let first_n = field.normal(x, y, z);
-        let first_n = (first_n.0.to_bits(), first_n.1.to_bits(), first_n.2.to_bits());
+        let first_n = (
+            first_n.0.to_bits(),
+            first_n.1.to_bits(),
+            first_n.2.to_bits(),
+        );
         for i in 0..64 {
             let d = field.distance(x, y, z).to_bits();
             assert_eq!(d, first_d, "distance drifted on call {i} at ({x},{y},{z})");
@@ -124,7 +128,10 @@ fn query_order_does_not_change_any_answer() {
         })
         .collect();
 
-    let forward: Vec<u32> = pts.iter().map(|&(x, y, z)| field.distance(x, y, z).to_bits()).collect();
+    let forward: Vec<u32> = pts
+        .iter()
+        .map(|&(x, y, z)| field.distance(x, y, z).to_bits())
+        .collect();
     let mut backward: Vec<u32> = pts
         .iter()
         .rev()
@@ -145,14 +152,25 @@ fn a_rebuilt_collider_gives_bit_identical_contacts() {
         let pf = Vec3Fix::from_f32(p[0], p[1], p[2]);
         match (collide_point_sdf(pf, &a), collide_point_sdf(pf, &b)) {
             (Some(ca), Some(cb)) => {
-                assert_eq!(contact_words(&ca), contact_words(&cb), "contact differs at {p:?}");
+                assert_eq!(
+                    contact_words(&ca),
+                    contact_words(&cb),
+                    "contact differs at {p:?}"
+                );
                 compared += 1;
             }
             (None, None) => {}
-            (x, y) => panic!("collision disagrees at {p:?}: {:?} vs {:?}", x.is_some(), y.is_some()),
+            (x, y) => panic!(
+                "collision disagrees at {p:?}: {:?} vs {:?}",
+                x.is_some(),
+                y.is_some()
+            ),
         }
     }
-    assert!(compared >= 2, "only {compared} contacts compared; the scene stopped colliding");
+    assert!(
+        compared >= 2,
+        "only {compared} contacts compared; the scene stopped colliding"
+    );
 }
 
 /// Repeated collision queries must be bit-identical in every `Contact` field,
@@ -163,7 +181,10 @@ fn repeated_collisions_are_bit_identical_in_every_contact_field() {
     let inside = Vec3Fix::from_f32(0.25, -0.5, 0.125);
     let first = collide_point_sdf(inside, &collider).expect("point inside must collide");
     let first = contact_words(&first);
-    assert!(first.len() == 10, "Contact grew a field; extend contact_words");
+    assert!(
+        first.len() == 10,
+        "Contact grew a field; extend contact_words"
+    );
     for i in 0..32 {
         let c = collide_point_sdf(inside, &collider).expect("still colliding");
         assert_eq!(contact_words(&c), first, "contact drifted on call {i}");
@@ -252,7 +273,10 @@ fn distance_and_normal_returns_the_exact_distance() {
         );
         compared += 1;
     }
-    assert_eq!(compared, 24, "the sample shrank; the pin is weaker than it reads");
+    assert_eq!(
+        compared, 24,
+        "the sample shrank; the pin is weaker than it reads"
+    );
 }
 
 // ─────────────────────── closed forms at the seam ───────────────────────
@@ -311,7 +335,10 @@ fn both_normal_stencils_match_the_analytic_outward_normal() {
             }),
         ] {
             let nl = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            assert!((nl - 1.0).abs() < 1e-4, "{label} at {p:?} is not unit: |n| = {nl}");
+            assert!(
+                (nl - 1.0).abs() < 1e-4,
+                "{label} at {p:?} is not unit: |n| = {nl}"
+            );
             let dot = n[0] * want[0] + n[1] * want[1] + n[2] * want[2];
             assert!(
                 dot > 0.999,

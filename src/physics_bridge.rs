@@ -35,9 +35,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::compiled::{
-    eval_compiled, eval_compiled_normal, CompiledSdf,
-};
+use crate::compiled::{eval_compiled, eval_compiled_normal, CompiledSdf};
 use alice_physics::SdfField;
 use glam::Vec3;
 use std::sync::Arc;
