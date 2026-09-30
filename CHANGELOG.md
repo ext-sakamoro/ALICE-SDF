@@ -6,6 +6,63 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — `SdfField::distance_and_normal` が `distance` と違う距離を返していた
+
+`CompiledSdfField` は trait の既定実装を `eval_compiled_distance_and_normal` で
+上書きしていた。この helper は法線の四面体標本 4 点を再利用し、その**平均**を中心の
+距離とする (helper 自身の doc が「approximated」「error ≈ O(epsilon²)」と明記している)。
+評価回数は 5 → 4 に減るが、返る距離は `distance` と別物になる。
+
+trait の契約は既定実装が定めている (`(self.distance(..), self.normal(..))`、doc は
+override の目的を「both を効率よく計算できる実装のため」と書いており、別の答えを
+返すためではない)。呼び出し側はそれを前提にしていた —
+`alice_physics::sdf_adaptive::AdaptiveSdfEvaluator::evaluate_and_cache` (1.4.0) は
+`distance_and_normal` の距離を cache に格納し、`collide_point_sdf` は `distance` から
+接触深さを導く。同じ点について 2 経路が食い違っていた。
+
+実測 (sphere ∪ box、24 点): 上書き側の距離は全点で `distance` より大きく、差は
+4.768e-7 〜 7.451e-7。全点が同符号なので丸めではなく偏り。
+
+#### 対応
+
+上書きを削除した。trait の既定実装が適用され、距離は `distance` と同じ 1 回の評価に
+なる (法線は従来と同じ四面体 4 点)。評価回数は 4 → 5 で、これは厳密な距離の値段。
+2 経路が構造的に一致するので、あとから片方だけがずれる余地がなくなる。
+
+`eval_compiled_distance_and_normal` 自体は残している。4 評価の近似であることが doc に
+書かれており、そのトレードオフが欲しい呼び出し側は名前で指定できる。
+
+### Added — SDF ↔ Physics 境界の決定論オラクルと、extern 宣言の順序ガード
+
+`tests/test_physics_bridge_determinism.rs` (9 本)。両クレートが別々に bit-exactness を
+主張しているが、その合成は誰も測っていなかった (`grep to_bits|deterministic|bit` が
+bridge の 2 file で 0 件)。境界は
+`Vec3Fix → world_to_local → f32 → SDF 評価 → f32 → Fix128` で、この f32 区間が
+Fix128 エンジンの中の非 Fix128 層にあたる。
+
+反復 64 回 / 訪問順の逆転 / collider 再構築 / 衝突 32 回で `Contact` の全 10 word が
+bit 一致すること、bridge が `eval_compiled` と bit 一致すること、球の `|p| − r` が
+**bit 厳密**に一致すること (既存 bridge test の許容 0.01 を置き換え)、両 stencil が
+解析法線に一致して**外向き**であること、表面上の点が衝突しないこと (内側の陽性対照
+付き) を確認する。破壊試験 3 種で red を実測済 — うち法線の符号反転は 9 本中 1 本しか
+落ちないので、符号は単位長でも反復でも閉形式でも見えず、解析方向との内積だけが
+捕まえる。
+
+`scripts/abi_decl_check.py`。`tests/` と `examples/` の `extern "C"` 宣言を
+`src/ffi/` の export と**順序付きの型列**で突き合わせる。`scripts/unreal-abi-check.sh`
+step 2a は header と C# を見るので、test 内の宣言は第 3 の宣言箇所として無検査だった。
+引数順の誤りは SysV (macOS / Linux) では整数と浮動小数でレジスタバンクが分かれ
+独立に採番されるため値が正しいレジスタに着いて通り、Microsoft x64 は位置でスロットを
+決めるので落ちる。型の集合では検出できない。preflight の source guard 群と ci.yml に
+配線した。
+
+### Fixed — test の `alice_sdf_repeat_finite` 宣言が引数順を入れ替えていた
+
+`tests/test_binding_oracle.rs` の宣言が `(node, f32 × 3, u32 × 3)` で、export は
+`(node, u32 × 3, f32 × 3)`。run 36680136653 で Windows のみ red になり、
+`repeat_finite` が `Vec3(1,0,0)` で FFI -3.0000001e-1 / native 4.0000004e-1。
+実装とヘッダと C# バインディングはいずれも正しく、test 側の宣言と呼び出しのみ修正。
+
 ### Fixed — FFI / 公開 Rust API から到達する SoA の境界外 read+write
 
 `compiled::eval_compiled_batch_soa_raw` が `count` を 8 の倍数へ切り上げて走るので、
