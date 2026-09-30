@@ -1508,3 +1508,456 @@ impl AliceSdfBatchEvaluator {
             .unwrap_or(0)
     }
 }
+
+// ============================================================
+// Oracles for the engine-free half of this binding
+// ============================================================
+//
+// Everything above that touches `Gd<…>`, `GString` or `ArrayMesh` needs a live
+// Godot engine and can only be exercised from a running editor. The one part
+// that does not is `build_sdf_from_params`, which is also the part every
+// GDScript caller goes through (`AliceSdfNode.build`,
+// `AliceSdfResource.build_sdf`) and the part where a typo in a JSON key or a
+// transposed argument silently produces a different shape. It had no test.
+//
+// These live here rather than in `tests/test_binding_oracle.rs` because
+// `build_sdf_from_params` is private: making it `pub` to reach it from an
+// integration test would add a public item to the crate's API, which is not a
+// test's decision to make.
+//
+// Run with: cargo test --lib --features godot
+
+#[cfg(test)]
+mod tests {
+    use super::build_sdf_from_params;
+    use crate::eval::eval;
+    use crate::types::SdfNode;
+    use glam::Vec3;
+
+    /// Every shape name `AliceSdfResource.get_available_shapes` advertises.
+    ///
+    /// Duplicated here on purpose: the list inside that `#[func]` is a local
+    /// `vec![]` returned as a `PackedStringArray`, so reading it needs a live
+    /// engine. A name added there but not to `build_sdf_from_params` is
+    /// therefore still invisible to this test — the pairing that *is* checked
+    /// is "every name this list holds can be built", and the list was taken
+    /// from `get_available_shapes` at 4.0.0.
+    const ADVERTISED: [&str; 72] = [
+        "sphere",
+        "box",
+        "cylinder",
+        "torus",
+        "plane",
+        "capsule",
+        "cone",
+        "ellipsoid",
+        "rounded_cone",
+        "pyramid",
+        "octahedron",
+        "hex_prism",
+        "tetrahedron",
+        "dodecahedron",
+        "icosahedron",
+        "truncated_octahedron",
+        "truncated_icosahedron",
+        "link",
+        "triangle",
+        "bezier",
+        "rounded_box",
+        "capped_cone",
+        "capped_torus",
+        "rounded_cylinder",
+        "triangular_prism",
+        "cut_sphere",
+        "cut_hollow_sphere",
+        "death_star",
+        "solid_angle",
+        "rhombus",
+        "horseshoe",
+        "vesica",
+        "heart",
+        "tube",
+        "barrel",
+        "diamond",
+        "egg",
+        "moon",
+        "cross_shape",
+        "blobby_cross",
+        "gyroid",
+        "schwarz_p",
+        "diamond_surface",
+        "neovius",
+        "lidinoid",
+        "iwp",
+        "frd",
+        "fischer_koch_s",
+        "pmy",
+        "chamfered_cube",
+        "superellipsoid",
+        "rounded_x",
+        "pie",
+        "trapezoid",
+        "parallelogram",
+        "tunnel",
+        "uneven_capsule",
+        "arc_shape",
+        "parabola_segment",
+        "regular_polygon",
+        "star_polygon",
+        "stairs",
+        "helix",
+        "box_frame",
+        "infinite_cylinder",
+        "infinite_cone",
+        "circle_2d",
+        "rect_2d",
+        "segment_2d",
+        "polygon_2d",
+        "rounded_rect_2d",
+        "annular_2d",
+    ];
+
+    /// One value per key name used anywhere in `build_sdf_from_params`, so a
+    /// single JSON object satisfies every arm. Counts are integral and ≥ 3;
+    /// the rest are pairwise distinct where an arm reads several of them, so a
+    /// transposition changes the shape.
+    fn every_param() -> String {
+        r#"{
+            "radius": 0.6, "width": 0.8, "height": 0.7, "depth": 0.5,
+            "major_radius": 0.7, "minor_radius": 0.2,
+            "normal_x": 0.0, "normal_y": 1.0, "normal_z": 0.0, "distance": 0.2,
+            "ax": -0.5, "ay": 0.0, "az": 0.0,
+            "bx": 0.5, "by": 0.2, "bz": 0.0,
+            "cx": 0.1, "cy": 0.6, "cz": -0.2,
+            "rx": 0.61, "ry": 0.43, "rz": 0.29,
+            "r1": 0.4, "r2": 0.2, "ra": 0.5, "rb": 0.3, "d": 0.35,
+            "size": 0.6, "hex_radius": 0.5, "length": 0.55,
+            "hx": 0.31, "hy": 0.47, "hz": 0.59, "round_radius": 0.07,
+            "cap_angle": 0.8, "cut_height": 0.2, "thickness": 0.1,
+            "angle": 0.9, "la": 0.4, "lb": 0.3,
+            "outer_radius": 0.5, "bulge": 0.15, "chamfer": 0.08,
+            "scale": 2.0, "e1": 0.7, "e2": 1.3,
+            "trap_height": 0.5, "para_height": 0.4, "skew": 0.2,
+            "height_2d": 0.45, "cap_height": 0.35, "aperture": 0.8,
+            "n_sides": 6.0, "n_points": 5.0, "m": 2.0,
+            "step_width": 0.2, "step_height": 0.15, "n_steps": 4.0,
+            "major_r": 0.5, "minor_r": 0.12, "pitch": 0.3, "edge": 0.05,
+            "half_w": 0.4, "half_h": 0.3, "half_height": 0.3, "dist": 0.25
+        }"#
+        .to_string()
+    }
+
+    /// Every advertised shape builds, and the node it builds evaluates to a
+    /// finite number at points inside, on and outside its bounds.
+    ///
+    /// This is the `corpus_covers_every_emitted_opcode` shape of gate for the
+    /// Godot entry point: a shape offered in the inspector that returns `None`
+    /// leaves `AliceSdfNode.build` reporting `false` with nothing to render,
+    /// which is exactly the failure a GDScript user cannot debug.
+    #[test]
+    fn every_advertised_shape_builds_and_evaluates() {
+        let params = every_param();
+        let pts = [
+            Vec3::ZERO,
+            Vec3::new(0.25, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(-0.7, 0.3, 1.1),
+            Vec3::new(2.5, -2.5, 2.5),
+        ];
+        let mut failures = Vec::new();
+        for name in ADVERTISED {
+            match build_sdf_from_params(name, &params) {
+                None => failures.push(format!("{name}: build_sdf_from_params returned None")),
+                Some(node) => {
+                    for p in pts {
+                        let d = eval(&node, p);
+                        if !d.is_finite() {
+                            failures.push(format!("{name} at {p:?}: eval returned {d}"));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} advertised shape(s) unusable:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
+    /// Closed forms, written down by hand, for the shapes a Godot scene is
+    /// most likely to hold. These pin the *meaning* of the JSON keys, which no
+    /// amount of "it builds" can: `"height": 2.0` on a cylinder has to mean a
+    /// cylinder 2 units tall (`SdfNode::cylinder` halves it), and
+    /// `"width"/"height"/"depth"` on a box have to be full extents
+    /// (`SdfNode::box3d` halves them). Reading either as a half-extent would
+    /// double every shape in the scene, and `docs/GODOT_GUIDE.md` documents
+    /// the full-extent reading.
+    #[test]
+    fn documented_shape_params_match_closed_forms() {
+        let build = |shape: &str, json: &str| {
+            build_sdf_from_params(shape, json).unwrap_or_else(|| panic!("{shape} did not build"))
+        };
+
+        // Unit sphere: d = |p| - 1.
+        let s = build("sphere", r#"{"radius": 1.0}"#);
+        assert_eq!(eval(&s, Vec3::new(0.5, 0.0, 0.0)), -0.5, "sphere inside");
+        assert_eq!(eval(&s, Vec3::new(2.0, 0.0, 0.0)), 1.0, "sphere outside");
+
+        // A 2x2x2 box (full extents) is the unit half-extent box: -1 at the
+        // centre, +1 one unit off a face.
+        let b = build("box", r#"{"width": 2.0, "height": 2.0, "depth": 2.0}"#);
+        assert_eq!(eval(&b, Vec3::ZERO), -1.0, "box centre");
+        assert_eq!(eval(&b, Vec3::new(2.0, 0.0, 0.0)), 1.0, "box face");
+        let corner = eval(&b, Vec3::new(2.0, 2.0, 2.0));
+        assert!(
+            (corner - 3.0_f32.sqrt()).abs() < 1e-6,
+            "box corner {corner} vs sqrt(3)"
+        );
+
+        // Distinct extents, so width / height / depth cannot be permuted: a
+        // 2 x 1 x 0.5 box has half-extents (1, 0.5, 0.25), and each face sits
+        // at a different distance.
+        let b2 = build("box", r#"{"width": 2.0, "height": 1.0, "depth": 0.5}"#);
+        assert_eq!(eval(&b2, Vec3::ZERO), -0.25, "flat box centre");
+        assert_eq!(eval(&b2, Vec3::new(2.0, 0.0, 0.0)), 1.0, "flat box +X face");
+        assert_eq!(eval(&b2, Vec3::new(0.0, 1.5, 0.0)), 1.0, "flat box +Y face");
+        assert_eq!(
+            eval(&b2, Vec3::new(0.0, 0.0, 0.75)),
+            0.5,
+            "flat box +Z face"
+        );
+
+        // A cylinder of radius 1 and height 2 reaches y = ±1, so the centre is
+        // 1 from the side and 1 from each cap.
+        let c = build("cylinder", r#"{"radius": 1.0, "height": 2.0}"#);
+        assert_eq!(eval(&c, Vec3::ZERO), -1.0, "cylinder centre");
+        assert_eq!(eval(&c, Vec3::new(2.0, 0.0, 0.0)), 1.0, "cylinder side");
+        assert_eq!(eval(&c, Vec3::new(0.0, 2.0, 0.0)), 1.0, "cylinder cap");
+
+        // Torus in XZ, major 1, minor 0.25.
+        let t = build("torus", r#"{"major_radius": 1.0, "minor_radius": 0.25}"#);
+        assert_eq!(eval(&t, Vec3::new(1.0, 0.0, 0.0)), -0.25, "torus tube");
+        assert_eq!(eval(&t, Vec3::new(1.5, 0.0, 0.0)), 0.25, "torus outside");
+        assert_eq!(eval(&t, Vec3::ZERO), 0.75, "torus hole");
+
+        // Plane: the default normal is +Y and the default distance 0, so the
+        // omitted-key path has to give d = p.y.
+        let pl = build("plane", "{}");
+        assert_eq!(eval(&pl, Vec3::new(0.0, 3.0, 0.0)), 3.0, "default plane");
+        let pl2 = build(
+            "plane",
+            r#"{"normal_x": 1.0, "normal_y": 0.0, "distance": 0.5}"#,
+        );
+        assert_eq!(eval(&pl2, Vec3::new(2.0, 0.0, 0.0)), 1.5, "plane +X at 0.5");
+
+        // Capsule from (0,-1,0) to (0,1,0), radius 0.5.
+        let cap = build(
+            "capsule",
+            r#"{"ax":0.0,"ay":-1.0,"az":0.0,"bx":0.0,"by":1.0,"bz":0.0,"radius":0.5}"#,
+        );
+        assert_eq!(eval(&cap, Vec3::ZERO), -0.5, "capsule axis");
+        assert_eq!(eval(&cap, Vec3::new(1.0, 0.0, 0.0)), 0.5, "capsule side");
+        assert_eq!(eval(&cap, Vec3::new(0.0, 2.0, 0.0)), 0.5, "capsule cap");
+
+        // Ellipsoid: the axis intercepts are exact for any ellipsoid bound.
+        let e = build("ellipsoid", r#"{"rx": 1.0, "ry": 0.5, "rz": 0.25}"#);
+        assert!(
+            eval(&e, Vec3::new(1.0, 0.0, 0.0)).abs() < 1e-6,
+            "ellipsoid +X"
+        );
+        assert!(
+            eval(&e, Vec3::new(0.0, 0.5, 0.0)).abs() < 1e-6,
+            "ellipsoid +Y"
+        );
+        assert!(
+            eval(&e, Vec3::new(0.0, 0.0, 0.25)).abs() < 1e-6,
+            "ellipsoid +Z"
+        );
+        // Distinct semi-axes, so a transposed argument moves the intercepts.
+        assert!(
+            eval(&e, Vec3::new(0.0, 1.0, 0.0)) > 0.1,
+            "ellipsoid is not a sphere"
+        );
+    }
+
+    /// The remaining arms are held to the native constructor they name, over a
+    /// point spray, to the bit — the same parity contract the C ABI oracle
+    /// uses. Only shapes whose JSON keys carry the same meaning as the
+    /// constructor's parameters are listed; the closed forms above cover the
+    /// ones where the key names differ from the parameter names.
+    #[test]
+    fn shape_params_forward_to_the_named_constructor() {
+        let pts: Vec<Vec3> = {
+            let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+            let mut next = move || {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                ((state >> 40) as f32) / ((1u64 << 24) as f32) * 6.0 - 3.0
+            };
+            (0..64).map(|_| Vec3::new(next(), next(), next())).collect()
+        };
+
+        let cases: Vec<(&str, &str, SdfNode)> = vec![
+            ("sphere", r#"{"radius": 0.31}"#, SdfNode::sphere(0.31)),
+            (
+                "ellipsoid",
+                r#"{"rx": 0.61, "ry": 0.43, "rz": 0.29}"#,
+                SdfNode::ellipsoid(0.61, 0.43, 0.29),
+            ),
+            ("octahedron", r#"{"size": 0.6}"#, SdfNode::octahedron(0.6)),
+            ("tetrahedron", r#"{"size": 0.6}"#, SdfNode::tetrahedron(0.6)),
+            (
+                "dodecahedron",
+                r#"{"radius": 0.6}"#,
+                SdfNode::dodecahedron(0.6),
+            ),
+            (
+                "icosahedron",
+                r#"{"radius": 0.6}"#,
+                SdfNode::icosahedron(0.6),
+            ),
+            (
+                "rounded_box",
+                r#"{"hx": 0.31, "hy": 0.47, "hz": 0.59, "round_radius": 0.07}"#,
+                SdfNode::rounded_box(0.31, 0.47, 0.59, 0.07),
+            ),
+            (
+                "box_frame",
+                r#"{"hx": 0.31, "hy": 0.47, "hz": 0.59, "edge": 0.05}"#,
+                SdfNode::box_frame(Vec3::new(0.31, 0.47, 0.59), 0.05),
+            ),
+            (
+                "death_star",
+                r#"{"ra": 0.5, "rb": 0.3, "d": 0.35}"#,
+                SdfNode::death_star(0.5, 0.3, 0.35),
+            ),
+            ("egg", r#"{"ra": 0.5, "rb": 0.3}"#, SdfNode::egg(0.5, 0.3)),
+            (
+                "gyroid",
+                r#"{"scale": 2.0, "thickness": 0.1}"#,
+                SdfNode::gyroid(2.0, 0.1),
+            ),
+            (
+                "schwarz_p",
+                r#"{"scale": 2.0, "thickness": 0.1}"#,
+                SdfNode::schwarz_p(2.0, 0.1),
+            ),
+            (
+                "neovius",
+                r#"{"scale": 2.0, "thickness": 0.1}"#,
+                SdfNode::neovius(2.0, 0.1),
+            ),
+            (
+                "superellipsoid",
+                r#"{"width": 0.8, "height": 0.7, "depth": 0.5, "e1": 0.7, "e2": 1.3}"#,
+                SdfNode::superellipsoid(0.8, 0.7, 0.5, 0.7, 1.3),
+            ),
+            (
+                "cut_sphere",
+                r#"{"radius": 0.6, "cut_height": 0.2}"#,
+                SdfNode::cut_sphere(0.6, 0.2),
+            ),
+            (
+                "solid_angle",
+                r#"{"angle": 0.9, "radius": 0.6}"#,
+                SdfNode::solid_angle(0.9, 0.6),
+            ),
+            (
+                "vesica",
+                r#"{"radius": 0.6, "dist": 0.25}"#,
+                SdfNode::vesica(0.6, 0.25),
+            ),
+            ("heart", r#"{"size": 0.6}"#, SdfNode::heart(0.6)),
+            (
+                "infinite_cylinder",
+                r#"{"radius": 0.6}"#,
+                SdfNode::infinite_cylinder(0.6),
+            ),
+            (
+                "circle_2d",
+                r#"{"radius": 0.6, "half_height": 0.3}"#,
+                SdfNode::circle_2d(0.6, 0.3),
+            ),
+            (
+                "rect_2d",
+                r#"{"half_w": 0.4, "half_h": 0.3, "half_height": 0.3}"#,
+                SdfNode::rect_2d(0.4, 0.3, 0.3),
+            ),
+            (
+                "annular_2d",
+                r#"{"outer_radius": 0.5, "thickness": 0.1, "half_height": 0.3}"#,
+                SdfNode::annular_2d(0.5, 0.1, 0.3),
+            ),
+        ];
+
+        let mut failures = Vec::new();
+        for (shape, json, want_node) in &cases {
+            let Some(got_node) = build_sdf_from_params(shape, json) else {
+                failures.push(format!("{shape}: did not build"));
+                continue;
+            };
+            for p in &pts {
+                let got = eval(&got_node, *p);
+                let want = eval(want_node, *p);
+                if got.to_bits() != want.to_bits() {
+                    failures.push(format!(
+                        "{shape} at {p:?}: {got:e} ({:#010x}) vs constructor {want:e} ({:#010x})",
+                        got.to_bits(),
+                        want.to_bits()
+                    ));
+                    break;
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} shape(s) do not forward to the named constructor:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
+    /// Bad input from GDScript must come back as `None`, never a panic: a
+    /// panic here crosses the GDExtension boundary and takes the editor down.
+    #[test]
+    fn malformed_input_returns_none() {
+        let params = every_param();
+        assert!(
+            build_sdf_from_params("not_a_shape", &params).is_none(),
+            "unknown shape"
+        );
+        assert!(
+            build_sdf_from_params("", &params).is_none(),
+            "empty shape name"
+        );
+        assert!(
+            build_sdf_from_params("sphere", "not json").is_none(),
+            "malformed JSON"
+        );
+        assert!(
+            build_sdf_from_params("sphere", "[]").is_none(),
+            "JSON array"
+        );
+        assert!(
+            build_sdf_from_params("sphere", "{}").is_none(),
+            "missing radius"
+        );
+        assert!(
+            build_sdf_from_params("sphere", r#"{"radius": "big"}"#).is_none(),
+            "radius as a string"
+        );
+        assert!(
+            build_sdf_from_params("sphere", r#"{"radius": null}"#).is_none(),
+            "radius as null"
+        );
+        // Sphere is case-sensitive: the inspector sends lower case.
+        assert!(
+            build_sdf_from_params("Sphere", &params).is_none(),
+            "wrong case"
+        );
+    }
+}
