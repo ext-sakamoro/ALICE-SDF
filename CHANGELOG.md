@@ -6,6 +6,58 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [v3.1.1] - 2026-09-30
+
+安全性修正のみ。API と、契約どおりに呼んでいた呼び出しの戻り値は変わらない。
+
+### Fixed — SoA 評価が呼び出し側のバッファの外を読み書きしていた
+
+`compiled::eval_compiled_batch_soa_raw` が `count` を 8 の倍数へ切り上げて
+8 点ずつ処理していたため、`count % 8 != 0` のとき呼び出し側が確保した領域の外を
+`(8 - count % 8) % 8` 要素ぶん読み、出力側は同じ数だけ書いていた。
+
+この関数の契約は `out_ptr` must point to valid memory of at least `count` f32s
+であり、`count should be a multiple of 8` は性能上の助言 (should) だった。
+契約どおりに `count` 要素ちょうどを確保して呼ぶと、確保領域の終端がそこにある場合に
+SIGSEGV になる。到達経路は 3 つ:
+
+- `compiled::eval_compiled_batch_soa_raw` の直接呼び出し (`pub`、prelude から再公開)
+- `alice_sdf_eval_soa` (C ABI、`count < 1024` のとき)
+- `alice_sdf_eval_animated_batch_soa` (C ABI、変換が恒等のとき。こちらは 1024 の
+  分岐が無いので `count = 1025` でも起きる)
+
+`include/alice_sdf.h` と `bindings/AliceSdf.cs` の記述も `count` 要素だったため、
+ヘッダのとおりに実装した C / C++ / C# / Unity / Unreal 側の呼び出しが該当する。
+
+範囲内 (`0..count`) の値は修正前から `eval_compiled` と bit 一致しており、
+影響は範囲外への読み書きに限られる。
+
+#### 修正
+
+`count & !7` までを 8 点ずつ処理し、残る `count % 8` 点を 1 点ずつ処理する形にした。
+`count` が 8 の倍数のときの出力は修正前と bit 一致する (8 / 64 / 256 / 1024 / 4096 で
+確認、`count = 8` の digest `5ce40a654075eaa6`)。
+
+`tests/test_soa_bounds_oracle.rs` を追加した。3 経路それぞれについて、確保領域の
+後ろに置いた検出用の値が書き換わらないことと、`count` 要素ちょうどのバッファで
+`eval_compiled` と bit 一致することを確認する。修正前のコードでは
+`count = 1 / 5 / 7 / 257 / 1023 / 1025` で検出用の値が書き換わり、macOS では
+malloc がヒープの破壊を検出して SIGTRAP で停止する。
+
+#### 移行
+
+呼び出し側の変更は不要。4.0.0 にも同じ修正が入っている。
+
+`count` を 8 の倍数に切り上げた領域を確保していた呼び出しは、これまでどおり動作する
+(書かれる範囲が `count` までに狭まるだけで、そこまでの値は変わらない)。
+
+### 備考
+
+本リリースは 3.1 系への backport で、4.0.0 の他の変更 (計量を値にする 2 node、
+場の主張を測る 2 API、terrain / destruction / gi の修正、解析解オラクル群) は
+含まない。`cargo clippy` は 3.1.0 当時の toolchain を基準とする。
+
+
 ## [v3.1.0] - 2026-09-17
 
 ### Changed — cross-platform bit-exact evaluation (alice-det-math)

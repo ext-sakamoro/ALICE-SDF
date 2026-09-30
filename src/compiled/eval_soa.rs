@@ -195,8 +195,27 @@ pub fn eval_compiled_batch_soa_into(
 /// # Safety
 /// - `x_ptr`, `y_ptr`, `z_ptr` must point to valid memory of at least `count` f32s
 /// - `out_ptr` must point to valid memory of at least `count` f32s
-/// - All pointers should be aligned to 32 bytes for best performance
-/// - `count` should be a multiple of 8
+///
+/// Exactly `count` elements of each array are read and written, and nothing
+/// past them — no padding is required. A `count` that is a multiple of 8 is
+/// *faster* (the whole batch goes through the `f32x8` path and the scalar tail
+/// is empty), but that is a performance property, not a safety requirement.
+///
+/// All pointers should be aligned to 32 bytes for best performance.
+///
+/// # History
+///
+/// Until 4.0.0 this function rounded `count` **up** to a multiple of 8 and read
+/// and wrote every full group, so a caller who followed the contract above and
+/// allocated exactly `count` elements got an out-of-bounds read of three arrays
+/// and an out-of-bounds write of the fourth — `(8 - count % 8) % 8` elements
+/// past the end, which is a SIGSEGV when `count` is small enough for the
+/// allocation to end there. Only the SAFETY comment inside the loop mentioned
+/// the padding requirement; this doc block, the two FFI wrappers
+/// (`alice_sdf_eval_soa`, `alice_sdf_eval_animated_batch_soa`) and
+/// `include/alice_sdf.h` all promised `count`. The contract is the one that
+/// stayed: the implementation now matches it.
+/// Oracle: `tests/test_binding_oracle.rs::soa_must_not_write_past_the_documented_count`.
 #[inline(never)]
 pub unsafe fn eval_compiled_batch_soa_raw(
     sdf: &CompiledSdf,
@@ -206,12 +225,12 @@ pub unsafe fn eval_compiled_batch_soa_raw(
     out_ptr: *mut f32,
     count: usize,
 ) {
-    let aligned_count = (count + 7) & !7; // Round up to multiple of 8
+    // Whole 8-wide groups only; `count % 8` leftover points go one at a time.
+    let simd_count = count & !7;
 
-    for i in (0..aligned_count).step_by(8) {
+    for i in (0..simd_count).step_by(8) {
         // SAFETY: Caller guarantees x_ptr, y_ptr, z_ptr each point to at least
-        // `count` valid f32 elements (rounded up to multiple of 8). The loop
-        // index `i` ranges from 0 to aligned_count in steps of 8, so
+        // `count` valid f32 elements. `i + 8 <= simd_count <= count`, so
         // `ptr.add(i)` through `ptr.add(i + 7)` are within bounds.
         let x = f32x8::from(std::slice::from_raw_parts(x_ptr.add(i), 8));
         let y = f32x8::from(std::slice::from_raw_parts(y_ptr.add(i), 8));
@@ -221,9 +240,17 @@ pub unsafe fn eval_compiled_batch_soa_raw(
         let distances = eval_compiled_simd(sdf, p);
 
         // SAFETY: Caller guarantees out_ptr points to at least `count` writable
-        // f32 elements. Source (stack array) and destination (out_ptr) do not overlap.
+        // f32 elements, and `i + 8 <= count`. Source (stack array) and
+        // destination (out_ptr) do not overlap.
         let arr: [f32; 8] = distances.into();
         std::ptr::copy_nonoverlapping(arr.as_ptr(), out_ptr.add(i), 8);
+    }
+
+    for i in simd_count..count {
+        // SAFETY: `i < count`, and the caller guarantees all four arrays hold
+        // at least `count` elements.
+        let p = glam::Vec3::new(*x_ptr.add(i), *y_ptr.add(i), *z_ptr.add(i));
+        *out_ptr.add(i) = crate::compiled::eval_compiled(sdf, p);
     }
 }
 
