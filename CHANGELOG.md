@@ -6,6 +6,97 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — FFI / 公開 Rust API から到達する SoA の境界外 read+write
+
+`compiled::eval_compiled_batch_soa_raw` が `count` を 8 の倍数へ切り上げて走るので、
+`count % 8 != 0` のとき caller の allocation の外へ最大 7 要素を読み書きしていた。
+
+関数自身の doc は `out_ptr` must point to valid memory of at least `count` f32s と
+書いており、`count should be a multiple of 8` は **should** (助言) だったので、
+doc どおりに `count` 長の buffer を渡した caller が境界外に落ちる。到達経路は 3 つ:
+
+- `compiled::eval_compiled_batch_soa_raw` の直接呼び出し (`pub`、prelude 経由で再公開)
+- `alice_sdf_eval_soa` (C ABI、`count < 1024` の逐次分岐)
+- `alice_sdf_eval_animated_batch_soa` (C ABI、恒等変換の分岐 — こちらは 1024 の閾値が
+  無いので `count = 1025` でも起きる)
+
+`count` ぴったりの `Vec<f32>` で呼ぶと SIGSEGV になる。範囲内 (`0..count`) の値は
+修正前から native `eval_compiled` と bit 一致しており、壊れていたのは範囲外だけ。
+
+⚠️ この形は **3.1.0 (crates.io 公開版) と source が同一**。
+
+#### 対応
+
+- raw 関数を `count & !7` の SIMD + `count % 8` の scalar tail に変更。8 の倍数での
+  出力は修正前後で bit 一致 (`count=8` digest `5ce40a654075eaa6`、8/64/256/1024/4096)。
+- 矛盾していた記述を整理 (`count should be a multiple of 8` / loop 内の SAFETY の
+  「rounded up to multiple of 8」/ FFI 側の「handles the 8-wide alignment internally」)
+  と、計算して捨てられていた `_aligned_count` / `_simd_count` を削除。
+- `tests/test_binding_oracle.rs` に `soa_must_not_write_past_the_documented_count` と
+  `exact_size_buffers_survive_and_agree` を追加。修正を戻すと macOS の malloc が
+  heap 破壊を検出して SIGTRAP になる。
+
+### Fixed — terrain / destruction の 3 件
+
+- `destruction::remesh_chunk` の marching cubes cell 原点が voxel の角だったのに、
+  corner に入れる距離は voxel 中心で評価したものだったため mesh が半 voxel 斜めに
+  ずれていた (球 r=1.5、res16 で `max|‖v‖−r|` 0.218 → 0.0040)。
+- `destruction::fracture` が voxel size の x 成分を 3 軸すべてに流用していたため、
+  非等方 voxel で破片表面の位置と大きさが狂っていた (grid `[24,48,24]` で
+  軸平行表面積 71.11 → 42.67、Cauchy の射影公式 `6πr²` = 42.41)。
+- `make_tangent_basis` が左手系を返していた (`v = u × n` なので `u × v = −n`) ため
+  破片 mesh の面が内向きに巻かれていた (符号付き体積 −14.41 → +14.17、解析 +14.14)。
+  既存 unit test は直交性だけを見て利き手を見ていなかった。
+
+### Fixed — gi / volume の 3 件
+
+- `ConeTraceConfig::num_cones` は pub field なので 0 が公開 API から到達するが、
+  `generate_cosine_cones` が `num_cones - 1` を u32 で引いていた (release では
+  0..4_294_967_295 の loop)。
+- `IrradianceGrid::sample` が格子 index を `clamp(0, n-1)` する一方、三線形補間の
+  重みを clamp **前**の座標から作っていたため、probe 中心面を境に 1 セル分の
+  不連続が出ていた (2³ / [4,3,2] grid では probe 中心が f32 で厳密に境界を踏むので
+  現れず、step 0.8 の 5³ で顕在化する)。
+- `volume::generate_mip_chain` / `_distgrad` が常に 2×2×2 の子を読むので、level の
+  解像度が奇数になる遷移で最後の slab が落ち、min-downsample が footprint の下界に
+  ならなくなっていた (`[10,10,10]` も 10→5 で該当)。module doc の
+  "preserves the SDF distance property (closest surface wins)" に反する。
+  解像度 chain と段数は不変で、2 冪 (非立方 `64×64×1` 含む) の出力も不変。
+
+### Changed — SH1 の球面調和射影に立体角測度を入れた
+
+`SH1::project` が `∫ f Yᵢ dΩ` の測度を落としていたため、再構成が `f(e)/(4π)` に
+なっていた (間接光が約 0.08 倍)。射影側に `4π` を入れ、再構成 (`evaluate`) は
+標準の `Σ cᵢ Yᵢ` のまま据え置いた。`sample` / `bake_irradiance_grid` の値は
+ちょうど 4π 倍になる (110 値で実測、最悪相対偏差 4.5e-6、符号と方向は不変)。
+
+### Added — 解析解 oracle 4 file (合計 68 本) と、それを走らせる CI step
+
+`tests/test_terrain_destruction_oracle.rs` (28) / `tests/test_gi_volume_oracle.rs` (23) /
+`tests/test_binding_oracle.rs` (9 + godot in-module 4) /
+`tests/test_hlsl_blinkscript_parity.rs` (8) + `tests/common/hlsl_cpu_shim.h`。
+
+- HLSL / BlinkScript は naga frontend が無いので、emit した HLSL を clang++ で
+  native 実行して CPU 法と突き合わせる (GPU / dxc / Vulkan 不要)。corpus 152 node を
+  `Hardcoded` / `Dynamic` 両モードで通し、glslang + spirv-val が 304 shader を受理。
+  `lattice_deform` のみ 1.276e-4 の乖離が残る (中心差分の f32 増幅、Metal も同じ node を
+  最悪値に挙げる) ので実測値付きで許容を開示し、他 151 node は 1e-4 → 1e-5 に締めた。
+- 既存 unit test の許容を 6 箇所締めた (`test_bilinear_sample` / `test_bicubic_sample` は
+  ±1.0 → 1e-5、`test_normal_at` / clipmap は 0.1 → 1e-6 等)。`test_remesh_chunk` は
+  assert が 0 個だったので球面上判定を入れた。
+- `test_erosion_smooths_terrain` の「Erosion should generally reduce roughness」は
+  既定では成り立たない (hydraulic 侵食は roughness を 1.5〜2.7 倍にする)。平滑化するのは
+  thermal 単独なのでそちらに分離した。assert が `>= 0.0` だったため露呈していなかった。
+- `ci.yml` に oracle step 5 本を追加し、clippy の feature 集合に `blinkscript` を
+  加えた (`src/compiled/blinkscript` は一度も lint されておらず、error 3 件が
+  残っていた)。`gpu-parity` job に volume の GPU bake oracle を追加。
+
+### Changed — preflight の --quick が最低限の test を走らせる
+
+`scripts/preflight.sh --quick` は test 群の手前で exit していたため、pre-push hook が
+`cargo test` を 1 本も実行していなかった。`cargo test --lib` を `--quick` 内に戻し、
+成功時の出力に走った step と走っていない step を列挙するようにした。
+
 ### Changed — CI が JIT の parity oracle と FFI の unit test を実行するようになった
 
 oracle の棚卸しで、**書かれているが一度も実行されていない oracle** が 2 箇所見つかった。
