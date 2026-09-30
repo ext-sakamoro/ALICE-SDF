@@ -104,6 +104,39 @@ jobs:
       - name: Test (integration, feature-gated oracles — svo / texture-fit)
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
+      # aaa (volume / gpu-mesh / svo-gpu / destruction / terrain / gi) の解析解 oracle。
+      # 2026-09-30 まで gi / destruction / terrain / volume は `> 0` / `!is_empty()` の
+      # 存在・範囲 check しか持たず、tests/ からは 1 件も呼ばれていなかった。
+      # この 2 file で実バグ 6 件 (MC 原点が voxel 角 / vs.x の 3 軸流用 / 左手系 basis /
+      # num_cones=0 の u32 underflow / sample の補間重みが clamp 前座標由来 /
+      # mip が奇数解像度で footprint の下界でない) を検出している。
+      # ⚠️ 1 行で書く (matrix に windows-latest があり既定 shell は pwsh、
+      #    バックスラッシュ行継続は ParserError になる = 罠 gha-run-block-backslash-…)
+      - name: Test (integration, analytic oracles — aaa) [T4]
+        run: cargo test --features "aaa" --test test_gi_volume_oracle --test test_terrain_destruction_oracle
+
+      # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
+      # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
+      - name: Test (integration, FFI binding oracle)
+        run: cargo test --features ffi --test test_binding_oracle
+
+      # godot は 1,510 行に対し test 0 で、clippy からも除外されていた
+      # (security-audit.yml が grep -v godot)。engine 不要の部分だけを in-module test
+      # で覆っている。⚠️ ubuntu に限定: 他 runner での gdext build は未検証なので、
+      # 確認できたら広げる。
+      - name: Test (godot GDExtension, ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: "cargo test --lib --features godot godot::"
+
+      # HLSL / BlinkScript は naga frontend が無く、2026-09-30 まで出力文字列の検査
+      # しか無かった。emit した HLSL を clang++ で native 実行して CPU 法と突合する
+      # (GPU / dxc / Vulkan 不要なので全 runner で走る)。glslang があれば parse gate も
+      # 効かせる。ALICE_SDF_REQUIRE_CXX=1 で「compiler 不在なら skip」を fail にする。
+      - name: Test (integration, HLSL / BlinkScript value parity)
+        env:
+          ALICE_SDF_REQUIRE_CXX: "1"
+        run: cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity
+
       # JIT の parity arm は書かれていたが CI で一度も実行されていなかった
       # (2026-09-30 実測)。`cargo test --tests` は default feature なので
       # test_det_parity / test_evaluator_opcode_parity 内の
@@ -360,7 +393,7 @@ jobs:
       # nursery policy in Cargo.toml applies to whatever is compiled): the
       # docs.rs set + AAA + bridges + openvdb.
       - name: Clippy strict (all features that build on Linux, all targets)
-        run: cargo clippy --all-targets --features "glsl,hlsl,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit"
+        run: cargo clippy --all-targets --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit"
         env:
           RUSTFLAGS: "-Dwarnings"
 
@@ -476,6 +509,13 @@ jobs:
           --test test_mesh_orientation
           --test test_texture_shader_gpu_parity
           -- --nocapture
+
+      # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
+      # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、
+      # adapter 不在は silent skip でなく assert 失敗になる
+      # (feedback_sdf_external_review_invariant_tests_2026_09_15 の invariant 5)。
+      - name: GPU ↔ CPU parity (aaa — volume gpu_bake)
+        run: cargo test --features "aaa" --test test_gi_volume_oracle -- --nocapture
 
   doc:
     name: Doc (RUSTDOCFLAGS=-Dwarnings)

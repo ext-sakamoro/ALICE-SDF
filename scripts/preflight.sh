@@ -12,9 +12,16 @@
 # `--quick` before every push and blocks on failure.
 #
 # usage: scripts/preflight.sh [--quick]
-#   --quick  skips the test suites, the release wasm build and cargo audit
-#            (network); everything that judges the *source* still runs,
-#            including semver-checks, deny, machete and the stub guard.
+#   --quick  runs `cargo test --lib` but skips every other test step (the
+#            integration suites, the feature-gated oracles — svo / texture-fit /
+#            jit parity / MSL —, ffi + shaders, doctests, bridges and aaa), the
+#            release wasm build and cargo audit (network); everything that
+#            judges the *source* still runs, including semver-checks, deny,
+#            machete and the stub guard.
+#            2026-09-30: before this date `--quick` exited *before* every test
+#            step, so the pre-push gate ran no `cargo test` at all. A green
+#            `--quick` still does not mean the integration suites or the
+#            oracles passed — drop `--quick` for that.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -144,8 +151,21 @@ else
   echo "skip: cargo +nightly fuzz not installed (cargo +nightly install cargo-fuzz)" >&2
 fi
 
+# --quick でも最低限の test は走らせる (2026-09-30)。それまでの --quick は
+# test 群の手前で exit していたため、pre-push hook が走らせる gate が
+# `cargo test` を 1 本も実行していなかった。default feature の --lib だけなら
+# 数十秒で済み、「push 前に何も test していない」状態を避けられる。
 if [[ $quick -eq 1 ]]; then
-  echo; echo "preflight --quick OK (test suites, release wasm, cargo audit skipped)"; exit 0
+  step "test: cargo test --lib (--quick でも走らせる最小限)"
+  cargo test --lib
+  echo
+  echo "preflight --quick OK"
+  echo "  RAN     : fmt / clippy / MSRV / feature builds / wasm target / fuzz build / cargo test --lib"
+  echo "  NOT RUN : cargo test --tests (integration), feature-gated oracles (svo / texture-fit /"
+  echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, cargo audit"
+  echo "  => この green は「integration / oracle が通った」ことを意味しない。"
+  echo "     それらを確認するには --quick を外して実行する。"
+  exit 0
 fi
 
 # ── ci.yml test matrix (host = macOS ARM64 lane) ──────────────────────────
