@@ -292,12 +292,13 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
             // Threshold for parallelization
             const PARALLEL_THRESHOLD: usize = 1024;
 
-            // Use true SIMD path: eval_compiled_batch_soa_raw processes 8 points
-            // at a time with direct f32x8 loads from SoA arrays
-            let _aligned_count = (count_usize + 7) & !7;
-
-            // Ensure we have enough padding for SIMD (read up to aligned_count)
-            // The raw function handles the 8-wide alignment internally
+            // Both branches below use the f32x8 SIMD path for whole 8-point
+            // groups and evaluate the last `count % 8` points one at a time, so
+            // exactly `count` elements of each array are touched — no padding
+            // is read or written. (Until 4.0.0 the comment here claimed "the
+            // raw function handles the 8-wide alignment internally" while it
+            // actually rounded `count` up and walked past the end of the
+            // caller's arrays.)
             if count_usize >= PARALLEL_THRESHOLD {
                 // Parallel: split into chunks, each chunk uses SIMD internally
                 const CHUNK_SIZE: usize = 4096;
@@ -308,7 +309,6 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
                     .for_each(|(chunk_idx, chunk)| {
                         let start = chunk_idx * CHUNK_SIZE;
                         let chunk_len = chunk.len();
-                        let _simd_count = (chunk_len + 7) & !7;
 
                         // Use SIMD for full 8-wide groups
                         let simd_iters = chunk_len / 8;
@@ -368,7 +368,14 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
                         }
                     });
             } else {
-                // Sequential: use raw SIMD path for full groups, scalar for remainder
+                // Sequential: the raw SoA path uses the 8-wide SIMD loop for
+                // whole groups and a scalar tail for the last `count % 8`
+                // points, touching exactly `count` elements of each array —
+                // which is what the `# Safety` section above promises C
+                // callers. (Until 4.0.0 it rounded `count` up instead and went
+                // `(8 - count % 8) % 8` elements past the end of all four
+                // arrays; oracle: `tests/test_binding_oracle.rs::
+                // soa_must_not_write_past_the_documented_count`.)
                 crate::compiled::eval_compiled_batch_soa_raw(
                     &comp,
                     x,
@@ -766,7 +773,8 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
                 params_ref.has_translation() || params_ref.has_rotation() || params_ref.has_scale();
 
             if !has_transform {
-                // No animation transform: use direct SIMD SoA path
+                // No animation transform: the raw SoA path handles the 8-wide
+                // groups and the `count % 8` tail itself, within `count`.
                 crate::compiled::eval_compiled_batch_soa_raw(
                     &comp,
                     x,
