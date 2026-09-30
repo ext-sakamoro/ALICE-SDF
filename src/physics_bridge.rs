@@ -36,7 +36,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::{
-    eval_compiled, eval_compiled_distance_and_normal, eval_compiled_normal, CompiledSdf,
+    eval_compiled, eval_compiled_normal, CompiledSdf,
 };
 use alice_physics::SdfField;
 use glam::Vec3;
@@ -101,15 +101,37 @@ impl SdfField for CompiledSdfField {
         (n.x, n.y, n.z)
     }
 
-    /// Combined distance + normal from 4 evaluations (tetrahedral method).
-    ///
-    /// 20% faster than separate `distance` + `normal` calls (4 evals instead of 5).
-    #[inline]
-    fn distance_and_normal(&self, x: f32, y: f32, z: f32) -> (f32, (f32, f32, f32)) {
-        let p = Vec3::new(x, y, z);
-        let (dist, n) = eval_compiled_distance_and_normal(&self.sdf, p, self.epsilon);
-        (dist, (n.x, n.y, n.z))
-    }
+    // `distance_and_normal` is deliberately NOT overridden.
+    //
+    // The trait's default is `(self.distance(x, y, z), self.normal(x, y, z))`
+    // — an exact distance (1 evaluation) plus the tetrahedral normal (4), so 5
+    // in total. This crate used to override it with
+    // `eval_compiled_distance_and_normal`, which reuses the normal's four
+    // offset samples and takes their *average* as the distance. That is 4
+    // evaluations instead of 5, and the helper's own doc is explicit that the
+    // centre distance is approximated (error O(epsilon^2)).
+    //
+    // The override therefore did not compute the same query more efficiently —
+    // it answered a different question. Measured on 2026-09-30 over a
+    // sphere-union-box field at 24 points, the override's distance was larger
+    // than `distance()` at every point, by 4.768e-7 to 7.451e-7: a one-sided
+    // bias, not rounding.
+    //
+    // That mattered because the trait's own contract is set by its default
+    // ("default: two separate calls"), and callers take it at face value:
+    // `alice_physics::sdf_adaptive::AdaptiveSdfEvaluator::evaluate_and_cache`
+    // (1.4.0) stores `distance_and_normal`'s distance in its cache, while
+    // `collide_point_sdf` derives contact depth from `distance`. Two paths in
+    // the same crate disagreed about the distance at the same point.
+    //
+    // Dropping the override makes them agree by construction: there is no
+    // second distance to drift. The cost is the fifth evaluation, which is what
+    // an exact distance costs. Oracle:
+    // `tests/test_physics_bridge_determinism.rs::distance_and_normal_returns_the_exact_distance`.
+    //
+    // `eval_compiled_distance_and_normal` itself is kept — it is a documented
+    // 4-evaluation approximation and callers that want that trade-off can ask
+    // for it by name.
 }
 
 /// Convenience function: compile an SDF node and wrap as a physics field.
