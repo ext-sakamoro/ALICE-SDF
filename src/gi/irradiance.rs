@@ -25,28 +25,50 @@ impl Default for SH1 {
     }
 }
 
+/// DC basis value `Y₀ = √(1/4π)`, constant over the sphere.
+const Y0: f32 = 0.282_095;
+/// Linear basis factor `Y₁ = √(3/4π) · d` (one per axis).
+const Y1: f32 = 0.488_603;
+/// Solid angle of the whole sphere, the measure of the projection integral.
+const SPHERE_SOLID_ANGLE: f32 = 4.0 * std::f32::consts::PI;
+
 impl SH1 {
     /// Evaluate SH in a direction
+    ///
+    /// Reconstruction `Σ cᵢ Yᵢ(dir)` in the orthonormal basis
+    /// `Y₀ = √(1/4π)`, `Y₁ = √(3/4π) · {x, y, z}`.
     #[inline]
     pub fn evaluate(&self, dir: Vec3) -> f32 {
-        // L0: 0.282095
-        // L1: 0.488603 * {y, z, x}
         let c = &self.coeffs;
-        (c[3] * 0.488603).mul_add(
+        (c[3] * Y1).mul_add(
             dir.z,
-            (c[2] * 0.488603).mul_add(dir.y, c[0].mul_add(0.282095, c[1] * 0.488603 * dir.x)),
+            (c[2] * Y1).mul_add(dir.y, c[0].mul_add(Y0, c[1] * Y1 * dir.x)),
         )
     }
 
     /// Project a directional sample into SH
+    ///
+    /// The coefficients are the projection integrals `cᵢ = ∫ f Yᵢ dΩ`, estimated
+    /// from a single direction: a uniform sample stands for the whole sphere, so
+    /// it carries the full `4π` of solid angle. Accumulating `N` samples with
+    /// [`SH1::add`] and dividing by `N` with [`SH1::scale`] therefore yields the
+    /// Monte-Carlo estimate `(4π/N) Σ f Yᵢ`.
+    ///
+    /// Because `Y₀` and `Y₁` are orthonormal on the sphere
+    /// (`∫ Yᵢ Yⱼ dΩ = δᵢⱼ`) and span the affine functions of direction, a field
+    /// `f(d) = a + b·d` projected this way is reconstructed **exactly** by
+    /// [`SH1::evaluate`] — the estimate carries the physical magnitude of `f`,
+    /// not a fraction of it. Dropping the `4π` (as this did before 4.0.0) scales
+    /// every reconstruction by `1/4π ≈ 0.08`.
     #[inline]
     pub fn project(dir: Vec3, value: f32) -> Self {
+        let weighted = value * SPHERE_SOLID_ANGLE;
         Self {
             coeffs: [
-                value * 0.282095,
-                value * 0.488603 * dir.x,
-                value * 0.488603 * dir.y,
-                value * 0.488603 * dir.z,
+                weighted * Y0,
+                weighted * Y1 * dir.x,
+                weighted * Y1 * dir.y,
+                weighted * Y1 * dir.z,
             ],
         }
     }
@@ -188,9 +210,14 @@ impl IrradianceGrid {
         let y1 = (y0 + 1).min(self.grid_size[1] - 1);
         let z1 = (z0 + 1).min(self.grid_size[2] - 1);
 
-        let tx = (fx - fx.floor()).clamp(0.0, 1.0);
-        let ty = (fy - fy.floor()).clamp(0.0, 1.0);
-        let tz = (fz - fz.floor()).clamp(0.0, 1.0);
+        // Weights are taken against the *clamped* cell, matching the clamp on
+        // `x0`/`y0`/`z0` above. Deriving them from the raw `fx` instead made a
+        // position an epsilon below the first probe centre (`fx = -1e-8`) come
+        // out as `tx ~ 1`, i.e. the *second* probe — a full cell of error with a
+        // discontinuity across every low-side probe centre plane.
+        let tx = (fx - x0 as f32).clamp(0.0, 1.0);
+        let ty = (fy - y0 as f32).clamp(0.0, 1.0);
+        let tz = (fz - z0 as f32).clamp(0.0, 1.0);
 
         // Trilinear interpolation of 8 surrounding probes
         let eval = |x: u32, y: u32, z: u32| -> Vec3 {

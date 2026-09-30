@@ -170,7 +170,15 @@ fn estimate_radiance(
 /// Generate cosine-weighted cone directions on a hemisphere
 ///
 /// Uses a fixed pattern for reproducibility.
+///
+/// `num_cones == 0` yields an empty set, which `trace_hemisphere` integrates to
+/// `Vec3::ZERO`. Without this guard the ring loop below computes `num_cones - 1`
+/// on a `u32`, which panics in debug and wraps to `u32::MAX` in release.
 fn generate_cosine_cones(normal: Vec3, num_cones: u32) -> Vec<(Vec3, f32)> {
+    if num_cones == 0 {
+        return Vec::new();
+    }
+
     let (tangent, bitangent) = make_orthonormal_basis(normal);
     let mut cones = Vec::with_capacity(num_cones as usize);
 
