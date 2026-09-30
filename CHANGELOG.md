@@ -6,314 +6,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
-### Fixed — `SdfField::distance_and_normal` が `distance` と違う距離を返していた
-
-`CompiledSdfField` は trait の既定実装を `eval_compiled_distance_and_normal` で
-上書きしていた。この helper は法線の四面体標本 4 点を再利用し、その**平均**を中心の
-距離とする (helper 自身の doc が「approximated」「error ≈ O(epsilon²)」と明記している)。
-評価回数は 5 → 4 に減るが、返る距離は `distance` と別物になる。
-
-trait の契約は既定実装が定めている (`(self.distance(..), self.normal(..))`、doc は
-override の目的を「both を効率よく計算できる実装のため」と書いており、別の答えを
-返すためではない)。呼び出し側はそれを前提にしていた —
-`alice_physics::sdf_adaptive::AdaptiveSdfEvaluator::evaluate_and_cache` (1.4.0) は
-`distance_and_normal` の距離を cache に格納し、`collide_point_sdf` は `distance` から
-接触深さを導く。同じ点について 2 経路が食い違っていた。
-
-実測 (sphere ∪ box、24 点): 上書き側の距離は全点で `distance` より大きく、差は
-4.768e-7 〜 7.451e-7。全点が同符号なので丸めではなく偏り。
-
-#### 対応
-
-上書きを削除した。trait の既定実装が適用され、距離は `distance` と同じ 1 回の評価に
-なる (法線は従来と同じ四面体 4 点)。評価回数は 4 → 5 で、これは厳密な距離の値段。
-2 経路が構造的に一致するので、あとから片方だけがずれる余地がなくなる。
-
-`eval_compiled_distance_and_normal` 自体は残している。4 評価の近似であることが doc に
-書かれており、そのトレードオフが欲しい呼び出し側は名前で指定できる。
-
-### Added — SDF ↔ Physics 境界の決定論オラクルと、extern 宣言の順序ガード
-
-`tests/test_physics_bridge_determinism.rs` (9 本)。両クレートが別々に bit-exactness を
-主張しているが、その合成は誰も測っていなかった (`grep to_bits|deterministic|bit` が
-bridge の 2 file で 0 件)。境界は
-`Vec3Fix → world_to_local → f32 → SDF 評価 → f32 → Fix128` で、この f32 区間が
-Fix128 エンジンの中の非 Fix128 層にあたる。
-
-反復 64 回 / 訪問順の逆転 / collider 再構築 / 衝突 32 回で `Contact` の全 10 word が
-bit 一致すること、bridge が `eval_compiled` と bit 一致すること、球の `|p| − r` が
-**bit 厳密**に一致すること (既存 bridge test の許容 0.01 を置き換え)、両 stencil が
-解析法線に一致して**外向き**であること、表面上の点が衝突しないこと (内側の陽性対照
-付き) を確認する。破壊試験 3 種で red を実測済 — うち法線の符号反転は 9 本中 1 本しか
-落ちないので、符号は単位長でも反復でも閉形式でも見えず、解析方向との内積だけが
-捕まえる。
-
-`scripts/abi_decl_check.py`。`tests/` と `examples/` の `extern "C"` 宣言を
-`src/ffi/` の export と**順序付きの型列**で突き合わせる。`scripts/unreal-abi-check.sh`
-step 2a は header と C# を見るので、test 内の宣言は第 3 の宣言箇所として無検査だった。
-引数順の誤りは SysV (macOS / Linux) では整数と浮動小数でレジスタバンクが分かれ
-独立に採番されるため値が正しいレジスタに着いて通り、Microsoft x64 は位置でスロットを
-決めるので落ちる。型の集合では検出できない。preflight の source guard 群と ci.yml に
-配線した。
-
-### Fixed — test の `alice_sdf_repeat_finite` 宣言が引数順を入れ替えていた
-
-`tests/test_binding_oracle.rs` の宣言が `(node, f32 × 3, u32 × 3)` で、export は
-`(node, u32 × 3, f32 × 3)`。run 36680136653 で Windows のみ red になり、
-`repeat_finite` が `Vec3(1,0,0)` で FFI -3.0000001e-1 / native 4.0000004e-1。
-実装とヘッダと C# バインディングはいずれも正しく、test 側の宣言と呼び出しのみ修正。
-
-### Fixed — FFI / 公開 Rust API から到達する SoA の境界外 read+write
-
-`compiled::eval_compiled_batch_soa_raw` が `count` を 8 の倍数へ切り上げて走るので、
-`count % 8 != 0` のとき caller の allocation の外へ最大 7 要素を読み書きしていた。
-
-関数自身の doc は `out_ptr` must point to valid memory of at least `count` f32s と
-書いており、`count should be a multiple of 8` は **should** (助言) だったので、
-doc どおりに `count` 長の buffer を渡した caller が境界外に落ちる。到達経路は 3 つ:
-
-- `compiled::eval_compiled_batch_soa_raw` の直接呼び出し (`pub`、prelude 経由で再公開)
-- `alice_sdf_eval_soa` (C ABI、`count < 1024` の逐次分岐)
-- `alice_sdf_eval_animated_batch_soa` (C ABI、恒等変換の分岐 — こちらは 1024 の閾値が
-  無いので `count = 1025` でも起きる)
-
-`count` ぴったりの `Vec<f32>` で呼ぶと SIGSEGV になる。範囲内 (`0..count`) の値は
-修正前から native `eval_compiled` と bit 一致しており、壊れていたのは範囲外だけ。
-
-⚠️ この形は **3.1.0 (crates.io 公開版) と source が同一**。
-
-#### 対応
-
-- raw 関数を `count & !7` の SIMD + `count % 8` の scalar tail に変更。8 の倍数での
-  出力は修正前後で bit 一致 (`count=8` digest `5ce40a654075eaa6`、8/64/256/1024/4096)。
-- 矛盾していた記述を整理 (`count should be a multiple of 8` / loop 内の SAFETY の
-  「rounded up to multiple of 8」/ FFI 側の「handles the 8-wide alignment internally」)
-  と、計算して捨てられていた `_aligned_count` / `_simd_count` を削除。
-- `tests/test_binding_oracle.rs` に `soa_must_not_write_past_the_documented_count` と
-  `exact_size_buffers_survive_and_agree` を追加。修正を戻すと macOS の malloc が
-  heap 破壊を検出して SIGTRAP になる。
-
-### Fixed — terrain / destruction の 3 件
-
-- `destruction::remesh_chunk` の marching cubes cell 原点が voxel の角だったのに、
-  corner に入れる距離は voxel 中心で評価したものだったため mesh が半 voxel 斜めに
-  ずれていた (球 r=1.5、res16 で `max|‖v‖−r|` 0.218 → 0.0040)。
-- `destruction::fracture` が voxel size の x 成分を 3 軸すべてに流用していたため、
-  非等方 voxel で破片表面の位置と大きさが狂っていた (grid `[24,48,24]` で
-  軸平行表面積 71.11 → 42.67、Cauchy の射影公式 `6πr²` = 42.41)。
-- `make_tangent_basis` が左手系を返していた (`v = u × n` なので `u × v = −n`) ため
-  破片 mesh の面が内向きに巻かれていた (符号付き体積 −14.41 → +14.17、解析 +14.14)。
-  既存 unit test は直交性だけを見て利き手を見ていなかった。
-
-### Fixed — gi / volume の 3 件
-
-- `ConeTraceConfig::num_cones` は pub field なので 0 が公開 API から到達するが、
-  `generate_cosine_cones` が `num_cones - 1` を u32 で引いていた (release では
-  0..4_294_967_295 の loop)。
-- `IrradianceGrid::sample` が格子 index を `clamp(0, n-1)` する一方、三線形補間の
-  重みを clamp **前**の座標から作っていたため、probe 中心面を境に 1 セル分の
-  不連続が出ていた (2³ / [4,3,2] grid では probe 中心が f32 で厳密に境界を踏むので
-  現れず、step 0.8 の 5³ で顕在化する)。
-- `volume::generate_mip_chain` / `_distgrad` が常に 2×2×2 の子を読むので、level の
-  解像度が奇数になる遷移で最後の slab が落ち、min-downsample が footprint の下界に
-  ならなくなっていた (`[10,10,10]` も 10→5 で該当)。module doc の
-  "preserves the SDF distance property (closest surface wins)" に反する。
-  解像度 chain と段数は不変で、2 冪 (非立方 `64×64×1` 含む) の出力も不変。
-
-### Changed — SH1 の球面調和射影に立体角測度を入れた
-
-`SH1::project` が `∫ f Yᵢ dΩ` の測度を落としていたため、再構成が `f(e)/(4π)` に
-なっていた (間接光が約 0.08 倍)。射影側に `4π` を入れ、再構成 (`evaluate`) は
-標準の `Σ cᵢ Yᵢ` のまま据え置いた。`sample` / `bake_irradiance_grid` の値は
-ちょうど 4π 倍になる (110 値で実測、最悪相対偏差 4.5e-6、符号と方向は不変)。
-
-### Added — 解析解 oracle 4 file (合計 68 本) と、それを走らせる CI step
-
-`tests/test_terrain_destruction_oracle.rs` (28) / `tests/test_gi_volume_oracle.rs` (23) /
-`tests/test_binding_oracle.rs` (9 + godot in-module 4) /
-`tests/test_hlsl_blinkscript_parity.rs` (8) + `tests/common/hlsl_cpu_shim.h`。
-
-- HLSL / BlinkScript は naga frontend が無いので、emit した HLSL を clang++ で
-  native 実行して CPU 法と突き合わせる (GPU / dxc / Vulkan 不要)。corpus 152 node を
-  `Hardcoded` / `Dynamic` 両モードで通し、glslang + spirv-val が 304 shader を受理。
-  `lattice_deform` のみ 1.276e-4 の乖離が残る (中心差分の f32 増幅、Metal も同じ node を
-  最悪値に挙げる) ので実測値付きで許容を開示し、他 151 node は 1e-4 → 1e-5 に締めた。
-- 既存 unit test の許容を 6 箇所締めた (`test_bilinear_sample` / `test_bicubic_sample` は
-  ±1.0 → 1e-5、`test_normal_at` / clipmap は 0.1 → 1e-6 等)。`test_remesh_chunk` は
-  assert が 0 個だったので球面上判定を入れた。
-- `test_erosion_smooths_terrain` の「Erosion should generally reduce roughness」は
-  既定では成り立たない (hydraulic 侵食は roughness を 1.5〜2.7 倍にする)。平滑化するのは
-  thermal 単独なのでそちらに分離した。assert が `>= 0.0` だったため露呈していなかった。
-- `ci.yml` に oracle step 5 本を追加し、clippy の feature 集合に `blinkscript` を
-  加えた (`src/compiled/blinkscript` は一度も lint されておらず、error 3 件が
-  残っていた)。`gpu-parity` job に volume の GPU bake oracle を追加。
-
-### Changed — preflight の --quick が最低限の test を走らせる
-
-`scripts/preflight.sh --quick` は test 群の手前で exit していたため、pre-push hook が
-`cargo test` を 1 本も実行していなかった。`cargo test --lib` を `--quick` 内に戻し、
-成功時の出力に走った step と走っていない step を列挙するようにした。
-
-### Changed — CI が JIT の parity oracle と FFI の unit test を実行するようになった
-
-oracle の棚卸しで、**書かれているが一度も実行されていない oracle** が 2 箇所見つかった。
-
-**(1) JIT backend の parity arm**。`tests/test_det_parity.rs` と
-`tests/test_evaluator_opcode_parity.rs` は `JitCompiledSdf` (scalar) と
-`JitSimdSdf` を tree evaluator と突き合わせる arm を持つが、いずれも
-`#[cfg(feature = "jit")]` で囲まれている。CI の `cargo test --tests` は
-default feature で走り、`jit` 付きの `cargo test` は 1 つも無かったため
-(`Build (JIT) [T3]` は `cargo build`)、7,675 行の JIT 経路の値の正しさは
-検証されていなかった。
-
-test 本数では退行を検出できない点に注意。default でも `test_det_parity` は
-1 件、`test_evaluator_opcode_parity` は 10 件を報告し、消えるのは中の比較 arm
-だけである。`test_relaxed_tracing` だけが 8 → 9 と変化する
-(`relaxed_tracing_matches_oracle_jit`)。
-
-**(2) `src/ffi` の unit test**。15 本あるが `ffi` feature 付きの `cargo test` が
-CI に無く (`Build (FFI + shaders)` は `cargo build`)、registry の handle
-lifecycle・panic sentinel・poisoned lock 耐性・compiled / batch / SoA eval が
-一度も実行されていなかった。
-
-#### 対応
-
-- `ci.yml` に `Test (integration, JIT parity oracles) [T3]` を追加
-  (`cargo test --features jit --test test_det_parity --test
-  test_evaluator_opcode_parity --test test_relaxed_tracing`)。
-- `ci.yml` の `Build (FFI + shaders)` を `Test (FFI + shaders)`
-  (`cargo test --lib --features "ffi,hlsl,glsl"`) に格上げ。
-- `scripts/preflight.sh` に同じ 2 step を追加し、ffi を builds 群から test 群へ移動
-  (ci.yml と逐語対応を維持)。
-
-crate の主張に対して落ちる job を持たせる原則の適用であり、公開 API の変更は無い。
-
-### Fixed — mesh → SDF の符号が三角形の巻き順に依存し、三角形距離の edge clamp も誤っていた
-
-外部で生成された mesh を SDF として取り込む経路が 2 つの独立した理由で壊れていた。
-
-**(1) 符号が巻き順依存**。`MeshBvh::signed_distance` は `|d|` 最小の三角形を選び、
-その面法線との内積で符号を決めていた。面法線は頂点の並び順で向きが変わるので、
-場が幾何ではなく入力の書き方の関数になっていた。結果として
-
-- 開曲面 (囲む体積を持たない板) の片側に架空の内部ができる、
-- index を逆順にすると場全体が反転する、
-- 独立に巻かれた部品を連結した mesh では、巻き方が食い違う部品だけ内外が裏返る。
-
-**(2) `Triangle::signed_distance` の edge 2-0 の clamp が符号反転後に適用されていた**。
-
-```rust
-let t2 = clamp01((-v02).dot(p2) / v02.length_squared().max(1e-10));
-let d2 = (p2 + v02 * t2).length_squared();
-```
-
-真のパラメータ `t*` に対して `clamp01(-t*)` を取ってから符号を戻すので、
-`t* ∈ [0,1]` (投影が辺の内側) では `v2` までの距離に落ちて**過大**、`t* < 0`
-では無限直線上の点までの距離になり**過小**になる。この結果、閉じていて巻き順も
-正しい箱ですら符号が壊れていた ─ 半径 (0.7, 0.5, 0.9) の箱を格子 3165 点で
-解析解と突き合わせると **207 点 (6.5%) の符号が食い違い**、最大誤差 2.299。
-
-#### 対応
-
-- `Triangle::closest_point` を Voronoi 領域形 (Ericson, *Real-Time Collision
-  Detection* §5.1.5) で追加し、`signed_distance` / `unsigned_distance` の大きさを
-  そこから導くようにした。`MeshBvh::closest_point` / `MeshBvh::unsigned_distance`
-  も符号ロジックを経由しない専用探索にした。
-- `src/mesh/mesh_sign.rs` を追加。`SDF(x) = (1 − 2·T(x)) · UDF(x)` で、`T` は
-  padding 付き bounding box の外周から 6 近傍 flood fill して得る到達可能性。
-  面法線を一切読まないので巻き順・閉曲面かどうか・連結成分数のいずれにも依存
-  しない。表面帯のセルは最近接点から離れる向きへ 1 セルずつ歩いて分類済セルの
-  label を取るので、セル未満の分解能で符号が決まる。
-- `MeshToSdfConfig` に `sign_mode` / `sign_flood_fill_resolution` を追加。
-  `MeshToSdfConfig::default()` は従来どおり `MeshSignMode::NearestFaceNormal`
-  なので、既定の呼び出しの符号規則は変わらない (符号の大きさは (2) の修正ぶん
-  正しくなる)。
-- **`MeshToSdfConfig::accurate()` の符号規則を `ExteriorFloodFill` に変更**。
-  「accurate」が名乗るとおり、巻き順ではなく幾何から符号を決めるようになった。
-  4.0.0 は crates.io 未 publish (最新の公開版は 3.1.0) なので、既存の利用者に
-  挙動変更は届かない ─ **breaking 扱いにしない**。3.x の挙動が要る呼び出しは
-  `cfg.sign_mode = MeshSignMode::NearestFaceNormal` で戻せる。
-  副作用として、`accurate()` は退化 mesh (bounding box の全辺が 0 / 非有限) で
-  `MeshSdf::new` が `None` を返すようになった。理由が要る場合は
-  `MeshSdf::try_new` を使う。
-- `MeshToSdfConfig::topology_robust()` を追加。`accurate()` への委譲で、
-  「精度」ではなく「mesh の出所が信用できない」ことが選択理由である呼び出し側の
-  ための明示的な別名。
-- `MeshSdf::try_new` を追加。flood fill の構築失敗を従来規則へ黙って落とさず
-  `MeshInputError` で返す。
-
-分解能が精度の唯一のつまみで、およそ 2 セルより薄い壁や隙間は潰れる。
-`sign_flood_fill_resolution` (既定 64) を最も薄い形状が数セルにまたがるまで上げる。
-
-#### 検証
-
-`tests/test_mesh_sign_topology.rs` は期待値を解析解 (厳密な箱 SDF / 矩形までの
-厳密距離) だけから作り、実装を呼んで期待値を組み立てていない。
-
-| oracle | 実装前 | 実装後 |
-|---|---|---|
-| 開曲面に内部が無い | 符号不一致 1014/2116 (47.9%) | 0 (0.0%)、最大誤差 0.000e0 |
-| 巻き反転で場が不変 | 2135/2197 点が相違 (最大 2.691) | 0/2197、bit 一致 |
-| 分離部品 + 巻き不一致 | 符号不一致 1797/3325 (54.0%) | 0 (0.0%)、最大誤差 0.000e0 |
-| 閉じた箱 = 解析解 | 符号不一致 207/3165 (6.5%) | 0 (0.0%)、最大誤差 0.000e0 |
-| 厚さ 0.1 板の内部が負 | (通過) | 通過 |
-
-決定論は保たれる。セル占有は独立な per-cell 距離クエリ (リダクション無し)、
-flood fill は整数 index のみ、浮動小数は加減乗除・比較・`sqrt` だけを使う。
-
-### Fixed — `alice_sdf_mirror` / `alice_sdf_repeat_finite` の宣言が Rust の署名と食い違っていた
-
-`include/alice_sdf.h` と `bindings/AliceSdf.cs` が `alice_sdf_mirror` を
-`float mx, float my, float mz` と宣言していたが、Rust の export は
-`fn(SdfHandle, u8, u8, u8)` である。整数引数と浮動小数引数は AArch64
-(x0-x7 / v0-v7) でも x86-64 SysV (rdi-r9 / xmm0-7) でも別のレジスタ群で渡る
-ので、`float` として呼ぶと Rust 側は整数レジスタの残留値を mirror フラグとして
-読む。crash しないため気付きにくい。
-
-arm64 / release で実測した値 (半径 1 の球を (2,2,0) へ移動 → X 軸だけ mirror
-指定 → 点 (-2,-2,0) を評価、3 通りが分離する):
-
-| 呼び方 | 距離 | 実際に立った軸 |
-|---|---|---|
-| mirror なし | 4.656854 | — |
-| `uint8_t` 宣言 (修正後) | 3.000000 | X のみ = 指定どおり |
-| `float` 宣言 (修正前) | -1.000000 | X と Y |
-
-残留レジスタの値は呼び出し文脈で決まるので結果は文脈依存だが、**「毎回変わる」
-わけではない**。上記の測定では 3 回連続で同じ -1.000000 が出た。つまり
-「たまたま動いているように見えて、呼び出し位置を変えると軸が変わる」種類の
-壊れ方であり、テストが 1 箇所でも通ってしまえば見逃される。
-
-影響していた経路は 2 つで、どちらも宣言を直すだけで閉じる:
-
-- Unity — `bindings/README.md` が `bindings/AliceSdf.cs` を Unity へコピーさせて
-  いるので、`AliceSdf.Mirror()` がそのまま不定動作だった
-- UE5 — `AliceSdfComponent.cpp` の呼び出しは `1u` / `0u` と整数で書かれていたが、
-  可視のプロトタイプが `float` なので C++ が暗黙に `1.0f` へ変換していた
-  (呼び出し側は変更不要)
-
-`alice_sdf_repeat_finite` はヘッダが `int32_t`、Rust が `u32` で幅は同じだが
-符号が違うので `uint32_t` に揃えた。C# 側は負の count が約 40 億回の反復に
-回り込む代わりに `ArgumentOutOfRangeException` で落ちるようにしてある。
-
-### Added — `unreal-abi-check.sh` に引数型の突合 (step 2a)
-
-この食い違いが 1.7.2 から 4.0.0 まで残った理由は gate の側にある。
-`scripts/unreal-abi-check.sh` の step 2 はヘッダの宣言と cdylib の export を
-**名前集合でのみ**照合しているので、型が何であっても通る。step 1 の byte 一致も
-複製ヘッダ同士の比較なので、両方が同じ間違いを持っていると検出できない。
-
-step 2a を追加し、`include/alice_sdf.h` の各宣言の**引数型**を `src/ffi/**` の
-`extern "C"` 署名と突合するようにした (現在 175 関数で不一致 0)。C の `float *`
-と Rust の `*const f32` のような表記差は正規化し、`float m[16]` のような配列
-記法はポインタと同一視する。名前集合の照合は引き続き step 2 の担当 (実際の
-cdylib を見るのでソース解析より強く、feature gate された export も扱える)。
-
-追加後にわざと壊して red を実測した: mirror を `float` に戻す / 引数の数を
-減らす / ポインタを値にする / 符号だけ変える (`uint32_t` → `int32_t`) の 4 つは
-いずれも fail し、配列記法への書き換えは green のまま (誤検出なし)。
-
-## [4.0.0] - 2026-09-27
+## [4.0.0] - 2026-09-30
 
 ### Changed (breaking) — `SdfNode` / `OpCode` を `#[non_exhaustive]` に
 
@@ -321,8 +14,11 @@ variant の追加は破壊的変更なので、この 2 つの enum に variant 
 major が必要だった。4.0.0 で `#[non_exhaustive]` を宣言し、**これ以降の
 primitive / opcode 追加を minor で出せる**ようにする。
 
-downstream への影響は **`match` に wildcard arm (`_ => ...`) が必要になること
-だけ**。enum 単位の `#[non_exhaustive]` が禁じるのは exhaustive match であって
+`#[non_exhaustive]` 自体の影響は **`match` に wildcard arm (`_ => ...`) が
+必要になること**。⚠️ ただし同 release で discriminant も動いているので、
+この enum に触る呼び出しが見るべき breaking は 2 つある (下の
+「discriminant が 98 variant ぶんずれた」を併せて読む)。
+enum 単位の `#[non_exhaustive]` が禁じるのは exhaustive match であって
 variant の構築ではないので、`SdfNode::Sphere { radius }` のような struct
 literal も `SdfNode::sphere(r)` のような constructor も従来どおり使える
 (構築を禁じるのは variant 単位に付けた場合)。`alice-lol` は `emit.rs` の
@@ -332,6 +28,26 @@ constructor の併用なのでいずれも影響なし。
 同 release で `SdfNode::MetricBall` / `MetricBlend`、`OpCode::MetricBall` /
 `MetricBlend` を追加している (下記)。この 2 つが `#[non_exhaustive]` を入れる
 きっかけになった最後の「major を要求する variant 追加」。
+
+### Changed (breaking) — `SdfNode` / `OpCode` の discriminant が 98 variant ぶんずれた
+
+上記 2 variant を **末尾でなく `Gyroid` (index 29) の直後に挿した**ため、それ
+以降の全 variant の discriminant が **+2** 動いた (`Heart` 30 → 32 …
+`Terrain` 127 → 129、98 variant すべて delta は +2)。`#[repr]` を持たない enum
+なので言語仕様上 discriminant は不定値だが、**`as isize` / `as u32` で数値化して
+serialize / index / FFI に渡している呼び出しは黙って壊れる**。
+
+- 該当は `SdfNode` 98 variant と `OpCode` の同数。`cargo semver-checks` の
+  `enum_no_repr_variant_discriminant_changed` が全件を挙げる。
+- 依存 30 repo を走査した範囲では **`SdfNode` / `OpCode` を数値化している
+  呼び出しは 0 件** (`ALICE-Manga/src/export.rs:181` の
+  `mem::discriminant` は同一 build 内での比較なので影響しない)。
+- **永続化した discriminant を跨って読む場合は再生成が必要**。値は build 間で
+  一致する保証が元から無いので、4.0.0 固有の問題ではなく、ここで初めて実際に
+  動いたというだけ。
+
+⚠️ **`#[non_exhaustive]` を入れた後も、variant は末尾に足す**。末尾なら
+discriminant は 1 件も動かない。今回の 98 件は挿入位置だけが原因。
 
 ### Added — 計量そのものを値にする 2 node と、場の主張を測る 2 API (2026-09-27)
 
@@ -786,6 +502,325 @@ to 1.0 on interior points (`elongate(1,2,3, sphere(1))` at
 `(0.011, 0.666, 0.515)`: cpu `-1.0`, shader `-1.99`). The shader emit now
 matches the other four evaluators; `every_grammar_construct_matches_cpu_on_gpu`
 (alice-lol) and the corpus GPU-parity tests confirm it.
+
+
+### Fixed — `SdfField::distance_and_normal` が `distance` と違う距離を返していた
+
+`CompiledSdfField` は trait の既定実装を `eval_compiled_distance_and_normal` で
+上書きしていた。この helper は法線の四面体標本 4 点を再利用し、その**平均**を中心の
+距離とする (helper 自身の doc が「approximated」「error ≈ O(epsilon²)」と明記している)。
+評価回数は 5 → 4 に減るが、返る距離は `distance` と別物になる。
+
+trait の契約は既定実装が定めている (`(self.distance(..), self.normal(..))`、doc は
+override の目的を「both を効率よく計算できる実装のため」と書いており、別の答えを
+返すためではない)。呼び出し側はそれを前提にしていた —
+`alice_physics::sdf_adaptive::AdaptiveSdfEvaluator::evaluate_and_cache` (1.4.0) は
+`distance_and_normal` の距離を cache に格納し、`collide_point_sdf` は `distance` から
+接触深さを導く。同じ点について 2 経路が食い違っていた。
+
+実測 (sphere ∪ box、24 点): 上書き側の距離は全点で `distance` より大きく、差は
+4.768e-7 〜 7.451e-7。全点が同符号なので丸めではなく偏り。
+
+#### 対応
+
+上書きを削除した。trait の既定実装が適用され、距離は `distance` と同じ 1 回の評価に
+なる (法線は従来と同じ四面体 4 点)。評価回数は 4 → 5 で、これは厳密な距離の値段。
+2 経路が構造的に一致するので、あとから片方だけがずれる余地がなくなる。
+
+`eval_compiled_distance_and_normal` 自体は残している。4 評価の近似であることが doc に
+書かれており、そのトレードオフが欲しい呼び出し側は名前で指定できる。
+
+### Added — SDF ↔ Physics 境界の決定論オラクルと、extern 宣言の順序ガード
+
+`tests/test_physics_bridge_determinism.rs` (9 本)。両クレートが別々に bit-exactness を
+主張しているが、その合成は誰も測っていなかった (`grep to_bits|deterministic|bit` が
+bridge の 2 file で 0 件)。境界は
+`Vec3Fix → world_to_local → f32 → SDF 評価 → f32 → Fix128` で、この f32 区間が
+Fix128 エンジンの中の非 Fix128 層にあたる。
+
+反復 64 回 / 訪問順の逆転 / collider 再構築 / 衝突 32 回で `Contact` の全 10 word が
+bit 一致すること、bridge が `eval_compiled` と bit 一致すること、球の `|p| − r` が
+**bit 厳密**に一致すること (既存 bridge test の許容 0.01 を置き換え)、両 stencil が
+解析法線に一致して**外向き**であること、表面上の点が衝突しないこと (内側の陽性対照
+付き) を確認する。破壊試験 3 種で red を実測済 — うち法線の符号反転は 9 本中 1 本しか
+落ちないので、符号は単位長でも反復でも閉形式でも見えず、解析方向との内積だけが
+捕まえる。
+
+`scripts/abi_decl_check.py`。`tests/` と `examples/` の `extern "C"` 宣言を
+`src/ffi/` の export と**順序付きの型列**で突き合わせる。`scripts/unreal-abi-check.sh`
+step 2a は header と C# を見るので、test 内の宣言は第 3 の宣言箇所として無検査だった。
+引数順の誤りは SysV (macOS / Linux) では整数と浮動小数でレジスタバンクが分かれ
+独立に採番されるため値が正しいレジスタに着いて通り、Microsoft x64 は位置でスロットを
+決めるので落ちる。型の集合では検出できない。preflight の source guard 群と ci.yml に
+配線した。
+
+### Fixed — test の `alice_sdf_repeat_finite` 宣言が引数順を入れ替えていた
+
+`tests/test_binding_oracle.rs` の宣言が `(node, f32 × 3, u32 × 3)` で、export は
+`(node, u32 × 3, f32 × 3)`。run 36680136653 で Windows のみ red になり、
+`repeat_finite` が `Vec3(1,0,0)` で FFI -3.0000001e-1 / native 4.0000004e-1。
+実装とヘッダと C# バインディングはいずれも正しく、test 側の宣言と呼び出しのみ修正。
+
+### Fixed — FFI / 公開 Rust API から到達する SoA の境界外 read+write
+
+`compiled::eval_compiled_batch_soa_raw` が `count` を 8 の倍数へ切り上げて走るので、
+`count % 8 != 0` のとき caller の allocation の外へ最大 7 要素を読み書きしていた。
+
+関数自身の doc は `out_ptr` must point to valid memory of at least `count` f32s と
+書いており、`count should be a multiple of 8` は **should** (助言) だったので、
+doc どおりに `count` 長の buffer を渡した caller が境界外に落ちる。到達経路は 3 つ:
+
+- `compiled::eval_compiled_batch_soa_raw` の直接呼び出し (`pub`、prelude 経由で再公開)
+- `alice_sdf_eval_soa` (C ABI、`count < 1024` の逐次分岐)
+- `alice_sdf_eval_animated_batch_soa` (C ABI、恒等変換の分岐 — こちらは 1024 の閾値が
+  無いので `count = 1025` でも起きる)
+
+`count` ぴったりの `Vec<f32>` で呼ぶと SIGSEGV になる。範囲内 (`0..count`) の値は
+修正前から native `eval_compiled` と bit 一致しており、壊れていたのは範囲外だけ。
+
+⚠️ この形は **publish 済の 3.1.0 と source が同一**だった。3.1 系にも同じ修正を
+backport して **3.1.1 として publish 済** (2026-09-30、tag `v3.1.1`、branch
+`3.1.x`)。3.1.0 を使っている呼び出しは 3.1.1 に上げるだけで直る。
+
+#### 対応
+
+- raw 関数を `count & !7` の SIMD + `count % 8` の scalar tail に変更。8 の倍数での
+  出力は修正前後で bit 一致 (`count=8` digest `5ce40a654075eaa6`、8/64/256/1024/4096)。
+- 矛盾していた記述を整理 (`count should be a multiple of 8` / loop 内の SAFETY の
+  「rounded up to multiple of 8」/ FFI 側の「handles the 8-wide alignment internally」)
+  と、計算して捨てられていた `_aligned_count` / `_simd_count` を削除。
+- `tests/test_binding_oracle.rs` に `soa_must_not_write_past_the_documented_count` と
+  `exact_size_buffers_survive_and_agree` を追加。修正を戻すと macOS の malloc が
+  heap 破壊を検出して SIGTRAP になる。
+
+### Fixed — terrain / destruction の 3 件
+
+- `destruction::remesh_chunk` の marching cubes cell 原点が voxel の角だったのに、
+  corner に入れる距離は voxel 中心で評価したものだったため mesh が半 voxel 斜めに
+  ずれていた (球 r=1.5、res16 で `max|‖v‖−r|` 0.218 → 0.0040)。
+- `destruction::fracture` が voxel size の x 成分を 3 軸すべてに流用していたため、
+  非等方 voxel で破片表面の位置と大きさが狂っていた (grid `[24,48,24]` で
+  軸平行表面積 71.11 → 42.67、Cauchy の射影公式 `6πr²` = 42.41)。
+- `make_tangent_basis` が左手系を返していた (`v = u × n` なので `u × v = −n`) ため
+  破片 mesh の面が内向きに巻かれていた (符号付き体積 −14.41 → +14.17、解析 +14.14)。
+  既存 unit test は直交性だけを見て利き手を見ていなかった。
+
+### Fixed — gi / volume の 3 件
+
+- `ConeTraceConfig::num_cones` は pub field なので 0 が公開 API から到達するが、
+  `generate_cosine_cones` が `num_cones - 1` を u32 で引いていた (release では
+  0..4_294_967_295 の loop)。
+- `IrradianceGrid::sample` が格子 index を `clamp(0, n-1)` する一方、三線形補間の
+  重みを clamp **前**の座標から作っていたため、probe 中心面を境に 1 セル分の
+  不連続が出ていた (2³ / [4,3,2] grid では probe 中心が f32 で厳密に境界を踏むので
+  現れず、step 0.8 の 5³ で顕在化する)。
+- `volume::generate_mip_chain` / `_distgrad` が常に 2×2×2 の子を読むので、level の
+  解像度が奇数になる遷移で最後の slab が落ち、min-downsample が footprint の下界に
+  ならなくなっていた (`[10,10,10]` も 10→5 で該当)。module doc の
+  "preserves the SDF distance property (closest surface wins)" に反する。
+  解像度 chain と段数は不変で、2 冪 (非立方 `64×64×1` 含む) の出力も不変。
+
+### Changed — SH1 の球面調和射影に立体角測度を入れた
+
+`SH1::project` が `∫ f Yᵢ dΩ` の測度を落としていたため、再構成が `f(e)/(4π)` に
+なっていた (間接光が約 0.08 倍)。射影側に `4π` を入れ、再構成 (`evaluate`) は
+標準の `Σ cᵢ Yᵢ` のまま据え置いた。`sample` / `bake_irradiance_grid` の値は
+ちょうど 4π 倍になる (110 値で実測、最悪相対偏差 4.5e-6、符号と方向は不変)。
+
+### Added — 解析解 oracle 4 file (合計 68 本) と、それを走らせる CI step
+
+`tests/test_terrain_destruction_oracle.rs` (28) / `tests/test_gi_volume_oracle.rs` (23) /
+`tests/test_binding_oracle.rs` (9 + godot in-module 4) /
+`tests/test_hlsl_blinkscript_parity.rs` (8) + `tests/common/hlsl_cpu_shim.h`。
+
+- HLSL / BlinkScript は naga frontend が無いので、emit した HLSL を clang++ で
+  native 実行して CPU 法と突き合わせる (GPU / dxc / Vulkan 不要)。corpus 152 node を
+  `Hardcoded` / `Dynamic` 両モードで通し、glslang + spirv-val が 304 shader を受理。
+  `lattice_deform` のみ 1.276e-4 の乖離が残る (中心差分の f32 増幅、Metal も同じ node を
+  最悪値に挙げる) ので実測値付きで許容を開示し、他 151 node は 1e-4 → 1e-5 に締めた。
+- 既存 unit test の許容を 6 箇所締めた (`test_bilinear_sample` / `test_bicubic_sample` は
+  ±1.0 → 1e-5、`test_normal_at` / clipmap は 0.1 → 1e-6 等)。`test_remesh_chunk` は
+  assert が 0 個だったので球面上判定を入れた。
+- `test_erosion_smooths_terrain` の「Erosion should generally reduce roughness」は
+  既定では成り立たない (hydraulic 侵食は roughness を 1.5〜2.7 倍にする)。平滑化するのは
+  thermal 単独なのでそちらに分離した。assert が `>= 0.0` だったため露呈していなかった。
+- `ci.yml` に oracle step 5 本を追加し、clippy の feature 集合に `blinkscript` を
+  加えた (`src/compiled/blinkscript` は一度も lint されておらず、error 3 件が
+  残っていた)。`gpu-parity` job に volume の GPU bake oracle を追加。
+
+### Changed — preflight の --quick が最低限の test を走らせる
+
+`scripts/preflight.sh --quick` は test 群の手前で exit していたため、pre-push hook が
+`cargo test` を 1 本も実行していなかった。`cargo test --lib` を `--quick` 内に戻し、
+成功時の出力に走った step と走っていない step を列挙するようにした。
+
+### Changed — CI が JIT の parity oracle と FFI の unit test を実行するようになった
+
+oracle の棚卸しで、**書かれているが一度も実行されていない oracle** が 2 箇所見つかった。
+
+**(1) JIT backend の parity arm**。`tests/test_det_parity.rs` と
+`tests/test_evaluator_opcode_parity.rs` は `JitCompiledSdf` (scalar) と
+`JitSimdSdf` を tree evaluator と突き合わせる arm を持つが、いずれも
+`#[cfg(feature = "jit")]` で囲まれている。CI の `cargo test --tests` は
+default feature で走り、`jit` 付きの `cargo test` は 1 つも無かったため
+(`Build (JIT) [T3]` は `cargo build`)、7,675 行の JIT 経路の値の正しさは
+検証されていなかった。
+
+test 本数では退行を検出できない点に注意。default でも `test_det_parity` は
+1 件、`test_evaluator_opcode_parity` は 10 件を報告し、消えるのは中の比較 arm
+だけである。`test_relaxed_tracing` だけが 8 → 9 と変化する
+(`relaxed_tracing_matches_oracle_jit`)。
+
+**(2) `src/ffi` の unit test**。15 本あるが `ffi` feature 付きの `cargo test` が
+CI に無く (`Build (FFI + shaders)` は `cargo build`)、registry の handle
+lifecycle・panic sentinel・poisoned lock 耐性・compiled / batch / SoA eval が
+一度も実行されていなかった。
+
+#### 対応
+
+- `ci.yml` に `Test (integration, JIT parity oracles) [T3]` を追加
+  (`cargo test --features jit --test test_det_parity --test
+  test_evaluator_opcode_parity --test test_relaxed_tracing`)。
+- `ci.yml` の `Build (FFI + shaders)` を `Test (FFI + shaders)`
+  (`cargo test --lib --features "ffi,hlsl,glsl"`) に格上げ。
+- `scripts/preflight.sh` に同じ 2 step を追加し、ffi を builds 群から test 群へ移動
+  (ci.yml と逐語対応を維持)。
+
+crate の主張に対して落ちる job を持たせる原則の適用であり、公開 API の変更は無い。
+
+### Fixed — mesh → SDF の符号が三角形の巻き順に依存し、三角形距離の edge clamp も誤っていた
+
+外部で生成された mesh を SDF として取り込む経路が 2 つの独立した理由で壊れていた。
+
+**(1) 符号が巻き順依存**。`MeshBvh::signed_distance` は `|d|` 最小の三角形を選び、
+その面法線との内積で符号を決めていた。面法線は頂点の並び順で向きが変わるので、
+場が幾何ではなく入力の書き方の関数になっていた。結果として
+
+- 開曲面 (囲む体積を持たない板) の片側に架空の内部ができる、
+- index を逆順にすると場全体が反転する、
+- 独立に巻かれた部品を連結した mesh では、巻き方が食い違う部品だけ内外が裏返る。
+
+**(2) `Triangle::signed_distance` の edge 2-0 の clamp が符号反転後に適用されていた**。
+
+```rust
+let t2 = clamp01((-v02).dot(p2) / v02.length_squared().max(1e-10));
+let d2 = (p2 + v02 * t2).length_squared();
+```
+
+真のパラメータ `t*` に対して `clamp01(-t*)` を取ってから符号を戻すので、
+`t* ∈ [0,1]` (投影が辺の内側) では `v2` までの距離に落ちて**過大**、`t* < 0`
+では無限直線上の点までの距離になり**過小**になる。この結果、閉じていて巻き順も
+正しい箱ですら符号が壊れていた ─ 半径 (0.7, 0.5, 0.9) の箱を格子 3165 点で
+解析解と突き合わせると **207 点 (6.5%) の符号が食い違い**、最大誤差 2.299。
+
+#### 対応
+
+- `Triangle::closest_point` を Voronoi 領域形 (Ericson, *Real-Time Collision
+  Detection* §5.1.5) で追加し、`signed_distance` / `unsigned_distance` の大きさを
+  そこから導くようにした。`MeshBvh::closest_point` / `MeshBvh::unsigned_distance`
+  も符号ロジックを経由しない専用探索にした。
+- `src/mesh/mesh_sign.rs` を追加。`SDF(x) = (1 − 2·T(x)) · UDF(x)` で、`T` は
+  padding 付き bounding box の外周から 6 近傍 flood fill して得る到達可能性。
+  面法線を一切読まないので巻き順・閉曲面かどうか・連結成分数のいずれにも依存
+  しない。表面帯のセルは最近接点から離れる向きへ 1 セルずつ歩いて分類済セルの
+  label を取るので、セル未満の分解能で符号が決まる。
+- **(breaking)** `MeshToSdfConfig` に `sign_mode` / `sign_flood_fill_resolution`
+  を追加。`MeshToSdfConfig::default()` は従来どおり
+  `MeshSignMode::NearestFaceNormal` なので、既定の呼び出しの符号規則は変わらない
+  (符号の大きさは (2) の修正ぶん正しくなる)。⚠️ **ただし struct に
+  `#[non_exhaustive]` が無いので、全 field を並べる struct literal
+  (`MeshToSdfConfig { a, b, c }`) は field 不足で compile error になる**
+  (`cargo semver-checks` の `constructible_struct_adds_field` 2 件)。
+  `..Default::default()` / `..MeshToSdfConfig::fast()` を付けるか、
+  constructor (`fast()` / `accurate()` / `hybrid()` / `topology_robust()`) を使う。
+  依存 30 repo を走査した範囲では網羅 literal は **0 件** (唯一の下流
+  `ALICE-Manga/src/vrm_import.rs` は constructor 経由)。
+- **(breaking)** `MeshToSdfConfig::accurate()` の符号規則を
+  `ExteriorFloodFill` に変更。「accurate」が名乗るとおり、巻き順ではなく幾何から
+  符号を決めるようになった。⚠️ **`accurate()` を呼んでいる既存コードは戻り値が
+  変わる** (実 caller: `ALICE-Manga/src/vrm_import.rs:1167`)。3.x の挙動が要る
+  呼び出しは `cfg.sign_mode = MeshSignMode::NearestFaceNormal` で戻せる。
+  ⚠️ 4.0.0 公開前の版 (3.1.1 まで) の利用者には major bump なので自動では
+  届かないが、**3.1.x から 4.0.0 へ上げた時点で届く**ので breaking として扱う。
+  副作用として、`accurate()` は退化 mesh (bounding box の全辺が 0 / 非有限) で
+  `MeshSdf::new` が `None` を返すようになった。理由が要る場合は
+  `MeshSdf::try_new` を使う。
+- `MeshToSdfConfig::topology_robust()` を追加。`accurate()` への委譲で、
+  「精度」ではなく「mesh の出所が信用できない」ことが選択理由である呼び出し側の
+  ための明示的な別名。
+- `MeshSdf::try_new` を追加。flood fill の構築失敗を従来規則へ黙って落とさず
+  `MeshInputError` で返す。
+
+分解能が精度の唯一のつまみで、およそ 2 セルより薄い壁や隙間は潰れる。
+`sign_flood_fill_resolution` (既定 64) を最も薄い形状が数セルにまたがるまで上げる。
+
+#### 検証
+
+`tests/test_mesh_sign_topology.rs` は期待値を解析解 (厳密な箱 SDF / 矩形までの
+厳密距離) だけから作り、実装を呼んで期待値を組み立てていない。
+
+| oracle | 実装前 | 実装後 |
+|---|---|---|
+| 開曲面に内部が無い | 符号不一致 1014/2116 (47.9%) | 0 (0.0%)、最大誤差 0.000e0 |
+| 巻き反転で場が不変 | 2135/2197 点が相違 (最大 2.691) | 0/2197、bit 一致 |
+| 分離部品 + 巻き不一致 | 符号不一致 1797/3325 (54.0%) | 0 (0.0%)、最大誤差 0.000e0 |
+| 閉じた箱 = 解析解 | 符号不一致 207/3165 (6.5%) | 0 (0.0%)、最大誤差 0.000e0 |
+| 厚さ 0.1 板の内部が負 | (通過) | 通過 |
+
+決定論は保たれる。セル占有は独立な per-cell 距離クエリ (リダクション無し)、
+flood fill は整数 index のみ、浮動小数は加減乗除・比較・`sqrt` だけを使う。
+
+### Fixed — `alice_sdf_mirror` / `alice_sdf_repeat_finite` の宣言が Rust の署名と食い違っていた
+
+`include/alice_sdf.h` と `bindings/AliceSdf.cs` が `alice_sdf_mirror` を
+`float mx, float my, float mz` と宣言していたが、Rust の export は
+`fn(SdfHandle, u8, u8, u8)` である。整数引数と浮動小数引数は AArch64
+(x0-x7 / v0-v7) でも x86-64 SysV (rdi-r9 / xmm0-7) でも別のレジスタ群で渡る
+ので、`float` として呼ぶと Rust 側は整数レジスタの残留値を mirror フラグとして
+読む。crash しないため気付きにくい。
+
+arm64 / release で実測した値 (半径 1 の球を (2,2,0) へ移動 → X 軸だけ mirror
+指定 → 点 (-2,-2,0) を評価、3 通りが分離する):
+
+| 呼び方 | 距離 | 実際に立った軸 |
+|---|---|---|
+| mirror なし | 4.656854 | — |
+| `uint8_t` 宣言 (修正後) | 3.000000 | X のみ = 指定どおり |
+| `float` 宣言 (修正前) | -1.000000 | X と Y |
+
+残留レジスタの値は呼び出し文脈で決まるので結果は文脈依存だが、**「毎回変わる」
+わけではない**。上記の測定では 3 回連続で同じ -1.000000 が出た。つまり
+「たまたま動いているように見えて、呼び出し位置を変えると軸が変わる」種類の
+壊れ方であり、テストが 1 箇所でも通ってしまえば見逃される。
+
+影響していた経路は 2 つで、どちらも宣言を直すだけで閉じる:
+
+- Unity — `bindings/README.md` が `bindings/AliceSdf.cs` を Unity へコピーさせて
+  いるので、`AliceSdf.Mirror()` がそのまま不定動作だった
+- UE5 — `AliceSdfComponent.cpp` の呼び出しは `1u` / `0u` と整数で書かれていたが、
+  可視のプロトタイプが `float` なので C++ が暗黙に `1.0f` へ変換していた
+  (呼び出し側は変更不要)
+
+`alice_sdf_repeat_finite` はヘッダが `int32_t`、Rust が `u32` で幅は同じだが
+符号が違うので `uint32_t` に揃えた。C# 側は負の count が約 40 億回の反復に
+回り込む代わりに `ArgumentOutOfRangeException` で落ちるようにしてある。
+
+### Added — `unreal-abi-check.sh` に引数型の突合 (step 2a)
+
+この食い違いが 1.7.2 から 4.0.0 まで残った理由は gate の側にある。
+`scripts/unreal-abi-check.sh` の step 2 はヘッダの宣言と cdylib の export を
+**名前集合でのみ**照合しているので、型が何であっても通る。step 1 の byte 一致も
+複製ヘッダ同士の比較なので、両方が同じ間違いを持っていると検出できない。
+
+step 2a を追加し、`include/alice_sdf.h` の各宣言の**引数型**を `src/ffi/**` の
+`extern "C"` 署名と突合するようにした (現在 175 関数で不一致 0)。C の `float *`
+と Rust の `*const f32` のような表記差は正規化し、`float m[16]` のような配列
+記法はポインタと同一視する。名前集合の照合は引き続き step 2 の担当 (実際の
+cdylib を見るのでソース解析より強く、feature gate された export も扱える)。
+
+追加後にわざと壊して red を実測した: mirror を `float` に戻す / 引数の数を
+減らす / ポインタを値にする / 符号だけ変える (`uint32_t` → `int32_t`) の 4 つは
+いずれも fail し、配列記法への書き換えは green のまま (誤検出なし)。
 
 ## [v3.1.0] - 2026-09-17
 

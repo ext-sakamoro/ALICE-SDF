@@ -212,8 +212,39 @@ jobs:
             | jq -r '.packages[] | select(.name=="alice-sdf") | .features | keys[]' \
             | grep -vE '^(default|font|godot|python)$' | paste -sd, -)
           echo "features: $feats"
+          # This run compares NOTHING during a major bump, and exits 0 while
+          # doing it. cargo-semver-checks selects lints by "is the bump this
+          # lint requires already satisfied", so once Cargo.toml is a major
+          # ahead of crates.io every lint is unnecessary:
+          #
+          #   Checking alice-sdf v3.1.1 -> v4.0.0 (major change)
+          #   Starting 0 checks, 254 unnecessary on 8 threads
+          #    Summary no semver update required      <- exit 0, 0 comparisons
+          #
+          # 2026-09-30: 4.0.0 reached the point of publication with 102 breaking
+          # items (98 shifted enum discriminants, 2 newly non_exhaustive enums,
+          # 2 added struct fields) never enumerated, and 4 of them missing from
+          # CHANGELOG. So the number of checks that ran is read back, and only
+          # when it is 0 (or unreadable) does the second pass run.
+          # `--release-type patch` forces the major and minor lint families
+          # (223 checks on 4.0.0); exit 100 there is the expected outcome of a
+          # genuinely breaking release — that is the enumeration, not a failure
+          # — so the hard gate is "a nonzero number of checks ran", the one
+          # thing a green run cannot fake.
+          set +e
           cargo semver-checks check-release --package alice-sdf \
-            --only-explicit-features --features "$feats"
+            --only-explicit-features --features "$feats" 2>&1 | tee semver.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          ran=$(grep -oE '[0-9]+ checks: ' semver.log | grep -oE '[0-9]+' | tail -1 || true)
+          if [ "$rc" -ne 0 ]; then echo "::error::semver-checks failed (rc=$rc)"; exit "$rc"; fi
+          if [ -z "${ran:-}" ] || [ "$ran" -eq 0 ]; then
+            echo "first pass compared ${ran:-no} checks — enumerating with --release-type patch"
+            cargo semver-checks check-release --package alice-sdf --only-explicit-features --features "$feats" --release-type patch 2>&1 | tee semver.log || true
+            ran=$(grep -oE '[0-9]+ checks: ' semver.log | grep -oE '[0-9]+' | tail -1 || true)
+            if [ -z "${ran:-}" ] || [ "$ran" -eq 0 ]; then echo "::error::semver-checks ran ${ran:-no} checks in both passes — the gate compared nothing"; exit 1; fi
+          fi
+          echo "semver-checks compared $ran checks"
 
   stub-guard:
     name: Stub / mock / dbg guard (grep)

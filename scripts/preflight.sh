@@ -121,8 +121,54 @@ step "semver-checks: check-release vs crates.io (CI feature set)"
 feats=$(cargo metadata --format-version 1 --no-deps \
   | jq -r '.packages[] | select(.name=="alice-sdf") | .features | keys[]' \
   | grep -vE '^(default|font|godot|python)$' | paste -sd, -)
+# The run below compares NOTHING during a major bump, and exits 0 while doing
+# it. cargo-semver-checks picks lints by "is the bump this lint requires already
+# satisfied", so once the version is a major ahead of crates.io every lint is
+# unnecessary:
+#
+#   Checking alice-sdf v3.1.1 -> v4.0.0 (major change)
+#   Starting 0 checks, 254 unnecessary on 8 threads
+#    Summary no semver update required          <- exit 0, 0 comparisons
+#
+# 2026-09-30: that is how 4.0.0 reached the point of publication with 102
+# breaking items (98 shifted enum discriminants, 2 newly non_exhaustive enums,
+# 2 added struct fields) never enumerated and 4 of them absent from CHANGELOG.
+# So the count of checks that actually ran is read back, and a run that
+# compared nothing is escalated instead of accepted.
+sem_log=$(mktemp)
+set +e
 cargo semver-checks check-release --package alice-sdf \
-  --only-explicit-features --features "$feats"
+  --only-explicit-features --features "$feats" >"$sem_log" 2>&1
+sem_rc=$?
+set -e
+cat "$sem_log"
+checks_ran() { grep -oE '[0-9]+ checks: ' "$1" | grep -oE '[0-9]+' | tail -1; }
+ran=$(checks_ran "$sem_log" || true)
+[ $sem_rc -ne 0 ] && { rm -f "$sem_log"; echo "semver-checks failed (rc=$sem_rc)" >&2; exit $sem_rc; }
+
+# Only when the run above compared nothing (or its output could not be read) is
+# the second pass needed; `--release-type patch` forces the major and minor lint
+# families to run (223 checks on 4.0.0). Exit 100 there is the expected outcome
+# of a genuinely breaking release — that is the enumeration, not a failure — so
+# the hard gate is "a nonzero number of checks ran", the one thing a green run
+# cannot fake. Skipping this pass when the first one already compared something
+# keeps the usual push from paying for a second baseline build.
+if [ -z "${ran:-}" ] || [ "$ran" -eq 0 ]; then
+  step "semver-checks: first pass compared ${ran:-no} checks — enumerating with --release-type patch"
+  cargo semver-checks check-release --package alice-sdf \
+    --only-explicit-features --features "$feats" --release-type patch \
+    >"$sem_log" 2>&1 || true
+  cat "$sem_log"
+  ran=$(checks_ran "$sem_log" || true)
+  if [ -z "${ran:-}" ] || [ "$ran" -eq 0 ]; then
+    echo "semver-checks ran ${ran:-no} checks in both passes — the gate compared nothing" >&2
+    rm -f "$sem_log"; exit 1
+  fi
+  echo "semver-checks compared $ran checks (breaking items above are expected on a major bump; CHANGELOG must list them)"
+else
+  echo "semver-checks compared $ran checks"
+fi
+rm -f "$sem_log"
 
 step "deny: cargo deny --all-features check all"
 cargo deny --all-features check all
