@@ -7,6 +7,12 @@
 //!
 //! Author: Moroya Sakamoto
 
+// `alice_sdf::ffi` only exists under the `ffi` feature, so without this the
+// file breaks `cargo clippy --all-targets` on the default feature set (which
+// is how it is linted) with `unresolved import alice_sdf::ffi`. Same gate as
+// the 4.0.0 `tests/test_binding_oracle.rs`.
+#![cfg(feature = "ffi")]
+
 use alice_sdf::animation::AnimationParams;
 use alice_sdf::compiled::{eval_compiled, CompiledSdf};
 use alice_sdf::ffi::{BatchResult, CompiledHandle, SdfHandle, SdfResult};

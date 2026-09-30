@@ -44,6 +44,11 @@ SIGSEGV になる。到達経路は 3 つ:
 `count = 1 / 5 / 7 / 257 / 1023 / 1025` で検出用の値が書き換わり、macOS では
 malloc がヒープの破壊を検出して SIGTRAP で停止する。
 
+C ABI の 2 経路を含むので `ffi` feature を要求する
+(`cargo test --features ffi --test test_soa_bounds_oracle`)。feature なしで
+`cargo clippy --all-targets` を通すためにファイル全体を `#![cfg(feature = "ffi")]`
+で囲んである。
+
 #### 移行
 
 呼び出し側の変更は不要。4.0.0 にも同じ修正が入っている。
