@@ -104,6 +104,27 @@ jobs:
       - name: Test (integration, feature-gated oracles — svo / texture-fit)
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
+      # JIT の parity arm は書かれていたが CI で一度も実行されていなかった
+      # (2026-09-30 実測)。`cargo test --tests` は default feature なので
+      # test_det_parity / test_evaluator_opcode_parity 内の
+      # `#[cfg(feature = "jit")]` (JitCompiledSdf / JitSimdSdf を tree
+      # evaluator と突合する arm) と test_relaxed_tracing の
+      # relaxed_tracing_matches_oracle_jit が丸ごと compile 対象外だった。
+      # 下の `Build (JIT) [T3]` は build のみなので値の正しさは見ていない。
+      # = 「cross-platform bit-exact determinism」の主張のうち JIT 経路だけ
+      #   落ちる job を持っていなかった (canonical template § job 選定の原則)。
+      #
+      # test 本数では退行を検出できない: default でも test_det_parity は 1 /
+      # test_evaluator_opcode_parity は 10 を報告し、消えるのは中の比較 arm
+      # だけ。relaxed_tracing だけが 8 -> 9 と増える。本 step を消すと
+      # 「green のまま JIT が未検証」に戻るので消さない。
+      - name: Test (integration, JIT parity oracles) [T3]
+        run: |
+          cargo test --features jit \
+            --test test_det_parity \
+            --test test_evaluator_opcode_parity \
+            --test test_relaxed_tracing
+
       # MSL は WGSL emit を naga で翻訳したもの (compiled::msl)。翻訳と binding map
       # の誤りはここでしか出ないので、macOS runner で Metal runtime compiler
       # (MTLDevice::newLibraryWithSource) に通して corpus 全 node を実行する。
@@ -118,8 +139,12 @@ jobs:
       - name: Test (doctests)
         run: cargo test --doc
 
-      - name: Build (FFI + shaders)
-        run: cargo build --features "ffi,hlsl,glsl"
+      # 2026-09-30: build -> test に格上げ。`src/ffi/**` には unit test が 15 本
+      # あるが、`ffi` feature 付きの `cargo test` が CI に 1 つも無かったため
+      # 一度も実行されていなかった (registry / panic sentinel / poisoned lock /
+      # compiled + batch + SoA eval)。local 実測で 1653 passed / 0 failed。
+      - name: Test (FFI + shaders)
+        run: cargo test --lib --features "ffi,hlsl,glsl"
 
       - name: Build (no default features) [T0]
         run: cargo build --lib --no-default-features

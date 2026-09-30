@@ -6,6 +6,40 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — CI が JIT の parity oracle と FFI の unit test を実行するようになった
+
+oracle の棚卸しで、**書かれているが一度も実行されていない oracle** が 2 箇所見つかった。
+
+**(1) JIT backend の parity arm**。`tests/test_det_parity.rs` と
+`tests/test_evaluator_opcode_parity.rs` は `JitCompiledSdf` (scalar) と
+`JitSimdSdf` を tree evaluator と突き合わせる arm を持つが、いずれも
+`#[cfg(feature = "jit")]` で囲まれている。CI の `cargo test --tests` は
+default feature で走り、`jit` 付きの `cargo test` は 1 つも無かったため
+(`Build (JIT) [T3]` は `cargo build`)、7,675 行の JIT 経路の値の正しさは
+検証されていなかった。
+
+test 本数では退行を検出できない点に注意。default でも `test_det_parity` は
+1 件、`test_evaluator_opcode_parity` は 10 件を報告し、消えるのは中の比較 arm
+だけである。`test_relaxed_tracing` だけが 8 → 9 と変化する
+(`relaxed_tracing_matches_oracle_jit`)。
+
+**(2) `src/ffi` の unit test**。15 本あるが `ffi` feature 付きの `cargo test` が
+CI に無く (`Build (FFI + shaders)` は `cargo build`)、registry の handle
+lifecycle・panic sentinel・poisoned lock 耐性・compiled / batch / SoA eval が
+一度も実行されていなかった。
+
+#### 対応
+
+- `ci.yml` に `Test (integration, JIT parity oracles) [T3]` を追加
+  (`cargo test --features jit --test test_det_parity --test
+  test_evaluator_opcode_parity --test test_relaxed_tracing`)。
+- `ci.yml` の `Build (FFI + shaders)` を `Test (FFI + shaders)`
+  (`cargo test --lib --features "ffi,hlsl,glsl"`) に格上げ。
+- `scripts/preflight.sh` に同じ 2 step を追加し、ffi を builds 群から test 群へ移動
+  (ci.yml と逐語対応を維持)。
+
+crate の主張に対して落ちる job を持たせる原則の適用であり、公開 API の変更は無い。
+
 ### Fixed — mesh → SDF の符号が三角形の巻き順に依存し、三角形距離の edge clamp も誤っていた
 
 外部で生成された mesh を SDF として取り込む経路が 2 つの独立した理由で壊れていた。

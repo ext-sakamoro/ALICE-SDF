@@ -79,12 +79,13 @@ cargo "+${MSRV}" check --lib
 step "msrv: cargo +${MSRV} check --lib (docs.rs feature set)"
 cargo "+${MSRV}" check --lib --features "$DOCSRS"
 
-step "test job builds: no default / jit / unity / unreal / ffi+shaders"
+# ffi は 2026-09-30 に ci.yml 側が build -> test に格上げされたのでここからは外し、
+# 下の test 群 ("test: ffi + shaders") に移した (ci.yml と逐語対応を保つ)。
+step "test job builds: no default / jit / unity / unreal"
 cargo build --lib --no-default-features
 cargo build --lib --no-default-features --features "jit"
 cargo build --lib --no-default-features --features "unity"
 cargo build --lib --no-default-features --features "unreal"
-cargo build --features "ffi,hlsl,glsl"
 
 step "wasm: build (wasm feature, wasm32 target)"
 rustup target list --installed | grep -q wasm32-unknown-unknown || rustup target add wasm32-unknown-unknown
@@ -160,6 +161,19 @@ cargo test --tests
 
 step "test: feature-gated oracles (svo / texture-fit)"
 cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
+
+# JIT の parity arm は `#[cfg(feature = "jit")]` なので default の
+# `cargo test --tests` では compile されない (2026-09-30 実測、CI でも一度も
+# 走っていなかった)。test 本数では退行が見えない (relaxed_tracing だけ 8 -> 9、
+# det_parity / evaluator_opcode_parity は本数不変で中の比較 arm だけ消える)。
+step "test: JIT parity oracles (tree evaluator vs JitCompiledSdf / JitSimdSdf)"
+cargo test --features jit \
+  --test test_det_parity \
+  --test test_evaluator_opcode_parity \
+  --test test_relaxed_tracing
+
+step "test: ffi + shaders (src/ffi の unit test 15 本、ci.yml と対)"
+cargo test --lib --features "ffi,hlsl,glsl"
 
 # MSL は WGSL emit を naga で翻訳したもの (compiled::msl)。翻訳と binding map の
 # 誤りはこの oracle でしか出ない。Metal runtime compiler を使うので Xcode の
