@@ -142,6 +142,14 @@ python3 scripts/det_math_guard.py
 step "stub-guard: raw Interval { lo, hi } bypassing the outward rounding (security-audit.yml, 4.0.1)"
 python3 scripts/interval_outward_guard.py
 
+step "stub-guard: tests/ の extern 宣言 ⇔ src/ffi の export (順序付き型列)"
+# unreal-abi-check.sh step 2a は header / C# ⇔ export を見るので、tests/ の
+# extern "C" 宣言は第 3 の宣言箇所として無検査だった。引数順の誤りは SysV
+# (macOS / Linux) では整数と浮動小数でレジスタバンクが分かれ独立に採番される
+# ため値が正しいレジスタに着いて通り、Microsoft x64 は位置でスロットを決める
+# ので落ちる (2026-09-30 run 36680136653 が Windows だけ red)。
+python3 scripts/abi_decl_check.py
+
 # ── fuzz.yml (build only; the replay needs the nightly fuzz build) ────────
 
 step "fuzz: cargo +nightly fuzz build (all targets)"
