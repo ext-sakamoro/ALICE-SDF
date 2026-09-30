@@ -168,6 +168,7 @@ static bool write_exact(const void *src, unsigned long n) {
 }
 
 int main() {
+    ALICE_SDF_SET_BINARY_IO();
     unsigned int count = 0;
     if (!read_exact(&count, 4)) { return 2; }
     for (unsigned int i = 0; i < count; ++i) {
@@ -553,7 +554,7 @@ fn hlsl_shim_matches_hand_computed_intrinsics() {
     let exprs: Vec<String> = probes.iter().map(|(_, e, _)| format!("    {e},")).collect();
     let src = format!(
         "{SHIM}\nstatic const float kProbes[] = {{\n{}\n}};\n\
-         int main() {{\n    \
+         int main() {{\n    ALICE_SDF_SET_BINARY_IO();\n    \
          write(1, kProbes, sizeof(kProbes));\n    return 0;\n}}\n",
         exprs.join("\n")
     );

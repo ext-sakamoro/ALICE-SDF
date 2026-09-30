@@ -36,6 +36,35 @@ typedef unsigned int uint;
 extern "C" long read(int, void *, unsigned long);
 extern "C" long write(int, const void *, unsigned long);
 
+// On Windows the CRT opens fd 0 and 1 in *text* mode, which translates `\n` to
+// `\r\n` on the way out and — the part that actually broke this harness —
+// stops reading at the first `0x1A` (Ctrl-Z) on the way in. The payload here is
+// raw `float` bytes, so `0x1A` appears within the first few hundred points and
+// the evaluator's `read_exact` runs out of input and returns 3.
+//
+// Measured 2026-09-30 (run 36682453187): every one of the 152 corpus nodes
+// reported `evaluator exited with exit code: 3` on windows-latest while macOS
+// and Linux passed, and the shim self-test passed on Windows too because its
+// 16 bytes happened to contain neither `0x0A` nor `0x1A`.
+//
+// `_setmode` is declared by hand for the same reason `read` / `write` are: a
+// `<io.h>` / `<fcntl.h>` include would drop libc math names into the global
+// namespace and make the emitted intrinsic calls ambiguous. `_O_BINARY` is
+// `0x8000`, and the CRT takes the file descriptor directly, so no `FILE *` and
+// no header are needed.
+#ifdef _WIN32
+extern "C" int _setmode(int, int);
+#define ALICE_SDF_SET_BINARY_IO()                                              \
+    do {                                                                       \
+        _setmode(0, 0x8000);                                                    \
+        _setmode(1, 0x8000);                                                    \
+    } while (0)
+#else
+#define ALICE_SDF_SET_BINARY_IO()                                              \
+    do {                                                                       \
+    } while (0)
+#endif
+
 // ---------------------------------------------------------------------------
 // Vector types
 // ---------------------------------------------------------------------------

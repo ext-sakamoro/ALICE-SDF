@@ -144,21 +144,16 @@ jobs:
       # parse gate も効かせる。ALICE_SDF_REQUIRE_CXX=1 で「compiler 不在なら
       # skip」を fail にする。
       #
-      # ⚠️ Windows を除外している。2026-09-30 の run 36682453187 で
-      # windows-latest だけが red になり、症状は corpus 152 node すべてが
-      # `evaluator exited with exit code: 3` — per-node の数値差ではなく
-      # harness が系統的に起動できていない形。同 job の
-      # `hlsl_shim_matches_hand_computed_intrinsics` は success なので C++
-      # compiler 自体は動いており、child process の起動か stdin/stdout 経路の
-      # 移植問題。Windows 実機が無い状態で CI に対して blind に反復するのは
-      # 割に合わないので、Backlog に回して 2 OS で回す。
-      #
-      # 測っている性質 (emit した式と CPU 法の値が一致するか) は platform に
-      # 依らないので、macOS + Linux の 2 面で目的は満たせる。⚠️ ただし HLSL の
-      # 実 target は DirectX / Windows なので、harness の Windows 対応は
-      # 「あると良い」ではなく「本来あるべき」側に置く。
+      # ⚠️ 2026-09-30 の run 36682453187 で windows-latest だけが red になった。
+      # 症状は corpus 152 node すべてが `evaluator exited with exit code: 3` で、
+      # これは評価 binary 自身の `if (!read_exact(buf, 12)) { return 3; }` =
+      # stdin が尽きたことを意味する。Windows の CRT は fd 0 / 1 を text mode で
+      # 開き、入力側は最初の `0x1A` (Ctrl-Z) で読み取りを打ち切る。payload は生の
+      # float bytes なので数百点のうちに `0x1A` が現れる。shim の self-test が
+      # Windows でも通っていたのは、その 16 byte に `0x0A` も `0x1A` も無かった
+      # ため。⇒ 両 main で `_setmode(0/1, _O_BINARY)` を呼ぶ形に直して再有効化した
+      # (`tests/common/hlsl_cpu_shim.h` の ALICE_SDF_SET_BINARY_IO)。
       - name: Test (integration, HLSL / BlinkScript value parity)
-        if: matrix.os != 'windows-latest'
         env:
           ALICE_SDF_REQUIRE_CXX: "1"
         run: cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity
