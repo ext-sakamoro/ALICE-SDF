@@ -118,12 +118,12 @@ jobs:
       # test_evaluator_opcode_parity は 10 を報告し、消えるのは中の比較 arm
       # だけ。relaxed_tracing だけが 8 -> 9 と増える。本 step を消すと
       # 「green のまま JIT が未検証」に戻るので消さない。
+      # ⚠️ 1 行で書く。この job は matrix に windows-latest を含み、Windows runner の
+      # 既定 shell は pwsh なので、`run: |` + バックスラッシュ行継続 (bash 構文) は
+      # `ParserError: Missing expression after unary operator '--'` で落ちる
+      # (2026-09-30 実測、run 36675779379 = Linux / macOS は success で Windows のみ failure)。
       - name: Test (integration, JIT parity oracles) [T3]
-        run: |
-          cargo test --features jit \
-            --test test_det_parity \
-            --test test_evaluator_opcode_parity \
-            --test test_relaxed_tracing
+        run: cargo test --features jit --test test_det_parity --test test_evaluator_opcode_parity --test test_relaxed_tracing
 
       # MSL は WGSL emit を naga で翻訳したもの (compiled::msl)。翻訳と binding map
       # の誤りはここでしか出ないので、macOS runner で Metal runtime compiler
