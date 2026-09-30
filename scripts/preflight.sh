@@ -11,6 +11,13 @@
 # so that cannot repeat; ~/.claude/hooks/pre-push-preflight.sh runs
 # `--quick` before every push and blocks on failure.
 #
+# Not covered here, deliberately: `scripts/downstream_check.py` answers "which
+# sibling repo does publishing this crate break, and whose `cargo publish` does
+# it unblock". It reads the sibling checkouts under `~`, which do not exist on a
+# CI runner and cannot be reconstructed from this repo, so it is a pre-publish
+# step run by hand rather than a part of this script or of any workflow. Run it
+# before `cargo publish`, not before every `git push`.
+#
 # usage: scripts/preflight.sh [--quick]
 #   --quick  runs `cargo test --lib` but skips every other test step (the
 #            integration suites, the feature-gated oracles — svo / texture-fit /

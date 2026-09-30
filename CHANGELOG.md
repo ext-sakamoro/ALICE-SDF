@@ -8,6 +8,60 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [4.0.0] - 2026-09-30
 
+### Added — `scripts/downstream_check.py` (publish 前の下流影響 gate、local 専用)
+
+`cargo semver-checks` は「この API 変更は破壊的か」に答えるが、⚠️ **「誰が壊れるか」
+には答えない** (自 crate の rustdoc JSON しか見ない)。consumer を見る gate は
+repo に 1 つも無かった。
+
+依存 repo を走査して宣言を `path only` / `version only` / `version + path` /
+`workspace 継承` に分類し、`index.crates.io` の publish 済 version と caret 突合して
+**BLOCKED** (その repo は今 `cargo publish` できない) / **UNBLOCKED-BY-PUBLISH** /
+**WILL-RECEIVE** / **UNAFFECTED** を出す。`publish = false` の crate は別カウント
+(原理的に registry に出ないので blocked / unblocked に混ぜると opt-out が gate を
+red にする)。併せて **path を持つ依存 repo の未 push** を
+`git ls-remote origin refs/heads/main` と突合する (remote-tracking ref は fetch 時点の
+snapshot なので使わない)。
+
+- ⚠️ **CI には配線しない**。sibling checkout は runner に存在せず、この repo から
+  再構成できないので、原理的に動かない。`cargo publish` の前に手で走らせる。
+- 走査は `os.scandir` の明示 BFS で `target/` 等を降下前に刈る。⚠️
+  `Path.glob("*/*/…")` は **出力を filter するだけで降下を止めない**ので、本機の
+  335 GB の `target/` に降りて 120 秒で kill された (深さ 6 で prune あり 4.4 s /
+  prune なし 150 s 未完)。深さ 3 と深さ 7 で結果が完全一致することを実測したので
+  既定は 3、走査した深さと刈った subtree 数を集計行に出す。
+- 空振り防止: 依存 0 件 / publish 済 version 0 件 / 分類 0 件 / network 失敗の
+  いずれでも fail する。caret 判定は起動時の self-test 48 case が red なら sweep
+  自体を止める (⚠️ **実 corpus は caret 上限を 1 度も踏まないので、self-test なしでは
+  caret を反転させても出力が 1 文字も変わらない**)。
+- 4.0.0 に対する実測: `blocked=0 blocked_publish_false=0 unblocked=5
+  unblocked_publish_false=2 will_receive=0 unaffected=4 unresolved=0 unpushed=4
+  depth=3` (46 宣言 / 38 crate dir / 29 repo) ⇒ **publish で壊れる下流は 0、
+  `alice-lol` / `alice-lol-ui` / `alice-view` / `alice-bamboo` の publish 塞がりが解ける**。
+
+### Changed — semver-checks が major bump 中に 0 件比較で green を返すのを直した
+
+`cargo-semver-checks` は lint を「その lint が要求する bump が既に満たされているか」で
+選別するので、⚠️ **Cargo.toml が crates.io より major 先行した時点で全 lint が不要
+判定になり 1 本も走らない**:
+
+```
+Checking alice-sdf v3.1.1 -> v4.0.0 (major change)
+Starting 0 checks, 254 unnecessary on 8 threads
+ Summary no semver update required          <- exit 0
+```
+
+`no semver update required` は「問題なし」と読めるが、実際は何も比較していない。
+この 4.0.0 は **unique 102 件の breaking を 1 件も列挙されないまま** publish 直前まで
+来ていた (下記 discriminant 98 件 / `#[non_exhaustive]` 2 件 / struct field 2 件)。
+
+`scripts/preflight.sh` と `.github/workflows/security-audit.yml` の両方で、走った
+check 数を読み戻し、**0 または読めない時のみ** `--release-type patch` で 2 本目を
+走らせて N>0 を要求する。⚠️ exit 100 は breaking な release の正常な結果なので判定に
+使わず、**check 数が 0 でないこと**を hard gate にする (green な run が偽装できない
+唯一の量)。1 本目が比較できていれば 2 本目は走らせないので、通常の push に baseline
+再 build を課さない。
+
 ### Changed (breaking) — `SdfNode` / `OpCode` を `#[non_exhaustive]` に
 
 variant の追加は破壊的変更なので、この 2 つの enum に variant を足すたびに
