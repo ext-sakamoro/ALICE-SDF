@@ -101,14 +101,21 @@ extern "C" {
     fn alice_sdf_mirror(node: SdfHandle, mx: u8, my: u8, mz: u8) -> SdfHandle;
     fn alice_sdf_elongate(node: SdfHandle, x: f32, y: f32, z: f32) -> SdfHandle;
     fn alice_sdf_polar_repeat(node: SdfHandle, count: u32) -> SdfHandle;
+    // ⚠️ 引数順は counts (u32 x3) が先、spacing (f32 x3) が後。
+    // 2026-09-30: この宣言は floats を先に書いていて Windows CI だけが red に
+    // なった (run 36680136653)。SysV (macOS / Linux) は整数と浮動小数で
+    // レジスタバンクが分かれ、それぞれ独立に採番するので、順序を入れ替えても
+    // 値が偶然正しいレジスタに着いて test が通る。Microsoft x64 は引数の
+    // 「位置」でスロットを決めるため、入れ替えると callee が無関係な
+    // レジスタとスタックを読む。宣言の順序誤りは SysV では検出できない。
     fn alice_sdf_repeat_finite(
         node: SdfHandle,
-        sx: f32,
-        sy: f32,
-        sz: f32,
         cx: u32,
         cy: u32,
         cz: u32,
+        sx: f32,
+        sy: f32,
+        sz: f32,
     ) -> SdfHandle;
     fn alice_sdf_shear(node: SdfHandle, xy: f32, xz: f32, yz: f32) -> SdfHandle;
 
@@ -550,7 +557,7 @@ fn ffi_constructors_build_the_documented_node() {
             ),
             (
                 "repeat_finite",
-                alice_sdf_repeat_finite(b(), 1.1, 1.3, 1.7, 2, 1, 3),
+                alice_sdf_repeat_finite(b(), 2, 1, 3, 1.1, 1.3, 1.7),
                 leaf_b().repeat_finite([2, 1, 3], Vec3::new(1.1, 1.3, 1.7)),
             ),
             (
