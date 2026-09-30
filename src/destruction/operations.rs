@@ -90,7 +90,24 @@ impl CarveShape {
 pub struct DestructionResult {
     /// Chunk coordinates that were modified
     pub dirty_chunks: Vec<[u32; 3]>,
-    /// Approximate volume of removed material (in world units cubed)
+    /// Volume of removed material, in world units cubed
+    ///
+    /// Counted as **the number of voxels whose sign flipped from inside
+    /// (`distance < 0`) to outside, times the voxel volume**. It is therefore a
+    /// resolution-dependent approximation whose error is a surface term,
+    /// `O(voxel_size / feature_size)`, and it converges to the true removed
+    /// volume as the grid is refined: carving a sphere of radius 0.6 that is
+    /// fully enclosed in the material reports 0.875 / 0.938 / 0.891 at 16³ /
+    /// 32³ / 64³ against the analytic `4/3·pi·r³` = 0.905.
+    ///
+    /// Voxels that merely became *less* inside do not contribute, and a voxel
+    /// can only be counted once across repeated carves, so `carve_batch` over
+    /// overlapping shapes reports the volume of their union rather than the sum
+    /// of the parts.
+    ///
+    /// Pinned by `tests/test_terrain_destruction_oracle.rs`
+    /// (`carve_reports_the_analytic_sphere_volume_and_converges`,
+    /// `carve_batch_reports_the_union_volume_without_double_counting`).
     pub removed_volume: f32,
     /// Number of voxels that were modified
     pub modified_voxels: u32,
@@ -100,6 +117,15 @@ pub struct DestructionResult {
 ///
 /// Uses `max(old_distance, -carve_distance)` to remove material.
 /// Only voxels within the shape's AABB are evaluated for efficiency.
+///
+/// The AABB restriction is exact for the *shape* but not for the *field*:
+/// `max(old, -carve)` also raises values in a shell outside the carve shape
+/// (wherever `old + carve < 0`), and those voxels keep their previous distance.
+/// Occupancy is unaffected — flipping a sign needs `-carve > 0`, i.e. a point
+/// inside the carve shape, which is always inside the AABB — so the surface is
+/// correct while the distance field stays conservative (never reports material
+/// closer than it is) in that shell. Both halves are pinned by
+/// `carve_matches_the_csg_closed_form_inside_the_aabb_and_the_sign_everywhere`.
 pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResult {
     let (shape_min, shape_max) = shape.aabb();
     let vs = grid.voxel_size();
@@ -147,7 +173,7 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
             .min(grid.resolution[2] as f32) as u32,
     ];
 
-    let mut removed_volume = 0.0f32;
+    let mut removed_voxels = 0u32;
     let mut modified_voxels = 0u32;
 
     for z in start[2]..end[2] {
@@ -163,10 +189,14 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
                 let new_d = old_d.max(-carve_d);
 
                 if (new_d - old_d).abs() > 1e-6 {
-                    // Track volume removed (was inside, now outside or less inside)
-                    if old_d < 0.0 && new_d > old_d {
-                        removed_volume =
-                            voxel_volume.mul_add((new_d - old_d).min(1.0), removed_volume);
+                    // Removed volume = voxels that went from inside to outside.
+                    // Weighting by the distance change instead (the previous
+                    // `voxel_volume * min(new_d - old_d, 1.0)`) is a volume
+                    // times a length, so it neither has the documented unit nor
+                    // converges: it reported 2.099 / 1.574 / 1.567 at 16³ /
+                    // 32³ / 64³ where the analytic answer is 0.905.
+                    if old_d < 0.0 && new_d >= 0.0 {
+                        removed_voxels += 1;
                     }
 
                     grid.distances[idx] = new_d;
@@ -181,7 +211,7 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
 
     DestructionResult {
         dirty_chunks,
-        removed_volume,
+        removed_volume: removed_voxels as f32 * voxel_volume,
         modified_voxels,
     }
 }

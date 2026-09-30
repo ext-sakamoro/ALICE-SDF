@@ -325,8 +325,18 @@ impl MutableVoxelGrid {
                     }
 
                     // Generate triangles using edge midpoints
-                    let base_pos = self.bounds_min
-                        + Vec3::new(x as f32 * vs.x, y as f32 * vs.y, z as f32 * vs.z);
+                    //
+                    // The MC cell corners ARE the eight voxel centers, because
+                    // `from_sdf` samples the field at voxel centers
+                    // (`grid_to_world`). Using the voxel *corner*
+                    // (`bounds_min + (x,y,z) * voxel_size`) as the cell origin
+                    // shifts the whole surface by `-voxel_size / 2` along every
+                    // axis; for a sphere of radius 1.5 on a 16^3 grid that is a
+                    // 0.218 world-unit displacement, and it desynchronises the
+                    // mesh from the field that `carve` edits.
+                    // Pinned by `tests/test_terrain_destruction_oracle.rs`
+                    // (`remesh_chunk_vertices_lie_on_the_analytic_sphere`).
+                    let base_pos = self.grid_to_world(x, y, z);
 
                     let edge_positions = mc_edge_positions(base_pos, vs, &corners);
                     let base_idx = vertices.len() as u32;
@@ -962,18 +972,42 @@ mod tests {
         assert!(grid.memory_bytes() > 4096 * 4);
     }
 
+    /// The MC vertices must lie ON the analytic sphere.
+    ///
+    /// oracle: `|v| = r`, with an O(h) error because the vertices are linearly
+    /// interpolated along edges joining voxel centres. This catches a cell
+    /// origin placed at the voxel corner instead of the voxel centre, which
+    /// displaces the surface by `|voxel_size| / 2` (0.216 at 16^3 over a 4-unit
+    /// box). The previous version of this test only checked that the call did
+    /// not panic, so it accepted any displacement.
     #[test]
-    fn test_remesh_chunk() {
-        let sphere = SdfNode::sphere(1.0);
-        let grid =
-            MutableVoxelGrid::from_sdf(&sphere, [16, 16, 16], Vec3::splat(-2.0), Vec3::splat(2.0));
-
-        // Remesh a chunk that should contain sphere surface
-        let mesh = grid.remesh_chunk(0, 0, 0);
-        // This chunk covers [-2, 0] in all axes, sphere surface is at radius 1
-        // Chunk covers [-2, 0] in all axes; sphere surface is at radius 1.
-        // The mesh may or may not contain triangles depending on resolution,
-        // but remesh_chunk must not panic.
-        let _ = &mesh;
+    fn test_remesh_chunk_lies_on_the_sphere() {
+        let r = 1.0f32;
+        let grid = MutableVoxelGrid::from_sdf(
+            &SdfNode::sphere(r),
+            [16, 16, 16],
+            Vec3::splat(-2.0),
+            Vec3::splat(2.0),
+        );
+        let mut worst = 0.0f32;
+        let mut verts = 0usize;
+        let [cx_n, cy_n, cz_n] = grid.chunks_per_axis();
+        for cz in 0..cz_n {
+            for cy in 0..cy_n {
+                for cx in 0..cx_n {
+                    let mesh = grid.remesh_chunk(cx, cy, cz);
+                    for v in &mesh.vertices {
+                        worst = worst.max((v.position.length() - r).abs());
+                    }
+                    verts += mesh.vertices.len();
+                }
+            }
+        }
+        assert!(verts > 0, "no surface was extracted");
+        let bound = 0.1 * grid.voxel_size().x;
+        assert!(
+            worst < bound,
+            "worst |dist to sphere| {worst} exceeds {bound} ({verts} verts)"
+        );
     }
 }

@@ -305,28 +305,47 @@ mod tests {
         assert!(changed > 0, "Erosion should modify terrain heights");
     }
 
+    /// Thermal erosion is the pass that smooths: it only ever moves material
+    /// from a cell to strictly lower neighbours, so roughness cannot grow.
+    ///
+    /// oracle: `roughness_after <= roughness_before`. Measured ratios over
+    /// seeds 42 / 7 / 2024 and 100 / 1000 / 5000 iterations stay in
+    /// [0.9744, 1.0000].
+    ///
+    /// The previous version of this test asserted `roughness_after >= 0.0` and
+    /// dropped `roughness_before` on the floor, with a comment claiming
+    /// "erosion should generally reduce roughness". That claim is false for the
+    /// default (hydraulic + thermal) pipeline: hydraulic erosion cuts channels,
+    /// which is high-frequency detail, and roughness *grows* by 2.70x / 1.86x /
+    /// 1.52x at 1000 / 5000 / 20000 iterations. Only the thermal pass smooths,
+    /// so that is what this test isolates (`rain_amount = 0.0` makes every
+    /// droplet break out immediately on `water < min_water`).
     #[test]
-    fn test_erosion_smooths_terrain() {
-        let mut hm = Heightmap::new(32, 32, 32.0, 32.0);
-        hm.generate_fbm(4, 0.5, 2.0, 42);
-        hm.scale_heights(10.0);
+    fn test_thermal_erosion_does_not_increase_roughness() {
+        for seed in [42u64, 7, 2024] {
+            for iterations in [100u32, 1000, 5000] {
+                let mut hm = Heightmap::new(32, 32, 32.0, 32.0);
+                hm.generate_fbm(4, 0.5, 2.0, seed);
+                hm.scale_heights(10.0);
+                let before = compute_roughness(&hm);
 
-        // Compute roughness before
-        let roughness_before = compute_roughness(&hm);
+                erode(
+                    &mut hm,
+                    &ErosionConfig {
+                        iterations,
+                        rain_amount: 0.0,
+                        thermal_rate: 1.0,
+                        ..Default::default()
+                    },
+                );
 
-        let config = ErosionConfig {
-            iterations: 5000,
-            thermal_rate: 1.0,
-            ..Default::default()
-        };
-        erode(&mut hm, &config);
-
-        let roughness_after = compute_roughness(&hm);
-
-        // Erosion should generally reduce roughness
-        // (not always true for small iterations, so we just check it runs)
-        assert!(roughness_after >= 0.0);
-        let _ = roughness_before; // used for development debugging
+                let after = compute_roughness(&hm);
+                assert!(
+                    after <= before * (1.0 + 1e-6),
+                    "seed={seed} iterations={iterations}: thermal erosion raised roughness {before} -> {after}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -351,9 +370,18 @@ mod tests {
         };
         erode(&mut hm, &config);
 
-        // Peak should be reduced
+        // oracle: one thermal pass takes the isolated peak down by
+        //   (h - tan(thermal_angle) * cell_size) * 0.5 * thermal_rate
+        // with cell_size = world_width / width = 1.0. `peak < 10.0` accepted
+        // any reduction at all, including 9.99.
+        let cell_size = 16.0f32 / 16.0;
+        let max_slope = config.thermal_angle.tan() * cell_size;
+        let want = 10.0 - (10.0 - max_slope) * 0.5 * config.thermal_rate;
         let peak = hm.get_height(8, 8);
-        assert!(peak < 10.0, "Peak should be smoothed, got {}", peak);
+        assert!(
+            (peak - want).abs() < 1e-5,
+            "Peak after one thermal pass: got {peak}, closed form {want}"
+        );
     }
 
     /// Helper: compute terrain roughness as average height difference with neighbors

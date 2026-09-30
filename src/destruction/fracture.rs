@@ -212,16 +212,25 @@ fn extract_piece_mesh(grid: &MutableVoxelGrid, assignments: &[u32], cell: u32) -
                 for (ni, &nidx) in neighbors.iter().enumerate() {
                     if assignments[nidx] != cell {
                         // Boundary face! Generate a quad (2 triangles)
+                        //
+                        // The extent along each direction is the voxel size of
+                        // THAT axis. Using `vs.x` for all three only works on
+                        // cubic voxels; on an anisotropic grid it both offsets
+                        // the face and mis-sizes the quad (a 24x48x24 grid
+                        // overstates the surface area of a sphere by 68%).
+                        // Pinned by the Cauchy projection oracle in
+                        // `tests/test_terrain_destruction_oracle.rs`.
                         let normal = normals[ni];
-                        let face_center = world + normal * vs.x * 0.5;
+                        let face_center = world + normal * (extent_along(normal, vs) * 0.5);
 
                         let (u, v) = make_tangent_basis(normal);
-                        let half = vs.x * 0.5;
+                        let hu = extent_along(u, vs) * 0.5;
+                        let hv = extent_along(v, vs) * 0.5;
 
-                        let p0 = face_center + (-u - v) * half;
-                        let p1 = face_center + (u - v) * half;
-                        let p2 = face_center + (u + v) * half;
-                        let p3 = face_center + (-u + v) * half;
+                        let p0 = face_center - u * hu - v * hv;
+                        let p1 = face_center + u * hu - v * hv;
+                        let p2 = face_center + u * hu + v * hv;
+                        let p3 = face_center - u * hu + v * hv;
 
                         let vi = vertices.len() as u32;
                         vertices.push(Vertex {
@@ -266,7 +275,23 @@ fn extract_piece_mesh(grid: &MutableVoxelGrid, assignments: &[u32], cell: u32) -
     (Mesh { vertices, indices }, center)
 }
 
-/// Create an orthonormal tangent basis for a face normal
+/// Voxel extent along an axis-aligned direction
+///
+/// `|d| = 1` and `d` is one of the six signed basis vectors, so this picks the
+/// voxel size of that axis.
+#[inline]
+fn extent_along(d: Vec3, voxel_size: Vec3) -> f32 {
+    (d.abs() * voxel_size).element_sum()
+}
+
+/// Create a **right-handed** orthonormal tangent basis for a face normal
+///
+/// `u x v == normal`, so a quad wound `p0 -> p1 -> p2 -> p3` over
+/// `(±u, ±v)` comes out counter-clockwise when seen from outside, which is the
+/// crate-wide mesh convention (outward winding, positive signed volume — see
+/// `tests/test_mesh_orientation.rs`). With `v = u x normal` the basis is
+/// left-handed and every fracture piece is emitted inside-out (measured signed
+/// volume -14.41 for a sphere whose volume is +14.14).
 fn make_tangent_basis(normal: Vec3) -> (Vec3, Vec3) {
     let up = if normal.y.abs() < 0.9 {
         Vec3::Y
@@ -274,7 +299,7 @@ fn make_tangent_basis(normal: Vec3) -> (Vec3, Vec3) {
         Vec3::X
     };
     let u = normal.cross(up).normalize();
-    let v = u.cross(normal).normalize();
+    let v = normal.cross(u).normalize();
     (u, v)
 }
 
@@ -382,13 +407,40 @@ mod tests {
         }
     }
 
+    /// oracle: the basis must be orthonormal AND right-handed (`u x v = n`),
+    /// otherwise every quad built from it is wound inside-out
     #[test]
     fn test_make_tangent_basis() {
-        let (u, v) = make_tangent_basis(Vec3::Z);
-        assert!((u.dot(Vec3::Z)).abs() < 0.001);
-        assert!((v.dot(Vec3::Z)).abs() < 0.001);
-        assert!((u.dot(v)).abs() < 0.001);
-        assert!((u.length() - 1.0).abs() < 0.001);
-        assert!((v.length() - 1.0).abs() < 0.001);
+        for normal in [
+            Vec3::X,
+            Vec3::NEG_X,
+            Vec3::Y,
+            Vec3::NEG_Y,
+            Vec3::Z,
+            Vec3::NEG_Z,
+        ] {
+            let (u, v) = make_tangent_basis(normal);
+            assert!(u.dot(normal).abs() < 0.001, "{normal:?}");
+            assert!(v.dot(normal).abs() < 0.001, "{normal:?}");
+            assert!(u.dot(v).abs() < 0.001, "{normal:?}");
+            assert!((u.length() - 1.0).abs() < 0.001, "{normal:?}");
+            assert!((v.length() - 1.0).abs() < 0.001, "{normal:?}");
+            assert!(
+                (u.cross(v) - normal).length() < 0.001,
+                "basis is left handed for {normal:?}: u x v = {:?}",
+                u.cross(v)
+            );
+        }
+    }
+
+    /// oracle: on an anisotropic grid the face extents are the voxel sizes of
+    /// the respective axes, not `voxel_size.x` three times
+    #[test]
+    fn test_extent_along_picks_the_axis_component() {
+        let vs = Vec3::new(0.25, 0.5, 1.0);
+        assert!((extent_along(Vec3::X, vs) - 0.25).abs() < 1e-6);
+        assert!((extent_along(Vec3::NEG_X, vs) - 0.25).abs() < 1e-6);
+        assert!((extent_along(Vec3::Y, vs) - 0.5).abs() < 1e-6);
+        assert!((extent_along(Vec3::NEG_Z, vs) - 1.0).abs() < 1e-6);
     }
 }

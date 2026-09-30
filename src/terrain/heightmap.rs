@@ -377,19 +377,22 @@ mod tests {
         hm.set_height(0, 1, 0.0);
         hm.set_height(1, 1, 10.0);
 
-        // Midpoint between (0,0)=0 and (1,0)=10 should be ~5
+        // oracle: the bilinear closed form is EXACT at the midpoint of 0 and
+        // 10, so the tolerance is f32 rounding. It used to be 1.0 (20%), which
+        // accepts an implementation returning 4.1.
         let h = hm.sample(0.5, 0.0);
-        assert!((h - 5.0).abs() < 1.0, "Expected ~5.0, got {}", h);
+        assert!((h - 5.0).abs() < 1e-5, "Expected exactly 5.0, got {}", h);
     }
 
     #[test]
     fn test_normal_at() {
         let hm = Heightmap::new(8, 8, 8.0, 8.0);
-        // Flat terrain
+        // oracle: on a flat field both finite differences are exactly zero, so
+        // the normal is exactly +Y (was 0.1, which accepts a 25 degree tilt)
         let n = hm.normal_at(4.0, 4.0);
         assert!(
-            (n.y - 1.0).abs() < 0.1,
-            "Flat terrain normal should be ~(0,1,0), got {:?}",
+            (n - Vec3::Y).length() < 1e-6,
+            "Flat terrain normal must be exactly (0,1,0), got {:?}",
             n
         );
     }
@@ -432,9 +435,11 @@ mod tests {
             h
         };
 
+        // oracle: h = (x + z)/2 is linear and Catmull-Rom reproduces linear
+        // fields exactly, so at the grid node (4,4) the answer is exactly 4.0
+        // (was 1.0, which accepts 3.1)
         let h = hm.sample_bicubic(4.0, 4.0);
-        // Should be roughly 4.0
-        assert!((h - 4.0).abs() < 1.0, "Expected ~4.0, got {}", h);
+        assert!((h - 4.0).abs() < 1e-5, "Expected exactly 4.0, got {}", h);
     }
 
     #[test]

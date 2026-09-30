@@ -239,10 +239,12 @@ mod tests {
 
         let meshes = clipmap.generate_meshes(&hm);
         for v in &meshes[0].mesh.vertices {
+            // oracle: normal_at returns Vec3::normalize, so the length is 1
+            // within f32 rounding (was 0.1, which accepts a 10% error)
             let len = v.normal.length();
             assert!(
-                (len - 1.0).abs() < 0.1,
-                "Normal should be unit length, got {}",
+                (len - 1.0).abs() < 1e-6,
+                "Normal must be unit length, got {}",
                 len
             );
         }
