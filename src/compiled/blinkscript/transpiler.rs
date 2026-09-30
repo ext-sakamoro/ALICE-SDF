@@ -26,8 +26,8 @@ pub enum BlinkScriptTranspileMode {
 impl From<BlinkScriptTranspileMode> for HlslTranspileMode {
     fn from(m: BlinkScriptTranspileMode) -> Self {
         match m {
-            BlinkScriptTranspileMode::Hardcoded => HlslTranspileMode::Hardcoded,
-            BlinkScriptTranspileMode::Dynamic => HlslTranspileMode::Dynamic,
+            BlinkScriptTranspileMode::Hardcoded => Self::Hardcoded,
+            BlinkScriptTranspileMode::Dynamic => Self::Dynamic,
         }
     }
 }
@@ -170,8 +170,12 @@ mod tests {
         assert!(kernel.contains("defineParam(z_slice"));
         // The generated bounds must be baked into the defineParam calls so
         // the node opens with the requested defaults on first recompile.
-        assert!(kernel.contains("-2"));
-        assert!(kernel.contains("2"));
+        // Match the whole call: `contains("2")` was satisfied by the
+        // `eComponentWise` kernel boilerplate and by `int2 pos`, so it held
+        // whatever the bounds were.
+        assert!(kernel.contains(r#"defineParam(bounds_min, "bounds_min", -2)"#));
+        assert!(kernel.contains(r#"defineParam(bounds_max, "bounds_max", 2)"#));
+        assert!(kernel.contains(r#"defineParam(z_slice, "z_slice", 0)"#));
         assert!(kernel.contains("sdf_eval(p)"));
     }
 
