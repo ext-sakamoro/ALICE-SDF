@@ -89,12 +89,20 @@ pub fn sdf_smooth_subtraction_rk(d1: f32, d2: f32, k: f32, rk: f32) -> f32 {
     smooth_max_rk(d1, -d2, k, rk)
 }
 
-/// Exponential smooth minimum (Deep Fried)
+/// Exponential smooth minimum (Deep Fried), rate convention (`exp(-k d)`).
+///
+/// `-ln(e^{-ka} + e^{-kb}) / k`, evaluated as `m - ln(1 + e^{-k|a-b|}) / k` with
+/// `m = min(a, b)`. The textbook form underflows both exponentials to 0 once
+/// `k·d` exceeds ~88 (`ln(0)` makes the result `+inf`) and overflows them to
+/// `+inf` below -88 (the result becomes `-inf`) — for a perfectly finite
+/// distance. Factoring the minimum out keeps the exponent <= 0, so the result is
+/// finite for every finite input (the same form `sdf_exp_smooth_union_r` uses).
 #[inline(always)]
 pub fn smooth_min_exp(a: f32, b: f32, k: f32) -> f32 {
     let k = k.max(1e-10);
-    let res = alice_det_math::exp(-k * a) + alice_det_math::exp(-k * b);
-    -alice_det_math::ln(res) / k
+    // `a == b` first so that `inf == inf` gives delta = 0 instead of NaN
+    let delta = if a == b { 0.0 } else { (a - b).abs() };
+    a.min(b) - alice_det_math::ln(1.0 + alice_det_math::exp(-k * delta)) / k
 }
 
 /// Exponential smooth minimum — precomputed reciprocal edition.
@@ -102,8 +110,9 @@ pub fn smooth_min_exp(a: f32, b: f32, k: f32) -> f32 {
 #[allow(dead_code)] // reserved for future SIMD optimization path
 #[inline(always)]
 pub fn smooth_min_exp_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    let res = alice_det_math::exp(-k * a) + alice_det_math::exp(-k * b);
-    -alice_det_math::ln(res) * rk
+    // Same overflow-free form as `smooth_min_exp`
+    let delta = if a == b { 0.0 } else { (a - b).abs() };
+    a.min(b) - alice_det_math::ln(1.0 + alice_det_math::exp(-k * delta)) * rk
 }
 
 /// Exponential smooth union with blend *width* `k` (`SdfNode::ExpSmoothUnion` law).
@@ -304,6 +313,57 @@ mod tests {
             result < 1.0,
             "Equal inputs with k>0 should blend below, got {}",
             result
+        );
+    }
+
+    // The reciprocal forms are not reachable from outside (`mod smooth` is private, "reserved for a
+    // future SIMD path"), so they are checked against their scalar siblings here.
+    #[test]
+    fn exp_and_cubic_rk_forms_agree_with_the_scalar_forms() {
+        for &k in &[0.3_f32, 1.0, 4.0] {
+            let rk = 1.0 / k;
+            for ia in -8..=8 {
+                for ib in -8..=8 {
+                    let (a, b) = (ia as f32 * 0.5, ib as f32 * 0.5);
+                    let (e, e_rk) = (smooth_min_exp(a, b, k), smooth_min_exp_rk(a, b, k, rk));
+                    assert!(
+                        (e - e_rk).abs() < 1e-5 * (1.0 + e.abs()),
+                        "exp rk at ({a}, {b}, {k}): {e_rk} vs {e}"
+                    );
+                    let (c, c_rk) = (smooth_min_cubic(a, b, k), smooth_min_cubic_rk(a, b, k, rk));
+                    assert!(
+                        (c - c_rk).abs() < 1e-5 * (1.0 + c.abs()),
+                        "cubic rk at ({a}, {b}, {k}): {c_rk} vs {c}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn exp_min_forms_are_finite_for_finite_arguments_far_from_the_surface() {
+        // `exp(-k d)` underflows / overflows for |k d| > ~88: the result must stay the finite
+        // closed form `min - ln(1 + e^{-k|a-b|}) / k`
+        for &(a, b, k) in &[
+            (100.0_f32, 100.0, 10.0),
+            (-100.0, -100.0, 10.0),
+            (100.0, -100.0, 10.0),
+        ] {
+            let want = a.min(b) - (1.0 + (-k * (a - b).abs()).exp()).ln() / k;
+            let (e, e_rk) = (smooth_min_exp(a, b, k), smooth_min_exp_rk(a, b, k, 1.0 / k));
+            assert!(
+                e.is_finite() && (e - want).abs() < 1e-3,
+                "smooth_min_exp({a}, {b}, {k}) = {e} (want {want})"
+            );
+            assert!(
+                e_rk.is_finite() && (e_rk - want).abs() < 1e-3,
+                "smooth_min_exp_rk({a}, {b}, {k}) = {e_rk} (want {want})"
+            );
+        }
+        // equal infinities are the infinity, not NaN
+        assert_eq!(
+            smooth_min_exp(f32::INFINITY, f32::INFINITY, 2.0),
+            f32::INFINITY
         );
     }
 }

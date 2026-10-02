@@ -6,6 +6,27 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — `operations::smooth_min_exp` が有限の入力に `±inf` を返した (2026-10-02)
+
+`smooth_min_exp(a, b, k)` (指数の smooth min、`k` は率 `exp(-k d)`) は `-ln(e^{-ka} + e^{-kb}) / k` を素朴に計算していたため、
+`k·a` が約 88 を超えると f32 の `exp` が 0 に潰れて `ln(0)` で **`+inf`**、-88 を下回ると `exp` が `inf` に溢れて **`-inf`** になった
+(`smooth_min_exp(100, 100, 10)` = `inf` で正解は 99.93、`(-100, -100, 10)` = `-inf`、`(50, 51, 8)` = `inf`)
+`sdf_exp_smooth_union_r` が `fuzz_eval_parity` の発見で直されたのと同じ形 `min(a, b) - ln(1 + e^{-k|a-b|}) / k` にした
+`a == b` は先に `delta = 0` として `inf == inf` が NaN にならないようにした 未使用の `smooth_min_exp_rk` も同じ形にした
+(どちらもライブラリ内部の呼び出しはなく、評価器の bit 一致には影響しない 公開 API の値が変わるのは、以前 `±inf` / 不安定だった範囲だけ)
+
+### Added — smooth CSG 演算子の閉形式 oracle (2026-10-02)
+
+`operations/smooth.rs` の既存 9 test は「`<= min`」「対称」「`k = 0` で `min`」だけで、値を検査していなかった
+(係数の取り違え `k/4` → `k/3`、引数の入れ替え、`d/k` と `k·d` の慣習の混同が全部通る)
+`tests/test_smooth_ops_oracle.rs` (17 本) で次を独立の参照と突き合わせる
+- 多項式 / 3 次 / 平方根 / 指数 (幅と率の 2 つの慣習) の値を f64 の閉形式と (min / max / 和 / 積 / 差)
+- 構造の法則: 対称、`min - 欠損量` 以内 (欠損量は `k/4`・`k/6`・`k ln2`・`ln2/k`・`k/2`)、移動不変、正の斉次性、単調、2 つの重みの和 = 1、コンパクト台
+- 幾何: 直交する 2 平面の内角で、対角方向の面までの距離が `√2 · 欠損量` (`SmoothUnion` で `k√2/4`、`ExpSmoothUnion` で `k√2 ln2`)
+- 1 つの法則: rk 版との bit 一致、`Real` 版の f32 と `f32x8` の各レーンがスカラーと bit 一致 (多項式族)
+- 頑健性: 有限の入力は有限の出力、退化入力 (NaN / inf / MAX) で panic しない
+変異 19 種 (係数 / 符号 / 引数 / 慣習 / 安定形 / rk の丸め / 下限) が red になることを実測した
+
 ### Added — 配線ガード (`scripts/wiring_guard.py`) を導入 (2026-10-02)
 
 実装したが production から呼ばれていない `pub` / `pub(crate)` item と、理由の無い
