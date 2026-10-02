@@ -35,7 +35,7 @@ pub fn sdf_parabola_segment(p: Vec3, width: f32, para_height: f32, half_depth: f
     // Distance to parabola curve via Newton's method
     // Find closest point on (t, h*(1-(t/w)^2)) for t in [0, w]
     let ww = w * w;
-    let mut t = px.clamp(0.0, w);
+    let mut t = super::clamp_total(px, 0.0, w);
     for _ in 0..8 {
         let ft = h * (1.0 - t * t / ww);
         let dft = -2.0 * h * t / ww;
@@ -45,7 +45,7 @@ pub fn sdf_parabola_segment(p: Vec3, width: f32, para_height: f32, half_depth: f
         let f = -ex + ey * dft;
         let df = 1.0 + dft * dft + ey * (-2.0 * h / ww);
         if df.abs() > 1e-10 {
-            t = (t - f / df).clamp(0.0, w);
+            t = super::clamp_total(t - f / df, 0.0, w);
         }
     }
     let closest_y = h * (1.0 - t * t / ww);

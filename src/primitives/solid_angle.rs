@@ -17,7 +17,8 @@ pub fn sdf_solid_angle(p: Vec3, angle: f32, radius: f32) -> f32 {
     let c = Vec2::new(alice_det_math::sin(angle), alice_det_math::cos(angle));
     let q = Vec2::new(alice_det_math::hypot(p.x, p.z), p.y);
     let l = q.length() - radius;
-    let m = (q - c * q.dot(c).clamp(0.0, radius)).length();
+    let t = super::clamp_total(q.dot(c), 0.0, radius);
+    let m = (q - c * t).length();
     let sign = if (c.y * q.x + -(c.x * q.y)) < 0.0 {
         -1.0
     } else {

@@ -44,9 +44,14 @@ pub fn modifier_noise_simplex(
 /// 3D Perlin noise implementation (Deep Fried)
 #[inline(always)]
 pub fn perlin_noise_3d(x: f32, y: f32, z: f32, seed: u32) -> f32 {
+    // `floor() as i32` saturates at `i32::MIN` / `i32::MAX` for |x| >= 2^31 (and maps NaN to 0), so the
+    // neighbouring lattice index `+ 1` below must wrap: a plain `+` overflows and panics in debug
+    // builds for a far point, while release builds already wrapped. `wrapping_add` makes the two
+    // agree and gives every finite coordinate a well-defined value.
     let xi = x.floor() as i32;
     let yi = y.floor() as i32;
     let zi = z.floor() as i32;
+    let (xi1, yi1, zi1) = (xi.wrapping_add(1), yi.wrapping_add(1), zi.wrapping_add(1));
 
     let xf = x - x.floor();
     let yf = y - y.floor();
@@ -58,18 +63,13 @@ pub fn perlin_noise_3d(x: f32, y: f32, z: f32, seed: u32) -> f32 {
 
     // Unrolled and Inlined Gradient Fetch
     let aaa = grad3d(hash3d(xi, yi, zi, seed), xf, yf, zf);
-    let aba = grad3d(hash3d(xi, yi + 1, zi, seed), xf, yf - 1.0, zf);
-    let aab = grad3d(hash3d(xi, yi, zi + 1, seed), xf, yf, zf - 1.0);
-    let abb = grad3d(hash3d(xi, yi + 1, zi + 1, seed), xf, yf - 1.0, zf - 1.0);
-    let baa = grad3d(hash3d(xi + 1, yi, zi, seed), xf - 1.0, yf, zf);
-    let bba = grad3d(hash3d(xi + 1, yi + 1, zi, seed), xf - 1.0, yf - 1.0, zf);
-    let bab = grad3d(hash3d(xi + 1, yi, zi + 1, seed), xf - 1.0, yf, zf - 1.0);
-    let bbb = grad3d(
-        hash3d(xi + 1, yi + 1, zi + 1, seed),
-        xf - 1.0,
-        yf - 1.0,
-        zf - 1.0,
-    );
+    let aba = grad3d(hash3d(xi, yi1, zi, seed), xf, yf - 1.0, zf);
+    let aab = grad3d(hash3d(xi, yi, zi1, seed), xf, yf, zf - 1.0);
+    let abb = grad3d(hash3d(xi, yi1, zi1, seed), xf, yf - 1.0, zf - 1.0);
+    let baa = grad3d(hash3d(xi1, yi, zi, seed), xf - 1.0, yf, zf);
+    let bba = grad3d(hash3d(xi1, yi1, zi, seed), xf - 1.0, yf - 1.0, zf);
+    let bab = grad3d(hash3d(xi1, yi, zi1, seed), xf - 1.0, yf, zf - 1.0);
+    let bbb = grad3d(hash3d(xi1, yi1, zi1, seed), xf - 1.0, yf - 1.0, zf - 1.0);
 
     lerp(
         lerp(lerp(aaa, baa, u), lerp(aba, bba, u), v),

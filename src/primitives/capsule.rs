@@ -37,7 +37,7 @@ pub fn sdf_capsule(point: Vec3, a: Vec3, b: Vec3, radius: f32) -> f32 {
 #[inline(always)]
 pub fn sdf_capsule_vertical(point: Vec3, half_height: f32, radius: f32) -> f32 {
     // Optimized: directly compute clamped Y offset
-    let p_y = point.y - point.y.clamp(-half_height, half_height);
+    let p_y = point.y - super::clamp_total(point.y, -half_height, half_height);
     // length of (point.x, p_y, point.z) - avoid Vec3 allocation
     (point.z * point.z + (point.x * point.x + (p_y * p_y))).sqrt() - radius
 }
@@ -49,7 +49,7 @@ pub fn sdf_capsule_vertical(point: Vec3, half_height: f32, radius: f32) -> f32 {
 #[inline(always)]
 pub fn sdf_capsule_horizontal(point: Vec3, half_length: f32, radius: f32) -> f32 {
     // Optimized: directly compute clamped X offset
-    let p_x = point.x - point.x.clamp(-half_length, half_length);
+    let p_x = point.x - super::clamp_total(point.x, -half_length, half_length);
     // length of (p_x, point.y, point.z)
     (point.z * point.z + (p_x * p_x + (point.y * point.y))).sqrt() - radius
 }

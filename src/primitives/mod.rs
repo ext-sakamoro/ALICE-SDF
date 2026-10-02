@@ -7,6 +7,24 @@
 //!
 //! Author: Moroya Sakamoto
 
+/// `clamp` that never panics.
+///
+/// `f32::clamp(min, max)` panics when `min > max` or either bound is NaN, so a primitive whose
+/// parameter is a clamp bound (`radius`, `w`, ...) took the process down for a negative or NaN
+/// value. This version returns `lo` for `x < lo`, `hi` for `x > hi` and `x` otherwise: identical to
+/// `clamp` for every valid range, a NaN `x` stays NaN, and an inverted range is merely wrong
+/// geometry instead of an abort.
+#[inline(always)]
+pub(crate) fn clamp_total(x: f32, lo: f32, hi: f32) -> f32 {
+    if x < lo {
+        lo
+    } else if x > hi {
+        hi
+    } else {
+        x
+    }
+}
+
 mod arc_shape;
 mod barrel;
 mod bezier;

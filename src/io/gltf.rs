@@ -1040,6 +1040,50 @@ pub fn import_glb(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     import_glb_bytes(&data)
 }
 
+/// A JSON array element by index, or an `IoError` when the index is out of range
+fn gltf_item<'a>(
+    items: &'a [serde_json::Value],
+    index: usize,
+    what: &str,
+) -> Result<&'a serde_json::Value, IoError> {
+    items.get(index).ok_or_else(|| {
+        IoError::InvalidFormat(format!(
+            "{what} index {index} out of range ({} present)",
+            items.len()
+        ))
+    })
+}
+
+/// A JSON number as `usize`, or an `IoError` when it does not fit
+fn gltf_usize(value: u64) -> Result<usize, IoError> {
+    usize::try_from(value)
+        .map_err(|_| IoError::InvalidFormat(format!("Value {value} does not fit in usize")))
+}
+
+/// `(byte offset into the BIN chunk, element count, componentType, type)` of accessor `index`
+///
+/// The byte offset is the bufferView's plus the accessor's, added with overflow checking.
+fn accessor_layout<'a>(
+    accessors: &'a [serde_json::Value],
+    buffer_views: &[serde_json::Value],
+    index: usize,
+) -> Result<(usize, usize, u32, &'a str), IoError> {
+    let acc = gltf_item(accessors, index, "accessor")?;
+    let bv = gltf_item(
+        buffer_views,
+        gltf_usize(acc["bufferView"].as_u64().unwrap_or(0))?,
+        "bufferView",
+    )?;
+    let byte_offset = gltf_usize(bv["byteOffset"].as_u64().unwrap_or(0))?
+        .checked_add(gltf_usize(acc["byteOffset"].as_u64().unwrap_or(0))?)
+        .ok_or_else(|| IoError::InvalidFormat("Accessor byte offset overflow".into()))?;
+    let count = gltf_usize(acc["count"].as_u64().unwrap_or(0))?;
+    // componentType is a small enum (5120..5126); anything wider than u32 is invalid anyway
+    let comp_type = u32::try_from(acc["componentType"].as_u64().unwrap_or(0)).unwrap_or(0);
+    let acc_type = acc["type"].as_str().unwrap_or("");
+    Ok((byte_offset, count, comp_type, acc_type))
+}
+
 /// Import a mesh from in-memory GLB bytes
 pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
@@ -1125,15 +1169,22 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     let attrs = &prim["attributes"];
 
     // Helper: read accessor data from BIN chunk
+    //
+    // Every reference in a glTF file (accessor -> bufferView -> byte range) is untrusted: an index,
+    // an offset or a count that is out of range must be an `IoError`, never a panic (a slice or
+    // array index out of bounds), a wrapped offset (integer overflow) or a huge allocation.
     let read_accessor_f32 = |acc_idx: usize| -> Result<Vec<f32>, IoError> {
-        let acc = &accessors[acc_idx];
-        let bv_idx = acc["bufferView"].as_u64().unwrap_or(0) as usize;
-        let bv = &buffer_views[bv_idx];
-        let byte_offset = bv["byteOffset"].as_u64().unwrap_or(0) as usize
-            + acc["byteOffset"].as_u64().unwrap_or(0) as usize;
-        let count = acc["count"].as_u64().unwrap_or(0) as usize;
-        let comp_type = acc["componentType"].as_u64().unwrap_or(0) as u32;
-        let acc_type = acc["type"].as_str().unwrap_or("");
+        let (byte_offset, count, comp_type, acc_type) =
+            accessor_layout(accessors, buffer_views, acc_idx)?;
+        let bv = gltf_item(
+            buffer_views,
+            gltf_usize(
+                gltf_item(accessors, acc_idx, "accessor")?["bufferView"]
+                    .as_u64()
+                    .unwrap_or(0),
+            )?,
+            "bufferView",
+        )?;
 
         let components = match acc_type {
             "SCALAR" => 1,
@@ -1155,62 +1206,83 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
             )));
         }
 
-        let total = count * components;
-        let mut result = Vec::with_capacity(total);
-        let stride = bv.get("byteStride").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let total = count
+            .checked_mul(components)
+            .ok_or_else(|| IoError::InvalidFormat("Accessor count overflow".into()))?;
+        let stride = gltf_usize(bv.get("byteStride").and_then(|v| v.as_u64()).unwrap_or(0))?;
         let elem_size = components * 4;
+        let overrun = || IoError::InvalidFormat("Buffer overrun".into());
 
         if stride == 0 || stride == elem_size {
-            // Tightly packed: bulk convert with single bounds check
-            let end = byte_offset + total * 4;
-            if end > bin_bytes.len() {
-                return Err(IoError::InvalidFormat("Buffer overrun".into()));
-            }
-            for chunk in bin_bytes[byte_offset..end].chunks_exact(4) {
+            // Tightly packed: one range check, then bulk convert
+            let end = total
+                .checked_mul(4)
+                .and_then(|len| byte_offset.checked_add(len))
+                .ok_or_else(overrun)?;
+            let bytes = bin_bytes.get(byte_offset..end).ok_or_else(overrun)?;
+            // `total * 4 <= bytes.len()` here, so this allocation is bounded by the BIN chunk
+            let mut result = Vec::with_capacity(total);
+            for chunk in bytes.chunks_exact(4) {
                 result.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
             }
+            Ok(result)
         } else {
-            // Strided: per-element access
+            // Strided: check that the last element fits before allocating anything
+            if count > 0 {
+                (count - 1)
+                    .checked_mul(stride)
+                    .and_then(|len| byte_offset.checked_add(len))
+                    .and_then(|start| start.checked_add(elem_size))
+                    .filter(|&end| end <= bin_bytes.len())
+                    .ok_or_else(overrun)?;
+            }
+            let mut result = Vec::with_capacity(total);
             for i in 0..count {
-                let base = byte_offset + i * stride;
+                let base = byte_offset + i * stride; // bounded by the check above
                 for c in 0..components {
                     let off = base + c * 4;
-                    if off + 4 > bin_bytes.len() {
-                        return Err(IoError::InvalidFormat("Buffer overrun".into()));
-                    }
-                    result.push(f32::from_le_bytes([
-                        bin_bytes[off],
-                        bin_bytes[off + 1],
-                        bin_bytes[off + 2],
-                        bin_bytes[off + 3],
-                    ]));
+                    let word = bin_bytes.get(off..off + 4).ok_or_else(overrun)?;
+                    result.push(f32::from_le_bytes([word[0], word[1], word[2], word[3]]));
                 }
             }
+            Ok(result)
         }
-        Ok(result)
     };
 
     // Read positions (required)
-    let pos_idx = attrs["POSITION"]
-        .as_u64()
-        .ok_or_else(|| IoError::InvalidFormat("Missing POSITION attribute".into()))?
-        as usize;
+    let pos_idx = gltf_usize(
+        attrs["POSITION"]
+            .as_u64()
+            .ok_or_else(|| IoError::InvalidFormat("Missing POSITION attribute".into()))?,
+    )?;
     let positions = read_accessor_f32(pos_idx)?;
     let vert_count = positions.len() / 3;
 
     // Read normals (optional)
     let normals = if let Some(idx) = attrs["NORMAL"].as_u64() {
-        Some(read_accessor_f32(idx as usize)?)
+        Some(read_accessor_f32(gltf_usize(idx)?)?)
     } else {
         None
     };
 
     // Read UVs (optional)
     let uvs = if let Some(idx) = attrs["TEXCOORD_0"].as_u64() {
-        Some(read_accessor_f32(idx as usize)?)
+        Some(read_accessor_f32(gltf_usize(idx)?)?)
     } else {
         None
     };
+
+    // NORMAL / TEXCOORD_0 must describe at least as many vertices as POSITION
+    if normals.as_ref().is_some_and(|n| n.len() < vert_count * 3) {
+        return Err(IoError::InvalidFormat(
+            "NORMAL accessor has fewer elements than POSITION".into(),
+        ));
+    }
+    if uvs.as_ref().is_some_and(|uv| uv.len() < vert_count * 2) {
+        return Err(IoError::InvalidFormat(
+            "TEXCOORD_0 accessor has fewer elements than POSITION".into(),
+        ));
+    }
 
     // Build vertices
     let mut vertices = Vec::with_capacity(vert_count);
@@ -1229,38 +1301,40 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     // Read indices
     let mut indices = Vec::new();
     if let Some(idx_acc) = prim["indices"].as_u64() {
-        let acc = &accessors[idx_acc as usize];
-        let bv_idx = acc["bufferView"].as_u64().unwrap_or(0) as usize;
-        let bv = &buffer_views[bv_idx];
-        let byte_offset = bv["byteOffset"].as_u64().unwrap_or(0) as usize
-            + acc["byteOffset"].as_u64().unwrap_or(0) as usize;
-        let count = acc["count"].as_u64().unwrap_or(0) as usize;
-        let comp_type = acc["componentType"].as_u64().unwrap_or(0) as u32;
-
+        let idx_acc = gltf_usize(idx_acc)?;
+        let (byte_offset, count, comp_type, _) = accessor_layout(accessors, buffer_views, idx_acc)?;
+        let size = match comp_type {
+            UNSIGNED_SHORT => 2,
+            UNSIGNED_INT => 4,
+            _ => {
+                return Err(IoError::InvalidFormat(format!(
+                    "Unsupported index type: {}",
+                    comp_type
+                )));
+            }
+        };
+        let end = count
+            .checked_mul(size)
+            .and_then(|len| byte_offset.checked_add(len))
+            .ok_or_else(|| IoError::InvalidFormat("Buffer overrun".into()))?;
+        let bytes = bin_bytes
+            .get(byte_offset..end)
+            .ok_or_else(|| IoError::InvalidFormat("Buffer overrun".into()))?;
+        // `count * size <= bytes.len()` here, so the reservation is bounded by the BIN chunk
         indices.reserve(count);
-        for i in 0..count {
-            let idx = match comp_type {
-                UNSIGNED_SHORT => {
-                    let off = byte_offset + i * 2;
-                    u16::from_le_bytes([bin_bytes[off], bin_bytes[off + 1]]) as u32
-                }
-                UNSIGNED_INT => {
-                    let off = byte_offset + i * 4;
-                    u32::from_le_bytes([
-                        bin_bytes[off],
-                        bin_bytes[off + 1],
-                        bin_bytes[off + 2],
-                        bin_bytes[off + 3],
-                    ])
-                }
-                _ => {
-                    return Err(IoError::InvalidFormat(format!(
-                        "Unsupported index type: {}",
-                        comp_type
-                    )));
-                }
-            };
-            indices.push(idx);
+        for chunk in bytes.chunks_exact(size) {
+            indices.push(if size == 2 {
+                u32::from(u16::from_le_bytes([chunk[0], chunk[1]]))
+            } else {
+                u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+            });
+        }
+        // An index past the last vertex would panic in every consumer (and in `Mesh` users that
+        // trust `indices`): reject it at the boundary
+        if let Some(&bad) = indices.iter().find(|&&i| i as usize >= vert_count) {
+            return Err(IoError::InvalidFormat(format!(
+                "Index {bad} out of range for {vert_count} vertices"
+            )));
         }
     } else {
         // No indices: generate sequential indices

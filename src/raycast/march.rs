@@ -25,6 +25,14 @@ use crate::compiled::{
 };
 use wide::{f32x8, CmpGe, CmpGt, CmpLt};
 
+/// Upper bound on the step budget that [`RaymarchConfig::with_bound`] may grow to
+///
+/// The budget grows with the Lipschitz bound so a TPMS (L up to 7) keeps resolving grazing rays, but
+/// a degenerate field (`scale(0)` / a vanishing scale component, whose bound is clamped to 1e6)
+/// would otherwise ask for `256 * 1e6` steps — one ray freezing the caller for seconds. 65 536 is
+/// 256 times the default budget, far above any bound a real field has.
+pub const MAX_STEP_BUDGET: u32 = 65_536;
+
 /// Raymarch configuration
 #[derive(Debug, Clone, Copy)]
 pub struct RaymarchConfig {
@@ -95,8 +103,8 @@ impl RaymarchConfig {
     /// provable step size) leaves the configuration unchanged.
     ///
     /// The step budget grows with the bound (`max_steps · bound / lipschitz`,
-    /// rounded up): steps are `d / L`, so the same number of steps covers
-    /// `1 / L` of the distance. Until 2.1.0 the budget stayed at 128 and a
+    /// rounded up, capped at `MAX_STEP_BUDGET`): steps are `d / L`, so the same
+    /// number of steps covers `1 / L` of the distance. Until 2.1.0 the budget stayed at 128 and a
     /// gyroid with the default configuration lost ~0.5 % of random rays to
     /// budget exhaustion.
     #[inline]
@@ -104,7 +112,11 @@ impl RaymarchConfig {
     pub fn with_bound(mut self, bound: f32) -> Self {
         if bound.is_finite() && bound > self.lipschitz {
             let scale = bound / self.lipschitz;
-            self.max_steps = ((self.max_steps as f32) * scale).ceil() as u32;
+            let grown = ((self.max_steps as f32) * scale)
+                .ceil()
+                .min(MAX_STEP_BUDGET as f32) as u32;
+            // never shrink a budget the caller already set above the cap
+            self.max_steps = grown.max(self.max_steps);
             self.lipschitz = bound;
         }
         self

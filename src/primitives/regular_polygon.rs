@@ -30,7 +30,7 @@ pub fn sdf_regular_polygon(p: Vec3, radius: f32, n_sides: f32, half_height: f32)
 
     // Distance to the edge line through the vertex at angle `an`
     q -= Vec2::new(radius * acs_c, radius * acs_s);
-    q.y += (-q.y).clamp(0.0, radius * acs_s);
+    q.y += super::clamp_total(-q.y, 0.0, radius * acs_s);
     let d_2d = q.length() * q.x.signum();
 
     // Extrude along Y

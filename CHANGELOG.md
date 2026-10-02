@@ -6,6 +6,31 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — 退化した入力で落ちる / 固まる 8 件 (2026-10-02)
+
+`tests/test_degenerate_input_oracle.rs` (14 本) を足し、公開 API の全プリミティブ構築関数 (68 種) と全モディファイア / 変換 (24 種) の
+パラメータの直積 (0 / 負 / NaN / inf / 微小 / 通常) x 退化した点を、評価・勾配・法線・Lipschitz・raymarch・compiled の各経路で、
+さらに各ファイル形式のパーサーへ切り詰め・破損・乱数のバイト列を与えたところ、次が見つかった (debug ビルド、★は release でも発生)
+- ★`solid_angle` / `pie` / `parabola_segment` / `capsule` の縦横 / `regular_polygon`: `f32::clamp(min, max)` の境界がパラメータで、
+  負または NaN の半径・幅で `min > max` / NaN となり panic した 全域な `clamp_total` (NaN は伝播、範囲が逆なら下端を返す) に置き換えた
+  (有効な範囲では `clamp` と同じ値)
+- `noise` modifier: `x.floor() as i32` は |x| >= 2^31 で飽和するので、次の格子の添字 `+ 1` が debug ビルドで overflow panic した
+  (release は wrap していた) `wrapping_add(1)` にして両者を一致させた
+- ★`heightmap_displacement` / `bilinear_sample`: 幅 / 高さ 0 で `w - 1` が underflow し、データが `w * h` より短いと添字が範囲外だった
+  退化した map は 0 を返す
+- ★GLB インポーター (`import_glb_bytes`): 範囲外の accessor / bufferView 参照、法線 / UV が位置より短い、index が頂点数以上、
+  `count * 要素数` や `byteOffset + 長さ` の整数 overflow、巨大な `Vec::with_capacity` で panic した 破損・悪意のあるファイルで
+  プロセスが落ちるので、添字は `.get()`、算術は `checked_*`、確保の前にバイト範囲を検証し、法線 / UV の長さと index の範囲も検証して
+  `IoError` を返すようにした (obj / stl / ply / fbx / abm / json / asdf は各 1.8 万件の破損で panic なし)
+- ★`raymarch`: 退化した field (`scale(0)` などで Lipschitz 上界が 1e6 に頭打ちされる) で、ステップ予算が `max_steps * bound` = 2.56 億に
+  膨らみ、光線 1 本が 18 秒 (debug) かかった 予算の上限 `MAX_STEP_BUDGET` (65 536 = 既定の 256 倍) を設けた (TPMS の L = 7 は変わらない)
+- `eval_interval` の `Scale` / `ScaleNonUniform`: 係数が 0 / NaN / inf (または逆数が overflow) だと `[-1e-45, NaN]` や反転した区間
+  (`Interval::new` の debug assertion、release では「全域が内部」と誤って示す) を返した この場合の唯一の健全な包含である
+  `Interval::entire()` (-inf, +inf) を返す (text-to-print の `scale(0.0, sphere(1.0))` が debug で落ちていた)
+- ★`surface_roughness` の `fbm`: octaves が 32 以上で `1u32 << i` が overflow して panic し、u32::MAX では数分ループした 項 `i` の振幅 2^-i は 24 で f32 の精度を下回るので `MAX_FBM_OCTAVES` = 24 で打ち切る (24 以下の値は変わらない)
+- 変異 27 種 (修正を戻す / 検査を外す / 上限を外す) が red になることを実測した
+- 対象外 (意図された契約): `CompiledSdf::compile` の `# Panics` (`try_compile` が代替)、`Interval::new` の `debug_assert!` (呼び出し側が計算した境界の前提)
+
 ### Fixed — `operations::smooth_min_exp` が有限の入力に `±inf` を返した (2026-10-02)
 
 `smooth_min_exp(a, b, k)` (指数の smooth min、`k` は率 `exp(-k d)`) は `-ln(e^{-ka} + e^{-kb}) / k` を素朴に計算していたため、

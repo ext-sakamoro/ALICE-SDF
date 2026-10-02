@@ -60,6 +60,20 @@ pub fn next_up(x: f32) -> f32 {
 }
 
 impl Interval {
+    /// The whole real line `(-inf, +inf)`: "nothing is known about the value".
+    ///
+    /// The only sound enclosure of a field that is NaN or has no finite bound (a scale of 0 / NaN /
+    /// infinity). It is built directly (no outward rounding, no `lo <= hi` assertion needed).
+    #[inline(always)]
+    #[must_use]
+    pub const fn entire() -> Self {
+        // ALLOW-RAW-INTERVAL: the infinities are already the widest possible bounds
+        Self {
+            lo: f32::NEG_INFINITY,
+            hi: f32::INFINITY,
+        }
+    }
+
     /// Create a new interval from computed bounds.
     ///
     /// The bounds are rounded **outward** by one ulp ([`Interval::outward`]).
@@ -999,7 +1013,13 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Translate { child, offset } => eval_interval(child, bounds.translate(*offset)),
         SdfNode::Rotate { child, rotation } => eval_interval(child, bounds.rotate(*rotation)),
         SdfNode::Scale { child, factor } => {
+            // A zero / NaN / infinite factor (or one whose reciprocal overflows) makes the field NaN
+            // or constant, so no finite enclosure exists: dividing by it built `[-1e-45, NaN]` or an
+            // inverted interval. "Nothing is known" is the only sound answer.
             let inv = 1.0 / *factor;
+            if !(factor.is_finite() && inv.is_finite()) {
+                return Interval::entire();
+            }
             let scaled = Vec3Interval {
                 x: bounds.x * inv,
                 y: bounds.y * inv,
@@ -1008,6 +1028,16 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             eval_interval(child, scaled) * *factor
         }
         SdfNode::ScaleNonUniform { child, factors } => {
+            // same reasoning as `Scale`, per component
+            if !(factors.x.is_finite()
+                && factors.y.is_finite()
+                && factors.z.is_finite()
+                && (1.0 / factors.x).is_finite()
+                && (1.0 / factors.y).is_finite()
+                && (1.0 / factors.z).is_finite())
+            {
+                return Interval::entire();
+            }
             let min_f = factors.x.min(factors.y).min(factors.z);
             let scaled = Vec3Interval {
                 x: bounds.x * (1.0 / factors.x),

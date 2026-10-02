@@ -174,6 +174,9 @@ float hash_noise_3d(float3 p, uint seed) {
 /// Seed the transpilers hard-code for `SurfaceRoughness`.
 pub const SURFACE_ROUGHNESS_SEED: u32 = 42;
 
+/// Octave count beyond which `fbm` stops adding terms (amplitude 2^-24 is below f32 precision).
+pub const MAX_FBM_OCTAVES: u32 = 24;
+
 /// Fractal Brownian Motion: `Σ_{i<octaves} 0.5^i · hash_noise_3d(p · 2^i, 42)`.
 ///
 /// Same structure as the transpiled shader expansion (amplitude starts at 1
@@ -183,7 +186,9 @@ pub const SURFACE_ROUGHNESS_SEED: u32 = 42;
 pub fn fbm(p: Vec3, octaves: u32) -> f32 {
     let mut value = 0.0_f32;
     let mut amplitude = 1.0_f32;
-    for i in 0..octaves {
+    // Octave `i` has amplitude 2^-i, below the f32 mantissa from i = 24, and `1u32 << i` overflows
+    // from i = 32: a larger count adds nothing but loop time (u32::MAX would run for minutes)
+    for i in 0..octaves.min(MAX_FBM_OCTAVES) {
         let scale = (1u32 << i) as f32;
         value += amplitude * hash_noise_3d(p * scale, SURFACE_ROUGHNESS_SEED);
         amplitude *= 0.5;
