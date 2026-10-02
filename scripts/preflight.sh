@@ -60,6 +60,10 @@ rustup toolchain list | grep -q "^${MSRV}" || { echo "missing toolchain ${MSRV} 
 step "actionlint (workflow YAML)"
 actionlint .github/workflows/*.yml
 
+step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が無い"
+python3 scripts/test_wiring_guard.py
+python3 scripts/wiring_guard.py
+
 step "fmt: cargo fmt --check (core)"
 cargo fmt --check
 

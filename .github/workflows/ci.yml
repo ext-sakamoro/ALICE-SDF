@@ -227,6 +227,27 @@ jobs:
       - name: Benchmark compilation check
         run: cargo bench --no-run
 
+  # 配線ガード: 実装したが production から呼ばれていない pub item と、理由の無い
+  # allow(dead_code) の新規追加を止める (既存分は scripts/wiring-baseline.txt)
+  # 検査器自身が OS 依存で空振り / 異常終了しないよう 3 OS で動かす
+  # (検査対象 0 件は empty_scan で fail する) 軽量なので paths-filter の対象外にして常に走らせる
+  wiring-guard:
+    name: Wiring guard (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: wiring-guard oracle (検査器自身の試験)
+        run: python scripts/test_wiring_guard.py
+      - name: wiring-guard (新規の未配線 / 理由の無い dead_code が無い)
+        run: python scripts/wiring_guard.py
+
   wasm:
     name: WebAssembly (wasm32) cross-compile
     needs: changes

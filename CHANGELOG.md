@@ -6,6 +6,16 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — 配線ガード (`scripts/wiring_guard.py`) を導入 (2026-10-02)
+
+実装したが production から呼ばれていない `pub` / `pub(crate)` item と、理由の無い
+`#[allow(dead_code)]` の新規追加を CI で止める検査器を ALICE-Physics から移植した
+
+- `scripts/test_wiring_guard.py`: 検査器自身の oracle 79 本
+- `scripts/wiring-baseline.txt`: 既存の違反 (unwired 696 件 / dead_code 32 件) を記録するラチェット 既存分は解消しておらず、新規の違反だけが fail する
+  ライブラリ crate なので `pub use` の再 export、コメント、test からしか参照されない API 面が大半を占める
+- CI: `wiring-guard` job (ubuntu / macOS / Windows、paths-filter の対象外) と `scripts/preflight.sh` の step を追加
+
 ## [4.0.0] - 2026-09-30
 
 ### Added — `scripts/downstream_check.py` (publish 前の下流影響 gate、local 専用)
