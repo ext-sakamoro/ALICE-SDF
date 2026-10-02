@@ -18,7 +18,7 @@
 
 use crate::interval::{eval_interval, Vec3Interval};
 use crate::types::{Aabb, SdfNode};
-use glam::Vec3;
+use glam::{Mat3, Vec3};
 use rayon::prelude::*;
 
 /// Configuration for tight AABB computation.
@@ -207,10 +207,213 @@ pub fn compute_tight_aabb_with_config(node: &SdfNode, config: &TightAabbConfig) 
         })
         .collect();
 
-    Aabb::new(
+    let searched = Aabb::new(
         Vec3::new(results[0], results[2], results[4]),
         Vec3::new(results[1], results[3], results[5]),
-    )
+    );
+
+    // Both the interval search and the level-set bound contain the surface, so their
+    // intersection does too, and it is never looser than either. The interval search
+    // inflates under rotation (it drops the correlation between the rotated axes);
+    // the level-set bound does not.
+    match analytic_aabb(node) {
+        AnalyticAabb::Bounded(analytic) => {
+            let lo = searched.min.max(analytic.min);
+            let hi = searched.max.min(analytic.max);
+            if lo.x <= hi.x && lo.y <= hi.y && lo.z <= hi.z {
+                Aabb::new(lo, hi)
+            } else {
+                searched
+            }
+        }
+        AnalyticAabb::Empty | AnalyticAabb::Unsupported => searched,
+    }
+}
+
+/// Result of [`analytic_aabb`], the level-set bound propagated over the tree.
+#[derive(Debug, Clone, Copy)]
+pub enum AnalyticAabb {
+    /// The solid `{f <= 0}` is empty (no surface).
+    Empty,
+    /// A box that contains the solid `{f <= 0}`, and with it the surface `{f = 0}`.
+    Bounded(Aabb),
+    /// The tree contains a node this bound does not cover (twist, bend, repeat,
+    /// approximate distance fields, ...): no analytic statement is made.
+    Unsupported,
+}
+
+/// An affine map `p -> a * p + t` accumulated from the root down to a leaf.
+#[derive(Clone, Copy)]
+struct Affine {
+    a: Mat3,
+    t: Vec3,
+}
+
+/// A region in world space: empty, a box, or "not known".
+#[derive(Clone, Copy)]
+enum Region {
+    Empty,
+    Box(Vec3, Vec3),
+    Unknown,
+}
+
+impl Region {
+    fn hull(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Unknown, _) | (_, Self::Unknown) => Self::Unknown,
+            (Self::Empty, r) | (r, Self::Empty) => r,
+            (Self::Box(a0, a1), Self::Box(b0, b1)) => Self::Box(a0.min(b0), a1.max(b1)),
+        }
+    }
+
+    fn meet(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Unknown, r) | (r, Self::Unknown) => r,
+            (Self::Empty, _) | (_, Self::Empty) => Self::Empty,
+            (Self::Box(a0, a1), Self::Box(b0, b1)) => {
+                let (lo, hi) = (a0.max(b0), a1.min(b1));
+                if lo.x > hi.x || lo.y > hi.y || lo.z > hi.z {
+                    Self::Empty
+                } else {
+                    Self::Box(lo, hi)
+                }
+            }
+        }
+    }
+}
+
+/// Bound of the leaf box `center +- half` (local frame) mapped through `xf`.
+///
+/// A box maps to the box with half-extents `|A| * half` exactly, so a chain of
+/// rigid transforms costs one evaluation at the leaf and does not accumulate.
+fn leaf_box(xf: &Affine, center: Vec3, half: Vec3) -> Region {
+    // NaN / inf is "not known"; a negative half-extent is an empty level set
+    if !center.is_finite() || !half.is_finite() {
+        return Region::Unknown;
+    }
+    if half.min_element() < 0.0 {
+        return Region::Empty;
+    }
+    let abs = Mat3::from_cols(xf.a.x_axis.abs(), xf.a.y_axis.abs(), xf.a.z_axis.abs());
+    let c = xf.a * center + xf.t;
+    let h = abs * half;
+    Region::Box(c - h, c + h)
+}
+
+/// World-space region that contains `{ p : f_node(p) <= delta }` (node local frame
+/// mapped through `xf`).
+///
+/// `delta` is the level: the surface is level 0, an offset by `r` asks the child
+/// for level `delta + r`, a smooth union loosens it by the largest deviation of
+/// its blend. Only nodes whose level sets are known are covered; everything else
+/// is [`Region::Unknown`] so the caller falls back to the interval search.
+fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
+    if !delta.is_finite() {
+        return Region::Unknown;
+    }
+    match node {
+        // exact distance fields: the level set of f is the shape grown by delta
+        SdfNode::Sphere { radius } => {
+            let r = radius + delta;
+            leaf_box(xf, Vec3::ZERO, Vec3::splat(r))
+        }
+        SdfNode::Box3d { half_extents } => {
+            leaf_box(xf, Vec3::ZERO, *half_extents + Vec3::splat(delta))
+        }
+        SdfNode::Cylinder {
+            radius,
+            half_height,
+        } => {
+            let (r, h) = (radius + delta, half_height + delta);
+            leaf_box(xf, Vec3::ZERO, Vec3::new(r, h, r))
+        }
+        SdfNode::Torus {
+            major_radius,
+            minor_radius,
+        } => {
+            let minor = minor_radius + delta;
+            let outer = major_radius + minor;
+            if minor < 0.0 {
+                return Region::Empty;
+            }
+            leaf_box(xf, Vec3::ZERO, Vec3::new(outer, minor, outer))
+        }
+        SdfNode::Capsule {
+            point_a,
+            point_b,
+            radius,
+        } => {
+            let r = radius + delta;
+            let half = (*point_b - *point_a).abs() * 0.5 + Vec3::splat(r);
+            let center = (*point_a + *point_b) * 0.5;
+            if r < 0.0 {
+                return Region::Empty;
+            }
+            leaf_box(xf, center, half)
+        }
+        // set operations
+        SdfNode::Union { a, b } => level_region(a, xf, delta).hull(level_region(b, xf, delta)),
+        SdfNode::Intersection { a, b } => {
+            level_region(a, xf, delta).meet(level_region(b, xf, delta))
+        }
+        // max(fa, -fb) <= delta  implies  fa <= delta (b only removes material)
+        SdfNode::Subtraction { a, .. } => level_region(a, xf, delta),
+        // polynomial smooth min is at least min - k/4
+        SdfNode::SmoothUnion { a, b, k } if k.is_finite() && *k >= 0.0 => {
+            let d = delta + k * 0.25;
+            level_region(a, xf, d).hull(level_region(b, xf, d))
+        }
+        // rigid and uniform-scale transforms are folded into the accumulated map
+        SdfNode::Translate { child, offset } => {
+            let moved = Affine {
+                a: xf.a,
+                t: xf.t + xf.a * *offset,
+            };
+            level_region(child, &moved, delta)
+        }
+        SdfNode::Rotate { child, rotation } => {
+            let turned = Affine {
+                a: xf.a * Mat3::from_quat(rotation.normalize()),
+                t: xf.t,
+            };
+            level_region(child, &turned, delta)
+        }
+        // f(p) = s * child(p / s): {f <= delta} = s * {child <= delta / s}
+        SdfNode::Scale { child, factor } if factor.is_finite() && *factor > 0.0 => {
+            let scaled = Affine {
+                a: xf.a * *factor,
+                t: xf.t,
+            };
+            level_region(child, &scaled, delta / factor)
+        }
+        // f = child - r  /  f = |child| - t  ->  child <= delta + r / delta + t
+        SdfNode::Round { child, radius } => level_region(child, xf, delta + radius),
+        SdfNode::Onion { child, thickness } => level_region(child, xf, delta + thickness),
+        _ => Region::Unknown,
+    }
+}
+
+/// Bound the solid `{f <= 0}` of `node` by propagating the level `delta` down the
+/// tree and applying the accumulated rigid / uniform-scale transform once, at the
+/// leaf (see the module docs).
+///
+/// Unlike the interval search this does not inflate under rotation: a rotated
+/// box is bounded by `|R| * half`, exactly, however deeply the rotations nest.
+/// The result is padded outward by a few ulps so rounding cannot cut the surface.
+#[must_use]
+pub fn analytic_aabb(node: &SdfNode) -> AnalyticAabb {
+    let identity = Affine {
+        a: Mat3::IDENTITY,
+        t: Vec3::ZERO,
+    };
+    match level_region(node, &identity, 0.0) {
+        Region::Empty => AnalyticAabb::Empty,
+        Region::Unknown => AnalyticAabb::Unsupported,
+        Region::Box(lo, hi) => {
+            let pad = (lo.abs().max(hi.abs()).max_element() * 4.0 + 1.0) * f32::EPSILON * 4.0;
+            AnalyticAabb::Bounded(Aabb::new(lo - Vec3::splat(pad), hi + Vec3::splat(pad)))
+        }
+    }
 }
 
 /// Find the tight bound for one face of the AABB.

@@ -6,6 +6,20 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed — `compute_tight_aabb` が回転で膨らまなくなった (準位集合の bound を木の上で伝播) (2026-10-03)
+
+区間演算の探索は、回転後の座標 (y', z' が共に y, z に依存する) の相関を捨てるので、回転した薄板が実測の 2 倍超に膨らんで返った
+(text-to-print の `rotate(30°, box3d(15,15,0.4))` が板の大半を欠いた原因の一つ)
+- ★`tight_aabb::analytic_aabb` を追加した 木を降りながら準位 `delta` を持ち回り、剛体変換と一様 scale は累積した写像として葉で 1 回だけ適用する
+  (box は `|R|·half` で厳密、入れ子の回転でも累積しない) offset (`round` / `onion`) は子の準位を `+r` / `+t`、smooth union は `+k/4`、
+  一様 scale は `delta / s`、union は hull、intersection は交差、subtraction は被減数だけで押さえる
+  対応するのは sphere / box3d / cylinder / torus / capsule と上の演算のみで、他 (twist / bend / 繰り返し / 近似距離場) を含む木は `Unsupported` を返す
+- `compute_tight_aabb*` は、区間探索の結果と `analytic_aabb` の交差を返す どちらも表面を含むので交差も含み、どちらより緩くならない (公開 API の型は変えていない)
+  `Unsupported` の木は従来と同じ結果
+- oracle 11 本 (回転 box の閉形式 / 入れ子回転 / 平行移動・scale・回転の合成 / 薄板の膨らみ / 準位のずれ / 乱択木 400 本の充足点の包含 / 回転 box の角の丸め) と
+  変異 11 種 (abs を落とす / 回転を累積しない / subtract で b を使う / smooth の k/4 を落とす / scale の準位 / round の符号 / onion / meet を hull に / 交差を使わない / 平行移動を回さない / 外向き padding を外す) が red になることを実測した
+
+
 ### Fixed — 退化した入力で落ちる / 固まる 8 件 (2026-10-02)
 
 `tests/test_degenerate_input_oracle.rs` (14 本) を足し、公開 API の全プリミティブ構築関数 (68 種) と全モディファイア / 変換 (24 種) の
