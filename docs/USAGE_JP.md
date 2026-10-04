@@ -967,6 +967,7 @@ sdf.export_ue5(verts, indices, "temple.ue5_mesh")       # Unreal Engine 5
 | `gpu` | WebGPUコンピュートシェーダー | wgpu, pollster, bytemuck |
 | `glsl` | GLSLシェーダートランスパイラ | - |
 | `hlsl` | HLSLシェーダートランスパイラ | - |
+| `rust` | Rust ソース出力 (`fn sdf` / `fn normal`、`eval_compiled` と bit 一致)、利用側の `build.rs` 用 | - |
 | `ffi` | C/C++/C# FFIバインディング | lazy_static |
 | `unity` | Unity統合 | ffi + glsl |
 | `unreal` | Unreal Engine統合 | ffi + hlsl |

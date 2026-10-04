@@ -972,6 +972,7 @@ All export functions accept `MeshHandle` (pre-generated) or `SdfHandle` (generat
 | `gpu` | WebGPU compute shaders | wgpu, pollster, bytemuck |
 | `glsl` | GLSL shader transpiler | - |
 | `hlsl` | HLSL shader transpiler | - |
+| `rust` | Rust source emit (`fn sdf` / `fn normal`, bit-identical to `eval_compiled`) for a downstream `build.rs` | - |
 | `ffi` | C/C++/C# FFI bindings | lazy_static |
 | `unity` | Unity integration | ffi + glsl |
 | `unreal` | Unreal Engine integration | ffi + hlsl |

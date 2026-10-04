@@ -6,6 +6,18 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — `rust` feature: SdfNode を依存の無い Rust source に出力する transpiler (2026-10-04)
+
+- `compiled::rust::RustSource::transpile(&SdfNode)` が `pub fn sdf(x, y, z) -> f32` と `pub fn normal(x, y, z) -> (f32, f32, f32)` を出力する
+  利用側の `build.rs` で shader と同じ SdfNode から CPU 評価器を生成し、実行時は `alice-det-math` だけに依存する用途
+- 出力は `CompiledSdf` の bytecode を直線 code に展開したもので、`eval_compiled` と同じ定数・演算順・`alice_det_math` kernel を使う
+  距離は `eval_compiled`、法線は `eval_compiled_normal` (四面体差分、epsilon は `RustTranspileOptions::normal_epsilon`、既定 1e-3) と bit 一致
+- 対応 opcode は `compiled::rust::is_supported` (primitive 12 / CSG 15 (smooth / chamfer / exp smooth / xor / morph / metric blend を含む) / transform 4 / modifier 15)
+  未対応 opcode は `RustTranspileError::UnsupportedOpcode` を返す (既定値で埋めない)
+- `tests/test_rust_transpiler_oracle.rs`: 出力を `rustc` で `opt-level=0` / `3` の 2 通りに compile して実行し、corpus の対応 entry と合成 scene 計 78 個 × 1538 点で `to_bits()` を比較する
+  比較件数が 0 または期待件数と違えば fail、対応 opcode のうち scene が通らないものがあれば fail
+- `examples/rust_transpile.rs`、CI の Test job に oracle の step、clippy (Linux 全 feature) / examples build / docs.rs feature set に `rust` を追加 (`scripts/preflight.sh` も同じ引数集合)
+
 ### Fixed — feature 付きの integration oracle 28 本と test 内の分岐 2 つが CI で実行されていなかった (2026-10-04)
 
 - `tests/test_physics_bridge_determinism.rs` (9 本、`physics`) と `tests/npr_shader_validate.rs` (19 本、`glsl` + `gpu`) は

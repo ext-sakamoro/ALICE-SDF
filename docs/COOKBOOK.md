@@ -342,6 +342,7 @@ See [ALICE-Physics README](../../ALICE-Physics/README.md#rendering-pipeline-inte
 | `gpu` | WebGPU evaluation + WGSL transpiler |
 | `hlsl` | HLSL shader transpiler |
 | `glsl` | GLSL shader transpiler |
+| `rust` | Rust source emit (`fn sdf` / `fn normal`) bit-identical to `eval_compiled` |
 | `ffi` | C/C++/C# FFI bindings |
 | `unity` | Unity integration (FFI + GLSL) |
 | `unreal` | Unreal Engine integration (FFI + HLSL) |

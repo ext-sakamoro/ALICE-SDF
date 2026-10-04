@@ -76,6 +76,7 @@ gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
 msl = ["gpu", "dep:naga"]  # MSL emit for Metal/Apple (WGSL -> naga -> MSL、法則は WGSL 単一 source)
+rust = []  # Rust source emit (fn sdf / fn normal) bit-identical to eval_compiled, for build.rs
 blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to HLSL body)
 # Bridge features. codec / physics / asp / sdf-cache resolve to the sibling
 # crates on crates.io since 1.12.0 (they were removed for the 1.7.7 publish
@@ -230,6 +231,12 @@ required-features = ["font"]
 name = "unreal_corpus_oracle"
 required-features = ["hlsl"]
 
+# Emits a scene as dependency-free Rust (`fn sdf` / `fn normal`), the
+# build.rs use case of the `rust` feature.
+[[example]]
+name = "rust_transpile"
+required-features = ["rust"]
+
 # Renders unreal-plugin/Resources/Icon128.png with this crate's evaluator.
 [[example]]
 name = "unreal_plugin_icon"
@@ -243,7 +250,7 @@ required-features = ["image"]
 # docs.rs: default (`cli`) だけだと transpiler / JIT / SVO / terrain 等の
 # API が一切 doc に出ない。gpu (wgpu) は build が重いので除外。
 [package.metadata.docs.rs]
-features = ["glsl", "hlsl", "jit", "svo", "terrain", "destruction", "gi", "ffi"]
+features = ["glsl", "hlsl", "jit", "svo", "terrain", "destruction", "gi", "ffi", "rust"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [lints.rust]

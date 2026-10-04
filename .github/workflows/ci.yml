@@ -155,6 +155,11 @@ jobs:
       - name: Test (integration, NPR shader validation — glsl + gpu)
         run: cargo test --features "glsl,gpu" --test npr_shader_validate
 
+      # compiled::rust の出力を rustc で compile・実行し eval_compiled と to_bits で突合する
+      # (file 先頭が `#![cfg(feature = "rust")]`、feature 無しでは 0 本になる)
+      - name: Test (integration, Rust source emit oracle — rust)
+        run: cargo test --features rust --test test_rust_transpiler_oracle
+
       # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
       # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
       # tests/ の extern "C" 宣言と src/ffi の export を「順序付きの型列」で突合する。
@@ -485,14 +490,14 @@ jobs:
       # nursery policy in Cargo.toml applies to whatever is compiled): the
       # docs.rs set + AAA + bridges + openvdb.
       - name: Clippy strict (all features that build on Linux, all targets)
-        run: cargo clippy --all-targets --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit"
+        run: cargo clippy --all-targets --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
         env:
           RUSTFLAGS: "-Dwarnings"
 
       # examples/gpu_eval.rs は required-features = ["gpu"] なので default CI では
       # compile されない (1.9.2 まで API drift で壊れたまま気付かなかった)
-      - name: Build feature-gated examples (gpu / glsl / hlsl)
-        run: cargo build --examples --features "glsl,hlsl,gpu"
+      - name: Build feature-gated examples (gpu / glsl / hlsl / rust)
+        run: cargo build --examples --features "glsl,hlsl,gpu,rust"
         env:
           RUSTFLAGS: "-Dwarnings"
 
@@ -554,7 +559,7 @@ jobs:
         run: cargo check --lib
 
       - name: Check (docs.rs feature set)
-        run: cargo check --lib --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi"
+        run: cargo check --lib --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust"
 
   # The transpilers' only correctness oracle runs the generated WGSL on a real
   # wgpu device (tests/test_gpu_law_parity.rs etc.). GitHub runners have no
@@ -628,7 +633,7 @@ jobs:
       # docs.rs builds with this feature set (+ texture-fit, whose intra-doc
       # links to private SIMD items were only visible with the feature on).
       - name: cargo doc (docs.rs feature set + texture-fit)
-        run: cargo doc --lib --no-deps --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,texture-fit"
+        run: cargo doc --lib --no-deps --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust,texture-fit"
         env:
           RUSTDOCFLAGS: "-Dwarnings"
 

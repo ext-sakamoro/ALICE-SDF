@@ -205,6 +205,13 @@ pub mod msl;
 #[cfg(feature = "blinkscript")]
 pub mod blinkscript;
 
+/// Rust source emit (`fn sdf` / `fn normal`) bit-identical to [`eval_compiled`].
+///
+/// For a downstream `build.rs` that wants a CPU evaluator without depending
+/// on this crate at runtime.
+#[cfg(feature = "rust")]
+pub mod rust;
+
 #[cfg(feature = "gpu")]
 pub use wgsl::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator, TranspileMode, WgslShader};
 
@@ -216,6 +223,9 @@ pub use glsl::{GlslShader, GlslTranspileMode};
 
 #[cfg(feature = "blinkscript")]
 pub use blinkscript::{BlinkScriptShader, BlinkScriptTranspileMode};
+
+#[cfg(feature = "rust")]
+pub use rust::{RustSource, RustTranspileError, RustTranspileOptions};
 
 pub use aabb::AabbPacked;
 pub use compiler::{CompileError, CompiledSdf};

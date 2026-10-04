@@ -36,8 +36,8 @@ quick=0
 [[ "${1:-}" == "--quick" ]] && quick=1
 
 # Feature sets, verbatim from the workflows.
-LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit'
-DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi'
+LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust'
+DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust'
 BRIDGES='physics,codec,asp,sdf-cache'
 MSRV=1.85
 
@@ -94,8 +94,8 @@ step "clippy: strict on x86_64 (Linux / Windows runner arch, default + gpu)"
 rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
 
-step "clippy: feature-gated examples build (gpu / glsl / hlsl)"
-RUSTFLAGS="-Dwarnings" cargo build --examples --features "glsl,hlsl,gpu"
+step "clippy: feature-gated examples build (gpu / glsl / hlsl / rust)"
+RUSTFLAGS="-Dwarnings" cargo build --examples --features "glsl,hlsl,gpu,rust"
 
 step "clippy-strict: mobile/uniffi-wrapper (path dep re-lint)"
 relint; (cd mobile/uniffi-wrapper && RUSTFLAGS="-Dwarnings" cargo clippy --lib --all-targets)
@@ -273,6 +273,9 @@ cargo test --features physics --test test_physics_bridge_determinism
 
 step "test: NPR shader validation (glsl + gpu、naga のみで GPU adapter 不要)"
 cargo test --features "glsl,gpu" --test npr_shader_validate
+
+step "test: Rust source emit oracle (rustc で compile した出力 vs eval_compiled、ci.yml と対)"
+cargo test --features rust --test test_rust_transpiler_oracle
 
 step "test: round-tie parity の hlsl arm (ci.yml の HLSL step と対)"
 cargo test --features "hlsl,blinkscript" --test test_round_tie_parity
