@@ -423,6 +423,10 @@ def check(root: Path) -> tuple[list[str], dict]:
 
 
 def main() -> int:
+    # Windows の stdout は locale 既定 (cp1252) で、日本語の集計行を print すると
+    # UnicodeEncodeError で落ちる (2026-10-04 windows-latest で実測)
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
     ap.add_argument('--root', default='.')
     args = ap.parse_args()

@@ -253,6 +253,19 @@ class CoverageTest(unittest.TestCase):
             cov.parse_cfg('feature = "a" garbage')
 
 
+class OutputEncodingTest(unittest.TestCase):
+    """Windows runner の stdout (cp1252) で日本語の集計行が UnicodeEncodeError にならない."""
+
+    def test_runs_under_cp1252_stdout(self):
+        import os
+        import subprocess
+        env = dict(os.environ, PYTHONIOENCODING='cp1252')
+        r = subprocess.run([sys.executable, str(HERE / 'ci_test_coverage_check.py'), '--root', str(HERE.parent)],
+                           env=env, capture_output=True)
+        self.assertNotIn(b'UnicodeEncodeError', r.stderr)
+        self.assertIn('ci-test-coverage:', r.stdout.decode('utf-8'))
+
+
 class RealRepoTest(unittest.TestCase):
     """実 repo を走査して、0 件で空振りしていないことだけを確かめる (違反の有無は本体の実行が判定する)."""
 
