@@ -88,6 +88,8 @@ Two-round maintainer self-review of 1.10.2 (independent Linux x86_64 environment
 | SDF-3 naga only on NPR shaders | ✅ | `tests/test_transpiler_naga_validate.rs` (parse + validate, WGSL + GLSL, every corpus node) — found 5 polyhedra without a shader helper, a truncated `ColumnsUnion`, `%`/`fmod` vs floor modulo, GLSL `atan2` |
 | GPU parity never in CI | ✅ | `gpu-parity` job on lavapipe, `ALICE_SDF_REQUIRE_GPU=1` |
 | oracle / wiring status never generated | ✅ | `scripts/gen-oracle-status.py` / `gen-wiring-status.py` + `status-docs` workflows; ci.yml `wiring-guard` (3 OS) runs the generators and fails on a scan of 0 |
+| feature-gated integration oracles never run in CI (28 tests at `running 0 tests`) | ✅ | Test job steps for `physics` / `glsl,gpu`; `scripts/ci_test_coverage_check.py` fails when a `#![cfg(feature)]` file or `#[cfg(feature)]` arm has no matching `cargo test` in CI |
+| push change detection skipped a cancelled run's changes | ✅ | `changes` job diffs against the last successful CI commit on main, running every job when it is unavailable |
 | SDF-R2-1/2 marching cubes wound inward, STL inside-out | ✅ | `CORNER_OFFSETS` aligned with the tables (CPU + WGSL); `tests/test_mesh_orientation.rs` (winding, signed volume, STL round trip) |
 | SDF-R2-3 open edges on aligned grids / duplicate vertices | ✅ | Canonical edge interpolation + degenerate-triangle removal |
 | SDF-R2-5 `eval_interval` = EVERYTHING for TPMS | ✅ | `ia_lipschitz` with the pinned constants |

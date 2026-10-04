@@ -19,21 +19,50 @@ env:
 
 jobs:
   # docs / mobile-only な PR でフル CI を回さないための paths-filter
+  #
+  # push の比較元は「直前の push」でなく「main で最後に CI が success した commit」
+  # 直前の push を比較元にすると、その run が cancel / red のまま次の push が来た時に
+  # 前回分の変更が誰にも test されない (2026-10-04 実測: 同じ tree を再 push した
+  # f694d16 は cancel された d3db318 との差分 0 件で全 job が skipped、CI は success)
+  # success した run はその比較元からの変更を test 済なので、最後の success を比較元に
+  # すれば cancel / red の run の変更は次の push で必ず test される
+  # 比較元が取れない (初回 / force-push で履歴から消えた / API 失敗) 時は全 job を走らせる
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     outputs:
-      code: ${{ steps.filter.outputs.code }}
-      mobile: ${{ steps.filter.outputs.mobile }}
-      python: ${{ steps.filter.outputs.python }}
-      ci: ${{ steps.filter.outputs.ci }}
-      vrchat: ${{ steps.filter.outputs.vrchat }}
-      unreal: ${{ steps.filter.outputs.unreal }}
+      code: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.code == 'true' }}
+      mobile: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.mobile == 'true' }}
+      python: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.python == 'true' }}
+      ci: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.ci == 'true' }}
+      vrchat: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.vrchat == 'true' }}
+      unreal: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.unreal == 'true' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Change detection base (last successful CI on main)
+        id: base
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push --status success --limit 1 --json headSha --jq '.[0].headSha // ""' 2>/dev/null || true)
+          if [ -n "$sha" ] && git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "change detection base: $sha (last successful CI on main)"
+          else
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::last successful CI commit unavailable (got '$sha'): running every job"
+          fi
       - uses: dorny/paths-filter@v4
         id: filter
         with:
+          base: ${{ steps.base.outputs.sha }}
           filters: |
             code:
               - 'src/**'
@@ -115,6 +144,17 @@ jobs:
       - name: Test (integration, analytic oracles — aaa) [T4]
         run: cargo test --features "aaa" --test test_gi_volume_oracle --test test_terrain_destruction_oracle
 
+      # file 先頭が `#![cfg(feature = …)]` の oracle は、その feature を付けない
+      # `cargo test --tests` では空の binary になり `running 0 tests` で green になる。
+      # 2026-10-04 まで下の 2 file (計 28 本) は 3 OS すべてで 0 本実行だった。
+      # 繋ぎ忘れは scripts/ci_test_coverage_check.py (wiring-guard job) が red にする。
+      - name: Test (integration, physics bridge determinism oracle)
+        run: cargo test --features physics --test test_physics_bridge_determinism
+
+      # naga の parse / validate のみで GPU adapter は使わない (gpu feature は naga を引くため)
+      - name: Test (integration, NPR shader validation — glsl + gpu)
+        run: cargo test --features "glsl,gpu" --test npr_shader_validate
+
       # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
       # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
       # tests/ の extern "C" 宣言と src/ffi の export を「順序付きの型列」で突合する。
@@ -156,7 +196,7 @@ jobs:
       - name: Test (integration, HLSL / BlinkScript value parity)
         env:
           ALICE_SDF_REQUIRE_CXX: "1"
-        run: cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity
+        run: cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity --test test_round_tie_parity
 
       # JIT の parity arm は書かれていたが CI で一度も実行されていなかった
       # (2026-09-30 実測)。`cargo test --tests` は default feature なので
@@ -177,7 +217,7 @@ jobs:
       # `ParserError: Missing expression after unary operator '--'` で落ちる
       # (2026-09-30 実測、run 36675779379 = Linux / macOS は success で Windows のみ failure)。
       - name: Test (integration, JIT parity oracles) [T3]
-        run: cargo test --features jit --test test_det_parity --test test_evaluator_opcode_parity --test test_relaxed_tracing
+        run: cargo test --features jit --test test_det_parity --test test_evaluator_opcode_parity --test test_relaxed_tracing --test test_round_tie_parity
 
       # MSL は WGSL emit を naga で翻訳したもの (compiled::msl)。翻訳と binding map
       # の誤りはここでしか出ないので、macOS runner で Metal runtime compiler
@@ -247,6 +287,10 @@ jobs:
         run: python scripts/test_wiring_guard.py
       - name: wiring-guard (新規の未配線 / 理由の無い dead_code が無い)
         run: python scripts/wiring_guard.py
+      - name: CI test coverage oracle (検査器自身の試験)
+        run: python scripts/test_ci_test_coverage_check.py
+      - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)
+        run: python scripts/ci_test_coverage_check.py
       - name: status generators oracle (台帳の生成器自身の試験)
         run: python scripts/test_gen_status.py
       - name: status generators (走査件数 0 で fail)

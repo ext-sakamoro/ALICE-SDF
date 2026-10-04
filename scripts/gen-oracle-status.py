@@ -162,7 +162,7 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored (run by CI) | {len(categorized['implemented'])} |
+| 🟢 Not ignored | {len(categorized['implemented'])} |
 | 🔴 Red by design | {len(by_class['red'])} |
 | ⏱ Gated (runtime / diagnostic / manual) | {len(by_class['gated'])} |
 | ⚪ Pending (bare `#[ignore]`) | {len(by_class['pending'])} |

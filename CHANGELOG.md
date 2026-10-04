@@ -6,6 +6,28 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed — feature 付きの integration oracle 28 本と test 内の分岐 2 つが CI で実行されていなかった (2026-10-04)
+
+- `tests/test_physics_bridge_determinism.rs` (9 本、`physics`) と `tests/npr_shader_validate.rs` (19 本、`glsl` + `gpu`) は
+  file 先頭が `#![cfg(feature = …)]` で、CI の `cargo test --tests` (default feature) では 3 OS とも `running 0 tests` だった
+  Test job に feature 付きの step を 2 本追加した
+- `tests/test_round_tie_parity.rs` の `jit` / `hlsl` 分岐は CI で compile されていなかった JIT / HLSL の step に `--test test_round_tie_parity` を追加した
+- `scripts/preflight.sh` に同じ step を追加した
+
+### Added — feature 付き oracle の CI 実行を突合する検査器 (2026-10-04)
+
+- `scripts/ci_test_coverage_check.py` は `tests/*.rs` の `#![cfg(…)]` / `#[cfg(…)]` (feature を含むもの) と、push / pull_request で起動する
+  workflow の `cargo test` (feature 集合 / `--test` / `--tests` / `--lib` / `working-directory` / `-p`) を突合し、
+  満たす呼び出しが 1 つも無い file / 分岐があれば fail する 走査対象が 0 件でも fail する
+- `scripts/test_ci_test_coverage_check.py` (27 本) が検査器自身を試験する ci.yml の `wiring-guard` job (3 OS) と preflight に追加した
+
+### Fixed — push の変更検出が cancel / red の run の変更を取りこぼしていた (2026-10-04)
+
+- ci.yml の `changes` job は push の比較元を直前の push にしていたため、その run が cancel / red のまま次の push が来ると、
+  前回分の変更を対象にした job が skipped になり CI は success になった (同じ tree の再 push で全 job が skipped になった run を確認)
+- push の比較元を「main で最後に CI が success した commit」に変えた 取得できない時 (初回 / 履歴から消えた / API 失敗) は全 job を走らせる
+- `docs/oracle-status.md` の「Not ignored (run by CI)」を「Not ignored」に改めた (生成器は `#[ignore]` の有無だけを見ており CI での実行は判定しない)
+
 ### Added — oracle / 配線の台帳生成器と、走査件数 0 で fail する gate (2026-10-04)
 
 - `scripts/gen-oracle-status.py` / `scripts/gen-wiring-status.py` を追加し、`docs/oracle-status.md` / `docs/wiring-status.md` を生成する

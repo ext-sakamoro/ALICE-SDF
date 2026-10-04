@@ -64,6 +64,10 @@ step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が�
 python3 scripts/test_wiring_guard.py
 python3 scripts/wiring_guard.py
 
+step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
+python3 scripts/test_ci_test_coverage_check.py
+python3 scripts/ci_test_coverage_check.py
+
 step "status generators: oracle + 走査件数 0 で fail (docs/wiring-status.md / docs/oracle-status.md)"
 python3 scripts/test_gen_status.py
 python3 scripts/gen-wiring-status.py
@@ -260,7 +264,18 @@ step "test: JIT parity oracles (tree evaluator vs JitCompiledSdf / JitSimdSdf)"
 cargo test --features jit \
   --test test_det_parity \
   --test test_evaluator_opcode_parity \
-  --test test_relaxed_tracing
+  --test test_relaxed_tracing \
+  --test test_round_tie_parity
+
+# file 先頭が `#![cfg(feature = …)]` の oracle (default の --tests では 0 本、ci.yml と対)
+step "test: physics bridge determinism oracle"
+cargo test --features physics --test test_physics_bridge_determinism
+
+step "test: NPR shader validation (glsl + gpu、naga のみで GPU adapter 不要)"
+cargo test --features "glsl,gpu" --test npr_shader_validate
+
+step "test: round-tie parity の hlsl arm (ci.yml の HLSL step と対)"
+cargo test --features "hlsl,blinkscript" --test test_round_tie_parity
 
 step "test: ffi + shaders (src/ffi の unit test 15 本、ci.yml と対)"
 cargo test --lib --features "ffi,hlsl,glsl"
