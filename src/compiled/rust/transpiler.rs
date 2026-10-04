@@ -353,7 +353,7 @@ impl<'a> Emitter<'a> {
     }
 
     /// `let (sN, cN) = sin_cos(arg);`
-    fn sin_cos(&mut self, arg: &str) -> (String, String) {
+    fn emit_sin_cos(&mut self, arg: &str) -> (String, String) {
         let s = format!("s{}", self.n);
         let c = format!("c{}", self.n);
         self.n += 1;
@@ -473,7 +473,7 @@ impl<'a> Emitter<'a> {
             ),
             OpCode::Twist => {
                 // modifiers::modifier_twist (the f32 hook of Real::twist)
-                let (s, c) = self.sin_cos(&format!("{y} * {}", lit(k[0])));
+                let (s, c) = self.emit_sin_cos(&format!("{y} * {}", lit(k[0])));
                 self.point(
                     &format!("{x} * {c} + -({z} * {s})"),
                     y,
@@ -481,7 +481,7 @@ impl<'a> Emitter<'a> {
                 )
             }
             OpCode::Bend => {
-                let (s, c) = self.sin_cos(&format!("{x} * {}", lit(k[0])));
+                let (s, c) = self.emit_sin_cos(&format!("{x} * {}", lit(k[0])));
                 self.point(
                     &format!("{x} * {c} - {y} * {s}"),
                     &format!("{x} * {s} + {y} * {c}"),
@@ -581,7 +581,7 @@ impl<'a> Emitter<'a> {
                     lit(k[2]),
                     lit(k[1])
                 ));
-                let (s, c) = self.sin_cos(&ang);
+                let (s, c) = self.emit_sin_cos(&ang);
                 self.point(&format!("{r} * {c}"), y, &format!("{r} * {s}"))
             }
             OpCode::Shear => self.point(
