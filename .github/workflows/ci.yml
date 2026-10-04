@@ -247,6 +247,12 @@ jobs:
         run: python scripts/test_wiring_guard.py
       - name: wiring-guard (新規の未配線 / 理由の無い dead_code が無い)
         run: python scripts/wiring_guard.py
+      - name: status generators oracle (台帳の生成器自身の試験)
+        run: python scripts/test_gen_status.py
+      - name: status generators (走査件数 0 で fail)
+        run: |
+          python scripts/gen-wiring-status.py
+          python scripts/gen-oracle-status.py
 
   wasm:
     name: WebAssembly (wasm32) cross-compile

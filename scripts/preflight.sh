@@ -64,6 +64,11 @@ step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が�
 python3 scripts/test_wiring_guard.py
 python3 scripts/wiring_guard.py
 
+step "status generators: oracle + 走査件数 0 で fail (docs/wiring-status.md / docs/oracle-status.md)"
+python3 scripts/test_gen_status.py
+python3 scripts/gen-wiring-status.py
+python3 scripts/gen-oracle-status.py
+
 step "fmt: cargo fmt --check (core)"
 cargo fmt --check
 
