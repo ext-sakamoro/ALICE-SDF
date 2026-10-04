@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MIN_REASON = 12
-SKIP_DIRS = {"target", ".git", ".claude", "tests", "node_modules"}
+SKIP_DIRS = {"target", ".git", ".claude", "tests", "node_modules", "scratchpad"}
 EXEMPT_ATTRS = re.compile(r"no_mangle|export_name|wasm_bindgen|pyfunction|pyclass|pymethods|napi|uniffi")
 DEF_RE = re.compile(
     r"\bpub(?:\([^)]*\))?\s+"

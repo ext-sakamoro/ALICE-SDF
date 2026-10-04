@@ -6,6 +6,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added — oracle / 配線の台帳生成器と、走査件数 0 で fail する gate (2026-10-04)
+
+- `scripts/gen-oracle-status.py` / `scripts/gen-wiring-status.py` を追加し、`docs/oracle-status.md` / `docs/wiring-status.md` を生成する
+  main への push で `oracle-status.yml` / `wiring-status.yml` が台帳を更新する (2 本は同じ concurrency group で直列化)
+- `scripts/test_gen_status.py` が生成器自身を試験する ci.yml の `wiring-guard` job (3 OS) と `scripts/preflight.sh` に同じ step を追加した
+- oracle の走査件数が 0 のときは生成器が exit 1 を返す (空振りを green と読まない)
+- `scripts/wiring_guard.py` の走査除外に `scratchpad` を追加した
+
 ### Changed — `compute_tight_aabb` が回転で膨らまなくなった (準位集合の bound を木の上で伝播) (2026-10-03)
 
 区間演算の探索は、回転後の座標 (y', z' が共に y, z に依存する) の相関を捨てるので、回転した薄板が実測の 2 倍超に膨らんで返った
