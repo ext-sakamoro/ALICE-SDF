@@ -14,6 +14,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::eval::{eval, normal};
+use crate::fidelity::distance_fidelity;
 use crate::interval::eval_lipschitz;
 use crate::types::{Hit, Ray};
 use crate::SdfNode;
@@ -133,11 +134,11 @@ impl RaymarchConfig {
     /// provably safe, so this falls back to plain sphere tracing (ω = 1,
     /// L = 1) — the same best-effort behaviour as [`raymarch`].
     pub fn relaxed(node: &SdfNode) -> Self {
-        let lip = eval_lipschitz(node);
-        let (omega, lipschitz) = if lip.is_finite() {
-            (1.6, lip.max(1.0))
-        } else {
-            (1.0, 1.0)
+        // `safe_step_scale` is `L.max(1)` for a finite bound and `None` for an
+        // unbounded one — the same rule `distance_fidelity` states for every caller
+        let (omega, lipschitz) = match distance_fidelity(node).safe_step_scale() {
+            Some(scale) => (1.6, scale),
+            None => (1.0, 1.0),
         };
         Self {
             // same distance budget as `default().with_bound(lipschitz)`

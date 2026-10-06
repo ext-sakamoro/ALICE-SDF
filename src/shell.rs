@@ -151,32 +151,30 @@ pub fn eval_shell_compiled_batch_parallel(
 
 /// Create an SdfNode that wraps a child in a shell.
 ///
-/// This constructs a CSG subtraction: `onion_outer - onion_inner`.
+/// The node evaluates to the same field as [`eval_shell`]:
+/// `max(d - outer, -(d + inner)) = |d - c| - h` with `c = (outer - inner) / 2`
+/// (the centre of the band) and `h = (outer + inner) / 2` (its half width),
+/// built as `Onion { Round { child, radius: c }, thickness: h }`.
 /// For simple shells, prefer `eval_shell()` directly for better performance.
 pub fn shell_node(child: Arc<SdfNode>, config: ShellConfig) -> SdfNode {
-    // Shell = intersection of "enlarged" and "inverted shrunk"
-    // Equivalent to: sdf(p) <= outer AND sdf(p) >= -inner
-    // = max(sdf(p) - outer, -(sdf(p) + inner))
-    //
-    // Approximate via Onion: |sdf(p)| - thickness
-    // where thickness = (inner + outer) / 2, then offset by (outer - inner) / 2
     let half_thick = f32::midpoint(config.inner_offset, config.outer_offset);
     let center_offset = (config.outer_offset - config.inner_offset) * 0.5;
 
     if center_offset.abs() < 1e-6 {
-        // Symmetric: use Onion directly
+        // Symmetric: the band is centred on the surface, Onion alone
         SdfNode::Onion {
             child,
             thickness: half_thick,
         }
     } else {
-        // Asymmetric: Onion + round offset
-        SdfNode::Round {
-            child: Arc::new(SdfNode::Onion {
+        // Asymmetric: move the band centre to d = c first (Round gives d - c),
+        // then take the band of half width h around it (Onion gives |·| - h)
+        SdfNode::Onion {
+            child: Arc::new(SdfNode::Round {
                 child,
-                thickness: half_thick,
+                radius: center_offset,
             }),
-            radius: -center_offset,
+            thickness: half_thick,
         }
     }
 }
@@ -383,10 +381,15 @@ mod tests {
         let child = Arc::new(SdfNode::sphere(1.0));
         let config = ShellConfig::new(0.05, 0.3);
         let node = shell_node(child, config);
-        // Should produce a Round(Onion) node for asymmetric case
-        match node {
-            SdfNode::Round { .. } => {}
-            _ => panic!("Expected Round node for asymmetric shell"),
+        // Asymmetric: Onion over a Round that moves the band centre
+        match &node {
+            SdfNode::Onion { child, thickness } => {
+                assert!((thickness - 0.175).abs() < 1e-6);
+                assert!(
+                    matches!(**child, SdfNode::Round { radius, .. } if (radius - 0.125).abs() < 1e-6)
+                );
+            }
+            _ => panic!("Expected Onion(Round) node for asymmetric shell"),
         }
     }
 }
