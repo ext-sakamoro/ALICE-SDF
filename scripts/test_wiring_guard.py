@@ -474,9 +474,13 @@ class Robustness(unittest.TestCase):
         # looks like a performance regression rather than a clock jump. Measured
         # on 2026-10-02: this assertion read 943 s while the whole 79-test suite
         # finished in 4.7 s.
-        t0 = time.monotonic()
+        # ⚠️ process CPU time, not wall time: under a loaded machine (load average ~50,
+        # parallel cargo builds) the same 5.4 s of CPU took 39 s of wall time and the
+        # gate failed although the checker had not changed. The test is about the
+        # algorithm not going quadratic, which CPU time measures.
+        t0 = time.process_time()
         vs = wg.check(r)
-        self.assertLess(time.monotonic() - t0, 30)
+        self.assertLess(time.process_time() - t0, 30)
         self.assertEqual(len([v for v in vs if v.kind == "unwired"]), 20001)
 
     def test_a_pathological_header_without_a_terminator_does_not_hang(self):
