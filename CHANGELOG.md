@@ -18,6 +18,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - 閉形式の oracle: `tests/test_animation_oracle.rs` (lerp / step / Hermite / loop / 動く球) / `test_diff_oracle.rs` (往復・undo・merge) / `test_constraint_oracle.rs` (連立の閉形式解、増分更新と再 compile の bit 一致) / `test_llm_schema_oracle.rs` / `test_collision_oracle.rs` (球 2 つの接触・分離・TOI・最近点) / `test_sdf2d_oracle.rs` (円・矩形・線分・環・凸多角形の厳密 SDF、CSG と変換) / `test_neural_mlp_closed_form.rs` (重みを手で書いた NSDF で平面と slab) / `test_raycast_oracle.rs` (ray と球の交点、pinhole camera の全 pixel、影と球状空洞の AO、JIT 分は `jit` feature の CI step で走る)
 - examples `primitive_distances` / `blend_laws` / `domain_modifiers` / `point_transforms`: 特化した primitive 関数 (`sdf_capsule_vertical` / `sdf_cylinder_capped` / `sdf_plane_from_points` / `sdf_torus_capped` 等)、n 項 CSG と smooth minimum 群、1 軸の modifier (`modifier_mirror_x` / `modifier_twist_z` / `modifier_repeat_y` / `modifier_repeat_polar` / `ifs_fold` / `fbm_noise_3d` / `sweep_bezier_dist_y` 等)、点の変換と `Aabb` / `Ray::at` / `SdfTree::with_metadata` を使い、値を閉形式と突き合わせて出力する
 - `tests/test_primitive_closed_form_oracle.rs` / `test_csg_multi_oracle.rs` / `test_domain_modifier_oracle.rs` / `test_point_transform_oracle.rs`: 上の関数を `f64` の閉形式 (線分距離、円柱の (半径, 軸) 箱則、3 点平面、弧への総当たり距離、平面回転、セル折り返し、IFS の貪欲折り返しの独立実装、fBm の定義、Bezier への総当たり距離) と比べる
+- examples: `mesh_queries` (`MeshBvh` / `BvhTriangle` / `mesh::Aabb` の距離と最近点、`MeshSdf` の各 config と `to_sdf_node`、`ExteriorField`、`PointCloudSdf`、Hermite の辺交点) / `mesh_collision_repair` (AABB / bounding sphere / convex hull / `simplify_collision` / `convex_decomposition`、`validate_mesh` と `MeshRepair` の各手順、`compute_quality`、球・箱・円柱・平面の fit と `primitives_to_csg`)
+- 閉形式の oracle: `tests/test_mesh_query_oracle.rs` (点と三角形の距離を独立実装の総当たりで突き合わせ、内接多面体の球の SDF を Hausdorff 上界 `max(r − sqrt(r² − R²))` 以内で `|p| − r` と照合、緯度経度の点群の被覆半径で点群 SDF を挟む、平面と球の Hermite 交点と格子全辺の交差数) / `tests/test_mesh_collision_fit_oracle.rs` (箱の体積・外接球、凸包の閉性と体積、球 mesh のオイラー標数 2 と穴あけ・穴埋めでの変化、修復手順ごとの除去数、三角形の面積と aspect 比、解析的な点群からの fit の回復、`FittedPrimitive` の距離と `to_sdf_node` の一致)
 
 ### Changed
 
@@ -28,6 +30,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ### Removed
 
 - crate 外から到達できない未使用の関数 (`mod` が private で再 export も無い): `smooth_min_exp_rk` / `smooth_min_cubic_rk` / `perlin_noise_3d_batch8` / `modifier_noise_perlin_batch8` / `sdf_torus_oriented` / `rotation_axis_angle` / `rotation_look_at` / `correct_distance_nonuniform`
+- `mesh::mesh_to_sdf` の private な未使用関数 `sdf_triangle` (`#[allow(dead_code)]` 付き、`primitives::sdf_triangle` と重複)
 
 ### Fixed
 
@@ -47,6 +50,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `Sdf2dNode::RegularPolygon` の内部の距離を厳密な凸多角形の SDF にした 頂点の近くで `max(dx, dy)` が辺までの距離より浅い値を返していた (外部の値は不変)
 - `llm_schema::schema_summary` の node 数を `SdfCategory::count` / `total` から作る 固定値 (計 126、primitive 72、operation 24、modifier 23) が enum (130 / 74 / 25 / 24) とずれていた
 - `Sdf2dNode::FontGlyph` の doc を 64x64 grid (4096 値) に直した (32x32 と書かれていた)
+- **Behavior change:** `mesh::hermite` の `extract_edge_crossings` / `extract_hermite` / `HermiteExtractor` が、格子の max 側の面 (x / y / z = `resolution`) に乗る辺を走査していなかった 格子は各軸 `resolution + 1` 頂点なので全辺を走査する 面が bounds の端と交わる場合に交点が増える (閉じた形が bounds の内側にある場合は不変)
+- **Behavior change:** `FittedPrimitive::to_sdf_node` の `Box` が `SdfNode::box3d` (全幅をとる) に半幅を渡し、`Cylinder` が `SdfNode::cylinder` (全高をとる) に半高を渡しており、どちらも半分の大きさの node を返していた `FittedPrimitive::distance` と同じ大きさになるよう直した (`primitives_to_csg` の結果も変わる)
+- **Behavior change:** `mesh::compute_quality` の aspect 比が `4·√3·A / P²` で、正三角形で 1/3 だった doc の「1.0 = equilateral」どおり `12·√3·A / P²` にした (`min_aspect_ratio` / `avg_aspect_ratio` が 3 倍になる)
+- **Behavior change:** `mesh::fit_plane` が、点が厳密に同一平面上にある (共分散行列が特異な) 時に法線の初期値 `(1, 1, 1)/√3` をそのまま返していた 特異な場合は共分散の行の外積 (零空間) を法線にする 非特異な場合は不変
 
 ## [4.1.0] - 2026-10-07
 

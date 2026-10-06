@@ -788,9 +788,10 @@ pub fn compute_quality(mesh: &Mesh) -> MeshQuality {
         let area = (v1 - v0).cross(v2 - v0).length() * 0.5;
         let perimeter = a + b + c;
 
-        // Aspect ratio: 4 * sqrt(3) * area / perimeter^2 (1.0 = equilateral)
+        // Aspect ratio: 12 * sqrt(3) * area / perimeter^2 (1.0 = equilateral:
+        // 12·√3·(√3/4·s²) / (3s)² = 1)
         let aspect = if perimeter > 1e-10 {
-            (4.0 * 1.732_050_8 * area) / (perimeter * perimeter)
+            (12.0 * 1.732_050_8 * area) / (perimeter * perimeter)
         } else {
             0.0
         };

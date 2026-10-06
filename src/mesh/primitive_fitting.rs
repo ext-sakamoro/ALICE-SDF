@@ -98,7 +98,7 @@ impl FittedPrimitive {
             Self::Box {
                 center,
                 half_extents,
-            } => SdfNode::box3d(half_extents.x, half_extents.y, half_extents.z)
+            } => SdfNode::box3d_half_extents(half_extents.x, half_extents.y, half_extents.z)
                 .translate(center.x, center.y, center.z),
             Self::Cylinder {
                 center,
@@ -106,7 +106,8 @@ impl FittedPrimitive {
                 radius,
                 half_height,
             } => {
-                let cylinder = SdfNode::cylinder(*radius, *half_height);
+                // `SdfNode::cylinder` takes the full height
+                let cylinder = SdfNode::cylinder(*radius, *half_height * 2.0);
 
                 // Compute rotation from Y-axis to target axis
                 let from = Vec3::Y;
@@ -519,6 +520,30 @@ fn find_smallest_eigenvector(cov: &[[f32; 3]; 3]) -> Vec3 {
         );
 
         if det.abs() < 1e-10 {
+            // Singular covariance: the points are (numerically) coplanar, which
+            // is exactly the input a plane fit is for. The normal spans the null
+            // space, which is orthogonal to every row, so take the longest cross
+            // product of two rows. Keep `v`'s side so the sign matches the
+            // power iteration's. Rank ≤ 1 (collinear points) leaves no unique
+            // normal and keeps `v`.
+            let rows = [Vec3::from(cov[0]), Vec3::from(cov[1]), Vec3::from(cov[2])];
+            let n = [
+                rows[0].cross(rows[1]),
+                rows[0].cross(rows[2]),
+                rows[1].cross(rows[2]),
+            ]
+            .into_iter()
+            .fold(Vec3::ZERO, |best, c| {
+                if c.length_squared() > best.length_squared() {
+                    c
+                } else {
+                    best
+                }
+            });
+            if n.length_squared() > 0.0 {
+                let n = n.normalize();
+                return if n.dot(v) < 0.0 { -n } else { n };
+            }
             break;
         }
 
