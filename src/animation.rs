@@ -13,7 +13,6 @@
 
 use crate::types::SdfNode;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 /// Interpolation mode between keyframes
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
@@ -176,10 +175,13 @@ impl Track {
 
         // Binary search for the keyframe pair
         // Use total_cmp to avoid panicking on NaN timestamps.
-        let idx = self
-            .keyframes
-            .binary_search_by(|k| k.time.total_cmp(&t))
-            .unwrap_or_else(|p| p);
+        // An exact hit on a key returns that key's value: a keyframe is the
+        // value *at* its time, so a Step key takes effect at its own time
+        // (before this, Step returned the previous key's value there).
+        let idx = match self.keyframes.binary_search_by(|k| k.time.total_cmp(&t)) {
+            Ok(exact) => return self.keyframes[exact].value,
+            Err(p) => p,
+        };
 
         let idx = if idx > 0 { idx - 1 } else { 0 };
         let k0 = &self.keyframes[idx];
@@ -457,23 +459,17 @@ impl AnimatedSdf {
     }
 }
 
-/// Morph between two SDF shapes using smooth blending
+/// Morph between two SDF shapes
 ///
-/// Returns an SDF that smoothly transitions from `from` to `to`
-/// based on the blend factor (0.0 = from, 1.0 = to).
+/// Returns an SDF that transitions from `from` to `to` based on the blend
+/// factor (0.0 = from, 1.0 = to): the linear blend
+/// `(1 − blend)·from + blend·to` of the two distance fields, i.e. the
+/// [`SdfNode::Morph`] node (`from.morph(to, blend)`).
+///
+/// Until 4.1.0 this built a smooth union of both shapes with `k = 1 − blend`,
+/// so both shapes were present at every blend and neither endpoint matched.
 pub fn morph(from: &SdfNode, to: &SdfNode, blend: f32) -> SdfNode {
-    let k = (1.0 - blend).max(0.01); // smooth blending factor
-    SdfNode::SmoothUnion {
-        a: Arc::new(SdfNode::Scale {
-            child: Arc::new(from.clone()),
-            factor: 1.0,
-        }),
-        b: Arc::new(SdfNode::Scale {
-            child: Arc::new(to.clone()),
-            factor: 1.0,
-        }),
-        k,
-    }
+    from.clone().morph(to.clone(), blend)
 }
 
 /// Evaluate an animated SDF at a point without allocating a new SdfNode tree
