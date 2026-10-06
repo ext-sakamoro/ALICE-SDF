@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **543 baseline items** — Permitted violations, ratchet in place
+🟡 **479 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (543 permitted)
+## 📋 Baseline (479 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -22,37 +22,33 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
 | `src/autodiff.rs` | 15 |
-| `src/compiled/wgsl/gpu_eval.rs` | 14 |
 | `src/sim_bridge.rs` | 14 |
+| `src/compiled/wgsl/gpu_eval.rs` | 13 |
 | `src/mesh/lod.rs` | 13 |
 | `src/mesh/meshopt_filter.rs` | 13 |
 | `src/mesh/nanite.rs` | 13 |
 | `src/codec_bridge.rs` | 12 |
-| `src/mesh/collision.rs` | 10 |
 | `src/mesh/mesh_to_sdf.rs` | 10 |
 | `src/mesh/primitive_fitting.rs` | 10 |
 | `src/cache/chunked.rs` | 9 |
 | `src/compiled/instanced.rs` | 9 |
 | `src/destruction/mod.rs` | 9 |
-| `src/operations/smooth.rs` | 9 |
+| `src/mesh/collision.rs` | 9 |
 | `src/compiled/aabb.rs` | 8 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
-| `src/compiled/wgsl/transpiler.rs` | 6 |
 | `src/mesh/quantization.rs` | 6 |
 | `src/npr/dsl.rs` | 6 |
 | `src/terrain/splatmap.rs` | 6 |
-| `src/transforms/rotate.rs` | 6 |
 | `src/volume/export.rs` | 6 |
+| `src/compiled/wgsl/transpiler.rs` | 5 |
 | `src/font_bridge.rs` | 5 |
 | `src/mesh/hermite.rs` | 5 |
 | `src/mesh/lod_persist.rs` | 5 |
 | `src/mesh/manifold.rs` | 5 |
 | `src/mesh/mesh_codec.rs` | 5 |
 | `src/mesh/stripifier.rs` | 5 |
-| `src/modifiers/noise.rs` | 5 |
 | `src/terrain/clipmap.rs` | 5 |
 | `src/terrain/heightmap.rs` | 5 |
-| `src/types/containers.rs` | 5 |
 | `src/asp_bridge.rs` | 4 |
 | `src/compiled/hlsl/transpiler.rs` | 4 |
 | `src/compiled/jit/runtime.rs` | 4 |
@@ -63,13 +59,10 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/ffi/registry.rs` | 4 |
 | `src/mesh/meshlet.rs` | 4 |
 | `src/mesh/optimize.rs` | 4 |
-| `src/modifiers/repeat.rs` | 4 |
-| `src/primitives/plane.rs` | 4 |
 | `src/soa.rs` | 4 |
 | `src/svo/linearize.rs` | 4 |
 | `src/svo/mod.rs` | 4 |
 | `src/svo/streaming.rs` | 4 |
-| `src/transforms/scale.rs` | 4 |
 | `src/volume/mod.rs` | 4 |
 | `src/cache/mod.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
@@ -77,11 +70,8 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/interval.rs` | 3 |
 | `src/mesh/overdraw.rs` | 3 |
 | `src/mesh/point_cloud_sdf.rs` | 3 |
-| `src/modifiers/bend.rs` | 3 |
-| `src/modifiers/mirror.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
 | `src/primitives/mod.rs` | 3 |
-| `src/primitives/torus.rs` | 3 |
 | `src/svo/query.rs` | 3 |
 | `src/cache_bridge.rs` | 2 |
 | `src/compiled/compiler.rs` | 2 |
@@ -94,14 +84,10 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/mesh/mesh_sign.rs` | 2 |
 | `src/mesh/meshopt_vertex_codec.rs` | 2 |
 | `src/mesh/spatial_order.rs` | 2 |
-| `src/modifiers/twist.rs` | 2 |
 | `src/npr/outline.rs` | 2 |
 | `src/npr/scene_composer.rs` | 2 |
-| `src/primitives/capsule.rs` | 2 |
-| `src/primitives/cylinder.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/terrain/caves.rs` | 2 |
-| `src/transforms/translate.rs` | 2 |
 | `src/volume/bake.rs` | 2 |
 | `src/bin/main.rs` | 1 |
 | `src/compiled/blinkscript/transpiler.rs` | 1 |
@@ -120,23 +106,16 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/mesh/mod.rs` | 1 |
 | `src/mesh/sdf_to_mesh.rs` | 1 |
 | `src/mesh/uv_unwrap.rs` | 1 |
-| `src/modifiers/ifs.rs` | 1 |
 | `src/modifiers/surface_roughness.rs` | 1 |
-| `src/modifiers/sweep.rs` | 1 |
 | `src/neural.rs` | 1 |
-| `src/operations/intersection.rs` | 1 |
-| `src/operations/union.rs` | 1 |
 | `src/optimize.rs` | 1 |
 | `src/terrain/mod.rs` | 1 |
 | `src/texture/fitting.rs` | 1 |
 | `src/tight_aabb.rs` | 1 |
-| `src/types/constructors.rs` | 1 |
-| `src/types/modifiers.rs` | 1 |
-| `src/types/transforms.rs` | 1 |
 | `src/volume/gpu_bake.rs` | 1 |
 | `src/volume/mipchain.rs` | 1 |
 
-### Dead Code (18)
+### Dead Code (13)
 
 ```
 dead_code src/bin/main.rs 1
@@ -148,18 +127,13 @@ dead_code src/compiled/wgsl/transpiler.rs 2
 dead_code src/ffi/registry.rs 3
 dead_code src/io/asdf.rs 2
 dead_code src/mesh/mesh_to_sdf.rs 1
-dead_code src/modifiers/noise.rs 2
 dead_code src/neural.rs 1
 dead_code src/npr/compiled_color.rs 1
-dead_code src/operations/smooth.rs 2
-dead_code src/primitives/torus.rs 1
 dead_code src/python/helpers.rs 1
-dead_code src/transforms/rotate.rs 2
-dead_code src/transforms/scale.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (525)
+### Unwired Items (466)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -283,12 +257,10 @@ unwired src/compiled/wgsl/gpu_eval.rs::from_glsl_compute
 unwired src/compiled/wgsl/gpu_eval.rs::from_shader_async
 unwired src/compiled/wgsl/gpu_eval.rs::from_wgsl_async
 unwired src/compiled/wgsl/gpu_eval.rs::new_async
-unwired src/compiled/wgsl/gpu_eval.rs::new_dynamic
 unwired src/compiled/wgsl/gpu_eval.rs::resolve
 unwired src/compiled/wgsl/gpu_eval.rs::update_params
 unwired src/compiled/wgsl/gpu_eval.rs::wait
 unwired src/compiled/wgsl/transpiler.rs::extract_params
-unwired src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals
 unwired src/compiled/wgsl/transpiler.rs::to_volume_shader
 unwired src/compiled/wgsl/transpiler.rs::transpile_material
 unwired src/compiled/wgsl/transpiler.rs::with_workgroup_size
@@ -391,7 +363,6 @@ unwired src/mesh/collision.rs::compute_bounding_sphere
 unwired src/mesh/collision.rs::compute_convex_hull
 unwired src/mesh/collision.rs::convex_decomposition
 unwired src/mesh/collision.rs::convex_hull_from_points
-unwired src/mesh/collision.rs::half_extents
 unwired src/mesh/collision.rs::simplify_collision
 unwired src/mesh/collision.rs::total_triangles
 unwired src/mesh/collision.rs::total_vertices
@@ -514,25 +485,7 @@ unwired src/mesh/stripifier.rs::try_stripify
 unwired src/mesh/stripifier.rs::unstripify
 unwired src/mesh/stripifier.rs::unstripify_bound
 unwired src/mesh/uv_unwrap.rs::compute_uv_density
-unwired src/modifiers/bend.rs::modifier_bend_cheap
-unwired src/modifiers/bend.rs::modifier_bend_x
-unwired src/modifiers/bend.rs::modifier_bend_z
-unwired src/modifiers/ifs.rs::ifs_fold
-unwired src/modifiers/mirror.rs::modifier_mirror_x
-unwired src/modifiers/mirror.rs::modifier_mirror_y
-unwired src/modifiers/mirror.rs::modifier_mirror_z
-unwired src/modifiers/noise.rs::fbm_noise_3d
-unwired src/modifiers/noise.rs::modifier_noise_perlin_batch8
-unwired src/modifiers/noise.rs::modifier_noise_simplex
-unwired src/modifiers/noise.rs::perlin_noise_3d_batch8
-unwired src/modifiers/repeat.rs::modifier_repeat_polar
-unwired src/modifiers/repeat.rs::modifier_repeat_x
-unwired src/modifiers/repeat.rs::modifier_repeat_y
-unwired src/modifiers/repeat.rs::modifier_repeat_z
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
-unwired src/modifiers/sweep.rs::sweep_bezier_dist_y
-unwired src/modifiers/twist.rs::modifier_twist_x
-unwired src/modifiers/twist.rs::modifier_twist_z
 unwired src/npr/compiled_color.rs::ADD
 unwired src/npr/compiled_color.rs::BLOOM
 unwired src/npr/compiled_color.rs::FRESNEL
@@ -574,33 +527,13 @@ unwired src/npr/outline.rs::depth_step_outline
 unwired src/npr/outline.rs::distance_field_outline
 unwired src/npr/scene_composer.rs::with_camera
 unwired src/npr/scene_composer.rs::with_shading
-unwired src/operations/intersection.rs::sdf_intersection_multi
-unwired src/operations/smooth.rs::sdf_smooth_intersection_rk
-unwired src/operations/smooth.rs::sdf_smooth_subtraction_rk
-unwired src/operations/smooth.rs::sdf_smooth_union_rk
-unwired src/operations/smooth.rs::smooth_min_cubic
-unwired src/operations/smooth.rs::smooth_min_cubic_rk
-unwired src/operations/smooth.rs::smooth_min_exp
-unwired src/operations/smooth.rs::smooth_min_exp_rk
-unwired src/operations/smooth.rs::smooth_min_root
-unwired src/operations/union.rs::sdf_union_multi
 unwired src/optimize.rs::optimization_stats
 unwired src/physics_bridge.rs::arc
 unwired src/physics_bridge.rs::sdf_to_physics_field
 unwired src/physics_bridge.rs::with_epsilon
-unwired src/primitives/capsule.rs::sdf_capsule_horizontal
-unwired src/primitives/capsule.rs::sdf_capsule_vertical
-unwired src/primitives/cylinder.rs::sdf_cylinder_capped
-unwired src/primitives/cylinder.rs::sdf_cylinder_infinite
 unwired src/primitives/mod.rs::PrimitiveType
 unwired src/primitives/mod.rs::eval_primitive
 unwired src/primitives/mod.rs::eval_primitive_unchecked
-unwired src/primitives/plane.rs::sdf_plane_from_points
-unwired src/primitives/plane.rs::sdf_plane_xy
-unwired src/primitives/plane.rs::sdf_plane_xz
-unwired src/primitives/plane.rs::sdf_plane_yz
-unwired src/primitives/torus.rs::sdf_torus_capped
-unwired src/primitives/torus.rs::sdf_torus_oriented
 unwired src/python/helpers.rs::numpy_to_vec3_fast
 unwired src/sim_bridge.rs::GpuPhysicsBundle
 unwired src/sim_bridge.rs::add_erosion
@@ -656,24 +589,6 @@ unwired src/terrain/splatmap.rs::layer_count
 unwired src/terrain/splatmap.rs::set_weight
 unwired src/texture/fitting.rs::reconstruct
 unwired src/tight_aabb.rs::preset_medium
-unwired src/transforms/rotate.rs::rotation_axis_angle
-unwired src/transforms/rotate.rs::rotation_look_at
-unwired src/transforms/rotate.rs::transform_rotate
-unwired src/transforms/rotate.rs::transform_rotate_euler
-unwired src/transforms/rotate.rs::transform_rotate_inverse
-unwired src/transforms/scale.rs::correct_distance_nonuniform
-unwired src/transforms/scale.rs::transform_scale
-unwired src/transforms/scale.rs::transform_scale_inverse
-unwired src/transforms/translate.rs::transform_translate
-unwired src/transforms/translate.rs::transform_translate_inverse
-unwired src/types/constructors.rs::box3d_half_extents
-unwired src/types/containers.rs::at
-unwired src/types/containers.rs::from_center_extents
-unwired src/types/containers.rs::half_extents
-unwired src/types/containers.rs::size
-unwired src/types/containers.rs::with_metadata
-unwired src/types/modifiers.rs::sine_displacement_aniso
-unwired src/types/transforms.rs::translate_vec
 unwired src/volume/bake.rs::bake_volume_compiled
 unwired src/volume/bake.rs::bake_volume_with_normals
 unwired src/volume/export.rs::DdsFormat

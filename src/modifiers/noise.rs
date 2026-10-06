@@ -95,7 +95,11 @@ pub fn fbm_noise_3d(
     let mut max_value = 0.0;
 
     for i in 0..octaves {
-        value += amplitude * perlin_noise_3d(x * frequency, y * frequency, z * frequency, seed + i);
+        // `wrapping_add`: the release-build value of `seed + i`; a plain `+` panics in debug
+        // builds once `seed` is within `octaves` of `u32::MAX`
+        let octave_seed = seed.wrapping_add(i);
+        value +=
+            amplitude * perlin_noise_3d(x * frequency, y * frequency, z * frequency, octave_seed);
         max_value += amplitude;
         amplitude *= persistence;
         frequency *= lacunarity;
@@ -172,89 +176,6 @@ fn grad3d(hash: u32, x: f32, y: f32, z: f32) -> f32 {
     let u = coords[u_src] * (2.0f32 * -(u_neg as f32) + 1.0);
     let v = coords[v_src] * (2.0f32 * -(v_neg as f32) + 1.0);
     u + v
-}
-
-/// [Deep Fried v2] Batch Perlin noise for 8 points
-///
-/// Evaluates noise at 8 points simultaneously. While the inner computation
-/// is scalar (hash lookups prevent true SIMD), the batch interface enables
-/// the caller to amortize function call overhead and allows the compiler
-/// to interleave independent computations across the 8 evaluations.
-#[allow(dead_code)] // batch8 API reserved for compiled SIMD evaluator
-#[inline(always)]
-pub fn perlin_noise_3d_batch8(points: &[(f32, f32, f32); 8], seed: u32) -> [f32; 8] {
-    [
-        perlin_noise_3d(points[0].0, points[0].1, points[0].2, seed),
-        perlin_noise_3d(points[1].0, points[1].1, points[1].2, seed),
-        perlin_noise_3d(points[2].0, points[2].1, points[2].2, seed),
-        perlin_noise_3d(points[3].0, points[3].1, points[3].2, seed),
-        perlin_noise_3d(points[4].0, points[4].1, points[4].2, seed),
-        perlin_noise_3d(points[5].0, points[5].1, points[5].2, seed),
-        perlin_noise_3d(points[6].0, points[6].1, points[6].2, seed),
-        perlin_noise_3d(points[7].0, points[7].1, points[7].2, seed),
-    ]
-}
-
-/// [Deep Fried v2] Batch noise modifier for 8 distances
-///
-/// Applies Perlin noise displacement to 8 distance values at once.
-#[allow(dead_code)] // batch8 API reserved for compiled SIMD evaluator
-#[inline(always)]
-pub fn modifier_noise_perlin_batch8(
-    distances: &[f32; 8],
-    points: &[Vec3; 8],
-    amplitude: f32,
-    frequency: f32,
-    seed: u32,
-) -> [f32; 8] {
-    let scaled: [(f32, f32, f32); 8] = [
-        (
-            points[0].x * frequency,
-            points[0].y * frequency,
-            points[0].z * frequency,
-        ),
-        (
-            points[1].x * frequency,
-            points[1].y * frequency,
-            points[1].z * frequency,
-        ),
-        (
-            points[2].x * frequency,
-            points[2].y * frequency,
-            points[2].z * frequency,
-        ),
-        (
-            points[3].x * frequency,
-            points[3].y * frequency,
-            points[3].z * frequency,
-        ),
-        (
-            points[4].x * frequency,
-            points[4].y * frequency,
-            points[4].z * frequency,
-        ),
-        (
-            points[5].x * frequency,
-            points[5].y * frequency,
-            points[5].z * frequency,
-        ),
-        (
-            points[6].x * frequency,
-            points[6].y * frequency,
-            points[6].z * frequency,
-        ),
-        (
-            points[7].x * frequency,
-            points[7].y * frequency,
-            points[7].z * frequency,
-        ),
-    ];
-    let noise = perlin_noise_3d_batch8(&scaled, seed);
-    let mut result = [0.0f32; 8];
-    for i in 0..8 {
-        result[i] = noise[i] * amplitude + distances[i];
-    }
-    result
 }
 
 #[cfg(test)]

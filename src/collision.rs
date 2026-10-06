@@ -48,7 +48,7 @@ pub struct SdfContact {
 /// Returns contacts sorted by depth (deepest first).
 pub fn sdf_collide(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> Vec<SdfContact> {
     let res = resolution.max(2) as usize;
-    let extent = aabb.max - aabb.min;
+    let extent = aabb.size();
     let cell = extent / res as f32;
 
     let mut contacts = Vec::new();
@@ -106,7 +106,7 @@ pub fn sdf_collide(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> Ve
 /// on the grid (an upper bound on the true separation).
 pub fn sdf_distance(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> f32 {
     let res = resolution.max(2) as usize;
-    let extent = aabb.max - aabb.min;
+    let extent = aabb.size();
     let cell = extent / res as f32;
     let mut min_sep = f32::MAX;
 
@@ -150,7 +150,7 @@ pub fn sdf_distance(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> f
 /// on the sample grid.
 pub fn sdf_overlap(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> bool {
     let res = resolution.max(2) as usize;
-    let extent = aabb.max - aabb.min;
+    let extent = aabb.size();
     let cell = extent / res as f32;
 
     for iz in 0..res {

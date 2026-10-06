@@ -64,18 +64,6 @@ pub fn transform_scale_nonuniform(point: Vec3, factors: Vec3) -> (Vec3, f32) {
     (transformed, min_factor)
 }
 
-/// Apply distance correction after non-uniform scale evaluation
-///
-/// This provides a more accurate distance estimate for non-uniform scaling
-/// by considering the gradient direction.
-#[allow(dead_code)]
-#[inline(always)]
-pub fn correct_distance_nonuniform(distance: f32, factors: Vec3, gradient: Vec3) -> f32 {
-    // Deep Fried: vector multiplication instead of component-wise scalar
-    let scaled_gradient = gradient * factors;
-    distance * scaled_gradient.length()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,16 +102,5 @@ mod tests {
         let (transformed, mult) = transform_scale_nonuniform(point, factors);
         assert!((transformed - Vec3::new(1.0, 2.0, 2.0)).length() < 0.0001);
         assert!((mult - 2.0).abs() < 0.0001); // Min of 2, 2, 3
-    }
-
-    #[test]
-    fn test_distance_correction() {
-        let distance = 1.0;
-        let factors = Vec3::new(1.0, 2.0, 1.0);
-        let gradient = Vec3::new(0.0, 1.0, 0.0); // Pointing in Y direction
-
-        let corrected = correct_distance_nonuniform(distance, factors, gradient);
-        // Gradient scaled by Y factor (2.0), length is 2.0
-        assert!((corrected - 2.0).abs() < 0.0001);
     }
 }

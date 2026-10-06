@@ -7,19 +7,19 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 829 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 404 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 912 |
-| | **total** | **2145** |
+| L0 | not reached by any non-test code, examples included | 766 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 455 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 916 |
+| | **total** | **2137** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 520 unwired items.
+`scripts/wiring-baseline.txt` lists 461 unwired items.
 
-### L0 here but not in the baseline (318)
+### L0 here but not in the baseline (314)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -120,6 +120,8 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/compiled/transpiler_common.rs::GenericTranspiler::generate_shader`
 - `src/compiled/wgsl/gpu_eval.rs::GpuBufferPool`
 - `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture`
+- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::new_dynamic`
+- `src/compiled/wgsl/transpiler.rs::WgslShader::to_compute_shader_with_normals`
 - `src/crispy.rs::BitMask64`
 - `src/crispy.rs::BitMask64::as_u64`
 - `src/crispy.rs::BitMask64::clear`
@@ -180,6 +182,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/collision.rs::CollisionAabb`
 - `src/mesh/collision.rs::CollisionAabb::center`
 - `src/mesh/collision.rs::CollisionAabb::contains`
+- `src/mesh/collision.rs::CollisionAabb::half_extents`
 - `src/mesh/collision.rs::ConvexDecomposition`
 - `src/mesh/collision.rs::ConvexHull`
 - `src/mesh/collision.rs::VhacdConfig`
@@ -326,13 +329,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/terrain/splatmap.rs::Splatmap`
 - `src/terrain/splatmap.rs::Splatmap::new`
 - `src/terrain/splatmap.rs::Splatmap::normalize`
-- `src/types/constructors.rs::SdfNode::metric_ball`
-- `src/types/constructors.rs::SdfNode::metric_blend`
-- `src/types/containers.rs::Aabb::center`
-- `src/types/containers.rs::Aabb::contains`
-- `src/types/containers.rs::Aabb::union`
-- `src/types/mod.rs::SdfNode::category`
-- `src/types/modifiers.rs::SdfNode::sine_displacement`
 - `src/volume/mod.rs::Volume3D::get`
 - `src/volume/mod.rs::Volume3D::index`
 - `src/volume/mod.rs::Volume3D::new`
@@ -348,7 +344,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (829)
+## L0 — unreached (766)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
@@ -922,24 +918,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/uv_unwrap.rs::UvDensityReport::WARN_LOW_DENSITY_RATIO`
 - `src/mesh/uv_unwrap.rs::UvDensityReport::has_warning`
 - `src/mesh/uv_unwrap.rs::compute_uv_density`
-- `src/modifiers/bend.rs::modifier_bend_cheap`
-- `src/modifiers/bend.rs::modifier_bend_x`
-- `src/modifiers/bend.rs::modifier_bend_z`
-- `src/modifiers/ifs.rs::ifs_fold`
-- `src/modifiers/mirror.rs::modifier_mirror_x`
-- `src/modifiers/mirror.rs::modifier_mirror_y`
-- `src/modifiers/mirror.rs::modifier_mirror_z`
-- `src/modifiers/noise.rs::fbm_noise_3d`
-- `src/modifiers/noise.rs::modifier_noise_perlin_batch8`
-- `src/modifiers/noise.rs::modifier_noise_simplex`
-- `src/modifiers/noise.rs::perlin_noise_3d_batch8`
-- `src/modifiers/repeat.rs::modifier_repeat_polar`
-- `src/modifiers/repeat.rs::modifier_repeat_x`
-- `src/modifiers/repeat.rs::modifier_repeat_y`
-- `src/modifiers/repeat.rs::modifier_repeat_z`
-- `src/modifiers/sweep.rs::sweep_bezier_dist_y`
-- `src/modifiers/twist.rs::modifier_twist_x`
-- `src/modifiers/twist.rs::modifier_twist_z`
 - `src/npr/compiled_color.rs::ADD`
 - `src/npr/compiled_color.rs::BLOOM`
 - `src/npr/compiled_color.rs::ColorOp::stack_effect`
@@ -998,16 +976,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/npr/scene_composer.rs::SceneShaderBuilder::with_camera`
 - `src/npr/scene_composer.rs::SceneShaderBuilder::with_outline`
 - `src/npr/scene_composer.rs::SceneShaderBuilder::with_shading`
-- `src/operations/intersection.rs::sdf_intersection_multi`
-- `src/operations/smooth.rs::sdf_smooth_intersection_rk`
-- `src/operations/smooth.rs::sdf_smooth_subtraction_rk`
-- `src/operations/smooth.rs::sdf_smooth_union_rk`
-- `src/operations/smooth.rs::smooth_min_cubic`
-- `src/operations/smooth.rs::smooth_min_cubic_rk`
-- `src/operations/smooth.rs::smooth_min_exp`
-- `src/operations/smooth.rs::smooth_min_exp_rk`
-- `src/operations/smooth.rs::smooth_min_root`
-- `src/operations/union.rs::sdf_union_multi`
 - `src/optimize.rs::OptimizationStats`
 - `src/optimize.rs::optimization_stats`
 - `src/physics_bridge.rs::CompiledSdfField`
@@ -1017,19 +985,9 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/physics_bridge.rs::CompiledSdfField::new`
 - `src/physics_bridge.rs::CompiledSdfField::with_epsilon`
 - `src/physics_bridge.rs::sdf_to_physics_field`
-- `src/primitives/capsule.rs::sdf_capsule_horizontal`
-- `src/primitives/capsule.rs::sdf_capsule_vertical`
-- `src/primitives/cylinder.rs::sdf_cylinder_capped`
-- `src/primitives/cylinder.rs::sdf_cylinder_infinite`
 - `src/primitives/mod.rs::PrimitiveType`
 - `src/primitives/mod.rs::eval_primitive`
 - `src/primitives/mod.rs::eval_primitive_unchecked`
-- `src/primitives/plane.rs::sdf_plane_from_points`
-- `src/primitives/plane.rs::sdf_plane_xy`
-- `src/primitives/plane.rs::sdf_plane_xz`
-- `src/primitives/plane.rs::sdf_plane_yz`
-- `src/primitives/torus.rs::sdf_torus_capped`
-- `src/primitives/torus.rs::sdf_torus_oriented`
 - `src/sim_bridge.rs::GpuPhysicsBundle`
 - `src/sim_bridge.rs::SimulatedSdf`
 - `src/sim_bridge.rs::SimulatedSdf::add_erosion`
@@ -1134,31 +1092,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/terrain/splatmap.rs::Splatmap::set_weight`
 - `src/texture/fitting.rs::reconstruct`
 - `src/tight_aabb.rs::TightAabbConfig::preset_medium`
-- `src/transforms/rotate.rs::rotation_axis_angle`
-- `src/transforms/rotate.rs::rotation_look_at`
-- `src/transforms/rotate.rs::transform_rotate`
-- `src/transforms/rotate.rs::transform_rotate_euler`
-- `src/transforms/rotate.rs::transform_rotate_inverse`
-- `src/transforms/scale.rs::correct_distance_nonuniform`
-- `src/transforms/scale.rs::transform_scale`
-- `src/transforms/scale.rs::transform_scale_inverse`
-- `src/transforms/translate.rs::transform_translate`
-- `src/transforms/translate.rs::transform_translate_inverse`
-- `src/types/constructors.rs::SdfNode::box3d_half_extents`
-- `src/types/constructors.rs::SdfNode::metric_ball`
-- `src/types/constructors.rs::SdfNode::metric_blend`
-- `src/types/containers.rs::Aabb::center`
-- `src/types/containers.rs::Aabb::contains`
-- `src/types/containers.rs::Aabb::from_center_extents`
-- `src/types/containers.rs::Aabb::half_extents`
-- `src/types/containers.rs::Aabb::size`
-- `src/types/containers.rs::Aabb::union`
-- `src/types/containers.rs::Ray::at`
-- `src/types/containers.rs::SdfTree::with_metadata`
-- `src/types/mod.rs::SdfNode::category`
-- `src/types/modifiers.rs::SdfNode::sine_displacement`
-- `src/types/modifiers.rs::SdfNode::sine_displacement_aniso`
-- `src/types/transforms.rs::SdfNode::translate_vec`
 - `src/volume/bake.rs::bake_volume_compiled`
 - `src/volume/bake.rs::bake_volume_with_normals`
 - `src/volume/export.rs::DdsFormat`
@@ -1202,7 +1135,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (404)
+## L1 — example-only (455)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `eval_hessian`, `mean_curvature`
@@ -1244,6 +1177,13 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/manifold.rs`: `MeshRepair`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `validate_mesh`
 - `src/mesh/mod.rs`: `Triangle`, `Triangle::new`
 - `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteConfig`, `NaniteMesh`, `generate_nanite_mesh`
+- `src/modifiers/bend.rs`: `modifier_bend_cheap`, `modifier_bend_x`, `modifier_bend_z`
+- `src/modifiers/ifs.rs`: `ifs_fold`
+- `src/modifiers/mirror.rs`: `modifier_mirror_x`, `modifier_mirror_y`, `modifier_mirror_z`
+- `src/modifiers/noise.rs`: `fbm_noise_3d`, `modifier_noise_simplex`
+- `src/modifiers/repeat.rs`: `modifier_repeat_polar`, `modifier_repeat_x`, `modifier_repeat_y`, `modifier_repeat_z`
+- `src/modifiers/sweep.rs`: `sweep_bezier_dist_y`
+- `src/modifiers/twist.rs`: `modifier_twist_x`, `modifier_twist_z`
 - `src/morphology.rs`: `eval_offset`, `eval_offset_batch`, `eval_offset_batch_parallel`, `tolerance_fits`, `tolerance_max_violation`
 - `src/neural.rs`: `NeuralSdf`, `NeuralSdf::eval`, `NeuralSdf::eval_batch`, `NeuralSdf::eval_with_gradient`, `NeuralSdf::hidden_layer_count`, `NeuralSdf::input_dimension`, `NeuralSdf::load`, `NeuralSdf::new`, `NeuralSdf::param_count`, `NeuralSdf::save`, `NeuralSdf::train`, `NeuralSdfConfig`
 - `src/npr/compiled_color.rs`: `ColorOp`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`
@@ -1263,10 +1203,24 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/npr/shader_glue.rs`: `NPR_GLSL_HELPERS`, `NPR_GLSL_PALETTE_HELPERS`, `NPR_HLSL_HELPERS`, `NPR_HLSL_PALETTE_HELPERS`, `NPR_WGSL_HELPERS`, `NPR_WGSL_PALETTE_HELPERS`, `ShaderLanguage`, `full_helpers_for`, `helpers_for`, `palette_helpers_for`
 - `src/npr/sky.rs`: `distance_color_quantize`, `light_shaft_beam`, `puffy_cloud_layer`, `sky_gradient_bands`, `sun_disc`
 - `src/npr/toon.rs`: `posterize_color`, `soft_toon_ramp`, `toon_ramp`, `two_tone`
+- `src/operations/intersection.rs`: `sdf_intersection_multi`
+- `src/operations/smooth.rs`: `sdf_smooth_intersection_rk`, `sdf_smooth_subtraction_rk`, `sdf_smooth_union_rk`, `smooth_min_cubic`, `smooth_min_exp`, `smooth_min_root`
+- `src/operations/union.rs`: `sdf_union_multi`
+- `src/primitives/capsule.rs`: `sdf_capsule_horizontal`, `sdf_capsule_vertical`
+- `src/primitives/cylinder.rs`: `sdf_cylinder_capped`, `sdf_cylinder_infinite`
+- `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
+- `src/primitives/torus.rs`: `sdf_torus_capped`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
 - `src/tight_aabb.rs`: `compute_tight_aabb`
-- `src/types/containers.rs`: `Hit`, `Ray`, `Ray::new`
+- `src/transforms/rotate.rs`: `transform_rotate_euler`
+- `src/transforms/scale.rs`: `transform_scale_inverse`
+- `src/transforms/translate.rs`: `transform_translate_inverse`
+- `src/types/constructors.rs`: `SdfNode::box3d_half_extents`, `SdfNode::metric_ball`, `SdfNode::metric_blend`
+- `src/types/containers.rs`: `Aabb::center`, `Aabb::contains`, `Aabb::from_center_extents`, `Aabb::half_extents`, `Aabb::size`, `Aabb::union`, `Hit`, `Ray`, `Ray::at`, `Ray::new`, `SdfTree::with_metadata`
+- `src/types/mod.rs`: `SdfNode::category`
+- `src/types/modifiers.rs`: `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
+- `src/types/transforms.rs`: `SdfNode::translate_vec`
 - `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`

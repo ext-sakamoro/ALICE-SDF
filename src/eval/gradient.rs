@@ -17,6 +17,7 @@
 
 use crate::eval::eval;
 use crate::modifiers::*;
+use crate::transforms::{transform_rotate, transform_rotate_inverse, transform_translate};
 use crate::types::SdfNode;
 use glam::Vec3;
 use std::f32::consts::FRAC_1_SQRT_2;
@@ -278,14 +279,14 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         // === Transforms: Jacobian propagation ===
         SdfNode::Translate { child, offset } => {
             // Translation is isometric: gradient is unchanged
-            eval_gradient(child, point - *offset)
+            eval_gradient(child, transform_translate(point, *offset))
         }
         SdfNode::Rotate { child, rotation } => {
             // f(p) = eval(child, R⁻¹p)
             // ∇f = R · ∇child(R⁻¹p)
-            let p = rotation.conjugate() * point;
+            let p = transform_rotate(point, *rotation);
             let grad = eval_gradient(child, p);
-            *rotation * grad
+            transform_rotate_inverse(grad, *rotation)
         }
         SdfNode::Scale { child, factor } => {
             // f(p) = s · eval(child, p/s)

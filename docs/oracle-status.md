@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 444 |
+| 🟢 Not ignored | 472 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **444** |
+| **Total** | **472** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (444)
+## 🟢 Not ignored (472)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -36,6 +36,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_texture_fit_oracle.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
 | `test_cache_correctness.rs` | 10 |
+| `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
 | `test_binding_oracle.rs` | 9 |
@@ -47,8 +48,10 @@ Per-file counts (the test names are in `tests/`):
 | `test_batch_operations.rs` | 8 |
 | `test_hlsl_blinkscript_parity.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
+| `test_point_transform_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
+| `test_primitive_closed_form_oracle.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
@@ -65,6 +68,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_new_modifiers.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
+| `test_csg_multi_oracle.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |

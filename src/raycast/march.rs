@@ -282,13 +282,14 @@ pub fn raymarch_with_config(
     max_distance: f32,
     config: &RaymarchConfig,
 ) -> Option<Hit> {
-    let dir = direction.normalize();
+    // `Ray::new` normalizes the direction once and `Ray::at` is `origin + dir * t`
+    let ray = Ray::new(origin, direction);
     let mut t = 0.0;
     let mut steps = 0;
     let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
-        let point = origin + dir * t;
+        let point = ray.at(t);
         let d = eval(node, point);
 
         if let Some(back) = stepper.overshoot(d) {
@@ -337,13 +338,14 @@ pub fn raymarch_detailed(
     max_distance: f32,
     config: &RaymarchConfig,
 ) -> RaymarchResult {
-    let dir = direction.normalize();
+    // `Ray::new` normalizes the direction once and `Ray::at` is `origin + dir * t`
+    let ray = Ray::new(origin, direction);
     let mut t = 0.0;
     let mut steps = 0;
     let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
-        let point = origin + dir * t;
+        let point = ray.at(t);
         let d = eval(node, point);
 
         if let Some(back) = stepper.overshoot(d) {
@@ -369,7 +371,7 @@ pub fn raymarch_detailed(
     RaymarchResult {
         hit: false,
         distance: t,
-        point: origin + dir * t,
+        point: ray.at(t),
         normal: Vec3::ZERO,
         steps,
     }

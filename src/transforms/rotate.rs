@@ -55,25 +55,6 @@ pub fn transform_rotate_euler(point: Vec3, x: f32, y: f32, z: f32) -> Vec3 {
     transform_rotate(point, rotation)
 }
 
-/// Create a rotation quaternion around an arbitrary axis
-// Public API — used by consumers for SDF transformation
-#[allow(dead_code)]
-#[inline(always)]
-pub fn rotation_axis_angle(axis: Vec3, angle: f32) -> Quat {
-    Quat::from_axis_angle(axis.normalize(), angle)
-}
-
-/// Create a rotation quaternion from a "look at" direction
-// Public API — used by consumers for SDF transformation
-#[allow(dead_code)]
-#[inline(always)]
-pub fn rotation_look_at(direction: Vec3, up: Vec3) -> Quat {
-    let forward = direction.normalize();
-    let right = up.cross(forward).normalize();
-    let up = forward.cross(right);
-    Quat::from_mat3(&glam::Mat3::from_cols(right, up, forward))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,15 +95,6 @@ mod tests {
         let result = transform_rotate_euler(point, 0.0, PI / 2.0, 0.0);
         // Inverse of CCW 90° Y rotation is CW 90°, which moves X to +Z
         let expected = Vec3::new(0.0, 0.0, 1.0);
-        assert!((result - expected).length() < 0.0001);
-    }
-
-    #[test]
-    fn test_axis_angle() {
-        let rotation = rotation_axis_angle(Vec3::Y, PI);
-        let point = Vec3::new(1.0, 0.0, 0.0);
-        let result = rotation * point;
-        let expected = Vec3::new(-1.0, 0.0, 0.0);
         assert!((result - expected).length() < 0.0001);
     }
 }

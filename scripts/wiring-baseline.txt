@@ -8,14 +8,9 @@ dead_code src/compiled/wgsl/transpiler.rs 2
 dead_code src/ffi/registry.rs 3
 dead_code src/io/asdf.rs 2
 dead_code src/mesh/mesh_to_sdf.rs 1
-dead_code src/modifiers/noise.rs 2
 dead_code src/neural.rs 1
 dead_code src/npr/compiled_color.rs 1
-dead_code src/operations/smooth.rs 2
-dead_code src/primitives/torus.rs 1
 dead_code src/python/helpers.rs 1
-dead_code src/transforms/rotate.rs 2
-dead_code src/transforms/scale.rs 1
 dead_code src/volume/export.rs 1
 unwired src/asp_bridge.rs::create_sdf_d_packet
 unwired src/asp_bridge.rs::create_sdf_i_packet
@@ -138,12 +133,10 @@ unwired src/compiled/wgsl/gpu_eval.rs::from_glsl_compute
 unwired src/compiled/wgsl/gpu_eval.rs::from_shader_async
 unwired src/compiled/wgsl/gpu_eval.rs::from_wgsl_async
 unwired src/compiled/wgsl/gpu_eval.rs::new_async
-unwired src/compiled/wgsl/gpu_eval.rs::new_dynamic
 unwired src/compiled/wgsl/gpu_eval.rs::resolve
 unwired src/compiled/wgsl/gpu_eval.rs::update_params
 unwired src/compiled/wgsl/gpu_eval.rs::wait
 unwired src/compiled/wgsl/transpiler.rs::extract_params
-unwired src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals
 unwired src/compiled/wgsl/transpiler.rs::to_volume_shader
 unwired src/compiled/wgsl/transpiler.rs::transpile_material
 unwired src/compiled/wgsl/transpiler.rs::with_workgroup_size
@@ -246,7 +239,6 @@ unwired src/mesh/collision.rs::compute_bounding_sphere
 unwired src/mesh/collision.rs::compute_convex_hull
 unwired src/mesh/collision.rs::convex_decomposition
 unwired src/mesh/collision.rs::convex_hull_from_points
-unwired src/mesh/collision.rs::half_extents
 unwired src/mesh/collision.rs::simplify_collision
 unwired src/mesh/collision.rs::total_triangles
 unwired src/mesh/collision.rs::total_vertices
@@ -369,25 +361,7 @@ unwired src/mesh/stripifier.rs::try_stripify
 unwired src/mesh/stripifier.rs::unstripify
 unwired src/mesh/stripifier.rs::unstripify_bound
 unwired src/mesh/uv_unwrap.rs::compute_uv_density
-unwired src/modifiers/bend.rs::modifier_bend_cheap
-unwired src/modifiers/bend.rs::modifier_bend_x
-unwired src/modifiers/bend.rs::modifier_bend_z
-unwired src/modifiers/ifs.rs::ifs_fold
-unwired src/modifiers/mirror.rs::modifier_mirror_x
-unwired src/modifiers/mirror.rs::modifier_mirror_y
-unwired src/modifiers/mirror.rs::modifier_mirror_z
-unwired src/modifiers/noise.rs::fbm_noise_3d
-unwired src/modifiers/noise.rs::modifier_noise_perlin_batch8
-unwired src/modifiers/noise.rs::modifier_noise_simplex
-unwired src/modifiers/noise.rs::perlin_noise_3d_batch8
-unwired src/modifiers/repeat.rs::modifier_repeat_polar
-unwired src/modifiers/repeat.rs::modifier_repeat_x
-unwired src/modifiers/repeat.rs::modifier_repeat_y
-unwired src/modifiers/repeat.rs::modifier_repeat_z
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
-unwired src/modifiers/sweep.rs::sweep_bezier_dist_y
-unwired src/modifiers/twist.rs::modifier_twist_x
-unwired src/modifiers/twist.rs::modifier_twist_z
 unwired src/npr/compiled_color.rs::ADD
 unwired src/npr/compiled_color.rs::BLOOM
 unwired src/npr/compiled_color.rs::FRESNEL
@@ -429,33 +403,13 @@ unwired src/npr/outline.rs::depth_step_outline
 unwired src/npr/outline.rs::distance_field_outline
 unwired src/npr/scene_composer.rs::with_camera
 unwired src/npr/scene_composer.rs::with_shading
-unwired src/operations/intersection.rs::sdf_intersection_multi
-unwired src/operations/smooth.rs::sdf_smooth_intersection_rk
-unwired src/operations/smooth.rs::sdf_smooth_subtraction_rk
-unwired src/operations/smooth.rs::sdf_smooth_union_rk
-unwired src/operations/smooth.rs::smooth_min_cubic
-unwired src/operations/smooth.rs::smooth_min_cubic_rk
-unwired src/operations/smooth.rs::smooth_min_exp
-unwired src/operations/smooth.rs::smooth_min_exp_rk
-unwired src/operations/smooth.rs::smooth_min_root
-unwired src/operations/union.rs::sdf_union_multi
 unwired src/optimize.rs::optimization_stats
 unwired src/physics_bridge.rs::arc
 unwired src/physics_bridge.rs::sdf_to_physics_field
 unwired src/physics_bridge.rs::with_epsilon
-unwired src/primitives/capsule.rs::sdf_capsule_horizontal
-unwired src/primitives/capsule.rs::sdf_capsule_vertical
-unwired src/primitives/cylinder.rs::sdf_cylinder_capped
-unwired src/primitives/cylinder.rs::sdf_cylinder_infinite
 unwired src/primitives/mod.rs::PrimitiveType
 unwired src/primitives/mod.rs::eval_primitive
 unwired src/primitives/mod.rs::eval_primitive_unchecked
-unwired src/primitives/plane.rs::sdf_plane_from_points
-unwired src/primitives/plane.rs::sdf_plane_xy
-unwired src/primitives/plane.rs::sdf_plane_xz
-unwired src/primitives/plane.rs::sdf_plane_yz
-unwired src/primitives/torus.rs::sdf_torus_capped
-unwired src/primitives/torus.rs::sdf_torus_oriented
 unwired src/python/helpers.rs::numpy_to_vec3_fast
 unwired src/sim_bridge.rs::GpuPhysicsBundle
 unwired src/sim_bridge.rs::add_erosion
@@ -511,24 +465,6 @@ unwired src/terrain/splatmap.rs::layer_count
 unwired src/terrain/splatmap.rs::set_weight
 unwired src/texture/fitting.rs::reconstruct
 unwired src/tight_aabb.rs::preset_medium
-unwired src/transforms/rotate.rs::rotation_axis_angle
-unwired src/transforms/rotate.rs::rotation_look_at
-unwired src/transforms/rotate.rs::transform_rotate
-unwired src/transforms/rotate.rs::transform_rotate_euler
-unwired src/transforms/rotate.rs::transform_rotate_inverse
-unwired src/transforms/scale.rs::correct_distance_nonuniform
-unwired src/transforms/scale.rs::transform_scale
-unwired src/transforms/scale.rs::transform_scale_inverse
-unwired src/transforms/translate.rs::transform_translate
-unwired src/transforms/translate.rs::transform_translate_inverse
-unwired src/types/constructors.rs::box3d_half_extents
-unwired src/types/containers.rs::at
-unwired src/types/containers.rs::from_center_extents
-unwired src/types/containers.rs::half_extents
-unwired src/types/containers.rs::size
-unwired src/types/containers.rs::with_metadata
-unwired src/types/modifiers.rs::sine_displacement_aniso
-unwired src/types/transforms.rs::translate_vec
 unwired src/volume/bake.rs::bake_volume_compiled
 unwired src/volume/bake.rs::bake_volume_with_normals
 unwired src/volume/export.rs::DdsFormat

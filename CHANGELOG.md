@@ -16,13 +16,22 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `tests/test_io_format_oracle.rs`: 往復で三角形の位置が一致すること (`{}` で書く形式は bit 一致) と、STL ASCII の文法、IGES 5.3 の固定桁と DE / P の相互参照、`.splat` の 32 byte 記録、MagicaVoxel の chunk 配置、`.abm` / `.nanite` の header と file 長、glTF の accessor の min / max と data URI を、format の仕様から独立に読んで照合する
 - examples (各 example は値を出力し assert で自己検証する): `animation_timeline` (Track / Timeline / AnimatedSdf / `morph`) / `tree_diff_undo` (`tree_diff` / `apply_patch` / `invert_patch` / `merge_patches`) / `constraint_solver` (`ConstraintSolver` の全拘束と `ParamDependencyIndex::bindings_of`) / `llm_schema_validate` / `sdf_collision` (`sdf_overlap` / `sdf_distance` / `sdf_collide` / `compute_manifold` / `sdf_ccd` / `sdf_closest_point`) / `sdf2d_shapes` (`Sdf2dNode` の全コンストラクタと `eval_2d*`) / `neural_sdf_fit` / `raycast_render` (木・compiled・SIMD の marcher と depth / normal renderer、影と AO) / `raycast_jit` (`jit` feature、JIT の marcher と renderer)
 - 閉形式の oracle: `tests/test_animation_oracle.rs` (lerp / step / Hermite / loop / 動く球) / `test_diff_oracle.rs` (往復・undo・merge) / `test_constraint_oracle.rs` (連立の閉形式解、増分更新と再 compile の bit 一致) / `test_llm_schema_oracle.rs` / `test_collision_oracle.rs` (球 2 つの接触・分離・TOI・最近点) / `test_sdf2d_oracle.rs` (円・矩形・線分・環・凸多角形の厳密 SDF、CSG と変換) / `test_neural_mlp_closed_form.rs` (重みを手で書いた NSDF で平面と slab) / `test_raycast_oracle.rs` (ray と球の交点、pinhole camera の全 pixel、影と球状空洞の AO、JIT 分は `jit` feature の CI step で走る)
+- examples `primitive_distances` / `blend_laws` / `domain_modifiers` / `point_transforms`: 特化した primitive 関数 (`sdf_capsule_vertical` / `sdf_cylinder_capped` / `sdf_plane_from_points` / `sdf_torus_capped` 等)、n 項 CSG と smooth minimum 群、1 軸の modifier (`modifier_mirror_x` / `modifier_twist_z` / `modifier_repeat_y` / `modifier_repeat_polar` / `ifs_fold` / `fbm_noise_3d` / `sweep_bezier_dist_y` 等)、点の変換と `Aabb` / `Ray::at` / `SdfTree::with_metadata` を使い、値を閉形式と突き合わせて出力する
+- `tests/test_primitive_closed_form_oracle.rs` / `test_csg_multi_oracle.rs` / `test_domain_modifier_oracle.rs` / `test_point_transform_oracle.rs`: 上の関数を `f64` の閉形式 (線分距離、円柱の (半径, 軸) 箱則、3 点平面、弧への総当たり距離、平面回転、セル折り返し、IFS の貪欲折り返しの独立実装、fBm の定義、Bezier への総当たり距離) と比べる
 
 ### Changed
 
 - `RaymarchConfig::relaxed` は Lipschitz 値を `fidelity::distance_fidelity(node).safe_step_scale()` から取る (値は従来と同じ: 有限なら `L.max(1)`、上界が無ければ plain tracing)
+- 木の評価器 (`eval` / `eval_material` / `eval_gradient`) の `Translate` / `Scale` / `Rotate` が `transform_translate` / `transform_scale` / `transform_rotate` / `transform_rotate_inverse` を呼ぶ (同じ演算、結果は bit 単位で不変)
+- `raymarch_with_config` / `raymarch_detailed` の点は `Ray::new` / `Ray::at` で求める、`sdf_collide` / `sdf_distance` / `sdf_overlap` の格子の幅は `Aabb::size` で求める (どちらも結果は不変)
+
+### Removed
+
+- crate 外から到達できない未使用の関数 (`mod` が private で再 export も無い): `smooth_min_exp_rk` / `smooth_min_cubic_rk` / `perlin_noise_3d_batch8` / `modifier_noise_perlin_batch8` / `sdf_torus_oriented` / `rotation_axis_angle` / `rotation_look_at` / `correct_distance_nonuniform`
 
 ### Fixed
 
+- **Behavior change:** `fbm_noise_3d`: octave ごとの seed を `seed.wrapping_add(i)` で求める debug build で `seed` が `u32::MAX - octaves` を超えると加算の overflow で panic していた (release build の値は不変)
 - `scripts/scip_reach.py`: CLI (`src/bin/`) を到達性の起点に加えた CLI からだけ使う item (`export_stl` / `export_ply` / `io::get_info` 等) が L0 に数えられていた
 - `scripts/scip_reach.py` / `scripts/scip_index.sh`: repo 内で本 crate に依存する crate (`server/` / `mobile/uniffi-wrapper/` / `bindings/openxr/`) を個別に索引し、その `src/` を起点に数える (`examples/` は L1、`tests/` は数えない) fuzz と同様に、索引ごとに本 crate への参照が 0 件なら失敗する
 - `scripts/wiring_guard.py`: `*const T` (raw pointer 型) を `const` item と誤認していた 後続の method が free fn 扱いになり、`.as_mut_slice()` 等の呼び出しが数えられなかった

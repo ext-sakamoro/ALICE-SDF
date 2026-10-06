@@ -22,23 +22,6 @@ pub fn sdf_torus(point: Vec3, major_radius: f32, minor_radius: f32) -> f32 {
     sdf_torus_r::<f32>(point.into(), major_radius, minor_radius)
 }
 
-/// Signed distance to a torus with arbitrary orientation
-///
-/// The torus is rotated so its axis aligns with `axis`
-#[allow(dead_code)]
-#[inline(always)]
-pub fn sdf_torus_oriented(point: Vec3, axis: Vec3, major_radius: f32, minor_radius: f32) -> f32 {
-    let axis = axis.normalize();
-
-    // Project point onto the plane perpendicular to axis
-    let projected_dist = point.dot(axis);
-    let in_plane = point - axis * projected_dist;
-    let radial_dist = in_plane.length();
-
-    let q = Vec2::new(radial_dist - major_radius, projected_dist);
-    q.length() - minor_radius
-}
-
 /// Signed distance to a capped torus (partial torus)
 ///
 /// # Arguments
@@ -105,12 +88,5 @@ mod tests {
         // On top surface
         let d = sdf_torus(Vec3::new(2.0, 0.5, 0.0), 2.0, 0.5);
         assert!(d.abs() < 0.0001);
-    }
-
-    #[test]
-    fn test_torus_oriented() {
-        // Torus with Y axis (same as default)
-        let d = sdf_torus_oriented(Vec3::new(2.0, 0.0, 0.0), Vec3::Y, 2.0, 0.5);
-        assert!((d + 0.5).abs() < 0.0001);
     }
 }

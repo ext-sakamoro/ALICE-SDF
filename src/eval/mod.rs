@@ -452,8 +452,8 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         // === Transforms ===
         // Transform point, then recurse.
         SdfNode::Translate { child, offset } => {
-            // Direct inline: point - offset (no function call)
-            eval(child, point - *offset)
+            // `transform_translate` is `#[inline(always)]`: the same single subtract
+            eval(child, transform_translate(point, *offset))
         }
         SdfNode::Rotate { child, rotation } => {
             // Same formula as the compiled / SIMD paths (`Real::rotate_inverse`),
@@ -466,7 +466,9 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             // `p * (1/s)`, the compiled evaluators' law (`Instruction::scale`
             // precomputes the reciprocal); `p / s` differs by an ulp and the
             // tree must be bit-identical to them (`tests/test_det_parity.rs`)
-            eval(child, point * (1.0 / *factor)) * factor
+            // (`transform_scale` is exactly that law and returns the multiplier `s`)
+            let (p, mult) = transform_scale(point, *factor);
+            eval(child, p) * mult
         }
         SdfNode::ScaleNonUniform { child, factors } => {
             let (p, mult) = transform_scale_nonuniform(point, *factors);
@@ -711,12 +713,14 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         }
 
         // Transforms: transform point, recurse
-        SdfNode::Translate { child, offset } => eval_material(child, point - *offset),
+        SdfNode::Translate { child, offset } => {
+            eval_material(child, transform_translate(point, *offset))
+        }
         SdfNode::Rotate { child, rotation } => eval_material(
             child,
             crate::compiled::real::rotate_inverse::<f32>(*rotation, point.into()).into(),
         ),
-        SdfNode::Scale { child, factor } => eval_material(child, point * (1.0 / *factor)),
+        SdfNode::Scale { child, factor } => eval_material(child, transform_scale(point, *factor).0),
         SdfNode::ScaleNonUniform { child, factors } => {
             let (p, _) = transform_scale_nonuniform(point, *factors);
             eval_material(child, p)

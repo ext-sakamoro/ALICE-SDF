@@ -105,16 +105,6 @@ pub fn smooth_min_exp(a: f32, b: f32, k: f32) -> f32 {
     a.min(b) - alice_det_math::ln(1.0 + alice_det_math::exp(-k * delta)) / k
 }
 
-/// Exponential smooth minimum — precomputed reciprocal edition.
-/// Takes `rk = 1.0 / k` to eliminate division.
-#[allow(dead_code)] // reserved for future SIMD optimization path
-#[inline(always)]
-pub fn smooth_min_exp_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    // Same overflow-free form as `smooth_min_exp`
-    let delta = if a == b { 0.0 } else { (a - b).abs() };
-    a.min(b) - alice_det_math::ln(1.0 + alice_det_math::exp(-k * delta)) * rk
-}
-
 /// Exponential smooth union with blend *width* `k` (`SdfNode::ExpSmoothUnion` law).
 ///
 /// `-k * ln(exp(-d1/k) + exp(-d2/k))` — note the `d/k` convention (width),
@@ -142,15 +132,6 @@ pub fn sdf_exp_smooth_subtraction(d1: f32, d2: f32, k: f32) -> f32 {
 pub fn smooth_min_cubic(a: f32, b: f32, k: f32) -> f32 {
     let k = k.max(1e-10);
     let h = (k - (a - b).abs()).max(0.0) / k;
-    (h * h * h * k) * -(1.0 / 6.0) + a.min(b)
-}
-
-/// Cubic smooth minimum — precomputed reciprocal edition.
-/// Takes `rk = 1.0 / k` to eliminate division.
-#[allow(dead_code)] // reserved for future SIMD optimization path
-#[inline(always)]
-pub fn smooth_min_cubic_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
-    let h = ((a - b).abs() * -rk + 1.0).max(0.0);
     (h * h * h * k) * -(1.0 / 6.0) + a.min(b)
 }
 
@@ -316,30 +297,6 @@ mod tests {
         );
     }
 
-    // The reciprocal forms are not reachable from outside (`mod smooth` is private, "reserved for a
-    // future SIMD path"), so they are checked against their scalar siblings here.
-    #[test]
-    fn exp_and_cubic_rk_forms_agree_with_the_scalar_forms() {
-        for &k in &[0.3_f32, 1.0, 4.0] {
-            let rk = 1.0 / k;
-            for ia in -8..=8 {
-                for ib in -8..=8 {
-                    let (a, b) = (ia as f32 * 0.5, ib as f32 * 0.5);
-                    let (e, e_rk) = (smooth_min_exp(a, b, k), smooth_min_exp_rk(a, b, k, rk));
-                    assert!(
-                        (e - e_rk).abs() < 1e-5 * (1.0 + e.abs()),
-                        "exp rk at ({a}, {b}, {k}): {e_rk} vs {e}"
-                    );
-                    let (c, c_rk) = (smooth_min_cubic(a, b, k), smooth_min_cubic_rk(a, b, k, rk));
-                    assert!(
-                        (c - c_rk).abs() < 1e-5 * (1.0 + c.abs()),
-                        "cubic rk at ({a}, {b}, {k}): {c_rk} vs {c}"
-                    );
-                }
-            }
-        }
-    }
-
     #[test]
     fn exp_min_forms_are_finite_for_finite_arguments_far_from_the_surface() {
         // `exp(-k d)` underflows / overflows for |k d| > ~88: the result must stay the finite
@@ -350,14 +307,10 @@ mod tests {
             (100.0, -100.0, 10.0),
         ] {
             let want = a.min(b) - (1.0 + (-k * (a - b).abs()).exp()).ln() / k;
-            let (e, e_rk) = (smooth_min_exp(a, b, k), smooth_min_exp_rk(a, b, k, 1.0 / k));
+            let e = smooth_min_exp(a, b, k);
             assert!(
                 e.is_finite() && (e - want).abs() < 1e-3,
                 "smooth_min_exp({a}, {b}, {k}) = {e} (want {want})"
-            );
-            assert!(
-                e_rk.is_finite() && (e_rk - want).abs() < 1e-3,
-                "smooth_min_exp_rk({a}, {b}, {k}) = {e_rk} (want {want})"
             );
         }
         // equal infinities are the infinity, not NaN
