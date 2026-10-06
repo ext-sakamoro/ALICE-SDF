@@ -302,6 +302,14 @@ jobs:
         run: |
           python scripts/gen-wiring-status.py
           python scripts/gen-oracle-status.py
+      - name: docs lint oracle (検査器自身の試験)
+        run: python scripts/test_docs_lint.py
+      - name: docs lint (公開文書の語彙と CHANGELOG の構造、比較 0 件で fail)
+        run: python scripts/docs_lint.py --check
+      - name: README sync oracle (検査器自身の試験)
+        run: python scripts/test_readme_sync.py
+      - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)
+        run: python scripts/readme_sync.py --check
 
   wasm:
     name: WebAssembly (wasm32) cross-compile

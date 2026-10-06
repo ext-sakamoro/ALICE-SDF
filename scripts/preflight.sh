@@ -72,6 +72,12 @@ python3 scripts/test_gen_status.py
 python3 scripts/gen-wiring-status.py
 python3 scripts/gen-oracle-status.py
 
+step "docs: oracle + 公開文書の語彙と CHANGELOG の構造 / README と code の一致"
+python3 scripts/test_docs_lint.py
+python3 scripts/docs_lint.py --check
+python3 scripts/test_readme_sync.py
+python3 scripts/readme_sync.py --check
+
 step "fmt: cargo fmt --check (core)"
 cargo fmt --check
 

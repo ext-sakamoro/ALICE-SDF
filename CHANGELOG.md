@@ -1,122 +1,39 @@
 # Changelog
 
 All notable changes to ALICE-SDF are documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
 
 For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHANGELOG-history.md).
 
 ## [Unreleased]
 
-### Added — `rust` feature: SdfNode を依存の無い Rust source に出力する transpiler (2026-10-04)
+### Added
 
-- `compiled::rust::RustSource::transpile(&SdfNode)` が `pub fn sdf(x, y, z) -> f32` と `pub fn normal(x, y, z) -> (f32, f32, f32)` を出力する
-  利用側の `build.rs` で shader と同じ SdfNode から CPU 評価器を生成し、実行時は `alice-det-math` だけに依存する用途
-- 出力は `CompiledSdf` の bytecode を直線 code に展開したもので、`eval_compiled` と同じ定数・演算順・`alice_det_math` kernel を使う
-  距離は `eval_compiled`、法線は `eval_compiled_normal` (四面体差分、epsilon は `RustTranspileOptions::normal_epsilon`、既定 1e-3) と bit 一致
-- 対応 opcode は `compiled::rust::is_supported` (primitive 12 / CSG 15 (smooth / chamfer / exp smooth / xor / morph / metric blend を含む) / transform 4 / modifier 15)
-  未対応 opcode は `RustTranspileError::UnsupportedOpcode` を返す (既定値で埋めない)
-- `tests/test_rust_transpiler_oracle.rs`: 出力を `rustc` で `opt-level=0` / `3` の 2 通りに compile して実行し、corpus の対応 entry と合成 scene 計 78 個 × 1538 点で `to_bits()` を比較する
-  比較件数が 0 または期待件数と違えば fail、対応 opcode のうち scene が通らないものがあれば fail
-- `examples/rust_transpile.rs`、CI の Test job に oracle の step、clippy (Linux 全 feature) / examples build / docs.rs feature set に `rust` を追加 (`scripts/preflight.sh` も同じ引数集合)
+- `rust` feature: `compiled::rust::RustSource::transpile(&SdfNode)` が依存の無い Rust source (`pub fn sdf` / `pub fn normal`) を出力する
+  距離は `eval_compiled`、法線は `eval_compiled_normal` と bit 一致、未対応の opcode は `RustTranspileError::UnsupportedOpcode` を返す
+- `tight_aabb::analytic_aabb`: 準位集合の bound を木の上で伝播する境界箱 (sphere / box3d / cylinder / torus / capsule と剛体変換・一様 scale・offset・CSG に対応、それ以外は `Unsupported`)
+- `scripts/wiring_guard.py`: production から呼ばれない `pub` item と理由の無い `#[allow(dead_code)]` の新規追加で CI を失敗させる (既存分は `scripts/wiring-baseline.txt`)
+- `scripts/gen-oracle-status.py` / `scripts/gen-wiring-status.py`: `docs/oracle-status.md` / `docs/wiring-status.md` を生成する (走査 0 件で失敗)
+- `scripts/ci_test_coverage_check.py`: feature で切り替わる test file / 分岐を、その feature 付きで実行する CI step が無いと失敗する
+- `scripts/docs_lint.py` / `scripts/readme_sync.py`: 公開文書の語彙と CHANGELOG の構造を検査し、README の feature 表・MSRV・使用例と `docs/MODULES.md` を code と突き合わせる
+- `docs/MODULES.md` (公開 module の一覧)、`SECURITY.md`、`docs/GETTING_STARTED.md` / `docs/TEXT_TO_3D.md` / `docs/INTEGRATIONS.md` (日本語版あり)
 
-### Fixed — feature 付きの integration oracle 28 本と test 内の分岐 2 つが CI で実行されていなかった (2026-10-04)
+### Changed
 
-- `tests/test_physics_bridge_determinism.rs` (9 本、`physics`) と `tests/npr_shader_validate.rs` (19 本、`glsl` + `gpu`) は
-  file 先頭が `#![cfg(feature = …)]` で、CI の `cargo test --tests` (default feature) では 3 OS とも `running 0 tests` だった
-  Test job に feature 付きの step を 2 本追加した
-- `tests/test_round_tie_parity.rs` の `jit` / `hlsl` 分岐は CI で compile されていなかった JIT / HLSL の step に `--test test_round_tie_parity` を追加した
-- `scripts/preflight.sh` に同じ step を追加した
+- **Behavior change:** `compute_tight_aabb*` は区間探索の結果と `analytic_aabb` の交差を返す 回転した形状の箱が膨らまなくなった (型は不変、`Unsupported` の木は従来と同じ結果)
+- README を再構成した: 決定性の範囲と CI での検証環境、Cargo feature 表 (AGPL の crate をリンクする `physics` / `codec` / `sdf-cache` を明示)、検証状況、ライセンスの適用範囲 旧 README の長い節は `docs/` の上記 3 文書へ移した
+- crate doc (`src/lib.rs`、docs.rs の表示) を README と同じ使用例と feature 表にした
 
-### Added — feature 付き oracle の CI 実行を突合する検査器 (2026-10-04)
+### Fixed
 
-- `scripts/ci_test_coverage_check.py` は `tests/*.rs` の `#![cfg(…)]` / `#[cfg(…)]` (feature を含むもの) と、push / pull_request で起動する
-  workflow の `cargo test` (feature 集合 / `--test` / `--tests` / `--lib` / `working-directory` / `-p`) を突合し、
-  満たす呼び出しが 1 つも無い file / 分岐があれば fail する 走査対象が 0 件でも fail する
-- `scripts/test_ci_test_coverage_check.py` (27 本) が検査器自身を試験する ci.yml の `wiring-guard` job (3 OS) と preflight に追加した
-
-### Fixed — push の変更検出が cancel / red の run の変更を取りこぼしていた (2026-10-04)
-
-- ci.yml の `changes` job は push の比較元を直前の push にしていたため、その run が cancel / red のまま次の push が来ると、
-  前回分の変更を対象にした job が skipped になり CI は success になった (同じ tree の再 push で全 job が skipped になった run を確認)
-- push の比較元を「main で最後に CI が success した commit」に変えた 取得できない時 (初回 / 履歴から消えた / API 失敗) は全 job を走らせる
-- `docs/oracle-status.md` の「Not ignored (run by CI)」を「Not ignored」に改めた (生成器は `#[ignore]` の有無だけを見ており CI での実行は判定しない)
-
-### Added — oracle / 配線の台帳生成器と、走査件数 0 で fail する gate (2026-10-04)
-
-- `scripts/gen-oracle-status.py` / `scripts/gen-wiring-status.py` を追加し、`docs/oracle-status.md` / `docs/wiring-status.md` を生成する
-  main への push で `oracle-status.yml` / `wiring-status.yml` が台帳を更新する (2 本は同じ concurrency group で直列化)
-- `scripts/test_gen_status.py` が生成器自身を試験する ci.yml の `wiring-guard` job (3 OS) と `scripts/preflight.sh` に同じ step を追加した
-- oracle の走査件数が 0 のときは生成器が exit 1 を返す (空振りを green と読まない)
-- `scripts/wiring_guard.py` の走査除外に `scratchpad` を追加した
-
-### Changed — `compute_tight_aabb` が回転で膨らまなくなった (準位集合の bound を木の上で伝播) (2026-10-03)
-
-区間演算の探索は、回転後の座標 (y', z' が共に y, z に依存する) の相関を捨てるので、回転した薄板が実測の 2 倍超に膨らんで返った
-(text-to-print の `rotate(30°, box3d(15,15,0.4))` が板の大半を欠いた原因の一つ)
-- ★`tight_aabb::analytic_aabb` を追加した 木を降りながら準位 `delta` を持ち回り、剛体変換と一様 scale は累積した写像として葉で 1 回だけ適用する
-  (box は `|R|·half` で厳密、入れ子の回転でも累積しない) offset (`round` / `onion`) は子の準位を `+r` / `+t`、smooth union は `+k/4`、
-  一様 scale は `delta / s`、union は hull、intersection は交差、subtraction は被減数だけで押さえる
-  対応するのは sphere / box3d / cylinder / torus / capsule と上の演算のみで、他 (twist / bend / 繰り返し / 近似距離場) を含む木は `Unsupported` を返す
-- `compute_tight_aabb*` は、区間探索の結果と `analytic_aabb` の交差を返す どちらも表面を含むので交差も含み、どちらより緩くならない (公開 API の型は変えていない)
-  `Unsupported` の木は従来と同じ結果
-- oracle 11 本 (回転 box の閉形式 / 入れ子回転 / 平行移動・scale・回転の合成 / 薄板の膨らみ / 準位のずれ / 乱択木 400 本の充足点の包含 / 回転 box の角の丸め) と
-  変異 11 種 (abs を落とす / 回転を累積しない / subtract で b を使う / smooth の k/4 を落とす / scale の準位 / round の符号 / onion / meet を hull に / 交差を使わない / 平行移動を回さない / 外向き padding を外す) が red になることを実測した
-
-
-### Fixed — 退化した入力で落ちる / 固まる 8 件 (2026-10-02)
-
-`tests/test_degenerate_input_oracle.rs` (14 本) を足し、公開 API の全プリミティブ構築関数 (68 種) と全モディファイア / 変換 (24 種) の
-パラメータの直積 (0 / 負 / NaN / inf / 微小 / 通常) x 退化した点を、評価・勾配・法線・Lipschitz・raymarch・compiled の各経路で、
-さらに各ファイル形式のパーサーへ切り詰め・破損・乱数のバイト列を与えたところ、次が見つかった (debug ビルド、★は release でも発生)
-- ★`solid_angle` / `pie` / `parabola_segment` / `capsule` の縦横 / `regular_polygon`: `f32::clamp(min, max)` の境界がパラメータで、
-  負または NaN の半径・幅で `min > max` / NaN となり panic した 全域な `clamp_total` (NaN は伝播、範囲が逆なら下端を返す) に置き換えた
-  (有効な範囲では `clamp` と同じ値)
-- `noise` modifier: `x.floor() as i32` は |x| >= 2^31 で飽和するので、次の格子の添字 `+ 1` が debug ビルドで overflow panic した
-  (release は wrap していた) `wrapping_add(1)` にして両者を一致させた
-- ★`heightmap_displacement` / `bilinear_sample`: 幅 / 高さ 0 で `w - 1` が underflow し、データが `w * h` より短いと添字が範囲外だった
-  退化した map は 0 を返す
-- ★GLB インポーター (`import_glb_bytes`): 範囲外の accessor / bufferView 参照、法線 / UV が位置より短い、index が頂点数以上、
-  `count * 要素数` や `byteOffset + 長さ` の整数 overflow、巨大な `Vec::with_capacity` で panic した 破損・悪意のあるファイルで
-  プロセスが落ちるので、添字は `.get()`、算術は `checked_*`、確保の前にバイト範囲を検証し、法線 / UV の長さと index の範囲も検証して
-  `IoError` を返すようにした (obj / stl / ply / fbx / abm / json / asdf は各 1.8 万件の破損で panic なし)
-- ★`raymarch`: 退化した field (`scale(0)` などで Lipschitz 上界が 1e6 に頭打ちされる) で、ステップ予算が `max_steps * bound` = 2.56 億に
-  膨らみ、光線 1 本が 18 秒 (debug) かかった 予算の上限 `MAX_STEP_BUDGET` (65 536 = 既定の 256 倍) を設けた (TPMS の L = 7 は変わらない)
-- `eval_interval` の `Scale` / `ScaleNonUniform`: 係数が 0 / NaN / inf (または逆数が overflow) だと `[-1e-45, NaN]` や反転した区間
-  (`Interval::new` の debug assertion、release では「全域が内部」と誤って示す) を返した この場合の唯一の健全な包含である
-  `Interval::entire()` (-inf, +inf) を返す (text-to-print の `scale(0.0, sphere(1.0))` が debug で落ちていた)
-- ★`surface_roughness` の `fbm`: octaves が 32 以上で `1u32 << i` が overflow して panic し、u32::MAX では数分ループした 項 `i` の振幅 2^-i は 24 で f32 の精度を下回るので `MAX_FBM_OCTAVES` = 24 で打ち切る (24 以下の値は変わらない)
-- 変異 27 種 (修正を戻す / 検査を外す / 上限を外す) が red になることを実測した
-- 対象外 (意図された契約): `CompiledSdf::compile` の `# Panics` (`try_compile` が代替)、`Interval::new` の `debug_assert!` (呼び出し側が計算した境界の前提)
-
-### Fixed — `operations::smooth_min_exp` が有限の入力に `±inf` を返した (2026-10-02)
-
-`smooth_min_exp(a, b, k)` (指数の smooth min、`k` は率 `exp(-k d)`) は `-ln(e^{-ka} + e^{-kb}) / k` を素朴に計算していたため、
-`k·a` が約 88 を超えると f32 の `exp` が 0 に潰れて `ln(0)` で **`+inf`**、-88 を下回ると `exp` が `inf` に溢れて **`-inf`** になった
-(`smooth_min_exp(100, 100, 10)` = `inf` で正解は 99.93、`(-100, -100, 10)` = `-inf`、`(50, 51, 8)` = `inf`)
-`sdf_exp_smooth_union_r` が `fuzz_eval_parity` の発見で直されたのと同じ形 `min(a, b) - ln(1 + e^{-k|a-b|}) / k` にした
-`a == b` は先に `delta = 0` として `inf == inf` が NaN にならないようにした 未使用の `smooth_min_exp_rk` も同じ形にした
-(どちらもライブラリ内部の呼び出しはなく、評価器の bit 一致には影響しない 公開 API の値が変わるのは、以前 `±inf` / 不安定だった範囲だけ)
-
-### Added — smooth CSG 演算子の閉形式 oracle (2026-10-02)
-
-`operations/smooth.rs` の既存 9 test は「`<= min`」「対称」「`k = 0` で `min`」だけで、値を検査していなかった
-(係数の取り違え `k/4` → `k/3`、引数の入れ替え、`d/k` と `k·d` の慣習の混同が全部通る)
-`tests/test_smooth_ops_oracle.rs` (17 本) で次を独立の参照と突き合わせる
-- 多項式 / 3 次 / 平方根 / 指数 (幅と率の 2 つの慣習) の値を f64 の閉形式と (min / max / 和 / 積 / 差)
-- 構造の法則: 対称、`min - 欠損量` 以内 (欠損量は `k/4`・`k/6`・`k ln2`・`ln2/k`・`k/2`)、移動不変、正の斉次性、単調、2 つの重みの和 = 1、コンパクト台
-- 幾何: 直交する 2 平面の内角で、対角方向の面までの距離が `√2 · 欠損量` (`SmoothUnion` で `k√2/4`、`ExpSmoothUnion` で `k√2 ln2`)
-- 1 つの法則: rk 版との bit 一致、`Real` 版の f32 と `f32x8` の各レーンがスカラーと bit 一致 (多項式族)
-- 頑健性: 有限の入力は有限の出力、退化入力 (NaN / inf / MAX) で panic しない
-変異 19 種 (係数 / 符号 / 引数 / 慣習 / 安定形 / rk の丸め / 下限) が red になることを実測した
-
-### Added — 配線ガード (`scripts/wiring_guard.py`) を導入 (2026-10-02)
-
-実装したが production から呼ばれていない `pub` / `pub(crate)` item と、理由の無い
-`#[allow(dead_code)]` の新規追加を CI で止める検査器を ALICE-Physics から移植した
-
-- `scripts/test_wiring_guard.py`: 検査器自身の oracle 79 本
-- `scripts/wiring-baseline.txt`: 既存の違反 (unwired 696 件 / dead_code 32 件) を記録するラチェット 既存分は解消しておらず、新規の違反だけが fail する
-  ライブラリ crate なので `pub use` の再 export、コメント、test からしか参照されない API 面が大半を占める
-- CI: `wiring-guard` job (ubuntu / macOS / Windows、paths-filter の対象外) と `scripts/preflight.sh` の step を追加
+- `operations::smooth_min_exp` / `smooth_min_exp_rk` が `|k·a|` が約 88 を超える有限の入力に `±inf` を返していた
+- 退化したパラメータで panic していた: `solid_angle` / `pie` / `parabola_segment` / `capsule` / `regular_polygon` の負・NaN の寸法、`noise` の巨大な座標 (debug)、`heightmap_displacement` の幅 0 の map、`surface_roughness` の octaves 32 以上 (24 で打ち切る)
+- `io::import_glb_bytes` が破損した GLB (範囲外の参照、整数 overflow、巨大な確保) で panic していた `IoError` を返す
+- `raymarch` が退化した field で光線 1 本に数十秒かかっていた ステップ予算に上限 `MAX_STEP_BUDGET` を設けた
+- `eval_interval` の `Scale` / `ScaleNonUniform` が係数 0 / NaN / inf で反転した区間を返していた `Interval::entire()` を返す
+- CI: feature 付きの integration test 28 本と `test_round_tie_parity` の `jit` / `hlsl` 分岐が実行されていなかった
+- CI: push の変更検出が、cancel / red になった run の変更を次の push で取りこぼしていた
 
 ## [4.0.0] - 2026-09-30
 
