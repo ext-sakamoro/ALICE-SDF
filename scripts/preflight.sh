@@ -270,6 +270,7 @@ cargo test --features jit \
   --test test_det_parity \
   --test test_evaluator_opcode_parity \
   --test test_relaxed_tracing \
+  --test test_raycast_oracle \
   --test test_round_tie_parity
 
 # file 先頭が `#![cfg(feature = …)]` の oracle (default の --tests では 0 本、ci.yml と対)

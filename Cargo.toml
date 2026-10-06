@@ -242,6 +242,11 @@ required-features = ["rust"]
 name = "unreal_plugin_icon"
 required-features = ["image"]
 
+# Ray casting with the Cranelift JIT evaluators (scalar + 8-wide SIMD).
+[[example]]
+name = "raycast_jit"
+required-features = ["jit"]
+
 # Declare the 5 bridge features as known even though the entries are
 # gone from [features] for the 1.7.7 crates.io publish. Without this
 # `cargo clippy -- -D warnings` and `cargo doc -Dwarnings` fail on

@@ -246,7 +246,7 @@ jobs:
       # `ParserError: Missing expression after unary operator '--'` で落ちる
       # (2026-09-30 実測、run 36675779379 = Linux / macOS は success で Windows のみ failure)。
       - name: Test (integration, JIT parity oracles) [T3]
-        run: cargo test --features jit --test test_det_parity --test test_evaluator_opcode_parity --test test_relaxed_tracing --test test_round_tie_parity
+        run: cargo test --features jit --test test_det_parity --test test_evaluator_opcode_parity --test test_relaxed_tracing --test test_raycast_oracle --test test_round_tie_parity
 
       # MSL は WGSL emit を naga で翻訳したもの (compiled::msl)。翻訳と binding map
       # の誤りはここでしか出ないので、macOS runner で Metal runtime compiler
