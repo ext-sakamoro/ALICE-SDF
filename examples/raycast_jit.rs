@@ -106,6 +106,6 @@ fn main() {
             compared += 1;
         }
     }
-    assert!(compared == 32);
+    assert_eq!(compared, 32);
     println!("all checks passed");
 }
