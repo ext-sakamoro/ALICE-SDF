@@ -245,7 +245,8 @@ def check(root: str) -> tuple[list[str], dict[str, int]]:
         if cv and released and cv not in released and semver_key(cv) < semver_key(released[0]):
             errors.append(f"CHANGELOG.md: Cargo.toml version {cv} is older than the newest section [{released[0]}]")
         body = unreleased_body(cl)
-        if body is not None:
+        # an empty [Unreleased] is the normal state right after a release
+        if body is not None and body.strip():
             cats = re.findall(r"^### (\w+)", body, re.M)
             counts["categories"] = len(cats)
             for c in sorted(set(cats)):
@@ -257,7 +258,7 @@ def check(root: str) -> tuple[list[str], dict[str, int]]:
                 if EMOJI_RE.search(line):
                     errors.append(f"CHANGELOG.md [Unreleased] line {i}: emoji status marker (use **Behavior change:** / **Breaking:**)")
         else:
-            counts["categories"] = 1  # no unreleased work: nothing to compare, not an error
+            counts["categories"] = 1  # no unreleased work (or just released): nothing to compare, not an error
 
     # private / internal names (hashed above) anywhere in the tree: file paths and
     # the text of every tracked file, not only the four documents. Generated

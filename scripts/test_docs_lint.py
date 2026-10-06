@@ -341,10 +341,14 @@ class Changelog(unittest.TestCase):
         # "### Added — old style heading" in [1.4.0] is history, not checked
         self.assertEqual(errors(), [])
 
-    def test_unreleased_without_categories_compares_nothing(self):
-        cl = CHANGELOG.split("### Added")[0] + "## [1.4.0] - 2026-09-17\n"
+    def test_unreleased_entries_without_categories_compare_nothing(self):
+        cl = CHANGELOG.split("### Added")[0] + "- an entry with no category heading\n\n## [1.4.0] - 2026-09-17\n"
         e = errors({"CHANGELOG.md": cl})
         self.assertTrue(any("compared nothing" in x and "categories" in x for x in e), e)
+
+    def test_an_empty_unreleased_right_after_a_release_passes(self):
+        cl = "# Changelog\n\n## [Unreleased]\n\n## [1.5.0] - 2026-10-07\n\n### Added\n\n- x\n\n## [1.4.0] - 2026-09-17\n"
+        self.assertEqual(errors({"CHANGELOG.md": cl}), [])
 
 
 if __name__ == "__main__":
