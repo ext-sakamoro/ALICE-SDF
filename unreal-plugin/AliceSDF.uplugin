@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 7,
-	"VersionName": "4.0.0",
+	"VersionName": "4.1.0",
 	"FriendlyName": "ALICE-SDF",
 	"Description": "Adaptive Lightweight Implicit Compression Engine - SDF integration for Unreal Engine 5 (built and tested on 5.7 by CI)",
 	"Category": "Rendering",

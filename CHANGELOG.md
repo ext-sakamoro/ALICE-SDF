@@ -8,6 +8,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-10-07
+
 ### Added
 
 - `rust` feature: `compiled::rust::RustSource::transpile(&SdfNode)` が依存の無い Rust source (`pub fn sdf` / `pub fn normal`) を出力する
@@ -30,6 +32,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Fixed
 
+- `scripts/docs_lint.py` reported an empty `[Unreleased]` (the state right after a release) as "check `categories` compared nothing", so no release could pass the docs gate; an empty section now passes and an `[Unreleased]` with entries but no category heading still fails
 - `SdfCategory::count()` / `SdfCategory::total()` が 4.0.0 で追加した variant を数えておらず 72 / 24 / 7 / 23 (計 126) を返していた 正しくは 74 / 25 / 7 / 24 (計 130) 1 variant につき 1 node を作って `category()` で数え直す test を追加し、表がずれると red になるようにした 同じ数を書いていた文書 (ARCHITECTURE / USAGE / bindings・unreal-plugin の README / skills) も更新
 - `operations::smooth_min_exp` / `smooth_min_exp_rk` が `|k·a|` が約 88 を超える有限の入力に `±inf` を返していた
 - 退化したパラメータで panic していた: `solid_angle` / `pie` / `parabola_segment` / `capsule` / `regular_polygon` の負・NaN の寸法、`noise` の巨大な座標 (debug)、`heightmap_displacement` の幅 0 の map、`surface_roughness` の octaves 32 以上 (24 で打ち切る)
