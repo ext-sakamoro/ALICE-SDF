@@ -453,46 +453,6 @@ fn reduce_to_union(mut nodes: Vec<SdfNode>) -> SdfNode {
     nodes.pop().unwrap()
 }
 
-/// Signed distance to a triangle (Deep Fried)
-///
-/// Computes the exact signed distance to a triangle.
-/// Positive outside, negative inside (requires consistent winding).
-// Internal helper for mesh-to-SDF conversion pipeline
-#[allow(dead_code)]
-#[inline(always)]
-fn sdf_triangle(point: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> f32 {
-    let e0 = v1 - v0;
-    let e1 = v2 - v1;
-    let e2 = v0 - v2;
-
-    let n = e0.cross(e1);
-
-    let p0 = point - v0;
-    let p1 = point - v1;
-    let p2 = point - v2;
-
-    // Check if point projects inside triangle
-    let d0 = e0.cross(n).dot(p0);
-    let d1 = e1.cross(n).dot(p1);
-    let d2 = e2.cross(n).dot(p2);
-
-    if d0 >= 0.0 && d1 >= 0.0 && d2 >= 0.0 {
-        // Inside triangle - distance to plane
-        return p0.dot(n) / n.length();
-    }
-
-    // Outside triangle - distance to nearest edge
-    let c0 = e0 * (p0.dot(e0) / e0.dot(e0)).clamp(0.0, 1.0) - p0;
-    let c1 = e1 * (p1.dot(e1) / e1.dot(e1)).clamp(0.0, 1.0) - p1;
-    let c2 = e2 * (p2.dot(e2) / e2.dot(e2)).clamp(0.0, 1.0) - p2;
-
-    let d0 = c0.length_squared();
-    let d1 = c1.length_squared();
-    let d2 = c2.length_squared();
-
-    d0.min(d1).min(d2).sqrt()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

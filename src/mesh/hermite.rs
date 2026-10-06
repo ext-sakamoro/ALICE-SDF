@@ -176,11 +176,13 @@ where
             self.min_bounds + Vec3::new(x as f32, y as f32, z as f32) * cell_size
         };
 
-        // Process all edges in parallel
-        let edges: Vec<(usize, usize, usize, usize)> = (0..res)
+        // Process all edges in parallel. The lattice has `res + 1` vertices per
+        // axis, so the edges on the max faces start at index `res`; the axis
+        // guards below drop the ones that would leave the lattice.
+        let edges: Vec<(usize, usize, usize, usize)> = (0..=res)
             .flat_map(|z| {
-                (0..res).flat_map(move |y| {
-                    (0..res).flat_map(move |x| {
+                (0..=res).flat_map(move |y| {
+                    (0..=res).flat_map(move |x| {
                         // X edges
                         let mut e = vec![(x, y, z, 0)];
                         // Y edges
