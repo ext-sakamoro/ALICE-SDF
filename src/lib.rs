@@ -1,46 +1,84 @@
 //! # ALICE-SDF
 //!
-//! **A.L.I.C.E. - Adaptive Lightweight Implicit Compression Engine**
+//! Signed distance functions for Rust. A shape is a tree of primitives, CSG
+//! operations, transforms and modifiers ([`SdfNode`](types::SdfNode)). The crate
+//! evaluates the tree on the CPU (scalar, SIMD, BVH and JIT evaluators),
+//! transpiles it to GLSL, WGSL, HLSL and Metal, and turns it into meshes and file
+//! formats.
 //!
-//! A 3D/spatial data specialist that transmits mathematical descriptions
-//! of shapes (Signed Distance Functions) instead of polygon meshes.
-//!
-//! ## Features
-//!
-//! - **Primitives**: Sphere, Box, Cylinder, Torus, Plane, Capsule
-//! - **Operations**: Union, Intersection, Subtraction (smooth variants)
-//! - **Transforms**: Translate, Rotate, Scale
-//! - **Modifiers**: Twist, Bend, Repeat, Noise
-//! - **Conversion**: Mesh ↔ SDF
-//! - **Raymarching**: Real-time rendering
-//! - **File I/O**: Binary (.asdf) and JSON (.asdf.json) formats
+//! The CPU evaluators return bit-identical distances for the same tree and point
+//! on every platform CI tests: every transcendental goes through
+//! [`alice-det-math`](https://crates.io/crates/alice-det-math) and `a * b + c` is
+//! never fused. The GPU shaders agree with the CPU within a tolerance.
 //!
 //! ## Example
 //!
 //! ```rust
 //! use alice_sdf::prelude::*;
 //!
-//! // Create a sphere with radius 1
-//! let sphere = SdfNode::sphere(1.0);
+//! // A unit sphere minus a box (box3d takes full extents)
+//! let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(1.0, 1.0, 1.0));
 //!
-//! // Subtract a box from it
-//! let result = sphere.subtract(SdfNode::box3d(1.5, 1.5, 1.5));
+//! // Signed distance: negative inside, zero on the surface, positive outside
+//! let p = Vec3::new(0.9, 0.0, 0.0);
+//! let d = eval(&shape, p);
+//! assert!(d < 0.0);
 //!
-//! // Evaluate distance at a point
-//! let distance = eval(&result, glam::Vec3::ZERO);
+//! // Compiled to bytecode for repeated evaluation, with the same bits
+//! let compiled = CompiledSdf::compile(&shape);
+//! assert_eq!(eval_compiled(&compiled, p).to_bits(), d.to_bits());
 //!
-//! // Convert to mesh
+//! // A triangle mesh by marching cubes
 //! let mesh = sdf_to_mesh(
-//!     &result,
-//!     glam::Vec3::splat(-2.0),
-//!     glam::Vec3::splat(2.0),
-//!     &MarchingCubesConfig::default()
+//!     &shape,
+//!     Vec3::splat(-1.5),
+//!     Vec3::splat(1.5),
+//!     &MarchingCubesConfig::default(),
 //! );
+//! assert!(!mesh.indices.is_empty());
 //! ```
 //!
-//! ## Author
+//! ## Cargo features
 //!
-//! Moroya Sakamoto
+//! The `physics`, `codec` and `sdf-cache` features link crates licensed
+//! `AGPL-3.0-or-later`; the default features and all others do not.
+//!
+//! <!-- readme-sync: features -->
+//! | Feature | Default | Description |
+//! |---------|:-------:|-------------|
+//! | `cli` | yes | The `alice-sdf` command-line tool (clap). |
+//! | `image` | | PNG / JPEG decoding for heightmaps and texture fitting. |
+//! | `texture-fit` | | Fit a bitmap texture with procedural noise formulas. Implies `image` and `cli`. |
+//! | `jit` | | Native evaluation through Cranelift (scalar and 8-wide). |
+//! | `gpu` | | GPU evaluation and WGSL output through wgpu. |
+//! | `gpu-mesh` | | Marching cubes on the GPU. Implies `gpu`. |
+//! | `volume` | | Bake a field into a 3D texture. Implies `gpu`. |
+//! | `glsl` | | GLSL output (Unity, OpenGL, Vulkan, Shadertoy). |
+//! | `hlsl` | | HLSL output (Unreal Engine, DirectX). |
+//! | `msl` | | Metal Shading Language output, converted from WGSL with naga. Implies `gpu`. |
+//! | `blinkscript` | | BlinkScript output for Nuke. Implies `hlsl`. |
+//! | `rust` | | Dependency-free Rust source (`fn sdf`, `fn normal`) bit-identical to `eval_compiled`, for `build.rs`. |
+//! | `all-shaders` | | `gpu`, `glsl`, `hlsl`, `msl` and `blinkscript`. |
+//! | `svo` | | Sparse voxel octree. |
+//! | `svo-gpu` | | Sparse voxel octree with GPU support. Implies `svo` and `gpu`. |
+//! | `destruction` | | Voxel destruction. |
+//! | `terrain` | | Heightmap terrain with erosion and caves. |
+//! | `gi` | | Cone-traced global illumination. Implies `svo`. |
+//! | `aaa` | | `volume`, `gpu-mesh`, `svo-gpu`, `destruction`, `terrain` and `gi`. |
+//! | `ffi` | | C ABI for C, C++, C#, Unity and Unreal Engine. |
+//! | `unity` | | `ffi` and `glsl`. |
+//! | `unreal` | | `ffi`, `hlsl`, `glsl` and `gpu`: what the Unreal Engine plugin calls. |
+//! | `python` | | Python bindings (PyO3 + NumPy). |
+//! | `godot` | | Godot 4 GDExtension. |
+//! | `wasm` | | WebAssembly bindings through `wasm-bindgen` (built for `wasm32` only). |
+//! | `openvdb` | | OpenVDB float grid input and output. |
+//! | `physics` | | **AGPL.** SDF colliders and simulation modifiers for [`alice-physics`](https://crates.io/crates/alice-physics). |
+//! | `codec` | | **AGPL.** Volume compression with [`alice-codec`](https://crates.io/crates/alice-codec). |
+//! | `sdf-cache` | | **AGPL.** Evaluation cache with [`alice-cache`](https://crates.io/crates/alice-cache). |
+//! | `asp` | | ALICE Streaming Protocol packets with [`libasp`](https://crates.io/crates/libasp) (its default features only). |
+//! | `font` | | Glyph outlines from `alice-font`. Inert on crates.io: also needs `--cfg alice_font_bridge` and a local `alice-font`. |
+//!
+//! Module overview: <https://github.com/ext-sakamoro/ALICE-SDF/blob/main/docs/MODULES.md>
 
 #![warn(missing_docs)]
 // The clippy policy (pedantic + nursery with documented exceptions) lives in

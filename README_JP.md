@@ -1,1173 +1,295 @@
 # ALICE-SDF
 
 <p align="center">
-  <img src="asset/logo-on-light.jpeg" alt="ALICE-SDF ロゴ" width="720">
+  <img src="asset/logo-on-light.jpeg" alt="ALICE-SDF Logo" width="480">
 </p>
+
+Rust の符号付き距離関数 (SDF) ライブラリ 形状はプリミティブ・CSG 演算・変換・
+モディファイアの木で表す この crate は木を CPU で評価し (スカラー / SIMD / BVH /
+JIT)、GLSL・WGSL・HLSL・Metal に変換し、メッシュや各種ファイル形式に書き出す
+
+[English](README.md) | 日本語
 
 [![crates.io](https://img.shields.io/crates/v/alice-sdf.svg)](https://crates.io/crates/alice-sdf)
 [![docs.rs](https://img.shields.io/docsrs/alice-sdf)](https://docs.rs/alice-sdf)
-[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/alice-sdf.svg)](#license)
+[![MSRV](https://img.shields.io/crates/msrv/alice-sdf)](#最小対応-rust-バージョン)
 [![CI](https://github.com/ext-sakamoro/ALICE-SDF/actions/workflows/ci.yml/badge.svg)](https://github.com/ext-sakamoro/ALICE-SDF/actions/workflows/ci.yml)
-
-[English](README.md) | **日本語**
-
-**A.L.I.C.E. - Adaptive Lightweight Implicit Compression Engine**
-
-> "ポリゴンを送るな。形の法則を送れ。"
-
-## 概要
-
-ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述**（符号付き距離関数 = SDF）を伝送する3D/空間データスペシャリストです。これにより以下が実現されます:
-
-- **10〜1000倍の圧縮** - 従来のメッシュフォーマットと比較
-- **無限解像度** - あらゆるスケールで数学的に完全な形状
-- **CSG演算** - メッシュオーバーヘッドなしの形状ブーリアン演算
-- **計量を値として持つ** (4.0.0) - `MetricBall` はノルム自体を parameter にする (`‖p‖₂ − r` が球、`‖p‖∞ − r` が立方体、`‖p‖₁ − r` が八面体 = 式は同じでノルムだけが違う) Lipschitz 上界は推定でなく**閉形式** `MetricBlend` はバブルの内と外で別の場を使い、皮の外の世界を bit 一致で保つ `measure_tension` は領域上で場の勾配が実際に何をしているかを測る (2 つの法が出会う継ぎ目は、どちらの静的上界でも記述できない)
-- **プラットフォーム横断の bit-exact 評価** (3.1.0) - 法則と評価器の超越関数を全て [`alice-det-math`](https://crates.io/crates/alice-det-math) (`alice-physics` と同じ crate) 経由にし `a * b + c` を fuse しないため、tree / compiled scalar / `f32x8` SIMD / BVH / Cranelift SIMD-JIT の各評価器が x86_64 / aarch64 / wasm32 で *同じ bit* を返す (`tests/test_det_parity.rs`、`tests/test_det_golden.rs`) GPU shader は tolerance 領域のまま、ただし `atan2` の軸上 tie は `alice_atan2` で CPU 法則に固定
-- **リアルタイムレイマーチング** - GPU加速レンダリング
-- **PBRマテリアル** - UE5/UE6/Unity/Godot互換のメタリック-ラフネスワークフロー
-- **キーフレームアニメーション** - タイムライントラック付きパラメトリック変形
-- **アセットパイプライン** - OBJ、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、Unity、UE5/UE6エクスポート
-- **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
-- **印刷可能性の検証** (`validity`) - 「これは印刷できるか」に**どう判定したかを添えて**答える 大域判定は `eval_interval` による erosion の証明で三値 `ErosionVerdict` (`HasThickEnoughRegion` / `EntirelyTooThin` / `Undecided`、**`Undecided` は合格ではない**)、局所肉厚は三角形ごとの sphere tracing で厳密実測、overhang は閉形式 `asin(-n · b)` `export_step_validated` は要件を満たさない形状の file を書かない
-- **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中 (外向き CCW 巻き順 + 水密、1.11.0 で index 順を反転 — CHANGELOG 参照)
-- **Dual Contouring** - QEFベースのメッシュ生成、シャープエッジとコーナーを保持
-- **V-HACD凸分解** - 物理用自動凸包分解
-- **属性保存デシメーション** - UV/タンジェント/マテリアル境界保護付きQEM
-- **簡略化アドバンストオプション** - LODシーム保持用の頂点単位ロックマスク（`lock_vertices`）、絶対/相対誤差しきい値（`error_absolute`）
-- **デシメーションベースLOD** - 高解像度ベースメッシュからのプログレッシブLODチェーン
-- **meshopt互換コーデック** - バイナリ互換のインデックス/頂点バッファ圧縮（indexcodec v1 + vertexcodec v0/v1）、zeux/meshoptimizer C++ ライブラリが生成する参照ベクタで検証済
-- **glTF `EXT_meshopt_compression`** - `io::meshopt_gltf` モジュール + `GltfConfig::meshopt_compress` オプション。POSITION / NORMAL / TEXCOORD_0 / JOINTS_0 / WEIGHTS_0 / インデックスを属性別チャンネル推定（u8 / u16 / u32 XOR + 8回転ヒューリスティック）で圧縮
-- **頂点フィルタ** - Octahedral（法線/タンジェント、角度誤差 1% 未満で 50〜75% 削減）、Quaternion（回転、最大成分＋循環スウィズル）、Exponential（浮動小数の仮数＋共有指数）
-- **トライアングルストリップ化** - Evans-Skiena-Varshney 貪欲ストリップアルゴリズム（8トライアングル先読みバッファ、閉じたメッシュでインデックス数を約 48% 削減）、プリミティブリスタート／退化三角形結合の両モード対応
-- **Naniteスタイル meshlet クラスタ** - V2 隣接情報 + `cone_weight` 拡張と `NormalCone`（basic + `cone_apex`）による Vulkan `VK_EXT_mesh_shader` / DirectX 12 mesh shader カリング対応
-- **73プリミティブ、24演算、7トランスフォーム、24モディファイア**（128 total） - 業界最高水準のシェイプボキャブラリ
-- **5層メッシュ永続化** - ABMバイナリフォーマット、LODチェーン永続化、FIFO排出チャンクキャッシュ、Unity/UE5/UE6ネイティブエクスポート
-- **Chamfer & Stairsブレンド** - ハードエッジベベルおよびステップ状CSG遷移
-- **区間演算（Interval Arithmetic）** - 空間プルーニング用の保守的AABB評価とリプシッツ定数追跡
-- **緩和球トレーシング（Relaxed Sphere Tracing）** - オーバーリラクゼーション (Keinert 2014、overshoot 時にリトリート) + リプシッツ適応ステップ TPMS 系 (Gyroid / Neovius 等) は距離場でないため `RaymarchConfig::relaxed(&node)` が必須
-- **ニューラルSDF** - 複雑シーンを~10-100倍高速に近似する純Rust MLP
-- **SDF対SDFコリジョン** - 区間演算AABBプルーニング付きグリッドベース接触検出
-- **CSGツリー最適化** - 恒等変換/モディファイア除去、ネスト変換マージ、Smooth→Standard降格
-- **解析的勾配（Analytic Gradient）** - 連鎖律とヤコビアン伝播による単一パス勾配計算（9解析+44数値フォールバックプリミティブ）
-- **自動微分（Automatic Differentiation）** - 双対数前方モードAD、ヘッシアン推定、平均曲率計算
-- **2D SDFモジュール** - 純粋2Dプリミティブ（circle、rect、bezier、フォントグリフ）とバイリニアサンプリング
-- **CSGツリーDiff/Patch** - アンドゥ/リドゥおよびネットワーク同期用のSDFツリー構造差分
-- **パラメトリック拘束ソルバー** - 幾何拘束（固定、距離、和、比率）のガウス-ニュートン最適化
-- **距離場ヒートマップ** - 4カラーマップ（coolwarm、binary、viridis、magma）による断面スライス
-- **Shell / Offset Surface** - 内側/外側オフセット制御付き可変厚シェルモディファイア
-- **体積・表面積** - 決定論的PRNGと標準誤差を用いたモンテカルロ推定
-- **ALICE-Fontブリッジ** - フォントグリフ → 2D/3D SDF変換、テキストレイアウト、3D押し出し（`--features font` は alice-font が publish されるまで crates.io では inert な gate — [インストール](#インストール) の注意書き参照、ブリッジは `git` dep で利用）
-- **自動タイトAABB** - 区間演算＋二分探索によるSDF表面を含む最小バウンディングボックス計算
-- **7つの評価モード** - インタプリタ、コンパイルVM、SIMD 8-wide、BVH、SoAバッチ、JIT、GPU
-- **3つのシェーダーターゲット** - GLSL、WGSL、HLSLトランスパイル
-- **エンジン統合** - Unity、Unreal Engine 5 / 6、VRChat、Godot、WebAssembly
-
-## 2 つの入口: 本 crate の API と LOL 言語
-
-ALICE-SDF は **評価器** です。法則 (距離関数)、compile 済 backend (scalar /
-SIMD / BVH / JIT)、shader transpiler、mesh pipeline を持ちますが、その tree が
-どう書かれたかには関与しません。
-
-[**ALICE-LOL**](https://github.com/ext-sakamoro/ALICE-LOL) は **その法則を書く
-ための言語** です。同じ `SdfNode` tree に parse される DSL に加えて、「この形は
-制約を満たすか」を三値 (充足 / 違反 / **未決定**) で答える法則検証器を持ちます。
-未決定が黙って合格に繰り上がることはありません。
-
-同じ形を 2 通りで:
-
-```rust
-// A: 本 crate の builder API
-use alice_sdf::prelude::*;
-let a = SdfNode::sphere(1.0).subtract(SdfNode::box3d(1.0, 1.0, 1.0));
-
-// B: LOL DSL を実行時に parse (LLM が出力するのはこちら)
-use alice_lol::runtime_parser::parse_lol;
-let b = parse_lol("subtract(sphere(1.0), box3d(0.5, 0.5, 0.5))").unwrap();
-
-// 同じ場: どちらも alice_sdf::eval を通る
-assert_eq!(eval(&a, Vec3::new(0.7, 0.2, 0.1)), alice_lol::eval(&b, Vec3::new(0.7, 0.2, 0.1)));
-```
-
-箱の引数に注意: **本 crate の `SdfNode::box3d` は全長**を取り (内部で半分に
-する)、**LOL の `box3d` は半幅**を取ります (DSL は variant の field を直接
-書く)。読み方を揃えたい場合は本 crate 側の `SdfNode::box3d_half_extents` を使います
-(この 2 例が一致することは ALICE-LOL の `tests/readme_parity.rs` が固定しています)。
-
-**LOL を選ぶ場面**: text を入れて geometry を出したい (LLM 生成、GBNF
-constrained decoding、prompt から印刷可能な STL/3MF)、または法則検証器が
-必要な時。**本 crate を直接使う場面**: Rust で tree を組み、評価器 / meshing /
-shader 出力が目的の時。
-
-## コア crate の噛み合い方
-
-この 4 つは詰め合わせではなく 1 つの機構として作っている それぞれが担うものは 1 つだけで、
-境目の設計がそのまま価値になっている
-
-| Crate | 担うもの | 接点 |
-|-------|---------|------|
-| [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) | 言語と法則検証器 | ALICE-SDF の `SdfNode` に parse する 判定は三値 (合格 / 違反 / **未定**) で、未定を合格に昇格させない |
-| [ALICE-SDF](https://github.com/ext-sakamoro/ALICE-SDF) | 距離関数と全 backend (scalar / SIMD / BVH / JIT / shader transpiler / mesh) | LOL が書いた木を評価し、ALICE-Physics に collider を渡す |
-| [ALICE-Physics](https://github.com/ext-sakamoro/ALICE-Physics) | 128-bit 固定小数点の剛体 / CCD / XPBD | 描画しているのと同じ場に衝突する (別の近似を持たない) |
-| [ALICE-DetMath](https://github.com/ext-sakamoro/ALICE-DetMath) | `sin` / `cos` / `atan2` 等を bit 単位で規定 | 接点そのもの ALICE-SDF と ALICE-Physics が platform libm でなくこれを呼ぶ |
-
-噛み合わせている理由は 1 つ、**同じ入力がどの platform でも同じ bit を返すこと** 機械ごとに
-食い違う場は、寸法どおり印刷することも、法則で検証することも、lockstep で再生することも
-できない だから超越関数は crate ごとに再実装せず共有している
-
-> `alice-det-math` は解決後の依存グラフで version を揃えること 1 つの木に 2 version 入ると
-> 同じ関数の実装が 2 つ存在することになり、保証が消える 確認は `cargo tree -i alice-det-math`
-
-## Text-to-3D パイプライン（サーバー）
-
-ALICE-SDFには、LLM生成のSDFツリーを通じて**自然言語テキストを実際の3Dジオメトリに変換する**FastAPIサーバーが含まれています。
-
-```
-ユーザー: "中世の城"  →  LLM (Claude/Gemini)  →  SDF JSON  →  ALICE-SDF  →  GLB/OBJ
-         テキスト           ~5-50秒              20ノード      <55ms        メッシュ
-```
-
-### アーキテクチャ
-
-```
-┌─────────────┐     ┌──────────────┐     ┌───────────────┐     ┌──────────┐
-│  FastAPI     │     │  LLMサービス │     │  SDFサービス  │     │  出力    │
-│  サーバー    │────▶│  Claude API  │────▶│  from_json()  │────▶│  GLB     │
-│              │     │  Gemini API  │     │  compile()    │     │  OBJ     │
-│  POST /gen   │     │  システム    │     │  to_mesh()    │     │  JSON    │
-│  WS /ws/gen  │     │  プロンプト  │     │  export_glb() │     │  ビューア│
-│  GET /viewer │     └──────────────┘     └───────────────┘     └──────────┘
-└─────────────┘
-```
-
-### APIエンドポイント
-
-| メソッド | パス | 説明 |
-|--------|------|-------------|
-| `POST` | `/api/generate` | テキスト → 3Dメッシュ (GLB/OBJ/JSON) |
-| `POST` | `/api/validate` | SDF JSON構造のバリデーション |
-| `POST` | `/api/mesh` | SDF JSON → メッシュ (GLB/OBJ) |
-| `GET` | `/api/examples` | Few-shotサンプルシーン一覧 |
-| `GET` | `/api/viewer` | Three.js GLBビューア（ブラウザ） |
-| `GET` | `/api/health` | サーバーヘルスチェック |
-| `WS` | `/ws/generate` | プログレッシブプレビュー付きストリーミング生成 |
-
-### 生成シーンギャラリー
-
-Gemini 2.5 Flashが自然言語プロンプトから生成したシーン:
-
-| プロンプト | ノード数 | 頂点数 | 三角形数 | LLM時間 |
-|--------|-------|----------|-----------|----------|
-| "A medieval castle with towers" | 18 | 2,105 | 4,248 | 49.4秒 |
-| "A robot standing on a platform" | 18 | 750 | 1,184 | 17.5秒 |
-| "An underwater coral reef scene" | 15 | 2,666 | 5,166 | 63.3秒 |
-| "A simple mushroom on grass" | 9 | 8,237 | 16,224 | 6.6秒 |
-| "火山地帯に宇宙船" | 22 | 10,466 | 20,618 | 20.5秒 |
-
-手作りFew-shotサンプル（LLMシステムプロンプトで使用）:
-
-| シーン | 説明 | ノード数 | 頂点数 | 三角形数 |
-|-------|-------------|-------|----------|-----------|
-| `sphere_on_ground` | 平面上の球体 (Union + Plane) | 4 | 1,270 | 2,448 |
-| `snowman` | 3球体の雪だるま (SmoothUnion) | 8 | 422 | 840 |
-| `castle_tower` | 胸壁付きの塔 (PolarRepeat) | 11 | 1,030 | 2,244 |
-| `alien_mushroom_forest` | キノコグリッド (RepeatFinite + Torusステム) | 9 | 4,167 | 7,854 |
-| `twisted_pillar` | ねじれた箱 + 浮遊する中空球 (Twist + Onion) | 7 | 510 | 968 |
-| `mechanical_gear` | 歯と軸穴のあるギア (PolarRepeat + Subtraction) | 9 | 465 | 912 |
-
-シーンJSONファイルは [`server/examples/scenes/`](server/examples/scenes/) に格納されています。
-
-### クイックスタート（サーバー）
-
-```bash
-# 1. Pythonバインディングをビルド
-cd /path/to/ALICE-SDF
-python -m venv .venv && source .venv/bin/activate
-maturin develop --features python
-
-# 2. サーバー依存関係をインストール
-pip install -r server/requirements.txt
-
-# 3. APIキーを設定
-export ANTHROPIC_API_KEY="sk-..."   # Claude用
-export GOOGLE_API_KEY="AI..."       # Gemini用
-
-# 4. サーバー起動
-uvicorn server.main:app --reload
-
-# 5. テキストから3D生成
-curl -X POST http://localhost:8000/api/generate \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "雪だるま", "provider": "gemini", "resolution": 64}' \
-  -o snowman.glb
-
-# 6. ブラウザビューアを開く
-open http://localhost:8000/api/viewer
-```
-
-### LLMプロバイダー
-
-| プロバイダー | モデル | 速度 | 最適な用途 |
-|----------|-------|-------|----------|
-| Claude | Haiku 4.5 | ~2-5秒 | シンプルなシーン、高速イテレーション |
-| Claude | Sonnet 4.5 | ~5-15秒 | 複雑なシーン、高精度 |
-| Gemini | 2.5 Flash | ~5-50秒 | 複雑なシーン（思考モデル） |
-| Gemini | 2.5 Pro | ~10-60秒 | 最高品質 |
-
-### パフォーマンスバジェット
-
-| ステップ | 時間 | 備考 |
-|------|------|-------|
-| LLM推論 | 2-60秒 | モデルと複雑さに依存 |
-| JSON解析 | <1ms | serde_json |
-| SDFコンパイル | ~1ms | SdfNode → CompiledSdf |
-| メッシュ生成 (res=64) | ~45ms | 並列マーチングキューブ |
-| GLBエクスポート | ~5ms | |
-| **合計（LLM除く）** | **<55ms** | リアルタイム対応可能 |
-
-### 堅牢性機能
-
-- **JSON修復**: 切り詰められたLLM出力の括弧自動補完
-- **構造バリデーション**: ブーリアン演算(a/b)とトランスフォーム(child)をRust serdeの前に事前検証
-- **フィードバック付きリトライ**: エラーメッセージをLLMにフィードバックして最大2回リトライ
-- **レート制限処理**: 429エラー時の自動待機リトライ
-- **複雑度制約**: システムプロンプトでシーンを15-20ノード、ネスト深度≤6に制限
-
-### サーバーディレクトリ構造
-
-```
-server/
-├── main.py                  # FastAPIアプリ、REST + WebSocketエンドポイント
-├── config.py                # APIキー、モデル設定（環境変数）
-├── models.py                # Pydantic リクエスト/レスポンスモデル
-├── services/
-│   ├── llm_service.py       # Claude/Gemini API（リトライロジック付き）
-│   └── sdf_service.py       # alice_sdfラッパー（パース、メッシュ、エクスポート）
-├── prompts/
-│   ├── system_prompt.py     # 36ノードタイプのSDF文法（LLM用）
-│   └── examples.py          # 6つのFew-shotサンプル
-├── examples/
-│   └── scenes/              # ビルド済みシーンJSONファイル
-│       ├── sphere_on_ground.json
-│       ├── snowman.json
-│       ├── castle_tower.json
-│       ├── alien_mushroom_forest.json
-│       ├── twisted_pillar.json
-│       └── mechanical_gear.json
-├── static/
-│   └── viewer.html          # Three.js GLBビューア
-├── tests/
-│   ├── test_api.py          # 7つのAPIエンドポイントテスト
-│   ├── test_llm_service.py  # 17のJSON抽出/バリデーションテスト
-│   └── test_sdf_service.py  # 13のSDFパイプラインテスト
-└── requirements.txt
-```
-
-### テスト実行
-
-```bash
-source .venv/bin/activate
-python -m pytest server/tests/ -v   # 37テスト、全パス
-```
-
-## ALICE-View（リアルタイム3Dビューア）
-
-**[ALICE-View](../ALICE-View)** はwgpuで構築されたネイティブGPUレイマーチングビューアです。WGSLトランスパイルにより、メッシュ変換なしでSDFツリーをGPU上で直接レンダリングします。
-
-```
-SDF JSON → ALICE-SDF (WGSLトランスパイル) → wgpu GPUレイマーチング → リアルタイム3D
-              ~1ms                               60 FPS
-```
-
-### 機能
-
-- **GPUレイマーチング** — SdfNodeツリーをWGSLシェーダーにトランスパイル、GPU上でピクセルごとに評価
-- **ドラッグ&ドロップ** — `.json` / `.asdf` / `.asdf.json` ファイルをウィンドウにドロップ
-- **ファイルダイアログ** — File > Open (Ctrl+O) フォーマットフィルター付き
-- **カメラ操作** — マウスオービット、スクロールズーム、WASD移動
-- **ライブSDFパネル** — ノード数、レイマーチングパラメータ（最大ステップ、イプシロン、AO）
-
-### サポートフォーマット
-
-| 拡張子 | フォーマット | 説明 |
-|-----------|--------|-------------|
-| `.json` | SDF JSON | Text-to-3Dパイプライン出力、Few-shotサンプル |
-| `.asdf.json` | ALICE SDF JSON | ネイティブALICE-SDF JSONフォーマット |
-| `.asdf` | ALICE SDFバイナリ | CRC32付きコンパクトバイナリ |
-| `.alice` / `.alz` | ALICEレガシー | 手続き型コンテンツ（Perlin、Fractal） |
-
-### クイックスタート
-
-```bash
-cd /path/to/ALICE-View
-
-# 特定のファイルを開く
-cargo run --bin alice-view -- path/to/scene.json
-
-# 空で起動してファイルをドラッグ&ドロップ
-cargo run --bin alice-view
-```
-
-### キーボードショートカット
-
-| キー | アクション |
-|-----|--------|
-| `W/A/S/D` | カメラ移動 |
-| `マウスドラッグ` | カメラオービット |
-| `スクロール` | ズームイン/アウト |
-| `Ctrl+O` | ファイルダイアログを開く |
-| `Q` | 終了 |
-
-### Text-to-3D結果の閲覧
-
-Text-to-3Dパイプラインで生成されたシーンJSONファイルを直接閲覧できます:
-
-```bash
-# 生成シーンを表示
-cargo run --bin alice-view -- /path/to/ALICE-SDF/server/examples/scenes/snowman.json
-
-# または以下のファイルをウィンドウにドラッグ:
-#   server/examples/scenes/castle_tower.json
-#   server/examples/scenes/mechanical_gear.json
-#   server/examples/scenes/alien_mushroom_forest.json
-```
-
----
-
-## コアコンセプト
-
-### SDF（符号付き距離関数）
-
-SDFは任意の点から表面までの最短距離を返します:
-- **負** = 形状の内部
-- **ゼロ** = 表面上
-- **正** = 形状の外部
-
-### SdfNodeツリー構造
-
-```
-SdfNode
-  |-- プリミティブ (73): Sphere, Box3D, Cylinder, Torus, Plane, Capsule, Cone, Ellipsoid,
-  |                    RoundedCone, Pyramid, Octahedron, HexPrism, Link, Triangle, Bezier,
-  |                    RoundedBox, CappedCone, CappedTorus, InfiniteCylinder, RoundedCylinder,
-  |                    TriangularPrism, CutSphere, CutHollowSphere, DeathStar, SolidAngle,
-  |                    Rhombus, Horseshoe, Vesica, InfiniteCone, Heart, Gyroid,
-  |                    Tube, Barrel, Diamond, ChamferedCube, SchwarzP, Superellipsoid, RoundedX,
-  |                    Pie, Trapezoid, Parallelogram, Tunnel, UnevenCapsule, Egg,
-  |                    ArcShape, Moon, CrossShape, BlobbyCross, ParabolaSegment,
-  |                    RegularPolygon, StarPolygon, Stairs, Helix,
-  |                    Tetrahedron, Dodecahedron, Icosahedron,                    ← プラトン立体 (GDF)
-  |                    TruncatedOctahedron, TruncatedIcosahedron,                 ← アルキメデス立体
-  |                    BoxFrame,                                                   ← IQワイヤーフレームボックス
-  |                    DiamondSurface, Neovius, Lidinoid, IWP, FRD,              ← TPMS曲面
-  |                    FischerKochS, PMY,                                          ← TPMS曲面
-  |                    Circle2D, Rect2D, Segment2D, Polygon2D,                   ← 2Dプリミティブ（押し出し）
-  |                    RoundedRect2D, Annular2D,                                   ← 2Dプリミティブ（押し出し）
-  |                    Terrain                                                     ← 手続き的バイオーム地形（FBM + Voronoi侵食）
-  |-- 演算 (24): Union, Intersection, Subtraction,
-  |              SmoothUnion, SmoothIntersection, SmoothSubtraction,
-  |              ChamferUnion, ChamferIntersection, ChamferSubtraction,
-  |              StairsUnion, StairsIntersection, StairsSubtraction,
-  |              ExpSmoothUnion, ExpSmoothIntersection, ExpSmoothSubtraction,     ← IQ指数スムース
-  |              XOR, Morph,                                                       ← ブーリアン/補間
-  |              ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,            ← hg_sdfカラム
-  |              Pipe, Engrave, Groove, Tongue                                     ← hg_sdf高度操作
-  |-- トランスフォーム (7): Translate, Rotate, Scale, ScaleNonUniform,
-  |                        ProjectiveTransform,                                    ← 逆行列付き射影変換
-  |                        LatticeDeform,                                          ← 自由形状変形（FFD）グリッド
-  |                        SdfSkinning                                             ← ボーンウェイトスケルタル変形
-  |-- モディファイア (24): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
-  |                   Mirror, Revolution, Extrude, Taper, Displacement, SineDisplacement, PolarRepeat, SweepBezier,
-  |                   Shear,                                                       ← 3軸せん断変形
-  |                   OctantMirror,                                                ← 48重対称性
-  |                   IcosahedralSymmetry,                                         ← 120重正二十面体対称性
-  |                   IFS,                                                         ← 反復関数系フラクタル
-  |                   HeightmapDisplacement,                                       ← ハイトマップ駆動表面変位
-  |                   SurfaceRoughness,                                            ← FBMノイズラフネス
-  |                   Animated,                                                    ← タイムライン駆動パラメータアニメーション
-  |                   WithMaterial                                                 ← PBRマテリアル割り当て
-```
+[![License](https://img.shields.io/crates/l/alice-sdf.svg)](#ライセンス)
+
+同じ木がすべてのバックエンドを駆動し、CPU の評価器どうしは CI が検証する全
+プラットフォームで同じビット列を返す そのため木を形状の唯一の記述として使える
+描画するシェーダー、物理エンジンが問い合わせるコライダー、書き出し・印刷する
+メッシュはすべて同じ木から計算され、別々の近似を持たない
+<!-- claim-test: every_cpu_evaluator_is_bit_identical -->
+
+メッシュモデラーやレンダラーではない GPU シェーダーは CPU とビット一致せず
+(許容誤差内で一致)、一部のモディファイア (twist / bend / displacement など) を
+通した値は距離そのものではなく距離の上界になる また場を細かいメッシュにする
+コストは解像度に応じて時間・メモリともに増える
+
+## 目次
+
+- [インストール](#インストール)
+- [使用例](#使用例)
+- [決定性](#決定性)
+- [含まれるもの](#含まれるもの)
+- [検証状況と既知の不具合](#検証状況と既知の不具合)
+- [Cargo feature](#cargo-feature)
+- [バインディング](#バインディング)
+- [性能](#性能)
+- [最小対応 Rust バージョン](#最小対応-rust-バージョン)
+- [ビルドとテスト](#ビルドとテスト)
+- [関連 crate](#関連-crate)
+- [ライセンス](#ライセンス)
 
 ## インストール
 
-> **crates.io でのブリッジ feature** — 1.12.0 以降 `physics` (alice-physics 1.1) / `codec` (alice-codec 0.1.2) / `asp` (libasp 1.0) / `sdf-cache` (alice-cache 0.2) は crates.io の隣接 crate に解決され、CI の `bridges` job で検証されています `font` は alice-font が publish されるまで inert な gate で、`font_bridge` module はローカルの `alice-font` path dep と `RUSTFLAGS="--cfg alice_font_bridge"` が必要です (1.7.7 〜 1.11.0 の間は 5 つとも `[features]` から外れていました、CHANGELOG の `[v1.7.7]` / `[v1.12.0]` 参照)
-
-### Rust
-
-```bash
+```sh
 cargo add alice-sdf
 ```
 
-### Python
+コマンドラインツール (既定で有効な `cli` feature) を除く場合:
 
-```bash
+```sh
+cargo add alice-sdf --no-default-features
+```
+
+Python バインディングは PyPI にある:
+
+```sh
 pip install alice-sdf
 ```
 
-## 使い方
+## 使用例
 
-### パスを選ぶ
-
-役割ごとに最適な入り口を選んでください。全パスは同じ `SdfNode` 中間表現を共有するので、混ぜて使えます (例: LOL で組んで GLSL に transpile、Python で評価)。
-
-| あなたは… | パス | 用途 | セクション |
-|-----------|------|-----|-----------|
-| **Rust 開発者、宣言的に書きたい** | [ALICE-LOL DSL](#alice-lol-dsl-で書く推奨) | シーン構築、GPU shader transpile、コンパイル時 law チェック | ↓ |
-| **Rust 開発者、低レベル制御が要る** | [Rust 直接構築](#rust直接sdfnode構築) | カスタム modifier ノード、手動最適化 | ↓ |
-| **Python / データサイエンス** | [Python バインディング](#python) | NumPy バッチ評価、メッシュ export、ノートブック運用 | ↓ |
-| **Unity / UE5 / Godot 統合** | C-ABI FFI | ネイティブプラグイン、ゲームエンジンからのリアルタイム評価 | [docs/UNREAL_ENGINE.md](docs/UNREAL_ENGINE.md) / [docs/GODOT_GUIDE.md](docs/GODOT_GUIDE.md) |
-| **Web / WebGPU 開発者** | WASM build | ブラウザ側 SDF 評価 + WGSL shader コンパイル | [docs/WASM_GUIDE.md](docs/WASM_GUIDE.md) |
-| **モバイル (iOS / Android)** | XCFramework / AAR | Swift / Kotlin でのデバイス上評価 | [Mobile セクション](#mobile-ios--android) |
-| **3D アーティスト / VFX** | Cookbook レシピ | 手続き形状 / displacement / タイリングをコピペ | [docs/VFX_COOKBOOK.md](docs/VFX_COOKBOOK.md) |
-| **初めて触る** | 下の 30 秒サンプル ↓ | インストール確認 | ↓ |
-
-### Hello, First SDF (30 秒)
-
-最小の実用サンプル — 構築、評価、メッシュ化、完了:
+球から箱をくり抜き、評価・コンパイル・メッシュ化する 同じコードが `src/lib.rs`
+の crate レベル doctest なので、`cargo test` でコンパイル・実行される
 
 ```rust
 use alice_sdf::prelude::*;
 
-let sphere = SdfNode::sphere(1.0);
-let d = eval(&sphere, glam::Vec3::new(0.5, 0.0, 0.0));
-assert!((d + 0.5).abs() < 1e-6);           // 中心から 0.5 の点 → distance -0.5 (内側)
+// A unit sphere minus a box (box3d takes full extents)
+let shape = SdfNode::sphere(1.0).subtract(SdfNode::box3d(1.0, 1.0, 1.0));
 
+// Signed distance: negative inside, zero on the surface, positive outside
+let p = Vec3::new(0.9, 0.0, 0.0);
+let d = eval(&shape, p);
+assert!(d < 0.0);
+
+// Compiled to bytecode for repeated evaluation, with the same bits
+let compiled = CompiledSdf::compile(&shape);
+assert_eq!(eval_compiled(&compiled, p).to_bits(), d.to_bits());
+
+// A triangle mesh by marching cubes
 let mesh = sdf_to_mesh(
-    &sphere,
-    glam::Vec3::splat(-1.5),
-    glam::Vec3::splat(1.5),
+    &shape,
+    Vec3::splat(-1.5),
+    Vec3::splat(1.5),
     &MarchingCubesConfig::default(),
 );
-println!("{} 頂点、{} 三角形", mesh.vertices.len(), mesh.indices.len() / 3);
+assert!(!mesh.indices.is_empty());
 ```
 
-これが動いたら、上の表で自分の役割に合ったパスに進んでください。
+ほかのプログラムは [`examples/`](examples/) に、長めの解説 (レシピ、Python、
+LOL 言語) は [`docs/GETTING_STARTED_JP.md`](docs/GETTING_STARTED_JP.md) にある
 
-### ALICE-LOL DSL で書く（推奨）
+## 決定性
 
-SDF シーンを作る最も簡単な方法は [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) です。`lol!` proc_macro で SDF ツリーを宣言的に記述でき、手動で `SdfNode` を組み立てる必要がありません。
+CPU の評価器 (木の評価器、コンパイル済みスカラー、8 幅 SIMD、BVH、Cranelift JIT)
+は、同じ木と同じ点に対してビット一致した距離を返す プラットフォームをまたいで
+これが成り立つのは次の 2 つの規則による
 
-```toml
-# Cargo.toml
-[dependencies]
-alice-sdf = { path = "../ALICE-SDF" }
-alice-lol = { path = "../ALICE-LOL/alice-lol" }
+- 超越関数 (`sin` / `atan2` / `exp` / `powf` など) はすべて
+  [`alice-det-math`](https://crates.io/crates/alice-det-math) を通し、
+  プラットフォームの `libm` は使わない
+- `a * b + c` は常に 2 回丸める 積和演算 (FMA) に融合しない
+
+`scripts/det_math_guard.py` は、評価器と法則のディレクトリにプラットフォームの
+`libm` 呼び出しや `mul_add` があると CI を失敗させる
+
+| テスト | 固定するもの | CI での実行環境 |
+|------|--------------|---------------------|
+| `tests/test_det_parity.rs` | すべての CPU 評価器を木の評価器とビット単位で比較 | macOS (ARM64)、Linux (x86_64)、Windows (x86_64)、JIT は `--features jit` |
+| `tests/test_det_golden.rs` | コーパスの形状ごとに木の評価器のビット列の SHA-256 | 同じ 3 環境 |
+| `tests/test_gpu_law_parity.rs` | WGSL を CPU と許容誤差内で比較、`atan2` の軸上の値は厳密に一致 | Linux、ソフトウェア Vulkan (lavapipe) |
+<!-- claim-test: tree_evaluator_bits_match_recorded_hashes -->
+
+**対象外** `wasm32` は CI でビルドするが、上のテストは実行していない GPU
+シェーダー (WGSL / GLSL / HLSL / Metal) は許容誤差の領域で、ビット一致の対象では
+ない 基本演算が IEEE 754 に従わないターゲットや、fast-math 系のフラグを付けた
+ビルドは保証の外
+
+**決定性は正しさではない** ビットが一致するのは全機械が同じ数値を計算すると
+いうことで、数値が正しいかは別に検証している
+[検証状況と既知の不具合](#検証状況と既知の不具合) を参照
+
+## 含まれるもの
+
+公開モジュールの全件 (分野別、1 行の説明と必要な feature) は
+[`docs/MODULES.md`](docs/MODULES.md) にある API の詳細は
+[docs.rs](https://docs.rs/alice-sdf) を参照
+
+| 分野 | 主な内容 |
+|------|-----------|
+| 形状 | プラトン立体・アルキメデス立体・TPMS 曲面・押し出した 2D 形状を含むプリミティブ、ノルムを引数に取る `MetricBall` |
+| 演算 | 和・積・差と、その smooth / chamfer / stairs / exponential / column 版、XOR、morph、`MetricBlend` |
+| 変換とモディファイア | 平行移動・回転・拡大縮小・射影・格子変形・スキニング、twist・bend・繰り返し・鏡映と対称折り返し・displacement・shell・IFS |
+| 評価 | 木の評価器、コンパイル済みバイトコード (スカラー / SIMD / BVH)、Cranelift JIT、wgpu による GPU 計算、区間演算、解析的・自動微分の勾配、リプシッツ上界 |
+| シェーダー出力 | GLSL、WGSL、HLSL、Metal (WGSL 出力から naga で変換)、BlinkScript、依存のない Rust ソース |
+| メッシュ化 | marching cubes (一様 / 適応 / GPU)、dual contouring、間引き、LOD チェーン、多様体修復、UV 展開、meshlet、meshopt 互換コーデック |
+| ファイル形式 | `.asdf` / `.asdf.json` の木、OBJ、glTF、FBX、USD、Alembic、STL、PLY、3MF、STEP、IGES、MagicaVoxel、Gaussian splat、OpenVDB |
+| 解析 | 印刷可能性 (3 値の判定を返す侵食の証明、肉厚、オーバーハング)、体積と表面積、タイトな境界箱、SDF 同士の衝突 |
+| ワールド | スパースボクセル八分木、ボクセル破壊、侵食付き地形、コーントレースによる大域照明 |
+
+## 検証状況と既知の不具合
+
+`tests/` のテストは、結果を閉形式の値または独立な計算と比較する: smooth 演算、
+メトリック場、区間の包含 (`test_interval_soundness.rs`)、タイトな境界、
+印刷可能性、メッシュの向きと位相、STEP 出力、参照ライブラリのベクタに対する
+meshopt コーデック、ファイル形式の往復 シェーダー出力は CI で naga (と Metal) で
+コンパイルする ゴールデンハッシュは変化を検出するだけなので、これらとは分けている
+
+[`docs/oracle-status.md`](docs/oracle-status.md) は `tests/` から生成され、全テストを
+状態別に一覧する 実装が直るまで意図的に赤のまま置くテスト
+(`#[ignore = "known defect: …"]`) もここに載る
+
+[`docs/wiring-status.md`](docs/wiring-status.md) は、テスト以外のどこからも呼ばれない
+公開アイテムの一覧 `scripts/wiring_guard.py` は、理由のない新規のものが現れると
+CI を失敗させる
+
+`scripts/ci_test_coverage_check.py` は、feature で切り替わるテストファイルをその
+feature 付きで実行する CI ステップが無いと CI を失敗させる feature 付きのテストが
+0 件実行のまま green になる経路を塞ぐため
+
+## Cargo feature
+
+**AGPL** と記した feature は `AGPL-3.0-or-later` の crate をリンクする
+[ライセンス](#ライセンス) を参照 既定を含むそれ以外の feature は、寛容なライセンスの
+crate だけを取り込む
+
+<!-- readme-sync: features -->
+| Feature | 既定 | 説明 |
+|---------|:-------:|-------------|
+| `cli` | yes | `alice-sdf` コマンドラインツール (clap) |
+| `image` | | ハイトマップとテクスチャフィット用の PNG / JPEG デコード |
+| `texture-fit` | | ビットマップテクスチャを手続き的なノイズ式で近似する `image` と `cli` を含む |
+| `jit` | | Cranelift によるネイティブ評価 (スカラーと 8 幅) |
+| `gpu` | | wgpu による GPU 評価と WGSL 出力 |
+| `gpu-mesh` | | GPU 上の marching cubes `gpu` を含む |
+| `volume` | | 場を 3D テクスチャに焼き込む `gpu` を含む |
+| `glsl` | | GLSL 出力 (Unity / OpenGL / Vulkan / Shadertoy) |
+| `hlsl` | | HLSL 出力 (Unreal Engine / DirectX) |
+| `msl` | | Metal Shading Language 出力 (WGSL から naga で変換) `gpu` を含む |
+| `blinkscript` | | Nuke 用 BlinkScript 出力 `hlsl` を含む |
+| `rust` | | `eval_compiled` とビット一致する依存のない Rust ソース (`fn sdf` / `fn normal`)、`build.rs` 向け |
+| `all-shaders` | | `gpu`、`glsl`、`hlsl`、`msl`、`blinkscript` |
+| `svo` | | スパースボクセル八分木 |
+| `svo-gpu` | | GPU 対応のスパースボクセル八分木 `svo` と `gpu` を含む |
+| `destruction` | | ボクセル破壊 |
+| `terrain` | | 侵食と洞窟を持つハイトマップ地形 |
+| `gi` | | コーントレースによる大域照明 `svo` を含む |
+| `aaa` | | `volume`、`gpu-mesh`、`svo-gpu`、`destruction`、`terrain`、`gi` |
+| `ffi` | | C / C++ / C# / Unity / Unreal Engine 向けの C ABI |
+| `unity` | | `ffi` と `glsl` |
+| `unreal` | | `ffi`、`hlsl`、`glsl`、`gpu` (Unreal Engine プラグインが呼ぶもの) |
+| `python` | | Python バインディング (PyO3 + NumPy) |
+| `godot` | | Godot 4 GDExtension |
+| `wasm` | | `wasm-bindgen` による WebAssembly バインディング (`wasm32` 向けのみビルド) |
+| `openvdb` | | OpenVDB の float grid の入出力 |
+| `physics` | | **AGPL** [`alice-physics`](https://crates.io/crates/alice-physics) 向けの SDF コライダーとシミュレーションモディファイア |
+| `codec` | | **AGPL** [`alice-codec`](https://crates.io/crates/alice-codec) によるボリューム圧縮 |
+| `sdf-cache` | | **AGPL** [`alice-cache`](https://crates.io/crates/alice-cache) による評価キャッシュ |
+| `asp` | | [`libasp`](https://crates.io/crates/libasp) による ALICE Streaming Protocol パケット (既定 feature のみ) |
+| `font` | | `alice-font` のグリフ輪郭 crates.io 版では無効: `--cfg alice_font_bridge` とローカルの `alice-font` も必要 |
+
+## バインディング
+
+| 対象 | 場所 | 備考 |
+|--------|-------|-------|
+| C / C++ | [`include/alice_sdf.h`](include/alice_sdf.h) | `--features ffi` |
+| C# / Unity | [`bindings/AliceSdf.cs`](bindings/AliceSdf.cs)、[`unity-sdf-universe/`](unity-sdf-universe/README.md) | C ABI 上の P/Invoke |
+| Unreal Engine 5 / 6 | [`unreal-plugin/`](unreal-plugin/README.md) | `--features unreal` |
+| VRChat | [`vrchat-package/`](vrchat-package/README_JP.md) | プレイヤーが歩き、衝突できる SDF 表面の VRChat パッケージ |
+| Godot 4 | [`docs/GODOT_GUIDE.md`](docs/GODOT_GUIDE.md) | `--features godot` |
+| Python | [`python/`](python/)、[`docs/PYTHON_GUIDE.md`](docs/PYTHON_GUIDE.md) | `--features python`、NumPy による一括評価とメッシュ出力 |
+| WebAssembly / Three.js | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md)、[`npm/`](npm/README.md) | `--features wasm` |
+| iOS / Android | [`mobile/`](mobile/README.md) | C ABI 上の XCFramework と Kotlin バインディング |
+| Bevy / Blender / Houdini / Maya / Nuke / Cinema 4D / OpenXR / visionOS | [`bindings/`](bindings/README.md)、[`docs/INTEGRATIONS_JP.md`](docs/INTEGRATIONS_JP.md) | 参照実装 |
+
+CI は C ABI をその利用側と突き合わせる: `scripts/abi_decl_check.py` と
+`scripts/unreal-abi-check.sh` が、公開している全関数を C ヘッダー、C# バインディング、
+Unreal Engine プラグインと比較する
+
+Text-to-3D サーバーと ALICE-View ビューアは crate の上に作ったアプリケーション
+[`docs/TEXT_TO_3D_JP.md`](docs/TEXT_TO_3D_JP.md) を参照
+
+## 性能
+
+ベンチマークは [`benches/`](benches/) にある (criterion):
+
+```sh
+cargo bench --bench sdf_eval
+cargo bench --bench gpu_vs_cpu --features gpu
 ```
 
-**従来（手動で SdfNode を構築）:**
+ここには数値を載せない 古い文書の数値は評価器をビット一致にする (FMA を外した)
+前に測ったもので、その後測り直していない 数値を引用する前に、対象の環境で
+ベンチマークを実行すること
 
-```rust
-use alice_sdf::prelude::*;
+## 最小対応 Rust バージョン
 
-let scene = SdfNode::SmoothUnion {
-    k: 0.3,
-    children: vec![
-        SdfNode::sphere(1.0),
-        SdfNode::Translate {
-            offset: glam::Vec3::new(2.0, 0.0, 0.0),
-            child: Box::new(SdfNode::Round {
-                radius: 0.05,
-                child: Box::new(SdfNode::box3d(0.8, 0.8, 0.8)),
-            }),
-        },
-    ],
-};
+最小対応 Rust バージョン: **1.85** (`Cargo.toml` の `rust-version`) <!-- readme-sync: msrv -->
+
+CI のジョブが、ちょうどこのバージョンで既定 feature と docs.rs の feature 組で
+ライブラリを検査する MSRV の引き上げはマイナーバージョンの変更として扱い、
+パッチでは上げない
+
+## ビルドとテスト
+
+```sh
+cargo build --release
+cargo test
+cargo test --features jit --test test_det_parity
+cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 ```
 
-**LOL DSL で書くと:**
-
-```rust
-use alice_lol::{lol, to_glsl, eval};
-
-let scene = lol! {
-    smooth_union(0.3,
-        sphere(1.0),
-        translate(2.0, 0.0, 0.0, round(0.05, box3d(0.8, 0.8, 0.8)))
-    )
-};
-```
-
-同じ `SdfNode` ツリーが、わずかなコードで完成します。76 構文（27 プリミティブ、23 CSG オペレーション、4 トランスフォーム、19 モディファイア、2 時間制御、3 法則制約）がすべて関数呼び出しで使えます。
-
-**GPU シェーダにトランスパイル:**
-
-```rust
-let glsl = to_glsl(&scene);                      // GLSL
-let wgsl = alice_lol::to_wgsl(&scene);            // WGSL (WebGPU)
-let hlsl = alice_lol::to_hlsl(&scene);            // HLSL (DirectX)
-```
-
-**CPU で距離を評価:**
-
-```rust
-let dist = eval(&scene, glam::Vec3::new(0.0, 1.0, 0.0));
-```
-
-**LOL シーンからメッシュ書き出し:**
-
-```rust
-use alice_lol::lol;
-use alice_sdf::prelude::*;
-
-let scene = lol! {
-    smooth_union(0.3,
-        sphere(1.0),
-        translate(2.0, 0.0, 0.0, box3d(0.8, 0.8, 0.8))
-    )
-};
-
-let mesh = sdf_to_mesh(
-    &scene,
-    glam::Vec3::splat(-3.0),
-    glam::Vec3::splat(3.0),
-    &MarchingCubesConfig { resolution: 128, ..Default::default() },
-);
-
-alice_sdf::export::obj::write_obj("out.obj", &mesh)?;
-alice_sdf::export::glb::write_glb("out.glb", &mesh)?;
-```
-
-**Rust の変数を実行時に注入:**
-
-```rust
-let radius = 1.5_f32;
-let height = compute_height();
-let scene = lol! {
-    smooth_union(0.2,
-        sphere({radius}),
-        translate(0.0, {height}, 0.0, cylinder(2.0, 0.5))
-    )
-};
-```
-
-**形状の制約をチェック:**
-
-```rust
-use alice_lol::law::{LawSet, Law, Priority};
-
-let laws = LawSet::new()
-    .add(Law::non_overlap(&a, &b), Priority::Hard)        // 形状が重ならないこと
-    .add(Law::min_thickness(&scene, 0.1), Priority::Soft(0.5));  // 壁厚 >= 0.1
-let report = laws.check();
-```
-
-LOL の詳細は [ALICE-LOL README](https://github.com/ext-sakamoro/ALICE-LOL) を参照してください。
-
----
-
-### Rust（直接 SdfNode を構築する場合）
-
-LOL DSL でカバーされていない高度なノード型を使う場合や、細かい制御が必要な場合は `SdfNode` を直接構築できます:
-
-```rust
-use alice_sdf::prelude::*;
-
-// 半径1の球体を作成
-let sphere = SdfNode::sphere(1.0);
-
-// 箱でくり抜く
-let result = sphere.subtract(SdfNode::box3d(1.5, 1.5, 1.5));
-
-// ある点での距離を評価
-let distance = eval(&result, glam::Vec3::ZERO);
-
-// メッシュに変換
-let mesh = sdf_to_mesh(
-    &result,
-    glam::Vec3::splat(-2.0),
-    glam::Vec3::splat(2.0),
-    &MarchingCubesConfig::default()
-);
-```
-
-### Python
-
-```python
-import alice_sdf as sdf
-
-# プリミティブを作成
-sphere = sdf.SdfNode.sphere(1.0)
-box3d = sdf.SdfNode.box3d(2.0, 1.0, 1.0)
-
-# CSG演算（メソッド構文）
-result = sphere.subtract(box3d)
-
-# 演算子オーバーロード（Python的な構文）
-a = sdf.SdfNode.sphere(1.0)
-b = sdf.SdfNode.box3d(0.5, 0.5, 0.5)
-union     = a | b    # a.union(b)
-intersect = a & b    # a.intersection(b)
-subtract  = a - b    # a.subtract(b)
-
-# トランスフォーム
-translated = result.translate(1.0, 0.0, 0.0)
-
-# 点群で評価（NumPy配列）
-import numpy as np
-points = np.array([[0.5, 0.0, 0.0], [1.0, 1.0, 1.0]], dtype=np.float32)
-distances = sdf.eval_batch(translated, points)
-
-# コンパイル評価（繰り返し使用時2-5倍高速）
-compiled = sdf.compile_sdf(sphere)
-distances = compiled.eval_batch(points)               # コンパイルバッチ
-vertices, indices = compiled.to_mesh((-2,-2,-2), (2,2,2), resolution=64)  # コンパイルメッシュ
-
-# メッシュに変換
-vertices, indices = sdf.to_mesh(translated, (-2.0, -2.0, -2.0), (2.0, 2.0, 2.0))
-
-# 複数フォーマットにエクスポート
-sdf.export_obj(vertices, indices, "model.obj")
-sdf.export_glb(vertices, indices, "model.glb")
-sdf.export_fbx(vertices, indices, "model.fbx")
-sdf.export_usda(vertices, indices, "model.usda")
-sdf.export_alembic(vertices, indices, "model.abc")
-
-# UV展開 → (positions[N,3], uvs[N,2], indices[M])
-positions, uvs, indices = sdf.uv_unwrap(vertices, indices)
-```
-
-
-### Sine Displacement (v1.7.3、等方 + 異方対応)
-
-`SineDisplacement` は任意の子 SDF に sin 波の摂動を加える modifier。**v1.7.3 で per-axis `Vec3` frequency に対応**、XYZ 独立の細かいパターン (鱗、木目、布のドレープ) を 1 ノードで表現できる。
-
-2 種類のコンストラクタ:
-
-| メソッド | frequency 型 | 用途 |
-|----------|------------|-----|
-| `.sine_displacement(amplitude, freq: f32)` | 等方 (`Vec3::splat`) | 均一な波紋 / 表面荒れ / 細胞状の鱗 |
-| `.sine_displacement_aniso(amplitude, freq: Vec3)` | 軸ごと | 木目、布ドレープ、細長い鱗、単軸に沿う波面 |
-
-```rust
-use alice_sdf::prelude::*;
-use glam::Vec3;
-
-// 等方: 球体に細かい細胞状の摂動
-let scales = SdfNode::sphere(1.0).sine_displacement(0.03, 25.0);
-
-// 異方: 細長い鱗 (X 方向高周波、Y/Z 低周波)
-let fish_scales = SdfNode::sphere(1.0).sine_displacement_aniso(0.03, Vec3::new(40.0, 10.0, 10.0));
-
-// 異方: 木目 (Y 方向密、他は疎)
-let wood = SdfNode::box3d(1.0, 3.0, 1.0)
-    .sine_displacement_aniso(0.01, Vec3::new(4.0, 30.0, 4.0));
-```
-
-両 variant とも標準パイプライン (`to_glsl` / `to_wgsl` / `to_hlsl`) で GLSL / WGSL / HLSL に transpile 済み。transpiler は per-axis `sin(freq.x * p.x) * sin(freq.y * p.y) * sin(freq.z * p.z)` を吐き、CPU 側 `modifier_sine_displacement` reference と一致。**区間演算バウンドと勾配 (diff) サポートも既に配線済み**なので raymarching と勾配ベースサンプリングで安全に使える。
-
-### よく使うレシピ
-
-繰り返し出てくるパターンをコピペしやすい形で。全例で `use alice_sdf::prelude::*;` 前提。
-
-**1. 角丸ボックス**
-
-```rust
-let rounded = SdfNode::box3d(1.0, 1.0, 1.0).round(0.15);
-```
-
-**2. スムーズ blob (ソフトブレンド Union)**
-
-```rust
-let blob = SdfNode::sphere(1.0)
-    .smooth_union(SdfNode::sphere(0.7).translate(1.2, 0.0, 0.0), 0.4);
-// signature: smooth_union(self, other: Self, k: f32) — k はブレンド半径
-```
-
-**3. 中空シェル (onion)**
-
-```rust
-let shell = SdfNode::sphere(1.0).onion(0.05);   // 壁厚 5cm
-```
-
-**4. 無限タイリング (`repeat_infinite`)**
-
-```rust
-let tiles = SdfNode::box3d(0.4, 0.4, 0.4).repeat_infinite(1.0, 1.0, 1.0);
-// 有限版: .repeat_finite([count_x, count_y, count_z], spacing)
-```
-
-**5. Y 軸ねじり**
-
-```rust
-let twisted = SdfNode::box3d(0.4, 2.0, 0.4).twist(1.5);   // Y 周り 1.5 rad/unit
-```
-
-**6. Displacement (sin + noise)**
-
-```rust
-let rough = SdfNode::sphere(1.0).sine_displacement(0.03, 20.0);
-```
-
-**7. CSG 連鎖 (プレートに穴を空ける)**
-
-```rust
-let plate = SdfNode::box3d(2.0, 0.1, 2.0);
-let hole  = SdfNode::cylinder(2.0, 0.15);
-let drilled = plate
-    .subtract(hole.translate(-0.8, 0.0,  0.0))
-    .subtract(hole.translate( 0.8, 0.0,  0.0))
-    .subtract(hole.translate( 0.0, 0.0, -0.8));
-```
-
-**8. GPU transpile (WebGPU / Metal / DX12)**
-
-```rust
-use alice_lol::{lol, to_wgsl};
-
-let scene = lol! { smooth_union(0.3, sphere(1.0), box3d(0.8, 0.8, 0.8)) };
-let wgsl_source = to_wgsl(&scene);      // WGSL shader に貼り付け
-```
-
-**VFX 系パターン** (流体、mandelbulb、魔法エフェクト、リボン FX、プラズマ、ポータル、force field) は [`docs/VFX_COOKBOOK.md`](docs/VFX_COOKBOOK.md) を参照。
-
-**汎用レシピ集** (プロシージャル地形、カメラ相対 modifier、バウンディング volume trick、LOD 戦略) は [`docs/COOKBOOK.md`](docs/COOKBOOK.md) を参照。
-
-### 次に見るべきドキュメント
-
-| やりたいこと | 参照先 |
-|------------|-------|
-| 全 `SdfNode` variant を把握 | [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) |
-| 新規プロジェクト立ち上げ | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) |
-| コンパイラ / evaluator 内部を深掘り | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| Unity / Unreal / Godot 統合 | [`docs/UNREAL_ENGINE.md`](docs/UNREAL_ENGINE.md) · [`docs/GODOT_GUIDE.md`](docs/GODOT_GUIDE.md) |
-| Python から使う | [`docs/PYTHON_GUIDE.md`](docs/PYTHON_GUIDE.md) |
-| ブラウザで動かす | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md) |
-| 3D プリント用パーツを作る | [ALICE-Bamboo](https://github.com/ext-sakamoro/ALICE-Bamboo) 参照 (LOL → SDF → 3MF パイプライン) |
-
-詳細な技術セクション (マテリアル / アニメーション / アーキテクチャ / メッシュモジュール / プラトン立体 / 区間演算 / ニューラル SDF / コリジョン / 解析的勾配 / Dual Contouring / CSG最適化 / 自動タイト AABB / テクスチャフィッティング / レイマーチング / FFI / フィーチャーフラグ / 物理ブリッジ / 3D プリントパイプライン / パフォーマンス / ベンチマーク / Unity / VRChat / UE5・UE6 / Godot / クロスクレートブリッジ / Asset Delivery Network / Nanite ハイブリッドパイプライン) は [`docs/USAGE_JP.md`](docs/USAGE_JP.md) を参照。
+`scripts/preflight.sh` は CI の検査をローカルで再現する (`--quick` は統合テストと
+オラクルテストを飛ばす)
+
+## 関連 crate
+
+| Crate | 役割 |
+|-------|------|
+| [alice-det-math](https://github.com/ext-sakamoro/ALICE-DetMath) | この crate と ALICE-Physics が共に使う決定的な超越関数 |
+| [ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL) | 同じ `SdfNode` の木にパースされる言語と法則検証器 ([はじめに](docs/GETTING_STARTED_JP.md#2-つの入口-本-crate-の-api-と-lol-言語) を参照) |
+| [ALICE-Physics](https://github.com/ext-sakamoro/ALICE-Physics) | 決定的な物理エンジン `physics` feature で、描画しているのと同じ場に衝突する |
+| [ALICE-View](https://github.com/ext-sakamoro/ALICE-View) | `.asdf` ファイルのリアルタイムビューア |
+
+依存グラフの `alice-det-math` は 1 つの版にそろえること 2 つの版があると同じ関数の
+実装が 2 つになり、決定性が失われる `cargo tree -i alice-det-math` で確認できる
+
+リリース履歴は [`CHANGELOG.md`](CHANGELOG.md)、予定は
+[`docs/ROADMAP.md`](docs/ROADMAP.md) にある
 
 ## ライセンス
 
-**オープンコアモデル** - クリエイターは無料、インフラは有償。
+crate は `MIT OR Apache-2.0` のデュアルライセンス
+([LICENSE-MIT](LICENSE-MIT)、[LICENSE-APACHE](LICENSE-APACHE))
 
-| コンポーネント | ライセンス | 用途 |
-|-----------|---------|----------|
-| **コアエンジン**（Rust） | MITライセンス | 自由に改変可能！ |
-| **Unity統合** | ALICEコミュニティライセンス | インディー・ゲーム開発は無料 |
-| **エンタープライズ / クラウドインフラ** | 商用ライセンス | 価格はお問い合わせください |
+`physics`、`codec`、`sdf-cache` の各 feature は `AGPL-3.0-or-later` の crate を
+リンクする いずれかを有効にしたビルドは全体が AGPL の対象になる 既定の feature と
+それ以外の feature は対象にならない
 
-### 無料利用（ライセンス不要）
+Unity 統合 ([`unity-sdf-universe/`](unity-sdf-universe/)) と VRChat パッケージ
+([`vrchat-package/`](vrchat-package/)) は ALICE Community License
+([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): 個人利用、ゲーム開発 (商用ゲームを含む)、
+教育、オープンソースでは無償 同ライセンスが定めるインフラサービス (クラウド、
+メタバースプラットフォーム、ストリーミング) には商用ライセンスが必要 商用
+ライセンスの問い合わせ: <contact@extoria.co.jp>
 
-- 個人プロジェクト
-- インディーゲーム開発（収益に関係なく）
-- AAAゲームスタジオ（出荷ゲーム）
-- 教育・研究
-- オープンソースプロジェクト
+この crate で作ったコンテンツ (木、メッシュ、ワールド) はあなたのもの
 
-### 商用ライセンスが必要
+多くの距離関数は Inigo Quilez、Mercury (hg_sdf)、Ken Perlin が公開した式に従う
+一覧と範囲は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にある
 
-- メタバースプラットフォーム（10,000+ MAU）
-- クラウドストリーミングサービス（SaaS/PaaS）
-- インフラプロバイダー
-- 競合製品
-
-詳細は[LICENSE-MIT](LICENSE-MIT) / [LICENSE-APACHE](LICENSE-APACHE)（MIT OR Apache-2.0）および[LICENSE-COMMUNITY](LICENSE-COMMUNITY)を参照。
-
-**あなたが作成するコンテンツ（.asdfファイル、ワールド、ゲーム）は100%あなたのものです。ロイヤリティはありません。**
-
-### クレジット
-
-距離関数の実装は本リポジトリ独自の Rust 実装ですが、その多くは公開された
-数式の形に従っています
-
-- **Inigo Quilez** — プリミティブの大部分の数式の形 (doc comment で言及している
-  file は 34 個)、および GLSL transpiler が使う Shadertoy 慣習 (`iTime`、
-  `mainImage` ラッパー)
-- **Mercury (hg_sdf)** — stairs / columns / chamfer 系のブーリアン演算子と
-  octant mirror (15 file)
-- **Ken Perlin** — improved noise の勾配テーブル
-
-一覧と範囲: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
-
-## LLM × 3D制作パイプライン（SDF + LOL + View + Physics）
-
-4つのALICEプロジェクトを組み合わせることで、自然言語から物理シミュレーション付き3Dシーンまでの**エンドツーエンド**ワークフローが完成します:
-
-```
-ユーザー: 「シルクハットをかぶった雪だるま」
-         │
-         ▼
-┌──────────────────┐  LOL DSL or JSON  ┌───────────────────┐  WGSL / GLB   ┌──────────────┐
-│  LLM             │ ────────────────▶ │  ALICE-SDF        │ ────────────▶ │  ALICE-View  │
-│  (Claude/Gemini) │                   │  parse → compile  │               │  GPUプレビュー│
-│                  │                   │  → mesh / shader  │               │  60 FPS      │
-└──────────────────┘                   └────────┬──────────┘               └──────────────┘
-                                                │
-                                                │ SdfField トレイト
-                                                │ (feature = "physics")
-                                                ▼
-                                       ┌───────────────────┐
-                                       │  ALICE-Physics     │
-                                       │  Fix128 XPBD       │
-                                       │  SDF CCD / 力場    │
-                                       │  破壊 / 流体       │
-                                       └───────────────────┘
-```
-
-| コンポーネント | 役割 |
-|--------------|------|
-| **[ALICE-LOL](https://github.com/ext-sakamoro/ALICE-LOL)** | LLM向けDSL — JSONより少ないトークンで低ハルシネーション率。`runtime_parser::parse_lol()` でLLMテキスト出力を `SdfNode` にランタイム変換 |
-| **ALICE-SDF** | コアエンジン — SIMD/BVH/JIT評価、メッシュ生成（Marching Cubes / Dual Contouring）、GLSL/WGSL/HLSLトランスパイル、GLB/OBJ/STLエクスポート |
-| **[ALICE-View](https://github.com/ext-sakamoro/ALICE-View)** | リアルタイムGPUレイマーチングビューア — JSON/ASDFファイルをドラッグ&ドロップで即座にプレビュー |
-| **[ALICE-Physics](https://github.com/ext-sakamoro/ALICE-Physics)** | 決定論的128bit固定小数点物理エンジン — `SdfField` トレイトでSDF形状がそのまま衝突ジオメトリに。SDF CCD、力場、破壊、布、流体シミュレーション |
-
-LLMで生成した形状は見た目だけではなく、**物理シミュレーション対応**です。`CompiledSdfField` ラッパーがSDFをO(1)衝突クエリ面として公開するため、凸分解なしで剛体・破壊・流体のインタラクションが可能です。
-
-> **ブリッジ注意** — `alice-sdf = { version = "3", features = ["physics"] }` で alice-physics が crates.io から解決されます (1.12.0 以降) 詳細は [インストール](#インストール) 参照
-
-### クイックスタート
-
-```bash
-# 1. Text-to-3Dサーバー起動（LLMでLOL/JSON生成）
-cd ALICE-SDF/server
-python main.py
-
-# 2. プロンプトをPOST — SDF JSONが返る
-curl -X POST http://localhost:8000/api/generate \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "シルクハットをかぶった雪だるま", "format": "json"}'
-
-# 3. リアルタイムで結果を確認
-cd ALICE-View
-cargo run --bin alice-view -- ../ALICE-SDF/server/output/latest.json
-```
-
-### プログラマティック（Rust）
-
-```rust
-use alice_lol::runtime_parser::parse_lol;
-use alice_sdf::prelude::*;
-use alice_sdf::physics_bridge::CompiledSdfField;
-
-// LLM出力（テキスト） → SdfNode
-let lol_text = r#"smooth_union(0.3, sphere(1.0), translate(0.0, 1.5, 0.0, sphere(0.7)))"#;
-let scene = parse_lol(lol_text).unwrap();
-
-// レンダリング用GPUシェーダー
-let wgsl = alice_lol::to_wgsl(&scene);
-
-// メッシュエクスポート
-let mesh = alice_sdf::mesh::sdf_to_mesh(
-    &scene,
-    glam::Vec3::splat(-3.0),
-    glam::Vec3::splat(3.0),
-    &MeshConfig::default(),
-);
-
-// 物理対応の衝突形状（凸分解不要）
-let field = CompiledSdfField::new(scene);
-// field.distance(x, y, z)            → f32        (1回評価)
-// field.distance_and_normal(x, y, z) → (f32, Vec3) (4回評価、四面体法)
-```
-
-### なぜJSONよりLOLか？
-
-| 指標 | JSON (SdfNode) | LOL DSL |
-|------|---------------|---------|
-| 形状あたりトークン数 | ~120 | ~30 |
-| LLMエラー率 | 高（括弧ネスト） | 低（関数呼び出しスタイル） |
-| ランタイムパース | `serde_json` | `runtime_parser::parse_lol()` |
-| コンパイル時マクロ | — | `lol! { ... }` |
-
-複雑なシーンではLOLは**3〜4倍少ないトークン**で記述でき、LLMのコストとハルシネーションの両方を削減します。
-
----
-
-## Mobile (iOS / Android)
-
-ALICE-SDF は [UniFFI](https://mozilla.github.io/uniffi-rs/) ベースの mobile SDK を同梱しており、Rust コアを **Swift** (iOS) と **Kotlin** (Android) から直接呼び出せます。
-
-### 対応ターゲット
-
-| プラットフォーム | アーキテクチャ | 配布物 |
-|-----------------|-------------|--------|
-| **iOS** | `aarch64-apple-ios` (実機), `aarch64-apple-ios-sim`, `x86_64-apple-ios` | `AliceSDF.xcframework` (static lib + Swift bindings) |
-| **Android** | `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` | `libuniffi_alice_sdf.so` + Kotlin bindings |
-
-### 実機動作確認済 (2026-06-06)
-
-| プラットフォーム | デバイス | 結果 |
-|-----------------|---------|------|
-| iOS | iPhone 17 Pro Simulator (iOS 26.0, Xcode 26.2) | ✅ アプリ起動、2D SDF スライス描画 ([screenshot](mobile/samples/ios-swiftui/screenshots/AliceSDF-demo.png)) |
-| Android | Pixel 6 emulator (Android 14 / API 34, arm64-v8a) | ✅ アプリ起動、2D SDF スライス描画 ([screenshot](mobile/samples/android-compose/screenshots/AliceSDF-android-demo.png)) |
-
-両プラットフォームで **完全に同じ数値** (`sphere d = 0.2806`、`smooth_union(k=0.3) = 0.2056`) を出力 — Rust コアの Apple Silicon / Android ARM 間移植正確性を実機で実証。
-
-### Swift クイックスタート
-
-```swift
-import AliceSDF
-
-let d = sdfSphere(
-    point:  Vec3(x: 1, y: 0, z: 0),
-    center: Vec3(x: 0, y: 0, z: 0),
-    radius: 1.0
-)
-// d ≈ 0 (球面上の点)
-
-let blended = opSmoothUnion(a: 0.5, b: 0.6, k: 0.1)
-// blended < 0.5 (smooth union が min より下に引っ張る)
-```
-
-### Kotlin クイックスタート
-
-```kotlin
-import uniffi.alice_sdf.*
-
-val d = sdfSphere(
-    point  = Vec3(1f, 0f, 0f),
-    center = Vec3(0f, 0f, 0f),
-    radius = 1.0f
-)
-// d ≈ 0
-
-val blended = opSmoothUnion(a = 0.5f, b = 0.6f, k = 0.1f)
-```
-
-### SDK ビルド
-
-```bash
-# iOS XCFramework (実機 + シミュレータ)
-cd mobile/packaging/ios && ./build-xcframework.sh
-
-# Android .so + Kotlin bindings (4 ABI)
-export ANDROID_NDK_HOME=/opt/homebrew/share/android-ndk
-cd mobile/packaging/android && ./build-aar.sh
-```
-
-サンプルアプリ・統合手順は [`mobile/`](mobile/) を参照。
-
----
-
-## Web (WebAssembly) / VFX (OpenVDB) / Bevy エンジン
-
-### `wasm` feature — WebAssembly バインディング
-
-ブラウザ側で SDF 評価 + スライス描画。`wasm-bindgen` ベース。
-
-```bash
-cargo build --target wasm32-unknown-unknown --no-default-features --features wasm
-```
-
-JavaScript 使用例:
-
-```js
-import init, { sdf_sphere, op_smooth_union, render_sphere_slice_rgba } from './alice_sdf.js';
-await init();
-const d = sdf_sphere(1, 0, 0, /*center*/ 0, 0, 0, /*radius*/ 1.0);  // ≈ 0
-const rgba = render_sphere_slice_rgba(256, 256, 0, 0, 0, 1.0, 2.5);  // Uint8Array (canvas へ putImageData)
-```
-
-### `openvdb` feature — OpenVDB Float Grid I/O
-
-SDF を voxel grid に bake、Houdini / Maya / Nuke / Blender 等の VFX/DCC ツール連携。
-
-```rust
-use alice_sdf::io::vdb::{bake_to_vdb, load_dense_grid_from_vdb};
-use alice_sdf::prelude::*;
-
-let node = SdfNode::sphere(1.0);
-let bytes = bake_to_vdb(&node, (-2.0, 2.0), 64).unwrap();
-std::fs::write("sphere.vdb", &bytes).unwrap();
-```
-
-[`vdb-rs`](https://crates.io/crates/vdb-rs) 0.6 (pure Rust) ベース。現状は `ALICEVDB1` コンパクト形式、`vdb-rs` の write API 整備に合わせて OpenVDB 正規バイナリへ移行予定。
-
-### `alice-sdf-bevy` — Bevy 0.18 プラグイン
-
-`SdfShape` Component を持つ Entity を spawn すれば、自動的に Mesh が生成・attach される ECS 統合。
-
-```rust
-use bevy::prelude::*;
-use alice_sdf_bevy::{AliceSdfPlugin, SdfShape};
-
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(AliceSdfPlugin)
-        .add_systems(Startup, |mut commands: Commands| {
-            commands.spawn(SdfShape::Sphere { radius: 1.0 });
-        })
-        .run();
-}
-```
-
-`bindings/bevy/alice-sdf-bevy/examples/sphere_demo.rs` にカメラ + ライト付きの 3 形状デモあり。
-
-### 3D Gaussian Splatting (`.splat`)
-
-SDF 表面を Inria 3DGS 互換 `.splat` ファイル (32 bytes/splat: position + scale + RGBA + 圧縮 quat) に変換。WebGL ベースのビューア (gsplat.tech / SuperSplat / antimatter15/splat) に drag&drop で即読込可能。
-
-```rust
-use alice_sdf::io::splat::{sdf_to_splats, save_splat, SplatConfig};
-use alice_sdf::prelude::*;
-
-let node = SdfNode::sphere(1.0);
-let cfg = SplatConfig { bounds: (-2.0, 2.0), resolution: 64, base_color: [220, 220, 240, 255] };
-let splats = sdf_to_splats(&node, &cfg);
-save_splat("sphere.splat", &splats).unwrap();
-```
-
-### DCC 統合は reference integration
-
-以下の Blender / Houdini / Maya / Nuke / Cinema 4D プラグインは **reference integration** (各 200〜700 行) です `.asdf` の読込経路と数個の primitive 生成をホスト内で示すもので、本番プラグインの出発点であって完成品ではありません Bevy (`bindings/bevy/`) / Three.js (`bindings/threejs/`) / OpenXR が比較的厚い統合で、CI で compile / type-check されています
-
-### Blender アドオン (`bindings/blender/`)
-
-Blender 4.0+ アドオン。`.asdf` を直接 import + N-panel に "ALICE-SDF" タブを追加して sphere / box / torus を生成。`alice_sdf` Python モジュール (`cargo build --release --features python`) が前提。
-
-インストール: `alice_sdf_blender/` を zip 化し、`Edit > Preferences > Add-ons > Install...` から有効化。
-
-### Houdini Python プラグイン (`bindings/houdini/`)
-
-SideFX Houdini 20+ 用 Python モジュール + Python SOP body (`.asdf` ローダー / プリミティブ生成)。`install.sh` が `$HSITE` / `$HOUDINI_USER_PREF_DIR` を自動検出してコピー。
-
-```python
-import alice_sdf_hou
-sdf = alice_sdf_hou.sphere(1.0)
-alice_sdf_hou.sdf_to_hou_geo(sdf, hou.pwd().geometry(), bounds=(-2.0, 2.0), resolution=64)
-```
-
-### MagicaVoxel `.vox` IO
-
-SDF を voxelize して MagicaVoxel `.vox` (v150 RIFF) で書き出し。indie / voxel art パイプライン向け。
-
-```rust
-use alice_sdf::io::vox::{sdf_to_vox, save_vox, VoxConfig};
-use alice_sdf::prelude::*;
-
-let node = SdfNode::sphere(1.0);
-let cfg = VoxConfig { size: 64, bounds: (-1.5, 1.5), color_index: 79 };
-save_vox("sphere.vox", &sdf_to_vox(&node, &cfg)).unwrap();
-```
-
-### `@alice-sdf/threejs` — Three.js / React Three Fiber ラッパー
-
-`wasm` feature の上の TypeScript npm パッケージ。型付き `AliceSDF` クラス + Three.js `DataTexture` ヘルパ + R3F 用 `<AliceSDFSlicePlane>` + WebXR raymarching ヘルパを提供。
-
-```ts
-import { AliceSDF } from "@alice-sdf/threejs";
-const sdf = await AliceSDF.load("/alice_sdf.js");
-const tex = await sdf.createSliceTexture(512, 512, [0, 0, 0], 1.0, 2.5);
-scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: tex })));
-```
-
-### Maya Python プラグイン (`bindings/maya/`)
-
-Autodesk Maya 2024+ 用 Python モジュール — メイン メニューに「ALICE-SDF」を登録し、`MFnMesh` API でポリゴンメッシュを直接構築。
-
-```python
-import alice_sdf_maya
-alice_sdf_maya.register_menu()
-alice_sdf_maya.add_sphere(radius=1.5, resolution=64)
-```
-
-### Nuke Python プラグイン (`bindings/nuke/`)
-
-Foundry Nuke 15 / 16+ 用 Python モジュール — `.asdf` をボリュームバイナリと 2D RGBA スライスへ書き出し、VFX コンポジット連携。
-
-```python
-import alice_sdf_nuke
-alice_sdf_nuke.export_asdf_as_volume("/path/to/model.asdf", out_path="/tmp/model.alicevdb")
-```
-
-### Cinema 4D Python プラグイン (`bindings/cinema4d/`)
-
-Maxon Cinema 4D 2024 / 2025 / 2026+ 用 Python モジュール — SDF プリミティブから `PolygonObject` を生成、`.asdf` を直接 C4D シーンに読み込み。
-
-```python
-import alice_sdf_c4d
-alice_sdf_c4d.add_sphere(radius=100.0, resolution=64)   # C4D 単位は cm
-alice_sdf_c4d.import_asdf("/path/to/model.asdf", bounds=(-300.0, 300.0), resolution=128)
-```
-
-### CAD 交換 — STEP / IGES (FEM 風メッシュエクスポート)
-
-SDF tree を Marching Cubes で tessellate して以下のいずれかを書き出し可能:
-
-- **STEP AP214** (ISO 10303-21 ASCII、`AUTOMOTIVE_DESIGN`) — **faceted BREP**。三角形 1 枚が `PLANE` 上の `ADVANCED_FACE` で、`ORIENTED_EDGE`/`EDGE_CURVE` の `EDGE_LOOP` が境界、全面を `CLOSED_SHELL` → `MANIFOLD_SOLID_BREP` → `ADVANCED_BREP_SHAPE_REPRESENTATION` にまとめ、単位は mm。**注:** 面は平面なので、球は `SPHERICAL_SURFACE` ではなく三角形分割として届く。独立な読み戻し oracle (`tests/test_step_export_oracle.rs`) が (1) `#id` 参照の未解決なし (2) AP214 必須 root の存在 (3) shell が閉じている (各エッジが 2 回使われる) (4) 復元した体積が解析値と 5% 以内 を検証する。2026-09-27 以前は点と loop だけで shell / solid / 表現 / 単位が無く、未定義の `#0` を参照していたため CAD では開けなかった
-- **箱は厳密** — 原点中心の軸平行箱 (`SdfNode::Box3d`) は tessellate せず 4 角形 6 枚の `ADVANCED_FACE` として書くので、`resolution` に依らず寸法が厳密 (oracle が体積を `w·h·d` と 1e-6 以内で照合)。球 / 円柱は従来通り tessellate する。
-- **IGES** (Entity 134 Node + Entity 136 Finite Element) — FEM mesh entity。FEM ソルバや該当 entity 対応 viewer 向け。Entity 144 (Trimmed Surface) を期待する標準 CAD では未対応
-
-両方とも unit test で round-trip 検証済みだが、実 CAD ツールでの相互運用は個別検証が必要。
-
-```rust
-use alice_sdf::io::step::{export_step, StepConfig};
-use alice_sdf::io::iges::{export_iges, IgesConfig};
-use alice_sdf::prelude::*;
-
-let node = SdfNode::sphere(1.0);
-export_step("sphere.step", &node, &StepConfig::default()).unwrap();
-export_iges("sphere.igs",  &node, &IgesConfig::default()).unwrap();
-```
-
-### `alice-sdf-openxr` — Native VR / AR ヘルパー (`bindings/openxr/`)
-
-[`openxr`](https://crates.io/crates/openxr) Rust バインディングの上に乗る薄いヘルパー。Meta Quest standalone (Android APK)、PC VR (SteamVR / Oculus PC)、Microsoft Mixed Reality、Apple Vision Pro (OpenXR backend) で動く。
-
-```rust
-use alice_sdf_openxr::{XrPose, raymarch_sphere};
-use glam::Vec3;
-
-// XR frame コールバック内で
-let head_pose: XrPose = openxr_pose.into();
-let hit_dist = raymarch_sphere(head_pose, Vec3::new(0.0, 1.5, -1.0), 0.3, 5.0);
-if hit_dist > 0.0 {
-    // コントローラ / ヘッドが球を見ている
-}
-```
-
-### `AliceSDFVisionOS` — Apple Vision Pro SwiftPM パッケージ (`mobile/swift-package-visionos/`)
-
-iOS / iPadOS / macOS と同じ `AliceSDF.xcframework` を再利用しつつ、visionOS / RealityKit 向けの `ModelEntity` ファクトリヘルパーを追加した SwiftPM パッケージ。
-
-```swift
-import SwiftUI
-import RealityKit
-import AliceSDFVisionOS
-
-struct ImmersiveView: View {
-    var body: some View {
-        RealityView { content in
-            let sphere = AliceSDFRealityKit.makeSphereEntity(radius: 0.1)
-            sphere.position = SIMD3(0, 1.5, -1.0)
-            content.add(sphere)
-        }
-    }
-}
-```
-
-### REST API サーバー (`server/`)
-
-`axum` + `tokio` ベースの HTTP サーバー。ALICE-SDF の primitive 評価と operation を JSON で公開。クラウド配信型 SDF UI (例: `alicelaw.net/sdf-metaverse`) のバックエンドを想定。
-
-```bash
-cd server && cargo run --release
-# → ALICE-SDF server listening on http://0.0.0.0:8787
-```
-
-```http
-POST /eval
-Content-Type: application/json
-
-{ "shape": "sphere", "point": [1, 0, 0], "params": { "radius": 1.0, "center": [0, 0, 0] } }
-```
-
-レスポンス: `{ "distance": 0.0 }`
-
----
-
-## 関連プロジェクト
-
-| プロジェクト | 説明 | リンク |
-|-------------|------|--------|
-| **ALICE-LOL** | **本 crate が評価する法則を書くための言語** 同じ `SdfNode` tree を作る DSL (`lol!` proc-macro + 実行時 parser)、三値の法則検証器 (充足 / 違反 / 未決定)、LLM constrained decoding 用の GBNF grammar、印刷 / レーザー / Roblox の export 入口 → [2 つの入口](#2-つの入口-本-crate-の-api-と-lol-言語) | [GitHub](https://github.com/ext-sakamoro/ALICE-LOL) |
-| **Open Source SDF Assets** | ALICE-SDFで変換した991個のCC0 3Dアセット（.asdf.json形式） | [GitHub](https://github.com/ext-sakamoro/Open-Source-SDF-Assets) |
-| **ALICE Ecosystem** | 52コンポーネントのエッジtoクラウドデータパイプライン | [GitHub](https://github.com/ext-sakamoro/ALICE-Eco-System) |
-| **AI Modeler SaaS** | ALICE-SDFを搭載したブラウザベース3Dモデリング | [GitHub](https://github.com/ext-sakamoro/AI-Modeler-SaaS) |
-| **ALICE SDF Metaverse** | ブラウザ実行デモ — WebGL2 レイマーチング世界 + JS 側 CCD 物理、ALICE-SDF の思想をブラウザで実証 | [Demo](https://alicelaw.net/sdf-metaverse) |
-| **alicelaw.net** | 個人サイトソース — Cloudflare Pages + Pages Functions QR ルーター (`/0x01`〜`/0xFF`)、SDF Metaverse デモのホスト | [GitHub](https://github.com/ext-sakamoro/alicelaw-net) |
-
----
-
-Copyright (c) 2025-2026 Moroya Sakamoto — https://alicelaw.net/
+Copyright (C) 2025-2026 Moroya Sakamoto
