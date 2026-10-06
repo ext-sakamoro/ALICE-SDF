@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **625 baseline items** — Permitted violations, ratchet in place
+🟡 **543 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (625 permitted)
+## 📋 Baseline (543 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -19,32 +19,25 @@ Must resolve or remove from baseline to reduce ratchet.
 |------|----------------|
 | `src/material.rs` | 39 |
 | `src/npr/compiled_color.rs` | 32 |
-| `src/raycast/march.rs` | 22 |
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
 | `src/autodiff.rs` | 15 |
-| `src/mesh/lod.rs` | 15 |
-| `src/sim_bridge.rs` | 15 |
 | `src/compiled/wgsl/gpu_eval.rs` | 14 |
-| `src/codec_bridge.rs` | 13 |
+| `src/sim_bridge.rs` | 14 |
+| `src/mesh/lod.rs` | 13 |
 | `src/mesh/meshopt_filter.rs` | 13 |
 | `src/mesh/nanite.rs` | 13 |
-| `src/mesh/collision.rs` | 11 |
-| `src/mesh/primitive_fitting.rs` | 11 |
-| `src/sdf2d.rs` | 11 |
+| `src/codec_bridge.rs` | 12 |
+| `src/mesh/collision.rs` | 10 |
 | `src/mesh/mesh_to_sdf.rs` | 10 |
+| `src/mesh/primitive_fitting.rs` | 10 |
 | `src/cache/chunked.rs` | 9 |
 | `src/compiled/instanced.rs` | 9 |
 | `src/destruction/mod.rs` | 9 |
 | `src/operations/smooth.rs` | 9 |
-| `src/collision.rs` | 8 |
 | `src/compiled/aabb.rs` | 8 |
-| `src/constraint.rs` | 8 |
-| `src/raycast/mod.rs` | 7 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
-| `src/compiled/jit/simd/mod.rs` | 6 |
 | `src/compiled/wgsl/transpiler.rs` | 6 |
-| `src/diff.rs` | 6 |
 | `src/mesh/quantization.rs` | 6 |
 | `src/npr/dsl.rs` | 6 |
 | `src/terrain/splatmap.rs` | 6 |
@@ -57,19 +50,17 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/mesh/mesh_codec.rs` | 5 |
 | `src/mesh/stripifier.rs` | 5 |
 | `src/modifiers/noise.rs` | 5 |
-| `src/neural.rs` | 5 |
 | `src/terrain/clipmap.rs` | 5 |
 | `src/terrain/heightmap.rs` | 5 |
 | `src/types/containers.rs` | 5 |
-| `src/animation.rs` | 4 |
 | `src/asp_bridge.rs` | 4 |
 | `src/compiled/hlsl/transpiler.rs` | 4 |
 | `src/compiled/jit/runtime.rs` | 4 |
+| `src/compiled/jit/simd/mod.rs` | 4 |
 | `src/compiled/opcode.rs` | 4 |
 | `src/compiled/simd.rs` | 4 |
 | `src/eval/parallel.rs` | 4 |
 | `src/ffi/registry.rs` | 4 |
-| `src/interval.rs` | 4 |
 | `src/mesh/meshlet.rs` | 4 |
 | `src/mesh/optimize.rs` | 4 |
 | `src/modifiers/repeat.rs` | 4 |
@@ -83,6 +74,7 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/cache/mod.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
 | `src/gi/irradiance.rs` | 3 |
+| `src/interval.rs` | 3 |
 | `src/mesh/overdraw.rs` | 3 |
 | `src/mesh/point_cloud_sdf.rs` | 3 |
 | `src/modifiers/bend.rs` | 3 |
@@ -96,7 +88,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/eval_bvh.rs` | 2 |
 | `src/destruction/debris.rs` | 2 |
 | `src/destruction/operations.rs` | 2 |
-| `src/llm_schema.rs` | 2 |
 | `src/mesh/bvh.rs` | 2 |
 | `src/mesh/decimate.rs` | 2 |
 | `src/mesh/lightmap.rs` | 2 |
@@ -123,7 +114,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/eval/mod.rs` | 1 |
 | `src/gi/cone_trace.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
-| `src/incremental.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
 | `src/mesh/dual_contouring.rs` | 1 |
 | `src/mesh/meshopt_index_codec.rs` | 1 |
@@ -133,6 +123,7 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/modifiers/ifs.rs` | 1 |
 | `src/modifiers/surface_roughness.rs` | 1 |
 | `src/modifiers/sweep.rs` | 1 |
+| `src/neural.rs` | 1 |
 | `src/operations/intersection.rs` | 1 |
 | `src/operations/union.rs` | 1 |
 | `src/optimize.rs` | 1 |
@@ -168,13 +159,9 @@ dead_code src/transforms/scale.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (607)
+### Unwired Items (525)
 
 ```
-unwired src/animation.rs::cubic
-unwired src/animation.rs::evaluate_at
-unwired src/animation.rs::evaluate_params
-unwired src/animation.rs::with_loop
 unwired src/asp_bridge.rs::create_sdf_d_packet
 unwired src/asp_bridge.rs::create_sdf_i_packet
 unwired src/asp_bridge.rs::decode_sdf_i_packet
@@ -215,20 +202,11 @@ unwired src/codec_bridge.rs::compression_ratio
 unwired src/codec_bridge.rs::decode_sdf_volume
 unwired src/codec_bridge.rs::decompress_sdf
 unwired src/codec_bridge.rs::encode_sdf_volume
-unwired src/codec_bridge.rs::high_quality
 unwired src/codec_bridge.rs::lossless
 unwired src/codec_bridge.rs::volume_stats
 unwired src/codec_bridge.rs::voxelize_sdf
 unwired src/codec_bridge.rs::voxelize_sdf_uniform
 unwired src/codec_bridge.rs::world_pos
-unwired src/collision.rs::ContactManifold
-unwired src/collision.rs::SdfContact
-unwired src/collision.rs::compute_manifold
-unwired src/collision.rs::sdf_ccd
-unwired src/collision.rs::sdf_closest_point
-unwired src/collision.rs::sdf_collide
-unwired src/collision.rs::sdf_distance
-unwired src/collision.rs::sdf_overlap
 unwired src/compiled/aabb.rs::distance_to_point_fast
 unwired src/compiled/aabb.rs::from_half_size
 unwired src/compiled/aabb.rs::hex_prism_aabb
@@ -283,8 +261,6 @@ unwired src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch_parallel
 unwired src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval_batch_parallel
 unwired src/compiled/jit/runtime.rs::params
 unwired src/compiled/jit/runtime.rs::update_params
-unwired src/compiled/jit/simd/mod.rs::JitSimdSdf::eval_8
-unwired src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8
 unwired src/compiled/jit/simd/mod.rs::extract_simd_params
 unwired src/compiled/jit/simd/mod.rs::params
 unwired src/compiled/jit/simd/mod.rs::update_params
@@ -316,14 +292,6 @@ unwired src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals
 unwired src/compiled/wgsl/transpiler.rs::to_volume_shader
 unwired src/compiled/wgsl/transpiler.rs::transpile_material
 unwired src/compiled/wgsl/transpiler.rs::with_workgroup_size
-unwired src/constraint.rs::SolveResult
-unwired src/constraint.rs::constraint_count
-unwired src/constraint.rs::distance
-unwired src/constraint.rs::fix
-unwired src/constraint.rs::product
-unwired src/constraint.rs::range
-unwired src/constraint.rs::ratio
-unwired src/constraint.rs::solve
 unwired src/crispy.rs::BitMask64::test
 unwired src/crispy.rs::BloomFilter::test
 unwired src/crispy.rs::EMPTY
@@ -353,12 +321,6 @@ unwired src/destruction/mod.rs::remesh_chunk
 unwired src/destruction/mod.rs::set_distance
 unwired src/destruction/operations.rs::carve_batch
 unwired src/destruction/operations.rs::explode
-unwired src/diff.rs::apply_patch
-unwired src/diff.rs::invert_patch
-unwired src/diff.rs::merge_patches
-unwired src/diff.rs::op_count
-unwired src/diff.rs::tree_diff
-unwired src/diff.rs::tree_hash
 unwired src/eval/mod.rs::gradient
 unwired src/eval/parallel.rs::eval_grid
 unwired src/eval/parallel.rs::eval_grid_with_normals
@@ -380,13 +342,9 @@ unwired src/gi/irradiance.rs::get_probe
 unwired src/gi/irradiance.rs::get_probe_mut
 unwired src/gi/irradiance.rs::probe_count
 unwired src/gi/mod.rs::PointLight
-unwired src/incremental.rs::bindings_of
-unwired src/interval.rs::intersect
 unwired src/interval.rs::is_negative
 unwired src/interval.rs::is_positive
 unwired src/interval.rs::overlaps
-unwired src/llm_schema.rs::schema_summary
-unwired src/llm_schema.rs::validate_sdf_json
 unwired src/material.rs::aluminum
 unwired src/material.rs::chrome
 unwired src/material.rs::concrete
@@ -434,7 +392,6 @@ unwired src/mesh/collision.rs::compute_convex_hull
 unwired src/mesh/collision.rs::convex_decomposition
 unwired src/mesh/collision.rs::convex_hull_from_points
 unwired src/mesh/collision.rs::half_extents
-unwired src/mesh/collision.rs::high_quality
 unwired src/mesh/collision.rs::simplify_collision
 unwired src/mesh/collision.rs::total_triangles
 unwired src/mesh/collision.rs::total_vertices
@@ -450,9 +407,7 @@ unwired src/mesh/hermite.rs::t
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs_fast
 unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
-unwired src/mesh/lod.rs::DecimationLodConfig::high_quality
 unwired src/mesh/lod.rs::LodConfig::distance_range
-unwired src/mesh/lod.rs::LodConfig::high_quality
 unwired src/mesh/lod.rs::balanced
 unwired src/mesh/lod.rs::base_triangle_count
 unwired src/mesh/lod.rs::generate_lod_chain
@@ -537,7 +492,6 @@ unwired src/mesh/point_cloud_sdf.rs::point_count
 unwired src/mesh/primitive_fitting.rs::PrimitiveType
 unwired src/mesh/primitive_fitting.rs::compute_error
 unwired src/mesh/primitive_fitting.rs::detect_primitive
-unwired src/mesh/primitive_fitting.rs::distance
 unwired src/mesh/primitive_fitting.rs::fit_box
 unwired src/mesh/primitive_fitting.rs::fit_cylinder
 unwired src/mesh/primitive_fitting.rs::fit_plane
@@ -579,10 +533,6 @@ unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/modifiers/sweep.rs::sweep_bezier_dist_y
 unwired src/modifiers/twist.rs::modifier_twist_x
 unwired src/modifiers/twist.rs::modifier_twist_z
-unwired src/neural.rs::eval_with_gradient
-unwired src/neural.rs::hidden_layer_count
-unwired src/neural.rs::input_dimension
-unwired src/neural.rs::train
 unwired src/npr/compiled_color.rs::ADD
 unwired src/npr/compiled_color.rs::BLOOM
 unwired src/npr/compiled_color.rs::FRESNEL
@@ -652,46 +602,6 @@ unwired src/primitives/plane.rs::sdf_plane_yz
 unwired src/primitives/torus.rs::sdf_torus_capped
 unwired src/primitives/torus.rs::sdf_torus_oriented
 unwired src/python/helpers.rs::numpy_to_vec3_fast
-unwired src/raycast/march.rs::RaymarchResult
-unwired src/raycast/march.rs::high_quality
-unwired src/raycast/march.rs::raymarch_batch
-unwired src/raycast/march.rs::raymarch_batch_parallel
-unwired src/raycast/march.rs::raymarch_compiled
-unwired src/raycast/march.rs::raymarch_compiled_batch_parallel
-unwired src/raycast/march.rs::raymarch_compiled_with_config
-unwired src/raycast/march.rs::raymarch_detailed
-unwired src/raycast/march.rs::raymarch_jit
-unwired src/raycast/march.rs::raymarch_jit_batch_parallel
-unwired src/raycast/march.rs::raymarch_jit_simd_8
-unwired src/raycast/march.rs::raymarch_jit_with_config
-unwired src/raycast/march.rs::raymarch_relaxed
-unwired src/raycast/march.rs::raymarch_simd_8
-unwired src/raycast/march.rs::relaxed
-unwired src/raycast/march.rs::render_depth
-unwired src/raycast/march.rs::render_depth_compiled
-unwired src/raycast/march.rs::render_depth_compiled_simd
-unwired src/raycast/march.rs::render_depth_jit
-unwired src/raycast/march.rs::render_depth_jit_simd
-unwired src/raycast/march.rs::render_normals
-unwired src/raycast/march.rs::render_normals_compiled
-unwired src/raycast/mod.rs::ambient_occlusion
-unwired src/raycast/mod.rs::ambient_occlusion_compiled
-unwired src/raycast/mod.rs::hard_shadow
-unwired src/raycast/mod.rs::hard_shadow_compiled
-unwired src/raycast/mod.rs::raycast_batch
-unwired src/raycast/mod.rs::soft_shadow
-unwired src/raycast/mod.rs::soft_shadow_compiled
-unwired src/sdf2d.rs::circle
-unwired src/sdf2d.rs::ellipse
-unwired src/sdf2d.rs::eval_2d
-unwired src/sdf2d.rs::eval_2d_batch
-unwired src/sdf2d.rs::eval_2d_normal
-unwired src/sdf2d.rs::intersect
-unwired src/sdf2d.rs::line
-unwired src/sdf2d.rs::rect
-unwired src/sdf2d.rs::ring
-unwired src/sdf2d.rs::rounded_rect
-unwired src/sdf2d.rs::star
 unwired src/sim_bridge.rs::GpuPhysicsBundle
 unwired src/sim_bridge.rs::add_erosion
 unwired src/sim_bridge.rs::add_fracture
@@ -701,7 +611,6 @@ unwired src/sim_bridge.rs::add_pressure
 unwired src/sim_bridge.rs::add_thermal
 unwired src/sim_bridge.rs::attach_physics
 unwired src/sim_bridge.rs::clear_modifiers
-unwired src/sim_bridge.rs::distance
 unwired src/sim_bridge.rs::gpu_mesh_with_physics
 unwired src/sim_bridge.rs::modifier_count
 unwired src/sim_bridge.rs::modifier_mut

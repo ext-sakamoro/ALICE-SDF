@@ -7,8 +7,8 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 947 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 286 |
+| L0 | not reached by any non-test code, examples included | 829 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 404 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 912 |
 | | **total** | **2145** |
 
@@ -17,18 +17,12 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 600 unwired items.
+`scripts/wiring-baseline.txt` lists 520 unwired items.
 
-### L0 here but not in the baseline (354)
+### L0 here but not in the baseline (318)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
-- `src/animation.rs::AnimatedSdf`
-- `src/animation.rs::AnimatedSdf::new`
-- `src/animation.rs::Keyframe::step`
-- `src/animation.rs::Timeline::duration`
-- `src/animation.rs::Timeline::evaluate`
-- `src/animation.rs::morph`
 - `src/autodiff.rs::Dual`
 - `src/autodiff.rs::Dual3`
 - `src/autodiff.rs::Dual3::abs`
@@ -66,6 +60,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/cache_bridge.rs::SdfEvalCache::new`
 - `src/codec_bridge.rs::EncodeConfig`
 - `src/codec_bridge.rs::EncodeConfig::fast`
+- `src/codec_bridge.rs::EncodeConfig::high_quality`
 - `src/codec_bridge.rs::SdfVolume`
 - `src/codec_bridge.rs::SdfVolume::get`
 - `src/codec_bridge.rs::SdfVolume::is_empty`
@@ -83,23 +78,16 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/compiled/instanced.rs::InstancedSdf::with_capacity`
 - `src/compiled/instruction.rs::Instruction::animated`
 - `src/compiled/instruction.rs::Instruction::is_leaf`
-- `src/compiled/jit/codegen.rs::JitCompiler`
-- `src/compiled/jit/codegen.rs::JitCompiler::compile_sdf`
 - `src/compiled/jit/codegen.rs::JitCompiler::compile_sdf_dynamic`
-- `src/compiled/jit/codegen.rs::JitCompiler::new`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::compile`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::eval`
 - `src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::lipschitz`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::compile`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval_batch`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::lipschitz`
-- `src/compiled/jit/runtime.rs::JitError`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::compile`
+- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8_raw`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_batch`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_soa`
@@ -127,17 +115,11 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/compiled/simd.rs::Vec3x8::length_squared`
 - `src/compiled/simd.rs::Vec3x8::max`
 - `src/compiled/simd.rs::Vec3x8::min`
-- `src/compiled/simd.rs::Vec3x8::new`
 - `src/compiled/simd.rs::Vec3x8::normalize`
-- `src/compiled/simd.rs::Vec3x8::to_array`
 - `src/compiled/simd.rs::Vec3x8::zero`
 - `src/compiled/transpiler_common.rs::GenericTranspiler::generate_shader`
 - `src/compiled/wgsl/gpu_eval.rs::GpuBufferPool`
 - `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture`
-- `src/constraint.rs::ConstraintSolver::add_constraint`
-- `src/constraint.rs::ConstraintSolver::set`
-- `src/constraint.rs::ConstraintSolver::sum`
-- `src/constraint.rs::ParamId::as_u32`
 - `src/crispy.rs::BitMask64`
 - `src/crispy.rs::BitMask64::as_u64`
 - `src/crispy.rs::BitMask64::clear`
@@ -148,19 +130,14 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/crispy.rs::BloomFilter`
 - `src/crispy.rs::BloomFilter::insert`
 - `src/crispy.rs::BloomFilter::new`
-- `src/crispy.rs::fnv1a_hash`
 - `src/destruction/debris.rs::DebrisConfig`
-- `src/diff.rs::DiffError`
-- `src/diff.rs::DiffOp`
-- `src/diff.rs::TreePatch`
-- `src/diff.rs::TreePatch::is_empty`
-- `src/diff.rs::TreePath`
 - `src/eval/parallel.rs::eval_batch`
 - `src/gi/irradiance.rs::IrradianceGrid::memory_bytes`
 - `src/gi/irradiance.rs::IrradianceGrid::sample`
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
 - `src/interval.rs::Interval::contains`
+- `src/interval.rs::Interval::intersect`
 - `src/material.rs::Material::glass`
 - `src/material.rs::Material::new`
 - `src/material.rs::Material::with_roughness`
@@ -207,6 +184,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/collision.rs::ConvexHull`
 - `src/mesh/collision.rs::VhacdConfig`
 - `src/mesh/collision.rs::VhacdConfig::fast`
+- `src/mesh/collision.rs::VhacdConfig::high_quality`
 - `src/mesh/collision.rs::compute_aabb`
 - `src/mesh/dual_contouring.rs::DualContouringConfig::aaa`
 - `src/mesh/hermite.rs::EdgeCrossing`
@@ -220,10 +198,12 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/lod.rs::ContinuousLod::update`
 - `src/mesh/lod.rs::DecimationLodConfig`
 - `src/mesh/lod.rs::DecimationLodConfig::fast`
+- `src/mesh/lod.rs::DecimationLodConfig::high_quality`
 - `src/mesh/lod.rs::LodChain`
 - `src/mesh/lod.rs::LodChain::memory_usage`
 - `src/mesh/lod.rs::LodConfig`
 - `src/mesh/lod.rs::LodConfig::fast`
+- `src/mesh/lod.rs::LodConfig::high_quality`
 - `src/mesh/lod.rs::LodMesh`
 - `src/mesh/lod.rs::LodMesh::blend_factor`
 - `src/mesh/lod.rs::LodMesh::is_active`
@@ -264,6 +244,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/point_cloud_sdf.rs::PointCloudSdfConfig`
 - `src/mesh/point_cloud_sdf.rs::PointCloudSdfConfig::fast`
 - `src/mesh/primitive_fitting.rs::FittedPrimitive`
+- `src/mesh/primitive_fitting.rs::FittedPrimitive::distance`
 - `src/mesh/primitive_fitting.rs::FittingConfig`
 - `src/mesh/primitive_fitting.rs::FittingResult`
 - `src/mesh/primitive_fitting.rs::FittingResult::is_acceptable`
@@ -273,14 +254,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/uv_unwrap.rs::UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE`
 - `src/mesh/uv_unwrap.rs::UvDensityReport::WARN_LOW_DENSITY_RATIO`
 - `src/mesh/uv_unwrap.rs::UvDensityReport::has_warning`
-- `src/neural.rs::NeuralSdf`
-- `src/neural.rs::NeuralSdf::eval`
-- `src/neural.rs::NeuralSdf::eval_batch`
-- `src/neural.rs::NeuralSdf::load`
-- `src/neural.rs::NeuralSdf::new`
-- `src/neural.rs::NeuralSdf::param_count`
-- `src/neural.rs::NeuralSdf::save`
-- `src/neural.rs::NeuralSdfConfig`
 - `src/npr/compiled_color.rs::ColorOp::stack_effect`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::validate`
 - `src/npr/compiled_color.rs::DeserializeError`
@@ -303,19 +276,10 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
 - `src/physics_bridge.rs::CompiledSdfField::from_arc`
 - `src/physics_bridge.rs::CompiledSdfField::new`
-- `src/raycast/march.rs::RaymarchConfig::fast`
-- `src/sdf2d.rs::Sdf2dNode`
-- `src/sdf2d.rs::Sdf2dNode::onion`
-- `src/sdf2d.rs::Sdf2dNode::regular_polygon`
-- `src/sdf2d.rs::Sdf2dNode::rotate`
-- `src/sdf2d.rs::Sdf2dNode::scale`
-- `src/sdf2d.rs::Sdf2dNode::smooth_union`
-- `src/sdf2d.rs::Sdf2dNode::subtract`
-- `src/sdf2d.rs::Sdf2dNode::translate`
-- `src/sdf2d.rs::Sdf2dNode::union`
 - `src/sim_bridge.rs::SimulatedSdf`
 - `src/sim_bridge.rs::SimulatedSdf::bounds`
 - `src/sim_bridge.rs::SimulatedSdf::compiled`
+- `src/sim_bridge.rs::SimulatedSdf::distance`
 - `src/sim_bridge.rs::SimulatedSdf::from_arc`
 - `src/sim_bridge.rs::SimulatedSdf::new`
 - `src/sim_bridge.rs::SimulatedSdf::normal`
@@ -384,18 +348,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (947)
+## L0 — unreached (829)
 
-- `src/animation.rs::AnimatedSdf`
-- `src/animation.rs::AnimatedSdf::evaluate_at`
-- `src/animation.rs::AnimatedSdf::evaluate_params`
-- `src/animation.rs::AnimatedSdf::new`
-- `src/animation.rs::Keyframe::cubic`
-- `src/animation.rs::Keyframe::step`
-- `src/animation.rs::Timeline::duration`
-- `src/animation.rs::Timeline::evaluate`
-- `src/animation.rs::Track::with_loop`
-- `src/animation.rs::morph`
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
 - `src/asp_bridge.rs::decode_sdf_i_packet`
@@ -483,14 +437,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/codec_bridge.rs::volume_stats`
 - `src/codec_bridge.rs::voxelize_sdf`
 - `src/codec_bridge.rs::voxelize_sdf_uniform`
-- `src/collision.rs::ContactManifold`
-- `src/collision.rs::SdfContact`
-- `src/collision.rs::compute_manifold`
-- `src/collision.rs::sdf_ccd`
-- `src/collision.rs::sdf_closest_point`
-- `src/collision.rs::sdf_collide`
-- `src/collision.rs::sdf_distance`
-- `src/collision.rs::sdf_overlap`
 - `src/compiled/aabb.rs::AabbPacked::distance_to_point_fast`
 - `src/compiled/aabb.rs::AabbPacked::from_half_size`
 - `src/compiled/aabb.rs::hex_prism_aabb`
@@ -553,17 +499,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/instruction.rs::Instruction::animated`
 - `src/compiled/instruction.rs::Instruction::is_leaf`
 - `src/compiled/instruction.rs::Instruction::next_instruction_index`
-- `src/compiled/jit/codegen.rs::JitCompiler`
-- `src/compiled/jit/codegen.rs::JitCompiler::compile_sdf`
 - `src/compiled/jit/codegen.rs::JitCompiler::compile_sdf_dynamic`
-- `src/compiled/jit/codegen.rs::JitCompiler::new`
 - `src/compiled/jit/codegen.rs::extract_jit_params`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::compile`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::eval`
 - `src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch`
 - `src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch_parallel`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::lipschitz`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::compile`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval`
@@ -572,8 +511,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::lipschitz`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::params`
 - `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::update_params`
-- `src/compiled/jit/runtime.rs::JitError`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdf::eval_8`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::compile`
 - `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8`
@@ -615,9 +552,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/simd.rs::Vec3x8::max_zero`
 - `src/compiled/simd.rs::Vec3x8::min`
 - `src/compiled/simd.rs::Vec3x8::min_component`
-- `src/compiled/simd.rs::Vec3x8::new`
 - `src/compiled/simd.rs::Vec3x8::normalize`
-- `src/compiled/simd.rs::Vec3x8::to_array`
 - `src/compiled/simd.rs::Vec3x8::zero`
 - `src/compiled/transpiler_common.rs::GenericTranspiler::generate_shader`
 - `src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED`
@@ -642,18 +577,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/wgsl/transpiler.rs::WgslShader::to_volume_shader`
 - `src/compiled/wgsl/transpiler.rs::WgslShader::transpile_material`
 - `src/compiled/wgsl/transpiler.rs::WgslShader::with_workgroup_size`
-- `src/constraint.rs::ConstraintSolver::add_constraint`
-- `src/constraint.rs::ConstraintSolver::constraint_count`
-- `src/constraint.rs::ConstraintSolver::distance`
-- `src/constraint.rs::ConstraintSolver::fix`
-- `src/constraint.rs::ConstraintSolver::product`
-- `src/constraint.rs::ConstraintSolver::range`
-- `src/constraint.rs::ConstraintSolver::ratio`
-- `src/constraint.rs::ConstraintSolver::set`
-- `src/constraint.rs::ConstraintSolver::solve`
-- `src/constraint.rs::ConstraintSolver::sum`
-- `src/constraint.rs::ParamId::as_u32`
-- `src/constraint.rs::SolveResult`
 - `src/crispy.rs::BitMask64`
 - `src/crispy.rs::BitMask64::EMPTY`
 - `src/crispy.rs::BitMask64::FULL`
@@ -678,7 +601,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/crispy.rs::branchless_min`
 - `src/crispy.rs::fast_recip`
 - `src/crispy.rs::fast_recip_vec3`
-- `src/crispy.rs::fnv1a_hash`
 - `src/crispy.rs::round_half_up_vec3`
 - `src/crispy.rs::select_f32`
 - `src/destruction/debris.rs::DebrisConfig`
@@ -695,17 +617,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/destruction/mod.rs::MutableVoxelGrid::set_distance`
 - `src/destruction/operations.rs::carve_batch`
 - `src/destruction/operations.rs::explode`
-- `src/diff.rs::DiffError`
-- `src/diff.rs::DiffOp`
-- `src/diff.rs::TreePatch`
-- `src/diff.rs::TreePatch::is_empty`
-- `src/diff.rs::TreePatch::op_count`
-- `src/diff.rs::TreePath`
-- `src/diff.rs::apply_patch`
-- `src/diff.rs::invert_patch`
-- `src/diff.rs::merge_patches`
-- `src/diff.rs::tree_diff`
-- `src/diff.rs::tree_hash`
 - `src/eval/mod.rs::gradient`
 - `src/eval/parallel.rs::eval_batch`
 - `src/eval/parallel.rs::eval_grid`
@@ -721,14 +632,11 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
 - `src/gi/mod.rs::PointLight`
-- `src/incremental.rs::ParamDependencyIndex::bindings_of`
 - `src/interval.rs::Interval::contains`
 - `src/interval.rs::Interval::intersect`
 - `src/interval.rs::Interval::is_negative`
 - `src/interval.rs::Interval::is_positive`
 - `src/interval.rs::Interval::overlaps`
-- `src/llm_schema.rs::schema_summary`
-- `src/llm_schema.rs::validate_sdf_json`
 - `src/material.rs::Material::dielectric`
 - `src/material.rs::Material::emissive`
 - `src/material.rs::Material::glass`
@@ -1032,18 +940,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/modifiers/sweep.rs::sweep_bezier_dist_y`
 - `src/modifiers/twist.rs::modifier_twist_x`
 - `src/modifiers/twist.rs::modifier_twist_z`
-- `src/neural.rs::NeuralSdf`
-- `src/neural.rs::NeuralSdf::eval`
-- `src/neural.rs::NeuralSdf::eval_batch`
-- `src/neural.rs::NeuralSdf::eval_with_gradient`
-- `src/neural.rs::NeuralSdf::hidden_layer_count`
-- `src/neural.rs::NeuralSdf::input_dimension`
-- `src/neural.rs::NeuralSdf::load`
-- `src/neural.rs::NeuralSdf::new`
-- `src/neural.rs::NeuralSdf::param_count`
-- `src/neural.rs::NeuralSdf::save`
-- `src/neural.rs::NeuralSdf::train`
-- `src/neural.rs::NeuralSdfConfig`
 - `src/npr/compiled_color.rs::ADD`
 - `src/npr/compiled_color.rs::BLOOM`
 - `src/npr/compiled_color.rs::ColorOp::stack_effect`
@@ -1134,56 +1030,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/plane.rs::sdf_plane_yz`
 - `src/primitives/torus.rs::sdf_torus_capped`
 - `src/primitives/torus.rs::sdf_torus_oriented`
-- `src/raycast/march.rs::RaymarchConfig::fast`
-- `src/raycast/march.rs::RaymarchConfig::high_quality`
-- `src/raycast/march.rs::RaymarchConfig::relaxed`
-- `src/raycast/march.rs::RaymarchResult`
-- `src/raycast/march.rs::raymarch_batch`
-- `src/raycast/march.rs::raymarch_batch_parallel`
-- `src/raycast/march.rs::raymarch_compiled`
-- `src/raycast/march.rs::raymarch_compiled_batch_parallel`
-- `src/raycast/march.rs::raymarch_compiled_with_config`
-- `src/raycast/march.rs::raymarch_detailed`
-- `src/raycast/march.rs::raymarch_jit`
-- `src/raycast/march.rs::raymarch_jit_batch_parallel`
-- `src/raycast/march.rs::raymarch_jit_simd_8`
-- `src/raycast/march.rs::raymarch_jit_with_config`
-- `src/raycast/march.rs::raymarch_relaxed`
-- `src/raycast/march.rs::raymarch_simd_8`
-- `src/raycast/march.rs::render_depth`
-- `src/raycast/march.rs::render_depth_compiled`
-- `src/raycast/march.rs::render_depth_compiled_simd`
-- `src/raycast/march.rs::render_depth_jit`
-- `src/raycast/march.rs::render_depth_jit_simd`
-- `src/raycast/march.rs::render_normals`
-- `src/raycast/march.rs::render_normals_compiled`
-- `src/raycast/mod.rs::ambient_occlusion`
-- `src/raycast/mod.rs::ambient_occlusion_compiled`
-- `src/raycast/mod.rs::hard_shadow`
-- `src/raycast/mod.rs::hard_shadow_compiled`
-- `src/raycast/mod.rs::raycast_batch`
-- `src/raycast/mod.rs::soft_shadow`
-- `src/raycast/mod.rs::soft_shadow_compiled`
-- `src/sdf2d.rs::Sdf2dNode`
-- `src/sdf2d.rs::Sdf2dNode::circle`
-- `src/sdf2d.rs::Sdf2dNode::ellipse`
-- `src/sdf2d.rs::Sdf2dNode::intersect`
-- `src/sdf2d.rs::Sdf2dNode::line`
-- `src/sdf2d.rs::Sdf2dNode::onion`
-- `src/sdf2d.rs::Sdf2dNode::rect`
-- `src/sdf2d.rs::Sdf2dNode::regular_polygon`
-- `src/sdf2d.rs::Sdf2dNode::ring`
-- `src/sdf2d.rs::Sdf2dNode::rotate`
-- `src/sdf2d.rs::Sdf2dNode::rounded_rect`
-- `src/sdf2d.rs::Sdf2dNode::scale`
-- `src/sdf2d.rs::Sdf2dNode::smooth_union`
-- `src/sdf2d.rs::Sdf2dNode::star`
-- `src/sdf2d.rs::Sdf2dNode::subtract`
-- `src/sdf2d.rs::Sdf2dNode::translate`
-- `src/sdf2d.rs::Sdf2dNode::union`
-- `src/sdf2d.rs::eval_2d`
-- `src/sdf2d.rs::eval_2d_batch`
-- `src/sdf2d.rs::eval_2d_normal`
 - `src/sim_bridge.rs::GpuPhysicsBundle`
 - `src/sim_bridge.rs::SimulatedSdf`
 - `src/sim_bridge.rs::SimulatedSdf::add_erosion`
@@ -1356,25 +1202,30 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (286)
+## L1 — example-only (404)
 
-- `src/animation.rs`: `Interpolation`, `Keyframe`, `Keyframe::new`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`
+- `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `eval_hessian`, `mean_curvature`
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::world_to_chunk`
+- `src/collision.rs`: `ContactManifold`, `SdfContact`, `compute_manifold`, `sdf_ccd`, `sdf_closest_point`, `sdf_collide`, `sdf_distance`, `sdf_overlap`
 - `src/compiled/compiler.rs`: `CompiledSdf::instructions`
 - `src/compiled/eval_bvh.rs`: `CompiledSdfBvh::compile`, `CompiledSdfBvh::refit_partial_from_bytecode`, `eval_compiled_bvh`
 - `src/compiled/glsl/transpiler.rs`: `GlslShader::get_eval_function`
 - `src/compiled/hlsl/transpiler.rs`: `HlslShader::get_eval_function`
-- `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_soa`
+- `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::new`
+- `src/compiled/jit/runtime.rs`: `JitCompiledSdf`, `JitCompiledSdf::compile`, `JitCompiledSdf::eval`, `JitCompiledSdf::lipschitz`, `JitError`
+- `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_8`, `JitSimdSdf::eval_soa`
 - `src/compiled/refit.rs`: `refit_partial`
 - `src/compiled/rust/transpiler.rs`: `DEFAULT_NORMAL_EPSILON`, `RustSource`, `RustSource::instruction_count`, `RustSource::source`, `RustSource::transpile_compiled`, `RustTranspileError`, `RustTranspileOptions`, `RustTranspileOptions::with_det_math_path`, `RustTranspileOptions::with_normal_epsilon`, `is_supported`
-- `src/compiled/simd.rs`: `Vec3x8::splat`
+- `src/compiled/simd.rs`: `Vec3x8::new`, `Vec3x8::splat`, `Vec3x8::to_array`
 - `src/compiled/transpiler_common.rs`: `shader_unsupported_nodes`
 - `src/compiled/wgsl/transpiler.rs`: `WgslShader::get_eval_function`
-- `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ParamId`, `ParamId::as_index`, `ParamId::from_raw`
+- `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`
+- `src/crispy.rs`: `fnv1a_hash`
+- `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `tree_diff`, `tree_hash`
 - `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
 - `src/heatmap.rs`: `ColorMap`, `Heatmap`, `Heatmap::inside_pixel_count`, `Heatmap::sample`, `Heatmap::surface_pixel_count`, `HeatmapConfig`, `SlicePlane`, `generate_heatmap`, `heatmap_to_rgba`
-- `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
+- `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::bindings_of`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
 - `src/io/abm.rs`: `read_abm_header`
 - `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
 - `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`
@@ -1388,11 +1239,13 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/usd.rs`: `ImportedUsdMaterial`, `ImportedUsda`, `import_usda`
 - `src/io/vdb.rs`: `DenseGrid`, `VdbError`, `bake_dense_grid`, `bake_to_vdb`, `load_dense_grid_from_vdb`
 - `src/io/vox.rs`: `load_vox`, `save_vox`
+- `src/llm_schema.rs`: `schema_summary`, `validate_sdf_json`
 - `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
 - `src/mesh/manifold.rs`: `MeshRepair`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `validate_mesh`
 - `src/mesh/mod.rs`: `Triangle`, `Triangle::new`
 - `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteConfig`, `NaniteMesh`, `generate_nanite_mesh`
 - `src/morphology.rs`: `eval_offset`, `eval_offset_batch`, `eval_offset_batch_parallel`, `tolerance_fits`, `tolerance_max_violation`
+- `src/neural.rs`: `NeuralSdf`, `NeuralSdf::eval`, `NeuralSdf::eval_batch`, `NeuralSdf::eval_with_gradient`, `NeuralSdf::hidden_layer_count`, `NeuralSdf::input_dimension`, `NeuralSdf::load`, `NeuralSdf::new`, `NeuralSdf::param_count`, `NeuralSdf::save`, `NeuralSdf::train`, `NeuralSdfConfig`
 - `src/npr/compiled_color.rs`: `ColorOp`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`
 - `src/npr/composition.rs`: `bloom_toon`, `chromatic_offsets`, `vignette`
 - `src/npr/distortion.rs`: `hand_drawn_jitter`, `line_boil`, `sketch_wobble`
@@ -1410,8 +1263,9 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/npr/shader_glue.rs`: `NPR_GLSL_HELPERS`, `NPR_GLSL_PALETTE_HELPERS`, `NPR_HLSL_HELPERS`, `NPR_HLSL_PALETTE_HELPERS`, `NPR_WGSL_HELPERS`, `NPR_WGSL_PALETTE_HELPERS`, `ShaderLanguage`, `full_helpers_for`, `helpers_for`, `palette_helpers_for`
 - `src/npr/sky.rs`: `distance_color_quantize`, `light_shaft_beam`, `puffy_cloud_layer`, `sky_gradient_bands`, `sun_disc`
 - `src/npr/toon.rs`: `posterize_color`, `soft_toon_ramp`, `toon_ramp`, `two_tone`
-- `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::with_bound`, `raymarch`, `raymarch_with_config`
-- `src/raycast/mod.rs`: `raycast`
+- `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
+- `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
+- `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
 - `src/tight_aabb.rs`: `compute_tight_aabb`
 - `src/types/containers.rs`: `Hit`, `Ray`, `Ray::new`

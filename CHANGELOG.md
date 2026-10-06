@@ -14,6 +14,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `examples/mesh_formats.rs`: STL ASCII / OBJ / PLY / FBX / USDA の書き出しと読み戻し、glTF JSON / IGES / Nanite / ABM / splat / vox の書き出し、FBX の animation clip から timeline への変換 (`--features openvdb` で dense grid、`--features hlsl` で Nanite の material 関数も)
 - `tests/test_shape_analysis_oracle.rs`: 球の体積 4/3·π·r³ と表面積、箱の体積、重心、球の断面 (中心・高さ h の 3 平面・任意平面) の距離と画素数、shell と球殻 (annulus) の距離、offset と半径の加減、嵌め合いの最大違反量、`RaymarchConfig::relaxed` の Lipschitz 値を閉形式と照合する
 - `tests/test_io_format_oracle.rs`: 往復で三角形の位置が一致すること (`{}` で書く形式は bit 一致) と、STL ASCII の文法、IGES 5.3 の固定桁と DE / P の相互参照、`.splat` の 32 byte 記録、MagicaVoxel の chunk 配置、`.abm` / `.nanite` の header と file 長、glTF の accessor の min / max と data URI を、format の仕様から独立に読んで照合する
+- examples (各 example は値を出力し assert で自己検証する): `animation_timeline` (Track / Timeline / AnimatedSdf / `morph`) / `tree_diff_undo` (`tree_diff` / `apply_patch` / `invert_patch` / `merge_patches`) / `constraint_solver` (`ConstraintSolver` の全拘束と `ParamDependencyIndex::bindings_of`) / `llm_schema_validate` / `sdf_collision` (`sdf_overlap` / `sdf_distance` / `sdf_collide` / `compute_manifold` / `sdf_ccd` / `sdf_closest_point`) / `sdf2d_shapes` (`Sdf2dNode` の全コンストラクタと `eval_2d*`) / `neural_sdf_fit` / `raycast_render` (木・compiled・SIMD の marcher と depth / normal renderer、影と AO) / `raycast_jit` (`jit` feature、JIT の marcher と renderer)
+- 閉形式の oracle: `tests/test_animation_oracle.rs` (lerp / step / Hermite / loop / 動く球) / `test_diff_oracle.rs` (往復・undo・merge) / `test_constraint_oracle.rs` (連立の閉形式解、増分更新と再 compile の bit 一致) / `test_llm_schema_oracle.rs` / `test_collision_oracle.rs` (球 2 つの接触・分離・TOI・最近点) / `test_sdf2d_oracle.rs` (円・矩形・線分・環・凸多角形の厳密 SDF、CSG と変換) / `test_neural_mlp_closed_form.rs` (重みを手で書いた NSDF で平面と slab) / `test_raycast_oracle.rs` (ray と球の交点、pinhole camera の全 pixel、影と球状空洞の AO、JIT 分は `jit` feature の CI step で走る)
 
 ### Changed
 
@@ -29,6 +31,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `io::iges::export_iges` が P section の 65-72 桁に P の行番号を書いていた IGES 5.3 §2.2.4.5 どおり、その entity の DE の番号 (2n − 1) を書く 出力の byte 列が変わる
 - `io::gltf::export_gltf_json` が `buffers[0]` に `uri` を持たない .gltf を書いており、頂点データが file に含まれていなかった buffer を base64 の data URI として埋め込む (glTF 2.0 §3.6.1.1)
 - `io::fbx::import_fbx` / `import_fbx_full` がバイナリ FBX を UTF-8 として読もうとして I/O error を返し、「Binary FBX import not supported」の判定に届いていなかった 先に magic を見て `IoError::InvalidFormat` を返す
+- **Behavior change:** `animation::morph(from, to, blend)` が doc の通り `(1 − blend)·from + blend·to` (`SdfNode::Morph`) を返す 従来は `k = 1 − blend` の smooth union で、どの blend でも両方の形が残り、blend 0 / 1 でも `from` / `to` にならなかった
+- **Behavior change:** `Track::evaluate` が key の時刻ちょうどではその key の値を返す Step 補間では途中の key の時刻で 1 つ前の key の値を返していた
+- **Behavior change:** `diff::tree_diff` が、自身の parameter と子の両方が変わった node (例: offset と子が両方変わった `Translate`) を 1 つの `Replace` にする 従来は子の差分だけを出し、`apply_patch` の結果が新しい木にならなかった (parameter の変更が落ちた)
+- `diff::apply_patch` の `DiffError::HashMismatch` が不一致の起きた op の path を返す (入れ子の node では常に空の path だった)
+- **Behavior change:** `Sdf2dNode::RegularPolygon` の内部の距離を厳密な凸多角形の SDF にした 頂点の近くで `max(dx, dy)` が辺までの距離より浅い値を返していた (外部の値は不変)
+- `llm_schema::schema_summary` の node 数を `SdfCategory::count` / `total` から作る 固定値 (計 126、primitive 72、operation 24、modifier 23) が enum (130 / 74 / 25 / 24) とずれていた
+- `Sdf2dNode::FontGlyph` の doc を 64x64 grid (4096 値) に直した (32x32 と書かれていた)
 
 ## [4.1.0] - 2026-10-07
 

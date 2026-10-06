@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 402 |
+| 🟢 Not ignored | 444 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **402** |
+| **Total** | **444** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (402)
+## 🟢 Not ignored (444)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -47,18 +47,26 @@ Per-file counts (the test names are in `tests/`):
 | `test_batch_operations.rs` | 8 |
 | `test_hlsl_blinkscript_parity.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
+| `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
+| `test_raycast_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
+| `test_diff_oracle.rs` | 6 |
 | `test_mesh_orientation.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_node_backend_matrix.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
+| `test_sdf2d_oracle.rs` | 6 |
+| `test_collision_oracle.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
+| `test_constraint_oracle.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
+| `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
+| `test_llm_schema_oracle.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
 | `noise_shader_validate.rs` | 2 |
