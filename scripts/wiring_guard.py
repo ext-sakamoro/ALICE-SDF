@@ -235,6 +235,11 @@ def parse_nodes(code: str, rel: str, in_src: bool, first_idx: int) -> list[Node]
             j = _prev_nonspace(code, m.start())
             if j >= 0 and code[j] in "<,":
                 continue  # `<const N: usize>` 等の generic 引数
+            if kind == "const" and j >= 0 and code[j] == "*":
+                # `*const f32` は raw pointer 型で item ではない item と数えると次の `;` までを
+                # 本体として抱え込み、後続の method の親になって free fn 扱いにしてしまう
+                # (`.as_mut_slice()` の呼び出しが数えられなかった)
+                continue
         cands.append((m.start(), kind, m.group(2), m.start(2)))
     for m in IMPL_RE.finditer(code):
         cands.append((m.end() - 4, "impl", None, -1))
@@ -452,6 +457,41 @@ def rs_files(root: Path) -> list[Path]:
     return sorted(out)
 
 
+IMPL_GENERICS_RE = re.compile(r"\s*<")
+WHERE_RE = re.compile(r"\bwhere\b")
+FOR_KW_RE = re.compile(r"\bfor\b(?!\s*<)")
+
+
+def impl_self_type(header: str) -> str:
+    """`impl` の直後から本体の `{` までの文字列 -> 自己型 (空白を除く)
+    `<'a, F> Foo<'a, F> where ..` -> `Foo<'a,F>` / `Tr for Bar<T>` -> `Bar<T>`"""
+    h = header
+    if IMPL_GENERICS_RE.match(h):
+        depth, i = 0, h.index("<")
+        while i < len(h):
+            depth += {"<": 1, ">": -1}.get(h[i], 0)
+            i += 1
+            if depth == 0:
+                break
+        h = h[i:]
+    h = WHERE_RE.split(h, 1)[0]
+    parts = FOR_KW_RE.split(h, 1)
+    h = parts[1] if len(parts) == 2 else parts[0]
+    return re.sub(r"\s+", "", h).lstrip("&")
+
+
+def owner_type(nd: "Node | None", code: str) -> str:
+    """item を所有する impl / trait の型名 (free item なら空)."""
+    cur = nd.parent if nd is not None else None
+    while cur is not None:
+        if cur.kind in ("impl", "impl_trait"):
+            return impl_self_type(code[cur.start + 4 : cur.body_start])
+        if cur.kind == "trait":
+            return cur.name or ""
+        cur = cur.parent
+    return ""
+
+
 def lineno(code: str, pos: int) -> int:
     return code.count("\n", 0, pos)
 
@@ -545,7 +585,9 @@ def check(root: Path, baseline_text: str = "") -> list[Violation]:
                 nd.cls = "method" if nd.parent is not None and nd.parent.kind == "impl" else "free"
 
     defs: list[tuple[str, str, int, Path, int]] = []  # (name, key, line, path, name_pos)
+    def_exempt: list[bool] = []
     exempt: set[str] = set()
+    stripped_plain = plain
     for p in files:
         if src_of(p) is None:
             continue
@@ -557,9 +599,33 @@ def check(root: Path, baseline_text: str = "") -> list[Violation]:
             above = " ".join(lines[max(0, ln - 4) : ln + 1])
             key = f"{rel}::{m.group(2)}"
             nd = node_at.get((p, m.start(2)))
-            if EXEMPT_ATTRS.search(above) or (nd is not None and nd.exempt):
-                exempt.add(key)
+            ex = bool(EXEMPT_ATTRS.search(above)) or (nd is not None and nd.exempt)
             defs.append((m.group(2), key, ln, p, m.start(2)))
+            def_exempt.append(ex)
+
+    # 同じ file に同名の item が 2 つ以上ある時 (別の型の同名 method、free fn と method) は、
+    # key に所有する型を足して区別する (`src/x.rs::Type::name`) 区別しないと baseline の
+    # 1 行が両方を覆い、一方が新たに未配線になっても見えない 型まで同じ (cfg の別実装) なら
+    # 同じ item とみなして 1 つの key にまとめる
+    key_count: dict[str, int] = {}
+    for _n, key, _ln, _p, _np in defs:
+        key_count[key] = key_count.get(key, 0) + 1
+    owners = [owner_type(node_at.get((p, npos)), stripped_plain[p]) if key_count[key] > 1 else ""
+              for _n, key, _ln, p, npos in defs]
+    # 型名だけ (`Volume3D`) で区別できればそれを使い、型引数まで要る時だけ全体 (`Volume3D<f32>`)
+    short_count: dict[tuple[str, str], set[str]] = {}
+    for (_n, key, _ln, _p, _np), own in zip(defs, owners):
+        if own:
+            short_count.setdefault((key, own.split("<", 1)[0]), set()).add(own)
+    for i, (name, key, ln, p, npos) in enumerate(defs):
+        own = owners[i]
+        if own:
+            short = own.split("<", 1)[0]
+            tag = short if len(short_count[(key, short)]) == 1 else own
+            key = f"{key.rsplit('::', 1)[0]}::{tag}::{name}"
+            defs[i] = (name, key, ln, p, npos)
+        if def_exempt[i]:
+            exempt.add(key)
 
     if not src_dirs or not defs:
         return vs + [Violation("empty_scan", str(root), "検査対象の pub item が 0 件 (src/ が無いか、検査器が何も見ていない)")]
@@ -633,7 +699,9 @@ def check(root: Path, baseline_text: str = "") -> list[Violation]:
                 if not names:
                     vs.append(Violation("stale_marker", f"{rel}:{i + 1}", "ALLOW-UNWIRED の直後に pub item が無い"))
                 for nm in names:
-                    unwired_markers[f"{rel}::{nm}"] = (p, i + 1, reason)
+                    keys = [k for n_, k, ln_, p_, _np in defs if p_ == p and ln_ == target and n_ == nm] or [f"{rel}::{nm}"]
+                    for k in keys:
+                        unwired_markers[k] = (p, i + 1, reason)
             else:
                 if target is None or not ALLOW_DEAD_RE.search(code_lines[target]):
                     vs.append(Violation("stale_marker", f"{rel}:{i + 1}", "ALLOW-DEAD の直後に allow(dead_code) が無い"))

@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **714 baseline items** — Permitted violations, ratchet in place
+🟡 **712 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (714 permitted)
+## 📋 Baseline (712 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -54,7 +54,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/io/nanite.rs` | 6 |
 | `src/mesh/quantization.rs` | 6 |
 | `src/npr/dsl.rs` | 6 |
-| `src/soa.rs` | 6 |
 | `src/terrain/splatmap.rs` | 6 |
 | `src/transforms/rotate.rs` | 6 |
 | `src/volume/export.rs` | 6 |
@@ -82,6 +81,7 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/mesh/optimize.rs` | 4 |
 | `src/modifiers/repeat.rs` | 4 |
 | `src/primitives/plane.rs` | 4 |
+| `src/soa.rs` | 4 |
 | `src/svo/linearize.rs` | 4 |
 | `src/svo/mod.rs` | 4 |
 | `src/svo/streaming.rs` | 4 |
@@ -187,7 +187,7 @@ dead_code src/transforms/scale.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (696)
+### Unwired Items (694)
 
 ```
 unwired src/animation.rs::add_keyframe
@@ -302,12 +302,12 @@ unwired src/compiled/instanced.rs::instance_count
 unwired src/compiled/instanced.rs::to_instanced_wgsl
 unwired src/compiled/instruction.rs::next_instruction_index
 unwired src/compiled/jit/codegen.rs::extract_jit_params
-unwired src/compiled/jit/runtime.rs::eval_batch_parallel
-unwired src/compiled/jit/runtime.rs::eval_batch_parallel
+unwired src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch_parallel
+unwired src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval_batch_parallel
 unwired src/compiled/jit/runtime.rs::params
 unwired src/compiled/jit/runtime.rs::update_params
-unwired src/compiled/jit/simd/mod.rs::eval_8
-unwired src/compiled/jit/simd/mod.rs::eval_8
+unwired src/compiled/jit/simd/mod.rs::JitSimdSdf::eval_8
+unwired src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8
 unwired src/compiled/jit/simd/mod.rs::extract_simd_params
 unwired src/compiled/jit/simd/mod.rs::params
 unwired src/compiled/jit/simd/mod.rs::update_params
@@ -347,6 +347,8 @@ unwired src/constraint.rs::product
 unwired src/constraint.rs::range
 unwired src/constraint.rs::ratio
 unwired src/constraint.rs::solve
+unwired src/crispy.rs::BitMask64::test
+unwired src/crispy.rs::BloomFilter::test
 unwired src/crispy.rs::EMPTY
 unwired src/crispy.rs::FULL
 unwired src/crispy.rs::and
@@ -360,8 +362,6 @@ unwired src/crispy.rs::from_items
 unwired src/crispy.rs::or
 unwired src/crispy.rs::round_half_up_vec3
 unwired src/crispy.rs::select_f32
-unwired src/crispy.rs::test
-unwired src/crispy.rs::test
 unwired src/crispy.rs::test_hash
 unwired src/destruction/debris.rs::DebrisPiece
 unwired src/destruction/debris.rs::generate_debris
@@ -515,25 +515,25 @@ unwired src/mesh/decimate.rs::aggressive
 unwired src/mesh/decimate.rs::conservative
 unwired src/mesh/dual_contouring.rs::aaa
 unwired src/mesh/dual_contouring.rs::dual_contouring_compiled
-unwired src/mesh/hermite.rs::extract_edge_crossings
+unwired src/mesh/hermite.rs::HermiteExtractor::extract_edge_crossings
 unwired src/mesh/hermite.rs::extract_edge_crossings
 unwired src/mesh/hermite.rs::extract_hermite
 unwired src/mesh/hermite.rs::extract_surface_points
 unwired src/mesh/hermite.rs::t
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs_fast
+unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
+unwired src/mesh/lod.rs::DecimationLodConfig::high_quality
+unwired src/mesh/lod.rs::LodConfig::distance_range
+unwired src/mesh/lod.rs::LodConfig::high_quality
 unwired src/mesh/lod.rs::balanced
 unwired src/mesh/lod.rs::base_triangle_count
-unwired src/mesh/lod.rs::distance_range
-unwired src/mesh/lod.rs::distance_range
 unwired src/mesh/lod.rs::generate_lod_chain
 unwired src/mesh/lod.rs::generate_lod_chain_decimated
 unwired src/mesh/lod.rs::get_blend_pair
 unwired src/mesh/lod.rs::get_level
 unwired src/mesh/lod.rs::get_lod
 unwired src/mesh/lod.rs::get_render_meshes
-unwired src/mesh/lod.rs::high_quality
-unwired src/mesh/lod.rs::high_quality
 unwired src/mesh/lod.rs::high_res
 unwired src/mesh/lod.rs::resolution_at_level
 unwired src/mesh/lod.rs::select_by_error
@@ -632,8 +632,8 @@ unwired src/mesh/quantization.rs::snorm_i16_decode
 unwired src/mesh/quantization.rs::snorm_i8_decode
 unwired src/mesh/quantization.rs::unorm_u16_decode
 unwired src/mesh/quantization.rs::unorm_u8_decode
-unwired src/mesh/sdf_to_mesh.rs::aaa
-unwired src/mesh/sdf_to_mesh.rs::aaa
+unwired src/mesh/sdf_to_mesh.rs::AdaptiveConfig::aaa
+unwired src/mesh/sdf_to_mesh.rs::MarchingCubesConfig::aaa
 unwired src/mesh/sdf_to_mesh.rs::adaptive_marching_cubes_compiled
 unwired src/mesh/spatial_order.rs::morton_3d
 unwired src/mesh/spatial_order.rs::optimize_spatial_order
@@ -805,8 +805,6 @@ unwired src/sim_bridge.rs::modifier_mut
 unwired src/sim_bridge.rs::simulate_sdf
 unwired src/sim_bridge.rs::with_bounds
 unwired src/soa.rs::SIMD_ALIGNMENT
-unwired src/soa.rs::as_mut_ptr
-unwired src/soa.rs::as_mut_slice
 unwired src/soa.rs::as_ptrs
 unwired src/soa.rs::load_simd_unchecked
 unwired src/soa.rs::store_simd_unchecked
@@ -882,9 +880,9 @@ unwired src/volume/export.rs::export_raw
 unwired src/volume/export.rs::export_raw_with_mips
 unwired src/volume/gpu_bake.rs::gpu_bake_volume_with_normals
 unwired src/volume/mipchain.rs::generate_mip_chain_distgrad
+unwired src/volume/mod.rs::Volume3D<VoxelDistGrad>::sample_trilinear
+unwired src/volume/mod.rs::Volume3D<f32>::sample_trilinear
 unwired src/volume/mod.rs::mip_count
-unwired src/volume/mod.rs::sample_trilinear
-unwired src/volume/mod.rs::sample_trilinear
 unwired src/volume/mod.rs::voxel_to_world
 ```
 

@@ -11,7 +11,8 @@
 # A fixed target is used for the native index too: rust-analyzer evaluates
 # `cfg(target_arch = ...)` for the target it analyses, so without one an arm64
 # host drops the x86_64-only SIMD items and the ledger depends on where it was
-# generated. The fuzz crate is indexed on its own.
+# generated. The other crates of the repository (fuzz, server, mobile, openxr)
+# are indexed on their own.
 #
 # usage: scripts/scip_index.sh [OUT_DIR]   (default: target/scip)
 
@@ -37,12 +38,22 @@ for set in native wasm; do
   [ -s "$out/$set.scip" ] || { echo "scip_index: $out/$set.scip is empty" >&2; exit 1; }
 done
 
-# fuzz/ is its own crate (path dependency on this one), so the indexes above do
-# not contain it although scip_reach.py counts fuzz targets as callers. Its
-# references to this crate carry the same symbols as the crate's own index.
-# Default fuzz features, same fixed target.
-printf '%s\n' '{"cargo":{"target":"x86_64-unknown-linux-gnu"}}' > "$out/fuzz.json"
-rm -f "$out/fuzz.scip"
-rust-analyzer scip fuzz --config-path "$out/fuzz.json" --output "$out/fuzz.scip"
-[ -s "$out/fuzz.scip" ] || { echo "scip_index: $out/fuzz.scip is empty" >&2; exit 1; }
-echo "scip_index: wrote $out/native.scip $out/wasm.scip $out/fuzz.scip"
+# The crates of this repository that depend on this one through a path dependency
+# are separate crates, so the indexes above do not contain them although
+# scip_reach.py counts their code as callers (scripts/scip_reach.py SUBCRATES):
+#   fuzz/                   fuzz targets (example-level callers)
+#   server/                 REST server, mobile/uniffi-wrapper/  UniFFI bindings,
+#   bindings/openxr/        OpenXR helpers (binding callers)
+# Their references to this crate carry the same symbols as the crate's own index.
+# Each with its default features, on the same fixed target.
+printf '%s\n' '{"cargo":{"target":"x86_64-unknown-linux-gnu"}}' > "$out/sub.json"
+written="$out/native.scip $out/wasm.scip"
+for pair in fuzz:fuzz server:server mobile:mobile/uniffi-wrapper openxr:bindings/openxr; do
+  name=${pair%%:*}
+  dir=${pair#*:}
+  rm -f "$out/$name.scip"
+  rust-analyzer scip "$dir" --config-path "$out/sub.json" --output "$out/$name.scip"
+  [ -s "$out/$name.scip" ] || { echo "scip_index: $out/$name.scip is empty" >&2; exit 1; }
+  written="$written $out/$name.scip"
+done
+echo "scip_index: wrote $written"

@@ -7,9 +7,9 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 1107 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` | 174 |
-| live | reached without examples (crate-internal roots or a binding) | 864 |
+| L0 | not reached by any non-test code, examples included | 1072 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 161 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 912 |
 | | **total** | **2145** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
@@ -17,9 +17,9 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 688 unwired items.
+`scripts/wiring-baseline.txt` lists 686 unwired items.
 
-### L0 here but not in the baseline (425)
+### L0 here but not in the baseline (392)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -175,29 +175,13 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/heatmap.rs::HeatmapConfig`
 - `src/heatmap.rs::SlicePlane`
 - `src/interval.rs::Interval::contains`
-- `src/io/asdf.rs::read_header`
 - `src/io/iges.rs::IgesConfig`
-- `src/io/mod.rs::get_info`
 - `src/io/nanite.rs::NaniteExportConfig`
-- `src/io/ply.rs::PlyConfig`
-- `src/io/ply.rs::export_ply`
-- `src/io/splat.rs::SPLAT_BYTES`
-- `src/io/splat.rs::Splat`
 - `src/io/splat.rs::Splat::from_bytes`
-- `src/io/splat.rs::Splat::to_bytes`
-- `src/io/splat.rs::SplatConfig`
-- `src/io/splat.rs::sdf_to_splats`
 - `src/io/step.rs::StepConfig`
-- `src/io/stl.rs::export_stl`
-- `src/io/threemf.rs::export_3mf`
 - `src/io/vdb.rs::VdbError`
 - `src/io/vdb.rs::bake_dense_grid`
 - `src/io/vdb.rs::bake_to_vdb`
-- `src/io/vox.rs::VoxConfig`
-- `src/io/vox.rs::VoxModel`
-- `src/io/vox.rs::Voxel`
-- `src/io/vox.rs::sdf_to_vox`
-- `src/lib.rs::VERSION`
 - `src/material.rs::Material::glass`
 - `src/material.rs::Material::new`
 - `src/material.rs::Material::with_roughness`
@@ -351,7 +335,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
 - `src/physics_bridge.rs::CompiledSdfField::from_arc`
 - `src/physics_bridge.rs::CompiledSdfField::new`
-- `src/primitives/box3d.rs::sdf_rounded_box3d`
 - `src/raycast/march.rs::RaymarchConfig::fast`
 - `src/sdf2d.rs::Sdf2dNode`
 - `src/sdf2d.rs::Sdf2dNode::onion`
@@ -371,6 +354,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/sim_bridge.rs::SimulatedSdf::new`
 - `src/sim_bridge.rs::SimulatedSdf::normal`
 - `src/sim_bridge.rs::SimulatedSdf::update`
+- `src/soa.rs::AlignedVec::as_mut_ptr`
 - `src/soa.rs::AlignedVec::as_ptr`
 - `src/soa.rs::AlignedVec::clear`
 - `src/soa.rs::AlignedVec::is_empty`
@@ -412,23 +396,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/terrain/splatmap.rs::Splatmap`
 - `src/terrain/splatmap.rs::Splatmap::new`
 - `src/terrain/splatmap.rs::Splatmap::normalize`
-- `src/texture/fitting.rs::fit_texture`
-- `src/texture/mod.rs::FittedOctave`
-- `src/texture/mod.rs::TextureFitConfig`
-- `src/texture/mod.rs::TextureFitResult`
-- `src/texture/noise_cpu.rs::eval_octave`
-- `src/texture/noise_cpu.rs::eval_octave_simd`
-- `src/texture/noise_cpu.rs::f32x8_sum`
-- `src/texture/noise_cpu.rs::hash_noise_2d`
-- `src/texture/noise_cpu.rs::hash_noise_3d_cpu`
-- `src/texture/noise_cpu.rs::hash_noise_3d_simd`
-- `src/texture/optimizer.rs::OptimizeResult`
-- `src/texture/optimizer.rs::nelder_mead`
-- `src/texture/shader.rs::ShaderLanguage`
-- `src/texture/shader.rs::generate_shader`
-- `src/texture/spectrum.rs::FrequencyBand`
-- `src/texture/spectrum.rs::analyze_frequencies`
-- `src/tight_aabb.rs::TightAabbConfig::preset_large`
 - `src/types/constructors.rs::SdfNode::metric_ball`
 - `src/types/constructors.rs::SdfNode::metric_blend`
 - `src/types/containers.rs::Aabb::center`
@@ -453,9 +420,9 @@ The name-based guard counts these as wired; resolved references find no caller.
 
 The guard lists these as unwired; a resolved reference reaches them (level in brackets).
 
-- `src/soa.rs::as_mut_slice` (live)
+- `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (1107)
+## L0 — unreached (1072)
 
 - `src/animation.rs::AnimatedSdf`
 - `src/animation.rs::AnimatedSdf::evaluate_at`
@@ -825,7 +792,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/interval.rs::Interval::is_positive`
 - `src/interval.rs::Interval::overlaps`
 - `src/io/abm.rs::read_abm_header`
-- `src/io/asdf.rs::read_header`
 - `src/io/fbx.rs::FbxAnimClip`
 - `src/io/fbx.rs::FbxAnimCurve`
 - `src/io/fbx.rs::FbxBone`
@@ -838,7 +804,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/gltf.rs::export_gltf_json`
 - `src/io/iges.rs::IgesConfig`
 - `src/io/iges.rs::export_iges`
-- `src/io/mod.rs::get_info`
 - `src/io/nanite.rs::NANITE_MAGIC`
 - `src/io/nanite.rs::NANITE_VERSION`
 - `src/io/nanite.rs::NaniteExportConfig`
@@ -847,23 +812,14 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/nanite.rs::export_nanite_json`
 - `src/io/nanite.rs::export_nanite_with_config`
 - `src/io/obj.rs::import_obj`
-- `src/io/ply.rs::PlyConfig`
-- `src/io/ply.rs::export_ply`
 - `src/io/ply.rs::import_ply`
-- `src/io/splat.rs::SPLAT_BYTES`
-- `src/io/splat.rs::Splat`
 - `src/io/splat.rs::Splat::from_bytes`
-- `src/io/splat.rs::Splat::to_bytes`
-- `src/io/splat.rs::SplatConfig`
 - `src/io/splat.rs::load_splat`
 - `src/io/splat.rs::save_splat`
-- `src/io/splat.rs::sdf_to_splats`
 - `src/io/step.rs::StepConfig`
 - `src/io/step.rs::export_step`
-- `src/io/stl.rs::export_stl`
 - `src/io/stl.rs::export_stl_ascii`
 - `src/io/stl.rs::import_stl`
-- `src/io/threemf.rs::export_3mf`
 - `src/io/usd.rs::ImportedUsdMaterial`
 - `src/io/usd.rs::ImportedUsda`
 - `src/io/usd.rs::import_usda`
@@ -872,13 +828,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/vdb.rs::bake_dense_grid`
 - `src/io/vdb.rs::bake_to_vdb`
 - `src/io/vdb.rs::load_dense_grid_from_vdb`
-- `src/io/vox.rs::VoxConfig`
-- `src/io/vox.rs::VoxModel`
-- `src/io/vox.rs::Voxel`
 - `src/io/vox.rs::load_vox`
 - `src/io/vox.rs::save_vox`
-- `src/io/vox.rs::sdf_to_vox`
-- `src/lib.rs::VERSION`
 - `src/llm_schema.rs::schema_summary`
 - `src/llm_schema.rs::validate_sdf_json`
 - `src/material.rs::Material::dielectric`
@@ -1212,7 +1163,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/modifiers/repeat.rs::modifier_repeat_x`
 - `src/modifiers/repeat.rs::modifier_repeat_y`
 - `src/modifiers/repeat.rs::modifier_repeat_z`
-- `src/modifiers/surface_roughness.rs::hash3_xyz`
 - `src/modifiers/sweep.rs::sweep_bezier_dist_y`
 - `src/modifiers/twist.rs::modifier_twist_x`
 - `src/modifiers/twist.rs::modifier_twist_z`
@@ -1310,7 +1260,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/physics_bridge.rs::CompiledSdfField::new`
 - `src/physics_bridge.rs::CompiledSdfField::with_epsilon`
 - `src/physics_bridge.rs::sdf_to_physics_field`
-- `src/primitives/box3d.rs::sdf_rounded_box3d`
 - `src/primitives/capsule.rs::sdf_capsule_horizontal`
 - `src/primitives/capsule.rs::sdf_capsule_vertical`
 - `src/primitives/cylinder.rs::sdf_cylinder_capped`
@@ -1487,24 +1436,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/terrain/splatmap.rs::Splatmap::new`
 - `src/terrain/splatmap.rs::Splatmap::normalize`
 - `src/terrain/splatmap.rs::Splatmap::set_weight`
-- `src/texture/fitting.rs::fit_texture`
 - `src/texture/fitting.rs::reconstruct`
-- `src/texture/mod.rs::FittedOctave`
-- `src/texture/mod.rs::TextureFitConfig`
-- `src/texture/mod.rs::TextureFitResult`
-- `src/texture/noise_cpu.rs::eval_octave`
-- `src/texture/noise_cpu.rs::eval_octave_simd`
-- `src/texture/noise_cpu.rs::f32x8_sum`
-- `src/texture/noise_cpu.rs::hash_noise_2d`
-- `src/texture/noise_cpu.rs::hash_noise_3d_cpu`
-- `src/texture/noise_cpu.rs::hash_noise_3d_simd`
-- `src/texture/optimizer.rs::OptimizeResult`
-- `src/texture/optimizer.rs::nelder_mead`
-- `src/texture/shader.rs::ShaderLanguage`
-- `src/texture/shader.rs::generate_shader`
-- `src/texture/spectrum.rs::FrequencyBand`
-- `src/texture/spectrum.rs::analyze_frequencies`
-- `src/tight_aabb.rs::TightAabbConfig::preset_large`
 - `src/tight_aabb.rs::TightAabbConfig::preset_medium`
 - `src/tight_aabb.rs::compute_tight_aabb`
 - `src/transforms/rotate.rs::rotation_axis_angle`
@@ -1584,9 +1516,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Calls through a trait (`dyn Tr`, `T: Tr`) reach the impls of that method whose self type is reached (the type, a field, or one of its methods is live); an impl of a type nothing reaches stays unreached.
 - Trait-impl links come from the impl symbol names; rust-analyzer's SCIP output has no implementation relationships.
 - Methods are listed as `file::Type::method`, so same-named methods of different types in one file are told apart.
-- Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) are roots and are not listed.
+- Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
+- The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (174)
+## L1 — example-only (161)
 
 - `src/autodiff.rs`: `eval_hessian`, `mean_curvature`
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::world_to_chunk`
@@ -1594,16 +1527,13 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/eval_bvh.rs`: `CompiledSdfBvh::compile`, `CompiledSdfBvh::refit_partial_from_bytecode`, `eval_compiled_bvh`
 - `src/compiled/glsl/transpiler.rs`: `GlslShader::get_eval_function`
 - `src/compiled/hlsl/transpiler.rs`: `HlslShader::get_eval_function`
-- `src/compiled/jit/simd/mod.rs`: `JitSimdSdf`, `JitSimdSdf::compile`, `JitSimdSdf::eval_8_raw`, `JitSimdSdf::eval_batch`, `JitSimdSdf::eval_soa`
-- `src/compiled/jit/simd/platform.rs`: `configure_simd_flags`
+- `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_soa`
 - `src/compiled/refit.rs`: `refit_partial`
 - `src/compiled/rust/transpiler.rs`: `DEFAULT_NORMAL_EPSILON`, `RustSource`, `RustSource::instruction_count`, `RustSource::source`, `RustSource::transpile_compiled`, `RustTranspileError`, `RustTranspileOptions`, `RustTranspileOptions::with_det_math_path`, `RustTranspileOptions::with_normal_epsilon`, `is_supported`
 - `src/compiled/simd.rs`: `Vec3x8::splat`
 - `src/compiled/transpiler_common.rs`: `shader_unsupported_nodes`
-- `src/compiled/wgsl/gpu_eval.rs`: `GpuEvaluator`, `GpuEvaluator::device_info`, `GpuEvaluator::eval_batch`, `GpuEvaluator::from_shader`, `GpuEvaluator::from_wgsl`, `GpuEvaluator::new`
-- `src/compiled/wgsl/transpiler.rs`: `WgslShader::get_eval_function`, `WgslShader::to_compute_shader`
+- `src/compiled/wgsl/transpiler.rs`: `WgslShader::get_eval_function`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ParamId`, `ParamId::as_index`, `ParamId::from_raw`
-- `src/eval/gradient.rs`: `eval_normal`
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
 - `src/npr/compiled_color.rs`: `ColorOp`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`
 - `src/npr/composition.rs`: `bloom_toon`, `chromatic_offsets`, `vignette`

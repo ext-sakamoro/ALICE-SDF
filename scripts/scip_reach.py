@@ -16,7 +16,10 @@ classifies every `pub` / `pub(crate)` item defined in `src/`:
   live                reached without examples: from crate-internal roots or a binding
 
 Roots without examples: the bindings (src/ffi/, src/python/, src/godot/,
-src/wasm.rs), module-level code that is not a `use` statement, and trait-impl
+src/wasm.rs), the command-line tool (src/bin/), the `src/` code of the crates of
+this repository that bind this one (server/, mobile/uniffi-wrapper/,
+bindings/openxr/, each indexed on its own), module-level code that is not a `use`
+statement, and trait-impl
 methods of traits defined outside the crate (Display, Default, Drop, ... are
 called implicitly). A trait method that is reached also reaches every impl of
 it in the crate, so calls through `dyn Trait` and generic bounds are followed.
@@ -40,7 +43,8 @@ Usage:
   python3 scripts/scip_reach.py --check-baseline     # ratchet: no new L0, no stale entry
   python3 scripts/scip_reach.py --write-baseline     # after an intended change
 Exit 1 when an index is missing, when the analysis compared nothing
-(0 items, 0 references from examples / bindings / the fuzz crate, or 0 trait-impl links), or, with --check-baseline,
+(0 items, 0 references from examples / bindings / one of the other crates' indexes
+(fuzz, server, mobile, openxr), or 0 trait-impl links), or, with --check-baseline,
 when an L0 item is not in scripts/integration-baseline.txt (a new public item
 that nothing reaches) or a baseline entry is no longer L0 (remove the line).
 """
@@ -58,7 +62,23 @@ from wiring_guard import USE_RE, remove_cfg_test, strip_rust  # noqa: E402
 
 ROOT_DIRS = ("examples/", "benches/", "fuzz/")
 # A binding is a file or a directory (a trailing `/`); every file under it is a root.
-BINDINGS = ("src/ffi/", "src/python/", "src/godot/", "src/wasm.rs")
+# src/bin/ is the command-line tool: an item only the CLI uses is reached.
+BINDINGS = ("src/ffi/", "src/python/", "src/godot/", "src/wasm.rs", "src/bin/")
+
+# Crates in this repository that depend on this one through a path dependency.
+# rust-analyzer indexes a crate's own files only, so each is indexed on its own from
+# its directory (scripts/scip_index.sh) and its document paths get the prefix.
+#   example  every file is an example-level root (L1), as examples/ are
+#   binding  files under src/ are roots like the in-crate bindings (live); files under
+#            examples/ / benches/ are example-level roots; tests/ is ignored
+# Each index must contain at least one reference to this crate (main() fails otherwise).
+SUBCRATES = (
+    ("fuzz.scip", "fuzz/", "example"),                     # alice-sdf-fuzz
+    ("server.scip", "server/", "binding"),                 # alice-sdf-server (REST)
+    ("mobile.scip", "mobile/uniffi-wrapper/", "binding"),  # alice-sdf-mobile (UniFFI)
+    ("openxr.scip", "bindings/openxr/", "binding"),        # alice-sdf-openxr
+)
+SUB_BY_INDEX = {idx: (prefix, kind) for idx, prefix, kind in SUBCRATES}
 
 
 def binding_of(rel: str) -> str | None:
@@ -175,6 +195,9 @@ class Analysis:
         self.unindexed: list[str] = []  # pub items in the source with no index definition
         self.fuzz_refs = 0        # references from the fuzz crate's index to this crate
         self.fuzz_docs = 0
+        # per SUBCRATES index: documents read, references to this crate's definitions
+        self.sub_docs: dict[str, int] = {idx: 0 for idx, _p, _k in SUBCRATES}
+        self.sub_refs: dict[str, int] = {idx: 0 for idx, _p, _k in SUBCRATES}
         self.impl_links = 0       # trait-impl method -> in-crate trait method
         self.external_impls = 0   # trait-impl methods of traits defined outside the crate
         self.generated_items = 0  # items of types a macro invocation generates
@@ -183,7 +206,7 @@ class Analysis:
 IMPL_HEADER_RE = re.compile(r"\bimpl\b[^{;]*\{")
 PUB_NAME_RE = re.compile(PUB_DEF + r"([A-Za-z_][A-Za-z0-9_]*)")
 
-# fuzz/ is a separate crate: its index is read last, and its paths get this prefix
+# fuzz/ is one of SUBCRATES (kept as names for callers of the older interface)
 FUZZ_INDEX = "fuzz.scip"
 FUZZ_PREFIX = "fuzz/"
 
@@ -388,22 +411,30 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
             texts[rel] = _keep_mask(p.read_text(encoding="utf-8", errors="replace")) if p.exists() else ([], [])
         return texts[rel]
 
-    # the fuzz index last: its references are counted against src_defined
-    scip_paths = sorted(scip_paths, key=lambda sp: Path(sp).name == FUZZ_INDEX)
+    # the other crates' indexes last: their references are counted against src_defined
+    scip_paths = sorted(scip_paths, key=lambda sp: Path(sp).name in SUB_BY_INDEX)
     for sp in scip_paths:
-        # the fuzz crate is indexed from fuzz/, so its paths are relative to it
-        prefix = FUZZ_PREFIX if Path(sp).name == FUZZ_INDEX else ""
+        idx_name = Path(sp).name
+        # another crate is indexed from its own directory, so its paths are relative to it
+        prefix, sub_kind = SUB_BY_INDEX.get(idx_name, ("", ""))
         for doc in load_scip(sp):
             doc["path"] = prefix + doc["path"]
             rel = doc["path"]
             if prefix:
-                a.fuzz_docs += 1
+                a.sub_docs[idx_name] += 1
             for sym, target in doc["impl"]:
                 implementers.setdefault(target, set()).add(sym)
                 impl_targets.setdefault(sym, set()).add(target)
-            is_src = rel.startswith("src/")
-            is_root_file = rel.startswith(ROOT_DIRS)
-            if not (is_src or is_root_file):
+            inner = rel[len(prefix):]
+            is_src = not prefix and rel.startswith("src/")
+            sub_binding = sub_kind == "binding" and inner.startswith("src/")
+            if not prefix:
+                is_root_file = rel.startswith(ROOT_DIRS)
+            elif sub_kind == "example":
+                is_root_file = True
+            else:
+                is_root_file = inner.startswith(("examples/", "benches/"))
+            if not (is_src or is_root_file or sub_binding):
                 continue  # tests/ and anything else never root or carry references
             raw, code = lines_of(rel)
             defs = []
@@ -436,7 +467,9 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
                                 inner = line[call.end():].split(")")[0].split("]")[0].split("}")[0]
                                 gen_args[(rel, call.group(1), name)] = [x.strip() for x in inner.split(",")]
                 else:
-                    if is_src and not _visible(code, sp_[0]):
+                    # comments, strings, cfg(test) and `use` statements are no references,
+                    # in another crate's binding code as in this crate's source
+                    if (is_src or sub_binding) and not _visible(code, sp_[0]):
                         continue
                     refs.append((sp_[0], s))
             # innermost enclosing definition for every reference (ranges nest)
@@ -465,12 +498,16 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
                         ctx = ds
                         break
                     j -= 1
+                if prefix and s in src_defined:
+                    a.sub_refs[idx_name] += 1  # its own items / std / other crates do not count
                 if is_root_file:
                     roots_example.add(s)
                     if not prefix:
-                        a.example_refs += 1  # the fuzz crate has its own guard below
-                    elif s in src_defined:
-                        a.fuzz_refs += 1  # libfuzzer-sys / arbitrary / std do not count
+                        a.example_refs += 1  # the other crates have their own guard
+                elif sub_binding:
+                    roots_core.add(s)
+                    roots_binding.add(s)
+                    roots_by_binding.setdefault(prefix, set()).add(s)
                 elif binding_of(rel):
                     roots_core.add(s)
                     roots_binding.add(s)
@@ -615,6 +652,8 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
             if not stack:
                 return live
 
+    a.fuzz_docs = a.sub_docs.get(FUZZ_INDEX, 0)
+    a.fuzz_refs = a.sub_refs.get(FUZZ_INDEX, 0)
     live_core = reach(roots_core)
     live_all = reach(roots_core | roots_example)
     for key, syms in a.items.items():
@@ -634,6 +673,9 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
 
 
 def baseline_unwired(root: Path) -> set[str]:
+    """Unwired entries of wiring-baseline.txt as `src/x.rs::name`. The guard qualifies
+    a name with its type only where one file defines it twice (`src/x.rs::Type::name`);
+    the comparison here is by file and name, so the qualifier is dropped."""
     p = root / "scripts" / "wiring-baseline.txt"
     if not p.exists():
         return set()
@@ -641,7 +683,7 @@ def baseline_unwired(root: Path) -> set[str]:
     for line in p.read_text(encoding="utf-8").splitlines():
         parts = line.split()
         if len(parts) == 2 and parts[0] == "unwired":
-            out.add(parts[1])
+            out.add(legacy_key(parts[1]))
     return out
 
 
@@ -667,8 +709,8 @@ def report(a: Analysis, baseline: set[str]) -> str:
         "| Level | Meaning | Count |",
         "|-------|---------|------:|",
         f"| L0 | not reached by any non-test code, examples included | {len(l0)} |",
-        f"| L1 | reached only from `examples/` / `benches/` / `fuzz/` | {len(l1)} |",
-        f"| live | reached without examples (crate-internal roots or a binding) | {live} |",
+        f"| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | {len(l1)} |",
+        f"| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | {live} |",
         f"| | **total** | **{len(a.level)}** |",
         "",
         "L1 is a label, not a defect: a module users call directly is example-only inside this crate.",
@@ -707,7 +749,10 @@ def report(a: Analysis, baseline: set[str]) -> str:
         "- Calls through a trait (`dyn Tr`, `T: Tr`) reach the impls of that method whose self type is reached (the type, a field, or one of its methods is live); an impl of a type nothing reaches stays unreached.",
         "- Trait-impl links come from the impl symbol names; rust-analyzer's SCIP output has no implementation relationships.",
         "- Methods are listed as `file::Type::method`, so same-named methods of different types in one file are told apart.",
-        "- Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) are roots and are not listed.",
+        "- Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.",
+        "- The crates of this repository that depend on this one are indexed on their own: "
+        + ", ".join(f"`{p}` ({'root' if k == 'binding' else 'example-level'})" for _i, p, k in SUBCRATES)
+        + ". A `src/` file of a binding crate is a root; its tests are not.",
     ]
     out += ["", f"## L1 — example-only ({len(l1)})", ""]
     by_file: dict[str, list[str]] = {}
@@ -733,7 +778,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     root = Path(args.root)
     sdir = Path(args.scip) if Path(args.scip).is_absolute() else root / args.scip
-    paths = [sdir / "native.scip", sdir / "wasm.scip", sdir / FUZZ_INDEX]
+    paths = [sdir / "native.scip", sdir / "wasm.scip"] + [sdir / idx for idx, _p, _k in SUBCRATES]
     missing = [str(p) for p in paths if not p.exists()]
     if missing:
         print(f"error: SCIP index missing: {missing} (run scripts/scip_index.sh)", file=sys.stderr)
@@ -746,14 +791,16 @@ def main(argv: list[str] | None = None) -> int:
         errors.append("0 references from examples/benches (index or path filter is wrong)")
     if a.binding_refs == 0:
         errors.append("0 references from binding files (feature-gated modules were not indexed)")
-    if a.fuzz_docs == 0 or a.fuzz_refs == 0:
-        errors.append(f"fuzz index: {a.fuzz_docs} documents, {a.fuzz_refs} references to the crate "
-                      "(fuzz targets would not count as callers)")
+    for idx, prefix, _k in SUBCRATES:
+        if a.sub_docs[idx] == 0 or a.sub_refs[idx] == 0:
+            errors.append(f"{idx} ({prefix}): {a.sub_docs[idx]} documents, {a.sub_refs[idx]} references to the "
+                          "crate (its code would not count as a caller)")
     if a.impl_links == 0:
         errors.append("0 trait-impl links resolved (calls through a trait would never reach an impl)")
     counts = {lv: sum(1 for v in a.level.values() if v == lv) for lv in ("L0", "L1", "live")}
     print(f"compared: items {len(a.items)}, example refs {a.example_refs}, binding refs {a.binding_refs}, "
-          f"fuzz refs {a.fuzz_refs}, trait-impl links {a.impl_links}, external-trait impls {a.external_impls}, "
+          + "".join(f"{idx.removesuffix('.scip')} refs {a.sub_refs[idx]}, " for idx, _p, _k in SUBCRATES)
+          + f"trait-impl links {a.impl_links}, external-trait impls {a.external_impls}, "
           f"unindexed {len(a.unindexed)}, "
           f"L0 {counts['L0']}, L1 {counts['L1']}, live {counts['live']}")
     for e in errors:

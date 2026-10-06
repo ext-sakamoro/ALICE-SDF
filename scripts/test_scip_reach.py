@@ -80,33 +80,47 @@ class Doc:
         return _f(2, body)
 
 
+def sub_of(path: str):
+    """The SUBCRATES entry a source path belongs to (another crate of the repo), or None."""
+    for idx, prefix, _kind in sr.SUBCRATES:
+        if path.startswith(prefix):
+            return idx, prefix
+    return None
+
+
 def build(docs: list[Doc]) -> Path:
-    """Sources plus the three indexes. A Doc under fuzz/ goes to fuzz.scip with the
-    prefix removed, as rust-analyzer indexes the fuzz crate from its own root."""
+    """Sources plus every index. A Doc under another crate's directory (fuzz/,
+    server/, ...) goes to that crate's index with the prefix removed, as
+    rust-analyzer indexes each of those crates from its own root."""
     d = Path(tempfile.mkdtemp())
     for doc in docs:
         p = d / doc.path
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("\n".join(doc.lines), encoding="utf-8")
-    crate = [doc for doc in docs if not doc.path.startswith("fuzz/")]
-    fuzz = [doc for doc in docs if doc.path.startswith("fuzz/")]
+    crate = [doc for doc in docs if sub_of(doc.path) is None]
     (d / "target" / "scip").mkdir(parents=True)
     (d / "target" / "scip" / "native.scip").write_bytes(b"".join(doc.encode() for doc in crate))
     (d / "target" / "scip" / "wasm.scip").write_bytes(b"")
-    blob = b""
-    for doc in fuzz:
-        full = doc.path
-        doc.path = full[len("fuzz/"):]
-        blob += doc.encode()
-        doc.path = full
-    (d / "target" / "scip" / "fuzz.scip").write_bytes(blob)
+    for idx, prefix, _kind in sr.SUBCRATES:
+        blob = b""
+        for doc in docs:
+            if sub_of(doc.path) == (idx, prefix):
+                full = doc.path
+                doc.path = full[len(prefix):]
+                blob += doc.encode()
+                doc.path = full
+        (d / "target" / "scip" / idx).write_bytes(blob)
     return d
+
+
+def all_indexes(d: Path) -> list[Path]:
+    s = d / "target" / "scip"
+    return [s / "native.scip", s / "wasm.scip"] + [s / idx for idx, _p, _k in sr.SUBCRATES]
 
 
 def levels(docs: list[Doc]) -> dict[str, str]:
     d = build(docs)
-    s = d / "target" / "scip"
-    return sr.analyze(d, [s / "native.scip", s / "wasm.scip", s / "fuzz.scip"]).level
+    return sr.analyze(d, all_indexes(d)).level
 
 
 # --- fixtures -----------------------------------------------------------------
@@ -485,37 +499,54 @@ class Main(unittest.TestCase):
     EX = staticmethod(lambda: Doc("examples/e.rs", "fn main() { used(); }").ref("used().", 0, "used"))
     FFI = staticmethod(lambda: Doc("src/ffi/mod.rs", "pub extern \"C\" fn api() { used(); }").ref("used().", 0, "used"))
     FUZZ = staticmethod(lambda: Doc("fuzz/fuzz_targets/f.rs", "fuzz_target!(|d| { used(); });").ref("used().", 0, "used"))
+    # one caller in each of the other crates' indexes (fuzz, server, mobile, openxr)
+    OTHER = staticmethod(lambda: [Main.FUZZ()] + [
+        Doc(prefix + "src/lib.rs", "pub fn api() { used(); }").ref("used().", 0, "used")
+        for _idx, prefix, kind in sr.SUBCRATES if kind == "binding"])
 
     def test_all_three_conditions_met_passes(self):
-        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), self.FUZZ()]))]), 0)
+        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), *self.OTHER()]))]), 0)
 
     def test_no_example_references_fails(self):
-        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.FFI(), self.FUZZ()]))]), 1)
+        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.FFI(), *self.OTHER()]))]), 1)
 
     def test_no_binding_references_fails(self):
-        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FUZZ()]))]), 1)
+        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), *self.OTHER()]))]), 1)
 
     def test_no_items_fails(self):
-        self.assertEqual(sr.main(["--root", str(build([self.EX(), self.FFI(), self.FUZZ()]))]), 1)
+        self.assertEqual(sr.main(["--root", str(build([self.EX(), self.FFI(), *self.OTHER()]))]), 1)
 
     def test_no_fuzz_reference_fails(self):
-        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI()]))]), 1)
+        rest = self.OTHER()[1:]
+        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), *rest]))]), 1)
         # a fuzz target that references only outside crates does not count either
         other = Doc("fuzz/fuzz_targets/f.rs", "fn main() { other(); }").ref("other_crate/other().", 0, "other")
-        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), other]))]), 1)
+        self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), other, *rest]))]), 1)
+
+    def test_each_other_crate_index_without_a_reference_fails(self):
+        # server / mobile / openxr each have the fuzz guard: an index that is empty, or
+        # whose code references only its own items, fails the run
+        for idx, prefix, kind in sr.SUBCRATES:
+            if kind != "binding":
+                continue
+            with self.subTest(idx=idx):
+                rest = [doc for doc in self.OTHER() if not doc.path.startswith(prefix)]
+                self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), *rest]))]), 1)
+                own = Doc(prefix + "src/lib.rs", "pub fn api() { own(); }\nfn own() {}").ref("own_crate/own().", 0, "own")
+                self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), own, *rest]))]), 1)
 
     def test_no_trait_impl_link_fails(self):
         bare = (Doc("src/lib.rs", "pub fn used() {}").define("used().", 0, "used"))
-        self.assertEqual(sr.main(["--root", str(build([bare, self.EX(), self.FFI(), self.FUZZ()]))]), 1)
+        self.assertEqual(sr.main(["--root", str(build([bare, self.EX(), self.FFI(), *self.OTHER()]))]), 1)
         # the same crate with one link passes, so the guard is the only difference
         linked = (Doc("src/lib.rs", "pub fn used() {}\ntrait Tr { fn run(&self); }\nimpl Tr for X { fn run(&self) {} }")
                   .define("used().", 0, "used").define("Tr#run().", 1, "run").define("impl#[X][Tr]run().", 2, "run"))
-        self.assertEqual(sr.main(["--root", str(build([linked, self.EX(), self.FFI(), self.FUZZ()]))]), 0)
+        self.assertEqual(sr.main(["--root", str(build([linked, self.EX(), self.FFI(), *self.OTHER()]))]), 0)
 
     def test_writes_ledger_and_compares_with_baseline(self):
         ex = Doc("examples/demo.rs", "fn main() { used(); }").ref("used().", 0, "used")
         ffi = Doc("src/ffi/mod.rs", "pub extern \"C\" fn api() { via_binding(); }").ref("via_binding().", 0, "via_binding")
-        d = build([lib_doc(), ex, ffi, Main.FUZZ()])
+        d = build([lib_doc(), ex, ffi, *Main.OTHER()])
         (d / "scripts").mkdir()
         (d / "scripts" / "wiring-baseline.txt").write_text("unwired src/lib.rs::via_binding\n", encoding="utf-8")
         out = d / "ledger.md"
@@ -537,7 +568,7 @@ class Unindexed(unittest.TestCase):
                .define("used().", 0, "used")
                .define("Tr#run().", 2, "run")
                .define("impl#[X][Tr]run().", 3, "run"))
-        d = build([src, Main.EX(), Main.FFI(), Main.FUZZ()])
+        d = build([src, Main.EX(), Main.FFI(), *Main.OTHER()])
         if baseline is not None:
             (d / "scripts").mkdir()
             (d / "scripts" / "integration-baseline.txt").write_text(baseline, encoding="utf-8")
@@ -574,7 +605,7 @@ class Baseline(unittest.TestCase):
     def crate(self, baseline: str | None) -> Path:
         ex = Doc("examples/demo.rs", "fn main() { used(); }").ref("used().", 0, "used")
         ffi = Doc("src/ffi/mod.rs", "pub extern \"C\" fn api() { via_binding(); }").ref("via_binding().", 0, "via_binding")
-        d = build([lib_doc(), ex, ffi, Main.FUZZ()])  # L0: unused
+        d = build([lib_doc(), ex, ffi, *Main.OTHER()])  # L0: unused
         if baseline is not None:
             (d / "scripts").mkdir()
             (d / "scripts" / "integration-baseline.txt").write_text(baseline, encoding="utf-8")
@@ -662,6 +693,57 @@ class Bindings(unittest.TestCase):
         py = Doc("src/python/node.rs", "pub fn api() { via_binding(); }").ref("via_binding().", 0, "via_binding")
         lv = levels([lib_doc(), py])
         self.assertEqual(lv["src/lib.rs::via_binding"], "live")
+
+class CliAndOtherCrates(unittest.TestCase):
+    """The command-line tool (src/bin/) and the crates of the repository that bind
+    this one (server/, mobile/uniffi-wrapper/, bindings/openxr/) are roots."""
+
+    def test_cli_is_a_binding(self):
+        self.assertEqual(sr.binding_of("src/bin/main.rs"), "src/bin/")
+        self.assertEqual(sr.binding_of("src/bin/tool/mod.rs"), "src/bin/")
+        self.assertIsNone(sr.binding_of("src/binary.rs"))
+
+    def test_an_item_only_the_cli_calls_is_live(self):
+        # the call sits inside `fn main` (a definition), so it is not module-level code:
+        # only the binding rule makes it a root
+        cli = (Doc("src/bin/main.rs", "fn main() { unused(); }")
+               .define("main().", 0, "main").ref("unused().", 0, "unused"))
+        self.assertEqual(levels([lib_doc()])["src/lib.rs::unused"], "L0")
+        self.assertEqual(levels([lib_doc(), cli])["src/lib.rs::unused"], "live")
+
+    def test_cli_items_are_not_listed(self):
+        cli = Doc("src/bin/main.rs", "pub fn run() {}\nfn main() { run(); }").define("run().", 0, "run")
+        self.assertNotIn("src/bin/main.rs::run", levels([lib_doc(), cli]))
+
+    def test_src_of_each_binding_crate_is_a_root(self):
+        for _idx, prefix, kind in sr.SUBCRATES:
+            if kind != "binding":
+                continue
+            with self.subTest(prefix=prefix):
+                api = (Doc(prefix + "src/main.rs", "fn handler() { unused(); }")
+                       .define("other/handler().", 0, "handler").ref("unused().", 0, "unused"))
+                self.assertEqual(levels([lib_doc(), api])["src/lib.rs::unused"], "live")
+
+    def test_tests_of_a_binding_crate_are_not_callers(self):
+        t = Doc("server/tests/api.rs", "fn t() { unused(); }").ref("unused().", 0, "unused")
+        self.assertEqual(levels([lib_doc(), t])["src/lib.rs::unused"], "L0")
+
+    def test_examples_of_a_binding_crate_are_example_level(self):
+        ex = Doc("bindings/openxr/examples/demo.rs", "fn main() { unused(); }").ref("unused().", 0, "unused")
+        self.assertEqual(levels([lib_doc(), ex])["src/lib.rs::unused"], "L1")
+
+    def test_a_use_statement_in_a_binding_crate_is_no_reference(self):
+        imp = Doc("server/src/main.rs", "use demo::unused;\nfn main() {}").ref("unused().", 0, "unused")
+        self.assertEqual(levels([lib_doc(), imp])["src/lib.rs::unused"], "L0")
+
+    def test_references_per_crate_are_counted_apart(self):
+        docs = [lib_doc(), Doc("server/src/main.rs", "fn h() { used(); }").ref("used().", 0, "used")]
+        d = build(docs)
+        a = sr.analyze(d, all_indexes(d))
+        self.assertEqual(a.sub_refs["server.scip"], 1)
+        self.assertEqual(a.sub_refs["mobile.scip"], 0)
+        self.assertEqual(a.sub_docs["server.scip"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

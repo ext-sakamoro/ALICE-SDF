@@ -599,5 +599,113 @@ class Workspace(unittest.TestCase):
         self.assertEqual(keys(vs), set())
 
 
+class RawPointerTypes(unittest.TestCase):
+    """`*const T` は型であって `const` item ではない (item と数えると後続の method を抱え込む)."""
+
+    SRC = textwrap.dedent("""\
+        pub struct V { ptr: *mut f32 }
+        impl V {
+            pub const fn as_ptr(&self) -> *const f32 {
+                self.ptr
+            }
+            pub fn as_mut_slice(&mut self) -> &mut [f32] {
+                &mut []
+            }
+        }
+        impl core::ops::DerefMut for V {
+            fn deref_mut(&mut self) -> &mut [f32] {
+                self.as_mut_slice()
+            }
+        }
+        """)
+
+    def test_a_method_after_a_raw_pointer_return_type_is_wired_by_a_trait_impl_call(self):
+        r = crate({"src/lib.rs": LIB, "src/a.rs": self.SRC, "src/b.rs": "pub fn x() {}\n"})
+        self.assertNotIn("as_mut_slice", unwired(wg.check(r)))
+        # as_ptr has no caller: the fixture still checks something
+        self.assertIn("as_ptr", unwired(wg.check(r)))
+
+    def test_a_raw_pointer_type_is_not_an_item_node(self):
+        code = "impl V {\n    pub fn p(&self) -> *const f32 { self.ptr }\n    pub fn q(&self) {}\n}\n"
+        nodes = wg.parse_nodes(code, "src/a.rs", True, 0)
+        self.assertEqual([n.kind for n in nodes if n.kind == "const"], [])
+        q = next(n for n in nodes if n.name == "q")
+        self.assertEqual(q.parent.kind, "impl")
+
+
+class SameNameInOneFile(unittest.TestCase):
+    """同じ file の同名 item は所有する型で key を分ける (baseline の 1 行が両方を覆わない)."""
+
+    SRC = textwrap.dedent("""\
+        pub struct A;
+        pub struct B;
+        impl A {
+            pub fn high_quality() -> Self { A }
+        }
+        impl B {
+            pub fn high_quality() -> Self { B }
+        }
+        pub fn make() -> A { A::high_quality() }
+        """)
+
+    def files(self):
+        return {"src/lib.rs": LIB, "src/a.rs": self.SRC, "src/b.rs": "pub fn x() { crate::a::make(); }\n",
+                "examples/e.rs": "fn main() { mycrate::b::x(); }\n"}
+
+    def test_the_keys_name_the_owning_type(self):
+        r = crate({"src/lib.rs": LIB, "src/a.rs": self.SRC.replace("pub fn make() -> A { A::high_quality() }\n", ""),
+                   "src/b.rs": "pub fn x() {}\n"})
+        keys = {v.key for v in wg.check(r) if v.kind == "unwired"}
+        self.assertIn("src/a.rs::A::high_quality", keys)
+        self.assertIn("src/a.rs::B::high_quality", keys)
+        self.assertNotIn("src/a.rs::high_quality", keys)
+
+    def test_baseline_lines_are_unique(self):
+        r = crate({"src/lib.rs": LIB, "src/a.rs": self.SRC.replace("pub fn make() -> A { A::high_quality() }\n", ""),
+                   "src/b.rs": "pub fn x() {}\n"})
+        lines = [ln for ln in wg.build_baseline(r).splitlines() if ln.startswith("unwired ")]
+        self.assertEqual(len(lines), len(set(lines)))
+        self.assertIn("unwired src/a.rs::A::high_quality", lines)
+
+    def test_an_unqualified_line_does_not_cover_both(self):
+        # the old form `src/a.rs::high_quality` covered both items; it no longer matches
+        r = crate({"src/lib.rs": LIB, "src/a.rs": self.SRC.replace("pub fn make() -> A { A::high_quality() }\n", ""),
+                   "src/b.rs": "pub fn x() {}\n"})
+        vs = wg.check(r, "unwired src/a.rs::high_quality\nunwired src/b.rs::x\n")
+        self.assertIn("stale_baseline", kinds(vs))
+        self.assertEqual({v.key for v in vs if v.kind == "unwired"},
+                         {"src/a.rs::A::high_quality", "src/a.rs::B::high_quality"})
+
+    def test_a_free_fn_and_a_method_of_the_same_name_are_told_apart(self):
+        src = "pub struct H;\nimpl H {\n    pub fn extract(&self) {}\n}\npub fn extract() {}\n"
+        # `.extract()` can only be the method (a free fn is never called with a dot), so the
+        # free fn stays unwired and is reported under its own key
+        r = crate({"src/lib.rs": LIB, "src/a.rs": src, "src/b.rs": "pub fn x(h: &crate::a::H) { h.extract(); }\n",
+                   "examples/e.rs": "fn main() { mycrate::b::x(&mycrate::a::H); }\n"})
+        keys = {v.key for v in wg.check(r) if v.kind == "unwired"}
+        self.assertEqual(keys, {"src/a.rs::extract"})
+
+    def test_generic_arguments_are_kept_only_when_the_type_name_is_not_enough(self):
+        src = ("pub struct Vol<T>(T);\nimpl Vol<f32> {\n    pub fn sample(&self) {}\n}\n"
+               "impl Vol<u8> {\n    pub fn sample(&self) {}\n}\n")
+        r = crate({"src/lib.rs": LIB, "src/a.rs": src, "src/b.rs": "pub fn x() {}\n"})
+        keys = {v.key for v in wg.check(r) if v.kind == "unwired"}
+        self.assertIn("src/a.rs::Vol<f32>::sample", keys)
+        self.assertIn("src/a.rs::Vol<u8>::sample", keys)
+
+    def test_impl_self_type(self):
+        self.assertEqual(wg.impl_self_type(" <'a, F> Hermite<'a, F>\nwhere\n    F: Fn(),\n"), "Hermite<'a,F>")
+        self.assertEqual(wg.impl_self_type(" core::ops::Deref for Aligned "), "Aligned")
+        self.assertEqual(wg.impl_self_type(" Volume3D<f32> "), "Volume3D<f32>")
+
+    def test_an_allow_unwired_marker_applies_to_the_qualified_key(self):
+        src = self.SRC.replace("pub fn make() -> A { A::high_quality() }\n", "").replace(
+            "impl B {\n", "impl B {\n    // ALLOW-UNWIRED: kept for a planned preset table\n")
+        r = crate({"src/lib.rs": LIB, "src/a.rs": src, "src/b.rs": "pub fn x() {}\n"})
+        keys = {v.key for v in wg.check(r) if v.kind == "unwired"}
+        self.assertIn("src/a.rs::A::high_quality", keys)
+        self.assertNotIn("src/a.rs::B::high_quality", keys)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

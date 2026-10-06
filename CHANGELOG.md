@@ -8,6 +8,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Fixed
+
+- `scripts/scip_reach.py`: CLI (`src/bin/`) を到達性の起点に加えた CLI からだけ使う item (`export_stl` / `export_ply` / `io::get_info` 等) が L0 に数えられていた
+- `scripts/scip_reach.py` / `scripts/scip_index.sh`: repo 内で本 crate に依存する crate (`server/` / `mobile/uniffi-wrapper/` / `bindings/openxr/`) を個別に索引し、その `src/` を起点に数える (`examples/` は L1、`tests/` は数えない) fuzz と同様に、索引ごとに本 crate への参照が 0 件なら失敗する
+- `scripts/wiring_guard.py`: `*const T` (raw pointer 型) を `const` item と誤認していた 後続の method が free fn 扱いになり、`.as_mut_slice()` 等の呼び出しが数えられなかった
+- `scripts/wiring_guard.py`: 同じ file に同名の item が 2 つ以上ある時は key に所有する型を付ける (`src/x.rs::Type::name`) baseline の 1 行が両方を覆い、一方が新たに未配線になっても検出されなかった
+
 ## [4.1.0] - 2026-10-07
 
 ### Added
