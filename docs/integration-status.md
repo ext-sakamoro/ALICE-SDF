@@ -17,9 +17,9 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 461 unwired items.
+`scripts/wiring-baseline.txt` lists 463 unwired items.
 
-### L0 here but not in the baseline (314)
+### L0 here but not in the baseline (312)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -120,8 +120,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/compiled/transpiler_common.rs::GenericTranspiler::generate_shader`
 - `src/compiled/wgsl/gpu_eval.rs::GpuBufferPool`
 - `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::new_dynamic`
-- `src/compiled/wgsl/transpiler.rs::WgslShader::to_compute_shader_with_normals`
 - `src/crispy.rs::BitMask64`
 - `src/crispy.rs::BitMask64::as_u64`
 - `src/crispy.rs::BitMask64::clear`

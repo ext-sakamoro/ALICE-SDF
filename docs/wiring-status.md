@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **479 baseline items** — Permitted violations, ratchet in place
+🟡 **481 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (479 permitted)
+## 📋 Baseline (481 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -22,8 +22,8 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
 | `src/autodiff.rs` | 15 |
+| `src/compiled/wgsl/gpu_eval.rs` | 14 |
 | `src/sim_bridge.rs` | 14 |
-| `src/compiled/wgsl/gpu_eval.rs` | 13 |
 | `src/mesh/lod.rs` | 13 |
 | `src/mesh/meshopt_filter.rs` | 13 |
 | `src/mesh/nanite.rs` | 13 |
@@ -36,11 +36,11 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/mesh/collision.rs` | 9 |
 | `src/compiled/aabb.rs` | 8 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
+| `src/compiled/wgsl/transpiler.rs` | 6 |
 | `src/mesh/quantization.rs` | 6 |
 | `src/npr/dsl.rs` | 6 |
 | `src/terrain/splatmap.rs` | 6 |
 | `src/volume/export.rs` | 6 |
-| `src/compiled/wgsl/transpiler.rs` | 5 |
 | `src/font_bridge.rs` | 5 |
 | `src/mesh/hermite.rs` | 5 |
 | `src/mesh/lod_persist.rs` | 5 |
@@ -133,7 +133,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (466)
+### Unwired Items (468)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -257,10 +257,12 @@ unwired src/compiled/wgsl/gpu_eval.rs::from_glsl_compute
 unwired src/compiled/wgsl/gpu_eval.rs::from_shader_async
 unwired src/compiled/wgsl/gpu_eval.rs::from_wgsl_async
 unwired src/compiled/wgsl/gpu_eval.rs::new_async
+unwired src/compiled/wgsl/gpu_eval.rs::new_dynamic
 unwired src/compiled/wgsl/gpu_eval.rs::resolve
 unwired src/compiled/wgsl/gpu_eval.rs::update_params
 unwired src/compiled/wgsl/gpu_eval.rs::wait
 unwired src/compiled/wgsl/transpiler.rs::extract_params
+unwired src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals
 unwired src/compiled/wgsl/transpiler.rs::to_volume_shader
 unwired src/compiled/wgsl/transpiler.rs::transpile_material
 unwired src/compiled/wgsl/transpiler.rs::with_workgroup_size

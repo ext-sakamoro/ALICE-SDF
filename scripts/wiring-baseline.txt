@@ -133,10 +133,12 @@ unwired src/compiled/wgsl/gpu_eval.rs::from_glsl_compute
 unwired src/compiled/wgsl/gpu_eval.rs::from_shader_async
 unwired src/compiled/wgsl/gpu_eval.rs::from_wgsl_async
 unwired src/compiled/wgsl/gpu_eval.rs::new_async
+unwired src/compiled/wgsl/gpu_eval.rs::new_dynamic
 unwired src/compiled/wgsl/gpu_eval.rs::resolve
 unwired src/compiled/wgsl/gpu_eval.rs::update_params
 unwired src/compiled/wgsl/gpu_eval.rs::wait
 unwired src/compiled/wgsl/transpiler.rs::extract_params
+unwired src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals
 unwired src/compiled/wgsl/transpiler.rs::to_volume_shader
 unwired src/compiled/wgsl/transpiler.rs::transpile_material
 unwired src/compiled/wgsl/transpiler.rs::with_workgroup_size
