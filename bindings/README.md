@@ -1,6 +1,6 @@
 # ALICE-SDF Unity Integration
 
-C# P/Invoke bindings for ALICE-SDF. 72 primitives, 24 CSG operations, 7 transforms, 23 modifiers (126 total SDF variants) with compiled batch evaluation, shader generation, and mesh export.
+C# P/Invoke bindings for ALICE-SDF. 74 primitives, 25 CSG operations, 7 transforms, 24 modifiers (130 total SDF variants) with compiled batch evaluation, shader generation, and mesh export.
 
 Author: Moroya Sakamoto
 

@@ -172,8 +172,8 @@ Key binary formats:
 
 ```
 src/
-├── types/              # SdfNode enum (126 variants), constructors, categories
-├── primitives/         # Mathematical SDF formulas (72 primitives)
+├── types/              # SdfNode enum (130 variants), constructors, categories
+├── primitives/         # Mathematical SDF formulas (74 primitives)
 ├── operations/         # CSG operations (24 ops)
 ├── transforms/         # Spatial transforms (projective, lattice, skinning)
 ├── modifiers/          # Domain modifiers (IFS, icosahedral, heightmap, roughness)

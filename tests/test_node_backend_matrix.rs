@@ -621,3 +621,31 @@ fn the_source_readers_accept_crlf_line_endings() {
         match_body(common, "transpile_node_inner").len()
     );
 }
+
+/// `SdfCategory::count()` is a hand-written table; count the categories of one
+/// node per variant so a new variant cannot leave it stale (4.0.0 added
+/// `MetricBall` / `MetricBlend` and the table was not updated).
+#[test]
+fn category_counts_match_one_node_per_variant() {
+    let variants = enum_variants();
+    let mut seen = std::collections::BTreeMap::new();
+    for (_, node) in entries() {
+        seen.entry(variant_of(&node))
+            .or_insert_with(|| node.category());
+    }
+    assert_eq!(
+        seen.len(),
+        variants.len(),
+        "corpus does not cover every variant, the counts below would be partial"
+    );
+    for cat in [
+        SdfCategory::Primitive,
+        SdfCategory::Operation,
+        SdfCategory::Transform,
+        SdfCategory::Modifier,
+    ] {
+        let measured = seen.values().filter(|c| **c == cat).count() as u32;
+        assert_eq!(cat.count(), measured, "SdfCategory::{cat:?}::count()");
+    }
+    assert_eq!(SdfCategory::total() as usize, variants.len());
+}

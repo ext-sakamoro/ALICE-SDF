@@ -448,7 +448,7 @@ let bounds = eval_interval(&shape, region);
 let lip = eval_lipschitz(&shape); // 距離保存形状なら1.0
 ```
 
-全68プリミティブ、24演算、トランスフォーム、モディファイアをサポート。緩和球トレーシングとSDF対SDFコリジョンの空間プルーニングに内部使用。
+全74プリミティブ、25演算、トランスフォーム、モディファイアをサポート。緩和球トレーシングとSDF対SDFコリジョンの空間プルーニングに内部使用。
 
 ## ニューラルSDF
 
@@ -1667,7 +1667,7 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 
 - **補助データバッファ**: `Instruction`が`aux_offset`/`aux_len`を持ち`CompiledSdf.aux_data`を参照。複雑な演算（行列、制御点、ハイトマップ）の可変長データに対応
 - **7種の新コンパイル演算**: ProjectiveTransform、LatticeDeform、SdfSkinning、IcosahedralSymmetry、IFS、HeightmapDisplacement、SurfaceRoughness — スカラーとSIMD両エバリュエータで完全実装
-- **126種のSdfNodeバリアント**: 72プリミティブ、24演算、7トランスフォーム、23モディファイア
+- **130種のSdfNodeバリアント**: 74プリミティブ、25演算、7トランスフォーム、24モディファイア
 - **220のpedantic clippy警告を修正**: raw string hashes、implicit clone、useless format、dead code等
 - **5つのラウンドトリップテスト**: 各新演算をツリーウォーカーと照合して正確性を検証
 

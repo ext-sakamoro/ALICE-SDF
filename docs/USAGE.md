@@ -452,7 +452,7 @@ let bounds = eval_interval(&shape, region);
 let lip = eval_lipschitz(&shape); // 1.0 for distance-preserving shapes
 ```
 
-Supports all 72 primitives, 24 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
+Supports all 74 primitives, 25 operations, transforms, and modifiers. Used internally by relaxed sphere tracing and SDF-to-SDF collision for spatial pruning.
 
 ## Neural SDF
 
@@ -1308,7 +1308,7 @@ ALICE-SDF runs in the browser via WebAssembly with WebGPU/Canvas2D support.
 npm install @alice-sdf/wasm
 ```
 
-Full TypeScript type definitions included. Supports all 72 primitives, 24 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
+Full TypeScript type definitions included. Supports all 74 primitives, 25 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
 
 ### Building the WASM Demo
 
@@ -1678,7 +1678,7 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 
 - **Auxiliary data buffer**: `Instruction` now carries `aux_offset`/`aux_len` pointing into `CompiledSdf.aux_data`, enabling variable-length data (matrices, control points, heightmaps) for complex operations
 - **7 new compiled operations**: ProjectiveTransform, LatticeDeform, SdfSkinning, IcosahedralSymmetry, IFS, HeightmapDisplacement, SurfaceRoughness — fully implemented in both scalar and SIMD evaluators
-- **126 total SdfNode variants**: 72 primitives, 24 operations, 7 transforms, 23 modifiers
+- **130 total SdfNode variants**: 74 primitives, 25 operations, 7 transforms, 24 modifiers
 - **220 pedantic clippy warnings fixed**: raw string hashes, implicit clone, useless format, dead code, etc.
 - **5 roundtrip tests**: each new operation verified against tree-walker for correctness
 

@@ -32,12 +32,15 @@ pub enum SdfCategory {
 
 impl SdfCategory {
     /// Number of SdfNode variants in this category
+    ///
+    /// Checked against one node per variant by
+    /// `tests/test_node_backend_matrix.rs::category_counts_match_one_node_per_variant`.
     pub const fn count(self) -> u32 {
         match self {
-            Self::Primitive => 72,
-            Self::Operation => 24,
+            Self::Primitive => 74,
+            Self::Operation => 25,
             Self::Transform => 7,
-            Self::Modifier => 23,
+            Self::Modifier => 24,
         }
     }
 
@@ -1657,7 +1660,7 @@ mod tests {
 
     #[test]
     fn test_category_total() {
-        assert_eq!(SdfCategory::total(), 126);
+        assert_eq!(SdfCategory::total(), 130);
     }
 
     #[test]

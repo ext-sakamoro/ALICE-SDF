@@ -1,6 +1,6 @@
 ---
 name: alice-implicit-cad
-description: Create implicit CAD models via ALICE-SDF's 126-construct Signed Distance Function library (72 primitives, 24 CSG ops, 7 transforms, 23 modifiers). Supports 7 evaluation modes (interpret / VM / SIMD 8-wide / BVH / SoA / JIT / GPU), GLSL/WGSL/HLSL shader transpile for Unity/UE5/UE6/Godot/WebGPU/VRChat, and mesh export to GLB/OBJ/STL/PLY/3MF/FBX/USD/Nanite. Prefer this skill for SDF field composition, raymarching, high-primitive-count implicit models, and shader-native workflows. For LLM DSL-driven text→3D with GBNF-constrained decoding, use `alice-lol-sdf` skill instead.
+description: Create implicit CAD models via ALICE-SDF's 130-construct Signed Distance Function library (74 primitives, 25 CSG ops, 7 transforms, 24 modifiers). Supports 7 evaluation modes (interpret / VM / SIMD 8-wide / BVH / SoA / JIT / GPU), GLSL/WGSL/HLSL shader transpile for Unity/UE5/UE6/Godot/WebGPU/VRChat, and mesh export to GLB/OBJ/STL/PLY/3MF/FBX/USD/Nanite. Prefer this skill for SDF field composition, raymarching, high-primitive-count implicit models, and shader-native workflows. For LLM DSL-driven text→3D with GBNF-constrained decoding, use `alice-lol-sdf` skill instead.
 ---
 
 # ALICE Implicit CAD (SDF-based)

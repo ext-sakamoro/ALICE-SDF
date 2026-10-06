@@ -1,6 +1,6 @@
 # ALICE-SDF — Unreal Engine 5 / 6 Plugin
 
-72 primitives, 24 CSG operations, 7 transforms, 23 modifiers (126 total), HLSL generation, mesh export.
+74 primitives, 25 CSG operations, 7 transforms, 24 modifiers (130 total), HLSL generation, mesh export.
 Drop into your UE5 project and start using SDFs immediately.
 
 Built and tested against **Unreal Engine 5.7 and 5.8** on every push: the CI compiles the
