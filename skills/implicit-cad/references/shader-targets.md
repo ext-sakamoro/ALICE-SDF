@@ -46,7 +46,3 @@ Target: Unreal Engine 5-6 (`.usf` / `.ush` Custom Material), DirectX 12, Slang.
 | Vulkan native compute | WGSL (via naga → SPIR-V) or GLSL |
 | Godot 4 spatial shader | GLSL (Godot Vulkan renderer accepts GLSL 450) |
 | VRChat world / avatar | GLSL (Unity URP HLSL under the hood, but ALICE emits GLSL that VRChat's shader compiler accepts) |
-
-## Related
-
-See `karikari-shader` and `alice-sdf-shader-discipline` skills in `~/claude-config/claude-skills/` for shader-level code-quality gates and known SDF raymarch pitfalls (Y-axis conflict, Bezier 16-sample discretization, box-style z-thickness constraint, etc.).

@@ -125,7 +125,7 @@ fn prim(q: Prim) -> SdfNode {
         // pitch ≥ 0.25: with 20+ turns per unit the nearest-turn choice is
         // ill-conditioned and the SIMD sin/cos polynomial's few-ulp difference
         // from libm becomes a 0.2% distance difference (tolerance domain, not a
-        // law bug — see Backlog "SIMD transcendental parity")
+        // law bug, tracked as "SIMD transcendental parity")
         Prim::Helix(a, b, c, d) => {
             SdfNode::helix(pos(a) + 0.2, pos(b) * 0.3, pos(c).max(0.25), pos(d))
         }

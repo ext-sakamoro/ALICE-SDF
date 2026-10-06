@@ -168,7 +168,7 @@ Place `AAliceSdfNaniteActor` in a level. Select `ShapeType` from 23 presets:
 
 | Category | Shapes |
 |----------|--------|
-| **Showcase** | TPMS Sphere, Organic Sculpture, Crystal, Arch Column, SAO Float |
+| **Showcase** | TPMS Sphere, Organic Sculpture, Crystal, Arch Column, Gyroid Floating Island |
 | **Fractal** | Menger Sponge, Fractal Planet Mix |
 | **Cosmic** | Cosmic System, Sun, Ringed Planet, Asteroid |
 | **Terrain** | Ground, Water, Rock, Floating Island |

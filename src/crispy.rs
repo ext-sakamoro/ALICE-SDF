@@ -202,7 +202,7 @@ impl From<u64> for BitMask64 {
 }
 
 // ---------------------------------------------------------------------------
-// Bloom Filter — O(1) membership test (CLAUDE.md Layer 3)
+// Bloom Filter — O(1) membership test
 // ---------------------------------------------------------------------------
 
 /// 4KB Bloom filter with double-hashing (FNV-1a based).

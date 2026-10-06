@@ -236,7 +236,7 @@ When an oracle goes green:
 2. Implement the corresponding functionality in `src/`
 3. Run `cargo test <test_name>` to verify
 
-For details: [CLAUDE.md](../CLAUDE.md)
+For details: [CONTRIBUTING.md](../CONTRIBUTING.md)
 """
 
     return report

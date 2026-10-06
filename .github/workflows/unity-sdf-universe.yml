@@ -1,8 +1,7 @@
 # The Unity side of unity-sdf-universe — the demo has no committed .unity
 # scene (it is source you assemble yourself, see unity-sdf-universe/README.md)
 # and was never wired into CI, so its copy of bindings/AliceSdf.cs silently
-# drifted behind the crate for a long time (found + fixed 2026-09-28, see
-# memory/feedback_unity_sdf_universe_demo_drift_2026_09_28.md in claude-config).
+# drifted behind the crate for a long time (found and fixed 2026-09-28).
 # This job builds the native library fresh from source, drops it into the
 # project, and runs Assets/Editor/CiSmokeTest.cs — a reflection-driven smoke
 # test that calls SdfWorld/SdfParticleSystem's Awake/Start/Update manually

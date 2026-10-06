@@ -1,4 +1,4 @@
-# Dependabot 設定 (feedback_dependabot_major_bump_initial_wave 準拠)
+# Dependabot 設定
 #
 # 初回 wave で溜まった全更新が一気に PR 化されるのを防ぐため
 # semver-major bump は ignore する 必要時は手動で PR 化判断
@@ -7,7 +7,6 @@
 # 理由: root は ../ALICE-Codec / ../ALICE-Physics / ../ALICE-Streaming-Protocol /
 #       ../ALICE-Cache / ../ALICE-Font の sibling path dep を持ち、dependabot は
 #       sibling repo を checkout しないため path_dependencies_not_reachable で fail する
-#       (= [[feedback_dependabot_cargo_sibling_path_deps]])
 #       root 直接の cargo dep update は手動 `cargo update -p <name>` で対応
 #
 # 対象 (残った):

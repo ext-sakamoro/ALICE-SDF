@@ -417,8 +417,8 @@ unity-sdf-universe/
 
 | Hardware | Particles | Mode | Time Slice |
 |----------|-----------|------|------------|
-| M1 MacBook Air | 1M | GPU | 1 |
-| M3 MacBook Pro | 5M | GPU | 3 |
+| Apple M1 (laptop) | 1M | GPU | 1 |
+| Apple M3 Pro (laptop) | 5M | GPU | 3 |
 | RTX 3060 | 5M | GPU | 2 |
 | RTX 4080 | 10M | GPU | 3 |
 | Intel iGPU | 100K | CPU Burst | - |

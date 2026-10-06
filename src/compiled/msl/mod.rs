@@ -18,7 +18,7 @@
 //! WGSL path is fixed in MSL for free, and MSL cannot drift from WGSL by
 //! construction.
 //!
-//! This also matches ALICE-SDF-LAWS §同期の法 §5 (Port Parity Oracle Rule):
+//! This also follows the port parity rule (every port is compared with the CPU law):
 //! single source generation first, oracle second.
 //!
 //! # Buffer slots

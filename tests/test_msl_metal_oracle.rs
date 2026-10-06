@@ -20,7 +20,7 @@
 //!
 //! Set `ALICE_SDF_REQUIRE_METAL=1` to make "no Metal device" a failure instead
 //! of a skip (the same contract `ALICE_SDF_REQUIRE_GPU` has for the WGSL
-//! oracle, ALICE-SDF-LAWS §5 Port Parity Oracle Rule).
+//! oracle, the port parity rule).
 //!
 //! Author: Moroya Sakamoto
 #![cfg(all(feature = "msl", target_os = "macos"))]

@@ -3,9 +3,8 @@ name: Unreal
 # BuildPlugin は 35-50 分かかる。ci.yml と同じ concurrency group に居ると、
 # **doc だけの push でも** cancel-in-progress で完走前に消え、しかも新 run は
 # paths-filter がこの job を skip するので検証が一切進まない。2026-09-27 にこれを
-# 2 回踏んだ (1 回目は CHANGELOG の 1 行訂正、2 回目は並走 session の
+# 2 回踏んだ (1 回目は CHANGELOG の 1 行訂正、2 回目は
 # `ci: node20 → node24`)。group を分けたので ci.yml 側の push はこの run を消さない。
-# 詳細: ~/claude-config/memory/feedback_concurrency_cancels_long_running_ci.md
 #
 # 実体は UAT BuildPlugin (editor + game targets)、editor が compile する全 .usf /
 # .ush、automation 2 本 (AliceSDF.Unreal.FfiCorpusParity = alice_sdf.dll 越しの

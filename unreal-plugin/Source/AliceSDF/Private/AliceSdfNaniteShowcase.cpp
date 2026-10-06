@@ -51,7 +51,7 @@ void AAliceSdfNaniteShowcase::BuildAllShapes()
 		TEXT("Organic Sculpture"),
 		TEXT("Crystal Formation"),
 		TEXT("Architectural Column"),
-		TEXT("SAO Floating Island"),
+		TEXT("Gyroid Floating Island"),
 		// Ported from VRChat / Unity
 		TEXT("Menger Sponge"),
 		TEXT("Cosmic System"),

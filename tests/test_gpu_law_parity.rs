@@ -7,7 +7,7 @@
 //!
 //! Runs the WGSL path through `GpuEvaluator` when an adapter is available and
 //! skips otherwise (CI runners have no GPU; run locally after touching a law,
-//! ALICE-SDF-LAWS §5 Port Parity Oracle Rule).
+//! the port parity rule).
 //!
 //! Author: Moroya Sakamoto
 #![cfg(feature = "gpu")]

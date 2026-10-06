@@ -36,8 +36,8 @@ enum class EAliceSdfNaniteShape : uint8
 	/** Classical column with fluting, capital, and base */
 	ArchColumn       UMETA(DisplayName = "Architectural Column"),
 
-	/** SAO-inspired floating island with internal gyroid tunnels */
-	SAOFloat         UMETA(DisplayName = "SAO Floating Island"),
+	/** Floating island with internal gyroid tunnels (distinct from FloatingIsland below) */
+	SAOFloat         UMETA(DisplayName = "Gyroid Floating Island"),
 
 	// --- Ported from VRChat / Unity demos ---
 

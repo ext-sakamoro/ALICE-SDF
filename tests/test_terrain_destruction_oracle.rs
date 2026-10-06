@@ -1,4 +1,4 @@
-//! `terrain` / `destruction` の解析解突合 test (CLAUDE.md § 解析解突合テスト規律)
+//! `terrain` / `destruction` の解析解突合 test
 //!
 //! 期待値は**すべて閉形式か独立に組み直した式**で、被検査関数の出力を見て書いて
 //! いない 各 test に期待値の出所を `// oracle:` で付ける
@@ -6,7 +6,7 @@
 //! 既存 unit test (terrain 33 / destruction 22) は `modified_voxels > 0` /
 //! `!vertices.is_empty()` の**存在と範囲**しか見ておらず、`heightmap.rs` の
 //! `test_bilinear_sample` は閉形式が exact (中点 = 5.0) なのに許容が ±1.0 (20%)
-//! だった 棚卸しは [[feedback_alice_sdf_oracle_coverage_audit_2026_09_30]]
+//! だった
 //!
 //! # 使った閉形式の一覧
 //!

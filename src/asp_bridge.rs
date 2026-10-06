@@ -30,7 +30,7 @@ use crate::types::SdfTree;
 /// The SDF tree is serialized to ASDF binary format and embedded
 /// in the I-packet's region descriptors as a `Complex` pattern.
 /// bincode allocation upper bound (256 MB) fuzz 検出の capacity overflow panic 予防
-/// [[karikari-review]] : src/io/asdf.rs::ASDF_BINCODE_LIMIT と同期
+/// src/io/asdf.rs::ASDF_BINCODE_LIMIT と同期
 const ASP_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
 
 /// Serialise `tree` (ASDF bincode wire format) into an ASP I-packet with the

@@ -325,7 +325,7 @@ Y=0の平面地形をリアルタイムにスカルプトできます — VRの�
 3. `Assets/AliceSDF_SampleScenes/` にシーンが生成されます
 4. 任意の `SDF_*.unity` を開いて **Play** するだけ
 
-どちらのメニューにもスクリプト / エージェント向けのヘッドレス入口があります (2 回に分けて起動、間でインポートしたスクリプトがコンパイルされる、失敗時は exit code 1):
+どちらのメニューにもスクリプトや自動化ツール向けのヘッドレス入口があります (2 回に分けて起動、間でインポートしたスクリプトがコンパイルされる、失敗時は exit code 1):
 
 ```
 Unity -batchmode -quit -nographics -projectPath <project> -executeMethod AliceSDF.Editor.SampleSceneGenerator.ImportAllSamplesBatch

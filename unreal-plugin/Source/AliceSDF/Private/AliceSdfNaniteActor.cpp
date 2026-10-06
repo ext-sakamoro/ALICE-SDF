@@ -239,7 +239,7 @@ void AAliceSdfNaniteActor::BuildArchColumn()
 }
 
 // ----------------------------------------------------------------------------
-// Shape 4: SAO Floating Island — hemisphere + noise terrain + gyroid caves
+// Shape 4: Gyroid Floating Island — hemisphere + noise terrain + gyroid caves
 // ----------------------------------------------------------------------------
 void AAliceSdfNaniteActor::BuildSAOFloat()
 {

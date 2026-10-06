@@ -8,8 +8,7 @@
 # 2026-09-16: the semver-checks job went red on a removed optional dependency
 # (`lazy_static` was an implicit public feature) after a push that had only
 # been checked with cargo test + clippy locally. This file is the checklist
-# so that cannot repeat; ~/.claude/hooks/pre-push-preflight.sh runs
-# `--quick` before every push and blocks on failure.
+# so that cannot repeat; run it (at least `--quick`) before every push.
 #
 # Not covered here, deliberately: `scripts/downstream_check.py` answers "which
 # sibling repo does publishing this crate break, and whose `cargo publish` does

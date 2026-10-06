@@ -62,7 +62,7 @@
 9. Cosmic の惑星系 `kit_demo_cosmic_clientsim_20260919.png` (飾りの例)
 
 ## 価格 (user 決定 09-18)
-- **5,000 円** (税込、単一 SKU、prefab 9 + 日英 README + サポート) BOOTH の表記は 5,000 か 4,980 か user 判断
+- **5,000 円** (税込、単一 SKU、prefab 9 + 日英 README + サポート) BOOTH の表記は 5,000 か 4,980 か未定
 - 無料 lite (Mochi 3 個固定 / 色固定 / texture 無し) を別商品で置いて導線にする案は継続
 - Mochi 単品 (2,980 円案) を別 SKU にするかは後日
 

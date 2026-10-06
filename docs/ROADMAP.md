@@ -1,10 +1,9 @@
 # ALICE-SDF Roadmap
 
 Canonical roadmap tracking phases, current state, and open decisions for the
-ALICE-SDF crate. Primary source of truth — the `MEMORY.md` index and per-session
-memory files reference this document rather than duplicating the phase list.
+ALICE-SDF crate.
 
-- **Current version**: `v2.1.0` (crates.io; corpus GPU oracle WGSL + GLSL, 15 shader laws fixed, step budget × L, `font` pending alice-font)
+- **Current version**: see the crates.io badge in the [README](../README.md) and [`CHANGELOG.md`](../CHANGELOG.md) (the phase list below is history up to the version each phase names)
 - **Repo**: `ext-sakamoro/ALICE-SDF`
 - **License**: Dual (see `LICENSE`, `LICENSE-COMMUNITY`)
 - **MSRV**: `1.85`
@@ -78,7 +77,7 @@ Legend: ✅ landed · 🚧 in progress · ⏳ planned · 💤 deferred
 
 ### Maintainer self-review landing (1.11.0, 2026-09-15)
 
-Two-round maintainer self-review of 1.10.2 (independent Linux x86_64 environment) ([memory: `project_alice_sdf_external_review_2026_09_15`]). Pattern in both rounds: the foundation (128 laws, Eikonal, analytic agreement) measured correct; the optimisation layer and the output stage above it were broken and had no test on their path. Landing = fix + an oracle test per finding.
+Two-round maintainer self-review of 1.10.2 (independent Linux x86_64 environment). Pattern in both rounds: the foundation (128 laws, Eikonal, analytic agreement) measured correct; the optimisation layer and the output stage above it were broken and had no test on their path. Landing = fix + an oracle test per finding.
 
 | Finding | Status | Fix / oracle |
 |---|---|---|
@@ -250,5 +249,5 @@ parameter vs caller-provided helper function for buffer access.
 - CHANGELOG: `CHANGELOG.md` (post-1.5.0) / `CHANGELOG-history.md` (pre-1.5.0)
 - Architecture: `ARCHITECTURE.md`
 - API reference: `API.md` / `docs/API_REFERENCE.md`
-- Bambu 3MF export path (canonical is `alice-bamboo`, not this crate): see `CLAUDE.md`
-- Personal memory: `success_alice_sdf_phase_12_landing.md` (Phase 12 A/B/C session summary)
+- Bambu 3MF export path: `alice-bamboo` (not this crate)
+- Module list: [`docs/MODULES.md`](MODULES.md)

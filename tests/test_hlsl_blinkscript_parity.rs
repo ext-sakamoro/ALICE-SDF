@@ -68,7 +68,7 @@
 //! `ALICE_SDF_REQUIRE_CXX=1` turns "no C++ compiler" into a failure and
 //! `ALICE_SDF_REQUIRE_GLSLANG=1` does the same for `glslangValidator` /
 //! `spirv-val`, mirroring the `ALICE_SDF_REQUIRE_GPU` / `_METAL` contract
-//! (ALICE-SDF-LAWS §5 Port Parity Oracle Rule). Without a CI job that sets
+//! (the port parity rule). Without a CI job that sets
 //! them, a feature-gated oracle is indistinguishable from an absent one.
 //!
 //! Author: Moroya Sakamoto

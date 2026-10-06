@@ -38,7 +38,7 @@ Repetition: `repeat(...)`, `repeat_finite(...)`, `octant_mirror(child)`, `icosah
 
 Generation: `revolution(child_2d)`, `extrude(h, child_2d)`, `sweep_bezier(...)`.
 
-3D Print structural intent: `lattice_infill(...)`, `diamond_infill(...)`, `schwarz_infill(...)`. Use these instead of raw `intersection` + TPMS to avoid non-manifold mesh (see ALICE-LOL `CLAUDE.md` STL output rules).
+3D Print structural intent: `lattice_infill(...)`, `diamond_infill(...)`, `schwarz_infill(...)`. Use these instead of raw `intersection` + TPMS to avoid non-manifold mesh (see the ALICE-LOL documentation on STL output).
 
 Material tagging: `with_material(mat_id, child)`.
 

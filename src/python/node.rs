@@ -7,7 +7,7 @@ use crate::types::SdfNode;
 
 /// Python-visible SdfNode wrapper
 // pyo3 0.29+: `#[pyclass]` on Clone types で自動導出される `FromPyObject` は
-// 将来 opt-in 化予定 (`from_py_object` 属性で明示、[[karikari-review]] deprecation gate 準拠)
+// 将来 opt-in 化予定 (`from_py_object` 属性で明示、deprecation warning を出さないため)
 // 既存の Python callsite が引き続き SdfNode を関数引数で受けられるよう明示 opt-in
 #[pyclass(name = "SdfNode", from_py_object)]
 #[derive(Clone)]

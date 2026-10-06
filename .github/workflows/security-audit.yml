@@ -116,7 +116,7 @@ jobs:
       # 必要 file が漏れる — これらは repo / workspace に file がある限り
       # cargo build も cargo test も clippy も preflight も全部通り、
       # crates.io から取得した利用者だけが compile 不能になる
-      # (2026-09-28 ALICE-LOL lol.gbnf、canonical template 罠 #51)
+      # (2026-09-28 ALICE-LOL の lol.gbnf で実例)
       #
       # semver-checks は baseline を build するので結果的に検出するが、
       # (a) 壊れた版を publish した後にしか分からない
@@ -144,8 +144,7 @@ jobs:
     name: Coverage (cargo-llvm-cov、informational)
     runs-on: ubuntu-latest
     # Informational by design (not a test gate): coverage is a number to
-    # watch, no threshold is enforced. `alice-strict-eval` 16 counts only
-    # test / build steps.
+    # watch, no threshold is enforced.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v5
@@ -160,7 +159,7 @@ jobs:
       # --lib のみ (test の doctest / integration test は clippy / test job で担保)
       # --summary-only で行 coverage % + region coverage % を PR log に表示
       # set -o pipefail: `| tee` / `| tail` が cargo の exit code を mask して
-      # build error を green 偽装する (canonical 罠 #22)
+      # build error を green に見せる
       - name: Run coverage
         run: |
           set -o pipefail
@@ -252,7 +251,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # CLAUDE.md「仮実装完了偽装の禁止ルール」準拠
       # src/ 配下の production path に todo! / unimplemented! / panic!(STUB) が
       # 混入していないか grep で block src/bin/ は CLI 意図的 panic 許容のため除外
       - name: Detect todo! / unimplemented! / panic!(STUB) in src/**
@@ -272,7 +270,6 @@ jobs:
             echo "$hits"
             echo ""
             echo "Fix: use ? operator, Result<T, E>, or remove the stub."
-            echo "  See CLAUDE.md § 仮実装完了偽装の禁止ルール"
             exit 1
           fi
           echo "✓ No todo! / unimplemented! / panic!(STUB) in src/ (excluding src/bin/)"

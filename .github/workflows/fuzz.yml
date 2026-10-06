@@ -70,7 +70,7 @@ jobs:
         run: cargo install cargo-fuzz --locked
 
       # build は blocking: compile error を continue-on-error で隠さない
-      # (canonical 罠 #22、2026-09-14 ALICE-Bamboo 12 日間 silent fail 事案)
+      # (別 repo で fuzz の build が 12 日間 silent に失敗していた例がある)
       - name: Build fuzz target
         run: |
           cd fuzz

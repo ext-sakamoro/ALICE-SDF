@@ -1,4 +1,4 @@
-# Rust toolchain pin (feedback_clippy_rust_version_drift 準拠)
+# Rust toolchain pin
 # ローカルと CI で同一 toolchain を使い、Rust リリース毎に増える新規 clippy lint
 # が unexpected に CI 落ちさせるのを防ぐ
 #

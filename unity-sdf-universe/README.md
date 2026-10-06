@@ -225,7 +225,7 @@ unity-sdf-universe/
 
 ## Performance Benchmarks
 
-Tested on M3 MacBook Air:
+Tested on an Apple M3 laptop:
 
 | Mode | Particles | FPS | GPU Time |
 |------|-----------|-----|----------|
