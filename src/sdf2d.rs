@@ -63,9 +63,9 @@ pub enum Sdf2dNode {
         thickness: f32,
     },
 
-    /// Glyph SDF from a precomputed 32x32 grid (ALICE-Font integration).
+    /// Glyph SDF from a precomputed 64x64 grid (ALICE-Font integration).
     FontGlyph {
-        /// Flattened 32x32 distance values.
+        /// Flattened 64x64 distance values (row-major, 4096 entries).
         data: Box<[f32; 4096]>,
         /// Glyph advance width (in em units).
         advance: f32,
@@ -288,10 +288,15 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let edge_dist = radius * alice_det_math::cos(half_sector);
             let dx = r * cos_a + -edge_dist;
             let dy = (r * sin_a).abs() - radius * alice_det_math::sin(half_sector);
+            // In the sector's wedge: past the vertex → vertex distance,
+            // otherwise the edge line distance. Inside the polygon `dy` is
+            // never positive and the governing edge is this sector's, so the
+            // interior distance is `dx` alone (until 4.1.0 this returned
+            // `max(dx, dy)`, which under-reported the depth near vertices).
             if dx > 0.0 && dy > 0.0 {
                 alice_det_math::hypot(dx, dy)
             } else {
-                dx.max(dy)
+                dx
             }
         }
 
