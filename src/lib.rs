@@ -1,7 +1,7 @@
 //! # ALICE-SDF
 //!
 //! Signed distance functions for Rust. A shape is a tree of primitives, CSG
-//! operations, transforms and modifiers ([`SdfNode`](types::SdfNode)). The crate
+//! operations, transforms and modifiers ([`SdfNode`]). The crate
 //! evaluates the tree on the CPU (scalar, SIMD, BVH and JIT evaluators),
 //! transpiles it to GLSL, WGSL, HLSL and Metal, and turns it into meshes and file
 //! formats.
