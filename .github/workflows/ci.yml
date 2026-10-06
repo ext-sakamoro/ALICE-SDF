@@ -408,6 +408,9 @@ jobs:
         run: cargo build --lib --no-default-features --features openvdb
       - name: Test (openvdb feature)
         run: cargo test --lib --no-default-features --features openvdb vdb
+      # tests/test_io_format_oracle.rs の dense grid (openvdb) と Nanite material (hlsl) の arm
+      - name: Test (io format oracle — openvdb + hlsl arms)
+        run: cargo test --features "hlsl,openvdb" --test test_io_format_oracle
 
   bevy:
     name: Bevy plugin (bindings/bevy/alice-sdf-bevy)

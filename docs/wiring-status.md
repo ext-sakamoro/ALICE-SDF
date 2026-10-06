@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **712 baseline items** — Permitted violations, ratchet in place
+🟡 **625 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (712 permitted)
+## 📋 Baseline (625 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -24,51 +24,44 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/crispy.rs` | 16 |
 | `src/autodiff.rs` | 15 |
 | `src/mesh/lod.rs` | 15 |
-| `src/mesh/nanite.rs` | 15 |
 | `src/sim_bridge.rs` | 15 |
 | `src/compiled/wgsl/gpu_eval.rs` | 14 |
 | `src/codec_bridge.rs` | 13 |
 | `src/mesh/meshopt_filter.rs` | 13 |
+| `src/mesh/nanite.rs` | 13 |
 | `src/mesh/collision.rs` | 11 |
-| `src/mesh/manifold.rs` | 11 |
 | `src/mesh/primitive_fitting.rs` | 11 |
 | `src/sdf2d.rs` | 11 |
 | `src/mesh/mesh_to_sdf.rs` | 10 |
 | `src/cache/chunked.rs` | 9 |
 | `src/compiled/instanced.rs` | 9 |
 | `src/destruction/mod.rs` | 9 |
-| `src/measure.rs` | 9 |
 | `src/operations/smooth.rs` | 9 |
-| `src/shell.rs` | 9 |
-| `src/animation.rs` | 8 |
 | `src/collision.rs` | 8 |
 | `src/compiled/aabb.rs` | 8 |
 | `src/constraint.rs` | 8 |
-| `src/io/fbx.rs` | 8 |
-| `src/validity.rs` | 8 |
 | `src/raycast/mod.rs` | 7 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
 | `src/compiled/jit/simd/mod.rs` | 6 |
 | `src/compiled/wgsl/transpiler.rs` | 6 |
 | `src/diff.rs` | 6 |
-| `src/io/nanite.rs` | 6 |
 | `src/mesh/quantization.rs` | 6 |
 | `src/npr/dsl.rs` | 6 |
 | `src/terrain/splatmap.rs` | 6 |
 | `src/transforms/rotate.rs` | 6 |
 | `src/volume/export.rs` | 6 |
 | `src/font_bridge.rs` | 5 |
-| `src/heatmap.rs` | 5 |
 | `src/mesh/hermite.rs` | 5 |
 | `src/mesh/lod_persist.rs` | 5 |
+| `src/mesh/manifold.rs` | 5 |
 | `src/mesh/mesh_codec.rs` | 5 |
 | `src/mesh/stripifier.rs` | 5 |
 | `src/modifiers/noise.rs` | 5 |
-| `src/morphology.rs` | 5 |
 | `src/neural.rs` | 5 |
 | `src/terrain/clipmap.rs` | 5 |
 | `src/terrain/heightmap.rs` | 5 |
 | `src/types/containers.rs` | 5 |
+| `src/animation.rs` | 4 |
 | `src/asp_bridge.rs` | 4 |
 | `src/compiled/hlsl/transpiler.rs` | 4 |
 | `src/compiled/jit/runtime.rs` | 4 |
@@ -89,12 +82,9 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/volume/mod.rs` | 4 |
 | `src/cache/mod.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
-| `src/fidelity.rs` | 3 |
 | `src/gi/irradiance.rs` | 3 |
-| `src/io/usd.rs` | 3 |
 | `src/mesh/overdraw.rs` | 3 |
 | `src/mesh/point_cloud_sdf.rs` | 3 |
-| `src/mesh/sdf_to_mesh.rs` | 3 |
 | `src/modifiers/bend.rs` | 3 |
 | `src/modifiers/mirror.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
@@ -106,15 +96,9 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/eval_bvh.rs` | 2 |
 | `src/destruction/debris.rs` | 2 |
 | `src/destruction/operations.rs` | 2 |
-| `src/io/gltf.rs` | 2 |
-| `src/io/splat.rs` | 2 |
-| `src/io/stl.rs` | 2 |
-| `src/io/vdb.rs` | 2 |
-| `src/io/vox.rs` | 2 |
 | `src/llm_schema.rs` | 2 |
 | `src/mesh/bvh.rs` | 2 |
 | `src/mesh/decimate.rs` | 2 |
-| `src/mesh/dual_contouring.rs` | 2 |
 | `src/mesh/lightmap.rs` | 2 |
 | `src/mesh/mesh_sign.rs` | 2 |
 | `src/mesh/meshopt_vertex_codec.rs` | 2 |
@@ -126,7 +110,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/primitives/cylinder.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/terrain/caves.rs` | 2 |
-| `src/tight_aabb.rs` | 2 |
 | `src/transforms/translate.rs` | 2 |
 | `src/volume/bake.rs` | 2 |
 | `src/bin/main.rs` | 1 |
@@ -141,14 +124,11 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/gi/cone_trace.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/incremental.rs` | 1 |
-| `src/io/abm.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
-| `src/io/iges.rs` | 1 |
-| `src/io/obj.rs` | 1 |
-| `src/io/ply.rs` | 1 |
-| `src/io/step.rs` | 1 |
+| `src/mesh/dual_contouring.rs` | 1 |
 | `src/mesh/meshopt_index_codec.rs` | 1 |
 | `src/mesh/mod.rs` | 1 |
+| `src/mesh/sdf_to_mesh.rs` | 1 |
 | `src/mesh/uv_unwrap.rs` | 1 |
 | `src/modifiers/ifs.rs` | 1 |
 | `src/modifiers/surface_roughness.rs` | 1 |
@@ -158,6 +138,7 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/optimize.rs` | 1 |
 | `src/terrain/mod.rs` | 1 |
 | `src/texture/fitting.rs` | 1 |
+| `src/tight_aabb.rs` | 1 |
 | `src/types/constructors.rs` | 1 |
 | `src/types/modifiers.rs` | 1 |
 | `src/types/transforms.rs` | 1 |
@@ -187,16 +168,12 @@ dead_code src/transforms/scale.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (694)
+### Unwired Items (607)
 
 ```
-unwired src/animation.rs::add_keyframe
-unwired src/animation.rs::add_track
 unwired src/animation.rs::cubic
 unwired src/animation.rs::evaluate_at
 unwired src/animation.rs::evaluate_params
-unwired src/animation.rs::get_value
-unwired src/animation.rs::step
 unwired src/animation.rs::with_loop
 unwired src/asp_bridge.rs::create_sdf_d_packet
 unwired src/asp_bridge.rs::create_sdf_i_packet
@@ -393,9 +370,6 @@ unwired src/ffi/registry.rs::node_count
 unwired src/ffi/types.rs::EvalStats
 unwired src/ffi/types.rs::ShaderType
 unwired src/ffi/types.rs::SoaBatchConfig
-unwired src/fidelity.rs::can_overshoot
-unwired src/fidelity.rs::distance_fidelity
-unwired src/fidelity.rs::safe_step_scale
 unwired src/font_bridge.rs::FontMetrics
 unwired src/font_bridge.rs::char_to_sdf2d
 unwired src/font_bridge.rs::font_metrics
@@ -406,48 +380,11 @@ unwired src/gi/irradiance.rs::get_probe
 unwired src/gi/irradiance.rs::get_probe_mut
 unwired src/gi/irradiance.rs::probe_count
 unwired src/gi/mod.rs::PointLight
-unwired src/heatmap.rs::ColorMap
-unwired src/heatmap.rs::generate_heatmap
-unwired src/heatmap.rs::heatmap_to_rgba
-unwired src/heatmap.rs::inside_pixel_count
-unwired src/heatmap.rs::surface_pixel_count
 unwired src/incremental.rs::bindings_of
 unwired src/interval.rs::intersect
 unwired src/interval.rs::is_negative
 unwired src/interval.rs::is_positive
 unwired src/interval.rs::overlaps
-unwired src/io/abm.rs::read_abm_header
-unwired src/io/fbx.rs::FbxAnimClip
-unwired src/io/fbx.rs::FbxAnimCurve
-unwired src/io/fbx.rs::FbxBone
-unwired src/io/fbx.rs::ImportedFbx
-unwired src/io/fbx.rs::binary
-unwired src/io/fbx.rs::fbx_animation_to_timeline
-unwired src/io/fbx.rs::import_fbx
-unwired src/io/fbx.rs::import_fbx_full
-unwired src/io/gltf.rs::aaa
-unwired src/io/gltf.rs::export_gltf_json
-unwired src/io/iges.rs::export_iges
-unwired src/io/nanite.rs::NANITE_MAGIC
-unwired src/io/nanite.rs::NANITE_VERSION
-unwired src/io/nanite.rs::export_nanite
-unwired src/io/nanite.rs::export_nanite_hlsl_material
-unwired src/io/nanite.rs::export_nanite_json
-unwired src/io/nanite.rs::export_nanite_with_config
-unwired src/io/obj.rs::import_obj
-unwired src/io/ply.rs::import_ply
-unwired src/io/splat.rs::load_splat
-unwired src/io/splat.rs::save_splat
-unwired src/io/step.rs::export_step
-unwired src/io/stl.rs::export_stl_ascii
-unwired src/io/stl.rs::import_stl
-unwired src/io/usd.rs::ImportedUsdMaterial
-unwired src/io/usd.rs::ImportedUsda
-unwired src/io/usd.rs::import_usda
-unwired src/io/vdb.rs::DenseGrid
-unwired src/io/vdb.rs::load_dense_grid_from_vdb
-unwired src/io/vox.rs::load_vox
-unwired src/io/vox.rs::save_vox
 unwired src/llm_schema.rs::schema_summary
 unwired src/llm_schema.rs::validate_sdf_json
 unwired src/material.rs::aluminum
@@ -489,15 +426,6 @@ unwired src/material.rs::with_tiling
 unwired src/material.rs::with_transmission
 unwired src/material.rs::with_uv_channel
 unwired src/material.rs::with_volume
-unwired src/measure.rs::AreaEstimate
-unwired src/measure.rs::CenterOfMass
-unwired src/measure.rs::VolumeEstimate
-unwired src/measure.rs::estimate_center_of_mass
-unwired src/measure.rs::estimate_surface_area
-unwired src/measure.rs::estimate_volume
-unwired src/measure.rs::measure_tension
-unwired src/measure.rs::tears
-unwired src/measure.rs::tension
 unwired src/mesh/bvh.rs::expand_aabb
 unwired src/mesh/bvh.rs::unsigned_distance_batch
 unwired src/mesh/collision.rs::CollisionMesh
@@ -513,7 +441,6 @@ unwired src/mesh/collision.rs::total_vertices
 unwired src/mesh/collision.rs::volume
 unwired src/mesh/decimate.rs::aggressive
 unwired src/mesh/decimate.rs::conservative
-unwired src/mesh/dual_contouring.rs::aaa
 unwired src/mesh/dual_contouring.rs::dual_contouring_compiled
 unwired src/mesh/hermite.rs::HermiteExtractor::extract_edge_crossings
 unwired src/mesh/hermite.rs::extract_edge_crossings
@@ -546,13 +473,7 @@ unwired src/mesh/manifold.rs::MeshQuality
 unwired src/mesh/manifold.rs::compute_quality
 unwired src/mesh/manifold.rs::drop_specks
 unwired src/mesh/manifold.rs::fill_holes
-unwired src/mesh/manifold.rs::fix_normals
-unwired src/mesh/manifold.rs::merge_duplicate_vertices
 unwired src/mesh/manifold.rs::orient_faces
-unwired src/mesh/manifold.rs::remove_degenerate_triangles
-unwired src/mesh/manifold.rs::remove_duplicate_triangles
-unwired src/mesh/manifold.rs::repair_all
-unwired src/mesh/manifold.rs::validate_mesh
 unwired src/mesh/mesh_codec.rs::decode_indices
 unwired src/mesh/mesh_codec.rs::decode_positions
 unwired src/mesh/mesh_codec.rs::encode_indices
@@ -593,8 +514,6 @@ unwired src/mesh/mod.rs::with_all
 unwired src/mesh/nanite.rs::CLUSTER_MAX_VERTICES
 unwired src/mesh/nanite.rs::from_normals
 unwired src/mesh/nanite.rs::from_normals_and_positions
-unwired src/mesh/nanite.rs::from_vertices
-unwired src/mesh/nanite.rs::generate_nanite_mesh
 unwired src/mesh/nanite.rs::get_cluster
 unwired src/mesh/nanite.rs::high_detail
 unwired src/mesh/nanite.rs::is_backface_culled
@@ -632,8 +551,6 @@ unwired src/mesh/quantization.rs::snorm_i16_decode
 unwired src/mesh/quantization.rs::snorm_i8_decode
 unwired src/mesh/quantization.rs::unorm_u16_decode
 unwired src/mesh/quantization.rs::unorm_u8_decode
-unwired src/mesh/sdf_to_mesh.rs::AdaptiveConfig::aaa
-unwired src/mesh/sdf_to_mesh.rs::MarchingCubesConfig::aaa
 unwired src/mesh/sdf_to_mesh.rs::adaptive_marching_cubes_compiled
 unwired src/mesh/spatial_order.rs::morton_3d
 unwired src/mesh/spatial_order.rs::optimize_spatial_order
@@ -662,11 +579,6 @@ unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/modifiers/sweep.rs::sweep_bezier_dist_y
 unwired src/modifiers/twist.rs::modifier_twist_x
 unwired src/modifiers/twist.rs::modifier_twist_z
-unwired src/morphology.rs::eval_offset
-unwired src/morphology.rs::eval_offset_batch
-unwired src/morphology.rs::eval_offset_batch_parallel
-unwired src/morphology.rs::tolerance_fits
-unwired src/morphology.rs::tolerance_max_violation
 unwired src/neural.rs::eval_with_gradient
 unwired src/neural.rs::hidden_layer_count
 unwired src/neural.rs::input_dimension
@@ -780,15 +692,6 @@ unwired src/sdf2d.rs::rect
 unwired src/sdf2d.rs::ring
 unwired src/sdf2d.rs::rounded_rect
 unwired src/sdf2d.rs::star
-unwired src/shell.rs::eval_shell
-unwired src/shell.rs::eval_shell_batch
-unwired src/shell.rs::eval_shell_batch_parallel
-unwired src/shell.rs::eval_shell_compiled
-unwired src/shell.rs::eval_shell_compiled_batch_parallel
-unwired src/shell.rs::eval_shell_gradient
-unwired src/shell.rs::shell_node
-unwired src/shell.rs::uniform
-unwired src/shell.rs::wall_thickness
 unwired src/sim_bridge.rs::GpuPhysicsBundle
 unwired src/sim_bridge.rs::add_erosion
 unwired src/sim_bridge.rs::add_fracture
@@ -843,7 +746,6 @@ unwired src/terrain/splatmap.rs::get_weight
 unwired src/terrain/splatmap.rs::layer_count
 unwired src/terrain/splatmap.rs::set_weight
 unwired src/texture/fitting.rs::reconstruct
-unwired src/tight_aabb.rs::compute_tight_aabb
 unwired src/tight_aabb.rs::preset_medium
 unwired src/transforms/rotate.rs::rotation_axis_angle
 unwired src/transforms/rotate.rs::rotation_look_at
@@ -863,14 +765,6 @@ unwired src/types/containers.rs::size
 unwired src/types/containers.rs::with_metadata
 unwired src/types/modifiers.rs::sine_displacement_aniso
 unwired src/types/transforms.rs::translate_vec
-unwired src/validity.rs::export_step_validated
-unwired src/validity.rs::fdm_0_4_nozzle
-unwired src/validity.rs::has_thick_region
-unwired src/validity.rs::is_printable
-unwired src/validity.rs::local_thickness
-unwired src/validity.rs::overhang_stats
-unwired src/validity.rs::prove_erosion
-unwired src/validity.rs::validate_for_printing
 unwired src/volume/bake.rs::bake_volume_compiled
 unwired src/volume/bake.rs::bake_volume_with_normals
 unwired src/volume/export.rs::DdsFormat

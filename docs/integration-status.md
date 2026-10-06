@@ -7,8 +7,8 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 1072 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 161 |
+| L0 | not reached by any non-test code, examples included | 947 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 286 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 912 |
 | | **total** | **2145** |
 
@@ -19,24 +19,14 @@ It does mean the item is not reached from another module or a binding.
 
 `scripts/wiring-baseline.txt` lists 686 unwired items.
 
-### L0 here but not in the baseline (392)
+### L0 here but not in the baseline (350)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
 - `src/animation.rs::AnimatedSdf`
 - `src/animation.rs::AnimatedSdf::new`
-- `src/animation.rs::Interpolation`
-- `src/animation.rs::Keyframe`
-- `src/animation.rs::Keyframe::new`
-- `src/animation.rs::LoopMode`
-- `src/animation.rs::Timeline`
 - `src/animation.rs::Timeline::duration`
 - `src/animation.rs::Timeline::evaluate`
-- `src/animation.rs::Timeline::new`
-- `src/animation.rs::Track`
-- `src/animation.rs::Track::duration`
-- `src/animation.rs::Track::evaluate`
-- `src/animation.rs::Track::new`
 - `src/animation.rs::morph`
 - `src/autodiff.rs::Dual`
 - `src/autodiff.rs::Dual3`
@@ -165,23 +155,11 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/diff.rs::TreePatch::is_empty`
 - `src/diff.rs::TreePath`
 - `src/eval/parallel.rs::eval_batch`
-- `src/fidelity.rs::Fidelity`
 - `src/gi/irradiance.rs::IrradianceGrid::memory_bytes`
 - `src/gi/irradiance.rs::IrradianceGrid::sample`
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
-- `src/heatmap.rs::Heatmap`
-- `src/heatmap.rs::Heatmap::sample`
-- `src/heatmap.rs::HeatmapConfig`
-- `src/heatmap.rs::SlicePlane`
 - `src/interval.rs::Interval::contains`
-- `src/io/iges.rs::IgesConfig`
-- `src/io/nanite.rs::NaniteExportConfig`
-- `src/io/splat.rs::Splat::from_bytes`
-- `src/io/step.rs::StepConfig`
-- `src/io/vdb.rs::VdbError`
-- `src/io/vdb.rs::bake_dense_grid`
-- `src/io/vdb.rs::bake_to_vdb`
 - `src/material.rs::Material::glass`
 - `src/material.rs::Material::new`
 - `src/material.rs::Material::with_roughness`
@@ -196,7 +174,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/material.rs::StandardMaterials::diamond`
 - `src/material.rs::StandardMaterials::glass`
 - `src/material.rs::TextureSlot::new`
-- `src/measure.rs::TensionEstimate`
 - `src/mesh/bvh.rs::Aabb`
 - `src/mesh/bvh.rs::Aabb::center`
 - `src/mesh/bvh.rs::Aabb::empty`
@@ -253,9 +230,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/lod.rs::LodSelector::screen_error`
 - `src/mesh/lod.rs::LodSelector::select`
 - `src/mesh/lod_persist.rs::LodChainPersist::mesh`
-- `src/mesh/manifold.rs::MeshRepair`
-- `src/mesh/manifold.rs::MeshValidation`
-- `src/mesh/manifold.rs::MeshValidation::is_clean`
 - `src/mesh/mesh_codec.rs::CodecError`
 - `src/mesh/mesh_sign.rs::ExteriorField`
 - `src/mesh/mesh_sign.rs::ExteriorField::MAX_BAND_STEPS`
@@ -276,18 +250,8 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/meshlet.rs::Meshlet::triangle_count`
 - `src/mesh/meshlet.rs::Meshlet::vertex_count`
 - `src/mesh/meshlet.rs::MeshletConfig`
-- `src/mesh/mod.rs::Triangle`
-- `src/mesh/mod.rs::Triangle::new`
-- `src/mesh/nanite.rs::CLUSTER_MAX_TRIANGLES`
-- `src/mesh/nanite.rs::ClusterBounds`
 - `src/mesh/nanite.rs::ClusterBounds::screen_error`
-- `src/mesh/nanite.rs::ClusterGroup`
-- `src/mesh/nanite.rs::LodLevel`
-- `src/mesh/nanite.rs::NaniteCluster`
-- `src/mesh/nanite.rs::NaniteCluster::triangle_count`
 - `src/mesh/nanite.rs::NaniteCluster::vertex_count`
-- `src/mesh/nanite.rs::NaniteConfig`
-- `src/mesh/nanite.rs::NaniteMesh`
 - `src/mesh/nanite.rs::NaniteMesh::clusters_at_lod`
 - `src/mesh/nanite.rs::NaniteMesh::to_mesh`
 - `src/mesh/nanite.rs::NormalCone`
@@ -345,8 +309,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/sdf2d.rs::Sdf2dNode::subtract`
 - `src/sdf2d.rs::Sdf2dNode::translate`
 - `src/sdf2d.rs::Sdf2dNode::union`
-- `src/shell.rs::ShellConfig`
-- `src/shell.rs::ShellConfig::new`
 - `src/sim_bridge.rs::SimulatedSdf`
 - `src/sim_bridge.rs::SimulatedSdf::bounds`
 - `src/sim_bridge.rs::SimulatedSdf::compiled`
@@ -403,10 +365,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/types/containers.rs::Aabb::union`
 - `src/types/mod.rs::SdfNode::category`
 - `src/types/modifiers.rs::SdfNode::sine_displacement`
-- `src/validity.rs::ErosionVerdict`
-- `src/validity.rs::PrintRequirements`
-- `src/validity.rs::ValidatedExportError`
-- `src/validity.rs::ValidityReport`
 - `src/volume/mod.rs::Volume3D::get`
 - `src/volume/mod.rs::Volume3D::index`
 - `src/volume/mod.rs::Volume3D::new`
@@ -416,35 +374,105 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/volume/mod.rs::Volume3D::world_size`
 - `src/volume/mod.rs::VoxelDistGrad`
 
-### In the baseline but reached here (1)
+### In the baseline but reached here (84)
 
 The guard lists these as unwired; a resolved reference reaches them (level in brackets).
 
+- `src/animation.rs::add_keyframe` (L1)
+- `src/animation.rs::add_track` (L1)
+- `src/animation.rs::get_value` (L1)
+- `src/fidelity.rs::can_overshoot` (L1)
+- `src/fidelity.rs::distance_fidelity` (L1)
+- `src/fidelity.rs::safe_step_scale` (L1)
+- `src/heatmap.rs::ColorMap` (L1)
+- `src/heatmap.rs::generate_heatmap` (L1)
+- `src/heatmap.rs::heatmap_to_rgba` (L1)
+- `src/heatmap.rs::inside_pixel_count` (L1)
+- `src/heatmap.rs::surface_pixel_count` (L1)
+- `src/io/abm.rs::read_abm_header` (L1)
+- `src/io/fbx.rs::FbxAnimClip` (L1)
+- `src/io/fbx.rs::FbxAnimCurve` (L1)
+- `src/io/fbx.rs::FbxBone` (L1)
+- `src/io/fbx.rs::ImportedFbx` (L1)
+- `src/io/fbx.rs::binary` (L1)
+- `src/io/fbx.rs::fbx_animation_to_timeline` (L1)
+- `src/io/fbx.rs::import_fbx` (L1)
+- `src/io/fbx.rs::import_fbx_full` (L1)
+- `src/io/gltf.rs::aaa` (L1)
+- `src/io/gltf.rs::export_gltf_json` (L1)
+- `src/io/iges.rs::export_iges` (L1)
+- `src/io/nanite.rs::NANITE_MAGIC` (L1)
+- `src/io/nanite.rs::NANITE_VERSION` (L1)
+- `src/io/nanite.rs::export_nanite` (L1)
+- `src/io/nanite.rs::export_nanite_hlsl_material` (L1)
+- `src/io/nanite.rs::export_nanite_json` (L1)
+- `src/io/nanite.rs::export_nanite_with_config` (L1)
+- `src/io/obj.rs::import_obj` (L1)
+- `src/io/ply.rs::import_ply` (L1)
+- `src/io/splat.rs::load_splat` (L1)
+- `src/io/splat.rs::save_splat` (L1)
+- `src/io/step.rs::export_step` (L1)
+- `src/io/stl.rs::export_stl_ascii` (L1)
+- `src/io/stl.rs::import_stl` (L1)
+- `src/io/usd.rs::ImportedUsdMaterial` (L1)
+- `src/io/usd.rs::ImportedUsda` (L1)
+- `src/io/usd.rs::import_usda` (L1)
+- `src/io/vdb.rs::DenseGrid` (L1)
+- `src/io/vdb.rs::load_dense_grid_from_vdb` (L1)
+- `src/io/vox.rs::load_vox` (L1)
+- `src/io/vox.rs::save_vox` (L1)
+- `src/measure.rs::AreaEstimate` (L1)
+- `src/measure.rs::CenterOfMass` (L1)
+- `src/measure.rs::VolumeEstimate` (L1)
+- `src/measure.rs::estimate_center_of_mass` (L1)
+- `src/measure.rs::estimate_surface_area` (L1)
+- `src/measure.rs::estimate_volume` (L1)
+- `src/measure.rs::measure_tension` (L1)
+- `src/measure.rs::tears` (L1)
+- `src/measure.rs::tension` (L1)
+- `src/mesh/manifold.rs::fix_normals` (L1)
+- `src/mesh/manifold.rs::merge_duplicate_vertices` (L1)
+- `src/mesh/manifold.rs::remove_degenerate_triangles` (L1)
+- `src/mesh/manifold.rs::remove_duplicate_triangles` (L1)
+- `src/mesh/manifold.rs::repair_all` (L1)
+- `src/mesh/manifold.rs::validate_mesh` (L1)
+- `src/mesh/nanite.rs::from_vertices` (L1)
+- `src/mesh/nanite.rs::generate_nanite_mesh` (L1)
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
+- `src/morphology.rs::eval_offset` (L1)
+- `src/morphology.rs::eval_offset_batch` (L1)
+- `src/morphology.rs::eval_offset_batch_parallel` (L1)
+- `src/morphology.rs::tolerance_fits` (L1)
+- `src/morphology.rs::tolerance_max_violation` (L1)
+- `src/shell.rs::eval_shell` (L1)
+- `src/shell.rs::eval_shell_batch` (L1)
+- `src/shell.rs::eval_shell_batch_parallel` (L1)
+- `src/shell.rs::eval_shell_compiled` (L1)
+- `src/shell.rs::eval_shell_compiled_batch_parallel` (L1)
+- `src/shell.rs::eval_shell_gradient` (L1)
+- `src/shell.rs::shell_node` (L1)
+- `src/shell.rs::uniform` (L1)
+- `src/shell.rs::wall_thickness` (L1)
+- `src/tight_aabb.rs::compute_tight_aabb` (L1)
+- `src/validity.rs::export_step_validated` (L1)
+- `src/validity.rs::fdm_0_4_nozzle` (L1)
+- `src/validity.rs::has_thick_region` (L1)
+- `src/validity.rs::is_printable` (L1)
+- `src/validity.rs::local_thickness` (L1)
+- `src/validity.rs::overhang_stats` (L1)
+- `src/validity.rs::prove_erosion` (L1)
+- `src/validity.rs::validate_for_printing` (L1)
 
-## L0 — unreached (1072)
+## L0 — unreached (947)
 
 - `src/animation.rs::AnimatedSdf`
 - `src/animation.rs::AnimatedSdf::evaluate_at`
 - `src/animation.rs::AnimatedSdf::evaluate_params`
 - `src/animation.rs::AnimatedSdf::new`
-- `src/animation.rs::Interpolation`
-- `src/animation.rs::Keyframe`
 - `src/animation.rs::Keyframe::cubic`
-- `src/animation.rs::Keyframe::new`
 - `src/animation.rs::Keyframe::step`
-- `src/animation.rs::LoopMode`
-- `src/animation.rs::Timeline`
-- `src/animation.rs::Timeline::add_track`
 - `src/animation.rs::Timeline::duration`
 - `src/animation.rs::Timeline::evaluate`
-- `src/animation.rs::Timeline::get_value`
-- `src/animation.rs::Timeline::new`
-- `src/animation.rs::Track`
-- `src/animation.rs::Track::add_keyframe`
-- `src/animation.rs::Track::duration`
-- `src/animation.rs::Track::evaluate`
-- `src/animation.rs::Track::new`
 - `src/animation.rs::Track::with_loop`
 - `src/animation.rs::morph`
 - `src/asp_bridge.rs::create_sdf_d_packet`
@@ -763,10 +791,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/eval/parallel.rs::eval_grid_with_normals`
 - `src/eval/parallel.rs::grid_coords`
 - `src/eval/parallel.rs::grid_index`
-- `src/fidelity.rs::Fidelity`
-- `src/fidelity.rs::Fidelity::can_overshoot`
-- `src/fidelity.rs::Fidelity::safe_step_scale`
-- `src/fidelity.rs::distance_fidelity`
 - `src/gi/cone_trace.rs::trace_hemisphere`
 - `src/gi/irradiance.rs::IrradianceGrid::get_probe`
 - `src/gi/irradiance.rs::IrradianceGrid::get_probe_mut`
@@ -776,60 +800,12 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
 - `src/gi/mod.rs::PointLight`
-- `src/heatmap.rs::ColorMap`
-- `src/heatmap.rs::Heatmap`
-- `src/heatmap.rs::Heatmap::inside_pixel_count`
-- `src/heatmap.rs::Heatmap::sample`
-- `src/heatmap.rs::Heatmap::surface_pixel_count`
-- `src/heatmap.rs::HeatmapConfig`
-- `src/heatmap.rs::SlicePlane`
-- `src/heatmap.rs::generate_heatmap`
-- `src/heatmap.rs::heatmap_to_rgba`
 - `src/incremental.rs::ParamDependencyIndex::bindings_of`
 - `src/interval.rs::Interval::contains`
 - `src/interval.rs::Interval::intersect`
 - `src/interval.rs::Interval::is_negative`
 - `src/interval.rs::Interval::is_positive`
 - `src/interval.rs::Interval::overlaps`
-- `src/io/abm.rs::read_abm_header`
-- `src/io/fbx.rs::FbxAnimClip`
-- `src/io/fbx.rs::FbxAnimCurve`
-- `src/io/fbx.rs::FbxBone`
-- `src/io/fbx.rs::FbxConfig::binary`
-- `src/io/fbx.rs::ImportedFbx`
-- `src/io/fbx.rs::fbx_animation_to_timeline`
-- `src/io/fbx.rs::import_fbx`
-- `src/io/fbx.rs::import_fbx_full`
-- `src/io/gltf.rs::GltfConfig::aaa`
-- `src/io/gltf.rs::export_gltf_json`
-- `src/io/iges.rs::IgesConfig`
-- `src/io/iges.rs::export_iges`
-- `src/io/nanite.rs::NANITE_MAGIC`
-- `src/io/nanite.rs::NANITE_VERSION`
-- `src/io/nanite.rs::NaniteExportConfig`
-- `src/io/nanite.rs::export_nanite`
-- `src/io/nanite.rs::export_nanite_hlsl_material`
-- `src/io/nanite.rs::export_nanite_json`
-- `src/io/nanite.rs::export_nanite_with_config`
-- `src/io/obj.rs::import_obj`
-- `src/io/ply.rs::import_ply`
-- `src/io/splat.rs::Splat::from_bytes`
-- `src/io/splat.rs::load_splat`
-- `src/io/splat.rs::save_splat`
-- `src/io/step.rs::StepConfig`
-- `src/io/step.rs::export_step`
-- `src/io/stl.rs::export_stl_ascii`
-- `src/io/stl.rs::import_stl`
-- `src/io/usd.rs::ImportedUsdMaterial`
-- `src/io/usd.rs::ImportedUsda`
-- `src/io/usd.rs::import_usda`
-- `src/io/vdb.rs::DenseGrid`
-- `src/io/vdb.rs::VdbError`
-- `src/io/vdb.rs::bake_dense_grid`
-- `src/io/vdb.rs::bake_to_vdb`
-- `src/io/vdb.rs::load_dense_grid_from_vdb`
-- `src/io/vox.rs::load_vox`
-- `src/io/vox.rs::save_vox`
 - `src/llm_schema.rs::schema_summary`
 - `src/llm_schema.rs::validate_sdf_json`
 - `src/material.rs::Material::dielectric`
@@ -885,16 +861,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/material.rs::TextureSlot::with_tiling`
 - `src/material.rs::TextureSlot::with_uv_channel`
 - `src/material.rs::material_lerp`
-- `src/measure.rs::AreaEstimate`
-- `src/measure.rs::CenterOfMass`
-- `src/measure.rs::TensionEstimate`
-- `src/measure.rs::TensionEstimate::tears`
-- `src/measure.rs::TensionEstimate::tension`
-- `src/measure.rs::VolumeEstimate`
-- `src/measure.rs::estimate_center_of_mass`
-- `src/measure.rs::estimate_surface_area`
-- `src/measure.rs::estimate_volume`
-- `src/measure.rs::measure_tension`
 - `src/mesh/bvh.rs::Aabb`
 - `src/mesh/bvh.rs::Aabb::center`
 - `src/mesh/bvh.rs::Aabb::empty`
@@ -996,19 +962,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/lod_persist.rs::LodChainPersist::total_memory_bytes`
 - `src/mesh/lod_persist.rs::LodChainSummary`
 - `src/mesh/manifold.rs::MeshQuality`
-- `src/mesh/manifold.rs::MeshRepair`
 - `src/mesh/manifold.rs::MeshRepair::drop_specks`
 - `src/mesh/manifold.rs::MeshRepair::fill_holes`
-- `src/mesh/manifold.rs::MeshRepair::fix_normals`
-- `src/mesh/manifold.rs::MeshRepair::merge_duplicate_vertices`
 - `src/mesh/manifold.rs::MeshRepair::orient_faces`
-- `src/mesh/manifold.rs::MeshRepair::remove_degenerate_triangles`
-- `src/mesh/manifold.rs::MeshRepair::remove_duplicate_triangles`
-- `src/mesh/manifold.rs::MeshRepair::repair_all`
-- `src/mesh/manifold.rs::MeshValidation`
-- `src/mesh/manifold.rs::MeshValidation::is_clean`
 - `src/mesh/manifold.rs::compute_quality`
-- `src/mesh/manifold.rs::validate_mesh`
 - `src/mesh/mesh_codec.rs::CodecError`
 - `src/mesh/mesh_codec.rs::decode_indices`
 - `src/mesh/mesh_codec.rs::decode_positions`
@@ -1065,26 +1022,15 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/meshopt_index_codec.rs::decode_index_buffer`
 - `src/mesh/meshopt_vertex_codec.rs::decode_vertex_buffer`
 - `src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer`
-- `src/mesh/mod.rs::Triangle`
-- `src/mesh/mod.rs::Triangle::new`
 - `src/mesh/mod.rs::Vertex::with_all`
-- `src/mesh/nanite.rs::CLUSTER_MAX_TRIANGLES`
 - `src/mesh/nanite.rs::CLUSTER_MAX_VERTICES`
-- `src/mesh/nanite.rs::ClusterBounds`
-- `src/mesh/nanite.rs::ClusterBounds::from_vertices`
 - `src/mesh/nanite.rs::ClusterBounds::is_visible`
 - `src/mesh/nanite.rs::ClusterBounds::screen_error`
-- `src/mesh/nanite.rs::ClusterGroup`
-- `src/mesh/nanite.rs::LodLevel`
-- `src/mesh/nanite.rs::NaniteCluster`
 - `src/mesh/nanite.rs::NaniteCluster::should_render`
-- `src/mesh/nanite.rs::NaniteCluster::triangle_count`
 - `src/mesh/nanite.rs::NaniteCluster::vertex_count`
-- `src/mesh/nanite.rs::NaniteConfig`
 - `src/mesh/nanite.rs::NaniteConfig::high_detail`
 - `src/mesh/nanite.rs::NaniteConfig::medium_detail`
 - `src/mesh/nanite.rs::NaniteConfig::preview`
-- `src/mesh/nanite.rs::NaniteMesh`
 - `src/mesh/nanite.rs::NaniteMesh::clusters_at_lod`
 - `src/mesh/nanite.rs::NaniteMesh::get_cluster`
 - `src/mesh/nanite.rs::NaniteMesh::select_clusters`
@@ -1095,7 +1041,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/nanite.rs::NormalCone::from_normals_and_positions`
 - `src/mesh/nanite.rs::NormalCone::is_backface_culled`
 - `src/mesh/nanite.rs::NormalCone::unbounded`
-- `src/mesh/nanite.rs::generate_nanite_mesh`
 - `src/mesh/optimize.rs::compute_acmr`
 - `src/mesh/optimize.rs::compute_atvr`
 - `src/mesh/optimize.rs::optimize_vertex_cache`
@@ -1166,11 +1111,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/modifiers/sweep.rs::sweep_bezier_dist_y`
 - `src/modifiers/twist.rs::modifier_twist_x`
 - `src/modifiers/twist.rs::modifier_twist_z`
-- `src/morphology.rs::eval_offset`
-- `src/morphology.rs::eval_offset_batch`
-- `src/morphology.rs::eval_offset_batch_parallel`
-- `src/morphology.rs::tolerance_fits`
-- `src/morphology.rs::tolerance_max_violation`
 - `src/neural.rs::NeuralSdf`
 - `src/neural.rs::NeuralSdf::eval`
 - `src/neural.rs::NeuralSdf::eval_batch`
@@ -1323,17 +1263,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/sdf2d.rs::eval_2d`
 - `src/sdf2d.rs::eval_2d_batch`
 - `src/sdf2d.rs::eval_2d_normal`
-- `src/shell.rs::ShellConfig`
-- `src/shell.rs::ShellConfig::new`
-- `src/shell.rs::ShellConfig::uniform`
-- `src/shell.rs::ShellConfig::wall_thickness`
-- `src/shell.rs::eval_shell`
-- `src/shell.rs::eval_shell_batch`
-- `src/shell.rs::eval_shell_batch_parallel`
-- `src/shell.rs::eval_shell_compiled`
-- `src/shell.rs::eval_shell_compiled_batch_parallel`
-- `src/shell.rs::eval_shell_gradient`
-- `src/shell.rs::shell_node`
 - `src/sim_bridge.rs::GpuPhysicsBundle`
 - `src/sim_bridge.rs::SimulatedSdf`
 - `src/sim_bridge.rs::SimulatedSdf::add_erosion`
@@ -1438,7 +1367,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/terrain/splatmap.rs::Splatmap::set_weight`
 - `src/texture/fitting.rs::reconstruct`
 - `src/tight_aabb.rs::TightAabbConfig::preset_medium`
-- `src/tight_aabb.rs::compute_tight_aabb`
 - `src/transforms/rotate.rs::rotation_axis_angle`
 - `src/transforms/rotate.rs::rotation_look_at`
 - `src/transforms/rotate.rs::transform_rotate`
@@ -1464,18 +1392,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/modifiers.rs::SdfNode::sine_displacement`
 - `src/types/modifiers.rs::SdfNode::sine_displacement_aniso`
 - `src/types/transforms.rs::SdfNode::translate_vec`
-- `src/validity.rs::ErosionVerdict`
-- `src/validity.rs::ErosionVerdict::has_thick_region`
-- `src/validity.rs::PrintRequirements`
-- `src/validity.rs::PrintRequirements::fdm_0_4_nozzle`
-- `src/validity.rs::ValidatedExportError`
-- `src/validity.rs::ValidityReport`
-- `src/validity.rs::ValidityReport::is_printable`
-- `src/validity.rs::export_step_validated`
-- `src/validity.rs::local_thickness`
-- `src/validity.rs::overhang_stats`
-- `src/validity.rs::prove_erosion`
-- `src/validity.rs::validate_for_printing`
 - `src/volume/bake.rs::bake_volume_compiled`
 - `src/volume/bake.rs::bake_volume_with_normals`
 - `src/volume/export.rs::DdsFormat`
@@ -1519,8 +1435,9 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (161)
+## L1 — example-only (286)
 
+- `src/animation.rs`: `Interpolation`, `Keyframe`, `Keyframe::new`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`
 - `src/autodiff.rs`: `eval_hessian`, `mean_curvature`
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::world_to_chunk`
 - `src/compiled/compiler.rs`: `CompiledSdf::instructions`
@@ -1534,7 +1451,27 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/transpiler_common.rs`: `shader_unsupported_nodes`
 - `src/compiled/wgsl/transpiler.rs`: `WgslShader::get_eval_function`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ParamId`, `ParamId::as_index`, `ParamId::from_raw`
+- `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
+- `src/heatmap.rs`: `ColorMap`, `Heatmap`, `Heatmap::inside_pixel_count`, `Heatmap::sample`, `Heatmap::surface_pixel_count`, `HeatmapConfig`, `SlicePlane`, `generate_heatmap`, `heatmap_to_rgba`
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
+- `src/io/abm.rs`: `read_abm_header`
+- `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
+- `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`
+- `src/io/iges.rs`: `IgesConfig`, `export_iges`
+- `src/io/nanite.rs`: `NANITE_MAGIC`, `NANITE_VERSION`, `NaniteExportConfig`, `export_nanite`, `export_nanite_hlsl_material`, `export_nanite_json`, `export_nanite_with_config`
+- `src/io/obj.rs`: `import_obj`
+- `src/io/ply.rs`: `import_ply`
+- `src/io/splat.rs`: `Splat::from_bytes`, `load_splat`, `save_splat`
+- `src/io/step.rs`: `StepConfig`, `export_step`
+- `src/io/stl.rs`: `export_stl_ascii`, `import_stl`
+- `src/io/usd.rs`: `ImportedUsdMaterial`, `ImportedUsda`, `import_usda`
+- `src/io/vdb.rs`: `DenseGrid`, `VdbError`, `bake_dense_grid`, `bake_to_vdb`, `load_dense_grid_from_vdb`
+- `src/io/vox.rs`: `load_vox`, `save_vox`
+- `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
+- `src/mesh/manifold.rs`: `MeshRepair`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `validate_mesh`
+- `src/mesh/mod.rs`: `Triangle`, `Triangle::new`
+- `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteConfig`, `NaniteMesh`, `generate_nanite_mesh`
+- `src/morphology.rs`: `eval_offset`, `eval_offset_batch`, `eval_offset_batch_parallel`, `tolerance_fits`, `tolerance_max_violation`
 - `src/npr/compiled_color.rs`: `ColorOp`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`
 - `src/npr/composition.rs`: `bloom_toon`, `chromatic_offsets`, `vignette`
 - `src/npr/distortion.rs`: `hand_drawn_jitter`, `line_boil`, `sketch_wobble`
@@ -1554,4 +1491,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/npr/toon.rs`: `posterize_color`, `soft_toon_ramp`, `toon_ramp`, `two_tone`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::with_bound`, `raymarch`, `raymarch_with_config`
 - `src/raycast/mod.rs`: `raycast`
+- `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
+- `src/tight_aabb.rs`: `compute_tight_aabb`
 - `src/types/containers.rs`: `Hit`, `Ray`, `Ray::new`
+- `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`

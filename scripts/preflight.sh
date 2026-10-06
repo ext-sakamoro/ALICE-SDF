@@ -315,6 +315,9 @@ step "test: openvdb"
 cargo build --lib --no-default-features --features openvdb
 cargo test --lib --no-default-features --features openvdb vdb
 
+step "test: io format oracle の openvdb + hlsl arm (ci.yml の openvdb job と対)"
+cargo test --features "hlsl,openvdb" --test test_io_format_oracle
+
 step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes (Metal here, lavapipe in CI)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_noise_parity --test test_round_tie_parity \
