@@ -150,16 +150,24 @@ fn diff_recursive(old: &SdfNode, new: &SdfNode, path: &mut Vec<usize>, ops: &mut
         && old_children.len() == new_children.len()
         && !old_children.is_empty()
     {
-        // Same node type with same child count: recurse into children
-        let ops_before = ops.len();
-        for i in 0..old_children.len() {
-            path.push(i);
-            diff_recursive(old_children[i], new_children[i], path, ops);
-            path.pop();
+        // Same node type with same child count. The node's own parameters
+        // (offset, k, factor, ...) are unchanged exactly when `old` with
+        // `new`'s children is `new`; only then can the change be expressed
+        // as child ops. Otherwise the child ops would drop the parameter
+        // change (until 4.1.0 a `Translate` whose offset and child both
+        // changed was patched to the new child at the old offset).
+        let mut grafted = old.clone();
+        for (i, child) in new_children.iter().enumerate() {
+            grafted = replace_child(&grafted, i, Arc::new((*child).clone()));
         }
-        // If no child diffs were emitted but node hashes differ,
-        // the node's own parameters changed (e.g. offset, k, radius) → Replace
-        if ops.len() == ops_before {
+
+        if tree_hash(&grafted) == new_hash {
+            for i in 0..old_children.len() {
+                path.push(i);
+                diff_recursive(old_children[i], new_children[i], path, ops);
+                path.pop();
+            }
+        } else {
             ops.push(DiffOp::Replace {
                 path: path.clone(),
                 old_hash,
@@ -254,27 +262,42 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
 pub fn apply_patch(tree: &SdfNode, patch: &TreePatch) -> Result<SdfNode, DiffError> {
     let mut result = tree.clone();
     for op in &patch.ops {
+        // The path helpers see only the remaining suffix, so a hash mismatch
+        // comes back with an empty path; report the op's full path instead.
+        let at = |e: DiffError, op_path: &TreePath| match e {
+            DiffError::HashMismatch {
+                expected, actual, ..
+            } => DiffError::HashMismatch {
+                path: op_path.clone(),
+                expected,
+                actual,
+            },
+            other => other,
+        };
         match op {
             DiffOp::Replace {
                 path,
                 old_hash,
                 new_node,
             } => {
-                result = replace_at_path(&result, path, *old_hash, new_node)?;
+                result =
+                    replace_at_path(&result, path, *old_hash, new_node).map_err(|e| at(e, path))?;
             }
             DiffOp::Insert {
                 path,
                 old_hash,
                 wrapper,
             } => {
-                result = insert_at_path(&result, path, *old_hash, wrapper)?;
+                result =
+                    insert_at_path(&result, path, *old_hash, wrapper).map_err(|e| at(e, path))?;
             }
             DiffOp::Delete {
                 path,
                 old_hash,
                 child_index,
             } => {
-                result = delete_at_path(&result, path, *old_hash, *child_index)?;
+                result = delete_at_path(&result, path, *old_hash, *child_index)
+                    .map_err(|e| at(e, path))?;
             }
         }
     }
