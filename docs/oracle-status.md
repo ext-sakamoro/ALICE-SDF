@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 369 |
+| 🟢 Not ignored | 370 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **369** |
+| **Total** | **370** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (369)
+## 🟢 Not ignored (370)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -50,10 +50,10 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_orientation.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
+| `test_node_backend_matrix.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
 | `test_dual_contouring_invariants.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
-| `test_node_backend_matrix.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |

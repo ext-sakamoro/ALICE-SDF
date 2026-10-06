@@ -59,7 +59,14 @@ const COLUMNS: [&str; 9] = [
 
 /// Variant names of `SdfNode`, in declaration order, read from the source.
 fn enum_variants() -> Vec<String> {
-    let src = include_str!("../src/types/mod.rs");
+    enum_variants_in(include_str!("../src/types/mod.rs"))
+}
+
+/// `enum_variants` over a given source. Line endings are normalised first: a
+/// Windows checkout with `core.autocrlf` gives CRLF, and `include_str!` keeps it.
+fn enum_variants_in(src: &str) -> Vec<String> {
+    let src = src.replace("\r\n", "\n");
+    let src = src.as_str();
     let start = src
         .find("pub enum SdfNode {")
         .expect("pub enum SdfNode in src/types/mod.rs");
@@ -523,6 +530,7 @@ fn constructor_names_follow_the_binding_convention() {
 
 /// The body of the first `match node {` after `fn <name>`, with comments removed.
 fn match_body(src: &str, fn_name: &str) -> String {
+    let src = src.replace("\r\n", "\n");
     let code: String = src
         .lines()
         .map(|l| l.split("//").next().unwrap_or(""))
@@ -598,4 +606,18 @@ fn transpiler_dispatch_has_no_wildcard_arm() {
     assert!(has_top_level_wildcard(
         "SdfNode::A { .. } => 1,\n    _ if false => 0,"
     ));
+}
+
+#[test]
+fn the_source_readers_accept_crlf_line_endings() {
+    // a Windows checkout with core.autocrlf=true hands include_str! CRLF text
+    let lf = include_str!("../src/types/mod.rs");
+    let crlf = lf.replace("\r\n", "\n").replace('\n', "\r\n");
+    assert_eq!(enum_variants_in(&crlf), enum_variants_in(lf));
+    let common = include_str!("../src/compiled/transpiler_common.rs");
+    let common_crlf = common.replace("\r\n", "\n").replace('\n', "\r\n");
+    assert_eq!(
+        match_body(&common_crlf, "transpile_node_inner").len(),
+        match_body(common, "transpile_node_inner").len()
+    );
 }
