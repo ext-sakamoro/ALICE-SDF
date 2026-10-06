@@ -17,14 +17,15 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 686 unwired items.
+`scripts/wiring-baseline.txt` lists 600 unwired items.
 
-### L0 here but not in the baseline (350)
+### L0 here but not in the baseline (354)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
 - `src/animation.rs::AnimatedSdf`
 - `src/animation.rs::AnimatedSdf::new`
+- `src/animation.rs::Keyframe::step`
 - `src/animation.rs::Timeline::duration`
 - `src/animation.rs::Timeline::evaluate`
 - `src/animation.rs::morph`
@@ -207,6 +208,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/collision.rs::VhacdConfig`
 - `src/mesh/collision.rs::VhacdConfig::fast`
 - `src/mesh/collision.rs::compute_aabb`
+- `src/mesh/dual_contouring.rs::DualContouringConfig::aaa`
 - `src/mesh/hermite.rs::EdgeCrossing`
 - `src/mesh/hermite.rs::HermiteConfig`
 - `src/mesh/hermite.rs::HermiteExtractor`
@@ -265,6 +267,8 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/primitive_fitting.rs::FittingConfig`
 - `src/mesh/primitive_fitting.rs::FittingResult`
 - `src/mesh/primitive_fitting.rs::FittingResult::is_acceptable`
+- `src/mesh/sdf_to_mesh.rs::AdaptiveConfig::aaa`
+- `src/mesh/sdf_to_mesh.rs::MarchingCubesConfig::aaa`
 - `src/mesh/uv_unwrap.rs::UvDensityReport`
 - `src/mesh/uv_unwrap.rs::UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE`
 - `src/mesh/uv_unwrap.rs::UvDensityReport::WARN_LOW_DENSITY_RATIO`
@@ -374,94 +378,11 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/volume/mod.rs::Volume3D::world_size`
 - `src/volume/mod.rs::VoxelDistGrad`
 
-### In the baseline but reached here (84)
+### In the baseline but reached here (1)
 
 The guard lists these as unwired; a resolved reference reaches them (level in brackets).
 
-- `src/animation.rs::add_keyframe` (L1)
-- `src/animation.rs::add_track` (L1)
-- `src/animation.rs::get_value` (L1)
-- `src/fidelity.rs::can_overshoot` (L1)
-- `src/fidelity.rs::distance_fidelity` (L1)
-- `src/fidelity.rs::safe_step_scale` (L1)
-- `src/heatmap.rs::ColorMap` (L1)
-- `src/heatmap.rs::generate_heatmap` (L1)
-- `src/heatmap.rs::heatmap_to_rgba` (L1)
-- `src/heatmap.rs::inside_pixel_count` (L1)
-- `src/heatmap.rs::surface_pixel_count` (L1)
-- `src/io/abm.rs::read_abm_header` (L1)
-- `src/io/fbx.rs::FbxAnimClip` (L1)
-- `src/io/fbx.rs::FbxAnimCurve` (L1)
-- `src/io/fbx.rs::FbxBone` (L1)
-- `src/io/fbx.rs::ImportedFbx` (L1)
-- `src/io/fbx.rs::binary` (L1)
-- `src/io/fbx.rs::fbx_animation_to_timeline` (L1)
-- `src/io/fbx.rs::import_fbx` (L1)
-- `src/io/fbx.rs::import_fbx_full` (L1)
-- `src/io/gltf.rs::aaa` (L1)
-- `src/io/gltf.rs::export_gltf_json` (L1)
-- `src/io/iges.rs::export_iges` (L1)
-- `src/io/nanite.rs::NANITE_MAGIC` (L1)
-- `src/io/nanite.rs::NANITE_VERSION` (L1)
-- `src/io/nanite.rs::export_nanite` (L1)
-- `src/io/nanite.rs::export_nanite_hlsl_material` (L1)
-- `src/io/nanite.rs::export_nanite_json` (L1)
-- `src/io/nanite.rs::export_nanite_with_config` (L1)
-- `src/io/obj.rs::import_obj` (L1)
-- `src/io/ply.rs::import_ply` (L1)
-- `src/io/splat.rs::load_splat` (L1)
-- `src/io/splat.rs::save_splat` (L1)
-- `src/io/step.rs::export_step` (L1)
-- `src/io/stl.rs::export_stl_ascii` (L1)
-- `src/io/stl.rs::import_stl` (L1)
-- `src/io/usd.rs::ImportedUsdMaterial` (L1)
-- `src/io/usd.rs::ImportedUsda` (L1)
-- `src/io/usd.rs::import_usda` (L1)
-- `src/io/vdb.rs::DenseGrid` (L1)
-- `src/io/vdb.rs::load_dense_grid_from_vdb` (L1)
-- `src/io/vox.rs::load_vox` (L1)
-- `src/io/vox.rs::save_vox` (L1)
-- `src/measure.rs::AreaEstimate` (L1)
-- `src/measure.rs::CenterOfMass` (L1)
-- `src/measure.rs::VolumeEstimate` (L1)
-- `src/measure.rs::estimate_center_of_mass` (L1)
-- `src/measure.rs::estimate_surface_area` (L1)
-- `src/measure.rs::estimate_volume` (L1)
-- `src/measure.rs::measure_tension` (L1)
-- `src/measure.rs::tears` (L1)
-- `src/measure.rs::tension` (L1)
-- `src/mesh/manifold.rs::fix_normals` (L1)
-- `src/mesh/manifold.rs::merge_duplicate_vertices` (L1)
-- `src/mesh/manifold.rs::remove_degenerate_triangles` (L1)
-- `src/mesh/manifold.rs::remove_duplicate_triangles` (L1)
-- `src/mesh/manifold.rs::repair_all` (L1)
-- `src/mesh/manifold.rs::validate_mesh` (L1)
-- `src/mesh/nanite.rs::from_vertices` (L1)
-- `src/mesh/nanite.rs::generate_nanite_mesh` (L1)
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
-- `src/morphology.rs::eval_offset` (L1)
-- `src/morphology.rs::eval_offset_batch` (L1)
-- `src/morphology.rs::eval_offset_batch_parallel` (L1)
-- `src/morphology.rs::tolerance_fits` (L1)
-- `src/morphology.rs::tolerance_max_violation` (L1)
-- `src/shell.rs::eval_shell` (L1)
-- `src/shell.rs::eval_shell_batch` (L1)
-- `src/shell.rs::eval_shell_batch_parallel` (L1)
-- `src/shell.rs::eval_shell_compiled` (L1)
-- `src/shell.rs::eval_shell_compiled_batch_parallel` (L1)
-- `src/shell.rs::eval_shell_gradient` (L1)
-- `src/shell.rs::shell_node` (L1)
-- `src/shell.rs::uniform` (L1)
-- `src/shell.rs::wall_thickness` (L1)
-- `src/tight_aabb.rs::compute_tight_aabb` (L1)
-- `src/validity.rs::export_step_validated` (L1)
-- `src/validity.rs::fdm_0_4_nozzle` (L1)
-- `src/validity.rs::has_thick_region` (L1)
-- `src/validity.rs::is_printable` (L1)
-- `src/validity.rs::local_thickness` (L1)
-- `src/validity.rs::overhang_stats` (L1)
-- `src/validity.rs::prove_erosion` (L1)
-- `src/validity.rs::validate_for_printing` (L1)
 
 ## L0 — unreached (947)
 
