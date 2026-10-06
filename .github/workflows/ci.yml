@@ -41,6 +41,7 @@ jobs:
       ci: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.ci == 'true' }}
       vrchat: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.vrchat == 'true' }}
       unreal: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.unreal == 'true' }}
+      scip: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.scip == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -88,6 +89,20 @@ jobs:
               - 'include/alice_sdf.h'
               - 'examples/unreal_corpus_oracle.rs'
               - 'scripts/unreal-*'
+            scip:
+              - 'src/**'
+              - 'examples/**'
+              - 'benches/**'
+              - 'fuzz/**'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
+              - 'scripts/scip_index.sh'
+              - 'scripts/scip_reach.py'
+              - 'scripts/test_scip_reach.py'
+              - 'scripts/integration-baseline.txt'
+              - 'scripts/wiring_guard.py'
+              - 'scripts/wiring-baseline.txt'
+              - 'docs/integration-status.md'
 
   test:
     name: Test — ${{ matrix.name }}
@@ -159,6 +174,11 @@ jobs:
       # (file 先頭が `#![cfg(feature = "rust")]`、feature 無しでは 0 本になる)
       - name: Test (integration, Rust source emit oracle — rust)
         run: cargo test --features rust --test test_rust_transpiler_oracle
+
+      # SdfNode variant x backend support, compared with docs/node-support.md.
+      # Every feature column (jit / msl / rust) is on here, so every cell is compared.
+      - name: Node backend support matrix (jit + msl + rust)
+        run: cargo test --features jit,msl,rust --test test_node_backend_matrix
 
       # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
       # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
@@ -310,6 +330,47 @@ jobs:
         run: python scripts/test_readme_sync.py
       - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)
         run: python scripts/readme_sync.py --check
+
+  # Reach of every pub item with references resolved by rust-analyzer (SCIP).
+  # wiring-guard above matches names, so `impl Foo {}` alone or a same-named
+  # method elsewhere counts as a caller; this job resolves each reference to one
+  # definition. It fails on a new pub item that no non-test code reaches (L0),
+  # on a baseline line that is no longer L0, and on a stale
+  # docs/integration-status.md. Indexing takes about 4 minutes, so it runs once,
+  # on Linux (the index is built for a fixed target and does not depend on the OS).
+  scip:
+    name: SCIP reach (L0 ratchet, integration ledger)
+    needs: changes
+    if: needs.changes.outputs.scip == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # pyo3's build script (python feature) needs an interpreter; tomllib needs 3.11+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # rust-toolchain.toml pins the toolchain; rust-analyzer comes from the same pin.
+      # The wasm index is built for wasm32-unknown-unknown.
+      - name: Install rust-analyzer and the wasm32 target
+        run: |
+          rustup show active-toolchain
+          rustup component add rust-analyzer
+          rustup target add wasm32-unknown-unknown
+          rust-analyzer --version
+      - uses: Swatinem/rust-cache@v2
+      - name: scip_reach oracle (検査器自身の試験)
+        run: python3 scripts/test_scip_reach.py
+      - name: Build SCIP indexes
+        run: scripts/scip_index.sh
+      - name: No new L0 item, no stale baseline entry
+        run: python3 scripts/scip_reach.py --check-baseline
+      - name: docs/integration-status.md is up to date
+        run: |
+          python3 scripts/scip_reach.py --write docs/integration-status.md
+          if ! git diff --exit-code docs/integration-status.md; then
+            echo "::error::docs/integration-status.md is stale: run 'scripts/scip_index.sh && python3 scripts/scip_reach.py --write docs/integration-status.md' and commit the result"
+            exit 1
+          fi
 
   wasm:
     name: WebAssembly (wasm32) cross-compile

@@ -161,8 +161,18 @@ lists every test by status, including tests kept red on purpose
 (`#[ignore = "known defect: …"]`) until the implementation is fixed.
 
 [`docs/wiring-status.md`](docs/wiring-status.md) lists public items that
-nothing outside the tests calls. `scripts/wiring_guard.py` fails CI when a new
-one appears without a reason.
+nothing outside the tests calls, matched by name. `scripts/wiring_guard.py`
+fails CI when a new one appears without a reason.
+[`docs/integration-status.md`](docs/integration-status.md) does the same with
+references resolved by rust-analyzer (`scripts/scip_reach.py`), so a same-named
+item elsewhere does not count as a caller; CI fails on a new public item that
+no example, binding or other module reaches.
+
+[`docs/node-support.md`](docs/node-support.md) lists, for every `SdfNode`
+variant, which backends handle it: the tree and interval evaluators, the
+bytecode compiler, both JITs, the Metal and Rust emitters, and the C and Python
+constructors. `tests/test_node_backend_matrix.rs` fails CI when a cell changes
+without the table, and when a variant has no test entry.
 
 `scripts/ci_test_coverage_check.py` fails CI when a test file gated on a feature
 is not run by any CI step with that feature, so a feature-gated test cannot

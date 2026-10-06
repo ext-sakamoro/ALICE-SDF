@@ -18,12 +18,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `scripts/ci_test_coverage_check.py`: feature で切り替わる test file / 分岐を、その feature 付きで実行する CI step が無いと失敗する
 - `scripts/docs_lint.py` / `scripts/readme_sync.py`: 公開文書の語彙と CHANGELOG の構造を検査し、README の feature 表・MSRV・使用例と `docs/MODULES.md` を code と突き合わせる
 - `docs/MODULES.md` (公開 module の一覧)、`SECURITY.md`、`docs/GETTING_STARTED.md` / `docs/TEXT_TO_3D.md` / `docs/INTEGRATIONS.md` (日本語版あり)
+- `scripts/scip_index.sh` / `scripts/scip_reach.py`: rust-analyzer の SCIP 索引で参照を定義に解決し、公開 item を「どこからも届かない (L0)」「example からだけ (L1)」「live」に分ける 新しい L0 と、L0 でなくなった `scripts/integration-baseline.txt` の行で CI を失敗させ、`docs/integration-status.md` を生成する (CI の `scip` job)
+- `tests/test_node_backend_matrix.rs`: `SdfNode` の全 variant を木と区間の評価器・compile・JIT (scalar / SIMD)・MSL・Rust 出力に通し、C / Python のコンストラクタの有無と併せて `docs/node-support.md` と突き合わせる 対応が変わったとき、テスト用の入力が無い variant があるとき、shader の dispatch に `_ =>` が入ったときに失敗する
 
 ### Changed
 
 - **Behavior change:** `compute_tight_aabb*` は区間探索の結果と `analytic_aabb` の交差を返す 回転した形状の箱が膨らまなくなった (型は不変、`Unsupported` の木は従来と同じ結果)
 - README を再構成した: 決定性の範囲と CI での検証環境、Cargo feature 表 (AGPL の crate をリンクする `physics` / `codec` / `sdf-cache` を明示)、検証状況、ライセンスの適用範囲 旧 README の長い節は `docs/` の上記 3 文書へ移した
 - crate doc (`src/lib.rs`、docs.rs の表示) を README と同じ使用例と feature 表にした
+- `oracle-status.yml` / `wiring-status.yml` は台帳が tree と一致するかを確かめるだけになった (commit しない、`contents: read`) 台帳は変更と同じ commit で再生成する
 
 ### Fixed
 

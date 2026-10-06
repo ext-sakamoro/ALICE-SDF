@@ -154,7 +154,17 @@ meshopt コーデック、ファイル形式の往復 シェーダー出力は C
 (`#[ignore = "known defect: …"]`) もここに載る
 
 [`docs/wiring-status.md`](docs/wiring-status.md) は、テスト以外のどこからも呼ばれない
-公開アイテムの一覧 `scripts/wiring_guard.py` は、理由のない新規のものが現れると
+公開アイテムの一覧 (名前の一致で判定) `scripts/wiring_guard.py` は、理由のない新規の
+ものが現れると CI を失敗させる
+[`docs/integration-status.md`](docs/integration-status.md) は同じことを rust-analyzer で
+解決した参照で行う (`scripts/scip_reach.py`) ので、別の場所にある同名のアイテムを
+呼び出し元と数えない example・バインディング・他のモジュールのどこからも届かない
+公開アイテムが新しく現れると CI を失敗させる
+
+[`docs/node-support.md`](docs/node-support.md) は `SdfNode` の各 variant をどの
+バックエンドが扱えるかの一覧 (木と区間の評価器、バイトコードのコンパイラ、2 つの JIT、
+Metal と Rust の出力、C と Python のコンストラクタ) `tests/test_node_backend_matrix.rs`
+は、表を更新せずにセルが変わったときと、テスト用の入力が無い variant があるときに
 CI を失敗させる
 
 `scripts/ci_test_coverage_check.py` は、feature で切り替わるテストファイルをその

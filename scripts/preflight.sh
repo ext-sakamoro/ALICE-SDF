@@ -241,7 +241,7 @@ if [[ $quick -eq 1 ]]; then
   echo "preflight --quick OK"
   echo "  RAN     : fmt / clippy / MSRV / feature builds / wasm target / fuzz build / cargo test --lib"
   echo "  NOT RUN : cargo test --tests (integration), feature-gated oracles (svo / texture-fit /"
-  echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, cargo audit"
+  echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, scip reach, cargo audit"
   echo "  => この green は「integration / oracle が通った」ことを意味しない。"
   echo "     それらを確認するには --quick を外して実行する。"
   exit 0
@@ -281,6 +281,9 @@ cargo test --features "glsl,gpu" --test npr_shader_validate
 
 step "test: Rust source emit oracle (rustc で compile した出力 vs eval_compiled、ci.yml と対)"
 cargo test --features rust --test test_rust_transpiler_oracle
+
+step "test: SdfNode × backend の対応表 (docs/node-support.md と突合、jit + msl + rust)"
+cargo test --features jit,msl,rust --test test_node_backend_matrix
 
 step "test: round-tie parity の hlsl arm (ci.yml の HLSL step と対)"
 cargo test --features "hlsl,blinkscript" --test test_round_tie_parity
@@ -337,6 +340,18 @@ if command -v maturin >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; the
   deactivate
 else
   echo "skip: maturin / python3 not installed" >&2
+fi
+
+step "scip: L0 ratchet + docs/integration-status.md (rust-analyzer SCIP、約 4 分)"
+python3 scripts/test_scip_reach.py
+if command -v rust-analyzer >/dev/null 2>&1; then
+  scripts/scip_index.sh
+  python3 scripts/scip_reach.py --check-baseline
+  python3 scripts/scip_reach.py --write docs/integration-status.md
+  git diff --exit-code docs/integration-status.md \
+    || { echo "docs/integration-status.md が古い: 再生成した内容を commit する" >&2; exit 1; }
+else
+  echo "skip: rust-analyzer が無い (rustup component add rust-analyzer)、CI の scip job が検査する" >&2
 fi
 
 step "audit: cargo audit (RustSec)"
