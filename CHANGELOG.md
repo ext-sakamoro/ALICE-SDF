@@ -8,12 +8,27 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added
+
+- `examples/shape_analysis.rs`: 体積・表面積・重心・tension の推定、断面 heatmap と colour map、可変厚の shell (`eval_shell*` / `shell_node`)、offset と嵌め合い公差、`export_step_validated` による「印刷できる形だけを書き出す」を、閉形式との照合付きで示す
+- `examples/mesh_formats.rs`: STL ASCII / OBJ / PLY / FBX / USDA の書き出しと読み戻し、glTF JSON / IGES / Nanite / ABM / splat / vox の書き出し、FBX の animation clip から timeline への変換 (`--features openvdb` で dense grid、`--features hlsl` で Nanite の material 関数も)
+- `tests/test_shape_analysis_oracle.rs`: 球の体積 4/3·π·r³ と表面積、箱の体積、重心、球の断面 (中心・高さ h の 3 平面・任意平面) の距離と画素数、shell と球殻 (annulus) の距離、offset と半径の加減、嵌め合いの最大違反量、`RaymarchConfig::relaxed` の Lipschitz 値を閉形式と照合する
+- `tests/test_io_format_oracle.rs`: 往復で三角形の位置が一致すること (`{}` で書く形式は bit 一致) と、STL ASCII の文法、IGES 5.3 の固定桁と DE / P の相互参照、`.splat` の 32 byte 記録、MagicaVoxel の chunk 配置、`.abm` / `.nanite` の header と file 長、glTF の accessor の min / max と data URI を、format の仕様から独立に読んで照合する
+
+### Changed
+
+- `RaymarchConfig::relaxed` は Lipschitz 値を `fidelity::distance_fidelity(node).safe_step_scale()` から取る (値は従来と同じ: 有限なら `L.max(1)`、上界が無ければ plain tracing)
+
 ### Fixed
 
 - `scripts/scip_reach.py`: CLI (`src/bin/`) を到達性の起点に加えた CLI からだけ使う item (`export_stl` / `export_ply` / `io::get_info` 等) が L0 に数えられていた
 - `scripts/scip_reach.py` / `scripts/scip_index.sh`: repo 内で本 crate に依存する crate (`server/` / `mobile/uniffi-wrapper/` / `bindings/openxr/`) を個別に索引し、その `src/` を起点に数える (`examples/` は L1、`tests/` は数えない) fuzz と同様に、索引ごとに本 crate への参照が 0 件なら失敗する
 - `scripts/wiring_guard.py`: `*const T` (raw pointer 型) を `const` item と誤認していた 後続の method が free fn 扱いになり、`.as_mut_slice()` 等の呼び出しが数えられなかった
 - `scripts/wiring_guard.py`: 同じ file に同名の item が 2 つ以上ある時は key に所有する型を付ける (`src/x.rs::Type::name`) baseline の 1 行が両方を覆い、一方が新たに未配線になっても検出されなかった
+- **Behavior change:** `shell::shell_node` が非対称の shell (`inner_offset != outer_offset`) で内側の厚みを外側にも使い、帯を `[r − inner, r + inner]` にしていた `eval_shell` と doc が定める `[r − inner, r + outer]` になるよう `Onion { Round { child, radius: (outer − inner)/2 }, thickness: (outer + inner)/2 }` で組む 対称の場合 (`inner == outer`) は従来と同じ値
+- **Behavior change:** `io::iges::export_iges` が P section の 65-72 桁に P の行番号を書いていた IGES 5.3 §2.2.4.5 どおり、その entity の DE の番号 (2n − 1) を書く 出力の byte 列が変わる
+- `io::gltf::export_gltf_json` が `buffers[0]` に `uri` を持たない .gltf を書いており、頂点データが file に含まれていなかった buffer を base64 の data URI として埋め込む (glTF 2.0 §3.6.1.1)
+- `io::fbx::import_fbx` / `import_fbx_full` がバイナリ FBX を UTF-8 として読もうとして I/O error を返し、「Binary FBX import not supported」の判定に届いていなかった 先に magic を見て `IoError::InvalidFormat` を返す
 
 ## [4.1.0] - 2026-10-07
 

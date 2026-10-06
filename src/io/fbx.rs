@@ -1010,14 +1010,18 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::{Vec2, Vec3};
 
-    let content = std::fs::read_to_string(path.as_ref())?;
+    let bytes = std::fs::read(path.as_ref())?;
 
-    // Check for binary FBX (starts with "Kaydara FBX Binary")
-    if content.len() >= 23 && &content.as_bytes()[..18] == b"Kaydara FBX Binary" {
+    // Check for binary FBX (starts with "Kaydara FBX Binary") before decoding
+    // as text: a binary file is not UTF-8, so decoding first reported an I/O
+    // error instead of this message
+    if bytes.len() >= 23 && &bytes[..18] == b"Kaydara FBX Binary" {
         return Err(IoError::InvalidFormat(
             "Binary FBX import not supported. Use ASCII FBX or convert to glTF.".into(),
         ));
     }
+    let content = String::from_utf8(bytes)
+        .map_err(|e| IoError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
 
     let mut raw_vertices: Vec<f32> = Vec::new();
     let mut raw_polygon_indices: Vec<i32> = Vec::new();

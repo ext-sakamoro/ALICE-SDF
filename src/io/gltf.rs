@@ -274,10 +274,51 @@ pub fn export_gltf_json(
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
 ) -> Result<(), IoError> {
-    let (json_bytes, _) = build_glb_data(mesh, config, materials)?;
+    let (json_bytes, bin) = build_glb_data(mesh, config, materials)?;
 
-    std::fs::write(path, json_bytes)?;
+    // A .gltf has no BIN chunk: the buffer must carry its bytes in `uri`
+    // (glTF 2.0 §3.6.1.1), here as a base64 data URI
+    let mut doc: serde_json::Value =
+        serde_json::from_slice(&json_bytes).map_err(|e| IoError::Serialization(e.to_string()))?;
+    let buffer = doc
+        .get_mut("buffers")
+        .and_then(|b| b.get_mut(0))
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| IoError::Serialization("glTF JSON has no buffers[0]".to_string()))?;
+    buffer.insert(
+        "uri".to_string(),
+        serde_json::Value::String(format!(
+            "data:application/octet-stream;base64,{}",
+            base64_encode(&bin)
+        )),
+    );
+    let out = serde_json::to_vec(&doc).map_err(|e| IoError::Serialization(e.to_string()))?;
+    std::fs::write(path, out)?;
     Ok(())
+}
+
+/// Standard base64 (RFC 4648 §4, `+/` alphabet, `=` padding).
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            chunk.get(1).copied().unwrap_or(0),
+            chunk.get(2).copied().unwrap_or(0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        let sextets = [(n >> 18) & 63, (n >> 12) & 63, (n >> 6) & 63, n & 63];
+        for (i, &s) in sextets.iter().enumerate() {
+            // a chunk of k bytes yields k + 1 symbols; the rest is padding
+            if i <= chunk.len() {
+                out.push(ALPHABET[s as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 fn build_glb_data(

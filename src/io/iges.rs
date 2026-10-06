@@ -182,7 +182,9 @@ fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::
         while content.len() < 64 {
             content.push(' ');
         }
-        let de_ref = format!(" {:>7}", p_seq);
+        // col 65-72: back pointer to this entity's DE entry (IGES 5.3 §2.2.4.5);
+        // every entity has one P line and two DE lines, so entity n's DE is 2n − 1
+        let de_ref = format!(" {:>7}", 2 * p_seq - 1);
         content.push_str(&de_ref);
         writeln!(w, "{}", iges_line(&content, 'P', p_seq))?;
         p_seq += 1;
