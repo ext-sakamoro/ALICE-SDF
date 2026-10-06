@@ -121,20 +121,40 @@ fn validate_node_dimensions(node: &SdfNode) -> Result<(), String> {
 /// Returns a string listing all available SdfNode variants
 /// grouped by category.
 pub fn schema_summary() -> String {
-    let mut s = String::with_capacity(2048);
-    s.push_str("ALICE-SDF Node Types (126 total):\n\n");
+    use crate::types::SdfCategory;
 
-    s.push_str("Primitives (72): Sphere, Box3d, RoundedBox, Cylinder, Torus, ");
+    // The counts come from `SdfCategory`, which is checked against one node
+    // per variant (`tests/test_node_backend_matrix.rs`). Until 4.1.0 they
+    // were literals (126 / 72 / 24 / 7 / 23) that had drifted from the enum.
+    let mut s = String::with_capacity(2048);
+    s.push_str(&format!(
+        "ALICE-SDF Node Types ({} total):\n\n",
+        SdfCategory::total()
+    ));
+
+    s.push_str(&format!(
+        "Primitives ({}): Sphere, Box3d, RoundedBox, Cylinder, Torus, ",
+        SdfCategory::Primitive.count()
+    ));
     s.push_str("Capsule, Cone, Ellipsoid, RoundedCone, Plane, HexagonalPrism, ");
     s.push_str("TriangularPrism, RoundedCylinder, CappedTorus, Link, ...\n\n");
 
-    s.push_str("Operations (24): Union, Intersection, Subtraction, ");
+    s.push_str(&format!(
+        "Operations ({}): Union, Intersection, Subtraction, ",
+        SdfCategory::Operation.count()
+    ));
     s.push_str("SmoothUnion(k), SmoothIntersection(k), SmoothSubtraction(k), ...\n\n");
 
-    s.push_str("Transforms (7): Translate(offset), Rotate(quat), ");
+    s.push_str(&format!(
+        "Transforms ({}): Translate(offset), Rotate(quat), ",
+        SdfCategory::Transform.count()
+    ));
     s.push_str("Scale(factor), ...\n\n");
 
-    s.push_str("Modifiers (23): Onion(thickness), Round(radius), Twist(strength), ");
+    s.push_str(&format!(
+        "Modifiers ({}): Onion(thickness), Round(radius), Twist(strength), ",
+        SdfCategory::Modifier.count()
+    ));
     s.push_str("Bend(strength), Elongate(vec3), RepeatInfinite(spacing), ");
     s.push_str("RepeatFinite(spacing,count), Mirror(axis), Revolution(offset), ");
     s.push_str("Extrude(height), ...\n");
@@ -188,7 +208,8 @@ mod tests {
     #[test]
     fn test_schema_summary() {
         let s = schema_summary();
-        assert!(s.contains("126 total"));
+        let total = crate::types::SdfCategory::total();
+        assert!(s.contains(&format!("{total} total")));
         assert!(s.contains("Primitives"));
         assert!(s.contains("Operations"));
     }
