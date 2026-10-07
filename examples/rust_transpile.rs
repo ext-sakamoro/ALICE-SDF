@@ -56,6 +56,20 @@ fn main() {
         eval_compiled(&compiled, Vec3::new(0.5, 0.2, 0.1))
     );
 
+    // The same emit straight from the tree: `transpile` (default options) and
+    // `transpile_with` compile the tree to bytecode first, so they return
+    // exactly what `transpile_compiled` returns for `CompiledSdf::compile`.
+    let direct = RustSource::transpile_with(&shape, &options).expect("transpile_with");
+    assert_eq!(direct.source(), src.source());
+    let defaults = RustSource::transpile(&shape).expect("transpile");
+    let defaults_compiled =
+        RustSource::transpile_compiled(&compiled, &RustTranspileOptions::default()).unwrap();
+    assert_eq!(defaults.source(), defaults_compiled.source());
+    eprintln!(
+        "[rust_transpile] transpile / transpile_with agree with transpile_compiled ({} bytes with default options)",
+        defaults.source().len()
+    );
+
     match std::env::args().nth(1) {
         Some(path) => {
             if let Err(e) = std::fs::write(&path, src.source()) {

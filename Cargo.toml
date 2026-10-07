@@ -237,6 +237,17 @@ required-features = ["hlsl"]
 name = "rust_transpile"
 required-features = ["rust"]
 
+# GLSL / HLSL / BlinkScript exports: compute, fragment and full-pipeline
+# shaders, the Unreal material function, Dynamic parameter layouts.
+[[example]]
+name = "shader_export"
+required-features = ["glsl", "hlsl", "blinkscript"]
+
+# Metal kernel from the WGSL emit (naga), with its dispatch metadata.
+[[example]]
+name = "msl_emit"
+required-features = ["msl"]
+
 # Renders unreal-plugin/Resources/Icon128.png with this crate's evaluator.
 [[example]]
 name = "unreal_plugin_icon"
