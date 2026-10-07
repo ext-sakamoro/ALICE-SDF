@@ -19,7 +19,9 @@
 use alice_sdf::mesh::optimize::{
     compute_acmr, compute_atvr, optimize_vertex_cache, optimize_vertex_fetch,
 };
-use alice_sdf::mesh::overdraw::optimize_overdraw;
+use alice_sdf::mesh::overdraw::{
+    default_view_directions, optimize_overdraw, optimize_overdraw_with_views,
+};
 use alice_sdf::mesh::spatial_order::{morton_3d, optimize_spatial_order};
 use alice_sdf::mesh::stripifier::{stripify, unstripify};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh};
@@ -110,6 +112,21 @@ fn main() {
         mesh.indices != before_overdraw
     );
     assert_ne!(mesh.indices, before_overdraw);
+
+    // view-dependent variant: one fixed camera (top-down) sorts clusters by
+    // depth along that view; opposite directions cancel, so the six axes of
+    // `default_view_directions` leave the order as it is
+    let mut top_down = mesh.clone();
+    optimize_overdraw_with_views(&mut top_down, 1.05, &[Vec3::Y]);
+    assert_eq!(triangle_set(&top_down), original);
+    let mut six_axes = mesh.clone();
+    optimize_overdraw_with_views(&mut six_axes, 1.05, &default_view_directions());
+    println!(
+        "    top-down view reorders: {}, six axes reorder: {}",
+        top_down.indices != mesh.indices,
+        six_axes.indices != mesh.indices
+    );
+    assert_eq!(six_axes.indices, mesh.indices);
 
     optimize_vertex_fetch(&mut mesh);
     assert_eq!(triangle_set(&mesh), original);

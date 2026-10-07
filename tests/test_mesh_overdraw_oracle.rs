@@ -15,6 +15,8 @@
 //!   vertices), recomputed here in f64.
 //! - `threshold` bounds the vertex-cache cost: ACMR of a 16-entry FIFO cache
 //!   simulated here, after vs before, for thresholds 1.0 / 1.05 / 2.0.
+//! - The view-dependent variant with the six axes leaves the order unchanged
+//!   (opposite directions cancel), a single view reorders.
 //! - ATVR depends only on which vertices the index list references in which
 //!   order, not on their numbers: it is unchanged by a random renumbering and
 //!   by `optimize_vertex_fetch`.
@@ -339,4 +341,31 @@ fn atvr_does_not_depend_on_vertex_numbering() {
     assert_eq!(compared, 4);
     m.indices.clear();
     assert_eq!(compute_atvr(&m, 8), 0.0);
+}
+
+#[test]
+fn opposite_view_directions_cancel_in_the_view_dependent_variant() {
+    // rank along v plus rank along -v is (clusters - 1) for every cluster, so
+    // the six axes give equal sums and the stable sort keeps the order.
+    // Fixture: 66 disjoint triangles at scattered positions; each misses the
+    // 32-entry cache on all three vertices, so a cluster closes every 11
+    // triangles (6 clusters).
+    use alice_sdf::mesh::overdraw::{default_view_directions, optimize_overdraw_with_views};
+    let mut rng = Rng(0x0DD5_1DE5);
+    let mut unit = || f32::from((rng.next() % 2001) as u16) / 1000.0 - 1.0;
+    let mut base = Mesh::new();
+    for _ in 0..66 {
+        let o = Vec3::new(unit(), unit(), unit()) * 5.0;
+        for k in [Vec3::ZERO, Vec3::X * 0.1, Vec3::Z * 0.1] {
+            base.indices.push(base.vertices.len() as u32);
+            base.vertices.push(Vertex::new(o + k, Vec3::Y));
+        }
+    }
+    let mut m = base.clone();
+    optimize_overdraw_with_views(&mut m, 1.05, &default_view_directions());
+    assert_eq!(m.indices, base.indices);
+    // a single view does reorder it
+    optimize_overdraw_with_views(&mut m, 1.05, &[Vec3::Y]);
+    assert_ne!(m.indices, base.indices);
+    assert_eq!(tri_multiset(&m.indices), tri_multiset(&base.indices));
 }

@@ -32,6 +32,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 
+- `examples/mesh_reorder.rs`: `optimize_overdraw` が三角形の順序を変えることを assert し、`optimize_overdraw_with_views` を上からの 1 視点と `default_view_directions` (逆向きの方向が打ち消し合い順序が変わらない) で呼ぶ (`optimize_overdraw` が両者を呼ばなくなったため、example からの呼び出しで配線する)
 - `RaymarchConfig::relaxed` は Lipschitz 値を `fidelity::distance_fidelity(node).safe_step_scale()` から取る (値は従来と同じ: 有限なら `L.max(1)`、上界が無ければ plain tracing)
 - 木の評価器 (`eval` / `eval_material` / `eval_gradient`) の `Translate` / `Scale` / `Rotate` が `transform_translate` / `transform_scale` / `transform_rotate` / `transform_rotate_inverse` を呼ぶ (同じ演算、結果は bit 単位で不変)
 - `raymarch_with_config` / `raymarch_detailed` の点は `Ray::new` / `Ray::at` で求める、`sdf_collide` / `sdf_distance` / `sdf_overlap` の格子の幅は `Aabb::size` で求める (どちらも結果は不変)
