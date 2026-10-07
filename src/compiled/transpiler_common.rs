@@ -26,6 +26,15 @@ pub const FOLD_EPSILON: f32 = 1e-6;
 /// `LatticeDeform` / `HeightmapDisplacement` / `SdfSkinning` / `IFS` carry
 /// per-node data (control points, height field, bones, matrices) that the
 /// hardcoded shader has no binding for.
+///
+/// **Stale since 2.2.0**: every node kind is transpiled (these four included),
+/// so [`shader_unsupported_nodes`] returns an empty list for every tree and
+/// this array no longer describes the transpilers. Deprecated since 5.0.0;
+/// call [`shader_unsupported_nodes`] on the tree instead.
+#[deprecated(
+    since = "5.0.0",
+    note = "stale: every node kind is transpiled since 2.2.0; use shader_unsupported_nodes(&node)"
+)]
 pub const SHADER_UNSUPPORTED: [&str; 4] = [
     "LatticeDeform",
     "HeightmapDisplacement",
@@ -42,8 +51,8 @@ const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
 }
 
 /// Names of the nodes in `node`'s tree that the transpilers pass through
-/// unchanged (see [`SHADER_UNSUPPORTED`]); empty when the shader is a
-/// faithful port of the tree.
+/// unchanged; empty when the shader is a faithful port of the tree (which is
+/// every tree since 2.2.0).
 #[must_use]
 pub fn shader_unsupported_nodes(node: &SdfNode) -> Vec<&'static str> {
     let mut out = Vec::new();

@@ -1089,16 +1089,22 @@ impl GpuEvaluator {
     ///
     /// Nothing is dispatched here: the batch is evaluated when the handle is
     /// consumed, by [`GpuEvalFuture::wait`] (blocking, `eval_batch`) or
-    /// [`GpuEvalFuture::resolve`] (async, `eval_batch_async`). The evaluator
-    /// must outlive the handle.
+    /// [`GpuEvalFuture::resolve`] (async, `eval_batch_async`). The handle
+    /// borrows the evaluator, so the borrow checker keeps the evaluator alive
+    /// until the handle is consumed (until 5.0.0 the handle held a raw pointer
+    /// and dropping the evaluator first was a use-after-free in safe code).
     ///
     /// # Example
-    /// ```ignore
-    /// let future = gpu.eval_batch_submit(points);
+    /// ```no_run
+    /// # use alice_sdf::prelude::*;
+    /// # use alice_sdf::compiled::GpuEvaluator;
+    /// let gpu = GpuEvaluator::new(&SdfNode::sphere(1.0)).unwrap();
+    /// let future = gpu.eval_batch_submit(vec![Vec3::ZERO, Vec3::X]);
     /// // Do other CPU work here...
-    /// let distances = future.await?;
+    /// let distances = future.wait().unwrap();
+    /// assert_eq!(distances.len(), 2);
     /// ```
-    pub const fn eval_batch_submit(&self, points: Vec<Vec3>) -> GpuEvalFuture {
+    pub const fn eval_batch_submit(&self, points: Vec<Vec3>) -> GpuEvalFuture<'_> {
         GpuEvalFuture::new(self, points)
     }
 }
@@ -1217,44 +1223,67 @@ impl std::fmt::Debug for GpuBufferPool {
 
 /// Future for GPU evaluation result
 ///
-/// Allows CPU work while GPU computes.
-pub struct GpuEvalFuture {
-    evaluator: *const GpuEvaluator,
+/// Allows CPU work while GPU computes. The handle borrows the
+/// [`GpuEvaluator`] that made it, so the evaluator cannot be dropped or moved
+/// while the handle exists:
+///
+/// ```compile_fail,E0505
+/// # use alice_sdf::prelude::*;
+/// # use alice_sdf::compiled::GpuEvaluator;
+/// let gpu = GpuEvaluator::new(&SdfNode::sphere(1.0)).unwrap();
+/// let future = gpu.eval_batch_submit(vec![Vec3::ZERO]);
+/// drop(gpu); // error[E0505]: cannot move out of `gpu` because it is borrowed
+/// let _ = future.wait();
+/// ```
+///
+/// Consuming the handle first and dropping the evaluator afterwards compiles:
+///
+/// ```no_run
+/// # use alice_sdf::prelude::*;
+/// # use alice_sdf::compiled::GpuEvaluator;
+/// let gpu = GpuEvaluator::new(&SdfNode::sphere(1.0)).unwrap();
+/// let future = gpu.eval_batch_submit(vec![Vec3::ZERO]);
+/// let _ = future.wait();
+/// drop(gpu);
+/// ```
+///
+/// Until 5.0.0 this type had no lifetime and held a raw pointer, so the first
+/// snippet compiled and `wait` read freed memory.
+#[must_use = "the batch is evaluated only when the handle is consumed by `wait` or `resolve`"]
+pub struct GpuEvalFuture<'a> {
+    evaluator: &'a GpuEvaluator,
     points: Vec<Vec3>,
 }
 
-// SAFETY: GpuEvalFuture holds a raw pointer to GpuEvaluator, which itself
-// contains only wgpu handles (Device, Queue, Pipeline) that are Send + Sync.
-// The pointer is derived from a shared reference and is only dereferenced in
-// `wait()` / `resolve()`, where the evaluator is guaranteed to outlive the future
-// (it is created from `&GpuEvaluator` with the same lifetime scope).
-unsafe impl Send for GpuEvalFuture {}
-unsafe impl Sync for GpuEvalFuture {}
-
-impl GpuEvalFuture {
-    const fn new(evaluator: &GpuEvaluator, points: Vec<Vec3>) -> Self {
-        Self {
-            evaluator: std::ptr::from_ref(evaluator),
-            points,
-        }
+impl<'a> GpuEvalFuture<'a> {
+    const fn new(evaluator: &'a GpuEvaluator, points: Vec<Vec3>) -> Self {
+        Self { evaluator, points }
     }
 
     /// Wait for the GPU result (blocking)
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`GpuEvaluator::eval_batch`].
     pub fn wait(self) -> Result<Vec<f32>, GpuError> {
-        // SAFETY: The evaluator pointer was created from a valid `&GpuEvaluator`
-        // reference in `eval_batch_submit()`. The caller must ensure the
-        // GpuEvaluator outlives this future, which is the documented contract.
-        let evaluator = unsafe { &*self.evaluator };
-        evaluator.eval_batch(&self.points)
+        self.evaluator.eval_batch(&self.points)
     }
 
     /// Get the GPU result asynchronously
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`GpuEvaluator::eval_batch_async`].
     pub async fn resolve(self) -> Result<Vec<f32>, GpuError> {
-        // SAFETY: The evaluator pointer was created from a valid `&GpuEvaluator`
-        // reference in `eval_batch_submit()`. The caller must ensure the
-        // GpuEvaluator outlives this future, which is the documented contract.
-        let evaluator = unsafe { &*self.evaluator };
-        evaluator.eval_batch_async(&self.points).await
+        self.evaluator.eval_batch_async(&self.points).await
+    }
+}
+
+impl std::fmt::Debug for GpuEvalFuture<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GpuEvalFuture")
+            .field("points", &self.points.len())
+            .finish_non_exhaustive()
     }
 }
 

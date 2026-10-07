@@ -109,7 +109,9 @@ pub use cone::{sdf_cone, sdf_cone_r};
 pub use cross_shape::sdf_cross_shape;
 pub use cut_hollow_sphere::sdf_cut_hollow_sphere;
 pub use cut_sphere::sdf_cut_sphere;
-pub use cylinder::{sdf_cylinder, sdf_cylinder_capped, sdf_cylinder_infinite, sdf_cylinder_r};
+#[allow(deprecated)] // re-export kept until the next major
+pub use cylinder::sdf_cylinder_infinite;
+pub use cylinder::{sdf_cylinder, sdf_cylinder_capped, sdf_cylinder_r};
 pub use death_star::sdf_death_star;
 pub use diamond::sdf_diamond;
 pub use diamond_surface::sdf_diamond_surface;

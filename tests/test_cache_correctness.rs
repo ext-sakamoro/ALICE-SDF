@@ -72,8 +72,7 @@ fn cache_key_differs_with_resolution() {
 fn mesh_cache_insert_and_retrieve() {
     let cache = MeshCache::new(CacheConfig {
         max_entries: 10,
-        disk_cache_dir: None,
-        persist_on_evict: false,
+        ..Default::default()
     });
 
     let mesh = Mesh {
@@ -109,8 +108,7 @@ fn mesh_cache_insert_and_retrieve() {
 fn mesh_cache_miss_on_unknown_key() {
     let cache = MeshCache::new(CacheConfig {
         max_entries: 10,
-        disk_cache_dir: None,
-        persist_on_evict: false,
+        ..Default::default()
     });
 
     let key = MeshCacheKey {
@@ -122,12 +120,43 @@ fn mesh_cache_miss_on_unknown_key() {
     assert!(cache.get(&key).is_none(), "Unknown key should return None");
 }
 
+/// `max_entries = 0` means unbounded (documented on `CacheConfig`): every
+/// distinct key stays.
+#[test]
+fn mesh_cache_zero_max_entries_is_unbounded() {
+    let cache = MeshCache::new(CacheConfig {
+        max_entries: 0,
+        ..Default::default()
+    });
+    let key = |i: u64| MeshCacheKey {
+        sdf_hash: i,
+        resolution: 32,
+        bounds_hash: 0,
+    };
+    let n = 200;
+    for i in 0..n {
+        cache.insert(
+            key(i),
+            Mesh {
+                vertices: vec![],
+                indices: vec![],
+            },
+        );
+    }
+    assert_eq!(cache.len(), n as usize);
+    let mut compared = 0;
+    for i in 0..n {
+        assert!(cache.get(&key(i)).is_some(), "key {i} evicted");
+        compared += 1;
+    }
+    assert_eq!(compared, n);
+}
+
 #[test]
 fn mesh_cache_lru_eviction() {
     let cache = MeshCache::new(CacheConfig {
         max_entries: 2,
-        disk_cache_dir: None,
-        persist_on_evict: false,
+        ..Default::default()
     });
 
     let make_mesh = || Mesh {
@@ -164,8 +193,7 @@ fn mesh_cache_lru_eviction() {
 fn mesh_cache_get_or_generate() {
     let cache = MeshCache::new(CacheConfig {
         max_entries: 10,
-        disk_cache_dir: None,
-        persist_on_evict: false,
+        ..Default::default()
     });
 
     let key = MeshCacheKey {
@@ -199,8 +227,7 @@ fn mesh_cache_get_or_generate() {
 fn mesh_cache_clear() {
     let cache = MeshCache::new(CacheConfig {
         max_entries: 10,
-        disk_cache_dir: None,
-        persist_on_evict: false,
+        ..Default::default()
     });
 
     let key = MeshCacheKey {

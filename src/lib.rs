@@ -238,6 +238,8 @@ pub mod prelude {
         estimate_center_of_mass, estimate_surface_area, estimate_volume, AreaEstimate,
         CenterOfMass, VolumeEstimate,
     };
+    #[allow(deprecated)] // re-export kept until the next major
+    pub use crate::mesh::point_cloud_to_sdf;
     pub use crate::mesh::{
         // Adaptive marching cubes
         adaptive_marching_cubes,
@@ -267,7 +269,6 @@ pub mod prelude {
         mesh_to_sdf_exact,
         // Vertex cache optimization
         optimize_vertex_cache,
-        point_cloud_to_sdf,
         primitives_to_csg,
         sdf_to_mesh,
         simplify_collision,

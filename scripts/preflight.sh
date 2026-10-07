@@ -307,6 +307,12 @@ fi
 step "test: cargo test --doc"
 cargo test --doc
 
+step "test: doctests, GpuEvalFuture lifetime (compile_fail, gpu feature)"
+cargo test --doc --features gpu GpuEvalFuture 2>&1 | tee /tmp/alice-sdf-doc-gpu.$$.log
+n=$(grep -oE 'test result: ok\. [0-9]+ passed' /tmp/alice-sdf-doc-gpu.$$.log | grep -oE '[0-9]+' | tail -1 || true)
+rm -f /tmp/alice-sdf-doc-gpu.$$.log
+if [ "${n:-0}" -lt 2 ]; then echo "expected >= 2 GpuEvalFuture doctests, ran ${n:-0}"; exit 1; fi
+
 step "test: bridges (lib, no default)"
 cargo test --lib --no-default-features --features "$BRIDGES"
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$BRIDGES"

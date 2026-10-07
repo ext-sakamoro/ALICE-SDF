@@ -20,7 +20,7 @@ use alice_det_math::metric::MetricWeights;
 use alice_sdf::eval::eval;
 use alice_sdf::prelude::*;
 use alice_sdf::primitives::{
-    sdf_capsule_horizontal, sdf_capsule_vertical, sdf_cylinder_capped, sdf_cylinder_infinite,
+    sdf_capsule_horizontal, sdf_capsule_vertical, sdf_cylinder_capped, sdf_infinite_cylinder,
     sdf_plane_from_points, sdf_plane_xy, sdf_plane_xz, sdf_plane_yz, sdf_torus_capped,
 };
 use glam::Vec3;
@@ -61,9 +61,9 @@ fn main() {
         p.y - 1.0,
     );
     check(
-        "sdf_cylinder_infinite",
+        "sdf_infinite_cylinder",
         p,
-        sdf_cylinder_infinite(p, 0.5),
+        sdf_infinite_cylinder(p, 0.5),
         (p.x * p.x + p.z * p.z).sqrt() - 0.5,
     );
     check("sdf_plane_xy", p, sdf_plane_xy(p), p.z);

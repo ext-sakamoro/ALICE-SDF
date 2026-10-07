@@ -8,7 +8,19 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+次の release は **5.0.0** (破壊的変更を含む major) `Cargo.toml` の version と `unreal-plugin/AliceSDF.uplugin` の `VersionName` は 5.0.0 にしてある (未 publish)
+
+**破壊的変更と移行方法** (5.0.0)
+
+- `compiled::GpuEvalFuture` は `GpuEvalFuture<'a>` になり、生ポインタでなく `&'a GpuEvaluator` を持つ (4.x では評価器を drop してから `wait` / `resolve` を呼ぶと safe code で解放済みの memory を読んだ) `eval_batch_submit` の返り値は `GpuEvalFuture<'_>` 移行: 型を書いている箇所は `GpuEvalFuture<'_>` にし、評価器は handle を `wait` / `resolve` で消費した後に drop する handle を評価器より長く (別 thread や `'static` の場所に) 持っていた code は、評価器を `Arc` で共有してその thread で `eval_batch` を呼ぶ形にする `Send` / `Sync` は `unsafe impl` をやめて自動導出になった (`GpuEvaluator: Sync` の時に `Send + Sync`、native の wgpu では従来どおり成り立つ)
+- `codec_bridge::SdfVolume::voxel_size` は `f32` から `Vec3` (軸ごとの格子間隔) になった 4.x は 3 軸の最小値を 1 つだけ持ち、格子間隔が軸で違う volume では `world_pos` の y / z がずれた 移行: 構造体を直接作る箇所は `voxel_size: Vec3::splat(step)`、値を読む箇所は `.voxel_size.x` など軸を選ぶ `voxelize_sdf` は軸ごとの `(extent - origin) / (n - 1)` を入れる (立方の格子では 3 成分とも従来の値)
+- `codec_bridge` の bitstream に flags bit 3 (軸ごとの格子間隔、header の後に y / z の f32 が続く) を足した encoder は 3 軸の間隔が bit 単位で違う時だけ bit 3 を立てるので、立方の格子の stream は従来と byte 単位で同じ bit 3 の無い stream (4.x が書いたものすべて) は 3 軸とも同じ間隔として読む 4.1.0 以前の decoder は予約 bit を検査しないので、bit 3 の stream を誤読する (bit 2 と同じく前方互換は無い、この版の decoder は bit 4-7 を `DecodeError::UnknownFlags` で拒否する)
+- 下の Deprecated の項目は `#[deprecated(since = "5.0.0")]` を付けたので、`-D warnings` (`deny(deprecated)`) で build している利用者は置き換えが要る 各項目に置き換え先を書いた
+
 ### Added
+- `tests/test_codec_bridge_oracle.rs`: 格子間隔が 3 軸で違う (どれも 2 進で正確な) volume の `world_pos` が軸ごとの `origin + i · step` と bit 一致し、その点で標本を取っていること、bit 3 の byte 配置と往復、bit 3 の無い stream が 3 軸同じ間隔で読まれること、y / z の途中で切れた stream の拒否
+- `tests/test_mesh_cache_model_oracle.rs`: `merge_all` が chunk 座標の順に連結した mesh と bit 一致し、挿入順と cache を変えても同じであること
+- `tests/test_cache_correctness.rs`: `max_entries = 0` で 200 件がすべて残ること
 
 - `codec_bridge::try_decode_sdf_volume` と `codec_bridge::DecodeError`: 予約 flag bit が立った stream と途中で切れた stream を `Err` で返す decoder (`decode_sdf_volume` はこれに委ね、`Err` の時は panic する)
 - examples `codec_bridge` (`codec`) / `asp_bridge` (`asp`) / `sdf_eval_cache` (`sdf-cache`) / `sim_bridge` (`physics`、`gpu` 併用で GPU MC も) / `mesh_cache`: 各 bridge と mesh cache の使い方を、値の出力と assert 付きで示す
@@ -58,6 +70,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `examples/shader_export.rs` が Vulkan compute shader、UE5 Custom node、Unity の 2 file も書き出す
 
 ### Changed
+- 版を 5.0.0 にした (`Cargo.toml`、`unreal-plugin/AliceSDF.uplugin` の `VersionName`)
+- `cache::CacheConfig::max_entries` の doc に、`0` は上限なし (何も追い出さない) であることを明記
+- `compiled::GpuEvalFuture` に `#[must_use]` と `Debug` を付けた
+- CI の test job (3 OS) と `scripts/preflight.sh` に、`cargo test --doc --features gpu GpuEvalFuture` の step を足した
 - `io::nanite::NANITE_VERSION` を 1 から 2 に上げる byte 配置は同じで、cluster の `geometric_error` と親子 id、group 数の意味が変わった (上の Nanite の修正) ので、読み手は版を見て 1 を拒否するか変換する (crate 内に読み込みは無い)
 - `examples/lod_nanite_meshlet.rs`: Nanite の cut (`select_clusters` と `should_render`) を閾値と距離を変えて出力し、閾値を下げると三角形数が減らないこと、遠いと増えないことを自己検証する
 
@@ -88,7 +104,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Deprecated
 
-- `GlslShader::to_unity_custom_function` / `GlslShader::export_unity_shader_graph` (doc で非推奨を明記、`#[deprecated]` 属性は次の minor release で付ける): 出力は GLSL 構文 (`vec3` / `mix` 等) で、HLSL を取る Unity Shader Graph では compile できない `GlslShader` は GLSL の source しか持たないので HLSL を作れない 同じ木を `HlslShader` で transpile して同名の関数を使う (出力は変えていない)
+- `GlslShader::to_unity_custom_function` / `GlslShader::export_unity_shader_graph` (`#[deprecated(since = "5.0.0")]`): 出力は GLSL 構文 (`vec3` / `mix` 等) で、HLSL を取る Unity Shader Graph では compile できない `GlslShader` は GLSL の source しか持たないので HLSL を作れない 移行: 同じ木を `HlslShader` で transpile して同名の関数を使う (出力は変えていない)
+- `npr::CompiledColorPipeline::fallback_op_count`: すべての `NprColorNode` variant が native opcode に compile されるので常に 0 移行: 呼び出しを消す (opcode 数は `native_op_count`)
+- `compiled::SHADER_UNSUPPORTED`: 2.2.0 からすべての node を transpile するので中身 (4 件) が古く、`shader_unsupported_nodes` は常に空を返す 公開型 `[&str; 4]` を変えずに残す 移行: `shader_unsupported_nodes(&node)` を使う
+- `primitives::sdf_cylinder_infinite`: `sdf_infinite_cylinder` と bit 単位で同じ重複 `SdfNode::InfiniteCylinder` と他の primitive の命名に合う `sdf_infinite_cylinder` を残す 移行: 名前を置き換える (値は bit 単位で同じ)
+- `cache::CacheConfig::disk_cache_dir` / `persist_on_evict`: 実装されておらず、`MeshCache` は disk を読み書きしない (実装はせず非推奨にした) 移行: 構造体は `CacheConfig { max_entries, ..Default::default() }` で作り、永続化は `io::save_abm` / `ChunkedMeshCache::persist_dirty` を使う
+- `mesh::PointCloudSdf::new` / `mesh::point_cloud_to_sdf`: 点と法線の数の不一致と `k_neighbors = 0` で panic する 次の major で返り値を `Result<PointCloudSdf, MeshInputError>` にする 移行: `PointCloudSdf::try_new` を使う (同じ場を返す)
+- `compiled::jit_simd::JitSimd` は 1.9.2 から `#[deprecated]` (`JitSimdSdf` に委譲) で、この版では変更なし
 
 ### Removed
 
@@ -98,6 +120,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - GLSL / HLSL / WGSL の transpiler の private な未使用項目 `FOLD_EPSILON` / `next_var` / `ensure_helper` / `param` (`GenericTranspiler` に移った後に残っていたもの、`#[allow(dead_code)]` を外した)
 
 ### Fixed
+- **Breaking:** `compiled::GpuEvalFuture` の soundness: lifetime の無い生ポインタを持ち、評価器を drop してから `wait` / `resolve` を呼ぶと safe code で解放済みの memory を読んだ `GpuEvalFuture<'a>` にして評価器を借用させる (移行は冒頭の一覧) drop が compile error になることを `compile_fail` の doctest で固定し、CI の test job と `scripts/preflight.sh` で `--features gpu` の doctest として走らせる (件数 2 未満で fail)
+- **Breaking:** `codec_bridge::SdfVolume::world_pos`: 格子間隔が軸で違う volume で y / z の位置がずれた (間隔を 1 つ、3 軸の最小値しか持たなかった) `voxel_size` を `Vec3` にして各軸の間隔を掛ける (移行は冒頭の一覧)
+- **Behavior change:** `cache::ChunkedMeshCache::merge_all`: chunk を内部の `HashMap` の順に連結していたので、同じ chunk の集合でも実行ごとに頂点と index の順序が変わった chunk 座標の `(x, y, z)` の昇順で連結する
 - **Behavior change:** `mesh::nanite::generate_nanite_mesh` / `NaniteMesh::select_clusters` / `NaniteCluster::should_render`: Nanite のクラスタ LOD の cut が表面を覆っていなかった (球 r=1、`medium_detail` で視点 z=10・閾値 0.01 で 0 個、z=100 では閾値によらず 0 個、z=3 で LOD 2 の 24 個中 8 個) 原因は 3 つ: cluster の誤差が mesh を見ない大きさの近似で、cluster が 1 個の level だけ別の式になり、子より親の誤差が小さくなりえた / `should_render` が「誤差が閾値を超えたら描く」で標準と逆向き / DAG が隣接 level の球の重なりで、1 つの子が誤差の違う複数の親に属した 標準のクラスタ LOD の cut に直す: 各 level を octree cell (重心で割り当て、深さは `min(前の level, round(log2(解像度 / 8)))`) に分けて cell ごとに 1 group とし、group の親は最も近い粗い level の包含 cell の group、cluster の誤差は SDF 上で実測した `|sdf|` の最大 (三角形を重心座標の格子で sample して局所探索で詰める、正確な距離場なら三角形から表面への片側 Hausdorff 距離) を子の group の誤差まで引き上げた値 (親 ≥ 子)、group の球は子の球を含む `select_clusters` は「group の投影誤差 (誤差 / 球の表面までの距離) が閾値以下 (子が無ければ常に可) で、親の group はそうでない」group の cluster を返し、どの視点でも葉から根までの各経路でちょうど 1 group を選ぶ `should_render` はその前半 (自分の投影誤差 ≤ 閾値) になる 閾値の単位は角度 (rad、画素 `p` は `p · 2 tan(fov/2) / H`) `NaniteMesh::groups` は level ごとに 1 つから region ごとに 1 つになり、`parent_ids` / `child_ids` は region の親子を指す
 - **Behavior change:** `mesh::nanite::generate_nanite_mesh`: cluster を三角形数だけで分割していたので頂点数の上限 (`CLUSTER_MAX_VERTICES`) が保証されていなかった 三角形数と頂点数の両方で詰める `curvature_adaptive` は誤差を半分にする代わりに、法線のばらつきが大きい LOD 0 の cluster を 2 つに分ける (誤差は実測のまま)
 - **Behavior change:** `mesh::lod::generate_lod_chain` / `generate_lod_chain_decimated`: `max_error` が mesh を見ず bounding box の対角線 / 解像度の半分を返していた (単位球で実際の距離の数十〜100 倍) SDF 上で実測した mesh から表面への距離にし、細かい level の値を下回らないようにする

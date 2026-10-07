@@ -624,10 +624,14 @@ impl CompiledColorPipeline {
 
     /// Number of fallback opcodes in the pipeline
     ///
-    /// After Phase 12-D this is always zero for pipelines compiled from
-    /// current DSL variants; it becomes non-zero only when future
-    /// `NprColorNode` variants land without an accompanying native opcode.
+    /// Always zero: every `NprColorNode` variant compiles to a native opcode,
+    /// so a compiled pipeline never contains a fallback. Deprecated since
+    /// 5.0.0; the count of all opcodes is [`Self::native_op_count`].
     #[must_use]
+    #[deprecated(
+        since = "5.0.0",
+        note = "always 0: every NprColorNode variant compiles to a native opcode"
+    )]
     pub fn fallback_op_count(&self) -> usize {
         self.ops
             .iter()
@@ -2287,6 +2291,7 @@ fn alice_npr_eval_bytecode(
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // pins that `fallback_op_count` stays 0 while it exists
 mod tests {
     use super::*;
 

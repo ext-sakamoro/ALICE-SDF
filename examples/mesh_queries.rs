@@ -13,9 +13,9 @@
 
 use alice_sdf::eval::eval;
 use alice_sdf::mesh::{
-    extract_edge_crossings, extract_hermite, mesh_to_sdf_exact, point_cloud_to_sdf, Aabb, BvhNode,
-    BvhTriangle, EdgeCrossing, ExteriorField, HermiteConfig, HermiteExtractor, HermitePoint,
-    MeshBvh, MeshSdf, MeshSignMode, MeshToSdfConfig, PointCloudSdf, PointCloudSdfConfig,
+    extract_edge_crossings, extract_hermite, mesh_to_sdf_exact, Aabb, BvhNode, BvhTriangle,
+    EdgeCrossing, ExteriorField, HermiteConfig, HermiteExtractor, HermitePoint, MeshBvh, MeshSdf,
+    MeshSignMode, MeshToSdfConfig, PointCloudSdf, PointCloudSdfConfig,
 };
 use glam::{DVec3, Vec3};
 use std::collections::HashMap;
@@ -195,8 +195,8 @@ fn main() {
 
     // ── point cloud ──────────────────────────────────────────
     let normals: Vec<Vec3> = verts.iter().map(|v| v.normalize()).collect();
-    let cloud = PointCloudSdf::new(&verts, &normals, &PointCloudSdfConfig::accurate());
-    let fast = point_cloud_to_sdf(&verts, &normals, &PointCloudSdfConfig::fast());
+    let cloud = PointCloudSdf::try_new(&verts, &normals, &PointCloudSdfConfig::accurate()).unwrap();
+    let fast = PointCloudSdf::try_new(&verts, &normals, &PointCloudSdfConfig::fast()).unwrap();
     let cloud_values = cloud.eval_batch(&queries);
     println!("point cloud: {} points", cloud.point_count());
     for (i, &q) in queries.iter().enumerate() {

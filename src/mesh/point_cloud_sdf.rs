@@ -24,7 +24,8 @@
 //! let points = vec![Vec3::ZERO, Vec3::X, Vec3::Y, Vec3::Z];
 //! let normals = vec![Vec3::NEG_ONE.normalize(); 4];
 //!
-//! let sdf = PointCloudSdf::new(&points, &normals, &PointCloudSdfConfig::default());
+//! let sdf = PointCloudSdf::try_new(&points, &normals, &PointCloudSdfConfig::default())
+//!     .expect("as many normals as points, k_neighbors >= 1");
 //! let dist = sdf.eval(Vec3::new(0.5, 0.5, 0.5));
 //! ```
 //!
@@ -105,6 +106,14 @@ impl PointCloudSdf {
     /// On the inputs [`Self::try_new`] rejects (`points` and `normals` of
     /// different lengths, `config.k_neighbors == 0`); use that form to get
     /// the error instead.
+    ///
+    /// Deprecated since 5.0.0 for that panic. The next major release changes
+    /// this function to return `Result<Self, MeshInputError>` (the signature
+    /// of `try_new` today).
+    #[deprecated(
+        since = "5.0.0",
+        note = "panics on invalid input; use PointCloudSdf::try_new (the next major makes `new` return Result)"
+    )]
     pub fn new(points: &[Vec3], normals: &[Vec3], config: &PointCloudSdfConfig) -> Self {
         match Self::try_new(points, normals, config) {
             Ok(sdf) => sdf,
@@ -295,12 +304,26 @@ impl PointCloudSdf {
 }
 
 /// Create a point cloud SDF from points and normals (convenience function)
+///
+/// # Panics
+///
+/// On the inputs [`PointCloudSdf::try_new`] rejects (`points` and `normals`
+/// of different lengths, `config.k_neighbors == 0`). Deprecated since 5.0.0
+/// for that panic; the next major release returns `Result` here too.
+#[deprecated(
+    since = "5.0.0",
+    note = "panics on invalid input; use PointCloudSdf::try_new (the next major makes this return Result)"
+)]
+// ALLOW-UNWIRED: deprecated panicking wrapper, callers moved to PointCloudSdf::try_new
 pub fn point_cloud_to_sdf(
     points: &[Vec3],
     normals: &[Vec3],
     config: &PointCloudSdfConfig,
 ) -> PointCloudSdf {
-    PointCloudSdf::new(points, normals, config)
+    match PointCloudSdf::try_new(points, normals, config) {
+        Ok(sdf) => sdf,
+        Err(e) => panic!("point_cloud_to_sdf: {e}"),
+    }
 }
 
 #[cfg(test)]
@@ -327,14 +350,16 @@ mod tests {
     #[test]
     fn test_point_cloud_sdf_construction() {
         let (points, normals) = make_sphere_cloud(100, 1.0);
-        let sdf = PointCloudSdf::new(&points, &normals, &PointCloudSdfConfig::default());
+        let sdf =
+            PointCloudSdf::try_new(&points, &normals, &PointCloudSdfConfig::default()).unwrap();
         assert_eq!(sdf.point_count(), 100);
     }
 
     #[test]
     fn test_point_cloud_sdf_sign() {
         let (points, normals) = make_sphere_cloud(500, 1.0);
-        let sdf = PointCloudSdf::new(&points, &normals, &PointCloudSdfConfig::default());
+        let sdf =
+            PointCloudSdf::try_new(&points, &normals, &PointCloudSdfConfig::default()).unwrap();
 
         // Outside the sphere (distance ~1.0 from surface)
         let outside = sdf.eval(Vec3::new(2.0, 0.0, 0.0));
@@ -356,7 +381,8 @@ mod tests {
     #[test]
     fn test_point_cloud_sdf_batch() {
         let (points, normals) = make_sphere_cloud(200, 1.0);
-        let sdf = PointCloudSdf::new(&points, &normals, &PointCloudSdfConfig::default());
+        let sdf =
+            PointCloudSdf::try_new(&points, &normals, &PointCloudSdfConfig::default()).unwrap();
 
         let test_points = vec![
             Vec3::new(2.0, 0.0, 0.0),
@@ -373,7 +399,7 @@ mod tests {
     #[test]
     fn test_convenience_function() {
         let (points, normals) = make_sphere_cloud(50, 1.0);
-        let sdf = point_cloud_to_sdf(&points, &normals, &PointCloudSdfConfig::fast());
+        let sdf = PointCloudSdf::try_new(&points, &normals, &PointCloudSdfConfig::fast()).unwrap();
         assert_eq!(sdf.point_count(), 50);
     }
 
@@ -381,7 +407,9 @@ mod tests {
     fn test_configs() {
         let (points, normals) = make_sphere_cloud(50, 1.0);
 
-        let _fast = PointCloudSdf::new(&points, &normals, &PointCloudSdfConfig::fast());
-        let _accurate = PointCloudSdf::new(&points, &normals, &PointCloudSdfConfig::accurate());
+        let _fast =
+            PointCloudSdf::try_new(&points, &normals, &PointCloudSdfConfig::fast()).unwrap();
+        let _accurate =
+            PointCloudSdf::try_new(&points, &normals, &PointCloudSdfConfig::accurate()).unwrap();
     }
 }

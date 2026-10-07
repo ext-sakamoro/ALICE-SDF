@@ -24,9 +24,9 @@
 use alice_sdf::eval::eval;
 use alice_sdf::mesh::mesh_to_sdf_exact;
 use alice_sdf::mesh::{
-    extract_edge_crossings, extract_hermite, point_cloud_to_sdf, Aabb, BvhNode, BvhTriangle,
-    ExteriorField, HermiteConfig, HermiteExtractor, HermitePoint, MeshBvh, MeshSdf, MeshSignMode,
-    MeshToSdfConfig, MeshToSdfStrategy, PointCloudSdf, PointCloudSdfConfig,
+    extract_edge_crossings, extract_hermite, Aabb, BvhNode, BvhTriangle, ExteriorField,
+    HermiteConfig, HermiteExtractor, HermitePoint, MeshBvh, MeshSdf, MeshSignMode, MeshToSdfConfig,
+    MeshToSdfStrategy, PointCloudSdf, PointCloudSdfConfig,
 };
 use glam::{DVec3, Vec3};
 use std::collections::HashMap;
@@ -515,7 +515,7 @@ fn point_cloud_sdf_of_sphere_samples_is_bracketed() {
     ];
     let mut compared = 0;
     for cfg in &configs {
-        let sdf = PointCloudSdf::new(&pts, &normals, cfg);
+        let sdf = PointCloudSdf::try_new(&pts, &normals, cfg).unwrap();
         assert_eq!(sdf.point_count(), pts.len());
         for &q in &queries {
             let d = sdf.eval(q);
@@ -544,10 +544,15 @@ fn point_cloud_sdf_of_sphere_samples_is_bracketed() {
     }
     assert_eq!(compared, configs.len() * queries.len());
 
-    let f = point_cloud_to_sdf(&pts, &normals, &PointCloudSdfConfig::default());
+    // the deprecated panicking forms are the same field as `try_new`
+    let t = PointCloudSdf::try_new(&pts, &normals, &PointCloudSdfConfig::default()).unwrap();
+    #[allow(deprecated)]
+    let f = alice_sdf::mesh::point_cloud_to_sdf(&pts, &normals, &PointCloudSdfConfig::default());
+    #[allow(deprecated)]
     let g = PointCloudSdf::new(&pts, &normals, &PointCloudSdfConfig::default());
     for &q in &queries {
-        assert_eq!(f.eval(q).to_bits(), g.eval(q).to_bits());
+        assert_eq!(f.eval(q).to_bits(), t.eval(q).to_bits());
+        assert_eq!(g.eval(q).to_bits(), t.eval(q).to_bits());
     }
 }
 

@@ -12,7 +12,10 @@
 //!   step written in the stream;
 //! * statistics: min / max / RMS / zero crossings counted by hand on a volume
 //!   whose values are chosen so the answer is known;
-//! * bitstream header: the documented flags byte.
+//! * bitstream header: the documented flags byte;
+//! * per-axis voxel size (5.0.0): `world_pos` of a grid with three different
+//!   dyadic steps against `origin + i * step` per axis, the bit-3 layout, and
+//!   streams without bit 3 decoding with one step on every axis.
 //!
 //! Every loop counts its comparisons and fails on zero.
 
@@ -27,11 +30,15 @@ use alice_sdf::eval::eval;
 use alice_sdf::prelude::*;
 
 /// Byte offset of the flags byte in the encoded header (documented layout:
-/// width, height, depth, origin[3], voxel_size, fixed_point_scale, quality, flags).
+/// width, height, depth, origin[3], voxel size along x, fixed_point_scale,
+/// quality, flags).
 const FLAGS_OFFSET: usize = 4 * 3 + 4 * 3 + 4 + 4 + 1;
 const FLAG_LOSSLESS_WAVELET: u8 = 0x01;
 const FLAG_RANS: u8 = 0x02;
 const FLAG_WIDE: u8 = 0x04;
+const FLAG_ANISOTROPIC_VOXEL: u8 = 0x08;
+/// Header length (documented layout, up to and including the symbol count).
+const HEADER_LEN: usize = FLAGS_OFFSET + 1 + 4;
 
 fn grid_point(origin: Vec3, extent: Vec3, dims: [usize; 3], ix: [usize; 3]) -> Vec3 {
     let step = |a: usize| {
@@ -83,9 +90,8 @@ fn voxels_equal_direct_evaluation_bit_for_bit() {
         }
     }
     assert_eq!(compared, 140);
-    // The metadata spacing is the smallest axis step: 3.0 / 6 on x
-    // (y: 2.5 / 4, z: 2.0 / 3).
-    assert_eq!(vol.voxel_size, 0.5);
+    // The per-axis spacing: (extent - origin) / (n - 1) on each axis.
+    assert_eq!(vol.voxel_size, Vec3::new(3.0 / 6.0, 2.5 / 4.0, 2.0 / 3.0));
 }
 
 #[test]
@@ -95,7 +101,7 @@ fn uniform_voxelization_matches_the_closed_form_sphere() {
     let n = 9; // step 0.5 on [-2, 2]: every grid point is exactly representable
     let vol = voxelize_sdf_uniform(&node, Vec3::splat(-2.0), Vec3::splat(2.0), n);
     assert_eq!((vol.width, vol.height, vol.depth), (n, n, n));
-    assert_eq!(vol.voxel_size, 0.5);
+    assert_eq!(vol.voxel_size, Vec3::splat(0.5));
     let mut compared = 0;
     for z in 0..n {
         for y in 0..n {
@@ -138,7 +144,10 @@ fn assert_lossless(vol: &SdfVolume, config: &EncodeConfig, expect_rans: bool) {
         (vol.width, vol.height, vol.depth)
     );
     assert_eq!(back.origin, vol.origin);
-    assert_eq!(back.voxel_size.to_bits(), vol.voxel_size.to_bits());
+    assert_eq!(
+        back.voxel_size.to_array().map(f32::to_bits),
+        vol.voxel_size.to_array().map(f32::to_bits)
+    );
     let mut compared = 0;
     for (i, (&d, &r)) in vol.data.iter().zip(&back.data).enumerate() {
         let want = fixed_point(d, config.fixed_point_scale);
@@ -249,7 +258,7 @@ fn volume_stats_match_hand_counted_values() {
         height: 2,
         depth: 2,
         origin: Vec3::ZERO,
-        voxel_size: 1.0,
+        voxel_size: Vec3::splat(1.0),
     };
     let s = volume_stats(&vol);
     assert_eq!(s.min_distance, -5.0);
@@ -317,7 +326,7 @@ fn closed_form_volume(n: usize) -> SdfVolume {
         height: n,
         depth: n,
         origin: Vec3::splat(-1.5),
-        voxel_size: step,
+        voxel_size: Vec3::splat(step),
     }
 }
 
@@ -375,7 +384,7 @@ fn noise_volume(n: usize, amp: f32, seed: u64) -> SdfVolume {
         height: n,
         depth: n,
         origin: Vec3::ZERO,
-        voxel_size: 1.0,
+        voxel_size: Vec3::splat(1.0),
     }
 }
 
@@ -467,7 +476,8 @@ fn decoder_rejects_reserved_flag_bits_and_truncated_streams() {
     let good = encode_sdf_volume(&closed_form_volume(4), &EncodeConfig::lossless());
     assert!(try_decode_sdf_volume(&good).is_ok());
     let mut rejected = 0;
-    for bit in 3..8 {
+    // bit 3 is the per-axis voxel size (5.0.0); bits 4-7 stay reserved
+    for bit in 4..8 {
         let mut bad = good.clone();
         bad[FLAGS_OFFSET] |= 1 << bit;
         assert_eq!(
@@ -477,7 +487,7 @@ fn decoder_rejects_reserved_flag_bits_and_truncated_streams() {
         assert!(std::panic::catch_unwind(|| decode_sdf_volume(&bad)).is_err());
         rejected += 1;
     }
-    assert_eq!(rejected, 5);
+    assert_eq!(rejected, 4);
     // Cut anywhere: header, quantizer params, payload length, payload.
     for cut in [0, 10, 38, 45, 49, good.len() - 1] {
         assert!(
@@ -488,4 +498,120 @@ fn decoder_rejects_reserved_flag_bits_and_truncated_streams() {
             "cut at {cut}"
         );
     }
+}
+
+// ───────────────────── per-axis voxel size (5.0.0) ─────────────────────
+
+/// A grid whose three steps differ and are all dyadic, so every grid point
+/// and every `origin + i * step` is exact in f32: x 2/8, y 4/4, z 1/8.
+const ANISO_ORIGIN: Vec3 = Vec3::new(-1.0, -2.0, -0.5);
+const ANISO_EXTENT: Vec3 = Vec3::new(1.0, 2.0, 0.5);
+const ANISO_DIMS: [usize; 3] = [9, 5, 9];
+const ANISO_STEP: [f64; 3] = [0.25, 1.0, 0.125];
+
+fn aniso_volume() -> SdfVolume {
+    voxelize_sdf(&scene(), ANISO_ORIGIN, ANISO_EXTENT, ANISO_DIMS)
+}
+
+/// `origin + i * step` per axis, in f64 (exact here, then exact in f32).
+fn aniso_closed_form(ix: [usize; 3]) -> Vec3 {
+    let o = ANISO_ORIGIN.to_array();
+    let c = |a: usize| (f64::from(o[a]) + ix[a] as f64 * ANISO_STEP[a]) as f32;
+    Vec3::new(c(0), c(1), c(2))
+}
+
+#[test]
+fn non_cubic_grid_world_pos_matches_the_closed_form() {
+    let vol = aniso_volume();
+    assert_eq!(
+        vol.voxel_size,
+        Vec3::new(
+            ANISO_STEP[0] as f32,
+            ANISO_STEP[1] as f32,
+            ANISO_STEP[2] as f32
+        )
+    );
+    let node = scene();
+    let mut compared = 0;
+    for z in 0..ANISO_DIMS[2] {
+        for y in 0..ANISO_DIMS[1] {
+            for x in 0..ANISO_DIMS[0] {
+                let want = aniso_closed_form([x, y, z]);
+                let got = vol.world_pos(x, y, z);
+                assert_eq!(
+                    got.to_array().map(f32::to_bits),
+                    want.to_array().map(f32::to_bits),
+                    "world_pos({x},{y},{z})"
+                );
+                // and it is the point the voxel was sampled at
+                assert_eq!(vol.get(x, y, z).to_bits(), eval(&node, want).to_bits());
+                compared += 1;
+            }
+        }
+    }
+    assert_eq!(compared, 9 * 5 * 9);
+}
+
+#[test]
+fn per_axis_voxel_size_survives_the_round_trip() {
+    let vol = aniso_volume();
+    let mut compared = 0;
+    for config in [EncodeConfig::lossless(), EncodeConfig::default()] {
+        let bytes = encode_sdf_volume(&vol, &config);
+        assert_eq!(
+            bytes[FLAGS_OFFSET] & FLAG_ANISOTROPIC_VOXEL,
+            FLAG_ANISOTROPIC_VOXEL
+        );
+        // documented layout: x in the header, then y and z after it
+        let f = |o: usize| f32::from_le_bytes(bytes[o..o + 4].try_into().unwrap());
+        assert_eq!(f(24).to_bits(), 0.25f32.to_bits());
+        assert_eq!(f(HEADER_LEN).to_bits(), 1.0f32.to_bits());
+        assert_eq!(f(HEADER_LEN + 4).to_bits(), 0.125f32.to_bits());
+
+        let back = try_decode_sdf_volume(&bytes).unwrap();
+        assert_eq!(
+            back.voxel_size.to_array().map(f32::to_bits),
+            vol.voxel_size.to_array().map(f32::to_bits)
+        );
+        assert_eq!(back.origin, vol.origin);
+        let (x, y, z) = (8, 4, 8);
+        assert_eq!(back.world_pos(x, y, z), aniso_closed_form([x, y, z]));
+        compared += 1;
+
+        // cut inside the per-axis sizes
+        for cut in [HEADER_LEN, HEADER_LEN + 4, HEADER_LEN + 12] {
+            assert!(
+                matches!(
+                    try_decode_sdf_volume(&bytes[..cut]),
+                    Err(DecodeError::Truncated { len, .. }) if len == cut
+                ),
+                "cut at {cut}"
+            );
+        }
+    }
+    assert_eq!(compared, 2);
+}
+
+#[test]
+fn streams_without_the_voxel_flag_decode_with_one_step_on_every_axis() {
+    // A cubic-voxel stream is the pre-5.0.0 format byte for byte (pinned by
+    // `in_range_streams_are_byte_identical_to_the_i16_format`).
+    let mut compared = 0;
+    for n in [4usize, 16] {
+        let vol = closed_form_volume(n);
+        let mut bytes = encode_sdf_volume(&vol, &EncodeConfig::lossless());
+        assert_eq!(bytes[FLAGS_OFFSET] & FLAG_ANISOTROPIC_VOXEL, 0);
+        let step = 3.0f32 / (n - 1) as f32;
+        assert_eq!(decode_sdf_volume(&bytes).voxel_size, Vec3::splat(step));
+        // an older stream carrying another step: read as that step on x, y, z
+        bytes[24..28].copy_from_slice(&0.75f32.to_le_bytes());
+        let back = decode_sdf_volume(&bytes);
+        assert_eq!(back.voxel_size, Vec3::splat(0.75));
+        assert_eq!(
+            back.world_pos(1, 2, 3),
+            back.origin + Vec3::new(0.75, 1.5, 2.25)
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 2);
 }

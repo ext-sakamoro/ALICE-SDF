@@ -246,8 +246,12 @@ impl GlslShader {
     /// Unity Shader Graph, which takes HLSL.** A `GlslShader` holds only the
     /// GLSL source, so it cannot produce the HLSL; transpile the same node with
     /// `HlslShader` (`hlsl` feature) and call its `to_unity_custom_function`,
-    /// whose output is compiled in the test suite. Not recommended for new
-    /// code; kept unchanged for existing callers.
+    /// whose output is compiled in the test suite. Kept unchanged for existing
+    /// callers; deprecated since 5.0.0.
+    #[deprecated(
+        since = "5.0.0",
+        note = "the output is GLSL and does not compile in Unity Shader Graph; transpile with HlslShader and use HlslShader::to_unity_custom_function"
+    )]
     pub fn to_unity_custom_function(&self) -> String {
         let dynamic_note = if self.mode == GlslTranspileMode::Dynamic {
             "// NOTE: Dynamic mode - parameters are read from uniform block SdfParams.\n// Set up a UBO to update params at runtime.\n"
@@ -520,8 +524,12 @@ void main() {{
     /// A `GlslShader` holds only the GLSL source, so it cannot produce the
     /// HLSL; transpile the same node with `HlslShader` (`hlsl` feature) and
     /// call its `export_unity_shader_graph`, whose output is compiled in the
-    /// test suite. Not recommended for new code; kept unchanged for existing
-    /// callers.
+    /// test suite. Kept unchanged for existing callers; deprecated since
+    /// 5.0.0.
+    #[deprecated(
+        since = "5.0.0",
+        note = "the output embeds GLSL and does not compile in Unity Shader Graph; transpile with HlslShader and use HlslShader::export_unity_shader_graph"
+    )]
     pub fn export_unity_shader_graph(&self) -> String {
         let params_section = if self.mode == GlslTranspileMode::Dynamic {
             "// Dynamic parameters - bind via MaterialPropertyBlock or UBO\nuniform float4 _SdfParams[1024];\n#define params _SdfParams\n\n"
@@ -1685,6 +1693,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)] // pins the legacy output kept for existing callers
     fn test_unity_custom_function() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
         let shader = GlslShader::transpile(&sphere, GlslTranspileMode::Hardcoded);
@@ -1794,6 +1803,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)] // pins the legacy output kept for existing callers
     fn test_unity_shader_graph_export() {
         let shape = SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5));
         let shader = GlslShader::transpile(&shape, GlslTranspileMode::Hardcoded);

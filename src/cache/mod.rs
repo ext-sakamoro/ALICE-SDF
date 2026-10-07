@@ -45,16 +45,44 @@ use crate::mesh::Mesh;
 use crate::types::SdfNode;
 
 /// Configuration for the mesh cache.
+///
+/// Build it with `..Default::default()` for the fields you do not set, so the
+/// deprecated fields below are not named:
+///
+/// ```
+/// use alice_sdf::cache::CacheConfig;
+/// let config = CacheConfig { max_entries: 16, ..Default::default() };
+/// assert_eq!(config.max_entries, 16);
+/// ```
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
     /// Maximum number of cached meshes in memory.
+    ///
+    /// When an insert of a new key finds `max_entries` entries, the least
+    /// recently used one is evicted first. **`0` means unbounded**: nothing is
+    /// ever evicted and the cache grows with every distinct key.
     pub max_entries: usize,
-    /// Optional disk cache directory for .abm persistence.
+    /// Not implemented: [`MeshCache`] never reads or writes this directory.
+    ///
+    /// Deprecated since 5.0.0. For `.abm` persistence use
+    /// [`ChunkedMeshCache::persist_dirty`] / [`ChunkedMeshCache::load_chunk`]
+    /// or [`crate::io::save_abm`] directly.
+    #[deprecated(
+        since = "5.0.0",
+        note = "not implemented: MeshCache never touches the disk; persist with crate::io::save_abm or ChunkedMeshCache"
+    )]
     pub disk_cache_dir: Option<PathBuf>,
-    /// Whether to automatically persist to disk on eviction.
+    /// Not implemented: evicted meshes are dropped whatever this is set to.
+    ///
+    /// Deprecated since 5.0.0, see [`Self::disk_cache_dir`].
+    #[deprecated(
+        since = "5.0.0",
+        note = "not implemented: evicted meshes are dropped; persist with crate::io::save_abm or ChunkedMeshCache"
+    )]
     pub persist_on_evict: bool,
 }
 
+#[allow(deprecated)] // the deprecated fields still have to be initialised
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
@@ -231,7 +259,6 @@ impl MeshCache {
             .write()
             .expect("MeshCache: RwLock poisoned on entries.write() in insert()");
         let _evicted = entries.insert(key, entry, self.config.max_entries);
-        // Future: if persist_on_evict && disk_cache_dir is set, write evicted mesh to disk.
 
         arc_mesh
     }

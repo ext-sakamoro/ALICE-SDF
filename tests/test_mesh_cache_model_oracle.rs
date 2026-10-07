@@ -388,3 +388,71 @@ fn persisted_chunks_reload_with_identical_geometry() {
     assert!(reader.dirty_chunks().is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `merge_all` concatenates chunks in ascending `(x, y, z)` coordinate order
+/// (5.0.0): the merged mesh is the same, bit for bit, whatever the insertion
+/// order and whichever `HashMap` seed each cache got. The expected mesh is
+/// built here from the sorted coordinates.
+#[test]
+fn merge_all_is_ordered_by_chunk_coordinate_and_repeatable() {
+    let coords: Vec<ChunkCoord> = (0..40)
+        .map(|i| ChunkCoord::new(i % 4 - 2, (i / 4) % 3 - 1, i / 12 - 1))
+        .collect();
+    let tag_of = |c: &ChunkCoord| ((c.x + 2) * 100 + (c.y + 1) * 10 + (c.z + 1) + 1) as usize;
+    let config = || ChunkedCacheConfig {
+        max_cached_chunks: 1000,
+        ..ChunkedCacheConfig::default()
+    };
+
+    // expected: sorted (x, y, z), each chunk's indices shifted by the vertex
+    // count before it
+    let mut sorted = coords.clone();
+    sorted.sort_by_key(|c| (c.x, c.y, c.z));
+    sorted.dedup();
+    let mut want_v: Vec<Vertex> = Vec::new();
+    let mut want_i: Vec<u32> = Vec::new();
+    for c in &sorted {
+        let m = tagged_mesh(tag_of(c));
+        let base = want_v.len() as u32;
+        want_v.extend_from_slice(&m.vertices);
+        want_i.extend(m.indices.iter().map(|&i| i + base));
+    }
+    assert!(sorted.len() > 1);
+
+    let bits = |m: &Mesh| -> (Vec<[u32; 3]>, Vec<u32>) {
+        (
+            m.vertices
+                .iter()
+                .map(|v| v.position.to_array().map(f32::to_bits))
+                .collect(),
+            m.indices.clone(),
+        )
+    };
+    let want = bits(&Mesh {
+        vertices: want_v,
+        indices: want_i,
+    });
+
+    let mut rng = Lcg(0x5eed);
+    let mut compared = 0;
+    for round in 0..6 {
+        // a fresh cache (fresh HashMap seed) and a shuffled insertion order
+        let mut order = coords.clone();
+        for i in (1..order.len()).rev() {
+            order.swap(i, rng.next(i as u64 + 1) as usize);
+        }
+        if round == 1 {
+            order.reverse();
+        }
+        let cache = ChunkedMeshCache::new(config());
+        for c in &order {
+            cache.set_chunk(*c, tagged_mesh(tag_of(c)), 1);
+        }
+        let first = bits(&cache.merge_all());
+        let second = bits(&cache.merge_all());
+        assert_eq!(first, second, "round {round}: two merges of one cache");
+        assert_eq!(first, want, "round {round}: coordinate order");
+        compared += 1;
+    }
+    assert_eq!(compared, 6);
+}

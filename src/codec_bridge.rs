@@ -21,10 +21,11 @@
 //! |---|---|
 //! | 12 | width, height, depth (u32) |
 //! | 12 | origin x, y, z (f32) |
-//! | 4 + 4 | voxel_size, fixed_point_scale (f32) |
+//! | 4 + 4 | voxel size along x, fixed_point_scale (f32) |
 //! | 1 | quality (u8) |
-//! | 1 | flags: bit 0 CDF 5/3 wavelet, bit 1 rANS payload, bit 2 i32 coefficients; bits 3-7 reserved (must be 0, the decoder rejects them) |
+//! | 1 | flags: bit 0 CDF 5/3 wavelet, bit 1 rANS payload, bit 2 i32 coefficients, bit 3 per-axis voxel size; bits 4-7 reserved (must be 0, the decoder rejects them) |
 //! | 4 | symbol count (u32, voxels) |
+//! | 4 + 4 | voxel size along y, z (f32), only with bit 3 |
 //! | 4 + 4 | quantizer step, dead zone (i32) |
 //! | 1024 | byte histogram (256 x u32), only with bit 1 |
 //! | 4 + n | payload length, payload |
@@ -32,6 +33,13 @@
 //! The payload (rANS-coded or raw) is the quantized coefficients as i16, or as
 //! i32 when bit 2 is set. The encoder sets bit 2 only when a coefficient does
 //! not fit in i16, so such a stream is otherwise identical to the i16 format.
+//!
+//! Bit 3 (5.0.0) carries a per-axis voxel size. The encoder sets it only when
+//! the three steps differ (bit-wise), so a cubic-voxel stream is byte-identical
+//! to the earlier format, and a stream without bit 3 (every stream written
+//! before 5.0.0) decodes with the same step on all three axes. A decoder older
+//! than 5.0.0 that checks the reserved bits rejects a bit-3 stream instead of
+//! reading it with the wrong layout.
 //!
 //! # Example
 //!
@@ -88,8 +96,12 @@ pub struct SdfVolume {
     pub depth: usize,
     /// World-space minimum corner.
     pub origin: Vec3,
-    /// Distance between adjacent voxels.
-    pub voxel_size: f32,
+    /// Distance between adjacent voxels along each axis.
+    ///
+    /// Until 5.0.0 this was one `f32` (the smallest of the three steps), so
+    /// on a grid whose steps differ [`Self::world_pos`] was wrong along the
+    /// other axes. For a cubic voxel use `Vec3::splat(step)`.
+    pub voxel_size: Vec3,
 }
 
 impl SdfVolume {
@@ -111,14 +123,15 @@ impl SdfVolume {
         self.data[z * self.height * self.width + y * self.width + x]
     }
 
-    /// World-space position for voxel indices.
+    /// World-space position for voxel indices:
+    /// `origin + (x·voxel_size.x, y·voxel_size.y, z·voxel_size.z)`.
     #[inline]
     pub fn world_pos(&self, x: usize, y: usize, z: usize) -> Vec3 {
         self.origin
             + Vec3::new(
-                x as f32 * self.voxel_size,
-                y as f32 * self.voxel_size,
-                z as f32 * self.voxel_size,
+                x as f32 * self.voxel_size.x,
+                y as f32 * self.voxel_size.y,
+                z as f32 * self.voxel_size.z,
             )
     }
 }
@@ -198,6 +211,7 @@ struct EncodedHeader {
     height: u32,
     depth: u32,
     origin: [f32; 3],
+    /// Voxel size along x (along every axis without `FLAG_ANISOTROPIC_VOXEL`).
     voxel_size: f32,
     fixed_point_scale: f32,
     quality: u8,
@@ -217,8 +231,14 @@ impl EncodedHeader {
     /// Set only when a quantized coefficient does not fit in i16, so a stream
     /// whose coefficients all fit is byte-identical to the original format.
     const FLAG_WIDE_COEFFS: u8 = 0x04;
-    const KNOWN_FLAGS: u8 =
-        Self::FLAG_LOSSLESS_WAVELET | Self::FLAG_RANS_COMPRESSED | Self::FLAG_WIDE_COEFFS;
+    /// The voxel sizes along y and z follow the header (2 × f32 LE). Set only
+    /// when the three steps differ, so a cubic-voxel stream is byte-identical
+    /// to the original format.
+    const FLAG_ANISOTROPIC_VOXEL: u8 = 0x08;
+    const KNOWN_FLAGS: u8 = Self::FLAG_LOSSLESS_WAVELET
+        | Self::FLAG_RANS_COMPRESSED
+        | Self::FLAG_WIDE_COEFFS
+        | Self::FLAG_ANISOTROPIC_VOXEL;
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(Self::SIZE);
@@ -278,6 +298,10 @@ impl EncodedHeader {
     const fn wide_coeffs(&self) -> bool {
         self.flags & Self::FLAG_WIDE_COEFFS != 0
     }
+
+    const fn anisotropic_voxel(&self) -> bool {
+        self.flags & Self::FLAG_ANISOTROPIC_VOXEL != 0
+    }
 }
 
 // ============================================================================
@@ -316,9 +340,6 @@ pub fn voxelize_sdf(sdf: &SdfNode, origin: Vec3, extent: Vec3, dims: [usize; 3])
             size.z
         },
     );
-    // Use the smallest axis step as the uniform voxel_size for metadata
-    let voxel_size = voxel_size_vec.x.min(voxel_size_vec.y).min(voxel_size_vec.z);
-
     let total = w * h * d;
     let mut points = Vec::with_capacity(total);
 
@@ -344,7 +365,7 @@ pub fn voxelize_sdf(sdf: &SdfNode, origin: Vec3, extent: Vec3, dims: [usize; 3])
         height: h,
         depth: d,
         origin,
-        voxel_size,
+        voxel_size: voxel_size_vec,
     }
 }
 
@@ -475,13 +496,18 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
     if wide {
         flags |= EncodedHeader::FLAG_WIDE_COEFFS;
     }
+    let vs = volume.voxel_size;
+    let anisotropic = vs.y.to_bits() != vs.x.to_bits() || vs.z.to_bits() != vs.x.to_bits();
+    if anisotropic {
+        flags |= EncodedHeader::FLAG_ANISOTROPIC_VOXEL;
+    }
 
     let header = EncodedHeader {
         width: volume.width as u32,
         height: volume.height as u32,
         depth: volume.depth as u32,
         origin: [volume.origin.x, volume.origin.y, volume.origin.z],
-        voxel_size: volume.voxel_size,
+        voxel_size: vs.x,
         fixed_point_scale: scale,
         quality: config.quality,
         flags,
@@ -489,6 +515,10 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
     };
 
     let mut output = header.to_bytes();
+    if anisotropic {
+        output.extend_from_slice(&vs.y.to_le_bytes());
+        output.extend_from_slice(&vs.z.to_le_bytes());
+    }
 
     // Write quantizer step + dead_zone (8 bytes)
     output.extend_from_slice(&quantizer.step.to_le_bytes());
@@ -520,7 +550,7 @@ pub enum DecodeError {
         /// Bytes the stream has.
         len: usize,
     },
-    /// The flags byte has bits this decoder does not know (`flags & !0x07`).
+    /// The flags byte has bits this decoder does not know (`flags & !0x0f`).
     /// Such a stream was written by a newer encoder; reading it with this
     /// layout would produce wrong values.
     UnknownFlags(u8),
@@ -606,6 +636,18 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
 
     let mut offset = EncodedHeader::SIZE;
 
+    // Voxel size: per-axis with FLAG_ANISOTROPIC_VOXEL, otherwise the one
+    // step on every axis (every stream written before 5.0.0).
+    let voxel_size = if header.anisotropic_voxel() {
+        need(offset + 8 + 8)?;
+        let read_f32 = |o: usize| f32::from_bits(read_u32(o));
+        let v = Vec3::new(header.voxel_size, read_f32(offset), read_f32(offset + 4));
+        offset += 8;
+        v
+    } else {
+        Vec3::splat(header.voxel_size)
+    };
+
     // 2. Read quantizer params
     let step = read_u32(offset) as i32;
     offset += 4;
@@ -687,7 +729,7 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
         height: h,
         depth: d,
         origin: Vec3::new(header.origin[0], header.origin[1], header.origin[2]),
-        voxel_size: header.voxel_size,
+        voxel_size,
     })
 }
 
@@ -979,7 +1021,7 @@ mod tests {
             height: 2,
             depth: 2,
             origin: Vec3::new(1.0, 2.0, 3.0),
-            voxel_size: 0.5,
+            voxel_size: Vec3::splat(0.5),
         };
 
         let p = volume.world_pos(1, 1, 1);

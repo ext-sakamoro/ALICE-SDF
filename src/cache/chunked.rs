@@ -409,15 +409,23 @@ impl ChunkedMeshCache {
     ///
     /// Vertex positions are preserved in world space. Index offsets are
     /// adjusted so the resulting mesh is self-consistent.
+    ///
+    /// Chunks are concatenated in ascending `(x, y, z)` order of their
+    /// [`ChunkCoord`], so the same set of chunks always gives the same vertex
+    /// and index order, whatever the insertion order and from one run to the
+    /// next (until 5.0.0 the order was that of the internal `HashMap`, which
+    /// changes between runs).
     #[allow(clippy::significant_drop_tightening)]
     pub fn merge_all(&self) -> Mesh {
         let chunks = self
             .chunks
             .read()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in merge_all()");
+        let mut ordered: Vec<(&ChunkCoord, &ChunkEntry)> = chunks.entries.iter().collect();
+        ordered.sort_unstable_by_key(|(c, _)| (c.x, c.y, c.z));
         let mut vertices: Vec<Vertex> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
-        for entry in chunks.entries.values() {
+        for (_, entry) in ordered {
             let base = vertices.len() as u32;
             vertices.extend_from_slice(&entry.mesh.vertices);
             indices.extend(entry.mesh.indices.iter().map(|&i| i + base));

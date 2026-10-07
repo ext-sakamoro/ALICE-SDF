@@ -1,7 +1,8 @@
 //! Axis-aligned and point-defined primitives vs closed forms computed in `f64`.
 //!
 //! The functions checked here (`sdf_capsule_vertical`, `sdf_capsule_horizontal`,
-//! `sdf_cylinder_capped`, `sdf_cylinder_infinite`, the three coordinate planes,
+//! `sdf_cylinder_capped`, `sdf_infinite_cylinder` (and its deprecated duplicate
+//! `sdf_cylinder_infinite`), the three coordinate planes,
 //! `sdf_plane_from_points`, `sdf_torus_capped`) are specialised forms of the
 //! node primitives. The references below do not call the crate:
 //!
@@ -22,7 +23,7 @@
 #![allow(clippy::float_cmp)]
 
 use alice_sdf::primitives::{
-    sdf_capsule_horizontal, sdf_capsule_vertical, sdf_cylinder_capped, sdf_cylinder_infinite,
+    sdf_capsule_horizontal, sdf_capsule_vertical, sdf_cylinder_capped, sdf_infinite_cylinder,
     sdf_plane_from_points, sdf_plane_xy, sdf_plane_xz, sdf_plane_yz, sdf_torus_capped,
 };
 use alice_sdf::types::SdfCategory;
@@ -162,13 +163,12 @@ fn infinite_cylinder_is_radial_distance_minus_radius() {
     for &r in &[0.25_f32, 1.0, 1.7] {
         for p in points() {
             let want = (p.x as f64).hypot(p.z as f64) - r as f64;
-            assert_close(
-                "sdf_cylinder_infinite",
-                p,
-                sdf_cylinder_infinite(p, r),
-                want,
-                1e-6,
-            );
+            let d = sdf_infinite_cylinder(p, r);
+            assert_close("sdf_infinite_cylinder", p, d, want, 1e-6);
+            // the deprecated duplicate stays bit-identical while it exists
+            #[allow(deprecated)]
+            let dup = alice_sdf::primitives::sdf_cylinder_infinite(p, r);
+            assert_eq!(dup.to_bits(), d.to_bits(), "sdf_cylinder_infinite at {p}");
             n += 1;
         }
     }

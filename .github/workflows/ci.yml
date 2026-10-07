@@ -265,6 +265,19 @@ jobs:
       - name: Test (doctests)
         run: cargo test --doc
 
+      # `GpuEvalFuture<'a>` borrows its evaluator (5.0.0): a `compile_fail`
+      # doctest pins that dropping the evaluator before `wait` does not compile
+      # (until 5.0.0 it did, and `wait` read freed memory). The plain doctest
+      # step above has no `gpu` feature, so these doctests only run here; the
+      # count guard fails the step if the filter stops matching them.
+      - name: Test (doctests, GpuEvalFuture lifetime)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --doc --features gpu GpuEvalFuture 2>&1 | tee doc-gpu.log
+          n=$(grep -oE 'test result: ok\. [0-9]+ passed' doc-gpu.log | grep -oE '[0-9]+' | tail -1 || true)
+          if [ "${n:-0}" -lt 2 ]; then echo "::error::expected >= 2 GpuEvalFuture doctests, ran ${n:-0}"; exit 1; fi
+
       # 2026-09-30: build -> test に格上げ。`src/ffi/**` には unit test が 15 本
       # あるが、`ffi` feature 付きの `cargo test` が CI に 1 つも無かったため
       # 一度も実行されていなかった (registry / panic sentinel / poisoned lock /

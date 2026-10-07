@@ -119,7 +119,9 @@ pub use nanite::{
 pub use optimize::{
     compute_acmr, deduplicate_vertices, optimize_vertex_cache, remove_degenerate_triangles,
 };
-pub use point_cloud_sdf::{point_cloud_to_sdf, PointCloudSdf, PointCloudSdfConfig};
+#[allow(deprecated)] // re-export kept until the next major
+pub use point_cloud_sdf::point_cloud_to_sdf;
+pub use point_cloud_sdf::{PointCloudSdf, PointCloudSdfConfig};
 pub use primitive_fitting::{
     detect_primitive, fit_box, fit_cylinder, fit_plane, fit_sphere, primitives_to_csg,
     FittedPrimitive, FittingConfig, FittingResult, PrimitiveType,

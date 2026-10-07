@@ -75,6 +75,14 @@ pub fn sdf_cylinder_capped(point: Vec3, a: Vec3, b: Vec3, radius: f32) -> f32 {
 }
 
 /// Signed distance to an infinite cylinder along Y-axis
+///
+/// Bit-identical duplicate of [`super::sdf_infinite_cylinder`], which is the
+/// name that matches `SdfNode::InfiniteCylinder` and the other primitives.
+#[deprecated(
+    since = "5.0.0",
+    note = "bit-identical duplicate; use sdf_infinite_cylinder"
+)]
+// ALLOW-UNWIRED: deprecated duplicate of sdf_infinite_cylinder, callers moved to it
 #[inline(always)]
 pub fn sdf_cylinder_infinite(point: Vec3, radius: f32) -> f32 {
     // Only XZ distance matters - direct scalar math
@@ -118,6 +126,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)] // the duplicate stays tested while it exists
     fn test_cylinder_infinite() {
         // Infinite cylinder - only radial distance matters
         let d = sdf_cylinder_infinite(Vec3::new(2.0, 100.0, 0.0), 1.0);

@@ -262,7 +262,7 @@ fn run_api_tour() {
     let d = pollster::block_on(gpu_async.eval_batch_async(&pts)).unwrap();
     assert_close("new_async + eval_batch_async", &d, want(r, c));
     // `eval_batch_submit` defers the evaluation to `wait` / `resolve`.
-    let future: GpuEvalFuture = gpu_async.eval_batch_submit(pts.clone());
+    let future: GpuEvalFuture<'_> = gpu_async.eval_batch_submit(pts.clone());
     let d = future.wait().unwrap();
     assert_close("eval_batch_submit + wait", &d, want(r, c));
     let d = pollster::block_on(gpu_async.eval_batch_submit(pts.clone()).resolve()).unwrap();

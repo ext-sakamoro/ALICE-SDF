@@ -100,7 +100,7 @@ fn sign_is_the_inverse_distance_weighted_vote_of_k_neighbours() {
             k_neighbors: k,
             ..PointCloudSdfConfig::default()
         };
-        let sdf = PointCloudSdf::new(&pts, &nrm, &cfg);
+        let sdf = PointCloudSdf::try_new(&pts, &nrm, &cfg).unwrap();
         for &q in &qs {
             let d = sdf.eval(q);
             let (sign, nearest) = reference(&pts, &nrm, k, q);
@@ -126,7 +126,7 @@ fn more_neighbours_misclassify_fewer_queries_with_noisy_normals() {
             k_neighbors: k,
             ..PointCloudSdfConfig::default()
         };
-        let sdf = PointCloudSdf::new(&pts, &nrm, &cfg);
+        let sdf = PointCloudSdf::try_new(&pts, &nrm, &cfg).unwrap();
         qs.iter()
             .filter(|&&q| (sdf.eval(q) < 0.0) != (q.length() < 1.0))
             .count()
