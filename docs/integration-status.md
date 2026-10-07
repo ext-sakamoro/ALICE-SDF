@@ -17,7 +17,7 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 415 unwired items.
+`scripts/wiring-baseline.txt` lists 366 unwired items.
 
 ### L0 here but not in the baseline (241)
 
@@ -265,59 +265,10 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/volume/mod.rs::Volume3D::world_size`
 - `src/volume/mod.rs::VoxelDistGrad`
 
-### In the baseline but reached here (50)
+### In the baseline but reached here (1)
 
 The guard lists these as unwired; a resolved reference reaches them (level in brackets).
 
-- `src/mesh/decimate.rs::aggressive` (L1)
-- `src/mesh/decimate.rs::conservative` (L1)
-- `src/mesh/dual_contouring.rs::dual_contouring_compiled` (L1)
-- `src/mesh/lightmap.rs::generate_lightmap_uvs` (L1)
-- `src/mesh/lightmap.rs::generate_lightmap_uvs_fast` (L1)
-- `src/mesh/mesh_codec.rs::decode_indices` (L1)
-- `src/mesh/mesh_codec.rs::decode_positions` (L1)
-- `src/mesh/mesh_codec.rs::encode_indices` (L1)
-- `src/mesh/mesh_codec.rs::encode_mesh` (L1)
-- `src/mesh/mesh_codec.rs::encode_positions` (L1)
-- `src/mesh/meshopt_filter.rs::decode_filter_exp_u32_in_place` (L1)
-- `src/mesh/meshopt_filter.rs::decode_filter_oct_i16_in_place` (L1)
-- `src/mesh/meshopt_filter.rs::decode_filter_quat_i16_in_place` (L1)
-- `src/mesh/meshopt_filter.rs::encode_filter_exp_one` (L1)
-- `src/mesh/meshopt_filter.rs::encode_filter_exp_u32` (L1)
-- `src/mesh/meshopt_filter.rs::encode_filter_oct_i16` (L1)
-- `src/mesh/meshopt_filter.rs::encode_filter_oct_one` (L1)
-- `src/mesh/meshopt_filter.rs::encode_filter_quat_i16` (L1)
-- `src/mesh/meshopt_filter.rs::encode_filter_quat_one` (L1)
-- `src/mesh/meshopt_filter.rs::quantize_snorm` (L1)
-- `src/mesh/meshopt_filter.rs::try_decode_filter_oct_i16_in_place` (L1)
-- `src/mesh/meshopt_filter.rs::try_encode_filter_oct_i16` (L1)
-- `src/mesh/meshopt_filter.rs::try_encode_filter_quat_i16` (L1)
-- `src/mesh/meshopt_index_codec.rs::decode_index_buffer` (L1)
-- `src/mesh/meshopt_vertex_codec.rs::decode_vertex_buffer` (L1)
-- `src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer` (L1)
-- `src/mesh/mod.rs::with_all` (L1)
-- `src/mesh/optimize.rs::compute_acmr` (L1)
-- `src/mesh/optimize.rs::compute_atvr` (L1)
-- `src/mesh/optimize.rs::optimize_vertex_cache` (L1)
-- `src/mesh/optimize.rs::optimize_vertex_fetch` (L1)
-- `src/mesh/overdraw.rs::default_view_directions` (L1)
-- `src/mesh/overdraw.rs::optimize_overdraw` (L1)
-- `src/mesh/overdraw.rs::optimize_overdraw_with_views` (L1)
-- `src/mesh/quantization.rs::half_decode` (L1)
-- `src/mesh/quantization.rs::half_encode` (L1)
-- `src/mesh/quantization.rs::snorm_i16_decode` (L1)
-- `src/mesh/quantization.rs::snorm_i8_decode` (L1)
-- `src/mesh/quantization.rs::unorm_u16_decode` (L1)
-- `src/mesh/quantization.rs::unorm_u8_decode` (L1)
-- `src/mesh/sdf_to_mesh.rs::adaptive_marching_cubes_compiled` (L1)
-- `src/mesh/spatial_order.rs::morton_3d` (L1)
-- `src/mesh/spatial_order.rs::optimize_spatial_order` (L1)
-- `src/mesh/stripifier.rs::stripify` (L1)
-- `src/mesh/stripifier.rs::stripify_bound` (L1)
-- `src/mesh/stripifier.rs::try_stripify` (L1)
-- `src/mesh/stripifier.rs::unstripify` (L1)
-- `src/mesh/stripifier.rs::unstripify_bound` (L1)
-- `src/mesh/uv_unwrap.rs::compute_uv_density` (L1)
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
 ## L0 — unreached (597)
