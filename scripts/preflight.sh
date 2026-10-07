@@ -99,8 +99,8 @@ step "clippy: strict on x86_64 (Linux / Windows runner arch, default + gpu)"
 rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
 
-step "clippy: feature-gated examples build (gpu / glsl / hlsl / rust)"
-RUSTFLAGS="-Dwarnings" cargo build --examples --features "glsl,hlsl,gpu,rust"
+step "clippy: feature-gated examples build (gpu / glsl / hlsl / blinkscript / msl / rust)"
+RUSTFLAGS="-Dwarnings" cargo build --examples --features "glsl,hlsl,blinkscript,gpu,msl,rust"
 
 step "clippy-strict: mobile/uniffi-wrapper (path dep re-lint)"
 relint; (cd mobile/uniffi-wrapper && RUSTFLAGS="-Dwarnings" cargo clippy --lib --all-targets)
@@ -287,8 +287,9 @@ cargo test --features rust --test test_rust_transpiler_oracle
 step "test: SdfNode × backend の対応表 (docs/node-support.md と突合、jit + msl + rust)"
 cargo test --features jit,msl,rust --test test_node_backend_matrix
 
-step "test: round-tie parity の hlsl arm (ci.yml の HLSL step と対)"
-cargo test --features "hlsl,blinkscript" --test test_round_tie_parity
+step "test: HLSL / BlinkScript value parity + exports + round-tie hlsl arm (ci.yml の HLSL step と対)"
+ALICE_SDF_REQUIRE_CXX=1 cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity \
+  --test test_hlsl_export_oracle --test test_round_tie_parity
 
 step "test: ffi + shaders (src/ffi の unit test 15 本、ci.yml と対)"
 cargo test --lib --features "ffi,hlsl,glsl"
@@ -333,7 +334,8 @@ step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes 
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_noise_parity --test test_round_tie_parity \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation \
-  --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity
+  --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity \
+  --test test_gpu_eval_api_oracle --test test_glsl_export_oracle
 
 step "gpu-parity: aaa (volume gpu_bake, ci.yml の GPU ↔ CPU parity (aaa — volume gpu_bake) と対)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle
