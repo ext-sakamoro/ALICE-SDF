@@ -39,6 +39,11 @@ fn main() {
         })
         .collect();
 
+    // No instances: nothing is near.
+    let empty = InstancedSdf::new(CompiledSdf::compile(&base));
+    assert_eq!(empty.instance_count(), 0);
+    assert_eq!(empty.eval_min(Vec3::ZERO), f32::MAX);
+
     let mut inst = InstancedSdf::with_capacity(CompiledSdf::compile(&base), params.len() + 1);
     for p in &params {
         inst.add_instance(*p);
