@@ -345,7 +345,8 @@ impl ChunkedMeshCache {
     }
 
     /// Load a single chunk from the disk cache. Returns `None` if the file
-    /// does not exist.
+    /// does not exist. A chunk that is not cached yet is added at the back of
+    /// the FIFO order, evicting the oldest chunk when the cache is full.
     #[allow(clippy::significant_drop_tightening)]
     pub fn load_chunk(&self, coord: &ChunkCoord) -> Result<Option<Arc<Mesh>>, IoError> {
         let dir = self.config.cache_dir.as_ref().ok_or_else(|| {
@@ -370,6 +371,14 @@ impl ChunkedMeshCache {
             .write()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in load_chunk()");
         let is_new = !chunks.entries.contains_key(coord);
+        // Same FIFO eviction as `set_chunk`: a reloaded chunk must not push the
+        // cache past `max_cached_chunks`.
+        if is_new && chunks.entries.len() >= self.config.max_cached_chunks {
+            if let Some(evict_key) = chunks.order.first().copied() {
+                chunks.entries.remove(&evict_key);
+                chunks.order.remove(0);
+            }
+        }
         chunks.entries.insert(
             *coord,
             ChunkEntry {
