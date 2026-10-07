@@ -300,6 +300,36 @@ fn leaf_box(xf: &Affine, center: Vec3, half: Vec3) -> Region {
     Region::Box(c - h, c + h)
 }
 
+/// Row `i` of `a` (`Mat3` is column-major).
+fn row(a: &Mat3, i: usize) -> Vec3 {
+    Vec3::new(a.x_axis[i], a.y_axis[i], a.z_axis[i])
+}
+
+/// Bound of a round leaf mapped through `xf`: the Minkowski sum of
+/// - a ball of radius `ball` (image: an ellipsoid, extent `ball * |row_i(A)|`),
+/// - a disc of radius `disc` in the local XZ plane (extent `disc * |(A_i0, A_i2)|`),
+/// - a segment `center +- seg` (extent `|(A * seg)_i|`).
+///
+/// The AABB of a Minkowski sum is the sum of the AABBs, and each term is the exact
+/// AABB of its image under any linear map, so a rotated sphere / cylinder / torus /
+/// capsule gets its exact box rather than the box of its rotated box.
+fn round_leaf(xf: &Affine, center: Vec3, seg: Vec3, disc: f32, ball: f32) -> Region {
+    if !center.is_finite() || !seg.is_finite() || !disc.is_finite() || !ball.is_finite() {
+        return Region::Unknown;
+    }
+    if disc < 0.0 || ball < 0.0 {
+        return Region::Empty;
+    }
+    let c = xf.a * center + xf.t;
+    let s = (xf.a * seg).abs();
+    let mut h = s;
+    for i in 0..3 {
+        let r = row(&xf.a, i);
+        h[i] += disc * r.x.hypot(r.z) + ball * r.length();
+    }
+    Region::Box(c - h, c + h)
+}
+
 /// World-space region that contains `{ p : f_node(p) <= delta }` (node local frame
 /// mapped through `xf`).
 ///
@@ -313,43 +343,64 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
     }
     match node {
         // exact distance fields: the level set of f is the shape grown by delta
-        SdfNode::Sphere { radius } => {
-            let r = radius + delta;
-            leaf_box(xf, Vec3::ZERO, Vec3::splat(r))
-        }
+        SdfNode::Sphere { radius } => round_leaf(xf, Vec3::ZERO, Vec3::ZERO, 0.0, radius + delta),
         SdfNode::Box3d { half_extents } => {
             leaf_box(xf, Vec3::ZERO, *half_extents + Vec3::splat(delta))
         }
+        // a disc of radius r in XZ swept along Y by +-h; the level-delta set of the
+        // exact field lies in the cylinder (r + delta, h + delta)
         SdfNode::Cylinder {
             radius,
             half_height,
         } => {
             let (r, h) = (radius + delta, half_height + delta);
-            leaf_box(xf, Vec3::ZERO, Vec3::new(r, h, r))
+            if h < 0.0 {
+                return Region::Empty;
+            }
+            round_leaf(xf, Vec3::ZERO, Vec3::new(0.0, h, 0.0), r, 0.0)
         }
+        // the circle of radius R in XZ plus a ball of the minor radius
         SdfNode::Torus {
             major_radius,
             minor_radius,
         } => {
             let minor = minor_radius + delta;
-            let outer = major_radius + minor;
-            if minor < 0.0 {
+            if minor < 0.0 || *major_radius < 0.0 {
                 return Region::Empty;
             }
-            leaf_box(xf, Vec3::ZERO, Vec3::new(outer, minor, outer))
+            round_leaf(xf, Vec3::ZERO, Vec3::ZERO, *major_radius, minor)
         }
+        // the segment a-b plus a ball
         SdfNode::Capsule {
             point_a,
             point_b,
             radius,
         } => {
-            let r = radius + delta;
-            let half = (*point_b - *point_a).abs() * 0.5 + Vec3::splat(r);
             let center = (*point_a + *point_b) * 0.5;
-            if r < 0.0 {
+            let seg = (*point_b - *point_a) * 0.5;
+            round_leaf(xf, center, seg, 0.0, radius + delta)
+        }
+        // f >= max_i(|p_i| - b_i) - r, so {f <= delta} lies in the box b + r + delta
+        SdfNode::RoundedBox {
+            half_extents,
+            round_radius,
+        } => leaf_box(
+            xf,
+            Vec3::ZERO,
+            *half_extents + Vec3::splat(round_radius + delta),
+        ),
+        // f >= max(rho - (radius - rr), |y| - h) - rr, so rho <= radius + delta and
+        // |y| <= h + rr + delta
+        SdfNode::RoundedCylinder {
+            radius,
+            round_radius,
+            half_height,
+        } => {
+            let h = half_height + round_radius + delta;
+            if h < 0.0 {
                 return Region::Empty;
             }
-            leaf_box(xf, center, half)
+            round_leaf(xf, Vec3::ZERO, Vec3::new(0.0, h, 0.0), radius + delta, 0.0)
         }
         // set operations
         SdfNode::Union { a, b } => level_region(a, xf, delta).hull(level_region(b, xf, delta)),
@@ -389,6 +440,58 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
         // f = child - r  /  f = |child| - t  ->  child <= delta + r / delta + t
         SdfNode::Round { child, radius } => level_region(child, xf, delta + radius),
         SdfNode::Onion { child, thickness } => level_region(child, xf, delta + thickness),
+        // f(p) = child(p - clamp(p, -h, h)): p = clamp(p) + q with q in the child's set and
+        // clamp(p) in [-h, h], so the set lies in (child set) + [-h, h] (Minkowski sum, local
+        // frame). Through `xf` that is the child's region plus the box `|A| * h`, which is the
+        // exact AABB of the parallelepiped `A * [-h, h]`.
+        SdfNode::Elongate { child, amount } => {
+            if !amount.is_finite() || amount.min_element() < 0.0 {
+                return Region::Unknown;
+            }
+            match level_region(child, xf, delta) {
+                Region::Box(lo, hi) => {
+                    let abs =
+                        Mat3::from_cols(xf.a.x_axis.abs(), xf.a.y_axis.abs(), xf.a.z_axis.abs());
+                    let grow = abs * *amount;
+                    Region::Box(lo - grow, hi + grow)
+                }
+                other => other,
+            }
+        }
+        // f(p) = child(|p| on the mirrored axes): bound the child in the local frame, then
+        // |p_i| <= hi_i on a mirrored axis (empty when the child lies entirely below 0)
+        SdfNode::Mirror { child, axes } => {
+            let identity = Affine {
+                a: Mat3::IDENTITY,
+                t: Vec3::ZERO,
+            };
+            match level_region(child, &identity, delta) {
+                Region::Box(mut lo, hi) => {
+                    for i in 0..3 {
+                        if axes[i] != 0.0 {
+                            if hi[i] < 0.0 {
+                                return Region::Empty;
+                            }
+                            lo[i] = -hi[i];
+                        }
+                    }
+                    leaf_box(xf, (lo + hi) * 0.5, (hi - lo) * 0.5)
+                }
+                other => other,
+            }
+        }
+        // f(p) = m * child(p / s), m = min(s): {f <= delta} = s * {child <= delta / m}
+        SdfNode::ScaleNonUniform { child, factors }
+            if factors.is_finite()
+                && factors.min_element() > 0.0
+                && factors.recip().is_finite() =>
+        {
+            let scaled = Affine {
+                a: xf.a * Mat3::from_diagonal(*factors),
+                t: xf.t,
+            };
+            level_region(child, &scaled, delta / factors.min_element())
+        }
         _ => Region::Unknown,
     }
 }
