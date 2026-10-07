@@ -7,8 +7,8 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 427 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 789 |
+| L0 | not reached by any non-test code, examples included | 318 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 898 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 922 |
 | | **total** | **2138** |
 
@@ -17,9 +17,9 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 258 unwired items.
+`scripts/wiring-baseline.txt` lists 193 unwired items.
 
-### L0 here but not in the baseline (179)
+### L0 here but not in the baseline (135)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -39,6 +39,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/cache_bridge.rs::GridPoint::from_f32`
 - `src/cache_bridge.rs::SdfEvalCache`
 - `src/cache_bridge.rs::SdfEvalCache::get`
+- `src/cache_bridge.rs::SdfEvalCache::hit_rate`
 - `src/cache_bridge.rs::SdfEvalCache::is_empty`
 - `src/cache_bridge.rs::SdfEvalCache::len`
 - `src/cache_bridge.rs::SdfEvalCache::new`
@@ -114,11 +115,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/crispy.rs::BloomFilter`
 - `src/crispy.rs::BloomFilter::insert`
 - `src/crispy.rs::BloomFilter::new`
-- `src/destruction/debris.rs::DebrisConfig`
-- `src/gi/irradiance.rs::IrradianceGrid::memory_bytes`
-- `src/gi/irradiance.rs::IrradianceGrid::sample`
-- `src/gi/irradiance.rs::IrradianceProbe::evaluate`
-- `src/gi/irradiance.rs::SH1::evaluate`
 - `src/mesh/lod.rs::ContinuousLod`
 - `src/mesh/lod.rs::ContinuousLod::new`
 - `src/mesh/lod.rs::ContinuousLod::update`
@@ -137,6 +133,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/lod.rs::LodSelector::is_acceptable`
 - `src/mesh/lod.rs::LodSelector::screen_error`
 - `src/mesh/lod.rs::LodSelector::select`
+- `src/mesh/lod_persist.rs::LodChainPersist::level_count`
 - `src/mesh/lod_persist.rs::LodChainPersist::mesh`
 - `src/mesh/meshlet.rs::Meshlet`
 - `src/mesh/meshlet.rs::Meshlet::triangle_count`
@@ -161,47 +158,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/sim_bridge.rs::SimulatedSdf::new`
 - `src/sim_bridge.rs::SimulatedSdf::normal`
 - `src/sim_bridge.rs::SimulatedSdf::update`
-- `src/svo/build.rs::build_svo`
-- `src/svo/linearize.rs::LinearizedSvo`
-- `src/svo/linearize.rs::LinearizedSvo::as_bytes`
-- `src/svo/linearize.rs::LinearizedSvo::memory_bytes`
-- `src/svo/linearize.rs::LinearizedSvo::node_count`
-- `src/svo/mod.rs::SparseVoxelOctree::build`
-- `src/svo/mod.rs::SvoNode::normal`
-- `src/svo/streaming.rs::SvoChunk`
-- `src/svo/streaming.rs::SvoChunk::from_bytes`
-- `src/svo/streaming.rs::SvoChunk::memory_bytes`
-- `src/svo/streaming.rs::SvoChunk::new`
-- `src/svo/streaming.rs::SvoChunk::to_bytes`
-- `src/svo/streaming.rs::SvoStreamingCache`
-- `src/svo/streaming.rs::SvoStreamingCache::clear`
-- `src/svo/streaming.rs::SvoStreamingCache::get`
-- `src/svo/streaming.rs::SvoStreamingCache::insert`
-- `src/svo/streaming.rs::SvoStreamingCache::is_empty`
-- `src/svo/streaming.rs::SvoStreamingCache::len`
-- `src/svo/streaming.rs::SvoStreamingCache::new`
-- `src/svo/streaming.rs::SvoStreamingCache::remove`
-- `src/terrain/caves.rs::CaveConfig`
-- `src/terrain/clipmap.rs::ClipmapLevel`
-- `src/terrain/clipmap.rs::ClipmapTerrain`
-- `src/terrain/clipmap.rs::ClipmapTerrain::new`
-- `src/terrain/clipmap.rs::ClipmapTerrain::total_vertices`
-- `src/terrain/clipmap.rs::ClipmapTerrain::update`
-- `src/terrain/heightmap.rs::HeightmapImageConfig`
-- `src/terrain/heightmap.rs::HeightmapImageConfig::new`
-- `src/terrain/mod.rs::TerrainConfig`
-- `src/terrain/splatmap.rs::SplatLayer`
-- `src/terrain/splatmap.rs::Splatmap`
-- `src/terrain/splatmap.rs::Splatmap::new`
-- `src/terrain/splatmap.rs::Splatmap::normalize`
-- `src/volume/mod.rs::Volume3D::get`
-- `src/volume/mod.rs::Volume3D::index`
-- `src/volume/mod.rs::Volume3D::new`
-- `src/volume/mod.rs::Volume3D::set`
-- `src/volume/mod.rs::Volume3D::voxel_count`
-- `src/volume/mod.rs::Volume3D::voxel_size`
-- `src/volume/mod.rs::Volume3D::world_size`
-- `src/volume/mod.rs::VoxelDistGrad`
 
 ### In the baseline but reached here (1)
 
@@ -209,7 +165,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (427)
+## L0 — unreached (318)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
@@ -432,28 +388,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/crispy.rs::fast_recip_vec3`
 - `src/crispy.rs::round_half_up_vec3`
 - `src/crispy.rs::select_f32`
-- `src/destruction/debris.rs::DebrisConfig`
-- `src/destruction/debris.rs::DebrisPiece`
-- `src/destruction/debris.rs::generate_debris`
-- `src/destruction/mod.rs::ChunkMesh`
-- `src/destruction/mod.rs::MutableVoxelGrid::chunk_size`
-- `src/destruction/mod.rs::MutableVoxelGrid::chunks_per_axis`
-- `src/destruction/mod.rs::MutableVoxelGrid::clear_dirty`
-- `src/destruction/mod.rs::MutableVoxelGrid::get_material`
-- `src/destruction/mod.rs::MutableVoxelGrid::is_chunk_dirty`
-- `src/destruction/mod.rs::MutableVoxelGrid::remesh_all_dirty`
-- `src/destruction/mod.rs::MutableVoxelGrid::remesh_chunk`
-- `src/destruction/mod.rs::MutableVoxelGrid::set_distance`
-- `src/destruction/operations.rs::carve_batch`
-- `src/destruction/operations.rs::explode`
-- `src/gi/cone_trace.rs::trace_hemisphere`
-- `src/gi/irradiance.rs::IrradianceGrid::get_probe`
-- `src/gi/irradiance.rs::IrradianceGrid::get_probe_mut`
-- `src/gi/irradiance.rs::IrradianceGrid::memory_bytes`
-- `src/gi/irradiance.rs::IrradianceGrid::probe_count`
-- `src/gi/irradiance.rs::IrradianceGrid::sample`
-- `src/gi/irradiance.rs::IrradianceProbe::evaluate`
-- `src/gi/irradiance.rs::SH1::evaluate`
 - `src/gi/mod.rs::PointLight`
 - `src/mesh/lod.rs::ContinuousLod`
 - `src/mesh/lod.rs::ContinuousLod::get_render_meshes`
@@ -551,93 +485,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/sim_bridge.rs::attach_physics`
 - `src/sim_bridge.rs::gpu_mesh_with_physics`
 - `src/sim_bridge.rs::simulate_sdf`
-- `src/svo/build.rs::build_svo`
-- `src/svo/linearize.rs::LinearizedSvo`
-- `src/svo/linearize.rs::LinearizedSvo::as_bytes`
-- `src/svo/linearize.rs::LinearizedSvo::memory_bytes`
-- `src/svo/linearize.rs::LinearizedSvo::node_count`
-- `src/svo/linearize.rs::LinearizedSvo::nodes_at_level`
-- `src/svo/linearize.rs::compact_svo`
-- `src/svo/linearize.rs::linearize_svo`
-- `src/svo/linearize.rs::validate_linearized`
-- `src/svo/mod.rs::SparseVoxelOctree::build`
-- `src/svo/mod.rs::SparseVoxelOctree::linearize`
-- `src/svo/mod.rs::SparseVoxelOctree::nearest_surface`
-- `src/svo/mod.rs::SparseVoxelOctree::ray_query`
-- `src/svo/mod.rs::SvoNode::child_count`
-- `src/svo/mod.rs::SvoNode::normal`
-- `src/svo/query.rs::SvoRayHit`
-- `src/svo/query.rs::svo_nearest_surface`
-- `src/svo/query.rs::svo_ray_query`
-- `src/svo/streaming.rs::SvoChunk`
-- `src/svo/streaming.rs::SvoChunk::from_bytes`
-- `src/svo/streaming.rs::SvoChunk::memory_bytes`
-- `src/svo/streaming.rs::SvoChunk::new`
-- `src/svo/streaming.rs::SvoChunk::to_bytes`
-- `src/svo/streaming.rs::SvoStreamingCache`
-- `src/svo/streaming.rs::SvoStreamingCache::clear`
-- `src/svo/streaming.rs::SvoStreamingCache::get`
-- `src/svo/streaming.rs::SvoStreamingCache::hit_rate`
-- `src/svo/streaming.rs::SvoStreamingCache::insert`
-- `src/svo/streaming.rs::SvoStreamingCache::is_empty`
-- `src/svo/streaming.rs::SvoStreamingCache::len`
-- `src/svo/streaming.rs::SvoStreamingCache::memory_used`
-- `src/svo/streaming.rs::SvoStreamingCache::new`
-- `src/svo/streaming.rs::SvoStreamingCache::remove`
-- `src/svo/streaming.rs::SvoStreamingCache::with_memory_budget`
-- `src/svo/streaming.rs::split_into_chunks`
-- `src/terrain/caves.rs::CaveConfig`
-- `src/terrain/caves.rs::generate_cave_sdf`
-- `src/terrain/caves.rs::generate_chamber`
-- `src/terrain/clipmap.rs::ClipmapLevel`
-- `src/terrain/clipmap.rs::ClipmapMesh`
-- `src/terrain/clipmap.rs::ClipmapTerrain`
-- `src/terrain/clipmap.rs::ClipmapTerrain::generate_level_mesh`
-- `src/terrain/clipmap.rs::ClipmapTerrain::generate_meshes`
-- `src/terrain/clipmap.rs::ClipmapTerrain::level_count`
-- `src/terrain/clipmap.rs::ClipmapTerrain::new`
-- `src/terrain/clipmap.rs::ClipmapTerrain::total_vertices`
-- `src/terrain/clipmap.rs::ClipmapTerrain::update`
-- `src/terrain/heightmap.rs::Heightmap::from_data`
-- `src/terrain/heightmap.rs::Heightmap::from_image`
-- `src/terrain/heightmap.rs::Heightmap::from_image_bytes`
-- `src/terrain/heightmap.rs::Heightmap::normal_at`
-- `src/terrain/heightmap.rs::Heightmap::sample_bicubic`
-- `src/terrain/heightmap.rs::HeightmapImageConfig`
-- `src/terrain/heightmap.rs::HeightmapImageConfig::new`
-- `src/terrain/mod.rs::TerrainConfig`
-- `src/terrain/mod.rs::terrain_sdf`
-- `src/terrain/splatmap.rs::SplatLayer`
-- `src/terrain/splatmap.rs::Splatmap`
-- `src/terrain/splatmap.rs::Splatmap::add_layer`
-- `src/terrain/splatmap.rs::Splatmap::auto_splat_from_heightmap`
-- `src/terrain/splatmap.rs::Splatmap::dominant_material`
-- `src/terrain/splatmap.rs::Splatmap::get_weight`
-- `src/terrain/splatmap.rs::Splatmap::layer_count`
-- `src/terrain/splatmap.rs::Splatmap::new`
-- `src/terrain/splatmap.rs::Splatmap::normalize`
-- `src/terrain/splatmap.rs::Splatmap::set_weight`
-- `src/texture/fitting.rs::reconstruct`
-- `src/volume/bake.rs::bake_volume_compiled`
-- `src/volume/bake.rs::bake_volume_with_normals`
-- `src/volume/export.rs::DdsFormat`
-- `src/volume/export.rs::export_dds_3d`
-- `src/volume/export.rs::export_dds_3d_distgrad`
-- `src/volume/export.rs::export_raw`
-- `src/volume/export.rs::export_raw_with_mips`
-- `src/volume/gpu_bake.rs::gpu_bake_volume_with_normals`
-- `src/volume/mipchain.rs::generate_mip_chain_distgrad`
-- `src/volume/mod.rs::Volume3D::get`
-- `src/volume/mod.rs::Volume3D::index`
-- `src/volume/mod.rs::Volume3D::mip_count`
-- `src/volume/mod.rs::Volume3D::new`
-- `src/volume/mod.rs::Volume3D::sample_trilinear`
-- `src/volume/mod.rs::Volume3D::set`
-- `src/volume/mod.rs::Volume3D::voxel_count`
-- `src/volume/mod.rs::Volume3D::voxel_size`
-- `src/volume/mod.rs::Volume3D::voxel_to_world`
-- `src/volume/mod.rs::Volume3D::world_size`
-- `src/volume/mod.rs::VoxelDistGrad`
 
 ## Not indexed (7)
 
@@ -661,7 +508,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (789)
+## L1 — example-only (898)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
@@ -682,10 +529,15 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/wgsl/transpiler.rs`: `WgslShader::get_eval_function`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`
 - `src/crispy.rs`: `fnv1a_hash`
+- `src/destruction/debris.rs`: `DebrisConfig`, `DebrisPiece`, `generate_debris`
+- `src/destruction/mod.rs`: `ChunkMesh`, `MutableVoxelGrid::chunk_size`, `MutableVoxelGrid::chunks_per_axis`, `MutableVoxelGrid::clear_dirty`, `MutableVoxelGrid::get_material`, `MutableVoxelGrid::is_chunk_dirty`, `MutableVoxelGrid::remesh_all_dirty`, `MutableVoxelGrid::remesh_chunk`, `MutableVoxelGrid::set_distance`
+- `src/destruction/operations.rs`: `carve_batch`, `explode`
 - `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `tree_diff`, `tree_hash`
 - `src/eval/mod.rs`: `gradient`
 - `src/eval/parallel.rs`: `eval_batch`, `eval_grid`, `eval_grid_with_normals`, `grid_coords`, `grid_index`
 - `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
+- `src/gi/cone_trace.rs`: `trace_hemisphere`
+- `src/gi/irradiance.rs`: `IrradianceGrid::get_probe`, `IrradianceGrid::get_probe_mut`, `IrradianceGrid::memory_bytes`, `IrradianceGrid::probe_count`, `IrradianceGrid::sample`, `IrradianceProbe::evaluate`, `SH1::evaluate`
 - `src/heatmap.rs`: `ColorMap`, `Heatmap`, `Heatmap::inside_pixel_count`, `Heatmap::sample`, `Heatmap::surface_pixel_count`, `HeatmapConfig`, `SlicePlane`, `generate_heatmap`, `heatmap_to_rgba`
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::bindings_of`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
 - `src/interval.rs`: `Interval::intersect`, `Interval::overlaps`
@@ -768,6 +620,17 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
 - `src/soa.rs`: `AlignedVec::as_mut_ptr`, `AlignedVec::as_ptr`, `AlignedVec::clear`, `AlignedVec::is_empty`, `SIMD_ALIGNMENT`, `SoADistances::as_slice`, `SoADistances::is_empty`, `SoADistances::len`, `SoADistances::store_simd_unchecked`, `SoAPoints::as_ptrs`, `SoAPoints::clear`, `SoAPoints::get`, `SoAPoints::iter`, `SoAPoints::load_simd_unchecked`
+- `src/svo/build.rs`: `build_svo`
+- `src/svo/linearize.rs`: `LinearizedSvo`, `LinearizedSvo::as_bytes`, `LinearizedSvo::memory_bytes`, `LinearizedSvo::node_count`, `LinearizedSvo::nodes_at_level`, `compact_svo`, `linearize_svo`, `validate_linearized`
+- `src/svo/mod.rs`: `SparseVoxelOctree::build`, `SparseVoxelOctree::linearize`, `SparseVoxelOctree::nearest_surface`, `SparseVoxelOctree::ray_query`, `SvoNode::child_count`, `SvoNode::normal`
+- `src/svo/query.rs`: `SvoRayHit`, `svo_nearest_surface`, `svo_ray_query`
+- `src/svo/streaming.rs`: `SvoChunk`, `SvoChunk::from_bytes`, `SvoChunk::memory_bytes`, `SvoChunk::new`, `SvoChunk::to_bytes`, `SvoStreamingCache`, `SvoStreamingCache::clear`, `SvoStreamingCache::get`, `SvoStreamingCache::hit_rate`, `SvoStreamingCache::insert`, `SvoStreamingCache::is_empty`, `SvoStreamingCache::len`, `SvoStreamingCache::memory_used`, `SvoStreamingCache::new`, `SvoStreamingCache::remove`, `SvoStreamingCache::with_memory_budget`, `split_into_chunks`
+- `src/terrain/caves.rs`: `CaveConfig`, `generate_cave_sdf`, `generate_chamber`
+- `src/terrain/clipmap.rs`: `ClipmapLevel`, `ClipmapMesh`, `ClipmapTerrain`, `ClipmapTerrain::generate_level_mesh`, `ClipmapTerrain::generate_meshes`, `ClipmapTerrain::level_count`, `ClipmapTerrain::new`, `ClipmapTerrain::total_vertices`, `ClipmapTerrain::update`
+- `src/terrain/heightmap.rs`: `Heightmap::from_data`, `Heightmap::from_image`, `Heightmap::from_image_bytes`, `Heightmap::normal_at`, `Heightmap::sample_bicubic`, `HeightmapImageConfig`, `HeightmapImageConfig::new`
+- `src/terrain/mod.rs`: `TerrainConfig`, `terrain_sdf`
+- `src/terrain/splatmap.rs`: `SplatLayer`, `Splatmap`, `Splatmap::add_layer`, `Splatmap::auto_splat_from_heightmap`, `Splatmap::dominant_material`, `Splatmap::get_weight`, `Splatmap::layer_count`, `Splatmap::new`, `Splatmap::normalize`, `Splatmap::set_weight`
+- `src/texture/fitting.rs`: `reconstruct`
 - `src/tight_aabb.rs`: `TightAabbConfig::preset_medium`, `compute_tight_aabb`
 - `src/transforms/rotate.rs`: `transform_rotate_euler`
 - `src/transforms/scale.rs`: `transform_scale_inverse`
@@ -778,3 +641,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/modifiers.rs`: `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
 - `src/types/transforms.rs`: `SdfNode::translate_vec`
 - `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`
+- `src/volume/bake.rs`: `bake_volume_compiled`, `bake_volume_with_normals`
+- `src/volume/export.rs`: `DdsFormat`, `export_dds_3d`, `export_dds_3d_distgrad`, `export_raw`, `export_raw_with_mips`
+- `src/volume/gpu_bake.rs`: `gpu_bake_volume_with_normals`
+- `src/volume/mipchain.rs`: `generate_mip_chain_distgrad`
+- `src/volume/mod.rs`: `Volume3D::get`, `Volume3D::index`, `Volume3D::mip_count`, `Volume3D::new`, `Volume3D::sample_trilinear`, `Volume3D::set`, `Volume3D::voxel_count`, `Volume3D::voxel_size`, `Volume3D::voxel_to_world`, `Volume3D::world_size`, `VoxelDistGrad`

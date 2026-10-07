@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **274 baseline items** — Permitted violations, ratchet in place
+🟡 **208 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (274 permitted)
+## 📋 Baseline (208 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -26,15 +26,10 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/mesh/nanite.rs` | 12 |
 | `src/cache/chunked.rs` | 9 |
 | `src/compiled/instanced.rs` | 9 |
-| `src/destruction/mod.rs` | 9 |
 | `src/compiled/aabb.rs` | 8 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
 | `src/compiled/wgsl/transpiler.rs` | 6 |
-| `src/terrain/splatmap.rs` | 6 |
-| `src/volume/export.rs` | 6 |
 | `src/font_bridge.rs` | 5 |
-| `src/mesh/lod_persist.rs` | 5 |
-| `src/terrain/heightmap.rs` | 5 |
 | `src/asp_bridge.rs` | 4 |
 | `src/compiled/hlsl/transpiler.rs` | 4 |
 | `src/compiled/jit/runtime.rs` | 4 |
@@ -42,43 +37,29 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/opcode.rs` | 4 |
 | `src/compiled/simd.rs` | 4 |
 | `src/ffi/registry.rs` | 4 |
+| `src/mesh/lod_persist.rs` | 4 |
 | `src/mesh/meshlet.rs` | 4 |
-| `src/svo/linearize.rs` | 4 |
-| `src/svo/mod.rs` | 4 |
-| `src/svo/streaming.rs` | 4 |
-| `src/terrain/clipmap.rs` | 4 |
-| `src/volume/mod.rs` | 4 |
 | `src/cache/mod.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
-| `src/gi/irradiance.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
-| `src/svo/query.rs` | 3 |
-| `src/cache_bridge.rs` | 2 |
 | `src/compiled/compiler.rs` | 2 |
 | `src/compiled/eval_bvh.rs` | 2 |
-| `src/destruction/debris.rs` | 2 |
-| `src/destruction/operations.rs` | 2 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
-| `src/terrain/caves.rs` | 2 |
-| `src/volume/bake.rs` | 2 |
 | `src/bin/main.rs` | 1 |
+| `src/cache_bridge.rs` | 1 |
 | `src/compiled/blinkscript/transpiler.rs` | 1 |
 | `src/compiled/eval.rs` | 1 |
 | `src/compiled/eval_simd.rs` | 1 |
 | `src/compiled/instruction.rs` | 1 |
 | `src/compiled/jit/codegen.rs` | 1 |
 | `src/compiled/transpiler_common.rs` | 1 |
-| `src/gi/cone_trace.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
 | `src/modifiers/surface_roughness.rs` | 1 |
 | `src/neural.rs` | 1 |
-| `src/terrain/mod.rs` | 1 |
-| `src/texture/fitting.rs` | 1 |
-| `src/volume/gpu_bake.rs` | 1 |
-| `src/volume/mipchain.rs` | 1 |
+| `src/volume/export.rs` | 1 |
 
 ### Dead Code (12)
 
@@ -97,7 +78,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (262)
+### Unwired Items (196)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -116,7 +97,6 @@ unwired src/cache/chunked.rs::update_sdf_hash
 unwired src/cache/mod.rs::compute_cache_key
 unwired src/cache/mod.rs::get_or_generate
 unwired src/cache/mod.rs::hash_sdf_node
-unwired src/cache_bridge.rs::hit_rate
 unwired src/cache_bridge.rs::put
 unwired src/codec_bridge.rs::CompressResult
 unwired src/codec_bridge.rs::VolumeStats
@@ -230,19 +210,6 @@ unwired src/crispy.rs::or
 unwired src/crispy.rs::round_half_up_vec3
 unwired src/crispy.rs::select_f32
 unwired src/crispy.rs::test_hash
-unwired src/destruction/debris.rs::DebrisPiece
-unwired src/destruction/debris.rs::generate_debris
-unwired src/destruction/mod.rs::ChunkMesh
-unwired src/destruction/mod.rs::chunk_size
-unwired src/destruction/mod.rs::chunks_per_axis
-unwired src/destruction/mod.rs::clear_dirty
-unwired src/destruction/mod.rs::get_material
-unwired src/destruction/mod.rs::is_chunk_dirty
-unwired src/destruction/mod.rs::remesh_all_dirty
-unwired src/destruction/mod.rs::remesh_chunk
-unwired src/destruction/mod.rs::set_distance
-unwired src/destruction/operations.rs::carve_batch
-unwired src/destruction/operations.rs::explode
 unwired src/ffi/registry.rs::clear_all
 unwired src/ffi/registry.rs::compiled_count
 unwired src/ffi/registry.rs::node_count
@@ -254,10 +221,6 @@ unwired src/font_bridge.rs::char_to_sdf2d
 unwired src/font_bridge.rs::font_metrics
 unwired src/font_bridge.rs::glyph_to_sdf2d
 unwired src/font_bridge.rs::text_to_sdf2d
-unwired src/gi/cone_trace.rs::trace_hemisphere
-unwired src/gi/irradiance.rs::get_probe
-unwired src/gi/irradiance.rs::get_probe_mut
-unwired src/gi/irradiance.rs::probe_count
 unwired src/gi/mod.rs::PointLight
 unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
 unwired src/mesh/lod.rs::LodConfig::distance_range
@@ -273,7 +236,6 @@ unwired src/mesh/lod.rs::high_res
 unwired src/mesh/lod.rs::resolution_at_level
 unwired src/mesh/lod.rs::select_by_error
 unwired src/mesh/lod_persist.rs::LodChainSummary
-unwired src/mesh/lod_persist.rs::level_count
 unwired src/mesh/lod_persist.rs::select_lod
 unwired src/mesh/lod_persist.rs::summary
 unwired src/mesh/lod_persist.rs::total_memory_bytes
@@ -315,53 +277,6 @@ unwired src/sim_bridge.rs::modifier_count
 unwired src/sim_bridge.rs::modifier_mut
 unwired src/sim_bridge.rs::simulate_sdf
 unwired src/sim_bridge.rs::with_bounds
-unwired src/svo/linearize.rs::compact_svo
-unwired src/svo/linearize.rs::linearize_svo
-unwired src/svo/linearize.rs::nodes_at_level
-unwired src/svo/linearize.rs::validate_linearized
-unwired src/svo/mod.rs::child_count
-unwired src/svo/mod.rs::linearize
-unwired src/svo/mod.rs::nearest_surface
-unwired src/svo/mod.rs::ray_query
-unwired src/svo/query.rs::SvoRayHit
-unwired src/svo/query.rs::svo_nearest_surface
-unwired src/svo/query.rs::svo_ray_query
-unwired src/svo/streaming.rs::hit_rate
-unwired src/svo/streaming.rs::memory_used
-unwired src/svo/streaming.rs::split_into_chunks
-unwired src/svo/streaming.rs::with_memory_budget
-unwired src/terrain/caves.rs::generate_cave_sdf
-unwired src/terrain/caves.rs::generate_chamber
-unwired src/terrain/clipmap.rs::ClipmapMesh
-unwired src/terrain/clipmap.rs::generate_level_mesh
-unwired src/terrain/clipmap.rs::generate_meshes
-unwired src/terrain/clipmap.rs::level_count
-unwired src/terrain/heightmap.rs::from_data
-unwired src/terrain/heightmap.rs::from_image
-unwired src/terrain/heightmap.rs::from_image_bytes
-unwired src/terrain/heightmap.rs::normal_at
-unwired src/terrain/heightmap.rs::sample_bicubic
-unwired src/terrain/mod.rs::terrain_sdf
-unwired src/terrain/splatmap.rs::add_layer
-unwired src/terrain/splatmap.rs::auto_splat_from_heightmap
-unwired src/terrain/splatmap.rs::dominant_material
-unwired src/terrain/splatmap.rs::get_weight
-unwired src/terrain/splatmap.rs::layer_count
-unwired src/terrain/splatmap.rs::set_weight
-unwired src/texture/fitting.rs::reconstruct
-unwired src/volume/bake.rs::bake_volume_compiled
-unwired src/volume/bake.rs::bake_volume_with_normals
-unwired src/volume/export.rs::DdsFormat
-unwired src/volume/export.rs::export_dds_3d
-unwired src/volume/export.rs::export_dds_3d_distgrad
-unwired src/volume/export.rs::export_raw
-unwired src/volume/export.rs::export_raw_with_mips
-unwired src/volume/gpu_bake.rs::gpu_bake_volume_with_normals
-unwired src/volume/mipchain.rs::generate_mip_chain_distgrad
-unwired src/volume/mod.rs::Volume3D<VoxelDistGrad>::sample_trilinear
-unwired src/volume/mod.rs::Volume3D<f32>::sample_trilinear
-unwired src/volume/mod.rs::mip_count
-unwired src/volume/mod.rs::voxel_to_world
 ```
 
 ---

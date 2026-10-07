@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 582 |
+| 🟢 Not ignored | 619 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **582** |
+| **Total** | **619** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (582)
+## 🟢 Not ignored (619)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -41,6 +41,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
+| `test_svo_api_oracle.rs` | 10 |
 | `test_binding_oracle.rs` | 9 |
 | `test_mesh_fidelity.rs` | 9 |
 | `test_mesh_query_oracle.rs` | 9 |
@@ -49,15 +50,18 @@ Per-file counts (the test names are in `tests/`):
 | `test_relaxed_tracing.rs` | 9 |
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
+| `test_destruction_api_oracle.rs` | 8 |
 | `test_hlsl_blinkscript_parity.rs` | 8 |
 | `test_mesh_reorder_oracle.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |
+| `test_volume_api_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
+| `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
@@ -78,6 +82,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_constraint_oracle.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
 | `test_eval_grid_oracle.rs` | 4 |
+| `test_gi_api_oracle.rs` | 4 |
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
