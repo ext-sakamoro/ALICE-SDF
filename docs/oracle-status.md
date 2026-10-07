@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 566 |
+| 🟢 Not ignored | 582 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **566** |
+| **Total** | **582** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (566)
+## 🟢 Not ignored (582)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -62,7 +62,9 @@ Per-file counts (the test names are in `tests/`):
 | `test_autodiff_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_mesh_codec_oracle.rs` | 6 |
+| `test_mesh_fit_hull_oracle.rs` | 6 |
 | `test_mesh_orientation.rs` | 6 |
+| `test_mesh_overdraw_oracle.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_node_backend_matrix.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
@@ -76,6 +78,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_constraint_oracle.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
 | `test_eval_grid_oracle.rs` | 4 |
+| `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
 | `test_soa_oracle.rs` | 4 |

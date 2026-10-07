@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 427 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 788 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 789 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 922 |
-| | **total** | **2137** |
+| | **total** | **2138** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -661,7 +661,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (788)
+## L1 — example-only (789)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
@@ -722,7 +722,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteConfig`, `NaniteMesh`, `generate_nanite_mesh`
 - `src/mesh/optimize.rs`: `compute_acmr`, `compute_atvr`, `optimize_vertex_cache`, `optimize_vertex_fetch`
 - `src/mesh/overdraw.rs`: `default_view_directions`, `optimize_overdraw`, `optimize_overdraw_with_views`
-- `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::new`, `PointCloudSdf::point_count`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`, `point_cloud_to_sdf`
+- `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::new`, `PointCloudSdf::point_count`, `PointCloudSdf::try_new`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`, `point_cloud_to_sdf`
 - `src/mesh/primitive_fitting.rs`: `FittedPrimitive`, `FittedPrimitive::compute_error`, `FittedPrimitive::distance`, `FittedPrimitive::primitive_type`, `FittedPrimitive::to_sdf_node`, `FittingConfig`, `FittingResult`, `FittingResult::is_acceptable`, `PrimitiveType`, `detect_primitive`, `fit_box`, `fit_cylinder`, `fit_plane`, `fit_sphere`, `primitives_to_csg`
 - `src/mesh/quantization.rs`: `half_decode`, `half_encode`, `snorm_i16_decode`, `snorm_i8_decode`, `unorm_u16_decode`, `unorm_u8_decode`
 - `src/mesh/sdf_to_mesh.rs`: `AdaptiveConfig::aaa`, `MarchingCubesConfig::aaa`, `adaptive_marching_cubes_compiled`
