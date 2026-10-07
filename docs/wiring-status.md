@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **382 baseline items** — Permitted violations, ratchet in place
+🟡 **353 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (382 permitted)
+## 📋 Baseline (353 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -21,7 +21,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/npr/compiled_color.rs` | 32 |
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
-| `src/autodiff.rs` | 14 |
 | `src/compiled/wgsl/gpu_eval.rs` | 14 |
 | `src/sim_bridge.rs` | 14 |
 | `src/mesh/lod.rs` | 13 |
@@ -45,10 +44,8 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/jit/simd/mod.rs` | 4 |
 | `src/compiled/opcode.rs` | 4 |
 | `src/compiled/simd.rs` | 4 |
-| `src/eval/parallel.rs` | 4 |
 | `src/ffi/registry.rs` | 4 |
 | `src/mesh/meshlet.rs` | 4 |
-| `src/soa.rs` | 4 |
 | `src/svo/linearize.rs` | 4 |
 | `src/svo/mod.rs` | 4 |
 | `src/svo/streaming.rs` | 4 |
@@ -57,7 +54,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/cache/mod.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
 | `src/gi/irradiance.rs` | 3 |
-| `src/interval.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
 | `src/svo/query.rs` | 3 |
 | `src/cache_bridge.rs` | 2 |
@@ -75,20 +71,16 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/blinkscript/transpiler.rs` | 1 |
 | `src/compiled/eval.rs` | 1 |
 | `src/compiled/eval_simd.rs` | 1 |
-| `src/compiled/eval_soa.rs` | 1 |
 | `src/compiled/instruction.rs` | 1 |
 | `src/compiled/jit/codegen.rs` | 1 |
 | `src/compiled/transpiler_common.rs` | 1 |
-| `src/eval/mod.rs` | 1 |
 | `src/gi/cone_trace.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
 | `src/modifiers/surface_roughness.rs` | 1 |
 | `src/neural.rs` | 1 |
-| `src/optimize.rs` | 1 |
 | `src/terrain/mod.rs` | 1 |
 | `src/texture/fitting.rs` | 1 |
-| `src/tight_aabb.rs` | 1 |
 | `src/volume/gpu_bake.rs` | 1 |
 | `src/volume/mipchain.rs` | 1 |
 
@@ -109,27 +101,13 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (370)
+### Unwired Items (341)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
 unwired src/asp_bridge.rs::create_sdf_i_packet
 unwired src/asp_bridge.rs::decode_sdf_i_packet
 unwired src/asp_bridge.rs::estimate_packet_size
-unwired src/autodiff.rs::dual3_box
-unwired src/autodiff.rs::dual3_plane
-unwired src/autodiff.rs::dual3_point
-unwired src/autodiff.rs::dual3_sphere
-unwired src/autodiff.rs::dual3_torus
-unwired src/autodiff.rs::eval_dual3
-unwired src/autodiff.rs::eval_with_gradient
-unwired src/autodiff.rs::from_val_grad
-unwired src/autodiff.rs::gaussian_curvature
-unwired src/autodiff.rs::gradient_magnitude
-unwired src/autodiff.rs::length2
-unwired src/autodiff.rs::length3
-unwired src/autodiff.rs::principal_curvatures
-unwired src/autodiff.rs::variable
 unwired src/cache/chunked.rs::cached_chunks
 unwired src/cache/chunked.rs::chunk_bounds
 unwired src/cache/chunked.rs::get_chunk
@@ -170,7 +148,6 @@ unwired src/compiled/eval.rs::eval_compiled_distance_and_normal
 unwired src/compiled/eval_bvh.rs::memory_size
 unwired src/compiled/eval_bvh.rs::refit_all_from_bytecode
 unwired src/compiled/eval_simd.rs::eval_gradient_simd
-unwired src/compiled/eval_soa.rs::eval_compiled_batch_soa_into
 unwired src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM
 unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_SYSTEM
 unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_UNIFORMS
@@ -270,11 +247,6 @@ unwired src/destruction/mod.rs::remesh_chunk
 unwired src/destruction/mod.rs::set_distance
 unwired src/destruction/operations.rs::carve_batch
 unwired src/destruction/operations.rs::explode
-unwired src/eval/mod.rs::gradient
-unwired src/eval/parallel.rs::eval_grid
-unwired src/eval/parallel.rs::eval_grid_with_normals
-unwired src/eval/parallel.rs::grid_coords
-unwired src/eval/parallel.rs::grid_index
 unwired src/ffi/registry.rs::clear_all
 unwired src/ffi/registry.rs::compiled_count
 unwired src/ffi/registry.rs::node_count
@@ -291,9 +263,6 @@ unwired src/gi/irradiance.rs::get_probe
 unwired src/gi/irradiance.rs::get_probe_mut
 unwired src/gi/irradiance.rs::probe_count
 unwired src/gi/mod.rs::PointLight
-unwired src/interval.rs::is_negative
-unwired src/interval.rs::is_positive
-unwired src/interval.rs::overlaps
 unwired src/material.rs::aluminum
 unwired src/material.rs::chrome
 unwired src/material.rs::concrete
@@ -409,7 +378,6 @@ unwired src/npr/outline.rs::depth_step_outline
 unwired src/npr/outline.rs::distance_field_outline
 unwired src/npr/scene_composer.rs::with_camera
 unwired src/npr/scene_composer.rs::with_shading
-unwired src/optimize.rs::optimization_stats
 unwired src/physics_bridge.rs::arc
 unwired src/physics_bridge.rs::sdf_to_physics_field
 unwired src/physics_bridge.rs::with_epsilon
@@ -430,10 +398,6 @@ unwired src/sim_bridge.rs::modifier_count
 unwired src/sim_bridge.rs::modifier_mut
 unwired src/sim_bridge.rs::simulate_sdf
 unwired src/sim_bridge.rs::with_bounds
-unwired src/soa.rs::SIMD_ALIGNMENT
-unwired src/soa.rs::as_ptrs
-unwired src/soa.rs::load_simd_unchecked
-unwired src/soa.rs::store_simd_unchecked
 unwired src/svo/linearize.rs::compact_svo
 unwired src/svo/linearize.rs::linearize_svo
 unwired src/svo/linearize.rs::nodes_at_level
@@ -468,7 +432,6 @@ unwired src/terrain/splatmap.rs::get_weight
 unwired src/terrain/splatmap.rs::layer_count
 unwired src/terrain/splatmap.rs::set_weight
 unwired src/texture/fitting.rs::reconstruct
-unwired src/tight_aabb.rs::preset_medium
 unwired src/volume/bake.rs::bake_volume_compiled
 unwired src/volume/bake.rs::bake_volume_with_normals
 unwired src/volume/export.rs::DdsFormat

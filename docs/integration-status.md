@@ -7,9 +7,9 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 597 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 624 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 916 |
+| L0 | not reached by any non-test code, examples included | 537 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 681 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 919 |
 | | **total** | **2137** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
@@ -17,29 +17,12 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 366 unwired items.
+`scripts/wiring-baseline.txt` lists 337 unwired items.
 
-### L0 here but not in the baseline (241)
+### L0 here but not in the baseline (210)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
-- `src/autodiff.rs::Dual`
-- `src/autodiff.rs::Dual3`
-- `src/autodiff.rs::Dual3::abs`
-- `src/autodiff.rs::Dual3::clamp`
-- `src/autodiff.rs::Dual3::constant`
-- `src/autodiff.rs::Dual3::gradient`
-- `src/autodiff.rs::Dual3::max`
-- `src/autodiff.rs::Dual3::min`
-- `src/autodiff.rs::Dual3::sqrt`
-- `src/autodiff.rs::Dual::abs`
-- `src/autodiff.rs::Dual::clamp`
-- `src/autodiff.rs::Dual::constant`
-- `src/autodiff.rs::Dual::cos`
-- `src/autodiff.rs::Dual::max`
-- `src/autodiff.rs::Dual::min`
-- `src/autodiff.rs::Dual::sin`
-- `src/autodiff.rs::Dual::sqrt`
 - `src/cache/chunked.rs::ChunkedMeshCache::dirty_chunks`
 - `src/cache/mod.rs::CacheConfig`
 - `src/cache/mod.rs::MeshCache`
@@ -132,13 +115,10 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/crispy.rs::BloomFilter::insert`
 - `src/crispy.rs::BloomFilter::new`
 - `src/destruction/debris.rs::DebrisConfig`
-- `src/eval/parallel.rs::eval_batch`
 - `src/gi/irradiance.rs::IrradianceGrid::memory_bytes`
 - `src/gi/irradiance.rs::IrradianceGrid::sample`
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
-- `src/interval.rs::Interval::contains`
-- `src/interval.rs::Interval::intersect`
 - `src/material.rs::Material::glass`
 - `src/material.rs::Material::new`
 - `src/material.rs::Material::with_roughness`
@@ -199,7 +179,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/npr/noise.rs::SimplexNoise::with_frequency`
 - `src/npr/noise.rs::WorleyNoise::with_frequency`
 - `src/npr/scene_composer.rs::SceneShaderBuilder::with_outline`
-- `src/optimize.rs::OptimizationStats`
 - `src/physics_bridge.rs::CompiledSdfField`
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
 - `src/physics_bridge.rs::CompiledSdfField::from_arc`
@@ -213,16 +192,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/sim_bridge.rs::SimulatedSdf::new`
 - `src/sim_bridge.rs::SimulatedSdf::normal`
 - `src/sim_bridge.rs::SimulatedSdf::update`
-- `src/soa.rs::AlignedVec::as_mut_ptr`
-- `src/soa.rs::AlignedVec::as_ptr`
-- `src/soa.rs::AlignedVec::clear`
-- `src/soa.rs::AlignedVec::is_empty`
-- `src/soa.rs::SoADistances::as_slice`
-- `src/soa.rs::SoADistances::is_empty`
-- `src/soa.rs::SoADistances::len`
-- `src/soa.rs::SoAPoints::clear`
-- `src/soa.rs::SoAPoints::get`
-- `src/soa.rs::SoAPoints::iter`
 - `src/svo/build.rs::build_svo`
 - `src/svo/linearize.rs::LinearizedSvo`
 - `src/svo/linearize.rs::LinearizedSvo::as_bytes`
@@ -271,43 +240,12 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (597)
+## L0 — unreached (537)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
 - `src/asp_bridge.rs::decode_sdf_i_packet`
 - `src/asp_bridge.rs::estimate_packet_size`
-- `src/autodiff.rs::Dual`
-- `src/autodiff.rs::Dual3`
-- `src/autodiff.rs::Dual3::abs`
-- `src/autodiff.rs::Dual3::clamp`
-- `src/autodiff.rs::Dual3::constant`
-- `src/autodiff.rs::Dual3::from_val_grad`
-- `src/autodiff.rs::Dual3::gradient`
-- `src/autodiff.rs::Dual3::gradient_magnitude`
-- `src/autodiff.rs::Dual3::length2`
-- `src/autodiff.rs::Dual3::length3`
-- `src/autodiff.rs::Dual3::max`
-- `src/autodiff.rs::Dual3::min`
-- `src/autodiff.rs::Dual3::sqrt`
-- `src/autodiff.rs::Dual::abs`
-- `src/autodiff.rs::Dual::clamp`
-- `src/autodiff.rs::Dual::constant`
-- `src/autodiff.rs::Dual::cos`
-- `src/autodiff.rs::Dual::max`
-- `src/autodiff.rs::Dual::min`
-- `src/autodiff.rs::Dual::sin`
-- `src/autodiff.rs::Dual::sqrt`
-- `src/autodiff.rs::Dual::variable`
-- `src/autodiff.rs::dual3_box`
-- `src/autodiff.rs::dual3_plane`
-- `src/autodiff.rs::dual3_point`
-- `src/autodiff.rs::dual3_sphere`
-- `src/autodiff.rs::dual3_torus`
-- `src/autodiff.rs::eval_dual3`
-- `src/autodiff.rs::eval_with_gradient`
-- `src/autodiff.rs::gaussian_curvature`
-- `src/autodiff.rs::principal_curvatures`
 - `src/cache/chunked.rs::ChunkedMeshCache::cached_chunks`
 - `src/cache/chunked.rs::ChunkedMeshCache::chunk_bounds`
 - `src/cache/chunked.rs::ChunkedMeshCache::dirty_chunks`
@@ -379,7 +317,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/eval_bvh.rs::CompiledSdfBvh::memory_size`
 - `src/compiled/eval_bvh.rs::CompiledSdfBvh::refit_all_from_bytecode`
 - `src/compiled/eval_simd.rs::eval_gradient_simd`
-- `src/compiled/eval_soa.rs::eval_compiled_batch_soa_into`
 - `src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM`
 - `src/compiled/glsl/render_pipeline.rs::DESTRUCTION_SYSTEM`
 - `src/compiled/glsl/render_pipeline.rs::DESTRUCTION_UNIFORMS`
@@ -540,12 +477,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/destruction/mod.rs::MutableVoxelGrid::set_distance`
 - `src/destruction/operations.rs::carve_batch`
 - `src/destruction/operations.rs::explode`
-- `src/eval/mod.rs::gradient`
-- `src/eval/parallel.rs::eval_batch`
-- `src/eval/parallel.rs::eval_grid`
-- `src/eval/parallel.rs::eval_grid_with_normals`
-- `src/eval/parallel.rs::grid_coords`
-- `src/eval/parallel.rs::grid_index`
 - `src/gi/cone_trace.rs::trace_hemisphere`
 - `src/gi/irradiance.rs::IrradianceGrid::get_probe`
 - `src/gi/irradiance.rs::IrradianceGrid::get_probe_mut`
@@ -555,11 +486,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
 - `src/gi/mod.rs::PointLight`
-- `src/interval.rs::Interval::contains`
-- `src/interval.rs::Interval::intersect`
-- `src/interval.rs::Interval::is_negative`
-- `src/interval.rs::Interval::is_positive`
-- `src/interval.rs::Interval::overlaps`
 - `src/material.rs::Material::dielectric`
 - `src/material.rs::Material::emissive`
 - `src/material.rs::Material::glass`
@@ -734,8 +660,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/npr/scene_composer.rs::SceneShaderBuilder::with_camera`
 - `src/npr/scene_composer.rs::SceneShaderBuilder::with_outline`
 - `src/npr/scene_composer.rs::SceneShaderBuilder::with_shading`
-- `src/optimize.rs::OptimizationStats`
-- `src/optimize.rs::optimization_stats`
 - `src/physics_bridge.rs::CompiledSdfField`
 - `src/physics_bridge.rs::CompiledSdfField::arc`
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
@@ -768,20 +692,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/sim_bridge.rs::attach_physics`
 - `src/sim_bridge.rs::gpu_mesh_with_physics`
 - `src/sim_bridge.rs::simulate_sdf`
-- `src/soa.rs::AlignedVec::as_mut_ptr`
-- `src/soa.rs::AlignedVec::as_ptr`
-- `src/soa.rs::AlignedVec::clear`
-- `src/soa.rs::AlignedVec::is_empty`
-- `src/soa.rs::SIMD_ALIGNMENT`
-- `src/soa.rs::SoADistances::as_slice`
-- `src/soa.rs::SoADistances::is_empty`
-- `src/soa.rs::SoADistances::len`
-- `src/soa.rs::SoADistances::store_simd_unchecked`
-- `src/soa.rs::SoAPoints::as_ptrs`
-- `src/soa.rs::SoAPoints::clear`
-- `src/soa.rs::SoAPoints::get`
-- `src/soa.rs::SoAPoints::iter`
-- `src/soa.rs::SoAPoints::load_simd_unchecked`
 - `src/svo/build.rs::build_svo`
 - `src/svo/linearize.rs::LinearizedSvo`
 - `src/svo/linearize.rs::LinearizedSvo::as_bytes`
@@ -849,7 +759,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/terrain/splatmap.rs::Splatmap::normalize`
 - `src/terrain/splatmap.rs::Splatmap::set_weight`
 - `src/texture/fitting.rs::reconstruct`
-- `src/tight_aabb.rs::TightAabbConfig::preset_medium`
 - `src/volume/bake.rs::bake_volume_compiled`
 - `src/volume/bake.rs::bake_volume_with_normals`
 - `src/volume/export.rs::DdsFormat`
@@ -893,14 +802,15 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (624)
+## L1 — example-only (681)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
-- `src/autodiff.rs`: `eval_hessian`, `mean_curvature`
+- `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::world_to_chunk`
 - `src/collision.rs`: `ContactManifold`, `SdfContact`, `compute_manifold`, `sdf_ccd`, `sdf_closest_point`, `sdf_collide`, `sdf_distance`, `sdf_overlap`
 - `src/compiled/compiler.rs`: `CompiledSdf::instructions`
 - `src/compiled/eval_bvh.rs`: `CompiledSdfBvh::compile`, `CompiledSdfBvh::refit_partial_from_bytecode`, `eval_compiled_bvh`
+- `src/compiled/eval_soa.rs`: `eval_compiled_batch_soa_into`
 - `src/compiled/glsl/transpiler.rs`: `GlslShader::get_eval_function`
 - `src/compiled/hlsl/transpiler.rs`: `HlslShader::get_eval_function`
 - `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::new`
@@ -914,9 +824,12 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`
 - `src/crispy.rs`: `fnv1a_hash`
 - `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `tree_diff`, `tree_hash`
+- `src/eval/mod.rs`: `gradient`
+- `src/eval/parallel.rs`: `eval_batch`, `eval_grid`, `eval_grid_with_normals`, `grid_coords`, `grid_index`
 - `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
 - `src/heatmap.rs`: `ColorMap`, `Heatmap`, `Heatmap::inside_pixel_count`, `Heatmap::sample`, `Heatmap::surface_pixel_count`, `HeatmapConfig`, `SlicePlane`, `generate_heatmap`, `heatmap_to_rgba`
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::bindings_of`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
+- `src/interval.rs`: `Interval::intersect`, `Interval::overlaps`
 - `src/io/abm.rs`: `read_abm_header`
 - `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
 - `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`
@@ -985,6 +898,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/operations/intersection.rs`: `sdf_intersection_multi`
 - `src/operations/smooth.rs`: `sdf_smooth_intersection_rk`, `sdf_smooth_subtraction_rk`, `sdf_smooth_union_rk`, `smooth_min_cubic`, `smooth_min_exp`, `smooth_min_root`
 - `src/operations/union.rs`: `sdf_union_multi`
+- `src/optimize.rs`: `OptimizationStats`, `optimization_stats`
 - `src/primitives/capsule.rs`: `sdf_capsule_horizontal`, `sdf_capsule_vertical`
 - `src/primitives/cylinder.rs`: `sdf_cylinder_capped`, `sdf_cylinder_infinite`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
@@ -993,7 +907,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
-- `src/tight_aabb.rs`: `compute_tight_aabb`
+- `src/soa.rs`: `AlignedVec::as_mut_ptr`, `AlignedVec::as_ptr`, `AlignedVec::clear`, `AlignedVec::is_empty`, `SIMD_ALIGNMENT`, `SoADistances::as_slice`, `SoADistances::is_empty`, `SoADistances::len`, `SoADistances::store_simd_unchecked`, `SoAPoints::as_ptrs`, `SoAPoints::clear`, `SoAPoints::get`, `SoAPoints::iter`, `SoAPoints::load_simd_unchecked`
+- `src/tight_aabb.rs`: `TightAabbConfig::preset_medium`, `compute_tight_aabb`
 - `src/transforms/rotate.rs`: `transform_rotate_euler`
 - `src/transforms/scale.rs`: `transform_scale_inverse`
 - `src/transforms/translate.rs`: `transform_translate_inverse`

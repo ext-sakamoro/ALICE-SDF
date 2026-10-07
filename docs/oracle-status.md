@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 521 |
+| 🟢 Not ignored | 540 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **521** |
+| **Total** | **540** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (521)
+## 🟢 Not ignored (540)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -57,6 +57,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_primitive_closed_form_oracle.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
+| `test_autodiff_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_mesh_codec_oracle.rs` | 6 |
 | `test_mesh_orientation.rs` | 6 |
@@ -71,16 +72,20 @@ Per-file counts (the test names are in `tests/`):
 | `test_step_export_oracle.rs` | 5 |
 | `test_constraint_oracle.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
+| `test_eval_grid_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
+| `test_soa_oracle.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
+| `test_optimize_stats_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
 | `noise_shader_validate.rs` | 2 |
+| `test_interval_predicate_oracle.rs` | 2 |
 | `test_interval_soundness.rs` | 2 |
 | `test_msl_metal_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
