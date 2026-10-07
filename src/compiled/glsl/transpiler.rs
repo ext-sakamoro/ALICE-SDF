@@ -245,7 +245,7 @@ impl GlslShader {
     /// **The output is GLSL syntax (`vec3`, `mix`, ...) and does not compile in
     /// Unity Shader Graph, which takes HLSL.** A `GlslShader` holds only the
     /// GLSL source, so it cannot produce the HLSL; transpile the same node with
-    /// [`crate::compiled::HlslShader`] and call its `to_unity_custom_function`,
+    /// `HlslShader` (`hlsl` feature) and call its `to_unity_custom_function`,
     /// whose output is compiled in the test suite. Not recommended for new
     /// code; kept unchanged for existing callers.
     pub fn to_unity_custom_function(&self) -> String {
@@ -337,7 +337,7 @@ void main() {{
     /// | 2 | `uniform Constants { uint point_count; }` |
     /// | 3 | Dynamic mode only: `uniform SdfParams { vec4 params[1024]; }`, laid out as [`Self::extract_params`] |
     ///
-    /// Bindings 0-2 are the layout [`crate::compiled::GpuEvaluator`] binds, so
+    /// Bindings 0-2 are the layout `GpuEvaluator` (`gpu` feature) binds, so
     /// a Hardcoded shader runs through `GpuEvaluator::from_glsl_compute`.
     pub fn to_vulkan_compute_shader(&self) -> String {
         let params_decl = if self.mode == GlslTranspileMode::Dynamic {
@@ -518,7 +518,7 @@ void main() {{
     /// **The embedded SDF functions are GLSL syntax (`vec3`, `mix`, ...) inside
     /// an `.hlsl` file, so the output does not compile in Unity Shader Graph.**
     /// A `GlslShader` holds only the GLSL source, so it cannot produce the
-    /// HLSL; transpile the same node with [`crate::compiled::HlslShader`] and
+    /// HLSL; transpile the same node with `HlslShader` (`hlsl` feature) and
     /// call its `export_unity_shader_graph`, whose output is compiled in the
     /// test suite. Not recommended for new code; kept unchanged for existing
     /// callers.
