@@ -194,6 +194,35 @@ fn main() {
         nanite.bounds.screen_error(eye, levels[0].max_error, 1080.0)
     );
 
+    // cluster-LOD cut: the clusters drawn from a viewpoint cover the surface
+    // once; a smaller error budget (radians) or a closer eye draws more
+    let tris_of = |ids: &[u32]| -> usize {
+        ids.iter()
+            .map(|&id| nanite.get_cluster(id).map_or(0, |c| c.triangle_count()))
+            .sum()
+    };
+    let mut prev = 0;
+    for budget in [0.05f32, 0.01, 0.002] {
+        let cut = nanite.select_clusters(eye, budget);
+        let fine = cut
+            .iter()
+            .filter(|&&id| {
+                nanite
+                    .get_cluster(id)
+                    .is_some_and(|c| c.should_render(eye, budget))
+            })
+            .count();
+        println!(
+            "  cut at {budget} rad: {} clusters, {} triangles ({fine} pass should_render on their own bounds)",
+            cut.len(),
+            tris_of(&cut)
+        );
+        assert!(!cut.is_empty() && tris_of(&cut) >= prev);
+        prev = tris_of(&cut);
+    }
+    let far = nanite.select_clusters(Vec3::new(0.0, 0.0, 500.0), 0.002);
+    assert!(tris_of(&far) <= prev);
+
     // --- meshlets and back-face culling ------------------------------------
     let mesh = chain.levels[1].mesh.clone();
     let v1 = build_meshlets(&mesh, &MeshletConfig::default());

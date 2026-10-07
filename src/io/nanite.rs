@@ -18,7 +18,23 @@ use std::path::Path;
 pub const NANITE_MAGIC: &[u8; 4] = b"NANT";
 
 /// Current binary format version
-pub const NANITE_VERSION: u32 = 1;
+///
+/// The byte layout of versions 1 and 2 is the same; the meaning of three
+/// fields changed, so a reader must check the version and reject (or convert)
+/// version 1 files instead of reading them as version 2:
+///
+/// - version 2: a cluster's `geometric_error` is the measured surface error of
+///   its group, never smaller than the errors of its child groups; the parent
+///   ids are the clusters of the enclosing region at the next coarser level
+///   with geometry, the child ids the clusters of the regions it encloses; the
+///   group count counts one group per region and level. The cut that draws a
+///   cluster when its group's projected error is within the threshold and its
+///   parent group's is not covers the surface exactly once
+/// - version 1: `geometric_error` was a size heuristic that could be smaller
+///   for a parent than for its child, the parent / child ids linked clusters of
+///   adjacent levels whose bounding spheres overlapped, and there was one group
+///   per level
+pub const NANITE_VERSION: u32 = 2;
 
 /// Configuration for Nanite export
 #[derive(Debug, Clone)]

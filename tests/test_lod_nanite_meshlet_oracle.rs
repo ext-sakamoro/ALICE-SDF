@@ -7,7 +7,11 @@
 //!   from (the mesh is regenerated here with the same resolution)
 //! - capacity limits, local index ranges and the bounding spheres / AABBs are
 //!   recomputed from the vertex positions
-//! - the LOD DAG is compared with a brute-force O(n²) sphere-overlap scan
+//! - the Nanite groups and DAG are compared with octree regions rebuilt from
+//!   the documented assignment rule (centroid cell, depth per level, nearest
+//!   enclosing coarser region), and the cut with the selection rule evaluated
+//!   in f64; cluster errors with the exact distance of their triangles to the
+//!   unit sphere (closed form) and a chord bound
 //! - the LOD error bound is checked with the two-sided Hausdorff distance to
 //!   the exact unit sphere (mesh → sphere in closed form, sphere → mesh with a
 //!   brute-force point-triangle distance)
@@ -536,53 +540,6 @@ fn nanite_levels_are_partitions_of_the_marching_cubes_mesh() {
     assert!(checks > 0);
 }
 
-/// The grid-bucketed DAG must hold exactly the parent/child pairs that a
-/// brute-force scan finds: adjacent levels whose bounding spheres overlap
-#[test]
-fn nanite_dag_matches_the_brute_force_overlap_scan() {
-    let mut checks = 0;
-    for sdf in [SdfNode::sphere(1.0), SdfNode::torus(1.0, 0.3)] {
-        let n = nanite(
-            &sdf,
-            &NaniteConfig {
-                lod_levels: 4,
-                base_resolution: 48,
-                max_triangles_per_cluster: 48,
-                ..NaniteConfig::default()
-            },
-        );
-        let mut want: Vec<(u32, u32)> = Vec::new();
-        for p in &n.clusters {
-            for c in &n.clusters {
-                if p.lod_level == c.lod_level + 1
-                    && (p.bounds.center - c.bounds.center).length()
-                        < p.bounds.radius + c.bounds.radius
-                {
-                    want.push((p.id, c.id));
-                }
-            }
-        }
-        let mut got_children: Vec<(u32, u32)> = n
-            .clusters
-            .iter()
-            .flat_map(|p| p.child_ids.iter().map(move |&c| (p.id, c)))
-            .collect();
-        let mut got_parents: Vec<(u32, u32)> = n
-            .clusters
-            .iter()
-            .flat_map(|c| c.parent_ids.iter().map(move |&p| (p, c.id)))
-            .collect();
-        want.sort_unstable();
-        got_children.sort_unstable();
-        got_parents.sort_unstable();
-        assert!(!want.is_empty());
-        assert_eq!(got_children, want);
-        assert_eq!(got_parents, want);
-        checks += want.len();
-    }
-    assert!(checks > 0);
-}
-
 #[test]
 fn nanite_presets_increase_in_detail() {
     let (p, m, h) = (
@@ -605,18 +562,492 @@ fn nanite_presets_increase_in_detail() {
     assert!(checks > 0);
 }
 
-/// Reproduces the broken Nanite cut (kept until the cluster error and the cut
-/// are redesigned): a correct cut covers the surface at every distance, and a
-/// parent cluster's error is never below the error of its children.
+// --- the region tree, recomputed independently ------------------------------
+//
+// The documented rule (`generate_nanite_mesh`): the root cube starts at the
+// minimum corner of the meshing bounds and its edge is their largest extent;
+// level k uses octree depth min(depth_{k-1}, max(0, round(log2(res_k / 8))));
+// a triangle belongs to the cell holding its centroid (a + b + c) / 3, index
+// floor((centroid - origin) * (2^depth / edge)) per axis, clamped. The parent
+// of a region is the enclosing cell at the nearest coarser level that has
+// triangles. Everything below is rebuilt from that rule and the marching-cubes
+// meshes, without reading the groups or the DAG of the generated mesh.
+
+fn expected_depths(resolutions: &[u32]) -> Vec<u32> {
+    let mut out = Vec::new();
+    let mut limit = u32::MAX;
+    for &r in resolutions {
+        let d = ((f64::from(r) / 8.0).log2().round().max(0.0) as u32).min(limit);
+        out.push(d);
+        limit = d;
+    }
+    out
+}
+
+fn cell_of(t: [Vec3; 3], origin: Vec3, side: f32, depth: u32) -> [u32; 3] {
+    let n = 1u32 << depth;
+    let rel = ((t[0] + t[1] + t[2]) / 3.0 - origin) * (n as f32 / side);
+    let idx = |x: f32| (x.floor().max(0.0) as u32).min(n - 1);
+    [idx(rel.x), idx(rel.y), idx(rel.z)]
+}
+
+fn cluster_tris(
+    c: &alice_sdf::mesh::nanite::NaniteCluster,
+) -> impl Iterator<Item = [Vec3; 3]> + '_ {
+    c.triangles.iter().map(move |t| {
+        [
+            c.vertices[t.a as usize].position,
+            c.vertices[t.b as usize].position,
+            c.vertices[t.c as usize].position,
+        ]
+    })
+}
+
+type Cell = (u32, [u32; 3]);
+
+/// Expected regions: (level, cell) -> triangle multiset, and the parent map
+#[allow(clippy::type_complexity)]
+fn expected_regions(
+    sdf: &SdfNode,
+    n: &NaniteMesh,
+    lo: Vec3,
+    hi: Vec3,
+) -> (
+    std::collections::BTreeMap<Cell, Vec<[[u32; 3]; 3]>>,
+    std::collections::BTreeMap<Cell, Option<Cell>>,
+    usize,
+) {
+    use std::collections::BTreeMap;
+    let side = (hi - lo).max_element();
+    let res: Vec<u32> = n.lod_levels.iter().map(|l| l.resolution).collect();
+    let depths = expected_depths(&res);
+    let mut regions: BTreeMap<Cell, Vec<[Vec3; 3]>> = BTreeMap::new();
+    let mut straddling = 0;
+    for (l, &r) in n.lod_levels.iter().zip(&res) {
+        let d = depths[l.level as usize];
+        let m = mc(sdf, r, lo, hi);
+        for t in mesh_tris(&m) {
+            let c = cell_of(t, lo, side, d);
+            // a triangle whose vertices lie in different cells sits on a cell
+            // boundary; it must still land in exactly one region
+            let vc: Vec<[u32; 3]> = t.iter().map(|&p| cell_of([p, p, p], lo, side, d)).collect();
+            if vc.iter().any(|x| *x != vc[0]) {
+                straddling += 1;
+            }
+            regions.entry((l.level, c)).or_default().push(t);
+        }
+    }
+    let mut parent: BTreeMap<Cell, Option<Cell>> = BTreeMap::new();
+    for &(lvl, cell) in regions.keys() {
+        let d = depths[lvl as usize];
+        let p = n
+            .lod_levels
+            .iter()
+            .filter(|l| l.level > lvl)
+            .map(|l| {
+                let s = d - depths[l.level as usize];
+                (l.level, cell.map(|x| x >> s))
+            })
+            .find(|k| regions.contains_key(k));
+        parent.insert((lvl, cell), p);
+    }
+    let regions = regions
+        .into_iter()
+        .map(|(k, v)| (k, tri_multiset(v.into_iter())))
+        .collect();
+    (regions, parent, straddling)
+}
+
+/// The groups are exactly the octree cells of each level (every triangle in
+/// exactly one region, triangles on cell boundaries included), the DAG links
+/// each region to its enclosing region, errors never decrease towards the
+/// parent and a parent's sphere contains its children's.
 ///
-/// Measured before the redesign (sphere r=1, `medium_detail`): z=100 with
-/// threshold 0.1 selects 0 clusters, z=3 with threshold 0.01 selects only 8
-/// LOD-2 clusters (LOD 2 alone has 24). `should_render` answers "the error is
-/// too large", so the cut keeps the too-coarse side. Per-cluster errors of
-/// adjacent levels overlap (LOD 0 0.0047..0.0119, LOD 1 0.0097..0.0275) and a
-/// level that fits in one cluster uses another formula (LOD 4 jumps to 2.68).
+/// This replaces the previous oracle that compared the DAG with a brute-force
+/// scan of overlapping bounding spheres between adjacent levels: that was the
+/// old definition of parent and child, under which a child could belong to
+/// several parents with different errors and no cut could cover the surface
+/// exactly once.
 #[test]
-#[ignore = "src gap: nanite-cluster-cut — should_render/select_clusters keep the too-coarse side and a parent cluster's error can be below its child's"]
+fn nanite_groups_are_the_octree_regions_of_each_level() {
+    use std::collections::{BTreeMap, BTreeSet};
+    let (lo, hi) = (Vec3::splat(-2.0), Vec3::splat(2.0));
+    let mut checks = 0;
+    let mut straddling_total = 0;
+    // the last two have regions whose own measured error is below that of a
+    // child region, so the propagation of the error to the parent is exercised
+    for sdf in [
+        SdfNode::sphere(1.0),
+        SdfNode::torus(1.0, 0.3),
+        SdfNode::box3d(2.0, 1.0, 1.4).subtract(SdfNode::sphere(0.6)),
+        SdfNode::sphere(1.0).union(SdfNode::sphere(0.15).translate(1.1, 0.0, 0.0)),
+        SdfNode::gyroid(5.0, 0.05).intersection(SdfNode::sphere(1.6)),
+    ] {
+        let n = nanite(
+            &sdf,
+            &NaniteConfig {
+                lod_levels: 4,
+                base_resolution: 48,
+                max_triangles_per_cluster: 48,
+                use_tight_aabb: false,
+                ..NaniteConfig::default()
+            },
+        );
+        let (want, want_parent, straddling) = expected_regions(&sdf, &n, lo, hi);
+        straddling_total += straddling;
+        let side = (hi - lo).max_element();
+        let res: Vec<u32> = n.lod_levels.iter().map(|l| l.resolution).collect();
+        let depths = expected_depths(&res);
+
+        // group -> cell, from the triangles of its clusters
+        let mut cell_of_group: BTreeMap<u32, Cell> = BTreeMap::new();
+        let mut got: BTreeMap<Cell, Vec<[[u32; 3]; 3]>> = BTreeMap::new();
+        for g in &n.groups {
+            let d = depths[g.lod_level as usize];
+            let tris: Vec<[Vec3; 3]> = g
+                .cluster_ids
+                .iter()
+                .flat_map(|&id| cluster_tris(n.get_cluster(id).unwrap()).collect::<Vec<_>>())
+                .collect();
+            assert!(!tris.is_empty());
+            let cells: BTreeSet<[u32; 3]> = tris.iter().map(|&t| cell_of(t, lo, side, d)).collect();
+            assert_eq!(cells.len(), 1, "group {} spans {} cells", g.id, cells.len());
+            let key = (g.lod_level, *cells.iter().next().unwrap());
+            assert!(
+                got.insert(key, tri_multiset(tris.into_iter())).is_none(),
+                "two groups share {key:?}"
+            );
+            cell_of_group.insert(g.id, key);
+            for &id in &g.cluster_ids {
+                assert_eq!(n.get_cluster(id).unwrap().lod_level, g.lod_level);
+            }
+        }
+        assert_eq!(got.len(), want.len());
+        for (k, tris) in &want {
+            assert_eq!(got.get(k), Some(tris), "region {k:?}");
+            checks += tris.len();
+        }
+
+        // every cluster in exactly one group
+        let mut seen = BTreeSet::new();
+        for g in &n.groups {
+            for &id in &g.cluster_ids {
+                assert!(seen.insert(id));
+            }
+        }
+        assert_eq!(seen.len(), n.clusters.len());
+
+        // DAG: parent_ids = clusters of the expected parent region, child_ids =
+        // clusters of every region whose expected parent is this one
+        let group_at: BTreeMap<Cell, &alice_sdf::mesh::nanite::ClusterGroup> =
+            n.groups.iter().map(|g| (cell_of_group[&g.id], g)).collect();
+        for g in &n.groups {
+            let key = cell_of_group[&g.id];
+            let mut want_parents: Vec<u32> = want_parent[&key]
+                .map(|p| group_at[&p].cluster_ids.clone())
+                .unwrap_or_default();
+            want_parents.sort_unstable();
+            let mut want_children: Vec<u32> = want_parent
+                .iter()
+                .filter(|(_, p)| **p == Some(key))
+                .flat_map(|(c, _)| group_at[c].cluster_ids.clone())
+                .collect();
+            want_children.sort_unstable();
+            for &id in &g.cluster_ids {
+                let c = n.get_cluster(id).unwrap();
+                let mut p = c.parent_ids.clone();
+                p.sort_unstable();
+                let mut ch = c.child_ids.clone();
+                ch.sort_unstable();
+                assert_eq!(p, want_parents, "parents of cluster {id}");
+                assert_eq!(ch, want_children, "children of cluster {id}");
+                assert_eq!(c.geometric_error, g.max_error);
+                checks += 1;
+            }
+            if let Some(pk) = want_parent[&key] {
+                let pg = group_at[&pk];
+                assert!(
+                    pg.max_error >= g.max_error,
+                    "error drops towards the parent"
+                );
+                let reach = (g.bounds.center - pg.bounds.center).length() + g.bounds.radius;
+                assert!(
+                    reach <= pg.bounds.radius * (1.0 + 1e-6) + 1e-6,
+                    "child sphere sticks out"
+                );
+            }
+        }
+        // the parent relation holds at least one link per non-root level
+        assert!(want_parent.values().filter(|p| p.is_some()).count() > 0);
+    }
+    assert!(
+        straddling_total > 0,
+        "no triangle on a cell boundary was exercised"
+    );
+    assert!(checks > 0);
+}
+
+/// A centroid exactly on a cell plane goes to the cell above it, and a
+/// triangle whose vertices touch several cells is never duplicated: checked on
+/// meshes whose triangles straddle the planes of every octree depth
+#[test]
+fn nanite_boundary_triangles_land_in_one_region() {
+    let (lo, hi) = (Vec3::splat(-2.0), Vec3::splat(2.0));
+    // a box whose faces lie on the cell planes x = 0 and y = 0 of every depth
+    // and a sphere centred on a cell corner
+    let mut checks = 0;
+    for sdf in [SdfNode::box3d(1.0, 1.0, 0.75), SdfNode::sphere(0.9)] {
+        let n = nanite(
+            &sdf,
+            &NaniteConfig {
+                lod_levels: 3,
+                base_resolution: 32,
+                use_tight_aabb: false,
+                ..NaniteConfig::default()
+            },
+        );
+        let (want, _, straddling) = expected_regions(&sdf, &n, lo, hi);
+        assert!(straddling > 0);
+        // total triangles over all groups == total over the expected regions
+        let total_want: usize = want.values().map(|v| v.len()).sum();
+        let total_got: usize = n.clusters.iter().map(|c| c.triangle_count()).sum();
+        assert_eq!(
+            total_got, total_want,
+            "a boundary triangle was duplicated or lost"
+        );
+        // each triangle key occurs in exactly one group of its level
+        for l in &n.lod_levels {
+            let mut keys: Vec<[[u32; 3]; 3]> = n
+                .groups
+                .iter()
+                .filter(|g| g.lod_level == l.level)
+                .flat_map(|g| {
+                    tri_multiset(
+                        g.cluster_ids
+                            .iter()
+                            .flat_map(|&id| {
+                                cluster_tris(n.get_cluster(id).unwrap()).collect::<Vec<_>>()
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter(),
+                    )
+                })
+                .collect();
+            let len = keys.len();
+            keys.sort_unstable();
+            let reference = tri_multiset(mesh_tris(&mc(&sdf, l.resolution, lo, hi)));
+            assert_eq!(keys, reference);
+            checks += len;
+        }
+    }
+    assert!(checks > 0);
+}
+
+/// Exact one-sided distance from a triangle to the unit sphere: |p| is convex,
+/// so its maximum is at a vertex and its minimum at the closest point to O
+fn tri_err_unit_sphere([a, b, c]: [Vec3; 3]) -> f32 {
+    let far = a.length().max(b.length()).max(c.length());
+    let near = closest_on_triangle(Vec3::ZERO, a, b, c).length();
+    (far - 1.0).abs().max((1.0 - near).abs())
+}
+
+/// Chord bound: on a segment whose ends are at radius >= rho,
+/// |p| >= sqrt(rho² − (len/2)²); applying it twice (vertex to a point on the
+/// opposite edge) gives |p| >= sqrt(rho² − l²/2) on a triangle with longest
+/// edge l
+fn tri_chord_bound([a, b, c]: [Vec3; 3]) -> f32 {
+    let far = a.length().max(b.length()).max(c.length());
+    let rho = a.length().min(b.length()).min(c.length());
+    let l = (b - a).length().max((c - b).length()).max((a - c).length());
+    let inner = (rho * rho - 0.5 * l * l).max(0.0).sqrt();
+    (far - 1.0).max(1.0 - inner)
+}
+
+fn group_tris<'a>(
+    n: &'a NaniteMesh,
+    g: &'a alice_sdf::mesh::nanite::ClusterGroup,
+) -> Vec<[Vec3; 3]> {
+    g.cluster_ids
+        .iter()
+        .flat_map(|&id| cluster_tris(n.get_cluster(id).unwrap()).collect::<Vec<_>>())
+        .collect()
+}
+
+/// The cluster error is the measured surface error: for the unit sphere every
+/// group's error equals the exact one-sided Hausdorff distance of its own
+/// triangles to the sphere (closed form, per triangle), raised to the errors
+/// of its children, and stays under the chord bound
+#[test]
+fn nanite_cluster_error_is_the_measured_distance_to_the_surface() {
+    let n = nanite(&SdfNode::sphere(1.0), &NaniteConfig::medium_detail());
+    let mut by_cluster = std::collections::HashMap::new();
+    for g in &n.groups {
+        for &id in &g.cluster_ids {
+            by_cluster.insert(id, g);
+        }
+    }
+    // own exact errors, then propagate through the child links (finest first)
+    let mut want: std::collections::HashMap<u32, f64> = std::collections::HashMap::new();
+    let mut checks = 0;
+    let mut groups: Vec<_> = n.groups.iter().collect();
+    groups.sort_by_key(|g| g.lod_level);
+    for g in groups {
+        let tris = group_tris(&n, g);
+        let own = tris
+            .iter()
+            .map(|&t| tri_err_unit_sphere(t))
+            .fold(0.0f32, f32::max);
+        let chord = tris
+            .iter()
+            .map(|&t| tri_chord_bound(t))
+            .fold(0.0f32, f32::max);
+        assert!(
+            own <= chord * (1.0 + 1e-5) + 1e-6,
+            "own {own} above the chord bound {chord}"
+        );
+        let first = n.get_cluster(g.cluster_ids[0]).unwrap();
+        let kids = first
+            .child_ids
+            .iter()
+            .map(|id| want[&by_cluster[id].id])
+            .fold(0.0f64, f64::max);
+        let e = f64::from(own).max(kids);
+        want.insert(g.id, e);
+        let got = f64::from(g.max_error);
+        assert!(
+            (got - e).abs() <= 2e-3 * e + 1e-6,
+            "group {} at LOD {}: error {got} vs exact {e}",
+            g.id,
+            g.lod_level
+        );
+        // the old size heuristic was about 100 times the real error
+        assert!(got <= 1.01 * e + 1e-6);
+        checks += 1;
+    }
+    for c in &n.clusters {
+        assert_eq!(c.geometric_error, by_cluster[&c.id].max_error);
+    }
+    // the level summaries hold the largest group error of the level
+    for l in &n.lod_levels {
+        let m = n
+            .groups
+            .iter()
+            .filter(|g| g.lod_level == l.level)
+            .map(|g| g.max_error)
+            .fold(0.0f32, f32::max);
+        assert_eq!(l.max_error, m);
+    }
+    assert!(checks > 0);
+}
+
+/// Clusters respect the vertex cap even when the triangle budget alone would
+/// let them exceed it
+#[test]
+fn nanite_clusters_respect_the_vertex_cap() {
+    let mut checks = 0;
+    let mut largest = 0;
+    for sdf in vertex_heavy_shapes() {
+        let n = nanite(
+            &sdf,
+            &NaniteConfig {
+                lod_levels: 2,
+                base_resolution: 48,
+                max_triangles_per_cluster: 4096,
+                use_tight_aabb: false,
+                ..NaniteConfig::default()
+            },
+        );
+        // some region holds more vertices than one cluster may
+        let region_max = n
+            .groups
+            .iter()
+            .map(|g| {
+                g.cluster_ids
+                    .iter()
+                    .map(|&id| n.get_cluster(id).unwrap().vertex_count())
+                    .sum::<usize>()
+            })
+            .max()
+            .unwrap();
+        assert!(region_max > CLUSTER_MAX_VERTICES, "region {region_max}");
+        for c in &n.clusters {
+            assert!(
+                c.vertex_count() <= CLUSTER_MAX_VERTICES,
+                "{} vertices",
+                c.vertex_count()
+            );
+            largest = largest.max(c.vertex_count());
+            checks += 1;
+        }
+    }
+    // the cap was binding: some cluster is filled close to it
+    assert!(
+        largest > CLUSTER_MAX_VERTICES - 16,
+        "largest cluster {largest}"
+    );
+    assert!(checks > 0);
+}
+
+fn area_of(n: &NaniteMesh, ids: &[u32]) -> f64 {
+    ids.iter()
+        .flat_map(|&id| cluster_tris(n.get_cluster(id).unwrap()).collect::<Vec<_>>())
+        .map(|[a, b, c]| f64::from((b - a).cross(c - a).length()) * 0.5)
+        .sum()
+}
+
+/// Groups selected from the given cluster ids (asserting whole groups)
+fn selected_groups(n: &NaniteMesh, sel: &[u32]) -> std::collections::BTreeSet<u32> {
+    let set: std::collections::BTreeSet<u32> = sel.iter().copied().collect();
+    let mut out = std::collections::BTreeSet::new();
+    for g in &n.groups {
+        let k = g.cluster_ids.iter().filter(|id| set.contains(id)).count();
+        assert!(
+            k == 0 || k == g.cluster_ids.len(),
+            "group {} partly selected",
+            g.id
+        );
+        if k > 0 {
+            out.insert(g.id);
+        }
+    }
+    out
+}
+
+fn parent_group(n: &NaniteMesh, g: &alice_sdf::mesh::nanite::ClusterGroup) -> Option<u32> {
+    let pid = *n
+        .get_cluster(g.cluster_ids[0])
+        .unwrap()
+        .parent_ids
+        .first()?;
+    n.groups
+        .iter()
+        .find(|h| h.cluster_ids.contains(&pid))
+        .map(|h| h.id)
+}
+
+/// Projected error of a group in f64: error over the distance to its sphere
+fn projected(g: &alice_sdf::mesh::nanite::ClusterGroup, eye: Vec3) -> f64 {
+    let e = f64::from(g.max_error);
+    if e <= 0.0 {
+        return 0.0;
+    }
+    let d = f64::from((g.bounds.center - eye).length()) - f64::from(g.bounds.radius);
+    if d <= 0.0 {
+        f64::INFINITY
+    } else {
+        e / d
+    }
+}
+
+/// The cut covers the surface exactly once at every distance and threshold
+///
+/// - every path from a leaf group to the root holds exactly one selected group
+/// - a group is selected exactly when it is fine enough (projected error within
+///   the threshold, or no children) and its parent is not
+/// - the selected area lies between the areas of the spheres of radius 1 - e
+///   and 1 + e (e = largest selected error), and within 20 % of 4π
+/// - parent errors are never below the errors of their children
+#[test]
 fn nanite_cut_covers_the_surface_at_every_distance() {
     let n = nanite(&SdfNode::sphere(1.0), &NaniteConfig::medium_detail());
     for p in &n.clusters {
@@ -624,31 +1055,201 @@ fn nanite_cut_covers_the_surface_at_every_distance() {
             assert!(p.geometric_error >= n.get_cluster(c).unwrap().geometric_error);
         }
     }
-    for d in [1.5f32, 3.0, 10.0, 100.0] {
-        for th in [0.001f32, 0.01, 0.1] {
-            let sel = n.select_clusters(Vec3::new(0.0, 0.0, d), th);
-            let area: f32 = sel
+    let leaf = |g: &alice_sdf::mesh::nanite::ClusterGroup| {
+        n.get_cluster(g.cluster_ids[0])
+            .unwrap()
+            .child_ids
+            .is_empty()
+    };
+    let by_id: std::collections::HashMap<u32, &alice_sdf::mesh::nanite::ClusterGroup> =
+        n.groups.iter().map(|g| (g.id, g)).collect();
+    let mut checks = 0;
+    let mut levels_used = std::collections::BTreeSet::new();
+    for d in [1.5f32, 3.0, 10.0, 30.0, 100.0, 1000.0] {
+        for th in [1e-4f32, 1e-3, 0.01, 0.1] {
+            let eye = Vec3::new(0.0, 0.0, d);
+            let sel = n.select_clusters(eye, th);
+            assert!(!sel.is_empty(), "d={d} th={th}: nothing selected");
+            let groups = selected_groups(&n, &sel);
+            // exactly one selected group on every leaf-to-root path
+            for g in n.groups.iter().filter(|g| leaf(g)) {
+                let mut count = 0;
+                let mut cur = Some(g.id);
+                while let Some(id) = cur {
+                    count += usize::from(groups.contains(&id));
+                    cur = parent_group(&n, by_id[&id]);
+                }
+                assert_eq!(
+                    count, 1,
+                    "d={d} th={th}: path from group {} selects {count}",
+                    g.id
+                );
+                checks += 1;
+            }
+            // the selection rule, evaluated independently in f64
+            for g in &n.groups {
+                let fine = |h: &alice_sdf::mesh::nanite::ClusterGroup| {
+                    leaf(h) || projected(h, eye) <= f64::from(th)
+                };
+                let parent_fine = parent_group(&n, g).is_some_and(|p| fine(by_id[&p]));
+                assert_eq!(
+                    groups.contains(&g.id),
+                    fine(g) && !parent_fine,
+                    "group {}",
+                    g.id
+                );
+                if groups.contains(&g.id) {
+                    levels_used.insert(g.lod_level);
+                }
+            }
+            // area between the nested spheres of the selected error
+            let e = groups
                 .iter()
-                .map(|&id| {
-                    let c = n.get_cluster(id).unwrap();
-                    c.triangles
-                        .iter()
-                        .map(|t| {
-                            let a = c.vertices[t.a as usize].position;
-                            let b = c.vertices[t.b as usize].position;
-                            let cc = c.vertices[t.c as usize].position;
-                            (b - a).cross(cc - a).length() * 0.5
-                        })
-                        .sum::<f32>()
-                })
-                .sum();
-            let sphere = 4.0 * std::f32::consts::PI;
+                .map(|id| f64::from(by_id[id].max_error))
+                .fold(0.0f64, f64::max);
+            let area = area_of(&n, &sel);
+            let sphere = 4.0 * std::f64::consts::PI;
+            let (lo, hi) = (sphere * (1.0 - e).powi(2), sphere * (1.0 + e).powi(2));
             assert!(
-                (area - sphere).abs() < 0.2 * sphere,
-                "d={d} th={th}: selected area {area} vs {sphere}"
+                area >= lo * 0.98 && area <= hi * 1.02,
+                "d={d} th={th}: area {area} outside [{lo}, {hi}] (e={e})"
             );
+            if e <= 0.1 {
+                assert!(
+                    (area - sphere).abs() < 0.2 * sphere,
+                    "d={d} th={th}: selected area {area} vs {sphere}"
+                );
+            }
+            checks += 1;
         }
     }
+    // the sweep reaches both the finest and the coarsest level
+    assert!(levels_used.contains(&0));
+    assert!(levels_used.contains(&n.lod_levels.last().unwrap().level));
+    assert!(checks > 0);
+}
+
+/// Lowering the threshold refines the cut and never selects fewer triangles;
+/// moving away coarsens it and never selects more
+#[test]
+fn nanite_cut_refines_with_the_threshold_and_coarsens_with_distance() {
+    let n = nanite(&SdfNode::sphere(1.0), &NaniteConfig::medium_detail());
+    let tris = |sel: &[u32]| -> usize {
+        sel.iter()
+            .map(|&id| n.get_cluster(id).unwrap().triangle_count())
+            .sum()
+    };
+    let by_id: std::collections::HashMap<u32, &alice_sdf::mesh::nanite::ClusterGroup> =
+        n.groups.iter().map(|g| (g.id, g)).collect();
+    // ancestors of a group, itself included
+    let ancestors = |id: u32| {
+        let mut out = vec![id];
+        let mut cur = parent_group(&n, by_id[&id]);
+        while let Some(p) = cur {
+            out.push(p);
+            cur = parent_group(&n, by_id[&p]);
+        }
+        out
+    };
+    let mut checks = 0;
+    let mut grew = 0;
+    for d in [2.0f32, 6.0, 40.0] {
+        let eye = Vec3::new(0.3, -0.2, d);
+        let mut prev: Option<(usize, std::collections::BTreeSet<u32>)> = None;
+        for th in [
+            1.0f32, 0.3, 0.1, 0.03, 0.01, 0.003, 0.001, 0.0003, 0.0001, 0.0,
+        ] {
+            let sel = n.select_clusters(eye, th);
+            let groups = selected_groups(&n, &sel);
+            let t = tris(&sel);
+            if let Some((pt, pg)) = &prev {
+                assert!(t >= *pt, "d={d} th={th}: {t} < {pt} triangles");
+                grew += usize::from(t > *pt);
+                // refinement: every newly selected group descends from a group
+                // selected at the larger threshold (or is that group)
+                for &g in &groups {
+                    assert!(
+                        ancestors(g).iter().any(|a| pg.contains(a)),
+                        "group {g} not under the coarser cut"
+                    );
+                }
+            }
+            prev = Some((t, groups));
+            checks += 1;
+        }
+        // threshold 0 keeps only the finest level
+        assert!(sel_levels(&n, &n.select_clusters(eye, 0.0))
+            .iter()
+            .all(|&l| l == 0));
+    }
+    assert!(grew > 0);
+    for th in [0.001f32, 0.01, 0.05] {
+        let mut prev = usize::MAX;
+        for d in [1.5f32, 2.0, 4.0, 8.0, 16.0, 64.0, 256.0, 4096.0] {
+            let t = tris(&n.select_clusters(Vec3::new(0.0, 0.0, d), th));
+            assert!(t <= prev, "th={th} d={d}: {t} > {prev} triangles");
+            prev = t;
+            checks += 1;
+        }
+    }
+    assert!(checks > 0);
+}
+
+fn sel_levels(n: &NaniteMesh, sel: &[u32]) -> Vec<u32> {
+    sel.iter()
+        .map(|&id| n.get_cluster(id).unwrap().lod_level)
+        .collect()
+}
+
+/// `should_render` is the "fine enough" half of the cut: error over the
+/// distance to the bounding sphere within the threshold
+#[test]
+fn nanite_should_render_is_the_fine_enough_test() {
+    let n = nanite(&SdfNode::sphere(1.0), &NaniteConfig::preview());
+    let mut checks = 0;
+    let (mut yes, mut no) = (0, 0);
+    for c in &n.clusters {
+        for d in [1.2f32, 3.0, 30.0] {
+            for th in [1e-3f32, 1e-2, 1e-1] {
+                let eye = Vec3::new(0.0, d, 0.0);
+                let dist = f64::from((c.bounds.center - eye).length()) - f64::from(c.bounds.radius);
+                let e = f64::from(c.geometric_error);
+                let want = if e <= 0.0 {
+                    true
+                } else if dist <= 0.0 {
+                    false
+                } else {
+                    e / dist <= f64::from(th)
+                };
+                let got = c.should_render(eye, th);
+                assert_eq!(got, want, "cluster {} d={d} th={th}", c.id);
+                if got {
+                    yes += 1;
+                } else {
+                    no += 1;
+                }
+                checks += 1;
+            }
+        }
+    }
+    assert!(yes > 0 && no > 0);
+    assert!(checks > 0);
+}
+
+/// The `.nanite` layout is unchanged but the meaning of the error and DAG
+/// fields is not, so the format version moved to 2
+#[test]
+fn nanite_format_version_marks_the_new_dag() {
+    assert_eq!(alice_sdf::io::nanite::NANITE_VERSION, 2);
+}
+
+/// Shapes with several surface sheets per region, so that a region holds far
+/// more than [`CLUSTER_MAX_VERTICES`] vertices
+fn vertex_heavy_shapes() -> [SdfNode; 2] {
+    [
+        SdfNode::sphere(1.2).onion(0.12).onion(0.05).onion(0.02),
+        SdfNode::gyroid(8.0, 0.05).intersection(SdfNode::sphere(1.6)),
+    ]
 }
 
 // ---------------------------------------------------------------------------
@@ -874,6 +1475,62 @@ fn lod_chain_queries_follow_the_distance_ranges() {
         }
     }
     assert_eq!(LodSelector::high_res().screen_height, 2160.0);
+    assert!(checks > 0);
+}
+
+/// `max_error` is the measured distance of the level to the surface: for the
+/// unit sphere it equals the exact one-sided Hausdorff distance of the mesh
+/// (closed form per triangle), raised to the error of the finer levels; the
+/// old estimate (half a cell of the bounding-box diagonal) did not look at the
+/// mesh.
+/// When no level meets the threshold, both selectors fall back to the finest
+/// level.
+#[test]
+fn lod_chain_error_is_the_measured_distance_and_falls_back_to_the_finest() {
+    let s = SdfNode::sphere(1.0);
+    let (lo, hi) = (Vec3::splat(-1.5), Vec3::splat(1.5));
+    let mut checks = 0;
+    let chains = [
+        generate_lod_chain(&s, lo, hi, &LodConfig::balanced()),
+        generate_lod_chain(&s, lo, hi, &LodConfig::fast()),
+        generate_lod_chain_decimated(
+            &s,
+            lo,
+            hi,
+            &DecimationLodConfig {
+                num_levels: 4,
+                base_resolution: 32,
+                ..DecimationLodConfig::default()
+            },
+        ),
+    ];
+    for chain in &chains {
+        let mut floor = 0.0f64;
+        for l in &chain.levels {
+            let own = mesh_tris(&l.mesh)
+                .map(tri_err_unit_sphere)
+                .fold(0.0f32, f32::max);
+            floor = floor.max(f64::from(own));
+            let got = f64::from(l.max_error);
+            assert!(
+                (got - floor).abs() <= 2e-3 * floor + 1e-6,
+                "level {}: max_error {got} vs measured {floor}",
+                l.level
+            );
+            checks += 1;
+        }
+        for d in [0.5f32, 5.0, 50.0] {
+            for thr in [0.0f32, -1.0] {
+                assert_eq!(chain.select_by_error(d, thr).unwrap().level, 0);
+                checks += 1;
+            }
+        }
+        let strict = LodSelector {
+            pixel_threshold: 0.0,
+            ..LodSelector::default()
+        };
+        assert_eq!(strict.select(chain, 5.0).unwrap().level, 0);
+    }
     assert!(checks > 0);
 }
 

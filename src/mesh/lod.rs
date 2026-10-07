@@ -77,9 +77,13 @@ impl LodChain {
         self.levels.iter().find(|l| l.level == level)
     }
 
-    /// Get the best LOD for screen-space error threshold
+    /// Get the best LOD for an error threshold
+    ///
+    /// Returns the coarsest level whose `max_error / distance` is at most
+    /// `error_threshold`. When no level meets the threshold, returns the finest
+    /// level (quality first, the same rule as [`LodSelector::select`]).
     pub fn select_by_error(&self, distance: f32, error_threshold: f32) -> Option<&LodMesh> {
-        // Start from highest detail and find first that meets threshold
+        // Start from the lowest detail and return the first that meets the threshold
         for lod in self.levels.iter().rev() {
             let screen_error = lod.max_error / distance.max(0.001);
             if screen_error <= error_threshold {
@@ -87,8 +91,8 @@ impl LodChain {
             }
         }
 
-        // Return lowest detail if nothing meets threshold
-        self.levels.last()
+        // Fall back to the highest detail if nothing meets the threshold
+        self.levels.first()
     }
 
     /// Get pair of LODs for blending at given distance
@@ -318,7 +322,7 @@ pub fn generate_lod_chain_decimated(
 
     // LOD 0: full resolution
     let (min_dist, max_dist) = config.distance_range(0);
-    let max_error = compute_lod_error(&base_mesh, base_resolution, bounds_radius);
+    let max_error = compute_lod_error(sdf, &base_mesh, 0.0);
 
     levels.push(LodMesh {
         level: 0,
@@ -332,6 +336,7 @@ pub fn generate_lod_chain_decimated(
 
     // LOD 1..N: progressive decimation
     let mut current_mesh = base_mesh;
+    let mut prev_error = max_error;
 
     for level in 1..config.num_levels {
         let (min_dist, max_dist) = config.distance_range(level);
@@ -351,7 +356,8 @@ pub fn generate_lod_chain_decimated(
 
         let effective_res =
             (base_resolution as f32 * config.decimation_ratio.powi(level as i32)) as u32;
-        let max_error = compute_lod_error(&lod_mesh, effective_res.max(4), bounds_radius);
+        let max_error = compute_lod_error(sdf, &lod_mesh, prev_error);
+        prev_error = max_error;
 
         levels.push(LodMesh {
             level,
@@ -385,6 +391,7 @@ pub fn generate_lod_chain(
 
     let _center = (min_bounds + max_bounds) * 0.5;
     let bounds_radius = (max_bounds - min_bounds).length() * 0.5;
+    let mut prev_error = 0.0f32;
 
     for level in 0..config.num_levels {
         let resolution = config.resolution_at_level(level);
@@ -399,7 +406,8 @@ pub fn generate_lod_chain(
 
         let mesh = sdf_to_mesh(sdf, min_bounds, max_bounds, &mc_config);
 
-        let max_error = compute_lod_error(&mesh, resolution, bounds_radius);
+        let max_error = compute_lod_error(sdf, &mesh, prev_error);
+        prev_error = max_error;
 
         levels.push(LodMesh {
             level,
@@ -420,11 +428,18 @@ pub fn generate_lod_chain(
     }
 }
 
-/// Compute geometric error for a LOD level
-fn compute_lod_error(_mesh: &Mesh, resolution: u32, bounds_radius: f32) -> f32 {
-    // Error is proportional to cell size
-    let cell_size = (bounds_radius * 2.0) / resolution as f32;
-    cell_size * 0.5 // Half cell size as max error estimate
+/// Geometric error of a LOD mesh, measured on the SDF
+///
+/// The largest `|sdf|` over the triangles of `mesh` (each triangle sampled on
+/// a barycentric grid, the candidates refined by a local search), so for an
+/// exact distance field it is the one-sided Hausdorff distance from the mesh to
+/// the surface. `floor` is the error of the previous (finer) level: the result
+/// is at least that, so the errors of a chain never decrease with the level.
+fn compute_lod_error(sdf: &SdfNode, mesh: &Mesh, floor: f32) -> f32 {
+    use crate::mesh::nanite::{cluster_surface_error, sampled_triangle_errors};
+    let sampled = sampled_triangle_errors(sdf, mesh);
+    let all: Vec<usize> = (0..mesh.triangle_count()).collect();
+    cluster_surface_error(sdf, mesh, &all, &sampled).max(floor)
 }
 
 /// Screen-space LOD selector
@@ -470,6 +485,9 @@ impl LodSelector {
     }
 
     /// Select best LOD from chain
+    ///
+    /// Returns the coarsest acceptable level, or the finest level when no
+    /// level is acceptable (quality first, as in [`LodChain::select_by_error`]).
     pub fn select<'a>(&self, chain: &'a LodChain, distance: f32) -> Option<&'a LodMesh> {
         // Start from lowest detail and find first acceptable
         for lod in chain.levels.iter().rev() {
