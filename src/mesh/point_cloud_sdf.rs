@@ -9,8 +9,11 @@
 //! For each query point:
 //! 1. Find the K nearest points in the cloud
 //! 2. Compute unsigned distance to the nearest point
-//! 3. Determine sign using the dot product of the displacement vector with the
-//!    nearest point's normal (inside/outside classification)
+//! 3. Determine sign by an inverse-distance weighted vote of the K nearest
+//!    points: each point votes `+1` when the displacement from it to the query
+//!    has a non-negative dot product with its normal (outside) and `-1`
+//!    otherwise, with weight `1 / distance`; the sign is that of the sum
+//!    (`+` on a tie). With `K = 1` this is the nearest point's normal alone.
 //!
 //! # Example
 //!
@@ -27,13 +30,15 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::mesh::MeshInputError;
 use glam::Vec3;
 use rayon::prelude::*;
 
 /// Configuration for point cloud SDF construction
 #[derive(Debug, Clone)]
 pub struct PointCloudSdfConfig {
-    /// Number of nearest neighbors for sign determination (default: 8)
+    /// Number of nearest neighbors for sign determination (default: 8).
+    /// Must be at least 1: [`PointCloudSdf::try_new`] rejects 0.
     pub k_neighbors: usize,
     /// Leaf size for spatial partitioning (default: 16)
     pub leaf_size: usize,
@@ -94,22 +99,50 @@ impl PointCloudSdf {
     /// * `points` - 3D positions of the point cloud
     /// * `normals` - Surface normals at each point (must be same length as points)
     /// * `config` - Construction parameters
+    ///
+    /// # Panics
+    ///
+    /// On the inputs [`Self::try_new`] rejects (`points` and `normals` of
+    /// different lengths, `config.k_neighbors == 0`); use that form to get
+    /// the error instead.
     pub fn new(points: &[Vec3], normals: &[Vec3], config: &PointCloudSdfConfig) -> Self {
-        assert_eq!(
-            points.len(),
-            normals.len(),
-            "Points and normals must have same length"
-        );
+        match Self::try_new(points, normals, config) {
+            Ok(sdf) => sdf,
+            Err(e) => panic!("PointCloudSdf::new: {e}"),
+        }
+    }
+
+    /// Construct a new point cloud SDF, reporting invalid input as an error.
+    ///
+    /// # Errors
+    ///
+    /// `points` and `normals` of different lengths, or
+    /// `config.k_neighbors == 0` (the sign vote needs at least one neighbour).
+    pub fn try_new(
+        points: &[Vec3],
+        normals: &[Vec3],
+        config: &PointCloudSdfConfig,
+    ) -> Result<Self, MeshInputError> {
+        if points.len() != normals.len() {
+            return Err(MeshInputError {
+                reason: "points and normals must have the same length",
+            });
+        }
+        if config.k_neighbors == 0 {
+            return Err(MeshInputError {
+                reason: "k_neighbors must be at least 1",
+            });
+        }
 
         let indices: Vec<usize> = (0..points.len()).collect();
         let tree = Self::build_tree(points, &indices, config.leaf_size, 0);
 
-        Self {
+        Ok(Self {
             points: points.to_vec(),
             normals: normals.to_vec(),
             tree,
             k: config.k_neighbors,
-        }
+        })
     }
 
     fn build_tree(points: &[Vec3], indices: &[usize], leaf_size: usize, depth: usize) -> KdNode {
@@ -171,16 +204,23 @@ impl PointCloudSdf {
         }
 
         // best is already sorted by knn_insert — no need to sort again
-        let nearest_idx = best[0].0;
         let nearest_dist = best[0].1.sqrt();
+        if nearest_dist == 0.0 {
+            return 0.0;
+        }
 
-        // Sign determination: weighted vote from K nearest neighbors
-        let displacement = pos - self.points[nearest_idx];
-        let sign = if displacement.dot(self.normals[nearest_idx]) >= 0.0 {
-            1.0f32
-        } else {
-            -1.0f32
-        };
+        // Sign determination: inverse-distance weighted vote from the K nearest
+        // neighbours (each votes ±1 by the side of its own tangent plane)
+        let mut vote = 0.0f32;
+        for &(idx, dist_sq) in &best {
+            let side = if (pos - self.points[idx]).dot(self.normals[idx]) >= 0.0 {
+                1.0f32
+            } else {
+                -1.0f32
+            };
+            vote += side / dist_sq.sqrt();
+        }
+        let sign = if vote >= 0.0 { 1.0f32 } else { -1.0f32 };
 
         sign * nearest_dist
     }

@@ -329,23 +329,22 @@ pub fn remove_degenerate_triangles(mesh: &mut Mesh) {
 /// 3. remap table を用いて index buffer を書き換え
 /// 4. vertex buffer を新順序に並べ替え
 ///
-/// # ACMR は変わらないが ATVR が改善
+/// # 何が変わるか
 ///
-/// - `compute_acmr` (post-transform cache) は index の並びで決まる (Forsyth 直後の値のまま)
-/// - `compute_atvr` (Average Transformed Vertex Ratio、pre-transform cache =
-///   vertex buffer 上での cache line prefetch) はこの関数で改善する
+/// - 三角形の順序 (index の並び) は変えないので、`compute_acmr` も
+///   `compute_atvr` も変わらない どちらも「どの頂点を参照したか」の列だけで決まり、
+///   頂点の番号の付け方には依存しない
+/// - 変わるのは vertex buffer 上の **アドレスの局所性**: 最初に参照された順に
+///   番号を振り直すので、index の列が参照する vertex buffer の位置がほぼ単調増加になり、
+///   GPU の vertex fetch (cache line 単位の読み込み) が連続アクセスに近づく
+/// - 参照されない頂点は削除される
 ///
 /// # 呼び出し順序
 ///
 /// ```text
 /// deduplicate_vertices → optimize_vertex_cache → optimize_vertex_fetch
-///                        (ACMR ↓)                 (ATVR ↓、GPU 実行速度 10-30% 改善想定)
+///                        (ACMR ↓)                 (vertex buffer の参照が連続に近づく)
 /// ```
-///
-/// # 実測目安
-///
-/// - 未最適化 vertex order: ATVR ~1.5-2.0 (vertex を離散的に fetch)
-/// - fetch 最適化後: ATVR ~1.0-1.1 (near-linear access)
 #[allow(clippy::cast_possible_truncation)]
 pub fn optimize_vertex_fetch(mesh: &mut Mesh) {
     let n = mesh.vertices.len();
@@ -384,20 +383,19 @@ pub fn optimize_vertex_fetch(mesh: &mut Mesh) {
 
 /// Average Transformed Vertex Ratio (ATVR) 計測
 ///
-/// **pre-transform** vertex cache (= vertex fetch cache) の miss 率
+/// `cache_size` entry の FIFO cache (hit では順序を更新しない) で index の列を走査し、
+/// **miss 数 / 参照された相異なる頂点の数** を返す
 ///
-/// 各 index について、直前 N 個の unique vertex 内にあれば hit、なければ miss
-/// 完全な linear access (0, 0, 0, 1, 1, 1, 2, 2, 2, ...) なら ATVR ≈ N / (N × 3) = 0.33
-/// unique vertex 数 / index 数 で計算する simpler variant を採用
+/// - 下限は 1 (各頂点を 1 回だけ変換する)、cache が全頂点を保持できれば常に 1
+/// - 空の mesh または `cache_size == 0` は 0
 ///
-/// - 未最適化: ATVR ~1.5-2.0 (vertex を離散的に fetch)
-/// - 最適化後: ATVR ~1.0-1.1 (near-linear access)
+/// # 頂点の番号付けに依存しない
 ///
-/// 本実装は「index → vertex_id の連続性」を測る簡易版:
-/// - 各 pair `(index[i], index[i+1])` について、隣接差分を集計
-/// - 平均 diff が小さいほど cache line 利用が良い
-///
-/// より正確に GPU の fetch cache を模す場合は cache_size (通常 8-16) を指定
+/// 値は index の列の「同じ頂点か違う頂点か」の並びだけで決まり、頂点の番号を
+/// 付け替えても変わらない したがって `optimize_vertex_fetch` (頂点の番号の振り直し)
+/// では変わらず、三角形の順序を変える `optimize_vertex_cache` などで変わる
+/// vertex buffer 上のアドレスの局所性 (`optimize_vertex_fetch` が改善するもの) は
+/// この指標では測れない
 #[must_use]
 #[allow(clippy::cast_precision_loss)]
 pub fn compute_atvr(mesh: &Mesh, cache_size: usize) -> f32 {
@@ -618,10 +616,12 @@ mod tests {
         optimize_vertex_fetch(&mut mesh);
         let atvr_after = compute_atvr(&mesh, 8);
 
-        // fetch 最適化後は等しいか改善 (悪化しない)
-        assert!(
-            atvr_after <= atvr_before + 1e-4,
-            "ATVR should not degrade: before={atvr_before}, after={atvr_after}"
+        // ATVR は頂点の番号付けに依存しないので、番号を振り直すだけの
+        // fetch 最適化では変わらない
+        assert_eq!(
+            atvr_after.to_bits(),
+            atvr_before.to_bits(),
+            "ATVR is invariant under renumbering: before={atvr_before}, after={atvr_after}"
         );
     }
 

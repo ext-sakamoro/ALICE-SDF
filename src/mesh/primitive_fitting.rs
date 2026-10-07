@@ -248,54 +248,96 @@ impl Default for FittingConfig {
     }
 }
 
-/// Fit a sphere to a point cloud
+/// Fit a sphere to a point cloud (least squares)
+///
+/// 1. **Algebraic fit**: `|p|² = 2 c·p + (r² − |c|²)` is linear in
+///    `(c, r² − |c|²)`; its linear least-squares solution (normal equations in
+///    `f64`, points centred on their mean for conditioning) is the exact sphere
+///    when the points lie on one, from any part of it (a cap as well as the
+///    whole sphere).
+/// 2. **Geometric refinement**: Gauss–Newton on `Σ (|p − c| − r)²`, starting
+///    from the algebraic fit, for at most `config.max_iterations` steps or until
+///    a step moves the centre and the radius by less than
+///    `config.convergence_threshold`. This removes the algebraic fit's bias
+///    when the points are noisy.
+///
+/// Returns `None` for fewer than 4 points or when the points do not determine a
+/// sphere (all on one plane or one line). `config.inlier_threshold` is used
+/// only to count inliers in the result; every point takes part in the fit.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 pub fn fit_sphere(points: &[Vec3], config: &FittingConfig) -> Option<FittingResult> {
     if points.len() < 4 {
         return None;
     }
+    let n = points.len() as f64;
+    let mean = points.iter().map(|p| p.as_dvec3()).sum::<glam::DVec3>() / n;
+    let scale = points
+        .iter()
+        .map(|p| (p.as_dvec3() - mean).length_squared())
+        .sum::<f64>()
+        / n;
+    if scale <= 0.0 || !scale.is_finite() {
+        return None;
+    }
 
-    // Initial estimate: centroid and average distance
-    let centroid: Vec3 = points.iter().copied().sum::<Vec3>() / points.len() as f32;
-    let avg_dist: f32 =
-        points.iter().map(|&p| (p - centroid).length()).sum::<f32>() / points.len() as f32;
+    // algebraic fit on q = p − mean: rows [2q, 1] · (c', k) = |q|²
+    let mut ata = [[0.0f64; 4]; 4];
+    let mut atb = [0.0f64; 4];
+    for p in points {
+        let q = p.as_dvec3() - mean;
+        let row = [2.0 * q.x, 2.0 * q.y, 2.0 * q.z, 1.0];
+        let rhs = q.length_squared();
+        for i in 0..4 {
+            for j in 0..4 {
+                ata[i][j] += row[i] * row[j];
+            }
+            atb[i] += row[i] * rhs;
+        }
+    }
+    let x = solve_4x4(ata, atb)?;
+    let mut c = glam::DVec3::new(x[0], x[1], x[2]);
+    let r2 = x[3] + c.length_squared();
+    if r2 <= 0.0 || !r2.is_finite() {
+        return None;
+    }
+    let mut r = r2.sqrt();
 
-    let mut center = centroid;
-    let mut radius = avg_dist;
-
-    // Iterative refinement
+    // geometric refinement (Gauss–Newton)
+    let tol = f64::from(config.convergence_threshold);
     for _ in 0..config.max_iterations {
-        let mut new_center = Vec3::ZERO;
-        let mut new_radius = 0.0f32;
-        let mut count = 0;
-
-        for &p in points {
-            let dir = (p - center).normalize_or_zero();
-            let surface_point = center + dir * radius;
-            let error = (p - surface_point).length();
-
-            if error < config.inlier_threshold {
-                new_center += p - dir * (p - center).length().min(radius);
-                new_radius += (p - center).length();
-                count += 1;
+        let mut jtj = [[0.0f64; 4]; 4];
+        let mut jtr = [0.0f64; 4];
+        for p in points {
+            let d = p.as_dvec3() - mean - c;
+            let len = d.length();
+            if len == 0.0 {
+                continue;
+            }
+            let u = d / len;
+            // residual len − r, gradient w.r.t. (c, r) = (−u, −1)
+            let row = [-u.x, -u.y, -u.z, -1.0];
+            let res = len - r;
+            for i in 0..4 {
+                for j in 0..4 {
+                    jtj[i][j] += row[i] * row[j];
+                }
+                jtr[i] -= row[i] * res;
             }
         }
-
-        if count == 0 {
+        let Some(step) = solve_4x4(jtj, jtr) else {
             break;
-        }
-
-        let prev_center = center;
-        let prev_radius = radius;
-
-        center = new_center / count as f32;
-        radius = new_radius / count as f32;
-
-        if (center - prev_center).length() < config.convergence_threshold
-            && (radius - prev_radius).abs() < config.convergence_threshold
-        {
+        };
+        c += glam::DVec3::new(step[0], step[1], step[2]);
+        r += step[3];
+        if glam::DVec3::new(step[0], step[1], step[2]).length() < tol && step[3].abs() < tol {
             break;
         }
     }
+    if r <= 0.0 || !r.is_finite() || !c.is_finite() {
+        return None;
+    }
+    let center = (c + mean).as_vec3();
+    let radius = r as f32;
 
     let primitive = FittedPrimitive::Sphere { center, radius };
 
@@ -318,6 +360,38 @@ pub fn fit_sphere(points: &[Vec3], config: &FittingConfig) -> Option<FittingResu
         inlier_count,
         inlier_threshold: config.inlier_threshold,
     })
+}
+
+/// Solves the symmetric 4×4 system `m x = b` by Gaussian elimination with
+/// partial pivoting. `None` when a pivot falls below `1e-12 ×` the largest
+/// diagonal entry (the system does not determine `x`).
+#[allow(clippy::needless_range_loop)] // row operations index two rows at once
+fn solve_4x4(mut m: [[f64; 4]; 4], mut b: [f64; 4]) -> Option<[f64; 4]> {
+    let tiny = 1e-12 * (0..4).map(|i| m[i][i].abs()).fold(0.0f64, f64::max);
+    for col in 0..4 {
+        let piv = (col..4).max_by(|&i, &j| m[i][col].abs().total_cmp(&m[j][col].abs()))?;
+        if m[piv][col].abs() <= tiny || m[piv][col].is_nan() {
+            return None;
+        }
+        m.swap(col, piv);
+        b.swap(col, piv);
+        for row in col + 1..4 {
+            let f = m[row][col] / m[col][col];
+            for k in col..4 {
+                m[row][k] -= f * m[col][k];
+            }
+            b[row] -= f * b[col];
+        }
+    }
+    let mut x = [0.0f64; 4];
+    for row in (0..4).rev() {
+        let mut acc = b[row];
+        for k in row + 1..4 {
+            acc -= m[row][k] * x[k];
+        }
+        x[row] = acc / m[row][row];
+    }
+    x.iter().all(|v| v.is_finite()).then_some(x)
 }
 
 /// Fit an axis-aligned box to a point cloud

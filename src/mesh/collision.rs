@@ -286,13 +286,29 @@ pub fn convex_hull_from_points(points: &[Vec3]) -> ConvexHull {
         }
     }
 
-    // Flatten indices
-    let indices: Vec<u32> = hull_faces.iter().flat_map(|f| f.iter().copied()).collect();
-
-    ConvexHull {
-        vertices: hull_verts,
-        indices,
+    // Keep only the vertices the final faces use: a point added to the hull
+    // can end up inside it once later points are added, and its vertex must
+    // not stay in the vertex list. Order of first insertion is kept.
+    let mut used = vec![false; hull_verts.len()];
+    for face in &hull_faces {
+        for &v in face {
+            used[v as usize] = true;
+        }
     }
+    let mut remap = vec![u32::MAX; hull_verts.len()];
+    let mut vertices = Vec::with_capacity(hull_verts.len());
+    for (old, &is_used) in used.iter().enumerate() {
+        if is_used {
+            remap[old] = vertices.len() as u32;
+            vertices.push(hull_verts[old]);
+        }
+    }
+    let indices: Vec<u32> = hull_faces
+        .iter()
+        .flat_map(|f| f.iter().map(|&v| remap[v as usize]))
+        .collect();
+
+    ConvexHull { vertices, indices }
 }
 
 fn find_initial_tetrahedron(points: &[Vec3]) -> (usize, usize, usize, usize) {
@@ -553,7 +569,7 @@ pub fn convex_decomposition(mesh: &Mesh, config: &VhacdConfig) -> ConvexDecompos
         .map(|a| a.load(Ordering::Relaxed) != 0)
         .collect();
 
-    // Interior fill (serial — ray parity requires sequential scan)
+    // Interior fill: cells not reachable from the boundary through empty cells
     interior_fill(&mut voxels, res);
 
     // Step 2: Flood-fill to find connected components (convex regions)
@@ -684,27 +700,68 @@ fn voxelize_mesh_parallel(
     });
 }
 
-/// Interior fill: for each Y-Z slice, fill interior using ray parity
+/// Interior fill: every empty voxel not reachable from the grid boundary
+/// through empty voxels (6-connected) is inside the surface.
+///
+/// The surface voxels are conservative (each triangle marks every cell its
+/// bounding box touches), so a 6-connected path of empty cells cannot cross a
+/// closed surface, and the boundary layer's empty cells are outside the mesh
+/// (the grid is padded around the mesh's bounding box). The result does not
+/// depend on the axis along which parts are separated, unlike a parity scan
+/// along one axis, where a row lying in a face flips the parity and fills the
+/// gap to the next part.
 fn interior_fill(voxels: &mut [bool], res: u32) {
-    for z in 0..res {
-        for y in 0..res {
-            let mut inside = false;
-            let mut last_was_solid = false;
-            for x in 0..res {
-                let idx = (x + y * res + z * res * res) as usize;
-                if voxels[idx] {
-                    if !last_was_solid {
-                        inside = !inside;
-                    }
-                    last_was_solid = true;
-                } else {
-                    last_was_solid = false;
-                    if inside {
-                        voxels[idx] = true;
-                    }
+    let r = res as usize;
+    if r == 0 {
+        return;
+    }
+    let idx = |x: usize, y: usize, z: usize| x + y * r + z * r * r;
+    let mut exterior = vec![false; voxels.len()];
+    let mut stack = Vec::new();
+    for z in 0..r {
+        for y in 0..r {
+            for x in 0..r {
+                let on_boundary =
+                    x == 0 || y == 0 || z == 0 || x + 1 == r || y + 1 == r || z + 1 == r;
+                let i = idx(x, y, z);
+                if on_boundary && !voxels[i] && !exterior[i] {
+                    exterior[i] = true;
+                    stack.push(i);
                 }
             }
         }
+    }
+    while let Some(i) = stack.pop() {
+        let x = i % r;
+        let y = (i / r) % r;
+        let z = i / (r * r);
+        let mut visit = |j: usize| {
+            if !voxels[j] && !exterior[j] {
+                exterior[j] = true;
+                stack.push(j);
+            }
+        };
+        if x > 0 {
+            visit(i - 1);
+        }
+        if x + 1 < r {
+            visit(i + 1);
+        }
+        if y > 0 {
+            visit(i - r);
+        }
+        if y + 1 < r {
+            visit(i + r);
+        }
+        if z > 0 {
+            visit(i - r * r);
+        }
+        if z + 1 < r {
+            visit(i + r * r);
+        }
+    }
+    for (v, &ext) in voxels.iter_mut().zip(&exterior) {
+        *v = !ext;
     }
 }
 

@@ -1,26 +1,33 @@
 //! Overdraw Optimization (meshoptimizer §overdrawoptimizer 移植)
 //!
 //! GPU の Early-Z / hidden surface rejection 効率を高めるため、三角形を
-//! **view-independent front-to-back** 順に並べ替える 完全な view 非依存は不可能なので、
-//! 6 軸方向 (±X/±Y/±Z) を sampling して average rank で近似する
+//! cluster 単位で並べ替える
+//!
+//! - [`optimize_overdraw`]: 視点に依存しない並べ替え (meshoptimizer
+//!   `meshopt_optimizeOverdraw` と同じ方式) cluster の平均法線と、mesh 重心から
+//!   cluster 重心への方向の内積が大きい cluster (外側を向き、他を隠しやすい) から描く
+//! - [`optimize_overdraw_with_views`]: 指定した view 方向での深さ順位による並べ替え
 //!
 //! # `optimize_vertex_cache` との関係
 //!
 //! 単純な front-to-back sort は vertex cache 局所性を破壊する (連続三角形が
 //! 別の vertex を参照する) 本実装は **cluster preserving** で、vcache opt で
-//! 生成された "cluster" (連続 cache_size 近傍) を単位に sort する
-//! `threshold` パラメータで cluster 内での再 sort 許容度を制御
+//! 生成された "cluster" を単位に sort し、cluster 内の順序は保つ
+//! `optimize_overdraw` の `threshold` は cluster をさらに細かく切る際の
+//! ACMR 悪化の許容率 (meshoptimizer と同じ意味)
 //!
 //! # 呼び出し順序
 //!
 //! ```text
 //! deduplicate_vertices → optimize_vertex_cache → optimize_overdraw → optimize_vertex_fetch
-//!                        (ACMR ↓)                 (Early-Z ↓)         (ATVR ↓)
+//!                        (ACMR ↓)                 (Early-Z ↓)         (vertex buffer の参照が連続に)
 //! ```
 //!
 //! # References
 //!
-//! - zeux/meshoptimizer §overdrawoptimizer.cpp (完全版は cluster 内 sort も含む、本版は cluster 順序のみ)
+//! - zeux/meshoptimizer `src/overdrawoptimizer.cpp`
+//! - Sander, Nehab, Barczak, "Fast Triangle Reordering for Vertex Locality and
+//!   Reduced Overdraw" (SIGGRAPH 2007)
 //! - Tom Forsyth "Optimizing indexed triangle meshes for GPU vertex cache" (2006)
 //!
 //! Author: Moroya Sakamoto
@@ -38,35 +45,214 @@ struct Cluster {
     centroid: Vec3,
 }
 
-/// View-independent overdraw optimization (簡易版)
+/// View-independent overdraw optimization (meshoptimizer `meshopt_optimizeOverdraw` 準拠)
 ///
 /// # アルゴリズム
 ///
-/// 1. 現 index buffer を走査、vertex cache miss を数える
-///    → cache miss が発生する境界で cluster を切る
-/// 2. 各 cluster の三角形重心平均を計算
-/// 3. 6 軸方向 (±X/±Y/±Z) に対して cluster centroid を投影
-///    → 各方向で cluster を depth 昇順に rank 付け
-/// 4. 6 方向の rank 平均で cluster を並び替え
+/// 1. **hard boundary**: 16 entry の FIFO vertex cache を走らせ、3 頂点すべてが
+///    miss した三角形で cluster を切る (vcache 最適化後の "patch" の境界)
+/// 2. **soft boundary**: 各 hard cluster の ACMR (cluster 先頭で cache を空にして測る)
+///    に `threshold` を掛けた値を目標とし、cluster 内を前から走査して
+///    累積 ACMR が目標以下になった時点で切る 最後の未達分は直前の cluster に併合する
+/// 3. 各 cluster の **面積重み付き重心** `c` と **平均法線** `n` (面法線の和を正規化) を求め、
+///    mesh 全体の重心 `m` (index 参照で数えた頂点平均) に対して
+///    `key = n · (c − m)` を計算する
+/// 4. `key` の大きい cluster から順に並べる (外側を向いた、中心から遠い cluster ほど
+///    他の部分を隠す可能性が高いので先に描く) 同値は元の順序を保つ (stable)
 /// 5. cluster 内の三角形順序は保持 (vcache 局所性維持)
 ///
 /// # 引数
 ///
-/// - `threshold`: [0.0, 1.0]、大きいほど vcache 犠牲を許容 (0.0 = cluster 順不変、
-///   1.0 = full sort、実装的には常に cluster 単位 sort なので現状 unused)
+/// - `threshold`: vertex cache 効率の悪化の許容率 (meshoptimizer と同じ意味)
+///   各 soft cluster の ACMR は、それを含む hard cluster の ACMR の `threshold` 倍以下を
+///   目標に切られる `1.05` で最大 5% の悪化を許容、`1.0` は悪化を許容しない分割、
+///   `0.0` 以下は soft 分割をせず hard cluster 単位でだけ並べ替える
 ///
 /// # 制約
 ///
 /// - `optimize_vertex_cache` 実行後に呼ぶこと (それ以外だと cluster 分割意味なし)
 /// - view が特定方向に固定される use case (top-down、first-person 等) には
 ///   専用 view direction を渡す `optimize_overdraw_with_views` を使う
+///
+/// # References
+///
+/// - zeux/meshoptimizer `src/overdrawoptimizer.cpp`
+///   (`generateHardBoundaries` / `generateSoftBoundaries` / `calculateSortData`)
+/// - Sander, Nehab, Barczak, "Fast Triangle Reordering for Vertex Locality and
+///   Reduced Overdraw" (SIGGRAPH 2007)
 #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
 pub fn optimize_overdraw(mesh: &mut Mesh, threshold: f32) {
-    let views = default_view_directions();
-    optimize_overdraw_with_views(mesh, threshold, &views);
+    let tri_count = mesh.indices.len() / 3;
+    if tri_count == 0 {
+        return;
+    }
+    let vertex_count = mesh.vertices.len();
+    if mesh.indices.iter().any(|&i| i as usize >= vertex_count) {
+        return; // 範囲外 index を含む mesh は並べ替えない
+    }
+
+    let hard = hard_boundaries(&mesh.indices, vertex_count, MESHOPT_OVERDRAW_CACHE_SIZE);
+    let soft = soft_boundaries(
+        &mesh.indices,
+        vertex_count,
+        &hard,
+        MESHOPT_OVERDRAW_CACHE_SIZE,
+        threshold,
+    );
+    if soft.len() <= 1 {
+        return;
+    }
+
+    let keys = cluster_sort_keys(mesh, &soft);
+    let mut order: Vec<usize> = (0..soft.len()).collect();
+    // key の降順、同値は元の順序 (sort_by は stable)
+    order.sort_by(|&a, &b| keys[b].total_cmp(&keys[a]));
+
+    let mut new_indices = Vec::with_capacity(mesh.indices.len());
+    for &ci in &order {
+        let start = soft[ci];
+        let end = soft.get(ci + 1).copied().unwrap_or(tri_count);
+        new_indices.extend_from_slice(&mesh.indices[start * 3..end * 3]);
+    }
+    mesh.indices = new_indices;
+}
+
+/// meshoptimizer の overdraw optimizer が使う cache size
+const MESHOPT_OVERDRAW_CACHE_SIZE: u32 = 16;
+
+/// FIFO cache の更新 (meshoptimizer `updateCache`)、miss 数を返す
+fn update_fifo(tri: &[u32], cache_size: u32, stamps: &mut [u32], timestamp: &mut u32) -> u32 {
+    let mut misses = 0;
+    for &v in tri {
+        let s = &mut stamps[v as usize];
+        if timestamp.wrapping_sub(*s) > cache_size {
+            *s = *timestamp;
+            *timestamp = timestamp.wrapping_add(1);
+            misses += 1;
+        }
+    }
+    misses
+}
+
+/// 3 頂点すべてが miss した三角形を cluster の先頭とする (先頭三角形は常に先頭)
+fn hard_boundaries(indices: &[u32], vertex_count: usize, cache_size: u32) -> Vec<usize> {
+    let mut stamps = vec![0u32; vertex_count];
+    let mut timestamp = cache_size + 1;
+    let mut out = Vec::new();
+    for (t, tri) in indices.chunks_exact(3).enumerate() {
+        let m = update_fifo(tri, cache_size, &mut stamps, &mut timestamp);
+        if t == 0 || m == 3 {
+            out.push(t);
+        }
+    }
+    out
+}
+
+/// hard cluster を、累積 ACMR が `threshold × (hard cluster の ACMR)` 以下になる位置で分割
+#[allow(clippy::cast_precision_loss)]
+fn soft_boundaries(
+    indices: &[u32],
+    vertex_count: usize,
+    hard: &[usize],
+    cache_size: u32,
+    threshold: f32,
+) -> Vec<usize> {
+    let tri_count = indices.len() / 3;
+    let mut stamps = vec![0u32; vertex_count];
+    let mut timestamp = 0u32;
+    let mut out = Vec::with_capacity(hard.len());
+    for (h, &start) in hard.iter().enumerate() {
+        let end = hard.get(h + 1).copied().unwrap_or(tri_count);
+
+        // cluster の ACMR を空の cache から測る
+        timestamp = timestamp.wrapping_add(cache_size + 1);
+        let mut cluster_misses = 0u32;
+        for t in start..end {
+            cluster_misses += update_fifo(
+                &indices[t * 3..t * 3 + 3],
+                cache_size,
+                &mut stamps,
+                &mut timestamp,
+            );
+        }
+        let cluster_threshold = threshold * (cluster_misses as f32 / (end - start) as f32);
+
+        out.push(start);
+        timestamp = timestamp.wrapping_add(cache_size + 1);
+        let mut running_misses = 0u32;
+        let mut running_faces = 0u32;
+        for t in start..end {
+            running_misses += update_fifo(
+                &indices[t * 3..t * 3 + 3],
+                cache_size,
+                &mut stamps,
+                &mut timestamp,
+            );
+            running_faces += 1;
+            if running_misses as f32 / running_faces as f32 <= cluster_threshold {
+                // 目標 ACMR に達した: 次の三角形から新しい cluster
+                out.push(t + 1);
+                timestamp = timestamp.wrapping_add(cache_size + 1);
+                running_misses = 0;
+                running_faces = 0;
+            }
+        }
+        // 最後の境界は捨てる (未達の残りを直前の cluster に併合、`end` を押した場合もこれで消える)
+        if out.last() != Some(&start) {
+            out.pop();
+        }
+    }
+    out
+}
+
+/// 各 cluster の `n · (c − m)` (n: 平均法線、c: 面積重み付き重心、m: mesh 重心)
+fn cluster_sort_keys(mesh: &Mesh, clusters: &[usize]) -> Vec<f32> {
+    let tri_count = mesh.indices.len() / 3;
+    let pos = |i: u32| mesh.vertices[i as usize].position;
+
+    let mut mesh_centroid = Vec3::ZERO;
+    for &i in &mesh.indices {
+        mesh_centroid += pos(i);
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let mesh_centroid = mesh_centroid / mesh.indices.len() as f32;
+
+    clusters
+        .iter()
+        .enumerate()
+        .map(|(ci, &start)| {
+            let end = clusters.get(ci + 1).copied().unwrap_or(tri_count);
+            let mut area_sum = 0.0f32;
+            let mut centroid = Vec3::ZERO;
+            let mut normal = Vec3::ZERO;
+            for tri in mesh.indices[start * 3..end * 3].chunks_exact(3) {
+                let (p0, p1, p2) = (pos(tri[0]), pos(tri[1]), pos(tri[2]));
+                let n = (p1 - p0).cross(p2 - p0);
+                let area = n.length();
+                centroid += (p0 + p1 + p2) * (area / 3.0);
+                normal += n;
+                area_sum += area;
+            }
+            let centroid = if area_sum == 0.0 {
+                Vec3::ZERO
+            } else {
+                centroid / area_sum
+            };
+            let normal = normal.normalize_or_zero();
+            normal.dot(centroid - mesh_centroid)
+        })
+        .collect()
 }
 
 /// View direction を明示指定する overdraw optimization
+///
+/// 各 view 方向で cluster 重心の深さ順位を取り、順位の和の小さい cluster から並べる
+/// (cluster は vcache miss 境界で切る)
+///
+/// ⚠️ 向きが逆の 2 方向 (`v` と `-v`) を両方渡すと、各 cluster の 2 つの順位の和が
+/// 全 cluster で同じ (`cluster 数 - 1`) になり打ち消し合う `default_view_directions`
+/// (±X/±Y/±Z) をそのまま渡すと並べ替えは起きない 視点に依存しない並べ替えには
+/// `optimize_overdraw` を使う
 ///
 /// # 引数
 ///

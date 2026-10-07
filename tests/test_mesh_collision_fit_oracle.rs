@@ -284,7 +284,8 @@ fn simplify_collision_clusters_into_grid_cells() {
 
 #[test]
 fn convex_decomposition_separates_disjoint_parts() {
-    // two unit boxes separated along y and z (not x: see the interior fill)
+    // two unit boxes separated along y and z (each single axis:
+    // tests/test_mesh_fit_hull_oracle.rs)
     let a = box_mesh(Vec3::new(0.0, -3.0, -3.0), Vec3::ONE);
     let b = box_mesh(Vec3::new(0.0, 3.0, 3.0), Vec3::ONE);
     let mut mesh = a;

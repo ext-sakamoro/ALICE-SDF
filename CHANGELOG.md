@@ -10,6 +10,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Added
 
+- `mesh::PointCloudSdf::try_new`: 点と法線の数の不一致と `k_neighbors = 0` を `MeshInputError` で返す構築関数 (`new` はこれに委ねる)
 - `examples/shape_analysis.rs`: 体積・表面積・重心・tension の推定、断面 heatmap と colour map、可変厚の shell (`eval_shell*` / `shell_node`)、offset と嵌め合い公差、`export_step_validated` による「印刷できる形だけを書き出す」を、閉形式との照合付きで示す
 - `examples/mesh_formats.rs`: STL ASCII / OBJ / PLY / FBX / USDA の書き出しと読み戻し、glTF JSON / IGES / Nanite / ABM / splat / vox の書き出し、FBX の animation clip から timeline への変換 (`--features openvdb` で dense grid、`--features hlsl` で Nanite の material 関数も)
 - `tests/test_shape_analysis_oracle.rs`: 球の体積 4/3·π·r³ と表面積、箱の体積、重心、球の断面 (中心・高さ h の 3 平面・任意平面) の距離と画素数、shell と球殻 (annulus) の距離、offset と半径の加減、嵌め合いの最大違反量、`RaymarchConfig::relaxed` の Lipschitz 値を閉形式と照合する
@@ -67,6 +68,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `mesh::quantization::half_encode` が binary16 の subnormal 域 (`|v| < 2^-14`) で値の半分の code を返していた (例: `half_decode(2)` を encode すると 1) IEEE 754 の roundTiesToEven で `full >> shift` を丸める 正規数の域は不変
 - **Behavior change:** `mesh::meshopt_filter::encode_filter_quat_one` / `encode_filter_quat_i16` が doc の通り入力の四元数を正規化する 復号は最大成分を `sqrt(1 − x² − y² − z²)` で作るので、長さ 1 でない入力は別の回転に戻っていた
 - **Behavior change:** `mesh::meshopt_filter::encode_filter_exp_one` の指数の下限を -126 にした 復号は `2^e` を正規数の bit `(e + 127) << 23` で作るので、`e = -127` は 0.0 になり `|v| < 2^(bits − 128)` の値が 0 に戻っていた
+- **Behavior change:** `mesh::overdraw::optimize_overdraw` が既定の視点 (±X/±Y/±Z) で三角形の順序を変えていなかった 向きが逆の 2 方向では各 cluster の 2 つの順位の和が全 cluster で等しくなるため meshoptimizer `meshopt_optimizeOverdraw` と同じ方式 (16 entry FIFO の hard / soft 境界で cluster を作り、平均法線 · (cluster 重心 − mesh 重心) の降順に並べる) にした `threshold` は meshoptimizer と同じ「ACMR の悪化の許容率」(1.05 で 5%、0 以下は soft 分割なし) 従来は未使用だった 凹な mesh の overdraw が減る `optimize_overdraw_with_views` は不変 (doc に逆向きの方向が打ち消し合うことを追記)
+- `mesh::optimize::compute_atvr` / `optimize_vertex_fetch` の doc が「`optimize_vertex_fetch` で ATVR が改善する」としていた ATVR は頂点の番号付けに依存しない指標で、番号を振り直すだけの `optimize_vertex_fetch` では変わらない doc を事実に合わせた (code は不変)
+- **Behavior change:** `mesh::fit_sphere` が最小二乗になっておらず、半球の点群で中心が大きくずれていた (全球なら回復) 代数的な最小二乗 (`|p|² = 2c·p + (r² − |c|²)` の線形最小二乗) に幾何誤差の Gauss–Newton の仕上げを加えた 全球・半球・球冠のいずれでも中心と半径を回復する 同一平面・同一直線上の点は球を決めないので `None` を返す `inlier_threshold` は結果の inlier 数にだけ使う (従来は当てはめから外れ値を除いていた) `detect_primitive` の結果も変わりうる
+- **Behavior change:** `mesh::convex_decomposition` が x 方向に離れた 2 つの部分を 1 つの part にまとめていた 内部の判定が x 方向の偶奇の走査だけで、面に乗る行で偶奇が反転して隙間を埋めていた 格子の境界から空の voxel を 6 近傍で flood fill し、届かない voxel を内部とする 離れた部分は軸の向きに依らず別の part になり、part の頂点数も変わりうる
+- **Behavior change:** `mesh::PointCloudSdf` の符号が doc の「K 近傍の重み付き投票」でなく最近傍 1 点の法線だけで決まっていた K 近傍が `1 / 距離` の重みで ±1 を投票する方式にした (K = 1 は従来と同じ、距離の大きさは従来どおり最近傍までの距離) `k_neighbors = 0` は評価時の index の範囲外で panic していたので、`PointCloudSdf::try_new` で error を返す (`new` / `point_cloud_to_sdf` は構築時に panic する)
+- **Behavior change:** `mesh::EdgeCrossing::t` が、refine した交点 `intersection` でなく端点の距離の線形補間の t を返していた `start + t · (end − start)` が `intersection` になる t を返す (場が辺に沿って線形なら従来と同じ)
+- **Behavior change:** `mesh::convex_hull_from_points` / `compute_convex_hull` の `ConvexHull.vertices` に、構築中に凸包の頂点になり後で内部に入った点が残っていた 面が参照する頂点だけを (追加された順に) 残し、index を詰め直す
 - `mesh::mesh_codec::encode_indices` / `decode_indices`: index の差分を `wrapping_sub` / `wrapping_add` で取る debug build で差分が `i32` を超える index 列 (例: 0 の次に 2^31) を渡すと overflow で panic していた (release build の byte 列は不変)
 - `mesh::stripifier::unstripify_bound(1)` が `index_count - 2` の underflow で panic し、1 index の strip を渡した `unstripify` も panic していた 3 未満は 0 を返す
 - **Behavior change:** `autodiff::principal_curvatures` が判別式に `(k1 + k2)² − (k1² + k2²)` を使っており、球でも k1 ≠ k2 (半径 r で 1.707/r と 0.293/r) を返していた (`gaussian_curvature` は 1/r² の半分) 正しい `(k1 − k2)² = 2(k1² + k2²) − (k1 + k2)²` に直し、接平面への射影の Frobenius ノルムに `−2|Hn|²` の項を入れた (勾配の長さが 1 でない場でも形状作用素の固有値になる)

@@ -24,7 +24,7 @@
 //!
 //! ```text
 //! optimize_spatial_order → deduplicate_vertices → optimize_vertex_cache → optimize_vertex_fetch
-//!  (空間 locality ↑)       (dedup ↓)             (ACMR ↓)               (ATVR ↓)
+//!  (空間 locality ↑)       (dedup ↓)             (ACMR ↓)               (参照順に番号付け)
 //! ```
 //!
 //! # References

@@ -43,13 +43,22 @@ pub struct EdgeCrossing {
 }
 
 impl EdgeCrossing {
-    /// Compute the parametric t value of the intersection
+    /// Parametric position of [`Self::intersection`] along the edge:
+    /// `start + t · (end − start)` is the intersection.
+    ///
+    /// The intersection is the refined surface point (see
+    /// [`HermiteConfig::refinement_iterations`]), so `t` is its projection onto
+    /// the edge, not the linear interpolation `start_dist / (start_dist −
+    /// end_dist)` of the end-point distances (the two agree only when the
+    /// field is linear along the edge). A zero-length edge gives `0.5`.
     #[inline]
     pub fn t(&self) -> f32 {
-        if (self.end_dist - self.start_dist).abs() < 1e-10 {
+        let edge = self.end - self.start;
+        let len_sq = edge.length_squared();
+        if len_sq == 0.0 {
             0.5
         } else {
-            self.start_dist / (self.start_dist - self.end_dist)
+            (self.intersection - self.start).dot(edge) / len_sq
         }
     }
 }

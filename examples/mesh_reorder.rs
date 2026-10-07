@@ -106,9 +106,10 @@ fn main() {
     assert_eq!(triangle_set(&mesh), original);
     report("overdraw", &mesh);
     println!(
-        "    triangle order changed by the 6-axis overdraw pass: {}",
+        "    triangle order changed by the overdraw pass: {}",
         mesh.indices != before_overdraw
     );
+    assert_ne!(mesh.indices, before_overdraw);
 
     optimize_vertex_fetch(&mut mesh);
     assert_eq!(triangle_set(&mesh), original);
