@@ -10,6 +10,11 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Added
 
+- examples `compiled_bytecode` / `instanced_sdf` / `jit_dynamic` (`jit`): compile した bytecode の逆アセンブル (opcode の役割、点を変えるか、距離を後処理するか、部分木の終わり)、`CompiledSdf` / `CompiledSdfBvh` の node 数・命令数・byte 数・Lipschitz 値、半径を書き換えての `refit_all_from_bytecode`、`AabbPacked::distance_to_point_fast`、`eval_compiled_batch` / `eval_compiled_distance_and_normal` / `eval_gradient_simd`、`Vec3R::round` / `max_element` / `InstancedSdf` の scalar・SIMD・batch・個別の距離と `to_instanced_wgsl` (`gpu`) / `JitCompiledSdfDynamic` と `JitSimdSdfDynamic` の `update_params` (再 compile との一致を assert)
+- `tests/test_compiled_bytecode_oracle.rs`: opcode の分類を bytecode VM の挙動 (点を書き換える arm、`PopTransform` で距離を後処理する arm) と照合、`next_instruction_index` を独立に書いた frame の対応付けと照合、`node_count` / `memory_size` / `lipschitz` / `aux_data`、`refit_all_from_bytecode` が新規 compile と同じ箱を返すこと、rounded cone / pyramid / octahedron / hex prism / link の箱の閉形式と標本による包含と tight さ、tube / pipe / tongue の箱の包含、batch と SIMD 勾配の scalar との bit 一致、平面と球の tetrahedral 距離 (`d + e²/|p|`)、`InstancedSdf` と木の union の一致
+- `tests/test_jit_dynamic_oracle.rs` (`jit`、CI の JIT parity step と preflight): dynamic JIT の parameter 順が抽出関数と一致すること (corpus 全体)、焼き込み版の JIT・interpreter との一致、`update_params` 後の値が新規 compile と bit 一致すること、parameter 数の違う木を拒むこと
+- `tests/test_instanced_wgsl_gpu_parity.rs` (`gpu`、CI の gpu-parity job と preflight): `to_instanced_wgsl` の shader を naga で検証し、compute shader として実行した結果を `InstancedSdf::eval_min` と 4913 点で照合する
+- `ShaderLang::NAME` (sealed trait の関連定数、診断 message 用)
 - `mesh::PointCloudSdf::try_new`: 点と法線の数の不一致と `k_neighbors = 0` を `MeshInputError` で返す構築関数 (`new` はこれに委ねる)
 - `examples/shape_analysis.rs`: 体積・表面積・重心・tension の推定、断面 heatmap と colour map、可変厚の shell (`eval_shell*` / `shell_node`)、offset と嵌め合い公差、`export_step_validated` による「印刷できる形だけを書き出す」を、閉形式との照合付きで示す
 - `examples/mesh_formats.rs`: STL ASCII / OBJ / PLY / FBX / USDA の書き出しと読み戻し、glTF JSON / IGES / Nanite / ABM / splat / vox の書き出し、FBX の animation clip から timeline への変換 (`--features openvdb` で dense grid、`--features hlsl` で Nanite の material 関数も)
@@ -34,6 +39,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 
+- `refit` の rounded cone / pyramid / octahedron / hex prism / link / ellipsoid / box frame / rect 系の箱を `aabb::primitives` の関数と `AabbPacked::from_half_size` で求める (hex prism 以外の値は不変)
+- WGSL / GLSL / HLSL の transpiler が shader の組み立てを `GenericTranspiler::generate_shader` に委ねる (出力は不変) `generate_shader` は helper の source が無い時に panic し、module scope の global (lattice / heightmap の data) を出力する (従来は helper を黙って飛ばし、global を出力していなかった)
+- 圧縮した bytecode の評価器と relaxed tracing が `CompiledSdf::instructions` / `aux_data` / `lipschitz` を accessor で読む (結果は不変)
+- `extract_jit_params` / `extract_simd_params` は dynamic code generator を scratch の IR 関数に走らせてその parameter buffer を返す (machine code は作らない) 手書きの抽出関数 (約 380 行 + 約 400 行) は削除
+- `JitSimdSdf` / `JitSimdSdfDynamic` の private field `module` を `_module` に改名し `#[allow(dead_code)]` を外した (JIT の code を保持するための field)
+- `JitSimdSdfDynamic::update_params` の doc に、`Rotate` の quaternion と多項式 smooth 演算の半径は code に焼き込まれ buffer から読まれないことを明記
 - `examples/mesh_reorder.rs`: `optimize_overdraw` が三角形の順序を変えることを assert し、`optimize_overdraw_with_views` を上からの 1 視点と `default_view_directions` (逆向きの方向が打ち消し合い順序が変わらない) で呼ぶ (`optimize_overdraw` が両者を呼ばなくなったため、example からの呼び出しで配線する)
 - `RaymarchConfig::relaxed` は Lipschitz 値を `fidelity::distance_fidelity(node).safe_step_scale()` から取る (値は従来と同じ: 有限なら `L.max(1)`、上界が無ければ plain tracing)
 - 木の評価器 (`eval` / `eval_material` / `eval_gradient`) の `Translate` / `Scale` / `Rotate` が `transform_translate` / `transform_scale` / `transform_rotate` / `transform_rotate_inverse` を呼ぶ (同じ演算、結果は bit 単位で不変)
@@ -59,6 +70,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `svo::SvoStreamingCache::insert`: 既にある id を入れ直すと古い chunk の byte を `memory_used` から引かず、容量いっぱいなら無関係な chunk を追い出していた 古い entry を先に外す
 - **Behavior change:** `gi::IrradianceGrid::get_probe` / `get_probe_mut`: 範囲判定が平坦化した index だけで、`x == grid_size[0]` が次の行の probe を返していた 軸ごとに判定して範囲外は `None`
 - **Behavior change:** `terrain::Splatmap::dominant_material`: 右端を越えた `x` が次の行の texel を読んでいた 範囲外は `get_weight` と同じく全 layer の重みが 0 なので 0 を返す
+- **Behavior change:** `JitCompiledSdfDynamic::update_params` が `RepeatFinite` の回数を code の読む値 (半分) でなく回数そのもので書いており、更新後の評価が新規 compile と一致しなかった `extract_jit_params` を code generator と同じ source にした
+- **Behavior change:** `JitSimdSdfDynamic::update_params` (`extract_simd_params`) の parameter の順と個数が code generator と 14 種の opcode (cone / pyramid / rounded cone / smooth・chamfer・stairs の和積差 / rotate / repeat finite / scale と smooth の組み合わせ 等) で食い違っており、更新後の評価が壊れていた 同上
+- **Behavior change:** `JitCompiledSdfDynamic::update_params` / `JitSimdSdfDynamic::update_params` は parameter 数が compile 時と違う木を panic で拒む code は parameter を固定 index で読むので、短い buffer は範囲外を読んでいた
+- **Behavior change:** `InstancedSdf::to_instanced_wgsl` の shader が instance の回転を逆変換でなく順変換で点に掛けていた (`InstancedSdf::eval_min` と回転のある instance で不一致、GPU 実測で相対誤差 1e-2 程度) 逆回転 (転置) にした
+- **Behavior change:** `OpCode::is_post_process` が bytecode VM の後処理する opcode のうち `ScaleNonUniform` / `ProjectiveTransform` / `LatticeDeform` / `IFS` / `Taper` / `HeightmapDisplacement` / `SurfaceRoughness` を偽としていた `OpCode::modifies_point` が `IcosahedralSymmetry` / `IFS` を偽としていた VM の挙動に合わせた
+- **Behavior change:** `SdfNode::node_count` が `ExpSmoothUnion` / `ExpSmoothIntersection` / `ExpSmoothSubtraction` を葉として 1 と数えていた (子を数えていなかった)
+- **Behavior change:** `CompiledSdfBvh` の箱: hex prism の x 方向を apothem でなく頂点 (`apothem · 2/√3`) までにした / tube を `max(R, h/2)` の立方体でなく半径 `R + t`、高さ `h/2` の箱にした / pipe を和集合でなく `(a ⊕ r) ∩ (b ⊕ r)` にした / tongue に `(a ⊕ ra) ∩ (b ⊕ rb)` を加えた いずれも形の一部が箱の外にはみ出していた (標本で実測)
+- **Behavior change:** Godot の `get_instruction_count` が命令数でなく node 数を返していた
+- `aabb::primitives::link_aabb` の y 方向が `l/2 + r2` で `l/2 + r1 + r2` に足りなかった (呼び出し元は無かった、`refit` から使うにあたって直した)
 - **Behavior change:** `fbm_noise_3d`: octave ごとの seed を `seed.wrapping_add(i)` で求める debug build で `seed` が `u32::MAX - octaves` を超えると加算の overflow で panic していた (release build の値は不変)
 - `scripts/scip_reach.py`: CLI (`src/bin/`) を到達性の起点に加えた CLI からだけ使う item (`export_stl` / `export_ply` / `io::get_info` 等) が L0 に数えられていた
 - `scripts/scip_reach.py` / `scripts/scip_index.sh`: repo 内で本 crate に依存する crate (`server/` / `mobile/uniffi-wrapper/` / `bindings/openxr/`) を個別に索引し、その `src/` を起点に数える (`examples/` は L1、`tests/` は数えない) fuzz と同様に、索引ごとに本 crate への参照が 0 件なら失敗する

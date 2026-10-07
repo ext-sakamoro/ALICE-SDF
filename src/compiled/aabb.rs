@@ -330,7 +330,6 @@ pub mod primitives {
     }
 
     /// AABB for a rounded cone along Y axis
-    #[allow(dead_code)]
     #[inline]
     pub fn rounded_cone_aabb(r1: f32, r2: f32, half_height: f32) -> AabbPacked {
         let max_r = r1.max(r2);
@@ -340,8 +339,7 @@ pub mod primitives {
         )
     }
 
-    /// AABB for a 4-sided pyramid along Y axis
-    #[allow(dead_code)]
+    /// AABB for a 4-sided pyramid along Y axis (unit base, as `sdf_pyramid`)
     #[inline]
     pub fn pyramid_aabb(half_height: f32) -> AabbPacked {
         AabbPacked::new(
@@ -350,31 +348,36 @@ pub mod primitives {
         )
     }
 
-    /// AABB for a regular octahedron
-    #[allow(dead_code)]
+    /// AABB for a regular octahedron (vertices at `±size` on each axis)
     #[inline]
     pub fn octahedron_aabb(size: f32) -> AabbPacked {
-        AabbPacked::new(Vec3::splat(-size), Vec3::splat(size))
+        let s = size.abs();
+        AabbPacked::new(Vec3::splat(-s), Vec3::splat(s))
     }
 
     /// AABB for a hexagonal prism (hex in XY, extruded along Z)
-    #[allow(dead_code)]
+    ///
+    /// `hex_radius` is the apothem (`sdf_hex_prism`: flat edges at
+    /// `y = ±hex_radius`), so the vertices sit at `x = ±hex_radius · 2/√3`.
     #[inline]
     pub fn hex_prism_aabb(hex_radius: f32, half_height: f32) -> AabbPacked {
+        // 2/√3 rounded up so the box stays conservative in f32
+        let vx = hex_radius * 1.154_700_6;
         AabbPacked::new(
-            Vec3::new(-hex_radius, -hex_radius, -half_height),
-            Vec3::new(hex_radius, hex_radius, half_height),
+            Vec3::new(-vx, -hex_radius, -half_height),
+            Vec3::new(vx, hex_radius, half_height),
         )
     }
 
-    /// AABB for a chain link shape
-    #[allow(dead_code)]
+    /// AABB for a chain link shape (`sdf_link`: a torus of radii r1 / r2 in
+    /// XY stretched by `half_length` along Y, so the Y extent is
+    /// `half_length + r1 + r2`)
     #[inline]
     pub fn link_aabb(half_length: f32, r1: f32, r2: f32) -> AabbPacked {
         let r = r1 + r2;
         AabbPacked::new(
-            Vec3::new(-r, -(half_length + r2), -r2),
-            Vec3::new(r, half_length + r2, r2),
+            Vec3::new(-r, -(half_length + r), -r2),
+            Vec3::new(r, half_length + r, r2),
         )
     }
 }

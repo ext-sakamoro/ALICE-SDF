@@ -418,39 +418,13 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
             let hh = params[1];
             AabbPacked::new(Vec3::new(-r, -hh, -r), Vec3::new(r, hh, r))
         }
-        OpCode::Ellipsoid => {
-            let radii = Vec3::new(params[0], params[1], params[2]);
-            AabbPacked::new(-radii, radii)
-        }
-        OpCode::RoundedCone => {
-            // Capsule-like: spheres of r1 / r2 centred at y = -hh / +hh
-            let (r1, r2, hh) = (params[0], params[1], params[2]);
-            let max_r = r1.max(r2);
-            AabbPacked::new(
-                Vec3::new(-max_r, -hh - r1, -max_r),
-                Vec3::new(max_r, hh + r2, max_r),
-            )
-        }
-        OpCode::Pyramid => {
-            let hh = params[0];
-            AabbPacked::new(Vec3::new(-0.5, -hh, -0.5), Vec3::new(0.5, hh, 0.5))
-        }
-        OpCode::Octahedron => cube(params[0]),
-        OpCode::HexPrism => {
-            let hex_r = params[0];
-            let hh = params[1];
-            AabbPacked::new(Vec3::new(-hex_r, -hex_r, -hh), Vec3::new(hex_r, hex_r, hh))
-        }
-        OpCode::Link => {
-            let half_length = params[0];
-            let r1 = params[1];
-            let r2 = params[2];
-            let extent = r1 + r2;
-            AabbPacked::new(
-                Vec3::new(-extent, -(half_length + extent), -r2),
-                Vec3::new(extent, half_length + extent, r2),
-            )
-        }
+        OpCode::Ellipsoid => AabbPacked::from_half_size(Vec3::new(params[0], params[1], params[2])),
+        // Capsule-like: spheres of r1 / r2 centred at y = -hh / +hh
+        OpCode::RoundedCone => aabb_prims::rounded_cone_aabb(params[0], params[1], params[2]),
+        OpCode::Pyramid => aabb_prims::pyramid_aabb(params[0]),
+        OpCode::Octahedron => aabb_prims::octahedron_aabb(params[0]),
+        OpCode::HexPrism => aabb_prims::hex_prism_aabb(params[0], params[1]),
+        OpCode::Link => aabb_prims::link_aabb(params[0], params[1], params[2]),
         // === Extended primitives: box where the axes are explicit, generous cube otherwise ===
         OpCode::RoundedBox | OpCode::ChamferedCube | OpCode::Superellipsoid => {
             let he = Vec3::new(params[0], params[1], params[2]);
@@ -463,7 +437,7 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         }
         OpCode::BoxFrame => {
             let he = Vec3::new(params[0], params[1], params[2]) + params[3];
-            AabbPacked::new(-he, he)
+            AabbPacked::from_half_size(he)
         }
         OpCode::CappedCone => cube(params[0].max(params[1]).max(params[2])),
         OpCode::CappedTorus => cube(params[0] + params[1]),
@@ -488,7 +462,12 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
                 cube(params[0])
             }
         }
-        OpCode::Tube => cube(params[0].max(params[2])),
+        // Ring |r_xz - R| <= t around Y: radial extent R + t, height ±hh
+        OpCode::Tube => {
+            let e = params[0].abs() + params[1].abs();
+            let hh = params[2].abs();
+            AabbPacked::new(Vec3::new(-e, -hh, -e), Vec3::new(e, hh, e))
+        }
         OpCode::Barrel => cube((params[0] + params[2]).max(params[1])),
         OpCode::Diamond => cube(params[0].max(params[1])),
         OpCode::RoundedX => cube(params[0] + params[1] + params[2]),
@@ -531,11 +510,11 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         }
         OpCode::Rect2D => {
             let he = Vec3::new(params[0], params[1], params[2]);
-            AabbPacked::new(-he, he)
+            AabbPacked::from_half_size(he)
         }
         OpCode::RoundedRect2D => {
             let he = Vec3::new(params[0], params[1], params[3]);
-            AabbPacked::new(-he, he)
+            AabbPacked::from_half_size(he)
         }
         OpCode::Segment2D => {
             let r = params[0]
@@ -636,9 +615,10 @@ fn csg_binary_aabb(opcode: OpCode, params: &[f32; 7], a: AabbPacked, b: AabbPack
         // Union-shape ops that don't expand the union bound.
         // A convex combination of two fields is at least their pointwise
         // minimum, so the blended solid is inside the union of the two.
-        OpCode::Union | OpCode::MetricBlend | OpCode::XOR | OpCode::Morph | OpCode::Pipe => {
-            a.union(&b)
-        }
+        OpCode::Union | OpCode::MetricBlend | OpCode::XOR | OpCode::Morph => a.union(&b),
+        // Pipe `length(a, b) - r <= 0` needs |a| <= r and |b| <= r: a tube of
+        // radius r around the curve a = b = 0, which leaves both solids.
+        OpCode::Pipe => a.expand(params[0]).intersection(&b.expand(params[0])),
         // Smooth blends expand the union AABB by their radius / k.
         OpCode::SmoothUnion => a.union(&b).expand(params[0]),
         OpCode::ChamferUnion => a.union(&b).expand(params[0]),
@@ -660,8 +640,10 @@ fn csg_binary_aabb(opcode: OpCode, params: &[f32; 7], a: AabbPacked, b: AabbPack
         | OpCode::ColumnsSubtraction
         | OpCode::ExpSmoothSubtraction
         | OpCode::Engrave
-        | OpCode::Groove
-        | OpCode::Tongue => a,
+        | OpCode::Groove => a,
+        // Tongue `min(a, max(a - ra, |b| - rb))` adds material where
+        // a <= ra and |b| <= rb, outside the LHS.
+        OpCode::Tongue => a.union(&a.expand(params[0]).intersection(&b.expand(params[1]))),
         _ => unreachable!("csg_binary_aabb called with non-binary {opcode:?}"),
     }
 }

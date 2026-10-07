@@ -312,6 +312,13 @@ impl OpCode {
     }
 
     /// Returns true if this opcode modifies the evaluation point
+    ///
+    /// Exactly the frame-pushing opcodes for which the bytecode VM
+    /// (`eval_core`) rewrites the point before the child runs: every
+    /// transform, and the point-warping modifiers. `Animated` pushes a frame
+    /// but leaves the point unchanged; the distance-only modifiers (`Round`,
+    /// `Onion`, `Noise`, `Displacement`, `HeightmapDisplacement`,
+    /// `SurfaceRoughness`) evaluate the child at the same point.
     #[inline]
     pub const fn modifies_point(self) -> bool {
         self.is_transform()
@@ -330,20 +337,33 @@ impl OpCode {
                     | Self::PolarRepeat
                     | Self::OctantMirror
                     | Self::Shear
+                    | Self::IcosahedralSymmetry
+                    | Self::IFS
             )
     }
 
     /// Returns true if this opcode post-processes the distance value
+    ///
+    /// Exactly the opcodes whose frame the bytecode VM (`eval_core`) rewrites
+    /// the child distance for when the matching `PopTransform` runs (scale
+    /// and Lipschitz corrections, offsets, displacement terms).
     #[inline]
     pub const fn is_post_process(self) -> bool {
         matches!(
             self,
-            Self::Round
+            Self::Scale
+                | Self::ScaleNonUniform
+                | Self::ProjectiveTransform
+                | Self::LatticeDeform
+                | Self::Round
                 | Self::Onion
-                | Self::Scale
                 | Self::Noise
                 | Self::Extrude
+                | Self::Taper
                 | Self::Displacement
+                | Self::IFS
+                | Self::HeightmapDisplacement
+                | Self::SurfaceRoughness
         )
     }
 }

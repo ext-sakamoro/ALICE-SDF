@@ -20,7 +20,7 @@ use glam::Vec3;
 /// evaluator stacks are no longer zero-filled per call).
 #[inline]
 pub fn eval_compiled(sdf: &CompiledSdf, point: Vec3) -> f32 {
-    eval_bytecode::<f32>(&sdf.instructions, &sdf.aux_data, point.into())
+    eval_bytecode::<f32>(sdf.instructions(), sdf.aux_data(), point.into())
 }
 
 /// Evaluate compiled SDF and compute normal using finite differences

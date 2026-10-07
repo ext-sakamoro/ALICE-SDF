@@ -368,7 +368,10 @@ fn apply_inverse_transform(p: vec3<f32>, inst: InstanceParams) -> vec3<f32> {{
     let rz = mat3x3<f32>(vec3(cz, -sz, 0.0), vec3(sz, cz, 0.0), vec3(0.0, 0.0, 1.0));
     let ry = mat3x3<f32>(vec3(cy, 0.0, sy), vec3(0.0, 1.0, 0.0), vec3(-sy, 0.0, cy));
     let rx = mat3x3<f32>(vec3(1.0, 0.0, 0.0), vec3(0.0, cx, -sx), vec3(0.0, sx, cx));
-    q = rx * ry * rz * q;
+    // The columns above build Rx(rotate_x) Ry(rotate_y) Rz(rotate_z), the
+    // forward XYZ Euler rotation (glam `Quat::from_euler(EulerRot::XYZ, ..)`);
+    // the query point needs its inverse, the transpose.
+    q = transpose(rx * ry * rz) * q;
     if (abs(inst.scale - 1.0) > 1e-6) {{
         q = q / inst.scale;
     }}

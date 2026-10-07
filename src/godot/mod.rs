@@ -1504,7 +1504,7 @@ impl AliceSdfBatchEvaluator {
     fn get_instruction_count(&self) -> i32 {
         self.compiled
             .as_ref()
-            .map(|c| c.node_count as i32)
+            .map(|c| c.instruction_count() as i32)
             .unwrap_or(0)
     }
 }

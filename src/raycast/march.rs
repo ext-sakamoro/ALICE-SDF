@@ -521,7 +521,7 @@ pub fn raymarch_compiled_with_config(
     let dir = direction.normalize();
     let mut t = 0.0;
     let mut steps = 0;
-    let config = &config.with_bound(sdf.lipschitz);
+    let config = &config.with_bound(sdf.lipschitz());
     let mut stepper = RelaxedStepper::new(config);
 
     while t < max_distance && steps < config.max_steps {
@@ -670,7 +670,7 @@ pub fn raymarch_simd_8(
     let max_d = f32x8::splat(max_distance);
     let zero = f32x8::splat(0.0);
     // step = d / L with the compiled bound (see `RaymarchConfig::with_bound`)
-    let inv_lip = f32x8::splat(1.0 / config.with_bound(sdf.lipschitz).lipschitz.max(1.0));
+    let inv_lip = f32x8::splat(1.0 / config.with_bound(sdf.lipschitz()).lipschitz.max(1.0));
 
     let mut t = f32x8::splat(0.0);
 

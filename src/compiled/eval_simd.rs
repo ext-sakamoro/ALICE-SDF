@@ -26,7 +26,7 @@ use wide::f32x8;
 /// 8 distance values as f32x8
 #[inline]
 pub fn eval_compiled_simd(sdf: &CompiledSdf, points: Vec3x8) -> f32x8 {
-    super::eval_core::eval_bytecode::<f32x8>(&sdf.instructions, &sdf.aux_data, points.into())
+    super::eval_core::eval_bytecode::<f32x8>(sdf.instructions(), sdf.aux_data(), points.into())
 }
 
 /// Batch evaluate compiled SDF using SIMD (8 points at a time)

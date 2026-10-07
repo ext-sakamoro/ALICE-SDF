@@ -1545,6 +1545,9 @@ impl SdfNode {
             | Self::ColumnsUnion { a, b, .. }
             | Self::ColumnsIntersection { a, b, .. }
             | Self::ColumnsSubtraction { a, b, .. }
+            | Self::ExpSmoothUnion { a, b, .. }
+            | Self::ExpSmoothIntersection { a, b, .. }
+            | Self::ExpSmoothSubtraction { a, b, .. }
             | Self::Pipe { a, b, .. }
             | Self::Engrave { a, b, .. }
             | Self::Groove { a, b, .. }
