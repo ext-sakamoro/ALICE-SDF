@@ -46,6 +46,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `examples/lod_nanite_meshlet.rs`: 解像度と decimation の LOD chain (`generate_lod_chain` / `generate_lod_chain_decimated`、各 config の preset と `distance_range` / `resolution_at_level`)、距離・画面誤差での level 選択 (`get_lod` / `select_by_error` / `get_blend_pair` / `LodSelector`)、`ContinuousLod`、`LodChainPersist` の集計 (`summary` / `select_lod` / `total_memory_bytes`)、Nanite の cluster (`clusters_at_lod` / `get_cluster` / `to_mesh` / `total_vertices` と preset)、meshlet (`build_meshlets` / `_scan` / `_adjacency` / `MeshletConfig::quality`)、`ClusterBounds::is_visible` / `screen_error` と `NormalCone` での culling を、値を出力して自己検証する
 - `tests/test_lod_nanite_meshlet_oracle.rs`: 各 level の Nanite cluster と meshlet を合わせると、同じ解像度で作り直した Marching Cubes の mesh の三角形の多重集合に一致すること、cluster と meshlet の頂点・三角形の上限、局所 index の範囲、bounds (AABB と全頂点を含む球) と normal cone、V1 meshlet が index 順の貪欲な切り方であること、LOD DAG を総当たりの球の重なりの走査と照合、LOD chain の各 level と単位球の両側 Hausdorff 距離 (mesh 側は閉形式、球側は点と三角形の総当たり距離) が `max_error` 以内、`LodSelector` の投影誤差の閉形式、`ContinuousLod` が `speed·dt` 以下の歩幅で目標に止まること、視錐台と背面の判定を `f64` の角度の式と照合 Nanite の cut は `#[ignore = "src gap: nanite-cluster-cut"]` の再現 test で残す
 
+- `examples/gpu_eval.rs` (`gpu`): buffer pool と `eval_batch_pooled` / `eval_batch_auto`、`with_workgroup_size` の shader、`new_dynamic` / `update_params` / `eval_batch_full` (GPU の法線) / `extract_params`、`new_async` / `eval_batch_async` / `eval_batch_submit` (`wait` / `resolve`) / `from_shader_async` / `from_wgsl_async`、`transpile_material`、`from_glsl_compute` (`glsl`) を、平行移動した球の閉形式と突き合わせて出力する
+- `examples/shader_export.rs` (`glsl,hlsl,blinkscript`): GLSL の compute / fragment / 全 pipeline (`RenderConfig`、`build_full_shader` の `dual_sdf`)、HLSL の compute と Unreal の material function、BlinkScript の body、GLSL / HLSL / BlinkScript の Dynamic parameter layout を書き出す `examples/msl_emit.rs` (`msl`): `MslShader::transpile` / `from_wgsl` と dispatch の metadata、不正な WGSL の `MslError` `examples/rust_transpile.rs` は `RustSource::transpile` / `transpile_with` が `transpile_compiled` と同じ source を返すことも示す
+- `tests/test_gpu_eval_api_oracle.rs` (`gpu`、CI の gpu-parity job と preflight): pool の容量の伸び方と再利用、262,144 点を超える batch の分割で点が欠けないこと (300,000 点)、workgroup 64 の shader を全 entry point で、Dynamic の距離・四面体差分の法線・`update_params` 後の値と `eval_batch` / `eval_batch_pooled` / `eval_batch_async`、async の構築と評価、`eval_batch_submit`、GLSL の compute、WGSL の material 関数が最も近い部分木の id を返すことを、平行移動した球の閉形式 (`f64`) と照合する
+- `tests/test_glsl_export_oracle.rs` (`glsl,gpu`、CI の gpu-parity job と preflight): `GlslShader::to_compute_shader` (Hardcoded / Dynamic) を naga の GLSL front end で GPU 実行して閉形式と照合、`extract_params` の layout (A の Dynamic shader に B の parameter を渡すと B を評価する)、`to_fragment_shader` と `to_fragment_shader_full` を `RenderConfig` の各 flag 単独・全 flag・`dual_sdf` で naga が parse / validate すること (OpenGL / GLSL ES の宣言だけを Vulkan GLSL に書き換えて検査、書き換えの範囲は file の doc)
+- `tests/test_hlsl_export_oracle.rs` (`hlsl,blinkscript`、CI の HLSL step と preflight): `export_ue5_material_function` を C++ compiler で build して `AliceSdf_Eval` / `AliceSdf_Normal` を球の閉形式と照合、`HlslShader::extract_params` / `BlinkScriptShader::extract_params` の layout (Dynamic の emit に別の木の parameter を渡す)、`BlinkScriptShader::get_eval_function`
+
 ### Changed
 
 - `SimulatedSdf::new` は `SimulatedSdf::from_arc` に委ねる (結果は不変)
@@ -67,10 +73,17 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `gi::IrradianceGrid::sample` の probe の読み出しを `get_probe` で行う (補間に使う座標は常に範囲内なので結果は不変)
 - CI の aaa integration step を `--features "aaa,image"` にして上の 5 file を加え、gpu-parity の aaa step に `test_volume_api_oracle` を加えた `scripts/preflight.sh` (full) にも同じ 2 step を加えた (aaa の integration oracle は preflight に無かった)
 
+- `volume::gpu_bake::gpu_bake_volume` の shader を `WgslShader::to_volume_shader` で作る (中身が同じ private な複製 `generate_volume_bake_shader` は削除、comment 以外の出力は不変)
+- CLI の `bench` の GPU 計測は buffer pool と `eval_batch_auto` を使う (256K 点を超える batch を分割する) GPU の評価が失敗した時は黙って捨てずに表示する
+- `GpuEvaluator::eval_batch_submit` の doc を実際の挙動に合わせた (呼んだ時点では何も dispatch せず、`wait` / `resolve` で評価する)
+- CI の example の build と `scripts/preflight.sh` に `blinkscript` / `msl` feature を足した preflight の HLSL step で `test_hlsl_blinkscript_parity` も走らせる (CI の HLSL step と対)
+
 ### Removed
 
 - crate 外から到達できない未使用の関数 (`mod` が private で再 export も無い): `smooth_min_exp_rk` / `smooth_min_cubic_rk` / `perlin_noise_3d_batch8` / `modifier_noise_perlin_batch8` / `sdf_torus_oriented` / `rotation_axis_angle` / `rotation_look_at` / `correct_distance_nonuniform`
 - `mesh::mesh_to_sdf` の private な未使用関数 `sdf_triangle` (`#[allow(dead_code)]` 付き、`primitives::sdf_triangle` と重複)
+
+- GLSL / HLSL / WGSL の transpiler の private な未使用項目 `FOLD_EPSILON` / `next_var` / `ensure_helper` / `param` (`GenericTranspiler` に移った後に残っていたもの、`#[allow(dead_code)]` を外した)
 
 ### Fixed
 
@@ -136,6 +149,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `npr::compiled_color::emit_wgsl_bytecode_evaluator` が返す WGSL の色の法則が CPU (`npr::toon` / `npr::composition` / `npr::hatch` / `npr::motion`) と `npr::shader_glue` の helper と食い違っていた toon (`floor(t·b)/b` → `min(floor(t·b), b−1)/max(b−1, 1)`)、soft toon (帯の上限と smoothness の下限 0.001)、posterize (`/L` → `/(L−1)` と clamp)、bloom (閾値以下で入力色 → 黒)、vignette、hatch (線の法線でなく線の方向に射影しており、mask も常に 1 だった)、speed line (mask が常に 1、焦点と count 0 で 0) を CPU と同じ式にした GPU で program を評価した色が変わる
 - **Behavior change:** `io::gltf` の書き出しが texture slot の `uv_channel` を捨てていた 0 以外なら `textureInfo.texCoord` を書く (glTF 2.0 §5.36)
 - **Behavior change:** `StandardMaterials::water` の屈折率が既定値 1.5 のままだった 1.33 にする
+- **Behavior change:** `GpuEvaluator::eval_batch_pooled` / `eval_batch_auto` / `eval_batch_async` / `eval_batch_full`: workgroup の数を 256 で割って求めていたため、`WgslShader::with_workgroup_size` で 256 未満にした shader では一部の点しか評価されず残りの出力は 0 のままだった (workgroup 64・1000 点で 744 点) `eval_batch` と同じく shader の workgroup size で割る
+- **Behavior change:** `GpuEvaluator::new_dynamic` で作った evaluator の `eval_batch` / `eval_batch_pooled` / `eval_batch_async`: parameter buffer (binding 3) を持たない 3 binding の bind group を使っていたため wgpu の validation error で panic していた `eval_batch_full` と同じ 4 binding の bind group を使う
+- **Behavior change:** `GlslShader::to_fragment_shader_full` / `render_pipeline::build_full_shader`: `PI` / `TAU` を `biome_terrain` の時だけ定義していたため、既定の `RenderConfig` (昼夜 cycle が `TAU` を使う) では未定義の識別子で compile できなかった 常に定義する また `#version 300 es` に無い `gl_FragColor` に書いていた (GLSL ES 3.00 で廃止) `out vec4 fragColor;` を宣言してそこに書く
 
 ## [4.1.0] - 2026-10-07
 
