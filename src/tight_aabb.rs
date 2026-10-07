@@ -414,6 +414,16 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
             let d = delta + k * 0.25;
             level_region(a, xf, d).hull(level_region(b, xf, d))
         }
+        // polynomial smooth max is max(a, b) plus a non-negative term (k >= 0), so its level
+        // set lies in the plain intersection / in the minuend's level set
+        SdfNode::SmoothIntersection { a, b, k } if k.is_finite() && *k >= 0.0 => {
+            level_region(a, xf, delta).meet(level_region(b, xf, delta))
+        }
+        SdfNode::SmoothSubtraction { a, k, .. } if k.is_finite() && *k >= 0.0 => {
+            level_region(a, xf, delta)
+        }
+        // the material tag does not change the field
+        SdfNode::WithMaterial { child, .. } => level_region(child, xf, delta),
         // rigid and uniform-scale transforms are folded into the accumulated map
         SdfNode::Translate { child, offset } => {
             let moved = Affine {

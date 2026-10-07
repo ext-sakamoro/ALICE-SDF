@@ -1,5 +1,6 @@
 //! Oracle for the level-set AABB bound on `Elongate` and the nodes added with it
-//! (`Mirror`, `ScaleNonUniform`, `RoundedBox`, `RoundedCylinder`, and the exact box of a
+//! (`Mirror`, `ScaleNonUniform`, `RoundedBox`, `RoundedCylinder`, `SmoothIntersection`,
+//! `SmoothSubtraction`, `WithMaterial`, and the exact box of a
 //! rotated round leaf)
 //!
 //! Before: `analytic_aabb` returned `Unsupported` for any tree holding an `Elongate`, the
@@ -237,7 +238,7 @@ fn rotated_round_leaves_get_their_exact_box() {
 }
 
 #[test]
-fn mirror_non_uniform_scale_and_rounded_leaves_have_closed_form_boxes() {
+fn the_other_added_nodes_have_closed_form_boxes() {
     let mut compared = 0;
     // a unit sphere at x = 3 mirrored in X covers x in [-4, 4]
     let b = bounded(
@@ -278,6 +279,24 @@ fn mirror_non_uniform_scale_and_rounded_leaves_have_closed_form_boxes() {
     });
     assert!(near(b.max, Vec3::new(2.0, 1.25, 2.0), 1e-4), "{b:?}");
     compared += 1;
+    // smooth max is never below max: the smooth intersection lies in the plain overlap and the
+    // smooth subtraction in the minuend; a material tag passes the child through
+    let a = SdfNode::box3d(4.0, 4.0, 4.0);
+    let b = bounded(
+        &a.clone()
+            .smooth_intersection(SdfNode::box3d(4.0, 4.0, 4.0).translate(3.0, 0.0, 0.0), 0.8),
+    );
+    assert!(b.min.x >= 1.0 - 1e-4 && b.max.x <= 2.0 + 1e-4, "{b:?}");
+    compared += 1;
+    let b = bounded(&a.smooth_subtract(SdfNode::sphere(1.0), 0.8));
+    assert!(near(b.max, Vec3::splat(2.0), 1e-4), "{b:?}");
+    compared += 1;
+    let b = bounded(&SdfNode::WithMaterial {
+        child: Arc::new(SdfNode::sphere(1.5).translate(1.0, 0.0, 0.0)),
+        material_id: 3,
+    });
+    assert!(near(b.max, Vec3::new(2.5, 1.5, 1.5), 1e-4), "{b:?}");
+    compared += 1;
     // negative / non-finite elongation and a non-positive non-uniform scale make no statement
     for node in [
         SdfNode::sphere(1.0).elongate(-1.0, 0.0, 0.0),
@@ -288,7 +307,7 @@ fn mirror_non_uniform_scale_and_rounded_leaves_have_closed_form_boxes() {
         assert!(matches!(analytic_aabb(&node), AnalyticAabb::Unsupported));
         compared += 1;
     }
-    assert_eq!(compared, 9);
+    assert_eq!(compared, 12);
 }
 
 /// Deterministic xorshift for the random trees
@@ -345,7 +364,7 @@ fn random_tree(rng: &mut Rng, depth: u32) -> SdfNode {
         };
     }
     let sub = |rng: &mut Rng| random_tree(rng, depth - 1);
-    match (rng.next() * 9.0) as u32 {
+    match (rng.next() * 12.0) as u32 {
         0 => {
             let a = sub(rng);
             a.union(sub(rng))
@@ -374,10 +393,22 @@ fn random_tree(rng: &mut Rng, depth: u32) -> SdfNode {
             let s = rng.vec(0.5, 2.0);
             sub(rng).scale_xyz(s.x, s.y, s.z)
         }
-        _ => {
+        8 => {
             let r = rng.range(0.05, 0.5);
             sub(rng).round(r)
         }
+        9 => {
+            let (a, k) = (sub(rng), rng.range(0.1, 1.5));
+            a.smooth_intersection(sub(rng), k)
+        }
+        10 => {
+            let (a, k) = (sub(rng), rng.range(0.1, 1.5));
+            a.smooth_subtract(sub(rng), k)
+        }
+        _ => SdfNode::WithMaterial {
+            child: Arc::new(sub(rng)),
+            material_id: 1,
+        },
     }
 }
 
