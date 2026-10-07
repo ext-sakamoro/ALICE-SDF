@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 655 |
+| 🟢 Not ignored | 688 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **656** |
+| **Total** | **689** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -22,7 +22,7 @@ today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected
 
 - `nanite_cut_covers_the_surface_at_every_distance` (test_lod_nanite_meshlet_oracle.rs) — src gap: nanite-cluster-cut — should_render/select_clusters keep the too-coarse side and a parent cluster's er…
 
-## 🟢 Not ignored (655)
+## 🟢 Not ignored (688)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -39,6 +39,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_lod_nanite_meshlet_oracle.rs` | 13 |
+| `test_codec_bridge_oracle.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `test_gpu_law_parity.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
@@ -70,6 +71,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
+| `test_sim_bridge_oracle.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
@@ -83,7 +85,9 @@ Per-file counts (the test names are in `tests/`):
 | `test_node_backend_matrix.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_sdf2d_oracle.rs` | 6 |
+| `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
+| `test_mesh_cache_model_oracle.rs` | 5 |
 | `test_mesh_extract_uv_oracle.rs` | 5 |
 | `test_mesh_quantization_oracle.rs` | 5 |
 | `test_meshopt_filter_oracle.rs` | 5 |
@@ -96,6 +100,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
+| `test_sdf_eval_cache_oracle.rs` | 4 |
 | `test_soa_oracle.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |

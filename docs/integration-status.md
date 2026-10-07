@@ -7,49 +7,22 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 193 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1014 |
+| L0 | not reached by any non-test code, examples included | 108 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1101 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 931 |
-| | **total** | **2138** |
+| | **total** | **2140** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 123 unwired items.
+`scripts/wiring-baseline.txt` lists 77 unwired items.
 
-### L0 here but not in the baseline (82)
+### L0 here but not in the baseline (43)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
-- `src/cache/chunked.rs::ChunkedMeshCache::dirty_chunks`
-- `src/cache/mod.rs::CacheConfig`
-- `src/cache/mod.rs::MeshCache`
-- `src/cache/mod.rs::MeshCache::clear`
-- `src/cache/mod.rs::MeshCache::get`
-- `src/cache/mod.rs::MeshCache::insert`
-- `src/cache/mod.rs::MeshCache::is_empty`
-- `src/cache/mod.rs::MeshCache::len`
-- `src/cache/mod.rs::MeshCache::memory_usage`
-- `src/cache/mod.rs::MeshCache::new`
-- `src/cache/mod.rs::MeshCache::remove`
-- `src/cache/mod.rs::MeshCacheKey`
-- `src/cache_bridge.rs::GridPoint`
-- `src/cache_bridge.rs::GridPoint::from_f32`
-- `src/cache_bridge.rs::SdfEvalCache`
-- `src/cache_bridge.rs::SdfEvalCache::get`
-- `src/cache_bridge.rs::SdfEvalCache::hit_rate`
-- `src/cache_bridge.rs::SdfEvalCache::is_empty`
-- `src/cache_bridge.rs::SdfEvalCache::len`
-- `src/cache_bridge.rs::SdfEvalCache::new`
-- `src/codec_bridge.rs::EncodeConfig`
-- `src/codec_bridge.rs::EncodeConfig::fast`
-- `src/codec_bridge.rs::EncodeConfig::high_quality`
-- `src/codec_bridge.rs::SdfVolume`
-- `src/codec_bridge.rs::SdfVolume::get`
-- `src/codec_bridge.rs::SdfVolume::is_empty`
-- `src/codec_bridge.rs::SdfVolume::len`
 - `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::extract_params`
 - `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::get_eval_function`
 - `src/compiled/glsl/render_pipeline.rs::RenderConfig`
@@ -92,19 +65,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/crispy.rs::BloomFilter`
 - `src/crispy.rs::BloomFilter::insert`
 - `src/crispy.rs::BloomFilter::new`
-- `src/physics_bridge.rs::CompiledSdfField`
-- `src/physics_bridge.rs::CompiledSdfField::compiled`
-- `src/physics_bridge.rs::CompiledSdfField::from_arc`
-- `src/physics_bridge.rs::CompiledSdfField::new`
 - `src/primitives/mod.rs::PrimitiveType`
-- `src/sim_bridge.rs::SimulatedSdf`
-- `src/sim_bridge.rs::SimulatedSdf::bounds`
-- `src/sim_bridge.rs::SimulatedSdf::compiled`
-- `src/sim_bridge.rs::SimulatedSdf::distance`
-- `src/sim_bridge.rs::SimulatedSdf::from_arc`
-- `src/sim_bridge.rs::SimulatedSdf::new`
-- `src/sim_bridge.rs::SimulatedSdf::normal`
-- `src/sim_bridge.rs::SimulatedSdf::update`
 
 ### In the baseline but reached here (1)
 
@@ -112,64 +73,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (193)
+## L0 — unreached (108)
 
-- `src/asp_bridge.rs::create_sdf_d_packet`
-- `src/asp_bridge.rs::create_sdf_i_packet`
-- `src/asp_bridge.rs::decode_sdf_i_packet`
-- `src/asp_bridge.rs::estimate_packet_size`
-- `src/cache/chunked.rs::ChunkedMeshCache::cached_chunks`
-- `src/cache/chunked.rs::ChunkedMeshCache::chunk_bounds`
-- `src/cache/chunked.rs::ChunkedMeshCache::dirty_chunks`
-- `src/cache/chunked.rs::ChunkedMeshCache::get_chunk`
-- `src/cache/chunked.rs::ChunkedMeshCache::invalidate_all`
-- `src/cache/chunked.rs::ChunkedMeshCache::load_chunk`
-- `src/cache/chunked.rs::ChunkedMeshCache::merge_all`
-- `src/cache/chunked.rs::ChunkedMeshCache::persist_dirty`
-- `src/cache/chunked.rs::ChunkedMeshCache::set_chunk`
-- `src/cache/chunked.rs::ChunkedMeshCache::update_sdf_hash`
-- `src/cache/mod.rs::CacheConfig`
-- `src/cache/mod.rs::MeshCache`
-- `src/cache/mod.rs::MeshCache::clear`
-- `src/cache/mod.rs::MeshCache::get`
-- `src/cache/mod.rs::MeshCache::get_or_generate`
-- `src/cache/mod.rs::MeshCache::insert`
-- `src/cache/mod.rs::MeshCache::is_empty`
-- `src/cache/mod.rs::MeshCache::len`
-- `src/cache/mod.rs::MeshCache::memory_usage`
-- `src/cache/mod.rs::MeshCache::new`
-- `src/cache/mod.rs::MeshCache::remove`
-- `src/cache/mod.rs::MeshCacheKey`
-- `src/cache/mod.rs::compute_cache_key`
-- `src/cache/mod.rs::hash_sdf_node`
-- `src/cache_bridge.rs::GridPoint`
-- `src/cache_bridge.rs::GridPoint::from_f32`
-- `src/cache_bridge.rs::SdfEvalCache`
-- `src/cache_bridge.rs::SdfEvalCache::get`
-- `src/cache_bridge.rs::SdfEvalCache::hit_rate`
-- `src/cache_bridge.rs::SdfEvalCache::is_empty`
-- `src/cache_bridge.rs::SdfEvalCache::len`
-- `src/cache_bridge.rs::SdfEvalCache::new`
-- `src/cache_bridge.rs::SdfEvalCache::put`
-- `src/codec_bridge.rs::CompressResult`
-- `src/codec_bridge.rs::EncodeConfig`
-- `src/codec_bridge.rs::EncodeConfig::fast`
-- `src/codec_bridge.rs::EncodeConfig::high_quality`
-- `src/codec_bridge.rs::EncodeConfig::lossless`
-- `src/codec_bridge.rs::SdfVolume`
-- `src/codec_bridge.rs::SdfVolume::get`
-- `src/codec_bridge.rs::SdfVolume::is_empty`
-- `src/codec_bridge.rs::SdfVolume::len`
-- `src/codec_bridge.rs::SdfVolume::world_pos`
-- `src/codec_bridge.rs::VolumeStats`
-- `src/codec_bridge.rs::compress_sdf`
-- `src/codec_bridge.rs::compression_ratio`
-- `src/codec_bridge.rs::decode_sdf_volume`
-- `src/codec_bridge.rs::decompress_sdf`
-- `src/codec_bridge.rs::encode_sdf_volume`
-- `src/codec_bridge.rs::volume_stats`
-- `src/codec_bridge.rs::voxelize_sdf`
-- `src/codec_bridge.rs::voxelize_sdf_uniform`
 - `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::extract_params`
 - `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::get_eval_function`
 - `src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM`
@@ -275,38 +180,9 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/nanite.rs::NaniteCluster::should_render`
 - `src/mesh/nanite.rs::NaniteMesh::select_clusters`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
-- `src/physics_bridge.rs::CompiledSdfField`
-- `src/physics_bridge.rs::CompiledSdfField::arc`
-- `src/physics_bridge.rs::CompiledSdfField::compiled`
-- `src/physics_bridge.rs::CompiledSdfField::from_arc`
-- `src/physics_bridge.rs::CompiledSdfField::new`
-- `src/physics_bridge.rs::CompiledSdfField::with_epsilon`
-- `src/physics_bridge.rs::sdf_to_physics_field`
 - `src/primitives/mod.rs::PrimitiveType`
 - `src/primitives/mod.rs::eval_primitive`
 - `src/primitives/mod.rs::eval_primitive_unchecked`
-- `src/sim_bridge.rs::GpuPhysicsBundle`
-- `src/sim_bridge.rs::SimulatedSdf`
-- `src/sim_bridge.rs::SimulatedSdf::add_erosion`
-- `src/sim_bridge.rs::SimulatedSdf::add_fracture`
-- `src/sim_bridge.rs::SimulatedSdf::add_modifier`
-- `src/sim_bridge.rs::SimulatedSdf::add_phase_change`
-- `src/sim_bridge.rs::SimulatedSdf::add_pressure`
-- `src/sim_bridge.rs::SimulatedSdf::add_thermal`
-- `src/sim_bridge.rs::SimulatedSdf::bounds`
-- `src/sim_bridge.rs::SimulatedSdf::clear_modifiers`
-- `src/sim_bridge.rs::SimulatedSdf::compiled`
-- `src/sim_bridge.rs::SimulatedSdf::distance`
-- `src/sim_bridge.rs::SimulatedSdf::from_arc`
-- `src/sim_bridge.rs::SimulatedSdf::modifier_count`
-- `src/sim_bridge.rs::SimulatedSdf::modifier_mut`
-- `src/sim_bridge.rs::SimulatedSdf::new`
-- `src/sim_bridge.rs::SimulatedSdf::normal`
-- `src/sim_bridge.rs::SimulatedSdf::update`
-- `src/sim_bridge.rs::SimulatedSdf::with_bounds`
-- `src/sim_bridge.rs::attach_physics`
-- `src/sim_bridge.rs::gpu_mesh_with_physics`
-- `src/sim_bridge.rs::simulate_sdf`
 
 ## Not indexed (7)
 
@@ -330,11 +206,15 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1014)
+## L1 — example-only (1101)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
+- `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
-- `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::world_to_chunk`
+- `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::cached_chunks`, `ChunkedMeshCache::chunk_bounds`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::dirty_chunks`, `ChunkedMeshCache::get_chunk`, `ChunkedMeshCache::invalidate_all`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::load_chunk`, `ChunkedMeshCache::merge_all`, `ChunkedMeshCache::persist_dirty`, `ChunkedMeshCache::set_chunk`, `ChunkedMeshCache::update_sdf_hash`, `ChunkedMeshCache::world_to_chunk`
+- `src/cache/mod.rs`: `CacheConfig`, `MeshCache`, `MeshCache::clear`, `MeshCache::get`, `MeshCache::get_or_generate`, `MeshCache::insert`, `MeshCache::is_empty`, `MeshCache::len`, `MeshCache::memory_usage`, `MeshCache::new`, `MeshCache::remove`, `MeshCacheKey`, `compute_cache_key`, `hash_sdf_node`
+- `src/cache_bridge.rs`: `GridPoint`, `GridPoint::from_f32`, `SdfEvalCache`, `SdfEvalCache::get`, `SdfEvalCache::hit_rate`, `SdfEvalCache::is_empty`, `SdfEvalCache::len`, `SdfEvalCache::new`, `SdfEvalCache::put`
+- `src/codec_bridge.rs`: `CompressResult`, `DecodeError`, `EncodeConfig`, `EncodeConfig::fast`, `EncodeConfig::high_quality`, `EncodeConfig::lossless`, `SdfVolume`, `SdfVolume::get`, `SdfVolume::is_empty`, `SdfVolume::len`, `SdfVolume::world_pos`, `VolumeStats`, `compress_sdf`, `compression_ratio`, `decode_sdf_volume`, `decompress_sdf`, `encode_sdf_volume`, `try_decode_sdf_volume`, `volume_stats`, `voxelize_sdf`, `voxelize_sdf_uniform`
 - `src/collision.rs`: `ContactManifold`, `SdfContact`, `compute_manifold`, `sdf_ccd`, `sdf_closest_point`, `sdf_collide`, `sdf_distance`, `sdf_overlap`
 - `src/compiled/aabb.rs`: `AabbPacked::distance_to_point_fast`
 - `src/compiled/compiler.rs`: `CompiledSdf::lipschitz`, `CompiledSdf::memory_size`, `CompiledSdf::node_count`
@@ -443,6 +323,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/operations/smooth.rs`: `sdf_smooth_intersection_rk`, `sdf_smooth_subtraction_rk`, `sdf_smooth_union_rk`, `smooth_min_cubic`, `smooth_min_exp`, `smooth_min_root`
 - `src/operations/union.rs`: `sdf_union_multi`
 - `src/optimize.rs`: `OptimizationStats`, `optimization_stats`
+- `src/physics_bridge.rs`: `CompiledSdfField`, `CompiledSdfField::arc`, `CompiledSdfField::compiled`, `CompiledSdfField::from_arc`, `CompiledSdfField::new`, `CompiledSdfField::with_epsilon`, `sdf_to_physics_field`
 - `src/primitives/capsule.rs`: `sdf_capsule_horizontal`, `sdf_capsule_vertical`
 - `src/primitives/cylinder.rs`: `sdf_cylinder_capped`, `sdf_cylinder_infinite`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
@@ -451,6 +332,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
+- `src/sim_bridge.rs`: `GpuPhysicsBundle`, `SimulatedSdf`, `SimulatedSdf::add_erosion`, `SimulatedSdf::add_fracture`, `SimulatedSdf::add_modifier`, `SimulatedSdf::add_phase_change`, `SimulatedSdf::add_pressure`, `SimulatedSdf::add_thermal`, `SimulatedSdf::bounds`, `SimulatedSdf::clear_modifiers`, `SimulatedSdf::compiled`, `SimulatedSdf::distance`, `SimulatedSdf::from_arc`, `SimulatedSdf::modifier_count`, `SimulatedSdf::modifier_mut`, `SimulatedSdf::new`, `SimulatedSdf::normal`, `SimulatedSdf::update`, `SimulatedSdf::with_bounds`, `attach_physics`, `gpu_mesh_with_physics`, `simulate_sdf`
 - `src/soa.rs`: `AlignedVec::as_mut_ptr`, `AlignedVec::as_ptr`, `AlignedVec::clear`, `AlignedVec::is_empty`, `SIMD_ALIGNMENT`, `SoADistances::as_slice`, `SoADistances::is_empty`, `SoADistances::len`, `SoADistances::store_simd_unchecked`, `SoAPoints::as_ptrs`, `SoAPoints::clear`, `SoAPoints::get`, `SoAPoints::iter`, `SoAPoints::load_simd_unchecked`
 - `src/svo/build.rs`: `build_svo`
 - `src/svo/linearize.rs`: `LinearizedSvo`, `LinearizedSvo::as_bytes`, `LinearizedSvo::memory_bytes`, `LinearizedSvo::node_count`, `LinearizedSvo::nodes_at_level`, `compact_svo`, `linearize_svo`, `validate_linearized`

@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **134 baseline items** — Permitted violations, ratchet in place
+🟡 **88 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (134 permitted)
+## 📋 Baseline (88 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -19,26 +19,19 @@ Must resolve or remove from baseline to reduce ratchet.
 |------|----------------|
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
-| `src/sim_bridge.rs` | 14 |
 | `src/compiled/wgsl/gpu_eval.rs` | 13 |
-| `src/codec_bridge.rs` | 12 |
-| `src/cache/chunked.rs` | 9 |
 | `src/compiled/glsl/transpiler.rs` | 5 |
 | `src/compiled/wgsl/transpiler.rs` | 5 |
 | `src/font_bridge.rs` | 5 |
-| `src/asp_bridge.rs` | 4 |
 | `src/ffi/registry.rs` | 4 |
-| `src/cache/mod.rs` | 3 |
 | `src/compiled/hlsl/transpiler.rs` | 3 |
 | `src/compiled/simd.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
-| `src/physics_bridge.rs` | 3 |
 | `src/mesh/nanite.rs` | 2 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/bin/main.rs` | 1 |
-| `src/cache_bridge.rs` | 1 |
 | `src/compiled/transpiler_common.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
@@ -61,38 +54,9 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (124)
+### Unwired Items (78)
 
 ```
-unwired src/asp_bridge.rs::create_sdf_d_packet
-unwired src/asp_bridge.rs::create_sdf_i_packet
-unwired src/asp_bridge.rs::decode_sdf_i_packet
-unwired src/asp_bridge.rs::estimate_packet_size
-unwired src/cache/chunked.rs::cached_chunks
-unwired src/cache/chunked.rs::chunk_bounds
-unwired src/cache/chunked.rs::get_chunk
-unwired src/cache/chunked.rs::invalidate_all
-unwired src/cache/chunked.rs::load_chunk
-unwired src/cache/chunked.rs::merge_all
-unwired src/cache/chunked.rs::persist_dirty
-unwired src/cache/chunked.rs::set_chunk
-unwired src/cache/chunked.rs::update_sdf_hash
-unwired src/cache/mod.rs::compute_cache_key
-unwired src/cache/mod.rs::get_or_generate
-unwired src/cache/mod.rs::hash_sdf_node
-unwired src/cache_bridge.rs::put
-unwired src/codec_bridge.rs::CompressResult
-unwired src/codec_bridge.rs::VolumeStats
-unwired src/codec_bridge.rs::compress_sdf
-unwired src/codec_bridge.rs::compression_ratio
-unwired src/codec_bridge.rs::decode_sdf_volume
-unwired src/codec_bridge.rs::decompress_sdf
-unwired src/codec_bridge.rs::encode_sdf_volume
-unwired src/codec_bridge.rs::lossless
-unwired src/codec_bridge.rs::volume_stats
-unwired src/codec_bridge.rs::voxelize_sdf
-unwired src/codec_bridge.rs::voxelize_sdf_uniform
-unwired src/codec_bridge.rs::world_pos
 unwired src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM
 unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_SYSTEM
 unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_UNIFORMS
@@ -168,26 +132,9 @@ unwired src/mesh/nanite.rs::select_clusters
 unwired src/mesh/nanite.rs::should_render
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
-unwired src/physics_bridge.rs::arc
-unwired src/physics_bridge.rs::sdf_to_physics_field
-unwired src/physics_bridge.rs::with_epsilon
 unwired src/primitives/mod.rs::eval_primitive
 unwired src/primitives/mod.rs::eval_primitive_unchecked
 unwired src/python/helpers.rs::numpy_to_vec3_fast
-unwired src/sim_bridge.rs::GpuPhysicsBundle
-unwired src/sim_bridge.rs::add_erosion
-unwired src/sim_bridge.rs::add_fracture
-unwired src/sim_bridge.rs::add_modifier
-unwired src/sim_bridge.rs::add_phase_change
-unwired src/sim_bridge.rs::add_pressure
-unwired src/sim_bridge.rs::add_thermal
-unwired src/sim_bridge.rs::attach_physics
-unwired src/sim_bridge.rs::clear_modifiers
-unwired src/sim_bridge.rs::gpu_mesh_with_physics
-unwired src/sim_bridge.rs::modifier_count
-unwired src/sim_bridge.rs::modifier_mut
-unwired src/sim_bridge.rs::simulate_sdf
-unwired src/sim_bridge.rs::with_bounds
 ```
 
 ---
