@@ -638,13 +638,20 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     let elapsed = start.elapsed();
     print_result("CPU JIT SIMD", elapsed, points);
 
-    // GPU Compute
+    // GPU Compute: one persistent buffer pool, batches above 256K points are
+    // split into chunks (`eval_batch_auto`), so the GPU buffers are allocated
+    // once (grown to the first chunk) and a multi-million-point run stays
+    // within the storage-buffer binding limit.
     #[cfg(feature = "gpu")]
     if let Some(ref gpu) = gpu {
+        let mut pool = gpu.create_buffer_pool(0);
         let start = std::time::Instant::now();
-        let _results_gpu = gpu.eval_batch(&points_vec);
+        let results_gpu = gpu.eval_batch_auto(&points_vec, &mut pool);
         let elapsed = start.elapsed();
-        print_result("GPU Compute", elapsed, points);
+        match results_gpu {
+            Ok(_) => print_result("GPU Compute", elapsed, points),
+            Err(e) => println!("{:<20} failed ({})", "GPU Compute", e),
+        }
     }
 
     println!("{}", "-".repeat(62));

@@ -67,7 +67,7 @@ pub fn gpu_bake_volume_from_shader(
     let world_max = config.bounds_max + padding_world;
 
     // Generate 3D volume bake shader
-    let compute_source = generate_volume_bake_shader(shader);
+    let compute_source = shader.to_volume_shader();
 
     // Initialize wgpu
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -443,48 +443,6 @@ pub fn gpu_bake_volume_with_normals(
     }
 
     Ok(volume)
-}
-
-/// Generate WGSL compute shader for 3D volume baking (distance only)
-fn generate_volume_bake_shader(shader: &WgslShader) -> String {
-    format!(
-        r"// ALICE-SDF Volume Bake Shader (3D Dispatch)
-
-struct VolumeUniforms {{
-    resolution: vec4<u32>,
-    bounds_min: vec4<f32>,
-    bounds_max: vec4<f32>,
-}}
-
-@group(0) @binding(0) var<storage, read_write> output_volume: array<f32>;
-@group(0) @binding(1) var<uniform> uniforms: VolumeUniforms;
-
-{sdf_func}
-
-@compute @workgroup_size(4, 4, 4)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let res = uniforms.resolution.xyz;
-
-    // Bounds check
-    if (gid.x >= res.x || gid.y >= res.y || gid.z >= res.z) {{
-        return;
-    }}
-
-    // Compute world-space position
-    let fres = vec3<f32>(f32(res.x) - 1.0, f32(res.y) - 1.0, f32(res.z) - 1.0);
-    let t = vec3<f32>(f32(gid.x), f32(gid.y), f32(gid.z)) / max(fres, vec3<f32>(1.0));
-    let p = mix(uniforms.bounds_min.xyz, uniforms.bounds_max.xyz, t);
-
-    // Evaluate SDF
-    let distance = sdf_eval(p);
-
-    // Write to flat array (Z-major order)
-    let idx = gid.x + gid.y * res.x + gid.z * res.x * res.y;
-    output_volume[idx] = distance;
-}}
-",
-        sdf_func = shader.source,
-    )
 }
 
 /// Generate WGSL compute shader for 3D volume baking (distance + normals)

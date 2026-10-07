@@ -288,24 +288,12 @@ impl GpuEvaluator {
             });
 
         // Create bind group
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ALICE-SDF Bind Group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: input_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: output_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: count_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = self.distance_bind_group(
+            "ALICE-SDF Bind Group",
+            &input_buffer,
+            &output_buffer,
+            &count_buffer,
+        );
 
         // Create command encoder
         let mut encoder = self
@@ -359,6 +347,51 @@ impl GpuEvaluator {
         Ok(distances)
     }
 
+    /// Bind group for the distance pipeline (`pipeline`).
+    ///
+    /// A Dynamic evaluator's distance pipeline is built from a shader that
+    /// also reads the parameter uniform at binding 3, so its bind group must use
+    /// the 4-binding layout and include the parameter buffer, exactly as
+    /// `eval_batch_full` does; the 3-binding layout is only compatible with a
+    /// Hardcoded pipeline.
+    fn distance_bind_group(
+        &self,
+        label: &str,
+        input: &wgpu::Buffer,
+        output: &wgpu::Buffer,
+        count: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        let mut entries = vec![
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: input.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: output.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: count.as_entire_binding(),
+            },
+        ];
+        let layout = match (&self.dynamic_bind_group_layout, &self.param_buffer) {
+            (Some(layout), Some(params)) => {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: params.as_entire_binding(),
+                });
+                layout
+            }
+            _ => &self.bind_group_layout,
+        };
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout,
+            entries: &entries,
+        })
+    }
+
     /// Get information about the GPU being used
     pub fn device_info(&self) -> String {
         "WebGPU Device (via wgpu)".to_string()
@@ -403,24 +436,12 @@ impl GpuEvaluator {
         );
 
         // Create bind group (lightweight, references existing buffers)
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ALICE-SDF Pooled Bind Group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: pool.input_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: pool.output_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: pool.count_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = self.distance_bind_group(
+            "ALICE-SDF Pooled Bind Group",
+            &pool.input_buffer,
+            &pool.output_buffer,
+            &pool.count_buffer,
+        );
 
         // Dispatch
         let mut encoder = self
@@ -437,7 +458,7 @@ impl GpuEvaluator {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            let workgroup_count = (point_count as u32).div_ceil(256);
+            let workgroup_count = (point_count as u32).div_ceil(self.workgroup_size);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -669,24 +690,12 @@ impl GpuEvaluator {
             });
 
         // Create bind group
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ALICE-SDF Bind Group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: input_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: output_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: count_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = self.distance_bind_group(
+            "ALICE-SDF Bind Group",
+            &input_buffer,
+            &output_buffer,
+            &count_buffer,
+        );
 
         // Create command encoder
         let mut encoder = self
@@ -704,7 +713,7 @@ impl GpuEvaluator {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            let workgroup_count = (point_count as u32).div_ceil(256);
+            let workgroup_count = (point_count as u32).div_ceil(self.workgroup_size);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -1043,7 +1052,7 @@ impl GpuEvaluator {
             });
             compute_pass.set_pipeline(full_pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            let workgroup_count = (point_count as u32).div_ceil(256);
+            let workgroup_count = (point_count as u32).div_ceil(self.workgroup_size);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -1076,10 +1085,12 @@ impl GpuEvaluator {
         Ok(results)
     }
 
-    /// Submit a batch for GPU evaluation and return a future
+    /// Package a batch for GPU evaluation and return a handle to run it
     ///
-    /// This is the most flexible async API - it submits the work to the GPU
-    /// and returns immediately, allowing you to do other work while waiting.
+    /// Nothing is dispatched here: the batch is evaluated when the handle is
+    /// consumed, by [`GpuEvalFuture::wait`] (blocking, `eval_batch`) or
+    /// [`GpuEvalFuture::resolve`] (async, `eval_batch_async`). The evaluator
+    /// must outlive the handle.
     ///
     /// # Example
     /// ```ignore

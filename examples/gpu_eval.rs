@@ -164,5 +164,164 @@ fn run_gpu_example() {
         }
     );
 
+    run_api_tour();
+
     println!("\n=== Example Complete ===");
+}
+
+/// Closed form of `sphere(r).translate(c)`.
+#[cfg(feature = "gpu")]
+fn ball(r: f32, c: Vec3, p: Vec3) -> f32 {
+    (p - c).length() - r
+}
+
+#[cfg(feature = "gpu")]
+fn assert_close(what: &str, got: &[f32], want: impl Iterator<Item = f32>) {
+    let mut worst = 0.0f32;
+    let mut n = 0usize;
+    for (g, w) in got.iter().zip(want) {
+        worst = worst.max((g - w).abs());
+        n += 1;
+    }
+    assert_eq!(n, got.len(), "{what}: result count");
+    assert!(n > 0, "{what}: nothing compared");
+    assert!(worst < 1e-4, "{what}: max |gpu - closed form| = {worst}");
+    println!("{what:<34} {n:>7} points, max error {worst:.2e}");
+}
+
+/// The rest of the GpuEvaluator API, each result checked against the closed
+/// form of a translated sphere.
+#[cfg(feature = "gpu")]
+fn run_api_tour() {
+    use alice_sdf::compiled::{GpuBufferPool, GpuEvalFuture};
+
+    println!("\n--- API tour (checked against |p - c| - r) ---");
+    let (r, c) = (1.0f32, Vec3::new(0.25, -0.5, 0.125));
+    let node = SdfNode::sphere(r).translate(c.x, c.y, c.z);
+    let pts: Vec<Vec3> = (0..2000)
+        .map(|i| {
+            let t = i as f32 * 0.618_034;
+            Vec3::new(t.sin() * 2.0, (t * 1.7).cos() * 2.0, (t * 2.3).sin() * 2.0)
+        })
+        .collect();
+    let want = |r: f32, c: Vec3| pts.iter().map(move |&p| ball(r, c, p));
+
+    // Persistent buffers: allocated once, grown on demand, chunked above 256K.
+    let gpu = GpuEvaluator::new(&node).expect("GPU evaluator");
+    let mut pool: GpuBufferPool = gpu.create_buffer_pool(512);
+    let d = gpu.eval_batch_pooled(&pts, &mut pool).unwrap();
+    assert_close("eval_batch_pooled", &d, want(r, c));
+    println!("pool capacity after 2000 points: {}", pool.capacity);
+    let d = gpu.eval_batch_auto(&pts, &mut pool).unwrap();
+    assert_close("eval_batch_auto", &d, want(r, c));
+
+    // A device-dependent workgroup size; every entry point dispatches with it.
+    let shader = WgslShader::transpile(&node, TranspileMode::Hardcoded).with_workgroup_size(64);
+    let gpu64 = GpuEvaluator::from_shader(&shader).expect("GPU evaluator (wg 64)");
+    let d = gpu64
+        .eval_batch_pooled(&pts, &mut gpu64.create_buffer_pool(0))
+        .unwrap();
+    assert_close("workgroup 64, pooled", &d, want(r, c));
+
+    // Dynamic parameters: change the radius and the centre without rebuilding
+    // the pipeline, and get GPU normals (tetrahedral difference) as well.
+    let dynamic = GpuEvaluator::new_dynamic(&node).expect("dynamic GPU evaluator");
+    let full = dynamic.eval_batch_full(&pts).unwrap();
+    let d: Vec<f32> = full.iter().map(|&(d, _)| d).collect();
+    assert_close("new_dynamic + eval_batch_full", &d, want(r, c));
+    let worst_normal = pts
+        .iter()
+        .zip(&full)
+        .filter(|(&p, _)| (p - c).length() > 0.5)
+        .map(|(&p, &(_, n))| (n - (p - c).normalize()).length())
+        .fold(0.0f32, f32::max);
+    assert!(worst_normal < 5e-3, "GPU normal error {worst_normal}");
+    println!("GPU normals: max |n - (p-c)/|p-c|| = {worst_normal:.2e}");
+    let (r2, c2) = (1.5f32, Vec3::new(-0.5, 0.25, 0.0));
+    let moved = SdfNode::sphere(r2).translate(c2.x, c2.y, c2.z);
+    println!(
+        "parameters after the move: {:?}",
+        WgslShader::extract_params(&moved)
+    );
+    dynamic.update_params(&moved);
+    assert_close(
+        "update_params, eval_batch",
+        &dynamic.eval_batch(&pts).unwrap(),
+        want(r2, c2),
+    );
+    let normals_wgsl =
+        WgslShader::transpile(&node, TranspileMode::Dynamic).to_compute_shader_with_normals();
+    println!(
+        "distance + normal compute shader: {} bytes",
+        normals_wgsl.len()
+    );
+
+    // Async construction and evaluation (any executor; pollster here).
+    let gpu_async =
+        pollster::block_on(GpuEvaluator::new_async(&node)).expect("async GPU evaluator");
+    let d = pollster::block_on(gpu_async.eval_batch_async(&pts)).unwrap();
+    assert_close("new_async + eval_batch_async", &d, want(r, c));
+    // `eval_batch_submit` defers the evaluation to `wait` / `resolve`.
+    let future: GpuEvalFuture = gpu_async.eval_batch_submit(pts.clone());
+    let d = future.wait().unwrap();
+    assert_close("eval_batch_submit + wait", &d, want(r, c));
+    let d = pollster::block_on(gpu_async.eval_batch_submit(pts.clone()).resolve()).unwrap();
+    assert_close("eval_batch_submit + resolve", &d, want(r, c));
+    let from_shader = pollster::block_on(GpuEvaluator::from_shader_async(&shader)).unwrap();
+    assert_close(
+        "from_shader_async",
+        &from_shader.eval_batch(&pts).unwrap(),
+        want(r, c),
+    );
+    let compute = WgslShader::transpile(&moved, TranspileMode::Hardcoded).to_compute_shader();
+    let from_wgsl = pollster::block_on(GpuEvaluator::from_wgsl_async(&compute)).unwrap();
+    assert_close(
+        "from_wgsl_async",
+        &from_wgsl.eval_batch(&pts).unwrap(),
+        want(r2, c2),
+    );
+
+    // Material ids: `sdf_eval_material(p)` returns the id of the nearest
+    // `with_material` subtree.
+    let materials = SdfNode::sphere(0.5)
+        .translate(-1.0, 0.0, 0.0)
+        .with_material(3)
+        .union(
+            SdfNode::sphere(0.5)
+                .translate(1.0, 0.0, 0.0)
+                .with_material(7),
+        );
+    let material_fn = WgslShader::transpile_material(&materials, TranspileMode::Hardcoded);
+    assert!(material_fn.contains("fn sdf_eval_material"));
+    println!("material function: {} bytes", material_fn.len());
+
+    // The GLSL transpiler's sdf_eval, run through naga's GLSL front end.
+    #[cfg(feature = "glsl")]
+    {
+        use alice_sdf::compiled::{GlslShader, GlslTranspileMode};
+        let glsl = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
+        let src = format!(
+            "#version 450\n\
+             layout(local_size_x = 256) in;\n\
+             struct InputPoint {{ float x; float y; float z; float pad; }};\n\
+             struct OutputDistance {{ float distance; float pad1; float pad2; float pad3; }};\n\
+             layout(std430, set = 0, binding = 0) readonly buffer InputPoints {{ InputPoint input_points[]; }};\n\
+             layout(std430, set = 0, binding = 1) buffer OutputDistances {{ OutputDistance output_distances[]; }};\n\
+             layout(std140, set = 0, binding = 2) uniform PointCount {{ uint point_count; }};\n\
+             {}\n\
+             void main() {{\n\
+                 uint idx = gl_GlobalInvocationID.x;\n\
+                 if (idx >= point_count) {{ return; }}\n\
+                 InputPoint pt = input_points[idx];\n\
+                 output_distances[idx].distance = sdf_eval(vec3(pt.x, pt.y, pt.z));\n\
+             }}\n",
+            glsl.get_eval_function()
+        );
+        let gpu_glsl = GpuEvaluator::from_glsl_compute(&src).expect("GLSL compute shader");
+        assert_close(
+            "from_glsl_compute",
+            &gpu_glsl.eval_batch(&pts).unwrap(),
+            want(r, c),
+        );
+    }
 }

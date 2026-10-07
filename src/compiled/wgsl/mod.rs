@@ -38,9 +38,9 @@
 //! let gpu = GpuEvaluator::new_async(&shape).await.unwrap();
 //! let distances = gpu.eval_batch_async(&points).await.unwrap();
 //!
-//! // Method 3: Submit and do other work
+//! // Method 3: Package a batch now, evaluate it later
 //! let future = gpu.eval_batch_submit(points);
-//! // ... do CPU work while GPU computes ...
+//! // ... nothing is dispatched until the handle is consumed ...
 //! let distances = future.wait().unwrap();
 //!
 //! // Method 4: Get WGSL for custom use
