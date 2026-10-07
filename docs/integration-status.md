@@ -7,8 +7,8 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 766 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 455 |
+| L0 | not reached by any non-test code, examples included | 654 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 567 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 916 |
 | | **total** | **2137** |
 
@@ -19,7 +19,7 @@ It does mean the item is not reached from another module or a binding.
 
 `scripts/wiring-baseline.txt` lists 463 unwired items.
 
-### L0 here but not in the baseline (312)
+### L0 here but not in the baseline (245)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -152,48 +152,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/material.rs::StandardMaterials::diamond`
 - `src/material.rs::StandardMaterials::glass`
 - `src/material.rs::TextureSlot::new`
-- `src/mesh/bvh.rs::Aabb`
-- `src/mesh/bvh.rs::Aabb::center`
-- `src/mesh/bvh.rs::Aabb::empty`
-- `src/mesh/bvh.rs::Aabb::expand_point`
-- `src/mesh/bvh.rs::Aabb::longest_axis`
-- `src/mesh/bvh.rs::Aabb::new`
-- `src/mesh/bvh.rs::Aabb::signed_distance`
-- `src/mesh/bvh.rs::Aabb::surface_area`
-- `src/mesh/bvh.rs::BvhNode`
-- `src/mesh/bvh.rs::BvhNode::aabb`
-- `src/mesh/bvh.rs::MeshBvh`
-- `src/mesh/bvh.rs::MeshBvh::bounds`
-- `src/mesh/bvh.rs::MeshBvh::build`
-- `src/mesh/bvh.rs::MeshBvh::closest_point`
-- `src/mesh/bvh.rs::MeshBvh::signed_distance`
-- `src/mesh/bvh.rs::MeshBvh::signed_distance_batch`
-- `src/mesh/bvh.rs::MeshBvh::triangle_count`
-- `src/mesh/bvh.rs::MeshBvh::unsigned_distance`
-- `src/mesh/bvh.rs::Triangle`
-- `src/mesh/bvh.rs::Triangle::closest_point`
-- `src/mesh/bvh.rs::Triangle::new`
-- `src/mesh/bvh.rs::Triangle::signed_distance`
-- `src/mesh/bvh.rs::Triangle::unsigned_distance`
-- `src/mesh/collision.rs::BoundingSphere`
-- `src/mesh/collision.rs::BoundingSphere::contains`
-- `src/mesh/collision.rs::CollisionAabb`
-- `src/mesh/collision.rs::CollisionAabb::center`
-- `src/mesh/collision.rs::CollisionAabb::contains`
-- `src/mesh/collision.rs::CollisionAabb::half_extents`
-- `src/mesh/collision.rs::ConvexDecomposition`
-- `src/mesh/collision.rs::ConvexHull`
-- `src/mesh/collision.rs::VhacdConfig`
-- `src/mesh/collision.rs::VhacdConfig::fast`
-- `src/mesh/collision.rs::VhacdConfig::high_quality`
-- `src/mesh/collision.rs::compute_aabb`
 - `src/mesh/dual_contouring.rs::DualContouringConfig::aaa`
-- `src/mesh/hermite.rs::EdgeCrossing`
-- `src/mesh/hermite.rs::HermiteConfig`
-- `src/mesh/hermite.rs::HermiteExtractor`
-- `src/mesh/hermite.rs::HermiteExtractor::new`
-- `src/mesh/hermite.rs::HermitePoint`
-- `src/mesh/hermite.rs::HermitePoint::new`
 - `src/mesh/lod.rs::ContinuousLod`
 - `src/mesh/lod.rs::ContinuousLod::new`
 - `src/mesh/lod.rs::ContinuousLod::update`
@@ -214,21 +173,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/lod.rs::LodSelector::select`
 - `src/mesh/lod_persist.rs::LodChainPersist::mesh`
 - `src/mesh/mesh_codec.rs::CodecError`
-- `src/mesh/mesh_sign.rs::ExteriorField`
-- `src/mesh/mesh_sign.rs::ExteriorField::MAX_BAND_STEPS`
-- `src/mesh/mesh_sign.rs::ExteriorField::MAX_CELLS`
-- `src/mesh/mesh_sign.rs::ExteriorField::PADDING_CELLS`
-- `src/mesh/mesh_sign.rs::ExteriorField::build`
-- `src/mesh/mesh_sign.rs::ExteriorField::is_exterior`
-- `src/mesh/mesh_sign.rs::ExteriorField::signed_distance`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::bounds`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::bvh`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::eval`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::eval_batch`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::new`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::triangle_count`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::try_new`
 - `src/mesh/meshlet.rs::Meshlet`
 - `src/mesh/meshlet.rs::Meshlet::triangle_count`
 - `src/mesh/meshlet.rs::Meshlet::vertex_count`
@@ -238,17 +182,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/nanite.rs::NaniteMesh::clusters_at_lod`
 - `src/mesh/nanite.rs::NaniteMesh::to_mesh`
 - `src/mesh/nanite.rs::NormalCone`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::eval`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::eval_batch`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdfConfig`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdfConfig::fast`
-- `src/mesh/primitive_fitting.rs::FittedPrimitive`
-- `src/mesh/primitive_fitting.rs::FittedPrimitive::distance`
-- `src/mesh/primitive_fitting.rs::FittingConfig`
-- `src/mesh/primitive_fitting.rs::FittingResult`
-- `src/mesh/primitive_fitting.rs::FittingResult::is_acceptable`
 - `src/mesh/sdf_to_mesh.rs::AdaptiveConfig::aaa`
 - `src/mesh/sdf_to_mesh.rs::MarchingCubesConfig::aaa`
 - `src/mesh/uv_unwrap.rs::UvDensityReport`
@@ -336,13 +269,57 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/volume/mod.rs::Volume3D::world_size`
 - `src/volume/mod.rs::VoxelDistGrad`
 
-### In the baseline but reached here (1)
+### In the baseline but reached here (45)
 
 The guard lists these as unwired; a resolved reference reaches them (level in brackets).
 
+- `src/mesh/bvh.rs::expand_aabb` (L1)
+- `src/mesh/bvh.rs::unsigned_distance_batch` (L1)
+- `src/mesh/collision.rs::CollisionMesh` (L1)
+- `src/mesh/collision.rs::compute_bounding_sphere` (L1)
+- `src/mesh/collision.rs::compute_convex_hull` (L1)
+- `src/mesh/collision.rs::convex_decomposition` (L1)
+- `src/mesh/collision.rs::convex_hull_from_points` (L1)
+- `src/mesh/collision.rs::simplify_collision` (L1)
+- `src/mesh/collision.rs::total_triangles` (L1)
+- `src/mesh/collision.rs::total_vertices` (L1)
+- `src/mesh/collision.rs::volume` (L1)
+- `src/mesh/hermite.rs::extract_edge_crossings` (L1)
+- `src/mesh/hermite.rs::extract_hermite` (L1)
+- `src/mesh/hermite.rs::extract_surface_points` (L1)
+- `src/mesh/hermite.rs::t` (L1)
+- `src/mesh/manifold.rs::MeshQuality` (L1)
+- `src/mesh/manifold.rs::compute_quality` (L1)
+- `src/mesh/manifold.rs::drop_specks` (L1)
+- `src/mesh/manifold.rs::fill_holes` (L1)
+- `src/mesh/manifold.rs::orient_faces` (L1)
+- `src/mesh/mesh_sign.rs::cell_size` (L1)
+- `src/mesh/mesh_sign.rs::dims` (L1)
+- `src/mesh/mesh_to_sdf.rs::accurate` (L1)
+- `src/mesh/mesh_to_sdf.rs::eval_unsigned` (L1)
+- `src/mesh/mesh_to_sdf.rs::eval_unsigned_batch` (L1)
+- `src/mesh/mesh_to_sdf.rs::gradient` (L1)
+- `src/mesh/mesh_to_sdf.rs::hybrid` (L1)
+- `src/mesh/mesh_to_sdf.rs::mesh_to_sdf_exact` (L1)
+- `src/mesh/mesh_to_sdf.rs::sign_mode` (L1)
+- `src/mesh/mesh_to_sdf.rs::to_sdf_node` (L1)
+- `src/mesh/mesh_to_sdf.rs::topology_robust` (L1)
+- `src/mesh/point_cloud_sdf.rs::accurate` (L1)
+- `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf` (L1)
+- `src/mesh/point_cloud_sdf.rs::point_count` (L1)
+- `src/mesh/primitive_fitting.rs::PrimitiveType` (L1)
+- `src/mesh/primitive_fitting.rs::compute_error` (L1)
+- `src/mesh/primitive_fitting.rs::detect_primitive` (L1)
+- `src/mesh/primitive_fitting.rs::fit_box` (L1)
+- `src/mesh/primitive_fitting.rs::fit_cylinder` (L1)
+- `src/mesh/primitive_fitting.rs::fit_plane` (L1)
+- `src/mesh/primitive_fitting.rs::fit_sphere` (L1)
+- `src/mesh/primitive_fitting.rs::primitive_type` (L1)
+- `src/mesh/primitive_fitting.rs::primitives_to_csg` (L1)
+- `src/mesh/primitive_fitting.rs::to_sdf_node` (L1)
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (766)
+## L0 — unreached (654)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
@@ -684,67 +661,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/material.rs::TextureSlot::with_tiling`
 - `src/material.rs::TextureSlot::with_uv_channel`
 - `src/material.rs::material_lerp`
-- `src/mesh/bvh.rs::Aabb`
-- `src/mesh/bvh.rs::Aabb::center`
-- `src/mesh/bvh.rs::Aabb::empty`
-- `src/mesh/bvh.rs::Aabb::expand_aabb`
-- `src/mesh/bvh.rs::Aabb::expand_point`
-- `src/mesh/bvh.rs::Aabb::longest_axis`
-- `src/mesh/bvh.rs::Aabb::new`
-- `src/mesh/bvh.rs::Aabb::signed_distance`
-- `src/mesh/bvh.rs::Aabb::surface_area`
-- `src/mesh/bvh.rs::BvhNode`
-- `src/mesh/bvh.rs::BvhNode::aabb`
-- `src/mesh/bvh.rs::MeshBvh`
-- `src/mesh/bvh.rs::MeshBvh::bounds`
-- `src/mesh/bvh.rs::MeshBvh::build`
-- `src/mesh/bvh.rs::MeshBvh::closest_point`
-- `src/mesh/bvh.rs::MeshBvh::signed_distance`
-- `src/mesh/bvh.rs::MeshBvh::signed_distance_batch`
-- `src/mesh/bvh.rs::MeshBvh::triangle_count`
-- `src/mesh/bvh.rs::MeshBvh::unsigned_distance`
-- `src/mesh/bvh.rs::MeshBvh::unsigned_distance_batch`
-- `src/mesh/bvh.rs::Triangle`
-- `src/mesh/bvh.rs::Triangle::closest_point`
-- `src/mesh/bvh.rs::Triangle::new`
-- `src/mesh/bvh.rs::Triangle::signed_distance`
-- `src/mesh/bvh.rs::Triangle::unsigned_distance`
-- `src/mesh/collision.rs::BoundingSphere`
-- `src/mesh/collision.rs::BoundingSphere::contains`
-- `src/mesh/collision.rs::CollisionAabb`
-- `src/mesh/collision.rs::CollisionAabb::center`
-- `src/mesh/collision.rs::CollisionAabb::contains`
-- `src/mesh/collision.rs::CollisionAabb::half_extents`
-- `src/mesh/collision.rs::CollisionAabb::volume`
-- `src/mesh/collision.rs::CollisionMesh`
-- `src/mesh/collision.rs::ConvexDecomposition`
-- `src/mesh/collision.rs::ConvexDecomposition::total_triangles`
-- `src/mesh/collision.rs::ConvexDecomposition::total_vertices`
-- `src/mesh/collision.rs::ConvexHull`
-- `src/mesh/collision.rs::VhacdConfig`
-- `src/mesh/collision.rs::VhacdConfig::fast`
-- `src/mesh/collision.rs::VhacdConfig::high_quality`
-- `src/mesh/collision.rs::compute_aabb`
-- `src/mesh/collision.rs::compute_bounding_sphere`
-- `src/mesh/collision.rs::compute_convex_hull`
-- `src/mesh/collision.rs::convex_decomposition`
-- `src/mesh/collision.rs::convex_hull_from_points`
-- `src/mesh/collision.rs::simplify_collision`
 - `src/mesh/decimate.rs::DecimateConfig::aggressive`
 - `src/mesh/decimate.rs::DecimateConfig::conservative`
 - `src/mesh/dual_contouring.rs::DualContouringConfig::aaa`
 - `src/mesh/dual_contouring.rs::dual_contouring_compiled`
-- `src/mesh/hermite.rs::EdgeCrossing`
-- `src/mesh/hermite.rs::EdgeCrossing::t`
-- `src/mesh/hermite.rs::HermiteConfig`
-- `src/mesh/hermite.rs::HermiteExtractor`
-- `src/mesh/hermite.rs::HermiteExtractor::extract_edge_crossings`
-- `src/mesh/hermite.rs::HermiteExtractor::extract_surface_points`
-- `src/mesh/hermite.rs::HermiteExtractor::new`
-- `src/mesh/hermite.rs::HermitePoint`
-- `src/mesh/hermite.rs::HermitePoint::new`
-- `src/mesh/hermite.rs::extract_edge_crossings`
-- `src/mesh/hermite.rs::extract_hermite`
 - `src/mesh/lightmap.rs::generate_lightmap_uvs`
 - `src/mesh/lightmap.rs::generate_lightmap_uvs_fast`
 - `src/mesh/lod.rs::ContinuousLod`
@@ -784,43 +704,12 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/lod_persist.rs::LodChainPersist::summary`
 - `src/mesh/lod_persist.rs::LodChainPersist::total_memory_bytes`
 - `src/mesh/lod_persist.rs::LodChainSummary`
-- `src/mesh/manifold.rs::MeshQuality`
-- `src/mesh/manifold.rs::MeshRepair::drop_specks`
-- `src/mesh/manifold.rs::MeshRepair::fill_holes`
-- `src/mesh/manifold.rs::MeshRepair::orient_faces`
-- `src/mesh/manifold.rs::compute_quality`
 - `src/mesh/mesh_codec.rs::CodecError`
 - `src/mesh/mesh_codec.rs::decode_indices`
 - `src/mesh/mesh_codec.rs::decode_positions`
 - `src/mesh/mesh_codec.rs::encode_indices`
 - `src/mesh/mesh_codec.rs::encode_mesh`
 - `src/mesh/mesh_codec.rs::encode_positions`
-- `src/mesh/mesh_sign.rs::ExteriorField`
-- `src/mesh/mesh_sign.rs::ExteriorField::MAX_BAND_STEPS`
-- `src/mesh/mesh_sign.rs::ExteriorField::MAX_CELLS`
-- `src/mesh/mesh_sign.rs::ExteriorField::PADDING_CELLS`
-- `src/mesh/mesh_sign.rs::ExteriorField::build`
-- `src/mesh/mesh_sign.rs::ExteriorField::cell_size`
-- `src/mesh/mesh_sign.rs::ExteriorField::dims`
-- `src/mesh/mesh_sign.rs::ExteriorField::is_exterior`
-- `src/mesh/mesh_sign.rs::ExteriorField::signed_distance`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::bounds`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::bvh`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::eval`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::eval_batch`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::eval_unsigned`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::eval_unsigned_batch`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::gradient`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::new`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::sign_mode`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::to_sdf_node`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::triangle_count`
-- `src/mesh/mesh_to_sdf.rs::MeshSdf::try_new`
-- `src/mesh/mesh_to_sdf.rs::MeshToSdfConfig::accurate`
-- `src/mesh/mesh_to_sdf.rs::MeshToSdfConfig::hybrid`
-- `src/mesh/mesh_to_sdf.rs::MeshToSdfConfig::topology_robust`
-- `src/mesh/mesh_to_sdf.rs::mesh_to_sdf_exact`
 - `src/mesh/meshlet.rs::Meshlet`
 - `src/mesh/meshlet.rs::Meshlet::triangle_count`
 - `src/mesh/meshlet.rs::Meshlet::vertex_count`
@@ -871,30 +760,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/overdraw.rs::default_view_directions`
 - `src/mesh/overdraw.rs::optimize_overdraw`
 - `src/mesh/overdraw.rs::optimize_overdraw_with_views`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::eval`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::eval_batch`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::point_count`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdfConfig`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdfConfig::accurate`
-- `src/mesh/point_cloud_sdf.rs::PointCloudSdfConfig::fast`
-- `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
-- `src/mesh/primitive_fitting.rs::FittedPrimitive`
-- `src/mesh/primitive_fitting.rs::FittedPrimitive::compute_error`
-- `src/mesh/primitive_fitting.rs::FittedPrimitive::distance`
-- `src/mesh/primitive_fitting.rs::FittedPrimitive::primitive_type`
-- `src/mesh/primitive_fitting.rs::FittedPrimitive::to_sdf_node`
-- `src/mesh/primitive_fitting.rs::FittingConfig`
-- `src/mesh/primitive_fitting.rs::FittingResult`
-- `src/mesh/primitive_fitting.rs::FittingResult::is_acceptable`
-- `src/mesh/primitive_fitting.rs::PrimitiveType`
-- `src/mesh/primitive_fitting.rs::detect_primitive`
-- `src/mesh/primitive_fitting.rs::fit_box`
-- `src/mesh/primitive_fitting.rs::fit_cylinder`
-- `src/mesh/primitive_fitting.rs::fit_plane`
-- `src/mesh/primitive_fitting.rs::fit_sphere`
-- `src/mesh/primitive_fitting.rs::primitives_to_csg`
 - `src/mesh/quantization.rs::half_decode`
 - `src/mesh/quantization.rs::half_encode`
 - `src/mesh/quantization.rs::snorm_i16_decode`
@@ -1133,7 +998,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (455)
+## L1 — example-only (567)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `eval_hessian`, `mean_curvature`
@@ -1172,9 +1037,16 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/vox.rs`: `load_vox`, `save_vox`
 - `src/llm_schema.rs`: `schema_summary`, `validate_sdf_json`
 - `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
-- `src/mesh/manifold.rs`: `MeshRepair`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `validate_mesh`
+- `src/mesh/bvh.rs`: `Aabb`, `Aabb::center`, `Aabb::empty`, `Aabb::expand_aabb`, `Aabb::expand_point`, `Aabb::longest_axis`, `Aabb::new`, `Aabb::signed_distance`, `Aabb::surface_area`, `BvhNode`, `BvhNode::aabb`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`, `Triangle`, `Triangle::closest_point`, `Triangle::new`, `Triangle::signed_distance`, `Triangle::unsigned_distance`
+- `src/mesh/collision.rs`: `BoundingSphere`, `BoundingSphere::contains`, `CollisionAabb`, `CollisionAabb::center`, `CollisionAabb::contains`, `CollisionAabb::half_extents`, `CollisionAabb::volume`, `CollisionMesh`, `ConvexDecomposition`, `ConvexDecomposition::total_triangles`, `ConvexDecomposition::total_vertices`, `ConvexHull`, `VhacdConfig`, `VhacdConfig::fast`, `VhacdConfig::high_quality`, `compute_aabb`, `compute_bounding_sphere`, `compute_convex_hull`, `convex_decomposition`, `convex_hull_from_points`, `simplify_collision`
+- `src/mesh/hermite.rs`: `EdgeCrossing`, `EdgeCrossing::t`, `HermiteConfig`, `HermiteExtractor`, `HermiteExtractor::extract_edge_crossings`, `HermiteExtractor::extract_surface_points`, `HermiteExtractor::new`, `HermitePoint`, `HermitePoint::new`, `extract_edge_crossings`, `extract_hermite`
+- `src/mesh/manifold.rs`: `MeshQuality`, `MeshRepair`, `MeshRepair::drop_specks`, `MeshRepair::fill_holes`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::orient_faces`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `compute_quality`, `validate_mesh`
+- `src/mesh/mesh_sign.rs`: `ExteriorField`, `ExteriorField::MAX_BAND_STEPS`, `ExteriorField::MAX_CELLS`, `ExteriorField::PADDING_CELLS`, `ExteriorField::build`, `ExteriorField::cell_size`, `ExteriorField::dims`, `ExteriorField::is_exterior`, `ExteriorField::signed_distance`
+- `src/mesh/mesh_to_sdf.rs`: `MeshSdf`, `MeshSdf::bounds`, `MeshSdf::bvh`, `MeshSdf::eval`, `MeshSdf::eval_batch`, `MeshSdf::eval_unsigned`, `MeshSdf::eval_unsigned_batch`, `MeshSdf::gradient`, `MeshSdf::new`, `MeshSdf::sign_mode`, `MeshSdf::to_sdf_node`, `MeshSdf::triangle_count`, `MeshSdf::try_new`, `MeshToSdfConfig::accurate`, `MeshToSdfConfig::hybrid`, `MeshToSdfConfig::topology_robust`, `mesh_to_sdf_exact`
 - `src/mesh/mod.rs`: `Triangle`, `Triangle::new`
 - `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteConfig`, `NaniteMesh`, `generate_nanite_mesh`
+- `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::new`, `PointCloudSdf::point_count`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`, `point_cloud_to_sdf`
+- `src/mesh/primitive_fitting.rs`: `FittedPrimitive`, `FittedPrimitive::compute_error`, `FittedPrimitive::distance`, `FittedPrimitive::primitive_type`, `FittedPrimitive::to_sdf_node`, `FittingConfig`, `FittingResult`, `FittingResult::is_acceptable`, `PrimitiveType`, `detect_primitive`, `fit_box`, `fit_cylinder`, `fit_plane`, `fit_sphere`, `primitives_to_csg`
 - `src/modifiers/bend.rs`: `modifier_bend_cheap`, `modifier_bend_x`, `modifier_bend_z`
 - `src/modifiers/ifs.rs`: `ifs_fold`
 - `src/modifiers/mirror.rs`: `modifier_mirror_x`, `modifier_mirror_y`, `modifier_mirror_z`

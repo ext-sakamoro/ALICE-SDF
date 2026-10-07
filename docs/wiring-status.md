@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **481 baseline items** — Permitted violations, ratchet in place
+🟡 **431 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (481 permitted)
+## 📋 Baseline (431 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -21,19 +21,16 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/npr/compiled_color.rs` | 32 |
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
-| `src/autodiff.rs` | 15 |
+| `src/autodiff.rs` | 14 |
 | `src/compiled/wgsl/gpu_eval.rs` | 14 |
 | `src/sim_bridge.rs` | 14 |
 | `src/mesh/lod.rs` | 13 |
 | `src/mesh/meshopt_filter.rs` | 13 |
-| `src/mesh/nanite.rs` | 13 |
 | `src/codec_bridge.rs` | 12 |
-| `src/mesh/mesh_to_sdf.rs` | 10 |
-| `src/mesh/primitive_fitting.rs` | 10 |
+| `src/mesh/nanite.rs` | 12 |
 | `src/cache/chunked.rs` | 9 |
 | `src/compiled/instanced.rs` | 9 |
 | `src/destruction/mod.rs` | 9 |
-| `src/mesh/collision.rs` | 9 |
 | `src/compiled/aabb.rs` | 8 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
 | `src/compiled/wgsl/transpiler.rs` | 6 |
@@ -42,12 +39,9 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/terrain/splatmap.rs` | 6 |
 | `src/volume/export.rs` | 6 |
 | `src/font_bridge.rs` | 5 |
-| `src/mesh/hermite.rs` | 5 |
 | `src/mesh/lod_persist.rs` | 5 |
-| `src/mesh/manifold.rs` | 5 |
 | `src/mesh/mesh_codec.rs` | 5 |
 | `src/mesh/stripifier.rs` | 5 |
-| `src/terrain/clipmap.rs` | 5 |
 | `src/terrain/heightmap.rs` | 5 |
 | `src/asp_bridge.rs` | 4 |
 | `src/compiled/hlsl/transpiler.rs` | 4 |
@@ -63,29 +57,27 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/svo/linearize.rs` | 4 |
 | `src/svo/mod.rs` | 4 |
 | `src/svo/streaming.rs` | 4 |
+| `src/terrain/clipmap.rs` | 4 |
 | `src/volume/mod.rs` | 4 |
 | `src/cache/mod.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
 | `src/gi/irradiance.rs` | 3 |
 | `src/interval.rs` | 3 |
 | `src/mesh/overdraw.rs` | 3 |
-| `src/mesh/point_cloud_sdf.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
-| `src/primitives/mod.rs` | 3 |
 | `src/svo/query.rs` | 3 |
 | `src/cache_bridge.rs` | 2 |
 | `src/compiled/compiler.rs` | 2 |
 | `src/compiled/eval_bvh.rs` | 2 |
 | `src/destruction/debris.rs` | 2 |
 | `src/destruction/operations.rs` | 2 |
-| `src/mesh/bvh.rs` | 2 |
 | `src/mesh/decimate.rs` | 2 |
 | `src/mesh/lightmap.rs` | 2 |
-| `src/mesh/mesh_sign.rs` | 2 |
 | `src/mesh/meshopt_vertex_codec.rs` | 2 |
 | `src/mesh/spatial_order.rs` | 2 |
 | `src/npr/outline.rs` | 2 |
 | `src/npr/scene_composer.rs` | 2 |
+| `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/terrain/caves.rs` | 2 |
 | `src/volume/bake.rs` | 2 |
@@ -115,7 +107,7 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/volume/gpu_bake.rs` | 1 |
 | `src/volume/mipchain.rs` | 1 |
 
-### Dead Code (13)
+### Dead Code (12)
 
 ```
 dead_code src/bin/main.rs 1
@@ -126,14 +118,13 @@ dead_code src/compiled/jit/simd/mod.rs 2
 dead_code src/compiled/wgsl/transpiler.rs 2
 dead_code src/ffi/registry.rs 3
 dead_code src/io/asdf.rs 2
-dead_code src/mesh/mesh_to_sdf.rs 1
 dead_code src/neural.rs 1
 dead_code src/npr/compiled_color.rs 1
 dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (468)
+### Unwired Items (419)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -149,7 +140,6 @@ unwired src/autodiff.rs::eval_dual3
 unwired src/autodiff.rs::eval_with_gradient
 unwired src/autodiff.rs::from_val_grad
 unwired src/autodiff.rs::gaussian_curvature
-unwired src/autodiff.rs::gradient
 unwired src/autodiff.rs::gradient_magnitude
 unwired src/autodiff.rs::length2
 unwired src/autodiff.rs::length3
@@ -358,25 +348,9 @@ unwired src/material.rs::with_tiling
 unwired src/material.rs::with_transmission
 unwired src/material.rs::with_uv_channel
 unwired src/material.rs::with_volume
-unwired src/mesh/bvh.rs::expand_aabb
-unwired src/mesh/bvh.rs::unsigned_distance_batch
-unwired src/mesh/collision.rs::CollisionMesh
-unwired src/mesh/collision.rs::compute_bounding_sphere
-unwired src/mesh/collision.rs::compute_convex_hull
-unwired src/mesh/collision.rs::convex_decomposition
-unwired src/mesh/collision.rs::convex_hull_from_points
-unwired src/mesh/collision.rs::simplify_collision
-unwired src/mesh/collision.rs::total_triangles
-unwired src/mesh/collision.rs::total_vertices
-unwired src/mesh/collision.rs::volume
 unwired src/mesh/decimate.rs::aggressive
 unwired src/mesh/decimate.rs::conservative
 unwired src/mesh/dual_contouring.rs::dual_contouring_compiled
-unwired src/mesh/hermite.rs::HermiteExtractor::extract_edge_crossings
-unwired src/mesh/hermite.rs::extract_edge_crossings
-unwired src/mesh/hermite.rs::extract_hermite
-unwired src/mesh/hermite.rs::extract_surface_points
-unwired src/mesh/hermite.rs::t
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs_fast
 unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
@@ -397,27 +371,11 @@ unwired src/mesh/lod_persist.rs::level_count
 unwired src/mesh/lod_persist.rs::select_lod
 unwired src/mesh/lod_persist.rs::summary
 unwired src/mesh/lod_persist.rs::total_memory_bytes
-unwired src/mesh/manifold.rs::MeshQuality
-unwired src/mesh/manifold.rs::compute_quality
-unwired src/mesh/manifold.rs::drop_specks
-unwired src/mesh/manifold.rs::fill_holes
-unwired src/mesh/manifold.rs::orient_faces
 unwired src/mesh/mesh_codec.rs::decode_indices
 unwired src/mesh/mesh_codec.rs::decode_positions
 unwired src/mesh/mesh_codec.rs::encode_indices
 unwired src/mesh/mesh_codec.rs::encode_mesh
 unwired src/mesh/mesh_codec.rs::encode_positions
-unwired src/mesh/mesh_sign.rs::cell_size
-unwired src/mesh/mesh_sign.rs::dims
-unwired src/mesh/mesh_to_sdf.rs::accurate
-unwired src/mesh/mesh_to_sdf.rs::eval_unsigned
-unwired src/mesh/mesh_to_sdf.rs::eval_unsigned_batch
-unwired src/mesh/mesh_to_sdf.rs::gradient
-unwired src/mesh/mesh_to_sdf.rs::hybrid
-unwired src/mesh/mesh_to_sdf.rs::mesh_to_sdf_exact
-unwired src/mesh/mesh_to_sdf.rs::sign_mode
-unwired src/mesh/mesh_to_sdf.rs::to_sdf_node
-unwired src/mesh/mesh_to_sdf.rs::topology_robust
 unwired src/mesh/meshlet.rs::build_meshlets
 unwired src/mesh/meshlet.rs::build_meshlets_adjacency
 unwired src/mesh/meshlet.rs::build_meshlets_scan
@@ -450,7 +408,6 @@ unwired src/mesh/nanite.rs::medium_detail
 unwired src/mesh/nanite.rs::preview
 unwired src/mesh/nanite.rs::select_clusters
 unwired src/mesh/nanite.rs::should_render
-unwired src/mesh/nanite.rs::total_vertices
 unwired src/mesh/nanite.rs::unbounded
 unwired src/mesh/optimize.rs::compute_acmr
 unwired src/mesh/optimize.rs::compute_atvr
@@ -459,19 +416,6 @@ unwired src/mesh/optimize.rs::optimize_vertex_fetch
 unwired src/mesh/overdraw.rs::default_view_directions
 unwired src/mesh/overdraw.rs::optimize_overdraw
 unwired src/mesh/overdraw.rs::optimize_overdraw_with_views
-unwired src/mesh/point_cloud_sdf.rs::accurate
-unwired src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf
-unwired src/mesh/point_cloud_sdf.rs::point_count
-unwired src/mesh/primitive_fitting.rs::PrimitiveType
-unwired src/mesh/primitive_fitting.rs::compute_error
-unwired src/mesh/primitive_fitting.rs::detect_primitive
-unwired src/mesh/primitive_fitting.rs::fit_box
-unwired src/mesh/primitive_fitting.rs::fit_cylinder
-unwired src/mesh/primitive_fitting.rs::fit_plane
-unwired src/mesh/primitive_fitting.rs::fit_sphere
-unwired src/mesh/primitive_fitting.rs::primitive_type
-unwired src/mesh/primitive_fitting.rs::primitives_to_csg
-unwired src/mesh/primitive_fitting.rs::to_sdf_node
 unwired src/mesh/quantization.rs::half_decode
 unwired src/mesh/quantization.rs::half_encode
 unwired src/mesh/quantization.rs::snorm_i16_decode
@@ -533,7 +477,6 @@ unwired src/optimize.rs::optimization_stats
 unwired src/physics_bridge.rs::arc
 unwired src/physics_bridge.rs::sdf_to_physics_field
 unwired src/physics_bridge.rs::with_epsilon
-unwired src/primitives/mod.rs::PrimitiveType
 unwired src/primitives/mod.rs::eval_primitive
 unwired src/primitives/mod.rs::eval_primitive_unchecked
 unwired src/python/helpers.rs::numpy_to_vec3_fast
@@ -576,7 +519,6 @@ unwired src/terrain/clipmap.rs::ClipmapMesh
 unwired src/terrain/clipmap.rs::generate_level_mesh
 unwired src/terrain/clipmap.rs::generate_meshes
 unwired src/terrain/clipmap.rs::level_count
-unwired src/terrain/clipmap.rs::total_vertices
 unwired src/terrain/heightmap.rs::from_data
 unwired src/terrain/heightmap.rs::from_image
 unwired src/terrain/heightmap.rs::from_image_bytes

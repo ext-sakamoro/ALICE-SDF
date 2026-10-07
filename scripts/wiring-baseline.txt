@@ -7,7 +7,6 @@ dead_code src/compiled/jit/simd/mod.rs 2
 dead_code src/compiled/wgsl/transpiler.rs 2
 dead_code src/ffi/registry.rs 3
 dead_code src/io/asdf.rs 2
-dead_code src/mesh/mesh_to_sdf.rs 1
 dead_code src/neural.rs 1
 dead_code src/npr/compiled_color.rs 1
 dead_code src/python/helpers.rs 1
@@ -25,7 +24,6 @@ unwired src/autodiff.rs::eval_dual3
 unwired src/autodiff.rs::eval_with_gradient
 unwired src/autodiff.rs::from_val_grad
 unwired src/autodiff.rs::gaussian_curvature
-unwired src/autodiff.rs::gradient
 unwired src/autodiff.rs::gradient_magnitude
 unwired src/autodiff.rs::length2
 unwired src/autodiff.rs::length3
@@ -234,25 +232,9 @@ unwired src/material.rs::with_tiling
 unwired src/material.rs::with_transmission
 unwired src/material.rs::with_uv_channel
 unwired src/material.rs::with_volume
-unwired src/mesh/bvh.rs::expand_aabb
-unwired src/mesh/bvh.rs::unsigned_distance_batch
-unwired src/mesh/collision.rs::CollisionMesh
-unwired src/mesh/collision.rs::compute_bounding_sphere
-unwired src/mesh/collision.rs::compute_convex_hull
-unwired src/mesh/collision.rs::convex_decomposition
-unwired src/mesh/collision.rs::convex_hull_from_points
-unwired src/mesh/collision.rs::simplify_collision
-unwired src/mesh/collision.rs::total_triangles
-unwired src/mesh/collision.rs::total_vertices
-unwired src/mesh/collision.rs::volume
 unwired src/mesh/decimate.rs::aggressive
 unwired src/mesh/decimate.rs::conservative
 unwired src/mesh/dual_contouring.rs::dual_contouring_compiled
-unwired src/mesh/hermite.rs::HermiteExtractor::extract_edge_crossings
-unwired src/mesh/hermite.rs::extract_edge_crossings
-unwired src/mesh/hermite.rs::extract_hermite
-unwired src/mesh/hermite.rs::extract_surface_points
-unwired src/mesh/hermite.rs::t
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs
 unwired src/mesh/lightmap.rs::generate_lightmap_uvs_fast
 unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
@@ -273,27 +255,11 @@ unwired src/mesh/lod_persist.rs::level_count
 unwired src/mesh/lod_persist.rs::select_lod
 unwired src/mesh/lod_persist.rs::summary
 unwired src/mesh/lod_persist.rs::total_memory_bytes
-unwired src/mesh/manifold.rs::MeshQuality
-unwired src/mesh/manifold.rs::compute_quality
-unwired src/mesh/manifold.rs::drop_specks
-unwired src/mesh/manifold.rs::fill_holes
-unwired src/mesh/manifold.rs::orient_faces
 unwired src/mesh/mesh_codec.rs::decode_indices
 unwired src/mesh/mesh_codec.rs::decode_positions
 unwired src/mesh/mesh_codec.rs::encode_indices
 unwired src/mesh/mesh_codec.rs::encode_mesh
 unwired src/mesh/mesh_codec.rs::encode_positions
-unwired src/mesh/mesh_sign.rs::cell_size
-unwired src/mesh/mesh_sign.rs::dims
-unwired src/mesh/mesh_to_sdf.rs::accurate
-unwired src/mesh/mesh_to_sdf.rs::eval_unsigned
-unwired src/mesh/mesh_to_sdf.rs::eval_unsigned_batch
-unwired src/mesh/mesh_to_sdf.rs::gradient
-unwired src/mesh/mesh_to_sdf.rs::hybrid
-unwired src/mesh/mesh_to_sdf.rs::mesh_to_sdf_exact
-unwired src/mesh/mesh_to_sdf.rs::sign_mode
-unwired src/mesh/mesh_to_sdf.rs::to_sdf_node
-unwired src/mesh/mesh_to_sdf.rs::topology_robust
 unwired src/mesh/meshlet.rs::build_meshlets
 unwired src/mesh/meshlet.rs::build_meshlets_adjacency
 unwired src/mesh/meshlet.rs::build_meshlets_scan
@@ -326,7 +292,6 @@ unwired src/mesh/nanite.rs::medium_detail
 unwired src/mesh/nanite.rs::preview
 unwired src/mesh/nanite.rs::select_clusters
 unwired src/mesh/nanite.rs::should_render
-unwired src/mesh/nanite.rs::total_vertices
 unwired src/mesh/nanite.rs::unbounded
 unwired src/mesh/optimize.rs::compute_acmr
 unwired src/mesh/optimize.rs::compute_atvr
@@ -335,19 +300,6 @@ unwired src/mesh/optimize.rs::optimize_vertex_fetch
 unwired src/mesh/overdraw.rs::default_view_directions
 unwired src/mesh/overdraw.rs::optimize_overdraw
 unwired src/mesh/overdraw.rs::optimize_overdraw_with_views
-unwired src/mesh/point_cloud_sdf.rs::accurate
-unwired src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf
-unwired src/mesh/point_cloud_sdf.rs::point_count
-unwired src/mesh/primitive_fitting.rs::PrimitiveType
-unwired src/mesh/primitive_fitting.rs::compute_error
-unwired src/mesh/primitive_fitting.rs::detect_primitive
-unwired src/mesh/primitive_fitting.rs::fit_box
-unwired src/mesh/primitive_fitting.rs::fit_cylinder
-unwired src/mesh/primitive_fitting.rs::fit_plane
-unwired src/mesh/primitive_fitting.rs::fit_sphere
-unwired src/mesh/primitive_fitting.rs::primitive_type
-unwired src/mesh/primitive_fitting.rs::primitives_to_csg
-unwired src/mesh/primitive_fitting.rs::to_sdf_node
 unwired src/mesh/quantization.rs::half_decode
 unwired src/mesh/quantization.rs::half_encode
 unwired src/mesh/quantization.rs::snorm_i16_decode
@@ -409,7 +361,6 @@ unwired src/optimize.rs::optimization_stats
 unwired src/physics_bridge.rs::arc
 unwired src/physics_bridge.rs::sdf_to_physics_field
 unwired src/physics_bridge.rs::with_epsilon
-unwired src/primitives/mod.rs::PrimitiveType
 unwired src/primitives/mod.rs::eval_primitive
 unwired src/primitives/mod.rs::eval_primitive_unchecked
 unwired src/python/helpers.rs::numpy_to_vec3_fast
@@ -452,7 +403,6 @@ unwired src/terrain/clipmap.rs::ClipmapMesh
 unwired src/terrain/clipmap.rs::generate_level_mesh
 unwired src/terrain/clipmap.rs::generate_meshes
 unwired src/terrain/clipmap.rs::level_count
-unwired src/terrain/clipmap.rs::total_vertices
 unwired src/terrain/heightmap.rs::from_data
 unwired src/terrain/heightmap.rs::from_image
 unwired src/terrain/heightmap.rs::from_image_bytes
