@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **49 baseline items** — Permitted violations, ratchet in place
+🟡 **46 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (49 permitted)
+## 📋 Baseline (46 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -22,13 +22,11 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/ffi/registry.rs` | 4 |
 | `src/compiled/simd.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
-| `src/compiled/glsl/transpiler.rs` | 2 |
 | `src/mesh/nanite.rs` | 2 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/bin/main.rs` | 1 |
-| `src/compiled/hlsl/transpiler.rs` | 1 |
 | `src/compiled/transpiler_common.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
@@ -48,12 +46,9 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (42)
+### Unwired Items (39)
 
 ```
-unwired src/compiled/glsl/transpiler.rs::export_unity_shader_graph
-unwired src/compiled/glsl/transpiler.rs::to_unity_custom_function
-unwired src/compiled/hlsl/transpiler.rs::to_ue5_custom_node
 unwired src/compiled/simd.rs::max_component
 unwired src/compiled/simd.rs::max_zero
 unwired src/compiled/simd.rs::min_component

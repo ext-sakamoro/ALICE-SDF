@@ -6,9 +6,6 @@ dead_code src/neural.rs 1
 dead_code src/npr/compiled_color.rs 1
 dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
-unwired src/compiled/glsl/transpiler.rs::export_unity_shader_graph
-unwired src/compiled/glsl/transpiler.rs::to_unity_custom_function
-unwired src/compiled/hlsl/transpiler.rs::to_ue5_custom_node
 unwired src/compiled/simd.rs::max_component
 unwired src/compiled/simd.rs::max_zero
 unwired src/compiled/simd.rs::min_component

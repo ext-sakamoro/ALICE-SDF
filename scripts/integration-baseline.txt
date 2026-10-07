@@ -7,7 +7,6 @@
 # applies to them.
 src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph
 src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function
-src/compiled/hlsl/transpiler.rs::HlslShader::to_ue5_custom_node
 src/compiled/jit_simd.rs::JitSimd
 src/compiled/jit_simd.rs::JitSimd::compile
 src/compiled/jit_simd.rs::JitSimd::eval

@@ -7,22 +7,24 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 55 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1150 |
+| L0 | not reached by any non-test code, examples included | 54 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1155 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 935 |
-| | **total** | **2140** |
+| | **total** | **2144** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 41 unwired items.
+`scripts/wiring-baseline.txt` lists 38 unwired items.
 
-### L0 here but not in the baseline (26)
+### L0 here but not in the baseline (28)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
+- `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
+- `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
 - `src/compiled/jit_simd.rs::JitSimd`
 - `src/compiled/jit_simd.rs::JitSimd::compile`
 - `src/compiled/jit_simd.rs::JitSimd::eval`
@@ -56,11 +58,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (55)
+## L0 — unreached (54)
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
-- `src/compiled/hlsl/transpiler.rs::HlslShader::to_ue5_custom_node`
 - `src/compiled/jit_simd.rs::JitSimd`
 - `src/compiled/jit_simd.rs::JitSimd::compile`
 - `src/compiled/jit_simd.rs::JitSimd::eval`
@@ -136,7 +137,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1150)
+## L1 — example-only (1155)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -153,9 +154,9 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/eval_bvh.rs`: `CompiledSdfBvh::compile`, `CompiledSdfBvh::instruction_count`, `CompiledSdfBvh::memory_size`, `CompiledSdfBvh::refit_all_from_bytecode`, `CompiledSdfBvh::refit_partial_from_bytecode`, `eval_compiled_bvh`
 - `src/compiled/eval_simd.rs`: `eval_gradient_simd`
 - `src/compiled/eval_soa.rs`: `eval_compiled_batch_soa_into`
-- `src/compiled/glsl/render_pipeline.rs`: `BIOME_SYSTEM`, `DESTRUCTION_SYSTEM`, `DESTRUCTION_UNIFORMS`, `INTERIOR_MAPPING_LIB`, `MICRO_NORMAL_LIB`, `NOISE_LIB`, `NORMAL_AO_SHADOW`, `PBR_BRDF`, `POST_PROCESS`, `RenderConfig`, `SKY_ATMOSPHERE`, `SPECTRAL_LIB`, `UNIFORMS`, `VFX_LIB`, `VOLUMETRIC_LIGHT`, `build_full_shader`, `build_main_function`
-- `src/compiled/glsl/transpiler.rs`: `GlslShader::extract_params`, `GlslShader::get_eval_function`, `GlslShader::to_compute_shader`, `GlslShader::to_fragment_shader`, `GlslShader::to_fragment_shader_full`
-- `src/compiled/hlsl/transpiler.rs`: `HlslShader::export_ue5_material_function`, `HlslShader::extract_params`, `HlslShader::get_eval_function`, `HlslShader::to_compute_shader`
+- `src/compiled/glsl/render_pipeline.rs`: `BIOME_SYSTEM`, `DESTRUCTION_SYSTEM`, `DESTRUCTION_UNIFORMS`, `INTERIOR_MAPPING_LIB`, `MAT_STRUCT`, `MICRO_NORMAL_LIB`, `NOISE_LIB`, `NORMAL_AO_SHADOW`, `PBR_BRDF`, `POST_PROCESS`, `RenderConfig`, `SKY_ATMOSPHERE`, `SPECTRAL_LIB`, `UNIFORMS`, `VFX_LIB`, `VOLUMETRIC_LIGHT`, `build_full_shader`, `build_main_function`
+- `src/compiled/glsl/transpiler.rs`: `GlslShader::extract_params`, `GlslShader::get_eval_function`, `GlslShader::to_compute_shader`, `GlslShader::to_fragment_shader`, `GlslShader::to_fragment_shader_full`, `GlslShader::to_vulkan_compute_shader`
+- `src/compiled/hlsl/transpiler.rs`: `HlslShader::export_ue5_material_function`, `HlslShader::export_unity_shader_graph`, `HlslShader::extract_params`, `HlslShader::get_eval_function`, `HlslShader::to_compute_shader`, `HlslShader::to_ue5_custom_node`, `HlslShader::to_unity_custom_function`
 - `src/compiled/instanced.rs`: `InstancedSdf`, `InstancedSdf::add_at`, `InstancedSdf::add_instance`, `InstancedSdf::eval_min`, `InstancedSdf::eval_min_batch`, `InstancedSdf::eval_min_batch_simd`, `InstancedSdf::eval_min_simd`, `InstancedSdf::eval_per_instance`, `InstancedSdf::instance_count`, `InstancedSdf::new`, `InstancedSdf::to_instanced_wgsl`, `InstancedSdf::with_capacity`
 - `src/compiled/instruction.rs`: `Instruction::animated`, `Instruction::is_leaf`, `Instruction::next_instruction_index`
 - `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::compile_sdf_dynamic`, `JitCompiler::new`, `extract_jit_params`
