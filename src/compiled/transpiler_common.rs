@@ -111,6 +111,9 @@ pub(in crate::compiled) mod private {
 /// the WGSL emit with naga, which keeps one copy of every law instead of four
 /// (see that module's docs).
 pub trait ShaderLang: private::Sealed + 'static {
+    /// Lowercase language name used in diagnostics (`"wgsl"`, `"glsl"`, `"hlsl"`).
+    const NAME: &'static str;
+
     // ---- Type constructors ----
     /// Construct a 2-component vector from scalar strings.
     fn vec2_ctor(x: &str, y: &str) -> String;
@@ -377,15 +380,29 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         ));
     }
 
-    /// Assemble the final shader string: helpers + function signature + body.
+    /// Assemble the final shader string: helpers + module-scope globals +
+    /// function signature + body.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a referenced helper has no source in [`ShaderLang::helper_source`]:
+    /// that is a transpiler bug which would otherwise surface as a shader
+    /// compile error at runtime (until 1.10.3 the five GDF polyhedra were
+    /// skipped silently by a duplicated table).
     pub fn generate_shader(&self, body: &str) -> String {
         let mut shader = String::new();
         for helper in &self.helper_functions {
-            if let Some(src) = L::helper_source(helper) {
-                shader.push_str(src);
-                shader.push('\n');
-            }
+            let src = L::helper_source(helper).unwrap_or_else(|| {
+                panic!(
+                    "{} transpiler: no helper source registered for `{helper}`",
+                    L::NAME
+                )
+            });
+            shader.push_str(src);
+            shader.push('\n');
         }
+        // Per-node data arrays / functions (lattice, heightmap)
+        shader.push_str(&self.globals);
         writeln!(shader, "{}", L::func_signature()).unwrap();
         shader.push_str(body);
         shader.push_str("}\n");

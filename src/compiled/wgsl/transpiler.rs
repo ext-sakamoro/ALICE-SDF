@@ -31,6 +31,8 @@ pub struct WgslLang;
 impl crate::compiled::transpiler_common::private::Sealed for WgslLang {}
 
 impl ShaderLang for WgslLang {
+    const NAME: &'static str = "wgsl";
+
     fn vec2_ctor(x: &str, y: &str) -> String {
         format!("vec2<f32>({}, {})", x, y)
     }
@@ -641,30 +643,15 @@ impl WgslTranspiler {
     }
 
     fn generate_shader(&self, body: &str) -> String {
-        let mut shader = String::new();
-
-        // Helper sources come from `ShaderLang::helper_source` — the single
-        // table per language. A helper the walker referenced but the table
-        // does not know is a transpiler bug that would surface as a shader
-        // compile error at runtime: fail here instead (until 1.10.3 the
-        // five GDF polyhedra were skipped silently by a duplicated table).
-        for helper in &self.helper_functions {
-            let src = <WgslLang as ShaderLang>::helper_source(helper).unwrap_or_else(|| {
-                panic!("wgsl transpiler: no helper source registered for `{helper}`")
-            });
-            shader.push_str(src);
-            shader.push('\n');
-        }
-
-        // Per-node data arrays / functions (lattice, heightmap)
-        shader.push_str(&self.globals);
-
-        // Add main SDF function
-        writeln!(shader, "fn sdf_eval(p: vec3<f32>) -> f32 {{").unwrap();
-        shader.push_str(body);
-        shader.push_str("}\n");
-
-        shader
+        use super::super::transpiler_common::{GenericTranspiler, TranspileModeLang};
+        // Assembled by the language-generic `GenericTranspiler::generate_shader`
+        // (helpers from `ShaderLang::helper_source`, then the module-scope
+        // globals, then `sdf_eval`) so the three languages share one layout.
+        let mut generic: GenericTranspiler<WgslLang> =
+            GenericTranspiler::new(TranspileModeLang::Hardcoded);
+        generic.helper_functions.clone_from(&self.helper_functions);
+        generic.globals.clone_from(&self.globals);
+        generic.generate_shader(body)
     }
 }
 
