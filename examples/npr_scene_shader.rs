@@ -63,6 +63,18 @@ fn emit_shader(label: &str, scene: &SdfNode, language: ShaderLanguage) {
     println!("{separator}");
     println!("{source}");
     println!();
+
+    // Built-in soft-toon + outline block instead of a pipeline, from a
+    // raised camera
+    let builtin = SceneShaderBuilder::new(scene, language)
+        .with_shading(Vec3::new(0.18, 0.16, 0.32), Vec3::new(0.95, 0.9, 0.78), 4)
+        .with_outline(Vec3::new(0.02, 0.02, 0.05), 0.004, 0.025)
+        .with_camera(Vec3::new(0.0, 0.8, -3.5))
+        .build();
+    assert!(builtin.contains("alice_soft_toon_ramp"));
+    assert!(builtin.contains("alice_distance_field_outline_soft"));
+    println!("{label} (built-in shading) — {} bytes", builtin.len());
+    println!();
 }
 
 #[cfg(not(any(feature = "glsl", feature = "hlsl", feature = "gpu")))]

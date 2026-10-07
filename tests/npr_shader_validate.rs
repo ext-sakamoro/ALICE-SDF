@@ -445,3 +445,93 @@ fn wgsl_full_pipeline_semantic_validates() {
         result.err()
     );
 }
+
+/// The built-in hit block (no `with_pipeline`) is driven by
+/// `with_shading` / `with_outline`, and `with_camera` moves the ray origin:
+/// each configured value must reach the statement that uses it, with the
+/// documented clamps (bands >= 1, inner >= 0, outer >= inner + 1e-4), and
+/// the result must still validate. With a pipeline set the shading and
+/// outline parameters are documented as ignored on the hit branch.
+#[test]
+fn wgsl_builtin_shading_outline_and_camera_reach_the_source() {
+    let scene = build_scene();
+    let shadow = glam::Vec3::new(0.125, 0.25, 0.5);
+    let light = glam::Vec3::new(0.75, 0.625, 0.375);
+    let outline = glam::Vec3::new(0.0625, 0.03125, 0.015625);
+    let cam = glam::Vec3::new(0.5, 1.25, -4.5);
+    let builder = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_shading(shadow, light, 5)
+        .with_outline(outline, 0.01, 0.04)
+        .with_camera(cam);
+    let source = builder.build();
+    let mut compared = 0;
+    for needle in [
+        "alice_soft_toon_ramp(ndl, f32(5),",
+        "mix(vec3<f32>(0.125000, 0.250000, 0.500000), vec3<f32>(0.750000, 0.625000, 0.375000), vec3<f32>(brightness))",
+        "alice_distance_field_outline_soft(d, 0.010000, 0.040000)",
+        "vec3<f32>(0.062500, 0.031250, 0.015625), outline_mask)",
+        "let ray_origin = vec3<f32>(0.500000, 1.250000, -4.500000);",
+    ] {
+        assert!(source.contains(needle), "missing `{needle}`\n---source---\n{source}");
+        compared += 1;
+    }
+    assert_eq!(compared, 5);
+    let module = naga::front::wgsl::parse_str(&source).expect("WGSL parses");
+    naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::empty(),
+    )
+    .validate(&module)
+    .expect("WGSL validates");
+
+    // Clamps: 0 bands becomes 1, a negative inner width 0, an outer width
+    // below inner + 1e-4 is raised to it.
+    let clamped = SceneShaderBuilder::new(&scene, ShaderLanguage::Wgsl)
+        .with_shading(shadow, light, 0)
+        .with_outline(outline, -0.5, -1.0)
+        .build();
+    assert!(
+        clamped.contains("alice_soft_toon_ramp(ndl, f32(1),"),
+        "{clamped}"
+    );
+    assert!(
+        clamped.contains("alice_distance_field_outline_soft(d, 0.0, "),
+        "{clamped}"
+    );
+
+    // A pipeline replaces the built-in block: the shading colours are gone.
+    let piped = builder.with_pipeline(build_pipeline()).build();
+    assert!(!piped.contains("alice_soft_toon_ramp(ndl, f32(5),"));
+    assert!(piped.contains("let ray_origin = vec3<f32>(0.500000, 1.250000, -4.500000);"));
+}
+
+#[test]
+fn glsl_builtin_shading_outline_and_camera_reach_the_source() {
+    let scene = build_scene();
+    let source = SceneShaderBuilder::new(&scene, ShaderLanguage::Glsl)
+        .with_shading(
+            glam::Vec3::new(0.125, 0.25, 0.5),
+            glam::Vec3::new(0.75, 0.625, 0.375),
+            4,
+        )
+        .with_outline(glam::Vec3::new(0.0625, 0.0, 0.0), 0.02, 0.05)
+        .with_camera(glam::Vec3::new(0.0, 2.0, -6.0))
+        .build();
+    for needle in [
+        "alice_soft_toon_ramp(ndl, 4.0,",
+        "mix(vec3(0.125000, 0.250000, 0.500000), vec3(0.750000, 0.625000, 0.375000), brightness)",
+        "alice_distance_field_outline_soft(d, 0.020000, 0.050000)",
+        "vec3 ray_origin = vec3(0.0, 2.0, -6.0);",
+    ] {
+        assert!(
+            source.contains(needle),
+            "missing `{needle}`\n---source---\n{source}"
+        );
+    }
+    let mut frontend = naga::front::glsl::Frontend::default();
+    let options = naga::front::glsl::Options {
+        stage: naga::ShaderStage::Fragment,
+        defines: naga::FastHashMap::default(),
+    };
+    frontend.parse(&options, &source).expect("GLSL parses");
+}

@@ -323,7 +323,7 @@ step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes 
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_noise_parity --test test_round_tie_parity \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation \
-  --test test_texture_shader_gpu_parity
+  --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity
 
 step "bevy: bindings/bevy/alice-sdf-bevy build + test"
 (cd bindings/bevy/alice-sdf-bevy && cargo build --lib && cargo test --lib)

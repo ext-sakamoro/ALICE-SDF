@@ -681,6 +681,7 @@ jobs:
           --test noise_shader_validate
           --test test_mesh_orientation
           --test test_texture_shader_gpu_parity
+          --test test_npr_bytecode_gpu_parity
           -- --nocapture
 
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う

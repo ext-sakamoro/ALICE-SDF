@@ -1922,21 +1922,24 @@ fn alice_npr_palette_source_scalar(source: u32, ctx: AliceNprBytecodeCtx) -> f32
     return ctx.time - floor(ctx.time);
 }}
 
+// The colour laws below follow `npr::toon` / `npr::composition` /
+// `npr::hatch` / `npr::motion` line by line (the CPU definitions).
 fn alice_npr_toon_ramp(n_dot_l: f32, bands: u32) -> f32 {{
     let b = max(f32(bands), 1.0);
     let t = clamp(n_dot_l, 0.0, 1.0);
-    return floor(t * b) / b;
+    let idx = min(floor(t * b), b - 1.0);
+    return idx / max(b - 1.0, 1.0);
 }}
 
 fn alice_npr_soft_toon_ramp(n_dot_l: f32, bands: u32, smoothness: f32) -> f32 {{
     let b = max(f32(bands), 1.0);
     let t = clamp(n_dot_l, 0.0, 1.0);
     let scaled = t * b;
-    let idx = floor(scaled);
-    let frac = scaled - idx;
-    let s = clamp(smoothness, 0.0, 0.5);
+    let idx = min(floor(scaled), b - 1.0);
+    let frac = clamp(scaled - idx, 0.0, 1.0);
+    let s = clamp(smoothness, 0.001, 0.5);
     let step = smoothstep(0.5 - s, 0.5 + s, frac);
-    return (idx + step) / b;
+    return clamp((idx + step) / b, 0.0, 1.0);
 }}
 
 fn alice_npr_palette3(t: f32, c0: vec3<f32>, c1: vec3<f32>, c2: vec3<f32>) -> vec3<f32> {{
@@ -1970,7 +1973,12 @@ fn alice_npr_vignette_mask(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> 
     let dx = uv_x - 0.5;
     let dy = uv_y - 0.5;
     let d = sqrt(dx * dx + dy * dy);
-    return 1.0 - smoothstep(radius, radius + max(softness, 1e-4), d);
+    let inner = max(radius, 0.0);
+    let outer = max(inner + max(softness, 0.0), inner + 1e-6);
+    if (d <= inner) {{ return 1.0; }}
+    if (d >= outer) {{ return 0.0; }}
+    let t = clamp((d - inner) / (outer - inner), 0.0, 1.0);
+    return 1.0 - t * t * (3.0 - 2.0 * t);
 }}
 
 fn alice_npr_hatch_mask(
@@ -1982,11 +1990,12 @@ fn alice_npr_hatch_mask(
 ) -> f32 {{
     let c = cos(angle_rad);
     let s = sin(angle_rad);
-    let u = uv_x * c + uv_y * s;
-    let phase = u * density;
-    let f = phase - floor(phase);
+    let projected = uv_y * c - uv_x * s;
+    let raw = projected * max(density, 1e-6);
+    let f = raw - floor(raw);
     let t = clamp(thickness, 0.0, 0.5);
-    return 1.0 - smoothstep(t, t + 1e-3, abs(f - 0.5) - (0.5 - t));
+    if (abs(f - 0.5) > 0.5 - t) {{ return 1.0; }}
+    return 0.0;
 }}
 
 fn alice_npr_speed_line_mask(
@@ -1999,12 +2008,16 @@ fn alice_npr_speed_line_mask(
 ) -> f32 {{
     let dx = uv_x - fx;
     let dy = uv_y - fy;
+    if (abs(dx) < 1e-6 && abs(dy) < 1e-6) {{ return 0.0; }}
+    if (count == 0u) {{ return 0.0; }}
     let angle = atan2(dy, dx);
+    let pi = 3.141592653589793;
     let two_pi = 6.283185307179586;
-    let phase = (angle / two_pi + 0.5) * f32(max(count, 1u));
+    let phase = (angle + pi) * f32(count) / two_pi;
     let f = phase - floor(phase);
     let t = clamp(thickness, 0.0, 0.5);
-    return 1.0 - smoothstep(t, t + 1e-3, abs(f - 0.5) - (0.5 - t));
+    if (abs(f - 0.5) > 0.5 - t) {{ return 1.0; }}
+    return 0.0;
 }}
 
 fn alice_npr_composite_outline(base: vec3<f32>, outline: vec3<f32>, alpha: f32) -> vec3<f32> {{
@@ -2021,12 +2034,13 @@ fn alice_npr_bloom(color: vec3<f32>, threshold: f32, intensity: f32) -> vec3<f32
     if (mx > threshold) {{
         return color * intensity;
     }}
-    return color;
+    return vec3<f32>(0.0);
 }}
 
 fn alice_npr_posterize(color: vec3<f32>, levels: u32) -> vec3<f32> {{
     let l = f32(max(levels, 2u));
-    return floor(color * l) / l;
+    let c = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));
+    return clamp(floor(c * l) / (l - 1.0), vec3<f32>(0.0), vec3<f32>(1.0));
 }}
 
 // Stack-machine evaluator.
