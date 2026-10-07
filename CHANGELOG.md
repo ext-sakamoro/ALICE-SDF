@@ -59,6 +59,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 
+- CI: Unreal の workflow は main で走行中の run を打ち切らないようにした (UE 5.7 / 5.8 の直列実行が push の間隔より長く、5.8 が完走しなかった)
 - `SimulatedSdf::new` は `SimulatedSdf::from_arc` に委ねる (結果は不変)
 - `asp_bridge` の doc の例を、serde で packet を直列化する形に直した (libasp 既定の `to_bytes` は region を運ばないので scene が届かない、旧例は型も合わなかった)
 - `codec_bridge` の module doc に bitstream の形式 (header・flags の各 bit・histogram・payload) を書いた

@@ -52,9 +52,13 @@ on:
   # 今日のように engine を入れ直した後で「commit を作らずに検証だけしたい」場合の入口
   workflow_dispatch:
 
+# main では走行中の run を打ち切らない UE 5.7 と 5.8 を 1 台の runner で直列に回すと
+# 約 100 分かかり、push の間隔がそれより短いと 5.8 が毎回途中で消えて一度も完走しなかった
+# (2026-10-07 実測: 5.7 success の後に 5.8 が cancelled、が 5 回続いた) 打ち切らなくても
+# 同じ group で待っている run は新しい push の run に置き換わるので、溜まるのは最大 1 本
 concurrency:
   group: unreal-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
