@@ -13,6 +13,26 @@
 //!                                               └── rANS entropy coding
 //! ```
 //!
+//! # Bitstream
+//!
+//! All integers little-endian:
+//!
+//! | bytes | field |
+//! |---|---|
+//! | 12 | width, height, depth (u32) |
+//! | 12 | origin x, y, z (f32) |
+//! | 4 + 4 | voxel_size, fixed_point_scale (f32) |
+//! | 1 | quality (u8) |
+//! | 1 | flags: bit 0 CDF 5/3 wavelet, bit 1 rANS payload, bit 2 i32 coefficients; bits 3-7 reserved (must be 0, the decoder rejects them) |
+//! | 4 | symbol count (u32, voxels) |
+//! | 4 + 4 | quantizer step, dead zone (i32) |
+//! | 1024 | byte histogram (256 x u32), only with bit 1 |
+//! | 4 + n | payload length, payload |
+//!
+//! The payload (rANS-coded or raw) is the quantized coefficients as i16, or as
+//! i32 when bit 2 is set. The encoder sets bit 2 only when a coefficient does
+//! not fit in i16, so such a stream is otherwise identical to the i16 format.
+//!
 //! # Example
 //!
 //! ```ignore
@@ -181,7 +201,8 @@ struct EncodedHeader {
     voxel_size: f32,
     fixed_point_scale: f32,
     quality: u8,
-    /// Flags byte: bit 0 = lossless_wavelet, bit 1 = rans_compressed.
+    /// Flags byte: bit 0 = lossless_wavelet, bit 1 = rans_compressed,
+    /// bit 2 = wide (i32) coefficients. Bits 3-7 are reserved and must be 0.
     flags: u8,
     /// Number of quantized coefficients (voxel count).
     symbol_count: u32,
@@ -192,6 +213,12 @@ impl EncodedHeader {
 
     const FLAG_LOSSLESS_WAVELET: u8 = 0x01;
     const FLAG_RANS_COMPRESSED: u8 = 0x02;
+    /// Coefficients are stored as i32 LE (4 bytes) instead of i16 LE (2 bytes).
+    /// Set only when a quantized coefficient does not fit in i16, so a stream
+    /// whose coefficients all fit is byte-identical to the original format.
+    const FLAG_WIDE_COEFFS: u8 = 0x04;
+    const KNOWN_FLAGS: u8 =
+        Self::FLAG_LOSSLESS_WAVELET | Self::FLAG_RANS_COMPRESSED | Self::FLAG_WIDE_COEFFS;
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(Self::SIZE);
@@ -246,6 +273,10 @@ impl EncodedHeader {
 
     const fn rans_compressed(&self) -> bool {
         self.flags & Self::FLAG_RANS_COMPRESSED != 0
+    }
+
+    const fn wide_coeffs(&self) -> bool {
+        self.flags & Self::FLAG_WIDE_COEFFS != 0
     }
 }
 
@@ -390,17 +421,21 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
         .quantize_buffer(&coeffs, &mut quantized)
         .expect("quantized buffer is sized to the coefficient buffer");
 
-    // 4. Serialize quantized coefficients as i16 little-endian bytes, then
+    // 4. Serialize quantized coefficients as little-endian bytes, then
     //    compress those bytes with rANS. This avoids the u8-symbol clamping
     //    issue of alice_codec::quant::to_symbols which is designed for video
     //    pixel data (0-255 range), not for wide-range SDF wavelet coefficients.
-    let raw_bytes: Vec<u8> = quantized
-        .iter()
-        .flat_map(|&v| {
-            let clamped = v.max(i16::MIN as i32).min(i16::MAX as i32) as i16;
-            clamped.to_le_bytes()
-        })
-        .collect();
+    //    i16 when every coefficient fits (the original format), otherwise i32
+    //    with FLAG_WIDE_COEFFS: narrowing would silently change the values.
+    let wide = quantized.iter().any(|&v| i16::try_from(v).is_err());
+    let raw_bytes: Vec<u8> = if wide {
+        quantized.iter().flat_map(|&v| v.to_le_bytes()).collect()
+    } else {
+        quantized
+            .iter()
+            .flat_map(|&v| (v as i16).to_le_bytes())
+            .collect()
+    };
 
     // 5. Build byte-level histogram and compress with rANS.
     //    If the histogram is too skewed (any symbol dominates > 75% of data),
@@ -437,6 +472,9 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
     if use_rans {
         flags |= EncodedHeader::FLAG_RANS_COMPRESSED;
     }
+    if wide {
+        flags |= EncodedHeader::FLAG_WIDE_COEFFS;
+    }
 
     let header = EncodedHeader {
         width: volume.width as u32,
@@ -471,6 +509,41 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
     output
 }
 
+/// Why an encoded SDF volume could not be decoded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DecodeError {
+    /// The stream ends before the field that starts at `offset` (`needed`
+    /// bytes in total, `len` available).
+    Truncated {
+        /// Bytes the stream must have to hold the next field.
+        needed: usize,
+        /// Bytes the stream has.
+        len: usize,
+    },
+    /// The flags byte has bits this decoder does not know (`flags & !0x07`).
+    /// Such a stream was written by a newer encoder; reading it with this
+    /// layout would produce wrong values.
+    UnknownFlags(u8),
+}
+
+impl std::fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Truncated { needed, len } => {
+                write!(
+                    f,
+                    "encoded SDF volume truncated: need {needed} bytes, have {len}"
+                )
+            }
+            Self::UnknownFlags(flags) => {
+                write!(f, "encoded SDF volume has unknown flag bits 0x{flags:02x}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for DecodeError {}
+
 /// Decode a compressed SDF volume back to an `SdfVolume`.
 ///
 /// Pipeline: rANS decode -> un-quantize -> Wavelet3D inverse -> i32 -> f32
@@ -480,9 +553,49 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
 ///
 /// # Returns
 /// Reconstructed `SdfVolume` (with lossy reconstruction error from quantization).
+///
+/// # Panics
+///
+/// Panics when the stream cannot be decoded (see [`try_decode_sdf_volume`]
+/// for the non-panicking form and the reasons).
 pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
-    // 1. Read header
+    try_decode_sdf_volume(data).unwrap_or_else(|e| panic!("decode_sdf_volume: {e}"))
+}
+
+/// Decode a compressed SDF volume, reporting malformed input as an error.
+///
+/// # Errors
+///
+/// [`DecodeError::Truncated`] when the stream is shorter than its header and
+/// payload length say, [`DecodeError::UnknownFlags`] when the flags byte has a
+/// reserved bit set.
+pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
+    let need = |needed: usize| {
+        if data.len() < needed {
+            Err(DecodeError::Truncated {
+                needed,
+                len: data.len(),
+            })
+        } else {
+            Ok(())
+        }
+    };
+    let read_u32 = |offset: usize| {
+        u32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ])
+    };
+
+    // 1. Read header + quantizer params (8 bytes)
+    need(EncodedHeader::SIZE + 8)?;
     let header = EncodedHeader::from_bytes(data);
+    let unknown = header.flags & !EncodedHeader::KNOWN_FLAGS;
+    if unknown != 0 {
+        return Err(DecodeError::UnknownFlags(unknown));
+    }
     let (w, h, d) = (
         header.width as usize,
         header.height as usize,
@@ -494,19 +607,9 @@ pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
     let mut offset = EncodedHeader::SIZE;
 
     // 2. Read quantizer params
-    let step = i32::from_le_bytes([
-        data[offset],
-        data[offset + 1],
-        data[offset + 2],
-        data[offset + 3],
-    ]);
+    let step = read_u32(offset) as i32;
     offset += 4;
-    let dead_zone = i32::from_le_bytes([
-        data[offset],
-        data[offset + 1],
-        data[offset + 2],
-        data[offset + 3],
-    ]);
+    let dead_zone = read_u32(offset) as i32;
     offset += 4;
     let quantizer = Quantizer::with_dead_zone(step, dead_zone);
 
@@ -515,42 +618,49 @@ pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
 
     let mut histogram = [0u32; 256];
     if use_rans {
+        need(offset + 256 * 4)?;
         for h in &mut histogram {
-            *h = u32::from_le_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
-            ]);
+            *h = read_u32(offset);
             offset += 4;
         }
     }
 
     // 4. Read payload
-    let payload_len = u32::from_le_bytes([
-        data[offset],
-        data[offset + 1],
-        data[offset + 2],
-        data[offset + 3],
-    ]) as usize;
+    need(offset + 4)?;
+    let payload_len = read_u32(offset) as usize;
     offset += 4;
+    need(offset + payload_len)?;
     let payload_bytes = &data[offset..offset + payload_len];
 
-    // 5. Decode raw bytes (2 bytes per coefficient = i16 LE)
-    let raw_byte_count = total * 2;
+    // 5. Decode raw bytes (i16 LE, or i32 LE with FLAG_WIDE_COEFFS)
+    let coeff_bytes = if header.wide_coeffs() { 4 } else { 2 };
+    let raw_byte_count = total * coeff_bytes;
     let raw_bytes: Vec<u8> = if use_rans {
         let freq_table = FrequencyTable::from_histogram(&histogram);
         let mut decoder = RansDecoder::new(payload_bytes);
         decoder.decode_n(raw_byte_count, &freq_table)
     } else {
+        if payload_len < raw_byte_count {
+            return Err(DecodeError::Truncated {
+                needed: offset + raw_byte_count,
+                len: data.len(),
+            });
+        }
         payload_bytes[..raw_byte_count].to_vec()
     };
 
-    // 6. Convert i16 LE bytes back to quantized i32 coefficients
-    let quantized: Vec<i32> = raw_bytes
-        .chunks_exact(2)
-        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as i32)
-        .collect();
+    // 6. Convert the LE bytes back to quantized i32 coefficients
+    let quantized: Vec<i32> = if header.wide_coeffs() {
+        raw_bytes
+            .chunks_exact(4)
+            .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
+    } else {
+        raw_bytes
+            .chunks_exact(2)
+            .map(|chunk| i32::from(i16::from_le_bytes([chunk[0], chunk[1]])))
+            .collect()
+    };
 
     // 7. Dequantize
     let mut coeffs = vec![0i32; total];
@@ -571,14 +681,14 @@ pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
     let inv_scale = 1.0 / scale;
     let float_data: Vec<f32> = coeffs.iter().map(|&c| c as f32 * inv_scale).collect();
 
-    SdfVolume {
+    Ok(SdfVolume {
         data: float_data,
         width: w,
         height: h,
         depth: d,
         origin: Vec3::new(header.origin[0], header.origin[1], header.origin[2]),
         voxel_size: header.voxel_size,
-    }
+    })
 }
 
 // ============================================================================
