@@ -501,14 +501,24 @@ impl ContinuousLod {
         }
     }
 
-    /// Update LOD based on distance
+    /// Move the current LOD towards the target for `distance`
+    ///
+    /// The level moves by at most `transition_speed * delta_time` and stops on
+    /// the target instead of stepping past it.
     pub fn update(&mut self, distance: f32, delta_time: f32) {
+        if self.chain.levels.is_empty() {
+            return;
+        }
         let target_lod = self.compute_target_lod(distance);
         let diff = target_lod - self.current_lod;
 
         if diff.abs() > 0.01 {
-            self.current_lod =
-                (diff.signum() * self.transition_speed).mul_add(delta_time, self.current_lod);
+            let step = (self.transition_speed * delta_time).max(0.0);
+            self.current_lod = if diff.abs() <= step {
+                target_lod
+            } else {
+                diff.signum().mul_add(step, self.current_lod)
+            };
             self.current_lod = self
                 .current_lod
                 .clamp(0.0, (self.chain.levels.len() - 1) as f32);

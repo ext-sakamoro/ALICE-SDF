@@ -81,20 +81,35 @@ impl ClusterBounds {
         }
     }
 
-    /// Check if cluster is visible from a view position
+    /// Check if the bounding sphere intersects a circular view cone
+    ///
+    /// `view_dir` is the unit cone axis and `fov_cos` is the cosine of the
+    /// cone's half-angle `θ`. The sphere subtends the half-angle `α` with
+    /// `sin α = r / d`, so it touches the cone exactly when the angle between
+    /// `view_dir` and the direction to its center is at most `θ + α`, i.e.
+    /// `cos(angle) >= cos θ cos α - sin θ sin α` (and always when `θ + α >= π`).
+    /// A viewer inside the sphere always sees it.
     #[inline]
     pub fn is_visible(&self, view_pos: Vec3, view_dir: Vec3, fov_cos: f32) -> bool {
         let to_center = self.center - view_pos;
         let dist = to_center.length();
 
-        if dist < self.radius {
+        if dist <= self.radius {
             return true; // Inside sphere
         }
 
         let dir = to_center / dist;
-        let cone_cos = dist.mul_add(dist, -(self.radius * self.radius)).sqrt() / dist;
+        let sin_a = self.radius / dist;
+        let cos_a = dist.mul_add(dist, -(self.radius * self.radius)).sqrt() / dist;
+        let fov_cos = fov_cos.clamp(-1.0, 1.0);
+        let fov_sin = fov_cos.mul_add(-fov_cos, 1.0).max(0.0).sqrt();
 
-        dir.dot(view_dir) > fov_cos - cone_cos
+        // θ + α >= π: only possible when θ >= π/2, then α >= π - θ <=> sin α >= sin θ
+        if fov_cos <= 0.0 && sin_a >= fov_sin {
+            return true;
+        }
+
+        dir.dot(view_dir) >= fov_cos.mul_add(cos_a, -(fov_sin * sin_a))
     }
 
     /// Compute screen-space error for LOD selection
@@ -267,15 +282,20 @@ impl NormalCone {
     ///
     /// 全 face normal は cone `(axis, cutoff_cos)` 内 view direction を `v` (camera から
     /// cluster への方向) とすると、face normal `n` が `n · v > 0` の時 back-facing
-    /// cone 内の全 face が back-facing となるのは `axis · v >= cutoff_cos` の時
-    /// (幾何学的に view が cone axis と同じ側 = 「後ろから見る」状態)
+    /// cone の半角を `β` (`cos β = cutoff_cos`) とすると、cone 内の normal と `v` の角は
+    /// 最大で `angle(axis, v) + β` なので、全 face が back-facing (`n · v >= 0`) となるのは
+    /// `angle(axis, v) <= 90° - β`、つまり `axis · v >= sin β = sqrt(1 - cutoff_cos²)` の時
+    /// (`β > 90°` なら該当する `v` は無い、meshoptimizer `meshopt_computeMeshletBounds` の
+    /// `cone_cutoff` と同じ判定)
     #[must_use]
     #[inline]
     pub fn is_backface_culled(&self, view_dir: Vec3) -> bool {
-        if self.cutoff_cos <= -1.0 + 1e-6 {
-            return false; // unbounded は culling 不可
+        if self.cutoff_cos < 0.0 {
+            return false; // 半角 > 90° (unbounded を含む) は culling 不可
         }
-        self.axis.dot(view_dir) >= self.cutoff_cos
+        let c = self.cutoff_cos.min(1.0);
+        let sin_beta = c.mul_add(-c, 1.0).max(0.0).sqrt();
+        self.axis.dot(view_dir) >= sin_beta
     }
 }
 
@@ -1151,7 +1171,7 @@ mod tests {
         // 見上げると cluster の裏側 = back-face) → cull すべき
         let normals = vec![Vec3::Y; 3];
         let cone = NormalCone::from_normals(&normals);
-        // view_dir = +Y: axis.dot(view) = 1, cutoff = 1, 1 >= 1 → cull ✓
+        // view_dir = +Y: axis.dot(view) = 1, sin β = 0, 1 >= 0 → cull ✓
         assert!(cone.is_backface_culled(Vec3::Y));
         // view_dir = -Y: camera が cluster の上、見下ろす = 表側 (+Y face 見える) → cull しない
         assert!(!cone.is_backface_culled(Vec3::NEG_Y));
@@ -1167,7 +1187,7 @@ mod tests {
         ];
         let cone = NormalCone::from_normals(&normals);
         // 側面 view_dir = X → cone axis Y から dot = 0
-        // cutoff_cos ≈ 0.5、0 >= 0.5 は false なので culling されない
+        // cutoff_cos ≈ 0.5 (sin β ≈ 0.866)、0 >= 0.866 は false なので culling されない
         assert!(!cone.is_backface_culled(Vec3::X));
     }
 

@@ -138,7 +138,7 @@ impl MeshletConfig {
 ///
 /// # 制約
 ///
-/// - `config.max_vertices <= 255` (u8 local index の制約)
+/// - `3 <= config.max_vertices <= 255` (三角形 1 枚が入る下限と u8 local index の上限)
 /// - `config.max_triangles > 0`
 /// - 制約違反時は panic せず空 Vec を返す
 ///
@@ -166,7 +166,7 @@ pub fn build_meshlets(mesh: &Mesh, config: &MeshletConfig) -> Vec<Meshlet> {
 pub fn build_meshlets_scan(mesh: &Mesh, config: &MeshletConfig) -> Vec<Meshlet> {
     let tri_count = mesh.indices.len() / 3;
     if tri_count == 0
-        || config.max_vertices == 0
+        || config.max_vertices < 3
         || config.max_triangles == 0
         || config.max_vertices > 255
     {
@@ -259,7 +259,7 @@ pub fn build_meshlets_scan(mesh: &Mesh, config: &MeshletConfig) -> Vec<Meshlet> 
 pub fn build_meshlets_adjacency(mesh: &Mesh, config: &MeshletConfig) -> Vec<Meshlet> {
     let tri_count = mesh.indices.len() / 3;
     if tri_count == 0
-        || config.max_vertices == 0
+        || config.max_vertices < 3
         || config.max_triangles == 0
         || config.max_vertices > 255
     {
