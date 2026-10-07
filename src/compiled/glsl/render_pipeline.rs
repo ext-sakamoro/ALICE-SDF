@@ -121,8 +121,6 @@ float fbm3(vec3 p){float v=0.0,a=0.5;for(int i=0;i<3;i++){v+=a*vnoise3(p);p=p*2.
 /// バイオームシステム（真理の地形法）
 pub(crate) const BIOME_SYSTEM: &str = r"
 // ═══ Biome System (真理の地形法 — ズートピア型ラジアル配置) ═══
-#define PI 3.14159265
-#define TAU 6.28318530
 float angleDist(float a,float b){float d=a-b;d=d-TAU*floor((d+PI)/TAU);return abs(d);}
 vec4 biomeWeights(vec2 xz){
   float dist=length(xz);
@@ -771,7 +769,7 @@ void main(){{
 {rain_streaks}
 
 {post}
-  gl_FragColor=vec4(col,1);
+  fragColor=vec4(col,1);
 }}
 ",
         weather_uniforms = weather_uniforms,
@@ -864,6 +862,12 @@ pub fn build_full_shader(sdf_eval_source: &str, config: &RenderConfig) -> String
 // ═══════════════════════════════════════════════════════
 
 precision highp float;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+
+// GLSL ES 3.00 has no gl_FragColor: the colour is a declared output
+out vec4 fragColor;
 {uniforms}
 {destr_uniforms}
 {noise}
