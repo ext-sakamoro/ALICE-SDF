@@ -86,7 +86,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Deprecated
 
-- `GlslShader::to_unity_custom_function` / `GlslShader::export_unity_shader_graph`: 出力は GLSL 構文 (`vec3` / `mix` 等) で、HLSL を取る Unity Shader Graph では compile できない `GlslShader` は GLSL の source しか持たないので HLSL を作れない 同じ木を `HlslShader` で transpile して同名の関数を使う (出力は変えていない)
+- `GlslShader::to_unity_custom_function` / `GlslShader::export_unity_shader_graph` (doc で非推奨を明記、`#[deprecated]` 属性は次の minor で付ける): 出力は GLSL 構文 (`vec3` / `mix` 等) で、HLSL を取る Unity Shader Graph では compile できない `GlslShader` は GLSL の source しか持たないので HLSL を作れない 同じ木を `HlslShader` で transpile して同名の関数を使う (出力は変えていない)
 
 ### Removed
 
