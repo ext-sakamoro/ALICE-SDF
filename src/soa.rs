@@ -120,12 +120,25 @@ impl SoAPoints {
     }
 
     /// Push a single point
+    ///
+    /// The point is stored at index `len()`, overwriting padding left by
+    /// [`Self::from_vec3_slice`] or [`Self::ensure_padding`], and the arrays
+    /// stay padded to [`Self::padded_len`] so the SIMD loads of the batch
+    /// evaluators always see the point.
     #[inline]
     pub fn push(&mut self, x: f32, y: f32, z: f32) {
-        self.x.push(x);
-        self.y.push(y);
-        self.z.push(z);
+        let i = self.len;
+        if i < self.x.len() {
+            self.x[i] = x;
+            self.y[i] = y;
+            self.z[i] = z;
+        } else {
+            self.x.push(x);
+            self.y.push(y);
+            self.z.push(z);
+        }
         self.len += 1;
+        self.ensure_padding();
     }
 
     /// Push a Vec3 point

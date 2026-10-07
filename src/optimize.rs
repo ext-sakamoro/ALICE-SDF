@@ -43,7 +43,9 @@ pub fn optimize(node: &SdfNode) -> SdfNode {
     // Bottom-up: optimize children first, then this node
     let node = optimize_children(node);
     let node = fold_identity_transform(node);
-    let node = merge_nested_transforms(node);
+    // A merge can produce an identity (Scale 2 · Scale 0.5, Translate a · Translate −a),
+    // so fold identities again after it
+    let node = fold_identity_transform(merge_nested_transforms(node));
     let node = fold_identity_modifier(node);
 
     demote_smooth_to_standard(node)

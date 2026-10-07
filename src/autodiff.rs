@@ -474,13 +474,12 @@ pub fn principal_curvatures(node: &SdfNode, point: Vec3, epsilon: f32) -> (f32, 
     let n = grad / grad_len;
     let h = eval_hessian(node, point, epsilon);
 
-    // Shape operator: S = (H - n n^T H) / |∇f|
-    // For an SDF (|∇f|≈1), principal curvatures are eigenvalues of
-    // the projected Hessian restricted to the tangent plane.
-    // Use the trace (mean curvature H) and determinant (Gaussian curvature K)
-    // of the 2x2 shape operator.
-
-    // Full Hessian matrix
+    // Shape operator restricted to the tangent plane: S = P H P / |∇f| with
+    // P = I - n nᵀ. Its two non-trivial eigenvalues are the principal
+    // curvatures, recovered from
+    //   k1 + k2   = tr(S)   = (tr H - nᵀHn) / |∇f|
+    //   k1² + k2² = |S|_F²  = (|H|_F² - 2|Hn|² + (nᵀHn)²) / |∇f|²
+    // so (k1 - k2)² = 2(k1² + k2²) - (k1 + k2)².
     let hxx = h[0];
     let hyy = h[1];
     let hzz = h[2];
@@ -488,28 +487,27 @@ pub fn principal_curvatures(node: &SdfNode, point: Vec3, epsilon: f32) -> (f32, 
     let hxz = h[4];
     let hyz = h[5];
 
-    // Project Hessian: P = H - (H·n)(n^T)
-    // Mean curvature = trace of shape operator / |∇f|
-    let laplacian = hxx + hyy + hzz;
-    let n_hn = 2.0f32.mul_add(
-        (hyz * n.y).mul_add(n.z, (hxy * n.x).mul_add(n.y, hxz * n.x * n.z)),
-        (hzz * n.z).mul_add(n.z, (hxx * n.x).mul_add(n.x, hyy * n.y * n.y)),
+    // H n
+    let hn = Vec3::new(
+        hxz.mul_add(n.z, hxx.mul_add(n.x, hxy * n.y)),
+        hyz.mul_add(n.z, hxy.mul_add(n.x, hyy * n.y)),
+        hzz.mul_add(n.z, hxz.mul_add(n.x, hyz * n.y)),
     );
-    let mean_h = (laplacian - n_hn) / grad_len;
+    let n_hn = n.dot(hn);
+    let laplacian = hxx + hyy + hzz;
+    let sum = (laplacian - n_hn) / grad_len;
 
-    // Frobenius norm of projected Hessian for discriminant
     let h_frobenius = 2.0f32.mul_add(
         hyz.mul_add(hyz, hxy.mul_add(hxy, hxz * hxz)),
         hzz.mul_add(hzz, hxx.mul_add(hxx, hyy * hyy)),
     );
-    let proj_frobenius = (-n_hn).mul_add(n_hn, h_frobenius) / (grad_len * grad_len);
+    let sum_sq = n_hn.mul_add(n_hn, (-2.0f32).mul_add(hn.length_squared(), h_frobenius))
+        / (grad_len * grad_len);
 
-    // k1 + k2 = mean_h, k1² + k2² = proj_frobenius
-    // k1*k2 = (mean_h² - proj_frobenius) / 2
-    let discriminant = mean_h.mul_add(mean_h, -proj_frobenius).max(0.0);
+    let discriminant = 2.0f32.mul_add(sum_sq, -(sum * sum)).max(0.0);
     let sqrt_disc = discriminant.sqrt();
-    let k1 = f32::midpoint(mean_h, sqrt_disc);
-    let k2 = 0.5 * (mean_h - sqrt_disc);
+    let k1 = f32::midpoint(sum, sqrt_disc);
+    let k2 = 0.5 * (sum - sqrt_disc);
     if k1 >= k2 {
         (k1, k2)
     } else {

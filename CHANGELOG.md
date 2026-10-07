@@ -22,12 +22,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - 閉形式の oracle: `tests/test_mesh_query_oracle.rs` (点と三角形の距離を独立実装の総当たりで突き合わせ、内接多面体の球の SDF を Hausdorff 上界 `max(r − sqrt(r² − R²))` 以内で `|p| − r` と照合、緯度経度の点群の被覆半径で点群 SDF を挟む、平面と球の Hermite 交点と格子全辺の交差数) / `tests/test_mesh_collision_fit_oracle.rs` (箱の体積・外接球、凸包の閉性と体積、球 mesh のオイラー標数 2 と穴あけ・穴埋めでの変化、修復手順ごとの除去数、三角形の面積と aspect 比、解析的な点群からの fit の回復、`FittedPrimitive` の距離と `to_sdf_node` の一致)
 - examples `mesh_codecs` / `mesh_reorder` / `mesh_presets`: 球の mesh を crate 独自の varint delta 形式 (`encode_mesh` / `decode_indices` / `decode_positions`) と meshoptimizer v1 の index / vertex codec で圧縮して戻し、octahedral / quaternion / exponential の vertex filter と snorm / unorm / binary16 の量子化を往復させる / triangle を混ぜた球に `optimize_spatial_order` → `optimize_vertex_cache` → `optimize_overdraw` → `optimize_vertex_fetch` を掛けて ACMR / ATVR を出し、strip に変換して戻す / `MarchingCubesConfig::aaa` / `AdaptiveConfig::aaa` / `DualContouringConfig::aaa` と compiled の mesher、`DecimateConfig::conservative` / `aggressive`、lightmap UV (atlas と fast)、`compute_uv_density` を使い、値を閉形式と突き合わせて出力する
 - `tests/test_mesh_codec_oracle.rs` / `test_meshopt_filter_oracle.rs` / `test_mesh_quantization_oracle.rs` / `test_mesh_reorder_oracle.rs` / `test_mesh_extract_uv_oracle.rs`: module doc の形式から独立に書いた encoder との byte 一致と全 `u32` / 任意の `f32` bit 列での往復、filter の閉形式の誤差上限 (octahedral 射影と逆射影、四元数の最大成分、共有指数の半刻み)、snorm / unorm の全 code の復号と binary16 の IEEE 754 (全 65536 code と隣接 code の中点、ties-to-even)、LRU / FIFO cache の独立 simulation と ACMR の閉形式、strip の往復で三角形の集合と向きが保たれること、Morton の bit interleave、単一視線での cluster の前後順、球の半径・外向きの面・体積 4π/3・triplanar UV、decimation の三角形数の単調減少と二次誤差上限からの形の誤差、lightmap UV の非重複と UV 面積からの texel 数
+- examples `autodiff_curvature` / `soa_batch` / `grid_bounds_optimize`: `Dual` / `Dual3` と `dual3_*` primitive の値と勾配、`eval_with_gradient` / `eval_dual3`、`principal_curvatures` / `gaussian_curvature`、`SoAPoints` を slice・iterator・`push` で作って SoA の batch 評価器 (`eval_compiled_batch_soa` / `_parallel` / `_into`) と手での 8 lane 読み書き、`AlignedVec` / `eval_batch` / `eval_grid` / `eval_grid_with_normals` / `grid_index` / `grid_coords` / `eval::gradient`、`Interval` の述語での箱の分類、`optimize` と `optimization_stats`、`TightAabbConfig::preset_medium` を使い、値を閉形式と突き合わせて出力する
+- `tests/test_autodiff_oracle.rs` / `test_soa_oracle.rs` / `test_eval_grid_oracle.rs` / `test_interval_predicate_oracle.rs` / `test_optimize_stats_oracle.rs`: 二重数の積・商・合成則と球・箱・トーラス・平面の解析勾配、球の主曲率 1/r とトーラスの外側赤道 (1/r, 1/(R+r))・内側赤道 (1/r, −1/(R−r))、SoA の全経路がスカラーの `eval_compiled` と bit 一致、格子の配置 (`x + y·res + z·res²`) と `eval` の bit 一致、区間の述語を集合の定義と照合、球の区間値が厳密な値域を含み ulp 程度で tight であること、`optimize` が距離を bit 単位で保つこと (dyadic な定数で厳密、k = 0 の smooth union のみ k の下限 1e-10 の 1/4 以内) と除去 node 数、中型 preset の AABB
 
 ### Changed
 
 - `RaymarchConfig::relaxed` は Lipschitz 値を `fidelity::distance_fidelity(node).safe_step_scale()` から取る (値は従来と同じ: 有限なら `L.max(1)`、上界が無ければ plain tracing)
 - 木の評価器 (`eval` / `eval_material` / `eval_gradient`) の `Translate` / `Scale` / `Rotate` が `transform_translate` / `transform_scale` / `transform_rotate` / `transform_rotate_inverse` を呼ぶ (同じ演算、結果は bit 単位で不変)
 - `raymarch_with_config` / `raymarch_detailed` の点は `Ray::new` / `Ray::at` で求める、`sdf_collide` / `sdf_distance` / `sdf_overlap` の格子の幅は `Aabb::size` で求める (どちらも結果は不変)
+- `collision` (`sdf_overlap` / `sdf_collide`) と `validity` の肉厚判定、`tight_aabb` の区間の判定を `Interval::is_positive` / `is_negative` / `contains(0.0)` で書く (同じ比較、結果は不変)
 
 ### Removed
 
@@ -61,6 +64,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `mesh::meshopt_filter::encode_filter_exp_one` の指数の下限を -126 にした 復号は `2^e` を正規数の bit `(e + 127) << 23` で作るので、`e = -127` は 0.0 になり `|v| < 2^(bits − 128)` の値が 0 に戻っていた
 - `mesh::mesh_codec::encode_indices` / `decode_indices`: index の差分を `wrapping_sub` / `wrapping_add` で取る debug build で差分が `i32` を超える index 列 (例: 0 の次に 2^31) を渡すと overflow で panic していた (release build の byte 列は不変)
 - `mesh::stripifier::unstripify_bound(1)` が `index_count - 2` の underflow で panic し、1 index の strip を渡した `unstripify` も panic していた 3 未満は 0 を返す
+- **Behavior change:** `autodiff::principal_curvatures` が判別式に `(k1 + k2)² − (k1² + k2²)` を使っており、球でも k1 ≠ k2 (半径 r で 1.707/r と 0.293/r) を返していた (`gaussian_curvature` は 1/r² の半分) 正しい `(k1 − k2)² = 2(k1² + k2²) − (k1 + k2)²` に直し、接平面への射影の Frobenius ノルムに `−2|Hn|²` の項を入れた (勾配の長さが 1 でない場でも形状作用素の固有値になる)
+- **Behavior change:** `SoAPoints::push` が padding (`from_vec3_slice` / `ensure_padding` / `FromIterator` が足す 0) の後ろに点を追加しており、`get(len − 1)` と batch 評価器が push した点でなく padding の 0 を読んでいた また padding の無い状態で push した点の最後の端数の lane 群は、`eval_compiled_batch_soa` が原点で評価し、`_into` (と padding 後 256 点以上の `_parallel`) は範囲外の slice で panic していた push は index `len` に書き、配列を常に `padded_len` まで埋める
+- `optimize` が入れ子の変換を合成した結果の恒等変換 (`Scale(2)·Scale(0.5)`、打ち消し合う `Translate`) を残していた 合成の後にもう一度恒等変換を畳む (距離は不変)
 
 ## [4.1.0] - 2026-10-07
 

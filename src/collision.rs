@@ -64,11 +64,11 @@ pub fn sdf_collide(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> Ve
                 // Interval pruning: if either SDF is entirely positive in
                 // this cell, no overlap is possible.
                 let ia = eval_interval(a, Vec3Interval::from_bounds(lo, hi));
-                if ia.lo > 0.0 {
+                if ia.is_positive() {
                     continue;
                 }
                 let ib = eval_interval(b, Vec3Interval::from_bounds(lo, hi));
-                if ib.lo > 0.0 {
+                if ib.is_positive() {
                     continue;
                 }
 
@@ -161,11 +161,11 @@ pub fn sdf_overlap(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> bo
                 let hi = lo + cell;
 
                 let ia = eval_interval(a, Vec3Interval::from_bounds(lo, hi));
-                if ia.lo > 0.0 {
+                if ia.is_positive() {
                     continue;
                 }
                 let ib = eval_interval(b, Vec3Interval::from_bounds(lo, hi));
-                if ib.lo > 0.0 {
+                if ib.is_positive() {
                     continue;
                 }
 

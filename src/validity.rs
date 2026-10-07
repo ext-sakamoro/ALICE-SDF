@@ -276,10 +276,10 @@ pub fn prove_erosion(
     let mut stack: Vec<(Vec3, Vec3, u32)> = vec![(bmin, bmax, 0)];
     while let Some((lo, hi, depth)) = stack.pop() {
         let iv = eval_interval(&eroded, Vec3Interval::from_bounds(lo, hi));
-        if iv.lo > 0.0 {
+        if iv.is_positive() {
             continue; // 箱は erode 後の外と証明された = 残った材料はない
         }
-        if iv.hi < 0.0 {
+        if iv.is_negative() {
             // 箱が丸ごと erode 後の内部 = min_wall 以上の肉厚を持つ領域の証明
             return ErosionVerdict::HasThickEnoughRegion {
                 witness: (lo + hi) * 0.5,

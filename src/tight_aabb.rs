@@ -191,7 +191,7 @@ pub fn compute_tight_aabb_with_config(node: &SdfNode, config: &TightAabbConfig) 
     // First check: does the surface even exist in the initial box?
     let full_bounds = Vec3Interval::from_bounds(initial_min, initial_max);
     let full_interval = eval_interval(node, full_bounds);
-    if full_interval.lo > 0.0 || full_interval.hi < 0.0 {
+    if full_interval.is_positive() || full_interval.is_negative() {
         // No surface crossing in the entire initial box
         return Aabb::new(Vec3::ZERO, Vec3::ZERO);
     }
@@ -588,7 +588,7 @@ fn make_slab_bounds(
 /// so we need the interval to span zero.
 #[inline(always)]
 fn may_contain_surface(interval: &crate::interval::Interval) -> bool {
-    interval.lo <= 0.0 && interval.hi >= 0.0
+    interval.contains(0.0)
 }
 
 /// Get axis value from Vec3
