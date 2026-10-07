@@ -67,7 +67,17 @@ fn main() {
                 .translate(a.translate_x, a.translate_y, a.translate_z)
         })
         .collect();
-    trees.push(base.clone().translate(0.0, 2.0, 0.0));
+    #[cfg(feature = "gpu")]
+    {
+        let wgsl = InstancedSdf::to_instanced_wgsl(&base);
+        println!(
+            "instanced WGSL compute shader: {} lines",
+            wgsl.lines().count()
+        );
+        assert!(wgsl.contains("@compute"));
+    }
+
+    trees.push(base.translate(0.0, 2.0, 0.0));
 
     let queries: Vec<Vec3> = (0..300)
         .map(|i| {
@@ -102,16 +112,6 @@ fn main() {
         batch.len(),
         batch_simd.len()
     );
-
-    #[cfg(feature = "gpu")]
-    {
-        let wgsl = InstancedSdf::to_instanced_wgsl(&base);
-        println!(
-            "instanced WGSL compute shader: {} lines",
-            wgsl.lines().count()
-        );
-        assert!(wgsl.contains("@compute"));
-    }
 
     println!("\nall checks passed");
 }
