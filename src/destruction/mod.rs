@@ -217,17 +217,32 @@ impl MutableVoxelGrid {
         )
     }
 
-    /// Mark chunk containing voxel (x,y,z) as dirty
+    /// Mark every chunk whose mesh depends on voxel (x,y,z) as dirty
+    ///
+    /// A chunk meshes the Marching Cubes cells whose low corner lies in it
+    /// (see [`Self::remesh_chunk`]), so a voxel on the low face of its chunk
+    /// (`x % chunk_size == 0`, `x > 0`) is also a high corner of the last cell
+    /// row of the chunk below it on that axis. Marking only the owning chunk
+    /// left that neighbour's mesh stale after an edit on the seam.
     #[inline]
     fn mark_dirty(&mut self, x: u32, y: u32, z: u32) {
-        let cx = x / self.chunk_size;
-        let cy = y / self.chunk_size;
-        let cz = z / self.chunk_size;
-        let ci = (cx
-            + cy * self.chunks_per_axis[0]
-            + cz * self.chunks_per_axis[0] * self.chunks_per_axis[1]) as usize;
-        if ci < self.dirty_chunks.len() {
-            self.dirty_chunks[ci] = true;
+        let cs = self.chunk_size;
+        let axis = |v: u32| {
+            let c = v / cs;
+            // the chunk below also reads this voxel when it sits on the seam
+            let lo = if v > 0 && v % cs == 0 { c - 1 } else { c };
+            lo..=c
+        };
+        let [cpx, cpy, _] = self.chunks_per_axis;
+        for cz in axis(z) {
+            for cy in axis(y) {
+                for cx in axis(x) {
+                    let ci = (cx + cy * cpx + cz * cpx * cpy) as usize;
+                    if ci < self.dirty_chunks.len() {
+                        self.dirty_chunks[ci] = true;
+                    }
+                }
+            }
         }
     }
 
@@ -282,7 +297,14 @@ impl MutableVoxelGrid {
 
     /// Remesh a single dirty chunk to a Mesh
     ///
-    /// Runs Marching Cubes on the voxels within the specified chunk.
+    /// Runs Marching Cubes on the cells whose low corner (voxel index) lies in
+    /// the chunk, reading one voxel past the chunk's high face where the grid
+    /// continues. The chunks therefore partition the grid's cells, and the
+    /// meshes of all chunks together are the Marching Cubes surface of the
+    /// whole grid. Until 4.1.0 the loop stopped one cell short of every high
+    /// face, so the cells straddling a chunk seam were never meshed and the
+    /// chunk meshes had a crack along every seam
+    /// (`tests/test_destruction_api_oracle.rs`).
     pub fn remesh_chunk(&self, cx: u32, cy: u32, cz: u32) -> crate::mesh::Mesh {
         use crate::mesh::Vertex;
 
@@ -290,18 +312,20 @@ impl MutableVoxelGrid {
         let x0 = cx * cs;
         let y0 = cy * cs;
         let z0 = cz * cs;
-        let x1 = (x0 + cs).min(self.resolution[0]);
-        let y1 = (y0 + cs).min(self.resolution[1]);
-        let z1 = (z0 + cs).min(self.resolution[2]);
+        // One past the last owned cell; a cell needs voxel `i + 1`, so the
+        // grid's last voxel row starts no cell.
+        let x1 = (x0 + cs).min(self.resolution[0].saturating_sub(1));
+        let y1 = (y0 + cs).min(self.resolution[1].saturating_sub(1));
+        let z1 = (z0 + cs).min(self.resolution[2].saturating_sub(1));
 
         let vs = self.voxel_size();
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
         // Simple Marching Cubes on chunk voxels
-        for z in z0..z1.saturating_sub(1) {
-            for y in y0..y1.saturating_sub(1) {
-                for x in x0..x1.saturating_sub(1) {
+        for z in z0..z1 {
+            for y in y0..y1 {
+                for x in x0..x1 {
                     let corners = [
                         self.get_distance(x, y, z),
                         self.get_distance(x + 1, y, z),

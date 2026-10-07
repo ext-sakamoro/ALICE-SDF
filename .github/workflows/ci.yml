@@ -153,6 +153,9 @@ jobs:
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
       # aaa (volume / gpu-mesh / svo-gpu / destruction / terrain / gi) の解析解 oracle。
+      # `*_api_oracle` の 5 file は example から配線した API (chunk の継ぎ目の
+      # remesh / DDS header / LRU cache / probe の範囲外など) を固定する。`image` は
+      # `Heightmap::from_image*` の arm 用
       # 2026-09-30 まで gi / destruction / terrain / volume は `> 0` / `!is_empty()` の
       # 存在・範囲 check しか持たず、tests/ からは 1 件も呼ばれていなかった。
       # この 2 file で実バグ 6 件 (MC 原点が voxel 角 / vs.x の 3 軸流用 / 左手系 basis /
@@ -161,7 +164,7 @@ jobs:
       # ⚠️ 1 行で書く (matrix に windows-latest があり既定 shell は pwsh、
       #    バックスラッシュ行継続は ParserError になる = 罠 gha-run-block-backslash-…)
       - name: Test (integration, analytic oracles — aaa) [T4]
-        run: cargo test --features "aaa" --test test_gi_volume_oracle --test test_terrain_destruction_oracle
+        run: cargo test --features "aaa,image" --test test_gi_volume_oracle --test test_terrain_destruction_oracle --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle --test test_gi_api_oracle --test test_destruction_api_oracle
 
       # file 先頭が `#![cfg(feature = …)]` の oracle は、その feature を付けない
       # `cargo test --tests` では空の binary になり `running 0 tests` で green になる。
@@ -688,7 +691,7 @@ jobs:
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、
       # adapter 不在は silent skip でなく assert 失敗になる
       - name: GPU ↔ CPU parity (aaa — volume gpu_bake)
-        run: cargo test --features "aaa" --test test_gi_volume_oracle -- --nocapture
+        run: cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle -- --nocapture
 
   doc:
     name: Doc (RUSTDOCFLAGS=-Dwarnings)

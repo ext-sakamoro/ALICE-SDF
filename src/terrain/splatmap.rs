@@ -67,7 +67,14 @@ impl Splatmap {
     }
 
     /// Get the dominant material ID at a position
+    ///
+    /// Returns 0 outside the map, where [`Self::get_weight`] reports every
+    /// layer as weight 0. Until 4.1.0 an `x` past the right edge read the
+    /// texel at the start of the next row.
     pub fn dominant_material(&self, x: u32, z: u32) -> u16 {
+        if x >= self.width || z >= self.depth {
+            return 0;
+        }
         let mut best_weight = 0.0f32;
         let mut best_id = 0u16;
 

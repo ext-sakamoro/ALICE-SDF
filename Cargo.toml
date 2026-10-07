@@ -247,6 +247,36 @@ required-features = ["image"]
 name = "raycast_jit"
 required-features = ["jit"]
 
+# Sparse voxel octree: build, queries, GPU layout, chunks and the LRU cache.
+[[example]]
+name = "svo_octree"
+required-features = ["svo"]
+
+# Volume textures: CPU / compiled / normal bakes, mips, raw and DDS export.
+[[example]]
+name = "volume_bake"
+required-features = ["volume"]
+
+# Terrain: image and raw heightmaps, caves, clipmap meshes, splatmap.
+[[example]]
+name = "terrain_system"
+required-features = ["terrain", "image"]
+
+# Cone-traced GI over an octree and a baked irradiance probe grid.
+[[example]]
+name = "gi_cone_trace"
+required-features = ["gi"]
+
+# Voxel destruction: carve, batch, explode, dirty-chunk remesh, debris.
+[[example]]
+name = "destruction_carve"
+required-features = ["destruction"]
+
+# Texture fit and reconstruction at another resolution.
+[[example]]
+name = "texture_reconstruct"
+required-features = ["texture-fit"]
+
 # Declare the 5 bridge features as known even though the entries are
 # gone from [features] for the 1.7.7 crates.io publish. Without this
 # `cargo clippy -- -D warnings` and `cargo doc -Dwarnings` fail on

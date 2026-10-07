@@ -179,14 +179,7 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
     let pitch_or_linear = volume.resolution[0] * bytes_per_pixel;
     let header = DdsHeader {
         size: 124,
-        flags: 0x00000001
-            | 0x00000002
-            | 0x00000004
-            | 0x00000008
-            | 0x00001000
-            | 0x00080000
-            | 0x00800000,
-        // DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT | DDSD_MIPMAPCOUNT | DDSD_LINEARSIZE | DDSD_DEPTH
+        flags: dds_header_flags(volume.mip_count()),
         height: volume.resolution[1],
         width: volume.resolution[0],
         pitch_or_linear_size: pitch_or_linear,
@@ -203,8 +196,8 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
         pf_b_bitmask: 0,
         pf_a_bitmask: 0,
         // DDS_HEADER caps
-        caps: 0x00001000 | 0x00000008 | 0x00400000, // DDSCAPS_TEXTURE | DDSCAPS_COMPLEX | DDSCAPS_MIPMAP
-        caps2: 0x00200000,                          // DDSCAPS2_VOLUME
+        caps: dds_caps(volume.mip_count()),
+        caps2: DDSCAPS2_VOLUME,
         caps3: 0,
         caps4: 0,
         reserved2: 0,
@@ -292,13 +285,7 @@ pub fn export_dds_3d_distgrad(
 
     let header = DdsHeader {
         size: 124,
-        flags: 0x00000001
-            | 0x00000002
-            | 0x00000004
-            | 0x00000008
-            | 0x00001000
-            | 0x00080000
-            | 0x00800000,
+        flags: dds_header_flags(volume.mip_count()),
         height: volume.resolution[1],
         width: volume.resolution[0],
         pitch_or_linear_size: volume.resolution[0] * bytes_per_pixel,
@@ -313,8 +300,8 @@ pub fn export_dds_3d_distgrad(
         pf_g_bitmask: 0,
         pf_b_bitmask: 0,
         pf_a_bitmask: 0,
-        caps: 0x00001000 | 0x00000008 | 0x00400000,
-        caps2: 0x00200000,
+        caps: dds_caps(volume.mip_count()),
+        caps2: DDSCAPS2_VOLUME,
         caps3: 0,
         caps4: 0,
         reserved2: 0,
@@ -422,39 +409,53 @@ fn write_dds_header_dxt10(w: &mut impl Write, h: &DdsHeaderDxt10) -> io::Result<
     Ok(())
 }
 
-/// Convert f32 to IEEE 754 half-precision (f16)
+// DDS_HEADER.dwFlags / dwCaps / dwCaps2 bits (Microsoft "DDS_HEADER structure").
+const DDSD_CAPS: u32 = 0x1;
+const DDSD_HEIGHT: u32 = 0x2;
+const DDSD_WIDTH: u32 = 0x4;
+const DDSD_PITCH: u32 = 0x8;
+const DDSD_PIXELFORMAT: u32 = 0x1000;
+const DDSD_MIPMAPCOUNT: u32 = 0x2_0000;
+const DDSD_DEPTH: u32 = 0x80_0000;
+const DDSCAPS_COMPLEX: u32 = 0x8;
+const DDSCAPS_TEXTURE: u32 = 0x1000;
+const DDSCAPS_MIPMAP: u32 = 0x40_0000;
+const DDSCAPS2_VOLUME: u32 = 0x20_0000;
+
+/// `dwFlags` for an uncompressed volume texture with `mip_count` levels.
 ///
-/// Software implementation for portability (no `half` crate dependency).
+/// The pitch field holds the bytes per scan line of an uncompressed texture,
+/// so the flag is `DDSD_PITCH`; `DDSD_LINEARSIZE` is the compressed-texture
+/// variant and must not be set with it. `DDSD_MIPMAPCOUNT` marks a mipmapped
+/// texture. Until 4.1.0 the header set both pitch flags and never set
+/// `DDSD_MIPMAPCOUNT` (its comment named `0x8` "PIXELFORMAT"), pinned by
+/// `tests/test_volume_api_oracle.rs`.
+const fn dds_header_flags(mip_count: usize) -> u32 {
+    let base = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PITCH | DDSD_PIXELFORMAT | DDSD_DEPTH;
+    if mip_count > 1 {
+        base | DDSD_MIPMAPCOUNT
+    } else {
+        base
+    }
+}
+
+/// `dwCaps`: `DDSCAPS_COMPLEX | DDSCAPS_MIPMAP` only when the file holds more
+/// than one surface, i.e. a mip chain.
+const fn dds_caps(mip_count: usize) -> u32 {
+    if mip_count > 1 {
+        DDSCAPS_TEXTURE | DDSCAPS_COMPLEX | DDSCAPS_MIPMAP
+    } else {
+        DDSCAPS_TEXTURE
+    }
+}
+
+/// Convert f32 to IEEE 754 binary16, rounding to nearest, ties to even
+///
+/// Delegates to [`crate::mesh::quantization::half_encode`]. The previous local
+/// conversion truncated the mantissa (rounding toward zero), so an R16 DDS
+/// volume stored up to one half-ulp more error than the format allows.
 const fn f32_to_f16(value: f32) -> u16 {
-    let bits = value.to_bits();
-    let sign = (bits >> 16) & 0x8000;
-    let exponent = ((bits >> 23) & 0xFF) as i32;
-    let mantissa = bits & 0x007FFFFF;
-
-    if exponent == 255 {
-        // Inf or NaN
-        if mantissa != 0 {
-            return (sign | 0x7E00) as u16; // NaN
-        }
-        return (sign | 0x7C00) as u16; // Inf
-    }
-
-    let new_exp = exponent - 127 + 15;
-
-    if new_exp >= 31 {
-        return (sign | 0x7C00) as u16; // Overflow -> Inf
-    }
-
-    if new_exp <= 0 {
-        if new_exp < -10 {
-            return sign as u16; // Underflow -> 0
-        }
-        // Denormalized
-        let m = (mantissa | 0x00800000) >> (1 - new_exp);
-        return (sign | (m >> 13)) as u16;
-    }
-
-    (sign | ((new_exp as u32) << 10) | (mantissa >> 13)) as u16
+    crate::mesh::quantization::half_encode(value)
 }
 
 #[cfg(test)]

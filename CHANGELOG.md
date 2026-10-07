@@ -29,6 +29,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `tests/test_material_oracle.rs`: builder が名前の field だけを doc の clamp で変えること (serde JSON の差分で検査)、preset の metallic と屈折率 (ガラス 1.5、ダイヤモンド 2.42、水 1.33)、`material_lerp` の端点の bit 一致と内部の線形の閉形式、library の id、glTF の `textureInfo.texCoord`
 - `tests/test_npr_bytecode_oracle.rs`: opcode ごとの wire 形式を独立に書いた encoder と照合、Rust の tag 定数と emit される WGSL の定数の一致、`opcode_word_count` / `stack_effect` の表、`validate` / `deserialize` / `serialize` の各 error、往復した program と木の評価器の bit 一致、DSL builder の閉形式 `tests/test_npr_primitives_oracle.rs`: `NprInput` の内積、球の上の輪郭線の殻、depth step の閾値、noise の周波数の拡大縮小 (bit 一致) と格子点で 0
 - `tests/test_npr_bytecode_gpu_parity.rs` (`gpu` feature、CI の gpu-parity job): emit した WGSL の bytecode 評価器を compute shader で実行し、全 18 opcode と 5 つの palette source の program を CPU の木の評価器と 1024 点で突き合わせる (段差の近くの点は除き、比較が 6 割未満なら失敗)
+- examples `svo_octree` (`svo`) / `volume_bake` (`volume`) / `terrain_system` (`terrain,image`) / `gi_cone_trace` (`gi`) / `destruction_carve` (`destruction`) / `texture_reconstruct` (`texture-fit`): SVO の build と点・最近面・ray の問い合わせ、`linearize` と level 表・`as_bytes`・`compact_svo`、`split_into_chunks` と chunk の byte 往復・LRU cache / interpreted・compiled・法線付きの volume bake、trilinear sampling、mip chain、raw と DDS の書き出し、GPU の法線 bake / PNG と生 data の heightmap、洞窟と chamber を引いた `terrain_sdf`、clipmap の mesh、splatmap / 床の上と閉じた空洞の中の hemisphere cone trace、probe grid の bake と probe の読み書き / carve・batch・explode、継ぎ目の voxel の手編集と dirty chunk だけの remesh、debris / texture fit と別解像度での `reconstruct` を、値を閉形式と突き合わせて出力する
+- `tests/test_svo_api_oracle.rs` / `test_volume_api_oracle.rs` / `test_terrain_api_oracle.rs` / `test_gi_api_oracle.rs` / `test_destruction_api_oracle.rs`: 各 node が自分の中心の `eval` (compiled は `eval_compiled`) を bit 一致で持つこと、独立に辿った深さで level 表を照合、`#[repr(C)]` の node 配置、切り離した部分木の大きさだけ減る compaction、chunk が node を分割し chunk から組み直した octree が cell 内で同じ値を返すこと、chunk の header と record の配置、独立に書いた LRU の model / 球の解析場との bit 一致と中心差分・四面体差分の法線、mip の footprint の最小、DDS_HEADER / DXT10 の各 field (Microsoft の仕様)、binary16 の最近接偶数丸め (隣の code との比較) / 洞窟の天井の上界 (smooth union の k/4)、角丸の箱の閉形式、ramp の上の clipmap の頂点・法線・面の向き、画素値の線形写像、splatmap の arg-max / probe の軸ごとの範囲判定、probe 中心での sample、閉じた空洞の中の cone の不透明度と hemisphere の閉形式の帯 / chunk の mesh が全体の active cell を 1 度ずつ覆うこと、継ぎ目の voxel を読む chunk の集合、dirty chunk の remesh が全体の remesh と一致すること、全 AABB が格子を覆う時の `max(old, −d₁, −d₂)`、explode の主球が空になり符号の変化が `1.5·r` 以内に収まること (CI の aaa step と gpu-parity の aaa step で走る)
 
 ### Changed
 
@@ -38,6 +40,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `raymarch_with_config` / `raymarch_detailed` の点は `Ray::new` / `Ray::at` で求める、`sdf_collide` / `sdf_distance` / `sdf_overlap` の格子の幅は `Aabb::size` で求める (どちらも結果は不変)
 - `collision` (`sdf_overlap` / `sdf_collide`) と `validity` の肉厚判定、`tight_aabb` の区間の判定を `Interval::is_positive` / `is_negative` / `contains(0.0)` で書く (同じ比較、結果は不変)
 - `io::obj` / `io::fbx` / `io::usd` / `io::gltf` の書き出しが `MaterialLibrary::get` / `iter` / `len` で material を引く (結果は不変)
+- `gi::IrradianceGrid::sample` の probe の読み出しを `get_probe` で行う (補間に使う座標は常に範囲内なので結果は不変)
+- CI の aaa integration step を `--features "aaa,image"` にして上の 5 file を加え、gpu-parity の aaa step に `test_volume_api_oracle` を加えた `scripts/preflight.sh` (full) にも同じ 2 step を加えた (aaa の integration oracle は preflight に無かった)
 
 ### Removed
 
@@ -46,6 +50,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Fixed
 
+- **Behavior change:** `destruction::MutableVoxelGrid::remesh_chunk`: chunk の高い側の面で 1 cell 手前で止まっていたため、chunk の継ぎ目を跨ぐ cell が mesh されず、chunk の mesh を並べると全ての継ぎ目に隙間があった chunk は下端の voxel が自分の中にある cell を受け持ち、全 chunk の mesh の和が格子全体の Marching Cubes と三角形単位で一致する
+- **Behavior change:** `destruction::MutableVoxelGrid` の dirty の印 (`set_distance` / `carve` / `carve_batch` / `explode`): chunk の下端の面にある voxel は下の chunk の最後の cell も読むので、その chunk にも印を付ける (継ぎ目を編集すると隣の chunk の mesh が古いまま残っていた)
+- **Behavior change:** `destruction::operations::explode`: 乱数の 48 bit 値 (`state >> 16`) を `u32::MAX` で割っていたため [0, 1] でなく最大 65536 になり、破片の半径が `radius` の数千倍になって 1 回の爆発で格子全体を削っていた crate 内の他の生成器と同じく下位 32 bit を使う 破片の中心は中心から `0.8·radius` 以内、半径は `[0.2, 0.7]·radius` (doc に追記)
+- **Behavior change:** `volume::export::export_dds_3d` / `export_dds_3d_distgrad`: DDS_HEADER の flags が `DDSD_PITCH` と圧縮用の `DDSD_LINEARSIZE` を同時に立て、mip chain があっても `DDSD_MIPMAPCOUNT` を立てていなかった (comment は `0x8` を PIXELFORMAT と誤記) caps の `DDSCAPS_COMPLEX | DDSCAPS_MIPMAP` は mip chain がある時だけ立てる R16 の texel は切り捨てでなく IEEE 754 の最近接偶数丸め (`mesh::quantization::half_encode` に委ねる)
+- **Behavior change:** `volume::bake::bake_volume_compiled`: `BakeConfig::generate_mips` を無視して常に 1 level を返していた (`bake_volume` と同じく mip chain を作る)
+- **Behavior change:** `volume::gpu_bake::gpu_bake_volume_with_normals`: 引数 `gradient_epsilon` を無視して shader 内で 0.001 に固定していた uniform の空き (`bounds_min.w`) で渡す
+- **Behavior change:** `svo::SvoStreamingCache::insert`: 既にある id を入れ直すと古い chunk の byte を `memory_used` から引かず、容量いっぱいなら無関係な chunk を追い出していた 古い entry を先に外す
+- **Behavior change:** `gi::IrradianceGrid::get_probe` / `get_probe_mut`: 範囲判定が平坦化した index だけで、`x == grid_size[0]` が次の行の probe を返していた 軸ごとに判定して範囲外は `None`
+- **Behavior change:** `terrain::Splatmap::dominant_material`: 右端を越えた `x` が次の行の texel を読んでいた 範囲外は `get_weight` と同じく全 layer の重みが 0 なので 0 を返す
 - **Behavior change:** `fbm_noise_3d`: octave ごとの seed を `seed.wrapping_add(i)` で求める debug build で `seed` が `u32::MAX - octaves` を超えると加算の overflow で panic していた (release build の値は不変)
 - `scripts/scip_reach.py`: CLI (`src/bin/`) を到達性の起点に加えた CLI からだけ使う item (`export_stl` / `export_ply` / `io::get_info` 等) が L0 に数えられていた
 - `scripts/scip_reach.py` / `scripts/scip_index.sh`: repo 内で本 crate に依存する crate (`server/` / `mobile/uniffi-wrapper/` / `bindings/openxr/`) を個別に索引し、その `src/` を起点に数える (`examples/` は L1、`tests/` は数えない) fuzz と同様に、索引ごとに本 crate への参照が 0 件なら失敗する

@@ -240,7 +240,15 @@ pub fn carve_batch(grid: &mut MutableVoxelGrid, shapes: &[CarveShape]) -> Destru
 
 /// Explosion carve: multiple spheres radiating from a center point
 ///
-/// Creates a rough, natural-looking crater effect.
+/// Creates a rough, natural-looking crater effect: the main sphere of `radius`
+/// plus `fragment_count` spheres whose centres lie within `0.8 · radius` of
+/// `center` and whose radii lie in `[0.2, 0.7] · radius`.
+///
+/// The pseudo-random draws take the low 32 bits of `state >> 16` as a uniform
+/// value in `[0, 1]`, like the other generators in this crate. Until 4.1.0 the
+/// 48-bit `state >> 16` was divided by `u32::MAX` directly, giving values up
+/// to 65536, so fragment radii reached thousands of `radius` and one explosion
+/// carved the whole grid (`tests/test_destruction_api_oracle.rs`).
 pub fn explode(
     grid: &mut MutableVoxelGrid,
     center: Vec3,
@@ -260,25 +268,26 @@ pub fn explode(
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let rx = ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
+        let rx = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let ry = ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
+        let ry = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let rz = ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
+        let rz = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
 
         let dir = Vec3::new(rx, ry, rz).normalize_or_zero();
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let dist = ((rng_state >> 16) as f32 / u32::MAX as f32) * radius * 0.8;
+        let dist = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32) * radius * 0.8;
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let frag_radius = radius * ((rng_state >> 16) as f32 / u32::MAX as f32).mul_add(0.5, 0.2);
+        let frag_radius =
+            radius * ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(0.5, 0.2);
 
         shapes.push(CarveShape::Sphere {
             center: center + dir * dist,

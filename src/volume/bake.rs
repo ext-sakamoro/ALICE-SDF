@@ -219,13 +219,21 @@ pub fn bake_volume_compiled(
             }
         });
 
-    Volume3D {
+    let mut volume = Volume3D {
         data,
         resolution: res,
         world_min,
         world_max,
         mips: Vec::new(),
+    };
+
+    // Same contract as `bake_volume`: until 4.1.0 this path ignored
+    // `generate_mips` and always returned a single level.
+    if config.generate_mips {
+        volume.mips = super::mipchain::generate_mip_chain(&volume);
     }
+
+    volume
 }
 
 #[cfg(test)]

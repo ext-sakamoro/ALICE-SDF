@@ -247,10 +247,15 @@ pub fn gpu_bake_volume_from_shader(
 }
 
 /// Bake distance + gradient volume on GPU
+///
+/// The normal is the tetrahedral finite difference
+/// `normalize(Σ kᵢ · f(p + kᵢ·ε))` over `kᵢ ∈ {(1,−1,−1), (−1,−1,1), (−1,1,−1), (1,1,1)}`
+/// with `ε = gradient_epsilon` (the CPU `bake_volume_with_normals` uses central
+/// differences, so the two agree to `O(ε)` rather than bit for bit).
 pub fn gpu_bake_volume_with_normals(
     node: &SdfNode,
     config: &BakeConfig,
-    _gradient_epsilon: f32,
+    gradient_epsilon: f32,
 ) -> Result<Volume3D<VoxelDistGrad>, GpuError> {
     let shader = WgslShader::transpile(node, TranspileMode::Hardcoded);
     let res = config.resolution;
@@ -318,7 +323,10 @@ pub fn gpu_bake_volume_with_normals(
 
     let uniforms = VolumeBakeUniforms {
         resolution: [res[0], res[1], res[2], 0],
-        bounds_min: [world_min.x, world_min.y, world_min.z, 0.0],
+        // `.w` is free padding: it carries the finite-difference epsilon to
+        // `estimate_normal`, which until 4.1.0 hard-coded 0.001 and ignored
+        // this argument (`tests/test_volume_api_oracle.rs`).
+        bounds_min: [world_min.x, world_min.y, world_min.z, gradient_epsilon],
         bounds_max: [world_max.x, world_max.y, world_max.z, 0.0],
     };
 
@@ -503,7 +511,7 @@ struct VoxelDistGrad {{
 {sdf_func}
 
 fn estimate_normal(p: vec3<f32>) -> vec3<f32> {{
-    let e = 0.001;
+    let e = uniforms.bounds_min.w;
     let k0 = vec3<f32>(1.0, -1.0, -1.0);
     let k1 = vec3<f32>(-1.0, -1.0, 1.0);
     let k2 = vec3<f32>(-1.0, 1.0, -1.0);

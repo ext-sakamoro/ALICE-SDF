@@ -221,13 +221,8 @@ impl IrradianceGrid {
 
         // Trilinear interpolation of 8 surrounding probes
         let eval = |x: u32, y: u32, z: u32| -> Vec3 {
-            let idx =
-                (x + y * self.grid_size[0] + z * self.grid_size[0] * self.grid_size[1]) as usize;
-            if idx < self.probes.len() {
-                self.probes[idx].evaluate(normal)
-            } else {
-                Vec3::ZERO
-            }
+            self.get_probe(x, y, z)
+                .map_or(Vec3::ZERO, |probe| probe.evaluate(normal))
         };
 
         let c000 = eval(x0, y0, z0);
@@ -250,16 +245,29 @@ impl IrradianceGrid {
         c0 + (c1 - c0) * tz
     }
 
-    /// Get a probe by grid coordinates
-    pub fn get_probe(&self, x: u32, y: u32, z: u32) -> Option<&IrradianceProbe> {
-        let idx = (x + y * self.grid_size[0] + z * self.grid_size[0] * self.grid_size[1]) as usize;
-        self.probes.get(idx)
+    /// Flat index of grid coordinates, `None` outside the grid
+    ///
+    /// Each axis is checked on its own: a bounds check on the flat index alone
+    /// lets `x == grid_size[0]` alias the first probe of the next row.
+    const fn probe_index(&self, x: u32, y: u32, z: u32) -> Option<usize> {
+        let [sx, sy, sz] = self.grid_size;
+        if x >= sx || y >= sy || z >= sz {
+            return None;
+        }
+        Some(x as usize + y as usize * sx as usize + z as usize * sx as usize * sy as usize)
     }
 
-    /// Get a mutable probe by grid coordinates
+    /// Get a probe by grid coordinates (`None` outside the grid)
+    ///
+    /// Until 4.1.0 an out-of-range `x` or `y` returned a neighbouring probe.
+    pub fn get_probe(&self, x: u32, y: u32, z: u32) -> Option<&IrradianceProbe> {
+        self.probe_index(x, y, z).and_then(|i| self.probes.get(i))
+    }
+
+    /// Get a mutable probe by grid coordinates (`None` outside the grid)
     pub fn get_probe_mut(&mut self, x: u32, y: u32, z: u32) -> Option<&mut IrradianceProbe> {
-        let idx = (x + y * self.grid_size[0] + z * self.grid_size[0] * self.grid_size[1]) as usize;
-        self.probes.get_mut(idx)
+        self.probe_index(x, y, z)
+            .and_then(|i| self.probes.get_mut(i))
     }
 
     /// Total number of probes

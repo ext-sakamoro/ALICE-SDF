@@ -312,6 +312,11 @@ relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$BRIDGES"
 step "test: AAA meta"
 cargo test --lib --no-default-features --features "aaa"
 
+step "test: aaa integration oracles (ci.yml の Test (integration, analytic oracles — aaa) と対)"
+cargo test --features "aaa,image" --test test_gi_volume_oracle --test test_terrain_destruction_oracle \
+  --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle \
+  --test test_gi_api_oracle --test test_destruction_api_oracle
+
 step "test: openvdb"
 cargo build --lib --no-default-features --features openvdb
 cargo test --lib --no-default-features --features openvdb vdb
@@ -324,6 +329,9 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_noise_parity --test test_round_tie_parity \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation \
   --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity
+
+step "gpu-parity: aaa (volume gpu_bake, ci.yml の GPU ↔ CPU parity (aaa — volume gpu_bake) と対)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle
 
 step "bevy: bindings/bevy/alice-sdf-bevy build + test"
 (cd bindings/bevy/alice-sdf-bevy && cargo build --lib && cargo test --lib)

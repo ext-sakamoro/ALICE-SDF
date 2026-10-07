@@ -236,6 +236,13 @@ impl SvoStreamingCache {
         let chunk_id = chunk.chunk_id;
         let chunk_mem = chunk.memory_bytes();
 
+        // Re-inserting an id replaces the cached chunk: drop the old entry first
+        // so `memory_used` stays the sum over the cached chunks and the
+        // replacement does not evict an unrelated chunk to make room for a slot
+        // it already occupies. Until 4.1.0 the old bytes were never subtracted
+        // (`tests/test_svo_api_oracle.rs`).
+        self.remove(chunk_id);
+
         // Evict until we have room
         while self.needs_eviction(chunk_mem) {
             if !self.evict_lru() {
