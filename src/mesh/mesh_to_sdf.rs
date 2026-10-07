@@ -139,7 +139,7 @@ impl MeshToSdfConfig {
 /// converted to shader code directly.
 pub struct MeshSdf {
     bvh: Arc<MeshBvh>,
-    bounds: crate::mesh::bvh::Aabb,
+    bounds: crate::types::Aabb,
     sign_mode: MeshSignMode,
     /// `Some` exactly when `sign_mode` is [`MeshSignMode::ExteriorFloodFill`];
     /// construction fails rather than silently falling back to the winding rule.

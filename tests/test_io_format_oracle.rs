@@ -572,11 +572,12 @@ fn nanite_file_size_and_header_follow_the_layout() {
         .sum();
 
     // layout: 32-byte header, 16 bytes per LOD, per cluster 16 (ids / counts)
-    // + 40 (bounds) + 8 (error, material) + 8 (DAG counts) + 4 per DAG id,
-    // then per vertex 12 + 12 (normals) + 8 (uvs), per triangle 12
+    // + 40 (bounds) + 8 (error, material) + 36 (version 3: group LOD sphere,
+    // parent error, parent LOD sphere) + 8 (DAG counts) + 4 per DAG id, then
+    // per vertex 12 + 12 (normals) + 8 (uvs), per triangle 12
     let expected = |normals: bool, uvs: bool| {
         32 + 16 * nanite.lod_levels.len()
-            + 72 * nanite.clusters.len()
+            + 108 * nanite.clusters.len()
             + 4 * dag
             + verts * (12 + if normals { 12 } else { 0 } + if uvs { 8 } else { 0 })
             + 12 * tris
@@ -594,6 +595,45 @@ fn nanite_file_size_and_header_follow_the_layout() {
     assert_eq!(u32_at(&b, 20) as usize, verts);
     assert_eq!(u32_at(&b, 24) as usize, tris);
     assert_eq!(u32_at(&b, 28), 0b011);
+    // walk the clusters and read the version 3 fields back
+    let f32_at = |b: &[u8], o: usize| f32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+    let mut o = 32 + 16 * nanite.lod_levels.len();
+    let mut roots = 0;
+    let mut compared = 0;
+    for c in &nanite.clusters {
+        assert_eq!(u32_at(&b, o), c.id);
+        let (nv, nt) = (u32_at(&b, o + 8) as usize, u32_at(&b, o + 12) as usize);
+        let lod = o + 16 + 40 + 8;
+        let want = [
+            c.lod_bounds.center.x,
+            c.lod_bounds.center.y,
+            c.lod_bounds.center.z,
+            c.lod_bounds.radius,
+            c.parent_error,
+            c.parent_lod_bounds.center.x,
+            c.parent_lod_bounds.center.y,
+            c.parent_lod_bounds.center.z,
+            c.parent_lod_bounds.radius,
+        ];
+        for (k, w) in want.iter().enumerate() {
+            assert_eq!(
+                f32_at(&b, lod + 4 * k).to_bits(),
+                w.to_bits(),
+                "cluster {} field {k}",
+                c.id
+            );
+            compared += 1;
+        }
+        roots += usize::from(c.parent_ids.is_empty());
+        assert_eq!(
+            c.parent_ids.is_empty(),
+            f32_at(&b, lod + 16) == f32::INFINITY
+        );
+        let dag = u32_at(&b, lod + 36) as usize + u32_at(&b, lod + 40) as usize;
+        o = lod + 36 + 8 + 4 * dag + nv * 32 + nt * 12;
+    }
+    assert_eq!(o, b.len());
+    assert!(roots > 0 && compared > 0);
 
     let lean = NaniteExportConfig {
         export_uvs: false,
@@ -620,6 +660,20 @@ fn nanite_file_size_and_header_follow_the_layout() {
         doc["group_count"].as_u64().unwrap() as usize,
         nanite.groups.len()
     );
+    let clusters = doc["clusters"].as_array().unwrap();
+    assert_eq!(clusters.len(), nanite.clusters.len());
+    for (j, c) in clusters.iter().zip(&nanite.clusters) {
+        // a root group's parent error (+inf) is written as null
+        assert_eq!(j["parent_error"].is_null(), c.parent_error == f32::INFINITY);
+        if !c.parent_error.is_infinite() {
+            let e = j["parent_error"].as_f64().unwrap();
+            assert!((e - f64::from(c.parent_error)).abs() <= 5e-7);
+        }
+        let r = j["lod_bounds"]["radius"].as_f64().unwrap();
+        assert!((r - f64::from(c.lod_bounds.radius)).abs() <= 5e-7);
+        let r = j["parent_lod_bounds"]["radius"].as_f64().unwrap();
+        assert!((r - f64::from(c.parent_lod_bounds.radius)).abs() <= 5e-7);
+    }
 }
 
 #[cfg(feature = "hlsl")]

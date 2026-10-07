@@ -1201,32 +1201,91 @@ fn sel_levels(n: &NaniteMesh, sel: &[u32]) -> Vec<u32> {
         .collect()
 }
 
-/// `should_render` is the "fine enough" half of the cut: error over the
-/// distance to the bounding sphere within the threshold
+/// `should_render` decides the whole cut from the fields of one cluster: each
+/// cluster carries its group's error and LOD sphere and its parent group's
+/// error and LOD sphere (`+inf` / its own sphere for a root group), and the
+/// clusters it accepts are exactly the clusters of `select_clusters` and of the
+/// selection rule evaluated independently over the groups in `f64`
 #[test]
-fn nanite_should_render_is_the_fine_enough_test() {
-    let n = nanite(&SdfNode::sphere(1.0), &NaniteConfig::preview());
+fn nanite_should_render_is_the_complete_cut() {
     let mut checks = 0;
     let (mut yes, mut no) = (0, 0);
-    for c in &n.clusters {
-        for d in [1.2f32, 3.0, 30.0] {
-            for th in [1e-3f32, 1e-2, 1e-1] {
-                let eye = Vec3::new(0.0, d, 0.0);
-                let dist = f64::from((c.bounds.center - eye).length()) - f64::from(c.bounds.radius);
-                let e = f64::from(c.geometric_error);
-                let want = if e <= 0.0 {
-                    true
-                } else if dist <= 0.0 {
-                    false
-                } else {
-                    e / dist <= f64::from(th)
+    for cfg in [NaniteConfig::preview(), NaniteConfig::medium_detail()] {
+        let n = nanite(&SdfNode::sphere(1.0), &cfg);
+        let by_id: std::collections::HashMap<u32, &alice_sdf::mesh::nanite::ClusterGroup> =
+            n.groups.iter().map(|g| (g.id, g)).collect();
+        let group_of = |id: u32| {
+            n.groups
+                .iter()
+                .find(|g| g.cluster_ids.contains(&id))
+                .unwrap()
+        };
+        let same_sphere = |a: &ClusterBounds, b: &ClusterBounds| {
+            a.center.to_array() == b.center.to_array() && a.radius.to_bits() == b.radius.to_bits()
+        };
+        // the per-cluster copies are the group's and the parent group's values
+        let mut roots = 0;
+        for c in &n.clusters {
+            let g = group_of(c.id);
+            assert_eq!(c.geometric_error.to_bits(), g.max_error.to_bits());
+            assert!(same_sphere(&c.lod_bounds, &g.bounds), "cluster {}", c.id);
+            match parent_group(&n, g) {
+                Some(p) => {
+                    let p = by_id[&p];
+                    assert_eq!(c.parent_error.to_bits(), p.max_error.to_bits());
+                    assert!(same_sphere(&c.parent_lod_bounds, &p.bounds));
+                }
+                None => {
+                    assert_eq!(c.parent_error, f32::INFINITY);
+                    assert!(same_sphere(&c.parent_lod_bounds, &c.lod_bounds));
+                    roots += 1;
+                }
+            }
+            checks += 1;
+        }
+        assert!(roots > 0);
+        let leaf = |g: &alice_sdf::mesh::nanite::ClusterGroup| {
+            n.get_cluster(g.cluster_ids[0])
+                .unwrap()
+                .child_ids
+                .is_empty()
+        };
+        for eye in [
+            Vec3::new(0.0, 1.2, 0.0),
+            Vec3::new(0.0, 0.0, 3.0),
+            Vec3::new(0.4, -0.3, 10.0),
+            Vec3::new(30.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1000.0),
+            Vec3::ZERO,
+        ] {
+            for th in [0.0f32, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, f32::INFINITY] {
+                let by_cluster: Vec<u32> = n
+                    .clusters
+                    .iter()
+                    .filter(|c| c.should_render(eye, th))
+                    .map(|c| c.id)
+                    .collect();
+                assert_eq!(by_cluster, n.select_clusters(eye, th), "eye={eye} th={th}");
+                // the rule over the groups in f64
+                let fine = |h: &alice_sdf::mesh::nanite::ClusterGroup| {
+                    leaf(h) || projected(h, eye) <= f64::from(th)
                 };
-                let got = c.should_render(eye, th);
-                assert_eq!(got, want, "cluster {} d={d} th={th}", c.id);
-                if got {
-                    yes += 1;
-                } else {
-                    no += 1;
+                let mut want = Vec::new();
+                for g in &n.groups {
+                    let parent_fine = parent_group(&n, g).is_some_and(|p| fine(by_id[&p]));
+                    if fine(g) && !parent_fine {
+                        want.extend_from_slice(&g.cluster_ids);
+                    }
+                }
+                want.sort_unstable();
+                assert_eq!(by_cluster, want, "eye={eye} th={th}");
+                assert!(!by_cluster.is_empty(), "eye={eye} th={th}");
+                for c in &n.clusters {
+                    if c.should_render(eye, th) {
+                        yes += 1;
+                    } else {
+                        no += 1;
+                    }
                 }
                 checks += 1;
             }
@@ -1236,11 +1295,10 @@ fn nanite_should_render_is_the_fine_enough_test() {
     assert!(checks > 0);
 }
 
-/// The `.nanite` layout is unchanged but the meaning of the error and DAG
-/// fields is not, so the format version moved to 2
+/// Version 3 of `.nanite` adds the LOD spheres and the parent error per cluster
 #[test]
-fn nanite_format_version_marks_the_new_dag() {
-    assert_eq!(alice_sdf::io::nanite::NANITE_VERSION, 2);
+fn nanite_format_version_marks_the_lod_spheres() {
+    assert_eq!(alice_sdf::io::nanite::NANITE_VERSION, 3);
 }
 
 /// Shapes with several surface sheets per region, so that a region holds far

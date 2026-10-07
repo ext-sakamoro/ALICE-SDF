@@ -329,8 +329,21 @@ pub struct NaniteCluster {
     pub parent_ids: Vec<u32>,
     /// Child cluster IDs (for LOD DAG)
     pub child_ids: Vec<u32>,
-    /// Geometric error for this cluster
+    /// Geometric error for this cluster: the error of its group (see
+    /// [`ClusterGroup::max_error`]), never smaller than the errors of its
+    /// child groups
     pub geometric_error: f32,
+    /// LOD sphere of the cluster's group ([`ClusterGroup::bounds`]): the
+    /// projected error in the cut is measured to it, not to [`bounds`](Self::bounds)
+    /// (the cluster's own culling bounds), so that every cluster of a group
+    /// makes the same decision
+    pub lod_bounds: ClusterBounds,
+    /// Error of the parent group, `f32::INFINITY` when the group has no parent
+    /// (a root group)
+    pub parent_error: f32,
+    /// LOD sphere of the parent group (equal to [`lod_bounds`](Self::lod_bounds)
+    /// for a root group)
+    pub parent_lod_bounds: ClusterBounds,
     /// Material ID for this cluster (0 = default)
     pub material_id: u32,
 }
@@ -348,22 +361,33 @@ impl NaniteCluster {
         self.vertices.len()
     }
 
-    /// Whether this cluster is fine enough to be drawn from `view_pos`
+    /// Whether this cluster is drawn from `view_pos` (the cluster-LOD cut)
     ///
-    /// The projected error is `geometric_error / d`, where `d` is the distance
-    /// from `view_pos` to the cluster's bounding sphere (the distance to its
-    /// surface, not to its center). The cluster is fine enough when the
-    /// projected error is at most `error_threshold` (an angle in radians; a
-    /// pixel budget `p` on a screen of height `H` with vertical field of view
-    /// `fov` is `p * 2 tan(fov / 2) / H`). A viewer inside the sphere sees an
-    /// unbounded projected error, so only an error-free cluster passes there.
+    /// The projected error of an error `e` with LOD sphere `S` is `e / d`, where
+    /// `d` is the distance from `view_pos` to the surface of `S` (infinite
+    /// inside `S`, 0 when `e` is 0). A level is fine enough when its projected
+    /// error is at most `error_threshold` (an angle in radians; a pixel budget
+    /// `p` on a screen of height `H` with vertical field of view `fov` is
+    /// `p * 2 tan(fov / 2) / H`).
     ///
-    /// This is the first half of the standard cluster-LOD cut: a cluster is
-    /// drawn when it is fine enough **and** its parent is not. The parent half
-    /// needs the cluster's group, so the full cut is
+    /// The cluster is drawn when it is fine enough (`geometric_error` with
+    /// `lod_bounds`, or it has no children, so the finest level is kept when no
+    /// level meets the threshold) **and** its parent is not (`parent_error`
+    /// with `parent_lod_bounds`; a root group has no parent and counts as
+    /// having one that is too coarse). This is the standard cut, decided from
+    /// the cluster alone, and selects exactly the clusters of
     /// [`NaniteMesh::select_clusters`].
+    ///
+    /// Until 5.0.0 this was only the first half (fine enough, measured to the
+    /// cluster's own `bounds`), so every ancestor of a drawn cluster that was
+    /// also fine enough returned `true` as well.
     pub fn should_render(&self, view_pos: Vec3, error_threshold: f32) -> bool {
-        projected_error(self.geometric_error, &self.bounds, view_pos) <= error_threshold
+        let fine = self.child_ids.is_empty()
+            || projected_error(self.geometric_error, &self.lod_bounds, view_pos) <= error_threshold;
+        let parent_fine = self.parent_error != f32::INFINITY
+            && projected_error(self.parent_error, &self.parent_lod_bounds, view_pos)
+                <= error_threshold;
+        fine && !parent_fine
     }
 }
 
@@ -518,7 +542,8 @@ impl NaniteMesh {
     /// For every group `G` the projected error is `G.max_error / d`, where `d`
     /// is the distance from `view_pos` to the surface of `G.bounds` (infinite
     /// inside it). `G` is fine enough when that is at most `error_threshold`
-    /// (an angle in radians, as in [`NaniteCluster::should_render`]); a group
+    /// (an angle in radians, as in [`NaniteCluster::should_render`], which
+    /// makes the same decision from the fields one cluster carries); a group
     /// without children is always fine enough (nothing finer exists, so the
     /// finest level is kept when no level meets the threshold). The clusters of
     /// `G` are selected when `G` is fine enough and its parent group is not (a
@@ -655,7 +680,10 @@ fn triangle_cell(a: Vec3, b: Vec3, c: Vec3, origin: Vec3, side: f32, depth: u32)
 /// triangles to the surface. A group's error is the largest error of its
 /// clusters raised to the errors of its child groups, and every cluster of the
 /// group carries the group's error in `geometric_error`, so the error never
-/// decreases from child to parent.
+/// decreases from child to parent. Every cluster also carries its group's LOD
+/// sphere in `lod_bounds` and the parent group's error and LOD sphere in
+/// `parent_error` / `parent_lod_bounds`, so [`NaniteCluster::should_render`]
+/// decides the cut without the groups.
 pub fn generate_nanite_mesh(
     sdf: &SdfNode,
     min_bounds: Vec3,
@@ -760,6 +788,9 @@ pub fn generate_nanite_mesh(
                     parent_ids: Vec::new(),
                     child_ids: Vec::new(),
                     geometric_error: error,
+                    lod_bounds: bounds,
+                    parent_error: f32::INFINITY,
+                    parent_lod_bounds: bounds,
                     material_id: eval_material(sdf, bounds.center),
                 });
                 cluster_id += 1;
@@ -893,6 +924,11 @@ fn build_region_tree(regions: &mut [Region], clusters: &mut [NaniteCluster]) -> 
         for &id in &r.cluster_ids {
             let c = &mut clusters[id as usize];
             c.geometric_error = errors[i];
+            c.lod_bounds = bounds[i];
+            (c.parent_error, c.parent_lod_bounds) = match r.parent {
+                Some(p) => (errors[p], bounds[p]),
+                None => (f32::INFINITY, bounds[i]),
+            };
             c.parent_ids.clone_from(&parents);
             c.child_ids.clone_from(&children[i]);
         }

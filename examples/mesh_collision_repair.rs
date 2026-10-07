@@ -10,7 +10,7 @@
 //! Author: Moroya Sakamoto
 
 use alice_sdf::eval::eval;
-use alice_sdf::mesh::primitive_fitting::PrimitiveType;
+use alice_sdf::mesh::primitive_fitting::FittedPrimitiveKind;
 use alice_sdf::mesh::{
     compute_aabb, compute_bounding_sphere, compute_convex_hull, compute_quality,
     convex_decomposition, convex_hull_from_points, detect_primitive, fit_box, fit_cylinder,
@@ -215,12 +215,12 @@ fn main() {
         _ => unreachable!("fit_sphere returns a sphere"),
     }
     let best = detect_primitive(&pts, &cfg).expect("fit");
-    let kind: PrimitiveType = best.primitive.primitive_type();
+    let kind: FittedPrimitiveKind = best.primitive.kind();
     println!(
         "detect: {kind:?}, error {:.2e}",
         best.primitive.compute_error(&pts)
     );
-    assert_eq!(kind, PrimitiveType::Sphere);
+    assert_eq!(kind, FittedPrimitiveKind::Sphere);
 
     let box_pts: Vec<Vec3> = bx
         .vertices

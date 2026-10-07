@@ -56,7 +56,6 @@ this file or listed twice, or when a linked file does not exist.
 | `fidelity` | what a field's distance claim is worth: where it is a true distance and where only a bound |  |  |
 | `raycast` | sphere tracing, including relaxed and Lipschitz-adaptive stepping |  |  |
 | `neural` | small MLP trained to approximate a tree, in pure Rust |  |  |
-| `crispy` | fast reciprocal, inverse square root and branchless helpers; approximate, and not used by the bit-exact evaluators |  |  |
 
 ## Analysis and validation
 

@@ -39,8 +39,7 @@ untrusted tree like any other untrusted code before you compile and run it.
 ### `unsafe` code
 
 `unsafe` is used for SIMD loads in the structure-of-arrays evaluators, for
-`primitives::eval_primitive_unchecked` (the caller guarantees the parameter
-count), for calling code produced by the Cranelift JIT (`jit` feature), for the
+calling code produced by the Cranelift JIT (`jit` feature), for the
 C ABI (`ffi` feature), for the Python bindings (`python` feature) and for
 writing volume textures (`volume` feature).
 

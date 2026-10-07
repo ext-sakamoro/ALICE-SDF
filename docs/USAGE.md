@@ -205,8 +205,6 @@ Layer 10: compiled/glsl     -- GLSL transpiler (Unity/OpenGL/Vulkan)
 Layer 11: compiled/wgsl     -- WGSL transpiler (WebGPU)
 Layer 12: compiled/hlsl     -- HLSL transpiler (DirectX/Unreal)
 Layer 13: compiled/jit      -- JIT native code scalar (Cranelift)
-Layer 14: compiled/jit_simd -- JIT SIMD 8-wide native code (Cranelift)
-Layer 15: crispy.rs         -- Hardware-native math (branchless, BitMask64, BloomFilter)
 Layer 16: interval.rs       -- Interval arithmetic evaluation + Lipschitz bounds
 
 Specialized modules:
@@ -1195,21 +1193,6 @@ The JIT compiler generates native SIMD machine code using Cranelift, achieving t
 - **Division Exorcism** - all runtime divisions pre-computed as reciprocal multiplications at compile time
 - **Branchless SIMD selection** - sign-bit extraction via `bitcast`/`sshr`/`bitselect` (zero-overhead on SSE/AVX/NEON)
 - **FMA fusion** - fused multiply-add for reduced latency in complex primitives (Cone, RoundedCone, Pyramid)
-
-### crispy.rs — Hardware-Native Math Utilities
-
-Low-level branchless operations for hot inner loops. Trades sub-ULP precision for throughput.
-
-| Function | Description |
-|----------|-------------|
-| `fast_recip(x)` | Fast `1/x` via hardware rcpss + Newton-Raphson (~0.02% error) |
-| `fast_inv_sqrt(x)` | Quake III inverse sqrt + NR iteration (~0.175% error) |
-| `fast_normalize_2d(gx, gz)` | Normalize 2D gradient using fast inverse sqrt |
-| `select_f32(cond, a, b)` | Branchless cmov via bit manipulation |
-| `branchless_min/max/clamp/abs` | Zero-branch arithmetic via `select_f32` |
-| `BitMask64` | 64-element batch mask (AND/OR/NOT/popcnt via hardware) |
-| `BloomFilter` | 4KB Bloom filter with FNV-1a double-hashing, O(1) membership test |
-| `fnv1a_hash(data)` | FNV-1a 64-bit hash (fast, well-distributed) |
 
 ### Compiled Marching Cubes Performance
 

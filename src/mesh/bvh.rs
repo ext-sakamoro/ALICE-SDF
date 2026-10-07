@@ -4,7 +4,7 @@
 //!
 //! # Deep Fried v2 Optimizations
 //!
-//! - **Parallel Triangle Construction**: `rayon` parallel iterator for Triangle::new().
+//! - **Parallel Triangle Construction**: `rayon` parallel iterator for BvhTriangle::new().
 //! - **SIMD AABB Computation**: `wide::f32x8` for 8-triangle batch AABB min/max.
 //! - **Forced Inlining**: Hot-path distance functions.
 //!
@@ -14,82 +14,11 @@ use glam::Vec3;
 use rayon::prelude::*;
 use wide::f32x8;
 
-/// Axis-Aligned Bounding Box
-#[derive(Debug, Clone, Copy)]
-pub struct Aabb {
-    /// Minimum corner
-    pub min: Vec3,
-    /// Maximum corner
-    pub max: Vec3,
-}
-
-impl Aabb {
-    /// Create an empty (inverted) AABB
-    #[inline]
-    pub const fn empty() -> Self {
-        Self {
-            min: Vec3::splat(f32::INFINITY),
-            max: Vec3::splat(f32::NEG_INFINITY),
-        }
-    }
-
-    /// Create AABB from min/max
-    #[inline]
-    pub const fn new(min: Vec3, max: Vec3) -> Self {
-        Self { min, max }
-    }
-
-    /// Expand AABB to include a point
-    #[inline]
-    pub fn expand_point(&mut self, point: Vec3) {
-        self.min = self.min.min(point);
-        self.max = self.max.max(point);
-    }
-
-    /// Expand AABB to include another AABB
-    #[inline]
-    pub fn expand_aabb(&mut self, other: &Self) {
-        self.min = self.min.min(other.min);
-        self.max = self.max.max(other.max);
-    }
-
-    /// Get center of AABB
-    #[inline]
-    pub fn center(&self) -> Vec3 {
-        (self.min + self.max) * 0.5
-    }
-
-    /// Get surface area (for SAH)
-    #[inline]
-    pub fn surface_area(&self) -> f32 {
-        let d = self.max - self.min;
-        2.0 * d.z.mul_add(d.x, d.x.mul_add(d.y, d.y * d.z))
-    }
-
-    /// Get longest axis (0=X, 1=Y, 2=Z)
-    #[inline]
-    pub fn longest_axis(&self) -> usize {
-        let d = self.max - self.min;
-        if d.x > d.y && d.x > d.z {
-            0
-        } else if d.y > d.z {
-            1
-        } else {
-            2
-        }
-    }
-
-    /// Signed distance to AABB (negative inside, positive outside)
-    #[inline]
-    pub fn signed_distance(&self, point: Vec3) -> f32 {
-        let q = (point - self.center()).abs() - (self.max - self.min) * 0.5;
-        q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0)
-    }
-}
+pub use crate::types::Aabb;
 
 /// Triangle with precomputed data for fast distance queries
 #[derive(Debug, Clone, Copy)]
-pub struct Triangle {
+pub struct BvhTriangle {
     /// First vertex
     pub v0: Vec3,
     /// Second vertex
@@ -102,7 +31,7 @@ pub struct Triangle {
     pub aabb: Aabb,
 }
 
-impl Triangle {
+impl BvhTriangle {
     /// Create triangle from vertices
     #[inline]
     pub fn new(v0: Vec3, v1: Vec3, v2: Vec3) -> Self {
@@ -290,7 +219,7 @@ impl BvhNode {
 /// BVH for triangle mesh
 pub struct MeshBvh {
     /// All triangles in the mesh
-    pub triangles: Vec<Triangle>,
+    pub triangles: Vec<BvhTriangle>,
     /// Root BVH node
     pub root: Option<BvhNode>,
     /// Maximum triangles per leaf node
@@ -303,14 +232,14 @@ impl MeshBvh {
     /// Triangle construction is parallelized via `rayon`.
     pub fn build(vertices: &[Vec3], indices: &[u32], max_triangles_per_leaf: usize) -> Self {
         // [Deep Fried v2] Parallel triangle construction
-        let triangles: Vec<Triangle> = indices
+        let triangles: Vec<BvhTriangle> = indices
             .par_chunks(3)
             .filter_map(|chunk| {
                 if chunk.len() == 3 {
                     let v0 = vertices[chunk[0] as usize];
                     let v1 = vertices[chunk[1] as usize];
                     let v2 = vertices[chunk[2] as usize];
-                    Some(Triangle::new(v0, v1, v2))
+                    Some(BvhTriangle::new(v0, v1, v2))
                 } else {
                     None
                 }
@@ -338,7 +267,7 @@ impl MeshBvh {
     /// Recursively build BVH nodes
     ///
     /// [Deep Fried v2] SIMD-accelerated AABB computation for batches of 8 triangles.
-    fn build_node(triangles: &[Triangle], indices: Vec<usize>, max_per_leaf: usize) -> BvhNode {
+    fn build_node(triangles: &[BvhTriangle], indices: Vec<usize>, max_per_leaf: usize) -> BvhNode {
         // [Deep Fried v2] SIMD AABB computation — process 8 triangle AABBs at a time
         let aabb = compute_aabb_simd(triangles, &indices);
 
@@ -492,7 +421,7 @@ impl MeshBvh {
     /// Nearest-child-first traversal with an exact lower bound (the AABB
     /// distance) as the pruning test.
     fn closest_recursive(
-        triangles: &[Triangle],
+        triangles: &[BvhTriangle],
         node: &BvhNode,
         point: Vec3,
         best: &mut (Vec3, f32),
@@ -565,7 +494,7 @@ impl MeshBvh {
 /// Processes 8 triangle AABBs at a time using `wide::f32x8` for min/max reduction.
 /// Falls back to scalar for the remainder (<8 triangles).
 #[inline]
-fn compute_aabb_simd(triangles: &[Triangle], indices: &[usize]) -> Aabb {
+fn compute_aabb_simd(triangles: &[BvhTriangle], indices: &[usize]) -> Aabb {
     if indices.is_empty() {
         return Aabb::empty();
     }
@@ -726,7 +655,7 @@ mod tests {
 
     #[test]
     fn test_triangle_distance() {
-        let tri = Triangle::new(
+        let tri = BvhTriangle::new(
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(1.0, 0.0, 0.0),
             Vec3::new(0.5, 1.0, 0.0),

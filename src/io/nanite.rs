@@ -19,10 +19,18 @@ pub const NANITE_MAGIC: &[u8; 4] = b"NANT";
 
 /// Current binary format version
 ///
-/// The byte layout of versions 1 and 2 is the same; the meaning of three
-/// fields changed, so a reader must check the version and reject (or convert)
-/// version 1 files instead of reading them as version 2:
+/// A reader must check the version and reject (or convert) other versions
+/// instead of reading them as the current one:
 ///
+/// - version 3: after the material id, every cluster carries 36 more bytes:
+///   the LOD sphere of its group (center x / y / z, radius), the error of the
+///   parent group (`+inf` for a root group) and the parent group's LOD sphere
+///   (center x / y / z, radius; equal to the cluster's LOD sphere for a root
+///   group). Those are what the cut needs per cluster: draw a cluster when its
+///   error over the distance to its LOD sphere is within the threshold (or it
+///   has no children) and its parent's is not. Versions 1 and 2 carried
+///   neither sphere, so a reader could not evaluate the cut without
+///   regenerating the groups
 /// - version 2: a cluster's `geometric_error` is the measured surface error of
 ///   its group, never smaller than the errors of its child groups; the parent
 ///   ids are the clusters of the enclosing region at the next coarser level
@@ -33,8 +41,8 @@ pub const NANITE_MAGIC: &[u8; 4] = b"NANT";
 /// - version 1: `geometric_error` was a size heuristic that could be smaller
 ///   for a parent than for its child, the parent / child ids linked clusters of
 ///   adjacent levels whose bounding spheres overlapped, and there was one group
-///   per level
-pub const NANITE_VERSION: u32 = 2;
+///   per level (versions 1 and 2 have the same byte layout)
+pub const NANITE_VERSION: u32 = 3;
 
 /// Configuration for Nanite export
 #[derive(Debug, Clone)]
@@ -125,6 +133,21 @@ pub fn export_nanite_with_config(
         w.write_all(&cluster.bounds.aabb_max.z.to_le_bytes())?;
         w.write_all(&cluster.geometric_error.to_le_bytes())?;
         w.write_all(&cluster.material_id.to_le_bytes())?;
+
+        // LOD spheres of the group and of the parent group (version 3)
+        for f in [
+            cluster.lod_bounds.center.x,
+            cluster.lod_bounds.center.y,
+            cluster.lod_bounds.center.z,
+            cluster.lod_bounds.radius,
+            cluster.parent_error,
+            cluster.parent_lod_bounds.center.x,
+            cluster.parent_lod_bounds.center.y,
+            cluster.parent_lod_bounds.center.z,
+            cluster.parent_lod_bounds.radius,
+        ] {
+            w.write_all(&f.to_le_bytes())?;
+        }
 
         // Parent/child DAG
         w.write_all(&(cluster.parent_ids.len() as u32).to_le_bytes())?;
@@ -225,6 +248,24 @@ pub fn export_nanite_json(nanite: &NaniteMesh, path: impl AsRef<Path>) -> Result
             cluster.bounds.aabb_max.x, cluster.bounds.aabb_max.y, cluster.bounds.aabb_max.z
         )?;
         writeln!(w, "      }},")?;
+        let sphere = |b: &crate::mesh::nanite::ClusterBounds| {
+            format!(
+                "{{\"center\": [{:.6}, {:.6}, {:.6}], \"radius\": {:.6}}}",
+                b.center.x, b.center.y, b.center.z, b.radius
+            )
+        };
+        writeln!(w, "      \"lod_bounds\": {},", sphere(&cluster.lod_bounds))?;
+        // JSON has no infinity: a root group's parent error is null
+        if cluster.parent_error == f32::INFINITY {
+            writeln!(w, "      \"parent_error\": null,")?;
+        } else {
+            writeln!(w, "      \"parent_error\": {:.6},", cluster.parent_error)?;
+        }
+        writeln!(
+            w,
+            "      \"parent_lod_bounds\": {},",
+            sphere(&cluster.parent_lod_bounds)
+        )?;
         writeln!(w, "      \"parent_ids\": {:?},", cluster.parent_ids)?;
         writeln!(w, "      \"child_ids\": {:?}", cluster.child_ids)?;
         writeln!(w, "    }}{comma}")?;

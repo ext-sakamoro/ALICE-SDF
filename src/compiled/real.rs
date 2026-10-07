@@ -129,10 +129,10 @@ pub trait Real:
     /// Round to nearest with ties toward `+∞`: `floor(self + 0.5)`.
     ///
     /// The canonical rounding rule of the repeat / polar / helix laws, shared
-    /// with the tree evaluator ([`crate::crispy::round_half_up`]), the JIT and
-    /// the three shader transpilers so that every path agrees at cell
-    /// boundaries. See [`crate::crispy::round_half_up`] for why `round` is
-    /// not usable here.
+    /// with the tree evaluator, the JIT and the three shader transpilers so
+    /// that every path agrees at cell boundaries. `round` is not usable here:
+    /// `f32::round`, `f32x8::round`, Cranelift `nearest` and the shader
+    /// `round` functions disagree with each other at exact `.5` inputs.
     #[inline(always)]
     fn round_half_up(self) -> Self {
         (self + Self::splat(0.5)).floor()

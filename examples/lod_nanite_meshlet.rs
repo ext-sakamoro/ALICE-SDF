@@ -204,19 +204,21 @@ fn main() {
     let mut prev = 0;
     for budget in [0.05f32, 0.01, 0.002] {
         let cut = nanite.select_clusters(eye, budget);
-        let fine = cut
+        // each cluster carries its parent's error and LOD sphere, so the same
+        // cut can be decided cluster by cluster (e.g. in a culling shader)
+        let per_cluster: Vec<u32> = nanite
+            .clusters
             .iter()
-            .filter(|&&id| {
-                nanite
-                    .get_cluster(id)
-                    .is_some_and(|c| c.should_render(eye, budget))
-            })
-            .count();
+            .filter(|c| c.should_render(eye, budget))
+            .map(|c| c.id)
+            .collect();
         println!(
-            "  cut at {budget} rad: {} clusters, {} triangles ({fine} pass should_render on their own bounds)",
+            "  cut at {budget} rad: {} clusters, {} triangles (should_render per cluster: {})",
             cut.len(),
-            tris_of(&cut)
+            tris_of(&cut),
+            per_cluster.len()
         );
+        assert_eq!(per_cluster, cut);
         assert!(!cut.is_empty() && tris_of(&cut) >= prev);
         prev = tris_of(&cut);
     }

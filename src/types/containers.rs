@@ -69,8 +69,61 @@ pub struct Aabb {
 
 impl Aabb {
     /// Create a new AABB
+    #[inline]
     pub const fn new(min: Vec3, max: Vec3) -> Self {
         Self { min, max }
+    }
+
+    /// Create an empty (inverted) AABB: `min = +∞`, `max = −∞`, so that the
+    /// first [`expand_point`](Self::expand_point) makes it the point itself
+    #[inline]
+    pub const fn empty() -> Self {
+        Self {
+            min: Vec3::splat(f32::INFINITY),
+            max: Vec3::splat(f32::NEG_INFINITY),
+        }
+    }
+
+    /// Expand in place to include a point
+    #[inline]
+    pub fn expand_point(&mut self, point: Vec3) {
+        self.min = self.min.min(point);
+        self.max = self.max.max(point);
+    }
+
+    /// Expand in place to include another AABB (the in-place form of
+    /// [`union`](Self::union))
+    #[inline]
+    pub fn expand_aabb(&mut self, other: &Self) {
+        self.min = self.min.min(other.min);
+        self.max = self.max.max(other.max);
+    }
+
+    /// Surface area `2·(dx·dy + dy·dz + dz·dx)` (for SAH)
+    #[inline]
+    pub fn surface_area(&self) -> f32 {
+        let d = self.max - self.min;
+        2.0 * d.z.mul_add(d.x, d.x.mul_add(d.y, d.y * d.z))
+    }
+
+    /// Longest axis (0 = X, 1 = Y, 2 = Z; ties go to the later axis)
+    #[inline]
+    pub fn longest_axis(&self) -> usize {
+        let d = self.max - self.min;
+        if d.x > d.y && d.x > d.z {
+            0
+        } else if d.y > d.z {
+            1
+        } else {
+            2
+        }
+    }
+
+    /// Signed distance to the box (negative inside, positive outside)
+    #[inline]
+    pub fn signed_distance(&self, point: Vec3) -> f32 {
+        let q = (point - self.center()).abs() - (self.max - self.min) * 0.5;
+        q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0)
     }
 
     /// Create from center and half-extents
@@ -82,6 +135,7 @@ impl Aabb {
     }
 
     /// Get center point
+    #[inline]
     pub fn center(&self) -> Vec3 {
         (self.min + self.max) * 0.5
     }

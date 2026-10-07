@@ -540,7 +540,10 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
 }
 
 /// Why an encoded SDF volume could not be decoded.
+///
+/// `#[non_exhaustive]` since 5.0.0: later versions may add reasons.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DecodeError {
     /// The stream ends before the field that starts at `offset` (`needed`
     /// bytes in total, `len` available).
@@ -554,6 +557,36 @@ pub enum DecodeError {
     /// Such a stream was written by a newer encoder; reading it with this
     /// layout would produce wrong values.
     UnknownFlags(u8),
+    /// `width · height · depth` overflows or differs from the symbol count in
+    /// the header (the encoder writes the voxel count there).
+    InvalidDimensions {
+        /// Width in the header.
+        width: u32,
+        /// Height in the header.
+        height: u32,
+        /// Depth in the header.
+        depth: u32,
+        /// Symbol count in the header.
+        symbol_count: u32,
+    },
+    /// The quantizer step is below 1 or the dead zone is negative (the encoder
+    /// writes `step ≥ 1`, `0 ≤ dead_zone`).
+    InvalidQuantizer {
+        /// Quantizer step in the stream.
+        step: i32,
+        /// Dead zone in the stream.
+        dead_zone: i32,
+    },
+    /// The rANS histogram cannot be the one the encoder wrote for this many
+    /// bytes: its counts do not sum to the coefficient byte count, a byte
+    /// value holds half of the counts or more, there are fewer than 512
+    /// bytes (the encoder stores such data raw), or the payload is too short
+    /// to hold that many symbols (`bytes > 16 · payload length`).
+    InvalidHistogram,
+    /// A coefficient leaves the `i32` range while it is dequantized or while
+    /// the inverse wavelet transform runs (only a corrupted stream does this;
+    /// the reference decoder would overflow there).
+    CoefficientOverflow,
 }
 
 impl std::fmt::Display for DecodeError {
@@ -567,6 +600,25 @@ impl std::fmt::Display for DecodeError {
             }
             Self::UnknownFlags(flags) => {
                 write!(f, "encoded SDF volume has unknown flag bits 0x{flags:02x}")
+            }
+            Self::InvalidDimensions {
+                width,
+                height,
+                depth,
+                symbol_count,
+            } => write!(
+                f,
+                "encoded SDF volume has dimensions {width}x{height}x{depth} but symbol count {symbol_count}"
+            ),
+            Self::InvalidQuantizer { step, dead_zone } => write!(
+                f,
+                "encoded SDF volume has quantizer step {step}, dead zone {dead_zone} (need step >= 1, dead zone >= 0)"
+            ),
+            Self::InvalidHistogram => {
+                write!(f, "encoded SDF volume has an rANS histogram that does not match its payload")
+            }
+            Self::CoefficientOverflow => {
+                write!(f, "encoded SDF volume has a coefficient outside the i32 range")
             }
         }
     }
@@ -598,7 +650,13 @@ pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
 ///
 /// [`DecodeError::Truncated`] when the stream is shorter than its header and
 /// payload length say, [`DecodeError::UnknownFlags`] when the flags byte has a
-/// reserved bit set.
+/// reserved bit set, [`DecodeError::InvalidDimensions`] /
+/// [`DecodeError::InvalidQuantizer`] / [`DecodeError::InvalidHistogram`] when
+/// a header field is outside what the encoder writes, and
+/// [`DecodeError::CoefficientOverflow`] when a coefficient would leave the
+/// `i32` range. It does not panic on any input, and it allocates at most a
+/// constant multiple of `data.len()` (raw payload: the payload holds every
+/// coefficient; rANS payload: the histogram bounds the symbols per byte).
 pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
     let need = |needed: usize| {
         if data.len() < needed {
@@ -631,7 +689,16 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
         header.height as usize,
         header.depth as usize,
     );
-    let total = w * h * d;
+    let total = w
+        .checked_mul(h)
+        .and_then(|wh| wh.checked_mul(d))
+        .filter(|&t| t as u64 == u64::from(header.symbol_count))
+        .ok_or(DecodeError::InvalidDimensions {
+            width: header.width,
+            height: header.height,
+            depth: header.depth,
+            symbol_count: header.symbol_count,
+        })?;
     let scale = header.fixed_point_scale;
 
     let mut offset = EncodedHeader::SIZE;
@@ -653,6 +720,9 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
     offset += 4;
     let dead_zone = read_u32(offset) as i32;
     offset += 4;
+    if step < 1 || dead_zone < 0 {
+        return Err(DecodeError::InvalidQuantizer { step, dead_zone });
+    }
     let quantizer = Quantizer::with_dead_zone(step, dead_zone);
 
     // 3. Read histogram if rANS compressed
@@ -671,12 +741,22 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
     need(offset + 4)?;
     let payload_len = read_u32(offset) as usize;
     offset += 4;
-    need(offset + payload_len)?;
+    need(offset.saturating_add(payload_len))?;
     let payload_bytes = &data[offset..offset + payload_len];
 
     // 5. Decode raw bytes (i16 LE, or i32 LE with FLAG_WIDE_COEFFS)
     let coeff_bytes = if header.wide_coeffs() { 4 } else { 2 };
-    let raw_byte_count = total * coeff_bytes;
+    let raw_byte_count = total
+        .checked_mul(coeff_bytes)
+        .ok_or(DecodeError::InvalidDimensions {
+            width: header.width,
+            height: header.height,
+            depth: header.depth,
+            symbol_count: header.symbol_count,
+        })?;
+    if use_rans {
+        check_rans_histogram(&histogram, raw_byte_count, payload_len)?;
+    }
     let raw_bytes: Vec<u8> = if use_rans {
         let freq_table = FrequencyTable::from_histogram(&histogram);
         let mut decoder = RansDecoder::new(payload_bytes);
@@ -704,20 +784,33 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
             .collect()
     };
 
-    // 7. Dequantize
+    // 7. Dequantize. The magnitude `dz + (|q| - 1)·step + step/2` grows with
+    // |q| (step >= 1), so checking the largest |q| keeps every value in i32.
+    let max_q = quantized
+        .iter()
+        .map(|q| q.unsigned_abs())
+        .max()
+        .unwrap_or(0);
+    if max_q > 0 {
+        let dz = i64::from(dead_zone.max(1));
+        let mag = dz + (i64::from(max_q) - 1) * i64::from(step) + i64::from(step / 2);
+        if mag > i64::from(i32::MAX) {
+            return Err(DecodeError::CoefficientOverflow);
+        }
+    }
     let mut coeffs = vec![0i32; total];
     // `InvalidBufferSize` is impossible: both buffers are `total` long.
     quantizer
         .dequantize_buffer(&quantized, &mut coeffs)
         .expect("coefficient buffer is sized to the quantized buffer");
 
-    // 8. Inverse wavelet transform
-    let wavelet = if header.lossless_wavelet() {
-        Wavelet3D::cdf53()
+    // 8. Inverse wavelet transform, with every step checked for i32 overflow
+    let steps = if header.lossless_wavelet() {
+        CDF53_STEPS
     } else {
-        Wavelet3D::cdf97()
+        CDF97_STEPS
     };
-    wavelet.inverse(&mut coeffs, w, h, d);
+    checked_inverse_3d(&mut coeffs, w, h, d, steps)?;
 
     // 9. Convert fixed-point i32 back to f32 distances
     let inv_scale = 1.0 / scale;
@@ -731,6 +824,125 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
         origin: Vec3::new(header.origin[0], header.origin[1], header.origin[2]),
         voxel_size,
     })
+}
+
+/// The rANS histogram as the encoder writes it: one count per byte value of
+/// the `bytes` coefficient bytes, used only when `bytes >= 512` and no value
+/// holds half of them (otherwise the payload is stored raw)
+///
+/// With the largest count below half, the normalized frequency of every
+/// symbol is at most `2048 + 256` of 4096, so decoding a symbol shrinks the
+/// rANS state (at least 2^23 before every step) by at least
+/// `log2(4096 / 2304) > 0.8` bit. The state starts with 32 bits, ends at
+/// 2^23, and gains 8 bits per payload byte read, so a stream of `bytes`
+/// symbols needs `bytes · 0.8 <= 8 · payload_len + 9` bits: `bytes <= 16 ·
+/// payload_len` holds for every stream the encoder writes and bounds the
+/// allocation by the input size.
+fn check_rans_histogram(
+    histogram: &[u32; 256],
+    bytes: usize,
+    payload_len: usize,
+) -> Result<(), DecodeError> {
+    let sum: u64 = histogram.iter().map(|&c| u64::from(c)).sum();
+    let max = histogram.iter().copied().max().map_or(0, u64::from);
+    let ok = sum == bytes as u64
+        && bytes >= 512
+        && 2 * max < sum
+        && (bytes as u64) <= 16 * payload_len as u64;
+    if ok {
+        Ok(())
+    } else {
+        Err(DecodeError::InvalidHistogram)
+    }
+}
+
+/// Lifting steps `(coeff, predict)` of the CDF 5/3 wavelet of alice-codec
+/// (`Wavelet1D::cdf53`; coefficients in units of 1/4096)
+const CDF53_STEPS: &[(i32, bool)] = &[(-2048, true), (1024, false)];
+/// Lifting steps of the CDF 9/7 wavelet of alice-codec (`Wavelet1D::cdf97`)
+const CDF97_STEPS: &[(i32, bool)] = &[(-6497, true), (-217, false), (3616, true), (1817, false)];
+
+/// `Wavelet3D::inverse` of alice-codec with every addition checked
+///
+/// Same order (the third axis, then per slice the columns and the rows), the
+/// same interleave and the same lifting arithmetic (`odd -= round(coeff ·
+/// (even_l + even_r) / 4096)`, mirror boundary, round half up), so for every
+/// input on which the reference does not overflow the result is bit-identical
+/// (pinned by a unit test against the reference). Where the reference would
+/// overflow `i32` (a panic with overflow checks, a wrapped value without
+/// them) this returns [`DecodeError::CoefficientOverflow`].
+fn checked_inverse_3d(
+    volume: &mut [i32],
+    width: usize,
+    height: usize,
+    depth: usize,
+    steps: &[(i32, bool)],
+) -> Result<(), DecodeError> {
+    let frame = width * height;
+    let mut line = Vec::new();
+    let mut run = |idx: &mut dyn Iterator<Item = usize>, volume: &mut [i32]| {
+        let idx: Vec<usize> = idx.collect();
+        line.clear();
+        line.extend(idx.iter().map(|&i| volume[i]));
+        checked_inverse_1d(&mut line, steps)?;
+        for (&i, &v) in idx.iter().zip(&line) {
+            volume[i] = v;
+        }
+        Ok::<(), DecodeError>(())
+    };
+    for y in 0..height {
+        for x in 0..width {
+            run(&mut (0..depth).map(|t| t * frame + y * width + x), volume)?;
+        }
+    }
+    for t in 0..depth {
+        let base = t * frame;
+        for x in 0..width {
+            run(&mut (0..height).map(|y| base + y * width + x), volume)?;
+        }
+        for y in 0..height {
+            run(&mut (0..width).map(|x| base + y * width + x), volume)?;
+        }
+    }
+    Ok(())
+}
+
+/// One line of [`checked_inverse_3d`] (`Wavelet1D::inverse` of alice-codec)
+fn checked_inverse_1d(signal: &mut [i32], steps: &[(i32, bool)]) -> Result<(), DecodeError> {
+    let n = signal.len();
+    if n < 2 {
+        return Ok(());
+    }
+    let half = n / 2;
+    let low = n - half;
+    // interleave: [e0, e1, .., o0, o1, ..] -> [e0, o0, e1, o1, ..]
+    let src = signal.to_vec();
+    for i in 0..low {
+        signal[i * 2] = src[i];
+    }
+    for i in 0..half {
+        signal[i * 2 + 1] = src[low + i];
+    }
+    let fit = |v: i64| i32::try_from(v).map_err(|_| DecodeError::CoefficientOverflow);
+    for &(coeff, predict) in steps.iter().rev() {
+        for i in 0..half {
+            // predict: odd[i] -= delta(even_l + even_r); update: even[i] -=
+            // delta(odd_l + odd_r), the neighbour mirrored at the boundary
+            let (target, a, b) = if predict {
+                let l = i * 2;
+                let r = if l + 2 < n { l + 2 } else { l };
+                (i * 2 + 1, l, r)
+            } else {
+                let r = i * 2 + 1;
+                let l = if i > 0 { i * 2 - 1 } else { r };
+                (i * 2, l, r)
+            };
+            let sum = fit(i64::from(signal[a]) + i64::from(signal[b]))?;
+            let delta = fit((i64::from(sum) * i64::from(coeff) + 2048) >> 12)?;
+            signal[target] = fit(i64::from(signal[target]) - i64::from(delta))?;
+        }
+    }
+    Ok(())
 }
 
 // ============================================================================
@@ -860,6 +1072,56 @@ pub fn decompress_sdf(data: &[u8]) -> SdfVolume {
 mod tests {
     use super::*;
     use crate::types::SdfNode;
+
+    /// The checked inverse is bit-identical to alice-codec's
+    /// `Wavelet3D::inverse` on inputs where the reference does not overflow
+    /// (both wavelets, odd / even / unit lengths on every axis)
+    #[test]
+    fn checked_inverse_matches_the_reference_wavelet() {
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        let mut compared = 0;
+        for (steps, reference) in [
+            (CDF53_STEPS, Wavelet3D::cdf53()),
+            (CDF97_STEPS, Wavelet3D::cdf97()),
+        ] {
+            for dims in [
+                [1, 1, 1],
+                [2, 1, 1],
+                [1, 3, 1],
+                [5, 4, 3],
+                [8, 8, 8],
+                [7, 2, 9],
+            ] {
+                let [w, h, d] = dims;
+                let n = w * h * d;
+                let data: Vec<i32> = (0..n)
+                    .map(|_| {
+                        state = state
+                            .wrapping_mul(6_364_136_223_846_793_005)
+                            .wrapping_add(1_442_695_040_888_963_407);
+                        // +-2^20: far from overflow through 3 axes of lifting
+                        ((state >> 43) as i32) - (1 << 20)
+                    })
+                    .collect();
+                let mut want = data.clone();
+                reference.inverse(&mut want, w, h, d);
+                let mut got = data;
+                checked_inverse_3d(&mut got, w, h, d, steps).unwrap();
+                assert_eq!(got, want, "{dims:?}");
+                compared += n;
+            }
+        }
+        assert!(compared > 1000);
+    }
+
+    #[test]
+    fn checked_inverse_reports_overflow() {
+        let mut v = vec![i32::MAX, i32::MAX];
+        assert_eq!(
+            checked_inverse_3d(&mut v, 2, 1, 1, CDF53_STEPS),
+            Err(DecodeError::CoefficientOverflow)
+        );
+    }
 
     #[test]
     fn test_voxelize_sphere() {

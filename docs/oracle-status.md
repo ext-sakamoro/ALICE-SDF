@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 726 |
+| 🟢 Not ignored | 735 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **726** |
+| **Total** | **735** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (726)
+## 🟢 Not ignored (735)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -23,11 +23,11 @@ Per-file counts (the test names are in `tests/`):
 |------|-------|
 | `test_terrain_destruction_oracle.rs` | 28 |
 | `test_gi_volume_oracle.rs` | 23 |
+| `test_codec_bridge_oracle.rs` | 22 |
 | `npr_shader_validate.rs` | 21 |
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_smooth_ops_oracle.rs` | 17 |
-| `test_codec_bridge_oracle.rs` | 15 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
 | `test_compiled_evaluation.rs` | 14 |
@@ -107,6 +107,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_optimize_stats_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
 | `noise_shader_validate.rs` | 2 |
+| `test_aabb_unified_oracle.rs` | 2 |
 | `test_hlsl_dxc_compile.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
 | `test_interval_predicate_oracle.rs` | 2 |

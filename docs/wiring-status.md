@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **44 baseline items** — Permitted violations, ratchet in place
+🟡 **25 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (44 permitted)
+## 📋 Baseline (25 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -17,10 +17,8 @@ Must resolve or remove from baseline to reduce ratchet.
 
 | File | Baseline lines |
 |------|----------------|
-| `src/crispy.rs` | 16 |
 | `src/font_bridge.rs` | 5 |
 | `src/ffi/registry.rs` | 4 |
-| `src/compiled/simd.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
@@ -45,29 +43,10 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (37)
+### Unwired Items (18)
 
 ```
-unwired src/compiled/simd.rs::max_component
-unwired src/compiled/simd.rs::max_zero
-unwired src/compiled/simd.rs::min_component
 unwired src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
-unwired src/crispy.rs::BitMask64::test
-unwired src/crispy.rs::BloomFilter::test
-unwired src/crispy.rs::EMPTY
-unwired src/crispy.rs::FULL
-unwired src/crispy.rs::and
-unwired src/crispy.rs::branchless_abs
-unwired src/crispy.rs::branchless_clamp
-unwired src/crispy.rs::branchless_max
-unwired src/crispy.rs::branchless_min
-unwired src/crispy.rs::fast_recip
-unwired src/crispy.rs::fast_recip_vec3
-unwired src/crispy.rs::from_items
-unwired src/crispy.rs::or
-unwired src/crispy.rs::round_half_up_vec3
-unwired src/crispy.rs::select_f32
-unwired src/crispy.rs::test_hash
 unwired src/ffi/registry.rs::clear_all
 unwired src/ffi/registry.rs::compiled_count
 unwired src/ffi/registry.rs::node_count
@@ -82,8 +61,8 @@ unwired src/font_bridge.rs::text_to_sdf2d
 unwired src/gi/mod.rs::PointLight
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
+unwired src/primitives/mod.rs::PrimitiveType
 unwired src/primitives/mod.rs::eval_primitive
-unwired src/primitives/mod.rs::eval_primitive_unchecked
 unwired src/python/helpers.rs::numpy_to_vec3_fast
 ```
 

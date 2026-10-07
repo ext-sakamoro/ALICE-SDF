@@ -88,7 +88,7 @@ pub mod animation;
 pub mod cache;
 pub mod collision;
 pub mod compiled;
-pub mod crispy;
+mod crispy;
 pub mod eval;
 pub mod fidelity;
 pub mod interval;
@@ -410,6 +410,41 @@ pub use eval::eval;
 pub use io::{load, save};
 pub use mesh::sdf_to_mesh;
 pub use types::{SdfNode, SdfTree};
+
+/// Items removed or made crate-private in 5.0.0 stay out of the public API.
+/// Each block below must fail to compile (`cargo test --doc` runs them):
+///
+/// ```compile_fail
+/// use alice_sdf::crispy::fnv1a_hash;
+/// ```
+///
+/// ```compile_fail
+/// let _ = alice_sdf::compiled::Vec3x8::zero();
+/// ```
+///
+/// ```compile_fail
+/// let _ = alice_sdf::primitives::eval_primitive_unchecked;
+/// ```
+///
+/// ```compile_fail
+/// use alice_sdf::mesh::bvh::Triangle;
+/// ```
+///
+/// ```compile_fail
+/// use alice_sdf::mesh::primitive_fitting::PrimitiveType;
+/// ```
+///
+/// The replacements compile, and `mesh::Aabb` is `types::Aabb`:
+///
+/// ```
+/// use alice_sdf::mesh::{BvhTriangle, FittedPrimitiveKind};
+/// let a: alice_sdf::types::Aabb = alice_sdf::mesh::Aabb::empty();
+/// let _ = (a, FittedPrimitiveKind::Sphere, std::mem::size_of::<BvhTriangle>());
+/// let _ = alice_sdf::compiled::Vec3x8::splat(glam::Vec3::ONE);
+/// let _ = alice_sdf::primitives::eval_primitive;
+/// ```
+#[cfg(doctest)]
+struct RemovedIn5;
 
 #[cfg(test)]
 mod tests {

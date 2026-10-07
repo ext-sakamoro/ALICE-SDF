@@ -7,53 +7,27 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 55 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1156 |
+| L0 | not reached by any non-test code, examples included | 10 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1153 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 935 |
-| | **total** | **2146** |
+| | **total** | **2098** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 36 unwired items.
+`scripts/wiring-baseline.txt` lists 18 unwired items.
 
-### L0 here but not in the baseline (31)
+### L0 here but not in the baseline (5)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
-- `src/compiled/jit_simd.rs::JitSimd`
-- `src/compiled/jit_simd.rs::JitSimd::compile`
-- `src/compiled/jit_simd.rs::JitSimd::eval`
-- `src/compiled/jit_simd.rs::JitSimd::eval_soa`
-- `src/compiled/simd.rs::Quatx8::inverse`
-- `src/compiled/simd.rs::Quatx8::splat`
-- `src/compiled/simd.rs::Vec3x8::abs`
-- `src/compiled/simd.rs::Vec3x8::clamp`
-- `src/compiled/simd.rs::Vec3x8::dot`
-- `src/compiled/simd.rs::Vec3x8::length`
-- `src/compiled/simd.rs::Vec3x8::length_squared`
-- `src/compiled/simd.rs::Vec3x8::max`
-- `src/compiled/simd.rs::Vec3x8::min`
-- `src/compiled/simd.rs::Vec3x8::normalize`
-- `src/compiled/simd.rs::Vec3x8::zero`
-- `src/crispy.rs::BitMask64`
-- `src/crispy.rs::BitMask64::as_u64`
-- `src/crispy.rs::BitMask64::clear`
-- `src/crispy.rs::BitMask64::count_ones`
-- `src/crispy.rs::BitMask64::from_raw`
-- `src/crispy.rs::BitMask64::is_empty`
-- `src/crispy.rs::BitMask64::set`
-- `src/crispy.rs::BloomFilter`
-- `src/crispy.rs::BloomFilter::insert`
-- `src/crispy.rs::BloomFilter::new`
 - `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
 - `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
 - `src/primitives/cylinder.rs::sdf_cylinder_infinite`
-- `src/primitives/mod.rs::PrimitiveType`
 
 ### In the baseline but reached here (1)
 
@@ -61,55 +35,11 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (55)
+## L0 — unreached (10)
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
-- `src/compiled/jit_simd.rs::JitSimd`
-- `src/compiled/jit_simd.rs::JitSimd::compile`
-- `src/compiled/jit_simd.rs::JitSimd::eval`
-- `src/compiled/jit_simd.rs::JitSimd::eval_soa`
-- `src/compiled/simd.rs::Quatx8::inverse`
-- `src/compiled/simd.rs::Quatx8::splat`
-- `src/compiled/simd.rs::Vec3x8::abs`
-- `src/compiled/simd.rs::Vec3x8::clamp`
-- `src/compiled/simd.rs::Vec3x8::dot`
-- `src/compiled/simd.rs::Vec3x8::length`
-- `src/compiled/simd.rs::Vec3x8::length_squared`
-- `src/compiled/simd.rs::Vec3x8::max`
-- `src/compiled/simd.rs::Vec3x8::max_component`
-- `src/compiled/simd.rs::Vec3x8::max_zero`
-- `src/compiled/simd.rs::Vec3x8::min`
-- `src/compiled/simd.rs::Vec3x8::min_component`
-- `src/compiled/simd.rs::Vec3x8::normalize`
-- `src/compiled/simd.rs::Vec3x8::zero`
 - `src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED`
-- `src/crispy.rs::BitMask64`
-- `src/crispy.rs::BitMask64::EMPTY`
-- `src/crispy.rs::BitMask64::FULL`
-- `src/crispy.rs::BitMask64::and`
-- `src/crispy.rs::BitMask64::as_u64`
-- `src/crispy.rs::BitMask64::clear`
-- `src/crispy.rs::BitMask64::count_ones`
-- `src/crispy.rs::BitMask64::from_raw`
-- `src/crispy.rs::BitMask64::is_empty`
-- `src/crispy.rs::BitMask64::or`
-- `src/crispy.rs::BitMask64::set`
-- `src/crispy.rs::BitMask64::test`
-- `src/crispy.rs::BloomFilter`
-- `src/crispy.rs::BloomFilter::from_items`
-- `src/crispy.rs::BloomFilter::insert`
-- `src/crispy.rs::BloomFilter::new`
-- `src/crispy.rs::BloomFilter::test`
-- `src/crispy.rs::BloomFilter::test_hash`
-- `src/crispy.rs::branchless_abs`
-- `src/crispy.rs::branchless_clamp`
-- `src/crispy.rs::branchless_max`
-- `src/crispy.rs::branchless_min`
-- `src/crispy.rs::fast_recip`
-- `src/crispy.rs::fast_recip_vec3`
-- `src/crispy.rs::round_half_up_vec3`
-- `src/crispy.rs::select_f32`
 - `src/gi/mod.rs::PointLight`
 - `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
 - `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
@@ -117,7 +47,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/cylinder.rs::sdf_cylinder_infinite`
 - `src/primitives/mod.rs::PrimitiveType`
 - `src/primitives/mod.rs::eval_primitive`
-- `src/primitives/mod.rs::eval_primitive_unchecked`
 
 ## Not indexed (7)
 
@@ -141,7 +70,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1156)
+## L1 — example-only (1153)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -205,7 +134,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/llm_schema.rs`: `schema_summary`, `validate_sdf_json`
 - `src/material.rs`: `Material::dielectric`, `Material::emissive`, `Material::glass`, `Material::metal`, `Material::new`, `Material::to_particle`, `Material::with_albedo_map`, `Material::with_anisotropy`, `Material::with_ao_map`, `Material::with_clearcoat`, `Material::with_color`, `Material::with_emission`, `Material::with_emissive_map`, `Material::with_metallic`, `Material::with_metallic_roughness_map`, `Material::with_normal_map`, `Material::with_roughness`, `Material::with_sheen`, `Material::with_subsurface`, `Material::with_transmission`, `Material::with_volume`, `MaterialLibrary::add`, `MaterialLibrary::default_material`, `MaterialLibrary::find_by_name`, `MaterialLibrary::is_empty`, `MaterialLibrary::new`, `ParticleMaterial`, `ParticleMaterial::from_material`, `ParticleMaterial::glow`, `ParticleMaterial::solid`, `StandardMaterials`, `StandardMaterials::aluminum`, `StandardMaterials::chrome`, `StandardMaterials::concrete`, `StandardMaterials::copper`, `StandardMaterials::diamond`, `StandardMaterials::glass`, `StandardMaterials::gold`, `StandardMaterials::marble`, `StandardMaterials::plastic_red`, `StandardMaterials::plastic_white`, `StandardMaterials::rubber`, `StandardMaterials::skin`, `StandardMaterials::velvet`, `StandardMaterials::water`, `StandardMaterials::wet_asphalt`, `TextureSlot::new`, `TextureSlot::with_tiling`, `TextureSlot::with_uv_channel`, `material_lerp`
 - `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
-- `src/mesh/bvh.rs`: `Aabb`, `Aabb::center`, `Aabb::empty`, `Aabb::expand_aabb`, `Aabb::expand_point`, `Aabb::longest_axis`, `Aabb::new`, `Aabb::signed_distance`, `Aabb::surface_area`, `BvhNode`, `BvhNode::aabb`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`, `Triangle`, `Triangle::closest_point`, `Triangle::new`, `Triangle::signed_distance`, `Triangle::unsigned_distance`
+- `src/mesh/bvh.rs`: `BvhNode`, `BvhNode::aabb`, `BvhTriangle`, `BvhTriangle::closest_point`, `BvhTriangle::new`, `BvhTriangle::signed_distance`, `BvhTriangle::unsigned_distance`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`
 - `src/mesh/collision.rs`: `BoundingSphere`, `BoundingSphere::contains`, `CollisionAabb`, `CollisionAabb::center`, `CollisionAabb::contains`, `CollisionAabb::half_extents`, `CollisionAabb::volume`, `CollisionMesh`, `ConvexDecomposition`, `ConvexDecomposition::total_triangles`, `ConvexDecomposition::total_vertices`, `ConvexHull`, `VhacdConfig`, `VhacdConfig::fast`, `VhacdConfig::high_quality`, `compute_aabb`, `compute_bounding_sphere`, `compute_convex_hull`, `convex_decomposition`, `convex_hull_from_points`, `simplify_collision`
 - `src/mesh/decimate.rs`: `DecimateConfig::aggressive`, `DecimateConfig::conservative`
 - `src/mesh/dual_contouring.rs`: `DualContouringConfig::aaa`, `dual_contouring_compiled`
@@ -226,7 +155,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/optimize.rs`: `compute_acmr`, `compute_atvr`, `optimize_vertex_cache`, `optimize_vertex_fetch`
 - `src/mesh/overdraw.rs`: `default_view_directions`, `optimize_overdraw`, `optimize_overdraw_with_views`
 - `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::point_count`, `PointCloudSdf::try_new`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`
-- `src/mesh/primitive_fitting.rs`: `FittedPrimitive`, `FittedPrimitive::compute_error`, `FittedPrimitive::distance`, `FittedPrimitive::primitive_type`, `FittedPrimitive::to_sdf_node`, `FittingConfig`, `FittingResult`, `FittingResult::is_acceptable`, `PrimitiveType`, `detect_primitive`, `fit_box`, `fit_cylinder`, `fit_plane`, `fit_sphere`, `primitives_to_csg`
+- `src/mesh/primitive_fitting.rs`: `FittedPrimitive`, `FittedPrimitive::compute_error`, `FittedPrimitive::distance`, `FittedPrimitive::kind`, `FittedPrimitive::to_sdf_node`, `FittedPrimitiveKind`, `FittingConfig`, `FittingResult`, `FittingResult::is_acceptable`, `detect_primitive`, `fit_box`, `fit_cylinder`, `fit_plane`, `fit_sphere`, `primitives_to_csg`
 - `src/mesh/quantization.rs`: `half_decode`, `half_encode`, `snorm_i16_decode`, `snorm_i8_decode`, `unorm_u16_decode`, `unorm_u8_decode`
 - `src/mesh/sdf_to_mesh.rs`: `AdaptiveConfig::aaa`, `MarchingCubesConfig::aaa`, `adaptive_marching_cubes_compiled`
 - `src/mesh/spatial_order.rs`: `morton_3d`, `optimize_spatial_order`
@@ -289,7 +218,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/transforms/scale.rs`: `transform_scale_inverse`
 - `src/transforms/translate.rs`: `transform_translate_inverse`
 - `src/types/constructors.rs`: `SdfNode::box3d_half_extents`, `SdfNode::metric_ball`, `SdfNode::metric_blend`
-- `src/types/containers.rs`: `Aabb::center`, `Aabb::contains`, `Aabb::from_center_extents`, `Aabb::half_extents`, `Aabb::size`, `Aabb::union`, `Hit`, `Ray`, `Ray::at`, `Ray::new`, `SdfTree::with_metadata`
+- `src/types/containers.rs`: `Aabb::center`, `Aabb::contains`, `Aabb::empty`, `Aabb::expand_aabb`, `Aabb::expand_point`, `Aabb::from_center_extents`, `Aabb::half_extents`, `Aabb::longest_axis`, `Aabb::signed_distance`, `Aabb::size`, `Aabb::surface_area`, `Aabb::union`, `Hit`, `Ray`, `Ray::at`, `Ray::new`, `SdfTree::with_metadata`
 - `src/types/mod.rs`: `SdfNode::category`
 - `src/types/modifiers.rs`: `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
 - `src/types/transforms.rs`: `SdfNode::translate_vec`

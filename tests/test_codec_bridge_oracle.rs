@@ -615,3 +615,404 @@ fn streams_without_the_voxel_flag_decode_with_one_step_on_every_axis() {
     }
     assert_eq!(compared, 2);
 }
+
+// ───────────────────── corrupted streams (5.0.0) ─────────────────────
+//
+// `try_decode_sdf_volume` must return `Err` instead of panicking on any input.
+// Until 5.0.0 it trusted the quantizer fields, the dimensions and the rANS
+// histogram: a large step overflowed `i32` in alice-codec's dequantizer (a
+// panic with overflow checks, a wrapped value without them), and corrupted
+// dimensions could ask for an allocation of any size.
+
+const QUANT_OFFSET: usize = HEADER_LEN;
+
+/// A stream written by hand from the documented layout: raw payload of i32
+/// coefficients (flag bit 2), no rANS, cubic voxels.
+fn hand_stream(
+    dims: [u32; 3],
+    symbol_count: u32,
+    flags: u8,
+    step: i32,
+    dead_zone: i32,
+    coeffs: &[i32],
+) -> Vec<u8> {
+    let mut b = Vec::new();
+    for v in dims {
+        b.extend_from_slice(&v.to_le_bytes());
+    }
+    for v in [0.0f32, 0.0, 0.0, 1.0, 1.0] {
+        // origin, voxel size, fixed_point_scale = 1
+        b.extend_from_slice(&v.to_le_bytes());
+    }
+    b.push(100); // quality
+    b.push(flags | FLAG_WIDE);
+    b.extend_from_slice(&symbol_count.to_le_bytes());
+    assert_eq!(b.len(), QUANT_OFFSET);
+    b.extend_from_slice(&step.to_le_bytes());
+    b.extend_from_slice(&dead_zone.to_le_bytes());
+    b.extend_from_slice(&((coeffs.len() * 4) as u32).to_le_bytes());
+    for c in coeffs {
+        b.extend_from_slice(&c.to_le_bytes());
+    }
+    b
+}
+
+/// Dequantized magnitude of the documented law, in i64:
+/// `max(dz, 1) + (|q| - 1)·step + step/2`, 0 for q = 0
+fn dequant_i64(q: i64, step: i64, dz: i64) -> i64 {
+    if q == 0 {
+        return 0;
+    }
+    let mag = dz.max(1) + (q.abs() - 1) * step + step / 2;
+    mag * q.signum()
+}
+
+/// A 1x1x1 volume runs no wavelet step, so the voxel is the dequantized
+/// coefficient itself (scale 1): the decoder accepts exactly the coefficients
+/// whose magnitude fits in i32 and returns them unchanged
+#[test]
+fn dequantization_is_checked_against_the_i32_range() {
+    let mut compared = 0;
+    for (step, dz) in [(1i32, 0i32), (2, 1), (7, 3), (1_000_003, 500_001)] {
+        let (s, d) = (i64::from(step), i64::from(dz));
+        // largest |q| whose magnitude still fits: dz' + (q - 1)·s + s/2 <= MAX
+        let q_max = (i64::from(i32::MAX) - d.max(1) - s / 2) / s + 1;
+        for q in [1, 2, q_max - 1, q_max, q_max + 1, i64::from(i32::MAX)] {
+            for sign in [1i64, -1] {
+                let qq = q * sign;
+                let Ok(q32) = i32::try_from(qq) else { continue };
+                let bytes = hand_stream([1, 1, 1], 1, 0, step, dz, &[q32]);
+                let got = try_decode_sdf_volume(&bytes);
+                let want = dequant_i64(qq, s, d);
+                // the magnitude is formed before the sign, so it must fit too
+                if want.abs() <= i64::from(i32::MAX) {
+                    let v = got.unwrap_or_else(|e| panic!("q={qq} step={step}: {e}"));
+                    assert_eq!(v.data[0].to_bits(), (want as i32 as f32).to_bits());
+                } else {
+                    assert_eq!(got.unwrap_err(), DecodeError::CoefficientOverflow);
+                }
+                compared += 1;
+            }
+        }
+    }
+    // q = i32::MIN: |q| is 2^31, outside i32 for any step
+    let bytes = hand_stream([1, 1, 1], 1, 0, 1, 0, &[i32::MIN]);
+    assert_eq!(
+        try_decode_sdf_volume(&bytes).unwrap_err(),
+        DecodeError::CoefficientOverflow
+    );
+    assert!(compared >= 40, "{compared}");
+}
+
+#[test]
+fn quantizer_fields_outside_the_encoder_range_are_rejected() {
+    let mut rejected = 0;
+    for (step, dz) in [(0, 0), (-1, 0), (i32::MIN, 1), (1, -1), (5, i32::MIN)] {
+        let bytes = hand_stream([1, 1, 1], 1, 0, step, dz, &[0]);
+        assert_eq!(
+            try_decode_sdf_volume(&bytes).unwrap_err(),
+            DecodeError::InvalidQuantizer {
+                step,
+                dead_zone: dz
+            }
+        );
+        rejected += 1;
+    }
+    // the same fields on an encoder stream: the sign bit of the step / dead zone
+    let good = encode_sdf_volume(&closed_form_volume(4), &EncodeConfig::default());
+    for off in [QUANT_OFFSET + 3, QUANT_OFFSET + 7] {
+        let mut bad = good.clone();
+        bad[off] ^= 0x80;
+        assert!(matches!(
+            try_decode_sdf_volume(&bad),
+            Err(DecodeError::InvalidQuantizer { .. })
+        ));
+        rejected += 1;
+    }
+    assert_eq!(rejected, 7);
+}
+
+/// The CDF 5/3 inverse of one pair `[e, o]` (low band, high band), computed
+/// from the lifting steps in i64: update `e -= (2o·1024 + 2048) >> 12`, then
+/// predict `o -= (2e·(-2048) + 2048) >> 12` (the mirror boundary doubles the
+/// one neighbour). `None` when a sum or a result leaves i32.
+fn cdf53_pair_inverse(e: i64, o: i64) -> Option<(i64, i64)> {
+    let fits = |v: i64| i32::try_from(v).is_ok();
+    let s1 = 2 * o;
+    let e1 = e - ((s1 * 1024 + 2048) >> 12);
+    let s2 = 2 * e1;
+    let o1 = o - ((s2 * -2048 + 2048) >> 12);
+    [s1, e1, s2, o1]
+        .iter()
+        .all(|&v| fits(v))
+        .then_some((e1, o1))
+}
+
+/// A 2x1x1 volume runs exactly one wavelet pair along x: the decoder returns
+/// the closed-form inverse when it stays in i32 and `CoefficientOverflow`
+/// when it does not
+#[test]
+fn inverse_wavelet_is_checked_against_the_i32_range() {
+    let big = i64::from(i32::MAX);
+    let mut ok = 0;
+    let mut overflow = 0;
+    for (e, o) in [
+        (0i64, 0i64),
+        (100, -7),
+        (-5, 3),
+        (big / 2, 0),
+        (big / 2 + 1, 0),
+        (big, 0),
+        (0, big / 2),
+        (0, big / 2 + 1),
+        (-big, -big),
+        (big / 3, -big / 3),
+        // the sums fit but the updated low band does not: e - (2o + 2)/4 > MAX
+        (big, -big / 2),
+        (-big, big / 2),
+    ] {
+        let coeffs = [e as i32, o as i32];
+        // step 1, dead zone 0: q maps to q (dz' = 1, mag = 1 + (|q| - 1))
+        let bytes = hand_stream([2, 1, 1], 2, FLAG_LOSSLESS_WAVELET, 1, 0, &coeffs);
+        match (cdf53_pair_inverse(e, o), try_decode_sdf_volume(&bytes)) {
+            (Some((e1, o1)), Ok(v)) => {
+                assert_eq!(
+                    v.data[0].to_bits(),
+                    (e1 as i32 as f32).to_bits(),
+                    "e={e} o={o}"
+                );
+                assert_eq!(
+                    v.data[1].to_bits(),
+                    (o1 as i32 as f32).to_bits(),
+                    "e={e} o={o}"
+                );
+                ok += 1;
+            }
+            (None, Err(err)) => {
+                assert_eq!(err, DecodeError::CoefficientOverflow);
+                overflow += 1;
+            }
+            (want, got) => panic!("e={e} o={o}: want {want:?}, got {got:?}"),
+        }
+    }
+    assert!(ok >= 3 && overflow >= 3, "ok={ok} overflow={overflow}");
+}
+
+/// The CDF 5/3 inverse of `[e0, e1, o0]` (3 samples: 2 low, 1 high), from the
+/// lifting steps in i64: update `e0 -= (2·o0·1024 + 2048) >> 12` (o0 mirrored),
+/// then predict `o0 -= ((e0 + e1)·(-2048) + 2048) >> 12`; output order
+/// `[e0, o0, e1]`. `None` when a sum or a result leaves i32.
+fn cdf53_triple_inverse(e0: i64, e1: i64, o0: i64) -> Option<[i64; 3]> {
+    let fits = |v: i64| i32::try_from(v).is_ok();
+    let s1 = 2 * o0;
+    let e0n = e0 - ((s1 * 1024 + 2048) >> 12);
+    let s2 = e0n + e1;
+    let o0n = o0 - ((s2 * -2048 + 2048) >> 12);
+    [s1, e0n, s2, o0n]
+        .iter()
+        .all(|&v| fits(v))
+        .then_some([e0n, o0n, e1])
+}
+
+/// Three samples along x: an overflow of the updated low band that does not
+/// feed a later sum (the high band's right neighbour is the untouched `e1`)
+/// must still be reported
+#[test]
+fn inverse_wavelet_reports_an_overflow_that_no_later_sum_sees() {
+    let big = i64::from(i32::MAX);
+    let (mut ok, mut overflow) = (0, 0);
+    for (e0, e1, o0) in [
+        (1_744_830_451i64, 0i64, -1_073_741_824i64),
+        (big, 0, -big / 2),
+        (10, 20, -3),
+        (big / 2, big / 4, 1000),
+    ] {
+        let bytes = hand_stream(
+            [3, 1, 1],
+            3,
+            FLAG_LOSSLESS_WAVELET,
+            1,
+            0,
+            &[e0 as i32, e1 as i32, o0 as i32],
+        );
+        match (
+            cdf53_triple_inverse(e0, e1, o0),
+            try_decode_sdf_volume(&bytes),
+        ) {
+            (Some(want), Ok(v)) => {
+                for (k, w) in want.iter().enumerate() {
+                    assert_eq!(
+                        v.data[k].to_bits(),
+                        (*w as i32 as f32).to_bits(),
+                        "{e0} {e1} {o0}"
+                    );
+                }
+                ok += 1;
+            }
+            (None, Err(err)) => {
+                assert_eq!(err, DecodeError::CoefficientOverflow);
+                overflow += 1;
+            }
+            (want, got) => panic!("{e0} {e1} {o0}: want {want:?}, got {got:?}"),
+        }
+    }
+    assert!(ok >= 2 && overflow >= 2, "ok={ok} overflow={overflow}");
+}
+
+#[test]
+fn dimensions_must_match_the_symbol_count() {
+    let mut rejected = 0;
+    for (dims, count) in [
+        ([2u32, 1, 1], 1u32),
+        ([1, 1, 1], 2),
+        ([1 << 22, 1 << 22, 1 << 22], 0),
+        ([u32::MAX, u32::MAX, 2], 2),
+        ([0, 5, 5], 1),
+    ] {
+        let bytes = hand_stream(dims, count, 0, 1, 0, &[0]);
+        assert!(
+            matches!(
+                try_decode_sdf_volume(&bytes),
+                Err(DecodeError::InvalidDimensions { .. })
+            ),
+            "{dims:?} {count}"
+        );
+        rejected += 1;
+    }
+    // an empty volume is consistent and decodes to nothing
+    let empty = hand_stream([0, 5, 5], 0, 0, 1, 0, &[]);
+    assert!(try_decode_sdf_volume(&empty).unwrap().data.is_empty());
+    assert_eq!(rejected, 5);
+}
+
+#[test]
+fn rans_histogram_must_match_the_payload() {
+    let good = encode_sdf_volume(&closed_form_volume(8), &EncodeConfig::lossless());
+    assert_eq!(good[FLAGS_OFFSET] & FLAG_RANS, FLAG_RANS);
+    assert!(try_decode_sdf_volume(&good).is_ok());
+    let hist = QUANT_OFFSET + 8;
+    let count = |b: &[u8], i: usize| {
+        u32::from_le_bytes(b[hist + 4 * i..hist + 4 * i + 4].try_into().unwrap())
+    };
+    let set = |b: &mut [u8], i: usize, v: u32| {
+        b[hist + 4 * i..hist + 4 * i + 4].copy_from_slice(&v.to_le_bytes());
+    };
+    let mut rejected = 0;
+    // sum off by one
+    let mut bad = good.clone();
+    set(&mut bad, 0, count(&good, 0) + 1);
+    assert_eq!(
+        try_decode_sdf_volume(&bad).unwrap_err(),
+        DecodeError::InvalidHistogram
+    );
+    rejected += 1;
+    // one value holds half of the bytes (the sum stays right)
+    let total: u32 = (0..256).map(|i| count(&good, i)).sum();
+    let mut bad = good.clone();
+    for i in 0..256 {
+        set(&mut bad, i, 0);
+    }
+    set(&mut bad, 0, total / 2);
+    set(&mut bad, 1, total - total / 2);
+    assert_eq!(
+        try_decode_sdf_volume(&bad).unwrap_err(),
+        DecodeError::InvalidHistogram
+    );
+    rejected += 1;
+    // at most 16 coefficient bytes per payload byte: claim a k x 1 x 1 volume
+    // (2k bytes of i16) with a consistent header and an even histogram over
+    // the same payload; 2k = 16 · payload passes the histogram check, 2k =
+    // 16 · payload + 2 does not
+    let plen_at = hist + 256 * 4;
+    let payload = u32::from_le_bytes(good[plen_at..plen_at + 4].try_into().unwrap());
+    let claim = |k: u32| {
+        let mut bad = good.clone();
+        for (a, v) in [k, 1, 1].into_iter().enumerate() {
+            bad[4 * a..4 * a + 4].copy_from_slice(&v.to_le_bytes());
+        }
+        bad[HEADER_LEN - 4..HEADER_LEN].copy_from_slice(&k.to_le_bytes());
+        let bytes = 2 * k;
+        for i in 0..256u32 {
+            set(
+                &mut bad,
+                i as usize,
+                bytes / 256 + u32::from(i < bytes % 256),
+            );
+        }
+        try_decode_sdf_volume(&bad)
+    };
+    assert_ne!(
+        claim(8 * payload).err(),
+        Some(DecodeError::InvalidHistogram)
+    );
+    assert_eq!(
+        claim(8 * payload + 1).unwrap_err(),
+        DecodeError::InvalidHistogram
+    );
+    rejected += 1;
+    assert_eq!(rejected, 3);
+}
+
+/// Every single-bit flip and every truncation of streams from each encoder
+/// path (raw i16, raw i32, rANS i16, rANS i32, lossy, per-axis voxel size)
+/// decodes to `Ok` or `Err` without a panic; a truncated stream is always
+/// `Err`
+#[test]
+fn bit_flips_and_truncations_never_panic() {
+    let streams = [
+        (
+            encode_sdf_volume(&closed_form_volume(4), &EncodeConfig::lossless()),
+            0,
+        ),
+        (
+            encode_sdf_volume(&closed_form_volume(4), &EncodeConfig::default()),
+            0,
+        ),
+        (
+            encode_sdf_volume(&closed_form_volume(8), &EncodeConfig::lossless()),
+            FLAG_RANS,
+        ),
+        (
+            encode_sdf_volume(&noise_volume(4, 100.0, 3), &EncodeConfig::lossless()),
+            FLAG_WIDE,
+        ),
+        (
+            encode_sdf_volume(&noise_volume(8, 100.0, 5), &EncodeConfig::lossless()),
+            FLAG_WIDE | FLAG_RANS,
+        ),
+        (
+            encode_sdf_volume(&aniso_volume(), &EncodeConfig::default()),
+            FLAG_ANISOTROPIC_VOXEL,
+        ),
+    ];
+    let (mut tried, mut ok, mut err) = (0usize, 0usize, 0usize);
+    for (k, (good, flags)) in streams.iter().enumerate() {
+        assert_eq!(good[FLAGS_OFFSET] & flags, *flags, "stream {k} path");
+        assert!(try_decode_sdf_volume(good).is_ok(), "stream {k}");
+        for cut in 0..good.len() {
+            let r = std::panic::catch_unwind(|| try_decode_sdf_volume(&good[..cut]));
+            match r {
+                Ok(Err(_)) => err += 1,
+                Ok(Ok(_)) => panic!("stream {k} cut at {cut}: decoded"),
+                Err(payload) => panic!("stream {k} cut at {cut}: panicked: {payload:?}"),
+            }
+            tried += 1;
+        }
+        for byte in 0..good.len() {
+            for bit in 0..8 {
+                let mut bad = good.clone();
+                bad[byte] ^= 1 << bit;
+                match std::panic::catch_unwind(|| try_decode_sdf_volume(&bad)) {
+                    Ok(Ok(_)) => ok += 1,
+                    Ok(Err(_)) => err += 1,
+                    Err(payload) => {
+                        panic!("stream {k} byte {byte} bit {bit}: panicked: {payload:?}")
+                    }
+                }
+                tried += 1;
+            }
+        }
+    }
+    assert!(ok > 0 && err > 0, "ok={ok} err={err}");
+    assert!(tried > 10_000, "{tried}");
+}

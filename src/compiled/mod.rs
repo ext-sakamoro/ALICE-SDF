@@ -186,9 +186,6 @@ pub use transpiler_common::SHADER_UNSUPPORTED;
 #[cfg(feature = "jit")]
 pub mod jit;
 
-#[cfg(feature = "jit")]
-pub mod jit_simd;
-
 #[cfg(feature = "gpu")]
 pub mod wgsl;
 

@@ -16,9 +16,12 @@
 use crate::types::SdfNode;
 use glam::Vec3;
 
-/// Detected primitive type
+/// Kind of a [`FittedPrimitive`] (which shape was fitted, without its parameters)
+///
+/// Not the same as [`crate::primitives::PrimitiveType`], the dispatch tag of
+/// the primitive evaluator; renamed from `PrimitiveType` in 5.0.0
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PrimitiveType {
+pub enum FittedPrimitiveKind {
     /// Sphere primitive
     Sphere,
     /// Axis-aligned box
@@ -78,14 +81,14 @@ pub enum FittedPrimitive {
 }
 
 impl FittedPrimitive {
-    /// Get the primitive type
-    pub const fn primitive_type(&self) -> PrimitiveType {
+    /// Which shape was fitted (renamed from `primitive_type` in 5.0.0)
+    pub const fn kind(&self) -> FittedPrimitiveKind {
         match self {
-            Self::Sphere { .. } => PrimitiveType::Sphere,
-            Self::Box { .. } => PrimitiveType::Box,
-            Self::Cylinder { .. } => PrimitiveType::Cylinder,
-            Self::Capsule { .. } => PrimitiveType::Capsule,
-            Self::Plane { .. } => PrimitiveType::Plane,
+            Self::Sphere { .. } => FittedPrimitiveKind::Sphere,
+            Self::Box { .. } => FittedPrimitiveKind::Box,
+            Self::Cylinder { .. } => FittedPrimitiveKind::Cylinder,
+            Self::Capsule { .. } => FittedPrimitiveKind::Capsule,
+            Self::Plane { .. } => FittedPrimitiveKind::Plane,
         }
     }
 
@@ -811,7 +814,7 @@ mod tests {
 
         let result = detect_primitive(&sphere_points, &config).expect("Should detect primitive");
 
-        assert_eq!(result.primitive.primitive_type(), PrimitiveType::Sphere);
+        assert_eq!(result.primitive.kind(), FittedPrimitiveKind::Sphere);
     }
 
     #[test]

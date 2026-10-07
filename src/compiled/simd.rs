@@ -60,105 +60,6 @@ impl Vec3x8 {
         }
     }
 
-    /// Zero vector for all 8 lanes
-    #[inline]
-    pub const fn zero() -> Self {
-        Self {
-            x: f32x8::ZERO,
-            y: f32x8::ZERO,
-            z: f32x8::ZERO,
-        }
-    }
-
-    /// Compute length of all 8 vectors
-    #[inline]
-    pub fn length(self) -> f32x8 {
-        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
-    }
-
-    /// Compute squared length of all 8 vectors
-    #[inline]
-    pub fn length_squared(self) -> f32x8 {
-        self.x * self.x + self.y * self.y + self.z * self.z
-    }
-
-    /// Normalize all 8 vectors (zero-safe: returns zero vector for zero-length inputs)
-    #[inline]
-    pub fn normalize(self) -> Self {
-        let len = self.length();
-        // Branchless zero guard: clamp denominator to epsilon
-        let safe_len = len.max(f32x8::splat(1e-10));
-        Self {
-            x: self.x / safe_len,
-            y: self.y / safe_len,
-            z: self.z / safe_len,
-        }
-    }
-
-    /// Dot product with another Vec3x8
-    #[inline]
-    pub fn dot(self, other: Self) -> f32x8 {
-        self.x * other.x + self.y * other.y + self.z * other.z
-    }
-
-    /// Component-wise absolute value
-    #[inline]
-    pub fn abs(self) -> Self {
-        Self {
-            x: self.x.abs(),
-            y: self.y.abs(),
-            z: self.z.abs(),
-        }
-    }
-
-    /// Component-wise maximum with zero
-    #[inline]
-    pub fn max_zero(self) -> Self {
-        Self {
-            x: self.x.max(f32x8::ZERO),
-            y: self.y.max(f32x8::ZERO),
-            z: self.z.max(f32x8::ZERO),
-        }
-    }
-
-    /// Component-wise maximum
-    #[inline]
-    pub fn max(self, other: Self) -> Self {
-        Self {
-            x: self.x.max(other.x),
-            y: self.y.max(other.y),
-            z: self.z.max(other.z),
-        }
-    }
-
-    /// Component-wise minimum
-    #[inline]
-    pub fn min(self, other: Self) -> Self {
-        Self {
-            x: self.x.min(other.x),
-            y: self.y.min(other.y),
-            z: self.z.min(other.z),
-        }
-    }
-
-    /// Component-wise clamp
-    #[inline]
-    pub fn clamp(self, min: Self, max: Self) -> Self {
-        self.max(min).min(max)
-    }
-
-    /// Maximum component of each vector
-    #[inline]
-    pub fn max_component(self) -> f32x8 {
-        self.x.max(self.y).max(self.z)
-    }
-
-    /// Minimum component of each vector
-    #[inline]
-    pub fn min_component(self) -> f32x8 {
-        self.x.min(self.y).min(self.z)
-    }
-
     /// Extract results back to array
     #[inline]
     pub fn to_array(self) -> ([f32; 8], [f32; 8], [f32; 8]) {
@@ -241,29 +142,6 @@ pub struct Quatx8 {
 }
 
 impl Quatx8 {
-    /// Create with all lanes set to the same quaternion
-    #[inline]
-    pub fn splat(q: glam::Quat) -> Self {
-        Self {
-            x: f32x8::splat(q.x),
-            y: f32x8::splat(q.y),
-            z: f32x8::splat(q.z),
-            w: f32x8::splat(q.w),
-        }
-    }
-
-    /// Compute inverse quaternion
-    #[inline]
-    pub fn inverse(self) -> Self {
-        // For unit quaternions, inverse is conjugate
-        Self {
-            x: -self.x,
-            y: -self.y,
-            z: -self.z,
-            w: self.w,
-        }
-    }
-
     /// Rotate a Vec3x8 by this quaternion
     #[inline]
     pub fn mul_vec3(self, v: Vec3x8) -> Vec3x8 {
@@ -291,16 +169,6 @@ impl Quatx8 {
 mod tests {
     use super::*;
     use glam::Vec3;
-
-    #[test]
-    fn test_vec3x8_length() {
-        let v = Vec3x8::splat(Vec3::new(3.0, 4.0, 0.0));
-        let len = v.length();
-        let arr = len.to_array();
-        for &l in &arr {
-            assert!((l - 5.0).abs() < 0.0001);
-        }
-    }
 
     #[test]
     fn test_vec3x8_from_vecs() {
@@ -337,7 +205,12 @@ mod tests {
     fn test_quat_rotation() {
         // 90 degree rotation around Y axis
         let q = glam::Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
-        let qx8 = Quatx8::splat(q);
+        let qx8 = Quatx8 {
+            x: f32x8::splat(q.x),
+            y: f32x8::splat(q.y),
+            z: f32x8::splat(q.z),
+            w: f32x8::splat(q.w),
+        };
 
         let v = Vec3x8::splat(Vec3::new(1.0, 0.0, 0.0));
         let rotated = qx8.mul_vec3(v);

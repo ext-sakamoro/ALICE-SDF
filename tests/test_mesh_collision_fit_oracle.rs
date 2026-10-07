@@ -630,16 +630,11 @@ fn fitting_recovers_sphere_box_cylinder_and_plane() {
     assert!(r.max_error < 1e-5);
 
     // detection picks the generating family
-    let kind = |pts: &[Vec3]| {
-        detect_primitive(pts, &cfg)
-            .expect("fit")
-            .primitive
-            .primitive_type()
-    };
-    use alice_sdf::mesh::primitive_fitting::PrimitiveType;
-    assert_eq!(kind(&pts), PrimitiveType::Sphere);
-    assert_eq!(kind(&bpts), PrimitiveType::Box);
-    assert_eq!(kind(&ppts), PrimitiveType::Plane);
+    let kind = |pts: &[Vec3]| detect_primitive(pts, &cfg).expect("fit").primitive.kind();
+    use alice_sdf::mesh::primitive_fitting::FittedPrimitiveKind;
+    assert_eq!(kind(&pts), FittedPrimitiveKind::Sphere);
+    assert_eq!(kind(&bpts), FittedPrimitiveKind::Box);
+    assert_eq!(kind(&ppts), FittedPrimitiveKind::Plane);
 }
 
 #[test]

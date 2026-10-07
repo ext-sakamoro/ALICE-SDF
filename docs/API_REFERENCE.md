@@ -515,67 +515,9 @@ println!("{}", shader.source);
 
 ---
 
-## crispy.rs — Hardware-Native Math Utilities
+## crispy.rs
 
-Branchless operations and data structures for hot inner loops.
-
-### Branchless Arithmetic
-
-| Function | Parameters | Returns | Description |
-|----------|-----------|---------|-------------|
-| `fast_recip(x)` | `f32` | `f32` | Fast `1/x` (rcpss + Newton-Raphson) |
-| `fast_recip_vec3(v)` | `Vec3` | `Vec3` | Component-wise fast reciprocal |
-| `fast_inv_sqrt(x)` | `f32` | `f32` | Quake III inverse sqrt (~0.175% error) |
-| `fast_normalize_2d(gx, gz)` | `f32, f32` | `(f32, f32)` | Fast 2D normalize via inv_sqrt |
-| `select_f32(cond, a, b)` | `bool, f32, f32` | `f32` | Branchless cmov (bit manipulation) |
-| `branchless_min(a, b)` | `f32, f32` | `f32` | Min without branching |
-| `branchless_max(a, b)` | `f32, f32` | `f32` | Max without branching |
-| `branchless_clamp(x, lo, hi)` | `f32, f32, f32` | `f32` | Clamp without branching |
-| `branchless_abs(x)` | `f32` | `f32` | Abs via sign-bit clear |
-
-### BitMask64
-
-64-element batch mask for branchless filtering (hardware `popcnt`).
-
-```rust
-let a = BitMask64(0b1010);
-let b = BitMask64(0b1100);
-assert_eq!(a.and(b), BitMask64(0b1000));
-assert_eq!(a.count_ones(), 2);
-assert!(a.test(1));
-```
-
-| Method | Description |
-|--------|-------------|
-| `and(other)` | Bitwise AND |
-| `or(other)` | Bitwise OR |
-| `not()` | Bitwise NOT |
-| `count_ones()` | Population count (hardware popcnt) |
-| `test(index)` | Test bit at index |
-| `set(index)` | Set bit at index |
-| `clear(index)` | Clear bit at index |
-| `is_empty()` | True if no bits set |
-
-### BloomFilter
-
-4KB Bloom filter with FNV-1a double-hashing. O(1) membership test, ~1-2% false positive rate at 200 entries.
-
-```rust
-let mut bloom = BloomFilter::new();
-bloom.insert(b"Sphere");
-bloom.insert(b"Box");
-assert!(bloom.test(b"Sphere"));   // true (guaranteed)
-assert!(!bloom.test(b"Teapot"));  // false (probabilistic)
-```
-
-| Method | Description |
-|--------|-------------|
-| `BloomFilter::new()` | Create empty 4KB filter |
-| `BloomFilter::from_items(iter)` | Build from byte slice iterator |
-| `insert(data)` | Insert element |
-| `test(data)` | O(1) membership test |
-| `test_hash(filter, hash)` | Test using pre-computed hash (hot loop optimization) |
-| `fnv1a_hash(data)` | FNV-1a 64-bit hash function |
+Crate-private since 5.0.0 (the math helpers that are still used, such as the `floor(x + 0.5)` rounding of the repeat laws, are internal; `BitMask64`, `BloomFilter`, `fast_recip*`, `branchless_*` and `select_f32` were removed because nothing used them).
 
 ---
 

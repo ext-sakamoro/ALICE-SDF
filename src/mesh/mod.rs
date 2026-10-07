@@ -81,7 +81,7 @@ pub mod gpu_marching_cubes;
 #[cfg(feature = "gpu")]
 pub mod gpu_mc_shaders;
 
-pub use bvh::{Aabb, BvhNode, MeshBvh, Triangle as BvhTriangle};
+pub use bvh::{Aabb, BvhNode, BvhTriangle, MeshBvh};
 pub use collision::{
     compute_aabb, compute_bounding_sphere, compute_convex_hull, convex_decomposition,
     convex_hull_from_points, simplify_collision, BoundingSphere, CollisionAabb, CollisionMesh,
@@ -124,7 +124,7 @@ pub use point_cloud_sdf::point_cloud_to_sdf;
 pub use point_cloud_sdf::{PointCloudSdf, PointCloudSdfConfig};
 pub use primitive_fitting::{
     detect_primitive, fit_box, fit_cylinder, fit_plane, fit_sphere, primitives_to_csg,
-    FittedPrimitive, FittingConfig, FittingResult, PrimitiveType,
+    FittedPrimitive, FittedPrimitiveKind, FittingConfig, FittingResult,
 };
 pub use sdf_to_mesh::{
     adaptive_marching_cubes, adaptive_marching_cubes_compiled, marching_cubes,

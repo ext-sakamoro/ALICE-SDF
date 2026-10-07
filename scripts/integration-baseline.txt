@@ -7,51 +7,7 @@
 # applies to them.
 src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph
 src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function
-src/compiled/jit_simd.rs::JitSimd
-src/compiled/jit_simd.rs::JitSimd::compile
-src/compiled/jit_simd.rs::JitSimd::eval
-src/compiled/jit_simd.rs::JitSimd::eval_soa
-src/compiled/simd.rs::Quatx8::inverse
-src/compiled/simd.rs::Quatx8::splat
-src/compiled/simd.rs::Vec3x8::abs
-src/compiled/simd.rs::Vec3x8::clamp
-src/compiled/simd.rs::Vec3x8::dot
-src/compiled/simd.rs::Vec3x8::length
-src/compiled/simd.rs::Vec3x8::length_squared
-src/compiled/simd.rs::Vec3x8::max
-src/compiled/simd.rs::Vec3x8::max_component
-src/compiled/simd.rs::Vec3x8::max_zero
-src/compiled/simd.rs::Vec3x8::min
-src/compiled/simd.rs::Vec3x8::min_component
-src/compiled/simd.rs::Vec3x8::normalize
-src/compiled/simd.rs::Vec3x8::zero
 src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
-src/crispy.rs::BitMask64
-src/crispy.rs::BitMask64::EMPTY
-src/crispy.rs::BitMask64::FULL
-src/crispy.rs::BitMask64::and
-src/crispy.rs::BitMask64::as_u64
-src/crispy.rs::BitMask64::clear
-src/crispy.rs::BitMask64::count_ones
-src/crispy.rs::BitMask64::from_raw
-src/crispy.rs::BitMask64::is_empty
-src/crispy.rs::BitMask64::or
-src/crispy.rs::BitMask64::set
-src/crispy.rs::BitMask64::test
-src/crispy.rs::BloomFilter
-src/crispy.rs::BloomFilter::from_items
-src/crispy.rs::BloomFilter::insert
-src/crispy.rs::BloomFilter::new
-src/crispy.rs::BloomFilter::test
-src/crispy.rs::BloomFilter::test_hash
-src/crispy.rs::branchless_abs
-src/crispy.rs::branchless_clamp
-src/crispy.rs::branchless_max
-src/crispy.rs::branchless_min
-src/crispy.rs::fast_recip
-src/crispy.rs::fast_recip_vec3
-src/crispy.rs::round_half_up_vec3
-src/crispy.rs::select_f32
 src/gi/mod.rs::PointLight
 src/mesh/point_cloud_sdf.rs::PointCloudSdf::new
 src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf
@@ -59,7 +15,6 @@ src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count
 src/primitives/cylinder.rs::sdf_cylinder_infinite
 src/primitives/mod.rs::PrimitiveType
 src/primitives/mod.rs::eval_primitive
-src/primitives/mod.rs::eval_primitive_unchecked
 unindexed: src/font_bridge.rs::FontMetrics
 unindexed: src/font_bridge.rs::char_to_sdf2d
 unindexed: src/font_bridge.rs::font_metrics
