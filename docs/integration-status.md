@@ -7,8 +7,8 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 254 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 953 |
+| L0 | not reached by any non-test code, examples included | 193 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1014 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 931 |
 | | **total** | **2138** |
 
@@ -17,9 +17,9 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 153 unwired items.
+`scripts/wiring-baseline.txt` lists 123 unwired items.
 
-### L0 here but not in the baseline (112)
+### L0 here but not in the baseline (82)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -92,36 +92,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/crispy.rs::BloomFilter`
 - `src/crispy.rs::BloomFilter::insert`
 - `src/crispy.rs::BloomFilter::new`
-- `src/mesh/lod.rs::ContinuousLod`
-- `src/mesh/lod.rs::ContinuousLod::new`
-- `src/mesh/lod.rs::ContinuousLod::update`
-- `src/mesh/lod.rs::DecimationLodConfig`
-- `src/mesh/lod.rs::DecimationLodConfig::fast`
-- `src/mesh/lod.rs::DecimationLodConfig::high_quality`
-- `src/mesh/lod.rs::LodChain`
-- `src/mesh/lod.rs::LodChain::memory_usage`
-- `src/mesh/lod.rs::LodConfig`
-- `src/mesh/lod.rs::LodConfig::fast`
-- `src/mesh/lod.rs::LodConfig::high_quality`
-- `src/mesh/lod.rs::LodMesh`
-- `src/mesh/lod.rs::LodMesh::blend_factor`
-- `src/mesh/lod.rs::LodMesh::is_active`
-- `src/mesh/lod.rs::LodSelector`
-- `src/mesh/lod.rs::LodSelector::is_acceptable`
-- `src/mesh/lod.rs::LodSelector::screen_error`
-- `src/mesh/lod.rs::LodSelector::select`
-- `src/mesh/lod_persist.rs::LodChainPersist::level_count`
-- `src/mesh/lod_persist.rs::LodChainPersist::mesh`
-- `src/mesh/meshlet.rs::Meshlet`
-- `src/mesh/meshlet.rs::Meshlet::triangle_count`
-- `src/mesh/meshlet.rs::Meshlet::vertex_count`
-- `src/mesh/meshlet.rs::MeshletConfig`
-- `src/mesh/nanite.rs::ClusterBounds::screen_error`
-- `src/mesh/nanite.rs::NaniteCluster::vertex_count`
-- `src/mesh/nanite.rs::NaniteMesh::clusters_at_lod`
-- `src/mesh/nanite.rs::NaniteMesh::to_mesh`
-- `src/mesh/nanite.rs::NaniteMesh::total_vertices`
-- `src/mesh/nanite.rs::NormalCone`
 - `src/physics_bridge.rs::CompiledSdfField`
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
 - `src/physics_bridge.rs::CompiledSdfField::from_arc`
@@ -142,7 +112,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (254)
+## L0 — unreached (193)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
@@ -302,69 +272,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/crispy.rs::round_half_up_vec3`
 - `src/crispy.rs::select_f32`
 - `src/gi/mod.rs::PointLight`
-- `src/mesh/lod.rs::ContinuousLod`
-- `src/mesh/lod.rs::ContinuousLod::get_render_meshes`
-- `src/mesh/lod.rs::ContinuousLod::new`
-- `src/mesh/lod.rs::ContinuousLod::update`
-- `src/mesh/lod.rs::DecimationLodConfig`
-- `src/mesh/lod.rs::DecimationLodConfig::distance_range`
-- `src/mesh/lod.rs::DecimationLodConfig::fast`
-- `src/mesh/lod.rs::DecimationLodConfig::high_quality`
-- `src/mesh/lod.rs::LodChain`
-- `src/mesh/lod.rs::LodChain::base_triangle_count`
-- `src/mesh/lod.rs::LodChain::get_blend_pair`
-- `src/mesh/lod.rs::LodChain::get_level`
-- `src/mesh/lod.rs::LodChain::get_lod`
-- `src/mesh/lod.rs::LodChain::memory_usage`
-- `src/mesh/lod.rs::LodChain::select_by_error`
-- `src/mesh/lod.rs::LodConfig`
-- `src/mesh/lod.rs::LodConfig::balanced`
-- `src/mesh/lod.rs::LodConfig::distance_range`
-- `src/mesh/lod.rs::LodConfig::fast`
-- `src/mesh/lod.rs::LodConfig::high_quality`
-- `src/mesh/lod.rs::LodConfig::resolution_at_level`
-- `src/mesh/lod.rs::LodMesh`
-- `src/mesh/lod.rs::LodMesh::blend_factor`
-- `src/mesh/lod.rs::LodMesh::is_active`
-- `src/mesh/lod.rs::LodSelector`
-- `src/mesh/lod.rs::LodSelector::high_res`
-- `src/mesh/lod.rs::LodSelector::is_acceptable`
-- `src/mesh/lod.rs::LodSelector::screen_error`
-- `src/mesh/lod.rs::LodSelector::select`
-- `src/mesh/lod.rs::generate_lod_chain`
-- `src/mesh/lod.rs::generate_lod_chain_decimated`
-- `src/mesh/lod_persist.rs::LodChainPersist::level_count`
-- `src/mesh/lod_persist.rs::LodChainPersist::mesh`
-- `src/mesh/lod_persist.rs::LodChainPersist::select_lod`
-- `src/mesh/lod_persist.rs::LodChainPersist::summary`
-- `src/mesh/lod_persist.rs::LodChainPersist::total_memory_bytes`
-- `src/mesh/lod_persist.rs::LodChainSummary`
-- `src/mesh/meshlet.rs::Meshlet`
-- `src/mesh/meshlet.rs::Meshlet::triangle_count`
-- `src/mesh/meshlet.rs::Meshlet::vertex_count`
-- `src/mesh/meshlet.rs::MeshletConfig`
-- `src/mesh/meshlet.rs::MeshletConfig::quality`
-- `src/mesh/meshlet.rs::build_meshlets`
-- `src/mesh/meshlet.rs::build_meshlets_adjacency`
-- `src/mesh/meshlet.rs::build_meshlets_scan`
-- `src/mesh/nanite.rs::CLUSTER_MAX_VERTICES`
-- `src/mesh/nanite.rs::ClusterBounds::is_visible`
-- `src/mesh/nanite.rs::ClusterBounds::screen_error`
 - `src/mesh/nanite.rs::NaniteCluster::should_render`
-- `src/mesh/nanite.rs::NaniteCluster::vertex_count`
-- `src/mesh/nanite.rs::NaniteConfig::high_detail`
-- `src/mesh/nanite.rs::NaniteConfig::medium_detail`
-- `src/mesh/nanite.rs::NaniteConfig::preview`
-- `src/mesh/nanite.rs::NaniteMesh::clusters_at_lod`
-- `src/mesh/nanite.rs::NaniteMesh::get_cluster`
 - `src/mesh/nanite.rs::NaniteMesh::select_clusters`
-- `src/mesh/nanite.rs::NaniteMesh::to_mesh`
-- `src/mesh/nanite.rs::NaniteMesh::total_vertices`
-- `src/mesh/nanite.rs::NormalCone`
-- `src/mesh/nanite.rs::NormalCone::from_normals`
-- `src/mesh/nanite.rs::NormalCone::from_normals_and_positions`
-- `src/mesh/nanite.rs::NormalCone::is_backface_culled`
-- `src/mesh/nanite.rs::NormalCone::unbounded`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
 - `src/physics_bridge.rs::CompiledSdfField`
 - `src/physics_bridge.rs::CompiledSdfField::arc`
@@ -421,7 +330,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (953)
+## L1 — example-only (1014)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
@@ -483,15 +392,18 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/dual_contouring.rs`: `DualContouringConfig::aaa`, `dual_contouring_compiled`
 - `src/mesh/hermite.rs`: `EdgeCrossing`, `EdgeCrossing::t`, `HermiteConfig`, `HermiteExtractor`, `HermiteExtractor::extract_edge_crossings`, `HermiteExtractor::extract_surface_points`, `HermiteExtractor::new`, `HermitePoint`, `HermitePoint::new`, `extract_edge_crossings`, `extract_hermite`
 - `src/mesh/lightmap.rs`: `generate_lightmap_uvs`, `generate_lightmap_uvs_fast`
+- `src/mesh/lod.rs`: `ContinuousLod`, `ContinuousLod::get_render_meshes`, `ContinuousLod::new`, `ContinuousLod::update`, `DecimationLodConfig`, `DecimationLodConfig::distance_range`, `DecimationLodConfig::fast`, `DecimationLodConfig::high_quality`, `LodChain`, `LodChain::base_triangle_count`, `LodChain::get_blend_pair`, `LodChain::get_level`, `LodChain::get_lod`, `LodChain::memory_usage`, `LodChain::select_by_error`, `LodConfig`, `LodConfig::balanced`, `LodConfig::distance_range`, `LodConfig::fast`, `LodConfig::high_quality`, `LodConfig::resolution_at_level`, `LodMesh`, `LodMesh::blend_factor`, `LodMesh::is_active`, `LodSelector`, `LodSelector::high_res`, `LodSelector::is_acceptable`, `LodSelector::screen_error`, `LodSelector::select`, `generate_lod_chain`, `generate_lod_chain_decimated`
+- `src/mesh/lod_persist.rs`: `LodChainPersist::level_count`, `LodChainPersist::mesh`, `LodChainPersist::select_lod`, `LodChainPersist::summary`, `LodChainPersist::total_memory_bytes`, `LodChainSummary`
 - `src/mesh/manifold.rs`: `MeshQuality`, `MeshRepair`, `MeshRepair::drop_specks`, `MeshRepair::fill_holes`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::orient_faces`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `compute_quality`, `validate_mesh`
 - `src/mesh/mesh_codec.rs`: `CodecError`, `decode_indices`, `decode_positions`, `encode_indices`, `encode_mesh`, `encode_positions`
 - `src/mesh/mesh_sign.rs`: `ExteriorField`, `ExteriorField::MAX_BAND_STEPS`, `ExteriorField::MAX_CELLS`, `ExteriorField::PADDING_CELLS`, `ExteriorField::build`, `ExteriorField::cell_size`, `ExteriorField::dims`, `ExteriorField::is_exterior`, `ExteriorField::signed_distance`
 - `src/mesh/mesh_to_sdf.rs`: `MeshSdf`, `MeshSdf::bounds`, `MeshSdf::bvh`, `MeshSdf::eval`, `MeshSdf::eval_batch`, `MeshSdf::eval_unsigned`, `MeshSdf::eval_unsigned_batch`, `MeshSdf::gradient`, `MeshSdf::new`, `MeshSdf::sign_mode`, `MeshSdf::to_sdf_node`, `MeshSdf::triangle_count`, `MeshSdf::try_new`, `MeshToSdfConfig::accurate`, `MeshToSdfConfig::hybrid`, `MeshToSdfConfig::topology_robust`, `mesh_to_sdf_exact`
+- `src/mesh/meshlet.rs`: `Meshlet`, `Meshlet::triangle_count`, `Meshlet::vertex_count`, `MeshletConfig`, `MeshletConfig::quality`, `build_meshlets`, `build_meshlets_adjacency`, `build_meshlets_scan`
 - `src/mesh/meshopt_filter.rs`: `decode_filter_exp_u32_in_place`, `decode_filter_oct_i16_in_place`, `decode_filter_quat_i16_in_place`, `encode_filter_exp_one`, `encode_filter_exp_u32`, `encode_filter_oct_i16`, `encode_filter_oct_one`, `encode_filter_quat_i16`, `encode_filter_quat_one`, `quantize_snorm`, `try_decode_filter_oct_i16_in_place`, `try_encode_filter_oct_i16`, `try_encode_filter_quat_i16`
 - `src/mesh/meshopt_index_codec.rs`: `decode_index_buffer`
 - `src/mesh/meshopt_vertex_codec.rs`: `decode_vertex_buffer`, `encode_vertex_buffer`
 - `src/mesh/mod.rs`: `Triangle`, `Triangle::new`, `Vertex::with_all`
-- `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteConfig`, `NaniteMesh`, `generate_nanite_mesh`
+- `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `CLUSTER_MAX_VERTICES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterBounds::is_visible`, `ClusterBounds::screen_error`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteCluster::vertex_count`, `NaniteConfig`, `NaniteConfig::high_detail`, `NaniteConfig::medium_detail`, `NaniteConfig::preview`, `NaniteMesh`, `NaniteMesh::clusters_at_lod`, `NaniteMesh::get_cluster`, `NaniteMesh::to_mesh`, `NaniteMesh::total_vertices`, `NormalCone`, `NormalCone::from_normals`, `NormalCone::from_normals_and_positions`, `NormalCone::is_backface_culled`, `NormalCone::unbounded`, `generate_nanite_mesh`
 - `src/mesh/optimize.rs`: `compute_acmr`, `compute_atvr`, `optimize_vertex_cache`, `optimize_vertex_fetch`
 - `src/mesh/overdraw.rs`: `default_view_directions`, `optimize_overdraw`, `optimize_overdraw_with_views`
 - `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::new`, `PointCloudSdf::point_count`, `PointCloudSdf::try_new`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`, `point_cloud_to_sdf`

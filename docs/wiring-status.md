@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **165 baseline items** — Permitted violations, ratchet in place
+🟡 **134 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (165 permitted)
+## 📋 Baseline (134 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -21,22 +21,19 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/crispy.rs` | 16 |
 | `src/sim_bridge.rs` | 14 |
 | `src/compiled/wgsl/gpu_eval.rs` | 13 |
-| `src/mesh/lod.rs` | 13 |
 | `src/codec_bridge.rs` | 12 |
-| `src/mesh/nanite.rs` | 12 |
 | `src/cache/chunked.rs` | 9 |
 | `src/compiled/glsl/transpiler.rs` | 5 |
 | `src/compiled/wgsl/transpiler.rs` | 5 |
 | `src/font_bridge.rs` | 5 |
 | `src/asp_bridge.rs` | 4 |
 | `src/ffi/registry.rs` | 4 |
-| `src/mesh/lod_persist.rs` | 4 |
-| `src/mesh/meshlet.rs` | 4 |
 | `src/cache/mod.rs` | 3 |
 | `src/compiled/hlsl/transpiler.rs` | 3 |
 | `src/compiled/simd.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
+| `src/mesh/nanite.rs` | 2 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
@@ -64,7 +61,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (155)
+### Unwired Items (124)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -167,39 +164,8 @@ unwired src/font_bridge.rs::font_metrics
 unwired src/font_bridge.rs::glyph_to_sdf2d
 unwired src/font_bridge.rs::text_to_sdf2d
 unwired src/gi/mod.rs::PointLight
-unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
-unwired src/mesh/lod.rs::LodConfig::distance_range
-unwired src/mesh/lod.rs::balanced
-unwired src/mesh/lod.rs::base_triangle_count
-unwired src/mesh/lod.rs::generate_lod_chain
-unwired src/mesh/lod.rs::generate_lod_chain_decimated
-unwired src/mesh/lod.rs::get_blend_pair
-unwired src/mesh/lod.rs::get_level
-unwired src/mesh/lod.rs::get_lod
-unwired src/mesh/lod.rs::get_render_meshes
-unwired src/mesh/lod.rs::high_res
-unwired src/mesh/lod.rs::resolution_at_level
-unwired src/mesh/lod.rs::select_by_error
-unwired src/mesh/lod_persist.rs::LodChainSummary
-unwired src/mesh/lod_persist.rs::select_lod
-unwired src/mesh/lod_persist.rs::summary
-unwired src/mesh/lod_persist.rs::total_memory_bytes
-unwired src/mesh/meshlet.rs::build_meshlets
-unwired src/mesh/meshlet.rs::build_meshlets_adjacency
-unwired src/mesh/meshlet.rs::build_meshlets_scan
-unwired src/mesh/meshlet.rs::quality
-unwired src/mesh/nanite.rs::CLUSTER_MAX_VERTICES
-unwired src/mesh/nanite.rs::from_normals
-unwired src/mesh/nanite.rs::from_normals_and_positions
-unwired src/mesh/nanite.rs::get_cluster
-unwired src/mesh/nanite.rs::high_detail
-unwired src/mesh/nanite.rs::is_backface_culled
-unwired src/mesh/nanite.rs::is_visible
-unwired src/mesh/nanite.rs::medium_detail
-unwired src/mesh/nanite.rs::preview
 unwired src/mesh/nanite.rs::select_clusters
 unwired src/mesh/nanite.rs::should_render
-unwired src/mesh/nanite.rs::unbounded
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
 unwired src/physics_bridge.rs::arc
