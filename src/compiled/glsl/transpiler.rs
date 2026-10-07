@@ -240,9 +240,18 @@ impl GlslShader {
         transpiler.params
     }
 
-    /// Generate GLSL for Unity Shader Graph Custom Function
+    /// GLSL text wrapped in a Unity Shader Graph Custom Function signature
     ///
-    /// Returns code suitable for pasting into a Custom Function node in Unity.
+    /// **The output is GLSL syntax (`vec3`, `mix`, ...) and does not compile in
+    /// Unity Shader Graph, which takes HLSL.** A `GlslShader` holds only the
+    /// GLSL source, so it cannot produce the HLSL; transpile the same node with
+    /// [`crate::compiled::HlslShader`] and call its `to_unity_custom_function`,
+    /// whose output is compiled in the test suite. Kept unchanged for existing
+    /// callers.
+    #[deprecated(
+        since = "4.2.0",
+        note = "the output is GLSL and does not compile in Unity Shader Graph; use HlslShader::to_unity_custom_function"
+    )]
     pub fn to_unity_custom_function(&self) -> String {
         let dynamic_note = if self.mode == GlslTranspileMode::Dynamic {
             "// NOTE: Dynamic mode - parameters are read from uniform block SdfParams.\n// Set up a UBO to update params at runtime.\n"
@@ -311,6 +320,74 @@ void main() {{
 }}
 ",
             self.version,
+            mode = self.mode,
+            params_decl = params_decl,
+            source = self.source
+        )
+    }
+
+    /// Generate a Vulkan GLSL compute shader for batch evaluation
+    ///
+    /// [`Self::to_compute_shader`] targets OpenGL: its loose
+    /// `layout(location = 0) uniform uint point_count` and its blocks without a
+    /// descriptor set are not valid Vulkan GLSL (GL_KHR_vulkan_glsl). This
+    /// output is the same kernel with a Vulkan host interface, always
+    /// `#version 450` (ignoring [`Self::version`]), descriptor set 0:
+    ///
+    /// | binding | resource |
+    /// |---|---|
+    /// | 0 | `readonly buffer InputBuffer { InputPoint input_points[]; }` (`x, y, z, pad` as 4 floats) |
+    /// | 1 | `buffer OutputBuffer { OutputDistance output_distances[]; }` (`distance, pad, pad, pad`) |
+    /// | 2 | `uniform Constants { uint point_count; }` |
+    /// | 3 | Dynamic mode only: `uniform SdfParams { vec4 params[1024]; }`, laid out as [`Self::extract_params`] |
+    ///
+    /// Bindings 0-2 are the layout [`crate::compiled::GpuEvaluator`] binds, so
+    /// a Hardcoded shader runs through `GpuEvaluator::from_glsl_compute`.
+    pub fn to_vulkan_compute_shader(&self) -> String {
+        let params_decl = if self.mode == GlslTranspileMode::Dynamic {
+            "\nlayout(std140, set = 0, binding = 3) uniform SdfParams {\n    vec4 params[1024]; // 4096 scalar floats\n};\n"
+        } else {
+            ""
+        };
+
+        format!(
+            r"#version 450
+
+// ALICE-SDF Generated Vulkan GLSL Compute Shader ({mode:?} Mode)
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct InputPoint {{
+    float x, y, z, _pad;
+}};
+
+struct OutputDistance {{
+    float distance, _pad1, _pad2, _pad3;
+}};
+
+layout(std430, set = 0, binding = 0) readonly buffer InputBuffer {{
+    InputPoint input_points[];
+}};
+
+layout(std430, set = 0, binding = 1) buffer OutputBuffer {{
+    OutputDistance output_distances[];
+}};
+
+layout(std140, set = 0, binding = 2) uniform Constants {{
+    uint point_count;
+}};
+{params_decl}
+{source}
+
+void main() {{
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= point_count) return;
+
+    InputPoint pt = input_points[idx];
+    vec3 p = vec3(pt.x, pt.y, pt.z);
+    output_distances[idx].distance = sdf_eval(p);
+}}
+",
             mode = self.mode,
             params_decl = params_decl,
             source = self.source
@@ -409,15 +486,49 @@ void main() {{
     /// let shader = GlslShader::transpile(&shape, GlslTranspileMode::Hardcoded);
     /// let full = shader.to_fragment_shader_full(&RenderConfig::default());
     /// ```
+    ///
+    /// With `config.dual_sdf` the light-weight `sdf_eval_lite` used for AO /
+    /// shadow / rain is the scene itself (a transpiled tree has no separate
+    /// simplified version).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `config.material_slots > 1`. A transpiled tree has a single
+    /// material and its `sdf_eval` returns a `float`, while the multi-material
+    /// pipeline needs `vec2 sdf_eval` and a `getMat`; the shader would not
+    /// compile. For a multi-material scene write that source and call
+    /// [`super::render_pipeline::build_full_shader`].
     pub fn to_fragment_shader_full(&self, config: &super::render_pipeline::RenderConfig) -> String {
-        super::render_pipeline::build_full_shader(&self.source, config)
+        assert!(
+            config.material_slots <= 1,
+            "GlslShader::to_fragment_shader_full: material_slots = {} needs a multi-material \
+             source (vec2 sdf_eval + getMat); a transpiled tree has one material. \
+             Use render_pipeline::build_full_shader with your own source.",
+            config.material_slots
+        );
+        if config.dual_sdf {
+            let source = format!(
+                "{}\nfloat sdf_eval_lite(vec3 p) {{ return sdf_eval(p); }}\n",
+                self.source
+            );
+            super::render_pipeline::build_full_shader(&source, config)
+        } else {
+            super::render_pipeline::build_full_shader(&self.source, config)
+        }
     }
 
-    /// Export as Unity Shader Graph Custom Function (.hlsl file)
+    /// GLSL text wrapped in a Unity Shader Graph Custom Function file layout
     ///
-    /// Generates an HLSL file compatible with Unity's Shader Graph Custom Function node.
-    /// Place the output in `Assets/Shaders/` and reference it in a Custom Function node
-    /// with mode "File", selecting `AliceSdf_float` as the entry point.
+    /// **The embedded SDF functions are GLSL syntax (`vec3`, `mix`, ...) inside
+    /// an `.hlsl` file, so the output does not compile in Unity Shader Graph.**
+    /// A `GlslShader` holds only the GLSL source, so it cannot produce the
+    /// HLSL; transpile the same node with [`crate::compiled::HlslShader`] and
+    /// call its `export_unity_shader_graph`, whose output is compiled in the
+    /// test suite. Kept unchanged for existing callers.
+    #[deprecated(
+        since = "4.2.0",
+        note = "the output embeds GLSL and does not compile in Unity Shader Graph; use HlslShader::export_unity_shader_graph"
+    )]
     pub fn export_unity_shader_graph(&self) -> String {
         let params_section = if self.mode == GlslTranspileMode::Dynamic {
             "// Dynamic parameters - bind via MaterialPropertyBlock or UBO\nuniform float4 _SdfParams[1024];\n#define params _SdfParams\n\n"
@@ -1581,6 +1692,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)] // pins the legacy output kept for existing callers
     fn test_unity_custom_function() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
         let shader = GlslShader::transpile(&sphere, GlslTranspileMode::Hardcoded);
@@ -1690,6 +1802,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)] // pins the legacy output kept for existing callers
     fn test_unity_shader_graph_export() {
         let shape = SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5));
         let shader = GlslShader::transpile(&shape, GlslTranspileMode::Hardcoded);

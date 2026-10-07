@@ -5,7 +5,8 @@
 //!
 //! - **Unreal Engine 5**: Custom Material Expression nodes
 //! - **DirectX 11/12**: Compute shaders and pixel shaders
-//! - **Unity HDRP**: Custom shader passes (with minor modifications)
+//! - **Unity Shader Graph**: Custom Function files (`to_unity_custom_function`,
+//!   `export_unity_shader_graph`)
 //!
 //! # Usage
 //!

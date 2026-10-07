@@ -3,9 +3,10 @@
 //! One scene is written out in the forms the GLSL, HLSL and BlinkScript
 //! transpilers provide beyond the bare `sdf_eval` function:
 //!
-//! - GLSL: an OpenGL 4.5 compute shader, a Shadertoy-style fragment shader and
-//!   the full WebGL2 rendering pipeline (`RenderConfig`)
-//! - HLSL: a compute shader and an Unreal material function (`.ush`)
+//! - GLSL: an OpenGL 4.5 compute shader, its Vulkan variant, a Shadertoy-style
+//!   fragment shader and the full WebGL2 rendering pipeline (`RenderConfig`)
+//! - HLSL: a compute shader, an Unreal material function (`.ush`) and Custom
+//!   node body, and the Unity Shader Graph Custom Function files
 //! - BlinkScript: the `sdf_eval` body for a hand-written kernel
 //! - the Dynamic parameter layouts that drive the uniform / constant buffers
 //!
@@ -47,6 +48,10 @@ fn main() {
     let compute = glsl.to_compute_shader();
     assert!(compute.starts_with("#version 450") && compute.contains("void main()"));
     emit("sdf_compute.comp", &compute);
+
+    let vulkan = glsl.to_vulkan_compute_shader();
+    assert!(vulkan.contains("set = 0, binding = 2) uniform Constants"));
+    emit("sdf_compute_vulkan.comp", &vulkan);
 
     let fragment = glsl.to_fragment_shader();
     assert!(fragment.contains("uniform vec2 iResolution;") && fragment.contains("sdf_eval(p)"));
@@ -90,6 +95,21 @@ fn main() {
     let material_function = hlsl.export_ue5_material_function();
     assert!(material_function.contains("float AliceSdf_Eval(float3 WorldPosition)"));
     emit("MF_AliceSdf.ush", &material_function);
+
+    // Unreal Custom node: a function body (helpers are member functions of a
+    // local struct, as HLSL has no nested functions).
+    let custom_node = hlsl.to_ue5_custom_node();
+    assert!(custom_node.contains("return alice_sdf_custom_node.sdf_eval(p);"));
+    emit("ue5_custom_node.hlsl", &custom_node);
+
+    // Unity Shader Graph Custom Function files (Type: File).
+    let unity_cf = hlsl.to_unity_custom_function();
+    assert!(unity_cf.contains("void SdfEval_float(float3 p, out float distance)"));
+    emit("SdfEval.hlsl", &unity_cf);
+    let unity_sg = hlsl.export_unity_shader_graph();
+    assert!(unity_sg.contains("void AliceSdf_float(float3 Position"));
+    assert!(!unity_sg.contains("vec3"));
+    emit("AliceSdf.hlsl", &unity_sg);
 
     // ---- BlinkScript ----
     let blink = BlinkScriptShader::transpile(&shape, BlinkScriptTranspileMode::Hardcoded);

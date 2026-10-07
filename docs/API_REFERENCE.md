@@ -488,11 +488,11 @@ let aabb = get_scene_aabb(&bvh);
 ### GLSL
 
 ```rust
-use alice_sdf::compiled::GlslShader;
-let shader = GlslShader::transpile(&shape);
-let unity_code = shader.to_unity_custom_function();
+use alice_sdf::compiled::{GlslShader, GlslTranspileMode};
+let shader = GlslShader::transpile(&shape, GlslTranspileMode::Hardcoded);
 let frag_code = shader.to_fragment_shader();
-let compute_code = shader.to_compute_shader();
+let compute_code = shader.to_compute_shader();          // OpenGL
+let vulkan_code = shader.to_vulkan_compute_shader();    // Vulkan
 ```
 
 ### HLSL
@@ -500,7 +500,8 @@ let compute_code = shader.to_compute_shader();
 ```rust
 use alice_sdf::compiled::{HlslShader, HlslTranspileMode};
 let shader = HlslShader::transpile(&shape, HlslTranspileMode::Hardcoded);
-let ue5_code = shader.to_ue5_custom_node();
+let ue5_code = shader.to_ue5_custom_node();              // UE5 Custom node body
+let unity_code = shader.to_unity_custom_function();      // Unity Shader Graph (Type: File)
 let compute_code = shader.to_compute_shader();
 ```
 

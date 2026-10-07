@@ -253,7 +253,7 @@ Analysis & measurement:
 | Method | Output | Target Engine |
 |--------|--------|---------------|
 | `HlslShader::export_ue5_material_function()` | `.ush` Material Function include | Unreal Engine 5 (Custom Expression) |
-| `GlslShader::export_unity_shader_graph()` | `.hlsl` Custom Function node | Unity Shader Graph (HDRP/URP) |
+| `HlslShader::export_unity_shader_graph()` | `.hlsl` Custom Function node | Unity Shader Graph (HDRP/URP) |
 
 ## Mesh Module
 

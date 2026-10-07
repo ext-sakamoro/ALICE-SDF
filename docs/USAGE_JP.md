@@ -253,7 +253,7 @@ Layer 16: interval.rs       -- 区間演算評価 + リプシッツ定数
 | メソッド | 出力 | ターゲットエンジン |
 |--------|--------|---------------|
 | `HlslShader::export_ue5_material_function()` | `.ush` Material Functionインクルード | Unreal Engine 5（Custom Expression） |
-| `GlslShader::export_unity_shader_graph()` | `.hlsl` Custom Functionノード | Unity Shader Graph（HDRP/URP） |
+| `HlslShader::export_unity_shader_graph()` | `.hlsl` Custom Functionノード | Unity Shader Graph（HDRP/URP） |
 
 ## メッシュモジュール
 

@@ -4,9 +4,11 @@
 //! | output | oracle |
 //! |---|---|
 //! | `GlslShader::to_compute_shader` (Hardcoded / Dynamic) | run on the GPU through naga's GLSL front end; every output equals the closed form of the scene |
+//! | `GlslShader::to_vulkan_compute_shader` (Hardcoded / Dynamic) | validated by naga **as emitted** (no rewrite); Hardcoded runs on the GPU and equals the closed form; Dynamic A fed B's parameters evaluates B |
 //! | `GlslShader::extract_params` | the literals of the tree, bit-exact, in the layout `transpile(.., Dynamic)` reads: A's Dynamic library fed B's parameters evaluates B on the GPU |
 //! | `GlslShader::to_fragment_shader` | parses and validates with naga (Hardcoded and Dynamic) |
-//! | `GlslShader::to_fragment_shader_full` / `RenderConfig` | parses and validates with naga for every feature flag on its own and all of them together; `max_steps` / `max_distance` reach the march loop |
+//! | `GlslShader::to_fragment_shader_full` / `RenderConfig` | parses and validates with naga for every feature flag on its own and all of them together, and with `dual_sdf`; `max_steps` / `max_distance` reach the march loop; `material_slots > 1` panics; the header names the crate version |
+//! | `render_pipeline::build_full_shader` with `material_slots > 1` | a `vec2 sdf_eval` + `getMat` source validates with naga |
 //!
 //! # The host-interface rewrite
 //!
@@ -383,4 +385,155 @@ fn full_pipeline_parses_and_validates_for_every_flag() {
         "max_steps reaches the loop"
     );
     assert!(full.contains("33.5"), "max_distance reaches the shader");
+}
+
+/// `GlslShader::to_vulkan_compute_shader` is valid Vulkan GLSL **as emitted**
+/// (no `vulkanize` rewrite), and a Hardcoded shader runs through
+/// `GpuEvaluator::from_glsl_compute`, whose bind group is bindings 0-2 of the
+/// documented layout, and returns the closed form.
+#[test]
+fn vulkan_compute_shader_validates_as_emitted_and_runs() {
+    let pts = points(1000);
+    let hard = GlslShader::transpile(&A.node(), GlslTranspileMode::Hardcoded);
+    let vk = hard.to_vulkan_compute_shader();
+    assert!(vk.starts_with("#version 450\n"));
+    assert!(
+        !vk.contains("layout(location = 0) uniform"),
+        "no loose uniform in a Vulkan shader"
+    );
+    validate(
+        naga::ShaderStage::Compute,
+        "vulkan compute (Hardcoded)",
+        &vk,
+    );
+    if let Some(gpu) = gpu_or_skip("vulkan compute (Hardcoded)", &vk) {
+        let n = check_dist(
+            "vulkan compute (Hardcoded)",
+            A,
+            &pts,
+            &gpu.eval_batch(&pts).unwrap(),
+        );
+        assert_eq!(n, pts.len());
+    }
+
+    // The OpenGL output is left as it was: its loose uniform is what makes it
+    // invalid for Vulkan, which is why the Vulkan variant exists.
+    let gl = hard.to_compute_shader();
+    assert!(gl.contains("layout(location = 0) uniform uint point_count;"));
+
+    // Dynamic: the SdfParams block at set 0 / binding 3 validates as emitted;
+    // fed B's layout (as a constant array in place of the block, since the
+    // evaluator binds three resources) A's Dynamic shader evaluates B.
+    let dyn_a = GlslShader::transpile(&A.node(), GlslTranspileMode::Dynamic);
+    let vk_dyn = dyn_a.to_vulkan_compute_shader();
+    validate(
+        naga::ShaderStage::Compute,
+        "vulkan compute (Dynamic)",
+        &vk_dyn,
+    );
+    let start = vk_dyn
+        .find("layout(std140, set = 0, binding = 3) uniform SdfParams")
+        .expect("params block at binding 3");
+    let end = start + vk_dyn[start..].find("};").unwrap() + 2;
+    let mut padded = GlslShader::extract_params(&B.node());
+    while padded.len() % 4 != 0 {
+        padded.push(0.0);
+    }
+    let consts: Vec<String> = padded
+        .chunks_exact(4)
+        .map(|c| format!("vec4({:e}, {:e}, {:e}, {:e})", c[0], c[1], c[2], c[3]))
+        .collect();
+    let src = format!(
+        "{}const vec4 params[{}] = vec4[]({});{}",
+        &vk_dyn[..start],
+        consts.len(),
+        consts.join(", "),
+        &vk_dyn[end..]
+    );
+    validate(
+        naga::ShaderStage::Compute,
+        "vulkan compute (Dynamic, B)",
+        &src,
+    );
+    if let Some(gpu) = gpu_or_skip("vulkan compute (Dynamic, B's params)", &src) {
+        check_dist(
+            "vulkan Dynamic A fed B's params",
+            B,
+            &pts,
+            &gpu.eval_batch(&pts).unwrap(),
+        );
+    }
+}
+
+/// `dual_sdf` through `to_fragment_shader_full` (the transpiled scene is its
+/// own `sdf_eval_lite`) and the multi-material pipeline through
+/// `build_full_shader` with a `vec2 sdf_eval` + `getMat` source (the COOKBOOK
+/// example, which uses `Mat` before the BRDF section) both validate.
+#[test]
+fn full_pipeline_dual_sdf_and_multi_material_validate() {
+    let shader = GlslShader::transpile(&A.node(), GlslTranspileMode::Hardcoded);
+    let cfg = RenderConfig {
+        dual_sdf: true,
+        ..RenderConfig::default()
+    };
+    validate(
+        naga::ShaderStage::Fragment,
+        "to_fragment_shader_full [dual_sdf]",
+        &vulkanize(&shader.to_fragment_shader_full(&cfg)),
+    );
+
+    let multi = r"
+vec2 sdf_eval(vec3 p) {
+    float ground = p.y;
+    float orb = length(p - vec3(0,2,0)) - 1.0;
+    float id = step(orb, ground);
+    return vec2(min(ground, orb), id);
+}
+Mat getMat(float id, vec3 p) {
+    Mat m; m.emission = vec3(0); m.sss = 0.0;
+    if (id < 0.5) {
+        m.albedo = vec3(0.03); m.metallic = 0.08; m.roughness = 0.18;
+    } else {
+        m.albedo = vec3(0.9, 0.7, 0.2); m.metallic = 0.95; m.roughness = 0.02;
+    }
+    return m;
+}
+";
+    for slots in [2, 8] {
+        let cfg = RenderConfig {
+            material_slots: slots,
+            ..RenderConfig::default()
+        };
+        let full = alice_sdf::compiled::glsl::render_pipeline::build_full_shader(multi, &cfg);
+        assert!(full.contains("getMat(hit.y,p)"));
+        validate(
+            naga::ShaderStage::Fragment,
+            &format!("build_full_shader [material_slots = {slots}]"),
+            &vulkanize(&full),
+        );
+    }
+}
+
+/// A transpiled tree has one material and a `float` `sdf_eval`, which the
+/// multi-material pipeline cannot use: generation panics instead of emitting a
+/// shader that does not compile.
+#[test]
+#[should_panic(expected = "material_slots = 2")]
+fn full_pipeline_from_a_transpiled_tree_rejects_material_slots() {
+    let shader = GlslShader::transpile(&A.node(), GlslTranspileMode::Hardcoded);
+    let cfg = RenderConfig {
+        material_slots: 2,
+        ..RenderConfig::default()
+    };
+    let _ = shader.to_fragment_shader_full(&cfg);
+}
+
+/// The full pipeline's header names the crate version that generated it.
+#[test]
+fn full_pipeline_header_names_the_crate_version() {
+    let shader = GlslShader::transpile(&A.node(), GlslTranspileMode::Hardcoded);
+    let full = shader.to_fragment_shader_full(&RenderConfig::default());
+    let want = format!("// Generated by alice-sdf v{}\n", env!("CARGO_PKG_VERSION"));
+    assert!(full.contains(&want), "header: expected {want:?}");
+    assert_eq!(full.matches("Generated by alice-sdf v").count(), 1);
 }

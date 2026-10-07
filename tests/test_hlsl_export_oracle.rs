@@ -4,6 +4,9 @@
 //! | output | oracle |
 //! |---|---|
 //! | `HlslShader::export_ue5_material_function` | compiled with a C++ compiler against `tests/common/hlsl_cpu_shim.h` and run: `AliceSdf_Eval` is the closed-form distance, `AliceSdf_Normal` the closed-form normal |
+//! | `HlslShader::to_ue5_custom_node` | the body wrapped in a function with input `p` (as UE does), compiled and run: the closed-form distance; Dynamic A's body fed B's parameters evaluates B |
+//! | `HlslShader::to_unity_custom_function` | the file compiled and run through `SdfEval_float`: the closed-form distance |
+//! | `HlslShader::export_unity_shader_graph` | `AliceSdf_float` / `AliceSdf_half`: closed-form distance and normal; Dynamic A's file fed B's parameters through `_SdfParams` evaluates B |
 //! | `HlslShader::extract_params` | the literals of the tree, bit-exact; A's Dynamic material function fed B's parameters evaluates B |
 //! | `BlinkScriptShader::extract_params` | the HLSL layout (the body is the HLSL body); A's Dynamic body fed B's parameters evaluates B |
 //! | `BlinkScriptShader::get_eval_function` | the body itself, which compiles and evaluates the closed form |
@@ -354,4 +357,135 @@ fn blinkscript_params_and_body() {
         &pts,
         &compile_and_run(&cxx, "blink_dyn", &src, &pts, 1),
     );
+}
+
+/// The UE5 Custom node output is a function body (UE wraps it in a function
+/// with the input `p`); it defines its helpers as member functions of a local
+/// struct, since HLSL has no nested function definitions.
+fn custom_node_fn(body: &str) -> String {
+    format!("float custom_node(float3 p) {{\n{body}\n}}\n")
+}
+
+/// A Unity Custom Function file as C++: `out T x` becomes `T &x`, `half` is
+/// `float`, and the file sits in a namespace (it defines its own `sdf_eval`).
+/// In Dynamic mode the `float4 _SdfParams[1024];` declaration is replaced by
+/// `layout`.
+fn unity_file(file: &str, layout: &[f32]) -> String {
+    let mut file = file
+        .replace("out float3 ", "float3 &")
+        .replace("out half3 ", "half3 &")
+        .replace("out float ", "float &")
+        .replace("out half ", "half &");
+    let decl = "float4 _SdfParams[1024];";
+    if let Some(start) = file.find(decl) {
+        let g = params_global(layout).replace("params[", "_SdfParams[");
+        file.replace_range(start..start + decl.len(), &g);
+    }
+    format!("typedef float half;\ntypedef float3 half3;\nnamespace unity {{\n{file}\n}}\n")
+}
+
+#[test]
+fn ue5_custom_node_evaluates_the_closed_form() {
+    let hard = HlslShader::transpile(&A.node(), HlslTranspileMode::Hardcoded);
+    let body = hard.to_ue5_custom_node();
+    assert!(body.contains("struct AliceSdfCustomNode {"));
+    assert!(body.contains("return alice_sdf_custom_node.sdf_eval(p);"));
+    let Some(cxx) = cxx_or_skip() else { return };
+    let pts = points(800);
+    let src = format!(
+        "{SHIM}\n{}\n{}",
+        custom_node_fn(&body),
+        host(1, "out[0] = custom_node(p);")
+    );
+    let d = compile_and_run(&cxx, "ue5_custom", &src, &pts, 1);
+    check_dist("UE5 Custom node", A, &pts, &d);
+
+    // Dynamic: the body reads the global `params`; A's body fed B's layout
+    // evaluates B.
+    let dyn_a = HlslShader::transpile(&A.node(), HlslTranspileMode::Dynamic);
+    let lb = HlslShader::extract_params(&B.node());
+    let src = format!(
+        "{SHIM}\n{}{}\n{}",
+        params_global(&lb),
+        custom_node_fn(&dyn_a.to_ue5_custom_node()),
+        host(1, "out[0] = custom_node(p);")
+    );
+    let d = compile_and_run(&cxx, "ue5_custom_dyn", &src, &pts, 1);
+    check_dist("UE5 Custom node, Dynamic A fed B's params", B, &pts, &d);
+}
+
+#[test]
+fn unity_custom_function_evaluates_the_closed_form() {
+    let hard = HlslShader::transpile(&A.node(), HlslTranspileMode::Hardcoded);
+    let file = hard.to_unity_custom_function();
+    assert!(file.contains("void SdfEval_float(float3 p, out float distance)"));
+    assert!(!file.contains("vec3"), "HLSL, not GLSL");
+    let Some(cxx) = cxx_or_skip() else { return };
+    let pts = points(800);
+    let src = format!(
+        "{SHIM}\n{}\n{}",
+        unity_file(&file, &[]),
+        host(1, "float d; unity::SdfEval_float(p, d); out[0] = d;")
+    );
+    let d = compile_and_run(&cxx, "unity_cf", &src, &pts, 1);
+    check_dist("SdfEval_float", A, &pts, &d);
+}
+
+#[test]
+fn unity_shader_graph_evaluates_distance_and_normal() {
+    let hard = HlslShader::transpile(&A.node(), HlslTranspileMode::Hardcoded);
+    let file = hard.export_unity_shader_graph();
+    assert!(file
+        .contains("void AliceSdf_float(float3 Position, out float Distance, out float3 Normal)"));
+    assert!(file.contains("void AliceSdf_half("));
+    assert!(!file.contains("vec3"), "HLSL, not GLSL");
+    let Some(cxx) = cxx_or_skip() else { return };
+    let pts = points(800);
+    let src = format!(
+        "{SHIM}\n{}\n{}",
+        unity_file(&file, &[]),
+        host(
+            7,
+            "float d; float3 n; unity::AliceSdf_float(p, d, n); \
+             half hd; half3 hn; unity::AliceSdf_half(p, hd, hn); \
+             out[0] = d; out[1] = n.x; out[2] = n.y; out[3] = n.z; \
+             out[4] = hd; out[5] = hn.x; out[6] = hn.y;"
+        )
+    );
+    let got = compile_and_run(&cxx, "unity_sg", &src, &pts, 7);
+    let d: Vec<f32> = got.chunks_exact(7).map(|c| c[0]).collect();
+    check_dist("AliceSdf_float distance", A, &pts, &d);
+    let hd: Vec<f32> = got.chunks_exact(7).map(|c| c[4]).collect();
+    check_dist("AliceSdf_half distance", A, &pts, &hd);
+    for (&p, c) in pts.iter().zip(got.chunks_exact(7)) {
+        let want = A.normal(p);
+        for k in 0..3 {
+            let err = (f64::from(c[k + 1]) - want[k]).abs();
+            assert!(
+                err <= NORMAL_TOL,
+                "AliceSdf_float normal at {p:?}: {:?} vs {want:?}",
+                &c[1..4]
+            );
+        }
+        for k in 0..2 {
+            assert!((f64::from(c[k + 5]) - want[k]).abs() <= NORMAL_TOL);
+        }
+    }
+
+    // Dynamic: `_SdfParams` carries the layout; A's file fed B's evaluates B.
+    let dyn_a = HlslShader::transpile(&A.node(), HlslTranspileMode::Dynamic);
+    let file = dyn_a.export_unity_shader_graph();
+    assert!(file.contains("float4 _SdfParams[1024];"));
+    assert!(file.contains("#undef params"), "the macro does not leak");
+    let lb = HlslShader::extract_params(&B.node());
+    let src = format!(
+        "{SHIM}\n#define params alice_sdf_params_outside_the_file\n{}\n#undef params\n{}",
+        unity_file(&file, &lb),
+        host(
+            1,
+            "float d; float3 n; unity::AliceSdf_float(p, d, n); out[0] = d;"
+        )
+    );
+    let d = compile_and_run(&cxx, "unity_sg_dyn", &src, &pts, 1);
+    check_dist("AliceSdf_float, Dynamic A fed B's params", B, &pts, &d);
 }

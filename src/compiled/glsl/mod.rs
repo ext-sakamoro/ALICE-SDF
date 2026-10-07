@@ -3,9 +3,11 @@
 //! This module provides GLSL code generation for SDF trees.
 //! Output is compatible with:
 //!
-//! - **Unity**: Shader Graph Custom Function, URP/HDRP shaders
 //! - **OpenGL 4.x**: Compute shaders and fragment shaders
-//! - **Vulkan**: GLSL shaders via glslang/SPIRV-Cross
+//! - **Vulkan**: compute shaders (`to_vulkan_compute_shader`)
+//!
+//! Unity Shader Graph takes HLSL: use `HlslShader::to_unity_custom_function`
+//! / `HlslShader::export_unity_shader_graph` (`hlsl` feature).
 //! - **Shadertoy**: Fragment shader for web-based visualization
 //!
 //! # Usage
@@ -20,16 +22,13 @@
 //! // Generate GLSL code
 //! let shader = GlslShader::transpile(&shape);
 //!
-//! // For Unity Shader Graph Custom Function
-//! let unity_code = shader.to_unity_custom_function();
-//! println!("{}", unity_code);
-//!
 //! // For Shadertoy-style fragment shader
 //! let fragment = shader.to_fragment_shader();
 //! println!("{}", fragment);
 //!
-//! // For OpenGL Compute Shader
+//! // For OpenGL / Vulkan Compute Shader
 //! let compute = shader.to_compute_shader();
+//! let vulkan = shader.to_vulkan_compute_shader();
 //! println!("{}", compute);
 //! ```
 //!

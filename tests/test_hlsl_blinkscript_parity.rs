@@ -392,14 +392,14 @@ fn worst_drift(node: &SdfNode, pts: &[Vec3], got: &[f32]) -> (f32, Vec3, f32, f3
 /// `mutate` deliberately sees only the emit, never the assembled translation
 /// unit: anything it appends has to land *before* the host `main`, or the
 /// harness fails to compile instead of measuring.
-fn hlsl_units(mode: HlslTranspileMode, mutate: &impl Fn(&str) -> String) -> Vec<Unit> {
+fn hlsl_units(mode: HlslTranspileMode, emit: &impl Fn(&HlslShader) -> String) -> Vec<Unit> {
     corpus()
         .into_iter()
         .map(|(name, node)| {
             let sh = HlslShader::transpile(&node, mode);
             Unit {
                 name: name.to_string(),
-                src: translation_unit(&mutate(&sh.source), &params_global(&sh.param_layout)),
+                src: translation_unit(&emit(&sh), &params_global(&sh.param_layout)),
             }
         })
         .collect()
@@ -413,9 +413,21 @@ fn sweep(
     mode: HlslTranspileMode,
     mutate: impl Fn(&str) -> String,
 ) -> (Vec<String>, f32, String, usize) {
+    sweep_emit(cxx, tag, mode, |sh| mutate(&sh.source))
+}
+
+/// [`sweep`] over an arbitrary rendering of each node's `HlslShader`: `emit`
+/// must define `float sdf_eval(float3 p)` for the host to call (the engine
+/// wrappers below define it by calling their entry point).
+fn sweep_emit(
+    cxx: &str,
+    tag: &str,
+    mode: HlslTranspileMode,
+    emit: impl Fn(&HlslShader) -> String,
+) -> (Vec<String>, f32, String, usize) {
     let dir = scratch(tag);
     let pts = points(POINTS);
-    let units = hlsl_units(mode, &mutate);
+    let units = hlsl_units(mode, &emit);
     let bins = compile_all(cxx, &dir, &units);
 
     let mut drifted = Vec::new();
@@ -647,6 +659,117 @@ fn hlsl_dynamic_matches_cpu_for_every_corpus_node() {
     eprintln!(
         "HLSL(Dynamic)/CPU parity over {checked} corpus nodes x {POINTS} points: \
          worst {worst:.3e} ({worst_name})"
+    );
+}
+
+// ===========================================================================
+// Engine wrappers (UE5 Custom node, Unity Shader Graph Custom Function)
+// ===========================================================================
+
+/// `HlslShader::to_ue5_custom_node` is a function **body**: UE pastes it into
+/// a generated function with the input `p`, so the harness does the same.
+fn ue5_custom_node_unit(sh: &HlslShader) -> String {
+    format!(
+        "float sdf_eval(float3 p) {{\n{}\n}}\n",
+        sh.to_ue5_custom_node()
+    )
+}
+
+/// A Unity Custom Function file, made compilable as C++ and wrapped so the
+/// host's `sdf_eval` goes through `entry`.
+///
+/// Two HLSL-only spellings are mapped to their C++ equivalents: `out T x`
+/// parameters become `T &x`, and `half` / `half3` are `float` (the shim has no
+/// half type). The file sits in a namespace because it defines its own
+/// `sdf_eval`. In Dynamic mode its `float4 _SdfParams[1024];` declaration is
+/// replaced by the parameter values under test.
+fn unity_unit(file: &str, layout: &[f32], entry: &str) -> String {
+    let mut file = file
+        .replace("out float3 ", "float3 &")
+        .replace("out half3 ", "half3 &")
+        .replace("out float ", "float &")
+        .replace("out half ", "half &");
+    if let Some(start) = file.find("float4 _SdfParams[1024];") {
+        let decl = params_global(layout).replace("params[", "_SdfParams[");
+        file.replace_range(start..start + "float4 _SdfParams[1024];".len(), &decl);
+    }
+    // The harness also declares the module-scope `params` the bare emit
+    // reads. Poison that name so the file can only see its own `_SdfParams`
+    // (through its own `#define params _SdfParams`).
+    format!(
+        "typedef float half;\ntypedef float3 half3;\n#define params alice_sdf_params_outside_the_file\n\
+         namespace unity {{\n{file}\n}}\n#undef params\n\
+         float sdf_eval(float3 p) {{ {entry} }}\n"
+    )
+}
+
+fn assert_sweep_clean(
+    what: &str,
+    (drifted, worst, worst_name, checked): (Vec<String>, f32, String, usize),
+) {
+    assert!(
+        drifted.is_empty(),
+        "{what}: {} corpus node(s) drifted from the CPU law:\n{}",
+        drifted.len(),
+        drifted.join("\n")
+    );
+    assert_eq!(
+        checked,
+        corpus().len(),
+        "{what}: not every corpus node was measured"
+    );
+    assert!(checked > 0, "{what}: 0 nodes compared");
+    eprintln!("{what}: {checked} corpus nodes x {POINTS} points, worst {worst:.3e} ({worst_name})");
+}
+
+/// UE5 Custom node body, Hardcoded and Dynamic, for every corpus node. The
+/// corpus includes the nodes with module-scope data arrays (`lattice_deform`,
+/// heightmap) that the body moves into member functions.
+#[test]
+fn ue5_custom_node_matches_cpu_for_every_corpus_node() {
+    let Some(cxx) = cxx_or_skip() else {
+        return;
+    };
+    for (tag, mode) in [
+        ("ue5_custom_hardcoded", HlslTranspileMode::Hardcoded),
+        ("ue5_custom_dynamic", HlslTranspileMode::Dynamic),
+    ] {
+        assert_sweep_clean(tag, sweep_emit(&cxx, tag, mode, ue5_custom_node_unit));
+    }
+}
+
+/// `HlslShader::to_unity_custom_function` (Hardcoded) and
+/// `HlslShader::export_unity_shader_graph` (Dynamic, `_SdfParams`) for every
+/// corpus node, through their Shader Graph entry points.
+#[test]
+fn unity_custom_functions_match_cpu_for_every_corpus_node() {
+    let Some(cxx) = cxx_or_skip() else {
+        return;
+    };
+    assert_sweep_clean(
+        "unity_custom_function_hardcoded",
+        sweep_emit(
+            &cxx,
+            "unity_cf_hardcoded",
+            HlslTranspileMode::Hardcoded,
+            |sh| {
+                unity_unit(
+                    &sh.to_unity_custom_function(),
+                    &sh.param_layout,
+                    "float d; unity::SdfEval_float(p, d); return d;",
+                )
+            },
+        ),
+    );
+    assert_sweep_clean(
+        "unity_shader_graph_dynamic",
+        sweep_emit(&cxx, "unity_sg_dynamic", HlslTranspileMode::Dynamic, |sh| {
+            unity_unit(
+                &sh.export_unity_shader_graph(),
+                &sh.param_layout,
+                "float d; float3 n; unity::AliceSdf_float(p, d, n); return d;",
+            )
+        }),
     );
 }
 
