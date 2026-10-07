@@ -10,6 +10,13 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Added
 
+- `codec_bridge::try_decode_sdf_volume` と `codec_bridge::DecodeError`: 予約 flag bit が立った stream と途中で切れた stream を `Err` で返す decoder (`decode_sdf_volume` はこれに委ね、`Err` の時は panic する)
+- examples `codec_bridge` (`codec`) / `asp_bridge` (`asp`) / `sdf_eval_cache` (`sdf-cache`) / `sim_bridge` (`physics`、`gpu` 併用で GPU MC も) / `mesh_cache`: 各 bridge と mesh cache の使い方を、値の出力と assert 付きで示す
+- `tests/test_codec_bridge_oracle.rs` (`codec`): voxel が直接の `eval` と bit 一致、ロスレス設定の往復が固定小数点の値 `round(d·scale)/scale` と bit 一致 (raw / rANS の両経路、i16 を超える値を含む)、範囲内の入力の encoder 出力が形式拡張の前と同じ byte 列、lossy の誤差の上限、統計値の手計算との一致、予約 bit と切れた stream の拒否
+- `tests/test_asp_bridge_oracle.rs` (`asp`): I-packet の往復 (serde で直列化して送受信する経路を含む) で場が bit 一致、D-packet が delta byte・参照 sequence・`asdf_len` をそのまま運ぶ、`estimate_packet_size` の閉形式、libasp 既定の `to_bytes` (FlatBuffers) は region を運ばず scene が落ちること
+- `tests/test_sdf_eval_cache_oracle.rs` (`sdf-cache`): 格子への量子化 (`round`、0.5 は 0 から遠い側) と「最後に入れた値」の model、容量の上限、hit rate = hit / (hit + miss)
+- `tests/test_sim_bridge_oracle.rs` (`physics`): 修飾子なしで `eval_compiled` と bit 一致し法線は中心差分 (刻み 1e-3)、各 `add_*` が名前どおりの修飾子を返した index に入れる、alice-physics 1.4 の一様場での閉形式の offset (凍結による成長・内圧による膨張) が順に掛かる、`gpu_mesh_with_physics` が GPU MC と `attach_physics` の合成であること
+- `tests/test_mesh_cache_model_oracle.rs`: `MeshCache` を独立な LRU model と、`ChunkedMeshCache` を FIFO・dirty・`.abm` 永続化の model と、決まった乱数列の 500-600 手で突き合わせる (件数・中身・memory 使用量・dirty 集合・`update_sdf_hash` が返す集合・`merge_all` の三角形の多重集合)
 - examples `compiled_bytecode` / `instanced_sdf` / `jit_dynamic` (`jit`): compile した bytecode の逆アセンブル (opcode の役割、点を変えるか、距離を後処理するか、部分木の終わり)、`CompiledSdf` / `CompiledSdfBvh` の node 数・命令数・byte 数・Lipschitz 値、半径を書き換えての `refit_all_from_bytecode`、`AabbPacked::distance_to_point_fast`、`eval_compiled_batch` / `eval_compiled_distance_and_normal` / `eval_gradient_simd`、`Vec3R::round` / `max_element` / `InstancedSdf` の scalar・SIMD・batch・個別の距離と `to_instanced_wgsl` (`gpu`) / `JitCompiledSdfDynamic` と `JitSimdSdfDynamic` の `update_params` (再 compile との一致を assert)
 - `tests/test_compiled_bytecode_oracle.rs`: opcode の分類を bytecode VM の挙動 (点を書き換える arm、`PopTransform` で距離を後処理する arm) と照合、`next_instruction_index` を独立に書いた frame の対応付けと照合、`node_count` / `memory_size` / `lipschitz` / `aux_data`、`refit_all_from_bytecode` が新規 compile と同じ箱を返すこと、rounded cone / pyramid / octahedron / hex prism / link の箱の閉形式と標本による包含と tight さ、tube / pipe / tongue の箱の包含、batch と SIMD 勾配の scalar との bit 一致、平面と球の tetrahedral 距離 (`d + e²/|p|`)、`InstancedSdf` と木の union の一致
 - `tests/test_jit_dynamic_oracle.rs` (`jit`、CI の JIT parity step と preflight): dynamic JIT の parameter 順が抽出関数と一致すること (corpus 全体)、焼き込み版の JIT・interpreter との一致、`update_params` 後の値が新規 compile と bit 一致すること、parameter 数の違う木を拒むこと
@@ -41,6 +48,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 
+- `SimulatedSdf::new` は `SimulatedSdf::from_arc` に委ねる (結果は不変)
+- `asp_bridge` の doc の例を、serde で packet を直列化する形に直した (libasp 既定の `to_bytes` は region を運ばないので scene が届かない、旧例は型も合わなかった)
+- `codec_bridge` の module doc に bitstream の形式 (header・flags の各 bit・histogram・payload) を書いた
+- CI の bridges job と `scripts/preflight.sh` (full) に、上の bridge の 4 file を `--features "physics,codec,asp,sdf-cache,gpu"` で走らせる step を足した
 - `refit` の rounded cone / pyramid / octahedron / hex prism / link / ellipsoid / box frame / rect 系の箱を `aabb::primitives` の関数と `AabbPacked::from_half_size` で求める (hex prism 以外の値は不変)
 - WGSL / GLSL / HLSL の transpiler が shader の組み立てを `GenericTranspiler::generate_shader` に委ねる (出力は不変) `generate_shader` は helper の source が無い時に panic し、module scope の global (lattice / heightmap の data) を出力する (従来は helper を黙って飛ばし、global を出力していなかった)
 - 圧縮した bytecode の評価器と relaxed tracing が `CompiledSdf::instructions` / `aux_data` / `lipschitz` を accessor で読む (結果は不変)
@@ -67,6 +78,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `mesh::nanite::NormalCone::is_backface_culled`: `axis · v >= cos β` は β = 45° の時しか正しくなく、開き角 60° の cone で表向きの面がある視線でも cull していた 全 face が裏向きになる `angle(axis, v) <= 90° − β`、つまり `axis · v >= sin β` で判定する (meshoptimizer の `cone_cutoff` と同じ、β > 90° は cull しない)
 - **Behavior change:** `mesh::lod::ContinuousLod::update`: 歩幅 `speed·dt` が目標までの差より大きいと目標を越え、前後で振動し続けて止まらなかった 差が歩幅以下なら目標で止まる 空の chain では何もしない
 - **Behavior change:** `mesh::meshlet::build_meshlets` / `build_meshlets_scan` / `build_meshlets_adjacency`: `max_vertices` が 1 か 2 の時、上限を超える 3 頂点の meshlet を返していた 三角形 1 枚が入らない設定は doc の「制約違反は空 Vec」に従って空を返す
+- **Behavior change:** `codec_bridge::encode_sdf_volume`: 量子化後の係数を常に i16 に丸めて書いていたため、係数が i16 の範囲を超える体積 (ロスレス設定の `EncodeConfig::lossless()` / `high_quality()` では |距離| > 約 8) は黙って切り詰められ、往復で値が変わっていた (半径 1 の球を [-10, 10]³ の 8³ で: 512 voxel 中 440 が不一致、最大誤差 8.0) 係数が 1 つでも i16 を超える時だけ flags の bit 2 を立てて係数を i32 で書く (bitstream 形式の拡張) 範囲内の入力の出力は従来と byte 単位で同じ decoder は bit 2 を読み、bit 3-7 が立った stream を拒む
+- **Behavior change:** `cache::ChunkedMeshCache::load_chunk`: 未 cache の chunk を disk から読むと容量を確かめずに追加していたため、chunk 数が `max_cached_chunks` を超えていた `set_chunk` と同じ FIFO で最古の chunk を追い出す
 - **Behavior change:** `destruction::MutableVoxelGrid::remesh_chunk`: chunk の高い側の面で 1 cell 手前で止まっていたため、chunk の継ぎ目を跨ぐ cell が mesh されず、chunk の mesh を並べると全ての継ぎ目に隙間があった chunk は下端の voxel が自分の中にある cell を受け持ち、全 chunk の mesh の和が格子全体の Marching Cubes と三角形単位で一致する
 - **Behavior change:** `destruction::MutableVoxelGrid` の dirty の印 (`set_distance` / `carve` / `carve_batch` / `explode`): chunk の下端の面にある voxel は下の chunk の最後の cell も読むので、その chunk にも印を付ける (継ぎ目を編集すると隣の chunk の mesh が古いまま残っていた)
 - **Behavior change:** `destruction::operations::explode`: 乱数の 48 bit 値 (`state >> 16`) を `u32::MAX` で割っていたため [0, 1] でなく最大 65536 になり、破片の半径が `radius` の数千倍になって 1 回の爆発で格子全体を削っていた crate 内の他の生成器と同じく下位 32 bit を使う 破片の中心は中心から `0.8·radius` 以内、半径は `[0.2, 0.7]·radius` (doc に追記)
