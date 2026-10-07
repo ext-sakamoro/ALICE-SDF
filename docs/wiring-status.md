@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **46 baseline items** — Permitted violations, ratchet in place
+🟡 **44 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (46 permitted)
+## 📋 Baseline (44 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -22,7 +22,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/ffi/registry.rs` | 4 |
 | `src/compiled/simd.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
-| `src/mesh/nanite.rs` | 2 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
@@ -46,7 +45,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (39)
+### Unwired Items (37)
 
 ```
 unwired src/compiled/simd.rs::max_component
@@ -81,8 +80,6 @@ unwired src/font_bridge.rs::font_metrics
 unwired src/font_bridge.rs::glyph_to_sdf2d
 unwired src/font_bridge.rs::text_to_sdf2d
 unwired src/gi/mod.rs::PointLight
-unwired src/mesh/nanite.rs::select_clusters
-unwired src/mesh/nanite.rs::should_render
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
 unwired src/primitives/mod.rs::eval_primitive

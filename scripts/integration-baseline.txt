@@ -53,8 +53,6 @@ src/crispy.rs::fast_recip_vec3
 src/crispy.rs::round_half_up_vec3
 src/crispy.rs::select_f32
 src/gi/mod.rs::PointLight
-src/mesh/nanite.rs::NaniteCluster::should_render
-src/mesh/nanite.rs::NaniteMesh::select_clusters
 src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count
 src/primitives/mod.rs::PrimitiveType
 src/primitives/mod.rs::eval_primitive

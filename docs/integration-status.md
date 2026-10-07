@@ -7,17 +7,17 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 54 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1155 |
+| L0 | not reached by any non-test code, examples included | 52 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1159 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 935 |
-| | **total** | **2144** |
+| | **total** | **2146** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 38 unwired items.
+`scripts/wiring-baseline.txt` lists 36 unwired items.
 
 ### L0 here but not in the baseline (28)
 
@@ -58,7 +58,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (54)
+## L0 — unreached (52)
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
@@ -108,8 +108,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/crispy.rs::round_half_up_vec3`
 - `src/crispy.rs::select_f32`
 - `src/gi/mod.rs::PointLight`
-- `src/mesh/nanite.rs::NaniteCluster::should_render`
-- `src/mesh/nanite.rs::NaniteMesh::select_clusters`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
 - `src/primitives/mod.rs::PrimitiveType`
 - `src/primitives/mod.rs::eval_primitive`
@@ -137,7 +135,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1155)
+## L1 — example-only (1159)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -218,7 +216,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/meshopt_index_codec.rs`: `decode_index_buffer`
 - `src/mesh/meshopt_vertex_codec.rs`: `decode_vertex_buffer`, `encode_vertex_buffer`
 - `src/mesh/mod.rs`: `Triangle`, `Triangle::new`, `Vertex::with_all`
-- `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `CLUSTER_MAX_VERTICES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterBounds::is_visible`, `ClusterBounds::screen_error`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteCluster::vertex_count`, `NaniteConfig`, `NaniteConfig::high_detail`, `NaniteConfig::medium_detail`, `NaniteConfig::preview`, `NaniteMesh`, `NaniteMesh::clusters_at_lod`, `NaniteMesh::get_cluster`, `NaniteMesh::to_mesh`, `NaniteMesh::total_vertices`, `NormalCone`, `NormalCone::from_normals`, `NormalCone::from_normals_and_positions`, `NormalCone::is_backface_culled`, `NormalCone::unbounded`, `generate_nanite_mesh`
+- `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `CLUSTER_MAX_VERTICES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterBounds::is_visible`, `ClusterBounds::screen_error`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::should_render`, `NaniteCluster::triangle_count`, `NaniteCluster::vertex_count`, `NaniteConfig`, `NaniteConfig::high_detail`, `NaniteConfig::medium_detail`, `NaniteConfig::preview`, `NaniteMesh`, `NaniteMesh::clusters_at_lod`, `NaniteMesh::get_cluster`, `NaniteMesh::select_clusters`, `NaniteMesh::to_mesh`, `NaniteMesh::total_vertices`, `NormalCone`, `NormalCone::from_normals`, `NormalCone::from_normals_and_positions`, `NormalCone::is_backface_culled`, `NormalCone::unbounded`, `cluster_surface_error`, `generate_nanite_mesh`, `sampled_triangle_errors`
 - `src/mesh/optimize.rs`: `compute_acmr`, `compute_atvr`, `optimize_vertex_cache`, `optimize_vertex_fetch`
 - `src/mesh/overdraw.rs`: `default_view_directions`, `optimize_overdraw`, `optimize_overdraw_with_views`
 - `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::new`, `PointCloudSdf::point_count`, `PointCloudSdf::try_new`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`, `point_cloud_to_sdf`

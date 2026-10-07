@@ -6,23 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 711 |
-| 🔴 Red by design | 1 |
+| 🟢 Not ignored | 719 |
+| 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **712** |
+| **Total** | **719** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (1)
-
-Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
-today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
-
-- `nanite_cut_covers_the_surface_at_every_distance` (test_lod_nanite_meshlet_oracle.rs) — src gap: nanite-cluster-cut — should_render/select_clusters keep the too-coarse side and a parent cluster's er…
-
-## 🟢 Not ignored (711)
+## 🟢 Not ignored (719)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -31,6 +24,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_terrain_destruction_oracle.rs` | 28 |
 | `test_gi_volume_oracle.rs` | 23 |
 | `npr_shader_validate.rs` | 21 |
+| `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_smooth_ops_oracle.rs` | 17 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
@@ -38,7 +32,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_io_format_oracle.rs` | 13 |
-| `test_lod_nanite_meshlet_oracle.rs` | 13 |
 | `test_codec_bridge_oracle.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `test_gpu_law_parity.rs` | 11 |

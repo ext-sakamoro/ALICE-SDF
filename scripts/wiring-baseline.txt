@@ -38,8 +38,6 @@ unwired src/font_bridge.rs::font_metrics
 unwired src/font_bridge.rs::glyph_to_sdf2d
 unwired src/font_bridge.rs::text_to_sdf2d
 unwired src/gi/mod.rs::PointLight
-unwired src/mesh/nanite.rs::select_clusters
-unwired src/mesh/nanite.rs::should_render
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
 unwired src/primitives/mod.rs::eval_primitive
