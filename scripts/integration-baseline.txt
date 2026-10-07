@@ -53,7 +53,10 @@ src/crispy.rs::fast_recip_vec3
 src/crispy.rs::round_half_up_vec3
 src/crispy.rs::select_f32
 src/gi/mod.rs::PointLight
+src/mesh/point_cloud_sdf.rs::PointCloudSdf::new
+src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf
 src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count
+src/primitives/cylinder.rs::sdf_cylinder_infinite
 src/primitives/mod.rs::PrimitiveType
 src/primitives/mod.rs::eval_primitive
 src/primitives/mod.rs::eval_primitive_unchecked

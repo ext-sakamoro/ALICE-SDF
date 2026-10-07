@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 719 |
+| 🟢 Not ignored | 724 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **719** |
+| **Total** | **724** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (719)
+## 🟢 Not ignored (724)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -27,20 +27,20 @@ Per-file counts (the test names are in `tests/`):
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_smooth_ops_oracle.rs` | 17 |
+| `test_codec_bridge_oracle.rs` | 15 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_io_format_oracle.rs` | 13 |
-| `test_codec_bridge_oracle.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
+| `test_cache_correctness.rs` | 11 |
 | `test_gpu_law_parity.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_texture_fit_oracle.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
-| `test_cache_correctness.rs` | 10 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_hlsl_blinkscript_parity.rs` | 10 |
@@ -73,6 +73,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_diff_oracle.rs` | 6 |
 | `test_hlsl_export_oracle.rs` | 6 |
 | `test_jit_dynamic_oracle.rs` | 6 |
+| `test_mesh_cache_model_oracle.rs` | 6 |
 | `test_mesh_codec_oracle.rs` | 6 |
 | `test_mesh_fit_hull_oracle.rs` | 6 |
 | `test_mesh_orientation.rs` | 6 |
@@ -83,7 +84,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_sdf2d_oracle.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
-| `test_mesh_cache_model_oracle.rs` | 5 |
 | `test_mesh_extract_uv_oracle.rs` | 5 |
 | `test_mesh_quantization_oracle.rs` | 5 |
 | `test_meshopt_filter_oracle.rs` | 5 |

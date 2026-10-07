@@ -7,8 +7,8 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 52 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1159 |
+| L0 | not reached by any non-test code, examples included | 55 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1156 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 935 |
 | | **total** | **2146** |
 
@@ -19,7 +19,7 @@ It does mean the item is not reached from another module or a binding.
 
 `scripts/wiring-baseline.txt` lists 36 unwired items.
 
-### L0 here but not in the baseline (28)
+### L0 here but not in the baseline (31)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -50,6 +50,9 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/crispy.rs::BloomFilter`
 - `src/crispy.rs::BloomFilter::insert`
 - `src/crispy.rs::BloomFilter::new`
+- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
+- `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
+- `src/primitives/cylinder.rs::sdf_cylinder_infinite`
 - `src/primitives/mod.rs::PrimitiveType`
 
 ### In the baseline but reached here (1)
@@ -58,7 +61,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (52)
+## L0 — unreached (55)
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
@@ -108,7 +111,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/crispy.rs::round_half_up_vec3`
 - `src/crispy.rs::select_f32`
 - `src/gi/mod.rs::PointLight`
+- `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
+- `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
+- `src/primitives/cylinder.rs::sdf_cylinder_infinite`
 - `src/primitives/mod.rs::PrimitiveType`
 - `src/primitives/mod.rs::eval_primitive`
 - `src/primitives/mod.rs::eval_primitive_unchecked`
@@ -135,7 +141,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1159)
+## L1 — example-only (1156)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -219,7 +225,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `CLUSTER_MAX_VERTICES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterBounds::is_visible`, `ClusterBounds::screen_error`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::should_render`, `NaniteCluster::triangle_count`, `NaniteCluster::vertex_count`, `NaniteConfig`, `NaniteConfig::high_detail`, `NaniteConfig::medium_detail`, `NaniteConfig::preview`, `NaniteMesh`, `NaniteMesh::clusters_at_lod`, `NaniteMesh::get_cluster`, `NaniteMesh::select_clusters`, `NaniteMesh::to_mesh`, `NaniteMesh::total_vertices`, `NormalCone`, `NormalCone::from_normals`, `NormalCone::from_normals_and_positions`, `NormalCone::is_backface_culled`, `NormalCone::unbounded`, `cluster_surface_error`, `generate_nanite_mesh`, `sampled_triangle_errors`
 - `src/mesh/optimize.rs`: `compute_acmr`, `compute_atvr`, `optimize_vertex_cache`, `optimize_vertex_fetch`
 - `src/mesh/overdraw.rs`: `default_view_directions`, `optimize_overdraw`, `optimize_overdraw_with_views`
-- `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::new`, `PointCloudSdf::point_count`, `PointCloudSdf::try_new`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`, `point_cloud_to_sdf`
+- `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::point_count`, `PointCloudSdf::try_new`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`
 - `src/mesh/primitive_fitting.rs`: `FittedPrimitive`, `FittedPrimitive::compute_error`, `FittedPrimitive::distance`, `FittedPrimitive::primitive_type`, `FittedPrimitive::to_sdf_node`, `FittingConfig`, `FittingResult`, `FittingResult::is_acceptable`, `PrimitiveType`, `detect_primitive`, `fit_box`, `fit_cylinder`, `fit_plane`, `fit_sphere`, `primitives_to_csg`
 - `src/mesh/quantization.rs`: `half_decode`, `half_encode`, `snorm_i16_decode`, `snorm_i8_decode`, `unorm_u16_decode`, `unorm_u8_decode`
 - `src/mesh/sdf_to_mesh.rs`: `AdaptiveConfig::aaa`, `MarchingCubesConfig::aaa`, `adaptive_marching_cubes_compiled`
@@ -258,7 +264,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/optimize.rs`: `OptimizationStats`, `optimization_stats`
 - `src/physics_bridge.rs`: `CompiledSdfField`, `CompiledSdfField::arc`, `CompiledSdfField::compiled`, `CompiledSdfField::from_arc`, `CompiledSdfField::new`, `CompiledSdfField::with_epsilon`, `sdf_to_physics_field`
 - `src/primitives/capsule.rs`: `sdf_capsule_horizontal`, `sdf_capsule_vertical`
-- `src/primitives/cylinder.rs`: `sdf_cylinder_capped`, `sdf_cylinder_infinite`
+- `src/primitives/cylinder.rs`: `sdf_cylinder_capped`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
 - `src/primitives/torus.rs`: `sdf_torus_capped`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
