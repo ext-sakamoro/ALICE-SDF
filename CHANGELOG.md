@@ -42,6 +42,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `io::obj` / `io::fbx` / `io::usd` / `io::gltf` の書き出しが `MaterialLibrary::get` / `iter` / `len` で material を引く (結果は不変)
 - `gi::IrradianceGrid::sample` の probe の読み出しを `get_probe` で行う (補間に使う座標は常に範囲内なので結果は不変)
 - CI の aaa integration step を `--features "aaa,image"` にして上の 5 file を加え、gpu-parity の aaa step に `test_volume_api_oracle` を加えた `scripts/preflight.sh` (full) にも同じ 2 step を加えた (aaa の integration oracle は preflight に無かった)
+- Unreal CI (`scripts/unreal-ue5-ci.ps1`): automation test と sample material の editor 起動に `-nocef` を付け、editor log に CEF の読み込みが出たら fail にする UE 5.7 で、Fab / Bridge / WebBrowserWidget を無効にした host project でも CEF が読み込まれ、`FfiCorpusParity` の開始直後に `BUseSupportedRHIRenderer()` の assert で editor が落ちて test が 1 本も走らない回が続いていた HlslGpuOracle が D3D12 を使うので RHI は止めず、browser だけを止める
 
 ### Removed
 

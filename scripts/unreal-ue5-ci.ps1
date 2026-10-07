@@ -196,7 +196,11 @@ $Uproject = Join-Path $Host_ "AliceSdfHost.uproject"
         # Fab / Quixel Bridge open a CEF web view as the editor starts, and
         # CEF asserts on `BUseSupportedRHIRenderer()` under D3D12 in this
         # session (the runner reached FfiCorpusParity and then died there).
-        # Nothing in these tests needs a browser.
+        # Nothing in these tests needs a browser. Disabling these plugins was
+        # not enough on UE 5.7: the engine still loaded CEF and a web view
+        # elsewhere in the editor hit the same assert (intermittently, while
+        # FfiCorpusParity was starting), so the editor is also run with
+        # `-nocef` below and the log is checked for a CEF load.
         @{ Name = "Fab"; Enabled = $false },
         @{ Name = "Bridge"; Enabled = $false },
         @{ Name = "WebBrowserWidget"; Enabled = $false }
@@ -221,14 +225,23 @@ $env:ALICE_SDF_REQUIRE_GPU = "1"
 $EditorCmd = Join-Path $EngineRoot "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
 # -unattended: no dialogs; -NoCrashReporter: a fatal (e.g. a .usf that does
 # not compile) exits non-zero instead of waiting on the crash window.
+# -nocef: the WebBrowser module does not load CEF and no web view is created.
+# The tests need the GPU RHI (HlslGpuOracle dispatches on D3D12), so -nullrhi
+# is not an option; only the browser is turned off.
 & $EditorCmd $Uproject `
-    -ddc=NoZenLocalFallback `
+    -ddc=NoZenLocalFallback -nocef `
     -ExecCmds="Automation RunTests AliceSDF.Unreal;Quit" `
     -ReportExportPath="$Report" -abslog="$EditorLog" `
     -unattended -nop4 -nosplash -NoSound -NoCrashReporter -stdout -FullStdOutLogOutput 2>&1 |
     Select-String -Pattern "LogAutomation|AliceSDF|Shader.*(error|failed)|Fatal|Error:" | ForEach-Object { $_.Line }
 $EditorExit = $LASTEXITCODE
 if ($EditorExit -ne 0) { Fail "UnrealEditor-Cmd exited $EditorExit (see $EditorLog)" }
+# The log must show the editor actually ran (non-empty) and that CEF stayed
+# unloaded; otherwise -nocef was ignored and the CEF assert can come back.
+if (-not (Test-Path $EditorLog) -or (Get-Item $EditorLog).Length -eq 0) { Fail "no editor log at $EditorLog" }
+$CefLoad = Select-String -Path $EditorLog -Pattern "LogWebBrowser: Loaded CEF3" -SimpleMatch -ErrorAction SilentlyContinue
+if ($CefLoad) { Fail "CEF was loaded despite -nocef:`n$($CefLoad[0].Line)" }
+Write-Host "CEF not loaded (-nocef honoured)"
 
 # ── 6. the report ──────────────────────────────────────────────────────────
 Step "automation report"
@@ -263,7 +276,7 @@ $MaterialScript = Join-Path $Host_ "Plugins\AliceSDF\Content\Python\create_alice
 if (-not (Test-Path $MaterialScript)) { Fail "the packaged plugin has no $MaterialScript" }
 $MaterialLog = Join-Path $Logs "material.log"
 & $EditorCmd $Uproject `
-    -ddc=NoZenLocalFallback -run=pythonscript -script="$MaterialScript" `
+    -ddc=NoZenLocalFallback -nocef -run=pythonscript -script="$MaterialScript" `
     -abslog="$MaterialLog" `
     -unattended -nop4 -nosplash -NoSound -NoCrashReporter -stdout |
     Select-String -Pattern "ALICE-SDF:|LogPython|Material|error|Error:" | ForEach-Object { $_.Line }
