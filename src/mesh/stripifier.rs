@@ -288,11 +288,8 @@ pub fn try_stripify(
 /// Upper bound on the triangle-list length for a strip of `index_count` indices
 #[must_use]
 pub const fn unstripify_bound(index_count: usize) -> usize {
-    if index_count == 0 {
-        0
-    } else {
-        (index_count - 2) * 3
-    }
+    // a strip of n >= 3 indices holds at most n - 2 triangles; fewer than 3 hold none
+    index_count.saturating_sub(2) * 3
 }
 
 /// Convert a triangle strip back into an indexed triangle list

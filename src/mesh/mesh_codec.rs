@@ -167,7 +167,8 @@ pub fn encode_indices(indices: &[u32]) -> Vec<u8> {
         let base = t * 3;
         for (k, prev_slot) in prev.iter_mut().enumerate() {
             let cur = indices[base + k] as i32;
-            let delta = cur - *prev_slot;
+            // modulo 2^32: an index jump past i32 still round-trips exactly
+            let delta = cur.wrapping_sub(*prev_slot);
             let encoded = zigzag_encode_i32(delta);
             write_varint_u32(&mut out, encoded);
             *prev_slot = cur;
@@ -210,7 +211,7 @@ pub fn decode_indices(buf: &[u8]) -> Result<Vec<u32>, CodecError> {
         for prev_slot in &mut prev {
             let encoded = read_varint_u32(buf, &mut cursor)?;
             let delta = zigzag_decode_u32(encoded);
-            let cur = *prev_slot + delta;
+            let cur = prev_slot.wrapping_add(delta);
             indices.push(cur as u32);
             *prev_slot = cur;
         }

@@ -171,6 +171,16 @@ pub fn try_decode_filter_oct_i16_in_place(data: &mut [i16]) -> Result<(), MeshIn
 /// with `qc` being the index of the largest-magnitude component
 #[allow(clippy::similar_names)]
 pub fn encode_filter_quat_one(q: [f32; 4], bits: u32, output: &mut [i16; 4]) {
+    // the decoder rebuilds the largest component as sqrt(1 - x² - y² - z²),
+    // which holds only for a unit quaternion
+    let len = q[3]
+        .mul_add(q[3], q[2].mul_add(q[2], q[1].mul_add(q[1], q[0] * q[0])))
+        .sqrt();
+    let q = if len > 0.0 && len.is_finite() {
+        [q[0] / len, q[1] / len, q[2] / len, q[3] / len]
+    } else {
+        q
+    };
     let scaler = std::f32::consts::SQRT_2;
 
     // Find largest-magnitude component
@@ -286,8 +296,10 @@ fn opt_log2(v: f32) -> i32 {
 /// Encode a single float using `bits`-mantissa + 8-bit shared exponent
 ///
 /// Uses `EncodeExpSeparate` semantics (per-lane exponent) The scale factor
-/// leaves 2 bits of headroom above the raw `e` value to guarantee that
-/// rounding cannot push the mantissa out of the signed `bits`-bit range
+/// puts `|v| / 2^scale` below `2^(bits-1)`; when rounding reaches
+/// `2^(bits-1)` the mantissa is clamped to `2^(bits-1) - 1`, so the error is
+/// half a step except in that case, where it is below one step (as in
+/// meshopt's encoder)
 #[must_use]
 pub fn encode_filter_exp_one(v: f32, bits: u32) -> u32 {
     debug_assert!((1..=24).contains(&bits));
@@ -295,7 +307,9 @@ pub fn encode_filter_exp_one(v: f32, bits: u32) -> u32 {
     // Choose scale so that |v / 2^scale| fits in signed `bits` bits with rounding headroom
     // (|v| < 2^(e+1), we need |m| < 2^(bits-1), so scale >= e - bits + 2)
     let target_exp = e - (bits as i32 - 2);
-    let scale = target_exp.clamp(-127, 127);
+    // -126 is the smallest exponent the decoder can rebuild: it forms 2^e from
+    // the bits `(e + 127) << 23`, which is 0.0 (not 2^-127) for e = -127
+    let scale = target_exp.clamp(-126, 127);
     let m = (v * (-scale as f32).exp2()).round() as i32;
     let m_clamped = m.clamp(-(1 << (bits - 1)), (1 << (bits - 1)) - 1);
 

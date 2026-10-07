@@ -148,12 +148,16 @@ pub const fn half_encode(v: f32) -> u16 {
         if new_exp < -10 {
             return sign; // underflow → 0
         }
-        let mantissa_shift = mantissa | 0x800000;
-        let shift = 14 - new_exp;
-        let shifted = mantissa_shift >> shift;
-        // round to nearest even
-        let rounded = (shifted + 1) >> 1;
-        return sign | (rounded as u16);
+        // value = (1.m) * 2^(new_exp - 15) = full * 2^-24 / 2^(14 - new_exp),
+        // so the subnormal code is `full >> shift` rounded to nearest even
+        let full = mantissa | 0x800000;
+        let shift = (14 - new_exp) as u32; // 14..=24
+        let q = full >> shift;
+        let rem = full & ((1 << shift) - 1);
+        let half = 1 << (shift - 1);
+        let round_up = rem > half || (rem == half && (q & 1) == 1);
+        // q + 1 == 0x400 is the smallest normal code, which is the right carry
+        return sign | ((q + round_up as u32) as u16);
     }
 
     let new_exp_u = new_exp as u16;

@@ -20,6 +20,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `tests/test_primitive_closed_form_oracle.rs` / `test_csg_multi_oracle.rs` / `test_domain_modifier_oracle.rs` / `test_point_transform_oracle.rs`: 上の関数を `f64` の閉形式 (線分距離、円柱の (半径, 軸) 箱則、3 点平面、弧への総当たり距離、平面回転、セル折り返し、IFS の貪欲折り返しの独立実装、fBm の定義、Bezier への総当たり距離) と比べる
 - examples: `mesh_queries` (`MeshBvh` / `BvhTriangle` / `mesh::Aabb` の距離と最近点、`MeshSdf` の各 config と `to_sdf_node`、`ExteriorField`、`PointCloudSdf`、Hermite の辺交点) / `mesh_collision_repair` (AABB / bounding sphere / convex hull / `simplify_collision` / `convex_decomposition`、`validate_mesh` と `MeshRepair` の各手順、`compute_quality`、球・箱・円柱・平面の fit と `primitives_to_csg`)
 - 閉形式の oracle: `tests/test_mesh_query_oracle.rs` (点と三角形の距離を独立実装の総当たりで突き合わせ、内接多面体の球の SDF を Hausdorff 上界 `max(r − sqrt(r² − R²))` 以内で `|p| − r` と照合、緯度経度の点群の被覆半径で点群 SDF を挟む、平面と球の Hermite 交点と格子全辺の交差数) / `tests/test_mesh_collision_fit_oracle.rs` (箱の体積・外接球、凸包の閉性と体積、球 mesh のオイラー標数 2 と穴あけ・穴埋めでの変化、修復手順ごとの除去数、三角形の面積と aspect 比、解析的な点群からの fit の回復、`FittedPrimitive` の距離と `to_sdf_node` の一致)
+- examples `mesh_codecs` / `mesh_reorder` / `mesh_presets`: 球の mesh を crate 独自の varint delta 形式 (`encode_mesh` / `decode_indices` / `decode_positions`) と meshoptimizer v1 の index / vertex codec で圧縮して戻し、octahedral / quaternion / exponential の vertex filter と snorm / unorm / binary16 の量子化を往復させる / triangle を混ぜた球に `optimize_spatial_order` → `optimize_vertex_cache` → `optimize_overdraw` → `optimize_vertex_fetch` を掛けて ACMR / ATVR を出し、strip に変換して戻す / `MarchingCubesConfig::aaa` / `AdaptiveConfig::aaa` / `DualContouringConfig::aaa` と compiled の mesher、`DecimateConfig::conservative` / `aggressive`、lightmap UV (atlas と fast)、`compute_uv_density` を使い、値を閉形式と突き合わせて出力する
+- `tests/test_mesh_codec_oracle.rs` / `test_meshopt_filter_oracle.rs` / `test_mesh_quantization_oracle.rs` / `test_mesh_reorder_oracle.rs` / `test_mesh_extract_uv_oracle.rs`: module doc の形式から独立に書いた encoder との byte 一致と全 `u32` / 任意の `f32` bit 列での往復、filter の閉形式の誤差上限 (octahedral 射影と逆射影、四元数の最大成分、共有指数の半刻み)、snorm / unorm の全 code の復号と binary16 の IEEE 754 (全 65536 code と隣接 code の中点、ties-to-even)、LRU / FIFO cache の独立 simulation と ACMR の閉形式、strip の往復で三角形の集合と向きが保たれること、Morton の bit interleave、単一視線での cluster の前後順、球の半径・外向きの面・体積 4π/3・triplanar UV、decimation の三角形数の単調減少と二次誤差上限からの形の誤差、lightmap UV の非重複と UV 面積からの texel 数
 
 ### Changed
 
@@ -54,6 +56,11 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change:** `FittedPrimitive::to_sdf_node` の `Box` が `SdfNode::box3d` (全幅をとる) に半幅を渡し、`Cylinder` が `SdfNode::cylinder` (全高をとる) に半高を渡しており、どちらも半分の大きさの node を返していた `FittedPrimitive::distance` と同じ大きさになるよう直した (`primitives_to_csg` の結果も変わる)
 - **Behavior change:** `mesh::compute_quality` の aspect 比が `4·√3·A / P²` で、正三角形で 1/3 だった doc の「1.0 = equilateral」どおり `12·√3·A / P²` にした (`min_aspect_ratio` / `avg_aspect_ratio` が 3 倍になる)
 - **Behavior change:** `mesh::fit_plane` が、点が厳密に同一平面上にある (共分散行列が特異な) 時に法線の初期値 `(1, 1, 1)/√3` をそのまま返していた 特異な場合は共分散の行の外積 (零空間) を法線にする 非特異な場合は不変
+- **Behavior change:** `mesh::quantization::half_encode` が binary16 の subnormal 域 (`|v| < 2^-14`) で値の半分の code を返していた (例: `half_decode(2)` を encode すると 1) IEEE 754 の roundTiesToEven で `full >> shift` を丸める 正規数の域は不変
+- **Behavior change:** `mesh::meshopt_filter::encode_filter_quat_one` / `encode_filter_quat_i16` が doc の通り入力の四元数を正規化する 復号は最大成分を `sqrt(1 − x² − y² − z²)` で作るので、長さ 1 でない入力は別の回転に戻っていた
+- **Behavior change:** `mesh::meshopt_filter::encode_filter_exp_one` の指数の下限を -126 にした 復号は `2^e` を正規数の bit `(e + 127) << 23` で作るので、`e = -127` は 0.0 になり `|v| < 2^(bits − 128)` の値が 0 に戻っていた
+- `mesh::mesh_codec::encode_indices` / `decode_indices`: index の差分を `wrapping_sub` / `wrapping_add` で取る debug build で差分が `i32` を超える index 列 (例: 0 の次に 2^31) を渡すと overflow で panic していた (release build の byte 列は不変)
+- `mesh::stripifier::unstripify_bound(1)` が `index_count - 2` の underflow で panic し、1 index の strip を渡した `unstripify` も panic していた 3 未満は 0 を返す
 
 ## [4.1.0] - 2026-10-07
 
