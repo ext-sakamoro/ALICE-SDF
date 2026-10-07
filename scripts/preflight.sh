@@ -310,6 +310,10 @@ step "test: bridges (lib, no default)"
 cargo test --lib --no-default-features --features "$BRIDGES"
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$BRIDGES"
 
+step "test: bridge oracles (ci.yml の bridges job の bridge oracles と対)"
+cargo test --features "$BRIDGES,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle \
+  --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
+
 step "test: AAA meta"
 cargo test --lib --no-default-features --features "aaa"
 

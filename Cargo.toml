@@ -247,6 +247,23 @@ required-features = ["image"]
 name = "raycast_jit"
 required-features = ["jit"]
 
+# Bridges to the optional ALICE crates (each needs its feature).
+[[example]]
+name = "codec_bridge"
+required-features = ["codec"]
+
+[[example]]
+name = "asp_bridge"
+required-features = ["asp"]
+
+[[example]]
+name = "sdf_eval_cache"
+required-features = ["sdf-cache"]
+
+[[example]]
+name = "sim_bridge"
+required-features = ["physics"]
+
 # Sparse voxel octree: build, queries, GPU layout, chunks and the LRU cache.
 [[example]]
 name = "svo_octree"

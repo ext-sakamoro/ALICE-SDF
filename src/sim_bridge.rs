@@ -71,16 +71,7 @@ impl SimulatedSdf {
     ///
     /// Uses default bounds (-5..5). For accurate bounds, use `with_bounds`.
     pub fn new(compiled: CompiledSdf) -> Self {
-        let arc = Arc::new(compiled);
-        let field = CompiledSdfField::from_arc(Arc::clone(&arc));
-        let modified = ModifiedSdf::new(Box::new(field));
-        let e = DEFAULT_HALF_EXTENT;
-        Self {
-            inner: modified,
-            compiled: arc,
-            bounds_min: (-e, -e, -e),
-            bounds_max: (e, e, e),
-        }
+        Self::from_arc(Arc::new(compiled))
     }
 
     /// Create from an existing `Arc<CompiledSdf>`.

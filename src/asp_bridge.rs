@@ -3,6 +3,14 @@
 //! Packages SDF trees into ASP I-packets (full scene) and D-packets
 //! (delta updates) for real-time procedural scene streaming.
 //!
+//! # Transport
+//!
+//! The scene travels in the I-packet's region descriptor. libasp's default
+//! `AspPacket::to_bytes` (FlatBuffers) does not carry region descriptors, so a
+//! packet sent that way arrives without the scene. Serialise the packet with
+//! serde instead (`AspPacket` implements `Serialize` / `Deserialize`; libasp's
+//! `bincode-compat` feature adds `to_bytes_bincode`).
+//!
 //! # Example
 //!
 //! ```ignore
@@ -11,12 +19,15 @@
 //!
 //! let tree = SdfTree::new(SdfNode::sphere(1.0));
 //! let packet = create_sdf_i_packet(&tree, 1).unwrap();
-//! let bytes = packet.to_bytes().unwrap();
+//! let bytes = serde_json::to_vec(&packet).unwrap();
 //! // Send `bytes` over network
 //!
 //! // On receiver:
-//! let recovered = decode_sdf_i_packet(&bytes).unwrap();
+//! let packet: libasp::AspPacket = serde_json::from_slice(&bytes).unwrap();
+//! let recovered = decode_sdf_i_packet(&packet).unwrap();
 //! ```
+//!
+//! `examples/asp_bridge.rs` runs the same round trip.
 
 use libasp::{
     AspPacket, AspResult, Color, ColorPalette, DPacketPayload, IPacketPayload, QualityLevel, Rect,

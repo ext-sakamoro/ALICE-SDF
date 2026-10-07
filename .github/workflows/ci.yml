@@ -459,6 +459,11 @@ jobs:
         run: cargo test --lib --no-default-features --features "sdf-cache"
       - name: clippy (all bridges, -D warnings)
         run: cargo clippy --lib --features "physics,codec,asp,sdf-cache" -- -D warnings
+      # Integration oracles of the bridges (files start with `#![cfg(feature = …)]`,
+      # so the default `cargo test --tests` builds them empty). `gpu` compiles the
+      # GPU MC + physics case; without an adapter it skips (ALICE_SDF_REQUIRE_GPU unset).
+      - name: bridge oracles (codec / asp / sdf-cache / sim)
+        run: cargo test --features "physics,codec,asp,sdf-cache,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
 
   mobile:
     name: Mobile — iOS / Android cross-compile
