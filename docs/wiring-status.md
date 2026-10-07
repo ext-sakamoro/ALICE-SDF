@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **431 baseline items** — Permitted violations, ratchet in place
+🟡 **382 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (431 permitted)
+## 📋 Baseline (382 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -25,7 +25,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/wgsl/gpu_eval.rs` | 14 |
 | `src/sim_bridge.rs` | 14 |
 | `src/mesh/lod.rs` | 13 |
-| `src/mesh/meshopt_filter.rs` | 13 |
 | `src/codec_bridge.rs` | 12 |
 | `src/mesh/nanite.rs` | 12 |
 | `src/cache/chunked.rs` | 9 |
@@ -34,14 +33,11 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/aabb.rs` | 8 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
 | `src/compiled/wgsl/transpiler.rs` | 6 |
-| `src/mesh/quantization.rs` | 6 |
 | `src/npr/dsl.rs` | 6 |
 | `src/terrain/splatmap.rs` | 6 |
 | `src/volume/export.rs` | 6 |
 | `src/font_bridge.rs` | 5 |
 | `src/mesh/lod_persist.rs` | 5 |
-| `src/mesh/mesh_codec.rs` | 5 |
-| `src/mesh/stripifier.rs` | 5 |
 | `src/terrain/heightmap.rs` | 5 |
 | `src/asp_bridge.rs` | 4 |
 | `src/compiled/hlsl/transpiler.rs` | 4 |
@@ -52,7 +48,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/eval/parallel.rs` | 4 |
 | `src/ffi/registry.rs` | 4 |
 | `src/mesh/meshlet.rs` | 4 |
-| `src/mesh/optimize.rs` | 4 |
 | `src/soa.rs` | 4 |
 | `src/svo/linearize.rs` | 4 |
 | `src/svo/mod.rs` | 4 |
@@ -63,7 +58,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/ffi/types.rs` | 3 |
 | `src/gi/irradiance.rs` | 3 |
 | `src/interval.rs` | 3 |
-| `src/mesh/overdraw.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
 | `src/svo/query.rs` | 3 |
 | `src/cache_bridge.rs` | 2 |
@@ -71,10 +65,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/eval_bvh.rs` | 2 |
 | `src/destruction/debris.rs` | 2 |
 | `src/destruction/operations.rs` | 2 |
-| `src/mesh/decimate.rs` | 2 |
-| `src/mesh/lightmap.rs` | 2 |
-| `src/mesh/meshopt_vertex_codec.rs` | 2 |
-| `src/mesh/spatial_order.rs` | 2 |
 | `src/npr/outline.rs` | 2 |
 | `src/npr/scene_composer.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
@@ -93,11 +83,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/gi/cone_trace.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
-| `src/mesh/dual_contouring.rs` | 1 |
-| `src/mesh/meshopt_index_codec.rs` | 1 |
-| `src/mesh/mod.rs` | 1 |
-| `src/mesh/sdf_to_mesh.rs` | 1 |
-| `src/mesh/uv_unwrap.rs` | 1 |
 | `src/modifiers/surface_roughness.rs` | 1 |
 | `src/neural.rs` | 1 |
 | `src/optimize.rs` | 1 |
@@ -124,7 +109,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (419)
+### Unwired Items (370)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -348,11 +333,6 @@ unwired src/material.rs::with_tiling
 unwired src/material.rs::with_transmission
 unwired src/material.rs::with_uv_channel
 unwired src/material.rs::with_volume
-unwired src/mesh/decimate.rs::aggressive
-unwired src/mesh/decimate.rs::conservative
-unwired src/mesh/dual_contouring.rs::dual_contouring_compiled
-unwired src/mesh/lightmap.rs::generate_lightmap_uvs
-unwired src/mesh/lightmap.rs::generate_lightmap_uvs_fast
 unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
 unwired src/mesh/lod.rs::LodConfig::distance_range
 unwired src/mesh/lod.rs::balanced
@@ -371,32 +351,10 @@ unwired src/mesh/lod_persist.rs::level_count
 unwired src/mesh/lod_persist.rs::select_lod
 unwired src/mesh/lod_persist.rs::summary
 unwired src/mesh/lod_persist.rs::total_memory_bytes
-unwired src/mesh/mesh_codec.rs::decode_indices
-unwired src/mesh/mesh_codec.rs::decode_positions
-unwired src/mesh/mesh_codec.rs::encode_indices
-unwired src/mesh/mesh_codec.rs::encode_mesh
-unwired src/mesh/mesh_codec.rs::encode_positions
 unwired src/mesh/meshlet.rs::build_meshlets
 unwired src/mesh/meshlet.rs::build_meshlets_adjacency
 unwired src/mesh/meshlet.rs::build_meshlets_scan
 unwired src/mesh/meshlet.rs::quality
-unwired src/mesh/meshopt_filter.rs::decode_filter_exp_u32_in_place
-unwired src/mesh/meshopt_filter.rs::decode_filter_oct_i16_in_place
-unwired src/mesh/meshopt_filter.rs::decode_filter_quat_i16_in_place
-unwired src/mesh/meshopt_filter.rs::encode_filter_exp_one
-unwired src/mesh/meshopt_filter.rs::encode_filter_exp_u32
-unwired src/mesh/meshopt_filter.rs::encode_filter_oct_i16
-unwired src/mesh/meshopt_filter.rs::encode_filter_oct_one
-unwired src/mesh/meshopt_filter.rs::encode_filter_quat_i16
-unwired src/mesh/meshopt_filter.rs::encode_filter_quat_one
-unwired src/mesh/meshopt_filter.rs::quantize_snorm
-unwired src/mesh/meshopt_filter.rs::try_decode_filter_oct_i16_in_place
-unwired src/mesh/meshopt_filter.rs::try_encode_filter_oct_i16
-unwired src/mesh/meshopt_filter.rs::try_encode_filter_quat_i16
-unwired src/mesh/meshopt_index_codec.rs::decode_index_buffer
-unwired src/mesh/meshopt_vertex_codec.rs::decode_vertex_buffer
-unwired src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer
-unwired src/mesh/mod.rs::with_all
 unwired src/mesh/nanite.rs::CLUSTER_MAX_VERTICES
 unwired src/mesh/nanite.rs::from_normals
 unwired src/mesh/nanite.rs::from_normals_and_positions
@@ -409,28 +367,6 @@ unwired src/mesh/nanite.rs::preview
 unwired src/mesh/nanite.rs::select_clusters
 unwired src/mesh/nanite.rs::should_render
 unwired src/mesh/nanite.rs::unbounded
-unwired src/mesh/optimize.rs::compute_acmr
-unwired src/mesh/optimize.rs::compute_atvr
-unwired src/mesh/optimize.rs::optimize_vertex_cache
-unwired src/mesh/optimize.rs::optimize_vertex_fetch
-unwired src/mesh/overdraw.rs::default_view_directions
-unwired src/mesh/overdraw.rs::optimize_overdraw
-unwired src/mesh/overdraw.rs::optimize_overdraw_with_views
-unwired src/mesh/quantization.rs::half_decode
-unwired src/mesh/quantization.rs::half_encode
-unwired src/mesh/quantization.rs::snorm_i16_decode
-unwired src/mesh/quantization.rs::snorm_i8_decode
-unwired src/mesh/quantization.rs::unorm_u16_decode
-unwired src/mesh/quantization.rs::unorm_u8_decode
-unwired src/mesh/sdf_to_mesh.rs::adaptive_marching_cubes_compiled
-unwired src/mesh/spatial_order.rs::morton_3d
-unwired src/mesh/spatial_order.rs::optimize_spatial_order
-unwired src/mesh/stripifier.rs::stripify
-unwired src/mesh/stripifier.rs::stripify_bound
-unwired src/mesh/stripifier.rs::try_stripify
-unwired src/mesh/stripifier.rs::unstripify
-unwired src/mesh/stripifier.rs::unstripify_bound
-unwired src/mesh/uv_unwrap.rs::compute_uv_density
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::ADD
 unwired src/npr/compiled_color.rs::BLOOM

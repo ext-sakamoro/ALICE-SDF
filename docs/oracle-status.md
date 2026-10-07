@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 492 |
+| 🟢 Not ignored | 521 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **492** |
+| **Total** | **521** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (492)
+## 🟢 Not ignored (521)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -49,6 +49,7 @@ Per-file counts (the test names are in `tests/`):
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
 | `test_hlsl_blinkscript_parity.rs` | 8 |
+| `test_mesh_reorder_oracle.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
@@ -57,12 +58,16 @@ Per-file counts (the test names are in `tests/`):
 | `test_raycast_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
+| `test_mesh_codec_oracle.rs` | 6 |
 | `test_mesh_orientation.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_node_backend_matrix.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_sdf2d_oracle.rs` | 6 |
 | `test_collision_oracle.rs` | 5 |
+| `test_mesh_extract_uv_oracle.rs` | 5 |
+| `test_mesh_quantization_oracle.rs` | 5 |
+| `test_meshopt_filter_oracle.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
 | `test_constraint_oracle.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |

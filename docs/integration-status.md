@@ -7,8 +7,8 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 654 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 567 |
+| L0 | not reached by any non-test code, examples included | 597 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 624 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 916 |
 | | **total** | **2137** |
 
@@ -17,9 +17,9 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 463 unwired items.
+`scripts/wiring-baseline.txt` lists 415 unwired items.
 
-### L0 here but not in the baseline (245)
+### L0 here but not in the baseline (241)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -28,6 +28,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/autodiff.rs::Dual3::abs`
 - `src/autodiff.rs::Dual3::clamp`
 - `src/autodiff.rs::Dual3::constant`
+- `src/autodiff.rs::Dual3::gradient`
 - `src/autodiff.rs::Dual3::max`
 - `src/autodiff.rs::Dual3::min`
 - `src/autodiff.rs::Dual3::sqrt`
@@ -152,7 +153,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/material.rs::StandardMaterials::diamond`
 - `src/material.rs::StandardMaterials::glass`
 - `src/material.rs::TextureSlot::new`
-- `src/mesh/dual_contouring.rs::DualContouringConfig::aaa`
 - `src/mesh/lod.rs::ContinuousLod`
 - `src/mesh/lod.rs::ContinuousLod::new`
 - `src/mesh/lod.rs::ContinuousLod::update`
@@ -172,7 +172,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/lod.rs::LodSelector::screen_error`
 - `src/mesh/lod.rs::LodSelector::select`
 - `src/mesh/lod_persist.rs::LodChainPersist::mesh`
-- `src/mesh/mesh_codec.rs::CodecError`
 - `src/mesh/meshlet.rs::Meshlet`
 - `src/mesh/meshlet.rs::Meshlet::triangle_count`
 - `src/mesh/meshlet.rs::Meshlet::vertex_count`
@@ -181,13 +180,8 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/nanite.rs::NaniteCluster::vertex_count`
 - `src/mesh/nanite.rs::NaniteMesh::clusters_at_lod`
 - `src/mesh/nanite.rs::NaniteMesh::to_mesh`
+- `src/mesh/nanite.rs::NaniteMesh::total_vertices`
 - `src/mesh/nanite.rs::NormalCone`
-- `src/mesh/sdf_to_mesh.rs::AdaptiveConfig::aaa`
-- `src/mesh/sdf_to_mesh.rs::MarchingCubesConfig::aaa`
-- `src/mesh/uv_unwrap.rs::UvDensityReport`
-- `src/mesh/uv_unwrap.rs::UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE`
-- `src/mesh/uv_unwrap.rs::UvDensityReport::WARN_LOW_DENSITY_RATIO`
-- `src/mesh/uv_unwrap.rs::UvDensityReport::has_warning`
 - `src/npr/compiled_color.rs::ColorOp::stack_effect`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::validate`
 - `src/npr/compiled_color.rs::DeserializeError`
@@ -210,6 +204,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
 - `src/physics_bridge.rs::CompiledSdfField::from_arc`
 - `src/physics_bridge.rs::CompiledSdfField::new`
+- `src/primitives/mod.rs::PrimitiveType`
 - `src/sim_bridge.rs::SimulatedSdf`
 - `src/sim_bridge.rs::SimulatedSdf::bounds`
 - `src/sim_bridge.rs::SimulatedSdf::compiled`
@@ -252,6 +247,7 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/terrain/clipmap.rs::ClipmapLevel`
 - `src/terrain/clipmap.rs::ClipmapTerrain`
 - `src/terrain/clipmap.rs::ClipmapTerrain::new`
+- `src/terrain/clipmap.rs::ClipmapTerrain::total_vertices`
 - `src/terrain/clipmap.rs::ClipmapTerrain::update`
 - `src/terrain/heightmap.rs::HeightmapImageConfig`
 - `src/terrain/heightmap.rs::HeightmapImageConfig::new`
@@ -269,57 +265,62 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/volume/mod.rs::Volume3D::world_size`
 - `src/volume/mod.rs::VoxelDistGrad`
 
-### In the baseline but reached here (45)
+### In the baseline but reached here (50)
 
 The guard lists these as unwired; a resolved reference reaches them (level in brackets).
 
-- `src/mesh/bvh.rs::expand_aabb` (L1)
-- `src/mesh/bvh.rs::unsigned_distance_batch` (L1)
-- `src/mesh/collision.rs::CollisionMesh` (L1)
-- `src/mesh/collision.rs::compute_bounding_sphere` (L1)
-- `src/mesh/collision.rs::compute_convex_hull` (L1)
-- `src/mesh/collision.rs::convex_decomposition` (L1)
-- `src/mesh/collision.rs::convex_hull_from_points` (L1)
-- `src/mesh/collision.rs::simplify_collision` (L1)
-- `src/mesh/collision.rs::total_triangles` (L1)
-- `src/mesh/collision.rs::total_vertices` (L1)
-- `src/mesh/collision.rs::volume` (L1)
-- `src/mesh/hermite.rs::extract_edge_crossings` (L1)
-- `src/mesh/hermite.rs::extract_hermite` (L1)
-- `src/mesh/hermite.rs::extract_surface_points` (L1)
-- `src/mesh/hermite.rs::t` (L1)
-- `src/mesh/manifold.rs::MeshQuality` (L1)
-- `src/mesh/manifold.rs::compute_quality` (L1)
-- `src/mesh/manifold.rs::drop_specks` (L1)
-- `src/mesh/manifold.rs::fill_holes` (L1)
-- `src/mesh/manifold.rs::orient_faces` (L1)
-- `src/mesh/mesh_sign.rs::cell_size` (L1)
-- `src/mesh/mesh_sign.rs::dims` (L1)
-- `src/mesh/mesh_to_sdf.rs::accurate` (L1)
-- `src/mesh/mesh_to_sdf.rs::eval_unsigned` (L1)
-- `src/mesh/mesh_to_sdf.rs::eval_unsigned_batch` (L1)
-- `src/mesh/mesh_to_sdf.rs::gradient` (L1)
-- `src/mesh/mesh_to_sdf.rs::hybrid` (L1)
-- `src/mesh/mesh_to_sdf.rs::mesh_to_sdf_exact` (L1)
-- `src/mesh/mesh_to_sdf.rs::sign_mode` (L1)
-- `src/mesh/mesh_to_sdf.rs::to_sdf_node` (L1)
-- `src/mesh/mesh_to_sdf.rs::topology_robust` (L1)
-- `src/mesh/point_cloud_sdf.rs::accurate` (L1)
-- `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf` (L1)
-- `src/mesh/point_cloud_sdf.rs::point_count` (L1)
-- `src/mesh/primitive_fitting.rs::PrimitiveType` (L1)
-- `src/mesh/primitive_fitting.rs::compute_error` (L1)
-- `src/mesh/primitive_fitting.rs::detect_primitive` (L1)
-- `src/mesh/primitive_fitting.rs::fit_box` (L1)
-- `src/mesh/primitive_fitting.rs::fit_cylinder` (L1)
-- `src/mesh/primitive_fitting.rs::fit_plane` (L1)
-- `src/mesh/primitive_fitting.rs::fit_sphere` (L1)
-- `src/mesh/primitive_fitting.rs::primitive_type` (L1)
-- `src/mesh/primitive_fitting.rs::primitives_to_csg` (L1)
-- `src/mesh/primitive_fitting.rs::to_sdf_node` (L1)
+- `src/mesh/decimate.rs::aggressive` (L1)
+- `src/mesh/decimate.rs::conservative` (L1)
+- `src/mesh/dual_contouring.rs::dual_contouring_compiled` (L1)
+- `src/mesh/lightmap.rs::generate_lightmap_uvs` (L1)
+- `src/mesh/lightmap.rs::generate_lightmap_uvs_fast` (L1)
+- `src/mesh/mesh_codec.rs::decode_indices` (L1)
+- `src/mesh/mesh_codec.rs::decode_positions` (L1)
+- `src/mesh/mesh_codec.rs::encode_indices` (L1)
+- `src/mesh/mesh_codec.rs::encode_mesh` (L1)
+- `src/mesh/mesh_codec.rs::encode_positions` (L1)
+- `src/mesh/meshopt_filter.rs::decode_filter_exp_u32_in_place` (L1)
+- `src/mesh/meshopt_filter.rs::decode_filter_oct_i16_in_place` (L1)
+- `src/mesh/meshopt_filter.rs::decode_filter_quat_i16_in_place` (L1)
+- `src/mesh/meshopt_filter.rs::encode_filter_exp_one` (L1)
+- `src/mesh/meshopt_filter.rs::encode_filter_exp_u32` (L1)
+- `src/mesh/meshopt_filter.rs::encode_filter_oct_i16` (L1)
+- `src/mesh/meshopt_filter.rs::encode_filter_oct_one` (L1)
+- `src/mesh/meshopt_filter.rs::encode_filter_quat_i16` (L1)
+- `src/mesh/meshopt_filter.rs::encode_filter_quat_one` (L1)
+- `src/mesh/meshopt_filter.rs::quantize_snorm` (L1)
+- `src/mesh/meshopt_filter.rs::try_decode_filter_oct_i16_in_place` (L1)
+- `src/mesh/meshopt_filter.rs::try_encode_filter_oct_i16` (L1)
+- `src/mesh/meshopt_filter.rs::try_encode_filter_quat_i16` (L1)
+- `src/mesh/meshopt_index_codec.rs::decode_index_buffer` (L1)
+- `src/mesh/meshopt_vertex_codec.rs::decode_vertex_buffer` (L1)
+- `src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer` (L1)
+- `src/mesh/mod.rs::with_all` (L1)
+- `src/mesh/optimize.rs::compute_acmr` (L1)
+- `src/mesh/optimize.rs::compute_atvr` (L1)
+- `src/mesh/optimize.rs::optimize_vertex_cache` (L1)
+- `src/mesh/optimize.rs::optimize_vertex_fetch` (L1)
+- `src/mesh/overdraw.rs::default_view_directions` (L1)
+- `src/mesh/overdraw.rs::optimize_overdraw` (L1)
+- `src/mesh/overdraw.rs::optimize_overdraw_with_views` (L1)
+- `src/mesh/quantization.rs::half_decode` (L1)
+- `src/mesh/quantization.rs::half_encode` (L1)
+- `src/mesh/quantization.rs::snorm_i16_decode` (L1)
+- `src/mesh/quantization.rs::snorm_i8_decode` (L1)
+- `src/mesh/quantization.rs::unorm_u16_decode` (L1)
+- `src/mesh/quantization.rs::unorm_u8_decode` (L1)
+- `src/mesh/sdf_to_mesh.rs::adaptive_marching_cubes_compiled` (L1)
+- `src/mesh/spatial_order.rs::morton_3d` (L1)
+- `src/mesh/spatial_order.rs::optimize_spatial_order` (L1)
+- `src/mesh/stripifier.rs::stripify` (L1)
+- `src/mesh/stripifier.rs::stripify_bound` (L1)
+- `src/mesh/stripifier.rs::try_stripify` (L1)
+- `src/mesh/stripifier.rs::unstripify` (L1)
+- `src/mesh/stripifier.rs::unstripify_bound` (L1)
+- `src/mesh/uv_unwrap.rs::compute_uv_density` (L1)
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (654)
+## L0 — unreached (597)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
@@ -661,12 +662,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/material.rs::TextureSlot::with_tiling`
 - `src/material.rs::TextureSlot::with_uv_channel`
 - `src/material.rs::material_lerp`
-- `src/mesh/decimate.rs::DecimateConfig::aggressive`
-- `src/mesh/decimate.rs::DecimateConfig::conservative`
-- `src/mesh/dual_contouring.rs::DualContouringConfig::aaa`
-- `src/mesh/dual_contouring.rs::dual_contouring_compiled`
-- `src/mesh/lightmap.rs::generate_lightmap_uvs`
-- `src/mesh/lightmap.rs::generate_lightmap_uvs_fast`
 - `src/mesh/lod.rs::ContinuousLod`
 - `src/mesh/lod.rs::ContinuousLod::get_render_meshes`
 - `src/mesh/lod.rs::ContinuousLod::new`
@@ -704,12 +699,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/lod_persist.rs::LodChainPersist::summary`
 - `src/mesh/lod_persist.rs::LodChainPersist::total_memory_bytes`
 - `src/mesh/lod_persist.rs::LodChainSummary`
-- `src/mesh/mesh_codec.rs::CodecError`
-- `src/mesh/mesh_codec.rs::decode_indices`
-- `src/mesh/mesh_codec.rs::decode_positions`
-- `src/mesh/mesh_codec.rs::encode_indices`
-- `src/mesh/mesh_codec.rs::encode_mesh`
-- `src/mesh/mesh_codec.rs::encode_positions`
 - `src/mesh/meshlet.rs::Meshlet`
 - `src/mesh/meshlet.rs::Meshlet::triangle_count`
 - `src/mesh/meshlet.rs::Meshlet::vertex_count`
@@ -718,23 +707,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/meshlet.rs::build_meshlets`
 - `src/mesh/meshlet.rs::build_meshlets_adjacency`
 - `src/mesh/meshlet.rs::build_meshlets_scan`
-- `src/mesh/meshopt_filter.rs::decode_filter_exp_u32_in_place`
-- `src/mesh/meshopt_filter.rs::decode_filter_oct_i16_in_place`
-- `src/mesh/meshopt_filter.rs::decode_filter_quat_i16_in_place`
-- `src/mesh/meshopt_filter.rs::encode_filter_exp_one`
-- `src/mesh/meshopt_filter.rs::encode_filter_exp_u32`
-- `src/mesh/meshopt_filter.rs::encode_filter_oct_i16`
-- `src/mesh/meshopt_filter.rs::encode_filter_oct_one`
-- `src/mesh/meshopt_filter.rs::encode_filter_quat_i16`
-- `src/mesh/meshopt_filter.rs::encode_filter_quat_one`
-- `src/mesh/meshopt_filter.rs::quantize_snorm`
-- `src/mesh/meshopt_filter.rs::try_decode_filter_oct_i16_in_place`
-- `src/mesh/meshopt_filter.rs::try_encode_filter_oct_i16`
-- `src/mesh/meshopt_filter.rs::try_encode_filter_quat_i16`
-- `src/mesh/meshopt_index_codec.rs::decode_index_buffer`
-- `src/mesh/meshopt_vertex_codec.rs::decode_vertex_buffer`
-- `src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer`
-- `src/mesh/mod.rs::Vertex::with_all`
 - `src/mesh/nanite.rs::CLUSTER_MAX_VERTICES`
 - `src/mesh/nanite.rs::ClusterBounds::is_visible`
 - `src/mesh/nanite.rs::ClusterBounds::screen_error`
@@ -753,34 +725,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/nanite.rs::NormalCone::from_normals_and_positions`
 - `src/mesh/nanite.rs::NormalCone::is_backface_culled`
 - `src/mesh/nanite.rs::NormalCone::unbounded`
-- `src/mesh/optimize.rs::compute_acmr`
-- `src/mesh/optimize.rs::compute_atvr`
-- `src/mesh/optimize.rs::optimize_vertex_cache`
-- `src/mesh/optimize.rs::optimize_vertex_fetch`
-- `src/mesh/overdraw.rs::default_view_directions`
-- `src/mesh/overdraw.rs::optimize_overdraw`
-- `src/mesh/overdraw.rs::optimize_overdraw_with_views`
-- `src/mesh/quantization.rs::half_decode`
-- `src/mesh/quantization.rs::half_encode`
-- `src/mesh/quantization.rs::snorm_i16_decode`
-- `src/mesh/quantization.rs::snorm_i8_decode`
-- `src/mesh/quantization.rs::unorm_u16_decode`
-- `src/mesh/quantization.rs::unorm_u8_decode`
-- `src/mesh/sdf_to_mesh.rs::AdaptiveConfig::aaa`
-- `src/mesh/sdf_to_mesh.rs::MarchingCubesConfig::aaa`
-- `src/mesh/sdf_to_mesh.rs::adaptive_marching_cubes_compiled`
-- `src/mesh/spatial_order.rs::morton_3d`
-- `src/mesh/spatial_order.rs::optimize_spatial_order`
-- `src/mesh/stripifier.rs::stripify`
-- `src/mesh/stripifier.rs::stripify_bound`
-- `src/mesh/stripifier.rs::try_stripify`
-- `src/mesh/stripifier.rs::unstripify`
-- `src/mesh/stripifier.rs::unstripify_bound`
-- `src/mesh/uv_unwrap.rs::UvDensityReport`
-- `src/mesh/uv_unwrap.rs::UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE`
-- `src/mesh/uv_unwrap.rs::UvDensityReport::WARN_LOW_DENSITY_RATIO`
-- `src/mesh/uv_unwrap.rs::UvDensityReport::has_warning`
-- `src/mesh/uv_unwrap.rs::compute_uv_density`
 - `src/npr/compiled_color.rs::ADD`
 - `src/npr/compiled_color.rs::BLOOM`
 - `src/npr/compiled_color.rs::ColorOp::stack_effect`
@@ -998,7 +942,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (567)
+## L1 — example-only (624)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `eval_hessian`, `mean_curvature`
@@ -1039,14 +983,28 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
 - `src/mesh/bvh.rs`: `Aabb`, `Aabb::center`, `Aabb::empty`, `Aabb::expand_aabb`, `Aabb::expand_point`, `Aabb::longest_axis`, `Aabb::new`, `Aabb::signed_distance`, `Aabb::surface_area`, `BvhNode`, `BvhNode::aabb`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`, `Triangle`, `Triangle::closest_point`, `Triangle::new`, `Triangle::signed_distance`, `Triangle::unsigned_distance`
 - `src/mesh/collision.rs`: `BoundingSphere`, `BoundingSphere::contains`, `CollisionAabb`, `CollisionAabb::center`, `CollisionAabb::contains`, `CollisionAabb::half_extents`, `CollisionAabb::volume`, `CollisionMesh`, `ConvexDecomposition`, `ConvexDecomposition::total_triangles`, `ConvexDecomposition::total_vertices`, `ConvexHull`, `VhacdConfig`, `VhacdConfig::fast`, `VhacdConfig::high_quality`, `compute_aabb`, `compute_bounding_sphere`, `compute_convex_hull`, `convex_decomposition`, `convex_hull_from_points`, `simplify_collision`
+- `src/mesh/decimate.rs`: `DecimateConfig::aggressive`, `DecimateConfig::conservative`
+- `src/mesh/dual_contouring.rs`: `DualContouringConfig::aaa`, `dual_contouring_compiled`
 - `src/mesh/hermite.rs`: `EdgeCrossing`, `EdgeCrossing::t`, `HermiteConfig`, `HermiteExtractor`, `HermiteExtractor::extract_edge_crossings`, `HermiteExtractor::extract_surface_points`, `HermiteExtractor::new`, `HermitePoint`, `HermitePoint::new`, `extract_edge_crossings`, `extract_hermite`
+- `src/mesh/lightmap.rs`: `generate_lightmap_uvs`, `generate_lightmap_uvs_fast`
 - `src/mesh/manifold.rs`: `MeshQuality`, `MeshRepair`, `MeshRepair::drop_specks`, `MeshRepair::fill_holes`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::orient_faces`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `compute_quality`, `validate_mesh`
+- `src/mesh/mesh_codec.rs`: `CodecError`, `decode_indices`, `decode_positions`, `encode_indices`, `encode_mesh`, `encode_positions`
 - `src/mesh/mesh_sign.rs`: `ExteriorField`, `ExteriorField::MAX_BAND_STEPS`, `ExteriorField::MAX_CELLS`, `ExteriorField::PADDING_CELLS`, `ExteriorField::build`, `ExteriorField::cell_size`, `ExteriorField::dims`, `ExteriorField::is_exterior`, `ExteriorField::signed_distance`
 - `src/mesh/mesh_to_sdf.rs`: `MeshSdf`, `MeshSdf::bounds`, `MeshSdf::bvh`, `MeshSdf::eval`, `MeshSdf::eval_batch`, `MeshSdf::eval_unsigned`, `MeshSdf::eval_unsigned_batch`, `MeshSdf::gradient`, `MeshSdf::new`, `MeshSdf::sign_mode`, `MeshSdf::to_sdf_node`, `MeshSdf::triangle_count`, `MeshSdf::try_new`, `MeshToSdfConfig::accurate`, `MeshToSdfConfig::hybrid`, `MeshToSdfConfig::topology_robust`, `mesh_to_sdf_exact`
-- `src/mesh/mod.rs`: `Triangle`, `Triangle::new`
+- `src/mesh/meshopt_filter.rs`: `decode_filter_exp_u32_in_place`, `decode_filter_oct_i16_in_place`, `decode_filter_quat_i16_in_place`, `encode_filter_exp_one`, `encode_filter_exp_u32`, `encode_filter_oct_i16`, `encode_filter_oct_one`, `encode_filter_quat_i16`, `encode_filter_quat_one`, `quantize_snorm`, `try_decode_filter_oct_i16_in_place`, `try_encode_filter_oct_i16`, `try_encode_filter_quat_i16`
+- `src/mesh/meshopt_index_codec.rs`: `decode_index_buffer`
+- `src/mesh/meshopt_vertex_codec.rs`: `decode_vertex_buffer`, `encode_vertex_buffer`
+- `src/mesh/mod.rs`: `Triangle`, `Triangle::new`, `Vertex::with_all`
 - `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::triangle_count`, `NaniteConfig`, `NaniteMesh`, `generate_nanite_mesh`
+- `src/mesh/optimize.rs`: `compute_acmr`, `compute_atvr`, `optimize_vertex_cache`, `optimize_vertex_fetch`
+- `src/mesh/overdraw.rs`: `default_view_directions`, `optimize_overdraw`, `optimize_overdraw_with_views`
 - `src/mesh/point_cloud_sdf.rs`: `PointCloudSdf`, `PointCloudSdf::eval`, `PointCloudSdf::eval_batch`, `PointCloudSdf::new`, `PointCloudSdf::point_count`, `PointCloudSdfConfig`, `PointCloudSdfConfig::accurate`, `PointCloudSdfConfig::fast`, `point_cloud_to_sdf`
 - `src/mesh/primitive_fitting.rs`: `FittedPrimitive`, `FittedPrimitive::compute_error`, `FittedPrimitive::distance`, `FittedPrimitive::primitive_type`, `FittedPrimitive::to_sdf_node`, `FittingConfig`, `FittingResult`, `FittingResult::is_acceptable`, `PrimitiveType`, `detect_primitive`, `fit_box`, `fit_cylinder`, `fit_plane`, `fit_sphere`, `primitives_to_csg`
+- `src/mesh/quantization.rs`: `half_decode`, `half_encode`, `snorm_i16_decode`, `snorm_i8_decode`, `unorm_u16_decode`, `unorm_u8_decode`
+- `src/mesh/sdf_to_mesh.rs`: `AdaptiveConfig::aaa`, `MarchingCubesConfig::aaa`, `adaptive_marching_cubes_compiled`
+- `src/mesh/spatial_order.rs`: `morton_3d`, `optimize_spatial_order`
+- `src/mesh/stripifier.rs`: `stripify`, `stripify_bound`, `try_stripify`, `unstripify`, `unstripify_bound`
+- `src/mesh/uv_unwrap.rs`: `UvDensityReport`, `UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE`, `UvDensityReport::WARN_LOW_DENSITY_RATIO`, `UvDensityReport::has_warning`, `compute_uv_density`
 - `src/modifiers/bend.rs`: `modifier_bend_cheap`, `modifier_bend_x`, `modifier_bend_z`
 - `src/modifiers/ifs.rs`: `ifs_fold`
 - `src/modifiers/mirror.rs`: `modifier_mirror_x`, `modifier_mirror_y`, `modifier_mirror_z`
