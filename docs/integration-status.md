@@ -7,9 +7,9 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 537 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 681 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 919 |
+| L0 | not reached by any non-test code, examples included | 427 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 788 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 922 |
 | | **total** | **2137** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
@@ -17,9 +17,9 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 337 unwired items.
+`scripts/wiring-baseline.txt` lists 258 unwired items.
 
-### L0 here but not in the baseline (210)
+### L0 here but not in the baseline (179)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -119,20 +119,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/gi/irradiance.rs::IrradianceGrid::sample`
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
-- `src/material.rs::Material::glass`
-- `src/material.rs::Material::new`
-- `src/material.rs::Material::with_roughness`
-- `src/material.rs::MaterialLibrary::add`
-- `src/material.rs::MaterialLibrary::get`
-- `src/material.rs::MaterialLibrary::is_empty`
-- `src/material.rs::MaterialLibrary::iter`
-- `src/material.rs::MaterialLibrary::len`
-- `src/material.rs::MaterialLibrary::new`
-- `src/material.rs::ParticleMaterial`
-- `src/material.rs::StandardMaterials`
-- `src/material.rs::StandardMaterials::diamond`
-- `src/material.rs::StandardMaterials::glass`
-- `src/material.rs::TextureSlot::new`
 - `src/mesh/lod.rs::ContinuousLod`
 - `src/mesh/lod.rs::ContinuousLod::new`
 - `src/mesh/lod.rs::ContinuousLod::update`
@@ -162,23 +148,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/mesh/nanite.rs::NaniteMesh::to_mesh`
 - `src/mesh/nanite.rs::NaniteMesh::total_vertices`
 - `src/mesh/nanite.rs::NormalCone`
-- `src/npr/compiled_color.rs::ColorOp::stack_effect`
-- `src/npr/compiled_color.rs::CompiledColorPipeline::validate`
-- `src/npr/compiled_color.rs::DeserializeError`
-- `src/npr/compiled_color.rs::GpuColorProgram`
-- `src/npr/compiled_color.rs::SerializeError`
-- `src/npr/compiled_color.rs::StackError`
-- `src/npr/dsl.rs::NprColorNode::scale`
-- `src/npr/mod.rs::NprInput`
-- `src/npr/mod.rs::NprInput::n_dot_l`
-- `src/npr/mod.rs::NprInput::n_dot_v`
-- `src/npr/mod.rs::NprInput::new`
-- `src/npr/noise.rs::PerlinNoise::with_frequency`
-- `src/npr/noise.rs::SimplexNoise`
-- `src/npr/noise.rs::SimplexNoise::new`
-- `src/npr/noise.rs::SimplexNoise::with_frequency`
-- `src/npr/noise.rs::WorleyNoise::with_frequency`
-- `src/npr/scene_composer.rs::SceneShaderBuilder::with_outline`
 - `src/physics_bridge.rs::CompiledSdfField`
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
 - `src/physics_bridge.rs::CompiledSdfField::from_arc`
@@ -240,7 +209,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (537)
+## L0 — unreached (427)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
@@ -486,59 +455,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/gi/irradiance.rs::IrradianceProbe::evaluate`
 - `src/gi/irradiance.rs::SH1::evaluate`
 - `src/gi/mod.rs::PointLight`
-- `src/material.rs::Material::dielectric`
-- `src/material.rs::Material::emissive`
-- `src/material.rs::Material::glass`
-- `src/material.rs::Material::metal`
-- `src/material.rs::Material::new`
-- `src/material.rs::Material::to_particle`
-- `src/material.rs::Material::with_albedo_map`
-- `src/material.rs::Material::with_anisotropy`
-- `src/material.rs::Material::with_ao_map`
-- `src/material.rs::Material::with_clearcoat`
-- `src/material.rs::Material::with_color`
-- `src/material.rs::Material::with_emission`
-- `src/material.rs::Material::with_emissive_map`
-- `src/material.rs::Material::with_metallic`
-- `src/material.rs::Material::with_metallic_roughness_map`
-- `src/material.rs::Material::with_normal_map`
-- `src/material.rs::Material::with_roughness`
-- `src/material.rs::Material::with_sheen`
-- `src/material.rs::Material::with_subsurface`
-- `src/material.rs::Material::with_transmission`
-- `src/material.rs::Material::with_volume`
-- `src/material.rs::MaterialLibrary::add`
-- `src/material.rs::MaterialLibrary::default_material`
-- `src/material.rs::MaterialLibrary::find_by_name`
-- `src/material.rs::MaterialLibrary::get`
-- `src/material.rs::MaterialLibrary::is_empty`
-- `src/material.rs::MaterialLibrary::iter`
-- `src/material.rs::MaterialLibrary::len`
-- `src/material.rs::MaterialLibrary::new`
-- `src/material.rs::ParticleMaterial`
-- `src/material.rs::ParticleMaterial::from_material`
-- `src/material.rs::ParticleMaterial::glow`
-- `src/material.rs::ParticleMaterial::solid`
-- `src/material.rs::StandardMaterials`
-- `src/material.rs::StandardMaterials::aluminum`
-- `src/material.rs::StandardMaterials::chrome`
-- `src/material.rs::StandardMaterials::concrete`
-- `src/material.rs::StandardMaterials::copper`
-- `src/material.rs::StandardMaterials::diamond`
-- `src/material.rs::StandardMaterials::glass`
-- `src/material.rs::StandardMaterials::gold`
-- `src/material.rs::StandardMaterials::marble`
-- `src/material.rs::StandardMaterials::plastic_red`
-- `src/material.rs::StandardMaterials::plastic_white`
-- `src/material.rs::StandardMaterials::rubber`
-- `src/material.rs::StandardMaterials::skin`
-- `src/material.rs::StandardMaterials::velvet`
-- `src/material.rs::StandardMaterials::water`
-- `src/material.rs::StandardMaterials::wet_asphalt`
-- `src/material.rs::TextureSlot::new`
-- `src/material.rs::TextureSlot::with_tiling`
-- `src/material.rs::TextureSlot::with_uv_channel`
-- `src/material.rs::material_lerp`
 - `src/mesh/lod.rs::ContinuousLod`
 - `src/mesh/lod.rs::ContinuousLod::get_render_meshes`
 - `src/mesh/lod.rs::ContinuousLod::new`
@@ -602,64 +518,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/nanite.rs::NormalCone::from_normals_and_positions`
 - `src/mesh/nanite.rs::NormalCone::is_backface_culled`
 - `src/mesh/nanite.rs::NormalCone::unbounded`
-- `src/npr/compiled_color.rs::ADD`
-- `src/npr/compiled_color.rs::BLOOM`
-- `src/npr/compiled_color.rs::ColorOp::stack_effect`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
-- `src/npr/compiled_color.rs::CompiledColorPipeline::native_op_count`
-- `src/npr/compiled_color.rs::CompiledColorPipeline::serialize`
-- `src/npr/compiled_color.rs::CompiledColorPipeline::validate`
-- `src/npr/compiled_color.rs::DeserializeError`
-- `src/npr/compiled_color.rs::FRESNEL`
-- `src/npr/compiled_color.rs::GpuColorProgram`
-- `src/npr/compiled_color.rs::GpuColorProgram::as_words`
-- `src/npr/compiled_color.rs::GpuColorProgram::byte_len`
-- `src/npr/compiled_color.rs::GpuColorProgram::deserialize`
-- `src/npr/compiled_color.rs::HATCH`
-- `src/npr/compiled_color.rs::MULTIPLY`
-- `src/npr/compiled_color.rs::N_DOT_L`
-- `src/npr/compiled_color.rs::N_DOT_V`
-- `src/npr/compiled_color.rs::OUTLINE_OVER`
-- `src/npr/compiled_color.rs::PALETTE3`
-- `src/npr/compiled_color.rs::PALETTE5`
-- `src/npr/compiled_color.rs::POSTERIZE_COLOR`
-- `src/npr/compiled_color.rs::PUSH_CONSTANT`
-- `src/npr/compiled_color.rs::SATURATE`
-- `src/npr/compiled_color.rs::SCALE`
-- `src/npr/compiled_color.rs::SDF`
-- `src/npr/compiled_color.rs::SOFT_TOON`
-- `src/npr/compiled_color.rs::SPEED_LINE`
-- `src/npr/compiled_color.rs::SerializeError`
-- `src/npr/compiled_color.rs::StackError`
-- `src/npr/compiled_color.rs::TIME_CYCLE`
-- `src/npr/compiled_color.rs::TONEMAP`
-- `src/npr/compiled_color.rs::TOON`
-- `src/npr/compiled_color.rs::TWO_TONE`
-- `src/npr/compiled_color.rs::UV_Y`
-- `src/npr/compiled_color.rs::VIGNETTE`
-- `src/npr/compiled_color.rs::emit_wgsl_bytecode_evaluator`
-- `src/npr/compiled_color.rs::opcode_word_count`
-- `src/npr/dsl.rs::NprColorNode::bloom`
-- `src/npr/dsl.rs::NprColorNode::multiply`
-- `src/npr/dsl.rs::NprColorNode::plus`
-- `src/npr/dsl.rs::NprColorNode::posterize`
-- `src/npr/dsl.rs::NprColorNode::scale`
-- `src/npr/dsl.rs::NprColorNode::with_hatch`
-- `src/npr/dsl.rs::NprColorNode::with_speed_lines`
-- `src/npr/mod.rs::NprInput`
-- `src/npr/mod.rs::NprInput::n_dot_l`
-- `src/npr/mod.rs::NprInput::n_dot_v`
-- `src/npr/mod.rs::NprInput::new`
-- `src/npr/noise.rs::PerlinNoise::with_frequency`
-- `src/npr/noise.rs::SimplexNoise`
-- `src/npr/noise.rs::SimplexNoise::new`
-- `src/npr/noise.rs::SimplexNoise::with_frequency`
-- `src/npr/noise.rs::WorleyNoise::with_frequency`
-- `src/npr/outline.rs::depth_step_outline`
-- `src/npr/outline.rs::distance_field_outline`
-- `src/npr/scene_composer.rs::SceneShaderBuilder::with_camera`
-- `src/npr/scene_composer.rs::SceneShaderBuilder::with_outline`
-- `src/npr/scene_composer.rs::SceneShaderBuilder::with_shading`
 - `src/physics_bridge.rs::CompiledSdfField`
 - `src/physics_bridge.rs::CompiledSdfField::arc`
 - `src/physics_bridge.rs::CompiledSdfField::compiled`
@@ -802,7 +661,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (681)
+## L1 — example-only (788)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
@@ -844,6 +703,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/vdb.rs`: `DenseGrid`, `VdbError`, `bake_dense_grid`, `bake_to_vdb`, `load_dense_grid_from_vdb`
 - `src/io/vox.rs`: `load_vox`, `save_vox`
 - `src/llm_schema.rs`: `schema_summary`, `validate_sdf_json`
+- `src/material.rs`: `Material::dielectric`, `Material::emissive`, `Material::glass`, `Material::metal`, `Material::new`, `Material::to_particle`, `Material::with_albedo_map`, `Material::with_anisotropy`, `Material::with_ao_map`, `Material::with_clearcoat`, `Material::with_color`, `Material::with_emission`, `Material::with_emissive_map`, `Material::with_metallic`, `Material::with_metallic_roughness_map`, `Material::with_normal_map`, `Material::with_roughness`, `Material::with_sheen`, `Material::with_subsurface`, `Material::with_transmission`, `Material::with_volume`, `MaterialLibrary::add`, `MaterialLibrary::default_material`, `MaterialLibrary::find_by_name`, `MaterialLibrary::is_empty`, `MaterialLibrary::new`, `ParticleMaterial`, `ParticleMaterial::from_material`, `ParticleMaterial::glow`, `ParticleMaterial::solid`, `StandardMaterials`, `StandardMaterials::aluminum`, `StandardMaterials::chrome`, `StandardMaterials::concrete`, `StandardMaterials::copper`, `StandardMaterials::diamond`, `StandardMaterials::glass`, `StandardMaterials::gold`, `StandardMaterials::marble`, `StandardMaterials::plastic_red`, `StandardMaterials::plastic_white`, `StandardMaterials::rubber`, `StandardMaterials::skin`, `StandardMaterials::velvet`, `StandardMaterials::water`, `StandardMaterials::wet_asphalt`, `TextureSlot::new`, `TextureSlot::with_tiling`, `TextureSlot::with_uv_channel`, `material_lerp`
 - `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
 - `src/mesh/bvh.rs`: `Aabb`, `Aabb::center`, `Aabb::empty`, `Aabb::expand_aabb`, `Aabb::expand_point`, `Aabb::longest_axis`, `Aabb::new`, `Aabb::signed_distance`, `Aabb::surface_area`, `BvhNode`, `BvhNode::aabb`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`, `Triangle`, `Triangle::closest_point`, `Triangle::new`, `Triangle::signed_distance`, `Triangle::unsigned_distance`
 - `src/mesh/collision.rs`: `BoundingSphere`, `BoundingSphere::contains`, `CollisionAabb`, `CollisionAabb::center`, `CollisionAabb::contains`, `CollisionAabb::half_extents`, `CollisionAabb::volume`, `CollisionMesh`, `ConvexDecomposition`, `ConvexDecomposition::total_triangles`, `ConvexDecomposition::total_vertices`, `ConvexHull`, `VhacdConfig`, `VhacdConfig::fast`, `VhacdConfig::high_quality`, `compute_aabb`, `compute_bounding_sphere`, `compute_convex_hull`, `convex_decomposition`, `convex_hull_from_points`, `simplify_collision`
@@ -878,19 +738,19 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/modifiers/twist.rs`: `modifier_twist_x`, `modifier_twist_z`
 - `src/morphology.rs`: `eval_offset`, `eval_offset_batch`, `eval_offset_batch_parallel`, `tolerance_fits`, `tolerance_max_violation`
 - `src/neural.rs`: `NeuralSdf`, `NeuralSdf::eval`, `NeuralSdf::eval_batch`, `NeuralSdf::eval_with_gradient`, `NeuralSdf::hidden_layer_count`, `NeuralSdf::input_dimension`, `NeuralSdf::load`, `NeuralSdf::new`, `NeuralSdf::param_count`, `NeuralSdf::save`, `NeuralSdf::train`, `NeuralSdfConfig`
-- `src/npr/compiled_color.rs`: `ColorOp`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`
+- `src/npr/compiled_color.rs`: `ADD`, `BLOOM`, `ColorOp`, `ColorOp::stack_effect`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `CompiledColorPipeline::native_op_count`, `CompiledColorPipeline::serialize`, `CompiledColorPipeline::validate`, `DeserializeError`, `FRESNEL`, `GpuColorProgram`, `GpuColorProgram::as_words`, `GpuColorProgram::byte_len`, `GpuColorProgram::deserialize`, `HATCH`, `MULTIPLY`, `N_DOT_L`, `N_DOT_V`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`, `OUTLINE_OVER`, `PALETTE3`, `PALETTE5`, `POSTERIZE_COLOR`, `PUSH_CONSTANT`, `SATURATE`, `SCALE`, `SDF`, `SOFT_TOON`, `SPEED_LINE`, `SerializeError`, `StackError`, `TIME_CYCLE`, `TONEMAP`, `TOON`, `TWO_TONE`, `UV_Y`, `VIGNETTE`, `emit_wgsl_bytecode_evaluator`, `opcode_word_count`
 - `src/npr/composition.rs`: `bloom_toon`, `chromatic_offsets`, `vignette`
 - `src/npr/distortion.rs`: `hand_drawn_jitter`, `line_boil`, `sketch_wobble`
-- `src/npr/dsl.rs`: `NprColorContext`, `NprColorContext::n_dot_l`, `NprColorContext::n_dot_v`, `NprColorNode`, `NprColorNode::eval`, `NprColorNode::saturate`, `NprColorNode::tonemap_reinhard`, `NprColorNode::vignetted`, `NprColorNode::with_fresnel`, `NprColorNode::with_outline`, `PaletteSource`, `palette_source_scalar`
+- `src/npr/dsl.rs`: `NprColorContext`, `NprColorContext::n_dot_l`, `NprColorContext::n_dot_v`, `NprColorNode`, `NprColorNode::bloom`, `NprColorNode::eval`, `NprColorNode::multiply`, `NprColorNode::plus`, `NprColorNode::posterize`, `NprColorNode::saturate`, `NprColorNode::scale`, `NprColorNode::tonemap_reinhard`, `NprColorNode::vignetted`, `NprColorNode::with_fresnel`, `NprColorNode::with_hatch`, `NprColorNode::with_outline`, `NprColorNode::with_speed_lines`, `PaletteSource`, `palette_source_scalar`
 - `src/npr/dsl_shader.rs`: `NprShaderContext`, `NprShaderContext::canonical`, `NprShaderSnippet`, `transpile_npr_color_node`
 - `src/npr/hatch.rs`: `cross_hatch`, `hatch_lines`, `paper_grain`, `pencil_shade`
-- `src/npr/mod.rs`: `NprColor`
+- `src/npr/mod.rs`: `NprColor`, `NprInput`, `NprInput::n_dot_l`, `NprInput::n_dot_v`, `NprInput::new`
 - `src/npr/motion.rs`: `impact_flash`, `speed_line`
-- `src/npr/noise.rs`: `HashNoise`, `HashNoise::new`, `HashNoise::with_frequency`, `NoiseField`, `PerlinNoise`, `PerlinNoise::new`, `WorleyNoise`, `WorleyNoise::new`, `fbm`
-- `src/npr/outline.rs`: `composite_outline`, `curvature_outline`, `distance_field_outline_soft`
+- `src/npr/noise.rs`: `HashNoise`, `HashNoise::new`, `HashNoise::with_frequency`, `NoiseField`, `PerlinNoise`, `PerlinNoise::new`, `PerlinNoise::with_frequency`, `SimplexNoise`, `SimplexNoise::new`, `SimplexNoise::with_frequency`, `WorleyNoise`, `WorleyNoise::new`, `WorleyNoise::with_frequency`, `fbm`
+- `src/npr/outline.rs`: `composite_outline`, `curvature_outline`, `depth_step_outline`, `distance_field_outline`, `distance_field_outline_soft`
 - `src/npr/palette.rs`: `palette_gradient`, `season_palette`, `time_of_day`
 - `src/npr/rim.rs`: `fresnel_rim`, `procedural_matcap`, `stylized_specular`
-- `src/npr/scene_composer.rs`: `SceneShaderBuilder`, `SceneShaderBuilder::build`, `SceneShaderBuilder::new`, `SceneShaderBuilder::try_build`, `SceneShaderBuilder::with_pipeline`, `SceneShaderBuilder::with_raymarch`, `SceneShaderBuilder::with_sky`, `SceneShaderBuilder::with_sun`
+- `src/npr/scene_composer.rs`: `SceneShaderBuilder`, `SceneShaderBuilder::build`, `SceneShaderBuilder::new`, `SceneShaderBuilder::try_build`, `SceneShaderBuilder::with_camera`, `SceneShaderBuilder::with_outline`, `SceneShaderBuilder::with_pipeline`, `SceneShaderBuilder::with_raymarch`, `SceneShaderBuilder::with_shading`, `SceneShaderBuilder::with_sky`, `SceneShaderBuilder::with_sun`
 - `src/npr/sdf_integration.rs`: `curvature_outline_from_node`, `distance_outline_from_node`, `soft_toon_shade_from_node`, `toon_shade_from_node`
 - `src/npr/shader_glue.rs`: `NPR_GLSL_HELPERS`, `NPR_GLSL_PALETTE_HELPERS`, `NPR_HLSL_HELPERS`, `NPR_HLSL_PALETTE_HELPERS`, `NPR_WGSL_HELPERS`, `NPR_WGSL_PALETTE_HELPERS`, `ShaderLanguage`, `full_helpers_for`, `helpers_for`, `palette_helpers_for`
 - `src/npr/sky.rs`: `distance_color_quantize`, `light_shaft_beam`, `puffy_cloud_layer`, `sky_gradient_bands`, `sun_disc`

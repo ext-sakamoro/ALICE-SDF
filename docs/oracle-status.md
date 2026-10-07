@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 540 |
+| 🟢 Not ignored | 566 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **540** |
+| **Total** | **566** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (540)
+## 🟢 Not ignored (566)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -23,7 +23,7 @@ Per-file counts (the test names are in `tests/`):
 |------|-------|
 | `test_terrain_destruction_oracle.rs` | 28 |
 | `test_gi_volume_oracle.rs` | 23 |
-| `npr_shader_validate.rs` | 19 |
+| `npr_shader_validate.rs` | 21 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_smooth_ops_oracle.rs` | 17 |
 | `test_io_round_trip.rs` | 15 |
@@ -32,6 +32,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_io_format_oracle.rs` | 13 |
 | `test_validity_oracle.rs` | 12 |
 | `test_gpu_law_parity.rs` | 11 |
+| `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_texture_fit_oracle.rs` | 11 |
@@ -54,6 +55,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_point_transform_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
+| `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
@@ -69,6 +71,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_extract_uv_oracle.rs` | 5 |
 | `test_mesh_quantization_oracle.rs` | 5 |
 | `test_meshopt_filter_oracle.rs` | 5 |
+| `test_npr_primitives_oracle.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
 | `test_constraint_oracle.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
@@ -92,6 +95,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_det_golden.rs` | 1 |
 | `test_det_parity.rs` | 1 |
+| `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
 
 ---

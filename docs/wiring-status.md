@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **353 baseline items** — Permitted violations, ratchet in place
+🟡 **274 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (353 permitted)
+## 📋 Baseline (274 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -17,8 +17,6 @@ Must resolve or remove from baseline to reduce ratchet.
 
 | File | Baseline lines |
 |------|----------------|
-| `src/material.rs` | 39 |
-| `src/npr/compiled_color.rs` | 32 |
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
 | `src/compiled/wgsl/gpu_eval.rs` | 14 |
@@ -32,7 +30,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/aabb.rs` | 8 |
 | `src/compiled/glsl/transpiler.rs` | 6 |
 | `src/compiled/wgsl/transpiler.rs` | 6 |
-| `src/npr/dsl.rs` | 6 |
 | `src/terrain/splatmap.rs` | 6 |
 | `src/volume/export.rs` | 6 |
 | `src/font_bridge.rs` | 5 |
@@ -61,8 +58,7 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/eval_bvh.rs` | 2 |
 | `src/destruction/debris.rs` | 2 |
 | `src/destruction/operations.rs` | 2 |
-| `src/npr/outline.rs` | 2 |
-| `src/npr/scene_composer.rs` | 2 |
+| `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/terrain/caves.rs` | 2 |
@@ -101,7 +97,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (341)
+### Unwired Items (262)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -263,45 +259,6 @@ unwired src/gi/irradiance.rs::get_probe
 unwired src/gi/irradiance.rs::get_probe_mut
 unwired src/gi/irradiance.rs::probe_count
 unwired src/gi/mod.rs::PointLight
-unwired src/material.rs::aluminum
-unwired src/material.rs::chrome
-unwired src/material.rs::concrete
-unwired src/material.rs::copper
-unwired src/material.rs::default_material
-unwired src/material.rs::dielectric
-unwired src/material.rs::emissive
-unwired src/material.rs::find_by_name
-unwired src/material.rs::from_material
-unwired src/material.rs::glow
-unwired src/material.rs::gold
-unwired src/material.rs::marble
-unwired src/material.rs::material_lerp
-unwired src/material.rs::metal
-unwired src/material.rs::plastic_red
-unwired src/material.rs::plastic_white
-unwired src/material.rs::rubber
-unwired src/material.rs::skin
-unwired src/material.rs::solid
-unwired src/material.rs::to_particle
-unwired src/material.rs::velvet
-unwired src/material.rs::water
-unwired src/material.rs::wet_asphalt
-unwired src/material.rs::with_albedo_map
-unwired src/material.rs::with_anisotropy
-unwired src/material.rs::with_ao_map
-unwired src/material.rs::with_clearcoat
-unwired src/material.rs::with_color
-unwired src/material.rs::with_emission
-unwired src/material.rs::with_emissive_map
-unwired src/material.rs::with_metallic
-unwired src/material.rs::with_metallic_roughness_map
-unwired src/material.rs::with_normal_map
-unwired src/material.rs::with_sheen
-unwired src/material.rs::with_subsurface
-unwired src/material.rs::with_tiling
-unwired src/material.rs::with_transmission
-unwired src/material.rs::with_uv_channel
-unwired src/material.rs::with_volume
 unwired src/mesh/lod.rs::DecimationLodConfig::distance_range
 unwired src/mesh/lod.rs::LodConfig::distance_range
 unwired src/mesh/lod.rs::balanced
@@ -337,47 +294,7 @@ unwired src/mesh/nanite.rs::select_clusters
 unwired src/mesh/nanite.rs::should_render
 unwired src/mesh/nanite.rs::unbounded
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
-unwired src/npr/compiled_color.rs::ADD
-unwired src/npr/compiled_color.rs::BLOOM
-unwired src/npr/compiled_color.rs::FRESNEL
-unwired src/npr/compiled_color.rs::HATCH
-unwired src/npr/compiled_color.rs::MULTIPLY
-unwired src/npr/compiled_color.rs::N_DOT_L
-unwired src/npr/compiled_color.rs::N_DOT_V
-unwired src/npr/compiled_color.rs::OUTLINE_OVER
-unwired src/npr/compiled_color.rs::PALETTE3
-unwired src/npr/compiled_color.rs::PALETTE5
-unwired src/npr/compiled_color.rs::POSTERIZE_COLOR
-unwired src/npr/compiled_color.rs::PUSH_CONSTANT
-unwired src/npr/compiled_color.rs::SATURATE
-unwired src/npr/compiled_color.rs::SCALE
-unwired src/npr/compiled_color.rs::SDF
-unwired src/npr/compiled_color.rs::SOFT_TOON
-unwired src/npr/compiled_color.rs::SPEED_LINE
-unwired src/npr/compiled_color.rs::TIME_CYCLE
-unwired src/npr/compiled_color.rs::TONEMAP
-unwired src/npr/compiled_color.rs::TOON
-unwired src/npr/compiled_color.rs::TWO_TONE
-unwired src/npr/compiled_color.rs::UV_Y
-unwired src/npr/compiled_color.rs::VIGNETTE
-unwired src/npr/compiled_color.rs::as_words
-unwired src/npr/compiled_color.rs::byte_len
-unwired src/npr/compiled_color.rs::deserialize
-unwired src/npr/compiled_color.rs::emit_wgsl_bytecode_evaluator
 unwired src/npr/compiled_color.rs::fallback_op_count
-unwired src/npr/compiled_color.rs::native_op_count
-unwired src/npr/compiled_color.rs::opcode_word_count
-unwired src/npr/compiled_color.rs::serialize
-unwired src/npr/dsl.rs::bloom
-unwired src/npr/dsl.rs::multiply
-unwired src/npr/dsl.rs::plus
-unwired src/npr/dsl.rs::posterize
-unwired src/npr/dsl.rs::with_hatch
-unwired src/npr/dsl.rs::with_speed_lines
-unwired src/npr/outline.rs::depth_step_outline
-unwired src/npr/outline.rs::distance_field_outline
-unwired src/npr/scene_composer.rs::with_camera
-unwired src/npr/scene_composer.rs::with_shading
 unwired src/physics_bridge.rs::arc
 unwired src/physics_bridge.rs::sdf_to_physics_field
 unwired src/physics_bridge.rs::with_epsilon
