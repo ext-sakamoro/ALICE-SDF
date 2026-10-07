@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **88 baseline items** — Permitted violations, ratchet in place
+🟡 **49 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (88 permitted)
+## 📋 Baseline (49 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -17,21 +17,18 @@ Must resolve or remove from baseline to reduce ratchet.
 
 | File | Baseline lines |
 |------|----------------|
-| `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
-| `src/compiled/wgsl/gpu_eval.rs` | 13 |
-| `src/compiled/glsl/transpiler.rs` | 5 |
-| `src/compiled/wgsl/transpiler.rs` | 5 |
 | `src/font_bridge.rs` | 5 |
 | `src/ffi/registry.rs` | 4 |
-| `src/compiled/hlsl/transpiler.rs` | 3 |
 | `src/compiled/simd.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
+| `src/compiled/glsl/transpiler.rs` | 2 |
 | `src/mesh/nanite.rs` | 2 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/bin/main.rs` | 1 |
+| `src/compiled/hlsl/transpiler.rs` | 1 |
 | `src/compiled/transpiler_common.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
@@ -39,13 +36,10 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/neural.rs` | 1 |
 | `src/volume/export.rs` | 1 |
 
-### Dead Code (10)
+### Dead Code (7)
 
 ```
 dead_code src/bin/main.rs 1
-dead_code src/compiled/glsl/transpiler.rs 2
-dead_code src/compiled/hlsl/transpiler.rs 2
-dead_code src/compiled/wgsl/transpiler.rs 2
 dead_code src/ffi/registry.rs 3
 dead_code src/io/asdf.rs 2
 dead_code src/neural.rs 1
@@ -54,52 +48,16 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (78)
+### Unwired Items (42)
 
 ```
-unwired src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM
-unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_SYSTEM
-unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_UNIFORMS
-unwired src/compiled/glsl/render_pipeline.rs::INTERIOR_MAPPING_LIB
-unwired src/compiled/glsl/render_pipeline.rs::MICRO_NORMAL_LIB
-unwired src/compiled/glsl/render_pipeline.rs::NOISE_LIB
-unwired src/compiled/glsl/render_pipeline.rs::NORMAL_AO_SHADOW
-unwired src/compiled/glsl/render_pipeline.rs::PBR_BRDF
-unwired src/compiled/glsl/render_pipeline.rs::POST_PROCESS
-unwired src/compiled/glsl/render_pipeline.rs::SKY_ATMOSPHERE
-unwired src/compiled/glsl/render_pipeline.rs::SPECTRAL_LIB
-unwired src/compiled/glsl/render_pipeline.rs::UNIFORMS
-unwired src/compiled/glsl/render_pipeline.rs::VFX_LIB
-unwired src/compiled/glsl/render_pipeline.rs::VOLUMETRIC_LIGHT
-unwired src/compiled/glsl/render_pipeline.rs::build_full_shader
-unwired src/compiled/glsl/render_pipeline.rs::build_main_function
 unwired src/compiled/glsl/transpiler.rs::export_unity_shader_graph
-unwired src/compiled/glsl/transpiler.rs::to_fragment_shader
-unwired src/compiled/glsl/transpiler.rs::to_fragment_shader_full
 unwired src/compiled/glsl/transpiler.rs::to_unity_custom_function
-unwired src/compiled/hlsl/transpiler.rs::export_ue5_material_function
 unwired src/compiled/hlsl/transpiler.rs::to_ue5_custom_node
 unwired src/compiled/simd.rs::max_component
 unwired src/compiled/simd.rs::max_zero
 unwired src/compiled/simd.rs::min_component
 unwired src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
-unwired src/compiled/wgsl/gpu_eval.rs::create_buffer_pool
-unwired src/compiled/wgsl/gpu_eval.rs::eval_batch_async
-unwired src/compiled/wgsl/gpu_eval.rs::eval_batch_auto
-unwired src/compiled/wgsl/gpu_eval.rs::eval_batch_full
-unwired src/compiled/wgsl/gpu_eval.rs::eval_batch_pooled
-unwired src/compiled/wgsl/gpu_eval.rs::eval_batch_submit
-unwired src/compiled/wgsl/gpu_eval.rs::from_glsl_compute
-unwired src/compiled/wgsl/gpu_eval.rs::from_shader_async
-unwired src/compiled/wgsl/gpu_eval.rs::from_wgsl_async
-unwired src/compiled/wgsl/gpu_eval.rs::new_async
-unwired src/compiled/wgsl/gpu_eval.rs::new_dynamic
-unwired src/compiled/wgsl/gpu_eval.rs::resolve
-unwired src/compiled/wgsl/gpu_eval.rs::wait
-unwired src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals
-unwired src/compiled/wgsl/transpiler.rs::to_volume_shader
-unwired src/compiled/wgsl/transpiler.rs::transpile_material
-unwired src/compiled/wgsl/transpiler.rs::with_workgroup_size
 unwired src/crispy.rs::BitMask64::test
 unwired src/crispy.rs::BloomFilter::test
 unwired src/crispy.rs::EMPTY

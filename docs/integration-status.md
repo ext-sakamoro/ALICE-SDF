@@ -7,9 +7,9 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 108 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1101 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 931 |
+| L0 | not reached by any non-test code, examples included | 55 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1150 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 935 |
 | | **total** | **2140** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
@@ -17,29 +17,16 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 77 unwired items.
+`scripts/wiring-baseline.txt` lists 41 unwired items.
 
-### L0 here but not in the baseline (43)
+### L0 here but not in the baseline (26)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
-- `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::extract_params`
-- `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::get_eval_function`
-- `src/compiled/glsl/render_pipeline.rs::RenderConfig`
-- `src/compiled/glsl/transpiler.rs::GlslShader::extract_params`
-- `src/compiled/glsl/transpiler.rs::GlslShader::to_compute_shader`
-- `src/compiled/hlsl/transpiler.rs::HlslShader::extract_params`
-- `src/compiled/hlsl/transpiler.rs::HlslShader::to_compute_shader`
 - `src/compiled/jit_simd.rs::JitSimd`
 - `src/compiled/jit_simd.rs::JitSimd::compile`
 - `src/compiled/jit_simd.rs::JitSimd::eval`
 - `src/compiled/jit_simd.rs::JitSimd::eval_soa`
-- `src/compiled/msl/transpiler.rs::MslError`
-- `src/compiled/msl/transpiler.rs::MslShader`
-- `src/compiled/msl/transpiler.rs::MslShader::from_wgsl`
-- `src/compiled/msl/transpiler.rs::MslShader::transpile`
-- `src/compiled/rust/transpiler.rs::RustSource::transpile`
-- `src/compiled/rust/transpiler.rs::RustSource::transpile_with`
 - `src/compiled/simd.rs::Quatx8::inverse`
 - `src/compiled/simd.rs::Quatx8::splat`
 - `src/compiled/simd.rs::Vec3x8::abs`
@@ -51,10 +38,6 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/compiled/simd.rs::Vec3x8::min`
 - `src/compiled/simd.rs::Vec3x8::normalize`
 - `src/compiled/simd.rs::Vec3x8::zero`
-- `src/compiled/wgsl/gpu_eval.rs::GpuBufferPool`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::update_params`
-- `src/compiled/wgsl/transpiler.rs::WgslShader::extract_params`
 - `src/crispy.rs::BitMask64`
 - `src/crispy.rs::BitMask64::as_u64`
 - `src/crispy.rs::BitMask64::clear`
@@ -73,47 +56,15 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (108)
+## L0 — unreached (55)
 
-- `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::extract_params`
-- `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::get_eval_function`
-- `src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM`
-- `src/compiled/glsl/render_pipeline.rs::DESTRUCTION_SYSTEM`
-- `src/compiled/glsl/render_pipeline.rs::DESTRUCTION_UNIFORMS`
-- `src/compiled/glsl/render_pipeline.rs::INTERIOR_MAPPING_LIB`
-- `src/compiled/glsl/render_pipeline.rs::MICRO_NORMAL_LIB`
-- `src/compiled/glsl/render_pipeline.rs::NOISE_LIB`
-- `src/compiled/glsl/render_pipeline.rs::NORMAL_AO_SHADOW`
-- `src/compiled/glsl/render_pipeline.rs::PBR_BRDF`
-- `src/compiled/glsl/render_pipeline.rs::POST_PROCESS`
-- `src/compiled/glsl/render_pipeline.rs::RenderConfig`
-- `src/compiled/glsl/render_pipeline.rs::SKY_ATMOSPHERE`
-- `src/compiled/glsl/render_pipeline.rs::SPECTRAL_LIB`
-- `src/compiled/glsl/render_pipeline.rs::UNIFORMS`
-- `src/compiled/glsl/render_pipeline.rs::VFX_LIB`
-- `src/compiled/glsl/render_pipeline.rs::VOLUMETRIC_LIGHT`
-- `src/compiled/glsl/render_pipeline.rs::build_full_shader`
-- `src/compiled/glsl/render_pipeline.rs::build_main_function`
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
-- `src/compiled/glsl/transpiler.rs::GlslShader::extract_params`
-- `src/compiled/glsl/transpiler.rs::GlslShader::to_compute_shader`
-- `src/compiled/glsl/transpiler.rs::GlslShader::to_fragment_shader`
-- `src/compiled/glsl/transpiler.rs::GlslShader::to_fragment_shader_full`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
-- `src/compiled/hlsl/transpiler.rs::HlslShader::export_ue5_material_function`
-- `src/compiled/hlsl/transpiler.rs::HlslShader::extract_params`
-- `src/compiled/hlsl/transpiler.rs::HlslShader::to_compute_shader`
 - `src/compiled/hlsl/transpiler.rs::HlslShader::to_ue5_custom_node`
 - `src/compiled/jit_simd.rs::JitSimd`
 - `src/compiled/jit_simd.rs::JitSimd::compile`
 - `src/compiled/jit_simd.rs::JitSimd::eval`
 - `src/compiled/jit_simd.rs::JitSimd::eval_soa`
-- `src/compiled/msl/transpiler.rs::MslError`
-- `src/compiled/msl/transpiler.rs::MslShader`
-- `src/compiled/msl/transpiler.rs::MslShader::from_wgsl`
-- `src/compiled/msl/transpiler.rs::MslShader::transpile`
-- `src/compiled/rust/transpiler.rs::RustSource::transpile`
-- `src/compiled/rust/transpiler.rs::RustSource::transpile_with`
 - `src/compiled/simd.rs::Quatx8::inverse`
 - `src/compiled/simd.rs::Quatx8::splat`
 - `src/compiled/simd.rs::Vec3x8::abs`
@@ -129,27 +80,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/simd.rs::Vec3x8::normalize`
 - `src/compiled/simd.rs::Vec3x8::zero`
 - `src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED`
-- `src/compiled/wgsl/gpu_eval.rs::GpuBufferPool`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture::resolve`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture::wait`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::create_buffer_pool`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::eval_batch_async`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::eval_batch_auto`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::eval_batch_full`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::eval_batch_pooled`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::eval_batch_submit`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::from_glsl_compute`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::from_shader_async`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::from_wgsl_async`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::new_async`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::new_dynamic`
-- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::update_params`
-- `src/compiled/wgsl/transpiler.rs::WgslShader::extract_params`
-- `src/compiled/wgsl/transpiler.rs::WgslShader::to_compute_shader_with_normals`
-- `src/compiled/wgsl/transpiler.rs::WgslShader::to_volume_shader`
-- `src/compiled/wgsl/transpiler.rs::WgslShader::transpile_material`
-- `src/compiled/wgsl/transpiler.rs::WgslShader::with_workgroup_size`
 - `src/crispy.rs::BitMask64`
 - `src/crispy.rs::BitMask64::EMPTY`
 - `src/crispy.rs::BitMask64::FULL`
@@ -206,7 +136,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1101)
+## L1 — example-only (1150)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -217,25 +147,29 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/codec_bridge.rs`: `CompressResult`, `DecodeError`, `EncodeConfig`, `EncodeConfig::fast`, `EncodeConfig::high_quality`, `EncodeConfig::lossless`, `SdfVolume`, `SdfVolume::get`, `SdfVolume::is_empty`, `SdfVolume::len`, `SdfVolume::world_pos`, `VolumeStats`, `compress_sdf`, `compression_ratio`, `decode_sdf_volume`, `decompress_sdf`, `encode_sdf_volume`, `try_decode_sdf_volume`, `volume_stats`, `voxelize_sdf`, `voxelize_sdf_uniform`
 - `src/collision.rs`: `ContactManifold`, `SdfContact`, `compute_manifold`, `sdf_ccd`, `sdf_closest_point`, `sdf_collide`, `sdf_distance`, `sdf_overlap`
 - `src/compiled/aabb.rs`: `AabbPacked::distance_to_point_fast`
+- `src/compiled/blinkscript/transpiler.rs`: `BlinkScriptShader::extract_params`, `BlinkScriptShader::get_eval_function`
 - `src/compiled/compiler.rs`: `CompiledSdf::lipschitz`, `CompiledSdf::memory_size`, `CompiledSdf::node_count`
 - `src/compiled/eval.rs`: `eval_compiled_batch`, `eval_compiled_distance_and_normal`
 - `src/compiled/eval_bvh.rs`: `CompiledSdfBvh::compile`, `CompiledSdfBvh::instruction_count`, `CompiledSdfBvh::memory_size`, `CompiledSdfBvh::refit_all_from_bytecode`, `CompiledSdfBvh::refit_partial_from_bytecode`, `eval_compiled_bvh`
 - `src/compiled/eval_simd.rs`: `eval_gradient_simd`
 - `src/compiled/eval_soa.rs`: `eval_compiled_batch_soa_into`
-- `src/compiled/glsl/transpiler.rs`: `GlslShader::get_eval_function`
-- `src/compiled/hlsl/transpiler.rs`: `HlslShader::get_eval_function`
+- `src/compiled/glsl/render_pipeline.rs`: `BIOME_SYSTEM`, `DESTRUCTION_SYSTEM`, `DESTRUCTION_UNIFORMS`, `INTERIOR_MAPPING_LIB`, `MICRO_NORMAL_LIB`, `NOISE_LIB`, `NORMAL_AO_SHADOW`, `PBR_BRDF`, `POST_PROCESS`, `RenderConfig`, `SKY_ATMOSPHERE`, `SPECTRAL_LIB`, `UNIFORMS`, `VFX_LIB`, `VOLUMETRIC_LIGHT`, `build_full_shader`, `build_main_function`
+- `src/compiled/glsl/transpiler.rs`: `GlslShader::extract_params`, `GlslShader::get_eval_function`, `GlslShader::to_compute_shader`, `GlslShader::to_fragment_shader`, `GlslShader::to_fragment_shader_full`
+- `src/compiled/hlsl/transpiler.rs`: `HlslShader::export_ue5_material_function`, `HlslShader::extract_params`, `HlslShader::get_eval_function`, `HlslShader::to_compute_shader`
 - `src/compiled/instanced.rs`: `InstancedSdf`, `InstancedSdf::add_at`, `InstancedSdf::add_instance`, `InstancedSdf::eval_min`, `InstancedSdf::eval_min_batch`, `InstancedSdf::eval_min_batch_simd`, `InstancedSdf::eval_min_simd`, `InstancedSdf::eval_per_instance`, `InstancedSdf::instance_count`, `InstancedSdf::new`, `InstancedSdf::to_instanced_wgsl`, `InstancedSdf::with_capacity`
 - `src/compiled/instruction.rs`: `Instruction::animated`, `Instruction::is_leaf`, `Instruction::next_instruction_index`
 - `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::compile_sdf_dynamic`, `JitCompiler::new`, `extract_jit_params`
 - `src/compiled/jit/runtime.rs`: `JitCompiledSdf`, `JitCompiledSdf::compile`, `JitCompiledSdf::eval`, `JitCompiledSdf::eval_batch`, `JitCompiledSdf::eval_batch_parallel`, `JitCompiledSdf::lipschitz`, `JitCompiledSdfDynamic`, `JitCompiledSdfDynamic::compile`, `JitCompiledSdfDynamic::eval`, `JitCompiledSdfDynamic::eval_batch`, `JitCompiledSdfDynamic::eval_batch_parallel`, `JitCompiledSdfDynamic::lipschitz`, `JitCompiledSdfDynamic::params`, `JitCompiledSdfDynamic::update_params`, `JitError`
 - `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_8`, `JitSimdSdf::eval_soa`, `JitSimdSdfDynamic`, `JitSimdSdfDynamic::compile`, `JitSimdSdfDynamic::eval_8`, `JitSimdSdfDynamic::eval_8_raw`, `JitSimdSdfDynamic::eval_batch`, `JitSimdSdfDynamic::eval_soa`, `JitSimdSdfDynamic::params`, `JitSimdSdfDynamic::update_params`, `extract_simd_params`
+- `src/compiled/msl/transpiler.rs`: `MslError`, `MslShader`, `MslShader::from_wgsl`, `MslShader::transpile`
 - `src/compiled/opcode.rs`: `OpCode::is_binary_op`, `OpCode::is_modifier`, `OpCode::is_post_process`, `OpCode::is_primitive`, `OpCode::is_transform`, `OpCode::modifies_point`
 - `src/compiled/real.rs`: `Vec3R::max_element`, `Vec3R::round`
 - `src/compiled/refit.rs`: `refit_partial`
-- `src/compiled/rust/transpiler.rs`: `DEFAULT_NORMAL_EPSILON`, `RustSource`, `RustSource::instruction_count`, `RustSource::source`, `RustSource::transpile_compiled`, `RustTranspileError`, `RustTranspileOptions`, `RustTranspileOptions::with_det_math_path`, `RustTranspileOptions::with_normal_epsilon`, `is_supported`
+- `src/compiled/rust/transpiler.rs`: `DEFAULT_NORMAL_EPSILON`, `RustSource`, `RustSource::instruction_count`, `RustSource::source`, `RustSource::transpile`, `RustSource::transpile_compiled`, `RustSource::transpile_with`, `RustTranspileError`, `RustTranspileOptions`, `RustTranspileOptions::with_det_math_path`, `RustTranspileOptions::with_normal_epsilon`, `is_supported`
 - `src/compiled/simd.rs`: `Quatx8`, `Quatx8::mul_vec3`, `Vec3x8::new`, `Vec3x8::splat`, `Vec3x8::to_array`
 - `src/compiled/transpiler_common.rs`: `shader_unsupported_nodes`
-- `src/compiled/wgsl/transpiler.rs`: `WgslShader::get_eval_function`
+- `src/compiled/wgsl/gpu_eval.rs`: `GpuEvalFuture`, `GpuEvalFuture::resolve`, `GpuEvalFuture::wait`, `GpuEvaluator::eval_batch`, `GpuEvaluator::eval_batch_async`, `GpuEvaluator::eval_batch_full`, `GpuEvaluator::eval_batch_submit`, `GpuEvaluator::from_glsl_compute`, `GpuEvaluator::from_shader_async`, `GpuEvaluator::from_wgsl_async`, `GpuEvaluator::new_async`, `GpuEvaluator::new_dynamic`, `GpuEvaluator::update_params`
+- `src/compiled/wgsl/transpiler.rs`: `WgslShader::extract_params`, `WgslShader::get_eval_function`, `WgslShader::to_compute_shader_with_normals`, `WgslShader::transpile_material`, `WgslShader::with_workgroup_size`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`
 - `src/crispy.rs`: `fnv1a_hash`
 - `src/destruction/debris.rs`: `DebrisConfig`, `DebrisPiece`, `generate_debris`

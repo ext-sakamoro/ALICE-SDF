@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 688 |
+| 🟢 Not ignored | 702 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **689** |
+| **Total** | **703** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -22,7 +22,7 @@ today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected
 
 - `nanite_cut_covers_the_surface_at_every_distance` (test_lod_nanite_meshlet_oracle.rs) — src gap: nanite-cluster-cut — should_render/select_clusters keep the too-coarse side and a parent cluster's er…
 
-## 🟢 Not ignored (688)
+## 🟢 Not ignored (702)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -68,6 +68,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_volume_api_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
+| `test_gpu_eval_api_oracle.rs` | 7 |
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
@@ -97,6 +98,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_dual_contouring_invariants.rs` | 4 |
 | `test_eval_grid_oracle.rs` | 4 |
 | `test_gi_api_oracle.rs` | 4 |
+| `test_glsl_export_oracle.rs` | 4 |
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
@@ -106,6 +108,7 @@ Per-file counts (the test names are in `tests/`):
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
+| `test_hlsl_export_oracle.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
 | `test_optimize_stats_oracle.rs` | 3 |
