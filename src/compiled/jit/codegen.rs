@@ -170,26 +170,8 @@ impl<'a> JitCompiler<'a> {
         self.ctx.func.signature = sig;
         self.ctx.func.name = UserFuncName::user(0, func_id.as_u32());
 
-        let params;
-        {
-            let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.func_ctx);
-            let entry_block = builder.create_block();
-            builder.append_block_params_for_function_params(entry_block);
-            builder.switch_to_block(entry_block);
-            builder.seal_block(entry_block);
-
-            let x = builder.block_params(entry_block)[0];
-            let y = builder.block_params(entry_block)[1];
-            let z = builder.block_params(entry_block)[2];
-            let params_ptr = builder.block_params(entry_block)[3];
-
-            let mut emitter = JitParamEmitter::dynamic(params_ptr);
-            let result = compile_node(&mut builder, node, x, y, z, &mut emitter)?;
-            builder.ins().return_(&[result]);
-            builder.finalize();
-
-            params = emitter.into_params();
-        }
+        let params =
+            build_dynamic_body(&mut self.ctx.func, &mut self.func_ctx, node).map_err(|(e, _)| e)?;
 
         self.module
             .define_function(func_id, &mut self.ctx)
@@ -1500,400 +1482,60 @@ fn emit_mod_fast(builder: &mut FunctionBuilder, a: Value, b: Value, inv_b: Value
 
 // ============ Parameter Extraction ============
 
-/// Extract parameters from an SDF tree in the same order as dynamic compilation.
+/// Emit the body of the dynamic evaluator `fn(x, y, z, params_ptr) -> f32`
+/// into `func` (whose signature must already be set) and return the
+/// parameter buffer the body reads, in load order.
 ///
-/// This function must push params in EXACTLY the same order as `compile_node`
-/// calls `emitter.emit()`. Used by `JitCompiledSdfDynamic::update_params()`.
-pub fn extract_jit_params(node: &SdfNode) -> Vec<f32> {
-    let mut params = Vec::new();
-    extract_params_recursive(node, &mut params);
-    params
+/// On a node the generator does not support, returns the error together with
+/// the parameters emitted before it.
+fn build_dynamic_body(
+    func: &mut cranelift_codegen::ir::Function,
+    func_ctx: &mut FunctionBuilderContext,
+    node: &SdfNode,
+) -> Result<Vec<f32>, (JitError, Vec<f32>)> {
+    let mut builder = FunctionBuilder::new(func, func_ctx);
+    let entry_block = builder.create_block();
+    builder.append_block_params_for_function_params(entry_block);
+    builder.switch_to_block(entry_block);
+    builder.seal_block(entry_block);
+
+    let x = builder.block_params(entry_block)[0];
+    let y = builder.block_params(entry_block)[1];
+    let z = builder.block_params(entry_block)[2];
+    let params_ptr = builder.block_params(entry_block)[3];
+
+    let mut emitter = JitParamEmitter::dynamic(params_ptr);
+    match compile_node(&mut builder, node, x, y, z, &mut emitter) {
+        Ok(result) => {
+            builder.ins().return_(&[result]);
+            builder.finalize();
+            Ok(emitter.into_params())
+        }
+        Err(e) => Err((e, emitter.into_params())),
+    }
 }
 
-fn extract_params_recursive(node: &SdfNode, params: &mut Vec<f32>) {
-    match node {
-        // Primitives
-        SdfNode::Sphere { radius } => {
-            params.push(*radius);
-        }
-
-        SdfNode::Box3d { half_extents } => {
-            params.push(half_extents.x);
-            params.push(half_extents.y);
-            params.push(half_extents.z);
-        }
-
-        SdfNode::Cylinder {
-            radius,
-            half_height,
-        } => {
-            params.push(*radius);
-            params.push(*half_height);
-        }
-
-        SdfNode::Torus {
-            major_radius,
-            minor_radius,
-        } => {
-            params.push(*major_radius);
-            params.push(*minor_radius);
-        }
-
-        SdfNode::Plane { normal, distance } => {
-            params.push(normal.x);
-            params.push(normal.y);
-            params.push(normal.z);
-            params.push(*distance);
-        }
-
-        SdfNode::Capsule {
-            point_a,
-            point_b,
-            radius,
-        } => {
-            params.push(point_a.x);
-            params.push(point_a.y);
-            params.push(point_a.z);
-            params.push(point_b.x);
-            params.push(point_b.y);
-            params.push(point_b.z);
-            params.push(*radius);
-            // inv_dot_ba_ba (Division Exorcism derived)
-            let ba = *point_b - *point_a;
-            let dbb = ba.dot(ba);
-            params.push(if dbb.abs() < 1e-10 { 1.0 } else { 1.0 / dbb });
-        }
-
-        // Ellipsoid: no JIT arm since 3.1.0 (see the codegen match), nothing to pack
-        SdfNode::Ellipsoid { .. } => {}
-
-        SdfNode::Link {
-            half_length,
-            r1,
-            r2,
-        } => {
-            params.push(*half_length);
-            params.push(*r1);
-            params.push(*r2);
-        }
-
-        // Operations (no params for Union/Intersection/Subtraction)
-        SdfNode::Union { a, b }
-        | SdfNode::Intersection { a, b }
-        | SdfNode::Subtraction { a, b } => {
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-        }
-
-        SdfNode::SmoothUnion { a, b, k }
-        | SdfNode::SmoothIntersection { a, b, k }
-        | SdfNode::SmoothSubtraction { a, b, k } => {
-            params.push(*k);
-            params.push(if k.abs() < 1e-10 { 1.0 } else { 1.0 / *k });
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-        }
-
-        SdfNode::ChamferUnion { a, b, r }
-        | SdfNode::ChamferIntersection { a, b, r }
-        | SdfNode::ChamferSubtraction { a, b, r } => {
-            params.push(*r);
-            params.push(std::f32::consts::FRAC_1_SQRT_2);
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-        }
-
-        SdfNode::StairsUnion { a, b, r, n }
-        | SdfNode::StairsIntersection { a, b, r, n }
-        | SdfNode::StairsSubtraction { a, b, r, n } => {
-            params.push(*r);
-            params.push(*n);
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-        }
-
-        // Transforms
-        SdfNode::Translate { child, offset } => {
-            params.push(offset.x);
-            params.push(offset.y);
-            params.push(offset.z);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::Rotate { child, rotation } => {
-            let inv_rot = rotation.inverse();
-            params.push(inv_rot.x);
-            params.push(inv_rot.y);
-            params.push(inv_rot.z);
-            params.push(inv_rot.w);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::Scale { child, factor } => {
-            params.push(*factor);
-            params.push(1.0 / *factor);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::ScaleNonUniform { child, factors } => {
-            params.push(1.0 / factors.x);
-            params.push(1.0 / factors.y);
-            params.push(1.0 / factors.z);
-            params.push(factors.x.min(factors.y).min(factors.z));
-            extract_params_recursive(child, params);
-        }
-
-        // Modifiers
-        SdfNode::Twist { child, strength } => {
-            params.push(*strength);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::Bend { child, curvature } => {
-            params.push(*curvature);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::Round { child, radius } => {
-            extract_params_recursive(child, params);
-            params.push(*radius);
-        }
-
-        SdfNode::Onion { child, thickness } => {
-            extract_params_recursive(child, params);
-            params.push(*thickness);
-        }
-
-        SdfNode::Elongate { child, amount } => {
-            params.push(amount.x);
-            params.push(amount.y);
-            params.push(amount.z);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::RepeatInfinite { child, spacing } => {
-            params.push(spacing.x * 0.5);
-            params.push(spacing.y * 0.5);
-            params.push(spacing.z * 0.5);
-            params.push(spacing.x);
-            params.push(spacing.y);
-            params.push(spacing.z);
-            params.push(1.0 / spacing.x);
-            params.push(1.0 / spacing.y);
-            params.push(1.0 / spacing.z);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::RepeatFinite {
-            child,
-            count,
-            spacing,
-        } => {
-            params.push(1.0 / spacing.x);
-            params.push(1.0 / spacing.y);
-            params.push(1.0 / spacing.z);
-            params.push(spacing.x);
-            params.push(spacing.y);
-            params.push(spacing.z);
-            params.push(count[0] as f32);
-            params.push(count[1] as f32);
-            params.push(count[2] as f32);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::Mirror { child, .. } => {
-            // axes are structural, not parametric
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::Revolution { child, offset } => {
-            params.push(*offset);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::SweepBezier { child, p0, p1, p2 } => {
-            params.push(p0.x);
-            params.push(p0.y);
-            params.push(p1.x);
-            params.push(p1.y);
-            params.push(p2.x);
-            params.push(p2.y);
-            extract_params_recursive(child, params);
-        }
-
-        SdfNode::Extrude { child, half_height } => {
-            extract_params_recursive(child, params);
-            params.push(*half_height);
-        }
-
-        SdfNode::Cone {
-            radius,
-            half_height,
-        } => {
-            params.push(*radius);
-            params.push(*half_height);
-            // Division Exorcism: pre-compute inv_k2_dot
-            let k2d = (2.0 * half_height) * (2.0 * half_height) + (radius * radius);
-            params.push(if k2d.abs() < 1e-10 { 1.0 } else { 1.0 / k2d });
-        }
-
-        SdfNode::RoundedCone {
-            r1,
-            r2,
-            half_height,
-        } => {
-            params.push(*r1);
-            params.push(*r2);
-            params.push(*half_height);
-            let h_val = half_height * 2.0;
-            let inv_h = if h_val.abs() < 1e-10 {
-                1.0
-            } else {
-                1.0 / h_val
-            };
-            let b_val = (r1 - r2) * inv_h;
-            let a_val = (1.0 - b_val * b_val).max(0.0).sqrt();
-            let ah_val = a_val * h_val;
-            params.push(h_val);
-            params.push(b_val);
-            params.push(a_val);
-            params.push(ah_val);
-        }
-
-        SdfNode::Pyramid { half_height } => {
-            params.push(*half_height);
-            let h_val = half_height * 2.0;
-            let m2_val = h_val * h_val + 0.25;
-            params.push(h_val);
-            params.push(m2_val);
-            params.push(1.0 / m2_val);
-            params.push(1.0 / (m2_val + 0.25));
-        }
-
-        SdfNode::Octahedron { size } => {
-            params.push(*size);
-        }
-
-        SdfNode::HexPrism {
-            hex_radius,
-            half_height,
-        } => {
-            params.push(*hex_radius);
-            params.push(*half_height);
-        }
-
-        // No-op / error nodes
-        SdfNode::Noise { .. } => {}
-
-        SdfNode::WithMaterial { child, .. } => {
-            extract_params_recursive(child, params);
-        }
-
-        // Implementable operations
-        SdfNode::XOR { a, b } => {
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-        }
-
-        SdfNode::Morph { a, b, t } => {
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-            params.push(*t);
-        }
-
-        SdfNode::Pipe { a, b, r } => {
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-            params.push(*r);
-        }
-
-        SdfNode::Engrave { a, b, r } => {
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-            params.push(*r);
-        }
-
-        SdfNode::Groove { a, b, ra, rb } => {
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-            params.push(*ra);
-            params.push(*rb);
-        }
-
-        SdfNode::Tongue { a, b, ra, rb } => {
-            extract_params_recursive(a, params);
-            extract_params_recursive(b, params);
-            params.push(*ra);
-            params.push(*rb);
-        }
-
-        // Implementable modifier
-        SdfNode::OctantMirror { child } => {
-            extract_params_recursive(child, params);
-        }
-
-        // Unsupported complex primitives (no params to extract)
-        SdfNode::Triangle { .. }
-        | SdfNode::Bezier { .. }
-        | SdfNode::RoundedBox { .. }
-        | SdfNode::CappedCone { .. }
-        | SdfNode::CappedTorus { .. }
-        | SdfNode::RoundedCylinder { .. }
-        | SdfNode::TriangularPrism { .. }
-        | SdfNode::CutSphere { .. }
-        | SdfNode::CutHollowSphere { .. }
-        | SdfNode::DeathStar { .. }
-        | SdfNode::SolidAngle { .. }
-        | SdfNode::Rhombus { .. }
-        | SdfNode::Horseshoe { .. }
-        | SdfNode::Vesica { .. }
-        | SdfNode::InfiniteCylinder { .. }
-        | SdfNode::InfiniteCone { .. }
-        | SdfNode::Gyroid { .. }
-        | SdfNode::Heart { .. }
-        | SdfNode::Tube { .. }
-        | SdfNode::Barrel { .. }
-        | SdfNode::Diamond { .. }
-        | SdfNode::ChamferedCube { .. }
-        | SdfNode::SchwarzP { .. }
-        | SdfNode::Superellipsoid { .. }
-        | SdfNode::RoundedX { .. }
-        | SdfNode::Pie { .. }
-        | SdfNode::Trapezoid { .. }
-        | SdfNode::Parallelogram { .. }
-        | SdfNode::Tunnel { .. }
-        | SdfNode::UnevenCapsule { .. }
-        | SdfNode::Egg { .. }
-        | SdfNode::ArcShape { .. }
-        | SdfNode::Moon { .. }
-        | SdfNode::CrossShape { .. }
-        | SdfNode::BlobbyCross { .. }
-        | SdfNode::ParabolaSegment { .. }
-        | SdfNode::RegularPolygon { .. }
-        | SdfNode::StarPolygon { .. }
-        | SdfNode::Stairs { .. }
-        | SdfNode::Helix { .. }
-        | SdfNode::Tetrahedron { .. }
-        | SdfNode::Dodecahedron { .. }
-        | SdfNode::Icosahedron { .. }
-        | SdfNode::TruncatedOctahedron { .. }
-        | SdfNode::TruncatedIcosahedron { .. }
-        | SdfNode::BoxFrame { .. }
-        | SdfNode::DiamondSurface { .. }
-        | SdfNode::Neovius { .. }
-        | SdfNode::Lidinoid { .. }
-        | SdfNode::IWP { .. }
-        | SdfNode::FRD { .. }
-        | SdfNode::FischerKochS { .. }
-        | SdfNode::PMY { .. }
-        | SdfNode::ColumnsUnion { .. }
-        | SdfNode::ColumnsIntersection { .. }
-        | SdfNode::ColumnsSubtraction { .. }
-        | SdfNode::Taper { .. }
-        | SdfNode::Displacement { .. }
-        | SdfNode::PolarRepeat { .. } => {}
-
-        #[allow(unreachable_patterns)]
-        _ => {}
+/// Extract parameters from an SDF tree in the order the dynamic evaluator
+/// reads them. Used by `JitCompiledSdfDynamic::update_params()`.
+///
+/// The dynamic code generator is run into a scratch IR function (no machine
+/// code is produced) and its parameter buffer is returned, so the layout has
+/// a single source: the generator itself. For a node the generator does not
+/// support, the parameters emitted before it are returned.
+pub fn extract_jit_params(node: &SdfNode) -> Vec<f32> {
+    let ptr_type = if cfg!(target_pointer_width = "64") {
+        types::I64
+    } else {
+        types::I32
+    };
+    let mut func = cranelift_codegen::ir::Function::new();
+    func.signature.params.push(AbiParam::new(types::F32)); // x
+    func.signature.params.push(AbiParam::new(types::F32)); // y
+    func.signature.params.push(AbiParam::new(types::F32)); // z
+    func.signature.params.push(AbiParam::new(ptr_type)); // params_ptr
+    func.signature.returns.push(AbiParam::new(types::F32)); // distance
+    let mut func_ctx = FunctionBuilderContext::new();
+    match build_dynamic_body(&mut func, &mut func_ctx, node) {
+        Ok(params) | Err((_, params)) => params,
     }
 }

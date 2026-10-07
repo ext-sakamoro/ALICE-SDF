@@ -271,7 +271,8 @@ cargo test --features jit \
   --test test_evaluator_opcode_parity \
   --test test_relaxed_tracing \
   --test test_raycast_oracle \
-  --test test_round_tie_parity
+  --test test_round_tie_parity \
+  --test test_jit_dynamic_oracle
 
 # file 先頭が `#![cfg(feature = …)]` の oracle (default の --tests では 0 本、ci.yml と対)
 step "test: physics bridge determinism oracle"
@@ -328,7 +329,7 @@ step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes 
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_noise_parity --test test_round_tie_parity \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation \
-  --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity
+  --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity
 
 step "gpu-parity: aaa (volume gpu_bake, ci.yml の GPU ↔ CPU parity (aaa — volume gpu_bake) と対)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle

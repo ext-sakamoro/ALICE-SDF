@@ -277,6 +277,11 @@ required-features = ["destruction"]
 name = "texture_reconstruct"
 required-features = ["texture-fit"]
 
+# Parameter-buffer JIT (scalar + 8-wide): update_params without recompiling.
+[[example]]
+name = "jit_dynamic"
+required-features = ["jit"]
+
 # Declare the 5 bridge features as known even though the entries are
 # gone from [features] for the 1.7.7 crates.io publish. Without this
 # `cargo clippy -- -D warnings` and `cargo doc -Dwarnings` fail on

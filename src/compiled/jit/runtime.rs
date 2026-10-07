@@ -279,8 +279,23 @@ impl JitCompiledSdfDynamic {
     ///
     /// The tree structure must be identical to the one used for compilation.
     /// Only shape parameter values (radius, position, etc.) may change.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` yields a different number of parameters than the
+    /// compiled code reads (a different tree structure). The compiled code
+    /// loads its parameters by fixed index, so a shorter buffer would be read
+    /// out of bounds.
     pub fn update_params(&mut self, node: &SdfNode) {
-        self.params = extract_jit_params(node);
+        let params = extract_jit_params(node);
+        assert_eq!(
+            params.len(),
+            self.params.len(),
+            "JitCompiledSdfDynamic::update_params: the tree has {} parameters but the compiled code reads {} (the structure must match the compiled tree)",
+            params.len(),
+            self.params.len()
+        );
+        self.params = params;
     }
 
     /// Get current parameter values
