@@ -137,4 +137,7 @@ fn main() {
     assert_eq!(cache.len(), 8);
     assert_eq!(hits, 8);
     assert!(budget.memory_used() <= 64 * 1024);
+    budget.clear();
+    assert!(budget.is_empty() && budget.memory_used() == 0);
+    assert!(!cache.is_empty());
 }
