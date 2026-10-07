@@ -7,9 +7,9 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 318 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 898 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 922 |
+| L0 | not reached by any non-test code, examples included | 254 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 953 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 931 |
 | | **total** | **2138** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
@@ -17,9 +17,9 @@ It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 193 unwired items.
+`scripts/wiring-baseline.txt` lists 153 unwired items.
 
-### L0 here but not in the baseline (135)
+### L0 here but not in the baseline (112)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
@@ -50,32 +50,13 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/codec_bridge.rs::SdfVolume::get`
 - `src/codec_bridge.rs::SdfVolume::is_empty`
 - `src/codec_bridge.rs::SdfVolume::len`
+- `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::extract_params`
 - `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::get_eval_function`
-- `src/compiled/compiler.rs::CompiledSdf::lipschitz`
-- `src/compiled/compiler.rs::CompiledSdf::node_count`
-- `src/compiled/eval.rs::eval_compiled_batch`
-- `src/compiled/eval_bvh.rs::CompiledSdfBvh::instruction_count`
 - `src/compiled/glsl/render_pipeline.rs::RenderConfig`
+- `src/compiled/glsl/transpiler.rs::GlslShader::extract_params`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_compute_shader`
+- `src/compiled/hlsl/transpiler.rs::HlslShader::extract_params`
 - `src/compiled/hlsl/transpiler.rs::HlslShader::to_compute_shader`
-- `src/compiled/instanced.rs::InstancedSdf`
-- `src/compiled/instanced.rs::InstancedSdf::new`
-- `src/compiled/instanced.rs::InstancedSdf::with_capacity`
-- `src/compiled/instruction.rs::Instruction::animated`
-- `src/compiled/instruction.rs::Instruction::is_leaf`
-- `src/compiled/jit/codegen.rs::JitCompiler::compile_sdf_dynamic`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::compile`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval_batch`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::lipschitz`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::compile`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8_raw`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_batch`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_soa`
 - `src/compiled/jit_simd.rs::JitSimd`
 - `src/compiled/jit_simd.rs::JitSimd::compile`
 - `src/compiled/jit_simd.rs::JitSimd::eval`
@@ -84,13 +65,8 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/compiled/msl/transpiler.rs::MslShader`
 - `src/compiled/msl/transpiler.rs::MslShader::from_wgsl`
 - `src/compiled/msl/transpiler.rs::MslShader::transpile`
-- `src/compiled/opcode.rs::OpCode::is_binary_op`
-- `src/compiled/opcode.rs::OpCode::is_primitive`
-- `src/compiled/real.rs::Vec3R::max_element`
-- `src/compiled/real.rs::Vec3R::round`
 - `src/compiled/rust/transpiler.rs::RustSource::transpile`
 - `src/compiled/rust/transpiler.rs::RustSource::transpile_with`
-- `src/compiled/simd.rs::Quatx8`
 - `src/compiled/simd.rs::Quatx8::inverse`
 - `src/compiled/simd.rs::Quatx8::splat`
 - `src/compiled/simd.rs::Vec3x8::abs`
@@ -102,9 +78,10 @@ The name-based guard counts these as wired; resolved references find no caller.
 - `src/compiled/simd.rs::Vec3x8::min`
 - `src/compiled/simd.rs::Vec3x8::normalize`
 - `src/compiled/simd.rs::Vec3x8::zero`
-- `src/compiled/transpiler_common.rs::GenericTranspiler::generate_shader`
 - `src/compiled/wgsl/gpu_eval.rs::GpuBufferPool`
 - `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture`
+- `src/compiled/wgsl/gpu_eval.rs::GpuEvaluator::update_params`
+- `src/compiled/wgsl/transpiler.rs::WgslShader::extract_params`
 - `src/crispy.rs::BitMask64`
 - `src/crispy.rs::BitMask64::as_u64`
 - `src/crispy.rs::BitMask64::clear`
@@ -165,7 +142,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (318)
+## L0 — unreached (254)
 
 - `src/asp_bridge.rs::create_sdf_d_packet`
 - `src/asp_bridge.rs::create_sdf_i_packet`
@@ -223,25 +200,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/codec_bridge.rs::volume_stats`
 - `src/codec_bridge.rs::voxelize_sdf`
 - `src/codec_bridge.rs::voxelize_sdf_uniform`
-- `src/compiled/aabb.rs::AabbPacked::distance_to_point_fast`
-- `src/compiled/aabb.rs::AabbPacked::from_half_size`
-- `src/compiled/aabb.rs::hex_prism_aabb`
-- `src/compiled/aabb.rs::link_aabb`
-- `src/compiled/aabb.rs::octahedron_aabb`
-- `src/compiled/aabb.rs::pyramid_aabb`
-- `src/compiled/aabb.rs::rounded_cone_aabb`
 - `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::extract_params`
 - `src/compiled/blinkscript/transpiler.rs::BlinkScriptShader::get_eval_function`
-- `src/compiled/compiler.rs::CompiledSdf::aux_data`
-- `src/compiled/compiler.rs::CompiledSdf::lipschitz`
-- `src/compiled/compiler.rs::CompiledSdf::memory_size`
-- `src/compiled/compiler.rs::CompiledSdf::node_count`
-- `src/compiled/eval.rs::eval_compiled_batch`
-- `src/compiled/eval.rs::eval_compiled_distance_and_normal`
-- `src/compiled/eval_bvh.rs::CompiledSdfBvh::instruction_count`
-- `src/compiled/eval_bvh.rs::CompiledSdfBvh::memory_size`
-- `src/compiled/eval_bvh.rs::CompiledSdfBvh::refit_all_from_bytecode`
-- `src/compiled/eval_simd.rs::eval_gradient_simd`
 - `src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM`
 - `src/compiled/glsl/render_pipeline.rs::DESTRUCTION_SYSTEM`
 - `src/compiled/glsl/render_pipeline.rs::DESTRUCTION_UNIFORMS`
@@ -269,42 +229,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/hlsl/transpiler.rs::HlslShader::extract_params`
 - `src/compiled/hlsl/transpiler.rs::HlslShader::to_compute_shader`
 - `src/compiled/hlsl/transpiler.rs::HlslShader::to_ue5_custom_node`
-- `src/compiled/instanced.rs::InstancedSdf`
-- `src/compiled/instanced.rs::InstancedSdf::add_at`
-- `src/compiled/instanced.rs::InstancedSdf::add_instance`
-- `src/compiled/instanced.rs::InstancedSdf::eval_min`
-- `src/compiled/instanced.rs::InstancedSdf::eval_min_batch`
-- `src/compiled/instanced.rs::InstancedSdf::eval_min_batch_simd`
-- `src/compiled/instanced.rs::InstancedSdf::eval_min_simd`
-- `src/compiled/instanced.rs::InstancedSdf::eval_per_instance`
-- `src/compiled/instanced.rs::InstancedSdf::instance_count`
-- `src/compiled/instanced.rs::InstancedSdf::new`
-- `src/compiled/instanced.rs::InstancedSdf::to_instanced_wgsl`
-- `src/compiled/instanced.rs::InstancedSdf::with_capacity`
-- `src/compiled/instruction.rs::Instruction::animated`
-- `src/compiled/instruction.rs::Instruction::is_leaf`
-- `src/compiled/instruction.rs::Instruction::next_instruction_index`
-- `src/compiled/jit/codegen.rs::JitCompiler::compile_sdf_dynamic`
-- `src/compiled/jit/codegen.rs::extract_jit_params`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch`
-- `src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch_parallel`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::compile`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval_batch`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval_batch_parallel`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::lipschitz`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::params`
-- `src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::update_params`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::compile`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_8_raw`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_batch`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::eval_soa`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::params`
-- `src/compiled/jit/simd/mod.rs::JitSimdSdfDynamic::update_params`
-- `src/compiled/jit/simd/mod.rs::extract_simd_params`
 - `src/compiled/jit_simd.rs::JitSimd`
 - `src/compiled/jit_simd.rs::JitSimd::compile`
 - `src/compiled/jit_simd.rs::JitSimd::eval`
@@ -313,19 +237,9 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/msl/transpiler.rs::MslShader`
 - `src/compiled/msl/transpiler.rs::MslShader::from_wgsl`
 - `src/compiled/msl/transpiler.rs::MslShader::transpile`
-- `src/compiled/opcode.rs::OpCode::is_binary_op`
-- `src/compiled/opcode.rs::OpCode::is_modifier`
-- `src/compiled/opcode.rs::OpCode::is_post_process`
-- `src/compiled/opcode.rs::OpCode::is_primitive`
-- `src/compiled/opcode.rs::OpCode::is_transform`
-- `src/compiled/opcode.rs::OpCode::modifies_point`
-- `src/compiled/real.rs::Vec3R::max_element`
-- `src/compiled/real.rs::Vec3R::round`
 - `src/compiled/rust/transpiler.rs::RustSource::transpile`
 - `src/compiled/rust/transpiler.rs::RustSource::transpile_with`
-- `src/compiled/simd.rs::Quatx8`
 - `src/compiled/simd.rs::Quatx8::inverse`
-- `src/compiled/simd.rs::Quatx8::mul_vec3`
 - `src/compiled/simd.rs::Quatx8::splat`
 - `src/compiled/simd.rs::Vec3x8::abs`
 - `src/compiled/simd.rs::Vec3x8::clamp`
@@ -339,7 +253,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/simd.rs::Vec3x8::min_component`
 - `src/compiled/simd.rs::Vec3x8::normalize`
 - `src/compiled/simd.rs::Vec3x8::zero`
-- `src/compiled/transpiler_common.rs::GenericTranspiler::generate_shader`
 - `src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED`
 - `src/compiled/wgsl/gpu_eval.rs::GpuBufferPool`
 - `src/compiled/wgsl/gpu_eval.rs::GpuEvalFuture`
@@ -508,23 +421,30 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (898)
+## L1 — example-only (953)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::world_to_chunk`
 - `src/collision.rs`: `ContactManifold`, `SdfContact`, `compute_manifold`, `sdf_ccd`, `sdf_closest_point`, `sdf_collide`, `sdf_distance`, `sdf_overlap`
-- `src/compiled/compiler.rs`: `CompiledSdf::instructions`
-- `src/compiled/eval_bvh.rs`: `CompiledSdfBvh::compile`, `CompiledSdfBvh::refit_partial_from_bytecode`, `eval_compiled_bvh`
+- `src/compiled/aabb.rs`: `AabbPacked::distance_to_point_fast`
+- `src/compiled/compiler.rs`: `CompiledSdf::lipschitz`, `CompiledSdf::memory_size`, `CompiledSdf::node_count`
+- `src/compiled/eval.rs`: `eval_compiled_batch`, `eval_compiled_distance_and_normal`
+- `src/compiled/eval_bvh.rs`: `CompiledSdfBvh::compile`, `CompiledSdfBvh::instruction_count`, `CompiledSdfBvh::memory_size`, `CompiledSdfBvh::refit_all_from_bytecode`, `CompiledSdfBvh::refit_partial_from_bytecode`, `eval_compiled_bvh`
+- `src/compiled/eval_simd.rs`: `eval_gradient_simd`
 - `src/compiled/eval_soa.rs`: `eval_compiled_batch_soa_into`
 - `src/compiled/glsl/transpiler.rs`: `GlslShader::get_eval_function`
 - `src/compiled/hlsl/transpiler.rs`: `HlslShader::get_eval_function`
-- `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::new`
-- `src/compiled/jit/runtime.rs`: `JitCompiledSdf`, `JitCompiledSdf::compile`, `JitCompiledSdf::eval`, `JitCompiledSdf::lipschitz`, `JitError`
-- `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_8`, `JitSimdSdf::eval_soa`
+- `src/compiled/instanced.rs`: `InstancedSdf`, `InstancedSdf::add_at`, `InstancedSdf::add_instance`, `InstancedSdf::eval_min`, `InstancedSdf::eval_min_batch`, `InstancedSdf::eval_min_batch_simd`, `InstancedSdf::eval_min_simd`, `InstancedSdf::eval_per_instance`, `InstancedSdf::instance_count`, `InstancedSdf::new`, `InstancedSdf::to_instanced_wgsl`, `InstancedSdf::with_capacity`
+- `src/compiled/instruction.rs`: `Instruction::animated`, `Instruction::is_leaf`, `Instruction::next_instruction_index`
+- `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::compile_sdf_dynamic`, `JitCompiler::new`, `extract_jit_params`
+- `src/compiled/jit/runtime.rs`: `JitCompiledSdf`, `JitCompiledSdf::compile`, `JitCompiledSdf::eval`, `JitCompiledSdf::eval_batch`, `JitCompiledSdf::eval_batch_parallel`, `JitCompiledSdf::lipschitz`, `JitCompiledSdfDynamic`, `JitCompiledSdfDynamic::compile`, `JitCompiledSdfDynamic::eval`, `JitCompiledSdfDynamic::eval_batch`, `JitCompiledSdfDynamic::eval_batch_parallel`, `JitCompiledSdfDynamic::lipschitz`, `JitCompiledSdfDynamic::params`, `JitCompiledSdfDynamic::update_params`, `JitError`
+- `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_8`, `JitSimdSdf::eval_soa`, `JitSimdSdfDynamic`, `JitSimdSdfDynamic::compile`, `JitSimdSdfDynamic::eval_8`, `JitSimdSdfDynamic::eval_8_raw`, `JitSimdSdfDynamic::eval_batch`, `JitSimdSdfDynamic::eval_soa`, `JitSimdSdfDynamic::params`, `JitSimdSdfDynamic::update_params`, `extract_simd_params`
+- `src/compiled/opcode.rs`: `OpCode::is_binary_op`, `OpCode::is_modifier`, `OpCode::is_post_process`, `OpCode::is_primitive`, `OpCode::is_transform`, `OpCode::modifies_point`
+- `src/compiled/real.rs`: `Vec3R::max_element`, `Vec3R::round`
 - `src/compiled/refit.rs`: `refit_partial`
 - `src/compiled/rust/transpiler.rs`: `DEFAULT_NORMAL_EPSILON`, `RustSource`, `RustSource::instruction_count`, `RustSource::source`, `RustSource::transpile_compiled`, `RustTranspileError`, `RustTranspileOptions`, `RustTranspileOptions::with_det_math_path`, `RustTranspileOptions::with_normal_epsilon`, `is_supported`
-- `src/compiled/simd.rs`: `Vec3x8::new`, `Vec3x8::splat`, `Vec3x8::to_array`
+- `src/compiled/simd.rs`: `Quatx8`, `Quatx8::mul_vec3`, `Vec3x8::new`, `Vec3x8::splat`, `Vec3x8::to_array`
 - `src/compiled/transpiler_common.rs`: `shader_unsupported_nodes`
 - `src/compiled/wgsl/transpiler.rs`: `WgslShader::get_eval_function`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`

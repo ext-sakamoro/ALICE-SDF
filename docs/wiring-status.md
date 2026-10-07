@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **208 baseline items** — Permitted violations, ratchet in place
+🟡 **165 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (208 permitted)
+## 📋 Baseline (165 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -19,41 +19,29 @@ Must resolve or remove from baseline to reduce ratchet.
 |------|----------------|
 | `src/compiled/glsl/render_pipeline.rs` | 16 |
 | `src/crispy.rs` | 16 |
-| `src/compiled/wgsl/gpu_eval.rs` | 14 |
 | `src/sim_bridge.rs` | 14 |
+| `src/compiled/wgsl/gpu_eval.rs` | 13 |
 | `src/mesh/lod.rs` | 13 |
 | `src/codec_bridge.rs` | 12 |
 | `src/mesh/nanite.rs` | 12 |
 | `src/cache/chunked.rs` | 9 |
-| `src/compiled/instanced.rs` | 9 |
-| `src/compiled/aabb.rs` | 8 |
-| `src/compiled/glsl/transpiler.rs` | 6 |
-| `src/compiled/wgsl/transpiler.rs` | 6 |
+| `src/compiled/glsl/transpiler.rs` | 5 |
+| `src/compiled/wgsl/transpiler.rs` | 5 |
 | `src/font_bridge.rs` | 5 |
 | `src/asp_bridge.rs` | 4 |
-| `src/compiled/hlsl/transpiler.rs` | 4 |
-| `src/compiled/jit/runtime.rs` | 4 |
-| `src/compiled/jit/simd/mod.rs` | 4 |
-| `src/compiled/opcode.rs` | 4 |
-| `src/compiled/simd.rs` | 4 |
 | `src/ffi/registry.rs` | 4 |
 | `src/mesh/lod_persist.rs` | 4 |
 | `src/mesh/meshlet.rs` | 4 |
 | `src/cache/mod.rs` | 3 |
+| `src/compiled/hlsl/transpiler.rs` | 3 |
+| `src/compiled/simd.rs` | 3 |
 | `src/ffi/types.rs` | 3 |
 | `src/physics_bridge.rs` | 3 |
-| `src/compiled/compiler.rs` | 2 |
-| `src/compiled/eval_bvh.rs` | 2 |
 | `src/npr/compiled_color.rs` | 2 |
 | `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/bin/main.rs` | 1 |
 | `src/cache_bridge.rs` | 1 |
-| `src/compiled/blinkscript/transpiler.rs` | 1 |
-| `src/compiled/eval.rs` | 1 |
-| `src/compiled/eval_simd.rs` | 1 |
-| `src/compiled/instruction.rs` | 1 |
-| `src/compiled/jit/codegen.rs` | 1 |
 | `src/compiled/transpiler_common.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
@@ -61,14 +49,12 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/neural.rs` | 1 |
 | `src/volume/export.rs` | 1 |
 
-### Dead Code (12)
+### Dead Code (10)
 
 ```
 dead_code src/bin/main.rs 1
-dead_code src/compiled/aabb.rs 5
 dead_code src/compiled/glsl/transpiler.rs 2
 dead_code src/compiled/hlsl/transpiler.rs 2
-dead_code src/compiled/jit/simd/mod.rs 2
 dead_code src/compiled/wgsl/transpiler.rs 2
 dead_code src/ffi/registry.rs 3
 dead_code src/io/asdf.rs 2
@@ -78,7 +64,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (196)
+### Unwired Items (155)
 
 ```
 unwired src/asp_bridge.rs::create_sdf_d_packet
@@ -110,20 +96,6 @@ unwired src/codec_bridge.rs::volume_stats
 unwired src/codec_bridge.rs::voxelize_sdf
 unwired src/codec_bridge.rs::voxelize_sdf_uniform
 unwired src/codec_bridge.rs::world_pos
-unwired src/compiled/aabb.rs::distance_to_point_fast
-unwired src/compiled/aabb.rs::from_half_size
-unwired src/compiled/aabb.rs::hex_prism_aabb
-unwired src/compiled/aabb.rs::link_aabb
-unwired src/compiled/aabb.rs::octahedron_aabb
-unwired src/compiled/aabb.rs::pyramid_aabb
-unwired src/compiled/aabb.rs::rounded_cone_aabb
-unwired src/compiled/blinkscript/transpiler.rs::extract_params
-unwired src/compiled/compiler.rs::aux_data
-unwired src/compiled/compiler.rs::memory_size
-unwired src/compiled/eval.rs::eval_compiled_distance_and_normal
-unwired src/compiled/eval_bvh.rs::memory_size
-unwired src/compiled/eval_bvh.rs::refit_all_from_bytecode
-unwired src/compiled/eval_simd.rs::eval_gradient_simd
 unwired src/compiled/glsl/render_pipeline.rs::BIOME_SYSTEM
 unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_SYSTEM
 unwired src/compiled/glsl/render_pipeline.rs::DESTRUCTION_UNIFORMS
@@ -141,39 +113,14 @@ unwired src/compiled/glsl/render_pipeline.rs::VOLUMETRIC_LIGHT
 unwired src/compiled/glsl/render_pipeline.rs::build_full_shader
 unwired src/compiled/glsl/render_pipeline.rs::build_main_function
 unwired src/compiled/glsl/transpiler.rs::export_unity_shader_graph
-unwired src/compiled/glsl/transpiler.rs::extract_params
 unwired src/compiled/glsl/transpiler.rs::to_fragment_shader
 unwired src/compiled/glsl/transpiler.rs::to_fragment_shader_full
 unwired src/compiled/glsl/transpiler.rs::to_unity_custom_function
 unwired src/compiled/hlsl/transpiler.rs::export_ue5_material_function
-unwired src/compiled/hlsl/transpiler.rs::extract_params
 unwired src/compiled/hlsl/transpiler.rs::to_ue5_custom_node
-unwired src/compiled/instanced.rs::add_at
-unwired src/compiled/instanced.rs::add_instance
-unwired src/compiled/instanced.rs::eval_min
-unwired src/compiled/instanced.rs::eval_min_batch
-unwired src/compiled/instanced.rs::eval_min_batch_simd
-unwired src/compiled/instanced.rs::eval_min_simd
-unwired src/compiled/instanced.rs::eval_per_instance
-unwired src/compiled/instanced.rs::instance_count
-unwired src/compiled/instanced.rs::to_instanced_wgsl
-unwired src/compiled/instruction.rs::next_instruction_index
-unwired src/compiled/jit/codegen.rs::extract_jit_params
-unwired src/compiled/jit/runtime.rs::JitCompiledSdf::eval_batch_parallel
-unwired src/compiled/jit/runtime.rs::JitCompiledSdfDynamic::eval_batch_parallel
-unwired src/compiled/jit/runtime.rs::params
-unwired src/compiled/jit/runtime.rs::update_params
-unwired src/compiled/jit/simd/mod.rs::extract_simd_params
-unwired src/compiled/jit/simd/mod.rs::params
-unwired src/compiled/jit/simd/mod.rs::update_params
-unwired src/compiled/opcode.rs::is_modifier
-unwired src/compiled/opcode.rs::is_post_process
-unwired src/compiled/opcode.rs::is_transform
-unwired src/compiled/opcode.rs::modifies_point
 unwired src/compiled/simd.rs::max_component
 unwired src/compiled/simd.rs::max_zero
 unwired src/compiled/simd.rs::min_component
-unwired src/compiled/simd.rs::mul_vec3
 unwired src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
 unwired src/compiled/wgsl/gpu_eval.rs::create_buffer_pool
 unwired src/compiled/wgsl/gpu_eval.rs::eval_batch_async
@@ -187,9 +134,7 @@ unwired src/compiled/wgsl/gpu_eval.rs::from_wgsl_async
 unwired src/compiled/wgsl/gpu_eval.rs::new_async
 unwired src/compiled/wgsl/gpu_eval.rs::new_dynamic
 unwired src/compiled/wgsl/gpu_eval.rs::resolve
-unwired src/compiled/wgsl/gpu_eval.rs::update_params
 unwired src/compiled/wgsl/gpu_eval.rs::wait
-unwired src/compiled/wgsl/transpiler.rs::extract_params
 unwired src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals
 unwired src/compiled/wgsl/transpiler.rs::to_volume_shader
 unwired src/compiled/wgsl/transpiler.rs::transpile_material
