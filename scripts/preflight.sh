@@ -291,6 +291,16 @@ step "test: HLSL / BlinkScript value parity + exports + round-tie hlsl arm (ci.y
 ALICE_SDF_REQUIRE_CXX=1 cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity \
   --test test_hlsl_export_oracle --test test_round_tie_parity
 
+# HLSL の全出力を DirectX Shader Compiler で compile する gate (hlsl-dxc.yml と対)
+# macOS 向けの公式 dxc は無いので、dxc が無い host では skip を明示して出す
+# (test 自体も skip で green になるので、ここで出さないと空振りが見えない)
+if command -v "${ALICE_SDF_DXC:-dxc}" >/dev/null 2>&1; then
+  step "test: HLSL outputs compiled by dxc (hlsl-dxc.yml と対)"
+  ALICE_SDF_REQUIRE_DXC=1 cargo test --features hlsl --test test_hlsl_dxc_compile -- --nocapture
+else
+  step "SKIPPED: HLSL dxc compile gate (dxc が無い、ALICE_SDF_DXC で指定可) — 0 件 compile、CI の hlsl-dxc.yml が検査する"
+fi
+
 step "test: ffi + shaders (src/ffi の unit test 15 本、ci.yml と対)"
 cargo test --lib --features "ffi,hlsl,glsl"
 

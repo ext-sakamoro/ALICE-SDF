@@ -1,0 +1,73 @@
+name: HLSL DXC compile
+
+# Every HLSL output of HlslShader (source, compute shader, UE5 material
+# function, UE5 Custom node body, the two Unity Shader Graph files), for every
+# corpus node in both transpile modes, compiled by the DirectX Shader Compiler
+# inside the wrapper its consumer puts around it (tests/test_hlsl_dxc_compile.rs).
+# The value oracles build the emit as C++ against a shim; this is the only
+# place a real HLSL front end reads it outside the self-hosted Unreal job,
+# which only uses the bare source.
+#
+# Runs on a GitHub-hosted Linux runner with the official Linux release of dxc,
+# pinned by version and SHA-256. ALICE_SDF_REQUIRE_DXC=1 makes a missing or
+# broken dxc a failure, and the test fails when it compiled 0 units.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/compiled/hlsl/**'
+      - 'src/compiled/transpiler_common.rs'
+      - 'tests/test_hlsl_dxc_compile.rs'
+      - 'tests/common/corpus.rs'
+      - '.github/workflows/hlsl-dxc.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/compiled/hlsl/**'
+      - 'src/compiled/transpiler_common.rs'
+      - 'tests/test_hlsl_dxc_compile.rs'
+      - 'tests/common/corpus.rs'
+      - '.github/workflows/hlsl-dxc.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+  DXC_VERSION: v1.9.2609
+  DXC_ASSET: linux_dxc_2026_09_28.x86_x64.tar.gz
+  DXC_SHA256: 96faadc7f5c282d2ffda49804beb4c3ee38127bc252b723234e3c5cdf7aa39a1
+
+jobs:
+  dxc:
+    name: HLSL outputs compiled by dxc
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dxc (pinned release, checksum verified)
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/dxc.tar.gz" \
+            "https://github.com/microsoft/DirectXShaderCompiler/releases/download/${DXC_VERSION}/${DXC_ASSET}"
+          echo "${DXC_SHA256}  $RUNNER_TEMP/dxc.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/dxc"
+          tar xzf "$RUNNER_TEMP/dxc.tar.gz" -C "$RUNNER_TEMP/dxc"
+          chmod +x "$RUNNER_TEMP/dxc/bin/dxc"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/dxc/lib" >> "$GITHUB_ENV"
+          echo "ALICE_SDF_DXC=$RUNNER_TEMP/dxc/bin/dxc" >> "$GITHUB_ENV"
+          LD_LIBRARY_PATH="$RUNNER_TEMP/dxc/lib" "$RUNNER_TEMP/dxc/bin/dxc" --version
+
+      - name: Compile every HLSL output with dxc (and require broken outputs to fail)
+        env:
+          ALICE_SDF_REQUIRE_DXC: "1"
+        run: cargo test --features hlsl --test test_hlsl_dxc_compile -- --nocapture

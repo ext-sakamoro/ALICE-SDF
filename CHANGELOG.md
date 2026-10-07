@@ -101,6 +101,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CLI の `bench` の GPU 計測は buffer pool と `eval_batch_auto` を使う (256K 点を超える batch を分割する) GPU の評価が失敗した時は黙って捨てずに表示する
 - `GpuEvaluator::eval_batch_submit` の doc を実際の挙動に合わせた (呼んだ時点では何も dispatch せず、`wait` / `resolve` で評価する)
 - CI の example の build と `scripts/preflight.sh` に `blinkscript` / `msl` feature を足した preflight の HLSL step で `test_hlsl_blinkscript_parity` も走らせる (CI の HLSL step と対)
+- CI: `hlsl-dxc.yml` を足した `HlslShader` の HLSL 出力 6 形式 (`source` / `to_compute_shader` / `export_ue5_material_function` / `to_ue5_custom_node` / `to_unity_custom_function` / `export_unity_shader_graph`) を、全 node の corpus について利用側と同じ形の wrapper に入れて DirectX Shader Compiler (公式 Linux 版 v1.9.2609、SHA-256 固定) で compile する `scripts/preflight.sh` (full) は dxc がある時だけ走らせ、無い時は skip を明示する
 
 ### Deprecated
 
