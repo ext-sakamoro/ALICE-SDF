@@ -297,6 +297,17 @@ pub fn export_gltf_json(
     Ok(())
 }
 
+/// `,"texCoord":n` for a texture slot sampled with `TEXCOORD_n`, n > 0
+/// (glTF 2.0 §5.36 `textureInfo.texCoord`, default 0, so it is left out for
+/// the primary UV set).
+fn tex_coord_field(slot: &crate::material::TextureSlot) -> String {
+    if slot.uv_channel == 0 {
+        String::new()
+    } else {
+        format!(r#","texCoord":{}"#, slot.uv_channel)
+    }
+}
+
 /// Standard base64 (RFC 4648 §4, `+/` alphabet, `=` padding).
 fn base64_encode(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -637,7 +648,7 @@ fn build_glb_data(
 
     if config.export_materials {
         if let Some(mat_lib) = materials {
-            for mat in &mat_lib.materials {
+            for (_, mat) in mat_lib.iter() {
                 let slots: [&Option<crate::material::TextureSlot>; 8] = [
                     &mat.albedo_map,
                     &mat.normal_map,
@@ -663,7 +674,7 @@ fn build_glb_data(
     let mut used_extensions: Vec<String> = Vec::new();
     if config.export_materials {
         if let Some(mat_lib) = materials {
-            for mat in &mat_lib.materials {
+            for (_, mat) in mat_lib.iter() {
                 // Build PBR metallic-roughness object
                 let mut pbr = format!(
                     r#"{{"baseColorFactor":[{},{},{},{}],"metallicFactor":{},"roughnessFactor":{}"#,
@@ -677,12 +688,20 @@ fn build_glb_data(
 
                 if let Some(ref tex) = mat.albedo_map {
                     if let Some(&idx) = path_to_tex_idx.get(&tex.path) {
-                        pbr += &format!(r#","baseColorTexture":{{"index":{}}}"#, idx);
+                        pbr += &format!(
+                            r#","baseColorTexture":{{"index":{}{}}}"#,
+                            idx,
+                            tex_coord_field(tex)
+                        );
                     }
                 }
                 if let Some(ref tex) = mat.metallic_roughness_map {
                     if let Some(&idx) = path_to_tex_idx.get(&tex.path) {
-                        pbr += &format!(r#","metallicRoughnessTexture":{{"index":{}}}"#, idx);
+                        pbr += &format!(
+                            r#","metallicRoughnessTexture":{{"index":{}{}}}"#,
+                            idx,
+                            tex_coord_field(tex)
+                        );
                     }
                 }
 
@@ -695,8 +714,10 @@ fn build_glb_data(
                 if let Some(ref tex) = mat.normal_map {
                     if let Some(&idx) = path_to_tex_idx.get(&tex.path) {
                         mat_str += &format!(
-                            r#","normalTexture":{{"index":{},"scale":{}}}"#,
-                            idx, mat.normal_scale
+                            r#","normalTexture":{{"index":{}{},"scale":{}}}"#,
+                            idx,
+                            tex_coord_field(tex),
+                            mat.normal_scale
                         );
                     }
                 }
@@ -704,7 +725,11 @@ fn build_glb_data(
                 // AO map
                 if let Some(ref tex) = mat.ao_map {
                     if let Some(&idx) = path_to_tex_idx.get(&tex.path) {
-                        mat_str += &format!(r#","occlusionTexture":{{"index":{}}}"#, idx);
+                        mat_str += &format!(
+                            r#","occlusionTexture":{{"index":{}{}}}"#,
+                            idx,
+                            tex_coord_field(tex)
+                        );
                     }
                 }
 
@@ -719,7 +744,11 @@ fn build_glb_data(
                 }
                 if let Some(ref tex) = mat.emissive_map {
                     if let Some(&idx) = path_to_tex_idx.get(&tex.path) {
-                        mat_str += &format!(r#","emissiveTexture":{{"index":{}}}"#, idx);
+                        mat_str += &format!(
+                            r#","emissiveTexture":{{"index":{}{}}}"#,
+                            idx,
+                            tex_coord_field(tex)
+                        );
                     }
                 }
 

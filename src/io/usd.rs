@@ -159,7 +159,7 @@ pub fn export_usda(
 
         let default_mat = (0.8, 0.8, 0.8, 0.0, 0.5, 1.0);
         let (diffuse_r, diffuse_g, diffuse_b, metallic, roughness, opacity) = materials
-            .and_then(|lib| lib.materials.first())
+            .and_then(|lib| lib.get(0))
             .map_or(default_mat, |mat| {
                 (
                     mat.base_color[0],

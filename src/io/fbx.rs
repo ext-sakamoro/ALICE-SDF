@@ -197,7 +197,7 @@ fn export_fbx_ascii(
     writeln!(w)?;
 
     // Object definitions
-    let mat_count = materials.map_or(0, |m| m.materials.len());
+    let mat_count = materials.map_or(0, MaterialLibrary::len);
     let total_objects = 2 + mat_count; // Model + Geometry + Materials
     writeln!(w, "Definitions:  {{")?;
     writeln!(w, "\tVersion: 100")?;
@@ -362,7 +362,7 @@ fn export_fbx_ascii(
     // Materials
     if config.export_materials {
         if let Some(mat_lib) = materials {
-            for (i, mat) in mat_lib.materials.iter().enumerate() {
+            for (i, mat) in mat_lib.iter() {
                 let mat_id: i64 = 300000 + i as i64;
                 writeln!(
                     w,
@@ -422,7 +422,7 @@ fn export_fbx_ascii(
     // Materials -> Model
     if config.export_materials {
         if let Some(mat_lib) = materials {
-            for i in 0..mat_lib.materials.len() {
+            for i in 0..mat_lib.len() {
                 let mat_id: i64 = 300000 + i as i64;
                 writeln!(w, "\tC: \"OO\",{},{}", mat_id, model_id)?;
             }
@@ -734,7 +734,7 @@ fn export_fbx_binary(
             }
 
             // Materials layer
-            let mat_count = materials.map_or(0, |m| m.materials.len());
+            let mat_count = materials.map_or(0, MaterialLibrary::len);
             if config.export_materials && mat_count > 0 {
                 let mat_ids: Vec<i32> = (0..tri_count)
                     .map(|t| {
@@ -866,7 +866,7 @@ fn export_fbx_binary(
         // Material nodes
         if config.export_materials {
             if let Some(mat_lib) = materials {
-                for (i, mat) in mat_lib.materials.iter().enumerate() {
+                for (i, mat) in mat_lib.iter() {
                     let mat_id: i64 = 300000 + i as i64;
                     let p_nodes = vec![
                         serialize_fbx_node(
@@ -957,7 +957,7 @@ fn export_fbx_binary(
 
         if config.export_materials {
             if let Some(mat_lib) = materials {
-                for i in 0..mat_lib.materials.len() {
+                for i in 0..mat_lib.len() {
                     let mat_id: i64 = 300000 + i as i64;
                     conn_children.push(serialize_fbx_node(
                         "C",

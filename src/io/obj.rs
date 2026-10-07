@@ -97,11 +97,7 @@ pub fn export_obj(
         }
 
         for (mat_id, tris) in &mat_tris {
-            let mat_name = if (*mat_id as usize) < mat_lib.materials.len() {
-                &mat_lib.materials[*mat_id as usize].name
-            } else {
-                "default"
-            };
+            let mat_name = mat_lib.get(*mat_id).map_or("default", |m| m.name.as_str());
             writeln!(w, "usemtl {}", mat_name)?;
 
             for &i in tris {
@@ -158,7 +154,7 @@ fn export_mtl(mat_lib: &MaterialLibrary, path: impl AsRef<Path>) -> Result<(), I
 
     writeln!(w, "# ALICE-SDF MTL Export")?;
 
-    for mat in &mat_lib.materials {
+    for (_, mat) in mat_lib.iter() {
         writeln!(w, "\nnewmtl {}", mat.name)?;
 
         // Diffuse (Kd)

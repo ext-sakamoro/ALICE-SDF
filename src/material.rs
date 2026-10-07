@@ -579,12 +579,15 @@ impl StandardMaterials {
         Material::glass("Diamond", 2.42).with_roughness(0.0)
     }
 
-    /// Water
+    /// Water (index of refraction 1.33)
     pub fn water() -> Material {
-        Material::new("Water")
-            .with_color(0.3, 0.5, 0.7, 0.6)
-            .with_transmission(0.9)
-            .with_roughness(0.05)
+        Material {
+            ior: 1.33,
+            ..Material::new("Water")
+                .with_color(0.3, 0.5, 0.7, 0.6)
+                .with_transmission(0.9)
+                .with_roughness(0.05)
+        }
     }
 
     /// Human skin
