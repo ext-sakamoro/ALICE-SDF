@@ -21,10 +21,6 @@
 use super::super::transpiler_common::ShaderLang;
 use crate::types::SdfNode;
 
-/// Epsilon for constant folding (skip operations that are no-ops)
-#[allow(dead_code)]
-const FOLD_EPSILON: f32 = 1e-6;
-
 // ============================================================================
 // GlslLang: ShaderLang trait implementation for GLSL
 // ============================================================================
@@ -481,7 +477,6 @@ struct GlslTranspiler {
     globals: String,
 }
 
-#[allow(dead_code)]
 impl GlslTranspiler {
     const fn new(mode: GlslTranspileMode) -> Self {
         Self {
@@ -490,40 +485,6 @@ impl GlslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
-        }
-    }
-
-    fn next_var(&mut self) -> String {
-        let var = format!("d{}", self.var_counter);
-        self.var_counter += 1;
-        var
-    }
-
-    fn ensure_helper(&mut self, name: &'static str) {
-        if !self.helper_functions.contains(&name) {
-            self.helper_functions.push(name);
-        }
-    }
-
-    /// Register a float parameter and return its GLSL expression string.
-    ///
-    /// - Hardcoded: returns a literal like `"1.000000"`
-    /// - Dynamic: pushes to param buffer and returns `"params[i].comp"` (std140 vec4 packing)
-    fn param(&mut self, value: f32) -> String {
-        match self.mode {
-            GlslTranspileMode::Hardcoded => super::super::transpiler_common::lit(value),
-            GlslTranspileMode::Dynamic => {
-                let idx = self.params.len();
-                self.params.push(value);
-                let vec_idx = idx / 4;
-                let comp = match idx % 4 {
-                    0 => "x",
-                    1 => "y",
-                    2 => "z",
-                    _ => "w",
-                };
-                format!("params[{}].{}", vec_idx, comp)
-            }
         }
     }
 

@@ -21,10 +21,6 @@
 use super::super::transpiler_common::ShaderLang;
 use crate::types::SdfNode;
 
-/// Epsilon for constant folding (skip operations that are no-ops)
-#[allow(dead_code)]
-const FOLD_EPSILON: f32 = 1e-6;
-
 // ============================================================================
 // HlslLang: ShaderLang trait implementation for HLSL
 // ============================================================================
@@ -368,7 +364,6 @@ struct HlslTranspiler {
     globals: String,
 }
 
-#[allow(dead_code)]
 impl HlslTranspiler {
     const fn new(mode: HlslTranspileMode) -> Self {
         Self {
@@ -377,40 +372,6 @@ impl HlslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
-        }
-    }
-
-    fn next_var(&mut self) -> String {
-        let var = format!("d{}", self.var_counter);
-        self.var_counter += 1;
-        var
-    }
-
-    fn ensure_helper(&mut self, name: &'static str) {
-        if !self.helper_functions.contains(&name) {
-            self.helper_functions.push(name);
-        }
-    }
-
-    /// Register a float parameter and return its HLSL expression string.
-    ///
-    /// - Hardcoded: returns a literal like `"1.000000"`
-    /// - Dynamic: pushes to param buffer and returns `"params[i].comp"`
-    fn param(&mut self, value: f32) -> String {
-        match self.mode {
-            HlslTranspileMode::Hardcoded => super::super::transpiler_common::lit(value),
-            HlslTranspileMode::Dynamic => {
-                let idx = self.params.len();
-                self.params.push(value);
-                let vec_idx = idx / 4;
-                let comp = match idx % 4 {
-                    0 => "x",
-                    1 => "y",
-                    2 => "z",
-                    _ => "w",
-                };
-                format!("params[{}].{}", vec_idx, comp)
-            }
         }
     }
 
