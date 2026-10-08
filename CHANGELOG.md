@@ -33,6 +33,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `ProjectiveTransform` の compiled 評価器 (scalar / `f32x8` / BVH) が、子の距離に点ごとの `min(|1/w|, lipschitz_bound)` でなく定数の `lipschitz_bound` を掛けていた 単位行列以外では tree 評価器と値が違った (非単位行列の 1000 点で 1000 点とも不一致) push 時に lane ごとの補正を計算して pop で掛けるようにし、tree 評価器と bit 一致にした 単位行列 (`w = 1`) の場面は従来と同じ値
 - `transforms::projective::projective_transform` が `mul_add` で積和を融合していた crate の他の law と同じく `a * b + c` を 2 回丸める式にした 融合の有無で最終 bit が変わる点があった (同じ 1000 点のうち 186 点) 単位行列では積が正確なので値は変わらない
 - `tests/test_projective_unfused_oracle.rs`: 全 entry が 2 進で表せない非単位行列で、tree / compiled scalar / `f32x8` / BVH の 4 経路が独立に書いた融合しない参照式と bit 一致すること、その場面で融合と非融合の結果が 100 点以上で違うこと (歯の確認)
+- `tight_aabb::compute_tight_aabb` (と `_with_config`) の二分探索が、表面を挟む区間 `[lo, hi]` の内側の端 (max 面は `lo`、min 面は `hi`) を返していた 返る箱が表面を含む保証が無く、区間評価の余裕で偶然含んでいた (半径 15 の球で preset medium の max が 14.999999 になる場合があった) 外側の端を返すようにした 箱は最大で二分探索 1 step 分外へ広がる 修正前は corpus 152 node のうち 151 node で箱が表面の内側に入っていた (平面の node では `min.y > max.y`) `tests/test_tight_aabb_cover_oracle.rs` が球と torus の閉形式の範囲を含むこと、corpus の全 node で `min <= max` を確かめる
 
 ### Changed
 - CI: `scripts/version_sync.py` が、crate の version を名乗る file (package.json / uplugin / DCC plugin の `__version__` / 下位の Cargo.toml 等) と、文書の依存行 (`alice-sdf = "X"` / `pip install` / `npm install`) を Cargo.toml の version と突き合わせる file ごとに「追従」か「独立 (理由つき)」を `scripts/version-sync.toml` に登録し、未登録の version 表記は失敗にする

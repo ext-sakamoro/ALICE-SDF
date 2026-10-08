@@ -664,10 +664,13 @@ fn bisect_bound(
         }
     }
 
+    // The surface lies in [lo, hi]: return the outer end so the box contains it
+    // (the inner end is below the true bound by up to one step and only covered
+    // the surface when the interval slack happened to absorb that step)
     if is_max {
-        lo
-    } else {
         hi
+    } else {
+        lo
     }
 }
 
