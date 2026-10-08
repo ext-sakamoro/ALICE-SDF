@@ -30,6 +30,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **Behavior change** `marching_cubes_compiled` / `sdf_to_mesh_compiled` の頂点法線を、局所の辺の端点 e0 の格子勾配から、頂点位置での compiled の中心差分勾配に変えた 従来は同じ頂点に cell ごとに別の法線が付き (res 64 の球で 15,366 頂点中 10,240、箱の角で最大 103°)、法線を含めて重複を除く `sdf_to_mesh_compiled` の球に境界辺 32,528 本が残っていた (CLI の mesh 出力はこの経路) `compute_normals` が false の時の法線は、三角形ごとの面法線から隣接面の面積加重平均に変わる
 - **Behavior change** `gpu_marching_cubes` は格子の座標を host で CPU と同じ式で計算して渡し (pass 1 の shader に `axis_coords` binding を足した)、辺ごとの頂点を一度だけ作る pass (2b / 3) と三角形の index を書く pass (4) を足した 頂点の順序は CPU と同じ (格子点、次に軸) で、両者の符号が一致する所では index buffer も一致する 頂点と index の buffer は数えた数で確保する (従来は概算で確保し、超えた分を黙って切り捨てていた) `max_vertices` が 0 でなく頂点数がそれを超える時は `GpuError::BufferMapping` を返す pass 4 は cell 数を 1 次元でなく 3 次元で dispatch する
 - `tests/test_mesh_orientation.rs` の「頂点数 == 異なる位置の数」を「すべての頂点が三角形から参照される」に置き換えた (表面ちょうどの格子点では同じ位置の頂点が複数ある、頂点数は上の oracle が閉形式で固定する)
+- `ProjectiveTransform` の compiled 評価器 (scalar / `f32x8` / BVH) が、子の距離に点ごとの `min(|1/w|, lipschitz_bound)` でなく定数の `lipschitz_bound` を掛けていた 単位行列以外では tree 評価器と値が違った (非単位行列の 1000 点で 1000 点とも不一致) push 時に lane ごとの補正を計算して pop で掛けるようにし、tree 評価器と bit 一致にした 単位行列 (`w = 1`) の場面は従来と同じ値
+- `transforms::projective::projective_transform` が `mul_add` で積和を融合していた crate の他の law と同じく `a * b + c` を 2 回丸める式にした 融合の有無で最終 bit が変わる点があった (同じ 1000 点のうち 186 点) 単位行列では積が正確なので値は変わらない
+- `tests/test_projective_unfused_oracle.rs`: 全 entry が 2 進で表せない非単位行列で、tree / compiled scalar / `f32x8` / BVH の 4 経路が独立に書いた融合しない参照式と bit 一致すること、その場面で融合と非融合の結果が 100 点以上で違うこと (歯の確認)
 
 ### Changed
 - CI: `scripts/version_sync.py` が、crate の version を名乗る file (package.json / uplugin / DCC plugin の `__version__` / 下位の Cargo.toml 等) と、文書の依存行 (`alice-sdf = "X"` / `pip install` / `npm install`) を Cargo.toml の version と突き合わせる file ごとに「追従」か「独立 (理由つき)」を `scripts/version-sync.toml` に登録し、未登録の version 表記は失敗にする

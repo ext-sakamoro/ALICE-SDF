@@ -11,13 +11,15 @@ use glam::Vec3;
 #[inline(always)]
 pub fn projective_transform(p: Vec3, inv_matrix: &[f32; 16]) -> (Vec3, f32) {
     let m = inv_matrix;
-    // Homogeneous transform: q = M^-1 * [p, 1]
-    let w = m[11].mul_add(p.z, m[3].mul_add(p.x, m[7] * p.y)) + m[15];
+    // Homogeneous transform: q = M^-1 * [p, 1], every `a * b + c` rounded
+    // twice (never `mul_add`): the compiled evaluators, the emitted shaders and
+    // any port evaluate the same operation order to the same bits.
+    let w = m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15];
     let inv_w = 1.0 / w;
     let q = Vec3::new(
-        (m[8].mul_add(p.z, m[0].mul_add(p.x, m[4] * p.y)) + m[12]) * inv_w,
-        (m[9].mul_add(p.z, m[1].mul_add(p.x, m[5] * p.y)) + m[13]) * inv_w,
-        (m[10].mul_add(p.z, m[2].mul_add(p.x, m[6] * p.y)) + m[14]) * inv_w,
+        (m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12]) * inv_w,
+        (m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13]) * inv_w,
+        (m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14]) * inv_w,
     );
     // Lipschitz correction factor: |dq/dp| ≈ 1/w for projective
     let correction = inv_w.abs();

@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 770 |
+| 🟢 Not ignored | 775 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **770** |
+| **Total** | **775** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (770)
+## 🟢 Not ignored (775)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -91,6 +91,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_quantization_oracle.rs` | 5 |
 | `test_meshopt_filter_oracle.rs` | 5 |
 | `test_npr_primitives_oracle.rs` | 5 |
+| `test_projective_unfused_oracle.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
 | `test_bake_mass_oracle.rs` | 4 |
 | `test_constraint_oracle.rs` | 4 |
