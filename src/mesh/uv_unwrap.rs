@@ -245,7 +245,7 @@ pub fn compute_uv_density(mesh: &Mesh, texture_size: u32) -> UvDensityReport {
         // 2D triangle area = 0.5 * |cross(uv1-uv0, uv2-uv0)|
         let e1 = uv1 - uv0;
         let e2 = uv2 - uv0;
-        let cross_z = e1.y.mul_add(-e2.x, e1.x * e2.y);
+        let cross_z = e1.y * -e2.x + (e1.x * e2.y);
         let uv_area = cross_z.abs() * 0.5;
         let texels_per_face = uv_area * tex_area_px;
 
@@ -464,7 +464,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     // Place third vertex
     if len01 > 1e-10 {
         let cos_a = e01.dot(e02) / (len01 * e02.length());
-        let sin_a = cos_a.mul_add(-cos_a, 1.0).max(0.0).sqrt();
+        let sin_a = (cos_a * -cos_a + 1.0).max(0.0).sqrt();
         let len02 = e02.length();
         local_uvs[li2] = Vec2::new(len02 * cos_a, len02 * sin_a);
     }
@@ -563,7 +563,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
 
                 if len_ij > 1e-10 && len_ik > 1e-10 {
                     let cos_a = edge_ij.dot(edge_ik) / (len_ij * len_ik);
-                    let sin_a = cos_a.mul_add(-cos_a, 1.0).max(0.0).sqrt();
+                    let sin_a = (cos_a * -cos_a + 1.0).max(0.0).sqrt();
 
                     let uv_i = local_uvs[locals[ei]];
                     let uv_j = local_uvs[locals[ej]];
@@ -678,7 +678,7 @@ fn pack_charts(charts: &mut [UvChart], margin: f32) -> f32 {
         charts[ci].bounds_min += offset;
         charts[ci].bounds_max += offset;
 
-        total_used_area = w.mul_add(h, total_used_area);
+        total_used_area += w * h;
         shelf_height = shelf_height.max(h);
         cursor_x += w + margin;
     }

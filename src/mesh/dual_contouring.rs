@@ -103,9 +103,9 @@ fn qef_solve(intersections: &[(Vec3, Vec3)], cell_min: Vec3, cell_max: Vec3, cla
 
         for i in 0..3 {
             for j in 0..3 {
-                ata[i][j] = n[i].mul_add(n[j], ata[i][j]);
+                ata[i][j] += n[i] * n[j];
             }
-            atb[i] = n[i].mul_add(rhs, atb[i]);
+            atb[i] += n[i] * rhs;
         }
     }
 
@@ -134,13 +134,9 @@ fn solve_3x3_regularized(ata: &[[f32; 3]; 3], atb: &[f32; 3]) -> Option<[f32; 3]
     ];
 
     // Determinant
-    let det = a[0][2].mul_add(
-        a[1][0].mul_add(a[2][1], -(a[1][1] * a[2][0])),
-        a[0][0].mul_add(
-            a[1][1].mul_add(a[2][2], -(a[1][2] * a[2][1])),
-            -(a[0][1] * a[1][0].mul_add(a[2][2], -(a[1][2] * a[2][0]))),
-        ),
-    );
+    let det = a[0][2] * (a[1][0] * a[2][1] + (-(a[1][1] * a[2][0])))
+        + (a[0][0] * (a[1][1] * a[2][2] + (-(a[1][2] * a[2][1])))
+            + (-(a[0][1] * (a[1][0] * a[2][2] + (-(a[1][2] * a[2][0]))))));
 
     if det.abs() < 1e-12 {
         return None;
@@ -149,29 +145,20 @@ fn solve_3x3_regularized(ata: &[[f32; 3]; 3], atb: &[f32; 3]) -> Option<[f32; 3]
     let inv_det = 1.0 / det;
 
     // Cramer's rule
-    let x = a[0][2].mul_add(
-        atb[1].mul_add(a[2][1], -(a[1][1] * atb[2])),
-        atb[0].mul_add(
-            a[1][1].mul_add(a[2][2], -(a[1][2] * a[2][1])),
-            -(a[0][1] * atb[1].mul_add(a[2][2], -(a[1][2] * atb[2]))),
-        ),
-    ) * inv_det;
+    let x = (a[0][2] * (atb[1] * a[2][1] + (-(a[1][1] * atb[2])))
+        + (atb[0] * (a[1][1] * a[2][2] + (-(a[1][2] * a[2][1])))
+            + (-(a[0][1] * (atb[1] * a[2][2] + (-(a[1][2] * atb[2])))))))
+        * inv_det;
 
-    let y = a[0][2].mul_add(
-        a[1][0].mul_add(atb[2], -(atb[1] * a[2][0])),
-        a[0][0].mul_add(
-            atb[1].mul_add(a[2][2], -(a[1][2] * atb[2])),
-            -(atb[0] * a[1][0].mul_add(a[2][2], -(a[1][2] * a[2][0]))),
-        ),
-    ) * inv_det;
+    let y = (a[0][2] * (a[1][0] * atb[2] + (-(atb[1] * a[2][0])))
+        + (a[0][0] * (atb[1] * a[2][2] + (-(a[1][2] * atb[2])))
+            + (-(atb[0] * (a[1][0] * a[2][2] + (-(a[1][2] * a[2][0])))))))
+        * inv_det;
 
-    let z = atb[0].mul_add(
-        a[1][0].mul_add(a[2][1], -(a[1][1] * a[2][0])),
-        a[0][0].mul_add(
-            a[1][1].mul_add(atb[2], -(atb[1] * a[2][1])),
-            -(a[0][1] * a[1][0].mul_add(atb[2], -(atb[1] * a[2][0]))),
-        ),
-    ) * inv_det;
+    let z = (atb[0] * (a[1][0] * a[2][1] + (-(a[1][1] * a[2][0])))
+        + (a[0][0] * (a[1][1] * atb[2] + (-(atb[1] * a[2][1])))
+            + (-(a[0][1] * (a[1][0] * atb[2] + (-(atb[1] * a[2][0])))))))
+        * inv_det;
 
     if x.is_finite() && y.is_finite() && z.is_finite() {
         Some([x, y, z])

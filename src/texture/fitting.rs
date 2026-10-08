@@ -239,7 +239,7 @@ fn fit_channel(
                     for j in remainder_start..u_chunk.len() {
                         let val = eval_octave(u_chunk[j], v_chunk[j], amp, freq, phase, seed, rot);
                         let diff = ((res_chunk[j] - val) * mask_chunk[j]) as f64;
-                        chunk_err = diff.mul_add(diff, chunk_err);
+                        chunk_err += diff * diff;
                     }
 
                     chunk_err

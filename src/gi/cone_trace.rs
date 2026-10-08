@@ -125,7 +125,7 @@ pub fn trace_hemisphere(
         let result = cone_trace(svo, origin, *dir, config, light);
 
         // Mix radiance with AO
-        let ao_factor = config.ao_weight.mul_add(-(1.0 - result.occlusion), 1.0);
+        let ao_factor = config.ao_weight * (-(1.0 - result.occlusion)) + 1.0;
         total_color += result.color * *weight * ao_factor;
         total_weight += weight;
     }
@@ -193,7 +193,7 @@ fn generate_cosine_cones(normal: Vec3, num_cones: u32) -> Vec<(Vec3, f32)> {
     // Ring of cones at ~60 degrees from normal
     let ring_count = (num_cones - 1) as f32;
     let cone_elevation = 0.5f32; // cos(60°) = 0.5, sin(60°) = 0.866
-    let sin_elev = cone_elevation.mul_add(-cone_elevation, 1.0).sqrt();
+    let sin_elev = (cone_elevation * -cone_elevation + 1.0).sqrt();
 
     for i in 0..(num_cones - 1) {
         let angle = (i as f32 / ring_count) * std::f32::consts::TAU;

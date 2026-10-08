@@ -381,9 +381,9 @@ impl Vec3Interval {
         ];
         let map = |c: Vec3| {
             Vec3::new(
-                a[6].mul_add(c.z, a[3].mul_add(c.y, a[0] * c.x)) + b.x,
-                a[7].mul_add(c.z, a[4].mul_add(c.y, a[1] * c.x)) + b.y,
-                a[8].mul_add(c.z, a[5].mul_add(c.y, a[2] * c.x)) + b.z,
+                (a[6] * c.z + (a[3] * c.y + (a[0] * c.x))) + b.x,
+                (a[7] * c.z + (a[4] * c.y + (a[1] * c.x))) + b.y,
+                (a[8] * c.z + (a[5] * c.y + (a[2] * c.x))) + b.z,
             )
         };
         let first = map(corners[0]);
@@ -606,7 +606,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         ),
         SdfNode::Pyramid { half_height } => ia_bsphere(
             bounds,
-            (2.0 * half_height).mul_add(2.0 * half_height, 0.25).sqrt(),
+            ((2.0 * half_height) * (2.0 * half_height) + 0.25).sqrt(),
         ),
         SdfNode::Octahedron { size } => ia_bsphere(bounds, *size),
         SdfNode::HexPrism { .. } => ia_lipschitz(node, bounds, 1.0),
@@ -729,7 +729,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            (r1.max(*r2).mul_add(r1.max(*r2), trap_height * trap_height) + half_depth * half_depth)
+            ((r1.max(*r2) * r1.max(*r2) + (trap_height * trap_height)) + half_depth * half_depth)
                 .sqrt(),
         ),
         SdfNode::Parallelogram {
@@ -739,7 +739,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            ((width + skew.abs()).mul_add(width + skew.abs(), para_height * para_height)
+            (((width + skew.abs()) * (width + skew.abs()) + (para_height * para_height))
                 + half_depth * half_depth)
                 .sqrt(),
         ),
@@ -773,10 +773,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            alice_det_math::hypot(r1.max(2.0f32.mul_add(*cap_height, *r2)), *half_depth),
+            alice_det_math::hypot(r1.max(2.0f32 * (*cap_height) + (*r2)), *half_depth),
         ),
         // apex at y = √3·(ra − rb) + ra (IQ sdEgg), base radius ra
-        SdfNode::Egg { ra, rb } => ia_bsphere(bounds, 1.732_050_8f32.mul_add(ra - rb, *ra)),
+        SdfNode::Egg { ra, rb } => ia_bsphere(bounds, 1.732_050_8f32 * (ra - rb) + (*ra)),
         SdfNode::ArcShape {
             radius,
             thickness,
@@ -819,11 +819,9 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             n_steps,
             half_depth,
         } => {
-            let extent = ((step_width * n_steps).mul_add(
-                step_width * n_steps,
-                (step_height * n_steps) * (step_height * n_steps),
-            ) + half_depth * half_depth)
-                .sqrt();
+            let run = step_width * n_steps;
+            let rise = step_height * n_steps;
+            let extent = ((run * run + rise * rise) + half_depth * half_depth).sqrt();
             ia_bsphere(bounds, extent)
         }
         // Nearest-wrap selection makes the tube term discontinuous near the axis,
@@ -998,24 +996,15 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // union form in [min(a, b) - k·ln 2, min(a, b)]).
         SdfNode::ExpSmoothUnion { a, b, k } => {
             let sharp = eval_interval(a, bounds).min(eval_interval(b, bounds));
-            Interval::new(
-                k.max(1e-6).mul_add(-std::f32::consts::LN_2, sharp.lo),
-                sharp.hi,
-            )
+            Interval::new(k.max(1e-6) * -std::f32::consts::LN_2 + sharp.lo, sharp.hi)
         }
         SdfNode::ExpSmoothIntersection { a, b, k } => {
             let sharp = eval_interval(a, bounds).max(eval_interval(b, bounds));
-            Interval::new(
-                sharp.lo,
-                k.max(1e-6).mul_add(std::f32::consts::LN_2, sharp.hi),
-            )
+            Interval::new(sharp.lo, k.max(1e-6) * std::f32::consts::LN_2 + sharp.hi)
         }
         SdfNode::ExpSmoothSubtraction { a, b, k } => {
             let sharp = eval_interval(a, bounds).max(-eval_interval(b, bounds));
-            Interval::new(
-                sharp.lo,
-                k.max(1e-6).mul_add(std::f32::consts::LN_2, sharp.hi),
-            )
+            Interval::new(sharp.lo, k.max(1e-6) * std::f32::consts::LN_2 + sharp.hi)
         }
         // Affine domain map (`modifier_shear`): interval image is exact
         SdfNode::Shear { child, shear } => {
@@ -1327,7 +1316,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 for &(cx, cz) in &curve_corners {
                     let dx = px - cx;
                     let dz = pz - cz;
-                    max_d2 = max_d2.max(dx.mul_add(dx, dz * dz));
+                    max_d2 = max_d2.max(dx * dx + (dz * dz));
                 }
             }
             // Min distance: 0 if overlapping, else min box-to-box distance
@@ -1386,7 +1375,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let mut hull = bounds;
             let (mut s_lo, mut s_hi) = (1.0f32, 1.0f32);
             for t in transforms {
-                let sx = t[2].mul_add(t[2], t[1].mul_add(t[1], t[0] * t[0])).sqrt();
+                let sx = (t[2] * t[2] + (t[1] * t[1] + (t[0] * t[0]))).sqrt();
                 s_lo = s_lo.min(sx);
                 s_hi = s_hi.max(sx);
             }
@@ -1462,7 +1451,7 @@ fn ia_lipschitz(node: &SdfNode, bounds: Vec3Interval, l: f32) -> Interval {
     if !d.is_finite() {
         return Interval::EVERYTHING;
     }
-    Interval::new(l.mul_add(-rho, d), l.mul_add(rho, d))
+    Interval::new(l * -rho + d, l * rho + d)
 }
 
 /// `x.powf(m)` on a non-negative interval (monotone for `m > 0`).
@@ -1679,7 +1668,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // contributes no gradient) combine as `3·√2`.
         // |∇fbm| ≤ Σ aᵢ·2.1ⁱ · 3·√2 = 6.415 → 6.42.
         SdfNode::Terrain { scale, amplitude } => {
-            TERRAIN_FBM_GRAD.mul_add((scale * amplitude).abs(), 1.0)
+            TERRAIN_FBM_GRAD * ((scale * amplitude).abs()) + 1.0
         }
 
         // min / max and every convex blend (smooth, exp-smooth: the weights
@@ -1710,9 +1699,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // Pipe `√(a² + b²) − r`: |(a∇a + b∇b)| / √(a² + b²) ≤ √(La² + Lb²).
         SdfNode::Pipe { a, b, .. } => alice_det_math::hypot(eval_lipschitz(a), eval_lipschitz(b)),
         // Morph `a(1 − t) + b·t`.
-        SdfNode::Morph { a, b, t } => t
-            .abs()
-            .mul_add(eval_lipschitz(b), (1.0 - t).abs() * eval_lipschitz(a)),
+        SdfNode::Morph { a, b, t } => {
+            t.abs() * eval_lipschitz(b) + ((1.0 - t).abs() * eval_lipschitz(a))
+        }
         // Columns (hg_sdf fOp*Columns): polar modulo of the (a, b) plane
         // — the field jumps between columns, no finite bound.
         SdfNode::ColumnsUnion { .. }
@@ -1777,7 +1766,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // Bend about Z: q = R(k·x)·p_xy, ∂q/∂x = R + k·(−q_y, q_x), so
         // ‖J‖ ≤ 1 + k·r with r the child's largest XY radius.
         SdfNode::Bend { child, curvature } => {
-            eval_lipschitz(child) * curvature.abs().mul_add(child_radius(child, Axis::Z), 1.0)
+            eval_lipschitz(child) * (curvature.abs() * child_radius(child, Axis::Z) + 1.0)
         }
 
         // Displacements add the gradient of the offset field.
@@ -1787,17 +1776,13 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             amplitude,
             frequency,
             ..
-        } => (amplitude * frequency)
-            .abs()
-            .mul_add(PERLIN_GRAD, eval_lipschitz(child)),
+        } => (amplitude * frequency).abs() * PERLIN_GRAD + eval_lipschitz(child),
         // Taper divides XZ by `1 − f·y`, singular on the plane y = 1/f. The
         // value is a distance *bound* (`real::taper_bound`) safe for plain
         // sphere tracing, but it has no finite global Lipschitz constant.
         SdfNode::Taper { .. } => f32::INFINITY,
         // `d + s·sin(5x)·sin(5y)·sin(5z)`: |∇(sin·sin·sin)| ≤ 1, times 5.
-        SdfNode::Displacement { child, strength } => {
-            strength.abs().mul_add(5.0, eval_lipschitz(child))
-        }
+        SdfNode::Displacement { child, strength } => strength.abs() * 5.0 + eval_lipschitz(child),
         // `d + a·sin(fx·x)·sin(fy·y)·sin(fz·z)`: ≤ a·max|f|.
         SdfNode::SineDisplacement {
             child,
@@ -1832,9 +1817,10 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             amplitude,
             frequency,
             octaves,
-        } => (amplitude * frequency * *octaves as f32)
-            .abs()
-            .mul_add(VALUE_NOISE_GRAD, eval_lipschitz(child)),
+        } => {
+            (amplitude * frequency * *octaves as f32).abs() * VALUE_NOISE_GRAD
+                + eval_lipschitz(child)
+        }
 
         SdfNode::WithMaterial { child, .. } => eval_lipschitz(child),
     }
@@ -1873,7 +1859,7 @@ const UNBOUNDED_CHILD_SENTINEL: f32 = 1e6;
 /// Larger singular value of the shear `[[1, 0], [v, 1]]`: `v/2 + √(1 + v²/4)`.
 #[inline]
 fn shear_singular_value(v: f32) -> f32 {
-    0.5f32.mul_add(v, (v * 0.25).mul_add(v, 1.0).sqrt())
+    0.5f32 * v + (((v * 0.25) * v + 1.0).sqrt())
 }
 
 /// Axis a deformation rotates about; the radius is measured in the
@@ -1948,7 +1934,7 @@ fn taper_bound_interval(d: Interval, p: Vec3Interval, factor: f32, reach: [f32; 
         return d_j;
     }
     let k = reach[0] * f_abs;
-    let inv_n = 1.0 / k.mul_add(k, 1.0).sqrt();
+    let inv_n = 1.0 / (k * k + 1.0).sqrt();
     let big_y = p.y - 1.0 / factor;
     let d_cone = (rho - big_y.abs() * k) * inv_n;
     let d_slab = p.y.abs() - reach[1];

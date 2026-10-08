@@ -261,7 +261,7 @@ impl ConstraintSolver {
             ConstraintKind::Product { param_a, param_b } => {
                 let a = self.params[param_a.as_index()];
                 let b = self.params[param_b.as_index()];
-                a.mul_add(b, -c.target)
+                a * b + -c.target
             }
             ConstraintKind::Min { param_a, param_b } => {
                 let a = self.params[param_a.as_index()];
@@ -395,9 +395,9 @@ impl ConstraintSolver {
                 let row = self.jacobian_row(c);
                 let r = residuals[i];
                 for j in 0..n {
-                    jtr[j] = row[j].mul_add(r, jtr[j]);
+                    jtr[j] += row[j] * r;
                     for k in 0..n {
-                        jtj[j * n + k] = row[j].mul_add(row[k], jtj[j * n + k]);
+                        jtj[j * n + k] += row[j] * row[k];
                     }
                 }
             }
@@ -489,7 +489,7 @@ fn solve_linear(n: usize, a: &[f64], b: &[f64]) -> Vec<f64> {
         }
         let mut sum = aug[i * (n + 1) + n];
         for j in (i + 1)..n {
-            sum = aug[i * (n + 1) + j].mul_add(-x[j], sum);
+            sum += aug[i * (n + 1) + j] * -x[j];
         }
         x[i] = sum / pivot;
     }

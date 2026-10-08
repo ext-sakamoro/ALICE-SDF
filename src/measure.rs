@@ -77,7 +77,7 @@ impl Rng64 {
     /// Uniform f32 in [lo, hi).
     #[inline(always)]
     fn next_range(&mut self, lo: f32, hi: f32) -> f32 {
-        self.next_f32().mul_add(hi - lo, lo)
+        self.next_f32() * (hi - lo) + lo
     }
 }
 

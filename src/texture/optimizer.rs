@@ -87,7 +87,7 @@ where
 
         // Reflection
         for j in 0..n {
-            reflected[j] = (alpha as f32).mul_add(scratch[j] - vertices[worst_idx][j], scratch[j]);
+            reflected[j] = (alpha as f32) * (scratch[j] - vertices[worst_idx][j]) + scratch[j];
         }
         let cost_r = cost_fn(&reflected);
 
@@ -101,7 +101,7 @@ where
         if cost_r < costs[best_idx] {
             // Try expansion
             for j in 0..n {
-                expanded[j] = (gamma as f32).mul_add(reflected[j] - scratch[j], scratch[j]);
+                expanded[j] = (gamma as f32) * (reflected[j] - scratch[j]) + scratch[j];
             }
             let cost_e = cost_fn(&expanded);
             if cost_e < cost_r {
@@ -116,7 +116,7 @@ where
 
         // Contraction
         for j in 0..n {
-            contracted[j] = (rho as f32).mul_add(vertices[worst_idx][j] - scratch[j], scratch[j]);
+            contracted[j] = (rho as f32) * (vertices[worst_idx][j] - scratch[j]) + scratch[j];
         }
         let cost_c = cost_fn(&contracted);
 
@@ -133,7 +133,7 @@ where
                 continue;
             }
             for j in 0..n {
-                vertices[i][j] = (sigma as f32).mul_add(vertices[i][j] - best[j], best[j]);
+                vertices[i][j] = (sigma as f32) * (vertices[i][j] - best[j]) + best[j];
             }
             costs[i] = cost_fn(&vertices[i]);
         }

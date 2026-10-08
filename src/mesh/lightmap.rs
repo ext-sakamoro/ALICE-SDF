@@ -188,8 +188,8 @@ pub fn generate_lightmap_uvs(mesh: &mut Mesh, resolution: u32) {
 
                 // Map to cell with padding
                 let uv2 = Vec2::new(
-                    normalized.x.mul_add(usable_w, offset.x + padding),
-                    normalized.y.mul_add(usable_h, offset.y + padding),
+                    normalized.x * usable_w + (offset.x + padding),
+                    normalized.y * usable_h + (offset.y + padding),
                 );
 
                 mesh.vertices[vi].uv2 = uv2;
@@ -219,20 +219,11 @@ pub fn generate_lightmap_uvs_fast(mesh: &mut Mesh) {
     mesh.vertices.par_iter_mut().for_each(|v| {
         let abs_n = v.normal.abs();
         if abs_n.x >= abs_n.y && abs_n.x >= abs_n.z {
-            v.uv2 = Vec2::new(
-                v.position.y.mul_add(0.5, 0.5),
-                v.position.z.mul_add(0.5, 0.5),
-            );
+            v.uv2 = Vec2::new(v.position.y * 0.5 + 0.5, v.position.z * 0.5 + 0.5);
         } else if abs_n.y >= abs_n.x && abs_n.y >= abs_n.z {
-            v.uv2 = Vec2::new(
-                v.position.x.mul_add(0.5, 0.5),
-                v.position.z.mul_add(0.5, 0.5),
-            );
+            v.uv2 = Vec2::new(v.position.x * 0.5 + 0.5, v.position.z * 0.5 + 0.5);
         } else {
-            v.uv2 = Vec2::new(
-                v.position.x.mul_add(0.5, 0.5),
-                v.position.y.mul_add(0.5, 0.5),
-            );
+            v.uv2 = Vec2::new(v.position.x * 0.5 + 0.5, v.position.y * 0.5 + 0.5);
         }
     });
 }

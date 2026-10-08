@@ -559,11 +559,8 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
 
                         for i in 0..8 {
                             // Normalize gradient to get unit normal
-                            let len = gz_arr[i]
-                                .mul_add(
-                                    gz_arr[i],
-                                    gx_arr[i].mul_add(gx_arr[i], gy_arr[i] * gy_arr[i]),
-                                )
+                            let len = (gz_arr[i] * gz_arr[i]
+                                + (gx_arr[i] * gx_arr[i] + (gy_arr[i] * gy_arr[i])))
                                 .sqrt();
                             let inv_len = if len > 1e-8 { 1.0 / len } else { 0.0 };
 
@@ -600,7 +597,7 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
                         let dz = eval_compiled(&comp, p + glam::Vec3::Z * eps)
                             - eval_compiled(&comp, p - glam::Vec3::Z * eps);
 
-                        let len = dz.mul_add(dz, dx.mul_add(dx, dy * dy)).sqrt();
+                        let len = (dz * dz + (dx * dx + (dy * dy))).sqrt();
                         let inv_len = if len > 1e-8 { 1.0 / len } else { 0.0 };
 
                         // SAFETY: Output slices were created from raw pointers with validated count.
@@ -632,7 +629,7 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
                     let dz = eval_compiled(&comp, p + glam::Vec3::Z * eps)
                         - eval_compiled(&comp, p - glam::Vec3::Z * eps);
 
-                    let len = dz.mul_add(dz, dx.mul_add(dx, dy * dy)).sqrt();
+                    let len = (dz * dz + (dx * dx + (dy * dy))).sqrt();
                     let inv_len = if len > 1e-8 { 1.0 / len } else { 0.0 };
 
                     nx_slice[i] = dx * inv_len;

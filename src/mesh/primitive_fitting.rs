@@ -545,7 +545,7 @@ pub fn fit_plane(points: &[Vec3], config: &FittingConfig) -> Option<FittingResul
         let d = p - centroid;
         for i in 0..3 {
             for j in 0..3 {
-                cov[i][j] = d[i].mul_add(d[j], cov[i][j]);
+                cov[i][j] += d[i] * d[j];
             }
         }
     }
@@ -587,13 +587,9 @@ fn find_smallest_eigenvector(cov: &[[f32; 3]; 3]) -> Vec3 {
 
     for _ in 0..50 {
         // Apply inverse (using Cramer's rule for 3x3)
-        let det = cov[0][2].mul_add(
-            cov[1][0].mul_add(cov[2][1], -(cov[1][1] * cov[2][0])),
-            cov[0][0].mul_add(
-                cov[1][1].mul_add(cov[2][2], -(cov[1][2] * cov[2][1])),
-                -(cov[0][1] * cov[1][0].mul_add(cov[2][2], -(cov[1][2] * cov[2][0]))),
-            ),
-        );
+        let det = cov[0][2] * (cov[1][0] * cov[2][1] + (-(cov[1][1] * cov[2][0])))
+            + (cov[0][0] * (cov[1][1] * cov[2][2] + (-(cov[1][2] * cov[2][1])))
+                + (-(cov[0][1] * (cov[1][0] * cov[2][2] + (-(cov[1][2] * cov[2][0]))))));
 
         if det.abs() < 1e-10 {
             // Singular covariance: the points are (numerically) coplanar, which
@@ -626,26 +622,26 @@ fn find_smallest_eigenvector(cov: &[[f32; 3]; 3]) -> Vec3 {
         // Compute A^-1 * v
         let adj = [
             [
-                cov[1][1].mul_add(cov[2][2], -(cov[1][2] * cov[2][1])),
-                cov[0][2].mul_add(cov[2][1], -(cov[0][1] * cov[2][2])),
-                cov[0][1].mul_add(cov[1][2], -(cov[0][2] * cov[1][1])),
+                (cov[1][1] * cov[2][2] + (-(cov[1][2] * cov[2][1]))),
+                (cov[0][2] * cov[2][1] + (-(cov[0][1] * cov[2][2]))),
+                (cov[0][1] * cov[1][2] + (-(cov[0][2] * cov[1][1]))),
             ],
             [
-                cov[1][2].mul_add(cov[2][0], -(cov[1][0] * cov[2][2])),
-                cov[0][0].mul_add(cov[2][2], -(cov[0][2] * cov[2][0])),
-                cov[0][2].mul_add(cov[1][0], -(cov[0][0] * cov[1][2])),
+                (cov[1][2] * cov[2][0] + (-(cov[1][0] * cov[2][2]))),
+                (cov[0][0] * cov[2][2] + (-(cov[0][2] * cov[2][0]))),
+                (cov[0][2] * cov[1][0] + (-(cov[0][0] * cov[1][2]))),
             ],
             [
-                cov[1][0].mul_add(cov[2][1], -(cov[1][1] * cov[2][0])),
-                cov[0][1].mul_add(cov[2][0], -(cov[0][0] * cov[2][1])),
-                cov[0][0].mul_add(cov[1][1], -(cov[0][1] * cov[1][0])),
+                (cov[1][0] * cov[2][1] + (-(cov[1][1] * cov[2][0]))),
+                (cov[0][1] * cov[2][0] + (-(cov[0][0] * cov[2][1]))),
+                (cov[0][0] * cov[1][1] + (-(cov[0][1] * cov[1][0]))),
             ],
         ];
 
         let new_v = Vec3::new(
-            adj[0][2].mul_add(v.z, adj[0][0].mul_add(v.x, adj[0][1] * v.y)) / det,
-            adj[1][2].mul_add(v.z, adj[1][0].mul_add(v.x, adj[1][1] * v.y)) / det,
-            adj[2][2].mul_add(v.z, adj[2][0].mul_add(v.x, adj[2][1] * v.y)) / det,
+            (adj[0][2] * v.z + (adj[0][0] * v.x + (adj[0][1] * v.y))) / det,
+            (adj[1][2] * v.z + (adj[1][0] * v.x + (adj[1][1] * v.y))) / det,
+            (adj[2][2] * v.z + (adj[2][0] * v.x + (adj[2][1] * v.y))) / det,
         );
 
         v = new_v.normalize_or_zero();
@@ -693,14 +689,10 @@ pub fn detect_primitive(points: &[Vec3], config: &FittingConfig) -> Option<Fitti
         // [Deep Fried v2] Guard mse <= 0 to prevent ln(-x) = NaN
         let safe_mse_a = a.mse.max(1e-20);
         let safe_mse_b = b.mse.max(1e-20);
-        let bic_a = n.mul_add(
-            alice_det_math::ln(safe_mse_a),
-            complexity_a as f32 * alice_det_math::ln(n),
-        );
-        let bic_b = n.mul_add(
-            alice_det_math::ln(safe_mse_b),
-            complexity_b as f32 * alice_det_math::ln(n),
-        );
+        let bic_a =
+            n * alice_det_math::ln(safe_mse_a) + (complexity_a as f32 * alice_det_math::ln(n));
+        let bic_b =
+            n * alice_det_math::ln(safe_mse_b) + (complexity_b as f32 * alice_det_math::ln(n));
 
         bic_a
             .partial_cmp(&bic_b)

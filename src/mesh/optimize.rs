@@ -216,16 +216,14 @@ fn compute_vertex_score(cache_pos: i32, active_tri_count: u32) -> f32 {
             score = LAST_TRI_SCORE;
         } else {
             let scaler = 1.0 / (CACHE_SIZE as f32 - 3.0);
-            score = alice_det_math::powf(
-                (cache_pos as f32 - 3.0).mul_add(-scaler, 1.0),
-                CACHE_DECAY_POWER,
-            );
+            score =
+                alice_det_math::powf((cache_pos as f32 - 3.0) * -scaler + 1.0, CACHE_DECAY_POWER);
         }
     }
 
     // Valence boost
     let valence_boost = alice_det_math::powf(active_tri_count as f32, -VALENCE_BOOST_POWER);
-    score = VALENCE_BOOST_SCALE.mul_add(valence_boost, score);
+    score += VALENCE_BOOST_SCALE * valence_boost;
 
     score
 }

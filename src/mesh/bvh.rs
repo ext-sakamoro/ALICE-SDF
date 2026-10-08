@@ -318,10 +318,8 @@ impl MeshBvh {
             let left_aabb = compute_aabb_simd(triangles, &sorted_indices[..mid]);
             let right_aabb = compute_aabb_simd(triangles, &sorted_indices[mid..]);
 
-            let cost = (left_aabb.surface_area() * inv_parent_sa).mul_add(
-                mid as f32,
-                right_aabb.surface_area() * inv_parent_sa * (n - mid) as f32,
-            );
+            let cost = (left_aabb.surface_area() * inv_parent_sa) * (mid as f32)
+                + (right_aabb.surface_area() * inv_parent_sa * (n - mid) as f32);
 
             if cost < best_cost {
                 best_cost = cost;

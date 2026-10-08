@@ -146,21 +146,21 @@ fn compute_mikktspace_tangents(mesh: &mut Mesh) {
         let duv1 = uv1 - uv0;
         let duv2 = uv2 - uv0;
 
-        let det = duv1.x.mul_add(duv2.y, -(duv1.y * duv2.x));
+        let det = duv1.x * duv2.y + (-(duv1.y * duv2.x));
         if det.abs() < 1e-8 {
             continue; // Degenerate UV mapping
         }
 
         let inv_det = 1.0 / det;
         let t = Vec3::new(
-            dp1.x.mul_add(duv2.y, -(dp2.x * duv1.y)) * inv_det,
-            dp1.y.mul_add(duv2.y, -(dp2.y * duv1.y)) * inv_det,
-            dp1.z.mul_add(duv2.y, -(dp2.z * duv1.y)) * inv_det,
+            (dp1.x * duv2.y + (-(dp2.x * duv1.y))) * inv_det,
+            (dp1.y * duv2.y + (-(dp2.y * duv1.y))) * inv_det,
+            (dp1.z * duv2.y + (-(dp2.z * duv1.y))) * inv_det,
         );
         let b = Vec3::new(
-            dp2.x.mul_add(duv1.x, -(dp1.x * duv2.x)) * inv_det,
-            dp2.y.mul_add(duv1.x, -(dp1.y * duv2.x)) * inv_det,
-            dp2.z.mul_add(duv1.x, -(dp1.z * duv2.x)) * inv_det,
+            (dp2.x * duv1.x + (-(dp1.x * duv2.x))) * inv_det,
+            (dp2.y * duv1.x + (-(dp1.y * duv2.x))) * inv_det,
+            (dp2.z * duv1.x + (-(dp1.z * duv2.x))) * inv_det,
         );
 
         // Area-weighted accumulation (implicit via dp magnitude)

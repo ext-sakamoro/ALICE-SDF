@@ -108,7 +108,7 @@ impl Rng {
 
     /// Uniform f32 in [lo, hi)
     fn uniform(&mut self, lo: f32, hi: f32) -> f32 {
-        self.next_f32().mul_add(hi - lo, lo)
+        self.next_f32() * (hi - lo) + lo
     }
 
     /// Approximate normal distribution (Box-Muller)
@@ -117,7 +117,7 @@ impl Rng {
         let u2 = self.next_f32();
         let z = (-2.0 * alice_det_math::ln(u1)).sqrt()
             * alice_det_math::cos(2.0 * std::f32::consts::TAU * u2);
-        std.mul_add(z, mean)
+        std * z + mean
     }
 }
 
@@ -269,7 +269,7 @@ impl NeuralSdf {
             for r in 0..layer.out_dim {
                 let row_off = r * layer.in_dim;
                 for c in 0..layer.in_dim {
-                    grad_w[i][row_off + c] = d_pre_act[r].mul_add(input[c], grad_w[i][row_off + c]);
+                    grad_w[i][row_off + c] += d_pre_act[r] * input[c];
                 }
                 grad_b[i][r] += d_pre_act[r];
             }
@@ -281,7 +281,7 @@ impl NeuralSdf {
                 for r in 0..layer.out_dim {
                     let row_off = r * layer.in_dim;
                     for c in 0..layer.in_dim {
-                        d_act[c] = d_pre_act[r].mul_add(layer.w[row_off + c], d_act[c]);
+                        d_act[c] += d_pre_act[r] * layer.w[row_off + c];
                     }
                 }
             }
@@ -303,8 +303,8 @@ impl NeuralSdf {
             #[allow(clippy::needless_range_loop)]
             for j in 0..layer.w.len() {
                 let g = grad_w[i][j];
-                st.m_w[j] = beta1.mul_add(st.m_w[j], (1.0 - beta1) * g);
-                st.v_w[j] = beta2.mul_add(st.v_w[j], (1.0 - beta2) * g * g);
+                st.m_w[j] = beta1 * st.m_w[j] + ((1.0 - beta1) * g);
+                st.v_w[j] = beta2 * st.v_w[j] + ((1.0 - beta2) * g * g);
                 let m_hat = st.m_w[j] / bc1;
                 let v_hat = st.v_w[j] / bc2;
                 layer.w[j] -= lr * m_hat / (v_hat.sqrt() + eps);
@@ -313,8 +313,8 @@ impl NeuralSdf {
             #[allow(clippy::needless_range_loop)]
             for j in 0..layer.b.len() {
                 let g = grad_b[i][j];
-                st.m_b[j] = beta1.mul_add(st.m_b[j], (1.0 - beta1) * g);
-                st.v_b[j] = beta2.mul_add(st.v_b[j], (1.0 - beta2) * g * g);
+                st.m_b[j] = beta1 * st.m_b[j] + ((1.0 - beta1) * g);
+                st.v_b[j] = beta2 * st.v_b[j] + ((1.0 - beta2) * g * g);
                 let m_hat = st.m_b[j] / bc1;
                 let v_hat = st.v_b[j] / bc2;
                 layer.b[j] -= lr * m_hat / (v_hat.sqrt() + eps);
@@ -546,7 +546,7 @@ fn layer_forward(layer: &Layer, input: &[f32], output: &mut [f32], relu: bool) {
         let mut sum = layer.b[r];
         let row = &layer.w[r * layer.in_dim..(r + 1) * layer.in_dim];
         for c in 0..layer.in_dim {
-            sum = row[c].mul_add(input[c], sum);
+            sum += row[c] * input[c];
         }
         output[r] = if relu { sum.max(0.0) } else { sum };
     }

@@ -536,7 +536,7 @@ impl ContinuousLod {
             self.current_lod = if diff.abs() <= step {
                 target_lod
             } else {
-                diff.signum().mul_add(step, self.current_lod)
+                diff.signum() * step + self.current_lod
             };
             self.current_lod = self
                 .current_lod

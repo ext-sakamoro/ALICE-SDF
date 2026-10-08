@@ -105,11 +105,11 @@ impl MutableVoxelGrid {
             .par_chunks_mut((rx * ry) as usize)
             .enumerate()
             .for_each(|(z, slab)| {
-                let wz = (z as f32).mul_add(step.z, bounds_min.z) + half_step.z;
+                let wz = ((z as f32) * step.z + bounds_min.z) + half_step.z;
                 for y in 0..ry {
-                    let wy = (y as f32).mul_add(step.y, bounds_min.y) + half_step.y;
+                    let wy = ((y as f32) * step.y + bounds_min.y) + half_step.y;
                     for x in 0..rx {
-                        let wx = (x as f32).mul_add(step.x, bounds_min.x) + half_step.x;
+                        let wx = ((x as f32) * step.x + bounds_min.x) + half_step.x;
                         let idx = (x + y * rx) as usize;
                         slab[idx] = eval(node, Vec3::new(wx, wy, wz));
                     }

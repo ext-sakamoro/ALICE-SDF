@@ -100,8 +100,8 @@ pub fn glyph_to_3d(glyph: &GlyphSdf, depth: f32) -> SdfNode {
             let d = glyph.data[(iy * 64 + ix) as usize];
             if d < 0.0 {
                 // Interior cell: place a sphere
-                let cx = (ix as f32 + 0.5).mul_add(cell_w, glyph.bbox_min.x);
-                let cy = (iy as f32 + 0.5).mul_add(cell_h, glyph.bbox_min.y);
+                let cx = ((ix as f32 + 0.5) * cell_w + glyph.bbox_min.x);
+                let cy = ((iy as f32 + 0.5) * cell_h + glyph.bbox_min.y);
                 spheres.push(SdfNode::sphere(cell_r).translate(cx, cy, 0.0));
             }
         }
