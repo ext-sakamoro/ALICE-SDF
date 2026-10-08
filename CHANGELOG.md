@@ -41,6 +41,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: `bake.yml` の push の変更検出を `on.push.paths` (直前の push と比較) から、main で最後に Bake assets が success した commit との比較に変えた (`ci.yml` の changes job と同じ方式) 直前の push と比べると、新しい push に打ち切られた run の変更が bake されないまま残った tag と手動実行は常に bake する
 - `examples/bake_assets`: GPU の mesh を距離で溶接せずそのまま使い、格子の余白を 3.5 cell から 3 cell にした GPU と CPU の mesh の頂点数・面数・面積 0 の三角形の数の一致を検査に加え (log に `gpu-vs-cpu: topology GPU … CPU …` を出す)、`bake_teeth.sh` に GPU の mesh に頂点を 1 つ足す変異 (`gpu-extra-vertex`) を足した
 - `alice-det-math` を 0.3.1 から 0.4 に上げた 0.4.0 で bit が変わったのは `atan64` / `atan2_64` (`f64`) だけで、この crate の評価器はどちらも呼ばない (`f32` の `atan` / `atan2` と `simd` 版は係数が別で、0.3.x と同じ実装) `tests/test_det_golden.rs` の node ごとの hash と VRChat sample の golden 7 本 (全 21762 点) は 0.3.2 と 0.4.0 で bit 単位で一致した 変わったのは上の `SEMANTICS_ID` の値だけ
+- `scripts/det_math_guard.py`: 対象に `src/transforms/` と `src/types/` を足した (`ProjectiveTransform` の law と `types::Aabb` がここにある) 走査した file が 0 件なら fail する (dir の移動や作業 dir の誤りで素通りしない) `types::Aabb::surface_area` は `mul_add` をやめて `2·(dx·dy + dy·dz + dz·dx)` を 2 回丸めで計算する
 
 ## [5.0.0] - 2026-10-09
 
