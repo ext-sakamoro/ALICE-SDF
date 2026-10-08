@@ -172,9 +172,9 @@ impl<T: Copy + Default> Volume3D<T> {
     pub fn voxel_to_world(&self, x: u32, y: u32, z: u32) -> Vec3 {
         let step = self.voxel_size();
         Vec3::new(
-            (x as f32).mul_add(step.x, self.world_min.x),
-            (y as f32).mul_add(step.y, self.world_min.y),
-            (z as f32).mul_add(step.z, self.world_min.z),
+            (x as f32) * step.x + self.world_min.x,
+            (y as f32) * step.y + self.world_min.y,
+            (z as f32) * step.z + self.world_min.z,
         )
     }
 
@@ -278,7 +278,7 @@ impl Volume3D<VoxelDistGrad> {
         ];
 
         // Interpolate each component
-        let lerp = |a: f32, b: f32, t: f32| a.mul_add(1.0 - t, b * t);
+        let lerp = |a: f32, b: f32, t: f32| a * (1.0 - t) + (b * t);
 
         let interp_component = |f: fn(&VoxelDistGrad) -> f32| -> f32 {
             let c00 = lerp(f(&corners[0]), f(&corners[1]), tx);

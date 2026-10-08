@@ -38,7 +38,7 @@ pub fn quantize_snorm(v: f32, bits: u32) -> i32 {
     debug_assert!((1..=32).contains(&bits));
     let scale = ((1i32 << (bits - 1)) - 1) as f32;
     let round = if v >= 0.0 { 0.5 } else { -0.5 };
-    v.clamp(-1.0, 1.0).mul_add(scale, round) as i32
+    (v.clamp(-1.0, 1.0) * scale + round) as i32
 }
 
 // ============================================================================
@@ -141,7 +141,7 @@ pub fn try_decode_filter_oct_i16_in_place(data: &mut [i16]) -> Result<(), MeshIn
         x += if x >= 0.0 { t } else { -t };
         y += if y >= 0.0 { t } else { -t };
 
-        let l = x.mul_add(x, y.mul_add(y, z * z)).sqrt();
+        let l = (x * x + (y * y + (z * z))).sqrt();
         if l == 0.0 {
             continue;
         }
@@ -149,7 +149,7 @@ pub fn try_decode_filter_oct_i16_in_place(data: &mut [i16]) -> Result<(), MeshIn
 
         let round = |v: f32| -> i16 {
             let r = if v >= 0.0 { 0.5 } else { -0.5 };
-            v.mul_add(s, r) as i16
+            (v * s + r) as i16
         };
 
         chunk[0] = round(x);
@@ -173,9 +173,7 @@ pub fn try_decode_filter_oct_i16_in_place(data: &mut [i16]) -> Result<(), MeshIn
 pub fn encode_filter_quat_one(q: [f32; 4], bits: u32, output: &mut [i16; 4]) {
     // the decoder rebuilds the largest component as sqrt(1 - x² - y² - z²),
     // which holds only for a unit quaternion
-    let len = q[3]
-        .mul_add(q[3], q[2].mul_add(q[2], q[1].mul_add(q[1], q[0] * q[0])))
-        .sqrt();
+    let len = (q[3] * q[3] + (q[2] * q[2] + (q[1] * q[1] + (q[0] * q[0])))).sqrt();
     let q = if len > 0.0 && len.is_finite() {
         [q[0] / len, q[1] / len, q[2] / len, q[3] / len]
     } else {
@@ -251,16 +249,16 @@ pub fn decode_filter_quat_i16_in_place(data: &mut [i16]) {
         let z = f32::from(chunk[2]);
 
         let ws = s * s;
-        let ww = 2.0f32.mul_add(ws, -x.mul_add(x, y.mul_add(y, z * z)));
+        let ww = 2.0f32 * ws + (-(x * x + (y * y + (z * z))));
         let w = ww.max(0.0).sqrt();
 
         let ss = scale / s;
 
         let round_sign = |v: f32| -> i16 {
             let r = if v >= 0.0 { 0.5 } else { -0.5 };
-            v.mul_add(ss, r) as i16
+            (v * ss + r) as i16
         };
-        let round_pos = |v: f32| -> i16 { v.mul_add(ss, 0.5) as i16 };
+        let round_pos = |v: f32| -> i16 { (v * ss + 0.5) as i16 };
 
         let xf = round_sign(x);
         let yf = round_sign(y);

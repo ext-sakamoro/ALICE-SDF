@@ -22,7 +22,7 @@ pub fn vignette(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> f32 {
         0.0
     } else {
         let t = ((d - inner) / (outer - inner)).clamp(0.0, 1.0);
-        (t * t).mul_add(-2.0f32.mul_add(-t, 3.0), 1.0)
+        (t * t) * (-(2.0f32 * -t + 3.0)) + 1.0
     }
 }
 

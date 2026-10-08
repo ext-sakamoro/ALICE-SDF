@@ -195,7 +195,7 @@ impl Track {
         let alpha = (t - k0.time) / span;
 
         match k0.interpolation {
-            Interpolation::Linear => (k1.value - k0.value).mul_add(alpha, k0.value),
+            Interpolation::Linear => (k1.value - k0.value) * alpha + k0.value,
             Interpolation::Step => k0.value,
             Interpolation::CubicBezier {
                 out_tangent,
@@ -204,14 +204,12 @@ impl Track {
                 // Hermite interpolation
                 let t2 = alpha * alpha;
                 let t3 = t2 * alpha;
-                let h00 = 2.0f32.mul_add(t3, -(3.0 * t2)) + 1.0;
-                let h10 = 2.0f32.mul_add(-t2, t3) + alpha;
-                let h01 = (-2.0f32).mul_add(t3, 3.0 * t2);
+                let h00 = (2.0f32 * t3 + (-(3.0 * t2))) + 1.0;
+                let h10 = (2.0f32 * -t2 + t3) + alpha;
+                let h01 = (-2.0f32) * t3 + (3.0 * t2);
                 let h11 = t3 - t2;
-                (h11 * span).mul_add(
-                    in_tangent,
-                    (h10 * span).mul_add(out_tangent, h00 * k0.value) + h01 * k1.value,
-                )
+                (h11 * span) * in_tangent
+                    + (((h10 * span) * out_tangent + (h00 * k0.value)) + h01 * k1.value)
             }
         }
     }

@@ -61,11 +61,11 @@ pub fn generate_debris(center: Vec3, radius: f32, config: &DebrisConfig) -> Vec<
     for _ in 0..piece_count {
         // Generate random position within the carve area
         rng_state = lcg_next(rng_state);
-        let rx = lcg_float(rng_state).mul_add(2.0, -1.0);
+        let rx = lcg_float(rng_state) * 2.0 + -1.0;
         rng_state = lcg_next(rng_state);
-        let ry = lcg_float(rng_state).mul_add(2.0, -1.0);
+        let ry = lcg_float(rng_state) * 2.0 + -1.0;
         rng_state = lcg_next(rng_state);
-        let rz = lcg_float(rng_state).mul_add(2.0, -1.0);
+        let rz = lcg_float(rng_state) * 2.0 + -1.0;
 
         let dir = Vec3::new(rx, ry, rz).normalize_or_zero();
         rng_state = lcg_next(rng_state);
@@ -74,7 +74,7 @@ pub fn generate_debris(center: Vec3, radius: f32, config: &DebrisConfig) -> Vec<
 
         rng_state = lcg_next(rng_state);
         let piece_radius =
-            lcg_float(rng_state).mul_add(config.max_size - config.min_size, config.min_size);
+            lcg_float(rng_state) * (config.max_size - config.min_size) + config.min_size;
 
         // Generate a simple convex debris mesh (distorted icosahedron)
         let mesh = generate_debris_mesh(piece_center, piece_radius, rng_state);
@@ -112,7 +112,7 @@ fn generate_debris_mesh(center: Vec3, radius: f32, seed: u64) -> Mesh {
 
     for dir in &base_dirs {
         rng = lcg_next(rng);
-        let distort = lcg_float(rng).mul_add(0.6, 0.7); // 0.7 to 1.3
+        let distort = lcg_float(rng) * 0.6 + 0.7; // 0.7 to 1.3
         let pos = center + *dir * radius * distort;
         verts.push(pos);
     }

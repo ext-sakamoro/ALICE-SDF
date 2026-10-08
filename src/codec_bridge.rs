@@ -349,9 +349,9 @@ pub fn voxelize_sdf(sdf: &SdfNode, origin: Vec3, extent: Vec3, dims: [usize; 3])
         for y in 0..h {
             for x in 0..w {
                 points.push(Vec3::new(
-                    (x as f32).mul_add(voxel_size_vec.x, origin.x),
-                    (y as f32).mul_add(voxel_size_vec.y, origin.y),
-                    (z as f32).mul_add(voxel_size_vec.z, origin.z),
+                    (x as f32) * voxel_size_vec.x + origin.x,
+                    (y as f32) * voxel_size_vec.y + origin.y,
+                    (z as f32) * voxel_size_vec.z + origin.z,
                 ));
             }
         }
@@ -964,7 +964,7 @@ pub fn volume_stats(volume: &SdfVolume) -> VolumeStats {
         if v > max {
             max = v;
         }
-        sum_sq = (v as f64).mul_add(v as f64, sum_sq);
+        sum_sq += (v as f64) * (v as f64);
     }
 
     // Count zero-crossings along X axis (sign changes = surface voxels)

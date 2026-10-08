@@ -268,15 +268,15 @@ pub fn explode(
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let rx = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
+        let rx = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32) * 2.0 + -1.0;
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let ry = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
+        let ry = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32) * 2.0 + -1.0;
         rng_state = rng_state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let rz = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(2.0, -1.0);
+        let rz = ((rng_state >> 16) as u32 as f32 / u32::MAX as f32) * 2.0 + -1.0;
 
         let dir = Vec3::new(rx, ry, rz).normalize_or_zero();
         rng_state = rng_state
@@ -287,7 +287,7 @@ pub fn explode(
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
         let frag_radius =
-            radius * ((rng_state >> 16) as u32 as f32 / u32::MAX as f32).mul_add(0.5, 0.2);
+            radius * (((rng_state >> 16) as u32 as f32 / u32::MAX as f32) * 0.5 + 0.2);
 
         shapes.push(CarveShape::Sphere {
             center: center + dir * dist,

@@ -96,10 +96,10 @@ impl Heightmap {
         let h01 = self.get_height(x0, z1);
         let h11 = self.get_height(x1, z1);
 
-        let h0 = (h10 - h00).mul_add(tx, h00);
-        let h1 = (h11 - h01).mul_add(tx, h01);
+        let h0 = (h10 - h00) * tx + h00;
+        let h1 = (h11 - h01) * tx + h01;
 
-        (h1 - h0).mul_add(tz, h0)
+        (h1 - h0) * tz + h0
     }
 
     /// Sample height using bicubic interpolation (smoother)
@@ -121,7 +121,7 @@ impl Heightmap {
             for dx in -1..=2i32 {
                 let x = (ix + dx).clamp(0, self.width as i32 - 1) as u32;
                 let wx = cubic_weight(tx - dx as f32);
-                result = (self.get_height(x, z) * wx).mul_add(wz, result);
+                result += (self.get_height(x, z) * wx) * wz;
             }
         }
         result
@@ -162,8 +162,8 @@ impl Heightmap {
                 let mut max_amp = 0.0f32;
 
                 for oct in 0..octaves {
-                    let nx = wx * frequency + (oct as f32).mul_add(31.7, seed as f32);
-                    let nz = wz * frequency + (seed as f32).mul_add(0.7, oct as f32 * 17.3);
+                    let nx = wx * frequency + ((oct as f32) * 31.7 + (seed as f32));
+                    let nz = wz * frequency + ((seed as f32) * 0.7 + (oct as f32 * 17.3));
                     let n = hash_noise_2d(nx, nz);
                     value += n * amplitude;
                     max_amp += amplitude;
@@ -310,9 +310,9 @@ impl HeightmapImageConfig {
 fn cubic_weight(t: f32) -> f32 {
     let t = t.abs();
     if t <= 1.0 {
-        (1.5f32.mul_add(t, -2.5) * t).mul_add(t, 1.0)
+        ((1.5f32 * t + -2.5) * t) * t + 1.0
     } else if t <= 2.0 {
-        (-0.5f32).mul_add(t, 2.5).mul_add(t, -4.0).mul_add(t, 2.0)
+        (((-0.5f32) * t + 2.5) * t + -4.0) * t + 2.0
     } else {
         0.0
     }
@@ -326,18 +326,18 @@ fn hash_noise_2d(x: f32, z: f32) -> f32 {
     let fz = z - z.floor();
 
     // Smoothstep
-    let sx = fx * fx * 2.0f32.mul_add(-fx, 3.0);
-    let sz = fz * fz * 2.0f32.mul_add(-fz, 3.0);
+    let sx = fx * fx * (2.0f32 * -fx + 3.0);
+    let sz = fz * fz * (2.0f32 * -fz + 3.0);
 
     let h00 = hash_2d(ix, iz);
     let h10 = hash_2d(ix + 1, iz);
     let h01 = hash_2d(ix, iz + 1);
     let h11 = hash_2d(ix + 1, iz + 1);
 
-    let h0 = (h10 - h00).mul_add(sx, h00);
-    let h1 = (h11 - h01).mul_add(sx, h01);
+    let h0 = (h10 - h00) * sx + h00;
+    let h1 = (h11 - h01) * sx + h01;
 
-    (h1 - h0).mul_add(sz, h0)
+    (h1 - h0) * sz + h0
 }
 
 /// Integer hash -> float in [-1, 1]

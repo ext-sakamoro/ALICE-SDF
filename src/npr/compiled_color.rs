@@ -1280,9 +1280,9 @@ fn fallback_reconstruct_ctx(batch: &NprBatchContext8, lane: usize) -> NprColorCo
         normal: Vec3::new(0.0, 1.0, 0.0),
         // View at +Z so that `normal.dot(view)` = 0 by default; the actual
         // n_dot_v is honoured by setting view to Vec3::new(0, n_dot_v, s).
-        view: Vec3::new(0.0, n_dot_v, n_dot_v.mul_add(-n_dot_v, 1.0).max(0.0).sqrt()),
+        view: Vec3::new(0.0, n_dot_v, (n_dot_v * -n_dot_v + 1.0).max(0.0).sqrt()),
         // Light aligned so that `normal.dot(light) == n_dot_l`.
-        light: Vec3::new(0.0, n_dot_l, n_dot_l.mul_add(-n_dot_l, 1.0).max(0.0).sqrt()),
+        light: Vec3::new(0.0, n_dot_l, (n_dot_l * -n_dot_l + 1.0).max(0.0).sqrt()),
         uv: Vec2::new(uv_x, uv_y),
         time,
     }
@@ -2654,7 +2654,7 @@ mod tests {
             view: Vec3::new(0.0, 0.0, 1.0),
             // Direct construction from n_dot_l so light.y == n_dot_l with
             // normal fixed to +Y. Zero out other components.
-            light: Vec3::new(0.0, ndl, ndl.mul_add(-ndl, 1.0).max(0.0).sqrt()),
+            light: Vec3::new(0.0, ndl, (ndl * -ndl + 1.0).max(0.0).sqrt()),
             uv,
             time,
         };

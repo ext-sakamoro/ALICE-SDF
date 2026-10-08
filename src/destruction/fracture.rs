@@ -148,11 +148,11 @@ fn generate_seeds(center: Vec3, radius: f32, count: u32, seed: u64) -> Vec<Vec3>
         // Rejection sampling for uniform distribution in sphere
         loop {
             rng = lcg_next(rng);
-            let rx = lcg_float(rng).mul_add(2.0, -1.0);
+            let rx = lcg_float(rng) * 2.0 + -1.0;
             rng = lcg_next(rng);
-            let ry = lcg_float(rng).mul_add(2.0, -1.0);
+            let ry = lcg_float(rng) * 2.0 + -1.0;
             rng = lcg_next(rng);
-            let rz = lcg_float(rng).mul_add(2.0, -1.0);
+            let rz = lcg_float(rng) * 2.0 + -1.0;
 
             let p = Vec3::new(rx, ry, rz);
             if p.length_squared() <= 1.0 {

@@ -119,7 +119,7 @@ fn generate_uniform_directions(count: u32) -> Vec<(Vec3, f32)> {
 
     for i in 0..count {
         let theta = std::f32::consts::TAU * i as f32 * inv_golden;
-        let phi = (2.0 * (i as f32 + 0.5)).mul_add(-inv_count, 1.0).acos();
+        let phi = ((2.0 * (i as f32 + 0.5)) * -inv_count + 1.0).acos();
 
         let x = phi.sin() * theta.cos();
         let y = phi.sin() * theta.sin();

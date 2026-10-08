@@ -148,7 +148,7 @@ impl std::ops::Mul for Dual {
     fn mul(self, rhs: Self) -> Self {
         Self {
             val: self.val * rhs.val,
-            dot: self.val.mul_add(rhs.dot, self.dot * rhs.val),
+            dot: (self.val * rhs.dot + (self.dot * rhs.val)),
         }
     }
 }
@@ -171,7 +171,7 @@ impl std::ops::Div for Dual {
         let inv = 1.0 / rhs.val;
         Self {
             val: self.val * inv,
-            dot: self.dot.mul_add(rhs.val, -(self.val * rhs.dot)) * inv * inv,
+            dot: (self.dot * rhs.val + (-(self.val * rhs.dot))) * inv * inv,
         }
     }
 }
@@ -237,9 +237,7 @@ impl Dual3 {
     /// Gradient magnitude.
     #[inline(always)]
     pub fn gradient_magnitude(self) -> f32 {
-        self.dz
-            .mul_add(self.dz, self.dx.mul_add(self.dx, self.dy * self.dy))
-            .sqrt()
+        (self.dz * self.dz + (self.dx * self.dx + (self.dy * self.dy))).sqrt()
     }
 
     /// Absolute value: |f|, ∇|f| = sign(f) * ∇f.
@@ -356,9 +354,9 @@ impl std::ops::Mul for Dual3 {
     fn mul(self, rhs: Self) -> Self {
         Self {
             val: self.val * rhs.val,
-            dx: self.val.mul_add(rhs.dx, self.dx * rhs.val),
-            dy: self.val.mul_add(rhs.dy, self.dy * rhs.val),
-            dz: self.val.mul_add(rhs.dz, self.dz * rhs.val),
+            dx: (self.val * rhs.dx + (self.dx * rhs.val)),
+            dy: (self.val * rhs.dy + (self.dy * rhs.val)),
+            dz: (self.val * rhs.dz + (self.dz * rhs.val)),
         }
     }
 }
@@ -489,22 +487,20 @@ pub fn principal_curvatures(node: &SdfNode, point: Vec3, epsilon: f32) -> (f32, 
 
     // H n
     let hn = Vec3::new(
-        hxz.mul_add(n.z, hxx.mul_add(n.x, hxy * n.y)),
-        hyz.mul_add(n.z, hxy.mul_add(n.x, hyy * n.y)),
-        hzz.mul_add(n.z, hxz.mul_add(n.x, hyz * n.y)),
+        hxz * n.z + (hxx * n.x + (hxy * n.y)),
+        hyz * n.z + (hxy * n.x + (hyy * n.y)),
+        hzz * n.z + (hxz * n.x + (hyz * n.y)),
     );
     let n_hn = n.dot(hn);
     let laplacian = hxx + hyy + hzz;
     let sum = (laplacian - n_hn) / grad_len;
 
-    let h_frobenius = 2.0f32.mul_add(
-        hyz.mul_add(hyz, hxy.mul_add(hxy, hxz * hxz)),
-        hzz.mul_add(hzz, hxx.mul_add(hxx, hyy * hyy)),
-    );
-    let sum_sq = n_hn.mul_add(n_hn, (-2.0f32).mul_add(hn.length_squared(), h_frobenius))
-        / (grad_len * grad_len);
+    let h_frobenius =
+        2.0f32 * (hyz * hyz + (hxy * hxy + (hxz * hxz))) + (hzz * hzz + (hxx * hxx + (hyy * hyy)));
+    let sum_sq =
+        (n_hn * n_hn + ((-2.0f32) * hn.length_squared() + h_frobenius)) / (grad_len * grad_len);
 
-    let discriminant = 2.0f32.mul_add(sum_sq, -(sum * sum)).max(0.0);
+    let discriminant = (2.0f32 * sum_sq + (-(sum * sum))).max(0.0);
     let sqrt_disc = discriminant.sqrt();
     let k1 = f32::midpoint(sum, sqrt_disc);
     let k2 = 0.5 * (sum - sqrt_disc);

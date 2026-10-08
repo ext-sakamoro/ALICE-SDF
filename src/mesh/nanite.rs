@@ -100,16 +100,16 @@ impl ClusterBounds {
 
         let dir = to_center / dist;
         let sin_a = self.radius / dist;
-        let cos_a = dist.mul_add(dist, -(self.radius * self.radius)).sqrt() / dist;
+        let cos_a = (dist * dist + (-(self.radius * self.radius))).sqrt() / dist;
         let fov_cos = fov_cos.clamp(-1.0, 1.0);
-        let fov_sin = fov_cos.mul_add(-fov_cos, 1.0).max(0.0).sqrt();
+        let fov_sin = (fov_cos * -fov_cos + 1.0).max(0.0).sqrt();
 
         // θ + α >= π: only possible when θ >= π/2, then α >= π - θ <=> sin α >= sin θ
         if fov_cos <= 0.0 && sin_a >= fov_sin {
             return true;
         }
 
-        dir.dot(view_dir) >= fov_cos.mul_add(cos_a, -(fov_sin * sin_a))
+        dir.dot(view_dir) >= (fov_cos * cos_a + (-(fov_sin * sin_a)))
     }
 
     /// Compute screen-space error for LOD selection
@@ -294,7 +294,7 @@ impl NormalCone {
             return false; // 半角 > 90° (unbounded を含む) は culling 不可
         }
         let c = self.cutoff_cos.min(1.0);
-        let sin_beta = c.mul_add(-c, 1.0).max(0.0).sqrt();
+        let sin_beta = (c * -c + 1.0).max(0.0).sqrt();
         self.axis.dot(view_dir) >= sin_beta
     }
 }
@@ -1119,7 +1119,7 @@ pub(crate) fn cluster_surface_error(
         .flat_map(|&t| triangle_positions(mesh, t))
         .map(|p| p.abs().max_element())
         .fold(1.0f32, f32::max);
-    4.0f32.mul_add(f32::EPSILON * scale, found)
+    4.0f32 * (f32::EPSILON * scale) + found
 }
 
 /// Extract geometry for a subset of triangles

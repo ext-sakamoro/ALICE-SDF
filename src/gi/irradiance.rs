@@ -40,10 +40,7 @@ impl SH1 {
     #[inline]
     pub fn evaluate(&self, dir: Vec3) -> f32 {
         let c = &self.coeffs;
-        (c[3] * Y1).mul_add(
-            dir.z,
-            (c[2] * Y1).mul_add(dir.y, c[0].mul_add(Y0, c[1] * Y1 * dir.x)),
-        )
+        (c[3] * Y1) * dir.z + ((c[2] * Y1) * dir.y + (c[0] * Y0 + (c[1] * Y1 * dir.x)))
     }
 
     /// Project a directional sample into SH
@@ -199,9 +196,9 @@ impl IrradianceGrid {
     pub fn sample(&self, position: Vec3, normal: Vec3) -> Vec3 {
         let size = self.bounds_max - self.bounds_min;
         let t = (position - self.bounds_min) / size;
-        let fx = t.x.mul_add(self.grid_size[0] as f32, -0.5);
-        let fy = t.y.mul_add(self.grid_size[1] as f32, -0.5);
-        let fz = t.z.mul_add(self.grid_size[2] as f32, -0.5);
+        let fx = t.x * (self.grid_size[0] as f32) + -0.5;
+        let fy = t.y * (self.grid_size[1] as f32) + -0.5;
+        let fz = t.z * (self.grid_size[2] as f32) + -0.5;
 
         let x0 = (fx.floor() as i32).clamp(0, self.grid_size[0] as i32 - 1) as u32;
         let y0 = (fy.floor() as i32).clamp(0, self.grid_size[1] as i32 - 1) as u32;

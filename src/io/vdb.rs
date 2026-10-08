@@ -46,11 +46,11 @@ pub fn bake_dense_grid(node: &SdfNode, bounds: (f32, f32), resolution: u32) -> V
     let step = (max - min) / (resolution - 1).max(1) as f32;
     let mut grid = Vec::with_capacity(n * n * n);
     for k in 0..n {
-        let z = (k as f32).mul_add(step, min);
+        let z = (k as f32) * step + min;
         for j in 0..n {
-            let y = (j as f32).mul_add(step, min);
+            let y = (j as f32) * step + min;
             for i in 0..n {
-                let x = (i as f32).mul_add(step, min);
+                let x = (i as f32) * step + min;
                 let d = eval(node, Vec3::new(x, y, z));
                 grid.push(d);
             }

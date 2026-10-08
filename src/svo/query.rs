@@ -161,7 +161,7 @@ pub fn svo_ray_query(
                 if !found {
                     // no sign change within this leaf: keep marching
                     t_prev = probe.min(t_end);
-                    t = finest_half_diag.mul_add(0.5, t_prev);
+                    t = finest_half_diag * 0.5 + t_prev;
                     continue;
                 }
             }

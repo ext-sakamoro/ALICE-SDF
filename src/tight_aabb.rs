@@ -587,7 +587,7 @@ fn coarse_scan(
     if is_max {
         // Scan from hi toward lo, find outermost slab that may contain surface
         for i in 0..subdivisions {
-            let slab_hi = (i as f32).mul_add(-step, hi);
+            let slab_hi = (i as f32) * -step + hi;
             let slab_lo = slab_hi - step;
 
             let bounds = make_slab_bounds(axis, slab_lo, slab_hi, initial_min, initial_max);
@@ -604,7 +604,7 @@ fn coarse_scan(
     } else {
         // Scan from lo toward hi, find outermost slab that may contain surface
         for i in 0..subdivisions {
-            let slab_lo = (i as f32).mul_add(step, lo);
+            let slab_lo = (i as f32) * step + lo;
             let slab_hi = slab_lo + step;
 
             let bounds = make_slab_bounds(axis, slab_lo, slab_hi, initial_min, initial_max);
