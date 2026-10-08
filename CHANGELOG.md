@@ -22,6 +22,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `tests/test_live_sdf_oracle.rs` (11 本): crater を掘った後の球の沈み込みが閉形式の半径と一致、world の step だけで collider の距離が `ModifiedSdf` を手で更新した参照と bit 一致し participant 無しでは変わらない、mesh の全頂点の距離が格子幅以下・crater の壁が閉形式の球面上、再 mesh した chunk の集合が閉形式の数え上げと一致し全 chunk が作り直した mesh と bit 一致、継ぎ目の境界辺 0 と除いた体積が半球の閉形式と一致、同じ編集で bit 一致、fracture の範囲、衝突則、snapshot の往復と拒否、不正入力 CI の test job と preflight に追加
 - `tests/test_live_sdf_gpu_parity.rs`: GPU marching cubes と CPU の chunk mesh の頂点が双方向に 1e-4 以内で対応 CI の gpu-parity job と preflight に追加
 - `tests/test_mc_shared_vertex_oracle.rs`: marching cubes (CPU の `marching_cubes` / `sdf_to_mesh` / `marching_cubes_compiled` / `sdf_to_mesh_compiled`、`gpu-mesh` の `gpu_marching_cubes`) を溶接なしで照合 球・箱・箱から球を引いた形 (種数 5)・回転した帯・格子点が表面ちょうどに来る整数半径の球 (整数格子と半整数格子) で、境界辺 0・非多様体辺 0・連結 1・Euler 標数が閉形式、整数球の頂点数が整数演算で数えた「符号の変わる格子辺」の数、面数が 2V − 4、隣接 cell が同じ格子辺に同じ頂点 (下端から補間した値と bit 一致) を参照、球の法線が `p / |p|` から 1e-3 rad 以内、球と箱の体積が閉形式から 1 % 以内、整数球で同じ位置の頂点の余剰数・組の数と面積 0 の三角形の数が閉形式 (余剰 Σ(k − 1)、組 Σ k(k − 1)/2、面積 0 は 2 Σ(k − 1)、k は表面上の格子点の内側の隣接点数) と一致し位置で併合しても閉じた種数 0、GPU と CPU の頂点数と面数が一致 CI の gpu-parity job と preflight に追加
+- `alice_sdf::SEMANTICS_ID`: `alice-det-math` の `SEMANTICS_ID` (32 byte、依存の数値 kernel のどれかが同じ入力で別の bit を返すようになると変わる識別子) の再 export 距離場を焼いた結果や衝突の記録に識別子を付ける利用者が、評価に使った算術を識別子に含められる `tests/test_det_golden.rs` が 16 進で pin するので、`alice-det-math` を上げて算術が変わると CI の全 OS lane で red になる
 
 ### Fixed
 - 古いままだった version 表記を crate の 5.0.0 に揃えた: Python の wheel (`pyproject.toml` の 0.1.0、今後は `dynamic` で Cargo.toml から取る)、`@alice-sdf/wasm` (0.1.0)、`@alice-sdf/threejs` (1.6.0)、Cinema 4D / Houdini / Maya / Nuke plugin の `__version__` (1.6.0)
@@ -36,6 +37,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: `.github/workflows/bake.yml` を追加 (`src/**` などを変える main への push と PR、`v*` tag、手動実行) lavapipe で bake と検査と `bake_teeth.sh` を走らせ、出力を artifact に残す (tag は 90 日、それ以外は 14 日) `scripts/preflight.sh` の full に bake の CPU 部分 (macOS では Metal の GPU 部分も) と `bake_teeth.sh` を足した
 - CI: `bake.yml` の push の変更検出を `on.push.paths` (直前の push と比較) から、main で最後に Bake assets が success した commit との比較に変えた (`ci.yml` の changes job と同じ方式) 直前の push と比べると、新しい push に打ち切られた run の変更が bake されないまま残った tag と手動実行は常に bake する
 - `examples/bake_assets`: GPU の mesh を距離で溶接せずそのまま使い、格子の余白を 3.5 cell から 3 cell にした GPU と CPU の mesh の頂点数・面数・面積 0 の三角形の数の一致を検査に加え (log に `gpu-vs-cpu: topology GPU … CPU …` を出す)、`bake_teeth.sh` に GPU の mesh に頂点を 1 つ足す変異 (`gpu-extra-vertex`) を足した
+- `alice-det-math` を 0.3.1 から 0.4 に上げた 0.4.0 で bit が変わったのは `atan64` / `atan2_64` (`f64`) だけで、この crate の評価器はどちらも呼ばない (`f32` の `atan` / `atan2` と `simd` 版は係数が別で、0.3.x と同じ実装) `tests/test_det_golden.rs` の node ごとの hash と VRChat sample の golden 7 本 (全 21762 点) は 0.3.2 と 0.4.0 で bit 単位で一致した 変わったのは上の `SEMANTICS_ID` の値だけ
 
 ## [5.0.0] - 2026-10-09
 

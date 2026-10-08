@@ -85,6 +85,33 @@ fn tree_evaluator_bits_match_recorded_hashes() {
     );
 }
 
+/// `alice_sdf::SEMANTICS_ID`, the identifier of the arithmetic the hashes
+/// below were recorded with (alice-det-math 0.4.0)
+///
+/// The per-node hashes only move when a law this corpus exercises changes bits;
+/// this pin moves when any kernel of the dependency does, including one no
+/// corpus node reaches (0.4.0 changed `atan64` / `atan2_64`, which no
+/// evaluator path calls, and every hash below stayed put). A failure here is a
+/// dependency move: re-check the table, then re-pin both with the CHANGELOG
+/// saying which `alice-det-math` the crate now evaluates with.
+const SEMANTICS_ID_HEX: &str = "d2209b30f6f1f45baa1b638bcdfee34ac64773b2e63b9c083b2e77afc691398e";
+
+#[test]
+fn semantics_id_matches_recorded_hex() {
+    let got = alice_sdf::SEMANTICS_ID
+        .iter()
+        .fold(String::with_capacity(64), |mut s, b| {
+            use std::fmt::Write;
+            write!(s, "{b:02x}").expect("writing to a String cannot fail");
+            s
+        });
+    assert_eq!(got.len(), 64, "SEMANTICS_ID is not 32 bytes");
+    assert_eq!(
+        got, SEMANTICS_ID_HEX,
+        "alice-det-math SEMANTICS_ID moved: the dependency's arithmetic changed"
+    );
+}
+
 const GOLDEN: &[(&str, &str)] = &[
     (
         "sphere",
