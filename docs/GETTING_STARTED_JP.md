@@ -110,7 +110,7 @@ shader 出力が目的の時。
 
 ## インストールの補足
 
-> **crates.io でのブリッジ feature** — 1.12.0 以降 `physics` (alice-physics 1.1) / `codec` (alice-codec 0.1.2) / `asp` (libasp 1.0) / `sdf-cache` (alice-cache 0.2) は crates.io の隣接 crate に解決され、CI の `bridges` job で検証されています `font` は alice-font が publish されるまで inert な gate で、`font_bridge` module はローカルの `alice-font` path dep と `RUSTFLAGS="--cfg alice_font_bridge"` が必要です (1.7.7 〜 1.11.0 の間は 5 つとも `[features]` から外れていました、CHANGELOG の `[v1.7.7]` / `[v1.12.0]` 参照)
+> **crates.io でのブリッジ feature** — 1.12.0 以降 `physics` (alice-physics 2) / `codec` (alice-codec 0.1.2) / `asp` (libasp 1.0) / `sdf-cache` (alice-cache 0.2) は crates.io の隣接 crate に解決され、CI の `bridges` job で検証されています `font` は alice-font が publish されるまで inert な gate で、`font_bridge` module はローカルの `alice-font` path dep と `RUSTFLAGS="--cfg alice_font_bridge"` が必要です (1.7.7 〜 1.11.0 の間は 5 つとも `[features]` から外れていました、CHANGELOG の `[v1.7.7]` / `[v1.12.0]` 参照)
 
 ### Claude Code / Codex 向け skill
 

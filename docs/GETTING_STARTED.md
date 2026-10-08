@@ -115,7 +115,7 @@ transcendentals are shared rather than reimplemented per crate.
 
 ## Installation notes
 
-> **Bridge features on crates.io** — since 1.12.0 `physics` (alice-physics 1.1) / `codec` (alice-codec 0.1.2) / `asp` (libasp 1.0) / `sdf-cache` (alice-cache 0.2) resolve to the sibling crates on crates.io and are tested by the CI `bridges` job. `font` is still an inert gate: the `font_bridge` module needs a local `alice-font` path dep plus `RUSTFLAGS="--cfg alice_font_bridge"` until alice-font publishes. (Between 1.7.7 and 1.11.0 all five were removed from `[features]`; see the `[v1.7.7]` and `[v1.12.0]` CHANGELOG entries.)
+> **Bridge features on crates.io** — since 1.12.0 `physics` (alice-physics 2) / `codec` (alice-codec 0.1.2) / `asp` (libasp 1.0) / `sdf-cache` (alice-cache 0.2) resolve to the sibling crates on crates.io and are tested by the CI `bridges` job. `font` is still an inert gate: the `font_bridge` module needs a local `alice-font` path dep plus `RUSTFLAGS="--cfg alice_font_bridge"` until alice-font publishes. (Between 1.7.7 and 1.11.0 all five were removed from `[features]`; see the `[v1.7.7]` and `[v1.12.0]` CHANGELOG entries.)
 
 ### Claude Code / Codex skill
 

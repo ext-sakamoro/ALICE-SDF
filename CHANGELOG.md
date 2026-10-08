@@ -83,6 +83,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `examples/shader_export.rs` が Vulkan compute shader、UE5 Custom node、Unity の 2 file も書き出す
 
 ### Changed
+- **Breaking:** `physics` feature の `alice-physics` 要求を `1.1` から `2` に上げる (crates.io の 2.0.0 に解決される) SDF 側のコード変更は無く、`cargo test --features physics` は 2116 passed / 0 failed
 - 版を 5.0.0 にした (`Cargo.toml`、`unreal-plugin/AliceSDF.uplugin` の `VersionName`)
 - `cache::CacheConfig::max_entries` の doc に、`0` は上限なし (何も追い出さない) であることを明記
 - `compiled::GpuEvalFuture` に `#[must_use]` と `Debug` を付けた
