@@ -4,6 +4,10 @@
 //! closed-form composition of those laws.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::npr::compiled_color::CompiledColorPipeline;
 use alice_sdf::npr::composition::vignette;

@@ -400,7 +400,8 @@ fn chunk_seams_close_and_the_crater_removes_a_half_ball() {
     assert!(merged.indices.len() / 3 > 1000);
     assert_eq!(boundary_edges(&merged), 0, "seams must be closed");
     let removed = v_before - signed_volume(&merged);
-    let half_ball = 2.0 / 3.0 * std::f64::consts::PI * f64::from(CRATER_R).powi(3);
+    let cr = f64::from(CRATER_R);
+    let half_ball = 2.0 / 3.0 * std::f64::consts::PI * (cr * cr * cr);
     assert!(
         ((removed - half_ball) / half_ball).abs() < 0.02,
         "removed {removed}, closed form {half_ball}"

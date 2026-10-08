@@ -350,7 +350,10 @@ pub fn decode_filter_exp_u32_in_place(data: &mut [u32]) {
 // ============================================================================
 // Tests
 // ============================================================================
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

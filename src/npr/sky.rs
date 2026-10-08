@@ -74,6 +74,10 @@ pub fn distance_color_quantize(
 /// at `to_sun`. `density` sharpens the shaft (higher = tighter).
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn light_shaft_beam(view: Vec3, to_sun: Vec3, density: f32) -> f32 {
     let v = view.normalize_or_zero();
     let s = to_sun.normalize_or_zero();
@@ -87,6 +91,10 @@ pub fn light_shaft_beam(view: Vec3, to_sun: Vec3, density: f32) -> f32 {
 /// `softness` are in radians.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn sun_disc(view: Vec3, to_sun: Vec3, radius: f32, softness: f32) -> f32 {
     let v = view.normalize_or_zero();
     let s = to_sun.normalize_or_zero();
@@ -104,7 +112,10 @@ pub fn sun_disc(view: Vec3, to_sun: Vec3, radius: f32, softness: f32) -> f32 {
         ((cos_theta - cos_outer) / denom).clamp(0.0, 1.0)
     }
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

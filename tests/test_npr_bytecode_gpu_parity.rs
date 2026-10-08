@@ -23,7 +23,10 @@
 //! adapter is a failure there; elsewhere it is a skip.
 //!
 //! Author: Moroya Sakamoto
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "gpu")]
 
 use alice_sdf::npr::compiled_color::{emit_wgsl_bytecode_evaluator, CompiledColorPipeline};

@@ -200,6 +200,10 @@ impl LodConfig {
     }
 
     /// Get distance range for a specific LOD level
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "LOD selection by camera distance or screen size: a display decision that does not change any mesh"
+    )]
     pub fn distance_range(&self, level: u32) -> (f32, f32) {
         let min = if level == 0 {
             0.0 // LOD 0 starts at distance 0
@@ -276,6 +280,10 @@ impl DecimationLodConfig {
     }
 
     /// Get distance range for a specific LOD level
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "LOD selection by camera distance or screen size: a display decision that does not change any mesh"
+    )]
     pub fn distance_range(&self, level: u32) -> (f32, f32) {
         let min = if level == 0 {
             0.0
@@ -474,6 +482,10 @@ impl LodSelector {
     }
 
     /// Compute screen-space error for a geometric error at distance
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "LOD selection by camera distance or screen size: a display decision that does not change any mesh"
+    )]
     pub fn screen_error(&self, geometric_error: f32, distance: f32) -> f32 {
         let proj_factor = self.screen_height / (2.0 * (self.fov_y * 0.5).tan());
         (geometric_error / distance.max(0.001)) * proj_factor

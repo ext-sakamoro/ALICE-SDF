@@ -110,6 +110,10 @@ fn bake_single_probe(
 /// Generate uniformly distributed directions on a sphere
 ///
 /// Uses Fibonacci sphere distribution for even coverage.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "lighting: the result is a light value or sample direction for display and never feeds a distance, bound or mesh"
+)]
 fn generate_uniform_directions(count: u32) -> Vec<(Vec3, f32)> {
     let mut dirs = Vec::with_capacity(count as usize);
     let golden_ratio = f32::midpoint(1.0, 5.0f32.sqrt());

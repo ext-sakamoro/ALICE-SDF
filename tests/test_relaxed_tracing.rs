@@ -7,6 +7,10 @@
 //! lost 76 % of its rays at ω = 1.6 (external review, 2026-09-15).
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::prelude::*;
 use alice_sdf::raycast::{raymarch_compiled_with_config, raymarch_with_config, RaymarchConfig};

@@ -11,6 +11,10 @@
 //!   ε = 1e-3 and |p| ≥ 0.5
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::eval::parallel::{grid_coords, grid_index};
 use alice_sdf::eval::{eval, eval_batch, eval_grid, eval_grid_with_normals, gradient, normal};

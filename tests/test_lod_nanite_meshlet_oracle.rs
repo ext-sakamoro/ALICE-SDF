@@ -19,6 +19,10 @@
 //!   evaluated in f64 (`acos` / `asin`)
 //!
 //! Every test counts its comparisons and fails when the count is 0.
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::mesh::lod::{
     generate_lod_chain, generate_lod_chain_decimated, ContinuousLod, DecimationLodConfig, LodChain,

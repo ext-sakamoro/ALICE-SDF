@@ -8,7 +8,10 @@
 //! path through `GpuEvaluator` when a GPU adapter is available and skips
 //! otherwise (CI runners have no GPU; run it locally after touching the noise
 //! law or any `HELPER_HASH_NOISE`).
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "gpu")]
 
 use alice_sdf::compiled::GpuEvaluator;

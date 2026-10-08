@@ -11,6 +11,10 @@
 //! ```
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
 use alice_sdf::prelude::*;

@@ -9,6 +9,10 @@
 //! test. Every check counts its comparisons and fails on zero.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 mod common;
 

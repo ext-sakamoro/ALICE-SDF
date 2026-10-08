@@ -10,6 +10,10 @@ use glam::Vec3;
 /// `radius`, tapered to 0.0 at `radius + softness` via smoothstep.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn vignette(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> f32 {
     let dx = uv_x - 0.5;
     let dy = uv_y - 0.5;

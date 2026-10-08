@@ -22,6 +22,10 @@
 //! (green) without editing a single expected value.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::mesh::{mesh_to_sdf_exact, MeshSdf, MeshSignMode, MeshToSdfConfig};
 use alice_sdf::prelude::*;

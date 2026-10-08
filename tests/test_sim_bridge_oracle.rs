@@ -17,7 +17,10 @@
 //!   leave a fresh field unchanged;
 //! * a modifier defined here (`d - t`, `t += dt` per update) for the generic
 //!   `add_modifier` / `update` / `modifier_mut` path.
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "physics")]
 
 use std::sync::Arc;

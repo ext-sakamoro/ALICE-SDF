@@ -15,6 +15,10 @@
 //! scene keeps its ability to see a fused implementation.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::compiled::{
     eval_compiled, eval_compiled_batch_simd, eval_compiled_bvh, CompiledSdf, CompiledSdfBvh,

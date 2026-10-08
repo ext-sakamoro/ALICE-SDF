@@ -10,6 +10,10 @@ use glam::Vec3;
 /// and `intensity` scales the peak.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn fresnel_rim(n_dot_v: f32, power: f32, intensity: f32) -> f32 {
     let base = (1.0 - n_dot_v.clamp(0.0, 1.0)).max(0.0);
     base.powf(power.max(0.0)) * intensity
@@ -43,6 +47,10 @@ pub fn procedural_matcap(
 /// is a hard step at `raw > 0.5`.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn stylized_specular(n_dot_h: f32, sharpness: f32, soft_edge: f32) -> f32 {
     let ndh = n_dot_h.clamp(0.0, 1.0);
     let raw = ndh.powf(sharpness.max(1.0));

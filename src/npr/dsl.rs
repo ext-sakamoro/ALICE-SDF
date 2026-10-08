@@ -250,6 +250,10 @@ pub enum PaletteSource {
 impl NprColorNode {
     /// Evaluate the node against a shading context
     #[must_use]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+    )]
     pub fn eval(&self, ctx: &NprColorContext) -> NprColor {
         match self {
             Self::Constant(c) => *c,
@@ -490,7 +494,10 @@ pub(crate) fn palette_source_scalar(source: PaletteSource, ctx: &NprColorContext
         PaletteSource::TimeCycle => ctx.time - ctx.time.floor(),
     }
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

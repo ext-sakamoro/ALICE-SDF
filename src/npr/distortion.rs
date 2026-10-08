@@ -23,6 +23,10 @@ pub fn hand_drawn_jitter(position: Vec3, noise_direction: Vec3, amplitude: f32) 
 /// `frequency` controls the wavelength (higher = tighter).
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn sketch_wobble(position: Vec3, amplitude: f32, frequency: f32) -> Vec3 {
     let f = frequency.max(0.0);
     let offset = Vec3::new(
@@ -40,6 +44,10 @@ pub fn sketch_wobble(position: Vec3, amplitude: f32, frequency: f32) -> Vec3 {
 /// axes so the motion does not appear locked.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn line_boil(position: Vec3, time: f32, amplitude: f32, frequency: f32) -> Vec3 {
     let f = frequency.max(0.0);
     let offset = Vec3::new(

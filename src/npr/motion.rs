@@ -11,6 +11,10 @@ use std::f32::consts::TAU;
 /// angular phase space `[0, 1)`.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn speed_line(
     uv_x: f32,
     uv_y: f32,
@@ -46,6 +50,10 @@ pub fn speed_line(
 /// Returns 0.0 for negative time.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn impact_flash(time: f32, decay: f32, intensity: f32) -> f32 {
     if time < 0.0 {
         return 0.0;

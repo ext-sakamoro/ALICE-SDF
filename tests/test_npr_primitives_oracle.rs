@@ -15,6 +15,10 @@
 //!   vertices are farther than the kernel radius √0.6); both remap 0 to 0.5.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::eval::eval;
 use alice_sdf::npr::noise::{NoiseField, PerlinNoise, SimplexNoise, WorleyNoise};

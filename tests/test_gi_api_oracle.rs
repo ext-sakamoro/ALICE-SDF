@@ -10,6 +10,10 @@
 //! | `cone_trace` / `trace_hemisphere` in a cavity | every cone is stopped by the wall before `max_distance`, so its openness is `1 − α ≤ 0.05` (the loop's stopping rule), its colour is `ρ·ambient·α + sky·(1 − α)` with `ρ·ambient = 0.5·0.05` and no light, and the hemisphere mixes those with weights `1 − ao·α`: each channel lies in `[0.95·0.025·(1 − ao), (0.025 + 0.05·max sky)·(1 − 0.95·ao)]` |
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "gi")]
 
 use alice_sdf::gi::irradiance::SH1;

@@ -36,7 +36,10 @@ pub fn sdf_egg(p: Vec3, ra: f32, rb: f32) -> f32 {
     };
     d - rb
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

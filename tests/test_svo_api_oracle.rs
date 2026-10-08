@@ -17,6 +17,10 @@
 //! | `SvoStreamingCache` | an independent LRU simulation; `memory_used` is the sum over the cached chunks |
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "svo")]
 
 use std::collections::BTreeMap;

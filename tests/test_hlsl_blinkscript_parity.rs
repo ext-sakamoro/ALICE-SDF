@@ -72,6 +72,10 @@
 //! them, a feature-gated oracle is indistinguishable from an absent one.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "hlsl")]
 
 mod common;

@@ -11,6 +11,10 @@
 //!   inner equator (1/r, -1/(R-r)), Gaussian curvature = k1·k2
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::autodiff::{
     dual3_box, dual3_plane, dual3_point, dual3_sphere, dual3_torus, eval_dual3, eval_with_gradient,

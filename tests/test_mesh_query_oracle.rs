@@ -20,6 +20,10 @@
 //!   a sphere (crossing on `|x| = r`, normal `x/|x|`).
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::eval::eval;
 use alice_sdf::mesh::mesh_to_sdf_exact;

@@ -164,7 +164,10 @@ pub fn sdf_ellipsoid_r<R: Real>(p: Vec3R<R>, radii: Vec3) -> R {
 pub fn sdf_ellipsoid(p: Vec3, radii: Vec3) -> f32 {
     sdf_ellipsoid_exact(p, radii)
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

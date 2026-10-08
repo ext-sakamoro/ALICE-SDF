@@ -5,7 +5,10 @@
 //! recomputed from `reconstruct` at the source resolution.
 //!
 //! Author: Moroya Sakamoto
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "texture-fit")]
 
 use alice_sdf::texture::{

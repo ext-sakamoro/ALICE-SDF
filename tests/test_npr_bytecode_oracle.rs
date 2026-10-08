@@ -21,6 +21,10 @@
 //!   form of their law.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::npr::compiled_color::{
     emit_wgsl_bytecode_evaluator, gpu_opcode_tag as t, gpu_palette_source_tag as ps,

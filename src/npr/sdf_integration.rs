@@ -75,7 +75,10 @@ pub fn soft_toon_shade_from_node(
     let n_dot_l = n.dot(l);
     soft_toon_ramp(n_dot_l, bands, smoothness)
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -36,7 +36,10 @@
 //! (表面積 res 12/24/36/48 で rel 0.057 / 0.006 / 0.022 / 0.002、体積 res
 //! 16/32/64 で 0.033 / 0.036 / 0.016) ので「1 段細かくすれば必ず縮む」を assert
 //! してはいけない 全点で成立するのは O(h) 上界で、収束は最粗と最細の比で見る
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(all(feature = "terrain", feature = "destruction"))]
 
 use alice_sdf::destruction::{

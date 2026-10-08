@@ -45,7 +45,7 @@ pub fn eval_octave(
     seed: u32,
     rotation: f32,
 ) -> f32 {
-    let (sin_r, cos_r) = rotation.sin_cos();
+    let (sin_r, cos_r) = alice_det_math::sin_cos(rotation);
     let ru = u * cos_r - v * sin_r;
     let rv = u * sin_r + v * cos_r;
     amplitude * hash_noise_2d(ru * frequency + phase[0], rv * frequency + phase[1], seed)
@@ -135,7 +135,7 @@ pub fn eval_octave_simd(
     seed: u32,
     rotation: f32,
 ) -> f32x8 {
-    let (sin_r, cos_r) = rotation.sin_cos();
+    let (sin_r, cos_r) = alice_det_math::sin_cos(rotation);
     let sin_v = f32x8::splat(sin_r);
     let cos_v = f32x8::splat(cos_r);
     let freq = f32x8::splat(frequency);

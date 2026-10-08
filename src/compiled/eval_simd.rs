@@ -240,7 +240,10 @@ pub fn eval_distance_and_gradient_simd(
 
     (d_center, gx, gy, gz)
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

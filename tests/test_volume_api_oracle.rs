@@ -13,6 +13,10 @@
 //! | `gpu_bake_volume_with_normals` | the analytic sphere at the nodes and the tetrahedral difference of the analytic sphere at the **requested** ε |
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "volume")]
 
 use alice_sdf::compiled::CompiledSdf;

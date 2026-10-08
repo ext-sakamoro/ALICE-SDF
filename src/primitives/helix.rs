@@ -77,7 +77,10 @@ pub fn sdf_helix(p: Vec3, major_r: f32, minor_r: f32, pitch: f32, half_height: f
     let d_cap = p.y.abs() - half_height;
     d_tube.max(d_cap)
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -26,7 +26,10 @@
 //!    the witness that random sampling misses.
 //!
 //! Author: Moroya Sakamoto
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![allow(clippy::cast_precision_loss)]
 
 mod common;

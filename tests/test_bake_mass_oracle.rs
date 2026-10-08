@@ -141,7 +141,7 @@ fn inside_out_or_empty_input_has_no_mass() {
 fn marching_cubes_sphere_converges_to_solid_sphere() {
     let r = 0.8f64;
     let node = SdfNode::sphere(r as f32);
-    let v_true = 4.0 / 3.0 * std::f64::consts::PI * r.powi(3);
+    let v_true = 4.0 / 3.0 * std::f64::consts::PI * (r * r * r);
     let mut errs = Vec::new();
     for res in [32usize, 64] {
         let cfg = MarchingCubesConfig {

@@ -1,6 +1,10 @@
 //! Benchmarks for SDF evaluation
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "benchmark inputs; not part of any output"
+)]
 
 use alice_sdf::compiled::{
     eval_compiled, eval_compiled_batch_parallel, eval_compiled_batch_simd,
