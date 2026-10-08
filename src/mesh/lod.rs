@@ -195,7 +195,7 @@ impl LodConfig {
 
     /// Get resolution at a specific LOD level
     pub fn resolution_at_level(&self, level: u32) -> u32 {
-        let factor = self.reduction_factor.powi(level as i32);
+        let factor = alice_det_math::powi(self.reduction_factor, level as i32);
         ((self.base_resolution as f32 * factor) as u32).max(4)
     }
 
@@ -354,8 +354,9 @@ pub fn generate_lod_chain_decimated(
         let mut lod_mesh = current_mesh.clone();
         decimate(&mut lod_mesh, &dec_config);
 
-        let effective_res =
-            (base_resolution as f32 * config.decimation_ratio.powi(level as i32)) as u32;
+        let effective_res = (base_resolution as f32
+            * alice_det_math::powi(config.decimation_ratio, level as i32))
+            as u32;
         let max_error = compute_lod_error(sdf, &lod_mesh, prev_error);
         prev_error = max_error;
 

@@ -188,7 +188,7 @@ pub fn overhang_stats(mesh: &Mesh, build_direction: Vec3, threshold: f32) -> (f3
         let angle = if downward <= 0.0 {
             0.0
         } else {
-            downward.asin()
+            alice_det_math::asin(downward)
         };
         if angle > max_angle {
             max_angle = angle;

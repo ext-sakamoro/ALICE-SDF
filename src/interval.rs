@@ -591,7 +591,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Cone {
             radius,
             half_height,
-        } => ia_bsphere(bounds, (2.0 * half_height).hypot(*radius)),
+        } => ia_bsphere(bounds, alice_det_math::hypot(2.0 * half_height, *radius)),
         // iq's ellipsoid bound `k0 (k0 - 1) / k1` scales the unit-sphere distance
         // by at most max(r) / min(r), so its gradient is bounded by that ratio.
         // Exact SDF since 1.11.0 (Eberly nearest point)
@@ -600,7 +600,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             r1,
             r2,
             half_height,
-        } => ia_bsphere(bounds, (2.0 * half_height).hypot(r1.max(*r2))),
+        } => ia_bsphere(
+            bounds,
+            alice_det_math::hypot(2.0 * half_height, r1.max(*r2)),
+        ),
         SdfNode::Pyramid { half_height } => ia_bsphere(
             bounds,
             (2.0 * half_height).mul_add(2.0 * half_height, 0.25).sqrt(),
@@ -617,7 +620,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_height,
             r1,
             r2,
-        } => ia_bsphere(bounds, (2.0 * half_height).hypot(r1.max(*r2))),
+        } => ia_bsphere(
+            bounds,
+            alice_det_math::hypot(2.0 * half_height, r1.max(*r2)),
+        ),
         SdfNode::CappedTorus {
             major_radius,
             minor_radius,
@@ -638,7 +644,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             lb,
             half_height,
             round_radius,
-        } => ia_bsphere(bounds, (la.max(*lb) + round_radius).hypot(*half_height)),
+        } => ia_bsphere(
+            bounds,
+            alice_det_math::hypot(la.max(*lb) + round_radius, *half_height),
+        ),
         SdfNode::Horseshoe {
             radius,
             half_length,
@@ -668,11 +677,14 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             radius,
             half_height,
             bulge,
-        } => ia_bsphere(bounds, (radius + bulge.abs()).hypot(*half_height)),
+        } => ia_bsphere(
+            bounds,
+            alice_det_math::hypot(radius + bulge.abs(), *half_height),
+        ),
         SdfNode::Diamond {
             radius,
             half_height,
-        } => ia_bsphere(bounds, radius.hypot(*half_height)),
+        } => ia_bsphere(bounds, alice_det_math::hypot(*radius, *half_height)),
         SdfNode::ChamferedCube { half_extents, .. } => ia_bsphere(bounds, half_extents.length()),
         // Implicit (non-distance) function: interval arithmetic on the formula
         // itself; every step is monotone on non-negative inputs.
@@ -709,7 +721,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             radius,
             half_height,
             ..
-        } => ia_bsphere(bounds, radius.hypot(*half_height)),
+        } => ia_bsphere(bounds, alice_det_math::hypot(*radius, *half_height)),
         SdfNode::Trapezoid {
             r1,
             r2,
@@ -717,7 +729,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            (r1.max(*r2).mul_add(r1.max(*r2), trap_height.powi(2)) + half_depth.powi(2)).sqrt(),
+            (r1.max(*r2).mul_add(r1.max(*r2), trap_height * trap_height) + half_depth * half_depth)
+                .sqrt(),
         ),
         SdfNode::Parallelogram {
             width,
@@ -726,9 +739,9 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            ((width + skew.abs()).mul_add(width + skew.abs(), para_height.powi(2))
-                + half_depth.powi(2))
-            .sqrt(),
+            ((width + skew.abs()).mul_add(width + skew.abs(), para_height * para_height)
+                + half_depth * half_depth)
+                .sqrt(),
         ),
         // Piecewise (rect / min(rect, dome) above the dome centre): the value is
         // always between the union and the rectangle alone, both 1-Lipschitz.
@@ -760,7 +773,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            r1.max(2.0f32.mul_add(*cap_height, *r2)).hypot(*half_depth),
+            alice_det_math::hypot(r1.max(2.0f32.mul_add(*cap_height, *r2)), *half_depth),
         ),
         // apex at y = √3·(ra − rb) + ra (IQ sdEgg), base radius ra
         SdfNode::Egg { ra, rb } => ia_bsphere(bounds, 1.732_050_8f32.mul_add(ra - rb, *ra)),
@@ -769,13 +782,16 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             thickness,
             half_height,
             ..
-        } => ia_bsphere(bounds, (radius + thickness).hypot(*half_height)),
+        } => ia_bsphere(
+            bounds,
+            alice_det_math::hypot(radius + thickness, *half_height),
+        ),
         SdfNode::Moon {
             ra,
             rb,
             half_height,
             ..
-        } => ia_bsphere(bounds, ra.max(*rb).hypot(*half_height)),
+        } => ia_bsphere(bounds, alice_det_math::hypot(ra.max(*rb), *half_height)),
         SdfNode::CrossShape { .. } => ia_lipschitz(node, bounds, 1.0),
         // Exact SDF (IQ sdBlobbyCross): centre sample ± ρ
         SdfNode::BlobbyCross { .. } => ia_lipschitz(node, bounds, 1.0),
@@ -785,28 +801,29 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            (width.powi(2) + para_height.powi(2) + half_depth.powi(2)).sqrt(),
+            (width * width + para_height * para_height + half_depth * half_depth).sqrt(),
         ),
         SdfNode::RegularPolygon {
             radius,
             half_height,
             ..
-        } => ia_bsphere(bounds, radius.hypot(*half_height)),
+        } => ia_bsphere(bounds, alice_det_math::hypot(*radius, *half_height)),
         SdfNode::StarPolygon {
             radius,
             half_height,
             ..
-        } => ia_bsphere(bounds, radius.hypot(*half_height)),
+        } => ia_bsphere(bounds, alice_det_math::hypot(*radius, *half_height)),
         SdfNode::Stairs {
             step_width,
             step_height,
             n_steps,
             half_depth,
         } => {
-            let extent = ((step_width * n_steps)
-                .mul_add(step_width * n_steps, (step_height * n_steps).powi(2))
-                + half_depth.powi(2))
-            .sqrt();
+            let extent = ((step_width * n_steps).mul_add(
+                step_width * n_steps,
+                (step_height * n_steps) * (step_height * n_steps),
+            ) + half_depth * half_depth)
+                .sqrt();
             ia_bsphere(bounds, extent)
         }
         // Nearest-wrap selection makes the tube term discontinuous near the axis,
@@ -1276,7 +1293,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let (x_lo, z_abs) = if ha >= std::f32::consts::FRAC_PI_2 {
                 (-max_r, max_r)
             } else {
-                (0.0, max_r * ha.sin())
+                (0.0, max_r * alice_det_math::sin(ha))
             };
             eval_interval(
                 child,
@@ -1329,7 +1346,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 } else {
                     0.0
                 };
-                dx.hypot(dz)
+                alice_det_math::hypot(dx, dz)
             };
             eval_interval(
                 child,
@@ -1384,7 +1401,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             }
             let d = eval_interval(child, hull);
             let n = *iterations as i32;
-            let scale = Interval::new(s_lo.powi(n).max(1e-6), s_hi.powi(n).max(1e-6));
+            let scale = Interval::new(
+                alice_det_math::powi(s_lo, n).max(1e-6),
+                alice_det_math::powi(s_hi, n).max(1e-6),
+            );
             let recip = Interval::new(1.0 / scale.hi, 1.0 / scale.lo);
             d * recip
         }
@@ -1450,7 +1470,7 @@ fn ia_lipschitz(node: &SdfNode, bounds: Vec3Interval, l: f32) -> Interval {
 fn powf_nonneg(iv: Interval, m: f32) -> Interval {
     let lo = iv.lo.max(0.0);
     let hi = iv.hi.max(0.0);
-    Interval::new(lo.powf(m), hi.powf(m))
+    Interval::new(alice_det_math::powf(lo, m), alice_det_math::powf(hi, m))
 }
 
 /// 2D length of two intervals.
@@ -1688,7 +1708,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             std::f32::consts::SQRT_2 * eval_lipschitz(a).max(eval_lipschitz(b))
         }
         // Pipe `√(a² + b²) − r`: |(a∇a + b∇b)| / √(a² + b²) ≤ √(La² + Lb²).
-        SdfNode::Pipe { a, b, .. } => eval_lipschitz(a).hypot(eval_lipschitz(b)),
+        SdfNode::Pipe { a, b, .. } => alice_det_math::hypot(eval_lipschitz(a), eval_lipschitz(b)),
         // Morph `a(1 − t) + b·t`.
         SdfNode::Morph { a, b, t } => t
             .abs()
@@ -1881,8 +1901,8 @@ fn child_radius(child: &SdfNode, axis: Axis) -> f32 {
     }
     let reach = |a: f32, b: f32| a.abs().max(b.abs());
     let r = match axis {
-        Axis::Y => reach(lo.x, hi.x).hypot(reach(lo.z, hi.z)),
-        Axis::Z => reach(lo.x, hi.x).hypot(reach(lo.y, hi.y)),
+        Axis::Y => alice_det_math::hypot(reach(lo.x, hi.x), reach(lo.z, hi.z)),
+        Axis::Z => alice_det_math::hypot(reach(lo.x, hi.x), reach(lo.y, hi.y)),
     };
     if r > UNBOUNDED_CHILD_SENTINEL {
         UNBOUNDED_CHILD_RADIUS
@@ -1983,7 +2003,7 @@ pub(crate) fn taper_reach(child: &SdfNode) -> [f32; 2] {
         return [f32::INFINITY; 2];
     }
     let reach = |a: f32, b: f32| a.abs().max(b.abs());
-    let r_xz = reach(lo.x, hi.x).hypot(reach(lo.z, hi.z));
+    let r_xz = alice_det_math::hypot(reach(lo.x, hi.x), reach(lo.z, hi.z));
     let r_y = reach(lo.y, hi.y);
     if r_xz > UNBOUNDED_CHILD_SENTINEL || r_y > UNBOUNDED_CHILD_SENTINEL {
         [f32::INFINITY; 2]

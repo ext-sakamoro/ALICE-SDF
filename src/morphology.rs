@@ -140,7 +140,7 @@ pub fn tolerance_max_violation(
         bounds_half_extent > 0.0 && bounds_half_extent.is_finite(),
         "bounds_half_extent must be positive and finite"
     );
-    let per_axis = ((sample_count as f32).cbrt().ceil() as usize).max(2);
+    let per_axis = (alice_det_math::cbrt(sample_count as f32).ceil() as usize).max(2);
     let step = (bounds_half_extent * 2.0) / (per_axis as f32 - 1.0);
     let worst = AtomicU64::new(f32::NEG_INFINITY.to_bits() as u64);
 
