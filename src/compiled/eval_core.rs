@@ -191,7 +191,17 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 if inst.aux_len >= 16 {
                     let mut inv_m = [0.0f32; 16];
                     inv_m.copy_from_slice(&aux_data[aux_off..aux_off + 16]);
-                    p = p.map(|q| crate::transforms::projective::projective_transform(q, &inv_m).0);
+                    let bound = inst.params[0];
+                    let (q, correction) = R::map3vs(p.x, p.y, p.z, |q| {
+                        let (q, c) = crate::transforms::projective::projective_transform(q, &inv_m);
+                        (q, c.min(bound))
+                    });
+                    p = q;
+                    // Tree law: eval(child, q) * min(|1/w|, lipschitz_bound), per
+                    // lane — applied at PopTransform
+                    frame_lane.set(csp - 1, correction);
+                } else {
+                    frame_lane.set(csp - 1, R::one());
                 }
             }
             OpCode::LatticeDeform => {
@@ -440,10 +450,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                         );
                     }
                     OpCode::ProjectiveTransform => {
-                        value_stack.set(
-                            vsp - 1,
-                            value_stack.get(vsp - 1) * R::splat(finst.params[0]),
-                        );
+                        value_stack.set(vsp - 1, value_stack.get(vsp - 1) * frame_lane.get(csp));
                     }
                     OpCode::LatticeDeform | OpCode::IFS => {
                         value_stack.set(vsp - 1, value_stack.get(vsp - 1) / frame_lane.get(csp));
