@@ -115,7 +115,8 @@ impl Rng {
     fn normal(&mut self, mean: f32, std: f32) -> f32 {
         let u1 = self.next_f32().max(1e-10);
         let u2 = self.next_f32();
-        let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::TAU * u2).cos();
+        let z = (-2.0 * alice_det_math::ln(u1)).sqrt()
+            * alice_det_math::cos(2.0 * std::f32::consts::TAU * u2);
         std.mul_add(z, mean)
     }
 }
@@ -193,8 +194,8 @@ impl NeuralSdf {
         for k in 0..self.pos_freqs {
             let freq = (1 << k) as f32 * std::f32::consts::PI;
             for &v in &[p.x, p.y, p.z] {
-                enc.push((freq * v).sin());
-                enc.push((freq * v).cos());
+                enc.push(alice_det_math::sin(freq * v));
+                enc.push(alice_det_math::cos(freq * v));
             }
         }
         enc
@@ -293,8 +294,8 @@ impl NeuralSdf {
         let beta1: f32 = 0.9;
         let beta2: f32 = 0.999;
         let eps: f32 = 1e-8;
-        let bc1 = 1.0 - beta1.powi(self.adam_t as i32);
-        let bc2 = 1.0 - beta2.powi(self.adam_t as i32);
+        let bc1 = 1.0 - alice_det_math::powi(beta1, self.adam_t as i32);
+        let bc2 = 1.0 - alice_det_math::powi(beta2, self.adam_t as i32);
 
         for (i, layer) in self.layers.iter_mut().enumerate() {
             let st = &mut self.adam[i];

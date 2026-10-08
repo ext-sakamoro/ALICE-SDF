@@ -325,7 +325,7 @@ fn round_leaf(xf: &Affine, center: Vec3, seg: Vec3, disc: f32, ball: f32) -> Reg
     let mut h = s;
     for i in 0..3 {
         let r = row(&xf.a, i);
-        h[i] += disc * r.x.hypot(r.z) + ball * r.length();
+        h[i] += disc * alice_det_math::hypot(r.x, r.z) + ball * r.length();
     }
     Region::Box(c - h, c + h)
 }

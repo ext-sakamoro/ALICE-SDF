@@ -154,7 +154,7 @@ fn thermal_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
     let w = heightmap.width;
     let d = heightmap.depth;
     let cell_size = heightmap.world_width * (1.0 / w as f32);
-    let max_slope = config.thermal_angle.tan() * cell_size;
+    let max_slope = alice_det_math::tan(config.thermal_angle) * cell_size;
     let passes = (config.iterations / 100).max(1);
 
     for _ in 0..passes {
@@ -375,7 +375,7 @@ mod tests {
         // with cell_size = world_width / width = 1.0. `peak < 10.0` accepted
         // any reduction at all, including 9.99.
         let cell_size = 16.0f32 / 16.0;
-        let max_slope = config.thermal_angle.tan() * cell_size;
+        let max_slope = alice_det_math::tan(config.thermal_angle) * cell_size;
         let want = 10.0 - (10.0 - max_slope) * 0.5 * config.thermal_rate;
         let peak = hm.get_height(8, 8);
         assert!(

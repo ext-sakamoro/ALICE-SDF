@@ -154,7 +154,7 @@ fn fit_channel(
                 bands[octave_idx as usize].energy.min(1.0),
             )
         } else {
-            (2.0f32.powi(octave_idx as i32 + 1), 0.1)
+            (alice_det_math::powi(2.0, octave_idx as i32 + 1), 0.1)
         };
 
         let seed = octave_idx;
@@ -379,7 +379,7 @@ fn compute_psnr(residual: &[f32]) -> f32 {
     if mse < 1e-15 {
         return 100.0;
     }
-    (10.0 * (1.0 / mse).log10()) as f32
+    (10.0 * alice_det_math::log10_64(1.0 / mse)) as f32
 }
 
 /// Compute Normalized MSE: MSE / variance_of_original
@@ -392,7 +392,10 @@ fn compute_nmse(original: &[f32], residual: &[f32], mean: f32) -> f32 {
         / n;
     let variance: f64 = original
         .iter()
-        .map(|&p| ((p - mean) as f64).powi(2))
+        .map(|&p| {
+            let d = f64::from(p - mean);
+            d * d
+        })
         .sum::<f64>()
         / n;
     if variance < 1e-15 {

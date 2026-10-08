@@ -297,7 +297,7 @@ const fn edge_key(a: u32, b: u32) -> EdgeKey {
 
 /// Detect seam edges based on dihedral angle threshold
 fn detect_seams(mesh: &Mesh, angle_threshold_deg: f32) -> HashSet<EdgeKey> {
-    let threshold_cos = (angle_threshold_deg.to_radians()).cos();
+    let threshold_cos = alice_det_math::cos(angle_threshold_deg.to_radians());
     let tri_count = mesh.indices.len() / 3;
 
     // Build edge -> triangle adjacency

@@ -310,7 +310,7 @@ pub fn encode_filter_exp_one(v: f32, bits: u32) -> u32 {
     // -126 is the smallest exponent the decoder can rebuild: it forms 2^e from
     // the bits `(e + 127) << 23`, which is 0.0 (not 2^-127) for e = -127
     let scale = target_exp.clamp(-126, 127);
-    let m = (v * (-scale as f32).exp2()).round() as i32;
+    let m = (v * alice_det_math::powi(2.0, -scale)).round() as i32;
     let m_clamped = m.clamp(-(1 << (bits - 1)), (1 << (bits - 1)) - 1);
 
     // pack: mantissa low 24 bits (sign-extended), exponent high 8 bits

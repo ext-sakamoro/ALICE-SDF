@@ -187,7 +187,7 @@ pub fn half_decode(bits: u16) -> f32 {
         }
         // subnormal
         let m = mantissa as f32;
-        let val = m * (2.0_f32).powi(-24);
+        let val = m * alice_det_math::powi(2.0, -24);
         return if sign != 0 { -val } else { val };
     }
 

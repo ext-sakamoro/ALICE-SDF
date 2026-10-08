@@ -105,8 +105,8 @@ impl Dual {
     #[inline(always)]
     pub fn sin(self) -> Self {
         Self {
-            val: self.val.sin(),
-            dot: self.dot * self.val.cos(),
+            val: alice_det_math::sin(self.val),
+            dot: self.dot * alice_det_math::cos(self.val),
         }
     }
 
@@ -114,8 +114,8 @@ impl Dual {
     #[inline(always)]
     pub fn cos(self) -> Self {
         Self {
-            val: self.val.cos(),
-            dot: -self.dot * self.val.sin(),
+            val: alice_det_math::cos(self.val),
+            dot: -self.dot * alice_det_math::sin(self.val),
         }
     }
 }

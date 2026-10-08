@@ -144,7 +144,7 @@ fn encode_rotation_from_normal(n: Vec3) -> [u8; 4] {
     let z = Vec3::Z;
     let axis = z.cross(n);
     let dot = z.dot(n).clamp(-1.0, 1.0);
-    let half_angle = dot.acos() * 0.5;
+    let half_angle = alice_det_math::acos(dot) * 0.5;
     let (s, c) = half_angle.sin_cos();
     let (qx, qy, qz, qw) = if axis.length_squared() < 1e-6 {
         // n はほぼ z 軸方向、回転なし or 180°

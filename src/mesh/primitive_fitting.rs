@@ -124,7 +124,7 @@ impl FittedPrimitive {
                 } else {
                     // Normal rotation: compute axis and angle
                     let rot_axis = from.cross(to).normalize();
-                    let angle = from.dot(to).clamp(-1.0, 1.0).acos();
+                    let angle = alice_det_math::acos(from.dot(to).clamp(-1.0, 1.0));
                     let quat = glam::Quat::from_axis_angle(rot_axis, angle);
                     cylinder.rotate(quat)
                 };
@@ -182,7 +182,7 @@ impl FittedPrimitive {
                 } else if dr <= 0.0 {
                     dh
                 } else {
-                    dh.hypot(dr)
+                    alice_det_math::hypot(dh, dr)
                 }
             }
             Self::Capsule {
@@ -693,8 +693,14 @@ pub fn detect_primitive(points: &[Vec3], config: &FittingConfig) -> Option<Fitti
         // [Deep Fried v2] Guard mse <= 0 to prevent ln(-x) = NaN
         let safe_mse_a = a.mse.max(1e-20);
         let safe_mse_b = b.mse.max(1e-20);
-        let bic_a = n.mul_add(safe_mse_a.ln(), complexity_a as f32 * n.ln());
-        let bic_b = n.mul_add(safe_mse_b.ln(), complexity_b as f32 * n.ln());
+        let bic_a = n.mul_add(
+            alice_det_math::ln(safe_mse_a),
+            complexity_a as f32 * alice_det_math::ln(n),
+        );
+        let bic_b = n.mul_add(
+            alice_det_math::ln(safe_mse_b),
+            complexity_b as f32 * alice_det_math::ln(n),
+        );
 
         bic_a
             .partial_cmp(&bic_b)

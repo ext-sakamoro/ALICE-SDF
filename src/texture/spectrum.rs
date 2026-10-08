@@ -56,7 +56,7 @@ pub fn analyze_frequencies(
                 for (n, &val) in row.iter().enumerate() {
                     let angle = std::f64::consts::PI * 2.0f64.mul_add(n as f64, 1.0) * k as f64
                         / (2.0 * width as f64);
-                    sum = (val as f64 - mean).mul_add(angle.cos(), sum);
+                    sum = (val as f64 - mean).mul_add(alice_det_math::cos64(angle), sum);
                 }
                 let coeff = sum / width as f64;
                 *energy = coeff * coeff;
@@ -87,7 +87,7 @@ pub fn analyze_frequencies(
                 for (n, chunk) in data.chunks(width).enumerate() {
                     let angle = std::f64::consts::PI * 2.0f64.mul_add(n as f64, 1.0) * k as f64
                         / (2.0 * height as f64);
-                    sum = (chunk[x] as f64 - mean).mul_add(angle.cos(), sum);
+                    sum = (chunk[x] as f64 - mean).mul_add(alice_det_math::cos64(angle), sum);
                 }
                 let coeff = sum / height as f64;
                 *energy = coeff * coeff;

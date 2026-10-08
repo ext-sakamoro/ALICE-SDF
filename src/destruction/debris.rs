@@ -78,7 +78,7 @@ pub fn generate_debris(center: Vec3, radius: f32, config: &DebrisConfig) -> Vec<
 
         // Generate a simple convex debris mesh (distorted icosahedron)
         let mesh = generate_debris_mesh(piece_center, piece_radius, rng_state);
-        let volume = (4.0 / 3.0) * std::f32::consts::PI * piece_radius.powi(3);
+        let volume = (4.0 / 3.0) * std::f32::consts::PI * alice_det_math::powi(piece_radius, 3);
 
         pieces.push(DebrisPiece {
             center: piece_center,

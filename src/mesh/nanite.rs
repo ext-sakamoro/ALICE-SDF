@@ -631,8 +631,7 @@ const REGION_VOXELS: u32 = 8;
 /// than `coarser_limit` (the depth of the previous, finer level), so that the
 /// cells of a coarser level are unions of the cells of the finer levels.
 fn region_depth(resolution: u32, coarser_limit: u32) -> u32 {
-    let d = (resolution.max(1) as f32 / REGION_VOXELS as f32)
-        .log2()
+    let d = alice_det_math::log2(resolution.max(1) as f32 / REGION_VOXELS as f32)
         .round()
         .clamp(0.0, 16.0) as u32;
     d.min(coarser_limit)
@@ -721,8 +720,8 @@ pub fn generate_nanite_mesh(
 
     // Generate each LOD level
     for lod in 0..config.lod_levels {
-        let resolution =
-            (config.base_resolution as f32 * config.lod_factor.powi(lod as i32)) as u32;
+        let resolution = (config.base_resolution as f32
+            * alice_det_math::powi(config.lod_factor, lod as i32)) as u32;
         let resolution = resolution.max(4); // Minimum resolution
 
         let mesh = if config.use_dual_contouring {
