@@ -5,6 +5,10 @@
 //! weights) and a lossless save / load round trip.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
 use alice_sdf::prelude::*;

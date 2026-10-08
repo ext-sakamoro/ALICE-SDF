@@ -1997,7 +1997,10 @@ pub(crate) fn taper_reach(child: &SdfNode) -> [f32; 2] {
         [r_xz, r_y]
     }
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

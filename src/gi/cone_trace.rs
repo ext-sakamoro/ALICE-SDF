@@ -58,6 +58,10 @@ pub struct ConeTraceResult {
 /// Marches along `direction` from `origin`, sampling the SVO at each step.
 /// The cone radius grows with distance: `radius = t * tan(cone_angle)`.
 /// Occlusion accumulates as the cone passes through surfaces.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "lighting: the result is a light value or sample direction for display and never feeds a distance, bound or mesh"
+)]
 pub fn cone_trace(
     svo: &SparseVoxelOctree,
     origin: Vec3,
@@ -174,6 +178,10 @@ fn estimate_radiance(
 /// `num_cones == 0` yields an empty set, which `trace_hemisphere` integrates to
 /// `Vec3::ZERO`. Without this guard the ring loop below computes `num_cones - 1`
 /// on a `u32`, which panics in debug and wraps to `u32::MAX` in release.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "lighting: the result is a light value or sample direction for display and never feeds a distance, bound or mesh"
+)]
 fn generate_cosine_cones(normal: Vec3, num_cones: u32) -> Vec<(Vec3, f32)> {
     if num_cones == 0 {
         return Vec::new();

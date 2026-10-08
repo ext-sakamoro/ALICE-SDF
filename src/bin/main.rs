@@ -513,6 +513,10 @@ fn cmd_demo(output: PathBuf) {
 /// - Rayon: Multi-threaded parallel execution
 /// - GPU: WebGPU compute shader for comparison
 #[cfg(all(feature = "cli", feature = "jit"))]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "benchmark input points for the CLI; not part of any output"
+)]
 fn cmd_bench(file: Option<PathBuf>, points: usize) {
     // 1. Load or create SDF node
     let node = file.map_or_else(
@@ -674,6 +678,10 @@ fn print_result(mode: &str, elapsed: std::time::Duration, points: usize) {
 
 /// Fallback benchmark (no JIT feature)
 #[cfg(all(feature = "cli", not(feature = "jit")))]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "benchmark input points for the CLI; not part of any output"
+)]
 fn cmd_bench(file: Option<PathBuf>, points: usize) {
     let node = file.map_or_else(
         || {

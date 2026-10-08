@@ -15,6 +15,10 @@
 //!   built directly at that place / orientation / size
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::sdf2d::{eval_2d, eval_2d_batch, eval_2d_normal, Sdf2dNode};
 

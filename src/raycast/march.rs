@@ -1172,7 +1172,10 @@ fn camera_basis(
 
     (forward, right, up, half_width, half_height)
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -38,7 +38,10 @@ pub fn modifier_polar_repeat_rk(p: Vec3, sector: f32, recip_sector: f32) -> Vec3
     // boundary (found by `fuzz_eval_parity`).
     crate::compiled::real::polar_repeat::<f32>(p.into(), sector, recip_sector).into()
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

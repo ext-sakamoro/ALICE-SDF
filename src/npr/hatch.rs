@@ -9,6 +9,10 @@
 /// and `thickness` is the half-width of each line in fractional UV.
 #[inline]
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 pub fn hatch_lines(uv_x: f32, uv_y: f32, angle_rad: f32, density: f32, thickness: f32) -> f32 {
     let (s, c) = angle_rad.sin_cos();
     let projected = uv_y * c + (uv_x * (-s));

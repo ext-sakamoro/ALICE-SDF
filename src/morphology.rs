@@ -190,7 +190,10 @@ fn atomic_max_f32(cell: &AtomicU64, candidate: f32) {
         }
     }
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

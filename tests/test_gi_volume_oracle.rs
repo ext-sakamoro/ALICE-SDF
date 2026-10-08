@@ -34,7 +34,10 @@
 //!   property" means, and it is what makes a mip usable to skip empty space.
 //!
 //! Author: Moroya Sakamoto
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![allow(clippy::float_cmp)]
 
 #[cfg(any(feature = "gi", feature = "volume"))]

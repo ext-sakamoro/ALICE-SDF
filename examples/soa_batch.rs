@@ -8,6 +8,10 @@
 //! Run: `cargo run --example soa_batch`
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::compiled::{
     eval_compiled, eval_compiled_batch_soa, eval_compiled_batch_soa_into,

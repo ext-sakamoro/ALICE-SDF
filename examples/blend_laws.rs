@@ -13,6 +13,10 @@
 //! ```
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::operations::{
     sdf_intersection_multi, sdf_smooth_intersection_rk, sdf_smooth_subtraction_rk,

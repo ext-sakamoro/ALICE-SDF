@@ -18,7 +18,10 @@
 //!   streams without bit 3 decoding with one step on every axis.
 //!
 //! Every loop counts its comparisons and fails on zero.
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "codec")]
 
 use alice_sdf::codec_bridge::{

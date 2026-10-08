@@ -333,6 +333,10 @@ impl CompiledColorPipeline {
     ///
     /// On an unbalanced program (see [`Self::validate`]); programs from
     /// [`Self::compile`] and [`GpuColorProgram::deserialize`] are balanced.
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+    )]
     pub fn eval(&self, ctx: &NprColorContext) -> Vec3 {
         let mut stack: Vec<Vec3> = Vec::with_capacity(self.ops.len());
         for op in &self.ops {
@@ -978,6 +982,10 @@ fn vignette_x8(uv_x: f32x8, uv_y: f32x8, radius: f32, softness: f32) -> f32x8 {
 }
 
 #[inline]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+)]
 fn hatch_lines_x8(uv_x: f32x8, uv_y: f32x8, angle_rad: f32, density: f32, thickness: f32) -> f32x8 {
     // Mirror `hatch::hatch_lines` scalar semantics:
     //   projected = uv_x * (-sin(a)) + uv_y * cos(a)
@@ -1090,6 +1098,10 @@ impl CompiledColorPipeline {
     /// opcode's stack pop underflows). A well-formed pipeline produced
     /// by [`Self::compile`] never panics.
     #[must_use]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
+    )]
     pub fn eval_batch8(&self, batch: &NprBatchContext8) -> NprColorBatch8 {
         let mut stack: Vec<NprColorBatch8> = Vec::with_capacity(self.ops.len());
         for op in &self.ops {

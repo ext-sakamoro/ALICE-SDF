@@ -7,6 +7,10 @@
 //! Run: `cargo run --example shape_analysis`
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::eval::eval;

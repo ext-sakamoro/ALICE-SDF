@@ -10,6 +10,10 @@
 //! the port parity rule).
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "gpu")]
 
 mod common;

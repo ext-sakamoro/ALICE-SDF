@@ -145,7 +145,7 @@ fn encode_rotation_from_normal(n: Vec3) -> [u8; 4] {
     let axis = z.cross(n);
     let dot = z.dot(n).clamp(-1.0, 1.0);
     let half_angle = alice_det_math::acos(dot) * 0.5;
-    let (s, c) = half_angle.sin_cos();
+    let (s, c) = alice_det_math::sin_cos(half_angle);
     let (qx, qy, qz, qw) = if axis.length_squared() < 1e-6 {
         // n はほぼ z 軸方向、回転なし or 180°
         if dot > 0.0 {
@@ -190,7 +190,10 @@ pub fn load_splat(path: impl AsRef<Path>) -> std::io::Result<Vec<Splat>> {
     }
     Ok(out)
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

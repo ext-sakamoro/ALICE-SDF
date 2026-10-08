@@ -12,6 +12,10 @@
 //! ```
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::modifiers::{
     fbm_noise_3d, ifs_fold, modifier_bend_cheap, modifier_bend_x, modifier_bend_z,

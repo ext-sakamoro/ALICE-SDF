@@ -16,6 +16,10 @@
 //!   bisection step wider)
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::eval::eval;
 use alice_sdf::optimize::{optimization_stats, optimize, OptimizationStats};

@@ -214,7 +214,10 @@ pub fn sdf_exp_smooth_subtraction_r<R: Real>(d1: R, d2: R, k: f32) -> R {
     // Intersection of `d1` with `-d2` (same stable form).
     sdf_exp_smooth_intersection_r(d1, -d2, k)
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

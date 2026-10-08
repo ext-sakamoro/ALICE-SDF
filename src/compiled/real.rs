@@ -284,7 +284,9 @@ impl Real for f32 {
     }
     #[inline(always)]
     fn mul_add(self, m: Self, a: Self) -> Self {
-        Self::mul_add(self, m, a)
+        // Two roundings, like the trait contract and the f32x8 impl (the
+        // inherent `f32::mul_add` would fuse)
+        self * m + a
     }
     #[inline(always)]
     fn twist(p: Vec3R<Self>, strength: f32) -> Vec3R<Self> {

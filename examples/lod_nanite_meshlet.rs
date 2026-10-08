@@ -6,6 +6,10 @@
 //! sphere and the normal cone. Every step prints its numbers and checks them.
 //!
 //! Run: `cargo run --release --example lod_nanite_meshlet`
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::mesh::lod::{
     generate_lod_chain, generate_lod_chain_decimated, ContinuousLod, DecimationLodConfig,

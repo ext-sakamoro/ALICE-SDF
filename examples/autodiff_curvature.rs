@@ -12,6 +12,10 @@
 //! Run: `cargo run --example autodiff_curvature`
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::autodiff::{
     dual3_box, dual3_plane, dual3_point, dual3_sphere, dual3_torus, eval_dual3, eval_with_gradient,

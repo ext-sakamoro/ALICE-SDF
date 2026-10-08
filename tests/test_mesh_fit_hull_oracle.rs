@@ -17,6 +17,10 @@
 //!   axis along which they are separated (x, y or z), each part inside its box.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::mesh::{
     convex_decomposition, convex_hull_from_points, fit_sphere, FittedPrimitive, FittingConfig,

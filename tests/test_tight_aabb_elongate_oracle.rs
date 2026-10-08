@@ -16,6 +16,10 @@
 //! (d) the interval enclosure of an `Elongate` contains every point value it encloses
 //!
 //! Every test counts its comparisons and fails when none were made
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::eval;
 use alice_sdf::interval::{eval_interval, Vec3Interval};

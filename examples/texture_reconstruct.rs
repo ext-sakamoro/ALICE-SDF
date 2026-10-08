@@ -8,6 +8,10 @@
 //! `tests/test_texture_fit_oracle.rs`).
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::texture::{eval_octave, fit_texture, reconstruct, TextureFitConfig};
 

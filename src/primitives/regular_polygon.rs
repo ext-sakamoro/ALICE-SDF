@@ -38,7 +38,10 @@ pub fn sdf_regular_polygon(p: Vec3, radius: f32, n_sides: f32, half_height: f32)
     let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
     d_2d.max(d_y).min(0.0) + w.length()
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

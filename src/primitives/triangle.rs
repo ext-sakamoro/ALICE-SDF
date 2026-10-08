@@ -45,7 +45,10 @@ pub fn sdf_triangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f32 {
 
     d2.sqrt()
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

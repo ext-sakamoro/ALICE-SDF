@@ -92,7 +92,7 @@ struct Scene {
 
 fn scenes() -> Vec<Scene> {
     let r = 0.8f64;
-    let v_sphere = 4.0 / 3.0 * std::f64::consts::PI * r.powi(3);
+    let v_sphere = 4.0 / 3.0 * std::f64::consts::PI * (r * r * r);
     let (w, h, d) = (1.2f64, 0.8f64, 1.0f64);
     let t = [0.1f64, 0.0, -0.05];
     let v_box = w * h * d;

@@ -7,6 +7,10 @@
 //! exactly like compiling the tree built with those values.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::compiled::OpCode;
 use alice_sdf::prelude::*;

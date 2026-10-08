@@ -40,7 +40,10 @@ pub fn modifier_twist_z(point: Vec3, strength: f32) -> Vec3 {
         point.z,
     )
 }
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

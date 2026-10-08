@@ -20,6 +20,10 @@
 //! Every test counts its comparisons and fails if none were made.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![allow(clippy::float_cmp)]
 
 use alice_sdf::primitives::{

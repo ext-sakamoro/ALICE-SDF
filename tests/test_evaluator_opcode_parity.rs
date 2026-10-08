@@ -19,6 +19,10 @@
 //! unit sphere and unknown modifiers into a no-op.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 mod common;
 

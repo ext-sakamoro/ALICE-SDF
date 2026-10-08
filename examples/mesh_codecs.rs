@@ -20,6 +20,10 @@
 //! ```
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "example scene and animation values; the crate output these examples show is computed by the library"
+)]
 
 use alice_sdf::mesh::mesh_codec::{decode_indices, decode_positions, encode_mesh, CodecError};
 use alice_sdf::mesh::meshopt_filter::{

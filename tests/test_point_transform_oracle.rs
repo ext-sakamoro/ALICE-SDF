@@ -18,6 +18,10 @@
 //! * sine displacement: `d + a sin(fx x) sin(fy y) sin(fz z)`.
 //!
 //! Author: Moroya Sakamoto
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![allow(clippy::float_cmp)]
 
 use alice_sdf::eval::eval_gradient;

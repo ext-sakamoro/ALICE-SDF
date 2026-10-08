@@ -567,7 +567,10 @@ fn read_f32<R: Read>(r: &mut R) -> std::io::Result<f32> {
 // ============================================================
 // Tests
 // ============================================================
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

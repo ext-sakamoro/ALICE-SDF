@@ -10,6 +10,10 @@
 //! (c) soundness: every point of the solid `{f <= 0}` lies in the box (random trees)
 //! (d) the combined result is never looser than the bound and still contains the solid
 //! (e) level algebra: offset, onion, smooth union and uniform scale shift the level
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 
 use alice_sdf::eval;
 use alice_sdf::prelude::*;

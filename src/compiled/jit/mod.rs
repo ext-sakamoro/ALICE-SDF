@@ -78,7 +78,10 @@ mod simd;
 pub use codegen::{extract_jit_params, JitCompiler};
 pub use runtime::{JitCompiledSdf, JitCompiledSdfDynamic, JitError};
 pub use simd::{extract_simd_params, JitSimdSdf, JitSimdSdfDynamic};
-
+#[allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

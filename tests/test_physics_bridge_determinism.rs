@@ -37,7 +37,10 @@
 //! was larger by 4.768e-7 to 7.451e-7 at every point measured.
 //!
 //! Author: Moroya Sakamoto
-
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test code: the platform libm and fused mul_add serve as independent references"
+)]
 #![cfg(feature = "physics")]
 
 use alice_physics::sdf_collider::{collide_point_sdf, SdfCollider, SdfField};

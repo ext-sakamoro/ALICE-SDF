@@ -1,0 +1,90 @@
+# Determinism gate. The CPU evaluators promise the same distance bits for the
+# same tree and point on every platform CI tests, and the bounds, meshes,
+# heightmaps and fits built from them inherit that promise only if their own
+# arithmetic is reproducible too.
+#
+# IEEE 754 does not require the transcendentals to be correctly rounded, so the
+# platform libm is free to differ between OS, CPU and compiler. Everything
+# transcendental therefore goes through `alice-det-math`, whose kernels are
+# built from IEEE 754 basic operations only and compute the same bits on every
+# target. `powi` is listed because it lowers to a multiplication tree whose
+# association order is unspecified. `sin_cos` is two libm calls.
+#
+# `mul_add` is different: it is a fused multiply-add with a single rounding,
+# specified exactly by IEEE 754 (a target without an FMA instruction gets the
+# correctly rounded software `fma`), so it returns the same bits everywhere. It
+# is listed because the same law is also evaluated by the JIT and emitted as
+# shader and Rust source, which compute `a * b + c` with two roundings; a fused
+# operation in one path and not in the other gives different bits for the same
+# formula. `scripts/det_math_guard.py` additionally keeps it out of the law
+# directories by text, which also covers the generic `Real` code clippy cannot
+# resolve.
+#
+# Deliberately absent: `sqrt`, `floor`, `round`, `trunc`, `ceil` (exact in IEEE
+# 754, bit-identical on every target).
+#
+# Exceptions carry a scoped `#[allow(clippy::disallowed_methods, reason = ..)]`:
+# rendering helpers whose output is a colour or a light value and never feeds a
+# distance, bound or mesh, and tests that use the platform libm as an
+# independent reference (an oracle whose expected value comes from the
+# implementation under test proves nothing).
+#
+# CI runs clippy with `--all-targets ... -D warnings`, which turns
+# `disallowed_methods` into a red gate for the library, the tests, the examples
+# and the benches alike. Pinned by tests/test_det_golden.rs on every OS lane.
+disallowed-methods = [
+    { path = "f32::sin", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::cos", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::tan", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::asin", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::acos", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::atan", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::atan2", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::sinh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::cosh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::tanh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::asinh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::acosh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::atanh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::exp", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::exp2", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::exp_m1", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::ln", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::ln_1p", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::log", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::log2", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::log10", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::powf", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::cbrt", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::hypot", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f32::powi", reason = "lowers to a multiplication tree of unspecified association order; use alice_det_math::powi" },
+    { path = "f64::sin", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::cos", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::tan", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::asin", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::acos", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::atan", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::atan2", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::sinh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::cosh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::tanh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::asinh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::acosh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::atanh", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::exp", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::exp2", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::exp_m1", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::ln", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::ln_1p", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::log", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::log2", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::log10", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::powf", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::cbrt", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::hypot", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
+    { path = "f64::powi", reason = "lowers to a multiplication tree of unspecified association order; write the multiplications out" },
+    { path = "f32::sin_cos", reason = "two platform libm calls, not cross-platform bit-exact; use alice_det_math::sin_cos" },
+    { path = "f64::sin_cos", reason = "two platform libm calls, not cross-platform bit-exact; use alice_det_math::sin_cos64" },
+    { path = "f32::mul_add", reason = "exact on every platform, but the scalar / JIT / shader paths evaluate a * b + c with two roundings; write a * b + c so every path gets the same bits" },
+    { path = "f64::mul_add", reason = "exact on every platform, but the laws evaluate a * b + c with two roundings; write a * b + c" },
+]
