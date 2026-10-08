@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **25 baseline items** — Permitted violations, ratchet in place
+🟡 **23 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (25 permitted)
+## 📋 Baseline (23 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -21,7 +21,6 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/ffi/registry.rs` | 4 |
 | `src/ffi/types.rs` | 3 |
 | `src/npr/compiled_color.rs` | 2 |
-| `src/primitives/mod.rs` | 2 |
 | `src/python/helpers.rs` | 2 |
 | `src/bin/main.rs` | 1 |
 | `src/compiled/transpiler_common.rs` | 1 |
@@ -43,7 +42,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (18)
+### Unwired Items (16)
 
 ```
 unwired src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
@@ -61,8 +60,6 @@ unwired src/font_bridge.rs::text_to_sdf2d
 unwired src/gi/mod.rs::PointLight
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
-unwired src/primitives/mod.rs::PrimitiveType
-unwired src/primitives/mod.rs::eval_primitive
 unwired src/python/helpers.rs::numpy_to_vec3_fast
 ```
 

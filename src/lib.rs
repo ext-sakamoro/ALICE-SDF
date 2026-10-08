@@ -434,6 +434,14 @@ pub use types::{SdfNode, SdfTree};
 /// use alice_sdf::mesh::primitive_fitting::PrimitiveType;
 /// ```
 ///
+/// ```compile_fail
+/// use alice_sdf::primitives::PrimitiveType;
+/// ```
+///
+/// ```compile_fail
+/// let _ = alice_sdf::primitives::eval_primitive;
+/// ```
+///
 /// The replacements compile, and `mesh::Aabb` is `types::Aabb`:
 ///
 /// ```
@@ -441,7 +449,7 @@ pub use types::{SdfNode, SdfTree};
 /// let a: alice_sdf::types::Aabb = alice_sdf::mesh::Aabb::empty();
 /// let _ = (a, FittedPrimitiveKind::Sphere, std::mem::size_of::<BvhTriangle>());
 /// let _ = alice_sdf::compiled::Vec3x8::splat(glam::Vec3::ONE);
-/// let _ = alice_sdf::primitives::eval_primitive;
+/// let _ = alice_sdf::primitives::sdf_sphere;
 /// ```
 #[cfg(doctest)]
 struct RemovedIn5;

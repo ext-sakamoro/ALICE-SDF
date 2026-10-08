@@ -7,17 +7,17 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 10 |
+| L0 | not reached by any non-test code, examples included | 8 |
 | L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1153 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 935 |
-| | **total** | **2098** |
+| | **total** | **2096** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 18 unwired items.
+`scripts/wiring-baseline.txt` lists 16 unwired items.
 
 ### L0 here but not in the baseline (5)
 
@@ -35,7 +35,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (10)
+## L0 — unreached (8)
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
@@ -45,8 +45,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
 - `src/primitives/cylinder.rs::sdf_cylinder_infinite`
-- `src/primitives/mod.rs::PrimitiveType`
-- `src/primitives/mod.rs::eval_primitive`
 
 ## Not indexed (7)
 

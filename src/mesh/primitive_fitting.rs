@@ -18,8 +18,7 @@ use glam::Vec3;
 
 /// Kind of a [`FittedPrimitive`] (which shape was fitted, without its parameters)
 ///
-/// Not the same as [`crate::primitives::PrimitiveType`], the dispatch tag of
-/// the primitive evaluator; renamed from `PrimitiveType` in 5.0.0
+/// Renamed from `PrimitiveType` in 5.0.0
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FittedPrimitiveKind {
     /// Sphere primitive
