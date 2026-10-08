@@ -103,7 +103,7 @@ impl Aabb {
     #[inline]
     pub fn surface_area(&self) -> f32 {
         let d = self.max - self.min;
-        2.0 * d.z.mul_add(d.x, d.x.mul_add(d.y, d.y * d.z))
+        2.0 * (d.x * d.y + d.y * d.z + d.z * d.x)
     }
 
     /// Longest axis (0 = X, 1 = Y, 2 = Z; ties go to the later axis)
