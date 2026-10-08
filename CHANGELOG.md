@@ -8,7 +8,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
-次の release は **5.0.0** (破壊的変更を含む major) `Cargo.toml` の version と `unreal-plugin/AliceSDF.uplugin` の `VersionName` は 5.0.0 にしてある (未 publish)
+## [5.0.0] - 2026-10-09
+
+破壊的変更を含む major release 4.x から上げる時は下の移行方法を参照
 
 **破壊的変更と移行方法** (5.0.0)
 

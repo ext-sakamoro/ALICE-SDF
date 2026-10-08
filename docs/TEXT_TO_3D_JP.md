@@ -255,7 +255,7 @@ cargo run --bin alice-view -- /path/to/ALICE-SDF/server/examples/scenes/snowman.
 
 LLMで生成した形状は見た目だけではなく、**物理シミュレーション対応**です。`CompiledSdfField` ラッパーがSDFをO(1)衝突クエリ面として公開するため、凸分解なしで剛体・破壊・流体のインタラクションが可能です。
 
-> **ブリッジ注意** — `alice-sdf = { version = "3", features = ["physics"] }` で alice-physics が crates.io から解決されます (1.12.0 以降) 詳細は [インストール](../README_JP.md#インストール) 参照
+> **ブリッジ注意** — `alice-sdf = { version = "5", features = ["physics"] }` で alice-physics が crates.io から解決されます (1.12.0 以降) 詳細は [インストール](../README_JP.md#インストール) 参照
 
 ### クイックスタート
 
