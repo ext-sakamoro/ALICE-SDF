@@ -176,6 +176,17 @@ pub mod gi;
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The numeric semantics the CPU evaluators compute distances with
+///
+/// Re-exported from `alice-det-math`, which derives it from the bit pins of its
+/// kernels: it changes exactly when one of them would return different bits for
+/// the same input. A caller that stores or identifies distances evaluated by
+/// this crate (a baked field, a recorded collision trace, a content hash of a
+/// tree plus its samples) can mix it in, so a change of arithmetic shows up as
+/// a different identifier instead of a silent mismatch. `tests/test_det_golden.rs`
+/// pins its value, so moving to another `alice-det-math` is visible here too.
+pub use alice_det_math::SEMANTICS_ID;
+
 /// Prelude - commonly used types and functions
 pub mod prelude {
     pub use crate::animation::{
