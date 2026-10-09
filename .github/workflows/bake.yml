@@ -8,28 +8,18 @@ name: Bake assets
 # scripts/bake_teeth.sh makes the verification fail, and keeps the output as
 # a workflow artifact (90 days for a v* tag, 14 days otherwise).
 #
-# Path filters are not evaluated for tag pushes, so every v* tag bakes.
+# Changed paths are compared with the last commit on main whose Bake assets
+# run succeeded, not with the previous push: `on.push.paths` compares with
+# the previous push, so the changes of a run cancelled by a newer push were
+# never baked (the same gap ci.yml closed in its `changes` job). Tags and
+# manual runs always bake.
 
 on:
   push:
     branches: [main]
     tags: ['v*']
-    paths:
-      - 'src/**'
-      - 'examples/bake_assets/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'scripts/bake_teeth.sh'
-      - '.github/workflows/bake.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'examples/bake_assets/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'scripts/bake_teeth.sh'
-      - '.github/workflows/bake.yml'
   workflow_dispatch:
 
 concurrency:
@@ -42,8 +32,60 @@ env:
   CARGO_HTTP_MULTIPLEXING: "false"
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      bake: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.bake == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      # push: compare with the last successful bake on main (a cancelled or
+      # red run's changes are then compared again by the next push); no such
+      # commit (first run, rewritten history, API failure) bakes everything
+      - name: Change detection base (last successful bake on main)
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            workflow_dispatch:*|push:refs/tags/*)
+              echo "full=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            push:*) ;;
+            *) exit 0 ;;
+          esac
+          sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow bake.yml --branch main --event push --status success --limit 1 --json headSha --jq '.[0].headSha // ""' 2>/dev/null || true)
+          if [ -n "$sha" ] && git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "change detection base: $sha (last successful bake on main)"
+          else
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::last successful bake commit unavailable (got '$sha'): baking"
+          fi
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: steps.base.outputs.full != 'true'
+        with:
+          base: ${{ steps.base.outputs.sha }}
+          filters: |
+            bake:
+              - 'src/**'
+              - 'examples/bake_assets/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'scripts/bake_teeth.sh'
+              - '.github/workflows/bake.yml'
+
   bake:
     name: Bake and verify (lavapipe)
+    needs: changes
+    if: needs.changes.outputs.bake == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
