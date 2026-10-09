@@ -171,6 +171,13 @@ CI を失敗させる
 feature 付きで実行する CI ステップが無いと CI を失敗させる feature 付きのテストが
 0 件実行のまま green になる経路を塞ぐため
 
+ライブラリを変える push ごとに、CI (`.github/workflows/bake.yml`) は
+[`examples/bake_assets`](examples/bake_assets/main.rs) でいくつかの形のメッシュを GPU
+(lavapipe) と CPU で作り、glTF・`.abm`・`.nanite`・SDF の木とバイトコード・コライダーの
+データ (タイトな AABB、体積、重心、慣性テンソル) と一緒に出力する 書き出したファイルを
+読み直して検査し (水密、GPU と CPU のメッシュの一致、頂点が表面上にあること、体積と慣性の
+閉形式)、workflow の artifact として残す
+
 ## Cargo feature
 
 **AGPL** と記した feature は `AGPL-3.0-or-later` の crate をリンクする

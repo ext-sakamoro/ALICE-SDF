@@ -356,6 +356,22 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
 step "gpu-parity: aaa (volume gpu_bake, ci.yml の GPU ↔ CPU parity (aaa — volume gpu_bake) と対)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle
 
+# examples/bake_assets: SDF -> mesh (CPU, and GPU where available) + physics
+# manifest, verified from disk, then each corruption in scripts/bake_teeth.sh
+# must make verify fail (bake.yml と対、CI は lavapipe で GPU 部分も走らせる)
+bake_out=$(mktemp -d)
+step "bake: CPU part (examples/bake_assets without gpu-mesh) + teeth"
+cargo run -q --example bake_assets -- bake "$bake_out/cpu"
+scripts/bake_teeth.sh "$bake_out/cpu"
+if [ "$(uname -s)" = "Darwin" ]; then
+  step "bake: GPU part (gpu-mesh on Metal) + teeth"
+  ALICE_SDF_REQUIRE_GPU=1 cargo run -q --example bake_assets --features gpu-mesh -- bake "$bake_out/gpu"
+  ALICE_SDF_REQUIRE_GPU=1 scripts/bake_teeth.sh "$bake_out/gpu" gpu-mesh
+else
+  step "SKIPPED: bake GPU part (Metal が無い host) — 0 scene を GPU で mesh 化、CI の bake.yml が lavapipe で検査する"
+fi
+rm -rf "$bake_out"
+
 step "bevy: bindings/bevy/alice-sdf-bevy build + test"
 (cd bindings/bevy/alice-sdf-bevy && cargo build --lib && cargo test --lib)
 

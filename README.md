@@ -178,6 +178,14 @@ without the table, and when a variant has no test entry.
 is not run by any CI step with that feature, so a feature-gated test cannot
 report green by running zero tests.
 
+On every push that changes the library, CI (`.github/workflows/bake.yml`) builds
+meshes on the GPU (lavapipe) and the CPU for a few scenes with
+[`examples/bake_assets`](examples/bake_assets/main.rs), together with glTF,
+`.abm`, `.nanite`, the SDF tree and its bytecode and the collider data (tight
+AABB, volume, centre of mass, inertia tensor). It checks the files from disk
+(watertight, GPU and CPU meshes agree, vertices on the surface, closed-form
+volume and inertia) and keeps them as a workflow artifact.
+
 ## Cargo features
 
 Features marked **AGPL** link a crate licensed `AGPL-3.0-or-later`; see

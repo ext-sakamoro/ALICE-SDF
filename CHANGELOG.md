@@ -8,6 +8,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added
+- `examples/bake_assets`: 代表的な 6 つの形 (球、箱、箱から球を引いたもの、smooth union、回転した帯、gyroid と球の交差) について、GPU marching cubes (`gpu-mesh`) と CPU marching cubes を同じ格子で作り、`.abm` (GPU / CPU)・`.glb`・`.nanite`・`.asdf` / `.asdf.json`・compiled bytecode・`manifest.json` (格子、mesh の頂点数と面数と AABB、コライダーのタイトな AABB・体積・重心・慣性テンソル、各 file の SHA-256、crate の版) を書き出し、書き出した file を読み直して検査する (水密、GPU と CPU の mesh の頂点から相手の面までの距離と面積差、頂点の |SDF| ≤ Lipschitz 定数 × 格子幅、球と箱の体積と慣性の閉形式、コライダーの AABB が mesh を含むこと、manifest と mesh の一致、検査した形が 0 件なら失敗) `verify` と、出力を 1 か所ずつ壊す `mutate` も持つ GPU が無い環境では GPU の mesh を飛ばしたことを明示し、`ALICE_SDF_REQUIRE_GPU=1` で失敗にする
+- `tests/test_bake_mass_oracle.rs`: bake の質量特性 (Eberly の多面体積分) を手計算の閉形式 (直角四面体、ずらした箱) と marching cubes の球の収束で照合、裏返し・空の入力は `None`
+- `scripts/bake_teeth.sh`: bake の出力を壊す 4 通り (GPU の頂点を半格子動かす / 面を 1 枚消す / コライダーの AABB を縮める / 形を 0 件にする) のそれぞれで `verify` が狙った検査で失敗することを確かめる
+
+### Changed
+- CI: `.github/workflows/bake.yml` を追加 (`src/**` などを変える main への push と PR、`v*` tag、手動実行) lavapipe で bake と検査と `bake_teeth.sh` を走らせ、出力を artifact に残す (tag は 90 日、それ以外は 14 日) `scripts/preflight.sh` の full に bake の CPU 部分 (macOS では Metal の GPU 部分も) と `bake_teeth.sh` を足した
+
 ## [5.0.0] - 2026-10-09
 
 破壊的変更を含む major release 4.x から上げる時は下の移行方法を参照

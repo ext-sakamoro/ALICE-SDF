@@ -1,0 +1,106 @@
+name: Bake assets
+
+# Builds render meshes (GPU marching cubes on lavapipe, CPU marching cubes on
+# the same grid, glTF / .abm / .nanite) and the physics data (the SDF tree,
+# its compiled bytecode, tight AABB, volume, centre of mass and inertia
+# tensor) for a few representative scenes with examples/bake_assets, verifies
+# every written file from disk, checks that each corruption in
+# scripts/bake_teeth.sh makes the verification fail, and keeps the output as
+# a workflow artifact (90 days for a v* tag, 14 days otherwise).
+#
+# Path filters are not evaluated for tag pushes, so every v* tag bakes.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'src/**'
+      - 'examples/bake_assets/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/bake_teeth.sh'
+      - '.github/workflows/bake.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'examples/bake_assets/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/bake_teeth.sh'
+      - '.github/workflows/bake.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
+jobs:
+  bake:
+    name: Bake and verify (lavapipe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # "no adapter" is a failure here, not a skipped GPU mesh
+      ALICE_SDF_REQUIRE_GPU: "1"
+      WGPU_BACKEND: vulkan
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # same as ci.yml's gpu-parity job
+      - name: Install Mesa software Vulkan (lavapipe)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name "lvp_icd*.json" | head -1)
+          echo "lavapipe ICD: $icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -60
+          grep -qi llvmpipe /tmp/vulkaninfo.txt
+
+      - name: Build examples/bake_assets
+        run: cargo build --example bake_assets --features gpu-mesh
+
+      - name: Bake and verify
+        run: |
+          set -euo pipefail
+          cargo run -q --example bake_assets --features gpu-mesh -- bake bake-out 2>&1 | tee bake.log
+          # the verify summary must report scenes and checks, with the GPU mesh present
+          grep -E '^verified [1-9][0-9]* scenes, [1-9][0-9]* checks passed, 0 failed$' bake.log
+          if grep -q '^SKIPPED: GPU mesh' bake.log; then echo "GPU mesh skipped on lavapipe"; exit 1; fi
+          grep -q '"status": "ok"' bake-out/manifest.json
+
+      - name: Corrupted outputs must fail verification
+        run: scripts/bake_teeth.sh bake-out gpu-mesh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Bake output"
+            echo
+            echo '```'
+            grep -E '^(  |scene |verified |baked )' bake.log || true
+            echo '```'
+            echo
+            echo '```'
+            (cd bake-out && find . -type f -exec ls -l {} + | awk '{print $5, $9}' | sort -k2) || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bake-${{ github.sha }}
+          path: bake-out
+          if-no-files-found: error
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 90 || 14 }}
