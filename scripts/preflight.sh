@@ -278,6 +278,9 @@ cargo test --features jit \
 step "test: physics bridge determinism oracle"
 cargo test --features physics --test test_physics_bridge_determinism
 
+step "test: live SDF oracle (physics、ci.yml と対)"
+cargo test --features physics --test test_live_sdf_oracle
+
 step "test: NPR shader validation (glsl + gpu、naga のみで GPU adapter 不要)"
 cargo test --features "glsl,gpu" --test npr_shader_validate
 
@@ -355,6 +358,9 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
 
 step "gpu-parity: aaa (volume gpu_bake, ci.yml の GPU ↔ CPU parity (aaa — volume gpu_bake) と対)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle
+
+step "gpu-parity: physics (LiveSdf gpu_mesh、ci.yml の GPU ↔ CPU parity (physics — LiveSdf gpu_mesh) と対)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "physics,gpu" --test test_live_sdf_gpu_parity
 
 # examples/bake_assets: SDF -> mesh (CPU, and GPU where available) + physics
 # manifest, verified from disk, then each corruption in scripts/bake_teeth.sh

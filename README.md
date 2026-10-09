@@ -221,7 +221,7 @@ permissively licensed crates.
 | `godot` | | Godot 4 GDExtension. |
 | `wasm` | | WebAssembly bindings through `wasm-bindgen` (built for `wasm32` only). |
 | `openvdb` | | OpenVDB float grid input and output. |
-| `physics` | | **AGPL.** SDF colliders and simulation modifiers for [`alice-physics`](https://crates.io/crates/alice-physics). |
+| `physics` | | **AGPL.** SDF colliders and simulation modifiers for [`alice-physics`](https://crates.io/crates/alice-physics), and `LiveSdf`: one editable shape shared by the world's collider, a world participant and a chunked render mesh that re-meshes only the chunks a change reaches. |
 | `codec` | | **AGPL.** Volume compression with [`alice-codec`](https://crates.io/crates/alice-codec). |
 | `sdf-cache` | | **AGPL.** Evaluation cache with [`alice-cache`](https://crates.io/crates/alice-cache). |
 | `asp` | | ALICE Streaming Protocol packets with [`libasp`](https://crates.io/crates/libasp) (its default features only). |

@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 747 |
+| 🟢 Not ignored | 760 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **747** |
+| **Total** | **760** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (747)
+## 🟢 Not ignored (760)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -36,6 +36,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_validity_oracle.rs` | 12 |
 | `test_cache_correctness.rs` | 11 |
 | `test_gpu_law_parity.rs` | 11 |
+| `test_live_sdf_oracle.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
@@ -114,6 +115,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
 | `test_interval_predicate_oracle.rs` | 2 |
 | `test_interval_soundness.rs` | 2 |
+| `test_live_sdf_gpu_parity.rs` | 2 |
 | `test_msl_metal_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
 | `test_asdf_roundtrip_parity.rs` | 1 |

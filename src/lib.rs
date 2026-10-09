@@ -143,6 +143,9 @@ pub mod physics_bridge;
 #[cfg(feature = "physics")]
 pub mod sim_bridge;
 
+#[cfg(feature = "physics")]
+pub mod live_sdf;
+
 #[cfg(feature = "asp")]
 pub mod asp_bridge;
 
@@ -231,6 +234,8 @@ pub mod prelude {
         save, save_asdf, save_asdf_json, AlembicConfig, FbxConfig, FbxFormat, FbxUpAxis,
         GltfConfig, NaniteExportConfig, ObjConfig, UsdConfig, UsdUpAxis,
     };
+    #[cfg(feature = "physics")]
+    pub use crate::live_sdf::{LiveMesh, LiveMeshConfig, LiveSdf};
     pub use crate::material::{
         material_lerp, Material, MaterialLibrary, StandardMaterials, TextureSlot,
     };

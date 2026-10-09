@@ -173,6 +173,10 @@ jobs:
       - name: Test (integration, physics bridge determinism oracle)
         run: cargo test --features physics --test test_physics_bridge_determinism
 
+      # LiveSdf: one shape for the physics world (collider + participant) and the chunked mesh
+      - name: Test (integration, live SDF oracle — physics)
+        run: cargo test --features physics --test test_live_sdf_oracle
+
       # naga の parse / validate のみで GPU adapter は使わない (gpu feature は naga を引くため)
       - name: Test (integration, NPR shader validation — glsl + gpu)
         run: cargo test --features "glsl,gpu" --test npr_shader_validate
@@ -713,6 +717,10 @@ jobs:
       # adapter 不在は silent skip でなく assert 失敗になる
       - name: GPU ↔ CPU parity (aaa — volume gpu_bake)
         run: cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle -- --nocapture
+
+      # LiveSdf の SdfNode 形 (基底 − crater) の GPU marching cubes と CPU の chunk mesh の突合
+      - name: GPU ↔ CPU parity (physics — LiveSdf gpu_mesh)
+        run: cargo test --features "physics,gpu" --test test_live_sdf_gpu_parity -- --nocapture
 
   doc:
     name: Doc (RUSTDOCFLAGS=-Dwarnings)

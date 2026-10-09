@@ -109,6 +109,7 @@ this file or listed twice, or when a linked file does not exist.
 |--------|---------|---------|---------|
 | `physics_bridge` | `CompiledSdf` as an `alice_physics::SdfField`, so a shape can be a collider | `physics` (AGPL) |  |
 | `sim_bridge` | simulation modifiers of `alice-physics` (thermal, pressure, erosion, fracture, phase change) applied to a field | `physics` (AGPL) |  |
+| `live_sdf` | one editable shape shared by a physics collider, a world participant (modifiers advance with the world) and a chunked render mesh that re-meshes only the chunks a change reaches | `physics` (AGPL) |  |
 | `codec_bridge` | voxelises a field and compresses the volume with `alice-codec` | `codec` (AGPL) |  |
 | `cache_bridge` | caches evaluation results with `alice-cache` | `sdf-cache` (AGPL) |  |
 | `asp_bridge` | packs a tree into ALICE Streaming Protocol packets (`libasp`) | `asp` |  |

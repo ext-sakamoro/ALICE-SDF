@@ -275,6 +275,12 @@ required-features = ["sdf-cache"]
 name = "sim_bridge"
 required-features = ["physics"]
 
+# One shape for the physics world and the render mesh: an impact carves a
+# crater the collider sees at once, and only the chunks around it re-mesh.
+[[example]]
+name = "live_sdf"
+required-features = ["physics"]
+
 # Sparse voxel octree: build, queries, GPU layout, chunks and the LRU cache.
 [[example]]
 name = "svo_octree"

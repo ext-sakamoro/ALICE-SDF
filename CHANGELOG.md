@@ -12,6 +12,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `examples/bake_assets`: 代表的な 6 つの形 (球、箱、箱から球を引いたもの、smooth union、回転した帯、gyroid と球の交差) について、GPU marching cubes (`gpu-mesh`) と CPU marching cubes を同じ格子で作り、`.abm` (GPU / CPU)・`.glb`・`.nanite`・`.asdf` / `.asdf.json`・compiled bytecode・`manifest.json` (格子、mesh の頂点数と面数と AABB、コライダーのタイトな AABB・体積・重心・慣性テンソル、各 file の SHA-256、crate の版) を書き出し、書き出した file を読み直して検査する (水密、GPU と CPU の mesh の頂点から相手の面までの距離と面積差、頂点の |SDF| ≤ Lipschitz 定数 × 格子幅、球と箱の体積と慣性の閉形式、コライダーの AABB が mesh を含むこと、manifest と mesh の一致、検査した形が 0 件なら失敗) `verify` と、出力を 1 か所ずつ壊す `mutate` も持つ GPU が無い環境では GPU の mesh を飛ばしたことを明示し、`ALICE_SDF_REQUIRE_GPU=1` で失敗にする
 - `tests/test_bake_mass_oracle.rs`: bake の質量特性 (Eberly の多面体積分) を手計算の閉形式 (直角四面体、ずらした箱) と marching cubes の球の収束で照合、裏返し・空の入力は `None`
 - `scripts/bake_teeth.sh`: bake の出力を壊す 4 通り (GPU の頂点を半格子動かす / 面を 1 枚消す / コライダーの AABB を縮める / 形を 0 件にする) のそれぞれで `verify` が狙った検査で失敗することを確かめる
+- `live_sdf` module (`physics` feature): `LiveSdf` は 1 つの形 (基底の `SdfNode` から球の crater を引いたもの + `PhysicsModifier` の列) を共有する handle で、clone はすべて同じ形を指す `SdfField` と `world_participant::Participant` を実装し、同じ handle を `add_sdf_collider` と `add_participant` に渡すと world の step だけで collider の形が modifier に従って変わる (従来は participant と collider の中の modifier が別の object で、step しても collider の形は変わらなかった) 形が変わるたびに世代番号を 1 上げ、変化が届く範囲 (`DirtyRegion`) を記録する snapshot (payload 版 1) で crater と modifier の状態を持ち運ぶ
+- `live_sdf::LiveMesh`: `LiveSdf` を chunk 単位の marching cubes で mesh 化し、`sync()` で変化が届く chunk だけを collider と同じ距離関数から再 mesh する chunk の境界の頂点は大域格子の同じ点から canonical な補間で作るので bit 一致し、`merged()` の継ぎ目に穴が無い
+- `live_sdf::LiveModifier` (thermal / phase change / pressure / erosion / fracture に実装): 形を決める状態と作用する範囲を返す trait fracture は crack の線分の箱を幅だけ広げた範囲を返す
+- `live_sdf::FracturePolicy` と `ImpactContact`: 接近速度が閾値を超えた接触に `destruction_from_impact` と同じ則 (呼び出し) の半径の crater を足す `ImpactContact` の field は ALICE-Physics 2.1 で入る予定の SDF 接触の記録と同じ並び
+- `live_sdf::wake_bodies_in`: 変化した範囲にいる休止中の body を起こす (world は休止した body の collider を引き直さないので、形を変えただけでは上に乗った body は動かない)
+- `LiveSdf::gpu_mesh` (`physics` + `gpu`): modifier が無い時に `SdfNode` 形を組み立て直して `gpu_marching_cubes` で mesh 化する
+- `examples/live_sdf.rs`: 落とした球の衝突で crater ができ、collider と mesh の両方に反映される流れを assert で自己検証する
+- `tests/test_live_sdf_oracle.rs` (11 本): crater を掘った後の球の沈み込みが閉形式の半径と一致、world の step だけで collider の距離が `ModifiedSdf` を手で更新した参照と bit 一致し participant 無しでは変わらない、mesh の全頂点の距離が格子幅以下・crater の壁が閉形式の球面上、再 mesh した chunk の集合が閉形式の数え上げと一致し全 chunk が作り直した mesh と bit 一致、継ぎ目の境界辺 0 と除いた体積が半球の閉形式と一致、同じ編集で bit 一致、fracture の範囲、衝突則、snapshot の往復と拒否、不正入力 CI の test job と preflight に追加
+- `tests/test_live_sdf_gpu_parity.rs`: GPU marching cubes と CPU の chunk mesh の頂点が双方向に 1e-4 以内で対応 CI の gpu-parity job と preflight に追加
 
 ### Changed
 - CI: `.github/workflows/bake.yml` を追加 (`src/**` などを変える main への push と PR、`v*` tag、手動実行) lavapipe で bake と検査と `bake_teeth.sh` を走らせ、出力を artifact に残す (tag は 90 日、それ以外は 14 日) `scripts/preflight.sh` の full に bake の CPU 部分 (macOS では Metal の GPU 部分も) と `bake_teeth.sh` を足した

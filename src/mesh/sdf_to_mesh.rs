@@ -487,6 +487,16 @@ fn process_cell(
 /// Branchless NaN-safe: copysign ensures |denom| >= epsilon without branching.
 #[inline(always)]
 fn interpolate_vertex(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) -> Vec3 {
+    interpolate_edge(p0, p1, v0, v1, iso_level).0
+}
+
+/// [`interpolate_vertex`] that also returns the edge parameter `t` and
+/// whether the endpoints were swapped into canonical order, so a caller can
+/// blend per-endpoint attributes (normals) with the same `t` the position
+/// used: `(position, t, swapped)`, position `= q0 + (q1 - q0) * t` where
+/// `(q0, q1)` is `(p0, p1)` or, when `swapped`, `(p1, p0)`.
+#[inline(always)]
+pub fn interpolate_edge(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) -> (Vec3, f32, bool) {
     // A grid edge is shared by up to four cells, each of which reaches it
     // through a different local edge (and endpoint order). Evaluating from a
     // canonical endpoint — the lexicographically smaller corner — makes the
@@ -494,7 +504,8 @@ fn interpolate_vertex(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) -> V
     // copies exactly and the mesh is closed. Until 1.10.3 the endpoint order
     // was the local one, the last bits differed between neighbours and
     // `sdf_to_mesh` left 16–64 open edges at res ≥ 64 (external review).
-    let (p0, p1, v0, v1) = if (p1.x, p1.y, p1.z) < (p0.x, p0.y, p0.z) {
+    let swapped = (p1.x, p1.y, p1.z) < (p0.x, p0.y, p0.z);
+    let (p0, p1, v0, v1) = if swapped {
         (p1, p0, v1, v0)
     } else {
         (p0, p1, v0, v1)
@@ -502,7 +513,7 @@ fn interpolate_vertex(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) -> V
     let denom = v1 - v0;
     let safe_denom = f32::copysign(denom.abs().max(1e-10), denom);
     let t = ((iso_level - v0) / safe_denom).clamp(0.0, 1.0);
-    p0 + (p1 - p0) * t
+    (p0 + (p1 - p0) * t, t, swapped)
 }
 
 // ---------------------------------------------------------------------------
@@ -801,7 +812,7 @@ fn process_cell_compiled(
 // third axes were swapped (0–3 on the z = 0 face), a mirror image of the
 // table's cube, so every triangle came out wound inward (negative signed
 // volume, STL facets contradicting their normals).
-const CORNER_OFFSETS: [[usize; 3]; 8] = [
+pub const CORNER_OFFSETS: [[usize; 3]; 8] = [
     [0, 0, 0],
     [1, 0, 0],
     [1, 0, 1],
@@ -813,7 +824,7 @@ const CORNER_OFFSETS: [[usize; 3]; 8] = [
 ];
 
 // Edge connections (which corners each edge connects)
-const EDGE_CONNECTIONS: [[usize; 2]; 12] = [
+pub const EDGE_CONNECTIONS: [[usize; 2]; 12] = [
     [0, 1],
     [1, 2],
     [2, 3],
@@ -829,7 +840,7 @@ const EDGE_CONNECTIONS: [[usize; 2]; 12] = [
 ];
 
 // Edge table - which edges are intersected for each cube configuration
-const EDGE_TABLE: [u16; 256] = [
+pub const EDGE_TABLE: [u16; 256] = [
     0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03,
     0xe09, 0xf00, 0x190, 0x99, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c, 0x895, 0xb9f,
     0xa96, 0xd9a, 0xc93, 0xf99, 0xe90, 0x230, 0x339, 0x33, 0x13a, 0x636, 0x73f, 0x435, 0x53c,
@@ -853,7 +864,7 @@ const EDGE_TABLE: [u16; 256] = [
 ];
 
 // Triangle table - which edges form triangles for each cube configuration
-const TRI_TABLE: [[i8; 16]; 256] = [
+pub const TRI_TABLE: [[i8; 16]; 256] = [
     [
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     ],
