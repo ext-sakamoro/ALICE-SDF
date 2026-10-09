@@ -1,0 +1,58 @@
+# Version statements checked by scripts/version_sync.py against Cargo.toml.
+# `follow`: must equal the crate version. `independent`: versioned on its own
+# (give the reason). `historical`: a record of past releases whose dependency
+# lines are not checked. A version-bearing file in no list fails the check.
+# pyproject.toml has no version of its own (`dynamic`, maturin reads Cargo.toml).
+
+[[follow]]
+file = "unreal-plugin/AliceSDF.uplugin"
+
+[[follow]]
+file = "npm/package.json"
+
+[[follow]]
+file = "bindings/threejs/package.json"
+
+[[follow]]
+file = "bindings/cinema4d/alice_sdf_c4d/__init__.py"
+
+[[follow]]
+file = "bindings/houdini/python/alice_sdf_hou/__init__.py"
+
+[[follow]]
+file = "bindings/maya/alice_sdf_maya/__init__.py"
+
+[[follow]]
+file = "bindings/nuke/alice_sdf_nuke/__init__.py"
+
+[[independent]]
+file = "vrchat-package/package.json"
+reason = "VRChat VPM package com.alice.sdf, released on its own line"
+
+[[independent]]
+file = "bindings/bevy/alice-sdf-bevy/Cargo.toml"
+reason = "separate crate (Bevy plugin) with its own version"
+
+[[independent]]
+file = "bindings/openxr/Cargo.toml"
+reason = "separate crate (OpenXR binding) with its own version"
+
+[[independent]]
+file = "mobile/uniffi-wrapper/Cargo.toml"
+reason = "separate crate (UniFFI wrapper for the mobile SDK)"
+
+[[independent]]
+file = "mobile/samples/android-compose/app/build.gradle.kts"
+reason = "sample app, not a release artifact"
+
+[[independent]]
+file = "server/Cargo.toml"
+reason = "separate application (HTTP server) with its own version"
+
+[[independent]]
+file = "examples/wasm-demo/Cargo.toml"
+reason = "demo crate, not published"
+
+[[independent]]
+file = "fuzz/Cargo.toml"
+reason = "cargo-fuzz harness, not published (version 0.0.0)"

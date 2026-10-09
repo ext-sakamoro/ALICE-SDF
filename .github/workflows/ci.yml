@@ -354,6 +354,10 @@ jobs:
         run: python scripts/test_readme_sync.py
       - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)
         run: python scripts/readme_sync.py --check
+      - name: Version sync checker (tests)
+        run: python scripts/test_version_sync.py
+      - name: Version sync (metadata and install lines follow Cargo.toml)
+        run: python scripts/version_sync.py --check
 
   # Reach of every pub item with references resolved by rust-analyzer (SCIP).
   # wiring-guard above matches names, so `impl Foo {}` alone or a same-named

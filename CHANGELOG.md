@@ -22,7 +22,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `tests/test_live_sdf_oracle.rs` (11 本): crater を掘った後の球の沈み込みが閉形式の半径と一致、world の step だけで collider の距離が `ModifiedSdf` を手で更新した参照と bit 一致し participant 無しでは変わらない、mesh の全頂点の距離が格子幅以下・crater の壁が閉形式の球面上、再 mesh した chunk の集合が閉形式の数え上げと一致し全 chunk が作り直した mesh と bit 一致、継ぎ目の境界辺 0 と除いた体積が半球の閉形式と一致、同じ編集で bit 一致、fracture の範囲、衝突則、snapshot の往復と拒否、不正入力 CI の test job と preflight に追加
 - `tests/test_live_sdf_gpu_parity.rs`: GPU marching cubes と CPU の chunk mesh の頂点が双方向に 1e-4 以内で対応 CI の gpu-parity job と preflight に追加
 
+### Fixed
+- 古いままだった version 表記を crate の 5.0.0 に揃えた: Python の wheel (`pyproject.toml` の 0.1.0、今後は `dynamic` で Cargo.toml から取る)、`@alice-sdf/wasm` (0.1.0)、`@alice-sdf/threejs` (1.6.0)、Cinema 4D / Houdini / Maya / Nuke plugin の `__version__` (1.6.0)
+
 ### Changed
+- CI: `scripts/version_sync.py` が、crate の version を名乗る file (package.json / uplugin / DCC plugin の `__version__` / 下位の Cargo.toml 等) と、文書の依存行 (`alice-sdf = "X"` / `pip install` / `npm install`) を Cargo.toml の version と突き合わせる file ごとに「追従」か「独立 (理由つき)」を `scripts/version-sync.toml` に登録し、未登録の version 表記は失敗にする
+- CI: release の wheel を build するだけでなく、install して `python/tests/smoke.py` を走らせる (aarch64 Linux は x86_64 runner での cross build なので除く) smoke は `version()` と install された distribution の version が Cargo.toml と一致することも確かめる
 - CI: `.github/workflows/bake.yml` を追加 (`src/**` などを変える main への push と PR、`v*` tag、手動実行) lavapipe で bake と検査と `bake_teeth.sh` を走らせ、出力を artifact に残す (tag は 90 日、それ以外は 14 日) `scripts/preflight.sh` の full に bake の CPU 部分 (macOS では Metal の GPU 部分も) と `bake_teeth.sh` を足した
 
 ## [5.0.0] - 2026-10-09

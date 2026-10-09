@@ -77,6 +77,8 @@ python3 scripts/test_docs_lint.py
 python3 scripts/docs_lint.py --check
 python3 scripts/test_readme_sync.py
 python3 scripts/readme_sync.py --check
+python3 scripts/test_version_sync.py
+python3 scripts/version_sync.py --check
 
 step "fmt: cargo fmt --check (core)"
 cargo fmt --check

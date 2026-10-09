@@ -4,7 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "alice-sdf"
-version = "0.1.0"
+# the wheel takes the crate version from Cargo.toml (scripts/version_sync.py)
+dynamic = ["version"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist - Store laws, not polygons"
 readme = "README.md"
 license = { text = "MIT" }

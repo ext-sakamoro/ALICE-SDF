@@ -38,6 +38,19 @@ def signed_volume(vertices: np.ndarray, indices: np.ndarray) -> float:
 def main() -> None:
     v = sdf.version()
     check(isinstance(v, str) and v.count(".") >= 2, f"version(): {v!r}")
+    # the module and the installed distribution both report the crate version
+    import re
+    from importlib import metadata
+    from pathlib import Path
+    cargo = Path(__file__).resolve().parents[2] / "Cargo.toml"
+    if cargo.exists():
+        want = re.search(r'^version\s*=\s*"([^"]+)"', cargo.read_text(encoding="utf-8"), re.M).group(1)
+        check(v == want, f"version() {v} is not Cargo.toml {want}")
+    try:
+        dist = metadata.version("alice-sdf")
+    except metadata.PackageNotFoundError:
+        dist = None
+    check(dist is None or dist == v, f"installed distribution {dist} is not version() {v}")
 
     # ── point evaluation: unit sphere ────────────────────────────────────
     s = sdf.SdfNode.sphere(1.0)
