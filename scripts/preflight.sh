@@ -80,6 +80,14 @@ python3 scripts/readme_sync.py --check
 python3 scripts/test_version_sync.py
 python3 scripts/version_sync.py --check
 
+# ci.yml の env と同じ CARGO_TERM_COLOR=always で回す (cargo の出力を読む parser の試験)
+step "cargo output parsers: oracle (色付き出力) + test に色付き sample がある、対象 0 件で fail"
+CARGO_TERM_COLOR=always python3 scripts/test_ansi.py
+CARGO_TERM_COLOR=always python3 scripts/test_libtest_count.py
+CARGO_TERM_COLOR=always python3 scripts/test_semver_checks_count.py
+CARGO_TERM_COLOR=always python3 scripts/test_cargo_output_parser_check.py
+CARGO_TERM_COLOR=always python3 scripts/cargo_output_parser_check.py
+
 step "fmt: cargo fmt --check (core)"
 cargo fmt --check
 
@@ -324,9 +332,10 @@ cargo test --doc
 
 step "test: doctests, GpuEvalFuture lifetime (compile_fail, gpu feature)"
 cargo test --doc --features gpu GpuEvalFuture 2>&1 | tee /tmp/alice-sdf-doc-gpu.$$.log
-n=$(grep -oE 'test result: ok\. [0-9]+ passed' /tmp/alice-sdf-doc-gpu.$$.log | grep -oE '[0-9]+' | tail -1 || true)
+doc_rc=0
+python3 scripts/libtest_count.py /tmp/alice-sdf-doc-gpu.$$.log --min 2 --what "GpuEvalFuture doctests" || doc_rc=$?
 rm -f /tmp/alice-sdf-doc-gpu.$$.log
-if [ "${n:-0}" -lt 2 ]; then echo "expected >= 2 GpuEvalFuture doctests, ran ${n:-0}"; exit 1; fi
+[ "$doc_rc" -eq 0 ] || exit "$doc_rc"
 
 step "test: bridges (lib, no default)"
 cargo test --lib --no-default-features --features "$BRIDGES"

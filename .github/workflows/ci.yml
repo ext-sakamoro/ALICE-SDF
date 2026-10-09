@@ -273,14 +273,15 @@ jobs:
       # doctest pins that dropping the evaluator before `wait` does not compile
       # (until 5.0.0 it did, and `wait` read freed memory). The plain doctest
       # step above has no `gpu` feature, so these doctests only run here; the
-      # count guard fails the step if the filter stops matching them.
+      # count guard fails the step if the filter stops matching them. The count
+      # is read by scripts/libtest_count.py, which strips escape codes first
+      # (CARGO_TERM_COLOR=always above; tested on coloured libtest output).
       - name: Test (doctests, GpuEvalFuture lifetime)
         shell: bash
         run: |
           set -euo pipefail
           cargo test --doc --features gpu GpuEvalFuture 2>&1 | tee doc-gpu.log
-          n=$(grep -oE 'test result: ok\. [0-9]+ passed' doc-gpu.log | grep -oE '[0-9]+' | tail -1 || true)
-          if [ "${n:-0}" -lt 2 ]; then echo "::error::expected >= 2 GpuEvalFuture doctests, ran ${n:-0}"; exit 1; fi
+          python3 scripts/libtest_count.py doc-gpu.log --min 2 --what "GpuEvalFuture doctests"
 
       # 2026-09-30: build -> test に格上げ。`src/ffi/**` には unit test が 15 本
       # あるが、`ffi` feature 付きの `cargo test` が CI に 1 つも無かったため
@@ -358,6 +359,17 @@ jobs:
         run: python scripts/test_version_sync.py
       - name: Version sync (metadata and install lines follow Cargo.toml)
         run: python scripts/version_sync.py --check
+      # cargo / libtest / cargo-semver-checks の出力を読む parser は、CARGO_TERM_COLOR=always
+      # (この workflow の env) の色付き出力で試験する。検査器は parser の test に色付き
+      # sample が無いと fail し、parser を 1 件も見つけられなくても fail する
+      - name: cargo output parsers oracle (色付き出力で試験)
+        run: |
+          python scripts/test_ansi.py
+          python scripts/test_libtest_count.py
+          python scripts/test_semver_checks_count.py
+          python scripts/test_cargo_output_parser_check.py
+      - name: cargo output parsers (test に色付き sample がある、対象 0 件で fail)
+        run: python scripts/cargo_output_parser_check.py
 
   # Reach of every pub item with references resolved by rust-analyzer (SCIP).
   # wiring-guard above matches names, so `impl Foo {}` alone or a same-named
