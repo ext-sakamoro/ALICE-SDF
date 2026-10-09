@@ -2,9 +2,11 @@
 //! `docs/node-support.md`.
 //!
 //! The evaluators and transpilers dispatch on `SdfNode` with `match`. Where a
-//! `match` has no `_ =>` arm, rustc already refuses a variant that is not
-//! handled (GLSL / WGSL / HLSL / BlinkScript). Where it has one, a new variant
-//! compiles and falls into it silently: the tree evaluator returns `f32::MAX`,
+//! `match` has no `_ =>` arm, rustc already refuses a variant that has no arm
+//! (GLSL / WGSL / HLSL / BlinkScript), but an arm can still forward the child
+//! unchanged: `ProjectiveTransform` did so in all three shader languages while
+//! `shader_unsupported_nodes` reported nothing. Where a `match` has a wildcard
+//! arm, a new variant compiles and falls into it silently: the tree evaluator returns `f32::MAX`,
 //! the interval evaluator returns `Interval::EVERYTHING`. This test runs every
 //! variant through the backends whose outcome can be observed at run time and
 //! records the result per variant:
@@ -17,6 +19,7 @@
 //! | `jit`      | `JitCompiledSdf::compile` returns `Ok` (`jit`) | `err`                  |
 //! | `jit_simd` | `JitSimdSdf::compile` of the compiled tree     | `err`, `-` (no bytecode) |
 //! | `msl`      | `MslShader::transpile` returns `Ok` (`msl`)    | `err`                  |
+//! | `glsl` / `wgsl` / `hlsl` | the emit is not the child's emit forwarded unchanged (`glsl` / `gpu` / `hlsl`) | `pass-through` |
 //! | `rust`     | `RustSource::transpile` returns `Ok` (`rust`)  | `err`                  |
 //! | `ffi`      | a constructor `alice_sdf_<name>` in `src/ffi/` | `missing`              |
 //! | `python`   | a constructor `fn <name>(` in `src/python/`    | `missing`              |
@@ -36,12 +39,18 @@
 //!   it until the ledger records the change
 //! - the ledger lists exactly the variants of the enum, and at least one cell
 //!   was compared
+//! - no transpiler forwards the child of a node that changes the distance
+//!   unless `shader_unsupported_nodes` names it, and every one-child variant
+//!   other than the distance-transparent ones has an entry that changes the
+//!   distance (an identity instance cannot tell a transform from a
+//!   pass-through)
 //!
 //! Columns of a feature that is off in this build are not compared. CI runs the
-//! test with `jit,msl,rust` so every column is compared there.
+//! test with `jit,msl,rust,glsl,hlsl` so every column is compared there
+//! (`msl` turns on `gpu`, which carries the WGSL transpiler).
 //!
-//! Regenerate the ledger after an intended change (all three features on):
-//! `ALICE_SDF_WRITE_NODE_SUPPORT=1 cargo test --features jit,msl,rust --test test_node_backend_matrix`
+//! Regenerate the ledger after an intended change (every feature on):
+//! `ALICE_SDF_WRITE_NODE_SUPPORT=1 cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix`
 //!
 //! Author: Moroya Sakamoto
 
@@ -53,9 +62,11 @@ use common::corpus::corpus;
 use std::collections::BTreeMap;
 
 const LEDGER: &str = "docs/node-support.md";
-const COLUMNS: [&str; 9] = [
-    "eval", "interval", "compile", "jit", "jit_simd", "msl", "rust", "ffi", "python",
+const COLUMNS: [&str; NCOL] = [
+    "eval", "interval", "compile", "jit", "jit_simd", "msl", "glsl", "wgsl", "hlsl", "rust", "ffi",
+    "python",
 ];
+const NCOL: usize = 12;
 
 /// Variant names of `SdfNode`, in declaration order, read from the source.
 fn enum_variants() -> Vec<String> {
@@ -183,6 +194,84 @@ const fn msl_cell(_: &SdfNode) -> Option<&'static str> {
     None
 }
 
+/// Sample points for "does this node change the distance": a ±2 grid at 0.5.
+fn distance_grid() -> Vec<Vec3> {
+    let mut v = Vec::new();
+    for i in -4..=4 {
+        for j in -4..=4 {
+            for k in -4..=4 {
+                v.push(
+                    Vec3::new(i as f32, j as f32, k as f32) * 0.5 + Vec3::new(0.03, -0.02, 0.01),
+                );
+            }
+        }
+    }
+    v
+}
+
+/// The tree evaluator returns something other than the child's distance at
+/// some grid point.
+fn changes_distance(node: &SdfNode, child: &SdfNode) -> bool {
+    distance_grid()
+        .iter()
+        .any(|&p| eval(node, p).to_bits() != eval(child, p).to_bits())
+}
+
+/// `pass-through` when `node` has exactly one child, changes the distance on
+/// the CPU, and `emit` returns byte-for-byte the child's own source; `ok`
+/// otherwise.
+#[cfg(any(feature = "glsl", feature = "gpu", feature = "hlsl"))]
+fn transpile_cell(node: &SdfNode, emit: impl Fn(&SdfNode) -> String) -> &'static str {
+    match common::corpus::single_child(node) {
+        Some(child) if changes_distance(node, &child) && emit(node) == emit(&child) => {
+            "pass-through"
+        }
+        _ => "ok",
+    }
+}
+
+#[cfg(feature = "glsl")]
+fn glsl_emit(node: &SdfNode) -> String {
+    use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
+    GlslShader::transpile(node, GlslTranspileMode::Hardcoded).source
+}
+#[cfg(feature = "glsl")]
+fn glsl_cell(node: &SdfNode) -> Option<&'static str> {
+    Some(transpile_cell(node, glsl_emit))
+}
+#[cfg(not(feature = "glsl"))]
+const fn glsl_cell(_: &SdfNode) -> Option<&'static str> {
+    None
+}
+
+#[cfg(feature = "gpu")]
+fn wgsl_emit(node: &SdfNode) -> String {
+    use alice_sdf::compiled::{TranspileMode, WgslShader};
+    WgslShader::transpile(node, TranspileMode::Hardcoded).source
+}
+#[cfg(feature = "gpu")]
+fn wgsl_cell(node: &SdfNode) -> Option<&'static str> {
+    Some(transpile_cell(node, wgsl_emit))
+}
+#[cfg(not(feature = "gpu"))]
+const fn wgsl_cell(_: &SdfNode) -> Option<&'static str> {
+    None
+}
+
+#[cfg(feature = "hlsl")]
+fn hlsl_emit(node: &SdfNode) -> String {
+    use alice_sdf::compiled::hlsl::{HlslShader, HlslTranspileMode};
+    HlslShader::transpile(node, HlslTranspileMode::Hardcoded).source
+}
+#[cfg(feature = "hlsl")]
+fn hlsl_cell(node: &SdfNode) -> Option<&'static str> {
+    Some(transpile_cell(node, hlsl_emit))
+}
+#[cfg(not(feature = "hlsl"))]
+const fn hlsl_cell(_: &SdfNode) -> Option<&'static str> {
+    None
+}
+
 #[cfg(feature = "rust")]
 fn rust_cell(node: &SdfNode) -> Option<&'static str> {
     Some(
@@ -295,6 +384,12 @@ fn entries() -> Vec<(&'static str, SdfNode)> {
             Vec3::new(0.0, 0.6, 0.2),
         ),
     ));
+    // The corpus `projective_transform` is the identity, which a transpiler
+    // that forwards the child also renders correctly.
+    v.push((
+        "projective_transform_nonidentity",
+        common::corpus::projective_nonidentity(),
+    ));
     v.push((
         "bezier",
         SdfNode::bezier(
@@ -309,9 +404,11 @@ fn entries() -> Vec<(&'static str, SdfNode)> {
 
 /// Per variant, per column: the outcomes of every corpus entry of that variant
 /// (joined with `/` when they differ). `None` for a column whose feature is off.
-fn measure() -> BTreeMap<String, [Option<String>; 9]> {
-    let mut acc: BTreeMap<String, [Vec<&'static str>; 9]> = BTreeMap::new();
-    let mut seen_feature = [true, true, true, false, false, false, false, true, true];
+fn measure() -> BTreeMap<String, [Option<String>; NCOL]> {
+    let mut acc: BTreeMap<String, [Vec<&'static str>; NCOL]> = BTreeMap::new();
+    let mut seen_feature = [
+        true, true, true, false, false, false, false, false, false, false, true, true,
+    ];
     let ffi = read_tree("src/ffi");
     let py = read_tree("src/python");
     for (_name, node) in entries() {
@@ -323,6 +420,9 @@ fn measure() -> BTreeMap<String, [Option<String>; 9]> {
             jit_cell(&node),
             jit_simd_cell(&node),
             msl_cell(&node),
+            glsl_cell(&node),
+            wgsl_cell(&node),
+            hlsl_cell(&node),
             rust_cell(&node),
             Some(f),
             Some(p),
@@ -351,10 +451,10 @@ fn measure() -> BTreeMap<String, [Option<String>; 9]> {
         .collect()
 }
 
-fn render(variants: &[String], m: &BTreeMap<String, [Option<String>; 9]>) -> String {
+fn render(variants: &[String], m: &BTreeMap<String, [Option<String>; NCOL]>) -> String {
     let mut out = String::from(
         "# SdfNode backend support\n\n\
-_Generated by `tests/test_node_backend_matrix.rs` (`ALICE_SDF_WRITE_NODE_SUPPORT=1 cargo test --features jit,msl,rust --test test_node_backend_matrix`); \
+_Generated by `tests/test_node_backend_matrix.rs` (`ALICE_SDF_WRITE_NODE_SUPPORT=1 cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix`); \
 no timestamp, the file changes only when its content does._\n\n\
 Every `SdfNode` variant, run through the backends whose outcome can be observed at run time, \
 using the shared test corpus (`tests/common/corpus.rs`). CI fails when a cell changes and this file does not.\n\n\
@@ -365,13 +465,17 @@ using the shared test corpus (`tests/common/corpus.rs`). CI fails when a cell ch
 | `jit` | `JitCompiledSdf::compile` (scalar tree JIT) succeeds (`jit` feature) | `err` |\n\
 | `jit_simd` | `JitSimdSdf::compile` of the compiled tree succeeds (`jit` feature) | `err`; `-` when the tree does not compile |\n\
 | `msl` | `MslShader::transpile` succeeds (`msl` feature) | `err` |\n\
+| `glsl` / `wgsl` / `hlsl` | the emitted source is not the child's source forwarded unchanged, for a node whose tree evaluator changes the child's distance (`glsl` / `gpu` / `hlsl` features; `msl` turns on `gpu`) | `pass-through` |\n\
 | `rust` | `RustSource::transpile` succeeds (`rust` feature) | `err` |\n\
 | `ffi` | a constructor `alice_sdf_<name>` exists in `src/ffi/` (matched by name) | `missing` |\n\
 | `python` | a constructor `fn <name>(` exists in `src/python/` (matched by name) | `missing` |\n\n\
-The GLSL, WGSL, HLSL and BlinkScript transpilers are not listed: they share one dispatch \
-(`transpile_node_inner` in `src/compiled/transpiler_common.rs`) whose `match` has no wildcard arm, so rustc \
-rejects a variant it does not handle (`transpiler_dispatch_has_no_wildcard_arm` keeps it that way).\n\n\
-| Variant | eval | interval | compile | jit | jit_simd | msl | rust | ffi | python |\n|---------|------|----------|---------|-----|----------|-----|------|-----|--------|\n",
+GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in \
+`src/compiled/transpiler_common.rs`) whose `match` has no wildcard arm, so rustc rejects a variant without an arm \
+(`transpiler_dispatch_has_no_wildcard_arm` keeps it that way); the three shader columns check that the arm does \
+more than forward the child (BlinkScript is the HLSL body). `ProjectiveTransform` is measured with the corpus \
+identity and a non-identity matrix.\n\n\
+| Variant | eval | interval | compile | jit | jit_simd | msl | glsl | wgsl | hlsl | rust | ffi | python |\n\
+|---------|------|----------|---------|-----|----------|-----|------|------|------|------|-----|--------|\n",
     );
     for v in variants {
         let row = m.get(v).expect("every variant is measured");
@@ -432,7 +536,7 @@ fn every_variant_reaches_the_backends_the_ledger_records() {
     if std::env::var_os("ALICE_SDF_WRITE_NODE_SUPPORT").is_some() {
         assert!(
             m.values().all(|r| r.iter().all(Option::is_some)),
-            "write the ledger with every feature column on: --features jit,msl,rust"
+            "write the ledger with every feature column on: --features jit,msl,rust,glsl,hlsl"
         );
         std::fs::write(&path, render(&variants, &m)).expect("write ledger");
         return;
@@ -475,7 +579,7 @@ fn every_variant_reaches_the_backends_the_ledger_records() {
     assert!(
         diffs.is_empty(),
         "backend support changed ({} cells); if intended, regenerate {LEDGER} \
-         (ALICE_SDF_WRITE_NODE_SUPPORT=1 cargo test --features jit,msl,rust --test test_node_backend_matrix):\n  {}",
+         (ALICE_SDF_WRITE_NODE_SUPPORT=1 cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix):\n  {}",
         diffs.len(),
         diffs.join("\n  ")
     );
@@ -648,4 +752,95 @@ fn category_counts_match_one_node_per_variant() {
         assert_eq!(cat.count(), measured, "SdfCategory::{cat:?}::count()");
     }
     assert_eq!(SdfCategory::total() as usize, variants.len());
+}
+
+/// Variants whose tree evaluator returns the child's distance by definition, so
+/// forwarding the child is the faithful emit.
+const DISTANCE_TRANSPARENT: [&str; 2] = ["Animated", "WithMaterial"];
+
+/// Every one-child variant except the distance-transparent ones has an entry
+/// that changes the distance; otherwise the transpiler columns would compare
+/// an identity with an identity (the corpus `projective_transform` alone read
+/// `ok` while all three transpilers forwarded the child).
+#[test]
+fn every_one_child_variant_has_an_entry_that_changes_the_distance() {
+    let mut one_child: BTreeMap<String, bool> = BTreeMap::new();
+    for (_name, node) in entries() {
+        if let Some(child) = common::corpus::single_child(&node) {
+            *one_child.entry(variant_of(&node)).or_default() |= changes_distance(&node, &child);
+        }
+    }
+    // one entry per `child: Arc<Self>` field of the enum
+    let declared =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/types/mod.rs"))
+            .expect("read src/types/mod.rs")
+            .matches("child: Arc<Self>")
+            .count();
+    assert!(
+        declared >= 30,
+        "read only {declared} one-child variants from src/types/mod.rs"
+    );
+    assert_eq!(
+        one_child.len(),
+        declared,
+        "the serde child reader found {} one-child variants, the enum declares {declared}: {:?}",
+        one_child.len(),
+        one_child.keys().collect::<Vec<_>>()
+    );
+    let trivial: Vec<&String> = one_child
+        .iter()
+        .filter(|(v, changes)| !**changes && !DISTANCE_TRANSPARENT.contains(&v.as_str()))
+        .map(|(v, _)| v)
+        .collect();
+    assert!(
+        trivial.is_empty(),
+        "one-child variants whose every entry leaves the distance unchanged \
+         (add a non-trivial entry): {trivial:?}"
+    );
+    for v in DISTANCE_TRANSPARENT {
+        assert_eq!(
+            one_child.get(v),
+            Some(&false),
+            "{v} is not distance-transparent"
+        );
+    }
+}
+
+/// No transpiler forwards the child of a node that changes the distance while
+/// `shader_unsupported_nodes` says the node is supported.
+#[cfg(all(feature = "glsl", feature = "gpu", feature = "hlsl"))]
+#[test]
+fn no_transpiler_silently_forwards_a_child() {
+    use alice_sdf::compiled::shader_unsupported_nodes;
+    type Emit = fn(&SdfNode) -> String;
+    let langs: [(&str, Emit); 3] = [
+        ("glsl", glsl_emit),
+        ("wgsl", wgsl_emit),
+        ("hlsl", hlsl_emit),
+    ];
+    let mut lies = Vec::new();
+    let mut checked = 0usize;
+    for (name, node) in entries() {
+        let Some(child) = common::corpus::single_child(&node) else {
+            continue;
+        };
+        if !changes_distance(&node, &child) {
+            continue;
+        }
+        checked += 1;
+        for (lang, emit) in langs {
+            if emit(&node) == emit(&child) && shader_unsupported_nodes(&node).is_empty() {
+                lies.push(format!("{name}: {lang} forwards the child unchanged"));
+            }
+        }
+    }
+    assert!(
+        checked >= 40,
+        "only {checked} one-child entries change the distance"
+    );
+    assert!(
+        lies.is_empty(),
+        "transpilers forward the child of a node they report as supported:\n  {}",
+        lies.join("\n  ")
+    );
 }

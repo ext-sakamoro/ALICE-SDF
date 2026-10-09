@@ -637,6 +637,46 @@ fn hlsl_hardcoded_matches_cpu_for_every_corpus_node() {
     );
 }
 
+/// `ProjectiveTransform` away from the identity through the HLSL transpiler,
+/// Hardcoded and Dynamic, held to `TIGHT_TOL` like every non-exempt corpus
+/// node. The corpus entry is the identity, which a transpiler that forwards
+/// the child (as all three did until this test) also renders correctly.
+#[test]
+fn projective_transform_hlsl_matches_cpu() {
+    let Some(cxx) = cxx_or_skip() else {
+        return;
+    };
+    let node = common::corpus::projective_nonidentity();
+    let pts = points(POINTS);
+    common::corpus::assert_projective_case_discriminates(&pts, TIGHT_TOL);
+    let dir = scratch("hlsl_projective");
+    for (tag, mode) in [
+        ("hardcoded", HlslTranspileMode::Hardcoded),
+        ("dynamic", HlslTranspileMode::Dynamic),
+    ] {
+        let sh = HlslShader::transpile(&node, mode);
+        let src = translation_unit(&sh.source, &params_global(&sh.param_layout));
+        let bin = compile(&cxx, &dir, &format!("projective_{tag}"), &src)
+            .unwrap_or_else(|e| panic!("projective ({tag}): {e}"));
+        let got = run(&bin, &pts).unwrap_or_else(|e| panic!("projective ({tag}): {e}"));
+        let w = worst_drift(&node, &pts, &got);
+        eprintln!(
+            "HLSL({tag}) projective parity: {} points, worst {:.3e} at {:?}",
+            pts.len(),
+            w.0,
+            w.1
+        );
+        assert!(
+            w.0 <= TIGHT_TOL,
+            "projective ({tag}): HLSL/CPU drift {:.3e} at {:?} (cpu={} hlsl={})",
+            w.0,
+            w.1,
+            w.2,
+            w.3
+        );
+    }
+}
+
 /// `Dynamic` mode routes every constant through `params[i].c` instead of
 /// baking it in. It is a second emit path with its own indexing arithmetic and
 /// was never executed anywhere; a mis-numbered parameter shows up only here.

@@ -289,8 +289,8 @@ cargo test --features "glsl,gpu" --test npr_shader_validate
 step "test: Rust source emit oracle (rustc で compile した出力 vs eval_compiled、ci.yml と対)"
 cargo test --features rust --test test_rust_transpiler_oracle
 
-step "test: SdfNode × backend の対応表 (docs/node-support.md と突合、jit + msl + rust)"
-cargo test --features jit,msl,rust --test test_node_backend_matrix
+step "test: SdfNode × backend の対応表 (docs/node-support.md と突合、jit + msl + glsl + hlsl + rust)"
+cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix
 
 step "test: HLSL / BlinkScript value parity + exports + round-tie hlsl arm (ci.yml の HLSL step と対)"
 ALICE_SDF_REQUIRE_CXX=1 cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity \
