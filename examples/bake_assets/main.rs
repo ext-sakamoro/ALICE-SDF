@@ -9,8 +9,9 @@
 //!
 //! Per scene (`<out-dir>/<scene>/`):
 //!
-//! - `mesh_gpu.abm` — GPU marching cubes (`gpu_marching_cubes`, welded), when
-//!   built with `gpu-mesh` and an adapter is present
+//! - `mesh_gpu.abm` — GPU marching cubes (`gpu_marching_cubes`, shared
+//!   vertices as returned), when built with `gpu-mesh` and an adapter is
+//!   present
 //! - `mesh_cpu.abm` — CPU marching cubes (`sdf_to_mesh`) on the same grid
 //! - `mesh.glb` — glTF 2.0 binary of the render mesh (GPU when present)
 //! - `mesh.nanite` — Nanite cluster hierarchy (scenes marked for it)
@@ -186,6 +187,19 @@ fn mesh_area(m: &Mesh) -> f64 {
         .sum()
 }
 
+/// Triangles with two corners at the same position (zero area): marching
+/// cubes keeps one vertex per lattice edge, so a lattice point exactly on
+/// the surface carries several vertices with one position.
+fn zero_area_triangles(m: &Mesh) -> usize {
+    let bits = |i: u32| m.vertices[i as usize].position.to_array().map(f32::to_bits);
+    m.indices
+        .chunks_exact(3)
+        .filter(|t| {
+            bits(t[0]) == bits(t[1]) || bits(t[1]) == bits(t[2]) || bits(t[0]) == bits(t[2])
+        })
+        .count()
+}
+
 fn mesh_mass(m: &Mesh) -> Option<MassProps> {
     mass_properties(
         m.indices
@@ -232,9 +246,9 @@ fn closest_on_triangle(p: DVec3, a: DVec3, b: DVec3, c: DVec3) -> DVec3 {
 /// bucketed by centroid in `cell`-sized buckets; a marching-cubes triangle
 /// lies within one cell, so the 27 neighbouring buckets hold every triangle
 /// closer than a cell. A vertex with none counts as infinitely far).
-/// Point-to-surface rather than vertex-to-vertex: the two pipelines weld
-/// sliver vertices near lattice corners differently, which moves vertices
-/// along the surface but not off it.
+/// Point-to-surface rather than vertex-to-vertex: the two pipelines
+/// evaluate the field with different arithmetic, so a vertex moves along its
+/// edge by a few ulps but stays on the surface.
 fn max_distance_to_surface(a: &Mesh, b: &Mesh, cell: f32) -> f64 {
     let cell = f64::from(cell);
     let key = |p: DVec3| {
@@ -319,44 +333,37 @@ fn num(v: &Value, what: &str) -> Result<f64, String> {
         .ok_or_else(|| format!("manifest: {what} is not a number"))
 }
 
-/// Cubic grid around the tight AABB with 3.5 empty cells on every side: the
-/// surface never touches the grid boundary (which would open the mesh), and
-/// the half cell keeps axis-aligned faces off the lattice planes. A corner
-/// sitting exactly on the iso-surface makes several edge vertices coincide,
-/// and welding them pinches the mesh (measured: box minus sphere at 3 cells,
-/// 555 non-manifold edges on the CPU marching cubes welded by distance, the
-/// same on the GPU; 0 at 3.5 cells).
+/// Cubic grid around the tight AABB with 3 empty cells on every side, so the
+/// surface never touches the grid boundary (which would open the mesh).
+/// Axis-aligned faces may lie on lattice planes: marching cubes shares each
+/// vertex by its lattice edge and counts a lattice point on the surface as
+/// outside, so such corners need no special placement (until 5.0 the meshes
+/// were welded by distance and box minus sphere at 3 cells had 555
+/// non-manifold edges; the grid had to be shifted by half a cell).
 fn grid_bounds(lo: Vec3, hi: Vec3, res: u32) -> (Vec3, Vec3, f32) {
     let c = (lo + hi) * 0.5;
     let m = (hi - lo).max_element() * 0.5;
-    let half = m / (1.0 - 7.0 / res as f32);
+    let half = m / (1.0 - 6.0 / res as f32);
     let cell = 2.0 * half / res as f32;
     (c - Vec3::splat(half), c + Vec3::splat(half), cell)
 }
 
 // ───────────────────────────────────────────────────────────── GPU
 
+/// GPU marching cubes as returned: one vertex per sign-changing lattice
+/// edge, shared by its triangles (no welding).
 #[cfg(feature = "gpu-mesh")]
-fn gpu_mesh(node: &SdfNode, lo: Vec3, hi: Vec3, res: u32, cell: f32) -> Result<Mesh, String> {
-    use alice_sdf::mesh::{
-        gpu_marching_cubes, remove_degenerate_triangles, GpuMarchingCubesConfig, MeshRepair,
-    };
+fn gpu_mesh(node: &SdfNode, lo: Vec3, hi: Vec3, res: u32) -> Result<Mesh, String> {
+    use alice_sdf::mesh::{gpu_marching_cubes, GpuMarchingCubesConfig};
     let cfg = GpuMarchingCubesConfig {
         resolution: res,
         ..Default::default()
     };
-    let soup = gpu_marching_cubes(node, lo, hi, &cfg).map_err(|e| e.to_string())?;
-    // GPU MC emits one vertex per triangle corner, and the copies of an edge
-    // vertex made by neighbouring cells differ in the last bits (an exact
-    // weld leaves thousands of boundary edges), so weld by distance — far
-    // below any real vertex spacing — and drop the triangles that collapse.
-    let mut m = MeshRepair::merge_duplicate_vertices(&soup, 1e-4 * cell);
-    remove_degenerate_triangles(&mut m);
-    Ok(m)
+    gpu_marching_cubes(node, lo, hi, &cfg).map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "gpu-mesh"))]
-fn gpu_mesh(_: &SdfNode, _: Vec3, _: Vec3, _: u32, _: f32) -> Result<Mesh, String> {
+fn gpu_mesh(_: &SdfNode, _: Vec3, _: Vec3, _: u32) -> Result<Mesh, String> {
     Err("built without the gpu-mesh feature".into())
 }
 
@@ -383,7 +390,7 @@ fn bake(out: &Path, res: u32) -> Result<(), String> {
                 ..Default::default()
             },
         );
-        let gpu = match gpu_mesh(&s.node, lo, hi, res, cell) {
+        let gpu = match gpu_mesh(&s.node, lo, hi, res) {
             Ok(m) => Some(m),
             Err(e) => {
                 gpu_status = json!({ "status": "skipped", "reason": e });
@@ -664,8 +671,20 @@ fn verify_scene(out: &Path, sj: &Value, gpu_ok: bool, c: &mut Checks) -> Result<
         );
     }
 
-    // 4. GPU and CPU meshes agree
+    // 4. GPU and CPU meshes agree: same topology (both share a vertex per
+    // sign-changing lattice edge on the same lattice) and same surface
     if let Some(g) = &gpu {
+        let (gv, gt, gz) = (g.vertex_count(), g.triangle_count(), zero_area_triangles(g));
+        let (cv, ct, cz) = (
+            cpu.vertex_count(),
+            cpu.triangle_count(),
+            zero_area_triangles(&cpu),
+        );
+        println!("  {name}/gpu-vs-cpu: topology GPU {gv} vertices {gt} triangles {gz} zero-area, CPU {cv} vertices {ct} triangles {cz} zero-area");
+        c.check(gv > 0 && gt > 0, || "gpu-vs-cpu: empty GPU mesh".into());
+        c.check(gv == cv && gt == ct && gz == cz, || {
+            format!("gpu-vs-cpu: topology differs (GPU {gv} vertices {gt} triangles {gz} zero-area, CPU {cv} vertices {ct} triangles {cz} zero-area)")
+        });
         let d = max_distance_to_surface(g, &cpu, cell).max(max_distance_to_surface(&cpu, g, cell))
             / f64::from(cell);
         let (ag, ac) = (mesh_area(g), mesh_area(&cpu));
@@ -789,6 +808,20 @@ fn mutate(kind: &str, out: &Path) -> Result<(), String> {
             save_abm(&m, out.join(&gpu_path)).map_err(|e| e.to_string())?;
             refresh_sha(&mut manifest, out, &gpu_path)?;
         }
+        // append a copy of one GPU vertex (on the surface, unreferenced) and
+        // update the manifest counts, so only the GPU-vs-CPU topology check
+        // can catch it
+        "gpu-extra-vertex" => {
+            if manifest["gpu"]["status"] != "ok" {
+                return Err("no GPU mesh in this bake".into());
+            }
+            let mut m = load_abm(out.join(&gpu_path)).map_err(|e| e.to_string())?;
+            let v = m.vertices[0];
+            m.vertices.push(v);
+            save_abm(&m, out.join(&gpu_path)).map_err(|e| e.to_string())?;
+            manifest["scenes"][0]["meshes"]["gpu"]["vertices"] = json!(m.vertex_count());
+            refresh_sha(&mut manifest, out, &gpu_path)?;
+        }
         // delete one triangle of the render mesh
         "drop-face" => {
             let mut m = load_abm(out.join(&render_path)).map_err(|e| e.to_string())?;
@@ -806,7 +839,7 @@ fn mutate(kind: &str, out: &Path) -> Result<(), String> {
         "no-scenes" => manifest["scenes"] = json!([]),
         _ => {
             return Err(format!(
-                "unknown mutation {kind} (gpu-vertex | drop-face | shrink-aabb | no-scenes)"
+                "unknown mutation {kind} (gpu-vertex | gpu-extra-vertex | drop-face | shrink-aabb | no-scenes)"
             ))
         }
     }

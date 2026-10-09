@@ -1,21 +1,24 @@
 //! GPU Compute Marching Cubes (Deep Fried Edition)
 //!
-//! 3-pass GPU Marching Cubes pipeline for ~50x faster mesh generation
-//! compared to CPU at high resolution (128+).
+//! GPU Marching Cubes pipeline for faster mesh generation compared to CPU
+//! at high resolution (128+). The mesh shares each vertex between the cells
+//! around its lattice edge, like the CPU [`crate::mesh::marching_cubes`].
 //!
 //! # Pipeline
 //!
 //! ```text
-//! Pass 1: SDF Grid Eval     @workgroup_size(4,4,4)  -> sdf_grid[(res+1)^3]
-//! Pass 2: Cell Classify      @workgroup_size(4,4,4)  -> vertex_counts[res^3] + cube_indices
-//! CPU:    Prefix Sum         sequential scan          -> vertex_offsets[res^3]
-//! Pass 3: Vertex Generation  @workgroup_size(64)      -> output_vertices[total_verts]
-//! CPU:    Readback + Convert                          -> Mesh { vertices, indices }
+//! Pass 1:  SDF Grid Eval      @workgroup_size(4,4,4) -> sdf_grid[(res+1)^3]
+//! Pass 2:  Cell Classify      @workgroup_size(4,4,4) -> index_counts[res^3] + cube_indices
+//! Pass 2b: Edge Count         @workgroup_size(4,4,4) -> edge_counts[(res+1)^3]
+//! Prefix sums (CPU, or GPU above res 128)            -> cell / grid point offsets
+//! Pass 3:  Edge Vertices      @workgroup_size(4,4,4) -> vertices[total_verts]
+//! Pass 4:  Triangle Indices   @workgroup_size(4,4,4) -> indices[total_indices]
+//! CPU:     Readback                                  -> Mesh { vertices, indices }
 //! ```
 //!
 //! # Deep Fried Optimizations
 //!
-//! - **Atomic vertex counting**: Pass 2 uses atomicAdd for total vertex count
+//! - **Atomic counting**: Pass 2 / 2b use atomicAdd for the index / vertex totals
 //! - **CPU prefix sum**: Avoids complex GPU scan; fast enough for res <= 512
 //! - **Tetrahedral normals**: 4-point gradient estimation on GPU
 //! - **Zero-copy tables**: EDGE_TABLE and TRI_TABLE embedded as WGSL constants
@@ -27,6 +30,7 @@ use wgpu::util::DeviceExt;
 
 use super::gpu_mc_shaders;
 use crate::compiled::{GpuError, TranspileMode, WgslShader};
+use crate::mesh::sdf_to_mesh::lattice_point;
 use crate::mesh::{Mesh, Vertex};
 use crate::types::SdfNode;
 
@@ -106,6 +110,23 @@ pub fn gpu_marching_cubes(
 }
 
 /// Run GPU Marching Cubes from a pre-compiled WGSL shader
+///
+/// The mesh has one vertex per sign-changing lattice edge, shared by every
+/// triangle that uses it, in the vertex order of the CPU
+/// [`crate::mesh::marching_cubes`] (lattice point, then axis); a grid value
+/// equal to the iso-level is outside on both paths and the lattice
+/// coordinates are computed on the host with the CPU formula. Wherever the
+/// two evaluators give the same signs the two meshes have the same index
+/// buffer. As on the CPU, a lattice point exactly on the surface gives one
+/// vertex per sign-changing edge at that point: several vertices can share a
+/// position and zero-area triangles can occur (see
+/// [`crate::mesh::marching_cubes`]). Until 5.0 the GPU path returned one vertex per triangle corner
+/// whose copies differed in the last bits, and callers had to weld by
+/// distance.
+///
+/// The vertex and index buffers are sized from the counts of Pass 2 / 2b.
+/// A non-zero `config.max_vertices` is a cap: a surface with more vertices
+/// fails with [`GpuError::BufferMapping`] instead of being truncated.
 pub fn gpu_marching_cubes_from_shader(
     sdf_shader: &WgslShader,
     bounds_min: Vec3,
@@ -117,18 +138,17 @@ pub fn gpu_marching_cubes_from_shader(
     let grid_total = grid_size * grid_size * grid_size;
     let cell_total = (res as usize) * (res as usize) * (res as usize);
 
-    // Estimate max vertices if not specified
-    let max_verts = if config.max_vertices > 0 {
-        config.max_vertices as usize
-    } else {
-        // Rough upper bound: ~15 vertices per surface cell, ~10% cells active
-        (cell_total / 10) * 15
-    };
-
-    // Generate shader sources
-    let pass1_source = gpu_mc_shaders::generate_sdf_grid_shader(sdf_shader);
-    let pass2_source = gpu_mc_shaders::generate_classify_shader();
-    let pass3_source = gpu_mc_shaders::generate_vertex_shader(sdf_shader);
+    // Lattice coordinates per axis with the CPU marching cubes formula, so
+    // both paths evaluate the field at bit-identical points.
+    let cell = (bounds_max - bounds_min) / res as f32;
+    let mut axis_coords = Vec::with_capacity(3 * grid_size);
+    for axis in 0..3 {
+        for i in 0..grid_size {
+            let mut g = [0usize; 3];
+            g[axis] = i;
+            axis_coords.push(lattice_point(bounds_min, cell, g)[axis]);
+        }
+    }
 
     // Initialize wgpu
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -154,7 +174,6 @@ pub fn gpu_marching_cubes_from_shader(
     ))
     .map_err(|e: wgpu::RequestDeviceError| GpuError::DeviceCreation(e.to_string()))?;
 
-    // Uniforms
     let uniforms = McUniforms {
         resolution: res,
         iso_level: config.iso_level,
@@ -163,339 +182,262 @@ pub fn gpu_marching_cubes_from_shader(
         bounds_min: [bounds_min.x, bounds_min.y, bounds_min.z, 0.0],
         bounds_max: [bounds_max.x, bounds_max.y, bounds_max.z, 0.0],
     };
-
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("MC Uniforms"),
         contents: bytemuck::cast_slice(&[uniforms]),
         usage: wgpu::BufferUsages::UNIFORM,
     });
-
-    // ====== PASS 1: SDF Grid Eval ======
-
-    let sdf_grid_size = (grid_total * std::mem::size_of::<f32>()) as u64;
-    let sdf_grid_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("SDF Grid Buffer"),
-        size: sdf_grid_size,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
+    let axis_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("MC Axis Coords"),
+        contents: bytemuck::cast_slice(&axis_coords),
+        usage: wgpu::BufferUsages::STORAGE,
     });
+    let storage = |label: &str, bytes: usize| {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: bytes.max(4) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        })
+    };
+    let counter = |label: &str| {
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(label),
+            contents: bytemuck::cast_slice(&[0u32]),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        })
+    };
 
-    let pass1_shader: wgpu::ShaderModule =
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("MC Pass 1 Shader"),
-            source: wgpu::ShaderSource::Wgsl(pass1_source.into()),
+    let sdf_grid_buffer = storage("SDF Grid Buffer", grid_total * 4);
+    let cell_counts_buffer = storage("Cell Index Counts", cell_total * 4);
+    let cell_indices_buffer = storage("Cell Cube Indices", cell_total * 4);
+    let point_counts_buffer = storage("Point Edge Counts", grid_total * 4);
+    let total_index_buffer = counter("Total Index Count");
+    let total_vertex_buffer = counter("Total Vertex Count");
+
+    // (read_only, buffer) per binding, in binding order
+    let ro = wgpu::BufferBindingType::Storage { read_only: true };
+    let rw = wgpu::BufferBindingType::Storage { read_only: false };
+    let uni = wgpu::BufferBindingType::Uniform;
+    let stage = |label: &str,
+                 source: String,
+                 bindings: &[(wgpu::BufferBindingType, &wgpu::Buffer)]|
+     -> (wgpu::ComputePipeline, wgpu::BindGroup) {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(label),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
         });
-
-    let pass1_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("MC Pass 1 BGL"),
-        entries: &[
-            // sdf_grid: storage RW
-            bgl_entry(0, wgpu::BufferBindingType::Storage { read_only: false }),
-            // uniforms
-            bgl_entry(1, wgpu::BufferBindingType::Uniform),
-        ],
-    });
-
-    let pass1_pipeline = create_pipeline(&device, &pass1_bgl, &pass1_shader, "MC Pass 1");
-
-    let pass1_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("MC Pass 1 BG"),
-        layout: &pass1_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: sdf_grid_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: uniform_buffer.as_entire_binding(),
-            },
-        ],
-    });
-
-    // ====== PASS 2: Cell Classify + Count ======
-
-    let cell_counts_size = (cell_total * std::mem::size_of::<u32>()) as u64;
-    let cell_counts_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Cell Vertex Counts"),
-        size: cell_counts_size,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-
-    let cell_indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Cell Cube Indices"),
-        size: cell_counts_size,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-
-    // Atomic counter for total vertex count (single u32)
-    let total_count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Total Vertex Count"),
-        contents: bytemuck::cast_slice(&[0u32]),
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-    });
-
-    let pass2_shader: wgpu::ShaderModule =
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("MC Pass 2 Shader"),
-            source: wgpu::ShaderSource::Wgsl(pass2_source.into()),
+        let entries: Vec<_> = bindings
+            .iter()
+            .enumerate()
+            .map(|(i, (ty, _))| bgl_entry(i as u32, *ty))
+            .collect();
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some(label),
+            entries: &entries,
         });
+        let pipeline = create_pipeline(&device, &bgl, &module, label);
+        let group_entries: Vec<_> = bindings
+            .iter()
+            .enumerate()
+            .map(|(i, (_, b))| wgpu::BindGroupEntry {
+                binding: i as u32,
+                resource: b.as_entire_binding(),
+            })
+            .collect();
+        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &bgl,
+            entries: &group_entries,
+        });
+        (pipeline, bg)
+    };
 
-    let pass2_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("MC Pass 2 BGL"),
-        entries: &[
-            // sdf_grid: storage read
-            bgl_entry(0, wgpu::BufferBindingType::Storage { read_only: true }),
-            // uniforms
-            bgl_entry(1, wgpu::BufferBindingType::Uniform),
-            // cell_vertex_counts: storage RW
-            bgl_entry(2, wgpu::BufferBindingType::Storage { read_only: false }),
-            // cell_cube_indices: storage RW
-            bgl_entry(3, wgpu::BufferBindingType::Storage { read_only: false }),
-            // total_vertex_count: storage RW
-            bgl_entry(4, wgpu::BufferBindingType::Storage { read_only: false }),
+    // ====== PASS 1: SDF grid, PASS 2: cells, PASS 2b: edges per grid point ======
+    let pass1 = stage(
+        "MC Pass 1",
+        gpu_mc_shaders::generate_sdf_grid_shader(sdf_shader),
+        &[
+            (rw, &sdf_grid_buffer),
+            (uni, &uniform_buffer),
+            (ro, &axis_buffer),
         ],
-    });
-
-    let pass2_pipeline = create_pipeline(&device, &pass2_bgl, &pass2_shader, "MC Pass 2");
-
-    let pass2_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("MC Pass 2 BG"),
-        layout: &pass2_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: sdf_grid_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: uniform_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: cell_counts_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: cell_indices_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 4,
-                resource: total_count_buffer.as_entire_binding(),
-            },
+    );
+    let pass2 = stage(
+        "MC Pass 2",
+        gpu_mc_shaders::generate_classify_shader(),
+        &[
+            (ro, &sdf_grid_buffer),
+            (uni, &uniform_buffer),
+            (rw, &cell_counts_buffer),
+            (rw, &cell_indices_buffer),
+            (rw, &total_index_buffer),
         ],
-    });
-
-    // ====== Dispatch Pass 1 + Pass 2 ======
+    );
+    let pass2b = stage(
+        "MC Pass 2b",
+        gpu_mc_shaders::generate_edge_count_shader(),
+        &[
+            (ro, &sdf_grid_buffer),
+            (uni, &uniform_buffer),
+            (rw, &point_counts_buffer),
+            (rw, &total_vertex_buffer),
+        ],
+    );
 
     let wg = 4u32;
     let dispatch_grid = (grid_size as u32).div_ceil(wg);
     let dispatch_cell = res.div_ceil(wg);
+    let use_gpu_prefix_sum = res > GPU_PREFIX_SUM_THRESHOLD;
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("MC Pass 1+2 Encoder"),
     });
-
-    {
+    for (p, n) in [
+        (&pass1, dispatch_grid),
+        (&pass2, dispatch_cell),
+        (&pass2b, dispatch_grid),
+    ] {
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("MC Pass 1"),
+            label: None,
             timestamp_writes: None,
         });
-        pass.set_pipeline(&pass1_pipeline);
-        pass.set_bind_group(0, &pass1_bg, &[]);
-        pass.dispatch_workgroups(dispatch_grid, dispatch_grid, dispatch_grid);
+        pass.set_pipeline(&p.0);
+        pass.set_bind_group(0, &p.1, &[]);
+        pass.dispatch_workgroups(n, n, n);
     }
-
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("MC Pass 2"),
-            timestamp_writes: None,
-        });
-        pass.set_pipeline(&pass2_pipeline);
-        pass.set_bind_group(0, &pass2_bg, &[]);
-        pass.dispatch_workgroups(dispatch_cell, dispatch_cell, dispatch_cell);
-    }
-
-    // Copy total vertex count to staging for readback
-    let total_staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Total Staging"),
-        size: 4,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-
-    encoder.copy_buffer_to_buffer(&total_count_buffer, 0, &total_staging, 0, 4);
-
-    let use_gpu_prefix_sum = res > GPU_PREFIX_SUM_THRESHOLD;
-
-    // For CPU path, also copy cell counts to staging
-    let counts_staging = if !use_gpu_prefix_sum {
-        let staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Counts Staging"),
-            size: cell_counts_size,
+    let staging = |label: &str, bytes: usize| {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: bytes.max(4) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
-        });
-        encoder.copy_buffer_to_buffer(&cell_counts_buffer, 0, &staging, 0, cell_counts_size);
-        Some(staging)
-    } else {
-        None
+        })
     };
-
+    let totals_staging = staging("Totals Staging", 8);
+    encoder.copy_buffer_to_buffer(&total_index_buffer, 0, &totals_staging, 0, 4);
+    encoder.copy_buffer_to_buffer(&total_vertex_buffer, 0, &totals_staging, 4, 4);
+    // For the CPU prefix sum, also read back the per-cell and per-point counts
+    let counts_staging = if use_gpu_prefix_sum {
+        None
+    } else {
+        let c = staging("Cell Counts Staging", cell_total * 4);
+        let p = staging("Point Counts Staging", grid_total * 4);
+        encoder.copy_buffer_to_buffer(&cell_counts_buffer, 0, &c, 0, (cell_total * 4) as u64);
+        encoder.copy_buffer_to_buffer(&point_counts_buffer, 0, &p, 0, (grid_total * 4) as u64);
+        Some((c, p))
+    };
     queue.submit(std::iter::once(encoder.finish()));
 
-    // Read back total vertex count
-    let total_verts = read_u32(&device, &total_staging)?;
-
-    if total_verts == 0 {
+    let totals = read_u32_vec(&device, &totals_staging, 2)?;
+    let (total_indices, total_verts) = (totals[0] as usize, totals[1] as usize);
+    if total_indices == 0 {
         return Ok(Mesh {
             vertices: Vec::new(),
             indices: Vec::new(),
         });
     }
+    if config.max_vertices > 0 && total_verts > config.max_vertices as usize {
+        return Err(GpuError::BufferMapping(format!(
+            "marching cubes surface has {total_verts} vertices, more than max_vertices {}",
+            config.max_vertices
+        )));
+    }
 
-    // Clamp total_verts to max_verts for safety
-    let actual_verts = (total_verts as usize).min(max_verts);
-
-    // ====== Prefix Sum: GPU or CPU ======
-
-    let offsets_buffer = if use_gpu_prefix_sum {
-        // GPU prefix sum: compute offsets entirely on the GPU
-        dispatch_gpu_prefix_sum(&device, &queue, &cell_counts_buffer, cell_total)?
-    } else {
-        // CPU prefix sum: read back counts, scan on CPU, upload offsets
-        let cell_counts = read_u32_vec(&device, counts_staging.as_ref().unwrap(), cell_total)?;
-        let mut offsets = vec![0u32; cell_total];
-        let mut running = 0u32;
-        for i in 0..cell_total {
-            offsets[i] = running;
-            running += cell_counts[i];
+    // ====== Prefix sums: cell index offsets and grid point vertex offsets ======
+    let (cell_offsets_buffer, point_offsets_buffer) = match &counts_staging {
+        None => (
+            dispatch_gpu_prefix_sum(&device, &queue, &cell_counts_buffer, cell_total)?,
+            dispatch_gpu_prefix_sum(&device, &queue, &point_counts_buffer, grid_total)?,
+        ),
+        Some((c, p)) => {
+            let upload = |label: &str, counts: Vec<u32>| {
+                let mut running = 0u32;
+                let offsets: Vec<u32> = counts
+                    .iter()
+                    .map(|&n| {
+                        let o = running;
+                        running += n;
+                        o
+                    })
+                    .collect();
+                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(label),
+                    contents: bytemuck::cast_slice(&offsets),
+                    usage: wgpu::BufferUsages::STORAGE,
+                })
+            };
+            (
+                upload("Cell Offsets", read_u32_vec(&device, c, cell_total)?),
+                upload("Point Offsets", read_u32_vec(&device, p, grid_total)?),
+            )
         }
-        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Cell Offsets"),
-            contents: bytemuck::cast_slice(&offsets),
-            usage: wgpu::BufferUsages::STORAGE,
-        })
     };
 
-    // ====== PASS 3: Vertex Generation ======
-
-    let output_size = (actual_verts * std::mem::size_of::<GpuVertex>()) as u64;
-    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Output Vertices"),
-        size: output_size,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-
-    let pass3_shader: wgpu::ShaderModule =
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("MC Pass 3 Shader"),
-            source: wgpu::ShaderSource::Wgsl(pass3_source.into()),
-        });
-
-    let pass3_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("MC Pass 3 BGL"),
-        entries: &[
-            // sdf_grid: storage read
-            bgl_entry(0, wgpu::BufferBindingType::Storage { read_only: true }),
-            // uniforms
-            bgl_entry(1, wgpu::BufferBindingType::Uniform),
-            // cell_offsets: storage read
-            bgl_entry(2, wgpu::BufferBindingType::Storage { read_only: true }),
-            // cell_cube_indices: storage read
-            bgl_entry(3, wgpu::BufferBindingType::Storage { read_only: true }),
-            // output_vertices: storage RW
-            bgl_entry(4, wgpu::BufferBindingType::Storage { read_only: false }),
-            // TRI_TABLE: storage read (buffer, not a shader constant — FXC limit)
-            bgl_entry(5, wgpu::BufferBindingType::Storage { read_only: true }),
-        ],
-    });
-
+    // ====== PASS 3: edge vertices, PASS 4: triangle indices ======
+    let vertex_bytes = total_verts * std::mem::size_of::<GpuVertex>();
+    let index_bytes = total_indices * 4;
+    let vertex_buffer = storage("Output Vertices", vertex_bytes);
+    let index_buffer = storage("Output Indices", index_bytes);
     let tri_table = gpu_mc_shaders::tri_table_flat();
     let tri_table_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("MC Tri Table"),
         contents: bytemuck::cast_slice(&tri_table),
         usage: wgpu::BufferUsages::STORAGE,
     });
-
-    let pass3_pipeline = create_pipeline(&device, &pass3_bgl, &pass3_shader, "MC Pass 3");
-
-    let pass3_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("MC Pass 3 BG"),
-        layout: &pass3_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: sdf_grid_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: uniform_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: offsets_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: cell_indices_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 4,
-                resource: output_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 5,
-                resource: tri_table_buffer.as_entire_binding(),
-            },
+    let pass3 = stage(
+        "MC Pass 3",
+        gpu_mc_shaders::generate_vertex_shader(sdf_shader),
+        &[
+            (ro, &sdf_grid_buffer),
+            (uni, &uniform_buffer),
+            (ro, &point_offsets_buffer),
+            (rw, &vertex_buffer),
+            (ro, &axis_buffer),
         ],
-    });
-
-    // Dispatch pass 3: one thread per cell, @workgroup_size(64)
-    let dispatch_cells = (cell_total as u32).div_ceil(64);
-
+    );
+    let pass4 = stage(
+        "MC Pass 4",
+        gpu_mc_shaders::generate_cell_index_shader(),
+        &[
+            (ro, &sdf_grid_buffer),
+            (uni, &uniform_buffer),
+            (ro, &cell_offsets_buffer),
+            (ro, &cell_indices_buffer),
+            (rw, &index_buffer),
+            (ro, &tri_table_buffer),
+            (ro, &point_offsets_buffer),
+        ],
+    );
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("MC Pass 3 Encoder"),
+        label: Some("MC Pass 3+4 Encoder"),
     });
-
-    {
+    for (p, n) in [(&pass3, dispatch_grid), (&pass4, dispatch_cell)] {
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("MC Pass 3"),
+            label: None,
             timestamp_writes: None,
         });
-        pass.set_pipeline(&pass3_pipeline);
-        pass.set_bind_group(0, &pass3_bg, &[]);
-        pass.dispatch_workgroups(dispatch_cells, 1, 1);
+        pass.set_pipeline(&p.0);
+        pass.set_bind_group(0, &p.1, &[]);
+        pass.dispatch_workgroups(n, n, n);
     }
-
-    // Copy output to staging
-    let output_staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Output Staging"),
-        size: output_size,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-
-    encoder.copy_buffer_to_buffer(&output_buffer, 0, &output_staging, 0, output_size);
+    let vertex_staging = staging("Vertex Staging", vertex_bytes);
+    let index_staging = staging("Index Staging", index_bytes);
+    encoder.copy_buffer_to_buffer(&vertex_buffer, 0, &vertex_staging, 0, vertex_bytes as u64);
+    encoder.copy_buffer_to_buffer(&index_buffer, 0, &index_staging, 0, index_bytes as u64);
     queue.submit(std::iter::once(encoder.finish()));
 
-    // Read back vertices
-    let gpu_verts = read_gpu_vertices(&device, &output_staging, actual_verts)?;
-
-    // Convert to Mesh
-    let mut vertices = Vec::with_capacity(actual_verts);
-    let mut indices = Vec::with_capacity(actual_verts);
-
-    for (i, gv) in gpu_verts.iter().enumerate() {
-        vertices.push(Vertex::new(
-            Vec3::new(gv.px, gv.py, gv.pz),
-            Vec3::new(gv.nx, gv.ny, gv.nz),
-        ));
-        indices.push(i as u32);
-    }
+    let gpu_verts = read_gpu_vertices(&device, &vertex_staging, total_verts)?;
+    let indices = read_u32_vec(&device, &index_staging, total_indices)?;
+    let vertices = gpu_verts
+        .iter()
+        .map(|gv| {
+            Vertex::new(
+                Vec3::new(gv.px, gv.py, gv.pz),
+                Vec3::new(gv.nx, gv.ny, gv.nz),
+            )
+        })
+        .collect();
 
     Ok(Mesh { vertices, indices })
 }
@@ -740,34 +682,6 @@ fn gpu_prefix_sum_recursive(
     queue.submit(std::iter::once(encoder.finish()));
 
     Ok(output_buffer)
-}
-
-/// Read a single u32 from a mapped staging buffer
-fn read_u32(device: &wgpu::Device, staging: &wgpu::Buffer) -> Result<u32, GpuError> {
-    let slice = staging.slice(..);
-    let (sender, receiver) = futures_channel::oneshot::channel();
-    slice.map_async(wgpu::MapMode::Read, move |result| {
-        let _ = sender.send(result);
-    });
-    device.poll(wgpu::Maintain::Wait);
-
-    pollster::block_on(receiver)
-        .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
-        .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
-
-    let val = {
-        let mapped = slice.get_mapped_range();
-        let data: &[u32] = bytemuck::cast_slice::<u8, u32>(&mapped);
-        if data.is_empty() {
-            return Err(GpuError::BufferMapping(
-                "read_u32: mapped buffer too small (0 u32 elements)".into(),
-            ));
-        }
-        data[0]
-    };
-    staging.unmap();
-
-    Ok(val)
 }
 
 /// Read a Vec<u32> from a mapped staging buffer

@@ -709,6 +709,7 @@ jobs:
           --test test_transpiler_naga_validate
           --test noise_shader_validate
           --test test_mesh_orientation
+          --test test_mc_shared_vertex_oracle
           --test test_texture_shader_gpu_parity
           --test test_npr_bytecode_gpu_parity
           --test test_instanced_wgsl_gpu_parity

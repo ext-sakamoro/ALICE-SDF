@@ -1,10 +1,12 @@
 //! WGSL Shader Generation for GPU Marching Cubes (Deep Fried Edition)
 //!
-//! Generates three compute shaders for the 3-pass GPU MC pipeline:
+//! Generates the compute shaders of the GPU MC pipeline:
 //!
 //! - **Pass 1 (SDF Grid Eval)**: Evaluate SDF at all grid corners
-//! - **Pass 2 (Cell Classify + Count)**: Classify cells, count output vertices
-//! - **Pass 3 (Vertex Generation)**: Interpolate vertices, compute normals
+//! - **Pass 2 (Cell Classify + Count)**: Classify cells, count triangle corners
+//! - **Pass 2b (Edge Count)**: Count sign-changing lattice edges per grid point
+//! - **Pass 3 (Vertex Generation)**: One vertex per sign-changing lattice edge
+//! - **Pass 4 (Triangle Indices)**: Cell triangles as indices of those vertices
 //!
 //! The EDGE_TABLE and TRI_TABLE from Lorensen & Cline are embedded as
 //! WGSL constant arrays for zero-latency lookup on the GPU.
@@ -17,6 +19,11 @@ use crate::compiled::WgslShader;
 ///
 /// Evaluates the SDF at every grid corner (res+1)^3.
 /// Output: flat f32 buffer of SDF distances.
+///
+/// The lattice coordinates come from `axis_coords` (binding 2: the `res + 1`
+/// x, then y, then z coordinates), computed on the host with the CPU
+/// marching cubes formula, so both paths sample the field at bit-identical
+/// points.
 pub fn generate_sdf_grid_shader(sdf_shader: &WgslShader) -> String {
     format!(
         r"// ALICE-SDF GPU Marching Cubes - Pass 1: SDF Grid Eval
@@ -32,6 +39,7 @@ struct GridUniforms {{
 
 @group(0) @binding(0) var<storage, read_write> sdf_grid: array<f32>;
 @group(0) @binding(1) var<uniform> uniforms: GridUniforms;
+@group(0) @binding(2) var<storage, read> axis_coords: array<f32>;
 
 {sdf_func}
 
@@ -43,9 +51,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         return;
     }}
 
-    let fres = f32(uniforms.resolution);
-    let t = vec3<f32>(f32(gid.x), f32(gid.y), f32(gid.z)) / fres;
-    let p = mix(uniforms.bounds_min.xyz, uniforms.bounds_max.xyz, t);
+    let p = vec3<f32>(
+        axis_coords[gid.x],
+        axis_coords[grid_res + gid.y],
+        axis_coords[2u * grid_res + gid.z],
+    );
 
     let distance = sdf_eval(p);
 
@@ -142,22 +152,80 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     )
 }
 
-/// Generate Pass 3 shader: Vertex Generation
+/// Uniform block and the "inside" rule shared by the edge passes.
 ///
-/// For each non-empty cell, interpolate edge vertices and write to output.
-/// Uses tetrahedral gradient for normal estimation.
-pub fn generate_vertex_shader(sdf_shader: &WgslShader) -> String {
-    format!(
-        r"// ALICE-SDF GPU Marching Cubes - Pass 3: Vertex Generation
-
-struct GridUniforms {{
+/// A grid value equal to the iso-level is outside (`d < iso` is inside), as
+/// in the cell classification of Pass 2 and in the CPU marching cubes.
+const EDGE_COMMON: &str = r"
+struct GridUniforms {
     resolution: u32,
     iso_level: f32,
     _pad0: u32,
     _pad1: u32,
     bounds_min: vec4<f32>,
     bounds_max: vec4<f32>,
+}
+
+fn is_inside(d: f32) -> bool {
+    return d < uniforms.iso_level;
+}
+
+// Number of sign-changing lattice edges at grid point (x, y, z) along the
+// axes below `below` (0 = none, 3 = all), in the order x, y, z.
+fn crossings_below(x: u32, y: u32, z: u32, below: u32) -> u32 {
+    let res = uniforms.resolution;
+    let g = res + 1u;
+    let i = x + y * g + z * g * g;
+    let a = is_inside(sdf_grid[i]);
+    var n = 0u;
+    if (below > 0u && x < res && a != is_inside(sdf_grid[i + 1u])) { n += 1u; }
+    if (below > 1u && y < res && a != is_inside(sdf_grid[i + g])) { n += 1u; }
+    if (below > 2u && z < res && a != is_inside(sdf_grid[i + g * g])) { n += 1u; }
+    return n;
+}
+";
+
+/// Generate Pass 2b shader: sign-changing lattice edges per grid point
+///
+/// Each lattice edge belongs to its lower grid point. Writes the number of
+/// sign-changing edges (0–3) of every grid point and adds them to the
+/// total vertex count.
+pub(crate) fn generate_edge_count_shader() -> String {
+    format!(
+        r"// ALICE-SDF GPU Marching Cubes - Pass 2b: Edge Count
+
+@group(0) @binding(0) var<storage, read> sdf_grid: array<f32>;
+@group(0) @binding(1) var<uniform> uniforms: GridUniforms;
+@group(0) @binding(2) var<storage, read_write> point_edge_counts: array<u32>;
+@group(0) @binding(3) var<storage, read_write> total_edge_vertices: atomic<u32>;
+{EDGE_COMMON}
+@compute @workgroup_size(4, 4, 4)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let g = uniforms.resolution + 1u;
+    if (gid.x >= g || gid.y >= g || gid.z >= g) {{
+        return;
+    }}
+    let n = crossings_below(gid.x, gid.y, gid.z, 3u);
+    point_edge_counts[gid.x + gid.y * g + gid.z * g * g] = n;
+    if (n > 0u) {{
+        atomicAdd(&total_edge_vertices, n);
+    }}
 }}
+"
+    )
+}
+
+/// Generate Pass 3 shader: Vertex Generation
+///
+/// One vertex per sign-changing lattice edge, written at the grid point's
+/// offset (exclusive prefix sum of Pass 2b) plus the number of crossing
+/// edges at that point along lower axes — the CPU marching cubes vertex
+/// order. The position is interpolated from the edge's lower endpoint, the
+/// normal is the tetrahedral gradient of the SDF at the position, so a
+/// vertex has one value whichever cell refers to it.
+pub fn generate_vertex_shader(sdf_shader: &WgslShader) -> String {
+    format!(
+        r"// ALICE-SDF GPU Marching Cubes - Pass 3: Edge Vertex Generation
 
 struct GpuVertex {{
     px: f32, py: f32, pz: f32,
@@ -167,26 +235,24 @@ struct GpuVertex {{
 
 @group(0) @binding(0) var<storage, read> sdf_grid: array<f32>;
 @group(0) @binding(1) var<uniform> uniforms: GridUniforms;
-@group(0) @binding(2) var<storage, read> cell_offsets: array<u32>;
-@group(0) @binding(3) var<storage, read> cell_cube_indices: array<u32>;
-@group(0) @binding(4) var<storage, read_write> output_vertices: array<GpuVertex>;
-// Triangle table (256 x 16, -1 terminated) as a buffer rather than a WGSL
-// const array<i32, 4096>: naga's HLSL backend lowers a dynamically indexed
-// module constant into indexable temporaries and FXC rejects the shader
-// (X4505: sum of temp registers exceeds limit of 4096) on DX12 / WARP.
-@group(0) @binding(5) var<storage, read> TRI_TABLE: array<i32>;
-
+@group(0) @binding(2) var<storage, read> point_offsets: array<u32>;
+@group(0) @binding(3) var<storage, read_write> output_vertices: array<GpuVertex>;
+@group(0) @binding(4) var<storage, read> axis_coords: array<f32>;
+{common}
 {sdf_func}
 
-fn grid_to_world(gx: f32, gy: f32, gz: f32) -> vec3<f32> {{
-    let fres = f32(uniforms.resolution);
-    let t = vec3<f32>(gx, gy, gz) / fres;
-    return mix(uniforms.bounds_min.xyz, uniforms.bounds_max.xyz, t);
+fn lattice(x: u32, y: u32, z: u32) -> vec3<f32> {{
+    let g = uniforms.resolution + 1u;
+    return vec3<f32>(axis_coords[x], axis_coords[g + y], axis_coords[2u * g + z]);
 }}
 
-fn interpolate_edge(p1: vec3<f32>, p2: vec3<f32>, d1: f32, d2: f32, iso: f32) -> vec3<f32> {{
-    let t = clamp((iso - d1) / (d2 - d1 + 1e-10), 0.0, 1.0);
-    return mix(p1, p2, t);
+// Iso crossing on the edge p0 -> p1 evaluated from p0, the lower endpoint
+// (the CPU marching cubes interpolation).
+fn interpolate_edge(p0: vec3<f32>, p1: vec3<f32>, d0: f32, d1: f32, iso: f32) -> vec3<f32> {{
+    let denom = d1 - d0;
+    let safe = select(-max(abs(denom), 1e-10), max(abs(denom), 1e-10), denom >= 0.0);
+    let t = clamp((iso - d0) / safe, 0.0, 1.0);
+    return p0 + (p1 - p0) * t;
 }}
 
 fn estimate_normal(p: vec3<f32>) -> vec3<f32> {{
@@ -203,127 +269,135 @@ fn estimate_normal(p: vec3<f32>) -> vec3<f32> {{
     );
 }}
 
-@compute @workgroup_size(64)
+fn emit(slot: u32, p: vec3<f32>) {{
+    let n = estimate_normal(p);
+    output_vertices[slot].px = p.x;
+    output_vertices[slot].py = p.y;
+    output_vertices[slot].pz = p.z;
+    output_vertices[slot].nx = n.x;
+    output_vertices[slot].ny = n.y;
+    output_vertices[slot].nz = n.z;
+    output_vertices[slot]._pad0 = 0.0;
+    output_vertices[slot]._pad1 = 0.0;
+}}
+
+@compute @workgroup_size(4, 4, 4)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let res = uniforms.resolution;
-    let total_cells = res * res * res;
-    let cell_idx = gid.x;
-
-    if (cell_idx >= total_cells) {{
+    let g = res + 1u;
+    if (gid.x >= g || gid.y >= g || gid.z >= g) {{
         return;
     }}
-
-    let cube_index = cell_cube_indices[cell_idx];
-    if (cube_index == 0u || cube_index == 255u) {{
-        return;
-    }}
-
-    // Reconstruct 3D coords from flat index
-    let cx = cell_idx % res;
-    let cy = (cell_idx / res) % res;
-    let cz = cell_idx / (res * res);
-
-    let grid_res = res + 1u;
+    let i = gid.x + gid.y * g + gid.z * g * g;
+    let d0 = sdf_grid[i];
+    let a = is_inside(d0);
     let iso = uniforms.iso_level;
-
-    // Grid corner positions
-    let p0 = grid_to_world(f32(cx), f32(cy), f32(cz));
-    let p1 = grid_to_world(f32(cx + 1u), f32(cy), f32(cz));
-    let p2 = grid_to_world(f32(cx + 1u), f32(cy), f32(cz + 1u));
-    let p3 = grid_to_world(f32(cx), f32(cy), f32(cz + 1u));
-    let p4 = grid_to_world(f32(cx), f32(cy + 1u), f32(cz));
-    let p5 = grid_to_world(f32(cx + 1u), f32(cy + 1u), f32(cz));
-    let p6 = grid_to_world(f32(cx + 1u), f32(cy + 1u), f32(cz + 1u));
-    let p7 = grid_to_world(f32(cx), f32(cy + 1u), f32(cz + 1u));
-
-    // 8 corner distances
-    let i000 = cx       + cy       * grid_res + cz       * grid_res * grid_res;
-    let i100 = (cx + 1u) + cy       * grid_res + cz       * grid_res * grid_res;
-    let i110 = (cx + 1u) + (cy + 1u) * grid_res + cz       * grid_res * grid_res;
-    let i010 = cx       + (cy + 1u) * grid_res + cz       * grid_res * grid_res;
-    let i001 = cx       + cy       * grid_res + (cz + 1u) * grid_res * grid_res;
-    let i101 = (cx + 1u) + cy       * grid_res + (cz + 1u) * grid_res * grid_res;
-    let i111 = (cx + 1u) + (cy + 1u) * grid_res + (cz + 1u) * grid_res * grid_res;
-    let i011 = cx       + (cy + 1u) * grid_res + (cz + 1u) * grid_res * grid_res;
-
-    // Table corner numbering (Bourke): 0-3 on the y = 0 face (x, then z),
-    // 4-7 on the y = 1 face — same as CORNER_OFFSETS on the CPU path.
-    let d0 = sdf_grid[i000];
-    let d1 = sdf_grid[i100];
-    let d2 = sdf_grid[i101];
-    let d3 = sdf_grid[i001];
-    let d4 = sdf_grid[i010];
-    let d5 = sdf_grid[i110];
-    let d6 = sdf_grid[i111];
-    let d7 = sdf_grid[i011];
-
-    // Interpolate edge vertices
-    var edge_verts: array<vec3<f32>, 12>;
-    edge_verts[0] = interpolate_edge(p0, p1, d0, d1, iso);   // 0-1
-    edge_verts[1] = interpolate_edge(p1, p2, d1, d2, iso);   // 1-2
-    edge_verts[2] = interpolate_edge(p2, p3, d2, d3, iso);   // 2-3 (reversed: was 3-2)
-    edge_verts[3] = interpolate_edge(p3, p0, d3, d0, iso);   // 3-0
-    edge_verts[4] = interpolate_edge(p4, p5, d4, d5, iso);   // 4-5
-    edge_verts[5] = interpolate_edge(p5, p6, d5, d6, iso);   // 5-6
-    edge_verts[6] = interpolate_edge(p6, p7, d6, d7, iso);   // 6-7 (reversed: was 7-6)
-    edge_verts[7] = interpolate_edge(p7, p4, d7, d4, iso);   // 7-4
-    edge_verts[8] = interpolate_edge(p0, p4, d0, d4, iso);   // 0-4
-    edge_verts[9] = interpolate_edge(p1, p5, d1, d5, iso);   // 1-5
-    edge_verts[10] = interpolate_edge(p2, p6, d2, d6, iso);  // 2-6
-    edge_verts[11] = interpolate_edge(p3, p7, d3, d7, iso);  // 3-7
-
-    // Write triangles using TRI_TABLE
-    let base_offset = cell_offsets[cell_idx];
-    var vert_idx = base_offset;
-    let tri_row = cube_index * 16u;
-
-    for (var i = 0u; i < 16u; i += 3u) {{
-        let e0 = TRI_TABLE[tri_row + i];
-        if (e0 < 0) {{
-            break;
+    let p0 = lattice(gid.x, gid.y, gid.z);
+    var slot = point_offsets[i];
+    if (gid.x < res) {{
+        let d1 = sdf_grid[i + 1u];
+        if (a != is_inside(d1)) {{
+            emit(slot, interpolate_edge(p0, lattice(gid.x + 1u, gid.y, gid.z), d0, d1, iso));
+            slot += 1u;
         }}
-        let e1 = TRI_TABLE[tri_row + i + 1u];
-        let e2 = TRI_TABLE[tri_row + i + 2u];
-
-        let v0 = edge_verts[e0];
-        let v1 = edge_verts[e1];
-        let v2 = edge_verts[e2];
-
-        let n0 = estimate_normal(v0);
-        let n1 = estimate_normal(v1);
-        let n2 = estimate_normal(v2);
-
-        output_vertices[vert_idx].px = v0.x;
-        output_vertices[vert_idx].py = v0.y;
-        output_vertices[vert_idx].pz = v0.z;
-        output_vertices[vert_idx].nx = n0.x;
-        output_vertices[vert_idx].ny = n0.y;
-        output_vertices[vert_idx].nz = n0.z;
-        vert_idx += 1u;
-
-        output_vertices[vert_idx].px = v1.x;
-        output_vertices[vert_idx].py = v1.y;
-        output_vertices[vert_idx].pz = v1.z;
-        output_vertices[vert_idx].nx = n1.x;
-        output_vertices[vert_idx].ny = n1.y;
-        output_vertices[vert_idx].nz = n1.z;
-        vert_idx += 1u;
-
-        output_vertices[vert_idx].px = v2.x;
-        output_vertices[vert_idx].py = v2.y;
-        output_vertices[vert_idx].pz = v2.z;
-        output_vertices[vert_idx].nx = n2.x;
-        output_vertices[vert_idx].ny = n2.y;
-        output_vertices[vert_idx].nz = n2.z;
-        vert_idx += 1u;
+    }}
+    if (gid.y < res) {{
+        let d1 = sdf_grid[i + g];
+        if (a != is_inside(d1)) {{
+            emit(slot, interpolate_edge(p0, lattice(gid.x, gid.y + 1u, gid.z), d0, d1, iso));
+            slot += 1u;
+        }}
+    }}
+    if (gid.z < res) {{
+        let d1 = sdf_grid[i + g * g];
+        if (a != is_inside(d1)) {{
+            emit(slot, interpolate_edge(p0, lattice(gid.x, gid.y, gid.z + 1u), d0, d1, iso));
+        }}
     }}
 }}
 ",
+        common = EDGE_COMMON,
         sdf_func = sdf_shader.source,
     )
 }
 
-/// The flat triangle table Pass 3 reads through its `TRI_TABLE` storage
+/// Generate Pass 4 shader: triangle indices
+///
+/// For each non-empty cell, writes the triangle table's corners as indices
+/// of the Pass 3 edge vertices (lower grid point offset + crossings at that
+/// point along lower axes), at the cell's offset (exclusive prefix sum of
+/// the Pass 2 counts).
+pub(crate) fn generate_cell_index_shader() -> String {
+    format!(
+        r"// ALICE-SDF GPU Marching Cubes - Pass 4: Triangle Indices
+
+@group(0) @binding(0) var<storage, read> sdf_grid: array<f32>;
+@group(0) @binding(1) var<uniform> uniforms: GridUniforms;
+@group(0) @binding(2) var<storage, read> cell_offsets: array<u32>;
+@group(0) @binding(3) var<storage, read> cell_cube_indices: array<u32>;
+@group(0) @binding(4) var<storage, read_write> output_indices: array<u32>;
+// Triangle table (256 x 16, -1 terminated) as a buffer rather than a WGSL
+// const array<i32, 4096>: naga's HLSL backend lowers a dynamically indexed
+// module constant into indexable temporaries and FXC rejects the shader
+// (X4505: sum of temp registers exceeds limit of 4096) on DX12 / WARP.
+@group(0) @binding(5) var<storage, read> TRI_TABLE: array<i32>;
+@group(0) @binding(6) var<storage, read> point_offsets: array<u32>;
+{EDGE_COMMON}
+// Lower corner offset (xyz) and axis (w) of cube edge e, Bourke numbering
+// (corners 0-3 on the y = 0 face, 4-7 on y = 1, as CORNER_OFFSETS).
+fn edge_lower_axis(e: i32) -> vec4<u32> {{
+    switch e {{
+        case 0: {{ return vec4<u32>(0u, 0u, 0u, 0u); }}
+        case 1: {{ return vec4<u32>(1u, 0u, 0u, 2u); }}
+        case 2: {{ return vec4<u32>(0u, 0u, 1u, 0u); }}
+        case 3: {{ return vec4<u32>(0u, 0u, 0u, 2u); }}
+        case 4: {{ return vec4<u32>(0u, 1u, 0u, 0u); }}
+        case 5: {{ return vec4<u32>(1u, 1u, 0u, 2u); }}
+        case 6: {{ return vec4<u32>(0u, 1u, 1u, 0u); }}
+        case 7: {{ return vec4<u32>(0u, 1u, 0u, 2u); }}
+        case 8: {{ return vec4<u32>(0u, 0u, 0u, 1u); }}
+        case 9: {{ return vec4<u32>(1u, 0u, 0u, 1u); }}
+        case 10: {{ return vec4<u32>(1u, 0u, 1u, 1u); }}
+        default: {{ return vec4<u32>(0u, 0u, 1u, 1u); }}
+    }}
+}}
+
+fn edge_vertex(cx: u32, cy: u32, cz: u32, e: i32) -> u32 {{
+    let g = uniforms.resolution + 1u;
+    let la = edge_lower_axis(e);
+    let x = cx + la.x;
+    let y = cy + la.y;
+    let z = cz + la.z;
+    return point_offsets[x + y * g + z * g * g] + crossings_below(x, y, z, la.w);
+}}
+
+@compute @workgroup_size(4, 4, 4)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let res = uniforms.resolution;
+    if (gid.x >= res || gid.y >= res || gid.z >= res) {{
+        return;
+    }}
+    let cell_idx = gid.x + gid.y * res + gid.z * res * res;
+    let cube_index = cell_cube_indices[cell_idx];
+    if (cube_index == 0u || cube_index == 255u) {{
+        return;
+    }}
+    var slot = cell_offsets[cell_idx];
+    let row = cube_index * 16u;
+    for (var k = 0u; k < 16u; k += 1u) {{
+        let e = TRI_TABLE[row + k];
+        if (e < 0) {{
+            break;
+        }}
+        output_indices[slot] = edge_vertex(gid.x, gid.y, gid.z, e);
+        slot += 1u;
+    }}
+}}
+"
+    )
+}
+
+/// The flat triangle table Pass 4 reads through its `TRI_TABLE` storage
 /// binding (256 rows × 16, `-1` terminated).
 pub fn tri_table_flat() -> Vec<i32> {
     get_tri_table()

@@ -235,9 +235,10 @@ impl Default for Mesh {
 
 /// Convert an SDF to a mesh using marching cubes
 ///
-/// Produces a watertight mesh with shared vertices across cell boundaries.
-/// When UVs are enabled, tangent vectors are computed using MikkTSpace-compatible
-/// UV gradient method for correct normal map rendering in all major engines.
+/// Produces a closed mesh whose vertices are shared across cell boundaries:
+/// see [`marching_cubes`]. When UVs are enabled, tangent vectors are computed
+/// using the MikkTSpace-compatible UV gradient method for correct normal map
+/// rendering in all major engines.
 ///
 /// # Arguments
 /// * `node` - The SDF tree
@@ -250,12 +251,6 @@ impl Default for Mesh {
 pub fn sdf_to_mesh(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCubesConfig) -> Mesh {
     let mut mesh = marching_cubes(node, min, max, config);
 
-    // Deduplicate vertices for watertight mesh (shared vertices across cell boundaries).
-    // Marching cubes Z-slab parallelization creates duplicate vertices on slab boundaries;
-    // dedup merges them so adjacent triangles share vertices → manifold mesh.
-    super::optimize::deduplicate_vertices(&mut mesh);
-
-    // Compute MikkTSpace-compatible tangents from UV gradients (post-dedup so topology is correct)
     if config.compute_tangents && config.compute_normals && config.compute_uvs {
         compute_mikktspace_tangents(&mut mesh);
     }
@@ -263,13 +258,37 @@ pub fn sdf_to_mesh(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCubesC
     mesh
 }
 
-/// Marching cubes algorithm implementation (Deep Fried Edition)
+/// Marching cubes on a `config.resolution`³ grid over `[min, max]`.
 ///
-/// Parallelized by Z-slabs to maximize throughput while avoiding mutex contention.
+/// Every vertex belongs to one lattice edge (its lower lattice point and an
+/// axis) and is computed once, from that edge's lower endpoint; the cells
+/// around the edge refer to it by index. The mesh is therefore closed and
+/// 2-manifold without any welding by position, and adjacent cells cannot
+/// disagree on a vertex. A lattice point whose value equals `iso_level` is
+/// outside (only `value < iso_level` is inside), on the edges and in the
+/// cell classification alike.
+///
+/// Such a lattice point is reached by the crossing on every edge from it to
+/// an inside neighbour, and each of those edges keeps its own vertex: the
+/// mesh can hold **several vertices with the same position** (one per edge,
+/// separate indices) and **zero-area triangles** between them. The index
+/// buffer stays a closed 2-manifold; merging those vertices by position
+/// would collapse their fan and can pinch the surface. A consumer that
+/// identifies vertices by position (STL, a positional weld) sees the zero-area
+/// triangles as degenerate faces. For a sphere of integer radius on an
+/// integer lattice, `tests/test_mc_shared_vertex_oracle.rs` pins both counts
+/// in closed form.
+///
+/// The vertex normal is the SDF gradient at the
+/// vertex position (`compute_normals`), or the area-weighted mean of the
+/// adjacent face normals otherwise.
+///
+/// Until 5.0 every triangle corner was a separate vertex and callers welded
+/// by position, which left open or pinched edges wherever the copies
+/// differed in the last bits or a lattice point sat on the surface.
 pub fn marching_cubes(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCubesConfig) -> Mesh {
     let resolution = config.resolution;
-    let size = max - min;
-    let cell_size = size / resolution as f32;
+    let cell_size = (max - min) / resolution as f32;
 
     // Evaluate SDF on grid. The grid is the hot loop of mesh generation
     // ((res + 1)³ evaluations, 2.1 M at res 128): compile once and run the
@@ -283,11 +302,7 @@ pub fn marching_cubes(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCub
         let x = i % grid_size;
         let y = (i / grid_size) % grid_size;
         let z = i / (grid_size * grid_size);
-        min + Vec3::new(
-            x as f32 * cell_size.x,
-            y as f32 * cell_size.y,
-            z as f32 * cell_size.z,
-        )
+        lattice_point(min, cell_size, [x, y, z])
     };
     let values: Vec<f32> = match CompiledSdf::try_compile(node) {
         Ok(compiled) => {
@@ -300,33 +315,217 @@ pub fn marching_cubes(node: &SdfNode, min: Vec3, max: Vec3, config: &MarchingCub
             .collect(),
     };
 
-    // Z-slab parallelization: each Z processes independently, then merge
-    let sub_meshes: Vec<Mesh> = (0..resolution)
+    let (positions, indices) =
+        extract_shared_vertices(&values, resolution, min, cell_size, config.iso_level);
+    let material = |p: Vec3| eval_material(node, p);
+    build_mesh(
+        positions,
+        indices,
+        config,
+        |p| normal(node, p, 0.001),
+        config.compute_materials.then_some(&material),
+    )
+}
+
+/// Lattice point `g` of the grid with corner `min` and spacing `cell`.
+///
+/// The one formula for a lattice position on the CPU path; the GPU path
+/// uploads the per-axis coordinates computed with it, so both evaluate the
+/// field at bit-identical points.
+#[inline(always)]
+pub fn lattice_point(min: Vec3, cell: Vec3, g: [usize; 3]) -> Vec3 {
+    min + Vec3::new(
+        g[0] as f32 * cell.x,
+        g[1] as f32 * cell.y,
+        g[2] as f32 * cell.z,
+    )
+}
+
+/// The inside test of every marching cubes path: strictly below the
+/// iso-level. A value equal to the iso-level is outside, so a lattice point
+/// on the surface belongs to exactly one side and the edge and cell
+/// classifications cannot disagree.
+#[inline(always)]
+fn is_inside(value: f32, iso_level: f32) -> bool {
+    value < iso_level
+}
+
+/// For each of the 12 cube edges (table numbering): the offset of its lower
+/// corner and its axis (0 = x, 1 = y, 2 = z), derived from
+/// [`CORNER_OFFSETS`] and [`EDGE_CONNECTIONS`].
+const EDGE_LOWER_AXIS: [([usize; 3], usize); 12] = edge_lower_axis();
+
+const fn edge_lower_axis() -> [([usize; 3], usize); 12] {
+    let mut out = [([0usize; 3], 0usize); 12];
+    let mut e = 0;
+    while e < 12 {
+        let a = CORNER_OFFSETS[EDGE_CONNECTIONS[e][0]];
+        let b = CORNER_OFFSETS[EDGE_CONNECTIONS[e][1]];
+        let mut lo = [0usize; 3];
+        let mut axis = 0usize;
+        let mut k = 0;
+        while k < 3 {
+            lo[k] = if a[k] < b[k] { a[k] } else { b[k] };
+            if a[k] != b[k] {
+                axis = k;
+            }
+            k += 1;
+        }
+        out[e] = (lo, axis);
+        e += 1;
+    }
+    out
+}
+
+/// Shared-vertex marching cubes on a grid of `(res + 1)³` values (x fastest,
+/// then y, then z).
+///
+/// Pass 1 visits every lattice edge once, z-layer by z-layer in parallel,
+/// and emits a vertex for each sign change, interpolated from the edge's
+/// lower endpoint. The vertex order (lattice point, then axis) makes the
+/// edge ids ascending, so pass 2 — the cells, z-slab by z-slab — finds a
+/// cell edge's vertex by binary search. Both passes concatenate their slabs
+/// in z order, so the output is the same for any thread count.
+///
+/// Returns `(positions, triangle indices)`.
+fn extract_shared_vertices(
+    values: &[f32],
+    res: usize,
+    min: Vec3,
+    cell: Vec3,
+    iso_level: f32,
+) -> (Vec<Vec3>, Vec<u32>) {
+    let g = res + 1;
+    let stride = [1, g, g * g];
+    debug_assert_eq!(values.len(), g * g * g);
+
+    let layers: Vec<(Vec<u64>, Vec<Vec3>)> = (0..g)
         .into_par_iter()
         .map(|z| {
-            let mut slab_mesh = Mesh::new();
-            for y in 0..resolution {
-                for x in 0..resolution {
-                    process_cell(
-                        node,
-                        &values,
-                        x,
-                        y,
-                        z,
-                        grid_size,
-                        min,
-                        cell_size,
-                        config,
-                        &mut slab_mesh,
-                    );
+            let mut ids = Vec::new();
+            let mut pos = Vec::new();
+            for y in 0..g {
+                for x in 0..g {
+                    let c = [x, y, z];
+                    let i = x + y * g + z * g * g;
+                    let va = values[i];
+                    let inside_a = is_inside(va, iso_level);
+                    for axis in 0..3 {
+                        if c[axis] == res {
+                            continue;
+                        }
+                        let vb = values[i + stride[axis]];
+                        if inside_a == is_inside(vb, iso_level) {
+                            continue;
+                        }
+                        let mut cb = c;
+                        cb[axis] += 1;
+                        let (p, _, _) = interpolate_edge(
+                            lattice_point(min, cell, c),
+                            lattice_point(min, cell, cb),
+                            va,
+                            vb,
+                            iso_level,
+                        );
+                        ids.push(i as u64 * 3 + axis as u64);
+                        pos.push(p);
+                    }
                 }
             }
-            slab_mesh
+            (ids, pos)
         })
         .collect();
+    let total: usize = layers.iter().map(|l| l.0.len()).sum();
+    let mut ids = Vec::with_capacity(total);
+    let mut positions = Vec::with_capacity(total);
+    for (i, p) in layers {
+        ids.extend(i);
+        positions.extend(p);
+    }
 
-    // Merge sub-meshes (sequential but fast - just concatenation)
-    merge_meshes(sub_meshes)
+    let slabs: Vec<Vec<u32>> = (0..res)
+        .into_par_iter()
+        .map(|z| {
+            let mut out = Vec::new();
+            for y in 0..res {
+                for x in 0..res {
+                    let mut cube_index = 0usize;
+                    for (k, off) in CORNER_OFFSETS.iter().enumerate() {
+                        let i = (x + off[0]) + (y + off[1]) * g + (z + off[2]) * g * g;
+                        if is_inside(values[i], iso_level) {
+                            cube_index |= 1 << k;
+                        }
+                    }
+                    if EDGE_TABLE[cube_index] == 0 {
+                        continue;
+                    }
+                    let tri = &TRI_TABLE[cube_index];
+                    let mut t = 0;
+                    while tri[t] != -1 {
+                        let (lo, axis) = EDGE_LOWER_AXIS[tri[t] as usize];
+                        let i = (x + lo[0]) + (y + lo[1]) * g + (z + lo[2]) * g * g;
+                        let id = i as u64 * 3 + axis as u64;
+                        let v = ids.binary_search(&id).unwrap_or_else(|_| {
+                            unreachable!("cell edge {id} has no vertex: edge and cell classifications disagree")
+                        });
+                        out.push(v as u32);
+                        t += 1;
+                    }
+                }
+            }
+            out
+        })
+        .collect();
+    let indices = slabs.concat();
+    (positions, indices)
+}
+
+/// Attach the per-vertex attributes `config` asks for to a shared-vertex
+/// marching cubes surface. Each attribute is a function of the vertex
+/// position alone (or, without `compute_normals`, of the adjacent faces), so
+/// a vertex has one value whichever cell refers to it.
+fn build_mesh(
+    positions: Vec<Vec3>,
+    indices: Vec<u32>,
+    config: &MarchingCubesConfig,
+    gradient_normal: impl Fn(Vec3) -> Vec3 + Sync,
+    material: Option<&(dyn Fn(Vec3) -> u32 + Sync)>,
+) -> Mesh {
+    let normals: Vec<Vec3> = if config.compute_normals {
+        positions.par_iter().map(|&p| gradient_normal(p)).collect()
+    } else {
+        let mut acc = vec![Vec3::ZERO; positions.len()];
+        for t in indices.chunks_exact(3) {
+            let [a, b, c] = [t[0], t[1], t[2]].map(|i| i as usize);
+            let n = (positions[b] - positions[a]).cross(positions[c] - positions[a]);
+            acc[a] += n;
+            acc[b] += n;
+            acc[c] += n;
+        }
+        acc.into_iter()
+            .map(|n| n.try_normalize().unwrap_or(Vec3::Y))
+            .collect()
+    };
+    let inv_uv = 1.0 / config.uv_scale;
+    let vertices: Vec<Vertex> = positions
+        .par_iter()
+        .zip(normals.par_iter())
+        .map(|(&p, &n)| {
+            let mut v = Vertex::new(p, n);
+            if config.compute_uvs {
+                v.uv = triplanar_uv(p, n, inv_uv);
+            }
+            // With UVs, tangents come from the MikkTSpace pass in sdf_to_mesh.
+            if config.compute_tangents && config.compute_normals && !config.compute_uvs {
+                v.tangent = compute_tangent(n);
+            }
+            if let Some(m) = material {
+                v.material_id = m(p);
+            }
+            v
+        })
+        .collect();
+    Mesh { vertices, indices }
 }
 
 /// Merge multiple sub-meshes into a single mesh (Deep Fried)
@@ -352,136 +551,6 @@ fn merge_meshes(sub_meshes: Vec<Mesh>) -> Mesh {
     merged
 }
 
-/// Process a single cell in the marching cubes grid (Deep Fried)
-#[allow(clippy::too_many_arguments)]
-#[inline(always)]
-fn process_cell(
-    node: &SdfNode,
-    values: &[f32],
-    x: usize,
-    y: usize,
-    z: usize,
-    grid_size: usize,
-    min: Vec3,
-    cell_size: Vec3,
-    config: &MarchingCubesConfig,
-    mesh: &mut Mesh,
-) {
-    // Get corner values
-    let mut corner_values = [0.0f32; 8];
-    let mut corner_positions = [Vec3::ZERO; 8];
-
-    #[allow(clippy::needless_range_loop)]
-    for i in 0..8 {
-        let dx = CORNER_OFFSETS[i][0];
-        let dy = CORNER_OFFSETS[i][1];
-        let dz = CORNER_OFFSETS[i][2];
-
-        let gx = x + dx;
-        let gy = y + dy;
-        let gz = z + dz;
-
-        let idx = gx + gy * grid_size + gz * grid_size * grid_size;
-        corner_values[i] = values[idx];
-
-        corner_positions[i] = min
-            + Vec3::new(
-                gx as f32 * cell_size.x,
-                gy as f32 * cell_size.y,
-                gz as f32 * cell_size.z,
-            );
-    }
-
-    // Compute cube index
-    let mut cube_index = 0;
-    #[allow(clippy::needless_range_loop)]
-    for i in 0..8 {
-        if corner_values[i] < config.iso_level {
-            cube_index |= 1 << i;
-        }
-    }
-
-    // Skip if entirely inside or outside
-    if EDGE_TABLE[cube_index] == 0 {
-        return;
-    }
-
-    // Compute edge vertices
-    let mut edge_vertices = [Vec3::ZERO; 12];
-    for i in 0..12 {
-        if EDGE_TABLE[cube_index] & (1 << i) != 0 {
-            let e0 = EDGE_CONNECTIONS[i][0];
-            let e1 = EDGE_CONNECTIONS[i][1];
-
-            edge_vertices[i] = interpolate_vertex(
-                corner_positions[e0],
-                corner_positions[e1],
-                corner_values[e0],
-                corner_values[e1],
-                config.iso_level,
-            );
-        }
-    }
-
-    // Generate triangles
-    let mut i = 0;
-    while TRI_TABLE[cube_index][i] != -1 {
-        let v0 = edge_vertices[TRI_TABLE[cube_index][i] as usize];
-        let v1 = edge_vertices[TRI_TABLE[cube_index][i + 1] as usize];
-        let v2 = edge_vertices[TRI_TABLE[cube_index][i + 2] as usize];
-
-        let base_idx = mesh.vertices.len() as u32;
-
-        // Compute normals if requested
-        let (n0, n1, n2) = if config.compute_normals {
-            (
-                normal(node, v0, 0.001),
-                normal(node, v1, 0.001),
-                normal(node, v2, 0.001),
-            )
-        } else {
-            let face_normal = (v1 - v0).cross(v2 - v0).normalize();
-            (face_normal, face_normal, face_normal)
-        };
-
-        let mut vert0 = Vertex::new(v0, n0);
-        let mut vert1 = Vertex::new(v1, n1);
-        let mut vert2 = Vertex::new(v2, n2);
-
-        if config.compute_uvs {
-            // Division Exorcism: precompute reciprocal once per triangle
-            let inv_uv = 1.0 / config.uv_scale;
-            vert0.uv = triplanar_uv(v0, n0, inv_uv);
-            vert1.uv = triplanar_uv(v1, n1, inv_uv);
-            vert2.uv = triplanar_uv(v2, n2, inv_uv);
-        }
-
-        // When UVs are enabled, tangents are computed in post-processing via MikkTSpace.
-        // Only use the simple Gram-Schmidt fallback when UVs are NOT available.
-        if config.compute_tangents && config.compute_normals && !config.compute_uvs {
-            vert0.tangent = compute_tangent(n0);
-            vert1.tangent = compute_tangent(n1);
-            vert2.tangent = compute_tangent(n2);
-        }
-
-        if config.compute_materials {
-            vert0.material_id = eval_material(node, v0);
-            vert1.material_id = eval_material(node, v1);
-            vert2.material_id = eval_material(node, v2);
-        }
-
-        mesh.vertices.push(vert0);
-        mesh.vertices.push(vert1);
-        mesh.vertices.push(vert2);
-
-        mesh.indices.push(base_idx);
-        mesh.indices.push(base_idx + 1);
-        mesh.indices.push(base_idx + 2);
-
-        i += 3;
-    }
-}
-
 /// Linear interpolation along an edge (Deep Fried)
 ///
 /// Branchless NaN-safe: copysign ensures |denom| >= epsilon without branching.
@@ -500,8 +569,7 @@ pub fn interpolate_edge(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) ->
     // A grid edge is shared by up to four cells, each of which reaches it
     // through a different local edge (and endpoint order). Evaluating from a
     // canonical endpoint — the lexicographically smaller corner — makes the
-    // result bit-identical in every cell, so vertex deduplication merges the
-    // copies exactly and the mesh is closed. Until 1.10.3 the endpoint order
+    // result bit-identical in every cell. Until 1.10.3 the endpoint order
     // was the local one, the last bits differed between neighbours and
     // `sdf_to_mesh` left 16–64 open edges at res ≥ 64 (external review).
     let swapped = (p1.x, p1.y, p1.z) < (p0.x, p0.y, p0.z);
@@ -552,8 +620,6 @@ pub fn sdf_to_mesh_compiled(
 ) -> Mesh {
     let mut mesh = marching_cubes_compiled(sdf, min, max, config);
 
-    super::optimize::deduplicate_vertices(&mut mesh);
-
     if config.compute_tangents && config.compute_normals && config.compute_uvs {
         compute_mikktspace_tangents(&mut mesh);
     }
@@ -561,10 +627,16 @@ pub fn sdf_to_mesh_compiled(
     mesh
 }
 
-/// Marching cubes using compiled VM evaluator (Deep Fried Edition)
+/// Marching cubes using the compiled VM evaluator.
 ///
-/// Grid evaluation uses SIMD batch path for maximum throughput.
-/// Normal computation uses grid finite differences (no extra eval calls).
+/// The grid is evaluated with the SIMD batch path; the surface is extracted
+/// as in [`marching_cubes`] (shared vertices, one per lattice edge). The
+/// vertex normal is the central-difference gradient of the compiled field
+/// at the vertex position. Until 5.0 it was the grid gradient at the local
+/// edge's first endpoint, which differs between the cells sharing an edge
+/// (measured: 10,240 of 15,366 sphere vertices at res 64 got two normals, up
+/// to 103° apart at box corners), and the welded mesh stayed open.
+/// Material IDs need the tree ([`marching_cubes`]); this path leaves them 0.
 pub fn marching_cubes_compiled(
     sdf: &CompiledSdf,
     min: Vec3,
@@ -572,8 +644,7 @@ pub fn marching_cubes_compiled(
     config: &MarchingCubesConfig,
 ) -> Mesh {
     let resolution = config.resolution;
-    let size = max - min;
-    let cell_size = size / resolution as f32;
+    let cell_size = (max - min) / resolution as f32;
 
     let grid_size = resolution + 1;
     let total_points = grid_size * grid_size * grid_size;
@@ -584,226 +655,21 @@ pub fn marching_cubes_compiled(
             let x = i % grid_size;
             let y = (i / grid_size) % grid_size;
             let z = i / (grid_size * grid_size);
-            min + Vec3::new(
-                x as f32 * cell_size.x,
-                y as f32 * cell_size.y,
-                z as f32 * cell_size.z,
-            )
+            lattice_point(min, cell_size, [x, y, z])
         })
         .collect();
 
     let values = eval_compiled_batch_simd_parallel(sdf, &points);
 
-    let sub_meshes: Vec<Mesh> = (0..resolution)
-        .into_par_iter()
-        .map(|z| {
-            let mut slab_mesh = Mesh::new();
-            for y in 0..resolution {
-                for x in 0..resolution {
-                    process_cell_compiled(
-                        sdf,
-                        &values,
-                        x,
-                        y,
-                        z,
-                        grid_size,
-                        min,
-                        cell_size,
-                        config,
-                        &mut slab_mesh,
-                    );
-                }
-            }
-            slab_mesh
-        })
-        .collect();
-
-    merge_meshes(sub_meshes)
-}
-
-/// Compute normal from grid finite differences (zero eval calls)
-///
-/// Uses neighboring grid values to approximate the gradient via central differences.
-/// Falls back to `normal_compiled` for boundary cells where neighbors are unavailable.
-#[allow(clippy::too_many_arguments)]
-#[inline(always)]
-fn normal_from_grid(
-    sdf: &CompiledSdf,
-    vertex: Vec3,
-    values: &[f32],
-    gx: usize,
-    gy: usize,
-    gz: usize,
-    grid_size: usize,
-    cell_size: Vec3,
-) -> Vec3 {
-    let max_idx = grid_size - 1;
-    // Boundary check — need neighbors in all 6 directions
-    if gx == 0 || gx >= max_idx || gy == 0 || gy >= max_idx || gz == 0 || gz >= max_idx {
-        return normal_compiled(sdf, vertex, 0.001);
-    }
-
-    let idx =
-        |x: usize, y: usize, z: usize| -> usize { x + y * grid_size + z * grid_size * grid_size };
-
-    let grad = Vec3::new(
-        (values[idx(gx + 1, gy, gz)] - values[idx(gx - 1, gy, gz)]) / (2.0 * cell_size.x),
-        (values[idx(gx, gy + 1, gz)] - values[idx(gx, gy - 1, gz)]) / (2.0 * cell_size.y),
-        (values[idx(gx, gy, gz + 1)] - values[idx(gx, gy, gz - 1)]) / (2.0 * cell_size.z),
-    );
-
-    let len_sq = grad.length_squared();
-    if len_sq < 1e-20 {
-        return Vec3::Y;
-    }
-    grad / len_sq.sqrt()
-}
-
-/// Process a single marching cube cell using compiled evaluator
-///
-/// Normal computation uses grid finite differences when possible,
-/// eliminating 6 eval_compiled calls per vertex (the biggest per-vertex cost).
-#[allow(clippy::too_many_arguments)]
-fn process_cell_compiled(
-    sdf: &CompiledSdf,
-    values: &[f32],
-    x: usize,
-    y: usize,
-    z: usize,
-    grid_size: usize,
-    min: Vec3,
-    cell_size: Vec3,
-    config: &MarchingCubesConfig,
-    mesh: &mut Mesh,
-) {
-    let mut corner_values = [0.0f32; 8];
-    let mut corner_positions = [Vec3::ZERO; 8];
-
-    #[allow(clippy::needless_range_loop)]
-    for i in 0..8 {
-        let dx = CORNER_OFFSETS[i][0];
-        let dy = CORNER_OFFSETS[i][1];
-        let dz = CORNER_OFFSETS[i][2];
-
-        let gx = x + dx;
-        let gy = y + dy;
-        let gz = z + dz;
-
-        let idx = gx + gy * grid_size + gz * grid_size * grid_size;
-        corner_values[i] = values[idx];
-
-        corner_positions[i] = min
-            + Vec3::new(
-                gx as f32 * cell_size.x,
-                gy as f32 * cell_size.y,
-                gz as f32 * cell_size.z,
-            );
-    }
-
-    let mut cube_index = 0;
-    #[allow(clippy::needless_range_loop)]
-    for i in 0..8 {
-        if corner_values[i] < config.iso_level {
-            cube_index |= 1 << i;
-        }
-    }
-
-    if EDGE_TABLE[cube_index] == 0 {
-        return;
-    }
-
-    // Track which grid corners contributed to each edge vertex (for grid-normal lookup)
-    let mut edge_vertices = [Vec3::ZERO; 12];
-    let mut edge_grid_coords = [[0usize; 6]; 12]; // [gx0, gy0, gz0, gx1, gy1, gz1]
-    for i in 0..12 {
-        if EDGE_TABLE[cube_index] & (1 << i) != 0 {
-            let e0 = EDGE_CONNECTIONS[i][0];
-            let e1 = EDGE_CONNECTIONS[i][1];
-
-            edge_vertices[i] = interpolate_vertex(
-                corner_positions[e0],
-                corner_positions[e1],
-                corner_values[e0],
-                corner_values[e1],
-                config.iso_level,
-            );
-
-            // Store grid coords for both endpoints
-            edge_grid_coords[i] = [
-                x + CORNER_OFFSETS[e0][0],
-                y + CORNER_OFFSETS[e0][1],
-                z + CORNER_OFFSETS[e0][2],
-                x + CORNER_OFFSETS[e1][0],
-                y + CORNER_OFFSETS[e1][1],
-                z + CORNER_OFFSETS[e1][2],
-            ];
-        }
-    }
-
-    let mut i = 0;
-    while TRI_TABLE[cube_index][i] != -1 {
-        let ei0 = TRI_TABLE[cube_index][i] as usize;
-        let ei1 = TRI_TABLE[cube_index][i + 1] as usize;
-        let ei2 = TRI_TABLE[cube_index][i + 2] as usize;
-
-        let v0 = edge_vertices[ei0];
-        let v1 = edge_vertices[ei1];
-        let v2 = edge_vertices[ei2];
-
-        let base_idx = mesh.vertices.len() as u32;
-
-        let (n0, n1, n2) = if config.compute_normals {
-            // Use grid finite differences — pick the closer corner of each edge
-            let gc0 = &edge_grid_coords[ei0];
-            let gc1 = &edge_grid_coords[ei1];
-            let gc2 = &edge_grid_coords[ei2];
-            (
-                normal_from_grid(
-                    sdf, v0, values, gc0[0], gc0[1], gc0[2], grid_size, cell_size,
-                ),
-                normal_from_grid(
-                    sdf, v1, values, gc1[0], gc1[1], gc1[2], grid_size, cell_size,
-                ),
-                normal_from_grid(
-                    sdf, v2, values, gc2[0], gc2[1], gc2[2], grid_size, cell_size,
-                ),
-            )
-        } else {
-            let face_normal = (v1 - v0).cross(v2 - v0).normalize();
-            (face_normal, face_normal, face_normal)
-        };
-
-        let mut vert0 = Vertex::new(v0, n0);
-        let mut vert1 = Vertex::new(v1, n1);
-        let mut vert2 = Vertex::new(v2, n2);
-
-        if config.compute_uvs {
-            // Division Exorcism: precompute reciprocal once per triangle
-            let inv_uv = 1.0 / config.uv_scale;
-            vert0.uv = triplanar_uv(v0, n0, inv_uv);
-            vert1.uv = triplanar_uv(v1, n1, inv_uv);
-            vert2.uv = triplanar_uv(v2, n2, inv_uv);
-        }
-
-        if config.compute_tangents && config.compute_normals && !config.compute_uvs {
-            vert0.tangent = compute_tangent(n0);
-            vert1.tangent = compute_tangent(n1);
-            vert2.tangent = compute_tangent(n2);
-        }
-
-        // Note: material evaluation uses interpreted path (requires SdfNode)
-        // Compiled path does not support material assignment.
-
-        mesh.vertices.push(vert0);
-        mesh.vertices.push(vert1);
-        mesh.vertices.push(vert2);
-
-        mesh.indices.push(base_idx);
-        mesh.indices.push(base_idx + 1);
-        mesh.indices.push(base_idx + 2);
-
-        i += 3;
-    }
+    let (positions, indices) =
+        extract_shared_vertices(&values, resolution, min, cell_size, config.iso_level);
+    build_mesh(
+        positions,
+        indices,
+        config,
+        |p| normal_compiled(sdf, p, 0.001),
+        None,
+    )
 }
 
 // Corner offsets for the 8 corners of a cube, in the numbering of the

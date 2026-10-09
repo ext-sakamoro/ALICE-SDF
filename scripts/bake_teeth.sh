@@ -22,9 +22,9 @@ run() {
 kinds=(drop-face shrink-aabb no-scenes)
 gpu=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gpu"]["status"])' "$src/manifest.json")
 if [ "$gpu" = "ok" ]; then
-  kinds+=(gpu-vertex)
+  kinds+=(gpu-vertex gpu-extra-vertex)
 else
-  echo "SKIPPED: gpu-vertex mutation (this bake has no GPU mesh)"
+  echo "SKIPPED: gpu-vertex / gpu-extra-vertex mutations (this bake has no GPU mesh)"
 fi
 
 tmp=$(mktemp -d)
@@ -41,6 +41,7 @@ expect() {
     shrink-aabb) echo 'collider AABB .* does not contain' ;;
     no-scenes) echo 'no scene verified' ;;
     gpu-vertex) echo 'gpu-vs-cpu: vertex-to-surface distance' ;;
+    gpu-extra-vertex) echo 'gpu-vs-cpu: topology differs' ;;
   esac
 }
 

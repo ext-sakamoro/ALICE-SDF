@@ -146,13 +146,18 @@ fn sdf_to_mesh_is_watertight_with_shared_vertices() {
             m.vertices.len(),
             distinct_positions(&m)
         );
-        let distinct = distinct_positions(&m);
-        assert_eq!(
-            m.vertices.len(),
-            distinct,
-            "res {res}: {} vertices for {distinct} distinct positions",
-            m.vertices.len()
-        );
+        // Vertices are shared by lattice edge, not by position: a lattice
+        // point exactly on the surface gives one vertex per sign-changing
+        // edge at that point (same position, separate vertices), so the
+        // vertex count may exceed the distinct positions. The count is pinned
+        // in closed form by tests/test_mc_shared_vertex_oracle.rs; here every
+        // vertex must be used by a triangle.
+        let mut used = vec![false; m.vertices.len()];
+        for &i in &m.indices {
+            used[i as usize] = true;
+        }
+        let unused = used.iter().filter(|&&u| !u).count();
+        assert_eq!(unused, 0, "res {res}: {unused} unreferenced vertices");
     }
 }
 
