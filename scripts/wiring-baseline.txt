@@ -19,6 +19,7 @@ unwired src/font_bridge.rs::font_metrics
 unwired src/font_bridge.rs::glyph_to_sdf2d
 unwired src/font_bridge.rs::text_to_sdf2d
 unwired src/gi/mod.rs::PointLight
+unwired src/live_sdf.rs::wake_bodies_in
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
 unwired src/python/helpers.rs::numpy_to_vec3_fast

@@ -9,6 +9,7 @@ src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph
 src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function
 src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
 src/gi/mod.rs::PointLight
+src/live_sdf.rs::wake_bodies_in
 src/mesh/point_cloud_sdf.rs::PointCloudSdf::new
 src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf
 src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count

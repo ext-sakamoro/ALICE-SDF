@@ -27,7 +27,7 @@ Backend: ALICE-SDF Python binding (PyO3 経由) を import する必要あり。
 import importlib
 import importlib.util
 
-__version__ = "5.0.0"
+__version__ = "5.1.0"
 
 _alice_sdf = None
 

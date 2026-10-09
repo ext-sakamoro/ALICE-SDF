@@ -289,7 +289,7 @@ step "test: physics bridge determinism oracle"
 cargo test --features physics --test test_physics_bridge_determinism
 
 step "test: live SDF oracle (physics、ci.yml と対)"
-cargo test --features physics --test test_live_sdf_oracle
+cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop
 
 step "test: NPR shader validation (glsl + gpu、naga のみで GPU adapter 不要)"
 cargo test --features "glsl,gpu" --test npr_shader_validate

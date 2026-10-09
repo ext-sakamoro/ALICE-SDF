@@ -1,6 +1,6 @@
 {
   "name": "@alice-sdf/threejs",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "TypeScript wrapper for ALICE-SDF WebAssembly with Three.js helpers (and optional @react-three/fiber components)",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

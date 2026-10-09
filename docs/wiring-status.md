@@ -4,11 +4,11 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-🟡 **23 baseline items** — Permitted violations, ratchet in place
+🟡 **24 baseline items** — Permitted violations, ratchet in place
 
 ---
 
-## 📋 Baseline (23 permitted)
+## 📋 Baseline (24 permitted)
 
 Violations explicitly allowed via `scripts/wiring-baseline.txt`.
 Must resolve or remove from baseline to reduce ratchet.
@@ -26,6 +26,7 @@ Must resolve or remove from baseline to reduce ratchet.
 | `src/compiled/transpiler_common.rs` | 1 |
 | `src/gi/mod.rs` | 1 |
 | `src/io/asdf.rs` | 1 |
+| `src/live_sdf.rs` | 1 |
 | `src/modifiers/surface_roughness.rs` | 1 |
 | `src/neural.rs` | 1 |
 | `src/volume/export.rs` | 1 |
@@ -42,7 +43,7 @@ dead_code src/python/helpers.rs 1
 dead_code src/volume/export.rs 1
 ```
 
-### Unwired Items (16)
+### Unwired Items (17)
 
 ```
 unwired src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
@@ -58,6 +59,7 @@ unwired src/font_bridge.rs::font_metrics
 unwired src/font_bridge.rs::glyph_to_sdf2d
 unwired src/font_bridge.rs::text_to_sdf2d
 unwired src/gi/mod.rs::PointLight
+unwired src/live_sdf.rs::wake_bodies_in
 unwired src/modifiers/surface_roughness.rs::hash3_xyz
 unwired src/npr/compiled_color.rs::fallback_op_count
 unwired src/python/helpers.rs::numpy_to_vec3_fast

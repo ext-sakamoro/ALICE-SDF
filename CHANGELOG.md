@@ -9,6 +9,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Added
+- `LiveSdf::apply_world_contacts(policy, world, collider_index)`: world との接触 → crater の閉ループ `PhysicsWorld::last_step_sdf_contacts` (alice-physics 2.1) の記録を collider の姿勢で形の座標に直し、1 step に body ごとに最大 1 つの crater を削る (その body の最も速い記録、複数の substep にまたがる接触は 1 回の衝突) oracle `tests/test_live_sdf_closed_loop.rs` (原点から離し回転と scale を掛けた collider で、変換した点を f64 の逆姿勢と、crater の半径を衝突の則と、球が world 単位で crater の半径だけ沈むことを照合、遅い接触と別の collider では削らない)
+- `ImpactContact::from_world(contact, collider)`: world の接触記録を形の座標に直す (平行移動・回転・scale の逆、深さと接近速度は scale で割る)
 - `examples/bake_assets`: 代表的な 6 つの形 (球、箱、箱から球を引いたもの、smooth union、回転した帯、gyroid と球の交差) について、GPU marching cubes (`gpu-mesh`) と CPU marching cubes を同じ格子で作り、`.abm` (GPU / CPU)・`.glb`・`.nanite`・`.asdf` / `.asdf.json`・compiled bytecode・`manifest.json` (格子、mesh の頂点数と面数と AABB、コライダーのタイトな AABB・体積・重心・慣性テンソル、各 file の SHA-256、crate の版) を書き出し、書き出した file を読み直して検査する (水密、GPU と CPU の mesh の頂点から相手の面までの距離と面積差、頂点の |SDF| ≤ Lipschitz 定数 × 格子幅、球と箱の体積と慣性の閉形式、コライダーの AABB が mesh を含むこと、manifest と mesh の一致、検査した形が 0 件なら失敗) `verify` と、出力を 1 か所ずつ壊す `mutate` も持つ GPU が無い環境では GPU の mesh を飛ばしたことを明示し、`ALICE_SDF_REQUIRE_GPU=1` で失敗にする
 - `tests/test_bake_mass_oracle.rs`: bake の質量特性 (Eberly の多面体積分) を手計算の閉形式 (直角四面体、ずらした箱) と marching cubes の球の収束で照合、裏返し・空の入力は `None`
 - `scripts/bake_teeth.sh`: bake の出力を壊す 4 通り (GPU の頂点を半格子動かす / 面を 1 枚消す / コライダーの AABB を縮める / 形を 0 件にする) のそれぞれで `verify` が狙った検査で失敗することを確かめる
@@ -41,6 +43,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `tests/test_node_backend_matrix.rs`: 子を 1 つ持つ variant について、CPU で距離を変える entry の transpile 結果が子だけの transpile 結果と byte 一致した (素通し) のに `shader_unsupported_nodes` が空なら失敗する また子を 1 つ持つ全 variant (距離を変えないと定義された `Animated` / `WithMaterial` を除く) に距離を変える entry があることを要求する (corpus の `projective_transform` は単位行列で、素通しでも正しく描けていた)
 ### Changed
 - `docs/node-support.md` に glsl / wgsl / hlsl の列を足した (transpile 結果が子の素通しでないこと) 生成と照合の feature を `jit,msl,rust,glsl,hlsl` にし、CI の node backend support matrix step と preflight も同じ feature にした
+- `LiveSdf` が `SdfField::generation` (alice-physics 2.1) で generation を返すので、crater や modifier で形が変わった次の step で world が休止中の body を起こす `live_sdf` example は接触の手検出と body の起床をしなくなった
 - CI: `scripts/version_sync.py` が、crate の version を名乗る file (package.json / uplugin / DCC plugin の `__version__` / 下位の Cargo.toml 等) と、文書の依存行 (`alice-sdf = "X"` / `pip install` / `npm install`) を Cargo.toml の version と突き合わせる file ごとに「追従」か「独立 (理由つき)」を `scripts/version-sync.toml` に登録し、未登録の version 表記は失敗にする
 - CI: release の wheel を build するだけでなく、install して `python/tests/smoke.py` を走らせる (aarch64 Linux は x86_64 runner での cross build なので除く) smoke は `version()` と install された distribution の version が Cargo.toml と一致することも確かめる
 - CI: `.github/workflows/bake.yml` を追加 (`src/**` などを変える main への push と PR、`v*` tag、手動実行) lavapipe で bake と検査と `bake_teeth.sh` を走らせ、出力を artifact に残す (tag は 90 日、それ以外は 14 日) `scripts/preflight.sh` の full に bake の CPU 部分 (macOS では Metal の GPU 部分も) と `bake_teeth.sh` を足した
@@ -53,6 +56,11 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - 評価器と law の dir の外にあった platform libm の呼び出し 67 件を `alice-det-math` に移した 対象は区間演算と Lipschitz 定数 (`interval`)、前進微分 (`autodiff`)、`tight_aabb`、`validity`、`morphology`、mesh (`primitive_fitting` / `lod` / `nanite` / `optimize` / `quantization` / `meshopt_filter` / `uv_unwrap`)、`io::splat`、`neural`、`texture` (`fitting` / `spectrum`、`f64` は `log10_64` / `cos64`)、`destruction::debris`、`terrain::erosion` `powi(2)` は明示の積にした これらの出力は OS や CPU によらず同じ bit になる aarch64 の macOS で移行前後を比べた範囲 (corpus 全 node の区間・Lipschitz 定数・tight AABB、marching cubes / dual contouring / decimate / vertex cache / UV 展開 / lightmap UV / LOD / Nanite / primitive fitting、fbm と浸食後の heightmap、`test_det_golden` と VRChat golden) では bit が 1 つも変わらなかった (その platform の libm と一致していた)
 - 評価器と law の dir の外にあった `mul_add` 365 件を、2 回丸めの `a * b + c` に展開した (入れ子は内側から評価順を保って展開、`x = a * b + x` は `x += a * b`) `mul_add` 自体はどの platform でも同じ bit を返す この変更の目的は、同じ式を scalar / JIT / shader の経路で同じ丸め順にすること 値の変化 (aarch64 の macOS で展開前後を比較): 区間評価 (`interval::eval_interval`) は corpus の 4 node (neovius / lidinoid / frd / fischer_koch_s) で端点が 1 ulp 動いた dual contouring・UV 展開・lightmap UV・decimate (一部の形)・decimate 付き LOD・fbm heightmap と浸食は出力が変わった tree 評価器 (`test_det_golden` の全 node hash) と VRChat golden 7 本 (21762 点)、marching cubes・Lipschitz 定数・tight AABB・Nanite・LOD・primitive fitting・vertex cache 最適化は bit 単位で変わらなかった
 - `io::splat` の回転と `texture::noise_cpu` の回転を `alice_det_math::sin_cos` にした `compiled::real` の `f32` 用 `Real::mul_add` は融合する `f32::mul_add` を呼んでいたので、trait の約束と `f32x8` 実装に合わせて `a * b + c` にした (crate 内に呼び出し元は無い)
+
+### Deprecated
+
+- `live_sdf::wake_bodies_in`: `LiveSdf` の collider が変わると world が休止中の body を起こすので不要になった
+
 
 ## [5.0.0] - 2026-10-09
 

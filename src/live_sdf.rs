@@ -626,6 +626,52 @@ impl LiveSdf {
         }
         n
     }
+
+    /// Carve a crater for every body whose fastest contact in the last world
+    /// step against the SDF collider `collider_index` is accepted by `policy`,
+    /// and return how many were carved (at most one per body per step: the
+    /// records of several substeps of one touch are one impact)
+    ///
+    /// The records of [`alice_physics::PhysicsWorld::last_step_sdf_contacts`]
+    /// are in world space; each is converted into this shape's frame with the
+    /// collider's pose ([`ImpactContact::from_world`]) before the policy sees
+    /// it, so the policy's speeds and radii are in the shape's units. The
+    /// world wakes resting bodies on the next step because the shape's
+    /// [`SdfField::generation`] changed. Returns 0 when `collider_index` is out
+    /// of range.
+    pub fn apply_world_contacts(
+        &self,
+        policy: &FracturePolicy,
+        world: &alice_physics::PhysicsWorld,
+        collider_index: usize,
+    ) -> usize {
+        let Some(collider) = world.sdf_colliders.get(collider_index) else {
+            return 0;
+        };
+        // One impact per body per step: a body touching for several substeps
+        // leaves a record per substep, and they are one hit, so only the
+        // fastest record of each body is used (ties: the earliest).
+        let mut fastest: Vec<&alice_physics::sdf_collider::SdfContact> = Vec::new();
+        for c in world
+            .last_step_sdf_contacts()
+            .iter()
+            .filter(|c| c.collider_index == collider_index)
+        {
+            match fastest.iter_mut().find(|f| f.body_index == c.body_index) {
+                Some(f) => {
+                    if c.approach_speed > f.approach_speed {
+                        *f = c;
+                    }
+                }
+                None => fastest.push(c),
+            }
+        }
+        let contacts: Vec<ImpactContact> = fastest
+            .into_iter()
+            .map(|c| ImpactContact::from_world(c, collider))
+            .collect();
+        self.apply_impacts(policy, &contacts)
+    }
 }
 
 fn changes_since(s: &LiveState, generation: u64) -> Changes {
@@ -650,6 +696,13 @@ impl SdfField for LiveSdf {
     #[inline]
     fn distance(&self, x: f32, y: f32, z: f32) -> f32 {
         self.eval(Vec3::new(x, y, z))
+    }
+
+    /// The shape's [`LiveSdf::generation`], so the world wakes resting bodies
+    /// when a crater or a modifier changes the shape (alice-physics 2.1)
+    #[inline]
+    fn generation(&self) -> u64 {
+        Self::generation(self)
     }
 
     fn normal(&self, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
@@ -833,12 +886,16 @@ impl Participant for LiveSdf {
 /// `regions` widened by `margin` (a body's collision radius, say), and
 /// return how many were woken.
 ///
-/// A shape change does not wake bodies by itself: the world parks a body
-/// that came to rest, and a parked body does not query the collider again,
-/// so a crater carved under a resting body leaves it hovering. Call this
-/// with the `regions` of [`LiveSdf::changes_since`] after editing. The regions
-/// are in the shape's own frame, the world frame for a collider placed at
-/// the origin without rotation or scale.
+/// Not needed for a [`LiveSdf`] collider since alice-physics 2.1: the shape
+/// reports its [`SdfField::generation`], and the world wakes its resting
+/// bodies on the step after a change. Kept for callers that wake only the
+/// bodies near a change. The regions are in the shape's own frame, the
+/// world frame for a collider placed at the origin without rotation or
+/// scale.
+#[deprecated(
+    since = "5.1.0",
+    note = "the world wakes resting bodies when a LiveSdf collider changes (alice-physics 2.1)"
+)]
 pub fn wake_bodies_in(
     world: &mut alice_physics::PhysicsWorld,
     regions: &[DirtyRegion],
@@ -892,6 +949,44 @@ pub struct ImpactContact {
     pub approach_speed: Fix128,
     /// Substep of the step in which the contact was recorded.
     pub substep: u32,
+}
+
+impl ImpactContact {
+    /// A world contact record converted into the frame of the shape that
+    /// `collider` places in the world
+    ///
+    /// The point is moved by the inverse of the collider's pose (translation,
+    /// rotation, uniform scale, the transform the collider evaluates its field
+    /// through), the normal by the inverse rotation, and the depth and the
+    /// approach speed are divided by the scale so they are lengths and speeds
+    /// in the shape's units.
+    pub fn from_world(
+        contact: &alice_physics::sdf_collider::SdfContact,
+        collider: &alice_physics::sdf_collider::SdfCollider,
+    ) -> Self {
+        let inv_rotation = collider.rotation.conjugate();
+        let local = inv_rotation.rotate_vec(contact.point - collider.position);
+        let normal = inv_rotation.rotate_vec(contact.normal);
+        let scale = collider.scale;
+        let (point, depth, approach_speed) = if scale == Fix128::ONE || scale.is_zero() {
+            (local, contact.depth, contact.approach_speed)
+        } else {
+            (
+                Vec3Fix::new(local.x / scale, local.y / scale, local.z / scale),
+                contact.depth / scale,
+                contact.approach_speed / scale,
+            )
+        };
+        Self {
+            body_index: contact.body_index,
+            collider_index: contact.collider_index,
+            point,
+            normal,
+            depth,
+            approach_speed,
+            substep: u32::try_from(contact.substep).unwrap_or(u32::MAX),
+        }
+    }
 }
 
 /// Which contacts carve a crater, and how large.

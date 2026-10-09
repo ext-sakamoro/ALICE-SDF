@@ -176,7 +176,7 @@ jobs:
 
       # LiveSdf: one shape for the physics world (collider + participant) and the chunked mesh
       - name: Test (integration, live SDF oracle — physics)
-        run: cargo test --features physics --test test_live_sdf_oracle
+        run: cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop
 
       # naga の parse / validate のみで GPU adapter は使わない (gpu feature は naga を引くため)
       - name: Test (integration, NPR shader validation — glsl + gpu)

@@ -15,8 +15,7 @@ use alice_physics::world_participant::Participant;
 use alice_physics::{Fix128, PhysicsConfig, PhysicsWorld, QuatFix, RigidBody, Vec3Fix};
 use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::live_sdf::{
-    wake_bodies_in, DirtyRegion, FracturePolicy, ImpactContact, LiveMesh, LiveMeshConfig, LiveSdf,
-    LiveSdfError,
+    DirtyRegion, FracturePolicy, ImpactContact, LiveMesh, LiveMeshConfig, LiveSdf, LiveSdfError,
 };
 use alice_sdf::mesh::Mesh;
 use alice_sdf::physics_bridge::CompiledSdfField;
@@ -171,26 +170,22 @@ fn a_crater_carved_after_settling_drops_the_ball_by_its_radius() {
         (d - (CRATER_R + p.y)).abs() < 1e-6,
         "the world's collider answers with the carved shape at once: {d}"
     );
-    // A parked body does not query the collider again until woken.
-    for _ in 0..30 {
-        world.step(dt);
-    }
-    assert_eq!(
-        world.bodies[0].position.y.to_f32().to_bits(),
-        over_crater_before.to_bits()
+    // The shape's generation changed, so the next step wakes the parked
+    // bodies (alice-physics 2.1) without a call from the caller.
+    assert!(live.changes_since(g).generation > g);
+    world.step(dt);
+    assert!(
+        !world.is_sleeping(0),
+        "the ball over the crater is woken by the shape change"
     );
-    let woken = wake_bodies_in(&mut world, &live.changes_since(g).regions, rho);
-    assert_eq!(woken, 1, "only the ball over the crater is in its box");
-    assert!(!world.is_sleeping(0) && world.is_sleeping(1));
     for _ in 0..240 {
         world.step(dt);
     }
     let flat = world.bodies[1].position.y.to_f32();
     let in_crater = world.bodies[0].position.y.to_f32();
-    assert_eq!(
-        flat.to_bits(),
-        flat_before.to_bits(),
-        "the far ball does not move"
+    assert!(
+        (flat - flat_before).abs() < 1e-6,
+        "the far ball stays on the plane: {flat} vs {flat_before}"
     );
     let drop = flat - in_crater;
     assert!(

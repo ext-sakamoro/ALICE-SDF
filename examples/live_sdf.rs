@@ -3,21 +3,20 @@
 //! re-meshes only the chunks around it.
 //!
 //! The slab is a `LiveSdf` registered as an SDF collider and as a world
-//! participant. Contacts are read with `detect_sdf_contacts` (the per-step
-//! contact record arrives with `alice-physics` 2.1) and handed to a
-//! `FracturePolicy`, which carves craters with the impact rule of
-//! `destruction_from_impact`.
+//! participant. After each step the world's record of SDF contacts
+//! (`last_step_sdf_contacts`) goes to a `FracturePolicy`, which carves
+//! craters with the impact rule of `destruction_from_impact`. The shape's
+//! generation changes with the crater, so the next step wakes the resting
+//! ball by itself and it drops into the crater.
 //!
 //! Run: `cargo run --example live_sdf --features physics`
 //!
 //! Author: Moroya Sakamoto
 
 use alice_physics::fracture::{FractureConfig, FractureModifier};
-use alice_physics::sdf_collider::{detect_sdf_contacts, SdfCollider};
+use alice_physics::sdf_collider::SdfCollider;
 use alice_physics::{Fix128, PhysicsConfig, PhysicsWorld, QuatFix, RigidBody, Vec3Fix};
-use alice_sdf::live_sdf::{
-    wake_bodies_in, FracturePolicy, ImpactContact, LiveMesh, LiveMeshConfig, LiveSdf,
-};
+use alice_sdf::live_sdf::{FracturePolicy, LiveMesh, LiveMeshConfig, LiveSdf};
 use alice_sdf::SdfNode;
 use glam::Vec3;
 
@@ -61,44 +60,20 @@ fn main() {
     let dt = Fix128::from_f32(1.0 / 60.0);
     let mut carved = 0;
     let mut remeshed = 0;
-    // The world resolves a penetration inside its step, so the contact is
-    // read after the step (bodies within 0.02 m of touching) with the
-    // velocity the body had before it: the speed it hit with. A body still
-    // falling through the band (the surface did not stop it) is not an
-    // impact yet.
-    let band = radius + Fix128::from_f32(0.02);
     for step in 0..360u32 {
-        let before: Vec<Vec3Fix> = world.bodies.iter().map(|b| b.velocity).collect();
         world.step(dt);
-        let contacts: Vec<ImpactContact> =
-            detect_sdf_contacts(&world.bodies, &world.sdf_colliders, band)
-                .into_iter()
-                .map(|(body, c)| {
-                    let hit = -before[body].dot(c.normal);
-                    let still = -world.bodies[body].velocity.dot(c.normal);
-                    let stopped = still.to_f32() < 0.5 * hit.to_f32();
-                    ImpactContact {
-                        body_index: body,
-                        collider_index: 0,
-                        point: c.point_b,
-                        normal: c.normal,
-                        depth: c.depth,
-                        approach_speed: if stopped { hit } else { Fix128::ZERO },
-                        substep: 0,
-                    }
-                })
-                .collect();
-        let generation = slab.generation();
-        let n = slab.apply_impacts(&policy, &contacts);
+        let speed = world
+            .last_step_sdf_contacts()
+            .iter()
+            .map(|c| c.approach_speed.to_f32())
+            .fold(0.0f32, f32::max);
+        let n = slab.apply_world_contacts(&policy, &world, 0);
         if n > 0 {
             carved += n;
-            let changes = slab.changes_since(generation);
-            let woken = wake_bodies_in(&mut world, &changes.regions, 0.25);
             let report = mesh.sync();
             remeshed += report.remeshed.len();
             println!(
-                "step {step}: impact at {:.2} m/s carved {n} crater(s), woke {woken} body, re-meshed {} of {total_chunks} chunks (generation {})",
-                contacts[0].approach_speed.to_f32(),
+                "step {step}: impact at {speed:.2} m/s carved {n} crater(s), re-meshed {} of {total_chunks} chunks (generation {})",
                 report.remeshed.len(),
                 report.generation
             );
@@ -113,7 +88,14 @@ fn main() {
         slab.crater_count()
     );
 
-    assert_eq!(carved, 1, "one fast impact, then the ball rests");
+    // The first crater drops the ball, which hits the crater floor fast
+    // enough to carve again; the chain stops once an impact is below the
+    // threshold.
+    assert!(
+        (1..=4).contains(&carved),
+        "a short chain of impacts, then the ball rests: {carved}"
+    );
+    assert!(!world.is_sleeping(ball) || world.bodies[ball].velocity.length().to_f32() < 0.05);
     assert!(
         remeshed > 0 && remeshed < total_chunks,
         "only chunks near the crater"

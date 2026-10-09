@@ -7,17 +7,17 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 8 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1192 |
+| L0 | not reached by any non-test code, examples included | 9 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1193 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 943 |
-| | **total** | **2143** |
+| | **total** | **2145** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
 
 ## Compared with the wiring guard
 
-`scripts/wiring-baseline.txt` lists 16 unwired items.
+`scripts/wiring-baseline.txt` lists 17 unwired items.
 
 ### L0 here but not in the baseline (5)
 
@@ -35,12 +35,13 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (8)
+## L0 — unreached (9)
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
 - `src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED`
 - `src/gi/mod.rs::PointLight`
+- `src/live_sdf.rs::wake_bodies_in`
 - `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
 - `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
@@ -68,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1192)
+## L1 — example-only (1193)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -129,7 +130,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/usd.rs`: `ImportedUsdMaterial`, `ImportedUsda`, `import_usda`
 - `src/io/vdb.rs`: `DenseGrid`, `VdbError`, `bake_dense_grid`, `bake_to_vdb`, `load_dense_grid_from_vdb`
 - `src/io/vox.rs`: `load_vox`, `save_vox`
-- `src/live_sdf.rs`: `Changes`, `DirtyRegion`, `FracturePolicy`, `FracturePolicy::crater_for`, `FracturePolicy::for_collider`, `FracturePolicy::new`, `ImpactContact`, `Influence`, `LiveMesh`, `LiveMesh::chunk`, `LiveMesh::config`, `LiveMesh::generation`, `LiveMesh::merged`, `LiveMesh::new`, `LiveMesh::sync`, `LiveMeshConfig`, `LiveMeshConfig::chunk_bounds`, `LiveMeshConfig::domain`, `LiveModifier`, `LiveSdf`, `LiveSdf::PARTICIPANT_KIND`, `LiveSdf::add_modifier`, `LiveSdf::apply_impacts`, `LiveSdf::changes_since`, `LiveSdf::crater_count`, `LiveSdf::eval`, `LiveSdf::eval_normal`, `LiveSdf::generation`, `LiveSdf::gpu_mesh`, `LiveSdf::modifier_count`, `LiveSdf::new`, `LiveSdf::same_shape`, `LiveSdf::subtract_sphere`, `LiveSdf::to_sdf_node`, `LiveSdf::update`, `LiveSdf::with_modifier_mut`, `LiveSdfError`, `SyncReport`, `wake_bodies_in`
+- `src/live_sdf.rs`: `Changes`, `DirtyRegion`, `FracturePolicy`, `FracturePolicy::crater_for`, `FracturePolicy::for_collider`, `FracturePolicy::new`, `ImpactContact`, `ImpactContact::from_world`, `Influence`, `LiveMesh`, `LiveMesh::chunk`, `LiveMesh::config`, `LiveMesh::generation`, `LiveMesh::merged`, `LiveMesh::new`, `LiveMesh::sync`, `LiveMeshConfig`, `LiveMeshConfig::chunk_bounds`, `LiveMeshConfig::domain`, `LiveModifier`, `LiveSdf`, `LiveSdf::PARTICIPANT_KIND`, `LiveSdf::add_modifier`, `LiveSdf::apply_impacts`, `LiveSdf::apply_world_contacts`, `LiveSdf::changes_since`, `LiveSdf::crater_count`, `LiveSdf::eval`, `LiveSdf::eval_normal`, `LiveSdf::generation`, `LiveSdf::gpu_mesh`, `LiveSdf::modifier_count`, `LiveSdf::new`, `LiveSdf::same_shape`, `LiveSdf::subtract_sphere`, `LiveSdf::to_sdf_node`, `LiveSdf::update`, `LiveSdf::with_modifier_mut`, `LiveSdfError`, `SyncReport`
 - `src/llm_schema.rs`: `schema_summary`, `validate_sdf_json`
 - `src/material.rs`: `Material::dielectric`, `Material::emissive`, `Material::glass`, `Material::metal`, `Material::new`, `Material::to_particle`, `Material::with_albedo_map`, `Material::with_anisotropy`, `Material::with_ao_map`, `Material::with_clearcoat`, `Material::with_color`, `Material::with_emission`, `Material::with_emissive_map`, `Material::with_metallic`, `Material::with_metallic_roughness_map`, `Material::with_normal_map`, `Material::with_roughness`, `Material::with_sheen`, `Material::with_subsurface`, `Material::with_transmission`, `Material::with_volume`, `MaterialLibrary::add`, `MaterialLibrary::default_material`, `MaterialLibrary::find_by_name`, `MaterialLibrary::is_empty`, `MaterialLibrary::new`, `ParticleMaterial`, `ParticleMaterial::from_material`, `ParticleMaterial::glow`, `ParticleMaterial::solid`, `StandardMaterials`, `StandardMaterials::aluminum`, `StandardMaterials::chrome`, `StandardMaterials::concrete`, `StandardMaterials::copper`, `StandardMaterials::diamond`, `StandardMaterials::glass`, `StandardMaterials::gold`, `StandardMaterials::marble`, `StandardMaterials::plastic_red`, `StandardMaterials::plastic_white`, `StandardMaterials::rubber`, `StandardMaterials::skin`, `StandardMaterials::velvet`, `StandardMaterials::water`, `StandardMaterials::wet_asphalt`, `TextureSlot::new`, `TextureSlot::with_tiling`, `TextureSlot::with_uv_channel`, `material_lerp`
 - `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
