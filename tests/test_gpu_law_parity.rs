@@ -262,6 +262,50 @@ fn iq_exact_ports_gpu_match_cpu() {
     );
 }
 
+/// Worst relative drift of `got` from the tree evaluator over `pts`.
+fn projective_worst(node: &SdfNode, pts: &[Vec3], got: &[f32]) -> (f32, Vec3, f32, f32) {
+    let mut worst = (0.0_f32, Vec3::ZERO, 0.0_f32, 0.0_f32);
+    for (p, g) in pts.iter().zip(got) {
+        let c = eval(node, *p);
+        let diff = (g - c).abs() / c.abs().max(1.0);
+        if diff > worst.0 {
+            worst = (diff, *p, c, *g);
+        }
+    }
+    worst
+}
+
+/// `ProjectiveTransform` away from the identity through the WGSL transpiler,
+/// at the corpus sweep's tolerance. The corpus entry is the identity, which a
+/// transpiler that forwards the child (as all three did until this test)
+/// also renders correctly.
+#[test]
+fn projective_transform_wgsl_matches_cpu() {
+    let node = common::corpus::projective_nonidentity();
+    let pts = points(2048);
+    common::corpus::assert_projective_case_discriminates(&pts, 1e-4);
+    let Some(gpu) = gpu_or_skip(&node) else {
+        return;
+    };
+    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    assert_eq!(got.len(), pts.len());
+    let w = projective_worst(&node, &pts, &got);
+    eprintln!(
+        "WGSL projective parity: {} points, worst {:.3e} at {:?}",
+        pts.len(),
+        w.0,
+        w.1
+    );
+    assert!(
+        w.0 <= 1e-4,
+        "projective: WGSL/CPU drift {:.3e} at {:?} (cpu={} gpu={})",
+        w.0,
+        w.1,
+        w.2,
+        w.3
+    );
+}
+
 /// The GLSL transpiler's output on the GPU (wgpu compiles it through naga's
 /// GLSL front end) against the CPU, over the whole corpus. Until 2.1.0 the
 /// GLSL path was only parsed and validated (`test_transpiler_naga_validate`);
@@ -343,6 +387,45 @@ void main() {{
         eprintln!("GLSL execution parity: {checked} corpus nodes");
         assert!(checked > 100, "corpus too small: {checked}");
         assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    /// `ProjectiveTransform` away from the identity through the GLSL
+    /// transpiler (the corpus entry is the identity, see
+    /// `projective_transform_wgsl_matches_cpu`).
+    #[test]
+    fn projective_transform_glsl_matches_cpu() {
+        let node = crate::common::corpus::projective_nonidentity();
+        let pts = points(2048);
+        crate::common::corpus::assert_projective_case_discriminates(&pts, 1e-4);
+        let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
+        let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source)) {
+            Ok(g) => g,
+            Err(e) => {
+                assert!(
+                    std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                    "ALICE_SDF_REQUIRE_GPU is set but the GLSL module failed: {e}"
+                );
+                eprintln!("skipping GLSL projective parity: {e}");
+                return;
+            }
+        };
+        let got = gpu.eval_batch(&pts).expect("gpu eval");
+        assert_eq!(got.len(), pts.len());
+        let w = super::projective_worst(&node, &pts, &got);
+        eprintln!(
+            "GLSL projective parity: {} points, worst {:.3e} at {:?}",
+            pts.len(),
+            w.0,
+            w.1
+        );
+        assert!(
+            w.0 <= 1e-4,
+            "projective: GLSL/CPU drift {:.3e} at {:?} (cpu={} gpu={})",
+            w.0,
+            w.1,
+            w.2,
+            w.3
+        );
     }
 }
 

@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 777 |
+| 🟢 Not ignored | 782 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **777** |
+| **Total** | **782** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (777)
+## 🟢 Not ignored (782)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -32,10 +32,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_io_round_trip.rs` | 15 |
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
+| `test_gpu_law_parity.rs` | 13 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_validity_oracle.rs` | 12 |
 | `test_cache_correctness.rs` | 11 |
-| `test_gpu_law_parity.rs` | 11 |
+| `test_hlsl_blinkscript_parity.rs` | 11 |
 | `test_live_sdf_oracle.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
@@ -44,7 +45,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
-| `test_hlsl_blinkscript_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
 | `test_binding_oracle.rs` | 9 |
@@ -59,6 +59,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_destruction_api_oracle.rs` | 8 |
 | `test_glsl_export_oracle.rs` | 8 |
 | `test_mesh_reorder_oracle.rs` | 8 |
+| `test_node_backend_matrix.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
@@ -82,7 +83,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_orientation.rs` | 6 |
 | `test_mesh_overdraw_oracle.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
-| `test_node_backend_matrix.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_sdf2d_oracle.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |

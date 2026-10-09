@@ -43,16 +43,22 @@ pub const SHADER_UNSUPPORTED: [&str; 4] = [
 ];
 
 const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
-    // Every node kind is transpiled since 2.2.0 (IFS / SdfSkinning unrolled
-    // as literals, LatticeDeform / HeightmapDisplacement as module-scope
-    // data); the list stays as the hook for a future node that cannot be.
+    // Every node kind is transpiled (IFS / SdfSkinning / ProjectiveTransform
+    // with literal matrices, LatticeDeform / HeightmapDisplacement as
+    // module-scope data); the list stays as the hook for a future node that
+    // cannot be. `ProjectiveTransform` forwarded its child unchanged until
+    // the release after 5.0.0 while this returned `None`;
+    // `tests/test_node_backend_matrix.rs` now fails when an arm forwards the
+    // child of a node that changes the distance and this list is silent.
     let _ = node;
     None
 }
 
 /// Names of the nodes in `node`'s tree that the transpilers pass through
-/// unchanged; empty when the shader is a faithful port of the tree (which is
-/// every tree since 2.2.0).
+/// unchanged; empty when the shader is a faithful port of the tree.
+///
+/// Since the release after 5.0.0 that is every tree (`ProjectiveTransform`
+/// was the last node passed through).
 #[must_use]
 pub fn shader_unsupported_nodes(node: &SdfNode) -> Vec<&'static str> {
     let mut out = Vec::new();
@@ -2391,9 +2397,42 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_node_inner(child, &new_p, code)
             }
 
-            // Unsupported / pass-through transforms
-            SdfNode::ProjectiveTransform { child, .. } => {
-                self.transpile_node_inner(child, point_var, code)
+            SdfNode::ProjectiveTransform {
+                child,
+                inv_matrix,
+                lipschitz_bound,
+            } => {
+                // `projective_transform`: w = row 3 of M⁻¹ · (p, 1), q = rows
+                // 0-2 times `1 / w`, the child distance times
+                // `min(|1 / w|, lipschitz_bound)`. The matrix entries are
+                // literals; every `a * b + c` is written out in the CPU's
+                // order (two roundings, no `fma`).
+                let m = inv_matrix;
+                let w = self.next_var();
+                let inv_w = self.next_var();
+                let q = self.next_var();
+                code.push_str(&L::decl_float(
+                    &w,
+                    &format!(
+                        "{} * {point_var}.x + {} * {point_var}.y + {} * {point_var}.z + {}",
+                        lit(m[3]),
+                        lit(m[7]),
+                        lit(m[11]),
+                        lit(m[15])
+                    ),
+                ));
+                code.push_str(&L::decl_float(&inv_w, &format!("1.0 / {w}")));
+                code.push_str(&L::decl_vec3(
+                    &q,
+                    &format!("{} * {inv_w}", transform_point3_expr::<L>(m, point_var)),
+                ));
+                let d = self.transpile_node_inner(child, &q, code);
+                let var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("{d} * min(abs({inv_w}), {})", lit(*lipschitz_bound)),
+                ));
+                var
             }
 
             SdfNode::LatticeDeform {

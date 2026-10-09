@@ -493,3 +493,152 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         ),
     ]
 }
+
+// ============================================================================
+// Projective transform away from the identity (shader oracle)
+// ============================================================================
+
+/// Inverse matrix (column-major, as `SdfNode::ProjectiveTransform::inv_matrix`)
+/// of a projective transform far from the identity. The corpus entry
+/// `projective_transform` is the identity, which a transpiler that forwards the
+/// child unchanged also renders correctly; this case is the one that tells them
+/// apart.
+///
+/// Every non-zero entry is a decimal with no exact binary representation. The
+/// w row (entries 3, 7, 11, 15) gives `w = 0.07 x - 0.04 y + 0.06 z + 1.3`,
+/// which runs from 0.79 to 1.81 over the ±3 box the parity tests sample, so the
+/// divide changes every point and `|1 / w|` (0.55 to 1.27) falls on both sides
+/// of [`PROJECTIVE_BOUND`].
+pub const PROJECTIVE_INV: [f32; 16] = [
+    0.9, 0.1, -0.2, 0.07, // column 0
+    0.15, 1.1, 0.05, -0.04, // column 1
+    -0.1, 0.2, 0.8, 0.06, // column 2
+    0.3, -0.1, 0.2, 1.3, // column 3
+];
+
+/// Lipschitz bound of [`projective_nonidentity`]: `min(|1 / w|, bound)` picks
+/// `|1 / w|` where `w > 1 / 0.77` (about 1.3, half of the sampled box) and
+/// the bound elsewhere.
+pub const PROJECTIVE_BOUND: f32 = 0.77;
+
+/// `unit_box()` under [`PROJECTIVE_INV`] with [`PROJECTIVE_BOUND`].
+pub fn projective_nonidentity() -> SdfNode {
+    unit_box().projective_transform(PROJECTIVE_INV, PROJECTIVE_BOUND)
+}
+
+/// One way of getting the projective law wrong, for [`projective_law`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProjectiveMutation {
+    /// The law as `src/` defines it.
+    None,
+    /// Use the transposed matrix.
+    Transpose,
+    /// Skip the divide by `w`.
+    NoDivide,
+    /// Skip the `min(|1 / w|, bound)` distance scale.
+    NoScale,
+    /// Scale the distance by the bound alone.
+    ConstantBound,
+    /// Ignore the transform (evaluate the child at `p`).
+    PassThrough,
+}
+
+/// Distance of [`projective_nonidentity`] at `p`, the law written out
+/// independently of `src/` in the same operation order (every `a * b + c`
+/// rounded twice, the row times `1 / w`, the child distance times
+/// `min(|1 / w|, bound)`), with `mutation` applied.
+pub fn projective_law(p: Vec3, mutation: ProjectiveMutation) -> f32 {
+    let child = unit_box();
+    if mutation == ProjectiveMutation::PassThrough {
+        return eval(&child, p);
+    }
+    let src = PROJECTIVE_INV;
+    let m: [f32; 16] = if mutation == ProjectiveMutation::Transpose {
+        std::array::from_fn(|i| src[(i % 4) * 4 + i / 4])
+    } else {
+        src
+    };
+    let row = |r: usize| m[r] * p.x + m[4 + r] * p.y + m[8 + r] * p.z + m[12 + r];
+    let w = row(3);
+    let inv_w = 1.0 / w;
+    let q = if mutation == ProjectiveMutation::NoDivide {
+        Vec3::new(row(0), row(1), row(2))
+    } else {
+        Vec3::new(row(0) * inv_w, row(1) * inv_w, row(2) * inv_w)
+    };
+    let d = eval(&child, q);
+    match mutation {
+        ProjectiveMutation::NoScale => d,
+        ProjectiveMutation::ConstantBound => d * PROJECTIVE_BOUND,
+        _ => d * inv_w.abs().min(PROJECTIVE_BOUND),
+    }
+}
+
+/// Checks, on the CPU, that [`projective_nonidentity`] over `pts` can tell
+/// every [`ProjectiveMutation`] from the right one at relative
+/// tolerance `rel_tol` (the bar the calling shader oracle applies), and that
+/// the unmutated law reproduces the tree evaluator bit for bit. A shader oracle
+/// that calls this first cannot pass vacuously because its case happens to be
+/// insensitive to the error it is meant to catch.
+pub fn assert_projective_case_discriminates(pts: &[Vec3], rel_tol: f32) {
+    let node = projective_nonidentity();
+    for p in pts {
+        assert_eq!(
+            projective_law(*p, ProjectiveMutation::None).to_bits(),
+            eval(&node, *p).to_bits(),
+            "the reference law and the tree evaluator disagree at {p:?}"
+        );
+    }
+    // both branches of min(|1 / w|, bound)
+    let m = PROJECTIVE_INV;
+    let above = pts
+        .iter()
+        .filter(|p| {
+            let w = m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15];
+            (1.0 / w).abs() > PROJECTIVE_BOUND
+        })
+        .count();
+    let quarter = pts.len() / 4;
+    assert!(
+        above >= quarter && pts.len() - above >= quarter,
+        "|1 / w| exceeds the bound at {above} of {} points: both branches need a quarter",
+        pts.len()
+    );
+    for mutation in [
+        ProjectiveMutation::Transpose,
+        ProjectiveMutation::NoDivide,
+        ProjectiveMutation::NoScale,
+        ProjectiveMutation::ConstantBound,
+        ProjectiveMutation::PassThrough,
+    ] {
+        let seen = pts
+            .iter()
+            .filter(|p| {
+                let c = eval(&node, **p);
+                (projective_law(**p, mutation) - c).abs() / c.abs().max(1.0) > rel_tol
+            })
+            .count();
+        assert!(
+            seen >= quarter,
+            "{mutation:?}: only {seen} of {} points differ by more than {rel_tol:e}",
+            pts.len()
+        );
+    }
+}
+
+/// The child of a node with exactly one child (a `child` field and no other
+/// `SdfNode` field), read through serde: the enum is `#[non_exhaustive]` and
+/// the crate's own child walker is private, and a `match` written here would
+/// silently miss a new variant.
+pub fn single_child(node: &SdfNode) -> Option<SdfNode> {
+    let value = serde_json::to_value(node).expect("SdfNode serializes");
+    let fields = value.as_object()?.values().next()?.as_object()?;
+    let nodes = fields
+        .values()
+        .filter(|v| serde_json::from_value::<SdfNode>((*v).clone()).is_ok())
+        .count();
+    if nodes != 1 {
+        return None;
+    }
+    serde_json::from_value(fields.get("child")?.clone()).ok()
+}

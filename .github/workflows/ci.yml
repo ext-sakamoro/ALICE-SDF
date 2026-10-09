@@ -187,9 +187,9 @@ jobs:
         run: cargo test --features rust --test test_rust_transpiler_oracle
 
       # SdfNode variant x backend support, compared with docs/node-support.md.
-      # Every feature column (jit / msl / rust) is on here, so every cell is compared.
-      - name: Node backend support matrix (jit + msl + rust)
-        run: cargo test --features jit,msl,rust --test test_node_backend_matrix
+      # Every feature column (jit / msl / glsl / wgsl / hlsl / rust; msl turns on gpu, which carries WGSL) is on here, so every cell is compared.
+      - name: Node backend support matrix (jit + msl + glsl + hlsl + rust)
+        run: cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix
 
       # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
       # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
