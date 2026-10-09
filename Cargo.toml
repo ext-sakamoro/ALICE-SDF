@@ -109,7 +109,7 @@ glam = { version = "0.29", features = ["serde"] }
 wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 # 3.1.0: every transcendental in the evaluator and the laws goes through
 # alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
-# alice-physics 1.3 uses, which is what makes the SdfField boundary bit-exact.
+# alice-physics 2.1 uses, which is what makes the SdfField boundary bit-exact.
 alice-det-math = { version = "0.4", features = ["simd"] }
 
 # Parallel processing
@@ -147,7 +147,7 @@ godot = { version = "0.2", optional = true }
 crc32fast = "1.4"
 
 # Bridge deps (optional, crates.io since 1.12.0; alice-font pending publish)
-alice-physics = { version = "2", optional = true }
+alice-physics = { version = "2.1", optional = true }
 alice-codec = { version = "0.1.2", optional = true }
 libasp = { version = "1.0", optional = true }
 alice-cache = { version = "0.2", optional = true }
