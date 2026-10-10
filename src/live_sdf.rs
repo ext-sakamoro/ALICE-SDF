@@ -634,8 +634,9 @@ impl LiveSdf {
     ///
     /// The records of [`alice_physics::PhysicsWorld::last_step_sdf_contacts`]
     /// are in world space; each is converted into this shape's frame with the
-    /// collider's pose ([`ImpactContact::from_world`]) before the policy sees
-    /// it, so the policy's speeds and radii are in the shape's units. The
+    /// collider's pose of its substep ([`ImpactContact::from_world`]) before
+    /// the policy sees it, so the policy's speeds and radii are in the shape's
+    /// units, also for a collider attached to a moving body. The
     /// world wakes resting bodies on the next step because the shape's
     /// [`SdfField::generation`] changed. Returns 0 when `collider_index` is out
     /// of range.
@@ -648,30 +649,34 @@ impl LiveSdf {
         let Some(collider) = world.sdf_colliders.get(collider_index) else {
             return 0;
         };
-        // One impact per body per step: a body touching for several substeps
-        // leaves a record per substep, and they are one hit, so only the
-        // fastest record of each body is used (ties: the earliest).
-        let mut fastest: Vec<&alice_physics::sdf_collider::SdfContact> = Vec::new();
-        for c in world
-            .last_step_sdf_contacts()
-            .iter()
-            .filter(|c| c.collider_index == collider_index)
-        {
-            match fastest.iter_mut().find(|f| f.body_index == c.body_index) {
-                Some(f) => {
-                    if c.approach_speed > f.approach_speed {
-                        *f = c;
-                    }
-                }
-                None => fastest.push(c),
-            }
-        }
-        let contacts: Vec<ImpactContact> = fastest
-            .into_iter()
-            .map(|c| ImpactContact::from_world(c, collider))
-            .collect();
+        let contacts = fastest_per_body(
+            world
+                .last_step_sdf_contacts()
+                .iter()
+                .filter(|c| c.collider_index == collider_index)
+                .map(|c| ImpactContact::from_world(c, collider)),
+        );
         self.apply_impacts(policy, &contacts)
     }
+}
+
+/// One impact per body per step: a body touching for several substeps leaves
+/// a record per substep, and they are one hit, so only the fastest record of
+/// each body is kept (ties: the earliest), in the order the bodies first
+/// appear.
+fn fastest_per_body(contacts: impl IntoIterator<Item = ImpactContact>) -> Vec<ImpactContact> {
+    let mut fastest: Vec<ImpactContact> = Vec::new();
+    for c in contacts {
+        match fastest.iter_mut().find(|f| f.body_index == c.body_index) {
+            Some(f) => {
+                if c.approach_speed > f.approach_speed {
+                    *f = c;
+                }
+            }
+            None => fastest.push(c),
+        }
+    }
+    fastest
 }
 
 fn changes_since(s: &LiveState, generation: u64) -> Changes {
@@ -952,22 +957,27 @@ pub struct ImpactContact {
 }
 
 impl ImpactContact {
-    /// A world contact record converted into the frame of the shape that
-    /// `collider` places in the world
+    /// A world contact record converted into the frame of the shape the
+    /// collider placed in the world when the contact was resolved
     ///
-    /// The point is moved by the inverse of the collider's pose (translation,
-    /// rotation, uniform scale, the transform the collider evaluates its field
-    /// through), the normal by the inverse rotation, and the depth and the
-    /// approach speed are divided by the scale so they are lengths and speeds
-    /// in the shape's units.
+    /// The point is moved by the inverse of the collider's pose recorded with
+    /// the contact (`SdfContact::collider_position` / `collider_rotation` /
+    /// `collider_scale`: translation, rotation, uniform scale, the transform
+    /// the collider evaluated its field through), the normal by the inverse
+    /// rotation, and the depth and the approach speed are divided by the scale
+    /// so they are lengths and speeds in the shape's units. The recorded pose
+    /// is the one of the substep the contact belongs to: a collider attached
+    /// to a body moves during the step, so its pose after the step is not it.
+    /// `collider` is not read (the record carries the pose); the parameter is
+    /// kept so existing calls compile.
     pub fn from_world(
         contact: &alice_physics::sdf_collider::SdfContact,
-        collider: &alice_physics::sdf_collider::SdfCollider,
+        _collider: &alice_physics::sdf_collider::SdfCollider,
     ) -> Self {
-        let inv_rotation = collider.rotation.conjugate();
-        let local = inv_rotation.rotate_vec(contact.point - collider.position);
+        let inv_rotation = contact.collider_rotation.conjugate();
+        let local = inv_rotation.rotate_vec(contact.point - contact.collider_position);
         let normal = inv_rotation.rotate_vec(contact.normal);
-        let scale = collider.scale;
+        let scale = contact.collider_scale;
         let (point, depth, approach_speed) = if scale == Fix128::ONE || scale.is_zero() {
             (local, contact.depth, contact.approach_speed)
         } else {
@@ -1434,6 +1444,35 @@ fn mesh_chunk(state: &LiveState, config: &LiveMeshConfig, c: [usize; 3]) -> Mesh
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn contact(body: usize, speed: i64, x: i64) -> ImpactContact {
+        ImpactContact {
+            body_index: body,
+            collider_index: 0,
+            point: Vec3Fix::from_int(x, 0, 0),
+            normal: Vec3Fix::from_int(0, 1, 0),
+            depth: Fix128::ZERO,
+            approach_speed: Fix128::from_int(speed),
+            substep: 0,
+        }
+    }
+
+    /// oracle: per body, the fastest record is kept; of records with the same
+    /// speed, the first; bodies keep the order they first appear in.
+    #[test]
+    fn fastest_per_body_keeps_the_fastest_and_the_first_of_a_tie() {
+        let got = fastest_per_body([
+            contact(3, 2, 10),
+            contact(1, 5, 20),
+            contact(3, 7, 30),
+            contact(3, 7, 40),
+            contact(1, 5, 50),
+            contact(3, 1, 60),
+        ]);
+        let want = [contact(3, 7, 30), contact(1, 5, 20)];
+        assert_eq!(got, want);
+        assert!(fastest_per_body([]).is_empty());
+    }
 
     #[test]
     fn influence_union_covers_both_sides() {

@@ -265,3 +265,125 @@ fn several_substep_records_of_one_body_carve_one_crater() {
     assert_eq!(live.apply_world_contacts(&any, &w, 0), 1);
     assert_eq!(live.crater_count(), 1);
 }
+
+/// Bound on `|sdf|` at a converted contact point, in the shape's units.
+///
+/// The recorded point is the sphere centre moved along the normal by one
+/// `f32` field query (coordinates below 32 m: `f32` within `2⁻¹⁹`, at most
+/// 8 roundings through the collider's frame and the query), and the check
+/// evaluates the slab in `f32` again (translate, box: at most 8 roundings).
+/// That is `16 · 2⁻¹⁹ = 2⁻¹⁵` in world units, `2⁻¹⁶` in the shape's units at
+/// scale 2. The bound, `2⁻¹¹`, is 32× that. A frame one substep late is off
+/// by `|v|·h ≥ 6 · (1/60)/8 = 1/80` in world units here, 25× the bound.
+const SURFACE_BOUND: f32 = 1.0 / 2048.0;
+
+/// A heavy body carrying the slab (scale 2, pitched 20° about `x`) moving
+/// along `y` at `carrier_vy`, a ball dropped onto it at 20 m/s; returns the
+/// world after the first step that records a contact with the slab.
+fn moving_slab_hit(live: &LiveSdf, carrier_vy: f32) -> PhysicsWorld {
+    let mut w = PhysicsWorld::new(PhysicsConfig {
+        substeps: 8,
+        ..PhysicsConfig::default()
+    });
+    let (s, c) = alice_det_math::sin_cos(10f32.to_radians());
+    let mut carrier =
+        RigidBody::new_dynamic(Vec3Fix::from_f32(0.0, 0.0, 0.0), Fix128::from_f32(1e6));
+    carrier.rotation = QuatFix::new(
+        Fix128::from_f32(s),
+        Fix128::ZERO,
+        Fix128::ZERO,
+        Fix128::from_f32(c),
+    );
+    carrier.velocity = Vec3Fix::from_f32(0.0, carrier_vy, 0.0);
+    let k = w.add_body(carrier);
+    w.add_sdf_collider(
+        SdfCollider::new_dynamic(Box::new(live.clone()), k).with_scale(Fix128::from_f32(2.0)),
+    );
+    w.set_sdf_collision_radius(Fix128::from_f32(RHO));
+    let mut ball = RigidBody::new_dynamic(Vec3Fix::from_f32(0.5, 1.5, 0.3), Fix128::ONE);
+    ball.velocity = Vec3Fix::from_f32(0.0, -20.0, 0.0);
+    w.add_body(ball);
+    let dt = Fix128::from_f32(1.0 / 60.0);
+    for _ in 0..120 {
+        w.step(dt);
+        if w.last_step_sdf_contacts().iter().any(|c| c.body_index == 1) {
+            return w;
+        }
+    }
+    panic!("the ball never touched the moving slab");
+}
+
+/// oracle: a collider attached to a moving body: every record converted by
+/// `ImpactContact::from_world` lies on the shape's surface
+/// (`|sdf| ≤ SURFACE_BOUND`), whichever substep it was recorded in, moving
+/// up or down; its normal is the slab's local `+y` although the world normal
+/// is pitched 20°; and `apply_world_contacts` carves the crater there (the
+/// crater centre, on the old surface, is now R from the nearest solid).
+#[test]
+fn a_moving_collider_converts_and_carves_on_its_surface() {
+    let mut compared = 0;
+    for &vy in &[10.0f32, -6.0] {
+        let live = LiveSdf::new(slab());
+        let w = moving_slab_hit(&live, vy);
+        let mut fastest: Option<ImpactContact> = None;
+        for c in w
+            .last_step_sdf_contacts()
+            .iter()
+            .filter(|c| c.body_index == 1)
+        {
+            let local = ImpactContact::from_world(c, &w.sdf_colliders[0]);
+            let p = v3(local.point);
+            let d = live.eval(Vec3::new(p.x as f32, p.y as f32, p.z as f32));
+            assert!(
+                d.abs() <= SURFACE_BOUND,
+                "carrier {vy} m/s, substep {}: converted point is {d} off the surface",
+                c.substep
+            );
+            assert!(
+                (v3(local.normal) - DVec3::Y).length() < 1e-5,
+                "local normal {:?}",
+                v3(local.normal)
+            );
+            assert!(
+                v3(c.normal).y < 0.99,
+                "the world normal is pitched: {:?}",
+                v3(c.normal)
+            );
+            if fastest.is_none_or(|f| local.approach_speed > f.approach_speed) {
+                fastest = Some(local);
+            }
+            compared += 1;
+        }
+        let f = fastest.expect("a record");
+        let r = (f64::from(f.approach_speed.to_f32()) * f64::from(K))
+            .clamp(f64::from(R_MIN), f64::from(R_MAX));
+        let any = FracturePolicy::new(Fix128::from_f32(-1.0), K, R_MIN, R_MAX).for_collider(0);
+        assert_eq!(live.apply_world_contacts(&any, &w, 0), 1);
+        let p = v3(f.point);
+        let at = live.eval(Vec3::new(p.x as f32, p.y as f32, p.z as f32));
+        assert!(
+            (f64::from(at) - r).abs() < 1e-3,
+            "carrier {vy} m/s: distance {at} at the crater centre, R = {r}"
+        );
+    }
+    assert!(compared > 0, "compared nothing");
+}
+
+/// oracle: a collider index the world does not have carves nothing, even
+/// with a policy that accepts every contact of every collider.
+#[test]
+fn an_out_of_range_collider_carves_nothing_with_an_accepting_policy() {
+    let live = LiveSdf::new(slab());
+    let mut w = world(&live);
+    drop_until_contact(&mut w, 5.5, -2.3, 3.0);
+    let any = FracturePolicy::new(Fix128::from_f32(-1.0), K, R_MIN, R_MAX);
+    assert!(!w.last_step_sdf_contacts().is_empty(), "compared nothing");
+    let g = live.generation();
+    assert_eq!(
+        live.apply_world_contacts(&any, &w, w.sdf_colliders.len()),
+        0
+    );
+    assert_eq!(live.apply_world_contacts(&any, &w, usize::MAX), 0);
+    assert_eq!(live.generation(), g);
+    assert_eq!(live.crater_count(), 0);
+}

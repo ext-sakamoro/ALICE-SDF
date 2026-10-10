@@ -8,6 +8,14 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [5.1.1] - 2026-10-10
+
+### Fixed
+- `ImpactContact::from_world` / `LiveSdf::apply_world_contacts`: body に付けた collider (`SdfCollider::new_dynamic`) の接触を、step 後の collider の姿勢で形の座標に戻していた world は substep ごとに collider を body の姿勢へ動かしてから接触を記録するので、動く collider では crater が表面から外れた位置にできた (8 substep・10 m/s で 0.06〜0.14) 記録が持つ接触時点の collider の姿勢 (alice-physics 2.2 の `SdfContact::collider_position` / `collider_rotation` / `collider_scale`) で戻すようにした `from_world` の `collider` 引数は読まなくなった (呼び出しはそのまま compile する) `alice-physics` の要求を 2.2 に上げた
+- 試験: `tests/test_live_sdf_closed_loop.rs` に、動く collider (上向き 10 m/s / 下向き 6 m/s、x 軸まわりに傾けて scale 2) で変換した点が形の表面にあり (誤差の上限は文書に導出)、局所の法線が +y で crater がそこにできること、存在しない collider の index は全接触を受ける policy でも削らないことを足した 同じ速さの記録は最初のものを使う規則を module の試験で固定した
+
+## [5.1.0] - 2026-10-10
+
 ### Added
 - `LiveSdf::apply_world_contacts(policy, world, collider_index)`: world との接触 → crater の閉ループ `PhysicsWorld::last_step_sdf_contacts` (alice-physics 2.1) の記録を collider の姿勢で形の座標に直し、1 step に body ごとに最大 1 つの crater を削る (その body の最も速い記録、複数の substep にまたがる接触は 1 回の衝突) oracle `tests/test_live_sdf_closed_loop.rs` (原点から離し回転と scale を掛けた collider で、変換した点を f64 の逆姿勢と、crater の半径を衝突の則と、球が world 単位で crater の半径だけ沈むことを照合、遅い接触と別の collider では削らない)
 - `ImpactContact::from_world(contact, collider)`: world の接触記録を形の座標に直す (平行移動・回転・scale の逆、深さと接近速度は scale で割る)

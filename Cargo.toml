@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "5.1.0"
+version = "5.1.1"
 edition = "2021"
 # MSRV-aware 依存解決 (cargo 1.84+): `cargo update` が `rust-version` を超える dep を
 # 選ばない = lockfile が宣言 MSRV から silent に乖離しない (1.10.3 で 1.75 宣言のまま
@@ -147,7 +147,7 @@ godot = { version = "0.2", optional = true }
 crc32fast = "1.4"
 
 # Bridge deps (optional, crates.io since 1.12.0; alice-font pending publish)
-alice-physics = { version = "2.1", optional = true }
+alice-physics = { version = "2.2", optional = true }
 alice-codec = { version = "0.1.2", optional = true }
 libasp = { version = "1.0", optional = true }
 alice-cache = { version = "0.2", optional = true }

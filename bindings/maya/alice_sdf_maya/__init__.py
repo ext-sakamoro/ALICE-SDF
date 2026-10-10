@@ -29,7 +29,7 @@ Install:
 import importlib
 import importlib.util
 
-__version__ = "5.1.0"
+__version__ = "5.1.1"
 
 _alice_sdf = None
 
