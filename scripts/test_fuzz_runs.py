@@ -22,6 +22,19 @@ min > max, or either was NaN. min = 0.0, max = -65.0
 SUMMARY: libFuzzer: deadly signal
 """
 
+# AddressSanitizer / LeakSanitizer reports (no space after "==N=="), each with
+# a "Done N runs" line so that only the crash detection can make it red
+ASAN = """==9==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000011
+READ of size 1 at 0x602000000011 thread T0
+SUMMARY: AddressSanitizer: heap-buffer-overflow src/lib.rs:10:5 in decode
+Done 12 runs in 1 second(s)
+"""
+LEAK = """==9==ERROR: LeakSanitizer: detected memory leaks
+Direct leak of 64 byte(s) in 1 object(s) allocated from:
+SUMMARY: AddressSanitizer: 64 byte(s) leaked in 1 allocation(s).
+Done 12 runs in 1 second(s)
+"""
+
 
 class FuzzRuns(unittest.TestCase):
     def run_on(self, log: str) -> int:
@@ -46,6 +59,24 @@ class FuzzRuns(unittest.TestCase):
                      "thread 'x' panicked at src/a.rs:1:1:"]:
             with self.subTest(line=line):
                 self.assertEqual(self.run_on(CLEAN + line + "\n"), 1)
+
+    def test_sanitizer_reports_fail_even_with_a_done_line(self):
+        for name, log in [("asan", ASAN), ("leak", LEAK)]:
+            with self.subTest(log=name):
+                self.assertTrue(fr.read(log)[2])
+                self.assertEqual(self.run_on(log), 1)
+
+    def test_each_sanitizer_line_alone_fails(self):
+        for line in ["==9==ERROR: AddressSanitizer: SEGV on unknown address",
+                     "==9==ERROR: LeakSanitizer: detected memory leaks",
+                     "SUMMARY: AddressSanitizer: 64 byte(s) leaked in 1 allocation(s).",
+                     "SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior src/a.rs:1:1"]:
+            with self.subTest(line=line):
+                self.assertEqual(self.run_on(CLEAN + line + "\n"), 1)
+
+    def test_info_lines_that_mention_a_sanitizer_do_not_fail(self):
+        log = "INFO: AddressSanitizer is enabled\n" + CLEAN
+        self.assertEqual(self.run_on(log), 0)
 
     def test_zero_runs_fails(self):
         self.assertEqual(self.run_on("Done 0 runs in 0 second(s)\n"), 1)

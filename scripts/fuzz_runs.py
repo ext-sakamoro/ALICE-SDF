@@ -16,8 +16,11 @@ import sys
 from pathlib import Path
 
 DONE = re.compile(r"^Done (\d+) runs in (\d+) second", re.M)
-# libFuzzer's own crash lines, and Rust's panic message
-CRASH = re.compile(r"^==\d+== ERROR: libFuzzer|^SUMMARY: libFuzzer|panicked at ", re.M)
+# libFuzzer's crash lines ("==N== ERROR: libFuzzer: ..."), the sanitizers'
+# reports ("==N==ERROR: AddressSanitizer: ...", no space after "==";
+# "SUMMARY: AddressSanitizer: ..." also for LeakSanitizer's leaks), and Rust's
+# panic message
+CRASH = re.compile(r"^==\d+== ?ERROR: |^SUMMARY: (?:libFuzzer|\w+Sanitizer)|panicked at ", re.M)
 
 
 def read(log: str) -> tuple[int, int, bool]:
