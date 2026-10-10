@@ -45,9 +45,14 @@ on:
         default: '60'
         type: string
 
+permissions:
+  contents: read
+
+# a newer push cancels an older run only off main: main and the scheduled run
+# finish, so their result is a verdict and not "cancelled"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
