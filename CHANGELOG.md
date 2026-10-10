@@ -8,6 +8,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed
+- CI: fuzz の time-boxed run を gate にした (`continue-on-error` を外した) crash も、1 件も入力を実行しなかった run も red になり、target ごとの実行回数・秒数・結果を job summary に出す (`scripts/fuzz_runs.py`、試験 `scripts/test_fuzz_runs.py` を fuzz job で走らせる) crash の入力は artifact に残し、直したら `fuzz/seeds/<target>/` に置いて replay の gate に加える `ci/**` の push でも走らせ (同時 2 target まで)、job に上限時間 45 分を付けた
+
 ## [5.1.1] - 2026-10-10
 
 ### Fixed
