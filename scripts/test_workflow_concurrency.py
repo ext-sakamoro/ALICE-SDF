@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Oracle for scripts/workflow_concurrency.py: a branch-push workflow without the key fails,
-with it passes, tag-only and push-less workflows are exempt, an empty tree fails."""
+with it passes, tag-only and push-less workflows are exempt, an empty tree fails.
+
+Kept byte-identical in ALICE-LOL, ALICE-SDF and ALICE-DetMath (this file and
+scripts/workflow_concurrency.py); change every copy together."""
 import sys
 import tempfile
 import unittest

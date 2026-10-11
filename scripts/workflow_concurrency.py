@@ -16,6 +16,9 @@ giving the reason, its group must still name `github.ref`, and it may never canc
 an in-progress run on main (the cancel rule applies to it unchanged).
 
 usage: workflow_concurrency.py [workflows dir]
+
+Kept byte-identical in ALICE-LOL, ALICE-SDF and ALICE-DetMath (this file and its
+test); change every copy together.
 """
 from __future__ import annotations
 
