@@ -48,10 +48,12 @@ on:
 permissions:
   contents: read
 
-# a newer push cancels an older run only off main: main and the scheduled run
+# on main each commit has a group of its own (a group keeps one pending run and
+# would cancel an older pending one whatever cancel-in-progress says), and a
+# newer push cancels an older run only off main: main and the scheduled run
 # finish, so their result is a verdict and not "cancelled"
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
