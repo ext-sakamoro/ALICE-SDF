@@ -32,9 +32,13 @@ on:
       - '.github/workflows/unity-sdf-universe.yml'
   workflow_dispatch:
 
+# concurrency: single self-hosted runner: one Unity editor machine, so a group per
+# commit would queue every push on it; one group per ref keeps at most one pending
+# run (the latest main commit always runs, an older pending one may be superseded)
+# and a run on main is never cancelled
 concurrency:
   group: unity-sdf-universe-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always

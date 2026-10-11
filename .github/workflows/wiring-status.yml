@@ -16,9 +16,11 @@ permissions:
 # this workflow only checks that the committed copy matches the tree. It does not
 # commit: a commit made here would be authored by a bot account.
 # One group per workflow; a newer push cancels the older run of the same workflow.
+# on main each commit has a group of its own and a run there is never
+# cancelled; a newer push cancels an older run only off main
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check-wiring-status:

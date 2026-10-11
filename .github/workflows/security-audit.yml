@@ -42,9 +42,11 @@ on:
     - cron: '0 9 * * 1'
   workflow_dispatch:  # 手動 kick 可
 
+# on main each commit has a group of its own and a run there is never
+# cancelled; a newer push cancels an older run only off main
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always

@@ -59,6 +59,10 @@ rustup toolchain list | grep -q "^${MSRV}" || { echo "missing toolchain ${MSRV} 
 step "actionlint (workflow YAML)"
 actionlint .github/workflows/*.yml
 
+step "workflow concurrency: oracle + branch への push で走る全 workflow が main の run を取り消さない"
+python3 scripts/test_workflow_concurrency.py
+python3 scripts/workflow_concurrency.py
+
 step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が無い"
 python3 scripts/test_wiring_guard.py
 python3 scripts/wiring_guard.py

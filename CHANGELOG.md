@@ -9,6 +9,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Changed
+- CI: branch への push で走る workflow の concurrency を揃えた GitHub-hosted の 6 本 (bake / ci / hlsl-dxc / oracle-status / security-audit / wiring-status) は main で commit ごとに group を分けて run を取り消さず、取り消すのは branch の古い run だけ 1 台の self-hosted runner で走る 3 本 (unity-sdf-universe / unity-vrchat / unreal) は ref ごとの group のまま (待機は最大 1 本、main の最新 commit は必ず走る) にし、main の走行中の run を取り消さない (unity-sdf-universe と unity-vrchat は main の run を取り消しており、unity-vrchat の group は ref を含まなかった) `scripts/workflow_concurrency.py` (試験 `scripts/test_workflow_concurrency.py`) が全 workflow をこの形か確かめ、self-hosted の例外は全 job が self-hosted で理由の comment がある時だけ認める CI と preflight で走る
 - CI: fuzz の time-boxed run を gate にした (`continue-on-error` を外した) crash も、1 件も入力を実行しなかった run も red になり、target ごとの実行回数・秒数・結果を job summary に出す (`scripts/fuzz_runs.py`、試験 `scripts/test_fuzz_runs.py` を fuzz job で走らせる) crash の入力は artifact に残し、直したら `fuzz/seeds/<target>/` に置いて replay の gate に加える `ci/**` の push でも走らせ (同時 2 target まで)、job に上限時間 45 分を付けた
 
 ## [5.1.1] - 2026-10-10
