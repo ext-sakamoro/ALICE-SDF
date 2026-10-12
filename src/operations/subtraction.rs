@@ -13,7 +13,7 @@ use crate::compiled::real::Real;
 /// max(d1, -d2)
 #[inline(always)]
 pub fn sdf_subtraction(d1: f32, d2: f32) -> f32 {
-    d1.max(-d2)
+    sdf_subtraction_r::<f32>(d1, d2)
 }
 
 /// Subtraction of B from A (generic over [`Real`]).

@@ -12,8 +12,8 @@ use crate::compiled::real::Real;
 /// # Returns
 /// Minimum of the two distances
 #[inline(always)]
-pub const fn sdf_union(d1: f32, d2: f32) -> f32 {
-    d1.min(d2)
+pub fn sdf_union(d1: f32, d2: f32) -> f32 {
+    sdf_union_r::<f32>(d1, d2)
 }
 
 /// Union of multiple SDFs
@@ -23,7 +23,7 @@ pub fn sdf_union_multi(distances: &[f32]) -> f32 {
     distances
         .iter()
         .copied()
-        .reduce(|a, b| a.min(b))
+        .reduce(|a, b| sdf_union_r::<f32>(a, b))
         .unwrap_or(f32::MAX)
 }
 
