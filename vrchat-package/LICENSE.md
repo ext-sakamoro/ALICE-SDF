@@ -1,41 +1,19 @@
-ALICE Community License
-Version 1.0, February 2025
+ALICE Community License — Version 1.1
 
-Copyright (c) 2025 Moroya Sakamoto
+This package (the ALICE-SDF VRChat package, com.alice.sdf) is covered by the
+ALICE Community License, Version 1.1. The full and authoritative text is
+LICENSE-COMMUNITY at the root of the ALICE-SDF repository.
 
-This license applies to the ALICE-SDF VRChat package (com.alice.sdf).
+Summary for VRChat-world use (not a substitute for the full text):
+  - Free for personal use, education, open source, and VRChat worlds / content
+    by anyone who is not a Large Enterprise (see §2 of the full text).
+  - A commercial licence is required for Large Enterprises (§3(d)) and for
+    infrastructure services such as cloud, metaverse platforms and streaming
+    (§3(a)). "Large Enterprise" means a legal entity whose consolidated annual
+    revenue, across all affiliates and all lines of business, exceeds
+    USD 1,000,000 (see §1 of the full text).
 
-1. DEFINITIONS
+Copies of this package received under Version 1.0 (February 2025) remain
+licensed under Version 1.0 for those copies and the releases they came with.
 
-"Software" means the ALICE-SDF VRChat package, including shaders,
-scripts, and sample scenes covered by this license.
-
-"Game" or "World" means an interactive application or VRChat world
-distributed to end users, where the Software is used as a component
-for rendering or content creation.
-
-2. GRANT OF RIGHTS
-
-You are granted a non-exclusive, worldwide, royalty-free license to:
-  (a) Use the Software in VRChat worlds and Unity projects
-  (b) Modify the Software for your own use
-  (c) Distribute VRChat worlds that incorporate the Software
-
-3. CONDITIONS
-
-  (a) You must retain this copyright notice in all copies
-  (b) You may not sell the Software itself as a standalone product
-  (c) Attribution is appreciated but not required in published worlds
-
-4. INFRASTRUCTURE USE
-
-If you operate a service with more than 10,000 monthly active users
-or generate more than $1,000,000 USD annual revenue from services
-incorporating the Software, you must obtain a commercial license.
-Contact the author for commercial licensing terms.
-
-5. NO WARRANTY
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE SOFTWARE.
+Commercial licence enquiries: contact@extoria.co.jp

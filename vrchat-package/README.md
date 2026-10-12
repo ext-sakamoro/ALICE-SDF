@@ -484,7 +484,7 @@ More (with `grep`-able strings and the reasoning) in [`AGENTS.md`](AGENTS.md) §
 
 ## License
 
-ALICE Community License
+ALICE Community License 1.1 (see LICENSE.md)
 
 ## Author
 

@@ -512,7 +512,7 @@ grep できる文字列と理由付きの一覧は [`AGENTS.md`](AGENTS.md) §5
 
 ## ライセンス
 
-ALICE Community License
+ALICE Community License 1.1 (LICENSE.md を参照)
 
 ## 作者
 
