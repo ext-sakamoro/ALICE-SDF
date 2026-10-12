@@ -86,7 +86,11 @@ fn tree_evaluator_bits_match_recorded_hashes() {
 }
 
 /// `alice_sdf::SEMANTICS_ID`, the identifier of the arithmetic the hashes
-/// below were recorded with (alice-det-math 0.4.0)
+/// below were recorded with (alice-det-math 0.5.0; the hashes were recorded
+/// with 0.4.0 and did not move: 0.5.0 changed the `sin` / `cos` reduction,
+/// whose bits differ next to the zeros of `sin` / `cos` and at huge arguments,
+/// and no corpus sample lands there — `tests/test_jit_sincos_det.rs` sweeps
+/// those angles)
 ///
 /// The per-node hashes only move when a law this corpus exercises changes bits;
 /// this pin moves when any kernel of the dependency does, including one no
@@ -94,7 +98,7 @@ fn tree_evaluator_bits_match_recorded_hashes() {
 /// evaluator path calls, and every hash below stayed put). A failure here is a
 /// dependency move: re-check the table, then re-pin both with the CHANGELOG
 /// saying which `alice-det-math` the crate now evaluates with.
-const SEMANTICS_ID_HEX: &str = "d2209b30f6f1f45baa1b638bcdfee34ac64773b2e63b9c083b2e77afc691398e";
+const SEMANTICS_ID_HEX: &str = "135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000";
 
 #[test]
 fn semantics_id_matches_recorded_hex() {

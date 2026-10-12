@@ -131,18 +131,24 @@ fn simd_select_neg(
 /// same branch structure (as masks + `bitselect`) as `alice_det_math::sin_cos`
 /// / `alice_det_math::simd::sin_cos`, so the JIT is lane-for-lane bit-identical
 /// to the scalar and `f32x8` evaluators (`tests/test_det_parity.rs`). No
-/// `fma`, no `nearest` (ties-to-even): the rounding is musl's `roundf`
-/// formula from basic operations, exactly as in the crate.
+/// `fma`: the reduction is the crate's four-piece π/2 with `k·PIO2_3` formed
+/// exactly (Dekker two-product on 12-bit halves cut with `SPLIT_MASK`), and
+/// the quadrant integer is `trunc(t ± 0.5)` (`nearest_int`), exactly as in
+/// `alice-det-math` 0.5.
 ///
 /// Before 3.1.0 this was an unreduced degree-9/8 Taylor series (max abs error
 /// 4e-6 / 3e-5) whose `bitselect` masks were never bitcast to the value type,
 /// so twist / bend did not compile on Cranelift 0.113 (verifier error).
+/// Before 5.2.0 it was the three-piece reduction with musl `roundf` of
+/// `alice-det-math` 0.4.
 fn simd_sincos_det(
     builder: &mut FunctionBuilder,
     angle: Value,
     vec_type: types::Type,
 ) -> (Value, Value) {
-    use alice_det_math::consts::{COS_P, FRAC_2_PI, PIO2_1, PIO2_2, PIO2_3, SIN_P};
+    use alice_det_math::consts::{
+        COS_P, FRAC_2_PI, PIO2_1, PIO2_2, PIO2_3, PIO2_4, SIN_P, SPLIT_MASK,
+    };
     use cranelift_codegen::ir::condcodes::IntCC;
 
     let splat = |b: &mut FunctionBuilder, v: f32| {
@@ -163,52 +169,53 @@ fn simd_sincos_det(
         let m = b.ins().bitcast(vec_type, MemFlags::new(), mask);
         b.ins().bitselect(m, t, f)
     };
-
-    // --- round (musl roundf) -------------------------------------------
-    let round = |b: &mut FunctionBuilder, x: Value| -> Value {
-        let toint = splat(b, 8_388_608.0);
-        let bits = as_i(b, x);
-        let sh = b.ins().sshr_imm(bits, 23);
-        let __c0 = isplat(b, 0xff);
-        let e = b.ins().band(sh, __c0);
-        let __c0 = isplat(b, 0x7f + 23 - 1);
-        let integral = b.ins().icmp(IntCC::SignedGreaterThan, e, __c0);
-        let __c0 = isplat(b, 0x7f - 1);
-        let small = b.ins().icmp(IntCC::SignedLessThan, e, __c0);
-        let __c0 = isplat(b, i32::MIN);
-        let sign_bits = b.ins().band(bits, __c0);
-        let sign = as_f(b, sign_bits);
-        let ax = b.ins().fabs(x);
-        let y0 = b.ins().fadd(ax, toint);
-        let y0 = b.ins().fsub(y0, toint);
-        let y0 = b.ins().fsub(y0, ax);
-        let one = splat(b, 1.0);
-        let y_ax = b.ins().fadd(y0, ax);
-        let y_gt = b.ins().fsub(y_ax, one);
-        let y_le = b.ins().fadd(y_ax, one);
-        let __c0 = splat(b, 0.5);
-        let gt = b.ins().fcmp(FloatCC::GreaterThan, y0, __c0);
-        let __c0 = splat(b, -0.5);
-        let le = b.ins().fcmp(FloatCC::LessThanOrEqual, y0, __c0);
-        let y = blend(b, le, y_le, y_ax);
-        let y = blend(b, gt, y_gt, y);
-        let y_bits = as_i(b, y);
-        let y_bits = b.ins().bor(y_bits, sign_bits);
-        let y = as_f(b, y_bits);
-        let y = blend(b, small, sign, y);
-        blend(b, integral, x, y)
+    // `split_hi`: the high 12 significand bits (the low bits are cleared)
+    #[allow(clippy::cast_possible_wrap)] // a bit pattern, not a number
+    let split_hi = |b: &mut FunctionBuilder, a: Value| {
+        let bits = as_i(b, a);
+        let m = isplat(b, SPLIT_MASK as i32);
+        let hi = b.ins().band(bits, m);
+        as_f(b, hi)
     };
 
     // --- reduce_pio2 ----------------------------------------------------
-    let kf = b_mul(builder, angle, FRAC_2_PI, &splat);
-    let kf = round(builder, kf);
-    let t = b_mul(builder, kf, PIO2_1, &splat);
-    let r = builder.ins().fsub(angle, t);
-    let t = b_mul(builder, kf, PIO2_2, &splat);
-    let r = builder.ins().fsub(r, t);
-    let t = b_mul(builder, kf, PIO2_3, &splat);
-    let r = builder.ins().fsub(r, t);
-    // `kf as i32` saturating, NaN → 0
+    // kf = nearest_int(x·2/π) = trunc(t + (t < 0 ? -0.5 : 0.5)) through i32
+    // (saturating, NaN → 0)
+    let t = b_mul(builder, angle, FRAC_2_PI, &splat);
+    let zero = splat(builder, 0.0);
+    let neg_t = builder.ins().fcmp(FloatCC::LessThan, t, zero);
+    let half_n = splat(builder, -0.5);
+    let half_p = splat(builder, 0.5);
+    let half = blend(builder, neg_t, half_n, half_p);
+    let th = builder.ins().fadd(t, half);
+    let ki = builder.ins().fcvt_to_sint_sat(types::I32X4, th);
+    let kf = builder.ins().fcvt_from_sint(vec_type, ki);
+    // (p3, e3) = two_prod(kf, PIO2_3), the same operations in the same order
+    let c3 = splat(builder, PIO2_3);
+    let p3 = builder.ins().fmul(kf, c3);
+    let ah = split_hi(builder, kf);
+    let bh = split_hi(builder, c3);
+    let al = builder.ins().fsub(kf, ah);
+    let bl = builder.ins().fsub(c3, bh);
+    let e = builder.ins().fmul(ah, bh);
+    let e = builder.ins().fsub(e, p3);
+    let t1 = builder.ins().fmul(ah, bl);
+    let e = builder.ins().fadd(e, t1);
+    let t1 = builder.ins().fmul(al, bh);
+    let e = builder.ins().fadd(e, t1);
+    let t1 = builder.ins().fmul(al, bl);
+    let e3 = builder.ins().fadd(e, t1);
+    // r = ((((x - kf·P1) - kf·P2) - p3) - e3) - kf·P4
+    let t1 = b_mul(builder, kf, PIO2_1, &splat);
+    let r = builder.ins().fsub(angle, t1);
+    let t1 = b_mul(builder, kf, PIO2_2, &splat);
+    let r = builder.ins().fsub(r, t1);
+    let r = builder.ins().fsub(r, p3);
+    let r = builder.ins().fsub(r, e3);
+    let t1 = b_mul(builder, kf, PIO2_4, &splat);
+    let r = builder.ins().fsub(r, t1);
+    // `(kf as i32) & 3`: kf is integral and within i32 (it came from one),
+    // except kf = 2^31 from i32::MAX, which saturates back to i32::MAX
     let k = builder.ins().fcvt_to_sint_sat(types::I32X4, kf);
     let __c0 = isplat(builder, 3);
     let k = builder.ins().band(k, __c0);
@@ -264,6 +271,10 @@ fn simd_sincos_det(
     let c_bad = builder.ins().bor(c_nan, not_finite);
     let sv = blend(builder, s_bad, nan, sv);
     let cv = blend(builder, c_bad, nan, cv);
+    // `if x == 0.0 { return (x, 1.0) }`: ±0 keeps its sign in sin (the
+    // reduction's `- kf·PIO2_4` turns −0 into +0); cos is already 1
+    let x_zero = builder.ins().fcmp(FloatCC::Equal, angle, zero);
+    let sv = blend(builder, x_zero, angle, sv);
 
     (cv, sv)
 }
