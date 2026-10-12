@@ -12,8 +12,8 @@ use crate::compiled::real::Real;
 /// # Returns
 /// Maximum of the two distances
 #[inline(always)]
-pub const fn sdf_intersection(d1: f32, d2: f32) -> f32 {
-    d1.max(d2)
+pub fn sdf_intersection(d1: f32, d2: f32) -> f32 {
+    sdf_intersection_r::<f32>(d1, d2)
 }
 
 /// Intersection of multiple SDFs
@@ -22,7 +22,7 @@ pub fn sdf_intersection_multi(distances: &[f32]) -> f32 {
     distances
         .iter()
         .copied()
-        .reduce(|a, b| a.max(b))
+        .reduce(|a, b| sdf_intersection_r::<f32>(a, b))
         .unwrap_or(f32::MIN)
 }
 
