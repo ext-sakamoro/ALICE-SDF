@@ -45,6 +45,15 @@
 //!
 //! Author: Moroya Sakamoto
 
+// NPR color output, not distance / SVO geometry: a signed zero here never
+// reaches a persisted distance or a cross-evaluator parity check, so the raw
+// SIMD `max`/`min` (whose zero sign is arch-dependent) is allowed in this
+// module. The Law helper governs the geometry evaluators, not color.
+#![allow(
+    clippy::disallowed_methods,
+    reason = "NPR color output, not distance/SVO geometry; signed zero never reaches a persisted value or parity check"
+)]
+
 use crate::npr::composition::{bloom_toon, vignette};
 use crate::npr::dsl::{palette_source_scalar, NprColorContext, NprColorNode, PaletteSource};
 use crate::npr::hatch::hatch_lines;
