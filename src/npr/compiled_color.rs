@@ -381,7 +381,9 @@ impl CompiledColorPipeline {
                 ColorOp::Fresnel { edge, power } => {
                     let base = stack.pop().expect("Fresnel: missing base");
                     let ndv = ctx.n_dot_v();
-                    let fresnel = (1.0 - ndv.clamp(0.0, 1.0)).max(0.0).powf(power.max(0.0));
+                    let fresnel = (1.0 - ndv.clamp(0.0, 1.0))
+                        .raw_max(0.0)
+                        .powf(power.raw_max(0.0));
                     stack.push(base.lerp(*edge, fresnel.clamp(0.0, 1.0)));
                 }
                 ColorOp::Saturate { factor } => {
@@ -434,7 +436,7 @@ impl CompiledColorPipeline {
                 }
                 ColorOp::Tonemap { exposure } => {
                     let color = stack.pop().expect("Tonemap: empty stack");
-                    let scaled = color * exposure.max(0.0);
+                    let scaled = color * exposure.raw_max(0.0);
                     stack.push(scaled / (Vec3::ONE + scaled));
                 }
                 ColorOp::SpeedLine {
@@ -995,7 +997,7 @@ fn hatch_lines_x8(uv_x: f32x8, uv_y: f32x8, angle_rad: f32, density: f32, thickn
     //   dist = |phase - 0.5|
     //   1 where dist > 0.5 - clamp(thickness, 0, 0.5), else 0
     let (sin_a, cos_a) = angle_rad.sin_cos();
-    let d = density.max(1e-6);
+    let d = density.raw_max(1e-6);
     let t = thickness.clamp(0.0, 0.5);
     let projected = uv_x * f32x8::splat(-sin_a) + uv_y * f32x8::splat(cos_a);
     let raw = projected * f32x8::splat(d);
@@ -1160,8 +1162,8 @@ impl CompiledColorPipeline {
                     let power = *power;
                     stack.push(per_lane_scalar_output(batch, base, |_, view, base_c| {
                         let f = (1.0 - view.n_dot_v.clamp(0.0, 1.0))
-                            .max(0.0)
-                            .powf(power.max(0.0));
+                            .raw_max(0.0)
+                            .powf(power.raw_max(0.0));
                         base_c.lerp(edge, f.clamp(0.0, 1.0))
                     }));
                 }
@@ -1227,7 +1229,7 @@ impl CompiledColorPipeline {
                 }
                 ColorOp::Tonemap { exposure } => {
                     let color = stack.pop().expect("Tonemap: empty stack");
-                    let exp_v = f32x8::splat(exposure.max(0.0));
+                    let exp_v = f32x8::splat(exposure.raw_max(0.0));
                     let scaled = color.scale(exp_v);
                     stack.push(NprColorBatch8 {
                         r: scaled.r / (f32x8::splat(1.0) + scaled.r),

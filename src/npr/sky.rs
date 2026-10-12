@@ -82,8 +82,8 @@ pub fn distance_color_quantize(
 pub fn light_shaft_beam(view: Vec3, to_sun: Vec3, density: f32) -> f32 {
     let v = view.normalize_or_zero();
     let s = to_sun.normalize_or_zero();
-    let cos_theta = v.dot(s).max(0.0);
-    cos_theta.powf(density.max(1.0))
+    let cos_theta = v.dot(s).raw_max(0.0);
+    cos_theta.powf(density.raw_max(1.0))
 }
 
 /// Sun disc intensity within an angular `radius` around `to_sun`
@@ -100,8 +100,8 @@ pub fn sun_disc(view: Vec3, to_sun: Vec3, radius: f32, softness: f32) -> f32 {
     let v = view.normalize_or_zero();
     let s = to_sun.normalize_or_zero();
     let cos_theta = v.dot(s);
-    let r = radius.max(0.0);
-    let soft = softness.max(0.0);
+    let r = radius.raw_max(0.0);
+    let soft = softness.raw_max(0.0);
     let cos_inner = r.cos();
     let cos_outer = (r + soft).cos();
     if cos_theta >= cos_inner {
@@ -109,7 +109,7 @@ pub fn sun_disc(view: Vec3, to_sun: Vec3, radius: f32, softness: f32) -> f32 {
     } else if cos_theta <= cos_outer {
         0.0
     } else {
-        let denom = (cos_inner - cos_outer).max(1e-6);
+        let denom = (cos_inner - cos_outer).raw_max(1e-6);
         ((cos_theta - cos_outer) / denom).clamp(0.0, 1.0)
     }
 }

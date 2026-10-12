@@ -125,6 +125,9 @@ rustup target list --installed | grep -q x86_64-apple-darwin || rustup target ad
 relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
 step "library clippy configuration (current + canary)"
 python3 scripts/clippy_lib_gate.py
+step "no max / min hides under an allow of the lint (scratch copy with the allows lifted)"
+python3 scripts/test_clippy_lib_hidden_check.py
+python3 scripts/clippy_lib_hidden_check.py --features "$LINUX_ALL"
 
 # Linux / Windows runners are x86_64; arch-gated bodies (SIMD dispatch) lint
 # differently there (missing_const_for_fn, dead_code on aarch64-only paths).

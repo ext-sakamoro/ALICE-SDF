@@ -8,15 +8,20 @@
 //! (`.github/clippy-lib/clippy.toml`) and uses the Law helpers
 //! (`law_max_f32` / `law_min_f32`, `Real::max` / `Real::min`) instead.
 //!
-//! The functions here are the one exception, and the only place in the library
-//! where the lint is allowed. **Never use them for a value that reaches a
-//! distance, bound, mesh or persisted byte.** They exist for colour, shading,
-//! statistics and similar values whose zero sign cannot matter, and each call
-//! site has to be visible as an exception: `scripts/raw_minmax_manifest.py`
-//! checks that only the modules listed in `scripts/raw_minmax_manifest.toml`
-//! call them, with the listed number of calls, and that no geometry module
-//! does. Calling one of these does not exempt a module from the libm ban,
-//! because nothing here allows anything outside this file.
+//! The functions here are the one exception for max / min. **Never use them for
+//! a value that reaches a distance, bound, mesh or persisted byte.** They exist
+//! for colour, shading and similar values whose zero sign cannot matter, and
+//! each call site has to be visible as an exception: `scripts/raw_minmax_manifest.py`
+//! checks that only the files listed in `scripts/raw_minmax_manifest.toml` call
+//! them, with the listed number of calls, and only under `[scope] raw-allowed`.
+//! Calling one of these does not exempt a module from the libm ban, because
+//! nothing here allows anything outside this file.
+//!
+//! Other allows of the same lint exist (rendering helpers that may call the
+//! platform libm); since one lint covers both bans, such an allow would also
+//! let `f32::max` through unseen. `scripts/clippy_lib_hidden_check.py` lifts
+//! every allow outside this file in a scratch copy and fails on any max / min
+//! the library clippy then reports.
 
 use wide::f32x8;
 

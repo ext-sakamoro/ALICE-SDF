@@ -14,16 +14,16 @@
 raw-allowed = ["src/npr/"]
 
 [allowed."src/npr/compiled_color.rs"]
-uses = 15
-why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+uses = 22
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte; also the uses under the rendering helpers' libm allows"
 
 [allowed."src/npr/composition.rs"]
-uses = 2
-why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+uses = 5
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte; also the uses under the rendering helpers' libm allows"
 
 [allowed."src/npr/hatch.rs"]
-uses = 2
-why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+uses = 3
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte; also the uses under the rendering helpers' libm allows"
 
 [allowed."src/npr/outline.rs"]
 uses = 5
@@ -34,9 +34,25 @@ uses = 4
 why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
 
 [allowed."src/npr/sky.rs"]
-uses = 3
-why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+uses = 8
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte; also the uses under the rendering helpers' libm allows"
 
 [allowed."src/npr/toon.rs"]
 uses = 5
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+
+[allowed."src/npr/distortion.rs"]
+uses = 2
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+
+[allowed."src/npr/dsl.rs"]
+uses = 3
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+
+[allowed."src/npr/motion.rs"]
+uses = 1
+why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"
+
+[allowed."src/npr/rim.rs"]
+uses = 3
 why = "NPR shading: a colour or shading weight, never a distance, bound, mesh or stored byte"

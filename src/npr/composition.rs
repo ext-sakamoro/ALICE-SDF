@@ -19,8 +19,8 @@ pub fn vignette(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> f32 {
     let dx = uv_x - 0.5;
     let dy = uv_y - 0.5;
     let d = dx.hypot(dy);
-    let inner = radius.max(0.0);
-    let outer = (inner + softness.max(0.0)).max(inner + 1e-6);
+    let inner = radius.raw_max(0.0);
+    let outer = (inner + softness.raw_max(0.0)).raw_max(inner + 1e-6);
     if d <= inner {
         1.0
     } else if d >= outer {

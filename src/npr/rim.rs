@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::raw_minmax::RawMinMax;
 use glam::Vec3;
 
 /// Fresnel rim intensity from `normal . view`
@@ -15,8 +16,8 @@ use glam::Vec3;
     reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
 )]
 pub fn fresnel_rim(n_dot_v: f32, power: f32, intensity: f32) -> f32 {
-    let base = (1.0 - n_dot_v.clamp(0.0, 1.0)).max(0.0);
-    base.powf(power.max(0.0)) * intensity
+    let base = (1.0 - n_dot_v.clamp(0.0, 1.0)).raw_max(0.0);
+    base.powf(power.raw_max(0.0)) * intensity
 }
 
 /// Procedural matcap: bilinear sample of a 2x2 palette by view-space normal
@@ -53,7 +54,7 @@ pub fn procedural_matcap(
 )]
 pub fn stylized_specular(n_dot_h: f32, sharpness: f32, soft_edge: f32) -> f32 {
     let ndh = n_dot_h.clamp(0.0, 1.0);
-    let raw = ndh.powf(sharpness.max(1.0));
+    let raw = ndh.powf(sharpness.raw_max(1.0));
     let s = soft_edge.clamp(0.0, 0.5);
     if s < 1e-6 {
         if raw > 0.5 {

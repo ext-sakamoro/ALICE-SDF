@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::raw_minmax::RawMinMax;
 use std::f32::consts::TAU;
 
 /// Radial speed line mask emanating from a focal UV
@@ -58,7 +59,7 @@ pub fn impact_flash(time: f32, decay: f32, intensity: f32) -> f32 {
     if time < 0.0 {
         return 0.0;
     }
-    let d = decay.max(1e-4);
+    let d = decay.raw_max(1e-4);
     intensity * (-time / d).exp()
 }
 

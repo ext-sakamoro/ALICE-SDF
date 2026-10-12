@@ -24,6 +24,7 @@ use crate::npr::outline::composite_outline;
 use crate::npr::palette::palette_gradient;
 use crate::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp, two_tone};
 use crate::npr::NprColor;
+use crate::raw_minmax::RawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Inputs available to every color node during evaluation
@@ -293,7 +294,9 @@ impl NprColorNode {
             Self::Fresnel { base, edge, power } => {
                 let base_color = base.eval(ctx);
                 let ndv = ctx.n_dot_v();
-                let fresnel = (1.0 - ndv.clamp(0.0, 1.0)).max(0.0).powf(power.max(0.0));
+                let fresnel = (1.0 - ndv.clamp(0.0, 1.0))
+                    .raw_max(0.0)
+                    .powf(power.raw_max(0.0));
                 base_color.lerp(*edge, fresnel.clamp(0.0, 1.0))
             }
             Self::Saturate { child, factor } => {
@@ -347,7 +350,7 @@ impl NprColorNode {
             }
             Self::Tonemap { child, exposure } => {
                 let color = child.eval(ctx);
-                let scaled = color * exposure.max(0.0);
+                let scaled = color * exposure.raw_max(0.0);
                 scaled / (Vec3::ONE + scaled)
             }
             Self::SpeedLine {

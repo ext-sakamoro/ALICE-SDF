@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 use super::{direct_lighting, sky_color, DirectionalLight};
@@ -76,7 +77,7 @@ pub fn cone_trace(
 
     while t < config.max_distance && alpha < 0.95 {
         let pos = origin + direction * t;
-        let cone_radius = (t * tan_angle).max(config.min_step);
+        let cone_radius = (t * tan_angle).law_max(config.min_step);
 
         // Sample SVO distance at this position
         let dist = svo_query_point(svo, pos);
@@ -94,7 +95,8 @@ pub fn cone_trace(
         }
 
         // Step forward: at least min_step, or distance-based
-        let step = (dist.abs().max(cone_radius) * config.step_multiplier).max(config.min_step);
+        let step =
+            (dist.abs().law_max(cone_radius) * config.step_multiplier).law_max(config.min_step);
         t += step;
     }
 

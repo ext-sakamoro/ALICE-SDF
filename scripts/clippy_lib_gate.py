@@ -10,8 +10,9 @@ min, x86_64 returns the argument), so a stored value could carry a different
 bit on Linux x86 than on macOS ARM. The library uses the Law helpers
 (`law_max_f32` / `law_min_f32`, and `Real::max` / `min` for `f32x8`), or, for a
 value that never reaches a distance, bound, mesh or persisted byte, the
-`raw_*` helpers in `src/raw_minmax.rs` (the only place the lint is allowed;
-`scripts/raw_minmax_manifest.py` says which modules may call them). Tests, examples and benches keep the std functions, so the extra
+`raw_*` helpers in `src/raw_minmax.rs` (`scripts/raw_minmax_manifest.py` says
+which files may call them; `scripts/clippy_lib_hidden_check.py` shows that no
+other allow of the lint hides a max / min). Tests, examples and benches keep the std functions, so the extra
 entries live in a second configuration, `.github/clippy-lib/clippy.toml`,
 that CI and preflight pass to `cargo clippy --lib` with `CLIPPY_CONF_DIR`.
 

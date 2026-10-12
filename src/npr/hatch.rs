@@ -17,7 +17,7 @@ use crate::raw_minmax::RawMinMax;
 pub fn hatch_lines(uv_x: f32, uv_y: f32, angle_rad: f32, density: f32, thickness: f32) -> f32 {
     let (s, c) = angle_rad.sin_cos();
     let projected = uv_y * c + (uv_x * (-s));
-    let d = density.max(1e-6);
+    let d = density.raw_max(1e-6);
     let raw = projected * d;
     let phase = raw - raw.floor();
     let dist = (phase - 0.5).abs();

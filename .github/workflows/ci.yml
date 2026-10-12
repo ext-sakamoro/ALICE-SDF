@@ -377,7 +377,7 @@ jobs:
         run: python scripts/docs_lint.py --check
       - name: raw max/min manifest oracle (検査器自身の試験)
         run: python scripts/test_raw_minmax_manifest.py
-      - name: raw max/min manifest (raw helper の使用は一覧と数が一致、geometry では 0、走査 0 件で fail)
+      - name: raw max/min manifest (raw helper の使用は一覧と数が一致、src/npr/ の外では 0、走査 0 件で fail)
         run: python scripts/raw_minmax_manifest.py
       # 数を上げる時は why の変更が要る (main の一覧と比べる)
       - name: raw max/min manifest against main (count rises need a new why)
@@ -667,6 +667,13 @@ jobs:
         run: cargo clippy --lib --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
       - name: Library clippy configuration is current and fires (canary)
         run: python3 scripts/clippy_lib_gate.py
+      # The same lint carries the libm ban, so a function-level allow written for
+      # libm would also hide a max / min: lift every such allow in a scratch copy and
+      # require no max / min diagnostic outside src/raw_minmax.rs (0 compared fails)
+      - name: Hidden max / min check (tests)
+        run: python3 scripts/test_clippy_lib_hidden_check.py
+      - name: No max / min hides under an allow of the lint
+        run: python3 scripts/clippy_lib_hidden_check.py --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
 
       # examples/gpu_eval.rs は required-features = ["gpu"] なので default CI では
       # compile されない (1.9.2 まで API drift で壊れたまま気付かなかった)

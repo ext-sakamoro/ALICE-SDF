@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::raw_minmax::RawMinMax;
 use glam::Vec3;
 
 /// Jitter a position by a caller-supplied 3D noise direction
@@ -28,7 +29,7 @@ pub fn hand_drawn_jitter(position: Vec3, noise_direction: Vec3, amplitude: f32) 
     reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
 )]
 pub fn sketch_wobble(position: Vec3, amplitude: f32, frequency: f32) -> Vec3 {
-    let f = frequency.max(0.0);
+    let f = frequency.raw_max(0.0);
     let offset = Vec3::new(
         (position.y * f).sin(),
         (position.z * f).sin(),
@@ -49,7 +50,7 @@ pub fn sketch_wobble(position: Vec3, amplitude: f32, frequency: f32) -> Vec3 {
     reason = "rendering helper: the result is a colour or shading weight and never feeds a distance, bound or mesh"
 )]
 pub fn line_boil(position: Vec3, time: f32, amplitude: f32, frequency: f32) -> Vec3 {
-    let f = frequency.max(0.0);
+    let f = frequency.raw_max(0.0);
     let offset = Vec3::new(
         (time * 3.0 + (position.y * f)).sin(),
         (time * 3.7 + (position.z * f)).sin(),

@@ -489,7 +489,7 @@ impl LodSelector {
     )]
     pub fn screen_error(&self, geometric_error: f32, distance: f32) -> f32 {
         let proj_factor = self.screen_height / (2.0 * (self.fov_y * 0.5).tan());
-        (geometric_error / distance.max(0.001)) * proj_factor
+        (geometric_error / distance.law_max(0.001)) * proj_factor
     }
 
     /// Check if LOD is acceptable at distance
