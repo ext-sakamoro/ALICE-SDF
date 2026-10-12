@@ -909,7 +909,7 @@ mod tests {
     fn law_minmax_signed_zero_table() {
         let np = 0.0f32.to_bits(); // +0
         let nn = (-0.0f32).to_bits(); // -0
-        // max: +0 iff either operand is +0
+                                      // max: +0 iff either operand is +0
         assert_eq!(law_max_f32(0.0, -0.0).to_bits(), np, "max(+0,-0)");
         assert_eq!(law_max_f32(-0.0, 0.0).to_bits(), np, "max(-0,+0)");
         assert_eq!(law_max_f32(0.0, 0.0).to_bits(), np, "max(+0,+0)");
@@ -927,15 +927,27 @@ mod tests {
         assert_eq!(law_min_f32(5.0, f32::NAN), 5.0, "NaN -> other");
         // teeth: the ordered rule is NOT what a both-zero-to-+0 normalisation gives
         // (that would make max(-0,-0) = +0 and break tree==JIT for the -0,-0 lane)
-        assert_ne!(law_max_f32(-0.0, -0.0).to_bits(), np, "max(-0,-0) must stay -0");
+        assert_ne!(
+            law_max_f32(-0.0, -0.0).to_bits(),
+            np,
+            "max(-0,-0) must stay -0"
+        );
         // teeth: scalar and SIMD lane 0 agree on every zero combination
         for (a, b) in [(0.0f32, -0.0f32), (-0.0, 0.0), (-0.0, -0.0), (0.0, 0.0)] {
             let s_max = law_max_f32(a, b);
             let v_max = f32x8::splat(a).max(f32x8::splat(b)).to_array()[0];
-            assert_eq!(s_max.to_bits(), v_max.to_bits(), "scalar vs SIMD max({a},{b})");
+            assert_eq!(
+                s_max.to_bits(),
+                v_max.to_bits(),
+                "scalar vs SIMD max({a},{b})"
+            );
             let s_min = law_min_f32(a, b);
             let v_min = f32x8::splat(a).min(f32x8::splat(b)).to_array()[0];
-            assert_eq!(s_min.to_bits(), v_min.to_bits(), "scalar vs SIMD min({a},{b})");
+            assert_eq!(
+                s_min.to_bits(),
+                v_min.to_bits(),
+                "scalar vs SIMD min({a},{b})"
+            );
         }
     }
 

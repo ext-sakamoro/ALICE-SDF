@@ -28,7 +28,10 @@ fn coincident_scenes() -> Vec<(&'static str, SdfNode)> {
         ("subtract_identical", b().subtract(b())),
         ("intersect_identical", b().intersection(b())),
         ("union_identical", b().union(b())),
-        ("subtract_shared_face", SdfNode::box3d(1.0, 1.0, 1.0).subtract(SdfNode::box3d(1.0, 2.0, 2.0))),
+        (
+            "subtract_shared_face",
+            SdfNode::box3d(1.0, 1.0, 1.0).subtract(SdfNode::box3d(1.0, 2.0, 2.0)),
+        ),
     ]
 }
 
@@ -68,7 +71,10 @@ fn tree_and_jit_agree_on_signed_zero_at_coincident_boundaries() {
             }
         }
     }
-    assert!(checked > 0, "no coincident zero was exercised (seed is vacuous)");
+    assert!(
+        checked > 0,
+        "no coincident zero was exercised (seed is vacuous)"
+    );
 }
 
 #[test]
@@ -119,7 +125,11 @@ fn tree_and_bytecode_svo_serialize_identically() {
             // the stored distances must agree bit-for-bit, signed zero included:
             // the serialized chunk writes `distance.to_le_bytes()`, so a ±0 split
             // would make the persisted bytes diverge across architectures.
-            assert_eq!(t.to_bits(), c.to_bits(), "{name} @ {p:?}: tree vs bytecode SVO distance");
+            assert_eq!(
+                t.to_bits(),
+                c.to_bits(),
+                "{name} @ {p:?}: tree vs bytecode SVO distance"
+            );
             compared += 1;
         }
     }
