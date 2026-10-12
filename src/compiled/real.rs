@@ -178,7 +178,7 @@ pub trait Real:
 /// is `+0` iff either operand is `+0` (and `max(-0, -0) = -0`). Pin the tree and
 /// SIMD paths to that same ordered rule so all evaluators agree bit-for-bit.
 #[inline(always)]
-pub(crate) fn law_max_f32(a: f32, b: f32) -> f32 {
+pub(crate) const fn law_max_f32(a: f32, b: f32) -> f32 {
     let m = f32::max(a, b);
     if a == 0.0 && b == 0.0 {
         if a.is_sign_positive() | b.is_sign_positive() {
@@ -194,7 +194,7 @@ pub(crate) fn law_max_f32(a: f32, b: f32) -> f32 {
 /// Minimum under the same rule as [`law_max_f32`]: a both-zero result is `-0` iff
 /// either operand is `-0` (`min(+0, +0) = +0`), matching the Cranelift `fmin`.
 #[inline(always)]
-pub(crate) fn law_min_f32(a: f32, b: f32) -> f32 {
+pub(crate) const fn law_min_f32(a: f32, b: f32) -> f32 {
     let m = f32::min(a, b);
     if a == 0.0 && b == 0.0 {
         if a.is_sign_negative() | b.is_sign_negative() {

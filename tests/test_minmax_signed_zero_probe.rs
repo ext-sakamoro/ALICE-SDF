@@ -80,12 +80,8 @@ fn tree_and_jit_agree_on_signed_zero_at_coincident_boundaries() {
 #[test]
 fn no_signed_zero_split_over_a_csg_grid() {
     let scenes = coincident_scenes();
-    let mut coords = vec![];
-    let mut x = -1.5f32;
-    while x <= 1.5001 {
-        coords.push(x);
-        x += 0.25;
-    }
+    // -1.5 .. 1.5 step 0.25 (hits the ±0.5 faces and the 0 planes)
+    let coords: Vec<f32> = (-6..=6).map(|i| i as f32 * 0.25).collect();
     for (name, node) in scenes {
         let jit = JitCompiledSdf::compile(&node).expect("jit");
         for &a in &coords {
