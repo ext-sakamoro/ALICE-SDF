@@ -18,6 +18,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[cfg(feature = "glsl")]
 use crate::compiled::glsl::{GlslShader, GlslTranspileMode};
 #[cfg(feature = "hlsl")]
 use crate::compiled::hlsl::{HlslShader, HlslTranspileMode};
@@ -26,7 +27,6 @@ use crate::compiled::wgsl::{TranspileMode as WgslTranspileMode, WgslShader};
 use crate::npr::dsl::NprColorNode;
 use crate::npr::dsl_shader::{transpile_npr_color_node, NprShaderContext};
 use crate::npr::shader_glue::{full_helpers_for, ShaderLanguage};
-#[cfg(feature = "glsl")]
 use crate::raw_minmax::RawMinMax;
 use crate::types::SdfNode;
 use glam::Vec3;

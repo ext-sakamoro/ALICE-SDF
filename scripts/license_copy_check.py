@@ -33,10 +33,13 @@ def self_test() -> int:
         r = Path(d); (r/"LICENSE-COMMUNITY").write_text("X\n"); (r/"vrchat-package").mkdir(); (r/"unity-sdf-universe").mkdir()
         me = Path(__file__)
         def run(copies_body):
-            src = re.sub(r'^COPIES = \[.*\]$', copies_body, me.read_text(), count=1, flags=re.M).replace(
+            src = re.sub(r'^COPIES = \[.*\]$', copies_body, me.read_text(encoding="utf-8"), count=1, flags=re.M).replace(
                 'ROOT = Path(__file__).resolve().parent.parent', f'ROOT = Path(r"{d}")')
-            t = r/"chk.py"; t.write_text(src)
-            return subprocess.run([sys.executable, str(t)], capture_output=True).returncode
+            t = r/"chk.py"; t.write_text(src, encoding="utf-8")
+            p = subprocess.run([sys.executable, str(t)], capture_output=True, text=True, encoding="utf-8")
+            if p.returncode not in (0, 1):
+                print(p.stdout, p.stderr, file=sys.stderr)
+            return p.returncode
         (r/"vrchat-package/LICENSE.md").write_text("X\n")
         (r/"unity-sdf-universe/LICENSE").write_text("X\n")
         assert run('COPIES = ["vrchat-package/LICENSE.md", "unity-sdf-universe/LICENSE"]') == 0, "identical copies should pass"
