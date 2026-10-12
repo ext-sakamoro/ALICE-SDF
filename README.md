@@ -306,8 +306,9 @@ Release history is in [`CHANGELOG.md`](CHANGELOG.md). Planned work is in
 
 ## License
 
-The crate is dual-licensed under `MIT OR Apache-2.0`
-([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)).
+The crate is licensed under `Apache-2.0` ([LICENSE-APACHE](LICENSE-APACHE)),
+matching `alice-det-math` 0.5. Releases up to 5.1.1 remain available under
+their published terms (`MIT OR Apache-2.0`).
 
 The `physics`, `codec` and `sdf-cache` features link crates licensed
 `AGPL-3.0-or-later`. A build that enables any of them is subject to the AGPL as

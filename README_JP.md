@@ -294,8 +294,8 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 ## ライセンス
 
-crate は `MIT OR Apache-2.0` のデュアルライセンス
-([LICENSE-MIT](LICENSE-MIT)、[LICENSE-APACHE](LICENSE-APACHE))
+crate は `Apache-2.0` ([LICENSE-APACHE](LICENSE-APACHE)) `alice-det-math` 0.5 に合わせる
+5.1.1 までの release は公開時の条件 (`MIT OR Apache-2.0`) のまま
 
 `physics`、`codec`、`sdf-cache` の各 feature は `AGPL-3.0-or-later` の crate を
 リンクする いずれかを有効にしたビルドは全体が AGPL の対象になる 既定の feature と
