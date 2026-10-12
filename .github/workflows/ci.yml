@@ -6,6 +6,15 @@ on:
     branches: [main, 'ci/**']
   pull_request:
     branches: [main]
+  # A full run on demand (every job, no path filter): the release gate reads the
+  # latest run of this workflow on the publish commit, and a CHANGELOG-only commit
+  # would otherwise skip the code jobs, which the gate refuses
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Run every job regardless of the changed paths"
+        type: boolean
+        default: true
 
 # 連続 push で前の run を即 cancel (runner minutes 浪費防止)
 # on main each commit has a group of its own and a run there is never
@@ -51,10 +60,16 @@ jobs:
           fetch-depth: 0
       - name: Change detection base (last successful CI on main)
         id: base
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
+          FULL_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
         run: |
+          if [ "$FULL_INPUT" = "true" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "workflow_dispatch with full=true: running every job"
+            exit 0
+          fi
           sha=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push --status success --limit 1 --json headSha --jq '.[0].headSha // ""' 2>/dev/null || true)
           if [ -n "$sha" ] && git cat-file -e "${sha}^{commit}" 2>/dev/null; then
             echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -65,6 +80,7 @@ jobs:
           fi
       - uses: dorny/paths-filter@v4
         id: filter
+        if: steps.base.outputs.full != 'true'
         with:
           base: ${{ steps.base.outputs.sha }}
           filters: |
