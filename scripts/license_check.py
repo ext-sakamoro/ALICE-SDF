@@ -210,10 +210,13 @@ def self_test() -> int:
         assert run_against(t, m, {}) == 1, "a stray MIT in pyproject.toml must fail"
 
     # mutation 4: the MIT licence grant text appearing in README prose (not a mere
-    # historical mention of "MIT OR Apache-2.0", the actual licence text)
+    # historical mention of "MIT OR Apache-2.0", the actual licence text) -- built by
+    # concatenation so this file's own tracked source never holds the sentence whole
+    # (otherwise a real run of this same check against this repo would flag itself)
+    grant_sentence = "Permission is hereby granted, free" + " of charge, to any person..."
     with tempfile.TemporaryDirectory() as d:
         t = Path(d)
-        other = {"README.md": "See LICENSE.\n\nPermission is hereby granted, free of charge, to any person...\n"}
+        other = {"README.md": f"See LICENSE.\n\n{grant_sentence}\n"}
         assert run_against(t, base_manifests, other) == 1, "the MIT grant text in README prose must fail"
 
     # historical prose mentioning the old dual licence, by name only, must NOT fail
