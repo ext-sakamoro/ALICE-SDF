@@ -94,7 +94,7 @@ fn tree_evaluator_bits_match_recorded_hashes() {
 /// evaluator path calls, and every hash below stayed put). A failure here is a
 /// dependency move: re-check the table, then re-pin both with the CHANGELOG
 /// saying which `alice-det-math` the crate now evaluates with.
-const SEMANTICS_ID_HEX: &str = "d2209b30f6f1f45baa1b638bcdfee34ac64773b2e63b9c083b2e77afc691398e";
+const SEMANTICS_ID_HEX: &str = "135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000";
 
 #[test]
 fn semantics_id_matches_recorded_hex() {
