@@ -27,26 +27,22 @@ rust-version = "1.85"
 # - python: pyproject.toml + wheel build script (PyPI 配布)
 # - .github / scripts: CI workflow / release scripts (docs.rs 不要)
 # 1.7.7 で publish size を 579 → 削減して crates.io WAF による upload 503 を回避
-exclude = [
-    "/vrchat-package",
-    "/unreal-plugin",
-    "/mobile",
-    "/unity-sdf-universe",
-    "/skills",
-    "/npm",
-    "/python",
-    "/.github",
-    "/scripts",
-    "*.mp4",
-    "*.png",
-    "*.jpg",
-    "*.blend",
-    "*.zip",
-    "*.stl",
-    "*.obj",
-    "*.glb",
-    "*.gltf",
-    "Cargo.toml.orig",
+include = [
+    "/src/**",
+    "/tests/**",
+    "/examples/**",
+    "/benches/**",
+    "/include/**",
+    "/asset/**",
+    "/README.md",
+    "/README_JP.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-COMMUNITY",
+    "/TRADEMARK_NOTICE",
+    "/THIRD-PARTY-NOTICES.md",
+    "/CHANGELOG.md",
+    "/CHANGELOG-history.md",
+    "/Cargo.toml",
 ]
 
 [lib]
