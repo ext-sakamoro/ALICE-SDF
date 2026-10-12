@@ -122,7 +122,13 @@ in the evaluator and law directories.
 **Not covered.** `wasm32` is built in CI but the tests above are not run on
 it. The GPU shaders (WGSL, GLSL, HLSL, Metal) are a tolerance domain, not a
 bit-exact one. Targets that do not follow IEEE 754 for the basic operations,
-and builds with fast-math style flags, are outside the guarantee.
+and builds with fast-math style flags, are outside the guarantee. The
+bit-identity is for finite transcendental arguments: a non-finite or
+astronomically large `twist` / `bend` angle (strength times coordinate
+overflowing to `±inf` / `NaN`) on box-family shapes can make the Cranelift
+JIT return `NaN` where the tree evaluator — the reference — returns a value,
+because the JIT's `fmax` / `fmin` propagate `NaN` and Rust's `f32::max` /
+`min` do not; this edge is tracked for a fix.
 
 **Determinism is not correctness.** Matching bits say every machine computes
 the same numbers; whether the numbers are right is checked separately, see
