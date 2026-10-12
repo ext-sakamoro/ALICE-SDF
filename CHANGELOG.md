@@ -8,6 +8,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-10-13
+
 ### Fixed
 - SIMD / SIMD-JIT の内部 `sin_cos` の範囲還元を 0.5 に合わせて書き直した 最近傍整数を `trunc(t + copysign(0.5, t))` で求め (`x·2/π` が整数+½ になる量子化の境で `f32::round` と割れる既存の JIT の丸めの差を解消、この差は 0.5 以前から存在した)、`two_prod` + `PIO2_4` の 4 分割を使い、`±0` を素通しする これで scalar / SIMD / BVH / SIMD-JIT の 4 経路 (bit 一致は SIMD 系 JIT、スカラの tree JIT は許容差) が同じ木と同じ点に対し、**有限な超越関数の引数の範囲で** 同じ bit の距離を返す (非有限・極大角の端は README の「対象外」を参照)
 
