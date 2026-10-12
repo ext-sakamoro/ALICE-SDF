@@ -305,9 +305,9 @@ Unity 統合 ([`unity-sdf-universe/`](unity-sdf-universe/)) と VRChat パッケ
 ([`vrchat-package/`](vrchat-package/)) は ALICE Community License 1.1
 ([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): 個人利用・教育・オープンソースは誰でも無償
 ゲーム開発と VRChat ワールド / コンテンツは「大手」以外は無償 インフラサービス
-(クラウド、メタバースプラットフォーム、ストリーミング) と「大手」による利用には
-商用ライセンスが必要 「大手」= 関連会社を含む連結の年間売上が USD 100 万 (約 1.5 億円)
-を超える事業者 商用ライセンスの問い合わせ: <contact@extoria.co.jp>
+(クラウド、メタバースプラットフォーム、ストリーミング) と「大手」による商用利用
+(商用ゲーム・出版・商用製品・VRChat ワールド等、有償無償を問わない) には商用ライセンスが
+必要 「大手」= 関連会社を含む連結の年間売上が USD 100 万 (約 1.5 億円) を超える事業者 商用ライセンスの問い合わせ: <contact@extoria.co.jp>
 
 この crate で作ったコンテンツ (木、メッシュ、ワールド) はあなたのもの
 

@@ -320,9 +320,11 @@ Community License 1.1 ([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): personal use,
 education and open source are free for everyone; game development and VRChat
 worlds / content are free for anyone who is not a Large Enterprise. A
 commercial licence is required for infrastructure services (cloud, metaverse
-platforms, streaming) and for any use by a Large Enterprise — a legal entity
-whose consolidated annual revenue, across all affiliates and all business
-lines, exceeds USD 1,000,000. Commercial licence enquiries:
+platforms, streaming) and for commercial use by a Large Enterprise (commercial
+games, publishing, commercial products, VRChat worlds or other interactive
+experiences, sold or not) — a Large Enterprise being a legal entity whose
+consolidated annual revenue, across all affiliates and all business lines,
+exceeds USD 1,000,000. Commercial licence enquiries:
 <contact@extoria.co.jp>
 
 Content you create with the crate (trees, meshes, worlds) is yours.
