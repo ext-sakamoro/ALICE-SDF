@@ -168,6 +168,45 @@ pub trait Real:
     }
 }
 
+/// Maximum under one fixed rule for every evaluator (tree / SIMD / JIT / shader).
+///
+/// `f32::max` already gives the larger magnitude and returns the non-NaN operand
+/// (maximumNumber NaN rule). What it leaves unspecified is the **sign of a zero
+/// result**, and that sign is not portable: `0f32.max(-0.0)` is `-0` on x86_64
+/// (maxss keeps the second operand) and `+0` on aarch64. The Cranelift JIT lowers
+/// `fmax` to the ordered IEEE-754-2019 maximum (`-0 < +0`), so a both-zero result
+/// is `+0` iff either operand is `+0` (and `max(-0, -0) = -0`). Pin the tree and
+/// SIMD paths to that same ordered rule so all evaluators agree bit-for-bit.
+#[inline(always)]
+pub(crate) fn law_max_f32(a: f32, b: f32) -> f32 {
+    let m = f32::max(a, b);
+    if a == 0.0 && b == 0.0 {
+        if a.is_sign_positive() | b.is_sign_positive() {
+            0.0
+        } else {
+            -0.0
+        }
+    } else {
+        m
+    }
+}
+
+/// Minimum under the same rule as [`law_max_f32`]: a both-zero result is `-0` iff
+/// either operand is `-0` (`min(+0, +0) = +0`), matching the Cranelift `fmin`.
+#[inline(always)]
+pub(crate) fn law_min_f32(a: f32, b: f32) -> f32 {
+    let m = f32::min(a, b);
+    if a == 0.0 && b == 0.0 {
+        if a.is_sign_negative() | b.is_sign_negative() {
+            -0.0
+        } else {
+            0.0
+        }
+    } else {
+        m
+    }
+}
+
 impl Real for f32 {
     type Mask = bool;
     const LANES: usize = 1;
@@ -194,11 +233,11 @@ impl Real for f32 {
     }
     #[inline(always)]
     fn min(self, other: Self) -> Self {
-        Self::min(self, other)
+        law_min_f32(self, other)
     }
     #[inline(always)]
     fn max(self, other: Self) -> Self {
-        Self::max(self, other)
+        law_max_f32(self, other)
     }
     #[inline(always)]
     fn sin_cos(self) -> (Self, Self) {
@@ -320,11 +359,13 @@ impl Real for f32x8 {
     }
     #[inline(always)]
     fn min(self, other: Self) -> Self {
-        Self::min(self, other)
+        // Per-lane Law min so the SIMD batch path matches the scalar/tree path
+        // bit-for-bit on signed zero (the parity `fuzz_eval_parity` guards).
+        self.map2(other, law_min_f32)
     }
     #[inline(always)]
     fn max(self, other: Self) -> Self {
-        Self::max(self, other)
+        self.map2(other, law_max_f32)
     }
     #[inline(always)]
     fn sin_cos(self) -> (Self, Self) {
@@ -860,6 +901,43 @@ pub fn sweep_bezier<R: Real>(p: Vec3R<R>, p0: Vec2, p1: Vec2, p2: Vec2) -> Vec3R
 mod tests {
     use super::*;
     use crate::modifiers;
+
+    /// The Law's signed-zero table, pinned bit-for-bit. These are the eight
+    /// zero combinations plus the ordinary and NaN cases; the ordered rule is
+    /// `max(-0,-0) = -0`, `max(+0,-0) = +0`, `min(+0,-0) = -0`, `min(+0,+0) = +0`.
+    #[test]
+    fn law_minmax_signed_zero_table() {
+        let np = 0.0f32.to_bits(); // +0
+        let nn = (-0.0f32).to_bits(); // -0
+        // max: +0 iff either operand is +0
+        assert_eq!(law_max_f32(0.0, -0.0).to_bits(), np, "max(+0,-0)");
+        assert_eq!(law_max_f32(-0.0, 0.0).to_bits(), np, "max(-0,+0)");
+        assert_eq!(law_max_f32(0.0, 0.0).to_bits(), np, "max(+0,+0)");
+        assert_eq!(law_max_f32(-0.0, -0.0).to_bits(), nn, "max(-0,-0)");
+        // min: -0 iff either operand is -0
+        assert_eq!(law_min_f32(0.0, -0.0).to_bits(), nn, "min(+0,-0)");
+        assert_eq!(law_min_f32(-0.0, 0.0).to_bits(), nn, "min(-0,+0)");
+        assert_eq!(law_min_f32(-0.0, -0.0).to_bits(), nn, "min(-0,-0)");
+        assert_eq!(law_min_f32(0.0, 0.0).to_bits(), np, "min(+0,+0)");
+        // ordinary magnitude and NaN (maximumNumber: NaN -> the other operand)
+        assert_eq!(law_max_f32(-1.0, 2.0), 2.0);
+        assert_eq!(law_min_f32(-1.0, 2.0), -1.0);
+        assert_eq!(law_max_f32(-0.0, -1.0).to_bits(), nn, "max(-0,-1) = -0");
+        assert_eq!(law_max_f32(f32::NAN, 3.0), 3.0, "NaN -> other");
+        assert_eq!(law_min_f32(5.0, f32::NAN), 5.0, "NaN -> other");
+        // teeth: the ordered rule is NOT what a both-zero-to-+0 normalisation gives
+        // (that would make max(-0,-0) = +0 and break tree==JIT for the -0,-0 lane)
+        assert_ne!(law_max_f32(-0.0, -0.0).to_bits(), np, "max(-0,-0) must stay -0");
+        // teeth: scalar and SIMD lane 0 agree on every zero combination
+        for (a, b) in [(0.0f32, -0.0f32), (-0.0, 0.0), (-0.0, -0.0), (0.0, 0.0)] {
+            let s_max = law_max_f32(a, b);
+            let v_max = f32x8::splat(a).max(f32x8::splat(b)).to_array()[0];
+            assert_eq!(s_max.to_bits(), v_max.to_bits(), "scalar vs SIMD max({a},{b})");
+            let s_min = law_min_f32(a, b);
+            let v_min = f32x8::splat(a).min(f32x8::splat(b)).to_array()[0];
+            assert_eq!(s_min.to_bits(), v_min.to_bits(), "scalar vs SIMD min({a},{b})");
+        }
+    }
 
     fn lanes(v: Vec3) -> Vec3R<f32x8> {
         Vec3R::splat(v)
