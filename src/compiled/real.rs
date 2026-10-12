@@ -170,40 +170,40 @@ pub trait Real:
 
 /// Maximum under one fixed rule for every evaluator (tree / SIMD / JIT / shader).
 ///
-/// `f32::max` already gives the larger magnitude and returns the non-NaN operand
-/// (maximumNumber NaN rule). What it leaves unspecified is the **sign of a zero
-/// result**, and that sign is not portable: `0f32.max(-0.0)` is `-0` on x86_64
-/// (maxss keeps the second operand) and `+0` on aarch64. The Cranelift JIT lowers
-/// `fmax` to the ordered IEEE-754-2019 maximum (`-0 < +0`), so a both-zero result
-/// is `+0` iff either operand is `+0` (and `max(-0, -0) = -0`). Pin the tree and
-/// SIMD paths to that same ordered rule so all evaluators agree bit-for-bit.
+/// IEEE-754-2019 `maximumNumber`: NaN gives the other operand (as `f32::max`),
+/// and a both-zero result follows the ordered rule `-0 < +0`, so it is `+0` iff
+/// either operand is `+0` (and `max(-0, -0) = -0`). The sign of a zero from
+/// `f32::max` is not portable (`0f32.max(-0.0)` is `-0` on x86_64, `+0` on
+/// aarch64); the Cranelift JIT's `fmax` is ordered, so pinning the tree and SIMD
+/// paths to this rule makes every evaluator agree bit-for-bit.
+///
+/// Written as pure comparisons (no `f32::max`, which the evaluator-crate lint
+/// bans) and copied verbatim from the `alice_physics::det_math` `max`/`min`
+/// helper so the two crates fold into `alice-det-math` as a mechanical move
+/// (the Physics SHA is pinned here once that helper is published).
 #[inline(always)]
 pub(crate) const fn law_max_f32(a: f32, b: f32) -> f32 {
-    let m = f32::max(a, b);
-    if a == 0.0 && b == 0.0 {
-        if a.is_sign_positive() | b.is_sign_positive() {
-            0.0
-        } else {
-            -0.0
-        }
+    if a.is_nan() || b > a {
+        b
+    } else if b.is_nan() || a > b || !a.is_sign_negative() {
+        a
     } else {
-        m
+        b
     }
 }
 
-/// Minimum under the same rule as [`law_max_f32`]: a both-zero result is `-0` iff
-/// either operand is `-0` (`min(+0, +0) = +0`), matching the Cranelift `fmin`.
+/// Minimum under the same rule as [`law_max_f32`]: NaN gives the other operand,
+/// and a both-zero result is `-0` iff either operand is `-0` (`min(+0, +0) = +0`),
+/// matching the Cranelift `fmin`. Pure comparisons, verbatim from the
+/// `alice_physics::det_math` `min` helper (see [`law_max_f32`]).
 #[inline(always)]
 pub(crate) const fn law_min_f32(a: f32, b: f32) -> f32 {
-    let m = f32::min(a, b);
-    if a == 0.0 && b == 0.0 {
-        if a.is_sign_negative() | b.is_sign_negative() {
-            -0.0
-        } else {
-            0.0
-        }
+    if a.is_nan() || b < a {
+        b
+    } else if b.is_nan() || a < b || a.is_sign_negative() {
+        a
     } else {
-        m
+        b
     }
 }
 
@@ -932,17 +932,21 @@ mod tests {
             np,
             "max(-0,-0) must stay -0"
         );
-        // teeth: scalar and SIMD lane 0 agree on every zero combination
+        // teeth: scalar and the Law SIMD path agree on every zero combination.
+        // Call `Real::max`/`Real::min` by fully-qualified syntax: the bare
+        // `f32x8.max(..)` would bind to `wide`'s inherent raw-SIMD max (maxps,
+        // whose signed zero is arch-dependent: +0 on aarch64, -0 on x86_64),
+        // not the Law method the evaluators actually use through `R: Real`.
         for (a, b) in [(0.0f32, -0.0f32), (-0.0, 0.0), (-0.0, -0.0), (0.0, 0.0)] {
             let s_max = law_max_f32(a, b);
-            let v_max = f32x8::splat(a).max(f32x8::splat(b)).to_array()[0];
+            let v_max = <f32x8 as Real>::max(f32x8::splat(a), f32x8::splat(b)).to_array()[0];
             assert_eq!(
                 s_max.to_bits(),
                 v_max.to_bits(),
                 "scalar vs SIMD max({a},{b})"
             );
             let s_min = law_min_f32(a, b);
-            let v_min = f32x8::splat(a).min(f32x8::splat(b)).to_array()[0];
+            let v_min = <f32x8 as Real>::min(f32x8::splat(a), f32x8::splat(b)).to_array()[0];
             assert_eq!(
                 s_min.to_bits(),
                 v_min.to_bits(),
