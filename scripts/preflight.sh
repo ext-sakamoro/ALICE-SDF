@@ -117,6 +117,15 @@ relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets
 step "clippy: strict (all features that build on Linux, all targets)"
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --features "$LINUX_ALL"
 
+# library code: f32 / f64 / f32x8 max and min forbidden (ci.yml "Clippy (library
+# code, ...)"), here also for the x86_64 target the Linux / Windows runners use
+step "clippy: library code with .github/clippy-lib (max / min forbidden), host and x86_64"
+relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$LINUX_ALL"
+rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
+relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
+step "library clippy configuration (current + canary)"
+python3 scripts/clippy_lib_gate.py
+
 # Linux / Windows runners are x86_64; arch-gated bodies (SIMD dispatch) lint
 # differently there (missing_const_for_fn, dead_code on aarch64-only paths).
 step "clippy: strict on x86_64 (Linux / Windows runner arch, default + gpu)"

@@ -654,6 +654,20 @@ jobs:
         env:
           RUSTFLAGS: "-Dwarnings"
 
+      # The library code also may not call f32 / f64 / f32x8 max and min (the sign
+      # of an equal pair of zeros differs between aarch64 and x86_64): it uses the
+      # Law helpers, or the raw helpers counted in scripts/raw_minmax_manifest.toml.
+      # .github/clippy-lib/clippy.toml is generated from clippy.toml; the script
+      # checks it is current and that clippy with it flags each of the canary's
+      # forbidden forms (a configuration clippy does not read cannot pass)
+      - name: Clippy (library code, f32 / f64 / f32x8 max and min forbidden)
+        env:
+          CLIPPY_CONF_DIR: .github/clippy-lib
+          RUSTFLAGS: "-Dwarnings"
+        run: cargo clippy --lib --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
+      - name: Library clippy configuration is current and fires (canary)
+        run: python3 scripts/clippy_lib_gate.py
+
       # examples/gpu_eval.rs は required-features = ["gpu"] なので default CI では
       # compile されない (1.9.2 まで API drift で壊れたまま気付かなかった)
       - name: Build feature-gated examples (gpu / glsl / hlsl / blinkscript / msl / rust)
