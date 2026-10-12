@@ -11,6 +11,7 @@ use super::instruction::Instruction;
 use super::prim_table::PrimTable;
 use super::real::Vec3R;
 use super::simd::Vec3x8;
+use crate::compiled::real::LawMinMax;
 use crate::operations::*;
 use crate::primitives::*;
 use glam::Vec3;
@@ -138,11 +139,11 @@ impl PrimTable for f32x8 {
         let qx = p.x.abs() - hx;
         let qy = p.y.abs() - hy;
         let qz = p.z.abs() - hz;
-        let qx_pos = qx.max(Self::ZERO);
-        let qy_pos = qy.max(Self::ZERO);
-        let qz_pos = qz.max(Self::ZERO);
+        let qx_pos = qx.law_max(Self::ZERO);
+        let qy_pos = qy.law_max(Self::ZERO);
+        let qz_pos = qz.law_max(Self::ZERO);
         let outer = (qx_pos * qx_pos + qy_pos * qy_pos + qz_pos * qz_pos).sqrt();
-        let inner = qx.max(qy).max(qz).min(Self::ZERO);
+        let inner = qx.law_max(qy).law_max(qz).law_min(Self::ZERO);
         let d = outer + inner - rr;
         out = d * scale_correction;
         out
@@ -170,14 +171,14 @@ impl PrimTable for f32x8 {
         // ca = (qx - min(qx, if qy<0 {r1} else {r2}), abs(qy) - h)
         let neg_mask = qy.cmp_lt(Self::ZERO);
         let min_r = neg_mask.blend(r1, r2);
-        let ca_x = qx - qx.min(min_r);
+        let ca_x = qx - qx.law_min(min_r);
         let ca_y = qy.abs() - h;
         // t = clamp(dot(k1-q, k2) / dot(k2,k2), 0, 1); k1=(r2,h)
         let d_to_k1_x = r2 - qx;
         let d_to_k1_y = h - qy;
         let num = d_to_k1_x * k2x + d_to_k1_y * k2y;
-        let safe_k2_dot = k2_dot.max(Self::splat(0.0001));
-        let t = (num / safe_k2_dot).max(Self::ZERO).min(Self::ONE);
+        let safe_k2_dot = k2_dot.law_max(Self::splat(0.0001));
+        let t = (num / safe_k2_dot).law_max(Self::ZERO).law_min(Self::ONE);
         // cb = q - k1 + k2*t
         let cb_x = qx - r2 + k2x * t;
         let cb_y = qy - h + k2y * t;
@@ -186,7 +187,7 @@ impl PrimTable for f32x8 {
         // s = -1 if cb.x<0 && ca.y<0, else 1
         let both_neg = cb_x.cmp_lt(Self::ZERO) & ca_y.cmp_lt(Self::ZERO);
         let s = both_neg.blend(Self::splat(-1.0), Self::ONE);
-        let d = s * ca_d2.min(cb_d2).sqrt();
+        let d = s * ca_d2.law_min(cb_d2).sqrt();
         out = d * scale_correction;
         out
     }
@@ -213,7 +214,7 @@ impl PrimTable for f32x8 {
         // sqrt(px² + py² + pz² + R² - 2*R*k) - r
         let inner =
             px * px + p.y * p.y + p.z * p.z + major_r * major_r - Self::splat(2.0) * major_r * k;
-        let d = inner.max(Self::ZERO).sqrt() - minor_r;
+        let d = inner.law_max(Self::ZERO).sqrt() - minor_r;
         out = d * scale_correction;
         out
     }
@@ -232,9 +233,10 @@ impl PrimTable for f32x8 {
         let half_h = Self::splat(inst.params[2]);
         let dx = (p.x * p.x + p.z * p.z).sqrt() - radius + round_r;
         let dy = p.y.abs() - half_h;
-        let dx_pos = dx.max(Self::ZERO);
-        let dy_pos = dy.max(Self::ZERO);
-        let d = dx.max(dy).min(Self::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() - round_r;
+        let dx_pos = dx.law_max(Self::ZERO);
+        let dy_pos = dy.law_max(Self::ZERO);
+        let d = dx.law_max(dy).law_min(Self::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt()
+            - round_r;
         out = d * scale_correction;
         out
     }
@@ -256,7 +258,8 @@ impl PrimTable for f32x8 {
         // 0.866025 = sqrt(3)/2
         let sqrt3_half = Self::splat(0.866025);
         let half = Self::splat(0.5);
-        let d = (qz - half_depth).max((qx * sqrt3_half + qy * half).max(-qy) - width * half);
+        let d =
+            (qz - half_depth).law_max((qx * sqrt3_half + qy * half).law_max(-qy) - width * half);
         out = d * scale_correction;
         out
     }
@@ -272,14 +275,14 @@ impl PrimTable for f32x8 {
         let out;
         let radius = Self::splat(inst.params[0]);
         let ch = Self::splat(inst.params[1]); // cut_height
-        let w = (radius * radius - ch * ch).max(Self::ZERO).sqrt();
+        let w = (radius * radius - ch * ch).law_max(Self::ZERO).sqrt();
         let qx = (p.x * p.x + p.z * p.z).sqrt();
         let qy = p.y;
         let q_len = (qx * qx + qy * qy).sqrt();
         // Three regions via branchless blend
         let s1 = (ch - radius) * qx * qx + w * w * (ch + radius - Self::splat(2.0) * qy);
         let s2 = ch * qx - w * qy;
-        let s = s1.max(s2);
+        let s = s1.law_max(s2);
         // d_sphere = length(q) - r
         let d_sphere = q_len - radius;
         // d_plane = h - q.y
@@ -308,7 +311,7 @@ impl PrimTable for f32x8 {
         let radius = Self::splat(inst.params[0]);
         let ch = Self::splat(inst.params[1]);
         let thickness = Self::splat(inst.params[2]);
-        let w = (radius * radius - ch * ch).max(Self::ZERO).sqrt();
+        let w = (radius * radius - ch * ch).law_max(Self::ZERO).sqrt();
         let qx = (p.x * p.x + p.z * p.z).sqrt();
         let qy = p.y;
         // if h*qx < w*qy -> length(q - (w,h)) - t; else -> abs(length(q) - r) - t
@@ -339,12 +342,12 @@ impl PrimTable for f32x8 {
         // a = (ra² - rb² + d²) / (2d)
         #[allow(clippy::suspicious_operation_groupings)]
         let a = (ra * ra - rb * rb + dd * dd) / (two * dd);
-        let b = (ra * ra - a * a).max(Self::ZERO).sqrt();
+        let b = (ra * ra - a * a).law_max(Self::ZERO).sqrt();
         let p2x = p.x;
         let p2y = (p.y * p.y + p.z * p.z).sqrt();
         // Condition: p2.x*b - p2.y*a > d*max(b - p2.y, 0)
         let lhs = p2x * b - p2y * a;
-        let rhs = dd * (b - p2y).max(Self::ZERO);
+        let rhs = dd * (b - p2y).law_max(Self::ZERO);
         let mask = lhs.cmp_gt(rhs);
         // d_edge = length(p2 - (a, b))
         let ex = p2x - a;
@@ -355,7 +358,7 @@ impl PrimTable for f32x8 {
         let dx = p2x - dd;
         let d_ra = p2_len - ra;
         let d_rb = -((dx * dx + p2y * p2y).sqrt() - rb);
-        let d_main = d_ra.max(d_rb);
+        let d_main = d_ra.law_max(d_rb);
         let d = mask.blend(d_edge, d_main);
         out = d * scale_correction;
         out
@@ -378,7 +381,9 @@ impl PrimTable for f32x8 {
         let q_len = (qx * qx + qy * qy).sqrt();
         let l = q_len - radius;
         // dot(q, c) clamped to [0, radius]
-        let q_dot_c = (qx * c_sin + qy * c_cos).max(Self::ZERO).min(radius);
+        let q_dot_c = (qx * c_sin + qy * c_cos)
+            .law_max(Self::ZERO)
+            .law_min(radius);
         // m = length(q - c * clamp(dot(q,c), 0, r))
         let proj_x = qx - c_sin * q_dot_c;
         let proj_y = qy - c_cos * q_dot_c;
@@ -387,7 +392,7 @@ impl PrimTable for f32x8 {
         let sign_val = c_cos * qx - c_sin * qy;
         let neg_mask = sign_val.cmp_lt(Self::ZERO);
         let sign = neg_mask.blend(Self::splat(-1.0), Self::ONE);
-        let d = l.max(m * sign);
+        let d = l.law_max(m * sign);
         out = d * scale_correction;
         out
     }
@@ -412,7 +417,9 @@ impl PrimTable for f32x8 {
         //                        = la² - 2*la*px - lb² + 2*lb*pz
         let b_dot_b = la * la + lb * lb;
         let ndot_val = la * (la - Self::splat(2.0) * ax) - lb * (lb - Self::splat(2.0) * az);
-        let f = (ndot_val / b_dot_b).max(Self::splat(-1.0)).min(Self::ONE);
+        let f = (ndot_val / b_dot_b)
+            .law_max(Self::splat(-1.0))
+            .law_min(Self::ONE);
         // q_xz = length((px,pz) - 0.5*b*(1-f, 1+f))
         let half = Self::splat(0.5);
         let proj_x = ax - half * la * (Self::ONE - f);
@@ -425,9 +432,9 @@ impl PrimTable for f32x8 {
         let sign = pos.blend(Self::ONE, neg.blend(Self::splat(-1.0), Self::ZERO));
         let dx = qxz_len * sign - rr;
         let dy = ay - half_h;
-        let dx_pos = dx.max(Self::ZERO);
-        let dy_pos = dy.max(Self::ZERO);
-        let d = dx.max(dy).min(Self::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt();
+        let dx_pos = dx.law_max(Self::ZERO);
+        let dy_pos = dy.law_max(Self::ZERO);
+        let d = dx.law_max(dy).law_min(Self::ZERO) + (dx_pos * dx_pos + dy_pos * dy_pos).sqrt();
         out = d * scale_correction;
         out
     }
@@ -570,9 +577,9 @@ impl PrimTable for f32x8 {
         let xz_len = (p.x * p.x + p.z * p.z).sqrt();
         let dx = (xz_len - outer_r).abs() - thickness;
         let dy = p.y.abs() - half_h;
-        let dx_pos = dx.max(Self::ZERO);
-        let dy_pos = dy.max(Self::ZERO);
-        let d = (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() + dx.max(dy).min(Self::ZERO);
+        let dx_pos = dx.law_max(Self::ZERO);
+        let dy_pos = dy.law_max(Self::ZERO);
+        let d = (dx_pos * dx_pos + dy_pos * dy_pos).sqrt() + dx.law_max(dy).law_min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -967,7 +974,7 @@ impl PrimTable for f32x8 {
         let d1 = p.x * ns + p.y * ns + p.z * s;
         let d2 = p.x * ns + p.y * s + p.z * ns;
         let d3 = p.x * s + p.y * ns + p.z * ns;
-        let d = d0.max(d1).max(d2).max(d3) - radius;
+        let d = d0.law_max(d1).law_max(d2).law_max(d3) - radius;
         out = d * scale_correction;
         out
     }
@@ -992,7 +999,13 @@ impl PrimTable for f32x8 {
         let d3 = (p.x * a - p.y * b).abs();
         let d4 = (p.x * b + p.z * a).abs();
         let d5 = (p.x * b - p.z * a).abs();
-        let d = d0.max(d1).max(d2).max(d3).max(d4).max(d5) - radius;
+        let d = d0
+            .law_max(d1)
+            .law_max(d2)
+            .law_max(d3)
+            .law_max(d4)
+            .law_max(d5)
+            - radius;
         out = d * scale_correction;
         out
     }
@@ -1024,15 +1037,15 @@ impl PrimTable for f32x8 {
         let d8 = (p.x * ib + p.z * ia).abs();
         let d9 = (p.x * ib - p.z * ia).abs();
         let d = d0
-            .max(d1)
-            .max(d2)
-            .max(d3)
-            .max(d4)
-            .max(d5)
-            .max(d6)
-            .max(d7)
-            .max(d8)
-            .max(d9)
+            .law_max(d1)
+            .law_max(d2)
+            .law_max(d3)
+            .law_max(d4)
+            .law_max(d5)
+            .law_max(d6)
+            .law_max(d7)
+            .law_max(d8)
+            .law_max(d9)
             - radius;
         out = d * scale_correction;
         out
@@ -1059,7 +1072,14 @@ impl PrimTable for f32x8 {
         let d4 = (-p.x * s + p.y * s + p.z * s).abs();
         let d5 = (p.x * s - p.y * s + p.z * s).abs();
         let d6 = (p.x * s + p.y * s - p.z * s).abs();
-        let d = d0.max(d1).max(d2).max(d3).max(d4).max(d5).max(d6) - radius;
+        let d = d0
+            .law_max(d1)
+            .law_max(d2)
+            .law_max(d3)
+            .law_max(d4)
+            .law_max(d5)
+            .law_max(d6)
+            - radius;
         out = d * scale_correction;
         out
     }
@@ -1098,21 +1118,21 @@ impl PrimTable for f32x8 {
         let d14 = (p.x * ia + p.z * ib).abs();
         let d15 = (p.x * ia - p.z * ib).abs();
         let d = d0
-            .max(d1)
-            .max(d2)
-            .max(d3)
-            .max(d4)
-            .max(d5)
-            .max(d6)
-            .max(d7)
-            .max(d8)
-            .max(d9)
-            .max(d10)
-            .max(d11)
-            .max(d12)
-            .max(d13)
-            .max(d14)
-            .max(d15)
+            .law_max(d1)
+            .law_max(d2)
+            .law_max(d3)
+            .law_max(d4)
+            .law_max(d5)
+            .law_max(d6)
+            .law_max(d7)
+            .law_max(d8)
+            .law_max(d9)
+            .law_max(d10)
+            .law_max(d11)
+            .law_max(d12)
+            .law_max(d13)
+            .law_max(d14)
+            .law_max(d15)
             - radius;
         out = d * scale_correction;
         out
@@ -1142,21 +1162,24 @@ impl PrimTable for f32x8 {
         let qy = (py + e).abs() - e;
         let qz = (pz + e).abs() - e;
         // d1 = length(max(vec3(px,qy,qz),0)) + min(max(px,max(qy,qz)),0)
-        let v1x = px.max(zero);
-        let v1y = qy.max(zero);
-        let v1z = qz.max(zero);
-        let d1 = (v1x * v1x + v1y * v1y + v1z * v1z).sqrt() + px.max(qy.max(qz)).min(zero);
+        let v1x = px.law_max(zero);
+        let v1y = qy.law_max(zero);
+        let v1z = qz.law_max(zero);
+        let d1 =
+            (v1x * v1x + v1y * v1y + v1z * v1z).sqrt() + px.law_max(qy.law_max(qz)).law_min(zero);
         // d2
-        let v2x = qx.max(zero);
-        let v2y = py.max(zero);
-        let v2z = qz.max(zero);
-        let d2 = (v2x * v2x + v2y * v2y + v2z * v2z).sqrt() + qx.max(py.max(qz)).min(zero);
+        let v2x = qx.law_max(zero);
+        let v2y = py.law_max(zero);
+        let v2z = qz.law_max(zero);
+        let d2 =
+            (v2x * v2x + v2y * v2y + v2z * v2z).sqrt() + qx.law_max(py.law_max(qz)).law_min(zero);
         // d3
-        let v3x = qx.max(zero);
-        let v3y = qy.max(zero);
-        let v3z = pz.max(zero);
-        let d3 = (v3x * v3x + v3y * v3y + v3z * v3z).sqrt() + qx.max(qy.max(pz)).min(zero);
-        let d = d1.min(d2).min(d3);
+        let v3x = qx.law_max(zero);
+        let v3y = qy.law_max(zero);
+        let v3z = pz.law_max(zero);
+        let d3 =
+            (v3x * v3x + v3y * v3y + v3z * v3z).sqrt() + qx.law_max(qy.law_max(pz)).law_min(zero);
+        let d = d1.law_min(d2).law_min(d3);
         out = d * scale_correction;
         out
     }
@@ -1360,9 +1383,9 @@ impl PrimTable for f32x8 {
         let half_h = Self::splat(inst.params[1]);
         let d2d = (p.x * p.x + p.y * p.y).sqrt() - r;
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(Self::ZERO);
-        let wy = dz.max(Self::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
+        let wx = d2d.law_max(Self::ZERO);
+        let wy = dz.law_max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.law_max(dz).law_min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -1381,14 +1404,14 @@ impl PrimTable for f32x8 {
         let half_h = Self::splat(inst.params[2]);
         let dx = p.x.abs() - hx;
         let dy = p.y.abs() - hy;
-        let d2d = (dx.max(Self::ZERO) * dx.max(Self::ZERO)
-            + dy.max(Self::ZERO) * dy.max(Self::ZERO))
+        let d2d = (dx.law_max(Self::ZERO) * dx.law_max(Self::ZERO)
+            + dy.law_max(Self::ZERO) * dy.law_max(Self::ZERO))
         .sqrt()
-            + dx.max(dy).min(Self::ZERO);
+            + dx.law_max(dy).law_min(Self::ZERO);
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(Self::ZERO);
-        let wy = dz.max(Self::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
+        let wx = d2d.law_max(Self::ZERO);
+        let wy = dz.law_max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.law_max(dz).law_min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -1443,15 +1466,15 @@ impl PrimTable for f32x8 {
         let half_h = Self::splat(inst.params[3]);
         let dx = p.x.abs() - hx + round_r;
         let dy = p.y.abs() - hy + round_r;
-        let d2d = (dx.max(Self::ZERO) * dx.max(Self::ZERO)
-            + dy.max(Self::ZERO) * dy.max(Self::ZERO))
+        let d2d = (dx.law_max(Self::ZERO) * dx.law_max(Self::ZERO)
+            + dy.law_max(Self::ZERO) * dy.law_max(Self::ZERO))
         .sqrt()
-            + dx.max(dy).min(Self::ZERO)
+            + dx.law_max(dy).law_min(Self::ZERO)
             - round_r;
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(Self::ZERO);
-        let wy = dz.max(Self::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
+        let wx = d2d.law_max(Self::ZERO);
+        let wy = dz.law_max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.law_max(dz).law_min(Self::ZERO);
         out = d * scale_correction;
         out
     }
@@ -1470,9 +1493,9 @@ impl PrimTable for f32x8 {
         let half_h = Self::splat(inst.params[2]);
         let d2d = ((p.x * p.x + p.y * p.y).sqrt() - outer_r).abs() - thickness;
         let dz = p.z.abs() - half_h;
-        let wx = d2d.max(Self::ZERO);
-        let wy = dz.max(Self::ZERO);
-        let d = (wx * wx + wy * wy).sqrt() + d2d.max(dz).min(Self::ZERO);
+        let wx = d2d.law_max(Self::ZERO);
+        let wy = dz.law_max(Self::ZERO);
+        let d = (wx * wx + wy * wy).sqrt() + d2d.law_max(dz).law_min(Self::ZERO);
         out = d * scale_correction;
         out
     }

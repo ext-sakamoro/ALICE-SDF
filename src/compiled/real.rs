@@ -11,7 +11,7 @@
 
 use glam::{Quat, Vec2, Vec3};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use wide::{f32x8, CmpGe, CmpGt, CmpLe, CmpLt};
+use wide::{f32x8, CmpEq, CmpGe, CmpGt, CmpLe, CmpLt, CmpNe};
 
 mod private {
     /// Seals [`super::Real`]: only `f32` and `f32x8` implement it.
@@ -277,11 +277,16 @@ impl LawMinMax for f64 {
 impl LawMinMax for f32x8 {
     #[inline(always)]
     fn law_max(self, other: Self) -> Self {
-        <Self as Real>::max(self, other)
+        // per lane, the same rule as law_max_f32, from compares and blends only
+        let larger = self.cmp_gt(other).blend(self, other);
+        let equal = self.cmp_eq(other).blend(self & other, larger);
+        other.cmp_ne(other).blend(self, equal)
     }
     #[inline(always)]
     fn law_min(self, other: Self) -> Self {
-        <Self as Real>::min(self, other)
+        let smaller = self.cmp_lt(other).blend(self, other);
+        let equal = self.cmp_eq(other).blend(self | other, smaller);
+        other.cmp_ne(other).blend(self, equal)
     }
 }
 
@@ -1091,6 +1096,52 @@ mod tests {
             np,
             "sub(+0,-0) = max(+0,+0) = +0"
         );
+    }
+
+    /// The SIMD Law (compares and blends) equals the scalar Law on every lane,
+    /// with the special values mixed across lanes in every pairing.
+    #[test]
+    fn simd_law_minmax_matches_scalar_per_lane() {
+        let lat = [
+            0.0f32,
+            -0.0,
+            1.0,
+            -1.0,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NAN,
+            f32::MIN_POSITIVE / 4.0,
+            -f32::MIN_POSITIVE / 4.0,
+            f32::MAX,
+            -2.5,
+        ];
+        let mut compared = 0;
+        for s in 0..lat.len() {
+            for t in 0..lat.len() {
+                let a: [f32; 8] = core::array::from_fn(|k| lat[(s + k) % lat.len()]);
+                let b: [f32; 8] = core::array::from_fn(|k| lat[(t + 3 * k) % lat.len()]);
+                let mx = f32x8::from(a).law_max(f32x8::from(b)).to_array();
+                let mn = f32x8::from(a).law_min(f32x8::from(b)).to_array();
+                for k in 0..8 {
+                    assert_eq!(
+                        mx[k].to_bits(),
+                        law_max_f32(a[k], b[k]).to_bits(),
+                        "max({}, {})",
+                        a[k],
+                        b[k]
+                    );
+                    assert_eq!(
+                        mn[k].to_bits(),
+                        law_min_f32(a[k], b[k]).to_bits(),
+                        "min({}, {})",
+                        a[k],
+                        b[k]
+                    );
+                    compared += 2;
+                }
+            }
+        }
+        assert_eq!(compared, 2 * 8 * 11 * 11);
     }
 
     fn lanes(v: Vec3) -> Vec3R<f32x8> {
