@@ -142,7 +142,9 @@ fn simd_sincos_det(
     angle: Value,
     vec_type: types::Type,
 ) -> (Value, Value) {
-    use alice_det_math::consts::{COS_P, FRAC_2_PI, PIO2_1, PIO2_2, PIO2_3, SIN_P};
+    use alice_det_math::consts::{
+        COS_P, FRAC_2_PI, PIO2_1, PIO2_2, PIO2_3, PIO2_4, SIN_P, SPLIT_MASK,
+    };
     use cranelift_codegen::ir::condcodes::IntCC;
 
     let splat = |b: &mut FunctionBuilder, v: f32| {
@@ -164,49 +166,49 @@ fn simd_sincos_det(
         b.ins().bitselect(m, t, f)
     };
 
-    // --- round (musl roundf) -------------------------------------------
-    let round = |b: &mut FunctionBuilder, x: Value| -> Value {
-        let toint = splat(b, 8_388_608.0);
-        let bits = as_i(b, x);
-        let sh = b.ins().sshr_imm(bits, 23);
-        let __c0 = isplat(b, 0xff);
-        let e = b.ins().band(sh, __c0);
-        let __c0 = isplat(b, 0x7f + 23 - 1);
-        let integral = b.ins().icmp(IntCC::SignedGreaterThan, e, __c0);
-        let __c0 = isplat(b, 0x7f - 1);
-        let small = b.ins().icmp(IntCC::SignedLessThan, e, __c0);
-        let __c0 = isplat(b, i32::MIN);
-        let sign_bits = b.ins().band(bits, __c0);
-        let sign = as_f(b, sign_bits);
-        let ax = b.ins().fabs(x);
-        let y0 = b.ins().fadd(ax, toint);
-        let y0 = b.ins().fsub(y0, toint);
-        let y0 = b.ins().fsub(y0, ax);
-        let one = splat(b, 1.0);
-        let y_ax = b.ins().fadd(y0, ax);
-        let y_gt = b.ins().fsub(y_ax, one);
-        let y_le = b.ins().fadd(y_ax, one);
-        let __c0 = splat(b, 0.5);
-        let gt = b.ins().fcmp(FloatCC::GreaterThan, y0, __c0);
-        let __c0 = splat(b, -0.5);
-        let le = b.ins().fcmp(FloatCC::LessThanOrEqual, y0, __c0);
-        let y = blend(b, le, y_le, y_ax);
-        let y = blend(b, gt, y_gt, y);
-        let y_bits = as_i(b, y);
-        let y_bits = b.ins().bor(y_bits, sign_bits);
-        let y = as_f(b, y_bits);
-        let y = blend(b, small, sign, y);
-        blend(b, integral, x, y)
-    };
-
     // --- reduce_pio2 ----------------------------------------------------
-    let kf = b_mul(builder, angle, FRAC_2_PI, &splat);
-    let kf = round(builder, kf);
+    // kf = nearest_int(x·2/π) = trunc(t + (t < 0 ? -0.5 : 0.5)) through i32
+    // (saturating, NaN → 0) — det-math 0.5 single.rs::nearest_int, matched
+    // bit-for-bit incl. the t≈0.5 double-rounding (t+0.5 rounds up to 1.0,
+    // so kf = 1 at π/4; musl roundf would give 0 and diverge by a quadrant).
+    let t = b_mul(builder, angle, FRAC_2_PI, &splat);
+    let zero = splat(builder, 0.0);
+    let neg_t = builder.ins().fcmp(FloatCC::LessThan, t, zero);
+    let half_n = splat(builder, -0.5);
+    let half_p = splat(builder, 0.5);
+    let half = blend(builder, neg_t, half_n, half_p);
+    let th = builder.ins().fadd(t, half);
+    let ki = builder.ins().fcvt_to_sint_sat(types::I32X4, th);
+    let kf = builder.ins().fcvt_from_sint(vec_type, ki);
     let t = b_mul(builder, kf, PIO2_1, &splat);
     let r = builder.ins().fsub(angle, t);
     let t = b_mul(builder, kf, PIO2_2, &splat);
     let r = builder.ins().fsub(r, t);
-    let t = b_mul(builder, kf, PIO2_3, &splat);
+    // det-math 0.5 reduce_pio2: two_prod(kf, PIO2_3) (non-FMA Dekker split via
+    // SPLIT_MASK) + the PIO2_4 tail, so the JIT matches single.rs / simd.rs bit
+    // for bit near k·π/2 (the 0.4 3-piece reduction diverged by up to 14 ulp).
+    let pio2_3 = splat(builder, PIO2_3);
+    let p3 = builder.ins().fmul(kf, pio2_3);
+    let mask = isplat(builder, SPLIT_MASK as i32);
+    let kf_i = as_i(builder, kf);
+    let kf_hi_bits = builder.ins().band(kf_i, mask);
+    let kf_hi = as_f(builder, kf_hi_bits);
+    let pio2_3_i = as_i(builder, pio2_3);
+    let b_hi_bits = builder.ins().band(pio2_3_i, mask);
+    let b_hi = as_f(builder, b_hi_bits);
+    let kf_lo = builder.ins().fsub(kf, kf_hi);
+    let b_lo = builder.ins().fsub(pio2_3, b_hi);
+    let e = builder.ins().fmul(kf_hi, b_hi);
+    let e = builder.ins().fsub(e, p3);
+    let t2 = builder.ins().fmul(kf_hi, b_lo);
+    let e = builder.ins().fadd(e, t2);
+    let t2 = builder.ins().fmul(kf_lo, b_hi);
+    let e = builder.ins().fadd(e, t2);
+    let t2 = builder.ins().fmul(kf_lo, b_lo);
+    let e3 = builder.ins().fadd(e, t2);
+    let r = builder.ins().fsub(r, p3);
+    let r = builder.ins().fsub(r, e3);
+    let t = b_mul(builder, kf, PIO2_4, &splat);
     let r = builder.ins().fsub(r, t);
     // `kf as i32` saturating, NaN → 0
     let k = builder.ins().fcvt_to_sint_sat(types::I32X4, kf);
@@ -245,6 +247,11 @@ fn simd_sincos_det(
     let sv = blend(builder, m2, ns, nc);
     let sv = blend(builder, m1, c, sv);
     let sv = blend(builder, m0, s, sv);
+    // det-math keep_zero: sin(±0) = ±0 (its `r + p` turns −0 into +0, so the
+    // sign of a zero input is restored explicitly; cos(0) = 1 already).
+    let zero = splat(builder, 0.0);
+    let is_zero = builder.ins().fcmp(FloatCC::Equal, angle, zero);
+    let sv = blend(builder, is_zero, angle, sv);
     let cv = blend(builder, m2, nc, s);
     let cv = blend(builder, m1, ns, cv);
     let cv = blend(builder, m0, c, cv);
