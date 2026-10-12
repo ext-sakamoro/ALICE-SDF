@@ -159,7 +159,11 @@ fn check(k_max: i32, ulps: i32) {
             .unwrap_or_else(|e| panic!("{name}: JitSimdSdfDynamic::compile failed: {e}"))
             .eval_batch(&xs, &ys, &zs);
         assert_eq!(jit.len(), pts.len(), "{name}: jit_simd output length");
-        assert_eq!(jit_dyn.len(), pts.len(), "{name}: jit_simd_dyn output length");
+        assert_eq!(
+            jit_dyn.len(),
+            pts.len(),
+            "{name}: jit_simd_dyn output length"
+        );
 
         for (i, &p) in pts.iter().enumerate() {
             let tree = eval(&node, p);

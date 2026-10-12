@@ -40,7 +40,15 @@ fn probe_angles() -> Vec<f32> {
         }
         a
     }
-    let mut v = vec![0.0_f32, -0.0, f32::MIN_POSITIVE, -f32::MIN_POSITIVE, 1e-7, -1e-7, 1e-4];
+    let mut v = vec![
+        0.0_f32,
+        -0.0,
+        f32::MIN_POSITIVE,
+        -f32::MIN_POSITIVE,
+        1e-7,
+        -1e-7,
+        1e-4,
+    ];
     for k in -4..=4 {
         let base = (k as f32) * FRAC_PI_2;
         for d in -2..=2 {
@@ -80,16 +88,33 @@ fn near_zero_twist_is_bit_identical_across_evaluators() {
     let mut fail: Vec<String> = Vec::new();
     for (i, &p) in pts.iter().enumerate() {
         let s = eval_compiled(&compiled, p);
-        let paths = [("simd", simd[i]), ("bvh", eval_compiled_bvh(&bvh, p)), ("jit", jit_out[i])];
+        let paths = [
+            ("simd", simd[i]),
+            ("bvh", eval_compiled_bvh(&bvh, p)),
+            ("jit", jit_out[i]),
+        ];
         for (name, v) in paths {
             compared += 1;
             if v.to_bits() != s.to_bits() {
-                fail.push(format!("{name} @ ({},{},{}): scalar={} {name}={}", p.x, p.y, p.z, bits(s), bits(v)));
+                fail.push(format!(
+                    "{name} @ ({},{},{}): scalar={} {name}={}",
+                    p.x,
+                    p.y,
+                    p.z,
+                    bits(s),
+                    bits(v)
+                ));
             }
         }
     }
     assert!(compared > 0, "0 compared — probe built no points");
-    assert!(fail.is_empty(), "evaluators diverged on near-zero twist ({} of {} compared):\n{}", fail.len(), compared, fail.join("\n"));
+    assert!(
+        fail.is_empty(),
+        "evaluators diverged on near-zero twist ({} of {} compared):\n{}",
+        fail.len(),
+        compared,
+        fail.join("\n")
+    );
     eprintln!("near-zero twist: {compared} comparisons bit-identical across scalar/simd/bvh/jit over {} points", pts.len());
 }
 
@@ -101,16 +126,31 @@ fn twist_by_zero_is_identity_through_det_math() {
     let twisted = CompiledSdf::try_compile(&SdfNode::box3d(0.8, 0.8, 0.8).twist(1.0)).unwrap();
     let plain = CompiledSdf::try_compile(&SdfNode::box3d(0.8, 0.8, 0.8)).unwrap();
     let mut compared = 0usize;
-    for &p in &[Vec3::new(0.3, 0.0, 0.4), Vec3::new(-0.6, -0.0, 0.2), Vec3::new(1.2, 0.0, -0.9)] {
+    for &p in &[
+        Vec3::new(0.3, 0.0, 0.4),
+        Vec3::new(-0.6, -0.0, 0.2),
+        Vec3::new(1.2, 0.0, -0.9),
+    ] {
         compared += 1;
-        assert_eq!(eval_compiled(&twisted, p).to_bits(), eval_compiled(&plain, p).to_bits(),
-            "twist-by-0 not identity at {p:?}: det-math sin_cos(0) must be (0,1)");
+        assert_eq!(
+            eval_compiled(&twisted, p).to_bits(),
+            eval_compiled(&plain, p).to_bits(),
+            "twist-by-0 not identity at {p:?}: det-math sin_cos(0) must be (0,1)"
+        );
     }
     assert!(compared > 0, "0 compared");
     // det-math 0.5 directly at the exact near-zero inputs: pin the values the eval relies on.
-    assert_eq!(alice_det_math::sin_cos(0.0_f32), (0.0, 1.0), "det-math sin_cos(0) must be (0,1)");
+    assert_eq!(
+        alice_det_math::sin_cos(0.0_f32),
+        (0.0, 1.0),
+        "det-math sin_cos(0) must be (0,1)"
+    );
     let (s_neg0, c_neg0) = alice_det_math::sin_cos(-0.0_f32);
-    assert_eq!((c_neg0.to_bits()), (1.0_f32).to_bits(), "cos(-0) must be +1");
+    assert_eq!(
+        (c_neg0.to_bits()),
+        (1.0_f32).to_bits(),
+        "cos(-0) must be +1"
+    );
     let _ = s_neg0;
 }
 
