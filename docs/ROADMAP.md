@@ -5,7 +5,7 @@ ALICE-SDF crate.
 
 - **Current version**: see the crates.io badge in the [README](../README.md) and [`CHANGELOG.md`](../CHANGELOG.md) (the phase list below is history up to the version each phase names)
 - **Repo**: `ext-sakamoro/ALICE-SDF`
-- **License**: Dual (see `LICENSE`, `LICENSE-COMMUNITY`)
+- **License**: Apache-2.0 (crate; `LICENSE-APACHE`) + ALICE Community License 1.1 (Unity/VRChat subtrees; `LICENSE-COMMUNITY`)
 - **MSRV**: `1.85`
 
 ---

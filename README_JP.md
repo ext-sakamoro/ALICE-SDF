@@ -302,10 +302,11 @@ crate は `Apache-2.0` ([LICENSE-APACHE](LICENSE-APACHE)) `alice-det-math` 0.5 �
 それ以外の feature は対象にならない
 
 Unity 統合 ([`unity-sdf-universe/`](unity-sdf-universe/)) と VRChat パッケージ
-([`vrchat-package/`](vrchat-package/)) は ALICE Community License
-([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): 個人利用、ゲーム開発 (商用ゲームを含む)、
-教育、オープンソースでは無償 同ライセンスが定めるインフラサービス (クラウド、
-メタバースプラットフォーム、ストリーミング) には商用ライセンスが必要 商用
+([`vrchat-package/`](vrchat-package/)) は ALICE Community License 1.1
+([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): 個人利用、教育、オープンソース、および
+「大手」以外によるゲーム開発は無償 インフラサービス (クラウド、メタバース
+プラットフォーム、ストリーミング) と「大手」には商用ライセンスが必要 「大手」=
+関連会社を含む連結の年間売上が USD 100 万 (約 1.5 億円) を超える事業者 商用
 ライセンスの問い合わせ: <contact@extoria.co.jp>
 
 この crate で作ったコンテンツ (木、メッシュ、ワールド) はあなたのもの

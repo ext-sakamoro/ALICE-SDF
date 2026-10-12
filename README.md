@@ -316,10 +316,12 @@ a whole. The default features and every other feature do not.
 
 The Unity integration ([`unity-sdf-universe/`](unity-sdf-universe/)) and the
 VRChat package ([`vrchat-package/`](vrchat-package/)) are under the ALICE
-Community License ([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): free for personal
-use, game development (including commercial games), education and open source;
-a commercial licence is required for infrastructure services (cloud, metaverse
-platforms, streaming) as that licence defines them. Commercial licence enquiries:
+Community License 1.1 ([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): free for
+personal use, education, open source, and game development by anyone who is not
+a Large Enterprise. A commercial licence is required for infrastructure
+services (cloud, metaverse platforms, streaming) and for Large Enterprises — a
+legal entity whose consolidated annual revenue, across all affiliates and all
+business lines, exceeds USD 1,000,000. Commercial licence enquiries:
 <contact@extoria.co.jp>
 
 Content you create with the crate (trees, meshes, worlds) is yours.

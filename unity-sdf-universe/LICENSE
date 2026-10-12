@@ -1,6 +1,6 @@
 ================================================================================
 ALICE COMMUNITY LICENSE
-Version 1.0, February 2025
+Version 1.1, October 2026
 ================================================================================
 
 This Unity integration is licensed under the ALICE Community License.
@@ -13,12 +13,12 @@ QUICK SUMMARY
 
 FREE for:
   - Personal projects
-  - Indie games (any revenue)
-  - AAA game studios
+  - Game development by anyone who is not a Large Enterprise (any game revenue)
   - Education & research
   - Open source projects
 
 COMMERCIAL LICENSE REQUIRED for:
+  - Large Enterprises (> USD 1M consolidated annual revenue, affiliates incl.)
   - Metaverse platforms (10,000+ MAU)
   - Cloud/streaming services
   - SaaS/PaaS infrastructure

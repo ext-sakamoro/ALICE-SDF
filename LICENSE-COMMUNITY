@@ -1,9 +1,13 @@
 ================================================================================
 ALICE COMMUNITY LICENSE
-Version 1.0, February 2025
+Version 1.1, October 2026
 ================================================================================
 
-Copyright (c) 2025 Moroya Sakamoto
+Copyright (c) 2025-2026 Moroya Sakamoto
+
+Copies of the Software received under Version 1.0 (February 2025) remain
+licensed under Version 1.0 for those copies and the releases they came with;
+Version 1.1 applies to releases published from the date above.
 
 This license applies to:
   - unity-sdf-universe/    (Unity Integration)
@@ -29,6 +33,19 @@ where the Software is used as a component for rendering or content creation.
   (c) Generates more than $1,000,000 USD annual revenue from services
       that incorporate the Software.
 
+"Affiliate" means any entity that directly or indirectly controls, is
+controlled by, or is under common control with another entity, where "control"
+means ownership of more than 50% of the voting interests or the power to direct
+management and policies.
+
+"Large Enterprise" means a legal entity whose consolidated annual gross
+revenue, counted together with all of its Affiliates and across all lines of
+business (not only games), exceeded USD 1,000,000 (or the equivalent in local
+currency at the average exchange rate of that fiscal year) in its most recently
+completed fiscal year. An entity becomes a Large Enterprise from the first day
+of the fiscal year following the fiscal year in which the threshold was
+exceeded.
+
 ================================================================================
 2. GRANT OF RIGHTS - FREE USE
 ================================================================================
@@ -38,11 +55,13 @@ copy, modify, and distribute the Software for the following purposes:
 
   (a) PERSONAL USE - Learning, experimentation, and non-commercial projects.
 
-  (b) INDIE GAME DEVELOPMENT - Creating and selling games, regardless of
-      revenue, provided the game is sold as a standalone product.
+  (b) SMALL-SCALE GAME DEVELOPMENT - Creating and selling games, regardless
+      of the revenue of an individual game, provided the developer is not a
+      Large Enterprise and the game is sold as a standalone product.
 
-  (c) GAME STUDIO USE - Commercial game development and publishing,
-      including AAA studios, for games distributed to end users.
+  (c) GAME DEVELOPMENT BY ENTITIES THAT ARE NOT LARGE ENTERPRISES -
+      Commercial game development and publishing for games distributed to end
+      users, provided the developer is not a Large Enterprise.
 
   (d) EDUCATIONAL USE - Teaching, research, and academic projects.
 
@@ -64,6 +83,10 @@ A separate commercial license is REQUIRED for:
 
   (c) WHITE-LABEL SERVICES - Reselling or rebranding the Software as
       part of a commercial platform offering.
+
+  (d) LARGE ENTERPRISE COMMERCIAL USE - Use of the Software by a Large
+      Enterprise (including through its Affiliates) in commercial game
+      development, publishing or other commercial products.
 
 To obtain a commercial license, contact: https://extoria.co.jp/en
 
@@ -107,21 +130,22 @@ termination, you must cease all use and distribution of the Software.
 SUMMARY (Not legally binding)
 ================================================================================
 
-  +---------------------------+------------------+
-  | Use Case                  | License Required |
-  +---------------------------+------------------+
-  | Personal projects         | FREE             |
-  | Indie games               | FREE             |
-  | AAA game studios          | FREE             |
-  | Educational/Research      | FREE             |
-  | Open source projects      | FREE             |
-  +---------------------------+------------------+
-  | Metaverse platforms       | COMMERCIAL       |
-  | Cloud streaming services  | COMMERCIAL       |
-  | SaaS/PaaS offerings       | COMMERCIAL       |
-  | Competing products        | COMMERCIAL       |
-  +---------------------------+------------------+
+  +------------------------------------------------+------------+
+  | Use Case                                       | License    |
+  +------------------------------------------------+------------+
+  | Personal projects                              | FREE       |
+  | Game development, not a Large Enterprise       | FREE       |
+  | Educational / Research                         | FREE       |
+  | Open source projects                           | FREE       |
+  +------------------------------------------------+------------+
+  | Game development, Large Enterprise             | COMMERCIAL |
+  |   (> USD 1M consolidated annual revenue)       |            |
+  | Metaverse platforms                            | COMMERCIAL |
+  | Cloud streaming services                       | COMMERCIAL |
+  | SaaS/PaaS offerings                            | COMMERCIAL |
+  | Competing products                             | COMMERCIAL |
+  +------------------------------------------------+------------+
 
-"Open Core: Free for creators, licensed for infrastructure."
+"Free for creators and small studios, licensed for infrastructure and large enterprises."
 
 ================================================================================
