@@ -155,6 +155,12 @@ jobs:
       - name: Test (integration, feature-gated oracles — svo / texture-fit)
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
+      # min/max signed-zero Law parity across tree / SIMD / JIT (and SVO bytes).
+      # Runs on every matrix OS so the x86_64 and aarch64 legs both assert the
+      # one ordered rule (the arch split this guards lives in `f32::max` itself).
+      - name: Test (min/max signed-zero Law parity)
+        run: cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
+
       # aaa (volume / gpu-mesh / svo-gpu / destruction / terrain / gi) の解析解 oracle。
       # `*_api_oracle` の 5 file は example から配線した API (chunk の継ぎ目の
       # remesh / DDS header / LRU cache / probe の範囲外など) を固定する。`image` は

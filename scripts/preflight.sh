@@ -275,6 +275,9 @@ cargo test --tests
 step "test: feature-gated oracles (svo / texture-fit)"
 cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
+step "test: min/max signed-zero Law parity (tree / SIMD / JIT / SVO)"
+cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
+
 # JIT の parity arm は `#[cfg(feature = "jit")]` なので default の
 # `cargo test --tests` では compile されない (2026-09-30 実測、CI でも一度も
 # 走っていなかった)。test 本数では退行が見えない (relaxed_tracing だけ 8 -> 9、
