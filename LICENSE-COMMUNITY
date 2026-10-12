@@ -86,7 +86,10 @@ A separate commercial license is REQUIRED for:
 
   (d) LARGE ENTERPRISE COMMERCIAL USE - Use of the Software by a Large
       Enterprise (including through its Affiliates) in commercial game
-      development, publishing or other commercial products.
+      development, publishing or other commercial products. Use of the
+      Software by a Large Enterprise to create or distribute a VRChat world
+      or other interactive experience requires a commercial licence, whether
+      or not that world or experience is sold.
 
 To obtain a commercial license, contact: https://extoria.co.jp/en
 
@@ -140,6 +143,7 @@ SUMMARY (Not legally binding)
   +------------------------------------------------+------------+
   | Game development, Large Enterprise             | COMMERCIAL |
   |   (> USD 1M consolidated annual revenue)       |            |
+  | VRChat world by a Large Enterprise             | COMMERCIAL |
   | Metaverse platforms                            | COMMERCIAL |
   | Cloud streaming services                       | COMMERCIAL |
   | SaaS/PaaS offerings                            | COMMERCIAL |
