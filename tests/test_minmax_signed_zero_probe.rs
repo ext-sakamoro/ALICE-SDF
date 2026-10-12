@@ -103,12 +103,14 @@ fn no_signed_zero_split_over_a_csg_grid() {
 
 #[cfg(feature = "svo")]
 #[test]
-fn tree_and_bytecode_svo_serialize_identically() {
+fn tree_and_bytecode_svo_query_point_distances_are_bit_identical() {
     use alice_sdf::compiled::CompiledSdf;
     use alice_sdf::svo::{SparseVoxelOctree, SvoBuildConfig};
     // SVO distances come from the Real path (tree `build`, bytecode
-    // `build_compiled`); the Law makes both agree on every zero's sign, so the
-    // serialized chunks are byte-identical. A ±0 divergence would change bytes.
+    // `build_compiled`); the Law makes both agree on every zero's sign. This
+    // compares the stored distances via `query_point` (not the serialized
+    // bytes), but a ±0 split here is exactly what would make the serialized
+    // chunk (`distance.to_le_bytes()`) diverge across architectures.
     let cfg = SvoBuildConfig::default();
     let mut compared = 0usize;
     for (name, node) in coincident_scenes() {
