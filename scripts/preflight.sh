@@ -75,6 +75,12 @@ step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo tes
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py
 
+step "raw max/min manifest (test, then check against origin/main) + library clippy config"
+python3 scripts/test_raw_minmax_manifest.py
+python3 scripts/raw_minmax_manifest.py --base origin/main
+python3 scripts/test_clippy_lib_gate.py
+python3 scripts/clippy_lib_gate.py --check
+
 step "status generators: oracle + 走査件数 0 で fail (docs/wiring-status.md / docs/oracle-status.md)"
 python3 scripts/test_gen_status.py
 python3 scripts/gen-wiring-status.py
