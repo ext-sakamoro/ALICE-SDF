@@ -442,13 +442,14 @@ impl Real for f32x8 {
     }
     #[inline(always)]
     fn min(self, other: Self) -> Self {
-        // Per-lane Law min so the SIMD batch path matches the scalar/tree path
+        // Per-lane Law min (compares and blends, the same bits as law_min_f32 on
+        // every lane) so the SIMD batch path matches the scalar/tree path
         // bit-for-bit on signed zero (the parity `fuzz_eval_parity` guards).
-        self.map2(other, law_min_f32)
+        LawMinMax::law_min(self, other)
     }
     #[inline(always)]
     fn max(self, other: Self) -> Self {
-        self.map2(other, law_max_f32)
+        LawMinMax::law_max(self, other)
     }
     #[inline(always)]
     fn sin_cos(self) -> (Self, Self) {
@@ -1122,6 +1123,8 @@ mod tests {
                 let b: [f32; 8] = core::array::from_fn(|k| lat[(t + 3 * k) % lat.len()]);
                 let mx = f32x8::from(a).law_max(f32x8::from(b)).to_array();
                 let mn = f32x8::from(a).law_min(f32x8::from(b)).to_array();
+                let rx = <f32x8 as Real>::max(f32x8::from(a), f32x8::from(b)).to_array();
+                let rn = <f32x8 as Real>::min(f32x8::from(a), f32x8::from(b)).to_array();
                 for k in 0..8 {
                     assert_eq!(
                         mx[k].to_bits(),
@@ -1137,11 +1140,25 @@ mod tests {
                         a[k],
                         b[k]
                     );
-                    compared += 2;
+                    assert_eq!(
+                        rx[k].to_bits(),
+                        mx[k].to_bits(),
+                        "Real::max({}, {})",
+                        a[k],
+                        b[k]
+                    );
+                    assert_eq!(
+                        rn[k].to_bits(),
+                        mn[k].to_bits(),
+                        "Real::min({}, {})",
+                        a[k],
+                        b[k]
+                    );
+                    compared += 4;
                 }
             }
         }
-        assert_eq!(compared, 2 * 8 * 11 * 11);
+        assert_eq!(compared, 4 * 8 * 11 * 11);
     }
 
     fn lanes(v: Vec3) -> Vec3R<f32x8> {
