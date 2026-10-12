@@ -71,6 +71,10 @@ step "license copies: oracle + sub-package の license が root LICENSE-COMMUNIT
 python3 scripts/license_copy_check.py --self-test
 python3 scripts/license_copy_check.py
 
+step "license declarations: oracle + 全 manifest の license が Apache-2.0 (Community subtree は許可リスト、比較 0 件で fail)"
+python3 scripts/license_check.py --self-test
+python3 scripts/license_check.py
+
 step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py
