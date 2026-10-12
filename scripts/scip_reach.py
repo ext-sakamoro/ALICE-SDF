@@ -634,6 +634,22 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
                     if owner not in live and owner in defined:
                         live.add(owner)
                         stack.append(owner)
+                # a trait method that is called (`Tr#m().`, or an impl of it,
+                # `impl#[X][Tr]m().`) needs the trait in scope: a method call
+                # references the method or impl symbol, never `Tr#` itself, and the
+                # `use` that brings the trait in is not counted
+                m = MEMBER_METHOD_RE.search(s)
+                owners: list[str] = []
+                if m and not m.group(1).startswith("impl"):
+                    owners = [s[:m.end(1)] + "#"]
+                else:
+                    m = IMPL_METHOD_RE.search(s)
+                    if m:
+                        owners = type_defs.get(_trait_name(m.group(2)), [])
+                for owner in owners:
+                    if owner not in live and owner in defined:
+                        live.add(owner)
+                        stack.append(owner)
                 for t in implementers.get(s, ()):
                     if t not in live:
                         pending.add(t)

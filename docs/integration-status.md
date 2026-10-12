@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1193 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 945 |
-| | **total** | **2147** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1199 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 947 |
+| | **total** | **2155** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1193)
+## L1 — example-only (1199)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -96,7 +96,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_8`, `JitSimdSdf::eval_soa`, `JitSimdSdfDynamic`, `JitSimdSdfDynamic::compile`, `JitSimdSdfDynamic::eval_8`, `JitSimdSdfDynamic::eval_8_raw`, `JitSimdSdfDynamic::eval_batch`, `JitSimdSdfDynamic::eval_soa`, `JitSimdSdfDynamic::params`, `JitSimdSdfDynamic::update_params`, `extract_simd_params`
 - `src/compiled/msl/transpiler.rs`: `MslError`, `MslShader`, `MslShader::from_wgsl`, `MslShader::transpile`
 - `src/compiled/opcode.rs`: `OpCode::is_binary_op`, `OpCode::is_modifier`, `OpCode::is_post_process`, `OpCode::is_primitive`, `OpCode::is_transform`, `OpCode::modifies_point`
-- `src/compiled/real.rs`: `Vec3R::max_element`, `Vec3R::round`
+- `src/compiled/real.rs`: `Vec3R::max_element`, `Vec3R::round`, `law_min_f64`
 - `src/compiled/refit.rs`: `refit_partial`
 - `src/compiled/rust/transpiler.rs`: `DEFAULT_NORMAL_EPSILON`, `RustSource`, `RustSource::instruction_count`, `RustSource::source`, `RustSource::transpile`, `RustSource::transpile_compiled`, `RustSource::transpile_with`, `RustTranspileError`, `RustTranspileOptions`, `RustTranspileOptions::with_det_math_path`, `RustTranspileOptions::with_normal_epsilon`, `is_supported`
 - `src/compiled/simd.rs`: `Quatx8`, `Quatx8::mul_vec3`, `Vec3x8::new`, `Vec3x8::splat`, `Vec3x8::to_array`
@@ -196,6 +196,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/cylinder.rs`: `sdf_cylinder_capped`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
 - `src/primitives/torus.rs`: `sdf_torus_capped`
+- `src/raw_minmax.rs`: `RawMinMax`, `raw_max_f32`, `raw_max_f32x8`, `raw_min_f32`, `raw_min_f32x8`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`

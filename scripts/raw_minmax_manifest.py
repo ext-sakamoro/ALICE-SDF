@@ -35,8 +35,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 DEFINITIONS = "src/raw_minmax.rs"
 MANIFEST = Path(__file__).resolve().parent / "raw_minmax_manifest.toml"
-HELPERS = ("raw_max_f32", "raw_min_f32", "raw_max_f64", "raw_min_f64", "raw_max_f32x8", "raw_min_f32x8")
-USE_RE = re.compile(r"\braw_(?:max|min)(?:_f32x8|_f32|_f64)?\b")
+HELPERS = ("raw_max_f32", "raw_min_f32", "raw_max_f32x8", "raw_min_f32x8")
+USE_RE = re.compile(r"\braw_(?:max|min)(?:_f32x8|_f32)?\b")
 ALIAS_RE = re.compile(r"\b(?:" + "|".join(HELPERS) + r"|RawMinMax)\s+as\s+\w+")
 DEF_RE = re.compile(r"\bfn\s+(" + "|".join(HELPERS) + r")\s*\(")
 

@@ -237,6 +237,33 @@ class Levels(unittest.TestCase):
         # so this is the case that occurs in practice
         self.assertEqual(levels([src(False), ex])["src/m.rs::inner"], "L1")
 
+    def test_a_called_trait_method_reaches_the_trait(self):
+        # a method call references the method (or its impl), never `Tr#`, and the
+        # `use` that brings the trait into scope does not count: without this rule a
+        # trait used only by method calls stays L0
+        text = ("pub trait Tr { fn run(self); }\nimpl Tr for f32 { fn run(self) {} }\n"
+                "pub fn go(x: f32) { x.run(); }\npub fn idle() {}")
+
+        def src(called: str | None) -> Doc:
+            d = (Doc("src/m.rs", text)
+                 .define("m/Tr#", 0, "Tr")
+                 .define("m/Tr#run().", 0, "run")
+                 .define("m/impl#[f32][Tr]run().", 1, "run")
+                 .define("m/go().", 2, "go")
+                 .define("m/idle().", 3, "idle"))
+            return d.ref(called, 2, "run") if called else d
+
+        ex = Doc("examples/e.rs", "fn main() { go(1.0); }").ref("m/go().", 0, "go")
+        # through the impl symbol (what rust-analyzer emits for a concrete receiver)
+        self.assertEqual(levels([src("m/impl#[f32][Tr]run()."), ex])["src/m.rs::Tr"], "L1")
+        # through the trait method symbol
+        self.assertEqual(levels([src("m/Tr#run()."), ex])["src/m.rs::Tr"], "L1")
+        # nothing calls it: still L0
+        self.assertEqual(levels([src(None), ex])["src/m.rs::Tr"], "L0")
+        # a reached function that does not call it does not reach it
+        idle_ex = Doc("examples/e.rs", "fn main() { idle(); }").ref("m/idle().", 0, "idle")
+        self.assertEqual(levels([src("m/impl#[f32][Tr]run()."), idle_ex])["src/m.rs::Tr"], "L0")
+
     def test_fuzz_target_is_a_caller(self):
         # the fuzz crate is indexed from fuzz/: its paths gain the prefix and its
         # references count like an example's

@@ -49,30 +49,6 @@ pub const fn raw_min_f32(a: f32, b: f32) -> f32 {
     a.min(b)
 }
 
-/// Platform `f64::max`: the zero sign of an equal pair is target-dependent.
-/// Never for a value that reaches a distance, bound, mesh or persisted byte.
-#[inline(always)]
-#[must_use]
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the one place the platform max is allowed; callers are listed in scripts/raw_minmax_manifest.toml"
-)]
-pub const fn raw_max_f64(a: f64, b: f64) -> f64 {
-    a.max(b)
-}
-
-/// Platform `f64::min`: the zero sign of an equal pair is target-dependent.
-/// Never for a value that reaches a distance, bound, mesh or persisted byte.
-#[inline(always)]
-#[must_use]
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the one place the platform min is allowed; callers are listed in scripts/raw_minmax_manifest.toml"
-)]
-pub const fn raw_min_f64(a: f64, b: f64) -> f64 {
-    a.min(b)
-}
-
 /// Platform `f32x8::max` per lane: the zero sign of an equal pair is
 /// target-dependent. Never for a value that reaches a distance, bound, mesh or
 /// persisted byte.
@@ -119,17 +95,6 @@ impl RawMinMax for f32 {
     #[inline(always)]
     fn raw_min(self, other: Self) -> Self {
         raw_min_f32(self, other)
-    }
-}
-
-impl RawMinMax for f64 {
-    #[inline(always)]
-    fn raw_max(self, other: Self) -> Self {
-        raw_max_f64(self, other)
-    }
-    #[inline(always)]
-    fn raw_min(self, other: Self) -> Self {
-        raw_min_f64(self, other)
     }
 }
 

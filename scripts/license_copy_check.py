@@ -2,20 +2,20 @@
 """Assert every sub-package that ships its own copy of the ALICE Community License is byte-identical
 to the root LICENSE-COMMUNITY (so a published package carries the full, current text and cannot drift).
 Fails on: a missing copy, a byte difference, or nothing compared (0 copies => fail)."""
-import re
 import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MASTER = ROOT / "LICENSE-COMMUNITY"
 # sub-package license files that MUST equal the root Community License byte-for-byte
 COPIES = ["vrchat-package/LICENSE.md", "unity-sdf-universe/LICENSE"]
-def main() -> int:
-    if not MASTER.is_file():
+def check(root: Path, copies: list[str]) -> int:
+    master_path = root / MASTER.name
+    if not master_path.is_file():
         print(f"error: {MASTER.name} missing", file=sys.stderr); return 1
-    master = MASTER.read_bytes()
+    master = master_path.read_bytes()
     errs, compared = [], 0
-    for rel in COPIES:
-        p = ROOT / rel
+    for rel in copies:
+        p = root / rel
         if not p.is_file():
             errs.append(f"{rel}: missing (must ship a byte-identical copy of LICENSE-COMMUNITY)"); continue
         compared += 1
@@ -27,27 +27,27 @@ def main() -> int:
         print(f"error: {e}", file=sys.stderr)
     print(f"license-copy check: {compared} copy/copies compared against LICENSE-COMMUNITY", file=sys.stderr)
     return 1 if errs else 0
+def main() -> int:
+    return check(ROOT, COPIES)
 def self_test() -> int:
-    import tempfile, subprocess
+    # runs check() in-process on a scratch tree: no rewritten copy of this file, no
+    # subprocess, so nothing depends on the platform's newline or path handling
+    import tempfile
     with tempfile.TemporaryDirectory() as d:
-        r = Path(d); (r/"LICENSE-COMMUNITY").write_text("X\n"); (r/"vrchat-package").mkdir(); (r/"unity-sdf-universe").mkdir()
-        me = Path(__file__)
-        def run(copies_body):
-            src = re.sub(r'^COPIES = \[.*\]$', copies_body, me.read_text(encoding="utf-8"), count=1, flags=re.M).replace(
-                'ROOT = Path(__file__).resolve().parent.parent', f'ROOT = Path(r"{d}")')
-            t = r/"chk.py"; t.write_text(src, encoding="utf-8")
-            p = subprocess.run([sys.executable, str(t)], capture_output=True, text=True, encoding="utf-8")
-            if p.returncode not in (0, 1):
-                print(p.stdout, p.stderr, file=sys.stderr)
-            return p.returncode
-        (r/"vrchat-package/LICENSE.md").write_text("X\n")
-        (r/"unity-sdf-universe/LICENSE").write_text("X\n")
-        assert run('COPIES = ["vrchat-package/LICENSE.md", "unity-sdf-universe/LICENSE"]') == 0, "identical copies should pass"
-        (r/"vrchat-package/LICENSE.md").write_text("X tampered\n")
-        assert run('COPIES = ["vrchat-package/LICENSE.md"]') == 1, "a differing copy must fail"
+        r = Path(d)
+        (r/"LICENSE-COMMUNITY").write_bytes(b"X\n"); (r/"vrchat-package").mkdir(); (r/"unity-sdf-universe").mkdir()
+        (r/"vrchat-package/LICENSE.md").write_bytes(b"X\n")
+        (r/"unity-sdf-universe/LICENSE").write_bytes(b"X\n")
+        assert check(r, ["vrchat-package/LICENSE.md", "unity-sdf-universe/LICENSE"]) == 0, "identical copies should pass"
+        (r/"unity-sdf-universe/LICENSE").write_bytes(b"X\r\n")
+        assert check(r, ["unity-sdf-universe/LICENSE"]) == 1, "a newline difference must fail"
+        (r/"vrchat-package/LICENSE.md").write_bytes(b"X tampered\n")
+        assert check(r, ["vrchat-package/LICENSE.md"]) == 1, "a differing copy must fail"
         (r/"vrchat-package/LICENSE.md").unlink()
-        assert run('COPIES = ["vrchat-package/LICENSE.md"]') == 1, "a missing copy must fail"
-        assert run('COPIES = []') == 1, "0 copies compared must fail (not vacuously pass)"
+        assert check(r, ["vrchat-package/LICENSE.md"]) == 1, "a missing copy must fail"
+        assert check(r, []) == 1, "0 copies compared must fail (not vacuously pass)"
+        (r/"LICENSE-COMMUNITY").unlink()
+        assert check(r, ["unity-sdf-universe/LICENSE"]) == 1, "a missing master must fail"
     print("license_copy_check self-test ok"); return 0
 if __name__ == "__main__":
     sys.exit(self_test() if "--self-test" in sys.argv else main())
