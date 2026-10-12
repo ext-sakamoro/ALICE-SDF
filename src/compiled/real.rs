@@ -280,13 +280,17 @@ impl LawMinMax for f32x8 {
         // per lane, the same rule as law_max_f32, from compares and blends only
         let larger = self.cmp_gt(other).blend(self, other);
         let equal = self.cmp_eq(other).blend(self & other, larger);
-        other.cmp_ne(other).blend(self, equal)
+        // a NaN operand gives the other one; checked last for `self` so that a
+        // NaN pair returns `other`, as law_max_f32 does
+        self.cmp_ne(self)
+            .blend(other, other.cmp_ne(other).blend(self, equal))
     }
     #[inline(always)]
     fn law_min(self, other: Self) -> Self {
         let smaller = self.cmp_lt(other).blend(self, other);
         let equal = self.cmp_eq(other).blend(self | other, smaller);
-        other.cmp_ne(other).blend(self, equal)
+        self.cmp_ne(self)
+            .blend(other, other.cmp_ne(other).blend(self, equal))
     }
 }
 
@@ -1009,6 +1013,24 @@ mod tests {
         assert_eq!(law_max_f32(-0.0, -1.0).to_bits(), nn, "max(-0,-1) = -0");
         assert_eq!(law_max_f32(f32::NAN, 3.0), 3.0, "NaN -> other");
         assert_eq!(law_min_f32(5.0, f32::NAN), 5.0, "NaN -> other");
+        // a NaN pair gives the second operand, bits and all (the Physics helper's
+        // order: `a` is tested for NaN first)
+        let (qa, qb) = (f32::from_bits(0x7fc0_0000), f32::from_bits(0xffc0_0001));
+        assert_eq!(
+            law_max_f32(qa, qb).to_bits(),
+            0xffc0_0001,
+            "max(NaN, NaN') = NaN'"
+        );
+        assert_eq!(
+            law_min_f32(qa, qb).to_bits(),
+            0xffc0_0001,
+            "min(NaN, NaN') = NaN'"
+        );
+        assert_eq!(
+            law_max_f32(qb, qa).to_bits(),
+            0x7fc0_0000,
+            "max(NaN', NaN) = NaN"
+        );
         // teeth: the ordered rule is NOT what a both-zero-to-+0 normalisation gives
         // (that would make max(-0,-0) = +0 and break tree==JIT for the -0,-0 lane)
         assert_ne!(
@@ -1111,6 +1133,7 @@ mod tests {
             f32::INFINITY,
             f32::NEG_INFINITY,
             f32::NAN,
+            f32::from_bits(0xffc0_0001), // a second NaN: sign and payload differ
             f32::MIN_POSITIVE / 4.0,
             -f32::MIN_POSITIVE / 4.0,
             f32::MAX,
@@ -1158,7 +1181,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(compared, 4 * 8 * 11 * 11);
+        assert_eq!(compared, 4 * 8 * 12 * 12);
     }
 
     fn lanes(v: Vec3) -> Vec3R<f32x8> {
