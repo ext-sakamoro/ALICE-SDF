@@ -52,4 +52,4 @@ const wgsl = result.to_wgsl();
 
 ## License
 
-MIT - Moroya Sakamoto
+Apache-2.0 - Moroya Sakamoto

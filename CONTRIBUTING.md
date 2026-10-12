@@ -21,11 +21,11 @@ cargo fmt -- --check
 cargo doc --no-deps 2>&1 | grep warning
 ```
 
-## License Boundary Policy (MIT Core)
+## License Boundary Policy (Apache-2.0 Core)
 
-ALICE-SDF is MIT-licensed. To prevent feature creep that would make the
-MIT core trivially wrappable as a competing SaaS product, the following
-rules apply:
+The ALICE-SDF crate is licensed under Apache-2.0. To prevent feature creep
+that would make the core trivially wrappable as a competing SaaS product, the
+following rules apply:
 
 **Allowed contributions:**
 - SDF primitives, CSG operations, transforms

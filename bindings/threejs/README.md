@@ -111,4 +111,4 @@ function onXRFrame(_t: number, frame: XRFrame) {
 
 ## License
 
-MIT OR Apache-2.0
+Apache-2.0

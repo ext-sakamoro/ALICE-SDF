@@ -29,7 +29,7 @@ ignore = [
 
 # ---------------------------------------------------------------------------
 # Licenses (allow-list 方式、記載外 = deny)
-# ALICE-SDF は MIT OR Apache-2.0 デュアルライセンス
+# ALICE-SDF は Apache-2.0 (依存 crate は MIT 等も下の allow-list に残す)
 # 依存 crate の license は SPDX 識別子で allow-list に列挙
 # ---------------------------------------------------------------------------
 [licenses]
