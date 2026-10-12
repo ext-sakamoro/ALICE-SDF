@@ -2,12 +2,13 @@
 """Assert every sub-package that ships its own copy of the ALICE Community License is byte-identical
 to the root LICENSE-COMMUNITY (so a published package carries the full, current text and cannot drift).
 Fails on: a missing copy, a byte difference, or nothing compared (0 copies => fail)."""
+import re
 import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MASTER = ROOT / "LICENSE-COMMUNITY"
 # sub-package license files that MUST equal the root Community License byte-for-byte
-COPIES = ["vrchat-package/LICENSE.md"]
+COPIES = ["vrchat-package/LICENSE.md", "unity-sdf-universe/LICENSE"]
 def main() -> int:
     if not MASTER.is_file():
         print(f"error: {MASTER.name} missing", file=sys.stderr); return 1
@@ -29,15 +30,16 @@ def main() -> int:
 def self_test() -> int:
     import tempfile, subprocess
     with tempfile.TemporaryDirectory() as d:
-        r = Path(d); (r/"LICENSE-COMMUNITY").write_text("X\n"); (r/"vrchat-package").mkdir()
+        r = Path(d); (r/"LICENSE-COMMUNITY").write_text("X\n"); (r/"vrchat-package").mkdir(); (r/"unity-sdf-universe").mkdir()
         me = Path(__file__)
         def run(copies_body):
-            src = me.read_text().replace('COPIES = ["vrchat-package/LICENSE.md"]', copies_body).replace(
+            src = re.sub(r'^COPIES = \[.*\]$', copies_body, me.read_text(), count=1, flags=re.M).replace(
                 'ROOT = Path(__file__).resolve().parent.parent', f'ROOT = Path(r"{d}")')
             t = r/"chk.py"; t.write_text(src)
             return subprocess.run([sys.executable, str(t)], capture_output=True).returncode
         (r/"vrchat-package/LICENSE.md").write_text("X\n")
-        assert run('COPIES = ["vrchat-package/LICENSE.md"]') == 0, "identical copy should pass"
+        (r/"unity-sdf-universe/LICENSE").write_text("X\n")
+        assert run('COPIES = ["vrchat-package/LICENSE.md", "unity-sdf-universe/LICENSE"]') == 0, "identical copies should pass"
         (r/"vrchat-package/LICENSE.md").write_text("X tampered\n")
         assert run('COPIES = ["vrchat-package/LICENSE.md"]') == 1, "a differing copy must fail"
         (r/"vrchat-package/LICENSE.md").unlink()
