@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHANGELOG-history.md).
 
-## [6.0.0] - unreleased
+## [Unreleased]
 
 ### Breaking changes
 - `alice-det-math` を 0.4 から 0.5 に更新 0.5 は範囲還元を 3 分割から 4 分割に変え (`PIO2_4` の追加と `two_prod` による厳密な `k·PIO2_3`)、`sin` / `cos` / `sin_cos` が `k·π/2` 近傍と `x·2/π` が `n+½` になる角度で最終 bit を変える 値は決定的で全 platform で同じ
