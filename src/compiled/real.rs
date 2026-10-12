@@ -168,7 +168,14 @@ pub trait Real:
     }
 }
 
-/// Maximum under one fixed rule for every evaluator (tree / SIMD / JIT / shader).
+/// Maximum under one fixed rule for the CPU evaluators (tree / SIMD / bytecode)
+/// and the Cranelift JIT.
+///
+/// Not yet routed (documented residuals, latent + tolerance-absorbed, land with
+/// the shader pass): the WGSL / GLSL shaders and the Rust transpiler output
+/// (`src/compiled/wgsl/transpiler.rs`, `src/compiled/rust/transpiler.rs`) emit
+/// raw `min`/`max`, and `src/compiled/prim_table_simd.rs` uses raw SIMD
+/// `max`/`min` (safe by argument today, routed in a follow-up).
 ///
 /// IEEE-754-2019 `maximumNumber`: NaN gives the other operand (as `f32::max`),
 /// and a both-zero result follows the ordered rule `-0 < +0`, so it is `+0` iff
@@ -953,6 +960,66 @@ mod tests {
                 "scalar vs SIMD min({a},{b})"
             );
         }
+    }
+
+    /// The tree CSG entry points (`pub const` ops) carry the Law on signed zero:
+    /// `union = min`, `intersection = max`, `subtraction(a,b) = max(a, -b)`.
+    /// This is the teeth for reverting them to raw `f32::min`/`f32::max`: on
+    /// x86_64 `f32::min(+0,-0)` is `+0` while the Law is `-0`, so the revert
+    /// mutant goes red there (on aarch64 raw and Law agree on zeros, so these
+    /// assert correctness; the x86 CI leg is where the revert is caught).
+    #[test]
+    fn tree_csg_ops_carry_the_law_on_signed_zero() {
+        use crate::operations::{sdf_intersection, sdf_subtraction, sdf_union};
+        let np = 0.0f32.to_bits();
+        let nn = (-0.0f32).to_bits();
+        for (a, b) in [(0.0f32, -0.0f32), (-0.0, 0.0)] {
+            // union = min: -0 iff either operand is -0
+            assert_eq!(
+                sdf_union(a, b).to_bits(),
+                nn,
+                "sdf_union({a},{b}) = min = -0"
+            );
+            // intersection = max: +0 iff either operand is +0
+            assert_eq!(
+                sdf_intersection(a, b).to_bits(),
+                np,
+                "sdf_intersection({a},{b}) = max = +0"
+            );
+        }
+        assert_eq!(sdf_union(0.0, 0.0).to_bits(), np, "sdf_union(+0,+0) = +0");
+        assert_eq!(sdf_union(-0.0, -0.0).to_bits(), nn, "sdf_union(-0,-0) = -0");
+        assert_eq!(
+            sdf_intersection(-0.0, -0.0).to_bits(),
+            nn,
+            "sdf_intersection(-0,-0) = -0"
+        );
+        assert_eq!(
+            sdf_intersection(0.0, 0.0).to_bits(),
+            np,
+            "sdf_intersection(+0,+0) = +0"
+        );
+        // subtraction(a,b) = max(a, -b): the -b negates the operand's zero sign
+        assert_eq!(
+            sdf_subtraction(0.0, 0.0).to_bits(),
+            np,
+            "sub(+0,+0) = max(+0,-0) = +0"
+        );
+        assert_eq!(
+            sdf_subtraction(-0.0, -0.0).to_bits(),
+            np,
+            "sub(-0,-0) = max(-0,+0) = +0"
+        );
+        assert_eq!(
+            sdf_subtraction(-0.0, 0.0).to_bits(),
+            nn,
+            "sub(-0,+0) = max(-0,-0) = -0"
+        );
+        assert_eq!(
+            sdf_subtraction(0.0, -0.0).to_bits(),
+            np,
+            "sub(+0,-0) = max(+0,+0) = +0"
+        );
     }
 
     fn lanes(v: Vec3) -> Vec3R<f32x8> {
