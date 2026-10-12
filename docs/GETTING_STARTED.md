@@ -111,7 +111,9 @@ transcendentals are shared rather than reimplemented per crate.
 
 > Keep `alice-det-math` unified across the resolved graph. Two versions in one
 > dependency tree means two implementations of the same function, and the
-> guarantee is gone. Check with `cargo tree -i alice-det-math`.
+> guarantee is gone. Check with `cargo tree -i alice-det-math`. With the
+> `physics` feature this means `alice-physics` 3 (it uses `alice-det-math` 0.5,
+> like this crate; the 2.x releases use 0.4).
 
 ## Installation notes
 

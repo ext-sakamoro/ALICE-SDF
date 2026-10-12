@@ -299,7 +299,9 @@ integration and oracle tests).
 
 Keep a single version of `alice-det-math` in your dependency graph. Two
 versions mean two implementations of the same function, and determinism is
-lost. Check with `cargo tree -i alice-det-math`.
+lost. Check with `cargo tree -i alice-det-math`. This release uses
+`alice-det-math` 0.5; the `physics` feature needs `alice-physics` 3, which
+uses the same 0.5 (the 2.x releases use 0.4).
 
 Release history is in [`CHANGELOG.md`](CHANGELOG.md). Planned work is in
 [`docs/ROADMAP.md`](docs/ROADMAP.md).

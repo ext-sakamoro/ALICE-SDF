@@ -186,6 +186,17 @@ jobs:
       - name: Test (integration, live SDF oracle — physics)
         run: cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop
 
+      # With `physics`, alice-physics brings its own alice-det-math: the build must still
+      # hold one version (two would be two implementations of every function), and the
+      # SIMD-JIT's own range reduction must still match the scalar functions there.
+      - name: det-math is one version with physics, and the JIT matches it
+        shell: bash
+        run: |
+          n=$(cargo tree --features "jit,physics" -i alice-det-math -e normal --prefix none | grep -cE '^alice-det-math v')
+          echo "alice-det-math versions with jit,physics: $n"
+          [ "$n" -eq 1 ] || { cargo tree --features "jit,physics" -i alice-det-math -e normal; exit 1; }
+          cargo test --features "jit,physics" --test test_det_parity --test test_jit_sincos_det --test test_det_near_zero_parity
+
       # naga の parse / validate のみで GPU adapter は使わない (gpu feature は naga を引くため)
       - name: Test (integration, NPR shader validation — glsl + gpu)
         run: cargo test --features "glsl,gpu" --test npr_shader_validate

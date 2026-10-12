@@ -302,6 +302,11 @@ cargo test --features physics --test test_physics_bridge_determinism
 step "test: live SDF oracle (physics、ci.yml と対)"
 cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop
 
+step "det-math is one version with physics, and the JIT matches it"
+n=$(cargo tree --features "jit,physics" -i alice-det-math -e normal --prefix none | grep -cE '^alice-det-math v')
+[ "$n" -eq 1 ] || { echo "alice-det-math versions with jit,physics: $n"; cargo tree --features "jit,physics" -i alice-det-math -e normal; exit 1; }
+cargo test --features "jit,physics" --test test_det_parity --test test_jit_sincos_det --test test_det_near_zero_parity
+
 step "test: NPR shader validation (glsl + gpu、naga のみで GPU adapter 不要)"
 cargo test --features "glsl,gpu" --test npr_shader_validate
 

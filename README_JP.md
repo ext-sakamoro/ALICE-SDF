@@ -288,6 +288,8 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 依存グラフの `alice-det-math` は 1 つの版にそろえること 2 つの版があると同じ関数の
 実装が 2 つになり、決定性が失われる `cargo tree -i alice-det-math` で確認できる
+この版は `alice-det-math` 0.5 を使い、`physics` feature は同じ 0.5 を使う `alice-physics` 3 を
+要求する (2.x は 0.4)
 
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md)、予定は
 [`docs/ROADMAP.md`](docs/ROADMAP.md) にある

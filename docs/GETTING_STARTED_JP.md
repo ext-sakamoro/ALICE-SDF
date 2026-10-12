@@ -107,6 +107,7 @@ shader 出力が目的の時。
 
 > `alice-det-math` は解決後の依存グラフで version を揃えること 1 つの木に 2 version 入ると
 > 同じ関数の実装が 2 つ存在することになり、保証が消える 確認は `cargo tree -i alice-det-math`
+> `physics` feature では `alice-physics` 3 を使う (この crate と同じ `alice-det-math` 0.5、2.x は 0.4)
 
 ## インストールの補足
 
