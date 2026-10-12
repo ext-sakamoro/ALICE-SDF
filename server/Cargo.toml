@@ -4,7 +4,7 @@ version     = "0.1.0"
 edition     = "2021"
 authors     = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "REST HTTP server exposing ALICE-SDF evaluation, mesh, splat, vox, vdb endpoints"
-license     = "MIT OR Apache-2.0"
+license     = "Apache-2.0"
 repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
 publish     = false
 

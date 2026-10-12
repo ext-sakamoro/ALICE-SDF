@@ -8,7 +8,7 @@ name = "alice-sdf"
 dynamic = ["version"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist - Store laws, not polygons"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Moroya Sakamoto" }]
 requires-python = ">=3.9"
 classifiers = [
