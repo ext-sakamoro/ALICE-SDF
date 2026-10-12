@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for an arc (thick ring sector), extruded along Y-axis
@@ -31,8 +32,8 @@ pub fn sdf_arc_shape(p: Vec3, aperture: f32, radius: f32, thickness: f32, half_h
 
     // Extrude along Y
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
-    d_2d.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_y.law_max(0.0));
+    d_2d.law_max(d_y).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

@@ -10,6 +10,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::law_max_f32;
+use crate::compiled::real::law_min_f32;
+use crate::compiled::real::LawMinMax;
 use crate::crispy::round_half_up;
 use crate::types::SdfNode;
 use glam::{Quat, Vec3};
@@ -173,8 +176,8 @@ impl Interval {
     pub const fn intersect(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
-            lo: self.lo.max(other.lo),
-            hi: self.hi.min(other.hi),
+            lo: law_max_f32(self.lo, other.lo),
+            hi: law_min_f32(self.hi, other.hi),
         }
     }
 
@@ -183,8 +186,8 @@ impl Interval {
     pub const fn hull(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
-            lo: self.lo.min(other.lo),
-            hi: self.hi.max(other.hi),
+            lo: law_min_f32(self.lo, other.lo),
+            hi: law_max_f32(self.hi, other.hi),
         }
     }
 
@@ -204,7 +207,7 @@ impl Interval {
             // interval, and the upper bound selects an exactly negated endpoint
             Self {
                 lo: 0.0,
-                hi: self.hi.max(-self.lo),
+                hi: self.hi.law_max(-self.lo),
             }
         }
     }
@@ -212,7 +215,7 @@ impl Interval {
     /// Square root (clamped to non-negative)
     #[inline(always)]
     pub fn sqrt(self) -> Self {
-        Self::outward(self.lo.max(0.0).sqrt(), self.hi.max(0.0).sqrt())
+        Self::outward(self.lo.law_max(0.0).sqrt(), self.hi.law_max(0.0).sqrt())
     }
 
     /// Square of an interval
@@ -227,7 +230,7 @@ impl Interval {
             // so only the computed upper bound is widened
             Self {
                 lo: 0.0,
-                hi: next_up((self.lo * self.lo).max(self.hi * self.hi)),
+                hi: next_up((self.lo * self.lo).law_max(self.hi * self.hi)),
             }
         }
     }
@@ -237,8 +240,8 @@ impl Interval {
     pub const fn min(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
-            lo: self.lo.min(other.lo),
-            hi: self.hi.min(other.hi),
+            lo: law_min_f32(self.lo, other.lo),
+            hi: law_min_f32(self.hi, other.hi),
         }
     }
 
@@ -247,8 +250,8 @@ impl Interval {
     pub const fn max(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
-            lo: self.lo.max(other.lo),
-            hi: self.hi.max(other.hi),
+            lo: law_max_f32(self.lo, other.lo),
+            hi: law_max_f32(self.hi, other.hi),
         }
     }
 
@@ -294,7 +297,10 @@ impl Mul for Interval {
         let b = self.lo * rhs.hi;
         let c = self.hi * rhs.lo;
         let d = self.hi * rhs.hi;
-        Self::outward(a.min(b).min(c).min(d), a.max(b).max(c).max(d))
+        Self::outward(
+            a.law_min(b).law_min(c).law_min(d),
+            a.law_max(b).law_max(c).law_max(d),
+        )
     }
 }
 
@@ -491,7 +497,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             // lies between their pointwise extremes
             let a = eval_interval(inner, bounds);
             let b = eval_interval(outer, bounds);
-            Interval::new(a.lo.min(b.lo), a.hi.max(b.hi))
+            Interval::new(a.lo.law_min(b.lo), a.hi.law_max(b.hi))
         }
 
         SdfNode::Box3d { half_extents } => {
@@ -602,7 +608,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_height,
         } => ia_bsphere(
             bounds,
-            alice_det_math::hypot(2.0 * half_height, r1.max(*r2)),
+            alice_det_math::hypot(2.0 * half_height, r1.law_max(*r2)),
         ),
         SdfNode::Pyramid { half_height } => ia_bsphere(
             bounds,
@@ -622,7 +628,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             r2,
         } => ia_bsphere(
             bounds,
-            alice_det_math::hypot(2.0 * half_height, r1.max(*r2)),
+            alice_det_math::hypot(2.0 * half_height, r1.law_max(*r2)),
         ),
         SdfNode::CappedTorus {
             major_radius,
@@ -634,7 +640,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::TriangularPrism { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::CutSphere { radius, .. } => ia_bsphere(bounds, *radius),
         SdfNode::CutHollowSphere { .. } => ia_lipschitz(node, bounds, 1.0),
-        SdfNode::DeathStar { ra, rb, .. } => ia_bsphere(bounds, ra.max(*rb)),
+        SdfNode::DeathStar { ra, rb, .. } => ia_bsphere(bounds, ra.law_max(*rb)),
         SdfNode::SolidAngle { radius, .. } => ia_bsphere(bounds, *radius),
         // `round_radius` inflates the 2D (x, z) distance, so it grows the
         // bounding sphere too — dropping it made the enclosure too tight by
@@ -646,7 +652,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             round_radius,
         } => ia_bsphere(
             bounds,
-            alice_det_math::hypot(la.max(*lb) + round_radius, *half_height),
+            alice_det_math::hypot(la.law_max(*lb) + round_radius, *half_height),
         ),
         SdfNode::Horseshoe {
             radius,
@@ -693,11 +699,11 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             e1,
             e2,
         } => {
-            let e1 = e1.max(0.02);
-            let e2 = e2.max(0.02);
+            let e1 = e1.law_max(0.02);
+            let e2 = e2.law_max(0.02);
             let q = |iv: Interval, h: f32| {
                 let a = (iv * Interval::point(1.0 / h)).abs();
-                Interval::new(a.lo.max(1e-10), a.hi.max(1e-10))
+                Interval::new(a.lo.law_max(1e-10), a.hi.law_max(1e-10))
             };
             let (qx, qy, qz) = (
                 q(bounds.x, half_extents.x),
@@ -709,14 +715,16 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let w = powf_nonneg(qx, m1) + powf_nonneg(qz, m1);
             let v = powf_nonneg(w, e2 / e1) + powf_nonneg(qy, m2);
             let f = powf_nonneg(v, e1 * 0.5);
-            let min_extent = half_extents.x.min(half_extents.y.min(half_extents.z));
+            let min_extent = half_extents
+                .x
+                .law_min(half_extents.y.law_min(half_extents.z));
             (f - Interval::point(1.0)) * Interval::point(min_extent * 0.5)
         }
         SdfNode::RoundedX {
             width,
             round_radius,
             half_height,
-        } => ia_bsphere(bounds, (width + round_radius).max(*half_height)),
+        } => ia_bsphere(bounds, (width + round_radius).law_max(*half_height)),
         SdfNode::Pie {
             radius,
             half_height,
@@ -729,7 +737,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            ((r1.max(*r2) * r1.max(*r2) + (trap_height * trap_height)) + half_depth * half_depth)
+            ((r1.law_max(*r2) * r1.law_max(*r2) + (trap_height * trap_height))
+                + half_depth * half_depth)
                 .sqrt(),
         ),
         SdfNode::Parallelogram {
@@ -773,7 +782,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             half_depth,
         } => ia_bsphere(
             bounds,
-            alice_det_math::hypot(r1.max(2.0f32 * (*cap_height) + (*r2)), *half_depth),
+            alice_det_math::hypot(r1.law_max(2.0f32 * (*cap_height) + (*r2)), *half_depth),
         ),
         // apex at y = √3·(ra − rb) + ra (IQ sdEgg), base radius ra
         SdfNode::Egg { ra, rb } => ia_bsphere(bounds, 1.732_050_8f32 * (ra - rb) + (*ra)),
@@ -791,7 +800,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             rb,
             half_height,
             ..
-        } => ia_bsphere(bounds, alice_det_math::hypot(ra.max(*rb), *half_height)),
+        } => ia_bsphere(bounds, alice_det_math::hypot(ra.law_max(*rb), *half_height)),
         SdfNode::CrossShape { .. } => ia_lipschitz(node, bounds, 1.0),
         // Exact SDF (IQ sdBlobbyCross): centre sample ± ρ
         SdfNode::BlobbyCross { .. } => ia_lipschitz(node, bounds, 1.0),
@@ -961,7 +970,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let ib = eval_interval(b, bounds);
             // pipe = sqrt(a²+b²) - r; conservative bound
             let sq = ia * ia + ib * ib;
-            Interval::new(sq.lo.max(0.0).sqrt() - r, sq.hi.max(0.0).sqrt() + r.abs())
+            Interval::new(
+                sq.lo.law_max(0.0).sqrt() - r,
+                sq.hi.law_max(0.0).sqrt() + r.abs(),
+            )
         }
         SdfNode::Engrave { a, b, r } => {
             let ia = eval_interval(a, bounds);
@@ -970,7 +982,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let abs_b = ib.abs();
             let inner = Interval::new(
                 (ia.lo + r - abs_b.hi) * std::f32::consts::FRAC_1_SQRT_2,
-                (ia.hi + r - abs_b.lo).max(0.0) * std::f32::consts::FRAC_1_SQRT_2,
+                (ia.hi + r - abs_b.lo).law_max(0.0) * std::f32::consts::FRAC_1_SQRT_2,
             );
             ia.max(inner)
         }
@@ -996,15 +1008,24 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // union form in [min(a, b) - k·ln 2, min(a, b)]).
         SdfNode::ExpSmoothUnion { a, b, k } => {
             let sharp = eval_interval(a, bounds).min(eval_interval(b, bounds));
-            Interval::new(k.max(1e-6) * -std::f32::consts::LN_2 + sharp.lo, sharp.hi)
+            Interval::new(
+                k.law_max(1e-6) * -std::f32::consts::LN_2 + sharp.lo,
+                sharp.hi,
+            )
         }
         SdfNode::ExpSmoothIntersection { a, b, k } => {
             let sharp = eval_interval(a, bounds).max(eval_interval(b, bounds));
-            Interval::new(sharp.lo, k.max(1e-6) * std::f32::consts::LN_2 + sharp.hi)
+            Interval::new(
+                sharp.lo,
+                k.law_max(1e-6) * std::f32::consts::LN_2 + sharp.hi,
+            )
         }
         SdfNode::ExpSmoothSubtraction { a, b, k } => {
             let sharp = eval_interval(a, bounds).max(-eval_interval(b, bounds));
-            Interval::new(sharp.lo, k.max(1e-6) * std::f32::consts::LN_2 + sharp.hi)
+            Interval::new(
+                sharp.lo,
+                k.law_max(1e-6) * std::f32::consts::LN_2 + sharp.hi,
+            )
         }
         // Affine domain map (`modifier_shear`): interval image is exact
         SdfNode::Shear { child, shear } => {
@@ -1044,7 +1065,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             {
                 return Interval::entire();
             }
-            let min_f = factors.x.min(factors.y).min(factors.z);
+            let min_f = factors.x.law_min(factors.y).law_min(factors.z);
             let scaled = Vec3Interval {
                 x: bounds.x * (1.0 / factors.x),
                 y: bounds.y * (1.0 / factors.y),
@@ -1198,10 +1219,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // min in [min lo, min hi] and the middle one in the hull.
         SdfNode::OctantMirror { child } => {
             let (ax, ay, az) = (bounds.x.abs(), bounds.y.abs(), bounds.z.abs());
-            let lo_min = ax.lo.min(ay.lo).min(az.lo);
-            let lo_max = ax.lo.max(ay.lo).max(az.lo);
-            let hi_min = ax.hi.min(ay.hi).min(az.hi);
-            let hi_max = ax.hi.max(ay.hi).max(az.hi);
+            let lo_min = ax.lo.law_min(ay.lo).law_min(az.lo);
+            let lo_max = ax.lo.law_max(ay.lo).law_max(az.lo);
+            let hi_min = ax.hi.law_min(ay.hi).law_min(az.hi);
+            let hi_max = ax.hi.law_max(ay.hi).law_max(az.hi);
             eval_interval(
                 child,
                 Vec3Interval {
@@ -1248,8 +1269,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 return Interval::EVERYTHING;
             }
             let s = Interval::new(
-                (1.0 / denom.lo).min(1.0 / denom.hi),
-                (1.0 / denom.lo).max(1.0 / denom.hi),
+                (1.0 / denom.lo).law_min(1.0 / denom.hi),
+                (1.0 / denom.lo).law_max(1.0 / denom.hi),
             );
             let d = eval_interval(
                 child,
@@ -1294,10 +1315,10 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             )
         }
         SdfNode::SweepBezier { child, p0, p1, p2 } => {
-            let bmin_x = p0.x.min(p1.x).min(p2.x);
-            let bmax_x = p0.x.max(p1.x).max(p2.x);
-            let bmin_z = p0.y.min(p1.y).min(p2.y);
-            let bmax_z = p0.y.max(p1.y).max(p2.y);
+            let bmin_x = p0.x.law_min(p1.x).law_min(p2.x);
+            let bmax_x = p0.x.law_max(p1.x).law_max(p2.x);
+            let bmin_z = p0.y.law_min(p1.y).law_min(p2.y);
+            let bmax_z = p0.y.law_max(p1.y).law_max(p2.y);
             // Max perpendicular distance
             let corners = [
                 (bounds.x.lo, bounds.z.lo),
@@ -1316,7 +1337,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 for &(cx, cz) in &curve_corners {
                     let dx = px - cx;
                     let dz = pz - cz;
-                    max_d2 = max_d2.max(dx * dx + (dz * dz));
+                    max_d2 = max_d2.law_max(dx * dx + (dz * dz));
                 }
             }
             // Min distance: 0 if overlapping, else min box-to-box distance
@@ -1376,8 +1397,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let (mut s_lo, mut s_hi) = (1.0f32, 1.0f32);
             for t in transforms {
                 let sx = (t[2] * t[2] + (t[1] * t[1] + (t[0] * t[0]))).sqrt();
-                s_lo = s_lo.min(sx);
-                s_hi = s_hi.max(sx);
+                s_lo = s_lo.law_min(sx);
+                s_hi = s_hi.law_max(sx);
             }
             for _ in 0..*iterations {
                 let mut next = hull;
@@ -1391,8 +1412,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let d = eval_interval(child, hull);
             let n = *iterations as i32;
             let scale = Interval::new(
-                alice_det_math::powi(s_lo, n).max(1e-6),
-                alice_det_math::powi(s_hi, n).max(1e-6),
+                alice_det_math::powi(s_lo, n).law_max(1e-6),
+                alice_det_math::powi(s_hi, n).law_max(1e-6),
             );
             let recip = Interval::new(1.0 / scale.hi, 1.0 / scale.lo);
             d * recip
@@ -1457,8 +1478,8 @@ fn ia_lipschitz(node: &SdfNode, bounds: Vec3Interval, l: f32) -> Interval {
 /// `x.powf(m)` on a non-negative interval (monotone for `m > 0`).
 #[inline]
 fn powf_nonneg(iv: Interval, m: f32) -> Interval {
-    let lo = iv.lo.max(0.0);
-    let hi = iv.hi.max(0.0);
+    let lo = iv.lo.law_max(0.0);
+    let hi = iv.hi.law_max(0.0);
     Interval::new(alice_det_math::powf(lo, m), alice_det_math::powf(hi, m))
 }
 
@@ -1480,7 +1501,7 @@ fn len2(a: Interval, b: Interval) -> Interval {
 #[inline]
 fn mod_interval(x: Interval, step: f32) -> Interval {
     if step <= 0.0 || !step.is_finite() || !(x.lo.is_finite() && x.hi.is_finite()) {
-        return Interval::new(0.0, step.max(0.0));
+        return Interval::new(0.0, step.law_max(0.0));
     }
     let k_lo = (x.lo / step).floor();
     let k_hi = (x.hi / step).floor();
@@ -1500,7 +1521,7 @@ fn mod_interval(x: Interval, step: f32) -> Interval {
 /// rotations of the same `(a, b)`), so the result is wider than the point law's
 /// range. It is *sound* though, which the midpoint + Lipschitz form was not.
 fn ia_stairs_min(ia: Interval, ib: Interval, r: f32, n: f32) -> Interval {
-    let n = n.max(1.0);
+    let n = n.law_max(1.0);
     let s = std::f32::consts::FRAC_1_SQRT_2;
     let sqrt2 = std::f32::consts::SQRT_2;
     let d = ia.min(ib);
@@ -1659,7 +1680,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // with `|y| − h` has the singular value of [[1, 0], [k, 1]].
         SdfNode::Barrel {
             half_height, bulge, ..
-        } => shear_singular_value(2.0 * bulge.abs() / half_height.abs().max(1e-6)),
+        } => shear_singular_value(2.0 * bulge.abs() / half_height.abs().law_max(1e-6)),
 
         // Terrain: `y − amplitude·fbm(scale·xz)`, 3 octaves of `hash_noise_3d`
         // sampled on the xz plane (values in [-1, 1], smoothstep weights,
@@ -1684,7 +1705,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Tongue { a, b, .. }
         | SdfNode::ExpSmoothUnion { a, b, .. }
         | SdfNode::ExpSmoothIntersection { a, b, .. }
-        | SdfNode::ExpSmoothSubtraction { a, b, .. } => eval_lipschitz(a).max(eval_lipschitz(b)),
+        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+            eval_lipschitz(a).law_max(eval_lipschitz(b))
+        }
         // Chamfer `(a + b)/√2 − r`, stairs (its 45° branch), engrave
         // `(a + r − |b|)/√2`: |∇a + ∇b| / √2 ≤ √2·max(La, Lb).
         SdfNode::ChamferUnion { a, b, .. }
@@ -1694,7 +1717,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::StairsIntersection { a, b, .. }
         | SdfNode::StairsSubtraction { a, b, .. }
         | SdfNode::Engrave { a, b, .. } => {
-            std::f32::consts::SQRT_2 * eval_lipschitz(a).max(eval_lipschitz(b))
+            std::f32::consts::SQRT_2 * eval_lipschitz(a).law_max(eval_lipschitz(b))
         }
         // Pipe `√(a² + b²) − r`: |(a∇a + b∇b)| / √(a² + b²) ≤ √(La² + Lb²).
         SdfNode::Pipe { a, b, .. } => alice_det_math::hypot(eval_lipschitz(a), eval_lipschitz(b)),
@@ -1715,8 +1738,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // Non-uniform scale: gradient stretches by max/min factor ratio
         SdfNode::ScaleNonUniform { child, factors } => {
             let s = [factors.x.abs(), factors.y.abs(), factors.z.abs()];
-            let min_s = s[0].min(s[1]).min(s[2]).max(1e-6);
-            let max_s = s[0].max(s[1]).max(s[2]);
+            let min_s = s[0].law_min(s[1]).law_min(s[2]).law_max(1e-6);
+            let max_s = s[0].law_max(s[1]).law_max(s[2]);
             eval_lipschitz(child) * max_s / min_s
         }
         // Projective transform: use user-provided bound
@@ -1792,12 +1815,12 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
             let f = frequency
                 .x
                 .abs()
-                .max(frequency.y.abs())
-                .max(frequency.z.abs());
+                .law_max(frequency.y.abs())
+                .law_max(frequency.z.abs());
             (amplitude * f).abs() + eval_lipschitz(child)
         }
         SdfNode::Shear { child, shear } => {
-            let max_shear = shear.x.abs().max(shear.y.abs()).max(shear.z.abs());
+            let max_shear = shear.x.abs().law_max(shear.y.abs()).law_max(shear.z.abs());
             eval_lipschitz(child) * (1.0 + max_shear)
         }
         SdfNode::Animated { child, .. } => eval_lipschitz(child),
@@ -1885,7 +1908,7 @@ fn child_radius(child: &SdfNode, axis: Axis) -> f32 {
     if !aabb.is_valid() || !lo.is_finite() || !hi.is_finite() {
         return UNBOUNDED_CHILD_RADIUS;
     }
-    let reach = |a: f32, b: f32| a.abs().max(b.abs());
+    let reach = |a: f32, b: f32| a.abs().law_max(b.abs());
     let r = match axis {
         Axis::Y => alice_det_math::hypot(reach(lo.x, hi.x), reach(lo.z, hi.z)),
         Axis::Z => alice_det_math::hypot(reach(lo.x, hi.x), reach(lo.y, hi.y)),
@@ -1988,7 +2011,7 @@ pub(crate) fn taper_reach(child: &SdfNode) -> [f32; 2] {
     if !aabb.is_valid() || !lo.is_finite() || !hi.is_finite() {
         return [f32::INFINITY; 2];
     }
-    let reach = |a: f32, b: f32| a.abs().max(b.abs());
+    let reach = |a: f32, b: f32| a.abs().law_max(b.abs());
     let r_xz = alice_det_math::hypot(reach(lo.x, hi.x), reach(lo.z, hi.z));
     let r_y = reach(lo.y, hi.y);
     if r_xz > UNBOUNDED_CHILD_SENTINEL || r_y > UNBOUNDED_CHILD_SENTINEL {

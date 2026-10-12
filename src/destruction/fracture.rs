@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 use super::MutableVoxelGrid;
@@ -115,7 +116,7 @@ pub fn voronoi_fracture(
 
     // Generate mesh for each piece
     let mut pieces = Vec::new();
-    let min_voxels = (config.min_piece_size / vs.x).max(1.0) as u32;
+    let min_voxels = (config.min_piece_size / vs.x).law_max(1.0) as u32;
 
     for cell in 0..config.piece_count {
         if cell_counts[cell as usize] < min_voxels {

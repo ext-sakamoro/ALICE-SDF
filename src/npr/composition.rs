@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::raw_minmax::RawMinMax;
 use glam::Vec3;
 
 /// Vignette darkening multiplier as a function of UV distance from center
@@ -37,7 +38,7 @@ pub fn vignette(uv_x: f32, uv_y: f32, radius: f32, softness: f32) -> f32 {
 #[inline]
 #[must_use]
 pub fn bloom_toon(color: Vec3, threshold: f32, intensity: f32) -> Vec3 {
-    let max_ch = color.x.max(color.y).max(color.z);
+    let max_ch = color.x.raw_max(color.y).raw_max(color.z);
     if max_ch > threshold {
         color * intensity
     } else {

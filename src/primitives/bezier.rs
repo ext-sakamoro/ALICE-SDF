@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Distance from point `pos` to a quadratic Bezier curve `A→B→C`
@@ -67,7 +68,7 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
 
         let d0 = (dv + (cv + ba2c * t0) * t0).length();
         let d1 = (dv + (cv + ba2c * t1) * t1).length();
-        d0.min(d1)
+        d0.law_min(d1)
     };
 
     res - radius

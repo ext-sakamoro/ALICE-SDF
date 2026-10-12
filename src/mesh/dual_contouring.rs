@@ -11,6 +11,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::{eval_compiled, CompiledSdf};
 use crate::eval::{eval, normal};
 use crate::mesh::{Mesh, Vertex};
@@ -520,8 +521,8 @@ fn triangulate_quads(vertices: &mut [Vertex], quads: Vec<[u32; 4]>) -> Vec<u32> 
         (p[b] - p[a]).cross(p[c] - p[a]).dot(n_ref)
     };
     let splits = |p: &[Vec3; 4], n_ref: Vec3| {
-        let split_02 = facing(p, n_ref, 0, 1, 2).min(facing(p, n_ref, 0, 2, 3));
-        let split_13 = facing(p, n_ref, 1, 2, 3).min(facing(p, n_ref, 1, 3, 0));
+        let split_02 = facing(p, n_ref, 0, 1, 2).law_min(facing(p, n_ref, 0, 2, 3));
+        let split_13 = facing(p, n_ref, 1, 2, 3).law_min(facing(p, n_ref, 1, 3, 0));
         (split_02, split_13)
     };
 

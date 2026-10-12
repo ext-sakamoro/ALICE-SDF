@@ -10,6 +10,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
@@ -350,12 +351,12 @@ fn build_glb_data(
     let mut min_pos = [f32::MAX; 3];
     let mut max_pos = [f32::MIN; 3];
     for v in &mesh.vertices {
-        min_pos[0] = min_pos[0].min(v.position.x);
-        min_pos[1] = min_pos[1].min(v.position.y);
-        min_pos[2] = min_pos[2].min(v.position.z);
-        max_pos[0] = max_pos[0].max(v.position.x);
-        max_pos[1] = max_pos[1].max(v.position.y);
-        max_pos[2] = max_pos[2].max(v.position.z);
+        min_pos[0] = min_pos[0].law_min(v.position.x);
+        min_pos[1] = min_pos[1].law_min(v.position.y);
+        min_pos[2] = min_pos[2].law_min(v.position.z);
+        max_pos[0] = max_pos[0].law_max(v.position.x);
+        max_pos[1] = max_pos[1].law_max(v.position.y);
+        max_pos[2] = max_pos[2].law_max(v.position.z);
     }
 
     // --- Positions (accessor 0) ---

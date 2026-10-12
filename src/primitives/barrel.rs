@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Approximate SDF for a barrel shape along Y-axis
@@ -18,8 +19,8 @@ pub fn sdf_barrel(p: Vec3, radius: f32, half_height: f32, bulge: f32) -> f32 {
     let effective_r = bulge * (1.0 - y_norm * y_norm) + radius;
     let d_r = r - effective_r;
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_r.max(0.0), d_y.max(0.0));
-    d_r.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_r.law_max(0.0), d_y.law_max(0.0));
+    d_r.law_max(d_y).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

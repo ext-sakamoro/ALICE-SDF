@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for a tube (hollow cylinder) along Y-axis
@@ -16,8 +17,8 @@ pub fn sdf_tube(p: Vec3, outer_radius: f32, thickness: f32, half_height: f32) ->
     let r = Vec2::new(p.x, p.z).length();
     let d_ring = (r - outer_radius).abs() - thickness;
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_ring.max(0.0), d_y.max(0.0));
-    d_ring.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_ring.law_max(0.0), d_y.law_max(0.0));
+    d_ring.law_max(d_y).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

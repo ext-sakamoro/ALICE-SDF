@@ -6,6 +6,7 @@
 //! Author: Moroya Sakamoto
 
 use super::Heightmap;
+use crate::compiled::real::LawMinMax;
 use crate::crispy::fast_normalize_2d;
 
 /// Configuration for erosion simulation
@@ -118,13 +119,13 @@ fn hydraulic_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
             let dh = new_h - old_h;
 
             // Sediment capacity based on speed and water volume
-            let capacity = (-dh).max(0.0) * speed * water * config.sediment_capacity;
+            let capacity = (-dh).law_max(0.0) * speed * water * config.sediment_capacity;
 
             if sediment > capacity || dh > 0.0 {
                 // Deposit sediment
                 let deposit = if dh > 0.0 {
                     // Uphill: deposit all or height difference
-                    (sediment).min(dh)
+                    (sediment).law_min(dh)
                 } else {
                     (sediment - capacity) * config.deposition_rate
                 };
@@ -132,7 +133,7 @@ fn hydraulic_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
                 sediment -= deposit;
             } else {
                 // Erode terrain
-                let erode_amount = ((capacity - sediment) * config.erosion_rate).min(-dh);
+                let erode_amount = ((capacity - sediment) * config.erosion_rate).law_min(-dh);
                 erode_at(heightmap, px, pz, erode_amount);
                 sediment += erode_amount;
             }
@@ -178,7 +179,7 @@ fn thermal_erosion(heightmap: &mut Heightmap, config: &ErosionConfig) {
                         let nh = heightmap.get_height(nx, nz);
                         let diff = h - nh;
                         if diff > max_slope {
-                            max_diff = max_diff.max(diff);
+                            max_diff = max_diff.law_max(diff);
                             total_diff += diff - max_slope;
                             lower_count += 1;
                         }
@@ -229,10 +230,10 @@ fn sample_height(hm: &Heightmap, gx: f32, gz: f32) -> f32 {
 
 /// Compute gradient at a position using finite differences
 fn compute_gradient(hm: &Heightmap, gx: f32, gz: f32) -> (f32, f32) {
-    let x0 = (gx - 0.5).max(0.0);
-    let x1 = (gx + 0.5).min((hm.width - 1) as f32);
-    let z0 = (gz - 0.5).max(0.0);
-    let z1 = (gz + 0.5).min((hm.depth - 1) as f32);
+    let x0 = (gx - 0.5).law_max(0.0);
+    let x1 = (gx + 0.5).law_min((hm.width - 1) as f32);
+    let z0 = (gz - 0.5).law_max(0.0);
+    let z1 = (gz + 0.5).law_min((hm.depth - 1) as f32);
 
     let dx = sample_height(hm, x1, gz) - sample_height(hm, x0, gz);
     let dz = sample_height(hm, gx, z1) - sample_height(hm, gx, z0);

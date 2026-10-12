@@ -13,6 +13,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::{Mesh, Vertex};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -796,10 +797,10 @@ pub fn compute_quality(mesh: &Mesh) -> MeshQuality {
             0.0
         };
 
-        min_aspect = min_aspect.min(aspect);
+        min_aspect = min_aspect.law_min(aspect);
         sum_aspect += aspect;
-        min_area = min_area.min(area);
-        max_area = max_area.max(area);
+        min_area = min_area.law_min(area);
+        max_area = max_area.law_max(area);
         total_area += area;
     }
 

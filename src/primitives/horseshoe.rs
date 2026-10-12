@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Exact SDF for a horseshoe shape centered at origin
@@ -49,10 +50,10 @@ pub fn sdf_horseshoe(
     // box of half-size (half_length, width) around the leg centre line
     let bx = qx - half_length;
     let by = (qy - radius).abs() - width;
-    let d2 = Vec2::new(bx.max(0.0), by.max(0.0)).length() + bx.max(by).min(0.0);
+    let d2 = Vec2::new(bx.law_max(0.0), by.law_max(0.0)).length() + bx.law_max(by).law_min(0.0);
     // extrude along Z
     let dz = p.z.abs() - thickness;
-    Vec2::new(d2.max(0.0), dz.max(0.0)).length() + d2.max(dz).min(0.0)
+    Vec2::new(d2.law_max(0.0), dz.law_max(0.0)).length() + d2.law_max(dz).law_min(0.0)
 }
 
 #[cfg(test)]

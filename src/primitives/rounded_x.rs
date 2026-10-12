@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for a rounded X shape, extruded along Y-axis
@@ -17,12 +18,12 @@ use glam::{Vec2, Vec3};
 pub fn sdf_rounded_x(p: Vec3, width: f32, round_radius: f32, half_height: f32) -> f32 {
     // 2D Rounded X in XZ plane (IQ formula)
     let q = Vec2::new(p.x.abs(), p.z.abs());
-    let s = (q.x + q.y).min(width) * 0.5;
+    let s = (q.x + q.y).law_min(width) * 0.5;
     let d_2d = (q - Vec2::splat(s)).length() - round_radius;
     // Extrude along Y
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
-    d_2d.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_y.law_max(0.0));
+    d_2d.law_max(d_y).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

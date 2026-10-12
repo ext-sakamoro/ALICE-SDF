@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::real::Real;
 
 /// Polynomial smooth minimum (Deep Fried)
@@ -15,7 +16,7 @@ use crate::compiled::real::Real;
 #[inline(always)]
 pub fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
     // Branchless k=0 guard: maxss on x86, fmax on ARM
-    let k = k.max(1e-10);
+    let k = k.law_max(1e-10);
     // The reciprocal form, operation for operation, is what the compiled
     // evaluators run (`Instruction::smooth_union` precomputes `1.0 / k`).
     // `(k - d) / k` and `1 - d * (1 / k)` are the same law but not the same
@@ -40,7 +41,7 @@ pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 /// Branchless k=0 safety via max().
 #[inline(always)]
 pub fn smooth_max(a: f32, b: f32, k: f32) -> f32 {
-    let k = k.max(1e-10);
+    let k = k.law_max(1e-10);
     // Same reciprocal law as the compiled evaluators — see `smooth_min`.
     smooth_max_rk(a, b, k, 1.0 / k)
 }
@@ -99,10 +100,10 @@ pub fn sdf_smooth_subtraction_rk(d1: f32, d2: f32, k: f32, rk: f32) -> f32 {
 /// finite for every finite input (the same form `sdf_exp_smooth_union_r` uses).
 #[inline(always)]
 pub fn smooth_min_exp(a: f32, b: f32, k: f32) -> f32 {
-    let k = k.max(1e-10);
+    let k = k.law_max(1e-10);
     // `a == b` first so that `inf == inf` gives delta = 0 instead of NaN
     let delta = if a == b { 0.0 } else { (a - b).abs() };
-    a.min(b) - alice_det_math::ln(1.0 + alice_det_math::exp(-k * delta)) / k
+    a.law_min(b) - alice_det_math::ln(1.0 + alice_det_math::exp(-k * delta)) / k
 }
 
 /// Exponential smooth union with blend *width* `k` (`SdfNode::ExpSmoothUnion` law).
@@ -130,9 +131,9 @@ pub fn sdf_exp_smooth_subtraction(d1: f32, d2: f32, k: f32) -> f32 {
 /// Cubic smooth minimum (Deep Fried)
 #[inline(always)]
 pub fn smooth_min_cubic(a: f32, b: f32, k: f32) -> f32 {
-    let k = k.max(1e-10);
-    let h = (k - (a - b).abs()).max(0.0) / k;
-    (h * h * h * k) * -(1.0 / 6.0) + a.min(b)
+    let k = k.law_max(1e-10);
+    let h = (k - (a - b).abs()).law_max(0.0) / k;
+    (h * h * h * k) * -(1.0 / 6.0) + a.law_min(b)
 }
 
 /// Square root smooth minimum (IQ)
@@ -192,7 +193,7 @@ pub fn sdf_exp_smooth_union_r<R: Real>(d1: R, d2: R, k: f32) -> R {
     // exponentials to 0 when d ≫ k and then `ln(0)` is -inf on libm but NaN
     // on the SIMD polynomial (found by `fuzz_eval_parity`); this form is
     // finite for every finite input and identical elsewhere.
-    let k = R::splat(k.max(1e-6));
+    let k = R::splat(k.law_max(1e-6));
     let m = d1.min(d2);
     let delta = (d1 - d2).abs();
     m - (R::one() + (-delta / k).exp()).ln() * k
@@ -202,7 +203,7 @@ pub fn sdf_exp_smooth_union_r<R: Real>(d1: R, d2: R, k: f32) -> R {
 #[inline(always)]
 pub fn sdf_exp_smooth_intersection_r<R: Real>(d1: R, d2: R, k: f32) -> R {
     // `k ln(e^{a/k} + e^{b/k})` with the maximum factored out (see union).
-    let k = R::splat(k.max(1e-6));
+    let k = R::splat(k.law_max(1e-6));
     let m = d1.max(d2);
     let delta = (d1 - d2).abs();
     m + (R::one() + (-delta / k).exp()).ln() * k

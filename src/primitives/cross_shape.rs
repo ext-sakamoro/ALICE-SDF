@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for a cross (plus) shape, extruded along Y-axis
@@ -30,15 +31,17 @@ pub fn sdf_cross_shape(
     let d_h = Vec2::new(qx - length, qz - thickness);
     let d_v = Vec2::new(qx - thickness, qz - length);
 
-    let d_h_sdf = Vec2::new(d_h.x.max(0.0), d_h.y.max(0.0)).length() + d_h.x.max(d_h.y).min(0.0);
-    let d_v_sdf = Vec2::new(d_v.x.max(0.0), d_v.y.max(0.0)).length() + d_v.x.max(d_v.y).min(0.0);
+    let d_h_sdf = Vec2::new(d_h.x.law_max(0.0), d_h.y.law_max(0.0)).length()
+        + d_h.x.law_max(d_h.y).law_min(0.0);
+    let d_v_sdf = Vec2::new(d_v.x.law_max(0.0), d_v.y.law_max(0.0)).length()
+        + d_v.x.law_max(d_v.y).law_min(0.0);
 
-    let d_2d = d_h_sdf.min(d_v_sdf) - round_radius;
+    let d_2d = d_h_sdf.law_min(d_v_sdf) - round_radius;
 
     // Extrude along Y
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
-    d_2d.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_y.law_max(0.0));
+    d_2d.law_max(d_y).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 use rayon::prelude::*;
 use wide::f32x8;
@@ -301,7 +302,7 @@ impl MeshBvh {
         });
 
         let n = sorted_indices.len();
-        let parent_sa = aabb.surface_area().max(1e-10); // Division Exorcism
+        let parent_sa = aabb.surface_area().law_max(1e-10); // Division Exorcism
         let inv_parent_sa = 1.0 / parent_sa;
 
         // Evaluate SAH at ~8 candidate split positions (or every position if small)
@@ -441,7 +442,7 @@ impl MeshBvh {
                 // turns it into a lower bound on the distance to any triangle
                 // held below this node.
                 let bound = |n: &BvhNode| {
-                    let d = n.aabb().signed_distance(point).max(0.0);
+                    let d = n.aabb().signed_distance(point).law_max(0.0);
                     d * d
                 };
                 let (l_bound, r_bound) = (bound(left), bound(right));
@@ -573,12 +574,12 @@ fn compute_aabb_simd(triangles: &[BvhTriangle], indices: &[usize]) -> Aabb {
         ]);
 
         // Accumulate in SIMD lanes — no per-chunk extract
-        acc_min_x = acc_min_x.min(min_x);
-        acc_min_y = acc_min_y.min(min_y);
-        acc_min_z = acc_min_z.min(min_z);
-        acc_max_x = acc_max_x.max(max_x);
-        acc_max_y = acc_max_y.max(max_y);
-        acc_max_z = acc_max_z.max(max_z);
+        acc_min_x = acc_min_x.law_min(min_x);
+        acc_min_y = acc_min_y.law_min(min_y);
+        acc_min_z = acc_min_z.law_min(min_z);
+        acc_max_x = acc_max_x.law_max(max_x);
+        acc_max_y = acc_max_y.law_max(max_y);
+        acc_max_z = acc_max_z.law_max(max_z);
     }
 
     // Single horizontal reduction across 8 lanes
@@ -597,23 +598,23 @@ fn compute_aabb_simd(triangles: &[BvhTriangle], indices: &[usize]) -> Aabb {
     let mut global_max_z = f32::NEG_INFINITY;
 
     for i in 0..8 {
-        global_min_x = global_min_x.min(min_x_arr[i]);
-        global_min_y = global_min_y.min(min_y_arr[i]);
-        global_min_z = global_min_z.min(min_z_arr[i]);
-        global_max_x = global_max_x.max(max_x_arr[i]);
-        global_max_y = global_max_y.max(max_y_arr[i]);
-        global_max_z = global_max_z.max(max_z_arr[i]);
+        global_min_x = global_min_x.law_min(min_x_arr[i]);
+        global_min_y = global_min_y.law_min(min_y_arr[i]);
+        global_min_z = global_min_z.law_min(min_z_arr[i]);
+        global_max_x = global_max_x.law_max(max_x_arr[i]);
+        global_max_y = global_max_y.law_max(max_y_arr[i]);
+        global_max_z = global_max_z.law_max(max_z_arr[i]);
     }
 
     // Scalar remainder
     for &idx in remainder {
         let t = &triangles[idx];
-        global_min_x = global_min_x.min(t.aabb.min.x);
-        global_min_y = global_min_y.min(t.aabb.min.y);
-        global_min_z = global_min_z.min(t.aabb.min.z);
-        global_max_x = global_max_x.max(t.aabb.max.x);
-        global_max_y = global_max_y.max(t.aabb.max.y);
-        global_max_z = global_max_z.max(t.aabb.max.z);
+        global_min_x = global_min_x.law_min(t.aabb.min.x);
+        global_min_y = global_min_y.law_min(t.aabb.min.y);
+        global_min_z = global_min_z.law_min(t.aabb.min.z);
+        global_max_x = global_max_x.law_max(t.aabb.max.x);
+        global_max_y = global_max_y.law_max(t.aabb.max.y);
+        global_max_z = global_max_z.law_max(t.aabb.max.z);
     }
 
     Aabb {

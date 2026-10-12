@@ -31,6 +31,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::{Mesh, Vertex};
 use glam::{Vec3, Vec4};
 use rayon::prelude::*;
@@ -340,7 +341,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
             max_p = max_p.max(v.position);
         }
         let diag = (max_p - min_p).length();
-        f64::from(config.max_error) * f64::from(diag).max(1e-6)
+        f64::from(config.max_error) * f64::from(diag).law_max(1e-6)
     };
     let tri_count = mesh.indices.len() / 3;
 

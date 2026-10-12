@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Exact SDF for a rounded box centered at origin
@@ -15,7 +16,7 @@ use glam::Vec3;
 #[inline(always)]
 pub fn sdf_rounded_box(p: Vec3, half_extents: Vec3, round_radius: f32) -> f32 {
     let q = p.abs() - half_extents;
-    q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0) - round_radius
+    q.max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0) - round_radius
 }
 
 #[cfg(test)]

@@ -21,6 +21,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::eval::{eval, normal};
 use crate::interval::{eval_interval, Vec3Interval};
 use crate::types::{Aabb, SdfNode};
@@ -80,7 +81,7 @@ pub fn sdf_collide(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> Ve
                 if da < 0.0 && db < 0.0 {
                     // Both SDFs claim this point is interior → overlap
                     let n = normal(b, center, 0.001);
-                    let depth = -(da.max(db)); // penetration depth
+                    let depth = -(da.law_max(db)); // penetration depth
                     contacts.push(SdfContact {
                         point: center,
                         normal: n,
@@ -133,7 +134,7 @@ pub fn sdf_distance(a: &SdfNode, b: &SdfNode, aabb: &Aabb, resolution: u32) -> f
                 }
 
                 // Sum of distances (upper bound on separation)
-                let sep = da.max(0.0) + db.max(0.0);
+                let sep = da.law_max(0.0) + db.law_max(0.0);
                 if sep < min_sep {
                     min_sep = sep;
                 }
@@ -212,7 +213,7 @@ pub fn compute_manifold(contacts: &[SdfContact]) -> Option<ContactManifold> {
     for c in contacts {
         center += c.point;
         normal += c.normal;
-        max_depth = max_depth.max(c.depth);
+        max_depth = max_depth.law_max(c.depth);
     }
     center *= inv_n;
     let n_len = normal.length();
@@ -255,10 +256,10 @@ pub fn sdf_ccd(
         let d = eval(sdf, pos) - radius;
         if d < 1e-5 {
             let toi = t / speed;
-            return Some((toi.min(dt), pos));
+            return Some((toi.law_min(dt), pos));
         }
         // Advance by the safe distance
-        t += d.max(1e-4);
+        t += d.law_max(1e-4);
     }
     None
 }

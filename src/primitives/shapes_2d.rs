@@ -8,12 +8,13 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Combine a 2D distance with a Z half-height extrusion.
 #[inline(always)]
 pub fn extrude_2d(d2d: f32, dz: f32) -> f32 {
-    d2d.max(dz).min(0.0) + Vec2::new(d2d.max(0.0), dz.max(0.0)).length()
+    d2d.law_max(dz).law_min(0.0) + Vec2::new(d2d.law_max(0.0), dz.law_max(0.0)).length()
 }
 
 /// Circle of `radius` in XY, extruded `half_height` along Z.
@@ -27,7 +28,8 @@ pub fn sdf_circle_2d(p: Vec3, radius: f32, half_height: f32) -> f32 {
 #[inline(always)]
 pub fn sdf_rect_2d(p: Vec3, half_extents: Vec2, half_height: f32) -> f32 {
     let d = Vec2::new(p.x.abs() - half_extents.x, p.y.abs() - half_extents.y);
-    let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0);
+    let d2d =
+        Vec2::new(d.x.law_max(0.0), d.y.law_max(0.0)).length() + d.x.law_max(d.y).law_min(0.0);
     extrude_2d(d2d, p.z.abs() - half_height)
 }
 
@@ -43,7 +45,9 @@ pub fn sdf_rounded_rect_2d(
         p.x.abs() - half_extents.x + round_radius,
         p.y.abs() - half_extents.y + round_radius,
     );
-    let d2d = Vec2::new(d.x.max(0.0), d.y.max(0.0)).length() + d.x.max(d.y).min(0.0) - round_radius;
+    let d2d = Vec2::new(d.x.law_max(0.0), d.y.law_max(0.0)).length()
+        + d.x.law_max(d.y).law_min(0.0)
+        - round_radius;
     extrude_2d(d2d, p.z.abs() - half_height)
 }
 
@@ -82,7 +86,7 @@ pub fn sdf_polygon_2d_xy(p2: Vec2, vertices: &[Vec2]) -> f32 {
         let e = vertices[j] - vertices[i];
         let w = p2 - vertices[i];
         let b_proj = w - e * (w.dot(e) / e.dot(e)).clamp(0.0, 1.0);
-        d = d.min(b_proj.dot(b_proj));
+        d = d.law_min(b_proj.dot(b_proj));
         let c = [
             p2.y >= vertices[i].y,
             p2.y < vertices[j].y,
@@ -123,7 +127,7 @@ pub fn sdf_polygon_2d_flat(p: Vec3, flat: &[f32], half_height: f32) -> f32 {
         let e = vj - vi;
         let w = p2 - vi;
         let b_proj = w - e * (w.dot(e) / e.dot(e)).clamp(0.0, 1.0);
-        d = d.min(b_proj.dot(b_proj));
+        d = d.law_min(b_proj.dot(b_proj));
         let c = [p2.y >= vi.y, p2.y < vj.y, e.x * w.y > e.y * w.x];
         if c.iter().all(|x| *x) || c.iter().all(|x| !*x) {
             s = -s;

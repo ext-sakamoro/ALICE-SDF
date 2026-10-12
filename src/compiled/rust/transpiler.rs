@@ -8,6 +8,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::{CompileError, CompiledSdf, Instruction, OpCode};
 use crate::types::SdfNode;
 use std::fmt::Write;
@@ -776,7 +777,7 @@ impl<'a> Emitter<'a> {
 
     /// sdf_exp_smooth_union_r / sdf_exp_smooth_intersection_r
     fn exp_smooth(&mut self, a: &str, b: &str, k: f32, max: bool) -> String {
-        let kk = lit(k.max(1e-6));
+        let kk = lit(k.law_max(1e-6));
         let dm = self.dm;
         let (m, sign) = if max {
             (format!("{a}.max({b})"), "+")

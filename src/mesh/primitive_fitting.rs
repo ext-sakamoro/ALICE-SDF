@@ -13,6 +13,10 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::law_max_f32;
+use crate::compiled::real::law_max_f64;
+use crate::compiled::real::law_min_f32;
+use crate::compiled::real::LawMinMax;
 use crate::types::SdfNode;
 use glam::Vec3;
 
@@ -160,7 +164,7 @@ impl FittedPrimitive {
                 half_extents,
             } => {
                 let q = (point - *center).abs() - *half_extents;
-                q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0)
+                q.max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0)
             }
             Self::Cylinder {
                 center,
@@ -176,7 +180,7 @@ impl FittedPrimitive {
                 let dr = r - *radius;
 
                 if dh <= 0.0 && dr <= 0.0 {
-                    dh.max(dr)
+                    dh.law_max(dr)
                 } else if dh <= 0.0 {
                     dr
                 } else if dr <= 0.0 {
@@ -349,7 +353,7 @@ pub fn fit_sphere(points: &[Vec3], config: &FittingConfig) -> Option<FittingResu
         .map(|&p| primitive.distance(p).abs())
         .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
-    let max_error = errors.iter().copied().fold(0.0f32, f32::max);
+    let max_error = errors.iter().copied().fold(0.0f32, law_max_f32);
     let inlier_count = errors
         .iter()
         .filter(|&&e| e < config.inlier_threshold)
@@ -369,7 +373,7 @@ pub fn fit_sphere(points: &[Vec3], config: &FittingConfig) -> Option<FittingResu
 /// diagonal entry (the system does not determine `x`).
 #[allow(clippy::needless_range_loop)] // row operations index two rows at once
 fn solve_4x4(mut m: [[f64; 4]; 4], mut b: [f64; 4]) -> Option<[f64; 4]> {
-    let tiny = 1e-12 * (0..4).map(|i| m[i][i].abs()).fold(0.0f64, f64::max);
+    let tiny = 1e-12 * (0..4).map(|i| m[i][i].abs()).fold(0.0f64, law_max_f64);
     for col in 0..4 {
         let piv = (col..4).max_by(|&i, &j| m[i][col].abs().total_cmp(&m[j][col].abs()))?;
         if m[piv][col].abs() <= tiny || m[piv][col].is_nan() {
@@ -425,7 +429,7 @@ pub fn fit_box(points: &[Vec3], config: &FittingConfig) -> Option<FittingResult>
         .map(|&p| primitive.distance(p).abs())
         .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
-    let max_error = errors.iter().copied().fold(0.0f32, f32::max);
+    let max_error = errors.iter().copied().fold(0.0f32, law_max_f32);
     let inlier_count = errors
         .iter()
         .filter(|&&e| e < config.inlier_threshold)
@@ -491,11 +495,11 @@ fn fit_cylinder_along_axis(
     let min_h = projected
         .iter()
         .map(|(_, h)| *h)
-        .fold(f32::INFINITY, f32::min);
+        .fold(f32::INFINITY, law_min_f32);
     let max_h = projected
         .iter()
         .map(|(_, h)| *h)
-        .fold(f32::NEG_INFINITY, f32::max);
+        .fold(f32::NEG_INFINITY, law_max_f32);
 
     let center_h = f32::midpoint(min_h, max_h);
     let half_height = (max_h - min_h) * 0.5;
@@ -515,7 +519,7 @@ fn fit_cylinder_along_axis(
         .map(|&p| primitive.distance(p).abs())
         .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
-    let max_error = errors.iter().copied().fold(0.0f32, f32::max);
+    let max_error = errors.iter().copied().fold(0.0f32, law_max_f32);
     let inlier_count = errors
         .iter()
         .filter(|&&e| e < config.inlier_threshold)
@@ -563,7 +567,7 @@ pub fn fit_plane(points: &[Vec3], config: &FittingConfig) -> Option<FittingResul
         .map(|&p| primitive.distance(p).abs())
         .collect();
     let mse: f32 = errors.iter().map(|&e| e * e).sum::<f32>() / points.len() as f32;
-    let max_error = errors.iter().copied().fold(0.0f32, f32::max);
+    let max_error = errors.iter().copied().fold(0.0f32, law_max_f32);
     let inlier_count = errors
         .iter()
         .filter(|&&e| e < config.inlier_threshold)
@@ -687,8 +691,8 @@ pub fn detect_primitive(points: &[Vec3], config: &FittingConfig) -> Option<Fitti
 
         let n = points.len() as f32;
         // [Deep Fried v2] Guard mse <= 0 to prevent ln(-x) = NaN
-        let safe_mse_a = a.mse.max(1e-20);
-        let safe_mse_b = b.mse.max(1e-20);
+        let safe_mse_a = a.mse.law_max(1e-20);
+        let safe_mse_b = b.mse.law_max(1e-20);
         let bic_a =
             n * alice_det_math::ln(safe_mse_a) + (complexity_a as f32 * alice_det_math::ln(n));
         let bic_b =

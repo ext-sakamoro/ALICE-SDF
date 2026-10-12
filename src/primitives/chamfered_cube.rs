@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Approximate SDF for a chamfered cube
@@ -16,12 +17,12 @@ pub fn sdf_chamfered_cube(p: Vec3, half_extents: Vec3, chamfer: f32) -> f32 {
     let ap = p.abs();
     // Box SDF
     let q = ap - half_extents;
-    let d_box = q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0);
+    let d_box = q.max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0);
     // Octahedral chamfer plane
     let s = half_extents.x + half_extents.y + half_extents.z;
     let inv_sqrt3 = 0.57735027;
     let d_chamfer = (ap.x + ap.y + ap.z - s + chamfer) * inv_sqrt3;
-    d_box.max(d_chamfer)
+    d_box.law_max(d_chamfer)
 }
 
 #[cfg(test)]

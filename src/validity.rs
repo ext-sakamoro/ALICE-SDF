@@ -63,6 +63,7 @@
 //! support. That requires the plate position and the slicer's support policy,
 //! so [`overhang_stats`] reports the geometric angle and leaves the policy out.
 
+use crate::compiled::real::LawMinMax;
 use crate::eval::eval;
 use crate::interval::{eval_interval, Vec3Interval};
 use crate::mesh::{validate_mesh, Mesh, MeshValidation};
@@ -236,7 +237,7 @@ pub fn local_thickness(node: &SdfNode, origin: Vec3, inward: Vec3, max_march: f3
         if d < 0.0 {
             break; // 固体に入った
         }
-        t += d.max(MARCH_EPS);
+        t += d.law_max(MARCH_EPS);
         if t > max_march {
             return None; // 固体に入らなかった
         }
@@ -248,7 +249,7 @@ pub fn local_thickness(node: &SdfNode, origin: Vec3, inward: Vec3, max_march: f3
         if d >= 0.0 {
             return Some(t);
         }
-        t += (-d).max(MARCH_EPS);
+        t += (-d).law_max(MARCH_EPS);
         if t > max_march {
             return None; // 抜けなかった (bound が足りない)
         }
@@ -343,7 +344,7 @@ pub fn validate_for_printing(
         let p = |i: u32| mesh.vertices[i as usize].position;
         let centroid = (p(idx[0]) + p(idx[1]) + p(idx[2])) / 3.0;
         if let Some(thickness) = local_thickness(node, centroid, -normal, span) {
-            min_local = Some(min_local.map_or(thickness, |m| m.min(thickness)));
+            min_local = Some(min_local.map_or(thickness, |m| m.law_min(thickness)));
             if thickness < req.min_wall {
                 thin_triangles += 1;
             }

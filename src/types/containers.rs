@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
@@ -123,7 +124,7 @@ impl Aabb {
     #[inline]
     pub fn signed_distance(&self, point: Vec3) -> f32 {
         let q = (point - self.center()).abs() - (self.max - self.min) * 0.5;
-        q.max(Vec3::ZERO).length() + q.x.max(q.y.max(q.z)).min(0.0)
+        q.max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0)
     }
 
     /// Create from center and half-extents

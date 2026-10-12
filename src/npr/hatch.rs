@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::raw_minmax::RawMinMax;
 /// Straight hatch line mask
 ///
 /// Returns 1.0 when the UV falls on a line, 0.0 otherwise. `angle_rad` is
@@ -41,7 +42,7 @@ pub fn cross_hatch(
 ) -> f32 {
     let a = hatch_lines(uv_x, uv_y, angle_a, density, thickness);
     let b = hatch_lines(uv_x, uv_y, angle_b, density, thickness);
-    a.max(b)
+    a.raw_max(b)
 }
 
 /// Paper grain multiplier from a caller-supplied noise sample
@@ -63,7 +64,7 @@ pub fn paper_grain(noise_sample: f32, intensity: f32) -> f32 {
 #[must_use]
 pub fn pencil_shade(n_dot_l: f32, max_density: f32) -> f32 {
     let brightness = n_dot_l.clamp(0.0, 1.0);
-    (1.0 - brightness) * max_density.max(0.0)
+    (1.0 - brightness) * max_density.raw_max(0.0)
 }
 
 #[cfg(test)]

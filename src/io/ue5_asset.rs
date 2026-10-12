@@ -22,6 +22,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::io::IoError;
 use crate::mesh::Mesh;
 use std::fs::File;
@@ -106,12 +107,12 @@ fn compute_bounds(mesh: &Mesh, scale: f32) -> ([f32; 3], [f32; 3]) {
 
     for v in &mesh.vertices {
         let (ux, uy, uz) = convert_position(v.position.x, v.position.y, v.position.z, scale);
-        min[0] = min[0].min(ux);
-        min[1] = min[1].min(uy);
-        min[2] = min[2].min(uz);
-        max[0] = max[0].max(ux);
-        max[1] = max[1].max(uy);
-        max[2] = max[2].max(uz);
+        min[0] = min[0].law_min(ux);
+        min[1] = min[1].law_min(uy);
+        min[2] = min[2].law_min(uz);
+        max[0] = max[0].law_max(ux);
+        max[1] = max[1].law_max(uy);
+        max[2] = max[2].law_max(uz);
     }
 
     let origin = [

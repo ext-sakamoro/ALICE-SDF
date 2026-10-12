@@ -103,6 +103,7 @@ pub mod npr;
 pub mod operations;
 pub mod optimize;
 pub mod primitives;
+mod raw_minmax;
 pub mod raycast;
 pub mod soa;
 pub mod tight_aabb;

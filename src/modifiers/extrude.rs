@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Compute extrusion distance component
@@ -23,7 +24,7 @@ use glam::Vec3;
 pub fn modifier_extrude(child_distance: f32, p_z: f32, half_height: f32) -> f32 {
     let w_x = child_distance;
     let w_y = p_z.abs() - half_height;
-    w_x.max(w_y).min(0.0) + glam::Vec2::new(w_x.max(0.0), w_y.max(0.0)).length()
+    w_x.law_max(w_y).law_min(0.0) + glam::Vec2::new(w_x.law_max(0.0), w_y.law_max(0.0)).length()
 }
 
 /// Transform point for extrusion evaluation

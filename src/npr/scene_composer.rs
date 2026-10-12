@@ -18,7 +18,6 @@
 //!
 //! Author: Moroya Sakamoto
 
-#[cfg(feature = "glsl")]
 use crate::compiled::glsl::{GlslShader, GlslTranspileMode};
 #[cfg(feature = "hlsl")]
 use crate::compiled::hlsl::{HlslShader, HlslTranspileMode};
@@ -27,6 +26,8 @@ use crate::compiled::wgsl::{TranspileMode as WgslTranspileMode, WgslShader};
 use crate::npr::dsl::NprColorNode;
 use crate::npr::dsl_shader::{transpile_npr_color_node, NprShaderContext};
 use crate::npr::shader_glue::{full_helpers_for, ShaderLanguage};
+#[cfg(feature = "glsl")]
+use crate::raw_minmax::RawMinMax;
 use crate::types::SdfNode;
 use glam::Vec3;
 
@@ -131,8 +132,8 @@ impl<'a> SceneShaderBuilder<'a> {
     #[must_use]
     pub fn with_outline(mut self, color: Vec3, inner: f32, outer: f32) -> Self {
         self.outline_color = color;
-        self.outline_inner = inner.max(0.0);
-        self.outline_outer = outer.max(inner + 1e-4);
+        self.outline_inner = inner.raw_max(0.0);
+        self.outline_outer = outer.raw_max(inner + 1e-4);
         self
     }
 
@@ -140,8 +141,8 @@ impl<'a> SceneShaderBuilder<'a> {
     #[must_use]
     pub fn with_raymarch(mut self, max_steps: u32, max_dist: f32, surface_eps: f32) -> Self {
         self.max_steps = max_steps.max(1);
-        self.max_dist = max_dist.max(1.0);
-        self.surface_eps = surface_eps.max(1e-6);
+        self.max_dist = max_dist.raw_max(1.0);
+        self.surface_eps = surface_eps.raw_max(1e-6);
         self
     }
 

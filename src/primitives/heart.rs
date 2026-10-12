@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 #[inline(always)]
@@ -30,10 +31,10 @@ pub fn sdf_heart(p: Vec3, size: f32) -> f32 {
         (std::f32::consts::SQRT_2 * -0.25 + dot2(Vec2::new(qx - 0.25, q.y - 0.75)).sqrt()) * size
     } else {
         let d1 = dot2(Vec2::new(qx, q.y - 1.0));
-        let t = (qx + q.y).max(0.0) * 0.5;
+        let t = (qx + q.y).law_max(0.0) * 0.5;
         let d2 = dot2(Vec2::new(qx - t, q.y - t));
         let sign = if qx > q.y { 1.0 } else { -1.0 };
-        d1.min(d2).sqrt() * sign * size
+        d1.law_min(d2).sqrt() * sign * size
     }
 }
 

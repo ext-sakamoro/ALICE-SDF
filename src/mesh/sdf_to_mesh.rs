@@ -7,6 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::{eval_compiled, eval_compiled_batch_simd_parallel, CompiledSdf};
 use crate::eval::{eval, eval_material, normal};
 use crate::mesh::Vertex;
@@ -579,7 +580,7 @@ pub fn interpolate_edge(p0: Vec3, p1: Vec3, v0: f32, v1: f32, iso_level: f32) ->
         (p0, p1, v0, v1)
     };
     let denom = v1 - v0;
-    let safe_denom = f32::copysign(denom.abs().max(1e-10), denom);
+    let safe_denom = f32::copysign(denom.abs().law_max(1e-10), denom);
     let t = ((iso_level - v0) / safe_denom).clamp(0.0, 1.0);
     (p0 + (p1 - p0) * t, t, swapped)
 }

@@ -12,6 +12,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh, Vertex};
 use crate::types::SdfNode;
 use glam::Vec3;
@@ -85,7 +86,7 @@ impl LodChain {
     pub fn select_by_error(&self, distance: f32, error_threshold: f32) -> Option<&LodMesh> {
         // Start from the lowest detail and return the first that meets the threshold
         for lod in self.levels.iter().rev() {
-            let screen_error = lod.max_error / distance.max(0.001);
+            let screen_error = lod.max_error / distance.law_max(0.001);
             if screen_error <= error_threshold {
                 return Some(lod);
             }
@@ -337,7 +338,7 @@ pub fn generate_lod_chain_decimated(
         resolution: base_resolution,
         mesh: base_mesh.clone(),
         max_error,
-        screen_threshold: max_error / min_dist.max(0.001),
+        screen_threshold: max_error / min_dist.law_max(0.001),
         min_distance: 0.0,
         max_distance: max_dist,
     });
@@ -373,7 +374,7 @@ pub fn generate_lod_chain_decimated(
             resolution: effective_res.max(4),
             mesh: lod_mesh.clone(),
             max_error,
-            screen_threshold: max_error / min_dist.max(0.001),
+            screen_threshold: max_error / min_dist.law_max(0.001),
             min_distance: if level == 0 { 0.0 } else { min_dist },
             max_distance: max_dist,
         });
@@ -423,7 +424,7 @@ pub fn generate_lod_chain(
             resolution,
             mesh,
             max_error,
-            screen_threshold: max_error / min_dist.max(0.001),
+            screen_threshold: max_error / min_dist.law_max(0.001),
             min_distance: if level == 0 { 0.0 } else { min_dist },
             max_distance: max_dist,
         });
@@ -448,7 +449,7 @@ fn compute_lod_error(sdf: &SdfNode, mesh: &Mesh, floor: f32) -> f32 {
     use crate::mesh::nanite::{cluster_surface_error, sampled_triangle_errors};
     let sampled = sampled_triangle_errors(sdf, mesh);
     let all: Vec<usize> = (0..mesh.triangle_count()).collect();
-    cluster_surface_error(sdf, mesh, &all, &sampled).max(floor)
+    cluster_surface_error(sdf, mesh, &all, &sampled).law_max(floor)
 }
 
 /// Screen-space LOD selector
@@ -544,7 +545,7 @@ impl ContinuousLod {
         let diff = target_lod - self.current_lod;
 
         if diff.abs() > 0.01 {
-            let step = (self.transition_speed * delta_time).max(0.0);
+            let step = (self.transition_speed * delta_time).law_max(0.0);
             self.current_lod = if diff.abs() <= step {
                 target_lod
             } else {

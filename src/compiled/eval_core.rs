@@ -17,6 +17,7 @@ use super::instruction::Instruction;
 use super::opcode::OpCode;
 use super::prim_table::PrimTable;
 use super::real::{self, Real, Vec3R};
+use crate::compiled::real::LawMinMax;
 use crate::modifiers::perlin_noise_3d;
 use glam::{Quat, Vec2, Vec3};
 use std::mem::MaybeUninit;
@@ -194,7 +195,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                     let bound = inst.params[0];
                     let (q, correction) = R::map3vs(p.x, p.y, p.z, |q| {
                         let (q, c) = crate::transforms::projective::projective_transform(q, &inv_m);
-                        (q, c.min(bound))
+                        (q, c.law_min(bound))
                     });
                     p = q;
                     // Tree law: eval(child, q) * min(|1/w|, lipschitz_bound), per

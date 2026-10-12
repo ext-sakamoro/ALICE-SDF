@@ -20,6 +20,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::{eval_compiled, CompiledSdf};
 use crate::eval::{eval, eval_gradient};
 use crate::types::SdfNode;
@@ -88,7 +89,7 @@ pub fn eval_shell(node: &SdfNode, point: Vec3, config: &ShellConfig) -> f32 {
     let d = eval(node, point);
     let outer_surface = d - config.outer_offset;
     let inner_surface = -(d + config.inner_offset);
-    outer_surface.max(inner_surface)
+    outer_surface.law_max(inner_surface)
 }
 
 /// Evaluate shell SDF for a batch of points.
@@ -134,7 +135,7 @@ pub fn eval_shell_compiled(compiled: &CompiledSdf, point: Vec3, config: &ShellCo
     let d = eval_compiled(compiled, point);
     let outer_surface = d - config.outer_offset;
     let inner_surface = -(d + config.inner_offset);
-    outer_surface.max(inner_surface)
+    outer_surface.law_max(inner_surface)
 }
 
 /// Batch evaluate shell SDF using a compiled SDF in parallel.

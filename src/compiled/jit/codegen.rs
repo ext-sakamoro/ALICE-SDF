@@ -7,6 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use cranelift_codegen::ir::condcodes::FloatCC;
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, UserFuncName, Value};
 use cranelift_codegen::Context;
@@ -420,7 +421,7 @@ fn compile_node(
                 1.0 / h_scalar
             };
             let b_scalar = (r1 - r2) * inv_h;
-            let a_scalar = (1.0 - b_scalar * b_scalar).max(0.0).sqrt();
+            let a_scalar = (1.0 - b_scalar * b_scalar).law_max(0.0).sqrt();
             let ah_scalar = a_scalar * h_scalar;
 
             let h = emitter.emit(builder, h_scalar);
@@ -829,7 +830,7 @@ fn compile_node(
             let inv_fx = emitter.emit(builder, 1.0 / factors.x);
             let inv_fy = emitter.emit(builder, 1.0 / factors.y);
             let inv_fz = emitter.emit(builder, 1.0 / factors.z);
-            let min_scale = emitter.emit(builder, factors.x.min(factors.y).min(factors.z));
+            let min_scale = emitter.emit(builder, factors.x.law_min(factors.y).law_min(factors.z));
 
             let nx = builder.ins().fmul(x, inv_fx);
             let ny = builder.ins().fmul(y, inv_fy);

@@ -19,6 +19,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::real::Real;
 use std::f32::consts::{FRAC_1_SQRT_2, SQRT_2};
 
@@ -69,7 +70,7 @@ fn glsl_mod_r<R: Real>(a: R, b: f32) -> R {
 /// Stairs (stepped) minimum (generic over [`Real`]).
 #[inline(always)]
 pub fn stairs_min_r<R: Real>(a: R, b: R, r: f32, n: f32) -> R {
-    let n = n.max(1.0);
+    let n = n.law_max(1.0);
     let s = R::splat(FRAC_1_SQRT_2);
     let d = a.min(b);
     // rotate 45°, then swap (same as the scalar law)

@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 use rayon::prelude::*;
 
@@ -43,9 +44,9 @@ pub fn bake_volume(node: &SdfNode, config: &BakeConfig) -> Volume3D<f32> {
     let size = world_max - world_min;
     // Pre-calculate step vector (avoid division in hot loop)
     let step = Vec3::new(
-        size.x / (res[0] as f32 - 1.0).max(1.0),
-        size.y / (res[1] as f32 - 1.0).max(1.0),
-        size.z / (res[2] as f32 - 1.0).max(1.0),
+        size.x / (res[0] as f32 - 1.0).law_max(1.0),
+        size.y / (res[1] as f32 - 1.0).law_max(1.0),
+        size.z / (res[2] as f32 - 1.0).law_max(1.0),
     );
 
     let mut data = vec![0.0f32; total];
@@ -118,9 +119,9 @@ pub fn bake_volume_with_normals(
 
     let size = world_max - world_min;
     let step = Vec3::new(
-        size.x / (res[0] as f32 - 1.0).max(1.0),
-        size.y / (res[1] as f32 - 1.0).max(1.0),
-        size.z / (res[2] as f32 - 1.0).max(1.0),
+        size.x / (res[0] as f32 - 1.0).law_max(1.0),
+        size.y / (res[1] as f32 - 1.0).law_max(1.0),
+        size.z / (res[2] as f32 - 1.0).law_max(1.0),
     );
 
     let mut data = vec![VoxelDistGrad::default(); total];
@@ -194,9 +195,9 @@ pub fn bake_volume_compiled(
 
     let size = world_max - world_min;
     let step = Vec3::new(
-        size.x / (res[0] as f32 - 1.0).max(1.0),
-        size.y / (res[1] as f32 - 1.0).max(1.0),
-        size.z / (res[2] as f32 - 1.0).max(1.0),
+        size.x / (res[0] as f32 - 1.0).law_max(1.0),
+        size.y / (res[1] as f32 - 1.0).law_max(1.0),
+        size.z / (res[2] as f32 - 1.0).law_max(1.0),
     );
 
     let mut data = vec![0.0f32; total];

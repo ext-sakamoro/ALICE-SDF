@@ -11,6 +11,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 use super::{child_center, octant_for_point, SparseVoxelOctree, SvoNode};
@@ -105,7 +106,7 @@ pub fn svo_ray_query(
     // Check if ray intersects SVO bounds at all
     let (t_enter, t_exit) = ray_aabb_intersect(origin, dir, svo.bounds.min(), svo.bounds.max())?;
 
-    let t_start = t_enter.max(0.0);
+    let t_start = t_enter.law_max(0.0);
     if t_start > max_distance || t_start >= t_exit {
         return None;
     }
@@ -126,7 +127,7 @@ pub fn svo_ray_query(
     let mut t = t_start + 0.001; // Small offset to get inside bounds
     let mut t_prev = t;
     let max_steps = 4096u32;
-    let t_end = max_distance.min(t_exit);
+    let t_end = max_distance.law_min(t_exit);
 
     for _ in 0..max_steps {
         if t > t_end {
@@ -160,7 +161,7 @@ pub fn svo_ray_query(
                 }
                 if !found {
                     // no sign change within this leaf: keep marching
-                    t_prev = probe.min(t_end);
+                    t_prev = probe.law_min(t_end);
                     t = finest_half_diag * 0.5 + t_prev;
                     continue;
                 }
@@ -187,7 +188,7 @@ pub fn svo_ray_query(
 
         // Safe advance: the surface is at least `dist − half_diag` away
         t_prev = t;
-        t += (dist - half_diag).max(finest_half_diag * 0.5);
+        t += (dist - half_diag).law_max(finest_half_diag * 0.5);
     }
 
     None
@@ -334,8 +335,8 @@ fn ray_aabb_intersect(
     let t_min = t1.min(t2);
     let t_max = t1.max(t2);
 
-    let t_enter = t_min.x.max(t_min.y).max(t_min.z);
-    let t_exit = t_max.x.min(t_max.y).min(t_max.z);
+    let t_enter = t_min.x.law_max(t_min.y).law_max(t_min.z);
+    let t_exit = t_max.x.law_min(t_max.y).law_min(t_max.z);
 
     if t_enter <= t_exit && t_exit >= 0.0 {
         Some((t_enter, t_exit))

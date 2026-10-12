@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Blobbiness of the cross arms (Inigo Quilez's `he`): the arms are
@@ -29,8 +30,8 @@ pub const BLOBBY_CROSS_HE: f32 = 0.5;
 pub fn sdf_blobby_cross(p: Vec3, size: f32, half_height: f32) -> f32 {
     let d_2d = blobby_cross_2d(Vec2::new(p.x, p.z) / size, BLOBBY_CROSS_HE) * size;
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
-    d_2d.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_y.law_max(0.0));
+    d_2d.law_max(d_y).law_min(0.0) + w.length()
 }
 
 /// IQ `sdBlobbyCross` in 2D (shared by the interval / gradient paths).
@@ -50,7 +51,7 @@ pub fn blobby_cross_2d(pos: Vec2, he: f32) -> f32 {
         let r = p.sqrt();
         2.0 * r * alice_det_math::cos(alice_det_math::acos(q / (p * r)) / 3.0)
     };
-    let x = x.min(std::f32::consts::FRAC_1_SQRT_2);
+    let x = x.law_min(std::f32::consts::FRAC_1_SQRT_2);
     let z = Vec2::new(x, he * ((2.0 * x) * -x + 1.0)) - pos;
     z.length() * z.y.signum()
 }

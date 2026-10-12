@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Exact SDF for a solid angle centered at origin
@@ -24,7 +25,7 @@ pub fn sdf_solid_angle(p: Vec3, angle: f32, radius: f32) -> f32 {
     } else {
         1.0
     };
-    l.max(m * sign)
+    l.law_max(m * sign)
 }
 
 #[cfg(test)]

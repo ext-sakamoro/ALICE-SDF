@@ -7,6 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Exact SDF for a Death Star shape centered at origin
@@ -17,14 +18,14 @@ use glam::{Vec2, Vec3};
 #[inline(always)]
 pub fn sdf_death_star(p: Vec3, ra: f32, rb: f32, d: f32) -> f32 {
     let a = (d * d + (ra * ra + -(rb * rb))) / (2.0 * d);
-    let b = (ra * ra + -(a * a)).max(0.0).sqrt();
+    let b = (ra * ra + -(a * a)).law_max(0.0).sqrt();
 
     let p2 = Vec2::new(p.x, alice_det_math::hypot(p.y, p.z));
 
-    if (p2.x * b + -(p2.y * a)) > d * (b - p2.y).max(0.0) {
+    if (p2.x * b + -(p2.y * a)) > d * (b - p2.y).law_max(0.0) {
         (p2 - Vec2::new(a, b)).length()
     } else {
-        (p2.length() - ra).max(-(Vec2::new(p2.x - d, p2.y).length() - rb))
+        (p2.length() - ra).law_max(-(Vec2::new(p2.x - d, p2.y).length() - rb))
     }
 }
 

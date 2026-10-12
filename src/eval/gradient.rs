@@ -15,6 +15,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::eval::eval;
 use crate::modifiers::*;
 use crate::transforms::{transform_rotate, transform_rotate_inverse, transform_translate};
@@ -180,7 +181,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let db = eval(b, point);
             let ga = eval_gradient(a, point);
             let gb = eval_gradient(b, point);
-            let k = k.max(1e-6);
+            let k = k.law_max(1e-6);
             let wa_raw = alice_det_math::exp(-da / k);
             let wb_raw = alice_det_math::exp(-db / k);
             let sum = wa_raw + wb_raw;
@@ -193,7 +194,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let db = eval(b, point);
             let ga = eval_gradient(a, point);
             let gb = eval_gradient(b, point);
-            let k = k.max(1e-6);
+            let k = k.law_max(1e-6);
             let wa_raw = alice_det_math::exp(da / k);
             let wb_raw = alice_det_math::exp(db / k);
             let sum = wa_raw + wb_raw;
@@ -206,7 +207,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let db = eval(b, point);
             let ga = eval_gradient(a, point);
             let gb = eval_gradient(b, point);
-            let k = k.max(1e-6);
+            let k = k.law_max(1e-6);
             let wa_raw = alice_det_math::exp(da / k);
             let wb_raw = alice_det_math::exp(-db / k);
             let sum = wa_raw + wb_raw;
@@ -243,8 +244,8 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         SdfNode::XOR { a, b } => {
             let da = eval(a, point);
             let db = eval(b, point);
-            let min_ab = da.min(db);
-            let neg_max_ab = -da.max(db);
+            let min_ab = da.law_min(db);
+            let neg_max_ab = -da.law_max(db);
             if min_ab > neg_max_ab {
                 // min(a,b) wins
                 if da <= db {
@@ -298,7 +299,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             // ∂f/∂pᵢ = m / factorsᵢ · ∂child/∂qᵢ
             let p = point / *factors;
             let grad = eval_gradient(child, p);
-            let m = factors.x.min(factors.y.min(factors.z));
+            let m = factors.x.law_min(factors.y.law_min(factors.z));
             Vec3::new(
                 m * grad.x / factors.x,
                 m * grad.y / factors.y,
@@ -384,7 +385,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         }
         SdfNode::Revolution { child, offset } => {
             // q = (|p.xz| - offset, p.y, 0)
-            let r_xz = alice_det_math::hypot(point.x, point.z).max(1e-10);
+            let r_xz = alice_det_math::hypot(point.x, point.z).law_max(1e-10);
             let q = Vec3::new(r_xz - *offset, point.y, 0.0);
             let g = eval_gradient(child, q);
             // ∂qₓ/∂pₓ = pₓ/r_xz, ∂qₓ/∂p_z = p_z/r_xz, ∂q_y/∂p_y = 1
@@ -402,7 +403,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
 
             if d2d > 0.0 && w_y > 0.0 {
                 // Outside both: blend
-                let len = alice_det_math::hypot(d2d, w_y).max(1e-10);
+                let len = alice_det_math::hypot(d2d, w_y).law_max(1e-10);
                 (grad_xy * d2d + grad_z * w_y) / len
             } else if d2d > w_y {
                 grad_xy
@@ -558,7 +559,7 @@ fn grad_box3d(point: Vec3, half_extents: Vec3) -> Vec3 {
 
     if q.x > 0.0 || q.y > 0.0 || q.z > 0.0 {
         // Outside: gradient of max(q,0).length()
-        let clamped = Vec3::new(q.x.max(0.0), q.y.max(0.0), q.z.max(0.0));
+        let clamped = Vec3::new(q.x.law_max(0.0), q.y.law_max(0.0), q.z.law_max(0.0));
         let len = clamped.length();
         if len < 1e-10 {
             return Vec3::Y;
@@ -585,7 +586,7 @@ fn grad_cylinder(point: Vec3, radius: f32, half_height: f32) -> Vec3 {
 
     if dr > 0.0 && dy > 0.0 {
         // Outside corner
-        let len = alice_det_math::hypot(dr, dy).max(1e-10);
+        let len = alice_det_math::hypot(dr, dy).law_max(1e-10);
         let radial = if r_xz > 1e-10 {
             Vec3::new(point.x / r_xz * dr, 0.0, point.z / r_xz * dr)
         } else {
@@ -609,9 +610,9 @@ fn grad_cylinder(point: Vec3, radius: f32, half_height: f32) -> Vec3 {
 /// Torus: f = |q| - r where q = (|p.xz| - R, p.y)
 #[inline(always)]
 fn grad_torus(point: Vec3, major_radius: f32, _minor_radius: f32) -> Vec3 {
-    let r_xz = alice_det_math::hypot(point.x, point.z).max(1e-10);
+    let r_xz = alice_det_math::hypot(point.x, point.z).law_max(1e-10);
     let qx = r_xz - major_radius;
-    let q_len = alice_det_math::hypot(qx, point.y).max(1e-10);
+    let q_len = alice_det_math::hypot(qx, point.y).law_max(1e-10);
     Vec3::new(
         qx * point.x / (q_len * r_xz),
         point.y / q_len,
@@ -623,7 +624,7 @@ fn grad_torus(point: Vec3, major_radius: f32, _minor_radius: f32) -> Vec3 {
 #[inline(always)]
 fn grad_capsule(point: Vec3, a: Vec3, b: Vec3) -> Vec3 {
     let ab = b - a;
-    let t = (point - a).dot(ab) / ab.dot(ab).max(1e-10);
+    let t = (point - a).dot(ab) / ab.dot(ab).law_max(1e-10);
     let t = t.clamp(0.0, 1.0);
     let closest = a + ab * t;
     let diff = point - closest;
@@ -691,9 +692,9 @@ fn grad_schwarz_p(point: Vec3, scale: f32, _thickness: f32) -> Vec3 {
 /// When |a-b| < k:  smooth blend
 #[inline(always)]
 fn smooth_min_weights(da: f32, db: f32, k: f32) -> (f32, f32) {
-    let k = k.max(1e-10);
+    let k = k.law_max(1e-10);
     let diff = da - db;
-    let h = ((k - diff.abs()) / k).max(0.0);
+    let h = ((k - diff.abs()) / k).law_max(0.0);
 
     if h < 1e-10 {
         // Outside blend zone: gradient of whichever is smaller
@@ -712,9 +713,9 @@ fn smooth_min_weights(da: f32, db: f32, k: f32) -> (f32, f32) {
 /// Weights for smooth_max gradient
 #[inline(always)]
 fn smooth_max_weights(da: f32, db: f32, k: f32) -> (f32, f32) {
-    let k = k.max(1e-10);
+    let k = k.law_max(1e-10);
     let diff = da - db;
-    let h = ((k - diff.abs()) / k).max(0.0);
+    let h = ((k - diff.abs()) / k).law_max(0.0);
 
     if h < 1e-10 {
         if da >= db {
@@ -733,7 +734,7 @@ fn smooth_max_weights(da: f32, db: f32, k: f32) -> (f32, f32) {
 #[inline(always)]
 fn grad_chamfer_min(da: f32, db: f32, r: f32, ga: Vec3, gb: Vec3) -> Vec3 {
     let chamfer_val = (da + db) * FRAC_1_SQRT_2 + -r;
-    let min_ab = da.min(db);
+    let min_ab = da.law_min(db);
 
     if chamfer_val < min_ab {
         // Chamfer term wins: gradient is FRAC_1_SQRT_2 * (ga + gb)

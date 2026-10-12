@@ -74,6 +74,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::{eval_compiled, CompiledSdf};
 use crate::mesh::optimize::remove_degenerate_triangles;
 use crate::mesh::sdf_to_mesh::{
@@ -388,8 +389,8 @@ impl LiveState {
     }
 
     fn normal(&self, p: Vec3) -> Vec3 {
-        let scale = p.x.abs().max(p.y.abs()).max(p.z.abs());
-        let e = NORMAL_BASE_EPS.max(1.0e-4 * scale);
+        let scale = p.x.abs().law_max(p.y.abs()).law_max(p.z.abs());
+        let e = NORMAL_BASE_EPS.law_max(1.0e-4 * scale);
         let ex = Vec3::new(e, 0.0, 0.0);
         let ey = Vec3::new(0.0, e, 0.0);
         let ez = Vec3::new(0.0, 0.0, e);
@@ -1164,7 +1165,7 @@ impl LiveMeshConfig {
             if h < 0.0 || l >= count || !(l.is_finite() && h.is_finite()) {
                 return Vec::new();
             }
-            *r = (l.max(0.0) as usize, h.min(count - 1.0) as usize);
+            *r = (l.law_max(0.0) as usize, h.law_min(count - 1.0) as usize);
         }
         let mut out = Vec::new();
         for z in range[2].0..=range[2].1 {

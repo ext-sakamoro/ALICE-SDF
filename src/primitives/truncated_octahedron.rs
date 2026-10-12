@@ -5,6 +5,7 @@
 //! Author: Moroya Sakamoto
 
 use super::gdf_vectors::{GDF_CUBE, GDF_OCTAHEDRON};
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// SDF for a truncated octahedron
@@ -15,10 +16,10 @@ pub fn sdf_truncated_octahedron(p: Vec3, radius: f32) -> f32 {
     // Uses cube normals [0..3] + octahedron normals [3..7]
     let mut d = f32::NEG_INFINITY;
     for n in &GDF_CUBE {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     for n in &GDF_OCTAHEDRON {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     d - radius
 }

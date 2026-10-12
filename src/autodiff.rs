@@ -18,6 +18,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::eval::{eval, eval_gradient};
 use crate::types::SdfNode;
 use glam::Vec3;
@@ -64,7 +65,7 @@ impl Dual {
     /// Square root.
     #[inline(always)]
     pub fn sqrt(self) -> Self {
-        let r = self.val.max(0.0).sqrt();
+        let r = self.val.law_max(0.0).sqrt();
         let d = if r > 1e-10 { self.dot / (2.0 * r) } else { 0.0 };
         Self { val: r, dot: d }
     }
@@ -258,7 +259,7 @@ impl Dual3 {
     /// Square root.
     #[inline(always)]
     pub fn sqrt(self) -> Self {
-        let r = self.val.max(0.0).sqrt();
+        let r = self.val.law_max(0.0).sqrt();
         if r > 1e-10 {
             let inv2r = 0.5 / r;
             Self {
@@ -500,7 +501,7 @@ pub fn principal_curvatures(node: &SdfNode, point: Vec3, epsilon: f32) -> (f32, 
     let sum_sq =
         (n_hn * n_hn + ((-2.0f32) * hn.length_squared() + h_frobenius)) / (grad_len * grad_len);
 
-    let discriminant = (2.0f32 * sum_sq + (-(sum * sum))).max(0.0);
+    let discriminant = (2.0f32 * sum_sq + (-(sum * sum))).law_max(0.0);
     let sqrt_disc = discriminant.sqrt();
     let k1 = f32::midpoint(sum, sqrt_disc);
     let k2 = 0.5 * (sum - sqrt_disc);

@@ -7,6 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
@@ -59,16 +60,16 @@ pub fn sdf_cylinder_capped(point: Vec3, a: Vec3, b: Vec3, radius: f32) -> f32 {
 
     // Deep Fried Branchless Logic
     // Interior case: both x and y are negative (inside cylinder)
-    let dist_sq_inner = -x2.min(y2);
+    let dist_sq_inner = -x2.law_min(y2);
 
     // Exterior case: at least one of x or y is positive
     // x.max(0.0)² contributes if outside radially
     // y.max(0.0)² * baba contributes if outside axially
     let dist_sq_outer =
-        alice_det_math::powi(y.max(0.0), 2) * baba + alice_det_math::powi(x.max(0.0), 2);
+        alice_det_math::powi(y.law_max(0.0), 2) * baba + alice_det_math::powi(x.law_max(0.0), 2);
 
     // Select based on whether we're inside or outside
-    let inside = x.max(y) < 0.0;
+    let inside = x.law_max(y) < 0.0;
     let d = if inside { dist_sq_inner } else { dist_sq_outer };
 
     d.signum() * d.abs().sqrt() / baba

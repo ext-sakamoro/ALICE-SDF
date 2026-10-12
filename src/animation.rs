@@ -11,6 +11,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::law_max_f32;
 use crate::types::SdfNode;
 use serde::{Deserialize, Serialize};
 
@@ -246,7 +247,7 @@ impl Timeline {
         self.tracks
             .iter()
             .map(|t| t.duration())
-            .fold(0.0_f32, f32::max)
+            .fold(0.0_f32, law_max_f32)
     }
 
     /// Evaluate all tracks at a given time, returning name-value pairs

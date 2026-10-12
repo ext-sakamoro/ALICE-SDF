@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Point-to-segment squared distance helper
@@ -44,7 +45,7 @@ pub fn sdf_trapezoid(p: Vec3, r1: f32, r2: f32, trap_height: f32, half_depth: f3
     // Top: (r2,he) to (0,he)
     let d_top = dist_to_seg(px, py, r2, he, 0.0, he);
 
-    let d_unsigned = d_bot.min(d_slant).min(d_top);
+    let d_unsigned = d_bot.law_min(d_slant).law_min(d_top);
 
     // Sign: inside check via half-plane test
     // Inside if: |py| <= he AND px <= interpolated width at py
@@ -59,8 +60,8 @@ pub fn sdf_trapezoid(p: Vec3, r1: f32, r2: f32, trap_height: f32, half_depth: f3
 
     // Extrude along Z
     let d_z = p.z.abs() - half_depth;
-    let w = Vec2::new(d_2d.max(0.0), d_z.max(0.0));
-    d_2d.max(d_z).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_z.law_max(0.0));
+    d_2d.law_max(d_z).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

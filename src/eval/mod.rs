@@ -12,6 +12,7 @@
 pub mod gradient;
 pub mod parallel;
 
+use crate::compiled::real::LawMinMax;
 pub use gradient::{eval_gradient, eval_normal};
 pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
 
@@ -481,7 +482,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         } => {
             let (q, correction) =
                 crate::transforms::projective::projective_transform(point, inv_matrix);
-            eval(child, q) * correction.min(*lipschitz_bound)
+            eval(child, q) * correction.law_min(*lipschitz_bound)
         }
         SdfNode::LatticeDeform {
             child,
@@ -612,7 +613,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             iterations,
         } => {
             let (q, scale) = crate::modifiers::ifs_fold_with_scale(point, transforms, *iterations);
-            eval(child, q) / scale.max(1e-6)
+            eval(child, q) / scale.law_max(1e-6)
         }
         SdfNode::HeightmapDisplacement {
             child,

@@ -31,6 +31,7 @@ pub mod cone_trace;
 pub mod irradiance;
 pub mod probe_bake;
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 pub use cone_trace::{cone_trace, trace_hemisphere, ConeTraceConfig, ConeTraceResult};
@@ -80,7 +81,7 @@ pub fn sky_color(direction: Vec3) -> Vec3 {
 /// Compute direct lighting from a directional light at a surface point
 #[inline]
 pub fn direct_lighting(normal: Vec3, light: &DirectionalLight) -> Vec3 {
-    let ndotl = normal.dot(light.direction).max(0.0);
+    let ndotl = normal.dot(light.direction).law_max(0.0);
     light.color * ndotl
 }
 

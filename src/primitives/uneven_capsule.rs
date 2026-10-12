@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for an uneven capsule prism
@@ -22,7 +23,7 @@ pub fn sdf_uneven_capsule(p: Vec3, r1: f32, r2: f32, cap_height: f32, half_depth
     let px = p.x.abs();
     let h = cap_height * 2.0;
     let b = (r1 - r2) / h;
-    let a = (1.0 - b * b).max(0.0).sqrt();
+    let a = (1.0 - b * b).law_max(0.0).sqrt();
     let k = Vec2::new(-b, a).dot(Vec2::new(px, p.y));
     let d_2d = if k < 0.0 {
         Vec2::new(px, p.y).length() - r1
@@ -33,8 +34,8 @@ pub fn sdf_uneven_capsule(p: Vec3, r1: f32, r2: f32, cap_height: f32, half_depth
     };
     // Extrude along Z
     let d_z = p.z.abs() - half_depth;
-    let w = Vec2::new(d_2d.max(0.0), d_z.max(0.0));
-    d_2d.max(d_z).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_z.law_max(0.0));
+    d_2d.law_max(d_z).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

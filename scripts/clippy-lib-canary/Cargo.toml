@@ -1,0 +1,13 @@
+[package]
+name = "clippy-lib-canary"
+version = "0.0.0"
+publish = false
+license = "Apache-2.0"
+edition = "2021"
+description = "Calls every form .github/clippy-lib/clippy.toml forbids, so scripts/clippy_lib_gate.py can show the lint fires"
+
+# a fixture of the scripts, not part of the alice-sdf package
+[workspace]
+
+[dependencies]
+wide = "0.7"

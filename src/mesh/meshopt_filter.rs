@@ -27,6 +27,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::MeshInputError;
 
 /// Quantize `v` in `[-1, 1]` to a signed integer with `bits` precision
@@ -250,7 +251,7 @@ pub fn decode_filter_quat_i16_in_place(data: &mut [i16]) {
 
         let ws = s * s;
         let ww = 2.0f32 * ws + (-(x * x + (y * y + (z * z))));
-        let w = ww.max(0.0).sqrt();
+        let w = ww.law_max(0.0).sqrt();
 
         let ss = scale / s;
 

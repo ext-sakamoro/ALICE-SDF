@@ -15,6 +15,7 @@
 //! - Subsampled grid stored in SoA layout for optimal SIMD loads
 //! - Residual subtraction parallelized row-wise with rayon + SIMD
 
+use crate::compiled::real::LawMinMax;
 use rayon::prelude::*;
 use std::path::Path;
 use wide::f32x8;
@@ -151,7 +152,7 @@ fn fit_channel(
         let (init_freq, init_amp) = if (octave_idx as usize) < bands.len() {
             (
                 bands[octave_idx as usize].frequency,
-                bands[octave_idx as usize].energy.min(1.0),
+                bands[octave_idx as usize].energy.law_min(1.0),
             )
         } else {
             (alice_det_math::powi(2.0, octave_idx as i32 + 1), 0.1)
@@ -273,9 +274,9 @@ fn fit_channel(
             }
         }
         let start = best.expect("scan grid is non-empty");
-        let f0 = start.params[1].abs().max(1e-3);
+        let f0 = start.params[1].abs().law_max(1e-3);
         let step_sizes = [
-            start.params[0].abs().max(1e-3) * 0.25,
+            start.params[0].abs().law_max(1e-3) * 0.25,
             f0 * 0.1,
             0.25,
             0.25,
@@ -454,7 +455,7 @@ pub fn reconstruct(result: &TextureFitResult, width: usize, height: usize) -> Ve
                     // Clamp to [0, 1]
                     let zero = f32x8::splat(0.0);
                     let one = f32x8::splat(1.0);
-                    let clamped = acc.max(zero).min(one);
+                    let clamped = acc.law_max(zero).law_min(one);
                     let arr: [f32; 8] = clamped.into();
                     row[base..base + 8].copy_from_slice(&arr);
                 }

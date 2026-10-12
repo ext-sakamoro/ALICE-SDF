@@ -7,6 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Exact SDF for a capped cone centered at origin
@@ -22,7 +23,7 @@ pub fn sdf_capped_cone(p: Vec3, half_height: f32, r1: f32, r2: f32) -> f32 {
     let k2 = Vec2::new(r2 - r1, 2.0 * h);
 
     let min_r = if q.y < 0.0 { r1 } else { r2 };
-    let ca = Vec2::new(q.x - q.x.min(min_r), q.y.abs() - h);
+    let ca = Vec2::new(q.x - q.x.law_min(min_r), q.y.abs() - h);
     let k2_dot = k2.dot(k2);
     let t = if k2_dot > 0.0001 {
         ((k1 - q).dot(k2) / k2_dot).clamp(0.0, 1.0)
@@ -32,7 +33,7 @@ pub fn sdf_capped_cone(p: Vec3, half_height: f32, r1: f32, r2: f32) -> f32 {
     let cb = q - k1 + k2 * t;
 
     let s = if cb.x < 0.0 && ca.y < 0.0 { -1.0 } else { 1.0 };
-    s * ca.dot(ca).min(cb.dot(cb)).sqrt()
+    s * ca.dot(ca).law_min(cb.dot(cb)).sqrt()
 }
 
 #[cfg(test)]

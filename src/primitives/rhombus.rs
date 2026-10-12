@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Dot product variation: a.x*b.x - a.y*b.y
@@ -33,7 +34,7 @@ pub fn sdf_rhombus(p: Vec3, la: f32, lb: f32, half_height: f32, round_radius: f3
     let qy = p.y - half_height;
 
     let d = Vec2::new(qx, qy);
-    d.x.max(d.y).min(0.0) + d.max(Vec2::ZERO).length()
+    d.x.law_max(d.y).law_min(0.0) + d.max(Vec2::ZERO).length()
 }
 
 #[cfg(test)]

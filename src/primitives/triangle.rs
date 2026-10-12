@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Squared length of a vector (avoids sqrt)
@@ -36,7 +37,7 @@ pub fn sdf_triangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f32 {
         let d_ab = dot2(ba * (ba.dot(pa) / ba.dot(ba)).clamp(0.0, 1.0) - pa);
         let d_bc = dot2(cb * (cb.dot(pb) / cb.dot(cb)).clamp(0.0, 1.0) - pb);
         let d_ca = dot2(ac * (ac.dot(pc) / ac.dot(ac)).clamp(0.0, 1.0) - pc);
-        d_ab.min(d_bc).min(d_ca)
+        d_ab.law_min(d_bc).law_min(d_ca)
     } else {
         // Point projects onto the triangle plane — perpendicular distance
         let d = nor.dot(pa);

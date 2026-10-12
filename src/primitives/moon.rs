@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for a crescent moon shape, extruded along Y-axis
@@ -23,12 +24,12 @@ pub fn sdf_moon(p: Vec3, d: f32, ra: f32, rb: f32, half_height: f32) -> f32 {
 
     let d_outer = q.length() - ra;
     let d_inner = (q - Vec2::new(d, 0.0)).length() - rb;
-    let d_2d = d_outer.max(-d_inner);
+    let d_2d = d_outer.law_max(-d_inner);
 
     // Extrude along Y
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
-    d_2d.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_y.law_max(0.0));
+    d_2d.law_max(d_y).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

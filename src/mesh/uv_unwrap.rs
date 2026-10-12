@@ -12,6 +12,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::sdf_to_mesh::Mesh;
 use glam::Vec2;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -464,7 +465,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     // Place third vertex
     if len01 > 1e-10 {
         let cos_a = e01.dot(e02) / (len01 * e02.length());
-        let sin_a = (cos_a * -cos_a + 1.0).max(0.0).sqrt();
+        let sin_a = (cos_a * -cos_a + 1.0).law_max(0.0).sqrt();
         let len02 = e02.length();
         local_uvs[li2] = Vec2::new(len02 * cos_a, len02 * sin_a);
     }
@@ -563,7 +564,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
 
                 if len_ij > 1e-10 && len_ik > 1e-10 {
                     let cos_a = edge_ij.dot(edge_ik) / (len_ij * len_ik);
-                    let sin_a = (cos_a * -cos_a + 1.0).max(0.0).sqrt();
+                    let sin_a = (cos_a * -cos_a + 1.0).law_max(0.0).sqrt();
 
                     let uv_i = local_uvs[locals[ei]];
                     let uv_j = local_uvs[locals[ej]];
@@ -571,7 +572,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
                     let uv_dir = uv_edge.normalize_or_zero();
                     let uv_perp = Vec2::new(-uv_dir.y, uv_dir.x);
 
-                    let ratio = len_ik / len_ij.max(1e-10);
+                    let ratio = len_ik / len_ij.law_max(1e-10);
                     local_uvs[locals[ek]] = uv_i
                         + uv_dir * (cos_a * ratio * uv_edge.length())
                         + uv_perp * (sin_a * ratio * uv_edge.length());
@@ -608,7 +609,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
 
     let range = max_uv - min_uv;
     let scale = if range.x > 1e-10 && range.y > 1e-10 {
-        1.0 / range.x.max(range.y)
+        1.0 / range.x.law_max(range.y)
     } else {
         1.0
     };
@@ -679,7 +680,7 @@ fn pack_charts(charts: &mut [UvChart], margin: f32) -> f32 {
         charts[ci].bounds_max += offset;
 
         total_used_area += w * h;
-        shelf_height = shelf_height.max(h);
+        shelf_height = shelf_height.law_max(h);
         cursor_x += w + margin;
     }
 
@@ -691,7 +692,7 @@ fn pack_charts(charts: &mut [UvChart], margin: f32) -> f32 {
         }
     }
 
-    total_used_area.min(1.0)
+    total_used_area.law_min(1.0)
 }
 
 #[cfg(test)]

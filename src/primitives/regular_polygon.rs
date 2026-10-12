@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for a regular N-sided polygon, extruded along Y-axis
@@ -18,7 +19,7 @@ pub fn sdf_regular_polygon(p: Vec3, radius: f32, n_sides: f32, half_height: f32)
     // Inigo Quilez "Regular Polygon" (exact), in the XZ plane with `radius` as the
     // circumradius. Before 1.9.2 the sector fold only handled z >= 0 and the 2D
     // term was a half-plane distance, which made the shape unbounded.
-    let n = n_sides.max(3.0).trunc();
+    let n = n_sides.law_max(3.0).trunc();
     let an = std::f32::consts::PI / n;
     let (acs_s, acs_c) = alice_det_math::sin_cos(an);
 
@@ -35,8 +36,8 @@ pub fn sdf_regular_polygon(p: Vec3, radius: f32, n_sides: f32, half_height: f32)
 
     // Extrude along Y
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
-    d_2d.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_y.law_max(0.0));
+    d_2d.law_max(d_y).law_min(0.0) + w.length()
 }
 #[allow(
     clippy::disallowed_methods,

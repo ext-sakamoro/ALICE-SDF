@@ -41,6 +41,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 use rayon::prelude::*;
 
@@ -117,7 +118,7 @@ impl ExteriorField {
             reason: "exterior flood fill needs a non-empty mesh",
         })?;
         let extent = bounds.max - bounds.min;
-        let longest = extent.x.max(extent.y).max(extent.z);
+        let longest = extent.x.law_max(extent.y).law_max(extent.z);
         if !longest.is_finite() || longest <= 0.0 {
             return Err(MeshInputError {
                 reason: "exterior flood fill needs a mesh with finite, non-zero extent",

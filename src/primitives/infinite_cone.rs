@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Exact SDF for an infinite cone along Y-axis
@@ -15,7 +16,7 @@ use glam::{Vec2, Vec3};
 pub fn sdf_infinite_cone(p: Vec3, angle: f32) -> f32 {
     let c = Vec2::new(alice_det_math::sin(angle), alice_det_math::cos(angle));
     let q = Vec2::new(alice_det_math::hypot(p.x, p.z), -p.y);
-    let d = (q - c * q.dot(c).max(0.0)).length();
+    let d = (q - c * q.dot(c).law_max(0.0)).length();
     d * if (q.x * c.y + -(q.y * c.x)) < 0.0 {
         -1.0
     } else {

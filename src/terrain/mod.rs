@@ -32,6 +32,7 @@ pub mod erosion;
 pub mod heightmap;
 pub mod splatmap;
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 pub use caves::{generate_cave_sdf, CaveConfig};
@@ -93,7 +94,7 @@ pub fn terrain_sdf(
         // Inside terrain = negative, inside cave = negative
         // Result: max(terrain_dist, -cave_dist) would carve caves
         // But we want: terrain_dist where no cave, carved where cave
-        terrain_dist.max(-cave_dist)
+        terrain_dist.law_max(-cave_dist)
     })
 }
 

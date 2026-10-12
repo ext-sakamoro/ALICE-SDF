@@ -5,6 +5,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::law_max_f32;
+use crate::compiled::real::law_min_f32;
+use crate::compiled::real::LawMinMax;
 use glam::{Quat, Vec3};
 
 /// SIMD-friendly AABB structure (32 bytes, cache-aligned)
@@ -137,7 +140,7 @@ impl AabbPacked {
 
         // Same formula as box SDF
         let outside = q.max(Vec3::ZERO).length();
-        let inside = q.x.max(q.y).max(q.z).min(0.0);
+        let inside = q.x.law_max(q.y).law_max(q.z).law_min(0.0);
 
         outside + inside
     }
@@ -148,25 +151,25 @@ impl AabbPacked {
     /// Safe for BVH pruning (won't skip valid nodes).
     #[inline]
     pub fn distance_to_point_fast(&self, p: Vec3) -> f32 {
-        let dx = (self.min_x - p.x).max(p.x - self.max_x).max(0.0);
-        let dy = (self.min_y - p.y).max(p.y - self.max_y).max(0.0);
-        let dz = (self.min_z - p.z).max(p.z - self.max_z).max(0.0);
+        let dx = (self.min_x - p.x).law_max(p.x - self.max_x).law_max(0.0);
+        let dy = (self.min_y - p.y).law_max(p.y - self.max_y).law_max(0.0);
+        let dz = (self.min_z - p.z).law_max(p.z - self.max_z).law_max(0.0);
 
         // Return L-infinity norm (max component) - conservative underestimate
-        dx.max(dy).max(dz)
+        dx.law_max(dy).law_max(dz)
     }
 
     /// Union of two AABBs (smallest AABB containing both)
     #[inline]
     pub const fn union(&self, other: &Self) -> Self {
         Self {
-            min_x: self.min_x.min(other.min_x),
-            min_y: self.min_y.min(other.min_y),
-            min_z: self.min_z.min(other.min_z),
+            min_x: law_min_f32(self.min_x, other.min_x),
+            min_y: law_min_f32(self.min_y, other.min_y),
+            min_z: law_min_f32(self.min_z, other.min_z),
             _pad1: 0.0,
-            max_x: self.max_x.max(other.max_x),
-            max_y: self.max_y.max(other.max_y),
-            max_z: self.max_z.max(other.max_z),
+            max_x: law_max_f32(self.max_x, other.max_x),
+            max_y: law_max_f32(self.max_y, other.max_y),
+            max_z: law_max_f32(self.max_z, other.max_z),
             _pad2: 0.0,
         }
     }
@@ -175,13 +178,13 @@ impl AabbPacked {
     #[inline]
     pub const fn intersection(&self, other: &Self) -> Self {
         Self {
-            min_x: self.min_x.max(other.min_x),
-            min_y: self.min_y.max(other.min_y),
-            min_z: self.min_z.max(other.min_z),
+            min_x: law_max_f32(self.min_x, other.min_x),
+            min_y: law_max_f32(self.min_y, other.min_y),
+            min_z: law_max_f32(self.min_z, other.min_z),
             _pad1: 0.0,
-            max_x: self.max_x.min(other.max_x),
-            max_y: self.max_y.min(other.max_y),
-            max_z: self.max_z.min(other.max_z),
+            max_x: law_min_f32(self.max_x, other.max_x),
+            max_y: law_min_f32(self.max_y, other.max_y),
+            max_z: law_min_f32(self.max_z, other.max_z),
             _pad2: 0.0,
         }
     }
@@ -332,7 +335,7 @@ pub mod primitives {
     /// AABB for a rounded cone along Y axis
     #[inline]
     pub fn rounded_cone_aabb(r1: f32, r2: f32, half_height: f32) -> AabbPacked {
-        let max_r = r1.max(r2);
+        let max_r = r1.law_max(r2);
         AabbPacked::new(
             Vec3::new(-max_r, -half_height - r1, -max_r),
             Vec3::new(max_r, half_height + r2, max_r),

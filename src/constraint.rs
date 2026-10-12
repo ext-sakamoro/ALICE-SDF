@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 // ── Types ────────────────────────────────────────────────────
 
 /// Identifier for a parametric variable.
@@ -266,12 +267,12 @@ impl ConstraintSolver {
             ConstraintKind::Min { param_a, param_b } => {
                 let a = self.params[param_a.as_index()];
                 let b = self.params[param_b.as_index()];
-                a.min(b) - c.target
+                a.law_min(b) - c.target
             }
             ConstraintKind::Max { param_a, param_b } => {
                 let a = self.params[param_a.as_index()];
                 let b = self.params[param_b.as_index()];
-                a.max(b) - c.target
+                a.law_max(b) - c.target
             }
             ConstraintKind::Range { param, epsilon } => {
                 let v = self.params[param.as_index()];

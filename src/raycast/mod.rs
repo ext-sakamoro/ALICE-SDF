@@ -18,6 +18,7 @@
 mod march;
 
 // === Interpreter Backend (original) ===
+use crate::compiled::real::LawMinMax;
 pub use march::{
     raymarch, raymarch_batch, raymarch_batch_parallel, raymarch_detailed, raymarch_relaxed,
     raymarch_with_config, render_depth, render_normals, RaymarchConfig, RaymarchResult,
@@ -94,7 +95,7 @@ pub fn ambient_occlusion(
         let t = i as f32 * step;
         let sample_point = point + normal * t;
         let d = eval(node, sample_point);
-        let contribution = (t - d.max(0.0)) / t;
+        let contribution = (t - d.law_max(0.0)) / t;
         occlusion += contribution;
     }
 
@@ -132,7 +133,7 @@ pub fn soft_shadow(
 
         let y = h * h / (2.0 * ph);
         let d = (h * h + -(y * y)).sqrt();
-        res = res.min(k * d / (t - y).max(0.0));
+        res = res.law_min(k * d / (t - y).law_max(0.0));
 
         ph = h;
         t += h;
@@ -192,7 +193,7 @@ pub fn ambient_occlusion_compiled(
         let t = i as f32 * step;
         let sample_point = point + normal * t;
         let d = eval_compiled(sdf, sample_point);
-        let contribution = (t - d.max(0.0)) / t;
+        let contribution = (t - d.law_max(0.0)) / t;
         occlusion += contribution;
     }
 
@@ -230,7 +231,7 @@ pub fn soft_shadow_compiled(
 
         let y = h * h / (2.0 * ph);
         let d = (h * h + -(y * y)).sqrt();
-        res = res.min(k * d / (t - y).max(0.0));
+        res = res.law_min(k * d / (t - y).law_max(0.0));
 
         ph = h;
         t += h;

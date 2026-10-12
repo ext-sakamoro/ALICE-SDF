@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 
@@ -125,7 +126,11 @@ fn ellipsoid_sqr_distance(n: usize, e: [f32; 3], y: [f32; 3]) -> f32 {
 /// anisotropic ellipsoid and `eval_lipschitz` had no finite bound for it.
 #[inline]
 pub fn sdf_ellipsoid_exact(p: Vec3, radii: Vec3) -> f32 {
-    let safe = [radii.x.max(1e-10), radii.y.max(1e-10), radii.z.max(1e-10)];
+    let safe = [
+        radii.x.law_max(1e-10),
+        radii.y.law_max(1e-10),
+        radii.z.law_max(1e-10),
+    ];
     let mut y = [p.x.abs(), p.y.abs(), p.z.abs()];
     let mut e = safe;
     // sort axes decreasing, carrying the point with them (3-element network)

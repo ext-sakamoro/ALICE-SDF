@@ -10,6 +10,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use serde::{Deserialize, Serialize};
 
 /// Texture map reference for PBR materials
@@ -476,7 +477,7 @@ pub fn material_lerp(a: &Material, b: &Material, t: f32) -> Material {
         clearcoat_roughness: (a.clearcoat_roughness * it + (b.clearcoat_roughness * t)),
         transmission: (a.transmission * it + (b.transmission * t)),
         thickness: (a.thickness * it + (b.thickness * t)),
-        attenuation_distance: a.attenuation_distance.min(b.attenuation_distance),
+        attenuation_distance: a.attenuation_distance.law_min(b.attenuation_distance),
         attenuation_color: [
             (a.attenuation_color[0] * it + (b.attenuation_color[0] * t)),
             (a.attenuation_color[1] * it + (b.attenuation_color[1] * t)),

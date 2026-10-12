@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Quat, Vec3};
 
 use super::MutableVoxelGrid;
@@ -46,7 +47,7 @@ impl CarveShape {
             } => {
                 let local = rotation.inverse() * (point - *center);
                 let q = local.abs() - *half_extents;
-                q.max(Vec3::ZERO).length() + q.max_element().min(0.0)
+                q.max(Vec3::ZERO).length() + q.max_element().law_min(0.0)
             }
             Self::Sdf(node) => eval(node, point),
         }
@@ -153,24 +154,24 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
     let start = [
         ((clamped_min.x - grid.bounds_min.x) * inv_size.x * grid.resolution[0] as f32)
             .floor()
-            .max(0.0) as u32,
+            .law_max(0.0) as u32,
         ((clamped_min.y - grid.bounds_min.y) * inv_size.y * grid.resolution[1] as f32)
             .floor()
-            .max(0.0) as u32,
+            .law_max(0.0) as u32,
         ((clamped_min.z - grid.bounds_min.z) * inv_size.z * grid.resolution[2] as f32)
             .floor()
-            .max(0.0) as u32,
+            .law_max(0.0) as u32,
     ];
     let end = [
         ((clamped_max.x - grid.bounds_min.x) * inv_size.x * grid.resolution[0] as f32)
             .ceil()
-            .min(grid.resolution[0] as f32) as u32,
+            .law_min(grid.resolution[0] as f32) as u32,
         ((clamped_max.y - grid.bounds_min.y) * inv_size.y * grid.resolution[1] as f32)
             .ceil()
-            .min(grid.resolution[1] as f32) as u32,
+            .law_min(grid.resolution[1] as f32) as u32,
         ((clamped_max.z - grid.bounds_min.z) * inv_size.z * grid.resolution[2] as f32)
             .ceil()
-            .min(grid.resolution[2] as f32) as u32,
+            .law_min(grid.resolution[2] as f32) as u32,
     ];
 
     let mut removed_voxels = 0u32;
@@ -186,7 +187,7 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
                 let old_d = grid.distances[idx];
 
                 // Subtraction: max(old, -carve)
-                let new_d = old_d.max(-carve_d);
+                let new_d = old_d.law_max(-carve_d);
 
                 if (new_d - old_d).abs() > 1e-6 {
                     // Removed volume = voxels that went from inside to outside.

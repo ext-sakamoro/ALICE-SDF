@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::eval::eval;
 use crate::types::SdfNode;
 use glam::Vec3;
@@ -139,7 +140,11 @@ fn plane_to_world(plane: SlicePlane, u: f32, v: f32) -> Vec3 {
 
 /// Convert a heatmap to RGBA pixel data using the specified color map.
 pub fn heatmap_to_rgba(heatmap: &Heatmap, colormap: ColorMap) -> Vec<[u8; 4]> {
-    let scale = heatmap.max_val.abs().max(heatmap.min_val.abs()).max(1e-6);
+    let scale = heatmap
+        .max_val
+        .abs()
+        .law_max(heatmap.min_val.abs())
+        .law_max(1e-6);
     heatmap
         .pixels
         .iter()
@@ -182,9 +187,9 @@ fn distance_to_color(t: f32, colormap: ColorMap) -> [u8; 4] {
         }
         ColorMap::Magma => {
             let s = f32::midpoint(t, 1.0); // [0, 1]
-            let r = (s * 255.0).min(255.0) as u8;
-            let g = (s * s * 200.0).min(255.0) as u8;
-            let b = (80.0 + s * 100.0).min(255.0) as u8;
+            let r = (s * 255.0).law_min(255.0) as u8;
+            let g = (s * s * 200.0).law_min(255.0) as u8;
+            let b = (80.0 + s * 100.0).law_min(255.0) as u8;
             [r, g, b, 255]
         }
     }

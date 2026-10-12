@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Exact SDF for a cut hollow sphere centered at origin
@@ -16,7 +17,7 @@ use glam::{Vec2, Vec3};
 #[inline(always)]
 pub fn sdf_cut_hollow_sphere(p: Vec3, radius: f32, cut_height: f32, thickness: f32) -> f32 {
     let w = (radius * radius + -(cut_height * cut_height))
-        .max(0.0)
+        .law_max(0.0)
         .sqrt();
     let q = Vec2::new(alice_det_math::hypot(p.x, p.z), p.y);
 

@@ -8,6 +8,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// L1 Spherical Harmonics coefficients for one color channel
@@ -118,9 +119,9 @@ impl IrradianceProbe {
     /// Evaluate the irradiance in a given direction
     pub fn evaluate(&self, direction: Vec3) -> Vec3 {
         Vec3::new(
-            self.sh_r.evaluate(direction).max(0.0),
-            self.sh_g.evaluate(direction).max(0.0),
-            self.sh_b.evaluate(direction).max(0.0),
+            self.sh_r.evaluate(direction).law_max(0.0),
+            self.sh_g.evaluate(direction).law_max(0.0),
+            self.sh_b.evaluate(direction).law_max(0.0),
         )
     }
 

@@ -214,6 +214,77 @@ pub(crate) const fn law_min_f32(a: f32, b: f32) -> f32 {
     }
 }
 
+/// [`law_max_f32`] for `f64` (same expression as `alice_physics::det_math::max64`).
+#[inline(always)]
+pub(crate) const fn law_max_f64(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b > a {
+        b
+    } else if b.is_nan() || a > b || !a.is_sign_negative() {
+        a
+    } else {
+        b
+    }
+}
+
+/// [`law_min_f32`] for `f64` (same expression as `alice_physics::det_math::min64`).
+#[inline(always)]
+pub(crate) const fn law_min_f64(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b < a {
+        b
+    } else if b.is_nan() || a < b || a.is_sign_negative() {
+        a
+    } else {
+        b
+    }
+}
+
+/// `x.law_max(y)` / `x.law_min(y)`: the Law min/max in method form, for code
+/// that used `f32::max` / `f64::max` / `f32x8::max` (which the library may not
+/// call, `.github/clippy-lib/clippy.toml`). Same values as the platform
+/// functions except the sign of an equal pair of zeros, which the Law fixes
+/// (ordered: `-0 < +0`) where the targets differ.
+pub(crate) trait LawMinMax: Sized {
+    /// Law maximum ([`law_max_f32`], per lane for `f32x8`).
+    #[must_use]
+    fn law_max(self, other: Self) -> Self;
+    /// Law minimum ([`law_min_f32`], per lane for `f32x8`).
+    #[must_use]
+    fn law_min(self, other: Self) -> Self;
+}
+
+impl LawMinMax for f32 {
+    #[inline(always)]
+    fn law_max(self, other: Self) -> Self {
+        law_max_f32(self, other)
+    }
+    #[inline(always)]
+    fn law_min(self, other: Self) -> Self {
+        law_min_f32(self, other)
+    }
+}
+
+impl LawMinMax for f64 {
+    #[inline(always)]
+    fn law_max(self, other: Self) -> Self {
+        law_max_f64(self, other)
+    }
+    #[inline(always)]
+    fn law_min(self, other: Self) -> Self {
+        law_min_f64(self, other)
+    }
+}
+
+impl LawMinMax for f32x8 {
+    #[inline(always)]
+    fn law_max(self, other: Self) -> Self {
+        <Self as Real>::max(self, other)
+    }
+    #[inline(always)]
+    fn law_min(self, other: Self) -> Self {
+        <Self as Real>::min(self, other)
+    }
+}
+
 impl Real for f32 {
     type Mask = bool;
     const LANES: usize = 1;

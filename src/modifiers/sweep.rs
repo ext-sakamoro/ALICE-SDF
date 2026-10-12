@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Evaluate a quadratic Bezier curve at parameter t
@@ -34,7 +35,7 @@ pub fn bezier_distance_2d(q: Vec2, p0: Vec2, p1: Vec2, p2: Vec2) -> f32 {
     if bb < 1e-12 {
         // straight segment A → C
         let ac = p2 - p0;
-        let t = (-d.dot(ac) / ac.dot(ac).max(1e-12)).clamp(0.0, 1.0);
+        let t = (-d.dot(ac) / ac.dot(ac).law_max(1e-12)).clamp(0.0, 1.0);
         return (d + ac * t).length();
     }
     let kk = 1.0 / bb;
@@ -62,7 +63,7 @@ pub fn bezier_distance_2d(q: Vec2, p0: Vec2, p1: Vec2, p2: Vec2) -> f32 {
         let t0 = ((m + m) * z + -kx).clamp(0.0, 1.0);
         let t1 = ((-n - m) * z + -kx).clamp(0.0, 1.0);
         // the third root cannot be the closest
-        dot2(d + (c + b * t0) * t0).min(dot2(d + (c + b * t1) * t1))
+        dot2(d + (c + b * t0) * t0).law_min(dot2(d + (c + b * t1) * t1))
     };
     res.sqrt()
 }

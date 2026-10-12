@@ -6,6 +6,7 @@
 //! Author: Moroya Sakamoto
 
 use super::{Volume3D, VoxelDistGrad};
+use crate::compiled::real::LawMinMax;
 
 /// Span of previous-level voxels that mip voxel `i` stands for on one axis.
 ///
@@ -94,7 +95,7 @@ pub fn generate_mip_chain(volume: &Volume3D<f32>) -> Vec<Vec<f32>> {
                         for cy in y0..y1 {
                             let row = plane + cy * prev_sx;
                             for cx in x0..x1 {
-                                min_val = min_val.min(prev_data[row + cx]);
+                                min_val = min_val.law_min(prev_data[row + cx]);
                             }
                         }
                     }

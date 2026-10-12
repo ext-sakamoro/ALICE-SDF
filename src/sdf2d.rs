@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 // ── 2D Node Type ─────────────────────────────────────────────
 
 /// A 2D Signed Distance Function node.
@@ -182,8 +183,9 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         } => {
             let dx = (point[0] - center[0]).abs() - half_extents[0];
             let dy = (point[1] - center[1]).abs() - half_extents[1];
-            let outside = (dx.max(0.0) * dx.max(0.0) + (dy.max(0.0) * dy.max(0.0))).sqrt();
-            let inside = dx.max(dy).min(0.0);
+            let outside =
+                (dx.law_max(0.0) * dx.law_max(0.0) + (dy.law_max(0.0) * dy.law_max(0.0))).sqrt();
+            let inside = dx.law_max(dy).law_min(0.0);
             outside + inside
         }
 
@@ -194,8 +196,9 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
         } => {
             let dx = (point[0] - center[0]).abs() - half_extents[0] + corner_radius;
             let dy = (point[1] - center[1]).abs() - half_extents[1] + corner_radius;
-            let outside = (dx.max(0.0) * dx.max(0.0) + (dy.max(0.0) * dy.max(0.0))).sqrt();
-            let inside = dx.max(dy).min(0.0);
+            let outside =
+                (dx.law_max(0.0) * dx.law_max(0.0) + (dy.law_max(0.0) * dy.law_max(0.0))).sqrt();
+            let inside = dx.law_max(dy).law_min(0.0);
             outside + inside - corner_radius
         }
 
@@ -314,7 +317,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let sector = std::f32::consts::PI / n;
             let a = (2.0f32 * sector + (angle % (2.0 * sector))) % (2.0 * sector);
             // Interpolate between inner and outer radius based on angle
-            let t = (a / sector).min(2.0 - a / sector);
+            let t = (a / sector).law_min(2.0 - a / sector);
             let boundary = inner_radius + (outer_radius - inner_radius) * t;
             r - boundary
         }
@@ -328,21 +331,21 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             if a < 1e-10 || b < 1e-10 {
                 return f32::MAX;
             }
-            let scale = a.max(b);
+            let scale = a.law_max(b);
             let nx = px / a;
             let ny = py / b;
             let r = alice_det_math::hypot(nx, ny);
             if r < 1e-10 {
-                return -a.min(b);
+                return -a.law_min(b);
             }
-            (r - 1.0) * scale / r.max(1.0)
+            (r - 1.0) * scale / r.law_max(1.0)
         }
 
         Sdf2dNode::Onion { child, thickness } => eval_2d(child, point).abs() - thickness,
 
-        Sdf2dNode::Union(a, b) => eval_2d(a, point).min(eval_2d(b, point)),
-        Sdf2dNode::Subtract(a, b) => eval_2d(a, point).max(-eval_2d(b, point)),
-        Sdf2dNode::Intersect(a, b) => eval_2d(a, point).max(eval_2d(b, point)),
+        Sdf2dNode::Union(a, b) => eval_2d(a, point).law_min(eval_2d(b, point)),
+        Sdf2dNode::Subtract(a, b) => eval_2d(a, point).law_max(-eval_2d(b, point)),
+        Sdf2dNode::Intersect(a, b) => eval_2d(a, point).law_max(eval_2d(b, point)),
         Sdf2dNode::SmoothUnion { a, b, k } => {
             let da = eval_2d(a, point);
             let db = eval_2d(b, point);
@@ -391,10 +394,10 @@ pub fn eval_2d_normal(node: &Sdf2dNode, point: [f32; 2]) -> [f32; 2] {
 #[inline(always)]
 fn smooth_min_2d(a: f32, b: f32, k: f32) -> f32 {
     if k < 1e-10 {
-        return a.min(b);
+        return a.law_min(b);
     }
     let h = ((k - (a - b).abs()) / k).clamp(0.0, 1.0);
-    (h * h * k) * -0.25 + a.min(b)
+    (h * h * k) * -0.25 + a.law_min(b)
 }
 
 /// Bilinear interpolation on a 64x64 grid (matches `alice_font::glyph::GLYPH_SDF_SIZE`).

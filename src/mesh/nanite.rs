@@ -19,6 +19,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::law_max_f32;
+use crate::compiled::real::LawMinMax;
 use crate::eval::{eval, eval_material, eval_normal};
 use crate::mesh::dual_contouring::{dual_contouring, DualContouringConfig};
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh, Triangle, Vertex};
@@ -71,7 +73,7 @@ impl ClusterBounds {
         let radius = vertices
             .iter()
             .map(|&v| (v - center).length())
-            .fold(0.0f32, f32::max);
+            .fold(0.0f32, law_max_f32);
 
         Self {
             center,
@@ -102,7 +104,7 @@ impl ClusterBounds {
         let sin_a = self.radius / dist;
         let cos_a = (dist * dist + (-(self.radius * self.radius))).sqrt() / dist;
         let fov_cos = fov_cos.clamp(-1.0, 1.0);
-        let fov_sin = (fov_cos * -fov_cos + 1.0).max(0.0).sqrt();
+        let fov_sin = (fov_cos * -fov_cos + 1.0).law_max(0.0).sqrt();
 
         // θ + α >= π: only possible when θ >= π/2, then α >= π - θ <=> sin α >= sin θ
         if fov_cos <= 0.0 && sin_a >= fov_sin {
@@ -115,7 +117,7 @@ impl ClusterBounds {
     /// Compute screen-space error for LOD selection
     #[inline]
     pub fn screen_error(&self, view_pos: Vec3, geometric_error: f32, screen_height: f32) -> f32 {
-        let dist = (self.center - view_pos).length().max(self.radius);
+        let dist = (self.center - view_pos).length().law_max(self.radius);
         (geometric_error / dist) * screen_height
     }
 }
@@ -293,8 +295,8 @@ impl NormalCone {
         if self.cutoff_cos < 0.0 {
             return false; // 半角 > 90° (unbounded を含む) は culling 不可
         }
-        let c = self.cutoff_cos.min(1.0);
-        let sin_beta = (c * -c + 1.0).max(0.0).sqrt();
+        let c = self.cutoff_cos.law_min(1.0);
+        let sin_beta = (c * -c + 1.0).law_max(0.0).sqrt();
         self.axis.dot(view_dir) >= sin_beta
     }
 }
@@ -649,7 +651,7 @@ fn triangle_cell(a: Vec3, b: Vec3, c: Vec3, origin: Vec3, side: f32, depth: u32)
     let n = 1u32 << depth;
     let scale = n as f32 / side;
     let rel = ((a + b + c) / 3.0 - origin) * scale;
-    let idx = |x: f32| (x.floor().max(0.0) as u32).min(n - 1);
+    let idx = |x: f32| (x.floor().law_max(0.0) as u32).min(n - 1);
     [idx(rel.x), idx(rel.y), idx(rel.z)]
 }
 
@@ -709,7 +711,7 @@ pub fn generate_nanite_mesh(
     let origin = min_bounds;
     let side = (max_bounds - min_bounds)
         .max_element()
-        .max(f32::MIN_POSITIVE);
+        .law_max(f32::MIN_POSITIVE);
     let max_tris = config.max_triangles_per_cluster.max(1);
 
     let mut all_clusters: Vec<NaniteCluster> = Vec::new();
@@ -775,7 +777,7 @@ pub fn generate_nanite_mesh(
                 let positions: Vec<Vec3> = vertices.iter().map(|v| v.position).collect();
                 let bounds = ClusterBounds::from_vertices(&positions);
                 let error = cluster_surface_error(sdf, &mesh, &chunk, &tri_errors);
-                region_error = region_error.max(error);
+                region_error = region_error.law_max(error);
                 level_tris += triangles.len() as u32;
                 ids.push(cluster_id);
                 all_clusters.push(NaniteCluster {
@@ -794,7 +796,7 @@ pub fn generate_nanite_mesh(
                 });
                 cluster_id += 1;
             }
-            level_max = level_max.max(region_error);
+            level_max = level_max.law_max(region_error);
             regions.push(Region {
                 lod,
                 depth,
@@ -820,7 +822,7 @@ pub fn generate_nanite_mesh(
             .iter()
             .filter(|g| g.lod_level == info.level)
             .map(|g| g.max_error)
-            .fold(0.0f32, f32::max);
+            .fold(0.0f32, law_max_f32);
     }
 
     // Compute global bounds
@@ -903,9 +905,9 @@ fn build_region_tree(regions: &mut [Region], clusters: &mut [NaniteCluster]) -> 
     let mut errors: Vec<f32> = regions.iter().map(|r| r.error).collect();
     for i in 0..regions.len() {
         if let Some(p) = regions[i].parent {
-            errors[p] = errors[p].max(errors[i]);
+            errors[p] = errors[p].law_max(errors[i]);
             let reach = (bounds[i].center - bounds[p].center).length() + bounds[i].radius;
-            bounds[p].radius = bounds[p].radius.max(reach);
+            bounds[p].radius = bounds[p].radius.law_max(reach);
         }
     }
 
@@ -1103,12 +1105,12 @@ pub(crate) fn cluster_surface_error(
     sampled: &[f32],
 ) -> f32 {
     use rayon::prelude::*;
-    let coarse = tris.iter().map(|&t| sampled[t]).fold(0.0f32, f32::max);
+    let coarse = tris.iter().map(|&t| sampled[t]).fold(0.0f32, law_max_f32);
     let found = tris
         .par_iter()
         .filter(|&&t| sampled[t] >= 0.5 * coarse)
         .map(|&t| refine_triangle(sdf, triangle_positions(mesh, t)))
-        .reduce(|| coarse, f32::max);
+        .reduce(|| coarse, law_max_f32);
     if found == 0.0 {
         return 0.0;
     }
@@ -1118,7 +1120,7 @@ pub(crate) fn cluster_surface_error(
         .iter()
         .flat_map(|&t| triangle_positions(mesh, t))
         .map(|p| p.abs().max_element())
-        .fold(1.0f32, f32::max);
+        .fold(1.0f32, law_max_f32);
     4.0f32 * (f32::EPSILON * scale) + found
 }
 

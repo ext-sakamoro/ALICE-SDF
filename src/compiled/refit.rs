@@ -27,6 +27,7 @@ use super::aabb::{primitives as aabb_prims, AabbPacked};
 use super::eval_bvh::CompiledSdfBvh;
 use super::instruction::Instruction;
 use super::opcode::{OpCode, OpKind};
+use crate::compiled::real::LawMinMax;
 use glam::{Quat, Vec2, Vec3};
 use std::collections::HashSet;
 
@@ -439,10 +440,10 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
             let he = Vec3::new(params[0], params[1], params[2]) + params[3];
             AabbPacked::from_half_size(he)
         }
-        OpCode::CappedCone => cube(params[0].max(params[1]).max(params[2])),
+        OpCode::CappedCone => cube(params[0].law_max(params[1]).law_max(params[2])),
         OpCode::CappedTorus => cube(params[0] + params[1]),
         // sdf_rounded_cylinder follows IQ's formula where the radial term is `2*radius`
-        OpCode::RoundedCylinder => cube(params[0].max(params[2] + params[1])),
+        OpCode::RoundedCylinder => cube(params[0].law_max(params[2] + params[1])),
         OpCode::TriangularPrism => cube(params[0] + params[1]),
         OpCode::CutSphere | OpCode::CutHollowSphere => cube(params[0]),
         OpCode::DeathStar => cube(params[0] + params[1] + params[2]),
@@ -468,14 +469,14 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
             let hh = params[2].abs();
             AabbPacked::new(Vec3::new(-e, -hh, -e), Vec3::new(e, hh, e))
         }
-        OpCode::Barrel => cube((params[0] + params[2]).max(params[1])),
-        OpCode::Diamond => cube(params[0].max(params[1])),
+        OpCode::Barrel => cube((params[0] + params[2]).law_max(params[1])),
+        OpCode::Diamond => cube(params[0].law_max(params[1])),
         OpCode::RoundedX => cube(params[0] + params[1] + params[2]),
-        OpCode::Pie => cube(params[1].max(params[2])),
-        OpCode::Trapezoid => cube(params[0].max(params[1]) + params[2] + params[3]),
+        OpCode::Pie => cube(params[1].law_max(params[2])),
+        OpCode::Trapezoid => cube(params[0].law_max(params[1]) + params[2] + params[3]),
         OpCode::Parallelogram => cube(params[0] + params[1] + params[2].abs() + params[3]),
         OpCode::Tunnel => cube(params[0] + params[1] + params[2]),
-        OpCode::UnevenCapsule => cube(params[0].max(params[1]) + params[2] + params[3]),
+        OpCode::UnevenCapsule => cube(params[0].law_max(params[1]) + params[2] + params[3]),
         OpCode::Egg => cube((params[0] + params[1]) * 2.0),
         OpCode::ArcShape => cube(params[1] + params[2] + params[3]),
         OpCode::Moon => cube(params[0].abs() + params[1] + params[2] + params[3]),
@@ -483,8 +484,8 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         OpCode::BlobbyCross => cube(params[0] * 2.0 + params[1]),
         OpCode::ParabolaSegment => cube(params[0] + params[1] + params[2]),
         OpCode::RegularPolygon => cube(params[0] + params[2]),
-        OpCode::StarPolygon => cube(params[0].max(params[2]) + params[3]),
-        OpCode::Stairs => cube((params[0] + params[1]) * params[2].max(1.0) + params[3]),
+        OpCode::StarPolygon => cube(params[0].law_max(params[2]) + params[3]),
+        OpCode::Stairs => cube((params[0] + params[1]) * params[2].law_max(1.0) + params[3]),
         OpCode::Helix => cube(params[0] + params[1] + params[2].abs() + params[3]),
         OpCode::Tetrahedron => cube(params[0] * 2.0),
         OpCode::Dodecahedron
@@ -519,9 +520,9 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         OpCode::Segment2D => {
             let r = params[0]
                 .abs()
-                .max(params[1].abs())
-                .max(params[2].abs())
-                .max(params[3].abs())
+                .law_max(params[1].abs())
+                .law_max(params[2].abs())
+                .law_max(params[3].abs())
                 + params[4];
             AabbPacked::new(Vec3::new(-r, -r, -params[5]), Vec3::new(r, r, params[5]))
         }
@@ -690,14 +691,17 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
         OpCode::Taper => {
             let f = params[0].abs();
             let (lo, hi) = (child.min(), child.max());
-            let reach = |a: f32, b: f32| a.abs().max(b.abs());
-            let r_xz = reach(lo.x, hi.x).max(reach(lo.z, hi.z));
+            let reach = |a: f32, b: f32| a.abs().law_max(b.abs());
+            let r_xz = reach(lo.x, hi.x).law_max(reach(lo.z, hi.z));
             let r_y = reach(lo.y, hi.y);
             let e = r_xz * (f * r_y + 1.0);
             AabbPacked::new(Vec3::new(-e, lo.y, -e), Vec3::new(e, hi.y, e))
         }
         OpCode::Shear => {
-            let max_shear = params[0].abs().max(params[1].abs()).max(params[2].abs());
+            let max_shear = params[0]
+                .abs()
+                .law_max(params[1].abs())
+                .law_max(params[2].abs());
             let half = child.half_size();
             let expand = half.length() * max_shear;
             child.expand(expand)
@@ -727,9 +731,9 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
             let az = params[2];
             let cmin = child.min();
             let cmax = child.max();
-            let ex = cmax.x.abs().max(cmin.x.abs());
-            let ey = cmax.y.abs().max(cmin.y.abs());
-            let ez = cmax.z.abs().max(cmin.z.abs());
+            let ex = cmax.x.abs().law_max(cmin.x.abs());
+            let ey = cmax.y.abs().law_max(cmin.y.abs());
+            let ez = cmax.z.abs().law_max(cmin.z.abs());
             AabbPacked::new(
                 Vec3::new(
                     if ax != 0.0 { -ex } else { cmin.x },
@@ -746,7 +750,7 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
         OpCode::PolarRepeat => {
             let half = child.half_size();
             let center = child.center();
-            let max_r = half.x.max(half.z) + center.x.abs().max(center.z.abs());
+            let max_r = half.x.law_max(half.z) + center.x.abs().law_max(center.z.abs());
             AabbPacked::new(
                 Vec3::new(-max_r, child.min().y, -max_r),
                 Vec3::new(max_r, child.max().y, max_r),
@@ -755,7 +759,7 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
         // === 2D → 3D lifts ===
         OpCode::Revolution => {
             let offset = params[0];
-            let max_r = child.max().x.abs().max(child.min().x.abs()) + offset.abs();
+            let max_r = child.max().x.abs().law_max(child.min().x.abs()) + offset.abs();
             AabbPacked::new(
                 Vec3::new(-max_r, child.min().y, -max_r),
                 Vec3::new(max_r, child.max().y, max_r),
@@ -770,11 +774,11 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
         }
         OpCode::SweepBezier => {
             // params[0..6] = p0.x, p0.z, p1.x, p1.z, p2.x, p2.z
-            let bmin_x = params[0].min(params[2]).min(params[4]);
-            let bmax_x = params[0].max(params[2]).max(params[4]);
-            let bmin_z = params[1].min(params[3]).min(params[5]);
-            let bmax_z = params[1].max(params[3]).max(params[5]);
-            let max_perp = child.max().x.abs().max(child.min().x.abs());
+            let bmin_x = params[0].law_min(params[2]).law_min(params[4]);
+            let bmax_x = params[0].law_max(params[2]).law_max(params[4]);
+            let bmin_z = params[1].law_min(params[3]).law_min(params[5]);
+            let bmax_z = params[1].law_max(params[3]).law_max(params[5]);
+            let max_perp = child.max().x.abs().law_max(child.min().x.abs());
             AabbPacked::new(
                 Vec3::new(bmin_x - max_perp, child.min().y, bmin_z - max_perp),
                 Vec3::new(bmax_x + max_perp, child.max().y, bmax_z + max_perp),
@@ -787,11 +791,11 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
             let m = cmax
                 .x
                 .abs()
-                .max(cmin.x.abs())
-                .max(cmax.y.abs())
-                .max(cmin.y.abs())
-                .max(cmax.z.abs())
-                .max(cmin.z.abs());
+                .law_max(cmin.x.abs())
+                .law_max(cmax.y.abs())
+                .law_max(cmin.y.abs())
+                .law_max(cmax.z.abs())
+                .law_max(cmin.z.abs());
             // Icosahedral fold is a composition of reflections (norm-preserving):
             // bound by the sphere of the farthest corner.
             let r = if opcode == OpCode::IcosahedralSymmetry {

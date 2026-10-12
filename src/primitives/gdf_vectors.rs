@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Cube face normals [0..3]
@@ -53,7 +54,7 @@ pub const GDF_DODECAHEDRON: [Vec3; 6] = [
 pub fn gdf_eval(p: Vec3, normals: &[Vec3], radius: f32) -> f32 {
     let mut d = f32::NEG_INFINITY;
     for n in normals {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     d - radius
 }

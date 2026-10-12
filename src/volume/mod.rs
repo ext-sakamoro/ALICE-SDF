@@ -26,6 +26,7 @@ pub mod mipchain;
 #[cfg(feature = "gpu")]
 pub mod gpu_bake;
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Channels to bake into the volume
@@ -140,9 +141,9 @@ impl<T: Copy + Default> Volume3D<T> {
     pub fn voxel_size(&self) -> Vec3 {
         let size = self.world_size();
         Vec3::new(
-            size.x / (self.resolution[0] as f32 - 1.0).max(1.0),
-            size.y / (self.resolution[1] as f32 - 1.0).max(1.0),
-            size.z / (self.resolution[2] as f32 - 1.0).max(1.0),
+            size.x / (self.resolution[0] as f32 - 1.0).law_max(1.0),
+            size.y / (self.resolution[1] as f32 - 1.0).law_max(1.0),
+            size.z / (self.resolution[2] as f32 - 1.0).law_max(1.0),
         )
     }
 

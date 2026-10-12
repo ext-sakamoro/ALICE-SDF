@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::modifiers::TERRAIN_NOISE_SEED;
 use crate::types::SdfNode;
 use std::fmt::Write;
@@ -2187,7 +2188,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let inv_x = self.param(1.0 / factors.x);
                 let inv_y = self.param(1.0 / factors.y);
                 let inv_z = self.param(1.0 / factors.z);
-                let min_scale = factors.x.min(factors.y).min(factors.z);
+                let min_scale = factors.x.law_min(factors.y).law_min(factors.z);
                 let p_min = self.param(min_scale);
                 code.push_str(&L::decl_vec3(
                     &new_p,
@@ -3378,7 +3379,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 }
                 // stable form: min(a, b) - k * log(1 + exp(-|a - b| / k)), same as
                 // `sdf_exp_smooth_union_r` (no underflow to log(0), no clamp)
-                let inv_k = self.param(1.0 / k.max(1e-6));
+                let inv_k = self.param(1.0 / k.law_max(1e-6));
                 let m = self.next_var();
                 let delta = self.next_var();
                 let s = self.next_var();
@@ -3390,7 +3391,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 code.push_str(&L::decl_float(
                     &var,
-                    &format!("{} - log({}) * {}", m, s, self.param(k.max(1e-6))),
+                    &format!("{} - log({}) * {}", m, s, self.param(k.law_max(1e-6))),
                 ));
                 var
             }
@@ -3404,7 +3405,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     return var;
                 }
                 // stable form: max(a, b) + k * log(1 + exp(-|a - b| / k))
-                let inv_k = self.param(1.0 / k.max(1e-6));
+                let inv_k = self.param(1.0 / k.law_max(1e-6));
                 let m = self.next_var();
                 let delta = self.next_var();
                 let s = self.next_var();
@@ -3416,7 +3417,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 code.push_str(&L::decl_float(
                     &var,
-                    &format!("{} + log({}) * {}", m, s, self.param(k.max(1e-6))),
+                    &format!("{} + log({}) * {}", m, s, self.param(k.law_max(1e-6))),
                 ));
                 var
             }
@@ -3430,7 +3431,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     return var;
                 }
                 // stable form of the intersection with -b: max(a, -b) + k * log(1 + exp(-|a + b| / k))
-                let inv_k = self.param(1.0 / k.max(1e-6));
+                let inv_k = self.param(1.0 / k.law_max(1e-6));
                 let m = self.next_var();
                 let delta = self.next_var();
                 let s = self.next_var();
@@ -3442,7 +3443,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 code.push_str(&L::decl_float(
                     &var,
-                    &format!("{} + log({}) * {}", m, s, self.param(k.max(1e-6))),
+                    &format!("{} + log({}) * {}", m, s, self.param(k.law_max(1e-6))),
                 ));
                 var
             }

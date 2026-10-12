@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for a star polygon, extruded along Y-axis
@@ -16,7 +17,7 @@ use glam::{Vec2, Vec3};
 pub fn sdf_star_polygon(p: Vec3, radius: f32, n_points: f32, m: f32, half_height: f32) -> f32 {
     let qx = p.x.abs();
     let qz = p.z;
-    let n = n_points.max(3.0);
+    let n = n_points.law_max(3.0);
     let an = std::f32::consts::PI / n;
 
     // Fold to one half-sector [0, an]
@@ -51,8 +52,8 @@ pub fn sdf_star_polygon(p: Vec3, radius: f32, n_points: f32, m: f32, half_height
 
     // Extrude along Y
     let d_y = p.y.abs() - half_height;
-    let w = Vec2::new(d_2d.max(0.0), d_y.max(0.0));
-    d_2d.max(d_y).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_y.law_max(0.0));
+    d_2d.law_max(d_y).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

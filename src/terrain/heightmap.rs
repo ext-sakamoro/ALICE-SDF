@@ -2,6 +2,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// 2D heightmap storing terrain elevation data
@@ -182,8 +183,8 @@ impl Heightmap {
         let mut min = f32::MAX;
         let mut max = f32::MIN;
         for &h in &self.heights {
-            min = min.min(h);
-            max = max.max(h);
+            min = min.law_min(h);
+            max = max.law_max(h);
         }
         (min, max)
     }

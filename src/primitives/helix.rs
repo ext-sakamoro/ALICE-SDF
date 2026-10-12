@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::crispy::round_half_up;
 use glam::{Vec2, Vec3};
 
@@ -33,7 +34,7 @@ fn helix_curve_dist2(r: f32, theta: f32, py: f32, major_r: f32, pitch: f32) -> f
             let (s, co) = alice_det_math::sin_cos(phi - theta);
             let dy = c * -phi + py;
             let f1 = two_rr * s + (-2.0 * c * dy);
-            let f2 = (two_rr * co + (2.0 * c * c)).max(1e-6);
+            let f2 = (two_rr * co + (2.0 * c * c)).law_max(1e-6);
             phi -= (f1 / f2).clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
         }
         let co = alice_det_math::cos(phi - theta);
@@ -45,8 +46,8 @@ fn helix_curve_dist2(r: f32, theta: f32, py: f32, major_r: f32, pitch: f32) -> f
         // distance — the field read −0.309 where the tube law gives −0.0999
         // (a 0.21 error at the curve, and GPU `max` does not have to swallow
         // NaN the same way the CPU does).
-        let d2 = dy * dy + (rr - two_rr * co).max(0.0);
-        best = best.min(d2);
+        let d2 = dy * dy + (rr - two_rr * co).law_max(0.0);
+        best = best.law_min(d2);
     }
     best
 }
@@ -75,7 +76,7 @@ pub fn sdf_helix(p: Vec3, major_r: f32, minor_r: f32, pitch: f32, half_height: f
     };
     let d_tube = helix_curve_dist2(r_xz, theta, p.y, major_r, pitch).sqrt() - minor_r;
     let d_cap = p.y.abs() - half_height;
-    d_tube.max(d_cap)
+    d_tube.law_max(d_cap)
 }
 #[allow(
     clippy::disallowed_methods,

@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF of a single step box in local coordinates
@@ -14,7 +15,7 @@ fn step_box(lx: f32, ly: f32, s: f32, sw: f32, sh: f32) -> f32 {
     let hy = (s + 1.0) * sh * 0.5;
     let dx = sw * -0.5 + (lx - cx).abs();
     let dy = (ly - hy).abs() - hy;
-    Vec2::new(dx.max(0.0), dy.max(0.0)).length() + dx.max(dy).min(0.0)
+    Vec2::new(dx.law_max(0.0), dy.law_max(0.0)).length() + dx.law_max(dy).law_min(0.0)
 }
 
 /// SDF for a staircase shape, extruded along Z-axis
@@ -35,7 +36,7 @@ pub fn sdf_stairs(
 ) -> f32 {
     let sw = step_width;
     let sh = step_height;
-    let n = n_steps.max(1.0);
+    let n = n_steps.law_max(1.0);
     let tw = n * sw;
     let th = n * sh;
 
@@ -49,13 +50,13 @@ pub fn sdf_stairs(
     // jumped where the candidates changed (Lipschitz property test).
     let mut d_2d = f32::MAX;
     for si in 0..n as u32 {
-        d_2d = d_2d.min(step_box(lx, ly, si as f32, sw, sh));
+        d_2d = d_2d.law_min(step_box(lx, ly, si as f32, sw, sh));
     }
 
     // Extrude along Z
     let d_z = p.z.abs() - half_depth;
-    let w = Vec2::new(d_2d.max(0.0), d_z.max(0.0));
-    d_2d.max(d_z).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_z.law_max(0.0));
+    d_2d.law_max(d_z).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

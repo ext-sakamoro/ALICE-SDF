@@ -8,6 +8,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Transform a point by inverse uniform scale for SDF evaluation
@@ -60,7 +61,7 @@ pub fn transform_scale_nonuniform(point: Vec3, factors: Vec3) -> (Vec3, f32) {
     // reciprocals (`Instruction::scale_nonuniform`), and the tree must be
     // bit-identical to them (3.1.0)
     let transformed = point * Vec3::new(1.0 / factors.x, 1.0 / factors.y, 1.0 / factors.z);
-    let min_factor = factors.x.min(factors.y.min(factors.z));
+    let min_factor = factors.x.law_min(factors.y.law_min(factors.z));
     (transformed, min_factor)
 }
 

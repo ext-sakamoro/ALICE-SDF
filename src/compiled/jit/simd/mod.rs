@@ -24,6 +24,7 @@
 
 mod platform;
 
+use crate::compiled::real::LawMinMax;
 use cranelift_codegen::ir::condcodes::FloatCC;
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, Value};
 use cranelift_codegen::settings::{self, Configurable};
@@ -975,7 +976,7 @@ impl JitSimdSdf {
                         // Pre-compute constants (Division Exorcism)
                         let h_val = half_height * 2.0;
                         let b_val = (r1_val - r2_val) / h_val; // the law divides (`sdf_rounded_cone_r`), 3.1.0
-                        let a_val = (1.0 - b_val * b_val).max(0.0).sqrt();
+                        let a_val = (1.0 - b_val * b_val).law_max(0.0).sqrt();
                         let ah_val = a_val * h_val;
 
                         let r1_s = builder.ins().f32const(r1_val);
@@ -3122,7 +3123,7 @@ fn build_dynamic_simd_body(
                 let half_height = inst.params[2];
                 let h_val = half_height * 2.0;
                 let b_val = (r1_val - r2_val) / h_val; // the law divides (`sdf_rounded_cone_r`), 3.1.0
-                let a_val = (1.0 - b_val * b_val).max(0.0).sqrt();
+                let a_val = (1.0 - b_val * b_val).law_max(0.0).sqrt();
                 let ah_val = a_val * h_val;
 
                 let r1_v = emitter.emit_splat(&mut builder, r1_val);

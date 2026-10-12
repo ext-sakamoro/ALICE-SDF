@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Point-to-segment distance helper
@@ -60,7 +61,7 @@ pub fn sdf_parallelogram(p: Vec3, width: f32, para_height: f32, skew: f32, half_
     let d3 = dist_to_seg(px, py, bx, by, cx, cy); // left
     let d4 = dist_to_seg(px, py, cx, cy, dx, dy); // bottom
 
-    let d_unsigned = d1.min(d2).min(d3).min(d4);
+    let d_unsigned = d1.law_min(d2).law_min(d3).law_min(d4);
 
     // Inside: (P-A)×(B-A) is negative for interior of CCW polygon
     let c1 = cross_2d(px, py, dx, dy, ax, ay);
@@ -73,8 +74,8 @@ pub fn sdf_parallelogram(p: Vec3, width: f32, para_height: f32, skew: f32, half_
 
     // Extrude along Z
     let d_z = p.z.abs() - half_depth;
-    let w = Vec2::new(d_2d.max(0.0), d_z.max(0.0));
-    d_2d.max(d_z).min(0.0) + w.length()
+    let w = Vec2::new(d_2d.law_max(0.0), d_z.law_max(0.0));
+    d_2d.law_max(d_z).law_min(0.0) + w.length()
 }
 
 #[cfg(test)]

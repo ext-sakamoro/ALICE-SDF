@@ -13,6 +13,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::eval::{eval, normal};
 use crate::fidelity::distance_fidelity;
 use crate::interval::eval_lipschitz;
@@ -115,7 +116,7 @@ impl RaymarchConfig {
             let scale = bound / self.lipschitz;
             let grown = ((self.max_steps as f32) * scale)
                 .ceil()
-                .min(MAX_STEP_BUDGET as f32) as u32;
+                .law_min(MAX_STEP_BUDGET as f32) as u32;
             // never shrink a budget the caller already set above the cap
             self.max_steps = grown.max(self.max_steps);
             self.lipschitz = bound;
@@ -180,9 +181,9 @@ struct RelaxedStepper {
 impl RelaxedStepper {
     #[inline(always)]
     fn new(config: &RaymarchConfig) -> Self {
-        let inv_lip = 1.0 / config.lipschitz.max(1.0);
+        let inv_lip = 1.0 / config.lipschitz.law_max(1.0);
         Self {
-            omega: config.omega.max(1.0),
+            omega: config.omega.law_max(1.0),
             inv_lip,
             // The floor lives in field units like `d`: a floor of `min_step`
             // in ray units would move the sample by up to `L·min_step` in
@@ -225,7 +226,7 @@ impl RelaxedStepper {
     /// (call after [`Self::overshoot`] returned `None`).
     #[inline(always)]
     fn advance(&mut self, t: f32, d: f32) -> f32 {
-        let step = (d * self.inv_lip * self.omega).max(self.min_step);
+        let step = (d * self.inv_lip * self.omega).law_max(self.min_step);
         self.prev_t = t;
         self.prev_radius = d.abs() * self.inv_lip;
         self.prev_step = step;
@@ -670,7 +671,7 @@ pub fn raymarch_simd_8(
     let max_d = f32x8::splat(max_distance);
     let zero = f32x8::splat(0.0);
     // step = d / L with the compiled bound (see `RaymarchConfig::with_bound`)
-    let inv_lip = f32x8::splat(1.0 / config.with_bound(sdf.lipschitz()).lipschitz.max(1.0));
+    let inv_lip = f32x8::splat(1.0 / config.with_bound(sdf.lipschitz()).lipschitz.law_max(1.0));
 
     let mut t = f32x8::splat(0.0);
 
@@ -993,7 +994,7 @@ pub fn raymarch_jit_simd_8(
     let zero = f32x8::splat(0.0);
     let one = f32x8::splat(1.0);
     // step = d / L with the compiled bound (see `RaymarchConfig::with_bound`)
-    let inv_lip = f32x8::splat(1.0 / config.with_bound(compiled.lipschitz).lipschitz.max(1.0));
+    let inv_lip = f32x8::splat(1.0 / config.with_bound(compiled.lipschitz).lipschitz.law_max(1.0));
 
     let mut t = f32x8::splat(0.0);
     let mut finished = f32x8::splat(0.0);

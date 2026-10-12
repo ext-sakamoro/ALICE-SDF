@@ -3,6 +3,8 @@
 //! Author: Moroya Sakamoto
 
 use super::opcode::OpCode;
+use crate::compiled::real::law_max_f32;
+use crate::compiled::real::LawMinMax;
 
 /// A single instruction in the compiled SDF bytecode
 ///
@@ -786,7 +788,7 @@ impl Instruction {
     #[inline]
     pub fn smooth_union(k: f32) -> Self {
         let mut inst = Self::new(OpCode::SmoothUnion);
-        let k_safe = k.max(1e-10);
+        let k_safe = k.law_max(1e-10);
         inst.params[0] = k_safe;
         inst.params[1] = 1.0 / k_safe; // Division Exorcism: precomputed reciprocal
         inst
@@ -796,7 +798,7 @@ impl Instruction {
     #[inline]
     pub fn smooth_intersection(k: f32) -> Self {
         let mut inst = Self::new(OpCode::SmoothIntersection);
-        let k_safe = k.max(1e-10);
+        let k_safe = k.law_max(1e-10);
         inst.params[0] = k_safe;
         inst.params[1] = 1.0 / k_safe; // Division Exorcism: precomputed reciprocal
         inst
@@ -806,7 +808,7 @@ impl Instruction {
     #[inline]
     pub fn smooth_subtraction(k: f32) -> Self {
         let mut inst = Self::new(OpCode::SmoothSubtraction);
-        let k_safe = k.max(1e-10);
+        let k_safe = k.law_max(1e-10);
         inst.params[0] = k_safe;
         inst.params[1] = 1.0 / k_safe; // Division Exorcism: precomputed reciprocal
         inst
@@ -816,7 +818,7 @@ impl Instruction {
     #[inline]
     pub const fn chamfer_union(r: f32) -> Self {
         let mut inst = Self::new(OpCode::ChamferUnion);
-        inst.params[0] = r.max(0.0);
+        inst.params[0] = law_max_f32(r, 0.0);
         inst
     }
 
@@ -824,7 +826,7 @@ impl Instruction {
     #[inline]
     pub const fn chamfer_intersection(r: f32) -> Self {
         let mut inst = Self::new(OpCode::ChamferIntersection);
-        inst.params[0] = r.max(0.0);
+        inst.params[0] = law_max_f32(r, 0.0);
         inst
     }
 
@@ -832,7 +834,7 @@ impl Instruction {
     #[inline]
     pub const fn chamfer_subtraction(r: f32) -> Self {
         let mut inst = Self::new(OpCode::ChamferSubtraction);
-        inst.params[0] = r.max(0.0);
+        inst.params[0] = law_max_f32(r, 0.0);
         inst
     }
 
@@ -840,8 +842,8 @@ impl Instruction {
     #[inline]
     pub const fn stairs_union(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::StairsUnion);
-        inst.params[0] = r.max(1e-10);
-        inst.params[1] = n.max(1.0);
+        inst.params[0] = law_max_f32(r, 1e-10);
+        inst.params[1] = law_max_f32(n, 1.0);
         inst
     }
 
@@ -849,8 +851,8 @@ impl Instruction {
     #[inline]
     pub const fn stairs_intersection(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::StairsIntersection);
-        inst.params[0] = r.max(1e-10);
-        inst.params[1] = n.max(1.0);
+        inst.params[0] = law_max_f32(r, 1e-10);
+        inst.params[1] = law_max_f32(n, 1.0);
         inst
     }
 
@@ -858,8 +860,8 @@ impl Instruction {
     #[inline]
     pub const fn stairs_subtraction(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::StairsSubtraction);
-        inst.params[0] = r.max(1e-10);
-        inst.params[1] = n.max(1.0);
+        inst.params[0] = law_max_f32(r, 1e-10);
+        inst.params[1] = law_max_f32(n, 1.0);
         inst
     }
 
@@ -881,8 +883,8 @@ impl Instruction {
     #[inline]
     pub const fn columns_union(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::ColumnsUnion);
-        inst.params[0] = r.max(1e-10);
-        inst.params[1] = n.max(1.0);
+        inst.params[0] = law_max_f32(r, 1e-10);
+        inst.params[1] = law_max_f32(n, 1.0);
         inst
     }
 
@@ -890,8 +892,8 @@ impl Instruction {
     #[inline]
     pub const fn columns_intersection(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::ColumnsIntersection);
-        inst.params[0] = r.max(1e-10);
-        inst.params[1] = n.max(1.0);
+        inst.params[0] = law_max_f32(r, 1e-10);
+        inst.params[1] = law_max_f32(n, 1.0);
         inst
     }
 
@@ -899,8 +901,8 @@ impl Instruction {
     #[inline]
     pub const fn columns_subtraction(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::ColumnsSubtraction);
-        inst.params[0] = r.max(1e-10);
-        inst.params[1] = n.max(1.0);
+        inst.params[0] = law_max_f32(r, 1e-10);
+        inst.params[1] = law_max_f32(n, 1.0);
         inst
     }
 
@@ -987,7 +989,7 @@ impl Instruction {
         inst.params[0] = 1.0 / sx; // precomputed inverse
         inst.params[1] = 1.0 / sy;
         inst.params[2] = 1.0 / sz;
-        inst.params[3] = sx.min(sy).min(sz); // precomputed min factor
+        inst.params[3] = sx.law_min(sy).law_min(sz); // precomputed min factor
         inst.flags = 1; // has_scale_correction
         inst.child_count = 1;
         inst

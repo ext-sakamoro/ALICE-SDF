@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::types::SdfNode;
 use glam::Vec3;
 
@@ -50,7 +51,7 @@ impl Default for CaveConfig {
 /// `terrain_sdf = max(height_sdf, -cave_sdf)`
 pub fn generate_cave_sdf(config: &CaveConfig) -> SdfNode {
     let mut rng = config.seed;
-    let num_tunnels = (config.density * 10.0).max(1.0) as u32;
+    let num_tunnels = (config.density * 10.0).law_max(1.0) as u32;
     let segments_per_tunnel = 8u32;
 
     let mut cave_parts: Vec<SdfNode> = Vec::new();

@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::raw_minmax::RawMinMax;
 use glam::Vec3;
 
 /// Palette-driven sky gradient, sampled by view-direction elevation
@@ -41,7 +42,7 @@ pub fn sky_gradient_bands(dir: Vec3, palette: &[Vec3]) -> Vec3 {
 pub fn puffy_cloud_layer(noise_sample: f32, coverage: f32, softness: f32) -> f32 {
     let n = noise_sample.clamp(0.0, 1.0);
     let c = coverage.clamp(0.0, 1.0);
-    let s = softness.max(1e-4);
+    let s = softness.raw_max(1e-4);
     ((n - (1.0 - c)) / s).clamp(0.0, 1.0)
 }
 
@@ -62,9 +63,9 @@ pub fn distance_color_quantize(
     bands: u32,
 ) -> Vec3 {
     assert!(bands > 0, "bands must be > 0");
-    let t = (distance / max_distance.max(1e-6)).clamp(0.0, 1.0);
+    let t = (distance / max_distance.raw_max(1e-6)).clamp(0.0, 1.0);
     let b = bands as f32;
-    let stepped = ((t * b).floor() / (b - 1.0).max(1.0)).clamp(0.0, 1.0);
+    let stepped = ((t * b).floor() / (b - 1.0).raw_max(1.0)).clamp(0.0, 1.0);
     near.lerp(far, stepped)
 }
 

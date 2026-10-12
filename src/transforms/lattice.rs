@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Cubic Bernstein basis function
@@ -87,7 +88,7 @@ pub fn lattice_deform(
         bbox_min,
         bbox_max,
     );
-    let correction = (dx.length() / (2.0 * eps)).max(0.1);
+    let correction = (dx.length() / (2.0 * eps)).law_max(0.1);
 
     (result, correction)
 }

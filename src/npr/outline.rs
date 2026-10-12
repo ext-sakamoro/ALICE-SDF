@@ -5,13 +5,14 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::raw_minmax::RawMinMax;
 use glam::Vec3;
 
 /// Hard outline mask: 1.0 inside `|sdf| < width`, otherwise 0.0
 #[inline]
 #[must_use]
 pub fn distance_field_outline(sdf: f32, width: f32) -> f32 {
-    if sdf.abs() < width.max(0.0) {
+    if sdf.abs() < width.raw_max(0.0) {
         1.0
     } else {
         0.0
@@ -26,8 +27,8 @@ pub fn distance_field_outline(sdf: f32, width: f32) -> f32 {
 #[must_use]
 pub fn distance_field_outline_soft(sdf: f32, width_inner: f32, width_outer: f32) -> f32 {
     let d = sdf.abs();
-    let inner = width_inner.max(0.0);
-    let outer = width_outer.max(inner + 1e-6);
+    let inner = width_inner.raw_max(0.0);
+    let outer = width_outer.raw_max(inner + 1e-6);
     if d <= inner {
         1.0
     } else if d >= outer {
@@ -45,7 +46,7 @@ pub fn distance_field_outline_soft(sdf: f32, width_inner: f32, width_outer: f32)
 #[inline]
 #[must_use]
 pub fn curvature_outline(mean_curvature: f32, sensitivity: f32, threshold: f32) -> f32 {
-    let k = mean_curvature.abs() * sensitivity.max(0.0);
+    let k = mean_curvature.abs() * sensitivity.raw_max(0.0);
     (k - threshold).clamp(0.0, 1.0)
 }
 
@@ -55,7 +56,7 @@ pub fn curvature_outline(mean_curvature: f32, sensitivity: f32, threshold: f32) 
 #[inline]
 #[must_use]
 pub fn depth_step_outline(depth_gradient: f32, threshold: f32) -> f32 {
-    if depth_gradient.abs() > threshold.max(0.0) {
+    if depth_gradient.abs() > threshold.raw_max(0.0) {
         1.0
     } else {
         0.0

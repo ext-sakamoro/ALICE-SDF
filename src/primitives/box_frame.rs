@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// SDF for a box frame (wireframe box)
@@ -17,17 +18,17 @@ pub fn sdf_box_frame(p: Vec3, half_extents: Vec3, edge: f32) -> f32 {
 
     let d1 = {
         let v = Vec3::new(p.x, q.y, q.z).max(Vec3::ZERO);
-        v.length() + p.x.max(q.y.max(q.z)).min(0.0)
+        v.length() + p.x.law_max(q.y.law_max(q.z)).law_min(0.0)
     };
     let d2 = {
         let v = Vec3::new(q.x, p.y, q.z).max(Vec3::ZERO);
-        v.length() + q.x.max(p.y.max(q.z)).min(0.0)
+        v.length() + q.x.law_max(p.y.law_max(q.z)).law_min(0.0)
     };
     let d3 = {
         let v = Vec3::new(q.x, q.y, p.z).max(Vec3::ZERO);
-        v.length() + q.x.max(q.y.max(p.z)).min(0.0)
+        v.length() + q.x.law_max(q.y.law_max(p.z)).law_min(0.0)
     };
-    d1.min(d2).min(d3)
+    d1.law_min(d2).law_min(d3)
 }
 
 #[cfg(test)]

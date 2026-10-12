@@ -22,6 +22,7 @@
 
 use crate::animation::AnimationParams;
 use crate::compiled::eval_simd::eval_compiled_simd;
+use crate::compiled::real::LawMinMax;
 use crate::compiled::simd::{Quatx8, Vec3x8};
 use crate::compiled::CompiledSdf;
 use wide::f32x8;
@@ -270,7 +271,7 @@ impl InstancedSdf {
             let corrected = raw_dist * self.soa.scale_correction[i];
 
             // SIMD min across chunks (reduce at end)
-            min_simd = min_simd.min(corrected);
+            min_simd = min_simd.law_min(corrected);
         }
 
         // Final horizontal reduction

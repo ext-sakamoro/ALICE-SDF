@@ -22,6 +22,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::eval::eval;
 use crate::SdfNode;
 use glam::Vec3;
@@ -113,7 +114,7 @@ impl Rng {
 
     /// Approximate normal distribution (Box-Muller)
     fn normal(&mut self, mean: f32, std: f32) -> f32 {
-        let u1 = self.next_f32().max(1e-10);
+        let u1 = self.next_f32().law_max(1e-10);
         let u2 = self.next_f32();
         let z = (-2.0 * alice_det_math::ln(u1)).sqrt()
             * alice_det_math::cos(2.0 * std::f32::consts::TAU * u2);
@@ -548,7 +549,7 @@ fn layer_forward(layer: &Layer, input: &[f32], output: &mut [f32], relu: bool) {
         for c in 0..layer.in_dim {
             sum += row[c] * input[c];
         }
-        output[r] = if relu { sum.max(0.0) } else { sum };
+        output[r] = if relu { sum.law_max(0.0) } else { sum };
     }
 }
 

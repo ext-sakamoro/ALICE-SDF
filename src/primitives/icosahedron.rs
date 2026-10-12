@@ -6,6 +6,7 @@
 //! Author: Moroya Sakamoto
 
 use super::gdf_vectors::{GDF_ICOSAHEDRON, GDF_OCTAHEDRON};
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// SDF for a regular icosahedron
@@ -16,10 +17,10 @@ pub fn sdf_icosahedron(p: Vec3, radius: f32) -> f32 {
     // Icosahedron uses octahedron normals [3..7] + icosahedron normals [7..13]
     let mut d = f32::NEG_INFINITY;
     for n in &GDF_OCTAHEDRON {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     for n in &GDF_ICOSAHEDRON {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     d - radius
 }

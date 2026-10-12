@@ -45,15 +45,6 @@
 //!
 //! Author: Moroya Sakamoto
 
-// NPR color output, not distance / SVO geometry: a signed zero here never
-// reaches a persisted distance or a cross-evaluator parity check, so the raw
-// SIMD `max`/`min` (whose zero sign is arch-dependent) is allowed in this
-// module. The Law helper governs the geometry evaluators, not color.
-#![allow(
-    clippy::disallowed_methods,
-    reason = "NPR color output, not distance/SVO geometry; signed zero never reaches a persisted value or parity check"
-)]
-
 use crate::npr::composition::{bloom_toon, vignette};
 use crate::npr::dsl::{palette_source_scalar, NprColorContext, NprColorNode, PaletteSource};
 use crate::npr::hatch::hatch_lines;
@@ -61,6 +52,7 @@ use crate::npr::motion::speed_line;
 use crate::npr::outline::composite_outline;
 use crate::npr::palette::palette_gradient;
 use crate::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp, two_tone};
+use crate::raw_minmax::RawMinMax;
 use glam::{Vec2, Vec3};
 
 /// A single instruction in the compiled colour pipeline
@@ -790,7 +782,7 @@ impl NprColorBatch8 {
     /// Lane-parallel max channel: `max(r, g, b)` per lane
     #[must_use]
     pub fn max_channel(self) -> f32x8 {
-        self.r.max(self.g).max(self.b)
+        self.r.raw_max(self.g).raw_max(self.b)
     }
 }
 
@@ -887,12 +879,12 @@ impl NprBatchContext8 {
 
 #[inline]
 fn clamp01_x8(x: f32x8) -> f32x8 {
-    x.max(f32x8::splat(0.0)).min(f32x8::splat(1.0))
+    x.raw_max(f32x8::splat(0.0)).raw_min(f32x8::splat(1.0))
 }
 
 #[inline]
 fn smoothstep_x8(edge0: f32, edge1: f32, x: f32x8) -> f32x8 {
-    let denom_s = (edge1 - edge0).abs().max(1e-6);
+    let denom_s = (edge1 - edge0).abs().raw_max(1e-6);
     let t = clamp01_x8((x - f32x8::splat(edge0)) / f32x8::splat(denom_s));
     t * t * (f32x8::splat(3.0) - f32x8::splat(2.0) * t)
 }
@@ -900,7 +892,7 @@ fn smoothstep_x8(edge0: f32, edge1: f32, x: f32x8) -> f32x8 {
 #[inline]
 fn smoothstep_x8_x_edges(edge0: f32x8, edge1: f32x8, x: f32x8) -> f32x8 {
     let raw = edge1 - edge0;
-    let denom = raw.abs().max(f32x8::splat(1e-6));
+    let denom = raw.abs().raw_max(f32x8::splat(1e-6));
     let t = clamp01_x8((x - edge0) / denom);
     t * t * (f32x8::splat(3.0) - f32x8::splat(2.0) * t)
 }
@@ -912,8 +904,8 @@ fn toon_ramp_x8(n_dot_l: f32x8, bands: u32) -> f32x8 {
     let clamped = clamp01_x8(n_dot_l);
     let idx = (clamped * f32x8::splat(bands_f))
         .floor()
-        .min(f32x8::splat(bands_f - 1.0));
-    idx / f32x8::splat((bands_f - 1.0).max(1.0))
+        .raw_min(f32x8::splat(bands_f - 1.0));
+    idx / f32x8::splat((bands_f - 1.0).raw_max(1.0))
 }
 
 #[inline]
@@ -922,7 +914,7 @@ fn soft_toon_ramp_x8(n_dot_l: f32x8, bands: u32, smoothness: f32) -> f32x8 {
     let bands_f = bands as f32;
     let clamped = clamp01_x8(n_dot_l);
     let scaled = clamped * f32x8::splat(bands_f);
-    let idx = scaled.floor().min(f32x8::splat(bands_f - 1.0));
+    let idx = scaled.floor().raw_min(f32x8::splat(bands_f - 1.0));
     let frac = clamp01_x8(scaled - idx);
     let s = smoothness.clamp(0.001, 0.5);
     let t = smoothstep_x8(0.5 - s, 0.5 + s, frac);
@@ -949,7 +941,7 @@ fn two_tone_x8(
 fn posterize_color_x8(color: NprColorBatch8, levels: u32) -> NprColorBatch8 {
     let levels = levels.max(2);
     let steps = levels as f32;
-    let denom = (steps - 1.0).max(1.0);
+    let denom = (steps - 1.0).raw_max(1.0);
     let steps_v = f32x8::splat(steps);
     let denom_v = f32x8::splat(denom);
     let quantize = |c: f32x8| -> f32x8 { clamp01_x8((clamp01_x8(c) * steps_v).floor() / denom_v) };
@@ -978,9 +970,9 @@ fn vignette_x8(uv_x: f32x8, uv_y: f32x8, radius: f32, softness: f32) -> f32x8 {
     let dx = uv_x - f32x8::splat(0.5);
     let dy = uv_y - f32x8::splat(0.5);
     let d = (dx * dx + dy * dy).sqrt();
-    let inner = radius.max(0.0);
+    let inner = radius.raw_max(0.0);
     let inner_x8 = f32x8::splat(inner);
-    let outer = f32x8::splat((inner + softness.max(0.0)).max(inner + 1e-6));
+    let outer = f32x8::splat((inner + softness.raw_max(0.0)).raw_max(inner + 1e-6));
     // Branch-free equivalent of the scalar impl:
     //   inside inner: 1.0 (smoothstep = 0)
     //   outside outer: 0.0 (smoothstep = 1)
@@ -1301,9 +1293,9 @@ fn fallback_reconstruct_ctx(batch: &NprBatchContext8, lane: usize) -> NprColorCo
         normal: Vec3::new(0.0, 1.0, 0.0),
         // View at +Z so that `normal.dot(view)` = 0 by default; the actual
         // n_dot_v is honoured by setting view to Vec3::new(0, n_dot_v, s).
-        view: Vec3::new(0.0, n_dot_v, (n_dot_v * -n_dot_v + 1.0).max(0.0).sqrt()),
+        view: Vec3::new(0.0, n_dot_v, (n_dot_v * -n_dot_v + 1.0).raw_max(0.0).sqrt()),
         // Light aligned so that `normal.dot(light) == n_dot_l`.
-        light: Vec3::new(0.0, n_dot_l, (n_dot_l * -n_dot_l + 1.0).max(0.0).sqrt()),
+        light: Vec3::new(0.0, n_dot_l, (n_dot_l * -n_dot_l + 1.0).raw_max(0.0).sqrt()),
         uv: Vec2::new(uv_x, uv_y),
         time,
     }

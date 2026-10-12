@@ -6,6 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::io::abm::{load_abm_with_lods, save_abm_with_lods};
 use crate::io::IoError;
 use crate::mesh::Mesh;
@@ -99,12 +100,12 @@ fn compute_aabb(mesh: &Mesh) -> ([f32; 3], [f32; 3]) {
     let mut min = [f32::MAX; 3];
     let mut max = [f32::MIN; 3];
     for v in &mesh.vertices {
-        min[0] = min[0].min(v.position.x);
-        min[1] = min[1].min(v.position.y);
-        min[2] = min[2].min(v.position.z);
-        max[0] = max[0].max(v.position.x);
-        max[1] = max[1].max(v.position.y);
-        max[2] = max[2].max(v.position.z);
+        min[0] = min[0].law_min(v.position.x);
+        min[1] = min[1].law_min(v.position.y);
+        min[2] = min[2].law_min(v.position.z);
+        max[0] = max[0].law_max(v.position.x);
+        max[1] = max[1].law_max(v.position.y);
+        max[2] = max[2].law_max(v.position.z);
     }
     (min, max)
 }

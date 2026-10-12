@@ -6,6 +6,7 @@
 //! Author: Moroya Sakamoto
 
 use super::gdf_vectors::{GDF_DODECAHEDRON, GDF_ICOSAHEDRON, GDF_OCTAHEDRON};
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// SDF for a truncated icosahedron (soccer ball)
@@ -16,13 +17,13 @@ pub fn sdf_truncated_icosahedron(p: Vec3, radius: f32) -> f32 {
     // Uses octahedron [3..7] + icosahedron [7..13] + dodecahedron [13..19] normals
     let mut d = f32::NEG_INFINITY;
     for n in &GDF_OCTAHEDRON {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     for n in &GDF_ICOSAHEDRON {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     for n in &GDF_DODECAHEDRON {
-        d = d.max(p.dot(*n).abs());
+        d = d.law_max(p.dot(*n).abs());
     }
     d - radius
 }

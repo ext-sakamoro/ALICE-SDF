@@ -5,6 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Pre-normalized tetrahedron face normals
@@ -22,7 +23,7 @@ const TETRA_NORMALS: [Vec3; 4] = [
 pub fn sdf_tetrahedron(p: Vec3, size: f32) -> f32 {
     let mut d = f32::NEG_INFINITY;
     for n in &TETRA_NORMALS {
-        d = d.max(p.dot(*n));
+        d = d.law_max(p.dot(*n));
     }
     d - size
 }

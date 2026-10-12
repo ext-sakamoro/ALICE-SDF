@@ -7,6 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// SDF for a parabolic arch segment, extruded along Z-axis
@@ -58,13 +59,13 @@ pub fn sdf_parabola_segment(p: Vec3, width: f32, para_height: f32, half_depth: f
         Vec2::new(px - w, py).length()
     };
 
-    let d_unsigned = d_para.min(d_base);
+    let d_unsigned = d_para.law_min(d_base);
     let d_2d = if inside { -d_unsigned } else { d_unsigned };
 
     // Extrude along Z
     let d_z = p.z.abs() - half_depth;
-    let ext = Vec2::new(d_2d.max(0.0), d_z.max(0.0));
-    d_2d.max(d_z).min(0.0) + ext.length()
+    let ext = Vec2::new(d_2d.law_max(0.0), d_z.law_max(0.0));
+    d_2d.law_max(d_z).law_min(0.0) + ext.length()
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 /// Approximate SDF for a superellipsoid
@@ -18,19 +19,21 @@ use glam::Vec3;
 /// - `e2`: east-west roundness (XZ plane)
 #[inline(always)]
 pub fn sdf_superellipsoid(p: Vec3, half_extents: Vec3, e1: f32, e2: f32) -> f32 {
-    let e1 = e1.max(0.02);
-    let e2 = e2.max(0.02);
+    let e1 = e1.law_max(0.02);
+    let e2 = e2.law_max(0.02);
     let q = Vec3::new(
-        (p.x / half_extents.x).abs().max(1e-10),
-        (p.y / half_extents.y).abs().max(1e-10),
-        (p.z / half_extents.z).abs().max(1e-10),
+        (p.x / half_extents.x).abs().law_max(1e-10),
+        (p.y / half_extents.y).abs().law_max(1e-10),
+        (p.z / half_extents.z).abs().law_max(1e-10),
     );
     let m1 = 2.0 / e2;
     let m2 = 2.0 / e1;
     let w = alice_det_math::powf(q.x, m1) + alice_det_math::powf(q.z, m1);
     let v = alice_det_math::powf(w, e2 / e1) + alice_det_math::powf(q.y, m2);
     let f = alice_det_math::powf(v, e1 * 0.5);
-    let min_extent = half_extents.x.min(half_extents.y.min(half_extents.z));
+    let min_extent = half_extents
+        .x
+        .law_min(half_extents.y.law_min(half_extents.z));
     (f - 1.0) * min_extent * 0.5
 }
 

@@ -13,6 +13,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::law_max_f32;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
@@ -1439,7 +1440,7 @@ fn parse_animations(content: &str) -> Vec<FbxAnimClip> {
             .values()
             .flat_map(|curves| curves.iter().flat_map(|c| c.times.iter()))
             .cloned()
-            .fold(0.0f32, f32::max);
+            .fold(0.0f32, law_max_f32);
 
         clips.push(FbxAnimClip {
             name: "DefaultClip".to_string(),
