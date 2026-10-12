@@ -26,6 +26,10 @@ file = "bindings/maya/alice_sdf_maya/__init__.py"
 file = "bindings/nuke/alice_sdf_nuke/__init__.py"
 
 [[independent]]
+file = "scripts/clippy-lib-canary/Cargo.toml"
+reason = "fixture of scripts/clippy_lib_gate.py, not published (version 0.0.0)"
+
+[[independent]]
 file = "vrchat-package/package.json"
 reason = "VRChat VPM package com.alice.sdf, released on its own line"
 
