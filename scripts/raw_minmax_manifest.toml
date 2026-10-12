@@ -1,28 +1,17 @@
 # The library files that may call the raw max / min helpers (src/raw_minmax.rs),
 # with how many uses each has. Checked by scripts/raw_minmax_manifest.py:
 # a use outside this list, a different count, an entry with no use, or a use
-# under a forbidden prefix fails. A count may go down freely; raising it needs a
+# outside [scope] raw-allowed fails. A count may go down freely; raising it needs a
 # `why` that names the new use.
 #
 #   [allowed."src/path/file.rs"]
 #   uses = 3
 #   why = "colour weights, never a distance, bound, mesh or stored byte"
 
-# The geometry evaluators, bounds, meshes and stored formats: their values reach
-# a distance, bound, mesh or persisted byte, so they use the Law helpers only.
-[forbidden]
-prefixes = [
-    "src/compiled/",
-    "src/eval/",
-    "src/operations/",
-    "src/primitives/",
-    "src/svo/",
-    "src/volume/",
-    "src/interval.rs",
-    "src/sdf2d.rs",
-    "src/collision.rs",
-    "src/mesh/bvh.rs",
-]
+# Default-deny: a raw helper may be used only in a file under one of these
+# prefixes (rendering only); every other library file uses the Law helpers.
+[scope]
+raw-allowed = ["src/npr/"]
 
 [allowed."src/npr/compiled_color.rs"]
 uses = 15

@@ -10,8 +10,8 @@ mesh or persisted byte. This script keeps those calls visible:
     `scripts/raw_minmax_manifest.toml` with exactly that many uses
   * a listed file with no use, or a different count, fails (lower the number when
     a use goes away; raising it needs a `why` that says what the new use is)
-  * no file under a `forbidden` prefix (the geometry evaluators, bounds, meshes,
-    stored formats) may use one, and the manifest may not list one there
+  * default-deny: only files under a prefix in `[scope] raw-allowed` may use one;
+    a use anywhere else fails, and the manifest may not list a file outside them
   * a helper imported under another name (`use ... raw_max_f32 as m`) fails,
     since the count could not see the calls
   * no file scanned, or no `raw_*` definition found, fails
@@ -68,9 +68,9 @@ def scan(files: dict[str, str]) -> tuple[dict[str, int], list[str], int]:
 
 def load(text: str) -> tuple[dict[str, dict], list[str]]:
     data = tomllib.loads(text)
-    forbidden = data.get("forbidden", {}).get("prefixes", [])
-    if not isinstance(forbidden, list) or not forbidden or not all(isinstance(p, str) and p for p in forbidden):
-        raise ValueError("[forbidden] prefixes must be a non-empty list of paths")
+    scope = data.get("scope", {}).get("raw-allowed", [])
+    if not isinstance(scope, list) or not scope or not all(isinstance(p, str) and p.startswith("src/") for p in scope):
+        raise ValueError("[scope] raw-allowed must be a non-empty list of src/ prefixes")
     allowed = {}
     for path, e in data.get("allowed", {}).items():
         if set(e) - {"uses", "why"}:
@@ -80,12 +80,12 @@ def load(text: str) -> tuple[dict[str, dict], list[str]]:
         if not isinstance(e.get("why"), str) or not e["why"].strip():
             raise ValueError(f"allowed.{path!r}: `why` must say why the zero sign cannot matter there")
         allowed[path] = e
-    return allowed, forbidden
+    return allowed, scope
 
 
 def check(files: dict[str, str], manifest_text: str, base_text: str | None = None) -> list[str]:
     try:
-        allowed, forbidden = load(manifest_text)
+        allowed, scope = load(manifest_text)
     except (ValueError, tomllib.TOMLDecodeError) as e:
         return [f"{MANIFEST.name}: {e}"]
     if not files:
@@ -93,12 +93,15 @@ def check(files: dict[str, str], manifest_text: str, base_text: str | None = Non
     uses, problems, defs = scan(files)
     if defs != len(HELPERS):
         problems.append(f"{DEFINITIONS}: found {defs} of the {len(HELPERS)} raw helper definitions")
+    def in_scope(path: str) -> bool:
+        return any(path.startswith(p) for p in scope)
+
     for path in allowed:
-        if any(path.startswith(p) for p in forbidden):
-            problems.append(f"{path}: listed as allowed but under a forbidden prefix")
+        if not in_scope(path):
+            problems.append(f"{path}: listed as allowed but outside [scope] raw-allowed")
     for path, n in uses.items():
-        if any(path.startswith(p) for p in forbidden):
-            problems.append(f"{path}: uses a raw helper {n} time(s) under a forbidden prefix")
+        if not in_scope(path):
+            problems.append(f"{path}: uses a raw helper {n} time(s) outside [scope] raw-allowed")
         elif path not in allowed:
             problems.append(f"{path}: uses a raw helper {n} time(s) but is not in the manifest")
         elif allowed[path]["uses"] != n:
@@ -138,10 +141,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {p}", file=sys.stderr)
     if problems:
         return 1
-    allowed, forbidden = load(MANIFEST.read_text(encoding="utf-8"))
+    allowed, scope = load(MANIFEST.read_text(encoding="utf-8"))
     total = sum(e["uses"] for e in allowed.values())
     print(f"raw-minmax: {len(files)} files scanned, {total} raw use(s) in {len(allowed)} listed file(s), "
-          f"{len(forbidden)} forbidden prefix(es)")
+          f"raw helpers allowed only under {', '.join(scope)}")
     return 0
 
 

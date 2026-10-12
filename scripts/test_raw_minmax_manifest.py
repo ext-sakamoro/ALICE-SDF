@@ -12,7 +12,7 @@ import raw_minmax_manifest as r  # noqa: E402
 
 DEFS = "\n".join(f"pub(crate) fn {h}(a: f32, b: f32) -> f32 {{ a }}" for h in r.HELPERS)
 
-FORBIDDEN = '[forbidden]\nprefixes = ["src/compiled/", "src/interval.rs"]\n'
+FORBIDDEN = '[scope]\nraw-allowed = ["src/npr/"]\n'
 
 
 def manifest(**uses: int) -> str:
@@ -49,14 +49,17 @@ class Check(unittest.TestCase):
         files = tree(**{NPR: "let a = x;"})
         self.assertTrue(any("uses no raw helper" in p for p in r.check(files, manifest(**{NPR_PATH: 1}))))
 
-    def test_a_use_under_a_forbidden_prefix_fails(self):
+    def test_a_use_outside_the_scope_fails(self):
         files = tree(**{"src__compiled__refit_rs": "let a = raw_max_f32(x, y);"})
-        self.assertTrue(any("forbidden prefix" in p for p in r.check(files, manifest())))
+        self.assertTrue(any("outside [scope]" in p for p in r.check(files, manifest())))
 
-    def test_a_forbidden_file_in_the_manifest_fails_even_when_counted(self):
-        files = tree(**{"src__interval_rs": "let a = raw_min_f32(x, y);"})
-        problems = r.check(files, manifest(**{"src/interval.rs": 1}))
-        self.assertTrue(any("listed as allowed but under a forbidden prefix" in p for p in problems))
+    def test_a_file_outside_the_scope_in_the_manifest_fails_even_when_counted(self):
+        files = tree(**{"src__mesh__lod_rs": "let a = raw_min_f32(x, y);"})
+        problems = r.check(files, manifest(**{"src/mesh/lod.rs": 1}))
+        self.assertTrue(any("listed as allowed but outside [scope]" in p for p in problems))
+
+    def test_a_scope_outside_src_is_refused(self):
+        self.assertTrue(r.check(tree(), '[scope]\nraw-allowed = ["npr/"]\n'))
 
     def test_a_renamed_import_fails(self):
         files = tree(**{NPR: "use crate::raw_minmax::raw_max_f32 as m; let a = m(x, y);"})
@@ -70,9 +73,9 @@ class Check(unittest.TestCase):
         files = tree(**{NPR: "let a = x.raw_max(y); let b = v.raw_min(w);"})
         self.assertEqual(r.check(files, manifest(**{NPR_PATH: 2})), [])
 
-    def test_the_method_form_in_a_forbidden_file_fails(self):
+    def test_the_method_form_outside_the_scope_fails(self):
         files = tree(**{"src__compiled__aabb_rs": "let a = x.raw_max(y);"})
-        self.assertTrue(any("forbidden prefix" in p for p in r.check(files, manifest())))
+        self.assertTrue(any("outside [scope]" in p for p in r.check(files, manifest())))
 
     def test_a_law_call_is_not_a_raw_use(self):
         files = tree(**{NPR: "let a = x.law_max(y); let b = law_min_f32(x, y);"})
@@ -90,8 +93,8 @@ class Check(unittest.TestCase):
         files[r.DEFINITIONS] = "pub(crate) fn raw_max_f32(a: f32, b: f32) -> f32 { a }"
         self.assertTrue(any("definitions" in p for p in r.check(files, manifest())))
 
-    def test_an_empty_forbidden_list_is_refused(self):
-        self.assertTrue(r.check(tree(), "[forbidden]\nprefixes = []\n"))
+    def test_an_empty_scope_is_refused(self):
+        self.assertTrue(r.check(tree(), "[scope]\nraw-allowed = []\n"))
 
     def test_an_entry_without_why_is_refused(self):
         text = FORBIDDEN + f'\n[allowed."{NPR_PATH}"]\nuses = 1\n'
