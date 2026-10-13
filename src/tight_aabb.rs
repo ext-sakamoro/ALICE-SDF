@@ -30,7 +30,7 @@ use rayon::prelude::*;
 /// `impl Default` was intentionally removed in 1.7.7 to prevent silent
 /// load-bearing use of the historical default (`initial_half_size: 10.0`) which
 /// caused large patterns (SKADIS panel / gridfinity 200mm+ bbox) to fall outside
-/// the search range and produce empty AABB. See `rust-config-struct-guard` skill.
+/// the search range and produce empty AABB.
 #[derive(Debug, Clone, Copy)]
 pub struct TightAabbConfig {
     /// Initial conservative half-size to start the search from.
