@@ -4,7 +4,7 @@ name: Fuzz
 # - SDF eval / asdf decode / bincode roundtrip / eval parity (tree vs compiled vs SIMD) の 4 target を time-boxed fuzz
 # - PR / push 毎に短時間 (30-60s/target) 実行、long-run は別途 batch fuzzing infra 想定
 #
-# 罠 catalog:
+# 注意点:
 # - cargo-fuzz は nightly toolchain 必須 (rust-toolchain.toml pin と別)
 # - libfuzzer-sys は AddressSanitizer 前提 → linker flags 自動注入
 # - fuzz/ 配下は cargo workspace の一部ではない (別 Cargo.toml)

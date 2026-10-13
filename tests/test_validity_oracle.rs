@@ -20,7 +20,7 @@ use alice_sdf::validity::{
 use glam::Vec3;
 
 /// STEP を書く test は **file 名を test ごとに固有**にする (同 file を 2 test が
-/// 並列に書くと内容が混ざる — 2026-09-27 に `test_step_export_oracle` で踏んだ)
+/// 並列に書くと内容が混ざる — 2026-09-27 に `test_step_export_oracle` で起きた)
 fn step_path(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join("alice-sdf-validity-oracle");
     std::fs::create_dir_all(&dir).expect("temp dir");

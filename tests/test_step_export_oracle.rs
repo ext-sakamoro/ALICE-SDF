@@ -129,7 +129,7 @@ fn refs(args: &str) -> Vec<u64> {
 }
 
 /// `tag` は test ごとに固有にする (同 file を 2 test が並列に書くと内容が混ざり、
-/// 参照が解決しない形で落ちる = 2026-09-27 に Linux CI だけで踏んだ)
+/// 参照が解決しない形で落ちる = 2026-09-27 に Linux CI だけで起きた)
 fn write_sphere_step(tag: &str, r: f32, resolution: u32) -> (String, std::path::PathBuf) {
     let dir = std::env::temp_dir().join("alice-sdf-step-oracle");
     std::fs::create_dir_all(&dir).expect("temp dir");

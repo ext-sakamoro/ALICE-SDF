@@ -53,7 +53,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n net.alicelaw.alicesdf/.MainActivity
 ```
 
-## ⚠️ 罠 (重要)
+## 注意点 (重要)
 
 ### .so のファイル名は `libuniffi_<namespace>.so` でなければならない
 

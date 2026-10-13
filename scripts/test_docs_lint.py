@@ -161,9 +161,9 @@ class Vocabulary(unittest.TestCase):
         self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", h) for h in dl.PRIVATE_NAME_HASHES))
 
     def test_private_address_and_device(self):
-        e = errors({"README.md": README + "runs on Jetson at 100.79.87.42\n"})
+        e = errors({"README.md": README + "runs on Jetson at 100.127.255.254\n"})
         self.assertTrue(any("device `Jetson`" in x for x in e), e)
-        self.assertTrue(any("private address `100.79.87.42`" in x for x in e), e)
+        self.assertTrue(any("private address `100.127.255.254`" in x for x in e), e)
 
     def test_ordinary_english_is_not_flagged(self):
         # "memory footprint" and a netcode "session" are ordinary words
@@ -213,17 +213,17 @@ class DevelopmentVocabulary(unittest.TestCase):
     def test_vocabulary_is_checked_in_every_tracked_file(self):
         for rel, text, label in (("src/a.rs", "// see the Backlog\n", "internal tracker"),
                                  ("docs/ROADMAP.md", "worker 5 本で実施\n", "agent process"),
-                                 ("tests/b.rs", "// (ys-08 判断)\n", "session name"),
+                                 ("tests/b.rs", "// (ys-00 判断)\n", "session name"),
                                  ("examples/c.rs", "//! user 裁定: 追加しない\n", "instruction source"),
-                                 ("src/d.rs", "/// oracle: `sakamoro-ff`'s derivation\n", "session name")):
+                                 ("src/d.rs", "/// oracle: `sakamoro-00`'s derivation\n", "session name")):
             e = errors({rel: text})
             self.assertTrue(any(x.startswith(f"{rel}:1: {label}") for x in e), (rel, e))
 
     def test_private_note_names(self):
-        for text in ("// see [[feedback_degenerate_case_as_silent_wrong_answer]]",
-                     "//! `feedback_mms_degree_blind_on_structured_lattice` measured",
-                     "# canonical CI template: [[reference_alice_ci_canonical_template]]",
-                     "/// (`project_alice_physics_world_auditor_engine_gaps`)",
+        for text in ("// see [[feedback_sample_note_name]]",
+                     "//! `feedback_sample_measurement_note` measured",
+                     "# canonical CI template: [[reference_alice_sample_note]]",
+                     "/// (`project_alice_sample_gaps`)",
                      "// `memory/feedback_x.md`"):
             e = errors({"src/a.rs": text + "\n"})
             self.assertTrue(any("internal note" in x or "internal tracker" in x for x in e), (text, e))

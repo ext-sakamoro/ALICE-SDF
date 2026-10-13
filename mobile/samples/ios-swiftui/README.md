@@ -41,7 +41,7 @@ xcodebuild -project AliceSDFDemo.xcodeproj \
 3. `HEADER_SEARCH_PATHS` に xcframework の `ios-arm64/Headers` と `ios-arm64_x86_64-simulator/Headers` 両方追加
 4. xcframework 自体は `dependencies.framework` で参照 (`embed: false`、static lib なので)
 
-### 罠だった点
+### 注意が要った点
 
 xcodegen + XCFramework 直接依存だと、UniFFI が生成する `alice_sdfFFI.modulemap`
 は自動的に Swift compiler に認識されない。Swift bindings の

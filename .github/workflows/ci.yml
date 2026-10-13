@@ -187,7 +187,7 @@ jobs:
       # num_cones=0 の u32 underflow / sample の補間重みが clamp 前座標由来 /
       # mip が奇数解像度で footprint の下界でない) を検出している。
       # ⚠️ 1 行で書く (matrix に windows-latest があり既定 shell は pwsh、
-      #    バックスラッシュ行継続は ParserError になる = 罠 gha-run-block-backslash-…)
+      #    バックスラッシュ行継続は ParserError になる)
       - name: Test (integration, analytic oracles — aaa) [T4]
         run: cargo test --features "aaa,image" --test test_gi_volume_oracle --test test_terrain_destruction_oracle --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle --test test_gi_api_oracle --test test_destruction_api_oracle
 
@@ -886,7 +886,7 @@ jobs:
 
   # BuildPlugin (35-50 分) は `.github/workflows/unreal.yml` に分離した。ここに置くと
   # doc だけの push でも concurrency: cancel-in-progress で完走前に消え、新 run は
-  # paths-filter で skip されて検証が進まない (2026-09-27 に 2 回踏んだ)。
+  # paths-filter で skip されて検証が進まない (2026-09-27 に 2 回起きた)。
   # `unreal-abi` (上) は ubuntu で短時間なので ci.yml に残している。
 
   actionlint:
