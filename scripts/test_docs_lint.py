@@ -96,7 +96,7 @@ class Vocabulary(unittest.TestCase):
         self.assertTrue(any("internal tracker `Backlog`" in x for x in e), e)
 
     def test_session_name(self):
-        e = errors({"README_JP.md": README + "ys-3a が検出\n"})
+        e = errors({"README_JP.md": README + "ys-0b が検出\n"})
         self.assertTrue(any("session name" in x for x in e), e)
 
     def test_private_names_are_matched_by_hash_including_phrases(self):
