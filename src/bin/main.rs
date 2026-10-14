@@ -32,6 +32,22 @@ use alice_sdf::compiled::jit::JitSimdSdf;
 #[allow(unused_imports)]
 use rayon::prelude::*;
 
+/// CLI-only timing diagnostic clock. The elapsed durations measured from it
+/// are printed to stdout for the user (`println!("... {:.1}ms", ...)`) and
+/// never stored or fed back into the SDF tree, mesh or export this binary
+/// computes, so they do not affect the library's bit-exact determinism
+/// guarantee. This is the `alice-sdf` CLI binary target, not the library
+/// surface (see scripts/entropy_guard.py's ALLOWED table, which pins this
+/// function's 14 call sites by exact count).
+#[cfg(feature = "cli")]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "CLI timing diagnostics only, printed not stored, not part of library output"
+)]
+fn diagnostic_clock() -> std::time::Instant {
+    std::time::Instant::now()
+}
+
 #[cfg(feature = "cli")]
 #[derive(Parser)]
 #[command(name = "alice-sdf")]
@@ -368,7 +384,7 @@ fn cmd_print(
 ) {
     use alice_sdf::mesh::sdf_to_mesh_compiled;
 
-    let total_start = std::time::Instant::now();
+    let total_start = diagnostic_clock();
 
     let tree = match load(&input) {
         Ok(t) => t,
@@ -382,7 +398,7 @@ fn cmd_print(
     println!("Loaded SDF: {} nodes", node_count);
 
     // Compile SDF for faster mesh generation (SIMD batch eval)
-    let compile_start = std::time::Instant::now();
+    let compile_start = diagnostic_clock();
     let compiled = CompiledSdf::compile(&tree.root);
     let compile_ms = compile_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -418,7 +434,7 @@ fn cmd_print(
     );
 
     // Use compiled SDF for faster marching cubes (SIMD 8-wide batch evaluation)
-    let mesh_start = std::time::Instant::now();
+    let mesh_start = diagnostic_clock();
     let mesh = sdf_to_mesh_compiled(&compiled, min, max, &config);
     let mesh_ms = mesh_start.elapsed().as_secs_f64() * 1000.0;
 
@@ -442,7 +458,7 @@ fn cmd_print(
         .unwrap_or("3mf")
         .to_lowercase();
 
-    let export_start = std::time::Instant::now();
+    let export_start = diagnostic_clock();
     let result = match ext.as_str() {
         "3mf" => export_3mf(&mesh, &out_path),
         "stl" => export_stl(&mesh, &out_path),
@@ -542,14 +558,14 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 
     // 2. Compile all backends
     println!("\n--- Compilation Phase ---");
-    let compile_start = std::time::Instant::now();
+    let compile_start = diagnostic_clock();
     let compiled_sdf = CompiledSdf::compile(&node);
     println!(
         "Stack VM: {:.3}ms",
         compile_start.elapsed().as_secs_f64() * 1000.0
     );
 
-    let jit_start = std::time::Instant::now();
+    let jit_start = diagnostic_clock();
     let jit = match JitSimdSdf::compile(&compiled_sdf) {
         Ok(jit) => jit,
         Err(e) => {
@@ -565,7 +581,7 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     // GPU compilation (optional)
     #[cfg(feature = "gpu")]
     let gpu = {
-        let gpu_start = std::time::Instant::now();
+        let gpu_start = diagnostic_clock();
         match alice_sdf::compiled::GpuEvaluator::new(&node) {
             Ok(g) => {
                 println!(
@@ -583,7 +599,7 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 
     // 3. Generate test data in SoA layout
     println!("\n--- Data Generation ---");
-    let data_start = std::time::Instant::now();
+    let data_start = diagnostic_clock();
     let mut px = vec![0.0f32; points];
     let mut py = vec![0.0f32; points];
     let mut pz = vec![0.0f32; points];
@@ -617,20 +633,20 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     println!("{}", "-".repeat(62));
 
     // CPU Scalar (interpreted)
-    let start = std::time::Instant::now();
+    let start = diagnostic_clock();
     let _results_scalar = eval_batch_parallel(&node, &points_vec);
     let elapsed = start.elapsed();
     print_result("CPU Scalar", elapsed, points);
 
     // CPU SIMD (stack VM)
-    let start = std::time::Instant::now();
+    let start = diagnostic_clock();
     let _results_simd =
         alice_sdf::compiled::eval_compiled_batch_simd_parallel(&compiled_sdf, &points_vec);
     let elapsed = start.elapsed();
     print_result("CPU SIMD (VM)", elapsed, points);
 
     // CPU JIT SIMD
-    let start = std::time::Instant::now();
+    let start = diagnostic_clock();
     let num_threads = rayon::current_num_threads();
     let chunk_size = points.div_ceil(num_threads);
     let _results_jit: Vec<f32> = px
@@ -649,7 +665,7 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     #[cfg(feature = "gpu")]
     if let Some(ref gpu) = gpu {
         let mut pool = gpu.create_buffer_pool(0);
-        let start = std::time::Instant::now();
+        let start = diagnostic_clock();
         let results_gpu = gpu.eval_batch_auto(&points_vec, &mut pool);
         let elapsed = start.elapsed();
         match results_gpu {
@@ -716,7 +732,7 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
         .collect();
 
     // Benchmark
-    let start = std::time::Instant::now();
+    let start = diagnostic_clock();
     let _results = eval_batch_parallel(&node, &test_points);
     let elapsed = start.elapsed();
 
@@ -755,7 +771,7 @@ fn cmd_texture_fit(
     println!("  Target PSNR: {:.1} dB", target_psnr);
     println!("  Iterations/octave: {}", iterations);
 
-    let start = std::time::Instant::now();
+    let start = diagnostic_clock();
     let result = match fit_texture(&input, &config) {
         Ok(r) => r,
         Err(e) => {

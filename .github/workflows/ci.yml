@@ -391,6 +391,10 @@ jobs:
         run: python scripts/test_docs_lint.py
       - name: docs lint (公開文書の語彙と CHANGELOG の構造、比較 0 件で fail)
         run: python scripts/docs_lint.py --check
+      - name: entropy guard oracle (検査器自身の試験)
+        run: python scripts/test_entropy_guard.py
+      - name: entropy guard (OS entropy / wall clock を production code から検出、走査 0 件で fail)
+        run: python scripts/entropy_guard.py
       - name: tracked binaries oracle (検査器自身の試験)
         run: python scripts/test_tracked_binaries.py
       - name: tracked binaries (build した library を commit しない、走査 0 件で fail)

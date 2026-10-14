@@ -93,6 +93,10 @@ python3 scripts/gen-oracle-status.py
 step "docs: oracle + 公開文書の語彙と CHANGELOG の構造 / README と code の一致"
 python3 scripts/test_docs_lint.py
 python3 scripts/docs_lint.py --check
+
+step "entropy guard: oracle + OS entropy / wall clock を production code から検出、走査 0 件で fail"
+python3 scripts/test_entropy_guard.py
+python3 scripts/entropy_guard.py
 python3 scripts/test_tracked_binaries.py
 python3 scripts/tracked_binaries.py
 python3 scripts/test_readme_sync.py
