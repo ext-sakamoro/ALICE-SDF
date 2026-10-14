@@ -14,6 +14,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ### Changed
 - CI: build した library と実行形式 (名前が `.so` / `.dylib` / `.a` / `.aar` / `.dll` / `.lib` / `.exe` / `.wasm` / `.node` で終わる (大文字小文字を問わない) か `.xcframework` の中にある、または ELF / Mach-O / PE / WebAssembly / `ar` のheader を持つ file) を tracked にしない検査 (`scripts/tracked_binaries.py`) を追加 例外は `.github/tracked-binaries.txt` に理由付きで書き、書いた path だけが例外になる 読めない tracked file と走査 0 件でも失敗する CI と preflight で走る
 - CI: production code (`src/**/*.rs`) が OS entropy / wall clock を読まないことを静的検査する `scripts/entropy_guard.py` を追加 (clippy の `disallowed-methods` が compile 時の第一層、本 script がコンパイル不要な第二層) CI と preflight で走る
+- CI (`scripts/entropy_guard.py`): 3 つの穴を修正 (1) `RandomState::new` だけを検査しており `RandomState::default()` (同じ OS 乱数シードのハッシャーに届く) を素通りさせていた `RandomState` の裸の語を検査する形に変更 (clippy 側の `disallowed-methods` は `Default::default` をトレイトメソッドとして実装型だけでは指せないため、`clippy.toml` に新設した `disallowed-types` の `RandomState` entry と合わせた 2 層で塞ぐ、`.github/clippy-lib/clippy.toml` も `scripts/clippy_lib_gate.py --write` で再生成) (2) `#[cfg(test)]` module 判定のブレース深さ計算が文字列しか除去しておらず、char literal や raw string の埋め込み引用符がブレース深さを狂わせて test module 判定が早期終了し、直後の production code を見逃す経路があった 文字列・raw string・char literal・ブロックコメントを 1 pass で正しく除去する sanitizer に置換 (3) `<std::time::Instant>::now()` のような qualified-self 呼び出しが `Instant::now` のパターンに `>` を挟むため素通りしていた (`as Trait` を挟む形も含む) 型名と `::method` の間に `>` / `as Trait` を許容するよう正規表現を拡張 canary test 6 本追加、元の script に対して赤を確認 比較件数は変わらず 314 file / 10 pattern / 0 problems
 
 ## [6.0.0] - 2026-10-13
 

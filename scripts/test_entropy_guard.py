@@ -106,7 +106,69 @@ class EntropyGuard(unittest.TestCase):
 
     def test_random_state_new_is_found(self):
         src = "pub fn f() { let _ = std::collections::hash_map::RandomState::new(); }\n"
-        self.assertTrue(any(x.startswith("RandomState::new") for x in self.problems({"src/a.rs": src})))
+        self.assertTrue(any(x.startswith("RandomState") for x in self.problems({"src/a.rs": src})))
+
+    def test_random_state_default_is_found(self):
+        # `RandomState::default()` seeds the same OS-randomness hasher as
+        # `::new()` but clippy's `disallowed-methods` cannot ban a trait
+        # method (`Default::default`) by the implementing type alone, so this
+        # guard is the only layer that catches it; a pattern keyed on `::new`
+        # specifically lets it straight through.
+        src = "pub fn f() { let _ = std::collections::hash_map::RandomState::default(); }\n"
+        self.assertTrue(any(x.startswith("RandomState") for x in self.problems({"src/a.rs": src})))
+
+    def test_a_char_literal_brace_does_not_break_the_test_module_skip(self):
+        # A char literal that happens to spell a brace (`'{'`) must not be
+        # counted as an opening brace: if it were, the `#[cfg(test)] mod t {
+        # .. }` skip region's depth tracking would close early (or never),
+        # and a production call right after would be silently missed.
+        src = (
+            "#[cfg(test)]\nmod t {\n    const C: char = '{';\n    fn t() {}\n}\n\n"
+            "pub fn f() { let _ = std::time::Instant::now(); }\n"
+        )
+        p = self.problems({"src/a.rs": src})
+        self.assertTrue(any("Instant::now" in x for x in p), p)
+
+    def test_a_qualified_self_clock_call_is_found(self):
+        # `<std::time::Instant>::now()` has a `>` between the type name and
+        # `::now`, which the plain `Instant\s*::\s*now` pattern does not
+        # tolerate; clippy's `disallowed-methods` catches this form, but this
+        # guard is meant to be a readable second layer, not a narrower one.
+        src = "pub fn f() { let _ = <std::time::Instant>::now(); }\n"
+        p = self.problems({"src/a.rs": src})
+        self.assertTrue(any("Instant::now" in x for x in p), p)
+
+    def test_a_qualified_self_with_as_trait_is_found(self):
+        # `<Type as Trait>::method()`'s `as Trait` sits between the type name
+        # and the closing `>`; this source has no plain-form occurrence, so a
+        # pattern that only tolerates the bare `<Type>::` shape (no `as
+        # Trait`) would miss it entirely rather than falling back to a
+        # redundant match elsewhere in the line.
+        src = "pub fn f() { let _ = <std::time::Instant as SomeTrait>::now(); }\n"
+        p = self.problems({"src/a.rs": src})
+        self.assertTrue(any("Instant::now" in x for x in p), p)
+
+    def test_a_raw_string_brace_does_not_break_the_test_module_skip(self):
+        # A `#`-delimited raw string with one embedded plain quote before its
+        # brace: a naive "pair up quote characters" approach consumes the
+        # first `"..."`-looking span (`"say "`) and, finding no second quote
+        # to close a span around the rest, leaves `hi{` -- including the
+        # brace -- as unstripped code (confirmed against the pre-fix script:
+        # `r#"say "hi{"#;` reduces to `r#""hi{"#;`, brace intact).
+        src = (
+            '#[cfg(test)]\nmod t {\n    const S: &str = r#"say "hi{"#;\n    fn t() {}\n}\n\n'
+            "pub fn f() { let _ = std::time::Instant::now(); }\n"
+        )
+        p = self.problems({"src/a.rs": src})
+        self.assertTrue(any("Instant::now" in x for x in p), p)
+
+    def test_a_block_comment_brace_does_not_break_the_test_module_skip(self):
+        src = (
+            "#[cfg(test)]\nmod t {\n    /* { */\n    fn t() {}\n}\n\n"
+            "pub fn f() { let _ = std::time::Instant::now(); }\n"
+        )
+        p = self.problems({"src/a.rs": src})
+        self.assertTrue(any("Instant::now" in x for x in p), p)
 
     def test_uuid_new_v4_is_found(self):
         src = "pub fn f() { let _ = uuid::Uuid::new_v4(); }\n"

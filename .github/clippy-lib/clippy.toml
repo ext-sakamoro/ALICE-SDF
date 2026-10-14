@@ -107,3 +107,11 @@ disallowed-methods = [
     { path = "std::time::SystemTime::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
     { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness; use a deterministic hasher or BTreeMap" },
 ]
+disallowed-types = [
+    # disallowed-methods cannot name RandomState::default (a trait method,
+    # not reachable via the implementing type's path alone); naming the type
+    # itself here catches ::default() too, along with any other explicit
+    # naming (a type annotation, a turbofish), without touching HashMap::new's
+    # own internal (unnamed) use of RandomState.
+    { path = "std::collections::hash_map::RandomState", reason = "seeds from OS randomness; use a deterministic hasher or BTreeMap; see disallowed-methods for RandomState::new" },
+]
