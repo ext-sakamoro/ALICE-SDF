@@ -87,4 +87,10 @@ disallowed-methods = [
     { path = "f64::sin_cos", reason = "two platform libm calls, not cross-platform bit-exact; use alice_det_math::sin_cos64" },
     { path = "f32::mul_add", reason = "exact on every platform, but the scalar / JIT / shader paths evaluate a * b + c with two roundings; write a * b + c so every path gets the same bits" },
     { path = "f64::mul_add", reason = "exact on every platform, but the laws evaluate a * b + c with two roundings; write a * b + c" },
+    # Determinism, second gate: no OS entropy and no wall clock in the crate
+    # (the CLI binary's own stdout timing diagnostics are a scoped exception,
+    # see src/bin/main.rs and scripts/entropy_guard.py's ALLOWED table)
+    { path = "std::time::Instant::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::time::SystemTime::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness; use a deterministic hasher or BTreeMap" },
 ]

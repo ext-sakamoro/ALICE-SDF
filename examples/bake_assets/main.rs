@@ -865,6 +865,10 @@ fn run(args: &[String]) -> Result<(), String> {
                 Some(other) => return Err(format!("unexpected argument {other}\n{usage}")),
                 None => DEFAULT_RES,
             };
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "CLI example timing diagnostic only, printed not stored, not part of the baked output"
+            )]
             let t = std::time::Instant::now();
             bake(&out, res)?;
             println!(

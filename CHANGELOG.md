@@ -13,6 +13,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 - CI: build した library と実行形式 (名前が `.so` / `.dylib` / `.a` / `.aar` / `.dll` / `.lib` / `.exe` / `.wasm` / `.node` で終わる (大文字小文字を問わない) か `.xcframework` の中にある、または ELF / Mach-O / PE / WebAssembly / `ar` のheader を持つ file) を tracked にしない検査 (`scripts/tracked_binaries.py`) を追加 例外は `.github/tracked-binaries.txt` に理由付きで書き、書いた path だけが例外になる 読めない tracked file と走査 0 件でも失敗する CI と preflight で走る
+- CI: production code (`src/**/*.rs`) が OS entropy / wall clock を読まないことを静的検査する `scripts/entropy_guard.py` を追加 (clippy の `disallowed-methods` が compile 時の第一層、本 script がコンパイル不要な第二層) CI と preflight で走る
 
 ## [6.0.0] - 2026-10-13
 
