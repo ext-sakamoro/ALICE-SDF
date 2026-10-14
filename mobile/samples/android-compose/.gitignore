@@ -9,3 +9,7 @@ captures/
 
 # gradle wrapper jar は再現可能、コミットしない (再生成: gradle wrapper --gradle-version 8.7 --distribution-type all)
 gradle/wrapper/gradle-wrapper.jar
+
+# mobile/packaging/android/build-aar.sh の生成物 (Rust core の .so と UniFFI の Kotlin bindings)、commit しない (README の「ビルド方法」で作る)
+app/src/main/jniLibs/
+app/src/main/java/uniffi/

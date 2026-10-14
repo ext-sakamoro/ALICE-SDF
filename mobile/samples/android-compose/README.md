@@ -20,13 +20,15 @@ android-compose/
 │       ├── AndroidManifest.xml
 │       ├── java/
 │       │   ├── net/alicelaw/alicesdf/MainActivity.kt   # Compose UI
-│       │   └── uniffi/alice_sdf/alice_sdf.kt           # UniFFI 生成 Kotlin bindings
+│       │   └── uniffi/alice_sdf/alice_sdf.kt           # UniFFI 生成 Kotlin bindings (build-aar.sh で作る、gitignore 済)
 │       └── jniLibs/{arm64-v8a,armeabi-v7a,x86_64,x86}/
-│           └── libuniffi_alice_sdf.so                  # Rust core (ABI ごと)
+│           └── libuniffi_alice_sdf.so                  # Rust core (ABI ごと、build-aar.sh で作る、gitignore 済)
 └── screenshots/AliceSDF-android-demo.png
 ```
 
 ## ビルド方法
+
+Rust core の `.so` と Kotlin bindings は repository に含めない (build した machine の path が入り、source とずれるため) 手順 1-2 で作る `cargo-ndk` と Android NDK が要る
 
 ```bash
 # 1. ALICE-SDF Mobile の AAR コンポーネント (.so + Kotlin) を生成
