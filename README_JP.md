@@ -294,6 +294,75 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md)、予定は
 [`docs/ROADMAP.md`](docs/ROADMAP.md) にある
 
+<!-- law-integration:begin law=5c6363312520f9991837e519bab14909ccf6f2b3 -->
+## ALICE-Law との統合
+
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+
+| | |
+|---|---|
+| release train | alice-sdf 6.0.0 (published)、Law への依存: あり |
+| 算術 | train の alice-det-math 0.5.0、算術の識別子 `135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000` この crate の要求は `alice-det-math = "0.5"` |
+| end to end 検査 | 対象 (`alice-sdf = "6"`)、digest `966a78784bb4e3341ac6627d519db896f398176b71c2402b188294db6c8e3728`、aarch64 と x86_64 で同じ |
+
+### 適合 (G1-G14)
+
+この repository には `alice-law-conformance.toml` が無い すべての gate は未申告
+
+| gate | 状態 | 注記 |
+|---|---|---|
+| G1 no-libm-direct | 未申告 |  |
+| G2 ieee-max-min | 未申告 |  |
+| G3 no-outer-fneg-of-fma | 未申告 |  |
+| G4 debug-release-arch-goldens | 未申告 |  |
+| G5 release-profile-test-leg | 未申告 |  |
+| G6 semantics-id | 未申告 |  |
+| G7 handshake-carries-id | 未申告 |  |
+| G8 persisted-semantics-id | 未申告 |  |
+| G9 persisted-meaning-change-is-major | 未申告 |  |
+| G10 no-run-varying-artifacts | 未申告 |  |
+| G11 gate-self-tests | 未申告 |  |
+| G12 public-repo-text-rules | 未申告 |  |
+| G13 no-unspecified-order | 未申告 |  |
+| G14 float-environment-invariants | 未申告 |  |
+
+### feature と保証の範囲
+
+| feature | 保証 | 注記 |
+|---|---|---|
+| `aaa` | 未申告 |  |
+| `all-shaders` | 未申告 |  |
+| `asp` | 未申告 |  |
+| `blinkscript` | 未申告 |  |
+| `cli` | 未申告 |  |
+| `codec` | 未申告 |  |
+| `destruction` | 未申告 |  |
+| `ffi` | 未申告 |  |
+| `font` | 未申告 |  |
+| `gi` | 未申告 |  |
+| `glsl` | 未申告 |  |
+| `godot` | 未申告 |  |
+| `gpu` | 未申告 |  |
+| `gpu-mesh` | 未申告 |  |
+| `hlsl` | 未申告 |  |
+| `image` | 未申告 |  |
+| `jit` | 未申告 |  |
+| `msl` | 未申告 |  |
+| `openvdb` | 未申告 |  |
+| `physics` | 未申告 |  |
+| `python` | 未申告 |  |
+| `rust` | 未申告 |  |
+| `sdf-cache` | 未申告 |  |
+| `svo` | 未申告 |  |
+| `svo-gpu` | 未申告 |  |
+| `terrain` | 未申告 |  |
+| `texture-fit` | 未申告 |  |
+| `unity` | 未申告 |  |
+| `unreal` | 未申告 |  |
+| `volume` | 未申告 |  |
+| `wasm` | 未申告 |  |
+<!-- law-integration:end -->
+
 ## ライセンス
 
 crate は `Apache-2.0` ([LICENSE-APACHE](LICENSE-APACHE)) `alice-det-math` 0.5 に合わせる
