@@ -8,6 +8,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Added
+- `alice-law-conformance.toml`: ALICE-Law の G1-G14 の各 gate の状態と根拠 (未達の gate は `fail-known` と箇所) README の ALICE-Law integration の表を同じ revision で再生成
+
 ### Removed
 - Android sample (`mobile/samples/android-compose`): commit していた build 済みの `.so` 4 本と UniFFI の Kotlin bindings を外した (build した machine の path が入り、今の `build-aar.sh` が作る library 名とも食い違っていた) README の「ビルド方法」で作る (`cargo-ndk` と Android NDK が要る) 生成先は `.gitignore` 済み
 
