@@ -16,10 +16,10 @@ Added 4 new Modifier variants to ALICE-SDF, expanding the modifier count from 19
 
 ### New Implementation Files
 
-- `/Users/ys/ALICE-SDF/src/modifiers/icosahedral.rs` - Icosahedral symmetry folding
-- `/Users/ys/ALICE-SDF/src/modifiers/ifs.rs` - IFS with scale correction
-- `/Users/ys/ALICE-SDF/src/modifiers/heightmap_displacement.rs` - Heightmap sampling
-- `/Users/ys/ALICE-SDF/src/modifiers/surface_roughness.rs` - FBM noise
+- `src/modifiers/icosahedral.rs` - Icosahedral symmetry folding
+- `src/modifiers/ifs.rs` - IFS with scale correction
+- `src/modifiers/heightmap_displacement.rs` - Heightmap sampling
+- `src/modifiers/surface_roughness.rs` - FBM noise
 
 ### Updated Core Files
 

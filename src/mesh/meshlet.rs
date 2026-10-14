@@ -13,7 +13,7 @@
 //! # 既存インフラとの関係
 //!
 //! - `nanite.rs::ClusterBounds` を bounds 計算に再利用 (球体 + AABB + LOD screen error)
-//! - `nanite.rs::NormalCone` を back-face culling に再利用 (前 session 追加分)
+//! - `nanite.rs::NormalCone` を back-face culling に再利用
 //! - `optimize.rs::optimize_vertex_cache` 経由の mesh を入力にすると meshlet 内の
 //!   spatial locality が向上、既に vcache 済 mesh は基本的に良い meshlet 分割になる
 //!
@@ -61,7 +61,7 @@ pub struct Meshlet {
     pub triangles: Vec<u8>,
     /// Bounding sphere + AABB for frustum culling
     pub bounds: ClusterBounds,
-    /// Normal cone for back-face culling (前 session `NormalCone` 活用)
+    /// Normal cone for back-face culling (`nanite.rs::NormalCone`)
     pub normal_cone: NormalCone,
 }
 

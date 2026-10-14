@@ -42,7 +42,7 @@ cp ../../uniffi-wrapper/target/aar/kotlin/uniffi/alice_sdf/alice_sdf.kt \
    app/src/main/java/uniffi/alice_sdf/
 
 # 3. local.properties 作成
-echo "sdk.dir=/Users/ys/Library/Android/sdk" > local.properties
+echo "sdk.dir=<path to your Android SDK>" > local.properties
 
 # 4. gradle wrapper 初期化 (初回のみ)
 gradle wrapper --gradle-version 8.7 --distribution-type all
