@@ -106,6 +106,34 @@ class TrackedBinaries(unittest.TestCase):
         self.addCleanup((self.r / "data/blob").chmod, 0o644)
         self.assertEqual(self.run_check(), 1)
 
+    @unittest.skipIf(os.name == "nt", "symbolic links need extra rights here")
+    def test_a_tracked_symlink_is_judged_by_its_name_not_its_target(self) -> None:
+        # a link is not followed: a link to text, and a link to an untracked ELF image, are both not binaries
+        os.symlink("src/lib.rs", self.r / "link")
+        git("add", "link", cwd=self.r)
+        self.assertEqual(self.run_check(), 0)
+        (self.r / "build.out").write_bytes(b"\x7fELFrest")
+        os.symlink("build.out", self.r / "link2")
+        git("add", "link2", cwd=self.r)
+        self.assertEqual(self.run_check(), 0)
+        # its name still counts
+        os.symlink("src/lib.rs", self.r / "libx.so")
+        git("add", "libx.so", cwd=self.r)
+        self.assertEqual(self.run_check(), 1)
+
+    def test_a_submodule_is_not_read_as_a_file(self) -> None:
+        # a submodule is a directory in the work tree (its own repository checks its own files)
+        sub = self.r / "vendor" / "sub"
+        sub.mkdir(parents=True)
+        git("init", "-q", cwd=sub)
+        (sub / "a.txt").write_bytes(b"a\n")
+        git("add", "a.txt", cwd=sub)
+        git("commit", "-qm", "a", cwd=sub)
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=sub, capture_output=True, text=True,
+                             check=True).stdout.strip()
+        git("update-index", "--add", "--cacheinfo", f"160000,{sha},vendor/sub", cwd=self.r)
+        self.assertEqual(self.run_check(), 0)
+
     def test_this_repository_passes(self) -> None:
         self.assertEqual(tb.main([str(HERE.parent)]), 0)
 
