@@ -1,0 +1,129 @@
+# ALICE-Law conformance manifest for this crate (alice-sdf). One entry per
+# gate defined in ALICE-Law's conformance/gates.toml. Fields (status /
+# evidence / mutant / since / note / reference_repo) and the four statuses
+# (pass / fail-known / unverified / n/a) are docs/CONFORMANCE.md's "Manifest"
+# section in that repository.
+#
+# Each entry is written from what this repository's own files, CI workflows
+# and tests show at the commit that adds or edits it. `pass` needs the
+# evidence and a mutant that turns it red. `fail-known` names a violation
+# that is known, with its location. Where no violation is known but the
+# machine check the gate requires is missing or incomplete, or a scan has no
+# canary, the entry is `unverified` with what is missing.
+
+[G1]
+status = "unverified"
+evidence = [
+    "clippy.toml (bans every method gates.toml marks banned, for f32 and f64, plus sin_cos; powi is banned, the pending default; mul_add is banned as well, stricter than the list)",
+    ".github/clippy-lib/clippy.toml (the library configuration, generated from clippy.toml, carries the same list)",
+    ".github/workflows/ci.yml clippy job: Clippy strict (no-default-features), Clippy strict (default, all targets), Clippy strict (all features that build on Linux, all targets), Clippy (library code ...)",
+    "scripts/clippy-lib-canary/src/lib.rs libm_f32 (canary), checked by scripts/clippy_lib_gate.py in the same job",
+]
+mutant = "x.sin() added to a library function in src/lib.rs and to src/terrain/mod.rs (feature terrain): cargo clippy --lib --features terrain -- -D warnings fails with disallowed_methods on both (f64::sin, f32::sin); reverted"
+since = ""
+note = "unverified: no banned call is known (the hand check below finds none), but CI does not lint every feature or wasm32, so the machine check is incomplete; the method list is complete, but the CI clippy runs do not build every feature: the feature lists at .github/workflows/ci.yml lines 677 and 691 leave out msl (src/compiled/mod.rs line 202), python (src/lib.rs line 129) and godot (src/lib.rs line 132), and no clippy run targets wasm32 for src/wasm.rs (src/lib.rs line 156), so a banned call added there is not caught. Checked by hand at this commit: clippy with .github/clippy-lib reports no libm call for --features msl,python,godot or for --target wasm32-unknown-unknown --features wasm. The font module (src/lib.rs line 126) also needs --cfg alice_font_bridge and is not linted."
+reference_repo = ""
+
+[G2]
+status = "fail-known"
+evidence = [
+    "src/compiled/real.rs law_max_f32 / law_min_f32 / law_max_f64 / law_min_f64 (scalar Law helpers) and impl LawMinMax for f32x8 (line 277)",
+    "src/compiled/real.rs tests law_minmax_signed_zero_table (line 997, scalar and f32x8 on the four zero pairs) and simd_law_minmax_matches_scalar_per_lane (line 1127, every lane against scalar)",
+    "tests/test_minmax_signed_zero_probe.rs (tree, SIMD and JIT agree on signed zero at coincident boundaries; ci.yml test job, all three OS)",
+    ".github/clippy-lib/clippy.toml (f32 / f64 / wide::f32x8 max and min banned in library code)",
+    "scripts/raw_minmax_manifest.py with scripts/raw_minmax_manifest.toml (default-deny, raw helpers only under src/npr/) and scripts/test_raw_minmax_manifest.py",
+    "scripts/clippy_lib_hidden_check.py (no max / min hidden under a function-level allow of the lint)",
+]
+mutant = "a.max(b) on f32 added to src/lib.rs: clippy with CLIPPY_CONF_DIR=.github/clippy-lib fails (f32::max); f32x8 law_max with self & other changed to self | other in the equal-operands blend: law_minmax_signed_zero_table and simd_law_minmax_matches_scalar_per_lane fail (max(0, -0)); both reverted"
+since = ""
+note = "unmet at src/wasm.rs lines 118 and 123 (f32::min) and 177 and 221 (f32::max): the wasm module is not linted in CI (see G1), and clippy with .github/clippy-lib on wasm32-unknown-unknown --features wasm reports these four. Also the ban list names f32, f64 and wide::f32x8 only, so glam vector min / max (componentwise f32::min / f32::max) is not caught, e.g. the parallel bounding-box reductions at src/mesh/collision.rs line 119 and src/mesh/lightmap.rs line 169. The SIMD widths the crate computes in are scalar and wide::f32x8 (the only SIMD type under src/), each with a test above."
+reference_repo = "ALICE-Physics"
+
+[G3]
+status = "unverified"
+evidence = [
+    "clippy.toml f32::mul_add and f64::mul_add in disallowed-methods, enforced by the .github/workflows/ci.yml clippy job",
+    "scripts/det_math_guard.py (no .mul_add( call in the evaluator and law directories by text, any receiver; .github/workflows/security-audit.yml)",
+    "src/compiled/real.rs Real::mul_add for f32 and f32x8 computes self * m + a with two roundings, so the library has no fused multiply-add to negate",
+]
+mutant = "-(a.mul_add(b, c)), Neg::neg(a.mul_add(b, c)), -0.0 - a.mul_add(b, c) and -1.0 * a.mul_add(b, c) on f32 / f64 added to src/lib.rs: clippy fails with disallowed_methods (f32::mul_add / f64::mul_add) on each; reverted"
+since = ""
+note = "unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add outside the clippy list; the library computes no fused multiply-add: a scan of src/ outside #[cfg(test)] modules for mul_add or fma finds only the three Real::mul_add definitions in src/compiled/real.rs, which are not fused, and the JIT emits no fma instruction (src/compiled/jit/codegen.rs line 21). Repeat with: git grep -nE 'mul_add|[.]fma[(]' -- src, ignoring hits inside #[cfg(test)] modules. Limit: wide::f32x8::mul_add is not in the clippy list, and det_math_guard.py covers only its directory list, so a negated f32x8 mul_add in, for example, src/mesh/ would not be caught by CI (checked: clippy did not flag it)."
+reference_repo = ""
+
+[G4]
+status = "fail-known"
+evidence = [
+    "src/compiled/real.rs law_minmax_signed_zero_table and tree_csg_ops_carry_the_law_on_signed_zero (fixed bit patterns for the signed-zero cases)",
+    "tests/test_det_golden.rs tree_evaluator_bits_match_recorded_hashes",
+    ".github/workflows/ci.yml test job (macos-latest aarch64, ubuntu-latest and windows-latest x86_64)",
+]
+since = ""
+note = "the goldens run on aarch64 and x86_64 under the debug profile only: no workflow runs cargo test --release (.github/workflows/ci.yml test job, lines 130 to 238), so the {debug, release} x {x86_64, aarch64} matrix has two of its four legs"
+reference_repo = ""
+
+[G5]
+status = "fail-known"
+note = "no release-profile test leg: the test job in .github/workflows/ci.yml (lines 130 to 238) runs cargo test without --release on every OS, and no other workflow runs the tests with --release"
+reference_repo = ""
+
+[G6]
+status = "fail-known"
+evidence = ["src/lib.rs pub use alice_det_math::SEMANTICS_ID (line 189)", "tests/test_det_golden.rs semantics_id_matches_recorded_hex"]
+since = ""
+note = "src/lib.rs line 189 re-exports alice-det-math's SEMANTICS_ID instead of computing an identifier that folds this crate's own Law pins (the max / min rule, the two-rounding mul_add) with its Law-bearing dependencies' identifiers (alice-det-math, and alice-physics under the physics feature); there is no tie to this crate's version or toolchain and no test that a changed pin changes it"
+reference_repo = ""
+
+[G7]
+status = "unverified"
+evidence = [
+    "src/sim_bridge.rs, src/physics_bridge.rs, src/live_sdf.rs (the only modules that take alice-physics values, as concrete Rust types)",
+    "src/ffi, src/wasm.rs, src/python, src/godot (the type-erasing entry points; none takes an alice-physics or alice-det-math value)",
+]
+mutant = "a decode, from_bytes, extern \"C\", wasm_bindgen or PyO3 entry point that takes an alice-physics value added under src/: the scan below lists it"
+since = ""
+note = "unverified: the empty boundary list rests on a lexical scan with no canary, and the completeness of the entry point list is the audit part of this gate; the list of type-erasing boundaries that receive another Law-bearing crate's values is empty: the Law-bearing dependencies are alice-det-math (functions only) and alice-physics (optional), and every alice-physics value is passed as a concrete Rust type. Repeat with: git grep -nE 'alice_physics|alice_det_math' -- src | grep -iE 'from_bytes|decode|deseriali|from_slice|read_|load|extern \"C\"|no_mangle|wasm_bindgen|pyfunction|pymethods|dyn Any' (0 lines at this commit). The scan is lexical; the completeness of the entry point list is the audit part of this gate."
+reference_repo = ""
+
+[G8]
+status = "fail-known"
+note = "no durable format this crate writes carries an identifier of the meaning of the stored bytes: the SVO stream (src/svo/streaming.rs line 68 to_bytes), the volume exports (src/volume/export.rs lines 24, 74, 165 and 273), the mesh writers (src/io/stl.rs line 13, src/io/obj.rs line 39 and the other src/io/ formats) and .asdf (src/io/asdf.rs line 184, a magic and a format version only). SEMANTICS_ID is used only by src/lib.rs line 189 and the test."
+reference_repo = ""
+
+[G9]
+status = "fail-known"
+note = "there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a persisted one"
+reference_repo = ""
+
+[G10]
+status = "unverified"
+note = "unverified: no use is known; a lexical scan of library sources finds none of SystemTime::now, Instant::now, Utc::now, Local::now, Uuid::new_v4, Uuid::now_v7, thread_rng, rand::rng(), rand::random, from_entropy, from_os_rng, OsRng, getrandom, fastrand:: or RandomState, but there is no lint (disallowed_methods / disallowed_types in clippy.toml) or CI scan step with a canary, so nothing keeps it that way"
+reference_repo = ""
+
+[G11]
+status = "fail-known"
+evidence = [
+    "scripts/clippy_lib_gate.py with scripts/clippy-lib-canary/ (canary: every forbidden form must be flagged) and scripts/test_clippy_lib_gate.py",
+    "scripts/raw_minmax_manifest.py (fails when no file is scanned or no raw helper definition is found) and scripts/test_raw_minmax_manifest.py",
+    "scripts/clippy_lib_hidden_check.py and scripts/test_clippy_lib_hidden_check.py",
+]
+since = ""
+note = "scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are stated to be verbatim copies of alice-physics's helpers, with no cross-repository identity check"
+reference_repo = ""
+
+[G12]
+status = "fail-known"
+evidence = ["scripts/docs_lint.py", "scripts/test_docs_lint.py"]
+since = ""
+note = "CI does not run ALICE-Law's scripts/public_text_check.py: scripts/docs_lint.py is this repository's own checker, which does not count for this gate. Adding the step waits on changes to that script in ALICE-Law."
+reference_repo = "ALICE-Law"
+
+[G13]
+status = "fail-known"
+note = "parallel reductions of glam vector min / max: src/mesh/collision.rs line 119 and src/mesh/lightmap.rs line 169 combine partial bounds with f32::min / f32::max (through glam), whose result for an equal pair of zeros depends on the operand order and so on how rayon splits the work; there is no lint or allowlist for HashMap / HashSet iteration (24 files under src/ name them, not audited) and no ordered-reduction test with two thread counts. src/mesh/nanite.rs line 1110 reduces with law_max_f32, which is order-independent on zeros."
+reference_repo = ""
+
+[G14]
+status = "unverified"
+note = "unverified: no flag is known; no build configuration sets a fast-math flag or target-cpu=native (no .cargo/config, no build.rs, workflow RUSTFLAGS is -Dwarnings only; the Cargo.toml line 429 comment suggests target-cpu=native to users but sets nothing), but there is no CI scan step over those files and no test asserting round-to-nearest-even or that subnormals are not flushed to zero"
+reference_repo = ""

@@ -307,24 +307,22 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 
 ### 適合 (G1-G14)
 
-この repository には `alice-law-conformance.toml` が無い すべての gate は未申告
-
 | gate | 状態 | 注記 |
 |---|---|---|
-| G1 no-libm-direct | 未申告 |  |
-| G2 ieee-max-min | 未申告 |  |
-| G3 no-outer-fneg-of-fma | 未申告 |  |
-| G4 debug-release-arch-goldens | 未申告 |  |
-| G5 release-profile-test-leg | 未申告 |  |
-| G6 semantics-id | 未申告 |  |
-| G7 handshake-carries-id | 未申告 |  |
-| G8 persisted-semantics-id | 未申告 |  |
-| G9 persisted-meaning-change-is-major | 未申告 |  |
-| G10 no-run-varying-artifacts | 未申告 |  |
-| G11 gate-self-tests | 未申告 |  |
-| G12 public-repo-text-rules | 未申告 |  |
-| G13 no-unspecified-order | 未申告 |  |
-| G14 float-environment-invariants | 未申告 |  |
+| G1 no-libm-direct | 未確認 | unverified: no banned call is known (the hand check below finds none), but CI does not lint every feature or wasm32, so the machine check is incomplete; the … |
+| G2 ieee-max-min | 未達 | unmet at src/wasm.rs lines 118 and 123 (f32::min) and 177 and 221 (f32::max): the wasm module is not linted in CI (see G1), and clippy with .github/clippy-lib … |
+| G3 no-outer-fneg-of-fma | 未確認 | unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add … |
+| G4 debug-release-arch-goldens | 未達 | the goldens run on aarch64 and x86_64 under the debug profile only: no workflow runs cargo test --release (.github/workflows/ci.yml test job, lines 130 to … |
+| G5 release-profile-test-leg | 未達 | no release-profile test leg: the test job in .github/workflows/ci.yml (lines 130 to 238) runs cargo test without --release on every OS, and no other workflow … |
+| G6 semantics-id | 未達 | src/lib.rs line 189 re-exports alice-det-math's SEMANTICS_ID instead of computing an identifier that folds this crate's own Law pins (the max / min rule, the … |
+| G7 handshake-carries-id | 未確認 | unverified: the empty boundary list rests on a lexical scan with no canary, and the completeness of the entry point list is the audit part of this gate; the … |
+| G8 persisted-semantics-id | 未達 | no durable format this crate writes carries an identifier of the meaning of the stored bytes: the SVO stream (src/svo/streaming.rs line 68 to_bytes), the … |
+| G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a … |
+| G10 no-run-varying-artifacts | 未確認 | unverified: no use is known; a lexical scan of library sources finds none of SystemTime::now, Instant::now, Utc::now, Local::now, Uuid::new_v4, Uuid::now_v7, … |
+| G11 gate-self-tests | 未達 | scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are … |
+| G12 public-repo-text-rules | 未達 | CI does not run ALICE-Law's scripts/public_text_check.py: scripts/docs_lint.py is this repository's own checker, which does not count for this gate. Adding the … |
+| G13 no-unspecified-order | 未達 | parallel reductions of glam vector min / max: src/mesh/collision.rs line 119 and src/mesh/lightmap.rs line 169 combine partial bounds with f32::min / f32::max … |
+| G14 float-environment-invariants | 未確認 | unverified: no flag is known; no build configuration sets a fast-math flag or target-cpu=native (no .cargo/config, no build.rs, workflow RUSTFLAGS is … |
 
 ### feature と保証の範囲
 
