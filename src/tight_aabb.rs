@@ -16,6 +16,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::interval::{eval_interval, Vec3Interval};
 use crate::types::{Aabb, SdfNode};
 use glam::{Mat3, Vec3};
@@ -237,8 +238,9 @@ pub enum AnalyticAabb {
     Empty,
     /// A box that contains the solid `{f <= 0}`, and with it the surface `{f = 0}`.
     Bounded(Aabb),
-    /// The tree contains a node this bound does not cover (twist, bend, repeat,
-    /// approximate distance fields, ...): no analytic statement is made.
+    /// The tree contains a node this bound does not cover (bend, infinite repeats,
+    /// approximate distance fields, a taper whose height range reaches its singular
+    /// plane, ...): no analytic statement is made.
     Unsupported,
 }
 
@@ -502,8 +504,269 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
             };
             level_region(child, &scaled, delta / factors.min_element())
         }
+        // exact distance fields of revolution / prisms: the level-delta set (delta >= 0) of the
+        // exact field lies in the shape grown by delta; a negative delta only shrinks it
+        SdfNode::Diamond {
+            radius,
+            half_height,
+        } if radius.is_finite()
+            && half_height.is_finite()
+            && *radius > 0.0
+            && *half_height > 0.0 =>
+        {
+            let d = delta.law_max(0.0);
+            round_leaf(
+                xf,
+                Vec3::ZERO,
+                Vec3::new(0.0, half_height + d, 0.0),
+                radius + d,
+                0.0,
+            )
+        }
+        SdfNode::Ellipsoid { radii } if radii.is_finite() && radii.min_element() > 0.0 => {
+            leaf_box(xf, Vec3::ZERO, *radii + Vec3::splat(delta.law_max(0.0)))
+        }
+        // hexagon of apothem `hex_radius` (flats at +-hex_radius in Y, corners at
+        // +-2 hex_radius / sqrt(3) in X) extruded +-half_height along Z
+        SdfNode::HexPrism {
+            hex_radius,
+            half_height,
+        } if hex_radius.is_finite()
+            && half_height.is_finite()
+            && *hex_radius > 0.0
+            && *half_height > 0.0 =>
+        {
+            let d = delta.law_max(0.0);
+            leaf_box(
+                xf,
+                Vec3::ZERO,
+                Vec3::new(
+                    hex_radius * HEX_CORNER_OVER_APOTHEM + d,
+                    hex_radius + d,
+                    half_height + d,
+                ),
+            )
+        }
+        // rotation about Y (twist) / rotation about Y by a multiple of the sector (polar
+        // repeat): the evaluation point keeps its height and its distance from the axis
+        SdfNode::Twist { child, strength } if strength.is_finite() => {
+            revolved_region(child, xf, delta)
+        }
+        SdfNode::PolarRepeat { child, count } if *count > 0 => revolved_region(child, xf, delta),
+        // the fold is a composition of coordinate permutations, sign changes and reflections
+        // through planes containing the origin: the evaluation point keeps its norm
+        SdfNode::IcosahedralSymmetry { child } => match level_region(child, &IDENTITY, delta) {
+            Region::Box(lo, hi) => {
+                let r = inflate(max_abs(lo, hi).length());
+                wrap_box(xf, Vec3::splat(-r), Vec3::splat(r))
+            }
+            other => other,
+        },
+        // abs and sorting of the coordinates: every component of the evaluation point is
+        // the absolute value of some coordinate of the point
+        SdfNode::OctantMirror { child } => match level_region(child, &IDENTITY, delta) {
+            Region::Box(lo, hi) => {
+                let r = max_abs(lo, hi).max_element();
+                wrap_box(xf, Vec3::splat(-r), Vec3::splat(r))
+            }
+            other => other,
+        },
+        SdfNode::Taper {
+            child,
+            factor,
+            reach,
+        } => taper_region(child, *factor, *reach, xf, delta),
         _ => Region::Unknown,
     }
+}
+
+/// The identity map.
+const IDENTITY: Affine = Affine {
+    a: Mat3::IDENTITY,
+    t: Vec3::ZERO,
+};
+
+/// `2 / sqrt(3)` rounded up: distance of a regular hexagon's corner from its centre
+/// over its apothem.
+const HEX_CORNER_OVER_APOTHEM: f32 = 1.154_700_6;
+
+/// Relative slack for maps that rotate by a computed angle: the angle comes from an
+/// approximate `sin_cos`, so the image keeps the norm only to rounding.
+const ROTATION_REL_SLACK: f32 = 1e-4;
+
+fn inflate(r: f32) -> f32 {
+    r * (1.0 + ROTATION_REL_SLACK)
+}
+
+/// Largest absolute coordinate per axis over the box `[lo, hi]`.
+fn max_abs(lo: Vec3, hi: Vec3) -> Vec3 {
+    lo.abs().max(hi.abs())
+}
+
+/// The box `[lo, hi]` (local frame) mapped through `xf`.
+fn wrap_box(xf: &Affine, lo: Vec3, hi: Vec3) -> Region {
+    leaf_box(xf, (lo + hi) * 0.5, (hi - lo) * 0.5)
+}
+
+/// Child evaluated at a point with the same height and distance from the Y axis:
+/// the region is the child's height range with the radius of its farthest corner, or
+/// the radius of the child's own revolved bound when that is smaller (a box corner is
+/// up to `sqrt(2)` farther from the axis than the disc it was taken from).
+fn revolved_region(child: &SdfNode, xf: &Affine, delta: f32) -> Region {
+    match level_region(child, &IDENTITY, delta) {
+        Region::Box(lo, hi) => {
+            let m = max_abs(lo, hi);
+            let corner = alice_det_math::hypot(m.x, m.z);
+            let rho =
+                revolved_extent(child, delta).map_or(corner, |(rho, _, _)| rho.law_min(corner));
+            let r = inflate(rho);
+            wrap_box(xf, Vec3::new(-r, lo.y, -r), Vec3::new(r, hi.y, r))
+        }
+        other => other,
+    }
+}
+
+/// `(rho, y_lo, y_hi)`: a cylinder around the Y axis that contains `{f <= delta}`, for
+/// nodes that are solids of revolution about Y (`None` when the node is not known to be).
+fn revolved_extent(node: &SdfNode, delta: f32) -> Option<(f32, f32, f32)> {
+    if !delta.is_finite() {
+        return None;
+    }
+    let cylinder = |rho: f32, h: f32| (rho >= 0.0 && h >= 0.0).then_some((rho, -h, h));
+    match node {
+        SdfNode::Sphere { radius } => cylinder(radius + delta, radius + delta),
+        SdfNode::Cylinder {
+            radius,
+            half_height,
+        } => cylinder(radius + delta, half_height + delta),
+        SdfNode::Torus {
+            major_radius,
+            minor_radius,
+        } if *major_radius >= 0.0 => {
+            cylinder(major_radius + minor_radius + delta, minor_radius + delta)
+        }
+        SdfNode::Diamond {
+            radius,
+            half_height,
+        } if *radius > 0.0 && *half_height > 0.0 => {
+            let d = delta.law_max(0.0);
+            cylinder(radius + d, half_height + d)
+        }
+        SdfNode::WithMaterial { child, .. } => revolved_extent(child, delta),
+        SdfNode::Round { child, radius } => revolved_extent(child, delta + radius),
+        SdfNode::Onion { child, thickness } => revolved_extent(child, delta + thickness),
+        SdfNode::Subtraction { a, .. } => revolved_extent(a, delta),
+        SdfNode::Twist { child, strength } if strength.is_finite() => {
+            revolved_through_rotation(child, delta)
+        }
+        SdfNode::PolarRepeat { child, count } if *count > 0 => {
+            revolved_through_rotation(child, delta)
+        }
+        SdfNode::Union { a, b } => {
+            let (ra, ya0, ya1) = revolved_extent(a, delta)?;
+            let (rb, yb0, yb1) = revolved_extent(b, delta)?;
+            Some((ra.law_max(rb), ya0.law_min(yb0), ya1.law_max(yb1)))
+        }
+        SdfNode::Taper {
+            child,
+            factor,
+            reach,
+        } if factor.is_finite() => {
+            if *factor == 0.0 {
+                return revolved_extent(child, delta);
+            }
+            let level = delta.law_max(0.0);
+            let (rho, y0, y1) = revolved_extent(child, 0.0)?;
+            let (_, d_max) = taper_scale_range(y0, y1, *factor)?;
+            let mut out = (rho * d_max, y0, y1);
+            if level > 0.0 {
+                let (rho_cone, slab) = taper_cone(*reach, *factor, level)?;
+                out = (
+                    out.0.law_max(rho_cone),
+                    out.1.law_min(-slab),
+                    out.2.law_max(slab),
+                );
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+/// [`revolved_extent`] of a rotation about Y of `child`: the child's own revolved bound, or
+/// the farthest corner of its box when it is not known to be a solid of revolution.
+fn revolved_through_rotation(child: &SdfNode, delta: f32) -> Option<(f32, f32, f32)> {
+    let (rho, y0, y1) = revolved_extent(child, delta).or_else(|| {
+        let Region::Box(lo, hi) = level_region(child, &IDENTITY, delta) else {
+            return None;
+        };
+        let m = max_abs(lo, hi);
+        Some((alice_det_math::hypot(m.x, m.z), lo.y, hi.y))
+    })?;
+    Some((inflate(rho), y0, y1))
+}
+
+/// `(min, max)` of `1 - y f` for `y` in `[y0, y1]`, or `None` when the singular plane
+/// `y = 1 / f` (or the clamp that guards it) is inside or too close to the range.
+fn taper_scale_range(y0: f32, y1: f32, factor: f32) -> Option<(f32, f32)> {
+    let (d0, d1) = (1.0 - y0 * factor, 1.0 - y1 * factor);
+    let (d_min, d_max) = (d0.law_min(d1), d0.law_max(d1));
+    (d_min > 1e-5 && d_max.is_finite()).then_some((d_min, d_max))
+}
+
+/// Where the node value of a taper can still be `<= level` (`level > 0`) with the child
+/// distance positive: the evaluator's own cone / slab
+/// `max((rho - k |y - 1/f|) / sqrt(1 + k^2), |y| - r_y) <= level` with `k = r_xz |f|` from the
+/// stored `reach`. Returns `(rho_max, y_slab)`, `None` when the stored reach is unknown.
+fn taper_cone(reach: [f32; 2], factor: f32, level: f32) -> Option<(f32, f32)> {
+    if !(reach[0] < 1e30 && reach[1] < 1e30 && reach[0] >= 0.0 && reach[1] >= 0.0) {
+        return None;
+    }
+    let k = reach[0] * factor.abs();
+    let slab = reach[1] + level;
+    let rho = k * (slab + (1.0 / factor).abs()) + level * alice_det_math::hypot(k, 1.0);
+    (rho.is_finite() && slab.is_finite()).then_some((rho, slab))
+}
+
+/// Taper: the child sees `q = (x, y, z) / (1 - y f)`, so `x = q_x (1 - y f)` at the same
+/// height. The node value is `taper_bound(d, ..)`, which is `<= 0` only where the child
+/// distance `d` is `<= 0`; for a level `delta > 0` the part with `d > 0` is inside the
+/// cone / slab of [`taper_cone`].
+fn taper_region(child: &SdfNode, factor: f32, reach: [f32; 2], xf: &Affine, delta: f32) -> Region {
+    if !factor.is_finite() {
+        return Region::Unknown;
+    }
+    if factor == 0.0 {
+        return level_region(child, xf, delta);
+    }
+    let level = delta.law_max(0.0);
+    let (lo, hi) = match level_region(child, &IDENTITY, 0.0) {
+        Region::Box(lo, hi) => (lo, hi),
+        Region::Empty if level == 0.0 => return Region::Empty,
+        _ => return Region::Unknown,
+    };
+    let Some((d_min, d_max)) = taper_scale_range(lo.y, hi.y, factor) else {
+        return Region::Unknown;
+    };
+    let span = |a: f32, b: f32| {
+        let p = [a * d_min, a * d_max, b * d_min, b * d_max];
+        (
+            p.iter().copied().fold(f32::INFINITY, f32::law_min),
+            p.iter().copied().fold(f32::NEG_INFINITY, f32::law_max),
+        )
+    };
+    let (x0, x1) = span(lo.x, hi.x);
+    let (z0, z1) = span(lo.z, hi.z);
+    let mut out_lo = Vec3::new(x0, lo.y, z0);
+    let mut out_hi = Vec3::new(x1, hi.y, z1);
+    if level > 0.0 {
+        let Some((rho, slab)) = taper_cone(reach, factor, level) else {
+            return Region::Unknown;
+        };
+        out_lo = out_lo.min(Vec3::new(-rho, -slab, -rho));
+        out_hi = out_hi.max(Vec3::new(rho, slab, rho));
+    }
+    wrap_box(xf, out_lo, out_hi)
 }
 
 /// Bound the solid `{f <= 0}` of `node` by propagating the level `delta` down the
