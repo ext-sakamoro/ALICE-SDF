@@ -93,7 +93,7 @@ impl TightAabbConfig {
 
     /// Preset for shapes 200mm+ bbox (`initial_half_size: 500.0, iters: 24, subdivisions: 16`).
     ///
-    /// Bamboo canonical (matches `alice_bamboo::sdf_to_bambu_3mf` internal config).
+    /// Matches the configuration the 3MF export for Bambu printers uses internally.
     /// SKADIS panel / gridfinity / large wall organizer.
     #[must_use]
     pub const fn preset_large() -> Self {

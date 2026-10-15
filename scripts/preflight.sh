@@ -90,7 +90,11 @@ python3 scripts/test_gen_status.py
 python3 scripts/gen-wiring-status.py
 python3 scripts/gen-oracle-status.py
 
-step "docs: oracle + 公開文書の語彙と CHANGELOG の構造 / README と code の一致"
+step "public-text.yml / public-text: Public text (ALICE-Law checker at the pin; tree, then the commits)"
+python3 scripts/test_public_text.py
+scripts/public_text.sh
+
+step "docs: oracle + CHANGELOG の構造 / README と code の一致"
 python3 scripts/test_docs_lint.py
 python3 scripts/docs_lint.py --check
 python3 scripts/test_tracked_binaries.py

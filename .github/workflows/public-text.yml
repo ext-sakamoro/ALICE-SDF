@@ -1,0 +1,54 @@
+name: Public text
+
+# The text this public repository publishes (every tracked file's path and text, and
+# each pushed commit's message, added lines and paths) carries none of the words the
+# ALICE-Law check refuses: scripts/public_text.sh runs ALICE-Law's own checker at the
+# revision .github/public-text-pin names, verified by its SHA-256. Mirrored in
+# scripts/preflight.sh.
+
+on:
+  push:
+    # ci/**: the same check on a branch before it is fast-forwarded to main
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# on main each commit has a group of its own and a run there is never
+# cancelled; a newer push cancels an older run only off main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  public-text:
+    name: Public text
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # 3.14: the checker reads zstd streams with the standard library
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.14'
+      - name: Tests of scripts/public_text.sh (no network)
+        run: python scripts/test_public_text.py
+      - name: Public text (tree at HEAD, then the pushed commits)
+        env:
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base=""
+          if [ -n "${PR_BASE:-}" ]; then
+            base="$PR_BASE"
+          elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          fi
+          if [ -n "$base" ]; then scripts/public_text.sh "$base"; else scripts/public_text.sh; fi

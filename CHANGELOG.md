@@ -18,6 +18,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: root の Cargo.lock を追跡するようにした golden の試験は解決した alice-det-math の識別子を固定するので、依存の新しい版が出るたびに main の CI が黙って落ちないよう、記録した版で build する 利用者と同じく lock 無しで解決した場合は、Security & Hygiene の package integrity が展開した .crate から lock を外して `cargo check --all-features` し、alice-det-math が解決されたことを確かめる
 - alice-det-math の要求を 0.5.1 に上げた Cargo.lock を追跡しないので CI は公開済みの 0.5.1 を解決し、`SEMANTICS_ID` が 135c407d… から 85e08846… に変わって `tests/test_det_golden.rs` の識別子の pin が落ちていた 識別子を記録し直し、0.5.0 の識別子が `PREVIOUS_SEMANTICS_IDS` に残ることを試験で固定した corpus の各 node の hash は変わらない
 - CI: build した library と実行形式 (名前が `.so` / `.dylib` / `.a` / `.aar` / `.dll` / `.lib` / `.exe` / `.wasm` / `.node` で終わる (大文字小文字を問わない) か `.xcframework` の中にある、または ELF / Mach-O / PE / WebAssembly / `ar` のheader を持つ file) を tracked にしない検査 (`scripts/tracked_binaries.py`) を追加 例外は `.github/tracked-binaries.txt` に理由付きで書き、書いた path だけが例外になる 読めない tracked file と走査 0 件でも失敗する CI と preflight で走る
+- CI: 公開する text の検査を ALICE-Law の検査器で行う `.github/public-text-pin` の revision の `scripts/public_text_check.py` を SHA-256 を確かめて取得し、全 tracked file の path と本文、送られた commit の message・追加行・追加 path を読む (`scripts/public_text.sh`、`.github/workflows/public-text.yml`、preflight) 比べる対象が無い時と pin・base が読めない時も失敗する
+- `scripts/docs_lint.py`: 語の一覧 (作業の進め方の語の正規表現と SHA-256 で持つ非公開の名前) を外し、CHANGELOG の構造の検査だけを残した 同じ語は ALICE-Law の検査器がすべて検出する (正規表現の候補 58 件の入力をすべて検出し、名前の hash 31 件はすべて検査器も持つ) README の ALICE-Law integration の表 (G12) を再生成 語の検査は `Public text` workflow の ubuntu の job だけで走る (以前は docs_lint が test matrix の 3 OS で走っていた、検査は文字列の照合で OS に依らない)
+- `TightAabbConfig::preset_large` の doc comment を、他の crate の関数名を挙げない書き方にした
 
 ## [6.0.0] - 2026-10-13
 

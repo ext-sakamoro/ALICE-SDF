@@ -320,7 +320,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a … |
 | G10 no-run-varying-artifacts | 未確認 | unverified: no use is known; a lexical scan of library sources finds none of SystemTime::now, Instant::now, Utc::now, Local::now, Uuid::new_v4, Uuid::now_v7, … |
 | G11 gate-self-tests | 未達 | scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are … |
-| G12 public-repo-text-rules | 未達 | CI does not run ALICE-Law's scripts/public_text_check.py: scripts/docs_lint.py is this repository's own checker, which does not count for this gate. Adding the … |
+| G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
 | G13 no-unspecified-order | 未達 | parallel reductions of glam vector min / max: src/mesh/collision.rs line 119 and src/mesh/lightmap.rs line 169 combine partial bounds with f32::min / f32::max … |
 | G14 float-environment-invariants | 未確認 | unverified: no flag is known; no build configuration sets a fast-math flag or target-cpu=native (no .cargo/config, no build.rs, workflow RUSTFLAGS is … |
 

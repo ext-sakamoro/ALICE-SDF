@@ -112,10 +112,11 @@ note = "scripts/det_math_guard.py fails on an empty scan but has no canary test;
 reference_repo = ""
 
 [G12]
-status = "fail-known"
-evidence = ["scripts/docs_lint.py", "scripts/test_docs_lint.py"]
+status = "pass"
+evidence = [".github/workflows/public-text.yml", "scripts/public_text.sh", ".github/public-text-pin", "scripts/test_public_text.py", "scripts/preflight.sh"]
+mutant = "adding an internal word to a tracked document (a line in CONTRIBUTING.md) makes `scripts/public_text.sh` exit 1 naming the file and line; measured 2026-10-15, restored"
 since = ""
-note = "CI does not run ALICE-Law's scripts/public_text_check.py: scripts/docs_lint.py is this repository's own checker, which does not count for this gate. Adding the step waits on changes to that script in ALICE-Law."
+note = "the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one in that file (so it is the file, not a copy that can drift); it checks the tree at HEAD and each pushed commit's message, added lines and paths, and exits 2 when it compared nothing or the pin or base is malformed (scripts/test_public_text.py covers the two exit-2 cases). Same step in scripts/preflight.sh. scripts/docs_lint.py keeps only the CHANGELOG structure checks; its word lists were removed because this checker flags every one of them."
 reference_repo = "ALICE-Law"
 
 [G13]
