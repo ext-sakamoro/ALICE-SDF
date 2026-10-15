@@ -57,7 +57,11 @@ vrchat-package/*.user
 vrchat-package/*.userprefs
 
 # Rust
+# the root Cargo.lock is tracked: the golden tests pin the arithmetic identifier of
+# the resolved alice-det-math, so CI must build with the recorded versions
+# (nested crates such as fuzz/ and scripts/clippy-lib-canary/ keep theirs untracked)
 Cargo.lock
+!/Cargo.lock
 
 # Wasm demo build artifacts
 examples/wasm-demo/target/

@@ -140,7 +140,11 @@ jobs:
           # 親 workspace を継承すると member 扱いになり、境界を越えた file が
           # 再び見えてしまう (検査の意味が消える) ので単独 package として build
           printf '\n[workspace]\n' >> Cargo.toml
+          # a consumer resolves dependencies afresh, not from this repository's lock:
+          # drop any shipped lock and check that the newest compatible versions still build
+          rm -f Cargo.lock
           cargo check --all-features
+          grep -q '^name = "alice-det-math"$' Cargo.lock || { echo "::error::lock 無しの check で alice-det-math が解決されていない"; exit 1; }
 
   coverage:
     name: Coverage (cargo-llvm-cov、informational)
