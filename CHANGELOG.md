@@ -9,6 +9,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Added
+- `tight_aabb::analytic_aabb` が `PolarRepeat` / `Twist` / `Taper` / `IcosahedralSymmetry` / `OctantMirror` と primitive の `Diamond` / `HexPrism` / `Ellipsoid` を `Bounded` で返す (従来は `Unsupported` で interval 探索に落ち、歯車・花瓶・対称体の box が探索範囲いっぱいになった) `PolarRepeat` と `Twist` は Y 軸まわりの回転なので子の高さ範囲と軸からの最大半径 (回転体の子はその円板の半径、それ以外は box の最遠の角) の円柱の box `Taper` は子の box に高さ範囲での `1 - y·f` の最大・最小を掛け、`reach` を持つ時に限り水準が正の場合も評価器自身の cone / slab で覆う (特異面 `1 - y·f <= 0` が範囲に入る taper は `Unsupported` のまま) `IcosahedralSymmetry` は子の box の最遠の角の norm の立方体、`OctantMirror` は成分の最大絶対値の立方体 `PolarRepeat` の `count == 0` と有限でない `Twist` は `Unsupported` 回転は近似 `sin_cos` なので半径に相対 1e-4 の余裕を足す 試験は `tests/test_tight_aabb_fold_oracle.rs` (閉形式の box、格子と種入り乱数で解の全点が box 内、変異 21 件が赤)
 - `alice-law-conformance.toml`: ALICE-Law の G1-G14 の各 gate の状態と根拠 (未達の gate は `fail-known` と箇所) README の ALICE-Law integration の表を同じ revision で再生成
 
 ### Removed

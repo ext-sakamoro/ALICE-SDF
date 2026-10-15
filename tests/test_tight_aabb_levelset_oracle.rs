@@ -159,9 +159,9 @@ fn subtraction_bounds_by_the_minuend_and_intersection_by_the_overlap() {
 
 #[test]
 fn unsupported_nodes_make_no_statement() {
-    let twisted = SdfNode::box3d(2.0, 2.0, 2.0).twist(1.0);
-    assert!(matches!(analytic_aabb(&twisted), AnalyticAabb::Unsupported));
-    let mixed = SdfNode::sphere(1.0).union(twisted);
+    let bent = SdfNode::box3d(2.0, 2.0, 2.0).bend(0.1);
+    assert!(matches!(analytic_aabb(&bent), AnalyticAabb::Unsupported));
+    let mixed = SdfNode::sphere(1.0).union(bent);
     assert!(matches!(analytic_aabb(&mixed), AnalyticAabb::Unsupported));
     // a non-positive or non-finite scale is not folded
     assert!(matches!(
