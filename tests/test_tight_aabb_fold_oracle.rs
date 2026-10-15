@@ -391,3 +391,51 @@ fn fence_icosahedral_is_bounded() {
     eprintln!("FENCE icosahedral near-surface: box/extent {near_ratio:.4}");
     assert!(near_ratio < 1.25, "ratio {near_ratio}");
 }
+
+#[test]
+fn ellipsoid_at_a_positive_level_grows_by_the_level() {
+    // round(0.5) asks the ellipsoid for level 0.5: the exact field grows the shape by 0.5
+    let node = SdfNode::Ellipsoid {
+        radii: Vec3::new(4.0, 1.5, 2.5),
+    }
+    .round(0.5);
+    let b = bounded(&node);
+    assert!(near(b.max, Vec3::new(4.5, 2.0, 3.0), 5e-3), "{b:?}");
+    assert!(near(b.min, Vec3::new(-4.5, -2.0, -3.0), 5e-3), "{b:?}");
+    let (count, ratio) = check(&node, &b, 6.0, 80, 400_000);
+    eprintln!("ellipsoid round: solid {count}, box/extent {ratio:.4}");
+    assert!(ratio < 1.03, "ratio {ratio}");
+}
+
+#[test]
+fn taper_cone_radius_includes_the_level_times_the_cone_slope_term() {
+    // reach of the child is [20 sqrt(2), 20]; level 1.5 from round: the evaluator's cone is
+    // rho <= k |y - 1/f| + level sqrt(1 + k^2) with k = reach_xz |f|, |y| <= reach_y + level
+    let (f, level) = (0.015f32, 1.5f32);
+    let node = SdfNode::cylinder(20.0, 40.0).taper(f).round(level);
+    let k = 20.0 * 2.0f32.sqrt() * f;
+    let expected = k * (20.0 + level + 1.0 / f) + level * (k * k + 1.0).sqrt();
+    let b = bounded(&node);
+    assert!(
+        b.max.x >= expected - 1e-3 && b.max.x <= expected + 1e-2,
+        "{} vs {expected}",
+        b.max.x
+    );
+    assert!(
+        b.min.z <= -expected + 1e-3 && b.min.z >= -expected - 1e-2,
+        "{b:?}"
+    );
+    check(&node, &b, 45.0, 90, 600_000);
+}
+
+#[test]
+fn twist_of_a_centred_torus_uses_major_plus_minor() {
+    // torus (1, 0.3): the disc about the Y axis has radius 1.3; the box corner would be 1.84
+    let node = SdfNode::torus(1.0, 0.3).twist(1.0);
+    let b = bounded(&node);
+    assert!(b.max.x >= 1.3 && b.max.x <= 1.31, "{b:?}");
+    assert!(b.min.z <= -1.3 && b.min.z >= -1.31, "{b:?}");
+    let (count, ratio) = check(&node, &b, 2.0, 80, 400_000);
+    eprintln!("twist torus: solid {count}, box/extent {ratio:.4}");
+    assert!(ratio < 1.05, "ratio {ratio}");
+}
