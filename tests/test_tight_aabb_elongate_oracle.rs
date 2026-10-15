@@ -476,10 +476,10 @@ fn the_interval_enclosure_of_an_elongate_contains_every_point_value() {
 
 #[test]
 fn the_interval_search_alone_still_contains_an_elongated_strip() {
-    // a zero twist keeps the shape but is not covered by the level-set bound, so the result
+    // a zero bend keeps the shape but is not covered by the level-set bound, so the result
     // is the interval search alone: wider than the strip under rotation, never smaller
     let (a, b) = (Vec2::new(0.0, 0.0), Vec2::new(20.0, 20.0));
-    let node = strip(a, b, 2.75, 5.0).twist(0.0);
+    let node = strip(a, b, 2.75, 5.0).bend(0.0);
     assert!(matches!(analytic_aabb(&node), AnalyticAabb::Unsupported));
     let cfg = TightAabbConfig::try_new(60.0, 24, 16).unwrap();
     let aabb = compute_tight_aabb_with_config(&node, &cfg);
