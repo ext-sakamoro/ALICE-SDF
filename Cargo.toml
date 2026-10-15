@@ -106,7 +106,7 @@ wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 # 3.1.0: every transcendental in the evaluator and the laws goes through
 # alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
 # alice-physics uses, which is what makes the SdfField boundary bit-exact.
-alice-det-math = { version = "0.5", features = ["simd"] }
+alice-det-math = { version = "0.5.1", features = ["simd"] }
 
 # Parallel processing
 rayon = "1.10"

@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 798 |
+| 🟢 Not ignored | 799 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **798** |
+| **Total** | **799** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (798)
+## 🟢 Not ignored (799)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -107,6 +107,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
+| `test_det_golden.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
@@ -116,7 +117,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_rust_transpiler_oracle.rs` | 3 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
-| `test_det_golden.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
 | `test_hlsl_dxc_compile.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |

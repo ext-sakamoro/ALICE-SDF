@@ -15,6 +15,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - Android sample (`mobile/samples/android-compose`): commit していた build 済みの `.so` 4 本と UniFFI の Kotlin bindings を外した (build した machine の path が入り、今の `build-aar.sh` が作る library 名とも食い違っていた) README の「ビルド方法」で作る (`cargo-ndk` と Android NDK が要る) 生成先は `.gitignore` 済み
 
 ### Changed
+- alice-det-math の要求を 0.5.1 に上げた Cargo.lock を追跡しないので CI は公開済みの 0.5.1 を解決し、`SEMANTICS_ID` が 135c407d… から 85e08846… に変わって `tests/test_det_golden.rs` の識別子の pin が落ちていた 識別子を記録し直し、0.5.0 の識別子が `PREVIOUS_SEMANTICS_IDS` に残ることを試験で固定した corpus の各 node の hash は変わらない
 - CI: build した library と実行形式 (名前が `.so` / `.dylib` / `.a` / `.aar` / `.dll` / `.lib` / `.exe` / `.wasm` / `.node` で終わる (大文字小文字を問わない) か `.xcframework` の中にある、または ELF / Mach-O / PE / WebAssembly / `ar` のheader を持つ file) を tracked にしない検査 (`scripts/tracked_binaries.py`) を追加 例外は `.github/tracked-binaries.txt` に理由付きで書き、書いた path だけが例外になる 読めない tracked file と走査 0 件でも失敗する CI と preflight で走る
 
 ## [6.0.0] - 2026-10-13

@@ -94,7 +94,13 @@ fn tree_evaluator_bits_match_recorded_hashes() {
 /// evaluator path calls, and every hash below stayed put). A failure here is a
 /// dependency move: re-check the table, then re-pin both with the CHANGELOG
 /// saying which `alice-det-math` the crate now evaluates with.
-const SEMANTICS_ID_HEX: &str = "135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000";
+const SEMANTICS_ID_HEX: &str = "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315";
+
+/// The identifier `alice-det-math` 0.5.0 published (re-pinned to 0.5.1 above): 0.5.1 moved
+/// the identifier but kept every kernel the corpus reaches, so the per-node hashes in
+/// `GOLDEN` did not move, and 0.5.0's identifier is still a recognised previous one
+const PREVIOUS_SEMANTICS_ID_HEX: &str =
+    "135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000";
 
 #[test]
 fn semantics_id_matches_recorded_hex() {
@@ -110,6 +116,24 @@ fn semantics_id_matches_recorded_hex() {
         got, SEMANTICS_ID_HEX,
         "alice-det-math SEMANTICS_ID moved: the dependency's arithmetic changed"
     );
+}
+
+#[test]
+fn previous_semantics_id_is_still_recognised() {
+    let hex = |id: &[u8; 32]| {
+        id.iter().fold(String::with_capacity(64), |mut s, b| {
+            use std::fmt::Write;
+            write!(s, "{b:02x}").expect("writing to a String cannot fail");
+            s
+        })
+    };
+    assert!(
+        alice_det_math::PREVIOUS_SEMANTICS_IDS
+            .iter()
+            .any(|id| hex(id) == PREVIOUS_SEMANTICS_ID_HEX),
+        "alice-det-math no longer lists 0.5.0's identifier as a previous one"
+    );
+    assert_ne!(hex(&alice_sdf::SEMANTICS_ID), PREVIOUS_SEMANTICS_ID_HEX);
 }
 
 const GOLDEN: &[(&str, &str)] = &[
