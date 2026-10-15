@@ -368,6 +368,10 @@ fn cmd_print(
 ) {
     use alice_sdf::mesh::sdf_to_mesh_compiled;
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let total_start = std::time::Instant::now();
 
     let tree = match load(&input) {
@@ -382,8 +386,16 @@ fn cmd_print(
     println!("Loaded SDF: {} nodes", node_count);
 
     // Compile SDF for faster mesh generation (SIMD batch eval)
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let compile_start = std::time::Instant::now();
     let compiled = CompiledSdf::compile(&tree.root);
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let compile_ms = compile_start.elapsed().as_secs_f64() * 1000.0;
 
     // Auto-detect bounds from tight AABB if not specified
@@ -418,8 +430,16 @@ fn cmd_print(
     );
 
     // Use compiled SDF for faster marching cubes (SIMD 8-wide batch evaluation)
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let mesh_start = std::time::Instant::now();
     let mesh = sdf_to_mesh_compiled(&compiled, min, max, &config);
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let mesh_ms = mesh_start.elapsed().as_secs_f64() * 1000.0;
 
     println!(
@@ -442,6 +462,10 @@ fn cmd_print(
         .unwrap_or("3mf")
         .to_lowercase();
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let export_start = std::time::Instant::now();
     let result = match ext.as_str() {
         "3mf" => export_3mf(&mesh, &out_path),
@@ -454,11 +478,19 @@ fn cmd_print(
             std::process::exit(1);
         }
     };
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let export_ms = export_start.elapsed().as_secs_f64() * 1000.0;
 
     match result {
         Ok(_) => {
             let file_size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+            )]
             let total_ms = total_start.elapsed().as_secs_f64() * 1000.0;
             println!(
                 "Exported to {} ({:.1} KB, export: {:.1}ms, total: {:.1}ms)",
@@ -513,10 +545,6 @@ fn cmd_demo(output: PathBuf) {
 /// - Rayon: Multi-threaded parallel execution
 /// - GPU: WebGPU compute shader for comparison
 #[cfg(all(feature = "cli", feature = "jit"))]
-#[allow(
-    clippy::disallowed_methods,
-    reason = "benchmark input points for the CLI; not part of any output"
-)]
 fn cmd_bench(file: Option<PathBuf>, points: usize) {
     // 1. Load or create SDF node
     let node = file.map_or_else(
@@ -542,13 +570,23 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 
     // 2. Compile all backends
     println!("\n--- Compilation Phase ---");
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let compile_start = std::time::Instant::now();
     let compiled_sdf = CompiledSdf::compile(&node);
-    println!(
-        "Stack VM: {:.3}ms",
-        compile_start.elapsed().as_secs_f64() * 1000.0
-    );
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
+    let stack_vm_ms = compile_start.elapsed().as_secs_f64() * 1000.0;
+    println!("Stack VM: {:.3}ms", stack_vm_ms);
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let jit_start = std::time::Instant::now();
     let jit = match JitSimdSdf::compile(&compiled_sdf) {
         Ok(jit) => jit,
@@ -557,21 +595,29 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
             std::process::exit(1);
         }
     };
-    println!(
-        "JIT SIMD : {:.3}ms",
-        jit_start.elapsed().as_secs_f64() * 1000.0
-    );
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
+    let jit_ms = jit_start.elapsed().as_secs_f64() * 1000.0;
+    println!("JIT SIMD : {:.3}ms", jit_ms);
 
     // GPU compilation (optional)
     #[cfg(feature = "gpu")]
     let gpu = {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+        )]
         let gpu_start = std::time::Instant::now();
         match alice_sdf::compiled::GpuEvaluator::new(&node) {
             Ok(g) => {
-                println!(
-                    "GPU WGSL : {:.3}ms",
-                    gpu_start.elapsed().as_secs_f64() * 1000.0
-                );
+                #[allow(
+                    clippy::disallowed_methods,
+                    reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+                )]
+                let gpu_ms = gpu_start.elapsed().as_secs_f64() * 1000.0;
+                println!("GPU WGSL : {:.3}ms", gpu_ms);
                 Some(g)
             }
             Err(e) => {
@@ -583,11 +629,19 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
 
     // 3. Generate test data in SoA layout
     println!("\n--- Data Generation ---");
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let data_start = std::time::Instant::now();
     let mut px = vec![0.0f32; points];
     let mut py = vec![0.0f32; points];
     let mut pz = vec![0.0f32; points];
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark input points for the CLI; not part of any output"
+    )]
     px.par_iter_mut()
         .zip(py.par_iter_mut())
         .zip(pz.par_iter_mut())
@@ -598,10 +652,12 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
             *y = (t * 2345.678).cos() * 50.0;
             *z = (t * 3456.789).sin() * 50.0;
         });
-    println!(
-        "SoA data : {:.3}ms",
-        data_start.elapsed().as_secs_f64() * 1000.0
-    );
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
+    let data_ms = data_start.elapsed().as_secs_f64() * 1000.0;
+    println!("SoA data : {:.3}ms", data_ms);
 
     // Also prepare AoS for GPU
     let points_vec: Vec<Vec3> = (0..points)
@@ -617,19 +673,39 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     println!("{}", "-".repeat(62));
 
     // CPU Scalar (interpreted)
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let start = std::time::Instant::now();
     let _results_scalar = eval_batch_parallel(&node, &points_vec);
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let elapsed = start.elapsed();
     print_result("CPU Scalar", elapsed, points);
 
     // CPU SIMD (stack VM)
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let start = std::time::Instant::now();
     let _results_simd =
         alice_sdf::compiled::eval_compiled_batch_simd_parallel(&compiled_sdf, &points_vec);
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let elapsed = start.elapsed();
     print_result("CPU SIMD (VM)", elapsed, points);
 
     // CPU JIT SIMD
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let start = std::time::Instant::now();
     let num_threads = rayon::current_num_threads();
     let chunk_size = points.div_ceil(num_threads);
@@ -639,6 +715,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
         .zip(pz.par_chunks(chunk_size))
         .flat_map(|((cx, cy), cz)| jit.eval_batch(cx, cy, cz))
         .collect();
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let elapsed = start.elapsed();
     print_result("CPU JIT SIMD", elapsed, points);
 
@@ -649,8 +729,16 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     #[cfg(feature = "gpu")]
     if let Some(ref gpu) = gpu {
         let mut pool = gpu.create_buffer_pool(0);
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+        )]
         let start = std::time::Instant::now();
         let results_gpu = gpu.eval_batch_auto(&points_vec, &mut pool);
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+        )]
         let elapsed = start.elapsed();
         match results_gpu {
             Ok(_) => print_result("GPU Compute", elapsed, points),
@@ -678,10 +766,6 @@ fn print_result(mode: &str, elapsed: std::time::Duration, points: usize) {
 
 /// Fallback benchmark (no JIT feature)
 #[cfg(all(feature = "cli", not(feature = "jit")))]
-#[allow(
-    clippy::disallowed_methods,
-    reason = "benchmark input points for the CLI; not part of any output"
-)]
 fn cmd_bench(file: Option<PathBuf>, points: usize) {
     let node = file.map_or_else(
         || {
@@ -704,6 +788,10 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
     println!("Node count: {}", node.node_count());
 
     // Generate random points
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark input points for the CLI; not part of any output"
+    )]
     let test_points: Vec<Vec3> = (0..points)
         .map(|i| {
             let t = i as f32 / points as f32;
@@ -716,8 +804,16 @@ fn cmd_bench(file: Option<PathBuf>, points: usize) {
         .collect();
 
     // Benchmark
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let start = std::time::Instant::now();
     let _results = eval_batch_parallel(&node, &test_points);
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "benchmark timing printed by the CLI, not stored, not part of library output"
+    )]
     let elapsed = start.elapsed();
 
     let points_per_sec = points as f64 / elapsed.as_secs_f64();
@@ -755,6 +851,10 @@ fn cmd_texture_fit(
     println!("  Target PSNR: {:.1} dB", target_psnr);
     println!("  Iterations/octave: {}", iterations);
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let start = std::time::Instant::now();
     let result = match fit_texture(&input, &config) {
         Ok(r) => r,
@@ -763,6 +863,10 @@ fn cmd_texture_fit(
             std::process::exit(1);
         }
     };
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "CLI timing diagnostic only, printed not stored, not part of library output"
+    )]
     let elapsed = start.elapsed();
 
     let total_octaves: usize = result.octaves.iter().map(std::vec::Vec::len).sum();

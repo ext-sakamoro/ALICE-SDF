@@ -63,6 +63,10 @@ fn run_gpu_example() {
 
     // === Method 2: Create GPU Evaluator ===
     println!("--- Creating GPU Evaluator ---");
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "example timing printed to stdout, not stored, not part of library output"
+    )]
     let start = Instant::now();
     let gpu = match GpuEvaluator::new(&shape) {
         Ok(g) => g,
@@ -72,7 +76,12 @@ fn run_gpu_example() {
             std::process::exit(1);
         }
     };
-    println!("GPU initialization: {:?}\n", start.elapsed());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "example timing printed to stdout, not stored, not part of library output"
+    )]
+    let init_time = start.elapsed();
+    println!("GPU initialization: {:?}\n", init_time);
 
     // === Method 3: Evaluate Single Point ===
     println!("--- Single Point Evaluation ---");
@@ -106,13 +115,29 @@ fn run_gpu_example() {
             .collect();
 
         // CPU evaluation
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "example timing printed to stdout, not stored, not part of library output"
+        )]
         let start = Instant::now();
         let _cpu_results = eval_batch_parallel(&shape, &points);
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "example timing printed to stdout, not stored, not part of library output"
+        )]
         let cpu_time = start.elapsed();
 
         // GPU evaluation
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "example timing printed to stdout, not stored, not part of library output"
+        )]
         let start = Instant::now();
         let _gpu_results = gpu.eval_batch(&points).unwrap();
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "example timing printed to stdout, not stored, not part of library output"
+        )]
         let gpu_time = start.elapsed();
 
         let speedup = cpu_time.as_secs_f64() / gpu_time.as_secs_f64();

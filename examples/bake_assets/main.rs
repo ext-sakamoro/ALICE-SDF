@@ -865,13 +865,18 @@ fn run(args: &[String]) -> Result<(), String> {
                 Some(other) => return Err(format!("unexpected argument {other}\n{usage}")),
                 None => DEFAULT_RES,
             };
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "example timing printed to stdout, not stored, not part of library output"
+            )]
             let t = std::time::Instant::now();
             bake(&out, res)?;
-            println!(
-                "baked {} in {:.1} s, verifying",
-                out.display(),
-                t.elapsed().as_secs_f64()
-            );
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "example timing printed to stdout, not stored, not part of library output"
+            )]
+            let baked_secs = t.elapsed().as_secs_f64();
+            println!("baked {} in {:.1} s, verifying", out.display(), baked_secs);
             verify(&out)
         }
         Some("verify") => verify(Path::new(args.get(1).ok_or(usage)?)),
