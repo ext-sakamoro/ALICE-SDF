@@ -75,6 +75,10 @@ step "license declarations: oracle + 全 manifest の license が Apache-2.0 (Co
 python3 scripts/license_check.py --self-test
 python3 scripts/license_check.py
 
+step "libm dependency guard: oracle + libm の直接依存には clippy.toml の libm:: の禁止と scripts/libm_ban_check.py が要る (manifest 0 件で fail)"
+python3 scripts/test_libm_dependency_guard.py
+python3 scripts/libm_dependency_guard.py
+
 step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py

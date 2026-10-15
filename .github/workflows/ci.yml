@@ -418,6 +418,12 @@ jobs:
         run: python3 scripts/license_check.py --self-test
       - name: license declarations (全 manifest の license が Apache-2.0、Community subtree は許可リスト、比較 0 件で fail)
         run: python3 scripts/license_check.py
+      # G1, libm half: a direct libm dependency must come with the libm:: ban
+      # in clippy.toml and scripts/libm_ban_check.py (0 manifests read fails)
+      - name: libm dependency guard (test, then check)
+        run: |
+          python scripts/test_libm_dependency_guard.py
+          python scripts/libm_dependency_guard.py
       - name: README sync oracle (検査器自身の試験)
         run: python scripts/test_readme_sync.py
       - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)
