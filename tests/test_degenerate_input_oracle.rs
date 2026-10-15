@@ -887,13 +887,18 @@ fn the_ray_step_budget_stays_bounded_for_a_degenerate_lipschitz_bound() {
         SdfNode::sphere(1.0).scale_xyz(0.0, 1.0, 1.0),
         SdfNode::sphere(1.0).scale_xyz(1.0, 0.0, 1.0),
     ] {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "test deadline on its own wall-clock duration, not part of a deterministic computation"
+        )]
         let started = std::time::Instant::now();
         let _ = alice_sdf::raycast::raymarch(&node, Vec3::new(-3.0, 0.1, 0.2), Vec3::X, 10.0);
-        assert!(
-            started.elapsed().as_secs() < 5,
-            "raymarch took {:?}",
-            started.elapsed()
-        );
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "test deadline on its own wall-clock duration, not part of a deterministic computation"
+        )]
+        let took = started.elapsed();
+        assert!(took.as_secs() < 5, "raymarch took {:?}", took);
     }
 }
 
@@ -1401,6 +1406,10 @@ fn surface_roughness_with_a_huge_octave_count_is_finite_and_prompt() {
     // `1u32 << i` overflows from octave 32, and a count of 4e9 would loop for minutes: octaves
     // beyond the f32 mantissa (amplitude 0.5^i < 2^-24) cannot change the value beyond rounding, so the
     // result for a huge count must match the result at 24
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "test deadline on its own wall-clock duration, not part of a deterministic computation"
+    )]
     let start = std::time::Instant::now();
     let pt = Vec3::new(1.2, 0.1, 0.1);
     let reference = eval(&SdfNode::sphere(1.0).surface_roughness(0.5, 2.0, 24), pt);
@@ -1416,5 +1425,10 @@ fn surface_roughness_with_a_huge_octave_count_is_finite_and_prompt() {
             "octaves={octaves}: {v} vs {reference}"
         );
     }
-    assert!(start.elapsed().as_secs() < 10, "took {:?}", start.elapsed());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "test deadline on its own wall-clock duration, not part of a deterministic computation"
+    )]
+    let took = start.elapsed();
+    assert!(took.as_secs() < 10, "took {:?}", took);
 }

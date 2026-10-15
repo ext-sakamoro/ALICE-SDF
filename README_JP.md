@@ -318,7 +318,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G7 handshake-carries-id | 未確認 | unverified: the empty boundary list rests on a lexical scan with no canary, and the completeness of the entry point list is the audit part of this gate; the … |
 | G8 persisted-semantics-id | 未達 | no durable format this crate writes carries an identifier of the meaning of the stored bytes: the SVO stream (src/svo/streaming.rs line 68 to_bytes), the … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a … |
-| G10 no-run-varying-artifacts | 未確認 | unverified: no use is known; a lexical scan of library sources finds none of SystemTime::now, Instant::now, Utc::now, Local::now, Uuid::new_v4, Uuid::now_v7, … |
+| G10 no-run-varying-artifacts | 適合 | library code (src outside src/bin) has 0 clock, entropy or UUID reads: a scan finds none of SystemTime::now, Instant::now, .elapsed(), UNIX_EPOCH, thread_rng, … |
 | G11 gate-self-tests | 未達 | scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are … |
 | G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
 | G13 no-unspecified-order | 未達 | parallel reductions of glam vector min / max: src/mesh/collision.rs line 119 and src/mesh/lightmap.rs line 169 combine partial bounds with f32::min / f32::max … |

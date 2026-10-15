@@ -27,7 +27,9 @@
 # rendering helpers whose output is a colour or a light value and never feeds a
 # distance, bound or mesh, and tests that use the platform libm as an
 # independent reference (an oracle whose expected value comes from the
-# implementation under test proves nothing).
+# implementation under test proves nothing). The clock bans below are
+# excepted only where the CLI, an example or a test prints a timing or bounds
+# its own run time, one call at a time.
 #
 # CI runs clippy with `--all-targets ... -D warnings`, which turns
 # `disallowed_methods` into a red gate for the library, the tests, the examples
@@ -87,4 +89,21 @@ disallowed-methods = [
     { path = "f64::sin_cos", reason = "two platform libm calls, not cross-platform bit-exact; use alice_det_math::sin_cos64" },
     { path = "f32::mul_add", reason = "exact on every platform, but the scalar / JIT / shader paths evaluate a * b + c with two roundings; write a * b + c so every path gets the same bits" },
     { path = "f64::mul_add", reason = "exact on every platform, but the laws evaluate a * b + c with two roundings; write a * b + c" },
+    # Determinism gate (G10): no OS entropy and no wall clock in the crate's
+    # production code. A distance, bound, mesh or fit computed here is meant to
+    # compare equal given the same input regardless of when or on what machine
+    # it ran; a path that reads the clock or draws OS randomness breaks that.
+    { path = "std::time::Instant::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::time::Instant::elapsed", reason = "reads the wall clock the same as Instant::now; duration_since on an already-held value is fine, this reads the clock again" },
+    { path = "std::time::SystemTime::elapsed", reason = "reads the wall clock the same as SystemTime::now; duration_since on an already-held value is fine, this reads the clock again" },
+    { path = "std::time::SystemTime::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic" },
+]
+disallowed-types = [
+    # disallowed-methods cannot name RandomState::default (a trait method,
+    # not reachable via the implementing type's path alone); naming the type
+    # itself here catches ::default() too, along with any other explicit
+    # naming (a type annotation, a turbofish), without touching HashMap::new's
+    # own internal (unnamed) use of RandomState.
+    { path = "std::collections::hash_map::RandomState", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic; see disallowed-methods for RandomState::new" },
 ]

@@ -47,6 +47,21 @@ pub fn f(v: wide::f32x8, w: wide::f32x8) -> wide::f32x8 {
 pub fn g(v: wide::f32x8, w: wide::f32x8) -> wide::f32x8 {
     v.min(w)
 }
+pub fn h() -> std::time::Instant {
+    std::time::Instant::now()
+}
+pub fn i() -> std::time::SystemTime {
+    std::time::SystemTime::now()
+}
+pub fn j(i: std::time::Instant) -> std::time::Duration {
+    i.elapsed()
+}
+pub fn k(s: std::time::SystemTime) -> Result<std::time::Duration, std::time::SystemTimeError> {
+    s.elapsed()
+}
+pub fn l() -> std::collections::hash_map::RandomState {
+    std::collections::hash_map::RandomState::new()
+}
 """
 
 
@@ -104,13 +119,13 @@ class Canary(unittest.TestCase):
     def setUp(self):
         self.want = g.canary_lines(CANARY)
 
-    def test_the_seven_forms_are_found_on_their_lines(self):
-        self.assertEqual(sorted(self.want), [3, 6, 9, 12, 15, 18, 21])
+    def test_the_twelve_forms_are_found_on_their_lines(self):
+        self.assertEqual(sorted(self.want), [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36])
 
     def test_a_diagnostic_on_every_line_and_a_non_zero_exit_passes(self):
         out = "\n".join(diag(n, "x") for n in self.want)
         errors, n = g.judge_canary(101, out, self.want)
-        self.assertEqual((errors, n), ([], 7))
+        self.assertEqual((errors, n), ([], 12))
 
     def test_a_missing_line_fails(self):
         out = "\n".join(diag(n, "x") for n in self.want if n != 9)
@@ -144,6 +159,20 @@ class Canary(unittest.TestCase):
 
 
 class RealFiles(unittest.TestCase):
+    def test_clippy_toml_bans_elapsed(self):
+        # `.elapsed()` reads the wall clock exactly like `::now()`, but a
+        # lexical pattern for it would be too broad (any value named
+        # `elapsed` anywhere); clippy's disallowed-methods is type-resolved
+        # and carries this one instead -- this only confirms the ban is
+        # actually present, not absent-by-typo
+        root = Path(g.ROOT_CONFIG).read_text(encoding="utf-8")
+        for path in ("std::time::Instant::now", "std::time::Instant::elapsed",
+                     "std::time::SystemTime::now", "std::time::SystemTime::elapsed",
+                     "std::collections::hash_map::RandomState::new"):
+            self.assertIn(f'path = "{path}"', root, f"clippy.toml must disallow {path}")
+        types = root[root.index("disallowed-types = ["):]
+        self.assertIn('path = "std::collections::hash_map::RandomState"', types)
+
     def test_the_committed_library_configuration_is_up_to_date(self):
         root = Path(g.ROOT_CONFIG).read_text(encoding="utf-8")
         lib = Path(g.LIB_CONFIG).read_text(encoding="utf-8")

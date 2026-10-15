@@ -29,3 +29,25 @@ pub fn simd_max(v: wide::f32x8, w: wide::f32x8) -> wide::f32x8 {
 pub fn simd_min(v: wide::f32x8, w: wide::f32x8) -> wide::f32x8 {
     v.min(w)
 }
+
+pub fn clock_instant() -> std::time::Instant {
+    std::time::Instant::now()
+}
+
+pub fn clock_system() -> std::time::SystemTime {
+    std::time::SystemTime::now()
+}
+
+pub fn instant_elapsed(i: std::time::Instant) -> std::time::Duration {
+    i.elapsed()
+}
+
+pub fn system_time_elapsed(
+    s: std::time::SystemTime,
+) -> Result<std::time::Duration, std::time::SystemTimeError> {
+    s.elapsed()
+}
+
+pub fn random_state() -> std::collections::hash_map::RandomState {
+    std::collections::hash_map::RandomState::new()
+}
