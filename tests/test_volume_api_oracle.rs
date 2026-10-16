@@ -19,6 +19,8 @@
 )]
 #![cfg(feature = "volume")]
 
+mod common;
+
 use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::types::SdfNode;
 use alice_sdf::volume::bake::{bake_volume, bake_volume_compiled, bake_volume_with_normals};
@@ -51,11 +53,10 @@ fn node_pos(cfg: &BakeConfig, x: u32, y: u32, z: u32) -> Vec3 {
         )
 }
 
-fn tmp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "alice_sdf_volume_api_{}_{name}",
-        std::process::id()
-    ))
+fn tmp(name: &str) -> (common::TestDir, PathBuf) {
+    let dir = common::TestDir::new("volume_api");
+    let path = dir.join(name);
+    (dir, path)
 }
 
 #[test]
@@ -232,7 +233,7 @@ fn volume_addressing_follows_its_closed_form() {
 #[test]
 fn raw_export_writes_the_voxels_and_prefix_summed_mip_offsets() {
     let vol = bake_volume(&SdfNode::sphere(1.0), &config(8, true));
-    let path = tmp("a.raw");
+    let (_tmp, path) = tmp("a.raw");
     let p = path.to_str().unwrap();
     export_raw(&vol, p).unwrap();
     let bytes = std::fs::read(&path).unwrap();
@@ -247,7 +248,7 @@ fn raw_export_writes_the_voxels_and_prefix_summed_mip_offsets() {
     assert_eq!(meta["byte_size"], 2048);
     assert_eq!(meta["mip_levels"], 4);
 
-    let path2 = tmp("b.raw");
+    let (_tmp, path2) = tmp("b.raw");
     export_raw_with_mips(&vol, path2.to_str().unwrap()).unwrap();
     let bytes2 = std::fs::read(&path2).unwrap();
     let mut want2 = want;
@@ -361,7 +362,7 @@ fn dds_export_follows_the_microsoft_header_layout() {
             (DdsFormat::R16Float, 2, 54),
             (DdsFormat::R32G32B32A32Float, 16, 2),
         ] {
-            let path = tmp(&format!("{mips}_{dxgi}.dds"));
+            let (_tmp, path) = tmp(&format!("{mips}_{dxgi}.dds"));
             export_dds_3d(&vol, path.to_str().unwrap(), fmt).unwrap();
             let b = std::fs::read(&path).unwrap();
             let data = check_dds_header(&b, [8, 8, 8], bpp, levels, dxgi);
@@ -389,7 +390,7 @@ fn dds_export_follows_the_microsoft_header_layout() {
             std::fs::remove_file(&path).ok();
         }
         let grad = bake_volume_with_normals(&SdfNode::sphere(1.0), &config(8, mips), 0.01);
-        let path = tmp(&format!("{mips}_distgrad.dds"));
+        let (_tmp, path) = tmp(&format!("{mips}_distgrad.dds"));
         export_dds_3d_distgrad(&grad, path.to_str().unwrap()).unwrap();
         let b = std::fs::read(&path).unwrap();
         let data = check_dds_header(&b, [8, 8, 8], 16, grad.mip_count() as u32, 2);
@@ -457,7 +458,7 @@ fn r16_texels_round_to_nearest_even() {
     ];
     let mut vol = Volume3D::<f32>::new([values.len() as u32, 1, 1], Vec3::ZERO, Vec3::ONE);
     vol.data.copy_from_slice(&values);
-    let path = tmp("ties.dds");
+    let (_tmp, path) = tmp("ties.dds");
     export_dds_3d(&vol, path.to_str().unwrap(), DdsFormat::R16Float).unwrap();
     let b = std::fs::read(&path).unwrap();
     let data = check_dds_header(&b, [values.len() as u32, 1, 1], 2, 1, 54);

@@ -16,6 +16,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+mod common;
+
 use alice_sdf::io::abm::{read_abm_header, save_abm, ABM_FLAG_HAS_NORMALS, ABM_MAGIC, ABM_VERSION};
 use alice_sdf::io::fbx::{
     export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, FbxAnimClip, FbxAnimCurve,
@@ -42,11 +44,10 @@ use glam::{Vec2, Vec3};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-fn tmp(name: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("alice_sdf_io_format_oracle_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
-    dir.join(name)
+fn tmp(name: &str) -> (common::TestDir, PathBuf) {
+    let dir = common::TestDir::new("io_format_oracle");
+    let path = dir.join(name);
+    (dir, path)
 }
 
 /// A closed tetrahedron, outward winding, coordinates exact in decimal.
@@ -117,7 +118,7 @@ fn assert_same_triangles(what: &str, got: &Mesh, want: &Mesh, tol: f32) -> usize
 #[test]
 fn stl_ascii_follows_the_grammar_and_round_trips_bit_exact() {
     let mesh = tetra();
-    let path = tmp("tetra_ascii.stl");
+    let (_tmp, path) = tmp("tetra_ascii.stl");
     export_stl_ascii(&mesh, &path).unwrap();
 
     // independent parse: `solid`, then per facet `facet normal` + 3 `vertex`
@@ -150,14 +151,14 @@ fn stl_ascii_follows_the_grammar_and_round_trips_bit_exact() {
 #[test]
 fn obj_and_ply_round_trip_bit_exact() {
     let mesh = tetra();
-    let obj = tmp("tetra.obj");
+    let (_tmp, obj) = tmp("tetra.obj");
     export_obj(&mesh, &obj, &ObjConfig::default(), None).unwrap();
     assert_eq!(
         assert_same_triangles("OBJ", &import_obj(&obj).unwrap(), &mesh, 0.0),
         12
     );
 
-    let ply = tmp("tetra.ply");
+    let (_tmp, ply) = tmp("tetra.ply");
     export_ply(&mesh, &ply, &PlyConfig::default()).unwrap();
     assert_eq!(
         assert_same_triangles("PLY", &import_ply(&ply).unwrap(), &mesh, 0.0),
@@ -168,7 +169,7 @@ fn obj_and_ply_round_trip_bit_exact() {
 #[test]
 fn fbx_ascii_round_trips_and_binary_is_refused_by_name() {
     let mesh = tetra();
-    let path = tmp("tetra_ascii.fbx");
+    let (_tmp, path) = tmp("tetra_ascii.fbx");
     export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
     assert_eq!(
         assert_same_triangles("FBX ASCII", &import_fbx(&path).unwrap(), &mesh, 1e-6),
@@ -185,7 +186,7 @@ fn fbx_ascii_round_trips_and_binary_is_refused_by_name() {
 
     // binary FBX: the file starts with the Kaydara magic (FBX binary header),
     // and import refuses it as an unsupported format rather than an I/O error
-    let bin = tmp("tetra_binary.fbx");
+    let (_tmp, bin) = tmp("tetra_binary.fbx");
     export_fbx(&mesh, &bin, &FbxConfig::binary(), None).unwrap();
     let bytes = std::fs::read(&bin).unwrap();
     assert_eq!(&bytes[..21], b"Kaydara FBX Binary  \0");
@@ -263,7 +264,7 @@ fn usda_round_trips_the_mesh_and_the_material() {
             ..Default::default()
         }],
     };
-    let path = tmp("tetra.usda");
+    let (_tmp, path) = tmp("tetra.usda");
     export_usda(&mesh, &path, &UsdConfig::default(), Some(&lib)).unwrap();
     let back = import_usda(&path).unwrap();
     assert_eq!(assert_same_triangles("USDA", &back.mesh, &mesh, 0.0), 12);
@@ -301,7 +302,7 @@ fn base64_decode(s: &str) -> Vec<u8> {
 #[test]
 fn gltf_json_carries_its_buffer_and_true_position_bounds() {
     let mesh = tetra();
-    let path = tmp("tetra.gltf");
+    let (_tmp, path) = tmp("tetra.gltf");
     export_gltf_json(&mesh, &path, &GltfConfig::aaa(), None).unwrap();
     let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     assert_eq!(doc["asset"]["version"], "2.0");
@@ -353,7 +354,7 @@ fn gltf_json_carries_its_buffer_and_true_position_bounds() {
 
 #[test]
 fn iges_follows_the_fixed_column_layout_and_points_both_ways() {
-    let path = tmp("sphere.igs");
+    let (_tmp, path) = tmp("sphere.igs");
     let cfg = IgesConfig {
         bounds: (-1.5, 1.5),
         resolution: 8,
@@ -447,7 +448,7 @@ fn splat_records_are_32_little_endian_bytes() {
             rotation: [5, 6, 7, 8],
         },
     ];
-    let path = tmp("two.splat");
+    let (_tmp, path) = tmp("two.splat");
     save_splat(&path, &splats).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     assert_eq!(SPLAT_BYTES, 32);
@@ -494,7 +495,7 @@ fn vox_follows_the_magicavoxel_chunk_layout() {
             },
         ],
     };
-    let path = tmp("m.vox");
+    let (_tmp, path) = tmp("m.vox");
     save_vox(&path, &model).unwrap();
     let b = std::fs::read(&path).unwrap();
     let u32_at = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap());
@@ -530,7 +531,7 @@ fn vox_follows_the_magicavoxel_chunk_layout() {
 #[test]
 fn abm_header_states_the_counts_of_the_saved_mesh() {
     let mesh = tetra();
-    let path = tmp("tetra.abm");
+    let (_tmp, path) = tmp("tetra.abm");
     save_abm(&mesh, &path).unwrap();
     let h = read_abm_header(&path).unwrap();
     assert_eq!(h.magic, ABM_MAGIC);
@@ -582,7 +583,7 @@ fn nanite_file_size_and_header_follow_the_layout() {
             + verts * (12 + if normals { 12 } else { 0 } + if uvs { 8 } else { 0 })
             + 12 * tris
     };
-    let path = tmp("sphere.nanite");
+    let (_tmp, path) = tmp("sphere.nanite");
     export_nanite(&nanite, &path).unwrap();
     let b = std::fs::read(&path).unwrap();
     assert_eq!(b.len(), expected(true, true));
@@ -645,7 +646,7 @@ fn nanite_file_size_and_header_follow_the_layout() {
     assert_eq!(b.len(), expected(false, false));
     assert_eq!(u32_at(&b, 28), 0);
 
-    let json = tmp("sphere.nanite.json");
+    let (_tmp, json) = tmp("sphere.nanite.json");
     export_nanite_json(&nanite, &json).unwrap();
     let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&json).unwrap()).unwrap();
     assert_eq!(
@@ -680,7 +681,7 @@ fn nanite_file_size_and_header_follow_the_layout() {
 #[test]
 fn nanite_material_is_a_hlsl_function_of_the_tree() {
     use alice_sdf::io::nanite::export_nanite_hlsl_material;
-    let path = tmp("sphere_material.ush");
+    let (_tmp, path) = tmp("sphere_material.ush");
     export_nanite_hlsl_material(&SdfNode::sphere(1.0), &path).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("float"), "HLSL body expected");

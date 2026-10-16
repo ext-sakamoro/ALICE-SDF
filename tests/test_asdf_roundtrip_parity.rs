@@ -41,7 +41,8 @@ fn points(n: usize) -> Vec<Vec3> {
 
 #[test]
 fn asdf_round_trip_keeps_every_evaluator_bit_identical() {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_asdf_parity_{}", std::process::id()));
+    let dir_tmp = common::TestDir::new("asdf_roundtrip_parity");
+    let dir = dir_tmp.join(format!("alice_sdf_asdf_parity_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let pts = points(512);
     let mut failures = Vec::new();

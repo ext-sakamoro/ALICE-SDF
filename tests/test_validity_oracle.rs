@@ -10,6 +10,8 @@
 //! overhang は `asin(-n · b)` の閉形式なので、法線が既知になる三角形を手で組んで
 //! 角度を直接突き合わせる。
 
+mod common;
+
 use alice_sdf::io::step::StepConfig;
 use alice_sdf::mesh::{Mesh, Vertex};
 use alice_sdf::types::SdfNode;
@@ -21,12 +23,10 @@ use glam::Vec3;
 
 /// STEP を書く test は **file 名を test ごとに固有**にする (同 file を 2 test が
 /// 並列に書くと内容が混ざる — 2026-09-27 に `test_step_export_oracle` で起きた)
-fn step_path(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join("alice-sdf-validity-oracle");
-    std::fs::create_dir_all(&dir).expect("temp dir");
+fn step_path(tag: &str) -> (common::TestDir, std::path::PathBuf) {
+    let dir = common::TestDir::new("validity_oracle");
     let path = dir.join(format!("{tag}.step"));
-    let _ = std::fs::remove_file(&path);
-    path
+    (dir, path)
 }
 
 /// 頂点 3 個の mesh (法線は `cross(b − a, c − a)` で決まる)
@@ -221,7 +221,7 @@ fn export_step_validated_refuses_a_sheet_thinner_than_the_requirement() {
     // oracle: 厚さ 0.5 の板は FDM 既定の min_wall 0.8 を満たさないので
     // **file は書かれず** NotPrintable が返る (これが「必ず通す」の実証)
     let sheet = SdfNode::box3d(20.0, 0.5, 20.0);
-    let path = step_path("refuse_thin_sheet");
+    let (_tmp, path) = step_path("refuse_thin_sheet");
     let cfg = StepConfig {
         bounds: (-11.0, 11.0),
         resolution: 24,
@@ -245,7 +245,7 @@ fn export_step_validated_writes_a_part_that_passes() {
     // overhang は接地判定を持たないので箱の水平下面が π/2 になる (module doc 参照)
     // → 閾値を π/2 にして overhang 検査を実質無効化した上で、厚さ側が通ることを見る
     let block = SdfNode::box3d(8.0, 4.0, 8.0);
-    let path = step_path("accept_thick_block");
+    let (_tmp, path) = step_path("accept_thick_block");
     let cfg = StepConfig {
         bounds: (-6.0, 6.0),
         resolution: 24,

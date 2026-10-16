@@ -639,7 +639,8 @@ fn ffi_constructors_build_the_documented_node() {
 /// difference seen here is the FFI's.
 #[test]
 fn ffi_eval_paths_are_bit_identical_to_the_native_evaluators() {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_oracle_{}", std::process::id()));
+    let dir_tmp = common::TestDir::new("binding_oracle");
+    let dir = dir_tmp.join(format!("alice_sdf_ffi_oracle_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let pts = sample_points(80);
     let mut failures = Vec::new();
@@ -751,7 +752,8 @@ fn ffi_batch_paths_agree_at_every_threshold() {
         .union(SdfNode::sphere(0.5).translate(0.8, 0.0, 0.0))
         .twist(0.9);
     let compiled = CompiledSdf::compile(&node);
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_thresh_{}", std::process::id()));
+    let dir_tmp = common::TestDir::new("binding_oracle");
+    let dir = dir_tmp.join(format!("alice_sdf_ffi_thresh_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let path = dir.join("node.asdf");
     alice_sdf::save(&SdfTree::new(node), &path).expect("save");
@@ -1260,7 +1262,8 @@ fn exact_size_buffers_survive_and_agree() {
         scale: 1.0,
         ..Default::default()
     };
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_exact_{}", std::process::id()));
+    let dir_tmp = common::TestDir::new("binding_oracle");
+    let dir = dir_tmp.join(format!("alice_sdf_ffi_exact_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let path = dir.join("node.asdf");
     alice_sdf::save(&SdfTree::new(node), &path).expect("save");

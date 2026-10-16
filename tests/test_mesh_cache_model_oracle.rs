@@ -16,6 +16,8 @@
 //!
 //! Every comparison loop counts and fails on zero.
 
+mod common;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -156,15 +158,16 @@ fn cache_key_quantizes_bounds_to_thousandths() {
     assert_eq!((a.resolution, a.sdf_hash), (c.resolution, c.sdf_hash));
 }
 
-fn temp_dir(name: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("alice_sdf_{name}_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    d
+fn temp_dir(name: &str) -> (common::TestDir, std::path::PathBuf) {
+    let dir = common::TestDir::new(name);
+    // a path inside the fresh directory that does not exist yet
+    let path = dir.join("cache");
+    (dir, path)
 }
 
 #[test]
 fn chunked_cache_follows_the_fifo_and_dirty_model() {
-    let dir = temp_dir("chunked_model");
+    let (_tmp, dir) = temp_dir("chunked_model");
     let cap = 6;
     let cache = ChunkedMeshCache::new(ChunkedCacheConfig {
         chunk_size: 0.5,
@@ -348,7 +351,7 @@ fn chunk_coordinates_are_floor_of_position_over_size() {
 
 #[test]
 fn persisted_chunks_reload_with_identical_geometry() {
-    let dir = temp_dir("chunked_persist");
+    let (_tmp, dir) = temp_dir("chunked_persist");
     let config = ChunkedCacheConfig {
         cache_dir: Some(dir.clone()),
         ..ChunkedCacheConfig::default()

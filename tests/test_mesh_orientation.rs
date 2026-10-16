@@ -5,6 +5,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+mod common;
+
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh};
 use alice_sdf::prelude::*;
 use std::collections::HashMap;
@@ -185,7 +187,8 @@ fn stl_facets_agree_with_their_normals() {
     use alice_sdf::io::stl::{export_stl, import_stl};
     let node = SdfNode::sphere(1.0);
     let m = mesh_of(&node, 32);
-    let dir = std::env::temp_dir().join(format!("alice_sdf_stl_{}", std::process::id()));
+    let dir_tmp = common::TestDir::new("mesh_orientation");
+    let dir = dir_tmp.join(format!("alice_sdf_stl_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("sphere.stl");
     export_stl(&m, &path).unwrap();

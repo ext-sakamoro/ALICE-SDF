@@ -7,6 +7,10 @@
 )]
 
 pub mod corpus;
+pub mod test_dir;
+
+#[allow(unused_imports)]
+pub use test_dir::TestDir;
 
 use alice_sdf::prelude::*;
 

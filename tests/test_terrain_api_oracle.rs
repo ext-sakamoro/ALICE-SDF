@@ -13,6 +13,8 @@
 //! Author: Moroya Sakamoto
 #![cfg(feature = "terrain")]
 
+mod common;
+
 use alice_sdf::eval::eval;
 use alice_sdf::terrain::caves::generate_chamber;
 use alice_sdf::terrain::{generate_cave_sdf, CaveConfig, ClipmapTerrain, Heightmap, Splatmap};
@@ -182,7 +184,8 @@ mod image_oracle {
         let (bytes, pixels) = png(7, 5);
         let cfg = HeightmapImageConfig::new(51.0, 70.0, 25.0);
         let from_bytes = Heightmap::from_image_bytes(&bytes, &cfg).unwrap();
-        let path = std::env::temp_dir().join(format!("alice_sdf_hm_{}.png", std::process::id()));
+        let path_tmp = crate::common::TestDir::new("terrain_api_oracle");
+        let path = path_tmp.join(format!("alice_sdf_hm_{}.png", std::process::id()));
         std::fs::write(&path, &bytes).unwrap();
         let from_file = Heightmap::from_image(&path, &cfg).unwrap();
         std::fs::remove_file(&path).ok();

@@ -11,15 +11,16 @@
 )]
 #![cfg(feature = "texture-fit")]
 
+mod common;
+
 use alice_sdf::texture::{
     eval_octave, fit_texture, generate_shader, hash_noise_3d_cpu, nelder_mead, reconstruct,
     ShaderLanguage, TextureFitConfig,
 };
 use std::path::PathBuf;
 
-fn temp_png(name: &str, width: u32, height: u32, pixels: &[f32]) -> PathBuf {
-    let dir = std::env::temp_dir().join("alice_sdf_texture_fit_oracle");
-    std::fs::create_dir_all(&dir).unwrap();
+fn temp_png(name: &str, width: u32, height: u32, pixels: &[f32]) -> (common::TestDir, PathBuf) {
+    let dir = common::TestDir::new("texture_fit_oracle");
     let path = dir.join(name);
     let bytes: Vec<u8> = pixels
         .iter()
@@ -29,7 +30,7 @@ fn temp_png(name: &str, width: u32, height: u32, pixels: &[f32]) -> PathBuf {
         .unwrap()
         .save(&path)
         .unwrap();
-    path
+    (dir, path)
 }
 
 /// Independent evaluation of one octave, written from the module doc rather
@@ -183,7 +184,7 @@ fn hash_noise_is_in_range_and_continuous() {
 fn flat_image_fits_with_no_octaves_and_the_bias_alone() {
     let (w, h) = (48u32, 40u32);
     let pixels = vec![0.6f32; (w * h) as usize];
-    let path = temp_png("flat.png", w, h, &pixels);
+    let (_tmp, path) = temp_png("flat.png", w, h, &pixels);
     let r = fit_texture(&path, &TextureFitConfig::default()).unwrap();
     assert_eq!(r.width, w);
     assert_eq!(r.height, h);
@@ -220,7 +221,7 @@ fn synthesized_single_octave_is_recovered_and_metrics_are_honest() {
             pixels.push(bias + octave_reference(u, v, amp, freq, phase, seed, rot));
         }
     }
-    let path = temp_png("one_octave.png", w as u32, h as u32, &pixels);
+    let (_tmp, path) = temp_png("one_octave.png", w as u32, h as u32, &pixels);
     // Re-read the 8-bit quantized image: that is what the fitter sees.
     let quantized: Vec<f32> = pixels
         .iter()
@@ -290,7 +291,7 @@ fn more_octaves_never_raise_the_residual() {
             pixels.push(p);
         }
     }
-    let path = temp_png("three_octaves.png", w as u32, h as u32, &pixels);
+    let (_tmp, path) = temp_png("three_octaves.png", w as u32, h as u32, &pixels);
     let mut last = f32::INFINITY;
     for max_octaves in [1u32, 2, 4] {
         let config = TextureFitConfig {
@@ -327,7 +328,7 @@ fn fit_is_deterministic() {
             0.5 + octave_reference(u, v, 0.3, 5.0, [0.3, 0.3], 0, 0.0)
         })
         .collect();
-    let path = temp_png("det.png", w as u32, h as u32, &pixels);
+    let (_tmp, path) = temp_png("det.png", w as u32, h as u32, &pixels);
     let config = TextureFitConfig {
         max_octaves: 2,
         iterations_per_octave: 200,
@@ -364,8 +365,10 @@ fn padded_sample_grid_fits_as_well_as_an_aligned_one() {
         max_octaves: 1,
         ..TextureFitConfig::default()
     };
-    let padded = fit_texture(&temp_png("pad45.png", 45, 45, &make(45, 45)), &config).unwrap();
-    let aligned = fit_texture(&temp_png("pad48.png", 48, 48, &make(48, 48)), &config).unwrap();
+    let (_tmp45, pad45) = temp_png("pad45.png", 45, 45, &make(45, 45));
+    let (_tmp48, pad48) = temp_png("pad48.png", 48, 48, &make(48, 48));
+    let padded = fit_texture(&pad45, &config).unwrap();
+    let aligned = fit_texture(&pad48, &config).unwrap();
     eprintln!(
         "padded nmse {:.4} aligned nmse {:.4}",
         padded.nmse, aligned.nmse
@@ -394,7 +397,7 @@ fn generated_shaders_validate_with_naga() {
                 + octave_reference(u, v, 0.1, 9.0, [1.0, 0.1], 1, 0.0)
         })
         .collect();
-    let path = temp_png("shader.png", w as u32, h as u32, &pixels);
+    let (_tmp, path) = temp_png("shader.png", w as u32, h as u32, &pixels);
     let config = TextureFitConfig {
         max_octaves: 2,
         target_psnr_db: 100.0,

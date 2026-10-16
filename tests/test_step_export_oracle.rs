@@ -16,6 +16,8 @@
 
 #![allow(clippy::cast_precision_loss)]
 
+mod common;
+
 use alice_sdf::io::step::{export_step, StepConfig};
 use alice_sdf::types::SdfNode;
 use std::collections::HashMap;
@@ -130,9 +132,12 @@ fn refs(args: &str) -> Vec<u64> {
 
 /// `tag` は test ごとに固有にする (同 file を 2 test が並列に書くと内容が混ざり、
 /// 参照が解決しない形で落ちる = 2026-09-27 に Linux CI だけで起きた)
-fn write_sphere_step(tag: &str, r: f32, resolution: u32) -> (String, std::path::PathBuf) {
-    let dir = std::env::temp_dir().join("alice-sdf-step-oracle");
-    std::fs::create_dir_all(&dir).expect("temp dir");
+fn write_sphere_step(
+    tag: &str,
+    r: f32,
+    resolution: u32,
+) -> (common::TestDir, String, std::path::PathBuf) {
+    let dir = common::TestDir::new("step_export_oracle");
     let path = dir.join(format!("sphere_{tag}_{resolution}.step"));
     let cfg = StepConfig {
         bounds: (-(r + 1.0), r + 1.0),
@@ -141,12 +146,12 @@ fn write_sphere_step(tag: &str, r: f32, resolution: u32) -> (String, std::path::
     };
     export_step(&path, &SdfNode::sphere(r), &cfg).expect("export step");
     let text = std::fs::read_to_string(&path).expect("read step");
-    (text, path)
+    (dir, text, path)
 }
 
 #[test]
 fn step_file_has_no_dangling_references() {
-    let (text, path) = write_sphere_step("refs", 10.0, 24);
+    let (_tmp, text, path) = write_sphere_step("refs", 10.0, 24);
     let entities = parse_step(&text);
     assert!(!entities.is_empty(), "DATA section にレコードが無い");
 
@@ -176,7 +181,7 @@ fn step_file_has_no_dangling_references() {
 
 #[test]
 fn step_declares_the_ap203_required_roots() {
-    let (text, path) = write_sphere_step("roots", 10.0, 24);
+    let (_tmp, text, path) = write_sphere_step("roots", 10.0, 24);
     let entities = parse_step(&text);
     let have: std::collections::HashSet<&str> = entities
         .values()
@@ -285,7 +290,7 @@ fn shell_triangles(entities: &HashMap<u64, Entity>) -> Vec<[[f64; 3]; 3]> {
 #[test]
 fn step_solid_volume_matches_the_analytic_sphere() {
     let r = 10.0_f64;
-    let (text, path) = write_sphere_step("volume", r as f32, 48);
+    let (_tmp, text, path) = write_sphere_step("volume", r as f32, 48);
     let entities = parse_step(&text);
     let tris = shell_triangles(&entities);
     assert!(!tris.is_empty(), "shell に面が無い");
@@ -317,7 +322,7 @@ fn step_solid_volume_matches_the_analytic_sphere() {
 
 #[test]
 fn step_shell_is_closed() {
-    let (text, path) = write_sphere_step("closed", 10.0, 32);
+    let (_tmp, text, path) = write_sphere_step("closed", 10.0, 32);
     let entities = parse_step(&text);
 
     // EDGE_CURVE の端点 (VERTEX_POINT id) でエッジを同定し、ORIENTED_EDGE の
@@ -348,7 +353,8 @@ fn step_shell_is_closed() {
 fn box_is_exported_as_six_exact_planar_faces() {
     // 箱の面は厳密に平面なので、tessellate せず 6 面で出るのが正
     // (voxel 解像度に寄らず寸法が厳密に一致する = 三相原理 Phase 2)
-    let dir = std::env::temp_dir().join("alice-sdf-step-oracle");
+    let dir_tmp = common::TestDir::new("step_export_oracle");
+    let dir = dir_tmp.join("alice-sdf-step-oracle");
     std::fs::create_dir_all(&dir).expect("temp dir");
     let path = dir.join("box.step");
     let cfg = StepConfig {

@@ -1326,7 +1326,8 @@ fn file_importers_never_panic_on_truncated_or_corrupted_files() {
             ..Default::default()
         },
     );
-    let dir = std::env::temp_dir().join(format!("sdf_degenerate_{}", std::process::id()));
+    let dir_tmp = common::TestDir::new("degenerate_input_oracle");
+    let dir = dir_tmp.join(format!("sdf_degenerate_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     type Importer = Box<dyn Fn(&std::path::Path)>;
     let mut cases: Vec<(&str, std::path::PathBuf, Importer)> = Vec::new();
