@@ -1,6 +1,6 @@
 {
   "name": "@alice-sdf/wasm",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "description": "ALICE-SDF WebAssembly bindings - Mathematical 3D shape compression via Signed Distance Functions",
   "main": "dist/alice_sdf.js",
   "module": "dist/alice_sdf_bg.js",

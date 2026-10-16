@@ -8,6 +8,8 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-10-16
+
 ### Added
 - `tight_aabb::analytic_aabb` が `PolarRepeat` / `Twist` / `Taper` / `IcosahedralSymmetry` / `OctantMirror` と primitive の `Diamond` / `HexPrism` / `Ellipsoid` を `Bounded` で返す (従来は `Unsupported` で interval 探索に落ち、歯車・花瓶・対称体の box が探索範囲いっぱいになった) `PolarRepeat` と `Twist` は Y 軸まわりの回転なので子の高さ範囲と軸からの最大半径 (回転体の子はその円板の半径、それ以外は box の最遠の角) の円柱の box `Taper` は子の box に高さ範囲での `1 - y·f` の最大・最小を掛け、`reach` を持つ時に限り水準が正の場合も評価器自身の cone / slab で覆う (特異面 `1 - y·f <= 0` が範囲に入る taper は `Unsupported` のまま) `IcosahedralSymmetry` は子の box の最遠の角の norm の立方体、`OctantMirror` は成分の最大絶対値の立方体 `PolarRepeat` の `count == 0` と有限でない `Twist` は `Unsupported` 回転は近似 `sin_cos` なので半径に相対 1e-4 の余裕を足す 試験は `tests/test_tight_aabb_fold_oracle.rs` (閉形式の box、格子と種入り乱数で解の全点が box 内、変異 24 件が赤)
 - `alice-law-conformance.toml`: ALICE-Law の G1-G14 の各 gate の状態と根拠 (未達の gate は `fail-known` と箇所) README の ALICE-Law integration の表を同じ revision で再生成
@@ -17,6 +19,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - Android sample (`mobile/samples/android-compose`): commit していた build 済みの `.so` 4 本と UniFFI の Kotlin bindings を外した (build した machine の path が入り、今の `build-aar.sh` が作る library 名とも食い違っていた) README の「ビルド方法」で作る (`cargo-ndk` と Android NDK が要る) 生成先は `.gitignore` 済み
 
 ### Changed
+- 版を 6.1.0 にした `tight_aabb::analytic_aabb` が扱う形を広げた (上の Added) 追加だけで、`cargo semver-checks` は 6.0.0 に対して consumer の feature の組すべてで互換でない変更 0 件
 - CI (決定論 G10): `clippy.toml` で時計と OS 由来の乱数の読み取りを禁止した (`disallowed-methods` に `std::time::Instant::now` / `Instant::elapsed` / `SystemTime::now` / `SystemTime::elapsed` / `RandomState::new`、`disallowed-types` に `RandomState`) `elapsed` は `::now()` と同じく時計を読む `duration_since` は保持済みの 2 値の引き算なので対象外 `.github/clippy-lib/clippy.toml` を再生成し、`scripts/clippy-lib-canary` に 5 形を足して clippy が各々に診断を出さなければ失敗する CLI (`src/bin/main.rs`) と `examples/bake_assets` / `examples/gpu_eval` のタイミング表示、`tests/test_degenerate_input_oracle.rs` の時間上限は 1 呼び出しずつ理由付きで許可し (出力 byte には入らない)、`cmd_bench` の関数単位の許可は外して入力点の三角関数と計時を別々に許可した library のコードに時計・乱数の読み取りは無い ただし `alice-law-conformance.toml` の G10 は fail-known にした `sdf-cache` feature の公開型 `cache_bridge::SdfEvalCache` (`src/cache_bridge.rs:47`) が包む alice-cache 0.2.0 は hasher の seed を `ahash::RandomState::new()` で OS 由来の乱数から取るので、同じ入力でも追い出される key が実行ごとに変わり、同じ cell の別の点の値が返ることがある 根本の修正は alice-cache の seed を決定的にすること
 - CI: root の Cargo.lock を追跡するようにした golden の試験は解決した alice-det-math の識別子を固定するので、依存の新しい版が出るたびに main の CI が黙って落ちないよう、記録した版で build する 利用者と同じく lock 無しで解決した場合は、Security & Hygiene の package integrity が展開した .crate から lock を外して `cargo check --all-features` し、alice-det-math が解決されたことを確かめる
 - alice-det-math の要求を 0.5.1 に上げた Cargo.lock を追跡しないので CI は公開済みの 0.5.1 を解決し、`SEMANTICS_ID` が 135c407d… から 85e08846… に変わって `tests/test_det_golden.rs` の識別子の pin が落ちていた 識別子を記録し直し、0.5.0 の識別子が `PREVIOUS_SEMANTICS_IDS` に残ることを試験で固定した corpus の各 node の hash は変わらない
