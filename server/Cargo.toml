@@ -10,7 +10,7 @@ publish     = false
 
 [dependencies]
 alice-sdf = { path = "..", default-features = false, features = ["openvdb"] }
-axum      = { version = "0.7", features = ["macros"] }
+axum      = { version = "0.8", features = ["macros"] }
 tokio     = { version = "1.40", features = ["rt-multi-thread", "macros"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
 tower_governor = "0.4"
