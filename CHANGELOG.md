@@ -24,6 +24,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: 公開する text の検査を ALICE-Law の検査器で行う `.github/public-text-pin` の revision の `scripts/public_text_check.py` を SHA-256 を確かめて取得し、全 tracked file の path と本文、送られた commit の message・追加行・追加 path を読む (`scripts/public_text.sh`、`.github/workflows/public-text.yml`、preflight) 比べる対象が無い時と pin・base が読めない時も失敗する
 - `scripts/docs_lint.py`: 語の一覧 (作業の進め方の語の正規表現と SHA-256 で持つ非公開の名前) を外し、CHANGELOG の構造の検査だけを残した 同じ語は ALICE-Law の検査器がすべて検出する (正規表現の候補 58 件の入力をすべて検出し、名前の hash 31 件はすべて検査器も持つ) README の ALICE-Law integration の表 (G12) を再生成 語の検査は `Public text` workflow の ubuntu の job だけで走る (以前は docs_lint が test matrix の 3 OS で走っていた、検査は文字列の照合で OS に依らない)
 - `TightAabbConfig::preset_large` の doc comment を、他の crate の関数名を挙げない書き方にした
+- CI: 公開 API の互換性の検査を `.github/workflows/semver-checks.yml` (`scripts/semver_gate.py`、ALICE-Law / ALICE-DB / ALICE-Analytics / ALICE-Edge / ALICE-Zip / ALICE-Sync / ALICE-DetMath と同一) に置き換えた crates.io の最新の alice-sdf を baseline にし、組は ALICE-Law release-train.toml の [crate.alice-sdf] を `.github/semver-gate.toml` にそのまま写した (`python` 以外の 30 feature、`python` は cargo check) ほかに既定・既定なしの 2 組 どの組にも入らない feature があれば失敗する 版が公開済みの 6.0.0 と同じ間は次の最小の版 6.0.1 として検査する 旧 job (security-audit.yml、`font` / `godot` / `python` を外した 1 組で比較件数を読む) と、その件数の抽出を固定していた `scripts/test_semver_checks_count.py` は外した
 
 ## [6.0.0] - 2026-10-13
 

@@ -439,7 +439,6 @@ jobs:
         run: |
           python scripts/test_ansi.py
           python scripts/test_libtest_count.py
-          python scripts/test_semver_checks_count.py
           python scripts/test_cargo_output_parser_check.py
       - name: cargo output parsers (test に色付き sample がある、対象 0 件で fail)
         run: python scripts/cargo_output_parser_check.py

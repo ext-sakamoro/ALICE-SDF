@@ -1,0 +1,89 @@
+name: Semver checks
+
+# The public API may change only as far as the version in Cargo.toml allows,
+# measured from the latest alice-sdf release on crates.io (scripts/semver_gate.py):
+# cargo-semver-checks runs once per consumer feature set (.github/semver-gate.toml),
+# and the job fails when a change needs a larger step than the two versions make,
+# when the tool did not run or names another step, or when a run compared 0 checks.
+# A major step (0.x: a minor bump) is not compared. Cargo.toml keeps the released
+# version until the next release is cut, and an equal version is checked as the
+# smallest next release (`equal-version` in .github/semver-gate.toml).
+#
+# Not on every push: only on a change to the files listed under paths below (every
+# file the job executes or reads), and weekly (a release on crates.io can change the
+# baseline without a commit here).
+#
+# scripts/preflight.sh (full run) runs the same command.
+
+on:
+  push:
+    # ci/**: the same checks on a branch before it is fast-forwarded to main
+    branches: [main, 'ci/**']
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'scripts/semver_gate.py'
+      - 'scripts/test_semver_gate.py'
+      - '.github/semver-gate.toml'
+      - '.github/workflows/semver-checks.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'scripts/semver_gate.py'
+      - 'scripts/test_semver_gate.py'
+      - '.github/semver-gate.toml'
+      - '.github/workflows/semver-checks.yml'
+  schedule:
+    # every Monday 11:00 UTC (two hours after security-audit.yml)
+    - cron: '0 11 * * 1'
+  workflow_dispatch:
+
+# on main each commit has a group of its own and a run there is never
+# cancelled; a newer run on the same branch cancels an older one only off main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
+# The token only reads the repository
+permissions:
+  contents: read
+
+jobs:
+  semver-checks:
+    name: cargo-semver-checks (latest crates.io release, consumer feature sets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable (branch, default toolchain stable)
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      # pinned: newer releases raise their own required rustc version, so the pin
+      # moves together with rust-toolchain.toml
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-semver-checks@0.50.0
+
+      # recorded tool outputs, and the real tool on two small crates (fails when the
+      # tool is missing, so the recorded lines cannot drift from the tool unseen)
+      - name: semver gate (tests)
+        run: python3 scripts/test_semver_gate.py
+
+      # exit 1: a change the step does not allow, a run that compared nothing or named
+      # another step; exit 2: crates.io or the configuration could not be read
+      - name: semver gate (latest crates.io release, every consumer feature set)
+        run: python3 scripts/semver_gate.py --config .github/semver-gate.toml --target-dir target/semver

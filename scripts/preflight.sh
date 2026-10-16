@@ -49,7 +49,7 @@ relint() { touch src/lib.rs; }
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1 ($2)" >&2; exit 1; }; }
 
 need actionlint "brew install actionlint"
-need cargo-semver-checks "cargo install cargo-semver-checks --locked"
+need cargo-semver-checks "cargo install cargo-semver-checks --version 0.50.0 --locked"
 need cargo-deny "cargo install cargo-deny --locked"
 need cargo-machete "cargo install cargo-machete --locked"
 rustup toolchain list | grep -q "^${MSRV}" || { echo "missing toolchain ${MSRV} (rustup toolchain install ${MSRV})" >&2; exit 1; }
@@ -112,7 +112,6 @@ python3 scripts/version_sync.py --check
 step "cargo output parsers: oracle (色付き出力) + test に色付き sample がある、対象 0 件で fail"
 CARGO_TERM_COLOR=always python3 scripts/test_ansi.py
 CARGO_TERM_COLOR=always python3 scripts/test_libtest_count.py
-CARGO_TERM_COLOR=always python3 scripts/test_semver_checks_count.py
 CARGO_TERM_COLOR=always python3 scripts/test_cargo_output_parser_check.py
 CARGO_TERM_COLOR=always python3 scripts/cargo_output_parser_check.py
 
@@ -192,58 +191,11 @@ cargo bench --no-run
 
 # ── security-audit.yml ────────────────────────────────────────────────────
 
-step "semver-checks: check-release vs crates.io (CI feature set)"
-feats=$(cargo metadata --format-version 1 --no-deps \
-  | jq -r '.packages[] | select(.name=="alice-sdf") | .features | keys[]' \
-  | grep -vE '^(default|font|godot|python)$' | paste -sd, -)
-# The run below compares NOTHING during a major bump, and exits 0 while doing
-# it. cargo-semver-checks picks lints by "is the bump this lint requires already
-# satisfied", so once the version is a major ahead of crates.io every lint is
-# unnecessary:
-#
-#   Checking alice-sdf v3.1.1 -> v4.0.0 (major change)
-#   Starting 0 checks, 254 unnecessary on 8 threads
-#    Summary no semver update required          <- exit 0, 0 comparisons
-#
-# 2026-09-30: that is how 4.0.0 reached the point of publication with 102
-# breaking items (98 shifted enum discriminants, 2 newly non_exhaustive enums,
-# 2 added struct fields) never enumerated and 4 of them absent from CHANGELOG.
-# So the count of checks that actually ran is read back, and a run that
-# compared nothing is escalated instead of accepted.
-sem_log=$(mktemp)
-set +e
-cargo semver-checks check-release --package alice-sdf \
-  --only-explicit-features --features "$feats" >"$sem_log" 2>&1
-sem_rc=$?
-set -e
-cat "$sem_log"
-checks_ran() { grep -oE '[0-9]+ checks: ' "$1" | grep -oE '[0-9]+' | tail -1; }
-ran=$(checks_ran "$sem_log" || true)
-[ $sem_rc -ne 0 ] && { rm -f "$sem_log"; echo "semver-checks failed (rc=$sem_rc)" >&2; exit $sem_rc; }
+step "semver-checks.yml / semver-checks: semver gate (tests)"
+python3 scripts/test_semver_gate.py
 
-# Only when the run above compared nothing (or its output could not be read) is
-# the second pass needed; `--release-type patch` forces the major and minor lint
-# families to run (223 checks on 4.0.0). Exit 100 there is the expected outcome
-# of a genuinely breaking release — that is the enumeration, not a failure — so
-# the hard gate is "a nonzero number of checks ran", the one thing a green run
-# cannot fake. Skipping this pass when the first one already compared something
-# keeps the usual push from paying for a second baseline build.
-if [ -z "${ran:-}" ] || [ "$ran" -eq 0 ]; then
-  step "semver-checks: first pass compared ${ran:-no} checks — enumerating with --release-type patch"
-  cargo semver-checks check-release --package alice-sdf \
-    --only-explicit-features --features "$feats" --release-type patch \
-    >"$sem_log" 2>&1 || true
-  cat "$sem_log"
-  ran=$(checks_ran "$sem_log" || true)
-  if [ -z "${ran:-}" ] || [ "$ran" -eq 0 ]; then
-    echo "semver-checks ran ${ran:-no} checks in both passes — the gate compared nothing" >&2
-    rm -f "$sem_log"; exit 1
-  fi
-  echo "semver-checks compared $ran checks (breaking items above are expected on a major bump; CHANGELOG must list them)"
-else
-  echo "semver-checks compared $ran checks"
-fi
-rm -f "$sem_log"
+step "semver-checks.yml / semver-checks: semver gate (latest crates.io release, every consumer feature set)"
+python3 scripts/semver_gate.py --config .github/semver-gate.toml --target-dir "${CARGO_TARGET_DIR:-target}/semver"
 
 step "deny: cargo deny --all-features check all"
 cargo deny --all-features check all
