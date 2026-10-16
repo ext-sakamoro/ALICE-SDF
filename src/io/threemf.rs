@@ -191,7 +191,8 @@ mod tests {
             ..Default::default()
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
-        let path = std::env::temp_dir().join("alice_test.3mf");
+        let path_tmp = crate::test_dir::TestDir::new("threemf");
+        let path = path_tmp.join("alice_test.3mf");
         export_3mf(&mesh, &path).unwrap();
         let meta = std::fs::metadata(&path).unwrap();
         assert!(meta.len() > 100);

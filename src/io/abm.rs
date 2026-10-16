@@ -757,10 +757,10 @@ mod tests {
     use glam::{Vec2, Vec3, Vec4};
     use std::fs;
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("alice_sdf_abm_{}", name));
-        path
+    fn temp_path(name: &str) -> (crate::test_dir::TestDir, std::path::PathBuf) {
+        let dir = crate::test_dir::TestDir::new("abm");
+        let path = dir.join(name);
+        (dir, path)
     }
 
     /// Build a simple triangle mesh with normals and UVs
@@ -801,7 +801,7 @@ mod tests {
     #[test]
     fn test_roundtrip_triangle() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("roundtrip_tri.abm");
+        let (_path_dir, path) = temp_path("roundtrip_tri.abm");
 
         save_abm(&mesh, &path).unwrap();
         let loaded = load_abm(&path).unwrap();
@@ -832,7 +832,7 @@ mod tests {
             indices: vec![0, 0, 0],
         };
 
-        let path = temp_path("roundtrip_lods.abm");
+        let (_path_dir, path) = temp_path("roundtrip_lods.abm");
         let distances = vec![10.0];
 
         save_abm_with_lods(&[lod0, lod1], &distances, &path).unwrap();
@@ -856,7 +856,7 @@ mod tests {
     #[test]
     fn test_crc_integrity() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("crc_corrupt.abm");
+        let (_path_dir, path) = temp_path("crc_corrupt.abm");
 
         save_abm(&mesh, &path).unwrap();
 
@@ -880,7 +880,7 @@ mod tests {
     #[test]
     fn test_header_only_read() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("header_only.abm");
+        let (_path_dir, path) = temp_path("header_only.abm");
 
         save_abm(&mesh, &path).unwrap();
 
@@ -900,7 +900,7 @@ mod tests {
     #[test]
     fn test_empty_mesh() {
         let mesh = Mesh::new();
-        let path = temp_path("empty.abm");
+        let (_path_dir, path) = temp_path("empty.abm");
 
         save_abm(&mesh, &path).unwrap();
         let loaded = load_abm(&path).unwrap();
@@ -935,7 +935,7 @@ mod tests {
             vertices: vec![v0, v1],
             indices: vec![0, 1, 0],
         };
-        let path = temp_path("all_attrs.abm");
+        let (_path_dir, path) = temp_path("all_attrs.abm");
 
         save_abm(&mesh, &path).unwrap();
 

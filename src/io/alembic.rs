@@ -178,7 +178,8 @@ mod tests {
             },
         );
 
-        let path = std::env::temp_dir().join("alice_test.abc");
+        let path_tmp = crate::test_dir::TestDir::new("alembic");
+        let path = path_tmp.join("alice_test.abc");
         export_alembic(&mesh, &path, &AlembicConfig::default()).unwrap();
 
         let data = std::fs::read(&path).unwrap();
@@ -201,7 +202,8 @@ mod tests {
             },
         );
 
-        let path = std::env::temp_dir().join("alice_test_nonorm.abc");
+        let path_tmp = crate::test_dir::TestDir::new("alembic");
+        let path = path_tmp.join("alice_test_nonorm.abc");
         let config = AlembicConfig {
             export_normals: false,
             ..Default::default()

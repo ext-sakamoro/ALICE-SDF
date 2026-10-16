@@ -58,16 +58,16 @@ mod tests {
     use crate::types::{SdfMetadata, SdfNode};
     use std::fs;
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("alice_sdf_json_{}", name));
-        path
+    fn temp_path(name: &str) -> (crate::test_dir::TestDir, std::path::PathBuf) {
+        let dir = crate::test_dir::TestDir::new("json");
+        let path = dir.join(name);
+        (dir, path)
     }
 
     #[test]
     fn test_save_load_simple() {
         let tree = SdfTree::new(SdfNode::sphere(1.5));
-        let path = temp_path("simple.asdf.json");
+        let (_path_dir, path) = temp_path("simple.asdf.json");
 
         save_asdf_json(&tree, &path).unwrap();
         let loaded = load_asdf_json(&path).unwrap();
@@ -85,7 +85,7 @@ mod tests {
         };
 
         let tree = SdfTree::with_metadata(SdfNode::sphere(1.0), metadata);
-        let path = temp_path("metadata.asdf.json");
+        let (_path_dir, path) = temp_path("metadata.asdf.json");
 
         save_asdf_json(&tree, &path).unwrap();
         let loaded = load_asdf_json(&path).unwrap();
@@ -140,7 +140,7 @@ mod tests {
             shape = shape.union(SdfNode::box3d(1.0, 1.0, 1.0).translate(i as f32, 0.0, 0.0));
         }
         let tree = SdfTree::new(shape);
-        let path = temp_path("streaming_large.asdf.json");
+        let (_path_dir, path) = temp_path("streaming_large.asdf.json");
 
         save_asdf_json(&tree, &path).unwrap();
         let loaded = load_asdf_json(&path).unwrap();

@@ -246,7 +246,8 @@ mod tests {
 
     #[test]
     fn file_roundtrip() {
-        let path = std::env::temp_dir().join("alice_sdf_test.splat");
+        let path_tmp = crate::test_dir::TestDir::new("splat");
+        let path = path_tmp.join("alice_sdf_test.splat");
         let n = SdfNode::sphere(1.0);
         let cfg = SplatConfig {
             bounds: (-2.0, 2.0),

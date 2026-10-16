@@ -447,10 +447,10 @@ mod tests {
     use crate::mesh::Vertex;
     use glam::{Vec2, Vec3, Vec4};
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("alice_sdf_lod_persist_{}", name));
-        path
+    fn temp_path(name: &str) -> (crate::test_dir::TestDir, std::path::PathBuf) {
+        let dir = crate::test_dir::TestDir::new("lod_persist");
+        let path = dir.join(name);
+        (dir, path)
     }
 
     /// Build a simple triangle mesh with N copies of a triangle
@@ -638,7 +638,7 @@ mod tests {
             },
         );
 
-        let path = temp_path("roundtrip.abm");
+        let (_path_dir, path) = temp_path("roundtrip.abm");
 
         save_lod_chain(&chain, &path).unwrap();
         let loaded = load_lod_chain(&path).unwrap();
@@ -680,7 +680,7 @@ mod tests {
 
         let chain = LodChainPersist::new(vec![lod0], vec![0.0], 123, LodChainConfig::default());
 
-        let path = temp_path("single_lod.abm");
+        let (_path_dir, path) = temp_path("single_lod.abm");
 
         save_lod_chain(&chain, &path).unwrap();
         let loaded = load_lod_chain(&path).unwrap();
@@ -711,7 +711,7 @@ mod tests {
             },
         );
 
-        let abm_path = temp_path("meta_test.abm");
+        let (_abm_path_dir, abm_path) = temp_path("meta_test.abm");
         let meta_path = sidecar_path(&abm_path);
 
         save_lod_chain_metadata(&chain, &abm_path).unwrap();

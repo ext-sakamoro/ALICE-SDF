@@ -1433,7 +1433,8 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        let path = std::env::temp_dir().join("alice_test.glb");
+        let path_tmp = crate::test_dir::TestDir::new("gltf");
+        let path = path_tmp.join("alice_test.glb");
         export_glb(&mesh, &path, &GltfConfig::default(), None).unwrap();
 
         // Verify GLB header
@@ -1460,7 +1461,8 @@ mod tests {
             "chrome", 0.9, 0.9, 0.9, 0.2,
         ));
 
-        let path = std::env::temp_dir().join("alice_test_mat.glb");
+        let path_tmp = crate::test_dir::TestDir::new("gltf");
+        let path = path_tmp.join("alice_test_mat.glb");
         export_glb(&mesh, &path, &GltfConfig::default(), Some(&mat_lib)).unwrap();
 
         let bytes = std::fs::read(&path).unwrap();
@@ -1475,7 +1477,8 @@ mod tests {
         let mc_config = MarchingCubesConfig::aaa(8);
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &mc_config);
 
-        let path = std::env::temp_dir().join("alice_test_aaa.glb");
+        let path_tmp = crate::test_dir::TestDir::new("gltf");
+        let path = path_tmp.join("alice_test_aaa.glb");
         export_glb(&mesh, &path, &GltfConfig::aaa(), None).unwrap();
 
         let bytes = std::fs::read(&path).unwrap();
@@ -1580,7 +1583,8 @@ mod tests {
         );
 
         // Export as file to verify GLB integrity
-        let path = std::env::temp_dir().join("alice_test_quantized.glb");
+        let path_tmp = crate::test_dir::TestDir::new("gltf");
+        let path = path_tmp.join("alice_test_quantized.glb");
         export_glb(&mesh, &path, &gltf_config, None).unwrap();
 
         let bytes = std::fs::read(&path).unwrap();
@@ -1602,7 +1606,8 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
         assert!(mesh.vertex_count() <= 65535);
 
-        let path = std::env::temp_dir().join("alice_test_u16.glb");
+        let path_tmp = crate::test_dir::TestDir::new("gltf");
+        let path = path_tmp.join("alice_test_u16.glb");
         export_glb(&mesh, &path, &GltfConfig::default(), None).unwrap();
 
         std::fs::remove_file(&path).ok();
@@ -1620,7 +1625,8 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
         // Create a tiny test PNG
-        let test_dir = std::env::temp_dir().join("alice_tex_test");
+        let test_dir_tmp = crate::test_dir::TestDir::new("gltf");
+        let test_dir = test_dir_tmp.join("alice_tex_test");
         std::fs::create_dir_all(&test_dir).ok();
         let tex_path = test_dir.join("test_albedo.png");
         // Minimal valid PNG (1x1 red pixel)
@@ -1777,7 +1783,8 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        let path = std::env::temp_dir().join("alice_import_test.glb");
+        let path_tmp = crate::test_dir::TestDir::new("gltf");
+        let path = path_tmp.join("alice_import_test.glb");
         export_glb(&mesh, &path, &GltfConfig::default(), None).unwrap();
 
         let imported = import_glb(&path).unwrap();

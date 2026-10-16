@@ -174,18 +174,17 @@ mod tests {
     use super::*;
     use crate::types::SdfNode;
     use std::fs;
-    use std::path::PathBuf;
 
-    fn temp_path(name: &str) -> PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("alice_sdf_test_{}", name));
-        path
+    fn temp_path(name: &str) -> (crate::test_dir::TestDir, std::path::PathBuf) {
+        let dir = crate::test_dir::TestDir::new("mod");
+        let path = dir.join(name);
+        (dir, path)
     }
 
     #[test]
     fn test_save_load_binary() {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
-        let path = temp_path("test.asdf");
+        let (_path_dir, path) = temp_path("test.asdf");
 
         save(&tree, &path).unwrap();
         let loaded = load(&path).unwrap();
@@ -197,7 +196,7 @@ mod tests {
     #[test]
     fn test_save_load_json() {
         let tree = SdfTree::new(SdfNode::sphere(1.0).union(SdfNode::box3d(2.0, 2.0, 2.0)));
-        let path = temp_path("test.asdf.json");
+        let (_path_dir, path) = temp_path("test.asdf.json");
 
         save(&tree, &path).unwrap();
         let loaded = load(&path).unwrap();
@@ -209,7 +208,7 @@ mod tests {
     #[test]
     fn test_get_info() {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
-        let path = temp_path("info_test.asdf");
+        let (_path_dir, path) = temp_path("info_test.asdf");
 
         save(&tree, &path).unwrap();
         let info = get_info(&path).unwrap();

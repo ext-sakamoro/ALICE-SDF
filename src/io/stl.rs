@@ -233,7 +233,8 @@ mod tests {
             ..Default::default()
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
-        let path = std::env::temp_dir().join("alice_test_stl_bin.stl");
+        let path_tmp = crate::test_dir::TestDir::new("stl");
+        let path = path_tmp.join("alice_test_stl_bin.stl");
         export_stl(&mesh, &path).unwrap();
         let imported = import_stl(&path).unwrap();
         assert!(imported.vertex_count() > 0);
@@ -251,7 +252,8 @@ mod tests {
             ..Default::default()
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
-        let path = std::env::temp_dir().join("alice_test_stl_ascii.stl");
+        let path_tmp = crate::test_dir::TestDir::new("stl");
+        let path = path_tmp.join("alice_test_stl_ascii.stl");
         export_stl_ascii(&mesh, &path).unwrap();
         let imported = import_stl(&path).unwrap();
         assert!(imported.vertex_count() > 0);

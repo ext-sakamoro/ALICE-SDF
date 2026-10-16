@@ -368,7 +368,8 @@ mod tests {
     #[test]
     fn test_nanite_export() {
         let nanite = make_test_nanite();
-        let path = std::env::temp_dir().join("alice_test.nanite");
+        let path_tmp = crate::test_dir::TestDir::new("nanite");
+        let path = path_tmp.join("alice_test.nanite");
 
         export_nanite(&nanite, &path).unwrap();
 
@@ -385,7 +386,8 @@ mod tests {
     #[test]
     fn test_nanite_json_export() {
         let nanite = make_test_nanite();
-        let path = std::env::temp_dir().join("alice_test.nanite.json");
+        let path_tmp = crate::test_dir::TestDir::new("nanite");
+        let path = path_tmp.join("alice_test.nanite.json");
 
         export_nanite_json(&nanite, &path).unwrap();
 
@@ -401,7 +403,8 @@ mod tests {
     #[cfg(feature = "hlsl")]
     fn test_nanite_hlsl_material_export() {
         let sphere = SdfNode::sphere(1.0);
-        let path = std::env::temp_dir().join("alice_test_nanite_material.usf");
+        let path_tmp = crate::test_dir::TestDir::new("nanite");
+        let path = path_tmp.join("alice_test_nanite_material.usf");
 
         export_nanite_hlsl_material(&sphere, &path).unwrap();
 

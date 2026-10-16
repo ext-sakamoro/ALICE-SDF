@@ -106,6 +106,8 @@ pub mod primitives;
 mod raw_minmax;
 pub mod raycast;
 pub mod soa;
+#[cfg(test)]
+mod test_dir;
 pub mod tight_aabb;
 pub mod transforms;
 pub mod types;
@@ -589,7 +591,8 @@ mod tests {
         );
 
         // Export glTF with multi-material
-        let path = std::env::temp_dir().join("alice_stress_multi_mat.glb");
+        let path_tmp = crate::test_dir::TestDir::new("lib");
+        let path = path_tmp.join("alice_stress_multi_mat.glb");
         export_glb(&mesh, &path, &GltfConfig::aaa(), Some(&mat_lib)).unwrap();
 
         let bytes = std::fs::read(&path).unwrap();

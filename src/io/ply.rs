@@ -273,7 +273,8 @@ mod tests {
             ..Default::default()
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
-        let path = std::env::temp_dir().join("alice_test_ply_bin.ply");
+        let path_tmp = crate::test_dir::TestDir::new("ply");
+        let path = path_tmp.join("alice_test_ply_bin.ply");
         export_ply(&mesh, &path, &PlyConfig::default()).unwrap();
         let imported = import_ply(&path).unwrap();
         assert!(imported.vertex_count() > 0);
@@ -291,7 +292,8 @@ mod tests {
             ..Default::default()
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
-        let path = std::env::temp_dir().join("alice_test_ply_ascii.ply");
+        let path_tmp = crate::test_dir::TestDir::new("ply");
+        let path = path_tmp.join("alice_test_ply_ascii.ply");
         let ply_config = PlyConfig {
             binary: false,
             export_normals: true,

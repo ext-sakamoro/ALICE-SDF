@@ -467,7 +467,8 @@ mod tests {
     fn test_export_raw() {
         let vol = Volume3D::<f32>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
-        let dir = std::env::temp_dir();
+        let dir_tmp = crate::test_dir::TestDir::new("export");
+        let dir = dir_tmp.path();
         let path = dir.join("alice_test_volume.raw");
         let path_str = path.to_str().unwrap();
 
@@ -490,7 +491,8 @@ mod tests {
     fn test_export_dds_3d() {
         let vol = Volume3D::<f32>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
 
-        let dir = std::env::temp_dir();
+        let dir_tmp = crate::test_dir::TestDir::new("export");
+        let dir = dir_tmp.path();
         let path = dir.join("alice_test_volume.dds");
         let path_str = path.to_str().unwrap();
 

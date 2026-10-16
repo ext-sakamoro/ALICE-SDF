@@ -457,7 +457,8 @@ mod tests {
             },
         );
 
-        let path = std::env::temp_dir().join("alice_test.usda");
+        let path_tmp = crate::test_dir::TestDir::new("usd");
+        let path = path_tmp.join("alice_test.usda");
         export_usda(&mesh, &path, &UsdConfig::default(), None).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -483,7 +484,8 @@ mod tests {
             },
         );
 
-        let path = std::env::temp_dir().join("alice_test_zup.usda");
+        let path_tmp = crate::test_dir::TestDir::new("usd");
+        let path = path_tmp.join("alice_test_zup.usda");
         let config = UsdConfig {
             up_axis: UsdUpAxis::Z,
             ..Default::default()
@@ -511,7 +513,8 @@ mod tests {
         );
 
         // Export to USDA
-        let path = std::env::temp_dir().join("alice_test_import.usda");
+        let path_tmp = crate::test_dir::TestDir::new("usd");
+        let path = path_tmp.join("alice_test_import.usda");
         export_usda(&original_mesh, &path, &UsdConfig::default(), None).unwrap();
 
         // Import back
@@ -568,7 +571,8 @@ mod tests {
         });
 
         // Export with material
-        let path = std::env::temp_dir().join("alice_test_material.usda");
+        let path_tmp = crate::test_dir::TestDir::new("usd");
+        let path = path_tmp.join("alice_test_material.usda");
         export_usda(&mesh, &path, &UsdConfig::default(), Some(&mat_lib)).unwrap();
 
         // Import and verify material
@@ -589,7 +593,8 @@ mod tests {
     #[test]
     fn test_usda_import_invalid() {
         // Try to import a non-USDA file
-        let path = std::env::temp_dir().join("alice_test_invalid.txt");
+        let path_tmp = crate::test_dir::TestDir::new("usd");
+        let path = path_tmp.join("alice_test_invalid.txt");
         std::fs::write(&path, "This is not a USDA file").unwrap();
 
         let result = import_usda(&path);

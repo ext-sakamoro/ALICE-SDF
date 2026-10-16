@@ -355,7 +355,8 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        let path = std::env::temp_dir().join("alice_test_export.obj");
+        let path_tmp = crate::test_dir::TestDir::new("obj");
+        let path = path_tmp.join("alice_test_export.obj");
         export_obj(&mesh, &path, &ObjConfig::default(), None).unwrap();
 
         let imported = import_obj(&path).unwrap();
@@ -381,7 +382,8 @@ mod tests {
             "gold", 1.0, 0.84, 0.0, 0.3,
         ));
 
-        let path = std::env::temp_dir().join("alice_test_mat.obj");
+        let path_tmp = crate::test_dir::TestDir::new("obj");
+        let path = path_tmp.join("alice_test_mat.obj");
         export_obj(&mesh, &path, &ObjConfig::default(), Some(&mat_lib)).unwrap();
 
         let mtl_path = path.with_extension("mtl");
@@ -402,7 +404,8 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        let path = std::env::temp_dir().join("alice_test_minimal.obj");
+        let path_tmp = crate::test_dir::TestDir::new("obj");
+        let path = path_tmp.join("alice_test_minimal.obj");
         let obj_config = ObjConfig {
             export_normals: false,
             export_uvs: false,

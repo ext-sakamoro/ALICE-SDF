@@ -673,7 +673,8 @@ mod tests {
 
     #[test]
     fn test_persist_dirty_and_load_chunk() {
-        let dir = std::env::temp_dir().join("alice_sdf_chunked_test");
+        let dir_tmp = crate::test_dir::TestDir::new("chunked");
+        let dir = dir_tmp.join("alice_sdf_chunked_test");
         let _ = std::fs::remove_dir_all(&dir);
 
         let config = ChunkedCacheConfig {

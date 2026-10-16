@@ -361,10 +361,10 @@ mod tests {
     use glam::{Vec2, Vec3, Vec4};
     use std::fs;
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("alice_sdf_unity_{}", name));
-        path
+    fn temp_path(name: &str) -> (crate::test_dir::TestDir, std::path::PathBuf) {
+        let dir = crate::test_dir::TestDir::new("unity_mesh");
+        let path = dir.join(name);
+        (dir, path)
     }
 
     /// Build a simple triangle mesh for testing
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn test_unity_json_export_structure() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("structure.unity_mesh");
+        let (_path_dir, path) = temp_path("structure.unity_mesh");
 
         export_unity_mesh(&mesh, &path, &UnityMeshConfig::default()).unwrap();
 
@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn test_unity_coordinate_flip() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("coord_flip.unity_mesh");
+        let (_path_dir, path) = temp_path("coord_flip.unity_mesh");
 
         let config = UnityMeshConfig {
             flip_z: true,
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn test_unity_no_flip() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("no_flip.unity_mesh");
+        let (_path_dir, path) = temp_path("no_flip.unity_mesh");
 
         let config = UnityMeshConfig {
             flip_z: false,
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn test_unity_winding_flip() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("winding.unity_mesh");
+        let (_path_dir, path) = temp_path("winding.unity_mesh");
 
         let config = UnityMeshConfig {
             flip_z: false,
@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn test_unity_scale_factor() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("scale.unity_mesh");
+        let (_path_dir, path) = temp_path("scale.unity_mesh");
 
         let config = UnityMeshConfig {
             scale: 2.0,
@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn test_unity_binary_header() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("header.unity_mesh_bin");
+        let (_path_dir, path) = temp_path("header.unity_mesh_bin");
 
         export_unity_mesh_binary(&mesh, &path, &UnityMeshConfig::default()).unwrap();
 
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn test_unity_binary_vertex_data_roundtrip() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("roundtrip.unity_mesh_bin");
+        let (_path_dir, path) = temp_path("roundtrip.unity_mesh_bin");
 
         let config = UnityMeshConfig {
             flip_z: false,
@@ -579,7 +579,7 @@ mod tests {
     #[test]
     fn test_unity_binary_z_flip() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("z_flip.unity_mesh_bin");
+        let (_path_dir, path) = temp_path("z_flip.unity_mesh_bin");
 
         let config = UnityMeshConfig {
             flip_z: true,
@@ -605,8 +605,8 @@ mod tests {
     #[test]
     fn test_unity_empty_mesh() {
         let mesh = Mesh::new();
-        let path_json = temp_path("empty.unity_mesh");
-        let path_bin = temp_path("empty.unity_mesh_bin");
+        let (_path_json_dir, path_json) = temp_path("empty.unity_mesh");
+        let (_path_bin_dir, path_bin) = temp_path("empty.unity_mesh_bin");
 
         export_unity_mesh(&mesh, &path_json, &UnityMeshConfig::default()).unwrap();
         export_unity_mesh_binary(&mesh, &path_bin, &UnityMeshConfig::default()).unwrap();
@@ -634,7 +634,7 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &mc_config);
 
-        let path = temp_path("sphere.unity_mesh");
+        let (_path_dir, path) = temp_path("sphere.unity_mesh");
         export_unity_mesh(&mesh, &path, &UnityMeshConfig::default()).unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
@@ -653,7 +653,7 @@ mod tests {
     #[test]
     fn test_unity_custom_name() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("named.unity_mesh");
+        let (_path_dir, path) = temp_path("named.unity_mesh");
 
         let config = UnityMeshConfig {
             name: "MyCustomMesh".to_string(),

@@ -271,10 +271,10 @@ mod tests {
     use crate::types::SdfNode;
     use std::fs;
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("alice_sdf_asdf_{}", name));
-        path
+    fn temp_path(name: &str) -> (crate::test_dir::TestDir, std::path::PathBuf) {
+        let dir = crate::test_dir::TestDir::new("asdf");
+        let path = dir.join(name);
+        (dir, path)
     }
 
     #[test]
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn test_save_load_sphere() {
         let tree = SdfTree::new(SdfNode::sphere(2.5));
-        let path = temp_path("sphere.asdf");
+        let (_path_dir, path) = temp_path("sphere.asdf");
 
         save_asdf(&tree, &path).unwrap();
         let loaded = load_asdf(&path).unwrap();
@@ -310,7 +310,7 @@ mod tests {
             .translate(1.0, 2.0, 3.0)
             .twist(0.5);
         let tree = SdfTree::new(shape);
-        let path = temp_path("complex.asdf");
+        let (_path_dir, path) = temp_path("complex.asdf");
 
         save_asdf(&tree, &path).unwrap();
         let loaded = load_asdf(&path).unwrap();
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn test_crc_verification() {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
-        let path = temp_path("crc_test.asdf");
+        let (_path_dir, path) = temp_path("crc_test.asdf");
 
         save_asdf(&tree, &path).unwrap();
 
@@ -353,7 +353,7 @@ mod tests {
         // valid ASDF magic + malformed body で bincode 2 decode が
         // Vec `capacity overflow` panic を起こす (potential DoS)
         // with_limit::<ASDF_BINCODE_LIMIT> で Err 返却に矯正
-        let path = temp_path("malformed_body.asdf");
+        let (_path_dir, path) = temp_path("malformed_body.asdf");
         // fuzz artifact をベースにした 28-byte payload
         // (base64: QVNERgAAAAAQKN8oN+TnLSgAABAo3yjSKCgyKA==)
         let bytes = [
@@ -381,7 +381,7 @@ mod tests {
             shape = shape.union(SdfNode::box3d(1.0, 1.0, 1.0).translate(i as f32, 0.0, 0.0));
         }
         let tree = SdfTree::new(shape);
-        let path = temp_path("streaming_large.asdf");
+        let (_path_dir, path) = temp_path("streaming_large.asdf");
 
         save_asdf(&tree, &path).unwrap();
         let loaded = load_asdf(&path).unwrap();

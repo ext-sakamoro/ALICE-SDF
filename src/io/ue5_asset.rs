@@ -474,10 +474,10 @@ mod tests {
     use glam::{Vec2, Vec3, Vec4};
     use std::fs;
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("alice_sdf_ue5_{}", name));
-        path
+    fn temp_path(name: &str) -> (crate::test_dir::TestDir, std::path::PathBuf) {
+        let dir = crate::test_dir::TestDir::new("ue5_asset");
+        let path = dir.join(name);
+        (dir, path)
     }
 
     /// Build a simple triangle mesh for testing
@@ -518,7 +518,7 @@ mod tests {
     #[test]
     fn test_ue5_json_export_structure() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("structure.ue5_mesh");
+        let (_path_dir, path) = temp_path("structure.ue5_mesh");
 
         export_ue5_mesh(&mesh, &path, &Ue5MeshConfig::default()).unwrap();
 
@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn test_ue5_scale_factor() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("scale.ue5_mesh");
+        let (_path_dir, path) = temp_path("scale.ue5_mesh");
 
         // Default scale is 100 (meters -> cm)
         export_ue5_mesh(&mesh, &path, &Ue5MeshConfig::default()).unwrap();
@@ -563,7 +563,7 @@ mod tests {
     #[test]
     fn test_ue5_coordinate_swap() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("coord_swap.ue5_mesh");
+        let (_path_dir, path) = temp_path("coord_swap.ue5_mesh");
 
         let config = Ue5MeshConfig {
             scale: 1.0, // Use 1.0 to isolate coordinate swap
@@ -586,7 +586,7 @@ mod tests {
     #[test]
     fn test_ue5_winding_flip() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("winding.ue5_mesh");
+        let (_path_dir, path) = temp_path("winding.ue5_mesh");
 
         let config = Ue5MeshConfig {
             scale: 1.0,
@@ -611,7 +611,7 @@ mod tests {
             indices: vec![0, 0, 0],
         };
 
-        let path = temp_path("lods.ue5_mesh");
+        let (_path_dir, path) = temp_path("lods.ue5_mesh");
         let screen_sizes = vec![1.0, 0.5];
         let config = Ue5MeshConfig {
             scale: 1.0,
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn test_ue5_binary_header() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("header.ue5_mesh_bin");
+        let (_path_dir, path) = temp_path("header.ue5_mesh_bin");
 
         export_ue5_mesh_binary(&mesh, &path, &Ue5MeshConfig::default()).unwrap();
 
@@ -660,7 +660,7 @@ mod tests {
     #[test]
     fn test_ue5_binary_position_conversion() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("pos_conv.ue5_mesh_bin");
+        let (_path_dir, path) = temp_path("pos_conv.ue5_mesh_bin");
 
         let config = Ue5MeshConfig {
             scale: 100.0,
@@ -685,7 +685,7 @@ mod tests {
     #[test]
     fn test_ue5_binary_normal_conversion() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("norm_conv.ue5_mesh_bin");
+        let (_path_dir, path) = temp_path("norm_conv.ue5_mesh_bin");
 
         let config = Ue5MeshConfig {
             scale: 1.0,
@@ -710,8 +710,8 @@ mod tests {
     #[test]
     fn test_ue5_empty_mesh() {
         let mesh = Mesh::new();
-        let path_json = temp_path("empty.ue5_mesh");
-        let path_bin = temp_path("empty.ue5_mesh_bin");
+        let (_path_json_dir, path_json) = temp_path("empty.ue5_mesh");
+        let (_path_bin_dir, path_bin) = temp_path("empty.ue5_mesh_bin");
 
         export_ue5_mesh(&mesh, &path_json, &Ue5MeshConfig::default()).unwrap();
         export_ue5_mesh_binary(&mesh, &path_bin, &Ue5MeshConfig::default()).unwrap();
@@ -737,7 +737,7 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &mc_config);
 
-        let path = temp_path("sphere.ue5_mesh");
+        let (_path_dir, path) = temp_path("sphere.ue5_mesh");
         export_ue5_mesh(&mesh, &path, &Ue5MeshConfig::default()).unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
@@ -750,7 +750,7 @@ mod tests {
     #[test]
     fn test_ue5_bounds_calculation() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("bounds.ue5_mesh");
+        let (_path_dir, path) = temp_path("bounds.ue5_mesh");
 
         let config = Ue5MeshConfig {
             scale: 1.0,
@@ -775,7 +775,7 @@ mod tests {
     #[test]
     fn test_ue5_custom_name() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("named.ue5_mesh");
+        let (_path_dir, path) = temp_path("named.ue5_mesh");
 
         let config = Ue5MeshConfig {
             name: "SM_MyCustomMesh".to_string(),
@@ -792,7 +792,7 @@ mod tests {
     #[test]
     fn test_ue5_lod_screen_sizes_mismatch() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("mismatch.ue5_mesh");
+        let (_path_dir, path) = temp_path("mismatch.ue5_mesh");
 
         // 1 mesh but 2 screen sizes = error
         let result =
@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn test_ue5_empty_meshes_error() {
-        let path = temp_path("no_meshes.ue5_mesh");
+        let (_path_dir, path) = temp_path("no_meshes.ue5_mesh");
         let result = export_ue5_mesh_with_lods(&[], &[], &path, &Ue5MeshConfig::default());
         assert!(matches!(result, Err(IoError::InvalidFormat(_))));
     }
@@ -810,7 +810,7 @@ mod tests {
     #[test]
     fn test_ue5_section_vertex_range() {
         let mesh = make_triangle_mesh();
-        let path = temp_path("section.ue5_mesh");
+        let (_path_dir, path) = temp_path("section.ue5_mesh");
 
         let config = Ue5MeshConfig {
             scale: 1.0,

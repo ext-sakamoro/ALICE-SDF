@@ -376,7 +376,8 @@ mod tests {
 
     #[test]
     fn sphere_step_export() {
-        let path = std::env::temp_dir().join("alice_sdf_test.step");
+        let path_tmp = crate::test_dir::TestDir::new("step");
+        let path = path_tmp.join("alice_sdf_test.step");
         let n = SdfNode::sphere(1.0);
         let cfg = StepConfig {
             bounds: (-2.0, 2.0),
@@ -393,7 +394,8 @@ mod tests {
 
     #[test]
     fn empty_node_writes_valid_header() {
-        let path = std::env::temp_dir().join("alice_sdf_empty.step");
+        let path_tmp = crate::test_dir::TestDir::new("step");
+        let path = path_tmp.join("alice_sdf_empty.step");
         let n = SdfNode::sphere(0.001);
         let cfg = StepConfig {
             bounds: (-2.0, 2.0),
@@ -430,7 +432,8 @@ mod tests {
 
     #[test]
     fn step_export_contains_one_point_per_vertex() {
-        let path = std::env::temp_dir().join("alice_sdf_count.step");
+        let path_tmp = crate::test_dir::TestDir::new("step");
+        let path = path_tmp.join("alice_sdf_count.step");
         let n = SdfNode::sphere(1.0);
         let cfg = StepConfig {
             bounds: (-1.5, 1.5),

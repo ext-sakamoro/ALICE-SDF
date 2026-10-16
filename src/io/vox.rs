@@ -236,7 +236,8 @@ mod tests {
 
     #[test]
     fn roundtrip_save_load() {
-        let path = std::env::temp_dir().join("alice_sdf_test.vox");
+        let path_tmp = crate::test_dir::TestDir::new("vox");
+        let path = path_tmp.join("alice_sdf_test.vox");
         let n = SdfNode::sphere(1.0);
         let cfg = VoxConfig {
             size: 16,

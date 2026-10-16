@@ -208,7 +208,8 @@ mod tests {
 
     #[test]
     fn sphere_iges_export() {
-        let path = std::env::temp_dir().join("alice_sdf_test.igs");
+        let path_tmp = crate::test_dir::TestDir::new("iges");
+        let path = path_tmp.join("alice_sdf_test.igs");
         let n = SdfNode::sphere(1.0);
         let cfg = IgesConfig {
             bounds: (-2.0, 2.0),
@@ -248,7 +249,8 @@ mod tests {
 
     #[test]
     fn iges_export_includes_134_node_and_136_fe_entities() {
-        let path = std::env::temp_dir().join("alice_sdf_entities.igs");
+        let path_tmp = crate::test_dir::TestDir::new("iges");
+        let path = path_tmp.join("alice_sdf_entities.igs");
         let n = SdfNode::sphere(0.8);
         let cfg = IgesConfig {
             bounds: (-1.2, 1.2),

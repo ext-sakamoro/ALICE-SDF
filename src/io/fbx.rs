@@ -1511,7 +1511,8 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        let path = std::env::temp_dir().join("alice_test.fbx");
+        let path_tmp = crate::test_dir::TestDir::new("fbx");
+        let path = path_tmp.join("alice_test.fbx");
         export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -1540,7 +1541,8 @@ mod tests {
             "Steel", 0.7, 0.7, 0.7, 0.4,
         ));
 
-        let path = std::env::temp_dir().join("alice_test_mat.fbx");
+        let path_tmp = crate::test_dir::TestDir::new("fbx");
+        let path = path_tmp.join("alice_test_mat.fbx");
         export_fbx(&mesh, &path, &FbxConfig::default(), Some(&mat_lib)).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -1567,7 +1569,8 @@ mod tests {
             ..Default::default()
         };
 
-        let path = std::env::temp_dir().join("alice_test_zup.fbx");
+        let path_tmp = crate::test_dir::TestDir::new("fbx");
+        let path = path_tmp.join("alice_test_zup.fbx");
         export_fbx(&mesh, &path, &fbx_config, None).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -1587,7 +1590,8 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        let path = std::env::temp_dir().join("alice_test_binary.fbx");
+        let path_tmp = crate::test_dir::TestDir::new("fbx");
+        let path = path_tmp.join("alice_test_binary.fbx");
         export_fbx(&mesh, &path, &FbxConfig::binary(), None).unwrap();
 
         let bytes = std::fs::read(&path).unwrap();
@@ -1626,7 +1630,8 @@ mod tests {
             "Steel", 0.7, 0.7, 0.7, 0.4,
         ));
 
-        let path = std::env::temp_dir().join("alice_test_bin_mat.fbx");
+        let path_tmp = crate::test_dir::TestDir::new("fbx");
+        let path = path_tmp.join("alice_test_bin_mat.fbx");
         export_fbx(&mesh, &path, &FbxConfig::binary(), Some(&mat_lib)).unwrap();
 
         let bytes = std::fs::read(&path).unwrap();
@@ -1649,7 +1654,8 @@ mod tests {
         let orig_tris = mesh.indices.len() / 3;
 
         // Export as ASCII FBX
-        let path = std::env::temp_dir().join("alice_import_test.fbx");
+        let path_tmp = crate::test_dir::TestDir::new("fbx");
+        let path = path_tmp.join("alice_import_test.fbx");
         export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
 
         // Import back
@@ -1781,7 +1787,8 @@ mod tests {
         };
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
 
-        let path = std::env::temp_dir().join("alice_fbx_full_test.fbx");
+        let path_tmp = crate::test_dir::TestDir::new("fbx");
+        let path = path_tmp.join("alice_fbx_full_test.fbx");
         export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
 
         // Import with full parser
