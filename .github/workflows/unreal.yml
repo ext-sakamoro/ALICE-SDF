@@ -50,7 +50,9 @@ on:
       - '.github/workflows/unreal.yml'
       - '.github/actions/**'
   # 今日のように engine を入れ直した後で「commit を作らずに検証だけしたい」場合の入口
-  workflow_dispatch:
+  # no workflow_dispatch: a job on the self-hosted host may start only from a
+  # reviewed push to main (path-filtered), not from a manual run; a manual run
+  # needs an environment with required reviewers first
 
 # main では走行中の run を打ち切らない UE 5.7 と 5.8 を 1 台の runner で直列に回すと
 # 約 100 分かかり、push の間隔がそれより短いと 5.8 が毎回途中で消えて一度も完走しなかった

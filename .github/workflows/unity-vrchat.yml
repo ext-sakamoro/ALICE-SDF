@@ -31,7 +31,9 @@ on:
       - '!vrchat-package/Product~/**'
       - 'scripts/unity-*'
       - '.github/workflows/unity-vrchat.yml'
-  workflow_dispatch:
+  # no workflow_dispatch: a job on the self-hosted host may start only from a
+  # reviewed push to main (path-filtered), not from a manual run; a manual run
+  # needs an environment with required reviewers first
 
 # concurrency: single self-hosted runner: one Unity editor machine, so a group per
 # commit would queue every push on it; one group per ref keeps at most one pending
