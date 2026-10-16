@@ -25,6 +25,10 @@ fn main() {
             (value.clamp(0.0, 1.0) * 255.0).round() as u8
         })
         .collect();
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an example writes its output under the temporary directory for the user to open; it is not a test and runs once"
+    )]
     let path = std::env::temp_dir().join("alice_sdf_texture_reconstruct.png");
     image::GrayImage::from_raw(w, h, pixels.clone())
         .unwrap()

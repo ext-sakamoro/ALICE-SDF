@@ -141,6 +141,11 @@ python3 scripts/clippy_lib_gate.py
 step "no max / min hides under an allow of the lint (scratch copy with the allows lifted)"
 python3 scripts/test_clippy_lib_hidden_check.py
 python3 scripts/clippy_lib_hidden_check.py --features "$LINUX_ALL"
+step "no std::env::temp_dir hides under an allow of the lint (src/ and tests/, all targets)"
+python3 scripts/clippy_lib_hidden_check.py --mode temp-dir --features "$LINUX_ALL"
+step "concurrent test runs do not collide (2 copies, shared TMPDIR)"
+python3 scripts/test_concurrent_tests.py
+python3 scripts/concurrent_tests.py --rounds 3
 
 # Linux / Windows runners are x86_64; arch-gated bodies (SIMD dispatch) lint
 # differently there (missing_const_for_fn, dead_code on aarch64-only paths).

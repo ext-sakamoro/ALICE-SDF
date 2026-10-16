@@ -8,6 +8,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed
+- test / CI: 試験の一時 file を試験ごとの一意なディレクトリに置く `std::env::temp_dir()` の下の固定名 (`alice_test.glb` など src/ 50 箇所、tests/ 37 箇所) は同じ機械で同時に走る別の `cargo test` (共有 runner の別 job を含む) と衝突し、同じ TMPDIR で io の試験を 2 つ同時に走らせると 8 回中 8 回失敗していた `src/test_dir.rs` (unit test) と `tests/common/test_dir.rs` (結合 test) の `TestDir` が `create_dir` で新しいディレクトリを作り (名前が使われていれば連番を進める)、drop で消す `clippy.toml` で `std::env::temp_dir` を禁止し (examples は利用者に出力を見せるため 1 呼び出しずつ理由付きで許可、fuzz target は CI の clippy の外で pid 付きの名前のまま)、多くの試験 file が libm のために lint 全体を許可しているので `scripts/clippy_lib_hidden_check.py --mode temp-dir` が src/ と tests/ の許可を外して `clippy --all-targets` を回し、2 つの `TestDir` 以外の呼び出しで失敗する (0 件比較で失敗) `scripts/concurrent_tests.py` が lib の試験 binary を同じ TMPDIR で 2 つ同時に 3 回走らせる (ubuntu の test job と preflight) CI の paths-filter の `code` に `clippy.toml` と clippy の検査 script を足した (従来は `clippy.toml` だけの変更で clippy job が走らなかった)
+
 ## [6.1.0] - 2026-10-16
 
 ### Added

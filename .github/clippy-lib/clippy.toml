@@ -111,6 +111,11 @@ disallowed-methods = [
     { path = "std::time::SystemTime::elapsed", reason = "reads the wall clock the same as SystemTime::now; duration_since on an already-held value is fine, this reads the clock again" },
     { path = "std::time::SystemTime::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
     { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic" },
+    # A fixed name under the system temporary directory is shared by every
+    # process on the machine: two test runs overwrite each other's files.
+    # src/test_dir.rs and tests/common/test_dir.rs are the only callers;
+    # examples write their output there for the user and say so per call.
+    { path = "std::env::temp_dir", reason = "a fixed name under the temporary directory collides between concurrent runs; use TestDir (src/test_dir.rs, tests/common/test_dir.rs)" },
 ]
 disallowed-types = [
     # disallowed-methods cannot name RandomState::default (a trait method,

@@ -91,6 +91,10 @@ fn main() {
     assert!((v - 5.5).abs() < 1e-5);
 
     // export
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an example writes its output under the temporary directory for the user to open; it is not a test and runs once"
+    )]
     let dir = std::env::temp_dir();
     let path = |name: &str| {
         dir.join(format!("alice_sdf_volume_bake_{name}"))

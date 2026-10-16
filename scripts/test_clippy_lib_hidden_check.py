@@ -48,5 +48,37 @@ class Judge(unittest.TestCase):
         self.assertEqual(h.judge([msg("f32::max", "src/a.rs", code="clippy::use_self")]), ([], 0))
 
 
+class TempDirMode(unittest.TestCase):
+    def test_a_temp_dir_call_in_a_test_file_is_reported(self):
+        hidden, seen = h.judge([msg("std::env::temp_dir", "tests/test_io_round_trip.rs")], "temp-dir")
+        self.assertEqual((len(hidden), seen), (1, 1))
+
+    def test_a_temp_dir_call_in_the_library_is_reported(self):
+        hidden, _ = h.judge([msg("std::env::temp_dir", "src/io/gltf.rs")], "temp-dir")
+        self.assertEqual(len(hidden), 1)
+
+    def test_only_the_two_helpers_are_exempt(self):
+        for keep in ("src/test_dir.rs", "tests/common/test_dir.rs"):
+            self.assertEqual(h.judge([msg("std::env::temp_dir", keep)], "temp-dir"), ([], 1), keep)
+        # a third site (a helper of the same name elsewhere) is not exempt
+        for third in ("tests/common/mod.rs", "src/io/test_dir.rs", "tests/test_dir.rs"):
+            self.assertEqual(len(h.judge([msg("std::env::temp_dir", third)], "temp-dir")[0]), 1, third)
+
+    def test_the_modes_do_not_see_each_others_pattern(self):
+        self.assertEqual(h.judge([msg("f32::max", "tests/a.rs")], "temp-dir"), ([], 1))
+        self.assertEqual(h.judge([msg("std::env::temp_dir", "src/a.rs")], "lib"), ([], 1))
+
+    def test_which_files_are_rewritten(self):
+        self.assertTrue(h.rewrites("tests/test_texture_fit_oracle.rs", "temp-dir"))
+        self.assertTrue(h.rewrites("src/io/splat.rs", "temp-dir"))
+        self.assertTrue(h.rewrites("tests/common/mod.rs", "temp-dir"))
+        for kept in ("src/test_dir.rs", "tests/common/test_dir.rs", "examples/volume_bake.rs", "benches/sdf_eval.rs"):
+            self.assertFalse(h.rewrites(kept, "temp-dir"), kept)
+        # the library mode is unchanged: src only, raw_minmax kept
+        self.assertTrue(h.rewrites("src/io/splat.rs", "lib"))
+        self.assertFalse(h.rewrites("tests/test_texture_fit_oracle.rs", "lib"))
+        self.assertFalse(h.rewrites("src/raw_minmax.rs", "lib"))
+
+
 if __name__ == "__main__":
     unittest.main()

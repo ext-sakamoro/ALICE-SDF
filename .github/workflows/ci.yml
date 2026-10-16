@@ -92,6 +92,11 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
+              - 'clippy.toml'
+              - 'scripts/clippy_lib_*.py'
+              - 'scripts/test_clippy_lib_*.py'
+              - 'scripts/concurrent_tests.py'
+              - 'scripts/test_concurrent_tests.py'
             mobile:
               - 'mobile/**'
             python:
@@ -249,6 +254,16 @@ jobs:
       - name: Test (godot GDExtension, ubuntu only)
         if: matrix.os == 'ubuntu-latest'
         run: "cargo test --lib --features godot godot::"
+
+      # two copies of the io tests at once with one TMPDIR: a test that writes a
+      # fixed name under the temporary directory collides (8 of 8 rounds before
+      # src/test_dir.rs); 0 tests run in a copy fails
+      - name: Concurrent test runs do not collide (tests)
+        if: matrix.os == 'ubuntu-latest'
+        run: python3 scripts/test_concurrent_tests.py
+      - name: Concurrent test runs do not collide (2 copies, shared TMPDIR)
+        if: matrix.os == 'ubuntu-latest'
+        run: python3 scripts/concurrent_tests.py --rounds 3
 
       # HLSL / BlinkScript は naga frontend が無く、2026-09-30 まで出力文字列の検査
       # しか無かった。emit した HLSL を C++ shim と一緒に native binary にして
@@ -703,6 +718,12 @@ jobs:
         run: python3 scripts/test_clippy_lib_hidden_check.py
       - name: No max / min hides under an allow of the lint
         run: python3 scripts/clippy_lib_hidden_check.py --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
+      # std::env::temp_dir is forbidden outside src/test_dir.rs and
+      # tests/common/test_dir.rs (a fixed name collides between concurrent runs);
+      # most test files allow the lint for libm references, so the same lifting
+      # is needed over src/ and tests/ with clippy --all-targets
+      - name: No std::env::temp_dir hides under an allow of the lint
+        run: python3 scripts/clippy_lib_hidden_check.py --mode temp-dir --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
 
       # examples/gpu_eval.rs は required-features = ["gpu"] なので default CI では
       # compile されない (1.9.2 まで API drift で壊れたまま気付かなかった)

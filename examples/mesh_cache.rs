@@ -52,6 +52,10 @@ fn main() {
     assert!(cache.is_empty());
 
     // --- ChunkedMeshCache: mesh per chunk, re-mesh only what an edit touches.
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an example writes its output under the temporary directory for the user to open; it is not a test and runs once"
+    )]
     let dir = std::env::temp_dir().join(format!("alice_sdf_mesh_cache_{}", std::process::id()));
     let chunks = ChunkedMeshCache::new(ChunkedCacheConfig {
         chunk_size: 1.0,

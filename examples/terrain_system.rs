@@ -36,6 +36,10 @@ fn main() {
         .unwrap();
     let cfg = HeightmapImageConfig::new(tc.height_scale, tc.width, tc.depth);
     let from_png = Heightmap::from_image_bytes(&png, &cfg).unwrap();
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an example writes its output under the temporary directory for the user to open; it is not a test and runs once"
+    )]
     let path = std::env::temp_dir().join("alice_sdf_terrain_system.png");
     std::fs::write(&path, &png).unwrap();
     let from_file = Heightmap::from_image(&path, &cfg).unwrap();

@@ -64,7 +64,7 @@ HEADER = """\
 
 # the lines of the canary that must each get a diagnostic, by the text on them
 CANARY_FORMS = ["a.max(b)", "f32::min(a, b)", "a.min(b)", "f64::max)", "x.sin()", "v.max(w)", "v.min(w)",
-                "Instant::now()", "SystemTime::now()", "i.elapsed()", "s.elapsed()", "RandomState::new()"]
+                "Instant::now()", "SystemTime::now()", "i.elapsed()", "s.elapsed()", "RandomState::new()", "std::env::temp_dir()"]
 
 DIAG = re.compile(r"^(?P<file>[^:\n]+):(?P<line>\d+):\d+: (?:warning|error): use of a disallowed method `(?P<path>[^`]+)`",
                   re.M)

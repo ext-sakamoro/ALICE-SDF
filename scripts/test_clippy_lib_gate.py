@@ -62,6 +62,9 @@ pub fn k(s: std::time::SystemTime) -> Result<std::time::Duration, std::time::Sys
 pub fn l() -> std::collections::hash_map::RandomState {
     std::collections::hash_map::RandomState::new()
 }
+pub fn m() -> std::path::PathBuf {
+    std::env::temp_dir()
+}
 """
 
 
@@ -119,13 +122,13 @@ class Canary(unittest.TestCase):
     def setUp(self):
         self.want = g.canary_lines(CANARY)
 
-    def test_the_twelve_forms_are_found_on_their_lines(self):
-        self.assertEqual(sorted(self.want), [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36])
+    def test_the_thirteen_forms_are_found_on_their_lines(self):
+        self.assertEqual(sorted(self.want), [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39])
 
     def test_a_diagnostic_on_every_line_and_a_non_zero_exit_passes(self):
         out = "\n".join(diag(n, "x") for n in self.want)
         errors, n = g.judge_canary(101, out, self.want)
-        self.assertEqual((errors, n), ([], 12))
+        self.assertEqual((errors, n), ([], 13))
 
     def test_a_missing_line_fails(self):
         out = "\n".join(diag(n, "x") for n in self.want if n != 9)

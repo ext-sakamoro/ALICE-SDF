@@ -187,6 +187,10 @@ fn main() {
     assert!((gap.expect("does not fit") - 0.1).abs() < 1e-5);
 
     // ── validity: export only what can be printed ──────────
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an example writes its output under the temporary directory for the user to open; it is not a test and runs once"
+    )]
     let dir = std::env::temp_dir().join(format!("alice_sdf_shape_analysis_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let cfg = StepConfig {

@@ -51,3 +51,7 @@ pub fn system_time_elapsed(
 pub fn random_state() -> std::collections::hash_map::RandomState {
     std::collections::hash_map::RandomState::new()
 }
+
+pub fn temp_dir() -> std::path::PathBuf {
+    std::env::temp_dir()
+}

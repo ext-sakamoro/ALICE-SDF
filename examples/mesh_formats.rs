@@ -48,6 +48,10 @@ fn same_positions(a: &Mesh, b: &Mesh, tol: f32) -> bool {
 }
 
 fn main() {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an example writes its output under the temporary directory for the user to open; it is not a test and runs once"
+    )]
     let dir = std::env::temp_dir().join(format!("alice_sdf_mesh_formats_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let part = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(1.2, 0.4, 1.2), 0.2);
