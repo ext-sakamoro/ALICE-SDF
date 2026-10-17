@@ -383,6 +383,9 @@ jobs:
         run: python scripts/ci_test_coverage_check.py
       - name: status generators oracle (台帳の生成器自身の試験)
         run: python scripts/test_gen_status.py
+      # the preflight mirror of law-readme-block.yml (the check itself runs there, here its tests)
+      - name: README ALICE-Law block preflight check (tests)
+        run: python scripts/test_law_readme_block_check.py
       - name: status generators (走査件数 0 で fail)
         run: |
           python scripts/gen-wiring-status.py
