@@ -67,6 +67,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}: {}", path.display(), provenance::read(path)?);
     }
 
+    // this crate's own format: the .asdf header carries the identifier, load_asdf checks it, and
+    // the explicit load_asdf_unverified returns the tree next to what is known about it
+    let tree = SdfTree::new(SdfNode::sphere(1.0));
+    let asdf = dir.join("sphere.asdf");
+    io::save_asdf(&tree, &asdf)?;
+    let header = io::AsdfHeader::from_bytes(&std::fs::read(&asdf)?)?;
+    assert_eq!(
+        header.semantics_id,
+        io::AsdfHeader::new(&tree, header.crc32).semantics_id
+    );
+    let loaded = io::load_asdf_unverified(&asdf)?;
+    println!("{}: {:?}", asdf.display(), loaded.semantics());
+    let (back, _) = loaded.into_parts();
+    assert_eq!(back.node_count(), tree.node_count());
+
     let other = dir.join("other.stl");
     io::export_stl_with_provenance(&mesh, &other, &Provenance::new([7; 32]))?;
     match provenance::check_sdf(&other) {
