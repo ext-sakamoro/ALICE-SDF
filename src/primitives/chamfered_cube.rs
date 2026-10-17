@@ -17,7 +17,7 @@ pub fn sdf_chamfered_cube(p: Vec3, half_extents: Vec3, chamfer: f32) -> f32 {
     let ap = p.abs();
     // Box SDF
     let q = ap - half_extents;
-    let d_box = q.max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0);
+    let d_box = q.law_max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0);
     // Octahedral chamfer plane
     let s = half_extents.x + half_extents.y + half_extents.z;
     let inv_sqrt3 = 0.57735027;

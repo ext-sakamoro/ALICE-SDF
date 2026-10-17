@@ -163,8 +163,8 @@ impl Influence {
             | (Self::Nowhere, Self::Within { min, max }) => Some(DirtyRegion::Aabb { min, max }),
             (Self::Within { min: a0, max: a1 }, Self::Within { min: b0, max: b1 }) => {
                 Some(DirtyRegion::Aabb {
-                    min: a0.min(b0),
-                    max: a1.max(b1),
+                    min: a0.law_min(b0),
+                    max: a1.law_max(b1),
                 })
             }
         }
@@ -296,10 +296,10 @@ impl LiveModifier for FractureModifier {
             }
             let a = Vec3::new(c.start.0, c.start.1, c.start.2);
             let b = Vec3::new(c.end.0, c.end.1, c.end.2);
-            let lo = a.min(b) - Vec3::splat(w);
-            let hi = a.max(b) + Vec3::splat(w);
+            let lo = a.law_min(b) - Vec3::splat(w);
+            let hi = a.law_max(b) + Vec3::splat(w);
             bound = Some(match bound {
-                Some((l, h)) => (l.min(lo), h.max(hi)),
+                Some((l, h)) => (l.law_min(lo), h.law_max(hi)),
                 None => (lo, hi),
             });
         }

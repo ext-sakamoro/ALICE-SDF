@@ -17,15 +17,15 @@ pub fn sdf_box_frame(p: Vec3, half_extents: Vec3, edge: f32) -> f32 {
     let q = (p + edge).abs() - edge;
 
     let d1 = {
-        let v = Vec3::new(p.x, q.y, q.z).max(Vec3::ZERO);
+        let v = Vec3::new(p.x, q.y, q.z).law_max(Vec3::ZERO);
         v.length() + p.x.law_max(q.y.law_max(q.z)).law_min(0.0)
     };
     let d2 = {
-        let v = Vec3::new(q.x, p.y, q.z).max(Vec3::ZERO);
+        let v = Vec3::new(q.x, p.y, q.z).law_max(Vec3::ZERO);
         v.length() + q.x.law_max(p.y.law_max(q.z)).law_min(0.0)
     };
     let d3 = {
-        let v = Vec3::new(q.x, q.y, p.z).max(Vec3::ZERO);
+        let v = Vec3::new(q.x, q.y, p.z).law_max(Vec3::ZERO);
         v.length() + q.x.law_max(q.y.law_max(p.z)).law_min(0.0)
     };
     d1.law_min(d2).law_min(d3)

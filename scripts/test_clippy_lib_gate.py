@@ -62,6 +62,111 @@ pub fn k(s: std::time::SystemTime) -> Result<std::time::Duration, std::time::Sys
 pub fn l() -> std::collections::hash_map::RandomState {
     std::collections::hash_map::RandomState::new()
 }
+pub fn g_v2_min() {
+    v2.min(o)
+}
+pub fn g_v2_max() {
+    v2.max(o)
+}
+pub fn g_v2_clamp() {
+    v2.clamp(lo, hi)
+}
+pub fn g_v2_min_element() {
+    v2.min_element()
+}
+pub fn g_v2_max_element() {
+    v2.max_element()
+}
+pub fn g_v3_min() {
+    v3.min(o)
+}
+pub fn g_v3_max() {
+    v3.max(o)
+}
+pub fn g_v3_clamp() {
+    v3.clamp(lo, hi)
+}
+pub fn g_v3_min_element() {
+    v3.min_element()
+}
+pub fn g_v3_max_element() {
+    v3.max_element()
+}
+pub fn g_v3a_min() {
+    v3a.min(o)
+}
+pub fn g_v3a_max() {
+    v3a.max(o)
+}
+pub fn g_v3a_clamp() {
+    v3a.clamp(lo, hi)
+}
+pub fn g_v3a_min_element() {
+    v3a.min_element()
+}
+pub fn g_v3a_max_element() {
+    v3a.max_element()
+}
+pub fn g_v4_min() {
+    v4.min(o)
+}
+pub fn g_v4_max() {
+    v4.max(o)
+}
+pub fn g_v4_clamp() {
+    v4.clamp(lo, hi)
+}
+pub fn g_v4_min_element() {
+    v4.min_element()
+}
+pub fn g_v4_max_element() {
+    v4.max_element()
+}
+pub fn g_d2_min() {
+    d2.min(o)
+}
+pub fn g_d2_max() {
+    d2.max(o)
+}
+pub fn g_d2_clamp() {
+    d2.clamp(lo, hi)
+}
+pub fn g_d2_min_element() {
+    d2.min_element()
+}
+pub fn g_d2_max_element() {
+    d2.max_element()
+}
+pub fn g_d3_min() {
+    d3.min(o)
+}
+pub fn g_d3_max() {
+    d3.max(o)
+}
+pub fn g_d3_clamp() {
+    d3.clamp(lo, hi)
+}
+pub fn g_d3_min_element() {
+    d3.min_element()
+}
+pub fn g_d3_max_element() {
+    d3.max_element()
+}
+pub fn g_d4_min() {
+    d4.min(o)
+}
+pub fn g_d4_max() {
+    d4.max(o)
+}
+pub fn g_d4_clamp() {
+    d4.clamp(lo, hi)
+}
+pub fn g_d4_min_element() {
+    d4.min_element()
+}
+pub fn g_d4_max_element() {
+    d4.max_element()
+}
 """
 
 
@@ -80,9 +185,11 @@ class Render(unittest.TestCase):
         self.assertIn('path = "f32::max"', body[i:body.index('path = "f32::sin"')])
         self.assertEqual(g.count_entries(out), 2 + len(g.EXTRA))
 
-    def test_the_extra_paths_are_exactly_f32_f64_and_f32x8_max_and_min(self):
+    def test_the_extra_paths_are_exactly_the_float_and_glam_max_and_min(self):
+        glam = [f"glam::{t}::{m}" for t in ("Vec2", "Vec3", "Vec3A", "Vec4", "DVec2", "DVec3", "DVec4")
+                for m in ("min", "max", "clamp", "min_element", "max_element")]
         self.assertEqual(g.EXTRA, ["f32::max", "f32::min", "f64::max", "f64::min",
-                                   "wide::f32x8::max", "wide::f32x8::min"])
+                                   "wide::f32x8::max", "wide::f32x8::min"] + glam)
 
     def test_a_root_list_that_already_forbids_max_is_refused(self):
         with self.assertRaises(ValueError):
@@ -119,13 +226,13 @@ class Canary(unittest.TestCase):
     def setUp(self):
         self.want = g.canary_lines(CANARY)
 
-    def test_the_twelve_forms_are_found_on_their_lines(self):
-        self.assertEqual(sorted(self.want), [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36])
+    def test_every_form_is_found_on_its_line(self):
+        self.assertEqual(sorted(self.want), list(range(3, 3 + 3 * len(g.CANARY_FORMS), 3)))
 
     def test_a_diagnostic_on_every_line_and_a_non_zero_exit_passes(self):
         out = "\n".join(diag(n, "x") for n in self.want)
         errors, n = g.judge_canary(101, out, self.want)
-        self.assertEqual((errors, n), ([], 12))
+        self.assertEqual((errors, n), ([], len(g.CANARY_FORMS)))
 
     def test_a_missing_line_fails(self):
         out = "\n".join(diag(n, "x") for n in self.want if n != 9)

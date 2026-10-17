@@ -26,7 +26,7 @@ pub fn sdf_rounded_cylinder(p: Vec3, radius: f32, round_radius: f32, half_height
         alice_det_math::hypot(p.x, p.z) - radius + round_radius,
         p.y.abs() - half_height,
     );
-    d.x.law_max(d.y).law_min(0.0) + d.max(Vec2::ZERO).length() - round_radius
+    d.x.law_max(d.y).law_min(0.0) + d.law_max(Vec2::ZERO).length() - round_radius
 }
 
 #[cfg(test)]

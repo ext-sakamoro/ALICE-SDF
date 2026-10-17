@@ -281,7 +281,9 @@ impl SvoStreamingCache {
         let lru_id = self
             .entries
             .iter()
-            .min_by_key(|(_, e)| e.last_access)
+            // the id breaks a tie of equal access times, so the evicted chunk does
+            // not depend on the map's unspecified order (ALICE-Law G13)
+            .min_by_key(|(&id, e)| (e.last_access, id))
             .map(|(&id, _)| id);
 
         if let Some(id) = lru_id {

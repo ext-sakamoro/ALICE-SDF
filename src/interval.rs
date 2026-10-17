@@ -397,8 +397,8 @@ impl Vec3Interval {
         let mut max = first;
         for &c in &corners[1..] {
             let r = map(c);
-            min = min.min(r);
-            max = max.max(r);
+            min = min.law_min(r);
+            max = max.law_max(r);
         }
         Self::from_bounds(min, max)
     }
@@ -431,8 +431,8 @@ impl Vec3Interval {
         let mut max = first;
         for &c in &corners[1..] {
             let r = inv_rot * c;
-            min = min.min(r);
-            max = max.max(r);
+            min = min.law_min(r);
+            max = max.law_max(r);
         }
         Self::from_bounds(min, max)
     }

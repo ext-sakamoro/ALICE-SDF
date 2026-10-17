@@ -139,7 +139,7 @@ impl AabbPacked {
         let q = (p - center).abs() - half;
 
         // Same formula as box SDF
-        let outside = q.max(Vec3::ZERO).length();
+        let outside = q.law_max(Vec3::ZERO).length();
         let inside = q.x.law_max(q.y).law_max(q.z).law_min(0.0);
 
         outside + inside
@@ -240,7 +240,7 @@ impl AabbPacked {
         let min = self.min() * factors;
         let max = self.max() * factors;
         // Handle negative scaling
-        Self::new(min.min(max), min.max(max))
+        Self::new(min.law_min(max), min.law_max(max))
     }
 
     /// Transform AABB by rotation (conservative - may be larger than necessary)
@@ -269,8 +269,8 @@ impl AabbPacked {
 
         for corner in corners {
             let rotated = rotation * corner + center;
-            new_min = new_min.min(rotated);
-            new_max = new_max.max(rotated);
+            new_min = new_min.law_min(rotated);
+            new_max = new_max.law_max(rotated);
         }
 
         Self::new(new_min, new_max)
@@ -327,8 +327,8 @@ pub mod primitives {
     /// AABB for a capsule
     #[inline]
     pub fn capsule_aabb(point_a: Vec3, point_b: Vec3, radius: f32) -> AabbPacked {
-        let min = point_a.min(point_b) - Vec3::splat(radius);
-        let max = point_a.max(point_b) + Vec3::splat(radius);
+        let min = point_a.law_min(point_b) - Vec3::splat(radius);
+        let max = point_a.law_max(point_b) + Vec3::splat(radius);
         AabbPacked::new(min, max)
     }
 

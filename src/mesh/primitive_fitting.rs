@@ -164,7 +164,7 @@ impl FittedPrimitive {
                 half_extents,
             } => {
                 let q = (point - *center).abs() - *half_extents;
-                q.max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0)
+                q.law_max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0)
             }
             Self::Cylinder {
                 center,
@@ -411,8 +411,8 @@ pub fn fit_box(points: &[Vec3], config: &FittingConfig) -> Option<FittingResult>
     let mut max = Vec3::splat(f32::NEG_INFINITY);
 
     for &p in points {
-        min = min.min(p);
-        max = max.max(p);
+        min = min.law_min(p);
+        max = max.law_max(p);
     }
 
     let center = (min + max) * 0.5;

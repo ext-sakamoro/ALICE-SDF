@@ -209,12 +209,16 @@ impl ChunkedMeshCache {
             .chunks
             .read()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in dirty_chunks()");
-        chunks
+        let mut dirty: Vec<ChunkCoord> = chunks
             .entries
             .iter()
             .filter(|(_, e)| e.dirty)
             .map(|(&c, _)| c)
-            .collect()
+            .collect();
+        drop(chunks);
+        // in (x, y, z) order (the map's order is unspecified; ALICE-Law G13)
+        dirty.sort_unstable_by_key(|c| (c.x, c.y, c.z));
+        dirty
     }
 
     /// Update the global SDF hash. Returns the list of chunks that were
@@ -238,6 +242,8 @@ impl ChunkedMeshCache {
                 invalidated.push(coord);
             }
         }
+        // the map's iteration order is unspecified (ALICE-Law G13)
+        invalidated.sort_unstable_by_key(|c| (c.x, c.y, c.z));
         invalidated
     }
 
@@ -245,11 +251,17 @@ impl ChunkedMeshCache {
 
     /// Get all cached chunk coordinates.
     pub fn cached_chunks(&self) -> Vec<ChunkCoord> {
-        let chunks = self
+        let mut coords: Vec<ChunkCoord> = self
             .chunks
             .read()
-            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in cached_chunks()");
-        chunks.entries.keys().copied().collect()
+            .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in cached_chunks()")
+            .entries
+            .keys()
+            .copied()
+            .collect();
+        // in (x, y, z) order, as merge_all (the map's order is unspecified)
+        coords.sort_unstable_by_key(|c| (c.x, c.y, c.z));
+        coords
     }
 
     /// Number of cached chunks.
@@ -333,7 +345,10 @@ impl ChunkedMeshCache {
             .write()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in persist_dirty()");
         let mut written = 0usize;
-        for (&coord, entry) in chunks.entries.iter_mut() {
+        // written in (x, y, z) order, so the first error is the same on every run
+        let mut ordered: Vec<(&ChunkCoord, &mut ChunkEntry)> = chunks.entries.iter_mut().collect();
+        ordered.sort_unstable_by_key(|(c, _)| (c.x, c.y, c.z));
+        for (&coord, entry) in ordered {
             if entry.dirty {
                 let path = dir.join(format!("{}_{}_{}_.abm", coord.x, coord.y, coord.z));
                 save_abm(&entry.mesh, &path)?;

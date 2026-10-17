@@ -11,10 +11,10 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 use super::{child_center, octant_for_point, SparseVoxelOctree, SvoNode};
+use crate::compiled::real::LawMinMax;
 
 /// Result of a ray query against the SVO
 #[derive(Debug, Clone, Copy)]
@@ -332,8 +332,8 @@ fn ray_aabb_intersect(
     let t1 = (aabb_min - origin) * inv_dir;
     let t2 = (aabb_max - origin) * inv_dir;
 
-    let t_min = t1.min(t2);
-    let t_max = t1.max(t2);
+    let t_min = t1.law_min(t2);
+    let t_max = t1.law_max(t2);
 
     let t_enter = t_min.x.law_max(t_min.y).law_max(t_min.z);
     let t_exit = t_max.x.law_min(t_max.y).law_min(t_max.z);

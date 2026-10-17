@@ -18,6 +18,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::Mesh;
 use glam::Vec3;
 use rayon::prelude::*;
@@ -116,7 +117,7 @@ pub fn compute_aabb(mesh: &Mesh) -> CollisionAabb {
         .map(|v| (v.position, v.position))
         .reduce(
             || (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)),
-            |(min_a, max_a), (min_b, max_b)| (min_a.min(min_b), max_a.max(max_b)),
+            |(min_a, max_a), (min_b, max_b)| (min_a.law_min(min_b), max_a.law_max(max_b)),
         );
 
     CollisionAabb { min, max }
@@ -415,8 +416,10 @@ pub fn simplify_collision(mesh: &Mesh, grid_resolution: u32) -> CollisionMesh {
     );
 
     // Cluster vertices into grid cells
-    use std::collections::HashMap;
-    let mut clusters: HashMap<(u32, u32, u32), (Vec3, u32)> = HashMap::new();
+    use std::collections::{BTreeMap, HashMap};
+    // ordered by cell, so the new vertices come out in one order on every run
+    // (a HashMap's iteration order is unspecified; ALICE-Law G13)
+    let mut clusters: BTreeMap<(u32, u32, u32), (Vec3, u32)> = BTreeMap::new();
     let mut vertex_remap: Vec<(u32, u32, u32)> = Vec::with_capacity(mesh.vertices.len());
 
     for v in &mesh.vertices {
@@ -673,11 +676,11 @@ fn voxelize_mesh_parallel(
         let p2 = vertices[indices[t * 3 + 2] as usize].position;
 
         // Compute triangle AABB in voxel coordinates
-        let tri_min = p0.min(p1).min(p2);
-        let tri_max = p0.max(p1).max(p2);
+        let tri_min = p0.law_min(p1).law_min(p2);
+        let tri_max = p0.law_max(p1).law_max(p2);
 
-        let vmin = ((tri_min - vox_min) * inv_cell).max(Vec3::ZERO);
-        let vmax = ((tri_max - vox_min) * inv_cell).min(Vec3::splat(res as f32 - 1.0));
+        let vmin = ((tri_min - vox_min) * inv_cell).law_max(Vec3::ZERO);
+        let vmax = ((tri_max - vox_min) * inv_cell).law_min(Vec3::splat(res as f32 - 1.0));
 
         let ix0 = vmin.x as u32;
         let iy0 = vmin.y as u32;

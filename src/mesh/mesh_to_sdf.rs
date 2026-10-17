@@ -6,7 +6,7 @@
 //! - **Hybrid**: BVH for distance, capsule tree for SdfNode
 //!
 //! # Deep Fried Optimizations
-//! - **Edge Deduplication**: Uses HashSet to eliminate duplicate capsules.
+//! - **Edge Deduplication**: Uses an ordered set to eliminate duplicate capsules.
 //! - **BVH Acceleration**: O(log n) distance queries for exact SDF.
 //! - **Parallel Batch Evaluation**: Rayon-powered batch queries.
 //! - **Forced Inlining**: `#[inline(always)]` on hot-path helpers.
@@ -19,7 +19,7 @@ use crate::mesh::MeshInputError;
 use crate::types::SdfNode;
 use glam::Vec3;
 use rayon::prelude::*;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 /// Cells along the longest bounding box axis used by
@@ -265,7 +265,9 @@ impl MeshSdf {
         let mut vertices: Vec<Vec3> = Vec::new();
         let mut vertex_map: std::collections::HashMap<[u32; 3], usize> =
             std::collections::HashMap::new();
-        let mut unique_edges: HashSet<(usize, usize)> = HashSet::new();
+        // ordered: the capsules, and the float sum of their lengths, in one order on
+        // every run (a HashSet's order is unspecified; ALICE-Law G13)
+        let mut unique_edges: BTreeSet<(usize, usize)> = BTreeSet::new();
 
         for tri in &self.bvh.triangles {
             let mut get_or_add = |v: Vec3| -> usize {
@@ -355,9 +357,10 @@ pub fn mesh_to_sdf(vertices: &[Vec3], indices: &[u32], config: &MeshToSdfConfig)
     // Use configured fraction of edge length as capsule radius
     let radius = avg_edge_len * config.capsule_radius_factor;
 
-    // Edge deduplication using HashSet
+    // Edge deduplication
     // Key: (min_idx, max_idx) ensures (a, b) == (b, a)
-    let mut unique_edges: HashSet<(u32, u32)> = HashSet::new();
+    // ordered, as above (ALICE-Law G13)
+    let mut unique_edges: BTreeSet<(u32, u32)> = BTreeSet::new();
 
     for chunk in indices.chunks(3) {
         if chunk.len() == 3 {
@@ -409,7 +412,7 @@ pub fn mesh_to_sdf_exact(
     MeshSdf::new(vertices, indices, config)
 }
 
-/// Create canonical edge key (min, max) for HashSet deduplication
+/// Create canonical edge key (min, max) for edge deduplication
 #[inline(always)]
 const fn edge_key(a: u32, b: u32) -> (u32, u32) {
     if a < b {

@@ -2,11 +2,11 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
 use super::SdfNode;
+use crate::compiled::real::LawMinMax;
 
 /// SDF Tree - top-level container
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,16 +88,16 @@ impl Aabb {
     /// Expand in place to include a point
     #[inline]
     pub fn expand_point(&mut self, point: Vec3) {
-        self.min = self.min.min(point);
-        self.max = self.max.max(point);
+        self.min = self.min.law_min(point);
+        self.max = self.max.law_max(point);
     }
 
     /// Expand in place to include another AABB (the in-place form of
     /// [`union`](Self::union))
     #[inline]
     pub fn expand_aabb(&mut self, other: &Self) {
-        self.min = self.min.min(other.min);
-        self.max = self.max.max(other.max);
+        self.min = self.min.law_min(other.min);
+        self.max = self.max.law_max(other.max);
     }
 
     /// Surface area `2·(dx·dy + dy·dz + dz·dx)` (for SAH)
@@ -124,7 +124,7 @@ impl Aabb {
     #[inline]
     pub fn signed_distance(&self, point: Vec3) -> f32 {
         let q = (point - self.center()).abs() - (self.max - self.min) * 0.5;
-        q.max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0)
+        q.law_max(Vec3::ZERO).length() + q.x.law_max(q.y.law_max(q.z)).law_min(0.0)
     }
 
     /// Create from center and half-extents
@@ -164,8 +164,8 @@ impl Aabb {
     /// Expand to include another AABB
     pub fn union(&self, other: &Self) -> Self {
         Self {
-            min: self.min.min(other.min),
-            max: self.max.max(other.max),
+            min: self.min.law_min(other.min),
+            max: self.max.law_max(other.max),
         }
     }
 }

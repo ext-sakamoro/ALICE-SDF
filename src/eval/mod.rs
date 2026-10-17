@@ -13,6 +13,7 @@ pub mod gradient;
 pub mod parallel;
 
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 pub use gradient::{eval_gradient, eval_normal};
 pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
 
@@ -544,7 +545,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::Round { child, radius } => eval(child, point) - radius,
         SdfNode::Onion { child, thickness } => eval(child, point).abs() - thickness,
         SdfNode::Elongate { child, amount } => {
-            let q = point - point.clamp(-*amount, *amount);
+            let q = point - point.law_clamp(-*amount, *amount);
             eval(child, q)
         }
         SdfNode::Mirror { child, axes } => {
@@ -745,7 +746,7 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::Noise { child, .. } => eval_material(child, point),
         SdfNode::Round { child, .. } | SdfNode::Onion { child, .. } => eval_material(child, point),
         SdfNode::Elongate { child, amount } => {
-            eval_material(child, point - point.clamp(-*amount, *amount))
+            eval_material(child, point - point.law_clamp(-*amount, *amount))
         }
         SdfNode::Mirror { child, axes } => eval_material(child, modifier_mirror(point, *axes)),
         SdfNode::OctantMirror { child } => eval_material(child, modifier_octant_mirror(point)),

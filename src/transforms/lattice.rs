@@ -5,6 +5,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 use glam::Vec3;
 
 /// Cubic Bernstein basis function
@@ -48,7 +49,7 @@ pub fn lattice_deform(
 
     // Map to [0,1] local coordinates
     let s = (p - bbox_min) * inv_size;
-    let s = s.clamp(Vec3::ZERO, Vec3::ONE);
+    let s = s.law_clamp(Vec3::ZERO, Vec3::ONE);
 
     // Evaluate tricubic Bernstein
     let mut result = Vec3::ZERO;
@@ -104,7 +105,7 @@ fn lattice_deform_inner(
 ) -> Vec3 {
     let size = bmax - bmin;
     let inv_size = Vec3::new(1.0 / size.x, 1.0 / size.y, 1.0 / size.z);
-    let s = ((p - bmin) * inv_size).clamp(Vec3::ZERO, Vec3::ONE);
+    let s = ((p - bmin) * inv_size).law_clamp(Vec3::ZERO, Vec3::ONE);
     let mut result = Vec3::ZERO;
     let cpx = (nx + 1) as usize;
     let cpy = (ny + 1) as usize;

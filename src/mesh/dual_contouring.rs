@@ -12,6 +12,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 use crate::compiled::{eval_compiled, CompiledSdf};
 use crate::eval::{eval, normal};
 use crate::mesh::{Mesh, Vertex};
@@ -116,7 +117,7 @@ fn qef_solve(intersections: &[(Vec3, Vec3)], cell_min: Vec3, cell_max: Vec3, cla
     let vertex = result.map_or(mass_point, |v| mass_point + Vec3::new(v[0], v[1], v[2]));
 
     if clamp {
-        vertex.clamp(cell_min, cell_max)
+        vertex.law_clamp(cell_min, cell_max)
     } else {
         vertex
     }

@@ -431,6 +431,12 @@ jobs:
       # native-CPU, fast-math or x87 flag (scripts/build_config_allowlist.toml lists
       # the files that quote them on purpose; nothing read fails). The dynamic half
       # (the flags cargo really passes) runs in release-profile.yml
+      # G13: every iteration of a HashMap / HashSet in src/ has a verdict in
+      # scripts/hash_order_audit.toml (compared both ways, nothing found fails)
+      - name: Hash collection iteration audit (test, then check)
+        run: |
+          python scripts/test_hash_order_audit.py
+          python scripts/hash_order_audit.py
       - name: Build configuration guard (test, then check)
         run: |
           python scripts/test_build_config_guard.py
@@ -706,6 +712,15 @@ jobs:
           CLIPPY_CONF_DIR: .github/clippy-lib
           RUSTFLAGS: "-Dwarnings"
         run: cargo clippy --lib --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
+      # the wasm module only compiles for wasm32 (src/lib.rs: feature wasm and
+      # target_arch wasm32): the same max / min ban there. Only the ban is denied
+      # here; the module's other lints are G1's
+      - name: Clippy (library code on wasm32, max and min forbidden)
+        env:
+          CLIPPY_CONF_DIR: .github/clippy-lib
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo clippy --lib --target wasm32-unknown-unknown --features wasm -- -D clippy::disallowed_methods
       - name: Library clippy configuration is current and fires (canary)
         run: python3 scripts/clippy_lib_gate.py
       # The same lint carries the libm ban, so a function-level allow written for

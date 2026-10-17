@@ -48,7 +48,7 @@ use crate::cache::ChunkedMeshCache;
 use crate::compiled::{AabbPacked, CompileError, CompiledSdf, CompiledSdfBvh, RefitError};
 use crate::constraint::{ConstraintSolver, ParamId};
 use crate::types::SdfNode;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A single binding site inside `CompiledSdf.instructions[i].params[slot]`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,8 +108,10 @@ pub enum IncrementalError {
 /// touched so the caller can invalidate downstream caches.
 #[derive(Debug, Default, Clone)]
 pub struct ParamDependencyIndex {
-    bindings: HashMap<ParamId, Vec<InstructionSlot>>,
-    dirty: HashSet<ParamId>,
+    // ordered by ParamId, so apply_all and the dirty iterators visit the
+    // parameters in one order on every run (ALICE-Law G13)
+    bindings: BTreeMap<ParamId, Vec<InstructionSlot>>,
+    dirty: BTreeSet<ParamId>,
 }
 
 impl ParamDependencyIndex {
@@ -235,7 +237,7 @@ impl ParamDependencyIndex {
     }
 
     /// Iterate over instruction indices whose slot was written since the last
-    /// [`mark_clean`](Self::mark_clean). Order is unspecified; duplicates are
+    /// [`mark_clean`](Self::mark_clean), in `ParamId` order; duplicates are
     /// possible when a single instruction has multiple slots bound to
     /// different dirty `ParamId`s.
     pub fn dirty_instructions(&self) -> impl Iterator<Item = usize> + '_ {
@@ -589,12 +591,15 @@ mod tests {
         index.bind(box_h, &compiled, box_idx, 1).unwrap();
 
         index.apply(&mut compiled, radius, 2.0).unwrap();
-        let dirty: HashSet<usize> = index.dirty_instructions().collect();
-        assert_eq!(dirty, HashSet::from([sphere_idx]));
+        let dirty: std::collections::BTreeSet<usize> = index.dirty_instructions().collect();
+        assert_eq!(dirty, std::collections::BTreeSet::from([sphere_idx]));
 
         index.apply(&mut compiled, box_h, 0.75).unwrap();
-        let dirty: HashSet<usize> = index.dirty_instructions().collect();
-        assert_eq!(dirty, HashSet::from([sphere_idx, box_idx]));
+        let dirty: std::collections::BTreeSet<usize> = index.dirty_instructions().collect();
+        assert_eq!(
+            dirty,
+            std::collections::BTreeSet::from([sphere_idx, box_idx])
+        );
 
         index.mark_clean();
         assert!(!index.is_dirty());

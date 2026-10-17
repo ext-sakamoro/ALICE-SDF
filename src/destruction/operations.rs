@@ -6,6 +6,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 use glam::{Quat, Vec3};
 
 use super::MutableVoxelGrid;
@@ -47,7 +48,7 @@ impl CarveShape {
             } => {
                 let local = rotation.inverse() * (point - *center);
                 let q = local.abs() - *half_extents;
-                q.max(Vec3::ZERO).length() + q.max_element().law_min(0.0)
+                q.law_max(Vec3::ZERO).length() + q.law_max_element().law_min(0.0)
             }
             Self::Sdf(node) => eval(node, point),
         }
@@ -133,8 +134,8 @@ pub fn carve(grid: &mut MutableVoxelGrid, shape: &CarveShape) -> DestructionResu
     let voxel_volume = vs.x * vs.y * vs.z;
 
     // Clamp shape AABB to grid bounds, then compute grid coordinate ranges
-    let clamped_min = shape_min.max(grid.bounds_min);
-    let clamped_max = shape_max.min(grid.bounds_max);
+    let clamped_min = shape_min.law_max(grid.bounds_min);
+    let clamped_max = shape_max.law_min(grid.bounds_max);
 
     // Check for valid overlap
     if clamped_min.x >= clamped_max.x

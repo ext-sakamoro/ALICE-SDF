@@ -28,6 +28,7 @@ use super::eval_bvh::CompiledSdfBvh;
 use super::instruction::Instruction;
 use super::opcode::{OpCode, OpKind};
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 use glam::{Quat, Vec2, Vec3};
 use std::collections::HashSet;
 
@@ -539,8 +540,8 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
             let mut mn = Vec2::splat(f32::INFINITY);
             let mut mx = Vec2::splat(f32::NEG_INFINITY);
             for v in flat.chunks_exact(2) {
-                mn = mn.min(Vec2::new(v[0], v[1]));
-                mx = mx.max(Vec2::new(v[0], v[1]));
+                mn = mn.law_min(Vec2::new(v[0], v[1]));
+                mx = mx.law_max(Vec2::new(v[0], v[1]));
             }
             if flat.len() < 6 {
                 return AabbPacked::empty();
@@ -678,11 +679,11 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
         OpCode::Noise => child.expand(params[0]),
         // === Point-modifying modifiers with conservative expand ===
         OpCode::Twist => {
-            let max_extent = child.half_size().max_element();
+            let max_extent = child.half_size().law_max_element();
             child.expand(max_extent * params[0].abs() * 0.5)
         }
         OpCode::Bend => {
-            let max_extent = child.half_size().max_element();
+            let max_extent = child.half_size().law_max_element();
             child.expand(max_extent * params[0].abs())
         }
         // Taper is a perspective map: |p_xz| = |q_xz| · |1 − f·y| ≤ r_xz (1 + |f| r_y)
