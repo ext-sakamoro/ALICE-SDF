@@ -32,6 +32,7 @@
 
 use crate::mesh::manifold::MeshRepair;
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
+use crate::provenance::Provenance;
 use crate::types::SdfNode;
 use crate::unordered::UnorderedMap;
 use glam::Vec3;
@@ -128,6 +129,17 @@ pub fn export_step(
     node: &SdfNode,
     cfg: &StepConfig,
 ) -> std::io::Result<()> {
+    export_step_with_provenance(path, node, cfg, &Provenance::sdf())
+}
+
+/// [`export_step`] with the caller's semantics identifier as the second string of
+/// `FILE_DESCRIPTION` (`'alice:semantics_id=<hex>'`, see [`crate::provenance`])
+pub fn export_step_with_provenance(
+    path: impl AsRef<Path>,
+    node: &SdfNode,
+    cfg: &StepConfig,
+    provenance: &Provenance,
+) -> std::io::Result<()> {
     let (verts, faces) = if let Some(h) = analytic_box(node) {
         box_faces(h)
     } else {
@@ -136,7 +148,7 @@ pub fn export_step(
         (verts, faces)
     };
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    write_step(&mut f, &verts, &faces, &cfg.name)?;
+    write_step(&mut f, &verts, &faces, &cfg.name, provenance)?;
     f.flush()
 }
 
@@ -162,10 +174,15 @@ fn write_step<W: Write>(
     verts: &[Vec3],
     faces_in: &[Vec<usize>],
     name: &str,
+    provenance: &Provenance,
 ) -> std::io::Result<()> {
     writeln!(w, "ISO-10303-21;")?;
     writeln!(w, "HEADER;")?;
-    writeln!(w, "FILE_DESCRIPTION(('ALICE-SDF faceted BREP'),'2;1');")?;
+    writeln!(
+        w,
+        "FILE_DESCRIPTION(('ALICE-SDF faceted BREP','{}'),'2;1');",
+        provenance.tagged()
+    )?;
     writeln!(
         w,
         "FILE_NAME('{name}.step','2026-06-06T00:00:00',('ALICE-SDF'),(''),'ALICE-SDF','','');",

@@ -20,6 +20,7 @@
 //! ```
 
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
+use crate::provenance::Provenance;
 use crate::types::SdfNode;
 use glam::Vec3;
 use std::io::Write;
@@ -70,9 +71,22 @@ pub fn export_iges(
     node: &SdfNode,
     cfg: &IgesConfig,
 ) -> std::io::Result<()> {
+    export_iges_with_provenance(path, node, cfg, &Provenance::sdf())
+}
+
+/// [`export_iges`] with the caller's semantics identifier in the Start section
+///
+/// One line holds `alice:semantics_id=` and the next the 64 hex digits (a Start line holds 72
+/// characters; joined they read `alice:semantics_id=<hex>`, see [`crate::provenance`]).
+pub fn export_iges_with_provenance(
+    path: impl AsRef<Path>,
+    node: &SdfNode,
+    cfg: &IgesConfig,
+    provenance: &Provenance,
+) -> std::io::Result<()> {
     let (verts, tris) = sdf_to_facets(node, cfg);
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    write_iges(&mut f, &verts, &tris)?;
+    write_iges(&mut f, &verts, &tris, provenance)?;
     f.flush()
 }
 
@@ -94,7 +108,12 @@ fn iges_line(content: &str, section: char, seq: u32) -> String {
     s
 }
 
-fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::io::Result<()> {
+fn write_iges<W: Write>(
+    w: &mut W,
+    verts: &[Vec3],
+    tris: &[[usize; 3]],
+    provenance: &Provenance,
+) -> std::io::Result<()> {
     let mut sseq = 1u32;
     let mut gseq = 1u32;
 
@@ -109,6 +128,10 @@ fn write_iges<W: Write>(w: &mut W, verts: &[Vec3], tris: &[[usize; 3]]) -> std::
         )
     )?;
     sseq += 1;
+    for part in [format!("{}=", crate::provenance::KEY), provenance.hex()] {
+        writeln!(w, "{}", iges_line(&part, 'S', sseq))?;
+        sseq += 1;
+    }
 
     // ==== GLOBAL SECTION ====
     let global = "1H,,1H;,4HSDF1,8Halice.igs,12HALICE-SDF v16,12HALICE-SDF v16,32,38,6,308,15,4HSDF1,1.,2,2HMM,50,0.125,15H20260606.000000,1.E-007,1000.,12HALICE-SDF,9HSakamoto,11,0,15H20260606.000000;";

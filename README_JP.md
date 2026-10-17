@@ -316,7 +316,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G5 release-profile-test-leg | 適合 |  |
 | G6 semantics-id | 適合 | the identifier does not depend on the enabled features: the physics bridge's values cross into alice-physics, which is G7's boundary, not a pin of this crate. … |
 | G7 handshake-carries-id | 未確認 | unverified: the empty boundary list rests on a lexical scan with no canary, and the completeness of the entry point list is the audit part of this gate; the … |
-| G8 persisted-semantics-id | 未達 | the writers of STL (binary and ASCII), 3MF, FBX (binary and ASCII), OBJ (with its MTL), PLY (binary and ASCII) and glTF (.glb, .gltf, meshopt .glb, in … |
+| G8 persisted-semantics-id | 未達 | the writers of STL (binary and ASCII), 3MF, FBX (binary and ASCII), OBJ (with its MTL), PLY (binary and ASCII) glTF (.glb, .gltf, meshopt .glb, in … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a … |
 | G10 no-run-varying-artifacts | 適合 | the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feature sdf-cache, not default) stays outside the Law guarantee and says so in its … |
 | G11 gate-self-tests | 適合 | the four helpers are no longer const: 18 public functions that called them in const context lost const (operations::sdf_union / sdf_intersection, Aabb::union / … |

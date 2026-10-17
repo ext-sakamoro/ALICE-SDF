@@ -64,7 +64,10 @@ pub use ue5_asset::{
     export_ue5_mesh, export_ue5_mesh_binary, export_ue5_mesh_with_lods, Ue5MeshConfig,
 };
 pub use unity_mesh::{export_unity_mesh, export_unity_mesh_binary, UnityMeshConfig};
-pub use usd::{export_usda, import_usda, ImportedUsdMaterial, ImportedUsda, UsdConfig, UsdUpAxis};
+pub use usd::{
+    export_usda, export_usda_with_provenance, import_usda, ImportedUsdMaterial, ImportedUsda,
+    UsdConfig, UsdUpAxis,
+};
 
 use crate::types::SdfTree;
 use std::path::Path;

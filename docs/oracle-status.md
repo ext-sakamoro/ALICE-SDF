@@ -54,6 +54,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_query_oracle.rs` | 9 |
 | `test_new_transforms.rs` | 9 |
 | `test_physics_bridge_determinism.rs` | 9 |
+| `test_provenance.rs` | 9 |
 | `test_relaxed_tracing.rs` | 9 |
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
