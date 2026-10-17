@@ -1,8 +1,8 @@
 //! Provenance — write a mesh, read its semantics identifier back and check it
 //!
-//! Exports a sphere as binary STL and 3MF, reads the identifier each file carries, and checks it
-//! against this crate's identifier. A file written with another identifier is refused, and the
-//! error names both.
+//! Exports a sphere as binary STL, 3MF, STEP and meshopt-compressed glTF, reads the identifier
+//! each file carries, and checks it against this crate's identifier. A file written with another
+//! identifier is refused, and the error names both.
 //!
 //! # Running
 //! ```bash
@@ -39,6 +39,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let accepted = provenance::check_sdf(path)?;
         assert_eq!(accepted, Accepted::Current);
         println!("{}: {stored} ({accepted:?})", path.display());
+    }
+
+    // every format stamps the same identifier: STEP from the tree, meshopt-compressed glTF
+    // written to a file and to bytes
+    use alice_sdf::io::meshopt_gltf as meshopt;
+    let mo = meshopt::MeshoptGltfConfig::default();
+    let step = dir.join("sphere.step");
+    io::step::export_step(
+        &step,
+        &SdfNode::sphere(1.0),
+        &io::step::StepConfig::default(),
+    )?;
+    let glb = dir.join("sphere_meshopt.glb");
+    meshopt::export_glb_meshopt(&mesh, &glb, &mo)?;
+    let glb_skinned = dir.join("sphere_meshopt_skinned.glb");
+    meshopt::export_glb_meshopt_skinned(&mesh, None, &glb_skinned, &mo)?;
+    let bytes = dir.join("sphere_meshopt_bytes.glb");
+    std::fs::write(&bytes, meshopt::export_glb_meshopt_bytes(&mesh, &mo)?)?;
+    let bytes_skinned = dir.join("sphere_meshopt_bytes_skinned.glb");
+    std::fs::write(
+        &bytes_skinned,
+        meshopt::export_glb_meshopt_bytes_skinned(&mesh, None, &mo)?,
+    )?;
+    for path in [&step, &glb, &glb_skinned, &bytes, &bytes_skinned] {
+        assert_eq!(provenance::check_sdf(path)?, Accepted::Current);
+        println!("{}: {}", path.display(), provenance::read(path)?);
     }
 
     let other = dir.join("other.stl");

@@ -2,7 +2,7 @@
 //!
 //! Every durable format this crate writes carries a 32-byte semantics identifier, so a file read
 //! back later (or by another program) can be checked against the arithmetic that produced it.
-//! The plain writers store [`Provenance::sdf`] (this crate's [`crate::SEMANTICS_ID`]); a caller
+//! The plain writers store [`Provenance::sdf`] (this crate's [`crate::SDF_SEMANTICS_ID`]); a caller
 //! whose own identifier folds more meaning in (a language that turns its programs into meshes)
 //! passes its identifier through the `*_with_provenance` writers.
 //!
@@ -46,11 +46,11 @@ pub struct Provenance {
 }
 
 impl Provenance {
-    /// This crate's own identifier ([`crate::SEMANTICS_ID`])
+    /// This crate's own identifier ([`crate::SDF_SEMANTICS_ID`])
     #[must_use]
     pub const fn sdf() -> Self {
         Self {
-            semantics_id: crate::SEMANTICS_ID,
+            semantics_id: crate::SDF_SEMANTICS_ID,
         }
     }
 
@@ -277,15 +277,6 @@ pub enum Accepted {
     VerifiedPrevious(Provenance),
 }
 
-/// Identifiers of earlier releases of this crate whose stored outputs this release reproduces
-///
-/// Empty: [`Provenance::sdf`] is the identifier of the arithmetic (`alice-det-math`'s
-/// `SEMANTICS_ID`) and does not yet fold in this crate's own algorithms, so an identifier that
-/// `alice-det-math` lists as a verified earlier one says nothing about whether an earlier release
-/// of this crate wrote the same bytes. An entry is added only with a test that shows the outputs
-/// of that release reproduced.
-pub const PREVIOUS_SDF_IDS: &[[u8; 32]] = &[];
-
 /// `asset.extras["alice:semantics_id"]` of a glTF JSON document
 fn json_tagged(bytes: &[u8], format: &'static str) -> Result<Provenance, ProvenanceError> {
     let doc: serde_json::Value = serde_json::from_slice(bytes)
@@ -339,13 +330,14 @@ pub fn check(
     }
 }
 
-/// [`check`] against this crate's identifier and [`PREVIOUS_SDF_IDS`]
+/// [`check`] against this crate's identifier and the earlier ones it still reproduces
+/// ([`crate::PREVIOUS_SDF_SEMANTICS_IDS`], the same rule as [`crate::check_sdf_semantics`])
 ///
 /// # Errors
 ///
 /// As [`check`].
 pub fn check_sdf(path: impl AsRef<Path>) -> Result<Accepted, ProvenanceError> {
-    check(path, &Provenance::sdf(), PREVIOUS_SDF_IDS)
+    check(path, &Provenance::sdf(), crate::PREVIOUS_SDF_SEMANTICS_IDS)
 }
 
 /// `alice:semantics_id=<64 hex>` anywhere in `bytes`; exactly one distinct value is accepted
