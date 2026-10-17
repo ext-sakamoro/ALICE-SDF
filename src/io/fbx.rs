@@ -17,6 +17,7 @@ use crate::compiled::real::law_max_f32;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
+use crate::provenance::Provenance;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -139,9 +140,22 @@ pub fn export_fbx(
     config: &FbxConfig,
     materials: Option<&MaterialLibrary>,
 ) -> Result<(), IoError> {
+    export_fbx_with_provenance(mesh, path, config, materials, &Provenance::sdf())
+}
+
+/// Export a mesh to FBX with the caller's semantics identifier in the `Creator` string of
+/// `FBXHeaderExtension` (see [`crate::provenance`])
+pub fn export_fbx_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &FbxConfig,
+    materials: Option<&MaterialLibrary>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
+    let creator = format!("ALICE-SDF {}", provenance.tagged());
     match config.format {
-        FbxFormat::Ascii => export_fbx_ascii(mesh, path, config, materials),
-        FbxFormat::Binary => export_fbx_binary(mesh, path, config, materials),
+        FbxFormat::Ascii => export_fbx_ascii(mesh, path, config, materials, &creator),
+        FbxFormat::Binary => export_fbx_binary(mesh, path, config, materials, &creator),
     }
 }
 
@@ -151,6 +165,7 @@ fn export_fbx_ascii(
     path: impl AsRef<Path>,
     config: &FbxConfig,
     materials: Option<&MaterialLibrary>,
+    creator: &str,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -167,7 +182,7 @@ fn export_fbx_ascii(
     writeln!(w, "FBXHeaderExtension:  {{")?;
     writeln!(w, "\tFBXHeaderVersion: 1003")?;
     writeln!(w, "\tFBXVersion: 7400")?;
-    writeln!(w, "\tCreator: \"ALICE-SDF\"")?;
+    writeln!(w, "\tCreator: \"{creator}\"")?;
     writeln!(w, "}}")?;
     writeln!(w)?;
 
@@ -560,6 +575,7 @@ fn export_fbx_binary(
     path: impl AsRef<Path>,
     config: &FbxConfig,
     materials: Option<&MaterialLibrary>,
+    creator: &str,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -579,7 +595,7 @@ fn export_fbx_binary(
     {
         let version_node = serialize_fbx_node("FBXHeaderVersion", &[FbxProp::I32(1003)], &[]);
         let fbx_version = serialize_fbx_node("FBXVersion", &[FbxProp::I32(7400)], &[]);
-        let creator = serialize_fbx_node("Creator", &[FbxProp::Str("ALICE-SDF".to_string())], &[]);
+        let creator = serialize_fbx_node("Creator", &[FbxProp::Str(creator.to_string())], &[]);
         top_nodes.push(serialize_fbx_node(
             "FBXHeaderExtension",
             &[],

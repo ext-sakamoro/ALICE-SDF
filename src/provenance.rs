@@ -1,0 +1,358 @@
+//! Provenance: the identifier of the meaning of the bytes a writer stores (ALICE-Law G8)
+//!
+//! Every durable format this crate writes carries a 32-byte semantics identifier, so a file read
+//! back later (or by another program) can be checked against the arithmetic that produced it.
+//! The plain writers store [`Provenance::sdf`] (this crate's [`crate::SEMANTICS_ID`]); a caller
+//! whose own identifier folds more meaning in (a language that turns its programs into meshes)
+//! passes its identifier through the `*_with_provenance` writers.
+//!
+//! | format | where the identifier is stored |
+//! |---|---|
+//! | binary STL | the 80-byte header: `ALICESDF`, version byte `1`, the 32 raw identifier bytes, zeros |
+//! | ASCII STL | the solid name: `solid alice:semantics_id=<64 hex>` |
+//! | 3MF | `<metadata name="alice:semantics_id">` in `3D/3dmodel.model`, namespace [`NAMESPACE_3MF`] |
+//! | FBX (binary and ASCII) | the `Creator` string of `FBXHeaderExtension`: `ALICE-SDF alice:semantics_id=<64 hex>` |
+//!
+//! [`read`] finds the identifier in a file of any of these formats, and [`check`] compares it with
+//! the expected one and names both on a mismatch.
+
+use std::fmt;
+use std::path::Path;
+
+/// The key under which the identifier is stored in text formats
+pub const KEY: &str = "alice:semantics_id";
+
+/// The XML namespace of the 3MF metadata name (`xmlns:alice`)
+pub const NAMESPACE_3MF: &str = "https://alicelaw.net/ns/3mf/provenance/2026";
+
+/// The first 8 bytes of a binary STL header written by this crate
+pub const STL_MAGIC: &[u8; 8] = b"ALICESDF";
+
+/// The layout version of the binary STL header
+pub const STL_HEADER_VERSION: u8 = 1;
+
+/// The identifier of the meaning of the stored bytes
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct Provenance {
+    /// 32-byte semantics identifier
+    pub semantics_id: [u8; 32],
+}
+
+impl Provenance {
+    /// This crate's own identifier ([`crate::SEMANTICS_ID`])
+    #[must_use]
+    pub const fn sdf() -> Self {
+        Self {
+            semantics_id: crate::SEMANTICS_ID,
+        }
+    }
+
+    /// A caller's identifier
+    #[must_use]
+    pub const fn new(semantics_id: [u8; 32]) -> Self {
+        Self { semantics_id }
+    }
+
+    /// Lower-case hex of the identifier (64 characters)
+    #[must_use]
+    pub fn hex(&self) -> String {
+        use std::fmt::Write as _;
+        let mut s = String::with_capacity(64);
+        for b in self.semantics_id {
+            let _ = write!(s, "{b:02x}");
+        }
+        s
+    }
+
+    /// `alice:semantics_id=<64 hex>`, the form text formats store
+    #[must_use]
+    pub fn tagged(&self) -> String {
+        format!("{KEY}={}", self.hex())
+    }
+
+    /// The 80-byte binary STL header carrying this identifier
+    #[must_use]
+    pub fn stl_header(&self) -> [u8; 80] {
+        let mut h = [0u8; 80];
+        h[..8].copy_from_slice(STL_MAGIC);
+        h[8] = STL_HEADER_VERSION;
+        h[9..41].copy_from_slice(&self.semantics_id);
+        h
+    }
+
+    fn from_hex(s: &str) -> Option<Self> {
+        let s = s.as_bytes();
+        if s.len() != 64 {
+            return None;
+        }
+        let mut id = [0u8; 32];
+        for (i, pair) in s.chunks_exact(2).enumerate() {
+            let hi = (pair[0] as char).to_digit(16)?;
+            let lo = (pair[1] as char).to_digit(16)?;
+            id[i] = u8::try_from(hi * 16 + lo).ok()?;
+        }
+        Some(Self::new(id))
+    }
+}
+
+impl fmt::Debug for Provenance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Provenance({})", self.hex())
+    }
+}
+
+impl fmt::Display for Provenance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.hex())
+    }
+}
+
+/// Reading or checking a stored identifier failed
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ProvenanceError {
+    /// The file could not be read
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    /// The file is in a format this module reads but carries no identifier
+    #[error("no {KEY} in {format}")]
+    Missing {
+        /// The format recognised
+        format: &'static str,
+    },
+    /// The format is not one this module reads, or its identifier cannot be read
+    #[error("cannot read an identifier: {0}")]
+    Unreadable(String),
+    /// The stored identifier is not the expected one
+    #[error("{KEY} mismatch: stored {stored}, expected {expected}")]
+    Mismatch {
+        /// The identifier in the file
+        stored: Provenance,
+        /// The identifier the caller expected
+        expected: Provenance,
+    },
+}
+
+/// The identifier stored in the file at `path`
+///
+/// # Errors
+///
+/// [`ProvenanceError::Missing`] when the format is recognised but carries no identifier,
+/// [`ProvenanceError::Unreadable`] when the format is not recognised (or a 3MF entry is
+/// compressed), [`ProvenanceError::Io`] when the file cannot be read.
+pub fn read(path: impl AsRef<Path>) -> Result<Provenance, ProvenanceError> {
+    from_bytes(&std::fs::read(path)?)
+}
+
+/// The identifier stored in the bytes of a file
+///
+/// # Errors
+///
+/// As [`read`].
+pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+    if bytes.starts_with(b"PK\x03\x04") {
+        return read_3mf(bytes);
+    }
+    if bytes.starts_with(b"Kaydara FBX Binary") {
+        return tagged_in(bytes, "FBX");
+    }
+    if bytes.starts_with(b"; FBX") {
+        return tagged_in(bytes, "FBX");
+    }
+    if bytes.starts_with(b"solid") {
+        let first = bytes.split(|&b| b == b'\n').next().unwrap_or(&[]);
+        return tagged_in(first, "ASCII STL");
+    }
+    if bytes.len() >= 84 {
+        let count = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as usize;
+        if count.checked_mul(50).and_then(|n| n.checked_add(84)) == Some(bytes.len()) {
+            if &bytes[..8] == STL_MAGIC && bytes[8] == STL_HEADER_VERSION {
+                let mut id = [0u8; 32];
+                id.copy_from_slice(&bytes[9..41]);
+                return Ok(Provenance::new(id));
+            }
+            return Err(ProvenanceError::Missing {
+                format: "binary STL",
+            });
+        }
+    }
+    Err(ProvenanceError::Unreadable("unrecognised format".into()))
+}
+
+/// Compares the identifier stored in the file at `path` with `expected`
+///
+/// # Errors
+///
+/// [`ProvenanceError::Mismatch`] naming both identifiers when they differ, otherwise as [`read`].
+pub fn check(path: impl AsRef<Path>, expected: &Provenance) -> Result<(), ProvenanceError> {
+    let stored = read(path)?;
+    if stored == *expected {
+        Ok(())
+    } else {
+        Err(ProvenanceError::Mismatch {
+            stored,
+            expected: *expected,
+        })
+    }
+}
+
+/// `alice:semantics_id=<64 hex>` anywhere in `bytes`; exactly one distinct value is accepted
+fn tagged_in(bytes: &[u8], format: &'static str) -> Result<Provenance, ProvenanceError> {
+    let key = format!("{KEY}=");
+    let key = key.as_bytes();
+    let mut found: Option<Provenance> = None;
+    let mut i = 0;
+    while i + key.len() + 64 <= bytes.len() {
+        if &bytes[i..i + key.len()] == key {
+            let start = i + key.len();
+            let hex = std::str::from_utf8(&bytes[start..start + 64])
+                .map_err(|_| ProvenanceError::Unreadable(format!("{format}: {KEY} is not hex")))?;
+            let p = Provenance::from_hex(hex).ok_or_else(|| {
+                ProvenanceError::Unreadable(format!("{format}: {KEY} is not hex"))
+            })?;
+            match found {
+                Some(q) if q != p => {
+                    return Err(ProvenanceError::Unreadable(format!(
+                        "{format}: two different {KEY} values"
+                    )))
+                }
+                _ => found = Some(p),
+            }
+            i = start + 64;
+        } else {
+            i += 1;
+        }
+    }
+    found.ok_or(ProvenanceError::Missing { format })
+}
+
+/// The `alice:semantics_id` metadata of `3D/3dmodel.model` in a 3MF (zip) archive
+fn read_3mf(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+    let model = zip_entry(bytes, "3D/3dmodel.model")?
+        .ok_or_else(|| ProvenanceError::Unreadable("3MF: no 3D/3dmodel.model".into()))?;
+    let open = format!("<metadata name=\"{KEY}\">");
+    let text = std::str::from_utf8(model)
+        .map_err(|_| ProvenanceError::Unreadable("3MF: model is not UTF-8".into()))?;
+    let mut values = text.match_indices(&open).map(|(at, _)| {
+        let start = at + open.len();
+        text.get(start..start + 64)
+            .and_then(Provenance::from_hex)
+            .filter(|_| text[start + 64..].starts_with("</metadata>"))
+    });
+    match (values.next(), values.next()) {
+        (None, _) => Err(ProvenanceError::Missing { format: "3MF" }),
+        (Some(Some(p)), None) => Ok(p),
+        (Some(None), _) => Err(ProvenanceError::Unreadable(format!(
+            "3MF: {KEY} is not 64 hex digits"
+        ))),
+        (Some(Some(_)), Some(_)) => Err(ProvenanceError::Unreadable(format!(
+            "3MF: more than one {KEY}"
+        ))),
+    }
+}
+
+/// The stored (uncompressed) data of the zip entry `name`, walking the local file headers
+fn zip_entry<'a>(bytes: &'a [u8], name: &str) -> Result<Option<&'a [u8]>, ProvenanceError> {
+    let short = || ProvenanceError::Unreadable("3MF: truncated zip".into());
+    let u16_at = |at: usize| -> Option<usize> {
+        bytes
+            .get(at..at + 2)
+            .map(|b| usize::from(u16::from_le_bytes([b[0], b[1]])))
+    };
+    let u32_at = |at: usize| -> Option<usize> {
+        bytes
+            .get(at..at + 4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    };
+    let mut at = 0;
+    while bytes.get(at..at + 4) == Some(b"PK\x03\x04") {
+        let flags = u16_at(at + 6).ok_or_else(short)?;
+        let method = u16_at(at + 8).ok_or_else(short)?;
+        let compressed = u32_at(at + 18).ok_or_else(short)?;
+        let name_len = u16_at(at + 26).ok_or_else(short)?;
+        let extra_len = u16_at(at + 28).ok_or_else(short)?;
+        let name_at = at + 30;
+        let data_at = name_at + name_len + extra_len;
+        if flags & 0x08 != 0 {
+            return Err(ProvenanceError::Unreadable(
+                "3MF: entry sizes in a data descriptor are not read".into(),
+            ));
+        }
+        let entry = bytes.get(name_at..name_at + name_len).ok_or_else(short)?;
+        let data = bytes.get(data_at..data_at + compressed).ok_or_else(short)?;
+        if entry == name.as_bytes() {
+            if method != 0 {
+                return Err(ProvenanceError::Unreadable(format!(
+                    "3MF: {name} is compressed (method {method}); only stored entries are read"
+                )));
+            }
+            return Ok(Some(data));
+        }
+        at = data_at + compressed;
+    }
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn id(seed: u8) -> Provenance {
+        let mut b = [0u8; 32];
+        for (i, v) in b.iter_mut().enumerate() {
+            *v = seed.wrapping_add(u8::try_from(i).unwrap()).wrapping_mul(37);
+        }
+        Provenance::new(b)
+    }
+
+    #[test]
+    fn hex_round_trips() {
+        let p = id(3);
+        assert_eq!(Provenance::from_hex(&p.hex()), Some(p));
+        assert_eq!(p.hex().len(), 64);
+        assert!(Provenance::from_hex(&p.hex()[..63]).is_none());
+        assert!(Provenance::from_hex(&"g".repeat(64)).is_none());
+    }
+
+    #[test]
+    fn the_stl_header_never_reads_as_ascii() {
+        let h = id(0).stl_header();
+        assert!(!h.starts_with(b"solid"));
+        assert_eq!(&h[..8], STL_MAGIC);
+        assert_eq!(h[8], STL_HEADER_VERSION);
+        assert!(h[41..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn two_different_tags_are_refused() {
+        let text = format!("{} {}", id(1).tagged(), id(2).tagged());
+        assert!(matches!(
+            tagged_in(text.as_bytes(), "t"),
+            Err(ProvenanceError::Unreadable(_))
+        ));
+        let same = format!("{} {}", id(1).tagged(), id(1).tagged());
+        assert_eq!(tagged_in(same.as_bytes(), "t").unwrap(), id(1));
+    }
+
+    #[test]
+    fn a_binary_stl_without_the_magic_is_missing_not_unreadable() {
+        let mut bytes = vec![0u8; 84];
+        bytes.extend_from_slice(&[0u8; 50]);
+        bytes[80] = 1;
+        assert!(matches!(
+            from_bytes(&bytes),
+            Err(ProvenanceError::Missing {
+                format: "binary STL"
+            })
+        ));
+    }
+
+    #[test]
+    fn unknown_bytes_are_unreadable() {
+        assert!(matches!(
+            from_bytes(b"hello"),
+            Err(ProvenanceError::Unreadable(_))
+        ));
+    }
+}

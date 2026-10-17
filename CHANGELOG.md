@@ -8,6 +8,15 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed
+
+- 互換性のない変更 (ALICE-Law の gate、次の版でまとめる) G8: 書き出した file に、保存した bytes の意味の識別子 (32 byte、既定は `SEMANTICS_ID`) を入れる 対応済みの形式の出力は byte が変わる: binary STL の 80 byte の header (`ALICESDF`、版 1、識別子、残りは 0 で `solid` から始まらない)、ASCII STL の solid 名 (`solid alice:semantics_id=<64 桁の hex>`)、3MF の `3D/3dmodel.model` の名前空間つき metadata (`alice:semantics_id`、`xmlns:alice`)、FBX (binary と ASCII) の `FBXHeaderExtension` の `Creator` (`ALICE-SDF alice:semantics_id=<hex>`) 残りの書き出し関数は `scripts/provenance-pending.txt` にあり、順に対応する
+
+### Added
+
+- `provenance` module: `Provenance` (`sdf()` はこの crate の `SEMANTICS_ID`、`new(id)` は呼び出し側の識別子)、`read(path)` / `from_bytes` (STL / 3MF / FBX から識別子を読む)、`check(path, &expected)` (違えば `ProvenanceError::Mismatch` が両方の識別子を hex で示す) 書き出し関数 `export_stl_with_provenance` / `export_stl_ascii_with_provenance` / `export_3mf_with_provenance` / `export_fbx_with_provenance` (従来の関数は `Provenance::sdf()` で呼ぶ) 試験 `tests/test_provenance.rs`: 各書き出し関数で識別子が読み戻せること、違う識別子を `check` が両方の値で拒むこと、この crate の importer と独立の STL parser (`stl_io`、dev-dependency) が file を読めること、3MF の metadata の名前空間の宣言と位置
+- CI (G8): `scripts/provenance_writers.py` (試験 `scripts/test_provenance_writers.py`) が `src/io` ・ `src/volume/export.rs` ・ `src/svo/streaming.rs` ・ `src/mesh/lod_persist.rs` ・ `src/validity.rs` の公開の書き出し関数 (現在 44) を数え、それぞれが `tests/test_provenance.rs` の往復の試験にあるか、未対応の一覧 `scripts/provenance-pending.txt` にあることを確かめる 関数の数は一覧の `expected-writers` で固定し、増減・往復の試験の無い新しい関数・一覧に残った対応済みの関数・0 件はどれも失敗 CI の wiring-guard job (3 OS) と preflight
+
 ## [6.1.0] - 2026-10-16
 
 ### Added
