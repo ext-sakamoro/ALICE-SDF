@@ -12,6 +12,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use super::Volume3D;
+use crate::provenance::Provenance;
 
 /// Export volume as raw binary file (f32 per voxel)
 ///
@@ -22,6 +23,15 @@ use super::Volume3D;
 /// * `volume` - The volume to export
 /// * `path` - Output file path (e.g., "volume.raw")
 pub fn export_raw(volume: &Volume3D<f32>, path: &str) -> io::Result<()> {
+    export_raw_with_provenance(volume, path, &Provenance::sdf())
+}
+
+/// [`export_raw`] with the caller's semantics identifier (see [`crate::provenance`])
+pub fn export_raw_with_provenance(
+    volume: &Volume3D<f32>,
+    path: &str,
+    provenance: &Provenance,
+) -> io::Result<()> {
     let path = Path::new(path);
 
     // Write raw data
@@ -63,6 +73,7 @@ pub fn export_raw(volume: &Volume3D<f32>, path: &str) -> io::Result<()> {
         volume.mip_count(),
     );
     std::fs::write(meta_path, meta)?;
+    crate::provenance::write_sidecar(path, provenance)?;
 
     Ok(())
 }
@@ -72,6 +83,15 @@ pub fn export_raw(volume: &Volume3D<f32>, path: &str) -> io::Result<()> {
 /// Layout: [mip0_data][mip1_data][mip2_data]...
 /// Metadata includes byte offsets for each mip level.
 pub fn export_raw_with_mips(volume: &Volume3D<f32>, path: &str) -> io::Result<()> {
+    export_raw_with_mips_with_provenance(volume, path, &Provenance::sdf())
+}
+
+/// [`export_raw_with_mips`] with the caller's semantics identifier (see [`crate::provenance`])
+pub fn export_raw_with_mips_with_provenance(
+    volume: &Volume3D<f32>,
+    path: &str,
+    provenance: &Provenance,
+) -> io::Result<()> {
     let path = Path::new(path);
     let mut file = std::fs::File::create(path)?;
 
@@ -138,6 +158,7 @@ pub fn export_raw_with_mips(volume: &Volume3D<f32>, path: &str) -> io::Result<()
         offsets_str,
     );
     std::fs::write(meta_path, meta)?;
+    crate::provenance::write_sidecar(path, provenance)?;
 
     Ok(())
 }
@@ -163,6 +184,16 @@ pub enum DdsFormat {
 /// * `path` - Output file path (e.g., "volume.dds")
 /// * `format` - Pixel format
 pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> io::Result<()> {
+    export_dds_3d_with_provenance(volume, path, format, &Provenance::sdf())
+}
+
+/// [`export_dds_3d`] with the caller's semantics identifier (see [`crate::provenance`])
+pub fn export_dds_3d_with_provenance(
+    volume: &Volume3D<f32>,
+    path: &str,
+    format: DdsFormat,
+    provenance: &Provenance,
+) -> io::Result<()> {
     let path = Path::new(path);
     let mut file = std::fs::File::create(path)?;
 
@@ -185,7 +216,7 @@ pub fn export_dds_3d(volume: &Volume3D<f32>, path: &str, format: DdsFormat) -> i
         pitch_or_linear_size: pitch_or_linear,
         depth: volume.resolution[2],
         mip_map_count: volume.mip_count() as u32,
-        reserved1: [0u32; 11],
+        reserved1: crate::provenance::dds_reserved(provenance),
         // DDS_PIXELFORMAT (32 bytes)
         pf_size: 32,
         pf_flags: 0x00000004, // DDPF_FOURCC
@@ -274,6 +305,15 @@ pub fn export_dds_3d_distgrad(
     volume: &Volume3D<super::VoxelDistGrad>,
     path: &str,
 ) -> io::Result<()> {
+    export_dds_3d_distgrad_with_provenance(volume, path, &Provenance::sdf())
+}
+
+/// [`export_dds_3d_distgrad`] with the caller's semantics identifier (see [`crate::provenance`])
+pub fn export_dds_3d_distgrad_with_provenance(
+    volume: &Volume3D<super::VoxelDistGrad>,
+    path: &str,
+    provenance: &Provenance,
+) -> io::Result<()> {
     let path = Path::new(path);
     let mut file = std::fs::File::create(path)?;
 
@@ -291,7 +331,7 @@ pub fn export_dds_3d_distgrad(
         pitch_or_linear_size: volume.resolution[0] * bytes_per_pixel,
         depth: volume.resolution[2],
         mip_map_count: volume.mip_count() as u32,
-        reserved1: [0u32; 11],
+        reserved1: crate::provenance::dds_reserved(provenance),
         pf_size: 32,
         pf_flags: 0x00000004,
         pf_four_cc: u32::from_le_bytes(*b"DX10"),

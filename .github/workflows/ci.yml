@@ -199,7 +199,7 @@ jobs:
       # ⚠️ 1 行で書く (matrix に windows-latest があり既定 shell は pwsh、
       #    バックスラッシュ行継続は ParserError になる)
       - name: Test (integration, analytic oracles — aaa) [T4]
-        run: cargo test --features "aaa,image" --test test_gi_volume_oracle --test test_terrain_destruction_oracle --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle --test test_gi_api_oracle --test test_destruction_api_oracle
+        run: cargo test --features "aaa,image" --test test_gi_volume_oracle --test test_terrain_destruction_oracle --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle --test test_gi_api_oracle --test test_destruction_api_oracle --test test_provenance
 
       # file 先頭が `#![cfg(feature = …)]` の oracle は、その feature を付けない
       # `cargo test --tests` では空の binary になり `running 0 tests` で green になる。

@@ -18,6 +18,8 @@
 //! | USD (`.usda`) | the layer's `customLayerData`: `string "alice:semantics_id" = "<64 hex>"` |
 //! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
+//! | DDS 3D texture | the header's reserved dwords: tag `ALSD`, version `1`, the 32 identifier bytes |
+//! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
 //!
 //! [`read`] finds the identifier in a file of any of these formats, and [`check`] compares it with
 //! the expected one (or an earlier one the caller has verified) and names both on a mismatch.
@@ -148,7 +150,19 @@ pub enum ProvenanceError {
 /// [`ProvenanceError::Unreadable`] when the format is not recognised (or a 3MF entry is
 /// compressed), [`ProvenanceError::Io`] when the file cannot be read.
 pub fn read(path: impl AsRef<Path>) -> Result<Provenance, ProvenanceError> {
-    from_bytes(&std::fs::read(path)?)
+    let path = path.as_ref();
+    match from_bytes(&std::fs::read(path)?) {
+        Err(ProvenanceError::Unreadable(why)) => {
+            // a format with no place for the identifier (raw volume data) has it in a sidecar
+            let sidecar = sidecar_path(path);
+            if sidecar.is_file() {
+                tagged_in(&std::fs::read(sidecar)?, "sidecar")
+            } else {
+                Err(ProvenanceError::Unreadable(why))
+            }
+        }
+        other => other,
+    }
 }
 
 /// The identifier stored in the bytes of a file
@@ -165,6 +179,18 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
     }
     if bytes.starts_with(b"; FBX") {
         return tagged_in(bytes, "FBX");
+    }
+    if bytes.starts_with(b"DDS ") {
+        // DDS: the identifier block sits in the header's reserved dwords (bytes 32..76)
+        let r = bytes
+            .get(32..76)
+            .ok_or_else(|| ProvenanceError::Unreadable("DDS: truncated header".into()))?;
+        if &r[..4] != DDS_TAG || r[4..8] != 1u32.to_le_bytes() {
+            return Err(ProvenanceError::Missing { format: "DDS" });
+        }
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&r[8..40]);
+        return Ok(Provenance::new(id));
     }
     if bytes.starts_with(b"glTF") {
         // GLB: 12-byte header, then the JSON chunk (length, type `JSON`, data)
@@ -298,6 +324,36 @@ fn is_iges_start(bytes: &[u8]) -> bool {
     let first = bytes.split(|&b| b == b'\n').next().unwrap_or(&[]);
     let first = first.strip_suffix(b"\r").unwrap_or(first);
     first.len() == 80 && first[72] == b'S' && first[73..].trim_ascii() == b"1"
+}
+
+/// The tag of the identifier block in the DDS header's reserved dwords
+pub const DDS_TAG: &[u8; 4] = b"ALSD";
+
+/// The DDS header's 11 reserved dwords carrying the identifier: the tag [`DDS_TAG`], a layout
+/// version `1`, the 32 identifier bytes (little-endian dwords), one zero dword
+#[cfg(feature = "volume")]
+pub(crate) fn dds_reserved(p: &Provenance) -> [u32; 11] {
+    let mut r = [0u32; 11];
+    r[0] = u32::from_le_bytes(*DDS_TAG);
+    r[1] = 1;
+    for (i, c) in p.semantics_id.chunks_exact(4).enumerate() {
+        r[2 + i] = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+    }
+    r
+}
+
+/// The sidecar of a file whose format has no place for the identifier: `<path>.semantics`
+#[must_use]
+pub fn sidecar_path(path: &Path) -> std::path::PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".semantics");
+    std::path::PathBuf::from(name)
+}
+
+/// Writes the sidecar `<path>.semantics` (`alice:semantics_id=<64 hex>` and a newline)
+#[cfg(feature = "volume")]
+pub(crate) fn write_sidecar(path: &Path, p: &Provenance) -> std::io::Result<()> {
+    std::fs::write(sidecar_path(path), format!("{}\n", p.tagged()))
 }
 
 /// The position of the first occurrence of `needle` in `haystack`
