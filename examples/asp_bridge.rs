@@ -32,6 +32,16 @@ fn main() {
 
     let received: libasp::AspPacket = serde_json::from_slice(&wire).expect("parse");
     let scene = decode_sdf_i_packet(&received).expect("decode");
+    // the packet carries the sender's semantics identifier; the unverified decoder reports it
+    let checked = alice_sdf::asp_bridge::decode_sdf_i_packet_unverified(&received).expect("decode");
+    println!("semantics: {:?}", checked.semantics());
+    let restamped = alice_sdf::asp_bridge::create_sdf_i_packet_with_provenance(
+        &tree,
+        2,
+        &alice_sdf::provenance::Provenance::sdf(),
+    )
+    .expect("I-packet");
+    assert!(decode_sdf_i_packet(&restamped).is_ok());
     let p = Vec3::new(0.3, -0.2, 0.4);
     let (a, b) = (eval(&node, p), eval(&scene.root, p));
     println!("distance at {p:?}: sent {a}, received {b}");

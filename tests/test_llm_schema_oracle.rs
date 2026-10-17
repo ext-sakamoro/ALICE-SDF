@@ -25,13 +25,15 @@ fn serialised_trees_round_trip_through_validation() {
     let mut compared = 0;
     for node in &scenes {
         let json = serde_json::to_string(&SdfTree::new(node.clone())).unwrap();
-        let tree = validate_sdf_json(&json).expect("valid tree");
+        // plain serde output carries no semantics identifier: read as Unpinned
+        let (tree, semantics) = validate_sdf_json(&json).expect("valid tree").into_parts();
+        assert_eq!(semantics, alice_sdf::provenance::StoredSemantics::Unpinned);
         assert_eq!(format!("{:?}", tree.root), format!("{node:?}"));
         compared += 1;
     }
     // Evaluate the translated sphere: |p − (2,0,0)| − 1
     let json = serde_json::to_string(&SdfTree::new(scenes[1].clone())).unwrap();
-    let tree = validate_sdf_json(&json).unwrap();
+    let (tree, _) = validate_sdf_json(&json).unwrap().into_parts();
     for &p in &[
         Vec3::ZERO,
         Vec3::new(2.0, 3.0, 0.0),

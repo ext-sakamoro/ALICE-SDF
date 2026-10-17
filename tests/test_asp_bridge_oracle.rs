@@ -5,7 +5,7 @@
 //!   serialised with serde and parsed again (the network path);
 //! * D-packet: the delta bytes, the reference sequence and the documented
 //!   `asdf_len` parameter are carried unchanged;
-//! * `estimate_packet_size`: the documented closed form
+//! * `estimate_packet_size`: the documented closed form (32 identifier entries + the tree's bytes)
 //!   `(n, 12 n + 84)` where `n` is the ASDF (bincode) length, with `n` read from
 //!   the length the I-packet itself records.
 
@@ -126,15 +126,18 @@ fn estimate_packet_size_is_the_documented_closed_form() {
     ] {
         let tree = SdfTree::new(node);
         let (asdf, total) = estimate_packet_size(&tree);
-        // The I-packet records the ASDF length twice: as the `asdf_len`
-        // parameter and as one coefficient per byte.
+        // The I-packet records the ASDF length as the `asdf_len` parameter, and carries one
+        // coefficient per byte of the semantics identifier (32) and of the tree (ALICE-Law G8).
         let packet = create_sdf_i_packet(&tree, 1).expect("packet");
         let region = &packet.as_i_packet().expect("I-packet").regions[0];
         let recorded = region.params.as_ref().unwrap()[0].1 as usize;
-        assert_eq!(region.dct_coefficients.as_ref().unwrap().len(), recorded);
+        assert_eq!(
+            region.dct_coefficients.as_ref().unwrap().len(),
+            32 + recorded
+        );
         assert_eq!(asdf, recorded);
         assert!(asdf > 0);
-        assert_eq!(total, 12 * asdf + 16 + 4 + 64);
+        assert_eq!(total, 12 * (32 + asdf) + 16 + 4 + 64);
         compared += 1;
     }
     assert_eq!(compared, 3);

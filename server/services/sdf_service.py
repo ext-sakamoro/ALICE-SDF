@@ -15,7 +15,8 @@ def validate_sdf_json(json_str: str) -> tuple[bool, Optional[int], Optional[str]
     Returns (valid, node_count, error_message).
     """
     try:
-        node = alice_sdf.from_json(json_str)
+        # a model's answer has no semantics identifier: the status is "unpinned"
+        node, _semantics = alice_sdf.from_json(json_str)
         return True, node.node_count(), None
     except Exception as e:
         return False, None, str(e)
@@ -23,7 +24,8 @@ def validate_sdf_json(json_str: str) -> tuple[bool, Optional[int], Optional[str]
 
 def parse_sdf_json(json_str: str) -> alice_sdf.SdfNode:
     """Parse an SDF JSON string into an SdfNode."""
-    return alice_sdf.from_json(json_str)
+    node, _semantics = alice_sdf.from_json(json_str)
+    return node
 
 
 def node_to_json(node: alice_sdf.SdfNode) -> str:

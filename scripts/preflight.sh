@@ -119,6 +119,9 @@ python3 scripts/test_build_flags_check.py
 step "provenance writers: oracle + 公開の書き出し関数はすべて意味の識別子を書くか、未対応の一覧にある (件数固定、0 件で fail)"
 python3 scripts/test_provenance_writers.py
 python3 scripts/provenance_writers.py
+step "bare deserialization reads: oracle + src の素の serde / bincode の読み込みはすべて表にある (検査済みの loader の中、別の型、未対応、0 件で fail)"
+python3 scripts/test_bare_serde_reads.py
+python3 scripts/bare_serde_reads.py
 
 step "api boundary (ALICE-Law G7): oracle + 一覧の照合 (wasm32 target が無ければ PREFLIGHT-SKIP 行で明示、CI は fail)"
 python3 scripts/test_api_boundary.py
@@ -410,7 +413,7 @@ cargo test --lib --no-default-features --features "$BRIDGES"
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$BRIDGES"
 
 step "test: bridge oracles (ci.yml の bridges job の bridge oracles と対)"
-cargo test --features "$BRIDGES,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle \
+cargo test --features "$BRIDGES,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_g8_tree_text \
   --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
 
 step "test: AAA meta"

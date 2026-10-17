@@ -33,8 +33,13 @@ fn main() {
     let mut accepted = None;
     for (i, answer) in answers.iter().enumerate() {
         match validate_sdf_json(answer) {
-            Ok(tree) => {
-                println!("answer {i}: accepted ({} nodes)", tree.node_count());
+            Ok(checked) => {
+                // a model's answer carries no semantics identifier: read, and marked Unpinned
+                let (tree, semantics) = checked.into_parts();
+                println!(
+                    "answer {i}: accepted ({} nodes, semantics {semantics:?})",
+                    tree.node_count()
+                );
                 accepted = Some(tree);
             }
             Err(feedback) => println!("answer {i}: rejected, feedback = {feedback}"),

@@ -18,7 +18,7 @@ mod asdf;
 pub mod fbx;
 pub mod gltf;
 pub mod iges;
-mod json;
+pub(crate) mod json;
 pub mod meshopt_gltf;
 pub mod nanite;
 pub mod obj;
@@ -55,7 +55,10 @@ pub use gltf::{
     export_glb, export_glb_bytes, export_glb_bytes_with_provenance, export_glb_with_provenance,
     export_gltf_json, export_gltf_json_with_provenance, import_glb, import_glb_bytes, GltfConfig,
 };
-pub use json::{from_json_string, load_asdf_json, save_asdf_json, to_json_string};
+pub use json::{
+    from_json_string, from_json_string_unverified, load_asdf_json, load_asdf_json_unverified,
+    save_asdf_json, save_asdf_json_with_provenance, to_json_string, to_json_string_with_provenance,
+};
 pub use nanite::{
     export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig,
 };

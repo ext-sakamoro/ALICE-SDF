@@ -28,12 +28,22 @@
 //! ```
 //!
 //! `examples/asp_bridge.rs` runs the same round trip.
+//!
+//! # Semantics identifier (ALICE-Law G8)
+//!
+//! An I-packet carries the identifier of the arithmetic the tree was built under: the parameter
+//! `alice_semantics_v` = 2 marks it, the first 32 coefficient entries hold the identifier's
+//! bytes and the tree's bytes follow (`asdf_offset` = 32). [`decode_sdf_i_packet`] refuses a
+//! packet without one (a sender before 7.0.0) and one with another identifier;
+//! [`decode_sdf_i_packet_unverified`] also reads a packet without one and returns the tree with
+//! what is known about it.
 
 use libasp::{
     AspPacket, AspResult, Color, ColorPalette, DPacketPayload, IPacketPayload, QualityLevel, Rect,
     RegionDescriptor,
 };
 
+use crate::provenance::{sdf_load_verdict, Checked, Provenance};
 use crate::types::SdfTree;
 
 /// Create an ASP I-packet containing a full SDF scene.
@@ -44,6 +54,12 @@ use crate::types::SdfTree;
 /// src/io/asdf.rs::ASDF_BINCODE_LIMIT と同期
 const ASP_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
 
+/// The parameter marking a packet that carries the semantics identifier, and its value
+const SEMANTICS_PARAM: &str = "alice_semantics_v";
+const SEMANTICS_LAYOUT: f32 = 2.0;
+/// The coefficient index where the tree's bytes start in such a packet
+const TREE_OFFSET: usize = 32;
+
 /// Serialise `tree` (ASDF bincode wire format) into an ASP I-packet with the
 /// given `sequence` number.
 ///
@@ -52,6 +68,19 @@ const ASP_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
 /// Returns the `libasp` error when the tree does not fit the packet or the
 /// serialisation exceeds the 256 MiB bincode limit.
 pub fn create_sdf_i_packet(tree: &SdfTree, sequence: u32) -> AspResult<AspPacket> {
+    create_sdf_i_packet_with_provenance(tree, sequence, &Provenance::sdf())
+}
+
+/// [`create_sdf_i_packet`] stamped with the identifier the caller gives
+///
+/// # Errors
+///
+/// As [`create_sdf_i_packet`].
+pub fn create_sdf_i_packet_with_provenance(
+    tree: &SdfTree,
+    sequence: u32,
+    provenance: &Provenance,
+) -> AspResult<AspPacket> {
     // Serialize SDF tree to binary via bincode (same format as ASDF files)
     // bincode 2 API: serde compat + legacy config で bincode 1 wire format 互換
     // with_limit で DoS 予防 (fuzz_asdf_decode で発覚した panic の同 root cause)
@@ -80,14 +109,20 @@ pub fn create_sdf_i_packet(tree: &SdfTree, sequence: u32) -> AspResult<AspPacket
             weights: None,
         },
         dct_coefficients: Some(
-            asdf_bytes
+            provenance
+                .semantics_id
                 .iter()
+                .chain(asdf_bytes.iter())
                 .enumerate()
                 .map(|(i, &b)| (i as u32, 0, b as f32))
                 .collect(),
         ),
         texture_id: None,
-        params: Some(vec![("asdf_len".to_string(), asdf_bytes.len() as f32)]),
+        params: Some(vec![
+            ("asdf_len".to_string(), asdf_bytes.len() as f32),
+            ("asdf_offset".to_string(), TREE_OFFSET as f32),
+            (SEMANTICS_PARAM.to_string(), SEMANTICS_LAYOUT),
+        ]),
     };
     payload.regions.push(region);
 
@@ -127,7 +162,26 @@ pub fn create_sdf_d_packet(
 ///
 /// Extracts the ASDF binary from the packet's region descriptor
 /// and deserializes it back into an `SdfTree`.
+///
+/// # Errors
+///
+/// A packet without a semantics identifier (sent before 7.0.0; read it with
+/// [`decode_sdf_i_packet_unverified`]), one with another identifier, and the format errors.
 pub fn decode_sdf_i_packet(packet: &AspPacket) -> Result<SdfTree, String> {
+    decode_checked(packet, false).map(|c| c.into_parts().0)
+}
+
+/// [`decode_sdf_i_packet`] that also reads a packet without a semantics identifier, marking it
+/// [`crate::provenance::StoredSemantics::Unpinned`]; another identifier is still refused
+///
+/// # Errors
+///
+/// A packet with another identifier, and the format errors.
+pub fn decode_sdf_i_packet_unverified(packet: &AspPacket) -> Result<Checked<SdfTree>, String> {
+    decode_checked(packet, true)
+}
+
+fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<SdfTree>, String> {
     let i_payload = packet
         .as_i_packet()
         .ok_or_else(|| "Not an I-packet".to_string())?;
@@ -151,18 +205,39 @@ pub fn decode_sdf_i_packet(packet: &AspPacket) -> Result<SdfTree, String> {
         .as_ref()
         .ok_or_else(|| "No DCT data in region".to_string())?;
 
-    let mut asdf_bytes = vec![0u8; asdf_len];
+    let param = |name: &str| {
+        region
+            .params
+            .as_ref()
+            .and_then(|p| p.iter().find(|(k, _)| k == name))
+            .map(|(_, v)| *v)
+    };
+    let stamped = match param(SEMANTICS_PARAM) {
+        None => false,
+        Some(v) if v == SEMANTICS_LAYOUT => true,
+        Some(v) => return Err(format!("{SEMANTICS_PARAM} {v} is not a known layout")),
+    };
+    let offset = if stamped { TREE_OFFSET } else { 0 };
+
+    let mut bytes = vec![0u8; offset + asdf_len];
     for &(idx, _, val) in coeffs {
-        if (idx as usize) < asdf_len {
-            asdf_bytes[idx as usize] = val as u8;
+        if (idx as usize) < bytes.len() {
+            bytes[idx as usize] = val as u8;
         }
     }
+    let stored = stamped.then(|| {
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&bytes[..TREE_OFFSET]);
+        id
+    });
+    let semantics =
+        sdf_load_verdict(stored, "ASP I-packet", allow_unpinned).map_err(|e| e.to_string())?;
 
     bincode::serde::decode_from_slice(
-        &asdf_bytes,
+        &bytes[offset..],
         bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
     )
-    .map(|(tree, _)| tree)
+    .map(|(tree, _)| Checked::new(tree, semantics))
     .map_err(|e| format!("ASDF decode failed: {}", e))
 }
 
@@ -180,7 +255,8 @@ pub fn estimate_packet_size(tree: &SdfTree) -> (usize, usize) {
     // Each byte stored as (u32, u32, f32) = 12 bytes in DCT field
     // Total overhead is significant but acceptable for small SDF scenes
     let packet_overhead = 16 + 4 + 64; // header + CRC + FlatBuffers framing
-    (asdf_len, asdf_len * 12 + packet_overhead)
+                                       // the semantics identifier rides in the first TREE_OFFSET coefficient entries
+    (asdf_len, (TREE_OFFSET + asdf_len) * 12 + packet_overhead)
 }
 
 #[cfg(test)]
