@@ -14,6 +14,7 @@
 //! | FBX (binary and ASCII) | the `Creator` string of `FBXHeaderExtension`: `ALICE-SDF alice:semantics_id=<64 hex>` |
 //! | OBJ (and its MTL) | a header comment: `# alice:semantics_id=<64 hex>` |
 //! | PLY (binary and ASCII) | a header comment: `comment alice:semantics_id=<64 hex>` |
+//! | glTF (`.glb`, `.gltf`, meshopt-compressed `.glb`) | `asset.extras`: `{"alice:semantics_id": "<64 hex>"}` |
 //!
 //! [`read`] finds the identifier in a file of any of these formats, and [`check`] compares it with
 //! the expected one (or an earlier one the caller has verified) and names both on a mismatch.
@@ -162,6 +163,25 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
     if bytes.starts_with(b"; FBX") {
         return tagged_in(bytes, "FBX");
     }
+    if bytes.starts_with(b"glTF") {
+        // GLB: 12-byte header, then the JSON chunk (length, type `JSON`, data)
+        let len = bytes
+            .get(12..16)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+            .ok_or_else(|| ProvenanceError::Unreadable("GLB: truncated header".into()))?;
+        if bytes.get(16..20) != Some(b"JSON") {
+            return Err(ProvenanceError::Unreadable(
+                "GLB: first chunk is not JSON".into(),
+            ));
+        }
+        let json = bytes
+            .get(20..20 + len)
+            .ok_or_else(|| ProvenanceError::Unreadable("GLB: truncated JSON chunk".into()))?;
+        return json_tagged(json, "GLB");
+    }
+    if bytes.first() == Some(&b'{') {
+        return json_tagged(bytes, "glTF");
+    }
     if bytes.starts_with(b"ply\n") || bytes.starts_with(b"ply\r\n") {
         // the header ends at `end_header`; the identifier is one of its comment lines
         let end = find(bytes, b"end_header")
@@ -217,6 +237,22 @@ pub enum Accepted {
 /// of this crate wrote the same bytes. An entry is added only with a test that shows the outputs
 /// of that release reproduced.
 pub const PREVIOUS_SDF_IDS: &[[u8; 32]] = &[];
+
+/// `asset.extras["alice:semantics_id"]` of a glTF JSON document
+fn json_tagged(bytes: &[u8], format: &'static str) -> Result<Provenance, ProvenanceError> {
+    let doc: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|e| ProvenanceError::Unreadable(format!("{format}: JSON: {e}")))?;
+    match doc
+        .get("asset")
+        .and_then(|a| a.get("extras"))
+        .and_then(|x| x.get(KEY))
+    {
+        None => Err(ProvenanceError::Missing { format }),
+        Some(v) => v.as_str().and_then(Provenance::from_hex).ok_or_else(|| {
+            ProvenanceError::Unreadable(format!("{format}: {KEY} is not 64 hex digits"))
+        }),
+    }
+}
 
 /// The position of the first occurrence of `needle` in `haystack`
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {

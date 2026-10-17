@@ -12,15 +12,8 @@ src/io/abm.rs::to_bytes
 src/io/alembic.rs::export_alembic
 src/io/asdf.rs::save_asdf
 src/io/asdf.rs::to_bytes
-src/io/gltf.rs::export_glb
-src/io/gltf.rs::export_glb_bytes
-src/io/gltf.rs::export_gltf_json
 src/io/iges.rs::export_iges
 src/io/json.rs::save_asdf_json
-src/io/meshopt_gltf.rs::export_glb_meshopt
-src/io/meshopt_gltf.rs::export_glb_meshopt_bytes
-src/io/meshopt_gltf.rs::export_glb_meshopt_bytes_skinned
-src/io/meshopt_gltf.rs::export_glb_meshopt_skinned
 src/io/mod.rs::save
 src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material
