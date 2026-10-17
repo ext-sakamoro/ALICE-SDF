@@ -137,7 +137,7 @@ note = "the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feat
 reference_repo = "ALICE-Analytics"
 
 [G11]
-status = "pass"
+status = "fail-known"
 evidence = [
     "src/compiled/real.rs law_max_f32 / law_min_f32 / law_max_f64 / law_min_f64 delegate to alice_det_math::max / min / max64 / min64 (the owner holds the law, there is no copy); the f32x8 law gives the same lanes (alice-det-math 0.5.1 has no f32x8 max to delegate to) including the canonical NaN for a NaN pair",
     "src/compiled/jit/law_ops.rs law_fmax / law_fmin: the JIT's 75 scalar and 277 f32x4 max / min call sites emit Cranelift fmax / fmin and then the Law's NaN rule (other operand, canonical NaN for a pair)",
@@ -149,7 +149,7 @@ evidence = [
 ]
 mutant = "measured 2026-10-17, each reverted: before the change tests/test_law_nan_operands.rs found 15 disagreements (the JIT returned NaN for one NaN operand, 0xffc00000 for a subtraction) and then 12 (the tree's NaN pair kept the second payload, 0xffc00456 / 0x7fc00123, the JITs gave 0x7fc00000); in scripts/det_math_guard.py, dropping mul_add from the call list, the empty-scan check or the test-module cut each turns scripts/test_det_math_guard.py red"
 since = ""
-note = "the four helpers are no longer const: 18 public functions that called them in const context lost const (operations::sdf_union / sdf_intersection, Aabb::union / intersection, nine Instruction constructors, Interval::intersect / hull / min / max and the box hull), breaking, in 7.0.0; a census of every repository's main that depends on alice-sdf (13 local, and a code search of the owner) found no const-context use. They become const again when alice-det-math's max / min are const fn (the det-math 0.6 bundle), and the f32x8 law delegates when det-math publishes its f32x8 max / min."
+note = "fail-known on (c): the checkers' own canary and zero-compared tests are in place ((a) and (b), evidence above), but no cross-repository identity check runs: this crate carries files the ALICE-Law shared-files table lists (version_sync.py and its test with ALICE-Physics, public_text.sh, semver_gate.py, tracked_binaries.py, workflow_concurrency.py, libm_dependency_guard.py and their tests, fuzz_runs.py and id_move_check.py while pending; and from this wave order_guard.py and law_readme_block_check.py) and runs no scripts/shared_files_check.py at a pinned ALICE-Law revision; this wave also changed version_sync.py and its test here only (the generated Law block is no longer read as an install line), so the copy differs from ALICE-Physics' until the same change lands there. The Law max / min helpers are no longer copies: they delegate to alice-det-math (evidence above). the four helpers are no longer const: 18 public functions that called them in const context lost const (operations::sdf_union / sdf_intersection, Aabb::union / intersection, nine Instruction constructors, Interval::intersect / hull / min / max and the box hull), breaking, in 7.0.0; a census of every repository's main that depends on alice-sdf (13 local, and a code search of the owner) found no const-context use. They become const again when alice-det-math's max / min are const fn (the det-math 0.6 bundle), and the f32x8 law delegates when det-math publishes its f32x8 max / min."
 reference_repo = "ALICE-DetMath"
 [G12]
 status = "pass"
