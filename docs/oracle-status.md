@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 860 |
+| 🟢 Not ignored | 868 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **860** |
+| **Total** | **868** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (860)
+## 🟢 Not ignored (868)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -59,6 +59,7 @@ Per-file counts (the test names are in `tests/`):
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
 | `test_destruction_api_oracle.rs` | 8 |
+| `test_g8_tree_text.rs` | 8 |
 | `test_glsl_export_oracle.rs` | 8 |
 | `test_mesh_reorder_oracle.rs` | 8 |
 | `test_node_backend_matrix.rs` | 8 |

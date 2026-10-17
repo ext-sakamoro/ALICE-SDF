@@ -1,0 +1,31 @@
+{
+  "version": "6.1.0",
+  "root": {
+    "Union": {
+      "a": {
+        "Sphere": {
+          "radius": 1.0
+        }
+      },
+      "b": {
+        "Translate": {
+          "child": {
+            "Box3d": {
+              "half_extents": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            }
+          },
+          "offset": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    }
+  },
+  "metadata": null
+}

@@ -99,6 +99,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let loaded = io::load_asdf_unverified(&asdf)?;
     println!("{}: {:?}", asdf.display(), loaded.semantics());
     let (back, _) = loaded.into_parts();
+
+    // the JSON form of the tree carries the identifier as a top-level field
+    let asdf_json = dir.join("sphere.asdf.json");
+    io::save_asdf_json(&tree, &asdf_json)?;
+    let json_loaded = io::load_asdf_json_unverified(&asdf_json)?;
+    println!("{}: {:?}", asdf_json.display(), json_loaded.semantics());
+    io::save_asdf_json_with_provenance(&tree, &asdf_json, &Provenance::sdf())?;
+    let text = io::to_json_string_with_provenance(&tree, &Provenance::sdf())?;
+    assert_eq!(
+        io::from_json_string_unverified(&text)?.semantics(),
+        StoredSemantics::Current
+    );
+    // the default reader accepts it because it carries this build's identifier
+    assert_eq!(io::from_json_string(&text)?.node_count(), tree.node_count());
     assert_eq!(back.node_count(), tree.node_count());
 
     let other = dir.join("other.stl");

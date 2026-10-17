@@ -15,6 +15,7 @@
 //! | OBJ (and its MTL) | a header comment: `# alice:semantics_id=<64 hex>` |
 //! | PLY (binary and ASCII) | a header comment: `comment alice:semantics_id=<64 hex>` |
 //! | glTF (`.glb`, `.gltf`, meshopt-compressed `.glb`) | `asset.extras`: `{"alice:semantics_id": "<64 hex>"}` |
+//! | ASDF JSON (`.asdf.json`, [`crate::io::save_asdf_json`]) | the top-level field `"alice:semantics_id": "<64 hex>"` next to the tree's fields |
 //! | USD (`.usda`) | the layer's `customLayerData`: `string "alice:semantics_id" = "<64 hex>"` |
 //! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
@@ -108,7 +109,7 @@ impl Provenance {
         h
     }
 
-    fn from_hex(s: &str) -> Option<Self> {
+    pub(crate) fn from_hex(s: &str) -> Option<Self> {
         let s = s.as_bytes();
         if s.len() != 64 {
             return None;
@@ -586,15 +587,17 @@ pub(crate) fn sdf_load_verdict(
     }
 }
 
-/// `asset.extras["alice:semantics_id"]` of a glTF JSON document
-fn json_tagged(bytes: &[u8], format: &'static str) -> Result<Provenance, ProvenanceError> {
+/// The identifier of a JSON document: `asset.extras["alice:semantics_id"]` of a glTF document
+/// (one with an `asset` object; `gltf` names it in errors), the top-level `"alice:semantics_id"` of
+/// an ASDF JSON document
+fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<Provenance, ProvenanceError> {
     let doc: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|e| ProvenanceError::Unreadable(format!("{format}: JSON: {e}")))?;
-    match doc
-        .get("asset")
-        .and_then(|a| a.get("extras"))
-        .and_then(|x| x.get(KEY))
-    {
+        .map_err(|e| ProvenanceError::Unreadable(format!("JSON: {e}")))?;
+    let (format, field) = match doc.get("asset") {
+        Some(asset) => (gltf, asset.get("extras").and_then(|x| x.get(KEY))),
+        None => ("ASDF JSON", doc.get(KEY)),
+    };
+    match field {
         None => Err(ProvenanceError::Missing { format }),
         Some(v) => v.as_str().and_then(Provenance::from_hex).ok_or_else(|| {
             ProvenanceError::Unreadable(format!("{format}: {KEY} is not 64 hex digits"))

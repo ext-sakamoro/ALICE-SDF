@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1255 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1002 |
-| | **total** | **2266** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1259 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1007 |
+| | **total** | **2275** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,10 +69,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1255)
+## L1 — example-only (1259)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
-- `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
+- `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::cached_chunks`, `ChunkedMeshCache::chunk_bounds`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::dirty_chunks`, `ChunkedMeshCache::get_chunk`, `ChunkedMeshCache::invalidate_all`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::load_chunk`, `ChunkedMeshCache::merge_all`, `ChunkedMeshCache::persist_dirty`, `ChunkedMeshCache::set_chunk`, `ChunkedMeshCache::update_sdf_hash`, `ChunkedMeshCache::world_to_chunk`
 - `src/cache/mod.rs`: `CacheConfig`, `MeshCache`, `MeshCache::clear`, `MeshCache::get`, `MeshCache::get_or_generate`, `MeshCache::insert`, `MeshCache::is_empty`, `MeshCache::len`, `MeshCache::memory_usage`, `MeshCache::new`, `MeshCache::remove`, `MeshCacheKey`, `compute_cache_key`, `hash_sdf_node`
@@ -123,6 +123,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
 - `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`, `export_gltf_json_with_provenance`
 - `src/io/iges.rs`: `IgesConfig`, `export_iges`, `export_iges_with_provenance`
+- `src/io/json.rs`: `from_json_string`, `load_asdf_json_unverified`
 - `src/io/meshopt_gltf.rs`: `export_glb_meshopt`, `export_glb_meshopt_bytes`, `export_glb_meshopt_bytes_skinned`, `export_glb_meshopt_skinned`
 - `src/io/nanite.rs`: `NANITE_MAGIC`, `NANITE_VERSION`, `NaniteExportConfig`, `export_nanite`, `export_nanite_hlsl_material`, `export_nanite_json`, `export_nanite_with_config`
 - `src/io/obj.rs`: `import_obj`

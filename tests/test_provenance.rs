@@ -271,6 +271,17 @@ const WRITERS: &[(&str, &str, Write)] = &[
             Some(id) => io::save_asdf_with_provenance(&tree, p, id).unwrap(),
         }
     }),
+    (
+        "src/io/json.rs::save_asdf_json",
+        "t.asdf.json",
+        |_, p, id| {
+            let tree = SdfTree::new(SdfNode::sphere(1.0));
+            match id {
+                None => io::save_asdf_json(&tree, p).unwrap(),
+                Some(id) => io::save_asdf_json_with_provenance(&tree, p, id).unwrap(),
+            }
+        },
+    ),
     ("src/io/asdf.rs::to_bytes", "t_header.asdf", |_, p, id| {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
         let header = match id {

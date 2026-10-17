@@ -30,12 +30,24 @@ pub fn load_sdf(py: Python<'_>, path: &str) -> PyResult<PySdfNode> {
 }
 
 /// Parse SDF tree from JSON string (for LLM-generated SDF)
+///
+/// Returns the node and its semantics status (ALICE-Law G8): `"current"` (stamped by this
+/// build's arithmetic), `"verified_previous"` (stamped by an earlier one this build still
+/// reproduces) or `"unpinned"` (no identifier, as a model's answer). A document stamped by
+/// another SDF arithmetic is refused.
 #[pyfunction]
-pub fn from_json(json_str: &str) -> PyResult<PySdfNode> {
-    use crate::io::from_json_string;
-    let tree = from_json_string(json_str)
+pub fn from_json(json_str: &str) -> PyResult<(PySdfNode, &'static str)> {
+    use crate::io::from_json_string_unverified;
+    use crate::provenance::StoredSemantics;
+    let checked = from_json_string_unverified(json_str)
         .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
-    Ok(PySdfNode { inner: tree.root })
+    let (tree, semantics) = checked.into_parts();
+    let status = match semantics {
+        StoredSemantics::Current => "current",
+        StoredSemantics::VerifiedPrevious(_) => "verified_previous",
+        _ => "unpinned",
+    };
+    Ok((PySdfNode { inner: tree.root }, status))
 }
 
 /// Serialize SDF node to JSON string
