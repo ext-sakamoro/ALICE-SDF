@@ -316,7 +316,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G5 release-profile-test-leg | 未達 | no release-profile test leg: the test job in .github/workflows/ci.yml (lines 130 to 238) runs cargo test without --release on every OS, and no other workflow … |
 | G6 semantics-id | 未達 | src/lib.rs line 189 re-exports alice-det-math's SEMANTICS_ID instead of computing an identifier that folds this crate's own Law pins (the max / min rule, the … |
 | G7 handshake-carries-id | 未確認 | unverified: the empty boundary list rests on a lexical scan with no canary, and the completeness of the entry point list is the audit part of this gate; the … |
-| G8 persisted-semantics-id | 未達 | no durable format this crate writes carries an identifier of the meaning of the stored bytes: the SVO stream (src/svo/streaming.rs line 68 to_bytes), the … |
+| G8 persisted-semantics-id | 未達 | the writers of STL (binary and ASCII), 3MF and FBX (binary and ASCII) store the 32-byte semantics identifier (src/provenance.rs: the STL header, the 3MF model … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a … |
 | G10 no-run-varying-artifacts | 未達 | fail-known: a located violation sits behind the pub API. alice_sdf::cache_bridge::SdfEvalCache (src/cache_bridge.rs:47, feature sdf-cache, which the CI feature … |
 | G11 gate-self-tests | 未達 | scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are … |

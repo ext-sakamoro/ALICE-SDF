@@ -73,6 +73,7 @@ this file or listed twice, or when a linked file does not exist.
 |--------|---------|---------|---------|
 | `mesh` | marching cubes (uniform and adaptive), dual contouring, decimation, LOD chains, manifold repair, UV unwrap, meshlets, meshopt-compatible codecs; GPU marching cubes with `gpu` |  | [`export_mesh`](../examples/export_mesh.rs) |
 | `io` | `.asdf` / `.asdf.json` trees; OBJ, glTF (`.glb`), FBX, USD, Alembic, STL, PLY, 3MF, STEP, IGES, MagicaVoxel, Gaussian splat, Unity and UE5 mesh export; OpenVDB with `openvdb` |  | [`export_mesh`](../examples/export_mesh.rs) |
+| `provenance` | the semantics identifier the file writers store (STL header, 3MF metadata, FBX `Creator`), and `read` / `check` to compare it with the expected one |  | [`provenance_check`](../examples/provenance_check.rs) |
 | `cache` | mesh cache keyed by the tree hash, with LRU eviction |  |  |
 
 ## Shading, materials and animation
