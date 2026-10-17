@@ -214,6 +214,56 @@ const WRITERS: &[(&str, &str, Write)] = &[
             std::fs::write(p, bytes).unwrap();
         },
     ),
+    ("src/io/usd.rs::export_usda", "m.usda", |m, p, id| {
+        let c = io::UsdConfig::default();
+        match id {
+            None => io::export_usda(m, p, &c, None).unwrap(),
+            Some(id) => io::export_usda_with_provenance(m, p, &c, None, id).unwrap(),
+        }
+    }),
+    ("src/io/step.rs::export_step", "m.step", |_, p, id| {
+        let c = io::step::StepConfig::default();
+        let node = SdfNode::sphere(1.0);
+        match id {
+            None => io::step::export_step(p, &node, &c).unwrap(),
+            Some(id) => io::step::export_step_with_provenance(p, &node, &c, id).unwrap(),
+        }
+    }),
+    (
+        "src/validity.rs::export_step_validated",
+        "v.step",
+        |_, p, id| {
+            let c = io::step::StepConfig {
+                bounds: (-6.0, 6.0),
+                resolution: 24,
+                name: "ThickBlock".into(),
+            };
+            let node = SdfNode::box3d(8.0, 4.0, 8.0);
+            let req = alice_sdf::validity::PrintRequirements {
+                max_overhang: std::f32::consts::FRAC_PI_2,
+                ..alice_sdf::validity::PrintRequirements::fdm_0_4_nozzle()
+            };
+            match id {
+                None => {
+                    alice_sdf::validity::export_step_validated(p, &node, &c, req).unwrap();
+                }
+                Some(id) => {
+                    alice_sdf::validity::export_step_validated_with_provenance(
+                        p, &node, &c, req, id,
+                    )
+                    .unwrap();
+                }
+            }
+        },
+    ),
+    ("src/io/iges.rs::export_iges", "m.igs", |_, p, id| {
+        let c = io::iges::IgesConfig::default();
+        let node = SdfNode::sphere(1.0);
+        match id {
+            None => io::iges::export_iges(p, &node, &c).unwrap(),
+            Some(id) => io::iges::export_iges_with_provenance(p, &node, &c, id).unwrap(),
+        }
+    }),
 ];
 
 #[test]
@@ -365,6 +415,55 @@ fn gltf_files_with_the_identifier_stay_valid() {
         json["asset"]["extras"][provenance::KEY].as_str(),
         Some(caller_id().hex().as_str())
     );
+}
+
+/// USD reads back in this crate's importer; STEP keeps its ISO header and trailer; every IGES line
+/// stays 80 columns with the Start-section count in the Terminate record matching the Start lines
+#[test]
+fn usd_step_iges_with_the_identifier_stay_well_formed() {
+    let m = mesh();
+    let path = temp("wf.usda");
+    io::export_usda_with_provenance(&m, &path, &io::UsdConfig::default(), None, &caller_id())
+        .unwrap();
+    assert!(!io::import_usda(&path).unwrap().mesh.indices.is_empty());
+    std::fs::remove_file(&path).ok();
+
+    let node = SdfNode::sphere(1.0);
+    let path = temp("wf.step");
+    io::step::export_step_with_provenance(
+        &path,
+        &node,
+        &io::step::StepConfig::default(),
+        &caller_id(),
+    )
+    .unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.starts_with("ISO-10303-21;\nHEADER;\n"));
+    assert!(text.trim_end().ends_with("END-ISO-10303-21;"));
+    std::fs::remove_file(&path).ok();
+
+    let path = temp("wf.igs");
+    io::iges::export_iges_with_provenance(
+        &path,
+        &node,
+        &io::iges::IgesConfig::default(),
+        &caller_id(),
+    )
+    .unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(
+        lines.iter().all(|l| l.len() == 80),
+        "every IGES line is 80 columns"
+    );
+    let starts = lines.iter().filter(|l| &l[72..73] == "S").count();
+    assert_eq!(starts, 3, "the banner and the two identifier lines");
+    let term = lines.last().unwrap();
+    assert!(
+        term.starts_with(&format!("S{starts:>7}")),
+        "Terminate counts the Start lines: {term}"
+    );
+    std::fs::remove_file(&path).ok();
 }
 
 /// An independent FBX parser (`fbxcel`) reads the whole binary file (nodes and footer), and its
