@@ -18,6 +18,7 @@
 //! | USD (`.usda`) | the layer's `customLayerData`: `string "alice:semantics_id" = "<64 hex>"` |
 //! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
+//! | ASDF (`.asdf`, version 2) | the 32 bytes after the 16-byte header; this crate's loaders refuse another identifier and, by default, a version 1 file without one |
 //! | DDS 3D texture | the header's reserved dwords: tag `ALSD`, version `1`, the 32 identifier bytes |
 //! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
 //!
@@ -180,6 +181,22 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
     if bytes.starts_with(b"; FBX") {
         return tagged_in(bytes, "FBX");
     }
+    if bytes.starts_with(b"ASDF") {
+        // ASDF: version 2 and later carry the identifier after the 16-byte header
+        let version = bytes
+            .get(4..6)
+            .map(|v| u16::from_le_bytes([v[0], v[1]]))
+            .ok_or_else(|| ProvenanceError::Unreadable("ASDF: truncated header".into()))?;
+        if version < 2 {
+            return Err(ProvenanceError::Missing { format: "ASDF" });
+        }
+        let id: [u8; 32] = bytes
+            .get(16..48)
+            .ok_or_else(|| ProvenanceError::Unreadable("ASDF: truncated header".into()))?
+            .try_into()
+            .unwrap();
+        return Ok(Provenance::new(id));
+    }
     if bytes.starts_with(b"DDS ") {
         // DDS: the identifier block sits in the header's reserved dwords (bytes 32..76)
         let r = bytes
@@ -293,14 +310,79 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
     Err(ProvenanceError::Unreadable("unrecognised format".into()))
 }
 
-/// Which accepted identifier a stored one matched
+/// What a read knows about the arithmetic stored data was written under
+///
+/// The same three cases as the stores of the other ALICE crates (`Current` / `VerifiedPrevious` /
+/// `Unpinned`): [`check`] returns the first two, and this crate's own loaders return
+/// `Unpinned` only through their explicit `*_unverified` variant, wrapped in [`Checked`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Accepted {
+pub enum StoredSemantics {
     /// The current identifier
     Current,
-    /// An earlier identifier the caller lists as verified (its outputs are reproduced bit for bit)
+    /// An earlier identifier that is verified to give the same bits
     VerifiedPrevious(Provenance),
+    /// No identifier: the data was written before identifiers were stored, so nothing says which
+    /// arithmetic it was written under
+    Unpinned,
+}
+
+/// A value read from a file, with what is known about the arithmetic it was written under
+///
+/// Returned by the explicit `*_unverified` loaders, which also read files that carry no
+/// identifier; the value is only reachable through [`Checked::into_parts`], next to its
+/// [`StoredSemantics`].
+#[must_use = "a loaded value carries its semantics status; take both with into_parts"]
+#[derive(Debug)]
+pub struct Checked<T> {
+    value: T,
+    semantics: StoredSemantics,
+}
+
+impl<T> Checked<T> {
+    pub(crate) const fn new(value: T, semantics: StoredSemantics) -> Self {
+        Self { value, semantics }
+    }
+
+    /// What is known about the arithmetic the value was written under
+    pub const fn semantics(&self) -> StoredSemantics {
+        self.semantics
+    }
+
+    /// The value and its semantics status
+    pub fn into_parts(self) -> (T, StoredSemantics) {
+        (self.value, self.semantics)
+    }
+}
+
+/// The verdict of this crate's own loaders on a stored identifier (`None`: the format version
+/// predates identifiers)
+///
+/// # Errors
+///
+/// [`crate::io::IoError::SemanticsMismatch`] for an identifier that is neither this crate's nor
+/// one it still reproduces; with `allow_unpinned == false`, [`crate::io::IoError::Unpinned`] for
+/// data without an identifier.
+pub(crate) fn sdf_load_verdict(
+    stored: Option<[u8; 32]>,
+    format: &'static str,
+    allow_unpinned: bool,
+) -> Result<StoredSemantics, crate::io::IoError> {
+    match stored {
+        None if allow_unpinned => Ok(StoredSemantics::Unpinned),
+        None => Err(crate::io::IoError::Unpinned { format }),
+        Some(id) => match crate::check_sdf_semantics(&id) {
+            alice_det_math::SemanticsCheck::Verified => Ok(StoredSemantics::Current),
+            alice_det_math::SemanticsCheck::VerifiedPrevious(p) => {
+                Ok(StoredSemantics::VerifiedPrevious(Provenance::new(p)))
+            }
+            _ => Err(crate::io::IoError::SemanticsMismatch {
+                format,
+                stored: Provenance::new(id),
+                expected: Provenance::sdf(),
+            }),
+        },
+    }
 }
 
 /// `asset.extras["alice:semantics_id"]` of a glTF JSON document
@@ -372,12 +454,12 @@ pub fn check(
     path: impl AsRef<Path>,
     expected: &Provenance,
     previous: &[[u8; 32]],
-) -> Result<Accepted, ProvenanceError> {
+) -> Result<StoredSemantics, ProvenanceError> {
     let stored = read(path)?;
     if stored == *expected {
-        Ok(Accepted::Current)
+        Ok(StoredSemantics::Current)
     } else if previous.contains(&stored.semantics_id) {
-        Ok(Accepted::VerifiedPrevious(stored))
+        Ok(StoredSemantics::VerifiedPrevious(stored))
     } else {
         Err(ProvenanceError::Mismatch {
             stored,
@@ -392,7 +474,7 @@ pub fn check(
 /// # Errors
 ///
 /// As [`check`].
-pub fn check_sdf(path: impl AsRef<Path>) -> Result<Accepted, ProvenanceError> {
+pub fn check_sdf(path: impl AsRef<Path>) -> Result<StoredSemantics, ProvenanceError> {
     check(path, &Provenance::sdf(), crate::PREVIOUS_SDF_SEMANTICS_IDS)
 }
 

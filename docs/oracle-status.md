@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 845 |
+| 🟢 Not ignored | 847 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **845** |
+| **Total** | **847** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (845)
+## 🟢 Not ignored (847)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -35,13 +35,13 @@ Per-file counts (the test names are in `tests/`):
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_gpu_law_parity.rs` | 13 |
 | `test_io_format_oracle.rs` | 13 |
+| `test_provenance.rs` | 13 |
 | `test_validity_oracle.rs` | 12 |
 | `test_cache_correctness.rs` | 11 |
 | `test_hlsl_blinkscript_parity.rs` | 11 |
 | `test_live_sdf_oracle.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
-| `test_provenance.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_texture_fit_oracle.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
