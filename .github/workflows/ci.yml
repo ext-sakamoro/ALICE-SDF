@@ -488,6 +488,14 @@ jobs:
         run: python scripts/test_version_sync.py
       - name: Version sync (metadata and install lines follow Cargo.toml)
         run: python scripts/version_sync.py --check
+      # ALICE-Law G11 (c): the files shared with the other crates are the bytes ALICE-Law's
+      # table records (table and checker fetched at .github/shared-files-pin, both SHA-256
+      # pinned); a difference, an unlisted shared path or nothing compared fails
+      - name: Shared files equal ALICE-Law's table
+        shell: bash
+        run: |
+          python3 scripts/test_shared_files.py
+          scripts/shared_files.sh
       # cargo / libtest / cargo-semver-checks の出力を読む parser は、CARGO_TERM_COLOR=always
       # (この workflow の env) の色付き出力で試験する。検査器は parser の test に色付き
       # sample が無いと fail し、parser を 1 件も見つけられなくても fail する
