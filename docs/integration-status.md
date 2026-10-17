@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1199 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 947 |
-| | **total** | **2155** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1217 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 948 |
+| | **total** | **2174** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1199)
+## L1 — example-only (1217)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -111,6 +111,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `tree_diff`, `tree_hash`
 - `src/eval/mod.rs`: `gradient`
 - `src/eval/parallel.rs`: `eval_batch`, `eval_grid`, `eval_grid_with_normals`, `grid_coords`, `grid_index`
+- `src/eval_cache.rs`: `ExactEvalCache`, `ExactEvalCache::clear`, `ExactEvalCache::entries`, `ExactEvalCache::get`, `ExactEvalCache::get_or_eval`, `ExactEvalCache::hits_and_misses`, `ExactEvalCache::is_empty`, `ExactEvalCache::len`, `ExactEvalCache::new`, `ExactEvalCache::put`
 - `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
 - `src/gi/cone_trace.rs`: `trace_hemisphere`
 - `src/gi/irradiance.rs`: `IrradianceGrid::get_probe`, `IrradianceGrid::get_probe_mut`, `IrradianceGrid::memory_bytes`, `IrradianceGrid::probe_count`, `IrradianceGrid::sample`, `IrradianceProbe::evaluate`, `SH1::evaluate`
@@ -200,6 +201,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
+- `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `PREVIOUS_SDF_SEMANTICS_IDS`, `SDF_SEMANTICS_BY_DET_MATH`, `SDF_SEMANTICS_ID`, `SDF_SEMANTICS_PINS`, `check_sdf_semantics`, `sdf_semantics_id_for`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
 - `src/sim_bridge.rs`: `GpuPhysicsBundle`, `SimulatedSdf`, `SimulatedSdf::add_erosion`, `SimulatedSdf::add_fracture`, `SimulatedSdf::add_modifier`, `SimulatedSdf::add_phase_change`, `SimulatedSdf::add_pressure`, `SimulatedSdf::add_thermal`, `SimulatedSdf::bounds`, `SimulatedSdf::clear_modifiers`, `SimulatedSdf::compiled`, `SimulatedSdf::distance`, `SimulatedSdf::from_arc`, `SimulatedSdf::modifier_count`, `SimulatedSdf::modifier_mut`, `SimulatedSdf::new`, `SimulatedSdf::normal`, `SimulatedSdf::update`, `SimulatedSdf::with_bounds`, `attach_physics`, `gpu_mesh_with_physics`, `simulate_sdf`
 - `src/soa.rs`: `AlignedVec::as_mut_ptr`, `AlignedVec::as_ptr`, `AlignedVec::clear`, `AlignedVec::is_empty`, `SIMD_ALIGNMENT`, `SoADistances::as_slice`, `SoADistances::is_empty`, `SoADistances::len`, `SoADistances::store_simd_unchecked`, `SoAPoints::as_ptrs`, `SoAPoints::clear`, `SoAPoints::get`, `SoAPoints::iter`, `SoAPoints::load_simd_unchecked`
