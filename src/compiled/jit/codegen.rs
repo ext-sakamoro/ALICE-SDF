@@ -7,6 +7,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use super::law_ops::{law_fmax, law_fmin};
 use crate::compiled::real::LawMinMax;
 use cranelift_codegen::ir::condcodes::FloatCC;
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, UserFuncName, Value};
@@ -215,15 +216,15 @@ fn compile_node(
             let qz = builder.ins().fsub(az, hz);
 
             let zero = builder.ins().f32const(0.0);
-            let mx = builder.ins().fmax(qx, zero);
-            let my = builder.ins().fmax(qy, zero);
-            let mz = builder.ins().fmax(qz, zero);
+            let mx = law_fmax(builder, qx, zero);
+            let my = law_fmax(builder, qy, zero);
+            let mz = law_fmax(builder, qz, zero);
 
             let outside = emit_length3(builder, mx, my, mz);
 
-            let inner_max = builder.ins().fmax(qy, qz);
-            let outer_max = builder.ins().fmax(qx, inner_max);
-            let inside = builder.ins().fmin(outer_max, zero);
+            let inner_max = law_fmax(builder, qy, qz);
+            let outer_max = law_fmax(builder, qx, inner_max);
+            let inside = law_fmin(builder, outer_max, zero);
 
             Ok(builder.ins().fadd(outside, inside))
         }
@@ -242,11 +243,11 @@ fn compile_node(
             let ay = builder.ins().fabs(y);
             let dy = builder.ins().fsub(ay, h);
 
-            let inner = builder.ins().fmax(dx, dy);
-            let inside = builder.ins().fmin(inner, zero);
+            let inner = law_fmax(builder, dx, dy);
+            let inside = law_fmin(builder, inner, zero);
 
-            let mx = builder.ins().fmax(dx, zero);
-            let my = builder.ins().fmax(dy, zero);
+            let mx = law_fmax(builder, dx, zero);
+            let my = law_fmax(builder, dy, zero);
             let outside = emit_length2(builder, mx, my);
 
             Ok(builder.ins().fadd(inside, outside))
@@ -315,8 +316,8 @@ fn compile_node(
             let h_raw = builder.ins().fmul(dot_pa_ba, inv_dbb_v); // Division Exorcism!
             let zero = builder.ins().f32const(0.0);
             let one = builder.ins().f32const(1.0);
-            let h_clamped = builder.ins().fmin(h_raw, one);
-            let h = builder.ins().fmax(zero, h_clamped);
+            let h_clamped = law_fmin(builder, h_raw, one);
+            let h = law_fmax(builder, zero, h_clamped);
 
             // pa - ba * h
             let bhx = builder.ins().fmul(bax, h);
@@ -363,7 +364,7 @@ fn compile_node(
             let cmp_neg = builder.ins().fcmp(FloatCC::LessThan, q_y, zero);
             let ca_r = builder.ins().select(cmp_neg, r, zero);
 
-            let min_q_ca = builder.ins().fmin(q_x, ca_r);
+            let min_q_ca = law_fmin(builder, q_x, ca_r);
             let ca_x = builder.ins().fsub(q_x, min_q_ca);
             let abs_qy = builder.ins().fabs(q_y);
             let ca_y = builder.ins().fsub(abs_qy, h);
@@ -374,8 +375,8 @@ fn compile_node(
             let dy_k2y = builder.ins().fmul(diff_y, k2y);
             let dot_val = mul_add_2r(builder, neg_qx, k2x, dy_k2y);
             let t_raw = builder.ins().fmul(dot_val, inv_k2_dot);
-            let t_min = builder.ins().fmin(t_raw, one);
-            let t = builder.ins().fmax(zero, t_min);
+            let t_min = law_fmin(builder, t_raw, one);
+            let t = law_fmax(builder, zero, t_min);
 
             // cb = (q_x + k2x*t, q_y - h + k2y*t)
             let cb_x = mul_add_2r(builder, k2x, t, q_x);
@@ -393,7 +394,7 @@ fn compile_node(
             let ca_sq = mul_add_2r(builder, ca_x, ca_x, ca_yy);
             let cb_yy = builder.ins().fmul(cb_y, cb_y);
             let cb_sq = mul_add_2r(builder, cb_x, cb_x, cb_yy);
-            let d2 = builder.ins().fmin(ca_sq, cb_sq);
+            let d2 = law_fmin(builder, ca_sq, cb_sq);
 
             let d = builder.ins().sqrt(d2);
             Ok(builder.ins().fmul(s, d))
@@ -483,8 +484,8 @@ fn compile_node(
             // Branchless swap: px = max(|p.x|, |p.z|), pz = min(|p.x|, |p.z|)
             let abs_px = builder.ins().fabs(x);
             let abs_pz = builder.ins().fabs(z);
-            let px_s = builder.ins().fmax(abs_px, abs_pz);
-            let pz_s = builder.ins().fmin(abs_px, abs_pz);
+            let px_s = law_fmax(builder, abs_px, abs_pz);
+            let pz_s = law_fmin(builder, abs_px, abs_pz);
 
             // px -= 0.5, pz -= 0.5
             let px_adj = builder.ins().fsub(px_s, half);
@@ -500,14 +501,14 @@ fn compile_node(
 
             // s = max(-qx, 0)
             let neg_qx = builder.ins().fneg(qx);
-            let s = builder.ins().fmax(neg_qx, zero);
+            let s = law_fmax(builder, neg_qx, zero);
 
             // t = clamp((qy - 0.5*pz_adj) * inv_m2_025, 0, 1)  — Division Exorcism
             let half_pz = builder.ins().fmul(half, pz_adj);
             let qy_sub = builder.ins().fsub(qy, half_pz);
             let t_raw = builder.ins().fmul(qy_sub, inv_m2_025);
-            let t_min = builder.ins().fmin(t_raw, one);
-            let t = builder.ins().fmax(zero, t_min);
+            let t_min = law_fmin(builder, t_raw, one);
+            let t = law_fmax(builder, zero, t_min);
 
             // a = m2 * (qx + s)² + qy²
             let qx_s = builder.ins().fadd(qx, s);
@@ -528,9 +529,9 @@ fn compile_node(
             let neg_qx_m2 = builder.ins().fmul(neg_qx, m2);
             let half_qy = builder.ins().fmul(half, qy);
             let cond_val = builder.ins().fsub(neg_qx_m2, half_qy);
-            let min_cond = builder.ins().fmin(qy, cond_val);
+            let min_cond = law_fmin(builder, qy, cond_val);
             let cmp_pos = builder.ins().fcmp(FloatCC::GreaterThan, min_cond, zero);
-            let ab_min = builder.ins().fmin(a_val, b_val);
+            let ab_min = law_fmin(builder, a_val, b_val);
             let d2 = builder.ins().select(cmp_pos, zero, ab_min);
 
             // result = sqrt((d2 + qz²) * inv_m2) * sign(max(qz, -py))  — Division Exorcism
@@ -540,7 +541,7 @@ fn compile_node(
             let dist = builder.ins().sqrt(d2_scaled);
 
             let neg_py = builder.ins().fneg(py);
-            let sign_arg = builder.ins().fmax(qz, neg_py);
+            let sign_arg = law_fmax(builder, qz, neg_py);
             let cmp_sign = builder.ins().fcmp(FloatCC::LessThan, sign_arg, zero);
             let sign = builder.ins().select(cmp_sign, neg_one, one);
 
@@ -584,8 +585,8 @@ fn compile_node(
             let qz_qy = builder.ins().fsub(qz, qy);
             let qz_qy_s = builder.ins().fadd(qz_qy, s);
             let half_v = builder.ins().fmul(half, qz_qy_s);
-            let k_min = builder.ins().fmin(half_v, s);
-            let k = builder.ins().fmax(zero, k_min);
+            let k_min = law_fmin(builder, half_v, s);
+            let k = law_fmax(builder, zero, k_min);
 
             // detail = length(qx, qy - s + k, qz - k)
             let qy_s = builder.ins().fsub(qy, s);
@@ -625,7 +626,7 @@ fn compile_node(
             // Hex symmetry reflection
             let ky_py = builder.ins().fmul(ky, abs_py);
             let dot_kxy = mul_add_2r(builder, kx, abs_px, ky_py);
-            let dot_min = builder.ins().fmin(dot_kxy, zero);
+            let dot_min = law_fmin(builder, dot_kxy, zero);
             let reflect = builder.ins().fmul(two, dot_min);
 
             let reflect_kx = builder.ins().fmul(reflect, kx);
@@ -636,8 +637,8 @@ fn compile_node(
             // clamped_x = clamp(px_r, -kz*hr, kz*hr)
             let kz_hr = builder.ins().fmul(kz, hr);
             let neg_kz_hr = builder.ins().fneg(kz_hr);
-            let px_min = builder.ins().fmin(px_r, kz_hr);
-            let clamped_x = builder.ins().fmax(neg_kz_hr, px_min);
+            let px_min = law_fmin(builder, px_r, kz_hr);
+            let clamped_x = law_fmax(builder, neg_kz_hr, px_min);
 
             // d_xy = length(px_r - clamped_x, py_r - hr) * sign(py_r - hr)
             let dx = builder.ins().fsub(px_r, clamped_x);
@@ -651,10 +652,10 @@ fn compile_node(
             let d_z = builder.ins().fsub(abs_pz, hh);
 
             // result = max(d_xy, d_z).min(0) + length(max(d_xy, 0), max(d_z, 0))
-            let max_dxy_dz = builder.ins().fmax(d_xy, d_z);
-            let interior = builder.ins().fmin(max_dxy_dz, zero);
-            let d_xy_pos = builder.ins().fmax(d_xy, zero);
-            let d_z_pos = builder.ins().fmax(d_z, zero);
+            let max_dxy_dz = law_fmax(builder, d_xy, d_z);
+            let interior = law_fmin(builder, max_dxy_dz, zero);
+            let d_xy_pos = law_fmax(builder, d_xy, zero);
+            let d_z_pos = law_fmax(builder, d_z, zero);
             let exterior = emit_length2(builder, d_xy_pos, d_z_pos);
 
             Ok(builder.ins().fadd(interior, exterior))
@@ -672,7 +673,7 @@ fn compile_node(
 
             let abs_y = builder.ins().fabs(y);
             let y_sub = builder.ins().fsub(abs_y, hl);
-            let qy = builder.ins().fmax(y_sub, zero);
+            let qy = law_fmax(builder, y_sub, zero);
 
             let xy_len = emit_length2(builder, x, qy);
             let xy_sub = builder.ins().fsub(xy_len, r1_val);
@@ -685,20 +686,20 @@ fn compile_node(
         SdfNode::Union { a, b } => {
             let d_a = compile_node(builder, a, x, y, z, emitter)?;
             let d_b = compile_node(builder, b, x, y, z, emitter)?;
-            Ok(builder.ins().fmin(d_a, d_b))
+            Ok(law_fmin(builder, d_a, d_b))
         }
 
         SdfNode::Intersection { a, b } => {
             let d_a = compile_node(builder, a, x, y, z, emitter)?;
             let d_b = compile_node(builder, b, x, y, z, emitter)?;
-            Ok(builder.ins().fmax(d_a, d_b))
+            Ok(law_fmax(builder, d_a, d_b))
         }
 
         SdfNode::Subtraction { a, b } => {
             let d_a = compile_node(builder, a, x, y, z, emitter)?;
             let d_b = compile_node(builder, b, x, y, z, emitter)?;
             let neg_b = builder.ins().fneg(d_b);
-            Ok(builder.ins().fmax(d_a, neg_b))
+            Ok(law_fmax(builder, d_a, neg_b))
         }
 
         SdfNode::SmoothUnion { a, b, k } => {
@@ -896,12 +897,12 @@ fn compile_node(
             let nsy = builder.ins().fneg(sy);
             let nsz = builder.ins().fneg(sz);
 
-            let cx1 = builder.ins().fmin(x, sx);
-            let cx = builder.ins().fmax(nsx, cx1);
-            let cy1 = builder.ins().fmin(y, sy);
-            let cy = builder.ins().fmax(nsy, cy1);
-            let cz1 = builder.ins().fmin(z, sz);
-            let cz = builder.ins().fmax(nsz, cz1);
+            let cx1 = law_fmin(builder, x, sx);
+            let cx = law_fmax(builder, nsx, cx1);
+            let cy1 = law_fmin(builder, y, sy);
+            let cy = law_fmax(builder, nsy, cy1);
+            let cz1 = law_fmin(builder, z, sz);
+            let cz = law_fmax(builder, nsz, cz1);
 
             let qx = builder.ins().fsub(x, cx);
             let qy = builder.ins().fsub(y, cy);
@@ -966,12 +967,12 @@ fn compile_node(
             let rz = round_half_up(builder, rz);
 
             // clamp to count
-            let rx1 = builder.ins().fmin(rx, cx);
-            let rx = builder.ins().fmax(ncx, rx1);
-            let ry1 = builder.ins().fmin(ry, cy);
-            let ry = builder.ins().fmax(ncy, ry1);
-            let rz1 = builder.ins().fmin(rz, cz);
-            let rz = builder.ins().fmax(ncz, rz1);
+            let rx1 = law_fmin(builder, rx, cx);
+            let rx = law_fmax(builder, ncx, rx1);
+            let ry1 = law_fmin(builder, ry, cy);
+            let ry = law_fmax(builder, ncy, ry1);
+            let rz1 = law_fmin(builder, rz, cz);
+            let rz = law_fmax(builder, ncz, rz1);
 
             // q = p - spacing * clamped
             let sx = builder.ins().fmul(px, rx);
@@ -1020,11 +1021,11 @@ fn compile_node(
             let abs_z = builder.ins().fabs(z);
             let w_y = builder.ins().fsub(abs_z, h);
 
-            let inner = builder.ins().fmax(child_d, w_y);
-            let inside = builder.ins().fmin(inner, zero);
+            let inner = law_fmax(builder, child_d, w_y);
+            let inside = law_fmin(builder, inner, zero);
 
-            let mx = builder.ins().fmax(child_d, zero);
-            let my = builder.ins().fmax(w_y, zero);
+            let mx = law_fmax(builder, child_d, zero);
+            let my = law_fmax(builder, w_y, zero);
             let outside = emit_length2(builder, mx, my);
 
             Ok(builder.ins().fadd(inside, outside))
@@ -1040,10 +1041,10 @@ fn compile_node(
         SdfNode::XOR { a, b } => {
             let da = compile_node(builder, a, x, y, z, emitter)?;
             let db = compile_node(builder, b, x, y, z, emitter)?;
-            let min_ab = builder.ins().fmin(da, db);
-            let max_ab = builder.ins().fmax(da, db);
+            let min_ab = law_fmin(builder, da, db);
+            let max_ab = law_fmax(builder, da, db);
             let neg_max = builder.ins().fneg(max_ab);
-            Ok(builder.ins().fmax(min_ab, neg_max))
+            Ok(law_fmax(builder, min_ab, neg_max))
         }
 
         SdfNode::Morph { a, b, t } => {
@@ -1073,7 +1074,7 @@ fn compile_node(
             // sdf_engrave law: max(a, (a + r - |b|) / sqrt(2))
             let s = builder.ins().f32const(std::f32::consts::FRAC_1_SQRT_2);
             let scaled = builder.ins().fmul(diff, s);
-            Ok(builder.ins().fmax(da, scaled))
+            Ok(law_fmax(builder, da, scaled))
         }
 
         SdfNode::Groove { a, b, ra, rb } => {
@@ -1084,8 +1085,8 @@ fn compile_node(
             let abs_db = builder.ins().fabs(db);
             let sum = builder.ins().fadd(da, ra_val);
             let diff = builder.ins().fsub(rb_val, abs_db);
-            let inner = builder.ins().fmin(sum, diff);
-            Ok(builder.ins().fmax(da, inner))
+            let inner = law_fmin(builder, sum, diff);
+            Ok(law_fmax(builder, da, inner))
         }
 
         SdfNode::Tongue { a, b, ra, rb } => {
@@ -1096,8 +1097,8 @@ fn compile_node(
             let abs_db = builder.ins().fabs(db);
             let sub_ra = builder.ins().fsub(da, ra_val);
             let sub_rb = builder.ins().fsub(abs_db, rb_val);
-            let inner = builder.ins().fmax(sub_ra, sub_rb);
-            Ok(builder.ins().fmin(da, inner))
+            let inner = law_fmax(builder, sub_ra, sub_rb);
+            Ok(law_fmin(builder, da, inner))
         }
 
         // ============ Implementable Modifier ============
@@ -1106,12 +1107,12 @@ fn compile_node(
             let ay = builder.ins().fabs(y);
             let az = builder.ins().fabs(z);
             // Sort: x >= y >= z
-            let max_xy = builder.ins().fmax(ax, ay);
-            let min_xy = builder.ins().fmin(ax, ay);
-            let sx = builder.ins().fmax(max_xy, az);
-            let mid_cand = builder.ins().fmin(max_xy, az);
-            let sy = builder.ins().fmax(min_xy, mid_cand);
-            let sz = builder.ins().fmin(min_xy, mid_cand);
+            let max_xy = law_fmax(builder, ax, ay);
+            let min_xy = law_fmin(builder, ax, ay);
+            let sx = law_fmax(builder, max_xy, az);
+            let mid_cand = law_fmin(builder, max_xy, az);
+            let sy = law_fmax(builder, min_xy, mid_cand);
+            let sz = law_fmin(builder, min_xy, mid_cand);
             compile_node(builder, child, sx, sy, sz, emitter)
         }
 
@@ -1237,9 +1238,9 @@ fn emit_smooth_min(
     let abs_diff = builder.ins().fabs(diff);
     let scaled = builder.ins().fmul(abs_diff, inv_k);
     let h_num = builder.ins().fsub(one, scaled);
-    let h = builder.ins().fmax(h_num, zero);
+    let h = law_fmax(builder, h_num, zero);
 
-    let min_ab = builder.ins().fmin(a, b);
+    let min_ab = law_fmin(builder, a, b);
     let h2 = builder.ins().fmul(h, h);
     let k_quarter = builder.ins().fmul(k, quarter);
     let correction = builder.ins().fmul(h2, k_quarter);
@@ -1269,11 +1270,11 @@ fn emit_chamfer_min(
     r: Value,
     s: Value,
 ) -> Value {
-    let min_ab = builder.ins().fmin(a, b);
+    let min_ab = law_fmin(builder, a, b);
     let sum = builder.ins().fadd(a, b);
     let scaled = builder.ins().fmul(sum, s);
     let chamfer = builder.ins().fsub(scaled, r);
-    builder.ins().fmin(min_ab, chamfer)
+    law_fmin(builder, min_ab, chamfer)
 }
 
 /// Emit stairs minimum (Mercury hg_sdf fOpUnionStairs)
@@ -1320,8 +1321,8 @@ fn emit_stairs_min(builder: &mut FunctionBuilder, a: Value, b: Value, r: Value, 
     let px3 = builder.ins().fsub(t_sub, step_half);
 
     // d2 = min(min(a, b), py)
-    let min_ab = builder.ins().fmin(a, b);
-    let d2 = builder.ins().fmin(min_ab, py);
+    let min_ab = law_fmin(builder, a, b);
+    let d2 = law_fmin(builder, min_ab, py);
 
     // Rotate back: npx = (px3 + py) * s, npy = (py - px3) * s
     let px3_plus_py = builder.ins().fadd(px3, py);
@@ -1335,8 +1336,8 @@ fn emit_stairs_min(builder: &mut FunctionBuilder, a: Value, b: Value, r: Value, 
     // result = min(d2, max(npx - edge, npy - edge))
     let npx_e = builder.ins().fsub(npx, edge);
     let npy_e = builder.ins().fsub(npy, edge);
-    let vmax = builder.ins().fmax(npx_e, npy_e);
-    builder.ins().fmin(d2, vmax)
+    let vmax = law_fmax(builder, npx_e, npy_e);
+    law_fmin(builder, d2, vmax)
 }
 
 /// Emit quaternion rotation from pre-loaded Values

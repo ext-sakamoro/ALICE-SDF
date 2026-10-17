@@ -242,6 +242,7 @@ hits=$(grep -rn 'dbg!(' src/ --include="*.rs" || true)
 if [ -n "$hits" ]; then echo "$hits"; echo "dbg!() in src/" >&2; exit 1; fi
 
 step "stub-guard: platform libm / mul_add in the evaluator and law directories (security-audit.yml, 3.1.0)"
+python3 scripts/test_det_math_guard.py
 python3 scripts/det_math_guard.py
 
 step "stub-guard: raw Interval { lo, hi } bypassing the outward rounding (security-audit.yml, 4.0.1)"
@@ -309,7 +310,8 @@ cargo test --features jit \
   --test test_relaxed_tracing \
   --test test_raycast_oracle \
   --test test_round_tie_parity \
-  --test test_jit_dynamic_oracle
+  --test test_jit_dynamic_oracle \
+  --test test_law_nan_operands
 
 # file 先頭が `#![cfg(feature = …)]` の oracle (default の --tests では 0 本、ci.yml と対)
 step "test: physics bridge determinism oracle"

@@ -15,7 +15,7 @@
 //! # Hex form (with `alice-det-math` 0.5.1; other generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! c87c2528ef88939be847830b20c66dc9cc0f2609dce2327dd5fdfd6aa7bee96f
+//! 151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69
 //! ```
 //!
 //! # Fold
@@ -53,7 +53,7 @@ const fn hex32(s: &str) -> [u8; 32] {
 }
 
 /// The text the max / min rule entry hashes
-pub const MAX_MIN_RULE: &str = "alice-sdf: max / min are IEEE 754 maximumNumber / minimumNumber with -0 < +0, NaN gives the other operand";
+pub const MAX_MIN_RULE: &str = "alice-sdf: max / min are IEEE 754 maximumNumber / minimumNumber with -0 < +0, NaN gives the other operand and two NaNs the canonical quiet NaN 0x7fc00000, in every evaluator and the JIT";
 
 /// The text the `mul_add` rule entry hashes
 pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two roundings, the same as the JIT and the emitted shaders";
@@ -64,11 +64,11 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("50b6fb881c45e2f8a6498242f25e47fa50cc150220fcaa04933f32dc345d00d4"),
+        hex32("f13e0794beaee9943112db526bfe522eca30e77272647ebe20bea589d2484cf3"),
     ),
     (
         "tag max / min rule",
-        hex32("86d56f9392ae5118a6ad503084251c57c00e41bc4936b3b081833f4e264480eb"),
+        hex32("f1afc99dfe0c89acaeb21672974f99532b90735aae6ade6c6f5e70cbf032a329"),
     ),
     (
         "tag Real::mul_add rounds twice",
@@ -88,12 +88,12 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
     // alice-det-math 0.5.0
     (
         hex32("135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000"),
-        hex32("b82287d0d9ef94c0c5ea40ca5317b9643ff6f391d968ef973bec7101f1e3bcda"),
+        hex32("d44898f9c186c9811b8ca760d0f53da66a25580012218047dd897c8e013cc3a2"),
     ),
     // alice-det-math 0.5.1
     (
         hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
-        hex32("c87c2528ef88939be847830b20c66dc9cc0f2609dce2327dd5fdfd6aa7bee96f"),
+        hex32("151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69"),
     ),
 ];
 

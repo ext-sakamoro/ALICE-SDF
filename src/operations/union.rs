@@ -12,7 +12,7 @@ use crate::compiled::real::Real;
 /// # Returns
 /// Minimum of the two distances
 #[inline(always)]
-pub const fn sdf_union(d1: f32, d2: f32) -> f32 {
+pub fn sdf_union(d1: f32, d2: f32) -> f32 {
     crate::compiled::real::law_min_f32(d1, d2)
 }
 

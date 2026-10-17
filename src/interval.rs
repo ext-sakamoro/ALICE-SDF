@@ -173,7 +173,7 @@ impl Interval {
 
     /// Intersection of two intervals (narrowest overlap)
     #[inline(always)]
-    pub const fn intersect(self, other: Self) -> Self {
+    pub fn intersect(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: law_max_f32(self.lo, other.lo),
@@ -183,7 +183,7 @@ impl Interval {
 
     /// Hull (union) of two intervals (widest encompassing)
     #[inline(always)]
-    pub const fn hull(self, other: Self) -> Self {
+    pub fn hull(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: law_min_f32(self.lo, other.lo),
@@ -237,7 +237,7 @@ impl Interval {
 
     /// Minimum of two intervals
     #[inline(always)]
-    pub const fn min(self, other: Self) -> Self {
+    pub fn min(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: law_min_f32(self.lo, other.lo),
@@ -247,7 +247,7 @@ impl Interval {
 
     /// Maximum of two intervals
     #[inline(always)]
-    pub const fn max(self, other: Self) -> Self {
+    pub fn max(self, other: Self) -> Self {
         // ALLOW-RAW-INTERVAL: selection only — both bounds are existing endpoints
         Self {
             lo: law_max_f32(self.lo, other.lo),
@@ -404,7 +404,7 @@ impl Vec3Interval {
     }
 
     /// Smallest box containing both.
-    pub const fn hull(&self, other: &Self) -> Self {
+    pub fn hull(&self, other: &Self) -> Self {
         Self {
             x: self.x.hull(other.x),
             y: self.y.hull(other.y),

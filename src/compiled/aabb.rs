@@ -161,7 +161,7 @@ impl AabbPacked {
 
     /// Union of two AABBs (smallest AABB containing both)
     #[inline]
-    pub const fn union(&self, other: &Self) -> Self {
+    pub fn union(&self, other: &Self) -> Self {
         Self {
             min_x: law_min_f32(self.min_x, other.min_x),
             min_y: law_min_f32(self.min_y, other.min_y),
@@ -176,7 +176,7 @@ impl AabbPacked {
 
     /// Intersection of two AABBs
     #[inline]
-    pub const fn intersection(&self, other: &Self) -> Self {
+    pub fn intersection(&self, other: &Self) -> Self {
         Self {
             min_x: law_max_f32(self.min_x, other.min_x),
             min_y: law_max_f32(self.min_y, other.min_y),

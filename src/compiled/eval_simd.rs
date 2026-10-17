@@ -178,9 +178,11 @@ pub fn eval_gradient_simd(sdf: &CompiledSdf, p: Vec3x8, epsilon: f32) -> (f32x8,
         },
     ); // (+,+,+)
 
-    let gx = v0 - v1 - v2 + v3;
-    let gy = -v0 - v1 + v2 + v3;
-    let gz = -v0 + v1 - v2 + v3;
+    // a NaN lane leaves as the canonical quiet NaN (ALICE-Law G4): the sign of a NaN
+    // that came through a negation differs between the scalar and the f32x8 path
+    let gx = canonical_nan(v0 - v1 - v2 + v3);
+    let gy = canonical_nan(-v0 - v1 + v2 + v3);
+    let gz = canonical_nan(-v0 + v1 - v2 + v3);
 
     (gx, gy, gz)
 }
@@ -234,12 +236,23 @@ pub fn eval_distance_and_gradient_simd(
         },
     ); // (+,+,+)
 
-    let gx = v0 - v1 - v2 + v3;
-    let gy = -v0 - v1 + v2 + v3;
-    let gz = -v0 + v1 - v2 + v3;
+    // a NaN lane leaves as the canonical quiet NaN (ALICE-Law G4): the sign of a NaN
+    // that came through a negation differs between the scalar and the f32x8 path
+    let gx = canonical_nan(v0 - v1 - v2 + v3);
+    let gy = canonical_nan(-v0 - v1 + v2 + v3);
+    let gz = canonical_nan(-v0 + v1 - v2 + v3);
 
     (d_center, gx, gy, gz)
 }
+
+/// `v` per lane, the canonical quiet NaN (`0x7fc0_0000`) where `v` is NaN (ALICE-Law G4)
+#[inline(always)]
+fn canonical_nan(v: f32x8) -> f32x8 {
+    use wide::CmpNe;
+    v.cmp_ne(v)
+        .blend(f32x8::splat(f32::from_bits(0x7fc0_0000)), v)
+}
+
 #[allow(
     clippy::disallowed_methods,
     reason = "test code: the platform libm and fused mul_add serve as independent references"
@@ -247,6 +260,33 @@ pub fn eval_distance_and_gradient_simd(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A NaN lane of any sign and payload leaves as 0x7fc0_0000; other lanes are kept
+    #[test]
+    fn canonical_nan_replaces_every_nan_lane_only() {
+        let v = f32x8::new([
+            f32::from_bits(0xffc0_0456),
+            f32::from_bits(0x7fc0_0123),
+            -f32::NAN,
+            f32::NAN,
+            1.5,
+            -0.0,
+            f32::INFINITY,
+            -2.0,
+        ]);
+        let got = canonical_nan(v).to_array().map(f32::to_bits);
+        let want = [
+            0x7fc0_0000,
+            0x7fc0_0000,
+            0x7fc0_0000,
+            0x7fc0_0000,
+            1.5f32.to_bits(),
+            (-0.0f32).to_bits(),
+            f32::INFINITY.to_bits(),
+            (-2.0f32).to_bits(),
+        ];
+        assert_eq!(got, want);
+    }
     use crate::compiled::CompiledSdf;
     use crate::eval::eval;
     use crate::types::SdfNode;

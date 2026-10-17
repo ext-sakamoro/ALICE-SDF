@@ -319,7 +319,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G8 persisted-semantics-id | 未達 | no durable format this crate writes carries an identifier of the meaning of the stored bytes: the SVO stream (src/svo/streaming.rs line 68 to_bytes), the … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a … |
 | G10 no-run-varying-artifacts | 適合 | the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feature sdf-cache, not default) stays outside the Law guarantee and says so in its … |
-| G11 gate-self-tests | 未達 | scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are … |
+| G11 gate-self-tests | 適合 | the four helpers are no longer const: 18 public functions that called them in const context lost const (operations::sdf_union / sdf_intersection, Aabb::union / … |
 | G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
 | G13 no-unspecified-order | 適合 | the hash collections stay where they are used only for lookup and membership, each under a reasoned allow and pinned line by line; an iteration whose order … |
 | G14 float-environment-invariants | 適合 | the Cargo.toml comment that suggests target-cpu=native to users is a comment, which the guard blanks; nothing sets it |

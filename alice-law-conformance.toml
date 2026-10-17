@@ -88,7 +88,7 @@ reference_repo = "ALICE-Zip"
 status = "pass"
 evidence = [
     "src/semantics.rs SDF_SEMANTICS_PINS (the digest of the 152-row GOLDEN table of tests/test_det_golden.rs, the SHA-256 of the max / min rule and the two-rounding mul_add rule, and the resolved alice_det_math::SEMANTICS_ID), folded as alice-det-math folds its own (names sorted, u32 length prefix, SHA-256)",
-    "src/semantics.rs SDF_SEMANTICS_BY_DET_MATH (rows for alice-det-math 0.5.0 and 0.5.1) and sdf_semantics_id_for, which stops the compile for a generation with no row; pub const SDF_SEMANTICS_ID (c87c2528... with det-math 0.5.1), re-exported at the crate root",
+    "src/semantics.rs SDF_SEMANTICS_BY_DET_MATH (rows for alice-det-math 0.5.0 and 0.5.1) and sdf_semantics_id_for, which stops the compile for a generation with no row; pub const SDF_SEMANTICS_ID (15107959... with det-math 0.5.1), re-exported at the crate root",
     "src/semantics.rs PREVIOUS_SDF_SEMANTICS_IDS (85e08846... and 135c407d..., the det-math identifiers 6.1 and earlier exposed as alice_sdf::SEMANTICS_ID) and check_sdf_semantics (Verified / VerifiedPrevious / Mismatch)",
     "src/lib.rs: `pub use alice_det_math::SEMANTICS_ID` documented as alice-det-math's identifier, not this crate's",
     "tests/sdf_semantics_id.rs (the golden table read from tests/test_det_golden.rs, each rule entry against its text, the det-math entry against the resolved crate, every row recomputed, the recorded hex, each entry moving the identifier, check_sdf_semantics on this, previous and unknown identifiers)",
@@ -137,16 +137,20 @@ note = "the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feat
 reference_repo = "ALICE-Analytics"
 
 [G11]
-status = "fail-known"
+status = "pass"
 evidence = [
+    "src/compiled/real.rs law_max_f32 / law_min_f32 / law_max_f64 / law_min_f64 delegate to alice_det_math::max / min / max64 / min64 (the owner holds the law, there is no copy); the f32x8 law gives the same lanes (alice-det-math 0.5.1 has no f32x8 max to delegate to) including the canonical NaN for a NaN pair",
+    "src/compiled/jit/law_ops.rs law_fmax / law_fmin: the JIT's 75 scalar and 277 f32x4 max / min call sites emit Cranelift fmax / fmin and then the Law's NaN rule (other operand, canonical NaN for a pair)",
+    "tests/test_law_nan_operands.rs every_evaluator_gives_the_tree_bits_on_nan_operands (tree, bytecode, f32x8, scalar JIT and f32x4 JIT, one NaN operand, a NaN pair, NaN payloads other than the canonical one) and one_nan_operand_gives_the_other_and_two_give_the_canonical_nan; tests/common/corpus.rs nan_union / nan_subtract / nan_pair_intersection, pinned in tests/test_det_golden.rs (155 rows) and compared across evaluators by tests/test_det_parity.rs",
+    "scripts/test_det_math_guard.py (canary for scripts/det_math_guard.py: each planted libm call and mul_add is found, test modules / comments / generic laws / other directories are not, 0 files scanned fails; security-audit.yml and preflight)",
     "scripts/clippy_lib_gate.py with scripts/clippy-lib-canary/ (canary: every forbidden form must be flagged) and scripts/test_clippy_lib_gate.py",
     "scripts/raw_minmax_manifest.py (fails when no file is scanned or no raw helper definition is found) and scripts/test_raw_minmax_manifest.py",
     "scripts/clippy_lib_hidden_check.py and scripts/test_clippy_lib_hidden_check.py",
 ]
+mutant = "measured 2026-10-17, each reverted: before the change tests/test_law_nan_operands.rs found 15 disagreements (the JIT returned NaN for one NaN operand, 0xffc00000 for a subtraction) and then 12 (the tree's NaN pair kept the second payload, 0xffc00456 / 0x7fc00123, the JITs gave 0x7fc00000); in scripts/det_math_guard.py, dropping mul_add from the call list, the empty-scan check or the test-module cut each turns scripts/test_det_math_guard.py red"
 since = ""
-note = "scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are stated to be verbatim copies of alice-physics's helpers, with no cross-repository identity check"
-reference_repo = ""
-
+note = "the four helpers are no longer const: 18 public functions that called them in const context lost const (operations::sdf_union / sdf_intersection, Aabb::union / intersection, nine Instruction constructors, Interval::intersect / hull / min / max and the box hull), breaking, in 7.0.0; a census of every repository's main that depends on alice-sdf (13 local, and a code search of the owner) found no const-context use. They become const again when alice-det-math's max / min are const fn (the det-math 0.6 bundle), and the f32x8 law delegates when det-math publishes its f32x8 max / min."
+reference_repo = "ALICE-DetMath"
 [G12]
 status = "pass"
 evidence = [".github/workflows/public-text.yml", "scripts/public_text.sh", ".github/public-text-pin", "scripts/test_public_text.py", "scripts/preflight.sh"]
