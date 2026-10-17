@@ -22,7 +22,10 @@ mod tests {
     pub fn export_in_tests() {}
 }
 """
-TEST = 'const WRITERS: &[(&str, &str, Write)] = &[\n    ("src/io/a.rs::export_a", "a.x", |m, p, id| {}),\n];\n'
+TEST = (
+    'const WRITERS: &[(&str, &str, Write)] = &[\n    ("src/io/a.rs::export_a", "a.x", |m, p, id| {}),\n];\n'
+    "fn round_trip() { io::export_a_with_provenance(p, id); }\n"
+)
 
 
 def tree(src: str = SRC, test: str = TEST, pending: str = "expected-writers 2\nsrc/io/a.rs::save_b\n") -> str:
@@ -52,6 +55,19 @@ class Writers(unittest.TestCase):
         e = errors(tree(src=SRC.replace("#[cfg(test)]", "pub fn write_c() {}\n\n#[cfg(test)]")))
         self.assertTrue(any("3 writers found" in x for x in e), e)
         self.assertTrue(any("write_c: neither covered" in x for x in e), e)
+
+    def test_a_variant_with_no_base_writer_fails(self):
+        src = SRC.replace("#[cfg(test)]", "pub fn export_orphan_with_stamp(p: &Path) {}\n\n#[cfg(test)]")
+        test = TEST + "fn t() { io::export_orphan_with_stamp(p); }\n"
+        e = errors(tree(src=src, test=test))
+        self.assertTrue(any("export_orphan_with_stamp: extends no writer" in x for x in e), e)
+
+    def test_a_variant_the_test_never_calls_fails(self):
+        src = SRC.replace("#[cfg(test)]", "pub fn export_a_with_stamp(p: &Path) {}\n\n#[cfg(test)]")
+        e = errors(tree(src=src))
+        self.assertTrue(any("export_a_with_stamp: not called" in x for x in e), e)
+        e = errors(tree(src=src, test=TEST + "fn t() { io::export_a_with_stamp(p); }\n"))
+        self.assertEqual(e, [])
 
     def test_a_removed_writer_fails_on_the_count(self):
         e = errors(tree(src=SRC.replace("pub fn save_b() {}\n", ""), pending="expected-writers 2\n"))

@@ -3,8 +3,10 @@
 
 A writer is a `pub fn` named `export*`, `save*`, `write*` or `to_bytes` in the modules that write
 files or byte streams (WRITER_FILES), outside the `#[cfg(test)]` module; the `*_with_provenance`
-and `*_with_stamp` variants are counted with the writer they extend (the stamped variants have
-their own round trips in tests/test_provenance.rs). Each writer must be either
+and `*_with_stamp` variants are counted with the writer they extend. Each variant must extend a
+writer of the same file (the name without the suffix) and must be called in tests/test_provenance.rs;
+a variant with no base writer, or one the test never calls, fails (a suffix alone does not take a
+new writer out of the count). Each writer must be either
 
   - covered: named as `"<file>::<fn>"` in WRITERS of tests/test_provenance.rs, which writes a file,
     reads the identifier back and checks a mismatch, or
@@ -49,6 +51,22 @@ def writer_files(root: str) -> list[str]:
             # keys use "/" on every OS: they are compared with the names in the test and the list
             out += sorted(f"{d}/{f}" for f in os.listdir(full) if f.endswith(".rs"))
     out += [f for f in WRITER_FILES if os.path.isfile(os.path.join(root, f))]
+    return out
+
+
+VARIANT = re.compile(r"_with_(?:provenance|stamp)$")
+
+
+def variants(root: str) -> list[tuple[str, str]]:
+    """(file, name) of every `*_with_provenance` / `*_with_stamp` writer variant"""
+    out = []
+    for rel in writer_files(root):
+        with open(os.path.join(root, rel), encoding="utf-8") as fh:
+            text = fh.read()
+        m = TEST_MODULE.search(text)
+        if m:
+            text = text[: m.start()]
+        out += [(rel, name) for name in WRITER.findall(text) if VARIANT.search(name)]
     return out
 
 
@@ -116,6 +134,17 @@ def check(root: str) -> tuple[list[str], int]:
     for c in sorted(cov):
         if c not in have:
             errors.append(f"{TEST_FILE}: {c} is not a writer")
+    test_path = os.path.join(root, TEST_FILE)
+    test_text = ""
+    if os.path.isfile(test_path):
+        with open(test_path, encoding="utf-8") as fh:
+            test_text = fh.read()
+    for rel, name in variants(root):
+        base = f"{rel}::{VARIANT.sub('', name)}"
+        if base not in have:
+            errors.append(f"{rel}::{name}: extends no writer ({base} is not one)")
+        if not re.search(r"\b" + re.escape(name) + r"\s*\(", test_text):
+            errors.append(f"{rel}::{name}: not called in {TEST_FILE}")
     return errors, len(found)
 
 
