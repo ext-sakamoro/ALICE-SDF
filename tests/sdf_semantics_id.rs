@@ -13,7 +13,7 @@ use alice_sdf::{
 use sha2::{Digest, Sha256};
 
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
-const RECORDED_HEX: &str = "c87c2528ef88939be847830b20c66dc9cc0f2609dce2327dd5fdfd6aa7bee96f";
+const RECORDED_HEX: &str = "151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69";
 
 fn sha(b: &[u8]) -> [u8; 32] {
     Sha256::digest(b).into()

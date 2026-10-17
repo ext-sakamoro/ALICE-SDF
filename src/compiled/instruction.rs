@@ -816,7 +816,7 @@ impl Instruction {
 
     /// Create a chamfer union instruction
     #[inline]
-    pub const fn chamfer_union(r: f32) -> Self {
+    pub fn chamfer_union(r: f32) -> Self {
         let mut inst = Self::new(OpCode::ChamferUnion);
         inst.params[0] = law_max_f32(r, 0.0);
         inst
@@ -824,7 +824,7 @@ impl Instruction {
 
     /// Create a chamfer intersection instruction
     #[inline]
-    pub const fn chamfer_intersection(r: f32) -> Self {
+    pub fn chamfer_intersection(r: f32) -> Self {
         let mut inst = Self::new(OpCode::ChamferIntersection);
         inst.params[0] = law_max_f32(r, 0.0);
         inst
@@ -832,7 +832,7 @@ impl Instruction {
 
     /// Create a chamfer subtraction instruction
     #[inline]
-    pub const fn chamfer_subtraction(r: f32) -> Self {
+    pub fn chamfer_subtraction(r: f32) -> Self {
         let mut inst = Self::new(OpCode::ChamferSubtraction);
         inst.params[0] = law_max_f32(r, 0.0);
         inst
@@ -840,7 +840,7 @@ impl Instruction {
 
     /// Create a stairs union instruction
     #[inline]
-    pub const fn stairs_union(r: f32, n: f32) -> Self {
+    pub fn stairs_union(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::StairsUnion);
         inst.params[0] = law_max_f32(r, 1e-10);
         inst.params[1] = law_max_f32(n, 1.0);
@@ -849,7 +849,7 @@ impl Instruction {
 
     /// Create a stairs intersection instruction
     #[inline]
-    pub const fn stairs_intersection(r: f32, n: f32) -> Self {
+    pub fn stairs_intersection(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::StairsIntersection);
         inst.params[0] = law_max_f32(r, 1e-10);
         inst.params[1] = law_max_f32(n, 1.0);
@@ -858,7 +858,7 @@ impl Instruction {
 
     /// Create a stairs subtraction instruction
     #[inline]
-    pub const fn stairs_subtraction(r: f32, n: f32) -> Self {
+    pub fn stairs_subtraction(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::StairsSubtraction);
         inst.params[0] = law_max_f32(r, 1e-10);
         inst.params[1] = law_max_f32(n, 1.0);
@@ -881,7 +881,7 @@ impl Instruction {
 
     /// Create a columns union instruction — column-shaped smooth blend.
     #[inline]
-    pub const fn columns_union(r: f32, n: f32) -> Self {
+    pub fn columns_union(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::ColumnsUnion);
         inst.params[0] = law_max_f32(r, 1e-10);
         inst.params[1] = law_max_f32(n, 1.0);
@@ -890,7 +890,7 @@ impl Instruction {
 
     /// Create a columns intersection instruction — column-shaped smooth blend.
     #[inline]
-    pub const fn columns_intersection(r: f32, n: f32) -> Self {
+    pub fn columns_intersection(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::ColumnsIntersection);
         inst.params[0] = law_max_f32(r, 1e-10);
         inst.params[1] = law_max_f32(n, 1.0);
@@ -899,7 +899,7 @@ impl Instruction {
 
     /// Create a columns subtraction instruction — column-shaped smooth blend.
     #[inline]
-    pub const fn columns_subtraction(r: f32, n: f32) -> Self {
+    pub fn columns_subtraction(r: f32, n: f32) -> Self {
         let mut inst = Self::new(OpCode::ColumnsSubtraction);
         inst.params[0] = law_max_f32(r, 1e-10);
         inst.params[1] = law_max_f32(n, 1.0);

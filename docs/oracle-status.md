@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 834 |
+| 🟢 Not ignored | 838 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **834** |
+| **Total** | **838** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (834)
+## 🟢 Not ignored (838)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -114,6 +114,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_det_golden.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
+| `test_law_nan_operands.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
 | `test_minmax_signed_zero_probe.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
@@ -134,6 +135,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_transpiler_naga_validate.rs` | 2 |
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_det_parity.rs` | 1 |
+| `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
 

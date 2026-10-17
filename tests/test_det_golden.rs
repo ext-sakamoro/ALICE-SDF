@@ -51,13 +51,29 @@ fn hash_node(node: &SdfNode, pts: &[Vec3]) -> String {
     format!("{:x}", h.finalize())
 }
 
+/// NaN operands (ALICE-Law G4): one NaN gives the other operand, two give the
+/// canonical quiet NaN whatever their payloads. Kept out of the shared corpus, whose
+/// geometric oracles (bounds, intervals, gradients) are not defined for a NaN shape
+fn nan_scenes() -> Vec<(&'static str, SdfNode)> {
+    let one = || SdfNode::sphere(1.0);
+    vec![
+        ("nan_union", SdfNode::sphere(f32::NAN).union(one())),
+        ("nan_subtract", one().subtract(SdfNode::sphere(f32::NAN))),
+        (
+            "nan_pair_intersection",
+            SdfNode::sphere(f32::from_bits(0xffc0_0456))
+                .intersection(SdfNode::sphere(f32::from_bits(0x7fc0_0123))),
+        ),
+    ]
+}
+
 #[test]
 fn tree_evaluator_bits_match_recorded_hashes() {
     let pts = grid();
     let print = std::env::var_os("ALICE_SDF_PRINT_DET_GOLDEN").is_some();
     let mut mismatches = Vec::new();
     let mut missing = Vec::new();
-    for (name, node) in corpus() {
+    for (name, node) in corpus().into_iter().chain(nan_scenes()) {
         let got = hash_node(&node, &pts);
         if print {
             println!("    (\"{name}\", \"{got}\"),");
@@ -744,5 +760,17 @@ const GOLDEN: &[(&str, &str)] = &[
     (
         "nested",
         "7b73b19c40cdace128e3d373bb8a334e072dcb464955818748b3fbcda0422c75",
+    ),
+    (
+        "nan_union",
+        "08d0aee508233868e9729276f6c8f3c2885bef383687240625dc81df8770be15",
+    ),
+    (
+        "nan_subtract",
+        "08d0aee508233868e9729276f6c8f3c2885bef383687240625dc81df8770be15",
+    ),
+    (
+        "nan_pair_intersection",
+        "93c0bc9f17a70ce2700ec245a89580ae6622ee59ab5e72cdf35a2bbc48fdda7c",
     ),
 ];

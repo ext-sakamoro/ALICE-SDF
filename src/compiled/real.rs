@@ -184,58 +184,32 @@ pub trait Real:
 /// aarch64); the Cranelift JIT's `fmax` is ordered, so pinning the tree and SIMD
 /// paths to this rule makes every evaluator agree bit-for-bit.
 ///
-/// Written as pure comparisons (no `f32::max`, which the evaluator-crate lint
-/// bans) and copied verbatim from the `alice_physics::det_math` `max`/`min`
-/// helper so the two crates fold into `alice-det-math` as a mechanical move
-/// (the Physics SHA is pinned here once that helper is published).
+/// Both operands NaN give the canonical quiet NaN (`0x7fc0_0000`), not either
+/// payload (ALICE-Law G4). The law is alice-det-math's (`max` / `min` / `max64` /
+/// `min64`, ALICE-Law G11): these delegate to it, so there is no copy to drift.
 #[inline(always)]
-pub(crate) const fn law_max_f32(a: f32, b: f32) -> f32 {
-    if a.is_nan() || b > a {
-        b
-    } else if b.is_nan() || a > b || !a.is_sign_negative() {
-        a
-    } else {
-        b
-    }
+pub(crate) fn law_max_f32(a: f32, b: f32) -> f32 {
+    alice_det_math::max(a, b)
 }
 
 /// Minimum under the same rule as [`law_max_f32`]: NaN gives the other operand,
 /// and a both-zero result is `-0` iff either operand is `-0` (`min(+0, +0) = +0`),
-/// matching the Cranelift `fmin`. Pure comparisons, verbatim from the
-/// `alice_physics::det_math` `min` helper (see [`law_max_f32`]).
+/// matching the Cranelift `fmin` on zeros; alice-det-math's `min` (see [`law_max_f32`]).
 #[inline(always)]
-pub(crate) const fn law_min_f32(a: f32, b: f32) -> f32 {
-    if a.is_nan() || b < a {
-        b
-    } else if b.is_nan() || a < b || a.is_sign_negative() {
-        a
-    } else {
-        b
-    }
+pub(crate) fn law_min_f32(a: f32, b: f32) -> f32 {
+    alice_det_math::min(a, b)
 }
 
-/// [`law_max_f32`] for `f64` (same expression as `alice_physics::det_math::max64`).
+/// [`law_max_f32`] for `f64` (alice-det-math's `max64`).
 #[inline(always)]
-pub(crate) const fn law_max_f64(a: f64, b: f64) -> f64 {
-    if a.is_nan() || b > a {
-        b
-    } else if b.is_nan() || a > b || !a.is_sign_negative() {
-        a
-    } else {
-        b
-    }
+pub(crate) fn law_max_f64(a: f64, b: f64) -> f64 {
+    alice_det_math::max64(a, b)
 }
 
-/// [`law_min_f32`] for `f64` (same expression as `alice_physics::det_math::min64`).
+/// [`law_min_f32`] for `f64` (alice-det-math's `min64`).
 #[inline(always)]
-pub(crate) const fn law_min_f64(a: f64, b: f64) -> f64 {
-    if a.is_nan() || b < a {
-        b
-    } else if b.is_nan() || a < b || a.is_sign_negative() {
-        a
-    } else {
-        b
-    }
+pub(crate) fn law_min_f64(a: f64, b: f64) -> f64 {
+    alice_det_math::min64(a, b)
 }
 
 /// `x.law_max(y)` / `x.law_min(y)`: the Law min/max in method form, for code
@@ -280,18 +254,33 @@ impl LawMinMax for f32x8 {
         // per lane, the same rule as law_max_f32, from compares and blends only
         let larger = self.cmp_gt(other).blend(self, other);
         let equal = self.cmp_eq(other).blend(self & other, larger);
-        // a NaN operand gives the other one; checked last for `self` so that a
-        // NaN pair returns `other`, as law_max_f32 does
-        self.cmp_ne(self)
-            .blend(other, other.cmp_ne(other).blend(self, equal))
+        // a NaN operand gives the other one, a NaN pair the canonical NaN, as
+        // law_max_f32 does (alice-det-math 0.5.1 has no f32x8 max to delegate to)
+        canonical_nan_pair(
+            self,
+            other,
+            self.cmp_ne(self)
+                .blend(other, other.cmp_ne(other).blend(self, equal)),
+        )
     }
     #[inline(always)]
     fn law_min(self, other: Self) -> Self {
         let smaller = self.cmp_lt(other).blend(self, other);
         let equal = self.cmp_eq(other).blend(self | other, smaller);
-        self.cmp_ne(self)
-            .blend(other, other.cmp_ne(other).blend(self, equal))
+        canonical_nan_pair(
+            self,
+            other,
+            self.cmp_ne(self)
+                .blend(other, other.cmp_ne(other).blend(self, equal)),
+        )
     }
+}
+
+/// `r` per lane, except the canonical quiet NaN where both `a` and `b` are NaN
+#[inline(always)]
+fn canonical_nan_pair(a: f32x8, b: f32x8, r: f32x8) -> f32x8 {
+    let both = a.cmp_ne(a) & b.cmp_ne(b);
+    both.blend(f32x8::splat(f32::from_bits(0x7fc0_0000)), r)
 }
 
 /// [`LawMinMax`] for the glam vectors: lane by lane under [`law_max_f32`] /
@@ -1078,24 +1067,29 @@ mod tests {
         assert_eq!(law_max_f32(-0.0, -1.0).to_bits(), nn, "max(-0,-1) = -0");
         assert_eq!(law_max_f32(f32::NAN, 3.0), 3.0, "NaN -> other");
         assert_eq!(law_min_f32(5.0, f32::NAN), 5.0, "NaN -> other");
-        // a NaN pair gives the second operand, bits and all (the Physics helper's
-        // order: `a` is tested for NaN first)
-        let (qa, qb) = (f32::from_bits(0x7fc0_0000), f32::from_bits(0xffc0_0001));
-        assert_eq!(
-            law_max_f32(qa, qb).to_bits(),
-            0xffc0_0001,
-            "max(NaN, NaN') = NaN'"
-        );
-        assert_eq!(
-            law_min_f32(qa, qb).to_bits(),
-            0xffc0_0001,
-            "min(NaN, NaN') = NaN'"
-        );
-        assert_eq!(
-            law_max_f32(qb, qa).to_bits(),
-            0x7fc0_0000,
-            "max(NaN', NaN) = NaN"
-        );
+        // a NaN pair gives the canonical quiet NaN whatever the payloads (alice-det-math's
+        // max / min, ALICE-Law G4), in either order, on the scalar and the f32x8 path
+        let (qa, qb) = (f32::from_bits(0x7fc0_0001), f32::from_bits(0xffc0_0456));
+        for (x, y) in [(qa, qb), (qb, qa)] {
+            assert_eq!(law_max_f32(x, y).to_bits(), 0x7fc0_0000, "max(NaN, NaN)");
+            assert_eq!(law_min_f32(x, y).to_bits(), 0x7fc0_0000, "min(NaN, NaN)");
+            let v = (f32x8::splat(x), f32x8::splat(y));
+            assert_eq!(
+                v.0.law_max(v.1).to_array()[0].to_bits(),
+                0x7fc0_0000,
+                "f32x8 max(NaN, NaN)"
+            );
+            assert_eq!(
+                v.0.law_min(v.1).to_array()[0].to_bits(),
+                0x7fc0_0000,
+                "f32x8 min(NaN, NaN)"
+            );
+            assert_eq!(
+                v.0.law_max(f32x8::splat(2.0)).to_array()[0],
+                2.0,
+                "f32x8 NaN -> other"
+            );
+        }
         // teeth: the ordered rule is NOT what a both-zero-to-+0 normalisation gives
         // (that would make max(-0,-0) = +0 and break tree==JIT for the -0,-0 lane)
         assert_ne!(

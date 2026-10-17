@@ -24,6 +24,7 @@
 
 mod platform;
 
+use super::law_ops::{law_fmax, law_fmin};
 use crate::compiled::real::LawMinMax;
 use cranelift_codegen::ir::condcodes::FloatCC;
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, Value};
@@ -361,14 +362,14 @@ fn emit_smooth_poly(
     let ad = builder.ins().fabs(diff);
     let adrk = builder.ins().fmul(ad, rk_v);
     let h = builder.ins().fsub(one, adrk);
-    let h = builder.ins().fmax(h, zero);
+    let h = law_fmax(builder, h, zero);
     let hh = builder.ins().fmul(h, h);
     let off = builder.ins().fmul(hh, kq);
     if is_min {
-        let m = builder.ins().fmin(a, b);
+        let m = law_fmin(builder, a, b);
         builder.ins().fsub(m, off)
     } else {
-        let m = builder.ins().fmax(a, b);
+        let m = law_fmax(builder, a, b);
         builder.ins().fadd(m, off)
     }
 }
@@ -447,8 +448,8 @@ fn emit_simd_stairs_min(
     let px3 = builder.ins().fsub(t_sub, step_half);
 
     // d2 = min(min(a, b), py)
-    let min_ab = builder.ins().fmin(a, b);
-    let d2 = builder.ins().fmin(min_ab, py);
+    let min_ab = law_fmin(builder, a, b);
+    let d2 = law_fmin(builder, min_ab, py);
 
     // Rotate back
     let px3_plus_py = builder.ins().fadd(px3, py);
@@ -459,8 +460,8 @@ fn emit_simd_stairs_min(
     let edge = builder.ins().fmul(half, rn_v);
     let npx_e = builder.ins().fsub(npx, edge);
     let npy_e = builder.ins().fsub(npy, edge);
-    let vmax = builder.ins().fmax(npx_e, npy_e);
-    builder.ins().fmin(d2, vmax)
+    let vmax = law_fmax(builder, npx_e, npy_e);
+    law_fmin(builder, d2, vmax)
 }
 
 /// Emit SIMD stairs_min for one F32X4 lane using pre-splatted constants
@@ -498,8 +499,8 @@ fn emit_simd_stairs_min_lane(
     let t_sub = builder.ins().fsub(t, t_mod);
     let px3 = builder.ins().fsub(t_sub, step_half);
 
-    let min_ab = builder.ins().fmin(a, b);
-    let d2 = builder.ins().fmin(min_ab, py);
+    let min_ab = law_fmin(builder, a, b);
+    let d2 = law_fmin(builder, min_ab, py);
 
     let px3_plus_py = builder.ins().fadd(px3, py);
     let npx = builder.ins().fmul(px3_plus_py, s_v);
@@ -509,8 +510,8 @@ fn emit_simd_stairs_min_lane(
     let edge = builder.ins().fmul(half, rn_v);
     let npx_e = builder.ins().fsub(npx, edge);
     let npy_e = builder.ins().fsub(npy, edge);
-    let vmax = builder.ins().fmax(npx_e, npy_e);
-    builder.ins().fmin(d2, vmax)
+    let vmax = law_fmax(builder, npx_e, npy_e);
+    law_fmin(builder, d2, vmax)
 }
 
 impl JitSimdSdf {
@@ -646,9 +647,9 @@ impl JitSimdSdf {
                         let qx0 = builder.ins().fsub(ax0, hx);
                         let qy0 = builder.ins().fsub(ay0, hy);
                         let qz0 = builder.ins().fsub(az0, hz);
-                        let mx0 = builder.ins().fmax(qx0, zero_vec);
-                        let my0 = builder.ins().fmax(qy0, zero_vec);
-                        let mz0 = builder.ins().fmax(qz0, zero_vec);
+                        let mx0 = law_fmax(&mut builder, qx0, zero_vec);
+                        let my0 = law_fmax(&mut builder, qy0, zero_vec);
+                        let mz0 = law_fmax(&mut builder, qz0, zero_vec);
 
                         // ((x*x) + (y*y)) + (z*z): glam `Vec3::length` association, no fma
                         let len_sq0_xx = builder.ins().fmul(mx0, mx0);
@@ -658,9 +659,9 @@ impl JitSimdSdf {
                         let len_sq0 = builder.ins().fadd(len_sq0_xy, mzz0);
                         let outside0 = builder.ins().sqrt(len_sq0);
 
-                        let max_yz0 = builder.ins().fmax(qy0, qz0);
-                        let max_xyz0 = builder.ins().fmax(qx0, max_yz0);
-                        let inside0 = builder.ins().fmin(max_xyz0, zero_vec);
+                        let max_yz0 = law_fmax(&mut builder, qy0, qz0);
+                        let max_xyz0 = law_fmax(&mut builder, qx0, max_yz0);
+                        let inside0 = law_fmin(&mut builder, max_xyz0, zero_vec);
                         let d0 = builder.ins().fadd(outside0, inside0);
                         let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
 
@@ -671,9 +672,9 @@ impl JitSimdSdf {
                         let qx1 = builder.ins().fsub(ax1, hx);
                         let qy1 = builder.ins().fsub(ay1, hy);
                         let qz1 = builder.ins().fsub(az1, hz);
-                        let mx1 = builder.ins().fmax(qx1, zero_vec);
-                        let my1 = builder.ins().fmax(qy1, zero_vec);
-                        let mz1 = builder.ins().fmax(qz1, zero_vec);
+                        let mx1 = law_fmax(&mut builder, qx1, zero_vec);
+                        let my1 = law_fmax(&mut builder, qy1, zero_vec);
+                        let mz1 = law_fmax(&mut builder, qz1, zero_vec);
 
                         // ((x*x) + (y*y)) + (z*z): glam `Vec3::length` association, no fma
                         let len_sq1_xx = builder.ins().fmul(mx1, mx1);
@@ -683,9 +684,9 @@ impl JitSimdSdf {
                         let len_sq1 = builder.ins().fadd(len_sq1_xy, mzz1);
                         let outside1 = builder.ins().sqrt(len_sq1);
 
-                        let max_yz1 = builder.ins().fmax(qy1, qz1);
-                        let max_xyz1 = builder.ins().fmax(qx1, max_yz1);
-                        let inside1 = builder.ins().fmin(max_xyz1, zero_vec);
+                        let max_yz1 = law_fmax(&mut builder, qy1, qz1);
+                        let max_xyz1 = law_fmax(&mut builder, qx1, max_yz1);
+                        let inside1 = law_fmin(&mut builder, max_xyz1, zero_vec);
                         let d1 = builder.ins().fadd(outside1, inside1);
                         let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
 
@@ -706,14 +707,14 @@ impl JitSimdSdf {
                         let ay0 = builder.ins().fabs(curr_y.0);
                         let dy0 = builder.ins().fsub(ay0, h);
 
-                        let mx0 = builder.ins().fmax(dx0, zero_vec);
-                        let my0 = builder.ins().fmax(dy0, zero_vec);
+                        let mx0 = law_fmax(&mut builder, dx0, zero_vec);
+                        let my0 = law_fmax(&mut builder, dy0, zero_vec);
                         let mzz0 = builder.ins().fmul(my0, my0);
                         let len_sq0 = mul_add_2r(&mut builder, mx0, mx0, mzz0);
                         let outside0 = builder.ins().sqrt(len_sq0);
 
-                        let im0 = builder.ins().fmax(dx0, dy0);
-                        let inside0 = builder.ins().fmin(im0, zero_vec);
+                        let im0 = law_fmax(&mut builder, dx0, dy0);
+                        let inside0 = law_fmin(&mut builder, im0, zero_vec);
                         let d0 = builder.ins().fadd(outside0, inside0);
                         let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
 
@@ -725,14 +726,14 @@ impl JitSimdSdf {
                         let ay1 = builder.ins().fabs(curr_y.1);
                         let dy1 = builder.ins().fsub(ay1, h);
 
-                        let mx1 = builder.ins().fmax(dx1, zero_vec);
-                        let my1 = builder.ins().fmax(dy1, zero_vec);
+                        let mx1 = law_fmax(&mut builder, dx1, zero_vec);
+                        let my1 = law_fmax(&mut builder, dy1, zero_vec);
                         let mzz1 = builder.ins().fmul(my1, my1);
                         let len_sq1 = mul_add_2r(&mut builder, mx1, mx1, mzz1);
                         let outside1 = builder.ins().sqrt(len_sq1);
 
-                        let im1 = builder.ins().fmax(dx1, dy1);
-                        let inside1 = builder.ins().fmin(im1, zero_vec);
+                        let im1 = law_fmax(&mut builder, dx1, dy1);
+                        let inside1 = law_fmin(&mut builder, im1, zero_vec);
                         let d1 = builder.ins().fadd(outside1, inside1);
                         let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
 
@@ -834,8 +835,8 @@ impl JitSimdSdf {
                         let dot_yz0 = mul_add_2r(&mut builder, pay0, bay, dot_z0);
                         let dot0 = mul_add_2r(&mut builder, pax0, bax, dot_yz0);
                         let h_raw0 = builder.ins().fmul(dot0, inv_bd);
-                        let h_min0 = builder.ins().fmin(h_raw0, one_vec);
-                        let h0 = builder.ins().fmax(h_min0, zero_vec);
+                        let h_min0 = law_fmin(&mut builder, h_raw0, one_vec);
+                        let h0 = law_fmax(&mut builder, h_min0, zero_vec);
                         let bhx0 = builder.ins().fmul(bax, h0);
                         let bhy0 = builder.ins().fmul(bay, h0);
                         let bhz0 = builder.ins().fmul(ba_z_v, h0);
@@ -854,8 +855,8 @@ impl JitSimdSdf {
                         let dot_yz1 = mul_add_2r(&mut builder, pay1, bay, dot_z1);
                         let dot1 = mul_add_2r(&mut builder, pax1, bax, dot_yz1);
                         let h_raw1 = builder.ins().fmul(dot1, inv_bd);
-                        let h_min1 = builder.ins().fmin(h_raw1, one_vec);
-                        let h1 = builder.ins().fmax(h_min1, zero_vec);
+                        let h_min1 = law_fmin(&mut builder, h_raw1, one_vec);
+                        let h1 = law_fmax(&mut builder, h_min1, zero_vec);
                         let bhx1 = builder.ins().fmul(bax, h1);
                         let bhy1 = builder.ins().fmul(bay, h1);
                         let bhz1 = builder.ins().fmul(ba_z_v, h1);
@@ -899,7 +900,7 @@ impl JitSimdSdf {
                         let q_x0 = simd_length2_fma(&mut builder, curr_x.0, curr_z.0);
                         let q_y0 = curr_y.0;
                         let ca_r0 = simd_select_neg(&mut builder, q_y0, r, zero_vec);
-                        let min_q_ca0 = builder.ins().fmin(q_x0, ca_r0);
+                        let min_q_ca0 = law_fmin(&mut builder, q_x0, ca_r0);
                         let ca_x0 = builder.ins().fsub(q_x0, min_q_ca0);
                         let abs_qy0 = builder.ins().fabs(q_y0);
                         let ca_y0 = builder.ins().fsub(abs_qy0, h);
@@ -908,14 +909,14 @@ impl JitSimdSdf {
                         let dy_k2y0 = builder.ins().fmul(diff_y0, k2y);
                         let nqx_k2x0 = mul_add_2r(&mut builder, neg_qx0, k2x, dy_k2y0);
                         let t_raw0 = builder.ins().fdiv(nqx_k2x0, k2d);
-                        let t_min0 = builder.ins().fmin(t_raw0, one_vec);
-                        let t0 = builder.ins().fmax(zero_vec, t_min0);
+                        let t_min0 = law_fmin(&mut builder, t_raw0, one_vec);
+                        let t0 = law_fmax(&mut builder, zero_vec, t_min0);
                         let k2x_t0 = builder.ins().fmul(k2x, t0);
                         let cb_x0 = builder.ins().fadd(q_x0, k2x_t0);
                         let qy_h0 = builder.ins().fsub(q_y0, h);
                         let k2y_t0 = builder.ins().fmul(k2y, t0);
                         let cb_y0 = builder.ins().fadd(qy_h0, k2y_t0);
-                        let both_neg_cond0 = builder.ins().fmax(cb_x0, ca_y0);
+                        let both_neg_cond0 = law_fmax(&mut builder, cb_x0, ca_y0);
                         let s0 = simd_select_neg(&mut builder, both_neg_cond0, neg_one_v, one_vec);
                         let ca_sq0 = {
                             let xx = builder.ins().fmul(ca_x0, ca_x0);
@@ -925,7 +926,7 @@ impl JitSimdSdf {
                             let xx = builder.ins().fmul(cb_x0, cb_x0);
                             mul_add_2r(&mut builder, cb_y0, cb_y0, xx)
                         };
-                        let d2_0 = builder.ins().fmin(ca_sq0, cb_sq0);
+                        let d2_0 = law_fmin(&mut builder, ca_sq0, cb_sq0);
                         let dist0 = builder.ins().sqrt(d2_0);
                         let d0 = builder.ins().fmul(s0, dist0);
 
@@ -933,7 +934,7 @@ impl JitSimdSdf {
                         let q_x1 = simd_length2_fma(&mut builder, curr_x.1, curr_z.1);
                         let q_y1 = curr_y.1;
                         let ca_r1 = simd_select_neg(&mut builder, q_y1, r, zero_vec);
-                        let min_q_ca1 = builder.ins().fmin(q_x1, ca_r1);
+                        let min_q_ca1 = law_fmin(&mut builder, q_x1, ca_r1);
                         let ca_x1 = builder.ins().fsub(q_x1, min_q_ca1);
                         let abs_qy1 = builder.ins().fabs(q_y1);
                         let ca_y1 = builder.ins().fsub(abs_qy1, h);
@@ -942,14 +943,14 @@ impl JitSimdSdf {
                         let dy_k2y1 = builder.ins().fmul(diff_y1, k2y);
                         let nqx_k2x1 = mul_add_2r(&mut builder, neg_qx1, k2x, dy_k2y1);
                         let t_raw1 = builder.ins().fdiv(nqx_k2x1, k2d);
-                        let t_min1 = builder.ins().fmin(t_raw1, one_vec);
-                        let t1 = builder.ins().fmax(zero_vec, t_min1);
+                        let t_min1 = law_fmin(&mut builder, t_raw1, one_vec);
+                        let t1 = law_fmax(&mut builder, zero_vec, t_min1);
                         let k2x_t1 = builder.ins().fmul(k2x, t1);
                         let cb_x1 = builder.ins().fadd(q_x1, k2x_t1);
                         let qy_h1 = builder.ins().fsub(q_y1, h);
                         let k2y_t1 = builder.ins().fmul(k2y, t1);
                         let cb_y1 = builder.ins().fadd(qy_h1, k2y_t1);
-                        let both_neg_cond1 = builder.ins().fmax(cb_x1, ca_y1);
+                        let both_neg_cond1 = law_fmax(&mut builder, cb_x1, ca_y1);
                         let s1 = simd_select_neg(&mut builder, both_neg_cond1, neg_one_v, one_vec);
                         let ca_sq1 = {
                             let xx = builder.ins().fmul(ca_x1, ca_x1);
@@ -959,7 +960,7 @@ impl JitSimdSdf {
                             let xx = builder.ins().fmul(cb_x1, cb_x1);
                             mul_add_2r(&mut builder, cb_y1, cb_y1, xx)
                         };
-                        let d2_1 = builder.ins().fmin(ca_sq1, cb_sq1);
+                        let d2_1 = law_fmin(&mut builder, ca_sq1, cb_sq1);
                         let dist1 = builder.ins().sqrt(d2_1);
                         let d1 = builder.ins().fmul(s1, dist1);
 
@@ -1063,8 +1064,8 @@ impl JitSimdSdf {
                         let py0 = builder.ins().fadd(curr_y.0, hh_v);
                         let abs_px0 = builder.ins().fabs(curr_x.0);
                         let abs_pz0 = builder.ins().fabs(curr_z.0);
-                        let px_s0 = builder.ins().fmax(abs_px0, abs_pz0);
-                        let pz_s0 = builder.ins().fmin(abs_px0, abs_pz0);
+                        let px_s0 = law_fmax(&mut builder, abs_px0, abs_pz0);
+                        let pz_s0 = law_fmin(&mut builder, abs_px0, abs_pz0);
                         let px_adj0 = builder.ins().fsub(px_s0, half_v);
                         let pz_adj0 = builder.ins().fsub(pz_s0, half_v);
                         let qx0 = pz_adj0;
@@ -1073,12 +1074,12 @@ impl JitSimdSdf {
                         let half_py0 = builder.ins().fmul(half_v, py0);
                         let qz0 = mul_add_2r(&mut builder, h_v, px_adj0, half_py0);
                         let neg_qx0 = builder.ins().fneg(qx0);
-                        let s0 = builder.ins().fmax(neg_qx0, zero_vec);
+                        let s0 = law_fmax(&mut builder, neg_qx0, zero_vec);
                         let half_pz0 = builder.ins().fmul(half_v, pz_adj0);
                         let qy_sub0 = builder.ins().fsub(qy0, half_pz0);
                         let t_raw0 = builder.ins().fdiv(qy_sub0, m2_025_v);
-                        let t_min0 = builder.ins().fmin(t_raw0, one_vec);
-                        let t0 = builder.ins().fmax(zero_vec, t_min0);
+                        let t_min0 = law_fmin(&mut builder, t_raw0, one_vec);
+                        let t0 = law_fmax(&mut builder, zero_vec, t_min0);
                         let qx_s0 = builder.ins().fadd(qx0, s0);
                         let m2_qxs_10 = builder.ins().fmul(m2_v, qx_s0); // (m2 * (qx+s)) * (qx+s): the law's association
                         let m2_qxs0 = builder.ins().fmul(m2_qxs_10, qx_s0);
@@ -1093,8 +1094,8 @@ impl JitSimdSdf {
                         let neg_qx_m2_0 = builder.ins().fmul(neg_qx0, m2_v);
                         let half_qy0 = builder.ins().fmul(half_v, qy0);
                         let cond0 = builder.ins().fsub(neg_qx_m2_0, half_qy0);
-                        let min_cond0 = builder.ins().fmin(qy0, cond0);
-                        let ab_min0 = builder.ins().fmin(a0, b0);
+                        let min_cond0 = law_fmin(&mut builder, qy0, cond0);
+                        let ab_min0 = law_fmin(&mut builder, a0, b0);
                         let neg_min_cond0 = builder.ins().fneg(min_cond0);
                         let d2_0 = simd_select_neg(&mut builder, neg_min_cond0, zero_vec, ab_min0);
                         let qz_sq0 = builder.ins().fmul(qz0, qz0);
@@ -1102,7 +1103,7 @@ impl JitSimdSdf {
                         let d2_sc0 = builder.ins().fdiv(d2_qz0, m2_v);
                         let dist0 = builder.ins().sqrt(d2_sc0);
                         let neg_py0 = builder.ins().fneg(py0);
-                        let sign_arg0 = builder.ins().fmax(qz0, neg_py0);
+                        let sign_arg0 = law_fmax(&mut builder, qz0, neg_py0);
                         let neg_mask0 = builder.ins().fcmp(FloatCC::LessThan, sign_arg0, zero_vec);
                         let neg_mask0 = builder.ins().bitcast(vec_type, MemFlags::new(), neg_mask0);
                         let signed0 = builder.ins().bitselect(neg_mask0, neg_one_v, one_vec); // Real::signum: x < 0 ? -1 : 1
@@ -1112,8 +1113,8 @@ impl JitSimdSdf {
                         let py1 = builder.ins().fadd(curr_y.1, hh_v);
                         let abs_px1 = builder.ins().fabs(curr_x.1);
                         let abs_pz1 = builder.ins().fabs(curr_z.1);
-                        let px_s1 = builder.ins().fmax(abs_px1, abs_pz1);
-                        let pz_s1 = builder.ins().fmin(abs_px1, abs_pz1);
+                        let px_s1 = law_fmax(&mut builder, abs_px1, abs_pz1);
+                        let pz_s1 = law_fmin(&mut builder, abs_px1, abs_pz1);
                         let px_adj1 = builder.ins().fsub(px_s1, half_v);
                         let pz_adj1 = builder.ins().fsub(pz_s1, half_v);
                         let qx1 = pz_adj1;
@@ -1122,12 +1123,12 @@ impl JitSimdSdf {
                         let half_py1 = builder.ins().fmul(half_v, py1);
                         let qz1 = mul_add_2r(&mut builder, h_v, px_adj1, half_py1);
                         let neg_qx1 = builder.ins().fneg(qx1);
-                        let s1 = builder.ins().fmax(neg_qx1, zero_vec);
+                        let s1 = law_fmax(&mut builder, neg_qx1, zero_vec);
                         let half_pz1 = builder.ins().fmul(half_v, pz_adj1);
                         let qy_sub1 = builder.ins().fsub(qy1, half_pz1);
                         let t_raw1 = builder.ins().fdiv(qy_sub1, m2_025_v);
-                        let t_min1 = builder.ins().fmin(t_raw1, one_vec);
-                        let t1 = builder.ins().fmax(zero_vec, t_min1);
+                        let t_min1 = law_fmin(&mut builder, t_raw1, one_vec);
+                        let t1 = law_fmax(&mut builder, zero_vec, t_min1);
                         let qx_s1 = builder.ins().fadd(qx1, s1);
                         let m2_qxs_11 = builder.ins().fmul(m2_v, qx_s1); // (m2 * (qx+s)) * (qx+s): the law's association
                         let m2_qxs1 = builder.ins().fmul(m2_qxs_11, qx_s1);
@@ -1142,8 +1143,8 @@ impl JitSimdSdf {
                         let neg_qx_m2_1 = builder.ins().fmul(neg_qx1, m2_v);
                         let half_qy1 = builder.ins().fmul(half_v, qy1);
                         let cond1 = builder.ins().fsub(neg_qx_m2_1, half_qy1);
-                        let min_cond1 = builder.ins().fmin(qy1, cond1);
-                        let ab_min1 = builder.ins().fmin(a1, b1);
+                        let min_cond1 = law_fmin(&mut builder, qy1, cond1);
+                        let ab_min1 = law_fmin(&mut builder, a1, b1);
                         let neg_min_cond1 = builder.ins().fneg(min_cond1);
                         let d2_1 = simd_select_neg(&mut builder, neg_min_cond1, zero_vec, ab_min1);
                         let qz_sq1 = builder.ins().fmul(qz1, qz1);
@@ -1151,7 +1152,7 @@ impl JitSimdSdf {
                         let d2_sc1 = builder.ins().fdiv(d2_qz1, m2_v);
                         let dist1 = builder.ins().sqrt(d2_sc1);
                         let neg_py1 = builder.ins().fneg(py1);
-                        let sign_arg1 = builder.ins().fmax(qz1, neg_py1);
+                        let sign_arg1 = law_fmax(&mut builder, qz1, neg_py1);
                         let neg_mask1 = builder.ins().fcmp(FloatCC::LessThan, sign_arg1, zero_vec);
                         let neg_mask1 = builder.ins().bitcast(vec_type, MemFlags::new(), neg_mask1);
                         let signed1 = builder.ins().bitselect(neg_mask1, neg_one_v, one_vec); // Real::signum: x < 0 ? -1 : 1
@@ -1195,15 +1196,15 @@ impl JitSimdSdf {
                         let qz_qy0 = builder.ins().fsub(qz0, qy0);
                         let qz_qy_s0 = builder.ins().fadd(qz_qy0, s_v);
                         let hv0 = builder.ins().fmul(half_v, qz_qy_s0);
-                        let k_min0 = builder.ins().fmin(hv0, s_v);
-                        let k0 = builder.ins().fmax(zero_vec, k_min0);
+                        let k_min0 = law_fmin(&mut builder, hv0, s_v);
+                        let k0 = law_fmax(&mut builder, zero_vec, k_min0);
                         let qy_s0 = builder.ins().fsub(qy0, s_v);
                         let qy_sk0 = builder.ins().fadd(qy_s0, k0);
                         let qz_k0 = builder.ins().fsub(qz0, k0);
                         let detail0 = simd_length3_fma(&mut builder, qx0, qy_sk0, qz_k0);
                         let early0 = builder.ins().fmul(m0, inv_sqrt3_v);
-                        let min_c23_0 = builder.ins().fmin(c2_0, c3_0);
-                        let any_cond0 = builder.ins().fmin(c1_0, min_c23_0);
+                        let min_c23_0 = law_fmin(&mut builder, c2_0, c3_0);
+                        let any_cond0 = law_fmin(&mut builder, c1_0, min_c23_0);
                         let d0 = simd_select_neg(&mut builder, any_cond0, detail0, early0);
 
                         // Lane 1
@@ -1228,15 +1229,15 @@ impl JitSimdSdf {
                         let qz_qy1 = builder.ins().fsub(qz1, qy1);
                         let qz_qy_s1 = builder.ins().fadd(qz_qy1, s_v);
                         let hv1 = builder.ins().fmul(half_v, qz_qy_s1);
-                        let k_min1 = builder.ins().fmin(hv1, s_v);
-                        let k1 = builder.ins().fmax(zero_vec, k_min1);
+                        let k_min1 = law_fmin(&mut builder, hv1, s_v);
+                        let k1 = law_fmax(&mut builder, zero_vec, k_min1);
                         let qy_s1 = builder.ins().fsub(qy1, s_v);
                         let qy_sk1 = builder.ins().fadd(qy_s1, k1);
                         let qz_k1 = builder.ins().fsub(qz1, k1);
                         let detail1 = simd_length3_fma(&mut builder, qx1, qy_sk1, qz_k1);
                         let early1 = builder.ins().fmul(m1, inv_sqrt3_v);
-                        let min_c23_1 = builder.ins().fmin(c2_1, c3_1);
-                        let any_cond1 = builder.ins().fmin(c1_1, min_c23_1);
+                        let min_c23_1 = law_fmin(&mut builder, c2_1, c3_1);
+                        let any_cond1 = law_fmin(&mut builder, c1_1, min_c23_1);
                         let d1 = simd_select_neg(&mut builder, any_cond1, detail1, early1);
 
                         let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
@@ -1277,24 +1278,24 @@ impl JitSimdSdf {
                         let apz0 = builder.ins().fabs(curr_z.0);
                         let ky_py0 = builder.ins().fmul(ky_v, apy0);
                         let dot0 = mul_add_2r(&mut builder, kx_v, apx0, ky_py0);
-                        let dot_min0 = builder.ins().fmin(dot0, zero_vec);
+                        let dot_min0 = law_fmin(&mut builder, dot0, zero_vec);
                         let reflect0 = builder.ins().fmul(two_v, dot_min0);
                         let rkx0 = builder.ins().fmul(reflect0, kx_v);
                         let rky0 = builder.ins().fmul(reflect0, ky_v);
                         let px_r0 = builder.ins().fsub(apx0, rkx0);
                         let py_r0 = builder.ins().fsub(apy0, rky0);
-                        let px_cl0 = builder.ins().fmin(px_r0, kz_hr_v);
-                        let clamped0 = builder.ins().fmax(neg_kz_hr_v, px_cl0);
+                        let px_cl0 = law_fmin(&mut builder, px_r0, kz_hr_v);
+                        let clamped0 = law_fmax(&mut builder, neg_kz_hr_v, px_cl0);
                         let dx0 = builder.ins().fsub(px_r0, clamped0);
                         let dy0 = builder.ins().fsub(py_r0, hr_v);
                         let len_dxy0 = simd_length2_fma(&mut builder, dx0, dy0);
                         let sign_dy0 = simd_select_neg(&mut builder, dy0, neg_one_v, one_vec);
                         let d_xy0 = builder.ins().fmul(len_dxy0, sign_dy0);
                         let d_z0 = builder.ins().fsub(apz0, hh_v);
-                        let max_dd0 = builder.ins().fmax(d_xy0, d_z0);
-                        let interior0 = builder.ins().fmin(max_dd0, zero_vec);
-                        let d_xy_p0 = builder.ins().fmax(d_xy0, zero_vec);
-                        let d_z_p0 = builder.ins().fmax(d_z0, zero_vec);
+                        let max_dd0 = law_fmax(&mut builder, d_xy0, d_z0);
+                        let interior0 = law_fmin(&mut builder, max_dd0, zero_vec);
+                        let d_xy_p0 = law_fmax(&mut builder, d_xy0, zero_vec);
+                        let d_z_p0 = law_fmax(&mut builder, d_z0, zero_vec);
                         let exterior0 = simd_length2_fma(&mut builder, d_xy_p0, d_z_p0);
                         let d0 = builder.ins().fadd(interior0, exterior0);
 
@@ -1304,24 +1305,24 @@ impl JitSimdSdf {
                         let apz1 = builder.ins().fabs(curr_z.1);
                         let ky_py1 = builder.ins().fmul(ky_v, apy1);
                         let dot1 = mul_add_2r(&mut builder, kx_v, apx1, ky_py1);
-                        let dot_min1 = builder.ins().fmin(dot1, zero_vec);
+                        let dot_min1 = law_fmin(&mut builder, dot1, zero_vec);
                         let reflect1 = builder.ins().fmul(two_v, dot_min1);
                         let rkx1 = builder.ins().fmul(reflect1, kx_v);
                         let rky1 = builder.ins().fmul(reflect1, ky_v);
                         let px_r1 = builder.ins().fsub(apx1, rkx1);
                         let py_r1 = builder.ins().fsub(apy1, rky1);
-                        let px_cl1 = builder.ins().fmin(px_r1, kz_hr_v);
-                        let clamped1 = builder.ins().fmax(neg_kz_hr_v, px_cl1);
+                        let px_cl1 = law_fmin(&mut builder, px_r1, kz_hr_v);
+                        let clamped1 = law_fmax(&mut builder, neg_kz_hr_v, px_cl1);
                         let dx1 = builder.ins().fsub(px_r1, clamped1);
                         let dy1 = builder.ins().fsub(py_r1, hr_v);
                         let len_dxy1 = simd_length2_fma(&mut builder, dx1, dy1);
                         let sign_dy1 = simd_select_neg(&mut builder, dy1, neg_one_v, one_vec);
                         let d_xy1 = builder.ins().fmul(len_dxy1, sign_dy1);
                         let d_z1 = builder.ins().fsub(apz1, hh_v);
-                        let max_dd1 = builder.ins().fmax(d_xy1, d_z1);
-                        let interior1 = builder.ins().fmin(max_dd1, zero_vec);
-                        let d_xy_p1 = builder.ins().fmax(d_xy1, zero_vec);
-                        let d_z_p1 = builder.ins().fmax(d_z1, zero_vec);
+                        let max_dd1 = law_fmax(&mut builder, d_xy1, d_z1);
+                        let interior1 = law_fmin(&mut builder, max_dd1, zero_vec);
+                        let d_xy_p1 = law_fmax(&mut builder, d_xy1, zero_vec);
+                        let d_z_p1 = law_fmax(&mut builder, d_z1, zero_vec);
                         let exterior1 = simd_length2_fma(&mut builder, d_xy_p1, d_z_p1);
                         let d1 = builder.ins().fadd(interior1, exterior1);
 
@@ -1341,7 +1342,7 @@ impl JitSimdSdf {
                         // Lane 0: qy = max(abs(y) - half_length, 0)
                         let abs_y0 = builder.ins().fabs(curr_y.0);
                         let y_sub0 = builder.ins().fsub(abs_y0, hl);
-                        let qy0 = builder.ins().fmax(y_sub0, zero_vec);
+                        let qy0 = law_fmax(&mut builder, y_sub0, zero_vec);
                         let qyy0 = builder.ins().fmul(qy0, qy0);
                         let xy_sq0 = mul_add_2r(&mut builder, curr_x.0, curr_x.0, qyy0);
                         let xy_len0 = builder.ins().sqrt(xy_sq0);
@@ -1355,7 +1356,7 @@ impl JitSimdSdf {
                         // Lane 1
                         let abs_y1 = builder.ins().fabs(curr_y.1);
                         let y_sub1 = builder.ins().fsub(abs_y1, hl);
-                        let qy1 = builder.ins().fmax(y_sub1, zero_vec);
+                        let qy1 = law_fmax(&mut builder, y_sub1, zero_vec);
                         let qyy1 = builder.ins().fmul(qy1, qy1);
                         let xy_sq1 = mul_add_2r(&mut builder, curr_x.1, curr_x.1, qyy1);
                         let xy_len1 = builder.ins().sqrt(xy_sq1);
@@ -1372,15 +1373,19 @@ impl JitSimdSdf {
                     OpCode::Union => {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                        value_stack
-                            .push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
+                        value_stack.push((
+                            law_fmin(&mut builder, a.0, b.0),
+                            law_fmin(&mut builder, a.1, b.1),
+                        ));
                     }
 
                     OpCode::Intersection => {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                        value_stack
-                            .push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
+                        value_stack.push((
+                            law_fmax(&mut builder, a.0, b.0),
+                            law_fmax(&mut builder, a.1, b.1),
+                        ));
                     }
 
                     OpCode::Subtraction => {
@@ -1389,8 +1394,8 @@ impl JitSimdSdf {
                         let neg_b0 = builder.ins().fneg(b.0);
                         let neg_b1 = builder.ins().fneg(b.1);
                         value_stack.push((
-                            builder.ins().fmax(a.0, neg_b0),
-                            builder.ins().fmax(a.1, neg_b1),
+                            law_fmax(&mut builder, a.0, neg_b0),
+                            law_fmax(&mut builder, a.1, neg_b1),
                         ));
                     }
 
@@ -1401,8 +1406,10 @@ impl JitSimdSdf {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         if k.abs() < FOLD_EPSILON {
-                            value_stack
-                                .push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
+                            value_stack.push((
+                                law_fmin(&mut builder, a.0, b.0),
+                                law_fmin(&mut builder, a.1, b.1),
+                            ));
                             continue;
                         }
                         let res0 = emit_smooth_poly(&mut builder, vec_type, a.0, b.0, k, rk, true);
@@ -1416,8 +1423,10 @@ impl JitSimdSdf {
                         let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                         if k.abs() < FOLD_EPSILON {
-                            value_stack
-                                .push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
+                            value_stack.push((
+                                law_fmax(&mut builder, a.0, b.0),
+                                law_fmax(&mut builder, a.1, b.1),
+                            ));
                             continue;
                         }
                         let res0 = emit_smooth_poly(&mut builder, vec_type, a.0, b.0, k, rk, false);
@@ -1434,8 +1443,10 @@ impl JitSimdSdf {
                         let nb0 = builder.ins().fneg(b.0);
                         let nb1 = builder.ins().fneg(b.1);
                         if k.abs() < FOLD_EPSILON {
-                            value_stack
-                                .push((builder.ins().fmax(a.0, nb0), builder.ins().fmax(a.1, nb1)));
+                            value_stack.push((
+                                law_fmax(&mut builder, a.0, nb0),
+                                law_fmax(&mut builder, a.1, nb1),
+                            ));
                             continue;
                         }
                         let res0 = emit_smooth_poly(&mut builder, vec_type, a.0, nb0, k, rk, false);
@@ -1449,8 +1460,10 @@ impl JitSimdSdf {
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
                         if r.abs() < FOLD_EPSILON {
-                            value_stack
-                                .push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
+                            value_stack.push((
+                                law_fmin(&mut builder, a.0, b.0),
+                                law_fmin(&mut builder, a.1, b.1),
+                            ));
                             continue;
                         }
 
@@ -1460,18 +1473,18 @@ impl JitSimdSdf {
                         let s_v = builder.ins().splat(vec_type, s_s);
 
                         // Lane 0: min(min(a,b), (a+b)*s - r)
-                        let min0 = builder.ins().fmin(a.0, b.0);
+                        let min0 = law_fmin(&mut builder, a.0, b.0);
                         let sum0 = builder.ins().fadd(a.0, b.0);
                         let sc0 = builder.ins().fmul(sum0, s_v);
                         let ch0 = builder.ins().fsub(sc0, r_v);
-                        let res0 = builder.ins().fmin(min0, ch0);
+                        let res0 = law_fmin(&mut builder, min0, ch0);
 
                         // Lane 1
-                        let min1 = builder.ins().fmin(a.1, b.1);
+                        let min1 = law_fmin(&mut builder, a.1, b.1);
                         let sum1 = builder.ins().fadd(a.1, b.1);
                         let sc1 = builder.ins().fmul(sum1, s_v);
                         let ch1 = builder.ins().fsub(sc1, r_v);
-                        let res1 = builder.ins().fmin(min1, ch1);
+                        let res1 = law_fmin(&mut builder, min1, ch1);
 
                         value_stack.push((res0, res1));
                     }
@@ -1482,8 +1495,10 @@ impl JitSimdSdf {
                         let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
 
                         if r.abs() < FOLD_EPSILON {
-                            value_stack
-                                .push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
+                            value_stack.push((
+                                law_fmax(&mut builder, a.0, b.0),
+                                law_fmax(&mut builder, a.1, b.1),
+                            ));
                             continue;
                         }
 
@@ -1495,20 +1510,20 @@ impl JitSimdSdf {
                         // -chamfer_min(-a, -b, r)
                         let na0 = builder.ins().fneg(a.0);
                         let nb0 = builder.ins().fneg(b.0);
-                        let min0 = builder.ins().fmin(na0, nb0);
+                        let min0 = law_fmin(&mut builder, na0, nb0);
                         let sum0 = builder.ins().fadd(na0, nb0);
                         let sc0 = builder.ins().fmul(sum0, s_v);
                         let ch0 = builder.ins().fsub(sc0, r_v);
-                        let cm0 = builder.ins().fmin(min0, ch0);
+                        let cm0 = law_fmin(&mut builder, min0, ch0);
                         let res0 = builder.ins().fneg(cm0);
 
                         let na1 = builder.ins().fneg(a.1);
                         let nb1 = builder.ins().fneg(b.1);
-                        let min1 = builder.ins().fmin(na1, nb1);
+                        let min1 = law_fmin(&mut builder, na1, nb1);
                         let sum1 = builder.ins().fadd(na1, nb1);
                         let sc1 = builder.ins().fmul(sum1, s_v);
                         let ch1 = builder.ins().fsub(sc1, r_v);
-                        let cm1 = builder.ins().fmin(min1, ch1);
+                        let cm1 = law_fmin(&mut builder, min1, ch1);
                         let res1 = builder.ins().fneg(cm1);
 
                         value_stack.push((res0, res1));
@@ -1523,8 +1538,8 @@ impl JitSimdSdf {
                             let neg_b0 = builder.ins().fneg(b.0);
                             let neg_b1 = builder.ins().fneg(b.1);
                             value_stack.push((
-                                builder.ins().fmax(a.0, neg_b0),
-                                builder.ins().fmax(a.1, neg_b1),
+                                law_fmax(&mut builder, a.0, neg_b0),
+                                law_fmax(&mut builder, a.1, neg_b1),
                             ));
                             continue;
                         }
@@ -1536,19 +1551,19 @@ impl JitSimdSdf {
 
                         // -chamfer_min(-a, b, r)
                         let na0 = builder.ins().fneg(a.0);
-                        let min0 = builder.ins().fmin(na0, b.0);
+                        let min0 = law_fmin(&mut builder, na0, b.0);
                         let sum0 = builder.ins().fadd(na0, b.0);
                         let sc0 = builder.ins().fmul(sum0, s_v);
                         let ch0 = builder.ins().fsub(sc0, r_v);
-                        let cm0 = builder.ins().fmin(min0, ch0);
+                        let cm0 = law_fmin(&mut builder, min0, ch0);
                         let res0 = builder.ins().fneg(cm0);
 
                         let na1 = builder.ins().fneg(a.1);
-                        let min1 = builder.ins().fmin(na1, b.1);
+                        let min1 = law_fmin(&mut builder, na1, b.1);
                         let sum1 = builder.ins().fadd(na1, b.1);
                         let sc1 = builder.ins().fmul(sum1, s_v);
                         let ch1 = builder.ins().fsub(sc1, r_v);
-                        let cm1 = builder.ins().fmin(min1, ch1);
+                        let cm1 = law_fmin(&mut builder, min1, ch1);
                         let res1 = builder.ins().fneg(cm1);
 
                         value_stack.push((res0, res1));
@@ -2004,12 +2019,12 @@ impl JitSimdSdf {
                         let ry0 = simd_round_half_up(&mut builder, _tm30, vec_type);
                         let _tm31 = builder.ins().fmul(curr_z.0, isz_v);
                         let rz0 = simd_round_half_up(&mut builder, _tm31, vec_type);
-                        let _tn32 = builder.ins().fmin(rx0, lx_v);
-                        let rx0 = builder.ins().fmax(nlx_v, _tn32);
-                        let _tn33 = builder.ins().fmin(ry0, ly_v);
-                        let ry0 = builder.ins().fmax(nly_v, _tn33);
-                        let _tn34 = builder.ins().fmin(rz0, lz_v);
-                        let rz0 = builder.ins().fmax(nlz_v, _tn34);
+                        let _tn32 = law_fmin(&mut builder, rx0, lx_v);
+                        let rx0 = law_fmax(&mut builder, nlx_v, _tn32);
+                        let _tn33 = law_fmin(&mut builder, ry0, ly_v);
+                        let ry0 = law_fmax(&mut builder, nly_v, _tn33);
+                        let _tn34 = law_fmin(&mut builder, rz0, lz_v);
+                        let rz0 = law_fmax(&mut builder, nlz_v, _tn34);
                         let _tm35 = builder.ins().fmul(rx0, sx_v);
                         let nx0 = builder.ins().fsub(curr_x.0, _tm35);
                         let _tm36 = builder.ins().fmul(ry0, sy_v);
@@ -2024,12 +2039,12 @@ impl JitSimdSdf {
                         let ry1 = simd_round_half_up(&mut builder, _tm39, vec_type);
                         let _tm40 = builder.ins().fmul(curr_z.1, isz_v);
                         let rz1 = simd_round_half_up(&mut builder, _tm40, vec_type);
-                        let _tn41 = builder.ins().fmin(rx1, lx_v);
-                        let rx1 = builder.ins().fmax(nlx_v, _tn41);
-                        let _tn42 = builder.ins().fmin(ry1, ly_v);
-                        let ry1 = builder.ins().fmax(nly_v, _tn42);
-                        let _tn43 = builder.ins().fmin(rz1, lz_v);
-                        let rz1 = builder.ins().fmax(nlz_v, _tn43);
+                        let _tn41 = law_fmin(&mut builder, rx1, lx_v);
+                        let rx1 = law_fmax(&mut builder, nlx_v, _tn41);
+                        let _tn42 = law_fmin(&mut builder, ry1, ly_v);
+                        let ry1 = law_fmax(&mut builder, nly_v, _tn42);
+                        let _tn43 = law_fmin(&mut builder, rz1, lz_v);
+                        let rz1 = law_fmax(&mut builder, nlz_v, _tn43);
                         let _tm44 = builder.ins().fmul(rx1, sx_v);
                         let nx1 = builder.ins().fsub(curr_x.1, _tm44);
                         let _tm45 = builder.ins().fmul(ry1, sy_v);
@@ -2064,23 +2079,23 @@ impl JitSimdSdf {
                         let nhz = builder.ins().fneg(hz);
 
                         // Lane 0: p - clamp(p, -h, h)
-                        let _tn50 = builder.ins().fmin(curr_x.0, hx);
-                        let cx0 = builder.ins().fmax(nhx, _tn50);
-                        let _tn51 = builder.ins().fmin(curr_y.0, hy);
-                        let cy0 = builder.ins().fmax(nhy, _tn51);
-                        let _tn52 = builder.ins().fmin(curr_z.0, hz);
-                        let cz0 = builder.ins().fmax(nhz, _tn52);
+                        let _tn50 = law_fmin(&mut builder, curr_x.0, hx);
+                        let cx0 = law_fmax(&mut builder, nhx, _tn50);
+                        let _tn51 = law_fmin(&mut builder, curr_y.0, hy);
+                        let cy0 = law_fmax(&mut builder, nhy, _tn51);
+                        let _tn52 = law_fmin(&mut builder, curr_z.0, hz);
+                        let cz0 = law_fmax(&mut builder, nhz, _tn52);
                         let nx0 = builder.ins().fsub(curr_x.0, cx0);
                         let ny0 = builder.ins().fsub(curr_y.0, cy0);
                         let nz0 = builder.ins().fsub(curr_z.0, cz0);
 
                         // Lane 1
-                        let _tn53 = builder.ins().fmin(curr_x.1, hx);
-                        let cx1 = builder.ins().fmax(nhx, _tn53);
-                        let _tn54 = builder.ins().fmin(curr_y.1, hy);
-                        let cy1 = builder.ins().fmax(nhy, _tn54);
-                        let _tn55 = builder.ins().fmin(curr_z.1, hz);
-                        let cz1 = builder.ins().fmax(nhz, _tn55);
+                        let _tn53 = law_fmin(&mut builder, curr_x.1, hx);
+                        let cx1 = law_fmax(&mut builder, nhx, _tn53);
+                        let _tn54 = law_fmin(&mut builder, curr_y.1, hy);
+                        let cy1 = law_fmax(&mut builder, nhy, _tn54);
+                        let _tn55 = law_fmin(&mut builder, curr_z.1, hz);
+                        let cz1 = law_fmax(&mut builder, nhz, _tn55);
                         let nx1 = builder.ins().fsub(curr_x.1, cx1);
                         let ny1 = builder.ins().fsub(curr_y.1, cy1);
                         let nz1 = builder.ins().fsub(curr_z.1, cz1);
@@ -2244,20 +2259,20 @@ impl JitSimdSdf {
                                         // Lane 0
                                         let az0 = builder.ins().fabs(state.z.0);
                                         let wy0 = builder.ins().fsub(az0, hh);
-                                        let inner0 = builder.ins().fmax(d.0, wy0);
-                                        let inside0 = builder.ins().fmin(inner0, zero_vec);
-                                        let mx0 = builder.ins().fmax(d.0, zero_vec);
-                                        let my0 = builder.ins().fmax(wy0, zero_vec);
+                                        let inner0 = law_fmax(&mut builder, d.0, wy0);
+                                        let inside0 = law_fmin(&mut builder, inner0, zero_vec);
+                                        let mx0 = law_fmax(&mut builder, d.0, zero_vec);
+                                        let my0 = law_fmax(&mut builder, wy0, zero_vec);
                                         let outside0 = simd_length2_fma(&mut builder, mx0, my0);
                                         let r0 = builder.ins().fadd(inside0, outside0);
 
                                         // Lane 1
                                         let az1 = builder.ins().fabs(state.z.1);
                                         let wy1 = builder.ins().fsub(az1, hh);
-                                        let inner1 = builder.ins().fmax(d.1, wy1);
-                                        let inside1 = builder.ins().fmin(inner1, zero_vec);
-                                        let mx1 = builder.ins().fmax(d.1, zero_vec);
-                                        let my1 = builder.ins().fmax(wy1, zero_vec);
+                                        let inner1 = law_fmax(&mut builder, d.1, wy1);
+                                        let inside1 = law_fmin(&mut builder, inner1, zero_vec);
+                                        let mx1 = law_fmax(&mut builder, d.1, zero_vec);
+                                        let my1 = law_fmax(&mut builder, wy1, zero_vec);
                                         let outside1 = simd_length2_fma(&mut builder, mx1, my1);
                                         let r1 = builder.ins().fadd(inside1, outside1);
 
@@ -2831,9 +2846,9 @@ fn build_dynamic_simd_body(
                 let qx0 = builder.ins().fsub(ax0, hx);
                 let qy0 = builder.ins().fsub(ay0, hy);
                 let qz0 = builder.ins().fsub(az0, hz);
-                let mx0 = builder.ins().fmax(qx0, zero_vec);
-                let my0 = builder.ins().fmax(qy0, zero_vec);
-                let mz0 = builder.ins().fmax(qz0, zero_vec);
+                let mx0 = law_fmax(&mut builder, qx0, zero_vec);
+                let my0 = law_fmax(&mut builder, qy0, zero_vec);
+                let mz0 = law_fmax(&mut builder, qz0, zero_vec);
                 // ((x*x) + (y*y)) + (z*z): glam `Vec3::length` association, no fma
                 let len_sq0_xx = builder.ins().fmul(mx0, mx0);
                 let len_sq0_yy = builder.ins().fmul(my0, my0);
@@ -2841,9 +2856,9 @@ fn build_dynamic_simd_body(
                 let len_sq0_xy = builder.ins().fadd(len_sq0_xx, len_sq0_yy);
                 let len_sq0 = builder.ins().fadd(len_sq0_xy, mzz0);
                 let outside0 = builder.ins().sqrt(len_sq0);
-                let max_yz0 = builder.ins().fmax(qy0, qz0);
-                let max_xyz0 = builder.ins().fmax(qx0, max_yz0);
-                let inside0 = builder.ins().fmin(max_xyz0, zero_vec);
+                let max_yz0 = law_fmax(&mut builder, qy0, qz0);
+                let max_xyz0 = law_fmax(&mut builder, qx0, max_yz0);
+                let inside0 = law_fmin(&mut builder, max_xyz0, zero_vec);
                 let d0 = builder.ins().fadd(outside0, inside0);
                 let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
 
@@ -2853,9 +2868,9 @@ fn build_dynamic_simd_body(
                 let qx1 = builder.ins().fsub(ax1, hx);
                 let qy1 = builder.ins().fsub(ay1, hy);
                 let qz1 = builder.ins().fsub(az1, hz);
-                let mx1 = builder.ins().fmax(qx1, zero_vec);
-                let my1 = builder.ins().fmax(qy1, zero_vec);
-                let mz1 = builder.ins().fmax(qz1, zero_vec);
+                let mx1 = law_fmax(&mut builder, qx1, zero_vec);
+                let my1 = law_fmax(&mut builder, qy1, zero_vec);
+                let mz1 = law_fmax(&mut builder, qz1, zero_vec);
                 // ((x*x) + (y*y)) + (z*z): glam `Vec3::length` association, no fma
                 let len_sq1_xx = builder.ins().fmul(mx1, mx1);
                 let len_sq1_yy = builder.ins().fmul(my1, my1);
@@ -2863,9 +2878,9 @@ fn build_dynamic_simd_body(
                 let len_sq1_xy = builder.ins().fadd(len_sq1_xx, len_sq1_yy);
                 let len_sq1 = builder.ins().fadd(len_sq1_xy, mzz1);
                 let outside1 = builder.ins().sqrt(len_sq1);
-                let max_yz1 = builder.ins().fmax(qy1, qz1);
-                let max_xyz1 = builder.ins().fmax(qx1, max_yz1);
-                let inside1 = builder.ins().fmin(max_xyz1, zero_vec);
+                let max_yz1 = law_fmax(&mut builder, qy1, qz1);
+                let max_xyz1 = law_fmax(&mut builder, qx1, max_yz1);
+                let inside1 = law_fmin(&mut builder, max_xyz1, zero_vec);
                 let d1 = builder.ins().fadd(outside1, inside1);
                 let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
 
@@ -2882,13 +2897,13 @@ fn build_dynamic_simd_body(
                 let dx0 = builder.ins().fsub(xz_len0, r);
                 let ay0 = builder.ins().fabs(curr_y.0);
                 let dy0 = builder.ins().fsub(ay0, h);
-                let mx0 = builder.ins().fmax(dx0, zero_vec);
-                let my0 = builder.ins().fmax(dy0, zero_vec);
+                let mx0 = law_fmax(&mut builder, dx0, zero_vec);
+                let my0 = law_fmax(&mut builder, dy0, zero_vec);
                 let mzz0 = builder.ins().fmul(my0, my0);
                 let len_sq0 = mul_add_2r(&mut builder, mx0, mx0, mzz0);
                 let outside0 = builder.ins().sqrt(len_sq0);
-                let im0 = builder.ins().fmax(dx0, dy0);
-                let inside0 = builder.ins().fmin(im0, zero_vec);
+                let im0 = law_fmax(&mut builder, dx0, dy0);
+                let inside0 = law_fmin(&mut builder, im0, zero_vec);
                 let d0 = builder.ins().fadd(outside0, inside0);
                 let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
 
@@ -2898,13 +2913,13 @@ fn build_dynamic_simd_body(
                 let dx1 = builder.ins().fsub(xz_len1, r);
                 let ay1 = builder.ins().fabs(curr_y.1);
                 let dy1 = builder.ins().fsub(ay1, h);
-                let mx1 = builder.ins().fmax(dx1, zero_vec);
-                let my1 = builder.ins().fmax(dy1, zero_vec);
+                let mx1 = law_fmax(&mut builder, dx1, zero_vec);
+                let my1 = law_fmax(&mut builder, dy1, zero_vec);
                 let mzz1 = builder.ins().fmul(my1, my1);
                 let len_sq1 = mul_add_2r(&mut builder, mx1, mx1, mzz1);
                 let outside1 = builder.ins().sqrt(len_sq1);
-                let im1 = builder.ins().fmax(dx1, dy1);
-                let inside1 = builder.ins().fmin(im1, zero_vec);
+                let im1 = law_fmax(&mut builder, dx1, dy1);
+                let inside1 = law_fmin(&mut builder, im1, zero_vec);
                 let d1 = builder.ins().fadd(outside1, inside1);
                 let d1_scaled = builder.ins().fmul(d1, curr_scale.1);
 
@@ -2989,8 +3004,8 @@ fn build_dynamic_simd_body(
                 let dot_yz0 = mul_add_2r(&mut builder, pay0, bay, dot_z0);
                 let dot0 = mul_add_2r(&mut builder, pax0, bax, dot_yz0);
                 let h_raw0 = builder.ins().fmul(dot0, inv_bd);
-                let h_min0 = builder.ins().fmin(h_raw0, one_vec);
-                let h0 = builder.ins().fmax(h_min0, zero_vec);
+                let h_min0 = law_fmin(&mut builder, h_raw0, one_vec);
+                let h0 = law_fmax(&mut builder, h_min0, zero_vec);
                 let bhx0 = builder.ins().fmul(bax, h0);
                 let bhy0 = builder.ins().fmul(bay, h0);
                 let bhz0 = builder.ins().fmul(ba_z_v, h0);
@@ -3009,8 +3024,8 @@ fn build_dynamic_simd_body(
                 let dot_yz1 = mul_add_2r(&mut builder, pay1, bay, dot_z1);
                 let dot1 = mul_add_2r(&mut builder, pax1, bax, dot_yz1);
                 let h_raw1 = builder.ins().fmul(dot1, inv_bd);
-                let h_min1 = builder.ins().fmin(h_raw1, one_vec);
-                let h1 = builder.ins().fmax(h_min1, zero_vec);
+                let h_min1 = law_fmin(&mut builder, h_raw1, one_vec);
+                let h1 = law_fmax(&mut builder, h_min1, zero_vec);
                 let bhx1 = builder.ins().fmul(bax, h1);
                 let bhy1 = builder.ins().fmul(bay, h1);
                 let bhz1 = builder.ins().fmul(ba_z_v, h1);
@@ -3048,7 +3063,7 @@ fn build_dynamic_simd_body(
                 let q_x0 = simd_length2_fma(&mut builder, curr_x.0, curr_z.0);
                 let q_y0 = curr_y.0;
                 let ca_r0 = simd_select_neg(&mut builder, q_y0, r, zero_vec);
-                let min_q_ca0 = builder.ins().fmin(q_x0, ca_r0);
+                let min_q_ca0 = law_fmin(&mut builder, q_x0, ca_r0);
                 let ca_x0 = builder.ins().fsub(q_x0, min_q_ca0);
                 let abs_qy0 = builder.ins().fabs(q_y0);
                 let ca_y0 = builder.ins().fsub(abs_qy0, h);
@@ -3057,14 +3072,14 @@ fn build_dynamic_simd_body(
                 let dy_k2y0 = builder.ins().fmul(diff_y0, k2y);
                 let nqx_k2x0 = mul_add_2r(&mut builder, neg_qx0, k2x, dy_k2y0);
                 let t_raw0 = builder.ins().fdiv(nqx_k2x0, k2d);
-                let t_min0 = builder.ins().fmin(t_raw0, one_vec);
-                let t0 = builder.ins().fmax(zero_vec, t_min0);
+                let t_min0 = law_fmin(&mut builder, t_raw0, one_vec);
+                let t0 = law_fmax(&mut builder, zero_vec, t_min0);
                 let k2x_t0 = builder.ins().fmul(k2x, t0);
                 let cb_x0 = builder.ins().fadd(q_x0, k2x_t0);
                 let qy_h0 = builder.ins().fsub(q_y0, h);
                 let k2y_t0 = builder.ins().fmul(k2y, t0);
                 let cb_y0 = builder.ins().fadd(qy_h0, k2y_t0);
-                let both_neg_cond0 = builder.ins().fmax(cb_x0, ca_y0);
+                let both_neg_cond0 = law_fmax(&mut builder, cb_x0, ca_y0);
                 let s0 = simd_select_neg(&mut builder, both_neg_cond0, neg_one_v, one_vec);
                 let ca_sq0 = {
                     let xx = builder.ins().fmul(ca_x0, ca_x0);
@@ -3074,7 +3089,7 @@ fn build_dynamic_simd_body(
                     let xx = builder.ins().fmul(cb_x0, cb_x0);
                     mul_add_2r(&mut builder, cb_y0, cb_y0, xx)
                 };
-                let d2_0 = builder.ins().fmin(ca_sq0, cb_sq0);
+                let d2_0 = law_fmin(&mut builder, ca_sq0, cb_sq0);
                 let dist0 = builder.ins().sqrt(d2_0);
                 let d0 = builder.ins().fmul(s0, dist0);
 
@@ -3082,7 +3097,7 @@ fn build_dynamic_simd_body(
                 let q_x1 = simd_length2_fma(&mut builder, curr_x.1, curr_z.1);
                 let q_y1 = curr_y.1;
                 let ca_r1 = simd_select_neg(&mut builder, q_y1, r, zero_vec);
-                let min_q_ca1 = builder.ins().fmin(q_x1, ca_r1);
+                let min_q_ca1 = law_fmin(&mut builder, q_x1, ca_r1);
                 let ca_x1 = builder.ins().fsub(q_x1, min_q_ca1);
                 let abs_qy1 = builder.ins().fabs(q_y1);
                 let ca_y1 = builder.ins().fsub(abs_qy1, h);
@@ -3091,14 +3106,14 @@ fn build_dynamic_simd_body(
                 let dy_k2y1 = builder.ins().fmul(diff_y1, k2y);
                 let nqx_k2x1 = mul_add_2r(&mut builder, neg_qx1, k2x, dy_k2y1);
                 let t_raw1 = builder.ins().fdiv(nqx_k2x1, k2d);
-                let t_min1 = builder.ins().fmin(t_raw1, one_vec);
-                let t1 = builder.ins().fmax(zero_vec, t_min1);
+                let t_min1 = law_fmin(&mut builder, t_raw1, one_vec);
+                let t1 = law_fmax(&mut builder, zero_vec, t_min1);
                 let k2x_t1 = builder.ins().fmul(k2x, t1);
                 let cb_x1 = builder.ins().fadd(q_x1, k2x_t1);
                 let qy_h1 = builder.ins().fsub(q_y1, h);
                 let k2y_t1 = builder.ins().fmul(k2y, t1);
                 let cb_y1 = builder.ins().fadd(qy_h1, k2y_t1);
-                let both_neg_cond1 = builder.ins().fmax(cb_x1, ca_y1);
+                let both_neg_cond1 = law_fmax(&mut builder, cb_x1, ca_y1);
                 let s1 = simd_select_neg(&mut builder, both_neg_cond1, neg_one_v, one_vec);
                 let ca_sq1 = {
                     let xx = builder.ins().fmul(ca_x1, ca_x1);
@@ -3108,7 +3123,7 @@ fn build_dynamic_simd_body(
                     let xx = builder.ins().fmul(cb_x1, cb_x1);
                     mul_add_2r(&mut builder, cb_y1, cb_y1, xx)
                 };
-                let d2_1 = builder.ins().fmin(ca_sq1, cb_sq1);
+                let d2_1 = law_fmin(&mut builder, ca_sq1, cb_sq1);
                 let dist1 = builder.ins().sqrt(d2_1);
                 let d1 = builder.ins().fmul(s1, dist1);
 
@@ -3196,8 +3211,8 @@ fn build_dynamic_simd_body(
                 let py0 = builder.ins().fadd(curr_y.0, hh_v);
                 let abs_px0 = builder.ins().fabs(curr_x.0);
                 let abs_pz0 = builder.ins().fabs(curr_z.0);
-                let px_s0 = builder.ins().fmax(abs_px0, abs_pz0);
-                let pz_s0 = builder.ins().fmin(abs_px0, abs_pz0);
+                let px_s0 = law_fmax(&mut builder, abs_px0, abs_pz0);
+                let pz_s0 = law_fmin(&mut builder, abs_px0, abs_pz0);
                 let px_adj0 = builder.ins().fsub(px_s0, half_v);
                 let pz_adj0 = builder.ins().fsub(pz_s0, half_v);
                 let qx0 = pz_adj0;
@@ -3206,12 +3221,12 @@ fn build_dynamic_simd_body(
                 let half_py0 = builder.ins().fmul(half_v, py0);
                 let qz0 = mul_add_2r(&mut builder, h_v, px_adj0, half_py0);
                 let neg_qx0 = builder.ins().fneg(qx0);
-                let s0 = builder.ins().fmax(neg_qx0, zero_vec);
+                let s0 = law_fmax(&mut builder, neg_qx0, zero_vec);
                 let half_pz0 = builder.ins().fmul(half_v, pz_adj0);
                 let qy_sub0 = builder.ins().fsub(qy0, half_pz0);
                 let t_raw0 = builder.ins().fdiv(qy_sub0, m2_025_v);
-                let t_min0 = builder.ins().fmin(t_raw0, one_vec);
-                let t0 = builder.ins().fmax(zero_vec, t_min0);
+                let t_min0 = law_fmin(&mut builder, t_raw0, one_vec);
+                let t0 = law_fmax(&mut builder, zero_vec, t_min0);
                 let qx_s0 = builder.ins().fadd(qx0, s0);
                 let m2_qxs_10 = builder.ins().fmul(m2_v, qx_s0); // (m2 * (qx+s)) * (qx+s): the law's association
                 let m2_qxs0 = builder.ins().fmul(m2_qxs_10, qx_s0);
@@ -3226,8 +3241,8 @@ fn build_dynamic_simd_body(
                 let neg_qx_m2_0 = builder.ins().fmul(neg_qx0, m2_v);
                 let half_qy0 = builder.ins().fmul(half_v, qy0);
                 let cond0 = builder.ins().fsub(neg_qx_m2_0, half_qy0);
-                let min_cond0 = builder.ins().fmin(qy0, cond0);
-                let ab_min0 = builder.ins().fmin(a0, b0);
+                let min_cond0 = law_fmin(&mut builder, qy0, cond0);
+                let ab_min0 = law_fmin(&mut builder, a0, b0);
                 let neg_min_cond0 = builder.ins().fneg(min_cond0);
                 let d2_0 = simd_select_neg(&mut builder, neg_min_cond0, zero_vec, ab_min0);
                 let qz_sq0 = builder.ins().fmul(qz0, qz0);
@@ -3235,7 +3250,7 @@ fn build_dynamic_simd_body(
                 let d2_sc0 = builder.ins().fdiv(d2_qz0, m2_v);
                 let dist0 = builder.ins().sqrt(d2_sc0);
                 let neg_py0 = builder.ins().fneg(py0);
-                let sign_arg0 = builder.ins().fmax(qz0, neg_py0);
+                let sign_arg0 = law_fmax(&mut builder, qz0, neg_py0);
                 let neg_mask0 = builder.ins().fcmp(FloatCC::LessThan, sign_arg0, zero_vec);
                 let neg_mask0 = builder.ins().bitcast(vec_type, MemFlags::new(), neg_mask0);
                 let signed0 = builder.ins().bitselect(neg_mask0, neg_one_v, one_vec); // Real::signum: x < 0 ? -1 : 1
@@ -3245,8 +3260,8 @@ fn build_dynamic_simd_body(
                 let py1 = builder.ins().fadd(curr_y.1, hh_v);
                 let abs_px1 = builder.ins().fabs(curr_x.1);
                 let abs_pz1 = builder.ins().fabs(curr_z.1);
-                let px_s1 = builder.ins().fmax(abs_px1, abs_pz1);
-                let pz_s1 = builder.ins().fmin(abs_px1, abs_pz1);
+                let px_s1 = law_fmax(&mut builder, abs_px1, abs_pz1);
+                let pz_s1 = law_fmin(&mut builder, abs_px1, abs_pz1);
                 let px_adj1 = builder.ins().fsub(px_s1, half_v);
                 let pz_adj1 = builder.ins().fsub(pz_s1, half_v);
                 let qx1 = pz_adj1;
@@ -3255,12 +3270,12 @@ fn build_dynamic_simd_body(
                 let half_py1 = builder.ins().fmul(half_v, py1);
                 let qz1 = mul_add_2r(&mut builder, h_v, px_adj1, half_py1);
                 let neg_qx1 = builder.ins().fneg(qx1);
-                let s1 = builder.ins().fmax(neg_qx1, zero_vec);
+                let s1 = law_fmax(&mut builder, neg_qx1, zero_vec);
                 let half_pz1 = builder.ins().fmul(half_v, pz_adj1);
                 let qy_sub1 = builder.ins().fsub(qy1, half_pz1);
                 let t_raw1 = builder.ins().fdiv(qy_sub1, m2_025_v);
-                let t_min1 = builder.ins().fmin(t_raw1, one_vec);
-                let t1 = builder.ins().fmax(zero_vec, t_min1);
+                let t_min1 = law_fmin(&mut builder, t_raw1, one_vec);
+                let t1 = law_fmax(&mut builder, zero_vec, t_min1);
                 let qx_s1 = builder.ins().fadd(qx1, s1);
                 let m2_qxs_11 = builder.ins().fmul(m2_v, qx_s1); // (m2 * (qx+s)) * (qx+s): the law's association
                 let m2_qxs1 = builder.ins().fmul(m2_qxs_11, qx_s1);
@@ -3275,8 +3290,8 @@ fn build_dynamic_simd_body(
                 let neg_qx_m2_1 = builder.ins().fmul(neg_qx1, m2_v);
                 let half_qy1 = builder.ins().fmul(half_v, qy1);
                 let cond1 = builder.ins().fsub(neg_qx_m2_1, half_qy1);
-                let min_cond1 = builder.ins().fmin(qy1, cond1);
-                let ab_min1 = builder.ins().fmin(a1, b1);
+                let min_cond1 = law_fmin(&mut builder, qy1, cond1);
+                let ab_min1 = law_fmin(&mut builder, a1, b1);
                 let neg_min_cond1 = builder.ins().fneg(min_cond1);
                 let d2_1 = simd_select_neg(&mut builder, neg_min_cond1, zero_vec, ab_min1);
                 let qz_sq1 = builder.ins().fmul(qz1, qz1);
@@ -3284,7 +3299,7 @@ fn build_dynamic_simd_body(
                 let d2_sc1 = builder.ins().fdiv(d2_qz1, m2_v);
                 let dist1 = builder.ins().sqrt(d2_sc1);
                 let neg_py1 = builder.ins().fneg(py1);
-                let sign_arg1 = builder.ins().fmax(qz1, neg_py1);
+                let sign_arg1 = law_fmax(&mut builder, qz1, neg_py1);
                 let neg_mask1 = builder.ins().fcmp(FloatCC::LessThan, sign_arg1, zero_vec);
                 let neg_mask1 = builder.ins().bitcast(vec_type, MemFlags::new(), neg_mask1);
                 let signed1 = builder.ins().bitselect(neg_mask1, neg_one_v, one_vec); // Real::signum: x < 0 ? -1 : 1
@@ -3327,15 +3342,15 @@ fn build_dynamic_simd_body(
                 let qz_qy0 = builder.ins().fsub(qz0, qy0);
                 let qz_qy_s0 = builder.ins().fadd(qz_qy0, s_v);
                 let hv0 = builder.ins().fmul(half_v, qz_qy_s0);
-                let k_min0 = builder.ins().fmin(hv0, s_v);
-                let k0 = builder.ins().fmax(zero_vec, k_min0);
+                let k_min0 = law_fmin(&mut builder, hv0, s_v);
+                let k0 = law_fmax(&mut builder, zero_vec, k_min0);
                 let qy_s0 = builder.ins().fsub(qy0, s_v);
                 let qy_sk0 = builder.ins().fadd(qy_s0, k0);
                 let qz_k0 = builder.ins().fsub(qz0, k0);
                 let detail0 = simd_length3_fma(&mut builder, qx0, qy_sk0, qz_k0);
                 let early0 = builder.ins().fmul(m0, inv_sqrt3_v);
-                let min_c23_0 = builder.ins().fmin(c2_0, c3_0);
-                let any_cond0 = builder.ins().fmin(c1_0, min_c23_0);
+                let min_c23_0 = law_fmin(&mut builder, c2_0, c3_0);
+                let any_cond0 = law_fmin(&mut builder, c1_0, min_c23_0);
                 let d0 = simd_select_neg(&mut builder, any_cond0, detail0, early0);
 
                 // Lane 1
@@ -3360,15 +3375,15 @@ fn build_dynamic_simd_body(
                 let qz_qy1 = builder.ins().fsub(qz1, qy1);
                 let qz_qy_s1 = builder.ins().fadd(qz_qy1, s_v);
                 let hv1 = builder.ins().fmul(half_v, qz_qy_s1);
-                let k_min1 = builder.ins().fmin(hv1, s_v);
-                let k1 = builder.ins().fmax(zero_vec, k_min1);
+                let k_min1 = law_fmin(&mut builder, hv1, s_v);
+                let k1 = law_fmax(&mut builder, zero_vec, k_min1);
                 let qy_s1 = builder.ins().fsub(qy1, s_v);
                 let qy_sk1 = builder.ins().fadd(qy_s1, k1);
                 let qz_k1 = builder.ins().fsub(qz1, k1);
                 let detail1 = simd_length3_fma(&mut builder, qx1, qy_sk1, qz_k1);
                 let early1 = builder.ins().fmul(m1, inv_sqrt3_v);
-                let min_c23_1 = builder.ins().fmin(c2_1, c3_1);
-                let any_cond1 = builder.ins().fmin(c1_1, min_c23_1);
+                let min_c23_1 = law_fmin(&mut builder, c2_1, c3_1);
+                let any_cond1 = law_fmin(&mut builder, c1_1, min_c23_1);
                 let d1 = simd_select_neg(&mut builder, any_cond1, detail1, early1);
 
                 let d0_scaled = builder.ins().fmul(d0, curr_scale.0);
@@ -3403,24 +3418,24 @@ fn build_dynamic_simd_body(
                 let apz0 = builder.ins().fabs(curr_z.0);
                 let ky_py0 = builder.ins().fmul(ky_v, apy0);
                 let dot0 = mul_add_2r(&mut builder, kx_v, apx0, ky_py0);
-                let dot_min0 = builder.ins().fmin(dot0, zero_vec);
+                let dot_min0 = law_fmin(&mut builder, dot0, zero_vec);
                 let reflect0 = builder.ins().fmul(two_v, dot_min0);
                 let rkx0 = builder.ins().fmul(reflect0, kx_v);
                 let rky0 = builder.ins().fmul(reflect0, ky_v);
                 let px_r0 = builder.ins().fsub(apx0, rkx0);
                 let py_r0 = builder.ins().fsub(apy0, rky0);
-                let px_cl0 = builder.ins().fmin(px_r0, kz_hr_v);
-                let clamped0 = builder.ins().fmax(neg_kz_hr_v, px_cl0);
+                let px_cl0 = law_fmin(&mut builder, px_r0, kz_hr_v);
+                let clamped0 = law_fmax(&mut builder, neg_kz_hr_v, px_cl0);
                 let dx0 = builder.ins().fsub(px_r0, clamped0);
                 let dy0 = builder.ins().fsub(py_r0, hr_v);
                 let len_dxy0 = simd_length2_fma(&mut builder, dx0, dy0);
                 let sign_dy0 = simd_select_neg(&mut builder, dy0, neg_one_v, one_vec);
                 let d_xy0 = builder.ins().fmul(len_dxy0, sign_dy0);
                 let d_z0 = builder.ins().fsub(apz0, hh_v);
-                let max_dd0 = builder.ins().fmax(d_xy0, d_z0);
-                let interior0 = builder.ins().fmin(max_dd0, zero_vec);
-                let d_xy_p0 = builder.ins().fmax(d_xy0, zero_vec);
-                let d_z_p0 = builder.ins().fmax(d_z0, zero_vec);
+                let max_dd0 = law_fmax(&mut builder, d_xy0, d_z0);
+                let interior0 = law_fmin(&mut builder, max_dd0, zero_vec);
+                let d_xy_p0 = law_fmax(&mut builder, d_xy0, zero_vec);
+                let d_z_p0 = law_fmax(&mut builder, d_z0, zero_vec);
                 let exterior0 = simd_length2_fma(&mut builder, d_xy_p0, d_z_p0);
                 let d0 = builder.ins().fadd(interior0, exterior0);
 
@@ -3430,24 +3445,24 @@ fn build_dynamic_simd_body(
                 let apz1 = builder.ins().fabs(curr_z.1);
                 let ky_py1 = builder.ins().fmul(ky_v, apy1);
                 let dot1 = mul_add_2r(&mut builder, kx_v, apx1, ky_py1);
-                let dot_min1 = builder.ins().fmin(dot1, zero_vec);
+                let dot_min1 = law_fmin(&mut builder, dot1, zero_vec);
                 let reflect1 = builder.ins().fmul(two_v, dot_min1);
                 let rkx1 = builder.ins().fmul(reflect1, kx_v);
                 let rky1 = builder.ins().fmul(reflect1, ky_v);
                 let px_r1 = builder.ins().fsub(apx1, rkx1);
                 let py_r1 = builder.ins().fsub(apy1, rky1);
-                let px_cl1 = builder.ins().fmin(px_r1, kz_hr_v);
-                let clamped1 = builder.ins().fmax(neg_kz_hr_v, px_cl1);
+                let px_cl1 = law_fmin(&mut builder, px_r1, kz_hr_v);
+                let clamped1 = law_fmax(&mut builder, neg_kz_hr_v, px_cl1);
                 let dx1 = builder.ins().fsub(px_r1, clamped1);
                 let dy1 = builder.ins().fsub(py_r1, hr_v);
                 let len_dxy1 = simd_length2_fma(&mut builder, dx1, dy1);
                 let sign_dy1 = simd_select_neg(&mut builder, dy1, neg_one_v, one_vec);
                 let d_xy1 = builder.ins().fmul(len_dxy1, sign_dy1);
                 let d_z1 = builder.ins().fsub(apz1, hh_v);
-                let max_dd1 = builder.ins().fmax(d_xy1, d_z1);
-                let interior1 = builder.ins().fmin(max_dd1, zero_vec);
-                let d_xy_p1 = builder.ins().fmax(d_xy1, zero_vec);
-                let d_z_p1 = builder.ins().fmax(d_z1, zero_vec);
+                let max_dd1 = law_fmax(&mut builder, d_xy1, d_z1);
+                let interior1 = law_fmin(&mut builder, max_dd1, zero_vec);
+                let d_xy_p1 = law_fmax(&mut builder, d_xy1, zero_vec);
+                let d_z_p1 = law_fmax(&mut builder, d_z1, zero_vec);
                 let exterior1 = simd_length2_fma(&mut builder, d_xy_p1, d_z_p1);
                 let d1 = builder.ins().fadd(interior1, exterior1);
 
@@ -3464,7 +3479,7 @@ fn build_dynamic_simd_body(
                 // Lane 0
                 let abs_y0 = builder.ins().fabs(curr_y.0);
                 let y_sub0 = builder.ins().fsub(abs_y0, hl);
-                let qy0 = builder.ins().fmax(y_sub0, zero_vec);
+                let qy0 = law_fmax(&mut builder, y_sub0, zero_vec);
                 let qyy0 = builder.ins().fmul(qy0, qy0);
                 let xy_sq0 = mul_add_2r(&mut builder, curr_x.0, curr_x.0, qyy0);
                 let xy_len0 = builder.ins().sqrt(xy_sq0);
@@ -3478,7 +3493,7 @@ fn build_dynamic_simd_body(
                 // Lane 1
                 let abs_y1 = builder.ins().fabs(curr_y.1);
                 let y_sub1 = builder.ins().fsub(abs_y1, hl);
-                let qy1 = builder.ins().fmax(y_sub1, zero_vec);
+                let qy1 = law_fmax(&mut builder, y_sub1, zero_vec);
                 let qyy1 = builder.ins().fmul(qy1, qy1);
                 let xy_sq1 = mul_add_2r(&mut builder, curr_x.1, curr_x.1, qyy1);
                 let xy_len1 = builder.ins().sqrt(xy_sq1);
@@ -3495,13 +3510,19 @@ fn build_dynamic_simd_body(
             OpCode::Union => {
                 let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                 let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                value_stack.push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
+                value_stack.push((
+                    law_fmin(&mut builder, a.0, b.0),
+                    law_fmin(&mut builder, a.1, b.1),
+                ));
             }
 
             OpCode::Intersection => {
                 let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                 let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
-                value_stack.push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
+                value_stack.push((
+                    law_fmax(&mut builder, a.0, b.0),
+                    law_fmax(&mut builder, a.1, b.1),
+                ));
             }
 
             OpCode::Subtraction => {
@@ -3510,8 +3531,8 @@ fn build_dynamic_simd_body(
                 let neg_b0 = builder.ins().fneg(b.0);
                 let neg_b1 = builder.ins().fneg(b.1);
                 value_stack.push((
-                    builder.ins().fmax(a.0, neg_b0),
-                    builder.ins().fmax(a.1, neg_b1),
+                    law_fmax(&mut builder, a.0, neg_b0),
+                    law_fmax(&mut builder, a.1, neg_b1),
                 ));
             }
 
@@ -3522,7 +3543,10 @@ fn build_dynamic_simd_body(
                 let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                 let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                 if k.abs() < FOLD_EPSILON {
-                    value_stack.push((builder.ins().fmin(a.0, b.0), builder.ins().fmin(a.1, b.1)));
+                    value_stack.push((
+                        law_fmin(&mut builder, a.0, b.0),
+                        law_fmin(&mut builder, a.1, b.1),
+                    ));
                     continue;
                 }
                 let res0 = emit_smooth_poly(&mut builder, vec_type, a.0, b.0, k, rk, true);
@@ -3536,7 +3560,10 @@ fn build_dynamic_simd_body(
                 let b = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                 let a = value_stack.pop().unwrap_or((zero_vec, zero_vec));
                 if k.abs() < FOLD_EPSILON {
-                    value_stack.push((builder.ins().fmax(a.0, b.0), builder.ins().fmax(a.1, b.1)));
+                    value_stack.push((
+                        law_fmax(&mut builder, a.0, b.0),
+                        law_fmax(&mut builder, a.1, b.1),
+                    ));
                     continue;
                 }
                 let res0 = emit_smooth_poly(&mut builder, vec_type, a.0, b.0, k, rk, false);
@@ -3553,7 +3580,10 @@ fn build_dynamic_simd_body(
                 let nb0 = builder.ins().fneg(b.0);
                 let nb1 = builder.ins().fneg(b.1);
                 if k.abs() < FOLD_EPSILON {
-                    value_stack.push((builder.ins().fmax(a.0, nb0), builder.ins().fmax(a.1, nb1)));
+                    value_stack.push((
+                        law_fmax(&mut builder, a.0, nb0),
+                        law_fmax(&mut builder, a.1, nb1),
+                    ));
                     continue;
                 }
                 let res0 = emit_smooth_poly(&mut builder, vec_type, a.0, nb0, k, rk, false);
@@ -3568,17 +3598,17 @@ fn build_dynamic_simd_body(
                 let r_v = emitter.emit_splat(&mut builder, inst.params[0]);
                 let s_v = emitter.emit_splat(&mut builder, std::f32::consts::FRAC_1_SQRT_2);
 
-                let min0 = builder.ins().fmin(a.0, b.0);
+                let min0 = law_fmin(&mut builder, a.0, b.0);
                 let sum0 = builder.ins().fadd(a.0, b.0);
                 let sc0 = builder.ins().fmul(sum0, s_v);
                 let ch0 = builder.ins().fsub(sc0, r_v);
-                let res0 = builder.ins().fmin(min0, ch0);
+                let res0 = law_fmin(&mut builder, min0, ch0);
 
-                let min1 = builder.ins().fmin(a.1, b.1);
+                let min1 = law_fmin(&mut builder, a.1, b.1);
                 let sum1 = builder.ins().fadd(a.1, b.1);
                 let sc1 = builder.ins().fmul(sum1, s_v);
                 let ch1 = builder.ins().fsub(sc1, r_v);
-                let res1 = builder.ins().fmin(min1, ch1);
+                let res1 = law_fmin(&mut builder, min1, ch1);
 
                 value_stack.push((res0, res1));
             }
@@ -3592,20 +3622,20 @@ fn build_dynamic_simd_body(
 
                 let na0 = builder.ins().fneg(a.0);
                 let nb0 = builder.ins().fneg(b.0);
-                let min0 = builder.ins().fmin(na0, nb0);
+                let min0 = law_fmin(&mut builder, na0, nb0);
                 let sum0 = builder.ins().fadd(na0, nb0);
                 let sc0 = builder.ins().fmul(sum0, s_v);
                 let ch0 = builder.ins().fsub(sc0, r_v);
-                let cm0 = builder.ins().fmin(min0, ch0);
+                let cm0 = law_fmin(&mut builder, min0, ch0);
                 let res0 = builder.ins().fneg(cm0);
 
                 let na1 = builder.ins().fneg(a.1);
                 let nb1 = builder.ins().fneg(b.1);
-                let min1 = builder.ins().fmin(na1, nb1);
+                let min1 = law_fmin(&mut builder, na1, nb1);
                 let sum1 = builder.ins().fadd(na1, nb1);
                 let sc1 = builder.ins().fmul(sum1, s_v);
                 let ch1 = builder.ins().fsub(sc1, r_v);
-                let cm1 = builder.ins().fmin(min1, ch1);
+                let cm1 = law_fmin(&mut builder, min1, ch1);
                 let res1 = builder.ins().fneg(cm1);
 
                 value_stack.push((res0, res1));
@@ -3619,19 +3649,19 @@ fn build_dynamic_simd_body(
                 let s_v = emitter.emit_splat(&mut builder, std::f32::consts::FRAC_1_SQRT_2);
 
                 let na0 = builder.ins().fneg(a.0);
-                let min0 = builder.ins().fmin(na0, b.0);
+                let min0 = law_fmin(&mut builder, na0, b.0);
                 let sum0 = builder.ins().fadd(na0, b.0);
                 let sc0 = builder.ins().fmul(sum0, s_v);
                 let ch0 = builder.ins().fsub(sc0, r_v);
-                let cm0 = builder.ins().fmin(min0, ch0);
+                let cm0 = law_fmin(&mut builder, min0, ch0);
                 let res0 = builder.ins().fneg(cm0);
 
                 let na1 = builder.ins().fneg(a.1);
-                let min1 = builder.ins().fmin(na1, b.1);
+                let min1 = law_fmin(&mut builder, na1, b.1);
                 let sum1 = builder.ins().fadd(na1, b.1);
                 let sc1 = builder.ins().fmul(sum1, s_v);
                 let ch1 = builder.ins().fsub(sc1, r_v);
-                let cm1 = builder.ins().fmin(min1, ch1);
+                let cm1 = law_fmin(&mut builder, min1, ch1);
                 let res1 = builder.ins().fneg(cm1);
 
                 value_stack.push((res0, res1));
@@ -4004,12 +4034,12 @@ fn build_dynamic_simd_body(
                 let ry0 = simd_round_half_up(&mut builder, _tm78, vec_type);
                 let _tm79 = builder.ins().fmul(curr_z.0, isz_v);
                 let rz0 = simd_round_half_up(&mut builder, _tm79, vec_type);
-                let _tn80 = builder.ins().fmin(rx0, lx_v);
-                let rx0 = builder.ins().fmax(nlx_v, _tn80);
-                let _tn81 = builder.ins().fmin(ry0, ly_v);
-                let ry0 = builder.ins().fmax(nly_v, _tn81);
-                let _tn82 = builder.ins().fmin(rz0, lz_v);
-                let rz0 = builder.ins().fmax(nlz_v, _tn82);
+                let _tn80 = law_fmin(&mut builder, rx0, lx_v);
+                let rx0 = law_fmax(&mut builder, nlx_v, _tn80);
+                let _tn81 = law_fmin(&mut builder, ry0, ly_v);
+                let ry0 = law_fmax(&mut builder, nly_v, _tn81);
+                let _tn82 = law_fmin(&mut builder, rz0, lz_v);
+                let rz0 = law_fmax(&mut builder, nlz_v, _tn82);
                 let _tm83 = builder.ins().fmul(rx0, sx_v);
                 let nx0 = builder.ins().fsub(curr_x.0, _tm83);
                 let _tm84 = builder.ins().fmul(ry0, sy_v);
@@ -4024,12 +4054,12 @@ fn build_dynamic_simd_body(
                 let ry1 = simd_round_half_up(&mut builder, _tm87, vec_type);
                 let _tm88 = builder.ins().fmul(curr_z.1, isz_v);
                 let rz1 = simd_round_half_up(&mut builder, _tm88, vec_type);
-                let _tn89 = builder.ins().fmin(rx1, lx_v);
-                let rx1 = builder.ins().fmax(nlx_v, _tn89);
-                let _tn90 = builder.ins().fmin(ry1, ly_v);
-                let ry1 = builder.ins().fmax(nly_v, _tn90);
-                let _tn91 = builder.ins().fmin(rz1, lz_v);
-                let rz1 = builder.ins().fmax(nlz_v, _tn91);
+                let _tn89 = law_fmin(&mut builder, rx1, lx_v);
+                let rx1 = law_fmax(&mut builder, nlx_v, _tn89);
+                let _tn90 = law_fmin(&mut builder, ry1, ly_v);
+                let ry1 = law_fmax(&mut builder, nly_v, _tn90);
+                let _tn91 = law_fmin(&mut builder, rz1, lz_v);
+                let rz1 = law_fmax(&mut builder, nlz_v, _tn91);
                 let _tm92 = builder.ins().fmul(rx1, sx_v);
                 let nx1 = builder.ins().fsub(curr_x.1, _tm92);
                 let _tm93 = builder.ins().fmul(ry1, sy_v);
@@ -4061,23 +4091,23 @@ fn build_dynamic_simd_body(
                 let nhz = builder.ins().fneg(hz);
 
                 // Lane 0
-                let _tn95 = builder.ins().fmin(curr_x.0, hx);
-                let cx0 = builder.ins().fmax(nhx, _tn95);
-                let _tn96 = builder.ins().fmin(curr_y.0, hy);
-                let cy0 = builder.ins().fmax(nhy, _tn96);
-                let _tn97 = builder.ins().fmin(curr_z.0, hz);
-                let cz0 = builder.ins().fmax(nhz, _tn97);
+                let _tn95 = law_fmin(&mut builder, curr_x.0, hx);
+                let cx0 = law_fmax(&mut builder, nhx, _tn95);
+                let _tn96 = law_fmin(&mut builder, curr_y.0, hy);
+                let cy0 = law_fmax(&mut builder, nhy, _tn96);
+                let _tn97 = law_fmin(&mut builder, curr_z.0, hz);
+                let cz0 = law_fmax(&mut builder, nhz, _tn97);
                 let nx0 = builder.ins().fsub(curr_x.0, cx0);
                 let ny0 = builder.ins().fsub(curr_y.0, cy0);
                 let nz0 = builder.ins().fsub(curr_z.0, cz0);
 
                 // Lane 1
-                let _tn98 = builder.ins().fmin(curr_x.1, hx);
-                let cx1 = builder.ins().fmax(nhx, _tn98);
-                let _tn99 = builder.ins().fmin(curr_y.1, hy);
-                let cy1 = builder.ins().fmax(nhy, _tn99);
-                let _tn100 = builder.ins().fmin(curr_z.1, hz);
-                let cz1 = builder.ins().fmax(nhz, _tn100);
+                let _tn98 = law_fmin(&mut builder, curr_x.1, hx);
+                let cx1 = law_fmax(&mut builder, nhx, _tn98);
+                let _tn99 = law_fmin(&mut builder, curr_y.1, hy);
+                let cy1 = law_fmax(&mut builder, nhy, _tn99);
+                let _tn100 = law_fmin(&mut builder, curr_z.1, hz);
+                let cz1 = law_fmax(&mut builder, nhz, _tn100);
                 let nx1 = builder.ins().fsub(curr_x.1, cx1);
                 let ny1 = builder.ins().fsub(curr_y.1, cy1);
                 let nz1 = builder.ins().fsub(curr_z.1, cz1);
@@ -4227,20 +4257,20 @@ fn build_dynamic_simd_body(
                             // Lane 0
                             let az0 = builder.ins().fabs(state.z.0);
                             let wy0 = builder.ins().fsub(az0, state.param_vec);
-                            let inner0 = builder.ins().fmax(d.0, wy0);
-                            let inside0 = builder.ins().fmin(inner0, zero_vec);
-                            let mx0 = builder.ins().fmax(d.0, zero_vec);
-                            let my0 = builder.ins().fmax(wy0, zero_vec);
+                            let inner0 = law_fmax(&mut builder, d.0, wy0);
+                            let inside0 = law_fmin(&mut builder, inner0, zero_vec);
+                            let mx0 = law_fmax(&mut builder, d.0, zero_vec);
+                            let my0 = law_fmax(&mut builder, wy0, zero_vec);
                             let outside0 = simd_length2_fma(&mut builder, mx0, my0);
                             let r0 = builder.ins().fadd(inside0, outside0);
 
                             // Lane 1
                             let az1 = builder.ins().fabs(state.z.1);
                             let wy1 = builder.ins().fsub(az1, state.param_vec);
-                            let inner1 = builder.ins().fmax(d.1, wy1);
-                            let inside1 = builder.ins().fmin(inner1, zero_vec);
-                            let mx1 = builder.ins().fmax(d.1, zero_vec);
-                            let my1 = builder.ins().fmax(wy1, zero_vec);
+                            let inner1 = law_fmax(&mut builder, d.1, wy1);
+                            let inside1 = law_fmin(&mut builder, inner1, zero_vec);
+                            let mx1 = law_fmax(&mut builder, d.1, zero_vec);
+                            let my1 = law_fmax(&mut builder, wy1, zero_vec);
                             let outside1 = simd_length2_fma(&mut builder, mx1, my1);
                             let r1 = builder.ins().fadd(inside1, outside1);
 

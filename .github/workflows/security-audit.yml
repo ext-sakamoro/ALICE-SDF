@@ -220,6 +220,7 @@ jobs:
       - name: Detect platform libm / mul_add in the evaluator and law directories
         run: |
           set -eo pipefail
+          python3 scripts/test_det_math_guard.py
           python3 scripts/det_math_guard.py
 
       # 4.0.1: interval arithmetic is only a valid enclosure because every

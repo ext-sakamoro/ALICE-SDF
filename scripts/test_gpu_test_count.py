@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Tests for scripts/gpu_test_count.py on small logs."""
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -23,7 +25,9 @@ def run(text, *args):
     with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as f:
         f.write(text)
     try:
-        return g.main([f.name, *args])
+        # captured: the `::error::` lines would become annotations of the CI run
+        with contextlib.redirect_stdout(io.StringIO()):
+            return g.main([f.name, *args])
     finally:
         os.unlink(f.name)
 
