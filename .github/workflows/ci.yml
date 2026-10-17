@@ -511,7 +511,9 @@ jobs:
           rust-analyzer --version
       - uses: Swatinem/rust-cache@v2
       - name: scip_reach oracle (検査器自身の試験)
-        run: python3 scripts/test_scip_reach.py
+        run: |
+          python3 scripts/test_scip_reach.py
+          python3 scripts/test_scip_scope.py
       - name: Build SCIP indexes
         run: scripts/scip_index.sh
       - name: No new L0 item, no stale baseline entry
