@@ -8,7 +8,18 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-10-17
+
+### Migration (6.x → 7.0.0)
+- library の内部で glam のベクトルの `min` / `max` / `clamp` / `min_element` / `max_element` を Law の規則 (大きさが同じ 0 は -0 < +0、NaN はもう一方を返す) に置き換えた 利用者の code の変更は要らないが、0 の成分や NaN を含む入力では bounds や距離の 0 の符号が 6.x と変わることがある
+- `UvChart::uv_coords` は `BTreeMap` になった `HashMap` を前提に `entry` 以外の API を使っていた code は型を合わせる 反復は頂点番号の昇順になる
+- `incremental::ParamId` は `Ord` を持つ (追加のみ)
+- 保存した値や出力を alice-sdf の算術の識別子で照合する時は `SDF_SEMANTICS_ID` と `check_sdf_semantics` を使う 6.x の識別子は `PREVIOUS_SDF_SEMANTICS_IDS` に入っていて、`SemanticsCheck::VerifiedPrevious` を返す
+- Law の経路で評価の cache を使う時は `ExactEvalCache` を使う `cache_bridge::SdfEvalCache` (feature `sdf-cache`) はそのまま使えるが、Law の保証の外 (格子に量子化し、追い出しの順が実行ごとに変わる)
+- mesh の簡略化 / decimate / UV 展開 / manifold の修復 / chunk の cache の出力は、HashMap の反復順に依存しなくなったので 6.x と頂点や三角形の並びが変わることがある 並びを保存して比べていた場合は作り直す
+
 ### Changed
+- 版を 7.0.0 にした (下の **Breaking** の各項目、移行は上の Migration) bindings (Cinema 4D / Houdini / Maya / Nuke の `__version__`、three.js と npm の package.json、Unreal plugin の VersionName) と文書の install 行を同じ版にした
 - **Breaking** ALICE-Law G10: Law の経路の評価 cache は `ExactEvalCache` (`src/eval_cache.rs`、新規) 点の bit 列を key にするので別の点の値を返さず、順序付きの map で hasher も seed も持たず、挿入順 (FIFO) で追い出す 同じ操作列は同じ hit と中身になり、thread の割り込み方で値は変わらない `cache_bridge::SdfEvalCache` (feature `sdf-cache`、AGPL の alice-cache) は Law の保証の外と文書に明記した (格子に量子化するので別の点の値を返しうる、追い出しが alice-cache の乱数 seed に依存する) 既定の build の依存がすべて許容的な licence であることを `scripts/default_dependency_licenses.py` で確かめる (CI の wiring-guard job、preflight)
 - **Breaking** ALICE-Law G6: alice-sdf 自身の識別子 `SDF_SEMANTICS_ID` (`src/semantics.rs`) を足した `tests/test_det_golden.rs` の golden 表 152 行の digest、max / min と 2 回丸めの `mul_add` の規則、`alice-det-math` の識別子を、`alice-det-math` と同じ手順で畳み込む det-math の世代ごとの表 `SDF_SEMANTICS_BY_DET_MATH` から引き、表に無い世代は compile が止まる 値は c87c2528… (det-math 0.5.1) 6.1 までが自身の識別子として出していた det-math の識別子 (85e08846… / 135c407d…) は `PREVIOUS_SDF_SEMANTICS_IDS` に入れ、`check_sdf_semantics` は `VerifiedPrevious` と読む `SEMANTICS_ID` の再 export は `alice-det-math` の識別子として残す 距離を保存・識別する呼び手は `SDF_SEMANTICS_ID` を記録する
 - **Breaking** ALICE-Law G2 / G13: glam のベクトルの `min` / `max` / `clamp` / `min_element` / `max_element` (lane ごとに `f32::min` / `f32::max` を呼び、同じ大きさの 0 の符号が target 依存) を library から外し、`LawMinMax` / `LawVec` (lane ごとに `law_min_f32` / `law_max_f32`、lane の畳み込みは lane の順) にした 96 箇所 (Linux の feature 一式で 92、`src/wasm.rs` の f32 で 4) library の clippy 設定は glam の 7 型の 5 method を禁じ、canary は 47 の形をすべて検出する wasm32 の library も同じ禁止で lint する
@@ -20,6 +31,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: ALICE-Law G4 / G5 / G14 `.github/workflows/release-profile.yml` が bit 一致の試験 (`tests/test_det_golden.rs` / `test_det_parity.rs` / `test_det_near_zero_parity.rs` / `test_det_near_zero_probe.rs`、jit の試験は jit feature で) と `tests/float_environment.rs`、Law の max / min の unit test を release profile で x86_64 と aarch64 に走らせ、各 log を `scripts/libtest_count.py` で最低件数と照らす fast-math・native CPU・x87 の flag を build 設定から探す `scripts/build_config_guard.py` (wiring-guard job、3 OS) と、rustc に実際に渡る flag を読む `scripts/build_flags_check.py` (release-profile.yml) を足した 2 本と試験、`tests/float_environment.rs` は ALICE-DB と byte 一致 preflight にも同じ step を足した
 
 ### Fixed
+- CI: `scripts/version_sync.py` と `scripts/readme_sync.py` が README の生成された ALICE-Law の block (`law-integration:begin` から `end` まで) の中の行を install 行として版を比べていた block は自動生成なので比べる対象から外す (試験は両方の `test_the_generated_law_block_is_not_an_install_line`)
 - CI: `scripts/cargo_output_parser_check.py` が、escape 文字を名前に入れて (`ESC = "\x1b"` と `{ESC}[`) 色付きの出力を作る試験を色の sample が無いと誤って判定していた 名前を通した sample も数える (使われない名前だけでは数えない)
 
 ## [6.1.0] - 2026-10-16

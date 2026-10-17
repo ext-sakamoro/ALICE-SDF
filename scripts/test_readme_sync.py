@@ -157,6 +157,15 @@ class Checks(unittest.TestCase):
         r = README.format(example=EXAMPLE) + '\n```toml\nalice-sdf = { version = "1.2", features = ["ffi"] }\n```\n'
         self.assertEqual(errors({"README.md": r}), [])
 
+    def test_the_generated_law_block_is_not_an_install_line(self):
+        block = ('\n<!-- law-integration:begin law=abc -->\n'
+                 '| End to end check | covered (`alice-sdf = "0.1"`) |\n<!-- law-integration:end -->\n')
+        r = README.format(example=EXAMPLE) + block
+        self.assertEqual(errors({"README.md": r}), [])
+        # outside the block the same line is checked
+        e = errors({"README.md": r.replace("<!-- law-integration:end -->\n", "")})
+        self.assertTrue(any('"0.1"' in x for x in e), e)
+
     def test_caret_rules(self):
         self.assertTrue(rs.caret_ok("1", "1.5.0"))
         self.assertTrue(rs.caret_ok("1.5", "1.5.0"))
