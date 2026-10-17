@@ -256,6 +256,11 @@ impl MeshSdf {
         &self.bvh
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "vertex deduplication: lookups only, the edges are kept in an ordered set (ALICE-Law G13)"
+    )]
     /// Convert to approximate SdfNode tree using capsule method
     ///
     /// This allows the MeshSdf to be used where SdfNode is required,

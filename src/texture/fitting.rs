@@ -116,6 +116,119 @@ pub fn fit_texture(path: &Path, config: &TextureFitConfig) -> Result<TextureFitR
     })
 }
 
+/// Pixels per parallel work item of [`octave_cost`]
+const COST_CHUNK: usize = 2048;
+
+/// Squared masked error of one octave over the subsample grid. The chunks are
+/// evaluated in parallel and collected in chunk order, then summed in that order:
+/// a parallel sum would add them in an order that depends on how rayon splits the
+/// work, so the cost (and the fit the optimiser takes from it) would depend on the
+/// thread count (ALICE-Law G13).
+#[allow(clippy::too_many_arguments)] // the octave's parameters, as eval_octave takes them
+fn octave_cost(
+    u: &[f32],
+    v: &[f32],
+    res: &[f32],
+    mask: &[f32],
+    amp: f32,
+    freq: f32,
+    phase: [f32; 2],
+    seed: u32,
+    rot: f32,
+) -> f64 {
+    // [Deep Fried] chunks of 2048 pixels in parallel, each 8-wide SIMD
+    let parts: Vec<f64> = u
+        .par_chunks(COST_CHUNK)
+        .zip(v.par_chunks(COST_CHUNK))
+        .zip(res.par_chunks(COST_CHUNK))
+        .zip(mask.par_chunks(COST_CHUNK))
+        .map(|(((u_chunk, v_chunk), res_chunk), mask_chunk)| {
+            chunk_error(
+                u_chunk, v_chunk, res_chunk, mask_chunk, amp, freq, phase, seed, rot,
+            )
+        })
+        .collect();
+    parts.iter().sum()
+}
+
+/// [`octave_cost`] of one chunk
+#[allow(clippy::too_many_arguments)] // the octave's parameters, as eval_octave takes them
+fn chunk_error(
+    u_chunk: &[f32],
+    v_chunk: &[f32],
+    res_chunk: &[f32],
+    mask_chunk: &[f32],
+    amp: f32,
+    freq: f32,
+    phase: [f32; 2],
+    seed: u32,
+    rot: f32,
+) -> f64 {
+    let mut chunk_err = 0.0f64;
+
+    // [Deep Fried] Process 8 pixels at a time with SIMD
+    let simd_chunks = u_chunk.len() / 8;
+    for i in 0..simd_chunks {
+        let base = i * 8;
+        let u8 = f32x8::new([
+            u_chunk[base],
+            u_chunk[base + 1],
+            u_chunk[base + 2],
+            u_chunk[base + 3],
+            u_chunk[base + 4],
+            u_chunk[base + 5],
+            u_chunk[base + 6],
+            u_chunk[base + 7],
+        ]);
+        let v8 = f32x8::new([
+            v_chunk[base],
+            v_chunk[base + 1],
+            v_chunk[base + 2],
+            v_chunk[base + 3],
+            v_chunk[base + 4],
+            v_chunk[base + 5],
+            v_chunk[base + 6],
+            v_chunk[base + 7],
+        ]);
+        let r8 = f32x8::new([
+            res_chunk[base],
+            res_chunk[base + 1],
+            res_chunk[base + 2],
+            res_chunk[base + 3],
+            res_chunk[base + 4],
+            res_chunk[base + 5],
+            res_chunk[base + 6],
+            res_chunk[base + 7],
+        ]);
+
+        let m8 = f32x8::new([
+            mask_chunk[base],
+            mask_chunk[base + 1],
+            mask_chunk[base + 2],
+            mask_chunk[base + 3],
+            mask_chunk[base + 4],
+            mask_chunk[base + 5],
+            mask_chunk[base + 6],
+            mask_chunk[base + 7],
+        ]);
+
+        let val = eval_octave_simd(u8, v8, amp, freq, phase, seed, rot);
+        let diff = (r8 - val) * m8;
+        let diff2 = diff * diff;
+        chunk_err += f32x8_sum(diff2) as f64;
+    }
+
+    // Scalar remainder
+    let remainder_start = simd_chunks * 8;
+    for j in remainder_start..u_chunk.len() {
+        let val = eval_octave(u_chunk[j], v_chunk[j], amp, freq, phase, seed, rot);
+        let diff = ((res_chunk[j] - val) * mask_chunk[j]) as f64;
+        chunk_err += diff * diff;
+    }
+
+    chunk_err
+}
+
 /// [Deep Fried] Fit a single grayscale channel with SIMD + parallel cost evaluation
 fn fit_channel(
     pixels: &[f32],
@@ -173,81 +286,9 @@ fn fit_channel(
             let phase = [params[2], params[3]];
             let rot = params[4];
 
-            // Process in chunks of 2048 pixels (rayon parallelism)
-            // Each chunk uses SIMD 8-wide evaluation
-            let total_err: f64 = grid_u
-                .par_chunks(2048)
-                .zip(grid_v.par_chunks(2048))
-                .zip(sub_res.par_chunks(2048))
-                .zip(grid_mask.par_chunks(2048))
-                .map(|(((u_chunk, v_chunk), res_chunk), mask_chunk)| {
-                    let mut chunk_err = 0.0f64;
-
-                    // [Deep Fried] Process 8 pixels at a time with SIMD
-                    let simd_chunks = u_chunk.len() / 8;
-                    for i in 0..simd_chunks {
-                        let base = i * 8;
-                        let u8 = f32x8::new([
-                            u_chunk[base],
-                            u_chunk[base + 1],
-                            u_chunk[base + 2],
-                            u_chunk[base + 3],
-                            u_chunk[base + 4],
-                            u_chunk[base + 5],
-                            u_chunk[base + 6],
-                            u_chunk[base + 7],
-                        ]);
-                        let v8 = f32x8::new([
-                            v_chunk[base],
-                            v_chunk[base + 1],
-                            v_chunk[base + 2],
-                            v_chunk[base + 3],
-                            v_chunk[base + 4],
-                            v_chunk[base + 5],
-                            v_chunk[base + 6],
-                            v_chunk[base + 7],
-                        ]);
-                        let r8 = f32x8::new([
-                            res_chunk[base],
-                            res_chunk[base + 1],
-                            res_chunk[base + 2],
-                            res_chunk[base + 3],
-                            res_chunk[base + 4],
-                            res_chunk[base + 5],
-                            res_chunk[base + 6],
-                            res_chunk[base + 7],
-                        ]);
-
-                        let m8 = f32x8::new([
-                            mask_chunk[base],
-                            mask_chunk[base + 1],
-                            mask_chunk[base + 2],
-                            mask_chunk[base + 3],
-                            mask_chunk[base + 4],
-                            mask_chunk[base + 5],
-                            mask_chunk[base + 6],
-                            mask_chunk[base + 7],
-                        ]);
-
-                        let val = eval_octave_simd(u8, v8, amp, freq, phase, seed, rot);
-                        let diff = (r8 - val) * m8;
-                        let diff2 = diff * diff;
-                        chunk_err += f32x8_sum(diff2) as f64;
-                    }
-
-                    // Scalar remainder
-                    let remainder_start = simd_chunks * 8;
-                    for j in remainder_start..u_chunk.len() {
-                        let val = eval_octave(u_chunk[j], v_chunk[j], amp, freq, phase, seed, rot);
-                        let diff = ((res_chunk[j] - val) * mask_chunk[j]) as f64;
-                        chunk_err += diff * diff;
-                    }
-
-                    chunk_err
-                })
-                .sum();
-
-            total_err
+            octave_cost(
+                grid_u, grid_v, sub_res, grid_mask, amp, freq, phase, seed, rot,
+            )
         };
 
         // The cost is multimodal in frequency (the DCT band is a half-cycle
@@ -486,6 +527,52 @@ pub fn reconstruct(result: &TextureFitResult, width: usize, height: usize) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The cost the optimiser minimises is the per-chunk errors summed in chunk
+    /// order, not in an order that depends on how rayon splits the work (ALICE-Law
+    /// G13): on pools of 1, 2, 3 and 8 threads, 3 runs each, the f64 cost is the bits
+    /// of the in-order sum of the chunks computed one by one
+    #[test]
+    fn the_cost_is_summed_in_chunk_order_on_every_thread_count() {
+        let n = COST_CHUNK * 300 + 5;
+        let u: Vec<f32> = (0..n).map(|i| (i % 211) as f32 / 211.0).collect();
+        let v: Vec<f32> = (0..n)
+            .map(|i| (i / 211) as f32 / (n / 211 + 1) as f32)
+            .collect();
+        // chunks whose errors span eight orders of magnitude, so the order of the
+        // additions shows in the last bits
+        let res: Vec<f32> = (0..n)
+            .map(|i| {
+                let c = i / COST_CHUNK;
+                let scale = [1e-3, 3e2, 7e-1, 1e4, 2e-2, 5e1, 9e3, 4e-4][(c * 5 + c / 3) % 8];
+                scale * (1.0 + (i % 13) as f32 / 13.0)
+            })
+            .collect();
+        let mask = vec![1.0f32; n];
+        let (amp, freq, phase, seed, rot) = (0.3, 6.0, [0.2, 0.1], 0, 0.3);
+        let want: f64 = u
+            .chunks(COST_CHUNK)
+            .zip(v.chunks(COST_CHUNK))
+            .zip(res.chunks(COST_CHUNK))
+            .zip(mask.chunks(COST_CHUNK))
+            .map(|(((a, b), c), d)| chunk_error(a, b, c, d, amp, freq, phase, seed, rot))
+            .fold(0.0, |s, e| s + e);
+        for threads in [1, 2, 3, 8] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            for _ in 0..3 {
+                let got =
+                    pool.install(|| octave_cost(&u, &v, &res, &mask, amp, freq, phase, seed, rot));
+                assert_eq!(
+                    got.to_bits(),
+                    want.to_bits(),
+                    "{threads} threads: {got} vs {want}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_synthetic_single_octave() {

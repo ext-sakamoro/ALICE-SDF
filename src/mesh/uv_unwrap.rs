@@ -15,6 +15,11 @@
 use crate::compiled::real::LawMinMax;
 use crate::mesh::sdf_to_mesh::Mesh;
 use glam::Vec2;
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
+)]
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// Configuration for UV unwrapping
@@ -296,6 +301,11 @@ const fn edge_key(a: u32, b: u32) -> EdgeKey {
     }
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
+)]
 /// Detect seam edges based on dihedral angle threshold
 fn detect_seams(mesh: &Mesh, angle_threshold_deg: f32) -> HashSet<EdgeKey> {
     let threshold_cos = alice_det_math::cos(angle_threshold_deg.to_radians());
@@ -341,6 +351,11 @@ fn triangle_normal(mesh: &Mesh, ti: usize) -> glam::Vec3 {
     e1.cross(e2).normalize_or_zero()
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
+)]
 /// Split mesh triangles into connected charts separated by seams
 fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) -> Vec<Vec<usize>> {
     // Build triangle adjacency (not crossing seams)
@@ -410,6 +425,11 @@ fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) ->
     charts
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
+)]
 /// Unwrap a single chart using simplified LSCM
 fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     // Collect unique vertices

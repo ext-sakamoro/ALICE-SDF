@@ -9,9 +9,11 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Changed
+- **Breaking** ALICE-Law G13: `SdfMetadata::custom` と `FbxAnimClip::bone_curves` を `HashMap` から `BTreeMap` にした (`.asdf` / JSON に書く順と反復の順が実行ごとに変わっていた) library の clippy (`.github/clippy-lib/clippy.toml`) で `HashMap` / `HashSet` とその iterator の型、反復する method (`iter` / `keys` / `values` / `drain` / `retain` など) を禁止し、lookup と membership だけに使う 65 箇所に理由つきの allow を置いた 型と method は名前の解決で見るので、別名・推論・再 export でも外れない `scripts/order_guard.py` (ALICE-Zip と同じ file、試験 `scripts/test_order_guard.py`) と `scripts/order_allowlist.toml` が `HashMap` / `HashSet` と rayon の 207 行を数と行の SHA-256 と理由で固定する G10 の文字列の層として `scripts/entropy_guard.py` (OS の乱数と時計は CLI の計時だけ) も CI と preflight で動かす
 - CI: ALICE-Law G1 clippy の全ての feature を lint する clippy job の `LINT_FEATURES` を Cargo.toml の feature すべて (`default` と、wasm32 の step で見る `wasm` を除く) にした 従来は `aaa` / `all-shaders` / `cli` / `font` / `godot` / `image` / `msl` / `python` / `unity` / `unreal` が どの clippy run でも compile されず、clippy.toml の禁止 (libm 等) がその code に届いていなかった wasm32 の step も `-D warnings` にした feature の網羅を `scripts/clippy_feature_coverage.py` (試験 `scripts/test_clippy_feature_coverage.py`) が確かめる (clippy job と preflight、比べる command 0 件で失敗)
 
 ### Fixed
+- texture-fit の f64 の和 2 つ (`spectrum` の行と列の spectrum の和、`fitting` の cost の chunk ごとの誤差の和) が rayon の分割の仕方に依存し、thread 数で最後の bit が変わっていた 並列に計算した値を index の順に集めてからその順に足す (試験 `the_energy_sums_are_in_index_order_on_every_thread_count` / `the_cost_is_summed_in_chunk_order_on_every_thread_count`、1 / 2 / 3 / 8 thread を順の和と bit で比べる)
 - GPU の unit test 6 本 (`gpu_eval` の `test_gpu_eval_*`、`gpu_marching_cubes` の `test_gpu_mc_*`) が adapter の有無しか見ず、adapter はあるが device を作れない環境 (`Parent device is lost`) で `unwrap` が panic していた device の作成まで試す `src/lib.rs` の `gpu_test_support::gpu_ready` で判定し、走ったか飛ばしたかを `gpu-test: ran` / `gpu-test: skipped` の行で残す 飛ばした test も libtest では `ok` なので、CI の lavapipe の job は `ALICE_SDF_REQUIRE_GPU=1` で飛ばしを失敗にし、`scripts/gpu_test_count.py` (試験 `scripts/test_gpu_test_count.py`) で 6 本が走ったことを数える 他の runner では走った数と飛ばした数を log に出す
 - python / godot / wasm の binding に、どの clippy run も compile していなかったため残っていた lint を直した (`Self` の使用、`const fn`、doc の無い wasm の関数、不要な `to_vec`) godot-rust の macro が展開する code の lint は理由つきで `src/godot/mod.rs` で許可した
 

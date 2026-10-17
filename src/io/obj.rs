@@ -230,6 +230,11 @@ fn export_mtl(mat_lib: &MaterialLibrary, path: impl AsRef<Path>) -> Result<(), I
     Ok(())
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "vertex deduplication: lookups only, vertices are written in input order (ALICE-Law G13)"
+)]
 /// Load a mesh from OBJ format
 pub fn import_obj(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;

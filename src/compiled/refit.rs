@@ -30,6 +30,11 @@ use super::opcode::{OpCode, OpKind};
 use crate::compiled::real::LawMinMax;
 use crate::compiled::real::LawVec;
 use glam::{Quat, Vec2, Vec3};
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "the set of affected instruction indices, used for membership tests only (ALICE-Law G13)"
+)]
 use std::collections::HashSet;
 
 /// Errors returned by the bytecode refit walker.
@@ -229,6 +234,11 @@ pub fn refit_all(bvh: &mut CompiledSdfBvh) -> Result<usize, RefitError> {
     walk_and_recompute(bvh, dirty.as_ref())
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "the set of affected instruction indices, used for membership tests only (ALICE-Law G13)"
+)]
 /// Recompute AABBs only for `dirty` instructions and their ancestor chain.
 ///
 /// The tape walk itself is O(N) — every instruction is visited to keep the
@@ -278,6 +288,11 @@ pub fn refit_partial(bvh: &mut CompiledSdfBvh, dirty: &[usize]) -> Result<usize,
     walk_and_recompute(bvh, Some(&affected))
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "the set of affected instruction indices, used for membership tests only (ALICE-Law G13)"
+)]
 /// Core walker used by both `refit_all` (`affected = None`) and
 /// `refit_partial` (`affected = Some(set)`). Returns the number of AABBs
 /// actually recomputed.

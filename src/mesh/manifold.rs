@@ -15,6 +15,11 @@
 
 use crate::compiled::real::LawMinMax;
 use crate::mesh::{Mesh, Vertex};
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+)]
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Mesh validation result
@@ -86,6 +91,11 @@ impl EdgeKey {
     }
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+)]
 /// Validate a mesh for manifoldness and quality (Deep Fried)
 ///
 /// Performs a complete analysis of the mesh topology and geometry.
@@ -151,6 +161,11 @@ fn count_degenerate_triangles(mesh: &Mesh) -> usize {
     count
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+)]
 /// Count duplicate vertices within epsilon
 fn count_duplicate_vertices(mesh: &Mesh, epsilon: f32) -> usize {
     let eps_sq = epsilon * epsilon;
@@ -261,6 +276,11 @@ impl MeshRepair {
         }
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+    )]
     /// Merge duplicate vertices (within epsilon distance)
     pub fn merge_duplicate_vertices(mesh: &Mesh, epsilon: f32) -> Mesh {
         let eps_sq = epsilon * epsilon;
@@ -356,6 +376,11 @@ impl MeshRepair {
         Self::fix_normals(&mesh)
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+    )]
     /// Remove triangles that reference the same vertex set as an earlier
     /// triangle (winding-insensitive). Keeps the first occurrence.
     ///
@@ -395,6 +420,11 @@ impl MeshRepair {
     // dotneet/image-to-3d §A mesh 後処理 3 手順
     // ========================================================================
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+    )]
     /// BFS で面の巻き向きを揃え、連結成分ごとの符号付き体積で外向きに直す
     ///
     /// # アルゴリズム (image-to-3d §A.1 準拠)
@@ -499,6 +529,11 @@ impl MeshRepair {
         }
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+    )]
     /// 境界エッジの連結成分ごとに扇状で穴を塞ぐ
     ///
     /// # アルゴリズム (image-to-3d §A.2 準拠)
@@ -669,6 +704,11 @@ impl MeshRepair {
     ///   完全に detach したい場合は `merge_duplicate_vertices` と組合せる
     #[must_use]
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
+    )]
     pub fn drop_specks(mesh: &Mesh, min_ratio: f32) -> Mesh {
         let tri_count = mesh.indices.len() / 3;
         if tri_count == 0 {

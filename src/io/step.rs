@@ -34,6 +34,11 @@ use crate::mesh::manifold::MeshRepair;
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use crate::types::SdfNode;
 use glam::Vec3;
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge id per vertex pair: lookups only, edges are numbered in input order (ALICE-Law G13)"
+)]
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -157,6 +162,11 @@ fn perpendicular(n: Vec3) -> Vec3 {
     }
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge id per vertex pair: lookups only, edges are numbered in input order (ALICE-Law G13)"
+)]
 fn write_step<W: Write>(
     w: &mut W,
     verts: &[Vec3],

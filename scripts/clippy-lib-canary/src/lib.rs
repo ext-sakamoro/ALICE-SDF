@@ -193,3 +193,45 @@ pub fn glam_d4_min_element(d4: glam::DVec4) -> f64 {
 pub fn glam_d4_max_element(d4: glam::DVec4) -> f64 {
     d4.max_element()
 }
+
+// ALICE-Law G13: the hash collections and their iteration (the method calls are
+// found through inference, without the type being written on the line)
+pub fn hash_map_type(hm: &std::collections::HashMap<u32, u32>) -> usize {
+    hm.len()
+}
+
+pub fn hash_set_type(hs: &std::collections::HashSet<u32>) -> usize {
+    hs.len()
+}
+
+pub fn hash_map_iter_type(it: std::collections::hash_map::Iter<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+fn made() -> std::collections::HashMap<u32, u32> {
+    std::collections::HashMap::new()
+}
+
+fn made_set() -> std::collections::HashSet<u32> {
+    std::collections::HashSet::new()
+}
+
+pub fn hash_map_keys_inferred() -> u32 {
+    let m = made();
+    m.keys().sum()
+}
+
+pub fn hash_map_values_inferred() -> u32 {
+    let m = made();
+    m.values().sum()
+}
+
+pub fn hash_map_iter_mut_inferred() -> usize {
+    let mut m = made();
+    m.iter_mut().count()
+}
+
+pub fn hash_set_iter_inferred() -> u32 {
+    let s = made_set();
+    s.iter().sum()
+}

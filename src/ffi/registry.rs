@@ -20,6 +20,11 @@ use super::types::{CompiledHandle, MeshHandle, SdfHandle};
 use crate::compiled::CompiledSdf;
 use crate::mesh::Mesh;
 use crate::types::SdfNode;
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
+)]
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -30,6 +35,11 @@ use std::sync::{
 // Node Registry
 // ============================================================================
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
+)]
 /// Global registry of SDF nodes
 static NODE_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<SdfNode>>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
@@ -87,6 +97,11 @@ pub fn remove_node(handle: SdfHandle) {
 // Compiled SDF Registry (Deep Fried)
 // ============================================================================
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
+)]
 /// Global registry of compiled SDFs
 static COMPILED_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<CompiledSdf>>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
@@ -143,6 +158,11 @@ pub fn remove_compiled(handle: CompiledHandle) {
 // Mesh Registry
 // ============================================================================
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
+)]
 /// Global registry of generated meshes
 static MESH_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<Mesh>>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));

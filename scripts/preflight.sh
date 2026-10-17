@@ -89,6 +89,11 @@ step "hash collection iteration audit (G13): oracle + every HashMap / HashSet it
 python3 scripts/test_hash_order_audit.py
 python3 scripts/hash_order_audit.py
 
+step "order and entropy guards (G13 / G10 text layer): oracle + every listed line pinned by count and hash"
+python3 scripts/test_order_guard.py
+python3 scripts/order_guard.py
+python3 scripts/entropy_guard.py
+
 step "build configuration guard (G14, static): oracle + no native / fast-math / x87 flag (nothing read fails)"
 python3 scripts/test_build_config_guard.py
 python3 scripts/build_config_guard.py

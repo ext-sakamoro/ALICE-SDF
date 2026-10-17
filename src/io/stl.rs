@@ -110,6 +110,11 @@ pub fn import_stl(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     }
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "vertex deduplication: lookups only, vertices are written in input order (ALICE-Law G13)"
+)]
 fn import_stl_binary(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::Vec3;
@@ -170,6 +175,11 @@ fn import_stl_binary(data: &[u8]) -> Result<Mesh, IoError> {
     Ok(Mesh { vertices, indices })
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "vertex deduplication: lookups only, vertices are written in input order (ALICE-Law G13)"
+)]
 fn import_stl_ascii(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::Vec3;

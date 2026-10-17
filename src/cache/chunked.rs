@@ -16,6 +16,11 @@ use crate::io::abm::{load_abm, save_abm};
 use crate::io::IoError;
 use crate::mesh::{Mesh, Vertex};
 use glam::Vec3;
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+)]
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -91,6 +96,11 @@ struct ChunkEntry {
     dirty: bool,
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+)]
 /// Internal storage combining entries with insertion-order tracking for FIFO eviction.
 struct ChunkedStore {
     entries: HashMap<ChunkCoord, ChunkEntry>,
@@ -115,6 +125,11 @@ pub struct ChunkedMeshCache {
 }
 
 impl ChunkedMeshCache {
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Create a new chunked mesh cache.
     pub fn new(config: ChunkedCacheConfig) -> Self {
         Self {
@@ -178,6 +193,11 @@ impl ChunkedMeshCache {
 
     // -- Invalidation --------------------------------------------------------
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Mark **all** chunks as dirty (e.g. the SDF changed globally).
     pub fn invalidate_all(&self) {
         let mut chunks = self
@@ -203,6 +223,11 @@ impl ChunkedMeshCache {
         }
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Get the coordinates of all currently dirty chunks.
     pub fn dirty_chunks(&self) -> Vec<ChunkCoord> {
         let chunks = self
@@ -221,6 +246,11 @@ impl ChunkedMeshCache {
         dirty
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Update the global SDF hash. Returns the list of chunks that were
     /// invalidated (those whose stored hash differs from `new_hash`).
     #[allow(clippy::significant_drop_tightening)]
@@ -249,6 +279,11 @@ impl ChunkedMeshCache {
 
     // -- Enumeration ---------------------------------------------------------
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Get all cached chunk coordinates.
     pub fn cached_chunks(&self) -> Vec<ChunkCoord> {
         let mut coords: Vec<ChunkCoord> = self
@@ -274,6 +309,11 @@ impl ChunkedMeshCache {
         chunks.entries.len()
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Total approximate memory usage of all cached chunk meshes (bytes).
     pub fn memory_usage(&self) -> usize {
         let chunks = self
@@ -326,6 +366,11 @@ impl ChunkedMeshCache {
 
     // -- Persistence ---------------------------------------------------------
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Persist all dirty chunks to disk as individual `.abm` files.
     ///
     /// Requires `cache_dir` to be set in the configuration. Returns the
@@ -420,6 +465,11 @@ impl ChunkedMeshCache {
         chunks.order.clear();
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
+    )]
     /// Merge all cached chunk meshes into a single combined [`Mesh`].
     ///
     /// Vertex positions are preserved in world space. Index offsets are

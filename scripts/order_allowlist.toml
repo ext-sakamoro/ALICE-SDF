@@ -1,0 +1,317 @@
+# scripts/order_guard.py (ALICE-Law G13): production sites whose order cannot
+# reach a Law-bearing output, with the exact line count, the SHA-256 of each
+# allowed line (stripped, in file order; the comment shows the line) and the reason
+[allow]
+"src/bin/main.rs::parallel" = { count = 9, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "a3b00066f38b085f1099ee621364ea009fcabfc9cfafd775b4422292b8cf9aaf", # println!("Threads: {}", rayon::current_num_threads());
+    "7be93013333cfe49924f95e1ca1b19807bfe851ab043320b935624ff0bbecd61", # px.par_iter_mut()
+    "99ef90128c7f8ccf90a7661c5bbfc8426486a6db7398a3f59c46a7dacfc79484", # .zip(py.par_iter_mut())
+    "722ffec613e81cf512ec378f10f92358dbdb8682dc456576c589c0b2444a30a5", # .zip(pz.par_iter_mut())
+    "93247da36cd748581ec1bb737a01d1bf87cddd2a438714e99af646f8820edfdc", # let num_threads = rayon::current_num_threads();
+    "a35c2f80d2142485dbabca0196a833e194e9b31578eb7931a90a98d27a83c609", # .par_chunks(chunk_size)
+    "c750222200ddac6a989da241a6c280e2f9ac084c41df3b32ef9c89197722d2e7", # .zip(py.par_chunks(chunk_size))
+    "779d407638410a61f370b11fbd6178c2e33bbf8c2734e0ce0a327ebb59efdfe2", # .zip(pz.par_chunks(chunk_size))
+], reason = "the CLI benchmark: per-index writes and an indexed collect whose results are discarded after timing; the thread count is printed, nothing is stored" }
+"src/cache/chunked.rs::HashMap" = { count = 3, lines = [
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "ed5385b19af498f87bb7c511453871d168ad1df3078c7c1351f5639de6009d73", # entries: HashMap<ChunkCoord, ChunkEntry>,
+    "9560c6f2f7ddedb9c2d5a97c8b2c6275291708efad7b36e36973715a274c4eff", # entries: HashMap::new(),
+], reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list" }
+"src/cache/mod.rs::HashMap" = { count = 5, lines = [
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "d4f3bd2aa0148db5f5b22529ded9c64c7ccf357d4d0b644c31b1d977960f994d", # map: HashMap<MeshCacheKey, CacheEntry>,
+    "f218775095c622f41b9a2a0d5332b63f8993b06823df06df77198ce31d294766", # map: HashMap::new(),
+    "a5575eb149828b98d8a7e84bcf977e8ce362b8df870d1e9d76e6782e5cfd06b7", # let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "a5575eb149828b98d8a7e84bcf977e8ce362b8df870d1e9d76e6782e5cfd06b7", # let mut hasher = std::collections::hash_map::DefaultHasher::new();
+], reason = "mesh cache keyed by its key: lookups only; the eviction order is the separate order list; DefaultHasher (fixed keys) only makes a cache key, never stored as output" }
+"src/compiled/eval.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "6dcdeed08c14229fbbe01aec3edc994c82684444cdec6b379bd81d23fb94a9a3", # points.par_iter().map(|p| eval_compiled(sdf, *p)).collect()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/compiled/eval_simd.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "3876eb7d743aae339de2e2146208f15565b2f4f06d6573bb11b1b0ba46bc407c", # .par_chunks_mut(chunk_size)
+], reason = "each work item writes only its own slice (par_chunks_mut / par_iter_mut by index), so the output does not depend on scheduling" }
+"src/compiled/eval_soa.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/compiled/instanced.rs::parallel" = { count = 4, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "92d97069af8d2d954f4ac0fa5f1d11fb9b36effa3119076caf253c4073a66ef1", # points.par_iter().map(|&p| self.eval_min_simd(p)).collect()
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "5d3c2f5956d2fd03e665a7a2ec603464ae8ad652a10f653e2a893cb1a0520ee2", # points.par_iter().map(|&p| self.eval_min(p)).collect()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/compiled/jit/runtime.rs::parallel" = { count = 4, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "db300d7de15021a0457a0c1936f9635ca61ab62985f1d28fd15091055017c649", # points.par_iter().map(|p| self.eval(*p)).collect()
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "db300d7de15021a0457a0c1936f9635ca61ab62985f1d28fd15091055017c649", # points.par_iter().map(|p| self.eval(*p)).collect()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/compiled/refit.rs::HashSet" = { count = 3, lines = [
+    "ac700c908aa769f1227389516441ced8b6415eadd92c6446bd10ddbeba8c40da", # use std::collections::HashSet;
+    "2ee8a0bf668ae469c2971993fd5dd499153e615fbdccbeba878e1cbad59883e6", # let mut affected: HashSet<usize> = HashSet::with_capacity(dirty.len() * 2);
+    "d5aa1156a031c69d954f9e25fc2afa97d108cb5784410003dbc61a72016e5216", # affected: Option<&HashSet<usize>>,
+], reason = "the set of affected instruction indices, used for membership tests only" }
+"src/destruction/mod.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "4e52ff96ef3e43e13c9a7ca6f344d388ad50c04b876a722670884039053da044", # .par_chunks_mut((rx * ry) as usize)
+], reason = "each work item writes only its own slice (par_chunks_mut / par_iter_mut by index), so the output does not depend on scheduling" }
+"src/eval/parallel.rs::parallel" = { count = 5, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "a102d7171a4e4f6b8b31a7aee743f811f6311fce07b022523486a4e68bfaedf8", # points.par_iter().map(|&p| eval(node, p)).collect()
+    "99a9782162a2946b03572a30de8c663d376e7366bcb08a6de543cb3eac9f78bb", # .par_chunks_mut(slice_size)
+    "99a9782162a2946b03572a30de8c663d376e7366bcb08a6de543cb3eac9f78bb", # .par_chunks_mut(slice_size)
+    "c0175fc5d1cd7289df6031b94804c47a4daa237079dec13a393d5497c7eb159e", # .zip(normals.par_chunks_mut(slice_size))
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items; the grids write per-slice slots" }
+"src/ffi/eval.rs::parallel" = { count = 8, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "4c1a728fb197e6fdba9f7806f3ef5cd4242572b00486c092b49a084d64e1a24b", # .par_iter_mut()
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "4c1a728fb197e6fdba9f7806f3ef5cd4242572b00486c092b49a084d64e1a24b", # .par_iter_mut()
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "cd8b37787648f56ea4a94c6e0f69374244feadd9943eb64949aaa1df86557a4e", # .par_chunks_mut(CHUNK_SIZE)
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "8d89715697ea9bc4d20690828d58eb19293075d60815c8f25cef34de399efedc", # chunks.into_par_iter().for_each(|(start, end)| {
+], reason = "each work item writes only its own slice (par_chunks_mut / par_iter_mut by index), so the output does not depend on scheduling" }
+"src/ffi/registry.rs::HashMap" = { count = 7, lines = [
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "18501b9355fcaab587fbaf53d554e42f1111d7a92a553332e4fc78c660e3a32a", # static NODE_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<SdfNode>>>> =
+    "1b3fdcf700ad633c632190d75cc2d8d1f12cd48702ef2741a51199a80cf03972", # std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+    "bef7f581687e59d9d08ae182eecc827b044a077162eb837883f7bd16e40208a8", # static COMPILED_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<CompiledSdf>>>> =
+    "1b3fdcf700ad633c632190d75cc2d8d1f12cd48702ef2741a51199a80cf03972", # std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+    "740cc5dd5e3b19494d8b42ba917c86d7fda13ddfe5e625e7b1f01d3feff4ee61", # static MESH_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<Mesh>>>> =
+    "1b3fdcf700ad633c632190d75cc2d8d1f12cd48702ef2741a51199a80cf03972", # std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+], reason = "handle registries: insert, look up and remove by handle id only" }
+"src/gi/probe_bake.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/io/fbx.rs::HashMap" = { count = 2, lines = [
+    "e912f835fcd7f18c70387596cc1562241b34d3b47a208a133ccd9ee9a7813b13", # use std::collections::{BTreeMap, HashMap};
+    "9ee542aa9e89f4537926e36f673159e7c3475c682900ef35f4b4e2c1f938309e", # let mut bone_id_map: HashMap<i64, usize> = HashMap::new();
+], reason = "bone id to bone index while parsing: lookups only" }
+"src/io/gltf.rs::HashMap" = { count = 2, lines = [
+    "50ecd71ea3db2f1c4eb0e777d0d26b6782319ab8071e60bf3567588ee45c2895", # let mut path_to_tex_idx: std::collections::HashMap<String, usize> =
+    "e9d448775647f1f134109a5c89ed8161e624f6d7b5cc858b3b753e929d8cb4df", # std::collections::HashMap::new();
+], reason = "texture path to texture index: lookups that deduplicate, the textures are written in first-use order" }
+"src/io/obj.rs::HashMap" = { count = 2, lines = [
+    "85d666773c246a7a29913e805f893bf005840595224e0beff09f5f3f41715b3c", # let mut vertex_map: std::collections::HashMap<(usize, usize, usize), u32> =
+    "e9d448775647f1f134109a5c89ed8161e624f6d7b5cc858b3b753e929d8cb4df", # std::collections::HashMap::new();
+], reason = "vertex deduplication: lookups only, vertices are written in input order" }
+"src/io/step.rs::HashMap" = { count = 2, lines = [
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "626668047f517b490c20f685308b749e6b2e14ff487c77321915699485f8c764", # let mut edge_ids: HashMap<(usize, usize), u32> = HashMap::new();
+], reason = "edge id per vertex pair: lookups only, edges are numbered in input order" }
+"src/io/stl.rs::HashMap" = { count = 2, lines = [
+    "840e6d5fc0ccf499e8abbfeec08e3e3b7562d18b57891332ae71f5b97a3d9f1f", # let mut vertex_map: std::collections::HashMap<[u32; 3], u32> = std::collections::HashMap::new();
+    "840e6d5fc0ccf499e8abbfeec08e3e3b7562d18b57891332ae71f5b97a3d9f1f", # let mut vertex_map: std::collections::HashMap<[u32; 3], u32> = std::collections::HashMap::new();
+], reason = "vertex deduplication: lookups only, vertices are written in input order" }
+"src/live_sdf.rs::HashMap" = { count = 3, lines = [
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "e90cf3f9c09bcf46fd2341f43ee30c53f0fcbc0229b4f31b5bfcfa44fceaedd6", # let mut index: HashMap<[u32; 3], u32> = HashMap::new();
+    "88f1e922b0c29d58bf37d67b5c63e145832ee25b58b99cdbeb2509644e7a0226", # let mut edge_vertex: HashMap<([i64; 3], u8), u32> = HashMap::new();
+], reason = "vertex welding: lookups only, vertices are emitted in mesh and cell order" }
+"src/live_sdf.rs::parallel" = { count = 3, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/mesh/bvh.rs::parallel" = { count = 4, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "c2275aedaa4f05c431b337f244ff8039117d854f01ae0dbf15c027ffc5198899", # .par_chunks(3)
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/mesh/collision.rs::HashMap" = { count = 2, lines = [
+    "e912f835fcd7f18c70387596cc1562241b34d3b47a208a133ccd9ee9a7813b13", # use std::collections::{BTreeMap, HashMap};
+    "4c306e499b88626a9d6ee0e4f03ae77108cfb1fbe63f0d0b90e9c0d5afd67e7b", # let mut new_vertex_map: HashMap<(u32, u32, u32), u32> = HashMap::new();
+], reason = "cell to new vertex index: lookups only, the vertices are created in cell order" }
+"src/mesh/collision.rs::parallel" = { count = 5, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "a51c935917ff703afda042dbe2d0878ce31e2429eb465321a288d3af252463f4", # (0..tri_count).into_par_iter().for_each(|t| {
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "per-vertex collects in order; the bounds reduce with law_min / law_max (commutative and associative); the voxel marking stores the constant 1, which does not depend on the order" }
+"src/mesh/decimate.rs::HashMap" = { count = 2, lines = [
+    "5c345a4a35d98da3eb1072d90d84a5a9f606e57153135d4be4ec8cab70a1be97", # use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
+    "6abe768ef9be11c85af658e6dc220ef5a2ec8ec2cc6366760816129dc6ec99bf", # let mut edge_count: HashMap<(u32, u32), u32> = HashMap::with_capacity(edge_pairs.len());
+], reason = "edge counts and vertex sets used for membership; the one pass over the counts fills a set, which does not depend on the order" }
+"src/mesh/decimate.rs::HashSet" = { count = 9, lines = [
+    "5c345a4a35d98da3eb1072d90d84a5a9f606e57153135d4be4ec8cab70a1be97", # use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
+    "e1020a55f75169afee7b67472f770b6f6694c1e0b507ec976d4b26c4b57c7b49", # let mut bv = HashSet::new();
+    "fc775b82c7a1c9edf89ab1b215e264964aadbfd8c847b12facc42c9fc5709eb1", # HashSet::new()
+    "7ca8436caffeed7799053a8fcd9a41d21daa0d5763415678261821cd1bce8cc8", # let mbv: HashSet<u32> = (0..vert_count)
+    "fc775b82c7a1c9edf89ab1b215e264964aadbfd8c847b12facc42c9fc5709eb1", # HashSet::new()
+    "711925c7edea4a77f130cf591535ada7df6f5b2a5a98fba4d6e6b99df989d6de", # let mut locked_verts: HashSet<u32> = if !config.locked_materials.is_empty() {
+    "fc775b82c7a1c9edf89ab1b215e264964aadbfd8c847b12facc42c9fc5709eb1", # HashSet::new()
+    "ee78cdbbe687593d3a7c06a4bc517f1e0473bffbe0defad8197d0154080e3985", # let mut edges_seen = HashSet::new();
+    "8cd0b18756a874ca4341665791fd2b7f7d468e82e16e05514e4e6f666ce1d17f", # let mut removed_tris: HashSet<usize> = HashSet::new();
+], reason = "edge counts and vertex sets used for membership; the one pass over the counts fills a set, which does not depend on the order" }
+"src/mesh/decimate.rs::parallel" = { count = 4, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+], reason = "per-triangle quadrics and edges collected in order, then accumulated serially; the material boundary vertices are collected into a set used for membership only" }
+"src/mesh/dual_contouring.rs::parallel" = { count = 3, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/mesh/hermite.rs::parallel" = { count = 3, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/mesh/lightmap.rs::parallel" = { count = 3, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "250a9ae32caa880dc6d2702b29a07994d2b235fcaf9cba907b6cb915c6bb6efc", # mesh.vertices.par_iter_mut().for_each(|v| {
+], reason = "the projection bounds reduce with law_min / law_max (commutative and associative); the UV write is per vertex" }
+"src/mesh/manifold.rs::HashMap" = { count = 10, lines = [
+    "1f1e3f53829383c4be08fca2ad0e54acb178185b7baee6daf325f2fb84026190", # use std::collections::{HashMap, HashSet, VecDeque};
+    "f6b3a563e319db0aa88b8987dc902732873e3f02887d5faf3d4fdc09f2ebb166", # let mut edge_counts: HashMap<EdgeKey, u32> = HashMap::new();
+    "d366aa998285c75cd5ed9fd4e7e71d572da12ee6dfc2b053ab3a1ed9ddecf3ad", # let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
+    "d366aa998285c75cd5ed9fd4e7e71d572da12ee6dfc2b053ab3a1ed9ddecf3ad", # let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
+    "df996b5e2fe80805042424b64efbf50b9d6e06d8bb29f9070f6ddc5b6b484b1b", # let mut edge_tris: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
+    "f2444c175649ff0d8bf0113517d297f0db41348842dd96aec68288f19eeacdc2", # let mut edge_count: HashMap<(u32, u32), i32> = HashMap::new();
+    "16db2b9df9f1370e2b7c678911b973a3fb6c0bd50250bcbe3c365157b5064e3a", # let mut edge_dir: HashMap<(u32, u32), (u32, u32)> = HashMap::new();
+    "ed1293700e02f83bda681f755189d8d3e0a5a907e2dfed4f4fd70e52afffabb8", # let mut vert_edges: HashMap<u32, Vec<usize>> = HashMap::new();
+    "f3b16b57aef13e7ff74e6481db3e359fb3fe50adf6576b1937a208bb4a1bf565", # let mut edge_tris: HashMap<(u32, u32), usize> = HashMap::new();
+    "f8511f3e8495fdceac606df72de06d7f9b435a402def498d7ec8ac054c1a66e9", # let mut comp_size: HashMap<usize, usize> = HashMap::new();
+], reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use" }
+"src/mesh/manifold.rs::HashSet" = { count = 3, lines = [
+    "1f1e3f53829383c4be08fca2ad0e54acb178185b7baee6daf325f2fb84026190", # use std::collections::{HashMap, HashSet, VecDeque};
+    "d5d99589fefe7b04422bf033a5faac388c2526cff296cde423ec5a7277e51eee", # let mut seen: HashSet<[u32; 3]> = HashSet::with_capacity(tri_count);
+    "fa43d256c302632f06a2f3b7dac33c255c434dd3bd2d0f439f792029163349bb", # let mut seen: HashSet<u32> = HashSet::new();
+], reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use" }
+"src/mesh/mesh_sign.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/mesh/mesh_to_sdf.rs::HashMap" = { count = 2, lines = [
+    "426c2892bf4274673ec9a3342b5bb30b9e2615d268849ff578c83c76ee8fd413", # let mut vertex_map: std::collections::HashMap<[u32; 3], usize> =
+    "e9d448775647f1f134109a5c89ed8161e624f6d7b5cc858b3b753e929d8cb4df", # std::collections::HashMap::new();
+], reason = "vertex deduplication: lookups only, the edges are kept in an ordered set" }
+"src/mesh/mesh_to_sdf.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/mesh/nanite.rs::HashMap" = { count = 6, lines = [
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "dad00846bc5a36464a2da6659db2d739d9c18456d96bc782ffa676cf57bc4e30", # let mut group_of: HashMap<u32, usize> = HashMap::with_capacity(self.clusters.len());
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "526ae0b79a55c0c9432c8cbfd68a635bdd4a8a47d6b99c1f8c0b5d1fd34957a9", # let mut by_key: HashMap<(u32, [u32; 3]), usize> = HashMap::with_capacity(regions.len());
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "403c4f930d0c141f16ada7db0750fa23b106a34cadb648a647de540f4523762c", # let mut vertex_map: HashMap<u32, u32> = HashMap::new();
+], reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted" }
+"src/mesh/nanite.rs::HashSet" = { count = 2, lines = [
+    "ac700c908aa769f1227389516441ced8b6415eadd92c6446bd10ddbeba8c40da", # use std::collections::HashSet;
+    "f5f4ed7dddaf1c1a4007828bfcc0925e2f85cb0290bfbae6d848bd7777ddf243", # let mut verts: HashSet<u32> = HashSet::new();
+], reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted" }
+"src/mesh/nanite.rs::parallel" = { count = 4, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "per-triangle samples collected in order; the refinement reduces with law_max_f32 (commutative and associative)" }
+"src/mesh/optimize.rs::HashMap" = { count = 3, lines = [
+    "1fb77b68322924c2bb91f5dab41b3e7da2813eaca6a3c072635ea8c7c0e4a68d", # use std::collections::HashMap;
+    "059748e797da21c6cbae584a39076df9f5abbb06ece2a86025afb3f5ca4ae5a5", # let mut vertex_map: HashMap<u64, u32> = HashMap::new();
+    "a5575eb149828b98d8a7e84bcf977e8ce362b8df870d1e9d76e6782e5cfd06b7", # let mut hasher = std::collections::hash_map::DefaultHasher::new();
+], reason = "vertex deduplication and a set of seen indices: lookups and membership counts only; DefaultHasher (fixed keys) only makes a lookup key" }
+"src/mesh/optimize.rs::HashSet" = { count = 1, lines = [
+    "ca8210c00bc01314228607f7b4468f3ab3d16f1f87e4eb74c800441ea592a1db", # let mut unique_seen = std::collections::HashSet::new();
+], reason = "vertex deduplication and a set of seen indices: lookups and membership counts only" }
+"src/mesh/point_cloud_sdf.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "da5d0ebc436a78b61f545544dff610ef004491932dc1bc80dc4fd61ed2dc8a6e", # positions.par_iter().map(|&pos| self.eval(pos)).collect()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/mesh/sdf_to_mesh.rs::parallel" = { count = 10, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "26325ffc20de8cd5efd4ce6099c339256c05272ca87b121ee8e0dee4186c0103", # let points: Vec<Vec3> = (0..total_points).into_par_iter().map(grid_point).collect();
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "088fe511a24d4e0c89915f281a6bb79d3eb0d5f61d11a9388d016f0611217ad6", # positions.par_iter().map(|&p| gradient_normal(p)).collect()
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "645313d627186e12c0cbc0ec392f43d1081bce67dd66beaca5bae933772f2e35", # .zip(normals.par_iter())
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items (slabs and cells are concatenated in z / cell order)" }
+"src/mesh/uv_unwrap.rs::HashMap" = { count = 4, lines = [
+    "d3125cc5adc2a9b154d74cc1ac19c7efb0979054219a4f9c32e3efe19ee220e3", # use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+    "8cd4222e637da4285d1159f18689dac4b66d1abb6fa2a22ce8feb27b296a70b1", # let mut edge_tris: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
+    "b1c786854605de978783af03fe7cf35a101a89b60351653ae89490efaead1c93", # let mut global_to_local: HashMap<u32, usize> = HashMap::new();
+    "f1e540230eb2d4c7d81252eb7a34899a2f841d9bf201a212010be522a640e2af", # let mut edge_to_local_tri: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
+], reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only" }
+"src/mesh/uv_unwrap.rs::HashSet" = { count = 4, lines = [
+    "d3125cc5adc2a9b154d74cc1ac19c7efb0979054219a4f9c32e3efe19ee220e3", # use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+    "54510266f4688e8c800a50b478517a1d9b292c3fab5c92c71604d669e4e83242", # fn detect_seams(mesh: &Mesh, angle_threshold_deg: f32) -> HashSet<EdgeKey> {
+    "0cc6dd312d2e83f9d8c9d29eeac98e42aeb6b7b83cf4930495e602708116ec57", # let mut seams = HashSet::new();
+    "5121621b099ce8565ce906d1362c94e7e42439706d3db95789ee60c8e105c958", # fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) -> Vec<Vec<usize>> {
+], reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only" }
+"src/morphology.rs::parallel" = { count = 3, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "482af0c50537eca1955c04def5107247172034f11f80618da535d62341e9db66", # (0..per_axis).into_par_iter().for_each(|i| {
+], reason = "the offsets collect in order; the tolerance search keeps the largest positive finite value with an atomic compare on its bits, which does not depend on the order" }
+"src/python/functions.rs::parallel" = { count = 4, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "50889eb7d5f10cce46abf24d34de6fa74560a213b6d525e6db1d2eb733edadfc", # pts.par_iter()
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/raycast/march.rs::parallel" = { count = 11, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d684d4abec8a1b677c5b08221058a68b8a224eb9d724c0e553d3ea96e6924eda", # rays.par_iter()
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+    "d684d4abec8a1b677c5b08221058a68b8a224eb9d724c0e553d3ea96e6924eda", # rays.par_iter()
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+    "d684d4abec8a1b677c5b08221058a68b8a224eb9d724c0e553d3ea96e6924eda", # rays.par_iter()
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items; the images write per-row slots" }
+"src/shell.rs::parallel" = { count = 3, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/svo/streaming.rs::HashMap" = { count = 5, lines = [
+    "e2f37948d61c33c1b27667e5423ad9ec83d3f3cb9faea7c7756d720d372d1a1e", # entries: std::collections::HashMap<u32, CacheEntry>,
+    "3594b108fff6cfeea843620f0c5df9ce5b0c43883aa80fa56fb9fcd1daa111aa", # entries: std::collections::HashMap::new(),
+    "3594b108fff6cfeea843620f0c5df9ce5b0c43883aa80fa56fb9fcd1daa111aa", # entries: std::collections::HashMap::new(),
+    "7d8d8cca38eecef3187c5e90fde19f4e385c100ed8c67218e34ceb441b2e9346", # let mut old_to_new: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
+    "e453056cbc006a5503a58b18099fd35dfe8aa7b9e1f7a7efbf8bb268202a5015", # if let std::collections::hash_map::Entry::Vacant(e) = old_to_new.entry(ci) {
+], reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order" }
+"src/texture/fitting.rs::parallel" = { count = 7, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "95e79e710a68d3a7986c04e8d9380b067edd3b2364e5a6267beb5e9ee1eb82f3", # .par_chunks(COST_CHUNK)
+    "913387f94c9fd316bb94880239a83bc3c727f505e46627fe45383f9a10162573", # .zip(v.par_chunks(COST_CHUNK))
+    "b9812bc8b3ba4f9245aa54d5a80eacfd439ea7625d7a040c3e8ba4c511644d12", # .zip(res.par_chunks(COST_CHUNK))
+    "9e095643ca23d0bd92b80e359c09428a2f885d1392f71a21ceeae6648ea70cdc", # .zip(mask.par_chunks(COST_CHUNK))
+    "93759fe4d06277a51d8866da0f2e14eb9535fd82fa752bfccf4b817b59aa43e9", # residual.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+    "db6939245db838e03b7f5afd37569686420644467b5795e6ebdbfb6d3e410d0d", # .par_chunks_mut(width)
+], reason = "per-row slots for the residual and the reconstruction; the cost collects the chunk errors in chunk order and sums them in that order (texture::fitting::tests::the_cost_is_summed_in_chunk_order_on_every_thread_count)" }
+"src/texture/spectrum.rs::parallel" = { count = 3, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+], reason = "the row and column spectra are collected in index order and summed in that order (texture::spectrum::tests::the_energy_sums_are_in_index_order_on_every_thread_count)" }
+"src/tight_aabb.rs::parallel" = { count = 2, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
+], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
+"src/volume/bake.rs::parallel" = { count = 4, lines = [
+    "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "114998e5a80ce7f6fde6a5153d7c82e8ff3c883bf2cae9c7421dbec387f690cd", # data.par_chunks_mut(slice_size)
+    "114998e5a80ce7f6fde6a5153d7c82e8ff3c883bf2cae9c7421dbec387f690cd", # data.par_chunks_mut(slice_size)
+    "114998e5a80ce7f6fde6a5153d7c82e8ff3c883bf2cae9c7421dbec387f690cd", # data.par_chunks_mut(slice_size)
+], reason = "each work item writes only its own slice (par_chunks_mut / par_iter_mut by index), so the output does not depend on scheduling" }
+"Cargo.toml::rayon" = { count = 1, reason = "the parallel evaluators, mesh builders and bakers above; each listed site keeps input order or combines with a commutative and associative Law operation" }
