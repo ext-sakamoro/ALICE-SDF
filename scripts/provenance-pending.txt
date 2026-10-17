@@ -10,8 +10,6 @@ src/io/abm.rs::save_abm
 src/io/abm.rs::save_abm_with_lods
 src/io/abm.rs::to_bytes
 src/io/alembic.rs::export_alembic
-src/io/asdf.rs::save_asdf
-src/io/asdf.rs::to_bytes
 src/io/json.rs::save_asdf_json
 src/io/mod.rs::save
 src/io/nanite.rs::export_nanite

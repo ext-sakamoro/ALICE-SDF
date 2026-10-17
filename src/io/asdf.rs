@@ -18,6 +18,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
+use crate::provenance::{Checked, Provenance};
 use crate::types::SdfTree;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -27,7 +28,13 @@ use std::path::Path;
 pub const ASDF_MAGIC: [u8; 4] = *b"ASDF";
 
 /// Current format version
-pub const ASDF_VERSION: u16 = 1;
+///
+/// 2 adds the 32-byte semantics identifier after the 16-byte header (see
+/// [`crate::provenance`]); 1 has none and is read only by [`load_asdf_unverified`].
+pub const ASDF_VERSION: u16 = 2;
+
+/// The header length of [`ASDF_VERSION`] (16 bytes plus the 32-byte semantics identifier)
+pub const ASDF_HEADER_LEN: usize = 48;
 
 /// bincode deserialize allocation upper bound (256 MB)
 ///
@@ -54,35 +61,62 @@ pub struct AsdfHeader {
     pub node_count: u32,
     /// CRC32 checksum
     pub crc32: u32,
+    /// The semantics identifier the data was written under (`None` in a version 1 file)
+    pub semantics_id: Option<[u8; 32]>,
 }
 
 impl AsdfHeader {
-    /// Create a new header for a tree
+    /// Create a new header for a tree, carrying this crate's semantics identifier
     pub fn new(tree: &SdfTree, body_crc: u32) -> Self {
+        Self::with_provenance(tree, body_crc, &Provenance::sdf())
+    }
+
+    /// Create a new header for a tree, carrying the given semantics identifier
+    pub fn with_provenance(tree: &SdfTree, body_crc: u32, provenance: &Provenance) -> Self {
         Self {
             magic: ASDF_MAGIC,
             version: ASDF_VERSION,
             flags: 0,
             node_count: tree.node_count(),
             crc32: body_crc,
+            semantics_id: Some(provenance.semantics_id),
         }
     }
 
-    /// Serialize header to bytes
-    #[inline(always)]
-    pub fn to_bytes(&self) -> [u8; 16] {
-        let mut bytes = [0u8; 16];
+    /// The length of this header in a file (16 bytes, 48 with the semantics identifier)
+    pub const fn byte_len(&self) -> usize {
+        if self.semantics_id.is_some() {
+            ASDF_HEADER_LEN
+        } else {
+            16
+        }
+    }
+
+    /// Serialize header to bytes (16 bytes, 48 with the semantics identifier)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![0u8; self.byte_len()];
         bytes[0..4].copy_from_slice(&self.magic);
         bytes[4..6].copy_from_slice(&self.version.to_le_bytes());
         bytes[6..8].copy_from_slice(&self.flags.to_le_bytes());
         bytes[8..12].copy_from_slice(&self.node_count.to_le_bytes());
         bytes[12..16].copy_from_slice(&self.crc32.to_le_bytes());
+        if let Some(id) = &self.semantics_id {
+            bytes[16..48].copy_from_slice(id);
+        }
         bytes
     }
 
-    /// Parse header from bytes
-    #[inline(always)]
-    pub fn from_bytes(bytes: &[u8; 16]) -> Result<Self, IoError> {
+    /// Parse header from bytes (the first 16 bytes; a version 2 header also reads the
+    /// identifier from the next 32)
+    ///
+    /// # Errors
+    ///
+    /// [`IoError::InvalidFormat`] for a wrong magic or a truncated header,
+    /// [`IoError::UnsupportedVersion`] for a newer version.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        if bytes.len() < 16 {
+            return Err(IoError::InvalidFormat("ASDF header truncated".into()));
+        }
         let magic: [u8; 4] = bytes[0..4].try_into().unwrap();
         if magic != ASDF_MAGIC {
             return Err(IoError::InvalidFormat(format!(
@@ -99,13 +133,23 @@ impl AsdfHeader {
         let flags = u16::from_le_bytes(bytes[6..8].try_into().unwrap());
         let node_count = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
         let crc32 = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
-
+        let semantics_id = if version >= 2 {
+            let id: [u8; 32] = bytes
+                .get(16..48)
+                .ok_or_else(|| IoError::InvalidFormat("ASDF v2 header truncated".into()))?
+                .try_into()
+                .unwrap();
+            Some(id)
+        } else {
+            None
+        };
         Ok(Self {
             magic,
             version,
             flags,
             node_count,
             crc32,
+            semantics_id,
         })
     }
 }
@@ -182,6 +226,15 @@ impl<R: Read> Read for CrcReader<R> {
 /// Uses seek patching: writes placeholder header, streams body with CRC,
 /// then patches header with actual CRC. Avoids loading entire body into memory.
 pub fn save_asdf(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> {
+    save_asdf_with_provenance(tree, path, &Provenance::sdf())
+}
+
+/// [`save_asdf`] with the given semantics identifier in the header
+pub fn save_asdf_with_provenance(
+    tree: &SdfTree,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
 
@@ -192,6 +245,7 @@ pub fn save_asdf(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> 
         flags: 0,
         node_count: tree.node_count(),
         crc32: 0,
+        semantics_id: Some(provenance.semantics_id),
     };
     writer.write_all(&placeholder.to_bytes())?;
 
@@ -210,7 +264,7 @@ pub fn save_asdf(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> 
 
     // 3. Patch header with actual CRC (seek back to start)
     writer.seek(SeekFrom::Start(0))?;
-    let real_header = AsdfHeader::new(tree, crc);
+    let real_header = AsdfHeader::with_provenance(tree, crc, provenance);
     writer.write_all(&real_header.to_bytes())?;
 
     writer.flush()?;
@@ -222,14 +276,44 @@ pub fn save_asdf(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> 
 ///
 /// Reads body into buffer, validates CRC before deserialization.
 /// This protects against corrupted data causing bincode to hang.
+///
+/// The header's semantics identifier must be this crate's or one it still reproduces
+/// ([`crate::check_sdf_semantics`]).
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a version 1 file (no identifier; [`load_asdf_unverified`] reads
+/// it), [`IoError::SemanticsMismatch`] for another identifier, and the format errors below.
 pub fn load_asdf(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
+    load_asdf_checked(path, false).map(|c| c.into_parts().0)
+}
+
+/// [`load_asdf`] that also reads a version 1 file (written before the semantics identifier),
+/// marking it [`crate::provenance::StoredSemantics::Unpinned`]
+///
+/// # Errors
+///
+/// As [`load_asdf`], except that a file without an identifier is returned, not refused.
+pub fn load_asdf_unverified(path: impl AsRef<Path>) -> Result<Checked<SdfTree>, IoError> {
+    load_asdf_checked(path, true)
+}
+
+fn load_asdf_checked(
+    path: impl AsRef<Path>,
+    allow_unpinned: bool,
+) -> Result<Checked<SdfTree>, IoError> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
-
-    // 1. Read header
-    let mut header_bytes = [0u8; 16];
+    // 1. Read header (16 bytes, then the identifier of a version 2 header)
+    let mut header_bytes = vec![0u8; 16];
     reader.read_exact(&mut header_bytes)?;
+    if u16::from_le_bytes([header_bytes[4], header_bytes[5]]) >= 2 {
+        header_bytes.resize(ASDF_HEADER_LEN, 0);
+        reader.read_exact(&mut header_bytes[16..])?;
+    }
     let header = AsdfHeader::from_bytes(&header_bytes)?;
+    let semantics =
+        crate::provenance::sdf_load_verdict(header.semantics_id, "ASDF", allow_unpinned)?;
 
     // 2. Read entire body into buffer (necessary for CRC validation before deserialize)
     let mut body = Vec::new();
@@ -253,15 +337,16 @@ pub fn load_asdf(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
         bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
     )
     .map_err(|e| IoError::Serialization(e.to_string()))?;
-
-    Ok(tree)
+    Ok(Checked::new(tree, semantics))
 }
 
 /// Read only the header from an ASDF file
 pub fn read_header(path: impl AsRef<Path>) -> Result<AsdfHeader, IoError> {
     let mut file = File::open(path)?;
-    let mut header_bytes = [0u8; 16];
-    file.read_exact(&mut header_bytes)?;
+    let mut header_bytes = Vec::with_capacity(ASDF_HEADER_LEN);
+    Read::by_ref(&mut file)
+        .take(ASDF_HEADER_LEN as u64)
+        .read_to_end(&mut header_bytes)?;
     AsdfHeader::from_bytes(&header_bytes)
 }
 
@@ -328,9 +413,9 @@ mod tests {
 
         // Corrupt the file
         let mut data = fs::read(&path).unwrap();
-        if data.len() > 20 {
-            data[20] ^= 0xFF; // Flip some bits in the body
-        }
+        let body_byte = ASDF_HEADER_LEN + 4;
+        assert!(data.len() > body_byte);
+        data[body_byte] ^= 0xFF; // Flip some bits in the body (after the 48-byte header)
         fs::write(&path, &data).unwrap();
 
         // Should fail CRC check
