@@ -445,6 +445,12 @@ jobs:
           python scripts/test_build_config_guard.py
           python scripts/build_config_guard.py
           python scripts/test_build_flags_check.py
+      # G8: every public writer stores the semantics identifier or is listed as pending
+      # (the number of writers is fixed; 0 writers found fails)
+      - name: provenance writers (test, then check)
+        run: |
+          python scripts/test_provenance_writers.py
+          python scripts/provenance_writers.py
       - name: README sync oracle (検査器自身の試験)
         run: python scripts/test_readme_sync.py
       - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)

@@ -110,7 +110,8 @@ reference_repo = ""
 
 [G8]
 status = "fail-known"
-note = "no durable format this crate writes carries an identifier of the meaning of the stored bytes: the SVO stream (src/svo/streaming.rs line 68 to_bytes), the volume exports (src/volume/export.rs lines 24, 74, 165 and 273), the mesh writers (src/io/stl.rs line 13, src/io/obj.rs line 39 and the other src/io/ formats) and .asdf (src/io/asdf.rs line 184, a magic and a format version only). SEMANTICS_ID is used only by src/lib.rs line 189 and the test."
+evidence = ["src/provenance.rs", "tests/test_provenance.rs", "scripts/provenance_writers.py", "scripts/provenance-pending.txt", ".github/workflows/ci.yml wiring-guard job"]
+note = "the writers of STL (binary and ASCII), 3MF and FBX (binary and ASCII) store the 32-byte semantics identifier (src/provenance.rs: the STL header, the 3MF model metadata alice:semantics_id, the FBX Creator string; Provenance::sdf() is SEMANTICS_ID, *_with_provenance takes a caller's), provenance::read reads it back and provenance::check refuses another one naming both (tests/test_provenance.rs, with an independent STL parser); scripts/provenance_writers.py counts the public writers (44) and fails on a writer that is neither covered by that test nor listed in scripts/provenance-pending.txt. Still to do: the 40 writers in that list, among them the SVO stream (src/svo/streaming.rs to_bytes), the volume exports (src/volume/export.rs), .asdf (src/io/asdf.rs, a magic and a format version only), OBJ, glTF, PLY, USD, STEP, IGES and the other src/io formats; and this crate's own readers do not check a stored identifier yet. Becomes pass when the pending list is empty and the readers check"
 reference_repo = ""
 
 [G9]

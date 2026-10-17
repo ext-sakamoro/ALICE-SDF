@@ -104,6 +104,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "stl_io",
  "thiserror 2.0.21",
  "vdb-rs",
  "wasm-bindgen",
@@ -2096,6 +2097,12 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "stl_io"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "567641995c51a3b8befddb13e1826187bcf7eb7ca8d13746bfd1cc5a22e89fa8"
 
 [[package]]
 name = "strsim"

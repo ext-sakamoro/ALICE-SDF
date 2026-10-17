@@ -42,8 +42,8 @@ pub use abm::{
 pub use alembic::{export_alembic, AlembicConfig};
 pub use asdf::{load_asdf, save_asdf, AsdfHeader, ASDF_MAGIC};
 pub use fbx::{
-    export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, FbxAnimClip, FbxAnimCurve,
-    FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
+    export_fbx, export_fbx_with_provenance, fbx_animation_to_timeline, import_fbx, import_fbx_full,
+    FbxAnimClip, FbxAnimCurve, FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
 };
 pub use gltf::{
     export_glb, export_glb_bytes, export_gltf_json, import_glb, import_glb_bytes, GltfConfig,
@@ -54,8 +54,11 @@ pub use nanite::{
 };
 pub use obj::{export_obj, import_obj, ObjConfig};
 pub use ply::{export_ply, import_ply, PlyConfig};
-pub use stl::{export_stl, export_stl_ascii, import_stl};
-pub use threemf::export_3mf;
+pub use stl::{
+    export_stl, export_stl_ascii, export_stl_ascii_with_provenance, export_stl_with_provenance,
+    import_stl,
+};
+pub use threemf::{export_3mf, export_3mf_with_provenance};
 pub use ue5_asset::{
     export_ue5_mesh, export_ue5_mesh_binary, export_ue5_mesh_with_lods, Ue5MeshConfig,
 };

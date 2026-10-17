@@ -7,18 +7,29 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
+use crate::provenance::Provenance;
 use std::path::Path;
 
 /// Export mesh to binary STL format
+///
+/// The 80-byte header carries [`Provenance::sdf`] (see [`crate::provenance`]).
 pub fn export_stl(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
+    export_stl_with_provenance(mesh, path, &Provenance::sdf())
+}
+
+/// Export mesh to binary STL format with the caller's semantics identifier in the header
+pub fn export_stl_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     use std::io::{BufWriter, Write};
 
     let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
 
-    // 80-byte header
-    let header = [0u8; 80];
-    w.write_all(&header)?;
+    // 80-byte header: magic, layout version, the semantics identifier, zeros
+    w.write_all(&provenance.stl_header())?;
 
     // Triangle count
     let tri_count = (mesh.indices.len() / 3) as u32;
@@ -52,13 +63,25 @@ pub fn export_stl(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
 }
 
 /// Export mesh to ASCII STL format
+///
+/// The solid name carries [`Provenance::sdf`] (see [`crate::provenance`]).
 pub fn export_stl_ascii(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
+    export_stl_ascii_with_provenance(mesh, path, &Provenance::sdf())
+}
+
+/// Export mesh to ASCII STL format with the caller's semantics identifier as the solid name
+pub fn export_stl_ascii_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     use std::io::{BufWriter, Write};
 
     let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
 
-    writeln!(w, "solid alice_sdf")?;
+    let name = provenance.tagged();
+    writeln!(w, "solid {name}")?;
 
     let tri_count = mesh.indices.len() / 3;
     for i in 0..tri_count {
@@ -85,7 +108,7 @@ pub fn export_stl_ascii(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoErr
         writeln!(w, "  endfacet")?;
     }
 
-    writeln!(w, "endsolid alice_sdf")?;
+    writeln!(w, "endsolid {name}")?;
     w.flush()?;
     Ok(())
 }
