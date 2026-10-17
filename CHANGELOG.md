@@ -39,6 +39,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 - CI: `scripts/cargo_output_parser_check.py` が、escape 文字を名前に入れて (`ESC = "\x1b"` と `{ESC}[`) 色付きの出力を作る試験を色の sample が無いと誤って判定していた 名前を通した sample も数える (使われない名前だけでは数えない)
 - 互換性のない変更 (ALICE-Law の gate、次の版でまとめる) G8: 書き出した file に、保存した bytes の意味の識別子 (32 byte、既定は `SEMANTICS_ID`) を入れる 対応済みの形式の出力は byte が変わる: binary STL の 80 byte の header (`ALICESDF`、版 1、識別子、残りは 0 で `solid` から始まらない)、ASCII STL の solid 名 (`solid alice:semantics_id=<64 桁の hex>`)、3MF の `3D/3dmodel.model` の名前空間つき metadata (`alice:semantics_id`、`xmlns:alice`)、FBX (binary と ASCII) の `FBXHeaderExtension` の `Creator` (`ALICE-SDF alice:semantics_id=<hex>`) 残りの書き出し関数は `scripts/provenance-pending.txt` にあり、順に対応する
+- binary FBX (`export_fbx` の `FbxFormat::Binary`) が仕様どおりの file でなかった: 入れ子の node の end offset を node の先頭からの長さのまま書いていた (FBX は全 node で file 内の位置を要求する、top level だけを直していた) のと、file 末尾の footer が無かった 独立の FBX parser (`fbxcel`、dev-dependency) が `FBXHeaderExtension/FBXHeaderVersion` で `NodeLengthMismatch` を返していた 入れ子の node も位置に直し (`absolutize_fbx_node`)、footer (ID・16 byte 境界までの 0・版・0 の 120 byte・magic) を書く 試験 `tests/test_provenance.rs` の `an_independent_fbx_parser_reads_the_binary_fbx` が file 全体と footer を読む (直す前は失敗、入れ子を直さない変異と magic を書かない変異でも失敗する)
 
 ## [6.1.0] - 2026-10-16
 

@@ -507,6 +507,37 @@ fn write_fbx_prop_i32_array(w: &mut impl Write, data: &[i32]) -> Result<(), IoEr
 
 /// Serialize an FBX binary node to a buffer.
 /// Returns the serialized bytes.
+/// First block of the binary FBX footer (the bytes other writers store; readers check the high
+/// nibble of each byte)
+const FBX_FOOTER_ID: [u8; 16] = [
+    0xfa, 0xbc, 0xab, 0x09, 0xd0, 0xc8, 0xd4, 0x66, 0xb1, 0x76, 0xfb, 0x83, 0x1c, 0xf7, 0x26, 0x7e,
+];
+
+/// Last 16 bytes of a binary FBX file
+const FBX_FOOTER_MAGIC: [u8; 16] = [
+    0xf8, 0x5a, 0x8c, 0x6a, 0xde, 0xf5, 0xd9, 0x7e, 0xec, 0xe9, 0x0c, 0xe3, 0x75, 0x8f, 0x29, 0x0b,
+];
+
+/// Turns the end offsets of a serialized node and of its nested nodes into file positions
+///
+/// [`serialize_fbx_node`] writes each node's end offset as its own length (relative to the node's
+/// start); FBX requires the absolute position in the file for every node, nested ones included.
+/// `start` is the file position at which `node` is written. Children follow the header (13 bytes
+/// plus the name) and the property list, up to the 13-byte null record that closes the list.
+fn absolutize_fbx_node(node: &mut [u8], start: u32) {
+    let len = u32::from_le_bytes([node[0], node[1], node[2], node[3]]) as usize;
+    node[0..4].copy_from_slice(&(start + len as u32).to_le_bytes());
+    let prop_len = u32::from_le_bytes([node[8], node[9], node[10], node[11]]) as usize;
+    let name_len = node[12] as usize;
+    let mut at = 13 + name_len + prop_len;
+    while at + 13 <= len && node[at..at + 13] != [0u8; 13] {
+        let child =
+            u32::from_le_bytes([node[at], node[at + 1], node[at + 2], node[at + 3]]) as usize;
+        absolutize_fbx_node(&mut node[at..at + child], start + at as u32);
+        at += child;
+    }
+}
+
 fn serialize_fbx_node(name: &str, props: &[FbxProp], children: &[Vec<u8>]) -> Vec<u8> {
     let mut body = Vec::new();
 
@@ -997,16 +1028,28 @@ fn export_fbx_binary(
     let mut current_offset = header_size;
 
     for node_data in &top_nodes {
-        // Patch the end_offset (first 4 bytes) to be absolute
-        let absolute_end = current_offset + node_data.len() as u32;
+        // Make the end_offset of the node and of every nested node absolute (a file position)
         let mut patched = node_data.clone();
-        patched[0..4].copy_from_slice(&absolute_end.to_le_bytes());
+        absolutize_fbx_node(&mut patched, current_offset);
+        let absolute_end = current_offset + node_data.len() as u32;
         w.write_all(&patched)?;
         current_offset = absolute_end;
     }
 
-    // Footer: null record
+    // Closing null record of the top-level node list
     w.write_all(&[0u8; 13])?;
+    let mut pos = current_offset + 13;
+
+    // Footer (FBX 7.x binary): an ID block, zero padding to a 16-byte boundary, 4 zero bytes, the
+    // version, 120 zero bytes, and a fixed 16-byte magic
+    w.write_all(&FBX_FOOTER_ID)?;
+    pos += FBX_FOOTER_ID.len() as u32;
+    let padding = pos.wrapping_neg() & 0x0f;
+    w.write_all(&vec![0u8; padding as usize])?;
+    w.write_all(&[0u8; 4])?;
+    w.write_all(&FBX_BINARY_VERSION.to_le_bytes())?;
+    w.write_all(&[0u8; 120])?;
+    w.write_all(&FBX_FOOTER_MAGIC)?;
 
     w.flush()?;
     Ok(())

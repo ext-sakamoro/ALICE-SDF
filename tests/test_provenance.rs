@@ -161,6 +161,38 @@ fn files_with_the_identifier_still_open_in_this_crates_importers() {
     std::fs::remove_file(&path).ok();
 }
 
+/// An independent FBX parser (`fbxcel`) reads the whole binary file (nodes and footer), and its
+/// `FBXHeaderExtension/Creator` string carries the identifier
+#[test]
+fn an_independent_fbx_parser_reads_the_binary_fbx() {
+    let m = mesh();
+    let path = temp("strict.fbx");
+    let c = io::FbxConfig {
+        format: io::FbxFormat::Binary,
+        ..Default::default()
+    };
+    io::export_fbx_with_provenance(&m, &path, &c, None, &caller_id()).unwrap();
+    let f = std::io::BufReader::new(std::fs::File::open(&path).unwrap());
+    let fbxcel::tree::any::AnyTree::V7400(_, tree, footer) =
+        fbxcel::tree::any::AnyTree::from_seekable_reader(f).expect("fbxcel reads the file")
+    else {
+        panic!("not an FBX 7.4 tree")
+    };
+    footer.expect("fbxcel reads the footer");
+    let creator = tree
+        .root()
+        .first_child_by_name("FBXHeaderExtension")
+        .and_then(|h| h.first_child_by_name("Creator"))
+        .expect("FBXHeaderExtension/Creator");
+    match creator.attributes() {
+        [fbxcel::low::v7400::AttributeValue::String(s)] => {
+            assert_eq!(*s, format!("ALICE-SDF {}", caller_id().tagged()));
+        }
+        other => panic!("Creator attributes: {other:?}"),
+    }
+    std::fs::remove_file(&path).ok();
+}
+
 /// An independent binary STL parser (`stl_io`) reads the file with the identifier in the header
 #[test]
 fn an_independent_stl_parser_reads_the_binary_stl() {
