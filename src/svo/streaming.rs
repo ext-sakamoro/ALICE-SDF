@@ -167,11 +167,6 @@ struct CacheEntry {
     last_access: u64,
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
-)]
 /// Streaming SVO cache with LRU eviction
 ///
 /// Stores a fixed number of SVO chunks in memory. When the cache
@@ -181,7 +176,7 @@ pub struct SvoStreamingCache {
     /// Maximum number of chunks to keep in memory
     capacity: usize,
     /// Cached chunks (chunk_id → entry)
-    entries: std::collections::HashMap<u32, CacheEntry>,
+    entries: crate::unordered::UnorderedMap<u32, CacheEntry>,
     /// Access counter for LRU ordering
     access_counter: u64,
     /// Total memory used by cached chunks
@@ -194,11 +189,6 @@ pub struct SvoStreamingCache {
 }
 
 impl SvoStreamingCache {
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
-    )]
     /// Create a new streaming cache
     ///
     /// # Arguments
@@ -206,7 +196,7 @@ impl SvoStreamingCache {
     pub fn new(capacity: usize) -> Self {
         Self {
             capacity,
-            entries: std::collections::HashMap::new(),
+            entries: crate::unordered::UnorderedMap::new(),
             access_counter: 0,
             memory_used: 0,
             max_memory: 0,
@@ -215,16 +205,11 @@ impl SvoStreamingCache {
         }
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
-    )]
     /// Create a cache with a memory budget
     pub fn with_memory_budget(max_memory_bytes: usize) -> Self {
         Self {
             capacity: usize::MAX,
-            entries: std::collections::HashMap::new(),
+            entries: crate::unordered::UnorderedMap::new(),
             access_counter: 0,
             memory_used: 0,
             max_memory: max_memory_bytes,
@@ -287,24 +272,15 @@ impl SvoStreamingCache {
         false
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
-    )]
     /// Evict the least recently used chunk
     fn evict_lru(&mut self) -> bool {
         if self.entries.is_empty() {
             return false;
         }
 
-        let lru_id = self
-            .entries
-            .iter()
-            // the id breaks a tie of equal access times, so the evicted chunk does
-            // not depend on the map's unspecified order (ALICE-Law G13)
-            .min_by_key(|(&id, e)| (e.last_access, id))
-            .map(|(&id, _)| id);
+        // the id breaks a tie of equal access times, so the evicted chunk does
+        // not depend on the map's unspecified order (ALICE-Law G13)
+        let lru_id = self.entries.min_key_by(|_, e| e.last_access).copied();
 
         if let Some(id) = lru_id {
             if let Some(entry) = self.entries.remove(&id) {
@@ -444,11 +420,6 @@ pub fn split_into_chunks(svo: &SparseVoxelOctree, split_depth: u32) -> Vec<SvoCh
     chunks
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
-)]
 /// Extract a subtree starting at the given node index
 fn extract_subtree(svo: &SparseVoxelOctree, root_idx: usize) -> Vec<SvoNode> {
     if root_idx >= svo.nodes.len() {
@@ -457,7 +428,8 @@ fn extract_subtree(svo: &SparseVoxelOctree, root_idx: usize) -> Vec<SvoNode> {
 
     let mut result = Vec::new();
     let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
-    let mut old_to_new: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
+    let mut old_to_new: crate::unordered::UnorderedMap<usize, u32> =
+        crate::unordered::UnorderedMap::new();
 
     queue.push_back(root_idx);
     old_to_new.insert(root_idx, 0);

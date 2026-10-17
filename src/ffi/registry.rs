@@ -20,12 +20,7 @@ use super::types::{CompiledHandle, MeshHandle, SdfHandle};
 use crate::compiled::CompiledSdf;
 use crate::mesh::Mesh;
 use crate::types::SdfNode;
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
-)]
-use std::collections::HashMap;
+use crate::unordered::UnorderedMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, RwLock,
@@ -35,14 +30,9 @@ use std::sync::{
 // Node Registry
 // ============================================================================
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
-)]
 /// Global registry of SDF nodes
-static NODE_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<SdfNode>>>> =
-    std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+static NODE_REGISTRY: std::sync::LazyLock<RwLock<UnorderedMap<u64, Arc<SdfNode>>>> =
+    std::sync::LazyLock::new(|| RwLock::new(UnorderedMap::new()));
 
 /// Counter for generating unique handle IDs (nodes)
 static NODE_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -97,14 +87,9 @@ pub fn remove_node(handle: SdfHandle) {
 // Compiled SDF Registry (Deep Fried)
 // ============================================================================
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
-)]
 /// Global registry of compiled SDFs
-static COMPILED_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<CompiledSdf>>>> =
-    std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+static COMPILED_REGISTRY: std::sync::LazyLock<RwLock<UnorderedMap<u64, Arc<CompiledSdf>>>> =
+    std::sync::LazyLock::new(|| RwLock::new(UnorderedMap::new()));
 
 /// Counter for generating unique compiled handle IDs
 /// Uses high bits to distinguish from node handles
@@ -158,14 +143,9 @@ pub fn remove_compiled(handle: CompiledHandle) {
 // Mesh Registry
 // ============================================================================
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "handle registries: insert, look up and remove by handle id only (ALICE-Law G13)"
-)]
 /// Global registry of generated meshes
-static MESH_REGISTRY: std::sync::LazyLock<RwLock<HashMap<u64, Arc<Mesh>>>> =
-    std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+static MESH_REGISTRY: std::sync::LazyLock<RwLock<UnorderedMap<u64, Arc<Mesh>>>> =
+    std::sync::LazyLock::new(|| RwLock::new(UnorderedMap::new()));
 
 /// Counter for generating unique mesh handle IDs
 static MESH_COUNTER: AtomicU64 = AtomicU64::new(0x4000_0000_0000_0001);

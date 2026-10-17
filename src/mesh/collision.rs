@@ -380,11 +380,6 @@ fn find_initial_tetrahedron(points: &[Vec3]) -> (usize, usize, usize, usize) {
     (p0, p1, p2, p3)
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "cell to new vertex index: lookups only, the vertices are created in cell order (ALICE-Law G13)"
-)]
 /// Generate a simplified collision mesh by vertex clustering
 ///
 /// Reduces vertex count by clustering nearby vertices into grid cells.
@@ -421,14 +416,10 @@ pub fn simplify_collision(mesh: &Mesh, grid_resolution: u32) -> CollisionMesh {
     );
 
     // Cluster vertices into grid cells
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "cell to new vertex index: lookups only, the vertices are created in cell order (ALICE-Law G13)"
-    )]
-    use std::collections::{BTreeMap, HashMap};
+    use crate::unordered::UnorderedMap;
+    use std::collections::BTreeMap;
     // ordered by cell, so the new vertices come out in one order on every run
-    // (a HashMap's iteration order is unspecified; ALICE-Law G13)
+    // (a UnorderedMap's iteration order is unspecified; ALICE-Law G13)
     let mut clusters: BTreeMap<(u32, u32, u32), (Vec3, u32)> = BTreeMap::new();
     let mut vertex_remap: Vec<(u32, u32, u32)> = Vec::with_capacity(mesh.vertices.len());
 
@@ -446,7 +437,7 @@ pub fn simplify_collision(mesh: &Mesh, grid_resolution: u32) -> CollisionMesh {
     }
 
     // Build new vertex list with averaged positions
-    let mut new_vertex_map: HashMap<(u32, u32, u32), u32> = HashMap::new();
+    let mut new_vertex_map: UnorderedMap<(u32, u32, u32), u32> = UnorderedMap::new();
     let mut new_vertices = Vec::new();
 
     for (key, (sum, count)) in &clusters {

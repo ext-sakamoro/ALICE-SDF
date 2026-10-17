@@ -82,6 +82,7 @@ use crate::mesh::sdf_to_mesh::{
 };
 use crate::mesh::{Mesh, Vertex};
 use crate::types::SdfNode;
+use crate::unordered::UnorderedMap;
 use alice_physics::collider::Contact;
 use alice_physics::erosion::ErosionModifier;
 use alice_physics::fracture::FractureModifier;
@@ -98,12 +99,6 @@ use alice_physics::{Fix128, Vec3Fix};
 use glam::Vec3;
 use rayon::prelude::*;
 use std::any::Any;
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "vertex welding: lookups only, vertices are emitted in mesh and cell order (ALICE-Law G13)"
-)]
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -1299,17 +1294,12 @@ impl LiveMesh {
         self.meshes.get(self.config.chunk_index(c))
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "vertex welding: lookups only, vertices are emitted in mesh and cell order (ALICE-Law G13)"
-    )]
     /// Every chunk mesh joined into one, vertices with identical position
     /// bits merged (the chunk borders' shared vertices), degenerate
     /// triangles dropped.
     pub fn merged(&self) -> Mesh {
         let mut out = Mesh::new();
-        let mut index: HashMap<[u32; 3], u32> = HashMap::new();
+        let mut index: UnorderedMap<[u32; 3], u32> = UnorderedMap::new();
         for m in &self.meshes {
             let mut remap = Vec::with_capacity(m.vertices.len());
             for v in &m.vertices {
@@ -1332,11 +1322,6 @@ impl LiveMesh {
     }
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "vertex welding: lookups only, vertices are emitted in mesh and cell order (ALICE-Law G13)"
-)]
 /// Marching cubes of chunk `c` on the global lattice.
 fn mesh_chunk(state: &LiveState, config: &LiveMeshConfig, c: [usize; 3]) -> Mesh {
     let n = config.chunk_cells;
@@ -1374,7 +1359,7 @@ fn mesh_chunk(state: &LiveState, config: &LiveMeshConfig, c: [usize; 3]) -> Mesh
 
     let mut mesh = Mesh::new();
     // Global edge key (lower endpoint, axis) -> vertex index.
-    let mut edge_vertex: HashMap<([i64; 3], u8), u32> = HashMap::new();
+    let mut edge_vertex: UnorderedMap<([i64; 3], u8), u32> = UnorderedMap::new();
     for z in 0..n {
         for y in 0..n {
             for x in 0..n {

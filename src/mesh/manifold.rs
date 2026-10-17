@@ -15,12 +15,8 @@
 
 use crate::compiled::real::LawMinMax;
 use crate::mesh::{Mesh, Vertex};
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-)]
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::unordered::{UnorderedMap, UnorderedSet};
+use std::collections::VecDeque;
 
 /// Mesh validation result
 #[derive(Debug, Clone)]
@@ -91,16 +87,11 @@ impl EdgeKey {
     }
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-)]
 /// Validate a mesh for manifoldness and quality (Deep Fried)
 ///
 /// Performs a complete analysis of the mesh topology and geometry.
 pub fn validate_mesh(mesh: &Mesh) -> MeshValidation {
-    let mut edge_counts: HashMap<EdgeKey, u32> = HashMap::new();
+    let mut edge_counts: UnorderedMap<EdgeKey, u32> = UnorderedMap::new();
 
     // Count edge usage
     let tri_count = mesh.indices.len() / 3;
@@ -115,8 +106,8 @@ pub fn validate_mesh(mesh: &Mesh) -> MeshValidation {
         *edge_counts.entry(EdgeKey::new(c, a)).or_insert(0) += 1;
     }
 
-    let non_manifold_edges = edge_counts.values().filter(|&&c| c > 2).count();
-    let boundary_edges = edge_counts.values().filter(|&&c| c == 1).count();
+    let non_manifold_edges = edge_counts.count_values_where(|&c| c > 2);
+    let boundary_edges = edge_counts.count_values_where(|&c| c == 1);
     let is_manifold = non_manifold_edges == 0 && boundary_edges == 0;
 
     // Count degenerate triangles
@@ -161,11 +152,6 @@ fn count_degenerate_triangles(mesh: &Mesh) -> usize {
     count
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-)]
 /// Count duplicate vertices within epsilon
 fn count_duplicate_vertices(mesh: &Mesh, epsilon: f32) -> usize {
     let eps_sq = epsilon * epsilon;
@@ -173,7 +159,7 @@ fn count_duplicate_vertices(mesh: &Mesh, epsilon: f32) -> usize {
 
     // Use spatial hashing for O(n) average case
     let cell_size = epsilon * 10.0;
-    let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
+    let mut grid: UnorderedMap<(i32, i32, i32), Vec<usize>> = UnorderedMap::new();
 
     for (i, v) in mesh.vertices.iter().enumerate() {
         let cx = (v.position.x / cell_size).floor() as i32;
@@ -276,11 +262,6 @@ impl MeshRepair {
         }
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-    )]
     /// Merge duplicate vertices (within epsilon distance)
     pub fn merge_duplicate_vertices(mesh: &Mesh, epsilon: f32) -> Mesh {
         let eps_sq = epsilon * epsilon;
@@ -288,7 +269,7 @@ impl MeshRepair {
         let mut remap: Vec<u32> = Vec::with_capacity(mesh.vertices.len());
 
         let cell_size = epsilon * 10.0;
-        let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
+        let mut grid: UnorderedMap<(i32, i32, i32), Vec<usize>> = UnorderedMap::new();
 
         for v in &mesh.vertices {
             let cx = (v.position.x / cell_size).floor() as i32;
@@ -376,11 +357,6 @@ impl MeshRepair {
         Self::fix_normals(&mesh)
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-    )]
     /// Remove triangles that reference the same vertex set as an earlier
     /// triangle (winding-insensitive). Keeps the first occurrence.
     ///
@@ -390,7 +366,7 @@ impl MeshRepair {
     /// 4 incident triangles, which `validate_mesh` reports as non-manifold.
     pub fn remove_duplicate_triangles(mesh: &Mesh) -> Mesh {
         let tri_count = mesh.indices.len() / 3;
-        let mut seen: HashSet<[u32; 3]> = HashSet::with_capacity(tri_count);
+        let mut seen: UnorderedSet<[u32; 3]> = UnorderedSet::with_capacity(tri_count);
         let mut new_indices = Vec::with_capacity(mesh.indices.len());
 
         for i in 0..tri_count {
@@ -420,11 +396,6 @@ impl MeshRepair {
     // dotneet/image-to-3d §A mesh 後処理 3 手順
     // ========================================================================
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-    )]
     /// BFS で面の巻き向きを揃え、連結成分ごとの符号付き体積で外向きに直す
     ///
     /// # アルゴリズム (image-to-3d §A.1 準拠)
@@ -456,7 +427,7 @@ impl MeshRepair {
         let mut new_indices = mesh.indices.clone();
 
         // 無向辺 → 三角形 index 一覧
-        let mut edge_tris: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
+        let mut edge_tris: UnorderedMap<(u32, u32), Vec<usize>> = UnorderedMap::new();
         for t in 0..tri_count {
             let (a, b, c) = tri_verts(&new_indices, t);
             for (u, v) in [(a, b), (b, c), (c, a)] {
@@ -529,11 +500,6 @@ impl MeshRepair {
         }
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-    )]
     /// 境界エッジの連結成分ごとに扇状で穴を塞ぐ
     ///
     /// # アルゴリズム (image-to-3d §A.2 準拠)
@@ -566,8 +532,8 @@ impl MeshRepair {
         }
 
         // 各辺の出現回数と、代表的な向き (元の三角形での順序) を記録
-        let mut edge_count: HashMap<(u32, u32), i32> = HashMap::new();
-        let mut edge_dir: HashMap<(u32, u32), (u32, u32)> = HashMap::new();
+        let mut edge_count: UnorderedMap<(u32, u32), i32> = UnorderedMap::new();
+        let mut edge_dir: UnorderedMap<(u32, u32), (u32, u32)> = UnorderedMap::new();
         for t in 0..tri_count {
             let (a, b, c) = tri_verts(&mesh.indices, t);
             for (u, v) in [(a, b), (b, c), (c, a)] {
@@ -578,13 +544,13 @@ impl MeshRepair {
         }
 
         let mut border_edges: Vec<(u32, u32)> = Vec::new();
-        for (k, &c) in &edge_count {
+        for (k, &c) in edge_count.sorted_entries() {
             if c == 1 {
                 border_edges.push(edge_dir[k]);
             }
         }
-        // the map's iteration order is unspecified; the loops are filled in one
-        // order on every run (ALICE-Law G13)
+        // sorted by the border edge itself, so the loops are filled in one order on
+        // every run (ALICE-Law G13)
         border_edges.sort_unstable();
 
         if border_edges.is_empty() {
@@ -592,7 +558,7 @@ impl MeshRepair {
         }
 
         // 頂点 → 境界エッジ index の逆マップ
-        let mut vert_edges: HashMap<u32, Vec<usize>> = HashMap::new();
+        let mut vert_edges: UnorderedMap<u32, Vec<usize>> = UnorderedMap::new();
         for (i, &(u, v)) in border_edges.iter().enumerate() {
             vert_edges.entry(u).or_default().push(i);
             vert_edges.entry(v).or_default().push(i);
@@ -632,7 +598,7 @@ impl MeshRepair {
 
         for component in &components {
             let mut ring_verts: Vec<u32> = Vec::new();
-            let mut seen: HashSet<u32> = HashSet::new();
+            let mut seen: UnorderedSet<u32> = UnorderedSet::new();
             for &ei in component {
                 let (u, v) = border_edges[ei];
                 for vertex in [u, v] {
@@ -704,11 +670,6 @@ impl MeshRepair {
     ///   完全に detach したい場合は `merge_duplicate_vertices` と組合せる
     #[must_use]
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "edge and cell maps used for lookups; the passes over them count, take a maximum, or collect border edges that are sorted before use (ALICE-Law G13)"
-    )]
     pub fn drop_specks(mesh: &Mesh, min_ratio: f32) -> Mesh {
         let tri_count = mesh.indices.len() / 3;
         if tri_count == 0 {
@@ -725,7 +686,7 @@ impl MeshRepair {
             i
         }
 
-        let mut edge_tris: HashMap<(u32, u32), usize> = HashMap::new();
+        let mut edge_tris: UnorderedMap<(u32, u32), usize> = UnorderedMap::new();
         for t in 0..tri_count {
             let (a, b, c) = tri_verts(&mesh.indices, t);
             for (u, v) in [(a, b), (b, c), (c, a)] {
@@ -743,13 +704,13 @@ impl MeshRepair {
         }
 
         // 成分サイズ
-        let mut comp_size: HashMap<usize, usize> = HashMap::new();
+        let mut comp_size: UnorderedMap<usize, usize> = UnorderedMap::new();
         for t in 0..tri_count {
             let root = find(&mut parent, t);
             *comp_size.entry(root).or_insert(0) += 1;
         }
 
-        let max_size = *comp_size.values().max().unwrap_or(&0);
+        let max_size = comp_size.max_value().unwrap_or(0);
         let threshold_f = (max_size as f32) * min_ratio;
 
         // 残す三角形のみ new_indices に

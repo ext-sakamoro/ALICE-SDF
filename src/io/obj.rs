@@ -230,11 +230,6 @@ fn export_mtl(mat_lib: &MaterialLibrary, path: impl AsRef<Path>) -> Result<(), I
     Ok(())
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "vertex deduplication: lookups only, vertices are written in input order (ALICE-Law G13)"
-)]
 /// Load a mesh from OBJ format
 pub fn import_obj(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
@@ -250,8 +245,8 @@ pub fn import_obj(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     let mut indices: Vec<u32> = Vec::new();
 
     // Map (pos_idx, uv_idx, norm_idx) -> vertex index for deduplication
-    let mut vertex_map: std::collections::HashMap<(usize, usize, usize), u32> =
-        std::collections::HashMap::new();
+    let mut vertex_map: crate::unordered::UnorderedMap<(usize, usize, usize), u32> =
+        crate::unordered::UnorderedMap::new();
 
     for line in content.lines() {
         let line = line.trim();
