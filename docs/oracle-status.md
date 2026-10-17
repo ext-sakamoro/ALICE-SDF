@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 844 |
+| 🟢 Not ignored | 845 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **844** |
+| **Total** | **845** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (844)
+## 🟢 Not ignored (845)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -41,13 +41,13 @@ Per-file counts (the test names are in `tests/`):
 | `test_live_sdf_oracle.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
+| `test_provenance.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_texture_fit_oracle.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
-| `test_provenance.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
 | `test_binding_oracle.rs` | 9 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |

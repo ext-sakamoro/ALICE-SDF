@@ -487,6 +487,99 @@ fn an_earlier_published_identifier_reads_as_verified_previous() {
     std::fs::remove_file(&path).ok();
 }
 
+/// Volume exports (feature `volume`): DDS carries the identifier in the header's reserved dwords;
+/// raw data has no header, so it is in the sidecar `<path>.semantics`, and the raw bytes stay the
+/// voxel data only
+#[cfg(feature = "volume")]
+#[test]
+fn volume_writers_store_the_identifier() {
+    use alice_sdf::volume::export as vx;
+    use alice_sdf::volume::{Volume3D, VoxelDistGrad};
+    type VolWrite = fn(&str, Option<&Provenance>);
+    const VOLUME_WRITERS: &[(&str, &str, VolWrite)] = &[
+        ("src/volume/export.rs::export_raw", "v.raw", |p, id| {
+            let v = Volume3D::<f32>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
+            match id {
+                None => vx::export_raw(&v, p).unwrap(),
+                Some(id) => vx::export_raw_with_provenance(&v, p, id).unwrap(),
+            }
+        }),
+        (
+            "src/volume/export.rs::export_raw_with_mips",
+            "vm.raw",
+            |p, id| {
+                let v = Volume3D::<f32>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
+                match id {
+                    None => vx::export_raw_with_mips(&v, p).unwrap(),
+                    Some(id) => vx::export_raw_with_mips_with_provenance(&v, p, id).unwrap(),
+                }
+            },
+        ),
+        ("src/volume/export.rs::export_dds_3d", "v.dds", |p, id| {
+            let v = Volume3D::<f32>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
+            match id {
+                None => vx::export_dds_3d(&v, p, vx::DdsFormat::R32Float).unwrap(),
+                Some(id) => {
+                    vx::export_dds_3d_with_provenance(&v, p, vx::DdsFormat::R32Float, id).unwrap();
+                }
+            }
+        }),
+        (
+            "src/volume/export.rs::export_dds_3d_distgrad",
+            "vg.dds",
+            |p, id| {
+                let v =
+                    Volume3D::<VoxelDistGrad>::new([4, 4, 4], Vec3::splat(-1.0), Vec3::splat(1.0));
+                match id {
+                    None => vx::export_dds_3d_distgrad(&v, p).unwrap(),
+                    Some(id) => vx::export_dds_3d_distgrad_with_provenance(&v, p, id).unwrap(),
+                }
+            },
+        ),
+    ];
+    let mut compared = 0;
+    for &(name, file, write) in VOLUME_WRITERS {
+        let path = temp(file);
+        let p = path.to_str().unwrap();
+        write(p, None);
+        assert_eq!(
+            provenance::read(&path).unwrap(),
+            Provenance::sdf(),
+            "{name}"
+        );
+        write(p, Some(&caller_id()));
+        assert_eq!(provenance::read(&path).unwrap(), caller_id(), "{name}");
+        assert!(matches!(
+            provenance::check_sdf(&path),
+            Err(ProvenanceError::Mismatch { .. })
+        ));
+        let bytes = std::fs::read(&path).unwrap();
+        if file.ends_with(".dds") {
+            assert_eq!(&bytes[..4], b"DDS ", "{name}: magic");
+            assert_eq!(
+                u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+                124
+            );
+            assert_eq!(
+                &bytes[84..88],
+                b"DX10",
+                "{name}: pixel format FourCC still DX10"
+            );
+        } else {
+            assert_eq!(bytes.len() % 4, 0, "{name}: raw stays f32 voxels");
+            assert!(
+                !bytes.windows(8).any(|w| w == b"semantic"),
+                "{name}: no tag in the raw bytes"
+            );
+            std::fs::remove_file(provenance::sidecar_path(&path)).ok();
+            std::fs::remove_file(path.with_extension("raw.meta.json")).ok();
+        }
+        std::fs::remove_file(&path).ok();
+        compared += 1;
+    }
+    assert_eq!(compared, VOLUME_WRITERS.len());
+}
+
 /// An independent FBX parser (`fbxcel`) reads the whole binary file (nodes and footer), and its
 /// `FBXHeaderExtension/Creator` string carries the identifier
 #[test]

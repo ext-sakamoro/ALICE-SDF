@@ -302,7 +302,9 @@ impl Volume3D<VoxelDistGrad> {
 
 // Re-exports
 pub use bake::{bake_volume, bake_volume_with_normals};
-pub use export::{export_dds_3d, export_raw};
+pub use export::{
+    export_dds_3d, export_dds_3d_with_provenance, export_raw, export_raw_with_provenance,
+};
 pub use mipchain::generate_mip_chain;
 
 #[cfg(feature = "gpu")]
