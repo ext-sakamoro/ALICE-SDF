@@ -12,6 +12,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: ALICE-Law G1 clippy の全ての feature を lint する clippy job の `LINT_FEATURES` を Cargo.toml の feature すべて (`default` と、wasm32 の step で見る `wasm` を除く) にした 従来は `aaa` / `all-shaders` / `cli` / `font` / `godot` / `image` / `msl` / `python` / `unity` / `unreal` が どの clippy run でも compile されず、clippy.toml の禁止 (libm 等) がその code に届いていなかった wasm32 の step も `-D warnings` にした feature の網羅を `scripts/clippy_feature_coverage.py` (試験 `scripts/test_clippy_feature_coverage.py`) が確かめる (clippy job と preflight、比べる command 0 件で失敗)
 
 ### Fixed
+- GPU の unit test 6 本 (`gpu_eval` の `test_gpu_eval_*`、`gpu_marching_cubes` の `test_gpu_mc_*`) が adapter の有無しか見ず、adapter はあるが device を作れない環境 (`Parent device is lost`) で `unwrap` が panic していた device の作成まで試す `src/lib.rs` の `gpu_test_support::gpu_ready` で判定し、走ったか飛ばしたかを `gpu-test: ran` / `gpu-test: skipped` の行で残す 飛ばした test も libtest では `ok` なので、CI の lavapipe の job は `ALICE_SDF_REQUIRE_GPU=1` で飛ばしを失敗にし、`scripts/gpu_test_count.py` (試験 `scripts/test_gpu_test_count.py`) で 6 本が走ったことを数える 他の runner では走った数と飛ばした数を log に出す
 - python / godot / wasm の binding に、どの clippy run も compile していなかったため残っていた lint を直した (`Self` の使用、`const fn`、doc の無い wasm の関数、不要な `to_vec`) godot-rust の macro が展開する code の lint は理由つきで `src/godot/mod.rs` で許可した
 
 ## [7.0.0] - 2026-10-17

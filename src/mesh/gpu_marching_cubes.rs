@@ -779,7 +779,9 @@ mod tests {
 
     #[test]
     fn test_gpu_mc_sphere() {
-        // This test requires a GPU; it will be skipped in CI without GPU
+        if !crate::gpu_test_support::gpu_ready("test_gpu_mc_sphere") {
+            return;
+        }
         let sphere = SdfNode::sphere(1.0);
         let config = GpuMarchingCubesConfig {
             resolution: 16,
@@ -823,16 +825,15 @@ mod tests {
                     );
                 }
             }
-            Err(GpuError::NoAdapter) => {
-                // No GPU available, skip test
-                eprintln!("Skipping GPU MC test: no GPU adapter available");
-            }
             Err(e) => panic!("GPU MC failed: {}", e),
         }
     }
 
     #[test]
     fn test_gpu_mc_empty() {
+        if !crate::gpu_test_support::gpu_ready("test_gpu_mc_empty") {
+            return;
+        }
         // A huge sphere evaluated in a tiny region far away should produce no mesh
         let sphere = SdfNode::sphere(1.0);
         let config = GpuMarchingCubesConfig {
@@ -848,15 +849,15 @@ mod tests {
                     "Should produce empty mesh far from surface"
                 );
             }
-            Err(GpuError::NoAdapter) => {
-                eprintln!("Skipping GPU MC test: no GPU adapter available");
-            }
             Err(e) => panic!("GPU MC failed: {}", e),
         }
     }
 
     #[test]
     fn test_gpu_mc_complex_shape() {
+        if !crate::gpu_test_support::gpu_ready("test_gpu_mc_complex_shape") {
+            return;
+        }
         let shape = SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
         let config = GpuMarchingCubesConfig {
             resolution: 16,
@@ -869,9 +870,6 @@ mod tests {
                     !mesh.vertices.is_empty(),
                     "Complex shape should produce mesh"
                 );
-            }
-            Err(GpuError::NoAdapter) => {
-                eprintln!("Skipping GPU MC test: no GPU adapter available");
             }
             Err(e) => panic!("GPU MC failed: {}", e),
         }

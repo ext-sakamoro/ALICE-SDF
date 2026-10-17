@@ -91,6 +91,50 @@ pub mod compiled;
 mod crispy;
 pub mod eval;
 pub mod fidelity;
+#[cfg(all(test, feature = "gpu"))]
+mod gpu_test_support {
+    //! Test support: whether a GPU test can run here, said in the test log
+    //!
+    //! A unit test that needs a wgpu device calls [`gpu_ready`] first. The probe asks
+    //! for an adapter and then creates a device (an adapter can exist while device
+    //! creation fails, e.g. "Parent device is lost" on a headless driver), so a test
+    //! never reaches an `unwrap` on a device that cannot be made.
+    //!
+    //! The result is printed as one line per test, `gpu-test: ran <name>` or
+    //! `gpu-test: skipped <name>: <reason>`, which scripts/gpu_test_count.py counts
+    //! (run with `--nocapture`): a skipped test reports `ok` to libtest, so `ok`
+    //! alone cannot tell a run from a skip. With `ALICE_SDF_REQUIRE_GPU=1` (CI's
+    //! lavapipe job) a skip is a failure instead.
+
+    /// Whether a wgpu device can be created here; prints the `gpu-test:` line for
+    /// `test`, and panics instead of skipping when `ALICE_SDF_REQUIRE_GPU` is set
+    pub fn gpu_ready(test: &str) -> bool {
+        match probe() {
+            Ok(()) => {
+                println!("gpu-test: ran {test}");
+                true
+            }
+            Err(reason) => {
+                assert!(
+                    std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                    "ALICE_SDF_REQUIRE_GPU is set but {test} has no GPU: {reason}"
+                );
+                println!("gpu-test: skipped {test}: {reason}");
+                false
+            }
+        }
+    }
+
+    fn probe() -> Result<(), String> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .ok_or_else(|| "no adapter".to_string())?;
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+            .map(|_| ())
+            .map_err(|e| format!("device creation failed: {e}"))
+    }
+}
 pub mod interval;
 pub mod io;
 pub mod llm_schema;

@@ -164,6 +164,16 @@ jobs:
       - name: Test (shader transpilers + texture-fit lib tests)
         run: cargo test --lib --features "glsl,hlsl,gpu,texture-fit"
 
+      # The GPU unit tests on this runner: how many ran and how many skipped (and
+      # why), in the log; a runner without a device skips them, the lavapipe job
+      # (gpu-parity) requires all six to run
+      - name: GPU unit tests (ran / skipped, reported)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee gpu-unit.log
+          python3 scripts/gpu_test_count.py gpu-unit.log --ran 0
+
       - name: Test (integration)
         run: cargo test --tests
 
@@ -866,6 +876,19 @@ jobs:
           --test test_gpu_eval_api_oracle
           --test test_glsl_export_oracle
           -- --nocapture
+
+      # The GPU unit tests (src/compiled/wgsl/gpu_eval.rs, src/mesh/gpu_marching_cubes.rs)
+      # return early without a usable device and libtest still says ok; each prints
+      # `gpu-test: ran` or `gpu-test: skipped` (`gpu_test_support` in src/lib.rs). Here a device
+      # exists and ALICE_SDF_REQUIRE_GPU=1 makes a skip fail; the count makes sure the
+      # six tests ran at all (a filter that matches nothing also says ok)
+      - name: GPU unit tests ran, not skipped (6)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/test_gpu_test_count.py
+          cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee gpu-unit.log
+          python3 scripts/gpu_test_count.py gpu-unit.log --ran 6 --max-skipped 0
 
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、

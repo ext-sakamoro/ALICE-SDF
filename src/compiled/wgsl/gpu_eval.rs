@@ -1303,16 +1303,9 @@ mod tests {
     use super::*;
     use crate::eval::eval;
 
-    fn has_gpu() -> bool {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .is_some()
-    }
-
     #[test]
     fn test_gpu_eval_sphere() {
-        if !has_gpu() {
-            eprintln!("Skipping GPU test: no GPU available");
+        if !crate::gpu_test_support::gpu_ready("test_gpu_eval_sphere") {
             return;
         }
 
@@ -1341,8 +1334,7 @@ mod tests {
 
     #[test]
     fn test_gpu_eval_complex() {
-        if !has_gpu() {
-            eprintln!("Skipping GPU test: no GPU available");
+        if !crate::gpu_test_support::gpu_ready("test_gpu_eval_complex") {
             return;
         }
 
@@ -1375,8 +1367,7 @@ mod tests {
 
     #[test]
     fn test_gpu_eval_large_batch() {
-        if !has_gpu() {
-            eprintln!("Skipping GPU test: no GPU available");
+        if !crate::gpu_test_support::gpu_ready("test_gpu_eval_large_batch") {
             return;
         }
 
