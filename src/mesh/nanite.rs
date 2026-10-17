@@ -21,6 +21,7 @@
 
 use crate::compiled::real::law_max_f32;
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 use crate::eval::{eval, eval_material, eval_normal};
 use crate::mesh::dual_contouring::{dual_contouring, DualContouringConfig};
 use crate::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh, Triangle, Vertex};
@@ -64,8 +65,8 @@ impl ClusterBounds {
         let mut aabb_max = Vec3::splat(f32::NEG_INFINITY);
 
         for &v in vertices {
-            aabb_min = aabb_min.min(v);
-            aabb_max = aabb_max.max(v);
+            aabb_min = aabb_min.law_min(v);
+            aabb_max = aabb_max.law_max(v);
         }
 
         // Compute bounding sphere
@@ -697,8 +698,8 @@ pub fn generate_nanite_mesh(
     let (min_bounds, max_bounds) = if config.use_tight_aabb {
         let tight = compute_tight_aabb(sdf);
         // Use tight bounds but don't exceed user-specified bounds
-        let tight_min = tight.min.max(min_bounds);
-        let tight_max = tight.max.min(max_bounds);
+        let tight_min = tight.min.law_max(min_bounds);
+        let tight_max = tight.max.law_min(max_bounds);
         // Only use tight bounds if they're valid (surface exists)
         if tight_min.x < tight_max.x && tight_min.y < tight_max.y && tight_min.z < tight_max.z {
             (tight_min, tight_max)
@@ -710,7 +711,7 @@ pub fn generate_nanite_mesh(
     };
     let origin = min_bounds;
     let side = (max_bounds - min_bounds)
-        .max_element()
+        .law_max_element()
         .law_max(f32::MIN_POSITIVE);
     let max_tris = config.max_triangles_per_cluster.max(1);
 
@@ -1119,7 +1120,7 @@ pub(crate) fn cluster_surface_error(
     let scale = tris
         .iter()
         .flat_map(|&t| triangle_positions(mesh, t))
-        .map(|p| p.abs().max_element())
+        .map(|p| p.abs().law_max_element())
         .fold(1.0f32, law_max_f32);
     4.0f32 * (f32::EPSILON * scale) + found
 }

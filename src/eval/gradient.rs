@@ -16,6 +16,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 use crate::eval::eval;
 use crate::modifiers::*;
 use crate::transforms::{transform_rotate, transform_rotate_inverse, transform_translate};
@@ -328,7 +329,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         }
         SdfNode::Elongate { child, amount } => {
             // q = p - clamp(p, -a, a); ∂qᵢ/∂pᵢ = 1 if |pᵢ|>aᵢ, else 0
-            let q = point - point.clamp(-*amount, *amount);
+            let q = point - point.law_clamp(-*amount, *amount);
             let grad = eval_gradient(child, q);
             Vec3::new(
                 if point.x.abs() > amount.x {

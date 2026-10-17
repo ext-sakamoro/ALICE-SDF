@@ -36,7 +36,7 @@ use crate::mesh::{Mesh, Vertex};
 use glam::{Vec3, Vec4};
 use rayon::prelude::*;
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
 
 /// Decimation configuration
 #[derive(Debug, Clone)]
@@ -337,8 +337,8 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
         let mut min_p = glam::Vec3::splat(f32::MAX);
         let mut max_p = glam::Vec3::splat(f32::MIN);
         for v in &mesh.vertices {
-            min_p = min_p.min(v.position);
-            max_p = max_p.max(v.position);
+            min_p = min_p.law_min(v.position);
+            max_p = max_p.law_max(v.position);
         }
         let diag = (max_p - min_p).length();
         f64::from(config.max_error) * f64::from(diag).law_max(1e-6)
@@ -352,7 +352,8 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
     let target_tris = ((tri_count as f32 * config.target_ratio) as usize).max(4);
 
     // Build adjacency: vertex -> triangles
-    let mut vert_tris: Vec<HashSet<usize>> = vec![HashSet::new(); vert_count];
+    // ordered, so the neighbours (and the heap's ties) come in one order on every run
+    let mut vert_tris: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); vert_count];
     for t in 0..tri_count {
         for k in 0..3 {
             let vi = mesh.indices[t * 3 + k] as usize;
@@ -603,7 +604,8 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
         }
 
         // Add new edges from v1 to the heap
-        let mut neighbors: HashSet<u32> = HashSet::new();
+        // ordered: equal-error candidates enter the heap in one order (ALICE-Law G13)
+        let mut neighbors: BTreeSet<u32> = BTreeSet::new();
         for &t in &vert_tris[v1 as usize] {
             if removed_tris.contains(&t) {
                 continue;

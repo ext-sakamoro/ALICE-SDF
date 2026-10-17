@@ -9,7 +9,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use glam::{Quat, Vec2, Vec3};
+use glam::{Quat, Vec2, Vec3, Vec3A, Vec4};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use wide::{f32x8, CmpEq, CmpGe, CmpGt, CmpLe, CmpLt, CmpNe};
 
@@ -293,6 +293,71 @@ impl LawMinMax for f32x8 {
             .blend(other, other.cmp_ne(other).blend(self, equal))
     }
 }
+
+/// [`LawMinMax`] for the glam vectors: lane by lane under [`law_max_f32`] /
+/// [`law_min_f32`]. `glam`'s own `min` / `max` call `f32::min` / `f32::max` per
+/// lane, so an equal pair of zeros (and so a bound, a clamp or a fold) took the
+/// target's sign; the library may not call them (`.github/clippy-lib`).
+macro_rules! law_min_max_vec {
+    ($ty:ident, $($lane:ident),+) => {
+        impl LawMinMax for $ty {
+            #[inline(always)]
+            fn law_max(self, other: Self) -> Self {
+                $ty::new($(law_max_f32(self.$lane, other.$lane)),+)
+            }
+            #[inline(always)]
+            fn law_min(self, other: Self) -> Self {
+                $ty::new($(law_min_f32(self.$lane, other.$lane)),+)
+            }
+        }
+
+        impl LawVec for $ty {
+            #[inline(always)]
+            fn law_clamp(self, lo: Self, hi: Self) -> Self {
+                self.law_max(lo).law_min(hi)
+            }
+            #[inline(always)]
+            fn law_max_element(self) -> f32 {
+                let l = [$(self.$lane),+];
+                let mut m = l[0];
+                for &x in &l[1..] {
+                    m = law_max_f32(m, x);
+                }
+                m
+            }
+            #[inline(always)]
+            fn law_min_element(self) -> f32 {
+                let l = [$(self.$lane),+];
+                let mut m = l[0];
+                for &x in &l[1..] {
+                    m = law_min_f32(m, x);
+                }
+                m
+            }
+        }
+    };
+}
+
+/// The glam vector operations built on [`LawMinMax`]: `clamp` (as `glam`'s,
+/// `max(lo)` then `min(hi)`) and the reductions over the lanes, in lane order.
+/// The Law max / min are commutative and associative with NaN as the identity,
+/// so the reductions do not depend on the order either.
+pub(crate) trait LawVec: LawMinMax {
+    /// `self.law_max(lo).law_min(hi)`, lane by lane.
+    #[must_use]
+    fn law_clamp(self, lo: Self, hi: Self) -> Self;
+    /// The Law maximum of the lanes.
+    #[must_use]
+    fn law_max_element(self) -> f32;
+    /// The Law minimum of the lanes.
+    #[must_use]
+    fn law_min_element(self) -> f32;
+}
+
+law_min_max_vec!(Vec2, x, y);
+law_min_max_vec!(Vec3, x, y, z);
+law_min_max_vec!(Vec3A, x, y, z);
+law_min_max_vec!(Vec4, x, y, z, w);
 
 impl Real for f32 {
     type Mask = bool;

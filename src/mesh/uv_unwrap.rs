@@ -15,7 +15,7 @@
 use crate::compiled::real::LawMinMax;
 use crate::mesh::sdf_to_mesh::Mesh;
 use glam::Vec2;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// Configuration for UV unwrapping
 #[derive(Debug, Clone)]
@@ -44,7 +44,7 @@ pub struct UvChart {
     /// Indices into mesh triangles belonging to this chart
     pub triangle_indices: Vec<usize>,
     /// Per-vertex UVs for this chart (indexed by vertex index)
-    pub uv_coords: HashMap<u32, Vec2>,
+    pub uv_coords: BTreeMap<u32, Vec2>,
     /// Bounding box minimum
     pub bounds_min: Vec2,
     /// Bounding box maximum
@@ -346,18 +346,29 @@ fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) ->
     // Build triangle adjacency (not crossing seams)
     let mut tri_adj: Vec<Vec<usize>> = vec![Vec::new(); tri_count];
 
-    let mut edge_tris: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
+    // ordered by edge: the adjacency lists, and so the charts, are built in one
+    // order on every run (ALICE-Law G13)
+    let mut ordered_edge_tris: BTreeMap<EdgeKey, Vec<usize>> = BTreeMap::new();
     for ti in 0..tri_count {
         let i0 = mesh.indices[ti * 3];
         let i1 = mesh.indices[ti * 3 + 1];
         let i2 = mesh.indices[ti * 3 + 2];
 
-        edge_tris.entry(edge_key(i0, i1)).or_default().push(ti);
-        edge_tris.entry(edge_key(i1, i2)).or_default().push(ti);
-        edge_tris.entry(edge_key(i2, i0)).or_default().push(ti);
+        ordered_edge_tris
+            .entry(edge_key(i0, i1))
+            .or_default()
+            .push(ti);
+        ordered_edge_tris
+            .entry(edge_key(i1, i2))
+            .or_default()
+            .push(ti);
+        ordered_edge_tris
+            .entry(edge_key(i2, i0))
+            .or_default()
+            .push(ti);
     }
 
-    for (edge, tris) in &edge_tris {
+    for (edge, tris) in &ordered_edge_tris {
         if seams.contains(edge) {
             continue;
         }
@@ -415,7 +426,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     if vert_set.len() < 3 || tri_indices.is_empty() {
         return UvChart {
             triangle_indices: tri_indices.to_vec(),
-            uv_coords: HashMap::new(),
+            uv_coords: BTreeMap::new(),
             bounds_min: Vec2::ZERO,
             bounds_max: Vec2::ZERO,
         };
@@ -603,8 +614,8 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     let mut max_uv = Vec2::splat(f32::NEG_INFINITY);
 
     for (li, &_gi) in vert_set.iter().enumerate() {
-        min_uv = min_uv.min(local_uvs[li]);
-        max_uv = max_uv.max(local_uvs[li]);
+        min_uv = min_uv.law_min(local_uvs[li]);
+        max_uv = max_uv.law_max(local_uvs[li]);
     }
 
     let range = max_uv - min_uv;
@@ -614,7 +625,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
         1.0
     };
 
-    let mut uv_coords = HashMap::new();
+    let mut uv_coords = BTreeMap::new();
     for (li, &gi) in vert_set.iter().enumerate() {
         let uv = (local_uvs[li] - min_uv) * scale;
         uv_coords.insert(gi, uv);
@@ -624,8 +635,8 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     let mut bounds_min = Vec2::splat(f32::INFINITY);
     let mut bounds_max = Vec2::splat(f32::NEG_INFINITY);
     for uv in uv_coords.values() {
-        bounds_min = bounds_min.min(*uv);
-        bounds_max = bounds_max.max(*uv);
+        bounds_min = bounds_min.law_min(*uv);
+        bounds_max = bounds_max.law_max(*uv);
     }
 
     UvChart {

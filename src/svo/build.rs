@@ -18,6 +18,7 @@
 use glam::Vec3;
 
 use super::{child_center, SparseVoxelOctree, SvoBuildConfig, SvoNode};
+use crate::compiled::real::LawVec;
 use crate::compiled::{eval_compiled, eval_compiled_normal};
 use crate::compiled::{AabbPacked, CompiledSdf};
 use crate::eval::{eval, normal};
@@ -83,7 +84,7 @@ fn build_recursive(
     normal_fn: &dyn Fn(Vec3) -> Vec3,
 ) -> BuildNode {
     let d = eval_fn(center);
-    let node_size = half_size.max_element() * 2.0;
+    let node_size = half_size.law_max_element() * 2.0;
 
     // Leaf conditions:
     // 1. Maximum depth reached

@@ -79,6 +79,10 @@ step "libm dependency guard: oracle + libm の直接依存には clippy.toml の
 python3 scripts/test_libm_dependency_guard.py
 python3 scripts/libm_dependency_guard.py
 
+step "hash collection iteration audit (G13): oracle + every HashMap / HashSet iteration in src/ has a verdict"
+python3 scripts/test_hash_order_audit.py
+python3 scripts/hash_order_audit.py
+
 step "build configuration guard (G14, static): oracle + no native / fast-math / x87 flag (nothing read fails)"
 python3 scripts/test_build_config_guard.py
 python3 scripts/build_config_guard.py
@@ -141,6 +145,10 @@ step "clippy: library code with .github/clippy-lib (max / min forbidden), host a
 relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$LINUX_ALL"
 rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
 relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
+step "clippy: library code on wasm32 (max / min forbidden)"
+rustup target add wasm32-unknown-unknown >/dev/null 2>&1 || true
+CLIPPY_CONF_DIR=.github/clippy-lib cargo clippy --lib --target wasm32-unknown-unknown --features wasm -- -D clippy::disallowed_methods
+
 step "library clippy configuration (current + canary)"
 python3 scripts/clippy_lib_gate.py
 step "no max / min hides under an allow of the lint (scratch copy with the allows lifted)"

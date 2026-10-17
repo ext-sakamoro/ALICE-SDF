@@ -548,6 +548,9 @@ impl MeshRepair {
                 border_edges.push(edge_dir[k]);
             }
         }
+        // the map's iteration order is unspecified; the loops are filled in one
+        // order on every run (ALICE-Law G13)
+        border_edges.sort_unstable();
 
         if border_edges.is_empty() {
             return mesh.clone();

@@ -10,7 +10,7 @@ use crate::compiled::real::LawMinMax;
 // ── Types ────────────────────────────────────────────────────
 
 /// Identifier for a parametric variable.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ParamId(u32);
 
 impl ParamId {

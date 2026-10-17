@@ -34,6 +34,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::{Mesh, Vertex};
 use glam::Vec3;
 
@@ -67,8 +68,8 @@ pub fn optimize_spatial_order(mesh: &mut Mesh) {
     let mut min = Vec3::splat(f32::INFINITY);
     let mut max = Vec3::splat(f32::NEG_INFINITY);
     for v in &mesh.vertices {
-        min = min.min(v.position);
-        max = max.max(v.position);
+        min = min.law_min(v.position);
+        max = max.law_max(v.position);
     }
     let extent = max - min;
     let extent_safe = Vec3::new(

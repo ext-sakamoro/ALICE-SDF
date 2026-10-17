@@ -8,7 +8,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed
+- **Breaking** ALICE-Law G2 / G13: glam のベクトルの `min` / `max` / `clamp` / `min_element` / `max_element` (lane ごとに `f32::min` / `f32::max` を呼び、同じ大きさの 0 の符号が target 依存) を library から外し、`LawMinMax` / `LawVec` (lane ごとに `law_min_f32` / `law_max_f32`、lane の畳み込みは lane の順) にした 96 箇所 (Linux の feature 一式で 92、`src/wasm.rs` の f32 で 4) library の clippy 設定は glam の 7 型の 5 method を禁じ、canary は 47 の形をすべて検出する wasm32 の library も同じ禁止で lint する
+- **Breaking** ALICE-Law G13: 出力の順序を HashMap / HashSet の反復順に依存させない `mesh::simplify` の cluster、`decimate` の近傍と頂点ごとの三角形、`uv_unwrap` の chart の隣接を順序付きの集合にし、`UvChart::uv_coords` を `BTreeMap` にした `manifold` の境界辺、`ChunkedMeshCache::update_sdf_hash` / `cached_chunks` / `dirty_chunks` / `persist_dirty` は (x, y, z) の順に並べる `mesh_to_sdf` の辺の集合 (capsule と長さの和) を順序付きにし、`svo::streaming` の追い出しは同じ access 時刻を id で決める `ParamDependencyIndex` は `ParamId` の順 (`ParamId` に `PartialOrd` / `Ord` を足した) で、`dirty_instructions` の順は決まった 並列の bounding box (`compute_aabb`、lightmap) は Law の max / min で畳むので thread 数に依らない
+
 ### Added
+- 試験 `tests/test_law_minmax_ties.rs` (点から作る bounds が (+0, -0) / (-0, +0) で Law の符号、NaN の lane を飛ばす、1 / 2 / 3 / 8 thread で同じ bounds、lightmap の UV も thread 数に依らない、primitive の距離を 0 の成分の点で bit 固定) CI: `scripts/hash_order_audit.py` (src/ の HashMap / HashSet の反復 20 箇所すべてに理由 `scripts/hash_order_audit.toml`、両方向で照合、見つけた数 0 で失敗) と試験を wiring-guard job (3 OS) と preflight に足した
 - CI: ALICE-Law G4 / G5 / G14 `.github/workflows/release-profile.yml` が bit 一致の試験 (`tests/test_det_golden.rs` / `test_det_parity.rs` / `test_det_near_zero_parity.rs` / `test_det_near_zero_probe.rs`、jit の試験は jit feature で) と `tests/float_environment.rs`、Law の max / min の unit test を release profile で x86_64 と aarch64 に走らせ、各 log を `scripts/libtest_count.py` で最低件数と照らす fast-math・native CPU・x87 の flag を build 設定から探す `scripts/build_config_guard.py` (wiring-guard job、3 OS) と、rustc に実際に渡る flag を読む `scripts/build_flags_check.py` (release-profile.yml) を足した 2 本と試験、`tests/float_environment.rs` は ALICE-DB と byte 一致 preflight にも同じ step を足した
 
 ### Fixed

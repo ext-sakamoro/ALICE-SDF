@@ -11,3 +11,4 @@ description = "Calls every form .github/clippy-lib/clippy.toml forbids, so scrip
 
 [dependencies]
 wide = "0.7"
+glam = "0.29"

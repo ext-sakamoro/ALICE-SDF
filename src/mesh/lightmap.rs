@@ -30,6 +30,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::LawMinMax;
 use crate::mesh::Mesh;
 use glam::Vec2;
 use rayon::prelude::*;
@@ -166,7 +167,7 @@ pub fn generate_lightmap_uvs(mesh: &mut Mesh, resolution: u32) {
             })
             .reduce(
                 || (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN)),
-                |(min_a, max_a), (min_b, max_b)| (min_a.min(min_b), max_a.max(max_b)),
+                |(min_a, max_a), (min_b, max_b)| (min_a.law_min(min_b), max_a.law_max(max_b)),
             );
 
         let range = proj_max - proj_min;

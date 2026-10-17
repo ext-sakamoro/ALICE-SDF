@@ -11,6 +11,7 @@
 //! const d = sdf_sphere(1.0, 0.0, 0.0, /* center */ 0, 0, 0, /* radius */ 1.0);
 //! ```
 
+use crate::compiled::real::LawMinMax;
 use crate::primitives::{sdf_box3d_at, sdf_cylinder, sdf_plane, sdf_sphere_at, sdf_torus};
 use glam::Vec3;
 use wasm_bindgen::prelude::*;
@@ -115,12 +116,12 @@ pub fn render_sphere_slice_rgba(
             let d = sdf_sphere_at(p, center, radius);
             let idx = (y * w + x) * 4;
             if d < 0.0 {
-                let t = (-d).min(1.0);
+                let t = (-d).law_min(1.0);
                 buf[idx] = (51.0 + 100.0 * t) as u8;
                 buf[idx + 1] = (102.0 + 130.0 * t) as u8;
                 buf[idx + 2] = 230;
             } else {
-                let t = (d * 0.5).min(1.0);
+                let t = (d * 0.5).law_min(1.0);
                 let g = (12.0 + 100.0 * t) as u8;
                 buf[idx] = g;
                 buf[idx + 1] = g;
@@ -174,7 +175,7 @@ pub fn raymarch_sphere(
         if d.abs() < 0.001 {
             return t;
         }
-        t += d.max(0.001);
+        t += d.law_max(0.001);
         if t > max_dist {
             return -1.0;
         }
@@ -218,7 +219,7 @@ pub fn raymarch_two_spheres_smooth(
         if d.abs() < 0.001 {
             return t;
         }
-        t += d.max(0.001);
+        t += d.law_max(0.001);
         if t > max_dist {
             return -1.0;
         }

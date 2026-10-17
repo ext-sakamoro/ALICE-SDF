@@ -1,0 +1,125 @@
+# Every iteration of a HashMap / HashSet in src/ and why its order (unspecified:
+# random hasher seed, std version) cannot reach an output (ALICE-Law G13).
+# Checked both ways by scripts/hash_order_audit.py. An iteration whose order
+# would reach an output does not get an entry: it is fixed (an ordered
+# collection or a sort).
+
+[[site]]
+file = "src/cache/chunked.rs"
+code = "for entry in chunks.entries.values_mut() {"
+verdict = "not-observed"
+why = "invalidate_all sets every entry's dirty flag; the order of the assignments is not observable"
+
+[[site]]
+file = "src/cache/chunked.rs"
+code = "for (&coord, entry) in chunks.entries.iter_mut() {"
+verdict = "sorted-after"
+why = "update_sdf_hash marks the stale entries dirty and sorts the returned coordinates by (x, y, z) before returning them"
+
+[[site]]
+file = "src/cache/chunked.rs"
+code = "let mut ordered: Vec<(&ChunkCoord, &mut ChunkEntry)> = chunks.entries.iter_mut().collect();"
+verdict = "sorted-after"
+why = "persist_dirty writes the dirty chunks in (x, y, z) order, so the first error is the same on every run"
+
+[[site]]
+file = "src/cache/chunked.rs"
+code = "let mut ordered: Vec<(&ChunkCoord, &ChunkEntry)> = chunks.entries.iter().collect();"
+verdict = "sorted-after"
+why = "merge_all concatenates the chunk meshes in (x, y, z) order"
+
+[[site]]
+file = "src/cache/mod.rs"
+code = "self.map.values().map(|e| e.size_bytes).sum()"
+verdict = "not-observed"
+why = "an integer sum of the entry sizes, which does not depend on the order"
+
+[[site]]
+file = "src/mesh/decimate.rs"
+code = "for (&(a, b), &count) in &edge_count {"
+verdict = "not-observed"
+why = "fills the boundary vertex set, used only for membership tests"
+
+[[site]]
+file = "src/mesh/manifold.rs"
+code = "let non_manifold_edges = edge_counts.values().filter(|&&c| c > 2).count();"
+verdict = "not-observed"
+why = "a count of the edges with more than two triangles"
+
+[[site]]
+file = "src/mesh/manifold.rs"
+code = "let boundary_edges = edge_counts.values().filter(|&&c| c == 1).count();"
+verdict = "not-observed"
+why = "a count of the edges with one triangle"
+
+[[site]]
+file = "src/mesh/manifold.rs"
+code = "for (k, &c) in &edge_count {"
+verdict = "sorted-after"
+why = "the border edges are collected and sorted before the holes are filled"
+
+[[site]]
+file = "src/mesh/manifold.rs"
+code = "let max_size = *comp_size.values().max().unwrap_or(&0);"
+verdict = "not-observed"
+why = "the integer maximum of the component sizes, which does not depend on the order"
+
+[[site]]
+file = "src/mesh/uv_unwrap.rs"
+code = "for (edge, tris) in &edge_tris {"
+verdict = "not-observed"
+why = "detect_seams fills the seam set, used only for membership tests"
+
+[[site]]
+file = "src/mesh/uv_unwrap.rs"
+code = "for &neighbor_lti in edge_to_local_tri.get(&ek).unwrap_or(&vec![]) {"
+verdict = "lookup"
+why = "iterates the Vec of triangles of one edge found by get, in insertion order, not the map"
+
+[[site]]
+file = "src/cache/chunked.rs"
+code = "let mut coords: Vec<ChunkCoord> = self.chunks.read().expect(\"ChunkedMeshCache: RwLock poisoned on chunks.read() in cached_chunks()\").entries.keys().copied().collect();"
+verdict = "sorted-after"
+why = "cached_chunks sorts the coordinates by (x, y, z) before returning them"
+
+[[site]]
+file = "src/cache/chunked.rs"
+code = "let mut dirty: Vec<ChunkCoord> = chunks.entries.iter().filter(|(_, e)| e.dirty).map(|(&c, _)| c).collect();"
+verdict = "sorted-after"
+why = "dirty_chunks sorts the coordinates by (x, y, z) before returning them"
+
+[[site]]
+file = "src/cache/chunked.rs"
+code = "chunks.entries.values().map(|e| estimate_mesh_bytes(&e.mesh)).sum()"
+verdict = "not-observed"
+why = "an integer sum of the estimated mesh sizes, which does not depend on the order"
+
+[[site]]
+file = "src/io/fbx.rs"
+code = "let max_time = bone_curves.values().flat_map(|curves| curves.iter().flat_map(|c| c.times.iter())).cloned().fold(0.0f32, law_max_f32);"
+verdict = "not-observed"
+why = "a fold with law_max_f32, which is commutative and associative with NaN as the identity, so the order cannot change the result"
+
+[[site]]
+file = "src/svo/streaming.rs"
+code = "let lru_id = self.entries.iter().min_by_key(|(&id, e)| (e.last_access, id)).map(|(&id, _)| id);"
+verdict = "not-observed"
+why = "the minimum of (last access, id), a total order with no ties, so the evicted chunk does not depend on the order"
+
+[[site]]
+file = "src/mesh/uv_unwrap.rs"
+code = "for &lti in edge_to_local_tri.get(&edge_key(gi0, gi1)).unwrap_or(&vec![])"
+verdict = "lookup"
+why = "iterates the Vec of triangles of one edge found by get, in insertion order, not the map"
+
+[[site]]
+file = "src/mesh/uv_unwrap.rs"
+code = "for &lti in edge_to_local_tri.get(&edge_key(gi1, gi2)).unwrap_or(&vec![])"
+verdict = "lookup"
+why = "iterates the Vec of triangles of one edge found by get, in insertion order, not the map"
+
+[[site]]
+file = "src/mesh/uv_unwrap.rs"
+code = "for &lti in edge_to_local_tri.get(&edge_key(gi2, gi0)).unwrap_or(&vec![])"
+verdict = "lookup"
+why = "iterates the Vec of triangles of one edge found by get, in insertion order, not the map"

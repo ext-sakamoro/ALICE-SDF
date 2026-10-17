@@ -310,7 +310,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | gate | 状態 | 注記 |
 |---|---|---|
 | G1 no-libm-direct | 未確認 | unverified: no banned call is known (the hand check below finds none), but CI does not lint every feature or wasm32, so the machine check is incomplete; the … |
-| G2 ieee-max-min | 未達 | unmet at src/wasm.rs lines 118 and 123 (f32::min) and 177 and 221 (f32::max): the wasm module is not linted in CI (see G1), and clippy with .github/clippy-lib … |
+| G2 ieee-max-min | 適合 | 96 vector and wasm sites moved to the Law helpers (92 under the Linux feature set, 4 f32 sites in src/wasm.rs). Site classes: (a) bounds built from points … |
 | G3 no-outer-fneg-of-fma | 未確認 | unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add … |
 | G4 debug-release-arch-goldens | 適合 |  |
 | G5 release-profile-test-leg | 適合 |  |
@@ -321,7 +321,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G10 no-run-varying-artifacts | 未達 | fail-known: a located violation sits behind the pub API. alice_sdf::cache_bridge::SdfEvalCache (src/cache_bridge.rs:47, feature sdf-cache, which the CI feature … |
 | G11 gate-self-tests | 未達 | scripts/det_math_guard.py fails on an empty scan but has no canary test; the Law max / min helpers in src/compiled/real.rs (law_max_f32 and the others) are … |
 | G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
-| G13 no-unspecified-order | 未達 | parallel reductions of glam vector min / max: src/mesh/collision.rs line 119 and src/mesh/lightmap.rs line 169 combine partial bounds with f32::min / f32::max … |
+| G13 no-unspecified-order | 適合 | the hash collections stay where they are used only for lookup and membership; an iteration whose order reached an output was changed to an ordered collection … |
 | G14 float-environment-invariants | 適合 | the Cargo.toml comment that suggests target-cpu=native to users is a comment, which the guard blanks; nothing sets it |
 
 ### feature と保証の範囲

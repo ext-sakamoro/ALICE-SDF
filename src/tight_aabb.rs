@@ -17,6 +17,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
+use crate::compiled::real::LawVec;
 use crate::interval::{eval_interval, Vec3Interval};
 use crate::types::{Aabb, SdfNode};
 use glam::{Mat3, Vec3};
@@ -219,8 +220,8 @@ pub fn compute_tight_aabb_with_config(node: &SdfNode, config: &TightAabbConfig) 
     // the level-set bound does not.
     match analytic_aabb(node) {
         AnalyticAabb::Bounded(analytic) => {
-            let lo = searched.min.max(analytic.min);
-            let hi = searched.max.min(analytic.max);
+            let lo = searched.min.law_max(analytic.min);
+            let hi = searched.max.law_min(analytic.max);
             if lo.x <= hi.x && lo.y <= hi.y && lo.z <= hi.z {
                 Aabb::new(lo, hi)
             } else {
@@ -264,7 +265,7 @@ impl Region {
         match (self, other) {
             (Self::Unknown, _) | (_, Self::Unknown) => Self::Unknown,
             (Self::Empty, r) | (r, Self::Empty) => r,
-            (Self::Box(a0, a1), Self::Box(b0, b1)) => Self::Box(a0.min(b0), a1.max(b1)),
+            (Self::Box(a0, a1), Self::Box(b0, b1)) => Self::Box(a0.law_min(b0), a1.law_max(b1)),
         }
     }
 
@@ -273,7 +274,7 @@ impl Region {
             (Self::Unknown, r) | (r, Self::Unknown) => r,
             (Self::Empty, _) | (_, Self::Empty) => Self::Empty,
             (Self::Box(a0, a1), Self::Box(b0, b1)) => {
-                let (lo, hi) = (a0.max(b0), a1.min(b1));
+                let (lo, hi) = (a0.law_max(b0), a1.law_min(b1));
                 if lo.x > hi.x || lo.y > hi.y || lo.z > hi.z {
                     Self::Empty
                 } else {
@@ -293,7 +294,7 @@ fn leaf_box(xf: &Affine, center: Vec3, half: Vec3) -> Region {
     if !center.is_finite() || !half.is_finite() {
         return Region::Unknown;
     }
-    if half.min_element() < 0.0 {
+    if half.law_min_element() < 0.0 {
         return Region::Empty;
     }
     let abs = Mat3::from_cols(xf.a.x_axis.abs(), xf.a.y_axis.abs(), xf.a.z_axis.abs());
@@ -457,7 +458,7 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
         // frame). Through `xf` that is the child's region plus the box `|A| * h`, which is the
         // exact AABB of the parallelepiped `A * [-h, h]`.
         SdfNode::Elongate { child, amount } => {
-            if !amount.is_finite() || amount.min_element() < 0.0 {
+            if !amount.is_finite() || amount.law_min_element() < 0.0 {
                 return Region::Unknown;
             }
             match level_region(child, xf, delta) {
@@ -495,14 +496,14 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
         // f(p) = m * child(p / s), m = min(s): {f <= delta} = s * {child <= delta / m}
         SdfNode::ScaleNonUniform { child, factors }
             if factors.is_finite()
-                && factors.min_element() > 0.0
+                && factors.law_min_element() > 0.0
                 && factors.recip().is_finite() =>
         {
             let scaled = Affine {
                 a: xf.a * Mat3::from_diagonal(*factors),
                 t: xf.t,
             };
-            level_region(child, &scaled, delta / factors.min_element())
+            level_region(child, &scaled, delta / factors.law_min_element())
         }
         // exact distance fields of revolution / prisms: the level-delta set (delta >= 0) of the
         // exact field lies in the shape grown by delta; a negative delta only shrinks it
@@ -523,7 +524,7 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
                 0.0,
             )
         }
-        SdfNode::Ellipsoid { radii } if radii.is_finite() && radii.min_element() > 0.0 => {
+        SdfNode::Ellipsoid { radii } if radii.is_finite() && radii.law_min_element() > 0.0 => {
             leaf_box(xf, Vec3::ZERO, *radii + Vec3::splat(delta.law_max(0.0)))
         }
         // hexagon of apothem `hex_radius` (flats at +-hex_radius in Y, corners at
@@ -566,7 +567,7 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
         // the absolute value of some coordinate of the point
         SdfNode::OctantMirror { child } => match level_region(child, &IDENTITY, delta) {
             Region::Box(lo, hi) => {
-                let r = max_abs(lo, hi).max_element();
+                let r = max_abs(lo, hi).law_max_element();
                 wrap_box(xf, Vec3::splat(-r), Vec3::splat(r))
             }
             other => other,
@@ -600,7 +601,7 @@ fn inflate(r: f32) -> f32 {
 
 /// Largest absolute coordinate per axis over the box `[lo, hi]`.
 fn max_abs(lo: Vec3, hi: Vec3) -> Vec3 {
-    lo.abs().max(hi.abs())
+    lo.abs().law_max(hi.abs())
 }
 
 /// The box `[lo, hi]` (local frame) mapped through `xf`.
@@ -763,8 +764,8 @@ fn taper_region(child: &SdfNode, factor: f32, reach: [f32; 2], xf: &Affine, delt
         let Some((rho, slab)) = taper_cone(reach, factor, level) else {
             return Region::Unknown;
         };
-        out_lo = out_lo.min(Vec3::new(-rho, -slab, -rho));
-        out_hi = out_hi.max(Vec3::new(rho, slab, rho));
+        out_lo = out_lo.law_min(Vec3::new(-rho, -slab, -rho));
+        out_hi = out_hi.law_max(Vec3::new(rho, slab, rho));
     }
     wrap_box(xf, out_lo, out_hi)
 }
@@ -786,7 +787,8 @@ pub fn analytic_aabb(node: &SdfNode) -> AnalyticAabb {
         Region::Empty => AnalyticAabb::Empty,
         Region::Unknown => AnalyticAabb::Unsupported,
         Region::Box(lo, hi) => {
-            let pad = (lo.abs().max(hi.abs()).max_element() * 4.0 + 1.0) * f32::EPSILON * 4.0;
+            let pad =
+                (lo.abs().law_max(hi.abs()).law_max_element() * 4.0 + 1.0) * f32::EPSILON * 4.0;
             AnalyticAabb::Bounded(Aabb::new(lo - Vec3::splat(pad), hi + Vec3::splat(pad)))
         }
     }
