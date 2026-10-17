@@ -35,8 +35,19 @@ TOOL_WORDING = re.compile(
 )
 
 
+# a name bound to the escape character alone (`ESC = "\x1b"`), used as `{ESC}[` in
+# an f-string or `ESC + "[` in a concatenation: the sample is coloured, only spelled
+# through the name
+ESC_NAME = re.compile(r"""^\s*([A-Za-z_]\w*)\s*=\s*(?:"\\x1b"|'\\x1b')\s*(?:#.*)?$""", re.M)
+
+
 def has_escape_sample(src: str) -> bool:
-    return "\\x1b[" in src or "\x1b[" in src
+    if "\\x1b[" in src or "\x1b[" in src:
+        return True
+    for name in ESC_NAME.findall(src):
+        if "{" + name + "}[" in src or re.search(rf"\b{name}\s*\+\s*[\"']\[", src):
+            return True
+    return False
 
 
 def imports(src: str, module: str) -> bool:

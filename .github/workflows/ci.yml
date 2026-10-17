@@ -424,6 +424,15 @@ jobs:
         run: |
           python scripts/test_libm_dependency_guard.py
           python scripts/libm_dependency_guard.py
+      # G14, static half: no build configuration, workflow, script or source sets a
+      # native-CPU, fast-math or x87 flag (scripts/build_config_allowlist.toml lists
+      # the files that quote them on purpose; nothing read fails). The dynamic half
+      # (the flags cargo really passes) runs in release-profile.yml
+      - name: Build configuration guard (test, then check)
+        run: |
+          python scripts/test_build_config_guard.py
+          python scripts/build_config_guard.py
+          python scripts/test_build_flags_check.py
       - name: README sync oracle (検査器自身の試験)
         run: python scripts/test_readme_sync.py
       - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)

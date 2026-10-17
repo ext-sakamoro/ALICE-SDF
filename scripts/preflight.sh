@@ -79,6 +79,11 @@ step "libm dependency guard: oracle + libm の直接依存には clippy.toml の
 python3 scripts/test_libm_dependency_guard.py
 python3 scripts/libm_dependency_guard.py
 
+step "build configuration guard (G14, static): oracle + no native / fast-math / x87 flag (nothing read fails)"
+python3 scripts/test_build_config_guard.py
+python3 scripts/build_config_guard.py
+python3 scripts/test_build_flags_check.py
+
 step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py
@@ -421,6 +426,23 @@ if command -v rust-analyzer >/dev/null 2>&1; then
 else
   echo "skip: rust-analyzer が無い (rustup component add rust-analyzer)、CI の scip job が検査する" >&2
 fi
+
+step "release-profile.yml: goldens and the float environment in the release profile (G4 / G5)"
+for spec in test_det_golden:3: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
+  name=${spec%%:*}
+  rest=${spec#*:}
+  min=${rest%%:*}
+  feat=${rest#*:}
+  cargo test --release --features "$feat" --test "$name" 2>&1 | tee "${CARGO_TARGET_DIR:-target}/release-$name.log"
+  python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/release-$name.log" --min "$min" --what "$name (release)"
+done
+cargo test --release --lib -- law_minmax_signed_zero_table tree_csg_ops_carry_the_law_on_signed_zero 2>&1 | tee "${CARGO_TARGET_DIR:-target}/release-lib-law.log"
+python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/release-lib-law.log" --min 2 --what "Law max / min unit tests (release)"
+
+step "release-profile.yml: effective rustc flags (G14, dynamic)"
+python3 scripts/build_flags_check.py -- cargo check --release --lib
+python3 scripts/build_flags_check.py -- cargo check --release --lib --no-default-features
+python3 scripts/build_flags_check.py -- cargo check --release --lib --features "$LINUX_ALL"
 
 step "audit: cargo audit (RustSec)"
 if command -v cargo-audit >/dev/null 2>&1; then

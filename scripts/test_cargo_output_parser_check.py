@@ -49,6 +49,18 @@ class Rules(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(stats, {"parsers": 1, "tests": 1})
 
+    def test_escape_through_a_named_constant_counts(self):
+        named = "import p\nESC = " + '"\\x1b"' + "\nS = f'{ESC}[32mok'\n"
+        errors, _ = scan({"p.py": PARSER, "test_p.py": named})
+        self.assertEqual(errors, [])
+        concat = "import p\nE = " + "'\\x1b'" + "\nS = E + '[1mChecked'\n"
+        errors, _ = scan({"p.py": PARSER, "test_p.py": concat})
+        self.assertEqual(errors, [])
+        # the name alone, never followed by [, is not a coloured sample
+        unused = "import p\nESC = " + '"\\x1b"' + "\nS = 'test result: ok. 2 passed'\n"
+        errors, _ = scan({"p.py": PARSER, "test_p.py": unused})
+        self.assertTrue(any(e.startswith("no_colour_sample: test_p.py") for e in errors), errors)
+
     def test_parser_test_without_escape_fails(self):
         errors, _ = scan({"p.py": PARSER, "test_p.py": TEST_PLAIN})
         self.assertTrue(any(e.startswith("no_colour_sample: test_p.py") for e in errors), errors)

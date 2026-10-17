@@ -52,20 +52,29 @@ note = "unverified: the n/a rests on a scan of src/ by hand and det_math_guard.p
 reference_repo = ""
 
 [G4]
-status = "fail-known"
+status = "pass"
 evidence = [
     "src/compiled/real.rs law_minmax_signed_zero_table and tree_csg_ops_carry_the_law_on_signed_zero (fixed bit patterns for the signed-zero cases)",
-    "tests/test_det_golden.rs tree_evaluator_bits_match_recorded_hashes",
-    ".github/workflows/ci.yml test job (macos-latest aarch64, ubuntu-latest and windows-latest x86_64)",
+    "tests/test_det_golden.rs tree_evaluator_bits_match_recorded_hashes, tests/test_det_parity.rs, tests/test_det_near_zero_parity.rs and tests/test_det_near_zero_probe.rs (jit feature)",
+    ".github/workflows/ci.yml test job (macos-latest aarch64, ubuntu-latest and windows-latest x86_64): the debug legs",
+    ".github/workflows/release-profile.yml (ubuntu-latest x86_64, macos-latest aarch64): the same suites and the two unit tests with cargo test --release, each log read by scripts/libtest_count.py with the minimum count of the suite (3 / 1 / 2 / 3 / 2 and 2), so the four legs {debug, release} x {x86_64, aarch64} run",
+    "scripts/preflight.sh release-profile section (the same loop)",
 ]
+mutant = "measured 2026-10-17: the near-zero suites are jit-gated; run without --features jit they report 0 tests and scripts/libtest_count.py fails the step (expected >= 2 / >= 3, ran 0), which is why each suite names its features; dropping a #[test] from a golden suite leaves fewer than the stated count and fails the same way"
 since = ""
-note = "the goldens run on aarch64 and x86_64 under the debug profile only: no workflow runs cargo test --release (.github/workflows/ci.yml test job, lines 130 to 238), so the {debug, release} x {x86_64, aarch64} matrix has two of its four legs"
-reference_repo = ""
+note = ""
+reference_repo = "ALICE-Zip"
 
 [G5]
-status = "fail-known"
-note = "no release-profile test leg: the test job in .github/workflows/ci.yml (lines 130 to 238) runs cargo test without --release on every OS, and no other workflow runs the tests with --release"
-reference_repo = ""
+status = "pass"
+evidence = [
+    ".github/workflows/release-profile.yml release-goldens job: cargo test --release on the bit-exact suites (tests/test_det_golden.rs, tests/test_det_parity.rs, tests/test_det_near_zero_parity.rs, tests/test_det_near_zero_probe.rs, tests/float_environment.rs) and the Law max / min unit tests, counted by scripts/libtest_count.py",
+    "scripts/preflight.sh release-profile section",
+]
+mutant = "measured 2026-10-17: a suite run in the release profile without its feature reports 0 tests and the count check fails the step (test_det_near_zero_parity / probe without jit)"
+since = ""
+note = ""
+reference_repo = "ALICE-Zip"
 
 [G6]
 status = "fail-known"
@@ -133,6 +142,17 @@ note = "parallel reductions of glam vector min / max: src/mesh/collision.rs line
 reference_repo = ""
 
 [G14]
-status = "unverified"
-note = "unverified: no flag is known; no build configuration sets a fast-math flag or target-cpu=native (no .cargo/config, no build.rs, workflow RUSTFLAGS is -Dwarnings only; the Cargo.toml line 429 comment suggests target-cpu=native to users but sets nothing), but there is no CI scan step over those files and no test asserting round-to-nearest-even or that subnormals are not flushed to zero"
-reference_repo = ""
+status = "pass"
+evidence = [
+    "scripts/build_config_guard.py, static half (byte-identical to ALICE-DB's): every .cargo/config*, *.toml, build.rs, *.rs, workflow, JSON and script file outside target/ (665 read), comments blanked: target-cpu=native, fast-math LLVM / C flags, x87 target features, fast float intrinsics in src/; nothing read is exit 2",
+    "scripts/build_flags_check.py, dynamic half (byte-identical to ALICE-DB's): cargo check -v in a fresh target directory, every rustc command line read; fails when none, or none for alice_sdf, was seen",
+    "scripts/build_config_allowlist.toml (five excludes with reasons: the two G14 scripts, their tests, this manifest; no allow entry)",
+    "scripts/test_build_config_guard.py and scripts/test_build_flags_check.py",
+    ".github/workflows/ci.yml wiring-guard job (ubuntu, macOS, Windows): the static guard and both test files",
+    ".github/workflows/release-profile.yml: the dynamic check for the default, no-default and (ubuntu) Linux feature sets, and tests/float_environment.rs in the release profile",
+    "tests/float_environment.rs round_to_nearest_even and subnormals_are_not_flushed (byte-identical to ALICE-DB's), in the debug test job and the release profile",
+]
+mutant = "measured 2026-10-17, reverted: RUSTFLAGS: \"-C target-cpu=native\" added to release-profile.yml's env makes scripts/build_config_guard.py report 1 problem; the dynamic check and the float environment tests are the shared copies whose mutants ALICE-Zip's G14 cell records"
+since = ""
+note = "the Cargo.toml comment that suggests target-cpu=native to users is a comment, which the guard blanks; nothing sets it"
+reference_repo = "ALICE-DB"
