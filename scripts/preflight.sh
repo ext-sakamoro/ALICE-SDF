@@ -79,6 +79,10 @@ step "libm dependency guard: oracle + libm の直接依存には clippy.toml の
 python3 scripts/test_libm_dependency_guard.py
 python3 scripts/libm_dependency_guard.py
 
+step "provenance writers: oracle + 公開の書き出し関数はすべて意味の識別子を書くか、未対応の一覧にある (件数固定、0 件で fail)"
+python3 scripts/test_provenance_writers.py
+python3 scripts/provenance_writers.py
+
 step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py

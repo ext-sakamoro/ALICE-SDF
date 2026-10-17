@@ -1,0 +1,48 @@
+# Public writers that do not store the semantics identifier yet (ALICE-Law G8)
+#
+# scripts/provenance_writers.py: a line leaves this file when the writer stores the identifier and
+# tests/test_provenance.rs has its round-trip entry; G8 passes when no line is left
+# `expected-writers` is the number of public writers found; change it only with a new or removed writer
+
+expected-writers 44
+
+src/io/abm.rs::save_abm
+src/io/abm.rs::save_abm_with_lods
+src/io/abm.rs::to_bytes
+src/io/alembic.rs::export_alembic
+src/io/asdf.rs::save_asdf
+src/io/asdf.rs::to_bytes
+src/io/gltf.rs::export_glb
+src/io/gltf.rs::export_glb_bytes
+src/io/gltf.rs::export_gltf_json
+src/io/iges.rs::export_iges
+src/io/json.rs::save_asdf_json
+src/io/meshopt_gltf.rs::export_glb_meshopt
+src/io/meshopt_gltf.rs::export_glb_meshopt_bytes
+src/io/meshopt_gltf.rs::export_glb_meshopt_bytes_skinned
+src/io/meshopt_gltf.rs::export_glb_meshopt_skinned
+src/io/mod.rs::save
+src/io/nanite.rs::export_nanite
+src/io/nanite.rs::export_nanite_hlsl_material
+src/io/nanite.rs::export_nanite_json
+src/io/nanite.rs::export_nanite_with_config
+src/io/obj.rs::export_obj
+src/io/ply.rs::export_ply
+src/io/splat.rs::save_splat
+src/io/splat.rs::to_bytes
+src/io/step.rs::export_step
+src/io/ue5_asset.rs::export_ue5_mesh
+src/io/ue5_asset.rs::export_ue5_mesh_binary
+src/io/ue5_asset.rs::export_ue5_mesh_with_lods
+src/io/unity_mesh.rs::export_unity_mesh
+src/io/unity_mesh.rs::export_unity_mesh_binary
+src/io/usd.rs::export_usda
+src/io/vox.rs::save_vox
+src/mesh/lod_persist.rs::save_lod_chain
+src/mesh/lod_persist.rs::save_lod_chain_metadata
+src/svo/streaming.rs::to_bytes
+src/validity.rs::export_step_validated
+src/volume/export.rs::export_dds_3d
+src/volume/export.rs::export_dds_3d_distgrad
+src/volume/export.rs::export_raw
+src/volume/export.rs::export_raw_with_mips

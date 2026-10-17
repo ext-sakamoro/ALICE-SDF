@@ -8,11 +8,24 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
+use crate::provenance::Provenance;
 use std::io::{Seek, Write};
 use std::path::Path;
 
 /// Export mesh to 3MF format
+///
+/// `3D/3dmodel.model` carries [`Provenance::sdf`] as namespaced metadata (see
+/// [`crate::provenance`]).
 pub fn export_3mf(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
+    export_3mf_with_provenance(mesh, path, &Provenance::sdf())
+}
+
+/// Export mesh to 3MF format with the caller's semantics identifier as model metadata
+pub fn export_3mf_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let w = std::io::BufWriter::new(file);
     let mut zip = ZipWriter::new(w);
@@ -35,7 +48,15 @@ pub fn export_3mf(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
     // 3D/3dmodel.model
     let mut model = String::with_capacity(mesh.vertices.len() * 40 + mesh.indices.len() * 15);
     model.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    model.push_str("<model unit=\"millimeter\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\n");
+    model.push_str(&format!(
+        "<model unit=\"millimeter\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\" xmlns:alice=\"{}\">\n",
+        crate::provenance::NAMESPACE_3MF
+    ));
+    model.push_str(&format!(
+        "  <metadata name=\"{}\">{}</metadata>\n",
+        crate::provenance::KEY,
+        provenance.hex()
+    ));
     model.push_str("  <resources>\n");
     model.push_str("    <object id=\"1\" type=\"model\">\n");
     model.push_str("      <mesh>\n");
