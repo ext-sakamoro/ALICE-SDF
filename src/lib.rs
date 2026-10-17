@@ -186,6 +186,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use alice_det_math::SEMANTICS_ID;
 
 pub mod semantics;
+
+pub mod eval_cache;
+pub use eval_cache::ExactEvalCache;
 pub use semantics::{
     check_sdf_semantics, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
 };

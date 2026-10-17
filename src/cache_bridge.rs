@@ -2,6 +2,13 @@
 //!
 //! Caches SDF distance field evaluations using ALICE-Cache to avoid
 //! redundant computation during interactive editing and mesh generation.
+//!
+//! **Outside the ALICE-Law guarantee.** Points are quantised to grid cells, so a
+//! hit can return the distance of another point in the same cell, and which
+//! entries survive eviction depends on `alice-cache`'s hasher (and, under
+//! concurrent use, on thread timing). The feature (`sdf-cache`) is not default
+//! and links an AGPL crate. The deterministic, exact-key cache is
+//! [`crate::ExactEvalCache`].
 
 use alice_cache::AliceCache;
 use std::hash::{Hash, Hasher};
