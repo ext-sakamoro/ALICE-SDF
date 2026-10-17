@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 840 |
+| 🟢 Not ignored | 841 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **840** |
+| **Total** | **841** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (840)
+## 🟢 Not ignored (841)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -70,6 +70,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_eval_api_oracle.rs` | 7 |
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
+| `test_provenance.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
@@ -85,7 +86,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_orientation.rs` | 6 |
 | `test_mesh_overdraw_oracle.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
-| `test_provenance.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_sdf2d_oracle.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |

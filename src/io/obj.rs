@@ -8,6 +8,7 @@
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
+use crate::provenance::Provenance;
 use std::io::Write;
 use std::path::Path;
 
@@ -36,11 +37,26 @@ impl Default for ObjConfig {
 }
 
 /// Export a mesh to Wavefront OBJ format
+///
+/// The header comments carry [`Provenance::sdf`] (`# alice:semantics_id=<hex>`, see
+/// [`crate::provenance`]).
 pub fn export_obj(
     mesh: &Mesh,
     path: impl AsRef<Path>,
     config: &ObjConfig,
     materials: Option<&MaterialLibrary>,
+) -> Result<(), IoError> {
+    export_obj_with_provenance(mesh, path, config, materials, &Provenance::sdf())
+}
+
+/// Export a mesh to Wavefront OBJ format with the caller's semantics identifier in the header
+/// comments (and in the companion MTL file's)
+pub fn export_obj_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &ObjConfig,
+    materials: Option<&MaterialLibrary>,
+    provenance: &Provenance,
 ) -> Result<(), IoError> {
     let path = path.as_ref();
     let file = std::fs::File::create(path)?;
@@ -50,6 +66,7 @@ pub fn export_obj(
 
     // Header
     writeln!(w, "# ALICE-SDF OBJ Export")?;
+    writeln!(w, "# {}", provenance.tagged())?;
     writeln!(w, "# Vertices: {}", mesh.vertices.len())?;
     writeln!(w, "# Triangles: {}", mesh.indices.len() / 3)?;
 
@@ -116,7 +133,7 @@ pub fn export_obj(
     if config.export_materials {
         if let Some(mat_lib) = materials {
             let mtl_path = path.with_extension("mtl");
-            export_mtl(mat_lib, &mtl_path)?;
+            export_mtl(mat_lib, &mtl_path, provenance)?;
         }
     }
 
@@ -148,11 +165,16 @@ fn write_face(
 }
 
 /// Export materials to MTL format
-fn export_mtl(mat_lib: &MaterialLibrary, path: impl AsRef<Path>) -> Result<(), IoError> {
+fn export_mtl(
+    mat_lib: &MaterialLibrary,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
 
     writeln!(w, "# ALICE-SDF MTL Export")?;
+    writeln!(w, "# {}", provenance.tagged())?;
 
     for (_, mat) in mat_lib.iter() {
         writeln!(w, "\nnewmtl {}", mat.name)?;
