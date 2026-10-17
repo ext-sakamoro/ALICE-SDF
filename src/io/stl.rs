@@ -110,11 +110,6 @@ pub fn import_stl(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
     }
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "vertex deduplication: lookups only, vertices are written in input order (ALICE-Law G13)"
-)]
 fn import_stl_binary(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::Vec3;
@@ -135,7 +130,8 @@ fn import_stl_binary(data: &[u8]) -> Result<Mesh, IoError> {
 
     let mut vertices = Vec::with_capacity(tri_count * 3);
     let mut indices = Vec::with_capacity(tri_count * 3);
-    let mut vertex_map: std::collections::HashMap<[u32; 3], u32> = std::collections::HashMap::new();
+    let mut vertex_map: crate::unordered::UnorderedMap<[u32; 3], u32> =
+        crate::unordered::UnorderedMap::new();
 
     let read_f32 = |offset: usize| -> f32 {
         f32::from_le_bytes([
@@ -175,11 +171,6 @@ fn import_stl_binary(data: &[u8]) -> Result<Mesh, IoError> {
     Ok(Mesh { vertices, indices })
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "vertex deduplication: lookups only, vertices are written in input order (ALICE-Law G13)"
-)]
 fn import_stl_ascii(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::Vec3;
@@ -189,7 +180,8 @@ fn import_stl_ascii(data: &[u8]) -> Result<Mesh, IoError> {
 
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
-    let mut vertex_map: std::collections::HashMap<[u32; 3], u32> = std::collections::HashMap::new();
+    let mut vertex_map: crate::unordered::UnorderedMap<[u32; 3], u32> =
+        crate::unordered::UnorderedMap::new();
     let mut current_normal = Vec3::Y;
 
     for line in text.lines() {

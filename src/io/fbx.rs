@@ -17,12 +17,8 @@ use crate::compiled::real::law_max_f32;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "bone id to bone index while parsing: lookups only (ALICE-Law G13)"
-)]
-use std::collections::{BTreeMap, HashMap};
+use crate::unordered::UnorderedMap;
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 
@@ -1204,15 +1200,10 @@ pub fn import_fbx_full(path: impl AsRef<Path>) -> Result<ImportedFbx, IoError> {
     })
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "bone id to bone index while parsing: lookups only (ALICE-Law G13)"
-)]
 /// Parse skeleton from FBX ASCII Deformer/Cluster sections
 fn parse_skeleton(content: &str) -> Option<Vec<FbxBone>> {
     let mut bones = Vec::new();
-    let mut bone_id_map: HashMap<i64, usize> = HashMap::new();
+    let mut bone_id_map: UnorderedMap<i64, usize> = UnorderedMap::new();
     let mut connections: Vec<(i64, i64)> = Vec::new(); // (child_id, parent_id)
 
     // Parse Deformer sections

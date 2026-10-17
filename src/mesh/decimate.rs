@@ -33,15 +33,11 @@
 
 use crate::compiled::real::LawMinMax;
 use crate::mesh::{Mesh, Vertex};
+use crate::unordered::{UnorderedMap, UnorderedSet};
 use glam::{Vec3, Vec4};
 use rayon::prelude::*;
 use std::cmp::Ordering;
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge counts and vertex sets used for membership; the one pass over the counts fills a set, which does not depend on the order (ALICE-Law G13)"
-)]
-use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeSet, BinaryHeap};
 
 /// Decimation configuration
 #[derive(Debug, Clone)]
@@ -320,11 +316,6 @@ impl Ord for CollapseCandidate {
     }
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge counts and vertex sets used for membership; the one pass over the counts fills a set, which does not depend on the order (ALICE-Law G13)"
-)]
 /// Decimate a mesh using Quadric Error Metrics (Deep Fried v2)
 ///
 /// Reduces triangle count by collapsing edges with lowest geometric error.
@@ -429,13 +420,14 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
             })
             .collect();
 
-        let mut edge_count: HashMap<(u32, u32), u32> = HashMap::with_capacity(edge_pairs.len());
+        let mut edge_count: UnorderedMap<(u32, u32), u32> =
+            UnorderedMap::with_capacity(edge_pairs.len());
         for edge in edge_pairs {
             *edge_count.entry(edge).or_insert(0) += 1;
         }
 
-        let mut bv = HashSet::new();
-        for (&(a, b), &count) in &edge_count {
+        let mut bv = UnorderedSet::new();
+        for (&(a, b), &count) in edge_count.sorted_entries() {
             if count == 1 {
                 bv.insert(a);
                 bv.insert(b);
@@ -443,13 +435,13 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
         }
         bv
     } else {
-        HashSet::new()
+        UnorderedSet::new()
     };
 
     // [Deep Fried v2] Parallel Material Boundary Detection
     let material_boundary_verts = if config.preserve_materials {
         let mat_ids_ref: Vec<u32> = vertices.iter().map(|v| v.material_id).collect();
-        let mbv: HashSet<u32> = (0..vert_count)
+        let mbv: UnorderedSet<u32> = (0..vert_count)
             .into_par_iter()
             .filter(|&vi| {
                 let mat = mat_ids_ref[vi];
@@ -464,14 +456,16 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
                 })
             })
             .map(|vi| vi as u32)
+            .collect::<Vec<u32>>()
+            .into_iter()
             .collect();
         mbv
     } else {
-        HashSet::new()
+        UnorderedSet::new()
     };
 
     // Locked vertices (from locked_materials config + per-vertex lock_vertices mask)
-    let mut locked_verts: HashSet<u32> = if !config.locked_materials.is_empty() {
+    let mut locked_verts: UnorderedSet<u32> = if !config.locked_materials.is_empty() {
         mesh.vertices
             .iter()
             .enumerate()
@@ -479,7 +473,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
             .map(|(i, _)| i as u32)
             .collect()
     } else {
-        HashSet::new()
+        UnorderedSet::new()
     };
     // Merge per-vertex lock mask (meshopt lockVertices equivalent)
     for (i, &locked) in config.lock_vertices.iter().enumerate() {
@@ -513,7 +507,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
 
     // Build initial priority queue
     let mut heap = BinaryHeap::new();
-    let mut edges_seen = HashSet::new();
+    let mut edges_seen = UnorderedSet::new();
 
     for t in 0..tri_count {
         for k in 0..3 {
@@ -543,7 +537,7 @@ pub fn decimate(mesh: &mut Mesh, config: &DecimateConfig) {
     }
 
     // Collapse edges (inherently serial — heap management)
-    let mut removed_tris: HashSet<usize> = HashSet::new();
+    let mut removed_tris: UnorderedSet<usize> = UnorderedSet::new();
     let mut remap: Vec<u32> = (0..vert_count as u32).collect();
     let mut current_tris = tri_count;
 

@@ -36,12 +36,7 @@
 pub mod chunked;
 pub use chunked::{ChunkCoord, ChunkedCacheConfig, ChunkedMeshCache};
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "mesh cache keyed by its key: lookups only; the eviction order is the separate order list (ALICE-Law G13)"
-)]
-use std::collections::HashMap;
+use crate::unordered::UnorderedMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -119,29 +114,19 @@ struct CacheEntry {
     size_bytes: usize,
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "mesh cache keyed by its key: lookups only; the eviction order is the separate order list (ALICE-Law G13)"
-)]
 /// Internal LRU-ordered map.
 ///
 /// `order` tracks access recency: front = oldest, back = newest.
 struct LruMap {
-    map: HashMap<MeshCacheKey, CacheEntry>,
+    map: UnorderedMap<MeshCacheKey, CacheEntry>,
     /// LRU order: front = oldest, back = newest.
     order: Vec<MeshCacheKey>,
 }
 
 impl LruMap {
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "mesh cache keyed by its key: lookups only; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            map: UnorderedMap::new(),
             order: Vec::new(),
         }
     }
@@ -221,14 +206,9 @@ impl LruMap {
         self.map.len()
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "mesh cache keyed by its key: lookups only; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Total memory usage across all cached meshes.
     fn memory_usage(&self) -> usize {
-        self.map.values().map(|e| e.size_bytes).sum()
+        self.map.sum_values_by(|e| e.size_bytes)
     }
 }
 

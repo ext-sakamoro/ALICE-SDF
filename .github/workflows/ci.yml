@@ -438,18 +438,15 @@ jobs:
       # native-CPU, fast-math or x87 flag (scripts/build_config_allowlist.toml lists
       # the files that quote them on purpose; nothing read fails). The dynamic half
       # (the flags cargo really passes) runs in release-profile.yml
-      # G13: every iteration of a HashMap / HashSet in src/ has a verdict in
-      # scripts/hash_order_audit.toml (compared both ways, nothing found fails)
+      # G13: the library's hash collections are src/unordered.rs's wrappers, which
+      # cannot be iterated (tests/test_unordered_no_iteration.rs); the types are
+      # banned elsewhere by the library clippy configuration
       # G10: the default build (the Law path) links permissive crates only; the
       # optional AGPL bridges (physics / codec / sdf-cache) stay outside it
       - name: Default-build dependency licences (test, then check)
         run: |
           python scripts/test_default_dependency_licenses.py
           python scripts/default_dependency_licenses.py
-      - name: Hash collection iteration audit (test, then check)
-        run: |
-          python scripts/test_hash_order_audit.py
-          python scripts/hash_order_audit.py
       # G13 text layer: every HashMap / HashSet, rayon / thread and pointer-order line
       # of src/ is listed in scripts/order_allowlist.toml with its count, the SHA-256 of
       # each line and the reason (the type-resolved layer is the library clippy run);

@@ -14,13 +14,9 @@
 
 use crate::compiled::real::LawMinMax;
 use crate::mesh::sdf_to_mesh::Mesh;
+use crate::unordered::{UnorderedMap, UnorderedSet};
 use glam::Vec2;
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
-)]
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
 /// Configuration for UV unwrapping
 #[derive(Debug, Clone)]
@@ -301,18 +297,13 @@ const fn edge_key(a: u32, b: u32) -> EdgeKey {
     }
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
-)]
 /// Detect seam edges based on dihedral angle threshold
-fn detect_seams(mesh: &Mesh, angle_threshold_deg: f32) -> HashSet<EdgeKey> {
+fn detect_seams(mesh: &Mesh, angle_threshold_deg: f32) -> UnorderedSet<EdgeKey> {
     let threshold_cos = alice_det_math::cos(angle_threshold_deg.to_radians());
     let tri_count = mesh.indices.len() / 3;
 
     // Build edge -> triangle adjacency
-    let mut edge_tris: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
+    let mut edge_tris: UnorderedMap<EdgeKey, Vec<usize>> = UnorderedMap::new();
     for ti in 0..tri_count {
         let i0 = mesh.indices[ti * 3];
         let i1 = mesh.indices[ti * 3 + 1];
@@ -323,9 +314,9 @@ fn detect_seams(mesh: &Mesh, angle_threshold_deg: f32) -> HashSet<EdgeKey> {
         edge_tris.entry(edge_key(i2, i0)).or_default().push(ti);
     }
 
-    let mut seams = HashSet::new();
+    let mut seams = UnorderedSet::new();
 
-    for (edge, tris) in &edge_tris {
+    for (edge, tris) in edge_tris.sorted_entries() {
         if tris.len() == 1 {
             // Boundary edge is always a seam
             seams.insert(*edge);
@@ -351,13 +342,12 @@ fn triangle_normal(mesh: &Mesh, ti: usize) -> glam::Vec3 {
     e1.cross(e2).normalize_or_zero()
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
-)]
 /// Split mesh triangles into connected charts separated by seams
-fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) -> Vec<Vec<usize>> {
+fn split_into_charts(
+    mesh: &Mesh,
+    tri_count: usize,
+    seams: &UnorderedSet<EdgeKey>,
+) -> Vec<Vec<usize>> {
     // Build triangle adjacency (not crossing seams)
     let mut tri_adj: Vec<Vec<usize>> = vec![Vec::new(); tri_count];
 
@@ -425,11 +415,6 @@ fn split_into_charts(mesh: &Mesh, tri_count: usize, seams: &HashSet<EdgeKey>) ->
     charts
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "edge and vertex index maps for lookups; the pass over the edge map fills the seam set, used for membership only (ALICE-Law G13)"
-)]
 /// Unwrap a single chart using simplified LSCM
 fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     // Collect unique vertices
@@ -453,7 +438,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     }
 
     // Map global vertex index -> local index
-    let mut global_to_local: HashMap<u32, usize> = HashMap::new();
+    let mut global_to_local: UnorderedMap<u32, usize> = UnorderedMap::new();
     for (li, &gi) in vert_set.iter().enumerate() {
         global_to_local.insert(gi, li);
     }
@@ -508,7 +493,7 @@ fn unwrap_chart_lscm(mesh: &Mesh, tri_indices: &[usize]) -> UvChart {
     tri_placed[0] = true;
 
     // Build triangle adjacency within this chart
-    let mut edge_to_local_tri: HashMap<EdgeKey, Vec<usize>> = HashMap::new();
+    let mut edge_to_local_tri: UnorderedMap<EdgeKey, Vec<usize>> = UnorderedMap::new();
     for (lti, &gti) in tri_indices.iter().enumerate() {
         let a = mesh.indices[gti * 3];
         let b = mesh.indices[gti * 3 + 1];

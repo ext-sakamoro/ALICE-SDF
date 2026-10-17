@@ -15,13 +15,8 @@
 use crate::io::abm::{load_abm, save_abm};
 use crate::io::IoError;
 use crate::mesh::{Mesh, Vertex};
+use crate::unordered::UnorderedMap;
 use glam::Vec3;
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-)]
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -30,7 +25,7 @@ use std::sync::{Arc, RwLock};
 // ---------------------------------------------------------------------------
 
 /// 3D chunk coordinate in the spatial grid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ChunkCoord {
     /// X index
     pub x: i32,
@@ -96,14 +91,9 @@ struct ChunkEntry {
     dirty: bool,
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-)]
 /// Internal storage combining entries with insertion-order tracking for FIFO eviction.
 struct ChunkedStore {
-    entries: HashMap<ChunkCoord, ChunkEntry>,
+    entries: UnorderedMap<ChunkCoord, ChunkEntry>,
     /// Insertion order: oldest at front, newest at back.
     order: Vec<ChunkCoord>,
 }
@@ -125,17 +115,12 @@ pub struct ChunkedMeshCache {
 }
 
 impl ChunkedMeshCache {
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Create a new chunked mesh cache.
     pub fn new(config: ChunkedCacheConfig) -> Self {
         Self {
             config,
             chunks: RwLock::new(ChunkedStore {
-                entries: HashMap::new(),
+                entries: UnorderedMap::new(),
                 order: Vec::new(),
             }),
             current_sdf_hash: RwLock::new(0),
@@ -193,20 +178,13 @@ impl ChunkedMeshCache {
 
     // -- Invalidation --------------------------------------------------------
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Mark **all** chunks as dirty (e.g. the SDF changed globally).
     pub fn invalidate_all(&self) {
         let mut chunks = self
             .chunks
             .write()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in invalidate_all()");
-        for entry in chunks.entries.values_mut() {
-            entry.dirty = true;
-        }
+        chunks.entries.update_each_value(|entry| entry.dirty = true);
     }
 
     /// Mark chunks overlapping a world-space bounding box as dirty.
@@ -223,34 +201,22 @@ impl ChunkedMeshCache {
         }
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Get the coordinates of all currently dirty chunks.
     pub fn dirty_chunks(&self) -> Vec<ChunkCoord> {
         let chunks = self
             .chunks
             .read()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in dirty_chunks()");
-        let mut dirty: Vec<ChunkCoord> = chunks
+        // in (x, y, z) order (ChunkCoord's order; ALICE-Law G13)
+        chunks
             .entries
-            .iter()
+            .sorted_entries()
+            .into_iter()
             .filter(|(_, e)| e.dirty)
             .map(|(&c, _)| c)
-            .collect();
-        drop(chunks);
-        // in (x, y, z) order (the map's order is unspecified; ALICE-Law G13)
-        dirty.sort_unstable_by_key(|c| (c.x, c.y, c.z));
-        dirty
+            .collect()
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Update the global SDF hash. Returns the list of chunks that were
     /// invalidated (those whose stored hash differs from `new_hash`).
     #[allow(clippy::significant_drop_tightening)]
@@ -266,36 +232,30 @@ impl ChunkedMeshCache {
             .chunks
             .write()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in update_sdf_hash()");
-        for (&coord, entry) in chunks.entries.iter_mut() {
+        // in (x, y, z) order (ChunkCoord's order; ALICE-Law G13)
+        for (&coord, entry) in chunks.entries.sorted_entries_mut() {
             if entry.sdf_hash != new_hash {
                 entry.dirty = true;
                 invalidated.push(coord);
             }
         }
-        // the map's iteration order is unspecified (ALICE-Law G13)
-        invalidated.sort_unstable_by_key(|c| (c.x, c.y, c.z));
         invalidated
     }
 
     // -- Enumeration ---------------------------------------------------------
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Get all cached chunk coordinates.
     pub fn cached_chunks(&self) -> Vec<ChunkCoord> {
-        let mut coords: Vec<ChunkCoord> = self
+        let coords: Vec<ChunkCoord> = self
             .chunks
             .read()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in cached_chunks()")
             .entries
-            .keys()
+            .sorted_keys()
+            .into_iter()
             .copied()
             .collect();
-        // in (x, y, z) order, as merge_all (the map's order is unspecified)
-        coords.sort_unstable_by_key(|c| (c.x, c.y, c.z));
+        // in (x, y, z) order, as merge_all (ChunkCoord's order)
         coords
     }
 
@@ -309,11 +269,6 @@ impl ChunkedMeshCache {
         chunks.entries.len()
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Total approximate memory usage of all cached chunk meshes (bytes).
     pub fn memory_usage(&self) -> usize {
         let chunks = self
@@ -322,9 +277,7 @@ impl ChunkedMeshCache {
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in memory_usage()");
         chunks
             .entries
-            .values()
-            .map(|e| estimate_mesh_bytes(&e.mesh))
-            .sum()
+            .sum_values_by(|e| estimate_mesh_bytes(&e.mesh))
     }
 
     // -- Coordinate helpers --------------------------------------------------
@@ -366,11 +319,6 @@ impl ChunkedMeshCache {
 
     // -- Persistence ---------------------------------------------------------
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Persist all dirty chunks to disk as individual `.abm` files.
     ///
     /// Requires `cache_dir` to be set in the configuration. Returns the
@@ -391,9 +339,7 @@ impl ChunkedMeshCache {
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.write() in persist_dirty()");
         let mut written = 0usize;
         // written in (x, y, z) order, so the first error is the same on every run
-        let mut ordered: Vec<(&ChunkCoord, &mut ChunkEntry)> = chunks.entries.iter_mut().collect();
-        ordered.sort_unstable_by_key(|(c, _)| (c.x, c.y, c.z));
-        for (&coord, entry) in ordered {
+        for (&coord, entry) in chunks.entries.sorted_entries_mut() {
             if entry.dirty {
                 let path = dir.join(format!("{}_{}_{}_.abm", coord.x, coord.y, coord.z));
                 save_abm(&entry.mesh, &path)?;
@@ -465,11 +411,6 @@ impl ChunkedMeshCache {
         chunks.order.clear();
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "chunk entries keyed by coordinate: lookups, and passes over every entry that sort the coordinates first or set a flag on each; the eviction order is the separate order list (ALICE-Law G13)"
-    )]
     /// Merge all cached chunk meshes into a single combined [`Mesh`].
     ///
     /// Vertex positions are preserved in world space. Index offsets are
@@ -478,7 +419,7 @@ impl ChunkedMeshCache {
     /// Chunks are concatenated in ascending `(x, y, z)` order of their
     /// [`ChunkCoord`], so the same set of chunks always gives the same vertex
     /// and index order, whatever the insertion order and from one run to the
-    /// next (until 5.0.0 the order was that of the internal `HashMap`, which
+    /// next (until 5.0.0 the order was that of the internal `UnorderedMap`, which
     /// changes between runs).
     #[allow(clippy::significant_drop_tightening)]
     pub fn merge_all(&self) -> Mesh {
@@ -486,8 +427,7 @@ impl ChunkedMeshCache {
             .chunks
             .read()
             .expect("ChunkedMeshCache: RwLock poisoned on chunks.read() in merge_all()");
-        let mut ordered: Vec<(&ChunkCoord, &ChunkEntry)> = chunks.entries.iter().collect();
-        ordered.sort_unstable_by_key(|(c, _)| (c.x, c.y, c.z));
+        let ordered = chunks.entries.sorted_entries();
         let mut vertices: Vec<Vertex> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
         for (_, entry) in ordered {
@@ -624,9 +564,7 @@ mod tests {
         // Manually mark all clean first.
         {
             let mut chunks = cache.chunks.write().unwrap();
-            for e in chunks.entries.values_mut() {
-                e.dirty = false;
-            }
+            chunks.entries.update_each_value(|e| e.dirty = false);
         }
 
         // Invalidate a region covering chunk (1,0,1) only.
@@ -645,9 +583,7 @@ mod tests {
         // Mark clean.
         {
             let mut chunks = cache.chunks.write().unwrap();
-            for e in chunks.entries.values_mut() {
-                e.dirty = false;
-            }
+            chunks.entries.update_each_value(|e| e.dirty = false);
         }
         assert_eq!(cache.dirty_chunks().len(), 0);
 
@@ -673,7 +609,7 @@ mod tests {
         assert_eq!(merged.indices.len(), 9); // 6 + 3
 
         // Indices from chunk B should be offset by 4 (or by the vertex count
-        // of whatever chunk was iterated first -- HashMap order is unspecified).
+        // of whatever chunk was iterated first -- UnorderedMap order is unspecified).
         // Just verify all indices are in-bounds.
         for &idx in &merged.indices {
             assert!((idx as usize) < merged.vertices.len());
@@ -700,9 +636,7 @@ mod tests {
         // Mark clean.
         {
             let mut chunks = cache.chunks.write().unwrap();
-            for e in chunks.entries.values_mut() {
-                e.dirty = false;
-            }
+            chunks.entries.update_each_value(|e| e.dirty = false);
         }
 
         // Update hash to 20 — chunks with hash 10 should be invalidated.

@@ -85,9 +85,6 @@ step "default-build dependency licences (G10): oracle + permissive only, nothing
 python3 scripts/test_default_dependency_licenses.py
 python3 scripts/default_dependency_licenses.py
 
-step "hash collection iteration audit (G13): oracle + every HashMap / HashSet iteration in src/ has a verdict"
-python3 scripts/test_hash_order_audit.py
-python3 scripts/hash_order_audit.py
 
 step "order and entropy guards (G13 / G10 text layer): oracle + every listed line pinned by count and hash"
 python3 scripts/test_order_guard.py

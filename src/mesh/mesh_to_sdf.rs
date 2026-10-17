@@ -256,11 +256,6 @@ impl MeshSdf {
         &self.bvh
     }
 
-    #[allow(
-        clippy::disallowed_types,
-        clippy::disallowed_methods,
-        reason = "vertex deduplication: lookups only, the edges are kept in an ordered set (ALICE-Law G13)"
-    )]
     /// Convert to approximate SdfNode tree using capsule method
     ///
     /// This allows the MeshSdf to be used where SdfNode is required,
@@ -268,10 +263,10 @@ impl MeshSdf {
     pub fn to_sdf_node(&self, radius_factor: f32) -> SdfNode {
         // Extract vertices and edges from triangles
         let mut vertices: Vec<Vec3> = Vec::new();
-        let mut vertex_map: std::collections::HashMap<[u32; 3], usize> =
-            std::collections::HashMap::new();
+        let mut vertex_map: crate::unordered::UnorderedMap<[u32; 3], usize> =
+            crate::unordered::UnorderedMap::new();
         // ordered: the capsules, and the float sum of their lengths, in one order on
-        // every run (a HashSet's order is unspecified; ALICE-Law G13)
+        // every run (a UnorderedSet's order is unspecified; ALICE-Law G13)
         let mut unique_edges: BTreeSet<(usize, usize)> = BTreeSet::new();
 
         for tri in &self.bvh.triangles {

@@ -333,11 +333,6 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
-#[allow(
-    clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "texture path to texture index: lookups that deduplicate, the textures are written in first-use order (ALICE-Law G13)"
-)]
 fn build_glb_data(
     mesh: &Mesh,
     config: &GltfConfig,
@@ -649,8 +644,8 @@ fn build_glb_data(
 
     // --- Texture collection (images, textures, samplers) ---
     let mut image_paths: Vec<String> = Vec::new();
-    let mut path_to_tex_idx: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut path_to_tex_idx: crate::unordered::UnorderedMap<String, usize> =
+        crate::unordered::UnorderedMap::new();
 
     if config.export_materials {
         if let Some(mat_lib) = materials {
