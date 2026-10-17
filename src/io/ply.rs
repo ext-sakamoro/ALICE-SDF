@@ -7,6 +7,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
+use crate::provenance::Provenance;
 use std::path::Path;
 
 /// PLY export configuration
@@ -28,7 +29,20 @@ impl Default for PlyConfig {
 }
 
 /// Export mesh to PLY format
+///
+/// The header carries [`Provenance::sdf`] (`comment alice:semantics_id=<hex>`, see
+/// [`crate::provenance`]).
 pub fn export_ply(mesh: &Mesh, path: impl AsRef<Path>, config: &PlyConfig) -> Result<(), IoError> {
+    export_ply_with_provenance(mesh, path, config, &Provenance::sdf())
+}
+
+/// Export mesh to PLY format with the caller's semantics identifier as a header comment
+pub fn export_ply_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &PlyConfig,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     use std::io::{BufWriter, Write};
 
     let file = std::fs::File::create(path)?;
@@ -46,6 +60,7 @@ pub fn export_ply(mesh: &Mesh, path: impl AsRef<Path>, config: &PlyConfig) -> Re
     writeln!(w, "ply")?;
     writeln!(w, "format {}", format)?;
     writeln!(w, "comment ALICE-SDF PLY Export")?;
+    writeln!(w, "comment {}", provenance.tagged())?;
     writeln!(w, "element vertex {}", vert_count)?;
     writeln!(w, "property float x")?;
     writeln!(w, "property float y")?;

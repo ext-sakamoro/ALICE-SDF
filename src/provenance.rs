@@ -12,6 +12,8 @@
 //! | ASCII STL | the solid name: `solid alice:semantics_id=<64 hex>` |
 //! | 3MF | `<metadata name="alice:semantics_id">` in `3D/3dmodel.model`, namespace [`NAMESPACE_3MF`] |
 //! | FBX (binary and ASCII) | the `Creator` string of `FBXHeaderExtension`: `ALICE-SDF alice:semantics_id=<64 hex>` |
+//! | OBJ (and its MTL) | a header comment: `# alice:semantics_id=<64 hex>` |
+//! | PLY (binary and ASCII) | a header comment: `comment alice:semantics_id=<64 hex>` |
 //!
 //! [`read`] finds the identifier in a file of any of these formats, and [`check`] compares it with
 //! the expected one (or an earlier one the caller has verified) and names both on a mismatch.
@@ -160,6 +162,23 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
     if bytes.starts_with(b"; FBX") {
         return tagged_in(bytes, "FBX");
     }
+    if bytes.starts_with(b"ply\n") || bytes.starts_with(b"ply\r\n") {
+        // the header ends at `end_header`; the identifier is one of its comment lines
+        let end = find(bytes, b"end_header")
+            .ok_or_else(|| ProvenanceError::Unreadable("PLY: no end_header".into()))?;
+        return tagged_in(&bytes[..end], "PLY");
+    }
+    if bytes.starts_with(b"#") {
+        // OBJ (and MTL): the identifier is one of the leading comment lines
+        let mut end = 0;
+        for line in bytes.split_inclusive(|&b| b == b'\n') {
+            if !line.starts_with(b"#") {
+                break;
+            }
+            end += line.len();
+        }
+        return tagged_in(&bytes[..end], "OBJ");
+    }
     if bytes.starts_with(b"solid") {
         let first = bytes.split(|&b| b == b'\n').next().unwrap_or(&[]);
         return tagged_in(first, "ASCII STL");
@@ -198,6 +217,11 @@ pub enum Accepted {
 /// of this crate wrote the same bytes. An entry is added only with a test that shows the outputs
 /// of that release reproduced.
 pub const PREVIOUS_SDF_IDS: &[[u8; 32]] = &[];
+
+/// The position of the first occurrence of `needle` in `haystack`
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
 
 /// Compares the identifier stored in the file at `path` with `expected`, or with one of the
 /// earlier identifiers in `previous` that the caller has verified

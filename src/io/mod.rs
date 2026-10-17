@@ -52,8 +52,8 @@ pub use json::{from_json_string, load_asdf_json, save_asdf_json, to_json_string}
 pub use nanite::{
     export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig,
 };
-pub use obj::{export_obj, import_obj, ObjConfig};
-pub use ply::{export_ply, import_ply, PlyConfig};
+pub use obj::{export_obj, export_obj_with_provenance, import_obj, ObjConfig};
+pub use ply::{export_ply, export_ply_with_provenance, import_ply, PlyConfig};
 pub use stl::{
     export_stl, export_stl_ascii, export_stl_ascii_with_provenance, export_stl_with_provenance,
     import_stl,

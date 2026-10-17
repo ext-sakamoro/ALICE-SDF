@@ -84,6 +84,33 @@ const WRITERS: &[(&str, &str, Write)] = &[
             Some(id) => io::export_fbx_with_provenance(m, p, &c, None, id).unwrap(),
         }
     }),
+    ("src/io/obj.rs::export_obj", "m.obj", |m, p, id| {
+        let c = io::ObjConfig::default();
+        match id {
+            None => io::export_obj(m, p, &c, None).unwrap(),
+            Some(id) => io::export_obj_with_provenance(m, p, &c, None, id).unwrap(),
+        }
+    }),
+    ("src/io/ply.rs::export_ply", "m_ascii.ply", |m, p, id| {
+        let c = io::PlyConfig {
+            binary: false,
+            ..Default::default()
+        };
+        match id {
+            None => io::export_ply(m, p, &c).unwrap(),
+            Some(id) => io::export_ply_with_provenance(m, p, &c, id).unwrap(),
+        }
+    }),
+    ("src/io/ply.rs::export_ply", "m_bin.ply", |m, p, id| {
+        let c = io::PlyConfig {
+            binary: true,
+            ..Default::default()
+        };
+        match id {
+            None => io::export_ply(m, p, &c).unwrap(),
+            Some(id) => io::export_ply_with_provenance(m, p, &c, id).unwrap(),
+        }
+    }),
 ];
 
 #[test]
@@ -149,6 +176,29 @@ fn files_with_the_identifier_still_open_in_this_crates_importers() {
         assert_eq!(back.indices.len() / 3, tris, "{file}");
         std::fs::remove_file(&path).ok();
     }
+    let path = temp("i.obj");
+    io::export_obj_with_provenance(&m, &path, &io::ObjConfig::default(), None, &caller_id())
+        .unwrap();
+    assert_eq!(
+        io::import_obj(&path).unwrap().indices.len() / 3,
+        tris,
+        "obj"
+    );
+    std::fs::remove_file(&path).ok();
+    for binary in [false, true] {
+        let path = temp(&format!("i_{binary}.ply"));
+        let c = io::PlyConfig {
+            binary,
+            ..Default::default()
+        };
+        io::export_ply_with_provenance(&m, &path, &c, &caller_id()).unwrap();
+        assert_eq!(
+            io::import_ply(&path).unwrap().indices.len() / 3,
+            tris,
+            "ply binary={binary}"
+        );
+        std::fs::remove_file(&path).ok();
+    }
     // this crate imports ASCII FBX only
     let path = temp("i_ascii.fbx");
     let c = io::FbxConfig {
@@ -159,6 +209,28 @@ fn files_with_the_identifier_still_open_in_this_crates_importers() {
     let back = io::import_fbx(&path).unwrap();
     assert_eq!(back.indices.len() / 3, tris);
     std::fs::remove_file(&path).ok();
+}
+
+/// The OBJ writer also writes the material file (`.mtl`) next to it; both carry the identifier
+#[test]
+fn the_obj_material_file_carries_the_identifier_too() {
+    let m = mesh();
+    let path = temp("with_materials.obj");
+    let mut lib = alice_sdf::material::MaterialLibrary::new();
+    lib.add(alice_sdf::material::Material::new("red"));
+    io::export_obj_with_provenance(
+        &m,
+        &path,
+        &io::ObjConfig::default(),
+        Some(&lib),
+        &caller_id(),
+    )
+    .unwrap();
+    let mtl = path.with_extension("mtl");
+    assert_eq!(provenance::read(&path).unwrap(), caller_id(), "obj");
+    assert_eq!(provenance::read(&mtl).unwrap(), caller_id(), "mtl");
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_file(&mtl).ok();
 }
 
 /// An independent FBX parser (`fbxcel`) reads the whole binary file (nodes and footer), and its

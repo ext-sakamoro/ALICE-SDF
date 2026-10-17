@@ -26,8 +26,6 @@ src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material
 src/io/nanite.rs::export_nanite_json
 src/io/nanite.rs::export_nanite_with_config
-src/io/obj.rs::export_obj
-src/io/ply.rs::export_ply
 src/io/splat.rs::save_splat
 src/io/splat.rs::to_bytes
 src/io/step.rs::export_step
