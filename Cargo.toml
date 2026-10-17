@@ -192,6 +192,8 @@ sha2 = "0.10"
 stl_io = "0.11"
 # tests/test_provenance.rs: an independent FBX parser reads the whole binary FBX
 fbxcel = { version = "0.9", features = ["tree"] }
+# tests/test_provenance.rs: an independent glTF parser reads the .glb / .gltf carrying the identifier
+gltf = { version = "1", default-features = false }
 
 # tests/test_msl_metal_oracle.rs: compile and run the emitted MSL on the real
 # Metal runtime compiler (MTLDevice::newLibraryWithSource), so no Xcode Metal

@@ -46,7 +46,8 @@ pub use fbx::{
     FbxAnimClip, FbxAnimCurve, FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
 };
 pub use gltf::{
-    export_glb, export_glb_bytes, export_gltf_json, import_glb, import_glb_bytes, GltfConfig,
+    export_glb, export_glb_bytes, export_glb_bytes_with_provenance, export_glb_with_provenance,
+    export_gltf_json, export_gltf_json_with_provenance, import_glb, import_glb_bytes, GltfConfig,
 };
 pub use json::{from_json_string, load_asdf_json, save_asdf_json, to_json_string};
 pub use nanite::{

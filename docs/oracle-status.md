@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 841 |
+| 🟢 Not ignored | 842 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **841** |
+| **Total** | **842** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (841)
+## 🟢 Not ignored (842)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -63,6 +63,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_node_backend_matrix.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |
+| `test_provenance.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
@@ -70,7 +71,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_eval_api_oracle.rs` | 7 |
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
-| `test_provenance.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |

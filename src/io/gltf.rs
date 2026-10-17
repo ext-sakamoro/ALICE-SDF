@@ -14,6 +14,7 @@ use crate::compiled::real::LawMinMax;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
+use crate::provenance::Provenance;
 use std::io::Write;
 use std::path::Path;
 
@@ -168,20 +169,36 @@ pub fn export_glb(
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
 ) -> Result<(), IoError> {
+    export_glb_with_provenance(mesh, path, config, materials, &Provenance::sdf())
+}
+
+/// [`export_glb`] with the caller's semantics identifier in `asset.extras` (see [`crate::provenance`])
+pub fn export_glb_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &GltfConfig,
+    materials: Option<&MaterialLibrary>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     // meshopt compression path: delegate to meshopt_gltf module
     // (see GltfConfig::meshopt_compress docs for limitations)
     if config.meshopt_compress {
-        use crate::io::meshopt_gltf::{export_glb_meshopt, MeshoptGltfConfig};
+        use crate::io::meshopt_gltf::{
+            export_glb_meshopt_bytes_skinned_with_provenance, MeshoptGltfConfig,
+        };
         let mo_config = MeshoptGltfConfig {
             export_normals: config.export_normals,
             export_uvs: config.export_uvs,
             level: config.meshopt_level,
             double_sided: config.double_sided,
         };
-        return export_glb_meshopt(mesh, path, &mo_config);
+        let bytes =
+            export_glb_meshopt_bytes_skinned_with_provenance(mesh, None, &mo_config, provenance)?;
+        std::fs::write(path, bytes)?;
+        return Ok(());
     }
 
-    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials)?;
+    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials, provenance)?;
 
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -227,20 +244,34 @@ pub fn export_glb_bytes(
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
 ) -> Result<Vec<u8>, IoError> {
+    export_glb_bytes_with_provenance(mesh, config, materials, &Provenance::sdf())
+}
+
+/// [`export_glb_bytes`] with the caller's semantics identifier in `asset.extras` (see [`crate::provenance`])
+pub fn export_glb_bytes_with_provenance(
+    mesh: &Mesh,
+    config: &GltfConfig,
+    materials: Option<&MaterialLibrary>,
+    provenance: &Provenance,
+) -> Result<Vec<u8>, IoError> {
     // meshopt compression path: delegate to meshopt_gltf module
     // (see GltfConfig::meshopt_compress docs for limitations)
     if config.meshopt_compress {
-        use crate::io::meshopt_gltf::{export_glb_meshopt_bytes, MeshoptGltfConfig};
+        use crate::io::meshopt_gltf::{
+            export_glb_meshopt_bytes_skinned_with_provenance, MeshoptGltfConfig,
+        };
         let mo_config = MeshoptGltfConfig {
             export_normals: config.export_normals,
             export_uvs: config.export_uvs,
             level: config.meshopt_level,
             double_sided: config.double_sided,
         };
-        return export_glb_meshopt_bytes(mesh, &mo_config);
+        return export_glb_meshopt_bytes_skinned_with_provenance(
+            mesh, None, &mo_config, provenance,
+        );
     }
 
-    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials)?;
+    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials, provenance)?;
 
     let json_padded_len = (json_bytes.len() + 3) & !3;
     let bin_padded_len = (bin_bytes.len() + 3) & !3;
@@ -275,7 +306,18 @@ pub fn export_gltf_json(
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
 ) -> Result<(), IoError> {
-    let (json_bytes, bin) = build_glb_data(mesh, config, materials)?;
+    export_gltf_json_with_provenance(mesh, path, config, materials, &Provenance::sdf())
+}
+
+/// [`export_gltf_json`] with the caller's semantics identifier in `asset.extras` (see [`crate::provenance`])
+pub fn export_gltf_json_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &GltfConfig,
+    materials: Option<&MaterialLibrary>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
+    let (json_bytes, bin) = build_glb_data(mesh, config, materials, provenance)?;
 
     // A .gltf has no BIN chunk: the buffer must carry its bytes in `uri`
     // (glTF 2.0 §3.6.1.1), here as a base64 data URI
@@ -337,6 +379,7 @@ fn build_glb_data(
     mesh: &Mesh,
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
+    provenance: &Provenance,
 ) -> Result<(Vec<u8>, Vec<u8>), IoError> {
     let vert_count = mesh.vertices.len();
     let use_u16 = vert_count <= 65535;
@@ -960,7 +1003,11 @@ fn build_glb_data(
     }
 
     // Build JSON
-    let mut json = String::from(r#"{"asset":{"version":"2.0","generator":"ALICE-SDF"}"#);
+    let mut json = format!(
+        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF","extras":{{"{}":"{}"}}}}"#,
+        crate::provenance::KEY,
+        provenance.hex()
+    );
 
     // Extensions
     if needs_quantization_ext && !used_extensions.contains(&"KHR_mesh_quantization".to_string()) {
@@ -1504,8 +1551,13 @@ mod tests {
                 .with_ao_map("textures/ao.png"),
         );
 
-        let (json_bytes, _bin) =
-            build_glb_data(&mesh, &GltfConfig::default(), Some(&mat_lib)).unwrap();
+        let (json_bytes, _bin) = build_glb_data(
+            &mesh,
+            &GltfConfig::default(),
+            Some(&mat_lib),
+            &Provenance::sdf(),
+        )
+        .unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
 
         // Verify texture pipeline is present
@@ -1552,7 +1604,8 @@ mod tests {
             ..Default::default()
         };
 
-        let (json_bytes, bin) = build_glb_data(&mesh, &gltf_config, None).unwrap();
+        let (json_bytes, bin) =
+            build_glb_data(&mesh, &gltf_config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
 
         // Should declare the extension
@@ -1571,7 +1624,8 @@ mod tests {
             "Missing dequantization scale"
         );
         // Compare with non-quantized version to verify size reduction
-        let (_, bin_float) = build_glb_data(&mesh, &GltfConfig::default(), None).unwrap();
+        let (_, bin_float) =
+            build_glb_data(&mesh, &GltfConfig::default(), None, &Provenance::sdf()).unwrap();
         assert!(
             bin.len() < bin_float.len(),
             "Quantized buffer ({}) should be smaller than float ({})",
@@ -1646,7 +1700,8 @@ mod tests {
             ..Default::default()
         };
 
-        let (json_bytes, bin) = build_glb_data(&mesh, &gltf_config, Some(&mat_lib)).unwrap();
+        let (json_bytes, bin) =
+            build_glb_data(&mesh, &gltf_config, Some(&mat_lib), &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
 
         // Should use bufferView instead of URI
@@ -1699,7 +1754,8 @@ mod tests {
             ..Default::default()
         };
 
-        let (json_bytes, _) = build_glb_data(&mesh, &gltf_config, Some(&mat_lib)).unwrap();
+        let (json_bytes, _) =
+            build_glb_data(&mesh, &gltf_config, Some(&mat_lib), &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
 
         assert!(
@@ -1814,8 +1870,13 @@ mod tests {
         let mut mat_lib = MaterialLibrary::new();
         mat_lib.add(crate::material::Material::metal("m", 0.5, 0.5, 0.5, 0.2));
 
-        let (json_bytes, _bin) =
-            build_glb_data(&mesh, &GltfConfig::default(), Some(&mat_lib)).unwrap();
+        let (json_bytes, _bin) = build_glb_data(
+            &mesh,
+            &GltfConfig::default(),
+            Some(&mat_lib),
+            &Provenance::sdf(),
+        )
+        .unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         assert!(
             !json_str.contains(r#""doubleSided":true"#),
@@ -1841,7 +1902,8 @@ mod tests {
             double_sided: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, Some(&mat_lib)).unwrap();
+        let (json_bytes, _bin) =
+            build_glb_data(&mesh, &config, Some(&mat_lib), &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         assert!(
             json_str.contains(r#""doubleSided":true"#),
@@ -1860,7 +1922,13 @@ mod tests {
         let mut mat_lib = MaterialLibrary::new();
         mat_lib.add(crate::material::Material::metal("m", 0.5, 0.5, 0.5, 0.2));
 
-        let (json_bytes, _bin) = build_glb_data(&mesh, &GltfConfig::aaa(), Some(&mat_lib)).unwrap();
+        let (json_bytes, _bin) = build_glb_data(
+            &mesh,
+            &GltfConfig::aaa(),
+            Some(&mat_lib),
+            &Provenance::sdf(),
+        )
+        .unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         assert!(
             json_str.contains(r#""doubleSided":true"#),
@@ -1895,7 +1963,7 @@ mod tests {
             quantize_positions: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         // componentType 5122 = SHORT
         assert!(
@@ -1918,7 +1986,7 @@ mod tests {
             quantize_normals: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         // BYTE (5120) componentType (SBYTE snorm)
         assert!(
@@ -1935,7 +2003,7 @@ mod tests {
             quantize_uvs: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         // UNSIGNED_SHORT (5123) componentType, normalized:true
         assert!(
@@ -1954,7 +2022,7 @@ mod tests {
             quantize_colors: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         // UNSIGNED_BYTE (5121) componentType
         assert!(
@@ -1976,7 +2044,7 @@ mod tests {
             quantize_colors: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         assert!(
             json_str.contains(r#""componentType":5122"#),
@@ -1997,7 +2065,7 @@ mod tests {
             quantize_tangents: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         // BYTE (5120) componentType (SBYTE snorm)
         assert!(
@@ -2023,7 +2091,7 @@ mod tests {
             quantize_tangents: true,
             ..Default::default()
         };
-        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None).unwrap();
+        let (json_bytes, _bin) = build_glb_data(&mesh, &config, None, &Provenance::sdf()).unwrap();
         let json_str = String::from_utf8(json_bytes).unwrap();
         assert!(
             json_str.contains(r#""componentType":5122"#),
