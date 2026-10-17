@@ -3,8 +3,8 @@
 //! A `HashMap` / `HashSet` iterates in an order that is unspecified and differs between
 //! runs, so a result built by iterating one can differ between runs. The library uses
 //! hash collections only through these wrappers: lookup, insertion, removal and size,
-//! and a few aggregates whose result does not depend on the order (a count, the
-//! smallest key under a total order, the entries sorted by key). There is no
+//! and a few aggregates that walk the entries in key order (so a callback with side
+//! effects sees the same sequence on every run). There is no
 //! `iter`, no `IntoIterator` and no `Deref` to the inner collection, so a `for` loop
 //! or an iterator chain over one does not compile; this module is the one place in
 //! the library that names `HashMap` / `HashSet` (.github/clippy-lib/clippy.toml bans
@@ -97,27 +97,44 @@ impl<K: Eq + Hash, V> UnorderedMap<K, V> {
     pub fn clear(&mut self) {
         self.0.clear();
     }
-
-    /// How many values satisfy `pred` (an integer count, the same in any order)
-    pub fn count_values_where(&self, pred: impl Fn(&V) -> bool) -> usize {
-        self.0.values().filter(|v| pred(v)).count()
-    }
-
-    /// The sum of `f` over the values: an integer, so the same in any order
-    pub fn sum_values_by(&self, f: impl Fn(&V) -> usize) -> usize {
-        self.0.values().map(f).sum()
-    }
-
-    /// Applies `f` to every value. `f` is `Fn`, so it cannot carry state from one value
-    /// to the next: each value's result does not depend on the order
-    pub fn update_each_value(&mut self, f: impl Fn(&mut V)) {
-        for v in self.0.values_mut() {
-            f(v);
-        }
-    }
 }
 
 impl<K: Eq + Hash + Ord, V> UnorderedMap<K, V> {
+    // Every traversal of the values below walks them in key order: a callback is free
+    // to have side effects (a `Cell`, a `RefCell`, a static), and what it sees is the
+    // same sequence on every run
+
+    /// How many values satisfy `pred`
+    pub fn count_values_where(&self, pred: impl Fn(&V) -> bool) -> usize {
+        self.sorted_entries()
+            .into_iter()
+            .filter(|(_, v)| pred(v))
+            .count()
+    }
+
+    /// The sum of `f` over the values (an integer)
+    pub fn sum_values_by(&self, f: impl Fn(&V) -> usize) -> usize {
+        self.sorted_entries().into_iter().map(|(_, v)| f(v)).sum()
+    }
+
+    /// Applies `f` to every value, in key order
+    pub fn update_each_value(&mut self, f: impl Fn(&mut V)) {
+        for (_, v) in self.sorted_entries_mut() {
+            f(v);
+        }
+    }
+
+    /// The key with the smallest `(by(key, value), key)`, the key breaking ties;
+    /// `by` is called in key order
+    #[cfg(feature = "svo")] // the svo chunk cache's eviction is the one user
+    pub fn min_key_by<O: Ord>(&self, by: impl Fn(&K, &V) -> O) -> Option<&K> {
+        self.sorted_entries()
+            .into_iter()
+            .map(|(k, v)| (by(k, v), k))
+            .min()
+            .map(|(_, k)| k)
+    }
+
     /// The entries in key order
     pub fn sorted_entries(&self) -> Vec<(&K, &V)> {
         let mut out: Vec<(&K, &V)> = self.0.iter().collect();
@@ -138,17 +155,6 @@ impl<K: Eq + Hash + Ord, V> UnorderedMap<K, V> {
         out.sort_unstable();
         out
     }
-
-    /// The key with the smallest `(by(key, value), key)`: a total order with the key
-    /// breaking ties, so the answer does not depend on the iteration order
-    #[cfg(feature = "svo")] // the svo chunk cache's eviction is the one user
-    pub fn min_key_by<O: Ord>(&self, by: impl Fn(&K, &V) -> O) -> Option<&K> {
-        self.0
-            .iter()
-            .map(|(k, v)| (by(k, v), k))
-            .min()
-            .map(|(_, k)| k)
-    }
 }
 
 impl<K: Eq + Hash + Borrow<Q>, Q: Eq + Hash + ?Sized, V> std::ops::Index<&Q>
@@ -162,7 +168,7 @@ impl<K: Eq + Hash + Borrow<Q>, Q: Eq + Hash + ?Sized, V> std::ops::Index<&Q>
     }
 }
 
-impl<K: Eq + Hash, V: Ord + Copy> UnorderedMap<K, V> {
+impl<K: Eq + Hash + Ord, V: Ord + Copy> UnorderedMap<K, V> {
     /// The largest value (integers and other totally ordered values; the same in any order)
     pub fn max_value(&self) -> Option<V> {
         self.0.values().copied().max()
@@ -222,5 +228,59 @@ impl<T: Eq + Hash> UnorderedSet<T> {
 impl<T: Eq + Hash> FromIterator<T> for UnorderedSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(it: I) -> Self {
         Self(it.into_iter().collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    /// Keys inserted out of order, many enough that the hash order is not key order
+    fn map() -> UnorderedMap<u32, u32> {
+        let mut m = UnorderedMap::new();
+        for i in 0..64u32 {
+            let k = (i * 37) % 64;
+            m.insert(k, k * 10);
+        }
+        m
+    }
+
+    fn key_order() -> Vec<u32> {
+        (0..64u32).map(|k| k * 10).collect()
+    }
+
+    /// What a callback with a side effect observes is the values in key order
+    #[test]
+    fn a_callback_sees_the_values_in_key_order() {
+        let mut m = map();
+        let seen = RefCell::new(Vec::new());
+        let _ = m.count_values_where(|v| {
+            seen.borrow_mut().extend([*v]);
+            true
+        });
+        assert_eq!(seen.take(), key_order(), "count_values_where");
+        let _ = m.sum_values_by(|v| {
+            seen.borrow_mut().extend([*v]);
+            0
+        });
+        assert_eq!(seen.take(), key_order(), "sum_values_by");
+        m.update_each_value(|v| seen.borrow_mut().extend([*v]));
+        assert_eq!(seen.take(), key_order(), "update_each_value");
+        let got: Vec<u32> = m.sorted_entries().into_iter().map(|(_, v)| *v).collect();
+        assert_eq!(got, key_order(), "sorted_entries");
+    }
+
+    #[cfg(feature = "svo")]
+    #[test]
+    fn min_key_by_calls_in_key_order_and_breaks_ties_by_key() {
+        let m = map();
+        let seen = RefCell::new(Vec::new());
+        let k = m.min_key_by(|k, _| {
+            seen.borrow_mut().extend([*k]);
+            0u8
+        });
+        assert_eq!(k, Some(&0));
+        assert_eq!(seen.take(), (0..64u32).collect::<Vec<_>>());
     }
 }

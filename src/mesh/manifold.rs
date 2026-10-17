@@ -74,7 +74,7 @@ impl std::fmt::Display for MeshValidation {
 }
 
 /// Edge key for hash map lookup (order-independent)
-#[derive(Hash, Eq, PartialEq, Clone, Copy, Debug)]
+#[derive(Hash, Eq, PartialEq, PartialOrd, Ord, Clone, Copy, Debug)]
 struct EdgeKey(u32, u32);
 
 impl EdgeKey {

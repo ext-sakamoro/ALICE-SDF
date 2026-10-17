@@ -97,7 +97,7 @@ impl Default for CacheConfig {
 ///
 /// Two identical SDF trees with the same bounds and resolution will produce
 /// the same `MeshCacheKey`, enabling cache hits across frames or sessions.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MeshCacheKey {
     /// Hash of the SDF node tree.
     pub sdf_hash: u64,
