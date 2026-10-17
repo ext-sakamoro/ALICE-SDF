@@ -8,15 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1217 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 948 |
-| | **total** | **2174** |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1208 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 959 |
-| | **total** | **2176** |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1220 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 965 |
-| | **total** | **2194** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1237 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 976 |
+| | **total** | **2222** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -75,9 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1217)
-## L1 — example-only (1208)
-## L1 — example-only (1220)
+## L1 — example-only (1237)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -127,6 +119,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::bindings_of`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
 - `src/interval.rs`: `Interval::intersect`, `Interval::overlaps`
 - `src/io/abm.rs`: `read_abm_header`
+- `src/io/asdf.rs`: `AsdfHeader::new`, `load_asdf_unverified`
 - `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
 - `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`, `export_gltf_json_with_provenance`
 - `src/io/iges.rs`: `IgesConfig`, `export_iges`, `export_iges_with_provenance`
@@ -206,13 +199,12 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/cylinder.rs`: `sdf_cylinder_capped`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
 - `src/primitives/torus.rs`: `sdf_torus_capped`
-- `src/provenance.rs`: `Accepted`, `Provenance::new`, `ProvenanceError`, `check`, `check_sdf`, `from_bytes`, `read`
+- `src/provenance.rs`: `Checked::semantics`, `DDS_TAG`, `ProvenanceError`, `check`, `check_sdf`, `dds_reserved`, `from_bytes`, `read`, `sidecar_path`, `write_sidecar`
 - `src/raw_minmax.rs`: `RawMinMax`, `raw_max_f32`, `raw_max_f32x8`, `raw_min_f32`, `raw_min_f32x8`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
-- `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `PREVIOUS_SDF_SEMANTICS_IDS`, `SDF_SEMANTICS_BY_DET_MATH`, `SDF_SEMANTICS_ID`, `SDF_SEMANTICS_PINS`, `check_sdf_semantics`, `sdf_semantics_id_for`
-- `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `PREVIOUS_SDF_SEMANTICS_IDS`, `SDF_SEMANTICS_PINS`, `check_sdf_semantics`
+- `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `SDF_SEMANTICS_PINS`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
 - `src/sim_bridge.rs`: `GpuPhysicsBundle`, `SimulatedSdf`, `SimulatedSdf::add_erosion`, `SimulatedSdf::add_fracture`, `SimulatedSdf::add_modifier`, `SimulatedSdf::add_phase_change`, `SimulatedSdf::add_pressure`, `SimulatedSdf::add_thermal`, `SimulatedSdf::bounds`, `SimulatedSdf::clear_modifiers`, `SimulatedSdf::compiled`, `SimulatedSdf::distance`, `SimulatedSdf::from_arc`, `SimulatedSdf::modifier_count`, `SimulatedSdf::modifier_mut`, `SimulatedSdf::new`, `SimulatedSdf::normal`, `SimulatedSdf::update`, `SimulatedSdf::with_bounds`, `attach_physics`, `gpu_mesh_with_physics`, `simulate_sdf`
 - `src/soa.rs`: `AlignedVec::as_mut_ptr`, `AlignedVec::as_ptr`, `AlignedVec::clear`, `AlignedVec::is_empty`, `SIMD_ALIGNMENT`, `SoADistances::as_slice`, `SoADistances::is_empty`, `SoADistances::len`, `SoADistances::store_simd_unchecked`, `SoAPoints::as_ptrs`, `SoAPoints::clear`, `SoAPoints::get`, `SoAPoints::iter`, `SoAPoints::load_simd_unchecked`
@@ -238,7 +230,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/transforms.rs`: `SdfNode::translate_vec`
 - `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `export_step_validated_with_provenance`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`
 - `src/volume/bake.rs`: `bake_volume_compiled`, `bake_volume_with_normals`
-- `src/volume/export.rs`: `DdsFormat`, `export_dds_3d`, `export_dds_3d_distgrad`, `export_raw`, `export_raw_with_mips`
+- `src/volume/export.rs`: `DdsFormat`, `export_dds_3d`, `export_dds_3d_distgrad`, `export_dds_3d_distgrad_with_provenance`, `export_dds_3d_with_provenance`, `export_raw`, `export_raw_with_mips`, `export_raw_with_mips_with_provenance`, `export_raw_with_provenance`
 - `src/volume/gpu_bake.rs`: `gpu_bake_volume_with_normals`
 - `src/volume/mipchain.rs`: `generate_mip_chain_distgrad`
 - `src/volume/mod.rs`: `Volume3D::get`, `Volume3D::index`, `Volume3D::mip_count`, `Volume3D::new`, `Volume3D::sample_trilinear`, `Volume3D::set`, `Volume3D::voxel_count`, `Volume3D::voxel_size`, `Volume3D::voxel_to_world`, `Volume3D::world_size`, `VoxelDistGrad`
