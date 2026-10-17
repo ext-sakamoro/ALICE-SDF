@@ -480,6 +480,12 @@ jobs:
         run: |
           python scripts/test_provenance_writers.py
           python scripts/provenance_writers.py
+      # G8: the tree types keep Deserialize, so every bare deserialization in src is reviewed
+      # (inside a checked loader, another type, or pending); 0 files scanned fails
+      - name: bare deserialization reads (test, then check)
+        run: |
+          python scripts/test_bare_serde_reads.py
+          python scripts/bare_serde_reads.py
       - name: README sync oracle (検査器自身の試験)
         run: python scripts/test_readme_sync.py
       - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)
@@ -626,7 +632,7 @@ jobs:
       # so the default `cargo test --tests` builds them empty). `gpu` compiles the
       # GPU MC + physics case; without an adapter it skips (ALICE_SDF_REQUIRE_GPU unset).
       - name: bridge oracles (codec / asp / sdf-cache / sim)
-        run: cargo test --features "physics,codec,asp,sdf-cache,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
+        run: cargo test --features "physics,codec,asp,sdf-cache,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_g8_tree_text --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
 
   mobile:
     name: Mobile — iOS / Android cross-compile

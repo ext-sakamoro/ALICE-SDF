@@ -7,7 +7,6 @@
 expected-writers 44
 
 src/io/alembic.rs::export_alembic
-src/io/json.rs::save_asdf_json
 src/io/mod.rs::save
 src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material

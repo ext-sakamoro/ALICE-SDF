@@ -2,6 +2,17 @@
 //!
 //! Human-readable JSON representation of SDF trees.
 //!
+//! # Semantics identifier (ALICE-Law G8)
+//!
+//! A `.asdf.json` document is the tree's JSON object with one more top-level field,
+//! `"alice:semantics_id"` ([`crate::provenance::KEY`]): the 64 hex digits of the identifier
+//! of the arithmetic the tree was written under (this crate's `SDF_SEMANTICS_ID` unless a
+//! `*_with_provenance` writer is given another). The readers check it: [`load_asdf_json`] and
+//! [`from_json_string`] refuse a document without one ([`IoError::Unpinned`], a document
+//! written before 7.0.0) and one with another identifier ([`IoError::SemanticsMismatch`]);
+//! [`load_asdf_json_unverified`] and [`from_json_string_unverified`] also read a document
+//! without one and return the tree with what is known about it ([`Checked`]).
+//!
 //! # Deep Fried Optimizations
 //! - **Streaming I/O**: Uses `serde_json::to_writer`/`from_reader` with `BufWriter`/`BufReader`.
 //! - **Reduced Allocations**: Eliminates intermediate Strings for file I/O.
@@ -9,47 +20,124 @@
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
+use crate::provenance::{sdf_load_verdict, Checked, Provenance, KEY};
 use crate::types::SdfTree;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 
-/// Save an SDF tree to JSON format (Streaming)
-///
-/// Writes directly to file buffer, avoiding intermediate String allocation.
+pub const FORMAT: &str = "ASDF JSON";
+
+/// The tree's JSON object with the identifier as a top-level field
+fn stamped(tree: &SdfTree, provenance: &Provenance) -> Result<serde_json::Value, IoError> {
+    let mut value =
+        serde_json::to_value(tree).map_err(|e| IoError::Serialization(e.to_string()))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| IoError::Serialization("an SDF tree is not a JSON object".to_string()))?;
+    object.insert(KEY.to_string(), serde_json::Value::String(provenance.hex()));
+    Ok(value)
+}
+
+/// The tree and the identifier a document carries (`None`: no identifier field)
+pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>), IoError> {
+    let stored = match value.as_object_mut().and_then(|o| o.remove(KEY)) {
+        None => None,
+        Some(serde_json::Value::String(hex)) => Some(
+            Provenance::from_hex(&hex)
+                .ok_or_else(|| {
+                    IoError::InvalidFormat(format!("{FORMAT}: {KEY} is not 64 hex digits"))
+                })?
+                .semantics_id,
+        ),
+        Some(_) => {
+            return Err(IoError::InvalidFormat(format!(
+                "{FORMAT}: {KEY} is not a string"
+            )));
+        }
+    };
+    let tree: SdfTree =
+        serde_json::from_value(value).map_err(|e| IoError::Serialization(e.to_string()))?;
+    Ok((tree, stored))
+}
+
+fn checked(value: serde_json::Value, allow_unpinned: bool) -> Result<Checked<SdfTree>, IoError> {
+    let (tree, stored) = split(value)?;
+    let verdict = sdf_load_verdict(stored, FORMAT, allow_unpinned)?;
+    Ok(Checked::new(tree, verdict))
+}
+
+/// Save an SDF tree to JSON format (Streaming), stamped with this crate's identifier
 pub fn save_asdf_json(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> {
+    save_asdf_json_with_provenance(tree, path, &Provenance::sdf())
+}
+
+/// [`save_asdf_json`] with the identifier the caller gives
+pub fn save_asdf_json_with_provenance(
+    tree: &SdfTree,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let file = File::create(path)?;
     let writer = BufWriter::new(file);
-
-    // Write directly to file buffer (pretty for readability)
-    serde_json::to_writer_pretty(writer, tree)
+    serde_json::to_writer_pretty(writer, &stamped(tree, provenance)?)
         .map_err(|e| IoError::Serialization(e.to_string()))?;
-
     Ok(())
 }
 
-/// Load an SDF tree from JSON format (Streaming)
-///
-/// Reads directly from file buffer, avoiding intermediate String allocation.
-pub fn load_asdf_json(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
+fn read_value(path: impl AsRef<Path>) -> Result<serde_json::Value, IoError> {
     let file = File::open(path)?;
-    let reader = BufReader::new(file);
-
-    // Read directly from file buffer
-    let tree: SdfTree =
-        serde_json::from_reader(reader).map_err(|e| IoError::Serialization(e.to_string()))?;
-
-    Ok(tree)
+    serde_json::from_reader(BufReader::new(file)).map_err(|e| IoError::Serialization(e.to_string()))
 }
 
-/// Serialize an SDF tree to JSON string (Memory-bound, prefer file I/O)
+/// Load an SDF tree from JSON format, checking its identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a document without an identifier ([`load_asdf_json_unverified`]
+/// reads it), [`IoError::SemanticsMismatch`] for another identifier, and the I/O and JSON errors.
+pub fn load_asdf_json(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
+    checked(read_value(path)?, false).map(|c| c.into_parts().0)
+}
+
+/// [`load_asdf_json`] that also reads a document without an identifier, marking it
+/// [`crate::provenance::StoredSemantics::Unpinned`]; another identifier is still refused
+pub fn load_asdf_json_unverified(path: impl AsRef<Path>) -> Result<Checked<SdfTree>, IoError> {
+    checked(read_value(path)?, true)
+}
+
+/// Serialize an SDF tree to a JSON string (Memory-bound, prefer file I/O), stamped with this
+/// crate's identifier
 pub fn to_json_string(tree: &SdfTree) -> Result<String, IoError> {
-    serde_json::to_string_pretty(tree).map_err(|e| IoError::Serialization(e.to_string()))
+    to_json_string_with_provenance(tree, &Provenance::sdf())
 }
 
-/// Parse an SDF tree from JSON string
-pub fn from_json_string(json: &str) -> Result<SdfTree, IoError> {
+/// [`to_json_string`] with the identifier the caller gives
+pub fn to_json_string_with_provenance(
+    tree: &SdfTree,
+    provenance: &Provenance,
+) -> Result<String, IoError> {
+    serde_json::to_string_pretty(&stamped(tree, provenance)?)
+        .map_err(|e| IoError::Serialization(e.to_string()))
+}
+
+fn parse_value(json: &str) -> Result<serde_json::Value, IoError> {
     serde_json::from_str(json).map_err(|e| IoError::Serialization(e.to_string()))
+}
+
+/// Parse an SDF tree from a JSON string, checking its identifier
+///
+/// # Errors
+///
+/// As [`load_asdf_json`].
+pub fn from_json_string(json: &str) -> Result<SdfTree, IoError> {
+    checked(parse_value(json)?, false).map(|c| c.into_parts().0)
+}
+
+/// [`from_json_string`] that also reads a document without an identifier (see
+/// [`load_asdf_json_unverified`])
+pub fn from_json_string_unverified(json: &str) -> Result<Checked<SdfTree>, IoError> {
+    checked(parse_value(json)?, true)
 }
 
 #[cfg(test)]

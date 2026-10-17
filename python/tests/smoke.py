@@ -100,7 +100,8 @@ def main() -> None:
     # ── serialization round trips ────────────────────────────────────────
     j = sdf.to_json(u)
     check(isinstance(j, str) and json.loads(j), "to_json")
-    back = sdf.from_json(j)
+    back, semantics = sdf.from_json(j)
+    assert semantics == "current", semantics
     for p in ((0.0, 0.0, 0.0), (0.3, 0.2, -0.7), (1.5, 0.0, 0.0)):
         check(abs(back.eval(*p) - u.eval(*p)) < EPS, f"json round trip at {p}")
 
