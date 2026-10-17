@@ -159,6 +159,8 @@ python3 scripts/test_readme_sync.py
 python3 scripts/readme_sync.py --check
 python3 scripts/test_version_sync.py
 python3 scripts/version_sync.py --check
+python3 scripts/test_shared_files.py
+scripts/shared_files.sh
 
 # ci.yml の env と同じ CARGO_TERM_COLOR=always で回す (cargo の出力を読む parser の試験)
 step "cargo output parsers: oracle (色付き出力) + test に色付き sample がある、対象 0 件で fail"
