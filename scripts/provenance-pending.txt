@@ -12,7 +12,6 @@ src/io/abm.rs::to_bytes
 src/io/alembic.rs::export_alembic
 src/io/asdf.rs::save_asdf
 src/io/asdf.rs::to_bytes
-src/io/iges.rs::export_iges
 src/io/json.rs::save_asdf_json
 src/io/mod.rs::save
 src/io/nanite.rs::export_nanite
@@ -21,18 +20,15 @@ src/io/nanite.rs::export_nanite_json
 src/io/nanite.rs::export_nanite_with_config
 src/io/splat.rs::save_splat
 src/io/splat.rs::to_bytes
-src/io/step.rs::export_step
 src/io/ue5_asset.rs::export_ue5_mesh
 src/io/ue5_asset.rs::export_ue5_mesh_binary
 src/io/ue5_asset.rs::export_ue5_mesh_with_lods
 src/io/unity_mesh.rs::export_unity_mesh
 src/io/unity_mesh.rs::export_unity_mesh_binary
-src/io/usd.rs::export_usda
 src/io/vox.rs::save_vox
 src/mesh/lod_persist.rs::save_lod_chain
 src/mesh/lod_persist.rs::save_lod_chain_metadata
 src/svo/streaming.rs::to_bytes
-src/validity.rs::export_step_validated
 src/volume/export.rs::export_dds_3d
 src/volume/export.rs::export_dds_3d_distgrad
 src/volume/export.rs::export_raw

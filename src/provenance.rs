@@ -15,6 +15,9 @@
 //! | OBJ (and its MTL) | a header comment: `# alice:semantics_id=<64 hex>` |
 //! | PLY (binary and ASCII) | a header comment: `comment alice:semantics_id=<64 hex>` |
 //! | glTF (`.glb`, `.gltf`, meshopt-compressed `.glb`) | `asset.extras`: `{"alice:semantics_id": "<64 hex>"}` |
+//! | USD (`.usda`) | the layer's `customLayerData`: `string "alice:semantics_id" = "<64 hex>"` |
+//! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
+//! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
 //!
 //! [`read`] finds the identifier in a file of any of these formats, and [`check`] compares it with
 //! the expected one (or an earlier one the caller has verified) and names both on a mismatch.
@@ -182,6 +185,51 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
     if bytes.first() == Some(&b'{') {
         return json_tagged(bytes, "glTF");
     }
+    if bytes.starts_with(b"#usda") {
+        // USDA: the layer metadata (the parenthesised block after the first line) holds
+        // `customLayerData = { string "alice:semantics_id" = "<hex>" }`
+        let end = find(bytes, b"\n)")
+            .ok_or_else(|| ProvenanceError::Unreadable("USDA: no layer metadata block".into()))?;
+        let head = std::str::from_utf8(&bytes[..end])
+            .map_err(|_| ProvenanceError::Unreadable("USDA: header is not UTF-8".into()))?;
+        let key = format!("string \"{KEY}\" = \"");
+        return match head.find(&key) {
+            None => Err(ProvenanceError::Missing { format: "USDA" }),
+            Some(at) => head
+                .get(at + key.len()..at + key.len() + 64)
+                .and_then(Provenance::from_hex)
+                .ok_or_else(|| {
+                    ProvenanceError::Unreadable(format!("USDA: {KEY} is not 64 hex digits"))
+                }),
+        };
+    }
+    if bytes.starts_with(b"ISO-10303-21;") {
+        // STEP: the identifier is one of the strings of FILE_DESCRIPTION's description list
+        let start = find(bytes, b"FILE_DESCRIPTION((")
+            .ok_or(ProvenanceError::Missing { format: "STEP" })?
+            + b"FILE_DESCRIPTION((".len();
+        let len = find(&bytes[start..], b"),").ok_or_else(|| {
+            ProvenanceError::Unreadable("STEP: FILE_DESCRIPTION not closed".into())
+        })?;
+        return tagged_in(&bytes[start..start + len], "STEP");
+    }
+    if is_iges_start(bytes) {
+        // IGES: the Start section's text (columns 1-72 of the `S` lines) joined
+        let mut joined = Vec::new();
+        for line in bytes.split(|&b| b == b'\n') {
+            let line = line.strip_suffix(b"\r").unwrap_or(line);
+            if line.len() < 73 || line[72] != b'S' {
+                break;
+            }
+            let text = &line[..72];
+            let trimmed = text
+                .iter()
+                .rposition(|&c| c != b' ')
+                .map_or(&text[..0], |i| &text[..=i]);
+            joined.extend_from_slice(trimmed);
+        }
+        return tagged_in(&joined, "IGES");
+    }
     if bytes.starts_with(b"ply\n") || bytes.starts_with(b"ply\r\n") {
         // the header ends at `end_header`; the identifier is one of its comment lines
         let end = find(bytes, b"end_header")
@@ -252,6 +300,13 @@ fn json_tagged(bytes: &[u8], format: &'static str) -> Result<Provenance, Provena
             ProvenanceError::Unreadable(format!("{format}: {KEY} is not 64 hex digits"))
         }),
     }
+}
+
+/// An IGES file starts with a Start-section line: 80 columns, `S` in column 73, sequence 1
+fn is_iges_start(bytes: &[u8]) -> bool {
+    let first = bytes.split(|&b| b == b'\n').next().unwrap_or(&[]);
+    let first = first.strip_suffix(b"\r").unwrap_or(first);
+    first.len() == 80 && first[72] == b'S' && first[73..].trim_ascii() == b"1"
 }
 
 /// The position of the first occurrence of `needle` in `haystack`

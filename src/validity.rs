@@ -425,6 +425,28 @@ pub fn export_step_validated(
     cfg: &crate::io::step::StepConfig,
     req: PrintRequirements,
 ) -> Result<ValidityReport, ValidatedExportError> {
+    export_step_validated_with_provenance(
+        path,
+        node,
+        cfg,
+        req,
+        &crate::provenance::Provenance::sdf(),
+    )
+}
+
+/// [`export_step_validated`] with the caller's semantics identifier in the STEP header (see
+/// [`crate::io::step::export_step_with_provenance`])
+///
+/// # Errors
+///
+/// As [`export_step_validated`].
+pub fn export_step_validated_with_provenance(
+    path: impl AsRef<std::path::Path>,
+    node: &SdfNode,
+    cfg: &crate::io::step::StepConfig,
+    req: PrintRequirements,
+    provenance: &crate::provenance::Provenance,
+) -> Result<ValidityReport, ValidatedExportError> {
     let (lo, hi) = cfg.bounds;
     let (bmin, bmax) = (Vec3::splat(lo), Vec3::splat(hi));
     let mc = crate::mesh::MarchingCubesConfig {
@@ -436,6 +458,6 @@ pub fn export_step_validated(
     if !report.is_printable() {
         return Err(ValidatedExportError::NotPrintable(Box::new(report)));
     }
-    crate::io::step::export_step(path, node, cfg)?;
+    crate::io::step::export_step_with_provenance(path, node, cfg, provenance)?;
     Ok(report)
 }
