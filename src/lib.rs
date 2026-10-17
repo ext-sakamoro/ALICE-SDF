@@ -148,6 +148,7 @@ pub mod npr;
 pub mod operations;
 pub mod optimize;
 pub mod primitives;
+pub mod provenance;
 mod raw_minmax;
 pub mod raycast;
 pub mod soa;

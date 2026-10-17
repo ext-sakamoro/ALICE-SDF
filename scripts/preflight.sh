@@ -116,6 +116,9 @@ step "build configuration guard (G14, static): oracle + no native / fast-math / 
 python3 scripts/test_build_config_guard.py
 python3 scripts/build_config_guard.py
 python3 scripts/test_build_flags_check.py
+step "provenance writers: oracle + 公開の書き出し関数はすべて意味の識別子を書くか、未対応の一覧にある (件数固定、0 件で fail)"
+python3 scripts/test_provenance_writers.py
+python3 scripts/provenance_writers.py
 
 step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
 python3 scripts/test_ci_test_coverage_check.py
