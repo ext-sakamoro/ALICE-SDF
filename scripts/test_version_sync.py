@@ -81,6 +81,16 @@ class VersionSync(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(counts["install"], 1)
 
+    def test_the_generated_law_block_is_not_an_install_line(self):
+        doc = ('alice-x = "2"\n<!-- law-integration:begin law=abc -->\n'
+               '| End to end check | covered (`alice-x = "1"`) |\n<!-- law-integration:end -->\n')
+        errors, counts = self.run_check(base(**{"README.md": doc}))
+        self.assertEqual(errors, [])
+        self.assertEqual(counts["install"], 1)
+        # outside the block the same line is checked
+        errors, _ = self.run_check(base(**{"README.md": doc.replace("<!-- law-integration:end -->\n", "") + "x"}))
+        self.assertTrue(any('alice-x = "1"' in e for e in errors), errors)
+
     def test_pip_and_npm_pins_must_equal_the_crate_version(self):
         doc = "pip install alice_x==2.0.0\nnpm install alice-x@2.1.0\n"
         errors, _ = self.run_check(base(**{"README.md": doc}))
