@@ -79,6 +79,10 @@ step "libm dependency guard: oracle + libm の直接依存には clippy.toml の
 python3 scripts/test_libm_dependency_guard.py
 python3 scripts/libm_dependency_guard.py
 
+step "default-build dependency licences (G10): oracle + permissive only, nothing reached fails"
+python3 scripts/test_default_dependency_licenses.py
+python3 scripts/default_dependency_licenses.py
+
 step "hash collection iteration audit (G13): oracle + every HashMap / HashSet iteration in src/ has a verdict"
 python3 scripts/test_hash_order_audit.py
 python3 scripts/hash_order_audit.py
