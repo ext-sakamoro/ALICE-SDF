@@ -772,6 +772,15 @@ jobs:
         run: python3 scripts/test_clippy_lib_hidden_check.py
       - name: No max / min hides under an allow of the lint
         run: python3 scripts/clippy_lib_hidden_check.py --features "$LINT_FEATURES"
+      # ALICE-Law G7: every entry point that takes bytes, text, a reader, an extern "C" /
+      # pyo3 call or a wasm32-only export is listed in scripts/api_boundary.toml with a
+      # decision (handshake / local / pending). The wasm32 target installed above is
+      # required here: without it the run fails (preflight skips it out loud instead)
+      - name: API boundary manifest (tests, then check, 0 compared fails)
+        run: |
+          python3 scripts/test_api_boundary.py
+          python3 -c 'import os, tomllib; f = tomllib.load(open("scripts/api_boundary.toml", "rb"))["features"]; assert f == os.environ["LINT_FEATURES"], ("scripts/api_boundary.toml features differ from LINT_FEATURES", f)'
+          python3 scripts/api_boundary.py
 
       # examples/gpu_eval.rs は required-features = ["gpu"] なので default CI では
       # compile されない (1.9.2 まで API drift で壊れたまま気付かなかった)

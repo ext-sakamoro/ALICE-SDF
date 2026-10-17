@@ -1,0 +1,910 @@
+# scripts/api_boundary.py (ALICE-Law G7): every boundary item with its decision
+features = "aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
+bindings = ["pyo3"]
+targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
+
+# [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
+# 719 items: 6 handshake, 652 local, 61 pending (G8). Groups (count, decision):
+#      1  handshake: asdf_loaders_check_the_identifier
+#      1  handshake: an_asdf_file_from_6_1_0_is_refused_by_default_and_read_unverified
+#      2  handshake: an_earlier_published_identifier_reads_as_verified_previous
+#      1  handshake: stamped_writers_keep_both_identifiers_in_their_slots
+#      1  handshake: check_reads_this_previous_and_unknown_identifiers
+#      4  local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned
+#      1  local: computes the path of the .semantics sidecar from a path
+#      6  local: formats or wraps an identifier the caller holds for a writer to store
+#      1  local: maps a linked alice-det-math identifier to this crate's identifier (const table)
+#      1  local: parses the .asdf header and returns its stored identifier as a field; load_asdf does the comparison
+#      1  local: the linked alice-det-math identifier, documented as alice-det-math's, an in-process constant
+#      2  local: plain vector and rotation types of the API, they carry no Law
+#      1  pending: G8, the .asdf branch checks the identifier but the .asdf.json branch reads the tree without one
+#      5  pending: G8, the SDF tree text carries no semantics identifier, so a tree saved under another SDF arithmetic reads without a check (.asdf checks it)
+#      1  pending: G8, the received packet's tree carries no semantics identifier of the sending build
+#     11  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
+#      9  pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current
+#      1  pending: G8, the network weights file carries no semantics identifier of the build that trained it
+#      7  pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check
+#      2  pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under
+#      9  pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier
+#     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
+#     23  local: writes this crate's own value; stamping the stored file is G8's
+#      2  local: parses a shader language name
+#      3  pending: G8, wraps io::load / from_json_string, whose .asdf.json and JSON paths read a tree without an identifier
+#      1  pending: G8, wraps io::load_abm, whose file carries no semantics identifier
+#      2  pending: G8, wraps the glTF importer, which does not read the stored semantics identifier
+#     12  local: writes this build's tree or mesh out; stamping the file is G8's
+#    195  local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)
+#      3  pending: G8, reads a stored tree, ABM mesh or LOD chain without checking a semantics identifier
+#      7  local: writes this library's own tree or mesh to a path the caller gives
+#      5  local: writes a mesh this library generated to a path the caller gives
+#      3  local: returns shader source text generated from a handle of this library
+#    127  local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded
+#     30  local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded
+#      1  local: the Godot extension entry point, registers this build's classes
+#      6  local: Godot dispatches engine Variants to this build's own classes; no file is read
+#     16  local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded
+#     53  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#      1  local: reports a stored file's format, version and node count as text; the tree is not returned
+#     10  local: writes this build's own volume or STEP data; stamping is G8's
+#      2  local: writes this build's own LOD chain; stamping is G8's
+#      7  local: encodes this build's own mesh buffers
+#      4  local: one 8-bit code to or from a float by a single correctly rounded IEEE division or multiply and round, the same bits on every target; no stored form is parsed
+#      2  local: encodes or measures this build's own volume
+#      1  local: builds a packet from this build's own tree
+#      5  local: serialises this build's own value
+#      4  local: writes this build's own state for a snapshot or shape hash
+#     33  local: generates shader or source text from a tree of this process
+#     13  local: generates shader text
+#     29  local: shader text builders over names and expressions
+#      3  pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check
+#      1  local: returns the GPU adapter's name and backend as text
+#      2  local: compiles a tree of this process to machine code
+#     19  local: names, labels or asset paths of authored settings
+#      3  pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned
+#      3  local: renders this build's own values to pixels
+#      1  local: returns the schema description text
+#      2  local: the FFI's last error message
+#      4  local: octant arithmetic over small integers
+#      1  local: checks an in-memory linearised octree of this process
+
+[boundary]
+# 1 handshake
+"fn::io::asdf::load_asdf" = "handshake: asdf_loaders_check_the_identifier"
+
+# 1 handshake
+"fn::io::asdf::load_asdf_unverified" = "handshake: an_asdf_file_from_6_1_0_is_refused_by_default_and_read_unverified"
+
+# 2 handshake
+"fn::provenance::check" = "handshake: an_earlier_published_identifier_reads_as_verified_previous"
+"fn::provenance::check_sdf" = "handshake: an_earlier_published_identifier_reads_as_verified_previous"
+
+# 1 handshake
+"fn::provenance::check_producer" = "handshake: stamped_writers_keep_both_identifiers_in_their_slots"
+
+# 1 handshake
+"fn::semantics::check_sdf_semantics" = "handshake: check_reads_this_previous_and_unknown_identifiers"
+
+# 4 local
+"fn::provenance::from_bytes" = "local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned"
+"fn::provenance::from_bytes_with_producer" = "local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned"
+"fn::provenance::read" = "local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned"
+"fn::provenance::read_with_producer" = "local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned"
+
+# 1 local
+"fn::provenance::sidecar_path" = "local: computes the path of the .semantics sidecar from a path"
+
+# 6 local
+"fn::Provenance::hex" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Provenance::new" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Provenance::stl_header" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Provenance::tagged" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Stamp::stl_header" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Stamp::tagged" = "local: formats or wraps an identifier the caller holds for a writer to store"
+
+# 1 local
+"fn::semantics::sdf_semantics_id_for" = "local: maps a linked alice-det-math identifier to this crate's identifier (const table)"
+
+# 1 local
+"fn::AsdfHeader::from_bytes" = "local: parses the .asdf header and returns its stored identifier as a field; load_asdf does the comparison"
+
+# 1 local
+"reexport::alice_det_math::SEMANTICS_ID" = "local: the linked alice-det-math identifier, documented as alice-det-math's, an in-process constant"
+
+# 2 local
+"reexport::glam::Quat" = "local: plain vector and rotation types of the API, they carry no Law"
+"reexport::glam::Vec3" = "local: plain vector and rotation types of the API, they carry no Law"
+
+# 1 pending
+"fn::io::load" = "pending: G8, the .asdf branch checks the identifier but the .asdf.json branch reads the tree without one"
+
+# 5 pending
+"fn::io::json::from_json_string" = "pending: G8, the SDF tree text carries no semantics identifier, so a tree saved under another SDF arithmetic reads without a check (.asdf checks it)"
+"fn::io::json::load_asdf_json" = "pending: G8, the SDF tree text carries no semantics identifier, so a tree saved under another SDF arithmetic reads without a check (.asdf checks it)"
+"fn::llm_schema::validate_sdf_json" = "pending: G8, the SDF tree text carries no semantics identifier, so a tree saved under another SDF arithmetic reads without a check (.asdf checks it)"
+"impl::Deserialize for SdfNode" = "pending: G8, the SDF tree text carries no semantics identifier, so a tree saved under another SDF arithmetic reads without a check (.asdf checks it)"
+"impl::Deserialize for SdfTree" = "pending: G8, the SDF tree text carries no semantics identifier, so a tree saved under another SDF arithmetic reads without a check (.asdf checks it)"
+
+# 1 pending
+"fn::asp_bridge::decode_sdf_i_packet" = "pending: G8, the received packet's tree carries no semantics identifier of the sending build"
+
+# 11 pending
+"fn::io::abm::load_abm" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::abm::load_abm_with_lods" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::abm::read_abm_header" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::AbmHeader::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::splat::load_splat" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::vdb::load_dense_grid_from_vdb" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::vox::load_vox" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::Splat::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::SvoChunk::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::mesh::lod_persist::load_lod_chain" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::mesh::lod_persist::load_lod_chain_metadata" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+
+# 9 pending
+"fn::io::fbx::fbx_animation_to_timeline" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::fbx::import_fbx" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::fbx::import_fbx_full" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::gltf::import_glb" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::gltf::import_glb_bytes" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::obj::import_obj" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::ply::import_ply" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::stl::import_stl" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+"fn::io::usd::import_usda" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+
+# 1 pending
+"fn::NeuralSdf::load" = "pending: G8, the network weights file carries no semantics identifier of the build that trained it"
+
+# 7 pending
+"fn::mesh::mesh_codec::decode_indices" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+"fn::mesh::mesh_codec::decode_positions" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+"fn::mesh::meshopt_index_codec::decode_index_buffer" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+"fn::mesh::meshopt_vertex_codec::decode_vertex_buffer" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+"fn::codec_bridge::decode_sdf_volume" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+"fn::codec_bridge::decompress_sdf" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+"fn::codec_bridge::try_decode_sdf_volume" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+
+# 2 pending
+"fn::<Participant for LiveSdf>::check_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
+"fn::<Participant for LiveSdf>::read_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
+
+# 9 pending
+"impl::Deserialize for Aabb" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for FittedOctave" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for LodChainPersist" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for LodLevelPersist" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for Mesh" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for SdfMetadata" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for TextureFitResult" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for Triangle" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+"impl::Deserialize for Vertex" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+
+# 12 local
+"impl::Deserialize for BoneTransform" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for Interpolation" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for Keyframe" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for LodChainConfig" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for LoopMode" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for MarchingCubesConfig" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for Material" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for MaterialLibrary" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for ParticleMaterial" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for TextureSlot" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for Timeline" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+"impl::Deserialize for Track" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
+
+# 23 local
+"impl::Serialize for Aabb" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for BoneTransform" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for FittedOctave" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Interpolation" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Keyframe" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for LodChainConfig" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for LodChainPersist" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for LodLevelPersist" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for LoopMode" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for MarchingCubesConfig" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Material" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for MaterialLibrary" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Mesh" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for ParticleMaterial" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for SdfMetadata" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for SdfNode" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for SdfTree" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for TextureFitResult" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for TextureSlot" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Timeline" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Track" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Triangle" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for Vertex" = "local: writes this crate's own value; stamping the stored file is G8's"
+
+# 2 local
+"fn::<FromStr for ShaderLanguage>::from_str" = "local: parses a shader language name"
+"impl::FromStr for ShaderLanguage" = "local: parses a shader language name"
+
+# 3 pending
+"binding::pyo3::from_json" = "pending: G8, wraps io::load / from_json_string, whose .asdf.json and JSON paths read a tree without an identifier"
+"binding::pyo3::load_asdf" = "pending: G8, wraps io::load / from_json_string, whose .asdf.json and JSON paths read a tree without an identifier"
+"binding::pyo3::load_sdf" = "pending: G8, wraps io::load / from_json_string, whose .asdf.json and JSON paths read a tree without an identifier"
+
+# 1 pending
+"binding::pyo3::load_abm" = "pending: G8, wraps io::load_abm, whose file carries no semantics identifier"
+
+# 2 pending
+"binding::pyo3::import_glb" = "pending: G8, wraps the glTF importer, which does not read the stored semantics identifier"
+"binding::pyo3::import_glb_bytes" = "pending: G8, wraps the glTF importer, which does not read the stored semantics identifier"
+
+# 12 local
+"binding::pyo3::bake_to_vdb" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_alembic" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_fbx" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_glb" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_glb_bytes" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_obj" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_ue5" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_unity" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::export_usda" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::save_abm" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::save_sdf" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::to_json" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+
+# 195 local
+"binding::pyo3::PyCompiledSdf::__repr__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyCompiledSdf::eval" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyCompiledSdf::eval_batch" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyCompiledSdf::instruction_count" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyCompiledSdf::to_mesh" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyHeightmap::__repr__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyHeightmap::height_range" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyHeightmap::heights" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyHeightmap::sample" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyHeightmap::sample_count" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyMeshCache::__len__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyMeshCache::__new__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyMeshCache::clear" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyMeshCache::is_empty" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyMeshCache::memory_usage" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::__and__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::__or__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::__repr__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::__sub__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::animated" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::annular_2d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::arc_shape" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::barrel" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::bend" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::bezier" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::blobby_cross" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::box3d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::box_frame" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::capped_cone" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::capped_torus" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::capsule" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::chamfer_intersection" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::chamfer_subtract" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::chamfer_union" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::chamfered_cube" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::circle_2d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::columns_intersection" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::columns_subtract" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::columns_union" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::cone" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::cross_shape" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::cut_hollow_sphere" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::cut_sphere" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::cylinder" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::death_star" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::diamond_shape" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::diamond_surface" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::displacement" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::dodecahedron" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::egg" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::ellipsoid" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::elongate" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::engrave" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::eval" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::exp_smooth_intersection" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::exp_smooth_subtract" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::exp_smooth_union" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::extrude" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::fischer_koch_s" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::frd" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::gradient" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::groove" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::gyroid" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::heart" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::heightmap_displacement" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::helix" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::hex_prism" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::horseshoe" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::icosahedral_symmetry" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::icosahedron" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::ifs" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::infinite_cone" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::infinite_cylinder" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::intersection" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::iwp" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::lattice_deform" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::lidinoid" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::link" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::mirror" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::moon" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::morph" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::neovius" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::node_count" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::noise" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::octahedron" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::octant_mirror" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::onion" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::optimize" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::parabola_segment" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::parallelogram" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::pie" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::pipe" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::plane" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::pmy" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::polar_repeat" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::polygon_2d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::projective_transform" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::pyramid" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rect_2d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::regular_polygon" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::repeat" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::repeat_finite" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::revolution" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rhombus" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rotate" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::round" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rounded_box" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rounded_cone" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rounded_cylinder" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rounded_rect_2d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::rounded_x" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::scale" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::scale_xyz" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::schwarz_p" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::sdf_skinning" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::segment_2d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::shear" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::smooth_intersection" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::smooth_subtract" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::smooth_union" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::solid_angle" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::sphere" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::stairs_intersection" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::stairs_shape" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::stairs_subtract" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::stairs_union" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::star_polygon" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::subtract" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::superellipsoid" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::surface_roughness" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::sweep_bezier" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::taper" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::tetrahedron" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::tight_aabb" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::to_blinkscript" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::to_blinkscript_kernel" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::to_glsl" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::to_hlsl" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::to_wgsl" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::tongue" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::torus" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::translate" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::trapezoid" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::triangle" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::triangular_prism" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::truncated_icosahedron" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::truncated_octahedron" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::tube" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::tunnel" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::twist" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::uneven_capsule" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::union" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::vesica" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::with_material" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySdfNode::xor" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySvo::__repr__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySvo::leaf_count" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySvo::max_depth" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySvo::memory_bytes" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySvo::node_count" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PySvo::query_point" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyVoxelGrid::__repr__" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyVoxelGrid::get_distance" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyVoxelGrid::memory_bytes" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyVoxelGrid::resolution" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::PyVoxelGrid::voxel_count" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::__pyo3_init" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::bake_gi" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::bake_volume" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::build_svo" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::carve_sphere" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::compile_sdf" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::create_voxel_grid" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::decimate_mesh" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::erode_terrain" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::eval_batch" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::eval_compiled_batch" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::eval_compiled_batch_soa" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::generate_terrain" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::gpu_bake_volume" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::gpu_marching_cubes" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::heightmap_sample_batch" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::make_box" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::mesh_to_sdf" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::render_slice_2d" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::sdf_to_mesh" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::sphere" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::svo_query_batch" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::to_mesh" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::to_mesh_adaptive" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::to_mesh_dual_contouring" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::torus" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::uv_unwrap" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::version" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+"binding::pyo3::voxel_fracture" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
+
+# 3 pending
+"abi::ffi::io_ffi::alice_sdf_load" = "pending: G8, reads a stored tree, ABM mesh or LOD chain without checking a semantics identifier"
+"abi::ffi::io_ffi::alice_sdf_load_abm" = "pending: G8, reads a stored tree, ABM mesh or LOD chain without checking a semantics identifier"
+"abi::ffi::io_ffi::alice_sdf_load_lod_chain" = "pending: G8, reads a stored tree, ABM mesh or LOD chain without checking a semantics identifier"
+
+# 7 local
+"abi::ffi::io_ffi::alice_sdf_export_ue5" = "local: writes this library's own tree or mesh to a path the caller gives"
+"abi::ffi::io_ffi::alice_sdf_export_ue5_binary" = "local: writes this library's own tree or mesh to a path the caller gives"
+"abi::ffi::io_ffi::alice_sdf_export_unity" = "local: writes this library's own tree or mesh to a path the caller gives"
+"abi::ffi::io_ffi::alice_sdf_export_unity_binary" = "local: writes this library's own tree or mesh to a path the caller gives"
+"abi::ffi::io_ffi::alice_sdf_save" = "local: writes this library's own tree or mesh to a path the caller gives"
+"abi::ffi::io_ffi::alice_sdf_save_abm" = "local: writes this library's own tree or mesh to a path the caller gives"
+"abi::ffi::io_ffi::alice_sdf_save_lod_chain" = "local: writes this library's own tree or mesh to a path the caller gives"
+
+# 5 local
+"abi::ffi::mesh::alice_sdf_export_alembic" = "local: writes a mesh this library generated to a path the caller gives"
+"abi::ffi::mesh::alice_sdf_export_fbx" = "local: writes a mesh this library generated to a path the caller gives"
+"abi::ffi::mesh::alice_sdf_export_glb" = "local: writes a mesh this library generated to a path the caller gives"
+"abi::ffi::mesh::alice_sdf_export_obj" = "local: writes a mesh this library generated to a path the caller gives"
+"abi::ffi::mesh::alice_sdf_export_usda" = "local: writes a mesh this library generated to a path the caller gives"
+
+# 3 local
+"abi::ffi::shader::alice_sdf_to_glsl" = "local: returns shader source text generated from a handle of this library"
+"abi::ffi::shader::alice_sdf_to_hlsl" = "local: returns shader source text generated from a handle of this library"
+"abi::ffi::shader::alice_sdf_to_wgsl" = "local: returns shader source text generated from a handle of this library"
+
+# 127 local
+"abi::ffi::modifiers::alice_sdf_animated" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_bend" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_displacement" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_elongate" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_extrude" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_heightmap_displacement" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_icosahedral_symmetry" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_ifs" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_mirror" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_noise" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_octant_mirror" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_onion" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_polar_repeat" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_repeat" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_repeat_finite" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_revolution" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_round" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_scale_non_uniform" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_shear" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_surface_roughness" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_sweep_bezier" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_taper" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_twist" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::modifiers::alice_sdf_with_material" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_chamfer_intersection" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_chamfer_subtract" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_chamfer_union" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_columns_intersection" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_columns_subtract" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_columns_union" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_engrave" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_exp_smooth_intersection" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_exp_smooth_subtract" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_exp_smooth_union" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_groove" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_intersection" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_morph" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_pipe" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_smooth_intersection" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_smooth_subtract" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_smooth_union" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_stairs_intersection" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_stairs_subtract" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_stairs_union" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_subtract" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_tongue" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_union" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::operations::alice_sdf_xor" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_annular_2d" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_arc_shape" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_barrel" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_bezier" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_blobby_cross" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_box" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_box_frame" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_capped_cone" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_capped_torus" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_capsule" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_chamfered_cube" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_circle_2d" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_cone" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_cross_shape" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_cut_hollow_sphere" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_cut_sphere" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_cylinder" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_death_star" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_diamond" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_diamond_surface" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_dodecahedron" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_egg" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_ellipsoid" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_fischer_koch_s" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_frd" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_gyroid" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_heart" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_helix" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_hex_prism" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_horseshoe" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_icosahedron" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_infinite_cone" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_infinite_cylinder" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_iwp" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_lidinoid" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_link" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_moon" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_neovius" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_octahedron" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_parabola_segment" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_parallelogram" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_pie" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_plane" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_pmy" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_pyramid" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_rect_2d" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_regular_polygon" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_rhombus" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_rounded_box" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_rounded_cone" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_rounded_cylinder" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_rounded_rect_2d" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_rounded_x" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_schwarz_p" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_segment_2d" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_solid_angle" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_sphere" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_stairs" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_star_polygon" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_superellipsoid" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_tetrahedron" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_torus" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_trapezoid" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_triangle" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_triangular_prism" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_truncated_icosahedron" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_truncated_octahedron" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_tube" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_tunnel" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_uneven_capsule" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::primitives::alice_sdf_vesica" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_lattice_deform" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_projective_transform" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_rotate" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_rotate_euler" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_scale" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_scale_xyz" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_skinning" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+"abi::ffi::transforms::alice_sdf_translate" = "local: plain numbers and opaque handles this library created in the same process (checked by alice_sdf_is_valid); no stored or transmitted form is decoded"
+
+# 30 local
+"abi::ffi::compilation::alice_sdf_compile" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::compilation::alice_sdf_compiled_instruction_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::compilation::alice_sdf_free_compiled" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval_animated_batch_soa" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval_animated_compiled" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval_batch" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval_compiled" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval_compiled_batch" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval_gradient_soa" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::eval::alice_sdf_eval_soa" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_clear_last_error" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_last_error" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_modifier_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_operation_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_primitive_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_total_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_transform_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_version" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::info::alice_sdf_version_string" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::memory::alice_sdf_clone" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::memory::alice_sdf_free" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::memory::alice_sdf_free_string" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::memory::alice_sdf_is_compiled_valid" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::memory::alice_sdf_is_valid" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::memory::alice_sdf_node_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::mesh::alice_sdf_free_mesh" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::mesh::alice_sdf_generate_mesh" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::mesh::alice_sdf_mesh_triangle_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+"abi::ffi::mesh::alice_sdf_mesh_vertex_count" = "local: opaque handles this library created in the same process and plain numbers; no stored or transmitted form is decoded"
+
+# 1 local
+"abi::godot::gdext_rust_init" = "local: the Godot extension entry point, registers this build's classes"
+
+# 6 local
+"fn::<ImplementsGodotVirtual for AliceSdfBatchEvaluator>::__virtual_call" = "local: Godot dispatches engine Variants to this build's own classes; no file is read"
+"fn::<ImplementsGodotVirtual for AliceSdfCollisionGenerator>::__virtual_call" = "local: Godot dispatches engine Variants to this build's own classes; no file is read"
+"fn::<ImplementsGodotVirtual for AliceSdfLodManager>::__virtual_call" = "local: Godot dispatches engine Variants to this build's own classes; no file is read"
+"fn::<ImplementsGodotVirtual for AliceSdfMeshInstance>::__virtual_call" = "local: Godot dispatches engine Variants to this build's own classes; no file is read"
+"fn::<ImplementsGodotVirtual for AliceSdfNode>::__virtual_call" = "local: Godot dispatches engine Variants to this build's own classes; no file is read"
+"fn::<ImplementsGodotVirtual for AliceSdfResource>::__virtual_call" = "local: Godot dispatches engine Variants to this build's own classes; no file is read"
+
+# 16 local
+"target::wasm32-unknown-unknown::wasm::alice_sdf_version" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::op_intersection" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::op_smooth_intersection" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::op_smooth_subtraction" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::op_smooth_union" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::op_subtraction" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::op_union" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::raymarch_sphere" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::raymarch_two_spheres_smooth" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::render_sphere_slice_rgba" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::sdf_box" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::sdf_cylinder_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::sdf_plane_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::sdf_sphere" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::sdf_torus_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+"target::wasm32-unknown-unknown::wasm::sphere_batch_flat" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
+
+# 53 local
+"fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::asdf::save_asdf" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::asdf::save_asdf_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::fbx::export_fbx" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::fbx::export_fbx_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::fbx::export_fbx_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::gltf::export_glb" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::gltf::export_glb_bytes" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::gltf::export_glb_bytes_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::gltf::export_glb_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::gltf::export_gltf_json" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::gltf::export_gltf_json_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::iges::export_iges" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::iges::export_iges_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::json::save_asdf_json" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::json::to_json_string" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::meshopt_gltf::export_glb_meshopt" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::meshopt_gltf::export_glb_meshopt_bytes" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::meshopt_gltf::export_glb_meshopt_bytes_skinned" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::meshopt_gltf::export_glb_meshopt_bytes_skinned_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::meshopt_gltf::export_glb_meshopt_skinned" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::nanite::export_nanite" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::nanite::export_nanite_hlsl_material" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::nanite::export_nanite_json" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::nanite::export_nanite_with_config" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::obj::export_obj" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::obj::export_obj_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::ply::export_ply" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::ply::export_ply_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::save" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::splat::save_splat" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::step::export_step" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::step::export_step_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::stl::export_stl" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::stl::export_stl_ascii" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::stl::export_stl_ascii_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::stl::export_stl_ascii_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::stl::export_stl_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::stl::export_stl_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::threemf::export_3mf" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::threemf::export_3mf_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::threemf::export_3mf_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::ue5_asset::export_ue5_mesh" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::ue5_asset::export_ue5_mesh_binary" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::ue5_asset::export_ue5_mesh_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::unity_mesh::export_unity_mesh" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::unity_mesh::export_unity_mesh_binary" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::usd::export_usda" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::usd::export_usda_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::vdb::bake_to_vdb" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::vox::save_vox" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+
+# 1 local
+"fn::io::get_info" = "local: reports a stored file's format, version and node count as text; the tree is not returned"
+
+# 10 local
+"fn::validity::export_step_validated" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::validity::export_step_validated_with_provenance" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_dds_3d" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_dds_3d_distgrad" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_dds_3d_distgrad_with_provenance" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_dds_3d_with_provenance" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_raw" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_raw_with_mips" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_raw_with_mips_with_provenance" = "local: writes this build's own volume or STEP data; stamping is G8's"
+"fn::volume::export::export_raw_with_provenance" = "local: writes this build's own volume or STEP data; stamping is G8's"
+
+# 2 local
+"fn::mesh::lod_persist::save_lod_chain" = "local: writes this build's own LOD chain; stamping is G8's"
+"fn::mesh::lod_persist::save_lod_chain_metadata" = "local: writes this build's own LOD chain; stamping is G8's"
+
+# 7 local
+"fn::mesh::mesh_codec::encode_indices" = "local: encodes this build's own mesh buffers"
+"fn::mesh::mesh_codec::encode_mesh" = "local: encodes this build's own mesh buffers"
+"fn::mesh::mesh_codec::encode_positions" = "local: encodes this build's own mesh buffers"
+"fn::mesh::meshopt_index_codec::encode_index_buffer" = "local: encodes this build's own mesh buffers"
+"fn::mesh::meshopt_index_codec::try_encode_index_buffer" = "local: encodes this build's own mesh buffers"
+"fn::mesh::meshopt_vertex_codec::encode_vertex_buffer" = "local: encodes this build's own mesh buffers"
+"fn::mesh::meshopt_vertex_codec::encode_vertex_buffer_level" = "local: encodes this build's own mesh buffers"
+
+# 4 local
+"fn::mesh::quantization::snorm_i8_decode" = "local: one 8-bit code to or from a float by a single correctly rounded IEEE division or multiply and round, the same bits on every target; no stored form is parsed"
+"fn::mesh::quantization::snorm_i8_encode" = "local: one 8-bit code to or from a float by a single correctly rounded IEEE division or multiply and round, the same bits on every target; no stored form is parsed"
+"fn::mesh::quantization::unorm_u8_decode" = "local: one 8-bit code to or from a float by a single correctly rounded IEEE division or multiply and round, the same bits on every target; no stored form is parsed"
+"fn::mesh::quantization::unorm_u8_encode" = "local: one 8-bit code to or from a float by a single correctly rounded IEEE division or multiply and round, the same bits on every target; no stored form is parsed"
+
+# 2 local
+"fn::codec_bridge::compression_ratio" = "local: encodes or measures this build's own volume"
+"fn::codec_bridge::encode_sdf_volume" = "local: encodes or measures this build's own volume"
+
+# 1 local
+"fn::asp_bridge::create_sdf_d_packet" = "local: builds a packet from this build's own tree"
+
+# 5 local
+"fn::AbmHeader::to_bytes" = "local: serialises this build's own value"
+"fn::AsdfHeader::to_bytes" = "local: serialises this build's own value"
+"fn::LinearizedSvo::as_bytes" = "local: serialises this build's own value"
+"fn::Splat::to_bytes" = "local: serialises this build's own value"
+"fn::SvoChunk::to_bytes" = "local: serialises this build's own value"
+
+# 4 local
+"fn::<LiveModifier for ErosionModifier>::shape_state" = "local: writes this build's own state for a snapshot or shape hash"
+"fn::<LiveModifier for FractureModifier>::shape_state" = "local: writes this build's own state for a snapshot or shape hash"
+"fn::<Participant for LiveSdf>::write_state" = "local: writes this build's own state for a snapshot or shape hash"
+"fn::shape_state" = "local: writes this build's own state for a snapshot or shape hash"
+
+# 33 local
+"fn::BlinkScriptShader::get_eval_function" = "local: generates shader or source text from a tree of this process"
+"fn::BlinkScriptShader::to_kernel" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::emit_stairs_union_inline" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::ensure_helper" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::generate_shader" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::next_var" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::param" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::transpile_node" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::transpile_node_inner" = "local: generates shader or source text from a tree of this process"
+"fn::GlslShader::export_unity_shader_graph" = "local: generates shader or source text from a tree of this process"
+"fn::GlslShader::get_eval_function" = "local: generates shader or source text from a tree of this process"
+"fn::GlslShader::to_compute_shader" = "local: generates shader or source text from a tree of this process"
+"fn::GlslShader::to_fragment_shader" = "local: generates shader or source text from a tree of this process"
+"fn::GlslShader::to_fragment_shader_full" = "local: generates shader or source text from a tree of this process"
+"fn::GlslShader::to_unity_custom_function" = "local: generates shader or source text from a tree of this process"
+"fn::GlslShader::to_vulkan_compute_shader" = "local: generates shader or source text from a tree of this process"
+"fn::HlslShader::export_ue5_material_function" = "local: generates shader or source text from a tree of this process"
+"fn::HlslShader::export_unity_shader_graph" = "local: generates shader or source text from a tree of this process"
+"fn::HlslShader::get_eval_function" = "local: generates shader or source text from a tree of this process"
+"fn::HlslShader::to_compute_shader" = "local: generates shader or source text from a tree of this process"
+"fn::HlslShader::to_ue5_custom_node" = "local: generates shader or source text from a tree of this process"
+"fn::HlslShader::to_unity_custom_function" = "local: generates shader or source text from a tree of this process"
+"fn::InstancedSdf::to_instanced_wgsl" = "local: generates shader or source text from a tree of this process"
+"fn::MslShader::from_wgsl" = "local: generates shader or source text from a tree of this process"
+"fn::RustSource::source" = "local: generates shader or source text from a tree of this process"
+"fn::RustTranspileOptions::with_det_math_path" = "local: generates shader or source text from a tree of this process"
+"fn::SceneShaderBuilder::build" = "local: generates shader or source text from a tree of this process"
+"fn::SceneShaderBuilder::try_build" = "local: generates shader or source text from a tree of this process"
+"fn::WgslShader::get_eval_function" = "local: generates shader or source text from a tree of this process"
+"fn::WgslShader::to_compute_shader" = "local: generates shader or source text from a tree of this process"
+"fn::WgslShader::to_compute_shader_with_normals" = "local: generates shader or source text from a tree of this process"
+"fn::WgslShader::to_volume_shader" = "local: generates shader or source text from a tree of this process"
+"fn::WgslShader::transpile_material" = "local: generates shader or source text from a tree of this process"
+
+# 13 local
+"fn::compiled::glsl::render_pipeline::build_full_shader" = "local: generates shader text"
+"fn::compiled::transpiler_common::lit" = "local: generates shader text"
+"fn::compiled::transpiler_common::shader_unsupported_nodes" = "local: generates shader text"
+"fn::mesh::gpu_mc_shaders::generate_classify_shader" = "local: generates shader text"
+"fn::mesh::gpu_mc_shaders::generate_prefix_sum_propagate_shader" = "local: generates shader text"
+"fn::mesh::gpu_mc_shaders::generate_prefix_sum_scan_shader" = "local: generates shader text"
+"fn::mesh::gpu_mc_shaders::generate_sdf_grid_shader" = "local: generates shader text"
+"fn::mesh::gpu_mc_shaders::generate_vertex_shader" = "local: generates shader text"
+"fn::npr::compiled_color::emit_wgsl_bytecode_evaluator" = "local: generates shader text"
+"fn::npr::shader_glue::full_helpers_for" = "local: generates shader text"
+"fn::npr::shader_glue::helpers_for" = "local: generates shader text"
+"fn::npr::shader_glue::palette_helpers_for" = "local: generates shader text"
+"fn::texture::shader::generate_shader" = "local: generates shader text"
+
+# 29 local
+"fn::atan2_expr" = "local: shader text builders over names and expressions"
+"fn::cast_float" = "local: shader text builders over names and expressions"
+"fn::cast_int" = "local: shader text builders over names and expressions"
+"fn::decl_float" = "local: shader text builders over names and expressions"
+"fn::decl_int" = "local: shader text builders over names and expressions"
+"fn::decl_mut_float" = "local: shader text builders over names and expressions"
+"fn::decl_mut_float_typed" = "local: shader text builders over names and expressions"
+"fn::decl_mut_vec2" = "local: shader text builders over names and expressions"
+"fn::decl_mut_vec3" = "local: shader text builders over names and expressions"
+"fn::decl_mut_vec3_typed" = "local: shader text builders over names and expressions"
+"fn::decl_vec2" = "local: shader text builders over names and expressions"
+"fn::decl_vec3" = "local: shader text builders over names and expressions"
+"fn::for_loop_int" = "local: shader text builders over names and expressions"
+"fn::func_signature" = "local: shader text builders over names and expressions"
+"fn::global_float_array" = "local: shader text builders over names and expressions"
+"fn::global_vec3_fn" = "local: shader text builders over names and expressions"
+"fn::helper_source" = "local: shader text builders over names and expressions"
+"fn::mix_expr" = "local: shader text builders over names and expressions"
+"fn::modulo_expr" = "local: shader text builders over names and expressions"
+"fn::param_dynamic" = "local: shader text builders over names and expressions"
+"fn::select_expr" = "local: shader text builders over names and expressions"
+"fn::select_float" = "local: shader text builders over names and expressions"
+"fn::vec2_ctor" = "local: shader text builders over names and expressions"
+"fn::vec2_splat" = "local: shader text builders over names and expressions"
+"fn::vec2_zero" = "local: shader text builders over names and expressions"
+"fn::vec3_ctor" = "local: shader text builders over names and expressions"
+"fn::vec3_splat" = "local: shader text builders over names and expressions"
+"fn::vec3_zero" = "local: shader text builders over names and expressions"
+"fn::vec4_ctor" = "local: shader text builders over names and expressions"
+
+# 3 pending
+"fn::GpuEvaluator::from_glsl_compute" = "pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check"
+"fn::GpuEvaluator::from_wgsl" = "pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check"
+"fn::GpuEvaluator::from_wgsl_async" = "pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check"
+
+# 1 local
+"fn::GpuEvaluator::device_info" = "local: returns the GPU adapter's name and backend as text"
+
+# 2 local
+"fn::JitSimdSdf::compile" = "local: compiles a tree of this process to machine code"
+"fn::JitSimdSdfDynamic::compile" = "local: compiles a tree of this process to machine code"
+
+# 19 local
+"fn::InstructionSlot::new" = "local: names, labels or asset paths of authored settings"
+"fn::Material::dielectric" = "local: names, labels or asset paths of authored settings"
+"fn::Material::emissive" = "local: names, labels or asset paths of authored settings"
+"fn::Material::glass" = "local: names, labels or asset paths of authored settings"
+"fn::Material::metal" = "local: names, labels or asset paths of authored settings"
+"fn::Material::new" = "local: names, labels or asset paths of authored settings"
+"fn::Material::with_albedo_map" = "local: names, labels or asset paths of authored settings"
+"fn::Material::with_ao_map" = "local: names, labels or asset paths of authored settings"
+"fn::Material::with_emissive_map" = "local: names, labels or asset paths of authored settings"
+"fn::Material::with_metallic_roughness_map" = "local: names, labels or asset paths of authored settings"
+"fn::Material::with_normal_map" = "local: names, labels or asset paths of authored settings"
+"fn::MaterialLibrary::find_by_name" = "local: names, labels or asset paths of authored settings"
+"fn::ParamDependencyIndex::bind" = "local: names, labels or asset paths of authored settings"
+"fn::Splatmap::add_layer" = "local: names, labels or asset paths of authored settings"
+"fn::TextureSlot::new" = "local: names, labels or asset paths of authored settings"
+"fn::Timeline::evaluate" = "local: names, labels or asset paths of authored settings"
+"fn::Timeline::get_value" = "local: names, labels or asset paths of authored settings"
+"fn::Timeline::new" = "local: names, labels or asset paths of authored settings"
+"fn::Track::new" = "local: names, labels or asset paths of authored settings"
+
+# 3 pending
+"fn::Heightmap::from_image" = "pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned"
+"fn::Heightmap::from_image_bytes" = "pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned"
+"fn::texture::fitting::fit_texture" = "pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned"
+
+# 3 local
+"fn::heatmap::heatmap_to_rgba" = "local: renders this build's own values to pixels"
+"fn::raycast::march::render_normals" = "local: renders this build's own values to pixels"
+"fn::raycast::march::render_normals_compiled" = "local: renders this build's own values to pixels"
+
+# 1 local
+"fn::llm_schema::schema_summary" = "local: returns the schema description text"
+
+# 2 local
+"fn::ffi::guard::set_last_error" = "local: the FFI's last error message"
+"fn::ffi::guard::take_last_error" = "local: the FFI's last error message"
+
+# 4 local
+"fn::SvoNode::child_index" = "local: octant arithmetic over small integers"
+"fn::SvoNode::interior" = "local: octant arithmetic over small integers"
+"fn::svo::child_center" = "local: octant arithmetic over small integers"
+"fn::svo::octant_for_point" = "local: octant arithmetic over small integers"
+
+# 1 local
+"fn::svo::linearize::validate_linearized" = "local: checks an in-memory linearised octree of this process"
