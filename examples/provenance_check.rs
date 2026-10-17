@@ -14,7 +14,7 @@
 use alice_sdf::io;
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::{self, Accepted, Provenance};
+use alice_sdf::provenance::{self, Provenance, StoredSemantics};
 use glam::Vec3;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,9 +36,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     io::export_3mf(&mesh, &threemf)?;
     for path in [&stl, &threemf] {
         let stored = provenance::read(path)?;
-        let accepted = provenance::check_sdf(path)?;
-        assert_eq!(accepted, Accepted::Current);
-        println!("{}: {stored} ({accepted:?})", path.display());
+        let semantics = provenance::check_sdf(path)?;
+        assert_eq!(semantics, StoredSemantics::Current);
+        println!("{}: {stored} ({semantics:?})", path.display());
     }
 
     // every format stamps the same identifier: STEP from the tree, meshopt-compressed glTF
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         meshopt::export_glb_meshopt_bytes_skinned(&mesh, None, &mo)?,
     )?;
     for path in [&step, &glb, &glb_skinned, &bytes, &bytes_skinned] {
-        assert_eq!(provenance::check_sdf(path)?, Accepted::Current);
+        assert_eq!(provenance::check_sdf(path)?, StoredSemantics::Current);
         println!("{}: {}", path.display(), provenance::read(path)?);
     }
 
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     io::export_stl_with_provenance(&mesh, &other, &Provenance::new([7; 32]))?;
     match provenance::check_sdf(&other) {
         Err(e) => println!("{}: refused: {e}", other.display()),
-        Ok(a) => return Err(format!("another identifier was accepted: {a:?}").into()),
+        Ok(a) => return Err(format!("another identifier was semantics: {a:?}").into()),
     }
 
     std::fs::remove_dir_all(&dir)?;

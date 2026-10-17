@@ -40,7 +40,10 @@ pub use abm::{
     ABM_FLAG_HAS_TANGENTS, ABM_FLAG_HAS_UV2, ABM_FLAG_HAS_UVS, ABM_MAGIC, ABM_VERSION,
 };
 pub use alembic::{export_alembic, AlembicConfig};
-pub use asdf::{load_asdf, save_asdf, AsdfHeader, ASDF_MAGIC};
+pub use asdf::{
+    load_asdf, load_asdf_unverified, save_asdf, save_asdf_with_provenance, AsdfHeader,
+    ASDF_HEADER_LEN, ASDF_MAGIC, ASDF_VERSION,
+};
 pub use fbx::{
     export_fbx, export_fbx_with_provenance, fbx_animation_to_timeline, import_fbx, import_fbx_full,
     FbxAnimClip, FbxAnimCurve, FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
@@ -75,6 +78,7 @@ use thiserror::Error;
 
 /// File I/O errors
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum IoError {
     /// I/O error
     #[error("IO error: {0}")]
@@ -100,6 +104,26 @@ pub enum IoError {
     /// Unsupported file version
     #[error("Unsupported version: {0}")]
     UnsupportedVersion(u16),
+
+    /// The file carries a semantics identifier that is neither this crate's nor one it still
+    /// reproduces (see [`crate::provenance`])
+    #[error("{format}: semantics identifier mismatch: stored {stored}, expected {expected}")]
+    SemanticsMismatch {
+        /// The format read
+        format: &'static str,
+        /// The identifier in the file
+        stored: crate::provenance::Provenance,
+        /// This crate's identifier
+        expected: crate::provenance::Provenance,
+    },
+
+    /// The file carries no semantics identifier (written before identifiers were stored); read
+    /// it with the `*_unverified` loader to get it marked as such
+    #[error("{format}: no semantics identifier (read it with the *_unverified loader)")]
+    Unpinned {
+        /// The format read
+        format: &'static str,
+    },
 }
 
 /// Save an SDF tree to file (auto-detect format from extension)

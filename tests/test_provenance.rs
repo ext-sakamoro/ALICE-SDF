@@ -10,7 +10,7 @@
 use alice_sdf::io;
 use alice_sdf::io::meshopt_gltf as meshopt;
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::{self, Provenance, ProvenanceError};
+use alice_sdf::provenance::{self, Provenance, ProvenanceError, StoredSemantics};
 use std::path::{Path, PathBuf};
 
 fn temp(name: &str) -> PathBuf {
@@ -264,6 +264,21 @@ const WRITERS: &[(&str, &str, Write)] = &[
             Some(id) => io::iges::export_iges_with_provenance(p, &node, &c, id).unwrap(),
         }
     }),
+    ("src/io/asdf.rs::save_asdf", "t.asdf", |_, p, id| {
+        let tree = SdfTree::new(SdfNode::sphere(1.0));
+        match id {
+            None => io::save_asdf(&tree, p).unwrap(),
+            Some(id) => io::save_asdf_with_provenance(&tree, p, id).unwrap(),
+        }
+    }),
+    ("src/io/asdf.rs::to_bytes", "t_header.asdf", |_, p, id| {
+        let tree = SdfTree::new(SdfNode::sphere(1.0));
+        let header = match id {
+            None => io::AsdfHeader::new(&tree, 0),
+            Some(id) => io::AsdfHeader::with_provenance(&tree, 0, id),
+        };
+        std::fs::write(p, header.to_bytes()).unwrap();
+    }),
 ];
 
 #[test]
@@ -281,7 +296,7 @@ fn every_writer_stores_the_identifier_and_it_reads_back() {
         );
         assert_eq!(
             provenance::check_sdf(&path).unwrap(),
-            provenance::Accepted::Current
+            provenance::StoredSemantics::Current
         );
 
         write(&m, &path, Some(&caller_id()));
@@ -292,8 +307,8 @@ fn every_writer_stores_the_identifier_and_it_reads_back() {
         );
         assert_eq!(
             provenance::check(&path, &Provenance::sdf(), &[caller_id().semantics_id]).unwrap(),
-            provenance::Accepted::VerifiedPrevious(caller_id()),
-            "{name}: an earlier identifier the caller lists is accepted and named"
+            provenance::StoredSemantics::VerifiedPrevious(caller_id()),
+            "{name}: an earlier identifier the caller lists is semantics and named"
         );
         match provenance::check_sdf(&path) {
             Err(ProvenanceError::Mismatch { stored, expected }) => {
@@ -477,7 +492,7 @@ fn an_earlier_published_identifier_reads_as_verified_previous() {
     io::export_stl_with_provenance(&m, &path, &Provenance::new(earlier)).unwrap();
     assert_eq!(
         provenance::check_sdf(&path).unwrap(),
-        provenance::Accepted::VerifiedPrevious(Provenance::new(earlier))
+        provenance::StoredSemantics::VerifiedPrevious(Provenance::new(earlier))
     );
     assert!(matches!(
         alice_sdf::check_sdf_semantics(&earlier),
@@ -580,6 +595,88 @@ fn volume_writers_store_the_identifier() {
     assert_eq!(compared, VOLUME_WRITERS.len());
 }
 
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/provenance")
+        .join(name)
+}
+
+/// A file written by alice-sdf 6.1.0 (`tests/fixtures/provenance/tree_v1.asdf`, ASDF version 1,
+/// no identifier): the default loader refuses it, the explicit unverified loader returns the tree
+/// marked `Unpinned`
+#[test]
+fn an_asdf_file_from_6_1_0_is_refused_by_default_and_read_unverified() {
+    let v1 = fixture("tree_v1.asdf");
+    assert_eq!(
+        &std::fs::read(&v1).unwrap()[4..6],
+        &1u16.to_le_bytes(),
+        "fixture is version 1"
+    );
+    match io::load_asdf(&v1) {
+        Err(io::IoError::Unpinned { format }) => assert_eq!(format, "ASDF"),
+        other => panic!("expected Unpinned, got {other:?}"),
+    }
+    let checked = io::load_asdf_unverified(&v1).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    let (tree, semantics) = checked.into_parts();
+    assert_eq!(semantics, StoredSemantics::Unpinned);
+    let expected = SdfTree::new(SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5)));
+    assert_eq!(tree.node_count(), expected.node_count());
+    for p in [Vec3::ZERO, Vec3::new(0.7, 0.2, -0.4), Vec3::splat(1.3)] {
+        assert_eq!(
+            eval(&tree.root, p).to_bits(),
+            eval(&expected.root, p).to_bits(),
+            "the 6.1.0 tree evaluates the same at {p}"
+        );
+    }
+    assert!(matches!(
+        provenance::read(&v1),
+        Err(ProvenanceError::Missing { format: "ASDF" })
+    ));
+}
+
+/// ASDF version 2: this crate's identifier loads as `Current`, an earlier verified one as
+/// `VerifiedPrevious`, another one is refused by both loaders naming both identifiers
+#[test]
+fn asdf_loaders_check_the_identifier() {
+    let tree = SdfTree::new(SdfNode::sphere(1.0));
+    let path = temp("check.asdf");
+    io::save_asdf(&tree, &path).unwrap();
+    assert_eq!(
+        io::load_asdf(&path).unwrap().node_count(),
+        tree.node_count()
+    );
+    assert_eq!(
+        io::load_asdf_unverified(&path).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    io::save_asdf_with_provenance(&tree, &path, &earlier).unwrap();
+    assert!(io::load_asdf(&path).is_ok());
+    assert_eq!(
+        io::load_asdf_unverified(&path).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    io::save_asdf_with_provenance(&tree, &path, &caller_id()).unwrap();
+    for result in [
+        io::load_asdf(&path).map(|_| ()),
+        io::load_asdf_unverified(&path).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex())
+                );
+            }
+            other => panic!("expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+    std::fs::remove_file(&path).ok();
+}
+
 /// An independent FBX parser (`fbxcel`) reads the whole binary file (nodes and footer), and its
 /// `FBXHeaderExtension/Creator` string carries the identifier
 #[test]
@@ -647,7 +744,7 @@ fn the_3mf_metadata_is_declared_and_placed_before_resources() {
 }
 
 #[test]
-fn a_file_without_the_identifier_is_missing_not_accepted() {
+fn a_file_without_the_identifier_is_missing_not_semantics() {
     let m = mesh();
     let path = temp("plain_header.stl");
     io::export_stl(&m, &path).unwrap();
