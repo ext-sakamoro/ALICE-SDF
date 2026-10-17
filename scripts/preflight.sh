@@ -31,6 +31,27 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The ci.yml scip job, same commands: the oracle, the indexes, no new L0 / stale baseline entry,
+# and docs/integration-status.md regenerated with no diff. $1 = 1: rust-analyzer is required
+# (the --quick run below calls this because src/ changed, so skipping is not an option there)
+scip_reach_step() {
+  python3 scripts/test_scip_reach.py
+  python3 scripts/test_scip_scope.py
+  if ! command -v rust-analyzer >/dev/null 2>&1; then
+    if [[ "$1" -eq 1 ]]; then
+      echo "rust-analyzer が無い (rustup component add rust-analyzer): src/ を変えた変更では scip reach を飛ばせない" >&2
+      exit 1
+    fi
+    echo "skip: rust-analyzer が無い (rustup component add rust-analyzer)、CI の scip job が検査する" >&2
+    return 0
+  fi
+  scripts/scip_index.sh
+  python3 scripts/scip_reach.py --check-baseline
+  python3 scripts/scip_reach.py --write docs/integration-status.md
+  git diff --exit-code docs/integration-status.md \
+    || { echo "docs/integration-status.md が古い: 再生成した内容を commit する" >&2; exit 1; }
+}
+
 quick=0
 [[ "${1:-}" == "--quick" ]] && quick=1
 
@@ -269,11 +290,20 @@ fi
 if [[ $quick -eq 1 ]]; then
   step "test: cargo test --lib (--quick でも走らせる最小限)"
   cargo test --lib
+  # the scip job (reach ledger and L0 ratchet) whenever src/ differs from origin/main;
+  # scripts/scip_scope.sh decides and says why when it skips
+  if scope=$(scripts/scip_scope.sh); then
+    step "scip: $scope"
+    scip_reach_step 1
+  else
+    echo "skip scip reach (${scope#skip: })"
+  fi
   echo
   echo "preflight --quick OK"
   echo "  RAN     : fmt / clippy / MSRV / feature builds / wasm target / fuzz build / cargo test --lib"
+  echo "            (+ scip reach when src/ differs from origin/main)"
   echo "  NOT RUN : cargo test --tests (integration), feature-gated oracles (svo / texture-fit /"
-  echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, scip reach, cargo audit"
+  echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, cargo audit"
   echo "  => この green は「integration / oracle が通った」ことを意味しない。"
   echo "     それらを確認するには --quick を外して実行する。"
   exit 0
@@ -447,16 +477,7 @@ else
 fi
 
 step "scip: L0 ratchet + docs/integration-status.md (rust-analyzer SCIP、約 4 分)"
-python3 scripts/test_scip_reach.py
-if command -v rust-analyzer >/dev/null 2>&1; then
-  scripts/scip_index.sh
-  python3 scripts/scip_reach.py --check-baseline
-  python3 scripts/scip_reach.py --write docs/integration-status.md
-  git diff --exit-code docs/integration-status.md \
-    || { echo "docs/integration-status.md が古い: 再生成した内容を commit する" >&2; exit 1; }
-else
-  echo "skip: rust-analyzer が無い (rustup component add rust-analyzer)、CI の scip job が検査する" >&2
-fi
+scip_reach_step 0
 
 step "release-profile.yml: goldens and the float environment in the release profile (G4 / G5)"
 for spec in test_det_golden:3: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
