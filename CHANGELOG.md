@@ -8,6 +8,12 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ## [Unreleased]
 
+### Changed
+- CI: ALICE-Law G1 clippy の全ての feature を lint する clippy job の `LINT_FEATURES` を Cargo.toml の feature すべて (`default` と、wasm32 の step で見る `wasm` を除く) にした 従来は `aaa` / `all-shaders` / `cli` / `font` / `godot` / `image` / `msl` / `python` / `unity` / `unreal` が どの clippy run でも compile されず、clippy.toml の禁止 (libm 等) がその code に届いていなかった wasm32 の step も `-D warnings` にした feature の網羅を `scripts/clippy_feature_coverage.py` (試験 `scripts/test_clippy_feature_coverage.py`) が確かめる (clippy job と preflight、比べる command 0 件で失敗)
+
+### Fixed
+- python / godot / wasm の binding に、どの clippy run も compile していなかったため残っていた lint を直した (`Self` の使用、`const fn`、doc の無い wasm の関数、不要な `to_vec`) godot-rust の macro が展開する code の lint は理由つきで `src/godot/mod.rs` で許可した
+
 ## [7.0.0] - 2026-10-17
 
 ### Migration (6.x → 7.0.0)

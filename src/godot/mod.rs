@@ -20,6 +20,16 @@
 //!
 //! Author: Moroya Sakamoto
 
+// godot-rust's `#[derive(GodotClass)]` and `#[godot_api]` expand to methods without
+// docs, closures returning its large `CallError` and lock guards held to the end of
+// the generated call; none of that code is written here, so these lints are allowed
+// for the expansion in this module
+#![allow(
+    missing_docs,
+    clippy::result_large_err,
+    clippy::significant_drop_tightening
+)]
+
 use godot::classes::{
     ArrayMesh, CollisionShape3D, ConvexPolygonShape3D, IMeshInstance3D, INode3D, IResource,
     MeshInstance3D, Node3D, Resource,
@@ -307,7 +317,7 @@ impl AliceSdfNode {
 
     /// Perform smooth union with another AliceSdfNode
     #[func]
-    fn boolean_union(&mut self, other: Gd<AliceSdfNode>) {
+    fn boolean_union(&mut self, other: Gd<Self>) {
         let other_sdf = {
             let other_ref = other.bind();
             other_ref.sdf_node.clone()
@@ -323,7 +333,7 @@ impl AliceSdfNode {
 
     /// Perform smooth subtraction with another AliceSdfNode
     #[func]
-    fn boolean_subtract(&mut self, other: Gd<AliceSdfNode>) {
+    fn boolean_subtract(&mut self, other: Gd<Self>) {
         let other_sdf = {
             let other_ref = other.bind();
             other_ref.sdf_node.clone()
@@ -339,7 +349,7 @@ impl AliceSdfNode {
 
     /// Perform smooth intersection with another AliceSdfNode
     #[func]
-    fn boolean_intersect(&mut self, other: Gd<AliceSdfNode>) {
+    fn boolean_intersect(&mut self, other: Gd<Self>) {
         let other_sdf = {
             let other_ref = other.bind();
             other_ref.sdf_node.clone()
@@ -1495,6 +1505,8 @@ impl AliceSdfBatchEvaluator {
 
     /// Check if a compiled SDF is available
     #[func]
+    // `#[func]` does not accept fn qualifiers, so this cannot be `const`
+    #[allow(clippy::missing_const_for_fn)]
     fn is_compiled(&self) -> bool {
         self.compiled.is_some()
     }

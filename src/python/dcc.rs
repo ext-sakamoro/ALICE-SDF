@@ -33,7 +33,7 @@ use crate::types::SdfNode;
 
 /// Module-level sphere constructor (`backend.sphere(radius)`).
 #[pyfunction]
-pub fn sphere(radius: f32) -> PySdfNode {
+pub const fn sphere(radius: f32) -> PySdfNode {
     PySdfNode {
         inner: SdfNode::sphere(radius),
     }
@@ -53,7 +53,7 @@ pub fn make_box(sx: f32, sy: f32, sz: f32) -> PySdfNode {
 
 /// Module-level torus constructor (`backend.torus(R, r)`).
 #[pyfunction]
-pub fn torus(major_radius: f32, minor_radius: f32) -> PySdfNode {
+pub const fn torus(major_radius: f32, minor_radius: f32) -> PySdfNode {
     PySdfNode {
         inner: SdfNode::torus(major_radius, minor_radius),
     }
