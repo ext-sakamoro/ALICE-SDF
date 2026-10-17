@@ -1,7 +1,8 @@
 //! Provenance — write a mesh, read its semantics identifier back and check it
 //!
 //! Exports a sphere as binary STL, 3MF, STEP and meshopt-compressed glTF, reads the identifier
-//! each file carries, and checks it against this crate's identifier. A stamped STL also carries a
+//! each file carries, and checks it against this crate's identifier. The binary mesh format (.abm)
+//! and the tree format (.asdf) carry it in their headers and their loaders check it. A stamped STL also carries a
 //! producer identifier, read back from its own slot. A file written with another
 //! identifier is refused, and the error names both.
 //!
@@ -100,6 +101,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}: {:?}", asdf.display(), loaded.semantics());
     let (back, _) = loaded.into_parts();
     assert_eq!(back.node_count(), tree.node_count());
+
+    // the binary mesh format: a version 2 .abm header carries the identifier, load_abm checks it,
+    // the unverified loaders say what is known, and one written under another identifier is refused
+    let abm = dir.join("sphere.abm");
+    io::save_abm(&mesh, &abm)?;
+    assert_eq!(
+        io::read_abm_header(&abm)?.semantics_id,
+        Some(alice_sdf::SDF_SEMANTICS_ID)
+    );
+    let checked = io::load_abm_unverified(&abm)?;
+    assert_eq!(checked.semantics(), StoredSemantics::Current);
+    assert_eq!(io::load_abm(&abm)?.vertices.len(), mesh.vertices.len());
+    let abm_lods = dir.join("sphere_lods.abm");
+    io::save_abm_with_lods(&[mesh.clone(), mesh.clone()], &[10.0], &abm_lods)?;
+    let (lods, _) = io::load_abm_with_lods_unverified(&abm_lods)?.into_parts();
+    assert_eq!(lods.0.len(), 2);
+    println!("{}: {:?}", abm.display(), checked.semantics());
+    let foreign = Provenance::new([7; 32]);
+    let abm_other = dir.join("other.abm");
+    io::save_abm_with_provenance(&mesh, &abm_other, &foreign)?;
+    io::save_abm_with_lods_with_provenance(std::slice::from_ref(&mesh), &[], &abm_lods, &foreign)?;
+    for path in [&abm_other, &abm_lods] {
+        match io::load_abm_with_lods(path) {
+            Err(e) => println!("{}: refused: {e}", path.display()),
+            Ok(_) => return Err("an .abm under another identifier was read".into()),
+        }
+    }
 
     let other = dir.join("other.stl");
     io::export_stl_with_provenance(&mesh, &other, &Provenance::new([7; 32]))?;

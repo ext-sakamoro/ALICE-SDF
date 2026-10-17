@@ -305,6 +305,9 @@ use alice_sdf::io::{save_abm, load_abm, export_unity_mesh, export_ue5_mesh, Unit
 // ABMバイナリメッシュの保存/読込
 save_abm(&mesh, "model.abm")?;
 let loaded = load_abm("model.abm")?;
+// 版 2 は意味の識別子を持つ load_abm は別の識別子の file と識別子の無い版 1 の file を断る
+// それらは load_abm_unverified で読み、何が分かっているかを一緒に受け取る
+let (old, semantics) = alice_sdf::io::load_abm_unverified("old_v1.abm")?.into_parts();
 
 // Unityエクスポート（左手系、Z反転）
 export_unity_mesh(&mesh, "model.unity_mesh", &UnityMeshConfig::default())?;

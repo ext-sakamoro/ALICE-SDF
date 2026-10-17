@@ -112,6 +112,21 @@ def main() -> None:
         for p in ((0.0, 0.0, 0.0), (0.3, 0.2, -0.7), (1.5, 0.0, 0.0)):
             check(abs(loaded.eval(*p) - u.eval(*p)) < EPS, f"asdf round trip at {p}")
 
+    # ── .abm: the loader checks the stored semantics identifier ──────────
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "m.abm")
+        sdf.save_abm(verts, idx, path)
+        v2, i2 = sdf.load_abm(path)
+        check(v2.shape == verts.shape and (i2 == idx).all(), "abm round trip")
+    v1 = Path(__file__).resolve().parents[2] / "tests/fixtures/provenance/mesh_v1.abm"
+    if v1.exists():
+        try:
+            sdf.load_abm(str(v1))
+        except ValueError as e:
+            check("no semantics identifier" in str(e), f"abm v1 refused for another reason: {e}")
+        else:
+            raise AssertionError("load_abm read a version 1 file without an identifier")
+
     print(f"alice_sdf {v}: python smoke OK (mesh {verts.shape[0]} verts, volume {vol:.4f})")
 
 

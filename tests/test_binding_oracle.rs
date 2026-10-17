@@ -40,7 +40,7 @@ mod common;
 
 use alice_sdf::animation::AnimationParams;
 use alice_sdf::compiled::{eval_compiled, CompiledSdf};
-use alice_sdf::ffi::{BatchResult, CompiledHandle, SdfHandle, SdfResult};
+use alice_sdf::ffi::{BatchResult, CompiledHandle, MeshHandle, SdfHandle, SdfResult};
 use alice_sdf::prelude::*;
 use common::corpus::corpus;
 use std::ffi::CString;
@@ -60,6 +60,11 @@ use std::os::raw::c_char;
 // module comment).
 
 extern "C" {
+    // mesh files
+    fn alice_sdf_load_abm(path: *const c_char) -> MeshHandle;
+    fn alice_sdf_mesh_vertex_count(mesh: MeshHandle) -> u32;
+    fn alice_sdf_free_mesh(mesh: MeshHandle);
+
     // primitives
     fn alice_sdf_sphere(radius: f32) -> SdfHandle;
     fn alice_sdf_box(hx: f32, hy: f32, hz: f32) -> SdfHandle;
@@ -1338,4 +1343,49 @@ fn exact_size_buffers_survive_and_agree() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+/// `alice_sdf_load_abm` goes through the checking loader: an .abm with this crate's identifier
+/// loads, one written under another identifier and a version 1 file from alice-sdf 6.1.0
+/// (no identifier) give the null handle
+#[test]
+fn ffi_load_abm_checks_the_identifier() {
+    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_abm_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mesh = alice_sdf::mesh::sdf_to_mesh(
+        &SdfNode::sphere(1.0),
+        Vec3::splat(-1.5),
+        Vec3::splat(1.5),
+        &alice_sdf::mesh::MarchingCubesConfig {
+            resolution: 8,
+            ..Default::default()
+        },
+    );
+    let ours = dir.join("ours.abm");
+    let other = dir.join("other.abm");
+    alice_sdf::io::save_abm(&mesh, &ours).unwrap();
+    alice_sdf::io::save_abm_with_provenance(
+        &mesh,
+        &other,
+        &alice_sdf::provenance::Provenance::new([7; 32]),
+    )
+    .unwrap();
+    let v1 = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/provenance/mesh_v1.abm");
+    let c = |p: &std::path::Path| CString::new(p.to_str().unwrap()).unwrap();
+    unsafe {
+        let h = alice_sdf_load_abm(c(&ours).as_ptr());
+        assert!(!h.is_null(), "this crate's identifier loads");
+        assert_eq!(alice_sdf_mesh_vertex_count(h) as usize, mesh.vertices.len());
+        alice_sdf_free_mesh(h);
+        assert!(
+            alice_sdf_load_abm(c(&other).as_ptr()).is_null(),
+            "another identifier is refused"
+        );
+        assert!(
+            alice_sdf_load_abm(c(&v1).as_ptr()).is_null(),
+            "a version 1 file without an identifier is refused"
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
 }

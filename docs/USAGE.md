@@ -300,9 +300,11 @@ Analysis & measurement:
 use alice_sdf::prelude::*;
 use alice_sdf::io::{save_abm, load_abm, export_unity_mesh, export_ue5_mesh, UnityMeshConfig, Ue5MeshConfig};
 
-// Save/load ABM binary mesh
+// Save/load ABM binary mesh (version 2 stores the semantics identifier; load_abm refuses a file
+// written under another one, and a version 1 file without one: read those with load_abm_unverified)
 save_abm(&mesh, "model.abm")?;
 let loaded = load_abm("model.abm")?;
+let (old, semantics) = alice_sdf::io::load_abm_unverified("old_v1.abm")?.into_parts();
 
 // Export to Unity (left-handed, Z-flip)
 export_unity_mesh(&mesh, "model.unity_mesh", &UnityMeshConfig::default())?;

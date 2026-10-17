@@ -351,8 +351,12 @@ impl ChunkedMeshCache {
     }
 
     /// Load a single chunk from the disk cache. Returns `None` if the file
-    /// does not exist. A chunk that is not cached yet is added at the back of
-    /// the FIFO order, evicting the oldest chunk when the cache is full.
+    /// does not exist, and also when it was written under another semantics
+    /// identifier or before identifiers were stored (an `.abm` the checking
+    /// loader refuses): such a chunk was computed by another arithmetic, so it
+    /// is not cached for this build and is computed again. A chunk that is not
+    /// cached yet is added at the back of the FIFO order, evicting the oldest
+    /// chunk when the cache is full.
     #[allow(clippy::significant_drop_tightening)]
     pub fn load_chunk(&self, coord: &ChunkCoord) -> Result<Option<Arc<Mesh>>, IoError> {
         let dir = self.config.cache_dir.as_ref().ok_or_else(|| {
@@ -365,7 +369,11 @@ impl ChunkedMeshCache {
         if !path.exists() {
             return Ok(None);
         }
-        let mesh = load_abm(&path)?;
+        let mesh = match load_abm(&path) {
+            Ok(mesh) => mesh,
+            Err(IoError::Unpinned { .. } | IoError::SemanticsMismatch { .. }) => return Ok(None),
+            Err(e) => return Err(e),
+        };
         let sdf_hash = *self
             .current_sdf_hash
             .read()
@@ -701,6 +709,62 @@ mod tests {
         assert_eq!(loaded.unwrap().vertex_count(), 6);
 
         // Cleanup.
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A cached chunk written under another semantics identifier, or by a version without one,
+    /// is not used: `load_chunk` reports it as not cached, and the mesh is computed again
+    #[test]
+    fn test_load_chunk_ignores_a_chunk_of_another_arithmetic() {
+        let dir =
+            std::env::temp_dir().join(format!("alice_sdf_chunked_stale_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig {
+            cache_dir: Some(dir.clone()),
+            ..Default::default()
+        });
+        let coord = ChunkCoord::new(0, 0, 0);
+        let path = dir.join("0_0_0_.abm");
+
+        crate::io::abm::save_abm(&make_mesh(6, 3), &path).unwrap();
+        assert!(
+            cache.load_chunk(&coord).unwrap().is_some(),
+            "this build's chunk is used"
+        );
+
+        let cache = ChunkedMeshCache::new(ChunkedCacheConfig {
+            cache_dir: Some(dir.clone()),
+            ..Default::default()
+        });
+        crate::io::abm::save_abm_with_provenance(
+            &make_mesh(6, 3),
+            &path,
+            &crate::provenance::Provenance::new([7; 32]),
+        )
+        .unwrap();
+        assert!(
+            cache.load_chunk(&coord).unwrap().is_none(),
+            "another identifier is not cached"
+        );
+
+        let v1 = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/provenance/mesh_v1.abm");
+        std::fs::copy(v1, &path).unwrap();
+        assert!(
+            cache.load_chunk(&coord).unwrap().is_none(),
+            "a version 1 chunk is not cached"
+        );
+        assert!(
+            cache.cached_chunks().is_empty(),
+            "nothing stale entered the cache"
+        );
+
+        std::fs::write(&path, b"ALICEBM\0truncated").unwrap();
+        assert!(
+            cache.load_chunk(&coord).is_err(),
+            "a damaged file is still an error"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
