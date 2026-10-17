@@ -1,7 +1,8 @@
 //! Provenance — write a mesh, read its semantics identifier back and check it
 //!
 //! Exports a sphere as binary STL, 3MF, STEP and meshopt-compressed glTF, reads the identifier
-//! each file carries, and checks it against this crate's identifier. A file written with another
+//! each file carries, and checks it against this crate's identifier. A stamped STL also carries a
+//! producer identifier, read back from its own slot. A file written with another
 //! identifier is refused, and the error names both.
 //!
 //! # Running
@@ -40,6 +41,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(semantics, StoredSemantics::Current);
         println!("{}: {stored} ({semantics:?})", path.display());
     }
+
+    // a program that turns its own source into meshes stores its identifier as the producer,
+    // next to this crate's: both read back from their own slots
+    let producer = Provenance::new([0x5a; 32]);
+    let stamp = provenance::Stamp::sdf_with_producer(producer);
+    let stamped = dir.join("sphere_stamped.stl");
+    io::export_stl_with_stamp(&mesh, &stamped, &stamp)?;
+    let (primary, stored_producer) = provenance::read_with_producer(&stamped)?;
+    assert_eq!(
+        (primary, stored_producer),
+        (Provenance::sdf(), Some(producer))
+    );
+    assert_eq!(
+        provenance::from_bytes_with_producer(&std::fs::read(&stamped)?)?,
+        (primary, stored_producer)
+    );
+    provenance::check_producer(&stamped, &producer)?;
+    println!("{}: {primary}, producer {producer}", stamped.display());
 
     // every format stamps the same identifier: STEP from the tree, meshopt-compressed glTF
     // written to a file and to bytes

@@ -17,7 +17,7 @@ use crate::compiled::real::law_max_f32;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
-use crate::provenance::Provenance;
+use crate::provenance::{Provenance, Stamp};
 use crate::unordered::UnorderedMap;
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -153,11 +153,37 @@ pub fn export_fbx_with_provenance(
     materials: Option<&MaterialLibrary>,
     provenance: &Provenance,
 ) -> Result<(), IoError> {
-    let creator = format!("ALICE-SDF {}", provenance.tagged());
+    export_fbx_with_stamp(mesh, path, config, materials, &Stamp::from(*provenance))
+}
+
+/// Export a mesh to FBX with a [`Stamp`]: the primary identifier in the `Creator` string, and a
+/// producer identifier (when present) in a separate `ProducerSemanticsId` string of
+/// `FBXHeaderExtension`
+pub fn export_fbx_with_stamp(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &FbxConfig,
+    materials: Option<&MaterialLibrary>,
+    stamp: &Stamp,
+) -> Result<(), IoError> {
+    let creator = format!("ALICE-SDF {}", stamp.primary.tagged());
+    let producer = stamp
+        .producer
+        .map(|p| format!("{}={}", crate::provenance::PRODUCER_KEY, p.hex()));
+    let header = FbxHeaderText {
+        creator: &creator,
+        producer: producer.as_deref(),
+    };
     match config.format {
-        FbxFormat::Ascii => export_fbx_ascii(mesh, path, config, materials, &creator),
-        FbxFormat::Binary => export_fbx_binary(mesh, path, config, materials, &creator),
+        FbxFormat::Ascii => export_fbx_ascii(mesh, path, config, materials, &header),
+        FbxFormat::Binary => export_fbx_binary(mesh, path, config, materials, &header),
     }
+}
+
+/// The strings written into `FBXHeaderExtension`
+struct FbxHeaderText<'a> {
+    creator: &'a str,
+    producer: Option<&'a str>,
 }
 
 /// Export a mesh to FBX 7.4 ASCII format
@@ -166,7 +192,7 @@ fn export_fbx_ascii(
     path: impl AsRef<Path>,
     config: &FbxConfig,
     materials: Option<&MaterialLibrary>,
-    creator: &str,
+    header: &FbxHeaderText<'_>,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -183,7 +209,10 @@ fn export_fbx_ascii(
     writeln!(w, "FBXHeaderExtension:  {{")?;
     writeln!(w, "\tFBXHeaderVersion: 1003")?;
     writeln!(w, "\tFBXVersion: 7400")?;
-    writeln!(w, "\tCreator: \"{creator}\"")?;
+    writeln!(w, "\tCreator: \"{}\"", header.creator)?;
+    if let Some(producer) = header.producer {
+        writeln!(w, "\tProducerSemanticsId: \"{producer}\"")?;
+    }
     writeln!(w, "}}")?;
     writeln!(w)?;
 
@@ -607,7 +636,7 @@ fn export_fbx_binary(
     path: impl AsRef<Path>,
     config: &FbxConfig,
     materials: Option<&MaterialLibrary>,
-    creator: &str,
+    header: &FbxHeaderText<'_>,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -627,12 +656,17 @@ fn export_fbx_binary(
     {
         let version_node = serialize_fbx_node("FBXHeaderVersion", &[FbxProp::I32(1003)], &[]);
         let fbx_version = serialize_fbx_node("FBXVersion", &[FbxProp::I32(7400)], &[]);
-        let creator = serialize_fbx_node("Creator", &[FbxProp::Str(creator.to_string())], &[]);
-        top_nodes.push(serialize_fbx_node(
-            "FBXHeaderExtension",
-            &[],
-            &[version_node, fbx_version, creator],
-        ));
+        let creator =
+            serialize_fbx_node("Creator", &[FbxProp::Str(header.creator.to_string())], &[]);
+        let mut children = vec![version_node, fbx_version, creator];
+        if let Some(producer) = header.producer {
+            children.push(serialize_fbx_node(
+                "ProducerSemanticsId",
+                &[FbxProp::Str(producer.to_string())],
+                &[],
+            ));
+        }
+        top_nodes.push(serialize_fbx_node("FBXHeaderExtension", &[], &children));
     }
 
     // --- GlobalSettings ---

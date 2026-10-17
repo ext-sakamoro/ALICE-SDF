@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1249 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 994 |
-| | **total** | **2252** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1255 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1002 |
+| | **total** | **2266** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1249)
+## L1 — example-only (1255)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -129,7 +129,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/ply.rs`: `import_ply`
 - `src/io/splat.rs`: `Splat::from_bytes`, `load_splat`, `save_splat`
 - `src/io/step.rs`: `StepConfig`, `export_step`, `export_step_with_provenance`
-- `src/io/stl.rs`: `export_stl_ascii`, `export_stl_ascii_with_provenance`, `import_stl`
+- `src/io/stl.rs`: `export_stl_ascii`, `export_stl_ascii_with_provenance`, `export_stl_ascii_with_stamp`, `import_stl`
 - `src/io/usd.rs`: `ImportedUsdMaterial`, `ImportedUsda`, `import_usda`
 - `src/io/vdb.rs`: `DenseGrid`, `VdbError`, `bake_dense_grid`, `bake_to_vdb`, `load_dense_grid_from_vdb`
 - `src/io/vox.rs`: `load_vox`, `save_vox`
@@ -199,7 +199,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/cylinder.rs`: `sdf_cylinder_capped`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
 - `src/primitives/torus.rs`: `sdf_torus_capped`
-- `src/provenance.rs`: `Checked::semantics`, `DDS_TAG`, `ProvenanceError`, `check`, `check_sdf`, `dds_reserved`, `from_bytes`, `read`, `sidecar_path`, `write_sidecar`
+- `src/provenance.rs`: `Checked::semantics`, `DDS_TAG`, `ProvenanceError`, `Stamp::sdf_with_producer`, `Stamp::tagged`, `check`, `check_producer`, `check_sdf`, `dds_reserved`, `from_bytes`, `from_bytes_with_producer`, `read`, `read_with_producer`, `sidecar_path`, `write_sidecar`
 - `src/raw_minmax.rs`: `RawMinMax`, `raw_max_f32`, `raw_max_f32x8`, `raw_min_f32`, `raw_min_f32x8`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`

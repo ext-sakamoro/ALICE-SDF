@@ -45,8 +45,9 @@ pub use asdf::{
     ASDF_HEADER_LEN, ASDF_MAGIC, ASDF_VERSION,
 };
 pub use fbx::{
-    export_fbx, export_fbx_with_provenance, fbx_animation_to_timeline, import_fbx, import_fbx_full,
-    FbxAnimClip, FbxAnimCurve, FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
+    export_fbx, export_fbx_with_provenance, export_fbx_with_stamp, fbx_animation_to_timeline,
+    import_fbx, import_fbx_full, FbxAnimClip, FbxAnimCurve, FbxBone, FbxConfig, FbxFormat,
+    FbxUpAxis, ImportedFbx,
 };
 pub use gltf::{
     export_glb, export_glb_bytes, export_glb_bytes_with_provenance, export_glb_with_provenance,
@@ -59,10 +60,10 @@ pub use nanite::{
 pub use obj::{export_obj, export_obj_with_provenance, import_obj, ObjConfig};
 pub use ply::{export_ply, export_ply_with_provenance, import_ply, PlyConfig};
 pub use stl::{
-    export_stl, export_stl_ascii, export_stl_ascii_with_provenance, export_stl_with_provenance,
-    import_stl,
+    export_stl, export_stl_ascii, export_stl_ascii_with_provenance, export_stl_ascii_with_stamp,
+    export_stl_with_provenance, export_stl_with_stamp, import_stl,
 };
-pub use threemf::{export_3mf, export_3mf_with_provenance};
+pub use threemf::{export_3mf, export_3mf_with_provenance, export_3mf_with_stamp};
 pub use ue5_asset::{
     export_ue5_mesh, export_ue5_mesh_binary, export_ue5_mesh_with_lods, Ue5MeshConfig,
 };

@@ -7,7 +7,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use crate::provenance::Provenance;
+use crate::provenance::{Provenance, Stamp};
 use std::path::Path;
 
 /// Export mesh to binary STL format
@@ -23,13 +23,23 @@ pub fn export_stl_with_provenance(
     path: impl AsRef<Path>,
     provenance: &Provenance,
 ) -> Result<(), IoError> {
+    export_stl_with_stamp(mesh, path, &Stamp::from(*provenance))
+}
+
+/// Export mesh to binary STL format with a [`Stamp`] in the header (version `2` when it carries a
+/// producer identifier, see [`crate::provenance`])
+pub fn export_stl_with_stamp(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    stamp: &Stamp,
+) -> Result<(), IoError> {
     use std::io::{BufWriter, Write};
 
     let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
 
     // 80-byte header: magic, layout version, the semantics identifier, zeros
-    w.write_all(&provenance.stl_header())?;
+    w.write_all(&stamp.stl_header())?;
 
     // Triangle count
     let tri_count = (mesh.indices.len() / 3) as u32;
@@ -75,12 +85,21 @@ pub fn export_stl_ascii_with_provenance(
     path: impl AsRef<Path>,
     provenance: &Provenance,
 ) -> Result<(), IoError> {
+    export_stl_ascii_with_stamp(mesh, path, &Stamp::from(*provenance))
+}
+
+/// Export mesh to ASCII STL format with a [`Stamp`] as the solid name
+pub fn export_stl_ascii_with_stamp(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    stamp: &Stamp,
+) -> Result<(), IoError> {
     use std::io::{BufWriter, Write};
 
     let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
 
-    let name = provenance.tagged();
+    let name = stamp.tagged();
     writeln!(w, "solid {name}")?;
 
     let tri_count = mesh.indices.len() / 3;

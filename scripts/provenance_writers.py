@@ -3,7 +3,8 @@
 
 A writer is a `pub fn` named `export*`, `save*`, `write*` or `to_bytes` in the modules that write
 files or byte streams (WRITER_FILES), outside the `#[cfg(test)]` module; the `*_with_provenance`
-variants are counted with the writer they extend. Each writer must be either
+and `*_with_stamp` variants are counted with the writer they extend (the stamped variants have
+their own round trips in tests/test_provenance.rs). Each writer must be either
 
   - covered: named as `"<file>::<fn>"` in WRITERS of tests/test_provenance.rs, which writes a file,
     reads the identifier back and checks a mismatch, or
@@ -60,7 +61,7 @@ def writers(root: str) -> list[str]:
         if m:
             text = text[: m.start()]
         for name in WRITER.findall(text):
-            if not name.endswith("_with_provenance"):
+            if not name.endswith(("_with_provenance", "_with_stamp")):
                 found.append(f"{rel}::{name}")
     return found
 

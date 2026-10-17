@@ -8,7 +8,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use crate::provenance::Provenance;
+use crate::provenance::{Provenance, Stamp};
 use std::io::{Seek, Write};
 use std::path::Path;
 
@@ -25,6 +25,16 @@ pub fn export_3mf_with_provenance(
     mesh: &Mesh,
     path: impl AsRef<Path>,
     provenance: &Provenance,
+) -> Result<(), IoError> {
+    export_3mf_with_stamp(mesh, path, &Stamp::from(*provenance))
+}
+
+/// Export mesh to 3MF format with a [`Stamp`] as model metadata (a second
+/// `alice:producer_semantics_id` entry when it carries a producer identifier)
+pub fn export_3mf_with_stamp(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    stamp: &Stamp,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let w = std::io::BufWriter::new(file);
@@ -55,8 +65,15 @@ pub fn export_3mf_with_provenance(
     model.push_str(&format!(
         "  <metadata name=\"{}\">{}</metadata>\n",
         crate::provenance::KEY,
-        provenance.hex()
+        stamp.primary.hex()
     ));
+    if let Some(producer) = stamp.producer {
+        model.push_str(&format!(
+            "  <metadata name=\"{}\">{}</metadata>\n",
+            crate::provenance::PRODUCER_KEY,
+            producer.hex()
+        ));
+    }
     model.push_str("  <resources>\n");
     model.push_str("    <object id=\"1\" type=\"model\">\n");
     model.push_str("      <mesh>\n");

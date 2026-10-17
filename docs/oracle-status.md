@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 856 |
+| 🟢 Not ignored | 860 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **856** |
+| **Total** | **860** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (856)
+## 🟢 Not ignored (860)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -28,6 +28,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_tight_aabb_fold_oracle.rs` | 21 |
 | `test_shape_analysis_oracle.rs` | 18 |
+| `test_provenance.rs` | 17 |
 | `test_smooth_ops_oracle.rs` | 17 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
@@ -35,7 +36,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_gpu_law_parity.rs` | 13 |
 | `test_io_format_oracle.rs` | 13 |
-| `test_provenance.rs` | 13 |
 | `test_validity_oracle.rs` | 12 |
 | `test_cache_correctness.rs` | 11 |
 | `test_hlsl_blinkscript_parity.rs` | 11 |

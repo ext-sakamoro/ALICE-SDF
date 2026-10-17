@@ -757,3 +757,278 @@ fn a_file_without_the_identifier_is_missing_not_semantics() {
     ));
     std::fs::remove_file(&path).ok();
 }
+
+// ── producer identifier (`*_with_stamp`) ────────────────────────────────────────────────
+
+use alice_sdf::provenance::Stamp;
+
+fn producer_id() -> Provenance {
+    let mut id = [0u8; 32];
+    for (i, b) in id.iter_mut().enumerate() {
+        *b = u8::try_from(i).unwrap().wrapping_mul(53).wrapping_add(11);
+    }
+    Provenance::new(id)
+}
+
+type StampWrite = fn(&Mesh, &Path, &Stamp);
+
+/// (writer, file name, write with a stamp, write with a provenance only)
+const STAMPED: &[(&str, &str, StampWrite, Write)] = &[
+    (
+        "export_stl_with_stamp",
+        "s.stl",
+        |m, p, s| io::export_stl_with_stamp(m, p, s).unwrap(),
+        |m, p, id| io::export_stl_with_provenance(m, p, id.unwrap()).unwrap(),
+    ),
+    (
+        "export_stl_ascii_with_stamp",
+        "s_ascii.stl",
+        |m, p, s| io::export_stl_ascii_with_stamp(m, p, s).unwrap(),
+        |m, p, id| io::export_stl_ascii_with_provenance(m, p, id.unwrap()).unwrap(),
+    ),
+    (
+        "export_3mf_with_stamp",
+        "s.3mf",
+        |m, p, s| io::export_3mf_with_stamp(m, p, s).unwrap(),
+        |m, p, id| io::export_3mf_with_provenance(m, p, id.unwrap()).unwrap(),
+    ),
+    (
+        "export_fbx_with_stamp (binary)",
+        "s_bin.fbx",
+        |m, p, s| {
+            let c = io::FbxConfig {
+                format: io::FbxFormat::Binary,
+                ..Default::default()
+            };
+            io::export_fbx_with_stamp(m, p, &c, None, s).unwrap();
+        },
+        |m, p, id| {
+            let c = io::FbxConfig {
+                format: io::FbxFormat::Binary,
+                ..Default::default()
+            };
+            io::export_fbx_with_provenance(m, p, &c, None, id.unwrap()).unwrap();
+        },
+    ),
+    (
+        "export_fbx_with_stamp (ascii)",
+        "s_ascii.fbx",
+        |m, p, s| {
+            let c = io::FbxConfig {
+                format: io::FbxFormat::Ascii,
+                ..Default::default()
+            };
+            io::export_fbx_with_stamp(m, p, &c, None, s).unwrap();
+        },
+        |m, p, id| {
+            let c = io::FbxConfig {
+                format: io::FbxFormat::Ascii,
+                ..Default::default()
+            };
+            io::export_fbx_with_provenance(m, p, &c, None, id.unwrap()).unwrap();
+        },
+    ),
+];
+
+/// Each stamped writer keeps the two identifiers in their own slots (in either assignment), a
+/// stamp without a producer writes exactly the bytes of `*_with_provenance`, and `check_producer`
+/// answers present / absent / another producer distinctly
+#[test]
+fn stamped_writers_keep_both_identifiers_in_their_slots() {
+    let m = mesh();
+    let mut compared = 0;
+    for &(name, file, stamped, plain) in STAMPED {
+        let path = temp(file);
+        // this crate's identifier as primary, the caller's as producer
+        stamped(&m, &path, &Stamp::sdf_with_producer(producer_id()));
+        assert_eq!(
+            provenance::read_with_producer(&path).unwrap(),
+            (Provenance::sdf(), Some(producer_id())),
+            "{name}"
+        );
+        assert_eq!(
+            provenance::read(&path).unwrap(),
+            Provenance::sdf(),
+            "{name}"
+        );
+        assert_eq!(
+            provenance::check_sdf(&path).unwrap(),
+            StoredSemantics::Current,
+            "{name}"
+        );
+        provenance::check_producer(&path, &producer_id()).unwrap();
+        match provenance::check_producer(&path, &caller_id()) {
+            Err(ProvenanceError::ProducerMismatch { stored, expected }) => {
+                assert_eq!((stored, expected), (producer_id(), caller_id()), "{name}");
+            }
+            other => panic!("{name}: expected a producer mismatch, got {other:?}"),
+        }
+        // the other assignment: the two must not swap places
+        stamped(
+            &m,
+            &path,
+            &Stamp::new(producer_id(), Some(Provenance::sdf())),
+        );
+        assert_eq!(
+            provenance::read_with_producer(&path).unwrap(),
+            (producer_id(), Some(Provenance::sdf())),
+            "{name}: swapped assignment"
+        );
+        // no producer: the same bytes as the provenance writer, and no producer read back
+        stamped(&m, &path, &Stamp::from(caller_id()));
+        let with_stamp = std::fs::read(&path).unwrap();
+        plain(&m, &path, Some(&caller_id()));
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            with_stamp,
+            "{name}: no producer"
+        );
+        assert_eq!(
+            provenance::read_with_producer(&path).unwrap(),
+            (caller_id(), None),
+            "{name}"
+        );
+        assert!(
+            matches!(
+                provenance::check_producer(&path, &producer_id()),
+                Err(ProvenanceError::ProducerMissing)
+            ),
+            "{name}"
+        );
+        std::fs::remove_file(&path).ok();
+        compared += 1;
+    }
+    assert_eq!(compared, STAMPED.len());
+    assert!(compared > 0, "compared no stamped writer");
+}
+
+/// The binary STL header with a producer: version 2, bytes 41..48 zero, the producer in 48..80,
+/// never starting with `solid`; an all-zero producer is still present (the version says so)
+#[test]
+fn the_binary_stl_header_with_a_producer_has_the_documented_layout() {
+    let m = mesh();
+    let path = temp("layout.stl");
+    io::export_stl_with_stamp(&m, &path, &Stamp::sdf_with_producer(producer_id())).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..8], provenance::STL_MAGIC);
+    assert_eq!(bytes[8], provenance::STL_HEADER_VERSION_PRODUCER);
+    assert_eq!(&bytes[9..41], &Provenance::sdf().semantics_id);
+    assert_eq!(&bytes[41..48], &[0u8; 7]);
+    assert_eq!(&bytes[48..80], &producer_id().semantics_id);
+    assert!(!bytes.starts_with(b"solid"));
+    // without a producer: version 1 and zeros after the identifier
+    io::export_stl_with_stamp(&m, &path, &Stamp::from(Provenance::sdf())).unwrap();
+    let plain = std::fs::read(&path).unwrap();
+    assert_eq!(plain[8], provenance::STL_HEADER_VERSION);
+    assert_eq!(&plain[41..80], &[0u8; 39]);
+    // an all-zero producer is distinguishable from none
+    io::export_stl_with_stamp(
+        &m,
+        &path,
+        &Stamp::sdf_with_producer(Provenance::new([0; 32])),
+    )
+    .unwrap();
+    assert_eq!(
+        provenance::read_with_producer(&path).unwrap(),
+        (Provenance::sdf(), Some(Provenance::new([0; 32])))
+    );
+    // a version 2 header with a non-zero reserved byte is not this crate's
+    let mut bad = std::fs::read(&path).unwrap();
+    bad[44] = 1;
+    std::fs::write(&path, &bad).unwrap();
+    assert!(matches!(
+        provenance::read(&path),
+        Err(ProvenanceError::Missing { .. })
+    ));
+    std::fs::remove_file(&path).ok();
+}
+
+/// ASCII STL: with both tokens the primary is read from its own key; a solid name with only the
+/// producer token has no primary identifier (the producer is not misread as one)
+#[test]
+fn ascii_stl_reads_each_identifier_from_its_own_key() {
+    let m = mesh();
+    let path = temp("keys.stl");
+    io::export_stl_ascii_with_stamp(&m, &path, &Stamp::sdf_with_producer(producer_id())).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let first = text.lines().next().unwrap();
+    assert_eq!(
+        first,
+        format!(
+            "solid {} {}={}",
+            Provenance::sdf().tagged(),
+            provenance::PRODUCER_KEY,
+            producer_id().hex()
+        )
+    );
+    let only_producer = text.replacen(&format!("{} ", Provenance::sdf().tagged()), "", 1);
+    std::fs::write(&path, only_producer).unwrap();
+    assert!(matches!(
+        provenance::read(&path),
+        Err(ProvenanceError::Missing { .. })
+    ));
+    std::fs::remove_file(&path).ok();
+}
+
+/// The independent parsers still read the stamped files: `stl_io` the version 2 binary STL,
+/// `fbxcel` the binary FBX (with `ProducerSemanticsId` beside `Creator`), and the 3MF model keeps
+/// both metadata entries before `<resources>`
+#[test]
+fn independent_parsers_read_the_stamped_files() {
+    let m = mesh();
+    let stamp = Stamp::sdf_with_producer(producer_id());
+
+    let stl = temp("strict_stamp.stl");
+    io::export_stl_with_stamp(&m, &stl, &stamp).unwrap();
+    let mut f = std::fs::File::open(&stl).unwrap();
+    let parsed = stl_io::read_stl(&mut f).expect("stl_io reads the file");
+    assert_eq!(parsed.faces.len(), m.indices.len() / 3);
+    std::fs::remove_file(&stl).ok();
+
+    let fbx = temp("strict_stamp.fbx");
+    let c = io::FbxConfig {
+        format: io::FbxFormat::Binary,
+        ..Default::default()
+    };
+    io::export_fbx_with_stamp(&m, &fbx, &c, None, &stamp).unwrap();
+    let f = std::io::BufReader::new(std::fs::File::open(&fbx).unwrap());
+    let fbxcel::tree::any::AnyTree::V7400(_, tree, footer) =
+        fbxcel::tree::any::AnyTree::from_seekable_reader(f).expect("fbxcel reads the file")
+    else {
+        panic!("not an FBX 7.4 tree")
+    };
+    footer.expect("fbxcel reads the footer");
+    let header = tree
+        .root()
+        .first_child_by_name("FBXHeaderExtension")
+        .expect("FBXHeaderExtension");
+    let string_of = |name: &str| match header
+        .first_child_by_name(name)
+        .unwrap_or_else(|| panic!("{name}"))
+        .attributes()
+    {
+        [fbxcel::low::v7400::AttributeValue::String(s)] => s.clone(),
+        other => panic!("{name} attributes: {other:?}"),
+    };
+    assert_eq!(
+        string_of("Creator"),
+        format!("ALICE-SDF {}", Provenance::sdf().tagged())
+    );
+    assert_eq!(
+        string_of("ProducerSemanticsId"),
+        format!("{}={}", provenance::PRODUCER_KEY, producer_id().hex())
+    );
+    std::fs::remove_file(&fbx).ok();
+
+    let tmf = temp("order_stamp.3mf");
+    io::export_3mf_with_stamp(&m, &tmf, &stamp).unwrap();
+    let bytes = std::fs::read(&tmf).unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    let primary = text.find("<metadata name=\"alice:semantics_id\">").unwrap();
+    let producer = text
+        .find("<metadata name=\"alice:producer_semantics_id\">")
+        .unwrap();
+    let resources = text.find("<resources>").unwrap();
+    assert!(primary < producer && producer < resources);
+    std::fs::remove_file(&tmf).ok();
+}
