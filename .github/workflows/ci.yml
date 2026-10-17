@@ -450,6 +450,15 @@ jobs:
         run: |
           python scripts/test_hash_order_audit.py
           python scripts/hash_order_audit.py
+      # G13 text layer: every HashMap / HashSet, rayon / thread and pointer-order line
+      # of src/ is listed in scripts/order_allowlist.toml with its count, the SHA-256 of
+      # each line and the reason (the type-resolved layer is the library clippy run);
+      # G10 text layer: no OS entropy or wall clock outside the CLI's timings
+      - name: Order and entropy guards (test, then check)
+        run: |
+          python scripts/test_order_guard.py
+          python scripts/order_guard.py
+          python scripts/entropy_guard.py
       - name: Build configuration guard (test, then check)
         run: |
           python scripts/test_build_config_guard.py

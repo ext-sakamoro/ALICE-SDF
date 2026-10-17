@@ -540,6 +540,11 @@ impl NaniteMesh {
         self.clusters.iter().find(|c| c.id == id)
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+    )]
     /// Select the clusters to draw from `view_pos` (the cluster-LOD cut)
     ///
     /// For every group `G` the projected error is `G.max_error / d`, where `d`
@@ -558,6 +563,11 @@ impl NaniteMesh {
     /// selected group: the selected clusters cover every region exactly once.
     /// The returned ids are in cluster order.
     pub fn select_clusters(&self, view_pos: Vec3, error_threshold: f32) -> Vec<u32> {
+        #[allow(
+            clippy::disallowed_types,
+            clippy::disallowed_methods,
+            reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+        )]
         use std::collections::HashMap;
 
         let mut group_of: HashMap<u32, usize> = HashMap::with_capacity(self.clusters.len());
@@ -862,6 +872,11 @@ struct Region {
     parent: Option<usize>,
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+)]
 /// Link every region to the enclosing region of the nearest coarser level,
 /// propagate errors and LOD spheres upwards, fill the cluster DAG and return
 /// the groups
@@ -869,6 +884,11 @@ struct Region {
 /// `regions` are in level order (finest first) and `clusters` are indexed by
 /// id.
 fn build_region_tree(regions: &mut [Region], clusters: &mut [NaniteCluster]) -> Vec<ClusterGroup> {
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+    )]
     use std::collections::HashMap;
 
     let mut by_key: HashMap<(u32, [u32; 3]), usize> = HashMap::with_capacity(regions.len());
@@ -959,9 +979,19 @@ fn triangle_positions(mesh: &Mesh, t: usize) -> [Vec3; 3] {
     ]
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+)]
 /// Pack triangles (in the given order) into chunks of at most `max_tris`
 /// triangles and [`CLUSTER_MAX_VERTICES`] distinct vertices
 fn pack_clusters(mesh: &Mesh, tris: &[usize], max_tris: usize) -> Vec<Vec<usize>> {
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+    )]
     use std::collections::HashSet;
 
     let mut chunks = Vec::new();
@@ -1125,8 +1155,18 @@ pub(crate) fn cluster_surface_error(
     4.0f32 * (f32::EPSILON * scale) + found
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+)]
 /// Extract geometry for a subset of triangles
 fn extract_cluster_geometry(mesh: &Mesh, tri_indices: &[usize]) -> (Vec<Vertex>, Vec<Triangle>) {
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "cluster, region and vertex index maps: lookups only; the vertex set is only counted (ALICE-Law G13)"
+    )]
     use std::collections::HashMap;
 
     let mut vertex_map: HashMap<u32, u32> = HashMap::new();

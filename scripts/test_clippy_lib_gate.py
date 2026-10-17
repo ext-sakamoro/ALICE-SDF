@@ -20,7 +20,7 @@ disallowed-methods = [
 ]
 
 disallowed-types = [
-    { path = "std::collections::HashMap", reason = "seed" },
+    { path = "std::collections::hash_map::RandomState", reason = "seed" },
 ]
 """
 
@@ -167,6 +167,27 @@ pub fn g_d4_min_element() {
 pub fn g_d4_max_element() {
     d4.max_element()
 }
+pub fn h0() {
+    x(&std::collections::HashMap<u32, u32>)
+}
+pub fn h1() {
+    x(&std::collections::HashSet<u32>)
+}
+pub fn h2() {
+    x(hash_map::Iter<'_, u32, u32>)
+}
+pub fn h3() {
+    x(m.keys()
+}
+pub fn h4() {
+    x(m.values()
+}
+pub fn h5() {
+    x(m.iter_mut()
+}
+pub fn h6() {
+    x(s.iter()
+}
 """
 
 
@@ -179,11 +200,13 @@ class Render(unittest.TestCase):
         out = g.render(ROOT)
         self.assertTrue(out.startswith(g.HEADER))
         body = out[len(g.HEADER) + 1:]
-        self.assertEqual(body.replace("".join(
-            f'    {{ path = "{p}", reason = "{g.REASON}" }},\n' for p in g.EXTRA), ""), ROOT)
+        added = "".join(f'    {{ path = "{p}", reason = "{g.REASON}" }},\n' for p in g.EXTRA)
+        added += "".join(f'    {{ path = "{p}", reason = "{g.ORDER_REASON}" }},\n' for p in g.EXTRA_ORDER_METHODS)
+        types = "".join(f'    {{ path = "{p}", reason = "{g.ORDER_REASON}" }},\n' for p in g.EXTRA_TYPES)
+        self.assertEqual(body.replace(added, "").replace(types, ""), ROOT)
         i = body.index("disallowed-methods = [\n")
         self.assertIn('path = "f32::max"', body[i:body.index('path = "f32::sin"')])
-        self.assertEqual(g.count_entries(out), 2 + len(g.EXTRA))
+        self.assertEqual(g.count_entries(out), 2 + len(g.EXTRA) + len(g.EXTRA_ORDER_METHODS))
 
     def test_the_extra_paths_are_exactly_the_float_and_glam_max_and_min(self):
         glam = [f"glam::{t}::{m}" for t in ("Vec2", "Vec3", "Vec3A", "Vec4", "DVec2", "DVec3", "DVec4")
@@ -218,7 +241,7 @@ class Check(unittest.TestCase):
         self.assertTrue(g.check(root, lib))
 
     def test_an_empty_root_list_fails(self):
-        root = 'disallowed-methods = [\n]\n'
+        root = 'disallowed-methods = [\n]\n\ndisallowed-types = [\n]\n'
         self.assertTrue(g.check(root, g.render(root)))
 
 
@@ -279,6 +302,25 @@ class RealFiles(unittest.TestCase):
             self.assertIn(f'path = "{path}"', root, f"clippy.toml must disallow {path}")
         types = root[root.index("disallowed-types = ["):]
         self.assertIn('path = "std::collections::hash_map::RandomState"', types)
+
+    def test_the_library_bans_the_hash_collections_and_their_iteration(self):
+        out = g.render(ROOT)
+        types = out[out.index("disallowed-types = ["):]
+        for path in g.EXTRA_TYPES:
+            self.assertIn(f'path = "{path}"', types)
+        methods = out[out.index("disallowed-methods = ["):out.index("disallowed-types = [")]
+        for path in g.EXTRA_ORDER_METHODS:
+            self.assertIn(f'path = "{path}"', methods)
+        self.assertEqual(g.check(ROOT, out), [])
+
+    def test_a_dropped_type_entry_fails_the_count(self):
+        out = g.render(ROOT)
+        line = next(l for l in out.splitlines() if 'path = "std::collections::HashSet"' in l)
+        self.assertTrue(g.check(ROOT, out.replace(line + "\n", "")))
+
+    def test_the_root_may_not_list_a_library_only_entry(self):
+        with self.assertRaises(ValueError):
+            g.render(ROOT.replace("disallowed-types = [\n", 'disallowed-types = [\n    { path = "std::collections::HashSet", reason = "x" },\n'))
 
     def test_the_committed_library_configuration_is_up_to_date(self):
         root = Path(g.ROOT_CONFIG).read_text(encoding="utf-8")

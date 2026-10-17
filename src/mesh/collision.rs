@@ -380,6 +380,11 @@ fn find_initial_tetrahedron(points: &[Vec3]) -> (usize, usize, usize, usize) {
     (p0, p1, p2, p3)
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "cell to new vertex index: lookups only, the vertices are created in cell order (ALICE-Law G13)"
+)]
 /// Generate a simplified collision mesh by vertex clustering
 ///
 /// Reduces vertex count by clustering nearby vertices into grid cells.
@@ -416,6 +421,11 @@ pub fn simplify_collision(mesh: &Mesh, grid_resolution: u32) -> CollisionMesh {
     );
 
     // Cluster vertices into grid cells
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "cell to new vertex index: lookups only, the vertices are created in cell order (ALICE-Law G13)"
+    )]
     use std::collections::{BTreeMap, HashMap};
     // ordered by cell, so the new vertices come out in one order on every run
     // (a HashMap's iteration order is unspecified; ALICE-Law G13)

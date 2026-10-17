@@ -167,6 +167,11 @@ struct CacheEntry {
     last_access: u64,
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
+)]
 /// Streaming SVO cache with LRU eviction
 ///
 /// Stores a fixed number of SVO chunks in memory. When the cache
@@ -189,6 +194,11 @@ pub struct SvoStreamingCache {
 }
 
 impl SvoStreamingCache {
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
+    )]
     /// Create a new streaming cache
     ///
     /// # Arguments
@@ -205,6 +215,11 @@ impl SvoStreamingCache {
         }
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
+    )]
     /// Create a cache with a memory budget
     pub fn with_memory_budget(max_memory_bytes: usize) -> Self {
         Self {
@@ -272,6 +287,11 @@ impl SvoStreamingCache {
         false
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
+    )]
     /// Evict the least recently used chunk
     fn evict_lru(&mut self) -> bool {
         if self.entries.is_empty() {
@@ -424,6 +444,11 @@ pub fn split_into_chunks(svo: &SparseVoxelOctree, split_depth: u32) -> Vec<SvoCh
     chunks
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "chunk cache keyed by chunk id and node index remap: lookups; eviction takes the least access counter, ties broken by id, which does not depend on the order (ALICE-Law G13)"
+)]
 /// Extract a subtree starting at the given node index
 fn extract_subtree(svo: &SparseVoxelOctree, root_idx: usize) -> Vec<SvoNode> {
     if root_idx >= svo.nodes.len() {

@@ -36,6 +36,11 @@ use crate::mesh::{Mesh, Vertex};
 use glam::{Vec3, Vec4};
 use rayon::prelude::*;
 use std::cmp::Ordering;
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge counts and vertex sets used for membership; the one pass over the counts fills a set, which does not depend on the order (ALICE-Law G13)"
+)]
 use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
 
 /// Decimation configuration
@@ -315,6 +320,11 @@ impl Ord for CollapseCandidate {
     }
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "edge counts and vertex sets used for membership; the one pass over the counts fills a set, which does not depend on the order (ALICE-Law G13)"
+)]
 /// Decimate a mesh using Quadric Error Metrics (Deep Fried v2)
 ///
 /// Reduces triangle count by collapsing edges with lowest geometric error.

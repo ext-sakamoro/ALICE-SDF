@@ -260,11 +260,21 @@ pub fn compute_acmr(mesh: &Mesh, cache_size: usize) -> f32 {
     misses as f32 / tri_count as f32
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "vertex deduplication and a set of seen indices: lookups and membership counts only (ALICE-Law G13)"
+)]
 /// Deduplicate vertices that share the same position, normal, and UV
 ///
 /// Merges identical vertices and updates indices accordingly.
 /// Reduces vertex buffer size and improves cache efficiency.
 pub fn deduplicate_vertices(mesh: &mut Mesh) {
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "vertex deduplication and a set of seen indices: lookups and membership counts only (ALICE-Law G13)"
+    )]
     use std::collections::HashMap;
 
     let mut vertex_map: HashMap<u64, u32> = HashMap::new();
@@ -380,6 +390,11 @@ pub fn optimize_vertex_fetch(mesh: &mut Mesh) {
     mesh.vertices = new_vertices;
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "vertex deduplication and a set of seen indices: lookups and membership counts only (ALICE-Law G13)"
+)]
 /// Average Transformed Vertex Ratio (ATVR) 計測
 ///
 /// `cache_size` entry の FIFO cache (hit では順序を更新しない) で index の列を走査し、

@@ -98,6 +98,11 @@ use alice_physics::{Fix128, Vec3Fix};
 use glam::Vec3;
 use rayon::prelude::*;
 use std::any::Any;
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "vertex welding: lookups only, vertices are emitted in mesh and cell order (ALICE-Law G13)"
+)]
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -1294,6 +1299,11 @@ impl LiveMesh {
         self.meshes.get(self.config.chunk_index(c))
     }
 
+    #[allow(
+        clippy::disallowed_types,
+        clippy::disallowed_methods,
+        reason = "vertex welding: lookups only, vertices are emitted in mesh and cell order (ALICE-Law G13)"
+    )]
     /// Every chunk mesh joined into one, vertices with identical position
     /// bits merged (the chunk borders' shared vertices), degenerate
     /// triangles dropped.
@@ -1322,6 +1332,11 @@ impl LiveMesh {
     }
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "vertex welding: lookups only, vertices are emitted in mesh and cell order (ALICE-Law G13)"
+)]
 /// Marching cubes of chunk `c` on the global lattice.
 fn mesh_chunk(state: &LiveState, config: &LiveMeshConfig, c: [usize; 3]) -> Mesh {
     let n = config.chunk_cells;

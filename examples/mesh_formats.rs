@@ -29,7 +29,7 @@ use alice_sdf::mesh::nanite::{generate_nanite_mesh, NaniteConfig};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh};
 use alice_sdf::types::SdfNode;
 use glam::Vec3;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 fn positions(mesh: &Mesh) -> Vec<Vec3> {
     mesh.indices
@@ -110,7 +110,7 @@ fn main() {
     assert_eq!(mat.diffuse_color, [0.75, 0.25, 0.5]);
 
     // ── an FBX animation clip as a timeline ────────────────
-    let mut curves = HashMap::new();
+    let mut curves = BTreeMap::new();
     curves.insert(
         "root".to_string(),
         vec![FbxAnimCurve {

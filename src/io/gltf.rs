@@ -333,6 +333,11 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "texture path to texture index: lookups that deduplicate, the textures are written in first-use order (ALICE-Law G13)"
+)]
 fn build_glb_data(
     mesh: &Mesh,
     config: &GltfConfig,

@@ -3,7 +3,7 @@
 #
 # The library code (`cargo clippy --lib`, CLIPPY_CONF_DIR=.github/clippy-lib)
 # also may not call f32 / f64 / f32x8 max and min; tests, examples and benches use the
-# root configuration
+# root configuration; nor name or iterate HashMap / HashSet (ALICE-Law G13)
 
 # Determinism gate. The CPU evaluators promise the same distance bits for the
 # same tree and point on every platform CI tests, and the bounds, meshes,
@@ -83,6 +83,18 @@ disallowed-methods = [
     { path = "glam::DVec4::clamp", reason = "the sign of an equal pair of zeros is unspecified and differs between targets; use law_max_f32 / law_min_f32, or .law_max / .law_min / .law_clamp / .law_max_element / .law_min_element for glam vectors (or raw_* for values that are never stored)" },
     { path = "glam::DVec4::min_element", reason = "the sign of an equal pair of zeros is unspecified and differs between targets; use law_max_f32 / law_min_f32, or .law_max / .law_min / .law_clamp / .law_max_element / .law_min_element for glam vectors (or raw_* for values that are never stored)" },
     { path = "glam::DVec4::max_element", reason = "the sign of an equal pair of zeros is unspecified and differs between targets; use law_max_f32 / law_min_f32, or .law_max / .law_min / .law_clamp / .law_max_element / .law_min_element for glam vectors (or raw_* for values that are never stored)" },
+    { path = "std::collections::HashMap::iter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::iter_mut", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::keys", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::values", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::values_mut", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::into_keys", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::into_values", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::drain", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashMap::retain", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashSet::iter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashSet::drain", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashSet::retain", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
     { path = "f32::sin", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
     { path = "f32::cos", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
     { path = "f32::tan", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
@@ -148,6 +160,18 @@ disallowed-methods = [
     { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic" },
 ]
 disallowed-types = [
+    { path = "std::collections::HashMap", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::HashSet", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_map::Iter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_map::IterMut", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_map::Keys", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_map::Values", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_map::ValuesMut", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_map::IntoIter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_map::Drain", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_set::Iter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_set::IntoIter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "std::collections::hash_set::Drain", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
     # disallowed-methods cannot name RandomState::default (a trait method,
     # not reachable via the implementing type's path alone); naming the type
     # itself here catches ::default() too, along with any other explicit

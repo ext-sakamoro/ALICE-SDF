@@ -95,12 +95,6 @@ verdict = "not-observed"
 why = "an integer sum of the estimated mesh sizes, which does not depend on the order"
 
 [[site]]
-file = "src/io/fbx.rs"
-code = "let max_time = bone_curves.values().flat_map(|curves| curves.iter().flat_map(|c| c.times.iter())).cloned().fold(0.0f32, law_max_f32);"
-verdict = "not-observed"
-why = "a fold with law_max_f32, which is commutative and associative with NaN as the identity, so the order cannot change the result"
-
-[[site]]
 file = "src/svo/streaming.rs"
 code = "let lru_id = self.entries.iter().min_by_key(|(&id, e)| (e.last_access, id)).map(|(&id, _)| id);"
 verdict = "not-observed"

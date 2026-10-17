@@ -17,7 +17,12 @@ use crate::compiled::real::law_max_f32;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
-use std::collections::HashMap;
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "bone id to bone index while parsing: lookups only (ALICE-Law G13)"
+)]
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::path::Path;
 
@@ -114,7 +119,7 @@ pub struct FbxAnimClip {
     /// Clip name
     pub name: String,
     /// Animation curves per bone (bone_name -> curves)
-    pub bone_curves: HashMap<String, Vec<FbxAnimCurve>>,
+    pub bone_curves: BTreeMap<String, Vec<FbxAnimCurve>>,
     /// Duration in seconds
     pub duration: f32,
     /// Frames per second
@@ -1199,6 +1204,11 @@ pub fn import_fbx_full(path: impl AsRef<Path>) -> Result<ImportedFbx, IoError> {
     })
 }
 
+#[allow(
+    clippy::disallowed_types,
+    clippy::disallowed_methods,
+    reason = "bone id to bone index while parsing: lookups only (ALICE-Law G13)"
+)]
 /// Parse skeleton from FBX ASCII Deformer/Cluster sections
 fn parse_skeleton(content: &str) -> Option<Vec<FbxBone>> {
     let mut bones = Vec::new();
@@ -1362,7 +1372,7 @@ fn parse_skeleton(content: &str) -> Option<Vec<FbxBone>> {
 /// Parse animations from FBX ASCII AnimationCurveNode sections
 fn parse_animations(content: &str) -> Vec<FbxAnimClip> {
     let mut clips = Vec::new();
-    let mut bone_curves: HashMap<String, Vec<FbxAnimCurve>> = HashMap::new();
+    let mut bone_curves: BTreeMap<String, Vec<FbxAnimCurve>> = BTreeMap::new();
 
     // FBX time unit: 1 second = 46186158000
     const FBX_TIME_UNIT: f64 = 46186158000.0;
@@ -1721,7 +1731,7 @@ mod tests {
     #[test]
     fn test_fbx_animation_to_timeline() {
         // Create FbxAnimClip with translation curves
-        let mut bone_curves = HashMap::new();
+        let mut bone_curves = BTreeMap::new();
         let curves = vec![
             FbxAnimCurve {
                 property: "Lcl Translation".to_string(),

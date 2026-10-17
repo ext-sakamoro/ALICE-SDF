@@ -39,7 +39,7 @@ use alice_sdf::mesh::nanite::{generate_nanite_mesh, NaniteConfig};
 use alice_sdf::mesh::{Mesh, Vertex};
 use alice_sdf::types::SdfNode;
 use glam::{Vec2, Vec3};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 fn tmp(name: &str) -> PathBuf {
@@ -201,7 +201,7 @@ fn fbx_ascii_round_trips_and_binary_is_refused_by_name() {
 fn fbx_animation_maps_root_channels_to_timeline_tracks() {
     // oracle: translation is copied, rotation goes from degrees to radians,
     // and keys interpolate linearly
-    let mut curves = HashMap::new();
+    let mut curves = BTreeMap::new();
     curves.insert(
         "root".to_string(),
         vec![

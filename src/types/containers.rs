@@ -56,7 +56,7 @@ pub struct SdfMetadata {
     /// Bounding box hint (min, max)
     pub bounds: Option<(Vec3, Vec3)>,
     /// Custom key-value pairs
-    pub custom: Option<std::collections::HashMap<String, String>>,
+    pub custom: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// Axis-aligned bounding box
