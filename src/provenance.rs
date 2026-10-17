@@ -19,6 +19,7 @@
 //! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
 //! | ASDF (`.asdf`, version 2) | the 32 bytes after the 16-byte header; this crate's loaders refuse another identifier and, by default, a version 1 file without one |
+//! | ABM (`.abm`, version 2) | the 32 bytes after the 32-byte header; this crate's loaders refuse another identifier and, by default, a version 1 file without one |
 //! | DDS 3D texture | the header's reserved dwords: tag `ALSD`, version `1`, the 32 identifier bytes |
 //! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
 //!
@@ -295,6 +296,28 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         let mut id = [0u8; 32];
         id.copy_from_slice(&r[8..40]);
         return Ok(Provenance::new(id));
+    }
+    if bytes.starts_with(b"ALICEBM\0") {
+        // ABM: version 2 carries the identifier after the 32-byte header; a version this crate
+        // does not know is refused rather than read at the version 2 offset
+        let version = bytes
+            .get(8..10)
+            .map(|v| u16::from_le_bytes([v[0], v[1]]))
+            .ok_or_else(|| ProvenanceError::Unreadable("ABM: truncated header".into()))?;
+        return match version {
+            1 => Err(ProvenanceError::Missing { format: "ABM" }),
+            2 => {
+                let id: [u8; 32] = bytes
+                    .get(32..64)
+                    .ok_or_else(|| ProvenanceError::Unreadable("ABM: truncated header".into()))?
+                    .try_into()
+                    .unwrap();
+                Ok(Provenance::new(id))
+            }
+            v => Err(ProvenanceError::Unreadable(format!(
+                "ABM: version {v} is not known"
+            ))),
+        };
     }
     if bytes.starts_with(b"glTF") {
         // GLB: 12-byte header, then the JSON chunk (length, type `JSON`, data)

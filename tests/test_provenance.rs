@@ -279,6 +279,35 @@ const WRITERS: &[(&str, &str, Write)] = &[
         };
         std::fs::write(p, header.to_bytes()).unwrap();
     }),
+    ("src/io/abm.rs::save_abm", "m.abm", |m, p, id| match id {
+        None => io::save_abm(m, p).unwrap(),
+        Some(id) => io::save_abm_with_provenance(m, p, id).unwrap(),
+    }),
+    (
+        "src/io/abm.rs::save_abm_with_lods",
+        "m_lods.abm",
+        |m, p, id| {
+            let lods = [m.clone(), m.clone()];
+            match id {
+                None => io::save_abm_with_lods(&lods, &[10.0], p).unwrap(),
+                Some(id) => io::save_abm_with_lods_with_provenance(&lods, &[10.0], p, id).unwrap(),
+            }
+        },
+    ),
+    ("src/io/abm.rs::to_bytes", "m_header.abm", |m, p, id| {
+        let header = io::AbmHeader {
+            magic: io::ABM_MAGIC,
+            version: io::ABM_VERSION,
+            flags: 0,
+            vertex_count: u32::try_from(m.vertices.len()).unwrap(),
+            index_count: u32::try_from(m.indices.len()).unwrap(),
+            lod_count: 0,
+            _reserved: [0; 7],
+            crc32: 0,
+            semantics_id: Some(id.map_or(alice_sdf::SDF_SEMANTICS_ID, |id| id.semantics_id)),
+        };
+        std::fs::write(p, header.to_bytes()).unwrap();
+    }),
 ];
 
 #[test]
@@ -1031,4 +1060,180 @@ fn independent_parsers_read_the_stamped_files() {
     let resources = text.find("<resources>").unwrap();
     assert!(primary < producer && producer < resources);
     std::fs::remove_file(&tmf).ok();
+}
+
+/// The mesh the ABM fixtures hold (written by alice-sdf 6.1.0 from crates.io with the same
+/// construction): a triangle and a quad, normals along +Z, scaled by `scale`
+fn abm_fixture_mesh(scale: f32) -> Mesh {
+    let p = [
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(2.0, 0.0, 0.5),
+        Vec3::new(3.0, 0.0, 0.5),
+        Vec3::new(2.0, 1.0, 0.5),
+    ];
+    Mesh {
+        vertices: p
+            .iter()
+            .map(|&v| Vertex {
+                position: v * scale,
+                normal: Vec3::Z,
+                ..Vertex::default()
+            })
+            .collect(),
+        indices: vec![0, 1, 2, 3, 4, 5, 0, 2, 3],
+    }
+}
+
+fn same_mesh(a: &Mesh, b: &Mesh) -> bool {
+    a.indices == b.indices
+        && a.vertices.len() == b.vertices.len()
+        && a.vertices.iter().zip(&b.vertices).all(|(x, y)| {
+            x.position.to_array().map(f32::to_bits) == y.position.to_array().map(f32::to_bits)
+                && x.normal.to_array().map(f32::to_bits) == y.normal.to_array().map(f32::to_bits)
+        })
+}
+
+/// Files written by alice-sdf 6.1.0 (`tests/fixtures/provenance/mesh_v1.abm` and `lods_v1.abm`,
+/// ABM version 1, no identifier): both default loaders refuse them, the unverified loaders
+/// return the meshes bit for bit, marked `Unpinned`
+#[test]
+fn an_abm_file_from_6_1_0_is_refused_by_default_and_read_unverified() {
+    let single = fixture("mesh_v1.abm");
+    let lods = fixture("lods_v1.abm");
+    for path in [&single, &lods] {
+        assert_eq!(
+            &std::fs::read(path).unwrap()[8..10],
+            &1u16.to_le_bytes(),
+            "fixture is version 1"
+        );
+        for refused in [
+            io::load_abm(path).map(|_| ()),
+            io::load_abm_with_lods(path).map(|_| ()),
+        ] {
+            match refused {
+                Err(io::IoError::Unpinned { format }) => assert_eq!(format, "ABM"),
+                other => panic!("expected Unpinned, got {other:?}"),
+            }
+        }
+        assert!(matches!(
+            provenance::read(path),
+            Err(ProvenanceError::Missing { format: "ABM" })
+        ));
+        assert_eq!(io::read_abm_header(path).unwrap().semantics_id, None);
+    }
+
+    let checked = io::load_abm_unverified(&single).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    let (m, _) = checked.into_parts();
+    assert!(
+        same_mesh(&m, &abm_fixture_mesh(1.0)),
+        "the 6.1.0 mesh reads back bit for bit"
+    );
+
+    let checked = io::load_abm_with_lods_unverified(&lods).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    let ((meshes, distances), _) = checked.into_parts();
+    assert_eq!(meshes.len(), 2);
+    assert!(same_mesh(&meshes[0], &abm_fixture_mesh(1.0)));
+    assert!(same_mesh(&meshes[1], &abm_fixture_mesh(0.5)));
+    assert_eq!(distances, [10.0]);
+}
+
+/// ABM version 2: this crate's identifier loads as `Current`, an earlier verified one as
+/// `VerifiedPrevious`, another one is refused by all four loaders naming both identifiers
+#[test]
+fn abm_loaders_check_the_identifier() {
+    let m = abm_fixture_mesh(1.0);
+    let single = temp("check.abm");
+    let lods = temp("check_lods.abm");
+    let write = |id: &Provenance| {
+        io::save_abm_with_provenance(&m, &single, id).unwrap();
+        io::save_abm_with_lods_with_provenance(&[m.clone(), m.clone()], &[5.0], &lods, id).unwrap();
+    };
+
+    write(&Provenance::sdf());
+    assert!(same_mesh(&io::load_abm(&single).unwrap(), &m));
+    assert_eq!(io::load_abm_with_lods(&lods).unwrap().0.len(), 2);
+    assert_eq!(
+        io::load_abm_unverified(&single).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+    assert_eq!(
+        io::load_abm_with_lods_unverified(&lods)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Current
+    );
+
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    write(&earlier);
+    assert!(io::load_abm(&single).is_ok());
+    assert!(io::load_abm_with_lods(&lods).is_ok());
+    assert_eq!(
+        io::load_abm_unverified(&single).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+    assert_eq!(
+        io::load_abm_with_lods_unverified(&lods)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    write(&caller_id());
+    for result in [
+        io::load_abm(&single).map(|_| ()),
+        io::load_abm_unverified(&single).map(|_| ()),
+        io::load_abm_with_lods(&lods).map(|_| ()),
+        io::load_abm_with_lods_unverified(&lods).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+                    "{text}"
+                );
+            }
+            other => panic!("expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+    std::fs::remove_file(&single).ok();
+    std::fs::remove_file(&lods).ok();
+}
+
+/// The ABM header is read by its version: a version the crate does not know is refused, not
+/// read at the version 2 offset, and a truncated header is refused by the reader and the loaders
+#[test]
+fn abm_headers_are_read_by_their_exact_version() {
+    let path = temp("version.abm");
+    io::save_abm(&abm_fixture_mesh(1.0), &path).unwrap();
+    let good = std::fs::read(&path).unwrap();
+
+    let mut v3 = good.clone();
+    v3[8..10].copy_from_slice(&3u16.to_le_bytes());
+    assert!(matches!(
+        provenance::from_bytes(&v3),
+        Err(ProvenanceError::Unreadable(why)) if why.contains("version 3")
+    ));
+    std::fs::write(&path, &v3).unwrap();
+    assert!(matches!(
+        io::load_abm(&path),
+        Err(io::IoError::UnsupportedVersion(3))
+    ));
+
+    let truncated = &good[..40];
+    assert!(matches!(
+        provenance::from_bytes(truncated),
+        Err(ProvenanceError::Unreadable(_))
+    ));
+    assert!(matches!(
+        io::AbmHeader::from_bytes(truncated),
+        Err(io::IoError::InvalidFormat(_))
+    ));
+    std::fs::write(&path, truncated).unwrap();
+    assert!(io::load_abm_unverified(&path).is_err());
+    std::fs::remove_file(&path).ok();
 }

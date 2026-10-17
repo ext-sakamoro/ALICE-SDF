@@ -35,9 +35,11 @@ pub mod vdb;
 pub mod vox;
 
 pub use abm::{
-    load_abm, load_abm_with_lods, read_abm_header, save_abm, save_abm_with_lods, AbmHeader,
-    ABM_FLAG_HAS_COLORS, ABM_FLAG_HAS_LODS, ABM_FLAG_HAS_MATERIAL_IDS, ABM_FLAG_HAS_NORMALS,
-    ABM_FLAG_HAS_TANGENTS, ABM_FLAG_HAS_UV2, ABM_FLAG_HAS_UVS, ABM_MAGIC, ABM_VERSION,
+    load_abm, load_abm_unverified, load_abm_with_lods, load_abm_with_lods_unverified,
+    read_abm_header, save_abm, save_abm_with_lods, save_abm_with_lods_with_provenance,
+    save_abm_with_provenance, AbmHeader, ABM_FLAG_HAS_COLORS, ABM_FLAG_HAS_LODS,
+    ABM_FLAG_HAS_MATERIAL_IDS, ABM_FLAG_HAS_NORMALS, ABM_FLAG_HAS_TANGENTS, ABM_FLAG_HAS_UV2,
+    ABM_FLAG_HAS_UVS, ABM_HEADER_LEN, ABM_MAGIC, ABM_VERSION,
 };
 pub use alembic::{export_alembic, AlembicConfig};
 pub use asdf::{

@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 860 |
+| 🟢 Not ignored | 864 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **860** |
+| **Total** | **864** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (860)
+## 🟢 Not ignored (864)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -27,8 +27,8 @@ Per-file counts (the test names are in `tests/`):
 | `npr_shader_validate.rs` | 21 |
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_tight_aabb_fold_oracle.rs` | 21 |
+| `test_provenance.rs` | 20 |
 | `test_shape_analysis_oracle.rs` | 18 |
-| `test_provenance.rs` | 17 |
 | `test_smooth_ops_oracle.rs` | 17 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
@@ -45,11 +45,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_rendering_pipeline.rs` | 11 |
 | `test_texture_fit_oracle.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
+| `test_binding_oracle.rs` | 10 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
-| `test_binding_oracle.rs` | 9 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |
 | `test_mesh_fidelity.rs` | 9 |
 | `test_mesh_query_oracle.rs` | 9 |

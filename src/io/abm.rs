@@ -3,18 +3,28 @@
 //! A compact binary format for storing polygon meshes with optional vertex
 //! attributes and LOD chains.
 //!
-//! # Header (32 bytes)
+//! # Header (64 bytes in version 2, 32 in version 1)
 //!
 //! | Offset | Size | Field          | Description                        |
 //! |--------|------|----------------|------------------------------------|
 //! | 0      | 8    | magic          | `"ALICEBM\0"`                     |
-//! | 8      | 2    | version        | Format version (currently 1)       |
+//! | 8      | 2    | version        | Format version (currently 2)       |
 //! | 10     | 2    | flags          | Feature flags (bitfield)           |
 //! | 12     | 4    | vertex_count   | Number of vertices in primary mesh |
 //! | 16     | 4    | index_count    | Number of indices in primary mesh  |
 //! | 20     | 1    | lod_count      | Number of LOD levels (0 = single)  |
 //! | 21     | 7    | _reserved      | Reserved for future use            |
 //! | 28     | 4    | crc32          | CRC32 of entire payload            |
+//! | 32     | 32   | semantics_id   | Semantics identifier (version 2)   |
+//!
+//! # Semantics identifier
+//!
+//! A version 2 file carries the semantics identifier the mesh was written under
+//! ([`crate::provenance`]). [`load_abm`] and [`load_abm_with_lods`] accept this crate's
+//! identifier or one it still reproduces ([`crate::check_sdf_semantics`]) and refuse
+//! another one ([`IoError::SemanticsMismatch`]) and a version 1 file, which has none
+//! ([`IoError::Unpinned`]). [`load_abm_unverified`] and [`load_abm_with_lods_unverified`]
+//! also read a version 1 file and say what is known in a [`Checked`] value.
 //!
 //! # Payload (SoA layout, little-endian)
 //!
@@ -40,6 +50,7 @@
 
 use crate::io::IoError;
 use crate::mesh::{Mesh, Vertex};
+use crate::provenance::{Checked, Provenance};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -51,11 +62,17 @@ use std::path::Path;
 /// Magic bytes identifying the ABM format
 pub const ABM_MAGIC: [u8; 8] = *b"ALICEBM\0";
 
-/// Current format version
-pub const ABM_VERSION: u16 = 1;
+/// Current format version (2: the header carries the semantics identifier)
+pub const ABM_VERSION: u16 = 2;
 
-/// ABM header size in bytes
+/// The header fields every version has (32 bytes)
 const ABM_HEADER_SIZE: usize = 32;
+
+/// The length of a version 2 header: the 32 bytes of fields, then the semantics identifier
+pub const ABM_HEADER_LEN: usize = ABM_HEADER_SIZE + 32;
+
+/// An ABM file with a LOD chain: the meshes (LOD 0 first) and the transition distances between them
+type AbmLods = (Vec<Mesh>, Vec<f32>);
 
 // Feature flags (bitfield)
 
@@ -78,7 +95,7 @@ pub const ABM_FLAG_HAS_LODS: u16 = 1 << 6;
 // Header
 // ---------------------------------------------------------------------------
 
-/// ABM file header (32 bytes, little-endian)
+/// ABM file header (little-endian; 64 bytes in version 2, 32 in version 1)
 #[derive(Debug, Clone, Copy)]
 pub struct AbmHeader {
     /// Magic number `"ALICEBM\0"`
@@ -97,13 +114,23 @@ pub struct AbmHeader {
     pub _reserved: [u8; 7],
     /// CRC32 of the entire payload (everything after the header)
     pub crc32: u32,
+    /// The semantics identifier the mesh was written under (`None` in a version 1 file)
+    pub semantics_id: Option<[u8; 32]>,
 }
 
 impl AbmHeader {
-    /// Serialize header to a 32-byte little-endian array
-    #[inline(always)]
-    pub fn to_bytes(&self) -> [u8; ABM_HEADER_SIZE] {
-        let mut b = [0u8; ABM_HEADER_SIZE];
+    /// The length of this header in a file (64 bytes with the semantics identifier, 32 without)
+    pub const fn byte_len(&self) -> usize {
+        if self.semantics_id.is_some() {
+            ABM_HEADER_LEN
+        } else {
+            ABM_HEADER_SIZE
+        }
+    }
+
+    /// Serialize the header (64 bytes with the semantics identifier, 32 without)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b = vec![0u8; self.byte_len()];
         b[0..8].copy_from_slice(&self.magic);
         b[8..10].copy_from_slice(&self.version.to_le_bytes());
         b[10..12].copy_from_slice(&self.flags.to_le_bytes());
@@ -112,12 +139,24 @@ impl AbmHeader {
         b[20] = self.lod_count;
         b[21..28].copy_from_slice(&self._reserved);
         b[28..32].copy_from_slice(&self.crc32.to_le_bytes());
+        if let Some(id) = &self.semantics_id {
+            b[32..64].copy_from_slice(id);
+        }
         b
     }
 
-    /// Parse header from a 32-byte little-endian array
-    #[inline(always)]
-    pub fn from_bytes(b: &[u8; ABM_HEADER_SIZE]) -> Result<Self, IoError> {
+    /// Parse a header: the first 32 bytes, and in a version 2 header the semantics identifier
+    /// in the next 32
+    ///
+    /// # Errors
+    ///
+    /// [`IoError::InvalidFormat`] for a wrong magic or a truncated header,
+    /// [`IoError::UnsupportedVersion`] for a version this crate does not know (0, or newer
+    /// than [`ABM_VERSION`]).
+    pub fn from_bytes(b: &[u8]) -> Result<Self, IoError> {
+        if b.len() < ABM_HEADER_SIZE {
+            return Err(IoError::InvalidFormat("ABM header truncated".into()));
+        }
         let magic: [u8; 8] = b[0..8].try_into().unwrap();
         if magic != ABM_MAGIC {
             return Err(IoError::InvalidFormat(format!(
@@ -127,9 +166,18 @@ impl AbmHeader {
         }
 
         let version = u16::from_le_bytes(b[8..10].try_into().unwrap());
-        if version > ABM_VERSION {
-            return Err(IoError::UnsupportedVersion(version));
-        }
+        let semantics_id = match version {
+            1 => None,
+            2 => {
+                let id: [u8; 32] = b
+                    .get(ABM_HEADER_SIZE..ABM_HEADER_LEN)
+                    .ok_or_else(|| IoError::InvalidFormat("ABM v2 header truncated".into()))?
+                    .try_into()
+                    .unwrap();
+                Some(id)
+            }
+            v => return Err(IoError::UnsupportedVersion(v)),
+        };
 
         let flags = u16::from_le_bytes(b[10..12].try_into().unwrap());
         let vertex_count = u32::from_le_bytes(b[12..16].try_into().unwrap());
@@ -148,8 +196,20 @@ impl AbmHeader {
             lod_count,
             _reserved: reserved,
             crc32,
+            semantics_id,
         })
     }
+}
+
+/// Read a header from the start of `reader`: 32 bytes, and 32 more when the version is 2
+fn read_header<R: Read>(reader: &mut R) -> Result<AbmHeader, IoError> {
+    let mut b = vec![0u8; ABM_HEADER_SIZE];
+    reader.read_exact(&mut b)?;
+    if u16::from_le_bytes([b[8], b[9]]) == 2 {
+        b.resize(ABM_HEADER_LEN, 0);
+        reader.read_exact(&mut b[ABM_HEADER_SIZE..])?;
+    }
+    AbmHeader::from_bytes(&b)
 }
 
 // ---------------------------------------------------------------------------
@@ -492,6 +552,18 @@ fn read_mesh_payload(
 /// # Errors
 /// Returns `IoError::Io` on filesystem errors.
 pub fn save_abm(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
+    save_abm_with_provenance(mesh, path, &Provenance::sdf())
+}
+
+/// [`save_abm`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+/// Returns `IoError::Io` on filesystem errors.
+pub fn save_abm_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
 
@@ -507,6 +579,7 @@ pub fn save_abm(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
         lod_count: 0,
         _reserved: [0u8; 7],
         crc32: 0,
+        semantics_id: Some(provenance.semantics_id),
     };
     writer.write_all(&placeholder.to_bytes())?;
 
@@ -539,17 +612,35 @@ pub fn save_abm(mesh: &Mesh, path: impl AsRef<Path>) -> Result<(), IoError> {
 /// Returns `IoError::CrcMismatch` on integrity failure, `IoError::InvalidFormat`
 /// on malformed data.
 pub fn load_abm(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    load_abm_checked(path, false).map(|c| c.into_parts().0)
+}
+
+/// [`load_abm`] that also reads a version 1 file (written before the semantics identifier),
+/// marking it [`crate::provenance::StoredSemantics::Unpinned`]
+///
+/// # Errors
+///
+/// As [`load_abm`], except that a file without an identifier is returned, not refused.
+pub fn load_abm_unverified(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
+    load_abm_checked(path, true)
+}
+
+/// Header, identifier verdict and CRC-checked payload of an ABM file
+fn read_checked(
+    path: impl AsRef<Path>,
+    allow_unpinned: bool,
+) -> Result<(AbmHeader, crate::provenance::StoredSemantics, Vec<u8>), IoError> {
     let file = File::open(path)?;
     let file_len = file.metadata().map(|m| m.len()).unwrap_or(0) as usize;
     let mut reader = BufReader::new(file);
 
-    // 1. Read header
-    let mut hdr_bytes = [0u8; ABM_HEADER_SIZE];
-    reader.read_exact(&mut hdr_bytes)?;
-    let header = AbmHeader::from_bytes(&hdr_bytes)?;
+    // 1. Read the header and judge its identifier before the payload
+    let header = read_header(&mut reader)?;
+    let semantics =
+        crate::provenance::sdf_load_verdict(header.semantics_id, "ABM", allow_unpinned)?;
 
     // 2. Read entire payload
-    let payload_capacity = file_len.saturating_sub(ABM_HEADER_SIZE);
+    let payload_capacity = file_len.saturating_sub(header.byte_len());
     let mut payload = Vec::with_capacity(payload_capacity);
     reader.read_to_end(&mut payload)?;
 
@@ -561,16 +652,24 @@ pub fn load_abm(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
             actual: actual_crc,
         });
     }
+    Ok((header, semantics, payload))
+}
 
+fn load_abm_checked(
+    path: impl AsRef<Path>,
+    allow_unpinned: bool,
+) -> Result<Checked<Mesh>, IoError> {
+    let (header, semantics, payload) = read_checked(path, allow_unpinned)?;
     // 4. Parse payload
     let mut offset = 0;
-    read_mesh_payload(
+    let mesh = read_mesh_payload(
         &payload,
         &mut offset,
         header.vertex_count,
         header.index_count,
         header.flags,
-    )
+    )?;
+    Ok(Checked::new(mesh, semantics))
 }
 
 /// Save multiple meshes as an ABM file with LOD chain
@@ -591,6 +690,19 @@ pub fn save_abm_with_lods(
     meshes: &[Mesh],
     transition_distances: &[f32],
     path: impl AsRef<Path>,
+) -> Result<(), IoError> {
+    save_abm_with_lods_with_provenance(meshes, transition_distances, path, &Provenance::sdf())
+}
+
+/// [`save_abm_with_lods`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+/// As [`save_abm_with_lods`].
+pub fn save_abm_with_lods_with_provenance(
+    meshes: &[Mesh],
+    transition_distances: &[f32],
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
 ) -> Result<(), IoError> {
     if meshes.is_empty() {
         return Err(IoError::InvalidFormat("No meshes provided".into()));
@@ -631,6 +743,7 @@ pub fn save_abm_with_lods(
         lod_count,
         _reserved: [0u8; 7],
         crc32: 0,
+        semantics_id: Some(provenance.semantics_id),
     };
     writer.write_all(&placeholder.to_bytes())?;
 
@@ -676,28 +789,24 @@ pub fn save_abm_with_lods(
 /// # Errors
 /// Returns `IoError::CrcMismatch` on integrity failure.
 pub fn load_abm_with_lods(path: impl AsRef<Path>) -> Result<(Vec<Mesh>, Vec<f32>), IoError> {
-    let file = File::open(path)?;
-    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0) as usize;
-    let mut reader = BufReader::new(file);
+    load_abm_with_lods_checked(path, false).map(|c| c.into_parts().0)
+}
 
-    // 1. Read header
-    let mut hdr_bytes = [0u8; ABM_HEADER_SIZE];
-    reader.read_exact(&mut hdr_bytes)?;
-    let header = AbmHeader::from_bytes(&hdr_bytes)?;
+/// [`load_abm_with_lods`] that also reads a version 1 file, marking it
+/// [`crate::provenance::StoredSemantics::Unpinned`]
+///
+/// # Errors
+///
+/// As [`load_abm_with_lods`], except that a file without an identifier is returned, not refused.
+pub fn load_abm_with_lods_unverified(path: impl AsRef<Path>) -> Result<Checked<AbmLods>, IoError> {
+    load_abm_with_lods_checked(path, true)
+}
 
-    // 2. Read entire payload
-    let payload_capacity = file_len.saturating_sub(ABM_HEADER_SIZE);
-    let mut payload = Vec::with_capacity(payload_capacity);
-    reader.read_to_end(&mut payload)?;
-
-    // 3. CRC validation
-    let actual_crc = crc32fast::hash(&payload);
-    if actual_crc != header.crc32 {
-        return Err(IoError::CrcMismatch {
-            expected: header.crc32,
-            actual: actual_crc,
-        });
-    }
+fn load_abm_with_lods_checked(
+    path: impl AsRef<Path>,
+    allow_unpinned: bool,
+) -> Result<Checked<AbmLods>, IoError> {
+    let (header, semantics, payload) = read_checked(path, allow_unpinned)?;
 
     // 4. Parse primary mesh
     let mut offset = 0;
@@ -726,7 +835,7 @@ pub fn load_abm_with_lods(path: impl AsRef<Path>) -> Result<(Vec<Mesh>, Vec<f32>
         }
     }
 
-    Ok((meshes, distances))
+    Ok(Checked::new((meshes, distances), semantics))
 }
 
 /// Read only the ABM header without loading the full mesh
@@ -740,11 +849,12 @@ pub fn load_abm_with_lods(path: impl AsRef<Path>) -> Result<(Vec<Mesh>, Vec<f32>
 /// # Errors
 /// Returns `IoError::InvalidFormat` on bad magic, `IoError::UnsupportedVersion`
 /// on unknown version.
+///
+/// The header's `semantics_id` is the stored identifier as read; this function does not
+/// compare it ([`load_abm`] does).
 pub fn read_abm_header(path: impl AsRef<Path>) -> Result<AbmHeader, IoError> {
-    let mut file = File::open(path)?;
-    let mut hdr_bytes = [0u8; ABM_HEADER_SIZE];
-    file.read_exact(&mut hdr_bytes)?;
-    AbmHeader::from_bytes(&hdr_bytes)
+    let mut file = BufReader::new(File::open(path)?);
+    read_header(&mut file)
 }
 
 // ---------------------------------------------------------------------------
@@ -860,10 +970,10 @@ mod tests {
 
         save_abm(&mesh, &path).unwrap();
 
-        // Corrupt a byte in the payload (after the 32-byte header)
+        // Corrupt a byte in the payload (after the 64-byte version 2 header)
         let mut data = fs::read(&path).unwrap();
-        assert!(data.len() > ABM_HEADER_SIZE + 4);
-        data[ABM_HEADER_SIZE + 2] ^= 0xFF;
+        assert!(data.len() > ABM_HEADER_LEN + 4);
+        data[ABM_HEADER_LEN + 2] ^= 0xFF;
         fs::write(&path, &data).unwrap();
 
         // Load should fail with CRC mismatch
@@ -986,8 +1096,10 @@ mod tests {
             lod_count: 3,
             _reserved: [0u8; 7],
             crc32: 0xDEADBEEF,
+            semantics_id: Some([7u8; 32]),
         };
         let bytes = header.to_bytes();
+        assert_eq!(bytes.len(), ABM_HEADER_LEN);
         let parsed = AbmHeader::from_bytes(&bytes).unwrap();
 
         assert_eq!(parsed.magic, ABM_MAGIC);
@@ -997,5 +1109,16 @@ mod tests {
         assert_eq!(parsed.index_count, 3000);
         assert_eq!(parsed.lod_count, 3);
         assert_eq!(parsed.crc32, 0xDEADBEEF);
+        assert_eq!(parsed.semantics_id, Some([7u8; 32]));
+    }
+
+    #[test]
+    fn test_header_only_read_returns_the_stored_identifier() {
+        let path = temp_path("header_id.abm");
+        save_abm(&make_triangle_mesh(), &path).unwrap();
+        let header = read_abm_header(&path).unwrap();
+        assert_eq!(header.semantics_id, Some(crate::SDF_SEMANTICS_ID));
+        assert_eq!(header.byte_len(), ABM_HEADER_LEN);
+        fs::remove_file(&path).ok();
     }
 }

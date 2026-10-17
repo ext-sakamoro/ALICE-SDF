@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1255 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1002 |
-| | **total** | **2266** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1257 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1006 |
+| | **total** | **2272** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1255)
+## L1 — example-only (1257)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -118,7 +118,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/heatmap.rs`: `ColorMap`, `Heatmap`, `Heatmap::inside_pixel_count`, `Heatmap::sample`, `Heatmap::surface_pixel_count`, `HeatmapConfig`, `SlicePlane`, `generate_heatmap`, `heatmap_to_rgba`
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::bindings_of`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
 - `src/interval.rs`: `Interval::intersect`, `Interval::overlaps`
-- `src/io/abm.rs`: `read_abm_header`
+- `src/io/abm.rs`: `load_abm_unverified`, `load_abm_with_lods_unverified`, `read_abm_header`
 - `src/io/asdf.rs`: `AsdfHeader::new`, `load_asdf_unverified`
 - `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
 - `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`, `export_gltf_json_with_provenance`
