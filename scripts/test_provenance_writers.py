@@ -69,6 +69,26 @@ class Writers(unittest.TestCase):
         e = errors(tree(src=src, test=TEST + "fn t() { io::export_a_with_stamp(p); }\n"))
         self.assertEqual(e, [])
 
+    def test_qualified_pub_fns_are_writers(self):
+        for q in ["unsafe ", 'extern "C" ', "const ", "async ", "pub(crate) "[:0]]:
+            src = SRC.replace("#[cfg(test)]", f"pub {q}fn export_q() {{}}\n\n#[cfg(test)]")
+            e = errors(tree(src=src))
+            self.assertTrue(any("export_q: neither covered" in x for x in e), (q, e))
+
+    def test_a_stray_cfg_test_item_hides_nothing_after_it(self):
+        src = SRC.replace("pub fn save_b() {}", "#[cfg(test)]\nconst P: u8 = 0;\npub fn save_b() {}\npub fn export_late() {}")
+        e = errors(tree(src=src))
+        self.assertTrue(any("export_late: neither covered" in x for x in e), e)
+
+    def test_a_writer_inside_a_cfg_test_module_is_not_counted(self):
+        self.assertNotIn("src/io/a.rs::export_in_tests", pw.writers(tree()))
+
+    def test_a_variant_named_only_in_a_comment_or_string_is_not_called(self):
+        src = SRC.replace("#[cfg(test)]", "pub fn export_a_with_stamp(p: &Path) {}\n\n#[cfg(test)]")
+        for t in ["// io::export_a_with_stamp(p)\n", "/* export_a_with_stamp() */\n", 'const S: &str = "export_a_with_stamp(p)";\n']:
+            e = errors(tree(src=src, test=TEST + t))
+            self.assertTrue(any("export_a_with_stamp: not called" in x for x in e), (t, e))
+
     def test_a_removed_writer_fails_on_the_count(self):
         e = errors(tree(src=SRC.replace("pub fn save_b() {}\n", ""), pending="expected-writers 2\n"))
         self.assertTrue(any("1 writers found" in x for x in e), e)

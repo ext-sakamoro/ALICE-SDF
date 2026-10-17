@@ -38,9 +38,71 @@ WRITER_FILES = [
 TEST_FILE = "tests/test_provenance.rs"
 PENDING_FILE = "scripts/provenance-pending.txt"
 
-WRITER = re.compile(r"^\s*pub fn ((?:export|save|write)\w*|to_bytes)\b", re.M)
-TEST_MODULE = re.compile(r"^#\[cfg\(test\)\]", re.M)
+WRITER = re.compile(
+    r"^\s*pub\s+(?:(?:const|async|unsafe|extern\s*(?:\"[^\"]*\")?)\s+)*fn\s+((?:export|save|write)\w*|to_bytes)\b",
+    re.M,
+)
+TEST_MODULE = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\s*\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{")
 COVERED = re.compile(r'\(\s*"(src/[\w/]+\.rs::\w+)"\s*,')
+
+
+def blank_comments_and_strings(text: str) -> str:
+    """The text with comments, string and char literals replaced by spaces (newlines kept)"""
+    out = []
+    i, n = 0, len(text)
+
+    def blank(a: int, b: int) -> None:
+        out.append("".join(c if c == "\n" else " " for c in text[a:b]))
+
+    while i < n:
+        c = text[i]
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            blank(i, j)
+            i = j
+        elif text.startswith("/*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if text.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif text.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            blank(i, j)
+            i = j
+        elif (m := re.match(r'b?r(#*)"', text[i:])) and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            close = '"' + m.group(1)
+            j = text.find(close, i + m.end())
+            j = n if j < 0 else j + len(close)
+            blank(i, j)
+            i = j
+        elif c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            blank(i, j + 1)
+            i = j + 1
+        elif c == "'" and (m := re.match(r"'(?:\\.[^']*|[^'\\\n])'", text[i:])):
+            blank(i, i + m.end())
+            i += m.end()
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def outside_test_modules(text: str) -> str:
+    """The source with every `#[cfg(test)] mod name { ... }` block removed (comments and strings blanked)"""
+    clean = blank_comments_and_strings(text)
+    while (m := TEST_MODULE.search(clean)) is not None:
+        depth, j = 1, m.end()
+        while j < len(clean) and depth:
+            depth += {"{": 1, "}": -1}.get(clean[j], 0)
+            j += 1
+        clean = clean[: m.start()] + clean[j:]
+    return clean
 
 
 def writer_files(root: str) -> list[str]:
@@ -63,9 +125,7 @@ def variants(root: str) -> list[tuple[str, str]]:
     for rel in writer_files(root):
         with open(os.path.join(root, rel), encoding="utf-8") as fh:
             text = fh.read()
-        m = TEST_MODULE.search(text)
-        if m:
-            text = text[: m.start()]
+        text = outside_test_modules(text)
         out += [(rel, name) for name in WRITER.findall(text) if VARIANT.search(name)]
     return out
 
@@ -75,9 +135,7 @@ def writers(root: str) -> list[str]:
     for rel in writer_files(root):
         with open(os.path.join(root, rel), encoding="utf-8") as fh:
             text = fh.read()
-        m = TEST_MODULE.search(text)
-        if m:
-            text = text[: m.start()]
+        text = outside_test_modules(text)
         for name in WRITER.findall(text):
             if not name.endswith(("_with_provenance", "_with_stamp")):
                 found.append(f"{rel}::{name}")
@@ -138,7 +196,7 @@ def check(root: str) -> tuple[list[str], int]:
     test_text = ""
     if os.path.isfile(test_path):
         with open(test_path, encoding="utf-8") as fh:
-            test_text = fh.read()
+            test_text = blank_comments_and_strings(fh.read())
     for rel, name in variants(root):
         base = f"{rel}::{VARIANT.sub('', name)}"
         if base not in have:
