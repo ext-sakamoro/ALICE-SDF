@@ -1,0 +1,73 @@
+name: Release profile
+
+# The bit-exact goldens and the floating-point environment run in the release
+# profile too, on x86_64 and aarch64. Optimisation is where a reassociation, an
+# FMA contraction or a folded signed zero would change the bits, and the CI
+# workflow runs every test in the debug profile only (ALICE-Law G4 / G5).
+# Mirrored in scripts/preflight.sh.
+#
+# Each suite's log is read back by scripts/libtest_count.py, which fails the
+# step unless the suite ran and passed at least the stated number of tests, so
+# a renamed test, an #[ignore] or a feature mismatch cannot turn this into a
+# no-op.
+
+on:
+  push:
+    # ci/** runs the whole workflow on a branch before it is landed on main
+    branches: [main, "ci/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-goldens:
+    name: Goldens in the release profile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        # x86_64 and aarch64
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Bit-exact goldens and the float environment (cargo test --release)
+        run: |
+          set -euo pipefail
+          for spec in test_det_golden:3: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
+            name=${spec%%:*}
+            rest=${spec#*:}
+            min=${rest%%:*}
+            feat=${rest#*:}
+            cargo test --release --features "$feat" --test "$name" 2>&1 | tee "release-$name.log"
+            python3 scripts/libtest_count.py "release-$name.log" --min "$min" --what "$name (release)"
+          done
+          # the Law max / min signed-zero tables of the library's unit tests
+          cargo test --release --lib -- law_minmax_signed_zero_table tree_csg_ops_carry_the_law_on_signed_zero 2>&1 | tee release-lib-law.log
+          python3 scripts/libtest_count.py release-lib-law.log --min 2 --what "Law max / min unit tests (release)"
+      # G14, dynamic half: the flags cargo really passes to rustc, read from `-v` in a
+      # fresh target directory (a reused one prints Fresh without the command line),
+      # for the default, the Linux feature set CI lints and the no-default feature
+      # sets; fails on a native / fast-math / x87 flag, and when no command line for
+      # this crate was seen
+      - name: Effective rustc flags (G14)
+        run: |
+          python3 scripts/build_flags_check.py -- cargo check --release --lib
+          python3 scripts/build_flags_check.py -- cargo check --release --lib --no-default-features
+      - name: Effective rustc flags, Linux feature set (G14)
+        if: matrix.os == 'ubuntu-latest'
+        run: >-
+          python3 scripts/build_flags_check.py -- cargo check --release --lib
+          --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"

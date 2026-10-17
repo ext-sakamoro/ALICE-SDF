@@ -1,0 +1,23 @@
+# Deliberate occurrences for scripts/build_config_guard.py (ALICE-Law G14).
+# Each entry needs a reason; an allow covers exactly the lines it names (count),
+# an exclude names a file the guard would otherwise read.
+
+[[exclude]]
+path = "scripts/build_config_guard.py"
+reason = "the guard itself: its rules and documentation spell out the flags it looks for"
+
+[[exclude]]
+path = "scripts/test_build_config_guard.py"
+reason = "the guard's tests: every flag appears as test data in a temporary tree"
+
+[[exclude]]
+path = "alice-law-conformance.toml"
+reason = "the conformance manifest quotes the flags in its G14 evidence and mutant text; cargo does not read it"
+
+[[exclude]]
+path = "scripts/build_flags_check.py"
+reason = "the dynamic G14 check: its rules and documentation spell out the flags it looks for"
+
+[[exclude]]
+path = "scripts/test_build_flags_check.py"
+reason = "the dynamic check's tests: the flags appear in sample rustc command lines"

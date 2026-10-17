@@ -9,8 +9,11 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Added
-
 - CI: README の ALICE-Law 節の検査 (law-readme-block.yml) を preflight でも同じに走らせる `scripts/law_readme_block_check.py` と試験 `scripts/test_law_readme_block_check.py` を足した (ALICE-DB と同じ中身の共有 file、workflow の check の引数と節の pin の生成器を使い、比較 0 件・件数の行なし・pin が無い・fetch の失敗は失敗、未 commit の入力は検査していないと表示) 試験は CI と preflight で走る
+- CI: ALICE-Law G4 / G5 / G14 `.github/workflows/release-profile.yml` が bit 一致の試験 (`tests/test_det_golden.rs` / `test_det_parity.rs` / `test_det_near_zero_parity.rs` / `test_det_near_zero_probe.rs`、jit の試験は jit feature で) と `tests/float_environment.rs`、Law の max / min の unit test を release profile で x86_64 と aarch64 に走らせ、各 log を `scripts/libtest_count.py` で最低件数と照らす fast-math・native CPU・x87 の flag を build 設定から探す `scripts/build_config_guard.py` (wiring-guard job、3 OS) と、rustc に実際に渡る flag を読む `scripts/build_flags_check.py` (release-profile.yml) を足した 2 本と試験、`tests/float_environment.rs` は ALICE-DB と byte 一致 preflight にも同じ step を足した
+
+### Fixed
+- CI: `scripts/cargo_output_parser_check.py` が、escape 文字を名前に入れて (`ESC = "\x1b"` と `{ESC}[`) 色付きの出力を作る試験を色の sample が無いと誤って判定していた 名前を通した sample も数える (使われない名前だけでは数えない)
 
 ## [6.1.0] - 2026-10-16
 
