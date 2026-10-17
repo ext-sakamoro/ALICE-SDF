@@ -8,6 +8,7 @@
 //! its list of writers still to do.
 
 use alice_sdf::io;
+use alice_sdf::io::meshopt_gltf as meshopt;
 use alice_sdf::prelude::*;
 use alice_sdf::provenance::{self, Provenance, ProvenanceError};
 use std::path::{Path, PathBuf};
@@ -111,6 +112,108 @@ const WRITERS: &[(&str, &str, Write)] = &[
             Some(id) => io::export_ply_with_provenance(m, p, &c, id).unwrap(),
         }
     }),
+    ("src/io/gltf.rs::export_glb", "m.glb", |m, p, id| {
+        let c = io::GltfConfig::default();
+        match id {
+            None => io::export_glb(m, p, &c, None).unwrap(),
+            Some(id) => io::export_glb_with_provenance(m, p, &c, None, id).unwrap(),
+        }
+    }),
+    (
+        "src/io/gltf.rs::export_glb",
+        "m_meshopt_via_glb.glb",
+        |m, p, id| {
+            let c = io::GltfConfig {
+                meshopt_compress: true,
+                ..Default::default()
+            };
+            match id {
+                None => io::export_glb(m, p, &c, None).unwrap(),
+                Some(id) => io::export_glb_with_provenance(m, p, &c, None, id).unwrap(),
+            }
+        },
+    ),
+    (
+        "src/io/gltf.rs::export_glb_bytes",
+        "m_bytes.glb",
+        |m, p, id| {
+            let c = io::GltfConfig::default();
+            let bytes = match id {
+                None => io::export_glb_bytes(m, &c, None).unwrap(),
+                Some(id) => io::export_glb_bytes_with_provenance(m, &c, None, id).unwrap(),
+            };
+            std::fs::write(p, bytes).unwrap();
+        },
+    ),
+    ("src/io/gltf.rs::export_gltf_json", "m.gltf", |m, p, id| {
+        let c = io::GltfConfig::default();
+        match id {
+            None => io::export_gltf_json(m, p, &c, None).unwrap(),
+            Some(id) => io::export_gltf_json_with_provenance(m, p, &c, None, id).unwrap(),
+        }
+    }),
+    (
+        "src/io/meshopt_gltf.rs::export_glb_meshopt",
+        "mo.glb",
+        |m, p, id| {
+            let c = meshopt::MeshoptGltfConfig::default();
+            match id {
+                None => meshopt::export_glb_meshopt(m, p, &c).unwrap(),
+                Some(id) => std::fs::write(
+                    p,
+                    meshopt::export_glb_meshopt_bytes_skinned_with_provenance(m, None, &c, id)
+                        .unwrap(),
+                )
+                .unwrap(),
+            }
+        },
+    ),
+    (
+        "src/io/meshopt_gltf.rs::export_glb_meshopt_skinned",
+        "mo_sk.glb",
+        |m, p, id| {
+            let c = meshopt::MeshoptGltfConfig::default();
+            match id {
+                None => meshopt::export_glb_meshopt_skinned(m, None, p, &c).unwrap(),
+                Some(id) => std::fs::write(
+                    p,
+                    meshopt::export_glb_meshopt_bytes_skinned_with_provenance(m, None, &c, id)
+                        .unwrap(),
+                )
+                .unwrap(),
+            }
+        },
+    ),
+    (
+        "src/io/meshopt_gltf.rs::export_glb_meshopt_bytes",
+        "mo_b.glb",
+        |m, p, id| {
+            let c = meshopt::MeshoptGltfConfig::default();
+            let bytes = match id {
+                None => meshopt::export_glb_meshopt_bytes(m, &c).unwrap(),
+                Some(id) => {
+                    meshopt::export_glb_meshopt_bytes_skinned_with_provenance(m, None, &c, id)
+                        .unwrap()
+                }
+            };
+            std::fs::write(p, bytes).unwrap();
+        },
+    ),
+    (
+        "src/io/meshopt_gltf.rs::export_glb_meshopt_bytes_skinned",
+        "mo_bs.glb",
+        |m, p, id| {
+            let c = meshopt::MeshoptGltfConfig::default();
+            let bytes = match id {
+                None => meshopt::export_glb_meshopt_bytes_skinned(m, None, &c).unwrap(),
+                Some(id) => {
+                    meshopt::export_glb_meshopt_bytes_skinned_with_provenance(m, None, &c, id)
+                        .unwrap()
+                }
+            };
+            std::fs::write(p, bytes).unwrap();
+        },
+    ),
 ];
 
 #[test]
@@ -231,6 +334,37 @@ fn the_obj_material_file_carries_the_identifier_too() {
     assert_eq!(provenance::read(&mtl).unwrap(), caller_id(), "mtl");
     std::fs::remove_file(&path).ok();
     std::fs::remove_file(&mtl).ok();
+}
+
+/// An independent glTF parser (`gltf`) reads the `.glb` and `.gltf` carrying the identifier in
+/// `asset.extras`, and this crate's importer reads the `.glb` back; the meshopt `.glb` has a JSON
+/// chunk that parses as JSON with the identifier under `asset.extras`
+#[test]
+fn gltf_files_with_the_identifier_stay_valid() {
+    let m = mesh();
+    let tris = m.indices.len() / 3;
+    let c = io::GltfConfig::default();
+    let glb = io::export_glb_bytes_with_provenance(&m, &c, None, &caller_id()).unwrap();
+    gltf::Gltf::from_slice(&glb).expect("gltf reads the .glb");
+    assert_eq!(io::import_glb_bytes(&glb).unwrap().indices.len() / 3, tris);
+    let path = temp("strict.gltf");
+    io::export_gltf_json_with_provenance(&m, &path, &c, None, &caller_id()).unwrap();
+    gltf::Gltf::from_slice(&std::fs::read(&path).unwrap()).expect("gltf reads the .gltf");
+    std::fs::remove_file(&path).ok();
+
+    let mo = meshopt::export_glb_meshopt_bytes_skinned_with_provenance(
+        &m,
+        None,
+        &meshopt::MeshoptGltfConfig::default(),
+        &caller_id(),
+    )
+    .unwrap();
+    let len = u32::from_le_bytes([mo[12], mo[13], mo[14], mo[15]]) as usize;
+    let json: serde_json::Value = serde_json::from_slice(&mo[20..20 + len]).unwrap();
+    assert_eq!(
+        json["asset"]["extras"][provenance::KEY].as_str(),
+        Some(caller_id().hex().as_str())
+    );
 }
 
 /// An independent FBX parser (`fbxcel`) reads the whole binary file (nodes and footer), and its

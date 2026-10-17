@@ -24,6 +24,7 @@ use crate::io::IoError;
 use crate::mesh::meshopt_index_codec::encode_index_buffer;
 use crate::mesh::meshopt_vertex_codec::encode_vertex_buffer_level;
 use crate::mesh::Mesh;
+use crate::provenance::Provenance;
 use std::io::Write;
 use std::path::Path;
 
@@ -163,6 +164,21 @@ pub fn export_glb_meshopt_bytes_skinned(
     mesh: &Mesh,
     skinning: Option<&MeshoptSkinning>,
     config: &MeshoptGltfConfig,
+) -> Result<Vec<u8>, IoError> {
+    export_glb_meshopt_bytes_skinned_with_provenance(mesh, skinning, config, &Provenance::sdf())
+}
+
+/// [`export_glb_meshopt_bytes_skinned`] with the caller's semantics identifier in `asset.extras`
+/// (see [`crate::provenance`]); the other meshopt writers store [`Provenance::sdf`]
+///
+/// # Errors
+///
+/// As [`export_glb_meshopt_bytes_skinned`].
+pub fn export_glb_meshopt_bytes_skinned_with_provenance(
+    mesh: &Mesh,
+    skinning: Option<&MeshoptSkinning>,
+    config: &MeshoptGltfConfig,
+    provenance: &Provenance,
 ) -> Result<Vec<u8>, IoError> {
     if mesh.vertices.is_empty() {
         return Err(IoError::InvalidFormat("empty mesh".into()));
@@ -493,7 +509,9 @@ pub fn export_glb_meshopt_bytes_skinned(
 
     // Build final JSON
     let json = format!(
-        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF meshopt-gltf"}},"extensionsUsed":["EXT_meshopt_compression"],"extensionsRequired":["EXT_meshopt_compression"],"buffers":[{{"byteLength":{buffer_len}}}],"bufferViews":[{buffer_views_json}],"accessors":[{accessors_json}],"materials":[{mat_json}],"meshes":[{{"primitives":[{{"attributes":{{{attributes_json}}},"indices":{idx_accessor},"material":0}}]}}],"nodes":[{{"mesh":0}}],"scenes":[{{"nodes":[0]}}],"scene":0}}"#,
+        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF meshopt-gltf","extras":{{"{key}":"{id}"}}}},"extensionsUsed":["EXT_meshopt_compression"],"extensionsRequired":["EXT_meshopt_compression"],"buffers":[{{"byteLength":{buffer_len}}}],"bufferViews":[{buffer_views_json}],"accessors":[{accessors_json}],"materials":[{mat_json}],"meshes":[{{"primitives":[{{"attributes":{{{attributes_json}}},"indices":{idx_accessor},"material":0}}]}}],"nodes":[{{"mesh":0}}],"scenes":[{{"nodes":[0]}}],"scene":0}}"#,
+        key = crate::provenance::KEY,
+        id = provenance.hex(),
         buffer_len = bin.len(),
         buffer_views_json = buffer_views.join(","),
         accessors_json = accessors.join(","),
