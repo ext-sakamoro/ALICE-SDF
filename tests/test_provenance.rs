@@ -466,6 +466,27 @@ fn usd_step_iges_with_the_identifier_stay_well_formed() {
     std::fs::remove_file(&path).ok();
 }
 
+/// A file stamped with an identifier this crate published before (6.1's, `alice-det-math` 0.5.1's)
+/// reads as a verified earlier identifier, the same verdict as `check_sdf_semantics`
+#[test]
+fn an_earlier_published_identifier_reads_as_verified_previous() {
+    let m = mesh();
+    let earlier = alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0];
+    assert_ne!(earlier, alice_sdf::SDF_SEMANTICS_ID);
+    let path = temp("earlier.stl");
+    io::export_stl_with_provenance(&m, &path, &Provenance::new(earlier)).unwrap();
+    assert_eq!(
+        provenance::check_sdf(&path).unwrap(),
+        provenance::Accepted::VerifiedPrevious(Provenance::new(earlier))
+    );
+    assert!(matches!(
+        alice_sdf::check_sdf_semantics(&earlier),
+        alice_det_math::SemanticsCheck::VerifiedPrevious(_)
+    ));
+    assert_eq!(Provenance::sdf().semantics_id, alice_sdf::SDF_SEMANTICS_ID);
+    std::fs::remove_file(&path).ok();
+}
+
 /// An independent FBX parser (`fbxcel`) reads the whole binary file (nodes and footer), and its
 /// `FBXHeaderExtension/Creator` string carries the identifier
 #[test]

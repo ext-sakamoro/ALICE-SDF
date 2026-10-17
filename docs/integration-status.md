@@ -14,6 +14,9 @@ References are resolved to one definition each, so items that share a name are t
 | L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1208 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 959 |
 | | **total** | **2176** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1220 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 965 |
+| | **total** | **2194** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -74,6 +77,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 ## L1 — example-only (1217)
 ## L1 — example-only (1208)
+## L1 — example-only (1220)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `decode_sdf_i_packet`, `estimate_packet_size`
@@ -124,13 +128,14 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/interval.rs`: `Interval::intersect`, `Interval::overlaps`
 - `src/io/abm.rs`: `read_abm_header`
 - `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
-- `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`
-- `src/io/iges.rs`: `IgesConfig`, `export_iges`
+- `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`, `export_gltf_json_with_provenance`
+- `src/io/iges.rs`: `IgesConfig`, `export_iges`, `export_iges_with_provenance`
+- `src/io/meshopt_gltf.rs`: `export_glb_meshopt`, `export_glb_meshopt_bytes`, `export_glb_meshopt_bytes_skinned`, `export_glb_meshopt_skinned`
 - `src/io/nanite.rs`: `NANITE_MAGIC`, `NANITE_VERSION`, `NaniteExportConfig`, `export_nanite`, `export_nanite_hlsl_material`, `export_nanite_json`, `export_nanite_with_config`
 - `src/io/obj.rs`: `import_obj`
 - `src/io/ply.rs`: `import_ply`
 - `src/io/splat.rs`: `Splat::from_bytes`, `load_splat`, `save_splat`
-- `src/io/step.rs`: `StepConfig`, `export_step`
+- `src/io/step.rs`: `StepConfig`, `export_step`, `export_step_with_provenance`
 - `src/io/stl.rs`: `export_stl_ascii`, `export_stl_ascii_with_provenance`, `import_stl`
 - `src/io/usd.rs`: `ImportedUsdMaterial`, `ImportedUsda`, `import_usda`
 - `src/io/vdb.rs`: `DenseGrid`, `VdbError`, `bake_dense_grid`, `bake_to_vdb`, `load_dense_grid_from_vdb`
@@ -201,12 +206,13 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/cylinder.rs`: `sdf_cylinder_capped`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
 - `src/primitives/torus.rs`: `sdf_torus_capped`
-- `src/provenance.rs`: `Accepted`, `PREVIOUS_SDF_IDS`, `Provenance::new`, `ProvenanceError`, `check`, `check_sdf`, `from_bytes`, `read`
+- `src/provenance.rs`: `Accepted`, `Provenance::new`, `ProvenanceError`, `check`, `check_sdf`, `from_bytes`, `read`
 - `src/raw_minmax.rs`: `RawMinMax`, `raw_max_f32`, `raw_max_f32x8`, `raw_min_f32`, `raw_min_f32x8`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `PREVIOUS_SDF_SEMANTICS_IDS`, `SDF_SEMANTICS_BY_DET_MATH`, `SDF_SEMANTICS_ID`, `SDF_SEMANTICS_PINS`, `check_sdf_semantics`, `sdf_semantics_id_for`
+- `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `PREVIOUS_SDF_SEMANTICS_IDS`, `SDF_SEMANTICS_PINS`, `check_sdf_semantics`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
 - `src/sim_bridge.rs`: `GpuPhysicsBundle`, `SimulatedSdf`, `SimulatedSdf::add_erosion`, `SimulatedSdf::add_fracture`, `SimulatedSdf::add_modifier`, `SimulatedSdf::add_phase_change`, `SimulatedSdf::add_pressure`, `SimulatedSdf::add_thermal`, `SimulatedSdf::bounds`, `SimulatedSdf::clear_modifiers`, `SimulatedSdf::compiled`, `SimulatedSdf::distance`, `SimulatedSdf::from_arc`, `SimulatedSdf::modifier_count`, `SimulatedSdf::modifier_mut`, `SimulatedSdf::new`, `SimulatedSdf::normal`, `SimulatedSdf::update`, `SimulatedSdf::with_bounds`, `attach_physics`, `gpu_mesh_with_physics`, `simulate_sdf`
 - `src/soa.rs`: `AlignedVec::as_mut_ptr`, `AlignedVec::as_ptr`, `AlignedVec::clear`, `AlignedVec::is_empty`, `SIMD_ALIGNMENT`, `SoADistances::as_slice`, `SoADistances::is_empty`, `SoADistances::len`, `SoADistances::store_simd_unchecked`, `SoAPoints::as_ptrs`, `SoAPoints::clear`, `SoAPoints::get`, `SoAPoints::iter`, `SoAPoints::load_simd_unchecked`
@@ -230,7 +236,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/mod.rs`: `SdfNode::category`
 - `src/types/modifiers.rs`: `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
 - `src/types/transforms.rs`: `SdfNode::translate_vec`
-- `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`
+- `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `export_step_validated_with_provenance`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`
 - `src/volume/bake.rs`: `bake_volume_compiled`, `bake_volume_with_normals`
 - `src/volume/export.rs`: `DdsFormat`, `export_dds_3d`, `export_dds_3d_distgrad`, `export_raw`, `export_raw_with_mips`
 - `src/volume/gpu_bake.rs`: `gpu_bake_volume_with_normals`
