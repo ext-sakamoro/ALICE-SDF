@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 820 |
+| 🟢 Not ignored | 830 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **820** |
+| **Total** | **830** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (820)
+## 🟢 Not ignored (830)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -95,11 +95,13 @@ Per-file counts (the test names are in `tests/`):
 | `test_npr_primitives_oracle.rs` | 5 |
 | `test_projective_unfused_oracle.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
+| `sdf_semantics_id.rs` | 4 |
 | `test_bake_mass_oracle.rs` | 4 |
 | `test_constraint_oracle.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
 | `test_eval_grid_oracle.rs` | 4 |
 | `test_gi_api_oracle.rs` | 4 |
+| `test_law_minmax_ties.rs` | 4 |
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
@@ -116,6 +118,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_neural_oracle.rs` | 3 |
 | `test_optimize_stats_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
+| `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |

@@ -177,16 +177,18 @@ pub mod gi;
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The numeric semantics the CPU evaluators compute distances with
+/// The identifier of the arithmetic of the kernels the CPU evaluators use
 ///
-/// Re-exported from `alice-det-math`, which derives it from the bit pins of its
-/// kernels: it changes exactly when one of them would return different bits for
-/// the same input. A caller that stores or identifies distances evaluated by
-/// this crate (a baked field, a recorded collision trace, a content hash of a
-/// tree plus its samples) can mix it in, so a change of arithmetic shows up as
-/// a different identifier instead of a silent mismatch. `tests/test_det_golden.rs`
-/// pins its value, so moving to another `alice-det-math` is visible here too.
+/// Re-exported from `alice-det-math` (it is that crate's identifier, not this
+/// one's). The identifier of what alice-sdf computes, which a caller that
+/// stores or identifies distances should record, is [`SDF_SEMANTICS_ID`]; it
+/// folds this one. `tests/test_det_golden.rs` pins its value.
 pub use alice_det_math::SEMANTICS_ID;
+
+pub mod semantics;
+pub use semantics::{
+    check_sdf_semantics, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
+};
 
 /// Prelude - commonly used types and functions
 pub mod prelude {

@@ -84,11 +84,18 @@ note = ""
 reference_repo = "ALICE-Zip"
 
 [G6]
-status = "fail-known"
-evidence = ["src/lib.rs pub use alice_det_math::SEMANTICS_ID (line 189)", "tests/test_det_golden.rs semantics_id_matches_recorded_hex"]
+status = "pass"
+evidence = [
+    "src/semantics.rs SDF_SEMANTICS_PINS (the digest of the 152-row GOLDEN table of tests/test_det_golden.rs, the SHA-256 of the max / min rule and the two-rounding mul_add rule, and the resolved alice_det_math::SEMANTICS_ID), folded as alice-det-math folds its own (names sorted, u32 length prefix, SHA-256)",
+    "src/semantics.rs SDF_SEMANTICS_BY_DET_MATH (rows for alice-det-math 0.5.0 and 0.5.1) and sdf_semantics_id_for, which stops the compile for a generation with no row; pub const SDF_SEMANTICS_ID (c87c2528... with det-math 0.5.1), re-exported at the crate root",
+    "src/semantics.rs PREVIOUS_SDF_SEMANTICS_IDS (85e08846... and 135c407d..., the det-math identifiers 6.1 and earlier exposed as alice_sdf::SEMANTICS_ID) and check_sdf_semantics (Verified / VerifiedPrevious / Mismatch)",
+    "src/lib.rs: `pub use alice_det_math::SEMANTICS_ID` documented as alice-det-math's identifier, not this crate's",
+    "tests/sdf_semantics_id.rs (the golden table read from tests/test_det_golden.rs, each rule entry against its text, the det-math entry against the resolved crate, every row recomputed, the recorded hex, each entry moving the identifier, check_sdf_semantics on this, previous and unknown identifiers)",
+]
+mutant = "measured 2026-10-17, each reverted: a golden hash re-recorded without its pin fails every_entry_matches_its_source (and tree_evaluator_bits_match_recorded_hashes); the max / min rule text changed fails every_entry_matches_its_source; the det-math 0.5.1 row removed stops the compile; the 0.5.1 identifier removed from PREVIOUS_SDF_SEMANTICS_IDS fails check_reads_this_previous_and_unknown_identifiers"
 since = ""
-note = "src/lib.rs line 189 re-exports alice-det-math's SEMANTICS_ID instead of computing an identifier that folds this crate's own Law pins (the max / min rule, the two-rounding mul_add) with its Law-bearing dependencies' identifiers (alice-det-math, and alice-physics under the physics feature); there is no tie to this crate's version or toolchain and no test that a changed pin changes it"
-reference_repo = ""
+note = "the identifier does not depend on the enabled features: the physics bridge's values cross into alice-physics, which is G7's boundary, not a pin of this crate. It moves when a pinned golden, a rule or the det-math generation moves, not with the crate version."
+reference_repo = "ALICE-Zip"
 
 [G7]
 status = "unverified"

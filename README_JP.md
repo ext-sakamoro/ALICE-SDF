@@ -314,7 +314,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G3 no-outer-fneg-of-fma | 未確認 | unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add … |
 | G4 debug-release-arch-goldens | 適合 |  |
 | G5 release-profile-test-leg | 適合 |  |
-| G6 semantics-id | 未達 | src/lib.rs line 189 re-exports alice-det-math's SEMANTICS_ID instead of computing an identifier that folds this crate's own Law pins (the max / min rule, the … |
+| G6 semantics-id | 適合 | the identifier does not depend on the enabled features: the physics bridge's values cross into alice-physics, which is G7's boundary, not a pin of this crate. … |
 | G7 handshake-carries-id | 未確認 | unverified: the empty boundary list rests on a lexical scan with no canary, and the completeness of the entry point list is the audit part of this gate; the … |
 | G8 persisted-semantics-id | 未達 | no durable format this crate writes carries an identifier of the meaning of the stored bytes: the SVO stream (src/svo/streaming.rs line 68 to_bytes), the … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a … |
