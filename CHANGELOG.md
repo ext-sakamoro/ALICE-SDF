@@ -17,6 +17,10 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `provenance` module: `Provenance` (`sdf()` はこの crate の `SEMANTICS_ID`、`new(id)` は呼び出し側の識別子)、`read(path)` / `from_bytes` (STL / 3MF / FBX から識別子を読む)、`check(path, &expected)` (違えば `ProvenanceError::Mismatch` が両方の識別子を hex で示す) 書き出し関数 `export_stl_with_provenance` / `export_stl_ascii_with_provenance` / `export_3mf_with_provenance` / `export_fbx_with_provenance` (従来の関数は `Provenance::sdf()` で呼ぶ) 試験 `tests/test_provenance.rs`: 各書き出し関数で識別子が読み戻せること、違う識別子を `check` が両方の値で拒むこと、この crate の importer と独立の STL parser (`stl_io`、dev-dependency) が file を読めること、3MF の metadata の名前空間の宣言と位置
 - CI (G8): `scripts/provenance_writers.py` (試験 `scripts/test_provenance_writers.py`) が `src/io` ・ `src/volume/export.rs` ・ `src/svo/streaming.rs` ・ `src/mesh/lod_persist.rs` ・ `src/validity.rs` の公開の書き出し関数 (現在 44) を数え、それぞれが `tests/test_provenance.rs` の往復の試験にあるか、未対応の一覧 `scripts/provenance-pending.txt` にあることを確かめる 関数の数は一覧の `expected-writers` で固定し、増減・往復の試験の無い新しい関数・一覧に残った対応済みの関数・0 件はどれも失敗 CI の wiring-guard job (3 OS) と preflight
 
+### Fixed
+
+- binary FBX (`export_fbx` の `FbxFormat::Binary`) が仕様どおりの file でなかった: 入れ子の node の end offset を node の先頭からの長さのまま書いていた (FBX は全 node で file 内の位置を要求する、top level だけを直していた) のと、file 末尾の footer が無かった 独立の FBX parser (`fbxcel`、dev-dependency) が `FBXHeaderExtension/FBXHeaderVersion` で `NodeLengthMismatch` を返していた 入れ子の node も位置に直し (`absolutize_fbx_node`)、footer (ID・16 byte 境界までの 0・版・0 の 120 byte・magic) を書く 試験 `tests/test_provenance.rs` の `an_independent_fbx_parser_reads_the_binary_fbx` が file 全体と footer を読む (直す前は失敗、入れ子を直さない変異と magic を書かない変異でも失敗する)
+
 ## [6.1.0] - 2026-10-16
 
 ### Added
