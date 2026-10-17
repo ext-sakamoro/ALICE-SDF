@@ -120,6 +120,10 @@ step "provenance writers: oracle + 公開の書き出し関数はすべて意味
 python3 scripts/test_provenance_writers.py
 python3 scripts/provenance_writers.py
 
+step "api boundary (ALICE-Law G7): oracle + 一覧の照合 (wasm32 target が無ければ PREFLIGHT-SKIP 行で明示、CI は fail)"
+python3 scripts/test_api_boundary.py
+python3 scripts/api_boundary.py --skip-missing-targets
+
 step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py
