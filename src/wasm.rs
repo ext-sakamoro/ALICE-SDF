@@ -18,11 +18,15 @@ use wasm_bindgen::prelude::*;
 
 // === Primitives ===
 
+/// Distance from point (px, py, pz) to a sphere of `radius` centred at (cx, cy, cz)
 #[wasm_bindgen]
 pub fn sdf_sphere(px: f32, py: f32, pz: f32, cx: f32, cy: f32, cz: f32, radius: f32) -> f32 {
     sdf_sphere_at(Vec3::new(px, py, pz), Vec3::new(cx, cy, cz), radius)
 }
 
+/// Distance from point (px, py, pz) to a box centred at (cx, cy, cz) with half extents (hx, hy, hz)
+// the JavaScript API takes plain numbers, one argument per coordinate
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn sdf_box(
     px: f32,
@@ -42,16 +46,19 @@ pub fn sdf_box(
     )
 }
 
+/// Distance from point (px, py, pz) to a torus around the y axis at the origin
 #[wasm_bindgen]
 pub fn sdf_torus_w(px: f32, py: f32, pz: f32, major_radius: f32, minor_radius: f32) -> f32 {
     sdf_torus(Vec3::new(px, py, pz), major_radius, minor_radius)
 }
 
+/// Distance from point (px, py, pz) to a capped cylinder along the y axis at the origin
 #[wasm_bindgen]
 pub fn sdf_cylinder_w(px: f32, py: f32, pz: f32, radius: f32, half_height: f32) -> f32 {
     sdf_cylinder(Vec3::new(px, py, pz), radius, half_height)
 }
 
+/// Distance from point (px, py, pz) to the plane with normal (nx, ny, nz) at `distance` from the origin
 #[wasm_bindgen]
 pub fn sdf_plane_w(px: f32, py: f32, pz: f32, nx: f32, ny: f32, nz: f32, distance: f32) -> f32 {
     sdf_plane(Vec3::new(px, py, pz), Vec3::new(nx, ny, nz), distance)
@@ -59,31 +66,41 @@ pub fn sdf_plane_w(px: f32, py: f32, pz: f32, nx: f32, ny: f32, nz: f32, distanc
 
 // === Operations ===
 
+/// Union of two distances (the Law minimum)
+// `#[wasm_bindgen]` rejects `const fn`
+#[allow(clippy::missing_const_for_fn)]
 #[wasm_bindgen]
 pub fn op_union(a: f32, b: f32) -> f32 {
     crate::operations::sdf_union(a, b)
 }
 
+/// Intersection of two distances (the Law maximum)
+// `#[wasm_bindgen]` rejects `const fn`
+#[allow(clippy::missing_const_for_fn)]
 #[wasm_bindgen]
 pub fn op_intersection(a: f32, b: f32) -> f32 {
     crate::operations::sdf_intersection(a, b)
 }
 
+/// Subtraction of the second shape from the first
 #[wasm_bindgen]
 pub fn op_subtraction(a: f32, b: f32) -> f32 {
     crate::operations::sdf_subtraction(a, b)
 }
 
+/// Smooth union of two distances with blend radius `k`
 #[wasm_bindgen]
 pub fn op_smooth_union(a: f32, b: f32, k: f32) -> f32 {
     crate::operations::sdf_smooth_union(a, b, k)
 }
 
+/// Smooth intersection of two distances with blend radius `k`
 #[wasm_bindgen]
 pub fn op_smooth_intersection(a: f32, b: f32, k: f32) -> f32 {
     crate::operations::sdf_smooth_intersection(a, b, k)
 }
 
+/// Smooth subtraction of the second shape from the first with blend radius `k`
 #[wasm_bindgen]
 pub fn op_smooth_subtraction(a: f32, b: f32, k: f32) -> f32 {
     crate::operations::sdf_smooth_subtraction(a, b, k)
@@ -133,6 +150,7 @@ pub fn render_sphere_slice_rgba(
     buf
 }
 
+/// The crate version (from Cargo.toml)
 #[wasm_bindgen]
 pub fn alice_sdf_version() -> String {
     // 版数は Cargo.toml から取る (literal は bump 時に drift して JS 側に嘘を返す
@@ -148,6 +166,8 @@ pub fn alice_sdf_version() -> String {
 /// 球の表面にぶつかる最短距離を ray march (WebXR コントローラ / hand pose 用)
 ///
 /// 最大 64 step、エプシロン 0.001。ヒットしなければ -1.0 を返す。
+// the JavaScript API takes plain numbers, one argument per coordinate
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn raymarch_sphere(
     ox: f32,
@@ -184,6 +204,8 @@ pub fn raymarch_sphere(
 }
 
 /// 2 球 smooth-union 形状への最短距離 ray march (簡易シーン例、VR デモ用)
+// the JavaScript API takes plain numbers, one argument per coordinate
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
 pub fn raymarch_two_spheres_smooth(
     ox: f32,

@@ -12,16 +12,17 @@
 # canary, the entry is `unverified` with what is missing.
 
 [G1]
-status = "unverified"
+status = "pass"
 evidence = [
     "clippy.toml (bans every method gates.toml marks banned, for f32 and f64, plus sin_cos; powi is banned, the pending default; mul_add is banned as well, stricter than the list)",
     ".github/clippy-lib/clippy.toml (the library configuration, generated from clippy.toml, carries the same list)",
-    ".github/workflows/ci.yml clippy job: Clippy strict (no-default-features), Clippy strict (default, all targets), Clippy strict (all features that build on Linux, all targets), Clippy (library code ...)",
+    ".github/workflows/ci.yml clippy job, all with -D warnings: Clippy strict (no-default-features), Clippy strict (default, all targets), Clippy strict (every feature but wasm, all targets) and Clippy (library code ...) with the job's LINT_FEATURES (every feature of Cargo.toml but default and wasm), and Clippy (library code on wasm32) with --target wasm32-unknown-unknown --features wasm",
+    "scripts/clippy_feature_coverage.py with scripts/test_clippy_feature_coverage.py (same job and scripts/preflight.sh): fails when a feature of Cargo.toml is on in no clippy run of the job, when a listed name is not a feature, when preflight's LINT_FEATURES differs, and when it read no clippy command (31 features, 0 problems)",
     "scripts/clippy-lib-canary/src/lib.rs libm_f32 (canary), checked by scripts/clippy_lib_gate.py in the same job",
 ]
-mutant = "x.sin() added to a library function in src/lib.rs and to src/terrain/mod.rs (feature terrain): cargo clippy --lib --features terrain -- -D warnings fails with disallowed_methods on both (f64::sin, f32::sin); reverted"
+mutant = "measured 2026-10-17, each reverted: `x.sin()` in a pub fn appended to src/godot/mod.rs and to src/python/node.rs fails `cargo clippy --all-targets --features $LINT_FEATURES` (disallowed method f32::sin), and in src/wasm.rs fails the wasm32 step; the same godot plant passes the earlier feature list (glsl,...,rust), which is what this cell closes; in scripts/clippy_feature_coverage.py, dropping the uncovered-feature loop, the comment strip, the unset-variable mark, the preflight comparison or the empty check each turns scripts/test_clippy_feature_coverage.py red; earlier entry: x.sin() in src/lib.rs and src/terrain/mod.rs (feature terrain) fails clippy"
 since = ""
-note = "unverified: no banned call is known (the hand check below finds none), but CI does not lint every feature or wasm32, so the machine check is incomplete; the method list is complete, but the CI clippy runs do not build every feature: the feature lists at .github/workflows/ci.yml lines 677 and 691 leave out msl (src/compiled/mod.rs line 202), python (src/lib.rs line 129) and godot (src/lib.rs line 132), and no clippy run targets wasm32 for src/wasm.rs (src/lib.rs line 156), so a banned call added there is not caught. Checked by hand at this commit: clippy with .github/clippy-lib reports no libm call for --features msl,python,godot or for --target wasm32-unknown-unknown --features wasm. The font module (src/lib.rs line 126) also needs --cfg alice_font_bridge and is not linted."
+note = "every feature is linted with -D warnings: the python, godot and wasm modules had lint debt that no run compiled (use_self, missing_const_for_fn, missing docs, a needless to_vec), fixed in this change; what godot-rust's derive and attribute macros expand to is allowed in src/godot/mod.rs with the reason, and the two #[wasm_bindgen] / #[func] functions that cannot be const say so. The font module (src/lib.rs line 126) compiles only with --cfg alice_font_bridge and a local alice-font path dependency that Cargo.toml does not declare, so no build of this crate (crates.io or CI) contains it and no banned call in it can run."
 reference_repo = ""
 
 [G2]

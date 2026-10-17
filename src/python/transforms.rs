@@ -10,49 +10,49 @@ use super::node::PySdfNode;
 impl PySdfNode {
     /// Translate
     fn translate(&self, x: f32, y: f32, z: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().translate(x, y, z),
         }
     }
 
     /// Rotate by Euler angles (radians)
     fn rotate(&self, x: f32, y: f32, z: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().rotate_euler(x, y, z),
         }
     }
 
     /// Uniform scale
     fn scale(&self, factor: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().scale(factor),
         }
     }
 
     /// Non-uniform scale (different factor per axis)
     fn scale_xyz(&self, x: f32, y: f32, z: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().scale_xyz(x, y, z),
         }
     }
 
     /// Twist around Y-axis
     fn twist(&self, strength: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().twist(strength),
         }
     }
 
     /// Bend
     fn bend(&self, curvature: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().bend(curvature),
         }
     }
 
     /// Infinite repetition
     fn repeat(&self, spacing_x: f32, spacing_y: f32, spacing_z: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self
                 .inner
                 .clone()
@@ -62,42 +62,42 @@ impl PySdfNode {
 
     /// Perlin noise
     fn noise(&self, amplitude: f32, frequency: f32, seed: u32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().noise(amplitude, frequency, seed),
         }
     }
 
     /// Round edges
     fn round(&self, radius: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().round(radius),
         }
     }
 
     /// Shell (onion)
     fn onion(&self, thickness: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().onion(thickness),
         }
     }
 
     /// Mirror along specified axes
     fn mirror(&self, x: bool, y: bool, z: bool) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().mirror(x, y, z),
         }
     }
 
     /// Octant mirror (48-fold symmetry: abs + sort x >= y >= z)
     fn octant_mirror(&self) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().octant_mirror(),
         }
     }
 
     /// Elongate along axes
     fn elongate(&self, x: f32, y: f32, z: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().elongate(x, y, z),
         }
     }
@@ -112,7 +112,7 @@ impl PySdfNode {
         spacing_y: f32,
         spacing_z: f32,
     ) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().repeat_finite(
                 [count_x, count_y, count_z],
                 Vec3::new(spacing_x, spacing_y, spacing_z),
@@ -122,49 +122,49 @@ impl PySdfNode {
 
     /// Revolution around Y-axis
     fn revolution(&self, offset: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().revolution(offset),
         }
     }
 
     /// Extrude along Z-axis
     fn extrude(&self, height: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().extrude(height),
         }
     }
 
     /// Taper along Y-axis
     fn taper(&self, factor: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().taper(factor),
         }
     }
 
     /// Sin-based displacement
     fn displacement(&self, strength: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().displacement(strength),
         }
     }
 
     /// Polar repetition around Y-axis
     fn polar_repeat(&self, count: u32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().polar_repeat(count),
         }
     }
 
     /// Assign material ID
     fn with_material(&self, material_id: u32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().with_material(material_id),
         }
     }
 
     /// Sweep along a quadratic Bezier curve in XZ plane
     fn sweep_bezier(&self, p0x: f32, p0y: f32, p1x: f32, p1y: f32, p2x: f32, p2y: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().sweep_bezier(
                 Vec2::new(p0x, p0y),
                 Vec2::new(p1x, p1y),
@@ -175,14 +175,14 @@ impl PySdfNode {
 
     /// Shear deformation
     fn shear(&self, xy: f32, xz: f32, yz: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().shear(xy, xz, yz),
         }
     }
 
     /// Apply time-based animation
     fn animated(&self, speed: f32, amplitude: f32) -> Self {
-        PySdfNode {
+        Self {
             inner: self.inner.clone().animated(speed, amplitude),
         }
     }

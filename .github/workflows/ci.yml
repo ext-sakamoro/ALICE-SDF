@@ -679,6 +679,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
+    env:
+      # every feature of Cargo.toml except `wasm`, which builds for wasm32 only and is
+      # linted by the wasm32 step below; scripts/clippy_feature_coverage.py checks
+      # that the two together name every feature
+      LINT_FEATURES: "aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -688,6 +693,12 @@ jobs:
 
       # core src/** は strict (-D warnings)。v1.7.2 で informational から格上げ。
       # 新しい clippy lint (Rust リリース毎に追加される) が混入したら CI で即発覚させる。
+      # ALICE-Law G1: the clippy runs of this job together turn on every feature of
+      # Cargo.toml (a feature no run compiles is never seen by clippy.toml's bans)
+      - name: clippy feature coverage (oracle, then check)
+        run: |
+          python3 scripts/test_clippy_feature_coverage.py
+          python3 scripts/clippy_feature_coverage.py
       - name: Clippy strict (no-default-features)
         run: cargo clippy --lib --no-default-features
         env:
@@ -700,10 +711,10 @@ jobs:
           RUSTFLAGS: "-Dwarnings"
 
       # Every feature-gated module is linted (the crate-wide pedantic /
-      # nursery policy in Cargo.toml applies to whatever is compiled): the
-      # docs.rs set + AAA + bridges + openvdb.
-      - name: Clippy strict (all features that build on Linux, all targets)
-        run: cargo clippy --all-targets --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
+      # nursery policy in Cargo.toml applies to whatever is compiled): every
+      # feature but wasm, which the wasm32 step lints (ALICE-Law G1).
+      - name: Clippy strict (every feature but wasm, all targets)
+        run: cargo clippy --all-targets --features "$LINT_FEATURES"
         env:
           RUSTFLAGS: "-Dwarnings"
 
@@ -717,16 +728,17 @@ jobs:
         env:
           CLIPPY_CONF_DIR: .github/clippy-lib
           RUSTFLAGS: "-Dwarnings"
-        run: cargo clippy --lib --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
+        run: cargo clippy --lib --features "$LINT_FEATURES"
       # the wasm module only compiles for wasm32 (src/lib.rs: feature wasm and
-      # target_arch wasm32): the same max / min ban there. Only the ban is denied
-      # here; the module's other lints are G1's
+      # target_arch wasm32): the same max / min ban there, and every other lint
+      # denied, as for the other features (ALICE-Law G1)
       - name: Clippy (library code on wasm32, max and min forbidden)
         env:
           CLIPPY_CONF_DIR: .github/clippy-lib
+          RUSTFLAGS: "-Dwarnings"
         run: |
           rustup target add wasm32-unknown-unknown
-          cargo clippy --lib --target wasm32-unknown-unknown --features wasm -- -D clippy::disallowed_methods
+          cargo clippy --lib --target wasm32-unknown-unknown --features wasm
       - name: Library clippy configuration is current and fires (canary)
         run: python3 scripts/clippy_lib_gate.py
       # The same lint carries the libm ban, so a function-level allow written for
@@ -735,7 +747,7 @@ jobs:
       - name: Hidden max / min check (tests)
         run: python3 scripts/test_clippy_lib_hidden_check.py
       - name: No max / min hides under an allow of the lint
-        run: python3 scripts/clippy_lib_hidden_check.py --features "glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust"
+        run: python3 scripts/clippy_lib_hidden_check.py --features "$LINT_FEATURES"
 
       # examples/gpu_eval.rs は required-features = ["gpu"] なので default CI では
       # compile されない (1.9.2 まで API drift で壊れたまま気付かなかった)

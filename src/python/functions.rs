@@ -50,7 +50,7 @@ pub fn eval_compiled_batch_soa<'py>(
     let compiled_ref = &compiled.compiled;
     let distances = with_numpy_as_vec3(points, |pts| {
         let soa = crate::soa::SoAPoints::from_vec3_slice(pts);
-        py.detach(|| crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa).to_vec())
+        py.detach(|| crate::compiled::eval_compiled_batch_soa_parallel(compiled_ref, &soa))
     })?;
     Ok(distances.into_pyarray(py))
 }
@@ -180,7 +180,7 @@ pub fn decimate_mesh<'py>(
 
 /// Get library version
 #[pyfunction]
-pub fn version() -> &'static str {
+pub const fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
@@ -321,7 +321,7 @@ impl PySvo {
     }
 
     /// Get leaf count
-    fn leaf_count(&self) -> u32 {
+    const fn leaf_count(&self) -> u32 {
         self.inner.leaf_count
     }
 
@@ -331,7 +331,7 @@ impl PySvo {
     }
 
     /// Get max depth
-    fn max_depth(&self) -> u32 {
+    const fn max_depth(&self) -> u32 {
         self.inner.max_depth
     }
 
@@ -390,7 +390,7 @@ impl PyHeightmap {
     }
 
     /// Get sample count
-    fn sample_count(&self) -> usize {
+    const fn sample_count(&self) -> usize {
         self.inner.sample_count()
     }
 
@@ -504,7 +504,7 @@ pub struct PyVoxelGrid {
 #[pymethods]
 impl PyVoxelGrid {
     /// Get the number of voxels
-    fn voxel_count(&self) -> usize {
+    const fn voxel_count(&self) -> usize {
         self.inner.voxel_count()
     }
 
@@ -514,7 +514,7 @@ impl PyVoxelGrid {
     }
 
     /// Get the grid resolution
-    fn resolution(&self) -> (u32, u32, u32) {
+    const fn resolution(&self) -> (u32, u32, u32) {
         let r = self.inner.resolution;
         (r[0], r[1], r[2])
     }

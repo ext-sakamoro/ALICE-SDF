@@ -36,6 +36,8 @@ quick=0
 
 # Feature sets, verbatim from the workflows.
 LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust'
+# the clippy job's LINT_FEATURES: every feature but wasm (linted on wasm32 below)
+LINT_FEATURES='aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume'
 DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust'
 BRIDGES='physics,codec,asp,sdf-cache'
 MSRV=1.85
@@ -138,30 +140,34 @@ cargo fmt --check
 step "fmt: cargo fmt --check (mobile/uniffi-wrapper)"
 (cd mobile/uniffi-wrapper && cargo fmt --check)
 
+step "clippy feature coverage: every Cargo feature is on in a clippy run (G1)"
+python3 scripts/test_clippy_feature_coverage.py
+python3 scripts/clippy_feature_coverage.py
+
 step "clippy: strict (no-default-features)"
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --no-default-features
 
 step "clippy: strict (default, all targets)"
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets
 
-step "clippy: strict (all features that build on Linux, all targets)"
-relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --features "$LINUX_ALL"
+step "clippy: strict (every feature but wasm, all targets)"
+relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --features "$LINT_FEATURES"
 
 # library code: f32 / f64 / f32x8 max and min forbidden (ci.yml "Clippy (library
 # code, ...)"), here also for the x86_64 target the Linux / Windows runners use
 step "clippy: library code with .github/clippy-lib (max / min forbidden), host and x86_64"
-relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$LINUX_ALL"
+relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$LINT_FEATURES"
 rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
 relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
 step "clippy: library code on wasm32 (max / min forbidden)"
 rustup target add wasm32-unknown-unknown >/dev/null 2>&1 || true
-CLIPPY_CONF_DIR=.github/clippy-lib cargo clippy --lib --target wasm32-unknown-unknown --features wasm -- -D clippy::disallowed_methods
+CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --target wasm32-unknown-unknown --features wasm
 
 step "library clippy configuration (current + canary)"
 python3 scripts/clippy_lib_gate.py
 step "no max / min hides under an allow of the lint (scratch copy with the allows lifted)"
 python3 scripts/test_clippy_lib_hidden_check.py
-python3 scripts/clippy_lib_hidden_check.py --features "$LINUX_ALL"
+python3 scripts/clippy_lib_hidden_check.py --features "$LINT_FEATURES"
 
 # Linux / Windows runners are x86_64; arch-gated bodies (SIMD dispatch) lint
 # differently there (missing_const_for_fn, dead_code on aarch64-only paths).

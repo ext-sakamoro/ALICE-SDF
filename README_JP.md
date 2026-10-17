@@ -309,7 +309,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 
 | gate | 状態 | 注記 |
 |---|---|---|
-| G1 no-libm-direct | 未確認 | unverified: no banned call is known (the hand check below finds none), but CI does not lint every feature or wasm32, so the machine check is incomplete; the … |
+| G1 no-libm-direct | 適合 | every feature is linted with -D warnings: the python, godot and wasm modules had lint debt that no run compiled (use_self, missing_const_for_fn, missing docs, … |
 | G2 ieee-max-min | 適合 | 96 vector and wasm sites moved to the Law helpers (92 under the Linux feature set, 4 f32 sites in src/wasm.rs). Site classes: (a) bounds built from points … |
 | G3 no-outer-fneg-of-fma | 未確認 | unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add … |
 | G4 debug-release-arch-goldens | 適合 |  |
