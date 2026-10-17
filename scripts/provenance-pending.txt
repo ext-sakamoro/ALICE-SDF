@@ -29,7 +29,3 @@ src/io/vox.rs::save_vox
 src/mesh/lod_persist.rs::save_lod_chain
 src/mesh/lod_persist.rs::save_lod_chain_metadata
 src/svo/streaming.rs::to_bytes
-src/volume/export.rs::export_dds_3d
-src/volume/export.rs::export_dds_3d_distgrad
-src/volume/export.rs::export_raw
-src/volume/export.rs::export_raw_with_mips
