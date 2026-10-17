@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 843 |
+| 🟢 Not ignored | 844 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **843** |
+| **Total** | **844** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (843)
+## 🟢 Not ignored (844)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -47,6 +47,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
+| `test_provenance.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
 | `test_binding_oracle.rs` | 9 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |
@@ -54,7 +55,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_query_oracle.rs` | 9 |
 | `test_new_transforms.rs` | 9 |
 | `test_physics_bridge_determinism.rs` | 9 |
-| `test_provenance.rs` | 9 |
 | `test_relaxed_tracing.rs` | 9 |
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
