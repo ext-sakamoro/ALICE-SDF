@@ -188,6 +188,8 @@ criterion = { version = "0.5", features = ["html_reports"] }
 naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in"] }
 # tests/test_det_golden.rs: cross-platform bit pins (one SHA-256 per corpus node)
 sha2 = "0.10"
+# tests/test_provenance.rs: an independent binary STL parser reads files carrying the identifier
+stl_io = "0.11"
 
 # tests/test_msl_metal_oracle.rs: compile and run the emitted MSL on the real
 # Metal runtime compiler (MTLDevice::newLibraryWithSource), so no Xcode Metal
