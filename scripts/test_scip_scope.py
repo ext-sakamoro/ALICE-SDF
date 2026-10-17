@@ -65,6 +65,13 @@ class Scope(unittest.TestCase):
         rc, out = self.run_scope()
         self.assertEqual(rc, 0, out)
 
+    def test_a_staged_rename_out_of_src_runs(self):
+        # not committed: only the working-tree half of the comparison sees it
+        os.makedirs(os.path.join(self.d, "lib"), exist_ok=True)
+        git(self.d, "mv", "src/a.rs", "lib/a.rs")
+        rc, out = self.run_scope()
+        self.assertEqual(rc, 0, out)
+
     def test_a_change_to_an_example_or_the_manifest_runs(self):
         for rel in ("examples/e.rs", "Cargo.toml"):
             with self.subTest(rel=rel):
