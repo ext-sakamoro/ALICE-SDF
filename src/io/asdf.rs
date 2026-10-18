@@ -332,6 +332,10 @@ fn load_asdf_checked(
     // bincode 2 API: decode_from_slice returns (T, bytes_consumed) — bytes_consumed は捨てる
     // with_limit::<ASDF_BINCODE_LIMIT>: 256 MB を超える length prefix は Err で reject
     // (fuzz_asdf_decode で発覚した capacity overflow panic の予防)
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form checked: the header identifier went through sdf_load_verdict before this decode"
+    )]
     let (tree, _consumed): (SdfTree, usize) = bincode::serde::decode_from_slice(
         &body,
         bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),

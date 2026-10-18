@@ -640,6 +640,10 @@ fn alice_mesh_to_godot(mesh: &crate::mesh::Mesh) -> Gd<ArrayMesh> {
 
 /// Build SdfNode from shape name and JSON params
 fn build_sdf_from_params(shape: &str, params_json: &str) -> Option<SdfNode> {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form other-type: a serde_json::Value of authored primitive parameters from the editor; no stored tree is read"
+    )]
     let params: serde_json::Value = serde_json::from_str(params_json).ok()?;
 
     match shape {

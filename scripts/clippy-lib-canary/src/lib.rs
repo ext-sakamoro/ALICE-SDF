@@ -235,3 +235,63 @@ pub fn hash_set_iter_inferred() -> u32 {
     let s = made_set();
     s.iter().sum()
 }
+
+// ALICE-Law G8: a bare read of a stored form, in each spelling clippy resolves to the
+// forbidden path (an alias, a brace import, the value module, bincode's reader API)
+pub fn json_from_str(js: &str) -> Option<serde_json::Value> {
+    serde_json::from_str(js).ok()
+}
+
+pub fn json_alias(js: &str) -> Option<serde_json::Value> {
+    use serde_json as sj;
+    sj::from_str(js).ok()
+}
+
+pub fn json_brace_import(js: &str) -> Option<serde_json::Value> {
+    use serde_json::{from_str as read_text, Value};
+    read_text::<Value>(js).ok()
+}
+
+pub fn json_value_module(jv: serde_json::Value) -> Option<u32> {
+    serde_json::value::from_value(jv).ok()
+}
+
+pub fn json_from_value(jv: serde_json::Value) -> Option<u32> {
+    serde_json::from_value(jv.clone()).ok()
+}
+
+pub fn json_from_slice(jb: &[u8]) -> Option<serde_json::Value> {
+    serde_json::from_slice(jb).ok()
+}
+
+pub fn json_from_reader(jr: std::io::Cursor<Vec<u8>>) -> Option<serde_json::Value> {
+    serde_json::from_reader(jr).ok()
+}
+
+pub fn json_deserializer(js: &str) -> Option<serde_json::Value> {
+    use serde::Deserialize;
+    let mut dj = serde_json::Deserializer::from_str(js);
+    serde_json::Value::deserialize(&mut dj).ok()
+}
+
+pub fn bincode_slice(bb: &[u8]) -> Option<u32> {
+    bincode::serde::decode_from_slice(bb, bincode::config::standard()).ok().map(|r| r.0)
+}
+
+pub fn bincode_alias(bb: &[u8]) -> Option<u32> {
+    use bincode::serde as bs;
+    bs::decode_from_slice(bb, bincode::config::legacy()).ok().map(|r| r.0)
+}
+
+pub fn bincode_reader(bb: &[u8]) -> Option<u32> {
+    let rd = bincode::de::read::SliceReader::new(bb);
+    bincode::serde::decode_from_reader(rd, bincode::config::standard()).ok()
+}
+
+pub fn bincode_std_read(br: &mut std::io::Cursor<Vec<u8>>) -> Option<u32> {
+    bincode::serde::decode_from_std_read(br, bincode::config::standard()).ok()
+}
+
+pub fn bincode_native(bn: &[u8]) -> Option<u32> {
+    bincode::decode_from_slice(bn, bincode::config::standard()).ok().map(|r| r.0)
+}

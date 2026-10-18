@@ -12,3 +12,6 @@ description = "Calls every form .github/clippy-lib/clippy.toml forbids, so scrip
 [dependencies]
 wide = "0.7"
 glam = "0.29"
+serde = "1.0"
+serde_json = "1.0"
+bincode = { version = "2.0", features = ["serde"] }

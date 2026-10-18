@@ -430,6 +430,10 @@ fn sidecar_path(abm_path: &Path) -> std::path::PathBuf {
 }
 
 /// Read sidecar metadata from JSON file
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stored form pending: the LOD chain metadata sidecar carries no identifier yet (G8 abm and lod group)"
+)]
 fn read_sidecar_metadata(path: impl AsRef<Path>) -> Result<LodChainMetadata, IoError> {
     let file = std::fs::File::open(path.as_ref())?;
     let reader = std::io::BufReader::new(file);

@@ -614,6 +614,10 @@ pub(crate) fn sdf_load_verdict(
 /// (one with an `asset` object; `gltf` names it in errors), the top-level `"alice:semantics_id"` of
 /// an ASDF JSON document
 fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<Provenance, ProvenanceError> {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form other-type: a serde_json::Value of a glTF or ASDF JSON document, read only for its stored identifier"
+    )]
     let doc: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|e| ProvenanceError::Unreadable(format!("JSON: {e}")))?;
     let (format, field) = match doc.get("asset") {

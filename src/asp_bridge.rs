@@ -233,12 +233,17 @@ fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<Sd
     let semantics =
         sdf_load_verdict(stored, "ASP I-packet", allow_unpinned).map_err(|e| e.to_string())?;
 
-    bincode::serde::decode_from_slice(
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form checked: the identifier in the first 32 coefficient entries went through sdf_load_verdict above"
+    )]
+    let decoded = bincode::serde::decode_from_slice(
         &bytes[offset..],
         bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
-    )
-    .map(|(tree, _)| Checked::new(tree, semantics))
-    .map_err(|e| format!("ASDF decode failed: {}", e))
+    );
+    decoded
+        .map(|(tree, _)| Checked::new(tree, semantics))
+        .map_err(|e| format!("ASDF decode failed: {}", e))
 }
 
 /// Compute the ASP packet overhead for an SDF scene.

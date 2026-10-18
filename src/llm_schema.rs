@@ -18,6 +18,10 @@ use crate::types::{SdfNode, SdfTree};
 /// Returns a human-readable error message if parsing fails,
 /// suitable for feeding back to an LLM for correction.
 pub fn validate_sdf_json(json: &str) -> Result<Checked<SdfTree>, String> {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form checked: a serde_json::Value; the tree comes from io::json::split and sdf_load_verdict before it is returned"
+    )]
     let value: serde_json::Value = serde_json::from_str(json).map_err(|e| {
         format!(
             "JSON parse error at line {} column {}: {}",

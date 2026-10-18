@@ -56,6 +56,10 @@ pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>)
             )));
         }
     };
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form checked: split returns the stored identifier with the tree; checked() and validate_sdf_json apply sdf_load_verdict"
+    )]
     let tree: SdfTree =
         serde_json::from_value(value).map_err(|e| IoError::Serialization(e.to_string()))?;
     Ok((tree, stored))
@@ -85,6 +89,10 @@ pub fn save_asdf_json_with_provenance(
     Ok(())
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stored form checked: a serde_json::Value only; the tree is built by split() and checked before it is returned"
+)]
 fn read_value(path: impl AsRef<Path>) -> Result<serde_json::Value, IoError> {
     let file = File::open(path)?;
     serde_json::from_reader(BufReader::new(file)).map_err(|e| IoError::Serialization(e.to_string()))
@@ -121,6 +129,10 @@ pub fn to_json_string_with_provenance(
         .map_err(|e| IoError::Serialization(e.to_string()))
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stored form checked: a serde_json::Value only; the tree is built by split() and checked before it is returned"
+)]
 fn parse_value(json: &str) -> Result<serde_json::Value, IoError> {
     serde_json::from_str(json).map_err(|e| IoError::Serialization(e.to_string()))
 }

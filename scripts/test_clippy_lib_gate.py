@@ -188,6 +188,45 @@ pub fn h5() {
 pub fn h6() {
     x(s.iter()
 }
+pub fn s0() {
+    x(serde_json::from_str(js)
+}
+pub fn s1() {
+    x(sj::from_str(js)
+}
+pub fn s2() {
+    x(read_text::<Value>(js)
+}
+pub fn s3() {
+    x(serde_json::value::from_value(jv)
+}
+pub fn s4() {
+    x(serde_json::from_value(jv.clone())
+}
+pub fn s5() {
+    x(serde_json::from_slice(jb)
+}
+pub fn s6() {
+    x(serde_json::from_reader(jr)
+}
+pub fn s7() {
+    x(serde_json::Deserializer::from_str(js)
+}
+pub fn s8() {
+    x(bincode::serde::decode_from_slice(bb,
+}
+pub fn s9() {
+    x(bs::decode_from_slice(bb,
+}
+pub fn s10() {
+    x(bincode::serde::decode_from_reader(rd,
+}
+pub fn s11() {
+    x(bincode::serde::decode_from_std_read(br,
+}
+pub fn s12() {
+    x(bincode::decode_from_slice(bn,
+}
 """
 
 
@@ -202,17 +241,31 @@ class Render(unittest.TestCase):
         body = out[len(g.HEADER) + 1:]
         added = "".join(f'    {{ path = "{p}", reason = "{g.REASON}" }},\n' for p in g.EXTRA)
         added += "".join(f'    {{ path = "{p}", reason = "{g.ORDER_REASON}" }},\n' for p in g.EXTRA_ORDER_METHODS)
+        added += "".join(f'    {{ path = "{p}", reason = "{g.STORED_FORM_REASON}" }},\n'
+                         for p in g.EXTRA_STORED_FORM_METHODS)
         types = "".join(f'    {{ path = "{p}", reason = "{g.ORDER_REASON}" }},\n' for p in g.EXTRA_TYPES)
         self.assertEqual(body.replace(added, "").replace(types, ""), ROOT)
         i = body.index("disallowed-methods = [\n")
         self.assertIn('path = "f32::max"', body[i:body.index('path = "f32::sin"')])
-        self.assertEqual(g.count_entries(out), 2 + len(g.EXTRA) + len(g.EXTRA_ORDER_METHODS))
+        self.assertEqual(g.count_entries(out),
+                         2 + len(g.EXTRA) + len(g.EXTRA_ORDER_METHODS) + len(g.EXTRA_STORED_FORM_METHODS))
 
     def test_the_extra_paths_are_exactly_the_float_and_glam_max_and_min(self):
         glam = [f"glam::{t}::{m}" for t in ("Vec2", "Vec3", "Vec3A", "Vec4", "DVec2", "DVec3", "DVec4")
                 for m in ("min", "max", "clamp", "min_element", "max_element")]
         self.assertEqual(g.EXTRA, ["f32::max", "f32::min", "f64::max", "f64::min",
                                    "wide::f32x8::max", "wide::f32x8::min"] + glam)
+
+    def test_the_stored_form_readers_are_forbidden(self):
+        # ALICE-Law G8: every serde_json / bincode entry point that reads a stored form,
+        # in the path clippy resolves to (a re-export is matched by its definition)
+        for p in ("serde_json::de::from_str", "serde_json::de::from_slice", "serde_json::de::from_reader",
+                  "serde_json::value::from_value", "serde_json::Deserializer::from_str",
+                  "bincode::serde::decode_from_slice", "bincode::serde::decode_from_reader",
+                  "bincode::serde::decode_from_std_read", "bincode::serde::borrow_decode_from_slice",
+                  "bincode::decode_from_slice", "bincode::decode_from_reader", "bincode::decode_from_std_read"):
+            self.assertIn(p, g.EXTRA_STORED_FORM_METHODS)
+            self.assertIn(f'path = "{p}"', g.render(ROOT))
 
     def test_a_root_list_that_already_forbids_max_is_refused(self):
         with self.assertRaises(ValueError):
@@ -267,6 +320,13 @@ class Canary(unittest.TestCase):
         out = "\n".join(diag(n, "x") for n in self.want)
         errors, _ = g.judge_canary(0, out, self.want)
         self.assertTrue(errors)
+
+    def test_an_entry_clippy_cannot_resolve_fails(self):
+        out = "\n".join(diag(n, "x") for n in self.want)
+        out += "\n.github/clippy-lib/clippy.toml:9:5: warning: `bincode::serde::gone` does not refer to a reachable function"
+        errors, _ = g.judge_canary(101, out, self.want)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("bincode::serde::gone", errors[0])
 
     def test_no_diagnostic_at_all_fails(self):
         errors, n = g.judge_canary(101, "error: could not compile", self.want)
