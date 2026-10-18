@@ -8,7 +8,7 @@ targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 739 items (0 Linux-only): 45 handshake, 670 local, 24 pending (G8). Groups (count, decision):
+# 740 items (0 Linux-only): 47 handshake, 670 local, 23 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -34,7 +34,8 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      1  local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain
 #      1  local: converts an animation clip already in memory; the file it came from is read by import_fbx_full, which checks the identifier
 #     18  handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer
-#      1  pending: G8, the network weights file carries no semantics identifier of the build that trained it
+#      1  handshake: nsdf_writers_store_and_loaders_check_the_identifier
+#      1  handshake: an_nsdf_file_from_6_1_0_is_refused_by_default_and_read_unverified
 #      7  pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check
 #      2  pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under
 #      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
@@ -201,7 +202,8 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "binding::pyo3::import_glb_bytes" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
 
 # 1 pending
-"fn::NeuralSdf::load" = "pending: G8, the network weights file carries no semantics identifier of the build that trained it"
+"fn::NeuralSdf::load" = "handshake: nsdf_writers_store_and_loaders_check_the_identifier"
+"fn::NeuralSdf::load_unverified" = "handshake: an_nsdf_file_from_6_1_0_is_refused_by_default_and_read_unverified"
 
 # 7 pending
 "fn::mesh::mesh_codec::decode_indices" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"

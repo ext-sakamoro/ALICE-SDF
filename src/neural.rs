@@ -395,13 +395,34 @@ impl NeuralSdf {
         nsdf
     }
 
-    /// Save weights to a binary writer.
+    /// Save weights to a binary writer, stamped with this crate's semantics identifier.
     ///
-    /// Format: `b"NSDF"` + version(u32) + pos_freqs(u32) + n_layers(u32)
-    /// + for each layer: in_dim(u32) + out_dim(u32) + weights + biases
+    /// Format (version 2): `b"NSDF"` + version(u32) + the 32-byte semantics identifier
+    /// ([`crate::provenance`]) + pos_freqs(u32) + n_layers(u32)
+    /// + for each layer: in_dim(u32) + out_dim(u32) + weights + biases.
+    ///
+    /// Version 1 (alice-sdf 6.1.0 and earlier) is the same without the identifier.
+    ///
+    /// # Errors
+    ///
+    /// An I/O error of the writer.
     pub fn save<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
-        w.write_all(b"NSDF")?;
-        w.write_all(&1u32.to_le_bytes())?; // version
+        self.save_with_provenance(w, &crate::provenance::Provenance::sdf())
+    }
+
+    /// [`NeuralSdf::save`] storing the given semantics identifier instead of this crate's
+    ///
+    /// # Errors
+    ///
+    /// An I/O error of the writer.
+    pub fn save_with_provenance<W: Write>(
+        &self,
+        w: &mut W,
+        provenance: &crate::provenance::Provenance,
+    ) -> std::io::Result<()> {
+        w.write_all(NSDF_MAGIC)?;
+        w.write_all(&NSDF_VERSION.to_le_bytes())?;
+        w.write_all(&provenance.semantics_id)?;
         w.write_all(&(self.pos_freqs as u32).to_le_bytes())?;
         w.write_all(&(self.layers.len() as u32).to_le_bytes())?;
 
@@ -419,25 +440,79 @@ impl NeuralSdf {
         Ok(())
     }
 
-    /// Load weights from a binary reader.
-    pub fn load<R: Read>(r: &mut R) -> std::io::Result<Self> {
+    /// Load weights from a binary reader, checking the semantics identifier the file carries
+    ///
+    /// # Errors
+    ///
+    /// [`crate::io::IoError::Unpinned`] for a version 1 file (no identifier; read it with
+    /// [`NeuralSdf::load_unverified`]), [`crate::io::IoError::SemanticsMismatch`] for an identifier
+    /// that is neither this crate's nor one it still reproduces,
+    /// [`crate::io::IoError::UnsupportedVersion`] for a version this crate does not know,
+    /// [`crate::io::IoError::InvalidFormat`] for a file that is not NSDF or whose header or weights
+    /// are cut short, and an I/O error of the reader.
+    pub fn load<R: Read>(r: &mut R) -> Result<Self, crate::io::IoError> {
+        Self::load_checked(r, false).map(|c| c.into_parts().0)
+    }
+
+    /// [`NeuralSdf::load`] that also reads a version 1 file (written before the semantics
+    /// identifier, alice-sdf 6.1.0 and earlier), marking it
+    /// [`crate::provenance::StoredSemantics::Unpinned`]
+    ///
+    /// # Errors
+    ///
+    /// As [`NeuralSdf::load`], except that a file without an identifier is returned, not refused.
+    pub fn load_unverified<R: Read>(
+        r: &mut R,
+    ) -> Result<crate::provenance::Checked<Self>, crate::io::IoError> {
+        Self::load_checked(r, true)
+    }
+
+    fn load_checked<R: Read>(
+        r: &mut R,
+        allow_unpinned: bool,
+    ) -> Result<crate::provenance::Checked<Self>, crate::io::IoError> {
+        use crate::io::IoError;
+        let truncated = |e: std::io::Error| {
+            if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                IoError::InvalidFormat("NSDF: truncated header".into())
+            } else {
+                IoError::Io(e)
+            }
+        };
         let mut magic = [0u8; 4];
-        r.read_exact(&mut magic)?;
-        if &magic != b"NSDF" {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Not an NSDF file",
-            ));
+        r.read_exact(&mut magic).map_err(truncated)?;
+        if &magic != NSDF_MAGIC {
+            return Err(IoError::InvalidFormat("Not an NSDF file".into()));
         }
 
-        let version = read_u32(r)?;
-        if version != 1 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Unsupported version",
-            ));
-        }
+        // the magic is present: an identifier that cannot be read is an error, never "unstamped"
+        let version = read_u32(r).map_err(truncated)?;
+        let stored = match version {
+            1 => None,
+            NSDF_VERSION => {
+                let mut id = [0u8; 32];
+                r.read_exact(&mut id).map_err(truncated)?;
+                Some(id)
+            }
+            v => {
+                return Err(IoError::UnsupportedVersion(
+                    u16::try_from(v).unwrap_or(u16::MAX),
+                ))
+            }
+        };
+        let semantics = crate::provenance::sdf_load_verdict(stored, "NSDF", allow_unpinned)?;
+        let net = Self::read_body(r).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                IoError::InvalidFormat("NSDF: truncated body".into())
+            } else {
+                IoError::Io(e)
+            }
+        })?;
+        Ok(crate::provenance::Checked::new(net, semantics))
+    }
 
+    /// The weights after the header (identical in versions 1 and 2)
+    fn read_body<R: Read>(r: &mut R) -> std::io::Result<Self> {
         let pos_freqs = read_u32(r)? as usize;
         let n_layers = read_u32(r)? as usize;
         let input_dim = 3 + 3 * 2 * pos_freqs;
@@ -552,6 +627,13 @@ fn layer_forward(layer: &Layer, input: &[f32], output: &mut [f32], relu: bool) {
         output[r] = if relu { sum.law_max(0.0) } else { sum };
     }
 }
+
+/// Magic of the NSDF weights file
+pub const NSDF_MAGIC: &[u8; 4] = b"NSDF";
+
+/// The NSDF version this crate writes: 2 carries the 32-byte semantics identifier after the
+/// version (version 1, alice-sdf 6.1.0 and earlier, carries none)
+pub const NSDF_VERSION: u32 = 2;
 
 fn read_u32<R: Read>(r: &mut R) -> std::io::Result<u32> {
     let mut buf = [0u8; 4];

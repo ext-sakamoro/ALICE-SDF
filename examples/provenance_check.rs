@@ -2,7 +2,8 @@
 //!
 //! Exports a sphere as binary STL, 3MF, STEP and meshopt-compressed glTF, reads the identifier
 //! each file carries, and checks it against this crate's identifier. The binary mesh format (.abm)
-//! and the tree format (.asdf) carry it in their headers and their loaders check it. A stamped STL also carries a
+//! and the tree format (.asdf) carry it in their headers and their loaders check it, as do the
+//! neural weights (NSDF). A stamped STL also carries a
 //! producer identifier, read back from its own slot. A file written with another
 //! identifier is refused, and the error names both.
 //!
@@ -195,5 +196,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     std::fs::remove_dir_all(&dir)?;
+
+    // neural weights: a version 2 NSDF file carries the identifier after its version, load checks
+    // it, load_unverified says what is known, and weights saved under another identifier are refused
+    use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
+    let net = NeuralSdf::new(&NeuralSdfConfig {
+        hidden_layers: 1,
+        hidden_width: 4,
+        pos_encoding_freqs: 1,
+        ..Default::default()
+    });
+    let mut weights = Vec::new();
+    net.save(&mut weights)?;
+    let checked = NeuralSdf::load_unverified(&mut weights.as_slice())?;
+    println!("NSDF weights: {:?}", checked.semantics());
+    assert_eq!(checked.semantics(), StoredSemantics::Current);
+    let mut other = Vec::new();
+    net.save_with_provenance(&mut other, &foreign)?;
+    match NeuralSdf::load(&mut other.as_slice()) {
+        Err(e) => println!("NSDF weights under another identifier: refused: {e}"),
+        Ok(_) => return Err("NSDF weights under another identifier were read".into()),
+    }
+
     Ok(())
 }

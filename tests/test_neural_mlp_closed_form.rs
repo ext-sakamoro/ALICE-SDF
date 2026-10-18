@@ -28,7 +28,8 @@ fn put_u32(b: &mut Vec<u8>, v: u32) {
 /// `layers`: (in, out, weights row-major, biases)
 fn nsdf(freqs: u32, layers: &[(u32, u32, Vec<f32>, Vec<f32>)]) -> NeuralSdf {
     let mut b = b"NSDF".to_vec();
-    put_u32(&mut b, 1);
+    put_u32(&mut b, 2);
+    b.extend_from_slice(&alice_sdf::provenance::Provenance::sdf().semantics_id);
     put_u32(&mut b, freqs);
     put_u32(&mut b, layers.len() as u32);
     for (i, o, w, bias) in layers {
@@ -116,7 +117,8 @@ fn architecture_counts_and_save_length() {
 
         let mut bytes = Vec::new();
         net.save(&mut bytes).unwrap();
-        assert_eq!(bytes.len(), 16 + 8 * (layers + 1) + 4 * params);
+        // magic, version, the 32-byte semantics identifier, freqs, layer count
+        assert_eq!(bytes.len(), 16 + 32 + 8 * (layers + 1) + 4 * params);
         let back = NeuralSdf::load(&mut bytes.as_slice()).unwrap();
         let pts = points();
         // hidden_width 70 > 64 also exercises the batch buffers' growth
@@ -136,11 +138,16 @@ fn malformed_files_are_rejected() {
     let mut b = b"NSDF".to_vec();
     put_u32(&mut b, 2);
     assert!(NeuralSdf::load(&mut b.as_slice()).is_err());
-    // truncated weights
+    // truncated weights (a version 2 header with this crate's identifier, so only the body is short)
     let mut b = b"NSDF".to_vec();
-    for v in [1, 0, 1, 3, 1] {
+    put_u32(&mut b, 2);
+    b.extend_from_slice(&alice_sdf::provenance::Provenance::sdf().semantics_id);
+    for v in [0, 1, 3, 1] {
         put_u32(&mut b, v);
     }
     b.extend_from_slice(&1.0f32.to_le_bytes());
-    assert!(NeuralSdf::load(&mut b.as_slice()).is_err());
+    assert!(matches!(
+        NeuralSdf::load(&mut b.as_slice()),
+        Err(alice_sdf::io::IoError::InvalidFormat(ref why)) if why == "NSDF: truncated body"
+    ));
 }
