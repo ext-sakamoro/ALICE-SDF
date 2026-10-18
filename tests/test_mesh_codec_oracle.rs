@@ -3,7 +3,8 @@
 //!
 //! - `mesh_codec` (the crate's own varint delta format): the encoder must
 //!   produce exactly the bytes of the format written in the module doc
-//!   (8-byte header `ASDF`, version 1, kind, 2 reserved; count as LEB128;
+//!   (40-byte header `ASDF`, version 2, kind, 2 reserved, the 32-byte semantics
+//!   identifier; count as LEB128;
 //!   per slot the zigzag LEB128 of the delta to the previous triangle's slot,
 //!   or to the previous vertex's byte). The reference encoder below is written
 //!   from that description, not from the implementation. Decoding must give
@@ -54,9 +55,17 @@ const fn zigzag(delta: i64) -> u64 {
     (if d >= 0 { 2 * d } else { -2 * d - 1 }) as u64
 }
 
-fn reference_encode_indices(indices: &[u32]) -> Vec<u8> {
+/// The version 2 header of the module doc: magic, version 2, kind, 2 reserved, this crate's
+/// semantics identifier
+fn reference_header(kind: u8) -> Vec<u8> {
     let mut out = b"ASDF".to_vec();
-    out.extend([1, 0, 0, 0]);
+    out.extend([2, kind, 0, 0]);
+    out.extend(alice_sdf::SDF_SEMANTICS_ID);
+    out
+}
+
+fn reference_encode_indices(indices: &[u32]) -> Vec<u8> {
+    let mut out = reference_header(0);
     let tris = indices.len() / 3;
     leb128(&mut out, tris as u64);
     let mut prev = [0i64; 3];
@@ -71,8 +80,7 @@ fn reference_encode_indices(indices: &[u32]) -> Vec<u8> {
 }
 
 fn reference_encode_positions(ps: &[Vec3]) -> Vec<u8> {
-    let mut out = b"ASDF".to_vec();
-    out.extend([1, 1, 0, 0]);
+    let mut out = reference_header(1);
     leb128(&mut out, ps.len() as u64);
     let mut prev = [0i64; 12];
     for p in ps {
@@ -203,7 +211,7 @@ fn varint_codec_reports_each_broken_header_field() {
     let mut bad_magic = good.clone();
     bad_magic[0] = b'X';
     let mut bad_version = good.clone();
-    bad_version[4] = 2;
+    bad_version[4] = 3;
     let truncated = &good[..good.len() - 1];
     assert_eq!(decode_indices(&bad_magic), Err(CodecError::BadMagic));
     assert_eq!(
@@ -212,12 +220,14 @@ fn varint_codec_reports_each_broken_header_field() {
     );
     assert_eq!(decode_indices(truncated), Err(CodecError::UnexpectedEof));
     assert_eq!(decode_indices(&good[..5]), Err(CodecError::UnexpectedEof));
+    // a version 2 header cut inside its identifier
+    assert_eq!(decode_indices(&good[..39]), Err(CodecError::UnexpectedEof));
     // a position buffer is not an index buffer, and the other way round
     let pos = encode_positions(&[Vec3::ONE]);
     assert_eq!(decode_indices(&pos), Err(CodecError::WrongKind));
     assert_eq!(decode_positions(&good), Err(CodecError::WrongKind));
     // six continuation bytes run past 32 bits
-    let mut overflow = good[..8].to_vec();
+    let mut overflow = good[..40].to_vec();
     overflow.extend([0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01]);
     assert_eq!(decode_indices(&overflow), Err(CodecError::VarintOverflow));
 }

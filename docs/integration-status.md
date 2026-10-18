@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1287 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1306 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1027 |
-| | **total** | **2323** |
+| | **total** | **2342** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1287)
+## L1 — example-only (1306)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -77,7 +77,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::cached_chunks`, `ChunkedMeshCache::chunk_bounds`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::dirty_chunks`, `ChunkedMeshCache::get_chunk`, `ChunkedMeshCache::invalidate_all`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::load_chunk`, `ChunkedMeshCache::merge_all`, `ChunkedMeshCache::persist_dirty`, `ChunkedMeshCache::set_chunk`, `ChunkedMeshCache::update_sdf_hash`, `ChunkedMeshCache::world_to_chunk`
 - `src/cache/mod.rs`: `CacheConfig`, `MeshCache`, `MeshCache::clear`, `MeshCache::get`, `MeshCache::get_or_generate`, `MeshCache::insert`, `MeshCache::is_empty`, `MeshCache::len`, `MeshCache::memory_usage`, `MeshCache::new`, `MeshCache::remove`, `MeshCacheKey`, `compute_cache_key`, `hash_sdf_node`
 - `src/cache_bridge.rs`: `GridPoint`, `GridPoint::from_f32`, `SdfEvalCache`, `SdfEvalCache::get`, `SdfEvalCache::hit_rate`, `SdfEvalCache::is_empty`, `SdfEvalCache::len`, `SdfEvalCache::new`, `SdfEvalCache::put`
-- `src/codec_bridge.rs`: `CompressResult`, `DecodeError`, `EncodeConfig`, `EncodeConfig::fast`, `EncodeConfig::high_quality`, `EncodeConfig::lossless`, `SdfVolume`, `SdfVolume::get`, `SdfVolume::is_empty`, `SdfVolume::len`, `SdfVolume::world_pos`, `VolumeStats`, `compress_sdf`, `compression_ratio`, `decode_sdf_volume`, `decompress_sdf`, `encode_sdf_volume`, `try_decode_sdf_volume`, `volume_stats`, `voxelize_sdf`, `voxelize_sdf_uniform`
+- `src/codec_bridge.rs`: `CompressResult`, `DecodeError`, `EncodeConfig`, `EncodeConfig::fast`, `EncodeConfig::high_quality`, `EncodeConfig::lossless`, `SdfVolume`, `SdfVolume::get`, `SdfVolume::is_empty`, `SdfVolume::len`, `SdfVolume::world_pos`, `VolumeStats`, `compress_sdf`, `compression_ratio`, `decode_sdf_volume`, `decompress_sdf`, `encode_sdf_volume`, `encode_sdf_volume_with_provenance`, `try_decode_sdf_volume`, `try_decode_sdf_volume_unverified`, `volume_stats`, `voxelize_sdf`, `voxelize_sdf_uniform`
 - `src/collision.rs`: `ContactManifold`, `SdfContact`, `compute_manifold`, `sdf_ccd`, `sdf_closest_point`, `sdf_collide`, `sdf_distance`, `sdf_overlap`
 - `src/compiled/aabb.rs`: `AabbPacked::distance_to_point_fast`
 - `src/compiled/blinkscript/transpiler.rs`: `BlinkScriptShader::extract_params`, `BlinkScriptShader::get_eval_function`
@@ -147,13 +147,13 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/lod.rs`: `ContinuousLod`, `ContinuousLod::get_render_meshes`, `ContinuousLod::new`, `ContinuousLod::update`, `DecimationLodConfig`, `DecimationLodConfig::distance_range`, `DecimationLodConfig::fast`, `DecimationLodConfig::high_quality`, `LodChain`, `LodChain::base_triangle_count`, `LodChain::get_blend_pair`, `LodChain::get_level`, `LodChain::get_lod`, `LodChain::memory_usage`, `LodChain::select_by_error`, `LodConfig`, `LodConfig::balanced`, `LodConfig::distance_range`, `LodConfig::fast`, `LodConfig::high_quality`, `LodConfig::resolution_at_level`, `LodMesh`, `LodMesh::blend_factor`, `LodMesh::is_active`, `LodSelector`, `LodSelector::high_res`, `LodSelector::is_acceptable`, `LodSelector::screen_error`, `LodSelector::select`, `generate_lod_chain`, `generate_lod_chain_decimated`
 - `src/mesh/lod_persist.rs`: `LodChainPersist::level_count`, `LodChainPersist::mesh`, `LodChainPersist::select_lod`, `LodChainPersist::summary`, `LodChainPersist::total_memory_bytes`, `LodChainSummary`, `load_lod_chain_metadata`, `load_lod_chain_unverified`, `save_lod_chain_metadata`
 - `src/mesh/manifold.rs`: `MeshQuality`, `MeshRepair`, `MeshRepair::drop_specks`, `MeshRepair::fill_holes`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::orient_faces`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `compute_quality`, `validate_mesh`
-- `src/mesh/mesh_codec.rs`: `CodecError`, `decode_indices`, `decode_positions`, `encode_indices`, `encode_mesh`, `encode_positions`
+- `src/mesh/mesh_codec.rs`: `CodecError`, `MESHOPT_KIND_INDEX`, `MESHOPT_KIND_VERTEX`, `decode_indices`, `decode_indices_unverified`, `decode_positions`, `decode_positions_unverified`, `encode_indices`, `encode_indices_with_provenance`, `encode_mesh`, `encode_mesh_with_provenance`, `encode_positions`, `encode_positions_with_provenance`, `meshopt_stamp`, `meshopt_unstamp`
 - `src/mesh/mesh_sign.rs`: `ExteriorField`, `ExteriorField::MAX_BAND_STEPS`, `ExteriorField::MAX_CELLS`, `ExteriorField::PADDING_CELLS`, `ExteriorField::build`, `ExteriorField::cell_size`, `ExteriorField::dims`, `ExteriorField::is_exterior`, `ExteriorField::signed_distance`
 - `src/mesh/mesh_to_sdf.rs`: `MeshSdf`, `MeshSdf::bounds`, `MeshSdf::bvh`, `MeshSdf::eval`, `MeshSdf::eval_batch`, `MeshSdf::eval_unsigned`, `MeshSdf::eval_unsigned_batch`, `MeshSdf::gradient`, `MeshSdf::new`, `MeshSdf::sign_mode`, `MeshSdf::to_sdf_node`, `MeshSdf::triangle_count`, `MeshSdf::try_new`, `MeshToSdfConfig::accurate`, `MeshToSdfConfig::hybrid`, `MeshToSdfConfig::topology_robust`, `mesh_to_sdf_exact`
 - `src/mesh/meshlet.rs`: `Meshlet`, `Meshlet::triangle_count`, `Meshlet::vertex_count`, `MeshletConfig`, `MeshletConfig::quality`, `build_meshlets`, `build_meshlets_adjacency`, `build_meshlets_scan`
 - `src/mesh/meshopt_filter.rs`: `decode_filter_exp_u32_in_place`, `decode_filter_oct_i16_in_place`, `decode_filter_quat_i16_in_place`, `encode_filter_exp_one`, `encode_filter_exp_u32`, `encode_filter_oct_i16`, `encode_filter_oct_one`, `encode_filter_quat_i16`, `encode_filter_quat_one`, `quantize_snorm`, `try_decode_filter_oct_i16_in_place`, `try_encode_filter_oct_i16`, `try_encode_filter_quat_i16`
-- `src/mesh/meshopt_index_codec.rs`: `decode_index_buffer`
-- `src/mesh/meshopt_vertex_codec.rs`: `decode_vertex_buffer`, `encode_vertex_buffer`
+- `src/mesh/meshopt_index_codec.rs`: `decode_index_buffer`, `decode_index_buffer_raw`, `encode_index_buffer`, `try_encode_index_buffer`, `try_encode_index_buffer_with_provenance`
+- `src/mesh/meshopt_vertex_codec.rs`: `decode_vertex_buffer`, `decode_vertex_buffer_raw`, `encode_vertex_buffer`, `encode_vertex_buffer_level`, `encode_vertex_buffer_raw`, `encode_vertex_buffer_with_provenance`
 - `src/mesh/mod.rs`: `Triangle`, `Triangle::new`, `Vertex::with_all`
 - `src/mesh/nanite.rs`: `CLUSTER_MAX_TRIANGLES`, `CLUSTER_MAX_VERTICES`, `ClusterBounds`, `ClusterBounds::from_vertices`, `ClusterBounds::is_visible`, `ClusterBounds::screen_error`, `ClusterGroup`, `LodLevel`, `NaniteCluster`, `NaniteCluster::should_render`, `NaniteCluster::triangle_count`, `NaniteCluster::vertex_count`, `NaniteConfig`, `NaniteConfig::high_detail`, `NaniteConfig::medium_detail`, `NaniteConfig::preview`, `NaniteMesh`, `NaniteMesh::clusters_at_lod`, `NaniteMesh::get_cluster`, `NaniteMesh::select_clusters`, `NaniteMesh::to_mesh`, `NaniteMesh::total_vertices`, `NormalCone`, `NormalCone::from_normals`, `NormalCone::from_normals_and_positions`, `NormalCone::is_backface_culled`, `NormalCone::unbounded`, `cluster_surface_error`, `generate_nanite_mesh`, `sampled_triangle_errors`
 - `src/mesh/optimize.rs`: `compute_acmr`, `compute_atvr`, `optimize_vertex_cache`, `optimize_vertex_fetch`

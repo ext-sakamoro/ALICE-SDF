@@ -26,7 +26,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 747 items (0 Linux-only): 58 handshake, 673 local, 16 pending (G8). Groups (count, decision):
+# 762 items (0 Linux-only): 70 handshake, 683 local, 9 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -62,7 +62,11 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #     18  handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer
 #      1  handshake: nsdf_writers_store_and_loaders_check_the_identifier
 #      1  handshake: an_nsdf_file_from_6_1_0_is_refused_by_default_and_read_unverified
-#      7  pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check
+#      4  handshake: mesh_codec_decoders_check_the_identifier
+#      4  handshake: meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name
+#      4  handshake: codec_volume_stream_checks_the_identifier
+#      6  local: writes this build's own values to an encoded buffer under the identifier the caller gives
+#      4  local: writes bare meshoptimizer bytes of this build's own values for interchange (EXT_meshopt_compression); the container carries the identifier
 #      2  pending: G8, the modifiers' payloads (written by alice-physics) carry no Physics identifier; the SDF identifier is checked
 #      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
 #      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
@@ -238,14 +242,37 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::NeuralSdf::load" = "handshake: nsdf_writers_store_and_loaders_check_the_identifier"
 "fn::NeuralSdf::load_unverified" = "handshake: an_nsdf_file_from_6_1_0_is_refused_by_default_and_read_unverified"
 
-# 7 pending
-"fn::mesh::mesh_codec::decode_indices" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
-"fn::mesh::mesh_codec::decode_positions" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
-"fn::mesh::meshopt_index_codec::decode_index_buffer" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
-"fn::mesh::meshopt_vertex_codec::decode_vertex_buffer" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
-"fn::codec_bridge::decode_sdf_volume" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
-"fn::codec_bridge::decompress_sdf" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
-"fn::codec_bridge::try_decode_sdf_volume" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
+# 4 handshake
+"fn::mesh::mesh_codec::decode_indices" = "handshake: mesh_codec_decoders_check_the_identifier"
+"fn::mesh::mesh_codec::decode_indices_unverified" = "handshake: mesh_codec_decoders_check_the_identifier"
+"fn::mesh::mesh_codec::decode_positions" = "handshake: mesh_codec_decoders_check_the_identifier"
+"fn::mesh::mesh_codec::decode_positions_unverified" = "handshake: mesh_codec_decoders_check_the_identifier"
+
+# 4 handshake
+"fn::mesh::meshopt_index_codec::decode_index_buffer" = "handshake: meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name"
+"fn::mesh::meshopt_index_codec::decode_index_buffer_raw" = "handshake: meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name"
+"fn::mesh::meshopt_vertex_codec::decode_vertex_buffer" = "handshake: meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name"
+"fn::mesh::meshopt_vertex_codec::decode_vertex_buffer_raw" = "handshake: meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name"
+
+# 4 handshake
+"fn::codec_bridge::decode_sdf_volume" = "handshake: codec_volume_stream_checks_the_identifier"
+"fn::codec_bridge::decompress_sdf" = "handshake: codec_volume_stream_checks_the_identifier"
+"fn::codec_bridge::try_decode_sdf_volume" = "handshake: codec_volume_stream_checks_the_identifier"
+"fn::codec_bridge::try_decode_sdf_volume_unverified" = "handshake: codec_volume_stream_checks_the_identifier"
+
+# 6 local
+"fn::codec_bridge::encode_sdf_volume_with_provenance" = "local: writes this build's own values to an encoded buffer under the identifier the caller gives"
+"fn::mesh::mesh_codec::encode_indices_with_provenance" = "local: writes this build's own values to an encoded buffer under the identifier the caller gives"
+"fn::mesh::mesh_codec::encode_mesh_with_provenance" = "local: writes this build's own values to an encoded buffer under the identifier the caller gives"
+"fn::mesh::mesh_codec::encode_positions_with_provenance" = "local: writes this build's own values to an encoded buffer under the identifier the caller gives"
+"fn::mesh::meshopt_index_codec::try_encode_index_buffer_with_provenance" = "local: writes this build's own values to an encoded buffer under the identifier the caller gives"
+"fn::mesh::meshopt_vertex_codec::encode_vertex_buffer_with_provenance" = "local: writes this build's own values to an encoded buffer under the identifier the caller gives"
+
+# 4 local
+"fn::mesh::meshopt_index_codec::encode_index_buffer_raw" = "local: writes bare meshoptimizer bytes of this build's own values for interchange (EXT_meshopt_compression); the container carries the identifier"
+"fn::mesh::meshopt_index_codec::try_encode_index_buffer_raw" = "local: writes bare meshoptimizer bytes of this build's own values for interchange (EXT_meshopt_compression); the container carries the identifier"
+"fn::mesh::meshopt_vertex_codec::encode_vertex_buffer_level_raw" = "local: writes bare meshoptimizer bytes of this build's own values for interchange (EXT_meshopt_compression); the container carries the identifier"
+"fn::mesh::meshopt_vertex_codec::encode_vertex_buffer_raw" = "local: writes bare meshoptimizer bytes of this build's own values for interchange (EXT_meshopt_compression); the container carries the identifier"
 
 # 2 pending
 "fn::<Participant for LiveSdf>::check_state" = "pending: G8, the modifiers' payloads (written by alice-physics) carry no Physics identifier; the SDF identifier is checked"
