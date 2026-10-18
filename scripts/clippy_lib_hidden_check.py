@@ -135,6 +135,15 @@ def main(argv: list[str] | None = None) -> int:
         if rewritten == 0:
             print("error: no allow of the lint outside src/raw_minmax.rs was found (compared nothing)", file=sys.stderr)
             return 1
+        # the stored-form readers the configuration bans, before clippy runs: a reworded reason
+        # would leave the set empty and every stored-form diagnostic uncounted
+        config = dst / ".github" / "clippy-lib" / "clippy.toml"
+        paths = stored_form_paths(config.read_text(encoding="utf-8")) if config.is_file() else set()
+        if not paths:
+            print("error: the library configuration bans no stored-form reader (no disallowed-methods "
+                  f"entry whose reason starts with {STORED_FORM_REASON_PREFIX!r}; compared nothing)",
+                  file=sys.stderr)
+            return 1
         env = dict(os.environ, CLIPPY_CONF_DIR=str(dst / ".github" / "clippy-lib"), CARGO_TERM_COLOR="never")
         env.setdefault("CARGO_TARGET_DIR", str(ROOT / "target"))
         cmd = ["cargo", "clippy", "--lib", "--message-format=json", "--quiet"]
@@ -150,10 +159,6 @@ def main(argv: list[str] | None = None) -> int:
             if m.get("reason") == "compiler-message":
                 messages.append(m["message"])
         hidden, seen = judge(messages)
-        paths = stored_form_paths((dst / ".github" / "clippy-lib" / "clippy.toml").read_text(encoding="utf-8"))
-        if not paths:
-            print("error: the library configuration bans no stored-form reader (compared nothing)", file=sys.stderr)
-            return 1
         stored_errors, n_stored = judge_stored(messages, stored_sites, paths)
         if a.dump:
             with open(a.dump, "w", encoding="utf-8") as f:

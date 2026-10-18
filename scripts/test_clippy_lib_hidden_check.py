@@ -85,6 +85,49 @@ class StoredFormPaths(unittest.TestCase):
         self.assertIn("serde_json::de::from_str", paths)
 
 
+class EmptyStoredFormSet(unittest.TestCase):
+    """main() on a tree whose library configuration names no stored-form reader fails before
+    clippy runs (a reworded reason would otherwise make the check compare nothing)"""
+
+    def run_main(self, reason: str) -> tuple[int, str]:
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "src").mkdir()
+            (root / "src" / "a.rs").write_text(
+                "#[allow(clippy::disallowed_methods, reason = \"libm for a preview\")]\nfn a() {}\n", encoding="utf-8")
+            (root / ".github" / "clippy-lib").mkdir(parents=True)
+            (root / ".github" / "clippy-lib" / "clippy.toml").write_text(
+                f'disallowed-methods = [\n    {{ path = "serde_json::de::from_str", reason = "{reason}" }},\n]\n',
+                encoding="utf-8")
+            saved = (h.ROOT, h.tracked_files, h.subprocess.run)
+            ran = []
+            h.ROOT = root
+            h.tracked_files = lambda: ["src/a.rs", ".github/clippy-lib/clippy.toml"]
+            h.subprocess.run = lambda *a, **k: ran.append(a) or (_ for _ in ()).throw(AssertionError("clippy ran"))
+            err = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(err):
+                    try:
+                        rc = h.main([])
+                    except AssertionError:
+                        rc = "clippy ran"
+            finally:
+                h.ROOT, h.tracked_files, h.subprocess.run = saved
+            return rc, err.getvalue()
+
+    def test_a_reworded_reason_fails_before_clippy(self):
+        rc, err = self.run_main("a plain read skips the identifier")
+        self.assertEqual(rc, 1, err)
+        self.assertIn("bans no stored-form reader", err)
+
+    def test_the_prefixed_reason_reaches_clippy(self):
+        rc, _ = self.run_main(h.STORED_FORM_REASON_PREFIX + " skips the identifier")
+        self.assertEqual(rc, "clippy ran")
+
+
 class StoredForm(unittest.TestCase):
     SITES = {"src/io/json.rs": [(10, 14), (30, 33)]}
 
