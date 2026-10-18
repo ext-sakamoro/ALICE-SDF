@@ -319,3 +319,115 @@ pub fn trait_seed(sv: serde_json::Value) -> Option<u32> {
     use serde::de::DeserializeSeed;
     std::marker::PhantomData::<u32>.deserialize(sv).ok()
 }
+
+// the rest of the library-only entries, so every entry has a form (a mistyped or removed entry
+// forbids nothing, and clippy does not say so for a method path)
+
+pub fn hash_map_iter_inferred() -> usize {
+    let mi = made();
+    mi.iter().count()
+}
+
+pub fn hash_map_values_mut_inferred() -> usize {
+    let mut mv = made();
+    mv.values_mut().count()
+}
+
+pub fn hash_map_into_keys_inferred() -> u32 {
+    let mk = made();
+    mk.into_keys().sum()
+}
+
+pub fn hash_map_into_values_inferred() -> u32 {
+    let mu = made();
+    mu.into_values().sum()
+}
+
+pub fn hash_map_drain_inferred() -> usize {
+    let mut md = made();
+    md.drain().count()
+}
+
+pub fn hash_map_retain_inferred() -> usize {
+    let mut mr = made();
+    mr.retain(|_, v| *v > 0);
+    mr.len()
+}
+
+pub fn hash_set_drain_inferred() -> usize {
+    let mut sd = made_set();
+    sd.drain().count()
+}
+
+pub fn hash_set_retain_inferred() -> usize {
+    let mut sr = made_set();
+    sr.retain(|v| *v > 0);
+    sr.len()
+}
+
+pub fn hash_map_iter_mut_type(it: std::collections::hash_map::IterMut<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_keys_type(it: std::collections::hash_map::Keys<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_values_type(it: std::collections::hash_map::Values<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_values_mut_type(it: std::collections::hash_map::ValuesMut<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_into_iter_type(it: std::collections::hash_map::IntoIter<u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_drain_type(it: std::collections::hash_map::Drain<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_set_iter_type(it: std::collections::hash_set::Iter<'_, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_set_into_iter_type(it: std::collections::hash_set::IntoIter<u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_set_drain_type(it: std::collections::hash_set::Drain<'_, u32>) -> usize {
+    it.count()
+}
+
+// the rest of the stored-form entries, one function each (the deserializers are built without
+// calling deserialize, so each line carries the one diagnostic its form names)
+
+pub fn json_deserializer_from_slice(ds: &[u8]) -> () {
+    let _dsl = serde_json::Deserializer::from_slice(ds);
+}
+
+pub fn json_deserializer_from_reader(dr: std::io::Cursor<Vec<u8>>) -> () {
+    let _drd = serde_json::Deserializer::from_reader(dr);
+}
+
+pub fn json_stream_deserializer(st: &str) -> () {
+    let _sd = serde_json::StreamDeserializer::<_, serde_json::Value>::new(serde_json::de::StrRead::new(st));
+}
+
+pub fn bincode_serde_borrow(bs2: &[u8]) -> Option<usize> {
+    bincode::serde::borrow_decode_from_slice::<&str, _>(bs2, bincode::config::standard()).ok().map(|r| r.1)
+}
+
+pub fn bincode_native_reader(br2: &[u8]) -> Option<u32> {
+    bincode::decode_from_reader::<u32, _, _>(bincode::de::read::SliceReader::new(br2), bincode::config::standard()).ok()
+}
+
+pub fn bincode_native_std_read(bsr: &mut std::io::Cursor<Vec<u8>>) -> Option<u32> {
+    bincode::decode_from_std_read::<u32, _, _>(bsr, bincode::config::standard()).ok()
+}
+
+pub fn bincode_native_borrow(bb2: &[u8]) -> Option<usize> {
+    bincode::borrow_decode_from_slice::<&str, _>(bb2, bincode::config::standard()).ok().map(|r| r.1)
+}
