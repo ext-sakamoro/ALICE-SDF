@@ -4,7 +4,7 @@
 # tests/test_provenance.rs has its round-trip entry; G8 passes when no line is left
 # `expected-writers` is the number of public writers found; change it only with a new or removed writer
 
-expected-writers 44
+expected-writers 45
 
 src/io/alembic.rs::export_alembic
 src/io/mod.rs::save
@@ -20,4 +20,5 @@ src/io/ue5_asset.rs::export_ue5_mesh_with_lods
 src/io/unity_mesh.rs::export_unity_mesh
 src/io/unity_mesh.rs::export_unity_mesh_binary
 src/io/vox.rs::save_vox
+src/neural.rs::save
 src/svo/streaming.rs::to_bytes

@@ -34,6 +34,7 @@ WRITER_FILES = [
     "src/svo/streaming.rs",
     "src/mesh/lod_persist.rs",
     "src/validity.rs",
+    "src/neural.rs",
 ]
 TEST_FILE = "tests/test_provenance.rs"
 PENDING_FILE = "scripts/provenance-pending.txt"
