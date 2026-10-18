@@ -54,6 +54,7 @@ jobs:
       vrchat: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.vrchat == 'true' }}
       unreal: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.unreal == 'true' }}
       scip: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.scip == 'true' }}
+      lint: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.lint == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -92,6 +93,16 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
+            # the clippy configuration and its gate: a change here must run the clippy job, which
+            # runs the canary (scripts/clippy_lib_gate.py); without it a gate or lint change is
+            # judged only by the unit tests in the wiring-guard job
+            lint:
+              - 'clippy.toml'
+              - '.github/clippy-lib/**'
+              - 'scripts/clippy_lib_gate.py'
+              - 'scripts/clippy_lib_gate.toml'
+              - 'scripts/test_clippy_lib_gate.py'
+              - 'scripts/clippy-lib-canary/**'
             mobile:
               - 'mobile/**'
             python:
@@ -727,7 +738,7 @@ jobs:
   clippy:
     name: Clippy (core strict, -D warnings)
     needs: changes
-    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-latest
     env:
       # every feature of Cargo.toml except `wasm`, which builds for wasm32 only and is
