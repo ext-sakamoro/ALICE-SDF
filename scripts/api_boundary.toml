@@ -3,8 +3,8 @@ features = "aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,gl
 bindings = ["pyo3"]
 targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 # compiled only on one OS (rustdoc documents the host it runs on): checked there, skipped elsewhere
-# with a PREFLIGHT-SKIP line. CI runs on Linux only, so macOS- or Windows-only items are not
-# enumerated anywhere yet (a static count found none in this crate)
+# with a PREFLIGHT-SKIP line. CI runs the check on Linux (clippy job), macOS and Windows
+# (api-boundary-os job), so an item compiled only on one of them is enumerated there
 host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
