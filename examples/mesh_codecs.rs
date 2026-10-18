@@ -25,19 +25,28 @@
     reason = "example scene and animation values; the crate output these examples show is computed by the library"
 )]
 
-use alice_sdf::mesh::mesh_codec::{decode_indices, decode_positions, encode_mesh, CodecError};
+use alice_sdf::mesh::mesh_codec::{
+    decode_indices, decode_indices_unverified, decode_positions, decode_positions_unverified,
+    encode_indices, encode_mesh, encode_positions, CodecError,
+};
 use alice_sdf::mesh::meshopt_filter::{
     decode_filter_exp_u32_in_place, decode_filter_oct_i16_in_place,
     decode_filter_quat_i16_in_place, encode_filter_exp_u32, encode_filter_oct_i16,
     encode_filter_quat_i16,
 };
-use alice_sdf::mesh::meshopt_index_codec::{decode_index_buffer, encode_index_buffer};
-use alice_sdf::mesh::meshopt_vertex_codec::{decode_vertex_buffer, encode_vertex_buffer};
+use alice_sdf::mesh::meshopt_index_codec::{
+    decode_index_buffer, decode_index_buffer_raw, encode_index_buffer, encode_index_buffer_raw,
+};
+use alice_sdf::mesh::meshopt_vertex_codec::{
+    decode_vertex_buffer, decode_vertex_buffer_raw, encode_vertex_buffer, encode_vertex_buffer_raw,
+    encode_vertex_buffer_with_provenance,
+};
 use alice_sdf::mesh::quantization::{
     half_decode, half_encode, snorm_i16_decode, snorm_i16_encode, snorm_i8_decode, snorm_i8_encode,
     unorm_u16_decode, unorm_u16_encode, unorm_u8_decode, unorm_u8_encode,
 };
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig};
+use alice_sdf::provenance::{Provenance, StoredSemantics};
 use alice_sdf::SdfNode;
 use glam::Vec3;
 
@@ -79,6 +88,22 @@ fn main() {
         pb.len()
     );
     assert_eq!(decode_positions(&ib), Err(CodecError::WrongKind));
+    // each buffer carries the semantics identifier; the unverified decoders say what is known
+    let ib2 = encode_indices(&mesh.indices);
+    let positions_only: Vec<Vec3> = mesh.vertices.iter().map(|v| v.position).collect();
+    let pb2 = encode_positions(&positions_only);
+    assert_eq!(
+        decode_indices_unverified(&ib2)
+            .expect("indices")
+            .semantics(),
+        StoredSemantics::Current
+    );
+    assert_eq!(
+        decode_positions_unverified(&pb2)
+            .expect("positions")
+            .semantics(),
+        StoredSemantics::Current
+    );
     println!(
         "  an index buffer read as positions: {}",
         CodecError::WrongKind
@@ -106,6 +131,31 @@ fn main() {
     let dec_v =
         decode_vertex_buffer(&enc_v, mesh.vertices.len(), 24).expect("meshopt vertex decode");
     assert_eq!(dec_v, vbytes);
+    // the default codecs stamp the identifier around the meshoptimizer bytes; a buffer stamped
+    // under another identifier is refused
+    let foreign = encode_vertex_buffer_with_provenance(&vbytes, 24, &Provenance::new([7; 32]));
+    match decode_vertex_buffer(&foreign, mesh.vertices.len(), 24) {
+        Err(e @ CodecError::SemanticsMismatch { .. }) => println!("  another identifier: {e}"),
+        other => panic!("a buffer under another identifier was read: {other:?}"),
+    }
+    // interchange (EXT_meshopt_compression, meshoptimizer's own tools): the bare bytes, written
+    // and read by name; the raw decoders mark the result Unpinned (the container holds the id)
+    let raw_v = encode_vertex_buffer_raw(&vbytes, 24);
+    let raw_i = encode_index_buffer_raw(&mesh.indices);
+    let (v, status) = decode_vertex_buffer_raw(&raw_v, mesh.vertices.len(), 24)
+        .expect("raw vertex decode")
+        .into_parts();
+    assert_eq!((v, status), (vbytes.clone(), StoredSemantics::Unpinned));
+    assert_eq!(
+        decode_index_buffer_raw(&raw_i, mesh.indices.len())
+            .expect("raw index decode")
+            .semantics(),
+        StoredSemantics::Unpinned
+    );
+    assert_eq!(
+        decode_vertex_buffer(&raw_v, mesh.vertices.len(), 24),
+        Err(CodecError::Unpinned)
+    );
     println!(
         "meshopt v1: indices {raw_index_bytes} -> {} bytes, position+normal {} -> {} bytes",
         enc_i.len(),
