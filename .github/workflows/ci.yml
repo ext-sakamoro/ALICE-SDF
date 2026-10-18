@@ -55,6 +55,7 @@ jobs:
       unreal: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.unreal == 'true' }}
       scip: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.scip == 'true' }}
       lint: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.lint == 'true' }}
+      boundary: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.boundary == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -119,6 +120,16 @@ jobs:
               - 'include/alice_sdf.h'
               - 'examples/unreal_corpus_oracle.rs'
               - 'scripts/unreal-*'
+            # what changes the API boundary rustdoc enumerates (api-boundary-os job)
+            boundary:
+              - 'src/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'scripts/api_boundary.py'
+              - 'scripts/test_api_boundary.py'
+              - 'scripts/api_boundary.toml'
+              - '.github/workflows/ci.yml'
             scip:
               - 'src/**'
               - 'examples/**'
@@ -579,6 +590,38 @@ jobs:
             echo "::error::docs/integration-status.md is stale: run 'scripts/scip_index.sh && python3 scripts/scip_reach.py --write docs/integration-status.md' and commit the result"
             exit 1
           fi
+
+  # ALICE-Law G7 on the other hosts: rustdoc documents the host it runs on, so an entry point
+  # compiled only on macOS or Windows (a dependency's macro behind cfg(target_os)) is enumerated
+  # only there. The same check as the clippy job's 'API boundary manifest' step, per OS; each leg
+  # fails when it enumerated nothing (api_boundary.py), and the `host` table's keys of another OS
+  # print a PREFLIGHT-SKIP line instead of being compared.
+  # Runs only when something that changes the boundary changed (the `boundary` filter); the
+  # workflow's concurrency cancels a superseded run on ci/** and keeps one run per commit on main.
+  api-boundary-os:
+    name: API boundary (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.boundary == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      # pyo3's build script (python feature) needs an interpreter; tomllib needs 3.11+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # rust-toolchain.toml pins the toolchain: the wasm32 target is added to the pinned one (a
+      # missing target fails the run, as in the clippy job)
+      - name: wasm32 target for the pinned toolchain
+        run: rustup target add wasm32-unknown-unknown
+      # 1 行の && (Windows の pwsh は複数行の native command で最後の終了コードしか見ない)
+      - name: API boundary manifest on this OS (tests, then check, 0 compared fails)
+        run: python3 scripts/test_api_boundary.py && python3 scripts/api_boundary.py
 
   wasm:
     name: WebAssembly (wasm32) cross-compile
