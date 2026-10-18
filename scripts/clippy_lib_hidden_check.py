@@ -30,6 +30,7 @@ import json
 import os
 import re
 import shutil
+import tomllib
 import subprocess
 import sys
 import tempfile
@@ -41,9 +42,19 @@ ROOT = Path(__file__).resolve().parent.parent
 KEEP = "src/raw_minmax.rs"
 LINT = "clippy::disallowed_methods"
 STAND_IN = "clippy::disallowed_types"
-# serde_json / bincode entry points, and serde's own trait methods (`T::deserialize` on a
-# serde_json::Value or another Deserializer)
-STORED_FORM = re.compile(r"`((?:serde_json|bincode|serde)::[^`]+)`")
+# the path a disallowed-method diagnostic names
+DISALLOWED_PATH = re.compile(r"use of a disallowed method `([^`]+)`")
+# the reason the library configuration gives every stored-form reader it bans
+STORED_FORM_REASON_PREFIX = "a bare read of a stored form"
+
+
+def stored_form_paths(config_text: str) -> set[str]:
+    """The paths the library clippy configuration bans as stored-form readers (the entries
+    whose reason starts with STORED_FORM_REASON_PREFIX), so a reader banned later (another
+    crate's) is counted here without editing this script"""
+    entries = tomllib.loads(config_text).get("disallowed-methods", [])
+    return {e["path"] for e in entries
+            if isinstance(e, dict) and str(e.get("reason", "")).startswith(STORED_FORM_REASON_PREFIX)}
 MINMAX = re.compile(r"`((?:f32|f64)::(?:max|min)|wide::f32x8::(?:max|min))`")
 
 
@@ -70,12 +81,14 @@ def judge(messages: list[dict]) -> tuple[list[str], int]:
     return hidden, seen
 
 
-def judge_stored(messages: list[dict], sites: dict[str, list[tuple[int, int]]]) -> tuple[list[str], int]:
+def judge_stored(messages: list[dict], sites: dict[str, list[tuple[int, int]]],
+                 paths: set[str]) -> tuple[list[str], int]:
     """(errors, number of stored-form diagnostics): each must lie in a reviewed site of its file,
     and each reviewed site must contain one"""
     errors, n, used = [], 0, set()
     for msg in messages:
-        if (msg.get("code") or {}).get("code") != LINT or not STORED_FORM.search(msg.get("message", "")):
+        m = DISALLOWED_PATH.search(msg.get("message", ""))
+        if (msg.get("code") or {}).get("code") != LINT or not m or m.group(1) not in paths:
             continue
         n += 1
         spans = [s for s in msg.get("spans", []) if s.get("is_primary")]
@@ -137,7 +150,11 @@ def main(argv: list[str] | None = None) -> int:
             if m.get("reason") == "compiler-message":
                 messages.append(m["message"])
         hidden, seen = judge(messages)
-        stored_errors, n_stored = judge_stored(messages, stored_sites)
+        paths = stored_form_paths((dst / ".github" / "clippy-lib" / "clippy.toml").read_text(encoding="utf-8"))
+        if not paths:
+            print("error: the library configuration bans no stored-form reader (compared nothing)", file=sys.stderr)
+            return 1
+        stored_errors, n_stored = judge_stored(messages, stored_sites, paths)
         if a.dump:
             with open(a.dump, "w", encoding="utf-8") as f:
                 for m in messages:

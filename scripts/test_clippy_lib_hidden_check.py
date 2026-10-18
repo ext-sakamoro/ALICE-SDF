@@ -55,11 +55,41 @@ def at(path: str, file: str, line: int) -> dict:
     return m
 
 
+PATHS = {"serde_json::de::from_str", "serde_json::de::from_reader", "serde_json::value::from_value",
+         "bincode::serde::decode_from_slice", "serde::de::Deserialize::deserialize",
+         "serde::de::DeserializeSeed::deserialize"}
+h.judge_stored_t = lambda messages, sites: h.judge_stored(messages, sites, PATHS)
+
+
+class StoredFormPaths(unittest.TestCase):
+    def test_the_paths_are_the_entries_with_the_stored_form_reason(self):
+        text = ('disallowed-methods = [\n'
+                '    { path = "f32::max", reason = "the sign of an equal pair of zeros" },\n'
+                f'    {{ path = "serde_json::de::from_str", reason = "{h.STORED_FORM_REASON_PREFIX} skips the id" }},\n'
+                f'    {{ path = "rmp_serde::from_slice", reason = "{h.STORED_FORM_REASON_PREFIX} skips the id" }},\n'
+                ']\n')
+        self.assertEqual(h.stored_form_paths(text), {"serde_json::de::from_str", "rmp_serde::from_slice"})
+
+    def test_a_reader_of_a_crate_banned_later_is_counted(self):
+        site = {"src/io/json.rs": [(10, 14)]}
+        msg = at("rmp_serde::decode::from_slice", "src/a.rs", 3)
+        errors, n = h.judge_stored([msg], site, PATHS | {"rmp_serde::decode::from_slice"})
+        self.assertEqual(n, 1)
+        self.assertTrue(any("src/a.rs:3" in e for e in errors), errors)
+        self.assertEqual(h.judge_stored([msg], site, PATHS)[1], 0)
+
+    def test_the_real_configuration_bans_stored_form_readers(self):
+        cfg = Path(__file__).resolve().parent.parent / ".github" / "clippy-lib" / "clippy.toml"
+        paths = h.stored_form_paths(cfg.read_text(encoding="utf-8"))
+        self.assertIn("serde::de::Deserialize::deserialize", paths)
+        self.assertIn("serde_json::de::from_str", paths)
+
+
 class StoredForm(unittest.TestCase):
     SITES = {"src/io/json.rs": [(10, 14), (30, 33)]}
 
     def test_reads_inside_the_reviewed_sites_pass(self):
-        errors, n = h.judge_stored([at("serde_json::de::from_str", "src/io/json.rs", 12),
+        errors, n = h.judge_stored_t([at("serde_json::de::from_str", "src/io/json.rs", 12),
                                     at("serde_json::value::from_value", "src/io/json.rs", 30),
                                     at("f32::sin", "src/io/json.rs", 50)], self.SITES)
         self.assertEqual((errors, n), ([], 2))
@@ -68,14 +98,14 @@ class StoredForm(unittest.TestCase):
         for path in ("serde_json::de::from_reader", "bincode::serde::decode_from_slice",
                      "serde::de::Deserialize::deserialize", "serde::de::DeserializeSeed::deserialize"):
             with self.subTest(path=path):
-                errors, _ = h.judge_stored([at("serde_json::de::from_str", "src/io/json.rs", 12),
+                errors, _ = h.judge_stored_t([at("serde_json::de::from_str", "src/io/json.rs", 12),
                                             at("serde_json::de::from_str", "src/io/json.rs", 31),
                                             at(path, "src/interval.rs", 12)], self.SITES)
                 self.assertEqual(len(errors), 1, errors)
                 self.assertIn("src/interval.rs:12", errors[0])
 
     def test_a_site_with_no_read_left_fails(self):
-        errors, _ = h.judge_stored([at("serde_json::de::from_str", "src/io/json.rs", 12)], self.SITES)
+        errors, _ = h.judge_stored_t([at("serde_json::de::from_str", "src/io/json.rs", 12)], self.SITES)
         self.assertEqual(len(errors), 1, errors)
         self.assertIn("src/io/json.rs:30", errors[0])
 
