@@ -320,6 +320,27 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             ))),
         };
     }
+    if bytes.starts_with(b"NSDF") {
+        // NSDF (neural weights): version 2 carries the identifier after the version
+        let version = bytes
+            .get(4..8)
+            .map(|v| u32::from_le_bytes([v[0], v[1], v[2], v[3]]))
+            .ok_or_else(|| ProvenanceError::Unreadable("NSDF: truncated header".into()))?;
+        return match version {
+            1 => Err(ProvenanceError::Missing { format: "NSDF" }),
+            2 => {
+                let id: [u8; 32] = bytes
+                    .get(8..40)
+                    .ok_or_else(|| ProvenanceError::Unreadable("NSDF: truncated header".into()))?
+                    .try_into()
+                    .unwrap();
+                Ok(Provenance::new(id))
+            }
+            v => Err(ProvenanceError::Unreadable(format!(
+                "NSDF: version {v} is not known"
+            ))),
+        };
+    }
     if bytes.starts_with(b"glTF") {
         // GLB: 12-byte header, then the JSON chunk (length, type `JSON`, data)
         let len = bytes

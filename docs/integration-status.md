@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1270 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1274 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1017 |
-| | **total** | **2296** |
+| | **total** | **2300** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1270)
+## L1 — example-only (1274)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -173,7 +173,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/modifiers/sweep.rs`: `sweep_bezier_dist_y`
 - `src/modifiers/twist.rs`: `modifier_twist_x`, `modifier_twist_z`
 - `src/morphology.rs`: `eval_offset`, `eval_offset_batch`, `eval_offset_batch_parallel`, `tolerance_fits`, `tolerance_max_violation`
-- `src/neural.rs`: `NeuralSdf`, `NeuralSdf::eval`, `NeuralSdf::eval_batch`, `NeuralSdf::eval_with_gradient`, `NeuralSdf::hidden_layer_count`, `NeuralSdf::input_dimension`, `NeuralSdf::load`, `NeuralSdf::new`, `NeuralSdf::param_count`, `NeuralSdf::save`, `NeuralSdf::train`, `NeuralSdfConfig`
+- `src/neural.rs`: `NSDF_MAGIC`, `NSDF_VERSION`, `NeuralSdf`, `NeuralSdf::eval`, `NeuralSdf::eval_batch`, `NeuralSdf::eval_with_gradient`, `NeuralSdf::hidden_layer_count`, `NeuralSdf::input_dimension`, `NeuralSdf::load`, `NeuralSdf::load_unverified`, `NeuralSdf::new`, `NeuralSdf::param_count`, `NeuralSdf::save`, `NeuralSdf::save_with_provenance`, `NeuralSdf::train`, `NeuralSdfConfig`
 - `src/npr/compiled_color.rs`: `ADD`, `BLOOM`, `ColorOp`, `ColorOp::stack_effect`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `CompiledColorPipeline::native_op_count`, `CompiledColorPipeline::serialize`, `CompiledColorPipeline::validate`, `DeserializeError`, `FRESNEL`, `GpuColorProgram`, `GpuColorProgram::as_words`, `GpuColorProgram::byte_len`, `GpuColorProgram::deserialize`, `HATCH`, `MULTIPLY`, `N_DOT_L`, `N_DOT_V`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`, `OUTLINE_OVER`, `PALETTE3`, `PALETTE5`, `POSTERIZE_COLOR`, `PUSH_CONSTANT`, `SATURATE`, `SCALE`, `SDF`, `SOFT_TOON`, `SPEED_LINE`, `SerializeError`, `StackError`, `TIME_CYCLE`, `TONEMAP`, `TOON`, `TWO_TONE`, `UV_Y`, `VIGNETTE`, `emit_wgsl_bytecode_evaluator`, `opcode_word_count`
 - `src/npr/composition.rs`: `bloom_toon`, `chromatic_offsets`, `vignette`
 - `src/npr/distortion.rs`: `hand_drawn_jitter`, `line_boil`, `sketch_wobble`
