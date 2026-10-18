@@ -187,6 +187,16 @@ jobs:
       - name: Test (min/max signed-zero Law parity)
         run: cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
 
+      # the svo-gated unit test of src/unordered.rs (min_key_by: the callback sees the keys in
+      # key order); no other lib test step builds svo, so without this it never runs. The count
+      # check fails when the filter matches fewer than the module's 2 tests (1 of them svo-gated)
+      - name: Test (svo-gated lib tests of the unordered map)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --lib --features svo unordered::tests:: 2>&1 | tee unordered-svo.log
+          python3 scripts/libtest_count.py unordered-svo.log --min 2 --what "unordered map lib tests (svo)"
+
       # aaa (volume / gpu-mesh / svo-gpu / destruction / terrain / gi) の解析解 oracle。
       # `*_api_oracle` の 5 file は example から配線した API (chunk の継ぎ目の
       # remesh / DDS header / LRU cache / probe の範囲外など) を固定する。`image` は

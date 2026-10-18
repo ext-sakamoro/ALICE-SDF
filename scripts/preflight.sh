@@ -333,6 +333,10 @@ cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test
 step "test: min/max signed-zero Law parity (tree / SIMD / JIT / SVO)"
 cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
 
+step "test: svo-gated lib tests of the unordered map (min_key_by, count >= 2)"
+cargo test --lib --features svo unordered::tests:: 2>&1 | tee "${CARGO_TARGET_DIR:-target}/unordered-svo.log"
+python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/unordered-svo.log" --min 2 --what "unordered map lib tests (svo)"
+
 # JIT の parity arm は `#[cfg(feature = "jit")]` なので default の
 # `cargo test --tests` では compile されない (2026-09-30 実測、CI でも一度も
 # 走っていなかった)。test 本数では退行が見えない (relaxed_tracing だけ 8 -> 9、
