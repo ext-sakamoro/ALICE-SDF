@@ -234,5 +234,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // an SVO chunk (feature svo): the `ASVC` version 2 wire form carries the identifier after its
+    // version; bytes without the magic (version 1) read only through the unverified reader
+    #[cfg(feature = "svo")]
+    {
+        use alice_sdf::svo::streaming::split_into_chunks;
+        use alice_sdf::svo::{SparseVoxelOctree, SvoBuildConfig, SvoChunk};
+        let svo = SparseVoxelOctree::build(
+            &SdfNode::sphere(1.0),
+            &SvoBuildConfig {
+                max_depth: 3,
+                ..Default::default()
+            },
+        );
+        let chunk = &split_into_chunks(&svo, 1)[0];
+        let checked = SvoChunk::from_bytes_unverified(&chunk.to_bytes())?;
+        println!("SVO chunk: {:?}", checked.semantics());
+        assert_eq!(checked.semantics(), StoredSemantics::Current);
+        match SvoChunk::from_bytes(&chunk.to_bytes_with_provenance(&foreign)) {
+            Err(e) => println!("SVO chunk under another identifier: refused: {e}"),
+            Ok(_) => return Err("an SVO chunk under another identifier was read".into()),
+        }
+    }
+
     Ok(())
 }

@@ -402,17 +402,22 @@ fn chunk_wire_format_round_trips_and_follows_its_header_layout() {
     let chunks = split_into_chunks(&svo, 1);
     for c in &chunks {
         let bytes = c.to_bytes();
-        assert_eq!(bytes.len(), 36 + 32 * c.nodes.len());
+        // version 2: magic, version, the 32-byte semantics identifier, then the version 1 body
+        let h = 40;
+        assert_eq!(&bytes[0..4], b"ASVC");
+        assert_eq!(&bytes[4..8], &2u32.to_le_bytes());
+        assert_eq!(&bytes[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+        assert_eq!(bytes.len(), h + 36 + 32 * c.nodes.len());
         assert_eq!(
-            u32::from_le_bytes(bytes[0..4].try_into().unwrap()),
+            u32::from_le_bytes(bytes[h..h + 4].try_into().unwrap()),
             c.chunk_id
         );
         assert_eq!(
-            u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+            u32::from_le_bytes(bytes[h + 4..h + 8].try_into().unwrap()),
             c.nodes.len() as u32
         );
         assert_eq!(
-            u32::from_le_bytes(bytes[8..12].try_into().unwrap()),
+            u32::from_le_bytes(bytes[h + 8..h + 12].try_into().unwrap()),
             c.start_depth
         );
         let b = [
@@ -424,7 +429,7 @@ fn chunk_wire_format_round_trips_and_follows_its_header_layout() {
             c.bounds.max_z,
         ];
         for (k, v) in b.iter().enumerate() {
-            let o = 12 + 4 * k;
+            let o = h + 12 + 4 * k;
             assert_eq!(
                 f32::from_le_bytes(bytes[o..o + 4].try_into().unwrap()).to_bits(),
                 v.to_bits()
@@ -446,15 +451,15 @@ fn chunk_wire_format_round_trips_and_follows_its_header_layout() {
                 (n.child_mask, n.is_leaf, n.material_id, n.first_child)
             );
         }
-        // node record i starts at 36 + 32·i with the distance
+        // node record i starts at 40 + 36 + 32·i with the distance
         if let Some(n) = c.nodes.last() {
-            let o = 36 + 32 * (c.nodes.len() - 1);
+            let o = h + 36 + 32 * (c.nodes.len() - 1);
             assert_eq!(&bytes[o..o + 4], &n.distance.to_le_bytes());
             assert_eq!(&bytes[o + 4..o + 8], &n.nx.to_le_bytes());
         }
-        assert!(SvoChunk::from_bytes(&bytes[..bytes.len() - 1]).is_none() || c.nodes.is_empty());
+        assert!(SvoChunk::from_bytes(&bytes[..bytes.len() - 1]).is_err() || c.nodes.is_empty());
     }
-    assert!(SvoChunk::from_bytes(&[0u8; 35]).is_none());
+    assert!(SvoChunk::from_bytes(&[0u8; 35]).is_err());
     let empty = SvoChunk::new(5, Vec::new(), svo.bounds, 0);
     let e = SvoChunk::from_bytes(&empty.to_bytes()).unwrap();
     assert_eq!((e.chunk_id, e.nodes.len()), (5, 0));
