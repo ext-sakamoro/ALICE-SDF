@@ -1,3 +1,6 @@
+# text files are stored and checked out with LF on every OS: shared files are compared byte for byte
+# with ALICE-Law's table, and a CRLF checkout on Windows would differ (binaries are left as they are)
+* text=auto eol=lf
 # The plugin icon is generated (examples/unreal_plugin_icon.rs); never let a
 # checkout with core.autocrlf=true rewrite bytes inside it.
 *.png binary
@@ -11,3 +14,4 @@
 # shell scripts keep LF on every OS: they are run by bash, and the shared ones are compared
 # byte for byte with ALICE-Law's table (a CRLF checkout on Windows would differ)
 *.sh text eol=lf
+*.bat -text
