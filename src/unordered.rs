@@ -12,6 +12,39 @@
 //! `HashSet` in its own library code (for example with clippy's `disallowed-types`) and
 //! uses these wrappers instead. In this crate this module is the one place in the
 //! library that names the std hash collections.
+//!
+//! A loop over either type does not compile:
+//!
+//! ```compile_fail,E0277
+//! use alice_sdf::unordered::UnorderedMap;
+//! let m: UnorderedMap<u32, u32> = UnorderedMap::new();
+//! for _ in &m {}
+//! ```
+//!
+//! ```compile_fail,E0277
+//! use alice_sdf::unordered::UnorderedSet;
+//! let s: UnorderedSet<u32> = UnorderedSet::new();
+//! for _ in s {}
+//! ```
+//!
+//! and neither has an `iter` method:
+//!
+//! ```compile_fail,E0599
+//! use alice_sdf::unordered::UnorderedMap;
+//! let m: UnorderedMap<u32, u32> = UnorderedMap::new();
+//! let _ = m.iter().count();
+//! ```
+//!
+//! The allowed operations compile:
+//!
+//! ```
+//! use alice_sdf::unordered::{UnorderedMap, UnorderedSet};
+//! let mut m: UnorderedMap<u32, u32> = UnorderedMap::with_capacity(2);
+//! *m.entry(3).or_insert(0) += 1;
+//! let mut s: UnorderedSet<u32> = UnorderedSet::with_capacity(2);
+//! s.insert(3);
+//! assert_eq!((m.len(), s.len()), (1, 1));
+//! ```
 #![allow(
     clippy::disallowed_types,
     clippy::disallowed_methods,

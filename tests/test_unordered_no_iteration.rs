@@ -2,10 +2,10 @@
 //!
 //! `src/unordered.rs` wraps `HashMap` / `HashSet` without `iter`, `IntoIterator` or
 //! `Deref`, so code that would observe their unspecified order does not compile.
-//! Each case compiles that module with one function added, with `rustc` (the types are
-//! crate-private, so a doctest cannot name them), and checks the error says why: an
-//! iteration that is not there, not an unrelated type error. The control uses the
-//! allowed methods and must compile.
+//! Each case compiles that module with one function added, with `rustc`, and checks the
+//! error says why: an iteration that is not there, not an unrelated type error (the
+//! `compile_fail` doctests of the public module check the error code only). The control
+//! uses the allowed methods and must compile.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
