@@ -235,10 +235,15 @@ impl EncodedHeader {
     /// when the three steps differ, so a cubic-voxel stream is byte-identical
     /// to the original format.
     const FLAG_ANISOTROPIC_VOXEL: u8 = 0x08;
+    /// The 32-byte semantics identifier follows the header (after the per-axis voxel sizes when
+    /// those are present): the arithmetic the distances were computed under (ALICE-Law G8). The
+    /// encoder sets it on every stream since 7.0.0; a stream without it was written before.
+    const FLAG_SEMANTICS_ID: u8 = 0x10;
     const KNOWN_FLAGS: u8 = Self::FLAG_LOSSLESS_WAVELET
         | Self::FLAG_RANS_COMPRESSED
         | Self::FLAG_WIDE_COEFFS
-        | Self::FLAG_ANISOTROPIC_VOXEL;
+        | Self::FLAG_ANISOTROPIC_VOXEL
+        | Self::FLAG_SEMANTICS_ID;
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(Self::SIZE);
@@ -394,8 +399,18 @@ pub fn voxelize_sdf_uniform(
 /// * `config` - Encoding parameters (quality, scale, wavelet type)
 ///
 /// # Returns
-/// Compressed byte stream including header for decoding.
+/// Compressed byte stream including header for decoding. The stream carries this crate's
+/// semantics identifier ([`encode_sdf_volume_with_provenance`] stores another one).
 pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
+    encode_sdf_volume_with_provenance(volume, config, &crate::provenance::Provenance::sdf())
+}
+
+/// [`encode_sdf_volume`] storing the given semantics identifier instead of this crate's
+pub fn encode_sdf_volume_with_provenance(
+    volume: &SdfVolume,
+    config: &EncodeConfig,
+    provenance: &crate::provenance::Provenance,
+) -> Vec<u8> {
     let total = volume.len();
     let scale = config.fixed_point_scale;
 
@@ -486,7 +501,7 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
     };
 
     // 6. Assemble output: header + quantizer params + histogram + payload
-    let mut flags = 0u8;
+    let mut flags = EncodedHeader::FLAG_SEMANTICS_ID;
     if config.lossless_wavelet {
         flags |= EncodedHeader::FLAG_LOSSLESS_WAVELET;
     }
@@ -519,6 +534,7 @@ pub fn encode_sdf_volume(volume: &SdfVolume, config: &EncodeConfig) -> Vec<u8> {
         output.extend_from_slice(&vs.y.to_le_bytes());
         output.extend_from_slice(&vs.z.to_le_bytes());
     }
+    output.extend_from_slice(&provenance.semantics_id);
 
     // Write quantizer step + dead_zone (8 bytes)
     output.extend_from_slice(&quantizer.step.to_le_bytes());
@@ -553,7 +569,7 @@ pub enum DecodeError {
         /// Bytes the stream has.
         len: usize,
     },
-    /// The flags byte has bits this decoder does not know (`flags & !0x0f`).
+    /// The flags byte has bits this decoder does not know (`flags & !0x1f`).
     /// Such a stream was written by a newer encoder; reading it with this
     /// layout would produce wrong values.
     UnknownFlags(u8),
@@ -587,6 +603,17 @@ pub enum DecodeError {
     /// the inverse wavelet transform runs (only a corrupted stream does this;
     /// the reference decoder would overflow there).
     CoefficientOverflow,
+    /// The stream was written under another semantics identifier (ALICE-Law G8): its distances
+    /// were computed under another arithmetic.
+    SemanticsMismatch {
+        /// The identifier in the stream.
+        stored: crate::provenance::Provenance,
+        /// This crate's identifier.
+        expected: crate::provenance::Provenance,
+    },
+    /// The stream carries no semantics identifier (written before 7.0.0); read it with
+    /// [`try_decode_sdf_volume_unverified`] to get it marked as such.
+    Unpinned,
 }
 
 impl std::fmt::Display for DecodeError {
@@ -620,6 +647,16 @@ impl std::fmt::Display for DecodeError {
             Self::CoefficientOverflow => {
                 write!(f, "encoded SDF volume has a coefficient outside the i32 range")
             }
+            Self::SemanticsMismatch { stored, expected } => write!(
+                f,
+                "encoded SDF volume: semantics identifier mismatch: stored {}, expected {}",
+                stored.hex(),
+                expected.hex()
+            ),
+            Self::Unpinned => write!(
+                f,
+                "encoded SDF volume: no semantics identifier (written before 7.0.0; read it with try_decode_sdf_volume_unverified)"
+            ),
         }
     }
 }
@@ -639,7 +676,8 @@ impl std::error::Error for DecodeError {}
 /// # Panics
 ///
 /// Panics when the stream cannot be decoded (see [`try_decode_sdf_volume`]
-/// for the non-panicking form and the reasons).
+/// for the non-panicking form and the reasons), including a stream written under another
+/// semantics identifier (the message names both) and one without an identifier.
 pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
     try_decode_sdf_volume(data).unwrap_or_else(|e| panic!("decode_sdf_volume: {e}"))
 }
@@ -654,10 +692,32 @@ pub fn decode_sdf_volume(data: &[u8]) -> SdfVolume {
 /// [`DecodeError::InvalidQuantizer`] / [`DecodeError::InvalidHistogram`] when
 /// a header field is outside what the encoder writes, and
 /// [`DecodeError::CoefficientOverflow`] when a coefficient would leave the
-/// `i32` range. It does not panic on any input, and it allocates at most a
-/// constant multiple of `data.len()` (raw payload: the payload holds every
+/// `i32` range, [`DecodeError::SemanticsMismatch`] when the stream was written under another
+/// semantics identifier (this crate's and a reproduced earlier one are read) and
+/// [`DecodeError::Unpinned`] when it carries none. It does not panic on any input, and it
+/// allocates at most a constant multiple of `data.len()` (raw payload: the payload holds every
 /// coefficient; rANS payload: the histogram bounds the symbols per byte).
 pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
+    try_decode_checked(data, false).map(|c| c.into_parts().0)
+}
+
+/// [`try_decode_sdf_volume`] that also reads a stream without an identifier (written before
+/// 7.0.0), returning the volume with what is known about the arithmetic it was written under
+///
+/// # Errors
+///
+/// As [`try_decode_sdf_volume`], except that a stream without an identifier is returned, not
+/// refused.
+pub fn try_decode_sdf_volume_unverified(
+    data: &[u8],
+) -> Result<crate::provenance::Checked<SdfVolume>, DecodeError> {
+    try_decode_checked(data, true)
+}
+
+fn try_decode_checked(
+    data: &[u8],
+    allow_unpinned: bool,
+) -> Result<crate::provenance::Checked<SdfVolume>, DecodeError> {
     let need = |needed: usize| {
         if data.len() < needed {
             Err(DecodeError::Truncated {
@@ -714,6 +774,26 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
     } else {
         Vec3::splat(header.voxel_size)
     };
+
+    // The semantics identifier, judged before any value is decoded
+    let stored = if header.flags & EncodedHeader::FLAG_SEMANTICS_ID != 0 {
+        need(offset + 32 + 8)?;
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&data[offset..offset + 32]);
+        offset += 32;
+        Some(id)
+    } else {
+        None
+    };
+    let semantics =
+        crate::provenance::sdf_load_verdict(stored, "encoded SDF volume", allow_unpinned).map_err(
+            |e| match e {
+                crate::io::IoError::SemanticsMismatch {
+                    stored, expected, ..
+                } => DecodeError::SemanticsMismatch { stored, expected },
+                _ => DecodeError::Unpinned,
+            },
+        )?;
 
     // 2. Read quantizer params
     let step = read_u32(offset) as i32;
@@ -816,14 +896,17 @@ pub fn try_decode_sdf_volume(data: &[u8]) -> Result<SdfVolume, DecodeError> {
     let inv_scale = 1.0 / scale;
     let float_data: Vec<f32> = coeffs.iter().map(|&c| c as f32 * inv_scale).collect();
 
-    Ok(SdfVolume {
-        data: float_data,
-        width: w,
-        height: h,
-        depth: d,
-        origin: Vec3::new(header.origin[0], header.origin[1], header.origin[2]),
-        voxel_size,
-    })
+    Ok(crate::provenance::Checked::new(
+        SdfVolume {
+            data: float_data,
+            width: w,
+            height: h,
+            depth: d,
+            origin: Vec3::new(header.origin[0], header.origin[1], header.origin[2]),
+            voxel_size,
+        },
+        semantics,
+    ))
 }
 
 /// The rANS histogram as the encoder writes it: one count per byte value of
@@ -1060,6 +1143,11 @@ pub fn compress_sdf(
 /// 圧縮された SDF を復元する。
 ///
 /// `compress_sdf` で生成されたバイトストリームから `SdfVolume` を復元する。
+///
+/// # Panics
+///
+/// As [`decode_sdf_volume`]: a stream written under another semantics identifier, or without
+/// one (before 7.0.0), panics with a message naming the identifiers.
 pub fn decompress_sdf(data: &[u8]) -> SdfVolume {
     decode_sdf_volume(data)
 }

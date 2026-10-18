@@ -27,15 +27,26 @@
 //! - Index: 典型的な三角形 mesh で 2-3x compression
 //! - Vertex: 平面 mesh / 規則 mesh で 2-4x、noisy mesh で ~1.5x
 //!
-//! # Header format (自己記述型、8 bytes)
+//! # Header format (自己記述型、version 2 は 40 bytes、version 1 は 8 bytes)
 //!
 //! ```text
 //! Offset  Size  Field
 //! 0       4     Magic: b"ASDF" (ALICE-SDF)
-//! 4       1     Version (1)
+//! 4       1     Version (2; 1 = written before the semantics identifier)
 //! 5       1     Kind (0 = index, 1 = vertex position, 2 = vertex all)
 //! 6       2     (reserved, zero-fill)
+//! 8       32    The semantics identifier of the arithmetic the values were computed under
+//!               (version 2 only, ALICE-Law G8)
 //! ```
+//!
+//! # Semantics identifier (ALICE-Law G8)
+//!
+//! The encoders write version 2 with this crate's identifier ([`encode_indices`],
+//! [`encode_positions`]) or the caller's (`*_with_provenance`). [`decode_indices`] and
+//! [`decode_positions`] read this crate's identifier or a reproduced earlier one, refuse another
+//! one ([`CodecError::SemanticsMismatch`], naming both) and a version 1 buffer without one
+//! ([`CodecError::Unpinned`]); `*_unverified` also read version 1 and return the values in a
+//! [`Checked`] with what is known about them.
 //!
 //! # References
 //!
@@ -46,10 +57,16 @@
 //! Author: Moroya Sakamoto
 
 use crate::mesh::Mesh;
+use crate::provenance::{Checked, Provenance, StoredSemantics};
 use glam::Vec3;
 
 const MAGIC: [u8; 4] = *b"ASDF";
-const VERSION: u8 = 1;
+/// The version the encoders write (the header carries the semantics identifier)
+const VERSION: u8 = 2;
+/// The version written before the semantics identifier (read by the `*_unverified` decoders)
+const VERSION_UNPINNED: u8 = 1;
+/// The format name in [`crate::provenance`]'s verdicts
+const FORMAT: &str = "mesh codec";
 const KIND_INDEX: u8 = 0;
 const KIND_VERTEX_POS: u8 = 1;
 
@@ -66,6 +83,16 @@ pub enum CodecError {
     UnexpectedEof,
     /// varint decode 中に buffer 超過
     VarintOverflow,
+    /// The buffer was written under another semantics identifier (ALICE-Law G8)
+    SemanticsMismatch {
+        /// The identifier in the buffer
+        stored: Provenance,
+        /// This crate's identifier
+        expected: Provenance,
+    },
+    /// The buffer carries no semantics identifier (version 1, written before identifiers were
+    /// stored); read it with the `*_unverified` decoder to get it marked as such
+    Unpinned,
 }
 
 impl core::fmt::Display for CodecError {
@@ -76,6 +103,16 @@ impl core::fmt::Display for CodecError {
             Self::WrongKind => write!(f, "codec: wrong data kind"),
             Self::UnexpectedEof => write!(f, "codec: unexpected end of buffer"),
             Self::VarintOverflow => write!(f, "codec: varint decode overflow"),
+            Self::SemanticsMismatch { stored, expected } => write!(
+                f,
+                "codec: semantics identifier mismatch: stored {}, expected {}",
+                stored.hex(),
+                expected.hex()
+            ),
+            Self::Unpinned => write!(
+                f,
+                "codec: no semantics identifier (a version 1 buffer; read it with the *_unverified decoder)"
+            ),
         }
     }
 }
@@ -129,6 +166,118 @@ const fn zigzag_decode_u32(v: u32) -> i32 {
 }
 
 // ============================================================================
+// Header (version 2 carries the semantics identifier)
+// ============================================================================
+
+fn write_header(out: &mut Vec<u8>, kind: u8, provenance: &Provenance) {
+    out.extend_from_slice(&MAGIC);
+    out.extend_from_slice(&[VERSION, kind, 0, 0]);
+    out.extend_from_slice(&provenance.semantics_id);
+}
+
+/// Checks the header of `kind` and judges its identifier; returns the offset of the payload and
+/// the status. A version 1 header has no identifier: refused unless `allow_unpinned`.
+fn read_header(
+    buf: &[u8],
+    kind: u8,
+    allow_unpinned: bool,
+) -> Result<(usize, StoredSemantics), CodecError> {
+    if buf.len() < 8 {
+        return Err(CodecError::UnexpectedEof);
+    }
+    if buf[0..4] != MAGIC {
+        return Err(CodecError::BadMagic);
+    }
+    let (stored, offset) = match buf[4] {
+        VERSION => {
+            if buf.len() < 40 {
+                return Err(CodecError::UnexpectedEof);
+            }
+            let mut id = [0u8; 32];
+            id.copy_from_slice(&buf[8..40]);
+            (Some(id), 40)
+        }
+        VERSION_UNPINNED => (None, 8),
+        _ => return Err(CodecError::UnsupportedVersion),
+    };
+    if buf[5] != kind {
+        return Err(CodecError::WrongKind);
+    }
+    // buf[6..8] は reserved
+    let semantics = crate::provenance::sdf_load_verdict(stored, FORMAT, allow_unpinned).map_err(
+        |e| match e {
+            crate::io::IoError::SemanticsMismatch {
+                stored, expected, ..
+            } => CodecError::SemanticsMismatch { stored, expected },
+            _ => CodecError::Unpinned,
+        },
+    )?;
+    Ok((offset, semantics))
+}
+
+// ============================================================================
+// The stamped form of the meshoptimizer codecs (ALICE-Law G8)
+// ============================================================================
+
+/// Magic of the crate's stamped meshopt buffer: `ASMO`, version, kind, 2 reserved, the 32-byte
+/// semantics identifier, then the meshoptimizer bytes unchanged
+const MESHOPT_MAGIC: [u8; 4] = *b"ASMO";
+const MESHOPT_STAMP_VERSION: u8 = 1;
+const MESHOPT_STAMP_LEN: usize = 40;
+/// The meshopt buffer kinds in the stamp
+pub(crate) const MESHOPT_KIND_VERTEX: u8 = 0;
+pub(crate) const MESHOPT_KIND_INDEX: u8 = 1;
+
+/// The stamped form of meshoptimizer bytes `raw` of `kind`
+pub(crate) fn meshopt_stamp(kind: u8, provenance: &Provenance, raw: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(MESHOPT_STAMP_LEN + raw.len());
+    out.extend_from_slice(&MESHOPT_MAGIC);
+    out.extend_from_slice(&[MESHOPT_STAMP_VERSION, kind, 0, 0]);
+    out.extend_from_slice(&provenance.semantics_id);
+    out.extend_from_slice(raw);
+    out
+}
+
+/// The meshoptimizer bytes inside a stamped buffer of `kind`, with the verdict on its identifier.
+/// Bytes that are not stamped (`raw_header` tells a bare meshoptimizer buffer apart) are refused as
+/// [`CodecError::Unpinned`]: read them by name with the `*_raw` decoder.
+pub(crate) fn meshopt_unstamp(
+    buf: &[u8],
+    kind: u8,
+    raw_header: impl Fn(u8) -> bool,
+) -> Result<(&[u8], StoredSemantics), CodecError> {
+    if buf.len() < 4 || buf[0..4] != MESHOPT_MAGIC {
+        if buf.first().is_some_and(|&b| raw_header(b)) {
+            return Err(CodecError::Unpinned);
+        }
+        return Err(if buf.is_empty() {
+            CodecError::UnexpectedEof
+        } else {
+            CodecError::BadMagic
+        });
+    }
+    if buf.len() < MESHOPT_STAMP_LEN {
+        return Err(CodecError::UnexpectedEof);
+    }
+    if buf[4] != MESHOPT_STAMP_VERSION {
+        return Err(CodecError::UnsupportedVersion);
+    }
+    if buf[5] != kind {
+        return Err(CodecError::WrongKind);
+    }
+    let mut id = [0u8; 32];
+    id.copy_from_slice(&buf[8..MESHOPT_STAMP_LEN]);
+    let semantics = crate::provenance::sdf_load_verdict(Some(id), "meshopt buffer", false)
+        .map_err(|e| match e {
+            crate::io::IoError::SemanticsMismatch {
+                stored, expected, ..
+            } => CodecError::SemanticsMismatch { stored, expected },
+            _ => CodecError::Unpinned,
+        })?;
+    Ok((&buf[MESHOPT_STAMP_LEN..], semantics))
+}
+
+// ============================================================================
 // Index encoding (varint delta)
 // ============================================================================
 
@@ -149,15 +298,18 @@ const fn zigzag_decode_u32(v: u32) -> i32 {
 #[must_use]
 #[allow(clippy::cast_possible_wrap)]
 pub fn encode_indices(indices: &[u32]) -> Vec<u8> {
-    let tri_count = indices.len() / 3;
-    let mut out = Vec::with_capacity(8 + tri_count * 3);
+    encode_indices_with_provenance(indices, &Provenance::sdf())
+}
 
-    // Header (8 bytes)
-    out.extend_from_slice(&MAGIC);
-    out.push(VERSION);
-    out.push(KIND_INDEX);
-    out.push(0);
-    out.push(0);
+/// [`encode_indices`] storing the given semantics identifier instead of this crate's
+#[must_use]
+#[allow(clippy::cast_possible_wrap)]
+pub fn encode_indices_with_provenance(indices: &[u32], provenance: &Provenance) -> Vec<u8> {
+    let tri_count = indices.len() / 3;
+    let mut out = Vec::with_capacity(40 + tri_count * 3);
+
+    // Header (40 bytes: 8 + the semantics identifier)
+    write_header(&mut out, KIND_INDEX, provenance);
 
     // Triangle count を varint で書く (decode 時に必要)
     write_varint_u32(&mut out, tri_count as u32);
@@ -183,26 +335,31 @@ pub fn encode_indices(indices: &[u32]) -> Vec<u8> {
 /// # Errors
 ///
 /// - `BadMagic`: header の magic が `b"ASDF"` でない
-/// - `UnsupportedVersion`: version が 1 でない
+/// - `UnsupportedVersion`: version が 1 / 2 でない
 /// - `WrongKind`: kind が KIND_INDEX (0) でない
+/// - `SemanticsMismatch`: 別の semantics identifier で書かれた buffer
+/// - `Unpinned`: identifier の無い version 1 の buffer ([`decode_indices_unverified`] で読む)
 /// - `UnexpectedEof`: buffer が途中で切れている
 /// - `VarintOverflow`: varint が 32-bit を超えて continue した
 pub fn decode_indices(buf: &[u8]) -> Result<Vec<u32>, CodecError> {
-    if buf.len() < 8 {
-        return Err(CodecError::UnexpectedEof);
-    }
-    if buf[0..4] != MAGIC {
-        return Err(CodecError::BadMagic);
-    }
-    if buf[4] != VERSION {
-        return Err(CodecError::UnsupportedVersion);
-    }
-    if buf[5] != KIND_INDEX {
-        return Err(CodecError::WrongKind);
-    }
-    // buf[6..8] は reserved
+    decode_indices_checked(buf, false).map(|c| c.into_parts().0)
+}
 
-    let mut cursor = 8_usize;
+/// [`decode_indices`] that also reads a version 1 buffer (no identifier), returning the indices
+/// with what is known about them
+///
+/// # Errors
+///
+/// As [`decode_indices`], except that a buffer without an identifier is returned, not refused.
+pub fn decode_indices_unverified(buf: &[u8]) -> Result<Checked<Vec<u32>>, CodecError> {
+    decode_indices_checked(buf, true)
+}
+
+fn decode_indices_checked(
+    buf: &[u8],
+    allow_unpinned: bool,
+) -> Result<Checked<Vec<u32>>, CodecError> {
+    let (mut cursor, semantics) = read_header(buf, KIND_INDEX, allow_unpinned)?;
     let tri_count = read_varint_u32(buf, &mut cursor)? as usize;
 
     let mut indices = Vec::with_capacity(tri_count * 3);
@@ -217,7 +374,7 @@ pub fn decode_indices(buf: &[u8]) -> Result<Vec<u32>, CodecError> {
         }
     }
 
-    Ok(indices)
+    Ok(Checked::new(indices, semantics))
 }
 
 // ============================================================================
@@ -245,15 +402,17 @@ pub fn decode_indices(buf: &[u8]) -> Result<Vec<u32>, CodecError> {
 /// 小規模 mesh では実質 delta が小さい傾向あるが、大 scale mesh では bit 差分が大きくなる
 #[must_use]
 pub fn encode_positions(positions: &[Vec3]) -> Vec<u8> {
-    let n = positions.len();
-    let mut out = Vec::with_capacity(8 + n * 12);
+    encode_positions_with_provenance(positions, &Provenance::sdf())
+}
 
-    // Header
-    out.extend_from_slice(&MAGIC);
-    out.push(VERSION);
-    out.push(KIND_VERTEX_POS);
-    out.push(0);
-    out.push(0);
+/// [`encode_positions`] storing the given semantics identifier instead of this crate's
+#[must_use]
+pub fn encode_positions_with_provenance(positions: &[Vec3], provenance: &Provenance) -> Vec<u8> {
+    let n = positions.len();
+    let mut out = Vec::with_capacity(40 + n * 12);
+
+    // Header (40 bytes: 8 + the semantics identifier)
+    write_header(&mut out, KIND_VERTEX_POS, provenance);
 
     write_varint_u32(&mut out, n as u32);
 
@@ -289,25 +448,31 @@ pub fn encode_positions(positions: &[Vec3]) -> Vec<u8> {
 /// # Errors
 ///
 /// - `BadMagic`: magic 不一致
-/// - `UnsupportedVersion`: version != 1
+/// - `UnsupportedVersion`: version が 1 / 2 でない
 /// - `WrongKind`: kind != KIND_VERTEX_POS
+/// - `SemanticsMismatch`: 別の semantics identifier で書かれた buffer
+/// - `Unpinned`: identifier の無い version 1 の buffer ([`decode_positions_unverified`] で読む)
 /// - `UnexpectedEof`: buffer 切断
 /// - `VarintOverflow`: varint 32-bit 超過
 pub fn decode_positions(buf: &[u8]) -> Result<Vec<Vec3>, CodecError> {
-    if buf.len() < 8 {
-        return Err(CodecError::UnexpectedEof);
-    }
-    if buf[0..4] != MAGIC {
-        return Err(CodecError::BadMagic);
-    }
-    if buf[4] != VERSION {
-        return Err(CodecError::UnsupportedVersion);
-    }
-    if buf[5] != KIND_VERTEX_POS {
-        return Err(CodecError::WrongKind);
-    }
+    decode_positions_checked(buf, false).map(|c| c.into_parts().0)
+}
 
-    let mut cursor = 8_usize;
+/// [`decode_positions`] that also reads a version 1 buffer (no identifier), returning the
+/// positions with what is known about them
+///
+/// # Errors
+///
+/// As [`decode_positions`], except that a buffer without an identifier is returned, not refused.
+pub fn decode_positions_unverified(buf: &[u8]) -> Result<Checked<Vec<Vec3>>, CodecError> {
+    decode_positions_checked(buf, true)
+}
+
+fn decode_positions_checked(
+    buf: &[u8],
+    allow_unpinned: bool,
+) -> Result<Checked<Vec<Vec3>>, CodecError> {
+    let (mut cursor, semantics) = read_header(buf, KIND_VERTEX_POS, allow_unpinned)?;
     let n = read_varint_u32(buf, &mut cursor)? as usize;
 
     let mut positions = Vec::with_capacity(n);
@@ -331,7 +496,7 @@ pub fn decode_positions(buf: &[u8]) -> Result<Vec<Vec3>, CodecError> {
         prev_bytes = cur_bytes;
     }
 
-    Ok(positions)
+    Ok(Checked::new(positions, semantics))
 }
 
 // ============================================================================
@@ -344,9 +509,15 @@ pub fn decode_positions(buf: &[u8]) -> Result<Vec<Vec3>, CodecError> {
 /// caller が任意に concatenate 可能
 #[must_use]
 pub fn encode_mesh(mesh: &Mesh) -> (Vec<u8>, Vec<u8>) {
-    let indices_encoded = encode_indices(&mesh.indices);
+    encode_mesh_with_provenance(mesh, &Provenance::sdf())
+}
+
+/// [`encode_mesh`] storing the given semantics identifier in both buffers instead of this crate's
+#[must_use]
+pub fn encode_mesh_with_provenance(mesh: &Mesh, provenance: &Provenance) -> (Vec<u8>, Vec<u8>) {
+    let indices_encoded = encode_indices_with_provenance(&mesh.indices, provenance);
     let positions: Vec<Vec3> = mesh.vertices.iter().map(|v| v.position).collect();
-    let positions_encoded = encode_positions(&positions);
+    let positions_encoded = encode_positions_with_provenance(&positions, provenance);
     (indices_encoded, positions_encoded)
 }
 
@@ -467,10 +638,8 @@ mod tests {
     fn test_decode_indices_wrong_kind() {
         // kind=1 (vertex pos) を index decoder に渡す
         let mut bad: Vec<u8> = MAGIC.to_vec();
-        bad.push(VERSION);
-        bad.push(KIND_VERTEX_POS);
-        bad.push(0);
-        bad.push(0);
+        bad.extend_from_slice(&[VERSION, KIND_VERTEX_POS, 0, 0]);
+        bad.extend_from_slice(&Provenance::sdf().semantics_id);
         write_varint_u32(&mut bad, 0);
         let err = decode_indices(&bad).unwrap_err();
         assert_eq!(err, CodecError::WrongKind);
@@ -480,8 +649,12 @@ mod tests {
     fn test_decode_indices_truncated() {
         let indices = vec![0_u32, 1, 2, 3, 4, 5];
         let encoded = encode_indices(&indices);
-        // Header 直後で切断
-        let truncated = &encoded[..8];
+        // Header (40 bytes) の途中と直後で切断
+        assert_eq!(
+            decode_indices(&encoded[..8]),
+            Err(CodecError::UnexpectedEof)
+        );
+        let truncated = &encoded[..40];
         let result = decode_indices(truncated);
         assert!(result.is_err(), "truncated should error");
     }

@@ -10,8 +10,9 @@
 //! - `<name>_indices_meta.bin`: 4 bytes little-endian u32 (index count)
 //! - `<name>_vertices_meta.bin`: 8 bytes (u32 vertex_count, u32 vertex_size)
 
-use alice_sdf::mesh::meshopt_index_codec::decode_index_buffer;
-use alice_sdf::mesh::meshopt_vertex_codec::decode_vertex_buffer;
+// the C++ library's output is bare meshoptimizer bytes: the interchange (*_raw) decoders
+use alice_sdf::mesh::meshopt_index_codec::decode_index_buffer_raw;
+use alice_sdf::mesh::meshopt_vertex_codec::decode_vertex_buffer_raw;
 use std::fs;
 use std::path::Path;
 
@@ -76,7 +77,8 @@ fn verify_indices(name: &str) {
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect();
 
-    let decoded = decode_index_buffer(&encoded, count)
+    let decoded = decode_index_buffer_raw(&encoded, count)
+        .map(|c| c.into_parts().0)
         .unwrap_or_else(|e| panic!("{name}: decode failed: {e:?}"));
 
     assert_eq!(
@@ -111,7 +113,8 @@ fn verify_vertices(name: &str) {
         "{name}: raw byte size mismatch"
     );
 
-    let decoded = decode_vertex_buffer(&encoded, count, size)
+    let decoded = decode_vertex_buffer_raw(&encoded, count, size)
+        .map(|c| c.into_parts().0)
         .unwrap_or_else(|e| panic!("{name}: decode failed: {e:?}"));
 
     assert_eq!(

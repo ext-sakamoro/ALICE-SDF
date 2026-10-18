@@ -9,7 +9,8 @@
 
 use alice_sdf::codec_bridge::{
     compress_sdf, compression_ratio, decode_sdf_volume, decompress_sdf, encode_sdf_volume,
-    try_decode_sdf_volume, volume_stats, voxelize_sdf, voxelize_sdf_uniform, EncodeConfig,
+    try_decode_sdf_volume, try_decode_sdf_volume_unverified, volume_stats, voxelize_sdf,
+    voxelize_sdf_uniform, EncodeConfig,
 };
 use alice_sdf::prelude::*;
 
@@ -28,6 +29,11 @@ fn main() {
         one.stats.rms
     );
     let back = decompress_sdf(&one.encoded);
+    // the stream carries the semantics identifier; the unverified decoder says what is known
+    let status = try_decode_sdf_volume_unverified(&one.encoded)
+        .expect("decode")
+        .semantics();
+    println!("  stored semantics: {status:?}");
     let vol = voxelize_sdf_uniform(&node, lo, hi, 24);
     let scale = EncodeConfig::lossless().fixed_point_scale;
     let exact = vol.data.iter().zip(&back.data).all(|(&d, &r)| {
