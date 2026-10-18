@@ -65,7 +65,8 @@ class StoredForm(unittest.TestCase):
         self.assertEqual((errors, n), ([], 2))
 
     def test_a_read_outside_a_site_is_hidden(self):
-        for path in ("serde_json::de::from_reader", "bincode::serde::decode_from_slice"):
+        for path in ("serde_json::de::from_reader", "bincode::serde::decode_from_slice",
+                     "serde::de::Deserialize::deserialize", "serde::de::DeserializeSeed::deserialize"):
             with self.subTest(path=path):
                 errors, _ = h.judge_stored([at("serde_json::de::from_str", "src/io/json.rs", 12),
                                             at("serde_json::de::from_str", "src/io/json.rs", 31),

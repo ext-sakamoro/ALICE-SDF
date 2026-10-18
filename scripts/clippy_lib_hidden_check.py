@@ -41,7 +41,9 @@ ROOT = Path(__file__).resolve().parent.parent
 KEEP = "src/raw_minmax.rs"
 LINT = "clippy::disallowed_methods"
 STAND_IN = "clippy::disallowed_types"
-STORED_FORM = re.compile(r"`((?:serde_json|bincode)::[^`]+)`")
+# serde_json / bincode entry points, and serde's own trait methods (`T::deserialize` on a
+# serde_json::Value or another Deserializer)
+STORED_FORM = re.compile(r"`((?:serde_json|bincode|serde)::[^`]+)`")
 MINMAX = re.compile(r"`((?:f32|f64)::(?:max|min)|wide::f32x8::(?:max|min))`")
 
 
