@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1278 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1282 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1017 |
-| | **total** | **2304** |
+| | **total** | **2308** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1278)
+## L1 — example-only (1282)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -213,7 +213,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/svo/linearize.rs`: `LinearizedSvo`, `LinearizedSvo::as_bytes`, `LinearizedSvo::memory_bytes`, `LinearizedSvo::node_count`, `LinearizedSvo::nodes_at_level`, `compact_svo`, `linearize_svo`, `validate_linearized`
 - `src/svo/mod.rs`: `SparseVoxelOctree::build`, `SparseVoxelOctree::linearize`, `SparseVoxelOctree::nearest_surface`, `SparseVoxelOctree::ray_query`, `SvoNode::child_count`, `SvoNode::normal`
 - `src/svo/query.rs`: `SvoRayHit`, `svo_nearest_surface`, `svo_ray_query`
-- `src/svo/streaming.rs`: `SvoChunk`, `SvoChunk::from_bytes`, `SvoChunk::memory_bytes`, `SvoChunk::new`, `SvoChunk::to_bytes`, `SvoStreamingCache`, `SvoStreamingCache::clear`, `SvoStreamingCache::get`, `SvoStreamingCache::hit_rate`, `SvoStreamingCache::insert`, `SvoStreamingCache::is_empty`, `SvoStreamingCache::len`, `SvoStreamingCache::memory_used`, `SvoStreamingCache::new`, `SvoStreamingCache::remove`, `SvoStreamingCache::with_memory_budget`, `split_into_chunks`
+- `src/svo/streaming.rs`: `SVO_CHUNK_MAGIC`, `SVO_CHUNK_VERSION`, `SvoChunk`, `SvoChunk::from_bytes`, `SvoChunk::from_bytes_unverified`, `SvoChunk::memory_bytes`, `SvoChunk::new`, `SvoChunk::to_bytes`, `SvoChunk::to_bytes_with_provenance`, `SvoStreamingCache`, `SvoStreamingCache::clear`, `SvoStreamingCache::get`, `SvoStreamingCache::hit_rate`, `SvoStreamingCache::insert`, `SvoStreamingCache::is_empty`, `SvoStreamingCache::len`, `SvoStreamingCache::memory_used`, `SvoStreamingCache::new`, `SvoStreamingCache::remove`, `SvoStreamingCache::with_memory_budget`, `split_into_chunks`
 - `src/terrain/caves.rs`: `CaveConfig`, `generate_cave_sdf`, `generate_chamber`
 - `src/terrain/clipmap.rs`: `ClipmapLevel`, `ClipmapMesh`, `ClipmapTerrain`, `ClipmapTerrain::generate_level_mesh`, `ClipmapTerrain::generate_meshes`, `ClipmapTerrain::level_count`, `ClipmapTerrain::new`, `ClipmapTerrain::total_vertices`, `ClipmapTerrain::update`
 - `src/terrain/heightmap.rs`: `Heightmap::from_data`, `Heightmap::from_image`, `Heightmap::from_image_bytes`, `Heightmap::normal_at`, `Heightmap::sample_bicubic`, `HeightmapImageConfig`, `HeightmapImageConfig::new`

@@ -43,6 +43,12 @@ pub struct SvoChunk {
     pub start_depth: u32,
 }
 
+/// Magic of the SVO chunk wire form (version 2 and later; version 1 has none)
+pub const SVO_CHUNK_MAGIC: &[u8; 4] = b"ASVC";
+
+/// The SVO chunk version this crate writes: 2 carries the 32-byte semantics identifier
+pub const SVO_CHUNK_VERSION: u32 = 2;
+
 impl SvoChunk {
     /// Create a new chunk
     pub const fn new(
@@ -65,8 +71,22 @@ impl SvoChunk {
     }
 
     /// Serialize chunk to bytes
+    /// Serialize the chunk, stamped with this crate's semantics identifier
+    ///
+    /// Version 2: `b"ASVC"` + version (u32 = 2) + the 32-byte semantics identifier
+    /// ([`crate::provenance`]), then the version 1 body: chunk_id, node_count, start_depth (u32
+    /// each), bounds (6 × f32), and 32 bytes per node. Version 1 (alice-sdf 6.1.0 and earlier) is
+    /// the body alone, with no magic.
     pub fn to_bytes(&self) -> Vec<u8> {
+        self.to_bytes_with_provenance(&crate::provenance::Provenance::sdf())
+    }
+
+    /// [`SvoChunk::to_bytes`] storing the given semantics identifier instead of this crate's
+    pub fn to_bytes_with_provenance(&self, provenance: &crate::provenance::Provenance) -> Vec<u8> {
         let mut bytes = Vec::new();
+        bytes.extend_from_slice(SVO_CHUNK_MAGIC);
+        bytes.extend_from_slice(&SVO_CHUNK_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&provenance.semantics_id);
 
         // Header: chunk_id, node_count, start_depth, bounds
         bytes.extend_from_slice(&self.chunk_id.to_le_bytes());
@@ -96,8 +116,70 @@ impl SvoChunk {
         bytes
     }
 
-    /// Deserialize chunk from bytes
-    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+    /// Deserialize a chunk, checking the semantics identifier it carries
+    ///
+    /// # Errors
+    ///
+    /// [`crate::io::IoError::Unpinned`] for bytes without the `ASVC` magic (a version 1 chunk, or
+    /// bytes that are not a chunk at all; read a version 1 chunk with
+    /// [`SvoChunk::from_bytes_unverified`]), [`crate::io::IoError::SemanticsMismatch`] for an
+    /// identifier that is neither this crate's nor one it still reproduces, and
+    /// [`crate::io::IoError::InvalidFormat`] for a magic followed by a version this crate does not
+    /// know, a header or body cut short.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, crate::io::IoError> {
+        Self::from_bytes_checked(data, false).map(|c| c.into_parts().0)
+    }
+
+    /// [`SvoChunk::from_bytes`] that also reads a version 1 chunk (no magic, no identifier,
+    /// alice-sdf 6.1.0 and earlier), marking it [`crate::provenance::StoredSemantics::Unpinned`]
+    ///
+    /// Version 1 has no magic, so bytes that start with the `ASVC` magic are always read as
+    /// version 2; a version 1 chunk whose chunk_id bytes happen to spell the magic is refused
+    /// rather than misread.
+    ///
+    /// # Errors
+    ///
+    /// As [`SvoChunk::from_bytes`], except that a version 1 chunk is returned, not refused.
+    pub fn from_bytes_unverified(
+        data: &[u8],
+    ) -> Result<crate::provenance::Checked<Self>, crate::io::IoError> {
+        Self::from_bytes_checked(data, true)
+    }
+
+    fn from_bytes_checked(
+        data: &[u8],
+        allow_unpinned: bool,
+    ) -> Result<crate::provenance::Checked<Self>, crate::io::IoError> {
+        use crate::io::IoError;
+        let (stored, body) = if data.starts_with(SVO_CHUNK_MAGIC) {
+            // the magic is present: a version or identifier that cannot be read is an error,
+            // never "unstamped"
+            let version = data
+                .get(4..8)
+                .map(|v| u32::from_le_bytes([v[0], v[1], v[2], v[3]]))
+                .ok_or_else(|| IoError::InvalidFormat("SVO chunk: truncated header".into()))?;
+            if version != SVO_CHUNK_VERSION {
+                return Err(IoError::InvalidFormat(format!(
+                    "SVO chunk: version {version} is not known"
+                )));
+            }
+            let mut id = [0u8; 32];
+            id.copy_from_slice(
+                data.get(8..40)
+                    .ok_or_else(|| IoError::InvalidFormat("SVO chunk: truncated header".into()))?,
+            );
+            (Some(id), &data[40..])
+        } else {
+            (None, data)
+        };
+        let semantics = crate::provenance::sdf_load_verdict(stored, "SVO chunk", allow_unpinned)?;
+        let chunk = Self::read_body(body)
+            .ok_or_else(|| IoError::InvalidFormat("SVO chunk: truncated body".into()))?;
+        Ok(crate::provenance::Checked::new(chunk, semantics))
+    }
+
+    /// The chunk after the header (the whole of a version 1 chunk)
+    fn read_body(data: &[u8]) -> Option<Self> {
         if data.len() < 36 {
             return None;
         }

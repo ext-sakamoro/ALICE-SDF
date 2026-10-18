@@ -366,6 +366,26 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             )),
         };
     }
+    if bytes.starts_with(b"ASVC") {
+        // SVO chunk wire form: version 2 carries the identifier after the version (version 1 has
+        // no magic and is not recognised here)
+        let version = bytes
+            .get(4..8)
+            .map(|v| u32::from_le_bytes([v[0], v[1], v[2], v[3]]))
+            .ok_or_else(|| ProvenanceError::Unreadable("SVO chunk: truncated header".into()))?;
+        if version != 2 {
+            return Err(ProvenanceError::Unreadable(format!(
+                "SVO chunk: version {version} is not known"
+            )));
+        }
+        let mut id = [0u8; 32];
+        id.copy_from_slice(
+            bytes
+                .get(8..40)
+                .ok_or_else(|| ProvenanceError::Unreadable("SVO chunk: truncated header".into()))?,
+        );
+        return Ok(Provenance::new(id));
+    }
     if bytes.starts_with(b"glTF") {
         // GLB: 12-byte header, then the JSON chunk (length, type `JSON`, data)
         let len = bytes

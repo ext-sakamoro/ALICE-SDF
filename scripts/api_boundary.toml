@@ -26,7 +26,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 742 items (0 Linux-only): 50 handshake, 670 local, 22 pending (G8). Groups (count, decision):
+# 744 items (0 Linux-only): 52 handshake, 671 local, 21 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -47,7 +47,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  handshake: asdf_json_carries_and_checks_the_identifier
 #      2  handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused
 #      2  local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)
-#      4  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
+#      3  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
+#      1  handshake: svo_chunk_writers_store_and_readers_check_the_identifier
+#      1  handshake: an_svo_chunk_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: alice_vdb_writers_store_and_loaders_check_the_identifier
 #      1  handshake: alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: lod_chain_loaders_check_both_parts
@@ -82,7 +84,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      4  local: one 8-bit code to or from a float by a single correctly rounded IEEE division or multiply and round, the same bits on every target; no stored form is parsed
 #      2  local: encodes or measures this build's own volume
 #      1  local: builds a packet from this build's own tree
-#      5  local: serialises this build's own value
+#      6  local: serialises this build's own value
 #      4  local: writes this build's own state for a snapshot or shape hash
 #      4  pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check
 #     32  local: generates shader or source text from a tree of this process
@@ -191,7 +193,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::vdb::load_dense_grid_from_vdb_unverified" = "handshake: alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified"
 "fn::io::vox::load_vox" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
 "fn::Splat::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::SvoChunk::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::SvoChunk::from_bytes" = "handshake: svo_chunk_writers_store_and_readers_check_the_identifier"
+"fn::SvoChunk::from_bytes_unverified" = "handshake: an_svo_chunk_from_6_1_0_is_refused_by_default_and_read_unverified"
 
 # 2 handshake
 "fn::mesh::lod_persist::load_lod_chain" = "handshake: lod_chain_loaders_check_both_parts"
@@ -823,6 +826,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::LinearizedSvo::as_bytes" = "local: serialises this build's own value"
 "fn::Splat::to_bytes" = "local: serialises this build's own value"
 "fn::SvoChunk::to_bytes" = "local: serialises this build's own value"
+"fn::SvoChunk::to_bytes_with_provenance" = "local: serialises this build's own value"
 
 # 4 local
 "fn::<LiveModifier for ErosionModifier>::shape_state" = "local: writes this build's own state for a snapshot or shape hash"

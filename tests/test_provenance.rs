@@ -1560,13 +1560,18 @@ fn lod_metadata_is_read_by_its_exact_format() {
 //                      pos_encoding_freqs: 1, ..Default::default() }).save(..)
 //   grid_v1.alicevdb   66c2dae8e96828c2c8cd4c2cddd24ad54ef7bbdc345ec1d9c7273ae551e5566a
 //                      io::vdb::bake_to_vdb(&SdfNode::sphere(1.0), (-1.5, 1.5), 4)
+//   chunk_v1.svoc      5cf74507b60fac586b8a9b260a68496e22e07f0df4deb8d5bea14855038273ae
+//                      svo::SvoChunk::new(7, vec![node, node], AabbPacked(-1..1), 2).to_bytes()
 // ---------------------------------------------------------------------------------------------
 
 use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
 
 /// (writer name as the scanner reads it, what it writes) for the own stored forms of group F; each
 /// one is written, read back through `provenance::from_bytes` and judged by the tests below
-const STORED_WRITERS: &[(&str, &str)] = &[("src/neural.rs::save", "NSDF weights")];
+const STORED_WRITERS: &[(&str, &str)] = &[
+    ("src/neural.rs::save", "NSDF weights"),
+    ("src/svo/streaming.rs::to_bytes", "SVO chunk"),
+];
 
 fn small_net() -> NeuralSdf {
     NeuralSdf::new(&NeuralSdfConfig {
@@ -1857,5 +1862,194 @@ fn alice_vdb_headers_are_read_by_their_exact_version_and_never_as_unstamped() {
                 "{len} bytes: {result:?}"
             );
         }
+    }
+}
+
+// SVO chunk wire form (`svo::SvoChunk`, feature `svo`): chunk_v1.svoc
+//   5cf74507b60fac586b8a9b260a68496e22e07f0df4deb8d5bea14855038273ae
+//   SvoChunk::new(7, vec![node, node], AabbPacked::new(Vec3::splat(-1.0), Vec3::splat(1.0)), 2)
+//   .to_bytes() by alice-sdf 6.1.0 (node: distance 0.25, normal (0, 1, 0), leaf, material 3)
+
+#[cfg(feature = "svo")]
+fn svo_chunk() -> alice_sdf::svo::SvoChunk {
+    let node = alice_sdf::svo::SvoNode {
+        distance: 0.25,
+        nx: 0.0,
+        ny: 1.0,
+        nz: 0.0,
+        child_mask: 0,
+        is_leaf: 1,
+        material_id: 3,
+        first_child: 0,
+        _pad: [0.0, 0.0],
+    };
+    let bounds = alice_sdf::compiled::AabbPacked::new(Vec3::splat(-1.0), Vec3::splat(1.0));
+    alice_sdf::svo::SvoChunk::new(7, vec![node, node], bounds, 2)
+}
+
+/// The SVO chunk written by alice-sdf 6.1.0 (version 1: no magic, no identifier): `from_bytes`
+/// refuses it as `Unpinned`, `from_bytes_unverified` returns the same chunk marked `Unpinned`
+#[cfg(feature = "svo")]
+#[test]
+fn an_svo_chunk_from_6_1_0_is_refused_by_default_and_read_unverified() {
+    use alice_sdf::svo::SvoChunk;
+    let bytes = std::fs::read(fixture("chunk_v1.svoc")).unwrap();
+    assert_ne!(&bytes[..4], b"ASVC", "fixture is version 1, no magic");
+    assert_eq!(
+        &bytes[..4],
+        &7u32.to_le_bytes(),
+        "a version 1 chunk starts with its chunk_id"
+    );
+    match SvoChunk::from_bytes(&bytes) {
+        Err(io::IoError::Unpinned { format }) => assert_eq!(format, "SVO chunk"),
+        other => panic!("expected Unpinned, got {:?}", other.map(|_| ())),
+    }
+    let checked = SvoChunk::from_bytes_unverified(&bytes).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    let (chunk, _) = checked.into_parts();
+    // the version 2 bytes of the same chunk are the 40-byte header followed by the 6.1.0 bytes
+    assert_eq!(
+        &chunk.to_bytes()[40..],
+        &bytes[..],
+        "the 6.1.0 chunk reads back bit for bit"
+    );
+    assert_eq!(&svo_chunk().to_bytes()[40..], &bytes[..]);
+}
+
+/// `ASVC` version 2: `to_bytes` stores this crate's identifier, `to_bytes_with_provenance` the
+/// caller's; this crate's reads as `Current`, an earlier verified one as `VerifiedPrevious`,
+/// another one is refused by both readers naming both identifiers
+#[cfg(feature = "svo")]
+#[test]
+fn svo_chunk_writers_store_and_readers_check_the_identifier() {
+    use alice_sdf::svo::SvoChunk;
+    assert!(STORED_WRITERS
+        .iter()
+        .any(|(w, _)| *w == "src/svo/streaming.rs::to_bytes"));
+    let own = svo_chunk().to_bytes();
+    assert_eq!(&own[..4], b"ASVC");
+    assert_eq!(&own[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
+    assert_eq!(
+        provenance::from_bytes(&svo_chunk().to_bytes_with_provenance(&caller_id())).unwrap(),
+        caller_id()
+    );
+    assert_eq!(SvoChunk::from_bytes(&own).unwrap().to_bytes(), own);
+    assert_eq!(
+        SvoChunk::from_bytes_unverified(&own).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let prev = svo_chunk().to_bytes_with_provenance(&earlier);
+    assert!(SvoChunk::from_bytes(&prev).is_ok());
+    assert_eq!(
+        SvoChunk::from_bytes_unverified(&prev).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    let other = svo_chunk().to_bytes_with_provenance(&caller_id());
+    for result in [
+        SvoChunk::from_bytes(&other).map(|_| ()),
+        SvoChunk::from_bytes_unverified(&other).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+                    "{text}"
+                );
+            }
+            other => panic!("expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+}
+
+/// With the magic present, an unknown version or a header cut short is an error of the format,
+/// never a version 1 chunk; bytes without the magic are never accepted by the checked reader; a
+/// version 1 chunk whose chunk_id spells the magic is refused, never read as version 1
+#[cfg(feature = "svo")]
+#[test]
+fn svo_chunk_headers_are_read_by_their_exact_version_and_never_as_version_1() {
+    use alice_sdf::svo::SvoChunk;
+    let own = svo_chunk().to_bytes();
+    for v in [0u32, 1, 3, u32::MAX] {
+        let mut b = own.clone();
+        b[4..8].copy_from_slice(&v.to_le_bytes());
+        assert!(
+            matches!(provenance::from_bytes(&b), Err(ProvenanceError::Unreadable(ref why)) if why.contains("is not known")),
+            "provenance reads SVO chunk version {v}"
+        );
+        for result in [
+            SvoChunk::from_bytes(&b).map(|_| ()),
+            SvoChunk::from_bytes_unverified(&b).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref why)) if *why == format!("SVO chunk: version {v} is not known")),
+                "version {v}: {result:?}"
+            );
+        }
+    }
+    for len in [4usize, 7, 8, 39] {
+        let b = &own[..len];
+        assert!(
+            matches!(
+                provenance::from_bytes(b),
+                Err(ProvenanceError::Unreadable(_))
+            ),
+            "provenance reads {len} bytes"
+        );
+        for result in [
+            SvoChunk::from_bytes(b).map(|_| ()),
+            SvoChunk::from_bytes_unverified(b).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref why)) if why == "SVO chunk: truncated header"),
+                "{len} bytes: {result:?}"
+            );
+        }
+    }
+    // bytes that are not a chunk and carry no magic: the checked reader refuses them as
+    // unstamped, it never parses them
+    let mut state = 0x9e37_79b9_u32;
+    let random: Vec<u8> = (0..256)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            state.to_le_bytes()[0]
+        })
+        .collect();
+    assert_ne!(&random[..4], b"ASVC");
+    assert!(matches!(
+        SvoChunk::from_bytes(&random),
+        Err(io::IoError::Unpinned {
+            format: "SVO chunk"
+        })
+    ));
+    // a version 1 chunk whose chunk_id is the magic's bytes: read as a version 2 header, refused
+    let colliding = alice_sdf::svo::SvoChunk::new(
+        u32::from_le_bytes(*b"ASVC"),
+        svo_chunk().nodes,
+        svo_chunk().bounds,
+        2,
+    )
+    .to_bytes()[40..]
+        .to_vec();
+    assert_eq!(&colliding[..4], b"ASVC");
+    for result in [
+        SvoChunk::from_bytes(&colliding).map(|_| ()),
+        SvoChunk::from_bytes_unverified(&colliding).map(|_| ()),
+    ] {
+        // its node_count (2) lands on the version field, so the next 32 bytes are read as an
+        // identifier: refused as a mismatch (or, for another node_count, an unknown version)
+        assert!(
+            matches!(
+                result,
+                Err(io::IoError::SemanticsMismatch { .. } | io::IoError::InvalidFormat(_))
+            ),
+            "{result:?}"
+        );
     }
 }
