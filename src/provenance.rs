@@ -408,13 +408,20 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
     if bytes.len() >= 84 {
         let count = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as usize;
         if count.checked_mul(50).and_then(|n| n.checked_add(84)) == Some(bytes.len()) {
-            if &bytes[..8] == STL_MAGIC
-                && (bytes[8] == STL_HEADER_VERSION
-                    || (bytes[8] == STL_HEADER_VERSION_PRODUCER && bytes[41..48] == [0; 7]))
-            {
-                let mut id = [0u8; 32];
-                id.copy_from_slice(&bytes[9..41]);
-                return Ok(Provenance::new(id));
+            if &bytes[..8] == STL_MAGIC {
+                // this crate's header: a version it does not know, or a version 2 header whose
+                // padding is not zero, is refused rather than read as a file without one
+                if bytes[8] == STL_HEADER_VERSION
+                    || (bytes[8] == STL_HEADER_VERSION_PRODUCER && bytes[41..48] == [0; 7])
+                {
+                    let mut id = [0u8; 32];
+                    id.copy_from_slice(&bytes[9..41]);
+                    return Ok(Provenance::new(id));
+                }
+                return Err(ProvenanceError::Unreadable(format!(
+                    "binary STL: header version {} (with this padding) is not one this crate knows",
+                    bytes[8]
+                )));
             }
             return Err(ProvenanceError::Missing {
                 format: "binary STL",
@@ -633,8 +640,8 @@ pub(crate) fn sdf_load_verdict(
 ///
 /// A file without an identifier (a format this module reads, carrying none, or a file whose
 /// layout [`from_bytes`] does not place, such as an OBJ that does not start with a comment) has
-/// none; a file that holds the key but whose identifier cannot be read is an error, never read
-/// as unstamped.
+/// none; a file that holds the key (or the binary STL header magic) but whose identifier cannot
+/// be read is an error, never read as unstamped.
 ///
 /// # Errors
 ///
@@ -648,7 +655,7 @@ pub(crate) fn mesh_import_verdict(
     let stored = match from_bytes(bytes) {
         Ok(p) => Some(p.semantics_id),
         Err(ProvenanceError::Missing { .. }) => None,
-        Err(e) if find(bytes, KEY.as_bytes()).is_some() => {
+        Err(e) if find(bytes, KEY.as_bytes()).is_some() || bytes.starts_with(STL_MAGIC) => {
             return Err(crate::io::IoError::InvalidFormat(format!("{format}: {e}")))
         }
         Err(_) => None,

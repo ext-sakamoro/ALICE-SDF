@@ -1019,13 +1019,14 @@ fn the_binary_stl_header_with_a_producer_has_the_documented_layout() {
         provenance::read_with_producer(&path).unwrap(),
         (Provenance::sdf(), Some(Provenance::new([0; 32])))
     );
-    // a version 2 header with a non-zero reserved byte is not this crate's
+    // a version 2 header with a non-zero reserved byte carries this crate's magic but is not a
+    // layout it writes: refused, never read as a file without an identifier
     let mut bad = std::fs::read(&path).unwrap();
     bad[44] = 1;
     std::fs::write(&path, &bad).unwrap();
     assert!(matches!(
         provenance::read(&path),
-        Err(ProvenanceError::Missing { .. })
+        Err(ProvenanceError::Unreadable(_))
     ));
     std::fs::remove_file(&path).ok();
 }

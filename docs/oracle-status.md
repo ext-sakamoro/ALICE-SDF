@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 884 |
+| 🟢 Not ignored | 886 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **884** |
+| **Total** | **886** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (884)
+## 🟢 Not ignored (886)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -69,6 +69,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_volume_api_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
+| `test_g8_mesh_import.rs` | 7 |
 | `test_gpu_eval_api_oracle.rs` | 7 |
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
@@ -91,7 +92,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_sdf2d_oracle.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
-| `test_g8_mesh_import.rs` | 5 |
 | `test_mesh_extract_uv_oracle.rs` | 5 |
 | `test_mesh_quantization_oracle.rs` | 5 |
 | `test_meshopt_filter_oracle.rs` | 5 |

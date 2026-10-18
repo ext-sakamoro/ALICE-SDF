@@ -286,13 +286,66 @@ fn another_identifier_is_refused_by_both_importers() {
 }
 
 #[test]
+fn a_binary_stl_header_of_an_unknown_version_is_an_error_not_unstamped() {
+    // this crate's binary STL header (magic, version, identifier): a version it does not know,
+    // or a version 2 header whose padding is not zero, is refused by both importers
+    let m = mesh();
+    let path = temp("header.stl");
+    io::export_stl_with_provenance(&m, &path, &Provenance::sdf()).unwrap();
+    let good = std::fs::read(&path).unwrap();
+    assert_eq!(&good[..8], alice_sdf::provenance::STL_MAGIC);
+    let mut cases: Vec<(&str, Vec<u8>)> = Vec::new();
+    for v in [0u8, 3, 255] {
+        let mut b = good.clone();
+        b[8] = v;
+        cases.push(("version", b));
+    }
+    let mut b = good;
+    b[8] = alice_sdf::provenance::STL_HEADER_VERSION_PRODUCER;
+    b[41..48].fill(1);
+    cases.push(("version 2 with padding", b));
+    for (what, bytes) in cases {
+        std::fs::write(&path, &bytes).unwrap();
+        for result in [
+            io::import_stl(&path).map(|_| ()),
+            io::import_stl_pinned(&path).map(|_| ()),
+        ] {
+            match result {
+                Err(IoError::InvalidFormat(why)) => {
+                    assert!(why.contains("binary STL"), "{what}: {why}");
+                }
+                r => panic!(
+                    "{what} (byte 8 = {}): expected InvalidFormat, got {r:?}",
+                    bytes[8]
+                ),
+            }
+        }
+    }
+}
+
+#[test]
+fn a_malformed_identifier_in_an_ascii_stl_is_an_error() {
+    let m = mesh();
+    let path = temp("bad_ascii.stl");
+    io::export_stl_ascii_with_provenance(&m, &path, &Provenance::sdf()).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let hex = Provenance::sdf().hex();
+    assert!(text.contains(&hex));
+    std::fs::write(&path, text.replace(&hex, &"z".repeat(64))).unwrap();
+    match io::import_stl(&path) {
+        Err(IoError::InvalidFormat(why)) => assert!(why.contains("STL"), "{why}"),
+        r => panic!("expected InvalidFormat, got {r:?}"),
+    }
+}
+
+#[test]
 fn a_malformed_identifier_is_an_error_not_unstamped() {
     // the formats that store the identifier as text: its 64 hex digits replaced by non-hex
     // characters
     let m = mesh();
     for f in formats()
         .into_iter()
-        .filter(|f| matches!(f.name, "OBJ" | "PLY" | "FBX" | "USDA"))
+        .filter(|f| matches!(f.name, "OBJ" | "PLY" | "FBX" | "GLB" | "USDA"))
     {
         let path = temp(&format!("bad_{}.{}", f.name, ext(&f)));
         (f.write)(&m, &path, &Provenance::sdf());
