@@ -12,8 +12,6 @@ src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material
 src/io/nanite.rs::export_nanite_json
 src/io/nanite.rs::export_nanite_with_config
-src/io/splat.rs::save_splat
-src/io/splat.rs::to_bytes
 src/io/ue5_asset.rs::export_ue5_mesh
 src/io/ue5_asset.rs::export_ue5_mesh_binary
 src/io/ue5_asset.rs::export_ue5_mesh_with_lods

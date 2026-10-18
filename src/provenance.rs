@@ -852,6 +852,75 @@ pub(crate) fn write_sidecar(path: &Path, p: &Provenance) -> std::io::Result<()> 
     std::fs::write(sidecar_path(path), format!("{}\n", p.tagged()))
 }
 
+/// The key of the SHA-256 of the file in a sidecar that binds the identifier to the bytes
+pub const CONTENT_SHA256_KEY: &str = "alice:content_sha256";
+
+/// Writes the sidecar `<path>.semantics` of a file whose format has no place for the identifier and
+/// whose bytes other programs rewrite: the identifier and the SHA-256 of `bytes`, one
+/// `key=<64 hex>` line each
+pub(crate) fn write_bound_sidecar(
+    path: &Path,
+    p: &Provenance,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    use sha2::{Digest, Sha256};
+    let hex = Provenance::new(Sha256::digest(bytes).into()).hex();
+    std::fs::write(
+        sidecar_path(path),
+        format!("{}\n{CONTENT_SHA256_KEY}={hex}\n", p.tagged()),
+    )
+}
+
+/// The identifier in the sidecar of the file at `path` whose bytes are `bytes`: `Ok(None)` when
+/// there is no sidecar; a sidecar that is not exactly the two lines of [`write_bound_sidecar`], or
+/// whose SHA-256 is not the SHA-256 of `bytes` (the file was rewritten without it), is an error,
+/// never "no identifier"
+pub(crate) fn bound_sidecar_id(path: &Path, bytes: &[u8]) -> Result<Option<[u8; 32]>, String> {
+    use sha2::{Digest, Sha256};
+    let sidecar = sidecar_path(path);
+    let text = match std::fs::read(&sidecar) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("sidecar {}: {e}", sidecar.display())),
+    };
+    let text = std::str::from_utf8(&text).map_err(|_| String::from("sidecar is not UTF-8"))?;
+    let hex32 = |v: &str| -> Option<[u8; 32]> {
+        if v.len() != 64 || !v.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        let mut out = [0u8; 32];
+        for (i, o) in out.iter_mut().enumerate() {
+            *o = u8::from_str_radix(&v[2 * i..2 * i + 2], 16).ok()?;
+        }
+        Some(out)
+    };
+    let (mut id, mut sha) = (None, None);
+    for line in text.lines() {
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| format!("sidecar line {line:?} is not key=value"))?;
+        let slot = if key == KEY {
+            &mut id
+        } else if key == CONTENT_SHA256_KEY {
+            &mut sha
+        } else {
+            return Err(format!("sidecar key {key:?} is not known"));
+        };
+        if slot.is_some() {
+            return Err(format!("sidecar has {key} twice"));
+        }
+        *slot = Some(hex32(value).ok_or_else(|| format!("sidecar {key} is not 64 hex"))?);
+    }
+    let id = id.ok_or_else(|| format!("sidecar has no {KEY}"))?;
+    let sha = sha.ok_or_else(|| format!("sidecar has no {CONTENT_SHA256_KEY}"))?;
+    if sha[..] != Sha256::digest(bytes)[..] {
+        return Err(format!(
+            "the file's SHA-256 is not the sidecar's {CONTENT_SHA256_KEY} (the file was rewritten after its sidecar)"
+        ));
+    }
+    Ok(Some(id))
+}
+
 /// The position of the first occurrence of `needle` in `haystack`
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)

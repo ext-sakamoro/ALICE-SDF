@@ -275,7 +275,7 @@ fn main() {
         .collect();
     let splat_path = dir.join("part.splat");
     save_splat(&splat_path, &splats).unwrap();
-    let back = load_splat(&splat_path).unwrap();
+    let back = load_splat(&splat_path).unwrap().into_parts().0;
     assert_eq!(
         std::fs::metadata(&splat_path).unwrap().len() as usize,
         splats.len() * SPLAT_BYTES

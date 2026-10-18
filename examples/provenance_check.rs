@@ -262,6 +262,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Gaussian splats: .splat has no place for the identifier, so save_splat writes the sidecar
+    // <path>.semantics with the identifier and the file's SHA-256; a .splat without a sidecar (any
+    // viewer's) reads as unpinned, the pinned loader refuses it
+    {
+        use alice_sdf::io::splat::{
+            load_splat, load_splat_pinned, save_splat, save_splat_with_provenance, Splat,
+        };
+        let splats = [Splat {
+            position: [0.0, 0.5, 0.0],
+            scale: [0.1; 3],
+            color: [200, 200, 220, 255],
+            rotation: [128, 128, 128, 255],
+        }];
+        let splat = dir.join("cloud.splat");
+        save_splat(&splat, &splats)?;
+        let checked = load_splat(&splat)?;
+        println!("{}: {:?}", splat.display(), checked.semantics());
+        assert_eq!(checked.semantics(), StoredSemantics::Current);
+        assert_eq!(load_splat_pinned(&splat)?.len(), 1);
+        let splat_other = dir.join("other.splat");
+        save_splat_with_provenance(&splat_other, &splats, &foreign)?;
+        match load_splat(&splat_other) {
+            Err(e) => println!("{}: refused: {e}", splat_other.display()),
+            Ok(_) => return Err("a .splat under another identifier was read".into()),
+        }
+    }
+
     // an SVO chunk (feature svo): the `ASVC` version 2 wire form carries the identifier after its
     // version; bytes without the magic (version 1) read only through the unverified reader
     #[cfg(feature = "svo")]

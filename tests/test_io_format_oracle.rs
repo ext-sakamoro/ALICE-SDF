@@ -29,7 +29,7 @@ use alice_sdf::io::nanite::{
 };
 use alice_sdf::io::obj::{export_obj, import_obj_pinned, ObjConfig};
 use alice_sdf::io::ply::{export_ply, import_ply_pinned, PlyConfig};
-use alice_sdf::io::splat::{load_splat, save_splat, Splat, SPLAT_BYTES};
+use alice_sdf::io::splat::{load_splat_pinned, save_splat, Splat, SPLAT_BYTES};
 use alice_sdf::io::stl::{export_stl_ascii, import_stl_pinned};
 use alice_sdf::io::usd::{export_usda, import_usda_pinned, UsdConfig};
 use alice_sdf::io::vox::{load_vox_pinned, save_vox, VoxModel, Voxel};
@@ -461,7 +461,7 @@ fn splat_records_are_32_little_endian_bytes() {
         assert_eq!(&r[28..32], &s.rotation);
         assert_eq!(&s.to_bytes()[..], r);
     }
-    let back = load_splat(&path).unwrap();
+    let back = load_splat_pinned(&path).unwrap();
     assert_eq!(back.len(), 2);
     for (a, b) in back.iter().zip(&splats) {
         assert_eq!(
@@ -470,9 +470,13 @@ fn splat_records_are_32_little_endian_bytes() {
         );
         assert_eq!(Splat::from_bytes(&b.to_bytes()).position, b.position);
     }
-    // a truncated file is rejected, not half-read
+    // a truncated file is rejected, not half-read (without its sidecar, so the size is what fails)
     std::fs::write(&path, &bytes[..40]).unwrap();
-    assert!(load_splat(&path).is_err());
+    std::fs::remove_file(alice_sdf::provenance::sidecar_path(&path)).unwrap();
+    let e = alice_sdf::io::splat::load_splat(&path)
+        .map(|_| ())
+        .unwrap_err();
+    assert!(e.to_string().contains("not multiple of 32"), "{e}");
 }
 
 #[test]

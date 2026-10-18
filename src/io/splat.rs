@@ -30,6 +30,8 @@
 //! ```
 
 use crate::eval::{eval, eval_normal};
+use crate::io::IoError;
+use crate::provenance::Checked;
 use crate::types::SdfNode;
 use glam::Vec3;
 use std::io::{Read, Write};
@@ -162,24 +164,75 @@ fn encode_rotation_from_normal(n: Vec3) -> [u8; 4] {
 }
 
 /// `.splat` ファイルに書き出し
+///
+/// The `.splat` format has no place for the semantics identifier, so it goes in the sidecar
+/// `<path>.semantics` ([`crate::provenance::sidecar_path`]) together with the SHA-256 of the
+/// `.splat` bytes; a viewer reads the `.splat` alone.
+///
+/// # Errors
+///
+/// An I/O error writing the file or its sidecar.
 pub fn save_splat(path: impl AsRef<Path>, splats: &[Splat]) -> std::io::Result<()> {
+    save_splat_with_provenance(path, splats, &crate::provenance::Provenance::sdf())
+}
+
+/// [`save_splat`] storing the given semantics identifier in the sidecar instead of this crate's
+///
+/// # Errors
+///
+/// An I/O error writing the file or its sidecar.
+pub fn save_splat_with_provenance(
+    path: impl AsRef<Path>,
+    splats: &[Splat],
+    provenance: &crate::provenance::Provenance,
+) -> std::io::Result<()> {
+    let path = path.as_ref();
+    let bytes: Vec<u8> = splats.iter().flat_map(Splat::to_bytes).collect();
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    for s in splats {
-        f.write_all(&s.to_bytes())?;
-    }
-    f.flush()
+    f.write_all(&bytes)?;
+    f.flush()?;
+    crate::provenance::write_bound_sidecar(path, provenance, &bytes)
 }
 
 /// `.splat` ファイルから読込
-pub fn load_splat(path: impl AsRef<Path>) -> std::io::Result<Vec<Splat>> {
+///
+/// Other programs write `.splat` files without a sidecar, so a file without one is read and marked
+/// [`crate::provenance::StoredSemantics::Unpinned`]; [`load_splat_pinned`] refuses it.
+///
+/// # Errors
+///
+/// An I/O error reading the file, [`IoError::SemanticsMismatch`] for an identifier in the sidecar
+/// that is neither this crate's nor one it still reproduces, and [`IoError::InvalidFormat`] for a
+/// size that is not a multiple of 32 bytes or a sidecar that cannot be read or whose SHA-256 is
+/// not the file's.
+pub fn load_splat(path: impl AsRef<Path>) -> Result<Checked<Vec<Splat>>, IoError> {
+    load_splat_with(path.as_ref(), true)
+}
+
+/// [`load_splat`] that refuses a file without a sidecar
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without a sidecar, otherwise as [`load_splat`].
+pub fn load_splat_pinned(path: impl AsRef<Path>) -> Result<Vec<Splat>, IoError> {
+    load_splat_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn load_splat_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Vec<Splat>>, IoError> {
     let mut f = std::io::BufReader::new(std::fs::File::open(path)?);
     let mut buf = Vec::new();
     f.read_to_end(&mut buf)?;
+    // a sidecar that is present but cannot be read, or describes other bytes, is an error, never
+    // a file without an identifier
+    let stored = crate::provenance::bound_sidecar_id(path, &buf)
+        .map_err(|e| IoError::InvalidFormat(format!("splat: {e}")))?;
+    let semantics = crate::provenance::sdf_load_verdict(stored, "splat", allow_unpinned)?;
     if buf.len() % SPLAT_BYTES != 0 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("file size {} not multiple of {}", buf.len(), SPLAT_BYTES),
-        ));
+        return Err(IoError::InvalidFormat(format!(
+            "splat: file size {} not multiple of {}",
+            buf.len(),
+            SPLAT_BYTES
+        )));
     }
     let n = buf.len() / SPLAT_BYTES;
     let mut out = Vec::with_capacity(n);
@@ -188,7 +241,7 @@ pub fn load_splat(path: impl AsRef<Path>) -> std::io::Result<Vec<Splat>> {
         let chunk: &[u8; SPLAT_BYTES] = buf[start..start + SPLAT_BYTES].try_into().unwrap();
         out.push(Splat::from_bytes(chunk));
     }
-    Ok(out)
+    Ok(Checked::new(out, semantics))
 }
 #[allow(
     clippy::disallowed_methods,
@@ -255,12 +308,13 @@ mod tests {
         };
         let splats = sdf_to_splats(&n, &cfg);
         save_splat(&path, &splats).unwrap();
-        let loaded = load_splat(&path).unwrap();
+        let loaded = load_splat_pinned(&path).unwrap();
         assert_eq!(splats.len(), loaded.len());
         for (a, b) in splats.iter().zip(loaded.iter()) {
             assert_eq!(a.position, b.position);
             assert_eq!(a.color, b.color);
         }
         std::fs::remove_file(&path).ok();
+        std::fs::remove_file(crate::provenance::sidecar_path(&path)).ok();
     }
 }

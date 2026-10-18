@@ -1572,6 +1572,10 @@ const STORED_WRITERS: &[(&str, &str)] = &[
     ("src/neural.rs::save", "NSDF weights"),
     ("src/svo/streaming.rs::to_bytes", "SVO chunk"),
     ("src/io/vox.rs::save_vox", "MagicaVoxel .vox"),
+    (
+        "src/io/splat.rs::save_splat",
+        ".splat with its .semantics sidecar",
+    ),
 ];
 
 fn small_net() -> NeuralSdf {
@@ -2299,6 +2303,235 @@ fn vox_identifier_chunks_that_cannot_be_read_are_errors_never_unpinned() {
         for result in [load_vox(&p).map(|_| ()), load_vox_pinned(&p).map(|_| ())] {
             assert!(
                 matches!(result, Err(io::IoError::InvalidFormat(ref e)) if e.starts_with("VOX: ") && e.contains(why)),
+                "{name}: {result:?}"
+            );
+        }
+    }
+}
+
+// Gaussian splats `.splat` (`io::splat`): cloud_v1.splat
+//   d987565d4725012cb6ae108b8029caef7add6fbf82f8218af83b177ab97cfe01
+//   save_splat of the two splats of `splats()` by alice-sdf 6.1.0 (no sidecar)
+
+fn splats() -> Vec<alice_sdf::io::splat::Splat> {
+    use alice_sdf::io::splat::Splat;
+    vec![
+        Splat {
+            position: [0.5, -0.25, 1.0],
+            scale: [0.1, 0.1, 0.1],
+            color: [200, 200, 220, 255],
+            rotation: [128, 128, 255, 128],
+        },
+        Splat {
+            position: [-1.0, 0.0, 0.0],
+            scale: [0.2, 0.05, 0.1],
+            color: [10, 20, 30, 40],
+            rotation: [0, 255, 128, 64],
+        },
+    ]
+}
+
+/// (record encoder as the scanner reads it, why it stores no identifier, who else calls it): a
+/// fixed-size record of a third-party format; the identifier belongs to the file, which the
+/// writer named here stamps through its sidecar
+const RECORD_CODECS: &[(&str, &str, &str)] = &[(
+    "src/io/splat.rs::to_bytes",
+    "one 32-byte .splat record (antimatter15 layout, no room for a header); save_splat writes the records and the sidecar",
+    "server/src/main.rs (the HTTP .splat body, sent without a sidecar) and ALICE-LOL's sdf_writers.lock",
+)];
+
+fn splat_bytes(v: &[alice_sdf::io::splat::Splat]) -> Vec<u8> {
+    v.iter()
+        .flat_map(alice_sdf::io::splat::Splat::to_bytes)
+        .collect()
+}
+
+/// The `.splat` written by alice-sdf 6.1.0 has no sidecar (no viewer writes one either):
+/// `load_splat` reads it marked `Unpinned`, `load_splat_pinned` refuses it; this build writes the
+/// same `.splat` bytes and a sidecar beside them
+#[test]
+fn a_splat_from_6_1_0_reads_as_unpinned_and_is_refused_when_pinned() {
+    use alice_sdf::io::splat::{load_splat, load_splat_pinned, save_splat};
+    use sha2::{Digest, Sha256};
+    let path = fixture("cloud_v1.splat");
+    let old = std::fs::read(&path).unwrap();
+    assert_eq!(
+        Provenance::new(Sha256::digest(&old).into()).hex(),
+        "d987565d4725012cb6ae108b8029caef7add6fbf82f8218af83b177ab97cfe01"
+    );
+    assert!(!provenance::sidecar_path(&path).exists());
+    let checked = load_splat(&path).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    assert_eq!(splat_bytes(&checked.into_parts().0), old);
+    match load_splat_pinned(&path) {
+        Err(io::IoError::Unpinned { format }) => assert_eq!(format, "splat"),
+        other => panic!("expected Unpinned, got {:?}", other.map(|_| ())),
+    }
+
+    let own = temp("cloud_v2.splat");
+    save_splat(&own, &splats()).unwrap();
+    assert_eq!(
+        std::fs::read(&own).unwrap(),
+        old,
+        "the .splat bytes are unchanged"
+    );
+    let sidecar = std::fs::read_to_string(provenance::sidecar_path(&own)).unwrap();
+    assert_eq!(
+        sidecar,
+        format!(
+            "alice:semantics_id={}\nalice:content_sha256={}\n",
+            Provenance::sdf().hex(),
+            Provenance::new(Sha256::digest(&old).into()).hex()
+        )
+    );
+}
+
+/// `save_splat` stores this crate's identifier and the file's SHA-256 in the sidecar,
+/// `save_splat_with_provenance` the caller's identifier; this crate's reads as `Current`, an
+/// earlier verified one as `VerifiedPrevious`, another one is refused by both loaders naming both
+/// identifiers; the record encoder is the writer's records, its other callers named
+#[test]
+fn splat_writers_store_and_loaders_check_the_identifier() {
+    use alice_sdf::io::splat::{
+        load_splat, load_splat_pinned, save_splat, save_splat_with_provenance,
+    };
+    assert!(STORED_WRITERS
+        .iter()
+        .any(|(w, _)| *w == "src/io/splat.rs::save_splat"));
+    let own = temp("own.splat");
+    save_splat(&own, &splats()).unwrap();
+    assert_eq!(std::fs::read(&own).unwrap(), splat_bytes(&splats()));
+    assert_eq!(RECORD_CODECS.len(), 1);
+    assert!(RECORD_CODECS[0].2.contains("server/src/main.rs"));
+    assert_eq!(provenance::read(&own).unwrap(), Provenance::sdf());
+    assert_eq!(
+        load_splat(&own).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+    assert_eq!(
+        splat_bytes(&load_splat_pinned(&own).unwrap()),
+        splat_bytes(&splats())
+    );
+
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let prev = temp("prev.splat");
+    save_splat_with_provenance(&prev, &splats(), &earlier).unwrap();
+    assert!(load_splat_pinned(&prev).is_ok());
+    assert_eq!(
+        load_splat(&prev).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    let other = temp("other.splat");
+    save_splat_with_provenance(&other, &splats(), &caller_id()).unwrap();
+    assert_eq!(provenance::read(&other).unwrap(), caller_id());
+    for result in [
+        load_splat(&other).map(|_| ()),
+        load_splat_pinned(&other).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+                    "{text}"
+                );
+            }
+            other => panic!("expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+
+    // the sidecar removed: a file without an identifier
+    std::fs::remove_file(provenance::sidecar_path(&own)).unwrap();
+    assert_eq!(
+        load_splat(&own).unwrap().semantics(),
+        StoredSemantics::Unpinned
+    );
+    assert!(matches!(
+        load_splat_pinned(&own),
+        Err(io::IoError::Unpinned { format: "splat" })
+    ));
+}
+
+/// A sidecar that is present but cannot be read, or whose SHA-256 is not the file's (the `.splat`
+/// was rewritten by another program after its sidecar), is an error of the format, never a file
+/// without an identifier
+#[test]
+fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_unpinned() {
+    use alice_sdf::io::splat::{load_splat, load_splat_pinned, save_splat};
+    let base = temp("bad_base.splat");
+    save_splat(&base, &splats()).unwrap();
+    let good = std::fs::read_to_string(provenance::sidecar_path(&base)).unwrap();
+    let (id_line, sha_line) = good.split_once('\n').unwrap();
+    let sha_line = sha_line.trim_end();
+    let id_hex = Provenance::sdf().hex();
+
+    let mut cases: Vec<(&str, Vec<u8>, String, &str)> = vec![
+        (
+            "rewritten file",
+            splat_bytes(&splats()[..1]),
+            good.clone(),
+            "rewritten after its sidecar",
+        ),
+        (
+            "no id",
+            splat_bytes(&splats()),
+            format!("{sha_line}\n"),
+            "has no alice:semantics_id",
+        ),
+        (
+            "no sha",
+            splat_bytes(&splats()),
+            format!("{id_line}\n"),
+            "has no alice:content_sha256",
+        ),
+        (
+            "id twice",
+            splat_bytes(&splats()),
+            format!("{id_line}\n{good}"),
+            "alice:semantics_id twice",
+        ),
+        (
+            "unknown key",
+            splat_bytes(&splats()),
+            format!("{good}alice:other=1\n"),
+            "is not known",
+        ),
+        (
+            "not key=value",
+            splat_bytes(&splats()),
+            format!("{good}junk\n"),
+            "is not key=value",
+        ),
+        (
+            "short id",
+            splat_bytes(&splats()),
+            good.replace(&id_hex, &id_hex[..63]),
+            "alice:semantics_id is not 64 hex",
+        ),
+    ];
+    cases.extend([(
+        "not utf-8",
+        splat_bytes(&splats()),
+        String::new(),
+        "is not UTF-8",
+    )]);
+    assert_eq!(cases.len(), 8);
+
+    for (name, bytes, sidecar, why) in cases {
+        let p = temp("bad.splat");
+        std::fs::write(&p, &bytes).unwrap();
+        if name == "not utf-8" {
+            std::fs::write(provenance::sidecar_path(&p), [0xff, 0xfe, b'\n']).unwrap();
+        } else {
+            std::fs::write(provenance::sidecar_path(&p), sidecar).unwrap();
+        }
+        for result in [
+            load_splat(&p).map(|_| ()),
+            load_splat_pinned(&p).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref e)) if e.starts_with("splat: ") && e.contains(why)),
                 "{name}: {result:?}"
             );
         }
