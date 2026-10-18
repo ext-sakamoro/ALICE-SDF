@@ -6,9 +6,12 @@
 //! and a few aggregates that walk the entries in key order (so a callback with side
 //! effects sees the same sequence on every run). There is no
 //! `iter`, no `IntoIterator` and no `Deref` to the inner collection, so a `for` loop
-//! or an iterator chain over one does not compile; this module is the one place in
-//! the library that names `HashMap` / `HashSet` (.github/clippy-lib/clippy.toml bans
-//! them elsewhere).
+//! or an iterator chain over one does not compile.
+//!
+//! The types are public so another crate can apply the same rule: it bans `HashMap` /
+//! `HashSet` in its own library code (for example with clippy's `disallowed-types`) and
+//! uses these wrappers instead. In this crate this module is the one place in the
+//! library that names the std hash collections.
 #![allow(
     clippy::disallowed_types,
     clippy::disallowed_methods,
@@ -88,7 +91,6 @@ impl<K: Eq + Hash, V> UnorderedMap<K, V> {
     }
 
     /// Whether there are no entries
-    #[cfg(feature = "svo")] // the svo chunk cache is the one user
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -126,7 +128,6 @@ impl<K: Eq + Hash + Ord, V> UnorderedMap<K, V> {
 
     /// The key with the smallest `(by(key, value), key)`, the key breaking ties;
     /// `by` is called in key order
-    #[cfg(feature = "svo")] // the svo chunk cache's eviction is the one user
     pub fn min_key_by<O: Ord>(&self, by: impl Fn(&K, &V) -> O) -> Option<&K> {
         self.sorted_entries()
             .into_iter()
@@ -214,6 +215,11 @@ impl<T: Eq + Hash> UnorderedSet<T> {
         self.0.len()
     }
 
+    /// Whether there are no values
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Removes every value
     pub fn clear(&mut self) {
         self.0.clear();
@@ -271,7 +277,6 @@ mod tests {
         assert_eq!(got, key_order(), "sorted_entries");
     }
 
-    #[cfg(feature = "svo")]
     #[test]
     fn min_key_by_calls_in_key_order_and_breaks_ties_by_key() {
         let m = map();

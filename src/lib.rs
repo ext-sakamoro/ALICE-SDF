@@ -91,7 +91,7 @@ pub mod compiled;
 mod crispy;
 pub mod eval;
 pub mod fidelity;
-mod unordered;
+pub mod unordered;
 #[cfg(all(test, feature = "gpu"))]
 mod gpu_test_support {
     //! Test support: whether a GPU test can run here, said in the test log
