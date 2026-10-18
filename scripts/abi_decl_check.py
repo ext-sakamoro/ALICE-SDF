@@ -33,6 +33,12 @@ So an argument-order error in a declaration is invisible on SysV by
 construction. Only a comparison of the ordered type lists catches it, which is
 what this script does. Comparing the *set* of types is not enough.
 
+The return type is compared too (`()` when there is none): a declaration that
+returns `*mut c_void` where the export returns `MeshHandle`, or that drops the
+return value, compiles and links on every target, and the caller then reads a
+value of the wrong type or none (until 2026-10-18 only the arguments were
+compared, and such a declaration passed).
+
 Portability note
 ---------------
 Every read passes `encoding="utf-8"` explicitly. `Path.read_text()` without it
@@ -60,8 +66,13 @@ from pathlib import Path
 
 MARKER = "ABI-DECL-MISMATCH"
 
-DECL_RE = re.compile(r"fn\s+(alice_sdf_\w+)\s*\((.*?)\)\s*(?:->\s*[^;{]+)?;", re.S)
-DEF_RE = re.compile(r'extern\s+"C"\s+fn\s+(alice_sdf_\w+)\s*\((.*?)\)\s*(?:->|\{)', re.S)
+DECL_RE = re.compile(r"fn\s+(alice_sdf_\w+)\s*\((.*?)\)\s*(?:->\s*([^;{]+))?;", re.S)
+DEF_RE = re.compile(r'extern\s+"C"\s+fn\s+(alice_sdf_\w+)\s*\((.*?)\)\s*(?:->\s*([^{]+?))?\s*\{', re.S)
+
+
+def ret_type(ret: str | None) -> str:
+    """The return type, whitespace-normalised; `()` when the function returns nothing."""
+    return " ".join(ret.split()) if ret and ret.strip() else "()"
 
 
 def arg_types(args: str) -> list[str]:
@@ -112,10 +123,10 @@ def main() -> int:
     root = Path(__file__).resolve().parent.parent
 
     # definitions
-    defs: dict[str, list[str]] = {}
+    defs: dict[str, tuple[list[str], str]] = {}
     for p in sorted((root / "src" / "ffi").rglob("*.rs")):
         for m in DEF_RE.finditer(p.read_text(encoding="utf-8")):
-            defs[m.group(1)] = arg_types(m.group(2))
+            defs[m.group(1)] = (arg_types(m.group(2)), ret_type(m.group(3)))
     if not defs:
         print(f"{MARKER}: no exports found under src/ffi — the scan is broken")
         return 1
@@ -134,7 +145,7 @@ def main() -> int:
                 continue
             for body in extern_blocks(text):
                 for m in DECL_RE.finditer(body):
-                    name, got = m.group(1), arg_types(m.group(2))
+                    name, got = m.group(1), (arg_types(m.group(2)), ret_type(m.group(3)))
                     sites += 1
                     want = defs.get(name)
                     rel = p.relative_to(root)
@@ -147,8 +158,8 @@ def main() -> int:
                     if got != want:
                         problems.append(
                             f"  {rel}: {name}\n"
-                            f"      declared: ({', '.join(got)})\n"
-                            f"      exported: ({', '.join(want)})"
+                            f"      declared: ({', '.join(got[0])}) -> {got[1]}\n"
+                            f"      exported: ({', '.join(want[0])}) -> {want[1]}"
                         )
                     elif verbose:
                         print(f"  ok {rel}: {name}")

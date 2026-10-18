@@ -283,7 +283,8 @@ step "stub-guard: tests/ の extern 宣言 ⇔ src/ffi の export (順序付き�
 # extern "C" 宣言は第 3 の宣言箇所として無検査だった。引数順の誤りは SysV
 # (macOS / Linux) では整数と浮動小数でレジスタバンクが分かれ独立に採番される
 # ため値が正しいレジスタに着いて通り、Microsoft x64 は位置でスロットを決める
-# ので落ちる (2026-09-30 run 36680136653 が Windows だけ red)。
+# ので落ちる (2026-09-30 run 36680136653 が Windows だけ red)。戻り値の型も比べる。
+python3 scripts/test_abi_decl_check.py
 python3 scripts/abi_decl_check.py
 
 # ── fuzz.yml (build only; the replay needs the nightly fuzz build) ────────

@@ -267,8 +267,10 @@ jobs:
       # レジスタに着いて通り、Microsoft x64 は位置でスロットを決めるので落ちる
       # (2026-09-30 run 36680136653 が Windows だけ red)。型の集合でなく順序付きの
       # 列で比べる必要がある。
-      - name: Guard (extern decl vs src/ffi export, ordered types)
-        run: python3 scripts/abi_decl_check.py
+      # 戻り値の型も比べる (2026-10-18 から、宣言の戻り値の誤りは全 target で link して通るため)
+      - name: Guard (extern decl vs src/ffi export, ordered types and return type)
+        # 1 行の && (Windows の pwsh は複数行の native command で最後の終了コードしか見ない)
+        run: python3 scripts/test_abi_decl_check.py && python3 scripts/abi_decl_check.py
 
       - name: Test (integration, FFI binding oracle)
         run: cargo test --features ffi --test test_binding_oracle
