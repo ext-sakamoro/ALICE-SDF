@@ -70,7 +70,6 @@ impl SvoChunk {
         self.nodes.len() * std::mem::size_of::<SvoNode>()
     }
 
-    /// Serialize chunk to bytes
     /// Serialize the chunk, stamped with this crate's semantics identifier
     ///
     /// Version 2: `b"ASVC"` + version (u32 = 2) + the 32-byte semantics identifier
@@ -201,7 +200,8 @@ impl SvoChunk {
 
         let node_data = &data[36..];
         let node_byte_size = 32; // SvoNode is 32 bytes
-        if node_data.len() < node_count * node_byte_size {
+                                 // node_count comes from the bytes: on a 32-bit target its byte length can wrap
+        if node_data.len() < node_count.checked_mul(node_byte_size)? {
             return None;
         }
 

@@ -2049,6 +2049,21 @@ fn svo_chunk_headers_are_read_by_their_exact_version_and_never_as_version_1() {
             format: "SVO chunk"
         })
     ));
+    // a node_count far beyond the data (its byte length wraps usize on a 32-bit target): the
+    // body is cut short, never indexed past
+    for count in [3u32, 1 << 27, u32::MAX] {
+        let mut b = own.clone();
+        b[44..48].copy_from_slice(&count.to_le_bytes());
+        for result in [
+            SvoChunk::from_bytes(&b).map(|_| ()),
+            SvoChunk::from_bytes_unverified(&b).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref why)) if why == "SVO chunk: truncated body"),
+                "node_count {count}: {result:?}"
+            );
+        }
+    }
     // a version 1 chunk whose chunk_id is the magic's bytes: read as a version 2 header, refused
     let colliding = alice_sdf::svo::SvoChunk::new(
         u32::from_le_bytes(*b"ASVC"),
