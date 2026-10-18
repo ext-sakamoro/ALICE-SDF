@@ -8,15 +8,15 @@ targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 729 items (1 host-only): 24 handshake, 661 local, 44 pending (G8). Groups (count, decision):
+# 730 items (1 host-only): 27 handshake, 664 local, 39 pending (G8). Groups (count, decision):
+#      4  local: writes this build's own LOD chain; stamping is G8's
+#      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
 #      1  handshake: an_asdf_file_from_6_1_0_is_refused_by_default_and_read_unverified
+#      6  handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified
+#      2  handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified
 #      2  handshake: an_earlier_published_identifier_reads_as_verified_previous
 #      1  handshake: stamped_writers_keep_both_identifiers_in_their_slots
-#      3  handshake: abm_loaders_check_the_identifier
-#      2  handshake: an_abm_file_from_6_1_0_is_refused_by_default_and_read_unverified
-#      1  handshake: ffi_load_abm_checks_the_identifier
-#      2  local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison
 #      1  handshake: check_reads_this_previous_and_unknown_identifiers
 #      4  local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned
 #      1  local: computes the path of the .semantics sidecar from a path
@@ -25,19 +25,25 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      1  local: parses the .asdf header and returns its stored identifier as a field; load_asdf does the comparison
 #      1  local: the linked alice-det-math identifier, documented as alice-det-math's, an in-process constant
 #      2  local: plain vector and rotation types of the API, they carry no Law
+#      1  handshake: asdf_json_with_another_identifier_is_refused_even_unverified
+#      1  handshake: asdf_json_carries_and_checks_the_identifier
+#      2  handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused
+#      2  local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)
+#      5  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
+#      1  handshake: lod_chain_loaders_check_both_parts
+#      1  local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain
 #      9  pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current
-#      7  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
 #      1  pending: G8, the network weights file carries no semantics identifier of the build that trained it
 #      7  pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check
 #      2  pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under
-#      8  pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier
+#      6  pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier
+#      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
 #     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
 #     23  local: writes this crate's own value; stamping the stored file is G8's
 #      2  local: parses a shader language name
 #      2  pending: G8, wraps the glTF importer, which does not read the stored semantics identifier
 #     12  local: writes this build's tree or mesh out; stamping the file is G8's
 #    195  local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)
-#      1  pending: G8, reads a stored tree or LOD chain without checking a semantics identifier
 #      7  local: writes this library's own tree or mesh to a path the caller gives
 #      5  local: writes a mesh this library generated to a path the caller gives
 #      3  local: returns shader source text generated from a handle of this library
@@ -50,7 +56,6 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #     57  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
 #      1  local: reports a stored file's format, version and node count as text; the tree is not returned
 #     10  local: writes this build's own volume or STEP data; stamping is G8's
-#      2  local: writes this build's own LOD chain; stamping is G8's
 #      7  local: encodes this build's own mesh buffers
 #      4  local: one 8-bit code to or from a float by a single correctly rounded IEEE division or multiply and round, the same bits on every target; no stored form is parsed
 #      2  local: encodes or measures this build's own volume
@@ -70,15 +75,22 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      2  local: the FFI's last error message
 #      4  local: octant arithmetic over small integers
 #      1  local: checks an in-memory linearised octree of this process
-#      6  handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified
-#      2  handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified
-#      1  handshake: asdf_json_with_another_identifier_is_refused_even_unverified
-#      1  handshake: asdf_json_carries_and_checks_the_identifier
-#      2  handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused
-#      2  local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)
-#      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
+#      3  handshake: abm_loaders_check_the_identifier
+#      2  handshake: an_abm_file_from_6_1_0_is_refused_by_default_and_read_unverified
+#      1  handshake: ffi_load_abm_checks_the_identifier
+#      2  local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison
+#      1  handshake: ffi_load_lod_chain_checks_both_parts
 
 [boundary]
+
+# 4 local
+"fn::mesh::lod_persist::save_lod_chain_metadata_with_provenance" = "local: writes this build's own LOD chain; stamping is G8's"
+"fn::mesh::lod_persist::save_lod_chain_with_provenance" = "local: writes this build's own LOD chain; stamping is G8's"
+"fn::mesh::lod_persist::save_lod_chain" = "local: writes this build's own LOD chain; stamping is G8's"
+"fn::mesh::lod_persist::save_lod_chain_metadata" = "local: writes this build's own LOD chain; stamping is G8's"
+
+# 1 handshake
+"fn::mesh::lod_persist::load_lod_chain_unverified" = "handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified"
 
 # 1 handshake
 "fn::io::asdf::load_asdf" = "handshake: asdf_loaders_check_the_identifier"
@@ -86,28 +98,24 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 # 1 handshake
 "fn::io::asdf::load_asdf_unverified" = "handshake: an_asdf_file_from_6_1_0_is_refused_by_default_and_read_unverified"
 
+# 6 handshake
+"fn::io::json::load_asdf_json_unverified" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+"fn::io::json::from_json_string_unverified" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+"fn::io::load" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+"binding::pyo3::load_asdf" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+"binding::pyo3::load_sdf" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+"abi::ffi::io_ffi::alice_sdf_load" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+
+# 2 handshake
+"fn::asp_bridge::decode_sdf_i_packet_unverified" = "handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified"
+"fn::asp_bridge::decode_sdf_i_packet" = "handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified"
+
 # 2 handshake
 "fn::provenance::check" = "handshake: an_earlier_published_identifier_reads_as_verified_previous"
 "fn::provenance::check_sdf" = "handshake: an_earlier_published_identifier_reads_as_verified_previous"
 
 # 1 handshake
 "fn::provenance::check_producer" = "handshake: stamped_writers_keep_both_identifiers_in_their_slots"
-
-# 3 handshake
-"binding::pyo3::load_abm" = "handshake: abm_loaders_check_the_identifier"
-"fn::io::abm::load_abm" = "handshake: abm_loaders_check_the_identifier"
-"fn::io::abm::load_abm_with_lods" = "handshake: abm_loaders_check_the_identifier"
-
-# 2 handshake
-"fn::io::abm::load_abm_unverified" = "handshake: an_abm_file_from_6_1_0_is_refused_by_default_and_read_unverified"
-"fn::io::abm::load_abm_with_lods_unverified" = "handshake: an_abm_file_from_6_1_0_is_refused_by_default_and_read_unverified"
-
-# 1 handshake
-"abi::ffi::io_ffi::alice_sdf_load_abm" = "handshake: ffi_load_abm_checks_the_identifier"
-
-# 2 local
-"fn::AbmHeader::from_bytes" = "local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison"
-"fn::io::abm::read_abm_header" = "local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison"
 
 # 1 handshake
 "fn::semantics::check_sdf_semantics" = "handshake: check_reads_this_previous_and_unknown_identifiers"
@@ -142,6 +150,33 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "reexport::glam::Quat" = "local: plain vector and rotation types of the API, they carry no Law"
 "reexport::glam::Vec3" = "local: plain vector and rotation types of the API, they carry no Law"
 
+# 1 handshake
+"fn::io::json::from_json_string" = "handshake: asdf_json_with_another_identifier_is_refused_even_unverified"
+
+# 1 handshake
+"fn::io::json::load_asdf_json" = "handshake: asdf_json_carries_and_checks_the_identifier"
+
+# 2 handshake
+"fn::llm_schema::validate_sdf_json" = "handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused"
+"binding::pyo3::from_json" = "handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused"
+
+# 2 local
+"impl::Deserialize for SdfNode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
+"impl::Deserialize for SdfTree" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
+
+# 5 pending
+"fn::io::splat::load_splat" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::vdb::load_dense_grid_from_vdb" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::vox::load_vox" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::Splat::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::SvoChunk::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+
+# 1 handshake
+"fn::mesh::lod_persist::load_lod_chain" = "handshake: lod_chain_loaders_check_both_parts"
+
+# 1 local
+"fn::mesh::lod_persist::load_lod_chain_metadata" = "local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain"
+
 # 9 pending
 "fn::io::fbx::fbx_animation_to_timeline" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
 "fn::io::fbx::import_fbx" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
@@ -152,15 +187,6 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::io::ply::import_ply" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
 "fn::io::stl::import_stl" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
 "fn::io::usd::import_usda" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-
-# 7 pending
-"fn::io::splat::load_splat" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::io::vdb::load_dense_grid_from_vdb" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::io::vox::load_vox" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::Splat::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::SvoChunk::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::mesh::lod_persist::load_lod_chain" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::mesh::lod_persist::load_lod_chain_metadata" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
 
 # 1 pending
 "fn::NeuralSdf::load" = "pending: G8, the network weights file carries no semantics identifier of the build that trained it"
@@ -178,15 +204,16 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::<Participant for LiveSdf>::check_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
 "fn::<Participant for LiveSdf>::read_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
 
-# 8 pending
+# 6 pending
 "impl::Deserialize for Aabb" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 "impl::Deserialize for FittedOctave" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
-"impl::Deserialize for LodChainPersist" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
-"impl::Deserialize for LodLevelPersist" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 "impl::Deserialize for Mesh" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 "impl::Deserialize for TextureFitResult" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 "impl::Deserialize for Triangle" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 "impl::Deserialize for Vertex" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+
+# 1 local
+"impl::Deserialize for SdfMetadata" = "local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)"
 
 # 12 local
 "impl::Deserialize for BoneTransform" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
@@ -446,9 +473,6 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "binding::pyo3::version" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
 "binding::pyo3::voxel_fracture" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)"
 
-# 1 pending
-"abi::ffi::io_ffi::alice_sdf_load_lod_chain" = "pending: G8, reads a stored tree or LOD chain without checking a semantics identifier"
-
 # 7 local
 "abi::ffi::io_ffi::alice_sdf_export_ue5" = "local: writes this library's own tree or mesh to a path the caller gives"
 "abi::ffi::io_ffi::alice_sdf_export_ue5_binary" = "local: writes this library's own tree or mesh to a path the caller gives"
@@ -666,11 +690,11 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 # 57 local
 "fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::abm::save_abm_with_lods_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::abm::save_abm_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::asdf::save_asdf" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::asdf::save_asdf_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::json::save_asdf_json_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::json::to_json_string_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::fbx::export_fbx" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::fbx::export_fbx_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::fbx::export_fbx_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -719,8 +743,8 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::io::usd::export_usda_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vdb::bake_to_vdb" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vox::save_vox" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::json::save_asdf_json_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::json::to_json_string_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::abm::save_abm_with_lods_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::abm::save_abm_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 
 # 1 local
 "fn::io::get_info" = "local: reports a stored file's format, version and node count as text; the tree is not returned"
@@ -736,10 +760,6 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::volume::export::export_raw_with_mips" = "local: writes this build's own volume or STEP data; stamping is G8's"
 "fn::volume::export::export_raw_with_mips_with_provenance" = "local: writes this build's own volume or STEP data; stamping is G8's"
 "fn::volume::export::export_raw_with_provenance" = "local: writes this build's own volume or STEP data; stamping is G8's"
-
-# 2 local
-"fn::mesh::lod_persist::save_lod_chain" = "local: writes this build's own LOD chain; stamping is G8's"
-"fn::mesh::lod_persist::save_lod_chain_metadata" = "local: writes this build's own LOD chain; stamping is G8's"
 
 # 7 local
 "fn::mesh::mesh_codec::encode_indices" = "local: encodes this build's own mesh buffers"
@@ -916,31 +936,21 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 # 1 local
 "fn::svo::linearize::validate_linearized" = "local: checks an in-memory linearised octree of this process"
 
-# 6 handshake
-"fn::io::load" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
-"binding::pyo3::load_asdf" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
-"binding::pyo3::load_sdf" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
-"abi::ffi::io_ffi::alice_sdf_load" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
-"fn::io::json::load_asdf_json_unverified" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
-"fn::io::json::from_json_string_unverified" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+# 3 handshake
+"fn::io::abm::load_abm" = "handshake: abm_loaders_check_the_identifier"
+"fn::io::abm::load_abm_with_lods" = "handshake: abm_loaders_check_the_identifier"
+"binding::pyo3::load_abm" = "handshake: abm_loaders_check_the_identifier"
 
 # 2 handshake
-"fn::asp_bridge::decode_sdf_i_packet" = "handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified"
-"fn::asp_bridge::decode_sdf_i_packet_unverified" = "handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified"
+"fn::io::abm::load_abm_unverified" = "handshake: an_abm_file_from_6_1_0_is_refused_by_default_and_read_unverified"
+"fn::io::abm::load_abm_with_lods_unverified" = "handshake: an_abm_file_from_6_1_0_is_refused_by_default_and_read_unverified"
 
 # 1 handshake
-"fn::io::json::from_json_string" = "handshake: asdf_json_with_another_identifier_is_refused_even_unverified"
-
-# 1 handshake
-"fn::io::json::load_asdf_json" = "handshake: asdf_json_carries_and_checks_the_identifier"
-
-# 2 handshake
-"fn::llm_schema::validate_sdf_json" = "handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused"
-"binding::pyo3::from_json" = "handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused"
+"abi::ffi::io_ffi::alice_sdf_load_abm" = "handshake: ffi_load_abm_checks_the_identifier"
 
 # 2 local
-"impl::Deserialize for SdfNode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
-"impl::Deserialize for SdfTree" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
+"fn::io::abm::read_abm_header" = "local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison"
+"fn::AbmHeader::from_bytes" = "local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison"
 
-# 1 local
-"impl::Deserialize for SdfMetadata" = "local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)"
+# 1 handshake
+"abi::ffi::io_ffi::alice_sdf_load_lod_chain" = "handshake: ffi_load_lod_chain_checks_both_parts"

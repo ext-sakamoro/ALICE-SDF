@@ -103,8 +103,10 @@ pub use lod::{
     LodConfig, LodMesh, LodSelector,
 };
 pub use lod_persist::{
-    load_lod_chain, load_lod_chain_metadata, save_lod_chain, save_lod_chain_metadata,
-    LodChainConfig, LodChainPersist, LodChainSummary, LodLevelPersist,
+    load_lod_chain, load_lod_chain_metadata, load_lod_chain_unverified, save_lod_chain,
+    save_lod_chain_metadata, save_lod_chain_metadata_with_provenance,
+    save_lod_chain_with_provenance, LodChainConfig, LodChainPersist, LodChainSummary,
+    LodLevelPersist,
 };
 pub use manifold::{compute_quality, validate_mesh, MeshQuality, MeshRepair, MeshValidation};
 pub use mesh_sign::{ExteriorField, MeshSignMode};

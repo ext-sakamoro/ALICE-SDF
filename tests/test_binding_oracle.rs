@@ -64,6 +64,12 @@ extern "C" {
     fn alice_sdf_load_abm(path: *const c_char) -> MeshHandle;
     fn alice_sdf_mesh_vertex_count(mesh: MeshHandle) -> u32;
     fn alice_sdf_free_mesh(mesh: MeshHandle);
+    fn alice_sdf_load_lod_chain(
+        path: *const c_char,
+        out_mesh_handles: *mut MeshHandle,
+        out_transition_distances: *mut f32,
+        max_lod_count: u32,
+    ) -> u32;
 
     // primitives
     fn alice_sdf_sphere(radius: f32) -> SdfHandle;
@@ -1386,6 +1392,79 @@ fn ffi_load_abm_checks_the_identifier() {
             alice_sdf_load_abm(c(&v1).as_ptr()).is_null(),
             "a version 1 file without an identifier is refused"
         );
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// `alice_sdf_load_lod_chain` goes through the checking loader: a chain written by this crate
+/// loads both levels, one whose sidecar carries another identifier and a 6.1.0 chain (no
+/// identifier in either part) load nothing
+#[test]
+fn ffi_load_lod_chain_checks_both_parts() {
+    use alice_sdf::mesh::lod_persist::{self, LodChainConfig, LodChainPersist};
+    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_lod_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mesh = alice_sdf::mesh::sdf_to_mesh(
+        &SdfNode::sphere(1.0),
+        Vec3::splat(-1.5),
+        Vec3::splat(1.5),
+        &alice_sdf::mesh::MarchingCubesConfig {
+            resolution: 8,
+            ..Default::default()
+        },
+    );
+    let chain = LodChainPersist::new(
+        vec![mesh.clone(), mesh],
+        vec![0.0, 10.0],
+        7,
+        LodChainConfig::default(),
+    );
+    let ours = dir.join("ours.abm");
+    let other = dir.join("other.abm");
+    lod_persist::save_lod_chain(&chain, &ours).unwrap();
+    lod_persist::save_lod_chain(&chain, &other).unwrap();
+    lod_persist::save_lod_chain_metadata_with_provenance(
+        &chain,
+        &other,
+        &alice_sdf::provenance::Provenance::new([7; 32]),
+    )
+    .unwrap();
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/provenance");
+    let v1 = dir.join("chain_v1.abm");
+    std::fs::copy(fixtures.join("chain_v1.abm"), &v1).unwrap();
+    std::fs::copy(
+        fixtures.join("chain_v1.abm.meta.json"),
+        dir.join("chain_v1.abm.meta.json"),
+    )
+    .unwrap();
+    let c = |p: &std::path::Path| CString::new(p.to_str().unwrap()).unwrap();
+    let mut handles = [std::ptr::null_mut(); 4];
+    let mut dists = [0.0f32; 4];
+    unsafe {
+        let n = alice_sdf_load_lod_chain(
+            c(&ours).as_ptr(),
+            handles.as_mut_ptr(),
+            dists.as_mut_ptr(),
+            4,
+        );
+        assert_eq!(n, 2, "this crate's chain loads both levels");
+        assert_eq!(dists[1], 10.0);
+        for h in &handles[..2] {
+            alice_sdf_free_mesh(*h);
+        }
+        for (what, p) in [
+            ("another identifier in the sidecar", &other),
+            ("a 6.1.0 chain", &v1),
+        ] {
+            let n = alice_sdf_load_lod_chain(
+                c(p).as_ptr(),
+                handles.as_mut_ptr(),
+                dists.as_mut_ptr(),
+                4,
+            );
+            assert_eq!(n, 0, "{what} is refused");
+        }
     }
     std::fs::remove_dir_all(&dir).ok();
 }

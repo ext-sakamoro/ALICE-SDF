@@ -20,6 +20,4 @@ src/io/ue5_asset.rs::export_ue5_mesh_with_lods
 src/io/unity_mesh.rs::export_unity_mesh
 src/io/unity_mesh.rs::export_unity_mesh_binary
 src/io/vox.rs::save_vox
-src/mesh/lod_persist.rs::save_lod_chain
-src/mesh/lod_persist.rs::save_lod_chain_metadata
 src/svo/streaming.rs::to_bytes

@@ -4,12 +4,22 @@
 //! transition distances and AABB bounds. Integrates with the
 //! ABM format and the existing LOD generation pipeline.
 //!
+//! # Semantics identifier
+//!
+//! Both stored parts carry the semantics identifier the chain was written under: the `.abm`
+//! (version 2 header) and the `.abm.meta.json` sidecar (format 2, top-level
+//! `"alice:semantics_id"`), which holds computed values (AABB bounds, reduction ratios).
+//! [`load_lod_chain`] accepts this crate's identifier or one it still reproduces in both and
+//! refuses another one or a part without one; [`load_lod_chain_unverified`] returns the chain
+//! with the weaker of the two statuses ([`StoredSemantics::weaker`]).
+//!
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
-use crate::io::abm::{load_abm_with_lods, save_abm_with_lods};
+use crate::io::abm::{load_abm_with_lods_unverified, save_abm_with_lods_with_provenance};
 use crate::io::IoError;
 use crate::mesh::Mesh;
+use crate::provenance::{Checked, Provenance, StoredSemantics, KEY};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -18,7 +28,10 @@ use std::path::Path;
 // ---------------------------------------------------------------------------
 
 /// A complete LOD chain with metadata for persistence
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Read it back with [`load_lod_chain`]: it does not implement `Deserialize`, so a stored chain
+/// is not read past the semantics identifier check.
+#[derive(Debug, Clone, Serialize)]
 pub struct LodChainPersist {
     /// LOD meshes, index 0 = highest detail
     pub meshes: Vec<LodLevelPersist>,
@@ -29,7 +42,7 @@ pub struct LodChainPersist {
 }
 
 /// A single LOD level with persistence metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LodLevelPersist {
     /// The mesh at this LOD
     pub mesh: Mesh,
@@ -242,6 +255,16 @@ impl LodChainPersist {
 /// Metadata stored in the `.abm.meta.json` sidecar file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LodChainMetadata {
+    /// Sidecar format (1 when absent: written before 7.0.0)
+    #[serde(default = "metadata_format_1")]
+    format: u32,
+    /// The semantics identifier the computed values were written under (format 2)
+    #[serde(
+        rename = "alice:semantics_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    semantics_id: Option<String>,
     /// Source SDF hash for cache invalidation
     sdf_hash: u64,
     /// Generation configuration
@@ -279,6 +302,19 @@ struct LodLevelMetadata {
 /// A `.abm.meta.json` sidecar file is written alongside for metadata
 /// (sdf_hash, config, per-level stats).
 pub fn save_lod_chain(chain: &LodChainPersist, path: impl AsRef<Path>) -> Result<(), IoError> {
+    save_lod_chain_with_provenance(chain, path, &Provenance::sdf())
+}
+
+/// [`save_lod_chain`] storing the given semantics identifier in both parts instead of this crate's
+///
+/// # Errors
+///
+/// As [`save_lod_chain`].
+pub fn save_lod_chain_with_provenance(
+    chain: &LodChainPersist,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let path = path.as_ref();
 
     // Extract meshes and transition distances for ABM
@@ -295,27 +331,56 @@ pub fn save_lod_chain(chain: &LodChainPersist, path: impl AsRef<Path>) -> Result
         Vec::new()
     };
 
-    save_abm_with_lods(&meshes, &transition_distances, path)?;
+    save_abm_with_lods_with_provenance(&meshes, &transition_distances, path, provenance)?;
 
     // Write sidecar metadata
-    save_lod_chain_metadata(chain, path)?;
+    save_lod_chain_metadata_with_provenance(chain, path, provenance)?;
 
     Ok(())
 }
 
 /// Load LOD chain from ABM file and its JSON metadata sidecar.
+///
+/// # Errors
+///
+/// [`IoError::SemanticsMismatch`] when either part was written under another identifier,
+/// [`IoError::Unpinned`] when either part carries none (a chain written before 7.0.0; read it
+/// with [`load_lod_chain_unverified`]), and the I/O and format errors of the two parts.
 pub fn load_lod_chain(path: impl AsRef<Path>) -> Result<LodChainPersist, IoError> {
+    load_lod_chain_checked(path, false).map(|c| c.into_parts().0)
+}
+
+/// [`load_lod_chain`] that also reads parts without an identifier, returning the chain with
+/// the weaker of the two parts' statuses
+///
+/// # Errors
+///
+/// As [`load_lod_chain`], except that a part without an identifier is returned, not refused.
+pub fn load_lod_chain_unverified(
+    path: impl AsRef<Path>,
+) -> Result<Checked<LodChainPersist>, IoError> {
+    load_lod_chain_checked(path, true)
+}
+
+fn load_lod_chain_checked(
+    path: impl AsRef<Path>,
+    allow_unpinned: bool,
+) -> Result<Checked<LodChainPersist>, IoError> {
     let path = path.as_ref();
 
-    // Load meshes and transition distances from ABM
-    let (meshes, transition_distances) = load_abm_with_lods(path)?;
+    // Load meshes and transition distances from ABM (refuses another identifier; refuses a file
+    // without one unless allow_unpinned)
+    let ((meshes, transition_distances), abm_semantics) =
+        load_abm_with_lods_unverified(path)?.into_parts();
+    if abm_semantics == StoredSemantics::Unpinned && !allow_unpinned {
+        return Err(IoError::Unpinned { format: "ABM" });
+    }
 
-    // Load sidecar metadata
+    // Load the sidecar metadata and judge its identifier the same way
     let meta_path = sidecar_path(path);
-    let config = load_lod_chain_metadata(&meta_path)?;
-
-    // Read full metadata for per-level stats
     let metadata = read_sidecar_metadata(&meta_path)?;
+    let meta_semantics = metadata_verdict(&metadata, allow_unpinned)?;
+    let config = metadata.config.clone();
 
     // Reconstruct LodChainPersist
     let lod0_tri_count = if meshes.is_empty() {
@@ -368,17 +433,33 @@ pub fn load_lod_chain(path: impl AsRef<Path>) -> Result<LodChainPersist, IoError
         })
         .collect();
 
-    Ok(LodChainPersist {
-        meshes: levels,
-        sdf_hash: metadata.sdf_hash,
-        config,
-    })
+    Ok(Checked::new(
+        LodChainPersist {
+            meshes: levels,
+            sdf_hash: metadata.sdf_hash,
+            config,
+        },
+        abm_semantics.weaker(meta_semantics),
+    ))
 }
 
 /// Save LOD chain metadata as JSON sidecar (`.abm.meta.json`)
 pub fn save_lod_chain_metadata(
     chain: &LodChainPersist,
     path: impl AsRef<Path>,
+) -> Result<(), IoError> {
+    save_lod_chain_metadata_with_provenance(chain, path, &Provenance::sdf())
+}
+
+/// [`save_lod_chain_metadata`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// As [`save_lod_chain_metadata`].
+pub fn save_lod_chain_metadata_with_provenance(
+    chain: &LodChainPersist,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
 ) -> Result<(), IoError> {
     let meta_path = sidecar_path(path.as_ref());
 
@@ -398,6 +479,8 @@ pub fn save_lod_chain_metadata(
         .collect();
 
     let metadata = LodChainMetadata {
+        format: METADATA_FORMAT,
+        semantics_id: Some(provenance.hex()),
         sdf_hash: chain.sdf_hash,
         config: chain.config.clone(),
         levels,
@@ -413,14 +496,62 @@ pub fn save_lod_chain_metadata(
 }
 
 /// Load LOD chain configuration from JSON sidecar
-pub fn load_lod_chain_metadata(path: impl AsRef<Path>) -> Result<LodChainConfig, IoError> {
+///
+/// The configuration is the authored generation settings, so a sidecar without an identifier
+/// (written before 7.0.0) is read and marked [`StoredSemantics::Unpinned`]; one written under
+/// another identifier is refused. Unlike [`load_lod_chain`] (and `load_abm`), which refuse an
+/// unpinned part by default because they return computed values, this reader returns only
+/// those settings and leaves the decision on an unpinned sidecar to the caller through the
+/// returned status.
+///
+/// # Errors
+///
+/// [`IoError::SemanticsMismatch`] for another identifier, and the I/O and JSON errors.
+pub fn load_lod_chain_metadata(path: impl AsRef<Path>) -> Result<Checked<LodChainConfig>, IoError> {
     let metadata = read_sidecar_metadata(path)?;
-    Ok(metadata.config)
+    let semantics = metadata_verdict(&metadata, true)?;
+    Ok(Checked::new(metadata.config, semantics))
+}
+
+/// The sidecar format: 2 carries the semantics identifier (format 1, before 7.0.0, has none)
+const METADATA_FORMAT: u32 = 2;
+
+/// The identifier verdict of a sidecar: its stored identifier (format 2) through the same rule
+/// as the other formats of this crate, or `Unpinned` (format 1) when `allow_unpinned`
+fn metadata_verdict(
+    metadata: &LodChainMetadata,
+    allow_unpinned: bool,
+) -> Result<StoredSemantics, IoError> {
+    let stored = match (metadata.format, &metadata.semantics_id) {
+        (1, None) => None,
+        (2, Some(hex)) => Some(
+            Provenance::from_hex(hex)
+                .ok_or_else(|| {
+                    IoError::InvalidFormat(format!("LOD metadata: {KEY} is not 64 hex digits"))
+                })?
+                .semantics_id,
+        ),
+        (2, None) => {
+            return Err(IoError::InvalidFormat(format!(
+                "LOD metadata: format 2 without {KEY}"
+            )))
+        }
+        (f, _) => {
+            return Err(IoError::UnsupportedVersion(
+                u16::try_from(f).unwrap_or(u16::MAX),
+            ))
+        }
+    };
+    crate::provenance::sdf_load_verdict(stored, "LOD metadata", allow_unpinned)
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+const fn metadata_format_1() -> u32 {
+    1
+}
 
 /// Compute the sidecar path for a given ABM file path
 fn sidecar_path(abm_path: &Path) -> std::path::PathBuf {
@@ -432,7 +563,7 @@ fn sidecar_path(abm_path: &Path) -> std::path::PathBuf {
 /// Read sidecar metadata from JSON file
 #[allow(
     clippy::disallowed_methods,
-    reason = "stored form pending: the LOD chain metadata sidecar carries no identifier yet (G8 abm and lod group)"
+    reason = "stored form checked: the sidecar's format and alice:semantics_id go through metadata_verdict (sdf_load_verdict) in load_lod_chain and load_lod_chain_metadata before any value is returned"
 )]
 fn read_sidecar_metadata(path: impl AsRef<Path>) -> Result<LodChainMetadata, IoError> {
     let file = std::fs::File::open(path.as_ref())?;
@@ -719,7 +850,8 @@ mod tests {
         let meta_path = sidecar_path(&abm_path);
 
         save_lod_chain_metadata(&chain, &abm_path).unwrap();
-        let config = load_lod_chain_metadata(&meta_path).unwrap();
+        let (config, semantics) = load_lod_chain_metadata(&meta_path).unwrap().into_parts();
+        assert_eq!(semantics, StoredSemantics::Current);
 
         assert_eq!(config.lod_count, 2);
         assert_eq!(config.base_resolution, 256);
