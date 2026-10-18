@@ -1863,6 +1863,22 @@ fn alice_vdb_headers_are_read_by_their_exact_version_and_never_as_unstamped() {
             );
         }
     }
+    // a resolution whose cell count or byte length wraps usize: an error, never a wrapped length
+    // that passes the size check and indexes past the buffer
+    let body = 9 + 32;
+    for r in [u32::MAX, 2_700_000, 1_700_000] {
+        let mut b = own.clone();
+        b[body..body + 4].copy_from_slice(&r.to_le_bytes());
+        for result in [
+            vdb::load_dense_grid_from_vdb(&b).map(|_| ()),
+            vdb::load_dense_grid_from_vdb_unverified(&b).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref why)) if why.contains("overflows")),
+                "resolution {r}: {result:?}"
+            );
+        }
+    }
 }
 
 // SVO chunk wire form (`svo::SvoChunk`, feature `svo`): chunk_v1.svoc
