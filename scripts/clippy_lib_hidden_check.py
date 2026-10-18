@@ -10,6 +10,12 @@ into an allow of an unrelated lint (so the code still compiles and is linted wit
 nothing hidden), runs the library clippy there, and fails on any max / min
 diagnostic outside `src/raw_minmax.rs`.
 
+The same lint carries the ALICE-Law G8 ban on bare reads of a stored form (serde_json /
+bincode): in the rewritten tree every such diagnostic must fall inside a site marked
+`#[allow(clippy::disallowed_methods, reason = "stored form <status>: ...")]` (listed by
+`scripts/bare_serde_reads.py`), and every such site must still contain one; a read hidden
+under an allow written for libm, or a stored-form site that now covers some other call, fails.
+
 It also fails when it compared nothing: no allow was rewritten, or the rewritten
 tree produced no `disallowed_methods` diagnostic at all (the allows exist for libm
 calls, so unhiding them must show those).
@@ -29,10 +35,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+import bare_serde_reads
+
 ROOT = Path(__file__).resolve().parent.parent
 KEEP = "src/raw_minmax.rs"
 LINT = "clippy::disallowed_methods"
 STAND_IN = "clippy::disallowed_types"
+STORED_FORM = re.compile(r"`((?:serde_json|bincode)::[^`]+)`")
 MINMAX = re.compile(r"`((?:f32|f64)::(?:max|min)|wide::f32x8::(?:max|min))`")
 
 
@@ -59,6 +68,28 @@ def judge(messages: list[dict]) -> tuple[list[str], int]:
     return hidden, seen
 
 
+def judge_stored(messages: list[dict], sites: dict[str, list[tuple[int, int]]]) -> tuple[list[str], int]:
+    """(errors, number of stored-form diagnostics): each must lie in a reviewed site of its file,
+    and each reviewed site must contain one"""
+    errors, n, used = [], 0, set()
+    for msg in messages:
+        if (msg.get("code") or {}).get("code") != LINT or not STORED_FORM.search(msg.get("message", "")):
+            continue
+        n += 1
+        spans = [s for s in msg.get("spans", []) if s.get("is_primary")]
+        file, line = (spans[0]["file_name"], spans[0]["line_start"]) if spans else ("?", 0)
+        hit = [(file, r) for r in sites.get(file, []) if r[0] <= line <= r[1]]
+        if hit:
+            used.update(hit)
+        else:
+            errors.append(f"{file}:{line}: {msg['message']} outside a stored-form site (hidden under another allow)")
+    for file, ranges in sorted(sites.items()):
+        for r in ranges:
+            if (file, r) not in used:
+                errors.append(f"{file}:{r[0]}: stored-form site with no stored-form read in it")
+    return errors, n
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--features", default="")
@@ -67,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="clippy-lib-hidden-") as tmp:
         dst = Path(tmp)
         rewritten = 0
+        stored_sites: dict[str, list[tuple[int, int]]] = {}
         for rel in tracked_files():
             src = ROOT / rel
             if not src.is_file():
@@ -74,7 +106,11 @@ def main(argv: list[str] | None = None) -> int:
             out = dst / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             if rel.startswith("src/") and rel.endswith(".rs") and rel != KEEP:
-                text, n = neutralise(src.read_text(encoding="utf-8"))
+                original = src.read_text(encoding="utf-8")
+                found = [(s["first"], s["last"]) for s in bare_serde_reads.sites(original)]
+                if found:
+                    stored_sites[rel] = found
+                text, n = neutralise(original)
                 rewritten += n
                 out.write_text(text, encoding="utf-8")
             else:
@@ -99,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             if m.get("reason") == "compiler-message":
                 messages.append(m["message"])
         hidden, seen = judge(messages)
+        stored_errors, n_stored = judge_stored(messages, stored_sites)
         if a.dump:
             with open(a.dump, "w", encoding="utf-8") as f:
                 for m in messages:
@@ -108,12 +145,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {rewritten} allow(s) rewritten but clippy reported no disallowed_methods at all "
               f"(compared nothing; clippy exit {r.returncode})\n{r.stderr[-2000:]}", file=sys.stderr)
         return 1
+    if not stored_sites or n_stored == 0:
+        print(f"error: {len(stored_sites)} file(s) with stored-form sites, {n_stored} stored-form diagnostic(s) "
+              "(compared nothing)", file=sys.stderr)
+        return 1
     for h in hidden:
         print(f"error: hidden under an allow: {h}", file=sys.stderr)
-    if hidden:
+    for e in stored_errors:
+        print(f"error: {e}", file=sys.stderr)
+    if hidden or stored_errors:
         return 1
     print(f"clippy-lib hidden check: {rewritten} allow(s) lifted, {seen} disallowed-method diagnostic(s), "
-          f"0 max / min outside {KEEP}")
+          f"0 max / min outside {KEEP}, {n_stored} stored-form read(s) all in "
+          f"{sum(map(len, stored_sites.values()))} reviewed site(s)")
     return 0
 
 

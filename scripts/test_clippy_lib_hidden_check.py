@@ -48,5 +48,42 @@ class Judge(unittest.TestCase):
         self.assertEqual(h.judge([msg("f32::max", "src/a.rs", code="clippy::use_self")]), ([], 0))
 
 
+
+def at(path: str, file: str, line: int) -> dict:
+    m = msg(path, file)
+    m["spans"][0]["line_start"] = line
+    return m
+
+
+class StoredForm(unittest.TestCase):
+    SITES = {"src/io/json.rs": [(10, 14), (30, 33)]}
+
+    def test_reads_inside_the_reviewed_sites_pass(self):
+        errors, n = h.judge_stored([at("serde_json::de::from_str", "src/io/json.rs", 12),
+                                    at("serde_json::value::from_value", "src/io/json.rs", 30),
+                                    at("f32::sin", "src/io/json.rs", 50)], self.SITES)
+        self.assertEqual((errors, n), ([], 2))
+
+    def test_a_read_outside_a_site_is_hidden(self):
+        for path in ("serde_json::de::from_reader", "bincode::serde::decode_from_slice"):
+            with self.subTest(path=path):
+                errors, _ = h.judge_stored([at("serde_json::de::from_str", "src/io/json.rs", 12),
+                                            at("serde_json::de::from_str", "src/io/json.rs", 31),
+                                            at(path, "src/interval.rs", 12)], self.SITES)
+                self.assertEqual(len(errors), 1, errors)
+                self.assertIn("src/interval.rs:12", errors[0])
+
+    def test_a_site_with_no_read_left_fails(self):
+        errors, _ = h.judge_stored([at("serde_json::de::from_str", "src/io/json.rs", 12)], self.SITES)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("src/io/json.rs:30", errors[0])
+
+    def test_the_real_tree_has_sites(self):
+        import bare_serde_reads
+        files, found = bare_serde_reads.scan(Path(__file__).resolve().parent.parent)
+        self.assertGreater(files, 0)
+        self.assertGreater(len(found), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -119,7 +119,7 @@ python3 scripts/test_build_flags_check.py
 step "provenance writers: oracle + 公開の書き出し関数はすべて意味の識別子を書くか、未対応の一覧にある (件数固定、0 件で fail)"
 python3 scripts/test_provenance_writers.py
 python3 scripts/provenance_writers.py
-step "bare deserialization reads: oracle + src の素の serde / bincode の読み込みはすべて表にある (検査済みの loader の中、別の型、未対応、0 件で fail)"
+step "bare deserialization reads: oracle + src の serde / bincode の読み込みは library clippy が禁止し、確認済みの箇所 (stored form checked / other-type / pending の理由つき allow) だけにある (0 件で fail)"
 python3 scripts/test_bare_serde_reads.py
 python3 scripts/bare_serde_reads.py
 

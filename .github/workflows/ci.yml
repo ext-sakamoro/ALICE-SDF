@@ -470,8 +470,10 @@ jobs:
         run: |
           python scripts/test_provenance_writers.py
           python scripts/provenance_writers.py
-      # G8: the tree types keep Deserialize, so every bare deserialization in src is reviewed
-      # (inside a checked loader, another type, or pending); 0 files scanned fails
+      # G8: the tree types keep Deserialize; the library clippy configuration forbids the
+      # serde_json / bincode read entry points, so each read in src is a site marked with a
+      # stored form checked / other-type / pending reason. This lists the sites and checks the
+      # reasons (0 sites fails); the hidden check below shows none hides under another allow
       - name: bare deserialization reads (test, then check)
         run: |
           python scripts/test_bare_serde_reads.py

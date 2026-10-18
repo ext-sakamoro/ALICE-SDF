@@ -321,6 +321,10 @@ pub fn export_gltf_json_with_provenance(
 
     // A .gltf has no BIN chunk: the buffer must carry its bytes in `uri`
     // (glTF 2.0 §3.6.1.1), here as a base64 data URI
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form other-type: a serde_json::Value of this writer's own glTF JSON, re-read to add the buffer uri"
+    )]
     let mut doc: serde_json::Value =
         serde_json::from_slice(&json_bytes).map_err(|e| IoError::Serialization(e.to_string()))?;
     let buffer = doc
@@ -1259,6 +1263,10 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     let bin_bytes = bin_data.ok_or_else(|| IoError::InvalidFormat("Missing BIN chunk".into()))?;
 
     // Parse JSON using serde_json::Value (minimal parsing)
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form pending: the glTF importer does not yet check asset.extras (G8 mesh-import group)"
+    )]
     let root: serde_json::Value = serde_json::from_slice(json_bytes)
         .map_err(|e| IoError::InvalidFormat(format!("Invalid glTF JSON: {}", e)))?;
 
