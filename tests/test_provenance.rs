@@ -1549,3 +1549,166 @@ fn lod_metadata_is_read_by_its_exact_format() {
     std::fs::remove_file(&path).ok();
     std::fs::remove_file(&meta).ok();
 }
+
+// ---------------------------------------------------------------------------------------------
+// G8 group F: this crate's own stored forms that close only as reader + writer
+//
+// The version 1 fixtures were written by alice-sdf 6.1.0 from crates.io (a throwaway crate on
+// `alice-sdf = "=6.1.0"`, features `openvdb` and `svo`); none of them carries an identifier:
+//   neural_v1.nsdf     fc28931eacf667c5504e035dfbcbf87e4f3c3f08e23adebdc5a764509eeda564
+//                      NeuralSdf::new(&NeuralSdfConfig { hidden_layers: 1, hidden_width: 4,
+//                      pos_encoding_freqs: 1, ..Default::default() }).save(..)
+// ---------------------------------------------------------------------------------------------
+
+use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
+
+/// (writer name as the scanner reads it, what it writes) for the own stored forms of group F; each
+/// one is written, read back through `provenance::from_bytes` and judged by the tests below
+const STORED_WRITERS: &[(&str, &str)] = &[("src/neural.rs::save", "NSDF weights")];
+
+fn small_net() -> NeuralSdf {
+    NeuralSdf::new(&NeuralSdfConfig {
+        hidden_layers: 1,
+        hidden_width: 4,
+        pos_encoding_freqs: 1,
+        ..Default::default()
+    })
+}
+
+fn net_bits(net: &NeuralSdf) -> Vec<u32> {
+    (0..27)
+        .map(|i| {
+            let c = |k: i32| (k % 3 - 1) as f32 * 0.7;
+            net.eval(Vec3::new(c(i), c(i / 3), c(i / 9))).to_bits()
+        })
+        .collect()
+}
+
+fn nsdf_bytes(id: Option<&Provenance>) -> Vec<u8> {
+    let mut b = Vec::new();
+    match id {
+        None => small_net().save(&mut b).unwrap(),
+        Some(id) => small_net().save_with_provenance(&mut b, id).unwrap(),
+    }
+    b
+}
+
+/// The NSDF file written by alice-sdf 6.1.0 (version 1, no identifier): `NeuralSdf::load`
+/// refuses it as `Unpinned`, `load_unverified` returns the same network marked `Unpinned`
+#[test]
+fn an_nsdf_file_from_6_1_0_is_refused_by_default_and_read_unverified() {
+    let bytes = std::fs::read(fixture("neural_v1.nsdf")).unwrap();
+    assert_eq!(&bytes[..4], b"NSDF");
+    assert_eq!(&bytes[4..8], &1u32.to_le_bytes(), "fixture is version 1");
+    assert!(matches!(
+        provenance::from_bytes(&bytes),
+        Err(ProvenanceError::Missing { format: "NSDF" })
+    ));
+    match NeuralSdf::load(&mut bytes.as_slice()) {
+        Err(io::IoError::Unpinned { format }) => assert_eq!(format, "NSDF"),
+        other => panic!("expected Unpinned, got {:?}", other.map(|_| ())),
+    }
+    let checked = NeuralSdf::load_unverified(&mut bytes.as_slice()).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    let (net, _) = checked.into_parts();
+    assert_eq!(net.param_count(), small_net().param_count());
+    assert_eq!(
+        net_bits(&net),
+        net_bits(&small_net()),
+        "the 6.1.0 weights read back bit for bit"
+    );
+}
+
+/// NSDF version 2: `save` stores this crate's identifier, `save_with_provenance` the caller's;
+/// this crate's loads as `Current`, an earlier verified one as `VerifiedPrevious`, another one
+/// is refused by both loaders naming both identifiers
+#[test]
+fn nsdf_writers_store_and_loaders_check_the_identifier() {
+    assert!(STORED_WRITERS
+        .iter()
+        .any(|(w, _)| *w == "src/neural.rs::save"));
+    let own = nsdf_bytes(None);
+    assert_eq!(&own[4..8], &2u32.to_le_bytes());
+    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
+    let back = NeuralSdf::load(&mut own.as_slice()).unwrap();
+    assert_eq!(net_bits(&back), net_bits(&small_net()));
+    assert_eq!(
+        NeuralSdf::load_unverified(&mut own.as_slice())
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Current
+    );
+
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let prev = nsdf_bytes(Some(&earlier));
+    assert_eq!(provenance::from_bytes(&prev).unwrap(), earlier);
+    assert!(NeuralSdf::load(&mut prev.as_slice()).is_ok());
+    assert_eq!(
+        NeuralSdf::load_unverified(&mut prev.as_slice())
+            .unwrap()
+            .semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    let other = nsdf_bytes(Some(&caller_id()));
+    assert_eq!(provenance::from_bytes(&other).unwrap(), caller_id());
+    for result in [
+        NeuralSdf::load(&mut other.as_slice()).map(|_| ()),
+        NeuralSdf::load_unverified(&mut other.as_slice()).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+                    "{text}"
+                );
+            }
+            other => panic!("expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+}
+
+/// The NSDF header is read by its exact version, and a header cut short after the magic is an
+/// error of the format, never a file without an identifier
+#[test]
+fn nsdf_headers_are_read_by_their_exact_version_and_never_as_unstamped() {
+    let own = nsdf_bytes(None);
+    for v in [0u32, 3, u32::MAX] {
+        let mut b = own.clone();
+        b[4..8].copy_from_slice(&v.to_le_bytes());
+        assert!(
+            matches!(provenance::from_bytes(&b), Err(ProvenanceError::Unreadable(ref why)) if why.contains(&format!("version {v}"))),
+            "provenance reads NSDF version {v}"
+        );
+        for result in [
+            NeuralSdf::load(&mut b.as_slice()).map(|_| ()),
+            NeuralSdf::load_unverified(&mut b.as_slice()).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::UnsupportedVersion(_))),
+                "version {v}: {result:?}"
+            );
+        }
+    }
+    // the magic, then 0..8+31 bytes: the version or the identifier is cut short
+    for len in [4usize, 6, 8, 20, 39] {
+        let b = &own[..len];
+        assert!(
+            matches!(
+                provenance::from_bytes(b),
+                Err(ProvenanceError::Unreadable(_))
+            ),
+            "provenance reads {len} bytes"
+        );
+        for result in [
+            NeuralSdf::load(&mut &b[..]).map(|_| ()),
+            NeuralSdf::load_unverified(&mut &b[..]).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref why)) if why.contains("truncated")),
+                "{len} bytes: {result:?}"
+            );
+        }
+    }
+}
