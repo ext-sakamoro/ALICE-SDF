@@ -189,13 +189,21 @@ fn read_grid(bytes: &[u8]) -> Result<DenseGrid, &'static str> {
     let bmin = f32::from_le_bytes(bytes[4..8].try_into().unwrap());
     let bmax = f32::from_le_bytes(bytes[8..12].try_into().unwrap());
     let n = resolution as usize;
-    let expected = 12 + n * n * n * 4;
+    // a resolution from the file: its cell count and byte length must not wrap
+    let cells = n
+        .checked_mul(n)
+        .and_then(|c| c.checked_mul(n))
+        .ok_or("resolution overflows the grid size")?;
+    let expected = cells
+        .checked_mul(4)
+        .and_then(|b| b.checked_add(12))
+        .ok_or("resolution overflows the grid size")?;
     if bytes.len() < expected {
         return Err("truncated grid data");
     }
-    let mut grid = Vec::with_capacity(n * n * n);
+    let mut grid = Vec::with_capacity(cells);
     let mut off = 12;
-    for _ in 0..(n * n * n) {
+    for _ in 0..cells {
         let v = f32::from_le_bytes(bytes[off..off + 4].try_into().unwrap());
         grid.push(v);
         off += 4;
