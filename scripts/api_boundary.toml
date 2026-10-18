@@ -7,8 +7,26 @@ targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 # enumerated anywhere yet (a static count found none in this crate)
 host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
+# The parsers of outside bytes or text: a `local` entry that reaches one of them through the call
+# graph fails (scripts/api_boundary_parsers.py). This list is the parsers outside serde and bincode,
+# in SCIP form `<crate> <descriptor>` without the version; the serde_json / bincode / serde readers
+# are taken from the library clippy configuration's stored-form set (.github/clippy-lib/clippy.toml),
+# so the two cannot drift. [parser_exempt] and [parser_unindexed] are at the end of this file.
+parsers = [
+  "naga front/wgsl/parse_str().",
+  "naga front/glsl/impl#[Frontend]parse().",
+  "wgpu api/device/impl#[Device]create_shader_module().",
+  "image images/dynimage/load_from_memory().",
+  "image images/dynimage/open().",
+  "alice-codec rans/impl#[`RansDecoder<'a>`]decode_n().",
+  "libasp packet/impl#[AspPacket]from_bytes().",
+]
+# the crates of the list above: each of their parse-like functions this crate calls must be in
+# `parsers` or in [parser_not_parser] (so the list cannot miss a parser a later change calls)
+parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
+
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 739 items (0 Linux-only): 45 handshake, 670 local, 24 pending (G8). Groups (count, decision):
+# 739 items (0 Linux-only): 46 handshake, 669 local, 24 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -30,8 +48,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      2  handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused
 #      2  local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)
 #      5  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
-#      1  handshake: lod_chain_loaders_check_both_parts
-#      1  local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain
+#      2  handshake: lod_chain_loaders_check_both_parts
 #      1  local: converts an animation clip already in memory; the file it came from is read by import_fbx_full, which checks the identifier
 #     18  handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer
 #      1  pending: G8, the network weights file carries no semantics identifier of the build that trained it
@@ -171,11 +188,10 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::Splat::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
 "fn::SvoChunk::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
 
-# 1 handshake
+# 2 handshake
 "fn::mesh::lod_persist::load_lod_chain" = "handshake: lod_chain_loaders_check_both_parts"
+"fn::mesh::lod_persist::load_lod_chain_metadata" = "handshake: lod_chain_loaders_check_both_parts"
 
-# 1 local
-"fn::mesh::lod_persist::load_lod_chain_metadata" = "local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain"
 
 # 1 local
 "fn::io::fbx::fbx_animation_to_timeline" = "local: converts an animation clip already in memory; the file it came from is read by import_fbx_full, which checks the identifier"
@@ -965,3 +981,56 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # 1 handshake
 "abi::ffi::io_ffi::alice_sdf_load_lod_chain" = "handshake: ffi_load_lod_chain_checks_both_parts"
+
+# `local` entries that reach a parser on purpose (scripts/api_boundary_parsers.py)
+[parser_exempt]
+"binding::pyo3::gpu_bake_volume" = "compiles the WGSL this crate transpiles from the given node of this process (volume::gpu_bake_volume)"
+"binding::pyo3::gpu_marching_cubes" = "compiles the WGSL this crate transpiles from the given node of this process (mesh::gpu_marching_cubes)"
+"fn::provenance::from_bytes" = "parses a stored document only to return its identifier; the caller compares it"
+"fn::provenance::from_bytes_with_producer" = "parses a stored document only to return its identifiers; the caller compares them"
+"fn::provenance::read" = "parses a stored file only to return its identifier; check and check_sdf compare it"
+"fn::provenance::read_with_producer" = "parses a stored file only to return its identifiers; check_producer compares them"
+"fn::io::gltf::export_gltf_json" = "re-reads the glTF JSON this writer just produced to add the buffer uri"
+"fn::io::gltf::export_gltf_json_with_provenance" = "re-reads the glTF JSON this writer just produced to add the buffer uri"
+"fn::io::get_info" = "reads a stored file's format, version and node count to report them as text; no tree is returned"
+
+# entries the SCIP index has no definition for (scripts/api_boundary_parsers.py)
+[parser_unindexed]
+"abi::godot::gdext_rust_init" = "generated by godot's #[gdextension] macro; rust-analyzer records no definition inside the expansion"
+"abi::godot::__cxa_thread_atexit_impl" = "generated by godot's #[gdextension] macro on Linux (glibc's thread-exit hook); no definition in the index"
+"binding::pyo3::__pyo3_init" = "the module init pyo3's #[pymodule] macro generates; no definition in the index"
+"binding::pyo3::PyMeshCache::__new__" = "pyo3 maps #[new] to Python's __new__; the Rust constructor's name is not the key's"
+"fn::<ImplementsGodotVirtual for AliceSdfBatchEvaluator>::__virtual_call" = "generated by godot's #[godot_api] macro; rust-analyzer records no definition inside the expansion"
+"fn::<ImplementsGodotVirtual for AliceSdfCollisionGenerator>::__virtual_call" = "generated by godot's #[godot_api] macro; rust-analyzer records no definition inside the expansion"
+"fn::<ImplementsGodotVirtual for AliceSdfLodManager>::__virtual_call" = "generated by godot's #[godot_api] macro; rust-analyzer records no definition inside the expansion"
+"fn::<ImplementsGodotVirtual for AliceSdfMeshInstance>::__virtual_call" = "generated by godot's #[godot_api] macro; rust-analyzer records no definition inside the expansion"
+"fn::<ImplementsGodotVirtual for AliceSdfNode>::__virtual_call" = "generated by godot's #[godot_api] macro; rust-analyzer records no definition inside the expansion"
+"fn::<ImplementsGodotVirtual for AliceSdfResource>::__virtual_call" = "generated by godot's #[godot_api] macro; rust-analyzer records no definition inside the expansion"
+
+# dependencies that read no outside bytes or text (scripts/api_boundary_parsers.py): every non-dev
+# dependency of Cargo.toml is in `parser_crates`, is serde / serde_json / bincode (the stored-form
+# readers of the clippy configuration), or is here with the reason
+[not_parser_crates]
+"alice-cache" = "an in-process evaluation cache of this crate's own values"
+"alice-det-math" = "deterministic arithmetic functions and the identifier constants; no input is read"
+"alice-physics" = "physics on values this crate passes in the same process; no input is read"
+"bytemuck" = "casts between plain types in memory; the bytes come from this crate's own buffers"
+"clap" = "parses the command-line arguments of the cli binary, not a stored or transmitted form"
+"cranelift-codegen" = "compiles this crate's own IR to machine code (jit)"
+"cranelift-frontend" = "builds this crate's own IR (jit)"
+"cranelift-jit" = "links this crate's own compiled IR in the process (jit)"
+"cranelift-module" = "module handling for this crate's own IR (jit)"
+"cranelift-native" = "detects the host's instruction set (jit)"
+"crc32fast" = "checksums bytes this crate is writing or has read through its own readers"
+"futures-channel" = "in-process channels for the GPU readback"
+"glam" = "vector and matrix types of the API"
+"godot" = "the Godot binding framework; values come from the engine in the same process"
+"js-sys" = "JavaScript bindings of the wasm module; values come from the page in the same process"
+"log" = "logging facade"
+"numpy" = "NumPy arrays passed in the same process to the Python binding"
+"pollster" = "blocks on futures of the GPU code"
+"pyo3" = "the Python binding framework; values come from the interpreter in the same process"
+"rayon" = "data parallelism over this crate's own work"
+"thiserror" = "error type derive"
+"wasm-bindgen" = "the wasm binding framework; values come from the page in the same process"
+"wide" = "SIMD vector types"
