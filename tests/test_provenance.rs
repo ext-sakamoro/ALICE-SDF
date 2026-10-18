@@ -2636,3 +2636,333 @@ fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_u
         }
     }
 }
+
+/// (writer name as the scanner reads it, what it writes) for the encoded buffers; each one is
+/// written, its identifier read back and another one refused by the codec tests below
+const CODEC_WRITERS: &[(&str, &str)] = &[
+    (
+        "src/mesh/mesh_codec.rs::encode_indices",
+        "delta index buffer",
+    ),
+    (
+        "src/mesh/mesh_codec.rs::encode_positions",
+        "delta position buffer",
+    ),
+    (
+        "src/mesh/mesh_codec.rs::encode_mesh",
+        "delta index and position buffers",
+    ),
+    (
+        "src/mesh/meshopt_index_codec.rs::encode_index_buffer",
+        "stamped meshoptimizer index buffer",
+    ),
+    (
+        "src/mesh/meshopt_index_codec.rs::try_encode_index_buffer",
+        "stamped meshoptimizer index buffer",
+    ),
+    (
+        "src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer",
+        "stamped meshoptimizer vertex buffer",
+    ),
+    (
+        "src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer_level",
+        "stamped meshoptimizer vertex buffer",
+    ),
+    (
+        "src/codec_bridge.rs::encode_sdf_volume",
+        "compressed SDF volume stream",
+    ),
+];
+
+fn codec_writer(name: &str) -> bool {
+    CODEC_WRITERS.iter().any(|(w, _)| *w == name)
+}
+
+/// The crate's varint delta mesh codec (`mesh::mesh_codec`): version 2 buffers carry the
+/// identifier; the decoders read this crate's and a reproduced earlier one, refuse another one
+/// naming both, and refuse a version 1 buffer (written by the published 6.1.0) unless
+/// `*_unverified`, which returns it as Unpinned
+#[test]
+fn mesh_codec_decoders_check_the_identifier() {
+    use alice_sdf::mesh::mesh_codec::{
+        decode_indices, decode_indices_unverified, decode_positions, decode_positions_unverified,
+        encode_indices, encode_indices_with_provenance, encode_mesh, encode_mesh_with_provenance,
+        encode_positions, encode_positions_with_provenance, CodecError,
+    };
+    for w in ["encode_indices", "encode_positions", "encode_mesh"] {
+        assert!(codec_writer(&format!("src/mesh/mesh_codec.rs::{w}")), "{w}");
+    }
+    let idx = [0u32, 1, 2, 2, 1, 3];
+    let pos = [
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(1.0, 0.5, -2.0),
+        Vec3::new(3.25, -0.125, 7.5),
+        Vec3::new(-1.0, 2.0, 0.25),
+    ];
+    let bits = |v: &[Vec3]| {
+        v.iter()
+            .map(|p| p.to_array().map(f32::to_bits))
+            .collect::<Vec<_>>()
+    };
+
+    // this crate's identifier: both decoders, Current
+    let mesh = Mesh {
+        vertices: pos.iter().map(|&p| Vertex::new(p, Vec3::Z)).collect(),
+        indices: idx.to_vec(),
+    };
+    let (ib, pb) = encode_mesh(&mesh);
+    assert_eq!(&ib[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(
+        (encode_indices(&idx), encode_positions(&pos)),
+        (ib.clone(), pb.clone())
+    );
+    assert_eq!(decode_indices(&ib).unwrap(), idx);
+    assert_eq!(bits(&decode_positions(&pb).unwrap()), bits(&pos));
+    assert_eq!(
+        decode_indices_unverified(&ib).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+
+    // a reproduced earlier identifier: read, VerifiedPrevious
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let ib = encode_indices_with_provenance(&idx, &earlier);
+    let pb = encode_positions_with_provenance(&pos, &earlier);
+    assert_eq!(decode_indices(&ib).unwrap(), idx);
+    assert_eq!(
+        decode_positions_unverified(&pb).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    // another identifier: refused by both decoders, the error names both
+    let ib = encode_indices_with_provenance(&idx, &caller_id());
+    let pb = encode_positions_with_provenance(&pos, &caller_id());
+    assert_eq!(
+        encode_mesh_with_provenance(&mesh, &caller_id()),
+        (ib.clone(), pb.clone())
+    );
+    let mismatch = CodecError::SemanticsMismatch {
+        stored: caller_id(),
+        expected: Provenance::sdf(),
+    };
+    assert_eq!(decode_indices(&ib), Err(mismatch));
+    assert_eq!(decode_indices_unverified(&ib).map(|_| ()), Err(mismatch));
+    assert_eq!(decode_positions(&pb), Err(mismatch));
+    assert_eq!(decode_positions_unverified(&pb).map(|_| ()), Err(mismatch));
+    let text = mismatch.to_string();
+    assert!(text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()));
+
+    // version 1 buffers written by alice-sdf 6.1.0 (crates.io): refused by default, read
+    // unverified as Unpinned with the same values
+    let ib1 = std::fs::read(fixture("mesh_codec_indices_v1.bin")).unwrap();
+    let pb1 = std::fs::read(fixture("mesh_codec_positions_v1.bin")).unwrap();
+    assert_eq!(ib1[4], 1);
+    assert_eq!(decode_indices(&ib1), Err(CodecError::Unpinned));
+    assert_eq!(decode_positions(&pb1), Err(CodecError::Unpinned));
+    let (got, status) = decode_indices_unverified(&ib1).unwrap().into_parts();
+    assert_eq!((got, status), (idx.to_vec(), StoredSemantics::Unpinned));
+    let (got, status) = decode_positions_unverified(&pb1).unwrap().into_parts();
+    assert_eq!(
+        (bits(&got), status),
+        (bits(&pos), StoredSemantics::Unpinned)
+    );
+}
+
+/// The meshoptimizer codecs: the default encoders write the crate's stamped form (the identifier
+/// around the meshoptimizer bytes) and the default decoders read only that; bare meshoptimizer
+/// bytes (interchange, and everything 6.1.0 wrote) are refused by the default decoders as
+/// Unpinned and read by name with `*_raw`, which marks them Unpinned; `*_raw` does not read a
+/// stamped buffer
+#[test]
+fn meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name() {
+    use alice_sdf::mesh::mesh_codec::CodecError;
+    use alice_sdf::mesh::meshopt_index_codec::{
+        decode_index_buffer, decode_index_buffer_raw, encode_index_buffer, encode_index_buffer_raw,
+        try_encode_index_buffer, try_encode_index_buffer_with_provenance,
+    };
+    use alice_sdf::mesh::meshopt_vertex_codec::{
+        decode_vertex_buffer, decode_vertex_buffer_raw, encode_vertex_buffer,
+        encode_vertex_buffer_level, encode_vertex_buffer_raw, encode_vertex_buffer_with_provenance,
+    };
+    for w in [
+        "meshopt_index_codec.rs::encode_index_buffer",
+        "meshopt_index_codec.rs::try_encode_index_buffer",
+        "meshopt_vertex_codec.rs::encode_vertex_buffer",
+        "meshopt_vertex_codec.rs::encode_vertex_buffer_level",
+    ] {
+        assert!(codec_writer(&format!("src/mesh/{w}")), "{w}");
+    }
+    let idx = [0u32, 1, 2, 2, 1, 3];
+    let pos = [
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(1.0, 0.5, -2.0),
+        Vec3::new(3.25, -0.125, 7.5),
+        Vec3::new(-1.0, 2.0, 0.25),
+    ];
+    let mut verts = Vec::new();
+    for p in pos {
+        for c in [p.x, p.y, p.z] {
+            verts.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    let same_tris = |a: &[u32], b: &[u32]| {
+        a.chunks_exact(3).zip(b.chunks_exact(3)).all(|(x, y)| {
+            (0..3).any(|r| x[0] == y[r] && x[1] == y[(r + 1) % 3] && x[2] == y[(r + 2) % 3])
+        })
+    };
+
+    // the stamped form: this crate's identifier around the raw bytes
+    let vb = encode_vertex_buffer(&verts, 12);
+    let ib = encode_index_buffer(&idx);
+    assert_eq!(&vb[..4], b"ASMO");
+    assert_eq!(&vb[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(&vb[40..], encode_vertex_buffer_raw(&verts, 12).as_slice());
+    assert_eq!(decode_vertex_buffer(&vb, 4, 12).unwrap(), verts);
+    assert!(same_tris(&idx, &decode_index_buffer(&ib, 6).unwrap()));
+    assert_eq!(try_encode_index_buffer(&idx).unwrap(), ib);
+    let vb_level = encode_vertex_buffer_level(&verts, 12, 0);
+    assert_eq!(&vb_level[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(decode_vertex_buffer(&vb_level, 4, 12).unwrap(), verts);
+    // a reproduced earlier identifier is read
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    assert_eq!(
+        decode_vertex_buffer(
+            &encode_vertex_buffer_with_provenance(&verts, 12, &earlier),
+            4,
+            12
+        )
+        .unwrap(),
+        verts
+    );
+    // another identifier is refused, naming both
+    let mismatch = CodecError::SemanticsMismatch {
+        stored: caller_id(),
+        expected: Provenance::sdf(),
+    };
+    assert_eq!(
+        decode_vertex_buffer(
+            &encode_vertex_buffer_with_provenance(&verts, 12, &caller_id()),
+            4,
+            12
+        ),
+        Err(mismatch)
+    );
+    assert_eq!(
+        decode_index_buffer(
+            &try_encode_index_buffer_with_provenance(&idx, &caller_id()).unwrap(),
+            6
+        ),
+        Err(mismatch)
+    );
+    // a vertex stamp is not an index buffer
+    assert_eq!(decode_index_buffer(&vb, 6), Err(CodecError::WrongKind));
+
+    // bare meshoptimizer bytes, as alice-sdf 6.1.0 (crates.io) wrote them: the default decoders
+    // refuse them as Unpinned; *_raw reads them and says so
+    let raw_v = std::fs::read(fixture("meshopt_vertex_v1.bin")).unwrap();
+    let raw_i = std::fs::read(fixture("meshopt_index_v1.bin")).unwrap();
+    assert_eq!(raw_v, encode_vertex_buffer_raw(&verts, 12));
+    assert_eq!(raw_i, encode_index_buffer_raw(&idx));
+    assert_eq!(
+        decode_vertex_buffer(&raw_v, 4, 12),
+        Err(CodecError::Unpinned)
+    );
+    assert_eq!(decode_index_buffer(&raw_i, 6), Err(CodecError::Unpinned));
+    let (v, status) = decode_vertex_buffer_raw(&raw_v, 4, 12)
+        .unwrap()
+        .into_parts();
+    assert_eq!((v, status), (verts.clone(), StoredSemantics::Unpinned));
+    let (i, status) = decode_index_buffer_raw(&raw_i, 6).unwrap().into_parts();
+    assert!(same_tris(&idx, &i));
+    assert_eq!(status, StoredSemantics::Unpinned);
+    // *_raw does not read the stamped form (it is not meshoptimizer bytes)
+    assert_eq!(
+        decode_vertex_buffer_raw(&vb, 4, 12).map(|_| ()),
+        Err(CodecError::BadMagic)
+    );
+    assert_eq!(
+        decode_index_buffer_raw(&ib, 6).map(|_| ()),
+        Err(CodecError::BadMagic)
+    );
+}
+
+/// The compressed SDF volume stream (`codec_bridge`): the identifier follows the header (flag
+/// 0x10); `try_decode_sdf_volume` reads this crate's and a reproduced earlier one and refuses
+/// another (naming both) and a stream written before 7.0.0 (6.1.0's, without the flag);
+/// `decode_sdf_volume` / `decompress_sdf` panic on those with a message naming the identifiers;
+/// `try_decode_sdf_volume_unverified` returns an old stream marked Unpinned
+#[cfg(feature = "codec")]
+#[test]
+fn codec_volume_stream_checks_the_identifier() {
+    use alice_sdf::codec_bridge::{
+        decode_sdf_volume, decompress_sdf, encode_sdf_volume, encode_sdf_volume_with_provenance,
+        try_decode_sdf_volume, try_decode_sdf_volume_unverified, voxelize_sdf_uniform, DecodeError,
+        EncodeConfig,
+    };
+    assert!(codec_writer("src/codec_bridge.rs::encode_sdf_volume"));
+    let volume = voxelize_sdf_uniform(
+        &SdfNode::sphere(1.0),
+        Vec3::splat(-1.5),
+        Vec3::splat(1.5),
+        8,
+    );
+    let config = EncodeConfig::default();
+    let current = encode_sdf_volume(&volume, &config);
+    let ok = try_decode_sdf_volume(&current).unwrap();
+    assert_eq!(ok.data.len(), volume.data.len());
+    assert_eq!(
+        try_decode_sdf_volume_unverified(&current)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Current
+    );
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let prev = encode_sdf_volume_with_provenance(&volume, &config, &earlier);
+    assert_eq!(
+        try_decode_sdf_volume_unverified(&prev).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+    // the identifier does not change the values
+    let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    assert_eq!(
+        bits(&try_decode_sdf_volume(&prev).unwrap().data),
+        bits(&ok.data)
+    );
+
+    let other = encode_sdf_volume_with_provenance(&volume, &config, &caller_id());
+    let mismatch = DecodeError::SemanticsMismatch {
+        stored: caller_id(),
+        expected: Provenance::sdf(),
+    };
+    assert_eq!(
+        try_decode_sdf_volume(&other).map(|_| ()),
+        Err(mismatch.clone())
+    );
+    assert_eq!(
+        try_decode_sdf_volume_unverified(&other).map(|_| ()),
+        Err(mismatch)
+    );
+    for decode in [decode_sdf_volume, decompress_sdf] {
+        let panic = std::panic::catch_unwind(|| decode(&other)).unwrap_err();
+        let text = panic.downcast_ref::<String>().cloned().unwrap_or_default();
+        assert!(
+            text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+            "{text}"
+        );
+    }
+
+    // a stream written by alice-sdf 6.1.0 (crates.io), without the identifier flag
+    let old = std::fs::read(fixture("codec_volume_v1.bin")).unwrap();
+    assert_eq!(old[33] & 0x10, 0);
+    assert_eq!(
+        try_decode_sdf_volume(&old).map(|_| ()),
+        Err(DecodeError::Unpinned)
+    );
+    let (vol, status) = try_decode_sdf_volume_unverified(&old).unwrap().into_parts();
+    assert_eq!(status, StoredSemantics::Unpinned);
+    assert_eq!(vol.data.len(), 8 * 8 * 8);
+    for decode in [decode_sdf_volume, decompress_sdf] {
+        let panic = std::panic::catch_unwind(|| decode(&old)).unwrap_err();
+        let text = panic.downcast_ref::<String>().cloned().unwrap_or_default();
+        assert!(text.contains("no semantics identifier"), "{text}");
+    }
+}

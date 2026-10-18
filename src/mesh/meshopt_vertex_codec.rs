@@ -49,7 +49,8 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::mesh::mesh_codec::CodecError;
+use crate::mesh::mesh_codec::{meshopt_stamp, meshopt_unstamp, CodecError, MESHOPT_KIND_VERTEX};
+use crate::provenance::{Checked, Provenance, StoredSemantics};
 
 const VERTEX_HEADER: u8 = 0xA0;
 const CURRENT_VERSION: u8 = 1;
@@ -904,6 +905,35 @@ pub fn encode_vertex_buffer(vertex_data: &[u8], vertex_size: usize) -> Vec<u8> {
     encode_vertex_buffer_level(vertex_data, vertex_size, 0)
 }
 
+/// [`encode_vertex_buffer`] storing the given semantics identifier instead of this crate's
+///
+/// # Panics
+///
+/// Same as [`encode_vertex_buffer`]
+#[must_use]
+pub fn encode_vertex_buffer_with_provenance(
+    vertex_data: &[u8],
+    vertex_size: usize,
+    provenance: &Provenance,
+) -> Vec<u8> {
+    meshopt_stamp(
+        MESHOPT_KIND_VERTEX,
+        provenance,
+        &encode_vertex_buffer_level_raw(vertex_data, vertex_size, 0),
+    )
+}
+
+/// The meshoptimizer vertex buffer bytes alone (interchange, e.g. `EXT_meshopt_compression`):
+/// no semantics identifier; the container carries it (the glTF writer stamps `asset.extras`)
+///
+/// # Panics
+///
+/// Same as [`encode_vertex_buffer`]
+#[must_use]
+pub fn encode_vertex_buffer_raw(vertex_data: &[u8], vertex_size: usize) -> Vec<u8> {
+    encode_vertex_buffer_level_raw(vertex_data, vertex_size, 0)
+}
+
 /// Encode vertex data with explicit compression level
 ///
 /// - `level` 0-1: scalar u8 delta only (all channels = 0)
@@ -917,6 +947,24 @@ pub fn encode_vertex_buffer(vertex_data: &[u8], vertex_size: usize) -> Vec<u8> {
 /// Same as `encode_vertex_buffer`
 #[must_use]
 pub fn encode_vertex_buffer_level(vertex_data: &[u8], vertex_size: usize, level: u8) -> Vec<u8> {
+    meshopt_stamp(
+        MESHOPT_KIND_VERTEX,
+        &Provenance::sdf(),
+        &encode_vertex_buffer_level_raw(vertex_data, vertex_size, level),
+    )
+}
+
+/// [`encode_vertex_buffer_level`] without the stamp: the meshoptimizer bytes alone
+///
+/// # Panics
+///
+/// Same as `encode_vertex_buffer`
+#[must_use]
+pub fn encode_vertex_buffer_level_raw(
+    vertex_data: &[u8],
+    vertex_size: usize,
+    level: u8,
+) -> Vec<u8> {
     assert!(
         vertex_size > 0 && vertex_size <= 256,
         "vertex_size must be in (0, 256]"
@@ -1049,8 +1097,38 @@ pub fn encode_vertex_buffer_level(vertex_data: &[u8], vertex_size: usize, level:
 ///
 /// - `BadMagic`: header doesn't match
 /// - `UnsupportedVersion`: version > MAX_DECODABLE_VERSION
+/// - `WrongKind`: a stamped index buffer
+/// - `SemanticsMismatch`: written under another semantics identifier (both are named)
+/// - `Unpinned`: bare meshoptimizer bytes without the stamp (read them with
+///   [`decode_vertex_buffer_raw`])
 /// - `UnexpectedEof`: truncated
 pub fn decode_vertex_buffer(
+    buffer: &[u8],
+    vertex_count: usize,
+    vertex_size: usize,
+) -> Result<Vec<u8>, CodecError> {
+    let (raw, _) = meshopt_unstamp(buffer, MESHOPT_KIND_VERTEX, |b| b & 0xF0 == VERTEX_HEADER)?;
+    decode_vertex_bytes(raw, vertex_count, vertex_size)
+}
+
+/// Decodes bare meshoptimizer vertex bytes (interchange: no semantics identifier, so the result
+/// is marked [`crate::provenance::StoredSemantics::Unpinned`]; the identifier is the container's)
+///
+/// A stamped buffer is not read here (`BadMagic`): it goes through [`decode_vertex_buffer`].
+///
+/// # Errors
+///
+/// As [`decode_vertex_buffer`], without the stamp's.
+pub fn decode_vertex_buffer_raw(
+    buffer: &[u8],
+    vertex_count: usize,
+    vertex_size: usize,
+) -> Result<Checked<Vec<u8>>, CodecError> {
+    decode_vertex_bytes(buffer, vertex_count, vertex_size)
+        .map(|v| Checked::new(v, StoredSemantics::Unpinned))
+}
+
+fn decode_vertex_bytes(
     buffer: &[u8],
     vertex_count: usize,
     vertex_size: usize,
@@ -1148,6 +1226,11 @@ pub fn decode_vertex_buffer(
 mod tests {
     use super::*;
 
+    /// The format under test is the meshoptimizer one: these tests use the interchange codecs
+    fn decode_raw(buffer: &[u8], count: usize, size: usize) -> Result<Vec<u8>, CodecError> {
+        decode_vertex_buffer_raw(buffer, count, size).map(|c| c.into_parts().0)
+    }
+
     #[test]
     fn test_zigzag_roundtrip() {
         for v in 0u8..=255 {
@@ -1200,9 +1283,9 @@ mod tests {
             vertex_data.extend_from_slice(&z.to_le_bytes());
         }
 
-        let level_0 = encode_vertex_buffer_level(&vertex_data, vertex_size, 0);
-        let level_2 = encode_vertex_buffer_level(&vertex_data, vertex_size, 2);
-        let level_3 = encode_vertex_buffer_level(&vertex_data, vertex_size, 3);
+        let level_0 = encode_vertex_buffer_level_raw(&vertex_data, vertex_size, 0);
+        let level_2 = encode_vertex_buffer_level_raw(&vertex_data, vertex_size, 2);
+        let level_3 = encode_vertex_buffer_level_raw(&vertex_data, vertex_size, 3);
 
         // All 3 must round-trip
         for (level_name, encoded) in [
@@ -1210,7 +1293,7 @@ mod tests {
             ("level_2", &level_2),
             ("level_3", &level_3),
         ] {
-            let decoded = decode_vertex_buffer(encoded, vertex_count, vertex_size).unwrap();
+            let decoded = decode_raw(encoded, vertex_count, vertex_size).unwrap();
             assert_eq!(decoded, vertex_data, "{level_name} round-trip failed");
         }
 
@@ -1246,17 +1329,17 @@ mod tests {
     #[test]
     fn test_encode_decode_single_vertex() {
         let vertex_data = vec![1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // 1 vertex × 12 bytes
-        let encoded = encode_vertex_buffer(&vertex_data, 12);
+        let encoded = encode_vertex_buffer_raw(&vertex_data, 12);
         assert_eq!(encoded[0], VERTEX_HEADER | CURRENT_VERSION);
-        let decoded = decode_vertex_buffer(&encoded, 1, 12).unwrap();
+        let decoded = decode_raw(&encoded, 1, 12).unwrap();
         assert_eq!(decoded, vertex_data);
     }
 
     #[test]
     fn test_encode_decode_empty() {
         let vertex_data: Vec<u8> = vec![];
-        let encoded = encode_vertex_buffer(&vertex_data, 12);
-        let decoded = decode_vertex_buffer(&encoded, 0, 12).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, 12);
+        let decoded = decode_raw(&encoded, 0, 12).unwrap();
         assert!(decoded.is_empty());
     }
 
@@ -1264,8 +1347,8 @@ mod tests {
     fn test_encode_decode_uniform_vertices() {
         // All vertices are identical (deltas all zero → ctrl=2)
         let vertex_data = vec![10u8; 100 * 8]; // 100 vertices × 8 bytes
-        let encoded = encode_vertex_buffer(&vertex_data, 8);
-        let decoded = decode_vertex_buffer(&encoded, 100, 8).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, 8);
+        let decoded = decode_raw(&encoded, 100, 8).unwrap();
         assert_eq!(decoded, vertex_data);
         // Should be highly compressed
         assert!(
@@ -1285,8 +1368,8 @@ mod tests {
             vertex_data.extend_from_slice(&((i * 2) as u16).to_le_bytes());
             vertex_data.extend_from_slice(&[0, 0, 0, 0]);
         }
-        let encoded = encode_vertex_buffer(&vertex_data, 8);
-        let decoded = decode_vertex_buffer(&encoded, 50, 8).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, 8);
+        let decoded = decode_raw(&encoded, 50, 8).unwrap();
         assert_eq!(decoded, vertex_data);
     }
 
@@ -1299,8 +1382,8 @@ mod tests {
         for i in 0..(vertex_count * vertex_size) {
             vertex_data.push((i as u8).wrapping_mul(17));
         }
-        let encoded = encode_vertex_buffer(&vertex_data, vertex_size);
-        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, vertex_size);
+        let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
         let mismatch = vertex_data
             .iter()
             .zip(decoded.iter())
@@ -1326,8 +1409,8 @@ mod tests {
             state = state.wrapping_mul(1_103_515_245).wrapping_add(12345);
             vertex_data.push((state >> 16) as u8);
         }
-        let encoded = encode_vertex_buffer(&vertex_data, vertex_size);
-        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, vertex_size);
+        let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
         assert_eq!(decoded, vertex_data);
     }
 
@@ -1345,8 +1428,8 @@ mod tests {
             vertex_data.extend_from_slice(&y.to_le_bytes());
             vertex_data.extend_from_slice(&z.to_le_bytes());
         }
-        let encoded = encode_vertex_buffer(&vertex_data, vertex_size);
-        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, vertex_size);
+        let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
         assert_eq!(decoded, vertex_data);
     }
 
@@ -1359,15 +1442,15 @@ mod tests {
         for i in 0..(vertex_count * vertex_size) {
             vertex_data.push((i as u8).wrapping_mul(37));
         }
-        let encoded = encode_vertex_buffer(&vertex_data, vertex_size);
-        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, vertex_size);
+        let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
         assert_eq!(decoded, vertex_data);
     }
 
     #[test]
     fn test_decode_bad_magic() {
         let bad = vec![0xFF; 100];
-        let result = decode_vertex_buffer(&bad, 1, 12);
+        let result = decode_raw(&bad, 1, 12);
         assert!(matches!(result, Err(CodecError::BadMagic)));
     }
 
@@ -1375,16 +1458,16 @@ mod tests {
     fn test_decode_unsupported_version() {
         let mut buf = vec![VERTEX_HEADER | 0x0F];
         buf.resize(100, 0);
-        let result = decode_vertex_buffer(&buf, 1, 12);
+        let result = decode_raw(&buf, 1, 12);
         assert!(matches!(result, Err(CodecError::UnsupportedVersion)));
     }
 
     #[test]
     fn test_decode_truncated() {
         let vertex_data = vec![1u8; 10 * 12];
-        let encoded = encode_vertex_buffer(&vertex_data, 12);
+        let encoded = encode_vertex_buffer_raw(&vertex_data, 12);
         let truncated = &encoded[..encoded.len() / 2];
-        let result = decode_vertex_buffer(truncated, 10, 12);
+        let result = decode_raw(truncated, 10, 12);
         assert!(result.is_err());
     }
 
@@ -1395,7 +1478,7 @@ mod tests {
         for i in 0..200 {
             vertex_data[i * 16] = i as u8;
         }
-        let encoded = encode_vertex_buffer(&vertex_data, 16);
+        let encoded = encode_vertex_buffer_raw(&vertex_data, 16);
         let ratio = vertex_data.len() as f32 / encoded.len() as f32;
         assert!(ratio > 3.0, "expected > 3x compression, got {ratio:.2}x");
     }
@@ -1428,8 +1511,8 @@ mod tests {
                 vertex_data.extend_from_slice(&((i * 3 + j) as u16).to_le_bytes());
             }
         }
-        let encoded = encode_vertex_buffer_level(&vertex_data, vertex_size, 2);
-        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        let encoded = encode_vertex_buffer_level_raw(&vertex_data, vertex_size, 2);
+        let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
         assert_eq!(decoded, vertex_data);
     }
 
@@ -1447,8 +1530,8 @@ mod tests {
             vertex_data.extend_from_slice(&y.to_le_bytes());
             vertex_data.extend_from_slice(&z.to_le_bytes());
         }
-        let encoded = encode_vertex_buffer_level(&vertex_data, vertex_size, 3);
-        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        let encoded = encode_vertex_buffer_level_raw(&vertex_data, vertex_size, 3);
+        let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
         assert_eq!(decoded, vertex_data);
     }
 
@@ -1464,8 +1547,8 @@ mod tests {
             vertex_data.push((state >> 16) as u8);
         }
         for level in 0..=3u8 {
-            let encoded = encode_vertex_buffer_level(&vertex_data, vertex_size, level);
-            let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+            let encoded = encode_vertex_buffer_level_raw(&vertex_data, vertex_size, level);
+            let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
             assert_eq!(decoded, vertex_data, "level {level} round-trip failed");
         }
     }
@@ -1499,8 +1582,8 @@ mod tests {
         }
         let vertex_count = mesh.vertices.len();
 
-        let encoded = encode_vertex_buffer(&vertex_data, vertex_size);
-        let decoded = decode_vertex_buffer(&encoded, vertex_count, vertex_size).unwrap();
+        let encoded = encode_vertex_buffer_raw(&vertex_data, vertex_size);
+        let decoded = decode_raw(&encoded, vertex_count, vertex_size).unwrap();
         assert_eq!(decoded, vertex_data);
 
         let raw = vertex_data.len();

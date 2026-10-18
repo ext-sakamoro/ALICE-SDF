@@ -45,8 +45,9 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::mesh::mesh_codec::CodecError;
+use crate::mesh::mesh_codec::{meshopt_stamp, meshopt_unstamp, CodecError, MESHOPT_KIND_INDEX};
 use crate::mesh::MeshInputError;
+use crate::provenance::{Checked, Provenance, StoredSemantics};
 
 const INDEX_HEADER: u8 = 0xE0;
 const CURRENT_VERSION: u8 = 1;
@@ -231,6 +232,30 @@ pub fn encode_index_buffer(indices: &[u32]) -> Vec<u8> {
     try_encode_index_buffer(indices).unwrap_or_else(|e| panic!("encode_index_buffer: {e}"))
 }
 
+/// [`encode_index_buffer`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// `indices.len() % 3 != 0`.
+pub fn try_encode_index_buffer_with_provenance(
+    indices: &[u32],
+    provenance: &Provenance,
+) -> Result<Vec<u8>, MeshInputError> {
+    try_encode_index_buffer_raw(indices)
+        .map(|raw| meshopt_stamp(MESHOPT_KIND_INDEX, provenance, &raw))
+}
+
+/// The meshoptimizer index buffer bytes alone (interchange, e.g. `EXT_meshopt_compression`): no
+/// semantics identifier; the container carries it (the glTF writer stamps `asset.extras`)
+///
+/// # Panics
+///
+/// As [`encode_index_buffer`].
+#[must_use]
+pub fn encode_index_buffer_raw(indices: &[u32]) -> Vec<u8> {
+    try_encode_index_buffer_raw(indices).unwrap_or_else(|e| panic!("encode_index_buffer_raw: {e}"))
+}
+
 /// Non-panicking [`encode_index_buffer`]: an index count that is not a
 /// multiple of 3 is a [`MeshInputError`] instead of a panic.
 ///
@@ -238,6 +263,15 @@ pub fn encode_index_buffer(indices: &[u32]) -> Vec<u8> {
 ///
 /// `indices.len() % 3 != 0`.
 pub fn try_encode_index_buffer(indices: &[u32]) -> Result<Vec<u8>, MeshInputError> {
+    try_encode_index_buffer_with_provenance(indices, &Provenance::sdf())
+}
+
+/// [`try_encode_index_buffer`] without the stamp: the meshoptimizer bytes alone
+///
+/// # Errors
+///
+/// `indices.len() % 3 != 0`.
+pub fn try_encode_index_buffer_raw(indices: &[u32]) -> Result<Vec<u8>, MeshInputError> {
     if indices.len() % 3 != 0 {
         return Err(MeshInputError {
             reason: "index count must be multiple of 3",
@@ -437,7 +471,31 @@ pub fn try_encode_index_buffer(indices: &[u32]) -> Result<Vec<u8>, MeshInputErro
 /// - `BadMagic`: header byte doesn't match `INDEX_HEADER`
 /// - `UnsupportedVersion`: version > `MAX_DECODABLE_VERSION`
 /// - `VarintOverflow`: malformed varint
+/// - `WrongKind`: a stamped vertex buffer
+/// - `SemanticsMismatch`: written under another semantics identifier (both are named)
+/// - `Unpinned`: bare meshoptimizer bytes without the stamp (read them with
+///   [`decode_index_buffer_raw`])
 pub fn decode_index_buffer(buffer: &[u8], index_count: usize) -> Result<Vec<u32>, CodecError> {
+    let (raw, _) = meshopt_unstamp(buffer, MESHOPT_KIND_INDEX, |b| b & 0xF0 == INDEX_HEADER)?;
+    decode_index_bytes(raw, index_count)
+}
+
+/// Decodes bare meshoptimizer index bytes (interchange: no semantics identifier, so the result is
+/// marked [`crate::provenance::StoredSemantics::Unpinned`]; the identifier is the container's)
+///
+/// A stamped buffer is not read here (`BadMagic`): it goes through [`decode_index_buffer`].
+///
+/// # Errors
+///
+/// As [`decode_index_buffer`], without the stamp's.
+pub fn decode_index_buffer_raw(
+    buffer: &[u8],
+    index_count: usize,
+) -> Result<Checked<Vec<u32>>, CodecError> {
+    decode_index_bytes(buffer, index_count).map(|v| Checked::new(v, StoredSemantics::Unpinned))
+}
+
+fn decode_index_bytes(buffer: &[u8], index_count: usize) -> Result<Vec<u32>, CodecError> {
     assert_eq!(index_count % 3, 0, "index_count must be multiple of 3");
     let tri_count = index_count / 3;
 
@@ -666,6 +724,11 @@ pub fn decode_index_buffer(buffer: &[u8], index_count: usize) -> Result<Vec<u32>
 mod tests {
     use super::*;
 
+    /// The format under test is the meshoptimizer one: these tests use the interchange codecs
+    fn decode_raw(buffer: &[u8], count: usize) -> Result<Vec<u32>, CodecError> {
+        decode_index_buffer_raw(buffer, count).map(|c| c.into_parts().0)
+    }
+
     /// Two triangle sequences are equivalent if each corresponding triangle
     /// is a rotation of the input (meshopt encoder may rotate triangles to
     /// match FIFO edges、winding は保持される)
@@ -707,12 +770,12 @@ mod tests {
     #[test]
     fn test_encode_decode_single_triangle() {
         let indices = vec![0_u32, 1, 2];
-        let encoded = encode_index_buffer(&indices);
+        let encoded = encode_index_buffer_raw(&indices);
         // header (1) + code (1) + trailer (16) = 18 bytes minimum
         assert!(encoded.len() >= 18);
         assert_eq!(encoded[0], INDEX_HEADER | CURRENT_VERSION);
 
-        let decoded = decode_index_buffer(&encoded, indices.len()).unwrap();
+        let decoded = decode_raw(&encoded, indices.len()).unwrap();
         assert_eq!(decoded, indices);
     }
 
@@ -720,8 +783,8 @@ mod tests {
     fn test_encode_decode_strip_topological() {
         // Triangle strip pattern、meshopt は winding 保持 rotation 許容
         let indices = vec![0_u32, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4];
-        let encoded = encode_index_buffer(&indices);
-        let decoded = decode_index_buffer(&encoded, indices.len()).unwrap();
+        let encoded = encode_index_buffer_raw(&indices);
+        let decoded = decode_raw(&encoded, indices.len()).unwrap();
         assert!(triangles_equivalent(&indices, &decoded));
     }
 
@@ -734,8 +797,8 @@ mod tests {
             indices.push((t + 1) as u32);
             indices.push((t + 2) as u32);
         }
-        let encoded = encode_index_buffer(&indices);
-        let decoded = decode_index_buffer(&encoded, indices.len()).unwrap();
+        let encoded = encode_index_buffer_raw(&indices);
+        let decoded = decode_raw(&encoded, indices.len()).unwrap();
         assert!(triangles_equivalent(&indices, &decoded));
     }
 
@@ -744,7 +807,7 @@ mod tests {
         // Sequential indices should compress well (small deltas)
         let indices: Vec<u32> = (0..300).collect(); // 100 triangles
         let raw = indices.len() * 4; // u32
-        let encoded = encode_index_buffer(&indices);
+        let encoded = encode_index_buffer_raw(&indices);
         assert!(
             encoded.len() < raw,
             "expected compression: encoded {} vs raw {}",
@@ -757,7 +820,7 @@ mod tests {
     fn test_decode_bad_magic() {
         let mut bad = vec![0xAA]; // wrong header
         bad.resize(100, 0);
-        let result = decode_index_buffer(&bad, 3);
+        let result = decode_raw(&bad, 3);
         assert!(matches!(result, Err(CodecError::BadMagic)));
     }
 
@@ -765,29 +828,29 @@ mod tests {
     fn test_decode_unsupported_version() {
         let mut buf = vec![INDEX_HEADER | 0x0F]; // version 15 > MAX
         buf.resize(100, 0);
-        let result = decode_index_buffer(&buf, 3);
+        let result = decode_raw(&buf, 3);
         assert!(matches!(result, Err(CodecError::UnsupportedVersion)));
     }
 
     #[test]
     fn test_decode_truncated() {
         let indices = vec![0_u32, 1, 2, 3, 4, 5];
-        let encoded = encode_index_buffer(&indices);
+        let encoded = encode_index_buffer_raw(&indices);
         // truncate before end
         let truncated = &encoded[..encoded.len() / 2];
         // Should error (partial data)
-        let result = decode_index_buffer(truncated, indices.len());
+        let result = decode_raw(truncated, indices.len());
         assert!(result.is_err());
     }
 
     #[test]
     fn test_encode_decode_empty() {
         let indices: Vec<u32> = vec![];
-        let encoded = encode_index_buffer(&indices);
+        let encoded = encode_index_buffer_raw(&indices);
         // header (1) + trailer (16) = 17 bytes
         assert_eq!(encoded.len(), 17);
         assert_eq!(encoded[0], INDEX_HEADER | CURRENT_VERSION);
-        let decoded = decode_index_buffer(&encoded, 0).unwrap();
+        let decoded = decode_raw(&encoded, 0).unwrap();
         assert!(decoded.is_empty());
     }
 
@@ -810,8 +873,8 @@ mod tests {
             },
         );
         let indices = mesh.indices;
-        let encoded = encode_index_buffer(&indices);
-        let decoded = decode_index_buffer(&encoded, indices.len()).unwrap();
+        let encoded = encode_index_buffer_raw(&indices);
+        let decoded = decode_raw(&encoded, indices.len()).unwrap();
         assert!(triangles_equivalent(&indices, &decoded));
 
         // Should compress vs raw
@@ -844,8 +907,8 @@ mod tests {
             },
         );
         let indices = mesh.indices;
-        let encoded = encode_index_buffer(&indices);
-        let decoded = decode_index_buffer(&encoded, indices.len()).unwrap();
+        let encoded = encode_index_buffer_raw(&indices);
+        let decoded = decode_raw(&encoded, indices.len()).unwrap();
         assert!(triangles_equivalent(&indices, &decoded));
         // Compression ratio should be > 1.5x for typical mesh
         let raw = indices.len() * 4;
@@ -879,14 +942,14 @@ mod tests {
         );
         optimize_vertex_cache(&mut mesh);
         let indices = mesh.indices;
-        let encoded = encode_index_buffer(&indices);
-        let decoded = decode_index_buffer(&encoded, indices.len()).unwrap();
+        let encoded = encode_index_buffer_raw(&indices);
+        let decoded = decode_raw(&encoded, indices.len()).unwrap();
         assert!(triangles_equivalent(&indices, &decoded));
     }
 
     #[test]
     fn try_encode_index_buffer_rejects_non_triangle_count() {
-        assert!(try_encode_index_buffer(&[0, 1]).is_err());
-        assert!(try_encode_index_buffer(&[0, 1, 2]).is_ok());
+        assert!(try_encode_index_buffer_raw(&[0, 1]).is_err());
+        assert!(try_encode_index_buffer_raw(&[0, 1, 2]).is_ok());
     }
 }

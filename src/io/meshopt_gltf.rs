@@ -21,8 +21,10 @@
 
 use crate::compiled::real::LawMinMax;
 use crate::io::IoError;
-use crate::mesh::meshopt_index_codec::encode_index_buffer;
-use crate::mesh::meshopt_vertex_codec::encode_vertex_buffer_level;
+// EXT_meshopt_compression carries the meshoptimizer bytes alone (interchange); the semantics
+// identifier is the glTF's (asset.extras), stamped by this writer
+use crate::mesh::meshopt_index_codec::encode_index_buffer_raw;
+use crate::mesh::meshopt_vertex_codec::encode_vertex_buffer_level_raw;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
 use std::io::Write;
@@ -246,22 +248,22 @@ pub fn export_glb_meshopt_bytes_skinned_with_provenance(
     let indices_raw: Vec<u8> = mesh.indices.iter().flat_map(|&i| i.to_le_bytes()).collect();
 
     // Compress each
-    let positions_compressed = encode_vertex_buffer_level(&positions_raw, 12, config.level);
+    let positions_compressed = encode_vertex_buffer_level_raw(&positions_raw, 12, config.level);
     let normals_compressed = normals_raw
         .as_ref()
-        .map(|raw| encode_vertex_buffer_level(raw, 12, config.level));
+        .map(|raw| encode_vertex_buffer_level_raw(raw, 12, config.level));
     let uvs_compressed = uvs_raw
         .as_ref()
-        .map(|raw| encode_vertex_buffer_level(raw, 8, config.level));
+        .map(|raw| encode_vertex_buffer_level_raw(raw, 8, config.level));
     // Skinning: 4 bytes/vertex, use level 0 (scalar delta, common for indices/weights)
     let joints_compressed = joints_raw
         .as_ref()
-        .map(|raw| encode_vertex_buffer_level(raw, 4, 0));
+        .map(|raw| encode_vertex_buffer_level_raw(raw, 4, 0));
     let weights_compressed = weights_raw
         .as_ref()
-        .map(|raw| encode_vertex_buffer_level(raw, 4, 0));
+        .map(|raw| encode_vertex_buffer_level_raw(raw, 4, 0));
     // Index buffer uses meshopt index codec (VEC3 triangles)
-    let indices_compressed = encode_index_buffer(&mesh.indices);
+    let indices_compressed = encode_index_buffer_raw(&mesh.indices);
 
     // AABB for POSITION accessor
     let mut min_pos = [f32::MAX; 3];

@@ -438,7 +438,7 @@ step "test: AAA meta"
 cargo test --lib --no-default-features --features "aaa"
 
 step "test: aaa integration oracles (ci.yml の Test (integration, analytic oracles — aaa) と対)"
-cargo test --features "aaa,image" --test test_gi_volume_oracle --test test_terrain_destruction_oracle \
+cargo test --features "aaa,image,codec" --test test_gi_volume_oracle --test test_terrain_destruction_oracle \
   --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle \
   --test test_gi_api_oracle --test test_destruction_api_oracle
 

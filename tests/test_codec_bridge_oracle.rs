@@ -40,6 +40,9 @@ const FLAG_LOSSLESS_WAVELET: u8 = 0x01;
 const FLAG_RANS: u8 = 0x02;
 const FLAG_WIDE: u8 = 0x04;
 const FLAG_ANISOTROPIC_VOXEL: u8 = 0x08;
+/// The stream carries the 32-byte semantics identifier after the header (and after the per-axis
+/// voxel sizes when those are present)
+const FLAG_SEMANTICS_ID: u8 = 0x10;
 /// Header length (documented layout, up to and including the symbol count).
 const HEADER_LEN: usize = FLAGS_OFFSET + 1 + 4;
 
@@ -336,6 +339,8 @@ fn closed_form_volume(n: usize) -> SdfVolume {
 /// Encoder output for in-range volumes, recorded with the encoder as it was
 /// before i32 coefficients existed (i16 only). The format extension must not
 /// change a single byte of these streams: (n, preset, length, FNV-1a 64, flags).
+/// The encoder now also stores the semantics identifier (flag 0x10 and 32 bytes after the
+/// header); with those taken out the stream is the recorded one.
 const PRE_EXTENSION_STREAMS: [(usize, &str, usize, u64, u8); 8] = [
     (4, "lossless", 178, 0xf0ae_c212_e217_ca1f, 1),
     (4, "high_quality", 178, 0xacf3_5f35_de01_7f70, 1),
@@ -361,7 +366,19 @@ fn preset(name: &str) -> EncodeConfig {
 fn in_range_streams_are_byte_identical_to_the_i16_format() {
     let mut compared = 0;
     for (n, name, len, hash, flags) in PRE_EXTENSION_STREAMS {
-        let bytes = encode_sdf_volume(&closed_form_volume(n), &preset(name));
+        let stamped = encode_sdf_volume(&closed_form_volume(n), &preset(name));
+        assert_eq!(
+            stamped[FLAGS_OFFSET] & (FLAG_SEMANTICS_ID | FLAG_ANISOTROPIC_VOXEL),
+            FLAG_SEMANTICS_ID,
+            "{n} {name}: flags"
+        );
+        assert_eq!(
+            stamped[HEADER_LEN..HEADER_LEN + 32],
+            alice_sdf::SDF_SEMANTICS_ID,
+            "{n} {name}: identifier"
+        );
+        let mut bytes = [&stamped[..HEADER_LEN], &stamped[HEADER_LEN + 32..]].concat();
+        bytes[FLAGS_OFFSET] &= !FLAG_SEMANTICS_ID;
         assert_eq!(bytes[FLAGS_OFFSET], flags, "{n} {name}: flags");
         assert_eq!(bytes.len(), len, "{n} {name}: length");
         assert_eq!(fnv1a(&bytes), hash, "{n} {name}: bytes changed");
@@ -479,8 +496,9 @@ fn decoder_rejects_reserved_flag_bits_and_truncated_streams() {
     let good = encode_sdf_volume(&closed_form_volume(4), &EncodeConfig::lossless());
     assert!(try_decode_sdf_volume(&good).is_ok());
     let mut rejected = 0;
-    // bit 3 is the per-axis voxel size (5.0.0); bits 4-7 stay reserved
-    for bit in 4..8 {
+    // bit 3 is the per-axis voxel size (5.0.0), bit 4 the semantics identifier; bits 5-7 stay
+    // reserved
+    for bit in 5..8 {
         let mut bad = good.clone();
         bad[FLAGS_OFFSET] |= 1 << bit;
         assert_eq!(
@@ -490,9 +508,9 @@ fn decoder_rejects_reserved_flag_bits_and_truncated_streams() {
         assert!(std::panic::catch_unwind(|| decode_sdf_volume(&bad)).is_err());
         rejected += 1;
     }
-    assert_eq!(rejected, 4);
-    // Cut anywhere: header, quantizer params, payload length, payload.
-    for cut in [0, 10, 38, 45, 49, good.len() - 1] {
+    assert_eq!(rejected, 3);
+    // Cut anywhere: header, identifier, quantizer params, payload length, payload.
+    for cut in [0, 10, 38, 50, 77, 81, good.len() - 1] {
         assert!(
             matches!(
                 try_decode_sdf_volume(&good[..cut]),
@@ -627,10 +645,11 @@ fn streams_without_the_voxel_flag_decode_with_one_step_on_every_axis() {
 // panic with overflow checks, a wrapped value without them), and corrupted
 // dimensions could ask for an allocation of any size.
 
-const QUANT_OFFSET: usize = HEADER_LEN;
+/// The quantizer fields follow the header and the 32-byte semantics identifier (cubic voxels)
+const QUANT_OFFSET: usize = HEADER_LEN + 32;
 
 /// A stream written by hand from the documented layout: raw payload of i32
-/// coefficients (flag bit 2), no rANS, cubic voxels.
+/// coefficients (flag bit 2), no rANS, cubic voxels, this crate's semantics identifier.
 fn hand_stream(
     dims: [u32; 3],
     symbol_count: u32,
@@ -648,8 +667,9 @@ fn hand_stream(
         b.extend_from_slice(&v.to_le_bytes());
     }
     b.push(100); // quality
-    b.push(flags | FLAG_WIDE);
+    b.push(flags | FLAG_WIDE | FLAG_SEMANTICS_ID);
     b.extend_from_slice(&symbol_count.to_le_bytes());
+    b.extend_from_slice(&alice_sdf::SDF_SEMANTICS_ID);
     assert_eq!(b.len(), QUANT_OFFSET);
     b.extend_from_slice(&step.to_le_bytes());
     b.extend_from_slice(&dead_zone.to_le_bytes());
