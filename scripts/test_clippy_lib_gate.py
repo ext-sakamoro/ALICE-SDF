@@ -1,408 +1,272 @@
 #!/usr/bin/env python3
-"""Tests for scripts/clippy_lib_gate.py: the generated library configuration and
-the reading of the canary's clippy output (the canary run itself needs cargo and
-runs in CI and preflight through `python3 scripts/clippy_lib_gate.py`)."""
+"""Tests for scripts/clippy_lib_gate.py (run: python3 scripts/test_clippy_lib_gate.py).
+
+The same file in every repository that carries the gate. The judge is fed clippy output
+written here, so each case fixes exactly which diagnostics appear; the last class checks
+this repository's own data file and canary source.
+"""
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import clippy_lib_gate as g  # noqa: E402
 
-ROOT = """\
-# libm
-disallowed-methods = [
-    { path = "f32::sin", reason = "libm" },
-    { path = "f64::cos", reason = "libm" },
-]
-
-disallowed-types = [
-    { path = "std::collections::hash_map::RandomState", reason = "seed" },
-]
+DATA = '''
+header = """\\
+# generated
 """
+method-reason = "zeros"
+type-reason = "order"
 
-CANARY = """\
-//! doc
-pub fn a(a: f32, b: f32) -> f32 {
+[[method]]
+path = "f32::max"
+
+[[method]]
+path = "std::collections::hash_map::RandomState::new"
+reason = "entropy"
+
+[[type]]
+path = "std::collections::HashMap"
+
+[[form]]
+text = "a.max(b)"
+path = "f32::max"
+
+[[form]]
+text = "RandomState::new()"
+path = "std::collections::hash_map::RandomState::new"
+also = ["std::collections::hash_map::RandomState"]
+
+[[form]]
+text = "&std::collections::HashMap<u32, u32>"
+path = "std::collections::HashMap"
+
+[[clean]]
+text = "later.duration_since(earlier)"
+'''
+
+ROOT = '''disallowed-methods = [
+    { path = "f32::sin", reason = "libm" },
+]
+disallowed-types = [
+    { path = "std::collections::hash_map::RandomState", reason = "entropy" },
+]
+'''
+
+SOURCE = """pub fn f(a: f32, b: f32) -> f32 {
     a.max(b)
 }
-pub fn b(a: f32, b: f32) -> f32 {
-    f32::min(a, b)
-}
-pub fn c(a: f64, b: f64) -> f64 {
-    a.min(b)
-}
-pub fn d(v: &[f64]) -> f64 {
-    v.iter().copied().fold(f64::NEG_INFINITY, f64::max)
-}
-pub fn e(x: f32) -> f32 {
-    x.sin()
-}
-pub fn f(v: wide::f32x8, w: wide::f32x8) -> wide::f32x8 {
-    v.max(w)
-}
-pub fn g(v: wide::f32x8, w: wide::f32x8) -> wide::f32x8 {
-    v.min(w)
-}
-pub fn h() -> std::time::Instant {
-    std::time::Instant::now()
-}
-pub fn i() -> std::time::SystemTime {
-    std::time::SystemTime::now()
-}
-pub fn j(i: std::time::Instant) -> std::time::Duration {
-    i.elapsed()
-}
-pub fn k(s: std::time::SystemTime) -> Result<std::time::Duration, std::time::SystemTimeError> {
-    s.elapsed()
-}
-pub fn l() -> std::collections::hash_map::RandomState {
-    std::collections::hash_map::RandomState::new()
-}
-pub fn g_v2_min() {
-    v2.min(o)
-}
-pub fn g_v2_max() {
-    v2.max(o)
-}
-pub fn g_v2_clamp() {
-    v2.clamp(lo, hi)
-}
-pub fn g_v2_min_element() {
-    v2.min_element()
-}
-pub fn g_v2_max_element() {
-    v2.max_element()
-}
-pub fn g_v3_min() {
-    v3.min(o)
-}
-pub fn g_v3_max() {
-    v3.max(o)
-}
-pub fn g_v3_clamp() {
-    v3.clamp(lo, hi)
-}
-pub fn g_v3_min_element() {
-    v3.min_element()
-}
-pub fn g_v3_max_element() {
-    v3.max_element()
-}
-pub fn g_v3a_min() {
-    v3a.min(o)
-}
-pub fn g_v3a_max() {
-    v3a.max(o)
-}
-pub fn g_v3a_clamp() {
-    v3a.clamp(lo, hi)
-}
-pub fn g_v3a_min_element() {
-    v3a.min_element()
-}
-pub fn g_v3a_max_element() {
-    v3a.max_element()
-}
-pub fn g_v4_min() {
-    v4.min(o)
-}
-pub fn g_v4_max() {
-    v4.max(o)
-}
-pub fn g_v4_clamp() {
-    v4.clamp(lo, hi)
-}
-pub fn g_v4_min_element() {
-    v4.min_element()
-}
-pub fn g_v4_max_element() {
-    v4.max_element()
-}
-pub fn g_d2_min() {
-    d2.min(o)
-}
-pub fn g_d2_max() {
-    d2.max(o)
-}
-pub fn g_d2_clamp() {
-    d2.clamp(lo, hi)
-}
-pub fn g_d2_min_element() {
-    d2.min_element()
-}
-pub fn g_d2_max_element() {
-    d2.max_element()
-}
-pub fn g_d3_min() {
-    d3.min(o)
-}
-pub fn g_d3_max() {
-    d3.max(o)
-}
-pub fn g_d3_clamp() {
-    d3.clamp(lo, hi)
-}
-pub fn g_d3_min_element() {
-    d3.min_element()
-}
-pub fn g_d3_max_element() {
-    d3.max_element()
-}
-pub fn g_d4_min() {
-    d4.min(o)
-}
-pub fn g_d4_max() {
-    d4.max(o)
-}
-pub fn g_d4_clamp() {
-    d4.clamp(lo, hi)
-}
-pub fn g_d4_min_element() {
-    d4.min_element()
-}
-pub fn g_d4_max_element() {
-    d4.max_element()
-}
-pub fn h0() {
-    x(&std::collections::HashMap<u32, u32>)
-}
-pub fn h1() {
-    x(&std::collections::HashSet<u32>)
-}
-pub fn h2() {
-    x(hash_map::Iter<'_, u32, u32>)
-}
-pub fn h3() {
-    x(m.keys()
-}
-pub fn h4() {
-    x(m.values()
-}
-pub fn h5() {
-    x(m.iter_mut()
-}
-pub fn h6() {
-    x(s.iter()
-}
-pub fn s0() {
-    x(serde_json::from_str(js)
-}
-pub fn s1() {
-    x(sj::from_str(js)
-}
-pub fn s2() {
-    x(read_text::<Value>(js)
-}
-pub fn s3() {
-    x(serde_json::value::from_value(jv)
-}
-pub fn s4() {
-    x(serde_json::from_value(jv.clone())
-}
-pub fn s5() {
-    x(serde_json::from_slice(jb)
-}
-pub fn s6() {
-    x(serde_json::from_reader(jr)
-}
-pub fn s7() {
-    x(serde_json::Deserializer::from_str(js)
-}
-pub fn s8() {
-    x(bincode::serde::decode_from_slice(bb,
-}
-pub fn s9() {
-    x(bs::decode_from_slice(bb,
-}
-pub fn s10() {
-    x(bincode::serde::decode_from_reader(rd,
-}
-pub fn s11() {
-    x(bincode::serde::decode_from_std_read(br,
-}
-pub fn s12() {
-    x(bincode::decode_from_slice(bn,
-}
-pub fn s13() {
-    x(u32::deserialize(tv)
-}
-pub fn s14() {
-    x(serde_json::Deserializer::new(serde_json::de::StrRead::new(ts))
-}
-pub fn s15() {
-    x(<u32 as Deserialize>::deserialize(&mut td)
-}
-pub fn s16() {
-    x(u32::deserialize(&pv)
-}
-pub fn s17() {
-    x(std::marker::PhantomData::<u32>.deserialize(sv)
+pub fn r() -> u64 {
+    let s = RandomState::new();
+    0
+}
+pub fn h(m: &std::collections::HashMap<u32, u32>) -> usize {
+    m.len()
+}
+pub fn t() {
+    let _ = later.duration_since(earlier);
 }
 """
 
 
-def diag(line: int, path: str) -> str:
-    return f"src/lib.rs:{line}:5: error: use of a disallowed method `{path}`"
+def diag(line: int, kind: str, path: str) -> str:
+    return f"src/lib.rs:{line}:5: error: use of a disallowed {kind} `{path}`\n"
+
+
+GOOD = (diag(2, "method", "f32::max")
+        + diag(5, "method", "std::collections::hash_map::RandomState::new")
+        + diag(5, "type", "std::collections::hash_map::RandomState")
+        + diag(8, "type", "std::collections::HashMap"))
+
+
+def data(text: str = DATA) -> g.Data:
+    return g.load_data(text)
+
+
+def judge(output: str, source: str = SOURCE, rc: int = 101, d: g.Data | None = None):
+    forms, clean = g.canary_lines(source, d or data())
+    return g.judge_canary(rc, output, forms, clean)
+
+
+class Data(unittest.TestCase):
+    def test_loads_entries_reasons_forms_and_clean(self) -> None:
+        d = data()
+        self.assertEqual(d.methods, [("f32::max", "zeros"), ("std::collections::hash_map::RandomState::new", "entropy")])
+        self.assertEqual(d.types, [("std::collections::HashMap", "order")])
+        self.assertEqual([f.path for f in d.forms][1], "std::collections::hash_map::RandomState::new")
+        self.assertEqual(d.clean, ["later.duration_since(earlier)"])
+
+    def test_an_entry_no_form_names_is_refused(self) -> None:
+        # clippy is silent about a method path that names nothing, so an unexercised entry is not trusted
+        text = DATA.replace('[[type]]\npath = "std::collections::HashMap"\n',
+                            '[[type]]\npath = "std::collections::HashMap"\n\n[[method]]\npath = "f32::no_such_method"\n')
+        with self.assertRaisesRegex(ValueError, "no \\[\\[form\\]\\] naming it: f32::no_such_method"):
+            data(text)
+
+    def test_duplicate_form_text_entry_and_missing_fields_are_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, "declared twice"):
+            data(DATA + '\n[[form]]\ntext = "a.max(b)"\npath = "f32::max"\n')
+        with self.assertRaisesRegex(ValueError, "more than once"):
+            data(DATA + '\n[[method]]\npath = "f32::max"\n')
+        with self.assertRaisesRegex(ValueError, "needs a text and the path"):
+            data(DATA + '\n[[form]]\ntext = "x.y()"\n')
+        with self.assertRaisesRegex(ValueError, "no reason"):
+            data(DATA.replace('type-reason = "order"\n', ""))
+        with self.assertRaisesRegex(ValueError, "unknown keys"):
+            data('extra = 1\n' + DATA)
 
 
 class Render(unittest.TestCase):
-    def test_the_extra_entries_come_first_and_the_root_list_follows_unchanged(self):
-        out = g.render(ROOT)
-        self.assertTrue(out.startswith(g.HEADER))
-        body = out[len(g.HEADER) + 1:]
-        added = "".join(f'    {{ path = "{p}", reason = "{g.REASON}" }},\n' for p in g.EXTRA)
-        added += "".join(f'    {{ path = "{p}", reason = "{g.ORDER_REASON}" }},\n' for p in g.EXTRA_ORDER_METHODS)
-        added += "".join(f'    {{ path = "{p}", reason = "{g.STORED_FORM_REASON}" }},\n'
-                         for p in g.EXTRA_STORED_FORM_METHODS)
-        types = "".join(f'    {{ path = "{p}", reason = "{g.ORDER_REASON}" }},\n' for p in g.EXTRA_TYPES)
-        self.assertEqual(body.replace(added, "").replace(types, ""), ROOT)
-        i = body.index("disallowed-methods = [\n")
-        self.assertIn('path = "f32::max"', body[i:body.index('path = "f32::sin"')])
-        self.assertEqual(g.count_entries(out),
-                         2 + len(g.EXTRA) + len(g.EXTRA_ORDER_METHODS) + len(g.EXTRA_STORED_FORM_METHODS))
+    def test_entries_go_to_the_top_of_each_list_after_the_header(self) -> None:
+        out = g.render(ROOT, data())
+        self.assertTrue(out.startswith("# generated\n\n"))
+        self.assertIn('disallowed-methods = [\n    { path = "f32::max", reason = "zeros" },\n'
+                      '    { path = "std::collections::hash_map::RandomState::new", reason = "entropy" },\n'
+                      '    { path = "f32::sin"', out)
+        self.assertIn('disallowed-types = [\n    { path = "std::collections::HashMap", reason = "order" },\n', out)
 
-    def test_the_extra_paths_are_exactly_the_float_and_glam_max_and_min(self):
-        glam = [f"glam::{t}::{m}" for t in ("Vec2", "Vec3", "Vec3A", "Vec4", "DVec2", "DVec3", "DVec4")
-                for m in ("min", "max", "clamp", "min_element", "max_element")]
-        self.assertEqual(g.EXTRA, ["f32::max", "f32::min", "f64::max", "f64::min",
-                                   "wide::f32x8::max", "wide::f32x8::min"] + glam)
+    def test_an_entry_already_in_the_root_file_is_refused(self) -> None:
+        root = ROOT.replace('"f32::sin"', '"f32::max"')
+        with self.assertRaisesRegex(ValueError, "already lists f32::max"):
+            g.render(root, data())
 
-    def test_the_stored_form_readers_are_forbidden(self):
-        # ALICE-Law G8: every serde_json / bincode entry point that reads a stored form,
-        # in the path clippy resolves to (a re-export is matched by its definition)
-        for p in ("serde_json::de::from_str", "serde_json::de::from_slice", "serde_json::de::from_reader",
-                  "serde_json::value::from_value", "serde_json::Deserializer::from_str",
-                  "bincode::serde::decode_from_slice", "bincode::serde::decode_from_reader",
-                  "bincode::serde::decode_from_std_read", "bincode::serde::borrow_decode_from_slice",
-                  "bincode::decode_from_slice", "bincode::decode_from_reader", "bincode::decode_from_std_read",
-                  "serde_json::Deserializer::new", "serde::de::Deserialize::deserialize",
-                  "serde::de::DeserializeSeed::deserialize"):
-            self.assertIn(p, g.EXTRA_STORED_FORM_METHODS)
-            self.assertIn(f'path = "{p}"', g.render(ROOT))
+    def test_check_compares_with_the_generated_file_and_counts(self) -> None:
+        d = data()
+        self.assertEqual(g.check(ROOT, g.render(ROOT, d), d), [])
+        self.assertIn("is missing", g.check(ROOT, None, d)[0])
+        self.assertIn("differs", g.check(ROOT, g.render(ROOT, d) + "\n", d)[0])
+        crowded = ROOT.replace('    { path = "f32::sin", reason = "libm" },\n',
+                               '    { path = "f32::sin", reason = "libm" }, { path = "f32::cos", reason = "libm" },\n')
+        self.assertIn("more than one entry", g.check(crowded, g.render(crowded, d), d)[0])
 
-    def test_a_root_list_that_already_forbids_max_is_refused(self):
-        with self.assertRaises(ValueError):
-            g.render(ROOT.replace('"f64::cos"', '"f32::max"'))
+    def test_an_empty_root_method_list_is_red(self) -> None:
+        d = data()
+        root = ROOT.replace('    { path = "f32::sin", reason = "libm" },\n', "")
+        self.assertEqual(g.check(root, g.render(root, d), d), ["clippy.toml: disallowed-methods lists nothing (compared nothing)"])
 
-    def test_a_root_without_the_list_is_refused(self):
-        with self.assertRaises(ValueError):
-            g.render(ROOT.replace("disallowed-methods", "disallowed-macros"))
+    def test_a_list_the_extras_need_must_exist(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no `disallowed-types = \\[` list"):
+            g.render(ROOT.split("disallowed-types")[0], data())
 
 
-class Check(unittest.TestCase):
-    def test_the_generated_file_passes(self):
-        self.assertEqual(g.check(ROOT, g.render(ROOT)), [])
+class Judge(unittest.TestCase):
+    def test_every_form_flagged_by_its_own_path_passes(self) -> None:
+        errors, flagged, n = judge(GOOD)
+        self.assertEqual(errors, [])
+        self.assertEqual((flagged, n), (3, 4))
 
-    def test_a_missing_file_fails(self):
-        self.assertTrue(g.check(ROOT, None))
+    def test_a_removed_entry_with_another_diagnostic_on_the_line_is_red(self) -> None:
+        # the hole of the line-only judge: RandomState::new() still carries the type diagnostic
+        out = GOOD.replace(diag(5, "method", "std::collections::hash_map::RandomState::new"), "")
+        errors, flagged, _ = judge(out)
+        self.assertEqual(flagged, 2)
+        self.assertIn("has no diagnostic naming `std::collections::hash_map::RandomState::new` "
+                      "(only std::collections::hash_map::RandomState)", errors[0])
 
-    def test_a_dropped_extra_entry_fails(self):
-        lib = g.render(ROOT).replace(f'    {{ path = "f64::min", reason = "{g.REASON}" }},\n', "")
-        self.assertTrue(g.check(ROOT, lib))
+    def test_a_wrong_path_only_is_red_and_unaccounted(self) -> None:
+        out = GOOD.replace(diag(2, "method", "f32::max"), diag(2, "method", "f32::min"))
+        errors, flagged, _ = judge(out)
+        self.assertEqual(flagged, 2)
+        self.assertTrue(any("no diagnostic naming `f32::max` (only f32::min)" in e for e in errors), errors)
+        self.assertTrue(any("unaccounted diagnostic: line 2 `f32::min`" in e for e in errors), errors)
 
-    def test_a_libm_entry_added_to_the_root_only_fails(self):
-        lib = g.render(ROOT)
-        root = ROOT.replace('    { path = "f64::cos", reason = "libm" },\n',
-                            '    { path = "f64::cos", reason = "libm" },\n    { path = "f32::exp", reason = "libm" },\n')
-        self.assertTrue(g.check(root, lib))
+    def test_a_missing_diagnostic_is_red(self) -> None:
+        errors, flagged, _ = judge(GOOD.replace(diag(8, "type", "std::collections::HashMap"), ""))
+        self.assertEqual(flagged, 2)
+        self.assertEqual(errors, ["canary line 8 (`&std::collections::HashMap<u32, u32>`) has no diagnostic "
+                                  "naming `std::collections::HashMap`"])
 
-    def test_an_empty_root_list_fails(self):
-        root = 'disallowed-methods = [\n]\n\ndisallowed-types = [\n]\n'
-        self.assertTrue(g.check(root, g.render(root)))
+    def test_an_extra_diagnostic_alone_is_red(self) -> None:
+        errors, flagged, _ = judge(GOOD + diag(9, "method", "std::collections::HashMap::len"))
+        self.assertEqual(flagged, 3)
+        self.assertEqual(errors, ["unaccounted diagnostic: line 9 `std::collections::HashMap::len` "
+                                  "(no [[form]] on that line names it)"])
 
-
-class Canary(unittest.TestCase):
-    def setUp(self):
-        self.want = g.canary_lines(CANARY)
-
-    def test_every_form_is_found_on_its_line(self):
-        self.assertEqual(sorted(self.want), list(range(3, 3 + 3 * len(g.CANARY_FORMS), 3)))
-
-    def test_a_diagnostic_on_every_line_and_a_non_zero_exit_passes(self):
-        out = "\n".join(diag(n, "x") for n in self.want)
-        errors, n = g.judge_canary(101, out, self.want)
-        self.assertEqual((errors, n), ([], len(g.CANARY_FORMS)))
-
-    def test_a_missing_line_fails(self):
-        out = "\n".join(diag(n, "x") for n in self.want if n != 9)
-        errors, _ = g.judge_canary(101, out, self.want)
+    def test_a_second_path_not_listed_in_also_is_unaccounted(self) -> None:
+        d = data(DATA.replace('also = ["std::collections::hash_map::RandomState"]\n', ""))
+        errors, flagged, _ = judge(GOOD, d=d)
+        self.assertEqual(flagged, 3)
         self.assertEqual(len(errors), 1)
-        self.assertIn("line 9", errors[0])
+        self.assertIn("unaccounted diagnostic: line 5 `std::collections::hash_map::RandomState`", errors[0])
 
-    def test_exit_zero_fails_even_with_diagnostics(self):
-        out = "\n".join(diag(n, "x") for n in self.want)
-        errors, _ = g.judge_canary(0, out, self.want)
-        self.assertTrue(errors)
+    def test_a_form_text_that_occurs_twice_or_never_is_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, "form `a.max\\(b\\)` occurs 2 times"):
+            judge(GOOD, source=SOURCE + "fn g(a: f32, b: f32) -> f32 { a.max(b) }\n")
+        with self.assertRaisesRegex(ValueError, "occurs 0 times"):
+            judge(GOOD, source=SOURCE.replace("a.max(b)", "a.min(b)"))
 
-    def test_an_entry_clippy_cannot_resolve_fails(self):
-        out = "\n".join(diag(n, "x") for n in self.want)
-        out += "\n.github/clippy-lib/clippy.toml:9:5: warning: `bincode::serde::gone` does not refer to a reachable function"
-        errors, _ = g.judge_canary(101, out, self.want)
-        self.assertEqual(len(errors), 1)
-        self.assertIn("bincode::serde::gone", errors[0])
+    def test_a_commented_line_does_not_count_as_the_form(self) -> None:
+        errors, _, _ = judge(GOOD, source=SOURCE + "// a.max(b) in a comment\n")
+        self.assertEqual(errors, [])
 
-    def test_no_diagnostic_at_all_fails(self):
-        errors, n = g.judge_canary(101, "error: could not compile", self.want)
-        self.assertEqual(n, 0)
-        self.assertTrue(any("compared nothing" in e for e in errors))
+    def test_a_clean_line_with_a_diagnostic_is_red(self) -> None:
+        errors, _, _ = judge(GOOD + diag(12, "method", "std::time::Instant::duration_since"))
+        self.assertEqual(errors, ["canary line 12 (`later.duration_since(earlier)`) must stay clean but has "
+                                  "std::time::Instant::duration_since"])
 
-    def test_a_diagnostic_from_another_file_does_not_count(self):
-        out = "\n".join(f"src/other.rs:{n}:5: error: use of a disallowed method `x`" for n in self.want)
-        errors, n = g.judge_canary(101, out, self.want)
-        self.assertEqual(n, 0)
-        self.assertTrue(errors)
+    def test_no_forms_and_a_clean_exit_are_red(self) -> None:
+        empty = g.Data("", [], [], [], [])
+        errors, flagged, _ = g.judge_canary(101, "", {}, {})
+        self.assertIn("no canary form to judge (expected 0, compared nothing)", errors)
+        self.assertEqual(flagged, 0)
+        self.assertEqual(g.canary_lines(SOURCE, empty), ({}, {}))
+        errors, _, _ = judge(GOOD, rc=0)
+        self.assertIn("clippy exited 0 on the canary: the configuration did not forbid anything", errors)
 
-    def test_a_form_written_twice_in_the_canary_is_refused(self):
-        with self.assertRaises(ValueError):
-            g.canary_lines(CANARY + "pub fn f(a: f32, b: f32) -> f32 { a.max(b) }\n")
+    def test_a_configured_path_that_refers_to_nothing_is_red(self) -> None:
+        warn = ("/r/.github/clippy-lib/clippy.toml:45:5: warning: `std::nonexistent::fn_xyz` "
+                "does not refer to a reachable function\n")
+        errors, _, _ = judge(GOOD + warn)
+        self.assertEqual(errors, ["clippy.toml entry `std::nonexistent::fn_xyz` does not refer to anything: "
+                                  "it forbids nothing"])
 
-    def test_the_real_canary_has_each_form_once(self):
-        src = (Path(g.CANARY) / "src" / "lib.rs").read_text(encoding="utf-8")
-        self.assertEqual(len(g.canary_lines(src)), len(g.CANARY_FORMS))
+    def test_diagnostics_of_other_files_are_ignored(self) -> None:
+        errors, _, n = judge(GOOD + "src/other.rs:3:1: error: use of a disallowed method `f32::min`\n")
+        self.assertEqual((errors, n), ([], 4))
 
 
-class RealFiles(unittest.TestCase):
-    def test_clippy_toml_bans_elapsed(self):
-        # `.elapsed()` reads the wall clock exactly like `::now()`, but a
-        # lexical pattern for it would be too broad (any value named
-        # `elapsed` anywhere); clippy's disallowed-methods is type-resolved
-        # and carries this one instead -- this only confirms the ban is
-        # actually present, not absent-by-typo
-        root = Path(g.ROOT_CONFIG).read_text(encoding="utf-8")
-        for path in ("std::time::Instant::now", "std::time::Instant::elapsed",
-                     "std::time::SystemTime::now", "std::time::SystemTime::elapsed",
-                     "std::collections::hash_map::RandomState::new"):
-            self.assertIn(f'path = "{path}"', root, f"clippy.toml must disallow {path}")
-        types = root[root.index("disallowed-types = ["):]
-        self.assertIn('path = "std::collections::hash_map::RandomState"', types)
+class Main(unittest.TestCase):
+    def test_a_refused_data_file_is_one_error_line_and_red(self) -> None:
+        import io
+        import tempfile
+        from contextlib import redirect_stderr
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = os.path.join(tmp, "clippy_lib_gate.toml")
+            with open(bad, "w", encoding="utf-8") as f:
+                f.write(DATA + '\n[[method]]\npath = "f32::no_such_method"\n')
+            saved, g.DATA = g.DATA, bad
+            err = io.StringIO()
+            try:
+                with redirect_stderr(err):
+                    rc = g.main(["--check"])
+            finally:
+                g.DATA = saved
+        self.assertEqual(rc, 1)
+        self.assertEqual(err.getvalue().splitlines(),
+                         ["error: clippy_lib_gate.toml: 1 library-only entry has no [[form]] naming it: f32::no_such_method"])
 
-    def test_the_library_bans_the_hash_collections_and_their_iteration(self):
-        out = g.render(ROOT)
-        types = out[out.index("disallowed-types = ["):]
-        for path in g.EXTRA_TYPES:
-            self.assertIn(f'path = "{path}"', types)
-        methods = out[out.index("disallowed-methods = ["):out.index("disallowed-types = [")]
-        for path in g.EXTRA_ORDER_METHODS:
-            self.assertIn(f'path = "{path}"', methods)
-        self.assertEqual(g.check(ROOT, out), [])
 
-    def test_a_dropped_type_entry_fails_the_count(self):
-        out = g.render(ROOT)
-        line = next(l for l in out.splitlines() if 'path = "std::collections::HashSet"' in l)
-        self.assertTrue(g.check(ROOT, out.replace(line + "\n", "")))
+class ThisRepository(unittest.TestCase):
+    def test_the_data_file_loads_and_each_canary_text_occurs_once(self) -> None:
+        with open(g.DATA, encoding="utf-8") as f:
+            d = g.load_data(f.read())
+        with open(os.path.join(g.CANARY, "src", "lib.rs"), encoding="utf-8") as f:
+            forms, clean = g.canary_lines(f.read(), d)
+        self.assertGreater(sum(len(v) for v in forms.values()), 0)
+        self.assertEqual(sum(len(v) for v in forms.values()), len(d.forms))
+        self.assertEqual(len(clean), len(d.clean))
 
-    def test_the_root_may_not_list_a_library_only_entry(self):
-        with self.assertRaises(ValueError):
-            g.render(ROOT.replace("disallowed-types = [\n", 'disallowed-types = [\n    { path = "std::collections::HashSet", reason = "x" },\n'))
-
-    def test_the_committed_library_configuration_is_up_to_date(self):
-        root = Path(g.ROOT_CONFIG).read_text(encoding="utf-8")
-        lib = Path(g.LIB_CONFIG).read_text(encoding="utf-8")
-        self.assertEqual(g.check(root, lib), [])
+    def test_the_generated_file_is_current(self) -> None:
+        with open(g.DATA, encoding="utf-8") as f:
+            d = g.load_data(f.read())
+        with open(g.ROOT_CONFIG, encoding="utf-8") as f:
+            root = f.read()
+        lib = open(g.LIB_CONFIG, encoding="utf-8").read() if os.path.exists(g.LIB_CONFIG) else None
+        self.assertEqual(g.check(root, lib, d), [])
 
 
 if __name__ == "__main__":
