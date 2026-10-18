@@ -169,12 +169,18 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "impl::Deserialize for SdfNode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 "impl::Deserialize for SdfTree" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 
-# 5 pending
+# 1 pending
 "fn::io::splat::load_splat" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+
+# 2 handshake
 "fn::io::vdb::load_dense_grid_from_vdb" = "handshake: alice_vdb_writers_store_and_loaders_check_the_identifier"
 "fn::io::vdb::load_dense_grid_from_vdb_unverified" = "handshake: alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified"
+
+# 2 pending
 "fn::io::vox::load_vox" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
 "fn::Splat::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+
+# 2 handshake
 "fn::SvoChunk::from_bytes" = "handshake: svo_chunk_writers_store_and_readers_check_the_identifier"
 "fn::SvoChunk::from_bytes_unverified" = "handshake: an_svo_chunk_from_6_1_0_is_refused_by_default_and_read_unverified"
 
@@ -207,7 +213,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "binding::pyo3::import_glb" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
 "binding::pyo3::import_glb_bytes" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
 
-# 1 pending
+# 2 handshake
 "fn::NeuralSdf::load" = "handshake: nsdf_writers_store_and_loaders_check_the_identifier"
 "fn::NeuralSdf::load_unverified" = "handshake: an_nsdf_file_from_6_1_0_is_refused_by_default_and_read_unverified"
 
@@ -705,7 +711,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "target::wasm32-unknown-unknown::wasm::sdf_torus_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 "target::wasm32-unknown-unknown::wasm::sphere_batch_flat" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 
-# 58 local
+# 59 local
 "fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -803,7 +809,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 # 1 local
 "fn::asp_bridge::create_sdf_d_packet" = "local: builds a packet from this build's own tree"
 
-# 5 local
+# 6 local
 "fn::AbmHeader::to_bytes" = "local: serialises this build's own value"
 "fn::AsdfHeader::to_bytes" = "local: serialises this build's own value"
 "fn::LinearizedSvo::as_bytes" = "local: serialises this build's own value"
