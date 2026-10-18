@@ -235,3 +235,84 @@ pub fn hash_set_iter_inferred() -> u32 {
     let s = made_set();
     s.iter().sum()
 }
+
+// the rest of the library-only entries, so every entry has a form (a mistyped or removed entry
+// forbids nothing, and clippy does not say so for a method path)
+
+pub fn hash_map_iter_inferred() -> usize {
+    let mi = made();
+    mi.iter().count()
+}
+
+pub fn hash_map_values_mut_inferred() -> usize {
+    let mut mv = made();
+    mv.values_mut().count()
+}
+
+pub fn hash_map_into_keys_inferred() -> u32 {
+    let mk = made();
+    mk.into_keys().sum()
+}
+
+pub fn hash_map_into_values_inferred() -> u32 {
+    let mu = made();
+    mu.into_values().sum()
+}
+
+pub fn hash_map_drain_inferred() -> usize {
+    let mut md = made();
+    md.drain().count()
+}
+
+pub fn hash_map_retain_inferred() -> usize {
+    let mut mr = made();
+    mr.retain(|_, v| *v > 0);
+    mr.len()
+}
+
+pub fn hash_set_drain_inferred() -> usize {
+    let mut sd = made_set();
+    sd.drain().count()
+}
+
+pub fn hash_set_retain_inferred() -> usize {
+    let mut sr = made_set();
+    sr.retain(|v| *v > 0);
+    sr.len()
+}
+
+pub fn hash_map_iter_mut_type(it: std::collections::hash_map::IterMut<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_keys_type(it: std::collections::hash_map::Keys<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_values_type(it: std::collections::hash_map::Values<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_values_mut_type(it: std::collections::hash_map::ValuesMut<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_into_iter_type(it: std::collections::hash_map::IntoIter<u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_map_drain_type(it: std::collections::hash_map::Drain<'_, u32, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_set_iter_type(it: std::collections::hash_set::Iter<'_, u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_set_into_iter_type(it: std::collections::hash_set::IntoIter<u32>) -> usize {
+    it.count()
+}
+
+pub fn hash_set_drain_type(it: std::collections::hash_set::Drain<'_, u32>) -> usize {
+    it.count()
+}
