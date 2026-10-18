@@ -299,7 +299,7 @@ fn main() {
     };
     let vox = dir.join("diag.vox");
     save_vox(&vox, &model).unwrap();
-    let vback = load_vox(&vox).unwrap();
+    let vback = load_vox(&vox).unwrap().into_parts().0;
     assert_eq!(vback.size, model.size);
     assert_eq!(vback.voxels.len(), 3);
     println!("vox: {:?} with {} voxels", vback.size, vback.voxels.len());

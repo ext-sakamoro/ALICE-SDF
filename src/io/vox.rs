@@ -18,6 +18,8 @@
 //! ```
 
 use crate::eval::eval;
+use crate::io::IoError;
+use crate::provenance::Checked;
 use crate::types::SdfNode;
 use glam::Vec3;
 use std::path::Path;
@@ -99,11 +101,27 @@ pub fn sdf_to_vox(node: &SdfNode, cfg: &VoxConfig) -> VoxModel {
 
 /// MagicaVoxel `.vox` v150 バイナリへ書き出し
 pub fn save_vox(path: impl AsRef<Path>, model: &VoxModel) -> std::io::Result<()> {
-    let bytes = encode_vox(model);
+    save_vox_with_provenance(path, model, &crate::provenance::Provenance::sdf())
+}
+
+/// [`save_vox`] storing the given semantics identifier instead of this crate's
+///
+/// The identifier is a private `ALSD` chunk among `MAIN`'s children (layout version 1, then the
+/// 32 bytes); MagicaVoxel and other readers skip chunks they do not know.
+///
+/// # Errors
+///
+/// An I/O error writing the file.
+pub fn save_vox_with_provenance(
+    path: impl AsRef<Path>,
+    model: &VoxModel,
+    provenance: &crate::provenance::Provenance,
+) -> std::io::Result<()> {
+    let bytes = encode_vox(model, provenance);
     std::fs::write(path, bytes)
 }
 
-fn encode_vox(model: &VoxModel) -> Vec<u8> {
+fn encode_vox(model: &VoxModel, provenance: &crate::provenance::Provenance) -> Vec<u8> {
     let mut buf = Vec::with_capacity(64 + model.voxels.len() * 4);
     // Header
     buf.extend_from_slice(b"VOX ");
@@ -138,6 +156,13 @@ fn encode_vox(model: &VoxModel) -> Vec<u8> {
         buf.push(v.color);
     }
 
+    // ALSD chunk: the semantics identifier (layout version 1 + 32 bytes), a child of MAIN
+    buf.extend_from_slice(crate::provenance::VOX_CHUNK);
+    buf.extend_from_slice(&36u32.to_le_bytes());
+    buf.extend_from_slice(&0u32.to_le_bytes()); // no children
+    buf.extend_from_slice(&1u32.to_le_bytes());
+    buf.extend_from_slice(&provenance.semantics_id);
+
     // Patch MAIN children size
     let children_end = buf.len();
     let children_size = (children_end - children_start) as u32;
@@ -146,9 +171,37 @@ fn encode_vox(model: &VoxModel) -> Vec<u8> {
 }
 
 /// `.vox` バイナリ → VoxModel 読込 (SIZE + XYZI のみ対応、RGBA / TRANSFORM は無視)
-pub fn load_vox(path: impl AsRef<Path>) -> std::io::Result<VoxModel> {
+///
+/// MagicaVoxel and other programs write no identifier, so a file without the `ALSD` chunk is read
+/// and marked [`crate::provenance::StoredSemantics::Unpinned`]; [`load_vox_pinned`] refuses it.
+///
+/// # Errors
+///
+/// An I/O error reading the file, [`IoError::SemanticsMismatch`] for an identifier that is
+/// neither this crate's nor one it still reproduces, and [`IoError::InvalidFormat`] for bytes that
+/// are not a VOX file or an `ALSD` chunk that is cut short, has another length or layout version,
+/// or occurs twice.
+pub fn load_vox(path: impl AsRef<Path>) -> Result<Checked<VoxModel>, IoError> {
+    load_vox_with(path.as_ref(), true)
+}
+
+/// [`load_vox`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`load_vox`].
+pub fn load_vox_pinned(path: impl AsRef<Path>) -> Result<VoxModel, IoError> {
+    load_vox_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn load_vox_with(path: &Path, allow_unpinned: bool) -> Result<Checked<VoxModel>, IoError> {
     let bytes = std::fs::read(path)?;
-    parse_vox(&bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    // a present but unreadable ALSD chunk is an error, never a file without an identifier
+    let stored = crate::provenance::vox_stored_id(&bytes)
+        .map_err(|e| IoError::InvalidFormat(format!("VOX: {e}")))?;
+    let semantics = crate::provenance::sdf_load_verdict(stored, "VOX", allow_unpinned)?;
+    let model = parse_vox(&bytes).map_err(|e| IoError::InvalidFormat(format!("VOX: {e}")))?;
+    Ok(Checked::new(model, semantics))
 }
 
 fn parse_vox(bytes: &[u8]) -> Result<VoxModel, String> {
@@ -229,7 +282,7 @@ mod tests {
                 color: 1,
             }],
         };
-        let b = encode_vox(&m);
+        let b = encode_vox(&m, &crate::provenance::Provenance::sdf());
         assert_eq!(&b[0..4], b"VOX ");
         assert_eq!(u32::from_le_bytes(b[4..8].try_into().unwrap()), 150);
     }
@@ -245,7 +298,7 @@ mod tests {
         };
         let m = sdf_to_vox(&n, &cfg);
         save_vox(&path, &m).unwrap();
-        let loaded = load_vox(&path).unwrap();
+        let loaded = load_vox_pinned(&path).unwrap();
         assert_eq!(loaded.size, m.size);
         assert_eq!(loaded.voxels.len(), m.voxels.len());
         std::fs::remove_file(&path).ok();
@@ -257,7 +310,7 @@ mod tests {
             size: (1, 1, 1),
             voxels: vec![],
         };
-        let b = encode_vox(&m);
+        let b = encode_vox(&m, &crate::provenance::Provenance::sdf());
         let parsed = parse_vox(&b).unwrap();
         assert_eq!(parsed.size, (1, 1, 1));
         assert_eq!(parsed.voxels.len(), 0);

@@ -195,8 +195,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(a) => return Err(format!("another identifier was semantics: {a:?}").into()),
     }
 
-    std::fs::remove_dir_all(&dir)?;
-
     // neural weights: a version 2 NSDF file carries the identifier after its version, load checks
     // it, load_unverified says what is known, and weights saved under another identifier are refused
     use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
@@ -234,6 +232,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // a MagicaVoxel .vox: the identifier is a private ALSD chunk among MAIN's children, which
+    // MagicaVoxel skips; a file without it (any other program's) reads as unpinned, the pinned
+    // loader refuses it
+    {
+        use alice_sdf::io::vox::{
+            load_vox, load_vox_pinned, save_vox, save_vox_with_provenance, VoxModel, Voxel,
+        };
+        let model = VoxModel {
+            size: (2, 2, 2),
+            voxels: vec![Voxel {
+                x: 1,
+                y: 0,
+                z: 1,
+                color: 9,
+            }],
+        };
+        let vox = dir.join("model.vox");
+        save_vox(&vox, &model)?;
+        let checked = load_vox(&vox)?;
+        println!("{}: {:?}", vox.display(), checked.semantics());
+        assert_eq!(checked.semantics(), StoredSemantics::Current);
+        assert_eq!(load_vox_pinned(&vox)?.voxels.len(), 1);
+        let vox_other = dir.join("other.vox");
+        save_vox_with_provenance(&vox_other, &model, &foreign)?;
+        match load_vox(&vox_other) {
+            Err(e) => println!("{}: refused: {e}", vox_other.display()),
+            Ok(_) => return Err("a .vox under another identifier was read".into()),
+        }
+    }
+
     // an SVO chunk (feature svo): the `ASVC` version 2 wire form carries the identifier after its
     // version; bytes without the magic (version 1) read only through the unverified reader
     #[cfg(feature = "svo")]
@@ -257,5 +285,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    std::fs::remove_dir_all(&dir)?;
     Ok(())
 }

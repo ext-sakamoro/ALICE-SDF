@@ -32,7 +32,7 @@ use alice_sdf::io::ply::{export_ply, import_ply_pinned, PlyConfig};
 use alice_sdf::io::splat::{load_splat, save_splat, Splat, SPLAT_BYTES};
 use alice_sdf::io::stl::{export_stl_ascii, import_stl_pinned};
 use alice_sdf::io::usd::{export_usda, import_usda_pinned, UsdConfig};
-use alice_sdf::io::vox::{load_vox, save_vox, VoxModel, Voxel};
+use alice_sdf::io::vox::{load_vox_pinned, save_vox, VoxModel, Voxel};
 use alice_sdf::io::IoError;
 use alice_sdf::material::{Material, MaterialLibrary};
 use alice_sdf::mesh::nanite::{generate_nanite_mesh, NaniteConfig};
@@ -515,9 +515,13 @@ fn vox_follows_the_magicavoxel_chunk_layout() {
     assert_eq!(u32_at(48), 4 + 2 * 4);
     assert_eq!(u32_at(56), 2);
     assert_eq!(&b[60..68], &[0, 1, 2, 7, 3, 4, 5, 255]);
-    assert_eq!(b.len(), 68);
+    // ALSD: layout version 1 and the 32-byte semantics identifier, no children
+    assert_eq!(&b[68..72], b"ALSD");
+    assert_eq!((u32_at(72), u32_at(76), u32_at(80)), (36, 0, 1));
+    assert_eq!(&b[84..116], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(b.len(), 116);
 
-    let back = load_vox(&path).unwrap();
+    let back = load_vox_pinned(&path).unwrap();
     assert_eq!(back.size, model.size);
     let v: Vec<(u8, u8, u8, u8)> = back
         .voxels

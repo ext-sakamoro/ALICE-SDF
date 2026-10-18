@@ -255,6 +255,62 @@ pub fn read(path: impl AsRef<Path>) -> Result<Provenance, ProvenanceError> {
     }
 }
 
+/// The RIFF chunk id of the identifier in a MagicaVoxel `.vox` file: a child of `MAIN` holding a
+/// layout version (u32 = 1) and the 32-byte identifier; readers that do not know it skip it
+pub const VOX_CHUNK: &[u8; 4] = b"ALSD";
+
+/// The identifier in the `ALSD` chunk of a `.vox` file: `Ok(None)` when there is none (a file of
+/// another program, or written before identifiers were stored); an `ALSD` chunk that is cut short,
+/// has another length or layout version, or occurs twice is an error, never "no identifier"
+pub(crate) fn vox_stored_id(bytes: &[u8]) -> Result<Option<[u8; 32]>, String> {
+    if bytes.len() < 8 || &bytes[0..4] != b"VOX " {
+        return Err("not a VOX file".into());
+    }
+    if bytes.len() < 20 || &bytes[8..12] != b"MAIN" {
+        return Err("missing MAIN".into());
+    }
+    let mut found: Option<[u8; 32]> = None;
+    let mut off = 20;
+    while off < bytes.len() {
+        let rest = &bytes[off..];
+        if rest.len() < 12 {
+            if rest.starts_with(VOX_CHUNK) || (rest.len() < 4 && VOX_CHUNK.starts_with(rest)) {
+                return Err("ALSD chunk: truncated header".into());
+            }
+            break;
+        }
+        let id = &rest[0..4];
+        let content = u32::from_le_bytes([rest[4], rest[5], rest[6], rest[7]]) as usize;
+        let children = u32::from_le_bytes([rest[8], rest[9], rest[10], rest[11]]) as usize;
+        let end = 12usize.saturating_add(content).saturating_add(children);
+        if id == VOX_CHUNK {
+            if found.is_some() {
+                return Err("more than one ALSD chunk".into());
+            }
+            if content != 36 || children != 0 {
+                return Err(format!(
+                    "ALSD chunk: length {content} (children {children}), expected 36"
+                ));
+            }
+            let body = rest
+                .get(12..48)
+                .ok_or_else(|| String::from("ALSD chunk: truncated body"))?;
+            let layout = u32::from_le_bytes([body[0], body[1], body[2], body[3]]);
+            if layout != 1 {
+                return Err(format!("ALSD chunk: layout version {layout} is not known"));
+            }
+            let mut id = [0u8; 32];
+            id.copy_from_slice(&body[4..36]);
+            found = Some(id);
+        }
+        if end > rest.len() {
+            break;
+        }
+        off += end;
+    }
+    Ok(found)
+}
+
 /// The identifier stored in the bytes of a file
 ///
 /// # Errors
@@ -385,6 +441,14 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                 .ok_or_else(|| ProvenanceError::Unreadable("SVO chunk: truncated header".into()))?,
         );
         return Ok(Provenance::new(id));
+    }
+    if bytes.starts_with(b"VOX ") {
+        // MagicaVoxel: the private `ALSD` chunk among MAIN's children
+        return match vox_stored_id(bytes) {
+            Ok(Some(id)) => Ok(Provenance::new(id)),
+            Ok(None) => Err(ProvenanceError::Missing { format: "VOX" }),
+            Err(e) => Err(ProvenanceError::Unreadable(format!("VOX: {e}"))),
+        };
     }
     if bytes.starts_with(b"glTF") {
         // GLB: 12-byte header, then the JSON chunk (length, type `JSON`, data)

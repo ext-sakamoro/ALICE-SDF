@@ -1571,6 +1571,7 @@ use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
 const STORED_WRITERS: &[(&str, &str)] = &[
     ("src/neural.rs::save", "NSDF weights"),
     ("src/svo/streaming.rs::to_bytes", "SVO chunk"),
+    ("src/io/vox.rs::save_vox", "MagicaVoxel .vox"),
 ];
 
 fn small_net() -> NeuralSdf {
@@ -2067,5 +2068,239 @@ fn svo_chunk_headers_are_read_by_their_exact_version_and_never_as_version_1() {
             ),
             "{result:?}"
         );
+    }
+}
+
+// MagicaVoxel `.vox` (`io::vox`): model_v1.vox
+//   612f6227cb642393edea6751a297133072233ce5cad4d2454de006bff3cd8fdc
+//   save_vox of size (4, 4, 4), voxels (1, 2, 3, colour 79) and (0, 0, 0, colour 1) by alice-sdf
+//   6.1.0 (no ALSD chunk)
+
+fn vox_model() -> alice_sdf::io::vox::VoxModel {
+    use alice_sdf::io::vox::{VoxModel, Voxel};
+    VoxModel {
+        size: (4, 4, 4),
+        voxels: vec![
+            Voxel {
+                x: 1,
+                y: 2,
+                z: 3,
+                color: 79,
+            },
+            Voxel {
+                x: 0,
+                y: 0,
+                z: 0,
+                color: 1,
+            },
+        ],
+    }
+}
+
+/// (x, y, z, colour) of each voxel
+type VoxCells = Vec<(u8, u8, u8, u8)>;
+
+fn vox_voxels(m: &alice_sdf::io::vox::VoxModel) -> VoxCells {
+    m.voxels.iter().map(|v| (v.x, v.y, v.z, v.color)).collect()
+}
+
+/// The voxels as a reader that knows only SIZE and XYZI sees them: it walks MAIN's children and
+/// skips every chunk it does not know, as MagicaVoxel does
+fn vox_read_skipping_unknown_chunks(b: &[u8]) -> ((u32, u32, u32), VoxCells) {
+    let u32_at = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+    assert_eq!(&b[0..4], b"VOX ");
+    assert_eq!(&b[8..12], b"MAIN");
+    let end = 20 + u32_at(16) as usize;
+    assert_eq!(
+        end,
+        b.len(),
+        "MAIN's children size covers the rest of the file"
+    );
+    let mut size = (0, 0, 0);
+    let mut voxels = Vec::new();
+    let mut off = 20;
+    while off < end {
+        let id = &b[off..off + 4];
+        let content = u32_at(off + 4) as usize;
+        let children = u32_at(off + 8) as usize;
+        let body = off + 12;
+        if id == b"SIZE" {
+            size = (u32_at(body), u32_at(body + 4), u32_at(body + 8));
+        } else if id == b"XYZI" {
+            let n = u32_at(body) as usize;
+            voxels = (0..n)
+                .map(|i| {
+                    let q = body + 4 + 4 * i;
+                    (b[q], b[q + 1], b[q + 2], b[q + 3])
+                })
+                .collect();
+        }
+        off = body + content + children;
+    }
+    assert_eq!(off, end);
+    (size, voxels)
+}
+
+/// The `.vox` written by alice-sdf 6.1.0 (no `ALSD` chunk): MagicaVoxel writes none either, so
+/// `load_vox` reads it marked `Unpinned` and `load_vox_pinned` refuses it; the bytes this build
+/// writes for the same model are the 6.1.0 bytes with the `ALSD` chunk appended to MAIN's children
+#[test]
+fn a_vox_from_6_1_0_reads_as_unpinned_and_is_refused_when_pinned() {
+    use alice_sdf::io::vox::{load_vox, load_vox_pinned, save_vox};
+    let path = fixture("model_v1.vox");
+    let old = std::fs::read(&path).unwrap();
+    assert!(
+        !old.windows(4).any(|w| w == b"ALSD"),
+        "fixture carries no identifier"
+    );
+    assert!(matches!(
+        provenance::from_bytes(&old),
+        Err(ProvenanceError::Missing { format: "VOX" })
+    ));
+    let checked = load_vox(&path).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    let (model, _) = checked.into_parts();
+    assert_eq!(model.size, vox_model().size);
+    assert_eq!(vox_voxels(&model), vox_voxels(&vox_model()));
+    match load_vox_pinned(&path) {
+        Err(io::IoError::Unpinned { format }) => assert_eq!(format, "VOX"),
+        other => panic!("expected Unpinned, got {:?}", other.map(|_| ())),
+    }
+
+    let own_path = temp("model_v2.vox");
+    save_vox(&own_path, &vox_model()).unwrap();
+    let own = std::fs::read(&own_path).unwrap();
+    assert_eq!(own.len(), old.len() + 48);
+    assert_eq!(&own[..16], &old[..16]);
+    let main_children = |b: &[u8]| u32::from_le_bytes(b[16..20].try_into().unwrap());
+    assert_eq!(main_children(&own), main_children(&old) + 48);
+    assert_eq!(&own[20..old.len()], &old[20..]);
+}
+
+/// `save_vox` stores this crate's identifier in the `ALSD` chunk, `save_vox_with_provenance` the
+/// caller's; this crate's reads as `Current`, an earlier verified one as `VerifiedPrevious`,
+/// another one is refused by both loaders naming both identifiers; a reader that skips unknown
+/// chunks still reads the voxels; removing the chunk gives a file without an identifier
+#[test]
+fn vox_writers_store_and_loaders_check_the_identifier() {
+    use alice_sdf::io::vox::{load_vox, load_vox_pinned, save_vox, save_vox_with_provenance};
+    assert!(STORED_WRITERS
+        .iter()
+        .any(|(w, _)| *w == "src/io/vox.rs::save_vox"));
+    let own_path = temp("own.vox");
+    save_vox(&own_path, &vox_model()).unwrap();
+    let own = std::fs::read(&own_path).unwrap();
+    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
+    assert_eq!(
+        load_vox(&own_path).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+    assert_eq!(
+        vox_voxels(&load_vox_pinned(&own_path).unwrap()),
+        vox_voxels(&vox_model())
+    );
+    assert_eq!(
+        vox_read_skipping_unknown_chunks(&own),
+        ((4, 4, 4), vox_voxels(&vox_model()))
+    );
+
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let prev_path = temp("prev.vox");
+    save_vox_with_provenance(&prev_path, &vox_model(), &earlier).unwrap();
+    assert!(load_vox_pinned(&prev_path).is_ok());
+    assert_eq!(
+        load_vox(&prev_path).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    let other_path = temp("other.vox");
+    save_vox_with_provenance(&other_path, &vox_model(), &caller_id()).unwrap();
+    assert_eq!(
+        provenance::from_bytes(&std::fs::read(&other_path).unwrap()).unwrap(),
+        caller_id()
+    );
+    for result in [
+        load_vox(&other_path).map(|_| ()),
+        load_vox_pinned(&other_path).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+                    "{text}"
+                );
+            }
+            other => panic!("expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+
+    // the same file with the ALSD chunk cut out (and MAIN's children size fixed up)
+    let at = own.windows(4).position(|w| w == b"ALSD").unwrap();
+    let mut stripped = [&own[..at], &own[at + 48..]].concat();
+    let children = u32::from_le_bytes(stripped[16..20].try_into().unwrap()) - 48;
+    stripped[16..20].copy_from_slice(&children.to_le_bytes());
+    let stripped_path = temp("stripped.vox");
+    std::fs::write(&stripped_path, &stripped).unwrap();
+    assert_eq!(
+        load_vox(&stripped_path).unwrap().semantics(),
+        StoredSemantics::Unpinned
+    );
+    assert!(matches!(
+        load_vox_pinned(&stripped_path),
+        Err(io::IoError::Unpinned { format: "VOX" })
+    ));
+}
+
+/// An `ALSD` chunk that is present but cannot be read (cut short, another length, children,
+/// another layout version, or twice) is an error of the format, never a file without an identifier
+#[test]
+fn vox_identifier_chunks_that_cannot_be_read_are_errors_never_unpinned() {
+    use alice_sdf::io::vox::{load_vox, load_vox_pinned, save_vox};
+    let path = temp("bad_base.vox");
+    save_vox(&path, &vox_model()).unwrap();
+    let own = std::fs::read(&path).unwrap();
+    let at = own.windows(4).position(|w| w == b"ALSD").unwrap();
+    assert_eq!(at + 48, own.len(), "ALSD is the last chunk");
+    let set = |b: &mut [u8], o: usize, v: u32| b[o..o + 4].copy_from_slice(&v.to_le_bytes());
+
+    let mut cases: Vec<(String, Vec<u8>, &str)> = [2usize, 4, 11, 12, 20, 47]
+        .iter()
+        .map(|&cut| {
+            let why = if cut < 12 {
+                "truncated header"
+            } else {
+                "truncated body"
+            };
+            (format!("cut to {cut} bytes"), own[..at + cut].to_vec(), why)
+        })
+        .collect();
+    let mut b = own.clone();
+    set(&mut b, at + 4, 35);
+    cases.extend([("content 35".to_string(), b, "length 35")]);
+    let mut b = own.clone();
+    set(&mut b, at + 8, 4);
+    cases.extend([("children 4".to_string(), b, "children 4")]);
+    let mut b = own.clone();
+    set(&mut b, at + 12, 2);
+    cases.extend([("layout 2".to_string(), b, "layout version 2 is not known")]);
+    let twice = [&own[..], &own[at..]].concat();
+    cases.extend([("twice".to_string(), twice, "more than one ALSD chunk")]);
+    assert_eq!(cases.len(), 10);
+
+    for (name, bytes, why) in cases {
+        let from = provenance::from_bytes(&bytes);
+        assert!(
+            matches!(from, Err(ProvenanceError::Unreadable(ref e)) if e.contains(why)),
+            "provenance, {name}: {from:?}"
+        );
+        let p = temp("bad.vox");
+        std::fs::write(&p, &bytes).unwrap();
+        for result in [load_vox(&p).map(|_| ()), load_vox_pinned(&p).map(|_| ())] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref e)) if e.starts_with("VOX: ") && e.contains(why)),
+                "{name}: {result:?}"
+            );
+        }
     }
 }

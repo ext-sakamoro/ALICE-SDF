@@ -19,4 +19,3 @@ src/io/ue5_asset.rs::export_ue5_mesh_binary
 src/io/ue5_asset.rs::export_ue5_mesh_with_lods
 src/io/unity_mesh.rs::export_unity_mesh
 src/io/unity_mesh.rs::export_unity_mesh_binary
-src/io/vox.rs::save_vox
