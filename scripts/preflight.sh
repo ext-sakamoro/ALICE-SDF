@@ -83,6 +83,10 @@ step "actionlint (workflow YAML)"
 actionlint .github/workflows/*.yml
 
 step "workflow concurrency: oracle + branch への push で走る全 workflow が main の run を取り消さない"
+step "eol.yml / line endings (tests, then check)"
+# text files are LF in the index and the working tree (.github/workflows/eol.yml, shared by the ALICE crates)
+python3 scripts/test_check_eol.py
+python3 scripts/check_eol.py
 python3 scripts/test_workflow_concurrency.py
 python3 scripts/workflow_concurrency.py
 
