@@ -125,7 +125,12 @@ EXTRA_STORED_FORM_METHODS = ["serde_json::from_str", "serde_json::from_slice", "
                              "serde_json::from_value", "serde_json::de::from_str", "serde_json::de::from_slice",
                              "serde_json::de::from_reader", "serde_json::value::from_value",
                              "serde_json::Deserializer::from_str", "serde_json::Deserializer::from_slice",
-                             "serde_json::Deserializer::from_reader", "serde_json::StreamDeserializer::new",
+                             "serde_json::Deserializer::from_reader", "serde_json::Deserializer::new",
+                             "serde_json::StreamDeserializer::new",
+                             # the trait method: `T::deserialize(value)` with a serde_json::Value (itself a
+                             # Deserializer) or a Deserializer built any other way; the derive expansions
+                             # come from an external proc macro, which the lint does not see
+                             "serde::de::Deserialize::deserialize", "serde::de::DeserializeSeed::deserialize",
                              "bincode::serde::decode_from_slice", "bincode::serde::decode_from_reader",
                              "bincode::serde::decode_from_std_read", "bincode::serde::borrow_decode_from_slice",
                              "bincode::decode_from_slice", "bincode::decode_from_reader",
@@ -152,7 +157,10 @@ CANARY_FORMS = ["a.max(b)", "f32::min(a, b)", "a.min(b)", "f64::max)", "x.sin()"
                 "serde_json::from_slice(jb)", "serde_json::from_reader(jr)",
                 "serde_json::Deserializer::from_str(js)", "bincode::serde::decode_from_slice(bb,",
                 "bs::decode_from_slice(bb,", "bincode::serde::decode_from_reader(rd,",
-                "bincode::serde::decode_from_std_read(br,", "bincode::decode_from_slice(bn,"]
+                "bincode::serde::decode_from_std_read(br,", "bincode::decode_from_slice(bn,",
+                "u32::deserialize(tv)", "serde_json::Deserializer::new(serde_json::de::StrRead::new(ts))",
+                "<u32 as Deserialize>::deserialize(&mut td)", "u32::deserialize(&pv)",
+                "std::marker::PhantomData::<u32>.deserialize(sv)"]
 
 DIAG = re.compile(r"^(?P<file>[^:\n]+):(?P<line>\d+):\d+: (?:warning|error): use of a disallowed (?:method|type) `(?P<path>[^`]+)`",
                   re.M)

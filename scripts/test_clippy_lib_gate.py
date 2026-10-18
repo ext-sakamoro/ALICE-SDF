@@ -227,6 +227,21 @@ pub fn s11() {
 pub fn s12() {
     x(bincode::decode_from_slice(bn,
 }
+pub fn s13() {
+    x(u32::deserialize(tv)
+}
+pub fn s14() {
+    x(serde_json::Deserializer::new(serde_json::de::StrRead::new(ts))
+}
+pub fn s15() {
+    x(<u32 as Deserialize>::deserialize(&mut td)
+}
+pub fn s16() {
+    x(u32::deserialize(&pv)
+}
+pub fn s17() {
+    x(std::marker::PhantomData::<u32>.deserialize(sv)
+}
 """
 
 
@@ -263,7 +278,9 @@ class Render(unittest.TestCase):
                   "serde_json::value::from_value", "serde_json::Deserializer::from_str",
                   "bincode::serde::decode_from_slice", "bincode::serde::decode_from_reader",
                   "bincode::serde::decode_from_std_read", "bincode::serde::borrow_decode_from_slice",
-                  "bincode::decode_from_slice", "bincode::decode_from_reader", "bincode::decode_from_std_read"):
+                  "bincode::decode_from_slice", "bincode::decode_from_reader", "bincode::decode_from_std_read",
+                  "serde_json::Deserializer::new", "serde::de::Deserialize::deserialize",
+                  "serde::de::DeserializeSeed::deserialize"):
             self.assertIn(p, g.EXTRA_STORED_FORM_METHODS)
             self.assertIn(f'path = "{p}"', g.render(ROOT))
 

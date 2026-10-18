@@ -295,3 +295,27 @@ pub fn bincode_std_read(br: &mut std::io::Cursor<Vec<u8>>) -> Option<u32> {
 pub fn bincode_native(bn: &[u8]) -> Option<u32> {
     bincode::decode_from_slice(bn, bincode::config::standard()).ok().map(|r| r.0)
 }
+
+// the trait method: a serde_json::Value is itself a Deserializer, so a type's own
+// `deserialize` reads a stored form without any free function
+pub fn trait_from_value(tv: serde_json::Value) -> Option<u32> {
+    use serde::Deserialize;
+    u32::deserialize(tv).ok()
+}
+
+pub fn trait_from_constructed(ts: &str) -> Option<u32> {
+    use serde::Deserialize;
+    let mut td = serde_json::Deserializer::new(serde_json::de::StrRead::new(ts));
+    <u32 as Deserialize>::deserialize(&mut td).ok()
+}
+
+pub fn trait_from_parsed(tp: &str) -> Option<u32> {
+    use serde::Deserialize;
+    let pv: serde_json::Value = tp.parse().ok()?;
+    u32::deserialize(&pv).ok()
+}
+
+pub fn trait_seed(sv: serde_json::Value) -> Option<u32> {
+    use serde::de::DeserializeSeed;
+    std::marker::PhantomData::<u32>.deserialize(sv).ok()
+}
