@@ -437,6 +437,9 @@ cargo test --lib --no-default-features --features openvdb vdb
 
 step "test: io format oracle の openvdb + hlsl arm (ci.yml の openvdb job と対)"
 cargo test --features "hlsl,openvdb" --test test_io_format_oracle
+step "test: provenance of the ALICE-VDB grid (ci.yml の openvdb job と対、3 件未満で fail)"
+cargo test --features openvdb --test test_provenance alice_vdb 2>&1 | tee "${CARGO_TARGET_DIR:-target}/provenance-vdb.log"
+python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/provenance-vdb.log" --min 3 --what "ALICE-VDB provenance tests (openvdb)"
 
 step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes (Metal here, lavapipe in CI)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \

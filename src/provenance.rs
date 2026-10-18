@@ -341,6 +341,31 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             ))),
         };
     }
+    if bytes.starts_with(b"ALICEVDB") {
+        // ALICE-VDB dense grid: `ALICEVDB2` carries the identifier after the 9-byte magic
+        return match bytes.get(8) {
+            Some(b'1') => Err(ProvenanceError::Missing {
+                format: "ALICE-VDB",
+            }),
+            Some(b'2') => {
+                let id: [u8; 32] = bytes
+                    .get(9..41)
+                    .ok_or_else(|| {
+                        ProvenanceError::Unreadable("ALICE-VDB: truncated header".into())
+                    })?
+                    .try_into()
+                    .unwrap();
+                Ok(Provenance::new(id))
+            }
+            Some(&v) => Err(ProvenanceError::Unreadable(format!(
+                "ALICE-VDB: version {:?} is not known",
+                char::from(v)
+            ))),
+            None => Err(ProvenanceError::Unreadable(
+                "ALICE-VDB: truncated header".into(),
+            )),
+        };
+    }
     if bytes.starts_with(b"glTF") {
         // GLB: 12-byte header, then the JSON chunk (length, type `JSON`, data)
         let len = bytes

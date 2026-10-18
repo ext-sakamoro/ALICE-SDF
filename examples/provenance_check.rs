@@ -218,5 +218,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => return Err("NSDF weights under another identifier were read".into()),
     }
 
+    // the ALICE-VDB dense grid (feature openvdb): `ALICEVDB2` carries the identifier after its magic
+    #[cfg(feature = "openvdb")]
+    {
+        use alice_sdf::io::vdb;
+        let grid = vdb::bake_to_vdb(&SdfNode::sphere(1.0), (-1.5, 1.5), 8)?;
+        let checked = vdb::load_dense_grid_from_vdb_unverified(&grid)?;
+        println!("ALICE-VDB grid: {:?}", checked.semantics());
+        assert_eq!(checked.semantics(), StoredSemantics::Current);
+        let other =
+            vdb::bake_to_vdb_with_provenance(&SdfNode::sphere(1.0), (-1.5, 1.5), 8, &foreign)?;
+        match vdb::load_dense_grid_from_vdb(&other) {
+            Err(e) => println!("ALICE-VDB grid under another identifier: refused: {e}"),
+            Ok(_) => return Err("an ALICE-VDB grid under another identifier was read".into()),
+        }
+    }
+
     Ok(())
 }

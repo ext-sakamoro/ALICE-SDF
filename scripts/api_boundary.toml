@@ -8,7 +8,7 @@ targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 740 items (0 Linux-only): 47 handshake, 670 local, 23 pending (G8). Groups (count, decision):
+# 742 items (0 Linux-only): 49 handshake, 671 local, 22 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -29,7 +29,9 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      1  handshake: asdf_json_carries_and_checks_the_identifier
 #      2  handshake: a_model_answer_is_read_unpinned_and_another_stamp_is_refused
 #      2  local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)
-#      5  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
+#      4  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
+#      1  handshake: alice_vdb_writers_store_and_loaders_check_the_identifier
+#      1  handshake: alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: lod_chain_loaders_check_both_parts
 #      1  local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain
 #      1  local: converts an animation clip already in memory; the file it came from is read by import_fbx_full, which checks the identifier
@@ -55,7 +57,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      1  local: the Godot extension entry point, registers this build's classes
 #      6  local: Godot dispatches engine Variants to this build's own classes; no file is read
 #     16  local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded
-#     58  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#     59  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
 #      1  local: reports a stored file's format, version and node count as text; the tree is not returned
 #     10  local: writes this build's own volume or STEP data; stamping is G8's
 #      7  local: encodes this build's own mesh buffers
@@ -167,7 +169,8 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # 5 pending
 "fn::io::splat::load_splat" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
-"fn::io::vdb::load_dense_grid_from_vdb" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
+"fn::io::vdb::load_dense_grid_from_vdb" = "handshake: alice_vdb_writers_store_and_loaders_check_the_identifier"
+"fn::io::vdb::load_dense_grid_from_vdb_unverified" = "handshake: alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified"
 "fn::io::vox::load_vox" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
 "fn::Splat::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
 "fn::SvoChunk::from_bytes" = "pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check"
@@ -755,6 +758,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::io::usd::export_usda" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::usd::export_usda_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vdb::bake_to_vdb" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::vdb::bake_to_vdb_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vox::save_vox" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
