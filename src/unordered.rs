@@ -23,8 +23,29 @@ use std::collections::{hash_map, HashMap, HashSet};
 use std::hash::Hash;
 
 /// A `HashMap` without iteration: see the module documentation
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct UnorderedMap<K, V>(HashMap<K, V>);
+
+/// The entries in key order: a derived `Debug` would print them in hash order, which
+/// differs between runs
+impl<K: Eq + Hash + Ord + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug
+    for UnorderedMap<K, V>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("UnorderedMap")
+            .field(&DebugMap(self.sorted_entries()))
+            .finish()
+    }
+}
+
+/// `{k: v, ...}` for entries already in key order
+struct DebugMap<'a, K, V>(Vec<(&'a K, &'a V)>);
+
+impl<K: std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for DebugMap<'_, K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map().entries(self.0.iter().copied()).finish()
+    }
+}
 
 impl<K, V> Default for UnorderedMap<K, V> {
     fn default() -> Self {
@@ -177,8 +198,29 @@ impl<K: Eq + Hash + Ord, V: Ord + Copy> UnorderedMap<K, V> {
 }
 
 /// A `HashSet` without iteration: see the module documentation
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct UnorderedSet<T>(HashSet<T>);
+
+/// The values in order: a derived `Debug` would print them in hash order, which differs
+/// between runs
+impl<T: Eq + Hash + Ord + std::fmt::Debug> std::fmt::Debug for UnorderedSet<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut values: Vec<&T> = self.0.iter().collect();
+        values.sort_unstable();
+        f.debug_tuple("UnorderedSet")
+            .field(&DebugSet(values))
+            .finish()
+    }
+}
+
+/// `{v, ...}` for values already in order
+struct DebugSet<'a, T>(Vec<&'a T>);
+
+impl<T: std::fmt::Debug> std::fmt::Debug for DebugSet<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(self.0.iter().copied()).finish()
+    }
+}
 
 impl<T> Default for UnorderedSet<T> {
     fn default() -> Self {
@@ -239,6 +281,41 @@ impl<T: Eq + Hash> FromIterator<T> for UnorderedSet<T> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn debug_prints_in_key_order_whatever_the_insertion_order() {
+        let keys: Vec<u32> = (0..64).map(|i| (i * 37) % 64).collect();
+        let mut a = UnorderedMap::new();
+        let mut b = UnorderedMap::new();
+        let mut sa = UnorderedSet::new();
+        let mut sb = UnorderedSet::new();
+        for &k in &keys {
+            a.insert(k, k * 10);
+            sa.insert(k);
+        }
+        for &k in keys.iter().rev() {
+            b.insert(k, k * 10);
+            sb.insert(k);
+        }
+        let want_map = format!(
+            "UnorderedMap({{{}}})",
+            (0..64u32)
+                .map(|k| format!("{k}: {}", k * 10))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let want_set = format!(
+            "UnorderedSet({{{}}})",
+            (0..64u32)
+                .map(|k| k.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        assert_eq!(format!("{a:?}"), want_map);
+        assert_eq!(format!("{b:?}"), want_map);
+        assert_eq!(format!("{sa:?}"), want_set);
+        assert_eq!(format!("{sb:?}"), want_set);
+    }
+
     use super::*;
     use std::cell::RefCell;
 
