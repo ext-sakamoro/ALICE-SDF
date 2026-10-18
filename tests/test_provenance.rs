@@ -898,6 +898,15 @@ const STAMPED: &[(&str, &str, StampWrite, Write)] = &[
         },
     ),
     (
+        "export_obj_with_stamp",
+        "s.obj",
+        |m, p, s| io::export_obj_with_stamp(m, p, &io::ObjConfig::default(), None, s).unwrap(),
+        |m, p, id| {
+            io::export_obj_with_provenance(m, p, &io::ObjConfig::default(), None, id.unwrap())
+                .unwrap();
+        },
+    ),
+    (
         "export_fbx_with_stamp (ascii)",
         "s_ascii.fbx",
         |m, p, s| {
@@ -916,6 +925,36 @@ const STAMPED: &[(&str, &str, StampWrite, Write)] = &[
         },
     ),
 ];
+
+/// The OBJ writer's companion MTL file carries both identifiers too
+#[test]
+fn a_stamped_obj_writes_both_identifiers_into_its_mtl() {
+    use alice_sdf::material::{Material, MaterialLibrary};
+    let m = mesh();
+    let lib = MaterialLibrary {
+        materials: vec![Material {
+            name: "paint".into(),
+            ..Default::default()
+        }],
+    };
+    let path = temp("s_mtl.obj");
+    io::export_obj_with_stamp(
+        &m,
+        &path,
+        &io::ObjConfig::default(),
+        Some(&lib),
+        &Stamp::sdf_with_producer(producer_id()),
+    )
+    .unwrap();
+    for p in [path.clone(), path.with_extension("mtl")] {
+        assert_eq!(
+            provenance::read_with_producer(&p).unwrap(),
+            (Provenance::sdf(), Some(producer_id())),
+            "{}",
+            p.display()
+        );
+    }
+}
 
 /// Each stamped writer keeps the two identifiers in their own slots (in either assignment), a
 /// stamp without a producer writes exactly the bytes of `*_with_provenance`, and `check_producer`

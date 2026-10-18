@@ -63,7 +63,10 @@ pub use json::{
 pub use nanite::{
     export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig,
 };
-pub use obj::{export_obj, export_obj_with_provenance, import_obj, import_obj_pinned, ObjConfig};
+pub use obj::{
+    export_obj, export_obj_with_provenance, export_obj_with_stamp, import_obj, import_obj_pinned,
+    ObjConfig,
+};
 pub use ply::{export_ply, export_ply_with_provenance, import_ply, import_ply_pinned, PlyConfig};
 pub use stl::{
     export_stl, export_stl_ascii, export_stl_ascii_with_provenance, export_stl_ascii_with_stamp,

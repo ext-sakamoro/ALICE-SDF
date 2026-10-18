@@ -60,6 +60,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     provenance::check_producer(&stamped, &producer)?;
     println!("{}: {primary}, producer {producer}", stamped.display());
+    // the same in a text format: an OBJ keeps both on its header comment line
+    let stamped_obj = dir.join("sphere_stamped.obj");
+    io::export_obj_with_stamp(&mesh, &stamped_obj, &io::ObjConfig::default(), None, &stamp)?;
+    assert_eq!(
+        provenance::read_with_producer(&stamped_obj)?,
+        (Provenance::sdf(), Some(producer))
+    );
+    println!("{}: {primary}, producer {producer}", stamped_obj.display());
 
     // every format stamps the same identifier: STEP from the tree, meshopt-compressed glTF
     // written to a file and to bytes

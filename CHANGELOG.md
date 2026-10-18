@@ -9,6 +9,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Added
+- `io::export_obj_with_stamp` (ALICE-Law G8): STL / 3MF / FBX と同じく、主の意味の識別子に並べて producer の識別子 (`alice:producer_semantics_id=<hex>`) を OBJ の header comment の行に置く (MTL file にも) producer が無い時は `export_obj_with_provenance` と同じ bytes `provenance::read_with_producer` が両方を読み戻す
 - CI (ALICE-Law G8): `scripts/provenance_writers.py` が `src/neural.rs` も数え、学習した network を stream に書く `NeuralSdf::save` を公開の書き出し関数に含める (まだ意味の識別子を書かないので `scripts/provenance-pending.txt` の未対応の一覧に置く、書き出し関数は 45 個)
 - `alice_sdf::unordered` を公開した (`UnorderedMap` / `UnorderedSet`、走査できない hash collection、ALICE-Law G13) 他の crate が自分の library で std の `HashMap` / `HashSet` を禁止し、代わりにこの型を使えるようにする 一部の feature でしか build されなかった `UnorderedMap::is_empty` / `min_key_by` を常に公開し、`UnorderedSet::is_empty` を足した `Debug` は導出をやめ key の順に出す (導出した `Debug` は中の hash collection を hash の順に出し、run ごとに違った) 例 `examples/unordered_collections.rs`
 - 試験 `tests/test_g8_mesh_import.rs` (ALICE-Law G8): mesh の importer (STL / OBJ / PLY / FBX / FBX full / GLB / GLB bytes / USDA) ごとに、公開した 6.1.0 が書いた識別子の無い bytes (`tests/fixtures/provenance/mesh_v1.*`) は `Unpinned` で読み `*_pinned` は拒む、この crate のものは `Current`、以前の識別子は `VerifiedPrevious`、別の識別子は両方で拒む、値が識別子でない時は `InvalidFormat` (識別子の無いものとして読まない) を確かめる 識別子を無視する・壊れた識別子を無いものとして読む・`*_pinned` が識別子の無いものを通す・USDA や GLB bytes の判定を飛ばすなどの変異 6 件はすべて失敗する

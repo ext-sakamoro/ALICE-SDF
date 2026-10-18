@@ -8,7 +8,7 @@ targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 738 items (0 Linux-only): 45 handshake, 669 local, 24 pending (G8). Groups (count, decision):
+# 739 items (0 Linux-only): 45 handshake, 670 local, 24 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -54,7 +54,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      1  local: the Godot extension entry point, registers this build's classes
 #      6  local: Godot dispatches engine Variants to this build's own classes; no file is read
 #     16  local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded
-#     57  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#     58  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
 #      1  local: reports a stored file's format, version and node count as text; the tree is not returned
 #     10  local: writes this build's own volume or STEP data; stamping is G8's
 #      7  local: encodes this build's own mesh buffers
@@ -697,7 +697,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "target::wasm32-unknown-unknown::wasm::sdf_torus_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 "target::wasm32-unknown-unknown::wasm::sphere_batch_flat" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 
-# 57 local
+# 58 local
 "fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -740,6 +740,7 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::io::stl::export_stl_ascii_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::stl::export_stl_ascii_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::stl::export_stl_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::obj::export_obj_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::stl::export_stl_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::threemf::export_3mf" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::threemf::export_3mf_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"

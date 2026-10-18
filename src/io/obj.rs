@@ -8,8 +8,8 @@
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
-use crate::provenance::Provenance;
 use crate::provenance::{mesh_import_verdict, Checked};
+use crate::provenance::{Provenance, Stamp};
 use std::io::Write;
 use std::path::Path;
 
@@ -59,6 +59,22 @@ pub fn export_obj_with_provenance(
     materials: Option<&MaterialLibrary>,
     provenance: &Provenance,
 ) -> Result<(), IoError> {
+    export_obj_with_stamp(mesh, path, config, materials, &Stamp::from(*provenance))
+}
+
+/// [`export_obj_with_provenance`] with a [`Stamp`], keeping a producer identifier
+///
+/// The primary identifier goes where that writer puts it, and the producer identifier (when
+/// present) beside it on the same header comment line, as `alice:producer_semantics_id=<hex>`
+/// (in the MTL file too); without a producer the bytes are those of
+/// [`export_obj_with_provenance`]. [`crate::provenance::read_with_producer`] reads both back.
+pub fn export_obj_with_stamp(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &ObjConfig,
+    materials: Option<&MaterialLibrary>,
+    stamp: &Stamp,
+) -> Result<(), IoError> {
     let path = path.as_ref();
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -67,7 +83,7 @@ pub fn export_obj_with_provenance(
 
     // Header
     writeln!(w, "# ALICE-SDF OBJ Export")?;
-    writeln!(w, "# {}", provenance.tagged())?;
+    writeln!(w, "# {}", stamp.tagged())?;
     writeln!(w, "# Vertices: {}", mesh.vertices.len())?;
     writeln!(w, "# Triangles: {}", mesh.indices.len() / 3)?;
 
@@ -134,7 +150,7 @@ pub fn export_obj_with_provenance(
     if config.export_materials {
         if let Some(mat_lib) = materials {
             let mtl_path = path.with_extension("mtl");
-            export_mtl(mat_lib, &mtl_path, provenance)?;
+            export_mtl(mat_lib, &mtl_path, stamp)?;
         }
     }
 
@@ -169,13 +185,13 @@ fn write_face(
 fn export_mtl(
     mat_lib: &MaterialLibrary,
     path: impl AsRef<Path>,
-    provenance: &Provenance,
+    stamp: &Stamp,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
 
     writeln!(w, "# ALICE-SDF MTL Export")?;
-    writeln!(w, "# {}", provenance.tagged())?;
+    writeln!(w, "# {}", stamp.tagged())?;
 
     for (_, mat) in mat_lib.iter() {
         writeln!(w, "\nnewmtl {}", mat.name)?;
