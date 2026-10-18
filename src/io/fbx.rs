@@ -17,6 +17,7 @@ use crate::compiled::real::law_max_f32;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
+use crate::provenance::{mesh_import_verdict, Checked};
 use crate::provenance::{Provenance, Stamp};
 use crate::unordered::UnorderedMap;
 use std::collections::BTreeMap;
@@ -1101,11 +1102,29 @@ fn export_fbx_binary(
 /// - PolygonVertexIndex (negative index encoding for polygon end)
 /// - LayerElementNormal / Normals
 /// - LayerElementUV / UV
-pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+pub fn import_fbx(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
+    import_fbx_with(path.as_ref(), true)
+}
+
+/// [`import_fbx`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`import_fbx`].
+pub fn import_fbx_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    import_fbx_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn import_fbx_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
+    let data = std::fs::read(path)?;
+    let semantics = mesh_import_verdict(&data, "FBX", allow_unpinned)?;
+    parse_fbx(&data).map(|value| Checked::new(value, semantics))
+}
+
+/// A mesh from ASCII FBX bytes
+fn parse_fbx(bytes: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::{Vec2, Vec3};
-
-    let bytes = std::fs::read(path.as_ref())?;
 
     // Check for binary FBX (starts with "Kaydara FBX Binary") before decoding
     // as text: a binary file is not UTF-8, so decoding first reported an I/O
@@ -1115,7 +1134,7 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
             "Binary FBX import not supported. Use ASCII FBX or convert to glTF.".into(),
         ));
     }
-    let content = String::from_utf8(bytes)
+    let content = std::str::from_utf8(bytes)
         .map_err(|e| IoError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
 
     let mut raw_vertices: Vec<f32> = Vec::new();
@@ -1274,17 +1293,47 @@ pub fn import_fbx(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
 /// - Deformer/Cluster parsing for bone hierarchy and vertex weights
 /// - AnimationCurveNode parsing for keyframe animation
 /// - Connection graph (C: "OO") for resolving parent-child relationships
-pub fn import_fbx_full(path: impl AsRef<Path>) -> Result<ImportedFbx, IoError> {
-    // First, get the base mesh using existing import_fbx
-    let mesh = import_fbx(path.as_ref())?;
+///
+/// The identifier is read and judged as [`import_fbx`] does; [`import_fbx_full_pinned`] also
+/// refuses an unstamped file.
+///
+/// # Errors
+///
+/// As [`import_fbx`].
+pub fn import_fbx_full(path: impl AsRef<Path>) -> Result<Checked<ImportedFbx>, IoError> {
+    import_fbx_full_with(path.as_ref(), true)
+}
 
-    let content = std::fs::read_to_string(path.as_ref())?;
+/// [`import_fbx_full`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`import_fbx_full`].
+pub fn import_fbx_full_pinned(path: impl AsRef<Path>) -> Result<ImportedFbx, IoError> {
+    import_fbx_full_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn import_fbx_full_with(
+    path: &Path,
+    allow_unpinned: bool,
+) -> Result<Checked<ImportedFbx>, IoError> {
+    let data = std::fs::read(path)?;
+    let semantics = mesh_import_verdict(&data, "FBX", allow_unpinned)?;
+    parse_fbx_full(&data).map(|value| Checked::new(value, semantics))
+}
+
+/// The mesh, skeleton and animations of ASCII FBX bytes
+fn parse_fbx_full(data: &[u8]) -> Result<ImportedFbx, IoError> {
+    let mesh = parse_fbx(data)?;
+
+    let content = std::str::from_utf8(data)
+        .map_err(|e| IoError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
 
     // Parse skeleton from Deformer sections
-    let skeleton = parse_skeleton(&content);
+    let skeleton = parse_skeleton(content);
 
     // Parse animations from AnimationCurveNode sections
-    let animations = parse_animations(&content);
+    let animations = parse_animations(content);
 
     Ok(ImportedFbx {
         mesh,
@@ -1747,7 +1796,7 @@ mod tests {
         export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
 
         // Import back
-        let imported = import_fbx(&path).unwrap();
+        let imported = import_fbx_pinned(&path).unwrap();
 
         assert_eq!(imported.vertex_count(), orig_verts, "Vertex count mismatch");
         assert_eq!(
@@ -1879,7 +1928,7 @@ mod tests {
         export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
 
         // Import with full parser
-        let imported = import_fbx_full(&path).unwrap();
+        let imported = import_fbx_full_pinned(&path).unwrap();
 
         // Should have geometry, but no skeleton
         assert_eq!(imported.mesh.vertex_count(), mesh.vertex_count());

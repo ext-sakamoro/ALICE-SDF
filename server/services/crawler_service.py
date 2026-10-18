@@ -95,7 +95,8 @@ def _convert_glb_to_asdf(
     glb_bytes: bytes, asset_meta: dict, collection_meta: dict
 ) -> tuple[str, int]:
     """Convert GLB bytes to .asdf.json string. Returns (json_str, node_count)."""
-    vertices, indices = alice_sdf.import_glb_bytes(glb_bytes)
+    # a downloaded asset carries no identifier: status is "unpinned" (another SDF arithmetic raises)
+    vertices, indices, _status = alice_sdf.import_glb_bytes(glb_bytes)
     node = alice_sdf.mesh_to_sdf(vertices, indices)
     sdf_json_str = alice_sdf.to_json(node)
 

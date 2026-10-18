@@ -8,6 +8,7 @@
 use crate::io::IoError;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
+use crate::provenance::{mesh_import_verdict, Checked};
 use std::path::Path;
 
 /// PLY export configuration
@@ -125,12 +126,40 @@ pub fn export_ply_with_provenance(
     Ok(())
 }
 
-/// Import mesh from PLY format (auto-detects ASCII vs binary)
-pub fn import_ply(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+/// Import a mesh from PLY (ASCII or binary), with what is known about the arithmetic it was written under
+///
+/// The identifier this crate's writers store is read from the same bytes: a file of this
+/// crate is [`crate::provenance::StoredSemantics::Current`] (or `VerifiedPrevious`), a file from another program
+/// (no identifier) is read and marked [`crate::provenance::StoredSemantics::Unpinned`], and a file stamped by
+/// another SDF arithmetic is refused. [`import_ply_pinned`] also refuses an unstamped file.
+///
+/// # Errors
+///
+/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// malformed one, and the I/O and parse errors.
+pub fn import_ply(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
+    import_ply_with(path.as_ref(), true)
+}
+
+/// [`import_ply`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`import_ply`].
+pub fn import_ply_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    import_ply_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn import_ply_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
+    let data = std::fs::read(path)?;
+    let semantics = mesh_import_verdict(&data, "PLY", allow_unpinned)?;
+    parse_ply(&data).map(|value| Checked::new(value, semantics))
+}
+
+/// A mesh from PLY bytes (auto-detects ASCII vs binary)
+fn parse_ply(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::Vec3;
-
-    let data = std::fs::read(path)?;
 
     // Find end_header marker by scanning bytes
     let marker = b"end_header\n";
@@ -221,7 +250,7 @@ pub fn import_ply(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
         Ok(Mesh { vertices, indices })
     } else {
         // ASCII
-        let text = std::str::from_utf8(&data)
+        let text = std::str::from_utf8(data)
             .map_err(|e| IoError::InvalidFormat(format!("Invalid UTF-8: {}", e)))?;
 
         let mut vertices = Vec::with_capacity(vert_count);
@@ -290,7 +319,7 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
         let path = std::env::temp_dir().join("alice_test_ply_bin.ply");
         export_ply(&mesh, &path, &PlyConfig::default()).unwrap();
-        let imported = import_ply(&path).unwrap();
+        let imported = import_ply_pinned(&path).unwrap();
         assert!(imported.vertex_count() > 0);
         assert_eq!(imported.triangle_count(), mesh.triangle_count());
         std::fs::remove_file(&path).ok();
@@ -312,7 +341,7 @@ mod tests {
             export_normals: true,
         };
         export_ply(&mesh, &path, &ply_config).unwrap();
-        let imported = import_ply(&path).unwrap();
+        let imported = import_ply_pinned(&path).unwrap();
         assert!(imported.vertex_count() > 0);
         assert_eq!(imported.triangle_count(), mesh.triangle_count());
         std::fs::remove_file(&path).ok();

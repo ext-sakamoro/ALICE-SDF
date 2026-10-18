@@ -15,6 +15,7 @@ use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
+use crate::provenance::{mesh_import_verdict, Checked};
 use std::io::Write;
 use std::path::Path;
 
@@ -1157,9 +1158,17 @@ fn build_glb_data(
 /// - Normals: VEC3 / FLOAT
 /// - UVs (TEXCOORD_0): VEC2 / FLOAT
 /// - Indices: SCALAR / UNSIGNED_SHORT or UNSIGNED_INT
-pub fn import_glb(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
-    let data = std::fs::read(path)?;
-    import_glb_bytes(&data)
+pub fn import_glb(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
+    import_glb_bytes(&std::fs::read(path)?)
+}
+
+/// [`import_glb`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`import_glb`].
+pub fn import_glb_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    import_glb_bytes_pinned(&std::fs::read(path)?)
 }
 
 /// A JSON array element by index, or an `IoError` when the index is out of range
@@ -1206,8 +1215,38 @@ fn accessor_layout<'a>(
     Ok((byte_offset, count, comp_type, acc_type))
 }
 
-/// Import a mesh from in-memory GLB bytes
-pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
+/// Import a mesh from in-memory GLB bytes, with what is known about the arithmetic they were
+/// written under
+///
+/// `asset.extras["alice:semantics_id"]` of the JSON chunk is read: bytes of this crate are
+/// [`crate::provenance::StoredSemantics::Current`] (or `VerifiedPrevious`), bytes from another program (no
+/// identifier) are read and marked [`crate::provenance::StoredSemantics::Unpinned`], and bytes stamped by another
+/// SDF arithmetic are refused. [`import_glb_bytes_pinned`] also refuses unstamped bytes.
+///
+/// # Errors
+///
+/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// malformed one, and the parse errors.
+pub fn import_glb_bytes(data: &[u8]) -> Result<Checked<Mesh>, IoError> {
+    import_glb_bytes_with(data, true)
+}
+
+/// [`import_glb_bytes`] that refuses bytes without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for bytes without an identifier, otherwise as [`import_glb_bytes`].
+pub fn import_glb_bytes_pinned(data: &[u8]) -> Result<Mesh, IoError> {
+    import_glb_bytes_with(data, false).map(|c| c.into_parts().0)
+}
+
+fn import_glb_bytes_with(data: &[u8], allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
+    let semantics = mesh_import_verdict(data, "GLB", allow_unpinned)?;
+    parse_glb(data).map(|value| Checked::new(value, semantics))
+}
+
+/// A mesh from GLB bytes
+fn parse_glb(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::{Vec2, Vec3};
 
@@ -1265,7 +1304,7 @@ pub fn import_glb_bytes(data: &[u8]) -> Result<Mesh, IoError> {
     // Parse JSON using serde_json::Value (minimal parsing)
     #[allow(
         clippy::disallowed_methods,
-        reason = "stored form pending: the glTF importer does not yet check asset.extras (G8 mesh-import group)"
+        reason = "stored form checked: import_glb_bytes_with applies mesh_import_verdict to the same bytes before the mesh is returned"
     )]
     let root: serde_json::Value = serde_json::from_slice(json_bytes)
         .map_err(|e| IoError::InvalidFormat(format!("Invalid glTF JSON: {}", e)))?;
@@ -1810,7 +1849,7 @@ mod tests {
         let glb_bytes = export_glb_bytes(&mesh, &GltfConfig::default(), None).unwrap();
 
         // Import back
-        let imported = import_glb_bytes(&glb_bytes).unwrap();
+        let imported = import_glb_bytes_pinned(&glb_bytes).unwrap();
 
         assert_eq!(imported.vertex_count(), orig_verts, "Vertex count mismatch");
         assert_eq!(
@@ -1844,7 +1883,7 @@ mod tests {
         let path = std::env::temp_dir().join("alice_import_test.glb");
         export_glb(&mesh, &path, &GltfConfig::default(), None).unwrap();
 
-        let imported = import_glb(&path).unwrap();
+        let imported = import_glb_pinned(&path).unwrap();
         assert_eq!(imported.vertex_count(), mesh.vertex_count());
         assert_eq!(imported.indices.len(), mesh.indices.len());
 

@@ -7,6 +7,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
+use crate::provenance::{mesh_import_verdict, Checked};
 use crate::provenance::{Provenance, Stamp};
 use std::path::Path;
 
@@ -132,9 +133,38 @@ pub fn export_stl_ascii_with_stamp(
     Ok(())
 }
 
-/// Import mesh from STL format (auto-detects binary vs ASCII)
-pub fn import_stl(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+/// Import a mesh from STL (binary or ASCII), with what is known about the arithmetic it was written under
+///
+/// The identifier this crate's writers store is read from the same bytes: a file of this
+/// crate is [`crate::provenance::StoredSemantics::Current`] (or `VerifiedPrevious`), a file from another program
+/// (no identifier) is read and marked [`crate::provenance::StoredSemantics::Unpinned`], and a file stamped by
+/// another SDF arithmetic is refused. [`import_stl_pinned`] also refuses an unstamped file.
+///
+/// # Errors
+///
+/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// malformed one, and the I/O and parse errors.
+pub fn import_stl(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
+    import_stl_with(path.as_ref(), true)
+}
+
+/// [`import_stl`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`import_stl`].
+pub fn import_stl_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    import_stl_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn import_stl_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
     let data = std::fs::read(path)?;
+    let semantics = mesh_import_verdict(&data, "STL", allow_unpinned)?;
+    parse_stl(&data).map(|value| Checked::new(value, semantics))
+}
+
+/// A mesh from STL bytes (auto-detects binary vs ASCII)
+fn parse_stl(data: &[u8]) -> Result<Mesh, IoError> {
     if data.len() < 84 {
         return Err(IoError::InvalidFormat("STL file too small".into()));
     }
@@ -146,9 +176,9 @@ pub fn import_stl(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
             .unwrap_or(false);
 
     if is_ascii {
-        import_stl_ascii(&data)
+        import_stl_ascii(data)
     } else {
-        import_stl_binary(&data)
+        import_stl_binary(data)
     }
 }
 
@@ -279,7 +309,7 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
         let path = std::env::temp_dir().join("alice_test_stl_bin.stl");
         export_stl(&mesh, &path).unwrap();
-        let imported = import_stl(&path).unwrap();
+        let imported = import_stl_pinned(&path).unwrap();
         assert!(imported.vertex_count() > 0);
         assert_eq!(imported.triangle_count(), mesh.triangle_count());
         std::fs::remove_file(&path).ok();
@@ -297,7 +327,7 @@ mod tests {
         let mesh = sdf_to_mesh(&sphere, Vec3::splat(-2.0), Vec3::splat(2.0), &config);
         let path = std::env::temp_dir().join("alice_test_stl_ascii.stl");
         export_stl_ascii(&mesh, &path).unwrap();
-        let imported = import_stl(&path).unwrap();
+        let imported = import_stl_pinned(&path).unwrap();
         assert!(imported.vertex_count() > 0);
         assert_eq!(imported.triangle_count(), mesh.triangle_count());
         std::fs::remove_file(&path).ok();

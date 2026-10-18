@@ -398,6 +398,14 @@ def export_glb_bytes(
     indices: npt.NDArray[np.uint32],
 ) -> bytes: ...
 
+def import_glb(
+    path: str,
+) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.uint32], str]: ...
+
+def import_glb_bytes(
+    data: bytes,
+) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.uint32], str]: ...
+
 def export_fbx(
     vertices: npt.NDArray[np.float32],
     indices: npt.NDArray[np.uint32],

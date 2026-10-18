@@ -9,6 +9,7 @@ use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
+use crate::provenance::{mesh_import_verdict, Checked};
 use std::io::Write;
 use std::path::Path;
 
@@ -252,12 +253,43 @@ fn export_mtl(
     Ok(())
 }
 
-/// Load a mesh from OBJ format
-pub fn import_obj(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+/// Import a mesh from OBJ, with what is known about the arithmetic it was written under
+///
+/// The identifier this crate's writers store is read from the same bytes: a file of this
+/// crate is [`crate::provenance::StoredSemantics::Current`] (or `VerifiedPrevious`), a file from another program
+/// (no identifier) is read and marked [`crate::provenance::StoredSemantics::Unpinned`], and a file stamped by
+/// another SDF arithmetic is refused. [`import_obj_pinned`] also refuses an unstamped file.
+///
+/// # Errors
+///
+/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// malformed one, and the I/O and parse errors.
+pub fn import_obj(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
+    import_obj_with(path.as_ref(), true)
+}
+
+/// [`import_obj`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`import_obj`].
+pub fn import_obj_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
+    import_obj_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn import_obj_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
+    let data = std::fs::read(path)?;
+    let semantics = mesh_import_verdict(&data, "OBJ", allow_unpinned)?;
+    parse_obj(&data).map(|value| Checked::new(value, semantics))
+}
+
+/// A mesh from OBJ bytes
+fn parse_obj(data: &[u8]) -> Result<Mesh, IoError> {
     use crate::mesh::Vertex;
     use glam::{Vec2, Vec3};
 
-    let content = std::fs::read_to_string(path).map_err(IoError::Io)?;
+    let content = std::str::from_utf8(data)
+        .map_err(|e| IoError::InvalidFormat(format!("OBJ is not UTF-8: {e}")))?;
 
     let mut positions: Vec<Vec3> = Vec::new();
     let mut normals: Vec<Vec3> = Vec::new();
@@ -380,7 +412,7 @@ mod tests {
         let path = std::env::temp_dir().join("alice_test_export.obj");
         export_obj(&mesh, &path, &ObjConfig::default(), None).unwrap();
 
-        let imported = import_obj(&path).unwrap();
+        let imported = import_obj_pinned(&path).unwrap();
         assert!(imported.vertex_count() > 0);
         assert!(imported.triangle_count() > 0);
 

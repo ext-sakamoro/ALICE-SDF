@@ -48,12 +48,13 @@ pub use asdf::{
 };
 pub use fbx::{
     export_fbx, export_fbx_with_provenance, export_fbx_with_stamp, fbx_animation_to_timeline,
-    import_fbx, import_fbx_full, FbxAnimClip, FbxAnimCurve, FbxBone, FbxConfig, FbxFormat,
-    FbxUpAxis, ImportedFbx,
+    import_fbx, import_fbx_full, import_fbx_full_pinned, import_fbx_pinned, FbxAnimClip,
+    FbxAnimCurve, FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
 };
 pub use gltf::{
     export_glb, export_glb_bytes, export_glb_bytes_with_provenance, export_glb_with_provenance,
-    export_gltf_json, export_gltf_json_with_provenance, import_glb, import_glb_bytes, GltfConfig,
+    export_gltf_json, export_gltf_json_with_provenance, import_glb, import_glb_bytes,
+    import_glb_bytes_pinned, import_glb_pinned, GltfConfig,
 };
 pub use json::{
     from_json_string, from_json_string_unverified, load_asdf_json, load_asdf_json_unverified,
@@ -62,11 +63,11 @@ pub use json::{
 pub use nanite::{
     export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig,
 };
-pub use obj::{export_obj, export_obj_with_provenance, import_obj, ObjConfig};
-pub use ply::{export_ply, export_ply_with_provenance, import_ply, PlyConfig};
+pub use obj::{export_obj, export_obj_with_provenance, import_obj, import_obj_pinned, ObjConfig};
+pub use ply::{export_ply, export_ply_with_provenance, import_ply, import_ply_pinned, PlyConfig};
 pub use stl::{
     export_stl, export_stl_ascii, export_stl_ascii_with_provenance, export_stl_ascii_with_stamp,
-    export_stl_with_provenance, export_stl_with_stamp, import_stl,
+    export_stl_with_provenance, export_stl_with_stamp, import_stl, import_stl_pinned,
 };
 pub use threemf::{export_3mf, export_3mf_with_provenance, export_3mf_with_stamp};
 pub use ue5_asset::{
@@ -74,8 +75,8 @@ pub use ue5_asset::{
 };
 pub use unity_mesh::{export_unity_mesh, export_unity_mesh_binary, UnityMeshConfig};
 pub use usd::{
-    export_usda, export_usda_with_provenance, import_usda, ImportedUsdMaterial, ImportedUsda,
-    UsdConfig, UsdUpAxis,
+    export_usda, export_usda_with_provenance, import_usda, import_usda_pinned, ImportedUsdMaterial,
+    ImportedUsda, UsdConfig, UsdUpAxis,
 };
 
 use crate::types::SdfTree;
@@ -123,9 +124,10 @@ pub enum IoError {
         expected: crate::provenance::Provenance,
     },
 
-    /// The file carries no semantics identifier (written before identifiers were stored); read
-    /// it with the `*_unverified` loader to get it marked as such
-    #[error("{format}: no semantics identifier (read it with the *_unverified loader)")]
+    /// The file carries no semantics identifier (written before identifiers were stored, or by
+    /// another program); read it with the `*_unverified` loader, or a mesh with the default
+    /// importer (not `*_pinned`), to get it marked as such
+    #[error("{format}: no semantics identifier (read it with the *_unverified loader, or a mesh with the importer that is not *_pinned)")]
     Unpinned {
         /// The format read
         format: &'static str,

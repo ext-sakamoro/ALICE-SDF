@@ -268,7 +268,7 @@ fn stl_binary_round_trip() {
     let path = temp_dir().join("rt_sphere.stl");
 
     io::export_stl(&mesh, &path).expect("export_stl failed");
-    let loaded = io::import_stl(&path).expect("import_stl failed");
+    let loaded = io::import_stl_pinned(&path).expect("import_stl failed");
 
     assert_eq!(
         mesh.indices.len(),
@@ -315,7 +315,7 @@ fn glb_round_trip() {
 
     let config = GltfConfig::default();
     export_glb(&mesh, &path, &config, None).expect("export_glb failed");
-    let loaded = import_glb(&path).expect("import_glb failed");
+    let loaded = io::import_glb_pinned(&path).expect("import_glb failed");
 
     assert_eq!(
         mesh.vertices.len(),
@@ -341,7 +341,7 @@ fn ply_round_trip() {
         export_normals: true,
     };
     io::export_ply(&mesh, &path, &config).expect("export_ply failed");
-    let loaded = io::import_ply(&path).expect("import_ply failed");
+    let loaded = io::import_ply_pinned(&path).expect("import_ply failed");
 
     assert_eq!(
         mesh.vertices.len(),
@@ -362,7 +362,7 @@ fn fbx_ascii_round_trip() {
         ..Default::default()
     };
     export_fbx(&mesh, &path, &config, None).expect("export_fbx failed");
-    let loaded = import_fbx(&path).expect("import_fbx failed");
+    let loaded = io::import_fbx_pinned(&path).expect("import_fbx failed");
 
     assert_eq!(
         mesh.vertices.len(),
@@ -380,7 +380,7 @@ fn usda_round_trip() {
 
     let config = UsdConfig::default();
     export_usda(&mesh, &path, &config, None).expect("export_usda failed");
-    let loaded = io::import_usda(&path).expect("import_usda failed");
+    let loaded = io::import_usda_pinned(&path).expect("import_usda failed");
 
     assert_eq!(
         mesh.vertices.len(),
@@ -398,7 +398,7 @@ fn obj_round_trip() {
 
     let config = ObjConfig::default();
     export_obj(&mesh, &path, &config, None).expect("export_obj failed");
-    let loaded = import_obj(&path).expect("import_obj failed");
+    let loaded = io::import_obj_pinned(&path).expect("import_obj failed");
 
     assert_eq!(
         mesh.vertices.len(),

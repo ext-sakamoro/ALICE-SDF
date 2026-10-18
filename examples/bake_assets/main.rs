@@ -44,7 +44,7 @@
 mod mass;
 
 use alice_sdf::io::{
-    export_glb, export_nanite, import_glb, load_abm, load_asdf, load_asdf_json, save_abm,
+    export_glb, export_nanite, import_glb_pinned, load_abm, load_asdf, load_asdf_json, save_abm,
     save_asdf, save_asdf_json, to_json_string, GltfConfig,
 };
 use alice_sdf::mesh::{
@@ -757,7 +757,7 @@ fn verify_scene(out: &Path, sj: &Value, gpu_ok: bool, c: &mut Checks) -> Result<
     }
 
     // 7. the glTF holds the render mesh
-    let glb = import_glb(dir.join("mesh.glb")).map_err(|e| format!("mesh.glb: {e}"))?;
+    let glb = import_glb_pinned(dir.join("mesh.glb")).map_err(|e| format!("mesh.glb: {e}"))?;
     let same = glb.vertex_count() == render.vertex_count()
         && glb.indices == render.indices
         && glb

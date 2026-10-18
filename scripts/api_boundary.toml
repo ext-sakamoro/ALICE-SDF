@@ -8,7 +8,7 @@ targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 730 items (1 host-only): 27 handshake, 664 local, 39 pending (G8). Groups (count, decision):
+# 738 items (0 Linux-only): 45 handshake, 669 local, 24 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -32,16 +32,17 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      5  pending: G8, the stored form carries no semantics identifier, so values computed under another arithmetic read back without a check
 #      1  handshake: lod_chain_loaders_check_both_parts
 #      1  local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain
-#      9  pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current
+#      1  local: converts an animation clip already in memory; the file it came from is read by import_fbx_full, which checks the identifier
+#     18  handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer
 #      1  pending: G8, the network weights file carries no semantics identifier of the build that trained it
 #      7  pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check
 #      2  pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under
-#      6  pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier
+#      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
+#      2  pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier
 #      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
 #     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
 #     23  local: writes this crate's own value; stamping the stored file is G8's
 #      2  local: parses a shader language name
-#      2  pending: G8, wraps the glTF importer, which does not read the stored semantics identifier
 #     12  local: writes this build's tree or mesh out; stamping the file is G8's
 #    195  local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)
 #      7  local: writes this library's own tree or mesh to a path the caller gives
@@ -82,7 +83,6 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 #      1  handshake: ffi_load_lod_chain_checks_both_parts
 
 [boundary]
-
 # 4 local
 "fn::mesh::lod_persist::save_lod_chain_metadata_with_provenance" = "local: writes this build's own LOD chain; stamping is G8's"
 "fn::mesh::lod_persist::save_lod_chain_with_provenance" = "local: writes this build's own LOD chain; stamping is G8's"
@@ -177,16 +177,28 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 # 1 local
 "fn::mesh::lod_persist::load_lod_chain_metadata" = "local: returns only the authored LodChainConfig in Checked with its status (an unpinned sidecar reads as Unpinned, another identifier is refused); the computed values are read through load_lod_chain"
 
-# 9 pending
-"fn::io::fbx::fbx_animation_to_timeline" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::fbx::import_fbx" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::fbx::import_fbx_full" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::gltf::import_glb" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::gltf::import_glb_bytes" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::obj::import_obj" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::ply::import_ply" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::stl::import_stl" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
-"fn::io::usd::import_usda" = "pending: G8, the mesh importer does not read the semantics identifier the writers store, so geometry computed under another arithmetic reads as current"
+# 1 local
+"fn::io::fbx::fbx_animation_to_timeline" = "local: converts an animation clip already in memory; the file it came from is read by import_fbx_full, which checks the identifier"
+
+# 18 handshake
+"fn::io::fbx::import_fbx" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::fbx::import_fbx_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::fbx::import_fbx_full" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::fbx::import_fbx_full_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::gltf::import_glb" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::gltf::import_glb_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::gltf::import_glb_bytes" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::gltf::import_glb_bytes_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::obj::import_obj" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::obj::import_obj_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::ply::import_ply" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::ply::import_ply_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::stl::import_stl" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::stl::import_stl_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::usd::import_usda" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"fn::io::usd::import_usda_pinned" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"binding::pyo3::import_glb" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
+"binding::pyo3::import_glb_bytes" = "handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer"
 
 # 1 pending
 "fn::NeuralSdf::load" = "pending: G8, the network weights file carries no semantics identifier of the build that trained it"
@@ -204,13 +216,15 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 "fn::<Participant for LiveSdf>::check_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
 "fn::<Participant for LiveSdf>::read_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
 
-# 6 pending
-"impl::Deserialize for Aabb" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
+# 4 local
+"impl::Deserialize for Aabb" = "local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)"
+"impl::Deserialize for Mesh" = "local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)"
+"impl::Deserialize for Triangle" = "local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)"
+"impl::Deserialize for Vertex" = "local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)"
+
+# 2 pending
 "impl::Deserialize for FittedOctave" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
-"impl::Deserialize for Mesh" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 "impl::Deserialize for TextureFitResult" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
-"impl::Deserialize for Triangle" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
-"impl::Deserialize for Vertex" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 
 # 1 local
 "impl::Deserialize for SdfMetadata" = "local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)"
@@ -257,10 +271,6 @@ host = { "abi::godot::__cxa_thread_atexit_impl" = "linux" }
 # 2 local
 "fn::<FromStr for ShaderLanguage>::from_str" = "local: parses a shader language name"
 "impl::FromStr for ShaderLanguage" = "local: parses a shader language name"
-
-# 2 pending
-"binding::pyo3::import_glb" = "pending: G8, wraps the glTF importer, which does not read the stored semantics identifier"
-"binding::pyo3::import_glb_bytes" = "pending: G8, wraps the glTF importer, which does not read the stored semantics identifier"
 
 # 12 local
 "binding::pyo3::bake_to_vdb" = "local: writes this build's tree or mesh out; stamping the file is G8's"

@@ -15,6 +15,7 @@ use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
+use crate::provenance::{mesh_import_verdict, Checked};
 use std::io::Write;
 use std::path::Path;
 
@@ -248,11 +249,42 @@ pub struct ImportedUsdMaterial {
 ///
 /// # Returns
 /// ImportedUsda containing mesh and optional material
-pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
+///
+/// The identifier in the layer's `customLayerData` is read: a file of this crate is
+/// [`crate::provenance::StoredSemantics::Current`] (or `VerifiedPrevious`), a file from another program (no
+/// identifier) is read and marked [`crate::provenance::StoredSemantics::Unpinned`], and a file stamped by another
+/// SDF arithmetic is refused. [`import_usda_pinned`] also refuses an unstamped file.
+///
+/// # Errors
+///
+/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// malformed one, and the I/O and parse errors.
+pub fn import_usda(path: impl AsRef<Path>) -> Result<Checked<ImportedUsda>, IoError> {
+    import_usda_with(path.as_ref(), true)
+}
+
+/// [`import_usda`] that refuses a file without this crate's identifier
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a file without an identifier, otherwise as [`import_usda`].
+pub fn import_usda_pinned(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
+    import_usda_with(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+fn import_usda_with(path: &Path, allow_unpinned: bool) -> Result<Checked<ImportedUsda>, IoError> {
+    let data = std::fs::read(path)?;
+    let semantics = mesh_import_verdict(&data, "USDA", allow_unpinned)?;
+    parse_usda(&data).map(|value| Checked::new(value, semantics))
+}
+
+/// The mesh and material of USDA bytes
+fn parse_usda(data: &[u8]) -> Result<ImportedUsda, IoError> {
     use crate::mesh::Vertex;
     use glam::{Vec2, Vec3};
 
-    let content = std::fs::read_to_string(path.as_ref())?;
+    let content = std::str::from_utf8(data)
+        .map_err(|e| IoError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
 
     if !content.starts_with("#usda") {
         return Err(IoError::InvalidFormat(
@@ -286,7 +318,7 @@ pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
     }
 
     // Parse points: point3f[] points = [(x, y, z), ...]
-    let points_str = extract_array(&content, "point3f[] points")
+    let points_str = extract_array(content, "point3f[] points")
         .ok_or_else(|| IoError::InvalidFormat("Missing points array".into()))?;
 
     let mut positions = Vec::new();
@@ -312,7 +344,7 @@ pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
     }
 
     // Parse indices: int[] faceVertexIndices = [0, 1, 2, ...]
-    let indices_str = extract_array(&content, "int[] faceVertexIndices")
+    let indices_str = extract_array(content, "int[] faceVertexIndices")
         .ok_or_else(|| IoError::InvalidFormat("Missing faceVertexIndices".into()))?;
 
     let raw_indices: Vec<u32> = indices_str
@@ -321,7 +353,7 @@ pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
         .collect();
 
     // Parse face counts: int[] faceVertexCounts = [3, 3, 3, ...]
-    let face_counts_str = extract_array(&content, "int[] faceVertexCounts")
+    let face_counts_str = extract_array(content, "int[] faceVertexCounts")
         .ok_or_else(|| IoError::InvalidFormat("Missing faceVertexCounts".into()))?;
 
     let face_counts: Vec<usize> = face_counts_str
@@ -351,7 +383,7 @@ pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
 
     // Parse normals: normal3f[] normals = [(x, y, z), ...]
     let mut normals = vec![Vec3::Y; positions.len()]; // Default to Y-up
-    if let Some(normals_str) = extract_array(&content, "normal3f[] normals") {
+    if let Some(normals_str) = extract_array(content, "normal3f[] normals") {
         let mut parsed_normals = Vec::new();
         for tuple_str in normals_str.split("),") {
             let cleaned = tuple_str
@@ -381,7 +413,7 @@ pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
 
     // Parse UVs: texCoord2f[] primvars:st = [(u, v), ...]
     let mut uvs = vec![Vec2::ZERO; positions.len()];
-    if let Some(uvs_str) = extract_array(&content, "texCoord2f[] primvars:st") {
+    if let Some(uvs_str) = extract_array(content, "texCoord2f[] primvars:st") {
         let mut parsed_uvs = Vec::new();
         for tuple_str in uvs_str.split("),") {
             let cleaned = tuple_str
@@ -418,7 +450,7 @@ pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
 
     // Parse material (optional)
     let mut material = None;
-    if let Some(diffuse_str) = extract_single_value(&content, "color3f inputs:diffuseColor") {
+    if let Some(diffuse_str) = extract_single_value(content, "color3f inputs:diffuseColor") {
         let cleaned = diffuse_str
             .trim()
             .trim_start_matches('(')
@@ -429,13 +461,13 @@ pub fn import_usda(path: impl AsRef<Path>) -> Result<ImportedUsda, IoError> {
             .collect();
 
         if rgb.len() == 3 {
-            let metallic = extract_single_value(&content, "float inputs:metallic")
+            let metallic = extract_single_value(content, "float inputs:metallic")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0.0);
-            let roughness = extract_single_value(&content, "float inputs:roughness")
+            let roughness = extract_single_value(content, "float inputs:roughness")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0.5);
-            let opacity = extract_single_value(&content, "float inputs:opacity")
+            let opacity = extract_single_value(content, "float inputs:opacity")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(1.0);
 
@@ -534,7 +566,7 @@ mod tests {
         export_usda(&original_mesh, &path, &UsdConfig::default(), None).unwrap();
 
         // Import back
-        let imported = import_usda(&path).unwrap();
+        let imported = import_usda_pinned(&path).unwrap();
 
         // Verify counts match
         assert_eq!(
@@ -591,7 +623,7 @@ mod tests {
         export_usda(&mesh, &path, &UsdConfig::default(), Some(&mat_lib)).unwrap();
 
         // Import and verify material
-        let imported = import_usda(&path).unwrap();
+        let imported = import_usda_pinned(&path).unwrap();
         assert!(imported.material.is_some(), "Material should be imported");
 
         let mat = imported.material.unwrap();

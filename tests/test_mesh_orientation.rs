@@ -182,14 +182,14 @@ fn compiled_marching_cubes_faces_outward() {
 /// winding; until 1.10.3 every facet contradicted its normal).
 #[test]
 fn stl_facets_agree_with_their_normals() {
-    use alice_sdf::io::stl::{export_stl, import_stl};
+    use alice_sdf::io::stl::{export_stl, import_stl_pinned};
     let node = SdfNode::sphere(1.0);
     let m = mesh_of(&node, 32);
     let dir = std::env::temp_dir().join(format!("alice_sdf_stl_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("sphere.stl");
     export_stl(&m, &path).unwrap();
-    let back = import_stl(&path).unwrap();
+    let back = import_stl_pinned(&path).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     let (mut agree, mut contradict) = (0, 0);
     for t in back.indices.chunks_exact(3) {

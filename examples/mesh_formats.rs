@@ -9,24 +9,27 @@
 
 use alice_sdf::io::abm::{read_abm_header, save_abm};
 use alice_sdf::io::fbx::{
-    export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, FbxAnimClip, FbxAnimCurve,
-    FbxConfig,
+    export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, import_fbx_full_pinned,
+    import_fbx_pinned, FbxAnimClip, FbxAnimCurve, FbxConfig,
 };
-use alice_sdf::io::gltf::{export_gltf_json, GltfConfig};
+use alice_sdf::io::gltf::{
+    export_glb_bytes, export_gltf_json, import_glb_bytes_pinned, GltfConfig,
+};
 use alice_sdf::io::iges::{export_iges, IgesConfig};
 use alice_sdf::io::nanite::{
     export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig, NANITE_MAGIC,
     NANITE_VERSION,
 };
-use alice_sdf::io::obj::{export_obj, import_obj, ObjConfig};
-use alice_sdf::io::ply::{export_ply, import_ply, PlyConfig};
+use alice_sdf::io::obj::{export_obj, import_obj, import_obj_pinned, ObjConfig};
+use alice_sdf::io::ply::{export_ply, import_ply, import_ply_pinned, PlyConfig};
 use alice_sdf::io::splat::{load_splat, save_splat, Splat, SPLAT_BYTES};
-use alice_sdf::io::stl::{export_stl_ascii, import_stl};
-use alice_sdf::io::usd::{export_usda, import_usda, UsdConfig};
+use alice_sdf::io::stl::{export_stl_ascii, import_stl, import_stl_pinned};
+use alice_sdf::io::usd::{export_usda, import_usda, import_usda_pinned, UsdConfig};
 use alice_sdf::io::vox::{load_vox, save_vox, VoxModel, Voxel};
 use alice_sdf::material::{Material, MaterialLibrary};
 use alice_sdf::mesh::nanite::{generate_nanite_mesh, NaniteConfig};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh};
+use alice_sdf::provenance::StoredSemantics;
 use alice_sdf::types::SdfNode;
 use glam::Vec3;
 use std::collections::BTreeMap;
@@ -66,19 +69,67 @@ fn main() {
     // ── text formats with a reader: exact round trips ──────
     let stl = dir.join("part.stl");
     export_stl_ascii(&mesh, &stl).unwrap();
-    assert!(same_positions(&import_stl(&stl).unwrap(), &mesh, 0.0));
+    assert!(same_positions(
+        &import_stl_pinned(&stl).unwrap(),
+        &mesh,
+        0.0
+    ));
     let obj = dir.join("part.obj");
     export_obj(&mesh, &obj, &ObjConfig::default(), None).unwrap();
-    assert!(same_positions(&import_obj(&obj).unwrap(), &mesh, 0.0));
+    assert!(same_positions(
+        &import_obj_pinned(&obj).unwrap(),
+        &mesh,
+        0.0
+    ));
     let ply = dir.join("part.ply");
     export_ply(&mesh, &ply, &PlyConfig::default()).unwrap();
-    assert!(same_positions(&import_ply(&ply).unwrap(), &mesh, 0.0));
+    assert!(same_positions(
+        &import_ply_pinned(&ply).unwrap(),
+        &mesh,
+        0.0
+    ));
     let fbx = dir.join("part.fbx");
     export_fbx(&mesh, &fbx, &FbxConfig::default(), None).unwrap();
-    assert!(same_positions(&import_fbx(&fbx).unwrap(), &mesh, 1e-6));
-    let full = import_fbx_full(&fbx).unwrap();
+    assert!(same_positions(
+        &import_fbx_pinned(&fbx).unwrap(),
+        &mesh,
+        1e-6
+    ));
+    let full = import_fbx_full_pinned(&fbx).unwrap();
     assert!(full.skeleton.is_none() && full.animations.is_empty());
     println!("STL ASCII / OBJ / PLY / FBX ASCII: {tris} triangles read back at the same positions");
+
+    // ── the stored identifier: this crate's files read as Current; a file from another
+    // program (no identifier) reads as Unpinned, and the pinned importer refuses it ──
+    let statuses = [
+        import_stl(&stl).unwrap().semantics(),
+        import_obj(&obj).unwrap().semantics(),
+        import_ply(&ply).unwrap().semantics(),
+        import_fbx(&fbx).unwrap().semantics(),
+        import_fbx_full(&fbx).unwrap().semantics(),
+    ];
+    assert!(statuses.iter().all(|s| *s == StoredSemantics::Current));
+    let foreign = dir.join("foreign.obj");
+    std::fs::write(&foreign, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+    let (triangle, status) = import_obj(&foreign).unwrap().into_parts();
+    assert_eq!(
+        (triangle.indices.len(), status),
+        (3, StoredSemantics::Unpinned)
+    );
+    let refused_unpinned = import_obj_pinned(&foreign).unwrap_err();
+    println!("identifier: 5 files of this crate Current; a foreign OBJ Unpinned, pinned import: {refused_unpinned}");
+
+    // GLB in memory: written with this crate's identifier in asset.extras and read back
+    let glb = export_glb_bytes(&mesh, &GltfConfig::default(), None).unwrap();
+    assert!(same_positions(
+        &import_glb_bytes_pinned(&glb).unwrap(),
+        &mesh,
+        0.0
+    ));
+    println!(
+        "GLB (in memory): {} bytes, read back at the same positions",
+        glb.len()
+    );
 
     // binary FBX is written but not read: the reader says so by name
     let fbx_bin = dir.join("part_binary.fbx");
@@ -100,7 +151,11 @@ fn main() {
     };
     let usda = dir.join("part.usda");
     export_usda(&mesh, &usda, &UsdConfig::default(), Some(&lib)).unwrap();
-    let imported = import_usda(&usda).unwrap();
+    let imported = import_usda_pinned(&usda).unwrap();
+    assert_eq!(
+        import_usda(&usda).unwrap().semantics(),
+        StoredSemantics::Current
+    );
     let mat = imported.material.expect("material");
     println!(
         "USDA: diffuse {:?}, metallic {}, roughness {}",

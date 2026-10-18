@@ -628,6 +628,34 @@ pub(crate) fn sdf_load_verdict(
     }
 }
 
+/// The verdict of a mesh importer on the bytes of a file of `format`: the identifier this
+/// crate's writers store ([`from_bytes`]), judged as [`sdf_load_verdict`] judges it
+///
+/// A file without an identifier (a format this module reads, carrying none, or a file whose
+/// layout [`from_bytes`] does not place, such as an OBJ that does not start with a comment) has
+/// none; a file that holds the key but whose identifier cannot be read is an error, never read
+/// as unstamped.
+///
+/// # Errors
+///
+/// As [`sdf_load_verdict`], and [`crate::io::IoError::InvalidFormat`] for an identifier that is
+/// present but malformed.
+pub(crate) fn mesh_import_verdict(
+    bytes: &[u8],
+    format: &'static str,
+    allow_unpinned: bool,
+) -> Result<StoredSemantics, crate::io::IoError> {
+    let stored = match from_bytes(bytes) {
+        Ok(p) => Some(p.semantics_id),
+        Err(ProvenanceError::Missing { .. }) => None,
+        Err(e) if find(bytes, KEY.as_bytes()).is_some() => {
+            return Err(crate::io::IoError::InvalidFormat(format!("{format}: {e}")))
+        }
+        Err(_) => None,
+    };
+    sdf_load_verdict(stored, format, allow_unpinned)
+}
+
 /// The identifier of a JSON document: `asset.extras["alice:semantics_id"]` of a glTF document
 /// (one with an `asset` object; `gltf` names it in errors), the top-level `"alice:semantics_id"` of
 /// any other JSON document of this crate (ASDF JSON, the LOD chain sidecar), named `JSON` in errors

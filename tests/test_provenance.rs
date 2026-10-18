@@ -404,19 +404,25 @@ fn files_with_the_identifier_still_open_in_this_crates_importers() {
     for (file, ascii) in [("i.stl", false), ("i_ascii.stl", true)] {
         let path = temp(file);
         if ascii {
-            io::export_stl_ascii_with_provenance(&m, &path, &caller_id()).unwrap();
+            io::export_stl_ascii_with_provenance(&m, &path, &Provenance::sdf()).unwrap();
         } else {
-            io::export_stl_with_provenance(&m, &path, &caller_id()).unwrap();
+            io::export_stl_with_provenance(&m, &path, &Provenance::sdf()).unwrap();
         }
-        let back = io::import_stl(&path).unwrap();
+        let back = io::import_stl_pinned(&path).unwrap();
         assert_eq!(back.indices.len() / 3, tris, "{file}");
         std::fs::remove_file(&path).ok();
     }
     let path = temp("i.obj");
-    io::export_obj_with_provenance(&m, &path, &io::ObjConfig::default(), None, &caller_id())
-        .unwrap();
+    io::export_obj_with_provenance(
+        &m,
+        &path,
+        &io::ObjConfig::default(),
+        None,
+        &Provenance::sdf(),
+    )
+    .unwrap();
     assert_eq!(
-        io::import_obj(&path).unwrap().indices.len() / 3,
+        io::import_obj_pinned(&path).unwrap().indices.len() / 3,
         tris,
         "obj"
     );
@@ -427,9 +433,9 @@ fn files_with_the_identifier_still_open_in_this_crates_importers() {
             binary,
             ..Default::default()
         };
-        io::export_ply_with_provenance(&m, &path, &c, &caller_id()).unwrap();
+        io::export_ply_with_provenance(&m, &path, &c, &Provenance::sdf()).unwrap();
         assert_eq!(
-            io::import_ply(&path).unwrap().indices.len() / 3,
+            io::import_ply_pinned(&path).unwrap().indices.len() / 3,
             tris,
             "ply binary={binary}"
         );
@@ -441,8 +447,8 @@ fn files_with_the_identifier_still_open_in_this_crates_importers() {
         format: io::FbxFormat::Ascii,
         ..Default::default()
     };
-    io::export_fbx_with_provenance(&m, &path, &c, None, &caller_id()).unwrap();
-    let back = io::import_fbx(&path).unwrap();
+    io::export_fbx_with_provenance(&m, &path, &c, None, &Provenance::sdf()).unwrap();
+    let back = io::import_fbx_pinned(&path).unwrap();
     assert_eq!(back.indices.len() / 3, tris);
     std::fs::remove_file(&path).ok();
 }
@@ -477,9 +483,12 @@ fn gltf_files_with_the_identifier_stay_valid() {
     let m = mesh();
     let tris = m.indices.len() / 3;
     let c = io::GltfConfig::default();
-    let glb = io::export_glb_bytes_with_provenance(&m, &c, None, &caller_id()).unwrap();
+    let glb = io::export_glb_bytes_with_provenance(&m, &c, None, &Provenance::sdf()).unwrap();
     gltf::Gltf::from_slice(&glb).expect("gltf reads the .glb");
-    assert_eq!(io::import_glb_bytes(&glb).unwrap().indices.len() / 3, tris);
+    assert_eq!(
+        io::import_glb_bytes_pinned(&glb).unwrap().indices.len() / 3,
+        tris
+    );
     let path = temp("strict.gltf");
     io::export_gltf_json_with_provenance(&m, &path, &c, None, &caller_id()).unwrap();
     gltf::Gltf::from_slice(&std::fs::read(&path).unwrap()).expect("gltf reads the .gltf");
@@ -506,9 +515,19 @@ fn gltf_files_with_the_identifier_stay_valid() {
 fn usd_step_iges_with_the_identifier_stay_well_formed() {
     let m = mesh();
     let path = temp("wf.usda");
-    io::export_usda_with_provenance(&m, &path, &io::UsdConfig::default(), None, &caller_id())
-        .unwrap();
-    assert!(!io::import_usda(&path).unwrap().mesh.indices.is_empty());
+    io::export_usda_with_provenance(
+        &m,
+        &path,
+        &io::UsdConfig::default(),
+        None,
+        &Provenance::sdf(),
+    )
+    .unwrap();
+    assert!(!io::import_usda_pinned(&path)
+        .unwrap()
+        .mesh
+        .indices
+        .is_empty());
     std::fs::remove_file(&path).ok();
 
     let node = SdfNode::sphere(1.0);

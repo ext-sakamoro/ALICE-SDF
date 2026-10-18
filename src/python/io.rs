@@ -38,16 +38,21 @@ pub fn load_sdf(py: Python<'_>, path: &str) -> PyResult<PySdfNode> {
 #[pyfunction]
 pub fn from_json(json_str: &str) -> PyResult<(PySdfNode, &'static str)> {
     use crate::io::from_json_string_unverified;
-    use crate::provenance::StoredSemantics;
     let checked = from_json_string_unverified(json_str)
         .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
     let (tree, semantics) = checked.into_parts();
-    let status = match semantics {
+    Ok((PySdfNode { inner: tree.root }, status_name(semantics)))
+}
+
+/// The Python name of a stored-semantics status: `"current"`, `"verified_previous"` or
+/// `"unpinned"`
+const fn status_name(semantics: crate::provenance::StoredSemantics) -> &'static str {
+    use crate::provenance::StoredSemantics;
+    match semantics {
         StoredSemantics::Current => "current",
         StoredSemantics::VerifiedPrevious(_) => "verified_previous",
         _ => "unpinned",
-    };
-    Ok((PySdfNode { inner: tree.root }, status))
+    }
 }
 
 /// Serialize SDF node to JSON string
@@ -277,34 +282,48 @@ pub fn export_ue5(
 
 /// Import mesh from in-memory GLB bytes (GIL released during parse)
 ///
-/// Returns (vertices: ndarray[N,3], indices: ndarray[M]).
+/// Returns (vertices: ndarray[N,3], indices: ndarray[M], status), status being `"current"`,
+/// `"verified_previous"` or `"unpinned"` (bytes from another program); bytes stamped by another
+/// SDF arithmetic raise ValueError.
 #[pyfunction]
 pub fn import_glb_bytes<'py>(
     py: Python<'py>,
     data: &[u8],
-) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
+) -> PyResult<(
+    Bound<'py, PyArray2<f32>>,
+    Bound<'py, PyArray1<u32>>,
+    &'static str,
+)> {
     use crate::io::import_glb_bytes as io_import_glb_bytes;
     let data = data.to_vec();
-    let mesh = py
+    let (mesh, semantics) = py
         .detach(move || io_import_glb_bytes(&data))
-        .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?;
-    mesh_to_numpy(py, &mesh)
+        .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?
+        .into_parts();
+    let (vertices, indices) = mesh_to_numpy(py, &mesh)?;
+    Ok((vertices, indices, status_name(semantics)))
 }
 
 /// Import mesh from GLB file path (GIL released during I/O)
 ///
-/// Returns (vertices: ndarray[N,3], indices: ndarray[M]).
+/// Returns (vertices: ndarray[N,3], indices: ndarray[M], status) as [`import_glb_bytes`].
 #[pyfunction]
 pub fn import_glb<'py>(
     py: Python<'py>,
     path: &str,
-) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray1<u32>>)> {
+) -> PyResult<(
+    Bound<'py, PyArray2<f32>>,
+    Bound<'py, PyArray1<u32>>,
+    &'static str,
+)> {
     use crate::io::import_glb as io_import_glb;
     let path = path.to_string();
-    let mesh = py
+    let (mesh, semantics) = py
         .detach(move || io_import_glb(&path))
-        .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?;
-    mesh_to_numpy(py, &mesh)
+        .map_err(|e| PyValueError::new_err(format!("GLB import error: {}", e)))?
+        .into_parts();
+    let (vertices, indices) = mesh_to_numpy(py, &mesh)?;
+    Ok((vertices, indices, status_name(semantics)))
 }
 
 /// Convert mesh to SDF node tree (capsule approximation, GIL released)

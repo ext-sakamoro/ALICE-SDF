@@ -18,8 +18,8 @@
 
 use alice_sdf::io::abm::{read_abm_header, save_abm, ABM_FLAG_HAS_NORMALS, ABM_MAGIC, ABM_VERSION};
 use alice_sdf::io::fbx::{
-    export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, FbxAnimClip, FbxAnimCurve,
-    FbxConfig,
+    export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, import_fbx_full_pinned,
+    import_fbx_pinned, FbxAnimClip, FbxAnimCurve, FbxConfig,
 };
 use alice_sdf::io::gltf::{export_gltf_json, GltfConfig};
 use alice_sdf::io::iges::{export_iges, IgesConfig};
@@ -27,11 +27,11 @@ use alice_sdf::io::nanite::{
     export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig, NANITE_MAGIC,
     NANITE_VERSION,
 };
-use alice_sdf::io::obj::{export_obj, import_obj, ObjConfig};
-use alice_sdf::io::ply::{export_ply, import_ply, PlyConfig};
+use alice_sdf::io::obj::{export_obj, import_obj_pinned, ObjConfig};
+use alice_sdf::io::ply::{export_ply, import_ply_pinned, PlyConfig};
 use alice_sdf::io::splat::{load_splat, save_splat, Splat, SPLAT_BYTES};
-use alice_sdf::io::stl::{export_stl_ascii, import_stl};
-use alice_sdf::io::usd::{export_usda, import_usda, UsdConfig};
+use alice_sdf::io::stl::{export_stl_ascii, import_stl_pinned};
+use alice_sdf::io::usd::{export_usda, import_usda_pinned, UsdConfig};
 use alice_sdf::io::vox::{load_vox, save_vox, VoxModel, Voxel};
 use alice_sdf::io::IoError;
 use alice_sdf::material::{Material, MaterialLibrary};
@@ -143,7 +143,7 @@ fn stl_ascii_follows_the_grammar_and_round_trips_bit_exact() {
         4
     );
 
-    let back = import_stl(&path).unwrap();
+    let back = import_stl_pinned(&path).unwrap();
     assert_eq!(assert_same_triangles("STL ASCII", &back, &mesh, 0.0), 12);
 }
 
@@ -153,14 +153,14 @@ fn obj_and_ply_round_trip_bit_exact() {
     let obj = tmp("tetra.obj");
     export_obj(&mesh, &obj, &ObjConfig::default(), None).unwrap();
     assert_eq!(
-        assert_same_triangles("OBJ", &import_obj(&obj).unwrap(), &mesh, 0.0),
+        assert_same_triangles("OBJ", &import_obj_pinned(&obj).unwrap(), &mesh, 0.0),
         12
     );
 
     let ply = tmp("tetra.ply");
     export_ply(&mesh, &ply, &PlyConfig::default()).unwrap();
     assert_eq!(
-        assert_same_triangles("PLY", &import_ply(&ply).unwrap(), &mesh, 0.0),
+        assert_same_triangles("PLY", &import_ply_pinned(&ply).unwrap(), &mesh, 0.0),
         12
     );
 }
@@ -171,10 +171,10 @@ fn fbx_ascii_round_trips_and_binary_is_refused_by_name() {
     let path = tmp("tetra_ascii.fbx");
     export_fbx(&mesh, &path, &FbxConfig::default(), None).unwrap();
     assert_eq!(
-        assert_same_triangles("FBX ASCII", &import_fbx(&path).unwrap(), &mesh, 1e-6),
+        assert_same_triangles("FBX ASCII", &import_fbx_pinned(&path).unwrap(), &mesh, 1e-6),
         12
     );
-    let full = import_fbx_full(&path).unwrap();
+    let full = import_fbx_full_pinned(&path).unwrap();
     assert_eq!(
         assert_same_triangles("FBX ASCII full", &full.mesh, &mesh, 1e-6),
         12
@@ -265,7 +265,7 @@ fn usda_round_trips_the_mesh_and_the_material() {
     };
     let path = tmp("tetra.usda");
     export_usda(&mesh, &path, &UsdConfig::default(), Some(&lib)).unwrap();
-    let back = import_usda(&path).unwrap();
+    let back = import_usda_pinned(&path).unwrap();
     assert_eq!(assert_same_triangles("USDA", &back.mesh, &mesh, 0.0), 12);
     let m = back.material.expect("material exported");
     assert_eq!(m.diffuse_color, [0.75, 0.25, 0.5]);
